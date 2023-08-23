@@ -34,8 +34,7 @@
           {error, marking_as_warmed_failed, [node()]} |
           {error, set_data_ingress_failed, [node()]} |
           {error, unsafe_nodes, [node()]} |
-          {error, {config_sync_failed,
-                   pull | push, Details :: any()}} |
+          {error, {config_pull_failed, Details :: any()}} |
           {error, {bad_vbuckets, [vbucket_id()]}} |
           {error, {corrupted_server_list, [node()], [node()]}}.
 cleanup(Bucket, Options) ->
@@ -138,18 +137,17 @@ cleanup_with_membase_bucket_check_servers(Bucket, Options, BucketConfig,
             cleanup_with_membase_bucket_check_map(Bucket,
                                                   Options, BucketConfig);
         {update_servers, NewServers} ->
-            update_servers(Bucket, NewServers, Options),
+            update_servers(Bucket, NewServers),
             repeat_bucket_config_cleanup(Bucket, Options);
         {error, _} = Error ->
             Error
     end.
 
-update_servers(Bucket, Servers, Options) ->
+update_servers(Bucket, Servers) ->
     ?log_debug("janitor decided to update "
                "servers list for bucket ~p to ~p", [Bucket, Servers]),
 
-    ns_bucket:set_servers(Bucket, Servers),
-    push_config(Options).
+    ns_bucket:set_servers(Bucket, Servers).
 
 unpause_bucket(Bucket, Nodes, Options) ->
     case proplists:get_value(unpause_checked_hint, Options, false) of
@@ -200,15 +198,14 @@ cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig) ->
             ?log_info("janitor decided to generate initial vbucket map"),
             {Map, MapOpts} =
                 ns_rebalancer:generate_initial_map(Bucket, BucketConfig),
-            set_initial_map(Map, Servers, MapOpts, Bucket, BucketConfig,
-                            Options),
+            set_initial_map(Map, Servers, MapOpts, Bucket, BucketConfig),
 
             repeat_bucket_config_cleanup(Bucket, Options);
         _ ->
             {ok, BucketConfig}
     end.
 
-set_initial_map(Map, Servers, MapOpts, Bucket, BucketConfig, Options) ->
+set_initial_map(Map, Servers, MapOpts, Bucket, BucketConfig) ->
     case ns_rebalancer:unbalanced(Map, BucketConfig) of
         false ->
             ns_bucket:store_last_balanced_vbmap(Bucket, Map, MapOpts);
@@ -216,9 +213,7 @@ set_initial_map(Map, Servers, MapOpts, Bucket, BucketConfig, Options) ->
             ok
     end,
 
-    ok = ns_bucket:set_initial_map(Bucket, Map, Servers, MapOpts),
-
-    push_config(Options).
+    ok = ns_bucket:set_initial_map(Bucket, Map, Servers, MapOpts).
 
 partition_param_results(Res) ->
     lists:partition(
@@ -292,22 +287,12 @@ check_unsafe_nodes(BucketConfig, States, Options) ->
             ok
     end.
 
-maybe_fixup_vbucket_map(Bucket, BucketConfig, States, Options) ->
+maybe_fixup_vbucket_map(Bucket, BucketConfig, States) ->
     case do_maybe_fixup_vbucket_map(Bucket, BucketConfig, States) of
         not_needed ->
-            %% We decided not to update the bucket config. It still may be
-            %% the case that some nodes have extra vbuckets. Before
-            %% deleting those, we need to push the config, so all nodes
-            %% are on the same page.
-            PushRequired =
-                requires_config_sync(push, Bucket, BucketConfig,
-                                     States, Options),
-            {ok, BucketConfig, PushRequired};
+            {ok, BucketConfig};
         {ok, FixedBucketConfig} ->
-            %% We decided to fix the bucket config. In this case we push
-            %% the config no matter what, i.e. even if durability
-            %% awareness is disabled.
-            {ok, FixedBucketConfig, true};
+            {ok, FixedBucketConfig};
         FixupError ->
             FixupError
     end.
@@ -326,25 +311,20 @@ apply_config_prep(Params, Options) ->
     try
         maybe_pull_config(Params, Options),
 
-        {Results, RequireConfigPush} =
-            lists:mapfoldl(
-              fun({Bucket,
-                   #janitor_params{vbucket_states = States} = JParam}, Acc) ->
-                      {ok, CurrBucketConfig} = ns_bucket:get_bucket(Bucket),
-                      case maybe_fixup_vbucket_map(Bucket, CurrBucketConfig,
-                                                   States, Options) of
-                          {ok, NewConfig, RequirePush} ->
-                              Param = {Bucket, JParam#janitor_params{
-                                                 bucket_config = NewConfig}},
-                              {check_prep_param(Param, Options),
-                               Acc orelse RequirePush};
-                          Error ->
-                              {{Bucket, Error}, Acc}
-                      end
-              end, false, Params),
-
-        maybe_config_sync(RequireConfigPush, push, Options),
-        Results
+        lists:map(
+          fun({Bucket,
+               #janitor_params{vbucket_states = States} = JParam}) ->
+                  {ok, CurrBucketConfig} = ns_bucket:get_bucket(Bucket),
+                  case maybe_fixup_vbucket_map(Bucket, CurrBucketConfig,
+                                               States) of
+                      {ok, NewConfig} ->
+                          Param = {Bucket, JParam#janitor_params{
+                                             bucket_config = NewConfig}},
+                          check_prep_param(Param, Options);
+                      Error ->
+                          {Bucket, Error}
+                  end
+          end, Params)
     catch
         throw:Error ->
             [{Bucket, Error} || {Bucket, _} <- Params]
@@ -410,14 +390,6 @@ cleanup_apply_config_on_buckets(Params, QuorumServers, Options) ->
 
     Result.
 
-config_sync_nodes(Options) ->
-    case proplists:get_value(sync_nodes, Options) of
-        undefined ->
-            ns_cluster_membership:get_nodes_with_status(_ =/= inactiveFailed);
-        Nodes when is_list(Nodes) ->
-            Nodes
-    end.
-
 check_states_match(Bucket, BucketConfig, States) ->
     {_, Map} = lists:keyfind(map, 1, BucketConfig),
     case map_matches_states_exactly(Map, States) of
@@ -429,9 +401,8 @@ check_states_match(Bucket, BucketConfig, States) ->
             true
     end.
 
-requires_config_sync(Type, Bucket, BucketConfig, States, Options) ->
-    Flag = config_sync_type_to_flag(Type),
-    case proplists:get_value(Flag, Options, true)
+requires_config_pull(Bucket, BucketConfig, States, Options) ->
+    case proplists:get_value(pull_config, Options, true)
         andalso cluster_compat_mode:preserve_durable_mutations() of
         true ->
             check_states_match(Bucket, BucketConfig, States);
@@ -439,59 +410,27 @@ requires_config_sync(Type, Bucket, BucketConfig, States, Options) ->
             false
     end.
 
-maybe_config_sync(false, _Type, _Options) ->
-    ok;
-maybe_config_sync(true, Type, Options) ->
-    config_sync(Type, Options).
-
 maybe_pull_config(Params, Options) when is_list(Params) ->
     SyncRequired =
         lists:any(
           fun({Bucket, #janitor_params{bucket_config = BucketConfig,
                                        vbucket_states = States}}) ->
-                  requires_config_sync(
-                    pull, Bucket, BucketConfig, States, Options)
+                  requires_config_pull(Bucket, BucketConfig, States, Options)
           end, Params),
 
-    maybe_config_sync(SyncRequired, pull, Options).
+    not SyncRequired orelse pull_config().
 
-config_sync_type_to_flag(pull) ->
-    pull_config;
-config_sync_type_to_flag(push) ->
-    push_config.
+pull_config() ->
+    Timeout = ?get_timeout({config_sync, pull}, 10000),
 
-config_sync(Type, Options) ->
-    Nodes = config_sync_nodes(Options),
-    Timeout = ?get_timeout({config_sync, Type}, 10000),
-
-    ?log_debug("Going to ~s config to/from nodes:~n~p", [Type, Nodes]),
-    try do_config_sync(chronicle_compat:backend(), Type, Nodes, Timeout) of
+    ?log_debug("Going to pull config"),
+    try chronicle_compat:pull(Timeout) of
         ok ->
-            ok;
-        Error ->
-            throw({error, {config_sync_failed, Type, Error}})
+            ok
     catch
         T:E:Stack ->
-            throw({error, {config_sync_failed, Type, {T, E, Stack}}})
+            throw({error, {config_pull_failed, {T, E, Stack}}})
     end.
-
-push_config(Options) ->
-    config_sync(push, Options).
-
-do_config_sync(chronicle, pull, _Nodes, Timeout) ->
-    chronicle_compat:pull(Timeout);
-do_config_sync(chronicle, push, _Nodes, _Timeout) ->
-    ok; %% don't need to push buckets since we do quorum write
-do_config_sync(ns_config, pull, Nodes, Timeout) ->
-    ns_config_rep:pull_remotes(Nodes, Timeout);
-do_config_sync(ns_config, push, Nodes, Timeout) ->
-    %% Explicitly push buckets to other nodes even if didn't modify them. This
-    %% is needed because ensure_conig_seen_by_nodes() only makes sure that any
-    %% outstanding local mutations are pushed out. But it's possible that we
-    %% didn't have any local modifications to buckets, we still want to make
-    %% sure that all nodes have received all updates.
-    ns_config_rep:push_keys([buckets]),
-    ns_config_rep:ensure_config_seen_by_nodes(Nodes, Timeout).
 
 cleanup_apply_config_body(Bucket, Servers, BucketConfig, Options) ->
     ok = janitor_agent:apply_new_bucket_config(
@@ -1042,11 +981,8 @@ apply_config_prep_test_body() ->
     {_, JParams2} = Param2,
     Param2Expected = {"B2", JParams2#janitor_params{bucket_config =
                                                         BucketConfig1}},
-    {"B2", #janitor_params{bucket_config = BucketConfig2}} = Param2,
 
-    Options = [{sync_nodes, [a,b,c]},
-               {pull_config, true},
-               {push_config, true}],
+    Options = [{pull_config, true}],
 
     meck:expect(chronicle_compat, backend,
                 fun () ->
@@ -1092,70 +1028,6 @@ apply_config_prep_test_body() ->
                ),
     ?assertEqual([Param1, Param1], apply_config_prep([Param1, Param1],
                                                      Options)),
-
-    %% Test with ns_config backend
-    meck:expect(chronicle_compat, backend,
-                fun () ->
-                        ns_config
-                end),
-    meck:expect(ns_config_rep, pull_remotes,
-                fun (_,_) ->
-                        ok
-                end),
-
-    %% Expectation is that no ns_config push happens in the next
-    %% apply_config_prep call because vbucket states will match the config
-    %% provided by ns_bucket:get_bucket()
-    meck:expect(ns_config_rep, push_keys,
-                fun (_) ->
-                        ?assert(false)
-                end),
-    meck:expect(ns_config_rep, ensure_config_seen_by_nodes,
-                fun (_,_) ->
-                        ?assert(false)
-                end),
-    ?assertEqual([Param1, Param2Expected], apply_config_prep([Param1, Param2],
-                                                             Options)),
-
-    %% We now create a scenario where call for "B2" always returns a config
-    %% that does NOT match the current vbucket States, in which case ns_config
-    %% backend must require a config push, and we verify as such
-    meck:expect(ns_bucket, get_bucket,
-                fun ("B1") ->
-                        {ok, BucketConfig1};
-                    ("B2") ->
-                        {ok, BucketConfig2}
-                end),
-    meck:expect(ns_config_rep, push_keys,
-                fun (_) ->
-                        self() ! ns_config_push_called
-                end),
-    meck:expect(ns_config_rep, ensure_config_seen_by_nodes,
-                fun (_,_) ->
-                        ok
-                end),
-    meck:expect(ns_bucket, set_bucket_config,
-                fun (_, _) ->
-                        ok
-                end),
-
-    %% We expect the Param2 resulting bucket config to be updated by
-    %% the janitor because we forced it to not match the vbucket states
-    ExpectedMap = {map,[[a,undefined],[a, b],[b,a],[b,c]]},
-    Param2ExpectedB =
-        {"B2", JParams2#janitor_params{bucket_config =
-                                           [ExpectedMap,
-                                            {servers, [a,b,c]}]}},
-    ?assertEqual([Param1, Param2ExpectedB], apply_config_prep([Param1, Param2],
-                                                              Options)),
-
-    receive
-        ns_config_push_called ->
-            ok
-    after
-        1000 ->
-            ?assert(false)
-    end,
     0 = ?flush(_),
     ok.
 
@@ -1163,9 +1035,7 @@ apply_config_prep_test_errors_body() ->
     [Param1, Param2] = get_apply_config_prep_params(),
     {_, #janitor_params{bucket_config = BucketConfig1}} = Param1,
 
-    Options = [{sync_nodes, [a,b,c]},
-               {pull_config, true},
-               {push_config, true},
+    Options = [{pull_config, true},
                {check_for_unsafe_nodes, true}],
 
     meck:expect(chronicle_compat, backend,
@@ -1182,8 +1052,8 @@ apply_config_prep_test_errors_body() ->
                         {ok, BucketConfig1}
                 end),
 
-    [{"B1", {error, {config_sync_failed, pull, _}}},
-     {"B2", {error, {config_sync_failed, pull, _}}}] =
+    [{"B1", {error, {config_pull_failed, _}}},
+     {"B2", {error, {config_pull_failed, _}}}] =
         apply_config_prep([Param1, Param2], Options),
 
     meck:expect(chronicle_compat, pull,
@@ -1219,9 +1089,7 @@ cleanup_buckets_with_map_test_body() ->
     InputParam1 = {B1, JParam1#janitor_params{vbucket_states = undefined}},
     InputParam2 = {B2, JParam2#janitor_params{vbucket_states = undefined}},
 
-    Options = [{sync_nodes, [a,b,c]},
-               {pull_config, true},
-               {push_config, true}],
+    Options = [{pull_config, true}],
 
     meck:expect(leader_activities, run_activity,
                 fun ({ns_janitor, Buckets, apply_config}, _, _, _) ->
@@ -1262,18 +1130,6 @@ cleanup_buckets_with_map_test_body() ->
        [{"B2",{error,wait_for_memcached_failed,{error,zombie_error_stub}}},
         {"B1",ok}, {"B3", ok}], Res),
 
-    %% Single error in caller, remaining errors in called
-    meck:expect(chronicle_compat, pull,
-                fun (_) ->
-                        fail
-                end),
-    Res2 = cleanup_with_membase_buckets_vbucket_map(
-             [InputParam1, InputParam2, {"B3", JParam2}], Options),
-    ?assertEqual(
-       [{"B2",{error,wait_for_memcached_failed,{error,zombie_error_stub}}},
-        {"B1",{error,{config_sync_failed,pull,fail}}},
-        {"B3",{error,{config_sync_failed,pull,fail}}}], Res2),
-
     %% All errors in caller, no calls will be made further from caller
     meck:expect(janitor_agent, query_vbuckets,
                 fun (_, _, _, _) ->
@@ -1294,9 +1150,7 @@ cleanup_buckets_with_states_test_body() ->
     [Param1, Param2] = get_apply_config_prep_params(),
     {_, #janitor_params{bucket_config = BucketConfig1} = JParam} = Param1,
 
-    Options = [{sync_nodes, [a,b,c]},
-               {pull_config, true},
-               {push_config, true}],
+    Options = [{pull_config, true}],
 
     meck:expect(leader_activities, run_activity,
                 fun ({ns_janitor, Buckets, apply_config}, _, _, _) ->
