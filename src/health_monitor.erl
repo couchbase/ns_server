@@ -398,11 +398,6 @@ basic_test_setup(Monitor) ->
                 fun() ->
                         ?VERSION_TRINITY
                 end),
-    meck:expect(cluster_compat_mode,
-                is_cluster_70,
-                fun() ->
-                        true
-                end),
 
     meck:new(testconditions),
     meck:expect(testconditions,
