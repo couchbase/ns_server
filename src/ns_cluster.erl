@@ -1140,7 +1140,6 @@ verify_otp_connectivity(OtpNode, Options) ->
                                       cb_dist:address_family()),
     NodeEncryption = proplists:get_value(node_encryption, Options,
                                          cb_dist:external_encryption()),
-    TCPOnly = proplists:get_bool(tcp_only, Options),
     Host = misc:extract_node_address(OtpNode, NodeAFamily),
     PortRes =
         case proplists:get_value(port, Options) of
@@ -1152,10 +1151,10 @@ verify_otp_connectivity(OtpNode, Options) ->
     case PortRes of
         {ok, Port} ->
             VerifyConnectivity =
-                case {NodeEncryption, TCPOnly} of
-                    {true, false} ->
+                case NodeEncryption of
+                    true ->
                         check_otp_tls_connectivity(_, _, _, Options);
-                    _ ->
+                    false ->
                         fun check_host_port_connectivity/3
                 end,
             case VerifyConnectivity(Host, Port, NodeAFamily) of
@@ -1254,26 +1253,7 @@ check_otp_tls_connectivity(Host, Port, AFamily, Options) ->
 do_add_node_engaged(NodeKVList, HiddenAuth, GroupUUID, Services, Scheme) ->
     OtpNode = expect_json_property_atom(<<"otpNode">>, NodeKVList),
 
-    VerifyOpts = case ns_server_cert:this_node_uses_self_generated_certs() of
-                     %% Do not test TLS connection in case of self-generated
-                     %% certs.
-                     %% Reason: the remote node can't have correct certs
-                     %% generated at this point.
-                     %% The remote node will establish TLS dist connection
-                     %% to us (because it knows our CA), then it will sync
-                     %% config, and only then it will be able to generate
-                     %% correct certs
-                     %% Update: starting from 7.0 we pass certs to the node
-                     %% being added, so it should work even in case of
-                     %% self-generated certs.
-                     true ->
-                         case cluster_compat_mode:is_cluster_70() of
-                             true -> [];
-                             false -> [tcp_only]
-                         end;
-                     false -> []
-                 end,
-    RV = verify_otp_connectivity(OtpNode, VerifyOpts),
+    RV = verify_otp_connectivity(OtpNode, []),
     case RV of
         {ok, _} ->
             case check_can_add_node(NodeKVList) of
