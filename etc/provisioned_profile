@@ -1,2 +1,3 @@
 {name, "provisioned"}.
 {{resource_management, enabled}, true}.
+{resource_management, [{[bucket, resident_ratio, enabled], true}]}.

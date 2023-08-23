@@ -1012,5 +1012,21 @@
         "type": "counter",
         "help": "Total number of cbauth client_cert cache misses",
         "added": "7.6.0"
+    },
+    "cm_resource_limit_reached": {
+        "type": "gauge",
+        "help": "Boolean indicator of whether a resource limit has been reached",
+        "added": "7.6.0",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "resource",
+                "help": "Name of resource"
+            },
+            {
+                "name": "bucket",
+                "help": "Name of the bucket associated with the stat (when applicable)"
+            }
+        ]
     }
 }

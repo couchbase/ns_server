@@ -43,6 +43,7 @@
          check_bucket_ready/3,
          apply_new_bucket_config/4,
          mark_bucket_warmed/2,
+         maybe_set_data_ingress/3,
          delete_vbucket_copies/4,
          prepare_nodes_for_rebalance/3,
          finish_rebalance/3,
@@ -285,6 +286,29 @@ apply_new_bucket_config(Bucket, Servers, NewBucketConfig, Timeout) ->
                             apply_new_config, Timeout)),
        ?cut(call_on_servers(Bucket, Servers, NewBucketConfig,
                             apply_new_config_replicas_phase, Timeout))]).
+
+-spec maybe_set_data_ingress(bucket_name(), Status, [node()]) ->
+          ok | {errors, [{node(), mc_error()}]}
+              when Status :: undefined | data_ingress_status().
+maybe_set_data_ingress(_Bucket, undefined, _Servers) ->
+    %% Guard rail not enabled
+    ok;
+maybe_set_data_ingress(Bucket, Status, Servers) ->
+    RVs = lists:map(
+            fun (Node) ->
+                    {Node,
+                     servant_call(Bucket,
+                                  Node, {set_data_ingress, Status})}
+            end, Servers),
+    RV = lists:filter(fun ({_Node, ok}) -> false;
+                          (_) -> true
+                      end, RVs),
+    case RV of
+        [] ->
+            ok;
+        BadReplies ->
+            {errors, BadReplies}
+    end.
 
 call_on_servers(Bucket, Servers, BucketConfig, Call, Timeout) ->
     CompleteCall = {Call, BucketConfig},
@@ -607,6 +631,12 @@ handle_call(get_all_vb_seqnos, From, State) ->
       From, State, undefined,
       fun (undefined, #state{bucket_name = Bucket}) ->
               ns_memcached:get_all_vb_seqnos(Bucket)
+      end);
+handle_call({set_data_ingress, _Status} = Req, From, State) ->
+    handle_call_via_servant(
+      From, State, Req,
+      fun ({set_data_ingress, Status}, #state{bucket_name = Bucket}) ->
+              ns_memcached:set_data_ingress(Bucket, Status)
       end);
 handle_call(Call, From, State) ->
     do_handle_call(Call, From, cleanup_rebalance_artifacts(Call, State)).

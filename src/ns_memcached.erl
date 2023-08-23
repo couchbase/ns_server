@@ -88,6 +88,7 @@
          mark_warmed/2,
          mark_warmed/1,
          disable_traffic/2,
+         set_data_ingress/2,
          delete_vbucket/2,
          delete_vbuckets/2,
          sync_delete_vbucket/2,
@@ -337,6 +338,15 @@ handle_call({unpause_bucket, Bucket}, _From, #state{bucket = Bucket,
             {stop, unpaused, ok, State};
         {memcached_error, _, _} = Error ->
             ?log_error("Unpausing bucket ~p failed: ~p", [Bucket, Error]),
+            {reply, Error, State}
+    end;
+handle_call({set_bucket_data_ingress, Status}, _From, State) ->
+    case mc_client_binary:set_bucket_data_ingress(
+           State#state.sock, State#state.bucket, Status) of
+        ok ->
+            {reply, ok, State};
+        {memcached_error, _, _} = Error ->
+            ?log_error("setting bucket data ingress failed: ~p", [Error]),
             {reply, Error, State}
     end;
 handle_call(mark_warmed, _From, #state{status=Status,
@@ -1618,6 +1628,11 @@ do_call(Server, Bucket, Msg, Timeout) ->
 -spec disable_traffic(bucket_name(), non_neg_integer() | infinity) -> ok | bad_status | mc_error().
 disable_traffic(Bucket, Timeout) ->
     gen_server:call(server(Bucket), disable_traffic, Timeout).
+
+-spec set_data_ingress(bucket_name(), data_ingress_status()) -> ok | mc_error().
+set_data_ingress(Bucket, Status) ->
+    do_call(server(Bucket), Bucket, {set_bucket_data_ingress, Status},
+            ?TIMEOUT).
 
 -spec wait_for_seqno_persistence(bucket_name(), vbucket_id(), seq_no()) -> ok | mc_error().
 wait_for_seqno_persistence(Bucket, VBucketId, SeqNo) ->

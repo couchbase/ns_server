@@ -28,6 +28,7 @@
 -type rev() :: {seq_no(), rev_id()}.
 -type rebalance_vbucket_state() :: passive | undefined | paused.
 -type janitor_item() :: services | {bucket, bucket_name()}.
+-type data_ingress_status() :: ok | resident_ratio | data_size | disk_usage.
 
 -type ext_bucket_name() :: bucket_name() | binary().
 %% ext vbucket id is vbucket id (potentially as binary) or <<"master">>

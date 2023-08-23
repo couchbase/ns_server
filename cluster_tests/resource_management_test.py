@@ -26,4 +26,67 @@ class ResourceManagementTests(testlib.BaseTestSet):
         pass
 
     def get_guard_rails_test(self, cluster):
-        testlib.get_succ(cluster, "/settings/resourceManagement")
+        resident_ratio_config = testlib.get_succ(
+            cluster, "/settings/resourceManagement/bucket/residentRatio")
+        get("enabled", resident_ratio_config)
+        get("couchstoreMinimum", resident_ratio_config)
+        get("magmaMinimum", resident_ratio_config)
+
+    def set_guard_rails_json_test(self, cluster):
+        # Set guard rails with json
+
+        r = testlib.post_succ(cluster, "/settings/resourceManagement",
+                              json={
+                                  "bucket": {
+                                      "residentRatio": {
+                                          "enabled": True,
+                                          "couchstoreMinimum": 5,
+                                          "magmaMinimum": 0.5
+                                      }
+                                  }
+                              })
+
+        bucket_config = get("bucket", r)
+
+        resident_ratio_config = bucket_config.get("residentRatio")
+        assert resident_ratio_config.get("enabled") is True
+        assert resident_ratio_config.get("couchstoreMinimum") == 5
+        assert resident_ratio_config.get("magmaMinimum") == 0.5
+
+    def set_guard_rails_form_test(self, cluster):
+        # Set guard rails with form-encoding
+
+        r = testlib.post_succ(
+            cluster, "/settings/resourceManagement",
+            data={
+                "bucket.residentRatio.enabled": "false",
+                "bucket.residentRatio.couchstoreMinimum": 6,
+                "bucket.residentRatio.magmaMinimum": 0.6
+            })
+
+        bucket_config = get("bucket", r)
+
+        resident_ratio_config = bucket_config.get("residentRatio")
+        assert resident_ratio_config.get("enabled") is False
+        assert resident_ratio_config.get("couchstoreMinimum") == 6
+        assert resident_ratio_config.get("magmaMinimum") == 0.6
+
+    def set_guard_rails_path_test(self, cluster):
+        # Set residentRatio guard rail using path
+
+        r = testlib.post_succ(
+            cluster, "/settings/resourceManagement/bucket/residentRatio",
+            data={
+                "enabled": "true",
+                "couchstoreMinimum": 7,
+                "magmaMinimum": 0.7
+            })
+        assert get("enabled", r) is True
+        assert get("couchstoreMinimum", r) == 7
+        assert get("magmaMinimum", r) == 0.7
+
+
+def get(key, response):
+    url = response.url
+    j = testlib.json_response(response, f"Response to {url} is not json")
+    return testlib.assert_json_key(key, j, url)

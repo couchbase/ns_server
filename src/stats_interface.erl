@@ -187,7 +187,11 @@ for_resource_management() ->
                       io_lib:format("label_replace((~s), `name`, `~s`,``,``)",
                                     [Query, NewName])
               end,
-              []))),
+              [
+               {kv_resident_ratio, "100 * kv_ep_max_size / on(bucket) "
+                "(sum by(bucket, name) (kv_logical_data_size_bytes"
+                "{state=`active`}))"}
+              ]))),
 
     Res = latest(
             Q, fun (Props) ->

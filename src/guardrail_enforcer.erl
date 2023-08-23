@@ -138,6 +138,25 @@ get_changes(AllOld, AllNew) ->
 %% will return {Status, retry} if we failed
 -spec notify_service(resource(), status()) ->
           status() | {status(), retry}.
+notify_service({bucket, Bucket}, Status) ->
+    case ns_bucket:get_bucket(Bucket) of
+        {ok, BucketConfig} ->
+            ?log_debug("Notifying {bucket, ~p}: ~p", [Bucket, Status]),
+            RV = janitor_agent:maybe_set_data_ingress(
+                   Bucket, Status, ns_bucket:get_servers(BucketConfig)),
+            case RV of
+                ok ->
+                    Status;
+                {errors, BadReplies} ->
+                    ?log_error("Failed to set ingress status for bucket ~p."
+                               "~nBadReplies:~n~p", [Bucket, BadReplies]),
+                    {Status, retry}
+            end;
+        not_present ->
+            ?log_debug("Can't notify {bucket, ~p} (bucket not present): ~p",
+                       [Bucket, Status]),
+            ok
+    end;
 notify_service(_Resource, Status) ->
     Status.
 
@@ -148,7 +167,7 @@ get_aggregated_status(Resource, NodeStatuses) ->
 
 -spec priority_order(resource()) -> [status()].
 priority_order(_) ->
-    [].
+    [resident_ratio, data_size, disk_usage].
 
 -spec resolve_status_conflict([status()] | resource(), [status()]) ->
           status().
@@ -182,7 +201,10 @@ get_status_test() ->
 
     %% Safely handle status awaiting retry
     test_handle_status(ok, {bucket, "bucket"},
-                       #{{bucket, "bucket"} => {ok, retry}}).
+                       #{{bucket, "bucket"} => {ok, retry}}),
+
+    test_handle_status(resident_ratio, {bucket, "bucket"},
+                       #{{bucket, "bucket"} => resident_ratio}).
 
 get_changes_test() ->
     %% No statuses, no changes
@@ -199,12 +221,56 @@ get_changes_test() ->
     %% Removing ok will re-notify despite being unnecessary, to simplify logic
     ?assertEqual(#{test => ok}, get_changes(#{test => ok}, #{})).
 
+get_aggregated_status_test() ->
+    ?assertEqual(ok,
+                 get_aggregated_status(
+                   {bucket, "bucket"}, [{node1, ok}])),
+
+    ?assertEqual(resident_ratio,
+                 get_aggregated_status({bucket, "bucket"},
+                                       [{node1, resident_ratio}])),
+
+    ?assertEqual(resident_ratio,
+                 get_aggregated_status({bucket, "bucket"},
+                                       [{node1, resident_ratio},
+                                        {node2, ok}])).
+
+resolve_status_conflict_test() ->
+    %% Generic status conflict logic
+    ?assertEqual(ok, resolve_status_conflict([], [])),
+    ?assertEqual(ok, resolve_status_conflict([], [ok])),
+    ?assertEqual(ok, resolve_status_conflict([], [ok, other])),
+    ?assertEqual(other1,
+                 resolve_status_conflict([other1], [ok, other1])),
+    ?assertEqual(other1,
+                 resolve_status_conflict([other1, other2],
+                                         [ok, other1, other2])),
+    ?assertEqual(other2,
+                 resolve_status_conflict([other1, other2],
+                                         [ok, other2])),
+
+    %% Bucket status conflicts
+    ?assertEqual(ok, resolve_status_conflict({bucket, ""}, [])),
+    ?assertEqual(ok, resolve_status_conflict({bucket, ""}, [ok])),
+    ?assertEqual(resident_ratio,
+                 resolve_status_conflict({bucket, ""}, [resident_ratio])),
+    ?assertEqual(resident_ratio,
+                 resolve_status_conflict({bucket, ""}, [ok, resident_ratio])),
+
+    ?assertEqual(data_size,
+                 resolve_status_conflict({bucket, ""},
+                                           [data_size])),
+    ?assertEqual(resident_ratio,
+                 resolve_status_conflict({bucket, ""},
+                                           [resident_ratio, data_size])).
 
 modules() ->
     [ns_cluster_membership,
      ns_pubsub,
-     guardrail_monitor,
-     ns_config].
+     ns_config,
+     ns_bucket,
+     janitor_agent,
+     guardrail_monitor].
 
 basic_test_setup() ->
     meck:new(modules(), [passthrough]),
@@ -226,7 +292,103 @@ update_statuses_t() ->
     test_update_statuses(#{}),
     ?assertEqual(undefined, get_status(test)),
     meck:expect(guardrail_monitor, is_enabled, ?cut(true)),
-    ?assertEqual(ok, get_status(test)).
+    ?assertEqual(ok, get_status(test)),
+
+    Servers = ns_cluster_membership:actual_active_nodes(),
+    meck:expect(ns_bucket, get_bucket,
+                fun ("bucket1") ->
+                        {ok, [{type, membase},
+                              {storage_mode, magma},
+                              {servers, Servers}]}
+                end),
+    meck:expect(janitor_agent, maybe_set_data_ingress,
+                fun (Bucket, Status, S) ->
+                        ?log_debug("Setting ingress status for '~p' to ~p for "
+                                   "~p", [Bucket, Status, S])
+                end),
+
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, ok}]}),
+    ?assertEqual(ok, get_status({bucket, "bucket1"})),
+    ?assertEqual(1, meck:num_calls(janitor_agent, maybe_set_data_ingress,
+                                   ["bucket1", ok, Servers])),
+
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, ok}]}),
+    ?assertEqual(ok, get_status({bucket, "bucket1"})),
+    ?assertEqual(1, meck:num_calls(janitor_agent, maybe_set_data_ingress,
+                                   ["bucket1", ok, Servers])),
+
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}]}),
+    ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
+    ?assertEqual(1, meck:num_calls(janitor_agent, maybe_set_data_ingress,
+                                   ["bucket1", resident_ratio, Servers])),
+
+    %% Don't try to set ingress when status unchanged
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}]}),
+    ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
+    ?assertEqual(1, meck:num_calls(janitor_agent, maybe_set_data_ingress,
+                                   ["bucket1", resident_ratio, Servers])),
+
+    %% Don't try to set ingress when status unchanged
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}],
+                           node2 => [{{bucket, "bucket1"}, resident_ratio}]}),
+    ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
+    ?assertEqual(1, meck:num_calls(janitor_agent, maybe_set_data_ingress,
+                                   ["bucket1", resident_ratio, Servers])),
+
+    %% Don't set ingress when only one becomes ok
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}],
+                           node2 => [{{bucket, "bucket1"}, ok}]}),
+    ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
+    ?assertEqual(1, meck:num_calls(janitor_agent, maybe_set_data_ingress,
+                                   ["bucket1", resident_ratio, Servers])),
+
+    %% Update ingress when all nodes become ok
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, ok}],
+                           node2 => [{{bucket, "bucket1"}, ok}]}),
+    ?assertEqual(ok, get_status({bucket, "bucket1"})),
+    ?assertEqual(2, meck:num_calls(janitor_agent, maybe_set_data_ingress,
+                                   ["bucket1", ok, Servers])),
+
+    %% Notify with ok when the status disappears
+    test_update_statuses(#{node1 => []}),
+    ?assertEqual(ok, get_status({bucket, "bucket1"})),
+    ?assertEqual(3, meck:num_calls(janitor_agent, maybe_set_data_ingress,
+                                   ["bucket1", ok, Servers])),
+
+    meck:expect(janitor_agent, maybe_set_data_ingress,
+                fun (Bucket, Status, S) ->
+                        ?log_debug("Setting ingress status for '~p' to ~p for "
+                                   "~p", [Bucket, Status, S]),
+                        {errors, []}
+                end),
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}]}),
+    ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
+    ?assertEqual(2, meck:num_calls(janitor_agent, maybe_set_data_ingress,
+                                   ["bucket1", resident_ratio, Servers])),
+
+    %% When maybe_set_data_ingress has failed, we should retry even though the
+    %% status has not changed
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}]}),
+    ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
+    ?assertEqual(3, meck:num_calls(janitor_agent, maybe_set_data_ingress,
+                                   ["bucket1", resident_ratio, Servers])),
+
+    meck:expect(janitor_agent, maybe_set_data_ingress,
+                fun (Bucket, Status, S) ->
+                        ?log_debug("Setting ingress status for '~p' to ~p for "
+                                   "~p", [Bucket, Status, S])
+                end),
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}]}),
+    ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
+    ?assertEqual(4, meck:num_calls(janitor_agent, maybe_set_data_ingress,
+                                   ["bucket1", resident_ratio, Servers])),
+
+    %% When set data ingress starts succeeding again, we should not keep
+    %% retrying
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}]}),
+    ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
+    ?assertEqual(4, meck:num_calls(janitor_agent, maybe_set_data_ingress,
+                                   ["bucket1", resident_ratio, Servers])).
 
 basic_test_teardown() ->
     gen_server:stop(?SERVER),

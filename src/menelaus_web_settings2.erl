@@ -724,7 +724,7 @@ mandatory_test() ->
                {[{"K2.K4",<<"The value must be supplied">>},
                  {"K1.K4",<<"The value must be supplied">>}]}),
           Succ([], <<"K1.K2.K3=4&K2.K4=1&K1.K4=2">>, [], [],
-               [{[k1, k2], 4}, {[t4], 1}, {[t1, t2, t3], 2}]), 
+               [{[k1, k2], 4}, {[t4], 1}, {[t1, t2, t3], 2}]),
 
           Fail(["K1"], <<"">>, [], [],
                {[{"[upper-level].K2.K4",<<"The value must be supplied">>}]}),

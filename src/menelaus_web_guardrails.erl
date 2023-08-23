@@ -8,6 +8,7 @@
 %% licenses/APL2.txt.
 -module(menelaus_web_guardrails).
 
+-include("ns_common.hrl").
 -include("cut.hrl").
 
 -ifdef(TEST).
@@ -47,7 +48,18 @@ handle_post(Path, Req) ->
       end, Path, params(), undefined, guardrail_monitor:get_config(), [], Req).
 
 params() ->
-    [].
+    [
+     %% Bucket resident ratio configuration
+     {"bucket.residentRatio.enabled",
+      #{type => bool,
+        cfg_key => [bucket, resident_ratio, enabled]}},
+     {"bucket.residentRatio.couchstoreMinimum",
+      #{type => {num, 0, 100},
+        cfg_key => [bucket, resident_ratio, couchstore_minimum]}},
+     {"bucket.residentRatio.magmaMinimum",
+      #{type => {num, 0, 100},
+        cfg_key => [bucket, resident_ratio, magma_minimum]}}
+    ].
 
 %% Gets resource management configuration from the config profile, using default
 %% values specified below
@@ -61,7 +73,16 @@ default_config() ->
 
 %% Default config, without being overriden by config profile
 raw_default_config() ->
-    [].
+    [
+     %% Bucket level resources
+     {bucket,
+      %% Resident ratio percentage minimum
+      [{resident_ratio,
+        [{enabled, false},
+         {couchstore_minimum, 10},
+         {magma_minimum, 1}]}
+      ]}
+    ].
 
 update_sub_config({[], Value}, _) ->
     Value;
@@ -100,9 +121,35 @@ build_json(Settings) ->
 
 -ifdef(TEST).
 
-default_config_test() ->
+meck_modules() ->
+    [config_profile, ns_config, ns_bucket].
+
+basic_test_setup() ->
+    meck:new(meck_modules(), [passthrough]).
+
+default_config_t() ->
     assert_config_equal([{resource_management, raw_default_config()}],
-                        default_config()).
+                        default_config()),
+    SetConfigProfile =
+        fun (Config) ->
+                meck:expect(config_profile, get_value,
+                            fun (Key, Default) ->
+                                    proplists:get_value(Key, Config, Default)
+                            end)
+        end,
+
+    SetConfigProfile([{resource_management,
+                       [{[bucket, resident_ratio, enabled], true}]
+                      }]),
+    assert_config_equal([{resource_management,
+                          [{bucket,
+                            [{resident_ratio,
+                              [{enabled, true},
+                               {couchstore_minimum, 10},
+                               {magma_minimum, 1}]
+                             }]
+                           }]
+                         }], default_config()).
 
 assert_config_equal(Expected, Found) when is_list(Expected)->
     ?assert(is_list(Found)),
@@ -119,7 +166,17 @@ assert_config_equal(Expected, Found) when is_list(Expected)->
               end
       end, proplists:get_keys(Expected)).
 
-update_configs_test() ->
+assert_config_update(Expected, Update, Initial) ->
+    meck:expect(ns_config, read_key_fast,
+                fun (resource_management, []) ->
+                        Initial
+                end),
+
+    assert_config_equal(Expected, update_config(Update)),
+
+    meck:called(ns_config, set, [{resource_management, Expected}]).
+
+update_configs_t() ->
     %% Test update_sub_config alone
     ?assertEqual(value1,
                  update_sub_config({[], value1}, [])),
@@ -134,7 +191,40 @@ update_configs_test() ->
                          {key3, [{key4, value4}]}],
                         update_sub_config({[key1, key2], value2},
                                           [{key1, []},
-                                           {key3, [{key4, value4}]}])).
+                                           {key3, [{key4, value4}]}])),
+
+    meck:expect(ns_config, set, fun (_Key, _Config) -> ok end),
+
+    %% Test update_configs
+    assert_config_update([{bucket, [{resident_ratio, [{enabled, true}]}]}],
+                         [{[bucket, resident_ratio, enabled], true}],
+                         []),
+
+    assert_config_update([{bucket, [{resident_ratio, [{enabled, true}]}]}],
+                         [{[bucket, resident_ratio, enabled], true}],
+                         [{bucket, [{resident_ratio, [{enabled, false}]}]}]),
+
+    assert_config_update([{bucket, [{resident_ratio,
+                                     [{enabled, true},
+                                      {couchstore_minimum, 10}]}]}],
+                         [{[bucket, resident_ratio, enabled], true}],
+                         [{bucket, [{resident_ratio,
+                                     [{enabled, false},
+                                      {couchstore_minimum, 10}]}]}]).
+
+basic_test_teardown() ->
+    meck:unload(meck_modules()).
+
+basic_test_() ->
+    {setup,
+     fun () ->
+             basic_test_setup()
+     end,
+     fun(_) ->
+             basic_test_teardown()
+     end,
+     [{"default config test", fun () -> default_config_t() end},
+      {"update configs test", fun () -> update_configs_t() end}]}.
 
 test_build_json(ExpectedEJson, Proplist) ->
     [{settings, {json, EJson}}] = Result = build_json_for_audit(Proplist),

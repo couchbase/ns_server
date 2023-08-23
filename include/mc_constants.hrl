@@ -61,6 +61,8 @@
 -define(CMD_AUDIT_PUT, 16#27).
 -define(CMD_AUDIT_CONFIG_RELOAD, 16#28).
 
+-define(CMD_SET_BUCKET_DATA_INGRESS, 16#2b).
+
 -define(CMD_CREATE_BUCKET,  16#85).
 -define(CMD_DELETE_BUCKET,  16#86).
 -define(CMD_EXPAND_BUCKET,  16#88).
@@ -149,6 +151,9 @@
 -define(ERANGE,             16#22).
 -define(ROLLBACK,           16#23).
 -define(LIMIT_EXCEEDED,     16#35).
+-define(RR_TOO_LOW,         16#36).
+-define(DATA_SIZE_TOO_BIG,  16#37).
+-define(DISK_SPACE_TOO_LOW, 16#38).
 -define(UNKNOWN_COMMAND,    16#81).
 -define(ENOMEM,             16#82).
 -define(NOT_SUPPORTED,      16#83).

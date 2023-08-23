@@ -29,14 +29,15 @@
          vbucket_states :: dict:dict() | undefined}).
 
 -spec cleanup(Bucket::bucket_name(), Options::list()) ->
-                     ok |
-                     {error, wait_for_memcached_failed, [node()]} |
-                     {error, marking_as_warmed_failed, [node()]} |
-                     {error, unsafe_nodes, [node()]} |
-                     {error, {config_sync_failed,
-                              pull | push, Details :: any()}} |
-                     {error, {bad_vbuckets, [vbucket_id()]}} |
-                     {error, {corrupted_server_list, [node()], [node()]}}.
+          ok |
+          {error, wait_for_memcached_failed, [node()]} |
+          {error, marking_as_warmed_failed, [node()]} |
+          {error, set_data_ingress_failed, [node()]} |
+          {error, unsafe_nodes, [node()]} |
+          {error, {config_sync_failed,
+                   pull | push, Details :: any()}} |
+          {error, {bad_vbuckets, [vbucket_id()]}} |
+          {error, {corrupted_server_list, [node()], [node()]}}.
 cleanup(Bucket, Options) ->
     [{Bucket, Res}] = cleanup_buckets([{Bucket, []}], Options),
     Res.
@@ -500,6 +501,17 @@ cleanup_apply_config_body(Bucket, Servers, BucketConfig, Options) ->
 
     maybe_reset_rebalance_status(Options),
 
+    Status = guardrail_enforcer:get_status({bucket, Bucket}),
+    case janitor_agent:maybe_set_data_ingress(Bucket, Status, Servers) of
+        ok ->
+            cleanup_mark_bucket_warmed(Bucket, Servers);
+        {errors, BadReplies0} ->
+            ?log_error("Failed to set ingress status for bucket `~p`."
+                       "~nBadReplies:~n~p", [Bucket, BadReplies0]),
+            {error, set_data_ingress_failed, [N || {N, _} <- BadReplies0]}
+    end.
+
+cleanup_mark_bucket_warmed(Bucket, Servers) ->
     case janitor_agent:mark_bucket_warmed(Bucket, Servers) of
         ok ->
             ok;

@@ -49,6 +49,7 @@
          set_engine_param/4,
          enable_traffic/1,
          disable_traffic/1,
+         set_bucket_data_ingress/3,
          get_dcp_docs_estimate/3,
          map_status/1,
          get_mass_dcp_docs_estimate/2,
@@ -631,6 +632,26 @@ disable_traffic(Sock) ->
     report_counter(?FUNCTION_NAME),
     case cmd(?CMD_DISABLE_TRAFFIC, Sock, undefined, undefined,
              {#mc_header{}, #mc_entry{}}) of
+        {ok, #mc_header{status=?SUCCESS}, _, _} ->
+            ok;
+        Other ->
+            process_error_response(Other)
+    end.
+
+-spec set_bucket_data_ingress(port(), bucket_name(), data_ingress_status()) ->
+          ok | mc_error().
+set_bucket_data_ingress(Sock, Bucket, Status) ->
+    report_counter(?FUNCTION_NAME),
+    StatusCode =
+        case Status of
+            ok -> ?SUCCESS;
+            resident_ratio -> ?RR_TOO_LOW;
+            data_size -> ?DATA_SIZE_TOO_BIG;
+            disk_usage -> ?DISK_SPACE_TOO_LOW
+        end,
+    case cmd(?CMD_SET_BUCKET_DATA_INGRESS, Sock, undefined, undefined,
+             {#mc_header{}, #mc_entry{key = list_to_binary(Bucket),
+                                      ext = <<StatusCode:16>>}}) of
         {ok, #mc_header{status=?SUCCESS}, _, _} ->
             ok;
         Other ->
