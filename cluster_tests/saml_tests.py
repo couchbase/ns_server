@@ -488,9 +488,18 @@ class SamlTests(testlib.BaseTestSet):
     # Successfull authentication, but user doesn't have access to UI
     def access_denied_test(self, cluster):
         with saml_configured(cluster,
-                             usernameAttribute='uid') as IDP:
+                             usernameAttribute='uid',
+                             groupsAttribute='groups',
+                             groupsAttributeSep=', ',
+                             groupsFilterRE='fakegroup.*',
+                             rolesAttribute='roles',
+                             rolesAttributeSep=';',
+                             rolesFilterRE='analytics.*') as IDP:
             identity = idp_test_user_attrs.copy()
             identity["uid"] = "testuser2" # so we don't have such user in cb
+            identity["groups"] = "test1, admingroup, test2, fakegroup1, "\
+                                 "test3, fakegroup2"
+            identity["roles"] = "unknown"
             binding_out, destination = \
                 IDP.pick_binding("assertion_consumer_service",
                                  bindings=[BINDING_HTTP_POST],
@@ -538,8 +547,12 @@ class SamlTests(testlib.BaseTestSet):
                             headers=headers,
                             params={'id': params['samlErrorMsgId']})
             assert(r.status_code == 200)
-            m = 'Access denied for user "testuser2": Insufficient Permissions'
-            assert(r.json()['error'] == m)
+            expected = 'Access denied for user "testuser2": ' \
+                       'Insufficient Permissions. ' \
+                       'Extracted groups: fakegroup1, fakegroup2. ' \
+                       'Extracted roles: <empty>'
+            got = r.json()['error']
+            assert got == expected, f"Unexpected error message returned: {got}"
 
 
     def metadata_with_invalid_signature_test(self, cluster):
