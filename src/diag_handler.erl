@@ -530,8 +530,8 @@ handle_just_diag(Req, Extra) ->
     Infos = [["nodes_info = ~p",
               ns_cluster:sanitize_node_info(
                 menelaus_web_node:build_nodes_info(Ctx))],
-             ["buckets = ~p", ns_config_log:sanitize(Buckets)]],
-
+             ["buckets = ~p", ns_config_log:sanitize(Buckets)],
+             ["config_profile = ~p", config_profile:get()]],
     [begin
          Text = io_lib:format(Fmt ++ "~n~n", Args),
          mochiweb_response:write_chunk(list_to_binary(Text), Resp)

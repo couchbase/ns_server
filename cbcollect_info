@@ -2506,6 +2506,26 @@ def get_prometheus_stats(guts):
 
     return get_prometheus_stats_from_disk(guts)
 
+def resolve_config_profile_path(profile_path, base_dir):
+    with open(profile_path, "r") as f:
+        line = f.readline()
+        filename = f"{line.strip()}_profile"
+        return (filename,
+                os.path.join(os.path.join(os.path.dirname(base_dir),
+                                          "etc/couchbase/"), filename))
+
+def make_config_profile_task(guts):
+    data_dir = read_guts(guts, "path_config_datadir")
+    lib_path = read_guts(guts, "path_config_libdir")
+    existing_profile = os.path.join(data_dir, "existing_profile")
+    try:
+        profile, path = resolve_config_profile_path(existing_profile, lib_path)
+        log(f"Collecting configuration profile: {profile}")
+        return [CollectFileTask(f"Collecting {profile}", path)]
+    except IOError as e:
+        log(f"Failed to read 'existing_profile' file from path: "
+            f"{existing_profile}. Raw error: {e.strerror}")
+    return []
 
 def main():
     # ask all tools to use C locale (MB-12050)
@@ -2708,6 +2728,8 @@ def main():
     set_local_addr(ipv6)
 
     populate_guts_with_additional_info(guts)
+
+    all_tasks.extend(make_config_profile_task(guts))
 
     local_token_creds_fun = get_localtoken_creds_fun(guts)
     memcached_password_fun = get_memcached_password_fun(guts)
