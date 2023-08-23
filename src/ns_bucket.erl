@@ -105,7 +105,7 @@
          magma_key_tree_data_blocksize/1,
          magma_seq_tree_data_blocksize/1,
          update_maps/3,
-         update_buckets/3,
+         update_buckets/2,
          multi_prop_update/2,
          set_bucket_config/2,
          set_buckets_config_failover/2,
@@ -271,28 +271,13 @@ bucket_exists(Bucket, Snapshot) ->
 get_bucket(Bucket) ->
     get_bucket(Bucket, direct).
 
-get_bucket(Bucket, direct) ->
-    case chronicle_compat:backend() of
-        chronicle ->
-            case chronicle_compat:get(sub_key(Bucket, props), #{}) of
-                {ok, Props} ->
-                    {ok, Props};
-                {error, not_found} ->
-                    not_present
-            end;
-        ns_config ->
-            get_bucket(Bucket, ns_config:latest())
-    end;
-get_bucket(Bucket, Snapshot) when is_map(Snapshot) ->
-    case maps:find(sub_key(Bucket, props), Snapshot) of
-        {ok, {Props, _}} ->
+get_bucket(Bucket, Snapshot) ->
+    case chronicle_compat:get(Snapshot, sub_key(Bucket, props), #{}) of
+        {ok, Props} ->
             {ok, Props};
-        error ->
+        {error, not_found} ->
             not_present
-    end;
-get_bucket(Bucket, Config) ->
-    BucketConfigs = get_buckets(Config),
-    get_bucket_from_configs(Bucket, BucketConfigs).
+    end.
 
 ensure_bucket(Bucket) ->
     case get_bucket(Bucket) of
@@ -302,28 +287,11 @@ ensure_bucket(Bucket) ->
             BucketConfig
     end.
 
-get_bucket_from_configs(Bucket, Configs) ->
-    case lists:keysearch(Bucket, 1, Configs) of
-        {value, {_, BucketConfig}} ->
-            {ok, BucketConfig};
-        false -> not_present
-    end.
-
 get_bucket_names() ->
     get_bucket_names(direct).
 
-get_bucket_names(direct) ->
-    case chronicle_compat:backend() of
-        chronicle ->
-            chronicle_compat:get(root(), #{required => true});
-        ns_config ->
-            get_bucket_names(get_buckets())
-    end;
-get_bucket_names(Snapshot) when is_map(Snapshot) ->
-    {ok, {Names, _}} = maps:find(root(), Snapshot),
-    Names;
-get_bucket_names(BucketConfigs) ->
-    proplists:get_keys(BucketConfigs).
+get_bucket_names(Snapshot) ->
+    chronicle_compat:get(Snapshot, root(), #{required => true}).
 
 -type bucket_type_mode() :: memcached|membase|persistent|auto_compactable|
                             {membase, couchstore}|
@@ -381,19 +349,12 @@ get_buckets() ->
     get_buckets(direct).
 
 get_buckets(direct) ->
-    case chronicle_compat:backend() of
-        chronicle ->
-            get_buckets(get_snapshot(all, [props]));
-        ns_config ->
-            get_buckets(ns_config:latest())
-    end;
+    get_buckets(get_snapshot(all, [props]));
 get_buckets(Snapshot) when is_map(Snapshot) ->
     lists:map(fun (N) ->
                       {ok, {Props, _}} = maps:find(sub_key(N, props), Snapshot),
                       {N, Props}
-              end, get_bucket_names(Snapshot));
-get_buckets(Config) ->
-    ns_config:search_prop(Config, buckets, configs, []).
+              end, get_bucket_names(Snapshot)).
 
 live_bucket_nodes(Bucket) ->
     {ok, BucketConfig} = get_bucket(Bucket),
@@ -996,33 +957,20 @@ create_bucket(BucketType, BucketName, NewConfig) ->
     MergedConfig = add_auth_type(MergedConfig0),
     BucketUUID = couch_uuids:random(),
     Manifest = collections:default_manifest(MergedConfig),
-    do_create_bucket(chronicle_compat:backend(), BucketName,
-                     MergedConfig, BucketUUID, Manifest),
+    do_create_bucket(BucketName, MergedConfig, BucketUUID, Manifest),
     %% The janitor will handle creating the map.
     {ok, BucketUUID, MergedConfig}.
 
 restore_bucket(BucketName, NewConfig, BucketUUID, Manifest) ->
     case is_valid_bucket_name(BucketName) of
         true ->
-            do_create_bucket(chronicle, BucketName, NewConfig, BucketUUID,
-                             Manifest),
+            do_create_bucket(BucketName, NewConfig, BucketUUID, Manifest),
             ok;
         {error, _} ->
             {error, {invalid_bucket_name, BucketName}}
     end.
 
-do_create_bucket(ns_config, BucketName, Config, BucketUUID, _Manifest) ->
-    ns_config:update_sub_key(
-      buckets, configs,
-      fun (List) ->
-              case lists:keyfind(BucketName, 1, List) of
-                  false -> ok;
-                  Tuple ->
-                      exit({already_exists, Tuple})
-              end,
-              [{BucketName, [{uuid, BucketUUID} | Config]} | List]
-      end);
-do_create_bucket(chronicle, BucketName, Config, BucketUUID, Manifest) ->
+do_create_bucket(BucketName, Config, BucketUUID, Manifest) ->
     {ok, _} =
         chronicle_kv:transaction(
           kv, [root(), nodes_wanted, buckets_marked_for_shutdown_key()],
@@ -1110,33 +1058,6 @@ get_bucket_names_marked_for_shutdown(Snapshot) ->
                            {ok, BucketConfig :: list()} |
                            {exit, {not_found, bucket_name()}, any()}.
 delete_bucket(BucketName) ->
-    do_delete_bucket(chronicle_compat:backend(), BucketName).
-
-do_delete_bucket(ns_config, BucketName) ->
-    Ref = make_ref(),
-    Process = self(),
-    RV = ns_config:update_sub_key(
-           buckets, configs,
-           fun (List) ->
-                   case lists:keyfind(BucketName, 1, List) of
-                       false -> exit({not_found, BucketName});
-                       {_, BucketConfig} = Tuple ->
-                           Process ! {Ref, BucketConfig},
-                           lists:delete(Tuple, List)
-                   end
-           end),
-    case RV of
-        ok ->
-            receive
-                {Ref, BucketConfig} ->
-                    {ok, BucketConfig}
-            after 0 ->
-                    exit(this_cannot_happen)
-            end;
-        {exit, {not_found, _}, _} ->
-            RV
-    end;
-do_delete_bucket(chronicle, BucketName) ->
     RootKey = root(),
     PropsKey = sub_key(BucketName, props),
     IsClusterTrinity = cluster_compat_mode:is_cluster_trinity(),
@@ -1551,22 +1472,16 @@ update_init_map_config(BucketName, Servers, Fun) ->
     end.
 
 set_initial_map(Bucket, Map, Servers, MapOpts) ->
-    case chronicle_compat:backend() of
-        ns_config ->
-            set_map_opts(Bucket, MapOpts),
-            set_map(Bucket, Map);
-        chronicle ->
-            validate_map(Map),
-            update_init_map_config(
-              Bucket, Servers,
-              fun (OldConfig) ->
-                      OldMap = proplists:get_value(map, OldConfig, []),
-                      master_activity_events:note_set_map(Bucket, Map, OldMap),
-                      misc:update_proplist(
-                        OldConfig,
-                        [{map, Map}, {map_opts_hash, erlang:phash2(MapOpts)}])
-              end)
-    end.
+    validate_map(Map),
+    update_init_map_config(
+      Bucket, Servers,
+      fun (OldConfig) ->
+              OldMap = proplists:get_value(map, OldConfig, []),
+              master_activity_events:note_set_map(Bucket, Map, OldMap),
+              misc:update_proplist(
+                OldConfig,
+                [{map, Map}, {map_opts_hash, erlang:phash2(MapOpts)}])
+      end).
 
 set_restored_attributes_property(Bucket, Map, ServerList, Fun) ->
     update_bucket_config(
@@ -1649,20 +1564,6 @@ update_bucket_config(BucketName, Fun) ->
     update_buckets_config([{BucketName, Fun}]).
 
 update_buckets_config(BucketsUpdates) ->
-    update_buckets_config(chronicle_compat:backend(), BucketsUpdates).
-
-update_buckets_config(ns_config, BucketsUpdates) ->
-    ns_config:update_sub_key(
-      buckets, configs,
-      fun (Buckets) ->
-              lists:foldl(
-                fun ({BucketName, Fun}, BucketsAcc) ->
-                        RV = misc:key_update(BucketName, BucketsAcc, Fun),
-                        RV =/= false orelse exit({not_found, BucketName}),
-                        RV
-                end, Buckets, BucketsUpdates)
-      end);
-update_buckets_config(chronicle, BucketsUpdates) ->
     RV =
         chronicle_kv:transaction(
           kv,
@@ -1694,23 +1595,6 @@ update_buckets_config(chronicle, BucketsUpdates) ->
     end.
 
 update_maps(Buckets, OnMap, ExtraSets) ->
-    update_maps(chronicle_compat:backend(), Buckets, OnMap, ExtraSets).
-
-update_maps(ns_config, Buckets, OnMap, ExtraSets) ->
-    update_many(
-      fun (AllBuckets) ->
-              {lists:filtermap(
-                 fun ({Name, BC}) ->
-                         case lists:member(Name, Buckets) of
-                             true ->
-                                 {true, {Name, misc:key_update(
-                                                 map, BC, OnMap(Name, _))}};
-                             false ->
-                                 false
-                         end
-                 end, AllBuckets), ExtraSets}
-      end);
-update_maps(chronicle, Buckets, OnMap, ExtraSets) ->
     Updaters = [{B, OnMap} || B <- Buckets],
     multi_prop_update(map, Updaters, ExtraSets).
 
@@ -1721,7 +1605,7 @@ multi_prop_update(Key, Values) ->
     multi_prop_update(Key, Updaters, []).
 
 multi_prop_update(Key, Updaters, ExtraSets) ->
-    {ok, _} =
+    RV =
         chronicle_kv:transaction(
           kv, [sub_key(N, props) || {N, _} <- Updaters],
           fun (Snapshot) ->
@@ -1739,39 +1623,15 @@ multi_prop_update(Key, Updaters, ExtraSets) ->
                         end, Updaters),
                   {commit, Sets ++ [{set, K, V} || {K, V} <- ExtraSets]}
           end),
-    ok.
-
-update_many(Fun) ->
-    RV =
-        ns_config:run_txn(
-          fun(Config, SetFn) ->
-                  Buckets = get_buckets(Config),
-                  {ModifiedBuckets, ExtraSets} = Fun(Buckets),
-                  NewBuckets = misc:update_proplist(Buckets, ModifiedBuckets),
-
-                  BucketSet = {buckets, [{configs, NewBuckets}]},
-                  {commit,
-                   functools:chain(
-                     Config,
-                     [SetFn(K, V, _) || {K, V} <- [BucketSet | ExtraSets]])}
-          end),
     case RV of
-        {commit, _} ->
+        {ok, _} ->
             ok;
         Error ->
             Error
     end.
 
-update_buckets(ModifiedBuckets, CurrentBuckets, ExtraSets) ->
-    BucketSets =
-        case chronicle_compat:backend() of
-            ns_config ->
-                NewBuckets = misc:update_proplist(CurrentBuckets,
-                                                  ModifiedBuckets),
-                [{buckets, [{configs, NewBuckets}]}];
-            chronicle ->
-                [{sub_key(N, props), BC} || {N, BC} <- ModifiedBuckets]
-        end,
+update_buckets(ModifiedBuckets, ExtraSets) ->
+    BucketSets = [{sub_key(N, props), BC} || {N, BC} <- ModifiedBuckets],
     chronicle_compat:set_multiple(BucketSets ++ ExtraSets).
 
 is_named_bucket_persistent(BucketName) ->
@@ -1931,36 +1791,14 @@ get_view_nodes(BucketConfig) ->
             []
     end.
 
-uuid(BucketConfig) ->
-    UUID = proplists:get_value(uuid, BucketConfig),
-    true = is_binary(UUID),
-    UUID.
-
 uuid_key(Bucket) ->
     sub_key(Bucket, uuid).
 
-uuid(Bucket, direct) ->
-    case chronicle_compat:backend() of
-        chronicle ->
-            case chronicle_compat:get(uuid_key(Bucket), #{}) of
-                {ok, UUID} ->
-                    UUID;
-                {error, not_found} ->
-                    not_present
-            end;
-        ns_config ->
-            case get_bucket(Bucket, ns_config:latest()) of
-                {ok, Props} ->
-                    uuid(Props);
-                not_present ->
-                    not_present
-            end
-    end;
-uuid(Bucket, Snapshot) when is_map(Snapshot) ->
-    case maps:find(uuid_key(Bucket), Snapshot) of
-        {ok, {UUID, _}} ->
+uuid(Bucket, Snapshot) ->
+    case chronicle_compat:get(Snapshot, uuid_key(Bucket), #{}) of
+        {ok, UUID} ->
             UUID;
-        error ->
+        {error, not_found} ->
             not_present
     end.
 
@@ -2026,19 +1864,13 @@ activate_bucket_data_on_this_node(Name) ->
     end.
 
 deactivate_bucket_data_on_this_node(Name) ->
-    deactivate_bucket_data_on_this_node(chronicle_compat:backend(), Name).
-
-deactivate_bucket_data_on_this_node(chronicle, Name) ->
     case chronicle_kv:update(kv, buckets_with_data_key(node()),
                              lists:keydelete(Name, 1, _)) of
         {error, not_found} ->
             ok;
         {ok, _} ->
             ok
-    end;
-deactivate_bucket_data_on_this_node(ns_config, Name) ->
-    ns_config:update_key(buckets_with_data_key(node()),
-                         lists:keydelete(Name, 1, _), []).
+    end.
 
 chronicle_upgrade_bucket(Func, BucketNames, ChronicleTxn) ->
     lists:foldl(
