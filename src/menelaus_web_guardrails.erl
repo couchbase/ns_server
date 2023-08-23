@@ -69,6 +69,13 @@ params() ->
      {"bucket.dataSizePerNode.magmaMaximum",
       #{type => {num, 0, infinity},
         cfg_key => [bucket, data_size, magma_maximum]}},
+     %% Max disk usage % per node
+     {"diskUsage.enabled",
+      #{type => bool,
+        cfg_key => [disk_usage, enabled]}},
+     {"diskUsage.maximum",
+      #{type => {num, 0, 100},
+        cfg_key => [disk_usage, maximum]}},
      %% Min number of cores per node per bucket
      {"coresPerBucket.enabled",
       #{type => bool,
@@ -107,7 +114,11 @@ raw_default_config() ->
      %% Minimum cores required per bucket
      {cores_per_bucket,
       [{enabled, false},
-       {minimum, 0.4}]}
+       {minimum, 0.4}]},
+     %% Max disk usage % per node
+     {disk_usage,
+      [{enabled, false},
+       {maximum, 85}]}
     ].
 
 update_sub_config({[], Value}, _) ->
@@ -167,7 +178,8 @@ default_config_t() ->
     SetConfigProfile([{resource_management,
                        [{[bucket, resident_ratio, enabled], true},
                         {[cores_per_bucket, enabled], true},
-                        {[bucket, data_size, enabled], true}]
+                        {[bucket, data_size, enabled], true},
+                        {[disk_usage, enabled], true}]
                       }]),
     assert_config_equal([{resource_management,
                           [{bucket,
@@ -183,7 +195,10 @@ default_config_t() ->
                            },
                            {cores_per_bucket,
                             [{enabled, true},
-                             {minimum, 0.4}]}]
+                             {minimum, 0.4}]},
+                           {disk_usage,
+                            [{enabled, true},
+                             {maximum, 85}]}]
                          }], default_config()).
 
 assert_config_equal(Expected, Found) when is_list(Expected)->

@@ -414,7 +414,28 @@ update_statuses_t() ->
                            node2 => [{{bucket, "bucket1"}, resident_ratio}]}),
     ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
     ?assertEqual(5, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", resident_ratio, Servers])).
+                                   ["bucket1", resident_ratio, Servers])),
+
+    %% Update status to disk_usage
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, disk_usage}]}),
+    ?assertEqual(disk_usage, get_status({bucket, "bucket1"})),
+    ?assertEqual(1, meck:num_calls(janitor_agent, maybe_set_data_ingress,
+                                   ["bucket1", disk_usage, Servers])),
+
+    %% Update disk_usage, data_size and resident_ratio at same time
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, disk_usage}],
+                           node2 => [{{bucket, "bucket1"}, data_size}],
+                           node3 => [{{bucket, "bucket1"}, resident_ratio}]}),
+    ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
+    ?assertEqual(6, meck:num_calls(janitor_agent, maybe_set_data_ingress,
+                                   ["bucket1", resident_ratio, Servers])),
+
+    %% Update disk_usage and data_size at same time
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, disk_usage}],
+                           node2 => [{{bucket, "bucket1"}, data_size}]}),
+    ?assertEqual(data_size, get_status({bucket, "bucket1"})),
+    ?assertEqual(2, meck:num_calls(janitor_agent, maybe_set_data_ingress,
+                                   ["bucket1", data_size, Servers])).
 
 basic_test_teardown() ->
     gen_server:stop(?SERVER),

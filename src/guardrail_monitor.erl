@@ -206,6 +206,31 @@ check({bucket, Config}, Stats) ->
                                      BucketStats)
                 end
         end, ns_bucket:get_buckets()));
+check({disk_usage = Resource, Config}, Stats) ->
+    case proplists:get_value(enabled, Config) of
+        false ->
+            [];
+        true ->
+            Metric = get_disk_usage(proplists:get_value(disk_usage, Stats, [])),
+            Maximum = proplists:get_value(maximum, Config),
+            {Gauge, Statuses} =
+                case Metric > Maximum of
+                    true ->
+                        %% For now if we see disk usage reach the limit we apply
+                        %% the guard for all buckets. In future we should allow
+                        %% this to apply on a per-service and per-bucket level,
+                        %% when these are mapped to different disk partitions
+                        {1, [{{bucket, BucketName}, disk_usage}
+                             || BucketName <- ns_bucket:get_bucket_names()]};
+                    false ->
+                        {0, []}
+                end,
+            ns_server_stats:notify_gauge(
+              {<<"resource_limit_reached">>,
+               [{resource, Resource}]},
+              Gauge),
+            Statuses
+    end;
 check({_Resource, _Config}, _Stats) ->
     %% Other resources do not need regular checks
     [].
@@ -293,11 +318,30 @@ validate_bucket_resource_max(BucketConfig, ResourceConfig, Metric) ->
             Value >= Limit
     end.
 
+get_disk_usage(DiskStats) ->
+    Mounts = lists:filtermap(
+               fun({Disk, Value}) ->
+                       {true, {Disk, ignore, Value}};
+                  (_) ->
+                       false
+               end, DiskStats),
+    {ok, DbDir} = ns_storage_conf:this_node_dbdir(),
+    case misc:realpath(DbDir, "/") of
+        {ok, RealFile} ->
+            case ns_storage_conf:extract_disk_stats_for_path(
+                   Mounts, RealFile) of
+                {ok, {_Disk, _Cap, Used}} -> Used;
+                none -> 0
+            end;
+        _ ->
+            0
+    end.
+
 -ifdef(TEST).
 modules() ->
     [ns_config, leader_registry, chronicle_compat, stats_interface,
      janitor_agent, ns_bucket, cluster_compat_mode, config_profile,
-     ns_cluster_membership].
+     ns_cluster_membership, ns_storage_conf].
 
 basic_test_setup() ->
     meck:new(modules(), [passthrough]).
@@ -580,7 +624,49 @@ check_resources_t() ->
                        {{bucket, "couchstore_bucket"}, data_size},
                        {{bucket, "magma_bucket"}, resident_ratio},
                        {{bucket, "magma_bucket"}, data_size}],
-                      check_resources()).
+                      check_resources()),
+
+    meck:expect(ns_config, read_key_fast,
+                fun (resource_management, _) ->
+                        [{disk_usage,
+                          [{enabled, true},
+                           {maximum, 85}]}]
+                end),
+
+    meck:expect(stats_interface, for_resource_management,
+                fun () ->
+                        [{disk_usage, [{"/", 50}]}]
+                end),
+
+    meck:expect(ns_storage_conf, this_node_dbdir,
+                fun () -> {ok, "invalid_file"} end),
+
+    meck:expect(ns_storage_conf, extract_disk_stats_for_path,
+                fun (_, _) -> none end),
+
+    meck:expect(ns_bucket, get_bucket_names,
+                fun () -> ["couchstore_bucket", "magma_bucket"] end),
+
+    ?assertEqual([], check_resources()),
+
+    meck:expect(ns_storage_conf, this_node_dbdir,
+                fun () -> {ok, ""} end),
+
+    ?assertEqual([], check_resources()),
+
+    meck:expect(ns_storage_conf, extract_disk_stats_for_path,
+                fun ([{"/", ignore, Value}], _) -> {ok, {0, 0, Value}} end),
+
+    ?assertEqual([], check_resources()),
+
+    meck:expect(stats_interface, for_resource_management,
+                fun () ->
+                        [{disk_usage, [{"/", 90}]}]
+                end),
+
+    ?assertEqual([{{bucket, "couchstore_bucket"}, disk_usage},
+                  {{bucket, "magma_bucket"}, disk_usage}],
+                 check_resources()).
 
 validate_topology_change_t() ->
     Servers = [node1, node2],

@@ -43,6 +43,11 @@ class ResourceManagementTests(testlib.BaseTestSet):
         get("enabled", cores_per_bucket_config)
         get("minimum", cores_per_bucket_config)
 
+        disk_usage_config = testlib.get_succ(
+            cluster, "/settings/resourceManagement/diskUsage")
+        get("enabled", disk_usage_config)
+        get("maximum", disk_usage_config)
+
     def set_guard_rails_json_test(self, cluster):
         # Set guard rails with json
 
@@ -63,6 +68,10 @@ class ResourceManagementTests(testlib.BaseTestSet):
                                   "coresPerBucket": {
                                       "enabled": True,
                                       "minimum": 0.2
+                                  },
+                                  "diskUsage": {
+                                      "enabled": True,
+                                      "maximum": 90
                                   }
                               })
 
@@ -77,6 +86,10 @@ class ResourceManagementTests(testlib.BaseTestSet):
         assert data_size_config.get("enabled") is True
         assert data_size_config.get("couchstoreMaximum") == 32
         assert data_size_config.get("magmaMaximum") == 64
+
+        data_disk_usage_config = get("diskUsage", r)
+        assert data_disk_usage_config.get("enabled") is True
+        assert data_disk_usage_config.get("maximum") == 90
 
         cores_per_bucket_config = get("coresPerBucket", r)
         assert cores_per_bucket_config.get("enabled") is True
@@ -95,7 +108,9 @@ class ResourceManagementTests(testlib.BaseTestSet):
                 "bucket.dataSizePerNode.couchstoreMaximum": 33,
                 "bucket.dataSizePerNode.magmaMaximum": 65,
                 "coresPerBucket.enabled": "false",
-                "coresPerBucket.minimum": 0.3
+                "coresPerBucket.minimum": 0.3,
+                "diskUsage.enabled": "false",
+                "diskUsage.maximum": 91
             })
 
         bucket_config = get("bucket", r)
@@ -112,6 +127,9 @@ class ResourceManagementTests(testlib.BaseTestSet):
 
         assert get("coresPerBucket", r).get("enabled") is False
         assert get("coresPerBucket", r).get("minimum") == 0.3
+
+        assert get("diskUsage", r).get("enabled") is False
+        assert get("diskUsage", r).get("maximum") == 91
 
     def set_guard_rails_path_test(self, cluster):
         # Set residentRatio guard rail using path
@@ -147,6 +165,16 @@ class ResourceManagementTests(testlib.BaseTestSet):
 
         assert get("enabled", r) is True
         assert get("minimum", r) == 0.4
+
+        r = testlib.post_succ(
+            cluster, "/settings/resourceManagement/diskUsage",
+            data={
+                "enabled": "true",
+                "maximum": 92
+            })
+
+        assert get("enabled", r) is True
+        assert get("maximum", r) == 92
 
 
 def get(key, response):

@@ -3,4 +3,5 @@
 {resource_management,
  [{[bucket, resident_ratio, enabled], true},
   {[cores_per_bucket, enabled], true},
-  {[bucket, data_size, enabled], true}]}.
+  {[bucket, data_size, enabled], true},
+  {[disk_usage, enabled], true}]}.

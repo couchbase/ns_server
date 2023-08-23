@@ -193,7 +193,9 @@ for_resource_management() ->
                 "(sum by(bucket, name) (kv_logical_data_size_bytes"
                 "{state=`active`}))"},
                {kv_data_size,
-                "kv_logical_data_size_bytes{state=`active`} / 10^12"}
+                "kv_logical_data_size_bytes{state=`active`} / 10^12"},
+               {disk_usage,
+                "100 * sys_disk_usage_ratio"}
               ]))),
 
     Res = latest(
@@ -203,6 +205,10 @@ for_resource_management() ->
                                B = proplists:get_value(<<"bucket">>, Props),
                                {true, {binary_to_list(B),
                                        binary_to_atom(N, latin1)}};
+                           <<"disk_usage">> = N ->
+                               Disk = proplists:get_value(<<"disk">>, Props),
+                               {true, {binary_to_atom(N, latin1),
+                                       binary_to_list(Disk)}};
                            _ ->
                                false
                        end
