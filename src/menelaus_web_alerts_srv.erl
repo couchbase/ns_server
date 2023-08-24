@@ -1555,6 +1555,10 @@ run_basic_test_do() ->
     ?assertMatch({[{{fu, MyNode}, <<"bar">>, _, _}], _}, GlobalAlert).
 
 basic_test() ->
+    ok = meck:new(cluster_compat_mode),
+    ok = meck:expect(cluster_compat_mode, is_cluster_trinity,
+                     fun () -> true end),
+
     {ok, _} = gen_event:start_link({local, ns_config_events}),
     {ok, Pid} = ?MODULE:start_link(),
 
@@ -1565,7 +1569,8 @@ basic_test() ->
     try
         run_basic_test_do()
     after
-        misc:unlink_terminate_and_wait(Pid, shutdown)
+        misc:unlink_terminate_and_wait(Pid, shutdown),
+        ok = meck:unload(cluster_compat_mode)
     end.
 
 add_proplist_list_elem_test() ->

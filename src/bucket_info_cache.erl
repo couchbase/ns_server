@@ -376,7 +376,7 @@ compute_bucket_info_with_config(Id, Config, Snapshot, BucketConfig,
               || Node <- Servers]},
             {nodesExt, build_nodes_ext(AllServers, Config, Snapshot, [])},
             menelaus_web_buckets:build_hibernation_state(BucketConfig),
-            build_cluster_capabilities(Config)])},
+            build_cluster_capabilities()])},
     {ok, Rev, RevEpoch, ejson:encode(Json), BucketConfig}.
 
 compute_bucket_info(Bucket) ->
@@ -451,8 +451,8 @@ call_build_node_services() ->
               end
       end).
 
-build_cluster_capabilities(Config) ->
-    Caps = cluster_compat_mode:get_cluster_capabilities(Config),
+build_cluster_capabilities() ->
+    Caps = cluster_compat_mode:get_cluster_capabilities(),
     [{clusterCapabilitiesVer, [1, 0]},
      {clusterCapabilities, {Caps}}].
 
@@ -467,7 +467,7 @@ do_build_node_services() ->
     NEIs = build_nodes_ext(ns_cluster_membership:active_nodes(Snapshot),
                            Config, Snapshot, []),
     NodesExtHash = integer_to_binary(erlang:phash2(NEIs)),
-    Caps = build_cluster_capabilities(Config),
+    Caps = build_cluster_capabilities(),
     Rev = compute_global_rev(Config, ChronicleRev),
     RevEpoch = get_rev_epoch(Snapshot),
     J = {[{rev, Rev}, {nodesExt, NEIs}, {revEpoch, RevEpoch}] ++ Caps},
@@ -477,7 +477,7 @@ do_build_node_services() ->
 
 setup_compat_mode_for(Version, IsEnterprise) ->
     meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, get_compat_version, fun(_) -> Version end),
+    meck:expect(cluster_compat_mode, get_compat_version, fun() -> Version end),
     meck:expect(cluster_compat_mode, is_enterprise, fun() -> IsEnterprise end),
 
     meck:new(ns_config, [passthrough]),

@@ -589,10 +589,10 @@ cluster_info_props(Req) ->
               {QuotaInfo}
       end},
      {clusterCompatVersion,
-      fun (Cfg) ->
+      fun (_Cfg) ->
               [V1 | V2] = lists:map(
                             integer_to_list(_),
-                            cluster_compat_mode:get_compat_version(Cfg)),
+                            cluster_compat_mode:get_compat_version()),
               list_to_binary(V1 ++ "." ++ V2)
       end},
      {clientCertAuthState,

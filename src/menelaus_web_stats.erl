@@ -1181,7 +1181,7 @@ promql_filters_for_roles_test() ->
         meck:expect(cluster_compat_mode, is_enterprise,
                     fun () -> true end),
         meck:expect(cluster_compat_mode, get_compat_version,
-                    fun (_) -> ?LATEST_VERSION_NUM end),
+                    fun () -> ?LATEST_VERSION_NUM end),
         meck:expect(cluster_compat_mode, is_developer_preview,
                     fun () -> false end),
 

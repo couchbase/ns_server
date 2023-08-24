@@ -154,7 +154,7 @@ aware_services() ->
 
 aware_services(Config) ->
     aware_services(
-      cluster_compat_mode:get_compat_version(Config),
+      cluster_compat_mode:get_compat_version(),
       cluster_compat_mode:is_enterprise(Config)).
 
 aware_services(CompatVersion, IsEnterprise) ->

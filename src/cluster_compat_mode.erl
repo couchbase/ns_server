@@ -17,7 +17,6 @@
 -endif.
 
 -export([get_compat_version/0,
-         get_compat_version/1,
          get_ns_config_compat_version/0,
          is_enabled/1, is_enabled_at/2,
          consider_switching_compat_mode/0,
@@ -25,13 +24,10 @@
          is_index_pausing_on/0,
          rebalance_ignore_view_compactions/0,
          is_cluster_71/0,
-         is_cluster_71/1,
          is_version_71/1,
          is_cluster_72/0,
-         is_cluster_72/1,
          is_version_72/1,
          is_cluster_trinity/0,
-         is_cluster_trinity/1,
          is_version_trinity/1,
          is_enterprise/0,
          is_enterprise/1,
@@ -43,7 +39,7 @@
          effective_cluster_compat_version_for/1,
          is_developer_preview/0,
          is_developer_preview/1,
-         get_cluster_capabilities/1,
+         get_cluster_capabilities/0,
          tls_supported/0,
          tls_supported/1,
          preserve_durable_mutations/0]).
@@ -64,11 +60,8 @@ n1ql_cluster_capabilities(Version) ->
 cluster_capabilities(Version) ->
     [{n1ql, n1ql_cluster_capabilities(Version)}].
 
-get_cluster_capabilities(Config) ->
-    cluster_capabilities(get_compat_version(Config)).
-
-get_compat_version() ->
-    get_compat_version(ns_config:latest()).
+get_cluster_capabilities() ->
+    cluster_capabilities(get_compat_version()).
 
 get_ns_config_compat_version() ->
     get_ns_config_compat_version(ns_config:latest()).
@@ -76,14 +69,9 @@ get_ns_config_compat_version() ->
 get_ns_config_compat_version(Config) ->
     ns_config:search(Config, cluster_compat_version, undefined).
 
-get_compat_version(Config) ->
-    case get_ns_config_compat_version(Config) of
-        V when V =:= undefined orelse V < ?VERSION_71 ->
-            V;
-        _ ->
-            chronicle_compat:get(cluster_compat_version,
-                                 #{default => ?VERSION_71})
-    end.
+get_compat_version() ->
+    chronicle_compat:get(cluster_compat_version,
+                         #{default => min_supported_compat_version()}).
 
 supported_compat_version() ->
     case get_pretend_version() of
@@ -124,44 +112,25 @@ is_enabled_at(ClusterVersion, FeatureVersion) ->
     ClusterVersion >= FeatureVersion.
 
 is_enabled(FeatureVersion) ->
-    is_enabled(ns_config:latest(), FeatureVersion).
-
-is_enabled(Config, FeatureVersion) ->
-    CompatVersion =
-        case FeatureVersion > ?VERSION_70 of
-            true ->
-                get_compat_version(Config);
-            false ->
-                get_ns_config_compat_version(Config)
-        end,
-    is_enabled_at(CompatVersion, FeatureVersion).
+    is_enabled_at(get_compat_version(), FeatureVersion).
 
 is_version_71(ClusterVersion) ->
     is_enabled_at(ClusterVersion, ?VERSION_71).
 
 is_cluster_71() ->
-    is_cluster_71(ns_config:latest()).
-
-is_cluster_71(Config) ->
-    is_enabled(Config, ?VERSION_71).
+    is_enabled(?VERSION_71).
 
 is_version_72(ClusterVersion) ->
     is_enabled_at(ClusterVersion, ?VERSION_72).
 
 is_cluster_72() ->
-    is_cluster_72(ns_config:latest()).
-
-is_cluster_72(Config) ->
-    is_enabled(Config, ?VERSION_72).
+    is_enabled(?VERSION_72).
 
 is_version_trinity(ClusterVersion) ->
     is_enabled_at(ClusterVersion, ?VERSION_TRINITY).
 
 is_cluster_trinity() ->
-    is_cluster_trinity(ns_config:latest()).
-
-is_cluster_trinity(Config) ->
-    is_enabled(Config, ?VERSION_TRINITY).
+    is_enabled(?VERSION_TRINITY).
 
 is_index_aware_rebalance_on() ->
     not ns_config:read_key_fast(index_aware_rebalance_disabled, false).
@@ -195,7 +164,7 @@ is_developer_preview_enabled_by_default() ->
 
 consider_switching_compat_mode() ->
     Config = ns_config:get(),
-    CompatVersion = get_compat_version(Config),
+    CompatVersion = get_compat_version(),
     NsConfigVersion = get_ns_config_compat_version(Config),
     case CompatVersion =:= NsConfigVersion
         andalso CompatVersion =:= supported_compat_version() of

@@ -4053,7 +4053,7 @@ build_dynamic_bucket_info_test_setup(Version, IsEnterprise) ->
         end),
 
     meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, get_compat_version, fun(_) -> Version end),
+    meck:expect(cluster_compat_mode, get_compat_version, fun() -> Version end),
     meck:expect(cluster_compat_mode, is_enterprise, fun() -> IsEnterprise end),
 
     meck:new(chronicle_compat, [passthrough]),

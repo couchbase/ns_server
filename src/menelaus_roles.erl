@@ -49,7 +49,6 @@
 -define(DEFAULT_EXTERNAL_ROLES_POLLING_INTERVAL, 10*60*1000).
 
 -export([get_definitions/1,
-         get_definitions/2,
          get_public_definitions/1,
          is_allowed/2,
          get_roles/1,
@@ -736,14 +735,10 @@ add_serverless_roles(false) ->
     [].
 
 -spec get_definitions(all | public) -> [rbac_role_def(), ...].
-get_definitions(Type) ->
-    get_definitions(ns_config:latest(), Type).
-
--spec get_definitions(ns_config(), all | public) -> [rbac_role_def(), ...].
-get_definitions(Config, all) ->
-    get_definitions(Config, public) ++ internal_roles();
-get_definitions(Config, public) ->
-    get_public_definitions(cluster_compat_mode:get_compat_version(Config)).
+get_definitions(all) ->
+    get_definitions(public) ++ internal_roles();
+get_definitions(public) ->
+    get_public_definitions(cluster_compat_mode:get_compat_version()).
 
 -spec get_public_definitions(list()) -> [rbac_role_def(), ...].
 get_public_definitions(Version) ->
@@ -1265,7 +1260,7 @@ filter_by_permission(Permission, Snapshot, Definitions) ->
                                          pipes:producer(rbac_role()).
 produce_roles_by_permission(Permission, Snapshot) ->
     AllValues = calculate_possible_param_values(Snapshot, Permission),
-    Definitions = get_definitions(ns_config:latest(), public),
+    Definitions = get_definitions(public),
     pipes:compose(
       [pipes:stream_list(Definitions),
        visible_roles_filter(),
@@ -1910,7 +1905,7 @@ produce_roles_by_permission_test_() ->
              meck:expect(cluster_compat_mode, is_enterprise,
                          fun () -> true end),
              meck:expect(cluster_compat_mode, get_compat_version,
-                         fun (_) -> ?LATEST_VERSION_NUM end),
+                         fun () -> ?LATEST_VERSION_NUM end),
              meck:expect(cluster_compat_mode, is_developer_preview,
                          fun () -> false end)
      end,
