@@ -31,62 +31,48 @@
 -include("cut.hrl").
 -include("ns_common.hrl").
 
--export([upgrade_config/2]).
+-export([upgrade_config/1]).
 
-upgrade_config(NewVersion, FinalVersion) ->
+upgrade_config(NewVersion) ->
     true = (NewVersion =< ?LATEST_VERSION_NUM),
-    true = (FinalVersion =< ?LATEST_VERSION_NUM),
 
     case NewVersion > cluster_compat_mode:get_ns_config_compat_version() of
         true ->
             ok = ns_config:upgrade_config_explicitly(
-                   do_upgrade_config(_, NewVersion, FinalVersion));
+                   do_upgrade_config(_, NewVersion));
         false ->
             ?log_warning("ns_config is already upgraded to ~p", [NewVersion]),
             already_upgraded
     end.
 
-do_upgrade_config(Config, VersionNeeded, FinalVersion) ->
+do_upgrade_config(Config, VersionNeeded) ->
     case ns_config:search(Config, cluster_compat_version) of
         {value, VersionNeeded} ->
             [];
         false ->
-            upgrade_compat_version(?CURRENT_MIN_SUPPORTED_VERSION);
+            upgrade_compat_version(?MIN_SUPPORTED_VERSION);
         {value, undefined} ->
-            upgrade_compat_version(?CURRENT_MIN_SUPPORTED_VERSION);
+            upgrade_compat_version(?MIN_SUPPORTED_VERSION);
         {value, Ver} ->
             {NewVersion, Upgrade} = upgrade(Ver, Config),
 
             ?log_info("Performing online config upgrade to ~p", [NewVersion]),
             upgrade_compat_version(NewVersion) ++
-                maybe_final_upgrade(NewVersion, FinalVersion) ++ Upgrade
+                maybe_final_upgrade(NewVersion) ++ Upgrade
     end.
 
 upgrade_compat_version(NewVersion) ->
     [{set, cluster_compat_version, NewVersion}].
 
-maybe_final_upgrade(?LATEST_VERSION_NUM, ?LATEST_VERSION_NUM) ->
+maybe_final_upgrade(?LATEST_VERSION_NUM) ->
     ns_audit_cfg:upgrade_descriptors() ++ menelaus_users:config_upgrade();
-maybe_final_upgrade(FinalVersion, FinalVersion) ->
-    menelaus_users:config_upgrade();
-maybe_final_upgrade(_, _) ->
+maybe_final_upgrade(_) ->
     [].
 
 %% Note: upgrade functions must ensure that they do not add entries to the
 %% configuration which are already present.
 
-%% MB-58303: TODO Remove this after we move maybe_upgrade_to_chronicle to
-%% chronicle init.
-upgrade(?CURRENT_MIN_SUPPORTED_VERSION, _) ->
-    {?VERSION_70, []};
-
-%% MB-58303: Remove this when chronicle upgrade from 7.0 to 7.1 is taken care of
-%% at chronicle init for new min supported version. We must honor upgrades from
-%% 7.1 to 7.2 so we can't directly upgrade here to 7.2.
-upgrade(?VERSION_70, _) ->
-    {?VERSION_71, []};
-
-upgrade(?VERSION_71, Config) ->
+upgrade(?MIN_SUPPORTED_VERSION, Config) ->
     {?VERSION_72,
      menelaus_web_auto_failover:config_upgrade_to_72(Config) ++
         menelaus_web_alerts_srv:config_upgrade_to_72(Config)};

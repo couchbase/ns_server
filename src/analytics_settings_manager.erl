@@ -57,7 +57,7 @@ update(Key, Value) ->
 
 default_settings() ->
     [{generalSettings,
-      general_settings_defaults(?TARGET_MIN_SUPPORTED_VERSION)}].
+      general_settings_defaults(?MIN_SUPPORTED_VERSION)}].
 
 %% settings manager populates settings per version. For each online upgrade,
 %% it computes the delta between adjacent supported versions to update only the
@@ -73,7 +73,7 @@ default_settings() ->
 config_default() ->
     {?ANALYTICS_CONFIG_KEY, json_settings_manager:build_settings_json(
                               default_settings(), dict:new(),
-                              known_settings(?TARGET_MIN_SUPPORTED_VERSION))}.
+                              known_settings(?MIN_SUPPORTED_VERSION))}.
 
 known_settings() ->
     ClusterVersion = cluster_compat_mode:get_ns_config_compat_version(),
@@ -127,7 +127,7 @@ config_upgrade_to_trinity(Config) ->
 
 -ifdef(TEST).
 defaults_test() ->
-    Versions = [?TARGET_MIN_SUPPORTED_VERSION, ?VERSION_TRINITY],
+    Versions = [?MIN_SUPPORTED_VERSION, ?VERSION_TRINITY],
     lists:foreach(fun(V) -> default_versioned(V) end, Versions).
 
 default_versioned(Version) ->

@@ -68,13 +68,13 @@ update(Key, Value) ->
 %% must specify settings for the min supported version.
 config_default() ->
     {?QUERY_CONFIG_KEY, json_settings_manager:build_settings_json(
-                          default_settings(?TARGET_MIN_SUPPORTED_VERSION),
+                          default_settings(?MIN_SUPPORTED_VERSION),
                           dict:new(),
-                          known_settings(?TARGET_MIN_SUPPORTED_VERSION))}.
+                          known_settings(?MIN_SUPPORTED_VERSION))}.
 
 config_upgrade_to_trinity(Config) ->
     NewSettings = general_settings_defaults(?VERSION_TRINITY) --
-        general_settings_defaults(?TARGET_MIN_SUPPORTED_VERSION),
+        general_settings_defaults(?MIN_SUPPORTED_VERSION),
     json_settings_manager:upgrade_existing_key(
       ?MODULE, Config, [{generalSettings, NewSettings}],
       known_settings(?VERSION_TRINITY), fun functools:id/1).

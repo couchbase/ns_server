@@ -53,9 +53,9 @@
 %% Settings for newer versions will be added in ns_online_config_upgrader.
 %% Specify those in a config_upgrade_to_X function.
 default_config(IsEnterprise) ->
-    default_config(?TARGET_MIN_SUPPORTED_VERSION, IsEnterprise).
+    default_config(?MIN_SUPPORTED_VERSION, IsEnterprise).
 
-default_config(?TARGET_MIN_SUPPORTED_VERSION, IsEnterprise) ->
+default_config(?MIN_SUPPORTED_VERSION, IsEnterprise) ->
     [{?ROOT_CONFIG_KEY,
       [{enabled, true},
        % timeout is the time (in seconds) a node needs to be

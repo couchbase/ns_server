@@ -74,7 +74,7 @@ default_settings() ->
 
     [{memoryQuota, 512},
      {generalSettings,
-      general_settings_defaults(?TARGET_MIN_SUPPORTED_VERSION)},
+      general_settings_defaults(?MIN_SUPPORTED_VERSION)},
      {compaction, compaction_defaults()},
      {storageMode, <<"">>},
      {compactionMode, <<"circular">>},
@@ -114,7 +114,7 @@ config_default() ->
     {?INDEX_CONFIG_KEY, json_settings_manager:build_settings_json(
                           default_settings(),
                           dict:new(),
-                          known_settings(?TARGET_MIN_SUPPORTED_VERSION))}.
+                          known_settings(?MIN_SUPPORTED_VERSION))}.
 
 memory_quota_lens() ->
     Key = <<"indexer.settings.memory_quota">>,
@@ -277,7 +277,7 @@ compaction_lens() ->
     json_settings_manager:props_lens(compaction_lens_props()).
 
 config_upgrade_to_trinity(Config) ->
-    config_upgrade_settings(Config, ?TARGET_MIN_SUPPORTED_VERSION,
+    config_upgrade_settings(Config, ?MIN_SUPPORTED_VERSION,
                             ?VERSION_TRINITY).
 
 config_upgrade_settings(Config, OldVersion, NewVersion) ->
@@ -289,7 +289,7 @@ config_upgrade_settings(Config, OldVersion, NewVersion) ->
 
 -ifdef(TEST).
 default_test() ->
-    Versions = [?TARGET_MIN_SUPPORTED_VERSION, ?VERSION_TRINITY],
+    Versions = [?MIN_SUPPORTED_VERSION, ?VERSION_TRINITY],
     lists:foreach(fun(V) -> default_versioned(V) end, Versions).
 
 default_versioned(Version) ->

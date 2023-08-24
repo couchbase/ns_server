@@ -35,7 +35,7 @@ get_current_version() ->
     list_to_tuple(?VERSION_TRINITY).
 
 get_min_supported_version() ->
-    list_to_tuple(?TARGET_MIN_SUPPORTED_VERSION).
+    list_to_tuple(?MIN_SUPPORTED_VERSION).
 
 get_data_dir() ->
     RawDir = path_config:component_path(data),
