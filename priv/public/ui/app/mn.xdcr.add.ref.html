@@ -248,20 +248,21 @@ licenses/APL2.txt.
           </div>
         </div>
       </div>
-      <div class="formrow">
-        <label>Check Connection</label>
+      <div class="formrow margin-top-2">
+        <label>Check Connection (optional)</label>
         <p>The connection check can take up to 1 minute.</p>
-        <textarea
-          [attr.rows]="(result | async) === '{}' ? 3 : 7"
-          autocorrect="off"
-          autocapitalize="off"
-          spellcheck="false"
-          readonly>{{result | async}}</textarea>
         <div
           class="error"
           [hidden]="!(postXdcrConnectionPreCheck.error | async)?._">
           {{(postXdcrConnectionPreCheck.error | async)?._}}
         </div>
+        <textarea
+          rows="7"
+          [hidden]="(result | async) === null"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          readonly>{{result | async}}</textarea>
       </div>
       <div class="margin-bottom-1-5">
         <button

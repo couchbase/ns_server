@@ -86,12 +86,12 @@ class MnXDCRAddRefComponent extends MnLifeCycleHooksToStream {
       this.postXdcrConnectionPreCheck.error,
       this.postXdcrConnectionPreCheck.success
     ).pipe(
-      startWith({}),
+      startWith(null),
       map((resp) => {
         if (resp && resp.result) {
           return JSON.stringify(resp.result, null, 2);
         } else {
-          return JSON.stringify({});
+          return null;
         }
       }));
 
