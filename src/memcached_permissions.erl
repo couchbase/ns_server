@@ -383,13 +383,12 @@ jsonify_users(Users, RoleDefinitions, ClusterAdmin, PromUser) ->
 producer(#state{users = Users,
                 cluster_admin = ClusterAdmin,
                 prometheus_user = PromUser}) ->
-    Config = ns_config:get(),
-    case menelaus_users:upgrade_in_progress(Config) of
+    case menelaus_users:upgrade_in_progress() of
         true ->
             ?log_debug("Skipping update during users upgrade"),
             undefined;
         false ->
-            RoleDefinitions = menelaus_roles:get_definitions(Config, all),
+            RoleDefinitions = menelaus_roles:get_definitions(all),
             pipes:compose([menelaus_users:select_users({'_', local}, [roles]),
                            jsonify_users(Users, RoleDefinitions, ClusterAdmin,
                                          PromUser),

@@ -72,7 +72,6 @@
          upgrade/3,
          config_upgrade/0,
          upgrade_in_progress/0,
-         upgrade_in_progress/1,
          upgrade_props/4
         ]).
 
@@ -867,10 +866,7 @@ config_upgrade() ->
     [{delete, rbac_upgrade_key()}].
 
 upgrade_in_progress() ->
-    upgrade_in_progress(ns_config:latest()).
-
-upgrade_in_progress(Config) ->
-    ns_config:search(Config, rbac_upgrade_key()) =/= false.
+    ns_config:search(rbac_upgrade_key()) =/= false.
 
 filter_out_invalid_roles(Props, Definitions, Snapshot) ->
     Roles = proplists:get_value(roles, Props, []),
