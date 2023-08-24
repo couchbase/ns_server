@@ -225,7 +225,7 @@ do_get(BucketId, DocId, CollectionUid, Options, Req) ->
                         [ejson_body | Options]],
                   X =/= undefined],
 
-    Args = Args0 ++ maybe_add_identity(Req),
+    Args = Args0 ++ [get_identity(Req)],
 
     attempt(BinaryBucketId, BinaryDocId, capi_crud, get, Args).
 
@@ -278,19 +278,9 @@ do_handle_get(BucketId, DocId, CollectionUid, XAttrPermissions, Req) ->
     end.
 
 get_identity(Req) ->
-    %% In a mixed cluster with 7.0.x and 7.1.0 nodes, a 7.1.0 node can send via
-    %% menelaus_web_crud:attempt/5 a 'capi_crud:Oper' RPC request to a 7.0.x
-    %% node. Return Identity only when cluster_compact_mode is at 7.1.0.
-    case cluster_compat_mode:is_cluster_71() of
-        false -> undefined;
-        true -> menelaus_auth:get_identity(Req)
-    end.
-
-maybe_add_identity(Req) ->
-    case get_identity(Req) of
-        undefined -> [];
-        I -> [I]
-    end.
+    Identity = menelaus_auth:get_identity(Req),
+    true = Identity =/= undefined,
+    Identity.
 
 mutate(Req, Oper, BucketId, DocId, CollectionUid, Body, Flags) ->
     BinaryBucketId = list_to_binary(BucketId),
@@ -299,7 +289,7 @@ mutate(Req, Oper, BucketId, DocId, CollectionUid, Body, Flags) ->
     Args0 = [X || X <- [BinaryBucketId, BinaryDocId, CollectionUid, Body,
                         Flags], X =/= undefined],
 
-    Args = Args0 ++ maybe_add_identity(Req),
+    Args = Args0 ++ [get_identity(Req)],
 
     case attempt(BinaryBucketId, BinaryDocId, capi_crud, Oper, Args) of
         ok ->

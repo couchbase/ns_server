@@ -15,8 +15,6 @@
 -include("mc_entry.hrl").
 -include("mc_constants.hrl").
 
--export([get/3, set/3, set/4, delete/2]).
--export([get/4, set/5, delete/3]).
 -export([get/5, set/6, delete/4]).
 
 -export([is_valid_json/1]).
@@ -41,18 +39,6 @@ handle_mutation_rv(#mc_header{status = ?ETMPFAIL}, _Entry) ->
 handle_mutation_rv(#mc_header{status = ?NOT_MY_VBUCKET} = _Header, _Entry) ->
     throw(not_my_vbucket).
 
-%% Retaining the old API for backward compatibility.
-set(BucketBin, DocId, Value) ->
-    set(BucketBin, DocId, Value, 0).
-
-%% For cluster pre ?VERSION_70
-set(BucketBin, DocId, Value, Flags) ->
-    set(BucketBin, DocId, undefined, Value, Flags).
-
-%% For cluster pre ?VERSION_71
-set(BucketBin, DocId, ColletionUid, Value, Flags) ->
-    set(BucketBin, DocId, ColletionUid, Value, Flags, undefined).
-
 set(BucketBin, DocId, CollectionUid, Value, Flags, Identity) ->
     Bucket = binary_to_list(BucketBin),
     {VBucket, _} = cb_util:vbucket_from_id(Bucket, DocId),
@@ -61,28 +47,12 @@ set(BucketBin, DocId, CollectionUid, Value, Flags, Identity) ->
                                               Identity),
     handle_mutation_rv(Header, Entry).
 
-%% For cluster pre ?VERSION_70
-delete(BucketBin, DocId) ->
-    delete(BucketBin, DocId, undefined).
-
-%% For cluster pre ?VERSION_71
-delete(BucketBin, DocId, CollectionUid) ->
-    delete(BucketBin, DocId, CollectionUid, undefined).
-
 delete(BucketBin, DocId, CollectionUid, Identity) ->
     Bucket = binary_to_list(BucketBin),
     {VBucket, _} = cb_util:vbucket_from_id(Bucket, DocId),
     {ok, Header, Entry, _} = ns_memcached:delete(Bucket, DocId, CollectionUid,
                                                  VBucket, Identity),
     handle_mutation_rv(Header, Entry).
-
-%% For cluster pre ?VERSION_70
-get(BucketBin, DocId, Options) ->
-    get(BucketBin, DocId, undefined, Options).
-
-%% For cluster pre ?VERSION_71
-get(BucketBin, DocId, CollectionUid, Options) ->
-    get(BucketBin, DocId, CollectionUid, Options, undefined).
 
 get(BucketBin, DocId, CollectionUid, Options, Identity) ->
     Bucket = binary_to_list(BucketBin),
