@@ -133,6 +133,7 @@
          get_view_nodes/1,
          get_default_num_vbuckets/0,
          allow_variable_num_vbuckets/0,
+         get_cc_versioning_enabled/1,
          get_num_vbuckets/1,
          get_max_buckets/0,
          get_min_replicas/0,
@@ -923,6 +924,9 @@ allow_variable_num_vbuckets() ->
 
 get_num_vbuckets(BucketConfig) ->
     proplists:get_value(num_vbuckets, BucketConfig).
+
+get_cc_versioning_enabled(BucketConfig) ->
+    proplists:get_value(cross_cluster_versioning_enabled, BucketConfig).
 
 new_bucket_default_params(membase) ->
     [{type, membase},
@@ -1945,6 +1949,7 @@ extract_bucket_props(Props) ->
                    Y <- [num_replicas, replica_index, ram_quota,
                          durability_min_level, frag_percent,
                          storage_quota_percentage, num_vbuckets,
+                         cross_cluster_versioning_enabled,
                          pitr_enabled, pitr_granularity, pitr_max_history_age,
                          autocompaction, purge_interval, flush_enabled,
                          num_threads, eviction_policy, conflict_resolution_type,

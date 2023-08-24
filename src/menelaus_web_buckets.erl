@@ -272,6 +272,7 @@ build_bucket_info(Id, Ctx, InfoLevel, SkipMap) ->
         build_storage_limits(BucketConfig),
         build_throttle_limits(BucketConfig),
         build_bucket_priority(BucketConfig),
+        build_cross_cluster_versioning_params(BucketConfig),
         build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx)])}.
 
 get_internal_default(Key, Default) ->
@@ -281,6 +282,16 @@ build_bucket_priority(BucketConfig) ->
     case cluster_compat_mode:is_cluster_trinity() of
         true ->
             [{priority, ns_bucket:priority(BucketConfig)}];
+        false ->
+            []
+    end.
+
+build_cross_cluster_versioning_params(BucketConfig) ->
+    CcVersioningEnabledVal = ns_bucket:get_cc_versioning_enabled(BucketConfig),
+    case cluster_compat_mode:is_cluster_trinity() andalso
+         CcVersioningEnabledVal =/= undefined of
+        true ->
+            [{enableCrossClusterVersioning, CcVersioningEnabledVal}];
         false ->
             []
     end.
@@ -1222,8 +1233,13 @@ basic_bucket_params_screening(Ctx, Params) ->
 validate_common_params(#bv_ctx{bucket_name = BucketName,
                                bucket_config = BucketConfig, new = IsNew,
                                all_buckets = AllBuckets}, Params) ->
+    IsTrinity = cluster_compat_mode:is_cluster_trinity(),
+    IsEnterprise = cluster_compat_mode:is_enterprise(),
+
     [{ok, name, BucketName},
      parse_validate_flush_enabled(Params, IsNew),
+     parse_validate_cross_cluster_versioning_enabled(Params, IsNew,
+                                                     IsTrinity, IsEnterprise),
      validate_bucket_name(IsNew, BucketConfig, BucketName, AllBuckets),
      parse_validate_ram_quota(Params, BucketConfig)].
 
@@ -1682,67 +1698,100 @@ value_not_boolean_error(Param) ->
      list_to_binary(io_lib:format("~p must be true or false",
                                   [Param]))}.
 
-param_not_supported_in_ce_error(Param) ->
-    {error, Param,
-     list_to_binary(io_lib:format("~p can only be set in Enterprise edition",
-                                  [Param]))}.
-
-%% Point-in-time Recovery (PITR) parameter parsing and validation.
-
 pitr_not_supported_error(Param) ->
     {error, Param,
      <<"Point in time recovery is not supported until cluster is fully "
         "Trinity">>}.
 
-parse_validate_pitr_param_not_supported(Key, Params) ->
+cross_cluster_versioning_not_supported_error(Param) ->
+    {error, Param,
+     <<"Cross Cluster Versioning is not supported until cluster is fully "
+       "Trinity">>}.
+
+parse_validate_param_not_supported(Key, Params, ErrorFun) ->
     case proplists:is_defined(Key, Params) of
         true ->
-            pitr_not_supported_error(Key);
+            ErrorFun(Key);
         false ->
             ignore
     end.
 
-%% PITR parameter parsing and validation when not in enterprise mode.
-parse_validate_pitr_param_not_enterprise(Key, Params) ->
+%% Parameter parsing and validation when not in enterprise mode.
+parse_validate_param_not_enterprise(Key, Params) ->
     case proplists:is_defined(Key, Params) of
         true ->
-            param_not_supported_in_ce_error(Key);
+            {error, Key,
+             list_to_binary(io_lib:format("~p can only be set in Enterprise "
+                                          "edition", [Key]))};
         false ->
             ignore
     end.
 
-parse_validate_pitr_enabled(Params, _IsNew, false = _AllowPitr,
-                            _IsEnterprise) ->
-    parse_validate_pitr_param_not_supported("pitrEnabled", Params);
-parse_validate_pitr_enabled(Params, _IsNew, true = _AllowPitr,
-                            false = _IsEnterprise) ->
-    parse_validate_pitr_param_not_enterprise("pitrEnabled", Params);
-parse_validate_pitr_enabled(Params, IsNew, true = _AllowPitr,
-                            true = _IsEnterprise) ->
-    Result = menelaus_util:parse_validate_boolean_field("pitrEnabled",
-                                                        '_', Params),
+parse_validate_cross_cluster_versioning_enabled(Params, _IsNew, _Allow,
+                                                false = _IsEnterprise) ->
+    parse_validate_param_not_enterprise("enableCrossClusterVersioning", Params);
+parse_validate_cross_cluster_versioning_enabled(Params, _IsNew, false = _Allow,
+                                                _IsEnterprise) ->
+    parse_validate_param_not_supported(
+      "enableCrossClusterVersioning", Params,
+      fun cross_cluster_versioning_not_supported_error/1);
+parse_validate_cross_cluster_versioning_enabled(Params, true = IsNew, _Allow,
+                                                _IsEnterprise) ->
+    case validate_cross_cluster_versioning_enabled(Params, IsNew) of
+        {ok, _Key, true} ->
+            {error, "enableCrossClusterVersioning",
+             <<"Cross Cluster Versioning can not be enabled on bucket "
+               "create">>};
+        Res ->
+            Res
+    end;
+parse_validate_cross_cluster_versioning_enabled(Params, IsNew, _Allow,
+                                                _IsEnterprise) ->
+    validate_cross_cluster_versioning_enabled(Params, IsNew).
+
+process_boolean_param_validation(Param, Key, Result, IsNew) ->
     case {Result, IsNew} of
         {[], true} ->
             %% The value wasn't supplied and we're creating a bucket:
             %% use the default value.
-            {ok, pitr_enabled, false};
+            {ok, Key, false};
         {[], false} ->
             %% The value wasn't supplied and we're modifying a bucket:
             %% don't complain since the value was either specified or a
             %% default used when the bucket was created.
             ignore;
         {[{ok, _, Value}], _} ->
-            {ok, pitr_enabled, Value};
+            {ok, Key, Value};
         {[{error, _, _ErrorMsg}], _} ->
-            value_not_boolean_error(pitrEnabled)
+            value_not_boolean_error(Param)
     end.
+
+validate_cross_cluster_versioning_enabled(Params, IsNew) ->
+    Param = "enableCrossClusterVersioning",
+    Result = menelaus_util:parse_validate_boolean_field(Param, '_', Params),
+    process_boolean_param_validation(
+      Param, cross_cluster_versioning_enabled, Result, IsNew).
+
+parse_validate_pitr_enabled(Params, _IsNew, false = _AllowPitr,
+                            _IsEnterprise) ->
+    parse_validate_param_not_supported("pitrEnabled", Params,
+                                       fun pitr_not_supported_error/1);
+parse_validate_pitr_enabled(Params, _IsNew, true = _AllowPitr,
+                            false = _IsEnterprise) ->
+    parse_validate_param_not_enterprise("pitrEnabled", Params);
+parse_validate_pitr_enabled(Params, IsNew, true = _AllowPitr,
+                            true = _IsEnterprise) ->
+    Result = menelaus_util:parse_validate_boolean_field("pitrEnabled",
+                                                        '_', Params),
+    process_boolean_param_validation(pitrEnabled, pitr_enabled, Result, IsNew).
 
 parse_validate_pitr_granularity(Params, _IsNew, false = _AllowPitr,
                                 _IsEnterprise) ->
-    parse_validate_pitr_param_not_supported("pitrGranularity", Params);
+    parse_validate_param_not_supported("pitrGranularity", Params,
+                                       fun pitr_not_supported_error/1);
 parse_validate_pitr_granularity(Params, _IsNew, true = _AllowPitr,
                                 false = _IsEnterprise) ->
-    parse_validate_pitr_param_not_enterprise("pitrGranularity", Params);
+    parse_validate_param_not_enterprise("pitrGranularity", Params);
 parse_validate_pitr_granularity(Params, IsNew, true = _AllowPitr,
                                 true = _IsEnterprise) ->
     parse_validate_pitr_numeric_param(Params, pitrGranularity,
@@ -1750,10 +1799,11 @@ parse_validate_pitr_granularity(Params, IsNew, true = _AllowPitr,
 
 parse_validate_pitr_max_history_age(Params, _IsNew, false = _AllowPitr,
                                     _IsEnterprise) ->
-    parse_validate_pitr_param_not_supported("pitrMaxHistoryAge", Params);
+    parse_validate_param_not_supported("pitrMaxHistoryAge", Params,
+                                       fun pitr_not_supported_error/1);
 parse_validate_pitr_max_history_age(Params, _IsNew, true = _AllowPitr,
                                     false = _IsEnterprise) ->
-    parse_validate_pitr_param_not_enterprise("pitrMaxHistoryAge", Params);
+    parse_validate_param_not_enterprise("pitrMaxHistoryAge", Params);
 parse_validate_pitr_max_history_age(Params, IsNew, true = _AllowPitr,
                                     true = _IsEnterprise) ->
     parse_validate_pitr_numeric_param(Params, pitrMaxHistoryAge,
