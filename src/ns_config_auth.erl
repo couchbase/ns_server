@@ -14,6 +14,10 @@
 -include("ns_common.hrl").
 -include("cut.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([authenticate/2,
          set_admin_credentials/2,
          set_admin_with_auth/2,
@@ -29,7 +33,8 @@
          is_system_provisioned/1,
          new_password_hash/2,
          hash_password/2,
-         check_hash/2]).
+         check_hash/2,
+         config_upgrade_to_trinity/1]).
 
 admin_cfg_key() ->
     rest_creds.
@@ -208,3 +213,65 @@ hash_password(HashInfo, Password) ->
             Salt = base64:decode(proplists:get_value(?SALT_KEY, HashInfo)),
             crypto:mac(hmac, sha, Salt, list_to_binary(Password))
     end.
+
+config_upgrade_to_trinity(Config) ->
+    case get_admin_user_and_auth(Config) of
+        null -> [];
+        {User, Info} ->
+            Auth =
+                case Info of
+                    {password, _} ->
+                        Hash = get_salt_and_mac(Info),
+                        menelaus_users:format_plain_auth(Hash);
+                    {auth, A} ->
+                        A
+                end,
+            {ok, NewAuth} = menelaus_users:upgrade_props(?VERSION_TRINITY, auth,
+                                                         User, Auth),
+            [{set, admin_cfg_key(), {User, {auth, NewAuth}}}]
+    end.
+
+-ifdef(TEST).
+
+upgrade_null_admin_auth_to_trinity_test() ->
+    ?assertEqual([], config_upgrade_to_trinity([[{rest_creds, null}]])).
+
+upgrade_legacy_admin_auth_to_trinity_test() ->
+    LegacyAuth = {password,
+                  {<<97,38,90,8,100,179,170,77,6,75,118,147,14,129,30,211>>,
+                   <<191,201,210,9,232,187,214,20,247,75,45,50,157,66,102,
+                     243,228,31,167,175>>}},
+    [Upgrade] = config_upgrade_to_trinity([[{rest_creds,
+                                             {"admin", LegacyAuth}}]]),
+    {set, rest_creds, {"admin", NewAuth}} = Upgrade,
+    check_hash(get_salt_and_mac(LegacyAuth), "asdasd"),
+    check_hash(get_salt_and_mac(NewAuth), "asdasd").
+
+upgrade_7_2_admin_auth_to_trinity_test() ->
+    Auth72 =
+        {auth,[{<<"plain">>,
+                <<"wzs7PI/FUZ7PtPUXEnHp9qezfkTvveJ6In3xZ/wxUF25FokA">>},
+               {<<"sha512">>,
+                {[{<<"h">>,
+                   <<"NKgHCIAQNo4EPf0iRTOPvXHF8X8G6QAjrsgOKztJtJs6"
+                     "gczyyfASTWoeHRQIVmB18LXtQ56p5M7zj2ieC75iUw==">>},
+                  {<<"s">>,
+                   <<"WTp2FilmNevHaBmEqkrvAhK5PV4eSV0DkjiXVAA0K9dh"
+                     "26iLM6m/8I525oHJDbH/CKiIaWN/wgxCYoSONb6SmA==">>},
+                  {<<"i">>, 4000}]}},
+               {<<"sha256">>,
+                {[{<<"h">>,
+                   <<"iRqA1NSe0l6HmLPgR5zuO8MAJV1WCvB/NLC+cEKjrXo=">>},
+                  {<<"s">>, <<"YGscBx8RaBd72KrmL4x4OaYpZnPyxULg0Tp+ej/7GGc=">>},
+                  {<<"i">>, 4000}]}},
+               {<<"sha1">>,
+                {[{<<"h">>, <<"Lg8O+6gckoGI6BgaIyaaVbqbR7U=">>},
+                  {<<"s">>, <<"jvqilB34e2UAw6QXdIFGhKtYxuQ=">>},
+                  {<<"i">>, 4000}]}}]},
+    [Upgrade] = config_upgrade_to_trinity([[{rest_creds,
+                                             {"admin", Auth72}}]]),
+    {set, rest_creds, {"admin", NewAuth}} = Upgrade,
+    check_hash(get_salt_and_mac(Auth72), "asdasd"),
+    check_hash(get_salt_and_mac(NewAuth), "asdasd").
+
+-endif.
