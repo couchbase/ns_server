@@ -13,10 +13,6 @@
 -include("ns_common.hrl").
 -include("ns_config.hrl").
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
-
 -export([get_nodes_with_status/1,
          get_nodes_with_status/2,
          get_nodes_with_status/3,
@@ -541,13 +537,10 @@ enterprise_only_services() ->
 -define(PREHISTORIC, [0, 0]).
 
 services_by_version() ->
-    [{?PREHISTORIC, [kv, n1ql, index, fts, cbas, eventing]},
-     {?VERSION_70, [backup]}].
+    [{?PREHISTORIC, [kv, n1ql, index, fts, cbas, eventing, backup]}].
 
 topology_aware_services_by_version() ->
-    [{?PREHISTORIC, [fts, index, cbas, eventing]},
-     {?VERSION_70, [backup]},
-     {?VERSION_71, [n1ql]}].
+    [{?PREHISTORIC, [fts, index, cbas, eventing, backup, n1ql]}].
 
 filter_services_by_version(Version, ServicesTable) ->
     lists:flatmap(fun ({V, Services}) ->
@@ -738,25 +731,3 @@ get_node_uuids(Nodes, UUIDDict) ->
 
 attach_node_uuids(Nodes, UUIDDict) ->
     lists:zip(Nodes, get_node_uuids(Nodes, UUIDDict)).
-
--ifdef(TEST).
-supported_services_for_version_test() ->
-    ?assertEqual(
-       lists:sort([fts,kv,index,n1ql,cbas,eventing,backup]),
-       lists:sort(supported_services_for_version(?VERSION_70, true))).
-
-topology_aware_services_for_version_test() ->
-    ?assertEqual(lists:sort([fts,index,cbas,eventing,backup]),
-                 lists:sort(topology_aware_services_for_version(
-                              ?VERSION_70))).
-
-community_services_test() ->
-    ?assertEqual(
-       lists:sort([fts,kv,index,n1ql]),
-       lists:sort(supported_services_for_version(?VERSION_71, false))).
-
-enterprise_services_test() ->
-    ?assertEqual(
-       lists:sort([backup,cbas,eventing,fts,kv,index,n1ql]),
-       lists:sort(supported_services_for_version(?VERSION_71, true))).
--endif.
