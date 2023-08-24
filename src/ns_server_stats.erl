@@ -47,6 +47,7 @@
 
 -record(state, {
           process_stats_timer :: reference() | undefined,
+          cleanup_stats_timer :: reference() | undefined,
           pid_names :: [{os_pid(), binary()}],
           sigar_opaque :: term()
          }).
@@ -63,7 +64,8 @@ notify_counter(Metric, Val) when Val > 0, is_integer(Val) ->
 
 notify_gauge(Metric, Val) ->
     Key = {g, normalized_metric(Metric)},
-    catch ets:insert(?MODULE, {Key, Val}),
+    Now = erlang:monotonic_time(millisecond),
+    catch ets:insert(?MODULE, {Key, {Now, Val}}),
     ok.
 
 notify_histogram(Metric, Val) ->
@@ -340,7 +342,7 @@ low_cardinality_stats() ->
     [{c, {<<"rest_request_enters">>, []}},
      {c, {<<"rest_request_leaves">>, []}}].
 
-report_stat({{g, {BinName, Labels}}, Value}, ReportFun) ->
+report_stat({{g, {BinName, Labels}}, {_TS, Value}}, ReportFun) ->
     ReportFun({[?METRIC_PREFIX, BinName], Labels, Value});
 report_stat({{c, {BinName, Labels}}, Value}, ReportFun) ->
     NameIOList = [[?METRIC_PREFIX, BinName], <<"_total">>],
@@ -383,7 +385,8 @@ init([]) ->
 
     spawn_ale_stats_collector(),
 
-    {ok, restart_process_stats_timer(#state{pid_names = grab_pid_names()})}.
+    {ok, restart_cleanup_stats_timer(
+           restart_process_stats_timer(#state{pid_names = grab_pid_names()}))}.
 
 init_stats() ->
     ets:new(?MODULE, [public, named_table, set]),
@@ -427,6 +430,17 @@ handle_info(process_ns_server_stats, State) ->
     update_merger_rates(),
     sample_ns_memcached_queues(),
     {noreply, restart_process_stats_timer(State)};
+handle_info(cleanup_ns_server_stats, State) ->
+    misc:flush(cleanup_ns_server_stats),
+    Now = erlang:monotonic_time(millisecond),
+    CreationTS = Now - prometheus_cfg:max_scrape_int() * 1000,
+    NumDeleted = ets:select_delete(?MODULE,
+                                   [{{{g, '_'}, {'$1', '_'}},
+                                    [{'=<', '$1', CreationTS}],
+                                    [true]}]),
+    NumDeleted > 0
+        andalso ?log_debug("Abandoned ~p ns_server stats", [NumDeleted]),
+    {noreply, restart_cleanup_stats_timer(State)};
 handle_info(Info, State) ->
     ?log_warning("Unhandled info: ~p", [Info]),
     {noreply, State}.
@@ -763,3 +777,12 @@ restart_process_stats_timer(#state{process_stats_timer = undefined} = State) ->
 restart_process_stats_timer(#state{process_stats_timer = Ref} = State) ->
     catch erlang:cancel_timer(Ref),
     restart_process_stats_timer(State#state{process_stats_timer = undefined}).
+
+restart_cleanup_stats_timer(#state{cleanup_stats_timer = undefined} = State) ->
+    Ref = erlang:send_after(?get_timeout(cleanup_stats, 30000), self(),
+                            cleanup_ns_server_stats),
+    State#state{cleanup_stats_timer = Ref};
+restart_cleanup_stats_timer(#state{cleanup_stats_timer = Ref} = State)
+                                                    when is_reference(Ref) ->
+    catch erlang:cancel_timer(Ref),
+    restart_cleanup_stats_timer(State#state{cleanup_stats_timer = undefined}).
