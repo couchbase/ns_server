@@ -350,10 +350,14 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
 
     if (unpackedData.spVerifyRecipient) {
       unpackedData.spVerifyRecipientFlag = true;
+    } else {
+      unpackedData.spVerifyRecipientFlag = false;
+      unpackedData.spVerifyRecipient = 'consumeURL'; //default when flag is enabled
     }
 
     if (unpackedData.spAssertionDupeCheck === 'disabled') {
       unpackedData.spAssertionDupeCheckFlag = false;
+      unpackedData.spAssertionDupeCheck = 'global'; //default when flag is enabled
     } else {
       unpackedData.spAssertionDupeCheckFlag = true;
     }
