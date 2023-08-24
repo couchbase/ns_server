@@ -72,11 +72,10 @@ initialize() ->
     ?log_info("Chronicle content was initialized. Rev = ~p.", [Rev]).
 
 upgrade(Version, Nodes) ->
-    Config = ns_config:get(),
     RV = chronicle_kv:txn(
            kv,
            fun (Txn) ->
-                   {Changes, Txn} = upgrade_loop({#{}, Txn}, Version, Config),
+                   {Changes, Txn} = upgrade_loop({#{}, Txn}, Version),
                    {commit, maps:fold(
                               fun (K, V, Acc) ->
                                       [{set, K, V} | Acc]
@@ -101,7 +100,7 @@ upgrade(Version, Nodes) ->
             error
     end.
 
-upgrade_loop(UpgradeTxn, FinalVersion, Config) ->
+upgrade_loop(UpgradeTxn, FinalVersion) ->
     CurrentVersion =
         case get_key(cluster_compat_version, UpgradeTxn) of
             {error, not_found} ->
@@ -115,16 +114,15 @@ upgrade_loop(UpgradeTxn, FinalVersion, Config) ->
         _ ->
             ?log_info("Upgading chronicle from ~p. Final version = ~p",
                       [CurrentVersion, FinalVersion]),
-            {NewVersion, NewTxn} = upgrade_to(CurrentVersion, UpgradeTxn,
-                                              Config),
+            {NewVersion, NewTxn} = upgrade_to(CurrentVersion, UpgradeTxn),
             upgrade_loop(set_key(cluster_compat_version, NewVersion, NewTxn),
-                         FinalVersion, Config)
+                         FinalVersion)
     end.
 
-upgrade_to(?VERSION_71, UpgradeTxn, _Config) ->
+upgrade_to(?VERSION_71, UpgradeTxn) ->
     {?VERSION_72, ns_bucket:chronicle_upgrade_to_72(UpgradeTxn)};
 
-upgrade_to(?VERSION_72, UpgradeTxn, _Config) ->
+upgrade_to(?VERSION_72, UpgradeTxn) ->
     {?VERSION_TRINITY,
      functools:chain(
        UpgradeTxn,
