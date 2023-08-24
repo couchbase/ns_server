@@ -530,6 +530,17 @@ handle_pool_settings_post_body(Req, Config, Values) ->
             false ->
                 false
         end,
+    QueryQuotaSupplied =
+        case lists:keyfind(queryNodeQuota, 1, Values) of
+            false -> 0;
+            {_, QueryQuota} -> QueryQuota
+        end,
+    NewNodeQuotaList =
+        [{queryNodeQuota, QueryQuotaSupplied} |
+         proplists:delete(queryNodeQuota,
+                          query_settings_manager:get(generalSettings))],
+    query_settings_manager:update(generalSettings, NewNodeQuotaList),
+
     NameSupplied =
         case lists:keyfind(clusterName, 1, Values) of
             {_, ClusterName} ->

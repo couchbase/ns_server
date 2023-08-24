@@ -13,7 +13,8 @@
 -export([handle_settings_get/1,
          handle_curl_whitelist_post/1,
          handle_curl_whitelist_get/1,
-         handle_settings_post/1]).
+         handle_settings_post/1,
+         cluster_init_validators/0]).
 
 handle_settings_get(Req) ->
     Config = get_settings(),
@@ -52,9 +53,7 @@ settings_post_validators() ->
      validator:integer(queryNumAtrs, _)] ++
         case cluster_compat_mode:is_cluster_trinity() of
             true ->
-                [validator:integer(queryNodeQuota, _),
-                 validator:range(queryNodeQuota, 0, infinity, _),
-                 validator:integer(queryNodeQuotaValPercent, _),
+                [validator:integer(queryNodeQuotaValPercent, _),
                  validator:range(queryNodeQuotaValPercent, 0, 100, _),
                  validator:string(queryUseReplica, _),
                  validator:convert(queryUseReplica, fun list_to_binary/1, _),
@@ -63,7 +62,8 @@ settings_post_validators() ->
                  validator:integer(queryNumCpus, _),
                  validator:range(queryNumCpus, 0, infinity, _),
                  validator:integer(queryCompletedMaxPlanSize, _),
-                 validator:range(queryCompletedMaxPlanSize, 0, infinity, _)];
+                 validator:range(queryCompletedMaxPlanSize, 0, infinity, _)] ++
+                    node_quota_validators();
             false ->
                 []
         end ++
@@ -116,3 +116,12 @@ handle_curl_whitelist_post(Req) ->
 
 handle_curl_whitelist_get(Req) ->
     menelaus_util:reply_json(Req, get_curl_whitelist_settings()).
+
+%% Add additional individual validators to this function and they will be
+%% included during cluster-init.
+cluster_init_validators() ->
+    node_quota_validators().
+
+node_quota_validators() ->
+    [validator:integer(queryNodeQuota, _),
+     validator:range(queryNodeQuota, 0, infinity, _)].

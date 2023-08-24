@@ -128,6 +128,7 @@ cluster_init_validators(Config, Snapshot) ->
     menelaus_web_pools:pool_settings_post_validators(Config, Snapshot) ++
     menelaus_web_settings:settings_stats_validators() ++
     setup_services_validators() ++
+    menelaus_web_queries:cluster_init_validators() ++
     menelaus_web_node:node_encryption_validators() ++
     menelaus_web_settings:settings_web_post_validators() ++
     [menelaus_web_indexes:validate_storage_mode(indexerStorageMode, _),
