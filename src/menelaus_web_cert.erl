@@ -46,7 +46,6 @@ handle_get_trustedCAs(Req) ->
              fun (Props) ->
                  CAId = proplists:get_value(id, Props),
                  Pem = proplists:get_value(pem, Props, <<>>),
-                 Is71 = cluster_compat_mode:is_cluster_71(),
                  IsTrinity = cluster_compat_mode:is_cluster_trinity(),
                  CANodes =
                      case Extended of
@@ -64,9 +63,8 @@ handle_get_trustedCAs(Req) ->
                  jsonify_cert_props(
                    maybe_filter_cert_props(
                      Props ++
-                     [{warnings, CAWarnings}] ++
-                     [{nodes, CANodes} || Is71] ++
-                     [{client_cert_nodes, ClientCertCANodes} || IsTrinity],
+                         [{warnings, CAWarnings}, {nodes, CANodes}] ++
+                         [{client_cert_nodes, ClientCertCANodes} || IsTrinity],
                      not Extended))
              end, ns_server_cert:trusted_CAs(props)),
     menelaus_util:reply_json(Req, Json).
@@ -259,10 +257,6 @@ handle_cluster_certificate_extended(Req) ->
 
 handle_regenerate_certificate(Req) ->
     menelaus_util:assert_is_enterprise(),
-    case cluster_compat_mode:is_cluster_71() of
-        true -> ok;
-        false -> assert_n2n_encryption_is_disabled()
-    end,
     validator:handle(
       fun (Params) ->
           ForceResetCA = proplists:get_value(forceResetCACertificate,
@@ -320,8 +314,7 @@ handle_load_ca_certs(Req) ->
 
 handle_upload_cluster_ca(Req) ->
     menelaus_util:assert_is_enterprise(),
-    case (not cluster_compat_mode:is_cluster_71()) orelse
-         ns_config:read_key_fast(allow_non_local_ca_upload, false) of
+    case ns_config:read_key_fast(allow_non_local_ca_upload, false) of
         true -> ok;
         false ->
             Msg = "this behavior can be changed by means of "
@@ -336,45 +329,22 @@ handle_upload_cluster_ca(Req) ->
         PemEncodedCA ->
             menelaus_util:survive_web_server_restart(
               fun () ->
-                  case cluster_compat_mode:is_cluster_71() of
-                      true ->
-                          AddOpts = [{single_cert, true},
-                                     {extra_props, [{origin, upload_api}]}],
-                          case ns_server_cert:add_CAs(uploaded, PemEncodedCA,
-                                                      AddOpts) of
-                              {ok, []} ->
-                                  reply_error(Req, already_in_use);
-                              {ok, [Props]} ->
-                                  ns_audit:upload_cluster_ca(
-                                    Req,
-                                    proplists:get_value(subject, Props),
-                                    proplists:get_value(not_after, Props)),
-                                  handle_cluster_certificate_extended(Req);
-                              {error, Error} ->
-                                  reply_error(Req, Error)
-                          end;
-                      false ->
-                          assert_n2n_encryption_is_disabled(),
-                          case ns_server_cert:set_cluster_ca(PemEncodedCA) of
-                              {ok, Props} ->
-                                  ns_audit:upload_cluster_ca(
-                                    Req,
-                                    proplists:get_value(subject, Props),
-                                    proplists:get_value(expires, Props)),
-                                  handle_cluster_certificate_extended(Req);
-                              {error, Error} ->
-                                  reply_error(Req, Error)
-                          end
-                  end
+                      AddOpts = [{single_cert, true},
+                                 {extra_props, [{origin, upload_api}]}],
+                      case ns_server_cert:add_CAs(uploaded, PemEncodedCA,
+                                                  AddOpts) of
+                          {ok, []} ->
+                              reply_error(Req, already_in_use);
+                          {ok, [Props]} ->
+                              ns_audit:upload_cluster_ca(
+                                Req,
+                                proplists:get_value(subject, Props),
+                                proplists:get_value(not_after, Props)),
+                              handle_cluster_certificate_extended(Req);
+                          {error, Error} ->
+                              reply_error(Req, Error)
+                      end
               end)
-    end.
-
-assert_n2n_encryption_is_disabled() ->
-    case misc:is_cluster_encryption_fully_disabled() of
-        true -> ok;
-        false ->
-            menelaus_util:web_exception(
-              400, "Operation requires node-to-node encryption to be disabled")
     end.
 
 handle_reload_certificate(Type, Req) when Type == node_cert;

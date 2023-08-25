@@ -1608,15 +1608,6 @@ is_n2n_client_cert_verification_enabled(Config) ->
 
     lists:any(IsEnabled, ns_node_disco:nodes_wanted()).
 
-%% This function is not the same as (not is_cluster_encryption_fully_enabled())
-%% because the cluster encryption might be in one of 3 states: enabled, disabled
-%% and mixed. 'Mixed' means it's enabled for some nodes, but not for all of them
--spec is_cluster_encryption_fully_disabled() -> true | false.
-is_cluster_encryption_fully_disabled() ->
-    Cfg = ns_config:latest(),
-    [] =:= [N || N <- ns_node_disco:nodes_wanted(),
-                 misc:is_node_encryption_enabled(Cfg, N)].
-
 %% get_cluster_encryption_level is internal, it's to avoid unnecessary restarts
 %% of TLS for services when we add new nodes as there is temporary blip in
 %% is_cluster_encryption_fully_enabled(true -> false -> true) due to the config
