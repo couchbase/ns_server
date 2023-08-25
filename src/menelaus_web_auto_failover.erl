@@ -71,12 +71,7 @@ default_config(?MIN_SUPPORTED_VERSION, IsEnterprise) ->
        {?CAN_ABORT_REBALANCE_CONFIG_KEY, IsEnterprise}]}].
 
 max_events_allowed() ->
-    case cluster_compat_mode:is_cluster_71() of
-        true ->
-            100;
-        false ->
-            3
-    end.
+    100.
 
 config_upgrade_to_trinity(Config) ->
     [{set, auto_failover_cfg,
@@ -202,7 +197,6 @@ settings_extras_validators() ->
         true ->
             maxcount_validators() ++
             disk_issues_validators() ++
-            server_group_validators() ++
             can_abort_rebalance_validators() ++
             preserve_durability_majority_validators();
         false ->
@@ -226,14 +220,6 @@ disk_issues_validators() ->
      validator:integer(KeyTimePeriod, ?MIN_DATA_DISK_ISSUES_TIMEPERIOD,
                        ?MAX_DATA_DISK_ISSUES_TIMEPERIOD, _),
      validate_enabled_param(KeyEnabled, KeyTimePeriod, _)].
-
-server_group_validators() ->
-    case cluster_compat_mode:is_cluster_71() of
-        false ->
-            [validator:boolean(failoverServerGroup, _)];
-        true ->
-            []
-    end.
 
 preserve_durability_majority_validators() ->
     case cluster_compat_mode:is_cluster_72() of
@@ -273,8 +259,7 @@ process_boolean_extra(Props, Name, ConfigKey, Extras) ->
     end.
 
 process_extras(Props, Config) ->
-    BoolParams = [{failoverServerGroup, ?FAILOVER_SERVER_GROUP_CONFIG_KEY},
-                  {canAbortRebalance, ?CAN_ABORT_REBALANCE_CONFIG_KEY},
+    BoolParams = [{canAbortRebalance, ?CAN_ABORT_REBALANCE_CONFIG_KEY},
                   {disableMaxCount, ?DISABLE_MAX_COUNT_CONFIG_KEY},
                   {failoverPreserveDurabilityMajority,
                    ?FAILOVER_PRESERVE_DURABILITY_MAJORITY_CONFIG_KEY}],
@@ -316,10 +301,6 @@ get_extra_settings(Config) ->
                [{canAbortRebalance,
                  proplists:get_value(
                    ?CAN_ABORT_REBALANCE_CONFIG_KEY, Config)}],
-               [{failoverServerGroup,
-                 proplists:get_value(?FAILOVER_SERVER_GROUP_CONFIG_KEY,
-                                     Config)} ||
-                   not cluster_compat_mode:is_cluster_71()],
                [{failoverPreserveDurabilityMajority,
                  proplists:get_value(
                      ?FAILOVER_PRESERVE_DURABILITY_MAJORITY_CONFIG_KEY,
@@ -335,9 +316,7 @@ disable_extras(Config) ->
             {_, CurrTP} = get_failover_on_disk_issues(Config),
             lists:flatten(
               [disable_failover_on_disk_issues(CurrTP),
-               [{?CAN_ABORT_REBALANCE_CONFIG_KEY, false}],
-               [{?FAILOVER_SERVER_GROUP_CONFIG_KEY, false} ||
-                   not cluster_compat_mode:is_cluster_71()]]);
+               [{?CAN_ABORT_REBALANCE_CONFIG_KEY, false}]]);
         false ->
             []
     end.

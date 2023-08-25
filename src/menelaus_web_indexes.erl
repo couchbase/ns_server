@@ -93,8 +93,7 @@ settings_post_validators() ->
             false ->
                 []
         end ++
-        case cluster_compat_mode:is_cluster_71() andalso
-             cluster_compat_mode:is_enterprise() of
+        case cluster_compat_mode:is_enterprise() of
             true ->
                 [validator:boolean(enablePageBloomFilter, _)];
             false ->

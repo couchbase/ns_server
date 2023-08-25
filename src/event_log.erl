@@ -252,28 +252,22 @@ add_log(Event) ->
 %% convert the Event Log into a JSON blob via ejson:encode/1.
 
 add_log(Event, Extras) ->
-    %% Event logs are enabled only when all the nodes are at 7.1.0.
-    case cluster_compat_mode:is_cluster_71() of
-        true ->
-            Timestamp = misc:timestamp_iso8601(erlang:timestamp(), utc),
-            Id = misc:uuid_v4(),
-            Log = lists:flatten([jsonify(timestamp, Timestamp),
-                                 build_mandatory_attributes(Event),
-                                 build_otp_nodename(),
-                                 [{uuid, Id}],
-                                 build_extra_attributes(Extras)]),
+    Timestamp = misc:timestamp_iso8601(erlang:timestamp(), utc),
+    Id = misc:uuid_v4(),
+    Log = lists:flatten([jsonify(timestamp, Timestamp),
+                         build_mandatory_attributes(Event),
+                         build_otp_nodename(),
+                         [{uuid, Id}],
+                         build_extra_attributes(Extras)]),
 
-            %% Make sure the Log is a valid JSON term as expected
-            %% by ejson:encode/1.
-            try ejson:encode({Log}) of
-                _ -> event_log_server:log(Timestamp, Id, Log)
-            catch
-                T:E:S ->
-                    ?log_error("Event JSON encoding error - ~p~n"
-                               "Event - ~p~n", [{T, E, S}, Log])
-            end;
-        false ->
-            ok
+    %% Make sure the Log is a valid JSON term as expected
+    %% by ejson:encode/1.
+    try ejson:encode({Log}) of
+        _ -> event_log_server:log(Timestamp, Id, Log)
+    catch
+        T:E:S ->
+            ?log_error("Event JSON encoding error - ~p~n"
+                       "Event - ~p~n", [{T, E, S}, Log])
     end.
 
 log(Event) ->

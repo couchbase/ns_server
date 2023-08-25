@@ -1265,15 +1265,10 @@ do_add_node_engaged_inner(ChronicleInfo, {Scheme, Hostname, Port},
                 base64:encode(term_to_binary(ChronicleInfo))} ||
                ChronicleInfo =/= undefined]},
 
-    %% Making sure peer verification is enabled even when this node uses
-    %% self-signed certs (starting from 7.1)
-    GeneratedCerts = ns_server_cert:this_node_uses_self_generated_certs(
-                       ns_config:latest()),
     Options = [{connect_options, [misc:get_net_family()]},
                {timeout, ?COMPLETE_TIMEOUT},
                {connect_timeout, ?COMPLETE_TIMEOUT},
-               {server_verification, cluster_compat_mode:is_cluster_71() orelse
-                                     (not GeneratedCerts)}],
+               {server_verification, true}],
 
     case post_json_to_joinee([Scheme, Hostname, Port, "/completeJoin"],
                               HiddenAuth, Options, Struct) of

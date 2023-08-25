@@ -310,8 +310,7 @@ build_bucket_capabilities(BucketConfig) ->
                      {couchapi, ns_bucket:can_have_views(BucketConfig)},
                      {'subdoc.ReplaceBodyWithXattr', true},
                      {'subdoc.DocumentMacroSupport', true},
-                     {'subdoc.ReviveDocument',
-                      cluster_compat_mode:is_cluster_71()},
+                     {'subdoc.ReviveDocument', true},
                      {'nonDedupedHistory',
                       cluster_compat_mode:is_cluster_72() and
                       cluster_compat_mode:is_enterprise() and

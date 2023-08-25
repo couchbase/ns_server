@@ -756,10 +756,6 @@ handle_info(cert_and_pkey_changed, #state{} = State) ->
     misc:flush(cert_and_pkey_changed),
     maybe_generate_node_certs(),
     maybe_generate_client_certs(),
-    case cluster_compat_mode:is_cluster_71() of
-        true -> false;
-        false -> maybe_store_ca_certs()
-    end,
     {noreply, read_marker_and_reload_ssl(State)};
 
 handle_info(afamily_requirement_changed,

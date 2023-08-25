@@ -435,10 +435,6 @@ get_cluster_encryption(Level) ->
 services_with_security_settings() ->
     [kv, fts, index, eventing, n1ql, cbas, backup, ns_server].
 
-is_allowed_on_cluster([event_logs_limit]) ->
-    cluster_compat_mode:is_cluster_71();
-is_allowed_on_cluster([magma_min_memory_quota]) ->
-    cluster_compat_mode:is_cluster_71();
 is_allowed_on_cluster([password_hash_alg]) ->
     cluster_compat_mode:is_cluster_trinity();
 is_allowed_on_cluster([scram_sha1_enabled]) ->

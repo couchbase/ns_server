@@ -531,19 +531,9 @@ merge_blob(Blob) ->
     ns_config_rep_merger ! {merge_compressed, Blob}.
 
 update_nodes(State) ->
-    case cluster_compat_mode:is_cluster_71() of
-        true ->
-            {ok, {Nodes, Rev}} = chronicle_kv:get(kv, nodes_wanted),
-            State#state{nodes = Nodes, nodes_rev = Rev};
-        false ->
-            State#state{nodes = ns_node_disco:nodes_wanted(),
-                        nodes_rev = undefined}
-    end.
+    {ok, {Nodes, Rev}} = chronicle_kv:get(kv, nodes_wanted),
+    State#state{nodes = Nodes, nodes_rev = Rev}.
 
-accept_merge(_Node, _OtherRev, #state{nodes_rev = undefined}) ->
-    %% This node/process has not switched to 7.1 yet. Accept all incoming
-    %% merge requests.
-    true;
 accept_merge(Node, OtherRev,
              #state{nodes = Nodes, nodes_rev = OurRev}) ->
     case chronicle:compare_revisions(OtherRev, OurRev) of
@@ -585,17 +575,11 @@ accept_merge(Node, OtherRev,
 
 maybe_force_pull(#state{nodes_rev = NewRev} = NewState,
                  #state{nodes_rev = OldRev}) ->
-    case NewRev =:= undefined orelse OldRev =:= undefined of
-        true ->
-            %% Still in pre-7.1 compat mode. Nothing to be done.
-            ok;
-        false ->
-            case chronicle:compare_revisions(NewRev, OldRev) of
-                incompatible ->
-                    force_pull(NewState);
-                _ ->
-                    ok
-            end
+    case chronicle:compare_revisions(NewRev, OldRev) of
+        incompatible ->
+            force_pull(NewState);
+        _ ->
+            ok
     end.
 
 force_pull(State) ->

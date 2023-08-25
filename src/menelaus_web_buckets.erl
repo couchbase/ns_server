@@ -69,23 +69,6 @@
 
 -define(MAX_BUCKET_NAME_LEN, 100).
 
-may_expose_bucket_auth(Name, Req) ->
-    case menelaus_auth:is_UI_req(Req) of
-        false ->
-            case cluster_compat_mode:is_cluster_71() of
-                false ->
-                    %% The bucket password permission was removed in 7.1
-                    %% so would only come into play when running mixed versions
-                    %% with pre-7.1 nodes.
-                    menelaus_auth:has_permission({[{bucket, Name}, password],
-                                                  read}, Req);
-                true ->
-                    false
-            end;
-        true ->
-            false
-    end.
-
 get_info_level(Req) ->
     case proplists:get_value("basic_stats", mochiweb_request:parse_qs(Req)) of
         undefined ->
@@ -252,11 +235,10 @@ build_buckets_info(Req, Buckets, Ctx, InfoLevel) ->
     SkipMap = InfoLevel =/= streaming andalso
         proplists:get_value(
           "skipMap", mochiweb_request:parse_qs(Req)) =:= "true",
-    [build_bucket_info(BucketName, Ctx, InfoLevel,
-                      may_expose_bucket_auth(BucketName, Req), SkipMap) ||
+    [build_bucket_info(BucketName, Ctx, InfoLevel, SkipMap) ||
         BucketName <- Buckets].
 
-build_bucket_info(Id, Ctx, InfoLevel, MayExposeAuth, SkipMap) ->
+build_bucket_info(Id, Ctx, InfoLevel, SkipMap) ->
     Snapshot = menelaus_web_node:get_snapshot(Ctx),
     {ok, BucketConfig} = ns_bucket:get_bucket(Id, Snapshot),
     BucketUUID = ns_bucket:uuid(Id, Snapshot),
@@ -278,7 +260,10 @@ build_bucket_info(Id, Ctx, InfoLevel, MayExposeAuth, SkipMap) ->
                                                "Directory"])},
            {nodeStatsListURI,
             bucket_info_cache:build_pools_uri(["buckets", Id, "nodes"])}]}},
-        build_authType(BucketConfig),
+        %% Needed by XDCR on versions prior to 7.0. This must remain
+        %% until there are no supported pre-7.0 versions that can
+        %% replicate to us
+        {authType, sasl},
         build_auto_compaction_info(BucketConfig),
         build_purge_interval_info(BucketConfig),
         build_replica_index(BucketConfig),
@@ -287,8 +272,7 @@ build_bucket_info(Id, Ctx, InfoLevel, MayExposeAuth, SkipMap) ->
         build_storage_limits(BucketConfig),
         build_throttle_limits(BucketConfig),
         build_bucket_priority(BucketConfig),
-        build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx),
-        [build_sasl_password() || MayExposeAuth]])}.
+        build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx)])}.
 
 get_internal_default(Key, Default) ->
     ns_config:read_key_fast(Key, Default).
@@ -319,17 +303,6 @@ build_throttle_limits(BucketConfig) ->
     build_limits(BucketConfig, enable_throttle_limits,
                  fun menelaus_web_settings:get_throttle_limit_attributes/0).
 
-build_authType(BucketConfig) ->
-    case cluster_compat_mode:is_cluster_71() of
-        false ->
-            [{authType, misc:expect_prop_value(auth_type, BucketConfig)}];
-        true ->
-            %% Needed by XDCR on versions prior to 7.0. This must remain
-            %% until there are no supported pre-7.0 versions that can
-            %% replicate to us.
-            [{authType, sasl}]
-    end.
-
 build_bucket_placer_params(BucketConfig) ->
     case ns_bucket:get_width(BucketConfig) of
         undefined ->
@@ -344,14 +317,6 @@ build_hibernation_state(BucketConfig) ->
             [];
         State ->
             {hibernationState, State}
-    end.
-
-build_sasl_password() ->
-    case cluster_compat_mode:is_cluster_71() of
-        true ->
-            [];
-        false ->
-            {saslPassword, <<>>}
     end.
 
 build_replica_index(BucketConfig) ->
@@ -3522,8 +3487,6 @@ basic_bucket_params_screening_test() ->
 
 basic_parse_validate_bucket_auto_compaction_settings_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, is_cluster_71,
-                fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_trinity,
                 fun () -> true end),
     meck:new(ns_config, [passthrough]),

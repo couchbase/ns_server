@@ -714,8 +714,7 @@ failover_warnings(Snapshot) ->
                  end,
 
     Warnings = [S || S <- [BaseSafety, ExtraSafety], S =/= ok],
-    case cluster_compat_mode:is_cluster_71() andalso
-        not racks_balanced(KvGroups) of
+    case not racks_balanced(KvGroups) of
         true ->
             [unbalancedServerGroups | Warnings];
         false ->
@@ -945,20 +944,10 @@ new_bucket_default_params(memcached) ->
 cleanup_bucket_props(Props) ->
     lists:keydelete(moxi_port, 1, Props).
 
-add_auth_type(Props) ->
-    case cluster_compat_mode:is_cluster_71() of
-        true ->
-            Props;
-        false ->
-            %% Required property of older versions
-            [{auth_type, sasl} | Props]
-    end.
-
 create_bucket(BucketType, BucketName, NewConfig) ->
-    MergedConfig0 =
+    MergedConfig =
         misc:update_proplist(new_bucket_default_params(BucketType),
                              NewConfig),
-    MergedConfig = add_auth_type(MergedConfig0),
     BucketUUID = couch_uuids:random(),
     Manifest = collections:default_manifest(MergedConfig),
     do_create_bucket(BucketName, MergedConfig, BucketUUID, Manifest),

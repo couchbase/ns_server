@@ -53,7 +53,6 @@
          note_dcp_set_vbucket_state/4,
          note_set_service_map/2,
          note_autofailover_node_state_change/4,
-         note_autofailover_server_group_state_change/4,
          note_autofailover_done/2,
          note_rebalance_stage_started/2,
          note_rebalance_stage_completed/1,
@@ -229,11 +228,6 @@ note_set_service_map(Service, Nodes) ->
 note_autofailover_node_state_change(Node, PrevState, NewState, NewCounter) ->
     submit_cast({autofailover_node_state_change, Node, PrevState, NewState,
                  NewCounter}).
-
-note_autofailover_server_group_state_change(SG, PrevState, NewState,
-                                            NewCounter) ->
-    submit_cast({autofailover_server_group_state_change, SG,
-                 PrevState, NewState, NewCounter}).
 
 note_autofailover_done(Node, Reason) ->
     submit_cast({autofailover_done, Node, Reason}).
@@ -768,15 +762,6 @@ event_to_jsons({TS, autofailover_node_state_change, Node, PrevState,
     [format_simple_plist_as_json([{type, autofailoverNodeStateChange},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {node, Node},
-                                  {prevState, PrevState},
-                                  {newState, NewState},
-                                  {newCounter, NewCounter}])];
-
-event_to_jsons({TS, autofailover_server_group_state_change, SG, PrevState,
-                NewState, NewCounter}, _Config) ->
-    [format_simple_plist_as_json([{type, autofailoverServerGroupStateChange},
-                                  {ts, misc:time_to_epoch_float(TS)},
-                                  {serverGroup, SG},
                                   {prevState, PrevState},
                                   {newState, NewState},
                                   {newCounter, NewCounter}])];
