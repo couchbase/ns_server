@@ -253,13 +253,8 @@ get_connection_name(ConsumerNode, ProducerNode, Bucket) ->
         true ->
             CName;
         false ->
-            case should_truncate_name(ConsumerNode, ProducerNode) of
-                true ->
-                    get_truncated_connection_name(
-                      CName, ConsumerNode, ProducerNode, Bucket);
-                false ->
-                    CName
-            end
+            get_truncated_connection_name(
+              CName, ConsumerNode, ProducerNode, Bucket)
     end.
 
 get_truncated_connection_name(LongName, ConsumerNode, ProducerNode, Bucket) ->
@@ -273,26 +268,6 @@ get_truncated_connection_name(LongName, ConsumerNode, ProducerNode, Bucket) ->
         ":" ++ Hash,
     true = length(CName) =< ?MAX_DCP_CONNECTION_NAME,
     CName.
-
-node_supports_truncated_names(Node) ->
-    case Node == misc:this_node() of
-        true ->
-            true;
-        false ->
-            Quirks = rebalance_quirks:get_quirks([Node], long_names),
-            not rebalance_quirks:is_enabled(
-                  dont_truncate_long_names,
-                  rebalance_quirks:get_node_quirks(Node, Quirks))
-    end.
-
-should_truncate_name(ConsumerNode, ProducerNode) ->
-    case cluster_compat_mode:is_cluster_71() of
-        true ->
-            true;
-        false ->
-            lists:all(fun node_supports_truncated_names/1,
-                      [ConsumerNode, ProducerNode])
-    end.
 
 trim_common_prefix(Consumer, Producer) ->
     %% Find the longest common prefix for the two nodes and chop
@@ -392,16 +367,7 @@ get_connection_name_test_() ->
         "123456789012:TYFMH5ZD2gPLOaLgcuA2VijsZvc=",
     {foreach,
      fun () ->
-             meck:new(cluster_compat_mode, [passthrough]),
-             meck:new(rebalance_quirks, [passthrough]),
-             meck:new(misc, [passthrough]),
-             meck:expect(cluster_compat_mode, is_cluster_71,
-                         fun () -> true end)
-     end,
-     fun (_) ->
-             meck:unload(cluster_compat_mode),
-             meck:unload(rebalance_quirks),
-             meck:unload(misc)
+             ok
      end,
      [{"Connection name fits into the maximum allowed",
        fun () ->
@@ -418,38 +384,6 @@ get_connection_name_test_() ->
                   TrimmedName,
                   get_connection_name(ConsumerNode, ProducerNode,
                                       VeryLongBucket))
-       end},
-      {"Connection name won't fit into the maximum allowed. Pre 7.1 "
-       "Against the node that supports trimming",
-       fun () ->
-               meck:expect(cluster_compat_mode, is_cluster_71,
-                           fun () -> false end),
-               meck:expect(rebalance_quirks, get_quirks,
-                           fun (_, long_names) -> [{ProducerNode, []}] end),
-               meck:expect(misc, this_node, fun () -> ConsumerNode end),
-               ?assertEqual(
-                  TrimmedName,
-                  get_connection_name(ConsumerNode, ProducerNode,
-                                      VeryLongBucket))
-       end},
-      {"Connection name won't fit into the maximum allowed, but name trimming "
-       "is not supported",
-       fun () ->
-               meck:expect(cluster_compat_mode, is_cluster_71,
-                           fun () -> false end),
-               meck:expect(rebalance_quirks, get_quirks,
-                           fun (_, long_names) ->
-                                   [{ProducerNode, [dont_truncate_long_names]}]
-                           end),
-               meck:expect(misc, this_node, fun () -> ConsumerNode end),
-               Conn = get_connection_name(ConsumerNode, ProducerNode,
-                                          VeryLongBucket),
-               ?assertEqual(
-                  "replication:ns_1@platform-couchbase-cluster-0001.platform"
-                  "-couchbase-cluster.couchbase-new-pxxxxxxx.svc->ns_1@platform"
-                  "-couchbase-cluster-0000.platform-couchbase-cluster.couchbase"
-                  "-new-pxxxxxxx.svc:com.yyyyyy.digital.ms.shoppingcart."
-                  "shoppingcart.123456789012345678901234567890", Conn)
        end},
       {"Test that the node names aren't shortened too much (note the only "
        "difference is the last character).",
