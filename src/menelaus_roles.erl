@@ -753,8 +753,7 @@ public_definitions(Version) ->
                     end, public_definitions()).
 
 public_definitions() ->
-    [{?VERSION_71, fun menelaus_old_roles:roles_pre_71/0},
-     {?VERSION_TRINITY, fun menelaus_old_roles:roles_pre_trinity/0},
+    [{?VERSION_TRINITY, fun menelaus_old_roles:roles_pre_trinity/0},
      {undefined, ?cut(roles() ++ maybe_add_developer_preview_roles()
                       ++ maybe_add_serverless_roles())}].
 
@@ -2063,7 +2062,6 @@ roles_format_test() ->
     setup_meck(),
 
     ?assert(validate_roles(roles())),
-    ?assert(validate_roles(menelaus_old_roles:roles_pre_71())),
     ?assert(validate_roles(menelaus_old_roles:roles_pre_trinity())),
 
     teardown_meck().
