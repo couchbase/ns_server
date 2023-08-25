@@ -99,7 +99,7 @@ licenses/APL2.txt.
               class="error error-form"
               [hidden]="!(samlsError | async)">
             <span >
-              {{(samlsError | async).error}}
+              {{(samlsError | async)?.error}}
             </span>
           </div>
           <div class="row flex-right">
