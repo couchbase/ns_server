@@ -238,7 +238,7 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
          {maxScopeCount, collections:get_max_supported(num_scopes)},
          {minReplicasCount, ns_bucket:get_min_replicas()},
          {autoCompactionSettings,
-          menelaus_web_autocompaction:build_global_settings(Config)},
+          menelaus_web_autocompaction:build_global_settings()},
          {tasks, {[{uri, TasksURI}]}},
          {counters, {ns_cluster:counters()}},
          {indexStatusURI, <<"/indexStatus?v=", IndexesVersion/binary>>},

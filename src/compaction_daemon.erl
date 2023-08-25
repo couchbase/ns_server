@@ -19,7 +19,7 @@
          inhibit_view_compaction/2, uninhibit_view_compaction/2]).
 
 %% Misc
--export([get_autocompaction_settings/1,
+-export([get_autocompaction_settings/0,
          set_autocompaction_settings/1,
          global_magma_frag_percent/0]).
 
@@ -127,8 +127,7 @@ get_latest_vclock_unix_timestamp(VClock) ->
     end.
 
 global_magma_frag_percent() ->
-    Config = ns_config:latest(),
-    GlobalSettings = get_autocompaction_settings(Config),
+    GlobalSettings = get_autocompaction_settings(),
     %% The default value is needed as changing a different autocompaction
     %% setting zaps all the others (tracked by MB-48767).
     proplists:get_value(magma_fragmentation_percentage, GlobalSettings,
@@ -164,34 +163,15 @@ uninhibit_view_compaction(Bucket, Ref) ->
                     {uninhibit_view_compaction, list_to_binary(Bucket), Ref},
                     infinity).
 
-get_autocompaction_settings(Config) ->
-    case cluster_compat_mode:is_cluster_71() of
-        true ->
-            get_autocompaction_from_chronicle();
-        false ->
-            get_autocompaction_from_ns_config(Config)
-    end.
-
-get_autocompaction_from_chronicle() ->
+get_autocompaction_settings() ->
     case chronicle_kv:get(kv, autocompaction) of
         {ok, {Settings, _}} -> Settings;
         {error, not_found} -> []
     end.
 
-get_autocompaction_from_ns_config(Config) ->
-    case ns_config:search(Config, autocompaction) of
-        {value, Settings} -> Settings;
-        false -> []
-    end.
-
 set_autocompaction_settings(Settings) ->
-    case cluster_compat_mode:is_cluster_71() of
-        true ->
-            {ok, _} = chronicle_kv:set(kv, autocompaction, Settings),
-            ok;
-        false ->
-            ns_config:set(autocompaction, Settings)
-    end.
+    {ok, _} = chronicle_kv:set(kv, autocompaction, Settings),
+    ok.
 
 %% gen_server callbacks
 init([]) ->
@@ -1165,8 +1145,8 @@ compaction_daemon_config(Config) ->
     Props = ns_config:search(Config, {node, node(), compaction_daemon}, []),
     daemon_config_to_record(Props).
 
-compaction_config_props(Config, BucketName) ->
-    Global = get_autocompaction_settings(Config),
+compaction_config_props(BucketName) ->
+    Global = get_autocompaction_settings(),
     BucketConfig = get_bucket(BucketName),
     PerBucket = ns_bucket:node_autocompaction_settings(BucketConfig),
 
@@ -1179,7 +1159,7 @@ compaction_config(BucketName) ->
     compaction_config(ns_config:get(), BucketName).
 
 compaction_config(Config, BucketName) ->
-    ConfigProps = compaction_config_props(Config, BucketName),
+    ConfigProps = compaction_config_props(BucketName),
     DaemonConfig = compaction_daemon_config(Config),
     ConfigRecord = config_to_record(ConfigProps, DaemonConfig),
 

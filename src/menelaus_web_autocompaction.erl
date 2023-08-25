@@ -22,7 +22,7 @@
 -export([handle_get_global_settings/1,
          handle_set_global_settings/1,
          build_bucket_settings/2,
-         build_global_settings/1,
+         build_global_settings/0,
          parse_validate_purge_interval/2,
          parse_validate_settings/2]).
 
@@ -33,11 +33,11 @@
 
 
 handle_get_global_settings(Req) ->
-    JSON = [{autoCompactionSettings, build_global_settings(ns_config:latest())},
+    JSON = [{autoCompactionSettings, build_global_settings()},
             {purgeInterval, compaction_api:get_purge_interval(global)}],
     reply_json(Req, {JSON}, 200).
 
-build_global_settings(Config) ->
+build_global_settings() ->
     IndexCompaction = index_settings_manager:get(compaction),
     true = (IndexCompaction =/= undefined),
     {_, Fragmentation} = lists:keyfind(fragmentation, 1, IndexCompaction),
@@ -58,7 +58,7 @@ build_global_settings(Config) ->
          {indexFragmentationThreshold,
           {[{percentage, Fragmentation}]}}],
 
-    case compaction_daemon:get_autocompaction_settings(Config) of
+    case compaction_daemon:get_autocompaction_settings() of
         [] ->
             do_build_settings([], IndexSettings, global);
         ACSettings ->
@@ -332,29 +332,17 @@ do_parse_validate_purge_interval(Params, LowerLimit) ->
     end.
 
 parse_validate_magma_fragmentation_percentage(Params) ->
-    case cluster_compat_mode:is_cluster_71() of
-        true ->
-            Fun = mk_number_field_validator(10, 100, Params),
-            case Fun({"magmaFragmentationPercentage", magma_fragmentation_percentage,
-                      "magma fragmentation percentage"}) of
-                [{error, Field, Msg}]->
-                    [{error, iolist_to_binary(Field), Msg}];
-                RV ->
-                    case RV of
-                        [{ok, magma_fragmentation_percentage, FragPercent}] ->
-                            [{magma_fragmentation_percentage, FragPercent}];
-                        [] ->
-                            []
-                    end
-            end;
-        false ->
-            case proplists:get_value("magmaFragmentationPercentage", Params) of
-                undefined ->
-                    [];
-                _ ->
-                    [{error, "magmaFragmentationPercentage",
-                      <<"Magma Fragmentation Percentage is not allowed until "
-                        "entire cluster is upgraded to 7.1">>}]
+    Fun = mk_number_field_validator(10, 100, Params),
+    case Fun({"magmaFragmentationPercentage", magma_fragmentation_percentage,
+              "magma fragmentation percentage"}) of
+        [{error, Field, Msg}]->
+            [{error, iolist_to_binary(Field), Msg}];
+        RV ->
+            case RV of
+                [{ok, magma_fragmentation_percentage, FragPercent}] ->
+                    [{magma_fragmentation_percentage, FragPercent}];
+                [] ->
+                    []
             end
     end.
 
@@ -379,7 +367,7 @@ do_parse_validate_settings(Params, _ExpectIndex, magma) ->
 %% Non-magma bucket or global settings
 do_parse_validate_settings(Params, ExpectIndex, not_magma) ->
     GlobalSettings =
-        compaction_daemon:get_autocompaction_settings(ns_config:latest()),
+        compaction_daemon:get_autocompaction_settings(),
     {GDBFragPct, GDBFragSz} =
         proplists:get_value(database_fragmentation_threshold, GlobalSettings),
     {GViewFragPct, GViewFragSz} =
@@ -490,39 +478,35 @@ do_parse_validate_settings(Params, ExpectIndex, not_magma) ->
 
 
 -ifdef(TEST).
-setup_meck() ->
-    meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, is_cluster_71,
-                fun () -> true end),
-    meck:new(ns_config, [passthrough]),
-    meck:expect(ns_config, search,
-                fun (_, _) -> {value,
-                               [{database_fragmentation_threshold,
-                                 {30, undefined}},
-                                {view_fragmentation_threshold,
-                                 {30, undefined}}]}
-                end),
-    meck:new(chronicle_kv, [passthrough]),
-    meck:expect(chronicle_kv, get,
-                fun (_, _) ->
-                        {ok,
-                         {[{database_fragmentation_threshold,
-                            {global_database_fragmentation_percentage,
-                             undefined}},
-                           {view_fragmentation_threshold,
-                            {global_view_fragmentation_percentage, undefined}},
-                           {magma_fragmentation_percentage,
-                            global_magma_fragmentation_percentage}],
-                          {<<"f663189bff34bd2523ee5ff25480d845">>, 4}}}
-                end).
+basic_test_() ->
+    {foreach,
+     fun () ->
+             meck:new(chronicle_kv, [passthrough]),
+             meck:expect(
+               chronicle_kv, get,
+               fun (_, _) ->
+                       {ok,
+                        {[{database_fragmentation_threshold,
+                           {global_database_fragmentation_percentage,
+                            undefined}},
+                          {view_fragmentation_threshold,
+                           {global_view_fragmentation_percentage, undefined}},
+                          {magma_fragmentation_percentage,
+                           global_magma_fragmentation_percentage}],
+                         {<<"f663189bff34bd2523ee5ff25480d845">>, 4}}}
+               end)
+     end,
+     fun (_) ->
+             meck:unload(chronicle_kv)
+     end,
+     [fun basic_parse_validate_settings_t/0,
+      fun extra_field_parse_validate_settings_t/0,
+      fun compare_from_and_to_time_validator_t/0,
+      fun incomplete_settings_t/0,
+      fun use_global_default_t/0,
+      fun reset_fragmentation_size_t/0]}.
 
-teardown_meck() ->
-    meck:unload(cluster_compat_mode),
-    meck:unload(ns_config),
-    meck:unload(chronicle_kv).
-
-basic_parse_validate_settings_test() ->
-    setup_meck(),
+basic_parse_validate_settings_t() ->
     Settings = [{"databaseFragmentationThreshold[percentage]", "10"},
                 {"viewFragmentationThreshold[percentage]", "20"},
                 {"indexFragmentationThreshold[size]", "42"},
@@ -547,28 +531,9 @@ basic_parse_validate_settings_test() ->
 
     {ok, Stuff0, []} = parse_validate_settings(Settings, false),
     Stuff1 = lists:sort(Stuff0),
-    ?assertEqual(Expected, Stuff1),
+    ?assertEqual(Expected, Stuff1).
 
-    meck:expect(cluster_compat_mode, is_cluster_71,
-                fun () -> false end),
-    Stuff2 = parse_validate_settings(Settings, false),
-    ?assertEqual(
-       {errors,[{<<"magmaFragmentationPercentage">>,
-         <<"Magma Fragmentation Percentage is not allowed until "
-           "entire cluster is upgraded to 7.1">>}]},
-       Stuff2),
-
-    %% Show that magmaFragmentation isn't required
-    Settings3 = lists:keydelete("magmaFragmentationPercentage", 1, Settings),
-    Expected3 = lists:keydelete(magma_fragmentation_percentage, 1, Expected),
-    {ok, Stuff3, []} = parse_validate_settings(Settings3, false),
-    ?assertEqual(lists:sort(Expected3), lists:sort(Stuff3)),
-
-    teardown_meck(),
-    ok.
-
-extra_field_parse_validate_settings_test() ->
-    setup_meck(),
+extra_field_parse_validate_settings_t() ->
     {errors, Stuff0} =
         parse_validate_settings([{"databaseFragmentationThreshold", "10"},
                                  {"viewFragmentationThreshold", "20"},
@@ -595,12 +560,9 @@ extra_field_parse_validate_settings_test() ->
                                  {"allowedTimePeriod[abortOutside]", "false"}],
                                 false),
     ?assertEqual([{<<"_">>, <<"Got unsupported fields: databaseFragmentationThreshold">>}],
-                 Stuff1),
-    teardown_meck(),
-    ok.
+                 Stuff1).
 
-compare_from_and_to_time_validator_test() ->
-    setup_meck(),
+compare_from_and_to_time_validator_t() ->
     {errors, Stuff0} =
         parse_validate_settings([{"parallelDBAndViewCompaction", "false"},
                                  {"allowedTimePeriod[fromHour]", "1"},
@@ -611,12 +573,9 @@ compare_from_and_to_time_validator_test() ->
                                 false),
     ?assertEqual([{<<"allowedTimePeriod">>,
                    <<"Start time must not be the same as end time">>}],
-                 Stuff0),
-    teardown_meck(),
-    ok.
+                 Stuff0).
 
-incomplete_settings_test() ->
-    setup_meck(),
+incomplete_settings_t() ->
     {errors, Stuff0} =
         parse_validate_settings([{"parallelDBAndViewCompaction", "false"},
                                  {"allowedTimePeriod[fromHour]", "0"}],
@@ -634,12 +593,9 @@ incomplete_settings_test() ->
     ?assertEqual([{<<"indexCircularCompaction[interval]">>,
                    <<"Must specify all of the following: fromHour, fromMinute, "
                      "toHour, toMinute, abortOutside">>}],
-                 Stuff1),
-    teardown_meck(),
-    ok.
+                 Stuff1).
 
-use_global_default_test() ->
-    setup_meck(),
+use_global_default_t() ->
     %% Setting database percentage only; view should use global value
     {ok, Result0, []} =
         parse_validate_settings([{"parallelDBAndViewCompaction", "false"},
@@ -692,13 +648,9 @@ use_global_default_test() ->
           {global_database_fragmentation_percentage,undefined}},
          {view_fragmentation_threshold,
           {global_view_fragmentation_percentage,77777}}],
-    ?assertEqual(Expected3, Result3),
-    teardown_meck(),
-    ok.
+    ?assertEqual(Expected3, Result3).
 
-reset_fragmentation_size_test() ->
-    setup_meck(),
-
+reset_fragmentation_size_t() ->
     %% Setting fragmention size to "undefined" resets the value to undefined.
     Settings = [{"databaseFragmentationThreshold[size]", "undefined"},
                 {"viewFragmentationThreshold[size]", "undefined"},
@@ -723,9 +675,6 @@ reset_fragmentation_size_test() ->
                  {database_fragmentation_threshold, {undefined, undefined}},
                  {view_fragmentation_threshold, {undefined, undefined}}],
     {ok, Stuff2, []} = parse_validate_settings(Settings2, false),
-    ?assertEqual(Expected2, Stuff2),
-
-    teardown_meck(),
-    ok.
+    ?assertEqual(Expected2, Stuff2).
 
 -endif.
