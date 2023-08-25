@@ -259,8 +259,7 @@ node_monitors(Node) ->
 supported_services(Node) ->
     Snapshot = ns_cluster_membership:get_snapshot(),
     Services =
-        [S || S <- supported_services_by_version(
-                     cluster_compat_mode:get_compat_version()),
+        [S || S <- supported_services(),
               ns_cluster_membership:should_run_service(Snapshot, S, Node)],
     %% we don't want services to trigger auto-failover to occur on an otherwise
     %% healthy kv node
@@ -271,14 +270,8 @@ supported_services(Node) ->
             Services
     end.
 
-supported_services_by_version(ClusterVersion) ->
-    [kv] ++
-        case cluster_compat_mode:is_version_71(ClusterVersion) of
-            true ->
-                [index];
-            false ->
-                []
-        end.
+supported_services() ->
+    [kv, index].
 
 get_module(Monitor) ->
     list_to_atom(atom_to_list(Monitor) ++ "_monitor").

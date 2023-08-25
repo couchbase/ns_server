@@ -1399,7 +1399,7 @@ validate_membase_bucket_params(CommonParams, Params,
          parse_validate_pitr_max_history_age(Params, IsNew, AllowPitr,
                                              IsEnterprise),
          parse_validate_storage_quota_percentage(
-           Params, BucketConfig, IsNew, Version, IsEnterprise,
+           Params, BucketConfig, IsNew, IsEnterprise,
            IsStorageModeMigration),
          parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise),
          parse_validate_bucket_priority(Params),
@@ -1677,16 +1677,14 @@ is_ephemeral(_Params, BucketConfig, false = _IsNew) ->
 %% Ideally we should store this as a new bucket type but the bucket_type is
 %% used/checked at multiple places and would need changes in all those places.
 %% Hence the above described approach.
-parse_validate_storage_mode(Params, _BucketConfig, true = _IsNew, Version,
+parse_validate_storage_mode(Params, _BucketConfig, true = _IsNew, _Version,
                             IsEnterprise, false = _IsStorageModeMigration,
                             _ = _IsServerless) ->
     case proplists:get_value("bucketType", Params, "membase") of
         "membase" ->
-            get_storage_mode_based_on_storage_backend(Params, Version,
-                                                      IsEnterprise);
+            get_storage_mode_based_on_storage_backend(Params, IsEnterprise);
         "couchbase" ->
-            get_storage_mode_based_on_storage_backend(Params, Version,
-                                                      IsEnterprise);
+            get_storage_mode_based_on_storage_backend(Params, IsEnterprise);
         "ephemeral" ->
             {ok, storage_mode, ephemeral}
     end;
@@ -1959,21 +1957,16 @@ validate_pitr_numeric_param(Value, Param, ConfigKey) ->
             value_not_in_range_error(Param, Value, Min, Max)
     end.
 
-get_storage_mode_based_on_storage_backend(Params, Version, IsEnterprise) ->
+get_storage_mode_based_on_storage_backend(Params, IsEnterprise) ->
     StorageBackend = proplists:get_value("storageBackend", Params,
                                          "couchstore"),
     do_get_storage_mode_based_on_storage_backend(
-      StorageBackend, IsEnterprise,
-      cluster_compat_mode:is_version_71(Version)).
+      StorageBackend, IsEnterprise).
 
-do_get_storage_mode_based_on_storage_backend("magma", false, _Is71) ->
+do_get_storage_mode_based_on_storage_backend("magma", false) ->
     {error, storageBackend,
      <<"Magma is supported in enterprise edition only">>};
-do_get_storage_mode_based_on_storage_backend("magma", true, false) ->
-    {error, storageBackend,
-     <<"Not allowed until entire cluster is upgraded to 7.1">>};
-do_get_storage_mode_based_on_storage_backend(StorageBackend, _IsEnterprise,
-                                             _Is71) ->
+do_get_storage_mode_based_on_storage_backend(StorageBackend, _IsEnterprise) ->
     do_get_storage_mode_based_on_storage_backend(StorageBackend).
 
 do_get_storage_mode_based_on_storage_backend(StorageBackend) ->
@@ -2307,56 +2300,42 @@ is_magma(Params, _BucketCfg, false = _IsNew, true = _IsStorageModeMigration) ->
 is_magma(_Params, BucketCfg, false = _IsNew, false = _IsStorageModeMigration) ->
     ns_bucket:storage_mode(BucketCfg) =:= magma.
 
-parse_validate_storage_quota_percentage(Params, BucketConfig, IsNew, Version,
+parse_validate_storage_quota_percentage(Params, BucketConfig, IsNew,
                                         IsEnterprise, IsStorageModeMigration) ->
     Percent = proplists:get_value("storageQuotaPercentage", Params),
-    IsCompat = cluster_compat_mode:is_version_71(Version),
     IsMagma = is_magma(Params, BucketConfig, IsNew, IsStorageModeMigration),
-    parse_validate_storage_quota_percentage_inner(IsEnterprise, IsCompat,
+    parse_validate_storage_quota_percentage_inner(IsEnterprise,
                                                   Percent, BucketConfig, IsNew,
                                                   IsMagma,
                                                   IsStorageModeMigration).
 
-parse_validate_storage_quota_percentage_inner(false = _IsEnterprise, _IsCompat,
+parse_validate_storage_quota_percentage_inner(false = _IsEnterprise,
                                               undefined = _Percent, _BucketCfg,
                                               _IsNew, _IsMagma,
                                               _IsStorageModeMigration) ->
     %% Community edition but percent/ratio wasn't specified
     ignore;
-parse_validate_storage_quota_percentage_inner(_IsEnterprise, false = _IsCompat,
-                                              undefined = _Percent, _BucketCfg,
-                                              _IsNew, _IsMagma,
-                                              _IsStorageModeMigration) ->
-    %% Not cluster compatible but percent/ratio wasn't specified
-    ignore;
-parse_validate_storage_quota_percentage_inner(false = _IsEnterprise, _IsCompat,
+parse_validate_storage_quota_percentage_inner(false = _IsEnterprise,
                                            _Percent, _BucketCfg, _IsNew,
                                            _IsMagma, _IsStorageModeMigration) ->
     {error, storageQuotaPercentage,
      <<"Storage Quota Percentage is supported in enterprise edition only">>};
-parse_validate_storage_quota_percentage_inner(_IsEnterprise, false = _IsCompat,
-                                              _Percent, _BucketCfg, _IsNew,
-                                              _IsMagma,
-                                              _IsStorageModeMigration) ->
-    {error, storageQuotaPercentage,
-     <<"Storage Quota Percentage cannot be set until the cluster is fully "
-       "7.1">>};
 parse_validate_storage_quota_percentage_inner(true = _IsEnterprise,
-                                              true = _IsCompat, undefined,
+                                              undefined,
                                               _BucketCfg, _IsNew,
                                               false = _IsMagma,
                                               _IsStorageModeMigration) ->
     %% Not a magma bucket and percent wasn't specified
     ignore;
 parse_validate_storage_quota_percentage_inner(true = _IsEnterprise,
-                                              true = _IsCompat, _Percent,
+                                              _Percent,
                                               _BucketCfg, _IsNew,
                                               false = _IsMagma,
                                               _IsStorageModeMigration) ->
     {error, storageQuotaPercentage,
      <<"Storage Quota Percentage is only used with Magma">>};
 parse_validate_storage_quota_percentage_inner(true = _IsEnterprise,
-                                              true = _IsCompat, Percent,
+                                              Percent,
                                               BucketCfg, IsNew,
                                               true = _IsMagma,
                                               IsStorageModeMigration) ->
@@ -4504,12 +4483,12 @@ storage_mode_migration_validate_attributes_test() ->
                  {eviction_policy, full_eviction},
                  {true, value_only}},
                 {?cut(parse_validate_storage_quota_percentage(
-                        _, _, false, ?VERSION_TRINITY, true, true)),
+                        _, _, false, true, true)),
                  BaseParams ++ [{"storageQuotaPercentage", "25"}],
                  none,
                  {true, 25}},
                 {?cut(parse_validate_storage_quota_percentage(
-                        _, _, false, ?VERSION_TRINITY, true, true)),
+                        _, _, false, true, true)),
                  BaseParams,
                  none,
                  {true, ?MAGMA_STORAGE_QUOTA_PERCENTAGE}}],
