@@ -158,7 +158,9 @@ params() ->
                true ->
                    [{"maxGroupCacheSize",
                      #{cfg_key => max_group_cache_size, type =>
-                           {int, 0, 1_000_000}}}];
+                           {int, 0, 1_000_000}}},
+                    {"middleboxCompMode",
+                     #{cfg_key => middlebox_comp_mode, type => bool}}];
                false ->
                    []
            end.

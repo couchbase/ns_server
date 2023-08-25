@@ -82,6 +82,7 @@ class LdapTests(testlib.BaseTestSet):
                              'nestedGroupsMaxDepth': 10,
                              'failOnMaxDepth': False,
                              'cacheValueLifetime': 300000,
+                             'middleboxCompMode': True,
                              'serverCertValidation': True}
         assert expected_defaults == actual_defaults, \
                 f"Default settings are incorrect {actual_defaults}"
@@ -93,6 +94,7 @@ class LdapTests(testlib.BaseTestSet):
                     'bindDN': 'cn=test',
                     'bindPass': 'pass',
                     'userDNMapping': '{"query":"dc=example??one?(cn=%u)"}',
+                    'middleboxCompMode': 'false',
                     'groupsQuery': 'dc=example??one?(member=%D)'}
         expected = expected_defaults.copy()
         expected.update({'authenticationEnabled': True,
@@ -103,6 +105,7 @@ class LdapTests(testlib.BaseTestSet):
                          'bindDN': 'cn=test',
                          'bindPass': '**********',
                          'userDNMapping': {"query":"dc=example??one?(cn=%u)"},
+                         'middleboxCompMode': False,
                          'groupsQuery': 'dc=example??one?(member=%D)'})
         testlib.post_succ(cluster, '/settings/ldap', data=settings)
         actual = testlib.get_succ(cluster, '/settings/ldap').json()
@@ -128,6 +131,7 @@ class LdapTests(testlib.BaseTestSet):
                     'nestedGroupsEnabled': False,
                     'nestedGroupsMaxDepth': 10,
                     'failOnMaxDepth': True,
+                    'middleboxCompMode': True,
                     'serverCertValidation': True}
         expected = settings.copy()
         expected.update({'bindPass': '**********'})

@@ -28,6 +28,7 @@
          set_settings/1,
          replace_expressions/2,
          parse_dn/1,
+         config_upgrade_to_trinity/1,
          client_cert_auth_enabled/1]).
 
 -define(ELDAP_ERR_MSG, "Connect: ~p failed ~p~n").
@@ -65,6 +66,12 @@ ssl_options(Host, Settings) ->
                    ns_ssl_services_setup:get_supported_tls_versions(none, T)}]
         end,
 
+    MiddleboxCompat =
+        case proplists:get_value(middlebox_comp_mode, Settings) of
+            undefined -> [{middlebox_comp_mode, true}];
+            M -> [{middlebox_comp_mode, M}]
+        end,
+
     %% Remove {password, _} wrap.
     %% In case if a value in opts contains sensitive information (like
     %% a password or a private key) it might be protected by such a wrap.
@@ -76,7 +83,7 @@ ssl_options(Host, Settings) ->
                       (KV) -> KV
                   end, ExtraOptsUnprepared),
     misc:update_proplist(ClientAuthOpts ++ PeerVerificationOpts
-                         ++ MaxTlsVersion, ExtraOpts).
+                         ++ MaxTlsVersion ++ MiddleboxCompat, ExtraOpts).
 
 client_cert_auth_enabled(Settings) ->
     Encryption = proplists:get_value(encryption, Settings),
@@ -260,7 +267,7 @@ with_simple_bind(DN, Password, Settings, Fun) ->
 get_setting(Prop) ->
     proplists:get_value(Prop, build_settings()).
 
-default_settings() ->
+default_settings(Version) ->
     [{authentication_enabled, false},
      {authorization_enabled, false},
      {hosts, []},
@@ -284,24 +291,52 @@ default_settings() ->
      {server_cert_validation, true},
      {bind_method, undefined},
      {extra_tls_opts, undefined}] ++
-        case cluster_compat_mode:is_cluster_trinity() of
+        case cluster_compat_mode:is_version_trinity(Version) of
             true ->
-                [{max_group_cache_size, ?LDAP_GROUPS_CACHE_SIZE}];
+                [{max_group_cache_size, ?LDAP_GROUPS_CACHE_SIZE},
+                 {middlebox_comp_mode, true}];
             false ->
                 []
         end.
 
 build_settings() ->
+    Version = cluster_compat_mode:get_compat_version(),
     case ns_config:search(ldap_settings) of
         {value, Settings} ->
-            misc:update_proplist(default_settings(), Settings);
+            misc:update_proplist(default_settings(Version), Settings);
         false ->
-            default_settings()
+            default_settings(Version)
     end.
 
 set_settings(Settings) ->
     OldProps = ns_config:read_key_fast(ldap_settings, []),
     ns_config:set(ldap_settings, misc:update_proplist(OldProps, Settings)).
+
+config_upgrade_to_trinity(Config) ->
+    Current = ns_config:search(Config, ldap_settings, []),
+    CurrentTls = proplists:get_value(extra_tls_opts, Current, []),
+    Middlebox =
+        case CurrentTls of
+            undefined -> undefined;
+            Tls ->
+                case proplists:get_value(middlebox_comp_mode, Tls) of
+                    undefined -> undefined;
+                    Mid -> Mid
+                end
+        end,
+
+    case Middlebox of
+        M when is_boolean(M) ->
+            %% option already existed in extra_tls_opts
+            DeletedExtra = proplists:delete(extra_tls_opts, Current),
+            UpdatedTls = proplists:delete(middlebox_comp_mode, CurrentTls),
+            Ldap = [{extra_tls_opts, UpdatedTls},
+                    {middlebox_comp_mode, M} | DeletedExtra],
+            [{set, ldap_settings, Ldap}];
+        _ ->
+            %% default
+            []
+    end.
 
 parse_scope("base") -> eldap:baseObject();
 parse_scope("one") -> eldap:singleLevel();
@@ -482,6 +517,27 @@ replace([{Type, Str} | Tail], Re, ValuesPropList, Res) ->
 
 
 -ifdef(TEST).
+
+upgrade_to_trinity_test() ->
+    %% empty case
+    Config1 = [],
+    Expected1 = [],
+    ?assertEqual(Expected1, config_upgrade_to_trinity(Config1)),
+
+    %% true inside extra_tls_opts case
+    Config2 = [[{ldap_settings, [{extra_tls_opts,
+                                  [{middlebox_comp_mode, true}]}]}]],
+    Expected2 = [{set, ldap_settings, [{extra_tls_opts, []},
+                                       {middlebox_comp_mode, true}]}],
+    ?assertEqual(Expected2, config_upgrade_to_trinity(Config2)),
+
+    %% false inside extra_tls_opts case
+    Config3 = [[{ldap_settings, [{extra_tls_opts,
+                                  [{middlebox_comp_mode, false}]}]}]],
+    Expected3 = [{set, ldap_settings, [{extra_tls_opts, []},
+                                       {middlebox_comp_mode, false}]}],
+    ?assertEqual(Expected3, config_upgrade_to_trinity(Config3)).
+
 escape_test() ->
 %% Examples from RFC 4515
     ?assertEqual("Parens R Us \\28for all your parenthetical needs\\29",

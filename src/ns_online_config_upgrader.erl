@@ -86,4 +86,5 @@ upgrade(?VERSION_72, Config) ->
          analytics_settings_manager:config_upgrade_to_trinity(Config) ++
          mb_master:config_upgrade_to_trinity(Config) ++
          ns_ssl_services_setup:config_upgrade_to_trinity(Config) ++
+         ldap_util:config_upgrade_to_trinity(Config) ++
          menelaus_web_guardrails:config_upgrade_to_trinity(Config)}.
