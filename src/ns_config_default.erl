@@ -434,6 +434,10 @@ upgrade_key(Key, DefaultConfig) ->
     {value, Value} = ns_config:search([DefaultConfig], WholeKey),
     {set, WholeKey, Value}.
 
+-compile([{nowarn_unused_function, [{upgrade_sub_keys, 4},
+                                    {do_upgrade_sub_keys, 3}]}]).
+%% we use it to upgrade memcached key. it just happens that we don't
+%% need to upgrade this key in latest upgrades
 upgrade_sub_keys(Key, SubKeys, Config, DefaultConfig) ->
     WholeKey = {node, node(), Key},
     {value, DefaultVal} = ns_config:search([DefaultConfig], WholeKey),
@@ -465,12 +469,9 @@ upgrade_config_from_7_2_to_trinity(Config) ->
     DefaultConfig = default(),
     do_upgrade_config_from_7_2_to_trinity(Config, DefaultConfig).
 
-do_upgrade_config_from_7_2_to_trinity(Config, DefaultConfig) ->
+do_upgrade_config_from_7_2_to_trinity(_Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
-     upgrade_key(memcached_defaults, DefaultConfig),
-     upgrade_sub_keys(memcached_config,
-                      [{delete, enforce_tenant_limits_enabled}],
-                      Config, DefaultConfig)].
+     upgrade_key(memcached_defaults, DefaultConfig)].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
