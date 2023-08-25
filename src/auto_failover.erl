@@ -350,13 +350,6 @@ handle_info(tick, State0) ->
 
     NodeStatuses = ns_doctor:get_nodes(),
     DownNodes = fastfo_down_nodes(NonPendingNodes),
-    DownSG = case cluster_compat_mode:is_cluster_71() of
-                 true ->
-                     undefined;
-                 false ->
-                     get_down_server_group(DownNodes, Config, Snapshot,
-                                           NonPendingNodes)
-             end,
 
     State = log_down_nodes_reason(DownNodes, State1),
     CurrentlyDown = [N || {N, _, _} <- DownNodes],
@@ -370,7 +363,7 @@ handle_info(tick, State0) ->
           ns_cluster_membership:attach_node_uuids(NonPendingNodes, NodeUUIDs),
           ns_cluster_membership:attach_node_uuids(CurrentlyDown, NodeUUIDs),
           State#state.auto_failover_logic_state,
-          ServicesConfig, DownSG),
+          ServicesConfig),
     NewState = lists:foldl(
                  fun(Action, S) ->
                          process_action(Action, S, DownNodes, NodeStatuses,
@@ -565,14 +558,8 @@ trim_nodes(Nodes, #state{count = Count, max_count = Max}) ->
     lists:sublist(Nodes, Max - Count).
 
 max_nodes_error_msg(#state{max_count = Max}) ->
-    EventsStr = case cluster_compat_mode:is_cluster_71() of
-                    true ->
-                        nodes;
-                    false ->
-                        events
-                end,
-    M = io_lib:format("Maximum number of auto-failover ~p "
-                      "(~p) has been reached.", [EventsStr, Max]),
+    M = io_lib:format("Maximum number of auto-failover nodes "
+                      "(~p) has been reached.", [Max]),
     lists:flatten(M).
 
 maybe_report_max_node_reached(Nodes, ErrMsg, S) ->
@@ -854,112 +841,6 @@ is_node_down(MonitorStatuses) ->
             {true, Down}
     end.
 
-%%
-%% Requirements for server group auto-failover:
-%%  - User has enabled auto-failover of server groups.
-%%  - There are 3 or more active server groups in the cluster
-%%    at the time of the failure.
-%%      - If there are only two server groups and there is a network
-%%      partition between them, then both groups may try to fail each other
-%%      over. This requirement prevents such a scenario.
-%%  - All nodes in the server group are down.
-%%  - All down nodes belong to the same server group.
-%%      - This prevents a network partition from causing two or more
-%%      partitions of a cluster from failing each other over.
-%%  - All monitors report the down nodes are unhealthy.
-%%      - When all monitors report all nodes in the server group are
-%%        down then it is taken as an indication of a correlated failure.
-%%      - Scenario #1: Say a server group has two nodes, node1 and node2.
-%%        node1 is reported as down by KV monitor due to say memcached issues
-%%        and node2 is reported as down by ns_server monitor.
-%%        This scenario does not meet the requirement for server group
-%%        failover.
-%%      - Scenario #2: Both ns-server & KV monitor on node1 and node2
-%%        report those nodes are down. This meets the requirement for
-%%        server group failover.
-%%
-get_down_server_group([], _, _, _) ->
-    [];
-get_down_server_group([_], _, _, _) ->
-    %% Only one node is down. Skip the checks for server group failover.
-    [];
-get_down_server_group(DownNodesInfo, Config, Snapshot, NonPendingNodes) ->
-    %% TODO: Temporary. Save the failover_server_group setting in
-    %% the auto_failover gen_server state to avoid this lookup.
-    AFOConfig = get_cfg(Config),
-    case proplists:get_value(failover_server_group, AFOConfig, false) of
-        true ->
-            case length(DownNodesInfo) > (length(NonPendingNodes)/2) of
-                true ->
-                    DownNodes = [N || {N, _, _} <- DownNodesInfo],
-                    ?log_debug("Skipping checks for server group autofailover "
-                               "because majority of nodes are down. "
-                               "Down nodes:~p", [DownNodes]),
-                    [];
-                false ->
-                    get_down_server_group_inner(DownNodesInfo, Snapshot)
-            end;
-        false ->
-            []
-    end.
-
-get_down_server_group_inner(DownNodesInfo, Snapshot) ->
-    %% Do all monitors on all down nodes report them as unhealthy?
-    Pred = fun ({_, _, true}) -> true; (_) -> false end,
-    case lists:all(Pred, DownNodesInfo) of
-        true ->
-            case enough_active_server_groups(Snapshot) of
-                false ->
-                    [];
-                SGs ->
-                    DownNodes = lists:sort([N || {N, _, _} <- DownNodesInfo]),
-                    case all_nodes_down_in_same_group(SGs, DownNodes) of
-                        false ->
-                            [];
-                        DownSG ->
-                            DownSG
-                    end
-            end;
-        false ->
-            []
-    end.
-
-enough_active_server_groups(Snapshot) ->
-    ActiveSGs = active_server_groups(Snapshot),
-    case length(ActiveSGs) < ?MIN_ACTIVE_SERVER_GROUPS of
-        true ->
-            false;
-        false ->
-            ActiveSGs
-    end.
-
-active_server_groups(Snapshot) ->
-    Groups = ns_cluster_membership:server_groups(Snapshot),
-    AllSGs = [{proplists:get_value(name, SG),
-               proplists:get_value(nodes, SG)} || SG <- Groups],
-    lists:filtermap(
-      fun ({SG, Ns}) ->
-              case ns_cluster_membership:get_nodes_with_status(
-                     Snapshot, Ns, active) of
-                  [] ->
-                      false;
-                  ActiveNodes ->
-                      {true, {SG, ActiveNodes}}
-              end
-      end, AllSGs).
-
-%% All nodes in the server group are down.
-%% All down nodes belong to the same server group.
-all_nodes_down_in_same_group([], _) ->
-    false;
-all_nodes_down_in_same_group([{SG, Nodes} | Rest], DownNodes) ->
-    case lists:sort(Nodes) =:= DownNodes of
-        true ->
-            SG;
-        false ->
-            all_nodes_down_in_same_group(Rest, DownNodes)
-    end.
-
 %% @doc Save the current state in ns_config
 -spec make_state_persistent(State::#state{}) -> ok.
 make_state_persistent(State) ->
@@ -1016,9 +897,7 @@ all_services_config(Config, Snapshot) ->
                            Snapshot, Service),
               %% Is auto-failover for the service disabled?
               ServiceKey = {auto_failover_disabled, Service},
-              DV = not (cluster_compat_mode:is_cluster_71() orelse
-                        Service =/= index),
-              AutoFailoverDisabled = ns_config:search(Config, ServiceKey, DV),
+              AutoFailoverDisabled = ns_config:search(Config, ServiceKey, false),
               {Service, {{disable_auto_failover, AutoFailoverDisabled},
                          {nodes, SvcNodes}}}
       end, AllServices).
@@ -1128,7 +1007,7 @@ validate_durability_majority_preserved_for_bucket(BucketName, Map,
     end.
 
 has_safe_check(index) ->
-    cluster_compat_mode:is_cluster_71();
+    true;
 has_safe_check(_) ->
     false.
 
