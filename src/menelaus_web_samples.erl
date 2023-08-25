@@ -145,7 +145,6 @@ post_validators() ->
      validator:unsupported(_)].
 
 handle_post(Req) ->
-    menelaus_util:assert_is_71(),
     menelaus_web_rbac:assert_no_users_upgrade(),
     validator:handle(handle_post_inner(Req, _), Req, json_array,
                      post_validators()).

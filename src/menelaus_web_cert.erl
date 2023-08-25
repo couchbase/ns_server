@@ -86,7 +86,6 @@ maybe_filter_cert_props(Props, _ShouldFilter = false) ->
 
 handle_delete_trustedCA(IdStr, Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_71(),
     CurNodes = nodes(),
     try list_to_integer(IdStr) of
         Id ->
@@ -291,7 +290,6 @@ reply_error(Req, Error) ->
 
 handle_load_ca_certs(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_71(),
     Nodes = nodes(),
     menelaus_util:survive_web_server_restart(
       fun () ->
