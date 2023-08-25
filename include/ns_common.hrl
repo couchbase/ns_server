@@ -240,7 +240,6 @@
 %% passed to memcached as it will likely throw an error.
 -define(MAX_64BIT_UNSIGNED_INT, 16#FFFFFFFFFFFFFFFF).
 
--define(VERSION_65, [6, 5]).
 -define(VERSION_70, [7, 0]).
 -define(VERSION_71, [7, 1]).
 -define(VERSION_72, [7, 2]).
