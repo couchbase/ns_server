@@ -302,3 +302,32 @@ class Cluster:
     def delete_bucket(self, name, verbose=False):
         self.wait_for_rebalance(verbose=verbose)
         return testlib.ensure_deleted(self, f"/pools/default/buckets/{name}")
+
+    def get_orchestrator_node(self):
+        resp = testlib.get_succ(self, "/pools/default/terseClusterInfo")
+        orchestrator = resp.json()['orchestrator']
+        resp = testlib.get_succ(self, "/pools/nodes").json()
+        nodes = resp['nodes']
+        orchestrator_hostname = ""
+        is_serviceless = False
+        for i in range(len(resp["nodes"])):
+            if nodes[i]['otpNode'] == orchestrator:
+                assert orchestrator_hostname == ""
+                orchestrator_hostname = nodes[i]['hostname']
+                is_serviceless = (nodes[i]['services'] == [])
+        return orchestrator_hostname, is_serviceless
+
+    # Wait until one of the nodes has been selected orchestrator. This
+    # handles windows (e.g. node removal) where this might not be the case.
+    def wait_for_orchestrator(self):
+        retries = 60
+        while retries > 0:
+            orchestrator_hostname, _ = self.get_orchestrator_node()
+            if orchestrator_hostname != "":
+                for node in self.nodes:
+                    if node.hostname == orchestrator_hostname:
+                        return node
+            time.sleep(0.5)
+            retries -= 1
+
+        raise RuntimeError("orchestrator node not found")

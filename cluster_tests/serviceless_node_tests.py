@@ -89,45 +89,16 @@ class ServicelessNodeTests(testlib.BaseTestSet):
         resp = cluster.recover_node(node, recovery_type="full",
                                     do_rebalance=True, verbose=True)
 
-    # Wait until one of the nodes has been selected orchestrator. This
-    # handles windows (e.g. node removal) where this might not be the case.
-    def wait_for_orchestrator(self, cluster):
-        retries = 60
-        while retries > 0:
-            orchestrator_hostname, _ = self.get_orchestrator_node(cluster)
-            if orchestrator_hostname != "":
-                for node in cluster.nodes:
-                    if node.hostname == orchestrator_hostname:
-                        return node
-            time.sleep(0.5)
-            retries -= 1
-
-        raise RuntimeError("orchestrator node not found")
-
     def remove_orchestrator_node(self, cluster):
-        orchestrator_node = self.wait_for_orchestrator(cluster)
+        orchestrator_node = cluster.wait_for_orchestrator()
         cluster.rebalance(ejected_nodes=[orchestrator_node], wait=True,
                           verbose=True)
-
-    def get_orchestrator_node(self, cluster):
-        resp = testlib.get_succ(cluster, "/pools/default/terseClusterInfo")
-        orchestrator = resp.json()['orchestrator']
-        resp = testlib.get_succ(cluster, "/pools/nodes").json()
-        nodes = resp['nodes']
-        orchestrator_hostname = ""
-        is_serviceless = False
-        for i in range(len(resp["nodes"])):
-            if nodes[i]['otpNode'] == orchestrator:
-                assert orchestrator_hostname == ""
-                orchestrator_hostname = nodes[i]['hostname']
-                is_serviceless = (nodes[i]['services'] == [])
-        return orchestrator_hostname, is_serviceless
 
     def verify_orchestrator_node(self, cluster, must_be_serviceless_node=True):
         retries = 60
         while retries > 0:
             orchestrator_hostname, is_serviceless = \
-                self.get_orchestrator_node(cluster)
+                cluster.get_orchestrator_node()
             if orchestrator_hostname != "" and \
                is_serviceless == must_be_serviceless_node:
                 return
