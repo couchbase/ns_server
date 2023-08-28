@@ -144,6 +144,7 @@ create_bucket(BucketType, BucketName, NewConfig) ->
                            ok | {exit, {not_found, nonempty_string()}, []} |
                            {error, {need_more_space, list()}} |
                            {error, {storage_mode_migration, in_progress}} |
+                           {error, cc_versioning_already_enabled} |
                            {error, {storage_mode_migration, janitor_not_run}} |
                            rebalance_running | in_recovery |
                            in_bucket_hibernation |

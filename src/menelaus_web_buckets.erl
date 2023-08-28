@@ -22,6 +22,7 @@
 -include("bucket_hibernation.hrl").
 
 -define(DEFAULT_MAGMA_MIN_MEMORY_QUOTA, 1024).
+-define(CAS_GET_TIMEOUT, 60000).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -709,10 +710,45 @@ handle_bucket_update_inner(BucketId, Req, Params, Limit) ->
                        end)
     end.
 
-update_bucket(Ctx, BucketId, BucketType, UpdatedProps, Req) ->
-    #bv_ctx{bucket_config = BucketConfig} = Ctx,
-    StorageMode = ns_bucket:storage_mode(BucketConfig),
+update_props_with_cas(_NodeCasVals, [] = _Map, _Props) ->
+    {error, max_cas_vbucket_retrieval};
+update_props_with_cas(NodeCasVals, Map, Props) ->
+    try
+        CasValues =
+            lists:map(
+              fun({VBucket, [ActiveNode | _Rest]}) ->
+                      VBucketCas = proplists:get_value(ActiveNode, NodeCasVals),
+                      {ok, [{"max_cas", Value}]} = dict:find(VBucket,
+                                                             VBucketCas),
+                      Value
+              end, misc:enumerate(Map, 0)),
+        {ok, [{vbuckets_max_cas, CasValues} | Props]}
+    catch
+        _:_ ->
+            {error, max_cas_vbucket_retrieval}
+    end.
 
+maybe_update_cas_props(BucketId, BucketConfig, UpdatedProps, true = _CcvEn) ->
+    Servers = ns_bucket:get_servers(BucketConfig),
+    {NodeResp, NodeErrors, DownNodes} =
+        misc:rpc_multicall_with_plist_result(
+          Servers, ns_memcached, get_vbucket_details_stats,
+          [BucketId, ["max_cas"]], ?CAS_GET_TIMEOUT),
+
+    case NodeErrors =:= [] andalso DownNodes =:= [] of
+        true ->
+            Map = proplists:get_value(map, BucketConfig, []),
+            NodeCasVals = [{Node, Dict} || {Node, {ok, Dict}} <- NodeResp],
+            update_props_with_cas(NodeCasVals, Map, UpdatedProps);
+        false ->
+            ?log_warning("Some nodes didn't return max_cas values: ~n~p",
+                         [{NodeErrors, DownNodes}]),
+            {error, node_failures}
+    end;
+maybe_update_cas_props(_, _, UpdatedProps, false = _CcEn) ->
+    {ok, UpdatedProps}.
+
+update_via_orchestrator(Req, BucketId, StorageMode, BucketType, UpdatedProps) ->
     case ns_orchestrator:update_bucket(BucketType, StorageMode,
                                        BucketId, UpdatedProps) of
         ok ->
@@ -745,9 +781,29 @@ update_bucket(Ctx, BucketId, BucketType, UpdatedProps, Req) ->
         {error, {storage_mode_migration, janitor_not_run}} ->
             reply_text(Req, "Cannot migrate storage mode before janitor has "
                        "run for the bucket", 503);
+        {error, cc_versioning_already_enabled} ->
+            reply_text(Req, "Cross cluster versioning already enabled", 409);
         {exit, {not_found, _}, _} ->
             %% if this happens then our validation raced, so repeat everything
             retry
+    end.
+
+update_bucket(Ctx, BucketId, BucketType, UpdatedProps, Req) ->
+    #bv_ctx{bucket_config = BucketConfig} = Ctx,
+    StorageMode = ns_bucket:storage_mode(BucketConfig),
+    CcvEn = proplists:get_value(cross_cluster_versioning_enabled,
+                                UpdatedProps, false),
+
+    case maybe_update_cas_props(BucketId, BucketConfig, UpdatedProps, CcvEn) of
+        {ok, UpdateProps1} ->
+            update_via_orchestrator(Req, BucketId, StorageMode, BucketType,
+                                    UpdateProps1);
+        {error, max_cas_vbucket_retrieval} ->
+            reply_text(Req, "Unable to retrieve max_cas for all vbuckets",
+                            503);
+        {error, node_failures} ->
+            reply_text(Req, "Failed to retrieve max_cas because unable to "
+                            "reach all kv nodes", 503)
     end.
 
 maybe_cleanup_old_buckets() ->
@@ -4057,6 +4113,52 @@ get_conflict_resolution_type_and_thresholds_test() ->
     ?assertEqual([], ParsedDontEnableDrift3),
 
     meck:unload(cluster_compat_mode).
+
+maybe_update_cas_props_test() ->
+    meck:new(misc, [passthrough]),
+    meck:expect(misc, rpc_multicall_with_plist_result,
+        fun(_, _, _, _, _) ->
+            NodeARsp = [{0,[{"max_cas","0"}]},
+                        {1,[{"max_cas","1"}]},
+                        {2,[{"max_cas","100"}]},
+                        {3,[{"max_cas","101"}]}],
+            NodeBRsp = [{2,[{"max_cas","3"}]},
+                        {3,[{"max_cas","4"}]},
+                        {4,[{"max_cas","102"}]},
+                        {5,[{"max_cas","103"}]}],
+            NodeCRsp = [{4,[{"max_cas","5"}]},
+                        {5,[{"max_cas","6"}]},
+                        {1,[{"max_cas","104"}]},
+                        {2,[{"max_cas","105"}]}],
+
+            Res = [{a, {ok, dict:from_list(NodeARsp)}},
+                   {b, {ok, dict:from_list(NodeBRsp)}},
+                   {c, {ok, dict:from_list(NodeCRsp)}}],
+            {Res, [], []}
+        end),
+
+    %% The expected max_cas values are the values for each active vBucket
+    %% from the map
+    ExpectedCas = {vbuckets_max_cas, ["0","1","3","4","5","6"]},
+
+    BCfg1 = [{map, [[a, b, c],[a, b, c],[b, c, d],
+                    [b, c, e],[c, b, a], [c, b, a]]}],
+
+    %% Adding just a stubbed out field so it can be rechecked later for
+    %% existence
+    StubProps = [{a, aValStub}],
+
+    Res = maybe_update_cas_props("B1", BCfg1, StubProps, true),
+    ExpectedRes =  {ok, [ExpectedCas | StubProps]},
+    ?assertEqual(ExpectedRes, Res),
+
+    meck:expect(misc, rpc_multicall_with_plist_result,
+        fun(_, _, _, _, _) ->
+            {[{a, {ok, stub_resp}}], [{b, reach_error}], [c]}
+        end),
+    ?assertEqual({error, node_failures},
+                 maybe_update_cas_props("B1", BCfg1, StubProps, true)),
+    meck:unload(misc).
 
 build_dynamic_bucket_info_test_setup(Version, IsEnterprise) ->
     meck:new(ns_config, [passthrough]),

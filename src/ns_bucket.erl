@@ -1266,6 +1266,13 @@ update_bucket_props(Type, OldStorageMode, BucketName, Props) ->
             Error
     end.
 
+maybe_delete_cas_props(_PrevCcvEn, false = _CurrCcvEn, Props) ->
+    {Props, [vbuckets_max_cas]};
+maybe_delete_cas_props(false = _PrevCcvEn, true = _CurrCcvEn, Props) ->
+    {Props, []};
+maybe_delete_cas_props(true = _PrevCcvEn, true = _CurrCcvEn, _Props) ->
+    throw({error, cc_versioning_already_enabled}).
+
 %% Updates properties of bucket of given name and type.  Check of type
 %% protects us from type change races in certain cases.
 %% If bucket with given name exists, but with different type, we
@@ -1285,12 +1292,22 @@ update_bucket_props_inner(Type, OldStorageMode, BucketName, Props) ->
                     throw({error, Error})
             end,
 
-            NewStorageMode = proplists:get_value(storage_mode, Props),
+            PrevCcvEn =
+                proplists:get_value(cross_cluster_versioning_enabled,
+                                    PrevProps, false),
+            NewCcvEn =
+                proplists:get_value(cross_cluster_versioning_enabled,
+                    Props, false),
+
+            {Props1, MaybeDeleteCasKey} =
+                maybe_delete_cas_props(PrevCcvEn, NewCcvEn, Props),
+
+            NewStorageMode = proplists:get_value(storage_mode, Props1),
 
             {NewProps, DeleteKeys} =
                 case NewStorageMode of
                     OldStorageMode ->
-                        {Props, []};
+                        {Props1, []};
                     _ ->
                         %% Reject storage migration if servers haven't been
                         %% populated yet (This is extremely unlikely to happen,
@@ -1301,11 +1318,12 @@ update_bucket_props_inner(Type, OldStorageMode, BucketName, Props) ->
                         get_servers(BucketConfig) =/= [] orelse
                             throw({error,
                                    {storage_mode_migration, janitor_not_run}}),
-                        add_override_props(Props, BucketConfig)
+                        add_override_props(Props1, BucketConfig)
                 end,
 
             %% Update the bucket properties.
-            RV = update_bucket_props(BucketName, NewProps, DeleteKeys),
+            AllDeleteKeys = DeleteKeys ++ MaybeDeleteCasKey,
+            RV = update_bucket_props(BucketName, NewProps, AllDeleteKeys),
 
             case RV of
                 ok ->
@@ -1949,7 +1967,7 @@ extract_bucket_props(Props) ->
                    Y <- [num_replicas, replica_index, ram_quota,
                          durability_min_level, frag_percent,
                          storage_quota_percentage, num_vbuckets,
-                         cross_cluster_versioning_enabled,
+                         cross_cluster_versioning_enabled, vbuckets_max_cas,
                          pitr_enabled, pitr_granularity, pitr_max_history_age,
                          autocompaction, purge_interval, flush_enabled,
                          num_threads, eviction_policy, conflict_resolution_type,
