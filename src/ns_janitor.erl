@@ -401,23 +401,15 @@ check_states_match(Bucket, BucketConfig, States) ->
             true
     end.
 
-requires_config_pull(Bucket, BucketConfig, States, Options) ->
-    case proplists:get_value(pull_config, Options, true)
-        andalso cluster_compat_mode:preserve_durable_mutations() of
-        true ->
-            check_states_match(Bucket, BucketConfig, States);
-        false ->
-            false
-    end.
-
 maybe_pull_config(Params, Options) when is_list(Params) ->
     SyncRequired =
+        proplists:get_value(pull_config, Options, true) andalso
+        cluster_compat_mode:preserve_durable_mutations() andalso
         lists:any(
           fun({Bucket, #janitor_params{bucket_config = BucketConfig,
                                        vbucket_states = States}}) ->
-                  requires_config_pull(Bucket, BucketConfig, States, Options)
+                  check_states_match(Bucket, BucketConfig, States)
           end, Params),
-
     not SyncRequired orelse pull_config().
 
 pull_config() ->
