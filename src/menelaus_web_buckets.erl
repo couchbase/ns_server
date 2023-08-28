@@ -69,6 +69,7 @@
          handle_streaming/2]).
 
 -define(MAX_BUCKET_NAME_LEN, 100).
+-define(MIN_VERSION_PRUNING_WINDOW_HRS, 24).
 
 get_info_level(Req) ->
     case proplists:get_value("basic_stats", mochiweb_request:parse_qs(Req)) of
@@ -275,6 +276,7 @@ build_bucket_info(Id, Ctx, InfoLevel, SkipMap) ->
         build_bucket_priority(BucketConfig),
         build_cross_cluster_versioning_params(BucketConfig),
         build_vbuckets_max_cas(BucketConfig),
+        build_vp_window_hrs(BucketConfig),
         build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx)])}.
 
 get_internal_default(Key, Default) ->
@@ -304,6 +306,16 @@ build_vbuckets_max_cas(BucketConfig) ->
          CasValues =/= undefined of
         true ->
             [{vbucketsMaxCas, [list_to_binary(Val) || Val <- CasValues]}];
+        false ->
+            []
+    end.
+
+build_vp_window_hrs(BucketConfig) ->
+    VpWindowHrs = ns_bucket:get_vp_window_hrs(BucketConfig),
+    case cluster_compat_mode:is_cluster_trinity() andalso
+         VpWindowHrs =/= undefined of
+        true ->
+            [{versionPruningWindowHrs, VpWindowHrs}];
         false ->
             []
     end.
@@ -1307,6 +1319,8 @@ validate_common_params(#bv_ctx{bucket_name = BucketName,
      parse_validate_flush_enabled(Params, IsNew),
      parse_validate_cross_cluster_versioning_enabled(Params, IsNew,
                                                      IsTrinity, IsEnterprise),
+     parse_validate_version_pruning_window(Params, IsNew,
+                                           IsTrinity, IsEnterprise),
      validate_bucket_name(IsNew, BucketConfig, BucketName, AllBuckets),
      parse_validate_ram_quota(Params, BucketConfig)].
 
@@ -1765,6 +1779,8 @@ value_not_boolean_error(Param) ->
      list_to_binary(io_lib:format("~p must be true or false",
                                   [Param]))}.
 
+%% Point-in-time Recovery (PITR) parameter parsing and validation.
+
 pitr_not_supported_error(Param) ->
     {error, Param,
      <<"Point in time recovery is not supported until cluster is fully "
@@ -1774,6 +1790,10 @@ cross_cluster_versioning_not_supported_error(Param) ->
     {error, Param,
      <<"Cross Cluster Versioning is not supported until cluster is fully "
        "Trinity">>}.
+
+version_pruning_not_supported_error(Param) ->
+    {error, Param,
+     <<"Version pruning is not supported until cluster is fully Trinity">>}.
 
 parse_validate_param_not_supported(Key, Params, ErrorFun) ->
     case proplists:is_defined(Key, Params) of
@@ -1838,6 +1858,38 @@ validate_cross_cluster_versioning_enabled(Params, IsNew) ->
     Result = menelaus_util:parse_validate_boolean_field(Param, '_', Params),
     process_boolean_param_validation(
       Param, cross_cluster_versioning_enabled, Result, IsNew).
+
+validate_vp_window_hrs(_Param, undefined = _Val, Key, true = _IsNew) ->
+    {ok, Key, ?MIN_VERSION_PRUNING_WINDOW_HRS};
+validate_vp_window_hrs(_Param, undefined = _Val, _Key, false = _IsNew) ->
+    ignore;
+validate_vp_window_hrs(Param, InputVal, Key, _IsNew) ->
+    ValidateRes = menelaus_util:parse_validate_number(
+                    InputVal, ?MIN_VERSION_PRUNING_WINDOW_HRS, ?MC_MAXINT),
+    case ValidateRes of
+        {ok, Value} ->
+            {ok, Key, Value};
+        _Error ->
+            Msg = io_lib:format("~p must be an integer between ~p and ~p",
+                                [Param, ?MIN_VERSION_PRUNING_WINDOW_HRS,
+                                 ?MC_MAXINT]),
+            {error, Param, list_to_binary(Msg)}
+    end.
+
+
+parse_validate_version_pruning_window(Params, _IsNew, _Allow,
+                                      false = _IsEnterprise) ->
+    parse_validate_param_not_enterprise("versionPruningWindowHrs", Params);
+parse_validate_version_pruning_window(Params, _IsNew, false = _Allow,
+                                      _IsEnterprise) ->
+    parse_validate_param_not_supported(
+      "versionPruningWindowHrs", Params,
+      fun version_pruning_not_supported_error/1);
+parse_validate_version_pruning_window(Params, IsNew, _Allow,
+                                      _IsEnterprise) ->
+    Param = "versionPruningWindowHrs",
+    Val = proplists:get_value(Param, Params),
+    validate_vp_window_hrs(Param, Val, version_pruning_window_hrs, IsNew).
 
 parse_validate_pitr_enabled(Params, _IsNew, false = _AllowPitr,
                             _IsEnterprise) ->

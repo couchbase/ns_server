@@ -135,6 +135,7 @@
          allow_variable_num_vbuckets/0,
          get_cc_versioning_enabled/1,
          get_vbuckets_max_cas/1,
+         get_vp_window_hrs/1,
          get_num_vbuckets/1,
          get_max_buckets/0,
          get_min_replicas/0,
@@ -931,6 +932,9 @@ get_cc_versioning_enabled(BucketConfig) ->
 
 get_vbuckets_max_cas(BucketConfig) ->
     proplists:get_value(vbuckets_max_cas, BucketConfig).
+
+get_vp_window_hrs(BucketConfig) ->
+    proplists:get_value(version_pruning_window_hrs, BucketConfig).
 
 new_bucket_default_params(membase) ->
     [{type, membase},
@@ -1972,6 +1976,7 @@ extract_bucket_props(Props) ->
                          durability_min_level, frag_percent,
                          storage_quota_percentage, num_vbuckets,
                          cross_cluster_versioning_enabled, vbuckets_max_cas,
+                         version_pruning_window_hrs,
                          pitr_enabled, pitr_granularity, pitr_max_history_age,
                          autocompaction, purge_interval, flush_enabled,
                          num_threads, eviction_policy, conflict_resolution_type,
