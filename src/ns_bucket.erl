@@ -134,6 +134,7 @@
          get_default_num_vbuckets/0,
          allow_variable_num_vbuckets/0,
          get_cc_versioning_enabled/1,
+         get_vbuckets_max_cas/1,
          get_num_vbuckets/1,
          get_max_buckets/0,
          get_min_replicas/0,
@@ -927,6 +928,9 @@ get_num_vbuckets(BucketConfig) ->
 
 get_cc_versioning_enabled(BucketConfig) ->
     proplists:get_value(cross_cluster_versioning_enabled, BucketConfig).
+
+get_vbuckets_max_cas(BucketConfig) ->
+    proplists:get_value(vbuckets_max_cas, BucketConfig).
 
 new_bucket_default_params(membase) ->
     [{type, membase},

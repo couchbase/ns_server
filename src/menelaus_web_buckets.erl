@@ -274,6 +274,7 @@ build_bucket_info(Id, Ctx, InfoLevel, SkipMap) ->
         build_throttle_limits(BucketConfig),
         build_bucket_priority(BucketConfig),
         build_cross_cluster_versioning_params(BucketConfig),
+        build_vbuckets_max_cas(BucketConfig),
         build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx)])}.
 
 get_internal_default(Key, Default) ->
@@ -293,6 +294,16 @@ build_cross_cluster_versioning_params(BucketConfig) ->
          CcVersioningEnabledVal =/= undefined of
         true ->
             [{enableCrossClusterVersioning, CcVersioningEnabledVal}];
+        false ->
+            []
+    end.
+
+build_vbuckets_max_cas(BucketConfig) ->
+    CasValues = ns_bucket:get_vbuckets_max_cas(BucketConfig),
+    case cluster_compat_mode:is_cluster_trinity() andalso
+         CasValues =/= undefined of
+        true ->
+            [{vbucketsMaxCas, [list_to_binary(Val) || Val <- CasValues]}];
         false ->
             []
     end.
