@@ -16,10 +16,10 @@ from tasks_test import TasksBase
 # longer than 10s, but jenkins sometimes takes much longer so 60s is used
 # to avoid false failed tests
 CBIMPORT_TIMEOUT = 60
-# 2 second timeout for task to go from queued to running/completed, once the
+# 10 second timeout for task to go from queued to running/completed, once the
 # task is at the front of the queue, and there is no other task running.
 # Typically, this takes <50ms, but it has sometimes taken more than 1s
-START_TASK_TIMEOUT = 2
+START_TASK_TIMEOUT = 10
 
 
 class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
