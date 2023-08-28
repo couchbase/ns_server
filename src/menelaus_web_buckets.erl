@@ -4513,7 +4513,7 @@ storage_mode_migration_validate_attributes_test() ->
 
     meck:unload(ns_bucket).
 
-parse_validate_storage_mode_test_(
+parse_validate_storage_mode_test__(
   {{OldStorageMode, NewStorageMode, IsNewBucket, Version,
     IsEnterprise, IsStorageModeMigration, IsServerless}, ExpectedResult}) ->
     Params =
@@ -4549,7 +4549,7 @@ parse_validate_storage_mode_test_(
                                list_to_atom(ExpectedStorageMode)})
     end.
 
-parse_validate_storage_mode_test() ->
+parse_validate_storage_mode_test_() ->
     %% TestArgs: {{OldStorageMode, NewStorageMode,
     %%             IsNewBucket, Version, IsEnterprise, IsStorageModeMigration,
     %%             IsServerless},
@@ -4557,7 +4557,7 @@ parse_validate_storage_mode_test() ->
     TestArgs =
         [%% New bucket creates.
          {{undefined, "magma", true, ?VERSION_71, true, false, false},
-          error},
+          ok},
          {{undefined, "magma", true, ?VERSION_71, false, false, false},
           error},
          {{undefined, "magma", true, ?VERSION_TRINITY, true,
@@ -4607,7 +4607,7 @@ parse_validate_storage_mode_test() ->
     TestFun =
         fun ({{OldStorageMode, NewStorageMode, IsNewBucket, Version,
                IsEnterprise, IsStorageModeMigration, IsServerless},
-              ExpectedResult}) ->
+              ExpectedResult} = Arg) ->
                 {lists:flatten(io_lib:format(
                    "OldStorageMode - ~p, NewStorageMode - ~p, IsNewBucket - ~p"
                    " Version - ~p, IsEnterprise - ~p, "
@@ -4616,12 +4616,14 @@ parse_validate_storage_mode_test() ->
                    [OldStorageMode, NewStorageMode, IsNewBucket, Version,
                     IsEnterprise, IsStorageModeMigration, IsServerless,
                     ExpectedResult])),
-                 fun parse_validate_storage_mode_test_/1}
+                 fun () ->
+                         parse_validate_storage_mode_test__(Arg)
+                 end}
         end,
 
-    {foreachx,
+    {foreach,
+     fun () -> ok end,
      fun (_X) -> ok end,
-     fun (_X, _R) -> ok end,
-     [{TestArg, TestFun} || TestArg <- TestArgs]}.
+     [TestFun(TestArg) || TestArg <- TestArgs]}.
 
 -endif.
