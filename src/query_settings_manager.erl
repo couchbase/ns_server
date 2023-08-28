@@ -80,7 +80,7 @@ config_upgrade_to_trinity(Config) ->
       known_settings(?VERSION_TRINITY), fun functools:id/1).
 
 known_settings() ->
-    known_settings(cluster_compat_mode:get_compat_version()).
+    known_settings(cluster_compat_mode:get_ns_config_compat_version()).
 
 known_settings(Ver) ->
     [{generalSettings, general_settings_lens(Ver)},
