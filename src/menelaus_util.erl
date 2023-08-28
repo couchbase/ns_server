@@ -77,7 +77,7 @@
          global_error_exception/2,
          require_permission/2,
          server_error_report/4,
-         proxy_req/7,
+         proxy_req/6,
          respond/2,
          survive_web_server_restart/1]).
 
@@ -105,6 +105,11 @@
 -define(PART_SIZE, 100000).
 -define(WINDOW_SIZE, 5).
 
+%% when proxing http request we should not proxy these headers because they
+%% will be set by us if needed
+-define(PROXY_DROP_RESP_HEADERS, ["content-length",
+                                  "transfer-encoding",
+                                  "www-authenticate"]).
 compute_sec_headers() ->
     compute_sec_headers(ns_config:read_key_fast(secure_headers, [])).
 
@@ -731,7 +736,7 @@ choose_node_consistently(Req, Nodes) ->
     lists:nth(N, Nodes).
 
 proxy_req({Scheme, Host, Port, AFamily}, Path, Headers, Timeout,
-          RespHeaderFilterFun, ExtraConnectOpts, Req) when is_atom(Scheme) ->
+          ExtraConnectOpts, Req) when is_atom(Scheme) ->
     Method = mochiweb_request:get(method, Req),
     Body = get_body(Req),
     TLSOpts = case Scheme of
@@ -746,6 +751,11 @@ proxy_req({Scheme, Host, Port, AFamily}, Path, Headers, Timeout,
                {connect_options, [AFamily | TLSOpts]}],
     Resp = lhttpc:request(Host, Port, Scheme =:= https, Path, Method, Headers,
                           Body, Timeout, Options),
+    RespHeaderFilterFun =
+        lists:filter(
+            fun ({K, _}) ->
+                not lists:member(string:to_lower(K), ?PROXY_DROP_RESP_HEADERS)
+            end, _),
     handle_resp(Resp, RespHeaderFilterFun, Req).
 
 get_body(Req) ->

@@ -23,9 +23,6 @@
 -define(DEF_REQ_HEADERS_FILTER, {drop, ["content-length",
                                         "transfer-encoding",
                                         "ns-server-proxy-timeout"]}).
--define(DEF_RESP_HEADERS_FILTER, {drop, ["content-length",
-                                         "transfer-encoding",
-                                         "www-authenticate"]}).
 -type module_name()    :: string() | undefined.
 -type proxy_strategy() :: local | sticky.
 -type filter_op()      :: keep | drop.
@@ -300,15 +297,10 @@ proxy_req(RestPrefix, Path, PluginsConfig, Req) ->
                     Headers = FwdHeader ++
                         convert_headers(Req, add_filter_headers(HdrFilter)) ++
                         forwarded_headers(Req),
-                    RespHeaderFilter =
-                        fun (H) ->
-                            filter_headers(H, ?DEF_RESP_HEADERS_FILTER)
-                        end,
                     ExtraConnectOpts = connect_options_for_mb54428(HostPort,
                                                                    Service),
                     menelaus_util:proxy_req(HostPort, Path, Headers, Timeout,
-                                            RespHeaderFilter, ExtraConnectOpts,
-                                            Req);
+                                            ExtraConnectOpts, Req);
                 {error, Error} ->
                     server_error(Req, Error)
             end;
