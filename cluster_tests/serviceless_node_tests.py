@@ -59,7 +59,7 @@ class ServicelessNodeTests(testlib.BaseTestSet):
 
     def joinNodes(self, cluster):
         for node in cluster.nodes[1:]:
-            print(f'Joining {node.hostname} to cluster')
+            print(f'Joining {node.hostname()} to cluster')
             cluster.do_join_cluster(node, services="")
         cluster.rebalance(wait=True)
         resp = testlib.get_succ(cluster, "/pools/default")
@@ -69,7 +69,7 @@ class ServicelessNodeTests(testlib.BaseTestSet):
 
     def addNodes(self, cluster):
         for node in cluster.nodes[1:]:
-            print(f'Adding {node.hostname} to cluster')
+            print(f'Adding {node.hostname()} to cluster')
             cluster.add_node(node, services="")
         cluster.rebalance(wait=True)
         resp = testlib.get_succ(cluster, "/pools/default")
@@ -79,12 +79,12 @@ class ServicelessNodeTests(testlib.BaseTestSet):
 
     def failover_and_recover_node(self, cluster):
         node = cluster.nodes[-1]
-        print(f'Failover {node.hostname} from cluster')
+        print(f'Failover {node.hostname()} from cluster')
         # Graceful failovers are not supported for serviceless nodes. We
         # don't do a rebalance as that would remove the node.
         resp = cluster.failover_node(node, graceful=False, verbose=True)
 
-        print(f'Re-adding {node.hostname} back into cluster')
+        print(f'Re-adding {node.hostname()} back into cluster')
 
         resp = cluster.recover_node(node, recovery_type="full",
                                     do_rebalance=True, verbose=True)

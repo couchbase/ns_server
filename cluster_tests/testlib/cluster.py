@@ -152,7 +152,7 @@ class Cluster:
         # are not currently part of the cluster).
         if ejected_nodes is not None:
             for node in ejected_nodes:
-                if not node.hostname in otp_nodes.keys():
+                if not node.hostname() in otp_nodes.keys():
                     ejected_nodes.remove(node)
 
         # It is unlikely that known_nodes should ever need to be manually
@@ -166,7 +166,7 @@ class Cluster:
             # Get the otp nodes to eject by checking the port of each entry in
             # the /nodeStatuses result, and comparing against the port of each
             # node to be ejected
-            ejected_nodes_string = ",".join(otp_nodes[node.hostname]
+            ejected_nodes_string = ",".join(otp_nodes[node.hostname()]
                                             for node in ejected_nodes)
 
         data = {'knownNodes': known_nodes_string,
@@ -238,7 +238,7 @@ class Cluster:
                       verbose=False):
         # We have to use the otpNode names instead of the node ips.
         otp_nodes = testlib.get_otp_nodes(self)
-        otp_node = otp_nodes[victim_node.hostname]
+        otp_node = otp_nodes[victim_node.hostname()]
 
         data = {"user": self.auth[0],
                 "password": self.auth[1],
@@ -258,17 +258,17 @@ class Cluster:
                      verbose=False):
         assert recovery_type in ["full", "delta"]
         otp_nodes = testlib.get_otp_nodes(self)
-        if node.hostname in otp_nodes:
-            otp_node = otp_nodes[node.hostname]
+        if node.hostname() in otp_nodes:
+            otp_node = otp_nodes[node.hostname()]
         else:
-            raise RuntimeError(f"Failed to find {node.hostname} in otp_nodes")
+            raise RuntimeError(f"Failed to find {node.hostname()} in otp_nodes")
 
         data = {"user": self.auth[0],
                 "password": self.auth[1],
                 "otpNode": f"{otp_node}",
                 "recoveryType": recovery_type}
         if verbose:
-            print(f"Recoverying {node.hostname} with type {recovery_type}")
+            print(f"Recoverying {node.hostname()} with type {recovery_type}")
         r = testlib.post_succ(self, f"/controller/setRecoveryType",
                               data=data)
         self.connected_nodes.append(node)
@@ -324,7 +324,7 @@ class Cluster:
             orchestrator_hostname, _ = self.get_orchestrator_node()
             if orchestrator_hostname != "":
                 for node in self.nodes:
-                    if node.hostname == orchestrator_hostname:
+                    if node.hostname() == orchestrator_hostname:
                         return node
             time.sleep(0.5)
             retries -= 1

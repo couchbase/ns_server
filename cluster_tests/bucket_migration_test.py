@@ -52,7 +52,7 @@ def assert_per_node_storage_mode_keys_added(cluster, bucket_name,
 def assert_per_node_storage_mode_not_present(cluster, node, bucket_name):
     per_node_storage_mode = get_per_node_storage_mode(
         cluster, bucket_name)
-    assert None == per_node_storage_mode.get(node.hostname)
+    assert None == per_node_storage_mode.get(node.hostname())
 
 def assert_ejected_node_override_props_deleted(
     cluster, ejected_otp_node, bucket_name):
@@ -146,7 +146,7 @@ class BucketMigrationTest(testlib.BaseTestSet):
             assert_per_node_storage_mode_not_present(
                 cluster, new_node, "bucket-1")
             assert_ejected_node_override_props_deleted(
-                cluster, old_otp_nodes[old_node.hostname], "bucket-1")
+                cluster, old_otp_nodes[old_node.hostname()], "bucket-1")
 
     def migrate_storage_mode_via_failover_test(self, cluster):
         create_and_update_bucket(cluster, "bucket-2", "couchstore", "magma",

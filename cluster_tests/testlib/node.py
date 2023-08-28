@@ -8,17 +8,28 @@
 # licenses/APL2.txt.
 
 import testlib
-
+from ipaddress import ip_address, IPv6Address
 
 class Node:
     def __init__(self, host, port, auth):
-        self.hostname = f"{host}:{port}"
-        self.url = "http://" + self.hostname
+        try:
+            if type(ip_address(host)) is IPv6Address:
+                hostport = f'[{host}]:{port}'
+            else:
+                hostport = f'{host}:{port}'
+        except ValueError:
+            # host is fqdn
+            hostport = f'{host}:{port}'
+
+        self.url = f"http://{hostport}"
+        self.hostname_cached = None
         self.host = host
         self.port = port
         self.auth = auth
         self.data_path_cache = None
 
+    def __str__(self):
+        return self.hostname()
 
     def data_path(self):
         if self.data_path_cache is None:
@@ -32,3 +43,9 @@ class Node:
         r = testlib.post_succ(node, '/diag/eval',
                               data='misc:extract_node_address(node()).')
         return r.text.strip('"')
+
+    def hostname(node):
+        if node.hostname_cached is None:
+            r = testlib.get_succ(node, '/nodes/self')
+            node.hostname_cached = r.json()['hostname']
+        return node.hostname_cached
