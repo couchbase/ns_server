@@ -1860,19 +1860,18 @@ validate_cross_cluster_versioning_enabled(Params, IsNew) ->
       Param, cross_cluster_versioning_enabled, Result, IsNew).
 
 validate_vp_window_hrs(_Param, undefined = _Val, Key, true = _IsNew) ->
-    {ok, Key, ?MIN_VERSION_PRUNING_WINDOW_HRS};
+    {ok, Key, ns_bucket:attribute_default(Key)};
 validate_vp_window_hrs(_Param, undefined = _Val, _Key, false = _IsNew) ->
     ignore;
 validate_vp_window_hrs(Param, InputVal, Key, _IsNew) ->
-    ValidateRes = menelaus_util:parse_validate_number(
-                    InputVal, ?MIN_VERSION_PRUNING_WINDOW_HRS, ?MC_MAXINT),
-    case ValidateRes of
+    Min = ns_bucket:attribute_min(Key),
+    Max = ns_bucket:attribute_max(Key),
+    case menelaus_util:parse_validate_number(InputVal, Min, Max) of
         {ok, Value} ->
             {ok, Key, Value};
         _Error ->
             Msg = io_lib:format("~p must be an integer between ~p and ~p",
-                                [Param, ?MIN_VERSION_PRUNING_WINDOW_HRS,
-                                 ?MC_MAXINT]),
+                                [Param, Min, Max]),
             {error, Param, list_to_binary(Msg)}
     end.
 

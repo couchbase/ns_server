@@ -491,22 +491,25 @@ durability_min_level(BucketConfig) ->
 %% The default value of the attribute. Currently PITR-only.
 attribute_default(Name) ->
     case Name of
-        pitr_granularity -> 600;        % 10 minutes
-        pitr_max_history_age -> 86400   % 24 hours
+        pitr_granularity -> 600;         % 10 minutes
+        pitr_max_history_age -> 86400;   % 24 hours
+        version_pruning_window_hrs -> 24 % 24 hours
     end.
 
 %% The minimum value of the attribute. Currently PITR-only.
 attribute_min(Name) ->
     case Name of
-        pitr_granularity -> 1;          % 1 second
-        pitr_max_history_age -> 1       % 1 second
+        pitr_granularity -> 1;           % 1 second
+        pitr_max_history_age -> 1;       % 1 second
+        version_pruning_window_hrs -> 24 % 24 hours
     end.
 
 %% The maximum value of the attribute. Currently PITR-only.
 attribute_max(Name) ->
     case Name of
-        pitr_granularity -> 18000;      % 5 hours
-        pitr_max_history_age -> 172800  % 48 hours
+        pitr_granularity -> 18000;                  % 5 hours
+        pitr_max_history_age -> 172800;             % 48 hours
+        version_pruning_window_hrs -> ?MC_MAXINT    % unit hours
     end.
 
 %% Per-bucket-type point-in-time recovery attributes.  Point-in-time
@@ -1901,13 +1904,22 @@ chronicle_upgrade_bucket(Func, BucketNames, ChronicleTxn) ->
               Func(Name, Acc)
       end, ChronicleTxn, BucketNames).
 
+default_trinity_enterprise_props(true = _IsEnterprise) ->
+    [{cross_cluster_versioning_enabled, false},
+     {version_pruning_window_hrs,
+      attribute_default(version_pruning_window_hrs)}];
+default_trinity_enterprise_props(false = _IsEnterprise) ->
+    [].
+
 chronicle_upgrade_bucket_to_trinity(BucketName, ChronicleTxn) ->
     PropsKey = sub_key(BucketName, props),
-    AddProps = [{priority, ?DEFAULT_BUCKET_PRIO},
-                {pitr_enabled, false},
-                {pitr_granularity, attribute_default(pitr_granularity)},
-                {pitr_max_history_age,
-                 attribute_default(pitr_max_history_age)}],
+    AddProps =
+        [{priority, ?DEFAULT_BUCKET_PRIO},
+         {pitr_enabled, false},
+         {pitr_granularity, attribute_default(pitr_granularity)},
+         {pitr_max_history_age,
+          attribute_default(pitr_max_history_age)}] ++
+        default_trinity_enterprise_props(cluster_compat_mode:is_enterprise()),
     {ok, BucketConfig} = chronicle_upgrade:get_key(PropsKey, ChronicleTxn),
     NewBucketConfig = misc:merge_proplists(fun (_, L, _) -> L end, AddProps,
                                            BucketConfig),
