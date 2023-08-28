@@ -473,7 +473,9 @@ code(modify_collection) ->
 code(serverless_settings) ->
     8271;
 code(modify_resource_settings) ->
-    8272.
+    8272;
+code(modify_saml_settings) ->
+    8273.
 
 send_to_memcached(ParentPID, {Code, EncodedBody, IsSync}) ->
     case (catch ns_memcached_sockets_pool:executing_on_socket(

@@ -65,6 +65,9 @@ handle_post_settings(Req) ->
       fun (Proplist, NewReq) ->
           SSOProps = lists:map(fun ({[K], V}) -> {K, V} end, Proplist),
           set_sso_options(SSOProps, CurrentProps),
+          {AuditJson} = menelaus_web_settings2:prepare_json(
+                          [], params(), fun type_spec/1, SSOProps),
+          ns_audit:settings(Req, modify_saml, AuditJson),
           is_enabled() orelse menelaus_ui_auth:logout_by_session_type(saml),
           handle_get_settings([], NewReq)
       end, [], params(), fun type_spec/1, CurrentProps, defaults(), Req).
