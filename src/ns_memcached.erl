@@ -717,7 +717,7 @@ do_handle_call(get_all_vb_seqnos, _From, State = #state{sock = Sock}) ->
     {reply, mc_client_binary:get_all_vb_seqnos(Sock), State};
 
 %% This is left in place to support backwards compat from nodes with version
-%% lower than 7.1. Lower than 7.1 version Nodes won't provide identity.
+%% lower than Trinity.
 do_handle_call({get_keys, VBuckets, Params}, From, State) ->
     do_handle_call({get_keys, VBuckets, Params, undefined}, From, State);
 do_handle_call({get_keys, VBuckets, Params, Identity}, _From,
@@ -1735,11 +1735,12 @@ get_keys(Bucket, NodeVBuckets, Params, Identity) ->
     end.
 
 do_get_keys_call(Bucket, Node, VBuckets, Params, Identity) ->
-    %% This is to handle cluster compat scenario to support pre 7.1 get_keys
-    %% request to continue to work as before without the Identity info
-    GetKeys = case Identity of
-                  undefined -> {get_keys, VBuckets, Params};
-                  _ -> {get_keys, VBuckets, Params, Identity}
+    GetKeys = case Identity =:= undefined andalso
+                  not cluster_compat_mode:is_cluster_trinity() of
+                  true ->
+                      {get_keys, VBuckets, Params};
+                  false ->
+                      {get_keys, VBuckets, Params, Identity}
               end,
     do_call({server(Bucket), Node}, Bucket, GetKeys, infinity).
 
