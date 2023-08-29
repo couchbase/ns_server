@@ -1948,9 +1948,7 @@ upgrade_to_trinity_t() ->
 %% Bunch of fairly simple collections tests that update the manifest and expect
 %% various results.
 basic_collections_manifest_test_() ->
-    %% We can re-use (setup) the test environment that we setup/teardown here
-    %% for each test rather than create a new one (foreach) to save time.
-    {setup,
+    {foreach,
      fun() ->
              update_manifest_test_setup()
      end,
