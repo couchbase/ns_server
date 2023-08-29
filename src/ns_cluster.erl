@@ -1253,11 +1253,10 @@ do_add_node_engaged_inner(ChronicleInfo, {Scheme, Hostname, Port},
     {MyNodeKVList} =
         menelaus_web_node:build_full_node_info(node()),
     Struct = {[{<<"targetNode">>, OtpNode},
-               {<<"requestedServices">>, Services}
-               | MyNodeKVList] ++
-              [{<<"chronicleInfo">>,
-                base64:encode(term_to_binary(ChronicleInfo))} ||
-               ChronicleInfo =/= undefined]},
+               {<<"requestedServices">>, Services},
+               {<<"chronicleInfo">>,
+                base64:encode(term_to_binary(ChronicleInfo))}
+              | MyNodeKVList]},
 
     Options = [{connect_options, [misc:get_net_family()]},
                {timeout, ?COMPLETE_TIMEOUT},
@@ -1280,9 +1279,6 @@ do_add_node_engaged_inner(ChronicleInfo, {Scheme, Hostname, Port},
 
 node_add_transaction(Node, GroupUUID, Services, Body) ->
     case chronicle_master:add_replica(Node, GroupUUID, Services) of
-        ok ->
-            %% pre 7.0 clusters only
-            node_add_transaction_finish(Node, GroupUUID, undefined, Body);
         {ok, ChronicleInfo} ->
             node_add_transaction_finish(Node, GroupUUID, ChronicleInfo, Body);
         cannot_acquire_lock ->
@@ -1548,12 +1544,8 @@ check_can_join_to(NodeKVList, Services) ->
     end.
 
 get_chronicle_info(KVList) ->
-    case proplists:get_value(<<"chronicleInfo">>, KVList) of
-        undefined ->
-            undefined;
-        Binary ->
-            binary_to_term(base64:decode(Binary))
-    end.
+    binary_to_term(base64:decode(
+                     proplists:get_value(<<"chronicleInfo">>, KVList))).
 
 -spec do_complete_join([{binary(), term()}]) -> {ok, ok} | {error, atom(),
                                                             binary()}.
