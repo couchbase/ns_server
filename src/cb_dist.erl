@@ -877,7 +877,6 @@ listen_proto({AddrType, Module}, NodeName) ->
                 case Module:listen(NodeName, ListenAddr) of
                     {ok, _} = Res ->
                         info_msg("Started listener: ~p", [Module]),
-                        maybe_register_on_epmd(Module, NodeName, Port),
                         Res;
                     Error -> Error
                 end
@@ -901,32 +900,6 @@ get_listen_addr(AddrType, Module) ->
             end,
     {ok, IPParsed} = inet:parse_address(IPStr),
     IPParsed.
-
-%% Backward compat: we need to register ns_server non tls port on epmd to allow
-%% old nodes to find this node
-%% This code can be dropped if upgrade from Alice is not supported
-maybe_register_on_epmd(Module, NodeName, PortNo)
-  when Module =:= inet_tcp_dist;
-       Module =:= inet6_tcp_dist ->
-    NameStr = atom_to_list(NodeName),
-    case cb_epmd:node_type(NameStr) of
-        ns_server ->
-            Family = proto_to_family(Module),
-            case erl_epmd:register_node(NameStr, PortNo, Family) of
-                {ok, _} ->
-                    ok;
-                {error, already_registered} ->
-                    ok;
-                Error ->
-                    info_msg("Failed to register ~p with epmd. Reason ~p",
-                             [{NodeName, PortNo, Family}, Error]),
-                    Error
-            end;
-        _ ->
-            ok
-    end;
-maybe_register_on_epmd(_Module, _NodeName, _PortNo) ->
-    ok.
 
 can_add_proto({_AddrType, Proto}, #s{listeners = Listeners}) ->
     case is_valid_protocol(Proto) of
