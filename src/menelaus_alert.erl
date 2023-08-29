@@ -128,8 +128,8 @@ handle_settings_alerts_post(Req) ->
               %% memory_alert_email is not put to email_alerts for backward
               %% compatibility. This is basically a hack to make it possible to
               %% add new alert in a minor release. It can be removed when
-              %% memory_alert_email is added as a proper alert (first major
-              %% release after 7.1)
+              %% memory_alert_email is added as a proper alert
+              %% (support for pre-Trinity is dropped)
               SetMemAlertKey =
                   fun (NsConfigKey, AlertsKey, Cfg) ->
                       case proplists:get_all_values(AlertsKey, Cfg) of
@@ -420,7 +420,7 @@ get_config() ->
     %% memory_alert_email is not put to email_alerts for backward compatibility
     %% This is basically a hack to make it possible to add new alert in
     %% a minor release. It can be removed when memory_alert_email is added as
-    %% a proper alert (first major release after 7.1)
+    %% a proper alert (support for pre-Trinity is dropped)
     ReplaceMemAlertKey =
         fun (NsConfigKey, AlertsKey, Cfg) ->
             case ns_config:read_key_fast(NsConfigKey, true) of
