@@ -485,10 +485,6 @@ prepare_to_join(RemoteNode, Cookie) ->
               %% redundant history.
               NewValue = pre_trinity_node_key_clean_up(Key, Value),
               {set_fresh, {{node, Node, Key}, NewValue}};
-          %% We are getting rid of cert_and_pkey but we need it here to
-          %% correcly upgrade from pre-7.1:
-          ({cert_and_pkey, V}) ->
-              {set_initial, {cert_and_pkey, V}};
           ({K, _V}) ->
               %% Don't erase values we are about to set_initial, just to be
               %% extra safe in terms of preserving how it behaved previously.

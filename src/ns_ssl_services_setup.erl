@@ -637,7 +637,6 @@ init([]) ->
                        [CertsDir, Reason]),
             exit({certs_dir, CertsDir, Reason})
     end,
-    maybe_convert_pre_71_certs(),
     _ = save_certs_phase2(node_cert),
     _ = save_certs_phase2(client_cert),
     maybe_store_ca_certs(),
@@ -662,8 +661,6 @@ init([]) ->
 
 handle_config_change(ca_certificates, Parent) ->
     Parent ! ca_certificates_updated;
-handle_config_change(cert_and_pkey, Parent) ->
-    Parent ! cert_and_pkey_changed;
 handle_config_change(root_cert_and_pkey, Parent) ->
     Parent ! cert_and_pkey_changed;
 %% we're using this key to detect change of node() name
@@ -865,21 +862,10 @@ should_regenerate_certs(CertInfoFile, CertType, Name) ->
     %% Based on this wrong info it might decide to regenerate certs when it
     %% should not.
     CurCertsEpoch = certs_epoch(),
-    RemoveUploadedCertPre71 =
-        (not cluster_compat_mode:is_cluster_71()) andalso
-        case ns_config:search(cert_and_pkey) of
-            {value, {_, _}} -> true;
-            _ -> false
-        end,
     case file:consult(CertInfoFile) of
         {ok, [{uploaded, CertsEpoch}]} when CertsEpoch < CurCertsEpoch ->
             ?log_info("Should regenerate ~p because epoch has changed "
                       "(~p -> ~p)", [CertType, CertsEpoch, CurCertsEpoch]),
-            true;
-        {ok, [{uploaded, _}]} when RemoveUploadedCertPre71 ->
-            ?log_info("Should regenerate ~p because cluster is pre-7.1 and "
-                      "cert_and_pkey doesn't seem to contain user's CA "
-                      "anymore", [CertType]),
             true;
         {ok, [{uploaded, _CertsEpoch}]} ->
             false;
@@ -1242,136 +1228,6 @@ extract_user_name_test() ->
     ?assertEqual(extract_user_name(["xyz.abc.com"], "", "-"), "xyz.abc.com").
 -endif.
 
-maybe_convert_pre_71_certs() ->
-    ShouldConvert = should_convert_pre_71_certs(),
-
-    case ShouldConvert of
-        true ->
-            ?log_info("Upgrading certs to 7.1..."),
-            %% Use cert_and_pkey from ns_config because it contains information
-            %% about user uploaded CA (pre-7.1 style)
-            %% Note: it should be ok to use it instead of root_cert_and_pkey
-            %%       from chronicle because (1) we don't remove it from
-            %%       ns_config during upgrade, and (2) user didn't have a chance
-            %%       to modify this node cert yet
-            {value, CertAndPKey} = ns_config:search(cert_and_pkey),
-            Type =
-                %% We must look at cert_and_pkey first because
-                %% {node, node(), cert} might be present even when node is using
-                %% generated certs
-                case CertAndPKey of
-                    {_, _} -> generated;
-                    {_, _, _} ->
-                        case ns_config:search({node, node(), cert}) of
-                            {value, _} -> uploaded;
-                            false -> generated
-                        end
-                end,
-            ?log_info("Certs type: ~p", [Type]),
-
-            case Type of
-                generated ->
-                    {ok, CA} = file:read_file(raw_ssl_cacert_key_path()),
-                    {ok, NodeCert} = file:read_file(local_cert_path()),
-                    {ok, NodePKey} = file:read_file(local_pkey_path()),
-                    Hostname = misc:extract_node_address(node()),
-                    ?log_info("Saving the following chain~n~p", [NodeCert]),
-                    _ = save_generated_certs(node_cert, CA, NodeCert, NodePKey,
-                                             Hostname);
-                uploaded ->
-                    %% Note: this user provided CA might be not the same as
-                    %% in user provided CA cert in cert_and_pkey.
-                    %% The CA cert from this file must be the one that
-                    %% signed the node cert, while the CA cert
-                    %% in cert_and_pkey might be different.
-                    {ok, ChainWithCA} =
-                        file:read_file(user_set_ca_chain_path()),
-                    ?log_info("Orig chain: ~p", [ChainWithCA]),
-                    [CADecoded | ChainTailReversedDecoded] =
-                        lists:reverse(public_key:pem_decode(ChainWithCA)),
-                    CA = public_key:pem_encode([CADecoded]),
-                    {ok, NodeCert} = file:read_file(user_set_cert_path()),
-                    ?log_info("Orig node cert: ~p", [ChainWithCA]),
-                    ChainDecoded = public_key:pem_decode(NodeCert) ++
-                                   lists:reverse(ChainTailReversedDecoded),
-                    Chain = public_key:pem_encode(ChainDecoded),
-                    {ok, NodePKey} = file:read_file(user_set_key_path()),
-                    ?log_info("Saving the following chain~n~p", [Chain]),
-                    _ = save_uploaded_certs(node_cert, CA, Chain, NodePKey, [])
-            end,
-
-            FilesToRemove = pre_71_files_to_remove(),
-
-            lists:foreach(
-              fun (F) ->
-                  R = file:delete(F),
-                  ?log_warning("Removing file: ~s, result: ~p", [F, R])
-              end, FilesToRemove),
-
-            ?log_info("Certs upgraded"),
-            ok;
-        false ->
-            ok
-    end.
-
-pre_71_files_to_remove() ->
-    [raw_ssl_cacert_key_path(),
-     ssl_cert_key_path(),
-     memcached_cert_path(),
-     memcached_key_path(),
-     local_cert_path(),
-     local_pkey_path(),
-     local_cert_meta_path(),
-     user_set_cert_path(),
-     user_set_key_path(),
-     user_set_ca_chain_path()].
-
-should_convert_pre_71_certs() ->
-    case ns_config:read_key_fast(cert_and_pkey, undefined) of
-        undefined ->
-            % The system has never been pre-7.1, no need in upgrade
-            false;
-        _ ->
-            case ns_config:read_key_fast({node, node(), node_cert},
-                                         undefined) of
-                undefined ->
-                    lists:any(fun (P) -> filelib:is_file(P) end,
-                              pre_71_files_to_remove());
-                _ -> false
-            end
-    end.
-
-raw_ssl_cacert_key_path() ->
-    ssl_cert_key_path() ++ "-ca".
-ssl_cert_key_path() ->
-    filename:join(path_config:component_path(data, "config"),
-                  "ssl-cert-key.pem").
-memcached_cert_path() ->
-    filename:join(path_config:component_path(data, "config"),
-                  "memcached-cert.pem").
-memcached_key_path() ->
-    filename:join(path_config:component_path(data, "config"),
-                  "memcached-key.pem").
-
-local_cert_path() ->
-    local_cert_path_prefix() ++ "cert.pem".
-local_pkey_path() ->
-    local_cert_path_prefix() ++ "pkey.pem".
-local_cert_meta_path() ->
-    local_cert_path_prefix() ++ "meta".
-local_cert_path_prefix() ->
-    filename:join(path_config:component_path(data, "config"),
-                  "local-ssl-").
-user_set_cert_path() ->
-    filename:join(path_config:component_path(data, "config"),
-                  "user-set-cert.pem").
-user_set_key_path() ->
-    filename:join(path_config:component_path(data, "config"),
-                  "user-set-key.pem").
-user_set_ca_chain_path() ->
-    filename:join(path_config:component_path(data, "config"),
-                  "user-set-ca.pem").
-
 security_config_update_warning(Version, MinVersion) ->
     ale:info(?USER_LOGGER,
              "Deleting global security setting: tlsMinVersion. ~p is no longer "
@@ -1432,12 +1288,13 @@ config_upgrade_to_trinity(Config) ->
     {MinVersion, _} = min_tls_version(),
     GlobalKeys = [{ssl_minimum_protocol, true},
                   {internal_ssl_minimum_protocol, false}],
-    [{delete, Key} ||
-        {Key, Warn} <- GlobalKeys,
-        global_security_config_needs_update(Config, Key, MinVersion, Warn)] ++
-    [update_service_security_config(Service, Config) ||
-        Service <- menelaus_web_settings:services_with_security_settings(),
-        service_security_config_needs_update(Service, Config, MinVersion)].
+    [{delete, cert_and_pkey} |
+     [{delete, Key} ||
+         {Key, Warn} <- GlobalKeys,
+         global_security_config_needs_update(Config, Key, MinVersion, Warn)] ++
+         [update_service_security_config(Service, Config) ||
+             Service <- menelaus_web_settings:services_with_security_settings(),
+             service_security_config_needs_update(Service, Config, MinVersion)]].
 
 remove_node_certs() ->
     ?log_warning("Removing node certificate and private key"),
@@ -1733,7 +1590,8 @@ config_upgrade_test() ->
              {{security_settings, fts}, [{ssl_minimum_protocol, 'tlsv1.1'}]},
              {{security_settings, ns_server},
               [{ssl_minimum_protocol, 'tlsv1'}]}],
-        Expected1 = [{delete, ssl_minimum_protocol},
+        Expected1 = [{delete, cert_and_pkey},
+                     {delete, ssl_minimum_protocol},
                      {delete, {security_settings, fts}},
                      {delete, {security_settings, ns_server}}],
 
@@ -1746,7 +1604,8 @@ config_upgrade_test() ->
               [{ssl_minimum_protocol, 'tlsv1.1'}, {honorCipherOrder, true}]},
              {{security_settings, ns_server},
               [{ssl_minimum_protocol, tlsv1}, {honorCipherOrder, false}]}],
-        Expected2 = [{set, {security_settings, fts},
+        Expected2 = [{delete, cert_and_pkey},
+                     {set, {security_settings, fts},
                       [{honorCipherOrder, true}]},
                      {set, {security_settings, ns_server},
                       [{honorCipherOrder, false}]}],
@@ -1761,7 +1620,8 @@ config_upgrade_test() ->
               [{ssl_minimum_protocol, 'tlsv1.2'}, {honorCipherOrder, true}]},
              {{security_settings, ns_server},
               [{ssl_minimum_protocol, 'tlsv1.2'}, {honorCipherOrder, false}]}],
-        Expected3 = [{delete, ssl_minimum_protocol}],
+        Expected3 = [{delete, cert_and_pkey},
+                     {delete, ssl_minimum_protocol}],
 
         test_upgrade_config(Config3, Expected3),
 
@@ -1773,7 +1633,8 @@ config_upgrade_test() ->
               [{ssl_minimum_protocol, 'tlsv1.1'}, {honorCipherOrder, true}]},
              {{security_settings, ns_server},
               [{ssl_minimum_protocol, 'tlsv1.1'}, {honorCipherOrder, false}]}],
-        Expected4 = [{set, {security_settings, kv},
+        Expected4 = [{delete, cert_and_pkey},
+                     {set, {security_settings, kv},
                       [{honorCipherOrder, false}]},
                      {set, {security_settings, fts},
                       [{honorCipherOrder, true}]},
@@ -1791,7 +1652,8 @@ config_upgrade_test() ->
               [{ssl_minimum_protocol, 'tlsv1.1'}, {honorCipherOrder, true}]},
              {{security_settings, ns_server},
               [{ssl_minimum_protocol, 'tlsv1.1'}, {honorCipherOrder, false}]}],
-        Expected5 = [{delete, internal_ssl_minimum_protocol},
+        Expected5 = [{delete, cert_and_pkey},
+                     {delete, internal_ssl_minimum_protocol},
                      {set, {security_settings, kv},
                       [{honorCipherOrder, false}]},
                      {set, {security_settings, fts},
@@ -1810,7 +1672,8 @@ config_upgrade_test() ->
               [{ssl_minimum_protocol, 'tlsv1.1'}, {honorCipherOrder, true}]},
              {{security_settings, ns_server},
               [{ssl_minimum_protocol, 'tlsv1.1'}]}],
-        Expected6 = [{delete, ssl_minimum_protocol},
+        Expected6 = [{delete, cert_and_pkey},
+                     {delete, ssl_minimum_protocol},
                      {delete, internal_ssl_minimum_protocol},
                      {set, {security_settings, fts},
                       [{honorCipherOrder, true}]},
