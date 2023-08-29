@@ -82,9 +82,6 @@
 %% @doc Default frequency (in milliseconds) at which to check for down nodes.
 -define(DEFAULT_TICK_PERIOD, 1000).
 
-%% @doc Minimum number of active server groups needed for server group failover
--define(MIN_ACTIVE_SERVER_GROUPS, 3).
-
 -define(SAFETY_CHECK_TIMEOUT, ?get_timeout(safety_check, 2000)).
 
 -record(state,
@@ -99,11 +96,6 @@
           max_count = 0  :: non_neg_integer(),
           %% Counts the number of auto-failover events
           count = 0 :: non_neg_integer(),
-          %% List of server groups that have already been automatically failed
-          %% over. Currently, auto-failover of only one server group is allowed
-          %% before requiring reset of the auto-failover count.
-          %% This list is reset when auto-failover count is reset.
-          failed_over_server_groups = [] :: list(),
           %% Whether we reported why the node is considered down
           reported_down_nodes_reason = [] :: list(),
           %% Keeps all errors that have been reported.
@@ -208,12 +200,10 @@ init([]) ->
     Count = proplists:get_value(count, Config),
     MaxCount = proplists:get_value(max_count, Config, 1),
     DisableMaxCount = proplists:get_value(disable_max_count, Config, false),
-    FailedOverSGs = proplists:get_value(failed_over_server_groups, Config, []),
     State0 = #state{timeout = Timeout,
                     disable_max_count = DisableMaxCount,
                     max_count = MaxCount,
                     count = Count,
-                    failed_over_server_groups = FailedOverSGs,
                     auto_failover_logic_state = undefined,
                     tick_period =
                         ns_config:read_key_fast(auto_failover_tick_period,
@@ -303,13 +293,12 @@ handle_cast(reset_auto_failover_count, #state{count = 0} = State) ->
     {noreply, State};
 handle_cast(reset_auto_failover_count, State) ->
     ?log_debug("reset auto_failover count: ~p", [State]),
-    State1 = State#state{failed_over_server_groups = []},
-    LogicState = init_logic_state(State1),
-    State2 = State1#state{count = 0, auto_failover_logic_state = LogicState},
-    State3 = init_reported(State2),
-    make_state_persistent(State3),
+    LogicState = init_logic_state(State),
+    State1 = State#state{count = 0, auto_failover_logic_state = LogicState},
+    State2 = init_reported(State1),
+    make_state_persistent(State2),
     ale:info(?USER_LOGGER, "Reset auto-failover count"),
-    {noreply, State3};
+    {noreply, State2};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -342,9 +331,7 @@ handle_info(tick, State0) ->
     %% again. In this case our failover count will still be zero which is
     %% incorrect.
     AFOConfig = get_cfg(Config),
-    FOSGs = proplists:get_value(failed_over_server_groups, AFOConfig, []),
-    State1 = State0#state{count = proplists:get_value(count, AFOConfig),
-                          failed_over_server_groups = FOSGs},
+    State1 = State0#state{count = proplists:get_value(count, AFOConfig)},
 
     NonPendingNodes = lists:sort(ns_cluster_membership:active_nodes(Snapshot)),
 
@@ -502,57 +489,7 @@ process_action({failover, NodesWithUUIDs}, S, DownNodes, NodeStatuses,
                            NotFailedOver, max_nodes_error_msg(S), S)}
                 end
         end,
-    failover_nodes(Nodes1, S1, DownNodes, NodeStatuses, true);
-%% pre-7.1 only
-process_action({failover, {Node, _UUID}}, S, DownNodes, NodeStatuses,
-               Snapshot) ->
-    SG = ns_cluster_membership:get_node_server_group(Node, Snapshot),
-    case allow_failover(SG, S, failover) of
-        {false, ErrMsg} ->
-            maybe_report_max_node_reached([Node], ErrMsg, S);
-        {true, UpdateCount} ->
-            failover_nodes([Node], S, DownNodes, NodeStatuses, UpdateCount)
-    end;
-% pre-7.1 only
-process_action({failover_group, SG, Nodes0}, S, DownNodes, NodeStatuses, _) ->
-    Nodes = [N || {N, _} <- Nodes0],
-    case allow_failover(SG, S, failover_group) of
-        {false, ErrMsg} ->
-            case should_report(max_group_reached, S) of
-                true ->
-                    ?log_info_and_email(
-                       auto_failover_maximum_reached,
-                       "Could not auto-failover server group (~p) "
-                       "with nodes (~p). ~s",
-                       [binary_to_list(SG), Nodes, ErrMsg]),
-                    note_reported(max_group_reached, S);
-                false ->
-                    S
-            end;
-        {true, UpdateCount} ->
-            failover_group(Nodes, S, DownNodes, NodeStatuses, UpdateCount, SG)
-    end.
-
-failover_group(Nodes, S0, DownNodes, NodeStatuses, UpdateCount, SG) ->
-    S = log_group_failover_attempt(SG, Nodes, S0),
-    NewState = failover_nodes(Nodes, S, DownNodes, NodeStatuses, UpdateCount),
-    case NewState#state.count =:= S#state.count of
-        true ->
-            NewState;
-        false ->
-            NewState#state{failed_over_server_groups = [SG]}
-    end.
-
-log_group_failover_attempt(SG, Nodes, State) ->
-    case should_report(group_failover_attempt, State) of
-        true ->
-            ale:info(?USER_LOGGER,
-                     "Attempting auto-failover of server group (~p) with "
-                     "nodes (~p).", [binary_to_list(SG), Nodes]),
-            note_reported(group_failover_attempt, State);
-        false ->
-            State
-    end.
+    failover_nodes(Nodes1, S1, DownNodes, NodeStatuses).
 
 trim_nodes(Nodes, #state{count = Count, max_count = Max}) ->
     lists:sublist(Nodes, Max - Count).
@@ -578,49 +515,9 @@ maybe_report_max_node_reached(Nodes, ErrMsg, S) ->
             S
     end.
 
-allow_failover(SG, S = #state{count = Count, max_count = Max,
-                              failed_over_server_groups = FOSGs}, Action) ->
-    case lists:member(SG, FOSGs) of
-        true ->
-            %% SG was partially failed over in the past; allow failover of
-            %% rest of it's nodes even though we may have reached the quota.
-            ?log_debug("Server group ~p was partially auto-failed over in "
-                       "the past. Allow auto-failover of rest of it's nodes. "
-                       "Auto-failover count: ~p, max_count:~p, "
-                       "failed_over_server_groups:~p",
-                       [binary_to_list(SG), Count, Max, FOSGs]),
-            %% Continuation of an earlier server group auto-failover event.
-            %% Do not update auto-failover count.
-            {true, false};
-        false ->
-            %% Count can be greater than Max if user reduces the Max
-            %% before resetting the count.
-            case S#state.disable_max_count =:= false andalso Count >= Max of
-                true ->
-                    {false, max_nodes_error_msg(S)};
-                false ->
-                    case Action of
-                        failover ->
-                            {true, true};
-                        failover_group ->
-                            allow_failover_group(FOSGs)
-                    end
-            end
-    end.
-
-allow_failover_group([]) ->
-    {true, true};
-allow_failover_group(FOSGs) ->
-    M = io_lib:format("Auto-failover of maximum one server group is allowed "
-                      "before requiring reset of auto-failover quota. "
-                      "Server group ~p was failed over in the past. Reset "
-                      "quota to allow auto-failover of additional "
-                      "server groups.", [FOSGs]),
-    {false, lists:flatten(M)}.
-
-failover_nodes([], S, _DownNodes, _NodeStatuses, _UpdateCount) ->
+failover_nodes([], S, _DownNodes, _NodeStatuses) ->
     S;
-failover_nodes(Nodes, S, DownNodes, NodeStatuses, UpdateCount) ->
+failover_nodes(Nodes, S, DownNodes, NodeStatuses) ->
     FailoverReasons = failover_reasons(Nodes, DownNodes, NodeStatuses),
     DownNodeNames = [N || {N, _, _} <- DownNodes],
     case try_autofailover(Nodes, DownNodeNames, FailoverReasons) of
@@ -629,12 +526,7 @@ failover_nodes(Nodes, S, DownNodes, NodeStatuses, UpdateCount) ->
             [log_failover_success(N, DownNodes, NodeStatuses) ||
                 N <- FailedOver],
             NewState = lists:foldl(fun log_unsafe_node/2, S, UnsafeNodes),
-            NewCount = case UpdateCount of
-                           false ->
-                               NewState#state.count;
-                           true ->
-                               NewState#state.count + length(FailedOver)
-                       end,
+            NewCount = NewState#state.count + length(FailedOver),
             NewState1 = NewState#state{count = NewCount},
             case FailedOver of
                 [] ->
@@ -860,9 +752,7 @@ make_state_persistent(State, Extras) ->
                      [{enabled, Enabled},
                       {timeout, State#state.timeout},
                       {count, State#state.count},
-                      {max_count, State#state.max_count},
-                      {failed_over_server_groups,
-                       State#state.failed_over_server_groups}] ++ Extras)
+                      {max_count, State#state.max_count}] ++ Extras)
            end).
 
 note_reported(Flag, State) ->
@@ -876,8 +766,7 @@ init_reported(State) ->
     State#state{reported_errors = sets:new()}.
 
 update_reported_flags_by_actions(Actions, State) ->
-    case lists:keymember(failover, 1, Actions) orelse
-        lists:keymember(failover_group, 1, Actions) of
+    case lists:keymember(failover, 1, Actions) of
         false ->
             init_reported(State);
         true ->
