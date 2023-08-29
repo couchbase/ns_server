@@ -64,7 +64,7 @@
 -endif.
 
 -export([start_link/0]).
--export([get_nodes/0,
+-export([get_statuses/0,
          can_refresh/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
@@ -98,7 +98,7 @@ init(BaseMonitorState) ->
 
     BaseMonitorState#{monitors => get_monitors(NodesWanted)}.
 
-handle_call(get_nodes, _From, MonitorState) ->
+handle_call(get_statuses, _From, MonitorState) ->
     #{nodes := Statuses} = MonitorState,
     {reply, Statuses};
 
@@ -116,7 +116,7 @@ handle_info(refresh, MonitorState) ->
       nodes_wanted := NodesWanted,
       monitors := AllMonitors} = MonitorState,
     %% Fetch each node's view of every other node and analyze it.
-    AllNodes = node_monitor:get_nodes(),
+    AllNodes = node_monitor:get_statuses(),
     NewStatuses = lists:foldl(
                     fun (Node, Acc) ->
                             NewState = analyze_status(Node, AllNodes,
@@ -137,7 +137,7 @@ handle_info(refresh, MonitorState) ->
 handle_info(node_changed, MonitorState) ->
     NodesWanted = ns_node_disco:nodes_wanted(),
     {noreply,
-        MonitorState#{monitors => get_monitors(NodesWanted)}};
+     MonitorState#{monitors => get_monitors(NodesWanted)}};
 
 handle_info(Info, MonitorState) ->
     ?log_warning("Unexpected message ~p when in state:~n~p",
@@ -145,8 +145,8 @@ handle_info(Info, MonitorState) ->
     noreply.
 
 %% APIs
-get_nodes() ->
-    gen_server:call(?MODULE, get_nodes).
+get_statuses() ->
+    gen_server:call(?MODULE, get_statuses).
 
 %% Internal functions
 
@@ -214,7 +214,7 @@ health_monitor_test_setup() ->
 
     ?meckNew(node_monitor, [passthrough]),
     meck:expect(node_monitor,
-                get_nodes,
+                get_statuses,
                 fun() ->
                         []
                 end),
@@ -231,9 +231,9 @@ health_monitor_test_setup() ->
                 end).
 
 get_monitors_from_state() ->
-    %% Do a get_nodes (handle_call) to ensure that we have processed anything
+    %% Do a get_statuses (handle_call) to ensure that we have processed anything
     %% that would cause a state update
-    get_nodes(),
+    get_statuses(),
 
     %% Bit of a hack, but this is a test, we can grab the internal state of
     %% the monitor via sys:get_state to check that we are tracking the

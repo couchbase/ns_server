@@ -71,7 +71,7 @@ test_teardown(SupervisorPid) ->
 
 -spec is_node_status(node(), healthy | unhealthy) -> boolean().
 is_node_status(Node, Status) ->
-    NodeStatuses = node_status_analyzer:get_nodes(),
+    NodeStatuses = node_status_analyzer:get_statuses(),
     case dict:find(Node, NodeStatuses) of
         error ->
             false;
@@ -212,7 +212,7 @@ behaviour_cover_t() ->
     node_monitor ! node_changed,
 
     %% Called by auto_failover which we're not testing here.
-    node_status_analyzer:get_nodes(),
+    node_status_analyzer:get_statuses(),
 
     %% Never actually called, but we still want to test the rest of
     %% the modules.
@@ -225,7 +225,7 @@ behaviour_cover_t() ->
         erlang:spawn(
           fun() ->
                   %% Block in receive to ensure that this process remains
-                  %% alive til we've called get_nodes() at least once
+                  %% alive til we've called get_statuses() at least once
                   receive _ ->
                           ok
                   end

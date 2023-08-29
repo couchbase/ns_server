@@ -673,7 +673,7 @@ report_failover_error(Flag, ErrMsg, Nodes, State) ->
 %% Returns list of nodes that are down/unhealthy along with the reason
 %% why the node is considered unhealthy.
 fastfo_down_nodes(NonPendingNodes) ->
-    NodeStatuses = node_status_analyzer:get_nodes(),
+    NodeStatuses = node_status_analyzer:get_statuses(),
     lists:foldl(
       fun (Node, Acc) ->
               case dict:find(Node, NodeStatuses) of

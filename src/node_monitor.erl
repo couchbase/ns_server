@@ -24,7 +24,7 @@
 -endif.
 
 -export([start_link/0]).
--export([get_nodes/0,
+-export([get_statuses/0,
          can_refresh/1,
          annotate_status/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
@@ -54,7 +54,7 @@ init(BaseMonitorState) ->
 
     BaseMonitorState#{local_monitors => Monitors}.
 
-handle_call(get_nodes, _From, MonitorState) ->
+handle_call(get_statuses, _From, MonitorState) ->
     #{nodes := Statuses} = MonitorState,
     Now = erlang:monotonic_time(),
     InactiveTime =
@@ -126,8 +126,8 @@ handle_info(Info, MonitorState) ->
     noreply.
 
 %% APIs
-get_nodes() ->
-    gen_server:call(?MODULE, get_nodes).
+get_statuses() ->
+    gen_server:call(?MODULE, get_statuses).
 
 annotate_status(Status) ->
     {Status, {recv_ts, erlang:monotonic_time()}}.
@@ -142,7 +142,7 @@ annotate_status(Status) ->
 latest_status(NodesWanted, LocalMonitors) ->
     AllMonitors = lists:map(fun (Monitor) ->
                                     Module = health_monitor:get_module(Monitor),
-                                    {Monitor, Module:get_nodes()}
+                                    {Monitor, Module:get_statuses()}
                             end, LocalMonitors),
     lists:map(
       fun (Node) ->
@@ -174,14 +174,14 @@ health_monitor_test_setup() ->
 
     ?meckNew(ns_server_monitor, [passthrough]),
     meck:expect(ns_server_monitor,
-                get_nodes,
+                get_statuses,
                 fun() ->
                         dict:append(node(), dict:new(), dict:new())
                 end),
 
     ?meckNew(kv_monitor, [passthrough]),
     meck:expect(kv_monitor,
-                get_nodes,
+                get_statuses,
                 fun() ->
                         dict:append(node(), dict:new(), dict:new())
                 end),
@@ -196,15 +196,15 @@ health_monitor_t() ->
 
     ?assertEqual([ns_server], LocalMonitors1),
 
-    %% Should not have called kv_monitor get_nodes yet because we aren't
+    %% Should not have called kv_monitor get_statuses yet because we aren't
     %% tracking a kv_monitor.
-    ?assertNot(meck:called(kv_monitor, get_nodes, [])),
+    ?assertNot(meck:called(kv_monitor, get_statuses, [])),
 
     %% Meck so that when we process the node_changed message we add the
     %% kv_monitor to the list
     meck:expect(ns_cluster_membership, should_run_service,
                 fun(_Snapshot, _Service, _Node) ->
-                    true
+                        true
                 end),
 
     %% Now lets check that we update the local monitors when we see a
@@ -218,12 +218,12 @@ health_monitor_t() ->
     %% Send a refresh to check that we now pull the state from the kv_monitor
     ?MODULE ! refresh,
 
-    %% Do a get_nodes (handle_call) to ensure that we have processed the
+    %% Do a get_statuses (handle_call) to ensure that we have processed the
     %% refresh for the next test
-    get_nodes(),
+    get_statuses(),
 
-    %% Finally, check that we have now called kv_monitor:get_nodes()
-    ?assert(meck:called(kv_monitor, get_nodes, [])).
+    %% Finally, check that we have now called kv_monitor:get_statuses()
+    ?assert(meck:called(kv_monitor, get_statuses, [])).
 
 common_test_teardown() ->
     ?meckUnload(mb_master).

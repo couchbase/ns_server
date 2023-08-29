@@ -64,7 +64,7 @@
 
 %% Rest of the health_monitor API)
 -export([can_refresh/1,
-         get_nodes/0]).
+         get_statuses/0]).
 
 -export([register_tick/3,
          is_unhealthy/2]).
@@ -106,7 +106,7 @@ init(BaseMonitorState) ->
                         stats_collector => undefined,
                         latest_stats => {undefined, dict:new()}}).
 
-handle_call(get_nodes, _From, MonitorState) ->
+handle_call(get_statuses, _From, MonitorState) ->
     #{buckets := Buckets} = MonitorState,
     RV = dict:fold(
            fun(Bucket, {Status, _}, Acc) ->
@@ -216,8 +216,8 @@ analyze_status(Buckets) ->
 can_refresh(_State) ->
     true.
 
-get_nodes() ->
-    gen_server:call(?MODULE, get_nodes).
+get_statuses() ->
+    gen_server:call(?MODULE, get_statuses).
 
 %% Internal functions
 get_errors() ->
@@ -428,7 +428,7 @@ health_monitor_t() ->
     ?MODULE ! {event, auto_failover_cfg},
 
     %% Do a call to make sure that we process the previous info message
-    get_nodes(),
+    get_statuses(),
 
     {state, kv_stats_monitor, #{enabled := Enabled2}} = sys:get_state(?MODULE),
     ?assert(Enabled2),
@@ -444,7 +444,7 @@ health_monitor_t() ->
     ?MODULE ! {event, buckets},
 
     %% Do a call to make sure that we process the previous info message
-    get_nodes(),
+    get_statuses(),
 
     {state, kv_stats_monitor, #{buckets := Buckets2}} = sys:get_state(?MODULE),
     ?assertNotEqual(dict:new(), Buckets2).

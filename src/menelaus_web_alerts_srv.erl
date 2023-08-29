@@ -606,7 +606,7 @@ check(indexer_low_resident_percentage, Opaque, _History, Stats) ->
             MemoryQuota = proplists:get_value(index_memory_quota, Val),
             NumIndexes = proplists:get_value(index_num_indexes, Val),
             case AvgPct =/= undefined andalso MemoryRss =/= undefined andalso
-                 MemoryQuota =/= undefined andalso NumIndexes =/= undefined of
+                MemoryQuota =/= undefined andalso NumIndexes =/= undefined of
                 false ->
                     ok;
                 true ->
@@ -623,11 +623,11 @@ check(indexer_low_resident_percentage, Opaque, _History, Stats) ->
                     %% low due to indexer restart but there is sufficient
                     %% memory.
                     case Threshold =/= undefined andalso
-                         (NumIndexes > 0) andalso
-                         (AvgPct < Threshold) andalso
-                         (MemoryQuota > 0) andalso
-                         (MemoryRss / MemoryQuota >
-                          (?INDEXER_RESIDENT_MEMORY_PCT / 100)) of
+                        (NumIndexes > 0) andalso
+                        (AvgPct < Threshold) andalso
+                        (MemoryQuota > 0) andalso
+                        (MemoryRss / MemoryQuota >
+                             (?INDEXER_RESIDENT_MEMORY_PCT / 100)) of
                         true ->
                             Host = misc:extract_node_address(node()),
                             Err = fmt_to_bin(
@@ -691,7 +691,7 @@ check(cas_drift_threshold, Opaque, _History, Stats) ->
 check(communication_issue, Opaque, _History, _Stats) ->
     ClusterStatus = case mb_master:master_node() =:= node() of
                         true ->
-                            dict:to_list(node_status_analyzer:get_nodes());
+                            dict:to_list(node_status_analyzer:get_statuses());
                         false ->
                             []
                     end,
@@ -737,11 +737,11 @@ check(certs, Opaque, _History, _Stats) ->
             true ->
                 lists:flatmap(
                   fun (CAProps) ->
-                      {_, ExpWarnings} =
-                          ns_server_cert:expiration_warnings(CAProps),
-                      Subject = proplists:get_value(subject, CAProps),
-                      Id = proplists:get_value(id, CAProps),
-                      [{{ca, Id, Subject}, W} || W <- ExpWarnings]
+                          {_, ExpWarnings} =
+                              ns_server_cert:expiration_warnings(CAProps),
+                          Subject = proplists:get_value(subject, CAProps),
+                          Id = proplists:get_value(id, CAProps),
+                          [{{ca, Id, Subject}, W} || W <- ExpWarnings]
                   end, ns_server_cert:trusted_CAs(props));
             false ->
                 []
@@ -754,8 +754,8 @@ check(certs, Opaque, _History, _Stats) ->
                 {_, ExpWarnings} = ns_server_cert:expiration_warnings(Props),
                 lists:map(
                   fun (W) ->
-                      Subject = proplists:get_value(subject, Props),
-                      {{node, Subject}, W}
+                          Subject = proplists:get_value(subject, Props),
+                          {{node, Subject}, W}
                   end, ExpWarnings)
         end,
 
@@ -767,10 +767,10 @@ check(certs, Opaque, _History, _Stats) ->
                 {_, ClientExpWarnings} =
                     ns_server_cert:expiration_warnings(ClientProps),
                 lists:map(
-                    fun (W) ->
-                        Subject = proplists:get_value(subject, ClientProps),
-                        {{client, Subject}, W}
-                    end, ClientExpWarnings)
+                  fun (W) ->
+                          Subject = proplists:get_value(subject, ClientProps),
+                          {{client, Subject}, W}
+                  end, ClientExpWarnings)
         end,
 
     lists:foreach(
@@ -802,7 +802,7 @@ check(certs, Opaque, _History, _Stats) ->
               Host = misc:extract_node_address(node()),
               Date = menelaus_web_cert:format_time(UTCSeconds),
               Error = fmt_to_bin(errors(client_cert_expires_soon),
-                  [Host, Subj, Date]),
+                                 [Host, Subj, Date]),
               global_alert({cert_expires_soon, [{node, Host}, {type, client}]},
                            Error)
 
@@ -852,7 +852,7 @@ check(memory_threshold, Opaque, _History, Stats) ->
             Free = proplists:get_value(mem_actual_free, SysStats),
             Used = proplists:get_value(mem_actual_used, SysStats),
             case is_number(Free) andalso is_number(Used) andalso
-                 (Free + Used) > 0 of
+                (Free + Used) > 0 of
                 true ->
                     check_memory_threshold(Used, Used + Free, system);
                 false ->
@@ -865,7 +865,7 @@ check(memory_threshold, Opaque, _History, Stats) ->
             CGUsed = proplists:get_value(mem_cgroup_actual_used, SysStats),
 
             case is_number(CGUsed) andalso is_number(CGLimit) andalso
-                 CGLimit > 0 of
+                CGLimit > 0 of
                 true ->
                     check_memory_threshold(CGUsed, CGLimit, cgroup);
                 false ->

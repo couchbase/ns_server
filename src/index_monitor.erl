@@ -22,7 +22,7 @@
 -define(DISK_ISSUE_THRESHOLD, ?get_param(disk_issue_threshold, 60)).
 
 -export([start_link/0]).
--export([get_nodes/0,
+-export([get_statuses/0,
          analyze_status/2,
          is_node_down/1,
          can_refresh/1,
@@ -41,8 +41,8 @@
 start_link() ->
     health_monitor:start_link(?MODULE).
 
-get_nodes() ->
-    gen_server:call(?MODULE, get_nodes).
+get_statuses() ->
+    gen_server:call(?MODULE, get_statuses).
 
 is_node_down(health_check_slow) ->
     {true, {"The index service took too long to respond to the health check",
@@ -98,7 +98,7 @@ handle_cast(Msg, State) ->
                  [Msg, State]),
     {noreply, State}.
 
-handle_call(get_nodes, _From, MonitorState) ->
+handle_call(get_statuses, _From, MonitorState) ->
     #{tick := Tick,
       num_samples := NumSamples,
       health_info := HealthInfo,

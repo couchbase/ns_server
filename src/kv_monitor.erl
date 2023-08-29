@@ -20,7 +20,7 @@
 -endif.
 
 -export([start_link/0]).
--export([get_nodes/0,
+-export([get_statuses/0,
          can_refresh/1,
          analyze_status/2,
          is_node_down/1]).
@@ -44,7 +44,7 @@ start_link() ->
 init(BaseMonitorState) ->
     BaseMonitorState.
 
-handle_call(get_nodes, _From, MonitorState) ->
+handle_call(get_statuses, _From, MonitorState) ->
     #{nodes := Statuses} = MonitorState,
     {reply, Statuses};
 
@@ -68,8 +68,8 @@ handle_info(Info, MonitorState) ->
     noreply.
 
 %% APIs
-get_nodes() ->
-    gen_server:call(?MODULE, get_nodes).
+get_statuses() ->
+    gen_server:call(?MODULE, get_statuses).
 
 %%
 %% Analyze status of buckets on Node.
@@ -205,7 +205,7 @@ handle_refresh_status(NodesWanted, MonitorState) ->
     %% monitors might get out-of-sync for short duration during the
     %% the nodes_wanted change. If the DCP traffic monitor returns
     %% a node unknown to the KV monitor then ignore it.
-    functools:chain(dcp_traffic_monitor:get_nodes(),
+    functools:chain(dcp_traffic_monitor:get_statuses(),
                     [calculate_dcp_statuses(_, MonitorState),
                      health_monitor:erase_unknown_nodes(_, NodesWanted),
                      fun check_for_ready_buckets/1,
@@ -291,7 +291,7 @@ get_buckets_status(Buckets) ->
         [{B, ready} || B <- ReadyBuckets, lists:member(B, Buckets)].
 
 check_for_io_failure(Statuses) ->
-    IOFailed = [{B, State} || {B, State} <- kv_stats_monitor:get_nodes(),
+    IOFailed = [{B, State} || {B, State} <- kv_stats_monitor:get_statuses(),
                               State =/= active],
     case IOFailed of
         [] ->
@@ -326,7 +326,7 @@ health_monitor_test_setup() ->
     common_test_setup(),
 
     ?meckNew(dcp_traffic_monitor, [passthrough]),
-    meck:expect(dcp_traffic_monitor, get_nodes,
+    meck:expect(dcp_traffic_monitor, get_statuses,
                 fun() ->
                         dict:append(node(), dict:new(), dict:new())
                 end),
@@ -337,7 +337,7 @@ health_monitor_test_setup() ->
     meck:expect(ns_bucket, buckets_with_data_on_this_node, fun() -> [] end),
 
     ?meckNew(kv_stats_monitor),
-    meck:expect(kv_stats_monitor, get_nodes, fun() -> [] end).
+    meck:expect(kv_stats_monitor, get_statuses, fun() -> [] end).
 
 health_monitor_t() ->
     ok.

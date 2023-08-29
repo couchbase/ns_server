@@ -15,7 +15,7 @@
 -behaviour(health_monitor).
 
 -export([start_link/0]).
--export([get_nodes/0,
+-export([get_statuses/0,
          can_refresh/1,
          annotate_status/1,
          analyze_status/2,
@@ -36,7 +36,7 @@ start_link() ->
 init(BaseMonitorState) ->
     BaseMonitorState.
 
-handle_call(get_nodes, _From, MonitorState) ->
+handle_call(get_statuses, _From, MonitorState) ->
     #{nodes := Statuses} = MonitorState,
     Now = erlang:monotonic_time(),
     InactiveTime =
@@ -69,8 +69,8 @@ handle_info(Info, State) ->
     noreply.
 
 %% APIs
-get_nodes() ->
-    gen_server:call(?MODULE, get_nodes).
+get_statuses() ->
+    gen_server:call(?MODULE, get_statuses).
 
 annotate_status(empty) ->
     {recv_ts, erlang:monotonic_time()}.

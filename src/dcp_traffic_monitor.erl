@@ -37,7 +37,7 @@
 -endif.
 
 -export([start_link/0]).
--export([get_nodes/0,
+-export([get_statuses/0,
          can_refresh/1,
          node_alive/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
@@ -57,7 +57,7 @@ init(BaseMonitorState) ->
     ets:new(mref2node, [private, named_table]),
     BaseMonitorState.
 
-handle_call(get_nodes, _From, MonitorState) ->
+handle_call(get_statuses, _From, MonitorState) ->
     #{nodes := Statuses} = MonitorState,
     RV = dict:map(
            fun(_Node, Buckets) ->
@@ -116,8 +116,8 @@ handle_info(Info, MonitorState) ->
     noreply.
 
 %% APIs
-get_nodes() ->
-    gen_server:call(?MODULE, get_nodes).
+get_statuses() ->
+    gen_server:call(?MODULE, get_statuses).
 
 node_alive(Node, BucketInfo) ->
     gen_server:cast(?MODULE, {node_alive, Node, BucketInfo}).
@@ -173,7 +173,7 @@ health_monitor_test_setup() ->
     common_test_setup().
 
 health_monitor_t() ->
-    ?assert(dict:is_empty(get_nodes())),
+    ?assert(dict:is_empty(get_statuses())),
 
     %% Test a 'DOWN' message, we must first setup some state in an ets table
     %% via node_alive cast (can't mock ets/BIFs).
@@ -181,7 +181,7 @@ health_monitor_t() ->
         erlang:spawn(
           fun() ->
                   %% Block in receive to ensure that this process remains
-                  %% alive til we've called get_nodes() at least once
+                  %% alive til we've called get_statuses() at least once
                   receive _ ->
                           ok
                   end
@@ -191,7 +191,7 @@ health_monitor_t() ->
     node_alive(node(), BucketInfo),
 
     %% We should now be tracking something
-    ?assertNot(dict:is_empty(get_nodes())),
+    ?assertNot(dict:is_empty(get_statuses())),
 
     %% Kill PidToMonitor to trigger a 'DOWN' message
     misc:terminate_and_wait(PidToMonitor, "reason"),
@@ -201,7 +201,7 @@ health_monitor_t() ->
     %% sent when we terminate PidToMonitor.
     ?assert(misc:poll_for_condition(
               fun() ->
-                      dict:is_empty(get_nodes())
+                      dict:is_empty(get_statuses())
               end,
               30000, 100)).
 

@@ -49,7 +49,7 @@
     noreply | {noreply, base_state()}.
 
 %% Other API required for the behaviour.
--callback get_nodes() -> term().
+-callback get_statuses() -> term().
 -callback can_refresh(map()) -> boolean().
 
 %% We wait for ?INACTIVE_TICKS ticks before considering a node inactive and
