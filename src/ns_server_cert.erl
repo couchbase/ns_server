@@ -1254,8 +1254,7 @@ expiration_warnings(CertProps) ->
     WarningSeconds = WarningDays * 24 * 60 * 60,
     WarningThreshold = Now + WarningSeconds,
 
-    Expire = proplists:get_value(expires, CertProps), %% For pre-7.1 only
-    NotAfter = proplists:get_value(not_after, CertProps, Expire),
+    NotAfter = proplists:get_value(not_after, CertProps),
     case NotAfter of
         A when is_integer(A) andalso A =< Now ->
             {infinity, [expired]};
@@ -1278,21 +1277,9 @@ is_trusted(CAPem, TrustedCAs) ->
 
 node_cert_warnings(Type, Node, TrustedCAs, NodeCertProps) ->
     MissingCAWarnings =
-        case proplists:get_value(ca, NodeCertProps) of
-            undefined ->
-                %% For pre-7.1 clusters, old nodes don't have ca prop
-                VerifiedWith =
-                    proplists:get_value(verified_with, NodeCertProps),
-                CAMd5s = [erlang:md5(C) || C <- TrustedCAs],
-                case lists:member(VerifiedWith, CAMd5s) of
-                    true -> [];
-                    false -> [mismatch]
-                end;
-            CA ->
-                case is_trusted(CA, TrustedCAs) of
-                    true -> [];
-                    false -> [mismatch]
-                end
+        case is_trusted(proplists:get_value(ca, NodeCertProps), TrustedCAs) of
+            true -> [];
+            false -> [mismatch]
         end,
 
     {_, ExpirationWarnings} = expiration_warnings(NodeCertProps),
