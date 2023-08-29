@@ -24,7 +24,7 @@ let samlState = {
   url: '/saml',
   name: "app.admin.security.saml",
   data: {
-    // compat: "atLeast76", Enabl once trinity 7.6 is confirmed.
+    permissions: "cluster.admin.security.external.read",
     enterprise: true
   },
   component: MnSecuritySamlComponent

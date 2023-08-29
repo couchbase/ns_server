@@ -53,7 +53,7 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
     this.postSamlValidation = mnSecurityService.stream.postSamlValidation;
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.permissionsAdminSecurityWrite = mnPermissions.stream
-      .pipe(map(permissions => permissions.cluster.admin.security.write));
+      .pipe(map(permissions => permissions.cluster.admin.security.external.write));
 
     this.form = mnFormService.create(this);
     this.form

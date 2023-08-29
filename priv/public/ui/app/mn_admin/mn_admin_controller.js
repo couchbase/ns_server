@@ -175,8 +175,10 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
   function activate() {
     mnSessionService.activate(mnOnDestroy);
 
-    mnPromiseHelper(vm, mnUserRolesService.getSamlSettings())
-      .applyToScope("samlSettings")
+    if (pools.isEnterprise && mnPermissions.export.cluster.admin.security.external.read) {
+      mnPromiseHelper(vm, mnUserRolesService.getSamlSettings())
+        .applyToScope("samlSettings");
+    }
 
     new mnPoller($scope, function () {
       return mnBucketsService.findMoxiBucket();

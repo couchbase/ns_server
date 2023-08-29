@@ -303,14 +303,14 @@
            ng-click="adminCtl.showResetPasswordDialog()">
           Change Password
         </a>
-        <span ng-show="adminCtl.samlSettings.data.singleLogoutEnabled">
+        <span ng-show="!adminCtl.samlSettings || adminCtl.samlSettings.data.singleLogoutEnabled">
           <a
              ng-click="adminCtl.logout()"
              class="ellipsis max-width-4">
             Sign Out {{adminCtl.user.id}}
           </a>
         </span>
-        <span ng-show="!adminCtl.samlSettings.data.singleLogoutEnabled">
+        <span ng-show="adminCtl.samlSettings && !adminCtl.samlSettings.data.singleLogoutEnabled">
           <a
              ng-href="{{adminCtl.samlSettings.data.spLogoutURL}}"
              class="ellipsis max-width-4">

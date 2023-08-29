@@ -37,7 +37,7 @@
             <span ng-show="!rolesCtl.isSaslauthdAuthEnabled">not</span> enabled</span>
         </p>
       </div>
-      <div class="users-auth-check" ng-show="poolDefault.isEnterprise && poolDefault.compat.atLeast65">
+      <div class="users-auth-check" ng-show="poolDefault.isEnterprise && poolDefault.compat.atLeast65 && rbac.cluster.admin.security.external.read">
         <span
            class="icon margin-right"
            ng-class="(rolesCtl.isLdapEnabled || rolesCtl.isSamlEnabled) ? 'fa-check success' : 'fa-ban grayblack-3'">
