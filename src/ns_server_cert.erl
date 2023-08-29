@@ -22,7 +22,6 @@
          this_node_uses_self_generated_client_certs/0,
          this_node_uses_self_generated_client_certs/1,
          self_generated_ca/0,
-         set_cluster_ca/1, %% deprecated
          load_certs_from_inbox/2,
          is_cert_loaded_from_file/1,
          load_CAs_from_inbox/0,
@@ -498,73 +497,6 @@ get_sub_alt_names_by_type(Cert, Type) ->
             end;
         _ ->
             {error, not_found}
-    end.
-
-%% Deprecated
-parse_cluster_ca(CA) ->
-    case decode_single_certificate(CA) of
-        {ok, RootCertDer} ->
-            try
-                {Subject, NotBefore, NotAfter} = get_der_info(RootCertDer),
-                UTC = calendar:datetime_to_gregorian_seconds(
-                        calendar:universal_time()),
-                case NotBefore > UTC orelse NotAfter < UTC of
-                    true ->
-                        {error, not_valid_at_this_time};
-                    false ->
-                        {ok, [{pem, CA},
-                              {subject, Subject},
-                              {expires, NotAfter}]}
-                end
-            catch T:E:S ->
-                    ?log_error("Failed to get certificate info:~n~p~n~p",
-                               [RootCertDer, {T, E, S}]),
-                    {error, malformed_cert}
-            end;
-        {error, Error} ->
-            {error, Error}
-    end.
-
-%% Deprecated. Can be used in pre-7.1 clusters only.
-set_cluster_ca(CA) ->
-    case parse_cluster_ca(CA) of
-        {ok, Props} ->
-            NewCert = proplists:get_value(pem, Props),
-            RV = ns_config:run_txn(
-                   fun (Config, SetFn) ->
-                           CurCerts =
-                               case ns_config:search(Config, cert_and_pkey) of
-                                   {value, {NewCert, _}} ->
-                                       {error, already_in_use};
-                                   {value, {_, _} = Pair} ->
-                                       {ok, Pair};
-                                   {value, {_, GeneratedCert1, GeneratedKey1}} ->
-                                       {ok, {GeneratedCert1, GeneratedKey1}};
-                                   false ->
-                                       {ok, generate_cert_and_pkey()}
-                               end,
-
-                           case CurCerts of
-                               {ok, {GeneratedCert, GeneratedKey}} ->
-                                   NewCertPKey = {Props, GeneratedCert,
-                                                  GeneratedKey},
-                                   {commit, SetFn(cert_and_pkey, NewCertPKey,
-                                                  Config)};
-                               {error, Reason} ->
-                                   {abort, Reason}
-                           end
-                   end),
-            case RV of
-                {commit, _} ->
-                    {ok, Props};
-                {abort, Reason} ->
-                    {error, Reason};
-                retry_needed ->
-                    erlang:error(exceeded_retries)
-            end;
-        {error, Error} ->
-            ?log_error("Certificate authority validation failed with ~p", [Error]),
-            {error, Error}
     end.
 
 set_generated_ca(CA) ->
