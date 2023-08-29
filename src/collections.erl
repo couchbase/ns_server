@@ -1585,15 +1585,16 @@ modify_collection_t() ->
        update_manifest_test_update_collection(Manifest2, "_default", "c1",
                                               [{uid, 999}])).
 
+get_history(CN, SN, Manifest) ->
+    proplists:get_value(
+      history, get_collection(CN, get_scope(SN, Manifest))).
+
 history_default_t() ->
     {ok, BucketConf} = get_bucket_config("bucket"),
 
     %% Default collection history field should inherit the default
     DefaultMan = default_manifest(BucketConf),
-    ?assert(proplists:get_value(history,
-                                get_collection("_default",
-                                               get_scope("_default",
-                                                         DefaultMan)))),
+    ?assert(get_history("_default", "_default", DefaultMan)),
 
     %% history_default is true, it should set history for the collection
     {commit, [{_, _, Manifest1}], _} =
@@ -1601,10 +1602,7 @@ history_default_t() ->
                                                "_default", "c1", []),
     ?assertEqual(undefined,
                  proplists:get_value(history_default, Manifest1)),
-    ?assert(proplists:get_value(history,
-                                get_collection("c1",
-                                               get_scope("_default",
-                                                         Manifest1)))),
+    ?assert(get_history("c1", "_default", Manifest1)),
 
     %% Set history_default to false and a new collection should not have history
     manifest_test_set_history_default(false),
@@ -1613,18 +1611,13 @@ history_default_t() ->
     %% And the default collections history field should not be present
     DefaultMan1 = default_manifest(BucketConf1),
     ?assertEqual(undefined,
-                 proplists:get_value(history,
-                                     get_collection("_default",
-                                                    get_scope("_default",
-                                                              DefaultMan1)))),
+                 get_history("_default", "_default", DefaultMan1)),
 
     {commit, [{_, _, Manifest2}], _} =
         update_manifest_test_create_collection(Manifest1, "_default", "c3", []),
+
     ?assertEqual(false,
-                 proplists:get_value(history,
-                                     get_collection("c3",
-                                                    get_scope("_default",
-                                                              Manifest2)))),
+                 get_history("c3", "_default", Manifest2)),
 
     %% And set history_default back to true and test again
     manifest_test_set_history_default(true),
@@ -1632,10 +1625,7 @@ history_default_t() ->
     %% History should be true now
     {commit, [{_, _, Manifest3}], _} =
         update_manifest_test_create_collection(Manifest2, "_default", "c2", []),
-    ?assert(proplists:get_value(history,
-                                get_collection("c2",
-                                               get_scope("_default",
-                                                         Manifest3)))).
+    ?assert(get_history("c2", "_default", Manifest3)).
 
 set_manifest_t() ->
     {ok, BucketConf} = get_bucket_config("bucket"),
