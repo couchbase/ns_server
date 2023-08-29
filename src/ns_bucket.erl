@@ -1905,7 +1905,11 @@ chronicle_upgrade_bucket(Func, BucketNames, ChronicleTxn) ->
       end, ChronicleTxn, BucketNames).
 
 default_trinity_enterprise_props(true = _IsEnterprise) ->
-    [{cross_cluster_versioning_enabled, false},
+    [{pitr_enabled, false},
+     {pitr_granularity, attribute_default(pitr_granularity)},
+     {pitr_max_history_age,
+      attribute_default(pitr_max_history_age)},
+     {cross_cluster_versioning_enabled, false},
      {version_pruning_window_hrs,
       attribute_default(version_pruning_window_hrs)}];
 default_trinity_enterprise_props(false = _IsEnterprise) ->
@@ -1914,11 +1918,7 @@ default_trinity_enterprise_props(false = _IsEnterprise) ->
 chronicle_upgrade_bucket_to_trinity(BucketName, ChronicleTxn) ->
     PropsKey = sub_key(BucketName, props),
     AddProps =
-        [{priority, ?DEFAULT_BUCKET_PRIO},
-         {pitr_enabled, false},
-         {pitr_granularity, attribute_default(pitr_granularity)},
-         {pitr_max_history_age,
-          attribute_default(pitr_max_history_age)}] ++
+        [{priority, ?DEFAULT_BUCKET_PRIO}] ++
         default_trinity_enterprise_props(cluster_compat_mode:is_enterprise()),
     {ok, BucketConfig} = chronicle_upgrade:get_key(PropsKey, ChronicleTxn),
     NewBucketConfig = misc:merge_proplists(fun (_, L, _) -> L end, AddProps,
