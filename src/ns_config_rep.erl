@@ -156,17 +156,12 @@ handle_call(Msg, _From, State) ->
     {reply, error, State}.
 
 handle_cast({merge_compressed, Node, Rev, Blob}, State) ->
-    %% 7.1 and later.
     case accept_merge(Node, Rev, State) of
         true ->
             merge_blob(Blob);
         false ->
             ok
     end,
-    {noreply, State};
-handle_cast({merge_compressed, Blob}, State) ->
-    %% Pre-7.1
-    merge_blob(Blob),
     {noreply, State};
 handle_cast({sync_reply, StartTS, From}, State) ->
     EndTS = erlang:monotonic_time(microsecond),
@@ -404,8 +399,6 @@ do_push(RawKVList, #state{nodes_rev = Revision} = State) ->
 do_push(Blob, OtherNodes, Revision) ->
     misc:parallel_map(send_blob(_, Revision, Blob), OtherNodes, 2000).
 
-send_blob(Node, undefined, Blob) ->
-    gen_server:cast({ns_config_rep, Node}, {merge_compressed, Blob});
 send_blob(Node, Revision, Blob) ->
     gen_server:cast({ns_config_rep, Node},
                     {merge_compressed, node(), Revision, Blob}).
