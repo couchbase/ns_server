@@ -201,9 +201,6 @@ do_wait_buckets_shutdown(KeepNodes) ->
             exit({buckets_shutdown_wait_failed, Failures})
     end.
 
-sanitize(Config) ->
-    misc:rewrite_key_value_tuple(sasl_password, "*****", Config).
-
 config_sync(Type, Nodes) ->
     case chronicle_compat:config_sync(Type, Nodes) of
         ok ->
@@ -579,7 +576,7 @@ rebalance_kv(KeepNodes, EjectNodes, DeltaRecoveryBuckets, DesiredServers) ->
     BucketConfigs = ns_bucket:get_buckets_by_priority(),
 
     NumBuckets = length(BucketConfigs),
-    ?rebalance_debug("BucketConfigs = ~p", [sanitize(BucketConfigs)]),
+    ?rebalance_debug("BucketConfigs = ~p", [BucketConfigs]),
 
     KeepKVNodes = ns_cluster_membership:service_nodes(KeepNodes, kv),
     LiveKVNodes =
@@ -621,7 +618,7 @@ rebalance_bucket(BucketName, BucketConfig, ProgressFun,
                  KeepKVNodes, EjectNodes, ForcedMap) ->
     ale:info(?USER_LOGGER, "Started rebalancing bucket ~s", [BucketName]),
     ?rebalance_info("Rebalancing bucket ~p with config ~p",
-                    [BucketName, sanitize(BucketConfig)]),
+                    [BucketName, BucketConfig]),
     case proplists:get_value(type, BucketConfig) of
         memcached ->
             rebalance_memcached_bucket(BucketName, KeepKVNodes);

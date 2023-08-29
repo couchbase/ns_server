@@ -202,10 +202,6 @@ sanitize(Config, TagUserTuples) ->
               {stop, {password, "*****"}};
           ({specialPasswords, _}) ->
               {stop, {specialPasswords, "*****"}};
-          ({sasl_password, _}) ->
-              %% Maybe present on mixed version clusters. The key is eventually
-              %% deleted at some time after compat mode is elevated to 7.0.
-              {stop, {sasl_password, "*****"}};
           ({admin_pass, _}) ->
               {stop, {admin_pass, "*****"}};
           ({pass, _}) ->
