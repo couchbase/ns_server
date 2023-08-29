@@ -1479,7 +1479,7 @@ do_engage_cluster_inner_tail(NodeKVList, Address, UserSupplied, Services) ->
     end.
 
 do_engage_cluster_validate_cert(NodeKVList, Services) ->
-    case maybe_validate_local_node_certificate_san(NodeKVList) of
+    case validate_local_node_certificate_san() of
         ok ->
             %% we re-init node's cookie to support joining cloned
             %% nodes. If we don't do that cluster will be able to
@@ -1490,23 +1490,6 @@ do_engage_cluster_validate_cert(NodeKVList, Services) ->
             ns_cookie_manager:cookie_init(),
             check_can_join_to(NodeKVList, Services);
         {error, _, _} = Err -> Err
-    end.
-
-maybe_validate_local_node_certificate_san(NodeKVList) ->
-    ClusterCompat = expect_json_property_integer(
-                      <<"clusterCompatibility">>, NodeKVList),
-    Version_7_1 = cluster_compat_mode:effective_cluster_compat_version_for(
-                    ?VERSION_71),
-    %% Pre-7.1 nodes don't send the private key (unless encryption is on)
-    %% and hence self generated certs are not regenerated on rename event of
-    %% the node to be added, it causes the SAN check to fail.
-    case ClusterCompat < Version_7_1 andalso
-         ns_server_cert:this_node_uses_self_generated_certs() of
-        true ->
-            %% skip SAN checks
-            ok;
-        false ->
-            validate_local_node_certificate_san()
     end.
 
 json_field(Service) ->
