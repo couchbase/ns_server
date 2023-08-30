@@ -1183,7 +1183,7 @@ setup_test_ns_rebalance_observer() ->
                 end),
     meck:expect(janitor_agent, get_dcp_docs_estimate,
                 fun (_, _, VB, _) ->
-                        {ok, {VB, 0, <<"backfilling">>}}
+                        [{ok, {VB, 0, <<"backfilling">>}}]
                 end),
 
     meck:new(ns_bucket, [passthrough]),
