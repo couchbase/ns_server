@@ -208,21 +208,29 @@ init_gosecrets(HiddenPass, MaxRetries, State) ->
     case call_init(HiddenPass, State) of
         ok -> ok;
         {wrong_password, _} ->
-            try
-                case prompt_the_password(State, MaxRetries) of
-                    ok ->
-                        ok;
-                    {error, Error} ->
-                        ?log_error("Stopping babysitter because gosecrets "
-                                   "password prompting has failed: ~p",
-                                   [Error]),
-                        init:stop(),
-                        shutdown
-                end
-            catch
-                C:E:ST ->
-                    ?log_error("Unhandled exception: ~p~n~p", [E, ST]),
-                    erlang:raise(C, E, ST)
+            case should_prompt_the_password(State) of
+                true ->
+                    try
+                        case prompt_the_password(State, MaxRetries) of
+                            ok ->
+                                ok;
+                            {error, Error} ->
+                                ?log_error(
+                                  "Stopping babysitter because gosecrets "
+                                  "password prompting has failed: ~p",
+                                  [Error]),
+                                init:stop(),
+                                shutdown
+                        end
+                    catch
+                        C:E:ST ->
+                            ?log_error("Unhandled exception: ~p~n~p", [E, ST]),
+                            erlang:raise(C, E, ST)
+                    end;
+                false ->
+                    ?log_error("Stopping babysitter"),
+                    init:stop(),
+                    shutdown
             end;
         {error, Error} ->
             erlang:error({gosecrets_init_failed, Error})
@@ -541,7 +549,47 @@ format_error({write_failed, CfgPath, Error}) ->
 format_error(Unknown) ->
     io_lib:format("~p", [Unknown]).
 
+should_prompt_the_password(#state{config = Path}) ->
+    {ok, CfgJson} = file:read_file(Path),
+    {Cfg} = ejson:decode(CfgJson),
+    {ESCfg} = proplists:get_value(<<"encryptionService">>, Cfg),
+    case proplists:get_value(<<"keyStorageType">>, ESCfg) of
+        <<"file">> ->
+            {KSCfg} = proplists:get_value(<<"keyStorageSettings">>, ESCfg),
+            case proplists:get_value(<<"encryptWithPassword">>, KSCfg) of
+                true ->
+                    case proplists:get_value(<<"passwordSource">>, KSCfg) of
+                        <<"env">> -> true;
+                        _ -> false
+                    end;
+                false ->
+                    false
+            end;
+        _ ->
+            false
+    end.
+
 -ifdef(TEST).
+
+should_prompt_the_password_test() ->
+    CfgPath = path_config:tempfile("promt_pass_test_cfg", ".tmp"),
+    try
+        State = #state{config = CfgPath},
+        save_config(CfgPath, cfg_to_json([])),
+        ?assertEqual(true, should_prompt_the_password(State)),
+        save_config(CfgPath, cfg_to_json([{es_key_storage_type, script},
+                                          {es_read_cmd, <<"/path">>},
+                                          {es_write_cmd, <<"/path">>},
+                                          {es_delete_cmd, <<"/path">>}])),
+        ?assertEqual(false, should_prompt_the_password(State)),
+        save_config(CfgPath, cfg_to_json([{es_key_storage_type, file},
+                                          {es_encrypt_key, true},
+                                          {es_password_source, script},
+                                          {es_password_cmd, <<"/path">>}])),
+        ?assertEqual(false, should_prompt_the_password(State))
+    after
+        file:delete(CfgPath)
+    end.
 
 default_config_encryption_test() ->
     with_gosecrets(
