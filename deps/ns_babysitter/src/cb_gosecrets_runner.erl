@@ -152,7 +152,8 @@ prompt_the_password(State, MaxRetries, StdIn) ->
 prompt_the_password(State, MaxRetries, StdIn, Socket, RetriesLeft) ->
     {ok, {Addr, Port}} = inet:sockname(Socket),
     ?log_debug("Waiting for the master password to be supplied (UDP: ~p:~b). "
-               "Attempt ~p", [Addr, Port, MaxRetries - RetriesLeft + 1]),
+               "Attempt ~p (~p attempts left)",
+               [Addr, Port, MaxRetries - RetriesLeft + 1, RetriesLeft]),
     receive
         {StdIn, M} ->
             ?log_error("Password prompt interrupted: ~p", [M]),
