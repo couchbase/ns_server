@@ -245,7 +245,7 @@ failover(Nodes, Options) ->
     %% From this point onwards, no bucket failed exception is thrown.
     %% Partial failover is still possible if we update the service map (in
     %% services prep) and crash thereafter before failover runs to completion.
-    %% Service failover is completed asychronously in service_janitor even if
+    %% Service failover is completed asynchronously in service_janitor even if
     %% the state of the node hasn't transitioned to inactiveFailed. A rebalance
     %% in such a state will reinstate any failed over services.
     {SvcNodes, UnsafeNodes} =
@@ -253,11 +253,7 @@ failover(Nodes, Options) ->
 
     %% Update service maps. Sets service_failover_pending for each service,
     %% which is cleared after a rebalance in complete_services_failover.
-    Services =
-        case SvcNodes of
-            [] -> [];
-            Nodes -> ns_cluster_membership:failover_service_nodes(Nodes)
-        end,
+    Services = ns_cluster_membership:failover_service_nodes(SvcNodes),
 
     KVErrorNodes = failover_buckets(KVNodes, BktPrepResults),
     ServicesErrorNodes = complete_services_failover(SvcNodes, Services),
