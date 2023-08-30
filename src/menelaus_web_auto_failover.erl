@@ -119,7 +119,8 @@ handle_settings_post(Req) ->
     validator:handle(
       handle_settings_post_validated(Req, _), Req, form,
       settings_validators() ++
-      [validator:unsupported(_)]).
+      [validator:no_duplicates(_),
+       validator:unsupported(_)]).
 
 %% @doc Resets the number of nodes that were automatically failovered to zero
 handle_settings_reset_count(Req) ->
