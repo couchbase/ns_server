@@ -33,10 +33,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
 
         if self.is_enterprise:
             self.limits['maxCount']['min'] = 1
-            if self.is_71:
-                self.limits['maxCount']['max'] = 100
-            else:
-                self.limits['maxCount']['max'] = 3
+            self.limits['maxCount']['max'] = 100
             self.limits['failoverOnDataDiskIssues[timePeriod]']['min'] = 5
             self.limits['failoverOnDataDiskIssues[timePeriod]']['max'] = 3600
 
@@ -48,7 +45,6 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
         self.result_keys = list(self.prev_settings.keys())
         self.result_keys.remove('count')
         self.is_enterprise = cluster.is_enterprise
-        self.is_71 = cluster.is_71
         self.is_trinity = cluster.is_trinity
         self.is_serverless = cluster.is_serverless
 
@@ -68,7 +64,6 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
                                  'canAbortRebalance',
                                  'disableMaxCount' ]
         if self.is_enterprise:
-            assert 'failoverServerGroup' in self.post_data_keys or self.is_71
             assert 'canAbortRebalance' in self.post_data_keys
             if self.is_trinity:
                 assert 'disableMaxCount' in self.post_data_keys
@@ -373,10 +368,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
         if self.is_trinity:
             return 'failoverServerGroup'
 
-        if self.is_71:
-            return random.choice(['failoverServerGroup', 'disableMaxCount'])
-
-        return 'disableMaxCount'
+        return random.choice(['failoverServerGroup', 'disableMaxCount'])
 
     """
     Given an input dictionary with possible parameter value(s):

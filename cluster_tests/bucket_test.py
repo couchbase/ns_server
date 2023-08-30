@@ -350,7 +350,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
         self.auth = cluster.auth
         self.memsize = cluster.memsize
         self.is_enterprise = cluster.is_enterprise
-        self.is_71 = cluster.is_71
         self.is_trinity = cluster.is_trinity
         self.is_serverless = cluster.is_serverless
         self.is_dev_preview = cluster.is_dev_preview
@@ -700,7 +699,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
             # ------------------------------------------------------------------
 
             self.test_params['storageQuotaPercentage'] = [None]
-            if self.is_71 and self.is_enterprise and storage_backend == "magma":
+            if self.is_enterprise and storage_backend == "magma":
                 self.add_limits('storageQuotaPercentage')
 
             # Width
@@ -879,7 +878,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
         # Storage Backend
         # ----------------------------------------------------------------------
         if bucket_type != "ephemeral" and is_creation:
-            if not self.is_enterprise or not self.is_71:
+            if not self.is_enterprise:
                 self.bad_params['storageBackend'].append("magma")
             self.bad_params['storageBackend'].append("bogus")
 
@@ -1158,9 +1157,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
                 if not self.is_enterprise:
                     return {field: "Magma is supported in enterprise edition "
                                    "only"}
-                elif not self.is_71:
-                    return {field: "Not allowed until entire cluster is "
-                                   "upgraded to 7.1"}
         return {}
 
     def eviction_policy_error(self, test_data):
@@ -1455,10 +1451,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
                 return {field:
                             "Storage Quota Percentage is supported in "
                             "enterprise edition only"}
-            elif not self.is_71:
-                return {field:
-                            "Storage Quota Percentage cannot be set until the "
-                            "cluster is fully 7.1"}
             elif test_data.get("storageBackend") != "magma":
                 return {field:
                             "Storage Quota Percentage is only used with Magma"}
@@ -1537,10 +1529,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
         field = "magmaFragmentationPercentage"
         if field in test_data:
             value = test_data[field]
-
-            if not self.is_71:
-                return {field: "Magma Fragmentation Percentage is not allowed "
-                               "until entire cluster is upgraded to 7.1"}
 
             if not isinstance(value, int):
                 return {field: "magma fragmentation percentage must be an "
@@ -1996,8 +1984,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
             remove_value('conflict_resolution_type', "lww")
         if not self.is_enterprise or not self.is_dev_preview:
             remove_value('conflict_resolution_type', "custom")
-        if not self.is_enterprise or not self.is_71:
-            remove_value('storage_backend', "magma")
 
     """
     Perform a comprehensive test of a parameter, checking representative bad
