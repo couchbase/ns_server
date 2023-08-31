@@ -95,10 +95,10 @@ handle_call(Msg, _From, State) ->
     ?log_warning("Unhandled call: ~p", [Msg]),
     {reply, error, State}.
 
-handle_cast({merge_compressed, Blob}, State) ->
+handle_cast({merge_compressed, FromNode, _, Blob}, State) ->
     KVList = misc:decompress(Blob),
 
-    meld_config(KVList, ns_node_disco:ns_server_node()),
+    meld_config(KVList, FromNode),
 
     {message_queue_len, QL} = erlang:process_info(self(), message_queue_len),
     case QL > ?MERGING_EMERGENCY_THRESHOLD of
