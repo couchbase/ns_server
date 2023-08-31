@@ -289,7 +289,10 @@ collection_prop_to_memcached(_, V) ->
 default_collection_props() ->
     case cluster_compat_mode:is_cluster_trinity() of
         true ->
-            [{history, false}];
+            %% No longer remove inferred properties as the benefits don't
+            %% out weigh the costs (e.g. see note below about the absense of
+            %% maxTTL).
+            [];
         false ->
             %% Prior to trinity we didn't pass {maxTTL, 0} in the manifest
             %% sent to kv. As a result it's absence meant to "use the bucket
@@ -1508,10 +1511,11 @@ modify_collection_t() ->
                                                get_scope("_default",
                                                          Manifest1)))),
 
+    %% Don't infer 'history' being false
     {commit, [{_, _, Manifest2}], _} =
         update_manifest_test_update_collection(Manifest1, "_default", "c1",
                                                [{history, false}]),
-    ?assertEqual(undefined,
+    ?assertEqual(false,
                  proplists:get_value(history,
                                      get_collection("c1",
                                                     get_scope("_default",
@@ -1616,7 +1620,7 @@ history_default_t() ->
 
     {commit, [{_, _, Manifest2}], _} =
         update_manifest_test_create_collection(Manifest1, "_default", "c3", []),
-    ?assertEqual(undefined,
+    ?assertEqual(false,
                  proplists:get_value(history,
                                      get_collection("c3",
                                                     get_scope("_default",
@@ -1673,7 +1677,7 @@ set_manifest_t() ->
        [{"s1",
          [{uid,100},
           {collections, [{"c4", [{uid, 103}, {history, true}]},
-                         {"c3", [{uid, 102}]},
+                         {"c3", [{uid, 102}, {history, false}]},
                          {"c2", [{uid, 101}, {maxTTL, 8}, {history, true}]},
                          {"c1", [{uid, 100}, {history, true}]}]}]}],
        get_scopes(Manifest1)),
@@ -1757,10 +1761,10 @@ set_manifest_t() ->
          [{uid, 10},
           {collections, [{"ic1", [{uid, 11}]},
                          {"ic2", [{uid, 12}, {maxTTL, 0}]},
-                         {"ic3", [{uid, 13}]},
+                         {"ic3", [{history, false}, {uid, 13}]},
                          {"ic4", [{history, true}, {uid, 14}]},
                          {"ic5", [{history, true}, {uid, 15}]},
-                         {"ic6", [{uid, 16}]}]}]}],
+                         {"ic6", [{history, false}, {uid, 16}]}]}]}],
        get_scopes(Manifest3)),
 
     ExistingManifest3 =
@@ -1870,7 +1874,7 @@ set_manifest_t() ->
           Manifest5_2,
           [{"s1",
             [{collections, [{"c1", [{history, false}]}]}]}]),
-    ?assertEqual([{maxTTL, 777}, {uid, 8}],
+    ?assertEqual([{history, false}, {maxTTL, 777}, {uid, 8}],
                  get_collection("c1", get_scope("s1", Manifest5_3))),
 
     %% Change maxTTL to zero which means disable TTL
