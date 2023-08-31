@@ -30,6 +30,21 @@ handle_mutation_rv(#mc_header{status = ?LIMIT_EXCEEDED} = _Header, _Entry) ->
     {error,
      construct_error_context(
        <<"Ingress disabled due to exceeding configured storage limit">>)};
+handle_mutation_rv(#mc_header{status = ?RR_TOO_LOW} = _Header, _Entry) ->
+    {error,
+     construct_error_context(
+       <<"Ingress disabled due to ratio between per-node quota and data size "
+         "exceeding configured limit">>)};
+handle_mutation_rv(#mc_header{status = ?DATA_SIZE_TOO_BIG} = _Header,
+                   _Entry) ->
+    {error,
+     construct_error_context(
+       <<"Ingress disabled due to data size exceeding configured limit">>)};
+handle_mutation_rv(#mc_header{status = ?DISK_SPACE_TOO_LOW} = _Header,
+                   _Entry) ->
+    {error,
+     construct_error_context(
+       <<"Ingress disabled due to disk usage exceeding configured limit">>)};
 handle_mutation_rv(#mc_header{status = ?EINVAL} = _Header, Entry) ->
     {error, Entry#mc_entry.data};
 handle_mutation_rv(#mc_header{status = ?UNKNOWN_COLLECTION}, Entry) ->
