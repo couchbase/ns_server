@@ -48,6 +48,45 @@
       </div>
     </div>
 
+    <div [hidden]="!(form.group.get('spMetadataURL').valueChanges | async)" class="fix-width-8-1">
+      <span class="fix-width-3-5 inline">Current SP metadata URL:</span>
+      <span class="fix-width-4 inline">
+        {{form.group.get('spMetadataURL').valueChanges | async}}
+      </span>
+      <span class="fix-width-4 inline nowrap">
+        <a ngxClipboard [cbContent]="form.group.get('spMetadataURL').valueChanges | async">
+          Copy URL <span class="icon fa-clipboard"></span>
+        </a>
+        <a class="margin-left-2" [attr.href]="form.group.get('spMetadataURL').valueChanges | async">
+          Download Metadata <span class="icon fa-download"></span>
+        </a>
+      </span>
+    </div>
+
+    <div [hidden]="!(form.group.get('spConsumeURL').valueChanges | async)" class="fix-width-8-1">
+      <span class="fix-width-3-5 inline">Current SP consume URL:</span>
+      <span class="fix-width-4 inline">
+        {{form.group.get('spConsumeURL').valueChanges | async}}
+      </span>
+      <span class="fix-width-4 inline nowrap">
+        <a ngxClipboard [cbContent]="form.group.get('spConsumeURL').valueChanges | async">
+          Copy URL <span class="icon fa-clipboard"></span>
+        </a>
+      </span>
+    </div>
+
+    <div [hidden]="!(form.group.get('spLogoutURL').valueChanges | async)" class="fix-width-8-1 margin-bottom-2">
+      <span class="fix-width-3-5 inline">Current SP logout URL:</span>
+      <span class="fix-width-4 inline" >
+          {{form.group.get('spLogoutURL').valueChanges | async}}
+      </span>
+      <span class="fix-width-4 inline nowrap">
+        <a ngxClipboard [cbContent]="form.group.get('spLogoutURL').valueChanges | async">
+          Copy URL <span class="icon fa-clipboard"></span>
+        </a>
+      </span>
+    </div>
+
     <div class="formrow">
       <h4>Service Provider Configuration</h4>
     </div>
@@ -69,26 +108,6 @@
       </span>
 
       <div [hidden]="!(showServiceProviderMetaData.state | async)" class="margin-top-half margin-bottom-half indent-1-5 margin-bottom-1">
-
-        <div [hidden]="!(form.group.get('spMetadataURL').valueChanges | async)" class="fix-width-8-1">
-            <span>Current SP metadata URL:</span>
-            <a [attr.href]="form.group.get('spMetadataURL').valueChanges | async">
-                {{form.group.get('spMetadataURL').valueChanges | async}}
-            </a>
-        </div>
-        <div [hidden]="!(form.group.get('spConsumeURL').valueChanges | async)" class="fix-width-8-1">
-            <span>Current SP consume URL:</span>
-            <a [attr.href]="form.group.get('spConsumeURL').valueChanges | async">
-                {{form.group.get('spConsumeURL').valueChanges | async}}
-            </a>
-        </div>
-
-        <div [hidden]="!(form.group.get('spLogoutURL').valueChanges | async)" class="fix-width-8-1 margin-bottom-1">
-            <span>Current SP logout URL:</span>
-            <a [attr.href]="form.group.get('spLogoutURL').valueChanges | async">
-                {{form.group.get('spLogoutURL').valueChanges | async}}
-            </a>
-        </div>
 
         <div class="formrow fix-width-8-1">
           <label for="spEntityId_field">SP Entity ID</label>

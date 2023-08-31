@@ -12,6 +12,7 @@ import {NgModule} from '@angular/core';
 import {UIRouterModule} from '@uirouter/angular';
 import {ReactiveFormsModule} from '@angular/forms';
 import {NgbModule} from '@ng-bootstrap/ng-bootstrap';
+import {ClipboardModule} from 'ngx-clipboard';
 
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnPipesModule} from './mn.pipes.module.js';
@@ -48,6 +49,7 @@ class MnSecuritySamlModule {
         ReactiveFormsModule,
         MnSharedModule,
         NgbModule,
+        ClipboardModule,
         UIRouterModule.forChild({ states: [samlState] })
       ]
     })

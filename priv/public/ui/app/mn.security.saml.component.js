@@ -12,9 +12,11 @@ import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {UIRouter} from '@uirouter/angular';
 import {filter, map, distinctUntilChanged, takeUntil} from 'rxjs/operators';
 import {combineLatest, merge, pipe} from 'rxjs';
+import {ClipboardService} from 'ngx-clipboard';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 
+import {MnAlerts} from './ajs.upgraded.providers.js';
 import {MnFormService} from './mn.form.service.js';
 import {MnHelperService} from './mn.helper.service.js';
 import {MnSecurityService} from './mn.security.service.js';
@@ -39,14 +41,18 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
     MnSecurityService,
     MnPermissions,
     MnPoolsService,
-    UIRouter
+    MnAlerts,
+
+    UIRouter,
+    ClipboardService
   ]}
 
-  constructor(mnFormService, mnHelperService, mnSecurityService, mnPermissions, mnPoolsService, uiRouter) {
+  constructor(mnFormService, mnHelperService, mnSecurityService, mnPermissions, mnPoolsService, mnAlerts, uiRouter, clipboardService) {
     super();
 
     this.mnHelperService = mnHelperService;
     this.uiRouter = uiRouter;
+    this.mnAlerts = mnAlerts;
 
     this.getSaml = mnSecurityService.stream.getSaml;
     this.postSaml = mnSecurityService.stream.postSaml;
@@ -54,6 +60,18 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.permissionsAdminSecurityWrite = mnPermissions.stream
       .pipe(map(permissions => permissions.cluster.admin.security.external.write));
+
+    clipboardService.copyResponse$
+      .pipe(filter(response => response.isSuccess),
+            takeUntil(this.mnOnDestroy))
+      .subscribe(() =>
+        this.mnAlerts.formatAndSetAlerts('URL copied successfully!', 'success', 2500));
+
+    clipboardService.copyResponse$
+      .pipe(filter(response => !response.isSuccess),
+            takeUntil(this.mnOnDestroy))
+      .subscribe(() =>
+        this.mnAlerts.formatAndSetAlerts('Unable to copy URL!', 'error', 2500));
 
     this.form = mnFormService.create(this);
     this.form
