@@ -287,10 +287,10 @@ class Cluster:
             node_urls=get_node_urls(self.nodes),
             verbose=verbose)
 
-    def create_bucket(self, data, verbose=False):
+    def create_bucket(self, data, verbose=False, expected_code=202):
         self.wait_for_rebalance(verbose=verbose)
         return testlib.post_succ(self, "/pools/default/buckets",
-                                 expected_code=202, data=data)
+                                 expected_code=expected_code, data=data)
 
     def update_bucket(self, data, verbose=False):
         self.wait_for_rebalance(verbose=verbose)

@@ -13,6 +13,10 @@ import testlib
 
 class ResourceManagementTests(testlib.BaseTestSet):
 
+    def __init__(self, cluster):
+        super().__init__(cluster)
+        self.original_max_supported = None
+
     @staticmethod
     def requirements():
         # - Provisioned edition required for guard rails to be configurable
@@ -20,13 +24,19 @@ class ResourceManagementTests(testlib.BaseTestSet):
         #   guard rail has been hit. Note, assert_cant_write will be less likely
         #   to test both nodes if num_nodes increases, so it should be modified
         #   at the same time.
-        return testlib.ClusterRequirements(edition="Provisioned", num_nodes=2)
+        # - 100MB quota for each bucket in num_buckets_test
+        return testlib.ClusterRequirements(edition="Provisioned", num_nodes=2,
+                                           memsize=400)
 
     def setup(self, cluster):
         testlib.delete_all_buckets(cluster)
+        self.original_max_supported = \
+            testlib.get_succ(cluster, "/internalSettings").json().\
+            get("maxBucketCount", 30)
 
     def teardown(self, cluster):
-        pass
+        testlib.post_succ(cluster, "/internalSettings",
+                          data={"maxBucketCount": self.original_max_supported})
 
     def test_teardown(self, cluster):
         testlib.delete_all_buckets(cluster)
@@ -266,6 +276,74 @@ class ResourceManagementTests(testlib.BaseTestSet):
         testlib.post_succ(
             cluster, "/pools/default/buckets/test/docs/test_doc",
             data="")
+
+    def num_buckets_test(self, cluster):
+        pools = testlib.get_succ(cluster, "/pools/default").json()
+        cpu_count = pools["nodes"][0]["cpuCount"]
+
+        # Set minimum cores per bucket to N times the cpu count, permitting
+        # exactly N buckets (where N = max_buckets_dynamic)
+        for max_buckets_dynamic in range(1, 4):
+            testlib.post_succ(cluster,
+                              "/settings/resourceManagement/coresPerBucket",
+                              json={
+                                  "enabled": True,
+                                  "minimum": cpu_count / max_buckets_dynamic
+                              })
+
+            # Set the hard limit just above the dynamic limit
+            max_buckets_supported = max_buckets_dynamic + 1
+            testlib.post_succ(cluster, "/internalSettings",
+                              data={"maxBucketCount": max_buckets_supported})
+
+            # Create the permitted buckets
+            for i in range(max_buckets_dynamic):
+                cluster.create_bucket({
+                    "name": f"test_{i}",
+                    "ramQuota": 100
+                })
+
+            # Test that an additional bucket can't be created and gives the
+            # expected error message, mentioning the per-core limit
+            r = cluster.create_bucket(
+                {
+                    "name": "test_too_many",
+                    "ramQuota": 100
+                }, expected_code=400)
+            exp_error = f"Cannot create more than {max_buckets_dynamic} " \
+                        f"buckets due to insufficient cpu cores. Either " \
+                        f"increase the resource minimum or the number of " \
+                        f"cores on all kv nodes."
+            assert r.json()['_'] == exp_error, \
+                f"{r.json()['_']} != {exp_error}"
+
+            # Disable the per-core limit
+            testlib.post_succ(cluster,
+                              "/settings/resourceManagement/coresPerBucket",
+                              json={
+                                  "enabled": False
+                              })
+
+            # One more bucket allowed
+            cluster.create_bucket({
+                "name": f"test_{cpu_count}",
+                "ramQuota": 100
+            })
+
+            # Test that no more buckets are allowed, and we now get the old
+            # error message
+            r = cluster.create_bucket(
+                {
+                    "name": "test_too_many_again",
+                    "ramQuota": 100
+                }, expected_code=400)
+            exp_error = f"Cannot create more than {max_buckets_supported} " \
+                        f"buckets"
+            assert r.json()["_"] == exp_error, \
+                f"{r.json()['_']} != {exp_error}"
+
+            # Delete the buckets in preparation for the next test case
+            testlib.delete_all_buckets(cluster)
 
 
 def disable_bucket_guard_rails(cluster):
