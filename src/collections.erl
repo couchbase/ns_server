@@ -167,14 +167,10 @@ manifest_with_system_scope(BucketConf) ->
     {NextId, Collections} =
         lists:foldl(
           fun (Name, {Id, Cols}) ->
-                  %% Note, not adding history to system collections. They
-                  %% probably don't want to assume that history is available,
-                  %% but we can change this in the future if necessary
                   {Id + 1,
                    [{Name,
-                     [{uid, Id},
-                      {maxTTL, 0}
-                     ] ++ maybe_add_metered_property()}
+                     [{uid, Id}] ++
+                        system_scope_collection_properties()}
                    ] ++ Cols}
           end, {8, []}, system_collections()),
 
@@ -197,15 +193,15 @@ manifest_with_system_scope(BucketConf) ->
 is_system_scope_enabled() ->
     cluster_compat_mode:is_cluster_trinity().
 
-%% If metering of collections is being used set the initial value of the
-%% property.
-maybe_add_metered_property() ->
-    case config_profile:get_bool(enable_metered_collections) of
-        true ->
-            [{metered, false}];
-        false ->
-            []
-    end.
+%% Properties for collections within the _system scope.
+system_scope_collection_properties() ->
+    Metered = case config_profile:get_bool(enable_metered_collections) of
+                  true ->
+                      [{metered, false}];
+                  false ->
+                      []
+              end,
+    [{maxTTL, 0}, {history, false}] ++ Metered.
 
 max_collections_for_bucket(BucketConfig, GlobalMax) ->
     case guardrail_monitor:get(collections_per_quota) of
@@ -610,8 +606,15 @@ check_cluster_limit(Counter, TotalInCluster) ->
             {max_number_exceeded, Counter}
     end.
 
-remove_defaults(Props) ->
-    Props -- default_collection_props().
+%% This function and the concept of "default" collection props can be deleted
+%% when the oldest supported release is trinity.
+remove_defaults(Props, ScopeName) ->
+    case ScopeName =/= ?SYSTEM_SCOPE_NAME of
+        true ->
+            Props -- default_collection_props();
+        false ->
+            Props
+    end.
 
 get_operations(Fun, Current, Required) ->
     MapCurrent = maps:from_list(Current),
@@ -936,7 +939,7 @@ add_collection(Manifest, Name, ScopeName, SuppliedProps, BucketConf) ->
         end,
     Props1 = maybe_reset_maxttl(Props0),
     Props = maybe_add_metered(Props1, ScopeName),
-    SanitizedProps = remove_defaults(Props),
+    SanitizedProps = remove_defaults(Props, ScopeName),
     on_collections([{Name, [{uid, Uid} | SanitizedProps]} | _], ScopeName,
                    Manifest).
 
@@ -965,7 +968,8 @@ modify_collection_props(Manifest, Name, ScopeName, DesiredProps) ->
             % are setting a value to the default.
             {Name, CurrentProps} = lists:keyfind(Name, 1, Collections),
             NewProps0 = remove_defaults(misc:update_proplist(CurrentProps,
-                                                             DesiredProps)),
+                                                             DesiredProps),
+                                       ScopeName),
             NewProps = maybe_reset_maxttl(NewProps0),
             case lists:sort(NewProps) =:= lists:sort(CurrentProps) of
                 false ->
@@ -1213,7 +1217,7 @@ upgrade_to_trinity(Manifest0, BucketConfig) ->
         lists:foldl(
           fun (Name, Manifest) ->
                   do_create_collection(?SYSTEM_SCOPE_NAME, Name,
-                                       [{maxTTL, 0}],
+                                       system_scope_collection_properties(),
                                        Manifest, BucketConfig,
                                        ?NO_INCREMENT_COUNTER)
           end, Manifest1, system_collections()),
