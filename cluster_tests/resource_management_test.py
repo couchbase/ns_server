@@ -345,6 +345,27 @@ class ResourceManagementTests(testlib.BaseTestSet):
             # Delete the buckets in preparation for the next test case
             testlib.delete_all_buckets(cluster)
 
+    def rebalance_test(self, cluster):
+        cluster.create_bucket({
+            "name": "test",
+            "ramQuota": 100
+        })
+        wait_for_stat(cluster, "kv_ep_max_size", "test", n=2)
+
+        # Trigger the guard rail by injecting a new promQL query to set the
+        # per-node data size to 8 times the quota, s.t. quota/size = 12.5%.
+        # With a RR% of 12.5, removing a node takes the RR below 10%
+        testlib.post_succ(cluster, "/internalSettings",
+                          data={"resourcePromQLOverride.dataSizePerNodeBytes":
+                                "8*10^8 * sgn(kv_ep_max_size)"})
+
+        cluster.rebalance(
+            ejected_nodes=[cluster.connected_nodes[1]],
+            initial_code=400,
+            initial_expected_error=
+            '{"rr_will_be_too_low":"The following buckets are expected to '
+            'breach the resident ratio minimum: test"}')
+
 
 def disable_bucket_guard_rails(cluster):
     testlib.post_succ(

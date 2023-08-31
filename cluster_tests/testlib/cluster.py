@@ -144,7 +144,8 @@ class Cluster:
     # Rebalance the cluster, and possibly eject nodes at the same time.
     # Can optionally wait for the rebalance to finish
     def rebalance(self, ejected_nodes=None, wait=True, timeout_s=600,
-                  verbose=False, expected_error=None):
+                  verbose=False, expected_error=None, initial_code=200,
+                  initial_expected_error=None):
         # We have to use the otpNode names instead of the node ips.
         otp_nodes = testlib.get_otp_nodes(self)
 
@@ -175,21 +176,29 @@ class Cluster:
         if verbose:
             print(f"Starting rebalance with {data}")
 
-        testlib.post_succ(self, "/controller/rebalance", data=data)
+        if initial_expected_error is None:
+            testlib.post_succ(self, "/controller/rebalance", data=data,
+                              expected_code=initial_code)
 
-        # Update connected_nodes with any changes so that wait_for_rebalance
-        # doesn't query a node that is being removed
-        if ejected_nodes is not None:
-            for node in ejected_nodes:
-                self.connected_nodes.remove(node)
+            # Update connected_nodes with any changes so that wait_for_rebalance
+            # doesn't query a node that is being removed
+            if ejected_nodes is not None:
+                for node in ejected_nodes:
+                    self.connected_nodes.remove(node)
 
-        # Optionally wait for the rebalance to complete
-        if wait:
-            error = self.wait_for_rebalance(timeout_s=timeout_s,
-                                            verbose=verbose)
-            assert error is expected_error, \
-                f"Expected final rebalance status: {expected_error}\n" \
-                f"Found: {error}"
+            # Optionally wait for the rebalance to complete
+            if wait:
+                error = self.wait_for_rebalance(timeout_s=timeout_s,
+                                                verbose=verbose)
+                assert error is expected_error, \
+                    f"Expected final rebalance status: {expected_error}\n" \
+                    f"Found: {error}"
+        else:
+            r = testlib.post_fail(self, "/controller/rebalance", data=data,
+                                  expected_code=initial_code)
+            assert r.text == initial_expected_error, \
+                f"Expected rebalance error: {initial_expected_error}\n" \
+                f"Found: {r.text}"
 
     # Add new_node to the cluster, and optionally perform a rebalance
     def add_node(self, new_node, services="kv", do_rebalance=False,
