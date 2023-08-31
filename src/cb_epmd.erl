@@ -122,6 +122,10 @@ is_local_node(Node) ->
 %%% Internal functions
 %%%===================================================================
 
+base_port(ns_server_cluster_run, false) ->
+    application:get_env(kernel, external_tcp_port, 21400);
+base_port(ns_server_cluster_run, true) ->
+    application:get_env(kernel, external_tcp_port, 21450);
 base_port(ns_server, false) ->
     application:get_env(kernel, external_tcp_port, 21100);
 base_port(ns_server, true) ->
@@ -136,14 +140,17 @@ base_port(couchdb, true) ->
     element(2, application:get_env(kernel, internal_tls_ports, {-1, 21350})).
 
 node_type(NodeStr) ->
-    {Type, _} = parse_node(NodeStr),
-    Type.
+    case parse_node(NodeStr) of
+        %% Keep knowledge about cluster_run inside this module
+        {ns_server_cluster_run, _} -> ns_server;
+        {Type, _} -> Type
+    end.
 
 parse_node("ns_1") -> {ns_server, 0};
 parse_node("babysitter_of_ns_1") -> {babysitter, 0};
 parse_node("couchdb_ns_1") -> {couchdb, 0};
 
-parse_node("n_" ++ Nstr) -> {ns_server, list_to_integer(Nstr)};
+parse_node("n_" ++ Nstr) -> {ns_server_cluster_run, list_to_integer(Nstr)};
 parse_node("babysitter_of_n_" ++ Nstr) -> {babysitter, list_to_integer(Nstr)};
 parse_node("couchdb_n_" ++ Nstr) -> {couchdb, list_to_integer(Nstr)};
 

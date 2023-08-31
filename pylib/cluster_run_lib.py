@@ -277,8 +277,6 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix, root_dir):
         "-hidden",
         "-kernel", "dist_config_file", quote_string_for_erl(cb_dist_config),
         "-kernel", "inetrc", f"\"{hosts_file}\"",
-        "-kernel", "external_tcp_port", "21400",
-        "-kernel", "external_tls_port", "21450",
         "-kernel", "prevent_overlapping_partitions", "false",
         "-ns_server", "config_path", f'"{static_config}"',
         "error_logger_mf_dir", quote_string_for_erl(logdir),
