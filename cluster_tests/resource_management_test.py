@@ -277,6 +277,70 @@ class ResourceManagementTests(testlib.BaseTestSet):
             cluster, "/pools/default/buckets/test/docs/test_doc",
             data="")
 
+    def data_size_growth_test(self, cluster):
+        # Disable other guard rails to ensure we don't get any unexpected
+        # guard rails triggered (only seen with disk usage, but disabling all
+        # to be extra sure)
+        disable_bucket_guard_rails(cluster)
+
+        # Ensure that the guard rail is enabled
+        testlib.post_succ(
+            cluster, "/settings/resourceManagement/bucket/dataSizePerNode",
+            json={
+                "enabled": True,
+                "couchstoreMaximum": 1,
+            })
+
+        cluster.create_bucket({
+            "name": "test",
+            "ramQuota": 100
+        })
+
+        testlib.poll_for_condition(is_warmed_up(cluster, "test"),
+                                   sleep_time=0.5, attempts=120)
+
+        # Wait for a stat to be populated, as the check will be ignored until we
+        # get that stat from prometheus
+        wait_for_stat(cluster, "kv_logical_data_size_bytes", "test", n=2)
+
+        refresh_guard_rails(cluster)
+        assert_bucket_resource_status(cluster, "test", "ok")
+
+        # Make sure that we can successfully write to the cluster
+        testlib.poll_for_condition(can_write(cluster, "test"),
+                                   sleep_time=0.5, attempts=120)
+
+        testlib.post_succ(
+            cluster, "/settings/resourceManagement/bucket/dataSizePerNode",
+            json={
+                "enabled": True,
+                "couchstoreMaximum": 0
+            })
+
+        refresh_guard_rails(cluster)
+        assert_bucket_resource_status(cluster, "test", "data_size")
+
+        # Expect write to fail
+        assert_cant_write(cluster, "test",
+                          "Ingress disabled due to data size exceeding "
+                          "configured limit")
+
+        # Set the config back to original, to verify the status goes back to ok
+        testlib.post_succ(
+            cluster, "/settings/resourceManagement/bucket/dataSizePerNode",
+            json={
+                "enabled": True,
+                "couchstoreMaximum": 1
+            })
+
+        refresh_guard_rails(cluster)
+        assert_bucket_resource_status(cluster, "test", "ok")
+
+        # Writes should succeed again
+        testlib.post_succ(
+            cluster, "/pools/default/buckets/test/docs/test_doc",
+            data="")
+
     def num_buckets_test(self, cluster):
         pools = testlib.get_succ(cluster, "/pools/default").json()
         cpu_count = pools["nodes"][0]["cpuCount"]
