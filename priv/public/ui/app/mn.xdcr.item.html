@@ -39,7 +39,7 @@
       {{item.source}}
       <span
          class="label lt-blue"
-         *ngIf="item.filterExpression || item.filterExpiration || item.filterDeletion || item.filterBypassExpiry"
+         *ngIf="item.filterExpression || item.filterExpiration || item.filterDeletion || item.filterBypassExpiry || item.filterBinary"
          (click)="$event.stopPropagation()"
          [ngbTooltip]="filterTooltipTemplate"
          placement="auto right"

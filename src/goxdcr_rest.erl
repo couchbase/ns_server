@@ -99,6 +99,8 @@ interesting_doc_key(<<"filterDeletion">>) ->
     true;
 interesting_doc_key(<<"filterExpiration">>) ->
     true;
+interesting_doc_key(<<"filterBinary">>) ->
+    true;
 interesting_doc_key(_) ->
     false.
 
