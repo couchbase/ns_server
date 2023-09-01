@@ -136,7 +136,7 @@ short_description(memory_threshold) ->
 short_description(history_size_warning) ->
     "history size approaching limit";
 short_description(memcached_connections) ->
-    "memcached connections approaching limit";
+    "data service connections approaching limit";
 short_description(Other) ->
     %% this case is needed for tests to work
     couch_util:to_list(Other).
@@ -210,8 +210,8 @@ errors(stuck_rebalance) ->
     "Warning: Rebalance of '~s' (rebalance_id: ~s) appears stuck, no progress "
     "has been made for ~b seconds.";
 errors(memcached_connections) ->
-    "Warning: On node ~s the number of connections being used by memcached "
-    "(~p) is above the notice threshold of ~b%. The limit is ~p.".
+    "Warning: On node ~s the number of connections being used by the Data "
+    "Service (~p) is above the notice threshold of ~b%. The limit is ~p.".
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
