@@ -918,11 +918,12 @@ check(memcached_connections, Opaque, _History, Stats) ->
             ?log_debug("Skipping memcached connections check as there are no "
                        "global stats: ~p", [Stats]);
         GlobalStats ->
-            check_memcached_connections(user, GlobalStats)
+            check_memcached_connections(user, GlobalStats),
+            check_memcached_connections(system, GlobalStats)
     end,
     Opaque.
 
--spec check_memcached_connections(user, term()) -> term().
+-spec check_memcached_connections(user | system, term()) -> term().
 check_memcached_connections(Type, GlobalStats) ->
     ThresholdName =
         list_to_atom(
@@ -1517,6 +1518,11 @@ params() ->
       #{type => {int, 0, 100},
         cfg_key => [alert_limits,
                     memcached_user_connection_warning_threshold],
+        default => ?MEMCACHED_CONNECTION_THRESHOLD}},
+     {"memcachedSystemConnectionWarningThreshold",
+      #{type => {int, 0, 100},
+        cfg_key => [alert_limits,
+                    memcached_system_connection_warning_threshold],
         default => ?MEMCACHED_CONNECTION_THRESHOLD}}].
 
 build_alert_limits() ->
