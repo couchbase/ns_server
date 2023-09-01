@@ -119,6 +119,7 @@
          clear_hibernation_state/1,
          update_bucket_props/2,
          update_bucket_props/4,
+         storage_mode_migration_in_progress/1,
          node_bucket_names/1,
          node_bucket_names/2,
          node_bucket_names_of_type/2,
@@ -167,6 +168,7 @@
          wait_for_bucket_shutdown/3,
          remove_bucket/1,
          node_storage_mode/1,
+         node_storage_mode/2,
          node_storage_mode_override/2,
          node_autocompaction_settings/1,
          node_magma_fragmentation_percentage/1,
@@ -425,16 +427,17 @@ eviction_policy(BucketConfig) ->
               end,
     proplists:get_value(eviction_policy, BucketConfig, Default).
 
-node_storage_mode_override(BucketConfig) ->
-    node_storage_mode_override(node(), BucketConfig).
-
 -spec node_storage_mode_override(node(), proplists:proplist()) -> atom().
 node_storage_mode_override(Node, BucketConfig) ->
     proplists:get_value({node, Node, storage_mode}, BucketConfig).
 
 -spec node_storage_mode(proplists:proplist()) -> atom().
 node_storage_mode(BucketConfig) ->
-    NodeStorageMode = node_storage_mode_override(BucketConfig),
+    node_storage_mode(node(), BucketConfig).
+
+-spec node_storage_mode(node(), proplists:proplist()) -> atom().
+node_storage_mode(Node, BucketConfig) ->
+    NodeStorageMode = node_storage_mode_override(Node, BucketConfig),
     case NodeStorageMode of
         undefined ->
             storage_mode(BucketConfig);

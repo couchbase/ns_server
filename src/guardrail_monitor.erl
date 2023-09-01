@@ -134,7 +134,10 @@ validate_bucket_topology_change(Name, KeepKVNodes, TotalDataSize,
                        end,
             Quota = ns_bucket:raw_ram_quota(BCfg),
             ExpResidentRatio = 100 * NumNodes * Quota / TotalDataSize,
-            validate_bucket_resource_min(BCfg, ResourceConfig, ExpResidentRatio)
+            Limit = get_resident_ratio_minimum_on_nodes(ResourceConfig,
+                                                        BCfg,
+                                                        KeepKVNodes),
+            validate_bucket_resource_min(ExpResidentRatio, Limit)
     end.
 
 %%%===================================================================
@@ -281,17 +284,16 @@ check_bucket_guard_rail(Resource, ResourceConfig, BucketConfig, BucketStats) ->
         Metric ->
             case Resource of
                 resident_ratio ->
-                    validate_bucket_resource_min(BucketConfig,
-                                                 ResourceConfig, Metric);
+                    Limit = get_resident_ratio_minimum(ResourceConfig,
+                                                       BucketConfig),
+                    validate_bucket_resource_min(Metric, Limit);
                 data_size ->
-                    validate_bucket_resource_max(BucketConfig,
-                                                 ResourceConfig, Metric)
+                    Limit = get_data_size_maximum(ResourceConfig, BucketConfig),
+                    validate_bucket_resource_max(Metric, Limit)
             end
     end.
 
-validate_bucket_resource_min(BucketConfig, ResourceConfig, Metric) ->
-    CouchstoreLimit = proplists:get_value(couchstore_minimum, ResourceConfig),
-    MagmaLimit = proplists:get_value(magma_minimum, ResourceConfig),
+validate_bucket_resource_min(Metric, Limit) ->
     case Metric of
         %% Ignore infinity/neg_infinity as these are not meaningful here
         infinity ->
@@ -299,17 +301,10 @@ validate_bucket_resource_min(BucketConfig, ResourceConfig, Metric) ->
         neg_infinity ->
             false;
         Value ->
-            Limit =
-                case ns_bucket:storage_mode(BucketConfig) of
-                    magma -> MagmaLimit;
-                    _ -> CouchstoreLimit
-                end,
             Value < Limit
     end.
 
-validate_bucket_resource_max(BucketConfig, ResourceConfig, Metric) ->
-    CouchstoreLimit = proplists:get_value(couchstore_maximum, ResourceConfig),
-    MagmaLimit = proplists:get_value(magma_maximum, ResourceConfig),
+validate_bucket_resource_max(Metric, Limit) ->
     case Metric of
         %% Ignore infinity/neg_infinity as these are not meaningful here
         infinity ->
@@ -317,15 +312,63 @@ validate_bucket_resource_max(BucketConfig, ResourceConfig, Metric) ->
         neg_infinity ->
             false;
         Value ->
-            Limit =
-                case ns_bucket:storage_mode(BucketConfig) of
-                    magma -> MagmaLimit;
-                    _ -> CouchstoreLimit
-                end,
             %% Inclusive inequality so that when limit is 0 and value is 0, the
             %% guard rail still fires, which is useful for testing, and doesn't
             %% impact real world behaviour in a noticeable manner
             Value >= Limit
+    end.
+
+
+get_resident_ratio_minimum(ResourceConfig, BucketConfig) ->
+    CouchstoreLimit = proplists:get_value(couchstore_minimum, ResourceConfig),
+    MagmaLimit = proplists:get_value(magma_minimum, ResourceConfig),
+    case {ns_bucket:storage_mode(BucketConfig),
+          ns_bucket:storage_mode_migration_in_progress(BucketConfig)} of
+        {couchstore, false} ->
+            CouchstoreLimit;
+        {magma, false} ->
+            MagmaLimit;
+        _ ->
+            %% Always use the most restrictive storage mode if storage mode
+            %% migration is in progress
+            max(CouchstoreLimit, MagmaLimit)
+    end.
+
+get_resident_ratio_minimum_on_nodes(ResourceConfig, BucketConfig, Nodes) ->
+    CouchstoreLimit = proplists:get_value(couchstore_minimum, ResourceConfig),
+    MagmaLimit = proplists:get_value(magma_minimum, ResourceConfig),
+    %% Use the most restrictive limit, only considering specific nodes
+    case get_limits_from_node_storage_modes(BucketConfig, CouchstoreLimit,
+                                            MagmaLimit, Nodes) of
+        [] -> -1;
+        Limits -> lists:max(Limits)
+    end.
+
+get_limits_from_node_storage_modes(BucketConfig, CouchstoreLimit, MagmaLimit,
+                                   Nodes) ->
+    lists:filtermap(
+      fun (Node) ->
+              case ns_bucket:node_storage_mode(Node, BucketConfig) of
+                  couchstore -> {true, CouchstoreLimit};
+                  magma -> {true, MagmaLimit};
+                  %% memcached and ephemeral buckets are not considered
+                  _ -> false
+              end
+      end, Nodes).
+
+get_data_size_maximum(ResourceConfig, BucketConfig) ->
+    CouchstoreLimit = proplists:get_value(couchstore_maximum, ResourceConfig),
+    MagmaLimit = proplists:get_value(magma_maximum, ResourceConfig),
+    case {ns_bucket:storage_mode(BucketConfig),
+          ns_bucket:storage_mode_migration_in_progress(BucketConfig)} of
+        {couchstore, false} ->
+            CouchstoreLimit;
+        {magma, false} ->
+            MagmaLimit;
+        _ ->
+            %% Always use the most restrictive storage mode if storage mode
+            %% migration is in progress
+            min(CouchstoreLimit, MagmaLimit)
     end.
 
 get_disk_usage(DiskStats) ->
@@ -496,6 +539,91 @@ check_bucket_t() ->
     ?assertListsEqual(
        [{{bucket, "magma"}, data_size}],
        check({bucket, Config}, [{{bucket, "magma"}, [{data_size, 20}]}])),
+    ok.
+
+check_bucket_during_storage_migration_t() ->
+    RRConfig = [{enabled, true},
+                {couchstore_minimum, 10},
+                {magma_minimum, 1}],
+    CouchstoreToMagmaBucket = [{type, membase},
+                               {storage_mode, magma},
+                               %% Migration from couchstore in progress
+                               {{node, node1, storage_mode}, couchstore}],
+
+    %% Bucket being migrated from couchstore to magma should continue to be
+    %% treated as a couchstore bucket during migration
+
+    %% RR% above minimum
+    ?assertEqual(false,
+                 check_bucket_guard_rail(
+                   resident_ratio, RRConfig, CouchstoreToMagmaBucket,
+                   [{resident_ratio, 15}])),
+
+    %% RR% at minimum
+    ?assertEqual(false,
+                 check_bucket_guard_rail(
+                   resident_ratio, RRConfig, CouchstoreToMagmaBucket,
+                   [{resident_ratio, 10}])),
+
+    %% RR% below minimum
+    ?assertEqual(true,
+                 check_bucket_guard_rail(
+                   resident_ratio, RRConfig, CouchstoreToMagmaBucket,
+                   [{resident_ratio, 5}])),
+
+    DataSizeConfig = [{enabled, true},
+                      {couchstore_maximum, 1.6},
+                      {magma_maximum, 16}],
+
+    %% Data size below maximum
+    ?assertEqual(false,
+                 check_bucket_guard_rail(
+                   data_size, DataSizeConfig, CouchstoreToMagmaBucket,
+                   [{data_size, 1}])),
+
+    %% Data size above maximum
+    ?assertEqual(true,
+                 check_bucket_guard_rail(
+                   data_size, DataSizeConfig, CouchstoreToMagmaBucket,
+                   [{data_size, 2}])),
+
+    MagmaToCouchstoreBucket = [{type, membase},
+                               {storage_mode, couchstore},
+                               %% Migration from magma in progress
+                               {{node, node1, storage_mode}, magma}],
+
+    %% Bucket being migrated from magma to couchstore should immediately be
+    %% treated the same as a couchstore bucket
+
+    %% RR% above minimum
+    ?assertEqual(false,
+                 check_bucket_guard_rail(
+                   resident_ratio, RRConfig, MagmaToCouchstoreBucket,
+                   [{resident_ratio, 15}])),
+
+    %% RR% at minimum
+    ?assertEqual(false,
+                 check_bucket_guard_rail(
+                   resident_ratio, RRConfig, MagmaToCouchstoreBucket,
+                   [{resident_ratio, 10}])),
+
+    %% RR% below minimum
+    ?assertEqual(true,
+                 check_bucket_guard_rail(
+                   resident_ratio, RRConfig, MagmaToCouchstoreBucket,
+                   [{resident_ratio, 5}])),
+
+    %% Data size below maximum
+    ?assertEqual(false,
+                 check_bucket_guard_rail(
+                   data_size, DataSizeConfig, MagmaToCouchstoreBucket,
+                   [{data_size, 1}])),
+
+    %% Data size above maximum
+    ?assertEqual(true,
+                 check_bucket_guard_rail(
+                   data_size, DataSizeConfig, MagmaToCouchstoreBucket,
+                   [{data_size, 2}])),
     ok.
 
 check_resources_t() ->
@@ -769,6 +897,8 @@ basic_test_() ->
              basic_test_teardown()
      end,
      [{"check bucket test", fun () -> check_bucket_t() end},
+      {"check bucket during storage migration test",
+       fun () -> check_bucket_during_storage_migration_t() end},
       {"check all resources test", fun () -> check_resources_t() end},
       {"validate topology change test",
        fun () -> validate_topology_change_t() end}]}.
