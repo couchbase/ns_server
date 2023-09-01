@@ -13,6 +13,7 @@ import {BehaviorSubject} from 'rxjs';
 
 import {MnLifeCycleHooksToStream } from './mn.core.js';
 import {MnAdminService} from './mn.admin.service.js';
+import {MnPoolsService} from './mn.pools.service.js';
 import template from "./mn.wizard.welcome.html";
 
 export {MnWizardWelcomeComponent};
@@ -26,12 +27,14 @@ class MnWizardWelcomeComponent extends MnLifeCycleHooksToStream {
   ]}
 
   static get parameters() { return [
-    MnAdminService
+    MnAdminService,
+    MnPoolsService,
   ]}
 
-  constructor(mnAdminService) {
+  constructor(mnAdminService, mnPoolsService) {
     super();
     this.focusFieldSubject = new BehaviorSubject(true);
     this.prettyVersion = mnAdminService.stream.prettyVersion;
+    this.isEnterprise = mnPoolsService.stream.isEnterprise;
   }
 }
