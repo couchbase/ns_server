@@ -203,7 +203,7 @@ for_resource_management() ->
                        case proplists:get_value(<<"name">>, Props) of
                            <<"kv_", N/binary>> ->
                                B = proplists:get_value(<<"bucket">>, Props),
-                               {true, {binary_to_list(B),
+                               {true, {{bucket, binary_to_list(B)},
                                        binary_to_atom(N, latin1)}};
                            <<"disk_usage">> = N ->
                                Disk = proplists:get_value(<<"disk">>, Props),
@@ -213,8 +213,8 @@ for_resource_management() ->
                                false
                        end
                end),
-    misc:groupby_map(fun ({{Bucket, Name}, Value}) ->
-                             {Bucket, {Name, Value}}
+    misc:groupby_map(fun ({{Group, Name}, Value}) ->
+                             {Group, {Name, Value}}
                      end, Res).
 
 -spec total_active_logical_data_size([node()]) -> #{bucket_name() => number()}.

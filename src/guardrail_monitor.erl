@@ -208,7 +208,7 @@ check({bucket, Config}, Stats) ->
     lists:flatten(
       lists:map(
         fun ({BucketName, BucketConfig}) ->
-                case proplists:get_value(BucketName, Stats) of
+                case proplists:get_value({bucket, BucketName}, Stats) of
                     undefined ->
                         [];
                     BucketStats ->
@@ -464,38 +464,38 @@ check_bucket_t() ->
     %% RR% above couchstore minimum
     ?assertListsEqual(
        [],
-       check({bucket, Config}, [{"couchstore", [{resident_ratio, 15}]}])),
+       check({bucket, Config}, [{{bucket, "couchstore"}, [{resident_ratio, 15}]}])),
     %% RR% below couchstore minimum
     ?assertListsEqual(
        [{{bucket, "couchstore"}, resident_ratio}],
-       check({bucket, Config}, [{"couchstore", [{resident_ratio, 5}]}])),
+       check({bucket, Config}, [{{bucket, "couchstore"}, [{resident_ratio, 5}]}])),
 
     %% RR% above magma minimum
     ?assertListsEqual(
        [],
-       check({bucket, Config}, [{"magma", [{resident_ratio, 2}]}])),
+       check({bucket, Config}, [{{bucket, "magma"}, [{resident_ratio, 2}]}])),
     %% RR% below magma minimum
     ?assertListsEqual(
        [{{bucket, "magma"}, resident_ratio}],
-       check({bucket, Config}, [{"magma", [{resident_ratio, 0.5}]}])),
+       check({bucket, Config}, [{{bucket, "magma"}, [{resident_ratio, 0.5}]}])),
 
     %% Data size below couchstore maximum
     ?assertListsEqual(
        [],
-       check({bucket, Config}, [{"couchstore", [{data_size, 1}]}])),
+       check({bucket, Config}, [{{bucket, "couchstore"}, [{data_size, 1}]}])),
     %% Data size above couchstore maximum
     ?assertListsEqual(
        [{{bucket, "couchstore"}, data_size}],
-       check({bucket, Config}, [{"couchstore", [{data_size, 5}]}])),
+       check({bucket, Config}, [{{bucket, "couchstore"}, [{data_size, 5}]}])),
 
     %% Data size below magma maximum
     ?assertListsEqual(
        [],
-       check({bucket, Config}, [{"magma", [{data_size, 5}]}])),
+       check({bucket, Config}, [{{bucket, "magma"}, [{data_size, 5}]}])),
     %% Data size above magma maximum
     ?assertListsEqual(
        [{{bucket, "magma"}, data_size}],
-       check({bucket, Config}, [{"magma", [{data_size, 20}]}])),
+       check({bucket, Config}, [{{bucket, "magma"}, [{data_size, 20}]}])),
     ok.
 
 check_resources_t() ->
@@ -526,16 +526,16 @@ check_resources_t() ->
 
     meck:expect(stats_interface, for_resource_management,
                 fun () ->
-                        [{"couchstore_bucket", []}]
+                        [{{bucket, "couchstore_bucket"}, []}]
                 end),
     ?assertEqual([],
                  check_resources()),
 
     meck:expect(stats_interface, for_resource_management,
                 fun () ->
-                        [{"couchstore_bucket",
+                        [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 11}]},
-                         {"magma_bucket",
+                         {{bucket, "magma_bucket"},
                           [{resident_ratio, 2}]}]
                 end),
     ?assertEqual([],
@@ -543,10 +543,10 @@ check_resources_t() ->
 
     meck:expect(stats_interface, for_resource_management,
                 fun () ->
-                        [{"couchstore_bucket",
+                        [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 9},
                            {data_size, 2}]},
-                         {"magma_bucket",
+                         {{bucket, "magma_bucket"},
                           [{resident_ratio, 0.5},
                            {data_size, 20}]}]
                 end),
@@ -568,9 +568,9 @@ check_resources_t() ->
 
     meck:expect(stats_interface, for_resource_management,
                 fun () ->
-                        [{"couchstore_bucket",
+                        [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 9}]},
-                         {"magma_bucket",
+                         {{bucket, "magma_bucket"},
                           [{resident_ratio, 2}]}]
                 end),
     ?assertEqual([{{bucket, "couchstore_bucket"}, resident_ratio}],
@@ -578,9 +578,9 @@ check_resources_t() ->
 
     meck:expect(stats_interface, for_resource_management,
                 fun () ->
-                        [{"couchstore_bucket",
+                        [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 11}]},
-                         {"magma_bucket",
+                         {{bucket, "magma_bucket"},
                           [{resident_ratio, 0.5}]}]
                 end),
     ?assertEqual([{{bucket, "magma_bucket"}, resident_ratio}],
@@ -588,9 +588,9 @@ check_resources_t() ->
 
     meck:expect(stats_interface, for_resource_management,
                 fun () ->
-                        [{"couchstore_bucket",
+                        [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 9}]},
-                         {"magma_bucket",
+                         {{bucket, "magma_bucket"},
                           [{resident_ratio, 0.5}]}]
                 end),
     ?assertEqual([{{bucket, "couchstore_bucket"}, resident_ratio},
@@ -599,9 +599,9 @@ check_resources_t() ->
 
     meck:expect(stats_interface, for_resource_management,
                 fun () ->
-                        [{"couchstore_bucket",
+                        [{{bucket, "couchstore_bucket"},
                           [{data_size, 2}]},
-                         {"magma_bucket",
+                         {{bucket, "magma_bucket"},
                           [{data_size, 20}]}]
                 end),
     ?assertEqual([{{bucket, "couchstore_bucket"}, data_size},
@@ -610,10 +610,10 @@ check_resources_t() ->
 
     meck:expect(stats_interface, for_resource_management,
                 fun () ->
-                        [{"couchstore_bucket",
+                        [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 11},
                            {data_size, 2}]},
-                         {"magma_bucket",
+                         {{bucket, "magma_bucket"},
                           [{resident_ratio, 2},
                            {data_size, 20}]}]
                 end),
@@ -623,10 +623,10 @@ check_resources_t() ->
 
     meck:expect(stats_interface, for_resource_management,
                 fun () ->
-                        [{"couchstore_bucket",
+                        [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 9},
                            {data_size, 2}]},
-                         {"magma_bucket",
+                         {{bucket, "magma_bucket"},
                           [{resident_ratio, 0.5},
                            {data_size, 20}]}]
                 end),
@@ -803,9 +803,9 @@ regular_checks_t() ->
                 end),
     meck:expect(stats_interface, for_resource_management,
                 fun () ->
-                        [{"couchstore_bucket",
+                        [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 10}]},
-                         {"magma_bucket",
+                         {{bucket, "magma_bucket"},
                           [{resident_ratio, 1}]}]
                 end),
 
@@ -830,9 +830,9 @@ regular_checks_t() ->
 
     meck:expect(stats_interface, for_resource_management,
                 fun () ->
-                        [{"couchstore_bucket",
+                        [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 9}]},
-                         {"magma_bucket",
+                         {{bucket, "magma_bucket"},
                           [{resident_ratio, 1}]}]
                 end),
     meck:wait(1, ns_config, set,
@@ -842,9 +842,9 @@ regular_checks_t() ->
 
     meck:expect(stats_interface, for_resource_management,
                 fun () ->
-                        [{"couchstore_bucket",
+                        [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 10}]},
-                         {"magma_bucket",
+                         {{bucket, "magma_bucket"},
                           [{resident_ratio, 0.5}]}]
                 end),
     meck:wait(1, ns_config, set,
@@ -855,7 +855,7 @@ regular_checks_t() ->
     %% Test bucket missing and stat missing
     meck:expect(stats_interface, for_resource_management,
                 fun () ->
-                        [{"couchstore_bucket", []}]
+                        [{{bucket, "couchstore_bucket"}, []}]
                 end),
     meck:wait(1, ns_config, set, [{node, node(), resource_statuses}, []],
               ?MECK_WAIT_TIMEOUT),
