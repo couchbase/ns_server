@@ -107,28 +107,27 @@ scope_validators(Exceptions) ->
      name_first_char_validator(_, Exceptions),
      validator:unsupported(_)].
 
-bucket_has_config_validator(Name, BucketConfig, BucketKey, BucketValue, State) ->
-    validator:validate(
-        fun (Value) ->
-            ConfiguredValue = proplists:get_value(BucketKey, BucketConfig),
-            case ConfiguredValue of
-                undefined ->
-                    {error, io_lib:format("Bucket does not have ~s configured",
-                                          [BucketKey])};
-                ConfiguredValue when ConfiguredValue =:= BucketValue ->
-                    {value, Value};
-                ConfiguredValue ->
-                    {error, io_lib:format("Bucket must have ~s=~s, not ~s",
-                                          [BucketKey, BucketValue,
-                                           ConfiguredValue])}
-            end
-        end, Name, State).
+%% "history" can only be true for magma buckets.
+history_validator(BucketConfig, State) ->
+    State1 = validator:touch(history, State),
+    case validator:get_value(history, State1) of
+        true ->
+            case ns_bucket:is_magma(BucketConfig) of
+                true ->
+                    State1;
+                false ->
+                    menelaus_util:web_exception(
+                      400, "Not allowed on this type of bucket")
+            end;
+        _ ->
+            State1
+    end.
 
 collection_modifiable_validators(BucketConfig) ->
     [validator:boolean(history, _),
      validator:valid_in_enterprise_only(history, _),
      validator:changeable_in_72_only(history, false, _),
-     bucket_has_config_validator(history, BucketConfig, storage_mode, magma, _),
+     history_validator(BucketConfig, _),
      validator:integer(maxTTL, -1, ?MC_MAXINT, _),
      validator:valid_in_enterprise_only(maxTTL, _),
      validator:changeable_in_trinity_only(maxTTL, undefined, _),
@@ -429,36 +428,6 @@ reply_global_error(Req, Msg, Code) ->
       Req, {[{errors, {[{<<"_">>, iolist_to_binary(Msg)}]}}]}, Code).
 
 -ifdef(TEST).
-bucket_has_config_validator_test() ->
-    Args = [{"test", ok}],
-
-    {error, [{"test", ErrorEmpty}]} =
-        validator:handle_proplist(Args,
-                                  [bucket_has_config_validator(test,
-                                                               [],
-                                                               storage_mode,
-                                                               magma,
-                                                               _)]),
-    ?assertEqual("Bucket does not have storage_mode configured", ErrorEmpty),
-
-    BucketConfCouchstore = [{storage_mode, couchstore}],
-    {error, [{"test", ErrorIncorrect}]} =
-        validator:handle_proplist(
-            Args,
-            [bucket_has_config_validator(test, BucketConfCouchstore,
-                                         storage_mode, magma, _)]),
-    ?assertEqual("Bucket must have storage_mode=magma, not couchstore",
-                 ErrorIncorrect),
-
-    BucketConfMagma = [{storage_mode, magma}],
-    {ok, _} =
-        validator:handle_proplist(Args,
-                                  [bucket_has_config_validator(test,
-                                                               BucketConfMagma,
-                                                               storage_mode,
-                                                               magma,
-                                                               _)]).
-
 bucket_config_not_found_when_posting_collections_test() ->
     meck:new(collections, [passthrough]),
     meck:expect(collections, enabled, fun(_) -> true end),
