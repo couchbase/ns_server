@@ -1759,7 +1759,8 @@ validate_topology_change(EjectedLiveNodes, KeepNodes) ->
         [] -> ok;
         _ ->
             KeepKVNodes = ns_cluster_membership:service_nodes(KeepNodes, kv),
-            case guardrail_monitor:validate_topology_change(KeepKVNodes) of
+            case guardrail_monitor:validate_topology_change(EjectedLiveNodes,
+                                                            KeepKVNodes) of
                 ok ->
                     ok;
                 {error, E} ->

@@ -19,7 +19,7 @@
 -behaviour(gen_server).
 
 -export([is_enabled/0, get_config/0, get/1, get/2, start_link/0,
-         validate_topology_change/1]).
+         validate_topology_change/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
@@ -90,13 +90,14 @@ get(bucket, resident_ratio) ->
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-validate_topology_change(KeepKVNodes) ->
+validate_topology_change(EjectedLiveNodes, KeepKVNodes) ->
     case get(bucket, resident_ratio) of
         undefined ->
             ok;
         ResourceConfig ->
             BucketDataSizes =
-                stats_interface:total_active_logical_data_size(KeepKVNodes),
+                stats_interface:total_active_logical_data_size(
+                  EjectedLiveNodes ++ KeepKVNodes),
             BadBuckets =
                 maps:keys(
                   maps:filter(
@@ -729,7 +730,7 @@ validate_topology_change_t() ->
                 fun (_) -> #{"couchstore_bucket" => 400,
                              "magma_bucket" => 4000} end),
 
-    ?assertEqual(ok, validate_topology_change(DesiredServers)),
+    ?assertEqual(ok, validate_topology_change([node3], Servers)),
 
     ResourceConfig2 = [{enabled, true} | ResourceConfig0],
     meck:expect(ns_config, read_key_fast,
@@ -739,7 +740,7 @@ validate_topology_change_t() ->
                 end),
 
     ?assertMatch({error, _},
-                 validate_topology_change(DesiredServers)),
+                 validate_topology_change([node3], Servers)),
 
     meck:expect(stats_interface, total_active_logical_data_size,
                 fun (_) -> #{"couchstore_bucket" => 200,
@@ -754,7 +755,7 @@ validate_topology_change_t() ->
                              "deleted2" => 4000} end),
 
     ?assertMatch(ok,
-                 validate_topology_change(DesiredServers)),
+                 validate_topology_change([node3], Servers)),
     ok.
 
 basic_test_() ->
