@@ -920,7 +920,7 @@ check(memcached_connections, Opaque, _History, Stats) ->
         GlobalStats ->
             {value, Config} = ns_config:search(alert_limits),
             AlertPerc =
-                proplists:get_value(memcached_connection_warning_threshold,
+                proplists:get_value(memcached_user_connection_warning_threshold,
                                     Config, ?MEMCACHED_CONNECTION_THRESHOLD),
             Max = proplists:get_value(kv_max_user_connections, GlobalStats,
                                       undefined),
@@ -1503,10 +1503,10 @@ params() ->
       #{type => {int, ?MIN_REBALANCE_THRESHOLD, infinity},
         cfg_key => [alert_limits, {stuck_rebalance_threshold_secs, kv}],
         default => undefined}},
-     {"memcachedConnectionWarningThreshold",
+     {"memcachedUserConnectionWarningThreshold",
       #{type => {int, 0, 100},
         cfg_key => [alert_limits,
-                    memcached_connection_warning_threshold],
+                    memcached_user_connection_warning_threshold],
         default => ?MEMCACHED_CONNECTION_THRESHOLD}}].
 
 build_alert_limits() ->
