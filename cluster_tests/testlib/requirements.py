@@ -70,7 +70,13 @@ class ClusterRequirements:
                 # Reduce the default num vbuckets to 16 to aid with faster
                 # rebalance time. If a specific test needs 1024 vbuckets,
                 # it can be passed down as a requirement.
-                'num_vbuckets': 16
+                'num_vbuckets': 16,
+                # The BYPASS_SASLAUTHD env affects external authentication,
+                # and as a consequence affects external authentication tests.
+                # Setting explicit value for BYPASS_SASLAUTHD here makes tests
+                # more deterministic. None is used by default because
+                # extenal authentication should not be passed by by default.
+                'env': {'BYPASS_SASLAUTHD': None}
         }
 
     @staticmethod

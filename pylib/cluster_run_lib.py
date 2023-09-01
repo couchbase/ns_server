@@ -379,7 +379,8 @@ def start_cluster(num_nodes=1,
                   args=[],
                   root_dir=ns_server_dir,
                   wait_for_start=False,
-                  nooutput=False):
+                  nooutput=False,
+                  env={}):
 
     extra_args = []
     if not dont_rename:
@@ -472,6 +473,10 @@ def start_cluster(num_nodes=1,
         params['env']['ERL_CRASH_DUMP'] = crash_dump_base + '.babysitter'
 
         params['env']['ERL_EPMD_RELAXED_COMMAND_CHECK'] = '1'
+        for k in env:
+            params['env'].pop(k, None)
+            if env[k] is not None:
+                params['env'][k] = env[k]
 
         params['close_fds'] = True
         if platform.system() == "Windows":
