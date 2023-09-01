@@ -108,7 +108,11 @@ class MnCollectionsService {
   addCollection([bucket, scope, name, ttl]) {
     bucket = encodeURIComponent(bucket);
     scope = encodeURIComponent(scope);
-    return this.http.post(`${restApiBase}/${bucket}/scopes/${scope}/collections`, {name: name, maxTTL: ttl || 0});
+    const payload = {name: name};
+    if (ttl !== '') { // MB-58183 - maxTTL should be unset if the user specifies blank
+      payload.maxTTL = ttl;
+    }
+    return this.http.post(`${restApiBase}/${bucket}/scopes/${scope}/collections`, payload);
   }
 
   deleteScope([bucket, scope]) {
