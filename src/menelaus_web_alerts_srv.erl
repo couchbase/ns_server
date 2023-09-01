@@ -210,7 +210,7 @@ errors(stuck_rebalance) ->
     "Warning: Rebalance of '~s' (rebalance_id: ~s) appears stuck, no progress "
     "has been made for ~b seconds.";
 errors(memcached_connections) ->
-    "Warning: On node ~s the number of connections being used by the Data "
+    "Warning: On node ~s the number of ~s connections being used by the Data "
     "Service (~p) is above the notice threshold of ~b%. The limit is ~p.".
 
 %% ------------------------------------------------------------------
@@ -928,7 +928,7 @@ check(memcached_connections, Opaque, _History, Stats) ->
                 undefined -> ok;
                 _ when is_number(Max) ->
                     AlertLimit = Max * AlertPerc / 100,
-                    Used = proplists:get_value(kv_curr_connections,
+                    Used = proplists:get_value(kv_user_connections,
                                                GlobalStats, undefined),
                     case Used of
                         undefined -> ok;
@@ -939,12 +939,12 @@ check(memcached_connections, Opaque, _History, Stats) ->
                                     Err =
                                         fmt_to_bin(
                                           errors(memcached_connections),
-                                          [node(), Used, AlertPerc, Max]),
+                                          [node(), user, Used, AlertPerc, Max]),
                                     global_alert(memcached_connections, Err)
                             end;
                         _ ->
                             ?log_debug("Skipping memcached connections check "
-                                       "as kv_curr_connections is not a "
+                                       "as kv_user_connections is not a "
                                        "number. global stats: ~p", [Stats])
                     end;
                 _ ->
