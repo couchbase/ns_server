@@ -88,7 +88,7 @@ params() ->
       #{type => bool,
         cfg_key => [cores_per_bucket, enabled]}},
      {"coresPerBucket.minimum",
-      #{type => {num, 0, 1},
+      #{type => {num, 0, infinity},
         cfg_key => [cores_per_bucket, minimum]}}
     ].
 
