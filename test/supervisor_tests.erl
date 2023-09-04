@@ -97,10 +97,45 @@ supervisor2_crashing_child_spec() ->
       {permanent, ?MAX_R_RESTART_DELAY_SECONDS},
       infinity, worker, []}.
 
+suppress_max_r_crashing_child_base_tuple_spec() ->
+    {?CRASHING_CHILD_NAME,
+     {supervisor_tests, crashing_child_link, []},
+     {permanent, ?MAX_R_RESTART_DELAY_SECONDS,
+      ?MAX_R, ?MAX_T},
+     infinity, worker, []}.
+
+suppress_max_r_crashing_child_tuple_spec() ->
+    suppress_max_restart_intensity:spec(
+      suppress_max_r_crashing_child_base_tuple_spec()).
+
+suppress_max_r_crashing_child_map_spec() ->
+    suppress_max_restart_intensity:spec(
+       #{id => ?CRASHING_CHILD_NAME,
+         start => {supervisor_tests, crashing_child_link, []},
+         restart => permanent,
+         delay => ?MAX_R_RESTART_DELAY_SECONDS,
+         inherited_max_r => ?MAX_R,
+         inherited_max_t => ?MAX_T,
+         shutdown => infinity,
+         type => worker,
+         modules => []}).
+
 max_restart_intensity_test_() ->
     Tests =
         [{"supervisor2, supervisor2 spec",
-          {supervisor2, [supervisor2_crashing_child_spec()]}}],
+          {supervisor2, [supervisor2_crashing_child_spec()]}},
+         {"supervisor2, suppress_max_r tuple spec",
+          {supervisor2, [suppress_max_r_crashing_child_tuple_spec()]}},
+         {"supervisor, suppress_max_r tuple spec",
+          {supervisor, [suppress_max_r_crashing_child_tuple_spec()]}},
+         {"supervisor, suppress_max_r map spec",
+          {supervisor, [suppress_max_r_crashing_child_map_spec()]}},
+         {"supervisor, suppress_max_r restartable spec",
+          {supervisor,
+              [suppress_max_r_restartable_crashing_child_tuple_spec()]}},
+         {"supervisor, restartable suppress_max_r spec",
+          {supervisor,
+              [restartable_suppress_max_r_crashing_child_tuple_spec()]}}],
 
     {foreachx,
         fun supervisor_test_setup/1,
@@ -109,16 +144,30 @@ max_restart_intensity_test_() ->
                         {Name, timeout, 100, max_restart_intensity_t()}
                 end} || {Name, Test} <- Tests]}.
 
+restartable_suppress_max_r_crashing_child_tuple_spec() ->
+    restartable:spec(suppress_max_r_crashing_child_tuple_spec()).
+
+suppress_max_r_restartable_crashing_child_tuple_spec() ->
+    suppress_max_restart_intensity:spec(
+        restartable:spec(
+            suppress_max_r_crashing_child_base_tuple_spec()
+        )
+    ).
+
 restartable_spec() ->
     restartable:spec(
       {?CRASHING_CHILD_NAME,
        {supervisor_tests, crashing_child_link, []},
        permanent, infinity, worker, []}).
 
-restartable_via_name_t({_Supervisor, _ChildSpec}, SupPid) ->
+restartable_test_setup({Supervisor, ChildSpec, _NameFun}) ->
+    supervisor_test_setup({Supervisor, ChildSpec}).
+
+restartable_via_name_t({_Supervisor, _ChildSpec, NameFun}, SupPid) ->
+    ActualChildName = NameFun(?CRASHING_CHILD_NAME),
     ChildPid1 = whereis(?CRASHING_CHILD_NAME),
 
-    {ok, _} = restartable:restart(SupPid, ?CRASHING_CHILD_NAME),
+    {ok, _} = restartable:restart(SupPid, ActualChildName),
 
     ok = misc:wait_for_local_name(?CRASHING_CHILD_NAME, 10000),
 
@@ -128,20 +177,24 @@ restartable_via_name_t({_Supervisor, _ChildSpec}, SupPid) ->
 restartable_via_name_test_() ->
     Tests =
         [{"supervisor, restartable spec",
-            {supervisor, [restartable_spec()]}}],
+          {supervisor, [restartable_spec()], fun(Name) -> Name end}},
+         {"supervisor, restartable suppress_max_r spec",
+          {supervisor,
+           [restartable_suppress_max_r_crashing_child_tuple_spec()],
+           fun (Name) -> suppress_max_restart_intensity:top_level_child_name
+                           (Name) end}}],
 
     {foreachx,
-        fun supervisor_test_setup/1,
-        fun supervisor_test_teardown/2,
-        [{Test, fun (T, R) ->
-            {Name, timeout, 100, restartable_via_name_t(T, R)}
-                end} || {Name, Test} <- Tests]}.
+     fun restartable_test_setup/1,
+     fun supervisor_test_teardown/2,
+     [{Test, fun (T, R) ->
+                     {Name, timeout, 100, restartable_via_name_t(T, R)}
+             end} || {Name, Test} <- Tests]}.
 
-restartable_via_pid_t({Supervisor, _ChildSpec}, SupPid) ->
+restartable_via_pid_t({Supervisor, _ChildSpec, PidFun}, SupPid) ->
     ChildPid1 = whereis(?CRASHING_CHILD_NAME),
 
-    [{?CRASHING_CHILD_NAME, RestartablePid, _, _}] =
-        Supervisor:which_children(SupPid),
+    RestartablePid = PidFun(Supervisor, SupPid),
     {ok, _} = restartable:restart(RestartablePid),
 
     ChildPid2 = whereis(?CRASHING_CHILD_NAME),
@@ -150,11 +203,23 @@ restartable_via_pid_t({Supervisor, _ChildSpec}, SupPid) ->
 restartable_via_pid_test_() ->
     Tests =
         [{"supervisor, restartable spec",
-            {supervisor, [restartable_spec()]}}],
+          {supervisor, [restartable_spec()],
+           fun (Supervisor, SupPid) ->
+                   [{?CRASHING_CHILD_NAME, RestartablePid, _, _}] =
+                       Supervisor:which_children(SupPid),
+                   RestartablePid
+           end}},
+         {"supervisor, suppress_max_r restartable spec",
+          {supervisor,
+           [suppress_max_r_restartable_crashing_child_tuple_spec()],
+           fun (_Supervisor, SupPid) ->
+                   suppress_max_restart_intensity:actual_child_pid
+                     (SupPid, ?CRASHING_CHILD_NAME)
+           end}}],
 
     {foreachx,
-        fun supervisor_test_setup/1,
-        fun supervisor_test_teardown/2,
-        [{Test, fun (T, R) ->
-            {Name, timeout, 100, restartable_via_pid_t(T, R)}
-                end} || {Name, Test} <- Tests]}.
+     fun restartable_test_setup/1,
+     fun supervisor_test_teardown/2,
+     [{Test, fun (T, R) ->
+                     {Name, timeout, 100, restartable_via_pid_t(T, R)}
+             end} || {Name, Test} <- Tests]}.
