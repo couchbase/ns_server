@@ -117,8 +117,8 @@ validate_topology_change(EjectedLiveNodes, KeepKVNodes) ->
                      {rr_will_be_too_low,
                       iolist_to_binary(
                         io_lib:format("The following buckets are expected to "
-                                      "breach the RR% limit: ~p",
-                                      [BadBuckets]))}}
+                                      "breach the resident ratio minimum: ~s",
+                                      [lists:join(", ", BadBuckets)]))}}
             end
     end.
 
