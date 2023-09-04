@@ -67,7 +67,8 @@
                     node_monitor,
                     node_status_analyzer,
                     kv_stats_monitor,
-                    index_monitor])).
+                    index_monitor,
+                    kv_monitor])).
 
 %% Auto failover configs with less than a 5 second timeout will scale down
 %% refresh intervals automatically.
