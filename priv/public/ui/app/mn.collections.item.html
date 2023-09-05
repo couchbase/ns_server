@@ -41,7 +41,14 @@ licenses/APL2.txt.
   </span>
   <span class="cbui-table-cell flex-grow-2 wrap text-right resp-hide-xsml">
     <a
-       class="nowrap"
+            class="nowrap"
+            style="margin-right: -3px;"
+            [hidden]="!(permissions | async)?.cluster.collection[bucketName + ':' + scopeName + ':' + '*']?.collections?.write ||
+              collection.name.startsWith('_')"
+            (click)="$event.stopPropagation();clickEditTTL.next();">
+      Edit TTL</a>
+    <a
+       class="margin-left-half nowrap"
        style="margin-right: -3px;"
        [hidden]="!(permissions | async)?.cluster.collection[bucketName + ':' + scopeName + ':' + '*']?.collections?.write ||
               collection.name.startsWith('_')"

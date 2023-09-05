@@ -26,6 +26,7 @@ import {MnSelectModule} from './mn.select.module.js';
 import {MnCollectionsAddScopeComponent} from './mn.collections.add.scope.component.js';
 import {MnCollectionsDeleteScopeComponent} from './mn.collections.delete.scope.component.js';
 import {MnCollectionsAddItemComponent} from './mn.collections.add.item.component.js';
+import {MnCollectionsEditItemComponent} from './mn.collections.edit.item.component.js';
 import {MnCollectionsDeleteItemComponent} from './mn.collections.delete.item.component.js';
 
 let collectionsState = {
@@ -69,6 +70,7 @@ class MnCollectionsModule {
         MnCollectionsAddScopeComponent,
         MnCollectionsDeleteScopeComponent,
         MnCollectionsAddItemComponent,
+        MnCollectionsEditItemComponent,
         MnCollectionsDeleteItemComponent
       ],
       declarations: [
@@ -79,6 +81,7 @@ class MnCollectionsModule {
         MnCollectionsAddScopeComponent,
         MnCollectionsDeleteScopeComponent,
         MnCollectionsAddItemComponent,
+        MnCollectionsEditItemComponent,
         MnCollectionsDeleteItemComponent
       ],
       imports: [

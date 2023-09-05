@@ -17,6 +17,7 @@ import {MnPermissions, $rootScope} from './ajs.upgraded.providers.js'
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
 import {MnCollectionsDeleteItemComponent} from './mn.collections.delete.item.component.js';
+import {MnCollectionsEditItemComponent} from './mn.collections.edit.item.component.js';
 import template from "./mn.collections.item.html";
 
 export {MnCollectionsItemComponent};
@@ -57,7 +58,20 @@ class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
         ref.componentInstance.collectionName = this.collection.name;
       });
 
+    var clickEditTTL = new Subject();
+    clickEditTTL
+        .pipe(takeUntil(this.mnOnDestroy))
+        .subscribe(() => {
+          var ref = modalService.open(MnCollectionsEditItemComponent);
+          ref.componentInstance.scopeName = this.scopeName;
+          ref.componentInstance.bucketName = this.bucketName;
+          ref.componentInstance.collectionName = this.collection.name;
+          ref.componentInstance.maxTTL = this.collection.maxTTL;
+          ref.componentInstance.editTTL = true;
+        });
+
     this.clickDeleteCollection = clickDeleteCollection;
+    this.clickEditTTL = clickEditTTL;
     this.permissions = mnPermissions.stream;
     this.mnPermissions = mnPermissions;
     this.mnCollectionsService = mnCollectionsService;

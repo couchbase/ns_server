@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 import {Injectable} from '@angular/core';
-import {HttpClient} from '@angular/common/http';
+import {HttpClient, HttpParams} from '@angular/common/http';
 import {BehaviorSubject} from 'rxjs';
 import {map, shareReplay} from 'rxjs/operators';
 
@@ -65,6 +65,11 @@ class MnCollectionsService {
       .addSuccess()
       .addError();
 
+    this.stream.modifyCollectionHttp =
+        new MnHttpRequest(this.modifyCollection.bind(this))
+            .addSuccess()
+            .addError();
+
     this.stream.deleteCollectionHttp =
       new MnHttpRequest(this.deleteCollection.bind(this))
       .addSuccess()
@@ -113,6 +118,19 @@ class MnCollectionsService {
       payload.maxTTL = ttl;
     }
     return this.http.post(`${restApiBase}/${bucket}/scopes/${scope}/collections`, payload);
+  }
+
+  modifyCollection([bucket, scope, name, ttl]) {
+    bucket = encodeURIComponent(bucket);
+    scope = encodeURIComponent(scope);
+    name = encodeURIComponent(name);
+    // unspecified TTL must be sent as '-1'
+    if (ttl === '') {
+      ttl = -1;
+    }
+    // must be URL-encoded, so use HttpParams
+    const httpParams = new HttpParams().append('maxTTL',ttl);
+    return this.http.patch(`${restApiBase}/${bucket}/scopes/${scope}/collections/${name}`,httpParams);
   }
 
   deleteScope([bucket, scope]) {
