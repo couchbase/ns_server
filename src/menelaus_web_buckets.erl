@@ -273,7 +273,7 @@ build_bucket_info(Id, Ctx, InfoLevel, SkipMap) ->
         build_hibernation_state(BucketConfig),
         build_storage_limits(BucketConfig),
         build_throttle_limits(BucketConfig),
-        build_bucket_priority(BucketConfig),
+        build_bucket_rank(BucketConfig),
         build_cross_cluster_versioning_params(BucketConfig),
         build_vbuckets_max_cas(BucketConfig),
         build_vp_window_hrs(BucketConfig),
@@ -282,10 +282,10 @@ build_bucket_info(Id, Ctx, InfoLevel, SkipMap) ->
 get_internal_default(Key, Default) ->
     ns_config:read_key_fast(Key, Default).
 
-build_bucket_priority(BucketConfig) ->
+build_bucket_rank(BucketConfig) ->
     case cluster_compat_mode:is_cluster_trinity() of
         true ->
-            [{priority, ns_bucket:priority(BucketConfig)}];
+            [{rank, ns_bucket:rank(BucketConfig)}];
         false ->
             []
     end.
@@ -1416,7 +1416,7 @@ validate_membase_bucket_params(CommonParams, Params, Name,
            Params, BucketConfig, IsNew, IsEnterprise,
            IsStorageModeMigration),
          parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise),
-         parse_validate_bucket_priority(Params),
+         parse_validate_bucket_rank(Params),
          parse_validate_compression_mode(Params, BucketConfig, IsNew,
                                          IsEnterprise),
          HistRetSecs,
@@ -2281,31 +2281,31 @@ parse_compression_mode(_) ->
     {error, compressionMode,
      <<"compressionMode can be set to 'off', 'passive' or 'active'">>}.
 
-parse_validate_bucket_priority(Params) ->
+parse_validate_bucket_rank(Params) ->
     case cluster_compat_mode:is_cluster_trinity() of
         true ->
-            parse_validate_priority_inner(
-              proplists:get_value("priority", Params));
+            parse_validate_rank_inner(
+              proplists:get_value("rank", Params));
         false ->
-            {error, priority,
-             <<"Bucket priority cannot be set until the cluster is fully "
+            {error, rank,
+             <<"Bucket rank cannot be set until the cluster is fully "
                " upgraded to Trinity.">>}
 
     end.
 
-parse_validate_priority_inner(undefined) ->
-    {ok, priority, ?DEFAULT_BUCKET_PRIO};
-parse_validate_priority_inner(Prio) ->
-    case menelaus_util:parse_validate_number(Prio, ?MIN_BUCKET_PRIO,
-                                             ?MAX_BUCKET_PRIO) of
+parse_validate_rank_inner(undefined) ->
+    {ok, rank, ?DEFAULT_BUCKET_RANK};
+parse_validate_rank_inner(Rank) ->
+    case menelaus_util:parse_validate_number(Rank, ?MIN_BUCKET_RANK,
+                                             ?MAX_BUCKET_RANK) of
         {ok, V} ->
-            {ok, priority, V};
+            {ok, rank, V};
         _Error ->
-            PrioErr =
-                io_lib:format("Priority must be in the range ~p-~p. Got '~p'"
+            RankErr =
+                io_lib:format("Rank must be in the range ~p-~p. Got '~p'"
                               " instead.",
-                              [?MIN_BUCKET_PRIO, ?MAX_BUCKET_PRIO, Prio]),
-            {error, priority, list_to_binary(PrioErr)}
+                              [?MIN_BUCKET_RANK, ?MAX_BUCKET_RANK, Rank]),
+            {error, rank, list_to_binary(RankErr)}
     end.
 
 parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise) ->
@@ -4443,7 +4443,7 @@ storage_mode_migration_cluster_compat_test_() ->
 
 storage_mode_migration_ram_quota_test() ->
     storage_mode_migration_meck_setup(?VERSION_TRINITY),
-    %% bucket priority functions use cluster_compat_mode:is_cluster_trinity/0
+    %% bucket rank functions use cluster_compat_mode:is_cluster_trinity/0
     meck:expect(cluster_compat_mode, is_cluster_trinity,
                 fun () ->
                         true

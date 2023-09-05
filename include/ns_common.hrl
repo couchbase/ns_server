@@ -393,9 +393,9 @@
                                   {eventing, 100},
                                   {backup, 10}]).
 
--define(MIN_BUCKET_PRIO, 0).
--define(MAX_BUCKET_PRIO, 1000).
--define(DEFAULT_BUCKET_PRIO, ?MIN_BUCKET_PRIO).
+-define(MIN_BUCKET_RANK, 0).
+-define(MAX_BUCKET_RANK, 1000).
+-define(DEFAULT_BUCKET_RANK, ?MIN_BUCKET_RANK).
 
 -define(KvResidentRatioQuery,
         ns_config:search_node_prop(

@@ -239,7 +239,7 @@ failover(Nodes, Options) ->
 
     KVNodes = ns_cluster_membership:service_nodes(Nodes, kv),
     BktPrepResults = failover_buckets_prep(KVNodes,
-                                           ns_bucket:get_buckets_by_priority(),
+                                           ns_bucket:get_buckets_by_rank(),
                                            Options),
 
     %% From this point onwards, no bucket failed exception is thrown.
@@ -262,7 +262,7 @@ failover(Nodes, Options) ->
 
 failover_collections() ->
     [collections:bump_epoch(BucketName) ||
-        {BucketName, BucketConfig} <- ns_bucket:get_buckets_by_priority(),
+        {BucketName, BucketConfig} <- ns_bucket:get_buckets_by_rank(),
         collections:enabled(BucketConfig)].
 
 set_failover_config(PrepRes, Nodes) ->
@@ -838,7 +838,7 @@ is_possible(FailoverNodes, Options) ->
                         throw(inactive_node)
                 end
         end,
-        check_last_server(ns_bucket:get_buckets_by_priority(), FailoverNodes)
+        check_last_server(ns_bucket:get_buckets_by_rank(), FailoverNodes)
     catch
         throw:Error ->
             Error

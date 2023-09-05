@@ -356,7 +356,7 @@ buckets_need_rebalance(NodesWanted) ->
                       ns_rebalancer:bucket_needs_rebalance_with_details(
                         Bucket, BucketConfig, KvNodes)
                     end,
-                    ns_bucket:get_buckets_by_priority()).
+                    ns_bucket:get_buckets_by_rank()).
 
 -spec request_janitor_run(janitor_item()) -> ok.
 request_janitor_run(Item) ->

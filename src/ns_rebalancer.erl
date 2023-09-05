@@ -487,7 +487,7 @@ rebalance_body(KeepNodes, EjectNodesAll, FailedNodesAll, DeltaNodes,
 
     %% Fetch new BucketConfigs and re build DeltaRecoveryBuckets, as janitor run
     %% might have updated vbucket map.
-    BucketConfigs = ns_bucket:get_buckets_by_priority(),
+    BucketConfigs = ns_bucket:get_buckets_by_rank(),
 
     DeltaRecoveryBuckets =
         delta_recovery(KVKeep, DeltaNodes, BucketConfigs,
@@ -573,7 +573,7 @@ update_kv_progress(Nodes, Progress) ->
 
 rebalance_kv(KeepNodes, EjectNodes, DeltaRecoveryBuckets, DesiredServers) ->
     ok = ns_bucket:multi_prop_update(desired_servers, DesiredServers),
-    BucketConfigs = ns_bucket:get_buckets_by_priority(),
+    BucketConfigs = ns_bucket:get_buckets_by_rank(),
 
     NumBuckets = length(BucketConfigs),
     ?rebalance_debug("BucketConfigs = ~p", [BucketConfigs]),
@@ -1238,7 +1238,7 @@ run_graceful_failover(Nodes) ->
             erlang:exit(Error)
     end,
 
-    AllBucketConfigs = ns_bucket:get_buckets_by_priority(),
+    AllBucketConfigs = ns_bucket:get_buckets_by_rank(),
     InterestingBuckets = [BC || BC = {_, Conf} <- AllBucketConfigs,
                                 proplists:get_value(type, Conf) =:= membase,
                                 %% when bucket doesn't have a vbucket map,

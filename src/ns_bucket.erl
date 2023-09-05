@@ -70,8 +70,8 @@
          get_bucket_names_of_type/2,
          get_buckets/0,
          get_buckets/1,
-         get_buckets_by_priority/0,
-         get_buckets_by_priority/1,
+         get_buckets_by_rank/0,
+         get_buckets_by_rank/1,
          is_named_bucket_persistent/1,
          is_persistent/1,
          is_ephemeral_bucket/1,
@@ -96,7 +96,7 @@
          history_retention_seconds/1,
          history_retention_bytes/1,
          history_retention_collection_default/1,
-         priority/1,
+         rank/1,
          eviction_policy/1,
          storage_mode/1,
          storage_backend/1,
@@ -327,25 +327,25 @@ get_bucket_names_of_type(Type, BucketConfigs) ->
     [Name || {Name, Config} <- BucketConfigs, bucket_type(Config) == Type].
 
 %% extracted s/t it can be unit tested
-priority_sorting_fn() ->
+rank_sorting_fn() ->
     fun ({KeyA, PlistA}, {KeyB, PlistB}) ->
-            case {priority(PlistA), priority(PlistB)} of
-                {PrioA, PrioB} when PrioA =:= PrioB -> KeyA < KeyB;
-                {PrioA, PrioB} -> PrioA > PrioB
+            case {rank(PlistA), rank(PlistB)} of
+                {RankA, RankB} when RankA =:= RankB -> KeyA < KeyB;
+                {RankA, RankB} -> RankA > RankB
             end
     end.
 
--spec get_buckets_by_priority() -> proplists:proplist().
-get_buckets_by_priority() ->
-    get_buckets_by_priority(get_buckets()).
+-spec get_buckets_by_rank() -> proplists:proplist().
+get_buckets_by_rank() ->
+    get_buckets_by_rank(get_buckets()).
 
--spec get_buckets_by_priority(proplists:proplist() | map()) ->
+-spec get_buckets_by_rank(proplists:proplist() | map()) ->
           proplists:proplist().
-get_buckets_by_priority(BucketConfig) ->
+get_buckets_by_rank(BucketConfig) ->
     JustBuckets = maybe_isolate_bucket_props(BucketConfig),
     case cluster_compat_mode:is_cluster_trinity() of
         true ->
-            lists:sort(priority_sorting_fn(), JustBuckets);
+            lists:sort(rank_sorting_fn(), JustBuckets);
         false ->
             JustBuckets
     end.
@@ -396,9 +396,9 @@ drift_thresholds(BucketConfig) ->
         false -> undefined
     end.
 
--spec priority(proplists:proplist()) -> integer().
-priority(BucketConfig) ->
-    proplists:get_value(priority, BucketConfig, ?DEFAULT_BUCKET_PRIO).
+-spec rank(proplists:proplist()) -> integer().
+rank(BucketConfig) ->
+    proplists:get_value(rank, BucketConfig, ?DEFAULT_BUCKET_RANK).
 
 -spec history_retention_seconds(proplists:proplist()) -> integer().
 history_retention_seconds(BucketConfig) ->
@@ -1971,7 +1971,7 @@ default_trinity_enterprise_props(false = _IsEnterprise) ->
 chronicle_upgrade_bucket_to_trinity(BucketName, ChronicleTxn) ->
     PropsKey = sub_key(BucketName, props),
     AddProps =
-        [{priority, ?DEFAULT_BUCKET_PRIO}] ++
+        [{rank, ?DEFAULT_BUCKET_RANK}] ++
         default_trinity_enterprise_props(cluster_compat_mode:is_enterprise()),
     {ok, BucketConfig} = chronicle_upgrade:get_key(PropsKey, ChronicleTxn),
     NewBucketConfig = misc:merge_proplists(fun (_, L, _) -> L end, AddProps,
@@ -2058,7 +2058,7 @@ extract_bucket_props(Props) ->
                          history_retention_seconds, history_retention_bytes,
                          magma_key_tree_data_blocksize,
                          magma_seq_tree_data_blocksize,
-                         history_retention_collection_default, priority]],
+                         history_retention_collection_default, rank]],
           X =/= false].
 
 build_threshold({Percentage, Size}) ->
@@ -2336,34 +2336,34 @@ node_autocompaction_settings_test() ->
 
 assert_sorted(Expected, Given) ->
     ?assertEqual(Expected, lists:map(fun ({K, _V}) -> K end,
-                                     lists:sort(priority_sorting_fn(), Given))).
+                                     lists:sort(rank_sorting_fn(), Given))).
 
-%% Asserts that the sorting function sorts by the 'priority' key from high-low,
-%% while sorting based on name, if the priorities are equal. The secondary
+%% Asserts that the sorting function sorts by the 'rank' key from high-low,
+%% while sorting based on name, if the ranks are equal. The secondary
 %% sorting is done in alphabetical order from A-Z..
 sorting_fn_test_() ->
     LL = [{["B", "C", "D", "A"],
-           [{"A", [{priority, 0}, {name, "A"}]},
-            {"B", [{priority, 11}, {name, "B"}]},
-            {"C", [{priority, 10}, {name, "C"}]},
-            {"D", [{priority, 9}, {name, "D"}]}]},
+           [{"A", [{rank, 0}, {name, "A"}]},
+            {"B", [{rank, 11}, {name, "B"}]},
+            {"C", [{rank, 10}, {name, "C"}]},
+            {"D", [{rank, 9}, {name, "D"}]}]},
           {["X", "Y", "A", "Z"],
-           [{"X", [{priority, 100}, {name, "X"}]},
-            {"Y", [{priority, 12}, {name, "Y"}]},
-            {"Z", [{priority, 0}, {name, "Z"}]},
-            {"A", [{priority, 0}, {name, "A"}]}]},
+           [{"X", [{rank, 100}, {name, "X"}]},
+            {"Y", [{rank, 12}, {name, "Y"}]},
+            {"Z", [{rank, 0}, {name, "Z"}]},
+            {"A", [{rank, 0}, {name, "A"}]}]},
           {["4", "2", "1", "3", "5"],
-           [{"5", [{priority, 0}, {name, "5"}]},
-            {"4", [{priority, 66}, {name, "4"}]},
-            {"3", [{priority, 0}, {name, "3"}]},
-            {"2", [{priority, 5}, {name, "2"}]},
-            {"1", [{priority, 0}, {name, "1"}]}]},
+           [{"5", [{rank, 0}, {name, "5"}]},
+            {"4", [{rank, 66}, {name, "4"}]},
+            {"3", [{rank, 0}, {name, "3"}]},
+            {"2", [{rank, 5}, {name, "2"}]},
+            {"1", [{rank, 0}, {name, "1"}]}]},
           {["A", "AA", "AAA", "B", "Z"],
-           [{"B", [{priority, 2}, {name, "B"}]},
-            {"Z", [{priority, 1}, {name, "Z"}]},
-            {"A", [{priority, 100}, {name, "A"}]},
-            {"AAA", [{priority, 87}, {name, "AAA"}]},
-            {"AA", [{priority, 88}, {name, "AA"}]}]}],
+           [{"B", [{rank, 2}, {name, "B"}]},
+            {"Z", [{rank, 1}, {name, "Z"}]},
+            {"A", [{rank, 100}, {name, "A"}]},
+            {"AAA", [{rank, 87}, {name, "AAA"}]},
+            {"AA", [{rank, 88}, {name, "AA"}]}]}],
 
     {setup, fun () -> ok end, fun (_) -> ok end,
      [{lists:flatten(io_lib:format("Sorting function test for: ~p",
