@@ -17,6 +17,7 @@
          for_alerts/0,
          for_resource_management/0,
          total_active_logical_data_size/1,
+         for_storage_mode_migration/2,
          current_items_total/1,
          current_items_total/2,
          failover_safeness_level/1,
@@ -223,10 +224,40 @@ total_active_logical_data_size(Nodes) ->
             promQL:named(<<"kv_logical_data_size_bytes">>,
                          promQL:preformatted(?KvDataSizeRawQuery))),
           Nodes,
-          fun lists:sum/1))).
+          fun (_Key, Values) -> lists:sum(Values) end))).
+
+%% Gets the minimum resident ratio and the maximum data size, across all nodes.
+%% Used to check that a storage migration is safe to perform
+-spec for_storage_mode_migration(bucket_name(), [node()]) ->
+          #{resident_ratio | data_size => number()}.
+for_storage_mode_migration(Bucket, Nodes) ->
+    List = [{<<"kv_resident_ratio">>,
+             promQL:preformatted(?KvResidentRatioQuery)},
+            {<<"kv_data_size">>,
+             promQL:preformatted(?KvDataSizeTBQuery)}],
+    QueryAsts = lists:map(
+                  fun({NewName, Query}) ->
+                          promQL:named(NewName, Query)
+                  end, List),
+    Q = promQL:format_promql(promQL:op('or', [], QueryAsts)),
+    lists:foldl(
+      fun ({{BucketName, Key}, Value}, Map) when BucketName =:= Bucket ->
+              Map#{Key => Value};
+          (_, Map) ->
+              Map
+      end,
+      #{},
+      aggregated_by_bucket(
+        Q,
+        Nodes,
+        fun ({_Bucket, data_size}, Values) ->
+                lists:max(Values);
+            ({_Bucket, resident_ratio}, Values) ->
+                lists:min(Values)
+        end)).
 
 -spec aggregated_by_bucket(binary(), [node()],
-                           fun (([number()]) -> number())) ->
+                           fun ((atom(), [number()]) -> number())) ->
           [{{bucket_name(), atom()}, number()}].
 aggregated_by_bucket(Q, Nodes, Aggregator) ->
     Res = latest_aggregated(
@@ -254,11 +285,11 @@ aggregated_by_bucket(Q, Nodes, Aggregator) ->
     %% Aggregate over nodes
     maps:to_list(
       maps:filtermap(
-        fun (_Key, Values) ->
+        fun (Key, Values) ->
                 case lists:filter(fun (Value) -> is_number(Value) end,
                                   Values) of
                     [] -> false;
-                    Numbers -> {true, Aggregator(Numbers)}
+                    Numbers -> {true, Aggregator(Key, Numbers)}
                 end
         end, PerNodeValues)).
 

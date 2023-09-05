@@ -19,7 +19,7 @@
 -behaviour(gen_server).
 
 -export([is_enabled/0, get_config/0, get/1, get/2, start_link/0,
-         validate_topology_change/2]).
+         validate_topology_change/2, validate_storage_migration/3]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
@@ -69,12 +69,12 @@ get(collections_per_quota) ->
             end
     end.
 
-get(bucket, resident_ratio) ->
+get(bucket, Key) ->
     case proplists:get_value(bucket, get_config()) of
         undefined ->
             undefined;
         BucketConfig ->
-            case proplists:get_value(resident_ratio, BucketConfig) of
+            case proplists:get_value(Key, BucketConfig) of
                 undefined ->
                     undefined;
                 ResourceConfig ->
@@ -138,6 +138,64 @@ validate_bucket_topology_change(Name, KeepKVNodes, TotalDataSize,
                                                         BCfg,
                                                         KeepKVNodes),
             validate_bucket_resource_min(ExpResidentRatio, Limit)
+    end.
+
+-spec validate_storage_migration(bucket_name(), proplists:proplist(), atom()) ->
+          ok | {error, data_size | resident_ratio, number()}.
+validate_storage_migration(BucketName, BucketConfig, NewStorageMode) ->
+    KvNodes = ns_bucket:get_servers(BucketConfig),
+    Stats = stats_interface:for_storage_mode_migration(BucketName, KvNodes),
+    case validate_storage_migration_data_size(Stats, NewStorageMode) of
+        ok ->
+            case validate_storage_migration_resident_ratio(Stats,
+                                                           NewStorageMode) of
+                ok ->
+                    ok;
+                {error, Limit} ->
+                    {error, resident_ratio, Limit}
+            end;
+        {error, Limit} ->
+            {error, data_size, Limit}
+    end.
+
+validate_storage_migration_data_size(Stats, StorageMode) ->
+    case get(bucket, data_size) of
+        undefined ->
+            ok;
+        ResourceConfig ->
+            case maps:get(data_size, Stats, undefined) of
+                undefined ->
+                    ok;
+                DataSize ->
+                    Limit = get_data_size_maximum(ResourceConfig, StorageMode,
+                                                  true),
+                    case validate_bucket_resource_max(DataSize, Limit) of
+                        false ->
+                            ok;
+                        true ->
+                            {error, Limit}
+                    end
+            end
+    end.
+
+validate_storage_migration_resident_ratio(Stats, StorageMode) ->
+    case get(bucket, resident_ratio) of
+        undefined ->
+            ok;
+        ResourceConfig ->
+            case maps:get(resident_ratio, Stats, undefined) of
+                undefined ->
+                    ok;
+                ResidentRatio ->
+                    Minimum = get_resident_ratio_minimum(ResourceConfig,
+                                                         StorageMode, true),
+                    case validate_bucket_resource_min(ResidentRatio, Minimum) of
+                        false ->
+                            ok;
+                        true ->
+                            {error, Minimum}
+                    end
+            end
     end.
 
 %%%===================================================================
@@ -318,12 +376,15 @@ validate_bucket_resource_max(Metric, Limit) ->
             Value >= Limit
     end.
 
-
 get_resident_ratio_minimum(ResourceConfig, BucketConfig) ->
+    get_resident_ratio_minimum(
+        ResourceConfig, ns_bucket:storage_mode(BucketConfig),
+        ns_bucket:storage_mode_migration_in_progress(BucketConfig)).
+
+get_resident_ratio_minimum(ResourceConfig, StorageMode, Migration) ->
     CouchstoreLimit = proplists:get_value(couchstore_minimum, ResourceConfig),
     MagmaLimit = proplists:get_value(magma_minimum, ResourceConfig),
-    case {ns_bucket:storage_mode(BucketConfig),
-          ns_bucket:storage_mode_migration_in_progress(BucketConfig)} of
+    case {StorageMode, Migration} of
         {couchstore, false} ->
             CouchstoreLimit;
         {magma, false} ->
@@ -357,10 +418,14 @@ get_limits_from_node_storage_modes(BucketConfig, CouchstoreLimit, MagmaLimit,
       end, Nodes).
 
 get_data_size_maximum(ResourceConfig, BucketConfig) ->
+    get_data_size_maximum(
+        ResourceConfig, ns_bucket:storage_mode(BucketConfig),
+        ns_bucket:storage_mode_migration_in_progress(BucketConfig)).
+
+get_data_size_maximum(ResourceConfig, StorageMode, Migration) ->
     CouchstoreLimit = proplists:get_value(couchstore_maximum, ResourceConfig),
     MagmaLimit = proplists:get_value(magma_maximum, ResourceConfig),
-    case {ns_bucket:storage_mode(BucketConfig),
-          ns_bucket:storage_mode_migration_in_progress(BucketConfig)} of
+    case {StorageMode, Migration} of
         {couchstore, false} ->
             CouchstoreLimit;
         {magma, false} ->
@@ -886,6 +951,104 @@ validate_topology_change_t() ->
                  validate_topology_change([node3], Servers)),
     ok.
 
+validate_storage_migration_t() ->
+    DataSizeConfig0 = [{enabled, true},
+                       {couchstore_maximum, 1.6},
+                       {magma_maximum, 16}],
+    RRConfig0 = [{enabled, true},
+                 {couchstore_minimum, 10},
+                 {magma_minimum, 1}],
+    meck:expect(ns_config, read_key_fast,
+                fun (resource_management, _) ->
+                        [{bucket,
+                          [{data_size, DataSizeConfig0},
+                           {resident_ratio, RRConfig0}]}]
+                end),
+    meck:expect(ns_cluster_membership, service_active_nodes,
+                fun (kv) -> [] end),
+
+    %% Test couchstore -> magma
+    CouchstoreConfig = [{storage_mode, couchstore}],
+
+    %% Data size and RR% below/above couchstore limit respectively
+    meck:expect(stats_interface, for_storage_mode_migration,
+                fun ("", _Nodes) ->
+                        #{data_size => 1,
+                          resident_ratio => 20} end),
+    ?assertEqual(ok,
+                 validate_storage_migration("", CouchstoreConfig, magma)),
+
+    %% Data size above couchstore limit
+    meck:expect(stats_interface, for_storage_mode_migration,
+                fun ("", _Nodes) ->
+                        #{data_size => 10} end),
+    ?assertEqual({error, data_size, 1.6},
+                 validate_storage_migration("", CouchstoreConfig, magma)),
+
+    %% RR% below couchstore limit
+    meck:expect(stats_interface, for_storage_mode_migration,
+                fun ("", _Nodes) ->
+                        #{resident_ratio => 5} end),
+    ?assertEqual({error, resident_ratio, 10},
+                 validate_storage_migration("", CouchstoreConfig, magma)),
+
+    %% Data size above magma limit
+    meck:expect(stats_interface, for_storage_mode_migration,
+                fun ("", _Nodes) ->
+                        #{data_size => 20} end),
+    ?assertEqual({error, data_size, 1.6},
+                 validate_storage_migration("", CouchstoreConfig, magma)),
+
+    %% RR% below magma limit
+    meck:expect(stats_interface, for_storage_mode_migration,
+                fun ("", _Nodes) ->
+                        #{resident_ratio => 0.5} end),
+    ?assertEqual({error, resident_ratio, 10},
+                 validate_storage_migration("", CouchstoreConfig, magma)),
+
+    %% Data size and RR% above/below magma limit
+    meck:expect(stats_interface, for_storage_mode_migration,
+                fun ("", _Nodes) ->
+                        #{data_size => 20,
+                          resident_ratio => 0.5} end),
+    ?assertEqual({error, data_size, 1.6},
+                 validate_storage_migration("", CouchstoreConfig, magma)),
+
+    %% Test magma -> couchstore
+    MagmaConfig = [{storage_mode, magma}],
+
+    %% Data size and RR% below/above couchstore limit
+    meck:expect(stats_interface, for_storage_mode_migration,
+                fun ("", _Nodes) ->
+                        #{data_size => 1,
+                          resident_ratio => 20} end),
+    ?assertEqual(ok,
+                 validate_storage_migration("", MagmaConfig, couchstore)),
+
+    %% Data size above couchstore limit
+    meck:expect(stats_interface, for_storage_mode_migration,
+                fun ("", _Nodes) ->
+                        #{data_size => 2} end),
+    ?assertEqual({error, data_size, 1.6},
+                 validate_storage_migration("", MagmaConfig, couchstore)),
+
+    %% RR% below couchstore limit
+    meck:expect(stats_interface, for_storage_mode_migration,
+                fun ("", _Nodes) ->
+                        #{resident_ratio => 5} end),
+    ?assertEqual({error, resident_ratio, 10},
+                 validate_storage_migration("", MagmaConfig, couchstore)),
+
+    %% Data size and RR% above/below couchstore limit
+    meck:expect(stats_interface, for_storage_mode_migration,
+                fun ("", _Nodes) ->
+                        #{data_size => 2,
+                          resident_ratio => 5} end),
+    ?assertEqual({error, data_size, 1.6},
+                 validate_storage_migration("", MagmaConfig, couchstore)),
+
+    ok.
+
 basic_test_() ->
     %% We can re-use (setup) the test environment that we setup/teardown here
     %% for each test rather than create a new one (foreach) to save time.
@@ -901,7 +1064,9 @@ basic_test_() ->
        fun () -> check_bucket_during_storage_migration_t() end},
       {"check all resources test", fun () -> check_resources_t() end},
       {"validate topology change test",
-       fun () -> validate_topology_change_t() end}]}.
+       fun () -> validate_topology_change_t() end},
+      {"validate storage migration test",
+       fun () -> validate_storage_migration_t() end}]}.
 
 check_test_modules() ->
     [ns_config, cluster_compat_mode, menelaus_web_guardrails,stats_interface,

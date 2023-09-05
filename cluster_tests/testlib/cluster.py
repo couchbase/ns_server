@@ -310,11 +310,11 @@ class Cluster:
         return testlib.post_succ(self, "/pools/default/buckets",
                                  expected_code=expected_code, data=data)
 
-    def update_bucket(self, data, verbose=False):
+    def update_bucket(self, data, verbose=False, expected_code=200):
         self.wait_for_rebalance(verbose=verbose)
         bucket_name = data['name']
         return testlib.post_succ(self, f"/pools/default/buckets/{bucket_name}",
-                                 data=data)
+                                 data=data, expected_code=expected_code)
 
     def delete_bucket(self, name, verbose=False):
         self.wait_for_rebalance(verbose=verbose)

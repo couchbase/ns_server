@@ -669,7 +669,7 @@ is_storage_mode_migration(BucketConfig, Params) ->
                 magma;
             _ ->
                 %% If an incorrect storageBackend is passed, we'll report
-                %% an error via parse_validate_storage_mode/6. Set the
+                %% an error via parse_validate_storage_mode/8. Set the
                 %% NewStorageMode to undefined so that we can return false,
                 %% below.
                 undefined
@@ -684,7 +684,7 @@ is_storage_mode_migration(BucketConfig, Params) ->
 
     %% Unfortunately the way the current code is written it is possible to
     %% update an ephemeral bucket with 'storageBackend' param set to
-    %% "couchstore" or "magma" (See commments in parse_validate_storage_mode/6)
+    %% "couchstore" or "magma" (See commments in parse_validate_storage_mode/8)
     %% - we would want to ignore such an update and therefore, make stronger
     %% checks to allow only couchstore -> magma and magma -> couchstore
     %% migration.
@@ -1350,6 +1350,7 @@ validate_bucket_placer_params(Params, IsNew, BucketConfig) ->
 
 validate_bucket_type_specific_params(CommonParams, Params,
                                      #bv_ctx{new = IsNew,
+                                             bucket_name = Name,
                                              bucket_config = BucketConfig,
                                              cluster_version = Version,
                                              is_enterprise = IsEnterprise}) ->
@@ -1360,7 +1361,7 @@ validate_bucket_type_specific_params(CommonParams, Params,
             validate_memcached_bucket_params(CommonParams, Params, IsNew,
                                              BucketConfig);
         membase ->
-            validate_membase_bucket_params(CommonParams, Params, IsNew,
+            validate_membase_bucket_params(CommonParams, Params, Name, IsNew,
                                            BucketConfig, Version, IsEnterprise);
         _ ->
             validate_unknown_bucket_params(Params)
@@ -1380,7 +1381,7 @@ validate_memcached_bucket_params(CommonParams, Params, IsNew, BucketConfig) ->
      validate_memcached_params(Params),
      quota_size_error(CommonParams, memcached, IsNew, BucketConfig)].
 
-validate_membase_bucket_params(CommonParams, Params,
+validate_membase_bucket_params(CommonParams, Params, Name,
                                IsNew, BucketConfig, Version, IsEnterprise) ->
     AllowPitr = cluster_compat_mode:is_version_trinity(Version),
     AllowStorageLimit = config_profile:get_bool(enable_storage_limits),
@@ -1401,7 +1402,7 @@ validate_membase_bucket_params(CommonParams, Params,
          parse_validate_eviction_policy(
            Params, BucketConfig, IsNew, IsStorageModeMigration),
          quota_size_error(CommonParams, membase, IsNew, BucketConfig),
-         parse_validate_storage_mode(Params, BucketConfig, IsNew, Version,
+         parse_validate_storage_mode(Params, BucketConfig, Name, IsNew, Version,
                                      IsEnterprise, IsStorageModeMigration,
                                      config_profile:is_serverless()),
          parse_validate_durability_min_level(Params, BucketConfig, IsNew),
@@ -1690,8 +1691,9 @@ is_ephemeral(_Params, BucketConfig, false = _IsNew) ->
 %% Ideally we should store this as a new bucket type but the bucket_type is
 %% used/checked at multiple places and would need changes in all those places.
 %% Hence the above described approach.
-parse_validate_storage_mode(Params, _BucketConfig, true = _IsNew, _Version,
-                            IsEnterprise, false = _IsStorageModeMigration,
+parse_validate_storage_mode(Params, _BucketConfig, _Name, true = _IsNew,
+                            _Version, IsEnterprise,
+                            false = _IsStorageModeMigration,
                             _ = _IsServerless) ->
     case proplists:get_value("bucketType", Params, "membase") of
         "membase" ->
@@ -1701,23 +1703,24 @@ parse_validate_storage_mode(Params, _BucketConfig, true = _IsNew, _Version,
         "ephemeral" ->
             {ok, storage_mode, ephemeral}
     end;
-parse_validate_storage_mode(_Params, BucketConfig, false = _IsNew, _Version,
-                            _IsEnterprise, false = _IsStorageModeMigration,
+parse_validate_storage_mode(_Params, BucketConfig, _Name, false = _IsNew,
+                            _Version, _IsEnterprise,
+                            false = _IsStorageModeMigration,
                             _ = _IsServerless) ->
     {ok, storage_mode, ns_bucket:storage_mode(BucketConfig)};
-parse_validate_storage_mode(_Params, _BucketConfig, false = _IsNew, _Version,
-                            false = _IsEnterprise,
+parse_validate_storage_mode(_Params, _BucketConfig, _Name, false = _IsNew,
+                            _Version, false = _IsEnterprise,
                             true = _IsStorageModeMigration,
                             _ = _IsServerless) ->
     {error, storageBackend, <<"Storage mode migration is allowed only on "
                               "enterprise edition">>};
-parse_validate_storage_mode(_Params, _BucketConfig, false = _IsNew, _Version,
-                            true = _IsEnterprise,
+parse_validate_storage_mode(_Params, _BucketConfig, _Name, false = _IsNew,
+                            _Version, true = _IsEnterprise,
                             true = _IsStorageModeMigration,
                             true = _IsServerless) ->
     {error, storageBackend, <<"Storage mode migration is not allowed in "
                               "serverless config profile">>};
-parse_validate_storage_mode(Params, _BucketConfig, false = _IsNew, Version,
+parse_validate_storage_mode(Params, BucketConfig, Name, false = _IsNew, Version,
                             true = _IsEnterprise,
                             true = _IsStorageModeMigration,
                             false = _IsServerless) ->
@@ -1728,7 +1731,30 @@ parse_validate_storage_mode(Params, _BucketConfig, false = _IsNew, Version,
                "is upgraded to Trinity">>};
         true ->
             StorageBackend = proplists:get_value("storageBackend", Params),
-            do_get_storage_mode_based_on_storage_backend(StorageBackend)
+            case do_get_storage_mode_based_on_storage_backend(StorageBackend) of
+                {ok, storage_mode, Mode} ->
+                    case guardrail_monitor:validate_storage_migration(
+                           Name, BucketConfig, Mode) of
+                        {error, resident_ratio, Minimum} ->
+                            {error, storageBackend,
+                             iolist_to_binary(
+                               io_lib:format("Storage mode migration is not "
+                                             "allowed when resident ratio is "
+                                             "below the configured minimum: "
+                                             "~p%", [Minimum]))};
+                        {error, data_size, Maximum} ->
+                            {error, storageBackend,
+                             iolist_to_binary(
+                               io_lib:format("Storage mode migration is not "
+                                             "allowed when data size per node "
+                                             "is above the configured maximum: "
+                                             "~pTB", [Maximum]))};
+                        ok ->
+                            {ok, storage_mode, Mode}
+                    end;
+                Error ->
+                    Error
+            end
     end.
 
 parse_validate_durability_min_level(Params, BucketConfig, IsNew) ->
@@ -4345,7 +4371,7 @@ build_dynamic_bucket_info_test_() ->
         [{Test, TestFun} || Test <- Tests]}.
 
 storage_mode_migration_meck_modules() ->
-    [ns_config, config_profile, cluster_compat_mode].
+    [ns_config, config_profile, cluster_compat_mode, guardrail_monitor].
 
 storage_mode_migration_meck_setup(Version) ->
     meck:new(storage_mode_migration_meck_modules(), [passthrough]),
@@ -4360,7 +4386,9 @@ storage_mode_migration_meck_setup(Version) ->
     meck:expect(cluster_compat_mode, supported_compat_version,
                 fun () ->
                         Version
-                end).
+                end),
+    meck:expect(guardrail_monitor, validate_storage_migration,
+                fun (_, _, _) -> ok end).
 
 storage_mode_migration_cluster_compat_test(Version, CurrentStorageMode,
                                            NewStorageMode) ->
@@ -4513,6 +4541,11 @@ storage_mode_migration_validate_attributes_test() ->
 
     meck:unload(ns_bucket).
 
+parse_validate_storage_mode_setup() ->
+    meck:new(guardrail_monitor),
+    meck:expect(guardrail_monitor, validate_storage_migration,
+                fun (_, _, _) -> ok end).
+
 parse_validate_storage_mode_test__(
   {{OldStorageMode, NewStorageMode, IsNewBucket, Version,
     IsEnterprise, IsStorageModeMigration, IsServerless}, ExpectedResult}) ->
@@ -4530,7 +4563,7 @@ parse_validate_storage_mode_test__(
                    end,
 
     Res = parse_validate_storage_mode(
-            Params, BucketConfig, IsNewBucket, Version,
+            Params, BucketConfig, "name", IsNewBucket, Version,
             IsEnterprise, IsStorageModeMigration, IsServerless),
 
     ExpectedStorageMode =
@@ -4548,6 +4581,9 @@ parse_validate_storage_mode_test__(
             ?assertEqual(Res, {ok, storage_mode,
                                list_to_atom(ExpectedStorageMode)})
     end.
+
+parse_validate_storage_mode_teardown() ->
+    meck:unload(guardrail_monitor).
 
 parse_validate_storage_mode_test_() ->
     %% TestArgs: {{OldStorageMode, NewStorageMode,
@@ -4622,8 +4658,8 @@ parse_validate_storage_mode_test_() ->
         end,
 
     {foreach,
-     fun () -> ok end,
-     fun (_X) -> ok end,
+     fun () -> parse_validate_storage_mode_setup() end,
+     fun (_X) -> parse_validate_storage_mode_teardown() end,
      [TestFun(TestArg) || TestArg <- TestArgs]}.
 
 -endif.

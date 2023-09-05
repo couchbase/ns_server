@@ -25,9 +25,9 @@ class ResourceManagementTests(testlib.BaseTestSet):
         #   guard rail has been hit. Note, assert_cant_write will be less likely
         #   to test both nodes if num_nodes increases, so it should be modified
         #   at the same time.
-        # - 100MB quota for each bucket in num_buckets_test
+        # - 1024MB quota for magma bucket
         return testlib.ClusterRequirements(edition="Provisioned", num_nodes=2,
-                                           memsize=400)
+                                           memsize=1024)
 
     def setup(self, cluster):
         testlib.delete_all_buckets(cluster)
@@ -490,6 +490,119 @@ class ResourceManagementTests(testlib.BaseTestSet):
             initial_expected_error=
             '{"rr_will_be_too_low":"The following buckets are expected to '
             'breach the resident ratio minimum: test"}')
+
+    def storage_migration_test(self, cluster):
+        # Test migration from couchstore to magma
+        cluster.create_bucket({
+            "name": "test",
+            "ramQuota": 1024,
+            "storageBackend": "couchstore"
+        })
+        wait_for_stat(cluster, "kv_ep_max_size", "test", n=2)
+
+        # Ensure that the appropriate guard rails have expected limits
+        testlib.post_succ(
+            cluster, "/settings/resourceManagement/bucket/",
+            json={
+                "residentRatio": {
+                    "enabled": True,
+                    "couchstoreMinimum": 10
+                },
+                "dataSizePerNode": {
+                    "enabled": True,
+                    "couchstoreMaximum": 1.6,
+                }
+            })
+
+        # Test that we can't perform bucket migration from couchstore to magma
+        # when the bucket doesn't satisfy the couchstore limits
+        set_promql_queries(cluster, data_size_tb=10, resident_ratio=5)
+        resp = cluster.update_bucket({
+            "name": "test",
+            "storageBackend": "magma"
+        }, expected_code=400).json()
+        assert resp.get("errors", {}).get("storageBackend") == \
+               "Storage mode migration is not allowed when data size per node" \
+               " is above the configured maximum: 1.6TB", \
+               f"Unexpected errors: {resp}"
+
+        # Test that we can't perform bucket migration from couchstore to magma
+        # when the bucket doesn't satisfy the couchstore data size limit
+        set_promql_queries(cluster, data_size_tb=10, resident_ratio=15)
+        resp = cluster.update_bucket({
+            "name": "test",
+            "storageBackend": "magma"
+        }, expected_code=400).json()
+        assert resp.get("errors", {}).get("storageBackend") == \
+               "Storage mode migration is not allowed when data size per node" \
+               " is above the configured maximum: 1.6TB", \
+               f"Unexpected errors: {resp}"
+
+        # Test that we can't perform bucket migration from couchstore to magma
+        # when the bucket doesn't satisfy the couchstore resident ratio limit
+        set_promql_queries(cluster, data_size_tb=1, resident_ratio=5)
+        resp = cluster.update_bucket({
+            "name": "test",
+            "storageBackend": "magma"
+        }, expected_code=400).json()
+        assert resp.get("errors", {}).get("storageBackend") == \
+               "Storage mode migration is not allowed when resident ratio is " \
+               "below the configured minimum: 10%", f"Unexpected errors: {resp}"
+
+        # Test that we can perform bucket migration from couchstore to magma
+        # when the bucket satisfies the couchstore limits
+        set_promql_queries(cluster, data_size_tb=1, resident_ratio=15)
+
+        cluster.update_bucket({
+            "name": "test",
+            "storageBackend": "magma"
+        })
+
+        # Test migration back from magma to couchstore
+
+        # Test that we can't perform bucket migration from magma to couchstore
+        # when the bucket doesn't satisfy the couchstore limits
+        set_promql_queries(cluster, data_size_tb=10, resident_ratio=5)
+        resp = cluster.update_bucket({
+            "name": "test",
+            "storageBackend": "couchstore"
+        }, expected_code=400).json()
+        assert resp.get("errors", {}).get("storageBackend") == \
+               "Storage mode migration is not allowed when data size per node" \
+               " is above the configured maximum: 1.6TB", \
+               f"Unexpected errors: {resp}"
+
+        # Test that we can't perform bucket migration from magma to couchstore
+        # when the bucket doesn't satisfy the couchstore data size limit
+        set_promql_queries(cluster, data_size_tb=10, resident_ratio=15)
+        resp = cluster.update_bucket({
+            "name": "test",
+            "storageBackend": "couchstore"
+        }, expected_code=400).json()
+        assert resp.get("errors", {}).get("storageBackend") == \
+               "Storage mode migration is not allowed when data size per node" \
+               " is above the configured maximum: 1.6TB", \
+               f"Unexpected errors: {resp}"
+
+        # Test that we can't perform bucket migration from magma to couchstore
+        # when the bucket doesn't satisfy the couchstore resident ratio limit
+        set_promql_queries(cluster, data_size_tb=1, resident_ratio=5)
+        resp = cluster.update_bucket({
+            "name": "test",
+            "storageBackend": "couchstore"
+        }, expected_code=400).json()
+        assert resp.get("errors", {}).get("storageBackend") == \
+               "Storage mode migration is not allowed when resident ratio is " \
+               "below the configured minimum: 10%", f"Unexpected errors: {resp}"
+
+        # Test that we can perform bucket migration from couchstore to magma
+        # when the bucket satisfies the couchstore limits
+        set_promql_queries(cluster, data_size_tb=1, resident_ratio=15)
+
+        cluster.update_bucket({
+            "name": "test",
+            "storageBackend": "couchstore"
+        })
 
 
 def disable_bucket_guard_rails(cluster):
