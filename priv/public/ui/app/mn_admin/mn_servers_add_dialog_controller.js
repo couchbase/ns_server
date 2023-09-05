@@ -94,8 +94,6 @@ function mnServersAddDialogController($scope, $rootScope, $q, $uibModal, mnServe
 
     var servicesList = mnHelper.checkboxesToList(vm.addNodeConfig.services.model);
 
-    form.$setValidity('services', !!servicesList.length);
-
     if (form.$invalid) {
       return reset();
     }

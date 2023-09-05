@@ -307,7 +307,10 @@ function mnServersFactory($http, $q, $uibModal, mnPoolDefault) {
       credentials['user'] = '';
       credentials['password'] = '';
     }
-    credentials.services = servicesList.join(',');
+    if (servicesList.length) {
+      credentials.services = servicesList.join(',');
+    }
+
     return $http({
       method: 'POST',
       url: (selectedGroup && selectedGroup.addNodeURI) || '/controller/addNode',
