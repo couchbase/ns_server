@@ -30,7 +30,8 @@ start_link(Name, Delay, ShutdownTimeout, M, F, A) ->
 
 init([Name, Delay, ShutdownTimeout, M, F, A]) ->
     process_flag(trap_exit, true),
-    ?log_debug("starting ~p with delay of ~p", [M, Delay]),
+    ?log_debug("Starting supervisor cushion for ~p with delay of ~p",
+               [Name, Delay]),
 
     Started = erlang:monotonic_time(),
     case apply(M, F, A) of
@@ -73,7 +74,8 @@ die_slowly(Reason, State) ->
     %% If the restart was too soon, slow down a bit.
     case Lifetime < State#state.delay of
         true ->
-            ?log_info("Service ~p exited on node ~p in ~.2fs~n",
+            ?log_info("Cushion managed supervisor for ~p exited on node ~p in "
+                      "~.2fs~n",
                       [State#state.name, node(), Lifetime / 1000]),
             timer:send_after(State#state.delay, {die, Reason});
         _ -> self() ! {die, Reason}
@@ -82,14 +84,16 @@ die_slowly(Reason, State) ->
 
 terminate(_Reason, #state{child_pid = undefined}) ->
     ok;
-terminate(Reason, #state{child_pid=Pid, shutdown_timeout=Timeout}) ->
+terminate(Reason, #state{name = Name, child_pid=Pid,
+                         shutdown_timeout=Timeout}) ->
     erlang:exit(Pid, Reason),
     case misc:wait_for_process(Pid, Timeout) of
         ok ->
             ok;
         {error, timeout} ->
-            ?log_warning("Cushioned process ~p failed to terminate within ~pms. "
-                         "Killing it brutally.", [Pid, Timeout]),
+            ?log_warning("Cushioned process ~p with pid ~p failed to terminate "
+                         "within ~pms. Killing it brutally.",
+                         [Name, Pid, Timeout]),
             erlang:exit(Pid, kill),
             ok = misc:wait_for_process(Pid, infinity)
     end.
