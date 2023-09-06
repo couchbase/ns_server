@@ -389,6 +389,9 @@ get_resident_ratio_minimum(ResourceConfig, StorageMode, Migration) ->
             CouchstoreLimit;
         {magma, false} ->
             MagmaLimit;
+        {_, false} ->
+            %% For memcached and ephemeral buckets, there is no limit
+            -1;
         _ ->
             %% Always use the most restrictive storage mode if storage mode
             %% migration is in progress
@@ -430,6 +433,9 @@ get_data_size_maximum(ResourceConfig, StorageMode, Migration) ->
             CouchstoreLimit;
         {magma, false} ->
             MagmaLimit;
+        {_, false} ->
+            %% For memcached and ephemeral buckets, there is no limit
+            infinity;
         _ ->
             %% Always use the most restrictive storage mode if storage mode
             %% migration is in progress
@@ -689,6 +695,83 @@ check_bucket_during_storage_migration_t() ->
                  check_bucket_guard_rail(
                    data_size, DataSizeConfig, MagmaToCouchstoreBucket,
                    [{data_size, 2}])),
+                   ok.
+
+dont_check_memcached_or_ephemeral_t() ->
+    MemcachedBucket = [{type, memcached},
+                       {storage_mode, undefined}],
+
+    EphemeralBucket = [{type, membase},
+                       {storage_mode, ephemeral}],
+
+    %% Bucket level check
+
+    meck:expect(ns_bucket, get_buckets,
+                fun () ->
+                        [{"memcached", MemcachedBucket},
+                         {"ephemeral", EphemeralBucket}]
+                end),
+    RRConfig = [{enabled, true},
+                {couchstore_minimum, 10},
+                {magma_minimum, 1}],
+    DataSizeConfig = [{enabled, true},
+                      {couchstore_maximum, 1.6},
+                      {magma_maximum, 16}],
+    Config = [{resident_ratio, RRConfig},
+              {data_size, DataSizeConfig}],
+
+
+    %% Low memcached RR% (should be impossible, but make sure this isn't checked
+    %% anyway
+    ?assertEqual(
+       [],
+       check_bucket(Config, "memcached", MemcachedBucket,
+                    [{resident_ratio, 0}])),
+
+    %% Low ephemeral RR% (should be impossible, but make sure this isn't checked
+    %% anyway
+    ?assertEqual(
+       [],
+       check_bucket(Config, "ephemeral", MemcachedBucket,
+                    [{resident_ratio, 0}])),
+
+    %% High memcached data size
+    ?assertEqual(
+       [],
+       check_bucket(Config, "memcached", MemcachedBucket,
+                    [{data_size, 100}])),
+
+    %% High ephemeral data size
+    ?assertEqual(
+       [],
+       check_bucket(Config, "ephemeral", MemcachedBucket,
+                    [{data_size, 100}])),
+
+    %% Topology check setup
+
+    Servers = [node1, node2],
+    DesiredServers = [{"memcached", Servers},
+                      {"ephemeral", Servers}],
+    meck:expect(ns_bucket, get_bucket,
+                fun ("memcached") ->
+                        {ok, [{ram_quota, 10} | MemcachedBucket]};
+                    ("ephemeral") ->
+                        {ok, [{ram_quota, 10} | EphemeralBucket]};
+                    (_) ->
+                        not_present
+                end),
+
+    %% Check topology change doesn't care about memcached
+    ?assertEqual(false,
+                 validate_bucket_topology_change("memcached",
+                                                 DesiredServers, 1000,
+                                                 RRConfig)),
+
+    %% Check topology change doesn't care about ephemeral
+    ?assertEqual(false,
+                 validate_bucket_topology_change("ephemeral",
+                                                 DesiredServers, 1000,
+                                                 RRConfig)),
     ok.
 
 check_resources_t() ->
@@ -1062,6 +1145,8 @@ basic_test_() ->
      [{"check bucket test", fun () -> check_bucket_t() end},
       {"check bucket during storage migration test",
        fun () -> check_bucket_during_storage_migration_t() end},
+      {"dont check memcached or ephemeral test",
+       fun () -> dont_check_memcached_or_ephemeral_t() end},
       {"check all resources test", fun () -> check_resources_t() end},
       {"validate topology change test",
        fun () -> validate_topology_change_t() end},
