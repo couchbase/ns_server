@@ -373,6 +373,11 @@ class BucketTestSetBase(testlib.BaseTestSet):
         else:
             self.limits['ramQuota']['min'] = 100
 
+        # Bucket rank
+        # ----------------------------------------------------------------------
+        self.limits['rank']['min'] = 0
+        self.limits['rank']['max'] = 1000
+
         # Threads Number
         # ----------------------------------------------------------------------
         self.limits['threadsNumber']['min'] = 2
@@ -536,7 +541,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
     def init_test_params(self, param, bucket_type, storage_backend,
                          auto_compaction_defined, bucket_placer,
                          allowed_time_period, conflict_resolution_type,
-                         just_validate, is_creation):
+                         just_validate, is_creation, rank):
         self.test_params = collections.defaultdict(list)
 
         # Bucket Name
@@ -618,6 +623,11 @@ class BucketTestSetBase(testlib.BaseTestSet):
 
             self.test_params['threadsNumber'] = [None]
             self.add_limits('threadsNumber')
+
+            # Rank
+            # ------------------------------------------------------------------
+            self.test_params['rank'] = [rank]
+            self.add_limits('rank')
 
             # Compression Mode
             # ------------------------------------------------------------------
@@ -779,6 +789,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
 
         controlled_by_main_dict = [
             'bucketType',
+            'rank',
             'storageBackend',
             'parallelDBAndViewCompaction',
             'autoCompactionDefined',
@@ -802,7 +813,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
     def init_bad_params(self, bucket_type, storage_backend,
                         auto_compaction_defined, bucket_placer,
                         allowed_time_period, conflict_resolution_type,
-                        just_validate, is_creation):
+                        just_validate, is_creation, rank):
         self.bad_params = collections.defaultdict(list)
 
         # Bucket Name
@@ -1092,6 +1103,14 @@ class BucketTestSetBase(testlib.BaseTestSet):
                 return {}
         else:
             return {field: "Bucket name needs to be specified"}
+
+    def rank_error(self, test_data):
+        field = "rank"
+        if field in test_data:
+            rank = test_data[field]
+            if rank <= 0 and rank >= 1000:
+                return {field: f"Rank must be in the range 0-1000. Got '\"{rank}\"' instead."}
+        return {}
 
     def bucket_type_error(self, test_data):
         field = "bucketType"
@@ -1761,6 +1780,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
             errors.update(self.replica_index_error(test_data))
 
         if BUCKETS_ENDPOINT in endpoint:
+            errors.update(self.rank_error(test_data))
             if not is_creation:
                 test_data['bucketType'] = self.cur_main_dict['bucket_type']
                 test_data['storageBackend'] = self.cur_main_dict['storage_backend']
@@ -1936,6 +1956,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
 
             bucket_type = main_dict['bucket_type']
             storage_backend = main_dict['storage_backend']
+            rank = main_dict['rank']
             conflict_resolution_type = main_dict['conflict_resolution_type']
             is_creation = main_dict['is_creation']
 
@@ -1955,6 +1976,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
                     "name": self.get_next_name(),
                     "ramQuota": self.limits['ramQuota'][min_or_max],
                     "bucketType": bucket_type,
+                    "rank": rank,
                     "storageBackend": storage_backend,
                     "conflictResolutionType": conflict_resolution_type
                 }
@@ -2027,6 +2049,7 @@ class BasicBucketTestSet(BucketTestSetBase):
         self.test_param("name",
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore"],
+                        rank=[0],
                         auto_compaction_defined=[None],
                         conflict_resolution_type=["seqno"],
                         bucket_placer=[False],
@@ -2034,11 +2057,25 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True])
 
+    def rank_test(self, cluster):
+        self.test_param("rank",
+                        bucket_type=["couchbase"],
+                        storage_backend=["couchstore"],
+                        rank=[0, 10, 1000],
+                        auto_compaction_defined=[None],
+                        conflict_resolution_type=["seqno"],
+                        bucket_placer=[False],
+                        allowed_time_period=[False],
+                        just_validate=[False],
+                        is_creation=[False])
+
+
     def bucket_type_test(self, cluster):
         self.test_param("bucketType",
                         bucket_type=["membase", "couchbase", "ephemeral", None],
                         storage_backend=["couchstore", "magma"],
                         auto_compaction_defined=[None],
+                        rank=[0],
                         conflict_resolution_type=["seqno"],
                         bucket_placer=[False],
                         allowed_time_period=[False],
@@ -2050,6 +2087,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore", "magma"],
                         auto_compaction_defined=[None],
+                        rank=[0],
                         conflict_resolution_type=["seqno"],
                         bucket_placer=[False, True],
                         allowed_time_period=[False],
@@ -2061,6 +2099,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         bucket_type=["couchbase", "ephemeral"],
                         storage_backend=["couchstore", "magma"],
                         auto_compaction_defined=[None],
+                        rank=[0],
                         conflict_resolution_type=["seqno"],
                         bucket_placer=[False],
                         allowed_time_period=[False],
@@ -2073,6 +2112,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         storage_backend=["couchstore"],
                         auto_compaction_defined=[None],
                         conflict_resolution_type=["seqno"],
+                        rank=[0],
                         bucket_placer=[False],
                         allowed_time_period=[False],
                         just_validate=[True, False],
@@ -2082,6 +2122,7 @@ class BasicBucketTestSet(BucketTestSetBase):
         self.test_param("durabilityMinLevel",
                         bucket_type=["couchbase", "memcached", "ephemeral"],
                         storage_backend=["couchstore"],
+                        rank=[0],
                         auto_compaction_defined=[None],
                         conflict_resolution_type=["seqno"],
                         bucket_placer=[False],
@@ -2094,6 +2135,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore"],
                         auto_compaction_defined=[None],
+                        rank=[0],
                         conflict_resolution_type=["seqno"],
                         bucket_placer=[False],
                         allowed_time_period=[False],
@@ -2105,6 +2147,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore"],
                         auto_compaction_defined=[None],
+                        rank=[0],
                         conflict_resolution_type=["seqno"],
                         bucket_placer=[False],
                         allowed_time_period=[False],
@@ -2116,6 +2159,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore"],
                         auto_compaction_defined=[None],
+                        rank=[0],
                         conflict_resolution_type=["seqno"],
                         bucket_placer=[False],
                         allowed_time_period=[False],
@@ -2128,6 +2172,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         storage_backend=["couchstore"],
                         auto_compaction_defined=[None],
                         conflict_resolution_type=["seqno", "lww", "custom"],
+                        rank=[0],
                         bucket_placer=[False],
                         allowed_time_period=[False],
                         just_validate=[True, False],
@@ -2139,6 +2184,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         storage_backend=["couchstore"],
                         auto_compaction_defined=[None],
                         conflict_resolution_type=["seqno"],
+                        rank=[0],
                         bucket_placer=[False],
                         allowed_time_period=[False],
                         just_validate=[True, False],
@@ -2151,6 +2197,7 @@ class BasicBucketTestSet(BucketTestSetBase):
             "auto_compaction_defined": [None],
             "conflict_resolution_type": ["seqno"],
             "bucket_placer": [False],
+            "rank": [0],
             "allowed_time_period": [False],
             "just_validate": [True, False],
             "is_creation": [True, False]
@@ -2165,6 +2212,7 @@ class BasicBucketTestSet(BucketTestSetBase):
             "auto_compaction_defined": [None],
             "conflict_resolution_type": ["seqno", "lww"],
             "bucket_placer": [False],
+            "rank": [0],
             "allowed_time_period": [False],
             "just_validate": [True, False],
             "is_creation": [True, False]
@@ -2179,6 +2227,7 @@ class BasicBucketTestSet(BucketTestSetBase):
             "auto_compaction_defined": [None],
             "conflict_resolution_type": ["seqno"],
             "bucket_placer": [False],
+            "rank": [0],
             "allowed_time_period": [False],
             "just_validate": [True, False],
             "is_creation": [True, False]
@@ -2225,6 +2274,7 @@ class ServerlessBucketTestSet(BucketTestSetBase):
             "storage_backend": ["couchstore"],
             "auto_compaction_defined": [None],
             "conflict_resolution_type": ["seqno"],
+            "rank": [0],
             "bucket_placer": [False, True],
             "allowed_time_period": [False],
             "just_validate": [True, False],
@@ -2239,6 +2289,7 @@ class ServerlessBucketTestSet(BucketTestSetBase):
                         storage_backend=["couchstore", "magma"],
                         auto_compaction_defined=[None],
                         conflict_resolution_type=["seqno"],
+                        rank=[0],
                         bucket_placer=[False],
                         allowed_time_period=[False],
                         just_validate=[True, False],
@@ -2249,6 +2300,7 @@ class ServerlessBucketTestSet(BucketTestSetBase):
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore"],
                         auto_compaction_defined=[None],
+                        rank=[0],
                         conflict_resolution_type=["seqno"],
                         bucket_placer=[False],
                         allowed_time_period=[False],
@@ -2267,6 +2319,7 @@ class OnPremBucketTestSet(BucketTestSetBase):
                         bucket_type=["memcached"],
                         storage_backend=["couchstore"],
                         auto_compaction_defined=[None],
+                        rank=[0],
                         conflict_resolution_type=["seqno"],
                         bucket_placer=[False],
                         allowed_time_period=[False],
@@ -2279,6 +2332,7 @@ class OnPremBucketTestSet(BucketTestSetBase):
                         storage_backend=["couchstore"],
                         auto_compaction_defined=[None],
                         conflict_resolution_type=["seqno"],
+                        rank=[0],
                         bucket_placer=[False],
                         allowed_time_period=[False],
                         just_validate=[True, False],
@@ -2335,6 +2389,7 @@ class MultiNodeBucketTestSet(BucketTestSetBase):
                         storage_backend=["couchstore"],
                         auto_compaction_defined=[None],
                         conflict_resolution_type=["seqno"],
+                        rank=[0],
                         bucket_placer=[False],
                         allowed_time_period=[False],
                         just_validate=[True, False],
