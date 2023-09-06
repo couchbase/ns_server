@@ -113,6 +113,9 @@ def kill_nodes(processes, urls, terminal_attrs):
 
 
 def main():
+    # we use assert statements in tests, so make sure they are not disabled
+    if not __debug__:
+        raise RuntimeError("Assert statements are disabled")
     try:
         optlist, args = getopt.gnu_getopt(sys.argv[1:], "hkovc:u:p:n:t:s:",
                                           ["help", "keep-tmp-dirs", "cluster=",
