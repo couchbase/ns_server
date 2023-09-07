@@ -125,7 +125,7 @@ get_default_collection_props(BucketConf) ->
         false ->
             [];
         true ->
-            [{"metered", true}]
+            [{metered, true}]
     end.
 
 manifest_without_system_scope(BucketConf) ->
@@ -202,7 +202,7 @@ is_system_scope_enabled() ->
 maybe_add_metered_property() ->
     case config_profile:get_bool(enable_metered_collections) of
         true ->
-            [{"metered", false}];
+            [{metered, false}];
         false ->
             []
     end.
@@ -946,7 +946,7 @@ maybe_add_metered(Props, ScopeName) ->
         false ->
             Props;
         true ->
-            Props ++ [{"metered", true}]
+            Props ++ [{metered, true}]
     end.
 
 maybe_reset_maxttl(Props) ->
