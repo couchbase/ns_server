@@ -23,6 +23,9 @@
 %% Supervisor callbacks
 -export([init/1]).
 
+-define(MAX_R, misc:get_env_default(max_r, 3)).
+-define(MAX_T, misc:get_env_default(max_t, 10)).
+
 %% ===================================================================
 %% API functions
 %% ===================================================================
@@ -36,8 +39,8 @@ start_link() ->
 
 init([]) ->
     {ok, { {rest_for_one,
-            misc:get_env_default(max_r, 3),
-            misc:get_env_default(max_t, 10)}, child_specs()} }.
+            ?MAX_R,
+            ?MAX_R}, child_specs()} }.
 
 child_specs() ->
     [
@@ -79,8 +82,9 @@ child_specs() ->
       transient, brutal_kill, worker, []},
 
      %% we cannot "kill" this guy anyways. Thus hefty shutdown timeout.
-     {start_couchdb_node, {?MODULE, start_couchdb_node, []},
-      {permanent, 5}, 86400000, worker, []},
+     suppress_max_restart_intensity:spec(
+       {start_couchdb_node, {?MODULE, start_couchdb_node, []},
+        {permanent, 5, ?MAX_R, ?MAX_T}, 86400000, worker, []}),
 
      {wait_for_couchdb_node, {erlang, apply, [fun wait_link_to_couchdb_node/0, []]},
       permanent, 1000, worker, []},

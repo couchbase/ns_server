@@ -21,6 +21,9 @@
 %% Supervisor callbacks
 -export([init/1]).
 
+-define(MAX_R, misc:get_env_default(max_r, 3)).
+-define(MAX_T, misc:get_env_default(max_t, 10)).
+
 %% ===================================================================
 %% API functions
 %% ===================================================================
@@ -46,17 +49,16 @@ start_link() ->
 
 init([]) ->
     pre_start(),
-    {ok, {{one_for_one,
-           misc:get_env_default(max_r, 3),
-           misc:get_env_default(max_t, 10)},
+    {ok, {{one_for_one, ?MAX_R, ?MAX_T},
           child_specs()}}.
 
 pre_start() ->
     misc:ping_jointo().
 
 child_specs() ->
-    [{ns_disksup, {ns_disksup, start_link, []},
-      {permanent, 4}, 1000, worker, []},
+    [suppress_max_restart_intensity:spec(
+       {ns_disksup, {ns_disksup, start_link, []},
+        {permanent, 4, ?MAX_R, ?MAX_T}, 1000, worker, []}),
 
      {diag_handler_worker, {work_queue, start_link, [diag_handler_worker]},
       permanent, 1000, worker, []},
@@ -87,9 +89,10 @@ child_specs() ->
      {timer_lag_recorder, {timer_lag_recorder, start_link, []},
       permanent, 1000, worker, []},
 
-     {ns_babysitter_log_consumer,
-      {ns_log, start_link_babysitter_log_consumer, []},
-      {permanent, 4}, 1000, worker, []},
+     suppress_max_restart_intensity:spec(
+       {ns_babysitter_log_consumer,
+        {ns_log, start_link_babysitter_log_consumer, []},
+        {permanent, 4, ?MAX_R, ?MAX_T}, 1000, worker, []}),
 
      {prometheus_cfg, {prometheus_cfg, start_link, []},
       permanent, 1000, worker, [prometheus_cfg]},
@@ -169,8 +172,11 @@ child_specs() ->
       {gen_event, start_link, [{local, audit_events}]},
       permanent, brutal_kill, worker, dynamic},
 
-     {encryption_service, {encryption_service, start_link, []},
-      {permanent, 1}, 5000, worker, [encryption_service]},
+     suppress_max_restart_intensity:spec(
+       {encryption_service,
+        {encryption_service,
+         start_link, []},
+        {permanent, 1, ?MAX_R, ?MAX_T}, 5000, worker, [encryption_service]}),
 
      {menelaus, {menelaus_sup, start_link, []},
       permanent, infinity, supervisor,
@@ -179,8 +185,9 @@ child_specs() ->
      %% Note: many of the processes started by ns_ports_setup try to connect
      %% to ns_server rest port for various reasons. So ns_ports_setup needs to
      %% go after menelaus_sup.
-     {ns_ports_setup, {ns_ports_setup, start, []},
-      {permanent, 4}, brutal_kill, worker, []},
+     suppress_max_restart_intensity:spec(
+       {ns_ports_setup, {ns_ports_setup, start, []},
+        {permanent, 4, ?MAX_R, ?MAX_T}, brutal_kill, worker, []}),
 
      {service_agent_sup, {service_agent_sup, start_link, []},
       permanent, infinity, supervisor, [service_agent_sup]},
@@ -191,14 +198,17 @@ child_specs() ->
      {memcached_auth_server, {memcached_auth_server, start_link, []},
       permanent, 1000, worker, []},
 
-     {ns_audit_cfg, {ns_audit_cfg, start_link, []},
-      {permanent, 4}, 1000, worker, []},
+     suppress_max_restart_intensity:spec(
+       {ns_audit_cfg, {ns_audit_cfg, start_link, []},
+        {permanent, 4, ?MAX_R, ?MAX_T}, 1000, worker, []}),
 
-     {ns_audit, {ns_audit, start_link, []},
-      {permanent, 4}, 1000, worker, []},
+     suppress_max_restart_intensity:spec(
+       {ns_audit, {ns_audit, start_link, []},
+        {permanent, 4, ?MAX_R, ?MAX_T}, 1000, worker, []}),
 
-     {memcached_config_mgr, {memcached_config_mgr, start_link, []},
-      {permanent, 4}, 1000, worker, []},
+     suppress_max_restart_intensity:spec(
+       {memcached_config_mgr, {memcached_config_mgr, start_link, []},
+        {permanent, 4, ?MAX_R, ?MAX_T}, 1000, worker, []}),
 
      {ns_memcached_log_rotator, {ns_memcached_log_rotator, start_link, []},
       permanent, 1000, worker, [ns_memcached_log_rotator]},
@@ -234,8 +244,9 @@ child_specs() ->
      {services_stats_sup, {services_stats_sup, start_link, []},
       permanent, infinity, supervisor, []},
 
-     {compaction_daemon, {compaction_daemon, start_link, []},
-      {permanent, 4}, 86400000, worker, [compaction_daemon]},
+     suppress_max_restart_intensity:spec(
+       {compaction_daemon, {compaction_daemon, start_link, []},
+        {permanent, 4, ?MAX_R, ?MAX_T}, 86400000, worker, [compaction_daemon]}),
 
      {cluster_logs_sup, {cluster_logs_sup, start_link, []},
       permanent, infinity, supervisor, []},

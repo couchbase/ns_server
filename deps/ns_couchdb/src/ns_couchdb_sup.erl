@@ -20,6 +20,9 @@
 %% Supervisor callbacks
 -export([init/1]).
 
+-define(MAX_R, misc:get_env_default(max_r, 7)).
+-define(MAX_T, misc:get_env_default(max_t, 15)).
+
 %% ===================================================================
 %% API functions
 %% ===================================================================
@@ -32,14 +35,13 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-    {ok, { {one_for_one,
-            misc:get_env_default(max_r, 7),
-            misc:get_env_default(max_t, 15)}, child_specs()} }.
+    {ok, { {one_for_one, ?MAX_R, ?MAX_T}, child_specs()} }.
 
 child_specs() ->
     [
-     {menelaus_users_auth_cache, {menelaus_users, start_auth_cache, []},
-      {permanent, 5}, 1000, worker, [versioned_cache]},
+     suppress_max_restart_intensity:spec(
+       {menelaus_users_auth_cache, {menelaus_users, start_auth_cache, []},
+        {permanent, 5, ?MAX_R, ?MAX_T}, 1000, worker, [versioned_cache]}),
 
      {cb_couch_sup, {cb_couch_sup, start_link, []},
       permanent, 5000, supervisor, [cb_couch_sup]},
@@ -62,11 +64,14 @@ child_specs() ->
       permanent, infinity, supervisor,
       [ns_couchdb_config_sup]},
 
-     {compiled_roles_cache, {menelaus_roles, start_compiled_roles_cache, []},
-      {permanent, 5}, 1000, worker, [versioned_cache]},
+     suppress_max_restart_intensity:spec(
+       {compiled_roles_cache, {menelaus_roles,
+                               start_compiled_roles_cache, []},
+        {permanent, 5, ?MAX_R, ?MAX_T}, 1000, worker, [versioned_cache]}),
 
-     {roles_cache, {roles_cache, start_link, []},
-      {permanent, 5}, 1000, worker, []},
+     suppress_max_restart_intensity:spec(
+       {roles_cache, {roles_cache, start_link, []},
+        {permanent, 5, ?MAX_R, ?MAX_T}, 1000, worker, []}),
 
      {request_tracker, {request_tracker, start_link, []},
       permanent, 1000, worker, [request_tracker]},
@@ -80,17 +85,21 @@ child_specs() ->
      {set_view_update_daemon, {set_view_update_daemon, start_link, []},
       permanent, 1000, worker, [set_view_update_daemon]},
 
-     restartable:spec(
-       {ns_capi_ssl_service,
-        {ns_ssl_services_setup, start_link_capi_service, []},
-        {permanent, 4}, 1000, worker, []}),
+     suppress_max_restart_intensity:spec(
+       restartable:spec(
+         {ns_capi_ssl_service,
+          {ns_ssl_services_setup, start_link_capi_service, []},
+          {permanent, 4, ?MAX_R, ?MAX_T}, 1000, worker, []})),
 
      {dir_size, {dir_size, start_link, []},
       permanent, 1000, worker, [dir_size]}
     ].
 
 restart_capi_ssl_service() ->
-    case restartable:restart(?MODULE, ns_capi_ssl_service) of
+    SuppressMaxRChildPid =
+        suppress_max_restart_intensity:actual_child_pid(?MODULE,
+                                                        ns_capi_ssl_service),
+    case restartable:restart(SuppressMaxRChildPid) of
         {ok, _} ->
             ok;
         Error ->
