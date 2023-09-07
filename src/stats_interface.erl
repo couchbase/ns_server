@@ -208,7 +208,7 @@ for_resource_management() ->
                   fun({NewName, Query}) ->
                           promQL:named(NewName, Query)
                   end, List),
-    Q = promQL:format_promql(promQL:op('or', QueryAsts)),
+    Q = promQL:format_promql(promQL:op('or', [], QueryAsts)),
 
     Res = latest(
             Q, fun (Props) ->

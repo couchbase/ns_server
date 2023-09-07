@@ -18,7 +18,7 @@
 %% AST helpers
 -export([metric/1, rate/2, sum/1, sum_by/2, sum_without/2, bucket_metric/2,
          named/2, with_label/3, multiply_by_scalar/2, convert_units/3,
-         eq/2, eq/3, eq_any/2, re/3, op/2, clamp_min/2, idelta/2,
+         eq/2, op/3, eq/3, eq_any/2, re/3, op/2, clamp_min/2, idelta/2,
          max/1, preformatted/1]).
 
 -define(DEFAULT_RANGE_INTERVAL, "1m").
@@ -32,7 +32,9 @@ re(Name, Value, {M}) -> {[{re, Name, Value} | M]}.
 
 metric(Name) -> eq(<<"name">>, Name).
 
-op(Op, Metrics) -> {Op, [{ignoring, [<<"name">>]}], Metrics}.
+op(Op, Metrics) -> op(Op, [{ignoring, [<<"name">>]}], Metrics).
+
+op(Op, Opts, Metrics) -> {Op, Opts, Metrics}.
 
 rate(Ast, Opts) ->
     {call, irate, none, [range(Ast, Opts)]}.
