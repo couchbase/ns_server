@@ -90,35 +90,44 @@ get(bucket, Key) ->
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-validate_topology_change(EjectedLiveNodes, KeepKVNodes) ->
-    case get(bucket, resident_ratio) of
-        undefined ->
-            ok;
-        ResourceConfig ->
-            BucketDataSizes =
-                stats_interface:total_active_logical_data_size(
-                  EjectedLiveNodes ++ KeepKVNodes),
-            BadBuckets =
-                maps:keys(
-                  maps:filter(
-                    fun (_Name, 0) ->
-                            false;
-                        (Name, TotalDataSize) ->
-                            validate_bucket_topology_change(
-                              Name, KeepKVNodes, TotalDataSize, ResourceConfig)
-                    end, BucketDataSizes)),
-            case BadBuckets of
-                [] ->
-                    %% No bucket is anticipated to breach it's RR% minimum
+
+validate_topology_change(EjectedLiveNodes, KeepNodes) ->
+    case EjectedLiveNodes of
+        [] -> ok;
+        _ ->
+            KeepKVNodes = ns_cluster_membership:service_nodes(KeepNodes, kv),
+            case get(bucket, resident_ratio) of
+                undefined ->
                     ok;
-                _ ->
-                    %% RR% violation expected for each of BadBuckets
-                    {error,
-                     {rr_will_be_too_low,
-                      iolist_to_binary(
-                        io_lib:format("The following buckets are expected to "
-                                      "breach the resident ratio minimum: ~s",
-                                      [lists:join(", ", BadBuckets)]))}}
+                ResourceConfig ->
+                    BucketDataSizes =
+                        stats_interface:total_active_logical_data_size(
+                          EjectedLiveNodes ++ KeepKVNodes),
+                    BadBuckets =
+                        maps:keys(
+                          maps:filter(
+                            fun (_Name, 0) ->
+                                    false;
+                                (Name, TotalDataSize) ->
+                                    validate_bucket_topology_change(
+                                      Name, KeepKVNodes, TotalDataSize,
+                                      ResourceConfig)
+                            end, BucketDataSizes)),
+                    case BadBuckets of
+                        [] ->
+                            %% No bucket is anticipated to breach it's RR%
+                            %% minimum
+                            ok;
+                        _ ->
+                            %% RR% violation expected for each of BadBuckets
+                            {error,
+                             {rr_will_be_too_low,
+                              iolist_to_binary(
+                                io_lib:format(
+                                  "The following buckets are expected to "
+                                  "breach the resident ratio minimum: ~s",
+                                  [lists:join(", ", BadBuckets)]))}}
+                    end
             end
     end.
 
@@ -994,8 +1003,8 @@ validate_topology_change_t() ->
                                                  DesiredServers, 2000,
                                                  ResourceConfig0)),
 
-    meck:expect(ns_cluster_membership, service_active_nodes,
-                fun (kv) -> Servers end),
+    meck:expect(ns_cluster_membership, service_nodes,
+                fun (_Servers, kv) -> Servers end),
     ResourceConfig1 = [{enabled, false} | ResourceConfig0],
     meck:expect(ns_config, read_key_fast,
                 fun (resource_management, _) ->
