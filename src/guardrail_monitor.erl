@@ -1027,6 +1027,9 @@ validate_topology_change_t() ->
     ?assertMatch({error, _},
                  validate_topology_change([node3], Servers)),
 
+    %% Don't give an error when no live nodes are being ejected
+    ?assertEqual(ok, validate_topology_change([], Servers)),
+
     meck:expect(stats_interface, total_active_logical_data_size,
                 fun (_) -> #{"couchstore_bucket" => 200,
                              "magma_bucket" => 2000,
