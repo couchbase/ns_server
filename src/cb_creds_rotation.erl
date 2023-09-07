@@ -49,7 +49,19 @@ rotate_password() ->
     %% phase 3. In total it may spend 2 * PROTECTION_SLEEP ms sleeping, plus
     %% we need some time for rotation itself.
     Timeout = 30000 + 2 * extract_protection_sleep(),
-    gen_server:call(?MODULE, on_demand_rotation, Timeout).
+
+    %% If we receive noproc here, we are likely in the process of joining nodes
+    %% together or changing topology. Respond with 503 (temporary failure) and
+    %% tell them to try again later.
+    try gen_server:call(?MODULE, on_demand_rotation, Timeout) of
+        X -> X
+    catch exit:{{noproc,
+                 {gen_server, call,
+                  [{menelaus_cbauth, _}, sync, _]}},
+                {gen_server, call,
+                 [cb_creds_rotation, on_demand_rotation, _]}} ->
+              {error, tmp_error}
+    end.
 
 %%%===================================================================
 %%% gen_server callbacks

@@ -161,5 +161,10 @@ handle_event_log_post(Req) ->
 
 handle_rotate_internal_creds(Req) ->
     menelaus_util:assert_is_trinity(),
-    cb_creds_rotation:rotate_password(),
-    reply_json(Req, [], 200).
+    case cb_creds_rotation:rotate_password() of
+        {error, tmp_error} ->
+            ErrStr = <<"System is being reconfigured. Please try later.">>,
+            reply_json(Req, [ErrStr], 503);
+        _ ->
+            reply_json(Req, [], 200)
+    end.
