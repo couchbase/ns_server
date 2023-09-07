@@ -13,7 +13,7 @@
 
 -export([start_link/0]).
 
--export([get_current_lease/0, get_current_lease/1,
+-export([get_current_lease/0, get_current_lease/1, cleanup_lease/0,
          acquire_lease/4, abolish_leases/3]).
 
 %% gen_server callbacks
@@ -364,6 +364,9 @@ persist_fresh_lease(#state{lease = Lease} = State) ->
 
 remove_persisted_lease() ->
     misc:remove_marker(lease_path()).
+
+cleanup_lease() ->
+    catch remove_persisted_lease().
 
 load_lease_props() ->
     try

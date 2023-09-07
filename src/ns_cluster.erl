@@ -1651,6 +1651,10 @@ perform_leave() ->
     %% because as seen above we actually re-initialize default config
     tombstone_agent:wipe(),
 
+    %% Remove the persisted lease from disk if it exists. It holds no relevance
+    %% after node has left the cluster
+    leader_lease_agent:cleanup_lease(),
+
     ns_config:clear([directory,
                      %% Preserve these directories as they may have been
                      %% changed from their defaults and their handling
