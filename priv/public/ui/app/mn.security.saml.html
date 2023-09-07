@@ -48,39 +48,39 @@
       </div>
     </div>
 
-    <div [hidden]="!(form.group.get('spMetadataURL').valueChanges | async)" class="fix-width-8-1">
-      <span class="fix-width-3-5 inline">Current SP metadata URL:</span>
-      <span class="fix-width-4 inline">
+    <div [hidden]="!(form.group.get('spMetadataURL').valueChanges | async)">
+      <span class="inline">Current SP metadata URL:</span>
+      <span class="inline margin-left-1">
         {{form.group.get('spMetadataURL').valueChanges | async}}
       </span>
-      <span class="fix-width-4 inline nowrap">
+      <span class="inline nowrap margin-left-1">
         <a ngxClipboard [cbContent]="form.group.get('spMetadataURL').valueChanges | async">
           Copy URL <span class="icon fa-clipboard"></span>
         </a>
-        <a class="margin-left-2" [attr.href]="form.group.get('spMetadataURL').valueChanges | async">
+        <a class="margin-left-1" [attr.href]="form.group.get('spMetadataURL').valueChanges | async">
           Download Metadata <span class="icon fa-download"></span>
         </a>
       </span>
     </div>
 
-    <div [hidden]="!(form.group.get('spConsumeURL').valueChanges | async)" class="fix-width-8-1">
-      <span class="fix-width-3-5 inline">Current SP consume URL:</span>
-      <span class="fix-width-4 inline">
+    <div [hidden]="!(form.group.get('spConsumeURL').valueChanges | async)">
+      <span class="inline">Current SP consume URL:</span>
+      <span class="inline margin-left-1">
         {{form.group.get('spConsumeURL').valueChanges | async}}
       </span>
-      <span class="fix-width-4 inline nowrap">
+      <span class="inline nowrap margin-left-1">
         <a ngxClipboard [cbContent]="form.group.get('spConsumeURL').valueChanges | async">
           Copy URL <span class="icon fa-clipboard"></span>
         </a>
       </span>
     </div>
 
-    <div [hidden]="!(form.group.get('spLogoutURL').valueChanges | async)" class="fix-width-8-1 margin-bottom-2">
-      <span class="fix-width-3-5 inline">Current SP logout URL:</span>
-      <span class="fix-width-4 inline" >
+    <div [hidden]="!(form.group.get('spLogoutURL').valueChanges | async)" class="margin-bottom-2">
+      <span class="inline">Current SP logout URL:</span>
+      <span class="inline margin-left-1">
           {{form.group.get('spLogoutURL').valueChanges | async}}
       </span>
-      <span class="fix-width-4 inline nowrap">
+      <span class="inline nowrap margin-left-1">
         <a ngxClipboard [cbContent]="form.group.get('spLogoutURL').valueChanges | async">
           Copy URL <span class="icon fa-clipboard"></span>
         </a>
