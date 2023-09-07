@@ -215,10 +215,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
     @staticmethod
     def requirements():
         # - Provisioned edition required for guard rails to be configurable
-        # - 2 nodes so that we can test that all nodes reject write once the
-        #   guard rail has been hit. Note, assert_cant_write will be less likely
-        #   to test both nodes if num_nodes increases, so it should be modified
-        #   at the same time.
+        # - 2 nodes so that we can test rebalances
         # - 1024MB quota for magma bucket
         return testlib.ClusterRequirements(edition="Provisioned",
                                            min_num_nodes=2, num_connected=2,
@@ -255,165 +252,6 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
         # Reset the promQL queries to default values to ensure that they are
         # triggered consistently
         set_promql_queries(self.cluster)
-
-    def rr_growth_test(self):
-        # Disable other guard rails to ensure we don't get any unexpected
-        # guard rails triggered (only seen with disk usage, but disabling all
-        # to be extra sure)
-        disable_bucket_guard_rails(self.cluster)
-
-        # Ensure that the guard rail is enabled with a minimum of 10%
-        testlib.post_succ(
-            self.cluster, "/settings/resourceManagement/bucket/residentRatio",
-            json={
-                "enabled": True,
-                "couchstoreMinimum": 10,
-            })
-
-        self.cluster.create_bucket({
-            "name": "test",
-            "ramQuota": 100
-        })
-
-        testlib.poll_for_condition(can_write(self.cluster, "test"),
-                                   sleep_time=0.5, attempts=120)
-
-        refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "ok")
-
-        # Make sure that we can successfully write to the bucket
-        testlib.poll_for_condition(can_write(self.cluster, "test"),
-                                   sleep_time=1, attempts=120,
-                                   msg="write to bucket 'test'")
-
-        # Trigger the guard rail by setting the resident ratio below the minimum
-        set_promql_queries(self.cluster, resident_ratio=9)
-
-        refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "resident_ratio")
-
-        # Expect write to fail
-        assert_cant_write(self.cluster, "test",
-                          "Ingress disabled due to ratio between per-node "
-                          "quota and data size exceeding configured limit")
-
-        # Reset the promQL to verify that the status returns to ok
-        set_promql_queries(self.cluster, resident_ratio=100)
-
-        refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "ok")
-
-        # Writes should succeed again
-        testlib.post_succ(
-            self.cluster, "/pools/default/buckets/test/docs/test_doc",
-            data="")
-
-    def data_size_growth_test(self):
-        # Disable other guard rails to ensure we don't get any unexpected
-        # guard rails triggered (only seen with disk usage, but disabling all
-        # to be extra sure)
-        disable_bucket_guard_rails(self.cluster)
-
-        # Ensure that the guard rail is enabled
-        testlib.post_succ(
-            self.cluster, "/settings/resourceManagement/bucket/dataSizePerNode",
-            json={
-                "enabled": True,
-                "couchstoreMaximum": 1,
-            })
-
-        self.cluster.create_bucket({
-            "name": "test",
-            "ramQuota": 100
-        })
-
-        testlib.poll_for_condition(is_warmed_up(self.cluster, "test"),
-                                   sleep_time=0.5, attempts=120)
-
-        refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "ok")
-
-        # Make sure that we can successfully write to the cluster
-        testlib.poll_for_condition(can_write(self.cluster, "test"),
-                                   sleep_time=0.5, attempts=120)
-
-        # Set the data size above the maximum
-        set_promql_queries(self.cluster, data_size_tb=2)
-
-        refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "data_size")
-
-        # Expect write to fail
-        assert_cant_write(self.cluster, "test",
-                          "Ingress disabled due to data size exceeding "
-                          "configured limit")
-
-        # Set the data size below the maximum, to verify that the status goes
-        # back to ok
-        set_promql_queries(self.cluster, data_size_tb=0.5)
-
-        refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "ok")
-
-        # Writes should succeed again
-        testlib.post_succ(
-            self.cluster, "/pools/default/buckets/test/docs/test_doc",
-            data="")
-
-    def disk_usage_growth_test(self):
-        # Disable other guard rails to ensure we don't get any unexpected
-        # guard rails triggered (only seen with disk usage, but disabling all
-        # to be extra sure)
-        disable_bucket_guard_rails(self.cluster)
-
-        # Ensure that the guard rail is enabled, and set the limit high to avoid
-        # false positives
-        testlib.post_succ(
-            self.cluster, "/settings/resourceManagement/diskUsage",
-            json={
-                "enabled": True,
-                "maximum": 85,
-            })
-
-        self.cluster.create_bucket({
-            "name": "test",
-            "ramQuota": 100
-        })
-
-        testlib.poll_for_condition(is_warmed_up(self.cluster, "test"),
-                                   sleep_time=0.5, attempts=120)
-
-        # Wait for a stat to be populated, as the check will be ignored until we
-        # get that stat from prometheus
-        wait_for_stat(self.cluster, "sys_disk_usage_ratio", n=2)
-        refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "ok")
-
-        # Make sure that we can successfully write to the cluster
-        testlib.poll_for_condition(can_write(self.cluster, "test"),
-                                   sleep_time=0.5, attempts=120)
-
-        # Set disk usage above the maximum
-        set_promql_queries(self.cluster, disk_usage=90)
-
-        refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "disk_usage")
-
-        # Expect write to fail
-        assert_cant_write(self.cluster, "test",
-                          "Ingress disabled due to disk usage exceeding "
-                          "configured limit")
-
-        # Set the disk usage back to 0, to verify the status goes back to ok
-        set_promql_queries(self.cluster, disk_usage=0)
-
-        refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "ok")
-
-        # Writes should succeed again
-        testlib.post_succ(
-            self.cluster, "/pools/default/buckets/test/docs/test_doc",
-            data="")
 
     def num_buckets_test(self):
         pools = testlib.get_succ(self.cluster, "/pools/default").json()
@@ -620,6 +458,186 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             "name": "test",
             "storageBackend": "couchstore"
         })
+
+
+class DataIngressTests(testlib.BaseTestSet):
+
+    @staticmethod
+    def requirements():
+        # - Provisioned edition required for guard rails to be configurable
+        # - 2 nodes so that we can test that all nodes reject write once the
+        #   guard rail has been hit. Note, assert_cant_write will be less likely
+        #   to test both nodes if num_nodes increases, so it should be modified
+        #   at the same time.
+        return testlib.ClusterRequirements(edition="Provisioned",
+                                           min_num_nodes=2, num_connected=2)
+
+    def setup(self):
+        testlib.delete_all_buckets(self.cluster)
+        self.cluster.create_bucket({
+            "name": "test",
+            "ramQuota": 100
+        })
+
+    def teardown(self):
+        testlib.delete_all_buckets(self.cluster)
+
+    def test_teardown(self):
+        # Reset the promQL queries to default values to ensure that they are
+        # triggered consistently
+        set_promql_queries(self.cluster)
+        # Ensure that if the node removal was incorrectly permitted, we can run
+        # further tests, by adding the node back in
+        if len(self.cluster.connected_nodes) < 2:
+            spare_nodes = [node for node in self.cluster.nodes
+                           if node not in self.cluster.connected_nodes]
+            assert len(spare_nodes) >= 1
+            node = spare_nodes[0]
+            self.cluster.add_node(node, do_rebalance=True)
+
+    def rr_growth_test(self):
+        # Disable other guard rails to ensure we don't get any unexpected
+        # guard rails triggered (only seen with disk usage, but disabling all
+        # to be extra sure)
+        disable_bucket_guard_rails(self.cluster)
+
+        # Ensure that the guard rail is enabled with a minimum of 10%
+        testlib.post_succ(
+            self.cluster, "/settings/resourceManagement/bucket/residentRatio",
+            json={
+                "enabled": True,
+                "couchstoreMinimum": 10,
+            })
+
+        testlib.poll_for_condition(can_write(self.cluster, "test"),
+                                   sleep_time=0.5, attempts=120)
+
+        refresh_guard_rails(self.cluster)
+        assert_bucket_resource_status(self.cluster, "test", "ok")
+
+        # Make sure that we can successfully write to the bucket
+        testlib.poll_for_condition(can_write(self.cluster, "test"),
+                                   sleep_time=1, attempts=120,
+                                   msg="write to bucket 'test'")
+
+        # Trigger the guard rail by setting the resident ratio below the minimum
+        set_promql_queries(self.cluster, resident_ratio=9)
+
+        refresh_guard_rails(self.cluster)
+        assert_bucket_resource_status(self.cluster, "test", "resident_ratio")
+
+        # Expect write to fail
+        assert_cant_write(self.cluster, "test",
+                          "Ingress disabled due to ratio between per-node "
+                          "quota and data size exceeding configured limit")
+
+        # Reset the promQL to verify that the status returns to ok
+        set_promql_queries(self.cluster, resident_ratio=100)
+
+        refresh_guard_rails(self.cluster)
+        assert_bucket_resource_status(self.cluster, "test", "ok")
+
+        # Writes should succeed again
+        testlib.post_succ(
+            self.cluster, "/pools/default/buckets/test/docs/test_doc",
+            data="")
+
+    def data_size_growth_test(self):
+        # Disable other guard rails to ensure we don't get any unexpected
+        # guard rails triggered (only seen with disk usage, but disabling all
+        # to be extra sure)
+        disable_bucket_guard_rails(self.cluster)
+
+        # Ensure that the guard rail is enabled
+        testlib.post_succ(
+            self.cluster, "/settings/resourceManagement/bucket/dataSizePerNode",
+            json={
+                "enabled": True,
+                "couchstoreMaximum": 1,
+            })
+
+        testlib.poll_for_condition(is_warmed_up(self.cluster, "test"),
+                                   sleep_time=0.5, attempts=120)
+
+        refresh_guard_rails(self.cluster)
+        assert_bucket_resource_status(self.cluster, "test", "ok")
+
+        # Make sure that we can successfully write to the cluster
+        testlib.poll_for_condition(can_write(self.cluster, "test"),
+                                   sleep_time=0.5, attempts=120)
+
+        # Set the data size above the maximum
+        set_promql_queries(self.cluster, data_size_tb=2)
+
+        refresh_guard_rails(self.cluster)
+        assert_bucket_resource_status(self.cluster, "test", "data_size")
+
+        # Expect write to fail
+        assert_cant_write(self.cluster, "test",
+                          "Ingress disabled due to data size exceeding "
+                          "configured limit")
+
+        # Set the data size below the maximum, to verify that the status goes
+        # back to ok
+        set_promql_queries(self.cluster, data_size_tb=0.5)
+
+        refresh_guard_rails(self.cluster)
+        assert_bucket_resource_status(self.cluster, "test", "ok")
+
+        # Writes should succeed again
+        testlib.post_succ(
+            self.cluster, "/pools/default/buckets/test/docs/test_doc",
+            data="")
+
+    def disk_usage_growth_test(self):
+        # Disable other guard rails to ensure we don't get any unexpected
+        # guard rails triggered (only seen with disk usage, but disabling all
+        # to be extra sure)
+        disable_bucket_guard_rails(self.cluster)
+
+        # Ensure that the guard rail is enabled, and set the limit high to avoid
+        # false positives
+        testlib.post_succ(
+            self.cluster, "/settings/resourceManagement/diskUsage",
+            json={
+                "enabled": True,
+                "maximum": 85,
+            })
+
+        testlib.poll_for_condition(is_warmed_up(self.cluster, "test"),
+                                   sleep_time=0.5, attempts=120)
+
+        # Wait for a stat to be populated, as the check will be ignored until we
+        # get that stat from prometheus
+        wait_for_stat(self.cluster, "sys_disk_usage_ratio", n=2)
+        refresh_guard_rails(self.cluster)
+        assert_bucket_resource_status(self.cluster, "test", "ok")
+
+        # Make sure that we can successfully write to the cluster
+        testlib.poll_for_condition(can_write(self.cluster, "test"),
+                                   sleep_time=0.5, attempts=120)
+
+        # Set disk usage above the maximum
+        set_promql_queries(self.cluster, disk_usage=90)
+
+        refresh_guard_rails(self.cluster)
+        assert_bucket_resource_status(self.cluster, "test", "disk_usage")
+
+        # Expect write to fail
+        assert_cant_write(self.cluster, "test",
+                          "Ingress disabled due to disk usage exceeding "
+                          "configured limit")
+
+        # Set the disk usage back to 0, to verify the status goes back to ok
+        set_promql_queries(self.cluster, disk_usage=0)
+
+        refresh_guard_rails(self.cluster)
+        assert_bucket_resource_status(self.cluster, "test", "ok")
+
+        # Writes should succeed again
+        testlib.post_succ(
+            self.cluster, "/pools/default/buckets/test/docs/test_doc",
+            data="")
 
 
 def disable_bucket_guard_rails(cluster):
