@@ -16,6 +16,7 @@ class ResourceManagementTests(testlib.BaseTestSet):
     def __init__(self, cluster):
         super().__init__(cluster)
         self.original_max_supported = None
+        self.original_promql = None
 
     @staticmethod
     def requirements():
@@ -30,13 +31,31 @@ class ResourceManagementTests(testlib.BaseTestSet):
 
     def setup(self, cluster):
         testlib.delete_all_buckets(cluster)
-        self.original_max_supported = \
-            testlib.get_succ(cluster, "/internalSettings").json().\
-            get("maxBucketCount", 30)
+
+        # Get original settings, so that they can be set back on teardown
+        original_settings = testlib.get_succ(cluster, "/internalSettings") \
+            .json()
+        self.original_max_supported = original_settings \
+            .get("maxBucketCount", 30)
+        self.original_promql = original_settings .get("resourcePromQLOverride")
+
+        # Set the promQL queries to default values to ensure that they are
+        # triggered consistently
+        set_promql_queries(cluster)
 
     def teardown(self, cluster):
+        # Set back modified internal settings to their original values
         testlib.post_succ(cluster, "/internalSettings",
-                          data={"maxBucketCount": self.original_max_supported})
+                          data={"maxBucketCount": self.original_max_supported,
+                                **{f"resourcePromQLOverride.{key}": value
+                                   for key, value in
+                                   self.original_promql.items()}})
+
+        response = testlib.get_succ(cluster, "/internalSettings").json()
+        assert response.get("maxBucketCount") == self.original_max_supported
+        assert response.get("resourcePromQLOverride") == self.original_promql, \
+            f"failed to reset resourcePromQLOverride to " \
+            f"{self.original_promql}, got from /internalSettings: {response}"
 
     def test_teardown(self, cluster):
         testlib.delete_all_buckets(cluster)
@@ -45,6 +64,9 @@ class ResourceManagementTests(testlib.BaseTestSet):
                           "[{resource_management, Cfg}] = "
                           "  menelaus_web_guardrails:default_config(),"
                           "ns_config:set(resource_management, Cfg).")
+        # Reset the promQL queries to default values to ensure that they are
+        # triggered consistently
+        set_promql_queries(cluster)
 
     def get_guard_rails_test(self, cluster):
         resident_ratio_config = testlib.get_succ(
@@ -249,12 +271,8 @@ class ResourceManagementTests(testlib.BaseTestSet):
                                    sleep_time=1, attempts=120,
                                    msg="write to bucket 'test'")
 
-        # Trigger the guard rail by injecting a new promQL query
-        # Note, the query uses 'sgn(kv_ep_max_size)' to add a label for the
-        # bucket
-        testlib.post_succ(cluster, "/internalSettings",
-                          data={"resourcePromQLOverride.dataResidentRatio":
-                                "9 * sgn(kv_ep_max_size)"})
+        # Trigger the guard rail by setting the resident ratio below the minimum
+        set_promql_queries(cluster, resident_ratio=9)
 
         refresh_guard_rails(cluster)
         assert_bucket_resource_status(cluster, "test", "resident_ratio")
@@ -265,9 +283,7 @@ class ResourceManagementTests(testlib.BaseTestSet):
                           "quota and data size exceeding configured limit")
 
         # Reset the promQL to verify that the status returns to ok
-        testlib.post_succ(cluster, "/internalSettings",
-                          data={"resourcePromQLOverride.dataResidentRatio":
-                                "11 * sgn(kv_ep_max_size)"})
+        set_promql_queries(cluster, resident_ratio=100)
 
         refresh_guard_rails(cluster)
         assert_bucket_resource_status(cluster, "test", "ok")
@@ -301,7 +317,7 @@ class ResourceManagementTests(testlib.BaseTestSet):
 
         # Wait for a stat to be populated, as the check will be ignored until we
         # get that stat from prometheus
-        wait_for_stat(cluster, "kv_logical_data_size_bytes", "test", n=2)
+        wait_for_stat(cluster, "kv_ep_max_size", "test", n=2)
 
         refresh_guard_rails(cluster)
         assert_bucket_resource_status(cluster, "test", "ok")
@@ -310,12 +326,8 @@ class ResourceManagementTests(testlib.BaseTestSet):
         testlib.poll_for_condition(can_write(cluster, "test"),
                                    sleep_time=0.5, attempts=120)
 
-        testlib.post_succ(
-            cluster, "/settings/resourceManagement/bucket/dataSizePerNode",
-            json={
-                "enabled": True,
-                "couchstoreMaximum": 0
-            })
+        # Set the data size above the maximum
+        set_promql_queries(cluster, data_size_tb=2)
 
         refresh_guard_rails(cluster)
         assert_bucket_resource_status(cluster, "test", "data_size")
@@ -325,13 +337,9 @@ class ResourceManagementTests(testlib.BaseTestSet):
                           "Ingress disabled due to data size exceeding "
                           "configured limit")
 
-        # Set the config back to original, to verify the status goes back to ok
-        testlib.post_succ(
-            cluster, "/settings/resourceManagement/bucket/dataSizePerNode",
-            json={
-                "enabled": True,
-                "couchstoreMaximum": 1
-            })
+        # Set the data size below the maximum, to verify that the status goes
+        # back to ok
+        set_promql_queries(cluster, data_size_tb=0.5)
 
         refresh_guard_rails(cluster)
         assert_bucket_resource_status(cluster, "test", "ok")
@@ -353,7 +361,7 @@ class ResourceManagementTests(testlib.BaseTestSet):
             cluster, "/settings/resourceManagement/diskUsage",
             json={
                 "enabled": True,
-                "maximum": 100,
+                "maximum": 85,
             })
 
         cluster.create_bucket({
@@ -374,12 +382,8 @@ class ResourceManagementTests(testlib.BaseTestSet):
         testlib.poll_for_condition(can_write(cluster, "test"),
                                    sleep_time=0.5, attempts=120)
 
-        testlib.post_succ(
-            cluster, "/settings/resourceManagement/diskUsage",
-            json={
-                "enabled": True,
-                "maximum": 0
-            })
+        # Set disk usage above the maximum
+        set_promql_queries(cluster, disk_usage=90)
 
         refresh_guard_rails(cluster)
         assert_bucket_resource_status(cluster, "test", "disk_usage")
@@ -389,13 +393,8 @@ class ResourceManagementTests(testlib.BaseTestSet):
                           "Ingress disabled due to disk usage exceeding "
                           "configured limit")
 
-        # Set the config back to original, to verify the status goes back to ok
-        testlib.post_succ(
-            cluster, "/settings/resourceManagement/diskUsage",
-            json={
-                "enabled": True,
-                "maximum": 100
-            })
+        # Set the disk usage back to 0, to verify the status goes back to ok
+        set_promql_queries(cluster, disk_usage=0)
 
         refresh_guard_rails(cluster)
         assert_bucket_resource_status(cluster, "test", "ok")
@@ -483,9 +482,7 @@ class ResourceManagementTests(testlib.BaseTestSet):
         # Trigger the guard rail by injecting a new promQL query to set the
         # per-node data size to 8 times the quota, s.t. quota/size = 12.5%.
         # With a RR% of 12.5, removing a node takes the RR below 10%
-        testlib.post_succ(cluster, "/internalSettings",
-                          data={"resourcePromQLOverride.dataSizePerNodeBytes":
-                                "8*10^8 * sgn(kv_ep_max_size)"})
+        set_promql_queries(cluster, data_size_bytes=800_000_000)
 
         cluster.rebalance(
             ejected_nodes=[cluster.connected_nodes[1]],
@@ -511,6 +508,21 @@ def disable_bucket_guard_rails(cluster):
                 "enabled": False
             },
         })
+
+
+# Set promQL queries such that they give fixed values, rather than depending on
+# the cluster state. The default values are such that no guard rails will fire
+def set_promql_queries(cluster, data_size_tb=.0, data_size_bytes=0,
+                       disk_usage=0, resident_ratio=100):
+    testlib.post_succ(cluster, "/internalSettings",
+                      data={"resourcePromQLOverride.dataSizePerNodeTB":
+                            f"{data_size_tb} * sgn(kv_ep_max_size)",
+                            "resourcePromQLOverride.dataSizePerNodeBytes":
+                            f"{data_size_bytes} * sgn(kv_ep_max_size)",
+                            "resourcePromQLOverride.diskUsage":
+                            f"{disk_usage} * sgn(sys_disk_usage_ratio)",
+                            "resourcePromQLOverride.dataResidentRatio":
+                            f"{resident_ratio} * sgn(kv_ep_max_size)"})
 
 
 def assert_bucket_resource_status(cluster, bucket, expected_status):
