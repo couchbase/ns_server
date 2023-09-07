@@ -260,9 +260,6 @@ class ResourceManagementTests(testlib.BaseTestSet):
         testlib.poll_for_condition(can_write(cluster, "test"),
                                    sleep_time=0.5, attempts=120)
 
-        # Wait for a stat to be populated, as the check will be ignored until we
-        # get that stat from prometheus
-        wait_for_stat(cluster, "kv_ep_max_size", "test")
         refresh_guard_rails(cluster)
         assert_bucket_resource_status(cluster, "test", "ok")
 
@@ -314,10 +311,6 @@ class ResourceManagementTests(testlib.BaseTestSet):
 
         testlib.poll_for_condition(is_warmed_up(cluster, "test"),
                                    sleep_time=0.5, attempts=120)
-
-        # Wait for a stat to be populated, as the check will be ignored until we
-        # get that stat from prometheus
-        wait_for_stat(cluster, "kv_ep_max_size", "test", n=2)
 
         refresh_guard_rails(cluster)
         assert_bucket_resource_status(cluster, "test", "ok")
@@ -477,7 +470,6 @@ class ResourceManagementTests(testlib.BaseTestSet):
             "name": "test",
             "ramQuota": 100
         })
-        wait_for_stat(cluster, "kv_ep_max_size", "test", n=2)
 
         # Trigger the guard rail by injecting a new promQL query to set the
         # per-node data size to 8 times the quota, s.t. quota/size = 12.5%.
@@ -498,7 +490,6 @@ class ResourceManagementTests(testlib.BaseTestSet):
             "ramQuota": 1024,
             "storageBackend": "couchstore"
         })
-        wait_for_stat(cluster, "kv_ep_max_size", "test", n=2)
 
         # Ensure that the appropriate guard rails have expected limits
         testlib.post_succ(
@@ -626,16 +617,19 @@ def disable_bucket_guard_rails(cluster):
 # Set promQL queries such that they give fixed values, rather than depending on
 # the cluster state. The default values are such that no guard rails will fire
 def set_promql_queries(cluster, data_size_tb=.0, data_size_bytes=0,
-                       disk_usage=0, resident_ratio=100):
+                       disk_usage=0, resident_ratio=100, bucket="test"):
+    # Create a fake metric with a bucket label
+    bucket_metric_base = f'label_replace(up, "bucket", "{bucket}", "", "")'
+
     testlib.post_succ(cluster, "/internalSettings",
                       data={"resourcePromQLOverride.dataSizePerNodeTB":
-                            f"{data_size_tb} * sgn(kv_ep_max_size)",
+                            f"{data_size_tb} * {bucket_metric_base}",
                             "resourcePromQLOverride.dataSizePerNodeBytes":
-                            f"{data_size_bytes} * sgn(kv_ep_max_size)",
+                            f"{data_size_bytes} * {bucket_metric_base}",
                             "resourcePromQLOverride.diskUsage":
                             f"{disk_usage} * sgn(sys_disk_usage_ratio)",
                             "resourcePromQLOverride.dataResidentRatio":
-                            f"{resident_ratio} * sgn(kv_ep_max_size)"})
+                            f"{resident_ratio} * {bucket_metric_base}"})
 
 
 def assert_bucket_resource_status(cluster, bucket, expected_status):
@@ -674,12 +668,10 @@ def assert_cant_write(cluster, bucket, exp_error):
             f"Expected '{exp_error}'"
 
 
-def wait_for_stat(cluster, stat, bucket=None, n=1):
+def wait_for_stat(cluster, stat, n=1):
 
     def got_stats():
         params = stats_range_common_params()
-        if bucket is not None:
-            params["bucket"] = bucket
         data = range_api_get(cluster, stat,
                              params=params)
         return len(data) >= n
