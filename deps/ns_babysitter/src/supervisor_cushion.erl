@@ -17,29 +17,40 @@
 -include("ns_common.hrl").
 
 %% API
--export([start_link/6, child_pid/1]).
+-export([start_link/6, start_link/7, child_pid/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {name, delay, started, child_pid, shutdown_timeout}).
+-define(DEFAULT_OPTIONS, #{always_delay => false}).
+
+-record(state, {name, delay, started, child_pid, shutdown_timeout,
+                options :: #{always_delay := boolean()}}).
 
 start_link(Name, Delay, ShutdownTimeout, M, F, A) ->
-    gen_server:start_link(?MODULE, [Name, Delay, ShutdownTimeout, M, F, A], []).
+    start_link(Name, Delay, ShutdownTimeout, M, F, A, #{}).
+start_link(Name, Delay, ShutdownTimeout, M, F, A, Options) ->
+    gen_server:start_link(?MODULE, [Name, Delay, ShutdownTimeout, M, F, A,
+                                    Options], []).
 
-init([Name, Delay, ShutdownTimeout, M, F, A]) ->
+init([Name, Delay, ShutdownTimeout, M, F, A, Options]) ->
     process_flag(trap_exit, true),
     ?log_debug("Starting supervisor cushion for ~p with delay of ~p",
                [Name, Delay]),
 
     Started = erlang:monotonic_time(),
+
+    OptionsWithDefaults = maps:merge(?DEFAULT_OPTIONS, Options),
+    BaseState = #state{name = Name, delay = Delay, started = Started,
+                       options = OptionsWithDefaults},
+
     case apply(M, F, A) of
         {ok, Pid} ->
-            {ok, #state{name=Name, delay=Delay, started=Started,
-                        child_pid=Pid, shutdown_timeout=ShutdownTimeout}};
+            {ok, BaseState#state{child_pid=Pid,
+                                 shutdown_timeout=ShutdownTimeout}};
         X ->
-            {ok, die_slowly(X, #state{name=Name, delay=Delay, started=Started})}
+            {ok, die_slowly(X, BaseState)}
     end.
 
 handle_call(child_pid, _From, State) ->
@@ -66,13 +77,15 @@ handle_info(Info, State) ->
                  [State#state.name, Info]),
     {noreply, State}.
 
-die_slowly(Reason, State) ->
+die_slowly(Reason, #state{options = Options} = State) ->
+    #{always_delay := AlwaysDelay} = Options,
+
     %% How long (in microseconds) has this service been running?
     Lifetime0 = erlang:monotonic_time() - State#state.started,
     Lifetime  = misc:convert_time_unit(Lifetime0, millisecond),
 
     %% If the restart was too soon, slow down a bit.
-    case Lifetime < State#state.delay of
+    case AlwaysDelay =:= true orelse Lifetime < State#state.delay of
         true ->
             ?log_info("Cushion managed supervisor for ~p exited on node ~p in "
                       "~.2fs~n",
