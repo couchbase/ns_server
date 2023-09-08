@@ -438,7 +438,7 @@ def call_reported(name, succ_str="ok", fail_str="failed", verbose=False,
 
 
 def right_aligned(s, taken=0, width=config['screen_width']):
-    corrected_width = width - taken
+    corrected_width = max(0, width - taken)
     return f'{s: >{corrected_width}}'
 
 
