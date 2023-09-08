@@ -341,13 +341,18 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
         # per-node data size to 8 times the quota, s.t. quota/size = 12.5%.
         # With a RR% of 12.5, removing a node takes the RR below 10%
         set_promql_queries(self.cluster, data_size_bytes=800_000_000)
-
-        self.cluster.rebalance(
-            ejected_nodes=[self.cluster.connected_nodes[1]],
-            initial_code=400,
-            initial_expected_error=
-            '{"rr_will_be_too_low":"The following buckets are expected to '
-            'breach the resident ratio minimum: test"}')
+        try:
+            self.cluster.rebalance(
+                ejected_nodes=[self.cluster.connected_nodes[1]],
+                initial_code=400,
+                initial_expected_error=
+                '{"rr_will_be_too_low":"The following buckets are expected to '
+                'breach the resident ratio minimum: test"}')
+        finally:
+            testlib.post_succ(self.cluster, "/controller/stopRebalance")
+            # Rebalance ejected node back in
+            self.cluster.rebalance()
+            assert len(self.cluster.connected_nodes) >= 2
 
     def storage_migration_test(self):
         # Test migration from couchstore to magma

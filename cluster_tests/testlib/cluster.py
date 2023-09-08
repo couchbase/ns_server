@@ -149,7 +149,11 @@ class Cluster:
                                                   verbose)
 
     # Rebalance the cluster, and possibly eject nodes at the same time.
-    # Can optionally wait for the rebalance to finish
+    # Can optionally wait for the rebalance to finish.
+    # Note, when using expected_error or initial_expected_error, the TestSet
+    # is responsible for ensuring that if there is an unexpected rebalance, the
+    # cluster is still in an equivalent state after teardown to its state before
+    # the TestSet was executed on the cluster.
     def rebalance(self, ejected_nodes=None, wait=True, timeout_s=600,
                   verbose=False, expected_error=None, initial_code=200,
                   initial_expected_error=None):
