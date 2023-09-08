@@ -150,7 +150,7 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
             # connectivity (which uses TLS in this case) to the-cluster-node
             r = self.cluster.add_node(self.new_node(),
                                       expected_code=400)
-            assert_new_node_unknown_ca_error(r.json())
+            self.assert_new_node_unknown_ca_error(r.json())
         else:
             self.cluster.add_node(self.new_node())
 
@@ -159,13 +159,13 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         self.provision_new_node()
         load_ca(self.new_node(), self.cluster_ca)
         r = self.cluster.add_node(self.new_node(), expected_code=400).json()
-        assert_cluster_unknown_ca_error(r)
+        self.assert_cluster_unknown_ca_error(r)
 
     def add_untrusted_node_to_untrusted_cluster_test(self):
         self.provision_cluster_node()
         self.provision_new_node()
         r = self.cluster.add_node(self.new_node(), expected_code=400).json()
-        assert_cluster_unknown_ca_error(r)
+        self.assert_cluster_unknown_ca_error(r)
 
     # Cluster node uses ootb certs, new node uses custom certs:
 
@@ -183,7 +183,7 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
             # connectivity (which uses TLS in this case) to the-cluster-node
             r = self.cluster.add_node(self.new_node(),
                                       expected_code=400)
-            assert_new_node_unknown_ca_error(r.json())
+            self.assert_new_node_unknown_ca_error(r.json())
         else:
             self.cluster.add_node(self.new_node())
 
@@ -193,7 +193,7 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         # Despite the fact that the-cluster-node is ootb, it always validates
         # new-node's certificates when doing completeJoin
         r = self.cluster.add_node(self.new_node(), expected_code=400).json()
-        assert_cluster_unknown_ca_error(r)
+        self.assert_cluster_unknown_ca_error(r)
 
     def add_untrusted_node_to_untrusted_ootb_cluster_test(self):
         self.provision_new_node()
@@ -201,11 +201,11 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         if encryption_enabled(self.cluster_node()):
             # When encryption is on, the-new-node fails to verify otp
             # connectivity in engageCluster
-            assert_new_node_unknown_ca_error(r)
+            self.assert_new_node_unknown_ca_error(r)
         else:
             # Despite the fact that the-cluster-node is ootb, it always
             # validates new-node's certificates when doing completeJoin
-            assert_cluster_unknown_ca_error(r)
+            self.assert_cluster_unknown_ca_error(r)
 
     # Cluster node uses custom certs, new node uses ootb certs:
 
@@ -231,7 +231,7 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
             # node uses ootb certificates
             r = self.cluster.add_node(self.new_node(),
                                       expected_code=400)
-            assert_new_node_unknown_ca_error(r.json())
+            self.assert_new_node_unknown_ca_error(r.json())
         else:
             self.cluster.add_node(self.new_node())
             # We can remove the ca that we added before, because the-new-node
@@ -243,12 +243,12 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         load_ca(self.new_node(), self.cluster_ca)
         self.provision_cluster_node()
         r = self.cluster.add_node(self.new_node(), expected_code=400).json()
-        assert_cluster_unknown_ca_error(r)
+        self.assert_cluster_unknown_ca_error(r)
 
     def add_untrusted_ootb_node_to_untrusted_cluster_test(self):
         self.provision_cluster_node()
         r = self.cluster.add_node(self.new_node(), expected_code=400).json()
-        assert_cluster_unknown_ca_error(r)
+        self.assert_cluster_unknown_ca_error(r)
 
     # Node addition is iniated by the-new-node (node joins the cluster):
 
@@ -267,7 +267,7 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         self.provision_new_node()
         r = self.cluster.do_join_cluster(self.new_node(),
                                          expected_code=400).json()
-        assert_cluster_unknown_ca_error(r)
+        self.assert_cluster_unknown_ca_error(r)
 
     def trusted_node_joins_untrusted_cluster_test(self):
         load_ca(self.cluster_node(), self.new_node_ca)
@@ -275,14 +275,14 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         self.provision_new_node()
         r = self.cluster.do_join_cluster(self.new_node(),
                                          expected_code=400).json()
-        assert_new_node_unknown_ca_error(r)
+        self.assert_new_node_unknown_ca_error(r)
 
     def untrusted_node_joins_untrusted_cluster_test(self):
         self.provision_cluster_node()
         self.provision_new_node()
         r = self.cluster.do_join_cluster(self.new_node(),
                                          expected_code=400).json()
-        assert_new_node_unknown_ca_error(r)
+        self.assert_new_node_unknown_ca_error(r)
 
     # Cluster node uses custom certs, new node uses ootb certs:
 
@@ -299,7 +299,7 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         self.provision_cluster_node()
         r = self.cluster.do_join_cluster(self.new_node(),
                                          expected_code=400).json()
-        assert_cluster_unknown_ca_error(r)
+        self.assert_cluster_unknown_ca_error(r)
 
     def trusted_ootb_node_joins_untrusted_cluster_test(self):
         [ca_id] = load_ca(self.cluster_node(),
@@ -312,7 +312,7 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
             # node uses ootb certificates
             r = self.cluster.do_join_cluster(self.new_node(),
                                              expected_code=400)
-            assert_new_node_unknown_ca_error(r.json())
+            self.assert_new_node_unknown_ca_error(r.json())
         else:
             # Join works in this case because ootb node is not validating
             # the-cluster-node's name when sending the join request over https
@@ -325,7 +325,7 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
                                          expected_code=400).json()
         # The error happens on cluster side because the-new-node is ootb and
         # not validating cluster-node's certs
-        assert_cluster_unknown_ca_error(r)
+        self.assert_cluster_unknown_ca_error(r)
 
     # Cluster node uses ootb certs, new node uses custom certs:
 
@@ -343,20 +343,20 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         # Despite the fact that the-cluster-node is ootb, it always validates
         # new-node's certificates when doing completeJoin, so it fails on
         # the server side in this case
-        assert_cluster_unknown_ca_error(r)
+        self.assert_cluster_unknown_ca_error(r)
 
     def trusted_node_joins_untrusted_ootb_cluster_test(self):
         load_ca(self.cluster_node(), self.new_node_ca)
         self.provision_new_node()
         r = self.cluster.do_join_cluster(self.new_node(),
                                          expected_code=400).json()
-        assert_new_node_unknown_ca_error(r)
+        self.assert_new_node_unknown_ca_error(r)
 
     def untrusted_node_joins_untrusted_ootb_cluster_test(self):
         self.provision_new_node()
         r = self.cluster.do_join_cluster(self.new_node(),
                                          expected_code=400).json()
-        assert_new_node_unknown_ca_error(r)
+        self.assert_new_node_unknown_ca_error(r)
 
     def provision_cluster_node(self):
         load_ca(self.cluster_node(), self.cluster_ca)
@@ -390,17 +390,31 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         return CAs[0]['pem']
 
 
-def assert_cluster_unknown_ca_error(response):
-    assert_msg_in_error('Unknown CA', response[0])
+    def assert_cluster_unknown_ca_error(self, response):
+        assert_msg_in_error('Unknown CA', response[0])
+        assert_msg_in_error('Please review the CAs available on the cluster',
+                            response[0])
+        assert_failed_to_connect_error(self.new_node(), response[0])
 
 
-def assert_new_node_unknown_ca_error(response):
-    assert_msg_in_error('Unknown CA', response[0])
+    def assert_new_node_unknown_ca_error(self, response):
+        assert_msg_in_error('Unknown CA', response[0])
+        assert_msg_in_error('Please review the CAs available on the new node',
+                            response[0])
+        assert_failed_to_connect_error(self.cluster_node(), response[0])
 
 
 def assert_msg_in_error(msg, error):
     assert msg in error, f'missing "{msg}" in error: "{error}"'
 
+
+def assert_failed_to_connect_error(remote_node, error):
+    msg1 = 'Failed to establish TLS connection to ' \
+           f'{remote_node.host}:{remote_node.tls_port()}'
+    msg2 = 'Failed to establish TLS connection to ' \
+           f'{remote_node.host}:{remote_node.otp_port(encryption=True)}'
+    assert (msg1 in error) or (msg2 in error), \
+           f'missing "{msg1}" or "{msg2}" in "{error}"'
 
 # Assert that all nodes have node-to-node encryption enabled/disabled
 def assert_n2n(cluster, expected_value):

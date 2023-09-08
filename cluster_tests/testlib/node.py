@@ -28,6 +28,7 @@ class Node:
         self.port = port
         self.auth = auth
         self.data_path_cache = None
+        self.tls_port_cache = None
 
     def __str__(self):
         return self.hostname()
@@ -60,3 +61,23 @@ class Node:
         afamily = testlib.get_succ(self, '/nodes/self').json()['addressFamily']
         assert afamily in ['inet', 'inet6'], f'unexpected afamily: {afamily}'
         return 'ipv6' if afamily == 'inet6' else 'ipv4'
+
+    def tls_port(self):
+        if self.tls_port_cache is None:
+            data = 'service_ports:get_port(ssl_rest_port).'
+            r = testlib.post_succ(self, '/diag/eval', data=data)
+            self.tls_port_cache = int(r.text)
+        return self.tls_port_cache
+
+    def otp_port(self, encryption=None):
+        encryption_param = 'cb_dist:external_encryption()'
+        if encryption is not None:
+            encryption_param = 'true' if encryption else 'false'
+        data = '{port, P, _} = cb_epmd:get_port(' \
+                                'node(), ' \
+                                'cb_dist:address_family(), ' \
+                                f'{encryption_param}, ' \
+                                '60000),' \
+               'P.'
+        r = testlib.post_succ(self, '/diag/eval', data=data)
+        return int(r.text)
