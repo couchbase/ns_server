@@ -33,8 +33,7 @@ class CertLoadTests(testlib.BaseTestSet):
             self.ca_key = f.read()
 
         self.node_addr = cluster.connected_nodes[0].addr()
-        self.node_data_path = cluster.connected_nodes[0].data_path()
-        self.loaded_CA_ids = load_ca(cluster, self.ca_pem, self.node_data_path)
+        self.loaded_CA_ids = load_ca(cluster.connected_nodes[0], self.ca_pem)
 
     def teardown(self, cluster):
         testlib.post_succ(cluster, '/controller/regenerateCertificate',
@@ -54,13 +53,14 @@ class CertLoadTests(testlib.BaseTestSet):
         cert, key = generate_node_certs(self.node_addr,
                                         self.ca_pem, self.ca_key,
                                         key_type=key_type)
-        load_node_cert(cluster, cert, key, self.node_data_path)
+        load_node_cert(cluster.connected_nodes[0], cert, key)
 
     def pkcs12_certs_test(self, cluster):
         cert, key = generate_node_certs(self.node_addr,
                                         self.ca_pem, self.ca_key,
                                         key_type='rsa')
-        inbox_dir = os.path.join(self.node_data_path, 'inbox')
+        node_data_path = cluster.connected_nodes[0].data_path()
+        inbox_dir = os.path.join(node_data_path, 'inbox')
         os.makedirs(inbox_dir, exist_ok=True)
         pkcs12_path = os.path.join(inbox_dir, 'couchbase.p12')
         try:
@@ -71,8 +71,8 @@ class CertLoadTests(testlib.BaseTestSet):
                 os.remove(pkcs12_path)
 
 
-def load_node_cert(cluster, cert, key, data_dir):
-    inbox_dir = os.path.join(data_dir, 'inbox')
+def load_node_cert(node, cert, key):
+    inbox_dir = os.path.join(node.data_path(), 'inbox')
     chain_path = os.path.join(inbox_dir, 'chain.pem')
     pkey_path = os.path.join(inbox_dir, 'pkey.key')
     os.makedirs(inbox_dir, exist_ok=True)
@@ -82,7 +82,7 @@ def load_node_cert(cluster, cert, key, data_dir):
         with open(pkey_path, 'w') as f:
             f.write(key)
 
-        testlib.post_succ(cluster, '/node/controller/reloadCertificate')
+        testlib.post_succ(node, '/node/controller/reloadCertificate')
     finally:
         if os.path.exists(chain_path):
             os.remove(chain_path)
@@ -90,15 +90,15 @@ def load_node_cert(cluster, cert, key, data_dir):
             os.remove(pkey_path)
 
 
-def load_ca(cluster, CA, data_dir):
-    ca_dir = os.path.join(data_dir, 'inbox', 'CA')
+def load_ca(node, CA):
+    ca_dir = os.path.join(node.data_path(), 'inbox', 'CA')
     ca_path = os.path.join(ca_dir, 'ca.pem')
     os.makedirs(ca_dir, exist_ok=True)
     try:
         with open(ca_path, 'w') as f:
             f.write(CA)
 
-        r = testlib.post_succ(cluster, '/node/controller/loadTrustedCAs')
+        r = testlib.post_succ(node, '/node/controller/loadTrustedCAs')
         r = r.json()
         # Returning a list mostly to handle the case when that certificate
         # is already loaded. In this case we don't need to remove it in
