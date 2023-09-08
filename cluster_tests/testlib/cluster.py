@@ -211,7 +211,7 @@ class Cluster:
 
     # Add new_node to the cluster, and optionally perform a rebalance
     def add_node(self, new_node, services="kv", do_rebalance=False,
-                 verbose=False, expected_error=None):
+                 verbose=False, expected_code=200, expected_error=None):
         # Can only add nodes with the https address, which requires the 1900X
         # port
         cluster_member_port = 10000 + new_node.port
@@ -221,17 +221,19 @@ class Cluster:
                 "services": services}
         if verbose:
             print(f"Adding node {data}")
-        r = testlib.post_succ(self, f"/controller/addNode", data=data)
+        r = testlib.post_succ(self, f"/controller/addNode", data=data,
+                              expected_code=expected_code)
 
-        # Update connected_nodes with the newly added node
-        self.connected_nodes.append(new_node)
+        if expected_code==200:
+            # Update connected_nodes with the newly added node
+            self.connected_nodes.append(new_node)
 
-        if do_rebalance:
-            self.rebalance(verbose=verbose, expected_error=expected_error)
+            if do_rebalance:
+                self.rebalance(verbose=verbose, expected_error=expected_error)
         return r
 
     def do_join_cluster(self, new_node, services="kv", do_rebalance=False,
-                        verbose=False):
+                        verbose=False, expected_code=200):
         data = {"user": self.auth[0],
                 "password": self.auth[1],
                 "clusterMemberHostIp": self.nodes[0].host,
@@ -243,13 +245,14 @@ class Cluster:
         r = testlib.post_succ(
             path="/node/controller/doJoinCluster",
             cluster_or_node=new_node,
-            data=data)
+            data=data, expected_code=expected_code)
 
-        # Update connected_nodes with the newly added node
-        self.connected_nodes.append(new_node)
+        if expected_code==200:
+            # Update connected_nodes with the newly added node
+            self.connected_nodes.append(new_node)
 
-        if do_rebalance:
-            self.rebalance(wait=True, verbose=verbose)
+            if do_rebalance:
+                self.rebalance(wait=True, verbose=verbose)
         return r
 
     def failover_node(self, victim_node, graceful=True, allow_unsafe=False,
