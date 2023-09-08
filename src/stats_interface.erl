@@ -271,10 +271,13 @@ aggregated_by_bucket(Q, Nodes, Aggregator) ->
                       Flattened),
     %% Aggregate over nodes
     maps:to_list(
-      maps:map(
+      maps:filtermap(
         fun (_Key, Values) ->
-                Aggregator(lists:filter(
-                             fun (Value) -> is_number(Value) end, Values))
+                case lists:filter(fun (Value) -> is_number(Value) end,
+                                  Values) of
+                    [] -> false;
+                    Numbers -> {true, Aggregator(Numbers)}
+                end
         end, PerNodeValues)).
 
 failover_safeness_level(Bucket) ->
