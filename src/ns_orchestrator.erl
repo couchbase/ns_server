@@ -1383,7 +1383,6 @@ handle_rebalance_completion(ExitReason, ToReply, State) ->
     ns_rebalance_observer:record_rebalance_report(
       {ResultType, list_to_binary(Msg)}),
     update_rebalance_status(ExitReason, State),
-    rpc:eval_everywhere(diag_handler, log_all_dcp_stats, []),
     terminate_observer(State),
     maybe_reply_to(ToReply, State),
     maybe_request_janitor_run(ExitReason, State),

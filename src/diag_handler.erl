@@ -29,9 +29,6 @@
          handle_diag_get_password/1,
          arm_timeout/2, arm_timeout/1, disarm_timeout/1,
          grab_process_info/1, manifest/0,
-         grab_all_dcp_stats/0,
-         grab_all_dcp_stats/1,
-         log_all_dcp_stats/0,
          diagnosing_timeouts/1,
          %% rpc-ed to grab babysitter and couchdb processes
          grab_process_infos/0,
@@ -162,47 +159,6 @@ grab_process_info(Pid) ->
                                   {messages, NewMessages},
                                   {dictionary, NewDictionary}])
     end.
-
-grab_all_dcp_stats() ->
-    grab_all_dcp_stats(15000).
-
-grab_all_dcp_stats(Timeout) ->
-    ActiveBuckets = ns_memcached:active_buckets(),
-    ThisNodeBuckets = ns_bucket:node_bucket_names_of_type(node(), membase),
-    InterestingBuckets = ordsets:intersection(lists:sort(ActiveBuckets),
-                                              lists:sort(ThisNodeBuckets)),
-    misc:parallel_map(
-      fun (Bucket) ->
-              {ok, _} = timer:kill_after(Timeout),
-              case get_dcp_stats(Bucket) of
-                  {ok, V} -> V;
-                  Crap -> Crap
-              end
-      end, InterestingBuckets, infinity).
-
-get_dcp_stats(Bucket) ->
-    ns_memcached:raw_stats(
-      node(), Bucket, <<"dcp">>,
-      fun(K = <<"eq_dcpq:replication:", _/binary>>, V, Acc) ->
-              process_dcp_stats(K, V, Acc);
-         (<<"eq_dcpq:", _/binary>>, _V, Acc) ->
-              %% Drop all other "eq_dcpq" stats
-              Acc;
-         (K, V, Acc) ->
-              process_dcp_stats(K, V, Acc)
-      end, []).
-
-process_dcp_stats(K, V, []) ->
-    <<K/binary, ": ", V/binary>>;
-process_dcp_stats(K, V, Acc) ->
-    <<Acc/binary, ",", $\n, K/binary, ": ", V/binary>>.
-
-log_all_dcp_stats() ->
-    ?log_info("logging dcp stats"),
-    [begin
-         ?log_info("~s:~n[~s]", [Bucket, Values])
-     end || {Bucket, Values} <- grab_all_dcp_stats()],
-    ?log_info("end of logging dcp stats").
 
 task_status_all() ->
     local_tasks:all() ++ ns_couchdb_api:get_tasks().

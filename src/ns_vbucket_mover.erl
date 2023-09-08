@@ -23,9 +23,6 @@
 -define(MAX_INFLIGHT_MOVES_PER_NODE,
         ns_config:read_key_fast(rebalance_inflight_moves_per_node, 64)).
 
--define(DCP_STATS_LOGGING_INTERVAL,
-        ?get_param(dcp_stats_logging_interval, 10 * 60 * 1000)).
-
 %% API
 -export([start_link/5]).
 
@@ -133,8 +130,6 @@ init({Bucket, Nodes, OldMap, NewMap, ProgressCallback}) ->
                                                     ok
                                             end),
 
-    send_log_dcp_stats_msg(),
-
     ok = janitor_agent:prepare_nodes_for_rebalance(Bucket, Nodes, self()),
 
     ets:new(compaction_inhibitions, [named_table, private, set]),
@@ -168,10 +163,6 @@ handle_cast(unhandled, unhandled) ->
     exit(unhandled).
 
 
-handle_info(log_dcp_stats, State) ->
-    send_log_dcp_stats_msg(),
-    rpc:eval_everywhere(diag_handler, log_all_dcp_stats, []),
-    {noreply, State};
 handle_info(spawn_initial, State) ->
     report_progress(State),
     spawn_workers(State);
@@ -425,9 +416,6 @@ take_worker(Pid) ->
 
 get_all_workers() ->
     ets:tab2list(workers).
-
-send_log_dcp_stats_msg() ->
-    erlang:send_after(?DCP_STATS_LOGGING_INTERVAL, self(), log_dcp_stats).
 
 -ifdef(TEST).
 is_swap_rebalance_test() ->
