@@ -10,6 +10,7 @@
 import testlib
 from ipaddress import ip_address, IPv6Address
 
+
 class Node:
     def __init__(self, host, port, auth):
         try:
@@ -38,14 +39,13 @@ class Node:
 
         return self.data_path_cache
 
-
-    def addr(node):
-        r = testlib.post_succ(node, '/diag/eval',
+    def addr(self):
+        r = testlib.post_succ(self, '/diag/eval',
                               data='misc:extract_node_address(node()).')
         return r.text.strip('"')
 
-    def hostname(node):
-        if node.hostname_cached is None:
-            r = testlib.get_succ(node, '/nodes/self')
-            node.hostname_cached = r.json()['hostname']
-        return node.hostname_cached
+    def hostname(self):
+        if self.hostname_cached is None:
+            r = testlib.get_succ(self, '/nodes/self')
+            self.hostname_cached = r.json()['hostname']
+        return self.hostname_cached
