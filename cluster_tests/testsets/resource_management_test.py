@@ -11,61 +11,27 @@ from pprint import pprint
 import testlib
 
 
-class ResourceManagementTests(testlib.BaseTestSet):
-
-    def __init__(self, cluster):
-        super().__init__(cluster)
-        self.original_max_supported = None
-        self.original_promql = None
+class ResourceManagementAPITests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
         # - Provisioned edition required for guard rails to be configurable
-        # - 2 nodes so that we can test that all nodes reject write once the
-        #   guard rail has been hit. Note, assert_cant_write will be less likely
-        #   to test both nodes if num_nodes increases, so it should be modified
-        #   at the same time.
-        # - 1024MB quota for magma bucket
-        return testlib.ClusterRequirements(edition="Provisioned",
-                                           min_num_nodes=2,
-                                           min_memsize=1024)
+        return testlib.ClusterRequirements(edition="Provisioned")
 
     def setup(self):
-        # Get original settings, so that they can be set back on teardown
-        original_settings = testlib.get_succ(self.cluster, "/internalSettings") \
-            .json()
-        self.original_max_supported = original_settings \
-            .get("maxBucketCount", 30)
-        self.original_promql = original_settings .get("resourcePromQLOverride")
-
         # Set the promQL queries to default values to ensure that they are
         # triggered consistently
         set_promql_queries(self.cluster)
 
     def teardown(self):
-        # Set back modified internal settings to their original values
-        testlib.post_succ(self.cluster, "/internalSettings",
-                          data={"maxBucketCount": self.original_max_supported,
-                                **{f"resourcePromQLOverride.{key}": value
-                                   for key, value in
-                                   self.original_promql.items()}})
-
-        response = testlib.get_succ(self.cluster, "/internalSettings").json()
-        assert response.get("maxBucketCount") == self.original_max_supported
-        assert response.get("resourcePromQLOverride") == self.original_promql, \
-            f"failed to reset resourcePromQLOverride to " \
-            f"{self.original_promql}, got from /internalSettings: {response}"
+        pass
 
     def test_teardown(self):
-        testlib.delete_all_buckets(self.cluster)
         # Reset guard rail config
         testlib.diag_eval(self.cluster,
                           "[{resource_management, Cfg}] = "
                           "  menelaus_web_guardrails:default_config(),"
                           "ns_config:set(resource_management, Cfg).")
-        # Reset the promQL queries to default values to ensure that they are
-        # triggered consistently
-        set_promql_queries(self.cluster)
 
     def get_guard_rails_test(self):
         resident_ratio_config = testlib.get_succ(
@@ -237,6 +203,58 @@ class ResourceManagementTests(testlib.BaseTestSet):
 
         assert get("enabled", r) is True
         assert get("maximum", r) == 92
+
+
+class GuardRailRestrictionTests(testlib.BaseTestSet):
+
+    def __init__(self, cluster):
+        super().__init__(cluster)
+        self.original_max_supported = None
+        self.original_promql = None
+
+    @staticmethod
+    def requirements():
+        # - Provisioned edition required for guard rails to be configurable
+        # - 2 nodes so that we can test that all nodes reject write once the
+        #   guard rail has been hit. Note, assert_cant_write will be less likely
+        #   to test both nodes if num_nodes increases, so it should be modified
+        #   at the same time.
+        # - 1024MB quota for magma bucket
+        return testlib.ClusterRequirements(edition="Provisioned",
+                                           min_num_nodes=2, num_connected=2,
+                                           min_memsize=1024)
+
+    def setup(self):
+        testlib.delete_all_buckets(self.cluster)
+
+        # Get original settings, so that they can be set back on teardown
+        original_settings = testlib.get_succ(self.cluster, "/internalSettings")\
+            .json()
+        self.original_max_supported = original_settings \
+            .get("maxBucketCount", 30)
+        self.original_promql = original_settings .get("resourcePromQLOverride")
+
+    def teardown(self):
+        testlib.delete_all_buckets(self.cluster)
+
+        # Set back modified internal settings to their original values
+        testlib.post_succ(self.cluster, "/internalSettings",
+                          data={"maxBucketCount": self.original_max_supported,
+                                **{f"resourcePromQLOverride.{key}": value
+                                   for key, value in
+                                   self.original_promql.items()}})
+
+        response = testlib.get_succ(self.cluster, "/internalSettings").json()
+        assert response.get("maxBucketCount") == self.original_max_supported
+        assert response.get("resourcePromQLOverride") == self.original_promql, \
+            f"failed to reset resourcePromQLOverride to " \
+            f"{self.original_promql}, got from /internalSettings: {response}"
+
+    def test_teardown(self):
+        testlib.delete_all_buckets(self.cluster)
+        # Reset the promQL queries to default values to ensure that they are
+        # triggered consistently
+        set_promql_queries(self.cluster)
 
     def rr_growth_test(self):
         # Disable other guard rails to ensure we don't get any unexpected
