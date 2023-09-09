@@ -260,10 +260,10 @@ handle_saml_consume(Req, UnvalidatedParams) ->
     DupeCheck = proplists:get_value(dupe_check, SSOOpts),
     validator:handle(
       fun (Params) ->
-          Assertion = proplists:get_value('SAMLResponse', Params),
+          MaybeAssertion = proplists:get_value('SAMLResponse', Params),
           ?log_debug("Decoded assertion: " ++ ns_config_log:tag_misc_item("~p"),
-                     [Assertion]),
-          handle_saml_assertion(Req, Assertion, SSOOpts)
+                     [MaybeAssertion]),
+          handle_saml_assertion(Req, MaybeAssertion, SSOOpts)
       end, Req, UnvalidatedParams,
       [validator:string('SAMLEncoding', _),
        validator:default('SAMLEncoding', "", _),
@@ -306,7 +306,7 @@ handle_saml_logout(Req, UnvalidatedParams) ->
               {undefined, undefined} ->
                   ?log_debug("Empty saml message"),
                   menelaus_util:reply_text(Req, "Missing SAML message", 400);
-              {#esaml_logoutreq{name = NameID}, _} ->
+              {{ok, #esaml_logoutreq{name = NameID}}, _} ->
                   SessionName = iolist_to_binary(NameID),
                   menelaus_ui_auth:logout_by_session_name(saml,
                                                           SessionName),
@@ -323,11 +323,15 @@ handle_saml_logout(Req, UnvalidatedParams) ->
                           reply_via_post(URL, SignedXml(URL), <<>>, [],
                                          Req)
                   end;
-              {_, #esaml_logoutresp{}} ->
+              {_, {ok, #esaml_logoutresp{}}} ->
                   undefined = menelaus_auth:get_identity(Req),
                   ?log_debug("Successful logout response"),
                   menelaus_util:reply_text(Req, <<"Redirecting...">>, 302,
-                                           [{"Location", "/"}])
+                                           [{"Location", "/"}]);
+              {{error, Msg}, _} ->
+                  redirect_to_ui_with_error(Req, Msg);
+              {_, {error, Msg}} ->
+                  redirect_to_ui_with_error(Req, Msg)
           end
       end, Req, UnvalidatedParams,
       [validator:string('SAMLEncoding', _),
@@ -505,24 +509,24 @@ validate_authn_response(NameResp, NameEnc, SPMetadata, DupeCheck, Req, State) ->
                                                    SPMetadata) of
                       {ok, Assertion} ->
                           ?log_debug("Assertion validated successfully"),
-                          {value, Assertion};
+                          {value, {ok, Assertion}};
                       {error, {decryption_problem, {E, ST}}} ->
                           ?log_debug("Assertion decryption failed: ~p~n~p",
                                      [E, ST]),
                           ns_audit:login_failure(Req),
-                          {error, "Assertion decryption failed"};
+                          {value, {error, "Assertion decryption failed"}};
                       {error, E} ->
                           ?log_debug("Assertion validation failed: ~p", [E]),
                           ns_audit:login_failure(Req),
                           Msg = io_lib:format("Assertion validation failed:"
                                               " ~p", [E]),
-                          {error, Msg}
+                          {value, {error, Msg}}
                   end
           catch
               _:Reason ->
                   ?log_debug("Failed to decode authn response:~n~p", [Reason]),
                   Msg = io_lib:format("Assertion decode failed: ~p", [Reason]),
-                  {error, Msg}
+                  {value, {error, Msg}}
           end
       end, NameResp, NameEnc, State).
 
@@ -538,19 +542,19 @@ validate_logout_request(NameReq, NameEnc, SPMetadata, State) ->
               Xml ->
                   case esaml_sp:validate_logout_request(Xml, SPMetadata) of
                       {ok, LogoutReq} ->
-                          {value, LogoutReq};
+                          {value, {ok, LogoutReq}};
                       {error, E} ->
                           ?log_debug("Logout req validation failed: ~p", [E]),
                           Msg = io_lib:format("Logout req validation failed:"
                                               " ~p", [E]),
-                          {error, Msg}
+                          {value, {error, Msg}}
                   end
           catch
               _:Reason ->
                   ?log_debug("Failed to decode logout request:~n~p", [Reason]),
                   Msg = io_lib:format("Logout request decode failed: ~p",
                                       [Reason]),
-                  {error, Msg}
+                  {value, {error, Msg}}
           end
       end, NameReq, NameEnc, State).
 
@@ -566,25 +570,25 @@ validate_logout_response(NameResp, NameEnc, SPMetadata, State) ->
               Xml ->
                   case esaml_sp:validate_logout_response(Xml, SPMetadata) of
                       {ok, LogoutResp} ->
-                          {value, LogoutResp};
+                          {value, {ok, LogoutResp}};
                       {error, {status, Status, SecondLevelStatus}} ->
                           Msg = io_lib:format("SAML IDP returned status: ~p "
                                               "(second level status: ~p) in "
                                               "logout response",
                                               [Status, SecondLevelStatus]),
-                          {error, Msg};
+                          {value, {error, Msg}};
                       {error, E} ->
                           ?log_debug("Logout resp validation failed: ~p", [E]),
                           Msg = io_lib:format("Logout resp validation failed:"
                                               " ~p", [E]),
-                          {error, Msg}
+                          {value, {error, Msg}}
                   end
           catch
               _:Reason ->
                   ?log_debug("Failed to decode logout response:~n~p", [Reason]),
                   Msg = io_lib:format("Logout response decode failed: ~p",
                                       [Reason]),
-                  {error, Msg}
+                  {value, {error, Msg}}
           end
       end, NameResp, NameEnc, State).
 
@@ -939,7 +943,9 @@ get_all_attrs(AttrName, Attrs) ->
         [_|_] = Str -> [Str]
     end.
 
-handle_saml_assertion(Req, Assertion, SSOOpts) ->
+handle_saml_assertion(Req, {error, Msg}, _SSOOpts) ->
+    redirect_to_ui_with_error(Req, Msg);
+handle_saml_assertion(Req, {ok, Assertion}, SSOOpts) ->
     Subject = Assertion#esaml_assertion.subject,
     NameID = Subject#esaml_subject.name,
     Username = extract_username(Assertion, SSOOpts),
@@ -980,18 +986,18 @@ handle_saml_assertion(Req, Assertion, SSOOpts) ->
                                [ns_config_log:tag_user_name(Username)]),
                     Msg = format_access_denied_error(Username, ExtraGroups,
                                                      ExtraRoles, SSOOpts),
-                    handle_consume_error(Req, Msg)
+                    redirect_to_ui_with_error(Req, Msg)
             end;
         true ->
             ns_audit:login_failure(Req),
             ?log_debug("NameID is not set in SAML assertion"),
-            handle_consume_error(Req, "Missing NameID in SAML assertion");
+            redirect_to_ui_with_error(Req, "Missing NameID in SAML assertion");
         false ->
             ?log_debug("Could not extract identity from assertion for "
                        "NameID: ~s", [ns_config_log:tag_user_name(NameID)]),
             ns_audit:login_failure(Req),
-            handle_consume_error(Req, "Unable to extract username from SAML "
-                                      "assertion")
+            redirect_to_ui_with_error(
+              Req, "Unable to extract username from SAML assertion")
     end.
 
 extract_username(Assertion, SSOOpts) ->
@@ -1065,7 +1071,7 @@ extract_roles(Assertion, SSOOpts) ->
               end, Filtered)
     end.
 
-handle_consume_error(Req, Msg) ->
+redirect_to_ui_with_error(Req, Msg) ->
     IdStr = cb_saml:store_error_msg(iolist_to_binary(Msg)),
     Location = "/ui/index.html#/?samlErrorMsgId=" ++ IdStr,
     menelaus_util:reply_text(Req, <<"Redirecting...">>, 302,

@@ -365,7 +365,9 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            assert(r.status_code == 400)
+            error_msg = catch_error_after_redirect(cluster.nodes[0], session2,
+                                                   r, headers)
+            assert "duplicate" in error_msg
 
             dest_parsed = urlparse(destination)
             node2_parsed = urlparse(cluster.nodes[1].url)
@@ -375,7 +377,9 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            assert(r.status_code == 400)
+            error_msg = catch_error_after_redirect(cluster.nodes[1], session3,
+                                                   r, headers)
+            assert "bad_recipient" in error_msg
 
             r = session1.get(cluster.nodes[0].url + '/pools/default',
                             headers=headers)
@@ -424,7 +428,10 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            assert(r.status_code == 400)
+            error_msg = catch_error_after_redirect(cluster.nodes[0], session,
+                                                   r, headers)
+
+            assert 'stale_assertion' in error_msg
 
             r = session.get(cluster.nodes[0].url + '/pools/default',
                             headers=headers)
@@ -524,35 +531,14 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            assert(r.status_code == 302)
-
-            print(r.headers['Location'])
-            redirect_path = r.headers['Location']
-
-            # check that user doesn't have any roles
-            r = session.get(cluster.nodes[0].url + '/whoami',
-                            headers=headers)
-            assert(r.status_code == 401) ## it is ui but cookie is not set
-
-            # checking that we redirect to a valid page
-            r = session.get(cluster.nodes[0].url + redirect_path,
-                            headers=headers)
-            assert(r.status_code == 200)
-
-            parsedLocation = urlparse(redirect_path)
-            fragment = parsedLocation.fragment
-            params = parse_qs(urlparse(fragment).query)
-            assert 'samlErrorMsgId' in params
-            r = session.get(cluster.nodes[0].url + '/saml/error',
-                            headers=headers,
-                            params={'id': params['samlErrorMsgId']})
-            assert(r.status_code == 200)
+            error_msg = catch_error_after_redirect(cluster.nodes[0], session,
+                                                   r, headers)
             expected = 'Access denied for user "testuser2": ' \
                        'Insufficient Permissions. ' \
                        'Extracted groups: fakegroup1, fakegroup2. ' \
                        'Extracted roles: <empty>'
-            got = r.json()['error']
-            assert got == expected, f"Unexpected error message returned: {got}"
+            assert error_msg == expected, \
+                   f"Unexpected error message returned: {error_msg}"
 
 
     def metadata_with_invalid_signature_test(self, cluster):
@@ -598,8 +584,9 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            assert(r.status_code == 400)
-            assert("cert_not_accepted" in r.text)
+            error_msg = catch_error_after_redirect(cluster.nodes[0], session,
+                                                   r, headers)
+            assert "cert_not_accepted" in error_msg
 
             r = session.get(cluster.nodes[0].url + '/pools/default',
                             headers=headers)
@@ -637,8 +624,9 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            assert(r.status_code == 400)
-            assert("cert_not_accepted" in r.text)
+            error_msg = catch_error_after_redirect(cluster.nodes[0], session,
+                                                   r, headers)
+            assert "cert_not_accepted" in error_msg
 
             r = session.get(cluster.nodes[0].url + '/pools/default',
                             headers=headers)
@@ -868,3 +856,37 @@ def extract_saml_message_from_form(msg_type, form_data):
     response_re = re.compile(f'name="{msg_type}"\s+value="(.+)"')
     saml_msg = html.unescape(response_re.search(form_data).group(1))
     return (redirect_url, saml_msg)
+
+
+# In some cases we redirect user back to UI and show an error
+# This function retrives that error and makes sure that the user is not
+# logged in to UI
+def catch_error_after_redirect(node, session, response, ui_headers):
+    assert(response.status_code == 302)
+
+    print(f'Redirected to: {response.headers["Location"]}')
+    redirect_path = response.headers['Location']
+
+    # check that user doesn't have any roles
+    r = session.get(node.url + '/whoami', headers=ui_headers)
+    assert(r.status_code == 401) ## it is ui but cookie is not set
+
+    # checking that we redirect to a valid page
+    r = session.get(node.url + redirect_path, headers=ui_headers)
+    assert(r.status_code == 200)
+
+    # extracting msg id from the redirect url
+    parsedLocation = urlparse(redirect_path)
+    fragment = parsedLocation.fragment
+    params = parse_qs(urlparse(fragment).query)
+    assert 'samlErrorMsgId' in params
+    error_id = params['samlErrorMsgId']
+
+    # extracting error msg from server
+    r = session.get(node.url + '/saml/error',
+                    headers=ui_headers,
+                    params={'id': error_id})
+    assert(r.status_code == 200)
+    error_msg = r.json()['error']
+    print(f'Received error: {error_msg}')
+    return error_msg
