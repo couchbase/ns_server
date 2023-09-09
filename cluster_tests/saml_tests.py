@@ -324,7 +324,12 @@ class SamlTests(testlib.BaseTestSet):
 
 
     def reuse_assertion_test(self, cluster):
-        with saml_configured(cluster, spSignRequests=False) as IDP:
+        # Disable recipient verification because we want to check assertion
+        # duplicate rejection on both nodes. If we don't disable it,
+        # the assertion will be rejected with reason "bad_recipient", which is
+        # not what we want to test here
+        with saml_configured(cluster, spSignRequests=False,
+                             spVerifyRecipient='false') as IDP:
             identity = idp_test_user_attrs.copy()
             binding_out, destination = \
                 IDP.pick_binding("assertion_consumer_service",
@@ -361,6 +366,7 @@ class SamlTests(testlib.BaseTestSet):
                              allow_redirects=False)
             assert(r.status_code == 302)
 
+            # sending the same assertion again and expect it to reject it
             r = session2.post(destination,
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
@@ -373,13 +379,15 @@ class SamlTests(testlib.BaseTestSet):
             node2_parsed = urlparse(cluster.nodes[1].url)
             dest2_parsed = dest_parsed._replace(netloc=node2_parsed.netloc)
             destination2 = urlunparse(dest2_parsed)
+            # sending the same assertion again, but this time to another node
+            # it still should reject it
             r = session3.post(destination2,
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
             error_msg = catch_error_after_redirect(cluster.nodes[1], session3,
                                                    r, headers)
-            assert "bad_recipient" in error_msg
+            assert "duplicate" in error_msg
 
             r = session1.get(cluster.nodes[0].url + '/pools/default',
                             headers=headers)
