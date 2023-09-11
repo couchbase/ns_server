@@ -471,6 +471,14 @@ class ResourceManagementTests(testlib.BaseTestSet):
             "ramQuota": 100
         })
 
+        # Ensure that the guard rail is enabled with a minimum of 10%
+        testlib.post_succ(
+            self.cluster, "/settings/resourceManagement/bucket/residentRatio",
+            json={
+                "enabled": True,
+                "couchstoreMinimum": 10,
+            })
+
         # Trigger the guard rail by injecting a new promQL query to set the
         # per-node data size to 8 times the quota, s.t. quota/size = 12.5%.
         # With a RR% of 12.5, removing a node takes the RR below 10%
