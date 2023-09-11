@@ -611,6 +611,47 @@
                mn-model="settingsClusterCtl.querySettings"
                mn-errors="settingsClusterCtl.querySettingsErrors">
             </mn-field>
+
+            <div ng-show="adminCtl.poolDefault.compat.atLeast75">
+              <label>Use Replica</label>
+              <input
+                 type="radio"
+                 id="for-useReplica-unset"
+                 name="use_replica_options"
+                 ng-model="settingsClusterCtl.querySettings.queryUseReplica"
+                 ng-disabled="!rbac.cluster.settings.write"
+                 value="unset">
+              <label for="for-useReplica-unset">
+                Unset
+              </label>
+              <br>
+              <input
+                 type="radio"
+                 id="for-useReplica-on"
+                 name="use_replica_options"
+                 ng-model="settingsClusterCtl.querySettings.queryUseReplica"
+                 ng-disabled="!rbac.cluster.settings.write"
+                 value="on">
+              <label for="for-useReplica-on">
+                On
+              </label>
+              <br>
+              <input
+                 type="radio"
+                 id="for-useReplica-off"
+                 name="use_replica_options"
+                 ng-model="settingsClusterCtl.querySettings.queryUseReplica"
+                 ng-disabled="!rbac.cluster.settings.write"
+                 value="off">
+              <label for="for-useReplica-off">
+                Off
+              </label>
+              <div
+                 class="error"
+                 ng-show="settingsClusterCtl.querySettingsErrors.queryUseReplica">
+                {{settingsClusterCtl.querySettingsErrors.queryUseReplica}}
+              </div>
+            </div>
           </div>
         </div>
 

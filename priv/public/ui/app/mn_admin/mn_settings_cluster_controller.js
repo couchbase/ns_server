@@ -124,6 +124,9 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
           settings.push("queryUseCBO");
         }
       }
+      if (mnPoolDefault.export.compat.atLeast75) {
+        settings.push("queryUseReplica");
+      }
       promise3 = mnPromiseHelper(
         vm,
         mnClusterConfigurationService.postQuerySettings(
