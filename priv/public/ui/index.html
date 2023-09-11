@@ -84,7 +84,14 @@
 
     <script src="../jsout/main.js" type="module"></script>
 
-
+    <script>
+      /**
+       * does nothing but break the bfcache.
+       * see https://issues.couchbase.com/browse/MB-58506
+       * and https://review.couchbase.org/c/ns_server/+/196970
+       */
+      window.onunload = (event) => {};
+    </script>
   </head>
   <body ui-view=""></body>
 </html>
