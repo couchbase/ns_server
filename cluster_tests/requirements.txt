@@ -6,3 +6,4 @@ pysaml2 @ git+https://github.com/couchbasedeps/pysaml2@couchbase-v7.4.1
 PyYAML~=6.0
 traceback-with-variables~=2.0.4
 cryptography~=38.0.1
+jsondiff~=2.0.0

@@ -50,6 +50,7 @@ import cert_load_tests
 import alerting_tests
 import resource_management_test
 import stats_tests
+import collection_tests
 
 tmp_cluster_dir = os.path.join(scriptdir, "test_cluster_data")
 
