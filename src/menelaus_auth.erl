@@ -34,7 +34,8 @@
          is_UI_req/1,
          verify_rest_auth/2,
          new_session_id/0,
-         get_resp_headers/1]).
+         get_resp_headers/1,
+         acting_on_behalf/1]).
 
 %% rpc from ns_couchdb node
 -export([authenticate/1,
@@ -510,11 +511,15 @@ apply_on_behalf_of_identity(AuthnRes, Req) ->
             end
     end.
 
+-spec acting_on_behalf(mochiweb_request()) -> boolean().
+acting_on_behalf(Req) ->
+    read_on_behalf_of_header(Req) =/= undefined.
+
 -spec extract_on_behalf_of_identity(mochiweb_request()) ->
                                                 error | undefined
                                                 | {ok, rbac_identity()}.
 extract_on_behalf_of_identity(Req) ->
-    case mochiweb_request:get_header_value("cb-on-behalf-of", Req) of
+    case read_on_behalf_of_header(Req) of
         Header when is_list(Header) ->
             case parse_on_behalf_of_header(Header) of
                 {User, Domain} ->
@@ -535,6 +540,9 @@ extract_on_behalf_of_identity(Req) ->
         undefined ->
             undefined
     end.
+
+read_on_behalf_of_header(Req) ->
+    mochiweb_request:get_header_value("cb-on-behalf-of", Req).
 
 parse_on_behalf_of_header(Header) ->
     case (catch base64:decode_to_string(Header)) of

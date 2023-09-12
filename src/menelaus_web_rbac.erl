@@ -1169,6 +1169,7 @@ change_password_validators() ->
 
 handle_change_password(Req) ->
     menelaus_util:assert_is_enterprise(),
+    assert_no_on_behalf(Req),
 
     case menelaus_auth:is_UI_req(Req) of
         false ->
@@ -1533,6 +1534,11 @@ assert_no_users_upgrade() ->
             menelaus_util:web_exception(
               503, "Not allowed during cluster upgrade.")
     end.
+
+assert_no_on_behalf(Req) ->
+    not menelaus_auth:acting_on_behalf(Req) orelse
+            menelaus_util:web_exception(403,
+                                        "Not allowed for on behalf requests.").
 
 validator_verify_group_ldap_access(LdapRefName, GetGroupIdFun, Req, State) ->
     ExistingNonEmpty = menelaus_users:has_group_ldap_ref(GetGroupIdFun(State)),
