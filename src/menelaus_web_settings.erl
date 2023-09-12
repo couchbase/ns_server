@@ -636,15 +636,18 @@ conf(internal) ->
       %% specific labels are required, as noted below:
       [
        %% Resident ratio query - requires label "bucket", scaled for 0-100%
-       {kv_resident_ratio, dataResidentRatio, undefined, fun get_string/1},
+       {kv_resident_ratio, dataResidentRatio, ?KvResidentRatioQuery,
+        fun get_string/1},
        %% Data size in TB query - requires label "bucket"
        %% This is for the data growth guard rail
-       {kv_data_size_tb, dataSizePerNodeTB, undefined, fun get_string/1},
+       {kv_data_size_tb, dataSizePerNodeTB, ?KvDataSizeTBQuery,
+        fun get_string/1},
        %% Data size in bytes query - requires label "bucket"
        %% This is for resident ratio calculation to check rebalance safeness
-       {kv_data_size_raw, dataSizePerNodeBytes, undefined, fun get_string/1},
+       {kv_data_size_raw, dataSizePerNodeBytes, ?KvDataSizeRawQuery,
+        fun get_string/1},
        %% Disk usage query - requires label "disk", scaled for 0-100%
-       {disk_usage, diskUsage, undefined, fun get_string/1}
+       {disk_usage, diskUsage, ?DiskUsageQuery, fun get_string/1}
       ]
      }
     ];

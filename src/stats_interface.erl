@@ -25,24 +25,6 @@
 -define(DEFAULT_TIMEOUT, ?get_timeout(default, 5000)).
 -define(IRATE_INTERVAL, "1m").
 
--define(KvResidentRatioQuery,
-        ns_config:search_node_prop(
-          ns_config:latest(), resource_promql_override, kv_resident_ratio,
-          "100 * kv_ep_max_size / on(bucket) (sum by(bucket, name) "
-          "(kv_logical_data_size_bytes{state=`active`}))")).
--define(KvDataSizeRawQuery,
-        ns_config:search_node_prop(
-          ns_config:latest(), resource_promql_override, kv_data_size_raw,
-          "kv_logical_data_size_bytes{state=`active`}")).
--define(KvDataSizeTBQuery,
-        ns_config:search_node_prop(
-          ns_config:latest(), resource_promql_override, kv_data_size_tb,
-          "kv_logical_data_size_bytes{state=`active`} / 10^12")).
--define(DiskUsageQuery,
-        ns_config:search_node_prop(
-          ns_config:latest(), resource_promql_override, disk_usage,
-          "100 * sys_disk_usage_ratio")).
-
 current_items_total(Bucket) when is_list(Bucket) ->
     current_items_total(list_to_binary(Bucket));
 current_items_total(BucketBin) when is_binary(BucketBin) ->
