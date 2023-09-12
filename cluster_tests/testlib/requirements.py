@@ -15,25 +15,24 @@ from testlib import get_succ
 
 class ClusterRequirements:
     @testlib.no_output_decorator
-    def __init__(self, edition=None, num_nodes=None, memsize=None,
-                 num_connected=None, afamily=None, services=None,
+    def __init__(self, edition=None, num_nodes=None, min_num_nodes=None,
+                 memsize=None, min_memsize=None, num_connected=None,
+                 min_num_connected=None, afamily=None, services=None,
                  master_password_state=None, num_vbuckets=None,
                  encryption=None):
 
-        def maybe(f, x):
-            if x is None:
+        def maybe(f, *args):
+            if all(x is None for x in args):
                 return None
-            return f(x)
+            return f(*args)
 
-        if num_nodes is None and num_connected is not None:
-            raise ValueError("num_connected cannot be specified without "
-                             "num_nodes also being specified")
         self.requirements = \
             {
                 'edition': maybe(lambda x: Edition(x), edition),
-                'num_nodes':
-                    maybe(lambda x: NumNodes(x, num_connected), num_nodes),
-                'memsize': maybe(lambda x: MemSize(x), memsize),
+                'num_nodes': maybe(lambda *x: NumNodes(*x),
+                                   num_nodes, min_num_nodes, num_connected,
+                                   min_num_connected),
+                'memsize': maybe(lambda *x: MemSize(*x), memsize, min_memsize),
                 'afamily': maybe(lambda x: AFamily(x), afamily),
                 'services': maybe(lambda x: Services(x), services),
                 'master_password_state':
@@ -165,7 +164,11 @@ class ClusterRequirements:
             elif r2 is None:
                 new_reqs.requirements[k] = r1
             else:
-                return False, new_reqs
+                res, new_r = r1.intersect(r2)
+                if res:
+                    new_reqs.requirements[k] = new_r
+                else:
+                    return False, new_reqs
 
         return True, new_reqs
 
@@ -185,7 +188,8 @@ class Requirement(ABC):
 
     def __str__(self):
         return ",".join([f"{key}={value}"
-                        for key, value in self._kwargs.items()])
+                        for key, value in self._kwargs.items()
+                        if value is not None])
 
     def __eq__(self, other):
         return str(self) == str(other)
@@ -203,6 +207,9 @@ class Requirement(ABC):
     def make_met(self, cluster):
         raise RuntimeError(f"Cannot change Requirement {self} after cluster "
                            f"created")
+
+    def intersect(self, other):
+        return False, None
 
 
 class Edition(Requirement):
@@ -240,52 +247,138 @@ class Edition(Requirement):
 
 
 class NumNodes(Requirement):
-    def __init__(self, num_nodes, num_connected):
-        # We use None as a placeholder for when we want all nodes connected
-        if num_connected is None:
-            num_connected = num_nodes
-        super().__init__(num_nodes=num_nodes, num_connected=num_connected)
-
+    def __init__(self, num_nodes, min_num_nodes, num_connected,
+                 min_num_connected):
+        super().__init__(num_nodes=num_nodes, min_num_nodes=min_num_nodes,
+                         num_connected=num_connected,
+                         min_num_connected=min_num_connected)
         # Check requirement values are valid
-        if num_nodes < 1:
+        if num_nodes is None and min_num_nodes is None:
+            raise ValueError("num_nodes and min_num_nodes can't both be None")
+        if num_nodes is not None and min_num_nodes is not None:
+            raise ValueError("num_nodes and min_num_nodes are mutually " \
+                             "exclusive")
+        if num_connected is not None and min_num_connected is not None:
+            raise ValueError("num_connected and min_num_connected are " \
+                             "mutually exclusive")
+        if num_nodes is not None and num_nodes < 1:
             raise ValueError(f"num_nodes must be a positive integer")
-        if num_connected < 1:
+        if min_num_nodes is not None and min_num_nodes < 1:
+            raise ValueError(f"min_num_nodes must be a positive integer")
+        if num_connected is not None and num_connected < 1:
             raise ValueError("num_connected must be at least 1")
+        if min_num_connected is not None and min_num_connected < 1:
+            raise ValueError("min_num_connected must be at least 1")
+        if num_connected is not None:
+            if num_nodes is not None:
+                if num_connected > num_nodes:
+                    raise ValueError("num_nodes cannot be less than " \
+                                     "num_connected")
+            elif min_num_nodes is not None:
+                if num_connected > min_num_nodes:
+                    raise ValueError("min_num_nodes cannot be less than " \
+                                     "num_connected")
+        if min_num_connected is not None:
+            if num_nodes is not None:
+                if min_num_connected > num_nodes:
+                    raise ValueError("num_nodes cannot be less than " \
+                                     "min_num_connected")
+            elif min_num_nodes is not None:
+                if min_num_connected > min_num_nodes:
+                    raise ValueError("min_num_nodes cannot be less than " \
+                                     "min_num_connected")
 
         self.num_nodes = num_nodes
+        self.min_num_nodes = min_num_nodes
         self.num_connected = num_connected
-        self.start_args = {'num_nodes': num_nodes}
-        self.connect_args = {'num_nodes': num_connected}
+        self.min_num_connected = min_num_connected
+        # We use None as a placeholder for when we want all nodes connected
+        if self.num_connected is None and self.min_num_connected is None:
+            self.num_connected = self.num_nodes
+            self.min_num_connected = self.min_num_nodes
+        self.start_args = {'num_nodes': num_nodes if num_nodes is not None
+                                                  else min_num_nodes}
+        self.connect_args = \
+            {'num_nodes': self.num_connected if self.num_connected is not None
+                                             else self.min_num_nodes}
 
-        if num_connected > 1:
+        if (self.num_connected is not None and self.num_connected > 1) or \
+           (self.min_num_connected is not None and self.min_num_connected > 1):
             self.connect_args.update({'do_rebalance': True,
                                       'do_wait_for_rebalance': True})
         else:
             self.connect_args.update({'do_rebalance': False})
 
+
     def is_met(self, cluster):
-        return (len(cluster.nodes) >= self.num_nodes and
-                len(cluster.connected_nodes) == self.num_connected)
+        if self.num_nodes is not None and \
+           len(cluster.nodes) != self.num_nodes:
+            return False
+        if self.num_connected is not None and \
+           len(cluster.connected_nodes) != self.num_connected:
+            return False
+        if self.min_num_nodes is not None and \
+           len(cluster.nodes) < self.min_num_nodes:
+            return False
+        if self.min_num_connected is not None and \
+           len(cluster.connected_nodes) < self.min_num_connected:
+            return False
+        return True
+
+
+    def intersect(self, other):
+        res1, new_min, new_num = intersect_limits(self.min_num_nodes,
+                                                  self.num_nodes,
+                                                  other.min_num_nodes,
+                                                  other.num_nodes)
+
+        res2, new_min_con, new_con = intersect_limits(self.min_num_connected,
+                                                      self.num_connected,
+                                                      other.min_num_connected,
+                                                      other.num_connected)
+        if res1 and res2:
+            return True, NumNodes(new_num, new_min, new_con, new_min_con)
+        return False, None
 
 
 class MemSize(Requirement):
-    def __init__(self, memsize):
-        super().__init__(memsize=memsize)
-        if memsize < 256:
+    def __init__(self, memsize, min_memsize):
+        super().__init__(memsize=memsize, min_memsize=min_memsize)
+        if memsize is not None and min_memsize is not None:
+            raise ValueError("memsize and min_memsize are mutually exclusive")
+        if memsize is not None and memsize < 256:
             raise ValueError(f"memsize must be a positive integer >= 256")
+        if min_memsize is not None and min_memsize < 256:
+            raise ValueError(f"min_memsize must be a positive integer >= 256")
         self.memsize = memsize
-        self.connect_args = {'memsize': self.memsize}
+        self.min_memsize = min_memsize
+        if memsize is not None:
+            self.memsize_to_use = memsize
+        elif min_memsize is not None:
+            self.memsize_to_use = min_memsize
+        self.connect_args = {'memsize': self.memsize_to_use}
 
     def is_met(self, cluster):
-        return cluster.memsize == self.memsize
+        if self.memsize is not None:
+            return cluster.memsize == self.memsize
+        return cluster.memsize >= self.min_memsize
 
     def can_be_met(self):
         return True
 
     def make_met(self, cluster):
         testlib.post_succ(cluster, "/pools/default",
-                          data={"memoryQuota": self.memsize})
-        cluster.memsize = self.memsize
+                          data={"memoryQuota": self.memsize_to_use})
+        cluster.memsize = self.memsize_to_use
+
+    def intersect(self, other):
+        res, new_min, new_mem = intersect_limits(self.min_memsize,
+                                                 self.memsize,
+                                                 other.min_memsize,
+                                                 other.memsize)
+        if res:
+            return True, MemSize(new_mem, new_min)
+        return False, None
 
 
 class AFamily(Requirement):
@@ -396,3 +489,24 @@ class N2nEncryption(Requirement):
 
     def make_met(self, cluster):
         cluster.toggle_n2n_encryption(enable=self.encryption)
+
+# Intersects two limits where each limit is defined either by exact match,
+# or by a min value. Note that min and exact params are mutually exclusive.
+# If intersection is empty, the function returns False, None, None.
+# If intersection is not empty, it returns True, NewMin, NewExact.
+def intersect_limits(min_val1, exact_val1, min_val2, exact_val2):
+    if exact_val1 is not None:
+        if exact_val2 is not None:
+            if exact_val1 != exact_val2:
+                return False, None, None
+        else: # min_val2 is set
+            if exact_val1 < min_val2:
+                return False, None, None
+        return True, None, exact_val1
+    else: # min_val1 is set
+        if exact_val2 is not None:
+            if exact_val2 < min_val1:
+                return False, None, None
+            return True, None, exact_val2
+        else: # min_val2 is set
+            return True, max(min_val1, min_val2), None
