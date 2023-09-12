@@ -496,9 +496,9 @@ durability_min_level(BucketConfig) ->
 %% The default value of the attribute. Currently PITR-only.
 attribute_default(Name) ->
     case Name of
-        pitr_granularity -> 600;         % 10 minutes
-        pitr_max_history_age -> 86400;   % 24 hours
-        version_pruning_window_hrs -> 24 % 24 hours
+        pitr_granularity -> 600;          % 10 minutes
+        pitr_max_history_age -> 86400;    % 24 hours
+        version_pruning_window_hrs -> 720 % 30 days
     end.
 
 %% The minimum value of the attribute. Currently PITR-only.
