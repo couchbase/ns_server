@@ -543,7 +543,7 @@ def wait_nodes_up(num_nodes=1, start_index=0, timeout_s=node_start_timeout_s,
                 print_if_verbose(f" UP [took: {time_delta:.2f}s timeout:{timeout_s}s]")
                 return
             except Exception as e:
-                last_error = e.reason
+                last_error = e.__str__()
                 print_if_verbose('.', end='')
                 sys.stdout.flush()
                 time.sleep(0.5)
