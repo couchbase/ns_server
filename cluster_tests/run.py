@@ -56,7 +56,8 @@ from testsets import \
     web_server_tests, \
     cbauth_cache_config_tests, \
     hard_reset_test, \
-    crud_tests
+    crud_tests, \
+    settings_managers_tests
 
 tmp_cluster_dir = os.path.join(scriptdir, "test_cluster_data")
 

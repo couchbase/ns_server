@@ -10,6 +10,8 @@
 -module(index_settings_manager).
 
 -include("ns_common.hrl").
+-include("ns_config.hrl").
+-include("cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -35,6 +37,9 @@
         [id_lens/1]).
 
 -define(INDEX_CONFIG_KEY, {metakv, <<"/indexing/settings/config">>}).
+-define(SHARD_AFFINITY_SECRET_KEY,
+        <<"/indexing/settings/config/features/ShardAffinity">>).
+-define(SHARD_AFFINITY_OBJ_KEY, <<"indexer.default.enable_shard_affinity">>).
 
 start_link() ->
     json_settings_manager:start_link(?MODULE).
@@ -161,7 +166,9 @@ general_settings_lens_props(ClusterVersion) ->
              {blobStoragePrefix,
               id_lens(<<"indexer.settings.rebalance.blob_storage_prefix">>)},
              {blobStorageRegion,
-              id_lens(<<"indexer.settings.rebalance.blob_storage_region">>)}];
+              id_lens(<<"indexer.settings.rebalance.blob_storage_region">>)},
+             {enableShardAffinity,
+              id_lens(<<"indexer.settings.enable_shard_affinity">>)}];
         false ->
             []
     end ++
@@ -201,8 +208,8 @@ general_settings_defaults(ClusterVersion) ->
              {blobStorageScheme, <<"">>},
              {blobStorageBucket, <<"">>},
              {blobStoragePrefix, <<"">>},
-             {blobStorageRegion, <<"">>}];
-
+             {blobStorageRegion, <<"">>},
+             {enableShardAffinity, default_shard_affinity()}];
         false ->
             []
     end ++
@@ -280,14 +287,74 @@ config_upgrade_to_trinity(Config) ->
     config_upgrade_settings(Config, ?MIN_SUPPORTED_VERSION,
                             ?VERSION_TRINITY).
 
+-spec(default_shard_affinity() -> boolean()).
+default_shard_affinity() ->
+    not config_profile:get_bool({indexer, disable_shard_affinity}).
+
+-spec(decode_shard_affinity_json_blob(binary()) -> boolean()).
+decode_shard_affinity_json_blob(Blob) ->
+    try ejson:decode(Blob) of
+        {Json} ->
+            case proplists:lookup(?SHARD_AFFINITY_OBJ_KEY, Json) of
+                none ->
+                    default_shard_affinity();
+                {_, Bool} ->
+                    %% Since we won't have validators on the "way in" for this
+                    %% variable we must make sure to convert it to the actual
+                    %% boolean atom because it may still be a string or a binary.
+                    misc:convert_to_boolean(Bool)
+            end;
+        BadBlob ->
+            %% you could technically decode json without the tuple structure
+            %% around it (ex: true|false) and in that case we just want to
+            %% fallback to default since the data was technically valid JSON,
+            %% but incorrect.
+            invalid_json_blob_result(
+              lists:flatten(
+                io_lib:format("Invalid JSON structure: '~p'", [BadBlob])))
+    catch throw:{invalid_json, Err}:_ -> %% only catch json decoding errors
+            invalid_json_blob_result(Err)
+    end.
+
+invalid_json_blob_result(Err) ->
+    ?log_error("Error decoding shard-affinity JSON blob: ~p.", [Err]),
+    default_shard_affinity().
+
 config_upgrade_settings(Config, OldVersion, NewVersion) ->
-    NewSettings = general_settings_defaults(NewVersion) --
-        general_settings_defaults(OldVersion),
+    NewSettings =
+        case NewVersion =:= ?VERSION_TRINITY of
+            true ->
+                Current = general_settings_defaults(NewVersion),
+                %% This section will check for a secret key in metakv and if
+                %% found, use that to determine the current default. This is
+                %% related to MB-58541 where we are allowing the use of a
+                %% setting before the cluster is fully upgraded.
+                PreviousOrDefault =
+                    case metakv:ns_config_get(Config,
+                                              ?SHARD_AFFINITY_SECRET_KEY) of
+                        false ->
+                            default_shard_affinity();
+                        {value, Blob, _VC} ->
+                            decode_shard_affinity_json_blob(Blob)
+                    end,
+                Updated =
+                    misc:update_proplist(Current, [{enableShardAffinity,
+                                                    PreviousOrDefault}]),
+                Updated -- general_settings_defaults(OldVersion);
+            false ->
+                general_settings_defaults(NewVersion) --
+                    general_settings_defaults(OldVersion)
+        end,
+
     json_settings_manager:upgrade_existing_key(
       ?MODULE, Config, [{generalSettings, NewSettings}],
       known_settings(NewVersion)).
 
 -ifdef(TEST).
+
+-define(SHARD_AFFINITY_JSON_BLOB(__TRUE_FALSE),
+        io_lib:format("{\"indexer.default.enable_shard_affinity\": ~p}",
+                      [__TRUE_FALSE])).
 default_test() ->
     Versions = [?MIN_SUPPORTED_VERSION, ?VERSION_TRINITY],
     lists:foreach(fun(V) -> default_versioned(V) end, Versions).
@@ -301,17 +368,156 @@ default_versioned(Version) ->
     ?assertEqual(Keys(general_settings_lens_props(Version)),
                  Keys(general_settings_defaults(Version))).
 
-config_upgrade_test() ->
-    CmdList = config_upgrade_to_trinity([]),
+evaluate_with_profile(Profile, TestFun) ->
+    meck:new(config_profile, [passthrough]),
+    mock_config_profile(Profile),
+    TestFun(),
+    meck:unload(config_profile).
+
+mock_config_profile(default) ->
+    meck:expect(config_profile, get,
+                fun () -> [{name, ?DEFAULT_PROFILE_STR},
+                           {{indexer, disable_shard_affinity}, true}] end);
+mock_config_profile(serverless) ->
+    meck:expect(config_profile, get,
+                fun () -> [{name, ?SERVERLESS_PROFILE_STR}] end);
+mock_config_profile(provisioned) ->
+    meck:expect(config_profile, get,
+                fun () -> [{name, ?PROVISIONED_PROFILE_STR}] end).
+
+config_upgrade_test_() ->
+    TestFun =
+        fun (Profile, Expected) ->
+                ?cut(evaluate_with_profile(
+                       Profile,
+                       fun () ->
+                               config_upgrade_test_generic(
+                                 #config{static = [[], []],
+                                         dynamic = [[], []]}, Expected)
+
+                       end))
+        end,
+    {foreach, fun () -> ok end,
+     [{"profile: default", TestFun(default, false)},
+      {"profile: serverless", TestFun(serverless, true)},
+      {"profile: provisioned", TestFun(provisioned, true)}]}.
+
+config_upgrade_special_metakv_key_test_() ->
+    TestFunMetakv =
+        fun (Profile, Expected) ->
+                ?cut(evaluate_with_profile(
+                       Profile,
+                       fun () ->
+                               Metakv =
+                                   {{metakv, ?SHARD_AFFINITY_SECRET_KEY},
+                                    ?SHARD_AFFINITY_JSON_BLOB(true)},
+                               Config = #config{static = [[], []],
+                                                dynamic = [[Metakv], []]},
+                               config_upgrade_test_generic(Config, Expected)
+                       end))
+        end,
+
+    {foreach, fun () -> ok end,
+     [{"profile: default, value: true", TestFunMetakv(default, true)},
+      {"profile: serverless, value: true", TestFunMetakv(serverless, true)},
+      {"profile: provisioned, value: true", TestFunMetakv(provisioned, true)}]}.
+
+config_upgrade_special_metakv_key_false_test_() ->
+    TestFunMetakv =
+        fun (Profile, Expected) ->
+                ?cut(evaluate_with_profile(
+                       Profile,
+                       fun () ->
+                               Metakv =
+                                   {{metakv, ?SHARD_AFFINITY_SECRET_KEY},
+                                    ?SHARD_AFFINITY_JSON_BLOB(false)},
+                               Config = #config{static = [[], []],
+                                                dynamic = [[Metakv], []]},
+                               config_upgrade_test_generic(Config, Expected)
+                       end))
+        end,
+
+    {foreach, fun () -> ok end,
+     [{"profile: default, value: false", TestFunMetakv(default, false)},
+      {"profile: serverless, value: false", TestFunMetakv(serverless, false)},
+      {"profile: provisioned, value: false", TestFunMetakv(provisioned, false)}]}.
+
+
+config_upgrade_test_generic(Config, ShardAffinityValue) ->
+    CmdList = config_upgrade_to_trinity(Config),
     [{set, {metakv, Meta}, Data}] = CmdList,
     ?assertEqual(<<"/indexing/settings/config">>, Meta),
-    ?assertEqual(<<"{\"indexer.settings.rebalance.blob_storage_region\":\"\","
-                   "\"indexer.settings.thresholds.mem_high\":70,"
-                   "\"indexer.settings.thresholds.units_low\":40,"
-                   "\"indexer.settings.rebalance.blob_storage_scheme\":\"\","
-                   "\"indexer.settings.rebalance.blob_storage_prefix\":\"\","
-                   "\"indexer.settings.rebalance.blob_storage_bucket\":\"\","
-                   "\"indexer.settings.thresholds.units_high\":60,"
-                   "\"indexer.settings.thresholds.mem_low\":50}">>,
-                 Data).
+    Result =
+        io_lib:format("{\"indexer.settings.rebalance.blob_storage_region\":\"\","
+                      "\"indexer.settings.thresholds.mem_high\":70,"
+                      "\"indexer.settings.thresholds.units_low\":40,"
+                      "\"indexer.settings.rebalance.blob_storage_scheme\":\"\","
+                      "\"indexer.settings.rebalance.blob_storage_prefix\":\"\","
+                      "\"indexer.settings.rebalance.blob_storage_bucket\":\"\","
+                      "\"indexer.settings.thresholds.units_high\":60,"
+                      "\"indexer.settings.enable_shard_affinity\":~p,"
+                      "\"indexer.settings.thresholds.mem_low\":50}",
+                      [ShardAffinityValue]),
+    ?assertEqual(list_to_binary(Result), Data).
+
+enable_shard_affinity_trinity_test() ->
+    evaluate_with_profile(
+      default,
+      fun () ->
+              ?assert(
+                 proplists:is_defined(
+                   enableShardAffinity,
+                   general_settings_defaults(?VERSION_TRINITY))),
+              ?assert(
+                 not proplists:is_defined(
+                       enableShardAffinity,
+                       general_settings_defaults(?VERSION_72)))
+      end).
+
+shard_affinity_blob_test() ->
+    ResultTrue =
+        decode_shard_affinity_json_blob(?SHARD_AFFINITY_JSON_BLOB(true)),
+    ?assertEqual(ResultTrue, true),
+    ResultFalse =
+        decode_shard_affinity_json_blob(?SHARD_AFFINITY_JSON_BLOB(false)),
+    ?assertEqual(ResultFalse, false).
+
+shard_affinity_bad_blob_test() ->
+    eval_shard_affinity_bad_blob(default, false).
+
+shard_affinity_bad_blob_provisioned_test() ->
+    eval_shard_affinity_bad_blob(provisioned, true).
+
+shard_affinity_bad_blob_serverless_test() ->
+    eval_shard_affinity_bad_blob(serverless, true).
+
+eval_shard_affinity_bad_blob(Profile, Default) ->
+    evaluate_with_profile(
+      Profile,
+      fun () ->
+              BadBlob = "{\"indexer.default.enable_shard_affinity\": True}",
+              Result = decode_shard_affinity_json_blob(BadBlob),
+              ?assertEqual(Result, default_shard_affinity()),
+
+              BadBlob2 = "{\"indexer.enable_shard_affinity\": true}",
+              Result2 = decode_shard_affinity_json_blob(BadBlob2),
+              ?assertEqual(Result2, default_shard_affinity()),
+
+              BadBlob3 = "{\"key\": []}",
+              Result3 = decode_shard_affinity_json_blob(BadBlob3),
+              ?assertEqual(Result3, default_shard_affinity()),
+
+              GoodBlob = "{\"indexer.default.enable_shard_affinity\": false}",
+              Result4 = decode_shard_affinity_json_blob(GoodBlob),
+              ?assertEqual(Result4, false),
+
+              OnlyFalseBlob = "false",
+              Result5 = decode_shard_affinity_json_blob(OnlyFalseBlob),
+              ?assertEqual(Result5, Default),
+
+              OnlyTrueBlob = "true",
+              Result6 = decode_shard_affinity_json_blob(OnlyTrueBlob),
+              ?assertEqual(Result6, Default)
+      end).
+
 -endif.

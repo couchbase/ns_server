@@ -17,6 +17,7 @@
          set/2, set/3,
          delete/1,
          delete_matching/1,
+         ns_config_get/2,
          mutate/2, mutate/3,
          iterate_matching/1, iterate_matching/2, iterate_matching/3,
          check_continuous_allowed/1]).
@@ -146,7 +147,10 @@ simple_store_iterate_matching(KeyPrefix, Callback) ->
 %% NS Config related functions
 
 ns_config_get(Key) ->
-    case ns_config:search_with_vclock(ns_config:get(), {metakv, Key}) of
+    ns_config_get(ns_config:get(), Key).
+
+ns_config_get(Config, Key) ->
+    case ns_config:search_with_vclock(Config, {metakv, Key}) of
         false ->
             false;
         {value, Val, VC} ->

@@ -2581,6 +2581,22 @@ fact(0) ->
 fact(N) ->
     N * fact(N-1).
 
+-spec(convert_to_boolean(string() | binary() | atom()) -> boolean()).
+convert_to_boolean("true") ->
+    true;
+convert_to_boolean("false") ->
+    false;
+convert_to_boolean(<<"true">>) ->
+    true;
+convert_to_boolean(<<"false">>) ->
+    false;
+convert_to_boolean(true) ->
+    true;
+convert_to_boolean(false) ->
+    false;
+convert_to_boolean(_) ->
+    error("invalid boolean value").
+
 -spec item_count(list(), term()) -> non_neg_integer().
 item_count(List, Item) ->
     lists:foldl(

@@ -468,6 +468,17 @@ def poll_for_condition(fun, sleep_time, attempts=None, timeout=None,
     assert False, f"{msg} didn't complete in: {attempts} attempts, " \
                   f"sleep_time: {sleep_time_str}"
 
+def metakv_get_succ(cluster, key, **kwargs):
+    return get_succ(cluster, f"/_metakv{key}", **kwargs)
+
+def metakv_get(cluster, key, **kwargs):
+    return get(cluster, f"/_metakv{key}", **kwargs)
+
+def metakv_put_succ(cluster, key, value, **kwargs):
+    return put_succ(cluster, f"/_metakv{key}", data={'value': value}, **kwargs)
+
+def metakv_delete_succ(cluster, key, **kwargs):
+    return delete_succ(cluster, f"/_metakv{key}", **kwargs)
 
 def diag_eval(cluster, code, **kwargs):
     return post_succ(cluster, '/diag/eval', data=code, **kwargs)
