@@ -18,31 +18,31 @@ class StatsRangeAPITests(testlib.BaseTestSet):
     def requirements():
         return [testlib.ClusterRequirements(num_nodes=2)]
 
-    def setup(self, cluster):
+    def setup(self):
         self.align_timestamps_start = -100
         self.align_timestamps_step = 7
         # wait for all nodes to scrape some stats first
-        for node in cluster.connected_nodes:
+        for node in self.cluster.connected_nodes:
             print(f'Waiting for stats at {node}')
             testlib.poll_for_condition(lambda: is_sys_stats_reported(node),
                                        1, timeout=120, verbose=True,
                                        msg='waiting for stats')
 
-    def teardown(self, cluster):
+    def teardown(self):
         pass
 
-    def basic_range_api_test(self, cluster):
-        data = range_api_get(cluster, 'sys_cpu_host_seconds_total')
-        self.validate_basic_range_api_res(data, cluster)
+    def basic_range_api_test(self):
+        data = range_api_get(self.cluster, 'sys_cpu_host_seconds_total')
+        self.validate_basic_range_api_res(data)
 
-    def validate_basic_range_api_res(self, data, cluster):
-        assert len(data) >= len(cluster.connected_nodes) * 4, \
+    def validate_basic_range_api_res(self, data):
+        assert len(data) >= len(self.cluster.connected_nodes) * 4, \
                f'supposed to return at least 4 metrics per host but ' \
-               f'returned {len(data)} for {len(cluster.connected_nodes)} ' \
-               'nodes instead'
+               f'returned {len(data)} for ' \
+               f'{len(self.cluster.connected_nodes)} nodes instead'
 
-    def align_timestamps_test(self, cluster):
-        data = range_api_get(cluster, 'sys_cpu_host_seconds_total',
+    def align_timestamps_test(self):
+        data = range_api_get(self.cluster, 'sys_cpu_host_seconds_total',
                              params={'start': self.align_timestamps_start,
                                      'step': self.align_timestamps_step,
                                      'alignTimestamps': 'true'})
@@ -56,44 +56,45 @@ class StatsRangeAPITests(testlib.BaseTestSet):
             for dp in d['values']:
                 assert dp[0] % step == 0, f'timestamp is not aligned: {dp}'
 
-    def filter_by_label_test(self, cluster):
-        data = range_api_get(cluster, 'sys_cpu_host_seconds_total',
+    def filter_by_label_test(self):
+        data = range_api_get(self.cluster, 'sys_cpu_host_seconds_total',
                              params={'mode': 'sys'})
-        self.validate_filter_by_label_res(data, cluster)
+        self.validate_filter_by_label_res(data)
 
-    def validate_filter_by_label_res(self, data, cluster):
-        assert len(data) == len(cluster.connected_nodes), \
+    def validate_filter_by_label_res(self, data):
+        assert len(data) == len(self.cluster.connected_nodes), \
                'api returned more metrics than expected'
 
-    def apply_function_test(self, cluster):
-        data = range_api_get(cluster.connected_nodes[0],
+    def apply_function_test(self):
+        data = range_api_get(self.cluster.connected_nodes[0],
                              'sys_cpu_host_seconds_total/irate/sum')
-        self.validate_apply_function_res(data, cluster)
+        self.validate_apply_function_res(data)
 
-    def validate_apply_function_res(self, data, cluster):
-        assert len(data) == len(cluster.connected_nodes), \
+    def validate_apply_function_res(self, data):
+        assert len(data) == len(self.cluster.connected_nodes), \
                'API returned unexpected number of metrics'
         for d in data:
             assert 'mode' not in d['metric'], \
                    f'unexpected label "mode" in {d["metric"]}'
 
-    def node_stat_test(self, cluster):
+    def node_stat_test(self):
         def get_stat_from(nodes):
-            return range_api_get(cluster.connected_nodes[0],
+            return range_api_get(self.cluster.connected_nodes[0],
                                  'sys_cpu_host_seconds_total',
                                  params={'nodes': nodes})
 
-        data0 = get_stat_from(cluster.connected_nodes[0].hostname())
-        data1 = get_stat_from(cluster.connected_nodes[1].hostname())
-        all_nodes = ','.join([n.hostname() for n in cluster.connected_nodes])
+        data0 = get_stat_from(self.cluster.connected_nodes[0].hostname())
+        data1 = get_stat_from(self.cluster.connected_nodes[1].hostname())
+        all_nodes = ','.join([n.hostname()
+                              for n in self.cluster.connected_nodes])
         data2 = get_stat_from(all_nodes)
 
-        self.validate_node_stat_res(data0, data1, data2, cluster)
+        self.validate_node_stat_res(data0, data1, data2)
 
-    def validate_node_stat_res(self, data0, data1, data_all, cluster):
+    def validate_node_stat_res(self, data0, data1, data_all):
         assert len(data0) >= 4, f'expected 4 metrics, got {len(data0)}'
         assert len(data1) >= 4, f'expected 4 metrics, got {len(data1)}'
-        assert len(data_all) >= 4 * len(cluster.connected_nodes), \
+        assert len(data_all) >= 4 * len(self.cluster.connected_nodes), \
                f'expected 4 metrics per node, got {len(data_all)}'
         assert len(data0[0]['metric']['nodes']) == 1, \
                f'expected 1 node in nodes, got {data0[0]["metric"]}'
@@ -117,19 +118,19 @@ class StatsRangeAPITests(testlib.BaseTestSet):
         assert node0 in nodes_all, f'node {node0} is missing in {nodes_all}'
         assert node1 in nodes_all, f'node {node1} is missing in {nodes_all}'
 
-    def nodes_aggregation_test(self, cluster):
+    def nodes_aggregation_test(self):
         params = node_aggregation_common_params()
-        data1 = range_api_get(cluster.connected_nodes[0],
+        data1 = range_api_get(self.cluster.connected_nodes[0],
                               'sys_cpu_host_seconds_total',
                               params=dict(params, nodesAggregation='sum'))
-        data2 = range_api_get(cluster.connected_nodes[0],
+        data2 = range_api_get(self.cluster.connected_nodes[0],
                               'sys_cpu_host_seconds_total',
                               params=params)
 
-        self.validate_nodes_aggregation_res(data1, data2, cluster)
+        self.validate_nodes_aggregation_res(data1, data2)
 
     # data1 is aggregated data, data2 is not aggregated data
-    def validate_nodes_aggregation_res(self, data1, data2, cluster):
+    def validate_nodes_aggregation_res(self, data1, data2):
         timestamp = data1[0]['values'][0][0]
         sys_sum = 0
         received_sys_sum = 0
@@ -159,7 +160,8 @@ class StatsRangeAPITests(testlib.BaseTestSet):
                 received_sys_sum = float(d['values'][0][1])
                 break
         for d in data1:
-            assert len(d['metric']['nodes']) == len(cluster.connected_nodes), \
+            assert len(d['metric']['nodes']) == \
+                   len(self.cluster.connected_nodes), \
                    'aggregated metric nodes field does not contain all ' \
                    'nodes: {d["metric"]["nodes"]}'
         print(f'received sum: {received_sys_sum}')
@@ -169,7 +171,7 @@ class StatsRangeAPITests(testlib.BaseTestSet):
                f'actual sum for the metric ({sys_sum}) doesn\'t match ' \
                f'the value aggregated by the server ({received_sys_sum})'
 
-    def post_test(self, cluster):
+    def post_test(self):
         node_aggregation_params = node_aggregation_common_params()
         req = [{'metric': [{'label': 'name',
                             'value': 'sys_cpu_host_seconds_total'}]},
@@ -192,13 +194,13 @@ class StatsRangeAPITests(testlib.BaseTestSet):
                 'applyFunctions': ['irate', 'sum']},
                {'metric': [{'label': 'name',
                             'value': 'sys_cpu_host_seconds_total'}],
-                'nodes': [cluster.connected_nodes[0].hostname()]},
+                'nodes': [self.cluster.connected_nodes[0].hostname()]},
                {'metric': [{'label': 'name',
                             'value': 'sys_cpu_host_seconds_total'}],
-                'nodes': [cluster.connected_nodes[1].hostname()]},
+                'nodes': [self.cluster.connected_nodes[1].hostname()]},
                {'metric': [{'label': 'name',
                             'value': 'sys_cpu_host_seconds_total'}],
-                'nodes': [n.hostname() for n in cluster.connected_nodes]},
+                'nodes': [n.hostname() for n in self.cluster.connected_nodes]},
                dict(node_aggregation_params,
                     metric=[{'label': 'name',
                              'value': 'sys_cpu_host_seconds_total'}],
@@ -217,7 +219,7 @@ class StatsRangeAPITests(testlib.BaseTestSet):
                 'end': -1,
                 'step': 2,
                 'returnRequestParams': 'true'}]
-        r = testlib.post_succ(cluster.connected_nodes[0],
+        r = testlib.post_succ(self.cluster.connected_nodes[0],
                               '/pools/default/stats/range',
                               json=req)
         res = r.json()
@@ -225,16 +227,16 @@ class StatsRangeAPITests(testlib.BaseTestSet):
         assert len(res) == len(req), \
                'the number of results ({len(res)}) doesn\'t match ' \
                'the number of requests ({len(req)})'
-        self.validate_basic_range_api_res(res[0]['data'], cluster)
+        self.validate_basic_range_api_res(res[0]['data'])
         self.validate_align_timestamps_res(res[1]['data'])
-        self.validate_basic_range_api_res(res[2]['data'], cluster)
-        self.validate_filter_by_label_res(res[3]['data'], cluster)
-        self.validate_apply_function_res(res[4]['data'], cluster)
+        self.validate_basic_range_api_res(res[2]['data'])
+        self.validate_filter_by_label_res(res[3]['data'])
+        self.validate_apply_function_res(res[4]['data'])
         self.validate_node_stat_res(res[5]['data'],
                                     res[6]['data'],
-                                    res[7]['data'], cluster),
+                                    res[7]['data']),
         self.validate_nodes_aggregation_res(res[8]['data'],
-                                            res[9]['data'], cluster)
+                                            res[9]['data'])
         assert res[10]['requestParams'] == req[10], \
                f'requestParams in result {res[10]["requestParams"]} is ' \
                f'expected to match the request ({req[10]})'

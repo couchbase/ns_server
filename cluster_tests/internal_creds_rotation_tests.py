@@ -16,64 +16,64 @@ class IntCredsRotationTests(testlib.BaseTestSet):
         return testlib.ClusterRequirements(num_nodes=2, services=['kv', 'n1ql'])
 
 
-    def setup(self, cluster):
+    def setup(self):
         d = 'ns_config:read_key_fast(int_creds_protection_sleep, undefined).'
-        r = testlib.post_succ(cluster, '/diag/eval', data=d)
+        r = testlib.post_succ(self.cluster, '/diag/eval', data=d)
         self.orig_protection_sleep = r.text
         d = 'ns_config:set(int_creds_protection_sleep, 5000).'
-        testlib.post_succ(cluster, '/diag/eval', data=d)
+        testlib.post_succ(self.cluster, '/diag/eval', data=d)
 
 
-    def teardown(self, cluster):
+    def teardown(self):
         if self.orig_protection_sleep == 'undefined':
             d = 'ns_config:delete(int_creds_protection_sleep).'
         else:
             d = f'ns_config:set(int_creds_protection_sleep, ' \
                                '{self.orig_protection_sleep}).'
-        testlib.post_succ(cluster, '/diag/eval', data=d)
+        testlib.post_succ(self.cluster, '/diag/eval', data=d)
 
 
-    def on_demand_rotation_test(self, cluster):
-        old_pass = get_pass(cluster.connected_nodes[0])
-        testlib.get_succ(cluster.connected_nodes[0], '/pools/default',
+    def on_demand_rotation_test(self):
+        old_pass = get_pass(self.cluster.connected_nodes[0])
+        testlib.get_succ(self.cluster.connected_nodes[0], '/pools/default',
                          auth=('@', old_pass))
-        testlib.post_succ(cluster.connected_nodes[0],
+        testlib.post_succ(self.cluster.connected_nodes[0],
                           '/node/controller/rotateInternalCredentials')
         # Old passoword is not working anymore
-        testlib.get_fail(cluster.connected_nodes[0], '/pools/default', 401,
+        testlib.get_fail(self.cluster.connected_nodes[0], '/pools/default', 401,
                          auth=('@', old_pass))
         # ... while new password works
-        new_pass = get_pass(cluster.connected_nodes[0])
-        testlib.get_succ(cluster.connected_nodes[0], '/pools/default',
+        new_pass = get_pass(self.cluster.connected_nodes[0])
+        testlib.get_succ(self.cluster.connected_nodes[0], '/pools/default',
                          auth=('@', new_pass))
 
 
-    def periodic_rotation_test(self, cluster):
+    def periodic_rotation_test(self):
         interval_s = 5
-        r = testlib.get_succ(cluster, '/settings/security')
+        r = testlib.get_succ(self.cluster, '/settings/security')
         curr_interval = r.json()['intCredsRotationInterval']
         try:
-            testlib.post_succ(cluster,
+            testlib.post_succ(self.cluster,
                               '/settings/security/intCredsRotationInterval',
                               data=str(interval_s * 1000))
 
             print(f"rotation interval is set to {interval_s}")
             # run on demand rotation in order to make sure this node has
             # finished all previous rotations; this is basically a "sync" call
-            testlib.post_succ(cluster.connected_nodes[0],
+            testlib.post_succ(self.cluster.connected_nodes[0],
                               '/node/controller/rotateInternalCredentials')
             print(f"on demand rotation finished")
 
-            old_pass = get_pass(cluster.connected_nodes[0])
+            old_pass = get_pass(self.cluster.connected_nodes[0])
 
             def pass_has_changed():
-                new_pass = get_pass(cluster.connected_nodes[0])
+                new_pass = get_pass(self.cluster.connected_nodes[0])
                 return new_pass != old_pass
 
             testlib.poll_for_condition(pass_has_changed, sleep_time=1,
                                        timeout=60, verbose=True)
         finally:
-            testlib.post_succ(cluster,
+            testlib.post_succ(self.cluster,
                               '/settings/security/intCredsRotationInterval',
                               data=str(curr_interval))
 

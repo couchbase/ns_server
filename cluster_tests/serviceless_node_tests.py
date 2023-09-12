@@ -21,28 +21,28 @@ class ServicelessNodeTests(testlib.BaseTestSet):
         super().__init__(cluster)
         self.req_num_nodes = None
 
-    def setup(self, cluster):
-        self.req_num_nodes = len(cluster.nodes)
-        testlib.delete_all_buckets(cluster)
+    def setup(self):
+        self.req_num_nodes = len(self.cluster.nodes)
+        testlib.delete_all_buckets(self.cluster)
         bucket = {"name": "testbucket", "ramQuota": "200"}
         self.cluster.create_bucket(bucket)
 
-    def teardown(self, cluster):
+    def teardown(self):
         pass
 
-    def test_teardown(self, cluster):
-        print("Tearing down cluster")
-        testlib.delete_all_buckets(cluster)
+    def test_teardown(self):
+        print("Tearing down self.cluster")
+        testlib.delete_all_buckets(self.cluster)
         # Rebalance the cluster and remove all but one node
-        cluster.rebalance(cluster.nodes[1:], wait=True, verbose=True)
+        self.cluster.rebalance(self.cluster.nodes[1:], wait=True, verbose=True)
         # Wait for the number of remaining nodes in the cluster to reach one.
         retries = 60
         while retries > 0:
-            resp = testlib.get_succ(cluster, "/pools/default")
+            resp = testlib.get_succ(self.cluster, "/pools/default")
             current_nodes = [node["hostname"] for node in resp.json()["nodes"]]
             print(f"Nodes currently in cluster: {current_nodes}")
             if len(resp.json()["nodes"]) == 1:
-                cluster.wait_nodes_up()
+                self.cluster.wait_nodes_up()
                 return
 
             print(f'More than one node in cluster after removing all but one '
@@ -57,48 +57,48 @@ class ServicelessNodeTests(testlib.BaseTestSet):
         return [ClusterRequirements(num_nodes=3, num_connected=1,
                                     afamily="ipv4")]
 
-    def joinNodes(self, cluster):
-        for node in cluster.nodes[1:]:
+    def joinNodes(self):
+        for node in self.cluster.nodes[1:]:
             print(f'Joining {node.hostname()} to cluster')
-            cluster.do_join_cluster(node, services="")
-        cluster.rebalance(wait=True)
-        resp = testlib.get_succ(cluster, "/pools/default")
+            self.cluster.do_join_cluster(node, services="")
+        self.cluster.rebalance(wait=True)
+        resp = testlib.get_succ(self.cluster, "/pools/default")
 
         return len(resp.json()["nodes"]) == self.req_num_nodes, \
             f'Length of nodes: {len(resp.json()["nodes"])}'
 
-    def addNodes(self, cluster):
-        for node in cluster.nodes[1:]:
+    def addNodes(self):
+        for node in self.cluster.nodes[1:]:
             print(f'Adding {node.hostname()} to cluster')
-            cluster.add_node(node, services="")
-        cluster.rebalance(wait=True)
-        resp = testlib.get_succ(cluster, "/pools/default")
+            self.cluster.add_node(node, services="")
+        self.cluster.rebalance(wait=True)
+        resp = testlib.get_succ(self.cluster, "/pools/default")
 
         return len(resp.json()["nodes"]) == self.req_num_nodes, \
             f'Length of nodes: {len(resp.json()["nodes"])}'
 
-    def failover_and_recover_node(self, cluster):
-        node = cluster.nodes[-1]
+    def failover_and_recover_node(self):
+        node = self.cluster.nodes[-1]
         print(f'Failover {node.hostname()} from cluster')
         # Graceful failovers are not supported for serviceless nodes. We
         # don't do a rebalance as that would remove the node.
-        resp = cluster.failover_node(node, graceful=False, verbose=True)
+        resp = self.cluster.failover_node(node, graceful=False, verbose=True)
 
         print(f'Re-adding {node.hostname()} back into cluster')
 
-        resp = cluster.recover_node(node, recovery_type="full",
-                                    do_rebalance=True, verbose=True)
+        resp = self.cluster.recover_node(node, recovery_type="full",
+                                         do_rebalance=True, verbose=True)
 
-    def remove_orchestrator_node(self, cluster):
-        orchestrator_node = cluster.wait_for_orchestrator()
-        cluster.rebalance(ejected_nodes=[orchestrator_node], wait=True,
-                          verbose=True)
+    def remove_orchestrator_node(self):
+        orchestrator_node = self.cluster.wait_for_orchestrator()
+        self.cluster.rebalance(ejected_nodes=[orchestrator_node], wait=True,
+                               verbose=True)
 
-    def verify_orchestrator_node(self, cluster, must_be_serviceless_node=True):
+    def verify_orchestrator_node(self, must_be_serviceless_node=True):
         retries = 60
         while retries > 0:
             orchestrator_hostname, is_serviceless = \
-                cluster.get_orchestrator_node()
+                self.cluster.get_orchestrator_node()
             if orchestrator_hostname != "" and \
                is_serviceless == must_be_serviceless_node:
                 return
@@ -114,24 +114,24 @@ class ServicelessNodeTests(testlib.BaseTestSet):
 
     # These tests are based on a cluster which has the initial node with
     # services and two additional serviceless nodes.
-    def addnode_test(self, cluster):
-        self.verify_orchestrator_node(cluster, False)
-        self.addNodes(cluster)
-        self.verify_orchestrator_node(cluster, True)
-        self.failover_and_recover_node(cluster)
-        self.verify_orchestrator_node(cluster, True)
+    def addnode_test(self):
+        self.verify_orchestrator_node(False)
+        self.addNodes()
+        self.verify_orchestrator_node(True)
+        self.failover_and_recover_node()
+        self.verify_orchestrator_node(True)
         # Removing the orchestrator node should result in the remaining
         # serviceless node becoming the orchestrator
-        self.remove_orchestrator_node(cluster)
-        self.verify_orchestrator_node(cluster, True)
+        self.remove_orchestrator_node()
+        self.verify_orchestrator_node(True)
 
-    def joincluster_test(self, cluster):
-        self.verify_orchestrator_node(cluster, False)
-        self.joinNodes(cluster)
-        self.verify_orchestrator_node(cluster, True)
-        self.failover_and_recover_node(cluster)
-        self.verify_orchestrator_node(cluster, True)
+    def joincluster_test(self):
+        self.verify_orchestrator_node(False)
+        self.joinNodes()
+        self.verify_orchestrator_node(True)
+        self.failover_and_recover_node()
+        self.verify_orchestrator_node(True)
         # Removing the orchestrator node should result in the remaining
         # serviceless node becoming the orchestrator
-        self.remove_orchestrator_node(cluster)
-        self.verify_orchestrator_node(cluster, True)
+        self.remove_orchestrator_node()
+        self.verify_orchestrator_node(True)

@@ -30,10 +30,10 @@ class TasksBase:
         return f"{self.addr_tasks}?" + \
                "&".join([f"taskId={task_id}" for task_id in task_ids])
 
-    def get_task_statuses(self, cluster, *task_ids):
+    def get_task_statuses(self, *task_ids):
         status_address = self.get_status_address(*task_ids)
         # Fetch the task status
-        r = testlib.get_succ(cluster, status_address)
+        r = testlib.get_succ(self.cluster, status_address)
 
         # Attempt to decode the response
         tasks = testlib.json_response(r, "Task status was not json")
@@ -46,10 +46,10 @@ class TasksBase:
 
     # Wait for the task identified by task_id to satisfy is_task_done or reach
     # the timeout limit
-    def wait_for_task(self, cluster, task_id, is_task_done, timeout,
+    def wait_for_task(self, task_id, is_task_done, timeout,
                       timeout_msg=None):
         def get_status():
-            return self.get_task_statuses(cluster, task_id)[0]
+            return self.get_task_statuses(task_id)[0]
         # Wait until timeout reached
         time_start = time.time()
         timeout_time = time_start + timeout
@@ -89,24 +89,24 @@ class TasksBase:
 
     # Assert that the task can be fetched with ?taskId= and that the status is
     # as expected
-    def assert_task(self, cluster, expected_task):
-        found_task = self.get_task_statuses(cluster, expected_task.task_id)[0]
+    def assert_task(self, expected_task):
+        found_task = self.get_task_statuses(expected_task.task_id)[0]
         self.assert_tasks_equal(found_task, expected_task)
 
         # Assert whether or not the task shows up in the
         # /pools/default/tasks endpoint
         if self.is_default_task(expected_task):
-            self.assert_task_in_default_list(cluster, expected_task)
+            self.assert_task_in_default_list(expected_task)
         else:
-            self.assert_task_not_in_default_list(cluster, expected_task)
+            self.assert_task_not_in_default_list(expected_task)
 
     # Assert that a list of tasks can be fetched from /pools/default/tasks
     # with ?taskId=id1&taskId=id2...
-    def assert_tasks(self, cluster, expected_tasks):
+    def assert_tasks(self, expected_tasks):
         expected_task_ids = [task.task_id for task in expected_tasks]
 
         # Fetch the task statuses all at once
-        found_tasks = self.get_task_statuses(cluster, *expected_task_ids)
+        found_tasks = self.get_task_statuses(*expected_task_ids)
 
         # The lists must be sorted as the tasks are not guaranteed to be in the
         # same order as requested
@@ -119,9 +119,9 @@ class TasksBase:
             # Assert whether or not the task shows up in the
             # /pools/default/tasks endpoint
             if self.is_default_task(expected_task):
-                self.assert_task_in_default_list(cluster, expected_task)
+                self.assert_task_in_default_list(expected_task)
             else:
-                self.assert_task_not_in_default_list(cluster, expected_task)
+                self.assert_task_not_in_default_list(expected_task)
 
     @staticmethod
     # Determines whether a task should be expected in the default response of
@@ -131,11 +131,11 @@ class TasksBase:
 
     # Assert that can the expected task can be found in the tasks list given by
     # /pools/default/tasks
-    def assert_task_in_default_list(self, cluster, expected_task):
+    def assert_task_in_default_list(self, expected_task):
         expected_id = expected_task.task_id
 
         # Fetch tasks
-        r = testlib.get_succ(cluster, self.addr_tasks)
+        r = testlib.get_succ(self.cluster, self.addr_tasks)
 
         # Attempt to decode the response
         tasks = testlib.json_response(r, "Tasks list was not json")
@@ -150,11 +150,11 @@ class TasksBase:
 
     # Assert that a task is not included in the tasks list given by
     # /pools/default/tasks
-    def assert_task_not_in_default_list(self, cluster, unexpected_task):
+    def assert_task_not_in_default_list(self, unexpected_task):
         unexpected_id = unexpected_task.task_id
 
         # Fetch tasks
-        r = testlib.get_succ(cluster, self.addr_tasks)
+        r = testlib.get_succ(self.cluster, self.addr_tasks)
 
         # Attempt to decode the response
         tasks = testlib.json_response(r, "Tasks list was not json")
@@ -164,8 +164,8 @@ class TasksBase:
                 f"Unexpected task found with task_id '{unexpected_id}"
 
     # Get the current tasks list version
-    def get_tasks_version(self, cluster):
-        r = testlib.get_succ(cluster, self.addr_pools_default)
+    def get_tasks_version(self):
+        r = testlib.get_succ(self.cluster, self.addr_pools_default)
         json_resp = testlib.json_response(r, f"{self.addr_pools_default} "
                                              f"response was not json")
         tasks = testlib.assert_json_key("tasks", json_resp,
@@ -176,15 +176,15 @@ class TasksBase:
         assert "?v=" in uri, "Missing tasks hash in uri"
         return uri.split("?v=")[1]
 
-    def assert_tasks_version_changed(self, cluster, old_version):
-        new_version = self.get_tasks_version(cluster)
+    def assert_tasks_version_changed(self, old_version):
+        new_version = self.get_tasks_version()
         assert new_version != old_version, \
             f"Tasks version was not changed when expected"
         # Return the new version, for subsequent comparisons without re-fetching
         return new_version
 
-    def assert_tasks_version_same(self, cluster, old_version):
-        new_version = self.get_tasks_version(cluster)
+    def assert_tasks_version_same(self, old_version):
+        new_version = self.get_tasks_version()
         assert new_version == old_version, \
             f"Unexpected change of tasks version"
 
@@ -249,17 +249,17 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
                               {"bucket": "test",
                                "bucket_uuid": "test_uuid"}]
 
-    def setup(self, cluster):
+    def setup(self):
         # Delete all buckets to avoid the tasks version changing unexpectedly
         # when a bucket goes from warming up to active
-        testlib.delete_all_buckets(cluster)
+        testlib.delete_all_buckets(self.cluster)
 
     @staticmethod
     def requirements():
         return testlib.ClusterRequirements(num_nodes=1, memsize=1024)
 
-    def teardown(self, cluster):
-        testlib.post_succ(cluster, self.addr_diag_eval,
+    def teardown(self):
+        testlib.post_succ(self.cluster, self.addr_diag_eval,
                           data="""
                           chronicle_compat:transaction([tasks],
                           fun (Snapshot) -> {commit, [{set, tasks, []}]}
@@ -271,31 +271,31 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
         return self.Task(testlib.random_str(8), task_type, status, extras)
 
     # Manually create a task by diag eval, to test global_tasks generically
-    def create_task(self, cluster, task):
-        testlib.post_succ(cluster,
+    def create_task(self, task):
+        testlib.post_succ(self.cluster,
                           self.addr_diag_eval,
                           data=f"global_tasks:update_task("
                                f"{task_create_to_erlang(task)}).")
 
     # Manually create a list of tasks by diag eval
-    def create_tasks(self, cluster, tasks):
-        testlib.post_succ(cluster,
+    def create_tasks(self, tasks):
+        testlib.post_succ(self.cluster,
                           self.addr_diag_eval,
                           data=f"global_tasks:update_tasks("
                                f"{task_creates_to_erlang(tasks)}).")
 
     # Manually update a task by diag eval
-    def update_task(self, cluster, task):
-        testlib.post_succ(cluster,
+    def update_task(self, task):
+        testlib.post_succ(self.cluster,
                           self.addr_diag_eval,
                           data=f"global_tasks:update_task("
                                f"<<\"{task.task_id}\">>,"
                                f"{task_update_to_erlang(task)}).")
 
     # Manually update a list of tasks by diag eval
-    def update_tasks(self, cluster, tasks):
+    def update_tasks(self, tasks):
         task_ids = list_to_erlang(f"<<\"{task.task_id}\">>" for task in tasks)
-        testlib.post_succ(cluster,
+        testlib.post_succ(self.cluster,
                           self.addr_diag_eval,
                           data=f"global_tasks:update_tasks({task_ids},"
                                f"{task_updates_to_erlang(tasks)}).")
@@ -317,11 +317,11 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
                 yield copy(new_task)
 
     # Attempt to update a task with a sequence of valid changes
-    def test_updating_task(self, cluster, initial_task, version):
+    def test_updating_task(self, initial_task, version):
         last_task = initial_task
         for task_update in self.generate_task_updates(initial_task):
-            self.update_task(cluster, task_update)
-            self.assert_task(cluster, task_update)
+            self.update_task(task_update)
+            self.assert_task(task_update)
 
             # If the task_update and last_task are either both default tasks
             # or both not default tasks, then version should be the same
@@ -329,12 +329,12 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
                     self.is_default_task(last_task):
                 # Assert that the tasks version is unaffected by an update to an
                 # existing task
-                self.assert_tasks_version_same(cluster, version)
+                self.assert_tasks_version_same(version)
             else:
                 # If exactly one of task_update and last_task are default tasks
                 # then the task will either be added or removed from the
                 # default tasks list, so the version should change
-                version = self.assert_tasks_version_changed(cluster, version)
+                version = self.assert_tasks_version_changed(version)
             last_task = task_update
 
         # Return the final version for use in subsequent comparisons
@@ -347,28 +347,28 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
         for task_type, status, extras in test_tasks:
             yield self.generate_task(task_type, status, extras)
 
-    def simple_test(self, cluster):
-        version = self.get_tasks_version(cluster)
+    def simple_test(self):
+        version = self.get_tasks_version()
         for task in self.generate_tasks():
             # Add a new task and assert that it was added
-            self.create_task(cluster, task)
-            self.assert_task(cluster, task)
+            self.create_task(task)
+            self.assert_task(task)
 
             if self.is_default_task(task):
                 # If we add a new task to the default tasks list, then the
                 # version should change
-                version = self.assert_tasks_version_changed(cluster, version)
+                version = self.assert_tasks_version_changed(version)
                 # Test that subsequent task updates correctly impact the version
-                version = self.test_updating_task(cluster, task, version)
+                version = self.test_updating_task(task, version)
 
     # Test creating and updating multiple tasks at once
-    def multiple_tasks_test(self, cluster):
+    def multiple_tasks_test(self):
         # Generate and create a list of tasks
         tasks = list(self.generate_tasks())
-        self.create_tasks(cluster, tasks)
-        self.assert_tasks(cluster, tasks)
+        self.create_tasks(tasks)
+        self.assert_tasks(tasks)
         # Generate one task update for each task
         task_updates = [next(self.generate_task_updates(task))
                         for task in tasks]
-        self.update_tasks(cluster, task_updates)
-        self.assert_tasks(cluster, task_updates)
+        self.update_tasks(task_updates)
+        self.assert_tasks(task_updates)

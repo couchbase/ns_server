@@ -66,28 +66,28 @@ class SamlTests(testlib.BaseTestSet):
         return testlib.ClusterRequirements(num_nodes=2, edition="Enterprise")
 
 
-    def setup(self, cluster):
-        testlib.put_succ(cluster,
+    def setup(self):
+        testlib.put_succ(self.cluster,
                          f'/settings/rbac/users/external/{idp_test_username}',
                          data={'roles': 'admin'})
         for group, roles in idp_test_groups:
-            testlib.put_succ(cluster,
+            testlib.put_succ(self.cluster,
                              f'/settings/rbac/groups/{group}',
                              data={'roles': roles})
 
 
-    def teardown(self, cluster):
+    def teardown(self):
         testlib.ensure_deleted(
-          cluster,
+          self.cluster,
           f'/settings/rbac/users/external/{idp_test_username}')
         for group in idp_test_groups:
             testlib.ensure_deleted(
-              cluster,
+              self.cluster,
               f'/settings/rbac/groups/{group}')
 
 
-    def unsolicited_authn_and_logout_test(self, cluster):
-        with saml_configured(cluster) as IDP:
+    def unsolicited_authn_and_logout_test(self):
+        with saml_configured(self.cluster) as IDP:
             identity = idp_test_user_attrs.copy()
             binding_out, destination = \
                 IDP.pick_binding("assertion_consumer_service",
@@ -122,7 +122,7 @@ class SamlTests(testlib.BaseTestSet):
                              allow_redirects=False)
             assert(r.status_code == 302)
 
-            r = session.get(cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
             assert(r.status_code == 200)
 
@@ -148,9 +148,9 @@ class SamlTests(testlib.BaseTestSet):
             IDP.parse_logout_request_response(saml_response, binding=BINDING_HTTP_POST)
 
 
-    def authn_via_post_and_single_logout_test(self, cluster):
-        with saml_configured(cluster) as IDP:
-            r = testlib.get_succ(cluster, '/saml/auth',
+    def authn_via_post_and_single_logout_test(self):
+        with saml_configured(self.cluster) as IDP:
+            r = testlib.get_succ(self.cluster, '/saml/auth',
                                  allow_redirects=False)
             (redirect_url, saml_request) = \
                 extract_saml_message_from_form('SAMLRequest', r.text)
@@ -185,17 +185,17 @@ class SamlTests(testlib.BaseTestSet):
                              allow_redirects=False)
             assert(r.status_code == 302)
 
-            r = session.get(cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
             assert(r.status_code == 200)
 
-            r = session.post(cluster.nodes[0].url + '/uilogout',
+            r = session.post(self.cluster.nodes[0].url + '/uilogout',
                              headers=headers)
             assert(r.status_code == 400)
             r = r.json()
             assert r['redirect'] == '/saml/deauth'
 
-            r = session.get(cluster.nodes[0].url + '/saml/deauth',
+            r = session.get(self.cluster.nodes[0].url + '/saml/deauth',
                             headers=headers,
                             allow_redirects=False)
             assert(r.status_code == 200)
@@ -207,7 +207,7 @@ class SamlTests(testlib.BaseTestSet):
                                                          BINDING_HTTP_POST)
             assert parsed_logout_req.message.name_id.text == name_id.text
 
-            r = session.get(cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
             assert(r.status_code == 401)
             logout_response = IDP.create_logout_response(
@@ -225,11 +225,11 @@ class SamlTests(testlib.BaseTestSet):
             assert(r.status_code == 302)
 
 
-    def authn_via_redirect_and_regular_logout_test(self, cluster):
-        with saml_configured(cluster, idpAuthnBinding="redirect",
+    def authn_via_redirect_and_regular_logout_test(self):
+        with saml_configured(self.cluster, idpAuthnBinding="redirect",
                              spSignRequests=False,
                              singleLogoutEnabled=False) as IDP:
-            r = testlib.get_fail(cluster, '/saml/auth', 302,
+            r = testlib.get_fail(self.cluster, '/saml/auth', 302,
                                  allow_redirects=False)
             assert 'Location' in r.headers
             location = r.headers['Location']
@@ -264,7 +264,7 @@ class SamlTests(testlib.BaseTestSet):
 
             session = requests.Session()
             headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
-            r = session.get(cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
             assert(r.status_code == 401)
             r = session.post(destination,
@@ -272,18 +272,19 @@ class SamlTests(testlib.BaseTestSet):
                              headers=headers,
                              allow_redirects=False)
             assert(r.status_code == 302)
-            r = session.get(cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
             assert(r.status_code == 200)
-            r = session.post(cluster.nodes[0].url + '/uilogout', headers=headers)
+            r = session.post(self.cluster.nodes[0].url + '/uilogout',
+                             headers=headers)
             assert(r.status_code == 200)
-            r = session.get(cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
             assert(r.status_code == 401)
 
 
-    def session_expiration_test(self, cluster):
-        with saml_configured(cluster) as IDP:
+    def session_expiration_test(self):
+        with saml_configured(self.cluster) as IDP:
             identity = idp_test_user_attrs.copy()
             binding_out, destination = \
                 IDP.pick_binding("assertion_consumer_service",
@@ -318,17 +319,17 @@ class SamlTests(testlib.BaseTestSet):
                              allow_redirects=False)
             assert(r.status_code == 302)
 
-            r = session.get(cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
             assert(r.status_code == 401)
 
 
-    def reuse_assertion_test(self, cluster):
+    def reuse_assertion_test(self):
         # Disable recipient verification because we want to check assertion
         # duplicate rejection on both nodes. If we don't disable it,
         # the assertion will be rejected with reason "bad_recipient", which is
         # not what we want to test here
-        with saml_configured(cluster, spSignRequests=False,
+        with saml_configured(self.cluster, spSignRequests=False,
                              spVerifyRecipient='false') as IDP:
             identity = idp_test_user_attrs.copy()
             binding_out, destination = \
@@ -371,12 +372,12 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            error_msg = catch_error_after_redirect(cluster.nodes[0], session2,
-                                                   r, headers)
+            error_msg = catch_error_after_redirect(self.cluster.nodes[0],
+                                                   session2, r, headers)
             assert "duplicate" in error_msg
 
             dest_parsed = urlparse(destination)
-            node2_parsed = urlparse(cluster.nodes[1].url)
+            node2_parsed = urlparse(self.cluster.nodes[1].url)
             dest2_parsed = dest_parsed._replace(netloc=node2_parsed.netloc)
             destination2 = urlunparse(dest2_parsed)
             # sending the same assertion again, but this time to another node
@@ -385,25 +386,25 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            error_msg = catch_error_after_redirect(cluster.nodes[1], session3,
-                                                   r, headers)
+            error_msg = catch_error_after_redirect(self.cluster.nodes[1],
+                                                   session3, r, headers)
             assert "duplicate" in error_msg
 
-            r = session1.get(cluster.nodes[0].url + '/pools/default',
+            r = session1.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
             assert(r.status_code == 200)
 
-            r = session2.get(cluster.nodes[0].url + '/pools/default',
+            r = session2.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
             assert(r.status_code == 401)
 
-            r = session3.get(cluster.nodes[1].url + '/pools/default',
+            r = session3.get(self.cluster.nodes[1].url + '/pools/default',
                             headers=headers)
             assert(r.status_code == 401)
 
 
-    def expired_assertion_test(self, cluster):
-        with saml_configured(cluster, assertion_lifetime=-1) as IDP:
+    def expired_assertion_test(self):
+        with saml_configured(self.cluster, assertion_lifetime=-1) as IDP:
             identity = idp_test_user_attrs.copy()
             binding_out, destination = \
                 IDP.pick_binding("assertion_consumer_service",
@@ -436,18 +437,18 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            error_msg = catch_error_after_redirect(cluster.nodes[0], session,
-                                                   r, headers)
+            error_msg = catch_error_after_redirect(self.cluster.nodes[0],
+                                                   session, r, headers)
 
             assert 'stale_assertion' in error_msg
 
-            r = session.get(cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
             assert(r.status_code == 401)
 
 
-    def groups_and_roles_attributes_test(self, cluster):
-        with saml_configured(cluster,
+    def groups_and_roles_attributes_test(self):
+        with saml_configured(self.cluster,
                              groupsAttribute='groups',
                              groupsAttributeSep=', ',
                              groupsFilterRE='testgroup\\d+',
@@ -490,7 +491,7 @@ class SamlTests(testlib.BaseTestSet):
                              allow_redirects=False)
             assert(r.status_code == 302)
 
-            r = session.get(cluster.nodes[0].url + '/whoami',
+            r = session.get(self.cluster.nodes[0].url + '/whoami',
                             headers=headers)
             assert(r.status_code == 200)
             roles = [a["role"] for a in r.json()["roles"]]
@@ -501,8 +502,8 @@ class SamlTests(testlib.BaseTestSet):
 
 
     # Successfull authentication, but user doesn't have access to UI
-    def access_denied_test(self, cluster):
-        with saml_configured(cluster,
+    def access_denied_test(self):
+        with saml_configured(self.cluster,
                              usernameAttribute='uid',
                              groupsAttribute='groups',
                              groupsAttributeSep=', ',
@@ -539,8 +540,8 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            error_msg = catch_error_after_redirect(cluster.nodes[0], session,
-                                                   r, headers)
+            error_msg = catch_error_after_redirect(self.cluster.nodes[0],
+                                                   session, r, headers)
             expected = 'Access denied for user "testuser2": ' \
                        'Insufficient Permissions. ' \
                        'Extracted groups: fakegroup1, fakegroup2. ' \
@@ -549,10 +550,10 @@ class SamlTests(testlib.BaseTestSet):
                    f"Unexpected error message returned: {error_msg}"
 
 
-    def metadata_with_invalid_signature_test(self, cluster):
+    def metadata_with_invalid_signature_test(self):
         try:
             # trusted fingerprints will not match mockidp2* certs
-            with saml_configured(cluster,
+            with saml_configured(self.cluster,
                                  metadata_certs_prefix="mockidp2_"):
                 assert False, "ns_server should reject metadata as it's "\
                               "signed by untrusted cert"
@@ -561,8 +562,8 @@ class SamlTests(testlib.BaseTestSet):
                    in str(e))
 
 
-    def assertion_with_invalid_signature_test(self, cluster):
-        with saml_configured(cluster,
+    def assertion_with_invalid_signature_test(self):
+        with saml_configured(self.cluster,
                              spVerifyAssertionSig=True,
                              spVerifyAssertionEnvelopSig=False,
                              metadata_certs_prefix="mockidp_",
@@ -592,17 +593,17 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            error_msg = catch_error_after_redirect(cluster.nodes[0], session,
-                                                   r, headers)
+            error_msg = catch_error_after_redirect(self.cluster.nodes[0],
+                                                   session, r, headers)
             assert "cert_not_accepted" in error_msg
 
-            r = session.get(cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
             assert(r.status_code == 401)
 
 
-    def authn_response_with_invalid_signature_test(self, cluster):
-        with saml_configured(cluster,
+    def authn_response_with_invalid_signature_test(self):
+        with saml_configured(self.cluster,
                              spVerifyAssertionSig=False,
                              spVerifyAssertionEnvelopSig=True,
                              metadata_certs_prefix="mockidp_",
@@ -632,11 +633,11 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            error_msg = catch_error_after_redirect(cluster.nodes[0], session,
-                                                   r, headers)
+            error_msg = catch_error_after_redirect(self.cluster.nodes[0],
+                                                   session, r, headers)
             assert "cert_not_accepted" in error_msg
 
-            r = session.get(cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
             assert(r.status_code == 401)
 

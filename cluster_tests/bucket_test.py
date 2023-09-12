@@ -344,19 +344,19 @@ class BucketTestSetBase(testlib.BaseTestSet):
         else:
             return type(self).__name__
 
-    def setup(self, cluster):
-        self.addr = cluster.nodes[0].url
-        self.num_nodes = len(cluster.connected_nodes)
-        self.auth = cluster.auth
-        self.memsize = cluster.memsize
-        self.is_enterprise = cluster.is_enterprise
-        self.is_trinity = cluster.is_trinity
-        self.is_serverless = cluster.is_serverless
-        self.is_dev_preview = cluster.is_dev_preview
+    def setup(self):
+        self.addr = self.cluster.nodes[0].url
+        self.num_nodes = len(self.cluster.connected_nodes)
+        self.auth = self.cluster.auth
+        self.memsize = self.cluster.memsize
+        self.is_enterprise = self.cluster.is_enterprise
+        self.is_trinity = self.cluster.is_trinity
+        self.is_serverless = self.cluster.is_serverless
+        self.is_dev_preview = self.cluster.is_dev_preview
         self.good_symbols = string.ascii_letters + string.digits + "._-%"
 
         # Deleting existing buckets to make space
-        self.test_teardown(cluster)
+        self.test_teardown()
 
     # TODO: Handle limits differently for greater ease of adding tests
     def init_limits(self, bucket_type, storage_backend, is_creation,
@@ -1058,16 +1058,16 @@ class BucketTestSetBase(testlib.BaseTestSet):
                     (0, 0, 0, 1, "bogus"),
                 ]
 
-    def teardown(self, cluster):
+    def teardown(self):
         pass
 
-    def test_teardown(self, cluster):
+    def test_teardown(self):
         # Remove all buckets between tests, to ensure there is space for new
         # buckets to be created
         buckets = self.test_get(BUCKETS_ENDPOINT)
         for bucket in buckets.json():
             name = bucket['name']
-            cluster.delete_bucket(name=name)
+            self.cluster.delete_bucket(name=name)
 
     def get_next_name(self):
         name = f"test_{self.next_bucket_id}"
@@ -2045,7 +2045,7 @@ class BasicBucketTestSet(BucketTestSetBase):
         # 1024MiB is required to test magma
         return testlib.ClusterRequirements(memsize=1024, edition="Enterprise")
 
-    def name_test(self, cluster):
+    def name_test(self):
         self.test_param("name",
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore"],
@@ -2057,7 +2057,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True])
 
-    def rank_test(self, cluster):
+    def rank_test(self):
         self.test_param("rank",
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore"],
@@ -2069,8 +2069,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[False],
                         is_creation=[False])
 
-
-    def bucket_type_test(self, cluster):
+    def bucket_type_test(self):
         self.test_param("bucketType",
                         bucket_type=["membase", "couchbase", "ephemeral", None],
                         storage_backend=["couchstore", "magma"],
@@ -2082,7 +2081,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True])
 
-    def ram_quota_test(self, cluster):
+    def ram_quota_test(self):
         self.test_param("ramQuota",
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore", "magma"],
@@ -2094,7 +2093,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True, False])
 
-    def storage_backend_test(self, cluster):
+    def storage_backend_test(self):
         self.test_param("storageBackend",
                         bucket_type=["couchbase", "ephemeral"],
                         storage_backend=["couchstore", "magma"],
@@ -2106,7 +2105,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True])
 
-    def eviction_policy_test(self, cluster):
+    def eviction_policy_test(self):
         self.test_param("evictionPolicy",
                         bucket_type=["couchbase", "memcached", "ephemeral"],
                         storage_backend=["couchstore"],
@@ -2118,7 +2117,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True, False])
 
-    def dura_min_level_test(self, cluster):
+    def dura_min_level_test(self):
         self.test_param("durabilityMinLevel",
                         bucket_type=["couchbase", "memcached", "ephemeral"],
                         storage_backend=["couchstore"],
@@ -2130,7 +2129,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True, False])
 
-    def threads_number_test(self, cluster):
+    def threads_number_test(self):
         self.test_param("threadsNumber",
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore"],
@@ -2142,7 +2141,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True, False])
 
-    def compression_mode_test(self, cluster):
+    def compression_mode_test(self):
         self.test_param("compressionMode",
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore"],
@@ -2154,7 +2153,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True, False])
 
-    def max_ttl_test(self, cluster):
+    def max_ttl_test(self):
         self.test_param("maxTTL",
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore"],
@@ -2166,7 +2165,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True, False])
 
-    def conflict_resolution_type_test(self, cluster):
+    def conflict_resolution_type_test(self):
         self.test_param("conflictResolutionType",
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore"],
@@ -2178,7 +2177,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True, False])
 
-    def flush_enabled_test(self, cluster):
+    def flush_enabled_test(self):
         self.test_param("flushEnabled",
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore"],
@@ -2190,7 +2189,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True, False])
 
-    def pitr_test(self, cluster):
+    def pitr_test(self):
         main_params = {
             "bucket_type": ["couchbase"],
             "storage_backend": ["couchstore"],
@@ -2205,7 +2204,7 @@ class BasicBucketTestSet(BucketTestSetBase):
         self.test_param("pitrEnabled", **main_params)
         self.test_param("pitrGranularity,pitrMaxHistoryAge", **main_params)
 
-    def drift_threshold_test(self, cluster):
+    def drift_threshold_test(self):
         main_params = {
             "bucket_type": ["couchbase"],
             "storage_backend": ["couchstore"],
@@ -2220,7 +2219,7 @@ class BasicBucketTestSet(BucketTestSetBase):
         self.test_param("driftAheadThresholdMs", **main_params)
         self.test_param("driftBehindThresholdMs", **main_params)
 
-    def storage_quota_percentage_test(self, cluster):
+    def storage_quota_percentage_test(self):
         main_params = {
             "bucket_type": ["couchbase"],
             "storage_backend": ["couchstore", "magma"],
@@ -2234,7 +2233,7 @@ class BasicBucketTestSet(BucketTestSetBase):
         }
         self.test_param("storageQuotaPercentage", **main_params)
 
-    def duplicate_name_test(self, cluster):
+    def duplicate_name_test(self):
         self.init_limits("couchbase", "couchstore", True)
         # Simple test
         bucket_data = self.add_required_fields({})
@@ -2245,7 +2244,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                        errors={"name": "Bucket with given name already exists"})
 
     # MB-54441 Bucket ram quota can sometimes be set too high when updating...
-    def ram_quota_rapid_update_test(self, cluster):
+    def ram_quota_rapid_update_test(self):
         self.cur_main_dict = {
             "bucket_type": "couchbase",
             "storage_backend": "couchstore"
@@ -2259,7 +2258,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                      })
         self.init_limits("couchbase", "couchstore", False)
         self.test_request('POST', BUCKET_ENDPOINT_DEFAULT,
-                          data={"ramQuota": cluster.memsize*2})
+                          data={"ramQuota": self.cluster.memsize*2})
 
 
 class ServerlessBucketTestSet(BucketTestSetBase):
@@ -2268,7 +2267,7 @@ class ServerlessBucketTestSet(BucketTestSetBase):
     def requirements():
         return testlib.ClusterRequirements(memsize=1024, edition="Serverless")
 
-    def bucket_placer_test(self, cluster):
+    def bucket_placer_test(self):
         main_params = {
             "bucket_type": ["couchbase"],
             "storage_backend": ["couchstore"],
@@ -2283,7 +2282,7 @@ class ServerlessBucketTestSet(BucketTestSetBase):
         self.test_param("width", **main_params)
         self.test_param("weight", **main_params)
 
-    def magma_max_shards_test(self, cluster):
+    def magma_max_shards_test(self):
         self.test_param("magmaMaxShards",
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore", "magma"],
@@ -2295,7 +2294,7 @@ class ServerlessBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True, False])
 
-    def num_vbuckets_test(self, cluster):
+    def num_vbuckets_test(self):
         self.test_param("numVBuckets",
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore"],
@@ -2314,7 +2313,7 @@ class OnPremBucketTestSet(BucketTestSetBase):
     def requirements():
         return testlib.ClusterRequirements(edition="Enterprise")
 
-    def bucket_type_test(self, cluster):
+    def bucket_type_test(self):
         self.test_param("bucketType",
                         bucket_type=["memcached"],
                         storage_backend=["couchstore"],
@@ -2326,7 +2325,7 @@ class OnPremBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True])
 
-    def ram_quota_test(self, cluster):
+    def ram_quota_test(self):
         self.test_param("ramQuota",
                         bucket_type=["memcached"],
                         storage_backend=["couchstore"],
@@ -2342,7 +2341,7 @@ class OnPremBucketTestSet(BucketTestSetBase):
     # whether just_validate is True or False and also if the num_nodes is less
     # than or greater than the set value.
 
-    # def replica_index_test(self, cluster):
+    # def replica_index_test(self):
     #     self.test_param("replicaIndex",
     #                     bucket_type=["couchbase", "memcached"],
     #                     storage_backend=["couchstore"],
@@ -2353,7 +2352,7 @@ class OnPremBucketTestSet(BucketTestSetBase):
     #                     just_validate=[True, False],
     #                     is_creation=[True])
 
-    # def replica_number_test(self, cluster):
+    # def replica_number_test(self):
     #     self.test_param("replicaNumber",
     #                     bucket_type=["couchbase"],
     #                     storage_backend=["couchstore"],
@@ -2371,7 +2370,7 @@ class MultiNodeBucketTestSet(BucketTestSetBase):
     def requirements():
         return testlib.ClusterRequirements(num_nodes=4)
 
-    # def replica_number_test(self, cluster):
+    # def replica_number_test(self):
     #     self.test_param("replicaNumber",
     #                     bucket_type=["couchbase"],
     #                     storage_backend=["couchstore"],
@@ -2382,7 +2381,7 @@ class MultiNodeBucketTestSet(BucketTestSetBase):
     #                     just_validate=[True, False],
     #                     is_creation=[True, False])
 
-    def dura_min_level_test(self, cluster):
+    def dura_min_level_test(self):
 
         self.test_param("durabilityMinLevel",
                         bucket_type=["couchbase", "memcached", "ephemeral"],

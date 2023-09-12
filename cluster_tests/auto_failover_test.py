@@ -37,16 +37,16 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
             self.limits['failoverOnDataDiskIssues[timePeriod]']['min'] = 5
             self.limits['failoverOnDataDiskIssues[timePeriod]']['max'] = 3600
 
-    def setup(self, cluster):
-        self.auth = cluster.auth
-        self.endpoint = cluster.nodes[0].url + '/settings/autoFailover'
+    def setup(self):
+        self.auth = self.cluster.auth
+        self.endpoint = self.cluster.nodes[0].url + '/settings/autoFailover'
         self.prev_settings = requests.get(self.endpoint, auth=self.auth).json()
         # count cannot be modified using this request
         self.result_keys = list(self.prev_settings.keys())
         self.result_keys.remove('count')
-        self.is_enterprise = cluster.is_enterprise
-        self.is_trinity = cluster.is_trinity
-        self.is_serverless = cluster.is_serverless
+        self.is_enterprise = self.cluster.is_enterprise
+        self.is_trinity = self.cluster.is_trinity
+        self.is_serverless = self.cluster.is_serverless
 
         failKey = 'failoverOnDataDiskIssues'
         self.post_data_keys = [ k for k in self.result_keys if k != failKey ]
@@ -88,7 +88,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
         self.init_bad_params()
         self.bad_count = self.good_count = 0
 
-    def teardown(self, cluster):
+    def teardown(self):
         pass
 
     """
@@ -454,7 +454,7 @@ class OnPremAutoFailoverSettingsTest(AutoFailoverSettingsTestBase):
     def requirements():
         return testlib.ClusterRequirements(edition="Enterprise")
 
-    def server_test(self, cluster):
+    def server_test(self):
         self.run_combinations()
 
 class ServerlessAutoFailoverSettingsTest(AutoFailoverSettingsTestBase):
@@ -462,5 +462,5 @@ class ServerlessAutoFailoverSettingsTest(AutoFailoverSettingsTestBase):
     def requirements():
         return testlib.ClusterRequirements(edition="Serverless")
 
-    def server_test(self, cluster):
+    def server_test(self):
         self.run_combinations()

@@ -102,19 +102,19 @@ class CollectionTests(testlib.BaseTestSet):
     def requirements():
         return testlib.ClusterRequirements(num_nodes=1, memsize=1024)
 
-    def setup(self, cluster):
+    def setup(self):
         # MB-58727 Setup should be able to assume a clean slate when starting
         # and not have to do any housekeeping.
-        testlib.delete_all_buckets(cluster)
+        testlib.delete_all_buckets(self.cluster)
         # Decrease requirement for magma ram quota
-        testlib.post_succ(cluster, "/internalSettings",
+        testlib.post_succ(self.cluster, "/internalSettings",
                           data={"magmaMinMemoryQuota": 256})
 
-    def teardown(self, cluster):
+    def teardown(self):
         pass
 
-    def test_teardown(self, cluster):
-        testlib.delete_all_buckets(cluster)
+    def test_teardown(self):
+        testlib.delete_all_buckets(self.cluster)
 
     def create_bucket(self, bucket_name, bucket_type,
                       storage="couchstore"):
@@ -208,7 +208,7 @@ class CollectionTests(testlib.BaseTestSet):
 
     # Create buckets with scope and collections and ensure the manifest
     # which we GET is PUTable.
-    def manifest_test(self, cluster):
+    def manifest_test(self):
         # Test the results of GET are PUTable (sans 'uid')
         self.get_put_bucket("couchstoreBucket", "couchbase",
                             "couchstore")
@@ -216,7 +216,7 @@ class CollectionTests(testlib.BaseTestSet):
         self.get_put_bucket("ephemeralBucket", "ephemeral")
 
     # Ensure manifests from older release is PUTable.
-    def manifest_upgrade_test(self, cluster):
+    def manifest_upgrade_test(self):
         self.create_bucket("neoCouchstoreBucket", "couchbase", "couchstore")
         self.put_manifest("neoCouchstoreBucket", NEO_COUCHSTORE_MANIFEST)
         self.create_bucket("neoMagmaBucket", "couchbase", "magma")
@@ -226,7 +226,7 @@ class CollectionTests(testlib.BaseTestSet):
 
     # Verify that maxTTl gets restored to original value after it has
     # been changed to a new value.
-    def verify_maxttl_restore_test(self, cluster):
+    def verify_maxttl_restore_test(self):
         self.create_bucket_scopes_collections("testBucket", "couchbase",
                                               "couchstore")
         manifest1 = self.get_manifest("testBucket")

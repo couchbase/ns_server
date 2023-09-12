@@ -39,23 +39,23 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
                                             num_nodes=2, num_connected=2,
                                             memsize=2000)]
 
-    def setup(self, cluster):
+    def setup(self):
         self.addr_get = "/sampleBuckets"
         self.addr_post = self.addr_get + "/install"
         self.addr_tasks = "/pools/default/tasks"
 
         # Deleting existing buckets to make space
-        testlib.delete_all_buckets(cluster)
+        testlib.delete_all_buckets(self.cluster)
 
-    def teardown(self, cluster):
+    def teardown(self):
         pass
 
-    def test_teardown(self, cluster):
+    def test_teardown(self):
         # Kill any remaining sample loads
-        testlib.post_succ(cluster, "/diag/eval",
+        testlib.post_succ(self.cluster, "/diag/eval",
                           data="gen_server:stop(samples_loader_tasks).")
         # Deleting any remaining buckets
-        testlib.delete_all_buckets(cluster)
+        testlib.delete_all_buckets(self.cluster)
 
     # Create a bucket with name and ram_quota specified
     def create_bucket(self, name, ram_quota=200):
@@ -63,8 +63,8 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
         self.cluster.create_bucket(bucket)
 
     # Test the /sampleBuckets endpoint for fetching the list of sample buckets
-    def get_test(self, cluster):
-        response = testlib.get_succ(cluster, self.addr_get)
+    def get_test(self):
+        response = testlib.get_succ(self.cluster, self.addr_get)
         samples = testlib.json_response(response,
                                         "/sampleBuckets returned invalid json")
         for sample in samples:
@@ -126,7 +126,7 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
 
         # Wait for the task to satisfy loading_done
         self.wait_for_task(
-            self.cluster, task_id, loading_done, START_TASK_TIMEOUT,
+            task_id, loading_done, START_TASK_TIMEOUT,
             timeout_msg=f"Waiting for sample loading task to become 'running' "
                         f"or 'completed' timed out after {START_TASK_TIMEOUT}s."
                         f"\n")
@@ -149,8 +149,7 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
                 return task.get("status") == expected_last_status
 
         # Wait for the task to satisfy loading_done
-        fetched_task = self.wait_for_task(self.cluster, task_id, loading_done,
-                                          timeout)
+        fetched_task = self.wait_for_task(task_id, loading_done, timeout)
 
         # Assert that the final task is as expected
         self.assert_tasks_equal(fetched_task, expected_task)
@@ -162,28 +161,30 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
 
     # Test that we can load into a new bucket, which will have the same name as
     # the specified sample
-    def post_without_existing_bucket_test(self, cluster):
+    def post_without_existing_bucket_test(self):
         sample_bucket = "travel-sample"
         payload = [sample_bucket]
-        response = testlib.post_succ(cluster, self.addr_post, 202, json=payload)
+        response = testlib.post_succ(self.cluster, self.addr_post, 202,
+                                     json=payload)
 
         # Double the timeout to allow for bucket creation
         self.assert_loaded_sample(response, CBIMPORT_TIMEOUT * 2)
 
     # Test loading into an existing bucket
-    def post_with_existing_bucket_test(self, cluster):
+    def post_with_existing_bucket_test(self):
         bucket_name = "test1"
         self.create_bucket(bucket_name)
 
         sample_bucket = "travel-sample"
         payload = [{"sample": sample_bucket,
                     "bucket": bucket_name}]
-        response = testlib.post_succ(cluster, self.addr_post, 202, json=payload)
+        response = testlib.post_succ(self.cluster, self.addr_post, 202,
+                                     json=payload)
 
         self.assert_loaded_sample(response, CBIMPORT_TIMEOUT)
 
     # Test loading from http(s):// sample into an existing bucket
-    def post_to_http_with_existing_bucket_test(self, cluster):
+    def post_to_http_with_existing_bucket_test(self):
         bucket_name = "test2"
         self.create_bucket(bucket_name)
 
@@ -192,7 +193,8 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
         payload = [{"sample": sample_bucket,
                     "bucket": bucket_name,
                     "http_cache_directory": "/tmp/cache"}]
-        response = testlib.post_succ(cluster, self.addr_post, 202, json=payload)
+        response = testlib.post_succ(self.cluster, self.addr_post, 202,
+                                     json=payload)
 
         # We check for task failed instead of completed, because it will
         # immediately fail since we have only provided a dummy http(s)://
@@ -201,20 +203,20 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
 
     # Confirm that loading a sample bucket fails when there is insufficient
     # total remaining ram quota
-    def post_with_insufficient_remaining_ram_quota_test(self, cluster):
+    def post_with_insufficient_remaining_ram_quota_test(self):
         # Create bucket taking up all space
         bucket_name = "test3"
-        self.create_bucket(bucket_name, cluster.memsize)
+        self.create_bucket(bucket_name, self.cluster.memsize)
 
         # Loading a sample bucket should fail when the cluster has insufficient
         # ram quota
         sample_bucket = "travel-sample"
         payload = [sample_bucket]
-        testlib.post_fail(cluster, self.addr_post, 400, json=payload)
+        testlib.post_fail(self.cluster, self.addr_post, 400, json=payload)
 
     # Confirm that loading sample data into an existing bucket fails when the
     # bucket has insufficient ram quota
-    def post_to_existing_with_insufficient_ram_quota_test(self, cluster):
+    def post_to_existing_with_insufficient_ram_quota_test(self):
         bucket_name = "test4"
         self.create_bucket(bucket_name, 100)
 
@@ -223,25 +225,25 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
         sample_bucket = "travel-sample"
         payload = [{"sample": sample_bucket,
                     "bucket": bucket_name}]
-        testlib.post_fail(cluster, self.addr_post, 400, json=payload)
+        testlib.post_fail(self.cluster, self.addr_post, 400, json=payload)
 
-    def post_with_couchdb_sample_test(self, cluster):
+    def post_with_couchdb_sample_test(self):
         sample_bucket = "gamesim-sample"
         payload = [sample_bucket]
-        if cluster.is_serverless:
+        if self.cluster.is_serverless:
             # Confirm that loading gamesim-sample fails in serverless, as
             # couchdb is disabled
-            testlib.post_fail(cluster, self.addr_post, 400, json=payload)
+            testlib.post_fail(self.cluster, self.addr_post, 400, json=payload)
         else:
             # Confirm that loading gamesim-sample succeeds when not in
             # serverless, as couchdb is enabled
-            response = testlib.post_succ(cluster, self.addr_post, 202,
+            response = testlib.post_succ(self.cluster, self.addr_post, 202,
                                          json=payload)
             # Double the timeout to allow for bucket creation
             self.assert_loaded_sample(response, CBIMPORT_TIMEOUT * 2)
 
     # Test loading multiple sample buckets sequentially
-    def post_multiple_buckets_sequential_test(self, cluster):
+    def post_multiple_buckets_sequential_test(self):
         # Create 10 buckets (with total ram quota 10*200MiB = 2000MiB)
         bucket_count = 10
         bucket_names = [f"test{i}" for i in range(bucket_count)]
@@ -254,8 +256,8 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
             sample_bucket = "travel-sample"
             payload = [{"sample": sample_bucket,
                         "bucket": bucket_name}]
-            responses.append(testlib.post_succ(cluster, self.addr_post, 202,
-                                               json=payload))
+            responses.append(testlib.post_succ(self.cluster, self.addr_post,
+                                               202, json=payload))
 
         # Assert that each bucket gets loaded, in the correct order. We test
         # this to make sure that later buckets don't jump ahead in
@@ -264,7 +266,7 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
             self.assert_loaded_sample(response, timeout=CBIMPORT_TIMEOUT)
 
     # Test loading multiple sample buckets concurrently
-    def post_multiple_buckets_concurrent_test(self, cluster):
+    def post_multiple_buckets_concurrent_test(self):
         # Set concurrency limit to 3
         concurrency = 3
         self.set_concurrency(concurrency)
@@ -278,7 +280,7 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
         sample_bucket = "travel-sample"
         payload = [{"sample": sample_bucket,
                     "bucket": bucket_name} for bucket_name in bucket_names]
-        response = testlib.post_succ(cluster, self.addr_post, 202,
+        response = testlib.post_succ(self.cluster, self.addr_post, 202,
                                      json=payload)
 
         # We multiply the timeout by the number of requests that may be

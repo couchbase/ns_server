@@ -84,7 +84,7 @@ def run_testset(testset_class, test_names, cluster, testset_name,
 
     testset_instance = testset_class(cluster)
 
-    _, err = safe_test_function_call(testset_instance, 'setup', [cluster],
+    _, err = safe_test_function_call(testset_instance, 'setup', [],
                                      intercept_output=intercept_output,
                                      seed=seed)
 
@@ -103,14 +103,14 @@ def run_testset(testset_class, test_names, cluster, testset_name,
         for test in test_names:
             executed += 1
             _, err = safe_test_function_call(testset_instance, test,
-                                             [cluster], verbose=True,
+                                             [], verbose=True,
                                              intercept_output=intercept_output,
                                              seed=test_seed)
             if err is not None:
                 errors.append(err)
 
             _, err = safe_test_function_call(testset_instance, 'test_teardown',
-                                             [cluster],
+                                             [],
                                              intercept_output=intercept_output,
                                              seed=test_teardown_seed)
             if err is not None:
@@ -123,7 +123,7 @@ def run_testset(testset_class, test_names, cluster, testset_name,
                 break
     finally:
         _, err = safe_test_function_call(testset_instance, 'teardown',
-                                         [cluster],
+                                         [],
                                          intercept_output=intercept_output,
                                          seed=teardown_seed)
         if err is not None:
@@ -211,7 +211,7 @@ class BaseTestSet(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def setup(self, cluster):
+    def setup(self):
         """
         Executed before any test in the testset.
 
@@ -219,14 +219,14 @@ class BaseTestSet(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def teardown(self, cluster):
+    def teardown(self):
         """
         Executed when all tests are finished.
 
         """
         raise NotImplementedError()
 
-    def test_teardown(self, cluster):
+    def test_teardown(self):
         """
         Executed when after each test finishes.
 

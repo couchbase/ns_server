@@ -24,7 +24,7 @@ class CertLoadTests(testlib.BaseTestSet):
     def requirements():
         return testlib.ClusterRequirements(edition='Enterprise')
 
-    def setup(self, cluster):
+    def setup(self):
         ca_path = os.path.join(certs_path, 'test_CA.pem')
         with open(ca_path, 'r') as f:
             self.ca_pem = f.read()
@@ -32,40 +32,43 @@ class CertLoadTests(testlib.BaseTestSet):
         with open(ca_key, 'r') as f:
             self.ca_key = f.read()
 
-        self.node_addr = cluster.connected_nodes[0].addr()
-        self.loaded_CA_ids = load_ca(cluster.connected_nodes[0], self.ca_pem)
+        self.node_addr = self.cluster.connected_nodes[0].addr()
+        self.loaded_CA_ids = load_ca(self.cluster.connected_nodes[0],
+                                     self.ca_pem)
 
-    def teardown(self, cluster):
-        testlib.post_succ(cluster, '/controller/regenerateCertificate',
+    def teardown(self):
+        testlib.post_succ(self.cluster, '/controller/regenerateCertificate',
                           params={'forceResetCACertificate': 'false',
                                   'dropUploadedCertificates': 'true'})
         for ca_id in self.loaded_CA_ids:
-            testlib.delete_succ(cluster, f'/pools/default/trustedCAs/{ca_id}',
+            testlib.delete_succ(self.cluster,
+                                f'/pools/default/trustedCAs/{ca_id}',
                                 expected_code=204)
 
-    def rsa_private_key_test(self, cluster):
-        self.generate_and_load_node_cert(cluster, 'rsa')
+    def rsa_private_key_test(self):
+        self.generate_and_load_node_cert('rsa')
 
-    def ec_private_key_test(self, cluster):
-        self.generate_and_load_node_cert(cluster, 'ec')
+    def ec_private_key_test(self):
+        self.generate_and_load_node_cert('ec')
 
-    def generate_and_load_node_cert(self, cluster, key_type):
+    def generate_and_load_node_cert(self, key_type):
         cert, key = generate_node_certs(self.node_addr,
                                         self.ca_pem, self.ca_key,
                                         key_type=key_type)
-        load_node_cert(cluster.connected_nodes[0], cert, key)
+        load_node_cert(self.cluster.connected_nodes[0], cert, key)
 
-    def pkcs12_certs_test(self, cluster):
+    def pkcs12_certs_test(self):
         cert, key = generate_node_certs(self.node_addr,
                                         self.ca_pem, self.ca_key,
                                         key_type='rsa')
-        node_data_path = cluster.connected_nodes[0].data_path()
+        node_data_path = self.cluster.connected_nodes[0].data_path()
         inbox_dir = os.path.join(node_data_path, 'inbox')
         os.makedirs(inbox_dir, exist_ok=True)
         pkcs12_path = os.path.join(inbox_dir, 'couchbase.p12')
         try:
             write_pkcs12(cert, key, pkcs12_path)
-            testlib.post_succ(cluster, '/node/controller/reloadCertificate')
+            testlib.post_succ(self.cluster,
+                              '/node/controller/reloadCertificate')
         finally:
             if os.path.exists(pkcs12_path):
                 os.remove(pkcs12_path)

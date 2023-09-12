@@ -16,74 +16,79 @@ class PassHashingSettingsTests(testlib.BaseTestSet):
     def requirements():
         return testlib.ClusterRequirements()
 
-    def setup(self, cluster):
+    def setup(self):
         self.username_argon = testlib.random_str(16)
         self.username_pbkdf2 = testlib.random_str(16)
         self.username_sha = testlib.random_str(16)
         self.test_username = testlib.random_str(16)
 
-    def test_teardown(self, cluster):
-        delete_user(cluster, self.test_username)
+    def test_teardown(self):
+        delete_user(self.cluster, self.test_username)
 
-    def teardown(self, cluster):
-        delete_user(cluster, self.username_argon)
-        delete_user(cluster, self.username_pbkdf2)
-        delete_user(cluster, self.username_sha)
-        testlib.delete_succ(cluster, '/settings/security/passwordHashAlg')
-        testlib.delete_succ(cluster, '/settings/security/scramSha512Enabled')
-        testlib.delete_succ(cluster, '/settings/security/scramSha256Enabled')
-        testlib.delete_succ(cluster, '/settings/security/scramSha1Enabled')
-        testlib.delete_succ(cluster, '/settings/security/scramShaIterations')
+    def teardown(self):
+        delete_user(self.cluster, self.username_argon)
+        delete_user(self.cluster, self.username_pbkdf2)
+        delete_user(self.cluster, self.username_sha)
+        testlib.delete_succ(self.cluster, '/settings/security/passwordHashAlg')
+        testlib.delete_succ(self.cluster,
+                            '/settings/security/scramSha512Enabled')
+        testlib.delete_succ(self.cluster,
+                            '/settings/security/scramSha256Enabled')
+        testlib.delete_succ(self.cluster,
+                            '/settings/security/scramSha1Enabled')
+        testlib.delete_succ(self.cluster,
+                            '/settings/security/scramShaIterations')
 
-    def change_admin_pass_respects_hash_alg_test(self, cluster):
-        admin = testlib.get_succ(cluster, '/settings/web').json()['username']
-        assert admin == cluster.auth[0], \
+    def change_admin_pass_respects_hash_alg_test(self):
+        admin = testlib.get_succ(self.cluster,
+                                 '/settings/web').json()['username']
+        assert admin == self.cluster.auth[0], \
             'this test expects that cluster uses administrator auth'
-        password = cluster.auth[1]
+        password = self.cluster.auth[1]
 
         def test_hash(expected_hash):
             # changing admin password to make sure password hash is updated
-            touch_user_password(cluster, admin, password)
-            backup = get_backup(cluster, 'admin')
+            touch_user_password(self.cluster, admin, password)
+            backup = get_backup(self.cluster, 'admin')
             verify_hash_type([backup['admin']], admin, expected_hash)
 
-        testlib.delete_succ(cluster, '/settings/security/passwordHashAlg')
+        testlib.delete_succ(self.cluster, '/settings/security/passwordHashAlg')
         test_hash('argon2id')
 
-        testlib.post_succ(cluster, '/settings/security/passwordHashAlg',
+        testlib.post_succ(self.cluster, '/settings/security/passwordHashAlg',
                           data='pbkdf2-hmac-sha512')
         test_hash('pbkdf2-hmac-sha512')
 
-        testlib.post_succ(cluster, '/settings/security/passwordHashAlg',
+        testlib.post_succ(self.cluster, '/settings/security/passwordHashAlg',
                           data='SHA-1')
         test_hash('SHA-1')
 
-        testlib.post_succ(cluster, '/settings/security/passwordHashAlg',
+        testlib.post_succ(self.cluster, '/settings/security/passwordHashAlg',
                           data='argon2id')
         test_hash('argon2id')
 
-    def user_creation_respects_hash_alg_test(self, cluster):
-        testlib.post_succ(cluster, '/settings/security/passwordHashAlg',
+    def user_creation_respects_hash_alg_test(self):
+        testlib.post_succ(self.cluster, '/settings/security/passwordHashAlg',
                           data='argon2id')
-        pass_argon = create_user(cluster, self.username_argon)
+        pass_argon = create_user(self.cluster, self.username_argon)
 
-        testlib.post_succ(cluster, '/settings/security/passwordHashAlg',
+        testlib.post_succ(self.cluster, '/settings/security/passwordHashAlg',
                           data='pbkdf2-hmac-sha512')
-        pass_pbkdf2 = create_user(cluster, self.username_pbkdf2)
+        pass_pbkdf2 = create_user(self.cluster, self.username_pbkdf2)
 
         # should not be used but we still need to support it for backward
         # compat
-        testlib.post_succ(cluster, '/settings/security/passwordHashAlg',
+        testlib.post_succ(self.cluster, '/settings/security/passwordHashAlg',
                           data='SHA-1')
-        pass_sha = create_user(cluster, self.username_sha)
+        pass_sha = create_user(self.cluster, self.username_sha)
 
-        testlib.delete_succ(cluster, '/settings/security/passwordHashAlg')
+        testlib.delete_succ(self.cluster, '/settings/security/passwordHashAlg')
 
-        r = testlib.get_succ(cluster, '/settings/security/passwordHashAlg')
+        r = testlib.get_succ(self.cluster, '/settings/security/passwordHashAlg')
         assert r.text == '"argon2id"', 'unexpected default hash type'
 
         # Use backup to check that correct hash functions are used
-        backup = get_backup(cluster, 'user:local:*')
+        backup = get_backup(self.cluster, 'user:local:*')
 
         users = backup['users']
 
@@ -92,69 +97,73 @@ class PassHashingSettingsTests(testlib.BaseTestSet):
         verify_hash_type(users, self.username_sha, 'SHA-1')
 
         # Users still should be able to authenticate
-        testlib.get_succ(cluster, '/pools/default',
+        testlib.get_succ(self.cluster, '/pools/default',
                          auth=(self.username_argon, pass_argon))
-        testlib.get_succ(cluster, '/pools/default',
+        testlib.get_succ(self.cluster, '/pools/default',
                          auth=(self.username_pbkdf2, pass_pbkdf2))
-        testlib.get_succ(cluster, '/pools/default',
+        testlib.get_succ(self.cluster, '/pools/default',
                          auth=(self.username_sha, pass_sha))
 
-    def change_pass_respects_hash_alg_test(self, cluster):
-        testlib.post_succ(cluster, '/settings/security/passwordHashAlg',
+    def change_pass_respects_hash_alg_test(self):
+        testlib.post_succ(self.cluster, '/settings/security/passwordHashAlg',
                           data='argon2id')
-        password = create_user(cluster, self.test_username)
-        testlib.post_succ(cluster, '/settings/security/passwordHashAlg',
+        password = create_user(self.cluster, self.test_username)
+        testlib.post_succ(self.cluster, '/settings/security/passwordHashAlg',
                           data='pbkdf2-hmac-sha512')
 
-        touch_user_password(cluster, self.test_username, password)
+        touch_user_password(self.cluster, self.test_username, password)
 
-        backup = get_backup(cluster, f'user:local:{self.test_username}')
+        backup = get_backup(self.cluster, f'user:local:{self.test_username}')
 
         verify_hash_type(backup['users'], self.test_username,
                          'pbkdf2-hmac-sha512')
 
-    def scram_sha1_disable_test(self, cluster):
-        scram_sha_disable_test(cluster, self.test_username,
+    def scram_sha1_disable_test(self):
+        scram_sha_disable_test(self.cluster, self.test_username,
                                '/settings/security/scramSha1Enabled',
                                'SCRAM-SHA-1')
 
-    def scram_sha256_disable_test(self, cluster):
-        scram_sha_disable_test(cluster, self.test_username,
+    def scram_sha256_disable_test(self):
+        scram_sha_disable_test(self.cluster, self.test_username,
                                '/settings/security/scramSha256Enabled',
                                'SCRAM-SHA-256')
 
-    def scram_sha512_disable_test(self, cluster):
-        scram_sha_disable_test(cluster, self.test_username,
+    def scram_sha512_disable_test(self):
+        scram_sha_disable_test(self.cluster, self.test_username,
                                '/settings/security/scramSha512Enabled',
                                'SCRAM-SHA-512')
 
-    def scram_sha_iterations_test(self, cluster):
+    def scram_sha_iterations_test(self):
         def assert_iterations(expected):
-            backup = get_backup(cluster, f'user:local:{self.test_username}')
+            backup = get_backup(self.cluster,
+                                f'user:local:{self.test_username}')
             auth = backup['users'][0]['auth']
             assert expected == auth['scram-sha-512']['iterations']
             assert expected == auth['scram-sha-256']['iterations']
             assert expected == auth['scram-sha-1']['iterations']
 
-        testlib.delete_succ(cluster, '/settings/security/scramSha512Enabled')
-        testlib.delete_succ(cluster, '/settings/security/scramSha256Enabled')
-        testlib.delete_succ(cluster, '/settings/security/scramSha1Enabled')
-        testlib.delete_succ(cluster, '/settings/security/scramShaIterations')
+        testlib.delete_succ(self.cluster,
+                            '/settings/security/scramSha512Enabled')
+        testlib.delete_succ(self.cluster,
+                            '/settings/security/scramSha256Enabled')
+        testlib.delete_succ(self.cluster, '/settings/security/scramSha1Enabled')
+        testlib.delete_succ(self.cluster,
+                            '/settings/security/scramShaIterations')
 
-        password = create_user(cluster, self.test_username)
+        password = create_user(self.cluster, self.test_username)
         assert_iterations(15000)
 
         iterations = 12345
-        testlib.post_succ(cluster, '/settings/security/scramShaIterations',
+        testlib.post_succ(self.cluster, '/settings/security/scramShaIterations',
                           data=str(iterations))
 
-        password = create_user(cluster, self.test_username)
+        password = create_user(self.cluster, self.test_username)
         assert_iterations(iterations)
 
         iterations = 1234
-        testlib.post_succ(cluster, '/settings/security/scramShaIterations',
+        testlib.post_succ(self.cluster, '/settings/security/scramShaIterations',
                           data=str(iterations))
-        touch_user_password(cluster, self.test_username, password)
+        touch_user_password(self.cluster, self.test_username, password)
         assert_iterations(iterations)
 
 

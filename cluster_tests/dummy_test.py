@@ -15,17 +15,17 @@ class DummyTestSet(testlib.BaseTestSet):
     def requirements():
         return testlib.ClusterRequirements(num_nodes=1)
 
-    def setup(self, cluster):
+    def setup(self):
         pass
 
-    def teardown(self, cluster):
+    def teardown(self):
         pass
 
-    def test_teardown(self, cluster):
+    def test_teardown(self):
         pass
 
-    def dummy1_test(self, cluster):
+    def dummy1_test(self):
         assert False, "Dummy error reason"
 
-    def dummy2_test(self, cluster):
+    def dummy2_test(self):
         pass

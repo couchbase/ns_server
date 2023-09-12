@@ -25,7 +25,7 @@ class AutoCompactionTestSet(BucketTestSetBase):
     def requirements():
         return testlib.ClusterRequirements(memsize=1024)
 
-    def auto_compaction_defined_test(self, cluster):
+    def auto_compaction_defined_test(self):
         self.test_param("autoCompactionDefined",
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore"],
@@ -36,7 +36,7 @@ class AutoCompactionTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True, False])
 
-    def parallel_db_and_view_compaction_test(self, cluster):
+    def parallel_db_and_view_compaction_test(self):
         self.test_param("parallelDBAndViewCompaction",
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore", "magma"],
@@ -47,7 +47,7 @@ class AutoCompactionTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True, False])
 
-    def database_fragmentation_threshold_test(self, cluster):
+    def database_fragmentation_threshold_test(self):
         main_params = {
             "bucket_type": ["couchbase"],
             "storage_backend": ["couchstore"],
@@ -63,7 +63,7 @@ class AutoCompactionTestSet(BucketTestSetBase):
         self.test_param("databaseFragmentationThreshold[size]",
                         **main_params)
 
-    def view_fragmentation_threshold_test(self, cluster):
+    def view_fragmentation_threshold_test(self):
         main_params = {
             "bucket_type": ["couchbase"],
             "storage_backend": ["couchstore"],
@@ -79,7 +79,7 @@ class AutoCompactionTestSet(BucketTestSetBase):
         self.test_param("viewFragmentationThreshold[size]",
                         **main_params)
 
-    def purge_interval_test(self, cluster):
+    def purge_interval_test(self):
         self.test_param("purgeInterval",
                         bucket_type=["couchbase", "ephemeral"],
                         storage_backend=["couchstore", "magma"],
@@ -90,7 +90,7 @@ class AutoCompactionTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True, False])
 
-    def allowed_time_period_test(self, cluster):
+    def allowed_time_period_test(self):
         self.test_param(ALLOWED_TIME_PERIOD_PARAMS,
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore"],
@@ -101,7 +101,7 @@ class AutoCompactionTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True, False])
 
-    def magma_fragmentation_percentage_test(self, cluster):
+    def magma_fragmentation_percentage_test(self):
         self.test_param("magmaFragmentationPercentage",
                         bucket_type=["couchbase"],
                         storage_backend=["magma"],
@@ -112,7 +112,7 @@ class AutoCompactionTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True, False])
 
-    def global_test(self, cluster):
+    def global_test(self):
         self.init_limits(None, None, None)
 
         # Valid auto-compaction settings

@@ -33,11 +33,11 @@ class PromSdConfigTest(testlib.BaseTestSet):
     def requirements():
         return testlib.ClusterRequirements(num_nodes=3)
 
-    def setup(self, cluster):
+    def setup(self):
         self.alt_addr_url = "/node/controller/setupAlternateAddresses/external"
 
-    def teardown(self, cluster):
-        for node in cluster.nodes:
+    def teardown(self):
+        for node in self.cluster.nodes:
             testlib.delete(node, self.alt_addr_url)
 
     def build_hostname(self, node_num):
@@ -48,10 +48,10 @@ class PromSdConfigTest(testlib.BaseTestSet):
         return f"{Secure}{node_num}{node_num}{node_num}{node_num}"
 
     # Setup alternate addresses and mgmt ports
-    def setup_alt_addresses(self, cluster):
+    def setup_alt_addresses(self):
         node_num = 1
 
-        for node in cluster.nodes:
+        for node in self.cluster.nodes:
             alt_hostname = self.build_hostname(node_num)
             mgmt_port = self.build_portnum(node_num)
             mgmtSSL_port = self.build_portnum(node_num, True)
@@ -65,17 +65,17 @@ class PromSdConfigTest(testlib.BaseTestSet):
                                    "mgmtSSL": f"{mgmtSSL_port}"})
 
     # Verify the alternate addresses and kv ports
-    def verify_alt_addresses(self, cluster):
+    def verify_alt_addresses(self):
         retries = 60
         while retries > 0:
-            if self.verify_alt_addresses_inner(cluster):
+            if self.verify_alt_addresses_inner():
                 return
             time.sleep(0.5)
             retries -= 1
         raise RuntimeError("alternate addresses did not come up")
 
-    def verify_alt_addresses_inner(self, cluster):
-        r = testlib.get_succ(cluster, "/pools/default/nodeServices")
+    def verify_alt_addresses_inner(self):
+        r = testlib.get_succ(self.cluster, "/pools/default/nodeServices")
         rj = r.json()
         nodesExt = rj['nodesExt']
         node_num = 1
@@ -112,28 +112,24 @@ class PromSdConfigTest(testlib.BaseTestSet):
         print(f"\nTesting url: {url}")
         return url
 
-    def get_sd_config(self, cluster, ret_type="json", disposition="inline",
+    def get_sd_config(self, ret_type="json", disposition="inline",
                       port="secure", network="default"):
         url = self.build_url(ret_type, disposition, port, network)
-        return testlib.get_succ(cluster, url)
+        return testlib.get_succ(self.cluster, url)
 
-    def verify_sd_config(self, cluster):
-        self.validate_response(cluster,
-                               self.get_sd_config(cluster, disposition="attachment"))
-        self.validate_response(cluster,
-                               self.get_sd_config(cluster, ret_type="yaml",
+    def verify_sd_config(self):
+        self.validate_response(self.get_sd_config(disposition="attachment"))
+        self.validate_response(self.get_sd_config(ret_type="yaml",
                                                   port="insecure"))
-        self.validate_response(cluster,
-                               self.get_sd_config(cluster, ret_type="yaml",
+        self.validate_response(self.get_sd_config(ret_type="yaml",
                                                   port="insecure",
                                                   network="external"))
-        self.validate_response(cluster,
-                               self.get_sd_config(cluster, ret_type="yaml",
+        self.validate_response(self.get_sd_config(ret_type="yaml",
                                                   port="insecure",
                                                   network="external",
                                                   disposition="attachment"))
 
-    def validate_response(self, cluster, resp):
+    def validate_response(self, resp):
         if self.ret_type == "json":
             r = resp.json()
         else:  # yaml
@@ -148,7 +144,7 @@ class PromSdConfigTest(testlib.BaseTestSet):
             assert (content == expected)
 
         node_num = 1
-        for node in cluster.nodes:
+        for node in self.cluster.nodes:
             if self.network == "default":
                 host = node.host
                 port = node.port
@@ -165,19 +161,19 @@ class PromSdConfigTest(testlib.BaseTestSet):
 
         assert (len(targets) == 0)
 
-    def negative_tests(self, cluster):
+    def negative_tests(self):
         # Failures occur when alternate addresses/ports are not configured
         url = self.build_url("json", "inline", "insecure", "external")
-        testlib.get_fail(cluster, url, 400)
+        testlib.get_fail(self.cluster, url, 400)
         url = self.build_url("json", "inline", "secure", "external")
-        testlib.get_fail(cluster, url, 400)
+        testlib.get_fail(self.cluster, url, 400)
 
-    def sd_config_test(self, cluster):
+    def sd_config_test(self):
         # Some negative tests before alternate addresses are specified
-        self.negative_tests(cluster)
+        self.negative_tests()
 
         # Setup alternate addresses/ports
-        self.setup_alt_addresses(cluster)
-        self.verify_alt_addresses(cluster)
+        self.setup_alt_addresses()
+        self.verify_alt_addresses()
         # Positive tests
-        self.verify_sd_config(cluster)
+        self.verify_sd_config()

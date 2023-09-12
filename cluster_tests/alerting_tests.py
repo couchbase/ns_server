@@ -19,31 +19,32 @@ class AlertTests(testlib.BaseTestSet):
     def requirements():
         return testlib.ClusterRequirements()
 
-    def setup(self, cluster):
-        testlib.diag_eval(cluster, 'menelaus_web_alerts_srv:reset().')
-        limits = testlib.get_succ(cluster, '/settings/alerts/limits').json()
+    def setup(self):
+        testlib.diag_eval(self.cluster, 'menelaus_web_alerts_srv:reset().')
+        limits = testlib.get_succ(self.cluster, '/settings/alerts/limits')\
+            .json()
         self.prev_cert_expiration = limits['certExpirationDays']
 
         # Set alert check interval to 1s
-        testlib.diag_eval(cluster,
+        testlib.diag_eval(self.cluster,
                           'ns_config:set({timeout,{menelaus_web_alerts_srv,'
                           'sample_rate}}, 1000)')
-        testlib.diag_eval(cluster,
+        testlib.diag_eval(self.cluster,
                           'menelaus_web_alerts_srv ! check_alerts')
 
-    def teardown(self, cluster):
-        testlib.diag_eval(cluster, 'menelaus_web_alerts_srv:reset().')
-        testlib.post_succ(cluster, '/settings/alerts/limits',
+    def teardown(self):
+        testlib.diag_eval(self.cluster, 'menelaus_web_alerts_srv:reset().')
+        testlib.post_succ(self.cluster, '/settings/alerts/limits',
                           data={'certExpirationDays':
                                 str(self.prev_cert_expiration)})
 
         # Set alert check interval back to default 60s
-        testlib.diag_eval(cluster,
+        testlib.diag_eval(self.cluster,
                           'ns_config:delete({timeout,{menelaus_web_alerts_srv,'
                           'sample_rate}})')
 
-    def cert_about_to_expire_alert_test(self, cluster):
-        node_data_dir = cluster.connected_nodes[0].data_path()
+    def cert_about_to_expire_alert_test(self):
+        node_data_dir = self.cluster.connected_nodes[0].data_path()
         certs_dir = os.path.join(node_data_dir, 'config', 'certs')
         cert_path = os.path.join(certs_dir, 'chain.pem')
         client_cert_path = os.path.join(certs_dir, 'client_chain.pem')
@@ -51,11 +52,11 @@ class AlertTests(testlib.BaseTestSet):
         expiration2 = get_expiration_for_cert(client_cert_path)
         max_expiration = max(expiration1, expiration2)
 
-        testlib.post_succ(cluster, '/settings/alerts/limits',
+        testlib.post_succ(self.cluster, '/settings/alerts/limits',
                           data={'certExpirationDays': str(max_expiration)})
 
         def check_alert():
-            r = testlib.get_succ(cluster, '/pools/default').json()
+            r = testlib.get_succ(self.cluster, '/pools/default').json()
             alerts = r['alerts']
             if len(alerts) < 2:
                 print(f"Alert check failed, expected >= 2 alerts, got {alerts}")

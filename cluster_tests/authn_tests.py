@@ -20,7 +20,7 @@ class AuthnTests(testlib.BaseTestSet):
         return testlib.ClusterRequirements(num_nodes=1)
 
 
-    def setup(self, cluster):
+    def setup(self):
         self.testEndpoint = "/pools/default"
         username = testlib.random_str(8)
         wrong_user = testlib.random_str(8)
@@ -29,87 +29,94 @@ class AuthnTests(testlib.BaseTestSet):
         self.creds = (username, password)
         self.wrong_pass_creds = (username, wrong_password)
         self.wrong_user_creds = (wrong_user, password)
-        testlib.put_succ(cluster, f'/settings/rbac/users/local/{username}',
+        testlib.put_succ(self.cluster, f'/settings/rbac/users/local/{username}',
                          data={'roles': 'ro_admin', 'password': password})
 
 
-    def teardown(self, cluster):
+    def teardown(self):
         (username, password) = self.creds
-        testlib.ensure_deleted(cluster, f'/settings/rbac/users/local/{username}')
+        testlib.ensure_deleted(self.cluster,
+                               f'/settings/rbac/users/local/{username}')
 
 
-    def basic_auth_test(self, cluster):
-        testlib.get_fail(cluster, '/pools/default', 401, auth=None)
-        testlib.get_succ(cluster, self.testEndpoint, auth=self.creds)
-        r = testlib.get_fail(cluster, self.testEndpoint, 401,
+    def basic_auth_test(self):
+        testlib.get_fail(self.cluster, '/pools/default', 401, auth=None)
+        testlib.get_succ(self.cluster, self.testEndpoint, auth=self.creds)
+        r = testlib.get_fail(self.cluster, self.testEndpoint, 401,
                              auth=self.wrong_user_creds)
         assert 'WWW-Authenticate' in r.headers
         assert 'Basic realm="Couchbase Server Admin / REST"' == r.headers['WWW-Authenticate']
-        r = testlib.get_fail(cluster, self.testEndpoint, 401, auth=self.wrong_pass_creds)
+        r = testlib.get_fail(self.cluster, self.testEndpoint, 401,
+                             auth=self.wrong_pass_creds)
         assert 'WWW-Authenticate' in r.headers
         assert 'Basic realm="Couchbase Server Admin / REST"' == r.headers['WWW-Authenticate']
-        r = testlib.get_fail(cluster, self.testEndpoint, 401,
+        r = testlib.get_fail(self.cluster, self.testEndpoint, 401,
                              auth=self.wrong_pass_creds,
                              headers={'invalid-auth-response':'on'})
         assert 'WWW-Authenticate' not in r.headers
 
 
-    def scram_sha512_test(self, cluster):
-        self.scram_sha_test_mech(cluster, 'SCRAM-SHA-512')
+    def scram_sha512_test(self):
+        self.scram_sha_test_mech('SCRAM-SHA-512')
 
 
-    def scram_sha256_test(self, cluster):
-        self.scram_sha_test_mech(cluster, 'SCRAM-SHA-256')
+    def scram_sha256_test(self):
+        self.scram_sha_test_mech('SCRAM-SHA-256')
 
 
-    def scram_sha1_test(self, cluster):
-        self.scram_sha_test_mech(cluster, 'SCRAM-SHA-1')
+    def scram_sha1_test(self):
+        self.scram_sha_test_mech('SCRAM-SHA-1')
 
 
-    def scram_sha_test_mech(self, cluster, mech):
-        r = scram_sha_auth(mech, self.testEndpoint, self.creds, cluster)
+    def scram_sha_test_mech(self, mech):
+        r = scram_sha_auth(mech, self.testEndpoint, self.creds, self.cluster)
         testlib.assert_http_code(200, r)
-        r = scram_sha_auth(mech, self.testEndpoint, self.wrong_pass_creds, cluster)
+        r = scram_sha_auth(mech, self.testEndpoint, self.wrong_pass_creds,
+                           self.cluster)
         testlib.assert_http_code(401, r)
-        r = scram_sha_auth(mech, self.testEndpoint, self.wrong_user_creds, cluster)
+        r = scram_sha_auth(mech, self.testEndpoint, self.wrong_user_creds,
+                           self.cluster)
         testlib.assert_http_code(401, r)
 
 
-    def local_token_test(self, cluster):
-        tokenPath = os.path.join(cluster.connected_nodes[0].data_path(),
+    def local_token_test(self):
+        tokenPath = os.path.join(self.cluster.connected_nodes[0].data_path(),
                                  "localtoken")
         with open(tokenPath, 'r') as f:
             token = f.read().rstrip()
-            testlib.get_succ(cluster, '/diag/password',
+            testlib.get_succ(self.cluster, '/diag/password',
                              auth=('@localtoken', token))
-            testlib.get_fail(cluster, '/diag/password', 401,
+            testlib.get_fail(self.cluster, '/diag/password', 401,
                              auth=('@localtoken', token + 'foo'))
 
 
-    def uitoken_test(self, cluster):
+    def uitoken_test(self):
         (user, password) = self.creds
         (wrong_user, wrong_password) = self.wrong_pass_creds
-        testlib.post_fail(cluster, '/uilogin', 400, auth=None,
+        testlib.post_fail(self.cluster, '/uilogin', 400, auth=None,
                           data={'user': wrong_user, 'password': wrong_password})
         session = requests.Session()
-        url = cluster.nodes[0].url + '/uilogin'
+        url = self.cluster.nodes[0].url + '/uilogin'
         headers={'Host': testlib.random_str(8), 'ns-server-ui': 'yes'}
-        r = session.post(cluster.nodes[0].url + '/uilogin',
+        r = session.post(self.cluster.nodes[0].url + '/uilogin',
                          data={'user': user, 'password': password},
                          headers=headers)
         testlib.assert_http_code(200, r)
-        r = session.get(cluster.nodes[0].url + self.testEndpoint, headers=headers)
+        r = session.get(self.cluster.nodes[0].url + self.testEndpoint,
+                        headers=headers)
         testlib.assert_http_code(200, r)
-        r = session.post(cluster.nodes[0].url + '/uilogout', headers=headers)
+        r = session.post(self.cluster.nodes[0].url + '/uilogout',
+                         headers=headers)
         testlib.assert_http_code(200, r)
-        r = session.get(cluster.nodes[0].url + self.testEndpoint, headers=headers)
+        r = session.get(self.cluster.nodes[0].url + self.testEndpoint,
+                        headers=headers)
         testlib.assert_http_code(401, r)
 
 
-    def on_behalf_of_test(self, cluster):
+    def on_behalf_of_test(self):
         (user, _) = self.creds
         OBO = base64.b64encode(f"{user}:local".encode('ascii')).decode()
-        r = testlib.get_succ(cluster, '/whoami',
+        r = testlib.get_succ(self.cluster, '/whoami',
                              headers={'cb-on-behalf-of': OBO})
         res = r.json()
         assert [{'role': 'ro_admin'}] == res['roles']

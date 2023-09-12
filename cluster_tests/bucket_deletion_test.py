@@ -21,29 +21,30 @@ class BucketDeletionTest(testlib.BaseTestSet):
     def requirements():
         return testlib.ClusterRequirements(num_nodes=2)
 
-    def setup(self, cluster):
-        testlib.delete_all_buckets(cluster)
+    def setup(self):
+        testlib.delete_all_buckets(self.cluster)
         for i in range(1, 3):
-            testlib.post_succ(cluster, "/pools/default/buckets",
+            testlib.post_succ(self.cluster, "/pools/default/buckets",
                               expected_code=202,
                               data={'name': f'bucket-{i}',
                                     'storageBackend': 'couchstore',
                                     'replicaNumber': 1,
                                     'ramQuotaMB': 100})
         # Delay shutdown of bucket-1 by 5 secs.
-        testlib.post_succ(cluster, "/diag/eval",
+        testlib.post_succ(self.cluster, "/diag/eval",
                           data="testconditions:set({wait_for_bucket_shutdown, "
                                "\"bucket-1\"}, {delay, 5000})")
 
-    def teardown(self, cluster):
-        testlib.post_succ(cluster, "/diag/eval",
+    def teardown(self):
+        testlib.post_succ(self.cluster, "/diag/eval",
                           data=
                           "testconditions:delete({wait_for_bucket_shutdown, "
                           "\"bucket-1\"})")
 
-    def concurrent_bucket_deletion_test(self, cluster):
-        p = Process(target=delete_bucket, args=(cluster.nodes[0], "bucket-1"))
+    def concurrent_bucket_deletion_test(self):
+        p = Process(target=delete_bucket,
+                    args=(self.cluster.nodes[0], "bucket-1"))
         p.start()
-        delete_bucket(cluster.nodes[0], "bucket-2")
+        delete_bucket(self.cluster.nodes[0], "bucket-2")
         p.join()
         assert p.exitcode == 0

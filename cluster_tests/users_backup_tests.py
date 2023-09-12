@@ -16,37 +16,37 @@ class UsersBackupTests(testlib.BaseTestSet):
         return testlib.ClusterRequirements(edition="Enterprise")
 
 
-    def setup(self, cluster):
+    def setup(self):
         self.username = testlib.random_str(16)
         self.username_ext = testlib.random_str(16)
         self.groupname = testlib.random_str(16)
         self.group_description = testlib.random_str(16)
         self.password = testlib.random_str(16)
-        put_group(cluster, self.groupname, self.group_description)
-        put_user(cluster, self.username, self.password, self.groupname)
-        put_user(cluster, self.username_ext, None, self.groupname,
+        put_group(self.cluster, self.groupname, self.group_description)
+        put_user(self.cluster, self.username, self.password, self.groupname)
+        put_user(self.cluster, self.username_ext, None, self.groupname,
                  domain='external')
-        local_users = testlib.get_succ(cluster,
+        local_users = testlib.get_succ(self.cluster,
                                        '/settings/rbac/users/local').json()
         self.local_users_count = len(local_users)
-        ext_users = testlib.get_succ(cluster,
+        ext_users = testlib.get_succ(self.cluster,
                                      '/settings/rbac/users/external').json()
         self.external_users_count = len(ext_users)
-        groups = testlib.get_succ(cluster, '/settings/rbac/groups').json()
+        groups = testlib.get_succ(self.cluster, '/settings/rbac/groups').json()
         self.groups_count = len(groups)
 
 
-    def teardown(self, cluster):
+    def teardown(self):
         testlib.ensure_deleted(
-          cluster, f'/settings/rbac/users/local/{self.username}')
+          self.cluster, f'/settings/rbac/users/local/{self.username}')
         testlib.ensure_deleted(
-          cluster, f'/settings/rbac/users/external/{self.username_ext}')
+          self.cluster, f'/settings/rbac/users/external/{self.username_ext}')
         testlib.ensure_deleted(
-          cluster, f'/settings/rbac/groups/{self.groupname}')
+          self.cluster, f'/settings/rbac/groups/{self.groupname}')
 
 
-    def basic_backup_test(self, cluster):
-        backup = testlib.get_succ(cluster, '/settings/rbac/backup').json()
+    def basic_backup_test(self):
+        backup = testlib.get_succ(self.cluster, '/settings/rbac/backup').json()
         assert 'version' in backup
         assert backup['version'] == '1'
         assert 'admin' in backup
@@ -55,9 +55,9 @@ class UsersBackupTests(testlib.BaseTestSet):
         assert len(backup['groups']) == self.groups_count
 
 
-    def no_admin_backup_test(self, cluster):
+    def no_admin_backup_test(self):
         params = {'exclude': 'admin'}
-        backup = testlib.get_succ(cluster, '/settings/rbac/backup',
+        backup = testlib.get_succ(self.cluster, '/settings/rbac/backup',
                                   params=params).json()
         assert 'admin' not in backup
         assert len(backup['users']) == self.local_users_count + \
@@ -65,44 +65,44 @@ class UsersBackupTests(testlib.BaseTestSet):
         assert len(backup['groups']) == self.groups_count
 
 
-    def empty_backup_test(self, cluster):
+    def empty_backup_test(self):
         params = {'exclude': '*'}
-        backup = testlib.get_succ(cluster, '/settings/rbac/backup',
+        backup = testlib.get_succ(self.cluster, '/settings/rbac/backup',
                                   params=params).json()
         assert 'admin' not in backup
         assert len(backup['users']) == 0
         assert len(backup['groups']) == 0
 
 
-    def include_exclude_mutually_exclusive_test(self, cluster):
+    def include_exclude_mutually_exclusive_test(self):
         params = {'exclude': 'user:*:*', 'include': 'admin'}
-        res = testlib.get_fail(cluster, '/settings/rbac/backup', 400,
+        res = testlib.get_fail(self.cluster, '/settings/rbac/backup', 400,
                                params=params).json()
         assert res['errors']['include'] == \
                'include and exclude are mutually exclusive'
 
 
-    def only_admin_backup_test(self, cluster):
+    def only_admin_backup_test(self):
         params = {'include': 'admin'}
-        backup = testlib.get_succ(cluster, '/settings/rbac/backup',
+        backup = testlib.get_succ(self.cluster, '/settings/rbac/backup',
                                   params=params).json()
         assert 'admin' in backup
         assert len(backup['users']) == 0
         assert len(backup['groups']) == 0
 
 
-    def only_groups_backup_test(self, cluster):
+    def only_groups_backup_test(self):
         params = {'exclude': ['user:*:*', 'admin']}
-        backup = testlib.get_succ(cluster, '/settings/rbac/backup',
+        backup = testlib.get_succ(self.cluster, '/settings/rbac/backup',
                                   params=params).json()
         assert 'admin' not in backup
         assert len(backup['users']) == 0
         assert len(backup['groups']) == self.groups_count
 
 
-    def only_local_users_backup_test(self, cluster):
+    def only_local_users_backup_test(self):
         params = {'exclude': ['user:external:*', 'admin', 'group:*']}
-        backup = testlib.get_succ(cluster, '/settings/rbac/backup',
+        backup = testlib.get_succ(self.cluster, '/settings/rbac/backup',
                                   params=params).json()
         assert 'admin' not in backup
         assert len(backup['users']) == self.local_users_count
@@ -111,9 +111,9 @@ class UsersBackupTests(testlib.BaseTestSet):
             assert u['domain'] == 'local'
 
 
-    def only_local_users_backup2_test(self, cluster):
+    def only_local_users_backup2_test(self):
         params = {'include': 'user:local:*'}
-        backup = testlib.get_succ(cluster, '/settings/rbac/backup',
+        backup = testlib.get_succ(self.cluster, '/settings/rbac/backup',
                                   params=params).json()
         assert 'admin' not in backup
         assert len(backup['users']) == self.local_users_count
@@ -122,10 +122,10 @@ class UsersBackupTests(testlib.BaseTestSet):
             assert u['domain'] == 'local'
 
 
-    def only_specific_user_and_group_backup_test(self, cluster):
+    def only_specific_user_and_group_backup_test(self):
         params = {'include': [f'user:local:{self.username}',
                               f'group:{self.groupname}']}
-        backup = testlib.get_succ(cluster, '/settings/rbac/backup',
+        backup = testlib.get_succ(self.cluster, '/settings/rbac/backup',
                                   params=params).json()
         assert 'admin' not in backup
         assert len(backup['users']) == 1
@@ -134,8 +134,8 @@ class UsersBackupTests(testlib.BaseTestSet):
         assert backup['groups'][0]['name'] == self.groupname
 
 
-    def restore_users_and_groups_test(self, cluster):
-        backup = testlib.get_succ(cluster, '/settings/rbac/backup').json()
+    def restore_users_and_groups_test(self):
+        backup = testlib.get_succ(self.cluster, '/settings/rbac/backup').json()
 
         existing_users_count = self.local_users_count + \
                                self.external_users_count
@@ -150,43 +150,46 @@ class UsersBackupTests(testlib.BaseTestSet):
         # restore has not overwritten that user
         new_password = testlib.random_str(16)
         new_group_description = testlib.random_str(16)
-        put_user(cluster, self.username, new_password, self.groupname)
-        put_group(cluster, self.groupname, new_group_description)
-        restore(cluster, backup, can_overwrite=False,
+        put_user(self.cluster, self.username, new_password, self.groupname)
+        put_group(self.cluster, self.groupname, new_group_description)
+        restore(self.cluster, backup, can_overwrite=False,
                 expected_counters={'usersSkipped': users_count + 1,
                                    'groupsSkipped': groups_count})
                                                  # +1 because we also skip Admin
-        check_user_pass(cluster, self.username, new_password)
-        check_user_pass_fail(cluster, self.username, self.password)
-        check_group_description(cluster, self.groupname, new_group_description)
+        check_user_pass(self.cluster, self.username, new_password)
+        check_user_pass_fail(self.cluster, self.username, self.password)
+        check_group_description(self.cluster, self.groupname,
+                                new_group_description)
 
         # Now trying to restore users again, but now overwriting users
-        restore(cluster, backup, can_overwrite=True,
+        restore(self.cluster, backup, can_overwrite=True,
                 expected_counters={'usersOverwritten': users_count + 1,
                                    'groupsOverwritten': groups_count})
                                             # +1 because we also overwrite Admin
 
         # Now new_password should not work, because we have restored old user
         # from the backup
-        check_user_pass(cluster, self.username, self.password)
-        check_user_pass_fail(cluster, self.username, new_password)
-        check_group_description(cluster, self.groupname, self.group_description)
+        check_user_pass(self.cluster, self.username, self.password)
+        check_user_pass_fail(self.cluster, self.username, new_password)
+        check_group_description(self.cluster, self.groupname,
+                                self.group_description)
 
         # Now delete the user and check that it will be recreated
-        testlib.delete_succ(cluster,
+        testlib.delete_succ(self.cluster,
                             f'/settings/rbac/users/local/{self.username}')
-        testlib.delete_succ(cluster,
+        testlib.delete_succ(self.cluster,
                             f'/settings/rbac/groups/{self.groupname}')
 
-        restore(cluster, backup, can_overwrite=False,
+        restore(self.cluster, backup, can_overwrite=False,
                 expected_counters={'usersCreated': 1,
                                    'usersSkipped': users_count,
                                    'groupsCreated': 1,
                                    'groupsSkipped': groups_count - 1})
 
         # Now password should work, because the user is restored from backup
-        check_user_pass(cluster, self.username, self.password)
-        check_group_description(cluster, self.groupname, self.group_description)
+        check_user_pass(self.cluster, self.username, self.password)
+        check_group_description(self.cluster, self.groupname,
+                                self.group_description)
 
 
 def restore(cluster, backup, expected_counters=None, can_overwrite=False):

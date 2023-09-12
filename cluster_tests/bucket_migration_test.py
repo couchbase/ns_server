@@ -100,79 +100,80 @@ class BucketMigrationTest(testlib.BaseTestSet):
         return testlib.ClusterRequirements(num_nodes=4, memsize=2*1024,
                                            num_connected=2)
 
-    def setup(self, cluster):
-        testlib.delete_all_buckets(cluster)
+    def setup(self):
+        testlib.delete_all_buckets(self.cluster)
 
-    def teardown(self, cluster):
-        testlib.delete_all_buckets(cluster)
+    def teardown(self):
+        testlib.delete_all_buckets(self.cluster)
 
-    def migrate_storage_mode_test(self, cluster):
+    def migrate_storage_mode_test(self):
         # couchstore -> magma migration.
-        create_and_update_bucket(cluster, "bucket-1", "couchstore", "magma",
-                                 1024)
+        create_and_update_bucket(self.cluster, "bucket-1", "couchstore",
+                                 "magma", 1024)
         assert_per_node_storage_mode_keys_added(
-            cluster, "bucket-1", "couchstore")
+            self.cluster, "bucket-1", "couchstore")
 
-        cluster.delete_bucket("bucket-1")
+        self.cluster.delete_bucket("bucket-1")
 
         # magma -> couchstore migration
-        create_and_update_bucket(cluster, "bucket-2", "magma", "couchstore",
-                                 1024)
-        assert_per_node_storage_mode_keys_added(cluster, "bucket-2", "magma")
-        cluster.delete_bucket("bucket-2")
+        create_and_update_bucket(self.cluster, "bucket-2", "magma",
+                                 "couchstore", 1024)
+        assert_per_node_storage_mode_keys_added(self.cluster, "bucket-2",
+                                                "magma")
+        self.cluster.delete_bucket("bucket-2")
 
-    def migrate_storage_mode_via_rebalance_test(self, cluster):
+    def migrate_storage_mode_via_rebalance_test(self):
         # Delete buckets irrelevant to this test, to reduce the rebalance
         # completion times.
-        testlib.delete_all_buckets(cluster)
-        create_and_update_bucket(cluster, "bucket-1", "couchstore", "magma",
-                                 1024)
-        assert_per_node_storage_mode_keys_added(cluster, "bucket-1",
+        testlib.delete_all_buckets(self.cluster)
+        create_and_update_bucket(self.cluster, "bucket-1", "couchstore",
+                                 "magma", 1024)
+        assert_per_node_storage_mode_keys_added(self.cluster, "bucket-1",
                                                 "couchstore")
 
-        old_nodes = cluster.nodes[0:2]
-        old_otp_nodes = testlib.get_otp_nodes(cluster)
+        old_nodes = self.cluster.nodes[0:2]
+        old_otp_nodes = testlib.get_otp_nodes(self.cluster)
 
         for i, old_node in enumerate(old_nodes):
-            new_node = cluster.nodes[2 + i]
-            cluster.add_node(new_node, verbose=True)
+            new_node = self.cluster.nodes[2 + i]
+            self.cluster.add_node(new_node, verbose=True)
             # Rebalance out the old node and confirm the per-node storage-mode
             # key is removed.
-            cluster.rebalance(ejected_nodes=[old_node], wait=True,
+            self.cluster.rebalance(ejected_nodes=[old_node], wait=True,
                               verbose=True)
 
             assert_per_node_storage_mode_in_memcached(
                 new_node, "bucket-1", "magma")
             assert_per_node_storage_mode_not_present(
-                cluster, new_node, "bucket-1")
+                self.cluster, new_node, "bucket-1")
             assert_ejected_node_override_props_deleted(
-                cluster, old_otp_nodes[old_node.hostname()], "bucket-1")
+                self.cluster, old_otp_nodes[old_node.hostname()], "bucket-1")
 
-    def migrate_storage_mode_via_failover_test(self, cluster):
-        create_and_update_bucket(cluster, "bucket-2", "couchstore", "magma",
-                                 1024)
-        assert_per_node_storage_mode_keys_added(cluster, "bucket-2",
+    def migrate_storage_mode_via_failover_test(self):
+        create_and_update_bucket(self.cluster, "bucket-2", "couchstore",
+                                 "magma", 1024)
+        assert_per_node_storage_mode_keys_added(self.cluster, "bucket-2",
                                                 "couchstore")
-        nodes = cluster.connected_nodes
+        nodes = self.cluster.connected_nodes
         for node in nodes:
-            cluster.failover_node(node, graceful=False)
-            cluster.recover_node(node, do_rebalance=True)
+            self.cluster.failover_node(node, graceful=False)
+            self.cluster.recover_node(node, do_rebalance=True)
 
             assert_per_node_storage_mode_in_memcached(
                 node, "bucket-2", "magma")
             assert_per_node_storage_mode_not_present(
-                cluster, node, "bucket-2")
+                self.cluster, node, "bucket-2")
 
-    def perform_delta_recovery_mid_migration_test(self, cluster):
-        testlib.delete_all_buckets(cluster)
+    def perform_delta_recovery_mid_migration_test(self):
+        testlib.delete_all_buckets(self.cluster)
         bucket_name = "bucket-3"
-        create_and_update_bucket(cluster, bucket_name=bucket_name,
+        create_and_update_bucket(self.cluster, bucket_name=bucket_name,
                                  old_storage_mode="couchstore",
                                  new_storage_mode="magma",
                                  ram_quota_mb=1024)
 
         def is_bucket_online_on_all_nodes():
-            r = get_bucket(cluster, bucket_name)
+            r = get_bucket(self.cluster, bucket_name)
             return all([node['status'] == "healthy" for node in r['nodes']])
 
         testlib.poll_for_condition(
@@ -183,12 +184,12 @@ class BucketMigrationTest(testlib.BaseTestSet):
         # per-node override props and storage_mode in memcached on the
         # recovered node should be the old_storage_mode.
 
-        failover_node = cluster.connected_nodes[0]
-        cluster.failover_node(failover_node, graceful=False)
-        cluster.recover_node(
+        failover_node = self.cluster.connected_nodes[0]
+        self.cluster.failover_node(failover_node, graceful=False)
+        self.cluster.recover_node(
             failover_node, recovery_type="delta", do_rebalance=True)
 
         assert_per_node_storage_mode_keys_added(
-            cluster, bucket_name, "couchstore")
+            self.cluster, bucket_name, "couchstore")
         assert_per_node_storage_mode_in_memcached(
             failover_node, bucket_name, "couchstore")
