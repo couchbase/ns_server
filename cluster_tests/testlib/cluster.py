@@ -193,6 +193,15 @@ class Cluster:
                 assert error is expected_error, \
                     f"Expected final rebalance status: {expected_error}\n" \
                     f"Found: {error}"
+
+                # Assert that the cluster's nodes are as expected
+                resp = testlib.get_succ(self, "/pools/default")
+                nodes = [node["hostname"] for node in resp.json()["nodes"]]
+                expected_nodes = [node.hostname()
+                                  for node in self.connected_nodes]
+                assert sorted(nodes) == sorted(expected_nodes), \
+                    f"Cluster.connected_nodes is no longer consistent, " \
+                    f"Expected {expected_nodes}, but found: {nodes}"
         else:
             r = testlib.post_fail(self, "/controller/rebalance", data=data,
                                   expected_code=initial_code)
