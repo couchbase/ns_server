@@ -1523,6 +1523,24 @@
               "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid": ""
           }
+      },
+      {
+          "id": 8274,
+          "name": "rotate internal password",
+          "description": "Internal password has been rotated",
+          "sync" : false,
+          "enabled" : true,
+          "filtering_permitted" : false,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : "",
+              "remote" : {"ip" : "", "port" : 1},
+              "local" : {"ip" : "", "port" : 1}
+          },
+          "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
+              "sessionid" : ""
+          }
       }
     ]
 }

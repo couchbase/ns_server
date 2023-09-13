@@ -168,5 +168,6 @@ handle_rotate_internal_creds(Req) ->
             ErrStr = <<"System is being reconfigured. Please try later.">>,
             reply_json(Req, [ErrStr], 503);
         _ ->
+            ns_audit:password_rotated(Req),
             reply_json(Req, [], 200)
     end.

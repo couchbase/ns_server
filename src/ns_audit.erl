@@ -79,7 +79,8 @@
          disable_auto_reprovision/1,
          auth_failure/1,
          rbac_info_retrieved/2,
-         admin_password_reset/1
+         admin_password_reset/1,
+         password_rotated/1
         ]).
 
 -export([start_link/0, stats/0]).
@@ -475,7 +476,9 @@ code(serverless_settings) ->
 code(modify_resource_settings) ->
     8272;
 code(modify_saml_settings) ->
-    8273.
+    8273;
+code(internal_password_rotated) ->
+    8274.
 
 send_to_memcached(ParentPID, {Code, EncodedBody, IsSync}) ->
     case (catch ns_memcached_sockets_pool:executing_on_socket(
@@ -1033,6 +1036,9 @@ rbac_info_retrieved(Req, Type) ->
 
 admin_password_reset(Req) ->
     put(admin_password_reset, Req, []).
+
+password_rotated(Req) ->
+    put(internal_password_rotated, Req, []).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
