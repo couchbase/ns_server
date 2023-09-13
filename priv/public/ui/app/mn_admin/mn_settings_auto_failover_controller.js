@@ -72,7 +72,18 @@ function mnSettingsAutoFailoverController($scope, $q, mnPromiseHelper, mnSetting
       if (!$scope.rbac.cluster.settings.write) {
         return;
       }
-      mnPromiseHelper(vm, mnSettingsAutoFailoverService[method](dataFunc(), {just_validate: 1}))
+
+      var values = dataFunc();
+      // autofailover timeout doesn't pass minimum of 5 seconds validation (input min="5")
+      if (method === "saveAutoFailoverSettings" && values.timeout === undefined) {
+        // show custom error and don't send validation to the server
+        var err = { "timeout" : "The value must be in range from 5 to 3600" };
+        vm[method + "Errors"] = err;
+        $scope.settingsClusterCtl[method + "Errors"] = err;
+        return;
+      }
+
+      mnPromiseHelper(vm, mnSettingsAutoFailoverService[method](values, {just_validate: 1}))
         .catchErrors(function (rv) {
           vm[method + "Errors"] = rv;
           $scope.settingsClusterCtl[method + "Errors"] = rv;
