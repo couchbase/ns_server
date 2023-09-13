@@ -136,7 +136,8 @@ def safe_test_function_call(testset, testfunction, args, verbose=False,
             res = apply_with_seed(testset, testfunction, args, seed)
     except Exception as e:
         cscheme = None if config['colors'] else traceback.ColorSchemes.none
-        traceback.print_exc(fmt=traceback.Format(color_scheme=cscheme))
+        traceback.print_exc(fmt=traceback.Format(color_scheme=cscheme),
+                            file_=sys.stdout)
         error = (testname, e)
     return res, error
 
