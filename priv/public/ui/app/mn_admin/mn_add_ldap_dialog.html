@@ -716,6 +716,32 @@ licenses/APL2.txt.
                 {{addLdapDialogCtl.errors.nestedGroupsMaxDepth}}
               </div>
             </div>
+            <div
+               class="formrow"
+               ng-show="addLdapDialogCtl.mnPoolDefault.export.compat.atLeast76">
+              <label
+                 class="inline"
+                 for="for-middlebox-comp-mode">
+                Middlebox Compatibility
+              </label>
+              <div>
+                <input
+                   type="checkbox"
+                   id="for-middlebox-comp-mode"
+                   name="middleboxCompMode"
+                   ng-model="addLdapDialogCtl.config.advanced.middleboxCompMode">
+                <label
+                   for="for-middlebox-comp-mode"
+                   class="checkbox">
+                  Enable Middlebox Compatibility
+                </label>
+              </div>
+              <div
+                 class="error"
+                 ng-show="addLdapDialogCtl.errors.middleboxCompMode">
+                {{addLdapDialogCtl.errors.middleboxCompMode}}
+              </div>
+            </div>
           </div>
         </div>
 

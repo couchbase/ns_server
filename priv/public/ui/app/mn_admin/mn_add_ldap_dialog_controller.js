@@ -10,8 +10,8 @@ licenses/APL2.txt.
 
 export default mnAddLDAPDialogController;
 
-mnAddLDAPDialogController.$inject = ["mnUserRolesService", "mnPromiseHelper", "$uibModalInstance"];
-function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModalInstance) {
+mnAddLDAPDialogController.$inject = ["mnUserRolesService", "mnPromiseHelper", "$uibModalInstance", "mnPoolDefault"];
+function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModalInstance, mnPoolDefault) {
   var vm = this;
 
   vm.config = {
@@ -51,6 +51,10 @@ function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModa
     }
   };
 
+  if (mnPoolDefault.export.compat.atLeast76) {
+    vm.config.advanced.middleboxCompMode = false;
+  }
+
   vm.save = save;
   vm.checkConnectivity = checkConnectivity;
   vm.checkAuthentication = checkAuthentication;
@@ -58,6 +62,7 @@ function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModa
   vm.clearLdapCache = clearLdapCache;
   vm.removeGroupsQueryErrors = removeGroupsQueryErrors;
   vm.maybeDisableClientCert = maybeDisableClientCert;
+  vm.mnPoolDefault = mnPoolDefault;
   activate();
 
   function activate() {
@@ -309,6 +314,11 @@ function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModa
 
   function save() {
     removeErrors();
+
+    if (!mnPoolDefault.export.compat.atLeast76) {
+      delete vm.config.advanced.middleboxCompMode;
+    }
+
     var config = Object.assign({}, getConnectivitySettings(),
                                getAuthenticationSettings(),
                                getQueryForGroupsSettings(),
