@@ -351,3 +351,43 @@ class Cluster:
             retries -= 1
 
         raise RuntimeError("orchestrator node not found")
+
+    def toggle_n2n_encryption(self, enable=True):
+        """
+        Helper function to enable/disable node to node encryption for all nodes
+        in cluster.
+        Note: It doesn't change nodes in self.nodes that are not members of
+        the cluster
+        :param self: Cluster object to send requests to
+        :param enable: Whether node to node encryption should be enabled.
+        """
+        # Need to disable autoFailover before other settings can change
+        r = testlib.get_succ(self, '/settings/autoFailover').json()
+        autofailover_enabled = r['enabled']
+        autofailover_timeout = r['timeout']
+        if autofailover_enabled:
+            testlib.post_succ(self, "/settings/autoFailover",
+                              data={"enabled": "false"})
+
+        for node in self.connected_nodes:
+            # Create an external listener
+            testlib.post_succ(node, "/node/controller/enableExternalListener",
+                              data={"nodeEncryption": "on"
+                                    if enable else "off"})
+
+        for node in self.connected_nodes:
+            # Change the node-to-node encryption settings
+            testlib.post_succ(node, "/node/controller/setupNetConfig",
+                              data={"nodeEncryption": "on"
+                                    if enable else "off"})
+
+        for node in self.connected_nodes:
+            # Disable any unused listeners
+            testlib.post_succ(node,
+                              "/node/controller/disableUnusedExternalListeners")
+
+        if autofailover_enabled:
+            # Re-enable autoFailover.
+            testlib.post_succ(self, "/settings/autoFailover",
+                              data={"enabled": "true",
+                                    "timeout": autofailover_timeout})

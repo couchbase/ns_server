@@ -61,7 +61,7 @@ class NodeAdditionTests(testlib.BaseTestSet):
         :param enable: whether node-to-node encryption is enabled or disabled
         """
         # Change the node-to-node settings.
-        toggle_n2n(cluster, enable=enable)
+        cluster.toggle_n2n_encryption(enable=enable)
 
         # Test a node addition method
         for node in self.disconnected_nodes:
@@ -374,35 +374,3 @@ def assert_cluster_size(cluster, expected_size):
     assert len(nodes) == expected_size, \
         f"Wrong number of nodes in cluster. Expected {expected_size} " \
         f"nodes, found the following set of nodes: {nodes}"
-
-
-def toggle_n2n(cluster, enable=True):
-    """
-    Helper function to enable/disable node to node encryption for all nodes
-    :param cluster: Cluster object to send requests to
-    :param enable: Whether node to node encryption should be enabled.
-    """
-    # Need to disable autoFailover before other settings can change
-    testlib.post_succ(cluster, "/settings/autoFailover",
-                      data={"enabled": "false"})
-
-    for node in cluster.connected_nodes:
-        # Create an external listener
-        testlib.post_succ(node, "/node/controller/enableExternalListener",
-                          data={"nodeEncryption": "on"
-                                if enable else "off"})
-
-        # Change the node-to-node encryption settings
-        testlib.post_succ(node, "/node/controller/setupNetConfig",
-                          data={"nodeEncryption": "on"
-                                if enable else "off"})
-        # Disable any unused listeners
-        testlib.post_succ(node,
-                          "/node/controller/disableUnusedExternalListeners")
-
-    # Re-enable autoFailover.
-    testlib.post_succ(cluster, "/settings/autoFailover",
-                      data={"enabled": "true",
-                            "timeout": 120})
-
-    assert_n2n(cluster, enable)
