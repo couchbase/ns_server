@@ -17,7 +17,8 @@ class ClusterRequirements:
     @testlib.no_output_decorator
     def __init__(self, edition=None, num_nodes=None, memsize=None,
                  num_connected=None, afamily=None, services=None,
-                 master_password_state=None, num_vbuckets=None):
+                 master_password_state=None, num_vbuckets=None,
+                 encryption=None):
 
         def maybe(f, x):
             if x is None:
@@ -38,7 +39,8 @@ class ClusterRequirements:
                 'master_password_state':
                     maybe(lambda x: MasterPasswordState(x),
                           master_password_state),
-                'num_vbuckets': maybe(lambda x: NumVbuckets(x), num_vbuckets)
+                'num_vbuckets': maybe(lambda x: NumVbuckets(x), num_vbuckets),
+                'encryption': maybe(lambda x: N2nEncryption(x), encryption)
             }
 
     def __str__(self):
@@ -371,3 +373,21 @@ class NumVbuckets(Requirement):
                               code="ns_bucket:get_default_num_vbuckets()")
         default_num_vbuckets = r.content.decode('ascii')
         return int(default_num_vbuckets) == self.num_vbuckets
+
+
+class N2nEncryption(Requirement):
+    def __init__(self, encryption):
+        super().__init__(encryption=encryption)
+        self.encryption = encryption
+        self.connect_args = {"encryption": encryption}
+
+    def is_met(self, cluster):
+        res = get_succ(cluster, "/pools/nodes")
+        return all([node["nodeEncryption"] == self.encryption
+                    for node in res.json()["nodes"]])
+
+    def can_be_met(self):
+        return True
+
+    def make_met(self, cluster):
+        cluster.toggle_n2n_encryption(enable=self.encryption)

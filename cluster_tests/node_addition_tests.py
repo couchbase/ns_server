@@ -90,7 +90,8 @@ class NodeAdditionTests(testlib.BaseTestSet):
 class NodeAdditionWithCertsTests(testlib.BaseTestSet):
     @staticmethod
     def requirements():
-        return ClusterRequirements(num_nodes=2, num_connected=1)
+        return ClusterRequirements(num_nodes=2, num_connected=1,
+                                   encryption=False)
 
     def setup(self, cluster):
         def read_cert_file(filename):
