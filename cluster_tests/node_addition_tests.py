@@ -90,8 +90,10 @@ class NodeAdditionTests(testlib.BaseTestSet):
 class NodeAdditionWithCertsTests(testlib.BaseTestSet):
     @staticmethod
     def requirements():
-        return ClusterRequirements(num_nodes=2, num_connected=1,
-                                   encryption=False)
+        return [ClusterRequirements(num_nodes=2, num_connected=1,
+                                    encryption=False),
+                ClusterRequirements(num_nodes=2, num_connected=1,
+                                    encryption=True)]
 
     def setup(self, cluster):
         def read_cert_file(filename):
@@ -110,6 +112,7 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
             generate_node_certs(self.new_node(cluster).addr(),
                                 self.new_node_ca, self.new_node_ca_key)
         testlib.delete_all_buckets(cluster)
+        toggle_node_n2n(self.new_node(cluster), enable=False)
 
     def teardown(self, cluster):
         pass
@@ -118,6 +121,7 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         cluster.rebalance(cluster.connected_nodes[1:], wait=True, verbose=True)
         assert_cluster_size(cluster, 1)
         cluster.wait_nodes_up()
+        toggle_node_n2n(self.new_node(cluster), enable=False)
         for n in cluster.nodes:
             testlib.post_succ(n, '/controller/regenerateCertificate',
                               params={'forceResetCACertificate': 'false',
@@ -141,7 +145,13 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         self.provision_cluster_node(cluster)
         self.provision_new_node(cluster)
         load_ca(self.cluster_node(cluster), self.new_node_ca)
-        cluster.add_node(self.new_node(cluster))
+        if encryption_enabled(self.cluster_node(cluster)):
+            # Addition fails because the-new-node fails to verify otp
+            # connectivity (which uses TLS in this case) to the-cluster-node
+            r = cluster.add_node(self.new_node(cluster), expected_code=400)
+            assert_new_node_unknown_ca_error(r.json())
+        else:
+            cluster.add_node(self.new_node(cluster))
 
     def add_untrusted_node_to_trusted_cluster_test(self, cluster):
         self.provision_cluster_node(cluster)
@@ -167,7 +177,13 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
     def add_trusted_node_to_untrusted_ootb_cluster_test(self, cluster):
         load_ca(self.cluster_node(cluster), self.new_node_ca)
         self.provision_new_node(cluster)
-        cluster.add_node(self.new_node(cluster))
+        if encryption_enabled(self.cluster_node(cluster)):
+            # Addition fails because the-new-node fails to verify otp
+            # connectivity (which uses TLS in this case) to the-cluster-node
+            r = cluster.add_node(self.new_node(cluster), expected_code=400)
+            assert_new_node_unknown_ca_error(r.json())
+        else:
+            cluster.add_node(self.new_node(cluster))
 
     def add_untrusted_node_to_trusted_ootb_cluster_test(self, cluster):
         load_ca(self.new_node(cluster), self.cluster_ootb_ca(cluster))
@@ -199,11 +215,19 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         [ca_id] = load_ca(self.cluster_node(cluster),
                           self.new_node_ootb_ca(cluster))
         self.provision_cluster_node(cluster)
-        cluster.add_node(self.new_node(cluster))
-        # We can remove the ca that we added before, because the-new-node
-        # should already use new certs now (new certs are regenerated during
-        # node addition in this case)
-        testlib.delete(cluster, f'/pools/default/trustedCAs/{ca_id}')
+        if encryption_enabled(self.cluster_node(cluster)):
+            # Addition fails because the-new-node fails to verify otp
+            # connectivity (which uses TLS in this case) to the-cluster-node
+            # Note that n2n encryption always verifies server's name even when
+            # node uses ootb certificates
+            r = cluster.add_node(self.new_node(cluster), expected_code=400)
+            assert_new_node_unknown_ca_error(r.json())
+        else:
+            cluster.add_node(self.new_node(cluster))
+            # We can remove the ca that we added before, because the-new-node
+            # should already use new certs now (new certs are regenerated
+            # during node addition in this case)
+            testlib.delete(cluster, f'/pools/default/trustedCAs/{ca_id}')
 
     def add_untrusted_ootb_node_to_trusted_cluster_test(self, cluster):
         load_ca(self.new_node(cluster), self.cluster_ca)
@@ -271,9 +295,19 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         [ca_id] = load_ca(self.cluster_node(cluster),
                           self.new_node_ootb_ca(cluster))
         self.provision_cluster_node(cluster)
-        # Join works because ootb node is not validating cluster-node's certs
-        cluster.do_join_cluster(self.new_node(cluster))
-        testlib.delete(cluster, f'/pools/default/trustedCAs/{ca_id}')
+        if encryption_enabled(self.cluster_node(cluster)):
+            # Addition fails because the-new-node fails to verify otp
+            # connectivity (which uses TLS in this case) to the-cluster-node
+            # Note that n2n encryption always verifies server's name even when
+            # node uses ootb certificates
+            r = cluster.do_join_cluster(self.new_node(cluster),
+                                        expected_code=400)
+            assert_new_node_unknown_ca_error(r.json())
+        else:
+            # Join works in this case because ootb node is not validating
+            # the-cluster-node's name when sending the join request over https
+            cluster.do_join_cluster(self.new_node(cluster))
+            testlib.delete(cluster, f'/pools/default/trustedCAs/{ca_id}')
 
     def untrusted_ootb_node_joins_untrusted_cluster_test(self, cluster):
         self.provision_cluster_node(cluster)
@@ -375,3 +409,26 @@ def assert_cluster_size(cluster, expected_size):
     assert len(nodes) == expected_size, \
         f"Wrong number of nodes in cluster. Expected {expected_size} " \
         f"nodes, found the following set of nodes: {nodes}"
+
+
+def encryption_enabled(node):
+    return testlib.get_succ(node, '/nodes/self').json()['nodeEncryption']
+
+
+# Note that this function changes n2n encryption for one node only
+# If that node is part of a cluster it might break node connectivity inside
+# of that cluster. Use it for standalone nodes only. For clusters use
+# cluster.toggle_n2n_encryption()
+def toggle_node_n2n(node, enable=True):
+    # Create an external listener
+    testlib.post_succ(node, "/node/controller/enableExternalListener",
+                      data={"nodeEncryption": "on"
+                            if enable else "off"})
+
+    # Change the node-to-node encryption settings
+    testlib.post_succ(node, "/node/controller/setupNetConfig",
+                      data={"nodeEncryption": "on"
+                            if enable else "off"})
+    # Disable any unused listeners
+    testlib.post_succ(node,
+                      "/node/controller/disableUnusedExternalListeners")
