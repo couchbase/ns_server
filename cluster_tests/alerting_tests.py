@@ -24,11 +24,23 @@ class AlertTests(testlib.BaseTestSet):
         limits = testlib.get_succ(cluster, '/settings/alerts/limits').json()
         self.prev_cert_expiration = limits['certExpirationDays']
 
+        # Set alert check interval to 1s
+        testlib.diag_eval(cluster,
+                          'ns_config:set({timeout,{menelaus_web_alerts_srv,'
+                          'sample_rate}}, 1000)')
+        testlib.diag_eval(cluster,
+                          'menelaus_web_alerts_srv ! check_alerts')
+
     def teardown(self, cluster):
         testlib.diag_eval(cluster, 'menelaus_web_alerts_srv:reset().')
         testlib.post_succ(cluster, '/settings/alerts/limits',
                           data={'certExpirationDays':
                                 str(self.prev_cert_expiration)})
+
+        # Set alert check interval back to default 60s
+        testlib.diag_eval(cluster,
+                          'ns_config:delete({timeout,{menelaus_web_alerts_srv,'
+                          'sample_rate}})')
 
     def cert_about_to_expire_alert_test(self, cluster):
         node_data_dir = cluster.connected_nodes[0].data_path()
