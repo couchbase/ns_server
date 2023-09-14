@@ -7,6 +7,7 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 import testlib
+from testlib import assert_eq, assert_http_code, assert_in
 import base64
 import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -121,11 +122,11 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            assert(r.status_code == 302)
+            assert_http_code(302, r)
 
             r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
-            assert(r.status_code == 200)
+            assert_http_code(200, r)
 
             binding_out, destination = \
                 IDP.pick_binding("single_logout_service",
@@ -141,11 +142,11 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLRequest': logout_req_enc},
                              headers=headers,
                              allow_redirects=False)
-            assert(r.status_code == 200)
+            assert_http_code(200, r)
 
             (redirect_url, saml_response) = \
                 extract_saml_message_from_form('SAMLResponse', r.text)
-            assert redirect_url == mock_slo_post_url
+            assert_eq(redirect_url, mock_slo_post_url, 'redirect_url')
             IDP.parse_logout_request_response(saml_response, binding=BINDING_HTTP_POST)
 
 
@@ -155,11 +156,12 @@ class SamlTests(testlib.BaseTestSet):
                                  allow_redirects=False)
             (redirect_url, saml_request) = \
                 extract_saml_message_from_form('SAMLRequest', r.text)
-            assert redirect_url == mock_sso_post_url
+            assert_eq(redirect_url, mock_sso_post_url, 'redirect_url')
             parsed = IDP.parse_authn_request(saml_request,
                                              BINDING_HTTP_POST)
             saml_request = parsed.message
-            assert BINDING_HTTP_POST == saml_request.protocol_binding
+            assert_eq(saml_request.protocol_binding, BINDING_HTTP_POST,
+                      'binding')
             binding_out, destination = \
                 IDP.pick_binding("assertion_consumer_service",
                                  bindings=[saml_request.protocol_binding],
@@ -184,33 +186,35 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            assert(r.status_code == 302)
+            assert_http_code(302, r)
 
             r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
-            assert(r.status_code == 200)
+            assert_http_code(200, r)
 
             r = session.post(self.cluster.nodes[0].url + '/uilogout',
                              headers=headers)
-            assert(r.status_code == 400)
+            assert_http_code(400, r)
             r = r.json()
-            assert r['redirect'] == '/saml/deauth'
+            assert_in('redirect', r)
+            assert_eq(r['redirect'], '/saml/deauth', 'redirect')
 
             r = session.get(self.cluster.nodes[0].url + '/saml/deauth',
                             headers=headers,
                             allow_redirects=False)
-            assert(r.status_code == 200)
+            assert_http_code(200, r)
 
             (redirect_url, saml_logout_request) = \
                 extract_saml_message_from_form('SAMLRequest', r.text)
-            assert redirect_url == mock_slo_post_url
+            assert_eq(redirect_url, mock_slo_post_url, 'redirect_url')
             parsed_logout_req = IDP.parse_logout_request(saml_logout_request,
                                                          BINDING_HTTP_POST)
-            assert parsed_logout_req.message.name_id.text == name_id.text
+            assert_eq(parsed_logout_req.message.name_id.text, name_id.text,
+                      'name_id')
 
             r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
-            assert(r.status_code == 401)
+            assert_http_code(401, r)
             logout_response = IDP.create_logout_response(
                                   parsed_logout_req.message,
                                   bindings=[BINDING_HTTP_POST])
@@ -223,7 +227,7 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            assert(r.status_code == 302)
+            assert_http_code(302, r)
 
 
     def authn_via_redirect_and_regular_logout_test(self):
@@ -232,20 +236,24 @@ class SamlTests(testlib.BaseTestSet):
                              singleLogoutEnabled=False) as IDP:
             r = testlib.get_fail(self.cluster, '/saml/auth', 302,
                                  allow_redirects=False)
-            assert 'Location' in r.headers
+            assert_in('Location', r.headers)
             location = r.headers['Location']
-            assert location.startswith(mock_sso_redirect_url)
+            assert location.startswith(mock_sso_redirect_url), \
+                   f'location("{location}") must start with ' \
+                   f'"{mock_sso_redirect_url}"'
             parsedLocation = urlparse(location)
             params = parse_qs(parsedLocation.query)
-            assert 'SAMLEncoding' in params
-            assert [deflate_encoding] == params['SAMLEncoding']
-            assert 'SAMLRequest' in params
+            assert_in('SAMLEncoding', params)
+            assert_eq(params['SAMLEncoding'], [deflate_encoding],
+                      'SAMLEncoding')
+            assert_in('SAMLRequest', params)
             parsed = IDP.parse_authn_request(params['SAMLRequest'][0],
                                              BINDING_HTTP_REDIRECT)
             saml_request = parsed.message
             # We ask to always reply in POST, because REDIRECT can't be used for
             # authn responses.
-            assert BINDING_HTTP_POST == saml_request.protocol_binding
+            assert_eq(saml_request.protocol_binding, BINDING_HTTP_POST,
+                      'binding')
             binding_out, destination = \
                 IDP.pick_binding("assertion_consumer_service",
                                  bindings=[saml_request.protocol_binding],
@@ -267,21 +275,21 @@ class SamlTests(testlib.BaseTestSet):
             headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
             r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
-            assert(r.status_code == 401)
+            assert_http_code(401, r)
             r = session.post(destination,
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            assert(r.status_code == 302)
+            assert_http_code(302, r)
             r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
-            assert(r.status_code == 200)
+            assert_http_code(200, r)
             r = session.post(self.cluster.nodes[0].url + '/uilogout',
                              headers=headers)
-            assert(r.status_code == 200)
+            assert_http_code(200, r)
             r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
-            assert(r.status_code == 401)
+            assert_http_code(401, r)
 
 
     def session_expiration_test(self):
@@ -318,11 +326,11 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            assert(r.status_code == 302)
+            assert_http_code(302, r)
 
             r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
-            assert(r.status_code == 401)
+            assert_http_code(401, r)
 
 
     def reuse_assertion_test(self):
@@ -363,19 +371,19 @@ class SamlTests(testlib.BaseTestSet):
             session2 = requests.Session()
             session3 = requests.Session()
             r = session1.post(destination,
-                             data={'SAMLResponse': response_encoded},
-                             headers=headers,
-                             allow_redirects=False)
-            assert(r.status_code == 302)
+                              data={'SAMLResponse': response_encoded},
+                              headers=headers,
+                              allow_redirects=False)
+            assert_http_code(302, r)
 
             # sending the same assertion again and expect it to reject it
             r = session2.post(destination,
-                             data={'SAMLResponse': response_encoded},
-                             headers=headers,
-                             allow_redirects=False)
+                              data={'SAMLResponse': response_encoded},
+                              headers=headers,
+                              allow_redirects=False)
             error_msg = catch_error_after_redirect(self.cluster.nodes[0],
                                                    session2, r, headers)
-            assert "duplicate" in error_msg
+            assert_in("duplicate", error_msg)
 
             dest_parsed = urlparse(destination)
             node2_parsed = urlparse(self.cluster.nodes[1].url)
@@ -384,24 +392,24 @@ class SamlTests(testlib.BaseTestSet):
             # sending the same assertion again, but this time to another node
             # it still should reject it
             r = session3.post(destination2,
-                             data={'SAMLResponse': response_encoded},
-                             headers=headers,
-                             allow_redirects=False)
+                              data={'SAMLResponse': response_encoded},
+                              headers=headers,
+                              allow_redirects=False)
             error_msg = catch_error_after_redirect(self.cluster.nodes[1],
                                                    session3, r, headers)
-            assert "duplicate" in error_msg
+            assert_in("duplicate", error_msg)
 
             r = session1.get(self.cluster.nodes[0].url + '/pools/default',
-                            headers=headers)
-            assert(r.status_code == 200)
+                             headers=headers)
+            assert_http_code(200, r)
 
             r = session2.get(self.cluster.nodes[0].url + '/pools/default',
-                            headers=headers)
-            assert(r.status_code == 401)
+                             headers=headers)
+            assert_http_code(401, r)
 
             r = session3.get(self.cluster.nodes[1].url + '/pools/default',
-                            headers=headers)
-            assert(r.status_code == 401)
+                             headers=headers)
+            assert_http_code(401, r)
 
 
     def expired_assertion_test(self):
@@ -441,11 +449,11 @@ class SamlTests(testlib.BaseTestSet):
             error_msg = catch_error_after_redirect(self.cluster.nodes[0],
                                                    session, r, headers)
 
-            assert 'stale_assertion' in error_msg
+            assert_in('stale_assertion', error_msg)
 
             r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
-            assert(r.status_code == 401)
+            assert_http_code(401, r)
 
 
     def groups_and_roles_attributes_test(self):
@@ -490,16 +498,16 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            assert(r.status_code == 302)
+            assert_http_code(302, r)
 
             r = session.get(self.cluster.nodes[0].url + '/whoami',
                             headers=headers)
-            assert(r.status_code == 200)
+            assert_http_code(200, r)
             roles = [a["role"] for a in r.json()["roles"]]
             roles.sort()
             expected_roles = ['analytics_reader', 'external_stats_reader',
                               'replication_admin']
-            assert(roles == expected_roles)
+            assert_eq(roles, expected_roles)
 
 
     # Successfull authentication, but user doesn't have access to UI
@@ -547,8 +555,7 @@ class SamlTests(testlib.BaseTestSet):
                        'Insufficient Permissions. ' \
                        'Extracted groups: fakegroup1, fakegroup2. ' \
                        'Extracted roles: <empty>'
-            assert error_msg == expected, \
-                   f"Unexpected error message returned: {error_msg}"
+            assert_eq(error_msg, expected)
 
 
     def metadata_with_invalid_signature_test(self):
@@ -556,11 +563,12 @@ class SamlTests(testlib.BaseTestSet):
             # trusted fingerprints will not match mockidp2* certs
             with saml_configured(self.cluster,
                                  metadata_certs_prefix="mockidp2_"):
-                assert False, "ns_server should reject metadata as it's "\
+                assert False, "ns_server should reject metadata as it's " \
                               "signed by untrusted cert"
         except AssertionError as e:
-            assert("metadata signature verification failed: cert_not_accepted"
-                   in str(e))
+            assert_in(
+                "metadata signature verification failed: cert_not_accepted",
+                str(e))
 
 
     def assertion_with_invalid_signature_test(self):
@@ -596,11 +604,12 @@ class SamlTests(testlib.BaseTestSet):
                              allow_redirects=False)
             error_msg = catch_error_after_redirect(self.cluster.nodes[0],
                                                    session, r, headers)
-            assert "cert_not_accepted" in error_msg
+            assert_in("cert_not_accepted", error_msg)
 
             r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
-            assert(r.status_code == 401)
+            assert_http_code(401, r)
+
 
 
     def authn_response_with_invalid_signature_test(self):
@@ -636,11 +645,11 @@ class SamlTests(testlib.BaseTestSet):
                              allow_redirects=False)
             error_msg = catch_error_after_redirect(self.cluster.nodes[0],
                                                    session, r, headers)
-            assert "cert_not_accepted" in error_msg
+            assert_in("cert_not_accepted", error_msg)
 
             r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
-            assert(r.status_code == 401)
+            assert_http_code(401, r)
 
 
 @contextmanager
@@ -872,31 +881,31 @@ def extract_saml_message_from_form(msg_type, form_data):
 # This function retrives that error and makes sure that the user is not
 # logged in to UI
 def catch_error_after_redirect(node, session, response, ui_headers):
-    assert(response.status_code == 302)
+    assert_http_code(302, response)
 
     print(f'Redirected to: {response.headers["Location"]}')
     redirect_path = response.headers['Location']
 
     # check that user doesn't have any roles
     r = session.get(node.url + '/whoami', headers=ui_headers)
-    assert(r.status_code == 401) ## it is ui but cookie is not set
+    assert_http_code(401, r) # it is ui but cookie is not set
 
     # checking that we redirect to a valid page
     r = session.get(node.url + redirect_path, headers=ui_headers)
-    assert(r.status_code == 200)
+    assert_http_code(200, r)
 
     # extracting msg id from the redirect url
     parsedLocation = urlparse(redirect_path)
     fragment = parsedLocation.fragment
     params = parse_qs(urlparse(fragment).query)
-    assert 'samlErrorMsgId' in params
+    assert_in('samlErrorMsgId', params)
     error_id = params['samlErrorMsgId']
 
     # extracting error msg from server
     r = session.get(node.url + '/saml/error',
                     headers=ui_headers,
                     params={'id': error_id})
-    assert(r.status_code == 200)
+    assert_http_code(200, r)
     error_msg = r.json()['error']
     print(f'Received error: {error_msg}')
     return error_msg

@@ -329,6 +329,13 @@ def assert_json_key(expected_key, json, context):
     return json[expected_key]
 
 
+def assert_eq(got, expected, name='value'):
+    assert expected == got, f'unexpected {name}: {got}, expected: {expected}'
+
+
+def assert_in(what, where):
+    assert what in where, f'"{what}" is missing in "{where}"'
+
 def random_str(n):
     return ''.join(random.choices(string.ascii_lowercase +
                                   string.digits, k=n))
