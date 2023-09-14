@@ -54,7 +54,7 @@
          }).
 
 %% Amount of time to wait between state checks (ms)
--define(SAMPLE_RATE, 60000).
+-define(SAMPLE_RATE, ?get_timeout(sample_rate, 60000)).
 
 %% Amount of time between sending users the same alert (s)
 -define(ALERT_TIMEOUT, 60 * 10).
@@ -1592,10 +1592,17 @@ run_basic_test_do() ->
                     30000, 500),
     ?assertMatch({[{{fu, MyNode}, <<"bar">>, _, _}], _}, GlobalAlert).
 
+basic_test_modules() ->
+    [cluster_compat_mode, ns_config].
+
 basic_test() ->
-    ok = meck:new(cluster_compat_mode),
+    ok = meck:new(basic_test_modules(), [passthrough]),
     ok = meck:expect(cluster_compat_mode, is_cluster_trinity,
                      fun () -> true end),
+    meck:expect(ns_config, get_timeout,
+                fun ({menelaus_web_alerts_srv, sample_rate}, Default) ->
+                        Default
+                end),
 
     {ok, _} = gen_event:start_link({local, ns_config_events}),
     {ok, Pid} = ?MODULE:start_link(),
@@ -1608,7 +1615,7 @@ basic_test() ->
         run_basic_test_do()
     after
         misc:unlink_terminate_and_wait(Pid, shutdown),
-        ok = meck:unload(cluster_compat_mode)
+        ok = meck:unload(basic_test_modules())
     end.
 
 add_proplist_list_elem_test() ->
