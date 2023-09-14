@@ -1803,8 +1803,9 @@ get_bucket_stats(RootKey, StatKey, SubKey) ->
                                           end, []) of
                   {ok, BucketsDetailsRaw} ->
                       {BucketDetails} =
-                          ejson:decode(proplists:get_value(StatKey,
-                                                           BucketsDetailsRaw)),
+                          ejson:decode(
+                            misc:expect_prop_value(StatKey,
+                                                   BucketsDetailsRaw)),
                       {reply, proplists:get_value(SubKey, BucketDetails)};
                   Err ->
                       {reply, Err}
