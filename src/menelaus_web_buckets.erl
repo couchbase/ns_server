@@ -2282,19 +2282,20 @@ parse_compression_mode(_) ->
      <<"compressionMode can be set to 'off', 'passive' or 'active'">>}.
 
 parse_validate_bucket_rank(Params) ->
-    case cluster_compat_mode:is_cluster_trinity() of
-        true ->
-            parse_validate_rank_inner(
-              proplists:get_value("rank", Params));
-        false ->
-            {error, rank,
-             <<"Bucket rank cannot be set until the cluster is fully "
-               " upgraded to Trinity.">>}
+    parse_validate_rank_inner(cluster_compat_mode:is_cluster_trinity(),
+                              proplists:get_value("rank", Params)).
 
-    end.
-
-parse_validate_rank_inner(undefined) ->
+parse_validate_rank_inner(true, undefined) ->
     {ok, rank, ?DEFAULT_BUCKET_RANK};
+parse_validate_rank_inner(true, Value) ->
+    parse_validate_rank_inner(Value);
+parse_validate_rank_inner(false, undefined) ->
+    ignore;
+parse_validate_rank_inner(false, _Value) ->
+    {error, rank,
+     <<"Bucket rank cannot be set until the cluster is fully "
+       "upgraded to Trinity.">>}.
+
 parse_validate_rank_inner(Rank) ->
     case menelaus_util:parse_validate_number(Rank, ?MIN_BUCKET_RANK,
                                              ?MAX_BUCKET_RANK) of
