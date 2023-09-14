@@ -13,6 +13,10 @@
 -include("cut.hrl").
 -include("ns_common.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -define(WAIT_FOR_MEMCACHED_TIMEOUT, ?get_timeout(wait_for_memcached, 5000)).
 -define(APPLY_NEW_CONFIG_TIMEOUT,   ?get_timeout(apply_config, 60000)).
 %% NOTE: there's also ns_memcached timeout anyways
@@ -126,12 +130,14 @@ maybe_send_warming(_Parent, Warming, _Reason) ->
                                                  {ok, dict:dict()} |
                                                  warming_up | timeout | any()}].
 wait_for_memcached(NodeCalls, Bucket, WaitTimeout) ->
-    Parent = self(),
     misc:executing_on_new_process(
       fun () ->
               erlang:process_flag(trap_exit, true),
               Ref = make_ref(),
+
               Me = self(),
+              {ok, Parent} = async:get_identity(),
+
               NodePids =
                   [{Node, proc_lib:spawn_link(
                             fun () ->
@@ -1323,3 +1329,93 @@ check_for_node_rename(Call, BucketConfig, State, Body) ->
                       [Call, Node, Servers]),
             {reply, {node_rename_detected, Node, Servers}, State}
     end.
+
+-ifdef(TEST).
+
+%% This test tests that we can interrupt a call to wait_for_memcached
+%% (performed by the janitor) as we must be able to interrupt the janitor to
+%% perform more important actions in the orchestrator such as failover. In
+%% the case in which memcached is unresponsive, it was observed that we could
+%% not interrupt this function call, and had to wait for the configured
+%% timeout which delayed a failover of the node on which memcached was
+%% unresponsive. This test should hit the eunit timeout (or just get stuck if
+%% one does not exist) if we cannot interrupt this function.
+wait_for_memcached_interruptible_test() ->
+    VeryBigTimeout = 1000000,
+    Bucket = "default",
+
+    %% Setup required for the janitor_agent gen_server.
+    %% Whilst we could just call the wait_for_memcached function manually, it
+    %% dispatches a gen_server:call() to janitor_agent-<bucket> which throws
+    %% an exception and won't let us easily test what happens when we get
+    %% stuck talking to memcached. As such, we will startup the gen_server
+    %% properly to process that call and hang it in ns_memcached at the
+    %% appropriate time.
+    meck:new(janitor_agent_sup),
+    meck:expect(janitor_agent_sup, get_registry_pid,
+                fun(_) ->
+                    self()
+                end),
+
+    meck:new(ns_bucket, [passthrough]),
+    meck:expect(ns_bucket, get_bucket,
+                fun(_) ->
+                    {ok, [{type, memcached}]}
+                end),
+
+    meck:new(ns_storage_conf),
+    meck:expect(ns_storage_conf, this_node_bucket_dbdir,
+                fun(_) ->
+                    {ok, "/"}
+                end),
+
+    meck:new(ns_config, [passthrough]),
+    meck:expect(ns_config, get_timeout,
+                fun(_,_) ->
+                    VeryBigTimeout
+                end),
+
+
+    %% We will kill the janitor_agent at the end of this test, so trap exits
+    %% to avoid killing the test itself.
+    process_flag(trap_exit, true),
+    {ok, ServerPid} = start_link(Bucket),
+
+    %% We want to hang when we make the call to memcached, then have the test
+    %% attempt to "cancel" the janitor run by killing the process that
+    %% started the check_bucket_ready(...) call. Set up a meck to notify the
+    %% test process when it should continue (using send and receive as a
+    %% baton), before we hang here with a very long sleep to emulate
+    %% memcached being slow.
+    TestProc = self(),
+    meck:new(ns_memcached),
+    meck:expect(ns_memcached,
+                local_connected_and_list_vbucket_details,
+                fun(_,_) ->
+                    TestProc ! ready_to_terminate,
+                    timer:sleep(VeryBigTimeout)
+                end),
+
+    %% We need to kill the process emulating the janitor for this test so run
+    %% the check_bucket_ready() in a new process.
+    JanitorPid = erlang:spawn_link(
+        fun() ->
+            check_bucket_ready(Bucket, [node()], VeryBigTimeout)
+        end),
+
+    receive ready_to_terminate ->
+        %% If we can't interrupt the process then we should get stuck here.
+        misc:terminate_and_wait(JanitorPid, shutdown)
+    end,
+
+    %% The janitor_agent will be stuck in the call due to the very long
+    %% timeout, terminate it forcefully
+    misc:terminate_and_wait(ServerPid, shutdown),
+
+    meck:unload(ns_memcached),
+    meck:unload(ns_config),
+    meck:unload(ns_storage_conf),
+    meck:unload(ns_bucket),
+    meck:unload(janitor_agent_sup).
+
+-endif.
