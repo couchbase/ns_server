@@ -46,6 +46,7 @@ class AlertTests(testlib.BaseTestSet):
             r = testlib.get_succ(cluster, '/pools/default').json()
             alerts = r['alerts']
             if len(alerts) < 2:
+                print(f"Alert check failed, expected >= 2 alerts, got {alerts}")
                 return False
 
             regex = r'^Server certificate for node .+ will expire at .+$'
@@ -54,6 +55,7 @@ class AlertTests(testlib.BaseTestSet):
             has_node_alert = any(map(is_expected, alerts))
 
             if not has_node_alert:
+                print(f"Alert check failed, expected {regex}, got {alerts}")
                 return False
 
             regex = r'^Client certificate on node .+ will expire at .+$'
@@ -62,6 +64,7 @@ class AlertTests(testlib.BaseTestSet):
             has_client_alert = any(map(is_expected, alerts))
 
             if not has_client_alert:
+                print(f"Alert check failed, expected {regex}, got {alerts}")
                 return False
 
             return True
