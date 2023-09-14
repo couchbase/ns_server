@@ -17,6 +17,7 @@
               "roles" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -51,6 +52,7 @@
               "identity" : {"domain" : "", "user" : ""}
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -69,6 +71,7 @@
               "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "local" : {"ip" : "", "port" : 1},
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -92,6 +95,7 @@
               "services" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -110,6 +114,7 @@
               "node" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -129,6 +134,7 @@
               "type" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -148,6 +154,7 @@
               "type" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -168,6 +175,7 @@
               "delta_recovery_buckets" : []
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -188,6 +196,7 @@
               "props" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -208,6 +217,7 @@
               "props" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -226,6 +236,7 @@
               "bucket_name" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -244,6 +255,7 @@
           },
           "optional_fields" : {
               "real_userid" : {"domain" : "", "user" : ""},
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -262,6 +274,7 @@
               "bucket_name" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -285,6 +298,7 @@
               "cbas_dirs" : "",
               "eventing_path" : "",
               "java_home" : "",
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -304,6 +318,7 @@
               "hostname" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -323,6 +338,7 @@
               "services" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -342,6 +358,7 @@
               "local" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -361,6 +378,7 @@
               "uuid" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -380,6 +398,7 @@
               "uuid" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -400,6 +419,7 @@
               "nodes" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -419,6 +439,7 @@
               "max_nodes" : 1
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : "",
               "failover_on_data_disk_issues" : {"enabled" : false,
                                                 "timePeriod" : 1},
@@ -440,6 +461,7 @@
               "local" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -457,6 +479,7 @@
               "local" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -478,6 +501,7 @@
               "email_server" : {"user" : "", "host" : "", "port" : 1, "encrypt" : false}
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -495,6 +519,7 @@
               "local" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -512,6 +537,7 @@
               "local" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : "",
               "allowed_time_period" : {"from_hour" : 1, "to_hour" : 1, "from_minute" : 1,
                                        "to_minute" : 1, "abort_outside" : false},
@@ -543,6 +569,7 @@
               "local" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : "",
               "dropUploadedCertificates" : true,
               "forceResetCACertificate" : true
@@ -565,6 +592,7 @@
               "ro_admins" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -583,6 +611,7 @@
               "settings" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -602,6 +631,7 @@
               "expires" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -621,6 +651,7 @@
               "expires" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -639,6 +670,7 @@
               "storageMode" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -660,6 +692,7 @@
               "reason" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : "",
               "full_name" : ""
           }
@@ -678,6 +711,7 @@
               "local" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : "",
               "error" : ""
           }
@@ -696,6 +730,7 @@
               "local" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : "",
               "error" : ""
           }
@@ -716,6 +751,7 @@
               "must_present" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -734,6 +770,7 @@
               "real_userid" : {"domain" : "", "user" : ""},
               "remote" : {"ip" : "", "port" : 1},
               "local" : {"ip" : "", "port" : 1},
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : "",
               "state": "",
               "path": "",
@@ -757,6 +794,7 @@
               "settings" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -777,6 +815,7 @@
               "redact_level" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : "",
               "tmp_dir" : "",
               "log_dir" : "",
@@ -798,6 +837,7 @@
               "log_redaction_default_cfg" : {"redact_level" : ""}
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -813,6 +853,7 @@
               "real_userid": {"domain": "", "user": ""}
           },
           "optional_fields": {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "auditd_enabled": true,
               "rotate_interval": 1,
               "rotate_size": 1,
@@ -837,6 +878,7 @@
               "settings" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -855,6 +897,7 @@
               "settings" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -875,6 +918,7 @@
               "doc_id" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -895,6 +939,7 @@
               "reason" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : "",
               "description" : "",
               "ldap_group_ref" : ""
@@ -915,6 +960,7 @@
               "group_name" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -932,6 +978,7 @@
               "local" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : "",
               "authenticationEnabled": false,
               "authorizationEnabled": false,
@@ -968,6 +1015,7 @@
               "settings" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -986,6 +1034,7 @@
               "settings" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -1005,6 +1054,7 @@
               "profile" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : "",
               "full_name" : ""
           }
@@ -1024,6 +1074,7 @@
               "identity" : {"domain" : "", "user" : ""}
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : "",
               "full_name" : ""
           }
@@ -1045,6 +1096,7 @@
               "max_attempts" : 1
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -1063,6 +1115,7 @@
               "max_nodes" : 1
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -1080,6 +1133,7 @@
               "local" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -1098,6 +1152,7 @@
               "settings" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -1117,6 +1172,7 @@
               "doc_id" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -1166,6 +1222,7 @@
               "real_userid" : {"domain" : "", "user" : ""}
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -1186,6 +1243,7 @@
               "new_manifest_uid" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -1206,6 +1264,7 @@
               "new_manifest_uid" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -1227,6 +1286,7 @@
               "new_manifest_uid" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -1248,6 +1308,7 @@
               "new_manifest_uid" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -1269,6 +1330,7 @@
           },
           "optional_fields" : {
               "valid_on_uid" : "",
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -1305,6 +1367,8 @@
             "type" : ""
         },
         "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
+              "sessionid" : ""
         }
       },
       {
@@ -1321,6 +1385,7 @@
               "local" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -1339,6 +1404,7 @@
               "settings" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -1357,6 +1423,7 @@
               "subject" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -1378,6 +1445,7 @@
               "new_manifest_uid" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -1396,6 +1464,7 @@
               "settings" : ""
           },
           "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
       },
@@ -1423,6 +1492,7 @@
               "settings": ""
           },
           "optional_fields": {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid": ""
           }
       },
@@ -1450,6 +1520,7 @@
               "settings": ""
           },
           "optional_fields": {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid": ""
           }
       }

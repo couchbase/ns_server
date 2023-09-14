@@ -76,6 +76,11 @@
 -record(authn_res,
         {type = tmp :: tmp | ui,
          session_id :: binary() | undefined | '_',
+         %% The identity of the authenticated user
+         authenticated_identity :: rbac_identity() | undefined | '_',
+         %% This is either the identity of the authenticated user
+         %% or the identity of the user the authenticated user is
+         %% acting on behalf of
          identity :: rbac_identity() | '_' | {'_', admin},
          extra_groups = [],
          extra_roles = [],

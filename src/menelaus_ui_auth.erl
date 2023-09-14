@@ -61,7 +61,7 @@ check(Token) ->
         {ok, #uisession{authn_res = #authn_res{} = AuthnRes}} ->
             {ok, AuthnRes};
         {ok, Id} -> %% Pre-trinity nodes will return Id
-            {ok, #authn_res{identity = Id}}
+            {ok, menelaus_auth:init_auth(Id)}
     end.
 
 -spec reset() -> ok.

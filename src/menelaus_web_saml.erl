@@ -962,13 +962,13 @@ handle_saml_assertion(Req, {ok, Assertion}, SSOOpts) ->
                         proplists:get_value(session_not_on_or_after,
                                             Authn)
                 end,
+            AuthnRes0 = menelaus_auth:init_auth({Username, external}),
             AuthnRes =
-                #authn_res{type = ui,
-                           session_id = menelaus_auth:new_session_id(),
-                           identity = {Username, external},
-                           extra_groups = ExtraGroups,
-                           extra_roles = ExtraRoles,
-                           expiration_datetime_utc = ExpDatetimeUTC},
+                AuthnRes0#authn_res{type = ui,
+                                    session_id = menelaus_auth:new_session_id(),
+                                    extra_groups = ExtraGroups,
+                                    extra_roles = ExtraRoles,
+                                    expiration_datetime_utc = ExpDatetimeUTC},
             SessionName = iolist_to_binary(NameID),
             LoginRes = menelaus_auth:uilogin_phase2(
                          Req,

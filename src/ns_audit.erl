@@ -549,20 +549,28 @@ get_local(Req) ->
     get_socket_name(Req, fun network:sockname/1).
 
 prepare(Req, Params) ->
-    IdentityProps = case Req of
-                        undefined ->
-                            [{real_userid, undefined},
-                             {sessionid, undefined},
-                             {remote, undefined},
-                             {local, undefined}];
-                        _ ->
-                            SessionId = menelaus_auth:get_session_id(Req),
-                            [{real_userid,
-                              get_identity(menelaus_auth:get_identity(Req))},
-                             {sessionid, SessionId},
-                             {remote, get_remote(Req)},
-                             {local, get_local(Req)}]
+    IdentityProps =
+        case Req of
+            undefined ->
+                [];
+            _ ->
+                SessionId = menelaus_auth:get_session_id(Req),
+                Identity = menelaus_auth:get_identity(Req),
+                AuthIdentity =
+                    case menelaus_auth:get_authenticated_identity(Req) of
+                        Identity ->
+                            %% do not specify authenticated_userid if it equals
+                            %% to real_useris not to pollute the log
+                            undefined;
+                        Other ->
+                            Other
                     end,
+                [{real_userid, get_identity(Identity)},
+                 {authenticated_userid, get_identity(AuthIdentity)},
+                 {sessionid, SessionId},
+                 {remote, get_remote(Req)},
+                 {local, get_local(Req)}]
+        end,
 
     %% Any params specified by the caller have precedence.
     Body = misc:update_proplist(

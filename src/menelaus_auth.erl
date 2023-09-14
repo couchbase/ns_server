@@ -29,13 +29,15 @@
          maybe_refresh_token/1,
          get_authn_res/1,
          get_identity/1,
+         get_authenticated_identity/1,
          get_user_id/1,
          get_session_id/1,
          is_UI_req/1,
          verify_rest_auth/2,
          new_session_id/0,
          get_resp_headers/1,
-         acting_on_behalf/1]).
+         acting_on_behalf/1,
+         init_auth/1]).
 
 %% rpc from ns_couchdb node
 -export([authenticate/1,
@@ -166,6 +168,14 @@ get_identity(Req) ->
         #authn_res{identity = Id} -> Id
     end.
 
+-spec get_authenticated_identity(mochiweb_request()) ->
+          rbac_identity() | undefined.
+get_authenticated_identity(Req) ->
+    case get_authn_res(Req) of
+        undefined -> undefined;
+        #authn_res{authenticated_identity = Id} -> Id
+    end.
+
 -spec get_session_id(mochiweb_request()) -> binary() | undefined.
 get_session_id(Req) ->
     case get_authn_res(Req) of
@@ -259,6 +269,9 @@ is_internal(Req) ->
             false
     end.
 
+init_auth(Identity) ->
+    #authn_res{identity = Identity, authenticated_identity = Identity}.
+
 -spec authenticate(error | undefined |
                    {token, auth_token()} |
                    {scram_sha, string()} |
@@ -271,7 +284,7 @@ is_internal(Req) ->
 authenticate(error) ->
     {error, auth_failure};
 authenticate(undefined) ->
-    {ok, #authn_res{identity = {"", anonymous}}, []};
+    {ok, init_auth({"", anonymous}), []};
 authenticate({token, Token} = Param) ->
     case ns_node_disco:couchdb_node() == node() of
         false ->
@@ -281,18 +294,19 @@ authenticate({token, Token} = Param) ->
                     %% system with leftover cookie
                     case ns_config_auth:is_system_provisioned() of
                         false ->
-                            {ok, #authn_res{identity = {"", wrong_token}}, []};
+                            {ok, init_auth({"", wrong_token}), []};
                         true ->
                             {error, auth_failure}
                     end;
-                {ok, #authn_res{} = AuthnRes} ->
+                {ok, AuthnRes} ->
                     {ok, AuthnRes, []}
             end;
         true ->
-            rpc:call(ns_node_disco:ns_server_node(), ?MODULE, authenticate, [Param])
+            rpc:call(ns_node_disco:ns_server_node(), ?MODULE, authenticate,
+                     [Param])
     end;
 authenticate({client_cert_auth, "@" ++ _ = Username}) ->
-    {ok, #authn_res{identity = {Username, admin}}, []};
+    {ok, init_auth({Username, admin}), []};
 authenticate({client_cert_auth, Username} = Param) ->
     %% Just returning the username as the request is already authenticated based
     %% on the client certificate.
@@ -300,12 +314,12 @@ authenticate({client_cert_auth, Username} = Param) ->
         false ->
             case ns_config_auth:get_user(admin) of
                 Username ->
-                    {ok, #authn_res{identity = {Username, admin}}, []};
+                    {ok, init_auth({Username, admin}), []};
                 _ ->
                     Identity = {Username, local},
                     case menelaus_users:user_exists(Identity) of
                         true ->
-                            {ok, #authn_res{identity = Identity}, []};
+                            {ok, init_auth(Identity), []};
                         false ->
                             {error, auth_failure}
                     end
@@ -317,7 +331,7 @@ authenticate({client_cert_auth, Username} = Param) ->
 authenticate({scram_sha, AuthHeader}) ->
     case scram_sha:authenticate(AuthHeader) of
         {ok, Identity, RespHeaders} ->
-            {ok, #authn_res{identity = Identity}, RespHeaders};
+            {ok, init_auth(Identity), RespHeaders};
         {first_step, RespHeaders} ->
             {unfinished, RespHeaders};
         auth_failure ->
@@ -326,7 +340,7 @@ authenticate({scram_sha, AuthHeader}) ->
 authenticate({Username, Password}) ->
     case ns_config_auth:authenticate(Username, Password) of
         {ok, Id} ->
-            {ok, #authn_res{identity = Id}, []};
+            {ok, init_auth(Id), []};
         {error, auth_failure}->
             authenticate_external(Username, Password);
         {error, Reason} ->
@@ -342,7 +356,7 @@ authenticate_external(Username, Password) ->
                  (saslauthd_auth:authenticate(Username, Password) orelse
                   ldap_auth_cache:authenticate(Username, Password)) of
                 true ->
-                    {ok, #authn_res{identity = {Username, external}}, []};
+                    {ok, init_auth({Username, external}), []};
                 false ->
                     {error, auth_failure}
             end;
@@ -472,16 +486,6 @@ verify_rest_auth(Req, Permission) ->
             {auth_failure, Req2}
     end.
 
-%% When we say identity, we could be referring to one of the following
-%% three identities.
-%%
-%% 1) real identity: The user that is authenticated.
-%% 2) on-behalf-of identity: The user on whose behalf the action is
-%%    being taken, if a valid cb-on-behalf-of Header is present.
-%%    This may also be referred to as the "authorization user".
-%% 3) effective identity: on-behalf-of identity if present, else the real
-%%    identity.
-
 -spec apply_on_behalf_of_identity(#authn_res{}, mochiweb_request()) ->
                                         error | #authn_res{}.
 apply_on_behalf_of_identity(AuthnRes, Req) ->
@@ -513,7 +517,7 @@ apply_on_behalf_of_identity(AuthnRes, Req) ->
 
 -spec acting_on_behalf(mochiweb_request()) -> boolean().
 acting_on_behalf(Req) ->
-    read_on_behalf_of_header(Req) =/= undefined.
+    get_authenticated_identity(Req) =/= get_identity(Req).
 
 -spec extract_on_behalf_of_identity(mochiweb_request()) ->
                                                 error | undefined
