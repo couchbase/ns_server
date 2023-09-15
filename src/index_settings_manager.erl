@@ -161,9 +161,7 @@ general_settings_lens_props(ClusterVersion) ->
              {blobStoragePrefix,
               id_lens(<<"indexer.settings.rebalance.blob_storage_prefix">>)},
              {blobStorageRegion,
-              id_lens(<<"indexer.settings.rebalance.blob_storage_region">>)},
-             {enableShardAffinity,
-              id_lens(<<"indexer.settings.enable_shard_affinity">>)}];
+              id_lens(<<"indexer.settings.rebalance.blob_storage_region">>)}];
         false ->
             []
     end ++
@@ -203,9 +201,8 @@ general_settings_defaults(ClusterVersion) ->
              {blobStorageScheme, <<"">>},
              {blobStorageBucket, <<"">>},
              {blobStoragePrefix, <<"">>},
-             {blobStorageRegion, <<"">>},
-             {enableShardAffinity,
-              not config_profile:get_bool({indexer, disable_shard_affinity})}];
+             {blobStorageRegion, <<"">>}];
+
         false ->
             []
     end ++
@@ -304,16 +301,7 @@ default_versioned(Version) ->
     ?assertEqual(Keys(general_settings_lens_props(Version)),
                  Keys(general_settings_defaults(Version))).
 
-mock_default_config_profile() ->
-    meck:new(config_profile, [passthrough]),
-    meck:expect(config_profile, get,
-                fun () -> [{name, ?DEFAULT_PROFILE_STR},
-                           {{couchdb, enabled}, true},
-                           {enable_auto_rebalance_settings, true},
-                           {{indexer, disable_shard_affinity}, true}] end).
-
 config_upgrade_test() ->
-    mock_default_config_profile(),
     CmdList = config_upgrade_to_trinity([]),
     [{set, {metakv, Meta}, Data}] = CmdList,
     ?assertEqual(<<"/indexing/settings/config">>, Meta),
@@ -324,17 +312,6 @@ config_upgrade_test() ->
                    "\"indexer.settings.rebalance.blob_storage_prefix\":\"\","
                    "\"indexer.settings.rebalance.blob_storage_bucket\":\"\","
                    "\"indexer.settings.thresholds.units_high\":60,"
-                   "\"indexer.settings.enable_shard_affinity\":false,"
                    "\"indexer.settings.thresholds.mem_low\":50}">>,
-                 Data),
-    meck:unload(config_profile).
-
-enable_shard_affinity_trinity_test() ->
-    mock_default_config_profile(),
-    ?assert(proplists:is_defined(enableShardAffinity,
-                                 general_settings_defaults(?VERSION_TRINITY))),
-    ?assert(not proplists:is_defined(enableShardAffinity,
-                                     general_settings_defaults(?VERSION_72))),
-    meck:unload(config_profile).
-
+                 Data).
 -endif.

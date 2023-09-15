@@ -99,17 +99,14 @@ settings_post_validators() ->
             false ->
                 []
         end ++
-        case cluster_compat_mode:is_cluster_trinity() of
+        case cluster_compat_mode:is_cluster_trinity() andalso
+             config_profile:is_serverless() of
             true ->
-                case config_profile:is_serverless() of
-                    true -> [validator:integer(memHighThreshold, 0, 100, _),
-                             validator:integer(memLowThreshold, 0, 100, _),
-                             validator:integer(unitsHighThreshold, 0, 100, _),
-                             validator:integer(unitsLowThreshold, 0, 100, _)] ++
-                                rebalance_blob_storage_params_validator();
-                    false -> []
-                end ++ %% Trinity + ANY deployment model
-                    [validator:boolean(enableShardAffinity, _)];
+                [validator:integer(memHighThreshold, 0, 100, _),
+                 validator:integer(memLowThreshold, 0, 100, _),
+                 validator:integer(unitsHighThreshold, 0, 100, _),
+                 validator:integer(unitsLowThreshold, 0, 100, _)] ++
+                rebalance_blob_storage_params_validator();
             false ->
                 []
         end ++
