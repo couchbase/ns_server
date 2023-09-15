@@ -40,7 +40,7 @@ class AlertTests(testlib.BaseTestSet):
         max_expiration = max(expiration1, expiration2)
 
         testlib.post_succ(cluster, '/settings/alerts/limits',
-                          data={'certExpirationDays': str(max_expiration + 1)})
+                          data={'certExpirationDays': str(max_expiration)})
 
         def check_alert():
             r = testlib.get_succ(cluster, '/pools/default').json()
@@ -81,9 +81,9 @@ def get_expiration_for_cert(cert_path):
     cert = x509.load_pem_x509_certificate(pem)
     expire_datetime = cert.not_valid_after
     print(f'expire_datetime: {expire_datetime}')
-    now_datetime = datetime.now(expire_datetime.tzinfo)
+    now_datetime = datetime.utcnow()
     print(f'now: {now_datetime}')
     assert expire_datetime > now_datetime
-    will_expire_in = (expire_datetime - now_datetime).days
+    will_expire_in = (expire_datetime - now_datetime).days + 1
     print(f'cert will expire in {will_expire_in} days')
     return will_expire_in

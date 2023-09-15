@@ -117,9 +117,9 @@ func main() {
 
 		leafTemplate := x509.Certificate{
 			SerialNumber: big.NewInt(time.Now().UnixNano()),
-			NotBefore:    time.Now().AddDate(0, 0, -1),
+			NotBefore:    time.Now().UTC().AddDate(0, 0, -1),
 			// testSSL.sh complains when certificate validity is longer than 824 days
-			NotAfter:     time.Now().AddDate(0, 0, 824),
+			NotAfter:     time.Now().UTC().AddDate(0, 0, 824),
 			Subject: pkix.Name{
 				CommonName: commonName,
 			},
