@@ -254,7 +254,7 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(num_nodes=1, memsize=1024)
+        return testlib.ClusterRequirements(min_memsize=1024)
 
     def teardown(self):
         testlib.post_succ(self.cluster, self.addr_diag_eval,

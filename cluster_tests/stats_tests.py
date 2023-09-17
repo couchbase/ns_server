@@ -16,7 +16,7 @@ class StatsRangeAPITests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return [testlib.ClusterRequirements(num_nodes=2)]
+        return [testlib.ClusterRequirements(min_num_nodes=2)]
 
     def setup(self):
         self.align_timestamps_start = -100

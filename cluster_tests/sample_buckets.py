@@ -33,10 +33,10 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
     @staticmethod
     def requirements():
         return [testlib.ClusterRequirements(edition="Enterprise",
-                                            num_nodes=2, num_connected=2,
+                                            min_num_nodes=2,
                                             memsize=2000),
                 testlib.ClusterRequirements(edition="Serverless",
-                                            num_nodes=2, num_connected=2,
+                                            min_num_nodes=2,
                                             memsize=2000)]
 
     def setup(self):

@@ -13,7 +13,8 @@ class IntCredsRotationTests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(num_nodes=2, services=['kv', 'n1ql'])
+        return testlib.ClusterRequirements(min_num_nodes=2,
+                                           services=['kv', 'n1ql'])
 
 
     def setup(self):

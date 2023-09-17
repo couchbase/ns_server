@@ -47,9 +47,9 @@ class NodeAdditionTests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return [ClusterRequirements(num_nodes=3, num_connected=1,
+        return [ClusterRequirements(min_num_nodes=3, num_connected=1,
                                     afamily="ipv4"),
-                ClusterRequirements(num_nodes=3, num_connected=1,
+                ClusterRequirements(min_num_nodes=3, num_connected=1,
                                     afamily="ipv6")]
 
     def n2n_test_base(self, method, enable: bool):
@@ -89,9 +89,9 @@ class NodeAdditionTests(testlib.BaseTestSet):
 class NodeAdditionWithCertsTests(testlib.BaseTestSet):
     @staticmethod
     def requirements():
-        return [ClusterRequirements(num_nodes=2, num_connected=1,
+        return [ClusterRequirements(min_num_nodes=2, num_connected=1,
                                     encryption=False),
-                ClusterRequirements(num_nodes=2, num_connected=1,
+                ClusterRequirements(min_num_nodes=2, num_connected=1,
                                     encryption=True)]
 
     def setup(self):

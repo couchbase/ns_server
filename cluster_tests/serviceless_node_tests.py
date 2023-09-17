@@ -53,7 +53,7 @@ class ServicelessNodeTests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return [ClusterRequirements(num_nodes=3, num_connected=1,
+        return [ClusterRequirements(min_num_nodes=3, num_connected=1,
                                     afamily="ipv4")]
 
     def joinNodes(self):

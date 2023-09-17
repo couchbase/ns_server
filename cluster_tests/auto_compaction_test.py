@@ -23,7 +23,7 @@ class AutoCompactionTestSet(BucketTestSetBase):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(memsize=1024)
+        return testlib.ClusterRequirements(min_memsize=1024)
 
     def auto_compaction_defined_test(self):
         self.test_param("autoCompactionDefined",

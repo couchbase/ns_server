@@ -97,7 +97,7 @@ class BucketMigrationTest(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(num_nodes=4, memsize=2*1024,
+        return testlib.ClusterRequirements(min_num_nodes=4, min_memsize=2*1024,
                                            num_connected=2)
 
     def setup(self):

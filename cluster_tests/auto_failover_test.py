@@ -21,7 +21,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(num_nodes=1)
+        return testlib.ClusterRequirements()
 
     def init_limits(self):
         self.limits = collections.defaultdict(collections.defaultdict)

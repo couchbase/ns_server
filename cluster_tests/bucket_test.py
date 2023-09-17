@@ -2043,7 +2043,9 @@ class BasicBucketTestSet(BucketTestSetBase):
     @staticmethod
     def requirements():
         # 1024MiB is required to test magma
-        return testlib.ClusterRequirements(memsize=1024, edition="Enterprise")
+        return testlib.ClusterRequirements(min_memsize=1024,
+                                           num_nodes=1,
+                                           edition="Enterprise")
 
     def name_test(self):
         self.test_param("name",
@@ -2265,7 +2267,9 @@ class ServerlessBucketTestSet(BucketTestSetBase):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(memsize=1024, edition="Serverless")
+        return testlib.ClusterRequirements(min_memsize=1024,
+                                           num_nodes=1,
+                                           edition="Serverless")
 
     def bucket_placer_test(self):
         main_params = {

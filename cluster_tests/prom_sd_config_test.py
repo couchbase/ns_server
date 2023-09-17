@@ -31,7 +31,7 @@ class PromSdConfigTest(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(num_nodes=3)
+        return testlib.ClusterRequirements(min_num_nodes=3)
 
     def setup(self):
         self.alt_addr_url = "/node/controller/setupAlternateAddresses/external"

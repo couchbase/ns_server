@@ -26,8 +26,9 @@ class ResourceManagementTests(testlib.BaseTestSet):
         #   to test both nodes if num_nodes increases, so it should be modified
         #   at the same time.
         # - 1024MB quota for magma bucket
-        return testlib.ClusterRequirements(edition="Provisioned", num_nodes=2,
-                                           memsize=1024)
+        return testlib.ClusterRequirements(edition="Provisioned",
+                                           min_num_nodes=2,
+                                           min_memsize=1024)
 
     def setup(self):
         # Get original settings, so that they can be set back on teardown

@@ -63,7 +63,8 @@ class SamlTests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(num_nodes=2, edition="Enterprise")
+        return testlib.ClusterRequirements(min_num_nodes=2,
+                                           edition="Enterprise")
 
 
     def setup(self):
