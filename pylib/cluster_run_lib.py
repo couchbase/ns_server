@@ -685,20 +685,24 @@ def connect(num_nodes=0,
     if serverless:
         do_wait_for_rebalance = True
 
-    net_opts = do_encode(
-        "afamily={0}".format(protocol) +
-        "&nodeEncryption={0}".format(
-            "on" if encryption else "off"))
-    o.open("http://{0}:{1}/node/controller/enableExternalListener".format(
-           addr, base_port), net_opts)
-    o.open("http://{0}:{1}/node/controller/setupNetConfig".format(
-           addr, base_port), net_opts)
-    data = do_encode("services={0}".format(",".join(services)))
-    o.open("http://{0}:{1}/node/controller/setupServices".format(
-           addr, base_port), data).read()
-    data = do_encode("memoryQuota=" + str(memsize) +
-                     "&indexMemoryQuota=" + str(indexmemsize))
-    o.open("http://{0}:{1}/pools/default".format(addr, base_port), data).read()
+    if index_storage_mode is not None:
+        indStorageMode = index_storage_mode
+    elif community_edition:
+        indStorageMode = default_idx_storage_mode_ce
+    else:
+        indStorageMode = default_idx_storage_mode_ep
+
+    data = do_encode(
+             f'afamily={protocol}&' \
+             f'nodeEncryption={"on" if encryption else "off"}&' \
+             f'memoryQuota={memsize}&' \
+             f'indexMemoryQuota={indexmemsize}&' \
+             'port=SAME&' \
+             f'username={default_username}&' \
+             f'password={default_pass}&' \
+             f'indexerStorageMode={indStorageMode}&' \
+             f'services=' + ",".join(services))
+    o.open(f'http://{addr}:{base_port}/clusterInit', data).read()
 
     # Creating the groups (availability zones) for serverless.
     if serverless_groups:
@@ -733,18 +737,6 @@ def connect(num_nodes=0,
     if not do_wait_for_rebalance:
         o.open("http://{0}:{1}/pools/default/buckets".format(addr, base_port),
                bucket_data_string).read()
-    data = do_encode("port=SAME&username=Administrator&password=asdasd")
-    o.open("http://{0}:{1}/settings/web".format(addr, base_port),
-           data).read()
-    if index_storage_mode is not None:
-        o.open("http://{0}:{1}/settings/indexes".format(addr, base_port),
-               do_encode("storageMode=" + index_storage_mode)).read()
-    elif community_edition:
-        o.open("http://{0}:{1}/settings/indexes".format(addr, base_port),
-               do_encode("storageMode=" + default_idx_storage_mode_ce)).read()
-    else:
-        o.open("http://{0}:{1}/settings/indexes".format(addr, base_port),
-               do_encode("storageMode=" + default_idx_storage_mode_ep)).read()
 
     for i in range(1, num_nodes):
         port = base_port + i
