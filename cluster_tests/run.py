@@ -239,7 +239,7 @@ def main():
         if use_existing_server:
             unmet_requirements = configuration.get_unmet_requirements(cluster)
             if len(unmet_requirements) > 0:
-                for testset_name, _testset, _test_names in testsets:
+                for testset_name, _testset, _test_names, _reqs in testsets:
                     reason = "Cluster provided does not satisfy test " \
                              f"requirements:\n" \
                              f"{[str(r) for r in unmet_requirements]}"
@@ -329,7 +329,7 @@ def group_testsets(testsets):
         for requirements in configurations:
             different = True
             testset_name = f"{class_name}/{requirements}"
-            testset = (testset_name, testset_class, test_names)
+            testset = (testset_name, testset_class, test_names, requirements)
             for i, (other_reqs, other_testsets) in enumerate(testsets_grouped):
                 succ, new_reqs = other_reqs.intersect(requirements)
                 if succ:
@@ -444,7 +444,16 @@ def run_testsets(cluster, testsets, intercept_output=True, seed=None):
     executed = 0
     errors = {}
     not_ran = []
-    for testset_name, testset, test_names in testsets:
+    for testset_name, testset, test_names, testset_requirements in testsets:
+        # We should be able to reuse the cluster here (because we constructed
+        # this cluster specifically for this testset), so make sure
+        # requirements are still met for this testset (other tests could have
+        # broken it).
+        reuse, unmet = testlib.try_reuse_cluster(testset_requirements, cluster)
+        if not reuse:
+            unmet_str = ', '.join(str(r) for r in unmet)
+            raise RuntimeError('Internal error. ' \
+                               f'Unmet requirements: {unmet_str}')
         res = testlib.run_testset(testset, test_names, cluster, testset_name,
                                   intercept_output=intercept_output, seed=seed)
         executed += res[0]

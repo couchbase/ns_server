@@ -28,20 +28,32 @@ config={'colors': support_colors(),
         'screen_width': 80,
         'dry_run': False}
 
+
+def try_reuse_cluster(requirements, cluster):
+    # If we can use the existing cluster then we should
+    if len(requirements.get_unmet_requirements(cluster)) == 0:
+        return True, []
+
+    # Attempt to satisfy the requirements with the existing cluster if
+    # possible
+    satisfiable, unsatisfied = requirements.is_satisfiable(cluster)
+    if satisfiable:
+        for requirement in unsatisfied:
+            with no_output("make_met"):
+                requirement.make_met(cluster)
+        # We should not have unmet requirements at this point.
+        # If we do, it is a bug in make_met() or in is_met()
+        if len(unmet:=requirements.get_unmet_requirements(cluster)) > 0:
+            raise RuntimeError(f'Internal error. Unmet requirements: {unmet}')
+        return True, []
+    return False, unsatisfied
+
+
 def get_appropriate_cluster(cluster, auth, start_index, requirements,
                             tmp_cluster_dir, kill_nodes):
     if cluster is not None:
-        # If we can use the existing cluster then we should
-        if len(requirements.get_unmet_requirements(cluster)) == 0:
-            return cluster
-
-        # Attempt to satisfy the requirements with the existing cluster if
-        # possible
-        satisfiable, unsatisfied = requirements.is_satisfiable(cluster)
-        if satisfiable:
-            for requirement in unsatisfied:
-                with no_output("make_met"):
-                    requirement.make_met(cluster)
+        reuse, _ = try_reuse_cluster(requirements, cluster)
+        if reuse:
             return cluster
 
         # Teardown the old cluster
