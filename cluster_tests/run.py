@@ -81,6 +81,8 @@ Usage: {program_name}
         Specify a seed to be set for python pseudo-random number generator
     [--verbose | -v]
         Print more debug information
+    [--dry-run]
+        Do not actually run tests (useful for framework debugging)
     [--help]
         Show this help
 """
@@ -121,7 +123,8 @@ def main():
                                           ["help", "keep-tmp-dirs", "cluster=",
                                            "user=", "password=", "num-nodes=",
                                            "tests=", "dont-intercept-output",
-                                           "seed=", "colors=", "verbose"])
+                                           "seed=", "colors=", "verbose",
+                                           "dry-run"])
     except getopt.GetoptError as err:
         bad_args_exit(str(err))
 
@@ -175,6 +178,8 @@ def main():
             testlib.config['colors'] = (int(a) == 1)
         elif o in ('--verbose', '-v'):
             testlib.config['verbose'] = True
+        elif o == '--dry-run':
+            testlib.config['dry_run'] = True
         elif o in ('--help', '-h'):
             usage()
             exit(0)
@@ -389,7 +394,7 @@ def discover_testsets():
                 continue
             if issubclass(testset, testlib.BaseTestSet):
                 requirements, err = testlib.safe_test_function_call(
-                    testset, 'requirements', [])
+                    testset, 'requirements', [], dry_run=False)
                 if err is not None:
                     return err
                 if isinstance(requirements, list):

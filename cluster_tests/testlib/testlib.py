@@ -25,7 +25,8 @@ def support_colors():
 
 config={'colors': support_colors(),
         'verbose': False,
-        'screen_width': 80}
+        'screen_width': 80,
+        'dry_run': False}
 
 def get_appropriate_cluster(cluster, auth, start_index, requirements,
                             tmp_cluster_dir, kill_nodes):
@@ -120,7 +121,9 @@ def run_testset(testset_class, test_names, cluster, testset_name,
 
 
 def safe_test_function_call(testset, testfunction, args, verbose=False,
-                            intercept_output=True, seed=None):
+                            intercept_output=True, seed=None, dry_run=None):
+    if dry_run is None:
+        dry_run = config['dry_run']
     res = None
     error = None
     if hasattr(testset, '__name__'):
@@ -133,7 +136,8 @@ def safe_test_function_call(testset, testfunction, args, verbose=False,
     try:
         with no_output(testname, extra_context=report_call,
                        verbose=not intercept_output):
-            res = apply_with_seed(testset, testfunction, args, seed)
+            if not dry_run:
+                res = apply_with_seed(testset, testfunction, args, seed)
     except Exception as e:
         cscheme = None if config['colors'] else traceback.ColorSchemes.none
         traceback.print_exc(fmt=traceback.Format(color_scheme=cscheme),
