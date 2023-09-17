@@ -126,7 +126,10 @@ class Cluster:
 
 
     def __str__(self):
-        return self.__dict__.__str__()
+        return ','.join([str(n) for n in self.connected_nodes])
+
+    def __repr__(self):
+        return self.__dict__.__repr__()
 
     # Kill all associated nodes to avoid competing for resources with the active
     # cluster being tested against

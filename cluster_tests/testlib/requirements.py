@@ -191,6 +191,9 @@ class Requirement(ABC):
                         for key, value in self._kwargs.items()
                         if value is not None])
 
+    def __repr__(self):
+        return self.__dict__.__repr__()
+
     def __eq__(self, other):
         return str(self) == str(other)
 

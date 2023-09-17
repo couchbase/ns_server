@@ -81,6 +81,7 @@ def run_testset(testset_class, test_names, cluster, testset_name,
     not_ran = []
     executed = 0
     print(f"\nStarting testset: {testset_name}...")
+    maybe_print(f'Using cluster: {repr(cluster)}')
 
     testset_instance = testset_class(cluster)
 

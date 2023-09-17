@@ -32,6 +32,9 @@ class Node:
     def __str__(self):
         return self.hostname()
 
+    def __repr__(self):
+        return self.__dict__.__repr__()
+
     def data_path(self):
         if self.data_path_cache is None:
             r = testlib.diag_eval(self, "path_config:component_path(data).")
