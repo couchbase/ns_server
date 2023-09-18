@@ -91,12 +91,6 @@ crashing_child_link() ->
     Pid = spawn_link(fun wait/0),
     {ok, Pid}.
 
-supervisor2_crashing_child_spec() ->
-    {?CRASHING_CHILD_NAME,
-      {supervisor_tests, crashing_child_link, []},
-      {permanent, ?MAX_R_RESTART_DELAY_SECONDS},
-      infinity, worker, []}.
-
 suppress_max_r_crashing_child_base_tuple_spec() ->
     {?CRASHING_CHILD_NAME,
      {supervisor_tests, crashing_child_link, []},
@@ -122,11 +116,7 @@ suppress_max_r_crashing_child_map_spec() ->
 
 max_restart_intensity_test_() ->
     Tests =
-        [{"supervisor2, supervisor2 spec",
-          {supervisor2, [supervisor2_crashing_child_spec()]}},
-         {"supervisor2, suppress_max_r tuple spec",
-          {supervisor2, [suppress_max_r_crashing_child_tuple_spec()]}},
-         {"supervisor, suppress_max_r tuple spec",
+        [{"supervisor, suppress_max_r tuple spec",
           {supervisor, [suppress_max_r_crashing_child_tuple_spec()]}},
          {"supervisor, suppress_max_r map spec",
           {supervisor, [suppress_max_r_crashing_child_map_spec()]}},
