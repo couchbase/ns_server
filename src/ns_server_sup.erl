@@ -9,7 +9,7 @@
 %%
 -module(ns_server_sup).
 
--behaviour(supervisor2).
+-behaviour(supervisor).
 
 -include("ns_common.hrl").
 
@@ -41,7 +41,7 @@ node_name_changed() ->
     end.
 
 start_link() ->
-    supervisor2:start_link({local, ?MODULE}, ?MODULE, []).
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %% ===================================================================
 %% Supervisor callbacks

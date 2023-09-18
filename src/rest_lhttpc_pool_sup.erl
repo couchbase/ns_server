@@ -9,7 +9,7 @@
 
 -module(rest_lhttpc_pool_sup).
 
--behaviour(supervisor2).
+-behaviour(supervisor).
 
 -export([init/1, start_link/0]).
 
@@ -17,7 +17,7 @@
 -define(MAX_T, misc:get_env_default(max_t, 10)).
 
 start_link() ->
-    supervisor2:start_link({local, ?MODULE}, ?MODULE, []).
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
     {ok, {{rest_for_one,

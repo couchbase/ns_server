@@ -15,7 +15,7 @@
 
 -include("ns_common.hrl").
 
--behaviour(supervisor2).
+-behaviour(supervisor).
 
 %% API
 -export([start_link/0, start_couchdb_node/0, is_couchdb_node_started/0]).
@@ -31,7 +31,7 @@
 %% ===================================================================
 
 start_link() ->
-    supervisor2:start_link({local, ?MODULE}, ?MODULE, []).
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %% ===================================================================
 %% Supervisor callbacks

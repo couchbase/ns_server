@@ -12,7 +12,7 @@
 
 -module(ns_couchdb_sup).
 
--behaviour(supervisor2).
+-behaviour(supervisor).
 
 %% API
 -export([start_link/0, restart_capi_ssl_service/0]).
@@ -28,7 +28,7 @@
 %% ===================================================================
 
 start_link() ->
-    supervisor2:start_link({local, ?MODULE}, ?MODULE, []).
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %% ===================================================================
 %% Supervisor callbacks

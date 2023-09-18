@@ -165,7 +165,7 @@
 %% Supervisor supports map child_specs(). Maps are, IMO, much more readable, so
 %% this module is implemented in terms of maps rather than tuples where
 %% possible, but tuple child_specs() are supported such that this can be used
-%% by supervisor2.
+%% by supervisor2 or those preferring that style.
 
 %% Supervisor.erl unfortunately does not export these types. For the sake of
 %% dialyzer they are lifted from supervisor.erl.
