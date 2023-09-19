@@ -108,3 +108,53 @@ max_restart_intensity_test_() ->
         [{Test, fun (_T, _R) ->
                         {Name, timeout, 100, max_restart_intensity_t()}
                 end} || {Name, Test} <- Tests]}.
+
+restartable_spec() ->
+    restartable:spec(
+      {?CRASHING_CHILD_NAME,
+       {supervisor_tests, crashing_child_link, []},
+       permanent, infinity, worker, []}).
+
+restartable_via_name_t({_Supervisor, _ChildSpec}, SupPid) ->
+    ChildPid1 = whereis(?CRASHING_CHILD_NAME),
+
+    {ok, _} = restartable:restart(SupPid, ?CRASHING_CHILD_NAME),
+
+    ok = misc:wait_for_local_name(?CRASHING_CHILD_NAME, 10000),
+
+    ChildPid2 = whereis(?CRASHING_CHILD_NAME),
+    ?_assertNotEqual(ChildPid1, ChildPid2).
+
+restartable_via_name_test_() ->
+    Tests =
+        [{"supervisor, restartable spec",
+            {supervisor, [restartable_spec()]}}],
+
+    {foreachx,
+        fun supervisor_test_setup/1,
+        fun supervisor_test_teardown/2,
+        [{Test, fun (T, R) ->
+            {Name, timeout, 100, restartable_via_name_t(T, R)}
+                end} || {Name, Test} <- Tests]}.
+
+restartable_via_pid_t({Supervisor, _ChildSpec}, SupPid) ->
+    ChildPid1 = whereis(?CRASHING_CHILD_NAME),
+
+    [{?CRASHING_CHILD_NAME, RestartablePid, _, _}] =
+        Supervisor:which_children(SupPid),
+    {ok, _} = restartable:restart(RestartablePid),
+
+    ChildPid2 = whereis(?CRASHING_CHILD_NAME),
+    ?_assertNotEqual(ChildPid1, ChildPid2).
+
+restartable_via_pid_test_() ->
+    Tests =
+        [{"supervisor, restartable spec",
+            {supervisor, [restartable_spec()]}}],
+
+    {foreachx,
+        fun supervisor_test_setup/1,
+        fun supervisor_test_teardown/2,
+        [{Test, fun (T, R) ->
+            {Name, timeout, 100, restartable_via_pid_t(T, R)}
+                end} || {Name, Test} <- Tests]}.
