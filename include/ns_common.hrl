@@ -400,8 +400,8 @@
 -define(KvResidentRatioQuery,
         ns_config:search_node_prop(
           ns_config:latest(), resource_promql_override, kv_resident_ratio,
-          <<"100 * kv_ep_max_size / on(bucket) (sum by(bucket, name) "
-          "(kv_logical_data_size_bytes{state=`active`}))">>)).
+          <<"100 * kv_ep_max_size / on(bucket) "
+            "kv_logical_data_size_bytes{state=`active`}">>)).
 -define(KvDataSizeRawQuery,
         ns_config:search_node_prop(
           ns_config:latest(), resource_promql_override, kv_data_size_raw,
