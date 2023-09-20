@@ -291,7 +291,14 @@ basic_test_setup() ->
                 fun () -> [node1, node2, node3] end),
     meck:expect(ns_pubsub, subscribe_link,
                 fun (ns_config_events, _) -> ok end),
-    meck:expect(guardrail_monitor, is_enabled, ?cut(false)).
+    meck:expect(guardrail_monitor, is_enabled, ?cut(false)),
+    %% Meck ns_config:search_node_with_default so that we don't have a race
+    %% between start_link and test_update_statuses at the start of
+    %% update_statuses_t
+    meck:expect(ns_config, search_node_with_default,
+                fun (_, _, resource_statuses, Default) ->
+                        Default
+                end).
 
 test_update_statuses(NewNodes) ->
     meck:expect(ns_config, search_node_with_default,
