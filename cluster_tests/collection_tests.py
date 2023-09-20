@@ -111,6 +111,9 @@ class CollectionTests(testlib.BaseTestSet):
                           data={"magmaMinMemoryQuota": 256})
 
     def teardown(self):
+        # Restore requirement for magma ram quota
+        testlib.post_succ(self.cluster, "/internalSettings",
+                          data={"magmaMinMemoryQuota": 1024})
         pass
 
     def test_teardown(self):
