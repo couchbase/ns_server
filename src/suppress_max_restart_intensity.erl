@@ -165,7 +165,7 @@
 %% Supervisor supports map child_specs(). Maps are, IMO, much more readable, so
 %% this module is implemented in terms of maps rather than tuples where
 %% possible, but tuple child_specs() are supported such that this can be used
-%% by supervisor2 or those preferring that style.
+%% by those preferring that style.
 
 %% Supervisor.erl unfortunately does not export these types. For the sake of
 %% dialyzer they are lifted from supervisor.erl.
@@ -351,9 +351,7 @@ avoid_max_restart_intensity_sup_spec(#{id := Id} = ChildSpec) ->
       %% avoid a race between unlinking the process and shutting down
       shutdown => infinity,
       type => supervisor};
-%% TODO MB-58410: Remove when we fully remove supervisor2, mainline supervisor
-%% supports map child_specs(), supervisor2 does not and so this is needed for
-%% now.
+%% Required for use in restartable which can only deal with tuple specs.
 avoid_max_restart_intensity_sup_spec(
   {Id, _MFA, _Restart, _Shutdown, _Type, _Modules} = ChildSpec) ->
     {?AVOID_MAX_RESTART_INTENSITY_SUP_ID(Id),
