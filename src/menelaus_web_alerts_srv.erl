@@ -1153,25 +1153,29 @@ maybe_alert_stuck_rebalance(Service, NowTime, Threshold, Opaque) ->
     %% Fetch previous progress value
     LastProgress = get_last_rebalance_progress(Service, Opaque),
     %% Calculate how long it has been since progress was last checked
-    TimeSinceLastCheck =
+    {OldStuck, TimeSinceLastCheck} =
         case LastProgress of
             #rebalance_progress{last_timestamp = LastCheck} ->
-                erlang:convert_time_unit(NowTime - LastCheck,
-                                         native, second);
+                {Stuck, _} = is_stuck(LastProgress, Threshold),
+                {Stuck,
+                 erlang:convert_time_unit(NowTime - LastCheck, native, second)};
             not_found ->
-                infinity
+                %% Assume we were not stuck as there is no previous progress
+                {0, infinity}
         end,
     QueryPeriod = Threshold / ?REBALANCE_CHECK_FREQ,
     %% Only check progress if it has been long enough since the last check
     case progress_check_needed(TimeSinceLastCheck, QueryPeriod) of
         false ->
-            {0, Opaque};
+            %% Don't update stuckness
+            {OldStuck, Opaque};
         true ->
             %% Fetch the current rebalance progress
             case ns_rebalance_observer:get_progress_for_alerting(Service) of
                 {error, E} ->
                     ?log_error("Error getting rebalance progress: ~p", [E]),
-                    {0, Opaque};
+                    %% Don't update stuckness
+                    {OldStuck, Opaque};
                 not_running ->
                     %% Rebalance is no longer running so no need to alert
                     {0, Opaque};
@@ -1179,29 +1183,35 @@ maybe_alert_stuck_rebalance(Service, NowTime, Threshold, Opaque) ->
                     NewProgress = update_rebalance_progress(
                                     Service, NowTime, LastProgress,
                                     FetchedProgress),
-                    StuckStart = NewProgress#rebalance_progress.stuck_timestamp,
 
                     %% Check if we have been stuck long enough to alert and
                     %% avoid alerting from more than one node at a time for the
                     %% same stage of the same rebalance
-                    StuckTime = erlang:convert_time_unit(NowTime - StuckStart,
-                                                         native, second),
-                    Stuck =
-                        case StuckTime >= Threshold of
-                            true ->
-                                Msg = fmt_to_bin(errors(stuck_rebalance),
-                                                 [Service, Id, StuckTime]),
-                                global_alert({stuck_rebalance, Service, Id},
-                                             Msg),
-                                1;
-                            false ->
-                                0
-                        end,
-                    {Stuck, dict:store({rebalance_progress, Service},
-                                       NewProgress,
-                                       Opaque)}
+                    {StuckStatus, StuckTime} = is_stuck(NewProgress, Threshold),
+                    case StuckStatus of
+                        1 ->
+                            Msg = fmt_to_bin(errors(stuck_rebalance),
+                                             [Service, Id, StuckTime]),
+                            global_alert({stuck_rebalance, Service, Id}, Msg);
+                        0 ->
+                            ok
+                    end,
+                    {StuckStatus, dict:store({rebalance_progress, Service},
+                                             NewProgress,
+                                             Opaque)}
             end
     end.
+
+is_stuck(#rebalance_progress{stuck_timestamp = StuckStart,
+                             last_timestamp = LastCheck}, Threshold) ->
+    StuckTime = erlang:convert_time_unit(LastCheck - StuckStart,
+                                         native, second),
+    Status =
+        case StuckTime >= Threshold of
+            true -> 1;
+            false -> 0
+        end,
+    {Status, StuckTime}.
 
 -spec progress_check_needed(infinity | integer(), float()) -> boolean().
 progress_check_needed(infinity, _QueryPeriod) ->
