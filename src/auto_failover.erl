@@ -85,7 +85,7 @@
 -define(SAFETY_CHECK_TIMEOUT, ?get_timeout(safety_check, 2000)).
 
 -record(state,
-        { auto_failover_logic_state,
+        { auto_failover_logic_state = undefined,
           %% Reference to the tick timer.
           tick_ref = nil :: nil | reference(),
           %% Time a node needs to be down until it is automatically failovered
@@ -243,11 +243,9 @@ handle_call({enable_auto_failover, Timeout, Max, Extras}, _From,
                      "Enabled auto-failover with timeout ~p", [Timeout])
     end,
     Ref = send_tick_msg(State),
-    State1 = State#state{tick_ref = Ref, timeout = Timeout,
-                         disable_max_count = DisableMaxCount, max_count = Max,
-                         auto_failover_logic_state = init_logic_state(State)},
-    make_state_persistent(State1, Extras),
-    {reply, ok, State1};
+    NewState = update_and_save_auto_failover_state(
+        DisableMaxCount, Timeout, Max, Extras, State#state{tick_ref = Ref}),
+    {reply, ok, NewState};
 %% @doc Auto-failover is already enabled, just update the settings.
 handle_call({enable_auto_failover, Timeout, Max, Extras}, _From, State) ->
     ?log_debug("updating auto-failover settings: ~p", [State]),
@@ -262,11 +260,9 @@ handle_call({enable_auto_failover, Timeout, Max, Extras}, _From, State) ->
             ale:info(?USER_LOGGER,
                      "Enabled auto-failover with timeout ~p", [Timeout])
     end,
-    State0 = State#state{disable_max_count = DisableMaxCount},
-    State1 = update_state_timeout(Timeout, State0),
-    State2 = update_state_max_count(Max, State1),
-    make_state_persistent(State2, Extras),
-    {reply, ok, State2};
+    NewState = update_and_save_auto_failover_state(
+        DisableMaxCount, Timeout, Max, Extras, State),
+    {reply, ok, NewState};
 
 %% @doc Auto-failover is already disabled, so we don't do anything
 handle_call({disable_auto_failover, _}, _From,
@@ -408,28 +404,41 @@ log_down_nodes_reason(DownNodes,
             end, DownNodes),
     State#state{reported_down_nodes_reason = New}.
 
-update_state_timeout(Timeout, #state{timeout = CurrTimeout} = State) ->
-    case Timeout =/= CurrTimeout of
+update_and_save_auto_failover_state(DisableMaxCount, NewTimeout, NewMax, Extras,
+                                    #state{timeout = OldTimeout,
+                                           max_count = OldMax} = OldState) ->
+    case NewTimeout =/= OldTimeout of
         true ->
             ale:info(?USER_LOGGER, "Updating auto-failover timeout to ~p",
-                     [Timeout]),
-            State1 = State#state{timeout = Timeout},
-            State1#state{auto_failover_logic_state = init_logic_state(State1)};
+                     [NewTimeout]);
         false ->
-            ?log_debug("No change in timeout ~p", [Timeout]),
-            State
-    end.
+            ?log_debug("No change in timeout ~p", [NewTimeout])
+    end,
 
-update_state_max_count(Max, #state{max_count = CurrMax} = State) ->
-    case Max =/= CurrMax of
+    case NewMax =/= OldMax of
         true ->
             ale:info(?USER_LOGGER, "Updating auto-failover max count to ~p",
-                     [Max]),
-            State#state{max_count = Max};
+                     [NewMax]);
         false ->
-            ?log_debug("No change in max count ~p", [Max]),
-            State
-    end.
+            ?log_debug("No change in max count ~p", [NewMax])
+    end,
+
+    NewState =
+        maybe_update_auto_failover_logic_state(
+            OldTimeout, NewTimeout,
+            OldState#state{timeout = NewTimeout, max_count = NewMax,
+                           disable_max_count = DisableMaxCount}),
+
+    make_state_persistent(NewState, Extras),
+    NewState.
+
+maybe_update_auto_failover_logic_state(
+  OldTimeout, NewTimeout,
+  #state{auto_failover_logic_state = LogicState} = State)
+  when OldTimeout =:= NewTimeout andalso LogicState =/= undefined ->
+    State;
+maybe_update_auto_failover_logic_state(_OldTimeout, _NewTimeout, State) ->
+    State#state{auto_failover_logic_state = init_logic_state(State)}.
 
 process_action({mail_too_small, Service, SvcNodes, {Node, _UUID}},
                S, _, _, _) ->
