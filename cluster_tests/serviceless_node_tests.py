@@ -23,7 +23,6 @@ class ServicelessNodeTests(testlib.BaseTestSet):
 
     def setup(self):
         self.req_num_nodes = len(self.cluster.nodes)
-        testlib.delete_all_buckets(self.cluster)
         bucket = {"name": "testbucket", "ramQuota": "200"}
         self.cluster.create_bucket(bucket)
 

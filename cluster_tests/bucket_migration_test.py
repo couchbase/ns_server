@@ -101,7 +101,7 @@ class BucketMigrationTest(testlib.BaseTestSet):
                                            num_connected=2)
 
     def setup(self):
-        testlib.delete_all_buckets(self.cluster)
+        pass
 
     def teardown(self):
         testlib.delete_all_buckets(self.cluster)

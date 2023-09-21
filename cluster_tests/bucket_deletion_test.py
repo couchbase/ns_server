@@ -22,7 +22,6 @@ class BucketDeletionTest(testlib.BaseTestSet):
         return testlib.ClusterRequirements(num_nodes=2)
 
     def setup(self):
-        testlib.delete_all_buckets(self.cluster)
         for i in range(1, 3):
             testlib.post_succ(self.cluster, "/pools/default/buckets",
                               expected_code=202,

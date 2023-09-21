@@ -250,9 +250,7 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
                                "bucket_uuid": "test_uuid"}]
 
     def setup(self):
-        # Delete all buckets to avoid the tasks version changing unexpectedly
-        # when a bucket goes from warming up to active
-        testlib.delete_all_buckets(self.cluster)
+        pass
 
     @staticmethod
     def requirements():

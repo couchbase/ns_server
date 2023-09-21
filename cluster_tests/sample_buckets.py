@@ -44,9 +44,6 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
         self.addr_post = self.addr_get + "/install"
         self.addr_tasks = "/pools/default/tasks"
 
-        # Deleting existing buckets to make space
-        testlib.delete_all_buckets(self.cluster)
-
     def teardown(self):
         pass
 

@@ -30,8 +30,6 @@ class ResourceManagementTests(testlib.BaseTestSet):
                                            memsize=1024)
 
     def setup(self):
-        testlib.delete_all_buckets(self.cluster)
-
         # Get original settings, so that they can be set back on teardown
         original_settings = testlib.get_succ(self.cluster, "/internalSettings") \
             .json()

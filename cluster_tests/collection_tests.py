@@ -103,9 +103,6 @@ class CollectionTests(testlib.BaseTestSet):
         return testlib.ClusterRequirements(num_nodes=1, memsize=1024)
 
     def setup(self):
-        # MB-58727 Setup should be able to assume a clean slate when starting
-        # and not have to do any housekeeping.
-        testlib.delete_all_buckets(self.cluster)
         # Decrease requirement for magma ram quota
         testlib.post_succ(self.cluster, "/internalSettings",
                           data={"magmaMinMemoryQuota": 256})

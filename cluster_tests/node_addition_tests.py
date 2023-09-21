@@ -30,7 +30,6 @@ class NodeAdditionTests(testlib.BaseTestSet):
         self.req_num_nodes = len(self.cluster.nodes)
         self.disconnected_nodes = [node for node in self.cluster.nodes
                                    if node not in self.cluster.connected_nodes]
-        testlib.delete_all_buckets(self.cluster)
 
     def teardown(self):
         pass
@@ -111,7 +110,6 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         self.new_node_cert, self.new_node_key = \
             generate_node_certs(self.new_node().addr(),
                                 self.new_node_ca, self.new_node_ca_key)
-        testlib.delete_all_buckets(self.cluster)
         toggle_node_n2n(self.new_node(), enable=False)
 
     def teardown(self):
