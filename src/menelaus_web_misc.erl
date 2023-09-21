@@ -41,6 +41,8 @@ handle_uilogin(Req) ->
 handle_uilogout(Req) ->
     case menelaus_auth:get_authn_res(Req) of
         #authn_res{type = ui, session_id = SessionId} ->
+            %% Note that in case of pre-elixir mixed cluster,
+            %% SessionType will be undefined, because SessionId is undefined
             SessionType = menelaus_ui_auth:session_type_by_id(SessionId),
             DefaultLogout =
                 fun () ->
