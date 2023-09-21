@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import sys
+
 import testlib
 import re
 import os
@@ -19,7 +21,7 @@ import signal
 import subprocess
 import random
 
-scriptdir = os.path.dirname(os.path.realpath(__file__))
+scriptdir = sys.path[0]
 resourcedir = os.path.join(scriptdir, "resources", "secrets_management")
 
 

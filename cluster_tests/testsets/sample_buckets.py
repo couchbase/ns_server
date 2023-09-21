@@ -9,7 +9,7 @@
 import time
 
 import testlib
-from tasks_test import TasksBase
+from testsets.tasks_test import TasksBase
 
 
 # 60 second timeout for running to completed. cbimport shouldn't take any

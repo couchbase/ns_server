@@ -15,8 +15,8 @@
 import testlib
 import os
 from testlib import ClusterRequirements
-from cert_load_tests import certs_path, generate_node_certs, load_ca, \
-                            load_node_cert
+from testsets.cert_load_tests import certs_path, generate_node_certs, load_ca, \
+    load_node_cert
 
 
 class NodeAdditionTests(testlib.BaseTestSet):

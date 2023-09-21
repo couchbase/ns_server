@@ -7,7 +7,7 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 import testlib
-from authn_tests import scram_sha_auth
+from testsets.authn_tests import scram_sha_auth
 
 
 class PassHashingSettingsTests(testlib.BaseTestSet):

@@ -24,34 +24,35 @@ import pprint
 # Pretty prints any tracebacks that may be generated if the process dies
 from traceback_with_variables import activate_by_import
 
-scriptdir = os.path.dirname(os.path.realpath(__file__))
+scriptdir = sys.path[0]
 pylib = os.path.join(scriptdir, "..", "pylib")
 sys.path.append(pylib)
 
 import cluster_run_lib
 import testlib
-import authn_tests
-import auto_failover_test
-import sample_buckets
-import ldap_tests
-import tasks_test
-import saml_tests
-import bucket_deletion_test
-import node_addition_tests
-import users_backup_tests
-import prom_sd_config_test
-import serviceless_node_tests
-import bucket_migration_test
-import bucket_test
-import internal_creds_rotation_tests
-import pass_hashing_settings_tests
-import secret_management_tests
-import cert_load_tests
-import alerting_tests
-import resource_management_test
-import stats_tests
-import collection_tests
-import cbauth_cache_config_tests
+from testsets import \
+    authn_tests, \
+    auto_failover_test, \
+    sample_buckets, \
+    ldap_tests, \
+    tasks_test, \
+    saml_tests, \
+    bucket_deletion_test, \
+    node_addition_tests, \
+    users_backup_tests, \
+    prom_sd_config_test, \
+    serviceless_node_tests, \
+    bucket_migration_test, \
+    bucket_test, \
+    internal_creds_rotation_tests, \
+    pass_hashing_settings_tests, \
+    secret_management_tests, \
+    cert_load_tests, \
+    alerting_tests, \
+    resource_management_test, \
+    stats_tests, \
+    collection_tests, \
+    cbauth_cache_config_tests
 
 tmp_cluster_dir = os.path.join(scriptdir, "test_cluster_data")
 
@@ -390,7 +391,8 @@ def discover_testsets():
             continue
         if sys.modules[m].__file__ is None:
             continue
-        if scriptdir != os.path.dirname(sys.modules[m].__file__):
+        if os.path.join(scriptdir, "testsets") != \
+                os.path.dirname(sys.modules[m].__file__):
             continue
         for name, testset in inspect.getmembers(sys.modules[m], inspect.isclass):
             if testset == testlib.BaseTestSet:

@@ -10,8 +10,9 @@ import testlib
 import os
 import ipaddress
 import subprocess
+import sys
 
-scriptdir = os.path.dirname(os.path.realpath(__file__))
+scriptdir = sys.path[0]
 certs_path = os.path.join(scriptdir, 'resources', 'test_certs')
 generate_cert_path = os.path.join(scriptdir, '..', 'deps', 'gocode', 'bin',
                                   'generate_cert')

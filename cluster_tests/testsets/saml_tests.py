@@ -35,9 +35,10 @@ import html
 import re
 import datetime
 import glob
+import sys
 
 debug=False
-scriptdir = os.path.dirname(os.path.realpath(__file__))
+scriptdir = sys.path[0]
 mock_server_port = 8119
 mock_server_host = "localhost"
 mock_metadata_endpoint = "/mock/metadata"
