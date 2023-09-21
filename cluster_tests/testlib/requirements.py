@@ -85,7 +85,12 @@ class ClusterRequirements:
     def get_default_connect_args(start_args):
         return {
                 'protocol': "ipv4",
-                'num_nodes': start_args['num_nodes']
+                'num_nodes': start_args['num_nodes'],
+                # We don't want to create a bucket by default as we can rely on
+                # test sets creating a bucket if needed in setup, and eventually
+                # with an explicit cluster requirement, to offload bucket
+                # creation and teardown to the test framework
+                'create_bucket': False
                }
 
     def as_list(self):
