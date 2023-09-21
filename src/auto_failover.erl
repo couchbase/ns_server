@@ -191,8 +191,7 @@ init([]) ->
     restart_on_compat_mode_change(),
 
     chronicle_compat_events:notify_if_key_changes(
-        [auto_failover_tick_period,
-         auto_failover_cfg], config_updated),
+        [auto_failover_tick_period], tick_period_updated),
 
     Config = get_cfg(),
     ?log_debug("init auto_failover.", []),
@@ -276,18 +275,10 @@ handle_cast(reset_auto_failover_count, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(config_updated, State) ->
-    TickPeriod =
-        case ns_config:read_key_fast(auto_failover_tick_period,
-                                     undefined) of
-            undefined ->
-                health_monitor:maybe_calculate_refresh_interval(
-                  ?DEFAULT_TICK_PERIOD);
-            Value -> Value
-        end,
-    State1 = State#state{tick_period = TickPeriod},
+handle_info(tick_period_updated, #state{timeout = Timeout} = State) ->
+    NewState = State#state{tick_period = get_tick_period(Timeout)},
     {noreply,
-     State1#state{auto_failover_logic_state = init_logic_state(State1)}};
+     NewState#state{auto_failover_logic_state = init_logic_state(NewState)}};
 
 %% @doc Check if nodes should/could be auto-failovered on every tick
 handle_info(tick, State0) ->
@@ -398,7 +389,8 @@ enable_auto_failover(Timeout, Max, Extras, BaseState) ->
 
 update_and_save_auto_failover_state(DisableMaxCount, NewTimeout, NewMax, Extras,
                                     #state{timeout = OldTimeout,
-                                           max_count = OldMax} = OldState) ->
+                                           max_count = OldMax} =
+                                        OldState) ->
     case NewTimeout =/= OldTimeout of
         true ->
             ale:info(?USER_LOGGER, "Updating auto-failover timeout to ~p",
@@ -427,10 +419,20 @@ update_and_save_auto_failover_state(DisableMaxCount, NewTimeout, NewMax, Extras,
 maybe_update_auto_failover_logic_state(
   OldTimeout, NewTimeout,
   #state{auto_failover_logic_state = LogicState} = State)
-  when OldTimeout =:= NewTimeout andalso LogicState =/= undefined ->
+  when OldTimeout =:= NewTimeout
+       andalso LogicState =/= undefined ->
     State;
-maybe_update_auto_failover_logic_state(_OldTimeout, _NewTimeout, State) ->
+maybe_update_auto_failover_logic_state(_OldTimeout, _NewTimeout,
+                                       State) ->
     State#state{auto_failover_logic_state = init_logic_state(State)}.
+
+get_tick_period(Timeout) ->
+    case ns_config:read_key_fast(auto_failover_tick_period, undefined) of
+        undefined ->
+            health_monitor:maybe_scale_refresh_interval(Timeout,
+                                                        ?DEFAULT_TICK_PERIOD);
+        Value -> Value
+    end.
 
 process_action({mail_too_small, Service, SvcNodes, {Node, _UUID}},
                S, _, _, _) ->

@@ -97,6 +97,7 @@
          send_heartbeat/3, send_heartbeat/4,
          analyze_local_status/5,
          maybe_calculate_refresh_interval/1,
+         maybe_scale_refresh_interval/2,
          get_refresh_interval/1]).
 
 -ifdef(TEST).
@@ -357,11 +358,17 @@ maybe_calculate_refresh_interval(DefaultValue) ->
             case proplists:get_value(timeout, Cfg) of
                 undefined ->
                     DefaultValue;
-                Timeout when Timeout < ?AUTO_FAILOVER_MIN_SCALING_TIMEOUT ->
-                    scale_refresh_interval_for_timeout(Timeout);
-                _ ->
-                    DefaultValue
+                Timeout ->
+                    maybe_scale_refresh_interval(Timeout, DefaultValue)
             end
+    end.
+
+-spec maybe_scale_refresh_interval(pos_integer(), pos_integer()) ->
+          pos_integer().
+maybe_scale_refresh_interval(Timeout, DefaultValue) ->
+    case Timeout < ?AUTO_FAILOVER_MIN_SCALING_TIMEOUT of
+        false -> DefaultValue;
+        true -> scale_refresh_interval_for_timeout(Timeout)
     end.
 
 -ifdef(TEST).
