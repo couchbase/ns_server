@@ -80,6 +80,26 @@
         "help": "Total number of cbauth client_cert cache misses",
         "added": "7.6.0"
     },
+    "cm_erlang_port_count": {
+        "type": "gauge",
+        "help": "The number of ports in use by the erlang VM",
+        "added": "7.6.0"
+    },
+    "cm_erlang_port_limit": {
+        "type": "gauge",
+        "help": "The maximum number of ports that the erlang VM can use",
+        "added": "7.6.0"
+    },
+    "cm_erlang_process_count": {
+        "type": "gauge",
+        "help": "The number of processes in use by the erlang VM",
+        "added": "7.6.0"
+    },
+    "cm_erlang_process_limit": {
+        "type": "gauge",
+        "help": "The maximum number of processes that the erlang VM can use",
+        "added": "7.6.0"
+    },
     "cm_failover_safeness_level": {
         "type": "gauge",
         "help": "Failover safeness",

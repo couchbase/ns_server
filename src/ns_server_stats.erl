@@ -126,7 +126,8 @@ report_prom_stats(ReportFun, IsHighCard) ->
           end,
     case IsHighCard of
         true ->
-            Try(ns_server, fun () -> report_ns_server_hc_stats(ReportFun) end);
+            Try(ns_server, fun () -> report_ns_server_hc_stats(ReportFun) end),
+            Try(erlang, fun () -> report_erlang_stats(ReportFun) end);
         false ->
             Try(ns_server, fun () -> report_ns_server_lc_stats(ReportFun) end),
             Try(audit, fun () -> report_audit_stats(ReportFun) end),
@@ -345,13 +346,35 @@ report_ns_server_lc_stats(ReportFun) ->
 report_ns_server_hc_stats(ReportFun) ->
     ets:foldl(
       fun (M, _) ->
-          case lists:member(element(1, M), low_cardinality_stats()) of
-              true -> ok;
-              false -> report_stat(M, ReportFun)
-          end,
-          ok
+              case lists:member(element(1, M), low_cardinality_stats()) of
+                  true -> ok;
+                  false -> report_stat(M, ReportFun)
+              end,
+              ok
       end, [], ?MODULE),
     ok.
+
+report_erlang_stat(Stat, ReportFun) ->
+    Prefix = <<"erlang_">>,
+    ATB = atom_to_binary(Stat),
+
+    report_stat(
+      {{g, {<<Prefix/binary, ATB/binary>>, []}},
+       {0, erlang:system_info(Stat)}},
+      ReportFun),
+    ok.
+
+report_erlang_stats(ReportFun) ->
+    InterestingErlangStats = [
+        port_count,
+        port_limit,
+        process_count,
+        process_limit
+    ],
+    lists:foreach(
+        fun(Stat) ->
+            report_erlang_stat(Stat, ReportFun)
+        end, InterestingErlangStats).
 
 %% Derived stats are those where ns_server has instructed prometheus to
 %% do the calculations. The result of this is the stat resides in the local
