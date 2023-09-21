@@ -641,6 +641,7 @@ def connect(num_nodes=0,
             do_wait_for_rebalance=False,
             storage_backend="couchstore",
             serverless_groups=False,
+            create_bucket=True,
             bucket_weight=50,
             bucket_width=1):
     if isinstance(deploy, list):
@@ -719,24 +720,26 @@ def connect(num_nodes=0,
         for group in server_group_response["groups"]:
             group_name_uri[group['name']] = group['uri']
 
-    data_string = ("name=default" +
-                   "&bucketType=" + buckettype +
-                   "&storageBackend=" + storage_backend +
-                   "&ramQuotaMB=" + str(memsize)
-                   )
-    if buckettype != "memcached":
-        data_string += "&replicaNumber=" + str(replicas)
-    if buckettype != "ephemeral":
-        data_string += "&replicaIndex=" + bool_request_value(replica_index)
-    if serverless:
-        data_string += f"&width={bucket_width}&weight={bucket_weight}"
-    bucket_data_string = do_encode(data_string)
-    # When using serverless with a width > 1, we need to wait for the rebalance
-    # to complete before creating a bucket, otherwise it is safe to create the
-    # bucket beforehand.
-    if not do_wait_for_rebalance:
-        o.open("http://{0}:{1}/pools/default/buckets".format(addr, base_port),
-               bucket_data_string).read()
+    if create_bucket:
+        data_string = ("name=default" +
+                       "&bucketType=" + buckettype +
+                       "&storageBackend=" + storage_backend +
+                       "&ramQuotaMB=" + str(memsize)
+                       )
+        if buckettype != "memcached":
+            data_string += "&replicaNumber=" + str(replicas)
+        if buckettype != "ephemeral":
+            data_string += "&replicaIndex=" + bool_request_value(replica_index)
+        if serverless:
+            data_string += f"&width={bucket_width}&weight={bucket_weight}"
+        bucket_data_string = do_encode(data_string)
+        # When using serverless with a width > 1, we need to wait for the
+        # rebalance to complete before creating a bucket, otherwise it is safe
+        # to create the bucket beforehand.
+        if not do_wait_for_rebalance:
+            o.open("http://{0}:{1}/pools/default/buckets"
+                   .format(addr, base_port),
+                   bucket_data_string).read()
 
     for i in range(1, num_nodes):
         port = base_port + i
@@ -785,8 +788,10 @@ def connect(num_nodes=0,
             if err is not None:
                 print(err)
                 return 1
-            o.open("http://{0}:{1}/pools/default/buckets".format(addr, base_port),
-                   bucket_data_string).read()
+            if create_bucket:
+                o.open("http://{0}:{1}/pools/default/buckets"
+                       .format(addr, base_port),
+                       bucket_data_string).read()
     return 0
 
 
