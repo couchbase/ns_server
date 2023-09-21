@@ -231,37 +231,14 @@ handle_call({enable_auto_failover, Timeout, Max}, From, State) ->
 %% @doc Auto-failover isn't enabled yet (tick_ref isn't set).
 handle_call({enable_auto_failover, Timeout, Max, Extras}, _From,
             #state{tick_ref = nil} = State) ->
-    DisableMaxCount = proplists:get_value(disable_max_count, Extras,
-        State#state.disable_max_count),
-    case DisableMaxCount of
-        false ->
-            ale:info(?USER_LOGGER,
-                     "Enabled auto-failover with timeout ~p and max count ~p",
-                     [Timeout, Max]);
-        true ->
-            ale:info(?USER_LOGGER,
-                     "Enabled auto-failover with timeout ~p", [Timeout])
-    end,
     Ref = send_tick_msg(State),
-    NewState = update_and_save_auto_failover_state(
-        DisableMaxCount, Timeout, Max, Extras, State#state{tick_ref = Ref}),
+    NewState = enable_auto_failover(
+        Timeout, Max, Extras, State#state{tick_ref = Ref}),
     {reply, ok, NewState};
 %% @doc Auto-failover is already enabled, just update the settings.
 handle_call({enable_auto_failover, Timeout, Max, Extras}, _From, State) ->
     ?log_debug("updating auto-failover settings: ~p", [State]),
-    DisableMaxCount = proplists:get_value(disable_max_count, Extras,
-        State#state.disable_max_count),
-    case DisableMaxCount of
-        false ->
-            ale:info(?USER_LOGGER,
-                     "Enabled auto-failover with timeout ~p and max count ~p",
-                     [Timeout, Max]);
-        true ->
-            ale:info(?USER_LOGGER,
-                     "Enabled auto-failover with timeout ~p", [Timeout])
-    end,
-    NewState = update_and_save_auto_failover_state(
-        DisableMaxCount, Timeout, Max, Extras, State),
+    NewState = enable_auto_failover(Timeout, Max, Extras, State),
     {reply, ok, NewState};
 
 %% @doc Auto-failover is already disabled, so we don't do anything
@@ -404,6 +381,21 @@ log_down_nodes_reason(DownNodes,
             end, DownNodes),
     State#state{reported_down_nodes_reason = New}.
 
+enable_auto_failover(Timeout, Max, Extras, BaseState) ->
+    DisableMaxCount = proplists:get_value(disable_max_count, Extras,
+                                          BaseState#state.disable_max_count),
+    case DisableMaxCount of
+        false ->
+            ale:info(?USER_LOGGER,
+                     "Enabled auto-failover with timeout ~p and max count ~p",
+                     [Timeout, Max]);
+        true ->
+            ale:info(?USER_LOGGER,
+                     "Enabled auto-failover with timeout ~p", [Timeout])
+    end,
+    update_and_save_auto_failover_state(
+      DisableMaxCount, Timeout, Max, Extras, BaseState).
+
 update_and_save_auto_failover_state(DisableMaxCount, NewTimeout, NewMax, Extras,
                                     #state{timeout = OldTimeout,
                                            max_count = OldMax} = OldState) ->
@@ -425,9 +417,9 @@ update_and_save_auto_failover_state(DisableMaxCount, NewTimeout, NewMax, Extras,
 
     NewState =
         maybe_update_auto_failover_logic_state(
-            OldTimeout, NewTimeout,
-            OldState#state{timeout = NewTimeout, max_count = NewMax,
-                           disable_max_count = DisableMaxCount}),
+          OldTimeout, NewTimeout,
+          OldState#state{timeout = NewTimeout, max_count = NewMax,
+                         disable_max_count = DisableMaxCount}),
 
     make_state_persistent(NewState, Extras),
     NewState.
