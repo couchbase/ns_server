@@ -34,10 +34,10 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
     def requirements():
         return [testlib.ClusterRequirements(edition="Enterprise",
                                             min_num_nodes=2,
-                                            memsize=2000),
+                                            min_memsize=600),
                 testlib.ClusterRequirements(edition="Serverless",
                                             min_num_nodes=2,
-                                            memsize=2000)]
+                                            min_memsize=600)]
 
     def setup(self):
         self.addr_get = "/sampleBuckets"
@@ -241,8 +241,8 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
 
     # Test loading multiple sample buckets sequentially
     def post_multiple_buckets_sequential_test(self):
-        # Create 10 buckets (with total ram quota 10*200MiB = 2000MiB)
-        bucket_count = 10
+        # Create 3 buckets (with total ram quota 3*200MiB = 600MiB)
+        bucket_count = 3
         bucket_names = [f"test{i}" for i in range(bucket_count)]
         for bucket_name in bucket_names:
             self.create_bucket(bucket_name, 200)
@@ -264,8 +264,8 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
 
     # Test loading multiple sample buckets concurrently
     def post_multiple_buckets_concurrent_test(self):
-        # Set concurrency limit to 3
-        concurrency = 3
+        # Set concurrency limit to 2
+        concurrency = 2
         self.set_concurrency(concurrency)
 
         # Create bucket
