@@ -267,27 +267,27 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
         # Set concurrency limit to 2
         concurrency = 2
         self.set_concurrency(concurrency)
+        try:
+            # Create bucket
+            bucket_names = [f"test{i}" for i in range(concurrency)]
+            for bucket_name in bucket_names:
+                self.create_bucket(bucket_name, 200)
 
-        # Create bucket
-        bucket_names = [f"test{i}" for i in range(concurrency)]
-        for bucket_name in bucket_names:
-            self.create_bucket(bucket_name, 200)
+            # Attempt to load buckets with sample data
+            sample_bucket = "travel-sample"
+            payload = [{"sample": sample_bucket,
+                        "bucket": bucket_name} for bucket_name in bucket_names]
+            response = testlib.post_succ(self.cluster, self.addr_post, 202,
+                                         json=payload)
 
-        # Attempt to load buckets with sample data
-        sample_bucket = "travel-sample"
-        payload = [{"sample": sample_bucket,
-                    "bucket": bucket_name} for bucket_name in bucket_names]
-        response = testlib.post_succ(self.cluster, self.addr_post, 202,
-                                     json=payload)
+            # We multiply the timeout by the number of requests that may be
+            # running at once, as this is the worst case slow down from
+            # concurrency.
+            timeout = CBIMPORT_TIMEOUT * concurrency
 
-        # We multiply the timeout by the number of requests that may be
-        # running at once, as this is the worst case slow down from
-        # concurrency.
-        timeout = CBIMPORT_TIMEOUT * concurrency
-
-        # Check that all sample buckets start loading immediately, and all
-        # complete successfully
-        self.assert_loaded_samples(response, timeout, len(payload))
-
-        # Reset the concurrency to 1
-        self.set_concurrency(1)
+            # Check that all sample buckets start loading immediately, and all
+            # complete successfully
+            self.assert_loaded_samples(response, timeout, len(payload))
+        finally:
+            # Reset the concurrency to 1
+            self.set_concurrency(1)
