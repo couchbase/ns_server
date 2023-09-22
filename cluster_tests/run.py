@@ -200,10 +200,11 @@ def main():
         if not isinstance(configurations, list):
             reason = configurations
             not_ran.append((name, reason))
-        for configuration in configurations:
-            if not isinstance(configuration, testlib.ClusterRequirements):
-                reason = configuration
-                not_ran.append((name, reason))
+        else:
+            for configuration in configurations:
+                if not isinstance(configuration, testlib.ClusterRequirements):
+                    reason = configuration
+                    not_ran.append((name, reason))
         if reason is not None:
             discovered_tests.remove(discovered_test)
 
@@ -398,7 +399,8 @@ def discover_testsets():
                 requirements, err = testlib.safe_test_function_call(
                     testset, 'requirements', [], dry_run=False)
                 if err is not None:
-                    return err
+                    name, req_error = err
+                    return [(name, None, None, req_error)]
                 if isinstance(requirements, list):
                     add_testset(name, testset, requirements)
                 else:
