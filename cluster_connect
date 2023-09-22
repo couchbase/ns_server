@@ -135,6 +135,12 @@ def main():
         help=f"Creates 3 groups and adds the nodes to the serverless groups"
     )
     arg_parser.add_argument(
+        '--dont-create-bucket',
+        action='store_true',
+        default=None,
+        help=f"Don't create a 'default' bucket",
+    )
+    arg_parser.add_argument(
         '--width',
         type=int,
         help=f"The bucket width for serverless buckets",
@@ -188,6 +194,7 @@ def main():
         "do_rebalance": args.dont_rebalance,
         "storage_backend": args.storage_backend,
         "serverless_groups": args.serverless_groups,
+        "create_bucket": not args.dont_create_bucket,
         "bucket_width": args.width,
         "bucket_weight": args.weight
     }
