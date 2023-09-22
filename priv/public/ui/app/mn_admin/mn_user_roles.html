@@ -43,7 +43,7 @@
            ng-class="(rolesCtl.isLdapEnabled || rolesCtl.isSamlEnabled) ? 'fa-check success' : 'fa-ban grayblack-3'">
         </span>
         <p>
-          LDAP/SAML is {{(rolesCtl.isLdapEnabled || rolesCtl.isSamlEnabled) ? '' : 'not'}} enabled
+          LDAP{{poolDefault.compat.atLeast76 ? '/SAML' : ''}} is {{(rolesCtl.isLdapEnabled || rolesCtl.isSamlEnabled) ? '' : 'not'}} enabled
         </p>
       </div>
     </span>

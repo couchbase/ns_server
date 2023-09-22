@@ -29,7 +29,7 @@ licenses/APL2.txt.
        ui-sref="app.admin.security.audit"
        ui-sref-active="selected">Audit</a>
     <a
-       ng-show="pools.isEnterprise && rbac.cluster.admin.security.external.read"
+       ng-show="pools.isEnterprise && rbac.cluster.admin.security.external.read && poolDefault.compat.atLeast76"
        ui-sref="app.admin.security.saml"
        ui-sref-active="selected"
        class="resp-hide-sml">SAML</a>

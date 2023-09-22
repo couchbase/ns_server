@@ -26,7 +26,8 @@ let samlState = {
   name: "app.admin.security.saml",
   data: {
     permissions: "cluster.admin.security.external.read",
-    enterprise: true
+    enterprise: true,
+    compat: "atLeast76"
   },
   component: MnSecuritySamlComponent
 };
