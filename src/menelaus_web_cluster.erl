@@ -611,6 +611,20 @@ handle_eject_post(Req) ->
             end
     end.
 
+try_leave_node(Req, OtpNode) ->
+    try
+        ns_cluster:leave(OtpNode),
+        ?MENELAUS_WEB_LOG(?NODE_EJECTED,
+                          "Node ejected: ~p from node: ~p",
+                          [OtpNode, erlang:node()]),
+        ns_audit:remove_node(Req, OtpNode),
+        reply(Req, 200)
+    catch T:E:Stack ->
+        ?log_error("Leave failed with ~p", [{T,E,Stack}]),
+        Msg = <<"Unable to leave cluster">>,
+        reply_text(Req, Msg, 503)
+    end.
+
 do_handle_eject_post(Req, OtpNode) ->
     %% Verify that the server lists are consistent with cluster membership
     %% states in all buckets.
@@ -627,12 +641,7 @@ do_handle_eject_post(Req, OtpNode) ->
         false ->
             case lists:member(OtpNode, ns_node_disco:nodes_wanted()) of
                 true ->
-                    ns_cluster:leave(OtpNode),
-                    ?MENELAUS_WEB_LOG(?NODE_EJECTED,
-                                      "Node ejected: ~p from node: ~p",
-                                      [OtpNode, erlang:node()]),
-                    ns_audit:remove_node(Req, OtpNode),
-                    reply(Req, 200);
+                    try_leave_node(Req, OtpNode);
                 false ->
                                                 % Node doesn't exist.
                     ?MENELAUS_WEB_LOG(0018, "Request to eject nonexistant "

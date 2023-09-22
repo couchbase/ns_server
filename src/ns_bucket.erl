@@ -105,7 +105,7 @@
          magma_key_tree_data_blocksize/1,
          magma_seq_tree_data_blocksize/1,
          update_maps/3,
-         update_buckets/2,
+         update_buckets_for_delta_recovery/2,
          multi_prop_update/2,
          set_bucket_config/2,
          set_buckets_config_failover/2,
@@ -1686,9 +1686,30 @@ multi_prop_update(Key, Updaters, ExtraSets) ->
             Error
     end.
 
-update_buckets(ModifiedBuckets, ExtraSets) ->
+update_buckets_for_delta_recovery(ModifiedBuckets, DeltaNodes) ->
     BucketSets = [{sub_key(N, props), BC} || {N, BC} <- ModifiedBuckets],
-    chronicle_compat:set_multiple(BucketSets ++ ExtraSets).
+    ExtraSets =
+        ns_cluster_membership:update_membership_sets(DeltaNodes, active) ++
+        failover:clear_failover_vbuckets_sets(DeltaNodes),
+    Updates = BucketSets ++ ExtraSets,
+    RV =
+        chronicle_kv:transaction(
+          kv, [nodes_wanted],
+          fun (Snapshot) ->
+                  NodesWanted = ns_cluster_membership:nodes_wanted(Snapshot),
+                  case DeltaNodes -- NodesWanted of
+                      [] ->
+                          {commit, [{set, K, V} || {K, V} <- Updates]};
+                      _Nodes ->
+                          {abort, {ejected_delta_nodes}}
+                  end
+          end, #{}),
+    case RV of
+        {ok, _} ->
+            ok;
+        Error ->
+            Error
+    end.
 
 is_named_bucket_persistent(BucketName) ->
     {ok, BucketConfig} = get_bucket(BucketName),

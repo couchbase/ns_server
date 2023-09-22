@@ -377,6 +377,24 @@ add_node_to_groups(Groups, GroupUUID, Node) ->
             lists:usort([NewGroup | (Groups -- MaybeGroup)])
     end.
 
+validate_removal(Txn, ToRemoveNodes, BucketsConfig) ->
+    ClusterSnapshot = fetch_snapshot(Txn),
+    lists:all(
+      fun(Node) ->
+              case node_active_services(ClusterSnapshot, Node) of
+                  [] ->
+                      true;
+                  [kv] ->
+                      lists:all(
+                        fun({_BName, BConfig}) ->
+                                Servers = ns_bucket:get_servers(BConfig),
+                                not lists:member(Node, Servers)
+                        end, BucketsConfig);
+                  _ ->
+                      false
+              end
+      end, ToRemoveNodes).
+
 remove_nodes(RemoteNodes, Transaction) ->
     remove_nodes(chronicle_compat:backend(), RemoteNodes, Transaction).
 
@@ -419,15 +437,25 @@ remove_nodes(chronicle, RemoteNodes, Transaction) ->
                                 [chronicle_compat:node_keys(RN, Buckets) ||
                                     RN <- RemoteNodes,
                                     RN =/= node()]),
-                   {commit,
-                    [{set, nodes_wanted,
-                      nodes_wanted(Snapshot) -- RemoteNodes},
-                     {set, server_groups,
-                      remove_nodes_from_server_groups(
-                        RemoteNodes, server_groups(Snapshot))} |
-                    [{set, ns_bucket:sub_key(BN, props), UBC} ||
-                     {BN, UBC} <- UpdatedBucketConfigs]] ++
-                     [{delete, K} || K <- NodeKeys]}
+
+                   %% Failing this check is guaranteed config corruption so
+                   %% we abort such a transaction in the first place
+                   case validate_removal(Txn, RemoteNodes,
+                                         UpdatedBucketConfigs) of
+                       true ->
+                           {commit,
+                            [{set, nodes_wanted,
+                              nodes_wanted(Snapshot) -- RemoteNodes},
+                             {set, server_groups,
+                              remove_nodes_from_server_groups(
+                                RemoteNodes, server_groups(Snapshot))} |
+                             [{set, ns_bucket:sub_key(BN, props), UBC} ||
+                                 {BN, UBC} <- UpdatedBucketConfigs]] ++
+                                [{delete, K} || K <- NodeKeys]};
+                       false ->
+                           {abort, {error, fail_remove_node}}
+                   end
+
            end),
     case RV of
         {ok, _} ->
@@ -443,6 +471,8 @@ remove_nodes(chronicle, RemoteNodes, Transaction) ->
                        (_Other) ->
                            skip
                    end);
+        {error, _} = Error ->
+            Error;
         _ ->
             ok
     end,

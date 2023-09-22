@@ -1130,10 +1130,8 @@ apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) -
                                                          DeltaNodes,
                                                          CurrentBuckets),
 
-    ok = ns_bucket:update_buckets(
-           TransitionalBuckets,
-           ns_cluster_membership:update_membership_sets(DeltaNodes, active) ++
-               failover:clear_failover_vbuckets_sets(DeltaNodes)),
+    ok = ns_bucket:update_buckets_for_delta_recovery(TransitionalBuckets,
+                                                     DeltaNodes),
 
     config_sync(push, DeltaNodes),
     complete_delta_recovery(DeltaNodes),
