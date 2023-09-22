@@ -2085,7 +2085,8 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
                    timeout=60,
                    addenv=[("CB_PASSWORD", memcached_pass_fun)])
          for kind in ["allocator", "clocks", "connections", "threads",
-                      "tracing"]],
+                      "tracing", "worker_thread_info",
+                      "worker_thread_info aggregate", "bucket_details"]],
 
         # mcstat -a (iterate for all buckets)
         [AllOsTask("memcached mcstat %s" % kind,
@@ -2097,7 +2098,7 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
                    log_file="stats.log",
                    timeout=60,
                    addenv=[("CB_PASSWORD", memcached_pass_fun)])
-         for kind in ["collections-details", "bucket_details"]],
+         for kind in ["collections-details", "json_validate", "snappy_decompress"]],
 
         [AllOsTask("fts scorch zap (%s)" % path,
                    ["cbft-bleve", "zap", "v11", "footer", path],
