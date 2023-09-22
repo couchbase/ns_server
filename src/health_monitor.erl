@@ -366,7 +366,7 @@ maybe_calculate_refresh_interval(DefaultValue) ->
 
 -ifdef(TEST).
 common_test_setup() ->
-    ?meckNew(chronicle_compat_events),
+    ?meckNew(chronicle_compat_events, [passthrough]),
     meck:expect(chronicle_compat_events,
                 notify_if_key_changes,
                 fun (_,_) ->

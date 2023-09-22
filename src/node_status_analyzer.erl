@@ -83,6 +83,7 @@ start_link() ->
 init(BaseMonitorState) ->
     NodesWanted = ns_node_disco:nodes_wanted(),
 
+    Self = self(),
     chronicle_compat_events:subscribe(
       fun ({node, _, membership}) ->
               true;
@@ -93,7 +94,7 @@ init(BaseMonitorState) ->
           (_) -> false
       end,
       fun (_) ->
-              self() ! node_changed
+              Self ! node_changed
       end),
 
     BaseMonitorState#{monitors => get_monitors(NodesWanted)}.
@@ -204,8 +205,20 @@ can_refresh(_State) ->
 
 -ifdef(TEST).
 common_test_setup() ->
-    ?meckNew(chronicle_compat_events),
-    meck:expect(chronicle_compat_events, subscribe, fun (_,_) -> true end).
+    ?meckNew(ns_pubsub),
+    %% Setup a fake ns_pubsub capturing the key update handler function so
+    %% that we can drive config updates as though they came via chronicle.
+    ?meckNew(fake_ns_pubsub, [non_strict]),
+
+    meck:expect(ns_pubsub, subscribe_link,
+        fun(_, Handler) ->
+            %% Stash the handler in some function, notify_key
+            meck:expect(fake_ns_pubsub, notify_key,
+                fun(Key) ->
+                    Handler(Key)
+                end),
+            ok
+        end).
 
 %% See health_monitor.erl for tests common to all monitors that use these
 %% functions
@@ -251,7 +264,7 @@ health_monitor_t() ->
                         true
                 end),
 
-    ?MODULE ! node_changed,
+    fake_ns_pubsub:notify_key(nodes_wanted),
 
     ?assertEqual([{node(), [ns_server, kv]}], get_monitors_from_state()),
 
@@ -262,7 +275,7 @@ health_monitor_t() ->
                         [node(), "otherNode"]
                 end),
 
-    ?MODULE ! node_changed,
+    fake_ns_pubsub:notify_key(nodes_wanted),
 
     %% We are now tracking monitors for "otherNode"
     ?assertEqual([{node(), [ns_server, kv]},
