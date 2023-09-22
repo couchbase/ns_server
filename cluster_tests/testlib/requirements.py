@@ -7,6 +7,8 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 from abc import ABC, abstractmethod
+from enum import Enum
+from typing import Dict, List, Union
 
 import testlib
 from testlib.cluster import Cluster, build_cluster
@@ -401,11 +403,29 @@ class AFamily(Requirement):
                     for node in res.json()["nodes"]])
 
 
+class Service(Enum):
+    KV = "kv"
+    INDEX = "index"
+    QUERY = "n1ql"
+    FTS = "fts"
+    BACKUP = "backup"
+    EVENTING = "eventing"
+    CBAS = "cbas"
+
+
 class Services(Requirement):
-    def __init__(self, deploy):
-        super().__init__(deploy=deploy)
-        self.deploy = deploy
-        self.connect_args = {"deploy": deploy}
+    def __init__(self, deploy: Union[List[Service], Dict[int, Service]]):
+        if isinstance(deploy, list):
+            self.deploy = [service.value for service in deploy]
+        elif isinstance(deploy, dict):
+            self.deploy = {node: service.value
+                           for node, service in deploy.items()}
+        else:
+            raise ValueError(f"Invalid services: {deploy}. "
+                             f"Expected a list or a dict.")
+        super().__init__(deploy=self.deploy)
+
+        self.connect_args = {"deploy": self.deploy}
 
     def is_met(self, cluster):
         for i, node in enumerate(cluster.connected_nodes):
