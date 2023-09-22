@@ -109,7 +109,7 @@ def main():
         metavar='')
     arg_parser.add_argument(
         '--dont-index-replicas', '-i',
-        action='store_false',
+        action='store_true',
         help=f"(don't index replicas) "
              f"default: replica index enabled",
         default=None)
@@ -126,7 +126,7 @@ def main():
         default=None)
     arg_parser.add_argument(
         '--dont-rebalance',
-        action='store_false',
+        action='store_true',
         default=None)
     arg_parser.add_argument(
         '--serverless-groups',
@@ -188,10 +188,10 @@ def main():
         "deploy": args.services,
         "index_storage_mode": args.index_type,
         "replicas": args.replicas,
-        "replica_index": args.dont_index_replicas,
+        "replica_index": not args.dont_index_replicas,
         "protocol": args.afamily,
         "encryption": args.enable_encryption,
-        "do_rebalance": args.dont_rebalance,
+        "do_rebalance": not args.dont_rebalance,
         "storage_backend": args.storage_backend,
         "serverless_groups": args.serverless_groups,
         "create_bucket": not args.dont_create_bucket,
