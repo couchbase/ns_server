@@ -59,7 +59,7 @@ class ServicelessNodeTests(testlib.BaseTestSet):
     def joinNodes(self):
         for node in self.cluster.nodes[1:]:
             print(f'Joining {node.hostname()} to cluster')
-            self.cluster.do_join_cluster(node, services="")
+            self.cluster.do_join_cluster(node, services=[])
         self.cluster.rebalance(wait=True)
         resp = testlib.get_succ(self.cluster, "/pools/default")
 
@@ -69,7 +69,7 @@ class ServicelessNodeTests(testlib.BaseTestSet):
     def addNodes(self):
         for node in self.cluster.nodes[1:]:
             print(f'Adding {node.hostname()} to cluster')
-            self.cluster.add_node(node, services="")
+            self.cluster.add_node(node, services=[])
         self.cluster.rebalance(wait=True)
         resp = testlib.get_succ(self.cluster, "/pools/default")
 

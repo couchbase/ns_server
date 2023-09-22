@@ -21,6 +21,8 @@ import json
 import testlib
 import base64
 
+from testlib.util import Service
+
 SECRET_KEY = "/indexing/settings/config/features/ShardAffinity"
 
 # TODO: create a class for this?
@@ -128,8 +130,11 @@ class SettingsManagersTests(testlib.BaseTestSet):
     @staticmethod
     def requirements():
         return testlib.ClusterRequirements(num_nodes=1, min_memsize=1024,
-                                           services=["kv", "index", "eventing",
-                                                     "cbas", "n1ql"])
+                                           services=[Service.KV,
+                                                     Service.INDEX,
+                                                     Service.EVENTING,
+                                                     Service.CBAS,
+                                                     Service.QUERY])
 
     def setup(self):
         pass

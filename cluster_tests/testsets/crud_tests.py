@@ -8,6 +8,7 @@
 # licenses/APL2.txt.
 import testlib
 from testlib import json_response, assert_json_key, assert_eq, assert_gt
+from testlib.util import Service
 
 bucket_name = "test"
 doc = "test_doc"
@@ -18,7 +19,7 @@ class CrudTests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(services=["kv"])
+        return testlib.ClusterRequirements(services=[Service.KV])
 
     def setup(self):
         self.cluster.create_bucket(

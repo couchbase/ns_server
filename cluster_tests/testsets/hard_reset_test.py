@@ -11,9 +11,11 @@ import os
 import signal
 import testlib
 import time
+from testlib.requirements import Service
+
 
 class HardResetTests(testlib.BaseTestSet):
-    services_to_run = ['kv', 'index']
+    services_to_run = [Service.KV, Service.INDEX]
 
     @staticmethod
     def requirements():

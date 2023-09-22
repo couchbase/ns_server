@@ -7,10 +7,12 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 from abc import ABC, abstractmethod
+from typing import Dict, List, Union
 
 import testlib
 from testlib.cluster import Cluster, build_cluster
 from testlib import get_succ
+from testlib.util import Service, services_to_strings
 import random
 
 
@@ -483,12 +485,15 @@ class AFamily(Requirement):
 
 
 class Services(Requirement):
-    community_configurations = [['kv'], ['kv', 'index', 'n1ql'],
-                                ['kv', 'index', 'n1ql', 'fts']]
-    def __init__(self, deploy):
-        super().__init__(deploy=deploy)
-        self.deploy = deploy
-        self.connect_args = {"deploy": deploy}
+    community_configurations = [[Service.KV],
+                                [Service.KV, Service.INDEX, Service.QUERY],
+                                [Service.KV, Service.INDEX, Service.QUERY,
+                                 Service.FTS]]
+
+    def __init__(self, deploy: Union[List[Service], Dict[str, List[Service]]]):
+        self.deploy = services_to_strings(deploy)
+        super().__init__(deploy=self.deploy)
+        self.connect_args = {"deploy": self.deploy}
 
     def is_met(self, cluster):
         for i, node in enumerate(cluster.connected_nodes):
@@ -520,9 +525,8 @@ class Services(Requirement):
         if community:
             services = random.choice(Services.community_configurations)
         else:
-            services = ['index', 'n1ql', 'fts', 'backup', 'eventing',
-                        'cbas']
-            services = ['kv'] + random.sample(
+            services = list(Service)
+            services = [Service.KV] + random.sample(
                                     services,
                                     k=random.randint(0, len(services) - 1))
         return Services(services)

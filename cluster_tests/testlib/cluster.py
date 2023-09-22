@@ -10,10 +10,13 @@ import atexit
 import os
 import sys
 import time
+from typing import List
+
 import requests
 from urllib.error import URLError
 
 import testlib
+from testlib.util import services_to_strings, Service
 
 scriptdir = os.path.dirname(os.path.realpath(__file__))
 pylib = os.path.join(scriptdir, "..", "pylib")
@@ -248,14 +251,17 @@ class Cluster:
                 f"Found: {r.text}"
 
     # Add new_node to the cluster, and optionally perform a rebalance
-    def add_node(self, new_node, services="kv", do_rebalance=False,
+    def add_node(self, new_node, services=None, do_rebalance=False,
                  verbose=False, expected_code=200, expected_error=None):
+        if services is None:
+            services = [Service.KV]
+
         # Can only add nodes with the https address, which requires the 1900X
         # port
         data = {"user": self.auth[0],
                 "password": self.auth[1],
                 "hostname": new_node.https_url(),
-                "services": services}
+                "services": get_services_string(services)}
         if verbose:
             print(f"Adding node {data}")
         r = testlib.post_succ(self, f"/controller/addNode", data=data,
@@ -269,12 +275,15 @@ class Cluster:
                 self.rebalance(verbose=verbose, expected_error=expected_error)
         return r
 
-    def do_join_cluster(self, new_node, services="kv", do_rebalance=False,
+    def do_join_cluster(self, new_node, services=None, do_rebalance=False,
                         verbose=False, expected_code=200):
+        if services is None:
+            services = [Service.KV]
+
         data = {"user": self.auth[0],
                 "password": self.auth[1],
                 "hostname": self.connected_nodes[0].https_url(),
-                "services": services}
+                "services": get_services_string(services)}
 
         if verbose:
             print(f"doJoinCluster with {data}")
@@ -459,3 +468,7 @@ class Cluster:
         assert len(spare_nodes) > 0, "There is no known node that is not " \
                                      "connected to the cluster"
         return spare_nodes[0]
+
+
+def get_services_string(services: List[Service]):
+    return ",".join(services_to_strings(services))

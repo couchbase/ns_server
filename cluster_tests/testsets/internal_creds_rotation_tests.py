@@ -7,6 +7,7 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 import testlib
+from testlib.requirements import Service
 
 
 class IntCredsRotationTests(testlib.BaseTestSet):
@@ -14,8 +15,7 @@ class IntCredsRotationTests(testlib.BaseTestSet):
     @staticmethod
     def requirements():
         return testlib.ClusterRequirements(min_num_nodes=2,
-                                           services=['kv', 'n1ql'])
-
+                                           services=[Service.KV, Service.QUERY])
 
     def setup(self):
         d = 'ns_config:read_key_fast(int_creds_protection_sleep, undefined).'
