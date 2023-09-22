@@ -197,7 +197,14 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
     def add_untrusted_node_to_untrusted_ootb_cluster_test(self):
         self.provision_new_node()
         r = self.cluster.add_node(self.new_node(), expected_code=400).json()
-        assert_cluster_unknown_ca_error(r)
+        if encryption_enabled(self.cluster_node()):
+            # When encryption is on, the-new-node fails to verify otp
+            # connectivity in engageCluster
+            assert_new_node_unknown_ca_error(r)
+        else:
+            # Despite the fact that the-cluster-node is ootb, it always
+            # validates new-node's certificates when doing completeJoin
+            assert_cluster_unknown_ca_error(r)
 
     # Cluster node uses custom certs, new node uses ootb certs:
 
