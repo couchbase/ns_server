@@ -99,9 +99,14 @@ restart_capi_ssl_service() ->
     SuppressMaxRChildPid =
         suppress_max_restart_intensity:actual_child_pid(?MODULE,
                                                         ns_capi_ssl_service),
-    case restartable:restart(SuppressMaxRChildPid) of
-        {ok, _} ->
-            ok;
-        Error ->
-            Error
+
+    case SuppressMaxRChildPid of
+        undefined -> {error, not_running};
+        Pid when is_pid(Pid) ->
+            case restartable:restart(Pid) of
+                {ok, _} ->
+                    ok;
+                Error ->
+                    Error
+            end
     end.

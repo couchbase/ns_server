@@ -259,7 +259,7 @@ top_level_child_name(Name) ->
 
 %% Return the pid of the original child, in case some caller needs that. Can
 %% be used in association with restartable to find the correct pid to restart.
--spec actual_child_pid(any(), child_id()) -> pid().
+-spec actual_child_pid(any(), child_id()) -> pid() | undefined.
 actual_child_pid(OriginalSupPid, ChildId) ->
     OriginalSupChildren = supervisor:which_children(OriginalSupPid),
     [{_, AvoidMaxRChildPid, _, _}] =
