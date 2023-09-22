@@ -1222,7 +1222,12 @@ chronicle_upgrade_to_72(Bucket, ChronicleTxn) ->
             chronicle_upgrade:set_key(key(Bucket), NewManifest2, ChronicleTxn)
     end.
 
-upgrade_to_trinity(Manifest0, BucketConfig) ->
+upgrade_to_trinity(ManifestIn, BucketConfig) ->
+    Manifest0 =
+        on_scopes(
+          maybe_add_collection_history(BucketConfig, _),
+          ManifestIn),
+
     Manifest1 = do_create_scope(?SYSTEM_SCOPE_NAME, Manifest0,
                                 ?NO_INCREMENT_COUNTER),
     Manifest2 =
@@ -1237,6 +1242,33 @@ upgrade_to_trinity(Manifest0, BucketConfig) ->
     %% We must bump the manifest uid too or KV won't treat this as a new
     %% manifest.
     advance_manifest_id(upgrade, Manifest2).
+
+maybe_add_collection_history(BucketConfig, Scopes) ->
+    lists:map(
+      fun ({ScopeName, ScopeProps}) ->
+              NewCollections =
+                lists:map(
+                  fun (Collection) ->
+                          maybe_add_collection_history_inner(Collection,
+                                                             BucketConfig)
+                  end, get_collections(ScopeProps)),
+              NewScopeProps = update_collections(NewCollections, ScopeProps),
+              {ScopeName, NewScopeProps}
+      end, Scopes).
+
+maybe_add_collection_history_inner(Collection, BucketConfig) ->
+    {CollectionName, CollectionProps} = Collection,
+    case proplists:get_value(history, CollectionProps) of
+        undefined ->
+            NewProps =
+                CollectionProps ++
+                [{history,
+                  ns_bucket:history_retention_collection_default(
+                    BucketConfig)}],
+                {CollectionName, NewProps};
+        _ ->
+            Collection
+    end.
 
 -ifdef(TEST).
 manifest_test_set_history_default(Val) ->
@@ -1939,7 +1971,9 @@ upgrade_to_72_t() ->
 
 %% The _system scope gets added on upgrade containing service-specific
 %% collections for query and mobile.
-upgrade_to_trinity_t() ->
+upgrade_to_trinity_system_scope_t() ->
+    %% The _system scope gets added on upgrade containing service-specific
+    %% collections for query and mobile.
     meck:expect(cluster_compat_mode, is_cluster_trinity, fun() -> false end),
     {ok, BucketConf72} = get_bucket_config("bucket"),
     Manifest72 = default_manifest(BucketConf72),
@@ -1954,6 +1988,31 @@ upgrade_to_trinity_t() ->
     ?assertNotEqual(undefined, get_collection("_mobile", SystemScope)),
     ?assertNotEqual(proplists:get_value(uid, Manifest72),
                     proplists:get_value(uid, UpdatedManifest)).
+
+%% 'history' is added to collections which don't have a value
+upgrade_to_trinity_collection_history_t() ->
+    ManifestIn = [{uid,3},
+                  {next_uid,4},
+                  {next_scope_uid,9},
+                  {next_coll_uid,10},
+                  {num_scopes,1},
+                  {num_collections,2},
+                  {scopes,[{"testscope",
+                            [{uid,8},
+                             {collections,[{"testcollection2",[{uid,9}]},
+                                           {"testcollection1",[{uid,8}]}]}]}]}],
+    {ok, BucketConf} = get_bucket_config("bucket"),
+    ManifestOut = upgrade_to_trinity(ManifestIn, BucketConf),
+    ?assertNotEqual(undefined,
+                    proplists:get_value(history,
+                                        get_collection("testcollection1",
+                                                       get_scope("testscope",
+                                                                ManifestOut)))),
+    ?assertNotEqual(undefined,
+                    proplists:get_value(history,
+                                        get_collection("testcollection2",
+                                                       get_scope("testscope",
+                                                                ManifestOut)))).
 
 %% Bunch of fairly simple collections tests that update the manifest and expect
 %% various results.
@@ -1976,6 +2035,9 @@ basic_collections_manifest_test_() ->
       {"history default test", fun() -> history_default_t() end},
       {"set manifest test", fun() -> set_manifest_t() end},
       {"upgrade to 72 test", fun() -> upgrade_to_72_t() end},
-      {"upgrade to Trinity test", fun() -> upgrade_to_trinity_t() end}]}.
+      {"upgrade to Trinity test (system scope)",
+       fun() -> upgrade_to_trinity_system_scope_t() end},
+      {"upgrade to Trinity test (collection history)",
+       fun() -> upgrade_to_trinity_collection_history_t() end}]}.
 
 -endif.
