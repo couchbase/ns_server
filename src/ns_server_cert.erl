@@ -113,10 +113,14 @@ generate_cluster_CA(ForceRegenerateCA, DropUploadedCerts) ->
           kv,
           fun (Txn) ->
                   case chronicle_kv:txn_get(root_cert_and_pkey, Txn) of
-                      {ok, {OldPair, _}} when not ForceRegenerateCA,
-                                              not DropUploadedCerts ->
+                      {ok, {{_, OldKey} = OldPair, _}}
+                                                  when not ForceRegenerateCA,
+                                                       not DropUploadedCerts,
+                                                       OldKey /= undefined ->
                           {abort, {ok, undefined, OldPair}};
-                      {ok, {OldPair, _}} when not ForceRegenerateCA  ->
+                      {ok, {{_, OldKey} = OldPair, _}}
+                                                  when not ForceRegenerateCA,
+                                                       OldKey /= undefined ->
                           Epoch = ReadEpoch(Txn) + 1,
                           {commit, [{set, cluster_certs_epoch, Epoch}],
                            OldPair};
