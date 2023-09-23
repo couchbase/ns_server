@@ -85,6 +85,8 @@ def run_testset(testset_class, test_names, cluster, testset_name,
 
     testset_instance = testset_class(cluster)
 
+    log_at_all_nodes(cluster, f'starting testset {testset_name}')
+
     _, err = safe_test_function_call(testset_instance, 'setup', [],
                                      intercept_output=intercept_output,
                                      seed=seed)
@@ -103,6 +105,8 @@ def run_testset(testset_class, test_names, cluster, testset_name,
     try:
         for test in test_names:
             executed += 1
+            log_at_all_nodes(cluster,
+                             f'starting test {test} from {testset_name}')
             _, err = safe_test_function_call(testset_instance, test,
                                              [], verbose=True,
                                              intercept_output=intercept_output,
@@ -239,7 +243,8 @@ def delete_config_key(cluster, key):
     return post_succ(cluster, '/diag/eval', data=f'ns_config:delete({key})')
 
 
-def request(method, cluster_or_node, path, expected_code=None, **kwargs):
+def request(method, cluster_or_node, path, expected_code=None, verbose=True,
+            **kwargs):
     if 'timeout' not in kwargs:
         kwargs['timeout'] = 60
     kwargs_with_auth = set_default_auth(cluster_or_node, **kwargs)
@@ -247,9 +252,12 @@ def request(method, cluster_or_node, path, expected_code=None, **kwargs):
         url = cluster_or_node.url + path
     else:
         url = cluster_or_node.connected_nodes[0].url + path
-    print(f'sending {method} {url} {kwargs} (expected code {expected_code})')
+    if verbose:
+        print(f'sending {method} {url} {kwargs} ' \
+              f'(expected code {expected_code})')
     res = requests.request(method, url, **kwargs_with_auth)
-    print(f'result: {res.status_code}')
+    if verbose:
+        print(f'result: {res.status_code}')
     if expected_code is not None:
         assert_http_code(expected_code, res),
     return res
@@ -383,8 +391,8 @@ def poll_for_condition(fun, sleep_time, attempts=None, timeout=None,
                   f"sleep_time: {sleep_time_str}"
 
 
-def diag_eval(cluster, code):
-    return post_succ(cluster, '/diag/eval', data=code)
+def diag_eval(cluster, code, **kwargs):
+    return post_succ(cluster, '/diag/eval', data=code, **kwargs)
 
 
 @contextlib.contextmanager
@@ -483,3 +491,8 @@ def maybe_print(s, verbose=None, print_fun=print):
         verbose = config['verbose']
     if verbose:
         print_fun(s)
+
+def log_at_all_nodes(cluster, msg):
+    for n in cluster.nodes:
+        diag_eval(n, f'ale:debug(ns_server, "{msg}", []).',
+                  verbose=config['verbose']).text
