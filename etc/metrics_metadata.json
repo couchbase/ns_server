@@ -283,8 +283,8 @@
         "unit": "bytes",
         "stability": "committed"
     },
-    "sysproc_cpu_user": {
-        "type": "gauge",
+    "sysproc_cpu_seconds_total": {
+        "type": "counter",
         "help": "Amount of user CPU cycles used, by process",
         "added": "7.6.0",
         "stability": "committed",
@@ -292,18 +292,10 @@
             {
                 "name": "proc",
                 "help": "Name of the process (e.g. babysitter, bash, etc.)"
-            }
-        ]
-    },
-    "sysproc_cpu_sys": {
-        "type": "gauge",
-        "help": "Amount of system CPU cycles used, by process",
-        "added": "7.6.0",
-        "stability": "committed",
-        "labels": [
+            },
             {
-                "name": "proc",
-                "help": "Name of the process (e.g. babysitter, bash, etc.)"
+                "name": "mode",
+                "help": "type of usage (user, sys)"
             }
         ]
     },
