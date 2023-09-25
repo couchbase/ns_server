@@ -211,6 +211,14 @@ class Cluster:
                     nodes_are_expected, sleep_time=1, attempts=30,
                     msg=f"wait for nodes in /pools/default to be consistent")
 
+                # Rebalance has finished, but the ejected nodes can still be
+                # restarting. Here we wait for such nodes to start web server.
+                if ejected_nodes is not None:
+                    cluster_run_lib.wait_nodes_up(
+                        timeout_s=timeout_s,
+                        node_urls=get_node_urls(ejected_nodes),
+                        verbose=verbose)
+
         else:
             r = testlib.post_fail(self, "/controller/rebalance", data=data,
                                   expected_code=initial_code)
