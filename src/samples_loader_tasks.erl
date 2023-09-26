@@ -21,8 +21,6 @@
 
 -export([start_loading_sample/5, get_tasks/1]).
 
--export([perform_loading_task/5]).
-
 -import(menelaus_web_samples, [is_http/1]).
 
 start_loading_sample(Sample, Bucket, Quota, CacheDir, BucketState) ->
@@ -47,9 +45,9 @@ handle_call({start_loading_sample, Sample, Bucket, Quota, CacheDir,
             #state{queued_tasks = Tasks} = State) ->
     case lists:keyfind(Bucket, 1, Tasks) of
         false ->
-            Pid = start_new_loading_task(Sample, Bucket, Quota, CacheDir,
-                                         BucketState),
             TaskId = misc:uuid_v4(),
+            Pid = start_new_loading_task(
+                    TaskId, Sample, Bucket, Quota, CacheDir, BucketState),
             create_queued_task(TaskId, Bucket),
             ns_heart:force_beat(),
             Task = {Bucket, Pid, TaskId},
@@ -162,11 +160,12 @@ update_task_status(TaskId, Status) ->
               lists:keyreplace(status, 1, Task, {status, Status})
       end).
 
-start_new_loading_task(Sample, Bucket, Quota, CacheDir, BucketState) ->
-    proc_lib:spawn_link(?MODULE, perform_loading_task,
-                        [Sample, Bucket, Quota, CacheDir, BucketState]).
+start_new_loading_task(TaskId, Sample, Bucket, Quota, CacheDir, BucketState) ->
+    proc_lib:spawn_link(
+      erlang, apply, [fun perform_loading_task/6,
+                      [TaskId, Sample, Bucket, Quota, CacheDir, BucketState]]).
 
-perform_loading_task(Sample, Bucket, Quota, CacheDir, BucketState) ->
+perform_loading_task(TaskId, Sample, Bucket, Quota, CacheDir, BucketState) ->
     receive
         allowed_to_go -> ok
     end,
@@ -220,9 +219,10 @@ perform_loading_task(Sample, Bucket, Quota, CacheDir, BucketState) ->
                      "--bucket-replicas", integer_to_list(NumReplicas)]
             end,
 
+    Name = "cbimport_" ++ binary_to_list(TaskId),
     Env = [{"CB_USERNAME", "@ns_server"},
            {"CB_PASSWORD", ns_config_auth:get_password(special)} |
-           ns_ports_setup:build_cbauth_env_vars(ns_config:latest(), cbimport)],
+           ns_ports_setup:build_cbauth_env_vars(ns_config:latest(), Name)],
 
     {Status, Output} = misc:run_external_tool(Cmd, Args, Env),
     case Status of
