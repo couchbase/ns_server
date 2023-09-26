@@ -323,6 +323,6 @@ INSTALL (DIRECTORY "${_instdir}/var/" DESTINATION var/lib/couchbase/logs
   DIRECTORY_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
   GROUP_READ GROUP_WRITE GROUP_EXECUTE)
 
-INSTALL (FILES etc/metrics_metadata.json DESTINATION "etc/couchbase/cm")
+AddMetricsMetadata (JSON etc/metrics_metadata.json COMPONENT cm)
 
 ADD_SUBDIRECTORY(cluster_tests)
