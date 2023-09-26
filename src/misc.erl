@@ -1948,6 +1948,14 @@ run_external_tool(Path, Args, Env) ->
 run_external_tool(Path, Args, Env, Opts) ->
     executing_on_new_process(
       fun () ->
+              %% Trapping exits here to deal with a case in which goport
+              %% exits gracefully, {'EXIT', goport, normal}, without sending us
+              %% any {exit_state, Status} message. This is probably not
+              %% expected, but has been observed, and it's better to fire the
+              %% error up the supervision tree (so it gets logged and we try
+              %% to restart) than hang here.
+              erlang:process_flag(trap_exit, true),
+
               GracefulShutdown = proplists:get_bool(graceful_shutdown, Opts),
               GoportOpts = [stderr_to_stdout, binary,
                             stream, exit_status,
@@ -1967,10 +1975,55 @@ collect_external_tool_output(Port, Acc) ->
             collect_external_tool_output(Port, [Data | Acc]);
         {Port, {exit_status, Status}} ->
             {Status, iolist_to_binary(lists:reverse(Acc))};
+        {'EXIT', Port, normal} ->
+            %% This isn't expected, and is likely an indication of an issue
+            %% in goport, the program being run via goport, or mis-use of
+            %% run_external_tool.
+            ?log_error("Saw goport exit with normal status unexpectedly"),
+            exit(unexpected_normal_termination_of_goport);
+        {'EXIT', Pid, Reason} ->
+            %% Not matching the goport pid here in case an 'EXIT' comes in
+            %% from the parent, rather than the child.
+            ?log_error("Got 'EXIT' from ~p with reason ~p, exiting myself",
+                       [Pid, Reason]),
+            exit(Reason);
         Msg ->
-            ?log_error("Got unexpected message"),
+            ?log_error("Got unexpected message ~p", [Msg]),
             exit({unexpected_message, Msg})
     end.
+
+-ifdef(TEST).
+run_external_tool_goport_normal_exit_t() ->
+    meck:new(goport),
+    meck:expect(goport, start_link,
+                fun(_Path, _Opts) ->
+                        %% Spawn and exit immediately to queue up the message for
+                        %% run_external_tool to process.
+                        Pid = erlang:spawn_link(fun() -> exit(normal) end),
+                        {ok, Pid}
+                end),
+    meck:expect(goport, deliver, fun(_Path) -> ok end),
+
+    %% The Child should terminate, trap exits to not crash the test
+    erlang:process_flag(trap_exit, true),
+
+    Child = erlang:spawn_link(
+              fun() ->
+                      misc:run_external_tool("", [], [])
+              end),
+
+    %% Prior to the fix, this test would get stuck (and/or time out) here.
+    receive
+        {'EXIT', Child, unexpected_normal_termination_of_goport} ->
+            ok
+    end,
+
+    erlang:process_flag(trap_exit, false),
+    meck:unload(goport).
+
+run_external_tool_goport_normal_exit_test_() ->
+    {timeout, 10, fun run_external_tool_goport_normal_exit_t/0}.
+-endif.
 
 find_by(Pred, List) ->
     case lists:dropwhile(?cut(not Pred(_)), List) of
