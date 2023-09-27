@@ -43,6 +43,8 @@ init([]) ->
 handle_call({start_loading_sample, Sample, Bucket, Quota, CacheDir,
              BucketState}, _From,
             #state{queued_tasks = Tasks} = State) ->
+    ?log_debug("Received request to load sample ~p into bucket ~p",
+               [Sample, Bucket]),
     case lists:keyfind(Bucket, 1, Tasks) of
         false ->
             TaskId = misc:uuid_v4(),
@@ -51,9 +53,11 @@ handle_call({start_loading_sample, Sample, Bucket, Quota, CacheDir,
             create_queued_task(TaskId, Bucket),
             ns_heart:force_beat(),
             Task = {Bucket, Pid, TaskId},
+            ?log_debug("Queue loading task ~p", [Task]),
             NewState = State#state{queued_tasks = Tasks ++ [Task]},
             {reply, {newly_started, TaskId}, maybe_start_task(NewState)};
-        {_, _, TaskId} ->
+        {_, _, TaskId} = T ->
+            ?log_debug("Loading task ~p is already queued", [T]),
             {reply, {already_started, TaskId}, State}
     end;
 %% Get all queued and running tasks
