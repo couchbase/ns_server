@@ -194,3 +194,33 @@ class LdapTests(testlib.BaseTestSet):
         res = testlib.get_succ(self.cluster, '/whoami',
                                auth=(LdapTests.user, LdapTests.user_password))
         assert [{'role': 'admin'}] == res.json()['roles']
+
+
+    def advanced_mapping_test(self):
+        testlib.post_succ(self.cluster, '/settings/ldap',
+                          json={'authenticationEnabled': False})
+        mapping = [{'match': '^(\\S+)@(\\S+)\\.(\\S+)\\.com$',
+                    'substitution': 'cn={0},ou={1},dc={2},dc=com'},
+                   {'match': '^(\\S+)@(\\S+)\\.(\\S+)\\.org$',
+                    'ldapQuery': 'ou={1},dc={2},dc=com??one?(cn={0})'}]
+        LDAPSettings = {'authenticationEnabled': True,
+                        'authorizationEnabled': False,
+                        'hosts': ['localhost'],
+                        'port': LdapTests.port,
+                        'encryption': 'None',
+                        'bindDN': LdapTests.admin_dn,
+                        'bindPass': LdapTests.admin_password,
+                        'userDNMapping': {'advanced': mapping}}
+        testlib.post_succ(self.cluster, '/settings/ldap', json=LDAPSettings)
+        testlib.get_succ(self.cluster, '/whoami',
+                         auth=(f'{LdapTests.user}@users.example.com',
+                               LdapTests.user_password))
+        testlib.get_succ(self.cluster, '/whoami',
+                         auth=(f'{LdapTests.user}@users.example.org',
+                               LdapTests.user_password))
+        testlib.get_fail(self.cluster, '/whoami', 401,
+                         auth=(f'{LdapTests.user}@users.example.net',
+                               LdapTests.user_password))
+        testlib.get_fail(self.cluster, '/whoami', 401,
+                         auth=('wrong_username@users.example.com',
+                               LdapTests.user_password))

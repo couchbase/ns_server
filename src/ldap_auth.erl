@@ -13,6 +13,10 @@
 -include_lib("eldap/include/eldap.hrl").
 -include("cut.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([authenticate/2,
          authenticate/3,
          authenticate_with_cause/3,
@@ -138,6 +142,67 @@ map_user_to_DN(Username, Settings, [{Re, {Type, Template}} = Rule|T],
                     end
             end
     end.
+
+-ifdef(TEST).
+
+map_user_to_DN_test() ->
+    meck:new([eldap], [passthrough]),
+    try
+        meck:expect(eldap, search,
+                    fun (test_handle, SearchProps) ->
+                        %% For test purposes we are returning search props
+                        %% back so we can validate them
+                        Entries = [#eldap_entry{object_name = SearchProps}],
+                        {ok, #eldap_search_result{entries = Entries,
+                                                  referrals = []}}
+                    end),
+
+        Rules =
+             [{"^(t1)\\s*(t2)$", {template, "{0}-{1}"}},
+              {"(t1)\\s*(t2)", {template, "{1}-{0}-{1}-{0}"}},
+              {"^(q1)\\s*(q2)$", {query, "dc=com??one?(cn={0}-{1}-{0})"}},
+              {"(.+)@(.+)\\.template\\.example\\.com",
+               {template, "cn={0},group={1}"}},
+              {"(.+)@(.+)\\.query\\.example\\.com",
+               {query, "group={1}??base?(cn={0})"}},
+              {"(.+)", {template, "{0}"}}],
+
+        Map = fun (User) ->
+                  map_user_to_DN(User, [{request_timeout, test_timeout}], Rules,
+                                 #{query_handle => test_handle})
+              end,
+
+        %% Template tests:
+        ?assertEqual({ok, "t1-t2", template},
+                     Map("t1  t2")),
+        ?assertEqual({ok, "t2-t1-t2-t1", template},
+                     Map("  t1  t2  ")),
+        ?assertEqual({ok, "cn=t1,group=t2", template},
+                     Map("t1@t2.template.example.com")),
+        ?assertEqual({ok, "1\\282\\2a\\293", template},
+                     Map("1(2*)3")),
+
+        %% Query tests:
+        ?assertEqual({ok,[{base,"dc=com"}, {attributes,["objectClass"]},
+                          {scope,singleLevel},
+                          {filter,
+                           {equalityMatch,
+                            {'AttributeValueAssertion',"cn","q1-q2-q1"}}},
+                          {timeout,test_timeout}], query},
+                     Map("q1  q2")),
+        ?assertEqual({ok,[{base,"group=q2"},
+                          {attributes,["objectClass"]},
+                          {scope,baseObject},
+                          {filter,
+                           {equalityMatch,
+                            {'AttributeValueAssertion',"cn","q1"}}},
+                          {timeout,test_timeout}], query},
+                     Map("q1@q2.query.example.com"))
+    after
+        meck:unload(eldap)
+    end.
+
+-endif.
 
 dn_query(QueryTemplate, ReplacePairs, Settings, #{query_handle := Handle}) ->
     Timeout = proplists:get_value(request_timeout, Settings),

@@ -260,8 +260,43 @@ parse_dn_mapping({[{<<"template">>, T}]}) ->
                                         "distinguished name: ~s", [ErrorStr])})
     end,
     [{<<"(.+)">>, {template, Template}}];
+parse_dn_mapping({[{<<"advanced">>, List}]}) when is_list(List) ->
+    CheckRE =
+        fun (RE) ->
+            case re:compile(RE) of
+                {ok, _} -> ok;
+                {error, {Err, Pos}} ->
+                    Msg = io_lib:format("Invalid regex \"~s\" at position ~b: "
+                                        "~s", [RE, Pos, Err]),
+                    throw({error, Msg})
+            end
+        end,
+
+    ErrorTemplate = "Unexpected object in the user-to-dn mapping list: ~s",
+    lists:map(
+      fun ({Props}) ->
+              case lists:sort(Props) of
+                  [{<<"match">>, Re}, {<<"substitution">>, Template}] ->
+                      CheckRE(Re),
+                      {Re, {template, Template}};
+                  [{<<"ldapQuery">>, Query}, {<<"match">>, Re}] ->
+                      CheckRE(Re),
+                      {Re, {'query', Query}};
+                  _ ->
+                      Msg = io_lib:format(ErrorTemplate,
+                                          [ejson:encode({Props})]),
+                      throw({error, Msg})
+              end;
+          (Unknown) ->
+              Msg = io_lib:format(ErrorTemplate, [ejson:encode(Unknown)]),
+              throw({error, Msg})
+      end, List);
+parse_dn_mapping({[{<<"advanced">>, _}]}) ->
+    throw({error, "Advanced user-to-dn mapping is supposed to be a list of "
+                  "json objects"});
 parse_dn_mapping(_) ->
-    throw({error, "JSON object must contain either query or template"}).
+    throw({error, "JSON object must contain strictly one of the following: "
+                  "query, template, or advanced"}).
 
 has_username_var(Str) ->
     case re:run(Str, "%u", []) of
