@@ -366,10 +366,12 @@ def get(cluster_or_node, path, **kwargs):
     return request('GET', cluster_or_node, path, None, **kwargs)
 
 
-def ensure_deleted(cluster, path, **kwargs):
+def ensure_deleted(cluster, path, expected_codes=None, **kwargs):
+    if expected_codes is None:
+        expected_codes = [200, 404]
     res = delete(cluster, path, **kwargs)
     code = res.status_code
-    assert code == 200 or code == 404, format_http_error(res, [200, 404])
+    assert code in expected_codes, format_http_error(res, expected_codes)
     return res
 
 
@@ -410,6 +412,11 @@ def assert_json_key(expected_key, json, context):
 
 def assert_eq(got, expected, name='value'):
     assert expected == got, f'unexpected {name}: {got}, expected: {expected}'
+
+
+def assert_gt(got, lower_bound, name='value'):
+    assert got > lower_bound, \
+        f'unexpected {name}: {got}, expected: > {lower_bound}'
 
 
 def assert_in(what, where):

@@ -525,14 +525,16 @@ class DataIngressTests(testlib.BaseTestSet):
                 "couchstoreMinimum": 10,
             })
 
-        testlib.poll_for_condition(can_write(self.cluster, BUCKET_NAME),
+        testlib.poll_for_condition(self.cluster.can_write(BUCKET_NAME,
+                                                          "test_doc"),
                                    sleep_time=0.5, attempts=120)
 
         refresh_guard_rails(self.cluster)
         assert_bucket_resource_status(self.cluster, BUCKET_NAME, "ok")
 
         # Make sure that we can successfully write to the bucket
-        testlib.poll_for_condition(can_write(self.cluster, BUCKET_NAME),
+        testlib.poll_for_condition(self.cluster.can_write(BUCKET_NAME,
+                                                          "test_doc"),
                                    sleep_time=1, attempts=120,
                                    msg="write to bucket 'test'")
 
@@ -580,7 +582,8 @@ class DataIngressTests(testlib.BaseTestSet):
         assert_bucket_resource_status(self.cluster, BUCKET_NAME, "ok")
 
         # Make sure that we can successfully write to the cluster
-        testlib.poll_for_condition(can_write(self.cluster, BUCKET_NAME),
+        testlib.poll_for_condition(self.cluster.can_write(BUCKET_NAME,
+                                                          "test_doc"),
                                    sleep_time=0.5, attempts=120)
 
         # Set the data size above the maximum
@@ -631,7 +634,8 @@ class DataIngressTests(testlib.BaseTestSet):
         assert_bucket_resource_status(self.cluster, BUCKET_NAME, "ok")
 
         # Make sure that we can successfully write to the cluster
-        testlib.poll_for_condition(can_write(self.cluster, BUCKET_NAME),
+        testlib.poll_for_condition(self.cluster.can_write(BUCKET_NAME,
+                                                          "test_doc"),
                                    sleep_time=0.5, attempts=120)
 
         # Set disk usage above the maximum
@@ -706,15 +710,6 @@ def is_warmed_up(cluster, bucket):
         r = testlib.get_succ(cluster, f"/pools/default/buckets/{bucket}")
         return all(node.get("status") == "healthy"
                    for node in r.json().get("nodes", []))
-    return f
-
-
-def can_write(cluster, bucket):
-    def f():
-        r = testlib.post(
-            cluster, f"/pools/default/buckets/{bucket}/docs/test_doc",
-            data="")
-        return r.status_code == 200
     return f
 
 

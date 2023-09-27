@@ -444,3 +444,11 @@ class Cluster:
             testlib.post_succ(self, "/settings/autoFailover",
                               data={"enabled": "true",
                                     "timeout": autofailover_timeout})
+
+    def can_write(self, bucket, doc):
+        def f():
+            r = testlib.post(
+                self, f"/pools/default/buckets/{bucket}/docs/{doc}",
+                data="")
+            return r.status_code == 200
+        return f

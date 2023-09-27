@@ -18,6 +18,7 @@
 % Frame Info Identifiers.
 
 -define(IMPERSONATE_USER_ID, 4).
+-define(PRESERVE_TTL, 5).
 
 % Command codes.
 -define(GET,         16#00).

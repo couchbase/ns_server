@@ -9,6 +9,7 @@
 -module(menelaus_web_crud).
 
 -include("ns_common.hrl").
+-include("mc_entry.hrl").
 
 -export([handle_list/2, handle_list/4,
          handle_get/3, handle_get/5,
@@ -70,6 +71,25 @@ parse_int(List, _) ->
     try list_to_integer(List)
     catch error:badarg ->
             throw(bad_request)
+    end.
+
+parse_int(Name, Params, Default) ->
+    case proplists:get_value(Name, Params, Default) of
+        Default ->
+            Default;
+        List ->
+            case (catch list_to_integer(List)) of
+                Int when is_integer(Int) -> Int;
+                E -> {error, E}
+            end
+    end.
+
+parse_int(Name, Params, Min, Max, Default) ->
+    case parse_int(Name, Params, Default) of
+        {error, _} = E -> E;
+        Int when Int < Min -> {error, too_small};
+        Int when Int > Max -> {error, too_large};
+        Int -> Int
     end.
 
 parse_key(undefined) -> undefined;
@@ -282,12 +302,13 @@ get_identity(Req) ->
     true = Identity =/= undefined,
     Identity.
 
-mutate(Req, Oper, BucketId, DocId, CollectionUid, Body, Flags) ->
+mutate(Req, Oper, BucketId, DocId, CollectionUid, Body, Flags, Expiry,
+       PreserveTTL) ->
     BinaryBucketId = list_to_binary(BucketId),
     BinaryDocId = list_to_binary(DocId),
 
     Args0 = [X || X <- [BinaryBucketId, BinaryDocId, CollectionUid, Body,
-                        Flags], X =/= undefined],
+                        Flags, Expiry, PreserveTTL], X =/= undefined],
 
     Args = Args0 ++ [get_identity(Req)],
 
@@ -300,17 +321,43 @@ mutate(Req, Oper, BucketId, DocId, CollectionUid, Body, Flags) ->
     end.
 
 extract_flags(Params) ->
-    case proplists:get_value("flags", Params) of
-        undefined ->
-            ?COMMON_FLAGS_JSON;
+    case parse_int("flags", Params, ?COMMON_FLAGS_JSON) of
+        {error, _E} ->
+            menelaus_util:web_exception(
+              400, "'flags' must be a valid positive integer");
         Val ->
-            case (catch list_to_integer(Val)) of
-                Int when is_integer(Int) andalso Int > 0 ->
-                    Int;
-                _ ->
+            Val
+    end.
+
+extract_expiry(Params) ->
+    case cluster_compat_mode:is_cluster_trinity() of
+        true ->
+            case parse_int("expiry", Params, 0, ?MC_MAXINT, ?NO_EXPIRY) of
+                {error, _E} ->
                     menelaus_util:web_exception(
-                      400, "'flags' must be a valid positive integer")
-            end
+                      400,
+                      io_lib:format("'expiry' must be a valid positive integer "
+                                    "between 0 and ~p", [?MC_MAXINT]));
+                Val ->
+                    Val
+            end;
+        false ->
+            %% We don't bother giving an error if expiry is specified in a mixed
+            %% mode cluster, because we wouldn't give an error on the old nodes,
+            %% so we don't gain much by giving the error only on some nodes.
+            %% We should use validator to give an error for any unexpected args
+            %% when we rewrite this with validator (MB-59023)
+            undefined
+    end.
+
+extract_preserve_ttl(Params) ->
+    case cluster_compat_mode:is_cluster_trinity() of
+        true ->
+            parse_bool(proplists:get_value("preserveTTL", Params), false);
+        false ->
+            %% We don't bother giving an error if preserveTTL is specified in a
+            %% mixed mode cluster, for the same reason as expiry, given above.
+            undefined
     end.
 
 handle_post(BucketId, DocId, Req) ->
@@ -320,8 +367,11 @@ handle_post(BucketId, DocId, CollectionUid, Req) ->
     Params = mochiweb_request:parse_post(Req),
     Value = list_to_binary(proplists:get_value("value", Params, [])),
     Flags = extract_flags(Params),
+    Expiry = extract_expiry(Params),
+    PreserveTTL = extract_preserve_ttl(Params),
 
-    case mutate(Req, set, BucketId, DocId, CollectionUid, Value, Flags) of
+    case mutate(Req, set, BucketId, DocId, CollectionUid, Value, Flags,
+                Expiry, PreserveTTL) of
         ok ->
             menelaus_util:reply_json(Req, []);
         {retry_needed, etmpfail} ->
@@ -336,8 +386,8 @@ handle_delete(BucketId, DocId, Req) ->
                   Req).
 
 handle_delete(BucketId, DocId, CollectionUid, Req) ->
-    case mutate(Req, delete, BucketId, DocId, CollectionUid,
-                undefined, undefined) of
+    case mutate(Req, delete, BucketId, DocId, CollectionUid, undefined,
+                undefined, undefined, undefined) of
         ok ->
             menelaus_util:reply_json(Req, []);
         {retry_needed, etmpfail} ->

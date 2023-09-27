@@ -6,10 +6,12 @@
 % will be governed by the Apache License, Version 2.0, included in the file
 % licenses/APL2.txt.
 
+-define(NO_EXPIRY, 0).
+
 -record(mc_entry, {key = undefined,
                    ext = undefined,
                    flag = 0,
-                   expire = 0,
+                   expire = ?NO_EXPIRY,
                    cas = 0,
                    data = undefined,
                    datatype = 0}).

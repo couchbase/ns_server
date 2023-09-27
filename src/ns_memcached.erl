@@ -107,7 +107,7 @@
          warmup_stats/1,
          raw_stats/5,
          flush/1,
-         set/7, add/5, get/5, delete/5,
+         set/9, add/5, get/5, delete/5,
          get_from_replica/4,
          get_meta/5,
          get_xattrs/6,
@@ -443,7 +443,8 @@ assign_queue({get_from_replica, _Fun, _Uid, _VBucket}) ->
     #state.heavy_calls_queue;
 assign_queue({delete, _KeyFun, _Uid, _VBucket, _Identity}) ->
     #state.heavy_calls_queue;
-assign_queue({set, _KeyFun, _Uid, _VBucket, _ValueFun, _Flags, _Identity}) ->
+assign_queue({set, _KeyFun, _Uid, _VBucket, _ValueFun, _Flags, _Expiry,
+              _PreserveTTL, _Identity}) ->
     #state.heavy_calls_queue;
 assign_queue({get_keys, _VBuckets, _Params}) -> #state.heavy_calls_queue;
 assign_queue({get_keys, _VBuckets, _Params, _Identity}) -> #state.heavy_calls_queue;
@@ -549,23 +550,51 @@ maybe_add_impersonate_user_frame_info(Identity, McHeader) ->
 
     McFrameInfo = #mc_frame_info{obj_id = ?IMPERSONATE_USER_ID,
                                  obj_data = OnBehalfOf},
-    McHeader#mc_header{frame_infos = [McFrameInfo]}.
+    add_frame_info(McFrameInfo, McHeader).
+
+maybe_add_preserve_ttl_frame_info(false, McHeader) ->
+    McHeader;
+maybe_add_preserve_ttl_frame_info(true, McHeader) ->
+    %% If the request modifies an existing document the expiry time from the
+    %% existing document should be used instead of the TTL provided. If document
+    %% don't exist the provided TTL should be used.
+    %%
+    %% Protocol Specification:
+    %% https://src.couchbase.org/source/xref/trunk/kv_engine/docs/
+    %% BinaryProtocol.md?r=4f50f87b#176
+
+
+    McFrameInfo = #mc_frame_info{obj_id = ?PRESERVE_TTL},
+    add_frame_info(McFrameInfo, McHeader).
+
+add_frame_info(McFrameInfo, McHeader) ->
+    Rest =
+        case McHeader#mc_header.frame_infos of
+            undefined ->
+                [];
+            Infos when is_list(Infos) ->
+                Infos
+        end,
+    McHeader#mc_header{frame_infos = [McFrameInfo | Rest]}.
+
 
 handle_data_call(Command, KeyFun, CollectionsUid, VBucket, State) ->
     handle_data_call(Command, KeyFun, CollectionsUid, VBucket, #mc_entry{},
                      State).
 
 handle_data_call(Command, KeyFun, CollectionsUid, VBucket, McEntry, State) ->
-    handle_data_call(Command, KeyFun, CollectionsUid, VBucket, undefined,
+    handle_data_call(Command, KeyFun, CollectionsUid, VBucket, false, undefined,
                      McEntry, State).
 
-handle_data_call(Command, KeyFun, CollectionsUid, VBucket, Identity, McEntry,
+handle_data_call(Command, KeyFun, CollectionsUid, VBucket, PreserveTTL,
+                 Identity, McEntry,
                  #state{worker_features = Features} = State) ->
     CollectionsEnabled = proplists:get_bool(collections, Features),
     EncodedKey = mc_binary:maybe_encode_uid_in_key(CollectionsEnabled,
                                                    CollectionsUid, KeyFun()),
     McHeader0 = #mc_header{vbucket = VBucket},
-    McHeader = maybe_add_impersonate_user_frame_info(Identity, McHeader0),
+    McHeader1 = maybe_add_impersonate_user_frame_info(Identity, McHeader0),
+    McHeader = maybe_add_preserve_ttl_frame_info(PreserveTTL, McHeader1),
 
     Reply = mc_client_binary:cmd(
               Command, State#state.sock, undefined, undefined,
@@ -631,13 +660,15 @@ do_handle_call(flush, _From, State) ->
 
 do_handle_call({delete, KeyFun, CollectionsUid, VBucket, Identity}, _From,
                State) ->
-    handle_data_call(?DELETE, KeyFun, CollectionsUid, VBucket, Identity,
+    handle_data_call(?DELETE, KeyFun, CollectionsUid, VBucket, false, Identity,
                      #mc_entry{}, State);
 
 do_handle_call({set, KeyFun, CollectionsUid, VBucket, ValFun, Flags,
-                Identity}, _From, State) ->
-    handle_data_call(?SET, KeyFun, CollectionsUid, VBucket, Identity,
-                     #mc_entry{data = ValFun(), flag = Flags}, State);
+                Expiry, PreserveTTL, Identity}, _From, State) ->
+    handle_data_call(?SET, KeyFun, CollectionsUid, VBucket, PreserveTTL,
+                     Identity,
+                     #mc_entry{data = ValFun(), flag = Flags, expire = Expiry},
+                     State);
 
 do_handle_call({add, KeyFun, CollectionsUid, VBucket, ValFun}, _From, State) ->
     handle_data_call(?ADD, KeyFun, CollectionsUid, VBucket,
@@ -645,7 +676,7 @@ do_handle_call({add, KeyFun, CollectionsUid, VBucket, ValFun}, _From, State) ->
 
 do_handle_call({get, KeyFun, CollectionsUid, VBucket, Identity}, _From,
                State) ->
-    handle_data_call(?GET, KeyFun, CollectionsUid, VBucket, Identity,
+    handle_data_call(?GET, KeyFun, CollectionsUid, VBucket, false, Identity,
                      #mc_entry{}, State);
 
 do_handle_call({get_from_replica, KeyFun, CollectionsUid, VBucket}, _From,
@@ -1153,13 +1184,16 @@ delete(Bucket, Key, CollectionsUid, VBucket, Identity) ->
 
 %% @doc send a set command to memcached instance
 -spec set(bucket_name(), binary(), undefined | integer(), integer(),
-          binary(), integer(), undefined | rbac_identity()) ->
-                 {ok, #mc_header{}, #mc_entry{}, any()} |
-                 {memcached_error, any(), any()}.
-set(Bucket, Key, CollectionsUid, VBucket, Value, Flags, Identity) ->
+          binary(), integer(), integer(), boolean(),
+          undefined | rbac_identity()) ->
+          {ok, #mc_header{}, #mc_entry{}, any()} |
+          {memcached_error, any(), any()}.
+set(Bucket, Key, CollectionsUid, VBucket, Value, Flags, Expiry, PreserveTTL,
+    Identity) ->
     do_call(server(Bucket), Bucket,
             {set, fun () -> Key end, CollectionsUid, VBucket,
-             fun () -> Value end, Flags, Identity}, ?TIMEOUT_HEAVY).
+             fun () -> Value end, Flags, Expiry, PreserveTTL, Identity},
+            ?TIMEOUT_HEAVY).
 
 -spec update_with_rev(Bucket::bucket_name(), VBucket::vbucket_id(),
                       Id::binary(), Value::binary() | undefined, Rev :: rev(),

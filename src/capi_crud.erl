@@ -15,7 +15,7 @@
 -include("mc_entry.hrl").
 -include("mc_constants.hrl").
 
--export([get/5, set/6, delete/4]).
+-export([get/5, set/6, set/8, delete/4]).
 
 -export([is_valid_json/1]).
 
@@ -54,12 +54,18 @@ handle_mutation_rv(#mc_header{status = ?ETMPFAIL}, _Entry) ->
 handle_mutation_rv(#mc_header{status = ?NOT_MY_VBUCKET} = _Header, _Entry) ->
     throw(not_my_vbucket).
 
+%% For cluster pre compat ?VERSION_76 we will continue to rpc to this function
 set(BucketBin, DocId, CollectionUid, Value, Flags, Identity) ->
+    set(BucketBin, DocId, CollectionUid, Value, Flags, ?NO_EXPIRY, false,
+        Identity).
+
+set(BucketBin, DocId, CollectionUid, Value, Flags, Expiry, PreserveTTL,
+    Identity) ->
     Bucket = binary_to_list(BucketBin),
     {VBucket, _} = cb_util:vbucket_from_id(Bucket, DocId),
     {ok, Header, Entry, _} = ns_memcached:set(Bucket, DocId, CollectionUid,
-                                              VBucket, Value, Flags,
-                                              Identity),
+                                              VBucket, Value, Flags, Expiry,
+                                              PreserveTTL, Identity),
     handle_mutation_rv(Header, Entry).
 
 delete(BucketBin, DocId, CollectionUid, Identity) ->
