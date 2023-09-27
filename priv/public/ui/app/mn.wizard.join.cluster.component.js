@@ -84,6 +84,7 @@ class MnWizardJoinClusterComponent extends MnLifeCycleHooksToStream {
         var services = this.joinClusterForm.get("services.flag");
         data.newNodeHostname = this.joinClusterForm.get("clusterStorage.hostname").value;
         var servicesValue = mnWizardService.getServicesValues(services);
+        data.services = '';
         if (servicesValue.length) {
           data.services = mnWizardService.getServicesValues(services).join(",");
         }

@@ -307,6 +307,7 @@ function mnServersFactory($http, $q, $uibModal, mnPoolDefault) {
       credentials['user'] = '';
       credentials['password'] = '';
     }
+    credentials.services = '';
     if (servicesList.length) {
       credentials.services = servicesList.join(',');
     }
