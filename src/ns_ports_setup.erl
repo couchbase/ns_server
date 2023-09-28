@@ -426,14 +426,13 @@ goport_args(n1ql, Config, _Cmd, NodeUUID) ->
     HttpArg = build_port_arg("--http", ":", query_port, Config),
     EntArg = "--enterprise=" ++
         atom_to_list(cluster_compat_mode:is_enterprise()),
-    ServerlessArgs = "--serverless=" ++
-        erlang:atom_to_list(config_profile:is_serverless()),
+    DeploymentModelArg = "--deploymentModel=" ++ config_profile:name(),
     HttpsArgs = build_https_args(ssl_query_port, "--https", ":",
                                  "--certfile", "--keyfile",
                                  "--clientCertFile", "--clientKeyFile",
                                  "--cafile", Config),
     [DataStoreArg, HttpArg, CnfgStoreArg, EntArg, "-uuid=" ++ NodeUUID,
-     ServerlessArgs] ++ build_afamily_requirement("--") ++ HttpsArgs;
+     DeploymentModelArg] ++ build_afamily_requirement("--") ++ HttpsArgs;
 
 goport_args(kv, Config, _Cmd, _NodeUUID) ->
     %% Projector is a component that is required by 2i
