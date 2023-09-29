@@ -331,9 +331,10 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
     def rebalance_rr_test(self):
         self.cluster.create_bucket({
             "name": BUCKET_NAME,
-            "ramQuota": 100
+            "ramQuota": 1024,
+            "storageBackend": "couchstore"
         })
-        quota_in_bytes = 100 * 1024 * 1024  # 104,857,600 bytes
+        quota_in_bytes = 1024 * 1024 * 1024  # 1,073,741,824 bytes
 
         # Ensure that the guard rail is enabled with a minimum of 10%
         testlib.post_succ(
@@ -341,6 +342,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             json={
                 "enabled": True,
                 "couchstoreMinimum": 10,
+                "magmaMinimum": 1,
             })
 
         # Trigger the guard rail by injecting a new promQL query to set the
@@ -359,6 +361,16 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
                                    'buckets are expected to breach the '
                                    'resident ratio minimum: test"}')
 
+        spare = self.cluster.spare_node()
+
+        # Swap rebalance should be permitted when the RR% is already below
+        # the limit (quota / node size = quota / (1 + 10 * quota) < 10%)
+        set_promql_queries(self.cluster,
+                           data_size_bytes=1+10*quota_in_bytes)
+        self.rebalance_with_cleanup(
+            added_nodes=[spare],
+            ejected_nodes=[self.cluster.connected_nodes[1]])
+
         # Check that we don't trigger the guard rail by setting the
         # per-node data size equal to 5X the quota, s.t.
         # removing a node should mean that the remaining node receives the whole
@@ -369,10 +381,27 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             added_nodes=[],
             ejected_nodes=[self.cluster.connected_nodes[1]])
 
+        # If a bucket violates the guardrail during storage migration, we do not
+        # permit the swap rebalance
+        self.cluster.update_bucket({
+            "name": BUCKET_NAME,
+            "storageBackend": "magma"
+        })
+        set_promql_queries(self.cluster,
+                           data_size_bytes=1+10*quota_in_bytes)
+        self.rebalance_with_cleanup(
+            added_nodes=[spare],
+            ejected_nodes=[self.cluster.connected_nodes[1]],
+            initial_code=400,
+            initial_expected_error='{"rr_will_be_too_low":"The following '
+                                   'buckets are expected to breach the '
+                                   'resident ratio minimum: test"}')
+
     def rebalance_data_size_test(self):
         self.cluster.create_bucket({
             "name": BUCKET_NAME,
-            "ramQuota": 1024
+            "ramQuota": 1024,
+            "storageMode": "couchstore"
         })
 
         # Ensure that the guard rail is enabled with a maximum of 1GB
@@ -380,7 +409,8 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             self.cluster, "/settings/resourceManagement/bucket/dataSizePerNode",
             json={
                 "enabled": True,
-                "couchstoreMaximum": 0.001
+                "couchstoreMaximum": 0.001,
+                "magmaMaximum": 0.01
             })
 
         # Trigger the guard rail by injecting a new promQL query to set the
@@ -395,12 +425,36 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
                                    'following buckets are expected to breach '
                                    'the maximum data size per node: test"}')
 
+        spare = self.cluster.spare_node()
+
+        # Swap rebalance should be permitted when the per node data size is
+        # already at the limit
+        set_promql_queries(self.cluster, data_size_bytes=1_000_000_000)
+        self.rebalance_with_cleanup(
+            added_nodes=[spare],
+            ejected_nodes=[self.cluster.connected_nodes[1]])
+
         # Rebalance should be permitted when the data size per node after the
         # rebalance will be just below the maximum
         set_promql_queries(self.cluster, data_size_bytes=499_999_999)
         self.rebalance_with_cleanup(
             added_nodes=[],
             ejected_nodes=[self.cluster.connected_nodes[1]])
+
+        # If a bucket violates the guardrail during storage migration, we do not
+        # permit the swap rebalance
+        self.cluster.update_bucket({
+            "name": BUCKET_NAME,
+            "storageBackend": "magma"
+        })
+        set_promql_queries(self.cluster, data_size_bytes=1_000_000_000)
+        self.rebalance_with_cleanup(
+            added_nodes=[spare],
+            ejected_nodes=[self.cluster.connected_nodes[1]],
+            initial_code=400,
+            initial_expected_error='{"data_size_will_be_too_high":"The '
+                                   'following buckets are expected to breach '
+                                   'the maximum data size per node: test"}')
 
     def rebalance_cores_per_bucket_test(self):
         pools = testlib.get_succ(self.cluster, "/pools/default").json()
@@ -563,11 +617,13 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             json={
                 "residentRatio": {
                     "enabled": True,
-                    "couchstoreMinimum": 10
+                    "couchstoreMinimum": 10,
+                    "magmaMinimum": 1
                 },
                 "dataSizePerNode": {
                     "enabled": True,
                     "couchstoreMaximum": 1.6,
+                    "magmaMaximum": 16
                 }
             })
 
