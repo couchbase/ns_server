@@ -90,9 +90,9 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
     @staticmethod
     def requirements():
         return [ClusterRequirements(min_num_nodes=2, num_connected=1,
-                                    encryption=False),
+                                    encryption=False, afamily='ipv4'),
                 ClusterRequirements(min_num_nodes=2, num_connected=1,
-                                    encryption=True)]
+                                    encryption=True, afamily='ipv6')]
 
     def setup(self):
         def read_cert_file(filename):
@@ -104,11 +104,12 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         self.new_node_ca = read_cert_file('test_CA2.pem')
         self.cluster_ca_key = read_cert_file('test_CA.pkey')
         self.new_node_ca_key = read_cert_file('test_CA2.pkey')
+        afamily = self.cluster_node().afamily()
         self.cluster_node_cert, self.cluster_node_key = \
-            generate_node_certs(self.cluster_node().addr(),
+            generate_node_certs(self.cluster_node().addr(afamily=afamily),
                                 self.cluster_ca, self.cluster_ca_key)
         self.new_node_cert, self.new_node_key = \
-            generate_node_certs(self.new_node().addr(),
+            generate_node_certs(self.new_node().addr(afamily=afamily),
                                 self.new_node_ca, self.new_node_ca_key)
         toggle_node_n2n(self.new_node(), enable=False)
 

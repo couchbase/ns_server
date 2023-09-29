@@ -42,9 +42,12 @@ class Node:
 
         return self.data_path_cache
 
-    def addr(self):
-        r = testlib.post_succ(self, '/diag/eval',
-                              data='misc:extract_node_address(node()).')
+    def addr(self, afamily=None):
+        afamily_param = ''
+        if afamily is not None:
+            afamily_param = ', ' + ('inet6' if afamily == 'ipv6' else 'inet')
+        data = f'misc:extract_node_address(node(){afamily_param}).'
+        r = testlib.post_succ(self, '/diag/eval', data=data)
         return r.text.strip('"')
 
     def hostname(self):
@@ -52,3 +55,8 @@ class Node:
             r = testlib.get_succ(self, '/nodes/self')
             self.hostname_cached = r.json()['hostname']
         return self.hostname_cached
+
+    def afamily(self):
+        afamily = testlib.get_succ(self, '/nodes/self').json()['addressFamily']
+        assert afamily in ['inet', 'inet6'], f'unexpected afamily: {afamily}'
+        return 'ipv6' if afamily == 'inet6' else 'ipv4'
