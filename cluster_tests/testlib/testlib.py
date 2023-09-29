@@ -207,39 +207,97 @@ def maybe_color(str, code):
 
 
 class BaseTestSet(ABC):
+    """BaseTestSet is the abstract base class of all TestSets
+
+    It should be used to group together a set of related tests which
+    share a set of ClusterRequirements, a setup function, a teardown
+    function, and optionally a test_teardown function. The TestSet will
+    be executed on a cluster satisfying its requirements, with no other
+    guarantees. In order for the TestSets in a test module to be
+    executed, its module must be imported in cluster_tests/run.py
+    """
+
     def __init__(self, cluster):
+        """Constructor for TestSet
+
+        :param cluster: Cluster available to the TestSet
+
+        If this is overriden, then super().__init__(cluster) must be
+        called in the child's constructor.
+        This is just for object instantiation, so it should not be used
+        for anything that can just go in setup.
+        """
         self.cluster = cluster
 
     @staticmethod
     @abstractmethod
     def requirements():
-        """
-        Executed before any test in the testset.
-        Returns requirements for cluster needed for testset
+        """Return the requirements of the TestSet
 
+        The requirements are defined as an instance of (or list of
+        instances of) ClusterRequirements. These specify the criteria
+        that the cluster(s) that the TestSet is executed on will be
+        guaranteed to satisfy at the start of the test. If a list of
+        instances of ClusterRequirements is provided, the TestSet will
+        be executed on a cluster satisfying each one.
+        Since we may reuse clusters (to reduce the number of clusters
+        started/stopped), the TestSet author should make sure that they
+        specify all pertinent requirements, such that an incompatible
+        cluster will not be used.
         """
         raise NotImplementedError()
 
     @abstractmethod
     def setup(self):
-        """
-        Executed before any test in the testset.
+        """Prepare the TestSet and its cluster before executing tests
 
+        The setup function will be executed once before any of the
+        TestSet's tests are executed, and it can be used to perform any
+        required preparation of the cluster or anything else needed for
+        the tests.
+        If the setup function gives an exception, this will be treated
+        as a test failure, and the tests will not be executed.
+        While a TestSet could use this to assert certain details about
+        the cluster, creating ClusterRequirements for these details
+        should be done instead where possible. If an assert is used
+        instead of a requirement, this delays resolving that
+        requirement until a later date, when it will be more work to
+        solve than if it had been resolved at the start.
         """
         raise NotImplementedError()
 
     @abstractmethod
     def teardown(self):
-        """
-        Executed when all tests are finished.
+        """Tear down any changes that the tests made to the cluster
 
+        The teardown function is executed once all tests in the TestSet
+        have executed, and it should revert the cluster to an
+        equivalent state to before the TestSet was entered.
+        This may not be simple for some tests, so it is worth
+        considering this before implementing the test itself, so that
+        the test can be designed for easy teardown.
+        If the teardown function fails to reset the cluster to the
+        original state, this may manifest in another test failing only
+        when executed on the same cluster. Since that failure may be
+        difficult to debug, it is vital that the teardown function is
+        sufficiently thorough.
+        If certain edge cases cannot be reasonably handled, rather than
+        just hoping they never happen, it is better to add asserts in
+        teardown to confirm that they haven't happened. This should not
+        be used unless it is believed that the edge case should never
+        occur, and handling it would be a significant amount of work.
         """
         raise NotImplementedError()
 
     def test_teardown(self):
-        """
-        Executed when after each test finishes.
+        """(optional) Tear down an individual test in the TestSet
 
+        This will be executed after every test in the TestSet, so it
+        should be used to execute any common cleanup for each test.
+        If it gives an exception, it will count as a test failure and
+        none of the other tests in the TestSet will execute, so asserts
+        may be added to confirm that the cluster is still in a state
+        where there is a point in running subsequent tests.
         """
         pass
 
