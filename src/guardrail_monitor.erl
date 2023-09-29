@@ -92,46 +92,67 @@ start_link() ->
 
 
 validate_topology_change(EjectedLiveNodes, KeepNodes) ->
-    case EjectedLiveNodes of
+    KeepKVNodes = ns_cluster_membership:service_nodes(KeepNodes, kv),
+    validate_topology_change_data_grs(EjectedLiveNodes, KeepKVNodes).
+
+validate_topology_change_data_grs(EjectedNodes, KeepKVNodes) ->
+    case EjectedNodes of
         [] -> ok;
         _ ->
-            KeepKVNodes = ns_cluster_membership:service_nodes(KeepNodes, kv),
-            case get(bucket, resident_ratio) of
-                undefined ->
+            lists:foldl(
+                fun (Resource, ok) ->
+                    validate_topology_change_data_gr(Resource, EjectedNodes,
+                                                     KeepKVNodes);
+                    (_, Err) ->
+                        Err
+                end, ok, [data_size, resident_ratio])
+    end.
+
+topology_change_error({data_size, Buckets}) ->
+    {data_size_will_be_too_high,
+     iolist_to_binary(
+       io_lib:format(
+         "The following buckets are expected to "
+         "breach the maximum data size per node: ~s",
+         [lists:join(", ", Buckets)]))};
+topology_change_error({resident_ratio, Buckets}) ->
+    {rr_will_be_too_low,
+     iolist_to_binary(
+       io_lib:format(
+         "The following buckets are expected to "
+         "breach the resident ratio minimum: ~s",
+         [lists:join(", ", Buckets)]))}.
+
+validate_topology_change_data_gr(Resource, EjectedNodes, KeepKVNodes) ->
+    case get(bucket, Resource) of
+        undefined ->
+            ok;
+        ResourceConfig ->
+            BucketDataSizes =
+                stats_interface:total_active_logical_data_size(
+                  EjectedNodes ++ KeepKVNodes),
+            BadBuckets =
+                maps:keys(
+                  maps:filter(
+                    fun (_Name, 0) ->
+                            false;
+                        (Name, TotalDataSize) ->
+                            validate_bucket_topology_change(
+                              Resource, Name, KeepKVNodes, TotalDataSize,
+                              ResourceConfig)
+                    end, BucketDataSizes)),
+            case BadBuckets of
+                [] ->
+                    %% No bucket is anticipated to violate this guardrail
                     ok;
-                ResourceConfig ->
-                    BucketDataSizes =
-                        stats_interface:total_active_logical_data_size(
-                          EjectedLiveNodes ++ KeepKVNodes),
-                    BadBuckets =
-                        maps:keys(
-                          maps:filter(
-                            fun (_Name, 0) ->
-                                    false;
-                                (Name, TotalDataSize) ->
-                                    validate_bucket_topology_change(
-                                      Name, KeepKVNodes, TotalDataSize,
-                                      ResourceConfig)
-                            end, BucketDataSizes)),
-                    case BadBuckets of
-                        [] ->
-                            %% No bucket is anticipated to breach it's RR%
-                            %% minimum
-                            ok;
-                        _ ->
-                            %% RR% violation expected for each of BadBuckets
-                            {error,
-                             {rr_will_be_too_low,
-                              iolist_to_binary(
-                                io_lib:format(
-                                  "The following buckets are expected to "
-                                  "breach the resident ratio minimum: ~s",
-                                  [lists:join(", ", BadBuckets)]))}}
-                    end
+                _ ->
+                    %% Guardrail violation expected for each of BadBuckets
+                    {error, topology_change_error({Resource, BadBuckets})}
+
             end
     end.
 
-validate_bucket_topology_change(Name, KeepKVNodes, TotalDataSize,
+validate_bucket_topology_change(Resource, Name, KeepKVNodes, TotalDataSize,
                                 ResourceConfig) ->
     case ns_bucket:get_bucket(Name) of
         not_present ->
@@ -141,13 +162,26 @@ validate_bucket_topology_change(Name, KeepKVNodes, TotalDataSize,
                            undefined -> length(KeepKVNodes);
                            W -> W * ns_cluster_membership:server_groups()
                        end,
-            Quota = ns_bucket:raw_ram_quota(BCfg),
-            ExpResidentRatio = 100 * NumNodes * Quota / TotalDataSize,
-            Limit = get_resident_ratio_minimum_on_nodes(ResourceConfig,
-                                                        BCfg,
-                                                        KeepKVNodes),
-            validate_bucket_resource_min(ExpResidentRatio, Limit)
+            validate_bucket_topology_change(
+                Resource, KeepKVNodes, TotalDataSize, ResourceConfig, BCfg,
+                NumNodes)
     end.
+
+validate_bucket_topology_change(data_size, KeepKVNodes, TotalDataSize,
+                                          ResourceConfig, BCfg, NumNodes) ->
+    ExpDataSizePerNode = TotalDataSize / (NumNodes * math:pow(10, 12)),
+    DataSizeLimit = get_data_size_maximum_on_nodes(
+                      ResourceConfig, BCfg, KeepKVNodes),
+    validate_bucket_resource_max(ExpDataSizePerNode, DataSizeLimit);
+validate_bucket_topology_change(resident_ratio, KeepKVNodes, TotalDataSize,
+                                               ResourceConfig, BCfg,
+                                               NumNodes) ->
+    Quota = ns_bucket:raw_ram_quota(BCfg),
+    ExpResidentRatio = 100 * NumNodes * Quota / TotalDataSize,
+    ResidentRatioLimit = get_resident_ratio_minimum_on_nodes(
+                           ResourceConfig, BCfg, KeepKVNodes),
+    validate_bucket_resource_min(ExpResidentRatio, ResidentRatioLimit).
+
 
 -spec validate_storage_migration(bucket_name(), proplists:proplist(), atom()) ->
           ok | {error, data_size | resident_ratio, number()}.
@@ -449,6 +483,16 @@ get_data_size_maximum(ResourceConfig, StorageMode, Migration) ->
             %% Always use the most restrictive storage mode if storage mode
             %% migration is in progress
             min(CouchstoreLimit, MagmaLimit)
+    end.
+
+get_data_size_maximum_on_nodes(ResourceConfig, BucketConfig, Nodes) ->
+    CouchstoreLimit = proplists:get_value(couchstore_maximum, ResourceConfig),
+    MagmaLimit = proplists:get_value(magma_maximum, ResourceConfig),
+    %% Use the most restrictive limit, only considering specific nodes
+    case get_limits_from_node_storage_modes(BucketConfig, CouchstoreLimit,
+                                            MagmaLimit, Nodes) of
+        [] -> infinity;
+        Limits -> lists:min(Limits)
     end.
 
 get_disk_usage(DiskStats) ->
@@ -772,15 +816,15 @@ dont_check_memcached_or_ephemeral_t() ->
 
     %% Check topology change doesn't care about memcached
     ?assertEqual(false,
-                 validate_bucket_topology_change("memcached",
-                                                 DesiredServers, 1000,
-                                                 RRConfig)),
+                 validate_bucket_topology_change(
+                     resident_ratio, "memcached", DesiredServers, 1000,
+                     RRConfig)),
 
     %% Check topology change doesn't care about ephemeral
     ?assertEqual(false,
-                 validate_bucket_topology_change("ephemeral",
-                                                 DesiredServers, 1000,
-                                                 RRConfig)),
+                 validate_bucket_topology_change(
+                     resident_ratio, "ephemeral", DesiredServers, 1000,
+                     RRConfig)),
     ok.
 
 check_resources_t() ->
@@ -965,8 +1009,8 @@ check_resources_t() ->
 
 validate_bucket_topology_change_t() ->
     Servers = [node1, node2],
-    ResourceConfig0 = [{couchstore_minimum, 10},
-                       {magma_minimum, 1}],
+    RRConfig = [{couchstore_minimum, 10},
+                {magma_minimum, 1}],
     meck:expect(ns_bucket, get_bucket,
                 fun ("couchstore_bucket") ->
                         {ok, [{ram_quota, 10},
@@ -985,27 +1029,85 @@ validate_bucket_topology_change_t() ->
 
     %% Resident ratio will end up just below the couchstore minimum
     ?assertEqual(true,
-                 validate_bucket_topology_change("couchstore_bucket",
-                                                 Servers, 201,
-                                                 ResourceConfig0)),
+                 validate_bucket_topology_change(
+                   resident_ratio,
+                   "couchstore_bucket",
+                   Servers,
+                   201,  %% Bytes
+                   RRConfig)),
 
     %% Resident ratio will end up just below the magma minimum
     ?assertEqual(true,
-                 validate_bucket_topology_change("magma_bucket",
-                                                 Servers, 2001,
-                                                 ResourceConfig0)),
+                 validate_bucket_topology_change(
+                   resident_ratio,
+                   "magma_bucket",
+                   Servers,
+                   2001,  %% Bytes
+                   RRConfig)),
 
     %% Resident ratio will end up exactly at the couchstore minimum
     ?assertEqual(false,
-                 validate_bucket_topology_change("couchstore_bucket",
-                                                 Servers, 200,
-                                                 ResourceConfig0)),
+                 validate_bucket_topology_change(
+                   resident_ratio,
+                   "couchstore_bucket",
+                   Servers,
+                   200,  %% Bytes
+                   RRConfig)),
 
     %% Resident ratio will end up exactly at the magma minimum
     ?assertEqual(false,
-                 validate_bucket_topology_change("magma_bucket",
-                                                 Servers, 2000,
-                                                 ResourceConfig0)).
+                 validate_bucket_topology_change(
+                   resident_ratio,
+                   "magma_bucket",
+                   Servers,
+                   2000,  %% Bytes
+                   RRConfig)),
+
+    DataSizeConfig = [{couchstore_maximum, 0.000000001},  %% 1,000 Bytes
+                      {magma_maximum,      0.00000001}],  %% 10,000 Bytes
+    ?assertEqual(true,
+                 validate_bucket_topology_change(
+                   data_size,
+                   "couchstore_bucket",
+                   Servers,
+                   2000,  %% Bytes
+                   DataSizeConfig)),
+
+    ?assertEqual(true,
+                 validate_bucket_topology_change(
+                   data_size,
+                   "magma_bucket",
+                   Servers,
+                   20000,  %% Bytes
+                   DataSizeConfig)),
+
+    ?assertEqual(true,
+                 validate_bucket_topology_change(
+                   data_size,
+                   "couchstore_bucket", [node3 | Servers],
+                   3000,  %% Bytes
+                   DataSizeConfig)),
+
+    ?assertEqual(false,
+                 validate_bucket_topology_change(
+                   data_size,
+                   "couchstore_bucket", Servers,
+                   1999,  %% Bytes
+                   DataSizeConfig)),
+
+    ?assertEqual(false,
+                 validate_bucket_topology_change(
+                   data_size,
+                   "magma_bucket", Servers,
+                   19999,  %% Bytes
+                   DataSizeConfig)),
+
+    ?assertEqual(false,
+                 validate_bucket_topology_change(
+                   data_size,
+                   "couchstore_bucket", [node3 | Servers],
+                   2999,  %% Bytes
+                   DataSizeConfig)).
 
 test_validate_topology_change(ActiveKVNodes, KeepKVNodes) ->
     meck:expect(ns_cluster_membership, service_nodes,

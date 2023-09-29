@@ -256,6 +256,9 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
         # Reset the promQL queries to default values to ensure that they are
         # triggered consistently
         set_promql_queries(self.cluster)
+        # Disable bucket guard rails to avoid one being triggered when we are
+        # looking for another to be triggered
+        disable_bucket_guard_rails(self.cluster)
 
     def num_buckets_test(self):
         pools = testlib.get_succ(self.cluster, "/pools/default").json()
@@ -325,7 +328,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             # Delete the buckets in preparation for the next test case
             testlib.delete_all_buckets(self.cluster)
 
-    def rebalance_test(self):
+    def rebalance_rr_test(self):
         self.cluster.create_bucket({
             "name": BUCKET_NAME,
             "ramQuota": 100
@@ -362,6 +365,39 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
         # data size, i.e. quota/node size = 10% so the rebalance is allowed
         set_promql_queries(self.cluster,
                            data_size_bytes=5*quota_in_bytes)
+        self.rebalance_with_cleanup(
+            added_nodes=[],
+            ejected_nodes=[self.cluster.connected_nodes[1]])
+
+    def rebalance_data_size_test(self):
+        self.cluster.create_bucket({
+            "name": BUCKET_NAME,
+            "ramQuota": 1024
+        })
+
+        # Ensure that the guard rail is enabled with a maximum of 1GB
+        testlib.post_succ(
+            self.cluster, "/settings/resourceManagement/bucket/dataSizePerNode",
+            json={
+                "enabled": True,
+                "couchstoreMaximum": 0.001
+            })
+
+        # Trigger the guard rail by injecting a new promQL query to set the
+        # per-node data size to the max per node, s.t. the data size per node
+        # after the rebalance will be just at the maximum
+        set_promql_queries(self.cluster, data_size_bytes=500_000_000)
+        self.rebalance_with_cleanup(
+            added_nodes=[],
+            ejected_nodes=[self.cluster.connected_nodes[1]],
+            initial_code=400,
+            initial_expected_error='{"data_size_will_be_too_high":"The '
+                                   'following buckets are expected to breach '
+                                   'the maximum data size per node: test"}')
+
+        # Rebalance should be permitted when the data size per node after the
+        # rebalance will be just below the maximum
+        set_promql_queries(self.cluster, data_size_bytes=499_999_999)
         self.rebalance_with_cleanup(
             added_nodes=[],
             ejected_nodes=[self.cluster.connected_nodes[1]])
