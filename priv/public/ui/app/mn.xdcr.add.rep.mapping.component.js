@@ -109,7 +109,7 @@ class MnXDCRAddRepMappingComponent extends MnLifeCycleHooksToStream {
                       permission.cluster.collection[bucketName + ':.:.'].collections.read ?
                       this.mnCollectionsService.getManifest(bucketName) :
                       NEVER),
-            map(v => [v.scopes]),
+            map(v => [v.scopes.filter(s => s.name !== '_system')]),
             shareReplay({refCount: true, bufferSize: 1}));
 
     this.postRegexpValidationErrors =
