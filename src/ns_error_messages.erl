@@ -33,31 +33,34 @@
 
 -spec connection_error_message(term(), string(), string() | integer()) -> binary() | undefined.
 connection_error_message({tls_alert, "bad record mac"}, Host, Port) ->
-    list_to_binary(io_lib:format("Failed to establish TLS connection to ~s:~w. "
+    list_to_binary(io_lib:format("Failed to establish TLS connection to ~s. "
                                  "Please check that you are connecting to a "
-                                 "TLS / HTTPS endpoint.", [Host, Port]));
+                                 "TLS / HTTPS endpoint.",
+                                 [misc:join_host_port(Host, Port)]));
 connection_error_message({tls_alert, {unexpected_message, Str}}, Host, Port) ->
-    list_to_binary(io_lib:format("Failed to establish TLS connection to ~s:~w. "
+    list_to_binary(io_lib:format("Failed to establish TLS connection to ~s. "
                                  "Please check that you are connecting to a "
                                  "TLS / HTTPS endpoint (~s)",
-                                 [Host, Port, Str]));
+                                 [misc:join_host_port(Host, Port), Str]));
 connection_error_message({tls_alert, {handshake_failure, Str}}, Host, Port)
                                                             when is_list(Str) ->
-    list_to_binary(io_lib:format("Failed to establish TLS connection to ~s:~w. "
+    list_to_binary(io_lib:format("Failed to establish TLS connection to ~s. "
                                  "TLS handshake failure (~s)",
-                                 [Host, Port, Str]));
+                                 [misc:join_host_port(Host, Port), Str]));
 connection_error_message({tls_alert, {unknown_ca, Str}}, Host, Port)
                                                             when is_list(Str) ->
-    list_to_binary(io_lib:format("Failed to establish TLS connection to ~s:~w. "
+    list_to_binary(io_lib:format("Failed to establish TLS connection to ~s. "
                                  "The certificate is issued by unknown CA or "
                                  "some of the intermediate certificates are "
-                                 "missing (~s)", [Host, Port, Str]));
+                                 "missing (~s)",
+                                 [misc:join_host_port(Host, Port), Str]));
 connection_error_message({tls_alert, {certificate_required, Str}}, Host, Port) ->
-    list_to_binary(io_lib:format("Failed to establish TLS connection to ~s:~w. "
+    list_to_binary(io_lib:format("Failed to establish TLS connection to ~s. "
                                  "Certificate is required (~s)",
-                                 [Host, Port, Str]));
+                                 [misc:join_host_port(Host, Port), Str]));
 connection_error_message({tls_alert, M}, Host, Port) ->
-    list_to_binary(io_lib:format("Failed to establish TLS connection to ~s:~w: ~p", [Host, Port, M]));
+    list_to_binary(io_lib:format("Failed to establish TLS connection to ~s: ~p",
+                                 [misc:join_host_port(Host, Port), M]));
 connection_error_message({AFamily, nxdomain}, Host, _Port) ->
     list_to_binary(io_lib:format("Unable to resolve ~s address for ~p.  "
                                  "The hostname may be incorrect or not "
@@ -77,8 +80,9 @@ connection_error_message(timeout, Host, Port) ->
                                  "This could be due to an incorrect host/port combination or a "
                                  "firewall in place between the servers.", [Host, Port]));
 connection_error_message("bad certificate", Host, Port) ->
-    list_to_binary(io_lib:format("Got certificate mismatch while trying to send https request to ~s:~w",
-                                 [Host, Port]));
+    list_to_binary(io_lib:format("Got certificate mismatch while trying to "
+                                 "send https request to ~s",
+                                 [misc:join_host_port(Host, Port)]));
 connection_error_message(keyfile, _, _) ->
      <<"Invalid or encrypted keyfile.">>;
 connection_error_message(_, _, _) -> undefined.
