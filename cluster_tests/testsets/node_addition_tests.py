@@ -369,10 +369,13 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
                        self.new_node_key)
 
     def cluster_node(self):
-        return self.cluster.nodes[0]
+        return self.cluster.connected_nodes[0]
 
     def new_node(self):
-        return self.cluster.nodes[1]
+        for n in self.cluster.nodes:
+            if n not in self.cluster.connected_nodes:
+                return n
+        assert False, 'Failed to find unconnected node'
 
     def cluster_ootb_ca(self):
         return self.get_generated_CA(self.cluster_node())
