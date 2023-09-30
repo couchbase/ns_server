@@ -52,6 +52,7 @@ from testsets import \
     resource_management_test, \
     stats_tests, \
     collection_tests, \
+    web_server_tests, \
     cbauth_cache_config_tests, \
     hard_reset_test
 
