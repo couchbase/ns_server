@@ -132,15 +132,22 @@ class BucketMigrationTest(testlib.BaseTestSet):
         assert_per_node_storage_mode_keys_added(self.cluster, "bucket-1",
                                                 "couchstore")
 
-        old_nodes = self.cluster.nodes[0:2]
+        nodes_in_cluster = len(self.cluster.connected_nodes)
+        old_nodes = self.cluster.connected_nodes.copy()
         old_otp_nodes = testlib.get_otp_nodes(self.cluster)
 
-        for i, old_node in enumerate(old_nodes):
-            new_node = self.cluster.nodes[2 + i]
+        count = 0
+        for new_node in self.cluster.nodes:
+            if new_node in old_nodes:
+                continue
+            # Check if we already replaced all the nodes:
+            if count >= nodes_in_cluster:
+                break
             self.cluster.add_node(new_node, verbose=True)
             # Rebalance out the old node and confirm the per-node storage-mode
             # key is removed.
-            self.cluster.rebalance(ejected_nodes=[old_node], wait=True,
+            node_to_eject = old_nodes[count]
+            self.cluster.rebalance(ejected_nodes=[node_to_eject], wait=True,
                               verbose=True)
 
             assert_per_node_storage_mode_in_memcached(
@@ -148,7 +155,9 @@ class BucketMigrationTest(testlib.BaseTestSet):
             assert_per_node_storage_mode_not_present(
                 self.cluster, new_node, "bucket-1")
             assert_ejected_node_override_props_deleted(
-                self.cluster, old_otp_nodes[old_node.hostname()], "bucket-1")
+                self.cluster, old_otp_nodes[node_to_eject.hostname()],
+                "bucket-1")
+            count += 1
 
     def migrate_storage_mode_via_failover_test(self):
         create_and_update_bucket(self.cluster, "bucket-2", "couchstore",
