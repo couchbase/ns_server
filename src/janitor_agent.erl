@@ -1408,6 +1408,29 @@ wait_for_memcached_timeout_t() ->
        check_bucket_ready(wait_for_memcached_test_bucket(),
                           [node()], SmallTimeout)).
 
+wait_for_memcached_warmup_t() ->
+    BigTimeout = 1000000,
+    %% This needs to give us a little bit of time to get the first "response"
+    %% from memcached, but not too much that the test takes ages. 500ms is
+    %% probably fine, but it can be bumped if necessary.
+    SmallTimeout = 500,
+
+    meck:expect(ns_memcached,
+                local_connected_and_list_vbucket_details,
+                2,
+                %% Setup a sequence of expectations, the first returns
+                %% warming_up, the second sleeps for a long time. The sleep
+                %% must be wrapped in a fun or it will be evaluated
+                %% immediately, rather than when this function is called, and
+                %% the test will time out.
+                meck:seq([warming_up,
+                          fun (_, _) -> timer:sleep(BigTimeout) end])),
+
+    ?assertEqual(
+       {warming_up, [node()]},
+       check_bucket_ready(wait_for_memcached_test_bucket(),
+                          [node()], SmallTimeout)).
+
 wait_for_memcached_test_bucket() ->
     "default".
 
@@ -1464,7 +1487,8 @@ wait_for_memcached_test_teardown(ServerPid) ->
 wait_for_memcached_test_() ->
     Tests = [fun wait_for_memcached_interruptible_t/0,
              fun wait_for_memcached_success_t/0,
-             fun wait_for_memcached_timeout_t/0],
+             fun wait_for_memcached_timeout_t/0,
+             fun wait_for_memcached_warmup_t/0],
 
     {foreach,
      fun wait_for_memcached_test_setup/0,
