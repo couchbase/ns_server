@@ -93,36 +93,38 @@ rebalance_call(Rebalancer, Bucket, Node, Call, Timeout) ->
 rebalance_multi_call(Rebalancer, Bucket, Nodes, Call, Timeout) ->
     multi_call(Bucket, Nodes, {if_rebalance, Rebalancer, Call}, Timeout).
 
+query_vbuckets(Node, Bucket, Call, Parent, Timeout) ->
+    async:run_with_timeout(
+        fun() ->
+                query_vbuckets_loop(Node, Bucket, Call, Parent)
+        end, Timeout).
+
 query_vbuckets_loop(Node, Bucket, Call, Parent) ->
-    query_vbuckets_loop(Node, Bucket, Call, Parent, undefined).
-query_vbuckets_loop(Node, Bucket, Call, Parent, Warming) ->
+    query_vbuckets_loop_inner(Node, Bucket, Call, Parent, not_sent_warming).
+
+query_vbuckets_loop_inner(Node, Bucket, Call, Parent, Warming) ->
     case (catch call(Bucket, Node, Call, infinity)) of
         {ok, _} = Msg ->
             Msg;
         warming_up ->
-            query_vbuckets_loop_next_step(Node, Bucket, Call, Parent,
-                                          Warming, warming_up);
+            maybe_send_warming(Parent, Warming),
+            timer:sleep(?QUERY_VBUCKETS_SLEEP),
+            query_vbuckets_loop_inner(Node, Bucket, Call, Parent, sent_warming);
         {'EXIT', {noproc, _}} = Exc ->
             ?log_debug("Exception from ~p of ~p:~p~n~p",
-                       [Call, Bucket, Node, Exc]),
-            query_vbuckets_loop_next_step(Node, Bucket, Call, Parent,
-                                          Warming, noproc);
+                [Call, Bucket, Node, Exc]),
+            timer:sleep(?QUERY_VBUCKETS_SLEEP),
+            query_vbuckets_loop_inner(Node, Bucket, Call, Parent, Warming);
         Exc ->
             ?log_debug("Exception from ~p of ~p:~p~n~p",
-                       [Call, Bucket, Node, Exc]),
+                        [Call, Bucket, Node, Exc]),
             Exc
     end.
 
-query_vbuckets_loop_next_step(Node, Bucket, Call, Parent, Warming, Reason) ->
-    ?log_debug("Waiting for ~p on ~p", [Bucket, Node]),
-    NewWarming = maybe_send_warming(Parent, Warming, Reason),
-    timer:sleep(?QUERY_VBUCKETS_SLEEP),
-    query_vbuckets_loop(Node, Bucket, Call, Parent, NewWarming).
-
-maybe_send_warming(Parent, undefined, warming_up) ->
-    Parent ! warming_up;
-maybe_send_warming(_Parent, Warming, _Reason) ->
-    Warming.
+maybe_send_warming(Pid, not_sent_warming) ->
+    Pid ! warming_up;
+maybe_send_warming(_Pid, sent_warming) ->
+    ok.
 
 -type query_vbuckets_call() :: {query_vbuckets, [vbucket_id()], list(), list()}.
 -spec wait_for_memcached([{node(), query_vbuckets_call()}], bucket_name(),
@@ -131,56 +133,38 @@ maybe_send_warming(_Parent, Warming, _Reason) ->
                                                  {ok, dict:dict()} |
                                                  warming_up | timeout | any()}].
 wait_for_memcached(NodeCalls, Bucket, WaitTimeout) ->
-    misc:executing_on_new_process(
-      fun () ->
-              erlang:process_flag(trap_exit, true),
-              Ref = make_ref(),
-
-              Me = self(),
-              {ok, Parent} = async:get_identity(),
-
-              NodePids =
-                  [{Node, proc_lib:spawn_link(
-                            fun () ->
-                                    {ok, TRef} = timer:kill_after(WaitTimeout),
-                                    RV = query_vbuckets_loop(Node, Bucket,
-                                                             Call, Me),
-                                    Me ! {'EXIT', self(), {Ref, RV}},
-                                    %% doing cancel is quite
-                                    %% important. kill_after is
-                                    %% not automagically
-                                    %% canceled
-                                    timer:cancel(TRef),
-                                    %% Nodes list can be reasonably
-                                    %% big. Let's not slow down
-                                    %% receive loop below due to
-                                    %% extra garbage. It's O(N²)
-                                    %% already
-                                    erlang:unlink(Me)
-                            end)}
-                   || {Node, Call} <- NodeCalls],
-              [recv_result(Bucket, Parent, Ref, NodePid) || NodePid <- NodePids]
-      end).
-
-recv_result(Bucket, Parent, Ref, {Node, Pid}) ->
-    receive
-        {'EXIT', Parent, Reason} ->
-            ?log_debug("Parent died ~p", [Reason]),
-            exit(Reason);
-        {'EXIT', Pid, {Ref, RV}} ->
-            {Node, RV};
-        {'EXIT', Pid, killed} ->
-            receive
-                warming_up ->
-                    {Node, warming_up}
-            after 0 ->
-                    {Node, timeout}
-            end;
-        {'EXIT', Pid, Reason} = ExitMsg ->
-            ?log_info("Got exception trying to query vbuckets of ~p "
-                      "bucket ~p~n~p", [Node, Bucket, Reason]),
-            {Node, ExitMsg}
-    end.
+    misc:parallel_map(
+        fun({Node, Call}) ->
+            Parent = self(),
+            case query_vbuckets(Node, Bucket, Call, Parent, WaitTimeout) of
+                {error, timeout} ->
+                    %% query_vbuckets will send us a warming_up message if it
+                    %% sees a node warming up before checking the status again.
+                    %% It will only return if it is successful (otherwise it
+                    %% will get timed out). We want to return warming_up up the
+                    %% stack though to try again later.
+                    receive
+                        warming_up -> {Node, warming_up}
+                        after 0 -> {Node, timeout}
+                    end;
+                {ok, Result} ->
+                    %% This (async) process is about to get destroyed and we
+                    %% may have some 'warming_up' message in the mailbox here.
+                    %% As we're about to nuke the process, clearing the
+                    %% mailbox is unnecessary, but if this code is modified
+                    %% in the future then this message may need to be flushed
+                    %% before continuing processing.
+                    {Node, Result}
+            end
+        end, NodeCalls,
+        %% Infinite timeout here so that:
+        %%     1) the inner function can handle a timeout in a controlled
+        %%        manner and return a meaningful status instead of just
+        %%        exiting the process.
+        %%     2) We can give each node the same exact timeout,
+        %%        misc:parallel_map would give nodes later in the list
+        %%        slightly less time.
+        infinity).
 
 complete_flush(Bucket, Nodes, Timeout) ->
     {Replies, BadNodes} = multi_call(Bucket, Nodes, complete_flush, Timeout),
