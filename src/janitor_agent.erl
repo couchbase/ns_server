@@ -1377,6 +1377,21 @@ wait_for_memcached_interruptible_t() ->
             erlang:exit(timeout)
     end.
 
+wait_for_memcached_success_t() ->
+    meck:expect(ns_memcached,
+                local_connected_and_list_vbucket_details,
+                fun(_, _) ->
+                        %% Enumerating the types that vbucket state supports
+                        %% here to test each one
+                        {ok, dict:from_list([{0, [{"state", "active"}]},
+                                             {1, [{"state", "dead"}]},
+                                             {2, [{"state", "replica"}]},
+                                             {3, [{"state", "pending"}]}])}
+                end),
+
+    ?assertEqual(ready, check_bucket_ready(wait_for_memcached_test_bucket(),
+                                           [node()], 1000000)).
+
 wait_for_memcached_test_bucket() ->
     "default".
 
@@ -1431,7 +1446,8 @@ wait_for_memcached_test_teardown(ServerPid) ->
     meck:unload(janitor_agent_sup).
 
 wait_for_memcached_test_() ->
-    Tests = [fun wait_for_memcached_interruptible_t/0],
+    Tests = [fun wait_for_memcached_interruptible_t/0,
+             fun wait_for_memcached_success_t/0],
 
     {foreach,
      fun wait_for_memcached_test_setup/0,
