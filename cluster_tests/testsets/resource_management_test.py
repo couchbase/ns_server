@@ -10,6 +10,8 @@ from pprint import pprint
 
 import testlib
 
+BUCKET_NAME = "test"
+
 
 class ResourceManagementAPITests(testlib.BaseTestSet):
 
@@ -323,7 +325,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
 
     def rebalance_test(self):
         self.cluster.create_bucket({
-            "name": "test",
+            "name": BUCKET_NAME,
             "ramQuota": 100
         })
 
@@ -350,7 +352,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
     def storage_migration_test(self):
         # Test migration from couchstore to magma
         self.cluster.create_bucket({
-            "name": "test",
+            "name": BUCKET_NAME,
             "ramQuota": 1024,
             "storageBackend": "couchstore"
         })
@@ -373,7 +375,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
         # when the bucket doesn't satisfy the couchstore limits
         set_promql_queries(self.cluster, data_size_tb=10, resident_ratio=5)
         resp = self.cluster.update_bucket({
-            "name": "test",
+            "name": BUCKET_NAME,
             "storageBackend": "magma"
         }, expected_code=400).json()
         assert resp.get("errors", {}).get("storageBackend") == \
@@ -385,7 +387,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
         # when the bucket doesn't satisfy the couchstore data size limit
         set_promql_queries(self.cluster, data_size_tb=10, resident_ratio=15)
         resp = self.cluster.update_bucket({
-            "name": "test",
+            "name": BUCKET_NAME,
             "storageBackend": "magma"
         }, expected_code=400).json()
         assert resp.get("errors", {}).get("storageBackend") == \
@@ -397,7 +399,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
         # when the bucket doesn't satisfy the couchstore resident ratio limit
         set_promql_queries(self.cluster, data_size_tb=1, resident_ratio=5)
         resp = self.cluster.update_bucket({
-            "name": "test",
+            "name": BUCKET_NAME,
             "storageBackend": "magma"
         }, expected_code=400).json()
         assert resp.get("errors", {}).get("storageBackend") == \
@@ -409,7 +411,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
         set_promql_queries(self.cluster, data_size_tb=1, resident_ratio=15)
 
         self.cluster.update_bucket({
-            "name": "test",
+            "name": BUCKET_NAME,
             "storageBackend": "magma"
         })
 
@@ -419,7 +421,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
         # when the bucket doesn't satisfy the couchstore limits
         set_promql_queries(self.cluster, data_size_tb=10, resident_ratio=5)
         resp = self.cluster.update_bucket({
-            "name": "test",
+            "name": BUCKET_NAME,
             "storageBackend": "couchstore"
         }, expected_code=400).json()
         assert resp.get("errors", {}).get("storageBackend") == \
@@ -431,7 +433,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
         # when the bucket doesn't satisfy the couchstore data size limit
         set_promql_queries(self.cluster, data_size_tb=10, resident_ratio=15)
         resp = self.cluster.update_bucket({
-            "name": "test",
+            "name": BUCKET_NAME,
             "storageBackend": "couchstore"
         }, expected_code=400).json()
         assert resp.get("errors", {}).get("storageBackend") == \
@@ -443,7 +445,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
         # when the bucket doesn't satisfy the couchstore resident ratio limit
         set_promql_queries(self.cluster, data_size_tb=1, resident_ratio=5)
         resp = self.cluster.update_bucket({
-            "name": "test",
+            "name": BUCKET_NAME,
             "storageBackend": "couchstore"
         }, expected_code=400).json()
         assert resp.get("errors", {}).get("storageBackend") == \
@@ -455,7 +457,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
         set_promql_queries(self.cluster, data_size_tb=1, resident_ratio=15)
 
         self.cluster.update_bucket({
-            "name": "test",
+            "name": BUCKET_NAME,
             "storageBackend": "couchstore"
         })
 
@@ -475,7 +477,7 @@ class DataIngressTests(testlib.BaseTestSet):
     def setup(self):
         testlib.delete_all_buckets(self.cluster)
         self.cluster.create_bucket({
-            "name": "test",
+            "name": BUCKET_NAME,
             "ramQuota": 100
         })
 
@@ -509,14 +511,14 @@ class DataIngressTests(testlib.BaseTestSet):
                 "couchstoreMinimum": 10,
             })
 
-        testlib.poll_for_condition(can_write(self.cluster, "test"),
+        testlib.poll_for_condition(can_write(self.cluster, BUCKET_NAME),
                                    sleep_time=0.5, attempts=120)
 
         refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "ok")
+        assert_bucket_resource_status(self.cluster, BUCKET_NAME, "ok")
 
         # Make sure that we can successfully write to the bucket
-        testlib.poll_for_condition(can_write(self.cluster, "test"),
+        testlib.poll_for_condition(can_write(self.cluster, BUCKET_NAME),
                                    sleep_time=1, attempts=120,
                                    msg="write to bucket 'test'")
 
@@ -524,10 +526,11 @@ class DataIngressTests(testlib.BaseTestSet):
         set_promql_queries(self.cluster, resident_ratio=9)
 
         refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "resident_ratio")
+        assert_bucket_resource_status(self.cluster, BUCKET_NAME,
+                                      "resident_ratio")
 
         # Expect write to fail
-        assert_cant_write(self.cluster, "test",
+        assert_cant_write(self.cluster, BUCKET_NAME,
                           "Ingress disabled due to ratio between per-node "
                           "quota and data size exceeding configured limit")
 
@@ -535,7 +538,7 @@ class DataIngressTests(testlib.BaseTestSet):
         set_promql_queries(self.cluster, resident_ratio=100)
 
         refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "ok")
+        assert_bucket_resource_status(self.cluster, BUCKET_NAME, "ok")
 
         # Writes should succeed again
         testlib.post_succ(
@@ -556,24 +559,24 @@ class DataIngressTests(testlib.BaseTestSet):
                 "couchstoreMaximum": 1,
             })
 
-        testlib.poll_for_condition(is_warmed_up(self.cluster, "test"),
+        testlib.poll_for_condition(is_warmed_up(self.cluster, BUCKET_NAME),
                                    sleep_time=0.5, attempts=120)
 
         refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "ok")
+        assert_bucket_resource_status(self.cluster, BUCKET_NAME, "ok")
 
         # Make sure that we can successfully write to the cluster
-        testlib.poll_for_condition(can_write(self.cluster, "test"),
+        testlib.poll_for_condition(can_write(self.cluster, BUCKET_NAME),
                                    sleep_time=0.5, attempts=120)
 
         # Set the data size above the maximum
         set_promql_queries(self.cluster, data_size_tb=2)
 
         refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "data_size")
+        assert_bucket_resource_status(self.cluster, BUCKET_NAME, "data_size")
 
         # Expect write to fail
-        assert_cant_write(self.cluster, "test",
+        assert_cant_write(self.cluster, BUCKET_NAME,
                           "Ingress disabled due to data size exceeding "
                           "configured limit")
 
@@ -582,7 +585,7 @@ class DataIngressTests(testlib.BaseTestSet):
         set_promql_queries(self.cluster, data_size_tb=0.5)
 
         refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "ok")
+        assert_bucket_resource_status(self.cluster, BUCKET_NAME, "ok")
 
         # Writes should succeed again
         testlib.post_succ(
@@ -604,27 +607,27 @@ class DataIngressTests(testlib.BaseTestSet):
                 "maximum": 85,
             })
 
-        testlib.poll_for_condition(is_warmed_up(self.cluster, "test"),
+        testlib.poll_for_condition(is_warmed_up(self.cluster, BUCKET_NAME),
                                    sleep_time=0.5, attempts=120)
 
         # Wait for a stat to be populated, as the check will be ignored until we
         # get that stat from prometheus
         wait_for_stat(self.cluster, "sys_disk_usage_ratio", n=2)
         refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "ok")
+        assert_bucket_resource_status(self.cluster, BUCKET_NAME, "ok")
 
         # Make sure that we can successfully write to the cluster
-        testlib.poll_for_condition(can_write(self.cluster, "test"),
+        testlib.poll_for_condition(can_write(self.cluster, BUCKET_NAME),
                                    sleep_time=0.5, attempts=120)
 
         # Set disk usage above the maximum
         set_promql_queries(self.cluster, disk_usage=90)
 
         refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "disk_usage")
+        assert_bucket_resource_status(self.cluster, BUCKET_NAME, "disk_usage")
 
         # Expect write to fail
-        assert_cant_write(self.cluster, "test",
+        assert_cant_write(self.cluster, BUCKET_NAME,
                           "Ingress disabled due to disk usage exceeding "
                           "configured limit")
 
@@ -632,7 +635,7 @@ class DataIngressTests(testlib.BaseTestSet):
         set_promql_queries(self.cluster, disk_usage=0)
 
         refresh_guard_rails(self.cluster)
-        assert_bucket_resource_status(self.cluster, "test", "ok")
+        assert_bucket_resource_status(self.cluster, BUCKET_NAME, "ok")
 
         # Writes should succeed again
         testlib.post_succ(
@@ -661,7 +664,9 @@ def disable_bucket_guard_rails(cluster):
 # Set promQL queries such that they give fixed values, rather than depending on
 # the cluster state. The default values are such that no guard rails will fire
 def set_promql_queries(cluster, data_size_tb=.0, data_size_bytes=0,
-                       disk_usage=0, resident_ratio=100, bucket="test"):
+                       disk_usage=0, resident_ratio=100, bucket=None):
+    if bucket is None:
+        bucket = BUCKET_NAME
     # Create a fake metric with a bucket label
     bucket_metric_base = f'label_replace(up, "bucket", "{bucket}", "", "")'
 
