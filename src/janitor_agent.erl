@@ -1392,6 +1392,22 @@ wait_for_memcached_success_t() ->
     ?assertEqual(ready, check_bucket_ready(wait_for_memcached_test_bucket(),
                                            [node()], 1000000)).
 
+wait_for_memcached_timeout_t() ->
+    BigTimeout = 1000000,
+    SmallTimeout = 1,
+    meck:expect(ns_memcached,
+                local_connected_and_list_vbucket_details,
+                fun(_,_) ->
+                        %% Big sleep, testing that wait_for_memcached() can
+                        %% timeout  correctly so we want to get it stuck.
+                        timer:sleep(BigTimeout)
+                end),
+
+    ?assertEqual(
+       {failed, [node()]},
+       check_bucket_ready(wait_for_memcached_test_bucket(),
+                          [node()], SmallTimeout)).
+
 wait_for_memcached_test_bucket() ->
     "default".
 
@@ -1447,7 +1463,8 @@ wait_for_memcached_test_teardown(ServerPid) ->
 
 wait_for_memcached_test_() ->
     Tests = [fun wait_for_memcached_interruptible_t/0,
-             fun wait_for_memcached_success_t/0],
+             fun wait_for_memcached_success_t/0,
+             fun wait_for_memcached_timeout_t/0],
 
     {foreach,
      fun wait_for_memcached_test_setup/0,
