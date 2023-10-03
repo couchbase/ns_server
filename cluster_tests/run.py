@@ -299,7 +299,10 @@ def main():
                          seed=seed)
         test_time += (time.time_ns() - testset_start_ts)
         executed += tests_executed
-        errors.update(testset_errors)
+        for k in testset_errors:
+            if k not in errors:
+                errors[k] = []
+            errors[k].extend(testset_errors[k])
         not_ran += testset_not_ran
 
     ns_in_sec = 1000000000
@@ -530,7 +533,9 @@ def run_testsets(cluster, testsets, total_num,
         executed += res[0]
         testset_errors = res[1]
         if len(testset_errors) > 0:
-            errors[testset['name']] = testset_errors
+            if testset['name'] not in errors:
+                errors[testset['name']] = []
+            errors[testset['name']].extend(testset_errors)
         not_ran += res[2]
     return executed, errors, not_ran
 
