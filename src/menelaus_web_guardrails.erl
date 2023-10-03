@@ -69,7 +69,7 @@ params() ->
      {"bucket.dataSizePerNode.magmaMaximum",
       #{type => {num, 0, infinity},
         cfg_key => [bucket, data_size, magma_maximum]}},
-     %% Max data per bucket per node
+     %% Max number of collections per memory quota in MB
      {"bucket.collectionsPerQuota.enabled",
       #{type => bool,
         cfg_key => [collections_per_quota, enabled]}},
