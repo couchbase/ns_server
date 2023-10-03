@@ -8,21 +8,12 @@
 # licenses/APL2.txt.
 
 import testlib
-from ipaddress import ip_address, IPv6Address
 
 
 class Node:
     def __init__(self, host, port, auth):
-        try:
-            if type(ip_address(host)) is IPv6Address:
-                hostport = f'[{host}]:{port}'
-            else:
-                hostport = f'{host}:{port}'
-        except ValueError:
-            # host is fqdn
-            hostport = f'{host}:{port}'
-
-        self.url = f"http://{hostport}"
+        host_with_brackets = testlib.maybe_add_brackets(host)
+        self.url = f"http://{host_with_brackets}:{port}"
         self.hostname_cached = None
         self.host = host
         self.port = port
@@ -69,6 +60,11 @@ class Node:
             r = testlib.post_succ(self, '/diag/eval', data=data)
             self.tls_port_cache = int(r.text)
         return self.tls_port_cache
+
+    def https_url(self):
+        port = self.tls_port()
+        host = testlib.maybe_add_brackets(self.host)
+        return f'https://{host}:{port}'
 
     def otp_port(self, encryption=None):
         encryption_param = 'cb_dist:external_encryption()'

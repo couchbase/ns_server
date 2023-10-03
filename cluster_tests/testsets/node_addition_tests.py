@@ -409,10 +409,11 @@ def assert_msg_in_error(msg, error):
 
 
 def assert_failed_to_connect_error(remote_node, error):
+    host = testlib.maybe_add_brackets(remote_node.host)
     msg1 = 'Failed to establish TLS connection to ' \
-           f'{remote_node.host}:{remote_node.tls_port()}'
+           f'{host}:{remote_node.tls_port()}'
     msg2 = 'Failed to establish TLS connection to ' \
-           f'{remote_node.host}:{remote_node.otp_port(encryption=True)}'
+           f'{host}:{remote_node.otp_port(encryption=True)}'
     assert (msg1 in error) or (msg2 in error), \
            f'missing "{msg1}" or "{msg2}" in "{error}"'
 

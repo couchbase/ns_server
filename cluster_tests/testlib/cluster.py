@@ -40,7 +40,7 @@ def build_cluster(auth, start_args, connect_args, kill_nodes):
     # We use the raw ip address instead of 'localhost', as it isn't accepted by
     # the addNode or doJoinCluster endpoints
     # IPV6 uses [::1] instead of 127.0.0.1
-    address = "[::1]" if connect_args['protocol'] == "ipv6" else "127.0.0.1"
+    address = "::1" if connect_args['protocol'] == "ipv6" else "127.0.0.1"
     port = cluster_run_lib.base_api_port + start_args['start_index']
     num_nodes = start_args['num_nodes']
     nodes = [testlib.Node(host=address,
@@ -244,10 +244,9 @@ class Cluster:
                  verbose=False, expected_code=200, expected_error=None):
         # Can only add nodes with the https address, which requires the 1900X
         # port
-        cluster_member_port = 10000 + new_node.port
         data = {"user": self.auth[0],
                 "password": self.auth[1],
-                "hostname": f"https://{new_node.host}:{cluster_member_port}",
+                "hostname": new_node.https_url(),
                 "services": services}
         if verbose:
             print(f"Adding node {data}")
@@ -266,8 +265,7 @@ class Cluster:
                         verbose=False, expected_code=200):
         data = {"user": self.auth[0],
                 "password": self.auth[1],
-                "clusterMemberHostIp": self.connected_nodes[0].host,
-                "clusterMemberPort": self.connected_nodes[0].port+10000,
+                "hostname": self.connected_nodes[0].https_url(),
                 "services": services}
 
         if verbose:

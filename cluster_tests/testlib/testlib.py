@@ -17,6 +17,7 @@ import sys
 import contextlib
 from traceback import format_exception_only
 import traceback_with_variables as traceback
+from ipaddress import ip_address, IPv6Address
 
 from testlib.node import Node
 
@@ -496,3 +497,16 @@ def log_at_all_nodes(cluster, msg):
     for n in cluster.nodes:
         diag_eval(n, f'ale:debug(ns_server, "{msg}", []).',
                   verbose=config['verbose']).text
+
+
+def maybe_add_brackets(addr):
+    if addr[0] == '[':
+        return addr
+    try:
+        if type(ip_address(addr)) is IPv6Address:
+            return f'[{addr}]'
+        else:
+            return addr
+    except ValueError:
+        # addr is fqdn
+        return addr
