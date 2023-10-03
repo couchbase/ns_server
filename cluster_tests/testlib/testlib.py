@@ -79,17 +79,18 @@ def get_appropriate_cluster(cluster, auth, requirements,
     return cluster
 
 
-def run_testset(testset_class, test_names, cluster, testset_name,
+def run_testset(testset, cluster, total_testsets_num,
                 intercept_output=True, seed=None):
     errors = []
     not_ran = []
     executed = 0
-    print(f"\nStarting testset: {testset_name}...")
+    print(f"\nStarting testset[{testset['#']}/{total_testsets_num}]: " \
+          f"{testset['name']}...")
     maybe_print(f'Using cluster: {repr(cluster)}')
 
-    testset_instance = testset_class(cluster)
+    testset_instance = testset['class'](cluster)
 
-    log_at_all_nodes(cluster, f'starting testset {testset_name}')
+    log_at_all_nodes(cluster, f'starting testset {testset["name"]}')
 
     _, err = safe_test_function_call(testset_instance, 'setup', [],
                                      intercept_output=intercept_output,
@@ -101,16 +102,16 @@ def run_testset(testset_class, test_names, cluster, testset_name,
 
     if err is not None:
         # If testset setup fails, all tests were not ran
-        for not_ran_test in test_names:
+        for not_ran_test in testset['test_name_list']:
             not_ran.append((not_ran_test,
                             "testset setup failed"))
         return 0, [err], not_ran
 
     try:
-        for test in test_names:
+        for test in testset['test_name_list']:
             executed += 1
             log_at_all_nodes(cluster,
-                             f'starting test {test} from {testset_name}')
+                             f'starting test {test} from {testset["name"]}')
             _, err = safe_test_function_call(testset_instance, test,
                                              [], verbose=True,
                                              intercept_output=intercept_output,
@@ -126,7 +127,7 @@ def run_testset(testset_class, test_names, cluster, testset_name,
                 errors.append(err)
                 # Don't try to run further tests as test_teardown failure will
                 # likely cause additional test failures which are irrelevant
-                for not_ran_test in test_names[executed:]:
+                for not_ran_test in testset['test_name_list'][executed:]:
                     not_ran.append((not_ran_test,
                                     "Earlier test_teardown failed"))
                 break

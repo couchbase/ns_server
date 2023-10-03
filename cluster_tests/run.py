@@ -254,9 +254,10 @@ def main():
     else:
         testsets_to_run = find_tests(tests, discovered_tests)
 
-    testsets_grouped = group_testsets(testsets_to_run, reuse_clusters,
-                                      randomize_clusters, random_order,
-                                      testset_iterations, test_iterations)
+    total_num, testsets_grouped = \
+        group_testsets(testsets_to_run, reuse_clusters,
+                       randomize_clusters, random_order,
+                       testset_iterations, test_iterations)
     testlib.maybe_print(f"Groupped testsets:")
     testlib.maybe_print(testsets_grouped, print_fun=pprint.pprint)
 
@@ -277,11 +278,11 @@ def main():
         if use_existing_server:
             unmet_requirements = configuration.get_unmet_requirements(cluster)
             if len(unmet_requirements) > 0:
-                for testset_name, _testset, _test_names, _reqs in testsets:
+                for testset in testsets:
                     reason = "Cluster provided does not satisfy test " \
                              f"requirements:\n" \
                              f"{[str(r) for r in unmet_requirements]}"
-                    not_ran.append((testset_name, reason))
+                    not_ran.append((testset['name'], reason))
                 continue
         else:
             cluster = testlib.get_appropriate_cluster(cluster,
@@ -293,7 +294,8 @@ def main():
         testset_start_ts = time.time_ns()
         # Run the testsets on the cluster
         tests_executed, testset_errors, testset_not_ran = \
-            run_testsets(cluster, testsets, intercept_output=intercept_output,
+            run_testsets(cluster, testsets, total_num,
+                         intercept_output=intercept_output,
                          seed=seed)
         test_time += (time.time_ns() - testset_start_ts)
         executed += tests_executed
@@ -370,8 +372,10 @@ def group_testsets(testsets, reuse_clusters, randomize_clusters,
             different = True
             testset_name = f"{class_name}/{requirements}"
             test_names_copy = test_names[:]
-            testset = (testset_name, testset_class, test_names_copy,
-                       requirements)
+            testset = {'name': testset_name,
+                       'class': testset_class,
+                       'test_name_list': test_names_copy,
+                       'requirements': requirements}
             if reuse_clusters:
                 for i, (other_reqs, other_testsets) in \
                     enumerate(testsets_grouped):
@@ -388,13 +392,11 @@ def group_testsets(testsets, reuse_clusters, randomize_clusters,
         if randomize_clusters:
             req.randomize_unset_requirements()
         for t in testsets:
-            # we can't do t[2] *= test_iterations here because tuples can't
-            # be modified
-            t[2].extend(t[2] * (test_iterations - 1))
+            t['test_name_list'] *= test_iterations
         if random_order:
             random.shuffle(testsets)
             for t in testsets:
-                random.shuffle(t[2])
+                random.shuffle(t['test_name_list'])
 
     """
     Sort testset groups by requirements string. The string lists immutable
@@ -402,7 +404,14 @@ def group_testsets(testsets, reuse_clusters, randomize_clusters,
     # of compatible configurations will be adjacent in the list. For example:
     (edition=Enterprise,num_nodes
     """
-    return sorted(testsets_grouped, key=lambda x: str(x[0]))
+    sorted_testsets_grouped = sorted(testsets_grouped, key=lambda x: str(x[0]))
+    tests_count = 0
+    for (req, testsets) in sorted_testsets_grouped:
+        for t in testsets:
+            t['#'] = tests_count + 1
+            tests_count += 1
+
+    return (tests_count, sorted_testsets_grouped)
 
 
 def find_tests(test_names, discovered_list):
@@ -499,26 +508,29 @@ def get_existing_cluster(address, start_port, auth, num_nodes):
 
 # Run each testset on the same cluster, counting how many individual tests were
 # ran, and keeping track of all errors
-def run_testsets(cluster, testsets, intercept_output=True, seed=None):
+def run_testsets(cluster, testsets, total_num,
+                 intercept_output=True, seed=None):
     executed = 0
     errors = {}
     not_ran = []
-    for testset_name, testset, test_names, testset_requirements in testsets:
+    for testset in testsets:
         # We should be able to reuse the cluster here (because we constructed
         # this cluster specifically for this testset), so make sure
         # requirements are still met for this testset (other tests could have
         # broken it).
-        reuse, unmet = testlib.try_reuse_cluster(testset_requirements, cluster)
+        reuse, unmet = testlib.try_reuse_cluster(testset['requirements'],
+                                                 cluster)
         if not reuse:
             unmet_str = ', '.join(str(r) for r in unmet)
             raise RuntimeError('Internal error. ' \
                                f'Unmet requirements: {unmet_str}')
-        res = testlib.run_testset(testset, test_names, cluster, testset_name,
-                                  intercept_output=intercept_output, seed=seed)
+        res = testlib.run_testset(testset, cluster, total_num,
+                                  intercept_output=intercept_output,
+                                  seed=seed)
         executed += res[0]
         testset_errors = res[1]
         if len(testset_errors) > 0:
-            errors[testset_name] = testset_errors
+            errors[testset['name']] = testset_errors
         not_ran += res[2]
     return executed, errors, not_ran
 
