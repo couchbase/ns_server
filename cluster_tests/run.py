@@ -286,7 +286,6 @@ def main():
         else:
             cluster = testlib.get_appropriate_cluster(cluster,
                                                       (username, password),
-                                                      start_index,
                                                       configuration,
                                                       tmp_cluster_dir,
                                                       kill_nodes,
@@ -494,7 +493,7 @@ def get_existing_cluster(address, start_port, auth, num_nodes):
              for i in range(num_nodes)]
 
     with testlib.no_output("connecting to existing cluster"):
-        return testlib.cluster.get_cluster(start_port, auth, [], nodes,
+        return testlib.cluster.get_cluster(0, start_port, auth, [], nodes,
                                            nodes_found)
 
 

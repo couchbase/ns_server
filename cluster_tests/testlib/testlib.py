@@ -50,8 +50,10 @@ def try_reuse_cluster(requirements, cluster):
     return False, unsatisfied
 
 
-def get_appropriate_cluster(cluster, auth, start_index, requirements,
+def get_appropriate_cluster(cluster, auth, requirements,
                             tmp_cluster_dir, kill_nodes, reuse_clusters):
+    cluster_index = 0
+    first_node_index = 0
     if cluster is not None:
         if reuse_clusters:
             reuse, _ = try_reuse_cluster(requirements, cluster)
@@ -64,12 +66,15 @@ def get_appropriate_cluster(cluster, auth, start_index, requirements,
         # be registered in requirements.create_cluster
         atexit.unregister(kill_nodes)
 
-        start_index = cluster.start_index + len(cluster.processes)
+        first_node_index = cluster.first_node_index + len(cluster.processes)
+        cluster_index = cluster.index + 1
         print()
 
     # Create a new cluster satisfying the requirements
-    print(f"=== Starting cluster to satisfy requirements: {requirements}")
-    cluster = requirements.create_cluster(auth, start_index,
+    print(f"=== Starting cluster#{cluster_index} to satisfy requirements: " \
+          f"{requirements}")
+    cluster = requirements.create_cluster(auth, cluster_index,
+                                          first_node_index,
                                           tmp_cluster_dir,
                                           kill_nodes)
     maybe_print("\n======================================="

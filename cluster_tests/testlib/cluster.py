@@ -36,7 +36,7 @@ def get_node_urls(nodes):
     return [node.url for node in nodes]
 
 
-def build_cluster(auth, start_args, connect_args, kill_nodes):
+def build_cluster(auth, cluster_index, start_args, connect_args, kill_nodes):
     # We use the raw ip address instead of 'localhost', as it isn't accepted by
     # the addNode or doJoinCluster endpoints
     # IPV6 uses [::1] instead of 127.0.0.1
@@ -67,10 +67,11 @@ def build_cluster(auth, start_args, connect_args, kill_nodes):
         # If anything goes wrong after starting the clusters, we want to kill
         # the nodes, otherwise we end up with processes hanging around
         atexit.register(kill_nodes, processes, urls, get_terminal_attrs())
-    return get_cluster(port, auth, processes, nodes, connect_args['num_nodes'])
+    return get_cluster(cluster_index, port, auth, processes, nodes,
+                       connect_args['num_nodes'])
 
 
-def get_cluster(start_port, auth, processes, nodes, num_connected):
+def get_cluster(cluster_index, start_port, auth, processes, nodes, num_connected):
     connected_nodes = []
     for i, node in enumerate(nodes):
         # Check that node is connected to the cluster.
@@ -95,20 +96,22 @@ def get_cluster(start_port, auth, processes, nodes, num_connected):
 
     cluster = Cluster(nodes=nodes,
                       connected_nodes=connected_nodes,
-                      start_index=start_port - cluster_run_lib.base_api_port,
+                      first_node_index=start_port - cluster_run_lib.base_api_port,
                       processes=processes,
                       auth=auth,
-                      memsize=memsize)
+                      memsize=memsize,
+                      index=cluster_index)
     print(f"Successfully connected to cluster: {cluster}")
     return cluster
 
 
 class Cluster:
-    def __init__(self, nodes, connected_nodes, start_index, processes, auth,
-                 memsize):
+    def __init__(self, nodes, connected_nodes, first_node_index, processes, auth,
+                 memsize, index):
         self.nodes = nodes
         self.connected_nodes = connected_nodes
-        self.start_index = start_index
+        self.first_node_index = first_node_index
+        self.index = index
         self.processes = processes
         self.auth = auth
         self.memsize = memsize
@@ -126,7 +129,8 @@ class Cluster:
 
 
     def __str__(self):
-        return ','.join([str(n) for n in self.connected_nodes])
+        return f'Cluster#{self.index}(' + \
+               ','.join([str(n) for n in self.connected_nodes]) + ')'
 
     def __repr__(self):
         return self.__dict__.__repr__()
