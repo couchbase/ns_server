@@ -475,6 +475,66 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             "storageBackend": "couchstore"
         })
 
+    def max_collections_test(self):
+        bucket_quota = 1000
+        self.cluster.create_bucket({
+            "name": BUCKET_NAME,
+            "ramQuota": bucket_quota,
+        })
+        max_collections = 4
+        testlib.post_succ(self.cluster, "/settings/resourceManagement/bucket"
+                                        "/collectionsPerQuota",
+                          json={
+                              "enabled": True,
+                              "maximum": max_collections/bucket_quota
+                          })
+        for i in range(max_collections):
+            testlib.post_succ(self.cluster,
+                              f"/pools/default/buckets/{BUCKET_NAME}"
+                              f"/scopes/_default/collections",
+                              data={"name": f"test_collection_{i}"})
+
+        # Can't create more than the max collections per quota
+        r = testlib.post_fail(self.cluster,
+                              f"/pools/default/buckets/{BUCKET_NAME}"
+                              f"/scopes/_default/collections",
+                              data={
+                                  "name": f"test_collection_{max_collections}"
+                              },
+                              expected_code=429)
+        testlib.assert_eq(r.text, f'{{"errors":{{'
+                          f'"_":"Maximum number of collections '
+                          f'({max_collections}) for this bucket has been '
+                          f'reached"}}}}')
+
+        # Can't reduce the bucket quota once the limit has been reached
+        r = self.cluster.update_bucket({
+            "name": BUCKET_NAME,
+            "ramQuota": 999
+        }, expected_code=400)
+        testlib.assert_in("RAM quota cannot be less than 1000.0 MiB, to "
+                          "support 4 collections", r.text)
+
+        # Can still make other bucket updates when the limit has been reached
+        self.cluster.update_bucket({
+            "name": BUCKET_NAME,
+            "ramQuota": bucket_quota
+        })
+
+        testlib.post_succ(self.cluster, "/settings/resourceManagement/bucket"
+                                        "/collectionsPerQuota",
+                          json={
+                              "enabled": True,
+                              "maximum": 2 * max_collections / bucket_quota
+                          })
+        # Can't reduce the bucket quota below the min quota per collections
+        r = self.cluster.update_bucket({
+                "name": BUCKET_NAME,
+                "ramQuota": 499
+            }, expected_code=400)
+        testlib.assert_in("RAM quota cannot be less than 500.0 MiB, to support "
+                          "4 collections", r.text)
+
 
 class DataIngressTests(testlib.BaseTestSet):
 

@@ -25,6 +25,7 @@
          default_manifest/1,
          uid/1,
          uid/2,
+         num_collections/2,
          manifest_json/2,
          manifest_json/3,
          create_scope/2,
@@ -263,6 +264,14 @@ uid(Bucket, Snapshot) ->
 
 get_uid(Props) ->
     proplists:get_value(uid, Props).
+
+num_collections(Bucket, Snapshot) ->
+    case get_manifest(Bucket, Snapshot) of
+        undefined ->
+            undefined;
+        Manifest ->
+            get_counter(Manifest, num_collections)
+    end.
 
 convert_uid_to_memcached(V) ->
     list_to_binary(string:to_lower(integer_to_list(V, 16))).

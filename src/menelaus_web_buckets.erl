@@ -1359,7 +1359,7 @@ validate_bucket_type_specific_params(CommonParams, Params,
     case BucketType of
         memcached ->
             validate_memcached_bucket_params(CommonParams, Params, IsNew,
-                                             BucketConfig);
+                                             BucketConfig, Name);
         membase ->
             validate_membase_bucket_params(CommonParams, Params, Name, IsNew,
                                            BucketConfig, Version, IsEnterprise);
@@ -1376,10 +1376,11 @@ validate_memcached_params(Params) ->
              <<"replicaNumber is not valid for memcached buckets">>}
     end.
 
-validate_memcached_bucket_params(CommonParams, Params, IsNew, BucketConfig) ->
+validate_memcached_bucket_params(CommonParams, Params, IsNew, BucketConfig,
+                                 Name) ->
     [{ok, bucketType, memcached},
      validate_memcached_params(Params),
-     quota_size_error(CommonParams, memcached, IsNew, BucketConfig)].
+     quota_size_error(CommonParams, memcached, IsNew, BucketConfig, Name)].
 
 validate_membase_bucket_params(CommonParams, Params, Name,
                                IsNew, BucketConfig, Version, IsEnterprise) ->
@@ -1401,7 +1402,7 @@ validate_membase_bucket_params(CommonParams, Params, Name,
          parse_validate_threads_number(Params, IsNew),
          parse_validate_eviction_policy(
            Params, BucketConfig, IsNew, IsStorageModeMigration),
-         quota_size_error(CommonParams, membase, IsNew, BucketConfig),
+         quota_size_error(CommonParams, membase, IsNew, BucketConfig, Name),
          parse_validate_storage_mode(Params, BucketConfig, Name, IsNew, Version,
                                      IsEnterprise, IsStorageModeMigration,
                                      config_profile:is_serverless()),
@@ -1505,9 +1506,25 @@ get_bucket_type(_IsNew, _BucketConfig, Params) ->
         _ -> invalid
     end.
 
-quota_size_error(CommonParams, BucketType, IsNew, BucketConfig) ->
+quota_size_error(CommonParams, BucketType, IsNew, BucketConfig, Name) ->
     case lists:keyfind(ram_quota, 2, CommonParams) of
         {ok, ram_quota, RAMQuota} ->
+            NumCollections = collections:num_collections(Name, direct),
+            MinQuotaForCollections =
+                case {guardrail_monitor:get(collections_per_quota),
+                      NumCollections} of
+                    {undefined, _} ->
+                        %% Guardrail disabled
+                        0;
+                    {0, _} ->
+                        %% Guardrail disabled
+                        0;
+                    {_, undefined} ->
+                        %% No collections so we don't need to check
+                        0;
+                    {ColPerQ, NumCollections} when ColPerQ > 0 ->
+                        NumCollections / ColPerQ
+                end,
             {MinQuota, Msg}
                 = case BucketType of
                       membase ->
@@ -1524,6 +1541,13 @@ quota_size_error(CommonParams, BucketType, IsNew, BucketConfig) ->
             if
                 RAMQuota < MinQuota * ?MIB ->
                     {error, ramQuota, Msg};
+                RAMQuota < MinQuotaForCollections * ?MIB ->
+                    {error, ramQuota,
+                     list_to_binary(
+                       io_lib:format(
+                         "RAM quota cannot be less than ~.1f MiB, to "
+                         "support ~b collections", [MinQuotaForCollections,
+                                                    NumCollections]))};
                 IsNew =/= true andalso BucketConfig =/= false andalso BucketType =:= memcached ->
                     case ns_bucket:raw_ram_quota(BucketConfig) of
                         RAMQuota -> ignore;
@@ -3148,13 +3172,13 @@ basic_bucket_params_screening(IsNew, Name, Params, AllBuckets,
                                          true),
     basic_bucket_params_screening(Ctx, Params).
 
-basic_bucket_params_screening_test() ->
-    meck:new(config_profile, [passthrough]),
+basic_bucket_params_screening_setup() ->
+    Modules = [config_profile, ns_config, cluster_compat_mode, collections],
+    meck:new(Modules, [passthrough]),
     meck:expect(config_profile, search,
                 fun (_, Default) ->
                         Default
                 end),
-    meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, read_key_fast,
                 fun (_, Default) ->
                         Default
@@ -3165,13 +3189,19 @@ basic_bucket_params_screening_test() ->
                 end),
     meck:expect(ns_config, search_node_with_default,
                 fun (_, Default) -> Default end),
-    meck:new(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode, is_cluster_trinity,
                 fun () -> true end),
     meck:expect(ns_config, search_node_with_default,
                 fun (_, Default) ->
                         Default
                 end),
+    meck:expect(collections, num_collections,
+                fun(_Name, direct) -> 0 end),
+
+    %% Return mecked modules for teardown to unload
+    Modules.
+
+basic_bucket_params_screening_t() ->
     AllBuckets = [{"mcd",
                    [{type, memcached},
                     {num_vbuckets, 16},
@@ -3664,13 +3694,14 @@ basic_bucket_params_screening_test() ->
     meck:expect(ns_config, read_key_fast,
                 fun (_, Default) ->
                         Default
-                end),
+                end).
 
-    meck:unload(ns_config),
-    meck:unload(config_profile),
-    meck:unload(cluster_compat_mode),
+basic_bucket_params_screening_test_() ->
+    {setup,
+     fun basic_bucket_params_screening_setup/0,
+     fun meck:unload/1,
+     fun basic_bucket_params_screening_t/0}.
 
-    ok.
 
 basic_parse_validate_bucket_auto_compaction_settings_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
@@ -4372,7 +4403,8 @@ build_dynamic_bucket_info_test_() ->
         [{Test, TestFun} || Test <- Tests]}.
 
 storage_mode_migration_meck_modules() ->
-    [ns_config, config_profile, cluster_compat_mode, guardrail_monitor].
+    [ns_config, config_profile, cluster_compat_mode, guardrail_monitor,
+     collections].
 
 storage_mode_migration_meck_setup(Version) ->
     meck:new(storage_mode_migration_meck_modules(), [passthrough]),
@@ -4389,7 +4421,9 @@ storage_mode_migration_meck_setup(Version) ->
                         Version
                 end),
     meck:expect(guardrail_monitor, validate_storage_migration,
-                fun (_, _, _) -> ok end).
+                fun (_, _, _) -> ok end),
+    meck:expect(collections, num_collections,
+                fun (_Name, direct) -> 0 end).
 
 storage_mode_migration_cluster_compat_test(Version, CurrentStorageMode,
                                            NewStorageMode) ->
