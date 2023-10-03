@@ -51,11 +51,12 @@ def try_reuse_cluster(requirements, cluster):
 
 
 def get_appropriate_cluster(cluster, auth, start_index, requirements,
-                            tmp_cluster_dir, kill_nodes):
+                            tmp_cluster_dir, kill_nodes, reuse_clusters):
     if cluster is not None:
-        reuse, _ = try_reuse_cluster(requirements, cluster)
-        if reuse:
-            return cluster
+        if reuse_clusters:
+            reuse, _ = try_reuse_cluster(requirements, cluster)
+            if reuse:
+                return cluster
 
         # Teardown the old cluster
         cluster.teardown()

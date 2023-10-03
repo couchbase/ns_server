@@ -11,35 +11,40 @@ from abc import ABC, abstractmethod
 import testlib
 from testlib.cluster import Cluster, build_cluster
 from testlib import get_succ
+import random
+
+
+MIN_MEM_QUOTA = 256
+MAX_VBUCKET_NUM = 1024
 
 
 class ClusterRequirements:
     @testlib.no_output_decorator
-    def __init__(self, edition=None, num_nodes=None, min_num_nodes=None,
+    def __init__(self,
+                 edition=None, num_nodes=None, min_num_nodes=None,
                  memsize=None, min_memsize=None, num_connected=None,
                  min_num_connected=None, afamily=None, services=None,
                  master_password_state=None, num_vbuckets=None,
                  encryption=None):
 
-        def maybe(f, *args):
+        def maybe(ReqClass, *args):
             if all(x is None for x in args):
                 return None
-            return f(*args)
-
+            return ReqClass(*args)
+        self.edition = edition
         self.requirements = \
             {
-                'edition': maybe(lambda x: Edition(x), edition),
-                'num_nodes': maybe(lambda *x: NumNodes(*x),
+                'edition': maybe(Edition, edition),
+                'num_nodes': maybe(NumNodes,
                                    num_nodes, min_num_nodes, num_connected,
                                    min_num_connected),
-                'memsize': maybe(lambda *x: MemSize(*x), memsize, min_memsize),
-                'afamily': maybe(lambda x: AFamily(x), afamily),
-                'services': maybe(lambda x: Services(x), services),
-                'master_password_state':
-                    maybe(lambda x: MasterPasswordState(x),
-                          master_password_state),
-                'num_vbuckets': maybe(lambda x: NumVbuckets(x), num_vbuckets),
-                'encryption': maybe(lambda x: N2nEncryption(x), encryption)
+                'memsize': maybe(MemSize, memsize, min_memsize),
+                'afamily': maybe(AFamily, afamily),
+                'services': maybe(Services, services),
+                'master_password_state': maybe(MasterPasswordState,
+                                               master_password_state),
+                'num_vbuckets': maybe(NumVbuckets, num_vbuckets),
+                'encryption': maybe(N2nEncryption, encryption)
             }
 
     def __str__(self):
@@ -172,6 +177,48 @@ class ClusterRequirements:
 
         return True, new_reqs
 
+    def randomize_unset_requirements(self):
+        if self.requirements['edition'] is None:
+            editions_copy = Edition.editions.copy()
+            # Removing community because it it's not working currently
+            editions_copy.remove('Community')
+            self.edition = random.choice(editions_copy)
+            self.requirements['edition'] = Edition(self.edition)
+        if self.requirements['num_nodes'] is None:
+            self.requirements['num_nodes'] = \
+                NumNodes(random.randint(1, 4), None, None, None)
+        if self.requirements['memsize'] is None:
+            self.requirements['memsize'] = \
+                MemSize(random.randint(MIN_MEM_QUOTA, 2048), None)
+        if self.requirements['afamily'] is None:
+            afamily = random.choice(['ipv4', 'ipv6']) \
+                      if self.edition != 'Community' \
+                      else 'ipv4'
+            self.requirements['afamily'] = AFamily(afamily)
+        if self.requirements['services'] is None:
+            if self.edition == 'Community':
+                services = ['index', 'n1ql', 'fts']
+            else:
+                services = ['index', 'n1ql', 'fts', 'backup', 'eventing',
+                            'cbas']
+            services = ['kv'] + random.sample(
+                                services,
+                                k=random.randint(0, len(services) - 1))
+            self.requirements['services'] = Services(services)
+        if self.requirements['master_password_state'] is None:
+            self.requirements['master_password_state'] = \
+                MasterPasswordState('default')
+        if self.requirements['num_vbuckets'] is None:
+            self.requirements['num_vbuckets'] = \
+                NumVbuckets(random.randint(16, MAX_VBUCKET_NUM))
+        if self.requirements['encryption'] is None:
+            encryption = random.choice([True, False]) \
+                         if self.edition != 'Community' else False
+            self.requirements['encryption'] = N2nEncryption(encryption)
+        for k in self.requirements:
+            assert self.requirements[k] is not None, \
+                   f'please define randomization for "{k}" requirement'
+
 
 class Requirement(ABC):
     def __init__(self, **kwargs):
@@ -220,6 +267,7 @@ class Edition(Requirement):
 
     def __init__(self, edition):
         super().__init__(edition=edition)
+
         if edition not in Edition.editions:
             raise ValueError(f"Edition must be in {Edition.editions}")
 
@@ -349,10 +397,12 @@ class MemSize(Requirement):
         super().__init__(memsize=memsize, min_memsize=min_memsize)
         if memsize is not None and min_memsize is not None:
             raise ValueError("memsize and min_memsize are mutually exclusive")
-        if memsize is not None and memsize < 256:
-            raise ValueError(f"memsize must be a positive integer >= 256")
-        if min_memsize is not None and min_memsize < 256:
-            raise ValueError(f"min_memsize must be a positive integer >= 256")
+        if memsize is not None and memsize < MIN_MEM_QUOTA:
+            raise ValueError("memsize must be a positive " \
+                             f"integer >= {MIN_MEM_QUOTA}")
+        if min_memsize is not None and min_memsize < MIN_MEM_QUOTA:
+            raise ValueError("min_memsize must be a positive " \
+                             f"integer >= {MIN_MEM_QUOTA}")
         self.memsize = memsize
         self.min_memsize = min_memsize
         if memsize is not None:
@@ -463,8 +513,8 @@ class NumVbuckets(Requirement):
         if num_vbuckets <= 0:
             raise ValueError("num_vbuckets needs to be > 0")
 
-        if num_vbuckets > 1024:
-            raise ValueError("num_vbuckets needs to be <= 1024")
+        if num_vbuckets > MAX_VBUCKET_NUM:
+            raise ValueError(f"num_vbuckets needs to be <= {MAX_VBUCKET_NUM}")
 
         self.num_vbuckets = num_vbuckets
         self.start_args = {"num_vbuckets": num_vbuckets}

@@ -20,6 +20,7 @@ import glob
 import time
 import random
 import pprint
+from copy import deepcopy
 
 # Pretty prints any tracebacks that may be generated if the process dies
 from traceback_with_variables import activate_by_import
@@ -88,6 +89,16 @@ Usage: {program_name}
         Print more debug information
     [--dry-run]
         Do not actually run tests (useful for framework debugging)
+    [--dont-reuse-clusters]
+        Start a separate cluster for each testset
+    [--randomize-clusters]
+        Randomize requirements that are not explicitly set
+    [--random-order]
+        Randomize order of tests
+    [--testset-iterations=N]
+        Run each testset N times (1 by default)
+    [--test-iterations=M]
+        Run each test M times (1 by default)
     [--help]
         Show this help
 """
@@ -129,7 +140,11 @@ def main():
                                            "user=", "password=", "num-nodes=",
                                            "tests=", "dont-intercept-output",
                                            "seed=", "colors=", "verbose",
-                                           "dry-run"])
+                                           "dry-run", 'dont-reuse-clusters',
+                                           'randomize-clusters',
+                                           'random-order',
+                                           'testset-iterations=',
+                                           'test-iterations='])
     except getopt.GetoptError as err:
         bad_args_exit(str(err))
 
@@ -144,6 +159,11 @@ def main():
     keep_tmp_dirs = False
     intercept_output = True
     seed = testlib.random_str(16)
+    reuse_clusters = True
+    randomize_clusters = False
+    random_order = False
+    testset_iterations = 1
+    test_iterations = 1
 
     for o, a in optlist:
         if o in ('--cluster', '-c'):
@@ -185,6 +205,16 @@ def main():
             testlib.config['verbose'] = True
         elif o == '--dry-run':
             testlib.config['dry_run'] = True
+        elif o == '--dont-reuse-clusters':
+            reuse_clusters = False
+        elif o == '--randomize-clusters':
+            randomize_clusters = True
+        elif o == '--random-order':
+            random_order = True
+        elif o == '--testset-iterations':
+            testset_iterations = int(a)
+        elif o == '--test-iterations':
+            test_iterations = int(a)
         elif o in ('--help', '-h'):
             usage()
             exit(0)
@@ -224,7 +254,9 @@ def main():
     else:
         testsets_to_run = find_tests(tests, discovered_tests)
 
-    testsets_grouped = group_testsets(testsets_to_run)
+    testsets_grouped = group_testsets(testsets_to_run, reuse_clusters,
+                                      randomize_clusters, random_order,
+                                      testset_iterations, test_iterations)
     testlib.maybe_print(f"Groupped testsets:")
     testlib.maybe_print(testsets_grouped, print_fun=pprint.pprint)
 
@@ -257,7 +289,8 @@ def main():
                                                       start_index,
                                                       configuration,
                                                       tmp_cluster_dir,
-                                                      kill_nodes)
+                                                      kill_nodes,
+                                                      reuse_clusters)
         testset_start_ts = time.time_ns()
         # Run the testsets on the cluster
         tests_executed, testset_errors, testset_not_ran = \
@@ -328,23 +361,42 @@ def check_for_core_files():
     return keep
 
 
-def group_testsets(testsets):
+def group_testsets(testsets, reuse_clusters, randomize_clusters,
+                   random_order, testset_iterations, test_iterations):
     # Group by requirements
     testsets_grouped = []
-    for class_name, testset_class, test_names, configurations in testsets:
+    all_testsets = testsets * testset_iterations
+    for class_name, testset_class, test_names, configurations in all_testsets:
         for requirements in configurations:
             different = True
             testset_name = f"{class_name}/{requirements}"
-            testset = (testset_name, testset_class, test_names, requirements)
-            for i, (other_reqs, other_testsets) in enumerate(testsets_grouped):
-                succ, new_reqs = other_reqs.intersect(requirements)
-                if succ:
-                    other_testsets.append(testset)
-                    testsets_grouped[i] = (new_reqs, other_testsets)
-                    different = False
-                    break
+            test_names_copy = test_names[:]
+            testset = (testset_name, testset_class, test_names_copy,
+                       requirements)
+            if reuse_clusters:
+                for i, (other_reqs, other_testsets) in \
+                    enumerate(testsets_grouped):
+                    succ, new_reqs = other_reqs.intersect(requirements)
+                    if succ:
+                        other_testsets.append(testset)
+                        testsets_grouped[i] = (new_reqs, other_testsets)
+                        different = False
+                        break
             if different:
-                testsets_grouped.append((requirements, [testset]))
+                testsets_grouped.append((deepcopy(requirements), [testset]))
+
+    for (req, testsets) in testsets_grouped:
+        if randomize_clusters:
+            req.randomize_unset_requirements()
+        for t in testsets:
+            # we can't do t[2] *= test_iterations here because tuples can't
+            # be modified
+            t[2].extend(t[2] * (test_iterations - 1))
+        if random_order:
+            random.shuffle(testsets)
+            for t in testsets:
+                random.shuffle(t[2])
+
     """
     Sort testset groups by requirements string. The string lists immutable
     # requirements first, then mutable requirements. This ensures that any sets
