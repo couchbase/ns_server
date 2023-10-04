@@ -73,22 +73,14 @@ def setup_extra_ns_server_app_file(force_community, start_index):
     # in the path directory such that they will take precedence when
     # loaded.  Note the -pa option used when starting erl reverses the
     # order of the list.
-    extra_dirname = "extra"
+    extra_dirname = f"{ns_server_dir}/extra"
     extra_ebin_dirname = "{}/n_{}".format(extra_dirname, start_index)
     extra_ebin_path = extra_ebin_dirname + "/ebin"
     returned_path = None
 
     # Clean up any residual files from prior runs.
     try:
-        if force_community:
-            # Just delete the node-specific directory that we're going
-            # to recreate with new content.  There could be concurrent
-            # instances running so can't more than that.
-            shutil.rmtree(extra_ebin_dirname)
-        else:
-            # Get rid of the entire directory as we don't want any residual
-            # files being found when walking the directory (see ebin_seach).
-            shutil.rmtree(extra_dirname)
+        shutil.rmtree(extra_ebin_dirname)
     except OSError as exc:
         if exc.errno == errno.ENOENT:
             pass
@@ -97,7 +89,7 @@ def setup_extra_ns_server_app_file(force_community, start_index):
 
     if force_community:
         found_enterprise = False
-        with open("./ebin/ns_server.app", "r") as src_f:
+        with open(f"{ns_server_dir}/ebin/ns_server.app", "r") as src_f:
             lines = src_f.readlines()
 
         lines_out = ""
@@ -115,8 +107,7 @@ def setup_extra_ns_server_app_file(force_community, start_index):
             # Any errors here are "real" so we want exceptions thrown
             os.makedirs(extra_ebin_path)
 
-            with open("./{}/ns_server.app".format(
-                    extra_ebin_path), "w") as dst_f:
+            with open(f"{extra_ebin_path}/ns_server.app", "w") as dst_f:
                 dst_f.write(lines_out)
 
             returned_path = extra_ebin_path
@@ -135,13 +126,14 @@ def setup_path(ns_server_app_path):
 
         return ebins
 
-    path = ebin_search(ns_server_dir)
-    if ns_server_app_path in path:
+    path = ebin_search(f'{ns_server_dir}/ebin') + \
+           ebin_search(f'{ns_server_dir}/deps')
+
+    if ns_server_app_path is not None:
         # The ns_server_app_path needs to be first in the path. We remove
         # it from what was found and append it to the path (it's at the
         # end as the -pa argument used when starting erl reverses the
         # order).
-        path.remove(ns_server_app_path)
         path.append(ns_server_app_path)
 
     couchdb_lib_path = "{0}/lib/couchdb/erlang/lib".format(PREFIX)
