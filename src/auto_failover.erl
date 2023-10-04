@@ -84,6 +84,14 @@
 
 -define(SAFETY_CHECK_TIMEOUT, ?get_timeout(safety_check, 2000)).
 
+%% The auto_failover gen_server is expected to be unresponsive during an
+%% auto-failover attempt. An auto-failover attempt may take a while,
+%% particularly if there are issues such as gathering a quorum majority
+%% (which has a 15s timeout by default). Supply a sufficiently large timeout
+%% to the gen_server calls such that we're unlikely to time out waiting for
+%% auto_failover to respond.
+-define(CALL_TIMEOUT, ?get_timeout(call, 60000)).
+
 -record(state,
         { auto_failover_logic_state = undefined,
           %% Reference to the tick timer.
@@ -162,9 +170,19 @@ should_preserve_durability_majority() ->
 should_preserve_durability_majority(Config) ->
     proplists:get_bool(failover_preserve_durability_majority, Config).
 
+%% Call has a large timeout by default. Calls are handled to reconfigure
+%% auto-failover and the auto_failover gen_server is expected to be unresponsive
+%% during an auto-failover attempt. An auto-failover attempt may take a while,
+%% particularly if there are issues such as gathering a quorum majority
+%% (which has a 15s timeout by default). Supply a sufficiently large timeout
+%% to the gen_server calls such that we're unlikely to time out waiting for
+%% auto_failover to respond. Care should be taken when using this function for
+%% calls, or when adding new call handlers as this code works under the
+%% expectation that calls are generally quick and have a well defined
+%% upperbound of duration. Long calls could delay an auto-failover.
 call(Call) ->
     misc:wait_for_global_name(?MODULE),
-    gen_server:call(?SERVER, Call).
+    gen_server:call(?SERVER, Call, ?CALL_TIMEOUT).
 
 cast(Call) ->
     misc:wait_for_global_name(?MODULE),
@@ -225,6 +243,10 @@ init_logic_state(#state{timeout = Timeout,
     ?log_debug("Using auto-failover logic state ~p", [State]),
     State.
 
+%% Care should be taken when adding new call handlers as this code works under
+%% the expectation that calls are generally quick and have a well defined
+%% upperbound of duration. Long calls could delay an auto-failover as the
+%% gen_server cannot process two things at once!
 handle_call({enable_auto_failover, Timeout, Max}, From, State) ->
     handle_call({enable_auto_failover, Timeout, Max, []}, From, State);
 %% @doc Auto-failover isn't enabled yet (tick_ref isn't set).
@@ -257,7 +279,10 @@ handle_call({disable_auto_failover, Extras}, _From,
 handle_call(reset_auto_failover_count, _From, State) ->
     {noreply, NewState} = handle_cast(reset_auto_failover_count, State),
     {reply, ok, NewState};
-
+%% Care should be taken when adding new call handlers as this code works under
+%% the expectation that calls are generally quick and have a well defined
+%% upperbound of duration. Long calls could delay an auto-failover as the
+%% gen_server cannot process two things at once!
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
