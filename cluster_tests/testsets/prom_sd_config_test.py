@@ -78,7 +78,7 @@ class PromSdConfigTest(testlib.BaseTestSet):
         r = testlib.get_succ(self.cluster, "/pools/default/nodeServices")
         rj = r.json()
         nodesExt = rj['nodesExt']
-        node_num = 1
+        assert (len(nodesExt) != 0)
         for node in nodesExt:
             if 'alternateAddresses' not in node:
                 return False
@@ -88,10 +88,14 @@ class PromSdConfigTest(testlib.BaseTestSet):
             ports = external['ports']
             port = ports['mgmt']
             portSSL = ports['mgmtSSL']
+            # The nodes in nodesExt can be in any order. We expect to find
+            # nodes with names <n>.<n>.<n>.<n> and management ports
+            # <n><n><n><n> and 1<n><n><n><n>. For example: node named
+            # 2.2.2.2 with mgmt ports 2222 and 12222.
+            node_num = int(hostname.split('.')[0])
             assert (hostname == self.build_hostname(node_num))
             assert (port == int(self.build_portnum(node_num)))
             assert (portSSL == int(self.build_portnum(node_num, True)))
-            node_num += 1
         return True
 
     def build_url(self, ret_type, disposition, port, network):
