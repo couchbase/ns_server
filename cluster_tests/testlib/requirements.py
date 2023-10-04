@@ -182,10 +182,7 @@ class ClusterRequirements:
 
     def randomize_unset_requirements(self):
         if self.requirements['edition'] is None:
-            editions_copy = Edition.editions.copy()
-            # Removing community because it it's not working currently
-            editions_copy.remove('Community')
-            self.edition = random.choice(editions_copy)
+            self.edition = random.choice(Edition.editions)
             self.requirements['edition'] = Edition(self.edition)
         if self.requirements['num_nodes'] is None:
             self.requirements['num_nodes'] = \
@@ -200,13 +197,14 @@ class ClusterRequirements:
             self.requirements['afamily'] = AFamily(afamily)
         if self.requirements['services'] is None:
             if self.edition == 'Community':
-                services = ['index', 'n1ql', 'fts']
+                services = random.choice([['kv'], ['kv', 'index', 'n1ql'],
+                                          ['kv', 'index', 'n1ql', 'fts']])
             else:
                 services = ['index', 'n1ql', 'fts', 'backup', 'eventing',
                             'cbas']
-            services = ['kv'] + random.sample(
-                                services,
-                                k=random.randint(0, len(services) - 1))
+                services = ['kv'] + random.sample(
+                                        services,
+                                        k=random.randint(0, len(services) - 1))
             self.requirements['services'] = Services(services)
         if self.requirements['master_password_state'] is None:
             self.requirements['master_password_state'] = \
@@ -500,12 +498,18 @@ class MasterPasswordState(Requirement):
 
     def is_met(self, cluster):
         for n in cluster.connected_nodes:
-            r = get_succ(n, "/nodes/self/secretsManagement")
-            r = r.json()
-            pass_state = r['encryptionService']['passwordState']
-            if pass_state != self.master_password_state:
+            r = testlib.get(n, "/nodes/self/secretsManagement")
+            if r.status_code == 200:
+                r = r.json()
+                pass_state = r['encryptionService']['passwordState']
+                if pass_state != self.master_password_state:
+                    return False
+            elif r.status_code == 400 and \
+                 'endpoint requires enterprise edition' in r.text:
+                if self.master_password_state != 'default':
+                    return False
+            else:
                 return False
-
         return True
 
 
