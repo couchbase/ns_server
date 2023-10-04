@@ -58,6 +58,7 @@ handle_rotate_data_key(Req) ->
     end.
 
 handle_get_settings(Path, Req) ->
+    menelaus_util:assert_is_enterprise(),
     {ok, Rv} = encryption_service:get_state(),
 
     Node = dist_manager:this_node(),
@@ -69,6 +70,7 @@ handle_get_settings(Path, Req) ->
       Req).
 
 handle_post_settings(Path, Req) ->
+    menelaus_util:assert_is_enterprise(),
     Node = dist_manager:this_node(),
     Current = ns_config:read_key_fast({node, Node, secret_mngmt_cfg}, []),
     menelaus_web_settings2:handle_post(
