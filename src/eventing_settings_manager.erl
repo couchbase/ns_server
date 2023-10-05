@@ -27,11 +27,13 @@
 -import(json_settings_manager,
         [id_lens/1]).
 
+-define(EVENTING_CONFIG_KEY, {metakv, <<"/eventing/settings/config">>}).
+
 start_link() ->
     json_settings_manager:start_link(?MODULE).
 
 cfg_key() ->
-    {metakv, <<"/eventing/settings/config">>}.
+    ?EVENTING_CONFIG_KEY.
 
 is_enabled() ->
     true.
