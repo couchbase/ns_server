@@ -101,10 +101,11 @@ class ClusterRequirements:
         return list(filter(lambda x: x is not None, self.requirements.values()))
 
     @testlib.no_output_decorator
-    def create_cluster(self, auth, cluster_index, first_node_index, tmp_cluster_dir,
+    def create_cluster(self, auth, cluster_index, tmp_cluster_dir,
                        kill_nodes):
+        first_node_index = 0
         start_args = {'start_index': first_node_index,
-                      'root_dir': f"{tmp_cluster_dir}-{cluster_index}-{first_node_index}"}
+                      'root_dir': f"{tmp_cluster_dir}-{cluster_index}"}
         start_args.update(self.get_default_start_args())
         for requirement in self.as_list():
             start_args.update(requirement.start_args)
