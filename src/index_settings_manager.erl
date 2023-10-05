@@ -118,27 +118,27 @@ known_settings(ClusterVersion) ->
 config_default() ->
     {?INDEX_CONFIG_KEY, json_settings_manager:build_settings_json(
                           default_settings(),
-                          dict:new(),
+                          maps:new(),
                           known_settings(?MIN_SUPPORTED_VERSION))}.
 
 memory_quota_lens() ->
     Key = <<"indexer.settings.memory_quota">>,
 
-    Get = fun (Dict) ->
-                  dict:fetch(Key, Dict) div ?MIB
+    Get = fun (Map) ->
+                  maps:get(Key, Map) div ?MIB
           end,
-    Set = fun (Value, Dict) ->
-                  dict:store(Key, Value * ?MIB, Dict)
+    Set = fun (Value, Map) ->
+                  maps:put(Key, Value * ?MIB, Map)
           end,
     {Get, Set}.
 
 indexer_threads_lens() ->
     Key = <<"indexer.settings.max_cpu_percent">>,
-    Get = fun (Dict) ->
-                  dict:fetch(Key, Dict) div 100
+    Get = fun (Map) ->
+                  maps:get(Key, Map) div 100
           end,
-    Set = fun (Value, Dict) ->
-                  dict:store(Key, Value * 100, Dict)
+    Set = fun (Value, Map) ->
+                  maps:put(Key, Value * 100, Map)
           end,
     {Get, Set}.
 
@@ -230,8 +230,8 @@ compaction_interval_default() ->
 
 compaction_interval_lens() ->
     Key = <<"indexer.settings.compaction.interval">>,
-    Get = fun (Dict) ->
-                  Int0 = binary_to_list(dict:fetch(Key, Dict)),
+    Get = fun (Map) ->
+                  Int0 = binary_to_list(maps:get(Key, Map)),
                   [From, To] = string:tokens(Int0, ","),
                   [FromH, FromM] = string:tokens(From, ":"),
                   [ToH, ToM] = string:tokens(To, ":"),
@@ -240,7 +240,7 @@ compaction_interval_lens() ->
                    {to_hour, list_to_integer(ToH)},
                    {to_minute, list_to_integer(ToM)}]
           end,
-    Set = fun (Values0, Dict) ->
+    Set = fun (Values0, Map) ->
                   Values =
                       case Values0 of
                           [] ->
@@ -258,7 +258,7 @@ compaction_interval_lens() ->
                             io_lib:format("~2.10.0b:~2.10.0b,~2.10.0b:~2.10.0b",
                                           [FromHour, FromMinute, ToHour, ToMinute])),
 
-                  dict:store(Key, Value, Dict)
+                  maps:put(Key, Value, Map)
           end,
     {Get, Set}.
 
@@ -448,15 +448,15 @@ config_upgrade_test_generic(Config, ShardAffinityValue) ->
     [{set, {metakv, Meta}, Data}] = CmdList,
     ?assertEqual(<<"/indexing/settings/config">>, Meta),
     Result =
-        io_lib:format("{\"indexer.settings.rebalance.blob_storage_region\":\"\","
-                      "\"indexer.settings.thresholds.mem_high\":70,"
-                      "\"indexer.settings.thresholds.units_low\":40,"
-                      "\"indexer.settings.rebalance.blob_storage_scheme\":\"\","
-                      "\"indexer.settings.rebalance.blob_storage_prefix\":\"\","
+        io_lib:format("{\"indexer.settings.enable_shard_affinity\":~p,"
                       "\"indexer.settings.rebalance.blob_storage_bucket\":\"\","
+                      "\"indexer.settings.rebalance.blob_storage_prefix\":\"\","
+                      "\"indexer.settings.rebalance.blob_storage_region\":\"\","
+                      "\"indexer.settings.rebalance.blob_storage_scheme\":\"\","
+                      "\"indexer.settings.thresholds.mem_high\":70,"
+                      "\"indexer.settings.thresholds.mem_low\":50,"
                       "\"indexer.settings.thresholds.units_high\":60,"
-                      "\"indexer.settings.enable_shard_affinity\":~p,"
-                      "\"indexer.settings.thresholds.mem_low\":50}",
+                      "\"indexer.settings.thresholds.units_low\":40}",
                       [ShardAffinityValue]),
     ?assertEqual(list_to_binary(Result), Data).
 

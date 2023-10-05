@@ -46,7 +46,7 @@ known_settings() ->
 
 config_default() ->
     {cfg_key(), json_settings_manager:build_settings_json(
-                  default_settings(), dict:new(),
+                  default_settings(), maps:new(),
                   known_settings())}.
 
 default_settings() ->

@@ -131,13 +131,13 @@ fetch_settings_json(CfgKey) ->
 fetch_settings_json(Config, CfgKey) ->
     ns_config:search(Config, CfgKey, <<"{}">>).
 
-build_settings_json(Props, Dict, KnownSettings) ->
-    NewDict = lens_set_many(KnownSettings, Props, Dict),
-    ejson:encode({dict:to_list(NewDict)}).
+build_settings_json(Props, Map, KnownSettings) ->
+    NewMap = lens_set_many(KnownSettings, Props, Map),
+    ejson:encode({maps:to_list(NewMap)}).
 
 decode_settings_json(JSON) ->
     {Props} = ejson:decode(JSON),
-    dict:from_list(Props).
+    maps:from_list(Props).
 
 populate_ets_table(M) ->
     JSON = fetch_settings_json(M:cfg_key()),
@@ -153,7 +153,7 @@ populate_ets_table(M, JSON) ->
     end.
 
 do_populate_ets_table(M, JSON, Settings) ->
-    Dict = decode_settings_json(JSON),
+    Map = decode_settings_json(JSON),
     NotFound = make_ref(),
 
     lists:foreach(
@@ -166,40 +166,40 @@ do_populate_ets_table(M, JSON, Settings) ->
                       ets:insert(M, {Key, NewValue}),
                       M:on_update(Key, NewValue)
               end
-      end, lens_get_many(Settings, Dict)),
+      end, lens_get_many(Settings, Map)),
 
     erlang:put(prev_json, JSON).
 
 id_lens(Key) ->
-    Get = fun (Dict) ->
-                  dict:fetch(Key, Dict)
+    Get = fun (Map) ->
+                  maps:get(Key, Map)
           end,
-    Set = fun (Value, Dict) ->
-                  dict:store(Key, Value, Dict)
+    Set = fun (Value, Map) ->
+                  maps:put(Key, Value, Map)
           end,
     {Get, Set}.
 
-lens_get({Get, _}, Dict) ->
-    Get(Dict).
+lens_get({Get, _}, Map) ->
+    Get(Map).
 
-lens_get_many(Lenses, Dict) ->
-    [{Key, lens_get(L, Dict)} || {Key, L} <- Lenses].
+lens_get_many(Lenses, Map) ->
+    [{Key, lens_get(L, Map)} || {Key, L} <- Lenses].
 
-lens_set(Value, {_, Set}, Dict) ->
-    Set(Value, Dict).
+lens_set(Value, {_, Set}, Map) ->
+    Set(Value, Map).
 
-lens_set_many(Lenses, Values, Dict) ->
+lens_set_many(Lenses, Values, Map) ->
     lists:foldl(
       fun ({Key, Value}, Acc) ->
               {Key, L} = lists:keyfind(Key, 1, Lenses),
               lens_set(Value, L, Acc)
-      end, Dict, Values).
+      end, Map, Values).
 
 props_lens(Props) ->
-    Get = fun (Dict) ->
-                  lens_get_many(Props, Dict)
+    Get = fun (Map) ->
+                  lens_get_many(Props, Map)
           end,
-    Set = fun (Values, Dict) ->
-                  lens_set_many(Props, Values, Dict)
+    Set = fun (Values, Map) ->
+                  lens_set_many(Props, Values, Map)
           end,
     {Get, Set}.

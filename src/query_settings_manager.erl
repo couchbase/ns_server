@@ -69,7 +69,7 @@ update(Key, Value) ->
 config_default() ->
     {?QUERY_CONFIG_KEY, json_settings_manager:build_settings_json(
                           default_settings(?MIN_SUPPORTED_VERSION),
-                          dict:new(),
+                          maps:new(),
                           known_settings(?MIN_SUPPORTED_VERSION))}.
 
 config_upgrade_to_trinity(Config) ->
@@ -149,9 +149,9 @@ config_upgrade_test() ->
     [{set, {metakv, Meta}, Data}] = CmdList,
     ?assertEqual(<<"/query/settings/config">>, Meta),
     ?assertEqual(<<"{\"completed-max-plan-size\":262144,"
-                   "\"node-quota-val-percent\":67,"
                    "\"node-quota\":0,"
-                   "\"use-replica\":\"unset\","
-                   "\"num-cpus\":0}">>,
+                   "\"node-quota-val-percent\":67,"
+                   "\"num-cpus\":0,"
+                   "\"use-replica\":\"unset\"}">>,
                  Data).
 -endif.

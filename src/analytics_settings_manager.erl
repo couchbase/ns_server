@@ -72,7 +72,7 @@ default_settings() ->
 %% must specify settings for the min supported version.
 config_default() ->
     {?ANALYTICS_CONFIG_KEY, json_settings_manager:build_settings_json(
-                              default_settings(), dict:new(),
+                              default_settings(), maps:new(),
                               known_settings(?MIN_SUPPORTED_VERSION))}.
 
 known_settings() ->
@@ -144,9 +144,9 @@ config_upgrade_test() ->
     CmdList = config_upgrade_to_trinity([]),
     [{set, {metakv, Meta}, Data}] = CmdList,
     ?assertEqual(<<"/analytics/settings/config">>, Meta),
-    ?assertEqual(<<"{\"analytics.settings.blob_storage_region\":\"\","
-                   "\"analytics.settings.blob_storage_scheme\":\"\","
+    ?assertEqual(<<"{\"analytics.settings.blob_storage_bucket\":\"\","
                    "\"analytics.settings.blob_storage_prefix\":\"\","
-                   "\"analytics.settings.blob_storage_bucket\":\"\"}">>,
+                   "\"analytics.settings.blob_storage_region\":\"\","
+                   "\"analytics.settings.blob_storage_scheme\":\"\"}">>,
                  Data).
 -endif.
