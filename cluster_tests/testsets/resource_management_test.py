@@ -218,10 +218,10 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
     @staticmethod
     def requirements():
         # - Provisioned edition required for guard rails to be configurable
-        # - 2 nodes so that we can test rebalance
+        # - 3 nodes so that we can test swap rebalances
         # - 1024MB quota for magma bucket
         return testlib.ClusterRequirements(
-            edition="Provisioned", min_num_nodes=2,
+            edition="Provisioned", min_num_nodes=3,
             num_connected=GuardRailRestrictionTests.num_connected,
             min_memsize=1024)
 
@@ -401,6 +401,82 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
         self.rebalance_with_cleanup(
             added_nodes=[],
             ejected_nodes=[self.cluster.connected_nodes[1]])
+
+    def rebalance_cores_per_bucket_test(self):
+        pools = testlib.get_succ(self.cluster, "/pools/default").json()
+        cpu_count = pools["nodes"][0]["cpuCount"]
+
+        # Set minimum cores per bucket to cpu count, permitting exactly 1 bucket
+        testlib.post_succ(self.cluster,
+                          "/settings/resourceManagement/coresPerBucket",
+                          json={
+                              "enabled": True,
+                              "minimum": cpu_count
+                          })
+
+        # We won't simulate different nodes having different core counts, so we
+        # just care about whether there are 1 or 2 buckets and whether a node is
+        # being added
+        self.cluster.create_bucket({
+            "name": BUCKET_NAME,
+            "ramQuota": 100
+        })
+
+        # If there is 1 bucket, then we should allow all rebalances, i.e. all
+        # rebalances where any nodes being added have sufficient cores
+        self.rebalance_with_cleanup(
+            added_nodes=[],
+            ejected_nodes=[self.cluster.connected_nodes[1]])
+        spare = self.cluster.spare_node()
+        self.rebalance_with_cleanup(
+            added_nodes=[spare],
+            ejected_nodes=[])
+        self.rebalance_with_cleanup(
+            added_nodes=[spare],
+            ejected_nodes=[self.cluster.connected_nodes[1]])
+
+        # Temporarily allow 2 buckets
+        testlib.post_succ(self.cluster,
+                          "/settings/resourceManagement/coresPerBucket",
+                          json={
+                              "enabled": True,
+                              "minimum": cpu_count / 2
+                          })
+        # Create a second bucket
+        self.cluster.create_bucket({
+            "name": BUCKET_NAME+"2",
+            "ramQuota": 100
+        })
+        # Set the cores per bucket back to only allowing 1 bucket
+        testlib.post_succ(self.cluster,
+                          "/settings/resourceManagement/coresPerBucket",
+                          json={
+                              "enabled": True,
+                              "minimum": cpu_count
+                          })
+
+        # If there are 2 buckets, then we should only allow rebalances where no
+        # nodes are being added i.e. only rebalances where we are not adding a
+        # node with insufficient cores
+        self.rebalance_with_cleanup(
+            added_nodes=[],
+            ejected_nodes=[self.cluster.connected_nodes[1]])
+
+        # Otherwise, we reject the rebalance
+        error_msg = '{"not_enough_cores_for_num_buckets":"The following ' \
+                    'node(s) being added have insufficient cpu cores for the ' \
+                    'number of buckets already in the cluster: ' \
+                    f'{spare.otp_node()}"}}'
+        self.rebalance_with_cleanup(
+            added_nodes=[spare],
+            ejected_nodes=[],
+            initial_code=400,
+            initial_expected_error=error_msg)
+        self.rebalance_with_cleanup(
+            added_nodes=[spare],
+            ejected_nodes=[self.cluster.connected_nodes[1]],
+            initial_code=400,
+            initial_expected_error=error_msg)
 
     def rebalance_with_cleanup(self, added_nodes, ejected_nodes, **kwargs):
         # Call a function which might start a rebalance which we want to cancel

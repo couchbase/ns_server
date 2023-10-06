@@ -93,7 +93,14 @@ start_link() ->
 
 validate_topology_change(EjectedLiveNodes, KeepNodes) ->
     KeepKVNodes = ns_cluster_membership:service_nodes(KeepNodes, kv),
-    validate_topology_change_data_grs(EjectedLiveNodes, KeepKVNodes).
+    case validate_topology_change_data_grs(EjectedLiveNodes, KeepKVNodes) of
+        ok ->
+            ActiveKVNodes = ns_cluster_membership:service_active_nodes(kv),
+            NewKVNodes = KeepKVNodes -- ActiveKVNodes,
+            validate_topology_change_cores_per_bucket(NewKVNodes);
+        Err ->
+            Err
+    end.
 
 validate_topology_change_data_grs(EjectedNodes, KeepKVNodes) ->
     case EjectedNodes of
@@ -121,7 +128,13 @@ topology_change_error({resident_ratio, Buckets}) ->
        io_lib:format(
          "The following buckets are expected to "
          "breach the resident ratio minimum: ~s",
-         [lists:join(", ", Buckets)]))}.
+         [lists:join(", ", Buckets)]))};
+topology_change_error({cores_per_bucket, Nodes}) ->
+    {not_enough_cores_for_num_buckets,
+     iolist_to_binary(
+       io_lib:format(
+         "The following node(s) being added have insufficient cpu cores for "
+         "the number of buckets already in the cluster: ~s", Nodes))}.
 
 validate_topology_change_data_gr(Resource, EjectedNodes, KeepKVNodes) ->
     case get(bucket, Resource) of
@@ -182,6 +195,38 @@ validate_bucket_topology_change(resident_ratio, KeepKVNodes, TotalDataSize,
                            ResourceConfig, BCfg, KeepKVNodes),
     validate_bucket_resource_min(ExpResidentRatio, ResidentRatioLimit).
 
+validate_topology_change_cores_per_bucket(NewKVNodes) ->
+    case guardrail_monitor:get(cores_per_bucket) of
+        undefined ->
+            ok;
+        MinCoresPerBucket ->
+            NumBuckets = length(ns_bucket:get_bucket_names()),
+            MinCores = MinCoresPerBucket * NumBuckets,
+            BadNodes =
+                lists:filter(
+                  fun (Node) ->
+                          Props = ns_doctor:get_node(Node),
+                          case proplists:get_value(cpu_count, Props) of
+                              undefined ->
+                                  false;
+                              Cores when is_number(Cores) ->
+                                  Cores < MinCores;
+                              Other ->
+                                  ?log_error(
+                                     "Unable to check if node ~p has "
+                                     "sufficient cores, as its cpu_count is "
+                                     "not a number (~p). Will reject the "
+                                     "rebalance just in case", [Node, Other]),
+                                  true
+                          end
+                  end, NewKVNodes),
+            case BadNodes of
+                [] ->
+                    ok;
+                _ ->
+                    {error, topology_change_error({cores_per_bucket, BadNodes})}
+            end
+    end.
 
 -spec validate_storage_migration(bucket_name(), proplists:proplist(), atom()) ->
           ok | {error, data_size | resident_ratio, number()}.
@@ -518,7 +563,7 @@ get_disk_usage(DiskStats) ->
 modules() ->
     [ns_config, leader_registry, chronicle_compat, stats_interface,
      janitor_agent, ns_bucket, cluster_compat_mode, config_profile,
-     ns_cluster_membership, ns_storage_conf].
+     ns_cluster_membership, ns_storage_conf, ns_doctor].
 
 basic_test_setup() ->
     meck:new(modules(), [passthrough]).
@@ -1116,7 +1161,7 @@ test_validate_topology_change(ActiveKVNodes, KeepKVNodes) ->
                 fun (kv) -> ActiveKVNodes end),
     validate_topology_change(ActiveKVNodes -- KeepKVNodes, KeepKVNodes).
 
-validate_topology_change_t() ->
+validate_topology_change_data_grs_t() ->
     ResourceConfig0 = [{couchstore_minimum, 10},
                        {magma_minimum, 1}],
 
@@ -1208,6 +1253,43 @@ validate_topology_change_t() ->
                  test_validate_topology_change([node1, node2, node3],
                                                [node1, node2])),
     ok.
+
+pretend_cpu_count(Node, Count) ->
+    meck:expect(ns_doctor, get_node,
+        fun(N) when N =:= Node -> [{cpu_count, Count}] end).
+
+validate_topology_change_cores_per_bucket_t() ->
+    meck:expect(ns_config, read_key_fast,
+                fun (resource_management, _) ->
+                        [{cores_per_bucket,
+                          [{enabled, true},
+                           {minimum, 0.5}]}]
+                end),
+    meck:expect(ns_bucket, get_bucket_names,
+                fun () -> ["bucket1", "bucket2"] end),
+    %% For 2 buckets and 0.5 cores per bucket, the minimum will be 1
+
+    %% Core count at minimum
+    pretend_cpu_count(node1, 1),
+    ?assertEqual(ok,
+                 test_validate_topology_change([node1], [node1])),
+    ?assertEqual(ok,
+                 test_validate_topology_change([], [node1])),
+    ?assertEqual(ok,
+                 test_validate_topology_change([node1], [])),
+
+    %% Core count below minimum
+    pretend_cpu_count(node2, 0.9),
+    ?assertEqual(ok,
+                 test_validate_topology_change([node2], [])),
+    ?assertMatch({error,
+                  {not_enough_cores_for_num_buckets, _}},
+                 test_validate_topology_change([], [node2])),
+    ?assertMatch({error,
+                  {not_enough_cores_for_num_buckets, _}},
+                 test_validate_topology_change([node1], [node1, node2])),
+    ?assertEqual(ok,
+                 test_validate_topology_change([node1, node2], [node1])).
 
 validate_storage_migration_t() ->
     DataSizeConfig0 = [{enabled, true},
@@ -1325,8 +1407,10 @@ basic_test_() ->
       {"check all resources test", fun () -> check_resources_t() end},
       {"validate bucket topology change test",
        fun validate_bucket_topology_change_t/0},
-      {"validate topology change test",
-       fun () -> validate_topology_change_t() end},
+      {"validate topology change data guard rails test",
+       fun () -> validate_topology_change_data_grs_t() end},
+      {"validate topology change cores_per_bucket test",
+       fun () -> validate_topology_change_cores_per_bucket_t() end},
       {"validate storage migration test",
        fun () -> validate_storage_migration_t() end}]}.
 
