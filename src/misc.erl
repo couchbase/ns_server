@@ -2687,7 +2687,12 @@ maybe_add_brackets(Address) ->
         false -> Address
     end.
 
--spec join_host_port(string(), string() | integer()) -> string().
+-spec join_host_port(string() | binary(),
+                     string() | binary() | integer()) -> string() | binary().
+join_host_port(Host, Port) when is_binary(Host) ->
+    list_to_binary(join_host_port(binary_to_list(Host), Port));
+join_host_port(Host, Port) when is_binary(Port) ->
+    join_host_port(Host, binary_to_list(Port));
 join_host_port(Host, Port) when is_integer(Port) ->
     join_host_port(Host, integer_to_list(Port));
 join_host_port(Host, Port) ->
@@ -2695,6 +2700,19 @@ join_host_port(Host, Port) ->
 
 -ifdef(TEST).
 join_host_port_test() ->
+    ?assertEqual(<<"127.0.0.1:1234">>, join_host_port(<<"127.0.0.1">>, 1234)),
+    ?assertEqual(<<"127.0.0.1:1234">>, join_host_port(<<"127.0.0.1">>,
+                                                      <<"1234">>)),
+    ?assertEqual(<<"127.0.0.1:1234">>, join_host_port(<<"127.0.0.1">>, "1234")),
+    ?assertEqual(<<"[fc00::11]:1234">>, join_host_port(<<"fc00::11">>, 1234)),
+    ?assertEqual(<<"[fc00::11]:1234">>, join_host_port(<<"fc00::11">>,
+                                                       <<"1234">>)),
+    ?assertEqual(<<"[fc00::11]:1234">>, join_host_port(<<"fc00::11">>, "1234")),
+    ?assertEqual(<<"[fc00::11]:1234">>, join_host_port(<<"[fc00::11]">>, 1234)),
+    ?assertEqual(<<"[fc00::11]:1234">>, join_host_port(<<"[fc00::11]">>,
+                                                       <<"1234">>)),
+    ?assertEqual(<<"[fc00::11]:1234">>, join_host_port(<<"[fc00::11]">>,
+                                                       "1234")),
     ?assertEqual("127.0.0.1:1234", join_host_port("127.0.0.1", 1234)),
     ?assertEqual("abc.xyz.com:1234", join_host_port("abc.xyz.com", "1234")),
     ?assertEqual("[fc00::11]:1234", join_host_port("fc00::11", 1234)).
