@@ -92,13 +92,13 @@ def run_testset(testset, cluster, total_testsets_num,
 
     log_at_all_nodes(cluster, f'starting testset {testset["name"]}')
 
-    _, err = safe_test_function_call(testset_instance, 'setup', [],
-                                     intercept_output=intercept_output,
-                                     seed=seed)
+    testset_seed = apply_with_seed(random, 'randbytes', [16],
+                                   seed + str(testset['iter']))
+    teardown_seed = apply_with_seed(random, 'randbytes', [16], testset_seed)
 
-    test_seed = apply_with_seed(random, 'randbytes', [16], seed)
-    test_teardown_seed = apply_with_seed(random, 'randbytes', [16], test_seed)
-    teardown_seed = apply_with_seed(random, 'randbytes', [16], test_teardown_seed)
+    _, err = safe_test_function_call(testset_instance, 'setup', [], 0,
+                                     intercept_output=intercept_output,
+                                     seed=testset_seed)
 
     if err is not None:
         # If testset setup fails, all tests were not ran
@@ -108,19 +108,25 @@ def run_testset(testset, cluster, total_testsets_num,
         return 0, [err], not_ran
 
     try:
-        for test in testset['test_name_list']:
+        for test_dict in testset['test_name_list']:
+            test = test_dict['name']
+            testiter = test_dict['iter']
+            test_seed = apply_with_seed(random, 'randbytes', [16],
+                                        testset_seed + str(testiter).encode())
+            test_teardown_seed = apply_with_seed(random, 'randbytes', [16],
+                                                 test_seed)
             executed += 1
             log_at_all_nodes(cluster,
                              f'starting test {test} from {testset["name"]}')
             _, err = safe_test_function_call(testset_instance, test,
-                                             [], verbose=True,
+                                             [], testiter, verbose=True,
                                              intercept_output=intercept_output,
                                              seed=test_seed)
             if err is not None:
                 errors.append(err)
 
             _, err = safe_test_function_call(testset_instance, 'test_teardown',
-                                             [],
+                                             [], testiter,
                                              intercept_output=intercept_output,
                                              seed=test_teardown_seed)
             if err is not None:
@@ -133,7 +139,7 @@ def run_testset(testset, cluster, total_testsets_num,
                 break
     finally:
         _, err = safe_test_function_call(testset_instance, 'teardown',
-                                         [],
+                                         [], 0,
                                          intercept_output=intercept_output,
                                          seed=teardown_seed)
         if err is not None:
@@ -142,16 +148,18 @@ def run_testset(testset, cluster, total_testsets_num,
     return executed, errors, not_ran
 
 
-def safe_test_function_call(testset, testfunction, args, verbose=False,
-                            intercept_output=True, seed=None, dry_run=None):
+def safe_test_function_call(testset, testfunction, args, testiter,
+                            verbose=False, intercept_output=True, seed=None,
+                            dry_run=None):
     if dry_run is None:
         dry_run = config['dry_run']
     res = None
     error = None
+    iter_str = f'#{testiter+1}' if testiter != 0 else ''
     if hasattr(testset, '__name__'):
-        testname = f"{testset.__name__}.{testfunction}"
+        testname = f"{testset.__name__}.{testfunction}{iter_str}"
     else:
-        testname = f"{type(testset).__name__}.{testfunction}"
+        testname = f"{type(testset).__name__}.{testfunction}{iter_str}"
 
     report_call = call_reported(testname, verbose=verbose,
                                 res_on_same_line=intercept_output)

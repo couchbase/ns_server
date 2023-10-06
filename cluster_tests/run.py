@@ -369,33 +369,37 @@ def group_testsets(testsets, reuse_clusters, randomize_clusters,
                    random_order, testset_iterations, test_iterations):
     # Group by requirements
     testsets_grouped = []
-    all_testsets = testsets * testset_iterations
-    for class_name, testset_class, test_names, configurations in all_testsets:
-        for requirements in configurations:
-            different = True
-            testset_name = f"{class_name}/{requirements}"
-            test_names_copy = test_names[:]
-            testset = {'name': testset_name,
-                       'class': testset_class,
-                       'test_name_list': test_names_copy,
-                       'requirements': requirements}
-            if reuse_clusters:
-                for i, (other_reqs, other_testsets) in \
-                    enumerate(testsets_grouped):
-                    succ, new_reqs = other_reqs.intersect(requirements)
-                    if succ:
-                        other_testsets.append(testset)
-                        testsets_grouped[i] = (new_reqs, other_testsets)
-                        different = False
-                        break
-            if different:
-                testsets_grouped.append((deepcopy(requirements), [testset]))
+    for class_name, testset_class, test_names, configurations in testsets:
+        for k in range(0, testset_iterations):
+            for requirements in configurations:
+                different = True
+                iter_str = f'#{k+1}' if k != 0 else ''
+                testset_name = f"{class_name}{iter_str}/{requirements}"
+                test_list = []
+                for n in test_names:
+                    for i in range(0, test_iterations):
+                        test_list.append({'name': n, 'iter': i})
+                testset = {'name': testset_name,
+                           'class': testset_class,
+                           'test_name_list': test_list,
+                           'requirements': requirements,
+                           'iter': k}
+                if reuse_clusters:
+                    for i, (other_reqs, other_testsets) in \
+                        enumerate(testsets_grouped):
+                        succ, new_reqs = other_reqs.intersect(requirements)
+                        if succ:
+                            other_testsets.append(testset)
+                            testsets_grouped[i] = (new_reqs, other_testsets)
+                            different = False
+                            break
+                if different:
+                    testsets_grouped.append((deepcopy(requirements),
+                                            [testset]))
 
     for (req, testsets) in testsets_grouped:
         if randomize_clusters:
             req.randomize_unset_requirements()
-        for t in testsets:
-            t['test_name_list'] *= test_iterations
         if random_order:
             random.shuffle(testsets)
             for t in testsets:
@@ -464,7 +468,7 @@ def discover_testsets():
                 continue
             if issubclass(testset, testlib.BaseTestSet):
                 requirements, err = testlib.safe_test_function_call(
-                    testset, 'requirements', [], dry_run=False)
+                    testset, 'requirements', [], 0, dry_run=False)
                 if err is not None:
                     name, req_error = err
                     return [(name, None, None, req_error)]
