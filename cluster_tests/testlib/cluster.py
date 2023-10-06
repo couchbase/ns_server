@@ -452,3 +452,10 @@ class Cluster:
                 data="")
             return r.status_code == 200
         return f
+
+    def spare_node(self):
+        spare_nodes = [node for node in self.nodes
+                       if node not in self.connected_nodes]
+        assert len(spare_nodes) > 0, "There is no known node that is not " \
+                                     "connected to the cluster"
+        return spare_nodes[0]

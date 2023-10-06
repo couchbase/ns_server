@@ -963,11 +963,8 @@ check_resources_t() ->
                   {{bucket, "magma_bucket"}, disk_usage}],
                  check_resources()).
 
-validate_topology_change_t() ->
+validate_bucket_topology_change_t() ->
     Servers = [node1, node2],
-    DesiredServers = [{"couchstore_bucket", Servers},
-                      {"magma_bucket", Servers},
-                      {"deleted2", Servers}],
     ResourceConfig0 = [{couchstore_minimum, 10},
                        {magma_minimum, 1}],
     meck:expect(ns_bucket, get_bucket,
@@ -983,39 +980,79 @@ validate_topology_change_t() ->
                         not_present
                 end),
 
+    meck:expect(ns_cluster_membership, service_active_nodes,
+                fun (kv) -> Servers end),
+
+    %% Resident ratio will end up just below the couchstore minimum
     ?assertEqual(true,
                  validate_bucket_topology_change("couchstore_bucket",
-                                                 DesiredServers, 400,
+                                                 Servers, 201,
                                                  ResourceConfig0)),
 
+    %% Resident ratio will end up just below the magma minimum
     ?assertEqual(true,
                  validate_bucket_topology_change("magma_bucket",
-                                                 DesiredServers, 4000,
+                                                 Servers, 2001,
                                                  ResourceConfig0)),
 
+    %% Resident ratio will end up exactly at the couchstore minimum
     ?assertEqual(false,
                  validate_bucket_topology_change("couchstore_bucket",
-                                                 DesiredServers, 200,
+                                                 Servers, 200,
                                                  ResourceConfig0)),
 
+    %% Resident ratio will end up exactly at the magma minimum
     ?assertEqual(false,
                  validate_bucket_topology_change("magma_bucket",
-                                                 DesiredServers, 2000,
-                                                 ResourceConfig0)),
+                                                 Servers, 2000,
+                                                 ResourceConfig0)).
 
+test_validate_topology_change(ActiveKVNodes, KeepKVNodes) ->
     meck:expect(ns_cluster_membership, service_nodes,
-                fun (_Servers, kv) -> Servers end),
+                fun (_Servers, kv) -> KeepKVNodes end),
+    meck:expect(ns_cluster_membership, service_active_nodes,
+                fun (kv) -> ActiveKVNodes end),
+    validate_topology_change(ActiveKVNodes -- KeepKVNodes, KeepKVNodes).
+
+validate_topology_change_t() ->
+    ResourceConfig0 = [{couchstore_minimum, 10},
+                       {magma_minimum, 1}],
+
     ResourceConfig1 = [{enabled, false} | ResourceConfig0],
     meck:expect(ns_config, read_key_fast,
                 fun (resource_management, _) ->
                         [{bucket,
                           [{resident_ratio, ResourceConfig1}]}]
                 end),
+    %% 3 buckets, each with a quota of 10 bytes
+    meck:expect(ns_bucket, get_bucket,
+                fun ("couchstore_bucket") ->
+                        {ok, [{ram_quota, 10},
+                              {type, membase},
+                              {storage_mode, couchstore}]};
+                    ("magma_bucket") ->
+                        {ok, [{ram_quota, 10},
+                              {type, membase},
+                              {storage_mode, magma}]};
+                    ("new") ->
+                        {ok, [{ram_quota, 10},
+                              {type, membase},
+                              {storage_mode, couchstore}]};
+                    (_) ->
+                        not_present
+                end),
+    %% For 3 nodes, with a total of 200/2000 bytes of data for couchstore and
+    %% magma respectively, giving a RR% of 15/1.5% respectively, then to remove
+    %% a node would give a RR% of 10/1%. Taking data size slightly larger than
+    %% that, 201/2001, ensures that a rebalance from 3 to 2 nodes should only
+    %% just violate the guardrail
     meck:expect(stats_interface, total_active_logical_data_size,
-                fun (_) -> #{"couchstore_bucket" => 400,
-                             "magma_bucket" => 4000} end),
+                fun (_) -> #{"couchstore_bucket" => 201,
+                             "magma_bucket" => 2001} end),
 
-    ?assertEqual(ok, validate_topology_change([node3], Servers)),
+    %% Don't give an error ejecting a node when the guard rail is disabled
+    ?assertEqual(ok, test_validate_topology_change([node1, node2, node3],
+                                                   [node1, node2])),
 
     ResourceConfig2 = [{enabled, true} | ResourceConfig0],
     meck:expect(ns_config, read_key_fast,
@@ -1024,26 +1061,50 @@ validate_topology_change_t() ->
                           [{resident_ratio, ResourceConfig2}]}]
                 end),
 
-    ?assertMatch({error, _},
-                 validate_topology_change([node3], Servers)),
+    %% Error when just ejecting a live node
+    ?assertMatch({error,
+                  {rr_will_be_too_low,
+                   <<"The following buckets are expected to breach the "
+                     "resident ratio minimum: couchstore_bucket, "
+                     "magma_bucket">>}},
+                 test_validate_topology_change([node1, node2, node3],
+                                               [node1, node2])),
 
-    %% Don't give an error when no live nodes are being ejected
-    ?assertEqual(ok, validate_topology_change([], Servers)),
+    %% Don't give an error when no nodes are being ejected
+    ?assertEqual(ok, test_validate_topology_change([node1, node2],
+                                                   [node1, node2])),
 
+    %% Don't give an error when a node is being added
+    ?assertEqual(ok, test_validate_topology_change([node1],
+                                                   [node1, node2])),
+
+    %% Error for ejecting a node while adding another
+
+    ?assertMatch({error,
+                  {rr_will_be_too_low,
+                   <<"The following buckets are expected to breach the "
+                     "resident ratio minimum: couchstore_bucket, "
+                     "magma_bucket">>}},
+                 test_validate_topology_change([node1, node2],
+                                               [node1, node3])),
+
+    %% For 3 nodes, with a total of 200/2000 bytes of data for couchstore and
+    %% magma respectively, giving a RR% of 15/1.5% respectively, so to remove a
+    %% node would just remain within the limits (10/1%)
     meck:expect(stats_interface, total_active_logical_data_size,
                 fun (_) -> #{"couchstore_bucket" => 200,
                              "magma_bucket" => 2000,
                              %% Ignored as size is 0
                              "new" => 0,
-                             %% Ignored as the bucket name is not found in
-                             %% DesiredServers
-                             "deleted1" => 4000,
                              %% Ignored as the bucket name is not found with
                              %% ns_bucket:get_bucket/1
                              "deleted2" => 4000} end),
 
+    %% Don't give an error when ejecting a node if the resident ratio is not too
+    %% low
     ?assertMatch(ok,
-                 validate_topology_change([node3], Servers)),
+                 test_validate_topology_change([node1, node2, node3],
+                                               [node1, node2])),
     ok.
 
 validate_storage_migration_t() ->
@@ -1160,6 +1221,8 @@ basic_test_() ->
       {"dont check memcached or ephemeral test",
        fun () -> dont_check_memcached_or_ephemeral_t() end},
       {"check all resources test", fun () -> check_resources_t() end},
+      {"validate bucket topology change test",
+       fun validate_bucket_topology_change_t/0},
       {"validate topology change test",
        fun () -> validate_topology_change_t() end},
       {"validate storage migration test",

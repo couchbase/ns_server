@@ -208,6 +208,7 @@ class ResourceManagementAPITests(testlib.BaseTestSet):
 
 
 class GuardRailRestrictionTests(testlib.BaseTestSet):
+    num_connected = 2
 
     def __init__(self, cluster):
         super().__init__(cluster)
@@ -217,11 +218,12 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
     @staticmethod
     def requirements():
         # - Provisioned edition required for guard rails to be configurable
-        # - 2 nodes so that we can test rebalances
+        # - 2 nodes so that we can test rebalance
         # - 1024MB quota for magma bucket
-        return testlib.ClusterRequirements(edition="Provisioned",
-                                           min_num_nodes=2, num_connected=2,
-                                           min_memsize=1024)
+        return testlib.ClusterRequirements(
+            edition="Provisioned", min_num_nodes=2,
+            num_connected=GuardRailRestrictionTests.num_connected,
+            min_memsize=1024)
 
     def setup(self):
         testlib.delete_all_buckets(self.cluster)
@@ -328,6 +330,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             "name": BUCKET_NAME,
             "ramQuota": 100
         })
+        quota_in_bytes = 100 * 1024 * 1024  # 104,857,600 bytes
 
         # Ensure that the guard rail is enabled with a minimum of 10%
         testlib.post_succ(
@@ -338,21 +341,58 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             })
 
         # Trigger the guard rail by injecting a new promQL query to set the
-        # per-node data size to 8 times the quota, s.t. quota/size = 12.5%.
-        # With a RR% of 12.5, removing a node takes the RR below 10%
-        set_promql_queries(self.cluster, data_size_bytes=800_000_000)
+        # per-node data size just greater than 5X the quota, s.t.
+        # quota / node size < 20%
+        # This means that removing a node should mean that the remaining node
+        # receives the whole data size, i.e.
+        # quota / node size < 10%
+        set_promql_queries(self.cluster,
+                           data_size_bytes=1+5*quota_in_bytes)
+        self.rebalance_with_cleanup(
+            added_nodes=[],
+            ejected_nodes=[self.cluster.connected_nodes[1]],
+            initial_code=400,
+            initial_expected_error='{"rr_will_be_too_low":"The following '
+                                   'buckets are expected to breach the '
+                                   'resident ratio minimum: test"}')
+
+        # Check that we don't trigger the guard rail by setting the
+        # per-node data size equal to 5X the quota, s.t.
+        # removing a node should mean that the remaining node receives the whole
+        # data size, i.e. quota/node size = 10% so the rebalance is allowed
+        set_promql_queries(self.cluster,
+                           data_size_bytes=5*quota_in_bytes)
+        self.rebalance_with_cleanup(
+            added_nodes=[],
+            ejected_nodes=[self.cluster.connected_nodes[1]])
+
+    def rebalance_with_cleanup(self, added_nodes, ejected_nodes, **kwargs):
+        # Call a function which might start a rebalance which we want to cancel
+        # and revert, once the function returns (or raises an exception)
         try:
-            self.cluster.rebalance(
-                ejected_nodes=[self.cluster.connected_nodes[1]],
-                initial_code=400,
-                initial_expected_error=
-                '{"rr_will_be_too_low":"The following buckets are expected to '
-                'breach the resident ratio minimum: test"}')
+            for node in added_nodes:
+                self.cluster.add_node(node)
+            self.cluster.rebalance(ejected_nodes=ejected_nodes,
+                                   # We assume that the rebalance is still in
+                                   # progress to simplify cleanup, so we must
+                                   # not wait for it to complete
+                                   wait=False,
+                                   **kwargs)
         finally:
             testlib.post_succ(self.cluster, "/controller/stopRebalance")
-            # Rebalance ejected node back in
-            self.cluster.rebalance()
-            assert len(self.cluster.connected_nodes) >= 2
+
+            # Reset the promql queries so that rebalances are permitted
+            set_promql_queries(self.cluster)
+
+            # Connected_nodes must be fixed if ejected_nodes weren't ejected
+            self.cluster.connected_nodes = list(set(
+                self.cluster.connected_nodes + ejected_nodes))
+
+            # Rebalance ejected nodes back in and extra nodes out
+            self.cluster.rebalance(ejected_nodes=added_nodes)
+            testlib.assert_eq(len(self.cluster.connected_nodes),
+                              GuardRailRestrictionTests.num_connected,
+                              "connected nodes")
 
     def storage_migration_test(self):
         # Test migration from couchstore to magma
@@ -745,8 +785,10 @@ def set_promql_queries(cluster, data_size_tb=.0, data_size_bytes=0,
                        disk_usage=0, resident_ratio=100, bucket=None):
     if bucket is None:
         bucket = BUCKET_NAME
-    # Create a fake metric with a bucket label
-    bucket_metric_base = f'label_replace(up, "bucket", "{bucket}", "", "")'
+    # Create a fake metric with a bucket label using up with a specific instance
+    # and job to avoid duplicates
+    bucket_metric_base = f'label_replace(up{{instance="ns_server",' \
+                         f'job="general"}}, "bucket", "{bucket}", "", "")'
 
     testlib.post_succ(cluster, "/internalSettings",
                       data={"resourcePromQLOverride.dataSizePerNodeTB":
