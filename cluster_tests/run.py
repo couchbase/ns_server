@@ -410,8 +410,11 @@ def group_testsets(testsets, reuse_clusters, randomize_clusters,
     # requirements first, then mutable requirements. This ensures that any sets
     # of compatible configurations will be adjacent in the list. For example:
     (edition=Enterprise,num_nodes
+    If there is no need to reuse cluster, there is no need to sort groups.
     """
-    sorted_testsets_grouped = sorted(testsets_grouped, key=lambda x: str(x[0]))
+    sorted_testsets_grouped = \
+        sorted(testsets_grouped, key=lambda x: str(x[0])) \
+        if reuse_clusters else testsets_grouped
     tests_count = 0
     for (req, testsets) in sorted_testsets_grouped:
         for t in testsets:
