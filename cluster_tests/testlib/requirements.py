@@ -181,41 +181,26 @@ class ClusterRequirements:
         return True, new_reqs
 
     def randomize_unset_requirements(self):
-        if self.requirements['edition'] is None:
-            self.edition = random.choice(Edition.editions)
-            self.requirements['edition'] = Edition(self.edition)
-        if self.requirements['num_nodes'] is None:
-            self.requirements['num_nodes'] = \
-                NumNodes(random.randint(1, 4), None, None, None)
-        if self.requirements['memsize'] is None:
-            self.requirements['memsize'] = \
-                MemSize(random.randint(MIN_MEM_QUOTA, 2048), None)
-        if self.requirements['afamily'] is None:
-            afamily = random.choice(['ipv4', 'ipv6']) \
-                      if self.edition != 'Community' \
-                      else 'ipv4'
-            self.requirements['afamily'] = AFamily(afamily)
-        if self.requirements['services'] is None:
-            if self.edition == 'Community':
-                services = random.choice([['kv'], ['kv', 'index', 'n1ql'],
-                                          ['kv', 'index', 'n1ql', 'fts']])
-            else:
-                services = ['index', 'n1ql', 'fts', 'backup', 'eventing',
-                            'cbas']
-                services = ['kv'] + random.sample(
-                                        services,
-                                        k=random.randint(0, len(services) - 1))
-            self.requirements['services'] = Services(services)
-        if self.requirements['master_password_state'] is None:
-            self.requirements['master_password_state'] = \
-                MasterPasswordState('default')
-        if self.requirements['num_vbuckets'] is None:
-            self.requirements['num_vbuckets'] = \
-                NumVbuckets(random.randint(16, MAX_VBUCKET_NUM))
-        if self.requirements['encryption'] is None:
-            encryption = random.choice([True, False]) \
-                         if self.edition != 'Community' else False
-            self.requirements['encryption'] = N2nEncryption(encryption)
+        req_dict = {}
+        for k in self.requirements:
+            r = self.requirements[k]
+            if r is not None:
+                req_dict.update(r.get())
+
+        generation_order = [('edition', Edition),
+                            ('num_nodes', NumNodes),
+                            ('memsize', MemSize),
+                            ('afamily', AFamily),
+                            ('services', Services),
+                            ('master_password_state', MasterPasswordState),
+                            ('num_vbuckets', NumVbuckets),
+                            ('encryption', N2nEncryption)]
+        for req_name, req_class in generation_order:
+            if self.requirements[req_name] is None:
+                new_req = req_class.random(req_dict)
+                self.requirements[req_name] = new_req
+                req_dict.update(new_req.get())
+
         for k in self.requirements:
             assert self.requirements[k] is not None, \
                    f'please define randomization for "{k}" requirement'
@@ -262,6 +247,13 @@ class Requirement(ABC):
     def intersect(self, other):
         return False, None
 
+    def get(self):
+        return self._kwargs
+
+    @staticmethod
+    def random(requirements_dict):
+        raise NotImplementedError()
+
 
 class Edition(Requirement):
     editions = ["Community", "Enterprise", "Serverless", "Provisioned"]
@@ -296,6 +288,30 @@ class Edition(Requirement):
             return cluster.is_enterprise and cluster.is_serverless
         elif self.edition == "Provisioned":
             return cluster.is_enterprise and cluster.is_provisioned
+
+    @staticmethod
+    def random(req_dict):
+        available_editions = Edition.editions.copy()
+        if not Edition.is_community_supported(req_dict.get('deploy', None)) \
+           or req_dict.get('encryption', False) \
+           or req_dict.get('afamily', None) == 'ipv6':
+            available_editions.remove('Community')
+        random_edition = random.choice(available_editions)
+        return Edition(random_edition)
+
+    @staticmethod
+    def is_community_supported(deploy):
+        if deploy is None:
+            return True
+        supported_configurations = Services.community_configurations
+
+        if isinstance(deploy, list):
+            return deploy in supported_configurations
+
+        for n in self.deploy:
+            if self.deploy[n] not in supported_configurations:
+                return False
+        return True
 
 
 class NumNodes(Requirement):
@@ -392,6 +408,10 @@ class NumNodes(Requirement):
             return True, NumNodes(new_num, new_min, new_con, new_min_con)
         return False, None
 
+    @staticmethod
+    def random(req_dict):
+        return NumNodes(random.randint(1, 4), None, None, None)
+
 
 class MemSize(Requirement):
     def __init__(self, memsize, min_memsize):
@@ -434,6 +454,10 @@ class MemSize(Requirement):
             return True, MemSize(new_mem, new_min)
         return False, None
 
+    @staticmethod
+    def random(req_dict):
+        return MemSize(random.randint(MIN_MEM_QUOTA, 2048), None)
+
 
 class AFamily(Requirement):
     def __init__(self, afamily):
@@ -451,8 +475,16 @@ class AFamily(Requirement):
         return all([node["addressFamily"] == afamily_translate[self.afamily]
                     for node in res.json()["nodes"]])
 
+    @staticmethod
+    def random(req_dict):
+        support_ipv6 = (req_dict.get('edition', None) != 'Community')
+        afamily = random.choice(['ipv4', 'ipv6']) if support_ipv6 else 'ipv4'
+        return AFamily(afamily)
+
 
 class Services(Requirement):
+    community_configurations = [['kv'], ['kv', 'index', 'n1ql'],
+                                ['kv', 'index', 'n1ql', 'fts']]
     def __init__(self, deploy):
         super().__init__(deploy=deploy)
         self.deploy = deploy
@@ -481,6 +513,19 @@ class Services(Requirement):
                     return False
 
         return True
+
+    @staticmethod
+    def random(req_dict):
+        community = (req_dict.get('edition', None) == 'Community')
+        if community:
+            services = random.choice(Services.community_configurations)
+        else:
+            services = ['index', 'n1ql', 'fts', 'backup', 'eventing',
+                        'cbas']
+            services = ['kv'] + random.sample(
+                                    services,
+                                    k=random.randint(0, len(services) - 1))
+        return Services(services)
 
 
 # We are not enforcing it when creating a cluster (like by setting something
@@ -512,6 +557,10 @@ class MasterPasswordState(Requirement):
                 return False
         return True
 
+    @staticmethod
+    def random(req_dict):
+        return MasterPasswordState('default')
+
 
 class NumVbuckets(Requirement):
     def __init__(self, num_vbuckets):
@@ -532,6 +581,10 @@ class NumVbuckets(Requirement):
         default_num_vbuckets = r.content.decode('ascii')
         return int(default_num_vbuckets) == self.num_vbuckets
 
+    @staticmethod
+    def random(req_dict):
+        return NumVbuckets(random.randint(16, MAX_VBUCKET_NUM))
+
 
 class N2nEncryption(Requirement):
     def __init__(self, encryption):
@@ -549,6 +602,16 @@ class N2nEncryption(Requirement):
 
     def make_met(self, cluster):
         cluster.toggle_n2n_encryption(enable=self.encryption)
+
+    @staticmethod
+    def random(req_dict):
+        community = (req_dict.get('edition', None) == 'Community')
+        if community:
+            encryption = False
+        else:
+            encryption = random.choice([True, False])
+        return N2nEncryption(encryption)
+
 
 # Intersects two limits where each limit is defined either by exact match,
 # or by a min value. Note that min and exact params are mutually exclusive.
