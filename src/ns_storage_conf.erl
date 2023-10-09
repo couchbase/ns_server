@@ -320,31 +320,35 @@ prepare_ev_dir(NewEvDir) ->
             not_changed
     end.
 
+-spec get_node_dir(atom()) -> {ok, string()} | {error, not_found}.
 get_node_dir(TypeDir) ->
-    {value, Dir} = ns_config:search_node(TypeDir),
-    Dir.
+    case ns_config:search_node(TypeDir) of
+        {value, Dir} -> {ok, Dir};
+        false -> {error, not_found}
+    end.
 
 update_db_dir(DbDir) ->
     ns_config:set({node, node(), database_dir}, DbDir).
 
--spec this_node_dbdir() -> {ok, string()} | {error, binary()}.
+-spec this_node_dbdir() -> {ok, string()} | {error, not_found}.
 this_node_dbdir() ->
-    {ok, get_node_dir(database_dir)}.
+    get_node_dir(database_dir).
 
 update_ix_dir(IxDir) ->
     ns_config:set({node, node(), index_dir}, IxDir).
 
--spec this_node_ixdir() -> {ok, string()} | {error, binary()}.
+-spec this_node_ixdir() -> {ok, string()} | {error, not_found}.
 this_node_ixdir() ->
-    {ok, get_node_dir(index_dir)}.
+    get_node_dir(index_dir).
 
 update_ev_dir(not_changed) ->
     not_changed;
 update_ev_dir({ok, EvDir}) ->
     ns_config:set({node, node(), eventing_dir}, EvDir).
 
+-spec this_node_evdir() -> {ok, string()} | {error, not_found}.
 this_node_evdir() ->
-    {ok, get_node_dir(eventing_dir)}.
+    get_node_dir(eventing_dir).
 
 node_ev_dir(Config, Node) ->
     {value, Dir} = ns_config:search_node(Node, Config, eventing_dir),

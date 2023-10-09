@@ -547,15 +547,20 @@ get_disk_usage(DiskStats) ->
                   (_) ->
                        false
                end, DiskStats),
-    {ok, DbDir} = ns_storage_conf:this_node_dbdir(),
-    case misc:realpath(DbDir, "/") of
-        {ok, RealFile} ->
-            case ns_storage_conf:extract_disk_stats_for_path(
-                   Mounts, RealFile) of
-                {ok, {_Disk, _Cap, Used}} -> Used;
-                none -> 0
+    case ns_storage_conf:this_node_dbdir() of
+        {ok, DbDir} ->
+            case misc:realpath(DbDir, "/") of
+                {ok, RealFile} ->
+                    case ns_storage_conf:extract_disk_stats_for_path(
+                           Mounts, RealFile) of
+                        {ok, {_Disk, _Cap, Used}} -> Used;
+                        none -> 0
+                    end;
+                _ ->
+                    0
             end;
-        _ ->
+        {error, not_found} ->
+            ?log_warning("Couldn't check disk usage as node db dir is missing"),
             0
     end.
 
