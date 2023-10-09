@@ -1252,7 +1252,8 @@ manifest_test_set_history_default(Val) ->
                 end).
 
 update_manifest_test_modules() ->
-    [ns_config, cluster_compat_mode, ns_bucket, config_profile, menelaus_roles].
+    [ns_config, cluster_compat_mode, ns_bucket, config_profile, menelaus_roles,
+     guardrail_monitor].
 
 update_manifest_test_setup() ->
     meck:new(update_manifest_test_modules(), [passthrough]),
