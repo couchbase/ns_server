@@ -128,9 +128,15 @@ map_user_to_DN(Username, Settings, [{Re, {Type, Template}} = Rule|T],
             ?log_debug("Username->DN: using rule ~p for ~p",
                        [Rule, ns_config_log:tag_user_name(Username)]),
             ReplaceRe = ?cut(lists:flatten(io_lib:format("\\{~b\\}", [_]))),
+            NeedGroups = calculate_groups_num_needed(Template),
             Subs = [{ReplaceRe(N), [{default, ldap_util:escape(S)}]} ||
                         {N, S} <- misc:enumerate(Captured, 0)],
             case Type of
+                _ when length(Subs) < NeedGroups ->
+                    ?log_debug(
+                      "Not enough groups captured: ~p",
+                      [[ns_config_log:tag_user_name(C) || C <- Captured]]),
+                    {error, need_more_re_groups};
                 template ->
                     [Res] = ldap_util:replace_expressions([{dn, Template}],
                                                           Subs),
@@ -160,6 +166,8 @@ map_user_to_DN_test() ->
         Rules =
              [{"^(t1)\\s*(t2)$", {template, "{0}-{1}"}},
               {"(t1)\\s*(t2)", {template, "{1}-{0}-{1}-{0}"}},
+              {"^(bad template)$", {template, "{0}-{1}"}},
+              {"^(bad query)$", {query, "dc=com??one?(cn={1})"}},
               {"^(q1)\\s*(q2)$", {query, "dc=com??one?(cn={0}-{1}-{0})"}},
               {"(.+)@(.+)\\.template\\.example\\.com",
                {template, "cn={0},group={1}"}},
@@ -181,6 +189,8 @@ map_user_to_DN_test() ->
                      Map("t1@t2.template.example.com")),
         ?assertEqual({ok, "1\\282\\2a\\293", template},
                      Map("1(2*)3")),
+        ?assertEqual({error, need_more_re_groups},
+                     Map("bad template")),
 
         %% Query tests:
         ?assertEqual({ok,[{base,"dc=com"}, {attributes,["objectClass"]},
@@ -197,12 +207,22 @@ map_user_to_DN_test() ->
                            {equalityMatch,
                             {'AttributeValueAssertion',"cn","q1"}}},
                           {timeout,test_timeout}], query},
-                     Map("q1@q2.query.example.com"))
+                     Map("q1@q2.query.example.com")),
+        ?assertEqual({error, need_more_re_groups},
+                     Map("bad query"))
     after
         meck:unload(eldap)
     end.
 
 -endif.
+
+calculate_groups_num_needed(TemplateStr) ->
+    case re:run(TemplateStr, "\\{(\\d+)\\}",
+                [{capture, all_but_first, list}, global]) of
+        {match, List} ->
+            lists:max([list_to_integer(DigitsStr) || [DigitsStr] <- List]) + 1;
+        nomatch -> 0
+    end.
 
 dn_query(QueryTemplate, ReplacePairs, Settings, #{query_handle := Handle}) ->
     Timeout = proplists:get_value(request_timeout, Settings),
@@ -410,5 +430,7 @@ format_error(referral_not_supported) ->
     "Referrals are not supported";
 format_error({asn1_enum, N}) ->
     io_lib:format("~p - Unknown error", [N]);
+format_error(need_more_re_groups) ->
+    "User mapping error (not all regex groups captured)";
 format_error(Error) ->
     io_lib:format("~p", [Error]).
