@@ -61,6 +61,10 @@ class LdapTests(testlib.BaseTestSet):
 
 
     def teardown(self):
+        testlib.ensure_deleted(
+            self.cluster, f'/settings/rbac/users/external/{LdapTests.user}')
+        testlib.ensure_deleted(
+            self.cluster, f'/settings/rbac/groups/{LdapTests.group}')
         self.server.stop()
 
 
