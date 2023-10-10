@@ -211,6 +211,8 @@ validate_ldap_hosts(Name, State) ->
                   true -> {value, [binary_to_list(E) || E <- List]};
                   false -> {error, "must be a list of strings"}
               end;
+          (_HostsRaw) when IsJson ->
+              {error, "must be a list of strings"};
           (HostsRaw) ->
               {value, [string:trim(T) || T <- string:tokens(HostsRaw, ",")]}
       end, Name, State).
