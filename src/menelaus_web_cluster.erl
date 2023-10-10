@@ -690,7 +690,9 @@ setup_services_check_quota(Services, SetDefaultMemQuotas) ->
                        end, memory_quota:aware_services());
                  true ->
                      do_update_with_default_quotas(
-                       memory_quota:default_quotas(Services))
+                       memory_quota:default_quotas(
+                         Services,
+                         cluster_compat_mode:get_compat_version()))
              end,
 
     case Quotas of

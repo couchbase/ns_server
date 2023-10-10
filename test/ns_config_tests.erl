@@ -67,6 +67,8 @@ all_test_() ->
                ?_test(test_svc())}}
      ]}.
 
+default(_Vsn) -> [].
+
 default() -> [].
 
 upgrade_config(_) -> [].

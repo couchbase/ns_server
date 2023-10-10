@@ -1108,7 +1108,7 @@ do_merge_dynamic_and_static(Dynamic, #config{static = [S, DefaultConfig], uuid =
     DynamicPropList.
 
 load_config(ConfigPath, DirPath, PolicyMod) ->
-    DefaultConfig = PolicyMod:default(),
+    DefaultConfig = PolicyMod:default(?LATEST_VERSION_NUM),
     % Static config file.
     ?log_info("Loading static config from ~p", [ConfigPath]),
     case load_file(txt, ConfigPath) of

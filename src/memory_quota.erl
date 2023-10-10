@@ -26,7 +26,7 @@
          get_quota/1,
          get_quota/2,
          set_quotas/2,
-         default_quotas/1,
+         default_quotas/2,
          service_to_json_name/1,
          aware_services/0,
          aware_services/1,
@@ -143,11 +143,23 @@ service_to_json_name(fts) ->
     ftsMemoryQuota;
 service_to_json_name(cbas) ->
     cbasMemoryQuota;
+service_to_json_name(n1ql) ->
+    queryMemoryQuota;
 service_to_json_name(eventing) ->
     eventingMemoryQuota.
 
-services_ranking() ->
-    [kv, cbas, index, fts, eventing].
+services_ranking(Vsn) ->
+    [kv, cbas, index, fts, eventing]
+        ++
+        case cluster_compat_mode:is_version_trinity(Vsn) of
+            true ->
+                [n1ql];
+            false ->
+                []
+        end.
+
+number_services(Vsn) ->
+    length(services_ranking(Vsn)).
 
 aware_services() ->
     aware_services(ns_config:latest()).
@@ -160,7 +172,7 @@ aware_services(Config) ->
 aware_services(CompatVersion, IsEnterprise) ->
     [S || S <- ns_cluster_membership:supported_services_for_version(
                  CompatVersion, IsEnterprise),
-          lists:member(S, services_ranking())].
+          lists:member(S, services_ranking(CompatVersion))].
 
 get_all_quotas(Config, UpdatedQuotas) ->
     Services = aware_services(Config),
@@ -217,6 +229,8 @@ min_quota(fts) ->
     256;
 min_quota(cbas) ->
     1024;
+min_quota(n1ql) ->
+    0;
 min_quota(eventing) ->
     256.
 
@@ -252,7 +266,14 @@ service_to_store_method(fts) ->
 service_to_store_method(cbas) ->
     {key, cbas_memory_quota};
 service_to_store_method(eventing) ->
-    {manager, eventing_settings_manager}.
+    {manager, eventing_settings_manager};
+service_to_store_method(n1ql) ->
+    case cluster_compat_mode:is_cluster_trinity() of
+        true ->
+            {manager, query_settings_manager};
+        false ->
+            {not_yet_supported, ?VERSION_TRINITY}
+    end.
 
 get_quota(Service) ->
     get_quota(ns_config:latest(), Service).
@@ -273,7 +294,11 @@ get_quota(Config, Service) ->
                     not_found;
                 Quota ->
                     {ok, Quota}
-            end
+            end;
+        {not_yet_supported, RequiredVsn} ->
+            ?log_warning("Cannot get/set ~p memoryQuota before entire cluster"
+                         " is upgraded to ~p.", [Service, RequiredVsn]),
+            not_found
     end.
 
 set_quotas(Config, Quotas) ->
@@ -302,32 +327,40 @@ do_set_memory_quota(Service, Quota, Cfg, SetFn) ->
         {manager, Manager} ->
             Txn = Manager:update_txn([{memoryQuota, Quota}]),
             {commit, NewCfg, _} = Txn(Cfg, SetFn),
-            NewCfg
+            NewCfg;
+        {not_yet_supported, _} ->
+            Cfg
     end.
 
-calculate_remaining_default_quota(kv, Memory) ->
-    (Memory * 3) div 5;
-calculate_remaining_default_quota(index, Memory) ->
-    (Memory * 3) div 5;
-calculate_remaining_default_quota(fts, Memory) ->
-    min(Memory div 5, ?MAX_DEFAULT_FTS_QUOTA - min_quota(fts));
-calculate_remaining_default_quota(cbas, Memory) ->
-    Memory div 5;
-calculate_remaining_default_quota(eventing, Memory) ->
-    Memory div 5.
+remaining_default_quota(kv, Memory, NumServices) ->
+    (Memory * 3) div NumServices;
+remaining_default_quota(index, Memory, NumServices) ->
+    (Memory * 3) div NumServices;
+remaining_default_quota(n1ql, Memory, NumServices) ->
+    Memory div NumServices;
+remaining_default_quota(fts, Memory, NumServices) ->
+    min(Memory div NumServices, ?MAX_DEFAULT_FTS_QUOTA - min_quota(fts));
+remaining_default_quota(cbas, Memory, NumServices) ->
+    Memory div NumServices;
+remaining_default_quota(eventing, Memory, NumServices) ->
+    Memory div NumServices.
 
-default_quotas(Services) ->
+calculate_remaining_default_quota(Service, Memory, Vsn) ->
+    remaining_default_quota(Service, Memory, number_services(Vsn)).
+
+default_quotas(Services, Vsn) ->
     %% this is actually bogus, because nodes can be heterogeneous; but that's
     %% best we can do
     MemSupData = this_node_memory_data(),
-    default_quotas(Services, MemSupData).
+    default_quotas(Services, MemSupData, Vsn).
 
-default_quotas(Services, MemSupData) ->
+default_quotas(Services, MemSupData, Vsn) ->
     {MemoryBytes, _, _} = MemSupData,
     Memory = MemoryBytes div ?MIB,
     MemoryMax = allowed_memory_usage_max(MemSupData),
 
-    OrderedServices = [S || S <- services_ranking(), lists:member(S, Services)],
+    OrderedServices = [S || S <- services_ranking(Vsn),
+                            lists:member(S, Services)],
     MinQuotas = [min_quota(S) || S <- OrderedServices],
     MinTotal = lists:sum(MinQuotas),
     MinQuotasServices = lists:zip(OrderedServices, MinQuotas),
@@ -342,15 +375,17 @@ default_quotas(Services, MemSupData) ->
             MinQuotasServices;
         false ->
             calculate_remaining_default_quotas(Memory, MemoryMax, MinTotal,
-                                               MinQuotasServices)
+                                               MinQuotasServices, Vsn)
     end.
 
-calculate_remaining_default_quotas(Memory, MemoryMax, MinTotal, MinQuotas) ->
+calculate_remaining_default_quotas(Memory, MemoryMax,
+                                   MinTotal, MinQuotas, Vsn) ->
     {_, _, Result} =
         lists:foldl(
           fun ({Service, MinQ}, {AccMem, AccMax, AccResult}) ->
                   Quota =
-                      case calculate_remaining_default_quota(Service, AccMem) of
+                      case calculate_remaining_default_quota(Service,
+                                                             AccMem, Vsn) of
                           Q when Q > AccMax ->
                               AccMax;
                           Q ->
@@ -368,10 +403,47 @@ calculate_remaining_default_quotas(Memory, MemoryMax, MinTotal, MinQuotas) ->
 
 -ifdef(TEST).
 default_quotas_test() ->
+    meck:new(cluster_compat_mode, [passthrough]),
     MemSupData = {9822564352, undefined, undefined},
-    Services = services_ranking(),
-    Quotas = default_quotas(Services, MemSupData),
+    Services = services_ranking(?LATEST_VERSION_NUM),
+    Quotas = default_quotas(Services, MemSupData, ?LATEST_VERSION_NUM),
     TotalQuota = lists:sum([Q || {_, Q} <- Quotas]),
+    ?assertEqual(true, allowed_memory_usage_max(MemSupData) >= TotalQuota),
+    meck:unload(cluster_compat_mode).
 
-    ?assertEqual(true, allowed_memory_usage_max(MemSupData) >= TotalQuota).
+%% Ensure our calculations are equal on 7.2, Trinity, and LATEST_VERSION_NUM.
+default_quotas_by_version_test() ->
+    meck:new(cluster_compat_mode, [passthrough]),
+    MemSupData = {9822564352, undefined, undefined},
+    PreTrinityServices = [kv, cbas, index, fts, eventing],
+    %% 7.2 quotas (pre-n1ql introduction)
+    Services72 = services_ranking(?VERSION_72),
+    ?assertEqual(PreTrinityServices, Services72),
+    TotalQuota72 =
+        lists:sum([Q || {_, Q} <- default_quotas(Services72,
+                                                 MemSupData, ?VERSION_72)]),
+    ?assertEqual(true, allowed_memory_usage_max(MemSupData) >= TotalQuota72),
+    %% Trinity quotas
+    TrinityServices = [kv, cbas, index, fts, eventing, n1ql],
+    ServicesTrinity = services_ranking(?VERSION_TRINITY),
+    ?assertEqual(TrinityServices, ServicesTrinity),
+    TotalQuotaTrinity =
+        lists:sum([Q || {_, Q} <-
+                            default_quotas(ServicesTrinity,
+                                           MemSupData, ?VERSION_TRINITY)]),
+    ?assertEqual(true,
+                 allowed_memory_usage_max(MemSupData) >= TotalQuotaTrinity),
+    ?assertEqual(TotalQuota72, TotalQuotaTrinity),
+
+    %% 'latest_version_num' quotas (smoke test for new versions)
+    ServicesLatestVsn = services_ranking(?LATEST_VERSION_NUM),
+    ?assertEqual(TrinityServices, ServicesLatestVsn),
+    TotalQuotaLatestVsn =
+        lists:sum([Q || {_, Q} <-
+                            default_quotas(ServicesLatestVsn,
+                                           MemSupData, ?LATEST_VERSION_NUM)]),
+    ?assertEqual(true,
+                 allowed_memory_usage_max(MemSupData) >= TotalQuotaLatestVsn),
+    ?assertEqual(TotalQuotaTrinity, TotalQuotaLatestVsn),
+    meck:unload(cluster_compat_mode).
 -endif.

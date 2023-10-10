@@ -9,6 +9,7 @@
 %%
 -module(query_settings_manager).
 
+-include("ns_config.hrl").
 -include("ns_common.hrl").
 
 -ifdef(TEST).
@@ -21,6 +22,7 @@
          get/1,
          get_from_config/3,
          update/2,
+         update_txn/1,
          config_default/0,
          config_upgrade_to_trinity/1]).
 
@@ -55,6 +57,9 @@ on_update(_Key, _Value) ->
 update(Key, Value) ->
     json_settings_manager:update(?MODULE, [{Key, Value}]).
 
+update_txn(Props) ->
+    json_settings_manager:update_txn(?MODULE, Props).
+
 %% settings manager populates settings per version. For each online upgrade,
 %% it computes the delta between adjacent supported versions to update only the
 %% settings that changed between the two.
@@ -84,11 +89,24 @@ known_settings() ->
 
 known_settings(Ver) ->
     [{generalSettings, general_settings_lens(Ver)},
-     {curlWhitelistSettings, curl_whitelist_settings_lens()}].
+     {curlWhitelistSettings, curl_whitelist_settings_lens()}] ++
+        case cluster_compat_mode:is_version_trinity(Ver) of
+            true ->
+                %% map the memoryQuota to node-quota parameter
+                [{memoryQuota, id_lens(<<"node-quota">>)}];
+            false ->
+                []
+        end.
 
 default_settings(Ver) ->
     [{generalSettings, general_settings_defaults(Ver)},
-     {curlWhitelistSettings, curl_whitelist_settings_defaults()}].
+     {curlWhitelistSettings, curl_whitelist_settings_defaults()}] ++
+        case cluster_compat_mode:is_version_trinity(Ver) of
+            true ->
+                [{memoryQuota, ?QUERY_NODE_QUOTA_DEFAULT}];
+            false ->
+                []
+        end.
 
 general_settings(Ver) ->
     [{queryTmpSpaceDir, "query.settings.tmp_space_dir",
@@ -114,7 +132,7 @@ general_settings(Ver) ->
      {queryNumAtrs,            "numatrs",             1024}] ++
     case cluster_compat_mode:is_version_trinity(Ver) of
         true ->
-            [{queryNodeQuota, "node-quota", 0},
+            [{queryNodeQuota, "node-quota", ?QUERY_NODE_QUOTA_DEFAULT},
              {queryUseReplica, "use-replica", <<"unset">>},
              {queryNodeQuotaValPercent,
               "node-quota-val-percent", 67},
@@ -154,4 +172,48 @@ config_upgrade_test() ->
                    "\"num-cpus\":0,"
                    "\"use-replica\":\"unset\"}">>,
                  Data).
+
+create_test_config_n1ql_quotas(NodeQuotaValue) when is_number(NodeQuotaValue) ->
+    WOutNodeQuota = proplists:delete(queryNodeQuota,
+                                     general_settings(?VERSION_TRINITY)),
+    Settings =
+        [{K, V} ||
+            {K, _, V} <-
+                [{queryNodeQuota,
+                  "node-quota", NodeQuotaValue} | WOutNodeQuota]],
+    SettingsBlob = json_settings_manager:build_settings_json(
+                     [{generalSettings, Settings}],
+                     maps:new(),
+                     known_settings(?VERSION_TRINITY)),
+    #config{static = [[], []], dynamic = [[{cfg_key(), SettingsBlob}], []]}.
+
+quota_test_fun(Number) when is_number(Number) ->
+    Config = create_test_config_n1ql_quotas(Number),
+    Quota = memory_quota:get_quota(Config, n1ql),
+    ?assertEqual({ok, Number}, Quota).
+
+%% These tests ensure 1 very necessary fact which is that modifying
+%% queryNodeQuota will modify the 'memoryQuota' (or more accurately, what we
+%% THINK the memoryQuota is) of n1ql on that node. This was done because there
+%% already existed a 'memoryQuota' field but it means something completely
+%% different.
+n1ql_quota_test_() ->
+    {setup,
+     fun () -> meck:new(cluster_compat_mode, [passthrough]),
+               meck:expect(cluster_compat_mode, is_cluster_trinity,
+                           fun () -> true end),
+               meck:expect(cluster_compat_mode,
+                           get_ns_config_compat_version,
+                           fun () -> ?VERSION_TRINITY end)
+     end,
+     fun (_X) ->
+             meck:unload(cluster_compat_mode)
+     end,
+     %% Keep in mind there is no validation on this function, but it will be
+     %% validated on it's way in normally through menelaus_web_queries and the
+     %% associated validators. Instead we merely want to ensure the change is
+     %% properly reflected, and uses a few values to test it.
+     [{"n1ql quota: 0", fun () -> quota_test_fun(0) end},
+      {"n1ql quota: 1024", fun () -> quota_test_fun(1024) end},
+      {"n1ql quota: 10240", fun () -> quota_test_fun(10240) end}]}.
 -endif.

@@ -16,7 +16,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([default/0, upgrade_config/1, get_current_version/0, encrypt_and_save/1,
+-export([default/1, upgrade_config/1, get_current_version/0, encrypt_and_save/1,
          decrypt/1, fixup/1, init_is_enterprise/0, generate_internal_pass/0]).
 
 -define(ISASL_PW, "isasl.pw").
@@ -123,10 +123,10 @@ je_malloc_conf_default() ->
 %% TLDR: In any upgrade path, it is safer to assume a setting already exists to
 %% - avoid losing a previously configured setting
 %% - prevent duplicates
-default() ->
+default(Vsn) ->
     DataDir = get_data_dir(),
 
-    DefaultQuotas = memory_quota:default_quotas([kv, cbas, fts]),
+    DefaultQuotas = memory_quota:default_quotas([kv, cbas, fts], Vsn),
     {_, KvQuota} = lists:keyfind(kv, 1, DefaultQuotas),
     {_, FTSQuota} = lists:keyfind(fts, 1, DefaultQuotas),
     {_, CBASQuota} = lists:keyfind(cbas, 1, DefaultQuotas),
@@ -458,7 +458,7 @@ do_upgrade_sub_keys(SubKeys, Props, DefaultProps) ->
       end, Props, SubKeys).
 
 upgrade_config_from_7_1_to_7_2(Config) ->
-    DefaultConfig = default(),
+    DefaultConfig = default(?VERSION_72),
     do_upgrade_config_from_7_1_to_7_2(Config, DefaultConfig).
 
 do_upgrade_config_from_7_1_to_7_2(_Config, DefaultConfig) ->
@@ -468,7 +468,7 @@ do_upgrade_config_from_7_1_to_7_2(_Config, DefaultConfig) ->
      upgrade_key(index_dir, DefaultConfig)].
 
 upgrade_config_from_7_2_to_trinity(Config) ->
-    DefaultConfig = default(),
+    DefaultConfig = default(?VERSION_TRINITY),
     do_upgrade_config_from_7_2_to_trinity(Config, DefaultConfig).
 
 do_upgrade_config_from_7_2_to_trinity(_Config, DefaultConfig) ->
@@ -548,7 +548,7 @@ all_upgrades_test_() ->
      ?_test(test_all_upgrades())}.
 
 test_all_upgrades() ->
-    Default = default(),
+    Default = default(?LATEST_VERSION_NUM),
     KVs = misc:update_proplist(Default, [{{node, node(), config_version},
                                           get_min_supported_version()}]),
     Cfg = #config{dynamic = [KVs], uuid = <<"uuid">>},
