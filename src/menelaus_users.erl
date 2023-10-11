@@ -426,8 +426,15 @@ store_users(Users, CanOverwrite) ->
     Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),
     case prepare_store_users_docs(Snapshot, Users, CanOverwrite) of
         {ok, {UpdatedUsers, PreparedDocs}} ->
-            ok = replicated_dets:change_multiple(storage_name(), PreparedDocs),
-
+            case cluster_compat_mode:is_cluster_trinity() of
+                true ->
+                    ok = replicated_dets:change_multiple(
+                           storage_name(), PreparedDocs,
+                           [{priority, ?REPLICATED_DETS_HIGH_PRIORITY}]);
+                false ->
+                    ok = replicated_dets:change_multiple(
+                           storage_name(), PreparedDocs)
+            end,
             {ok, UpdatedUsers};
         {error, _} = Error ->
             Error
@@ -534,10 +541,18 @@ store_user_changes(Identity, Props, Auth, Exists) ->
     [{set, {user, Identity}, Props}] ++
     [{set, {auth, Identity}, Auth} || Auth /= same].
 
-store_auth(_Identity, same) ->
+store_auth(_Identity, same, _Priority) ->
     unchanged;
-store_auth(Identity, Auth) when is_list(Auth) ->
-    ok = replicated_dets:set(storage_name(), {auth, Identity}, Auth).
+store_auth(Identity, Auth, Priority) when is_list(Auth) ->
+    case cluster_compat_mode:is_cluster_trinity() of
+        true ->
+            ok = replicated_dets:set(
+                   storage_name(), {auth, Identity}, Auth,
+                   [{priority, Priority}]);
+        false ->
+            ok = replicated_dets:set(
+                   storage_name(), {auth, Identity}, Auth)
+    end.
 
 change_password({_UserName, local} = Identity, Password) when is_list(Password) ->
     case replicated_dets:get(storage_name(), {user, Identity}) of
@@ -546,7 +561,7 @@ change_password({_UserName, local} = Identity, Password) when is_list(Password) 
         _ ->
             CurrentAuth = replicated_dets:get(storage_name(), {auth, Identity}),
             Auth = build_auth(CurrentAuth, Password),
-            store_auth(Identity, Auth)
+            store_auth(Identity, Auth, ?REPLICATED_DETS_HIGH_PRIORITY)
     end.
 
 -spec delete_user(rbac_identity()) -> {commit, ok} |
@@ -589,7 +604,65 @@ authenticate(Username, Password) ->
         false ->
             false;
         Auth ->
-            authenticate_with_info(Auth, Password)
+            Res = authenticate_with_info(Auth, Password),
+            case Res of
+                true ->
+                    maybe_migrate_password_hashes(Auth, Identity, Password);
+                false ->
+                    ok
+            end,
+            Res
+    end.
+
+maybe_update_plain_auth_hashes(CurrentAuth, Password) ->
+    {HashInfo} = proplists:get_value(<<"hash">>, CurrentAuth),
+    HashAlg = proplists:get_value(?HASH_ALG_KEY, HashInfo),
+    CurrentHashAlg = ns_config:read_key_fast(
+                       password_hash_alg, ?DEFAULT_PWHASH),
+    Migrate =
+        case HashAlg of
+            CurrentHashAlg ->
+                Settings = ns_config_auth:configurable_hash_alg_settings(
+                             HashAlg),
+                lists:any(
+                  fun ({K, V}) ->
+                          proplists:get_value(K, HashInfo) =/= V
+                  end, Settings);
+            _ ->
+                true
+        end,
+
+    case Migrate of
+        false ->
+            CurrentAuth;
+        true ->
+            PlainAuth = build_plain_auth([Password]),
+            misc:update_proplist(CurrentAuth, PlainAuth)
+    end.
+
+maybe_migrate_password_hashes(
+  CurrentAuth, {Username, local} = Identity, Password) ->
+    MigrateHashes =
+        cluster_compat_mode:is_cluster_trinity() andalso
+            ns_config:read_key_fast(
+              allow_hash_migration_during_auth, false),
+
+    case MigrateHashes of
+        true ->
+            try
+                Auth = maybe_update_plain_auth_hashes(CurrentAuth, Password),
+                store_auth(Identity, Auth, ?REPLICATED_DETS_NORMAL_PRIORITY)
+            catch
+                E:T:S ->
+                    ?log_debug("Password migration failed. Identity - ~p.~n"
+                               "Error - ~p",
+                               [ns_config_log:tag_user_data(
+                                  [{user, list_to_binary(Username)}]),
+                                {E, T, S}]),
+                    ok
+            end;
+        false ->
+            ok
     end.
 
 get_auth_info(Identity) ->

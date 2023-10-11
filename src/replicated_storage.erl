@@ -26,6 +26,7 @@
 -callback find_doc(term(), term()) -> term() | false.
 -callback all_docs(pid(), term()) -> term().
 -callback get_revision(term()) -> term().
+-callback is_higher_priority(term(), term()) -> false | true.
 -callback set_revision(term(), term()) -> term().
 -callback is_deleted(term()) -> boolean().
 -callback save_docs([term()], term()) -> {ok, term()} | {error, term()}.
@@ -259,11 +260,14 @@ code_change(_OldVsn, State, _Extra) ->
 
 should_be_written(NewDoc, Module, ChildState) ->
     %% this is replicated from another node in the cluster. We only accept it
-    %% if it doesn't exist or the rev is higher than what we have.
+    %% if it doesn't exist or the rev is higher than what we have or it has
+    %% higher priority than the local doc.
     NewRev = Module:get_revision(NewDoc),
     case Module:find_doc(Module:get_id(NewDoc), ChildState) of
         false -> true;
-        OldDoc -> NewRev > Module:get_revision(OldDoc)
+        OldDoc ->
+            NewRev > Module:get_revision(OldDoc) orelse
+                Module:is_higher_priority(OldDoc, NewDoc)
     end.
 
 make_mass_updater(Update, InitState) ->

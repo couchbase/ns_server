@@ -415,4 +415,7 @@
           ns_config:latest(), resource_promql_override, disk_usage,
           <<"100 * sys_disk_usage_ratio">>)).
 
+-define(REPLICATED_DETS_NORMAL_PRIORITY, 0).
+-define(REPLICATED_DETS_HIGH_PRIORITY, 1).
+
 -endif.

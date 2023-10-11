@@ -437,6 +437,8 @@ services_with_security_settings() ->
 
 is_allowed_on_cluster([password_hash_alg]) ->
     cluster_compat_mode:is_cluster_trinity();
+is_allowed_on_cluster([allow_hash_migration_during_auth]) ->
+    cluster_compat_mode:is_cluster_trinity();
 is_allowed_on_cluster([scram_sha1_enabled]) ->
     cluster_compat_mode:is_cluster_trinity();
 is_allowed_on_cluster([scram_sha256_enabled]) ->
@@ -576,6 +578,8 @@ conf(security) ->
       fun get_bool/1},
      {allowed_hosts, allowedHosts, [<<"*">>], fun get_allowed_hosts/1},
      {password_hash_alg, passwordHashAlg, ?DEFAULT_PWHASH, fun get_pwhash/1},
+     {allow_hash_migration_during_auth, allowHashMigrationDuringAuth, false,
+      fun get_bool/1},
      {scram_sha1_enabled, scramSha1Enabled, true, fun get_bool/1},
      {scram_sha256_enabled, scramSha256Enabled, true, fun get_bool/1},
      {scram_sha512_enabled, scramSha512Enabled, true, fun get_bool/1},

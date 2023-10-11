@@ -17,14 +17,16 @@
 
 -behaviour(replicated_storage).
 
--export([start_link/5, set/3, change_multiple/2, delete/2, get/2, get/3,
+-export([start_link/5, set/3, set/4,
+         change_multiple/2, change_multiple/3, delete/2, get/2, get/3,
          get_last_modified/3, select/3, empty/1,
          select_with_update/4]).
 
 -export([init/1, init_after_ack/1, handle_call/3, handle_info/2,
          get_id/1, get_value/1, find_doc/2, all_docs/2,
          get_revision/1, set_revision/2, is_deleted/1, save_docs/2,
-         handle_mass_update/3, on_replicate_in/1, on_replicate_out/1]).
+         handle_mass_update/3, on_replicate_in/1, on_replicate_out/1,
+         is_higher_priority/2]).
 
 %% unit test helpers
 -export([toy_init/1, toy_set/3, toy_select_with_update/4]).
@@ -44,13 +46,22 @@ start_link(ChildModule, InitParams, Name, Path, Replicator) ->
                                   Replicator).
 
 set(Name, Id, Value) ->
-    gen_server:call(Name, {interactive_update, update_doc(Id, Value)}, infinity).
+    set(Name, Id, Value, []).
 
-change_multiple(Name, Docs) when is_list(Docs) ->
+set(Name, Id, Value, ExtraProps) when is_list(ExtraProps) ->
+   gen_server:call(
+     Name, {interactive_update,
+            update_doc(Id, Value, ExtraProps)}, infinity).
+
+change_multiple(Name, Docs) ->
+    change_multiple(Name, Docs, []).
+
+change_multiple(Name, Docs, ExtraProps) when is_list(Docs),
+                                             is_list(ExtraProps) ->
     gen_server:call(
       Name,
       {interactive_update_multi,
-       lists:map(fun ({set, Id, Val}) -> update_doc(Id, Val);
+       lists:map(fun ({set, Id, Val}) -> update_doc(Id, Val, ExtraProps);
                      ({delete, Id}) -> delete_doc(Id)
                  end, Docs)},
       infinity).
@@ -62,9 +73,13 @@ delete_doc(Id) ->
     #docv2{id = Id, value = [], props = [{deleted, true}, {rev, 0}]}.
 
 update_doc(Id, Value) ->
+    update_doc(Id, Value, []).
+
+update_doc(Id, Value, ExtraProps) ->
     #docv2{id = Id, value = Value,
-           props = [{deleted, false},
-                    {rev, 0}, {last_modified, os:system_time(millisecond)}]}.
+           props =
+               [{deleted, false}, {rev, 0},
+                {last_modified, os:system_time(millisecond)}] ++ ExtraProps}.
 
 empty(Name) ->
     gen_server:call(Name, empty, infinity).
@@ -227,6 +242,17 @@ all_docs(_Pid, #state{name = TableName}) ->
 
 get_revision(#docv2{props = Props}) ->
     proplists:get_value(rev, Props).
+
+%% If there is no priority set, set it to the default priority
+%% (?REPLICATED_DETS_NORMAL_PRIORITY).
+-spec get_priority(term()) ->
+    ?REPLICATED_DETS_NORMAL_PRIORITY | ?REPLICATED_DETS_HIGH_PRIORITY.
+get_priority(Props) ->
+    proplists:get_value(priority, Props, ?REPLICATED_DETS_NORMAL_PRIORITY).
+
+is_higher_priority(#docv2{props = OldProps} = _OldDoc,
+                   #docv2{props = NewProps} = _NewDoc) ->
+    get_priority(NewProps) > get_priority(OldProps).
 
 set_revision(Doc, NewRev) ->
     misc:update_field(#docv2.props, Doc,
