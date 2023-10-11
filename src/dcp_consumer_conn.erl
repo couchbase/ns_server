@@ -219,7 +219,7 @@ handle_call({setup_streams, Partitions}, From,
 handle_call(shut_connection, From,
             #state{state = idle,
                    partitions = Partitions} = State, ParentState) ->
-    ?log_debug("Shutting the connection. Partitions to close:~n~p", [Partitions]),
+    ?log_debug("Shutting the connection. Partitions to close:~n~w", [Partitions]),
 
     case Partitions of
         [] ->
@@ -246,7 +246,7 @@ handle_call(shut_connection, From,
             #state{state = #stream_state{to_add = ToAdd,
                                          to_close = ToClose} = StreamState,
                    partitions = Partitions} = State, ParentState) ->
-    ?log_debug("Discovered stuck replicator with state: ~p and partitions ~p.~n"
+    ?log_debug("Discovered stuck replicator with state: ~p and partitions ~w.~n"
                "Shutting the connection.",
                [StreamState, Partitions]),
 
@@ -439,7 +439,7 @@ process_stream_response(Header, PendingPartitions, Errors, Type, Side, ParentSta
                     {error, N, [{Status, Partition} | Errors]}
             end;
         false ->
-            ?rebalance_error("Unexpected response. Unrecognized opaque ~p~nHeader: ~p~nPartitions: ~p~nErrors: ~p",
+            ?rebalance_error("Unexpected response. Unrecognized opaque ~p~nHeader: ~p~nPartitions: ~w~nErrors: ~p",
                              [Header#mc_header.opaque, Header, PendingPartitions, Errors]),
             erlang:error({unrecognized_opaque, Header#mc_header.opaque, PendingPartitions})
     end.
