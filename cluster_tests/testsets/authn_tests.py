@@ -124,6 +124,13 @@ class AuthnTests(testlib.BaseTestSet):
         assert 'local' == res['domain']
 
 
+    def on_behalf_of_with_wrong_domain_test(self):
+        (user, _) = self.creds
+        OBO = base64.b64encode(f"{user}:wrong".encode('ascii')).decode()
+        testlib.get_fail(self.cluster, '/whoami', 401,
+                         headers={'cb-on-behalf-of': OBO})
+
+
 def headerToScramMsg(header):
     replyDict = {}
     for t in header.split(","):
