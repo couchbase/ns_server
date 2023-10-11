@@ -15,6 +15,9 @@ import getopt
 import shutil
 import inspect
 import atexit
+from datetime import datetime, timezone
+from math import floor
+
 import requests
 import glob
 import time
@@ -110,6 +113,9 @@ Usage: {program_name}
         Use N as a start-index for all started clusters
     [--stop-after-error]
         Stop running testsets after the first error
+    [--collect-logs-after-error]
+        Collect a zip of logs for each node in and out of the cluster after a
+        failed test.
     [--help]
         Show this help
 """
@@ -162,7 +168,8 @@ def main():
                                            'testset-iterations=',
                                            'start-index=',
                                            'test-iterations=',
-                                           'stop-after-error'])
+                                           'stop-after-error',
+                                           'collect-logs-after-error'])
     except getopt.GetoptError as err:
         bad_args_exit(str(err))
 
@@ -183,6 +190,7 @@ def main():
     test_iterations = 1
     start_index = 10
     stop_after_first_error = False
+    collect_logs = False
 
     for o, a in optlist:
         if o in ('--cluster', '-c'):
@@ -237,6 +245,8 @@ def main():
             start_index = int(a)
         elif o == '--stop-after-error':
             stop_after_first_error = True
+        elif o == '--collect-logs-after-error':
+            collect_logs = True
         elif o in ('--help', '-h'):
             usage()
             exit(0)
@@ -294,6 +304,7 @@ def main():
 
     executed = 0
     test_time = 0
+    total_log_collection_time = 0
     start_ts = time.time_ns()
     not_ran = []
     for (configuration, testsets) in testsets_grouped:
@@ -322,11 +333,12 @@ def main():
                                                       start_index)
         testset_start_ts = time.time_ns()
         # Run the testsets on the cluster
-        tests_executed, testset_errors, testset_not_ran = \
+        tests_executed, testset_errors, testset_not_ran, log_collection_time = \
             run_testsets(cluster, testsets, total_num,
                          intercept_output=intercept_output,
                          seed=seed,
-                         stop_after_first_error=stop_after_first_error)
+                         stop_after_first_error=stop_after_first_error,
+                         collect_logs=collect_logs)
         test_time += (time.time_ns() - testset_start_ts)
         executed += tests_executed
         for k in testset_errors:
@@ -334,12 +346,14 @@ def main():
                 errors[k] = []
             errors[k].extend(testset_errors[k])
         not_ran += testset_not_ran
+        total_log_collection_time += log_collection_time
 
     ns_in_sec = 1000000000
     total_time = time.time_ns() - start_ts
     total_time_s = total_time / ns_in_sec
     prep_time_s = (total_time - test_time) / ns_in_sec
     test_time_s = test_time / ns_in_sec
+    log_collection_time_s = total_log_collection_time / ns_in_sec
 
     error_num = sum([len(errors[name]) for name in errors])
     errors_str = f"{error_num} error{'s' if error_num != 1 else ''}"
@@ -357,10 +371,15 @@ def main():
           f"Total time:               {format_time(total_time_s)}\n"
           f"Total clusters prep time: {format_time(prep_time_s)}\n"
           f"Test time (no prep):      {format_time(test_time_s)}")
+
     if executed > 0:
         print(
           f"Avg. test time:           {format_time(total_time_s/executed)}\n"
           f"Avg. test time (no prep): {format_time(test_time_s/executed)}")
+
+    if log_collection_time_s > 0:
+        print("Total log collection time: "
+              f"{format_time(log_collection_time_s)}")
 
     print(f"\nSeed: {seed}\n")
 
@@ -551,12 +570,13 @@ def get_existing_cluster(address, start_port, auth, num_nodes):
 # ran, and keeping track of all errors
 def run_testsets(cluster, testsets, total_num,
                  intercept_output=True, seed=None,
-                 stop_after_first_error=False):
+                 stop_after_first_error=False, collect_logs=False):
     executed = 0
     errors = {}
     not_ran = []
     current_unmet_requirements = []
     cluster_is_unusable = False
+    log_collection_time = 0
     for testset in testsets:
 
         def skip_this_testset(error):
@@ -625,7 +645,31 @@ def run_testsets(cluster, testsets, total_num,
                 errors[testset['name']] = []
             errors[testset['name']].extend(testset_errors)
 
-    return executed, errors, not_ran
+    if collect_logs and len(errors) > 0:
+        collect_start_time = time.time_ns()
+        # Attempt a cbcollect for the cluster, in order to get all info
+        # that might be useful for debugging
+        with testlib.no_output("start log collection"):
+            cluster.wait_nodes_up()
+
+            for node in cluster._nodes:
+                if node not in cluster.connected_nodes:
+                    testlib.wait_for_ejected_node(node)
+
+                start_time = floor(datetime.now(timezone.utc).timestamp())
+                testlib.start_log_collection(
+                    node,
+                    taskRegexp=".*diags"
+                               "|master events"
+                               "|memcached.*"
+                               "|Collecting .*/snapshots"
+                )
+
+                path = testlib.wait_for_log_collection(node, start_time)
+                print(f"Collected logs for {node.url}: {path}")
+
+        log_collection_time += (time.time_ns() - collect_start_time)
+    return executed, errors, not_ran, log_collection_time
 
 
 if __name__ == '__main__':

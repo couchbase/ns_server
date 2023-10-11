@@ -8,6 +8,9 @@
 # licenses/APL2.txt.
 import atexit
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
+from math import floor
+
 import requests
 import string
 import random
@@ -485,7 +488,8 @@ def get_otp_nodes(cluster):
     return {k: info[k]['otpNode'] for k in info}
 
 def poll_for_condition(fun, sleep_time, attempts=None, timeout=None,
-                       verbose=False, msg="poll for condition"):
+                       verbose=False, msg="poll for condition",
+                       retry_value=False):
 
     assert (attempts is not None) or (timeout is not None)
     assert sleep_time > 0, "non-positive sleep_time specified"
@@ -497,10 +501,11 @@ def poll_for_condition(fun, sleep_time, attempts=None, timeout=None,
         if timeout is not None:
             assert (time.time() - start_time) < timeout, \
                    f"{msg}: timed-out (timeout: {timeout}s)"
-        if fun():
+        value = fun()
+        if value is not retry_value:
             maybe_print(f"Time taken for condition to complete: "
                         f"{time.time() - start_time: .2f}s", verbose=verbose)
-            return
+            return value
         maybe_print(f"Sleeping for {sleep_time_str}", verbose=verbose)
         time.sleep(sleep_time)
         attempt_count += 1
@@ -688,3 +693,36 @@ def toggle_client_cert_auth(node, enabled=True, mandatory=True, prefixes=None):
     #       has applied new settings
     expected = [200, 202]
     assert r.status_code in expected, format_http_error(r, expected)
+
+
+def start_log_collection(node, **kwargs):
+    # Start log collection for a node. Only triggers it for that node, not the
+    # whole cluster, as we want to avoid OOM issues as all nodes are on the same
+    # machine
+    print(f"Collecting logs from {node}...")
+    post_succ(node, "/controller/startLogsCollection",
+              data={"nodes": node.otp_node(), **kwargs})
+
+
+def wait_for_log_collection(node, start_time):
+    # Wait until log collection is complete
+    return poll_for_condition(
+        lambda: log_collection_complete(node, start_time),
+        sleep_time=1, timeout=600)
+
+
+def log_collection_complete(node, start_time):
+    tasks = get_succ(node, "/pools/default/tasks",
+                     verbose=config['verbose']).json()
+    for task in tasks:
+        timestamp = task.get("ts")
+        if (task.get("type") == "clusterLogsCollection" and
+                timestamp is not None):
+            #
+            if (datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+                        .timestamp() >= start_time):
+                per_node = task.get('perNode').get(node.otp_node())
+                if (per_node is not None and
+                        per_node.get("status") == "collected"):
+                    return per_node.get('path')
+    return False
