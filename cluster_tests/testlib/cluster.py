@@ -254,7 +254,7 @@ class Cluster:
     def add_node(self, new_node, services=None, do_rebalance=False,
                  verbose=False, expected_code=200, expected_error=None):
         if services is None:
-            services = [Service.KV]
+            services = self.connected_nodes[0].get_services()
 
         # Can only add nodes with the https address, which requires the 1900X
         # port
@@ -278,7 +278,7 @@ class Cluster:
     def do_join_cluster(self, new_node, services=None, do_rebalance=False,
                         verbose=False, expected_code=200):
         if services is None:
-            services = [Service.KV]
+            services = self.connected_nodes[0].get_services()
 
         data = {"user": self.auth[0],
                 "password": self.auth[1],

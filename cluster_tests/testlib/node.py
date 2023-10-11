@@ -8,6 +8,7 @@
 # licenses/APL2.txt.
 
 import testlib
+from testlib.util import strings_to_services
 
 
 class Node:
@@ -21,6 +22,7 @@ class Node:
         self.data_path_cache = None
         self.tls_port_cache = None
         self.otp_node_cached = None
+        self.services_cached = None
 
     def __str__(self):
         return self.hostname()
@@ -88,3 +90,9 @@ class Node:
     def get_ns_server_pid(self):
         r = testlib.diag_eval(self, "os:getpid().")
         return int(r.text.replace('"',""))
+
+    def get_services(self):
+        if self.services_cached is None:
+            r = testlib.get_succ(self, '/nodes/self')
+            self.services_cached = strings_to_services(r.json()['services'])
+        return self.services_cached

@@ -42,3 +42,14 @@ def services_to_strings(services: Union[List[Service],
     else:
         raise ValueError(f"Invalid services: '{services}'. Must be a list of "
                          f"Service or dict from node to Services")
+
+
+def strings_to_services(services: List[str]):
+    return list(map(lambda service: {"kv": Service.KV,
+                              "index": Service.INDEX,
+                              "n1ql": Service.QUERY,
+                              "fts": Service.FTS,
+                              "backup": Service.BACKUP,
+                              "eventing": Service.EVENTING,
+                              "cbas": Service.CBAS}[service],
+                services))
