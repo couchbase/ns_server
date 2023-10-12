@@ -611,6 +611,7 @@ handle_extract_user_from_cert_post(Req) ->
         case menelaus_auth:extract_identity_from_cert(CertBin) of
             auth_failure ->
                 ns_audit:auth_failure(Req),
+                ns_server_stats:notify_counter(<<"rest_request_auth_failure">>),
                 menelaus_util:reply_json(Req, <<"Auth failure">>, 401);
             temporary_failure ->
                 Msg = <<"Temporary error occurred. Please try again later.">>,
@@ -625,6 +626,7 @@ handle_extract_user_from_cert_post(Req) ->
     catch
         _:_ ->
             ns_audit:auth_failure(Req),
+            ns_server_stats:notify_counter(<<"rest_request_auth_failure">>),
             menelaus_util:reply_json(Req, <<"Auth failure">>, 401)
     end.
 

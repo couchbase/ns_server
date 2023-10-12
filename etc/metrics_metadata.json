@@ -29,6 +29,18 @@
         "added": "7.0.0",
         "stability": "committed"
     },
+    "cm_rest_request_auth_failure_total":{
+        "type": "counter",
+        "help": "Number of REST requests failing authentication",
+        "added": "7.6.0",
+        "stability": "committed"
+    },
+    "cm_rest_request_forbidden_access_total":{
+        "type": "counter",
+        "help": "Number of REST requests failing due inadequate permissions",
+        "added": "7.6.0",
+        "stability": "committed"
+    },
     "couch_docs_actual_disk_size": {
         "type": "gauge",
         "help": "Amount of disk space used by the Data Service",

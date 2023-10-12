@@ -1446,6 +1446,7 @@ handle_check_permission_for_cbauth(Req) ->
             menelaus_util:reply_text(Req, "", 200);
         false ->
             ns_audit:auth_failure(Req),
+            ns_server_stats:notify_counter(<<"rest_request_forbidden_access">>),
             menelaus_util:reply_text(Req, "", 401)
     end.
 

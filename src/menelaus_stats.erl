@@ -197,6 +197,7 @@ with_valid_bucket(Fun, Bucket, Req) ->
             menelaus_util:reply_not_found(Req);
         {forbidden, Permission} ->
             ns_audit:auth_failure(Req),
+            ns_server_stats:notify_counter(<<"rest_request_forbidden_access">>),
             menelaus_util:reply_json(
               Req, menelaus_web_rbac:forbidden_response([Permission]), 403)
     end.
@@ -3190,6 +3191,8 @@ validate_bucket(Name, Req, State) ->
                       {error, "Bucket not found"};
                   {forbidden, Permission} ->
                       ns_audit:auth_failure(Req),
+                      ns_server_stats:notify_counter(
+                        <<"rest_request_forbidden_access">>),
                       {error, {403, Permission}}
               end
       end, Name, State).

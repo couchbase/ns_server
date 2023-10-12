@@ -507,6 +507,7 @@ require_permission(Req, Permission) ->
             ok;
         false ->
             ns_audit:auth_failure(Req),
+            ns_server_stats:notify_counter(<<"rest_request_forbidden_access">>),
             web_json_exception(
               403, menelaus_web_rbac:forbidden_response([Permission]))
     end.
@@ -549,6 +550,7 @@ require_auth(Req) ->
     case mochiweb_request:get_header_value("invalid-auth-response", Req) == "on"
          orelse ns_config:read_key_fast(disable_www_authenticate, false) of
         true ->
+            ns_server_stats:notify_counter(<<"rest_request_auth_failure">>),
             reply(Req, 401);
         _ ->
             case proplists:get_value("WWW-Authenticate",
@@ -559,6 +561,8 @@ require_auth(Req) ->
                             "Basic realm=\"Couchbase Server Admin / REST\""}]);
                 _ ->
                     %% Header is already set (by scram-sha auth for example)
+                    ns_server_stats:notify_counter(
+                      <<"rest_request_auth_failure">>),
                     reply(Req, 401)
             end
     end.
