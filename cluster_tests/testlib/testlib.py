@@ -81,7 +81,7 @@ def get_appropriate_cluster(cluster, auth, requirements,
 
 
 def run_testset(testset, cluster, total_testsets_num,
-                intercept_output=True, seed=None):
+                intercept_output=True, seed=None, stop_after_first_error=False):
     errors = []
     not_ran = []
     executed = 0
@@ -140,6 +140,14 @@ def run_testset(testset, cluster, total_testsets_num,
                                               not_ran_test['name'],
                                               not_ran_test['iter']),
                                     "Earlier test_teardown failed"))
+                break
+
+            if len(errors) > 0 and stop_after_first_error:
+                for not_ran_test in testset['test_name_list'][executed:]:
+                    not_ran.append((test_name(testset_instance,
+                                              not_ran_test['name'],
+                                              not_ran_test['iter']),
+                                    "Earlier test failed"))
                 break
     finally:
         _, err = safe_test_function_call(testset_instance, 'teardown',

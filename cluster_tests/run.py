@@ -107,6 +107,8 @@ Usage: {program_name}
         Run each test M times (1 by default)
     [--start-index=N]
         Use N as a start-index for all started clusters
+    [--stop-after-error]
+        Stop running testsets after the first error
     [--help]
         Show this help
 """
@@ -158,7 +160,8 @@ def main():
                                            'random-order',
                                            'testset-iterations=',
                                            'start-index=',
-                                           'test-iterations='])
+                                           'test-iterations=',
+                                           'stop-after-error'])
     except getopt.GetoptError as err:
         bad_args_exit(str(err))
 
@@ -178,6 +181,7 @@ def main():
     testset_iterations = 1
     test_iterations = 1
     start_index = 10
+    stop_after_first_error = False
 
     for o, a in optlist:
         if o in ('--cluster', '-c'):
@@ -230,6 +234,8 @@ def main():
             test_iterations = int(a)
         elif o == '--start-index':
             start_index = int(a)
+        elif o == '--stop-after-error':
+            stop_after_first_error = True
         elif o in ('--help', '-h'):
             usage()
             exit(0)
@@ -290,6 +296,10 @@ def main():
     start_ts = time.time_ns()
     not_ran = []
     for (configuration, testsets) in testsets_grouped:
+        if stop_after_first_error and len(errors) > 0:
+            for testset in testsets:
+                not_ran.append((testset['name'], "prior testset failed"))
+            continue
         # Get an appropriate cluster to satisfy the configuration
         if use_existing_server:
             unmet_requirements = configuration.get_unmet_requirements(cluster)
@@ -314,7 +324,8 @@ def main():
         tests_executed, testset_errors, testset_not_ran = \
             run_testsets(cluster, testsets, total_num,
                          intercept_output=intercept_output,
-                         seed=seed)
+                         seed=seed,
+                         stop_after_first_error=stop_after_first_error)
         test_time += (time.time_ns() - testset_start_ts)
         executed += tests_executed
         for k in testset_errors:
@@ -539,7 +550,8 @@ def get_existing_cluster(address, start_port, auth, num_nodes):
 # Run each testset on the same cluster, counting how many individual tests were
 # ran, and keeping track of all errors
 def run_testsets(cluster, testsets, total_num,
-                 intercept_output=True, seed=None):
+                 intercept_output=True, seed=None,
+                 stop_after_first_error=False):
     executed = 0
     errors = {}
     not_ran = []
@@ -557,6 +569,10 @@ def run_testsets(cluster, testsets, total_num,
         if cluster_is_unusable:
             skip_this_testset('Cluster is in incosistent state (can be '
                               'caused by a timed out rebalance)')
+            continue
+
+        if stop_after_first_error and len(errors) > 0:
+            skip_this_testset("prior testset failed")
             continue
 
         # We should be able to reuse the cluster here (because we constructed
@@ -579,7 +595,8 @@ def run_testsets(cluster, testsets, total_num,
 
         res = testlib.run_testset(testset, cluster, total_num,
                                   intercept_output=intercept_output,
-                                  seed=seed)
+                                  seed=seed,
+                                  stop_after_first_error=stop_after_first_error)
         executed += res[0]
         testset_errors = res[1]
         not_ran += res[2]
