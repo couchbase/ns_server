@@ -104,6 +104,39 @@ format_error({md_signature_verification_failed, Error}) ->
     io_lib:format("metadata signature verification failed: ~p", [Error]);
 format_error({bad_metadata, Reason}) ->
     io_lib:format("invalid metadata, reason: ~p", [Reason]);
+format_error({validate_assertion, Reason}) ->
+    ReasonStr =
+        case Reason of
+            stale_assertion ->
+                "expired SAML assertion, make sure clocks on couchbase-server "
+                "and identity provider are synchronized";
+            duplicate_assertion ->
+                "assertion replay protection";
+            {dupe_check_bad_nodes, Nodes} ->
+                BuildHostname = menelaus_web_node:build_node_hostname(
+                                 ns_config:latest(), _, misc:localhost()),
+                NodesStr = lists:join(", ", [BuildHostname(N) || N <- Nodes]),
+                io_lib:format("assertion replay protection check failed at "
+                              "some nodes (~s), you can retry", [NodesStr] );
+            bad_not_on_or_after ->
+                "assertion expiration time is too far in the future "
+                "(please check not_on_or_after attribute in assertion and "
+                "make sure clocks on couchbase-server and identity provider "
+                "are synchronized)";
+            {What, {error, cert_not_accepted}} when What == assertion;
+                                                    What == envelope ->
+                io_lib:format("~p is signed but certificate is not trusted",
+                              [What]);
+            {What, {error, bad_signature}} when What == assertion;
+                                                What == envelope ->
+                io_lib:format("bad ~p signature", [What]);
+            {What, {error, multiple_signatures}} when What == assertion;
+                                                      What == envelope ->
+                io_lib:format("~p contains multiple signatures", [What]);
+            _ ->
+                io_lib:format("~p", [Reason])
+        end,
+    io_lib:format("SAML assertion validation failed: ~s", [ReasonStr]);
 format_error(Unknown) ->
     io_lib:format("unexpected error: ~p", [Unknown]).
 
@@ -184,12 +217,14 @@ check_dupe_global(Assertion, Digest) ->
         [] ->
             case lists:usort(Res) of
                 [ok] -> ok;
-                [_ | _] -> {error, duplicate_assertion}
+                [_ | _] = Responses ->
+                    Reasons = [R || {error, R} <- Responses],
+                    {error, hd(Reasons)}
             end;
         _ ->
             ?log_warning("Dupe assertion check failed on nodes: ~p",
                          [BadNodes]),
-            {error, {bad_nodes, BadNodes}}
+            {error, {dupe_check_bad_nodes, BadNodes}}
     end.
 
 check_dupe(Assertion, Digest) ->

@@ -528,8 +528,7 @@ validate_authn_response(NameResp, NameEnc, SPMetadata, DupeCheck, Req, State) ->
                       {error, E} ->
                           ?log_debug("Assertion validation failed: ~p", [E]),
                           ns_audit:login_failure(Req),
-                          Msg = io_lib:format("Assertion validation failed:"
-                                              " ~p", [E]),
+                          Msg = cb_saml:format_error({validate_assertion, E}),
                           {value, {error, Msg}}
                   end
           catch

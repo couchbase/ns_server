@@ -384,7 +384,7 @@ class SamlTests(testlib.BaseTestSet):
                               allow_redirects=False)
             error_msg = catch_error_after_redirect(self.cluster.nodes[0],
                                                    session2, r, headers)
-            assert_in("duplicate", error_msg)
+            assert_in("assertion replay protection", error_msg)
 
             dest_parsed = urlparse(destination)
             node2_parsed = urlparse(self.cluster.nodes[1].url)
@@ -398,7 +398,7 @@ class SamlTests(testlib.BaseTestSet):
                               allow_redirects=False)
             error_msg = catch_error_after_redirect(self.cluster.nodes[1],
                                                    session3, r, headers)
-            assert_in("duplicate", error_msg)
+            assert_in("assertion replay protection", error_msg)
 
             r = session1.get(self.cluster.nodes[0].url + '/pools/default',
                              headers=headers)
@@ -450,7 +450,7 @@ class SamlTests(testlib.BaseTestSet):
             error_msg = catch_error_after_redirect(self.cluster.nodes[0],
                                                    session, r, headers)
 
-            assert_in('stale_assertion', error_msg)
+            assert_in('expired SAML assertion', error_msg)
 
             r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
@@ -605,7 +605,7 @@ class SamlTests(testlib.BaseTestSet):
                              allow_redirects=False)
             error_msg = catch_error_after_redirect(self.cluster.nodes[0],
                                                    session, r, headers)
-            assert_in("cert_not_accepted", error_msg)
+            assert_in("certificate is not trusted", error_msg)
 
             r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)
@@ -646,7 +646,7 @@ class SamlTests(testlib.BaseTestSet):
                              allow_redirects=False)
             error_msg = catch_error_after_redirect(self.cluster.nodes[0],
                                                    session, r, headers)
-            assert_in("cert_not_accepted", error_msg)
+            assert_in("certificate is not trusted", error_msg)
 
             r = session.get(self.cluster.nodes[0].url + '/pools/default',
                             headers=headers)

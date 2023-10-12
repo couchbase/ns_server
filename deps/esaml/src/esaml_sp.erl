@@ -313,7 +313,7 @@ validate_assertion(Xml, DuplicateFun, SP = #esaml_sp{}) ->
         fun(AR) ->
             case DuplicateFun(AR, xmerl_dsig:digest(Xml)) of
                 ok -> AR;
-                _ -> {error, duplicate}
+                {error, Reason} -> {error, Reason}
             end
         end
     ], Xml).
