@@ -23,7 +23,7 @@ class LdapTests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements()
+        return testlib.ClusterRequirements(edition="Enterprise")
 
 
     def setup(self):
