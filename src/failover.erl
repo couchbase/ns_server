@@ -319,7 +319,7 @@ get_janitor_bulk_factor() ->
                                          ?DEFAULT_JANITOR_BULK_FACTOR),
     case SchedulersOnline < BulkFactor of
         true ->
-            ?log_debug("Throttling down parallelization BulkFactor from"
+            ?log_debug("Throttling down parallelization BulkFactor from "
                        "~p to ~p due to less schedulers online",
                        [BulkFactor, SchedulersOnline]),
             SchedulersOnline;
