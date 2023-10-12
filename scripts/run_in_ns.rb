@@ -120,23 +120,6 @@ sh "ip netns exec #{netns} ifconfig #{tap_if} #{ifaddr}/24 up"
 puts "cleaning up arp entry for child ifaddr (because of different mac address of new tap interface)"
 sh "arp -d #{ifaddr} || true"
 
-# erlang would spawn epmd for us normally. But it would daemonize
-# itself. Which we don't need. We want it to receive HUP & TERM
-# signals so that there's nobody running in our netns after we're done
-puts "spawning epmd in our pgroup"
-# sh "ip netns exec #{netns} erl -noshell -setcookie nocookie -sname init -run init stop 2>&1 > /dev/null"
-sh "ip netns exec #{netns} epmd </dev/null >/dev/null 2>&1 &"
-
-poll_for_condition do
-  begin
-    puts "checking epmd alivedness"
-    TCPSocket.new(ifaddr, 4369).close
-    true
-  rescue Errno::ECONNREFUSED
-    false
-  end
-end
-
 puts "exec-ing erlang #{ARGV.join(' ')}"
 STDOUT.flush
 STDERR.flush

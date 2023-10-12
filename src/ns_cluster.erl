@@ -1099,7 +1099,7 @@ expect_integer(PropName, Value) ->
     end.
 
 get_port_from_epmd(OtpNode, AFamily, Encryption) ->
-    Res = case cb_epmd:get_port(OtpNode, AFamily, Encryption, 5000)  of
+    Res = case cb_epmd:get_port(OtpNode, AFamily, Encryption)  of
               {port, Port, _Version} -> {ok, Port};
               noport -> {error, noport};
               {error, _} = Error -> Error
@@ -1659,7 +1659,6 @@ perform_actual_join(RemoteNode, NewCookie, ChronicleInfo) ->
     ns_ssl_services_setup:update_certs_epoch(),
 
     misc:remove_marker(join_marker_path()),
-    netconfig_updater:maybe_kill_epmd(),
 
     ?cluster_debug("Join succeded, starting ns_server_cluster back", []),
     case ns_server_cluster_sup:start_ns_server() of

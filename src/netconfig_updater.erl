@@ -12,7 +12,6 @@
 
 %% API
 -export([start_link/0,
-         maybe_kill_epmd/0,
          apply_config/1,
          change_external_listeners/2,
          ensure_tls_dist_started/1,
@@ -26,8 +25,6 @@
 
 -include_lib("kernel/include/net_address.hrl").
 -include("ns_common.hrl").
-
--define(CAN_KILL_EPMD, ?get_param(can_kill_epmd, true)).
 
 %%%===================================================================
 %%% API
@@ -53,10 +50,6 @@ init([]) ->
     ServerName = ?MODULE,
     register(ServerName, self()),
     ensure_ns_config_settings_in_order(),
-    %% We choose to kill epmd at startup if required. This is mainly required
-    %% for windows as for unix systems epmd will not be started because of
-    %% no_epmd file.
-    misc:is_windows() andalso maybe_kill_epmd(),
     proc_lib:init_ack({ok, self()}),
     case misc:consult_marker(update_marker_path()) of
         {ok, [Cmd]} ->
@@ -396,59 +389,6 @@ check_nodename_resolvable(Node, AFamily) ->
         {ok, _} -> ok;
         {error, Reason} ->
             {error, {node_resolution_failed, {AFamily, Hostname, Reason}}}
-    end.
-
-epmd_executable() ->
-    case misc:is_windows() of
-        true ->
-            %% Epmd doesn't exist in the bin path for windows so we pass the
-            %% erts_bin_path env to point us to it.
-            {ok, ERTSPath} = application:get_env(ns_server,
-                                                 erts_bin_path),
-            filename:join(ERTSPath, "epmd.exe");
-        false ->
-            path_config:component_path(bin, "epmd")
-    end.
-
-kill_epmd() ->
-    Path = epmd_executable(),
-    Port = erlang:open_port({spawn_executable, Path},
-                            [stderr_to_stdout, binary,
-                             stream, exit_status, hide,
-                             {args, ["-kill"]}]),
-    {ExitStatus, Output} = wait_for_exit(Port, []),
-    case ExitStatus of
-        0 ->
-            ok;
-        _ ->
-            ?log_error("Failed to kill epmd: ~p", [{ExitStatus, Output}]),
-            error
-    end.
-
-wait_for_exit(Port, Output) ->
-    receive
-        {Port, {data, Data}} ->
-            wait_for_exit(Port, Output ++ binary_to_list(Data));
-        {Port, {exit_status, Status}} ->
-            {Status, Output}
-    end.
-
-maybe_kill_epmd() ->
-    NoEpmdFile = path_config:component_path(data, "no_epmd"),
-    case ?CAN_KILL_EPMD andalso
-        (misc:get_afamily_only() orelse misc:disable_non_ssl_ports()) of
-        true ->
-            try
-                misc:create_marker(NoEpmdFile),
-                ?log_info("Killing epmd ..."),
-                kill_epmd()
-            catch
-                T:E:S ->
-                    ?log_error("Exception while killing epmd ~p", [{T, E, S}])
-            end;
-        false ->
-            file:delete(NoEpmdFile),
-            ok
     end.
 
 %% This function is needed to:

@@ -75,8 +75,7 @@ class Node:
         data = '{port, P, _} = cb_epmd:get_port(' \
                                 'node(), ' \
                                 'cb_dist:address_family(), ' \
-                                f'{encryption_param}, ' \
-                                '60000),' \
+                                f'{encryption_param}),' \
                'P.'
         r = testlib.post_succ(self, '/diag/eval', data=data)
         return int(r.text)

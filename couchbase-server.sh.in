@@ -76,9 +76,6 @@ export ERL_CRASH_DUMP
 ERL_FULLSWEEP_AFTER=512
 export ERL_FULLSWEEP_AFTER
 
-ERL_EPMD_RELAXED_COMMAND_CHECK=1
-export ERL_EPMD_RELAXED_COMMAND_CHECK
-
 # For some obscure reason erl requires HOME environment variable to be set.
 if [ -z "$HOME" ]
 then
@@ -162,18 +159,6 @@ _prepare_datadir () {
     cd "$CB_DATA_DIR"
 }
 
-_maybe_start_epmd () {
-    if [ ! -f $CB_DATA_DIR/no_epmd ]
-    then
-        # Initialize distributed erlang on the system (i.e. epmd)
-        erl -noshell -setcookie nocookie -sname init -run init stop 2>&1 > /dev/null
-        if [ $? -ne 0 ]
-        then
-            exit 1
-        fi
-    fi
-}
-
 _add_config_file () {
     couch_start_arguments="$couch_start_arguments $1"
 }
@@ -226,7 +211,6 @@ _start() {
     # Detect curl cabundle and set environment.
     _config_curl_env
 
-    _maybe_start_epmd
     _load_config
 
     # note: we depend on pwd being $datadir from _prepare_datadir
@@ -246,7 +230,7 @@ _start() {
         -name 'babysitter_of_ns_1@cb.local' \
         -proto_dist cb \
         -epmd_module cb_epmd \
-        -start_epmd false \
+        -no_epmd \
         -ssl_dist_optfile $SSL_DIST_OPTFILE \
         -setcookie nocookie \
         $* \
@@ -287,8 +271,6 @@ _stop() {
             return 2
         fi
     done
-
-    epmd -kill >/dev/null
 }
 
 # This function assumes that _start created a pidfile

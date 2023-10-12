@@ -18,46 +18,55 @@
 -endif.
 
 %% External exports
--export([start/0, start_link/0, stop/0, port_for_node/2, port_please/2,
-         port_please/3, names/0, names/1,
+-export([start/0, start_link/0, port_for_node/2, port_please/2, port_please/3,
+         names/0, names/1, address_please/3, listen_port_please/2,
          register_node/2, register_node/3, is_local_node/1, node_type/1,
-         get_port/4]).
+         get_port/3]).
 
 %%%----------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------
 
-%% Starting erl_epmd only for backward compat
-%% Old clusters will use epmd to discover this nodes. When upgrade is finished
-%% epmd is not needed.
-start() ->
-    load_configuration(),
-    erl_epmd:start().
 start_link() ->
     load_configuration(),
-    erl_epmd:start_link().
-stop() -> erl_epmd:stop().
+    ignore.
+
+start() ->
+    load_configuration(),
+    ignore.
+
+address_please(_Name, Host, AddressFamily) ->
+    inet:getaddr(Host, AddressFamily).
+
+listen_port_please(_Name, _Host) ->
+    {ok, 0}.
 
 %% Node here comes without hostname and as string
 %% (for example: "n_1", but not 'n_1@127.0.0.1')
 port_please(Node, Hostname) ->
     port_please(Node, Hostname, infinity).
 
-port_please(NodeStr, Hostname, Timeout) ->
+port_please(NodeStr, Hostname, _Timeout) ->
     try cb_dist:get_preferred_dist(NodeStr) of
         Module ->
             {AFamily, Encryption} = cb_dist:proto2netsettings(Module),
-            get_port(NodeStr, Hostname, AFamily, Encryption, Timeout)
+            get_port(NodeStr, Hostname, AFamily, Encryption)
     catch
         error:Error ->
             {error, Error}
     end.
 
-get_port(Node, AFamily, Encryption, Timeout) ->
+get_port(Node, AFamily, Encryption) ->
     {Name, Host} = misc:node_name_host(Node),
-    get_port(Name, Host, AFamily, Encryption, Timeout).
+    get_port(Name, Host, AFamily, Encryption).
 
-get_port(NodeName, NodeHost, AFamily, Encryption, Timeout) ->
+get_port_for_node(Module, NodeName) ->
+    case port_for_node(Module, NodeName) of
+        noport -> noport;
+        P -> {port, P, 5}
+    end.
+
+get_port(NodeName, NodeHost, AFamily, Encryption) ->
     Module = cb_dist:netsettings2proto({AFamily, Encryption}),
     try {node_type(NodeName), Encryption} of
         %% needed for backward compat: old ns_server nodes use dynamic
@@ -66,42 +75,26 @@ get_port(NodeName, NodeHost, AFamily, Encryption, Timeout) ->
         %% epmd because old nodes doesn't know anything about those
         %% ports
         {ns_server, false} ->
-            case inet:getaddr(NodeHost, AFamily) of
-                {ok, IpAddr} ->
-                    case erl_epmd:port_please(NodeName, IpAddr, Timeout) of
-                        {port, _, _} = R -> R;
-                        _ ->
-                            case port_for_node(Module, NodeName) of
-                                noport -> noport;
-                                P -> {port, P, 5}
-                            end
-                    end;
+            case address_please(NodeName, NodeHost, AFamily) of
+                {ok, _} -> get_port_for_node(Module, NodeName);
                 {error, _} = Error -> Error
             end;
-        {_, _} ->
-            case port_for_node(Module, NodeName) of
-                noport -> noport;
-                P -> {port, P, 5}
-            end
+        {_, _} -> get_port_for_node(Module, NodeName)
+
     catch
         error:Error ->
             {error, Error}
     end.
 
-names() -> erl_epmd:names().
+names() -> {ok, []}.
 
-names(EpmdAddr) -> erl_epmd:names(EpmdAddr).
+names(_EpmdAddr) -> {ok, []}.
 
 register_node(Name, PortNo) ->
     register_node(Name, PortNo, inet).
 
 register_node(_Name, _PortNo, _Family) ->
-    %% Since ports are static we don't need to register them, but
-    %% there is one exception: because of backward compatibility
-    %% we register non tls ns_server ports in order to let pre-6.5
-    %% nodes find this node. The registering itself is done on cb_dist.
-    %% 'Creation' is zero because we don't use it anyway
-    %% real 'creation' is generated in cb_dist.erl
+    %% Since ports are static we don't need to register them.
     {ok, 0}.
 
 port_for_node(Module, NodeStr) ->
