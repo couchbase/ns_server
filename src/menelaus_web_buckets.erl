@@ -546,31 +546,39 @@ handle_bucket_delete(_PoolId, BucketId, Req) ->
             ns_audit:delete_bucket(Req, BucketId),
             ?MENELAUS_WEB_LOG(?BUCKET_DELETED, "Deleted bucket \"~s\"~n", [BucketId]),
             reply(Req, 200);
-        rebalance_running ->
-            reply_json(Req, {[{'_',
-                               <<"Cannot delete buckets during rebalance.\r\n">>
-                              }]}, 503);
-        in_recovery ->
-            reply_json(Req, {[{'_',
-                               <<"Cannot delete buckets when cluster is in "
-                                 "recovery mode.\r\n">>}]}, 503);
-        in_bucket_hibernation ->
-            reply_json(
-              Req,
-              {[{'_',
-                 <<"Cannot delete bucket when pausing/resuming another
-                   bucket">>}]},
-              503);
-        {shutdown_failed, _} ->
-            reply_json(Req, {[{'_',
-                               <<"Bucket deletion not yet complete, but will "
-                                 "continue.\r\n">>}]}, 500);
-        shutdown_incomplete ->
-            reply_json(Req, {[{'_',
-                               <<"Bucket shutdown interrupted by "
-                                 "auto-failover">>}]}, 500);
         {exit, {not_found, _}, _} ->
-            reply_text(Req, "The bucket to be deleted was not found.\r\n", 404)
+            ns_server_stats:notify_counter({<<"rest_request_failure">>,
+                                            [{type, bucket_delete},
+                                             {code, 404}]}),
+            reply_text(Req, "The bucket to be deleted was not found.\r\n", 404);
+        Err ->
+            {Body, Code} =
+                case Err of
+                    rebalance_running ->
+                        {{[{'_',
+                           <<"Cannot delete buckets during rebalance.\r\n">>
+                          }]}, 503};
+                    in_recovery ->
+                        {{[{'_',
+                           <<"Cannot delete buckets when cluster is in "
+                             "recovery mode.\r\n">>}]}, 503};
+                    in_bucket_hibernation ->
+                        {{[{'_',
+                           <<"Cannot delete bucket when pausing/resuming "
+                             "another bucket">>}]}, 503};
+                    {shutdown_failed, _} ->
+                        {{[{'_',
+                           <<"Bucket deletion not yet complete, but will "
+                             "continue.\r\n">>}]}, 500};
+                    shutdown_incomplete ->
+                        {{[{'_',
+                           <<"Bucket shutdown interrupted by "
+                             "auto-failover">>}]}, 500}
+                end,
+            ns_server_stats:notify_counter({<<"rest_request_failure">>,
+                                            [{type, bucket_delete},
+                                             {code, Code}]}),
+            reply_json(Req, Body, Code)
     end.
 
 respond_bucket_created(Req, PoolId, BucketId) ->
@@ -945,6 +953,9 @@ handle_bucket_create(PoolId, Req) ->
         ok ->
             respond_bucket_created(Req, PoolId, Name);
         {Struct, Code} ->
+            ns_server_stats:notify_counter({<<"rest_request_failure">>,
+                                            [{type, bucket_create},
+                                             {code, Code}]}),
             reply_json(Req, Struct, Code)
     end.
 

@@ -41,6 +41,22 @@
         "added": "7.6.0",
         "stability": "committed"
     },
+    "cm_rest_request_failure_total":{
+        "type": "counter",
+        "help": "Number of REST requests failing (see specific code)",
+        "added": "7.6.0",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "type",
+                "help": "Type of operation that failed (e.g. bucket_create, scope_delete, etc.)"
+            },
+            {
+                "name": "code",
+                "help": "HTTP error code"
+            }
+        ]
+    },
     "couch_docs_actual_disk_size": {
         "type": "gauge",
         "help": "Amount of disk space used by the Data Service",

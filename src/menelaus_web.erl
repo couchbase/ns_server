@@ -1342,6 +1342,9 @@ check_bucket_uuid(Bucket, F, Args, Req) ->
     case ns_bucket:uuid(Bucket, direct) of
         not_present ->
             ?log_debug("Attempt to access non existent bucket ~p", [Bucket]),
+            ns_server_stats:notify_counter({<<"rest_request_failure">>,
+                                            [{type, bucket_access},
+                                             {code, 404}]}),
             reply_not_found(Req);
         UUID ->
             ReqUUID = proplists:get_value("bucket_uuid",
@@ -1351,6 +1354,9 @@ check_bucket_uuid(Bucket, F, Args, Req) ->
                 true ->
                     erlang:apply(F, Args ++ [Req]);
                 false ->
+                    ns_server_stats:notify_counter({<<"rest_request_failure">>,
+                                                    [{type, bucket_access},
+                                                     {code, 404}]}),
                     reply_text(
                       Req, "Bucket uuid does not match the requested.\r\n", 404)
             end

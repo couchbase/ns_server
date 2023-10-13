@@ -44,7 +44,7 @@ handle_post_scope(Bucket, Req) ->
               RV = collections:create_scope(Bucket, Name),
               maybe_audit(RV, Req, ns_audit:create_scope(_, Bucket, Name, _)),
               maybe_add_event_log(RV, Bucket, []),
-              handle_rv(RV, Req)
+              handle_rv(RV, scope_create, Req)
       end, Req, form, scope_validators(default_not_allowed)).
 
 maybe_audit({ok, {Uid, _}}, Req, SuccessfulAuditFun) ->
@@ -152,11 +152,11 @@ handle_post_collection(Bucket, Scope, Req) ->
                         ns_audit:create_collection(_, Bucket, Scope, Name,
                             _)),
                     maybe_add_event_log(RV, Bucket, []),
-                    handle_rv(RV, Req)
+                    handle_rv(RV, collection_create, Req)
                 end, Req, form,
                 collection_validators(default_not_allowed, BucketConf));
         not_present ->
-            handle_rv({bucket_not_found, Bucket}, Req)
+            handle_rv({bucket_not_found, Bucket}, collection_create, Req)
     end.
 
 handle_patch_collection(Bucket, Scope, Name, Req) ->
@@ -171,13 +171,13 @@ handle_patch_collection(Bucket, Scope, Name, Req) ->
                                 ns_audit:modify_collection(_, Bucket, Scope,
                                                            Name, _)),
                     maybe_add_event_log(RV, Bucket, []),
-                    handle_rv(RV, Req)
+                    handle_rv(RV, collection_patch, Req)
                 end, Req, form,
                 collection_modifiable_validators(BucketConf) ++
                 % Don't allow any other params
                 [validator:unsupported(_)]);
         not_present ->
-            handle_rv({bucket_not_found, Bucket}, Req)
+            handle_rv({bucket_not_found, Bucket}, collection_patch, Req)
     end.
 
 handle_delete_scope(Bucket, Name, Req) ->
@@ -185,14 +185,14 @@ handle_delete_scope(Bucket, Name, Req) ->
     RV = collections:drop_scope(Bucket, Name),
     maybe_audit(RV, Req, ns_audit:drop_scope(_, Bucket, Name, _)),
     maybe_add_event_log(RV, Bucket, []),
-    handle_rv(RV, Req).
+    handle_rv(RV, scope_delete, Req).
 
 handle_delete_collection(Bucket, Scope, Name, Req) ->
     assert_api_available(Bucket),
     RV = collections:drop_collection(Bucket, Scope, Name),
     maybe_audit(RV, Req, ns_audit:drop_collection(_, Bucket, Scope, Name, _)),
     maybe_add_event_log(RV, Bucket, []),
-    handle_rv(RV, Req).
+    handle_rv(RV, collection_delete, Req).
 
 handle_set_manifest(Bucket, Req) ->
     assert_api_available(Bucket),
@@ -213,7 +213,7 @@ handle_set_manifest(Bucket, Req) ->
                                                       ValidOnUid, _)),
                     %% Add event logs for each of the specific operation performed.
                     maybe_add_event_log(RV, Bucket, []),
-                    handle_rv(RV, Req)
+                    handle_rv(RV, manifest_set, Req)
                 end, Req, json,
                 [validator:required(scopes, _),
                  validate_scopes(scopes, BucketConf, _),
@@ -223,7 +223,7 @@ handle_set_manifest(Bucket, Req) ->
             handle_rv({error,
                       io_lib:format("Could not get config for Bucket ~p",
                                     [Bucket])},
-                      Req)
+                      manifest_set, Req)
     end.
 
 check_duplicates(Name, State) ->
@@ -417,18 +417,22 @@ get_formatted_err_msg(Error) ->
         {Msg, Params, Code} -> {io_lib:format(Msg, Params), Code}
     end.
 
-handle_rv({ok, {Uid, _}}, Req) ->
-    handle_rv({ok, Uid}, Req);
-handle_rv({ok, Uid}, Req) ->
+handle_rv({ok, {Uid, _}}, Type, Req) ->
+    handle_rv({ok, Uid}, Type, Req);
+handle_rv({ok, Uid}, _Type, Req) ->
     menelaus_util:reply_json(Req, {[{uid, Uid}]}, 200);
-handle_rv({errors, List}, Req) when is_list(List) ->
+handle_rv({errors, List}, Type, Req) when is_list(List) ->
     Errors = lists:map(fun (Elem) ->
                                {Msg, _} = get_formatted_err_msg(Elem),
                                Msg
                        end, lists:usort(List)),
+    ns_server_stats:notify_counter({<<"rest_request_failure">>,
+                                    [{type, Type}, {code, 400}]}),
     menelaus_util:reply_json(Req, {[{errors, Errors}]}, 400);
-handle_rv(Error, Req) ->
+handle_rv(Error, Type, Req) ->
     {Msg, Code} = get_formatted_err_msg(Error),
+    ns_server_stats:notify_counter({<<"rest_request_failure">>,
+                                    [{type, Type}, {code, Code}]}),
     reply_global_error(Req, Msg, Code).
 
 reply_global_error(Req, Msg, Code) ->
