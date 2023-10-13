@@ -103,7 +103,8 @@ def run_testset(testset, cluster, total_testsets_num,
     if err is not None:
         # If testset setup fails, all tests were not ran
         for not_ran_test in testset['test_name_list']:
-            not_ran.append((not_ran_test,
+            not_ran.append((test_name(testset_instance, not_ran_test['name'],
+                                      not_ran_test['iter']),
                             "testset setup failed"))
         return 0, [err], not_ran
 
@@ -134,7 +135,9 @@ def run_testset(testset, cluster, total_testsets_num,
                 # Don't try to run further tests as test_teardown failure will
                 # likely cause additional test failures which are irrelevant
                 for not_ran_test in testset['test_name_list'][executed:]:
-                    not_ran.append((not_ran_test,
+                    not_ran.append((test_name(testset_instance,
+                                              not_ran_test['name'],
+                                              not_ran_test['iter']),
                                     "Earlier test_teardown failed"))
                 break
     finally:
@@ -148,6 +151,15 @@ def run_testset(testset, cluster, total_testsets_num,
     return executed, errors, not_ran
 
 
+def test_name(testset, testname, testiter):
+    iter_str = f'#{testiter+1}' if testiter != 0 else ''
+    if hasattr(testset, '__name__'):
+        testname = f"{testset.__name__}.{testname}{iter_str}"
+    else:
+        testname = f"{type(testset).__name__}.{testname}{iter_str}"
+    return testname
+
+
 def safe_test_function_call(testset, testfunction, args, testiter,
                             verbose=False, intercept_output=True, seed=None,
                             dry_run=None):
@@ -155,11 +167,7 @@ def safe_test_function_call(testset, testfunction, args, testiter,
         dry_run = config['dry_run']
     res = None
     error = None
-    iter_str = f'#{testiter+1}' if testiter != 0 else ''
-    if hasattr(testset, '__name__'):
-        testname = f"{testset.__name__}.{testfunction}{iter_str}"
-    else:
-        testname = f"{type(testset).__name__}.{testfunction}{iter_str}"
+    testname = test_name(testset, testfunction, testiter)
 
     report_call = call_reported(testname, verbose=verbose,
                                 res_on_same_line=intercept_output)
