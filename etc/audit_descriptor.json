@@ -856,6 +856,7 @@
               "authenticated_userid" : {"domain" : "", "user" : ""},
               "auditd_enabled": true,
               "rotate_interval": 1,
+              "audit_prune_age": 0,
               "rotate_size": 1,
               "log_path": "",
               "disabled_userids": "",
