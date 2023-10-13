@@ -47,9 +47,11 @@ class NodeAdditionTests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return [ClusterRequirements(min_num_nodes=3, num_connected=1,
+        return [ClusterRequirements(edition="Enterprise",
+                                    min_num_nodes=3, num_connected=1,
                                     afamily="ipv4"),
-                ClusterRequirements(min_num_nodes=3, num_connected=1,
+                ClusterRequirements(edition="Enterprise",
+                                    min_num_nodes=3, num_connected=1,
                                     afamily="ipv6")]
 
     def n2n_test_base(self, method, enable: bool):
