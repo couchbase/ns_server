@@ -298,6 +298,8 @@ class Edition(Requirement):
            or req_dict.get('encryption', False) \
            or req_dict.get('afamily', None) == 'ipv6':
             available_editions.remove('Community')
+        if not Edition.is_serverless_supported(req_dict.get('deploy', None)):
+            available_editions.remove('Serverless')
         random_edition = random.choice(available_editions)
         return Edition(random_edition)
 
@@ -310,8 +312,26 @@ class Edition(Requirement):
         if isinstance(deploy, list):
             return deploy in supported_configurations
 
-        for n in self.deploy:
-            if self.deploy[n] not in supported_configurations:
+        for n in deploy:
+            if deploy[n] not in supported_configurations:
+                return False
+        return True
+
+    @staticmethod
+    def is_serverless_supported(deploy):
+        if deploy is None:
+            return True
+
+        # When Analytics is started using the serverless profile, it expects
+        # the blob storage settings to be set before the cluster is
+        # initialized to enable bootstrapping in compute-storage separation
+        # mode. We don't do that in cluster_run environment currently, so
+        # for that reason we don't use Analytics in tests for serverless.
+        if isinstance(deploy, list):
+            return 'cbas' not in deploy
+
+        for n in deploy:
+            if 'cbas' in deploy[n]:
                 return False
         return True
 
@@ -522,13 +542,21 @@ class Services(Requirement):
     @staticmethod
     def random(req_dict):
         community = (req_dict.get('edition', None) == 'Community')
+        serverless = (req_dict.get('edition', None) == 'Serverless')
         if community:
             services = random.choice(Services.community_configurations)
         else:
             services = list(Service)
+            # When Analytics is started using the serverless profile, it
+            # expects the blob storage settings to be set before the cluster is
+            # initialized to enable bootstrapping in compute-storage separation
+            # mode. We don't do that in cluster_run environment currently, so
+            # for that reason we don't use Analytics in tests for serverless.
+            if serverless:
+                services.remove(Service.CBAS)
             services = [Service.KV] + random.sample(
-                                    services,
-                                    k=random.randint(0, len(services) - 1))
+                                        services,
+                                        k=random.randint(0, len(services) - 1))
         return Services(services)
 
 
