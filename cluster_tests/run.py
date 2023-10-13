@@ -122,6 +122,11 @@ def error_exit(msg):
     sys.exit(2)
 
 
+def warning_exit(msg):
+    print(testlib.yellow(msg))
+    sys.exit(3)
+
+
 def remove_temp_cluster_directories():
     for dir in glob.glob(tmp_cluster_dir + "*"):
         testlib.maybe_print(f"Removing cluster dir {dir}...")
@@ -276,6 +281,7 @@ def main():
     executed = 0
     test_time = 0
     start_ts = time.time_ns()
+    not_ran = []
     for (configuration, testsets) in testsets_grouped:
         # Get an appropriate cluster to satisfy the configuration
         if use_existing_server:
@@ -351,6 +357,8 @@ def main():
 
     if len(errors) > 0:
         error_exit("Tests finished with errors")
+    elif len(not_ran) > 0:
+        warning_exit("Some tests were skipped")
     elif not (keep_tmp_dirs or check_for_core_files()):
         # Kill any created nodes and possibly delete directories as we don't
         # need to keep around data from successful tests

@@ -207,6 +207,10 @@ def green(str):
     return maybe_color(str, 32)
 
 
+def yellow(str):
+    return maybe_color(str, 33)
+
+
 def maybe_color(str, code):
     if config['colors']:
         return f"\033[{code}m{str}\033[0m"
