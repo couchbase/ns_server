@@ -31,16 +31,15 @@ config={'colors': support_colors(),
 
 
 def try_reuse_cluster(requirements, cluster):
-    # If we can use the existing cluster then we should
-    if len(requirements.get_unmet_requirements(cluster)) == 0:
-        return True, []
-
     # Attempt to satisfy the requirements with the existing cluster if
     # possible
     satisfiable, unsatisfied = requirements.is_satisfiable(cluster)
+    if len(unsatisfied) == 0:
+        return True, []
     if satisfiable:
         for requirement in unsatisfied:
             with no_output("make_met"):
+                print(f'Trying to fix unmet requirement: {requirement}...')
                 requirement.make_met(cluster)
         # We should not have unmet requirements at this point.
         # If we do, it is a bug in make_met() or in is_met()
@@ -639,3 +638,12 @@ def wait_for_ejected_node(ejected_node):
         lambda: ejected_node_is_up(ejected_node),
         sleep_time=1, timeout=60,
         msg=f'wait for ejected node {ejected_node} to be up')
+
+
+class UnmetRequirementsError(Exception):
+    def __init__(self, unmet_requirements,
+                 message='Cluster doesn\'t satisfy requirements'):
+        unmet_str = ', '.join(str(r) for r in unmet_requirements)
+        msg = f'{message}: {unmet_str}'
+        super().__init__(msg)
+        self.unmet_requirements = unmet_requirements

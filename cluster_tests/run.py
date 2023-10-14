@@ -31,6 +31,9 @@ sys.path.append(pylib)
 
 import cluster_run_lib
 import testlib
+from testlib import UnmetRequirementsError
+from testlib.cluster import InconsistentClusterError
+
 from testsets import \
     authn_tests, \
     auto_failover_test, \
@@ -291,6 +294,7 @@ def main():
                              f"{[str(r) for r in unmet_requirements]}"
                     not_ran.append((testset['name'], reason))
                 continue
+            cluster.set_requirements(configuration)
         else:
             cluster = testlib.get_appropriate_cluster(cluster,
                                                       (username, password),
@@ -532,27 +536,71 @@ def run_testsets(cluster, testsets, total_num,
     executed = 0
     errors = {}
     not_ran = []
+    current_unmet_requirements = []
+    cluster_is_unusable = False
     for testset in testsets:
+
+        def skip_this_testset(error):
+            for skip_test in testset['test_name_list']:
+                not_ran.append((testlib.test_name(testset['class'],
+                                                  skip_test['name'],
+                                                  skip_test['iter']),
+                                error))
+
+        if cluster_is_unusable:
+            skip_this_testset('Cluster is in incosistent state (can be '
+                              'caused by a timed out rebalance)')
+            continue
+
         # We should be able to reuse the cluster here (because we constructed
         # this cluster specifically for this testset), so make sure
         # requirements are still met for this testset (other tests could have
         # broken it).
+        # Note that here we are testing cluster against specific testset
+        # requirements, while below (after the testset run) we test cluster
+        # against global cluster requirements (basically intersection of all
+        # requirements in these testset group)
         reuse, unmet = testlib.try_reuse_cluster(testset['requirements'],
                                                  cluster)
+
         if not reuse:
             unmet_str = ', '.join(str(r) for r in unmet)
-            raise RuntimeError('Internal error. ' \
-                               f'Unmet requirements: {unmet_str}')
+            skip_this_testset('Cluster does not satisfy test requirements ' \
+                              f'{unmet_str} (probably broken by previous ' \
+                              'testsets)')
+            continue
+
         res = testlib.run_testset(testset, cluster, total_num,
                                   intercept_output=intercept_output,
                                   seed=seed)
         executed += res[0]
         testset_errors = res[1]
+        not_ran += res[2]
+
+        try:
+            unmet = cluster.maybe_repair_cluster_requirements()
+            new_unmet = [r for r in unmet
+                         if r not in current_unmet_requirements]
+            current_unmet_requirements = unmet
+            # If this testset has added new unmet requirements,
+            # we should treat that testset as failure
+            if len(new_unmet) > 0:
+                error_msg = f'Test {testset["name"]} broke some ' \
+                            'cluster requirements'
+                test_error = UnmetRequirementsError(new_unmet,
+                                                    message=error_msg)
+                print(testlib.red(str(test_error)))
+                testset_errors.append((testset["name"], test_error))
+        except InconsistentClusterError as e:
+            print(testlib.red(str(e)))
+            testset_errors.append((testset["name"], e))
+            cluster_is_unusable = True
+
         if len(testset_errors) > 0:
             if testset['name'] not in errors:
                 errors[testset['name']] = []
             errors[testset['name']].extend(testset_errors)
-        not_ran += res[2]
+
     return executed, errors, not_ran
 
 

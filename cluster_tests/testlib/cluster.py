@@ -14,6 +14,7 @@ from typing import List
 
 import requests
 from urllib.error import URLError
+from copy import deepcopy
 
 import testlib
 from testlib.util import services_to_strings, Service
@@ -118,6 +119,7 @@ class Cluster:
         self.processes = processes
         self.auth = auth
         self.memsize = memsize
+        self.requirements = None
 
         def get_bool(code):
             return testlib.post_succ(self, "/diag/eval",
@@ -455,6 +457,44 @@ class Cluster:
                                      "connected to the cluster"
         return spare_nodes[0]
 
+    @testlib.no_output_decorator
+    def smog_check(self):
+        print("Starting cluster smog check")
+        # We need to make sure that our representation of the cluster
+        # is consistent and correct because is_met() functions may rely on it
+        for n in self.nodes:
+            if n in self.connected_nodes:
+                r = testlib.get_succ(n, '/pools/default')
+                got_nodes = r.json()['nodes']
+                if len(got_nodes) != len(self.connected_nodes):
+                    raise InconsistentClusterError(
+                            'Number of nodes in the cluster is unexpected.\n' \
+                            f'Got nodes: {got_nodes}\n' \
+                            f'Expected: {self.connected_nodes}')
+            else:
+                r = testlib.get_succ(n, '/pools')
+                if len(r.json()['pools']) > 0:
+                    raise InconsistentClusterError(
+                            f'Node {n} is not expected to be part of ' \
+                            f'the cluster: {self}')
+        print("Smog check finished successfully")
+
+    def maybe_repair_cluster_requirements(self):
+        self.smog_check()
+        if self.requirements is None:
+            return []
+        testlib.maybe_print(
+            f'Checking cluster requirements: {self.requirements}...')
+        _, still_unmet = testlib.try_reuse_cluster(self.requirements, self)
+        return still_unmet
+
+    def set_requirements(self, requirements):
+        self.requirements = deepcopy(requirements)
+
 
 def get_services_string(services: List[Service]):
     return ",".join(services_to_strings(services))
+
+
+class InconsistentClusterError(Exception):
+    pass

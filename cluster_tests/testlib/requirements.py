@@ -123,11 +123,15 @@ class ClusterRequirements:
                                 connect_args=connect_args,
                                 kill_nodes=kill_nodes)
 
-        still_unmet = self.get_unmet_requirements(cluster)
-        if len(still_unmet) > 0:
-            unmet_str = ', '.join(str(r) for r in still_unmet)
+        cluster.set_requirements(self)
+        # should not really repair anything, just checking that all
+        # requirements are satisfied after cluster creation
+        unmet_requirements = cluster.maybe_repair_cluster_requirements()
+        if len(unmet_requirements) > 0:
+            unmet_str = ', '.join(str(r) for r in unmet_requirements)
             raise RuntimeError("Newly created cluster still has the following "
                                f"requirements unmet: {unmet_str}")
+
         return cluster
 
     # Given a cluster, checks if any requirements are not satisfied, and
@@ -145,10 +149,7 @@ class ClusterRequirements:
 
     @testlib.no_output_decorator
     def get_unmet_requirements(self, cluster):
-        unmet_requirements = []
-        for requirement in self.as_list():
-            if not requirement.is_met(cluster):
-                unmet_requirements.append(requirement)
+        _, unmet_requirements = self.is_satisfiable(cluster)
         return unmet_requirements
 
     # Determines whether this set of requirements will be satisfiable with a
