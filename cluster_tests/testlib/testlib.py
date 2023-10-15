@@ -50,7 +50,8 @@ def try_reuse_cluster(requirements, cluster):
 
 
 def get_appropriate_cluster(cluster, auth, requirements,
-                            tmp_cluster_dir, kill_nodes, reuse_clusters):
+                            tmp_cluster_dir, kill_nodes, reuse_clusters,
+                            first_node_index):
     cluster_index = 0
     if cluster is not None:
         if reuse_clusters:
@@ -72,7 +73,7 @@ def get_appropriate_cluster(cluster, auth, requirements,
           f"{requirements}")
     cluster = requirements.create_cluster(auth, cluster_index,
                                           tmp_cluster_dir,
-                                          kill_nodes)
+                                          kill_nodes, first_node_index)
     maybe_print("\n======================================="
                 "=========================================\n")
     return cluster

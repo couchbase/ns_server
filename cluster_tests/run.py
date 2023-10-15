@@ -105,6 +105,8 @@ Usage: {program_name}
         Run each testset N times (1 by default)
     [--test-iterations=M]
         Run each test M times (1 by default)
+    [--start-index=N]
+        Use N as a start-index for all started clusters
     [--help]
         Show this help
 """
@@ -155,6 +157,7 @@ def main():
                                            'randomize-clusters',
                                            'random-order',
                                            'testset-iterations=',
+                                           'start-index=',
                                            'test-iterations='])
     except getopt.GetoptError as err:
         bad_args_exit(str(err))
@@ -174,6 +177,7 @@ def main():
     random_order = False
     testset_iterations = 1
     test_iterations = 1
+    start_index = 10
 
     for o, a in optlist:
         if o in ('--cluster', '-c'):
@@ -224,6 +228,8 @@ def main():
             testset_iterations = int(a)
         elif o == '--test-iterations':
             test_iterations = int(a)
+        elif o == '--start-index':
+            start_index = int(a)
         elif o in ('--help', '-h'):
             usage()
             exit(0)
@@ -301,7 +307,8 @@ def main():
                                                       configuration,
                                                       tmp_cluster_dir,
                                                       kill_nodes,
-                                                      reuse_clusters)
+                                                      reuse_clusters,
+                                                      start_index)
         testset_start_ts = time.time_ns()
         # Run the testsets on the cluster
         tests_executed, testset_errors, testset_not_ran = \

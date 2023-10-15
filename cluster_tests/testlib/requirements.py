@@ -104,8 +104,7 @@ class ClusterRequirements:
 
     @testlib.no_output_decorator
     def create_cluster(self, auth, cluster_index, tmp_cluster_dir,
-                       kill_nodes):
-        first_node_index = 0
+                       kill_nodes, first_node_index):
         start_args = {'start_index': first_node_index,
                       'root_dir': f"{tmp_cluster_dir}-{cluster_index}"}
         start_args.update(self.get_default_start_args())
