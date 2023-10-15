@@ -157,7 +157,7 @@ class PromSdConfigTest(testlib.BaseTestSet):
             else:  # external
                 host = self.build_hostname(node_num)
                 port = self.build_portnum(node_num, self.port == "secure")
-            expected_hostname = f"{host}:{port}"
+            expected_hostname = f"{testlib.maybe_add_brackets(host)}:{port}"
 
             assert (expected_hostname in targets)
             targets.remove(expected_hostname)
