@@ -162,7 +162,6 @@ def main():
     num_nodes = None
     address = '127.0.0.1'
     start_port = cluster_run_lib.base_api_port
-    start_index = 0
     tests = None
     keep_tmp_dirs = False
     intercept_output = True
@@ -180,7 +179,6 @@ def main():
                 bad_args_exit(f"Invalid format. Should be {o} <address>:<port>")
             address = tokens[0]
             start_port = int(tokens[1])
-            start_index = start_port - cluster_run_lib.base_api_port
             use_existing_server = True
         elif o in ('--user', '-u'):
             if not use_existing_server:
