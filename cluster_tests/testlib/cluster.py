@@ -92,33 +92,25 @@ def get_cluster(cluster_index, start_port, auth, processes, nodes, num_connected
                          f"({response.status_code})\n"
                          f"{response.text}")
 
-    try:
-        memsize = response.json()["memoryQuota"]
-    except NameError as e:
-        sys.exit(f"Response has not been defined, perhaps no nodes haves "
-                 f"connected. {e}")
-
     cluster = Cluster(nodes=nodes,
                       connected_nodes=connected_nodes,
                       first_node_index=start_port - cluster_run_lib.base_api_port,
                       processes=processes,
                       auth=auth,
-                      memsize=memsize,
                       index=cluster_index)
     print(f"Successfully connected to cluster: {cluster}")
     return cluster
 
 
 class Cluster:
-    def __init__(self, nodes, connected_nodes, first_node_index, processes, auth,
-                 memsize, index):
+    def __init__(self, nodes, connected_nodes, first_node_index, processes,
+                 auth, index):
         self.nodes = nodes
         self.connected_nodes = connected_nodes
         self.first_node_index = first_node_index
         self.index = index
         self.processes = processes
         self.auth = auth
-        self.memsize = memsize
         self.requirements = None
 
         def get_bool(code):
@@ -490,6 +482,10 @@ class Cluster:
 
     def set_requirements(self, requirements):
         self.requirements = deepcopy(requirements)
+
+    def memory_quota(self):
+        r = testlib.get_succ(self, '/pools/default')
+        return r.json()['memoryQuota']
 
 
 def get_services_string(services: List[Service]):

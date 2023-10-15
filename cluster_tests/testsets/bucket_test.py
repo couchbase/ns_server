@@ -348,7 +348,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
         self.addr = self.cluster.nodes[0].url
         self.num_nodes = len(self.cluster.connected_nodes)
         self.auth = self.cluster.auth
-        self.memsize = self.cluster.memsize
+        self.memsize = self.cluster.memory_quota()
         self.is_enterprise = self.cluster.is_enterprise
         self.is_trinity = self.cluster.is_trinity
         self.is_serverless = self.cluster.is_serverless
@@ -2260,7 +2260,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                      })
         self.init_limits("couchbase", "couchstore", False)
         self.test_request('POST', BUCKET_ENDPOINT_DEFAULT,
-                          data={"ramQuota": self.cluster.memsize*2})
+                          data={"ramQuota": self.cluster.memory_quota()*2})
 
 
 class ServerlessBucketTestSet(BucketTestSetBase):

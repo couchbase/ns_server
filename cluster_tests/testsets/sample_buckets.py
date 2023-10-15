@@ -203,7 +203,7 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
     def post_with_insufficient_remaining_ram_quota_test(self):
         # Create bucket taking up all space
         bucket_name = "test3"
-        self.create_bucket(bucket_name, self.cluster.memsize)
+        self.create_bucket(bucket_name, self.cluster.memory_quota())
 
         # Loading a sample bucket should fail when the cluster has insufficient
         # ram quota

@@ -456,9 +456,10 @@ class MemSize(Requirement):
         self.connect_args = {'memsize': self.memsize_to_use}
 
     def is_met(self, cluster):
+        memsize = cluster.memory_quota()
         if self.memsize is not None:
-            return cluster.memsize == self.memsize
-        return cluster.memsize >= self.min_memsize
+            return memsize == self.memsize
+        return memsize >= self.min_memsize
 
     def can_be_met(self):
         return True
