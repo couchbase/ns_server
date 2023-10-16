@@ -261,6 +261,12 @@ parse_dn_mapping({[{<<"template">>, T}]}) ->
     end,
     [{<<"(.+)">>, {template, Template}}];
 parse_dn_mapping({[{<<"advanced">>, List}]}) when is_list(List) ->
+    case cluster_compat_mode:is_cluster_trinity() of
+        true -> ok;
+        false ->
+            throw({error, "Advanced user-to-dn-mapping isn't supported "
+                          "in pre-trinity mixed version clusters"})
+    end,
     CheckRE =
         fun (RE) ->
             case re:compile(RE) of
