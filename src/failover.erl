@@ -306,6 +306,7 @@ janitor_membase_buckets_group(Params, Nodes) ->
                  bucket_type = membase,
                  bucket_config = BucketCfg} = proplists:get_value(Bucket,
                                                                   Params),
+              master_activity_events:note_bucket_failover_ended(Bucket, Nodes),
               OldMap = proplists:get_value(map, BucketCfg, []),
               [[{bucket, Bucket},
                 {node, N},
@@ -334,7 +335,11 @@ handle_buckets_failover(Nodes, PrepResults) ->
         lists:filter(
           fun({_,  #failover_params{bucket_type = membase}}) ->
                   true;
-             (_) ->
+             ({Bucket, _}) ->
+                  %% Only membase buckets are janitored for failover, so
+                  %% report failover end for other bucket types here
+                  master_activity_events:note_bucket_failover_ended(Bucket,
+                                                                    Nodes),
                   false
           end, PrepResults),
 
@@ -345,8 +350,7 @@ handle_buckets_failover(Nodes, PrepResults) ->
     lists:map(
       fun ({Bucket, _}) ->
               ok = check_test_condition(
-                     {fail_finalize_failover_at_bucket, Bucket}),
-              master_activity_events:note_bucket_failover_ended(Bucket, Nodes)
+                     {fail_finalize_failover_at_bucket, Bucket})
       end, PrepResults),
 
     Results.
@@ -1062,6 +1066,18 @@ failover_buckets_group_test_body() ->
                              misc:split(?MAX_BUCKETS_SUPPORTED,
                                         PrepResults)),
 
+    %% Ensure start and end failover events are reported for all buckets
+    lists:foreach(
+      fun({Bucket, _}) ->
+              ?assertEqual(
+                 1, meck:num_calls(master_activity_events,
+                                   note_bucket_failover_started, [Bucket,
+                                                                  '_'])),
+              ?assertEqual(
+                 1, meck:num_calls(master_activity_events,
+                                   note_bucket_failover_ended, [Bucket, '_']))
+      end, BConfig),
+
     ?assertEqual(lists:sort(Results1),
                  lists:sort(
                    [[{bucket,"B1"},{node,a},{status,ok},{vbuckets,[0, 1]}],
@@ -1096,6 +1112,26 @@ failover_buckets_group_test_body() ->
                  janitor_membase_buckets_group(_, FailedNodes),
                  misc:split(2, PrepResultsUpdt)),
     ?assertEqual(lists:sort(Results1), lists:sort(Results2)),
+
+    %% Previous invocation code path should have only affected membase buckets
+    %% so ensure failover end event counts match accordingly
+    lists:foreach(
+      fun({Bucket, Config}) ->
+              case ns_bucket:bucket_type(Config) of
+                  membase ->
+                      ?assertEqual(
+                         2,
+                         meck:num_calls(master_activity_events,
+                                        note_bucket_failover_ended,
+                                        [Bucket, '_']));
+                  _ ->
+                      ?assertEqual(
+                         1,
+                         meck:num_calls(master_activity_events,
+                                        note_bucket_failover_ended,
+                                        [Bucket, '_']))
+              end
+      end, BConfig),
 
     %% Lastly single bucket at a time, results must match
     Results3 = lists:flatmap(
