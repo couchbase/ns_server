@@ -1424,7 +1424,7 @@ validate_membase_bucket_params(CommonParams, Params, Name,
            Params, BucketConfig, IsNew, IsEnterprise,
            IsStorageModeMigration),
          parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise),
-         parse_validate_bucket_rank(Params),
+         parse_validate_bucket_rank(Params, IsNew),
          parse_validate_compression_mode(Params, BucketConfig, IsNew,
                                          IsEnterprise),
          HistRetSecs,
@@ -2312,17 +2312,19 @@ parse_compression_mode(_) ->
     {error, compressionMode,
      <<"compressionMode can be set to 'off', 'passive' or 'active'">>}.
 
-parse_validate_bucket_rank(Params) ->
+parse_validate_bucket_rank(Params, IsNew) ->
     parse_validate_rank_inner(cluster_compat_mode:is_cluster_trinity(),
-                              proplists:get_value("rank", Params)).
+                              proplists:get_value("rank", Params), IsNew).
 
-parse_validate_rank_inner(true, undefined) ->
+parse_validate_rank_inner(true, undefined, true = _IsNew) ->
     {ok, rank, ?DEFAULT_BUCKET_RANK};
-parse_validate_rank_inner(true, Value) ->
-    parse_validate_rank_inner(Value);
-parse_validate_rank_inner(false, undefined) ->
+parse_validate_rank_inner(true, undefined, false = _IsNew) ->
     ignore;
-parse_validate_rank_inner(false, _Value) ->
+parse_validate_rank_inner(true, Value, _IsNew) ->
+    parse_validate_rank_inner(Value);
+parse_validate_rank_inner(false, undefined, _IsNew) ->
+    ignore;
+parse_validate_rank_inner(false, _Value, _IsNew) ->
     {error, rank,
      <<"Bucket rank cannot be set until the cluster is fully "
        "upgraded to Trinity.">>}.
@@ -4703,5 +4705,56 @@ parse_validate_storage_mode_test_() ->
      fun () -> parse_validate_storage_mode_setup() end,
      fun (_X) -> parse_validate_storage_mode_teardown() end,
      [TestFun(TestArg) || TestArg <- TestArgs]}.
+
+rank_params_screening_test() ->
+    %% These tests ensure that all the different cases are handled when we are
+    %% fully upgraded to trinity.
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode, is_cluster_trinity,
+                fun () -> true end),
+    Params = [{"bucketType", "couchbase"}, {"rank", "0"}],
+    IsNew = true,
+    ?assertEqual(parse_validate_bucket_rank(Params, IsNew), {ok, rank, 0}),
+
+    Params2 = [{"bucketType", "couchbase"}],
+    IsNew2 = false,
+    ?assertEqual(parse_validate_bucket_rank(Params2, IsNew2), ignore),
+
+    Params3 = [{"bucketType", "couchbase"}, {"rank", "10"}],
+    IsNew3 = true,
+    ?assertEqual(parse_validate_bucket_rank(Params3, IsNew3), {ok, rank, 10}),
+
+    Params4 = [{"bucketType", "couchbase"}, {"rank", "100"}],
+    IsNew4 = false,
+    ?assertEqual(parse_validate_bucket_rank(Params4, IsNew4), {ok, rank, 100}),
+
+    %% This case tests rank=undefined,IsNew=false,IsTrinity=true. This allows
+    %% older nodes to join newer ones without issue.
+    NoRankParams = [{"bucketType", "couchbase"}],
+    NotNew = false,
+    ?assertEqual(parse_validate_bucket_rank(NoRankParams, NotNew), ignore),
+
+    %% these tests ensure we return correct value when we are NOT in trinity
+    meck:expect(cluster_compat_mode, is_cluster_trinity,
+                fun () -> false end),
+    %% IsTrinity=false, rank=0, IsNew=true
+    Params5 = [{"bucketType", "couchbase"}, {"rank", "0"}],
+    IsNew5 = true,
+    ?assertEqual(parse_validate_bucket_rank(Params5, IsNew5),
+                 {error, rank,
+                  <<"Bucket rank cannot be set until the cluster is fully "
+                    "upgraded to Trinity.">>}),
+
+    %% IsTrinity=false, rank=10, IsNew=false
+    Params6 = [{"bucketType", "couchbase"}, {"rank", "10"}],
+    IsNew6 = false,
+    ?assertEqual(parse_validate_bucket_rank(Params6, IsNew6),
+                 {error, rank,
+                  <<"Bucket rank cannot be set until the cluster is fully "
+                    "upgraded to Trinity.">>}),
+
+    %% IsTrinity=false, rank=undefined, IsNew=false
+    ?assertEqual(parse_validate_bucket_rank(NoRankParams, NotNew), ignore),
+    meck:unload(cluster_compat_mode).
 
 -endif.
