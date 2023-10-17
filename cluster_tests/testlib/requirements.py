@@ -555,6 +555,7 @@ class Services(Requirement):
             # for that reason we don't use Analytics in tests for serverless.
             if serverless:
                 services.remove(Service.CBAS)
+            services.remove(Service.KV)
             services = [Service.KV] + random.sample(
                                         services,
                                         k=random.randint(0, len(services) - 1))
