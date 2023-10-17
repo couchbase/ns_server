@@ -69,11 +69,6 @@ get_port_for_node(Module, NodeName) ->
 get_port(NodeName, NodeHost, AFamily, Encryption) ->
     Module = cb_dist:netsettings2proto({AFamily, Encryption}),
     try {node_type(NodeName), Encryption} of
-        %% needed for backward compat: old ns_server nodes use dynamic
-        %% ports so the only way to know those ports is to ask real epmd
-        %% for this reason we also keep registering new static ports on
-        %% epmd because old nodes doesn't know anything about those
-        %% ports
         {ns_server, false} ->
             case address_please(NodeName, NodeHost, AFamily) of
                 {ok, _} -> get_port_for_node(Module, NodeName);
