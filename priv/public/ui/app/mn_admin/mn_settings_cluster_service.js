@@ -185,6 +185,10 @@ function mnSettingsClusterServiceFactory($http, $q, IEC, mnPools, mnPoolDefault)
       fields.push("enablePageBloomFilter");
     }
 
+    if (mnPoolDefault.export.compat.atLeast76) {
+      fields.push("enableShardAffinity");
+    }
+
     fields
       .forEach(function (name) {
         if (data[name] !== undefined) {

@@ -813,6 +813,30 @@
               {{settingsClusterCtl.indexSettingsErrors.enablePageBloomFilter}}
             </div>
           </div>
+
+          <div
+             class="formrow"
+             ng-show="adminCtl.poolDefault.compat.atLeast76">
+            <label
+               class="inline"
+               for="enableShardAffinity">
+              File Transfer Based Rebalance
+            </label>
+            <br>
+            <input
+               type="checkbox"
+               id="enableShardAffinity"
+               ng-disabled="!rbac.cluster.settings.write || settingsClusterCtl.initialIndexSettings.enableShardAffinity"
+               ng-model="settingsClusterCtl.indexSettings.enableShardAffinity">
+            <label for="enableShardAffinity" class="checkbox">
+              Enable File Transfer Based Rebalance
+            </label>
+            <div
+               class="error error-field"
+               ng-show="settingsClusterCtl.indexSettingsErrors.enableShardAffinity">
+              {{settingsClusterCtl.indexSettingsErrors.enableShardAffinity}}
+            </div>
+          </div>
         </div>
 
         <div class="formrow margin-top-1-5" ng-if="rbac.cluster.xdcr.settings.read">
