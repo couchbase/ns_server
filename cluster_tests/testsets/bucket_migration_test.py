@@ -218,13 +218,15 @@ class BucketMigrationTest(testlib.BaseTestSet):
                                            num_connected=2)
 
     def setup(self):
-        pass
+        testlib.delete_all_buckets(self.cluster)
 
     def teardown(self):
+        pass
+
+    def test_teardown(self):
         testlib.delete_all_buckets(self.cluster)
 
     def migrate_storage_mode_test(self):
-        testlib.delete_all_buckets(self.cluster)
         migrate_storage_mode(
             self.cluster, old_storage_mode="couchstore",
             new_storage_mode="magma", id=1)
@@ -233,7 +235,6 @@ class BucketMigrationTest(testlib.BaseTestSet):
             new_storage_mode="couchstore", id=2)
 
     def disallow_storage_mode_migration_when_history_set_test(self):
-        testlib.delete_all_buckets(self.cluster)
         bucket = "bucket-1"
         data = {'name': bucket,
                 'storageBackend': "magma",
@@ -265,9 +266,6 @@ class BucketMigrationTest(testlib.BaseTestSet):
         self.cluster.delete_bucket(bucket)
 
     def migrate_storage_mode_via_rebalance_test(self):
-        # Delete buckets irrelevant to this test, to reduce the rebalance
-        # completion times.
-        testlib.delete_all_buckets(self.cluster)
         create_and_update_bucket(self.cluster, "bucket-1", "couchstore",
                                  "magma", 1024)
         assert_per_node_storage_mode_keys_added(self.cluster, "bucket-1",
@@ -301,7 +299,6 @@ class BucketMigrationTest(testlib.BaseTestSet):
             count += 1
 
     def migrate_storage_mode_via_failover_test(self):
-        testlib.delete_all_buckets(self.cluster)
         create_and_update_bucket(
             self.cluster, "bucket-2", "couchstore", "magma", 1024)
         assert_per_node_storage_mode_keys_added(self.cluster, "bucket-2",
@@ -317,7 +314,6 @@ class BucketMigrationTest(testlib.BaseTestSet):
                 self.cluster, node, "bucket-2")
 
     def perform_delta_recovery_mid_migration_test(self):
-        testlib.delete_all_buckets(self.cluster)
         bucket_name = "bucket-3"
         create_and_update_bucket(self.cluster, bucket_name=bucket_name,
                                  old_storage_mode="couchstore",
