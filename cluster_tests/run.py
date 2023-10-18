@@ -557,4 +557,8 @@ def run_testsets(cluster, testsets, total_num,
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print('\nExecution interrupted')
+        exit(2)
