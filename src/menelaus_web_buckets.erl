@@ -660,7 +660,9 @@ init_bucket_validation_context(IsNew, BucketName, AllBuckets,
        is_developer_preview = IsDeveloperPreview
       }.
 
-is_storage_mode_migration(BucketConfig, Params) ->
+is_storage_mode_migration(_IsNewBucket = true, _BucketConfig, _Params) ->
+    false;
+is_storage_mode_migration(_IsNewBucket, BucketConfig, Params) ->
     NewStorageMode =
         case proplists:get_value("storageBackend", Params) of
             "couchstore" ->
@@ -674,13 +676,7 @@ is_storage_mode_migration(BucketConfig, Params) ->
                 %% below.
                 undefined
         end,
-    OldStorageMode =
-        case BucketConfig of
-            false ->
-                undefined;
-            _ ->
-                ns_bucket:storage_mode(BucketConfig)
-        end,
+    OldStorageMode = ns_bucket:storage_mode(BucketConfig),
 
     %% Unfortunately the way the current code is written it is possible to
     %% update an ephemeral bucket with 'storageBackend' param set to
@@ -1398,7 +1394,8 @@ validate_membase_bucket_params(CommonParams, Params, Name,
     AllowStorageLimit = config_profile:get_bool(enable_storage_limits),
     AllowThrottleLimit = config_profile:get_bool(enable_throttle_limits),
     ReplicasNumResult = validate_replicas_number(Params, IsNew),
-    IsStorageModeMigration = is_storage_mode_migration(BucketConfig, Params),
+    IsStorageModeMigration = is_storage_mode_migration(
+                               IsNew, BucketConfig, Params),
 
     HistRetSecs = parse_validate_history_retention_seconds(
                     Params, BucketConfig, IsNew, Version, IsEnterprise,
