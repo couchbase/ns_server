@@ -161,7 +161,8 @@ engage_cluster_error({engage_cluster_failed,
             iolist_to_binary(DefaultMsg)
     end;
 engage_cluster_error({engage_cluster_failed,
-                      {_Source, _Reason, DefaultMsg, _OtherParams}}) ->
+                      {_Source, _Reason, DefaultMsg, _Hostname,
+                       _OtherParams}}) ->
     iolist_to_binary(DefaultMsg).
 
 bad_memory_size_error(Services0, TotalQuota, MaxQuota) ->
