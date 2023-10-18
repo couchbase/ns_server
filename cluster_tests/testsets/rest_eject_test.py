@@ -27,23 +27,23 @@ class RestEjectTest(testlib.BaseTestSet):
         testlib.delete_all_buckets(self.cluster)
 
     def rest_reject_test(self):
-        nodes = self.cluster.connected_nodes
-        otp_nodes = testlib.get_otp_nodes(self.cluster)
-        failoverNode = nodes[0]
-        otp_name = otp_nodes[failoverNode.hostname()]
+        failover_node = self.cluster.connected_nodes[0]
+        otp_name = failover_node.otp_node()
 
-        self.cluster.failover_node(failoverNode, graceful=False)
-
+        self.cluster.failover_node(failover_node, graceful=False)
         # Eject failed over node via REST endpoint and verify it can be
         # added back in after ejection
         data = {"otpNode": f"{otp_name}"}
-        testlib.post_succ(self.cluster.nodes[1], '/controller/ejectNode',
+        testlib.post_succ(self.cluster.connected_nodes[0],
+                          '/controller/ejectNode',
                           data=data)
         self.cluster.rebalance(wait=True)
-        self.cluster.add_node(failoverNode)
+        testlib.wait_for_ejected_node(failover_node)
+        self.cluster.add_node(failover_node)
         self.cluster.rebalance(wait=True)
 
         # The previously failed over ejected node was added back in
         # and should not be allowed to be ejected because it is active
-        testlib.post_fail(self.cluster.nodes[1], '/controller/ejectNode',
+        testlib.post_fail(self.cluster.connected_nodes[0],
+                          '/controller/ejectNode',
                           expected_code=400, data=data)

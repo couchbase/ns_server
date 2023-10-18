@@ -618,3 +618,24 @@ def maybe_add_brackets(addr):
     except ValueError:
         # addr is fqdn
         return addr
+
+
+# Rebalance has finished, but ejected nodes can still
+# (a) think they are part of the cluster
+# (b) be starting web server after leaving
+# Here we wait for one ejected node to leave the cluster and
+# start web server.
+def wait_for_ejected_node(ejected_node):
+    def ejected_node_is_up(node):
+        try:
+            resp = get(node, '/pools/default')
+            return 404 == resp.status_code and \
+                   '"unknown pool"' == resp.text
+        except Exception as e:
+            print(f'got exception: {e}')
+            return False
+
+    poll_for_condition(
+        lambda: ejected_node_is_up(ejected_node),
+        sleep_time=1, timeout=60,
+        msg=f'wait for ejected node {ejected_node} to be up')

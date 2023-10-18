@@ -222,26 +222,9 @@ class Cluster:
                     nodes_are_expected, sleep_time=1, attempts=30,
                     msg=f"wait for nodes in /pools/default to be consistent")
 
-                # Rebalance has finished, but the ejected nodes can still
-                # (a) think they are part of the cluster
-                # (b) be starting web server after leaving
-                # Here we wait for such nodes to leave the cluster and
-                # start web server.
                 if ejected_nodes is not None:
-                    def ejected_node_is_up(node):
-                        try:
-                            resp = testlib.get(node, '/pools/default')
-                            return 404 == resp.status_code and \
-                                   '"unknown pool"' == resp.text
-                        except Exception as e:
-                            print(f'got exception: {e}')
-                            return False
-
                     for n in ejected_nodes:
-                        testlib.poll_for_condition(
-                            lambda: ejected_node_is_up(node),
-                            sleep_time=1, timeout=60,
-                            msg=f'wait for ejected node {n} to be up')
+                        testlib.wait_for_ejected_node(n)
 
         else:
             r = testlib.post_fail(self, "/controller/rebalance", data=data,
