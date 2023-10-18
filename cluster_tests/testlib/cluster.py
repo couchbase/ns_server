@@ -185,6 +185,25 @@ class Cluster:
             print(f"Starting rebalance with {data}")
 
         if initial_expected_error is None:
+            # When we failover a node, we don't remove it from connected_nodes
+            # because it is part of the cluster until rebalance ejects it,
+            # therefore we keep track of any failed nodes before rebalance, so
+            # they are accounted for in ejected_nodes and can be removed from
+            # connected_nodes
+            resp = testlib.get_succ(self, "/pools/default")
+            failed_hostnames = \
+                [n["hostname"] for n in resp.json()["nodes"]
+                 if n["clusterMembership"] == "inactiveFailed"]
+            failed_nodes = \
+                [node for node in self.connected_nodes
+                 if node.hostname() in failed_hostnames]
+
+            if failed_nodes:
+                if ejected_nodes is not None:
+                    ejected_nodes += failed_nodes
+                else:
+                    ejected_nodes = failed_nodes
+
             testlib.post_succ(self, "/controller/rebalance", data=data,
                               expected_code=initial_code)
 
@@ -299,7 +318,9 @@ class Cluster:
             r = testlib.post_succ(non_victim_nodes[0],
                                   f"/controller/{failover_type}",
                                   data=data)
-            self.connected_nodes.remove(victim_node)
+
+            if allow_unsafe:
+                self.connected_nodes.remove(victim_node)
 
             # Wait for the failover to complete
             self.wait_for_rebalance(verbose=verbose)
@@ -309,6 +330,12 @@ class Cluster:
                                   data=data,
                                   expected_code=expected_code)
         return r
+
+    def eject_node(self, toEjectNode, viaNode):
+        data = {"otpNode": f"{toEjectNode.otp_node()}"}
+        testlib.post_succ(viaNode, '/controller/ejectNode', data=data)
+        testlib.wait_for_ejected_node(toEjectNode)
+        self.connected_nodes.remove(toEjectNode)
 
     def recover_node(self, node, recovery_type="full", do_rebalance=False,
                      verbose=False):
@@ -327,7 +354,7 @@ class Cluster:
             print(f"Recoverying {node.hostname()} with type {recovery_type}")
         r = testlib.post_succ(self, f"/controller/setRecoveryType",
                               data=data)
-        self.connected_nodes.append(node)
+
         if do_rebalance:
             self.rebalance(wait=True, verbose=verbose)
         return r

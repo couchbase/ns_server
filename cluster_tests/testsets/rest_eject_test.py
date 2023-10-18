@@ -34,11 +34,8 @@ class RestEjectTest(testlib.BaseTestSet):
         # Eject failed over node via REST endpoint and verify it can be
         # added back in after ejection
         data = {"otpNode": f"{otp_name}"}
-        testlib.post_succ(self.cluster.connected_nodes[0],
-                          '/controller/ejectNode',
-                          data=data)
+        self.cluster.eject_node(failover_node, self.cluster.connected_nodes[1])
         self.cluster.rebalance(wait=True)
-        testlib.wait_for_ejected_node(failover_node)
         self.cluster.add_node(failover_node)
         self.cluster.rebalance(wait=True)
 
