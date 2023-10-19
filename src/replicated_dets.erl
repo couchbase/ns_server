@@ -62,9 +62,9 @@ delete_doc(Id) ->
     #docv2{id = Id, value = [], props = [{deleted, true}, {rev, 0}]}.
 
 update_doc(Id, Value) ->
-    LastModified = [{last_modified, os:system_time(millisecond)}],
     #docv2{id = Id, value = Value,
-           props = [{deleted, false}, {rev, 0}] ++ LastModified}.
+           props = [{deleted, false},
+                    {rev, 0}, {last_modified, os:system_time(millisecond)}]}.
 
 empty(Name) ->
     gen_server:call(Name, empty, infinity).
