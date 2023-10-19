@@ -139,6 +139,15 @@ do_handle_sd_config(Req, Params) ->
                           end
                   end, Nodes)
         end,
+    case {Network, Nodes} of
+        {external, []} ->
+            %% To be consistent with SDK behavior, return an error if the
+            %% end-user attempts network=external and there are no alternate
+            %% addresses.
+            erlang:throw(bad_alt_addr);
+        _ ->
+            ok
+    end,
     Body = case Type of
                yaml ->
                    Yaml = [#{targets => Hosts}],

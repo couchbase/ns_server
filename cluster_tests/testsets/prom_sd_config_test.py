@@ -35,6 +35,7 @@ class PromSdConfigTest(testlib.BaseTestSet):
 
     def setup(self):
         self.alt_addr_url = "/node/controller/setupAlternateAddresses/external"
+        self.is_enterprise = self.cluster.is_enterprise
 
     def teardown(self):
         for node in self.cluster.nodes:
@@ -122,7 +123,9 @@ class PromSdConfigTest(testlib.BaseTestSet):
         return testlib.get_succ(self.cluster, url)
 
     def verify_sd_config(self):
-        self.validate_response(self.get_sd_config(disposition="attachment"))
+        if self.is_enterprise:
+            # Requires SSL ports which are only supported on EE
+            self.validate_response(self.get_sd_config(disposition="attachment"))
         self.validate_response(self.get_sd_config(ret_type="yaml",
                                                   port="insecure"))
         self.validate_response(self.get_sd_config(ret_type="yaml",
