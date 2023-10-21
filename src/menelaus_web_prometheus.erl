@@ -41,6 +41,13 @@ handle_get_metrics(Req) ->
               fun (M) -> report_metric(M, Resp) end, true);
         false -> ok
     end,
+    case proplists:get_bool(derived_stats_enabled, NsServerProps) of
+        true ->
+            ns_server_stats:report_derived_stats(
+              fun (M) -> report_metric(M, Resp) end);
+        false ->
+            ok
+    end,
     AllTargets = proplists:get_value(targets, Settings),
     AlmostAllTargets = proplists:delete(ns_server, AllTargets),
     HighCardTargets = lists:filter(

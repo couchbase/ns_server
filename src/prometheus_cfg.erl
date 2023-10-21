@@ -79,6 +79,7 @@
     {quit_request_timeout, pos_integer()} |
     {delete_series_request_timeout, pos_integer()} |
     {clean_tombstones_request_timeout, pos_integer()} |
+    {query_derived_request_timeout, pos_integer()} |
     {decimation_enabled, true | false} |
     {truncation_enabled, true | false} |
     {clean_tombstones_enabled, true | false} |
@@ -101,7 +102,8 @@
         {high_cardinality_scrape_timeout, integer()}]}]} |
     {external_prometheus_services,
      [{extended_service_name(),
-       [{high_cardinality_enabled, true | false}]}]} |
+       [{high_cardinality_enabled, true | false} |
+        {derived_stats_enabled, true | false}]}]} |
     {prometheus_metrics_enabled, true | false} |
     {prometheus_metrics_scrape_interval, pos_integer()} |
     {listen_addr_type, loopback | any} |
@@ -161,6 +163,7 @@ default_settings() ->
      {quit_request_timeout, ?DEFAULT_PROMETHEUS_TIMEOUT},
      {delete_series_request_timeout, 30000}, %% in msecs
      {clean_tombstones_request_timeout, 30000}, %% in msecs
+     {query_derived_request_timeout, 500}, %% in msecs
      {decimation_enabled, false},
      {truncation_enabled, false},
      {clean_tombstones_enabled, false},
@@ -183,7 +186,8 @@ default_settings() ->
                       {high_cardinality_scrape_interval, ?AUTO_CALCULATED},
                       {high_cardinality_scrape_timeout, ?AUTO_CALCULATED}]}
                         || S <- HighCardServices -- [ns_server]]},
-     {external_prometheus_services, [{S, [{high_cardinality_enabled, true}]}
+     {external_prometheus_services, [{S, [{high_cardinality_enabled, true},
+                                          {derived_stats_enabled, true}]}
                                         || S <- HighCardServices]},
      {prometheus_metrics_enabled, false},
      {prometheus_metrics_scrape_interval, 60}, %% in seconds

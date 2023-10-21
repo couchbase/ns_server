@@ -62,6 +62,8 @@ params_internal() ->
       #{cfg_key => delete_series_request_timeout, type => pos_int}},
      {"requestTimeouts.cleanTombstones",
       #{cfg_key => clean_tombstones_request_timeout, type => pos_int}},
+     {"requestTimeouts.queryDerived",
+      #{cfg_key => query_derived_request_timeout, type => pos_int}},
      {"scrapeIntervalsCalculationPeriod",
       #{cfg_key => intervals_calculation_period, type => pos_int_or_minus_one}},
      {"cbcollect.statsMaxSize",
@@ -125,7 +127,13 @@ params_internal() ->
     [{"statsExport." ++ N ++ ".highCardEnabled",
       #{cfg_key => [external_prometheus_services, S, high_cardinality_enabled],
         type => bool}}
-     || {S, N} <- Services].
+     || {S, N} <- Services] ++
+    [{"statsExport." ++ N ++ ".derivedStatsEnabled",
+      #{cfg_key => [external_prometheus_services, S, derived_stats_enabled],
+        type => bool}}
+     || {S, N} <- [{ns_server,
+                    atom_to_list(
+                      ns_cluster_membership:json_service_name(ns_server))}]].
 
 type_spec(derived_metrics_filter) ->
     #{validators => [fun derived_metrics_filter/2],

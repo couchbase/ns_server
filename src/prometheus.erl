@@ -17,6 +17,7 @@
 
 -export([query_range/6, query_range_async/7, query/4,
          create_snapshot/2, reload/1, quit/2,
+         determine_timeout/3,
          delete_series/5, clean_tombstones/2]).
 
 -type metrics_data() :: [JSONObject :: {[{binary(), term()}]}].
