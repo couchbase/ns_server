@@ -1301,6 +1301,7 @@ perform_action(Req, {Permission, Fun, Args}) ->
             end;
         auth_failure ->
             ns_audit:auth_failure(NewReq),
+            ns_server_stats:notify_counter(<<"rest_request_auth_failure">>),
             menelaus_util:require_auth(NewReq);
         forbidden when Permission == local ->
             ns_audit:auth_failure(NewReq),
