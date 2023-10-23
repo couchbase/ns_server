@@ -88,14 +88,6 @@ def create_and_update_bucket(cluster, bucket_name, old_storage_mode,
     create_bucket(
         cluster, bucket_name, old_storage_mode, ram_quota_mb)
 
-    def is_server_list_non_empty():
-        res = get_bucket(cluster, bucket_name)
-        return len(res['vBucketServerMap']['serverList']) != 0
-
-    testlib.poll_for_condition(is_server_list_non_empty, sleep_time=0.25,
-                               attempts=100, timeout=60,
-                               msg="poll is server-list not empty")
-
     # magma -> couchstore migration won't proceed until history retention isn't
     # set to false.
     if old_storage_mode == "magma":

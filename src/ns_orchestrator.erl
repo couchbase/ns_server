@@ -79,6 +79,7 @@
          recovery_map/2,
          is_recovery_running/0,
          ensure_janitor_run/1,
+         ensure_janitor_run/2,
          rebalance_type2text/1,
          start_graceful_failover/1,
          request_janitor_run/1]).
@@ -399,6 +400,9 @@ request_janitor_run(Item) ->
                                 janitor_failed |
                                 bucket_deleted.
 ensure_janitor_run(Item) ->
+    ensure_janitor_run(Item, ?JANITOR_RUN_TIMEOUT).
+
+ensure_janitor_run(Item, Timeout) ->
     wait_for_orchestrator(),
     misc:poll_for_condition(
       fun () ->
@@ -411,7 +415,7 @@ ensure_janitor_run(Item) ->
                   Ret ->
                       Ret
               end
-      end, ?JANITOR_RUN_TIMEOUT, 1000).
+      end, Timeout, 1000).
 
 -spec start_rebalance([node()], [node()], all | [bucket_name()],
                       [list()], all | [atom()]) ->

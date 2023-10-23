@@ -790,6 +790,11 @@ maybe_update_cas_props(_, _, UpdatedProps, false = _CcEn) ->
     {ok, UpdatedProps}.
 
 update_via_orchestrator(Req, BucketId, StorageMode, BucketType, UpdatedProps) ->
+    update_via_orchestrator(Req, BucketId, StorageMode, BucketType,
+                            UpdatedProps, true).
+
+update_via_orchestrator(Req, BucketId, StorageMode, BucketType, UpdatedProps,
+                        CanRetry) ->
     case ns_orchestrator:update_bucket(BucketType, StorageMode,
                                        BucketId, UpdatedProps) of
         ok ->
@@ -818,6 +823,10 @@ update_via_orchestrator(Req, BucketId, StorageMode, BucketType, UpdatedProps) ->
             reply_text(Req, need_more_space_error(Zones), 400);
         {error, cc_versioning_already_enabled} ->
             reply_text(Req, "Cross cluster versioning already enabled", 409);
+        {error, {storage_mode_migration, janitor_not_run}} when CanRetry ->
+            ns_orchestrator:ensure_janitor_run({bucket, BucketId}, 5000),
+            update_via_orchestrator(Req, BucketId, StorageMode, BucketType,
+                                    UpdatedProps, false);
         {error, {storage_mode_migration, Error}} ->
             reply_storage_mode_migration_error(Req, Error);
         {exit, {not_found, _}, _} ->
