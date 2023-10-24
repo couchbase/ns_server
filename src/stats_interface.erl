@@ -17,6 +17,7 @@
          for_alerts/0,
          for_resource_management/0,
          total_active_logical_data_size/1,
+         disk_usages/1,
          for_storage_mode_migration/2,
          current_items_total/1,
          current_items_total/2,
@@ -225,6 +226,22 @@ total_active_logical_data_size(Nodes) ->
                          promQL:preformatted(?KvDataSizeRawQuery))),
           Nodes,
           fun (_Key, Values) -> lists:sum(Values) end))).
+
+-spec disk_usages([node()]) -> [{node(), [{list(), number()}]}].
+disk_usages(Nodes) ->
+    Metric = promQL:format_promql(
+               promQL:named(<<"disk_usage">>,
+                            promQL:preformatted(?DiskUsageQuery))),
+    NameParser = fun (Props) ->
+                         case proplists:get_value(<<"name">>, Props) of
+                             <<"disk_usage">> ->
+                                 Disk = proplists:get_value(<<"disk">>, Props),
+                                 {true, binary_to_list(Disk)};
+                             _ ->
+                                 false
+                         end
+                 end,
+    from_nodes(Nodes, latest, [Metric, NameParser], ?DEFAULT_TIMEOUT).
 
 %% Gets the minimum resident ratio and the maximum data size, across all nodes.
 %% Used to check that a storage migration is safe to perform

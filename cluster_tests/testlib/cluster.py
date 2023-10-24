@@ -10,6 +10,7 @@ import atexit
 import os
 import sys
 import time
+import re
 from typing import List
 
 import requests
@@ -242,7 +243,7 @@ class Cluster:
         else:
             r = testlib.post_fail(self, "/controller/rebalance", data=data,
                                   expected_code=initial_code)
-            assert r.text == initial_expected_error, \
+            assert re.match(initial_expected_error, r.text) is not None, \
                 f"Expected rebalance error: {initial_expected_error}\n" \
                 f"Found: {r.text}"
 

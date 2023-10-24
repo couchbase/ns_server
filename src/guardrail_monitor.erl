@@ -49,7 +49,8 @@ is_enabled() ->
 get_config() ->
     ns_config:read_key_fast(resource_management, []).
 
--spec get(cores_per_bucket | collections_per_quota) -> undefined | number().
+-spec get(cores_per_bucket | collections_per_quota | disk_usage) ->
+    undefined | number().
 get(cores_per_bucket) ->
     case proplists:get_value(cores_per_bucket, get_config()) of
         undefined -> undefined;
@@ -61,6 +62,15 @@ get(cores_per_bucket) ->
     end;
 get(collections_per_quota) ->
     case proplists:get_value(collections_per_quota, get_config()) of
+        undefined -> undefined;
+        Config ->
+            case proplists:get_value(enabled, Config) of
+                true -> proplists:get_value(maximum, Config);
+                false -> undefined
+            end
+    end;
+get(disk_usage) ->
+    case proplists:get_value(disk_usage, get_config()) of
         undefined -> undefined;
         Config ->
             case proplists:get_value(enabled, Config) of
@@ -95,16 +105,14 @@ validate_topology_change(EjectedLiveNodes, KeepNodes) ->
     case is_enabled() of
         true ->
             KeepKVNodes = ns_cluster_membership:service_nodes(KeepNodes, kv),
-            case validate_topology_change_data_grs(EjectedLiveNodes,
-                                                   KeepKVNodes) of
-                ok ->
-                    ActiveKVNodes =
-                        ns_cluster_membership:service_active_nodes(kv),
-                    NewKVNodes = KeepKVNodes -- ActiveKVNodes,
-                    validate_topology_change_cores_per_bucket(NewKVNodes);
-                Err ->
-                    Err
-            end;
+            ActiveKVNodes = ns_cluster_membership:service_active_nodes(kv),
+            NewKVNodes = KeepKVNodes -- ActiveKVNodes,
+            functools:sequence_(
+              [?cut(validate_topology_change_data_grs(EjectedLiveNodes,
+                                                      KeepKVNodes)),
+               ?cut(validate_topology_change_disk_usage(EjectedLiveNodes,
+                                                        KeepKVNodes)),
+               ?cut(validate_topology_change_cores_per_bucket(NewKVNodes))]);
         false ->
             ok
     end.
@@ -142,6 +150,13 @@ topology_change_error({cores_per_bucket, Nodes}) ->
        io_lib:format(
          "The following node(s) being added have insufficient cpu cores for "
          "the number of buckets already in the cluster: ~s",
+         [lists:join(", ", lists:map(atom_to_list(_), Nodes))]))};
+topology_change_error({disk_usage, Nodes}) ->
+    {disk_usage_too_high,
+     iolist_to_binary(
+       io_lib:format(
+         "The following node(s) have insufficient disk space to safely eject "
+         "data nodes from the cluster: ~s",
          [lists:join(", ", lists:map(atom_to_list(_), Nodes))]))}.
 
 validate_topology_change_data_gr(Resource, EjectedNodes, KeepKVNodes) ->
@@ -233,6 +248,32 @@ validate_topology_change_cores_per_bucket(NewKVNodes) ->
                     ok;
                 _ ->
                     {error, topology_change_error({cores_per_bucket, BadNodes})}
+            end
+    end.
+
+validate_topology_change_disk_usage(EjectedNodes, KeepKVNodes) ->
+    case {guardrail_monitor:get(disk_usage), EjectedNodes} of
+        {undefined, _} ->
+            ok;
+        {_, []} ->
+            ok;
+        {Maximum, _} ->
+            Stats = stats_interface:disk_usages(KeepKVNodes ++ EjectedNodes),
+            BadNodes =
+                lists:filtermap(
+                  fun ({Node, NodeStats}) ->
+                          case check_disk_usage(Maximum, NodeStats) of
+                              false ->
+                                  false;
+                              true ->
+                                  {true, Node}
+                          end
+                  end, Stats),
+            case BadNodes of
+                [] ->
+                    ok;
+                _ ->
+                    {error, topology_change_error({disk_usage, BadNodes})}
             end
     end.
 
@@ -378,10 +419,10 @@ check({disk_usage = Resource, Config}, Stats) ->
         false ->
             [];
         true ->
-            Metric = get_disk_usage(proplists:get_value(disk_usage, Stats, [])),
             Maximum = proplists:get_value(maximum, Config),
+            DiskStats = proplists:get_value(disk_usage, Stats, []),
             {Gauge, Statuses} =
-                case Metric > Maximum of
+                case check_disk_usage(Maximum, DiskStats) of
                     true ->
                         %% For now if we see disk usage reach the limit we apply
                         %% the guard for all buckets. In future we should allow
@@ -548,7 +589,7 @@ get_data_size_maximum_on_nodes(ResourceConfig, BucketConfig, Nodes) ->
         Limits -> lists:min(Limits)
     end.
 
-get_disk_usage(DiskStats) ->
+check_disk_usage(Maximum, DiskStats) ->
     Mounts = lists:filtermap(
                fun({Disk, Value}) ->
                        {true, {Disk, ignore, Value}};
@@ -561,15 +602,15 @@ get_disk_usage(DiskStats) ->
                 {ok, RealFile} ->
                     case ns_storage_conf:extract_disk_stats_for_path(
                            Mounts, RealFile) of
-                        {ok, {_Disk, _Cap, Used}} -> Used;
-                        none -> 0
+                        {ok, {_Disk, _Cap, Used}} -> Used > Maximum;
+                        none -> false
                     end;
                 _ ->
-                    0
+                    false
             end;
         {error, not_found} ->
             ?log_warning("Couldn't check disk usage as node db dir is missing"),
-            0
+            false
     end.
 
 -ifdef(TEST).
@@ -1308,6 +1349,48 @@ validate_topology_change_cores_per_bucket_t() ->
     ?assertEqual(ok,
                  test_validate_topology_change([node1, node2], [node1])).
 
+pretend_disk_usages(UsageMap) ->
+    meck:expect(stats_interface, disk_usages,
+                lists:map(
+                  fun (Node) ->
+                          {Node, [{"/", maps:get(Node, UsageMap)}]}
+                  end, _)).
+
+validate_topology_change_disk_usage_t() ->
+    meck:expect(ns_config, read_key_fast,
+                fun (resource_management, _) ->
+                        [{disk_usage,
+                          [{enabled, true},
+                           {maximum, 50}]}]
+                end),
+
+    %% Permit all rebalances when disk usage is at the limit
+    pretend_disk_usages(#{node1 => 50, node2 => 50}),
+    ?assertEqual(ok,
+                 test_validate_topology_change([node2], [])),
+    ?assertEqual(ok,
+                 test_validate_topology_change([], [node1])),
+    ?assertEqual(ok,
+                 test_validate_topology_change([node1], [node2])),
+    ?assertEqual(ok,
+                 test_validate_topology_change([node1], [node1, node2])),
+
+    %% Permit rebalance when no nodes are removed
+    pretend_disk_usages(#{node1 => 100, node2 => 100}),
+    ?assertEqual(ok,
+                 test_validate_topology_change([], [node1])),
+    ?assertEqual(ok,
+                 test_validate_topology_change([node1], [node1, node2])),
+
+    %% Don't permit rebalance when a node is being removed and disk usage is
+    %% above the limit
+    ?assertMatch({error, {disk_usage_too_high, _}},
+                 test_validate_topology_change([node1], [])),
+    ?assertMatch({error, {disk_usage_too_high, _}},
+                 test_validate_topology_change([node1], [node2])),
+    ?assertMatch({error, {disk_usage_too_high, _}},
+                 test_validate_topology_change([node1, node2], [node1])).
+
 validate_storage_migration_t() ->
     DataSizeConfig0 = [{enabled, true},
                        {couchstore_maximum, 1.6},
@@ -1428,6 +1511,8 @@ basic_test_() ->
        fun () -> validate_topology_change_data_grs_t() end},
       {"validate topology change cores_per_bucket test",
        fun () -> validate_topology_change_cores_per_bucket_t() end},
+      {"validate topology change cores_per_bucket test",
+       fun () -> validate_topology_change_disk_usage_t() end},
       {"validate storage migration test",
        fun () -> validate_storage_migration_t() end}]}.
 

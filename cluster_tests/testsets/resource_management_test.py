@@ -464,8 +464,8 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
 
         # Otherwise, we reject the rebalance
         error_msg = '{"not_enough_cores_for_num_buckets":"The following ' \
-                    'node(s) being added have insufficient cpu cores for the ' \
-                    'number of buckets already in the cluster: ' \
+                    r'node\(s\) being added have insufficient cpu cores for ' \
+                    r'the number of buckets already in the cluster: ' \
                     f'{spare.otp_node()}"}}'
         self.rebalance_with_cleanup(
             added_nodes=[spare],
@@ -477,6 +477,49 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             ejected_nodes=[self.cluster.connected_nodes[1]],
             initial_code=400,
             initial_expected_error=error_msg)
+
+    def rebalance_disk_usage_test(self):
+        # Set maximum disk usage
+        testlib.post_succ(self.cluster,
+                          "/settings/resourceManagement/diskUsage",
+                          json={
+                              "enabled": True,
+                              "maximum": 50
+                          })
+
+        # If the disk usage is at the limit, all rebalances should be permitted
+        set_promql_queries(self.cluster, disk_usage=50)
+        self.rebalance_with_cleanup(
+            added_nodes=[],
+            ejected_nodes=[self.cluster.connected_nodes[1]])
+        spare = self.cluster.spare_node()
+        self.rebalance_with_cleanup(
+            added_nodes=[spare],
+            ejected_nodes=[])
+        self.rebalance_with_cleanup(
+            added_nodes=[spare],
+            ejected_nodes=[self.cluster.connected_nodes[1]])
+
+        # If the disk usage is above the limit, only rebalances that don't eject
+        # nodes should be permitted
+        set_promql_queries(self.cluster, disk_usage=51)
+        self.rebalance_with_cleanup(
+            added_nodes=[spare],
+            ejected_nodes=[])
+
+        # If a node is ejected, then we should reject the rebalance
+        set_promql_queries(self.cluster, disk_usage=51)
+        self.rebalance_with_cleanup(
+            added_nodes=[],
+            ejected_nodes=[self.cluster.connected_nodes[1]],
+            initial_code=400,
+            initial_expected_error='{"disk_usage_too_high')
+        set_promql_queries(self.cluster, disk_usage=51)
+        self.rebalance_with_cleanup(
+            added_nodes=[spare],
+            ejected_nodes=[self.cluster.connected_nodes[1]],
+            initial_code=400,
+            initial_expected_error='{"disk_usage_too_high')
 
     def rebalance_with_cleanup(self, added_nodes, ejected_nodes, **kwargs):
         # Call a function which might start a rebalance which we want to cancel
