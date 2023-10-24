@@ -92,14 +92,21 @@ start_link() ->
 
 
 validate_topology_change(EjectedLiveNodes, KeepNodes) ->
-    KeepKVNodes = ns_cluster_membership:service_nodes(KeepNodes, kv),
-    case validate_topology_change_data_grs(EjectedLiveNodes, KeepKVNodes) of
-        ok ->
-            ActiveKVNodes = ns_cluster_membership:service_active_nodes(kv),
-            NewKVNodes = KeepKVNodes -- ActiveKVNodes,
-            validate_topology_change_cores_per_bucket(NewKVNodes);
-        Err ->
-            Err
+    case is_enabled() of
+        true ->
+            KeepKVNodes = ns_cluster_membership:service_nodes(KeepNodes, kv),
+            case validate_topology_change_data_grs(EjectedLiveNodes,
+                                                   KeepKVNodes) of
+                ok ->
+                    ActiveKVNodes =
+                        ns_cluster_membership:service_active_nodes(kv),
+                    NewKVNodes = KeepKVNodes -- ActiveKVNodes,
+                    validate_topology_change_cores_per_bucket(NewKVNodes);
+                Err ->
+                    Err
+            end;
+        false ->
+            ok
     end.
 
 validate_topology_change_data_grs(EjectedNodes, KeepKVNodes) ->
@@ -1058,6 +1065,10 @@ check_resources_t() ->
                  check_resources()).
 
 validate_bucket_topology_change_t() ->
+    meck:expect(cluster_compat_mode, is_cluster_trinity, ?cut(true)),
+    meck:expect(config_profile, get_bool,
+                fun ({resource_management, enabled}) -> true end),
+
     Servers = [node1, node2],
     RRConfig = [{couchstore_minimum, 10},
                 {magma_minimum, 1}],
