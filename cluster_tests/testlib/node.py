@@ -21,7 +21,6 @@ class Node:
         self.auth = auth
         self.data_path_cache = None
         self.tls_port_cache = None
-        self.otp_node_cached = None
         self.services_cached = None
 
     def __str__(self):
@@ -81,10 +80,11 @@ class Node:
         return int(r.text)
 
     def otp_node(self):
-        if self.otp_node_cached is None:
-            r = testlib.get_succ(self, '/nodes/self')
-            self.otp_node_cached = r.json()['otpNode']
-        return self.otp_node_cached
+        # Don't use cached name as the otpNode may change when the node is added
+        # or removed from a cluster
+        r = testlib.get_succ(self, '/nodes/self')
+        return r.json()['otpNode']
+
 
     def get_ns_server_pid(self):
         r = testlib.diag_eval(self, "os:getpid().")
