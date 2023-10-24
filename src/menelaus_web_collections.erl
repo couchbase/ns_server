@@ -52,7 +52,7 @@ maybe_audit({ok, {Uid, _}}, Req, SuccessfulAuditFun) ->
 maybe_audit({ok, Uid}, Req, SuccessfulAuditFun) ->
     SuccessfulAuditFun(Req, Uid);
 maybe_audit(forbidden, Req, _SuccessfulAuditFun) ->
-    ns_audit:auth_failure(Req);
+    ns_audit:access_forbidden(Req);
 maybe_audit(_, _Req, _SuccessfulAuditFun) ->
     ok.
 

@@ -1542,6 +1542,23 @@
               "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
+      },
+      {
+        "id" : 8275,
+        "name" : "access forbidden",
+        "description" : "REST operation failed due to insufficient permissions",
+        "sync" : false,
+        "enabled" : true,
+        "filtering_permitted": false,
+        "mandatory_fields" : {
+            "timestamp" : "",
+            "remote" : {"ip" : "", "port" : 1},
+            "local" : {"ip" : "", "port" : 1},
+            "raw_url" : ""
+        },
+        "optional_fields" : {
+            "real_userid" : {"domain" : "", "user" : ""}
+        }
       }
     ]
 }

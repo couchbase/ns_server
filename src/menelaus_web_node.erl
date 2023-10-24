@@ -847,7 +847,7 @@ do_node_rename(Req, Hostname) ->
         not_self_started ->
             Msg = <<"Could not rename the node because name was "
                     "fixed at server start-up.">>,
-            ns_audit:auth_failure(Req),
+            ns_audit:access_forbidden(Req),
             ns_server_stats:notify_counter(<<"rest_request_forbidden_access">>),
             {error, Msg, 403};
         {address_save_failed, E} ->
@@ -868,7 +868,7 @@ do_node_rename(Req, Hostname) ->
 handle_node_self_xdcr_ssl_ports(Req) ->
     case cluster_compat_mode:tls_supported() of
         false ->
-            ns_audit:auth_failure(Req),
+            ns_audit:access_forbidden(Req),
             ns_server_stats:notify_counter(<<"rest_request_forbidden_access">>),
             reply_json(Req, [], 403);
         true ->

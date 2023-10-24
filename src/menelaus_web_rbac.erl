@@ -1445,8 +1445,10 @@ handle_check_permission_for_cbauth(Req) ->
         true ->
             menelaus_util:reply_text(Req, "", 200);
         false ->
-            ns_audit:auth_failure(Req),
+            ns_audit:access_forbidden(Req),
             ns_server_stats:notify_counter(<<"rest_request_forbidden_access">>),
+            %% This should have been 403 as the caller is authenticated but
+            %% doesn't have necessary permissions.
             menelaus_util:reply_text(Req, "", 401)
     end.
 

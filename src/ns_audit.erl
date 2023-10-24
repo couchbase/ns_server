@@ -78,6 +78,7 @@
          enable_auto_reprovision/2,
          disable_auto_reprovision/1,
          auth_failure/1,
+         access_forbidden/1,
          rbac_info_retrieved/2,
          admin_password_reset/1,
          password_rotated/1
@@ -478,7 +479,9 @@ code(modify_resource_settings) ->
 code(modify_saml_settings) ->
     8273;
 code(internal_password_rotated) ->
-    8274.
+    8274;
+code(access_forbidden) ->
+    8275.
 
 send_to_memcached(ParentPID, {Code, EncodedBody, IsSync}) ->
     case (catch ns_memcached_sockets_pool:executing_on_socket(
@@ -1028,6 +1031,10 @@ auth_failure(Req0) ->
 
     RawPath = mochiweb_request:get(raw_path, Req),
     put(auth_failure, Req, [{raw_url, RawPath}]).
+
+access_forbidden(Req) ->
+    RawPath = mochiweb_request:get(raw_path, Req),
+    put(access_forbidden, Req, [{raw_url, RawPath}]).
 
 rbac_info_retrieved(Req, Type) ->
     RawPath = mochiweb_request:get(raw_path, Req),

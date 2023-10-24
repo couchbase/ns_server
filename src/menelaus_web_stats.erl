@@ -281,7 +281,7 @@ handle_range_post(Req) ->
     PermFilters =
         case promql_filters_for_identity(menelaus_auth:get_authn_res(Req)) of
             [] ->
-                ns_audit:auth_failure(Req),
+                ns_audit:access_forbidden(Req),
                 ns_server_stats:notify_counter(
                   <<"rest_request_forbidden_access">>),
                 menelaus_util:web_exception(403, "Forbidden");
@@ -372,7 +372,7 @@ handle_range_get([MetricName | NotvalidatedFunctions], Req) ->
     PermFilters =
         case promql_filters_for_identity(menelaus_auth:get_authn_res(Req)) of
             [] ->
-                ns_audit:auth_failure(Req),
+                ns_audit:access_forbidden(Req),
                 ns_server_stats:notify_counter(
                   <<"rest_request_forbidden_access">>),
                 menelaus_util:web_exception(403, "Forbidden");

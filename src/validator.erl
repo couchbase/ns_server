@@ -154,7 +154,7 @@ process_fatal_errors(Req, Errors) ->
         [] ->
             false;
         _ ->
-            ns_audit:auth_failure(Req),
+            ns_audit:access_forbidden(Req),
             ns_server_stats:notify_counter(<<"rest_request_forbidden_access">>),
             Resp = menelaus_web_rbac:forbidden_response(MissingPermissions),
             menelaus_util:reply_json(Req, Resp, 403),
