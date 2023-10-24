@@ -212,6 +212,7 @@ perform_loading_task(TaskId, Sample, Bucket, Quota, CacheDir, BucketState) ->
             "--format", "sample",
             "--threads", "2",
             "--verbose",
+            "--gocbcore-log-level", "debug",
             "--dataset", DataSet] ++
             AdditionalArgs ++
             ClusterOpts ++
