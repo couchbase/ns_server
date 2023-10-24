@@ -403,7 +403,7 @@ uilogin(Req, Params) ->
                     menelaus_util:reply(Req, 200, Headers);
                 {error, {access_denied, UIPermission}} ->
                     ns_server_stats:notify_counter(
-                      <<"rest_request_forbidden_access">>),
+                      <<"rest_request_access_forbidden">>),
                     menelaus_util:reply_json(
                       Req,
                       menelaus_web_rbac:forbidden_response([UIPermission]),

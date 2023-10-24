@@ -1305,11 +1305,11 @@ perform_action(Req, {Permission, Fun, Args}) ->
             menelaus_util:require_auth(NewReq);
         forbidden when Permission == local ->
             ns_audit:access_forbidden(NewReq),
-            ns_server_stats:notify_counter(<<"rest_request_forbidden_access">>),
+            ns_server_stats:notify_counter(<<"rest_request_access_forbidden">>),
             menelaus_util:reply_json(NewReq, <<"Forbidden">>, 403);
         forbidden ->
             ns_audit:access_forbidden(NewReq),
-            ns_server_stats:notify_counter(<<"rest_request_forbidden_access">>),
+            ns_server_stats:notify_counter(<<"rest_request_access_forbidden">>),
             menelaus_util:reply_json(
               NewReq, menelaus_web_rbac:forbidden_response([Permission]), 403);
         temporary_failure ->

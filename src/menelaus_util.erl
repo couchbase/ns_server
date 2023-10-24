@@ -507,7 +507,7 @@ require_permission(Req, Permission) ->
             ok;
         false ->
             ns_audit:access_forbidden(Req),
-            ns_server_stats:notify_counter(<<"rest_request_forbidden_access">>),
+            ns_server_stats:notify_counter(<<"rest_request_access_forbidden">>),
             web_json_exception(
               403, menelaus_web_rbac:forbidden_response([Permission]))
     end.

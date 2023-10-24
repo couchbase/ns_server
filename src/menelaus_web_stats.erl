@@ -283,7 +283,7 @@ handle_range_post(Req) ->
             [] ->
                 ns_audit:access_forbidden(Req),
                 ns_server_stats:notify_counter(
-                  <<"rest_request_forbidden_access">>),
+                  <<"rest_request_access_forbidden">>),
                 menelaus_util:web_exception(403, "Forbidden");
             F -> F
         end,
@@ -374,7 +374,7 @@ handle_range_get([MetricName | NotvalidatedFunctions], Req) ->
             [] ->
                 ns_audit:access_forbidden(Req),
                 ns_server_stats:notify_counter(
-                  <<"rest_request_forbidden_access">>),
+                  <<"rest_request_access_forbidden">>),
                 menelaus_util:web_exception(403, "Forbidden");
             F -> F
         end,
