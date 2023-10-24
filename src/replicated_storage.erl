@@ -45,7 +45,7 @@ start_link(Name, Module, InitParams, Replicator) ->
 wait_for_startup() ->
     ?log_debug("Start waiting for startup"),
     receive
-        {replicated_storege_pid, Pid} ->
+        {replicated_storage_pid, Pid} ->
             ?log_debug("Received replicated storage registration from ~p", [Pid]),
             Pid;
         {'EXIT', ExitPid, Reason} ->
@@ -58,7 +58,7 @@ wait_for_startup() ->
 
 announce_startup(Pid) ->
     ?log_debug("Announce my startup to ~p", [Pid]),
-    Pid ! {replicated_storege_pid, self()}.
+    Pid ! {replicated_storage_pid, self()}.
 
 sync_to_me(Name, Nodes, Timeout) ->
     gen_server:call(Name, {sync_to_me, Nodes, Timeout}, infinity).
