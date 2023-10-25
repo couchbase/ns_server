@@ -141,7 +141,8 @@ topology_change_error({cores_per_bucket, Nodes}) ->
      iolist_to_binary(
        io_lib:format(
          "The following node(s) being added have insufficient cpu cores for "
-         "the number of buckets already in the cluster: ~s", Nodes))}.
+         "the number of buckets already in the cluster: ~s",
+         [lists:join(", ", lists:map(atom_to_list(_), Nodes))]))}.
 
 validate_topology_change_data_gr(Resource, EjectedNodes, KeepKVNodes) ->
     case get(bucket, Resource) of
