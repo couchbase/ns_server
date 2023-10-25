@@ -93,12 +93,16 @@
         "type": "gauge",
         "help": "Rate at which CPUs overran their quota",
         "added": "7.2.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
         "stability": "committed"
     },
     "sys_cpu_throttled_rate": {
         "type": "gauge",
         "help": "Rate at which CPUs were throttled",
         "added": "7.2.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
         "stability": "committed"
     },
     "sys_cpu_cores_available": {
@@ -143,48 +147,80 @@
         "type": "gauge",
         "help": "System CPU utilization rate in the host",
         "added": "7.1.1",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
         "stability": "committed"
     },
     "sys_cpu_host_user_rate": {
         "type": "gauge",
         "help": "User space CPU utilization rate in the host",
         "added": "7.1.1",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
+        "stability": "committed"
+    },
+    "sys_cpu_host_idle_rate": {
+        "type": "gauge",
+        "help": "Idle CPU utilization rate in the host",
+        "added": "7.6.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
+        "stability": "committed"
+    },
+    "sys_cpu_host_other_rate": {
+        "type": "gauge",
+        "help": "Other (not idle/user/sys/irq/stolen) CPU utilization rate in the host",
+        "added": "7.6.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
         "stability": "committed"
     },
     "sys_cpu_host_utilization_rate": {
         "type": "gauge",
         "help": "CPU utilization rate in the host",
         "added": "7.1.1",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
         "stability": "committed"
     },
     "sys_cpu_irq_rate": {
         "type": "gauge",
         "help": "IRQ rate",
         "added": "7.0.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
         "stability": "committed"
     },
     "sys_cpu_stolen_rate": {
         "type": "gauge",
         "help": "CPU stolen rate",
         "added": "7.0.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
         "stability": "committed"
     },
     "sys_cpu_sys_rate": {
         "type": "gauge",
         "help": "System CPU utilization rate in the control group",
         "added": "7.0.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
         "stability": "committed"
     },
     "sys_cpu_user_rate": {
         "type": "gauge",
         "help": "User space CPU utilization rate in the control group",
         "added": "7.0.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
         "stability": "committed"
     },
     "sys_cpu_utilization_rate": {
         "type": "gauge",
         "help": "CPU utilization rate in the control group",
         "added": "7.0.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
         "stability": "committed"
     },
     "sys_mem_actual_free": {
@@ -331,7 +367,8 @@
         "type": "gauge",
         "help": "CPU utilization rate, by process",
         "added": "7.0.0",
-        "notes": "7.2.4 changed to use irate of sysproc_cpu_seconds_total for user/sys modes.",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in  8.0. Use irate of sysproc_cpu_seconds_total for user/sys modes.",
         "stability": "committed",
         "labels": [
             {
@@ -583,6 +620,7 @@
         "help": "Failover safeness",
         "added": "7.0.0",
         "stability": "internal",
+        "notes": "This is for internal use and may be removed in the future",
         "labels": [
             {
                 "name": "bucket",
