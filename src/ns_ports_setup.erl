@@ -204,7 +204,7 @@ find_executable(Name) ->
     end.
 
 build_go_service_env_vars(Service) when Service =:= indexer;
-                                        Service =:= kv ->
+                                        Service =:= projector ->
     [{"GODEBUG", "madvdontneed=1"} | common_go_env_vars()];
 build_go_service_env_vars(_) ->
     common_go_env_vars().
@@ -332,9 +332,9 @@ goport_defs() ->
     #{index => #def{exe = "indexer",
                     rpc = index,
                     log = ?INDEXER_LOG_FILENAME},
-      kv => #def{exe = "projector",
-                 rpc = projector,
-                 log = ?PROJECTOR_LOG_FILENAME},
+      projector => #def{exe = "projector",
+                        rpc = projector,
+                        log = ?PROJECTOR_LOG_FILENAME},
       goxdcr => #def{exe = "goxdcr",
                      rpc = goxdcr,
                      log = ?GOXDCR_LOG_FILENAME},
@@ -358,15 +358,20 @@ get_rpc_prefix(Service) ->
     #def{rpc = RPCService} = maps:get(Service, goport_defs()),
     RPCService.
 
+should_run(goxdcr, _Snapshot) ->
+    true;
+should_run(projector, Snapshot) ->
+    ns_cluster_membership:should_run_service(Snapshot, kv, node());
+should_run(Service, Snapshot) ->
+    ns_cluster_membership:should_run_service(Snapshot, Service, node()).
+
 build_goport_spec(Service, #def{exe = Executable,
                                 rpc = RPCService,
                                 log = Log}, Config, Snapshot) ->
     Cmd = find_executable(Executable),
     NodeUUID = ns_config:search(Config, {node, node(), uuid}, false),
-    case Cmd =/= false andalso
-        NodeUUID =/= false andalso
-        (Service =:= goxdcr orelse
-         ns_cluster_membership:should_run_service(Snapshot, Service, node())) of
+    case Cmd =/= false andalso NodeUUID =/= false andalso
+        should_run(Service, Snapshot) of
         false ->
             [];
         _ ->
@@ -434,7 +439,7 @@ goport_args(n1ql, Config, _Cmd, NodeUUID) ->
     [DataStoreArg, HttpArg, CnfgStoreArg, EntArg, "-uuid=" ++ NodeUUID,
      DeploymentModelArg] ++ build_afamily_requirement("--") ++ HttpsArgs;
 
-goport_args(kv, Config, _Cmd, _NodeUUID) ->
+goport_args(projector, Config, _Cmd, _NodeUUID) ->
     %% Projector is a component that is required by 2i
     RestPort = service_ports:get_port(rest_port, Config),
     LocalMemcachedPort = service_ports:get_port(memcached_port, Config),
