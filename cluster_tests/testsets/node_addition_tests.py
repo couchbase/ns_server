@@ -15,8 +15,8 @@
 import testlib
 import os
 from testlib import ClusterRequirements
-from testsets.cert_load_tests import certs_path, generate_node_certs, load_ca, \
-    load_node_cert
+from testsets.cert_load_tests import certs_path, generate_node_certs, \
+     load_ca, load_node_cert, load_client_cert, generate_internal_client_cert
 
 
 class NodeAdditionTests(testlib.BaseTestSet):
@@ -91,9 +91,11 @@ class NodeAdditionTests(testlib.BaseTestSet):
 class NodeAdditionWithCertsTests(testlib.BaseTestSet):
     @staticmethod
     def requirements():
-        return [ClusterRequirements(min_num_nodes=2, num_connected=1,
+        return [ClusterRequirements(edition="Enterprise",
+                                    min_num_nodes=2, num_connected=1,
                                     encryption=False, afamily='ipv4'),
-                ClusterRequirements(min_num_nodes=2, num_connected=1,
+                ClusterRequirements(edition="Enterprise",
+                                    min_num_nodes=2, num_connected=1,
                                     encryption=True, afamily='ipv6')]
 
     def setup(self):
@@ -113,6 +115,14 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         self.new_node_cert, self.new_node_key = \
             generate_node_certs(self.new_node().addr(afamily=afamily),
                                 self.new_node_ca, self.new_node_ca_key)
+        self.cluster_client_cert, self.cluster_client_key = \
+            generate_internal_client_cert(self.cluster_ca,
+                                          self.cluster_ca_key,
+                                          'test_client_name1')
+        self.new_node_client_cert, self.new_node_client_key = \
+            generate_internal_client_cert(self.new_node_ca,
+                                          self.new_node_ca_key,
+                                          'test_client_name2')
         toggle_node_n2n(self.new_node(), enable=False)
 
     def teardown(self):
@@ -131,6 +141,8 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
             CAs = testlib.get_succ(n, '/pools/default/trustedCAs').json()
             for ca in CAs:
                 testlib.delete(n, f'/pools/default/trustedCAs/{ca["id"]}')
+
+            testlib.toggle_client_cert_auth(n, enabled=False)
 
     # Node addition is initiated by the-cluster-node:
 
@@ -360,15 +372,90 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
                                          expected_code=400).json()
         self.assert_new_node_unknown_ca_error(r)
 
-    def provision_cluster_node(self):
-        load_ca(self.cluster_node(), self.cluster_ca)
-        load_node_cert(self.cluster_node(), self.cluster_node_cert,
-                       self.cluster_node_key)
+    # Node addition when client certificate authentication is used:
 
-    def provision_new_node(self):
-        load_ca(self.new_node(), self.new_node_ca)
-        load_node_cert(self.new_node(), self.new_node_cert,
-                       self.new_node_key)
+    # New node and cluster both have client cert auth set to mandatory.
+    # Also both use custom client certificates.
+    # Note: using join for succ case also covers the add_node scenario
+    def client_cert_auth_everywhere_test(self):
+        self.provision_cluster_node(should_load_client_cert=True)
+        self.provision_new_node(should_load_client_cert=True)
+        load_ca(self.cluster_node(), self.new_node_ca)
+        load_ca(self.new_node(), self.cluster_ca)
+        testlib.toggle_client_cert_auth(self.cluster_node(),
+                                        enabled=True, mandatory=True)
+        testlib.toggle_client_cert_auth(self.new_node(),
+                                        enabled=True, mandatory=True)
+        self.cluster.do_join_cluster(self.new_node(),
+                                     use_client_cert_auth=True)
+
+    # Cluster has client cert auth set to mandatory. Cluster node has custom
+    # client certs uploaded.
+    # The-node-to-be-added doesn't allow client cert auth, but has custom
+    # certs uploaded (so it can get authenticated at the cluster node).
+    # Also both use custom client certificates.
+    # Note: using join for succ case also covers the add_node scenario
+    def client_cert_auth_on_cluster_only_test(self):
+        self.provision_cluster_node(should_load_client_cert=True)
+        self.provision_new_node(should_load_client_cert=True)
+        load_ca(self.cluster_node(), self.new_node_ca)
+        load_ca(self.new_node(), self.cluster_ca)
+        testlib.toggle_client_cert_auth(self.cluster_node(),
+                                        enabled=True, mandatory=True)
+        self.cluster.do_join_cluster(self.new_node(),
+                                     use_client_cert_auth=True)
+
+    # Cluster has client cert auth set to mandatory, but doesn't have client
+    # cert uploaded (uses ootb client certs).
+    # The-node-to-be-added doesn't allow client cert auth, and doesn't have
+    # client certs uploaded (uses ootb client certs).
+    def client_cert_auth_ootb_client_certs_on_cluster_via_add_test(self):
+        self.provision_cluster_node(should_load_client_cert=False)
+        self.provision_new_node(should_load_client_cert=False)
+        load_ca(self.cluster_node(), self.new_node_ca)
+        load_ca(self.new_node(), self.cluster_ca)
+        testlib.toggle_client_cert_auth(self.cluster_node(),
+                                        enabled=True, mandatory=True)
+        self.cluster.add_node(self.new_node())
+
+    # Cluster has client cert auth set to mandatory, but doesn't have client
+    # cert uploaded (uses ootb client certs).
+    # The-node-to-be-added doesn't allow client cert auth, and doesn't have
+    # client certs uploaded (uses ootb client certs).
+    # Since this node uses "join", the cluster node has to trust new-node's
+    # ootb CA. Otherwise new-node won't be able to authenticat at
+    # the cluster node
+    def client_cert_auth_ootb_client_certs_on_cluster_via_join_test(self):
+        [ca_id] = load_ca(self.cluster_node(),
+                          self.new_node_ootb_ca())
+        self.provision_cluster_node(should_load_client_cert=False)
+        self.provision_new_node(should_load_client_cert=False)
+        load_ca(self.cluster_node(), self.new_node_ca)
+        load_ca(self.new_node(), self.cluster_ca)
+
+        testlib.toggle_client_cert_auth(self.cluster_node(),
+                                        enabled=True, mandatory=True)
+        self.cluster.do_join_cluster(self.new_node(),
+                                     use_client_cert_auth=True)
+        testlib.delete(self.cluster, f'/pools/default/trustedCAs/{ca_id}')
+
+
+    def provision_cluster_node(self, should_load_client_cert=False):
+        cluster_node = self.cluster_node()
+        load_ca(cluster_node, self.cluster_ca)
+        load_node_cert(cluster_node, self.cluster_node_cert,
+                       self.cluster_node_key)
+        if should_load_client_cert:
+            load_client_cert(cluster_node, self.cluster_client_cert,
+                             self.cluster_client_key)
+
+    def provision_new_node(self, should_load_client_cert=False):
+        new_node = self.new_node()
+        load_ca(new_node, self.new_node_ca)
+        load_node_cert(new_node, self.new_node_cert, self.new_node_key)
+        if should_load_client_cert:
+            load_client_cert(new_node, self.new_node_client_cert,
+                             self.new_node_client_key)
 
     def cluster_node(self):
         return self.cluster.connected_nodes[0]

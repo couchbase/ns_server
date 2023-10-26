@@ -76,17 +76,28 @@ class CertLoadTests(testlib.BaseTestSet):
 
 
 def load_node_cert(node, cert, key):
+    load_cert(node, cert, key, is_client=False)
+
+
+def load_client_cert(node, cert, key):
+    load_cert(node, cert, key, is_client=True)
+
+
+def load_cert(node, cert, key, is_client):
     inbox_dir = os.path.join(node.data_path(), 'inbox')
-    chain_path = os.path.join(inbox_dir, 'chain.pem')
-    pkey_path = os.path.join(inbox_dir, 'pkey.key')
+    chain_file_name = 'client_chain.pem' if is_client else 'chain.pem'
+    chain_path = os.path.join(inbox_dir, chain_file_name)
+    pkey_file_name = 'client_pkey.key' if is_client else 'pkey.key'
+    pkey_path = os.path.join(inbox_dir, pkey_file_name)
     os.makedirs(inbox_dir, exist_ok=True)
     try:
         with open(chain_path, 'w') as f:
             f.write(cert)
         with open(pkey_path, 'w') as f:
             f.write(key)
-
-        testlib.post_succ(node, '/node/controller/reloadCertificate')
+        endpoint = 'reloadClientCertificate' if is_client \
+                   else 'reloadCertificate'
+        testlib.post_succ(node, f'/node/controller/{endpoint}')
     finally:
         if os.path.exists(chain_path):
             os.remove(chain_path)
@@ -113,19 +124,7 @@ def load_ca(node, CA):
             os.remove(ca_path)
 
 
-def generate_node_certs(node_addr, CA, CAKey, key_type='rsa'):
-    try:
-        ipaddress.ip_address(node_addr)
-        is_raw = True
-    except ValueError:
-        is_raw = False
-
-    args = ['--generate-leaf', '--common-name', 'TEST Server Node',
-            '--san-ip-addrs' if is_raw else '--san-dns-names', node_addr,
-            '--pkey-type', key_type]
-
-    env = {'CACERT': CA, 'CAPKEY': CAKey}
-
+def run_generate_cert(args, env):
     r = subprocess.run([generate_cert_path] + args,
                        capture_output=True, env=env)
     assert r.returncode == 0, f'generate_cert returned {r.returncode}'
@@ -137,6 +136,33 @@ def generate_node_certs(node_addr, CA, CAKey, key_type='rsa'):
     key = tokens[1]
     print(f'Generated cert: {cert}\nGenerated key: {key}')
     return (cert, key)
+
+
+def generate_internal_client_cert(CA, CAKey, name_in_cert):
+    return generate_client_cert(CA, CAKey,
+                                email=f'{name_in_cert}@internal.couchbase.com')
+
+
+def generate_client_cert(CA, CAKey, cn="TEST CLIENT CERT",
+                         email='test_client@example.com'):
+    args = ['--generate-leaf', '--common-name', cn,
+            '--san-emails', email, '--client']
+
+    return run_generate_cert(args, {'CACERT': CA, 'CAPKEY': CAKey})
+
+
+def generate_node_certs(node_addr, CA, CAKey, key_type='rsa'):
+    try:
+        ipaddress.ip_address(node_addr)
+        is_raw = True
+    except ValueError:
+        is_raw = False
+
+    args = ['--generate-leaf', '--common-name', 'TEST Server Node',
+            '--san-ip-addrs' if is_raw else '--san-dns-names', node_addr,
+            '--pkey-type', key_type]
+
+    return run_generate_cert(args, {'CACERT': CA, 'CAPKEY': CAKey})
 
 
 def write_pkcs12(cert, key, out_file):

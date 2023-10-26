@@ -274,16 +274,21 @@ class Cluster:
         return r
 
     def do_join_cluster(self, new_node, services=None, do_rebalance=False,
-                        verbose=False, expected_code=200):
+                        verbose=False, expected_code=200,
+                        use_client_cert_auth=False):
         if services is None:
             services = self.connected_nodes[0].get_services()
 
-        data = {"user": self.auth[0],
-                "password": self.auth[1],
-                "hostname": self.connected_nodes[0].https_url()
+        data = {"hostname": self.connected_nodes[0].https_url()
                             if self.is_enterprise else
                             self.connected_nodes[0].url,
                 "services": get_services_string(services)}
+
+        if use_client_cert_auth:
+            data['clientCertAuth'] = 'true'
+        else:
+            data['user'] = self.auth[0]
+            data['password'] = self.auth[1]
 
         if verbose:
             print(f"doJoinCluster with {data}")

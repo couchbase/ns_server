@@ -648,3 +648,24 @@ class UnmetRequirementsError(Exception):
         msg = f'{message}: {unmet_str}'
         super().__init__(msg)
         self.unmet_requirements = unmet_requirements
+
+
+def toggle_client_cert_auth(node, enabled=True, mandatory=True, prefixes=None):
+    state = 'disable'
+    if enabled:
+        state = 'mandatory' if mandatory else 'enable'
+    if prefixes is None:
+        prefixes = [{'delimiter': '',
+                     'path': 'subject.cn',
+                     'prefix': ''}]
+    r = post(node, '/settings/clientCertAuth',
+             json={'prefixes': prefixes,
+                   'state': state})
+    # Node: It actually affects whole cluster (if node is part of a cluster)
+    #       If 202 is returned, it means that the configuration is written to
+    #       configu but it is not guaranteed that all web server (at all nodes)
+    #       have applied new settings.
+    #       At the same time, it is guaranteed that https server on 'node'
+    #       has applied new settings
+    expected = [200, 202]
+    assert r.status_code in expected, format_http_error(r, expected)
