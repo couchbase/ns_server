@@ -779,6 +779,14 @@ do_handle_client_cert_auth_settings_post(Req, JSON) ->
         _ ->
             ns_config:set(client_cert_auth, Cfg),
             ns_audit:client_cert_auth(Req, Cfg),
+            %% Sync guarantees that https server has restarted on
+            %% this node. It is not guaranteed that other servers on
+            %% this node has restarted. It is also not guaranteed that https
+            %% servers on other cluster nodes have restarted.
+            %% Nevertheless, the fact that this command returns only when
+            %% the settings are applied on local web server, makes writing
+            %% some scripts (and tests) a lot easier.
+            ns_ssl_services_setup:sync(),
             menelaus_util:reply(Req, 202)
     end.
 
