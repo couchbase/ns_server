@@ -11,13 +11,17 @@ import base64
 import os
 from scramp import ScramClient
 import requests
+from testsets.cert_load_tests import read_cert_file, load_ca, \
+                                     generate_client_cert
+import tempfile
+import contextlib
 
 
 class AuthnTests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements()
+        return testlib.ClusterRequirements(edition="Enterprise")
 
 
     def setup(self):
@@ -90,27 +94,27 @@ class AuthnTests(testlib.BaseTestSet):
                              auth=('@localtoken', token + 'foo'))
 
 
+    def uilogin_test_base(self, node, https=False, **kwargs):
+        session = requests.Session()
+        base_url = node.url if not https else node.https_url()
+        headers={'Host': testlib.random_str(8), 'ns-server-ui': 'yes'}
+        r = session.post(base_url + '/uilogin', headers=headers, **kwargs)
+        testlib.assert_http_code(200, r)
+        r = session.get(base_url + self.testEndpoint, headers=headers)
+        testlib.assert_http_code(200, r)
+        r = session.post(base_url + '/uilogout', headers=headers)
+        testlib.assert_http_code(200, r)
+        r = session.get(base_url + self.testEndpoint, headers=headers)
+        testlib.assert_http_code(401, r)
+
+
     def uitoken_test(self):
         (user, password) = self.creds
         (wrong_user, wrong_password) = self.wrong_pass_creds
         testlib.post_fail(self.cluster, '/uilogin', 400, auth=None,
                           data={'user': wrong_user, 'password': wrong_password})
-        session = requests.Session()
-        url = self.cluster.nodes[0].url + '/uilogin'
-        headers={'Host': testlib.random_str(8), 'ns-server-ui': 'yes'}
-        r = session.post(self.cluster.nodes[0].url + '/uilogin',
-                         data={'user': user, 'password': password},
-                         headers=headers)
-        testlib.assert_http_code(200, r)
-        r = session.get(self.cluster.nodes[0].url + self.testEndpoint,
-                        headers=headers)
-        testlib.assert_http_code(200, r)
-        r = session.post(self.cluster.nodes[0].url + '/uilogout',
-                         headers=headers)
-        testlib.assert_http_code(200, r)
-        r = session.get(self.cluster.nodes[0].url + self.testEndpoint,
-                        headers=headers)
-        testlib.assert_http_code(401, r)
+        self.uilogin_test_base(self.cluster.connected_nodes[0],
+                               data={'user': user, 'password': password})
 
 
     def on_behalf_of_test(self):
@@ -129,6 +133,82 @@ class AuthnTests(testlib.BaseTestSet):
         OBO = base64.b64encode(f"{user}:wrong".encode('ascii')).decode()
         testlib.get_fail(self.cluster, '/whoami', 401,
                          headers={'cb-on-behalf-of': OBO})
+
+
+    def client_cert_auth_test_base(self, mandatory=None):
+        (user, _) = self.creds
+        node = self.cluster.connected_nodes[0]
+        with client_cert_auth(node, user, True, mandatory) as client_cert_file:
+            if mandatory: # cert auth is mandatory, regular auth is not allowed
+                expected_alert = 'ALERT_CERTIFICATE_REQUIRED'
+                try:
+                    testlib.get(self.cluster, self.testEndpoint,
+                                https=True, auth=self.creds)
+                    assert False, f'TLS alert {expected_alert} is expected'
+                except requests.exceptions.SSLError as e:
+                    testlib.assert_in(expected_alert, str(e))
+
+            else: # regular auth should still work
+                testlib.get_succ(self.cluster, self.testEndpoint, https=True,
+                                 auth=self.creds)
+
+            testlib.get_succ(node, self.testEndpoint, https=True,
+                             auth=None, cert=client_cert_file)
+
+
+    def client_cert_optional_auth_test(self):
+        self.client_cert_auth_test_base(mandatory=False)
+
+
+    def client_cert_mandatory_auth_test(self):
+        self.client_cert_auth_test_base(mandatory=True)
+
+
+    def client_cert_ui_login_test(self):
+        (user, _) = self.creds
+        node = self.cluster.connected_nodes[0]
+        server_ca_file = os.path.join(node.data_path(),
+                                      'config', 'certs', 'ca.pem')
+        with client_cert_auth(node, user, True, True) as client_cert_file:
+            self.uilogin_test_base(node,
+                                   params={'use_cert_for_auth': '1'},
+                                   https=True,
+                                   cert=client_cert_file,
+                                   verify=server_ca_file)
+
+
+@contextlib.contextmanager
+def client_cert_auth(node, user, auth_enabled, auth_mandatory):
+    # It is important to send all requests to the same node, because
+    # client auth settings modification is not synchronous across cluster
+    ca = read_cert_file('test_CA.pem')
+    ca_key = read_cert_file('test_CA.pkey')
+    client_cert, client_key = \
+        generate_client_cert(ca, ca_key, email=f'{user}@example.com')
+    client_cert_file = None
+    ca_id = None
+    try:
+        client_cert_file = tempfile.NamedTemporaryFile(delete=False,
+                                                       mode='w+t')
+        client_cert_file.write(client_cert)
+        client_cert_file.write('\n')
+        client_cert_file.write(client_key)
+        client_cert_file.close()
+        [ca_id] = load_ca(node, ca)
+        testlib.toggle_client_cert_auth(node,
+                                        enabled=auth_enabled,
+                                        mandatory=auth_mandatory,
+                                        prefixes=[{'delimiter': '@',
+                                                   'path': 'san.email',
+                                                   'prefix': ''}])
+        yield client_cert_file.name
+    finally:
+        if client_cert_file is not None:
+            client_cert_file.close()
+            os.unlink(client_cert_file.name)
+        if ca_id is not None:
+            testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
+        testlib.toggle_client_cert_auth(node, enabled=False)
 
 
 def headerToScramMsg(header):

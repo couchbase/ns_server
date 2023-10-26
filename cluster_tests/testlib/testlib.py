@@ -18,6 +18,7 @@ import contextlib
 from traceback import format_exception_only
 import traceback_with_variables as traceback
 from ipaddress import ip_address, IPv6Address
+import os
 
 from testlib.node import Node
 
@@ -326,15 +327,25 @@ def delete_config_key(cluster, key):
     return post_succ(cluster, '/diag/eval', data=f'ns_config:delete({key})')
 
 
-def request(method, cluster_or_node, path, expected_code=None, verbose=True,
-            **kwargs):
+def request(method, cluster_or_node, path, expected_code=None, https=False,
+            verbose=True, **kwargs):
     if 'timeout' not in kwargs:
         kwargs['timeout'] = 60
     kwargs_with_auth = set_default_auth(cluster_or_node, **kwargs)
     if isinstance(cluster_or_node, Node):
-        url = cluster_or_node.url + path
+        node = cluster_or_node
     else:
-        url = cluster_or_node.connected_nodes[0].url + path
+        node = cluster_or_node.connected_nodes[0]
+
+    if https:
+        url = node.https_url() + path
+        if 'verify' not in kwargs_with_auth:
+            server_ca_file = os.path.join(node.data_path(),
+                                          'config', 'certs', 'ca.pem')
+            kwargs_with_auth['verify'] = server_ca_file
+    else:
+        url = node.url + path
+
     if verbose:
         print(f'sending {method} {url} {kwargs} ' \
               f'(expected code {expected_code})')
@@ -404,7 +415,7 @@ def delete_succ(cluster_or_node, path, expected_code=200, **kwargs):
 
 
 def set_default_auth(cluster_or_node, **kwargs):
-    if 'auth' not in kwargs:
+    if 'auth' not in kwargs and 'cert' not in kwargs:
         new_kwargs = kwargs.copy()
         new_kwargs.update({'auth': cluster_or_node.auth})
         return new_kwargs

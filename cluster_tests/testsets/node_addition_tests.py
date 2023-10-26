@@ -15,7 +15,7 @@
 import testlib
 import os
 from testlib import ClusterRequirements
-from testsets.cert_load_tests import certs_path, generate_node_certs, \
+from testsets.cert_load_tests import read_cert_file, generate_node_certs, \
      load_ca, load_node_cert, load_client_cert, generate_internal_client_cert
 
 
@@ -99,11 +99,6 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
                                     encryption=True, afamily='ipv6')]
 
     def setup(self):
-        def read_cert_file(filename):
-            with open(os.path.join(certs_path, filename), 'r') as f:
-                pem = f.read()
-            return pem
-
         self.cluster_ca = read_cert_file('test_CA.pem')
         self.new_node_ca = read_cert_file('test_CA2.pem')
         self.cluster_ca_key = read_cert_file('test_CA.pkey')

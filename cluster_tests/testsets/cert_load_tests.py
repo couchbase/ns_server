@@ -186,3 +186,9 @@ def write_pkcs12(cert, key, out_file):
             os.remove(in_crt_path)
         if os.path.exists(in_key_path):
             os.remove(in_key_path)
+
+
+def read_cert_file(filename):
+    with open(os.path.join(certs_path, filename), 'r') as f:
+        pem = f.read()
+    return pem
