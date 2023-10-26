@@ -24,6 +24,7 @@ class PassHashingSettingsTests(testlib.BaseTestSet):
 
     def test_teardown(self):
         delete_user(self.cluster, self.test_username)
+        update_pwd_hash_migration_setting(self.cluster, "false")
 
     def teardown(self):
         delete_user(self.cluster, self.username_argon)
@@ -38,6 +39,14 @@ class PassHashingSettingsTests(testlib.BaseTestSet):
                             '/settings/security/scramSha1Enabled')
         testlib.delete_succ(self.cluster,
                             '/settings/security/scramShaIterations')
+        testlib.delete_succ(self.cluster,
+                            '/settings/security/argon2idTime')
+        testlib.delete_succ(self.cluster,
+                            '/settings/security/argon2idMem')
+        testlib.delete_succ(self.cluster,
+                            '/settings/security/pbkdf2HmacSha512Iterations')
+        testlib.delete_succ(self.cluster,
+                            '/settings/security/allowHashMigrationDuringAuth')
 
     def change_admin_pass_respects_hash_alg_test(self):
         admin = testlib.get_succ(self.cluster,
@@ -166,6 +175,72 @@ class PassHashingSettingsTests(testlib.BaseTestSet):
         touch_user_password(self.cluster, self.test_username, password)
         assert_iterations(iterations)
 
+    def pwd_hash_migration_sha1_to_argon2id_pos_test(self):
+        pwd_hash_migration_alg_change_test(self.cluster, self.test_username,
+                                           "SHA-1", "argon2id", migrate='true')
+
+    def pwd_hash_migration_sha1_to_argon2id_neg_test(self):
+        pwd_hash_migration_alg_change_test(self.cluster, self.test_username,
+                                           "SHA-1", "argon2id", migrate='false')
+
+    def pwd_hash_migration_sha1_to_pbkdf2_pos_test(self):
+        pwd_hash_migration_alg_change_test(self.cluster, self.test_username,
+                                           "SHA-1", "pbkdf2-hmac-sha512",
+                                           migrate='true')
+
+    def pwd_hash_migration_sha1_to_pbkdf2_neg_test(self):
+        pwd_hash_migration_alg_change_test(self.cluster, self.test_username,
+                                           "SHA-1", "pbkdf2-hmac-sha512",
+                                           migrate='false')
+
+    def pwd_hash_migration_pbkdf2_to_argon2id_pos_test(self):
+        pwd_hash_migration_alg_change_test(self.cluster, self.test_username,
+                                           "pbkdf2-hmac-sha512", "argon2id",
+                                           migrate='true')
+
+    def pwd_hash_migration_pbkdf2_to_argon2id_neg_test(self):
+        pwd_hash_migration_alg_change_test(self.cluster, self.test_username,
+                                           "pbkdf2-hmac-sha512", "argon2id",
+                                           migrate='false')
+
+    def pwd_hash_migration_argon2id_to_pbkdf2_pos_test(self):
+        pwd_hash_migration_alg_change_test(self.cluster, self.test_username,
+                                           "argon2id", "pbkdf2-hmac-sha512",
+                                           migrate='true')
+
+    def pwd_hash_migration_argon2id_to_pbkdf2_neg_test(self):
+        pwd_hash_migration_alg_change_test(self.cluster, self.test_username,
+                                           "argon2id", "pbkdf2-hmac-sha512",
+                                           migrate='false')
+
+    def pwd_hash_migration_change_argon2id_settings_pos_test(self):
+        pwd_hash_migration_alg_settings_change_test(
+            self.cluster, self.test_username, "argon2id",
+            old_settings={"argon2idMem": f"{10 * 1024}", "argon2idTime": "5"},
+            new_settings={"argon2idMem": f"{12 * 1024}", "argon2idTime": "7"},
+            migrate='true')
+
+    def pwd_hash_migration_change_argon2id_settings_neg_test(self):
+        pwd_hash_migration_alg_settings_change_test(
+            self.cluster, self.test_username, "argon2id",
+            old_settings={"argon2idMem": f"{10 * 1024}", "argon2idTime": "5"},
+            new_settings={"argon2idMem": f"{12 * 1024}", "argon2idTime": "7"},
+            migrate='false')
+
+    def pwd_hash_migration_change_pbdkf2_settings_pos_test(self):
+        pwd_hash_migration_alg_settings_change_test(
+            self.cluster, self.test_username, "pbkdf2-hmac-sha512",
+            old_settings={"pbkdf2HmacSha512Iterations": "20000"},
+            new_settings={"pbkdf2HmacSha512Iterations": "25000"},
+            migrate='true')
+
+    def pwd_hash_migration_change_pbdkf2_settings_neg_test(self):
+        pwd_hash_migration_alg_settings_change_test(
+            self.cluster, self.test_username, "pbkdf2-hmac-sha512",
+            old_settings={"pbkdf2HmacSha512Iterations": "20000"},
+            new_settings={"pbkdf2HmacSha512Iterations": "25000"},
+            migrate='false')
+
 
 def verify_hash_type(users, username, expected_hash_type):
     record = next(filter(lambda x: x['id'] == username, users))
@@ -235,3 +310,112 @@ def scram_sha_disable_test(cluster, user, setting_endpoint, scram_type):
 def touch_user_password(cluster, user, password):
     testlib.post_succ(cluster, '/controller/changePassword',
                       auth=(user, password), data={'password': password})
+
+
+def pwd_hash_migration_alg_change_test(
+        cluster, user, old_alg, new_alg, migrate):
+    update_pwd_hash_alg_type(cluster, old_alg)
+    pwd = create_user(cluster, user)
+
+    update_pwd_hash_migration_setting(cluster, migrate)
+    update_pwd_hash_alg_type(cluster, new_alg)
+
+    # Trigger a pwd hash migration via authenticating the user.
+    authenticate_user(cluster, user, pwd)
+    if migrate == "true":
+        validate_pwd_hash_type(cluster, user, new_alg)
+        # Once the pwd hash have been migrated check if the user can be
+        # authenticated.
+        authenticate_user(cluster, user, pwd)
+    else:
+        validate_pwd_hash_type(cluster, user, old_alg)
+
+
+def pwd_hash_migration_alg_settings_change_test(
+        cluster, user, alg, old_settings, new_settings, migrate):
+    update_pwd_hash_settings(cluster, alg, old_settings)
+    pwd = create_user(cluster, user)
+
+    update_pwd_hash_migration_setting(cluster, migrate)
+    update_pwd_hash_settings(cluster, alg, new_settings)
+
+    # Trigger a pwd hash migration via authenticating the user.
+    authenticate_user(cluster, user, pwd)
+    if migrate == "true":
+        validate_pwd_hash_settings(cluster, user, alg, new_settings)
+        # Once the pwd hash have been migrated check if the user can be
+        # authenticated.
+        authenticate_user(cluster, user, pwd)
+    else:
+        validate_pwd_hash_settings(cluster, user, alg, old_settings)
+
+
+def validate_pwd_hash_type(cluster, user, alg):
+    backup = get_backup(cluster, f"user:local:{user}")
+    verify_hash_type(backup['users'], user, alg)
+
+
+def update_pwd_hash_alg_type(cluster, alg):
+    testlib.post_succ(cluster, '/settings/security/passwordHashAlg',
+                      data=alg)
+
+
+def validate_pwd_hash_settings(cluster, user, alg, expected_settings):
+    backup = get_backup(cluster, f"user:local:{user}")
+    users = backup['users']
+
+    assert len(users) == 1, "Failed retrieving backup info for user - {user}"
+
+    verify_hash_type(users, user, alg)
+    auth_info = users[0]
+
+    if alg == "argon2id":
+        validate_pwd_hash_argon2id(auth_info, expected_settings)
+    elif alg == "pbkdf2-hmac-sha512":
+        validate_pwd_hash_pbkdf2(auth_info, expected_settings)
+    else:
+        assert False, f"Invalid hash algorithm: {alg}"
+
+
+def validate_pwd_hash_argon2id(auth_info, expected_settings):
+    for setting, val in expected_settings.items():
+        if setting == "argon2idTime":
+            assert auth_info['auth']['hash']['time'] == int(val)
+        elif setting == "argon2idMem":
+            assert auth_info['auth']['hash']['memory'] == int(val)
+        else:
+            assert False, f"Invalid pwd hash setting for argon2id: {setting}"
+
+
+def validate_pwd_hash_pbkdf2(auth_info, expected_settings):
+    for setting, val in expected_settings.items():
+        if setting == "pbkdf2HmacSha512Iterations":
+            assert auth_info['auth']['hash']['iterations'] == int(val)
+        else:
+            assert False,  f"Invalid pwd hash setting for pbkdf2: {setting}"
+
+
+def update_pwd_hash_settings(cluster, alg, settings):
+    update_pwd_hash_alg_type(cluster, alg)
+
+    if alg == "argon2id":
+        valid_settings = ["argon2idTime", "argon2idMem"]
+    elif alg == "pbkdf2-hmac-sha512":
+        valid_settings = ["pbkdf2HmacSha512Iterations"]
+
+    for setting, value in settings.items():
+        assert setting in valid_settings, \
+            f"Invalid pwd hash setting ({setting}) for {alg}"
+
+        testlib.post_succ(
+            cluster, f"/settings/security/{setting}", data=value)
+
+
+def update_pwd_hash_migration_setting(cluster, enable):
+    testlib.post_succ(
+        cluster, '/settings/security/allowHashMigrationDuringAuth',
+        data=enable)
+
+
+def authenticate_user(cluster, user, pwd):
+    testlib.get_succ(cluster, "/whoami", auth=(user, pwd))
