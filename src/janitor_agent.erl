@@ -1432,6 +1432,38 @@ wait_for_memcached_warmup_t() ->
        check_bucket_ready(wait_for_memcached_test_bucket(),
                           [node()], SmallTimeout)).
 
+wait_for_memcached_exception_t() ->
+    %% (Most) exceptions should not retry, just return, hence a big timeout
+    BigTimeout = 1000000,
+
+    meck:expect(ns_memcached,
+                local_connected_and_list_vbucket_details,
+                fun(_, _) ->
+                        erlang:throw(exception)
+                end),
+
+    ?assertEqual({failed, [node()]},
+                 check_bucket_ready(wait_for_memcached_test_bucket(), [node()],
+                                    BigTimeout)).
+
+wait_for_memcached_noproc_exception_t() ->
+    %% noproc exceptions should retry, we will hit this timeout so it should be
+    %% small
+    SmallTimeout = 1000,
+
+    meck:expect(ns_memcached,
+                local_connected_and_list_vbucket_details,
+                fun(_, _) ->
+                        erlang:exit({noproc, a})
+                end),
+
+    ?assertEqual({failed, [node()]},
+                 check_bucket_ready(wait_for_memcached_test_bucket(), [node()],
+                                    SmallTimeout)),
+
+    ?assert(2 =< meck:num_calls(ns_memcached,
+                                local_connected_and_list_vbucket_details, '_')).
+
 wait_for_memcached_test_bucket() ->
     "default".
 
@@ -1464,12 +1496,13 @@ wait_for_memcached_test_setup() ->
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, get_timeout,
                 fun(_, Default) ->
-                        Default
+                       Default
                 end),
 
     meck:expect(ns_config, search_node_with_default,
-                fun({?MODULE, query_vbuckets_sleep}, Default) ->
-                        Default
+                fun({?MODULE, query_vbuckets_sleep}, _Default) ->
+                        %% Smaller than default value to speed up tests
+                        100
                 end),
 
     %% Usage of this is test specific, so the expect does not accompany the new
@@ -1494,7 +1527,9 @@ wait_for_memcached_test_() ->
     Tests = [fun wait_for_memcached_interruptible_t/0,
              fun wait_for_memcached_success_t/0,
              fun wait_for_memcached_timeout_t/0,
-             fun wait_for_memcached_warmup_t/0],
+             fun wait_for_memcached_warmup_t/0,
+             fun wait_for_memcached_exception_t/0,
+             fun wait_for_memcached_noproc_exception_t/0],
 
     {foreach,
      fun wait_for_memcached_test_setup/0,
