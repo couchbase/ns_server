@@ -26,6 +26,7 @@
 -define(SET_VBUCKET_STATE_TIMEOUT,  ?get_timeout(set_vbucket_state, infinity)).
 -define(GET_SRC_DST_REPLICATIONS_TIMEOUT,
         ?get_timeout(get_src_dst_replications, 30000)).
+-define(QUERY_VBUCKETS_SLEEP, ?get_param(query_vbuckets_sleep, 1000)).
 
 -record(state, {bucket_name :: bucket_name(),
                 rebalance_pid :: undefined | pid(),
@@ -115,7 +116,7 @@ query_vbuckets_loop(Node, Bucket, Call, Parent, Warming) ->
 query_vbuckets_loop_next_step(Node, Bucket, Call, Parent, Warming, Reason) ->
     ?log_debug("Waiting for ~p on ~p", [Bucket, Node]),
     NewWarming = maybe_send_warming(Parent, Warming, Reason),
-    timer:sleep(1000),
+    timer:sleep(?QUERY_VBUCKETS_SLEEP),
     query_vbuckets_loop(Node, Bucket, Call, Parent, NewWarming).
 
 maybe_send_warming(Parent, undefined, warming_up) ->
@@ -1463,6 +1464,11 @@ wait_for_memcached_test_setup() ->
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, get_timeout,
                 fun(_, Default) ->
+                        Default
+                end),
+
+    meck:expect(ns_config, search_node_with_default,
+                fun({?MODULE, query_vbuckets_sleep}, Default) ->
                         Default
                 end),
 
