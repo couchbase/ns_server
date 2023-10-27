@@ -10,7 +10,6 @@
 import collections
 import itertools
 import random
-import requests
 import testlib
 
 class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
@@ -38,9 +37,8 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
             self.limits['failoverOnDataDiskIssues[timePeriod]']['max'] = 3600
 
     def setup(self):
-        self.auth = self.cluster.auth
-        self.endpoint = self.cluster.nodes[0].url + '/settings/autoFailover'
-        self.prev_settings = requests.get(self.endpoint, auth=self.auth).json()
+        self.endpoint = '/settings/autoFailover'
+        self.prev_settings = testlib.get(self.cluster, self.endpoint).json()
         # count cannot be modified using this request
         self.result_keys = list(self.prev_settings.keys())
         self.result_keys.remove('count')
@@ -291,7 +289,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
 
     def validate_settings(self, testData, errors):
         # Get new settings to check whether the requested settings were applied.
-        resp = requests.get(self.endpoint, auth=self.auth)
+        resp = testlib.get(self.cluster, self.endpoint)
         assert resp.status_code == 200
 
         delta = {}
@@ -336,8 +334,8 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
 
     def test_request(self, testData):
         # Use query string just_validate=1 the first time around
-        resp = requests.post(self.endpoint, auth=self.auth, data=testData,
-                             params={'just_validate': 1})
+        resp = testlib.post(self.cluster, self.endpoint, data=testData,
+                            params={'just_validate': 1})
         errors = self.get_errors(testData)
         if not errors:
             assert resp.status_code == 200
@@ -349,7 +347,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
         self.validate_settings({}, errors)
 
         # POST the request for real without the query string
-        resp = requests.post(self.endpoint, auth=self.auth, data=testData)
+        resp = testlib.post(self.cluster, self.endpoint, data=testData)
         if not errors:
             assert resp.status_code == 200
             self.good_count = self.good_count + 1
