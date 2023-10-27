@@ -176,8 +176,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
 
     def __init__(self, cluster):
         super().__init__(cluster)
-        self.addr = None
-        self.auth = None
         self.memsize = None
         self.next_bucket_id = 0
         self.good_count = 0
@@ -189,8 +187,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
 
     # Send a request with no validation of response
     def request(self, method, endpoint, **kwargs):
-        return requests.request(method, self.addr + endpoint, auth=self.auth,
-                                **kwargs)
+        return testlib.request(method, self.cluster, endpoint, **kwargs)
 
     # Send a request and validate the response is as expected, as well as
     # checking that any expected bucket changes were made
@@ -345,9 +342,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
             return type(self).__name__
 
     def setup(self):
-        self.addr = self.cluster.nodes[0].url
         self.num_nodes = len(self.cluster.connected_nodes)
-        self.auth = self.cluster.auth
         self.memsize = self.cluster.memory_quota()
         self.is_enterprise = self.cluster.is_enterprise
         self.is_trinity = self.cluster.is_trinity
