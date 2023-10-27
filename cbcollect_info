@@ -2153,16 +2153,19 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
          for path in glob.glob(os.path.join(dbdir, bucket, "rocksdb.*"))
          for log_file in sorted(glob.glob(os.path.join(path, "LOG.old.*"))) + [os.path.join(path, "LOG")]],
 
-        [AllOsTask("mctimings %s" % stat,
+        [AllOsTask(f"mctimings {stat[1:]}",
                    ["mctimings",
                     "-u", read_guts(guts, "memcached_admin"),
                     "-h", "%s:%s" % (local_url_addr,
                                      read_guts(guts, "memcached_dedicated_port")),
-                    "-a", "-v"] + stat,
+                    "-v"] + stat,
                    log_file="stats.log",
                    timeout=60,
                    addenv=[("CB_PASSWORD", memcached_pass_fun)])
-         for stat in ([], ["subdoc_execute", "snappy_decompress", "json_validate"])],
+         for stat in (["-b", "@no bucket@"],
+                      ["-a"],
+                      ["-a", "subdoc_execute", "snappy_decompress",
+                       "json_validate"])],
 
         CollectFileTask(
             "Users storage", read_guts(
