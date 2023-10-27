@@ -42,8 +42,8 @@ class BucketDeletionTest(testlib.BaseTestSet):
 
     def concurrent_bucket_deletion_test(self):
         p = Process(target=delete_bucket,
-                    args=(self.cluster.nodes[0], "bucket-1"))
+                    args=(self.cluster.connected_nodes[0], "bucket-1"))
         p.start()
-        delete_bucket(self.cluster.nodes[0], "bucket-2")
+        delete_bucket(self.cluster.connected_nodes[0], "bucket-2")
         p.join()
         assert p.exitcode == 0
