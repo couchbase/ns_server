@@ -110,12 +110,12 @@ raw_default_config() ->
       %% Resident ratio percentage minimum
       [{resident_ratio,
         [{enabled, false},
-         {couchstore_minimum, 10},
-         {magma_minimum, 1}]},
+         {couchstore_minimum, 1},
+         {magma_minimum, 0.2}]},
        %% Max data size per bucket on a node in TB
        {data_size,
         [{enabled, false},
-         {couchstore_maximum, 1.6},
+         {couchstore_maximum, 2},
          {magma_maximum, 16}]}
       ]},
      %% Minimum cores required per bucket
@@ -125,7 +125,7 @@ raw_default_config() ->
      %% Max disk usage % per node
      {disk_usage,
       [{enabled, false},
-       {maximum, 85}]},
+       {maximum, 96}]},
      %% Max no. of collections per bucket quota in MB
      {collections_per_quota,
       [{enabled, false},
@@ -188,9 +188,14 @@ default_config_t() ->
 
     SetConfigProfile([{resource_management,
                        [{[bucket, resident_ratio, enabled], true},
+                        {[bucket, resident_ratio, couchstore_minimum], 10},
+                        {[bucket, resident_ratio, magma_minimum], 1},
                         {[cores_per_bucket, enabled], true},
                         {[bucket, data_size, enabled], true},
+                        {[bucket, data_size, couchstore_maximum], 1.6},
+                        {[bucket, data_size, magma_maximum], 16},
                         {[disk_usage, enabled], true},
+                        {[disk_usage, maximum], 85},
                         {[collections_per_quota, enabled], true}]
                       }]),
     assert_config_equal([{resource_management,
