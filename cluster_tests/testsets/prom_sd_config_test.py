@@ -38,7 +38,7 @@ class PromSdConfigTest(testlib.BaseTestSet):
         self.is_enterprise = self.cluster.is_enterprise
 
     def teardown(self):
-        for node in self.cluster.nodes:
+        for node in self.cluster._nodes:
             testlib.delete(node, self.alt_addr_url)
 
     def build_hostname(self, node_num):
@@ -52,7 +52,7 @@ class PromSdConfigTest(testlib.BaseTestSet):
     def setup_alt_addresses(self):
         node_num = 1
 
-        for node in self.cluster.nodes:
+        for node in self.cluster._nodes:
             alt_hostname = self.build_hostname(node_num)
             mgmt_port = self.build_portnum(node_num)
             mgmtSSL_port = self.build_portnum(node_num, True)
@@ -151,7 +151,7 @@ class PromSdConfigTest(testlib.BaseTestSet):
             assert (content == expected)
 
         node_num = 1
-        for node in self.cluster.nodes:
+        for node in self.cluster._nodes:
             if self.network == "default":
                 host = node.host
                 port = node.port

@@ -621,7 +621,7 @@ def maybe_print(s, verbose=None, print_fun=print):
         print_fun(s)
 
 def log_at_all_nodes(cluster, msg):
-    for n in cluster.nodes:
+    for n in cluster._nodes:
         diag_eval(n, f'ale:debug(ns_server, "{msg}", []).',
                   verbose=config['verbose']).text
 

@@ -268,7 +268,7 @@ class BucketMigrationTest(testlib.BaseTestSet):
         old_otp_nodes = testlib.get_otp_nodes(self.cluster)
 
         count = 0
-        for new_node in self.cluster.nodes:
+        for new_node in self.cluster._nodes:
             if new_node in old_nodes:
                 continue
             # Check if we already replaced all the nodes:

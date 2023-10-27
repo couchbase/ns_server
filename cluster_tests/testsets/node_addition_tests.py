@@ -26,7 +26,7 @@ class NodeAdditionTests(testlib.BaseTestSet):
         self.req_num_nodes = None
 
     def setup(self):
-        self.req_num_nodes = len(self.cluster.nodes)
+        self.req_num_nodes = len(self.cluster._nodes)
 
     def teardown(self):
         pass
@@ -126,7 +126,7 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         assert_cluster_size(self.cluster, 1)
         self.cluster.wait_nodes_up()
         toggle_node_n2n(self.new_node(), enable=False)
-        for n in self.cluster.nodes:
+        for n in self.cluster._nodes:
             testlib.post_succ(n, '/controller/regenerateCertificate',
                               params={'forceResetCACertificate': 'false',
                                       'dropUploadedCertificates': 'true'})

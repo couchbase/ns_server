@@ -402,13 +402,13 @@ class NumNodes(Requirement):
 
     def is_met(self, cluster):
         if self.num_nodes is not None and \
-           len(cluster.nodes) != self.num_nodes:
+           len(cluster._nodes) != self.num_nodes:
             return False
         if self.num_connected is not None and \
            len(cluster.connected_nodes) != self.num_connected:
             return False
         if self.min_num_nodes is not None and \
-           len(cluster.nodes) < self.min_num_nodes:
+           len(cluster._nodes) < self.min_num_nodes:
             return False
         if self.min_num_connected is not None and \
            len(cluster.connected_nodes) < self.min_num_connected:

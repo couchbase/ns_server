@@ -108,7 +108,7 @@ def get_cluster(cluster_index, start_port, auth, processes, nodes):
 class Cluster:
     def __init__(self, nodes, connected_nodes, first_node_index, processes,
                  auth, index):
-        self.nodes = nodes
+        self._nodes = nodes
         self.connected_nodes = connected_nodes
         self.first_node_index = first_node_index
         self.index = index
@@ -136,7 +136,7 @@ class Cluster:
         return self.__dict__.__repr__()
 
     def disconnected_nodes(self):
-        return [node for node in self.nodes
+        return [node for node in self._nodes
                 if node not in self.connected_nodes]
 
     # Kill all associated nodes to avoid competing for resources with the active
@@ -144,7 +144,7 @@ class Cluster:
     def teardown(self):
         with testlib.no_output("kill nodes"):
             cluster_run_lib.kill_nodes(self.processes, get_terminal_attrs(),
-                                       urls=get_node_urls(self.nodes))
+                                       urls=get_node_urls(self._nodes))
 
     # Check every 0.5s until there is no rebalance running or 600s have passed
     def wait_for_rebalance(self, timeout_s=600, interval_s=0.5, verbose=False):
@@ -379,7 +379,7 @@ class Cluster:
     def wait_nodes_up(self, timeout_s=60, verbose=False):
         cluster_run_lib.wait_nodes_up(
             timeout_s=timeout_s,
-            node_urls=get_node_urls(self.nodes),
+            node_urls=get_node_urls(self._nodes),
             verbose=verbose)
 
     def create_bucket(self, data, verbose=False, expected_code=202, sync=False):
@@ -471,7 +471,7 @@ class Cluster:
         while retries > 0:
             orchestrator_hostname, _ = self.get_orchestrator_node(orch_node)
             if orchestrator_hostname != "":
-                for node in self.nodes:
+                for node in self._nodes:
                     if orch_node is not None and node != orch_node:
                         continue
                     if node.hostname() == orchestrator_hostname:
@@ -485,7 +485,7 @@ class Cluster:
         """
         Helper function to enable/disable node to node encryption for all nodes
         in cluster.
-        Note: It doesn't change nodes in self.nodes that are not members of
+        Note: It doesn't change nodes in self._nodes that are not members of
         the cluster
         :param self: Cluster object to send requests to
         :param enable: Whether node to node encryption should be enabled.
@@ -540,7 +540,7 @@ class Cluster:
         print("Starting cluster smog check")
         # We need to make sure that our representation of the cluster
         # is consistent and correct because is_met() functions may rely on it
-        for n in self.nodes:
+        for n in self._nodes:
             if n in self.connected_nodes:
                 try:
                     r = testlib.get(n, '/pools/default')
