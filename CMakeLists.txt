@@ -194,15 +194,19 @@ ADD_CUSTOM_TARGET (ns_server_all DEPENDS ns_server erlang_deps)
 ADD_CUSTOM_TARGET (ns_server_tests
   DEPENDS ns_server-eunit ns_couchdb-eunit ns_babysitter-eunit ale-eunit erlang_deps)
 
-# CMake won't let you add a build target as a dependency to a test. But you
-# can add another test as a dependency. So this is a fake test that actually
-# simply builds ns_server_tests target. Note, this is only needed when the
-# tests are run in CMake way (make -C build/ test). Simple "make test" in
-# ns_server directory calls a custom target ns_test which can properly depend
-# on other targets.
+# CMake won't let you add a build target as a dependency to a test. You can,
+# however, define a test as a set for a test fixture (set of tests) and it
+# will be executed once before any of the tests. This is a fake test that
+# actually simply builds ns_server_tests target. Note, this is only needed
+# when the tests are run in CMake way (make -C build/ test). Unfortunately,
+# this is the way that commit validation runs tests so this is still relevant.
+# Simple "make test" in ns_server directory calls a custom target ns_test
+# which can properly depend on other targets.
 ADD_TEST(ns_server_tests_build_for_idiotic_cmake
   "${CMAKE_COMMAND}" --build "${CMAKE_BINARY_DIR}"
                      --target ns_server_tests)
+SET_TESTS_PROPERTIES(ns_server_tests_build_for_idiotic_cmake PROPERTIES
+        FIXTURES_SETUP NS_TEST_SETUP)
 
 MACRO (NS_SERVER_TEST)
   PARSE_ARGUMENTS (NS_SERVER_TEST "" "NAME;TEST_TARGET" "EXPLICIT" ${ARGN})
@@ -226,8 +230,7 @@ MACRO (NS_SERVER_TEST)
   IF (NOT NS_SERVER_TEST_EXPLICIT)
     # Test invocation
     ADD_TEST(NAME ${_name} COMMAND ${_cmd} WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
-    SET_TESTS_PROPERTIES(${_name} PROPERTIES
-      DEPENDS ns_server_tests_build_for_idiotic_cmake)
+    SET_TESTS_PROPERTIES(${_name} PROPERTIES FIXTURES_REQUIRED NS_TEST_SETUP)
   ENDIF ()
 
   # Also create a custom target
