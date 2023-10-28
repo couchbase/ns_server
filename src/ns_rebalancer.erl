@@ -201,8 +201,8 @@ do_wait_buckets_shutdown(KeepNodes) ->
             exit({buckets_shutdown_wait_failed, Failures})
     end.
 
-config_sync(Type, Nodes) ->
-    case chronicle_compat:config_sync(Type, Nodes) of
+config_sync(push, Nodes) ->
+    case chronicle_compat:config_sync(push, Nodes) of
         ok ->
             ok;
         Error ->
@@ -502,7 +502,7 @@ rebalance_body(KeepNodes, EjectNodesAll, FailedNodesAll, DeltaNodes,
     ok = chronicle_master:activate_nodes(KeepNodes),
     ok = leader_activities:activate_quorum_nodes(KeepNodes),
 
-    config_sync(pull, LiveNodes),
+    chronicle_compat:pull(),
 
     %% Eject failed nodes first so they don't cause trouble
     FailedNodes = FailedNodesAll -- [node()],
@@ -1226,8 +1226,7 @@ start_link_graceful_failover(Nodes) ->
     proc_lib:start_link(erlang, apply, [fun run_graceful_failover/1, [Nodes]]).
 
 run_graceful_failover(Nodes) ->
-    NodesWanted = ns_node_disco:nodes_wanted(),
-    config_sync(pull, NodesWanted),
+    chronicle_compat:pull(),
 
     case failover:is_possible(Nodes, #{}) of
         ok ->
@@ -1255,7 +1254,7 @@ run_graceful_failover(Nodes) ->
             erlang:exit(Type)
     end,
 
-    config_sync(push, NodesWanted),
+    config_sync(push, ns_node_disco:nodes_wanted()),
 
     proc_lib:init_ack({ok, self()}),
 

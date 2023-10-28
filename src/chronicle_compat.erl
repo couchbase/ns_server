@@ -176,11 +176,9 @@ remote_pull(Nodes, Timeout) ->
             {error, Error}
     end.
 
-config_sync(Type, Nodes) ->
-    config_sync(Type, Nodes, ns_config_rep:get_timeout(Type)).
+config_sync(push, Nodes) ->
+    config_sync(push, Nodes, ns_config_rep:get_timeout(push)).
 
-config_sync(pull, _Nodes, Timeout) ->
-    do_pull(Timeout);
 config_sync(push, Nodes, Timeout) ->
     case remote_pull(Nodes, Timeout) of
         ok ->
