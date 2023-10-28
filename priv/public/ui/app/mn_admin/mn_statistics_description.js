@@ -925,6 +925,11 @@ function get70CompatDesc() {
           unit: "number",
           title: "Analytics Total Requests",
           desc: "Total number of received requests for Analytics on this server."
+        },
+        "cbas_queued_http_requests_size": {
+          unit: "number",
+          title: "Analytics Queued HTTP Requests",
+          desc: "Number of queued http requests for Analytics on this server."
         }
       }
     }
