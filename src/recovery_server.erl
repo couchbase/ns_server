@@ -192,7 +192,7 @@ sync_config(Servers, FromPid) ->
     FromPidNode = erlang:node(FromPid),
     SyncServers = lists:usort([FromPidNode | Servers]),
 
-    case chronicle_compat:config_sync(push, SyncServers) of
+    case chronicle_compat:push(SyncServers) of
         ok ->
             ok;
         {error, BadReplies} ->

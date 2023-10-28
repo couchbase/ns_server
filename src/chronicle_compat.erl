@@ -31,9 +31,8 @@
          get_snapshot_with_revision/2,
          pull/0,
          pull/1,
-         remote_pull/2,
-         config_sync/2,
-         config_sync/3,
+         push/1,
+         push/2,
          node_keys/2,
          service_keys/1]).
 
@@ -162,7 +161,10 @@ pull(Timeout) ->
 do_pull(Timeout) ->
     ok = chronicle_kv:sync(kv, Timeout).
 
-remote_pull(Nodes, Timeout) ->
+push(Nodes) ->
+    push(Nodes, ns_config_rep:get_timeout(push)).
+
+push(Nodes, Timeout) ->
     {_, BadRPC, BadNodes} =
         misc:rpc_multicall_with_plist_result(Nodes, ?MODULE, do_pull, [Timeout],
                                              Timeout),
@@ -170,21 +172,10 @@ remote_pull(Nodes, Timeout) ->
         true ->
             ok;
         false ->
-            Error = {remote_pull_failed, BadRPC ++
-                         [{N, bad_node} || N <- BadNodes]},
-            ?log_warning("Failed to push chronicle config ~p", [Error]),
+            Error = BadRPC ++ [{N, bad_node} || N <- BadNodes],
+            ?log_warning("Failed to push chronicle config. Bad replies: ~p",
+                         [Error]),
             {error, Error}
-    end.
-
-config_sync(push, Nodes) ->
-    config_sync(push, Nodes, ns_config_rep:get_timeout(push)).
-
-config_sync(push, Nodes, Timeout) ->
-    case remote_pull(Nodes, Timeout) of
-        ok ->
-            ok;
-        {error, {remote_pull_failed, BadResults}} ->
-            {error, BadResults}
     end.
 
 node_keys(Node, Buckets) ->

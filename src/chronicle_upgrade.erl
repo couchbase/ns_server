@@ -84,8 +84,7 @@ upgrade(Version, Nodes) ->
     case RV of
         {ok, _} ->
             OtherNodes = Nodes -- [node()],
-            case chronicle_compat:remote_pull(OtherNodes,
-                                              ?UPGRADE_PULL_TIMEOUT) of
+            case chronicle_compat:push(OtherNodes, ?UPGRADE_PULL_TIMEOUT) of
                 ok ->
                     ok;
                 Error ->

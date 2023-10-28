@@ -201,8 +201,8 @@ do_wait_buckets_shutdown(KeepNodes) ->
             exit({buckets_shutdown_wait_failed, Failures})
     end.
 
-config_sync(push, Nodes) ->
-    case chronicle_compat:config_sync(push, Nodes) of
+config_push(Nodes) ->
+    case chronicle_compat:push(Nodes) of
         ok ->
             ok;
         Error ->
@@ -1133,7 +1133,7 @@ apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) -
     ok = ns_bucket:update_buckets_for_delta_recovery(TransitionalBuckets,
                                                      DeltaNodes),
 
-    config_sync(push, DeltaNodes),
+    config_push(DeltaNodes),
     complete_delta_recovery(DeltaNodes),
 
     ok = check_test_condition(apply_delta_recovery),
@@ -1254,7 +1254,7 @@ run_graceful_failover(Nodes) ->
             erlang:exit(Type)
     end,
 
-    config_sync(push, ns_node_disco:nodes_wanted()),
+    config_push(ns_node_disco:nodes_wanted()),
 
     proc_lib:init_ack({ok, self()}),
 
