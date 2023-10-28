@@ -327,15 +327,12 @@ add_node(Node, GroupUUID, Services, Transaction) ->
                                 {set, {node, Node, membership}, inactiveAdded},
                                 {set, {node, Node, services}, Services},
                                 {set, server_groups, NewGroups} |
-                                collections_sets(chronicle_compat:backend(),
-                                                 Node, Txn)]}
+                                collections_sets(Node, Txn)]}
                       end
               end
       end).
 
-collections_sets(ns_config, _Node, _Txn) ->
-    [];
-collections_sets(chronicle, Node, Txn) ->
+collections_sets(Node, Txn) ->
     {ok, {Buckets, _}} = chronicle_compat:txn_get(ns_bucket:root(), Txn),
     Snapshot = chronicle_compat:txn_get_many(
                  [collections:key(B) || B <- Buckets], Txn),
@@ -395,28 +392,8 @@ validate_removal(Txn, ToRemoveNodes, BucketsConfig) ->
               end
       end, ToRemoveNodes).
 
-remove_nodes(RemoteNodes, Transaction) ->
-    remove_nodes(chronicle_compat:backend(), RemoteNodes, Transaction).
-
-remove_nodes(ns_config, [RemoteNode], _Transaction) ->
-    %% removing multiple nodes is not supported here, because it is used
-    %% during chronicle quorum loss failover only
-    ok = ns_config:update(
-           fun ({nodes_wanted, V}) ->
-                   {update, {nodes_wanted, V -- [RemoteNode]}};
-               ({server_groups, Groups}) ->
-                   {update, {server_groups,
-                             remove_nodes_from_server_groups(
-                               [RemoteNode], Groups)}};
-               ({{node, Node, _}, _})
-                 when Node =:= RemoteNode ->
-                   delete;
-               (_Other) ->
-                   skip
-           end);
-
 %% Note: We do not delete the node keys for this node.
-remove_nodes(chronicle, RemoteNodes, Transaction) ->
+remove_nodes(RemoteNodes, Transaction) ->
     RV = Transaction(
            fun (Txn) ->
                    Snapshot =

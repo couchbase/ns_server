@@ -942,10 +942,6 @@ load_apply_config_prep_common_modules() ->
     meck:expect(chronicle_compat, pull,
                 fun (_) ->
                         ok
-                end),
-    meck:expect(chronicle_compat, backend,
-                fun () ->
-                        chronicle
                 end).
 
 get_apply_config_prep_params() ->
@@ -976,10 +972,6 @@ apply_config_prep_test_body() ->
 
     Options = [{pull_config, true}],
 
-    meck:expect(chronicle_compat, backend,
-                fun () ->
-                        chronicle
-                end),
     meck:expect(chronicle_compat, pull,
                 fun (_) ->
                         self() ! chronicle_pull_called,
@@ -1030,10 +1022,6 @@ apply_config_prep_test_errors_body() ->
     Options = [{pull_config, true},
                {check_for_unsafe_nodes, true}],
 
-    meck:expect(chronicle_compat, backend,
-                fun () ->
-                        chronicle
-                end),
     meck:expect(chronicle_compat, pull,
                 fun (_) ->
                         throw({config_pull_faled})

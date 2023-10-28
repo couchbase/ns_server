@@ -549,19 +549,11 @@ on_move_done_body(RebalancerPid, WorkerPid, Bucket, VBucket, OldChain,
 update_vbucket_map(RebalancerPid, WorkerPid, Bucket, VBucket) ->
     ?log_debug("Updating vbucket map "
                "for bucket ~p, vbucket ~p", [Bucket, VBucket]),
-
     Start = erlang:monotonic_time(microsecond),
-    case ns_vbucket_mover:update_vbucket_map(RebalancerPid, WorkerPid) of
-        ok ->
-            End = erlang:monotonic_time(microsecond),
-            ?log_debug("Updated vbucket map for bucket ~p, vbucket ~p in ~b us",
-                       [Bucket, VBucket, End - Start]);
-        Error ->
-            ?log_error("Failed to update vbucket "
-                       "map for bucket ~p, vbucket ~p:~n~p",
-                       [Bucket, VBucket, Error]),
-            exit({failed_to_update_vbucket_map, Bucket, VBucket, Error})
-    end.
+    ok = ns_vbucket_mover:update_vbucket_map(RebalancerPid, WorkerPid),
+    End = erlang:monotonic_time(microsecond),
+    ?log_debug("Updated vbucket map for bucket ~p, vbucket ~p in ~b us",
+               [Bucket, VBucket, End - Start]).
 
 -ifdef(TEST).
 get_takeover_connection_name_test() ->

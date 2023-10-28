@@ -537,7 +537,7 @@ complete_services_failover(Nodes, Services) ->
 complete_failover_service(Nodes, Service) ->
     %% We're refetching the config since failover_service_nodes updated the
     %% one that we had.
-    Result = service_janitor:complete_service_failover(Service, Nodes),
+    Result = service_janitor:complete_service_failover(Service),
     case Result of
         ok ->
             ?log_debug("Failed over service ~p on nodes ~p successfully",

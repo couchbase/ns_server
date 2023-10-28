@@ -4009,16 +4009,6 @@ validate_ram_used_pre_trinity_test() ->
     meck:unload(cluster_compat_mode).
 
 validate_ram_quota_before_server_list_populated_test() ->
-    meck:new(chronicle_compat, [passthrough]),
-    meck:expect(chronicle_compat,
-                backend, fun() -> ns_config end),
-
-    meck:new(ns_config),
-    meck:expect(ns_config,
-                search_prop, fun(_, buckets, configs, []) -> [] end),
-    meck:expect(ns_config,
-                latest, fun() -> 'latest-config-marker' end),
-
     meck:new(menelaus_stats),
     %% We aren't interested in this
     meck:expect(menelaus_stats,
@@ -4066,8 +4056,6 @@ validate_ram_quota_before_server_list_populated_test() ->
                  Summary),
 
     meck:unload(ns_cluster_membership),
-    meck:unload(chronicle_compat),
-    meck:unload(ns_config),
     meck:unload(menelaus_stats).
 
 validate_dura_min_level_before_server_list_populated_test() ->

@@ -16,8 +16,7 @@
 -include("ns_config.hrl").
 -include("cut.hrl").
 
--export([backend/0,
-         get/2,
+-export([get/2,
          get/3,
          set_multiple/1,
          transaction/2,
@@ -38,10 +37,6 @@
 
 %% RPC from another nodes
 -export([do_pull/1]).
-
-backend() ->
-    %% so dialyzer doesn't scream at me
-    ns_config:read_key_fast(chronicle_backend, chronicle).
 
 get(Key, Opts) ->
     get(direct, Key, Opts).

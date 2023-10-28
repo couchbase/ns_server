@@ -368,32 +368,18 @@ counter(Snapshot, CounterName, Default) ->
 counter_inc(CounterName) ->
     % We expect counters to be slow moving (num rebalances, num failovers,
     % etc), and favor efficient reads over efficient writes.
-    case chronicle_compat:backend() of
-        chronicle ->
-            chronicle_kv:transaction(
-              kv,
-              [counters],
-              fun (Snapshot) ->
-                  {Counters, _} = maps:get(counters, Snapshot, {[], undefined}),
-                  {_, OldValue} = proplists:get_value(CounterName, Counters,
-                                                      {undefined, 0}),
-                  TS = os:system_time(second),
-                  NewCounters = [{CounterName, {TS, OldValue + 1}} |
-                                 proplists:delete(CounterName, Counters)],
-                  {commit, [{set, counters, NewCounters}]}
-              end);
-        ns_config ->
-            %% Here we assume that counters can't be modified between upgrade
-            %% start and change of compat mode (because both things are done by
-            %% the orchestrator), so if we get to this point it means that
-            %% upgrade hasn't started yet and it's safe to store data in
-            %% ns_config
-            PList = counters(),
-            Value = proplists:get_value(CounterName, PList, 0) + 1,
-            ok = ns_config:set(counters,
-                               [{CounterName, Value} |
-                                proplists:delete(CounterName, PList)])
-    end.
+    chronicle_kv:transaction(
+      kv,
+      [counters],
+      fun (Snapshot) ->
+              {Counters, _} = maps:get(counters, Snapshot, {[], undefined}),
+              {_, OldValue} = proplists:get_value(CounterName, Counters,
+                                                  {undefined, 0}),
+              TS = os:system_time(second),
+              NewCounters = [{CounterName, {TS, OldValue + 1}} |
+                             proplists:delete(CounterName, Counters)],
+              {commit, [{set, counters, NewCounters}]}
+      end).
 
 counter_inc(Type, Name)
   when is_atom(type), is_atom(Name) ->

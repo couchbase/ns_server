@@ -45,25 +45,6 @@ status(Snapshot) ->
     chronicle_compat:get(Snapshot, rebalance_status, #{default => undefined}).
 
 reset_status(Fn) ->
-    reset_status(Fn, chronicle_compat:backend()).
-
-reset_status(Fn, ns_config) ->
-    ok =
-        ns_config:update(
-          fun ({rebalance_status, Value}) ->
-                  case Value of
-                      running ->
-                          NewValue = Fn(),
-                          {update, {rebalance_status, NewValue}};
-                      _ ->
-                          skip
-                  end;
-              ({rebalancer_pid, Pid}) when is_pid(Pid) ->
-                  {update, {rebalancer_pid, undefined}};
-              (_Other) ->
-                  skip
-          end);
-reset_status(Fn, chronicle) ->
     RV =
         chronicle_kv:transaction(
           kv, [rebalance_status],

@@ -291,21 +291,7 @@ map_sync(#state{map = Map,
                 bucket = Bucket,
                 pending_map_sync = Waiters} = State) ->
     ns_bucket:set_map(Bucket, array_to_map(Map)),
-
-    RV = case chronicle_compat:backend() of
-             chronicle ->
-                 ok;
-             ns_config ->
-                 %% Failed over nodes are ejected at the beginning of rebalance.
-                 %% The only exception is the orchestrator node if it happens
-                 %% to be failed over.
-                 %% That means that all nodes_wanted are supposed to be alive,
-                 %% so we can simply synchronize to all nodes_wanted.
-                 NodesWanted = ns_node_disco:nodes_wanted(),
-                 (catch ns_config_rep:ensure_config_seen_by_nodes(NodesWanted))
-         end,
-
-    lists:foreach(gen_server:reply(_, RV), Waiters),
+    lists:foreach(gen_server:reply(_, ok), Waiters),
     ?log_debug("Batched ~b vbucket map syncs together.", [length(Waiters)]),
 
     {noreply, State#state{pending_map_sync = undefined}}.

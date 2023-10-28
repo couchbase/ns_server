@@ -12,11 +12,9 @@
 -include("cut.hrl").
 -include("ns_common.hrl").
 
--export([cleanup/0, complete_service_failover/2]).
+-export([cleanup/0, complete_service_failover/1]).
 
 -define(INITIAL_REBALANCE_TIMEOUT, ?get_timeout(initial_rebalance, 120000)).
--define(CLEAR_FAILOVER_CONFIG_SYNC_TIMEOUT,
-        ?get_timeout(clear_failover_sync, 2000)).
 
 cleanup() ->
     case ns_config_auth:is_system_provisioned() of
@@ -142,9 +140,7 @@ maybe_complete_pending_failover_body(Snapshot, Service) ->
                                                             Service) of
         true ->
             ?log_debug("Found unfinished failover for service ~p", [Service]),
-            FailedNodes = ns_cluster_membership:get_nodes_with_status(
-                            Snapshot, inactiveFailed),
-            RV = complete_service_failover(Snapshot, Service, FailedNodes),
+            RV = complete_service_failover(Snapshot, Service),
             case RV of
                 ok ->
                     ?log_debug("Completed failover for service ~p successfully",
@@ -158,11 +154,10 @@ maybe_complete_pending_failover_body(Snapshot, Service) ->
             ok
     end.
 
-complete_service_failover(Service, FailedNodes) ->
-    complete_service_failover(get_snapshot_from_quorum(),
-                              Service, FailedNodes).
+complete_service_failover(Service) ->
+    complete_service_failover(get_snapshot_from_quorum(), Service).
 
-complete_service_failover(Snapshot, Service, FailedNodes) ->
+complete_service_failover(Snapshot, Service) ->
     true = ns_cluster_membership:service_has_pending_failover(
              Snapshot, Service),
 
@@ -176,26 +171,13 @@ complete_service_failover(Snapshot, Service, FailedNodes) ->
 
     case RV of
         ok ->
-            clear_pending_failover(Snapshot, Service, FailedNodes);
+            {ok, _} =
+                ns_cluster_membership:service_clear_pending_failover(Service);
         _ ->
             ok
     end,
 
     RV.
-
-clear_pending_failover(Snapshot, Service, FailedNodes) ->
-    {ok, _} = ns_cluster_membership:service_clear_pending_failover(Service),
-
-    case chronicle_compat:backend() of
-        chronicle ->
-            ok;
-        ns_config ->
-            OtherNodes = ns_node_disco:nodes_wanted(Snapshot) -- FailedNodes,
-            LiveNodes  = leader_utils:live_nodes(Snapshot, OtherNodes),
-
-            ns_config_rep:ensure_config_seen_by_nodes(
-              LiveNodes, ?CLEAR_FAILOVER_CONFIG_SYNC_TIMEOUT)
-    end.
 
 complete_topology_aware_service_failover(Snapshot, Service) ->
     NodesLeft = ns_cluster_membership:get_service_map(Snapshot, Service),
