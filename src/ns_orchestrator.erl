@@ -211,8 +211,6 @@ delete_bucket(BucketName) ->
                           bucket_not_found |
                           flush_disabled |
                           {prepare_flush_failed, _, _} |
-                          {initial_config_sync_failed, _} |
-                          {flush_config_sync_failed, _} |
                           {flush_wait_failed, _, _} |
                           {old_style_flush_failed, _, _}.
 flush_bucket(BucketName) ->
@@ -1331,22 +1329,17 @@ perform_bucket_flushing_with_config(BucketName, BucketConfig) ->
 
 do_flush_bucket(BucketName, BucketConfig) ->
     Nodes = ns_bucket:get_servers(BucketConfig),
-    case ns_config_rep:ensure_config_seen_by_nodes(Nodes) of
-        ok ->
-            case janitor_agent:mass_prepare_flush(BucketName, Nodes) of
-                {_, [], []} ->
-                    continue_flush_bucket(BucketName, BucketConfig, Nodes);
-                {_, BadResults, BadNodes} ->
-                    %% NOTE: I'd like to undo prepared flush on good
-                    %% nodes, but given we've lost information whether
-                    %% janitor ever marked them as warmed up I
-                    %% cannot. We'll do it after some partial
-                    %% janitoring support is achieved. And for now
-                    %% we'll rely on janitor cleaning things up.
-                    {error, {prepare_flush_failed, BadNodes, BadResults}}
-            end;
-        {error, SyncFailedNodes} ->
-            {error, {initial_config_sync_failed, SyncFailedNodes}}
+    case janitor_agent:mass_prepare_flush(BucketName, Nodes) of
+        {_, [], []} ->
+            continue_flush_bucket(BucketName, BucketConfig, Nodes);
+        {_, BadResults, BadNodes} ->
+            %% NOTE: I'd like to undo prepared flush on good
+            %% nodes, but given we've lost information whether
+            %% janitor ever marked them as warmed up I
+            %% cannot. We'll do it after some partial
+            %% janitoring support is achieved. And for now
+            %% we'll rely on janitor cleaning things up.
+            {error, {prepare_flush_failed, BadNodes, BadResults}}
     end.
 
 continue_flush_bucket(BucketName, BucketConfig, Nodes) ->
@@ -1354,14 +1347,6 @@ continue_flush_bucket(BucketName, BucketConfig, Nodes) ->
     NewConfig = lists:keystore(flushseq, 1, BucketConfig,
                                {flushseq, OldFlushCount + 1}),
     ns_bucket:set_bucket_config(BucketName, NewConfig),
-    case ns_config_rep:ensure_config_seen_by_nodes(Nodes) of
-        ok ->
-            finalize_flush_bucket(BucketName, Nodes);
-        {error, SyncFailedNodes} ->
-            {error, {flush_config_sync_failed, SyncFailedNodes}}
-    end.
-
-finalize_flush_bucket(BucketName, Nodes) ->
     {_GoodNodes, FailedCalls, FailedNodes} =
         janitor_agent:complete_flush(BucketName, Nodes, ?FLUSH_BUCKET_TIMEOUT),
     case FailedCalls =:= [] andalso FailedNodes =:= [] of
