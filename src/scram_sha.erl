@@ -29,7 +29,8 @@
          get_fallback_salt/0,
          pbkdf2/4,
          build_auth/1,
-         fix_pre_trinity_auth_info/1]).
+         fix_pre_trinity_auth_info/1,
+         maybe_update_hashes/2]).
 
 %% callback for token_server
 -export([init/0]).
@@ -41,6 +42,9 @@ init() ->
     ok.
 
 build_auth(Passwords) ->
+    build_auth(Passwords, supported_types()).
+
+build_auth(Passwords, Types) ->
     IsTrinity = cluster_compat_mode:is_cluster_trinity(),
     BuildAuth =
         fun (Type) when IsTrinity ->
@@ -59,7 +63,58 @@ build_auth(Passwords) ->
                       {?OLD_SCRAM_HASH_KEY, base64:encode(SaltedPassword)},
                       {?OLD_SCRAM_ITERATIONS_KEY, Iterations}]}}
         end,
-    [BuildAuth(Sha) || Sha <- supported_types(), enabled(Sha)].
+    [BuildAuth(Sha) || Sha <- Types, enabled(Sha)].
+
+iterations_changed(Auth) ->
+    Iterations = iterations(),
+    lists:any(
+      fun ({Key, {Info}}) ->
+              lists:member(Key, auth_info_keys()) andalso
+                  proplists:get_value(?SCRAM_ITERATIONS_KEY, Info)
+                      =/= Iterations
+      end, Auth).
+
+get_current_types(Auth) ->
+    [auth_info_key_to_type(Key) || {Key, {_Info}} <- Auth,
+                                   lists:member(Key, auth_info_keys())].
+
+settings_toggled(Auth) ->
+    lists:foldl(
+      fun (Sha, {Enabled, Disabled}) ->
+              ShaBin = auth_info_key(Sha),
+              case {proplists:is_defined(ShaBin, Auth), enabled(Sha)} of
+                  {false, true} ->
+                      {[Sha | Enabled], Disabled};
+                  {true, false} ->
+                      {Enabled, [Sha | Disabled]};
+                  {_, _} ->
+                      {Enabled, Disabled}
+              end
+      end, {[], []}, supported_types()).
+
+remove_types(Auth, Types) ->
+    lists:foldl(
+      fun (Sha, NewAuth) ->
+              lists:keydelete(auth_info_key(Sha), 1, NewAuth)
+      end, Auth, Types).
+
+maybe_update_hashes(CurrentAuth, Password) ->
+    IterationsChanged = iterations_changed(CurrentAuth),
+    {NewlyEnabled, NewlyDisabled} = settings_toggled(CurrentAuth),
+
+    NewTypes =
+        case IterationsChanged of
+            false ->
+                NewlyEnabled;
+            true ->
+                CurrentTypes = get_current_types(CurrentAuth),
+                (CurrentTypes -- NewlyDisabled) ++ NewlyEnabled
+        end,
+
+    functools:chain(
+      CurrentAuth,
+      [remove_types(_, NewlyDisabled),
+       misc:update_proplist(_, build_auth([Password], NewTypes))]).
 
 format_keys(StoredKey, ServerKey) ->
     {[{?SCRAM_STORED_KEY_KEY, base64:encode(StoredKey)},
@@ -131,6 +186,16 @@ parse_authorization_header_prefix(_) ->
 
 auth_info_key(Sha) ->
     list_to_binary(string:lowercase(www_authenticate_prefix(Sha))).
+
+auth_info_key_to_type(<<"scram-sha-1">>) ->
+    sha;
+auth_info_key_to_type(<<"scram-sha-256">>) ->
+    sha256;
+auth_info_key_to_type(<<"scram-sha-512">>) ->
+    sha512.
+
+auth_info_keys() ->
+    lists:map(fun auth_info_key/1, supported_types()).
 
 pre_trinity_auth_info_key(sha512) -> <<"sha512">>;
 pre_trinity_auth_info_key(sha256) -> <<"sha256">>;
@@ -561,4 +626,148 @@ cleanup_t({_, _, _, Pid}) ->
 
 scram_sha_test_() ->
     {setup, fun setup_t/0, fun cleanup_t/1, fun scram_sha_t/1}.
+
+maybe_update_hashes_meck_modules() ->
+    [ns_config, cluster_compat_mode].
+
+maybe_update_hashes_setup(Settings) ->
+    meck:new(maybe_update_hashes_meck_modules(), [passthrough]),
+    meck_ns_config_read_key_fast(Settings),
+    meck:expect(cluster_compat_mode, is_cluster_trinity,
+                fun () -> true end).
+
+meck_ns_config_read_key_fast(Settings) ->
+    meck:expect(
+      ns_config, read_key_fast,
+      fun (K, Default) ->
+              proplists:get_value(K, Settings, Default)
+      end).
+
+maybe_update_hashes_teardown() ->
+    meck:unload(maybe_update_hashes_meck_modules()).
+
+maybe_update_hashes_test__(OldAuth, Password, OldSettings, NewSettings) ->
+    meck_ns_config_read_key_fast(NewSettings),
+    NewAuth = maybe_update_hashes(OldAuth, Password),
+
+    OldIterations = proplists:get_value(
+                      memcached_password_hash_iterations, OldSettings),
+    NewIterations = proplists:get_value(
+                      memcached_password_hash_iterations, NewSettings),
+
+    ShaBinFun =
+        fun (scram_sha1_enabled) ->
+                <<"scram-sha-1">>;
+            (scram_sha256_enabled) ->
+                <<"scram-sha-256">>;
+            (scram_sha512_enabled) ->
+                <<"scram-sha-512">>
+        end,
+
+    AssertAuthInfo =
+        fun (Sha, OA, NA, Check) ->
+                ShaBin = ShaBinFun(Sha),
+                case Check of
+                   same ->
+                        ?assertEqual(
+                           proplists:get_value(ShaBin, OA),
+                           proplists:get_value(ShaBin, NA));
+                    not_same ->
+                        ?assertNotEqual(
+                          proplists:get_value(ShaBin, OA),
+                          proplists:get_value(ShaBin, NA))
+                end
+        end,
+
+    %% Assert all the new settings have been enforced.
+    lists:foreach(
+      fun ({{Sha, true}, {Sha, true}}) ->
+              case OldIterations =:= NewIterations of
+                  true ->
+                      %% Assert hashes for untouched sha types aren't
+                      %% re-computed, if iteration count hasn't changed.
+                      AssertAuthInfo(Sha, OldAuth, NewAuth, same);
+                  false ->
+                      %% Assert hashes for untouched sha types are
+                      %% re-computed, if iteration count has changed.
+                      AssertAuthInfo(Sha, OldAuth, NewAuth, not_same)
+              end;
+          ({{Sha, _OV}, {Sha, NV}}) ->
+              %% Assert NewSettings are applied correctly - newly enabled sha
+              %% types must exist and newly disabled sha types must have been
+              %% removed.
+              ?assertEqual(
+                 NV, proplists:is_defined(ShaBinFun(Sha), NewAuth))
+      end, lists:zip(
+             OldSettings -- [{memcached_password_hash_iterations,
+                              OldIterations}],
+             NewSettings -- [{memcached_password_hash_iterations,
+                              NewIterations}])),
+
+    %% Assert plain auth hashes remain untouched.
+    ?assertEqual(menelaus_users:get_salt_and_mac(OldAuth),
+                 menelaus_users:get_salt_and_mac(NewAuth)).
+
+maybe_update_hashes_test_() ->
+    Password = "dummy-password",
+    BuildSettings =
+        fun ({Sha1, Sha256, Sha512, Iterations}) ->
+                [{scram_sha1_enabled, Sha1},
+                 {scram_sha256_enabled, Sha256},
+                 {scram_sha512_enabled, Sha512},
+                 {memcached_password_hash_iterations, Iterations}]
+        end,
+
+    TestArgs = [%% Simple enable of single-sha types.
+                [{old_settings, {false, false, false, 1}},
+                 {new_settings, {true, false, false, 1}}],
+                [{old_settings, {false, false, false, 1}},
+                 {new_settings, {false, true, false, 1}}],
+                [{old_settings, {false, false, false, 1}},
+                 {new_settings, {false, false, true, 1}}],
+                %% Simple disable of single sha types.
+                [{old_settings, {true, true, true, 1}},
+                 {new_settings, {true, true, false, 1}}],
+                [{old_settings, {true, true, true, 1}},
+                 {new_settings, {true, false, true, 1}}],
+                [{old_settings, {true, true, true, 1}},
+                 {new_settings, {false, true, true, 1}}],
+                %% Enable many sha types.
+                [{old_settings, {false, false, false, 1}},
+                 {new_settings, {false, true, true, 1}}],
+                %% Enable some sha types, disable some sha types.
+                [{old_settings, {false, false, true, 1}},
+                 {new_settings, {true, true, false, 1}}],
+                %% Change only iterations.
+                [{old_settings, {true, true, false, 1}},
+                 {new_settings, {true, true, false, 2}}],
+                %% Enable some sha types, leave some untouched and also
+                %% change iterations.
+                [{old_settings, {false, true, true, 1}},
+                 {new_settings, {true, false, true, 2}}],
+                [{old_settings, {false, true, false, 1}},
+                 {new_settings, {true, false, false, 2}}]],
+
+    TestFun =
+        fun ([OldSettings, NewSettings], _R) ->
+                {lists:flatten(io_lib:format("Old Settings - ~p,~n"
+                                             "New Settings - ~p.~n",
+                                             [OldSettings, NewSettings])),
+                 fun () ->
+                         maybe_update_hashes_test__(
+                           %% Build both plain auth hashes and scram-sha hashes.
+                           menelaus_users:build_auth([Password]),
+                             Password, OldSettings, NewSettings)
+                 end}
+        end,
+
+    {foreachx,
+     fun ([OldSettings, _NewSettings]) ->
+             maybe_update_hashes_setup(OldSettings)
+     end,
+     fun (_X, _R) ->
+             maybe_update_hashes_teardown()
+     end,
+     [{lists:map(fun ({_, S}) -> BuildSettings(S) end, TestArg), TestFun}
+      || TestArg <- TestArgs]}.
 -endif.

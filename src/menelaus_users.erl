@@ -636,9 +636,15 @@ maybe_update_plain_auth_hashes(CurrentAuth, Password) ->
         false ->
             CurrentAuth;
         true ->
-            PlainAuth = build_plain_auth([Password]),
-            misc:update_proplist(CurrentAuth, PlainAuth)
+            misc:update_proplist(
+              CurrentAuth, build_plain_auth([Password]))
     end.
+
+maybe_update_auth(CurrentAuth, Password) ->
+    functools:chain(
+      CurrentAuth,
+      [maybe_update_plain_auth_hashes(_, Password),
+       scram_sha:maybe_update_hashes(_, Password)]).
 
 maybe_migrate_password_hashes(
   CurrentAuth, {Username, local} = Identity, Password) ->
@@ -650,7 +656,7 @@ maybe_migrate_password_hashes(
     case MigrateHashes of
         true ->
             try
-                Auth = maybe_update_plain_auth_hashes(CurrentAuth, Password),
+                Auth = maybe_update_auth(CurrentAuth, Password),
                 store_auth(Identity, Auth, ?REPLICATED_DETS_NORMAL_PRIORITY)
             catch
                 E:T:S ->
