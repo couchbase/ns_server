@@ -204,7 +204,7 @@ compute_missing_vbuckets(Map) ->
 
 compute_recovery_map_test_() ->
     {timeout, 200,
-     {inparallel,
+     {inparallel, 20,
       [begin
            NumServers = rand:uniform(?MAX_NUM_SERVERS - 1) + 1,
            NumCopies = rand:uniform(4),
