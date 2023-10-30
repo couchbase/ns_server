@@ -32,6 +32,7 @@
          eject_nodes/1,
          maybe_cleanup_old_buckets/1,
          start_link_graceful_failover/1,
+         to_human_readable_reason/1,
          check_test_condition/2,
          rebalance_topology_aware_services/3,
          needs_rebalance_with_reason/3]).
@@ -1718,23 +1719,23 @@ find_active_nodes_of_vbuckets(Map, VBucketsSet) ->
               end
       end, #{}, misc:enumerate(Map, 0)).
 
--spec needs_rebalance_with_reason(NeedsRebalance::boolean(), atom(), term()) ->
-    false | {true, Desc::string()}.
+-spec needs_rebalance_with_reason(boolean(), atom(), term()) ->
+          false | {true, atom()}.
 needs_rebalance_with_reason(false, _Reason, _Data) ->
     false;
-needs_rebalance_with_reason(true, Reason, Data) ->
-    {true, list_to_binary(get_not_balanced_reason_desc(Reason, Data))}.
+needs_rebalance_with_reason(true, Reason, _Data) ->
+    {true, Reason}.
 
-get_not_balanced_reason_desc(service_not_balanced, Service) ->
-    io_lib:format("Service ~p needs rebalance.", [Service]);
-get_not_balanced_reason_desc(num_replicas_changed, Bucket) ->
-    io_lib:format("Number of replicas for bucket ~p has changed.", [Bucket]);
-get_not_balanced_reason_desc(servers_not_balanced, Bucket) ->
-    io_lib:format("Servers of bucket ~p are not balanced.", [Bucket]);
-get_not_balanced_reason_desc(map_needs_rebalance, Bucket) ->
-    io_lib:format("Bucket map of bucket ~p needs rebalance.", [Bucket]);
-get_not_balanced_reason_desc(servers_changed, Bucket) ->
-    io_lib:format("Servers of bucket ~p have changed.", [Bucket]).
+to_human_readable_reason(service_not_balanced) ->
+    <<"Service needs rebalance.">>;
+to_human_readable_reason(num_replicas_changed) ->
+    <<"Number of replicas for bucket has changed.">>;
+to_human_readable_reason(servers_not_balanced) ->
+    <<"Servers of bucket are not balanced.">>;
+to_human_readable_reason(map_needs_rebalance) ->
+    <<"Bucket map needs rebalance.">>;
+to_human_readable_reason(servers_changed) ->
+    <<"Servers of bucket have changed.">>.
 
 -ifdef(TEST).
 find_active_nodes_of_vbuckets_test() ->

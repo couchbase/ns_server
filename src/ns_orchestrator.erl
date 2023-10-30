@@ -331,27 +331,31 @@ try_autofailover(Nodes, Options) ->
 
 -spec needs_rebalance() -> boolean().
 needs_rebalance() ->
-    false =/= needs_rebalance_with_detail().
+    needs_rebalance(needs_rebalance_with_detail()).
 
+-spec needs_rebalance(map()) -> boolean().
+needs_rebalance(Input) ->
+    #{services => [], buckets => []} =/= Input.
+
+-spec needs_rebalance_with_detail() -> #{services := list(), buckets := list()}.
 needs_rebalance_with_detail() ->
     NodesWanted = ns_node_disco:nodes_wanted(),
     ServiceNeedsRebalanceReasons =
         lists:filtermap(
             fun (S) ->
-                service_needs_rebalance(S, NodesWanted)
+                case service_needs_rebalance(S, NodesWanted) of
+                    false ->
+                        false;
+                    {true, Id} ->
+                        {true, {Id, S}}
+                end
             end,
             ns_cluster_membership:cluster_supported_services()),
-    case ServiceNeedsRebalanceReasons of
-        [] ->
-            case buckets_need_rebalance(NodesWanted) of
-                [] ->
-                    false;
-                BucketNeedsRebalanceReasons ->
-                    {true, {buckets, BucketNeedsRebalanceReasons}}
-            end;
-        _ ->
-            {true, {services, ServiceNeedsRebalanceReasons}}
-    end.
+    BucketNeedsRebalanceReasons =
+        [X || X <- buckets_need_rebalance(NodesWanted), X =/= false],
+
+    #{services => ServiceNeedsRebalanceReasons,
+      buckets => BucketNeedsRebalanceReasons}.
 
 service_needs_rebalance(Service, NodesWanted) ->
     ServiceNodes = ns_cluster_membership:service_nodes(NodesWanted, Service),
@@ -384,8 +388,13 @@ topology_aware_service_needs_rebalance(Service, ServiceNodes) ->
 buckets_need_rebalance(NodesWanted) ->
     KvNodes = ns_cluster_membership:service_nodes(NodesWanted, kv),
     lists:filtermap(fun ({Bucket, BucketConfig}) ->
-                      ns_rebalancer:bucket_needs_rebalance_with_details(
-                        Bucket, BucketConfig, KvNodes)
+                      case ns_rebalancer:bucket_needs_rebalance_with_details(
+                        Bucket, BucketConfig, KvNodes) of
+                          false ->
+                              false;
+                          {true, Value} ->
+                              {true, {Value, Bucket}}
+                      end
                     end,
                     ns_bucket:get_buckets_by_rank()).
 
@@ -2136,6 +2145,18 @@ handle_delete_bucket(BucketName, From, CurrentState, StateData) ->
     end.
 
 -ifdef(TEST).
+needs_rebalance_api_changed_test() ->
+    Resp = needs_rebalance(#{services => [], buckets => []}),
+    ?assertEqual(false, Resp),
+    Resp2 = needs_rebalance(#{services => [dummyKey], buckets => []}),
+    ?assertEqual(true, Resp2),
+    Resp3 = needs_rebalance(#{services => [], buckets => [dummyKey]}),
+    ?assertEqual(true, Resp3),
+    Resp4 = needs_rebalance(#{services => [dummyKey], buckets => [dummyKey]}),
+    ?assertEqual(true, Resp4),
+    Resp5 = needs_rebalance(#{services => [dummyKey, key2],
+                              buckets => [dummyKey]}),
+    ?assertEqual(true, Resp5).
 
 get_uninitialized_services_test() ->
     Snapshot =

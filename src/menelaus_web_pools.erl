@@ -256,17 +256,48 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
          server_groups_uri_json(GroupsV)],
     {lists:flatten(PropList)}.
 
+-spec build_rebalance_status() -> proplists:proplist().
 build_rebalance_status() ->
-    case ns_orchestrator:needs_rebalance_with_detail() of
-        false ->
-            {balanced, true};
-        {true, {services, Reasons}} ->
+    rebalance_details(ns_orchestrator:needs_rebalance_with_detail()).
+
+-spec rebalance_details(map()) -> proplists:proplist().
+rebalance_details(Details) ->
+    case Details of
+        #{services := [], buckets := []} ->
+            [{balanced, true}];
+        #{services := Services, buckets := []} ->
             [{balanced, false},
-             {servicesNeedRebalance, Reasons}];
-        {true, {buckets, Reasons}} ->
+             {servicesNeedRebalance,
+              format_service_rebalance_needed(Services)}];
+        #{services := [], buckets := Buckets} ->
             [{balanced, false},
-             {bucketsNeedRebalance, Reasons}]
+             {bucketsNeedRebalance, format_bucket_rebalance_needed(Buckets)}];
+        #{services := Services, buckets := Buckets} ->
+            [{balanced, false},
+             {servicesNeedRebalance, format_service_rebalance_needed(Services)},
+             {bucketsNeedRebalance, format_bucket_rebalance_needed(Buckets)}]
     end.
+
+format_bucket_rebalance_needed(Descriptors) ->
+    format_buckets_and_services(
+      fun (Buckets) ->
+              [{buckets, [list_to_binary(Bucket) || Bucket <- Buckets]}]
+      end, Descriptors).
+
+format_service_rebalance_needed(Descriptors) ->
+    format_buckets_and_services(
+      fun (Services) ->
+              [{services, Services}]
+      end, Descriptors).
+
+format_buckets_and_services(Fun, Descriptors) ->
+    lists:map(
+      fun ({Descriptor, Things}) ->
+              {[{code, Descriptor},
+                {description,
+                 ns_rebalancer:to_human_readable_reason(Descriptor)}]
+               ++ Fun(Things)}
+      end, misc:groupby_map(fun functools:id/1, Descriptors)).
 
 build_rebalance_params(Id, UUID) ->
     RebalanceStatus = case rebalance:running() of
@@ -717,6 +748,133 @@ handle_defragmented(ServiceStr, Req) ->
     end.
 
 -ifdef(TEST).
+rebalance_details_test() ->
+    ?assertEqual([{balanced, true}],
+                 rebalance_details(#{services => [], buckets => []})),
+    ?assertEqual([{balanced, false},
+                  {servicesNeedRebalance,
+                   [{[{code, service_not_balanced},
+                      {description, <<"Service needs rebalance.">>},
+                      {services, [kv]}]}]}],
+                 rebalance_details(#{services => [{service_not_balanced, kv}],
+                                     buckets => []})),
+    ?assertEqual([{balanced, false},
+                  {bucketsNeedRebalance,
+                   [{[{code, num_replicas_changed},
+                      {description,
+                       <<"Number of replicas for bucket has changed.">>},
+                      {buckets, [<<"default">>]}]}]}],
+                 rebalance_details(#{services => [],
+                                     buckets => [{num_replicas_changed,
+                                                  "default"}]})),
+    ?assertEqual([{balanced, false},
+                  {servicesNeedRebalance,
+                   [{[{code, service_not_balanced},
+                      {description, <<"Service needs rebalance.">>},
+                      {services, [kv, cbas]}]}]},
+                  {bucketsNeedRebalance,
+                   [{[{code, num_replicas_changed},
+                      {description,
+                       <<"Number of replicas for bucket has changed.">>},
+                      {buckets, [<<"default">>]}]}]}],
+                 rebalance_details(#{services => [{service_not_balanced, kv},
+                                                  {service_not_balanced, cbas}],
+                                     buckets => [{num_replicas_changed,
+                                                  "default"}]})),
+    ?assertEqual([{balanced, false},
+                  {servicesNeedRebalance,
+                   [{[{code, service_not_balanced},
+                      {description, <<"Service needs rebalance.">>},
+                      {services, [kv, cbas]}]}]},
+                  {bucketsNeedRebalance,
+                   [{[{code, num_replicas_changed},
+                      {description,
+                       <<"Number of replicas for bucket has changed.">>},
+                      {buckets, [<<"default">>, <<"another">>]}]}]}],
+                 rebalance_details(#{services => [{service_not_balanced, kv},
+                                                  {service_not_balanced, cbas}],
+                                     buckets => [{num_replicas_changed,
+                                                  "default"},
+                                                 {num_replicas_changed,
+                                                  "another"}]})),
+    ?assertEqual([{balanced, false},
+                  {servicesNeedRebalance,
+                   [{[{code, servers_not_balanced},
+                      {description,
+                       <<"Servers of bucket are not balanced.">>},
+                      {services, [n1ql]}]},
+                    {[{code, service_not_balanced},
+                      {description, <<"Service needs rebalance.">>},
+                      {services, [kv, cbas]}]}]},
+                  {bucketsNeedRebalance,
+                   [{[{code, num_replicas_changed},
+                      {description,
+                       <<"Number of replicas for bucket has changed.">>},
+                      {buckets, [<<"default">>, <<"another">>]}]}]}],
+                 rebalance_details(#{services => [{service_not_balanced, kv},
+                                                  {service_not_balanced, cbas},
+                                                  {servers_not_balanced, n1ql}],
+                                     buckets => [{num_replicas_changed,
+                                                  "default"},
+                                                 {num_replicas_changed,
+                                                  "another"}]})),
+    ?assertEqual([{balanced, false},
+                  {servicesNeedRebalance,
+                   [{[{code, servers_not_balanced},
+                      {description,
+                       <<"Servers of bucket are not balanced.">>},
+                      {services, [n1ql]}]},
+                    {[{code, service_not_balanced},
+                      {description, <<"Service needs rebalance.">>},
+                      {services, [kv, cbas]}]}]},
+                  {bucketsNeedRebalance,
+                   [{[{code, map_needs_rebalance},
+                      {description, <<"Bucket map needs rebalance.">>},
+                      {buckets, [<<"another">>]}]},
+                    {[{code, num_replicas_changed},
+                      {description,
+                       <<"Number of replicas for bucket has changed.">>},
+                      {buckets, [<<"default">>, <<"another">>]}]}]}],
+                 rebalance_details(#{services => [{service_not_balanced, kv},
+                                                  {service_not_balanced, cbas},
+                                                  {servers_not_balanced, n1ql}],
+                                     buckets => [{num_replicas_changed,
+                                                  "default"},
+                                                 {num_replicas_changed,
+                                                  "another"},
+                                                 {map_needs_rebalance,
+                                                  "another"}]})),
+    ?assertEqual([{balanced, false},
+                  {servicesNeedRebalance,
+                   [{[{code, servers_not_balanced},
+                      {description,
+                       <<"Servers of bucket are not balanced.">>},
+                      {services, [n1ql]}]},
+                    {[{code, service_not_balanced},
+                      {description, <<"Service needs rebalance.">>},
+                      {services, [kv, cbas]}]}]},
+                  {bucketsNeedRebalance,
+                   [{[{code, map_needs_rebalance},
+                      {description, <<"Bucket map needs rebalance.">>},
+                      {buckets, [<<"another">>]}]},
+                    {[{code, num_replicas_changed},
+                      {description,
+                       <<"Number of replicas for bucket has changed.">>},
+                      {buckets, [<<"default">>, <<"another">>]}]},
+                    {[{code, servers_changed},
+                      {description, <<"Servers of bucket have changed.">>},
+                      {buckets, [<<"another_again">>]}]}]}],
+                 rebalance_details(#{services => [{service_not_balanced, kv},
+                                                  {service_not_balanced, cbas},
+                                                  {servers_not_balanced, n1ql}],
+                                     buckets => [{num_replicas_changed,
+                                                  "default"},
+                                                 {num_replicas_changed,
+                                                  "another"},
+                                                 {map_needs_rebalance,
+                                                  "another"},
+                                                 {servers_changed,
+                                                  "another_again"}]})).
 
 timeout_on_pools_default_post_test() ->
     meck:new(ns_cluster_membership, [passthrough]),
