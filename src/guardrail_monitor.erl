@@ -671,12 +671,6 @@ check_bucket_t() ->
                    {storage_mode, magma}],
 
     %% Bucket level check
-
-    meck:expect(ns_bucket, get_buckets,
-                fun () ->
-                        [{"couchstore", CouchstoreBucket},
-                         {"magma", MagmaBucket}]
-                end),
     Config = [{resident_ratio, RRConfig},
               {data_size, DataSizeConfig}],
 
@@ -726,15 +720,21 @@ check_bucket_t() ->
                     [{data_size, 20}])),
 
     %% Service level check
-
+    meck:expect(ns_bucket, get_buckets,
+                fun () ->
+                        [{"couchstore", CouchstoreBucket},
+                         {"magma", MagmaBucket}]
+                end),
     %% RR% above couchstore minimum
     ?assertListsEqual(
        [],
-       check({bucket, Config}, [{{bucket, "couchstore"}, [{resident_ratio, 15}]}])),
+       check({bucket, Config},
+             [{{bucket, "couchstore"}, [{resident_ratio, 15}]}])),
     %% RR% below couchstore minimum
     ?assertListsEqual(
        [{{bucket, "couchstore"}, resident_ratio}],
-       check({bucket, Config}, [{{bucket, "couchstore"}, [{resident_ratio, 5}]}])),
+       check({bucket, Config},
+             [{{bucket, "couchstore"}, [{resident_ratio, 5}]}])),
 
     %% RR% above magma minimum
     ?assertListsEqual(
@@ -762,6 +762,11 @@ check_bucket_t() ->
     ?assertListsEqual(
        [{{bucket, "magma"}, data_size}],
        check({bucket, Config}, [{{bucket, "magma"}, [{data_size, 20}]}])),
+
+    %% Have bucket stats but don't have bucket
+    ?assertListsEqual(
+       [],
+       check({bucket, Config}, [{{bucket, "other"}, [{data_size, 20}]}])),
     ok.
 
 check_bucket_during_storage_migration_t() ->
@@ -1220,14 +1225,20 @@ test_validate_topology_change(ActiveKVNodes, KeepKVNodes) ->
     validate_topology_change(ActiveKVNodes -- KeepKVNodes, KeepKVNodes).
 
 validate_topology_change_data_grs_t() ->
-    ResourceConfig0 = [{couchstore_minimum, 10},
-                       {magma_minimum, 1}],
+    RRResourceConfig0 = [{couchstore_minimum, 10},
+                         {magma_minimum, 1}],
+    RRResourceConfig1 = [{enabled, false} | RRResourceConfig0],
 
-    ResourceConfig1 = [{enabled, false} | ResourceConfig0],
+    DataSizeResourceConfig0 =
+        [{couchstore_maximum, 0.000000001},  %% 1,000 Bytes
+         {magma_maximum,      0.00000001}],  %% 10,000 Bytes
+    DataSizeResourceConfig1 = [{enabled, false} | DataSizeResourceConfig0],
+
     meck:expect(ns_config, read_key_fast,
                 fun (resource_management, _) ->
                         [{bucket,
-                          [{resident_ratio, ResourceConfig1}]}]
+                          [{resident_ratio, RRResourceConfig1},
+                           {data_size, DataSizeResourceConfig1}]}]
                 end),
     %% 3 buckets, each with a quota of 10 bytes
     meck:expect(ns_bucket, get_bucket,
@@ -1259,11 +1270,13 @@ validate_topology_change_data_grs_t() ->
     ?assertEqual(ok, test_validate_topology_change([node1, node2, node3],
                                                    [node1, node2])),
 
-    ResourceConfig2 = [{enabled, true} | ResourceConfig0],
+    RRResourceConfig2 = [{enabled, true} | RRResourceConfig0],
+    DataSizeResourceConfig2 = [{enabled, true} | DataSizeResourceConfig0],
     meck:expect(ns_config, read_key_fast,
                 fun (resource_management, _) ->
                         [{bucket,
-                          [{resident_ratio, ResourceConfig2}]}]
+                          [{resident_ratio, RRResourceConfig2},
+                           {data_size, DataSizeResourceConfig2}]}]
                 end),
 
     %% Error when just ejecting a live node
@@ -1307,6 +1320,23 @@ validate_topology_change_data_grs_t() ->
 
     %% Don't give an error when ejecting a node if the resident ratio is not too
     %% low
+    ?assertMatch(ok,
+                 test_validate_topology_change([node1, node2, node3],
+                                               [node1, node2])),
+
+    meck:expect(stats_interface, total_active_logical_data_size,
+                fun (_) -> #{"couchstore_bucket" => 2001,
+                             "magma_bucket" => 20001} end),
+    ?assertMatch({error,
+                  {data_size_will_be_too_high,
+                   <<"The following buckets are expected to breach the maximum "
+                     "data size per node: couchstore_bucket, magma_bucket">>}},
+                 test_validate_topology_change([node1, node2, node3],
+                                               [node1, node2])),
+
+    meck:expect(stats_interface, total_active_logical_data_size,
+                fun (_) -> #{} end),
+    %% If no data size can be found for the bucket, don't give an error
     ?assertMatch(ok,
                  test_validate_topology_change([node1, node2, node3],
                                                [node1, node2])),
@@ -1389,7 +1419,13 @@ validate_topology_change_disk_usage_t() ->
     ?assertMatch({error, {disk_usage_too_high, _}},
                  test_validate_topology_change([node1], [node2])),
     ?assertMatch({error, {disk_usage_too_high, _}},
-                 test_validate_topology_change([node1, node2], [node1])).
+                 test_validate_topology_change([node1, node2], [node1])),
+
+    meck:expect(config_profile, get_bool,
+                fun ({resource_management, enabled}) -> false end),
+    %% Don't validate rebalance when guardrails are disabled
+    ?assertMatch(ok,
+                 test_validate_topology_change([node1], [])).
 
 validate_storage_migration_t() ->
     DataSizeConfig0 = [{enabled, true},
@@ -1542,7 +1578,20 @@ regular_checks_t() ->
                           [{resident_ratio,
                             [{enabled, true},
                              {couchstore_minimum, 10},
-                             {magma_minimum, 1}]}]}]
+                             {magma_minimum, 1}]},
+                           {data_size,
+                            [{enabled, true},
+                             {couchstore_maximum, 1},
+                             {magma_maximum, 10}]}]},
+                         {disk_usage,
+                          [{enabled, true},
+                           {maximum, 96}]},
+                         {collections_per_quota,
+                          [{enabled, true},
+                           {maximum, 1}]},
+                         {cores_per_bucket,
+                          [{enabled, true},
+                           {minimum, 0.5}]}]
                 end),
     meck:expect(stats_interface, for_resource_management,
                 fun () ->
@@ -1560,6 +1609,11 @@ regular_checks_t() ->
                 fun () ->
                         [{"couchstore_bucket", CouchstoreBucket},
                          {"magma_bucket", MagmaBucket}]
+                end),
+
+    meck:expect(ns_config, search_node,
+                fun (database_dir) ->
+                        {value, "dir"}
                 end),
 
     {ok, _Pid} = start_link(),
@@ -1601,6 +1655,32 @@ regular_checks_t() ->
                         [{{bucket, "couchstore_bucket"}, []}]
                 end),
     meck:wait(1, ns_config, set, [{node, node(), resource_statuses}, []],
+              ?MECK_WAIT_TIMEOUT),
+
+    %% Test that we don't crash when we get no stats
+    meck:expect(stats_interface, for_resource_management,
+                fun () ->
+                        []
+                end),
+    Checks0 = meck_history:num_calls('_', ns_config, read_key_fast,
+                                     [resource_management, '_']),
+    %% Wait until two further checks have started, proving that at least one
+    %% completed without crashing
+    meck:wait(Checks0 + 2, ns_config, read_key_fast, [resource_management, '_'],
+              ?MECK_WAIT_TIMEOUT),
+
+    %% Test that we don't crash when dbdir can't be found (such as during node
+    %% rename)
+    meck:expect(ns_config, search_node,
+                fun (database_dir) ->
+                        false
+                end),
+
+    Checks1 = meck_history:num_calls('_', ns_config, read_key_fast,
+                                     [resource_management, '_']),
+    %% Wait until two further checks have started, proving that at least one
+    %% completed without crashing
+    meck:wait(Checks1 + 2, ns_config, read_key_fast, [resource_management, '_'],
               ?MECK_WAIT_TIMEOUT),
 
     %% Confirm that expected functions were called in the first check
