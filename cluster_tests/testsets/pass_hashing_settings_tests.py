@@ -9,7 +9,6 @@
 import testlib
 from testsets.authn_tests import scram_sha_auth
 
-
 class PassHashingSettingsTests(testlib.BaseTestSet):
 
     @staticmethod
@@ -25,6 +24,9 @@ class PassHashingSettingsTests(testlib.BaseTestSet):
     def test_teardown(self):
         delete_user(self.cluster, self.test_username)
         update_pwd_hash_migration_setting(self.cluster, "false")
+        disable_all_scram_sha_settings(self.cluster)
+        testlib.delete_succ(self.cluster,
+                            '/settings/security/scramShaIterations')
 
     def teardown(self):
         delete_user(self.cluster, self.username_argon)
@@ -241,6 +243,66 @@ class PassHashingSettingsTests(testlib.BaseTestSet):
             new_settings={"pbkdf2HmacSha512Iterations": "25000"},
             migrate='false')
 
+    def pwd_hash_migration_enable_scram_sha1_pos_test(self):
+        update_scram_sha_hashes_test(
+            self.cluster, self.test_username, enable="true",
+            type="sha1", migrate="true")
+
+    def pwd_hash_migration_disable_scram_sha1_pos_test(self):
+        update_scram_sha_hashes_test(
+            self.cluster, self.test_username, enable="false",
+            type="sha1", migrate="true")
+
+    def pwd_hash_migration_enable_scram_sha1_neg_test(self):
+        update_scram_sha_hashes_test(
+            self.cluster, self.test_username, enable="true",
+            type="sha1", migrate="false")
+
+    def pwd_hash_migration_disable_scram_sha1_neg_test(self):
+        update_scram_sha_hashes_test(
+            self.cluster, self.test_username, enable="false",
+            type="sha1", migrate="false")
+
+    def pwd_hash_migration_enable_scram_sha256_pos_test(self):
+        update_scram_sha_hashes_test(
+            self.cluster, self.test_username, enable="true",
+            type="sha256", migrate="true")
+
+    def pwd_hash_migration_enable_scram_sha256_neg_test(self):
+        update_scram_sha_hashes_test(
+            self.cluster, self.test_username, enable="true",
+            type="sha256", migrate="false")
+
+    def pwd_hash_migration_enable_scram_sha512_pos_test(self):
+        update_scram_sha_hashes_test(
+            self.cluster, self.test_username, enable="true",
+            type="sha512", migrate="true")
+
+    def pwd_hash_migration_enable_scram_sha512_neg_test(self):
+        update_scram_sha_hashes_test(
+            self.cluster, self.test_username, enable="true",
+            type="sha256", migrate="false")
+
+    def pwd_hash_migration_change_iterations_scram_sha1_pos_test(self):
+        update_scram_sha_iterations_test(
+            self.cluster, self.test_username,
+            type="sha1", iterations="20000", migrate="true")
+
+    def pwd_hash_migration_change_iterations_scram_sha1_neg_test(self):
+        update_scram_sha_iterations_test(
+            self.cluster, self.test_username,
+            type="sha1", iterations="20000", migrate="false")
+
+    def pwd_hash_migration_change_iterations_scram_sha512_pos_test(self):
+        update_scram_sha_iterations_test(
+            self.cluster, self.test_username,
+            type="sha512", iterations="20000", migrate="true")
+
+    def pwd_hash_migration_change_iterations_scram_sha512_neg_test(self):
+        update_scram_sha_iterations_test(
+            self.cluster, self.test_username,
+            type="sha512", iterations="20000", migrate="false")
+
 
 def verify_hash_type(users, username, expected_hash_type):
     record = next(filter(lambda x: x['id'] == username, users))
@@ -419,3 +481,128 @@ def update_pwd_hash_migration_setting(cluster, enable):
 
 def authenticate_user(cluster, user, pwd):
     testlib.get_succ(cluster, "/whoami", auth=(user, pwd))
+
+
+def update_scram_sha_hashes_test(cluster, user, enable, type, migrate):
+    # Enable the settings intitally to test disable later.
+    if enable == "false":
+        update_scram_sha_setting(cluster, type, "true")
+
+    pwd = create_user(cluster, user)
+    update_pwd_hash_migration_setting(cluster, migrate)
+
+    update_scram_sha_setting(cluster, type, enable)
+
+    # Trigger a pwd hash migration via authenticating the user.
+    authenticate_user(cluster, user, pwd)
+    validate_scram_sha_settings(cluster, user, enable, type, migrate)
+
+    ## Check the user can still authenticate using the migrated scram-sha
+    # hashes.
+    if migrate == "true" and enable == "true":
+        validate_scram_sha_auth(cluster, user, pwd, type)    
+
+def update_scram_sha_iterations_test(cluster, user, type, iterations, migrate):
+    # Always enable the scra-sha 'type' and the hashes should be update to the
+    # new iteration count only when the pwd_hash_migration_settings is enabled.
+    update_scram_sha_setting(cluster, type, "true")
+    pwd = create_user(cluster, user)
+
+    old_iterations = get_scram_sha_iterations(cluster)
+    update_pwd_hash_migration_setting(cluster, migrate)
+    update_scram_sha_iterations(cluster, iterations)
+
+    # Trigger a pwd hash migration via authenticating the user.
+    authenticate_user(cluster, user, pwd)
+    validate_scram_sha_iterations(
+        cluster, user, type, old_iterations, iterations, migrate)
+
+    ## Check the user can still authenticate against the scram-sha hashes.
+    validate_scram_sha_auth(cluster, user, pwd, type)
+
+def update_scram_sha_setting(cluster, type, enable):
+    if type == "sha1":
+        uri = "scramSha1Enabled"
+    elif type == "sha256":
+        uri = "scramSha256Enabled"
+    elif type == "sha512":
+        uri = "scramSha512Enabled"
+    else:
+        assert False, "Invalid scram-sha type"
+
+    testlib.post_succ(cluster, f"/settings/security/{uri}", data=enable)
+
+
+def update_scram_sha_iterations(cluster, iterations):
+    testlib.post_succ(
+        cluster, "/settings/security/scramShaIterations", data=iterations)
+
+
+def validate_scram_sha_iterations(
+    cluster, user, type, old_iterations, iterations, migrate):
+    auth_info = get_auth_info(cluster, user)
+    scram_sha_key = get_scram_sha_key(type)
+    if migrate == "true":
+        expected = iterations
+    else:
+        expected = old_iterations
+
+    assert auth_info[scram_sha_key]["iterations"] == int(expected), \
+        f"incorrect iterations for {scram_sha_key}"
+
+
+def validate_scram_sha_settings(cluster, user, enable, type, migrate):
+    auth_info = get_auth_info(cluster, user)
+    scram_sha_key = get_scram_sha_key(type)
+
+    # Conditions:
+    # 1. enable=true, migrate=true.
+    #    The sha type hash should be found.
+    # 2. enable=false, migrate=true.
+    #    The sha type hash shouldn't be found.
+    # 3. enable=true, migrate=false.
+    #    The sha type hash shouldn't be found.
+    # 4. enable=false, migrate=false.
+    #    The sha type hash should be found. 
+    if migrate == enable:
+        assert scram_sha_key in auth_info.keys(), \
+            f"{scram_sha_key} not present"
+    else:
+        assert scram_sha_key not in auth_info.keys(), \
+            f"{scram_sha_key} present"
+
+
+def get_scram_sha_iterations(cluster):
+    r = testlib.get_succ(cluster, "/settings/security/scramShaIterations")
+    return int(r.text)
+
+
+def get_scram_sha_key(type):
+    if type == "sha1":
+        hash_key = "scram-sha-1"
+    elif type == "sha256":
+        hash_key = "scram-sha-256"
+    elif type == "sha512":
+        hash_key = "scram-sha-512"
+    else:
+        assert False, "Invalid scram-sha type"
+
+    return hash_key
+
+
+def get_auth_info(cluster, user):
+    backup = get_backup(cluster, f"user:local:{user}")
+    users = backup['users']
+    assert len(users) == 1, "Failed retrieving backup info for user - {user}"
+    return users[0]['auth']
+
+
+def disable_all_scram_sha_settings(cluster):
+    for type in ["sha1", "sha256", "sha512"]:
+        update_scram_sha_setting(cluster, type, enable="false")
+
+
+def validate_scram_sha_auth(cluster, user, pwd, type):
+    scram_type = get_scram_sha_key(type).upper()
+    r = scram_sha_auth(scram_type, '/whoami', (user, pwd), cluster)
+    testlib.assert_http_code(200, r)
