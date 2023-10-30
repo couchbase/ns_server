@@ -196,12 +196,22 @@ ADD_DEPENDENCIES (ns_distclean ns_realclean ns_dataclean)
 
 ADD_SUBDIRECTORY (deps)
 REBAR(TARGET ns_server
-  DEPENDS ns_cfg kv_mappings
-  EUNIT
-  CLEAN_HOOK ns_realclean)
+      DEPENDS
+        couchdb
+        couch_index_merger
+        ejson
+        ejson_build
+        kv_mappings
+        mochiweb
+        ns_cfg
+        ns_goport
+        ns_gosecrets
+        vbmap
+      EUNIT
+      CLEAN_HOOK ns_realclean)
 
 ADD_CUSTOM_TARGET (ns_server_all DEPENDS ns_server)
-ADD_CUSTOM_TARGET (ns_server_tests DEPENDS ns_server-eunit)
+ADD_CUSTOM_TARGET (ns_server_tests DEPENDS ns_server-eunit ns_server_all)
 
 # CMake won't let you add a build target as a dependency to a test. You can,
 # however, define a test as a set for a test fixture (set of tests) and it
@@ -216,6 +226,9 @@ ADD_TEST(ns_server_tests_build_for_idiotic_cmake
                      --target ns_server_tests)
 SET_TESTS_PROPERTIES(ns_server_tests_build_for_idiotic_cmake PROPERTIES
         FIXTURES_SETUP NS_TEST_SETUP)
+
+LIST(APPEND NS_TEST_BINARY_DEPS vbmap gosecrets goport)
+SET(NS_TEST_BINARY_DEPS ${NS_TEST_BINARY_DEPS} CACHE STRING "")
 
 MACRO (NS_SERVER_TEST)
   PARSE_ARGUMENTS (NS_SERVER_TEST "" "NAME;TEST_TARGET" "EXPLICIT" ${ARGN})
@@ -234,6 +247,9 @@ MACRO (NS_SERVER_TEST)
   SET (_cmd "${CMAKE_COMMAND}" -D "ERL_EXECUTABLE=${ERL_EXECUTABLE}"
     -D "COUCHDB_BIN_DIR=${COUCHDB_BIN_DIR}"
     -D "TEST_TARGET=${_test_target}"
+    # We pass the CCACHE DIR to be able to load anything we need from the
+    # script. It otherwise wouldn't have access to those variables.
+    -D "CCACHE_DIR=${CMAKE_BINARY_DIR}"
     -P "${PROJECT_SOURCE_DIR}/cmake_modules/do-test.cmake")
 
   IF (NOT NS_SERVER_TEST_EXPLICIT)

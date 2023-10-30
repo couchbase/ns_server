@@ -19,12 +19,31 @@ FILE (GLOB ebindirs RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
 STRING (RANDOM LENGTH 16 NODE_NAME_RANDOM)
 SET (NODE_NAME "test-${NODE_NAME_RANDOM}")
 
+# Get the paths for the the other executables we might spawn. This cmake file
+# is executed outside of the context of the original cmake setup, so it does not
+# have access to the CCache by default. We can read the individual variables
+# that we need via LOAD_CACHE.
+# First we need the list of binaries
+LOAD_CACHE(${CCACHE_DIR} READ_WITH_PREFIX "MAIN_CACHE_" NS_TEST_BINARY_DEPS)
+
+FOREACH (DEP ${MAIN_CACHE_NS_TEST_BINARY_DEPS})
+  SET(cached_dep_build_dir "${DEP}_BINARY_DIR")
+  # And now we can load their paths
+  LOAD_CACHE(${CCACHE_DIR} READ_WITH_PREFIX "MAIN_CACHE_"
+             "${cached_dep_build_dir}")
+
+  SET(dep_build_dir "${MAIN_CACHE_${cached_dep_build_dir}}")
+  SET(OVERRIDE_EXECUTABLE_PATHS
+          "${DEP}=${dep_build_dir}:${OVERRIDE_EXECUTABLE_PATHS}")
+ENDFOREACH(DEP ${MAIN_CACHE_NS_TEST_BINARY_DEPS})
+
 SET(TEST_COMMAND "${ERL_EXECUTABLE}"
         -pa ${ebindirs}
         -pa "${COUCHDB_BIN_DIR}/src/couchdb"
         -pa "${COUCHDB_BIN_DIR}/src/mochiweb"
         -pa "${COUCHDB_BIN_DIR}/src/ejson"
         -pa "${COUCHDB_BIN_DIR}/src/couch_index_merger/ebin"
+        -env OVERRIDE_EXECUTABLE_PATHS ${OVERRIDE_EXECUTABLE_PATHS}
         -noshell
         -kernel logger "[{handler, default, undefined}]"
         -shutdown_time 10000

@@ -29,6 +29,10 @@ foreach(_build ${_builds})
     GoModBuild (TARGET ${_target} PACKAGE ${_package} 
       GOVERSION SUPPORTED_NEWER OUTPUT ${_install_or_output})
   endif()
+  GET_TARGET_PROPERTY (target_exe ${_target} GO_BINARY)
+  CMAKE_PATH(GET target_exe PARENT_PATH package_bin_dir)
+  SET(${_package_name}_BINARY_DIR ${package_bin_dir} CACHE STRING
+      "Path to ${_package_name} binary directory")
 endforeach()
 
 REMOVE_SANITIZERS(ns_minify_css)

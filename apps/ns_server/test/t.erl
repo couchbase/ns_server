@@ -377,7 +377,20 @@ setup_paths() ->
     application:set_env(kernel, dist_config_file,
                         filename:join(TmpDir, "dist_cfg")),
 
-    ok.
+    case os:getenv("OVERRIDE_EXECUTABLE_PATHS") of
+        false -> ok;
+        X ->
+            lists:foreach(
+                fun(<<>>) -> ok;
+                   (B) ->
+                        [DepBin, PathBin] = binary:split(B, <<"=">>),
+                        Dep = binary_to_list(DepBin),
+                        Path = binary_to_list(PathBin),
+                        io:format("Got path override for ~p to ~p~n",
+                                  [Dep, Path]),
+                        ets:insert_new(path_config_override, {Dep, Path})
+                end, binary:split(list_to_binary(X), <<":">>, [global]))
+    end.
 
 spawn_listener() ->
     Parent = self(),
