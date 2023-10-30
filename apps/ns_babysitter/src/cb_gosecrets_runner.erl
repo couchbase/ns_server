@@ -360,7 +360,7 @@ start_gosecrets(CfgPath) ->
           erlang, apply,
           [fun () ->
                    process_flag(trap_exit, true),
-                   Path = path_config:component_path(bin, "gosecrets"),
+                   Path = path_config:get_path(bin, "gosecrets"),
                    Args = ["--config", CfgPath],
                    ?log_debug("Starting ~p with args: ~0p", [Path, Args]),
                    Port =

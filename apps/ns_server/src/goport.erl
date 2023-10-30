@@ -241,7 +241,7 @@ goport_spec(Config) ->
     end.
 
 goport_path() ->
-    path_config:component_path(bin, goport_name()).
+    path_config:get_path(bin, goport_name()).
 
 goport_name() ->
     case misc:is_windows() of

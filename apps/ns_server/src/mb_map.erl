@@ -718,7 +718,7 @@ invoke_vbmap(CurrentMap, Nodes, NumVBuckets, NumSlaves, NumReplicas, Tags, UseGr
                 "vbmap"
         end,
 
-    VbmapPath = path_config:component_path(bin, VbmapName),
+    VbmapPath = path_config:get_path(bin, VbmapName),
     DiagPath = path_config:tempfile("vbmap_diag", ""),
     PrevMapFile = path_config:tempfile("prev-vbmap", ".json"),
 

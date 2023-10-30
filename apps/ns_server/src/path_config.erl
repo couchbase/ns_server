@@ -10,7 +10,8 @@
 -module(path_config).
 
 -export([component_path/1, component_path/2,
-         tempfile/2, tempfile/3, minidump_dir/0, ensure_directories/0]).
+         tempfile/2, tempfile/3, minidump_dir/0, ensure_directories/0,
+         get_path/2]).
 
 %% used by ns_config_default
 -export([default_memcached_config_path/0]).
@@ -25,6 +26,7 @@ component_path_key(sec) -> path_config_secdir.
 
 -spec component_path(etc | tmp | data | lib | bin | sec) -> string().
 component_path(NameAtom) ->
+    %% Check for overrides to one of the typical directories
     try ets:lookup(path_config_override, component_path_key(NameAtom)) of
         [{_,X}|_] -> X;
         _ ->
@@ -38,6 +40,18 @@ component_path(NameAtom) ->
 -spec component_path(etc | tmp | data | lib | bin | sec, string()) -> string().
 component_path(NameAtom, SubPath) ->
     filename:join(component_path(NameAtom), SubPath).
+
+-spec get_path(etc | tmp | data | lib | bin | sec, string()) -> string().
+get_path(DefaultComponent, Name) ->
+    %% Check for path overrides to individual components
+    try ets:lookup(path_config_override, Name) of
+        [{_, X}] -> filename:join(X, Name);
+        _ ->
+            %% Not found, fallback to the default dir
+            component_path(DefaultComponent, Name)
+    catch error:badarg ->
+        component_path(DefaultComponent, Name)
+    end.
 
 tempfile(Dir, Prefix, Suffix) ->
     Unique = erlang:unique_integer(),
