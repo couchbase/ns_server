@@ -11,593 +11,26 @@
         "added": "7.0.0",
         "stability": "committed"
     },
-    "cm_gc_duration_seconds": {
-        "type": "histogram",
-        "help": "Time to perform erlang garbage collection",
-        "added": "7.6.0",
-        "stability": "committed"
+    "cm_auth_cache_current_items": {
+        "type": "gauge",
+        "help": "Current number of items available in cbauth auth cache",
+        "added": "7.6.0"
     },
-    "cm_rest_request_enters_total": {
+    "cm_auth_cache_hit_total": {
         "type": "counter",
-        "help": "Number of REST requests to enter ns_server",
-        "added": "7.0.0",
-        "stability": "committed"
+        "help": "Total number of cbauth auth cache hits",
+        "added": "7.6.0"
     },
-    "cm_rest_request_leaves_total": {
+    "cm_auth_cache_max_items": {
+        "type": "gauge",
+        "help": "Maximum capacity of cbauth auth cache",
+        "added": "7.6.0"
+    },
+    "cm_auth_cache_miss_total": {
         "type": "counter",
-        "help": "Number of REST requests to exit ns_server",
-        "added": "7.0.0",
-        "stability": "committed"
+        "help": "Total number of cbauth auth cache misses",
+        "added": "7.6.0"
     },
-    "cm_rest_request_auth_failure_total":{
-        "type": "counter",
-        "help": "Number of REST requests failing authentication",
-        "added": "7.6.0",
-        "stability": "committed"
-    },
-    "cm_rest_request_access_forbidden_total":{
-        "type": "counter",
-        "help": "Number of REST requests failing due inadequate permissions",
-        "added": "7.6.0",
-        "stability": "committed"
-    },
-    "cm_rest_request_failure_total":{
-        "type": "counter",
-        "help": "Number of REST requests failing (see specific code)",
-        "added": "7.6.0",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "type",
-                "help": "Type of operation that failed (e.g. bucket_create, scope_delete, etc.)"
-            },
-            {
-                "name": "code",
-                "help": "HTTP error code"
-            }
-        ]
-    },
-    "couch_docs_actual_disk_size": {
-        "type": "gauge",
-        "help": "Amount of disk space used by the Data Service",
-        "added": "7.0.0",
-        "unit": "bytes",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "bucket",
-                "help": "Name of the bucket associated with the stat"
-            }
-        ]
-    },
-    "couch_views_actual_disk_size": {
-        "type": "gauge",
-        "help": "Amount of disk space used by Views data",
-        "added": "7.0.0",
-        "unit": "bytes",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "bucket",
-                "help": "Name of the bucket associated with the stat"
-            }
-        ]
-    },
-    "sys_allocstall": {
-        "type": "counter",
-        "help": "Number of alloc stalls",
-        "added": "7.0.0",
-        "stability": "committed"
-    },
-    "sys_cpu_burst_rate": {
-        "type": "gauge",
-        "help": "Rate at which CPUs overran their quota",
-        "added": "7.2.0",
-        "deprecated": "7.6.0",
-        "notes": "Will be removed in the 8.0 release",
-        "stability": "committed"
-    },
-    "sys_cpu_throttled_rate": {
-        "type": "gauge",
-        "help": "Rate at which CPUs were throttled",
-        "added": "7.2.0",
-        "deprecated": "7.6.0",
-        "notes": "Will be removed in the 8.0 release",
-        "stability": "committed"
-    },
-    "sys_cpu_cores_available": {
-        "type": "gauge",
-        "help": "Number of available CPU cores in the control group",
-        "added": "7.0.0",
-        "stability": "committed"
-    },
-    "sys_cpu_host_cores_available": {
-        "type": "gauge",
-        "help": "Number of available CPU cores in the host",
-        "added": "7.1.1",
-        "stability": "committed"
-    },
-    "sys_cpu_host_seconds_total": {
-        "type": "counter",
-        "help": "Number of CPU seconds utilized in the host, by mode",
-        "added": "7.2.1",
-        "unit": "seconds",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "mode",
-                "help": "type of usage (busy, idle, user, sys, irq, stolen, other)"
-            }
-        ]
-    },
-    "sys_cpu_cgroup_seconds_total": {
-        "type": "counter",
-        "help": "Number of CPU seconds utilized in the cgroup, by mode",
-        "added": "7.2.4",
-        "unit": "seconds",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "mode",
-                "help": "type of usage (user, sys, throttled, burst)"
-            }
-        ]
-    },
-    "sys_cpu_host_sys_rate": {
-        "type": "gauge",
-        "help": "System CPU utilization rate in the host",
-        "added": "7.1.1",
-        "deprecated": "7.6.0",
-        "notes": "Will be removed in the 8.0 release",
-        "stability": "committed"
-    },
-    "sys_cpu_host_user_rate": {
-        "type": "gauge",
-        "help": "User space CPU utilization rate in the host",
-        "added": "7.1.1",
-        "deprecated": "7.6.0",
-        "notes": "Will be removed in the 8.0 release",
-        "stability": "committed"
-    },
-    "sys_cpu_host_idle_rate": {
-        "type": "gauge",
-        "help": "Idle CPU utilization rate in the host",
-        "added": "7.6.0",
-        "deprecated": "7.6.0",
-        "notes": "Will be removed in the 8.0 release",
-        "stability": "committed"
-    },
-    "sys_cpu_host_other_rate": {
-        "type": "gauge",
-        "help": "Other (not idle/user/sys/irq/stolen) CPU utilization rate in the host",
-        "added": "7.6.0",
-        "deprecated": "7.6.0",
-        "notes": "Will be removed in the 8.0 release",
-        "stability": "committed"
-    },
-    "sys_cpu_host_idle_rate": {
-        "type": "gauge",
-        "help": "Idle CPU utilization rate in the host",
-        "added": "7.2.4",
-        "stability": "committed"
-    },
-    "sys_cpu_host_other_rate": {
-        "type": "gauge",
-        "help": "Other (not idle/user/sys/irq/stolen) CPU utilization rate in the host",
-        "added": "7.2.4",
-        "stability": "committed"
-    },
-    "sys_cpu_host_utilization_rate": {
-        "type": "gauge",
-        "help": "CPU utilization rate in the host",
-        "added": "7.1.1",
-        "deprecated": "7.6.0",
-        "notes": "Will be removed in the 8.0 release",
-        "stability": "committed"
-    },
-    "sys_cpu_irq_rate": {
-        "type": "gauge",
-        "help": "IRQ rate",
-        "added": "7.0.0",
-        "deprecated": "7.6.0",
-        "notes": "Will be removed in the 8.0 release",
-        "stability": "committed"
-    },
-    "sys_cpu_stolen_rate": {
-        "type": "gauge",
-        "help": "CPU stolen rate",
-        "added": "7.0.0",
-        "deprecated": "7.6.0",
-        "notes": "Will be removed in the 8.0 release",
-        "stability": "committed"
-    },
-    "sys_cpu_sys_rate": {
-        "type": "gauge",
-        "help": "System CPU utilization rate in the control group",
-        "added": "7.0.0",
-        "deprecated": "7.6.0",
-        "notes": "Will be removed in the 8.0 release",
-        "stability": "committed"
-    },
-    "sys_cpu_user_rate": {
-        "type": "gauge",
-        "help": "User space CPU utilization rate in the control group",
-        "added": "7.0.0",
-        "deprecated": "7.6.0",
-        "notes": "Will be removed in the 8.0 release",
-        "stability": "committed"
-    },
-    "sys_cpu_utilization_rate": {
-        "type": "gauge",
-        "help": "CPU utilization rate in the control group",
-        "added": "7.0.0",
-        "deprecated": "7.6.0",
-        "notes": "Will be removed in the 8.0 release",
-        "stability": "committed"
-    },
-    "sys_mem_actual_free": {
-        "type": "gauge",
-        "help": "Amount of system memory available, including buffers/cache",
-        "added": "7.0.0",
-        "unit": "bytes",
-        "stability": "committed"
-    },
-    "sys_mem_actual_used": {
-        "type": "gauge",
-        "help": "Amount of system memory used, excluding buffers/cache",
-        "added": "7.0.0",
-        "unit": "bytes",
-        "stability": "committed"
-    },
-    "sys_mem_free": {
-        "type": "gauge",
-        "help": "Amount of system memory free, excluding buffers/cache",
-        "added": "7.0.0",
-        "unit": "bytes",
-        "stability": "committed"
-    },
-    "sys_mem_limit": {
-        "type": "gauge",
-        "help": "System memory limit",
-        "added": "7.0.0",
-        "deprecated": "7.6.0",
-        "notes": "Will be removed in the 8.0 release. Use sys_mem_total or sys_mem_cgroup_limit",
-        "unit": "bytes",
-        "stability": "committed"
-    },
-    "sys_mem_total": {
-        "type": "gauge",
-        "help": "Total amount of system memory",
-        "added": "7.0.0",
-        "unit": "bytes",
-        "stability": "committed"
-    },
-    "sys_mem_used_sys": {
-        "type": "gauge",
-        "help": "Amount of system memory used, including buffers/cache",
-        "added": "7.0.0",
-        "unit": "bytes",
-        "stability": "committed"
-    },
-    "sys_mem_cgroup_limit": {
-        "type": "gauge",
-        "help": "System memory limit, in the control group",
-        "added": "7.2.0",
-        "unit": "bytes",
-        "stability": "committed"
-    },
-    "sys_mem_cgroup_actual_used": {
-        "type": "gauge",
-        "help": "Amount of system memory used, excluding buffers/cache, in the control group",
-        "added": "7.2.0",
-        "unit": "bytes",
-        "stability": "committed"
-    },
-    "sys_mem_cgroup_used": {
-        "type": "gauge",
-        "help": "Amount of system memory used, including buffers/cache, in the control group",
-        "added": "7.2.0",
-        "unit": "bytes",
-        "stability": "committed"
-    },
-    "sys_pressure_share_time_stalled": {
-        "type": "gauge",
-        "help": "Percentage of time that tasks were stalled on a given resource",
-        "added": "7.2.4",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "level",
-                "help": "Level at which statistics are tracked (host|cgroup)"
-            },
-            {
-                "name": "resource",
-                "help": "Resource type (cpu|io|memory)"
-            },
-            {
-                "name": "quantifier",
-                "help": "Quantifies how many tasks were stalled (some|all)"
-            },
-            {
-                "name": "interval",
-                "help": "Time interval (in seconds) over which the stat was averaged (10|60|300)"
-            }
-        ]
-    },
-    "sys_pressure_total_stall_time_usec": {
-        "type": "counter",
-        "help": "Absolute stall time when tasks were stalled on a given resource",
-        "added": "7.2.4",
-        "unit": "microseconds",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "level",
-                "help": "Level at which statistics are tracked (host|cgroup)"
-            },
-            {
-                "name": "resource",
-                "help": "Resource type (cpu|io|memory)"
-            },
-            {
-                "name": "quantifier",
-                "help": "Quantifies how many tasks were stalled (some|all)"
-            }
-        ]
-    },
-    "sys_swap_total": {
-        "type": "gauge",
-        "help": "Total amount of swap space",
-        "added": "7.0.0",
-        "unit": "bytes",
-        "stability": "committed"
-    },
-    "sys_swap_used": {
-        "type": "gauge",
-        "help": "Amount of swap space used",
-        "added": "7.0.0",
-        "unit": "bytes",
-        "stability": "committed"
-    },
-    "sysproc_cpu_seconds_total": {
-        "type": "counter",
-        "help": "Amount of user CPU cycles used, by process",
-        "added": "7.2.4",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "proc",
-                "help": "Name of the process (e.g. babysitter, bash, etc.)"
-            },
-            {
-                "name": "mode",
-                "help": "type of usage (user, sys)"
-            }
-        ]
-    },
-    "sysproc_cpu_utilization": {
-        "type": "gauge",
-        "help": "CPU utilization rate, by process",
-        "added": "7.0.0",
-        "deprecated": "7.6.0",
-        "notes": "Will be removed in  8.0. Use irate of sysproc_cpu_seconds_total for user/sys modes.",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "proc",
-                "help": "Name of the process (e.g. babysitter, bash, etc.)"
-            }
-        ]
-    },
-    "sysproc_major_faults_raw": {
-        "type": "counter",
-        "help": "Number of major page faults, by process",
-        "added": "7.0.0",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "proc",
-                "help": "Name of the process (e.g. babysitter, bash, etc.)"
-            }
-        ]
-    },
-    "sysproc_mem_resident": {
-        "type": "gauge",
-        "help": "Amount of resident memory used, by process",
-        "added": "7.0.0",
-        "unit": "bytes",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "proc",
-                "help": "Name of the process (e.g. babysitter, bash, etc.)"
-            }
-        ]
-    },
-    "sysproc_mem_share": {
-        "type": "gauge",
-        "help": "Amount of shared memory used, by process",
-        "added": "7.0.0",
-        "unit": "bytes",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "proc",
-                "help": "Name of the process (e.g. babysitter, bash, etc.)"
-            }
-        ]
-    },
-    "sysproc_mem_size": {
-        "type": "gauge",
-        "help": "Amount of memory used, by process",
-        "added": "7.0.0",
-        "unit": "bytes",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "proc",
-                "help": "Name of the process (e.g. babysitter, bash, etc.)"
-            }
-        ]
-    },
-    "sysproc_minor_faults_raw": {
-        "type": "gauge",
-        "help": "Number of minor page faults, by process",
-        "added": "7.0.0",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "proc",
-                "help": "Name of the process (e.g. babysitter, bash, etc.)"
-            }
-        ]
-    },
-    "sysproc_page_faults_raw": {
-        "type": "gauge",
-        "help": "Number of page faults, by process",
-        "added": "7.0.0",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "proc",
-                "help": "Name of the process (e.g. babysitter, bash, etc.)"
-            }
-        ]
-    },
-    "sysproc_start_time": {
-        "type": "counter",
-        "help": "OS specific time when process was started",
-        "added": "7.2.4",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "proc",
-                "help": "Name of the process (e.g. babysitter, bash, etc.)"
-            }
-        ]
-    },
-    "sys_disk_queue": {
-        "type": "gauge",
-        "help": "Current disk queue length of the disk",
-        "added": "7.2.4",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "disk",
-                "help": "Name of the disk"
-            }
-        ]
-    },
-    "sys_disk_queue_depth": {
-        "type": "gauge",
-        "help": "Maximum disk queue length of the disk",
-        "added": "7.2.4",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "disk",
-                "help": "Name of the disk"
-            }
-        ]
-    },
-    "sys_disk_time_seconds": {
-        "type": "counter",
-        "help": "Amount of time that the disk spent performing IO",
-        "added": "7.2.4",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "disk",
-                "help": "Name of the disk"
-            }
-        ]
-    },
-    "sys_disk_read_bytes": {
-        "type": "counter",
-        "help": "Number of bytes read by the disk",
-        "added": "7.2.4",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "disk",
-                "help": "Name of the disk"
-            }
-        ]
-    },
-    "sys_disk_read_time_seconds": {
-        "type": "counter",
-        "help": "Amount of time that the disk spent reading",
-        "added": "7.2.4",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "disk",
-                "help": "Name of the disk"
-            }
-        ]
-    },
-    "sys_disk_reads": {
-        "type": "counter",
-        "help": "Number of reads that the disk performed",
-        "added": "7.2.4",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "disk",
-                "help": "Name of the disk"
-            }
-        ]
-    },
-    "sys_disk_write_bytes": {
-        "type": "counter",
-        "help": "Number of bytes written by the disk",
-        "added": "7.2.4",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "disk",
-                "help": "Name of the disk"
-            }
-        ]
-    },
-    "sys_disk_write_time_seconds": {
-        "type": "counter",
-        "help": "Amount of time that the disk spent writing",
-        "added": "7.2.4",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "disk",
-                "help": "Name of the disk"
-            }
-        ]
-    },
-    "sys_disk_writes": {
-        "type": "counter",
-        "help": "Number of writes that the disk performed",
-        "added": "7.2.4",
-        "stability": "committed",
-        "labels": [
-            {
-                "name": "disk",
-                "help": "Name of the disk"
-            }
-        ]
-    },
-    "sys_disk_usage_ratio": {
-        "type": "gauge",
-        "help": "Total usage % of a disk or partition",
-        "added": "7.6.0",
-        "stability": "internal",
-        "unit": "ratio",
-        "labels": [
-            {
-                "name": "disk",
-                "help": "Name of the disk"
-            }
-        ]
-    },
-
     "cm_build_streaming_info_total": {
         "type": "counter",
         "help": "Number of streaming requests processed",
@@ -627,6 +60,26 @@
             }
         ]
     },
+    "cm_client_cert_cache_current_items": {
+        "type": "gauge",
+        "help": "Current number of items available in cbauth client_cert cache",
+        "added": "7.6.0"
+    },
+    "cm_client_cert_cache_hit_total": {
+        "type": "counter",
+        "help": "Total number of cbauth client_cert cache hits",
+        "added": "7.6.0"
+    },
+    "cm_client_cert_cache_max_items": {
+        "type": "gauge",
+        "help": "Maximum capacity of cbauth client_cert cache",
+        "added": "7.6.0"
+    },
+    "cm_client_cert_cache_miss_total": {
+        "type": "counter",
+        "help": "Total number of cbauth client_cert cache misses",
+        "added": "7.6.0"
+    },
     "cm_failover_safeness_level": {
         "type": "gauge",
         "help": "Failover safeness",
@@ -643,6 +96,12 @@
                 "help": "Type of connection"
             }
         ]
+    },
+    "cm_gc_duration_seconds": {
+        "type": "histogram",
+        "help": "Time to perform erlang garbage collection",
+        "added": "7.6.0",
+        "stability": "committed"
     },
     "cm_http_requests_seconds": {
         "type": "histogram",
@@ -957,6 +416,12 @@
             }
         ]
     },
+    "cm_rebalance_stuck": {
+        "type": "gauge",
+        "help": "Boolean indicator of whether the rebalance appears stuck (not making progress)",
+        "added": "7.6.0",
+        "stability": "internal"
+    },
     "cm_request_hibernates_total": {
         "type": "counter",
         "help": "Number of times requests were hibernated",
@@ -967,11 +432,61 @@
         "help": "Number of times requests were unhibernated",
         "added": "7.0.0"
     },
-    "cm_rebalance_stuck": {
+    "cm_resource_limit_reached": {
         "type": "gauge",
-        "help": "Boolean indicator of whether the rebalance appears stuck (not making progress)",
+        "help": "Boolean indicator of whether a resource limit has been reached",
         "added": "7.6.0",
-        "stability": "internal"
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "resource",
+                "help": "Name of resource"
+            },
+            {
+                "name": "bucket",
+                "help": "Name of the bucket associated with the stat (when applicable)"
+            }
+        ]
+    },
+    "cm_rest_request_access_forbidden_total": {
+        "type": "counter",
+        "help": "Number of REST requests failing due inadequate permissions",
+        "added": "7.6.0",
+        "stability": "committed"
+    },
+    "cm_rest_request_auth_failure_total": {
+        "type": "counter",
+        "help": "Number of REST requests failing authentication",
+        "added": "7.6.0",
+        "stability": "committed"
+    },
+    "cm_rest_request_enters_total": {
+        "type": "counter",
+        "help": "Number of REST requests to enter ns_server",
+        "added": "7.0.0",
+        "stability": "committed"
+    },
+    "cm_rest_request_failure_total": {
+        "type": "counter",
+        "help": "Number of REST requests failing (see specific code)",
+        "added": "7.6.0",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "type",
+                "help": "Type of operation that failed (e.g. bucket_create, scope_delete, etc.)"
+            },
+            {
+                "name": "code",
+                "help": "HTTP error code"
+            }
+        ]
+    },
+    "cm_rest_request_leaves_total": {
+        "type": "counter",
+        "help": "Number of REST requests to exit ns_server",
+        "added": "7.0.0",
+        "stability": "committed"
     },
     "cm_status_latency_seconds": {
         "type": "histogram",
@@ -985,6 +500,66 @@
         "added": "7.0.0",
         "stability": "internal",
         "unit": "seconds"
+    },
+    "cm_up_cache_current_items": {
+        "type": "gauge",
+        "help": "Current number of items available in cbauth up cache",
+        "added": "7.6.0"
+    },
+    "cm_up_cache_hit_total": {
+        "type": "counter",
+        "help": "Total number of cbauth up cache hits",
+        "added": "7.6.0"
+    },
+    "cm_up_cache_max_items": {
+        "type": "gauge",
+        "help": "Maximum capacity of cbauth up cache",
+        "added": "7.6.0"
+    },
+    "cm_up_cache_miss_total": {
+        "type": "counter",
+        "help": "Total number of cbauth up cache misses",
+        "added": "7.6.0"
+    },
+    "cm_user_bkts_cache_current_items": {
+        "type": "gauge",
+        "help": "Current number of items available in cbauth bkts cache",
+        "added": "7.6.0"
+    },
+    "cm_user_bkts_cache_hit_total": {
+        "type": "counter",
+        "help": "Total number of cbauth bkts cache hits",
+        "added": "7.6.0"
+    },
+    "cm_user_bkts_cache_max_items": {
+        "type": "gauge",
+        "help": "Maximum capacity of cbauth bkts cache",
+        "added": "7.6.0"
+    },
+    "cm_user_bkts_cache_miss_total": {
+        "type": "counter",
+        "help": "Total number of cbauth bkts cache misses",
+        "added": "7.6.0"
+    },
+    "cm_uuid_cache_current_items": {
+        "type": "gauge",
+        "help": "Current number of items available in cbauth uuid cache",
+        "added": "7.6.0"
+    },
+    "cm_uuid_cache_hit_total": {
+        "type": "counter",
+        "help": "Total number of cbauth uuid cache hits",
+        "added": "7.6.0"
+    },
+    "cm_uuid_cache_max_items": {
+        "type": "gauge",
+        "help": "Maximum capacity of cbauth uuid cache",
+        "added": "7.6.0"
+    },
+    "cm_uuid_cache_miss_total": {
+        "type": "counter",
+        "help": "Total number of cbauth uuid cache misses",
+        "added": "7.6.0"
     },
     "cm_web_cache_hits_total": {
         "type": "counter",
@@ -1001,119 +576,527 @@
         "help": "Total number of web cache updates",
         "added": "7.0.0"
     },
-    "cm_uuid_cache_max_items": {
+    "couch_docs_actual_disk_size": {
         "type": "gauge",
-        "help": "Maximum capacity of cbauth uuid cache",
-        "added": "7.6.0"
-    },
-    "cm_uuid_cache_current_items": {
-        "type": "gauge",
-        "help": "Current number of items available in cbauth uuid cache",
-        "added": "7.6.0"
-    },
-    "cm_uuid_cache_hit_total": {
-        "type": "counter",
-        "help": "Total number of cbauth uuid cache hits",
-        "added": "7.6.0"
-    },
-    "cm_uuid_cache_miss_total": {
-        "type": "counter",
-        "help": "Total number of cbauth uuid cache misses",
-        "added": "7.6.0"
-    },
-    "cm_user_bkts_cache_max_items": {
-        "type": "gauge",
-        "help": "Maximum capacity of cbauth bkts cache",
-        "added": "7.6.0"
-    },
-    "cm_user_bkts_cache_current_items": {
-        "type": "gauge",
-        "help": "Current number of items available in cbauth bkts cache",
-        "added": "7.6.0"
-    },
-    "cm_user_bkts_cache_hit_total": {
-        "type": "counter",
-        "help": "Total number of cbauth bkts cache hits",
-        "added": "7.6.0"
-    },
-    "cm_user_bkts_cache_miss_total": {
-        "type": "counter",
-        "help": "Total number of cbauth bkts cache misses",
-        "added": "7.6.0"
-    },
-    "cm_up_cache_max_items": {
-        "type": "gauge",
-        "help": "Maximum capacity of cbauth up cache",
-        "added": "7.6.0"
-    },
-    "cm_up_cache_current_items": {
-        "type": "gauge",
-        "help": "Current number of items available in cbauth up cache",
-        "added": "7.6.0"
-    },
-    "cm_up_cache_hit_total": {
-        "type": "counter",
-        "help": "Total number of cbauth up cache hits",
-        "added": "7.6.0"
-    },
-    "cm_up_cache_miss_total": {
-        "type": "counter",
-        "help": "Total number of cbauth up cache misses",
-        "added": "7.6.0"
-    },
-    "cm_auth_cache_max_items": {
-        "type": "gauge",
-        "help": "Maximum capacity of cbauth auth cache",
-        "added": "7.6.0"
-    },
-    "cm_auth_cache_current_items": {
-        "type": "gauge",
-        "help": "Current number of items available in cbauth auth cache",
-        "added": "7.6.0"
-    },
-    "cm_auth_cache_hit_total": {
-        "type": "counter",
-        "help": "Total number of cbauth auth cache hits",
-        "added": "7.6.0"
-    },
-    "cm_auth_cache_miss_total": {
-        "type": "counter",
-        "help": "Total number of cbauth auth cache misses",
-        "added": "7.6.0"
-    },
-    "cm_client_cert_cache_max_items": {
-        "type": "gauge",
-        "help": "Maximum capacity of cbauth client_cert cache",
-        "added": "7.6.0"
-    },
-    "cm_client_cert_cache_current_items": {
-        "type": "gauge",
-        "help": "Current number of items available in cbauth client_cert cache",
-        "added": "7.6.0"
-    },
-    "cm_client_cert_cache_hit_total": {
-        "type": "counter",
-        "help": "Total number of cbauth client_cert cache hits",
-        "added": "7.6.0"
-    },
-    "cm_client_cert_cache_miss_total": {
-        "type": "counter",
-        "help": "Total number of cbauth client_cert cache misses",
-        "added": "7.6.0"
-    },
-    "cm_resource_limit_reached": {
-        "type": "gauge",
-        "help": "Boolean indicator of whether a resource limit has been reached",
-        "added": "7.6.0",
-        "stability": "internal",
+        "help": "Amount of disk space used by the Data Service",
+        "added": "7.0.0",
+        "unit": "bytes",
+        "stability": "committed",
         "labels": [
             {
-                "name": "resource",
-                "help": "Name of resource"
-            },
+                "name": "bucket",
+                "help": "Name of the bucket associated with the stat"
+            }
+        ]
+    },
+    "couch_views_actual_disk_size": {
+        "type": "gauge",
+        "help": "Amount of disk space used by Views data",
+        "added": "7.0.0",
+        "unit": "bytes",
+        "stability": "committed",
+        "labels": [
             {
                 "name": "bucket",
-                "help": "Name of the bucket associated with the stat (when applicable)"
+                "help": "Name of the bucket associated with the stat"
+            }
+        ]
+    },
+    "sys_allocstall": {
+        "type": "counter",
+        "help": "Number of alloc stalls",
+        "added": "7.0.0",
+        "stability": "committed"
+    },
+    "sys_cpu_burst_rate": {
+        "type": "gauge",
+        "help": "Rate at which CPUs overran their quota",
+        "added": "7.2.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
+        "stability": "committed"
+    },
+    "sys_cpu_cgroup_seconds_total": {
+        "type": "counter",
+        "help": "Number of CPU seconds utilized in the cgroup, by mode",
+        "added": "7.2.4",
+        "unit": "seconds",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "mode",
+                "help": "type of usage (user, sys, throttled, burst)"
+            }
+        ]
+    },
+    "sys_cpu_cores_available": {
+        "type": "gauge",
+        "help": "Number of available CPU cores in the control group",
+        "added": "7.0.0",
+        "stability": "committed"
+    },
+    "sys_cpu_host_cores_available": {
+        "type": "gauge",
+        "help": "Number of available CPU cores in the host",
+        "added": "7.1.1",
+        "stability": "committed"
+    },
+    "sys_cpu_host_idle_rate": {
+        "type": "gauge",
+        "help": "Idle CPU utilization rate in the host",
+        "added": "7.2.4",
+        "stability": "committed"
+    },
+    "sys_cpu_host_other_rate": {
+        "type": "gauge",
+        "help": "Other (not idle/user/sys/irq/stolen) CPU utilization rate in the host",
+        "added": "7.2.4",
+        "stability": "committed"
+    },
+    "sys_cpu_host_seconds_total": {
+        "type": "counter",
+        "help": "Number of CPU seconds utilized in the host, by mode",
+        "added": "7.2.1",
+        "unit": "seconds",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "mode",
+                "help": "type of usage (busy, idle, user, sys, irq, stolen, other)"
+            }
+        ]
+    },
+    "sys_cpu_host_sys_rate": {
+        "type": "gauge",
+        "help": "System CPU utilization rate in the host",
+        "added": "7.1.1",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
+        "stability": "committed"
+    },
+    "sys_cpu_host_user_rate": {
+        "type": "gauge",
+        "help": "User space CPU utilization rate in the host",
+        "added": "7.1.1",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
+        "stability": "committed"
+    },
+    "sys_cpu_host_utilization_rate": {
+        "type": "gauge",
+        "help": "CPU utilization rate in the host",
+        "added": "7.1.1",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
+        "stability": "committed"
+    },
+    "sys_cpu_irq_rate": {
+        "type": "gauge",
+        "help": "IRQ rate",
+        "added": "7.0.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
+        "stability": "committed"
+    },
+    "sys_cpu_stolen_rate": {
+        "type": "gauge",
+        "help": "CPU stolen rate",
+        "added": "7.0.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
+        "stability": "committed"
+    },
+    "sys_cpu_sys_rate": {
+        "type": "gauge",
+        "help": "System CPU utilization rate in the control group",
+        "added": "7.0.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
+        "stability": "committed"
+    },
+    "sys_cpu_throttled_rate": {
+        "type": "gauge",
+        "help": "Rate at which CPUs were throttled",
+        "added": "7.2.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
+        "stability": "committed"
+    },
+    "sys_cpu_user_rate": {
+        "type": "gauge",
+        "help": "User space CPU utilization rate in the control group",
+        "added": "7.0.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
+        "stability": "committed"
+    },
+    "sys_cpu_utilization_rate": {
+        "type": "gauge",
+        "help": "CPU utilization rate in the control group",
+        "added": "7.0.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
+        "stability": "committed"
+    },
+    "sys_disk_queue": {
+        "type": "gauge",
+        "help": "Current disk queue length of the disk",
+        "added": "7.2.4",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "disk",
+                "help": "Name of the disk"
+            }
+        ]
+    },
+    "sys_disk_queue_depth": {
+        "type": "gauge",
+        "help": "Maximum disk queue length of the disk",
+        "added": "7.2.4",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "disk",
+                "help": "Name of the disk"
+            }
+        ]
+    },
+    "sys_disk_read_bytes": {
+        "type": "counter",
+        "help": "Number of bytes read by the disk",
+        "added": "7.2.4",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "disk",
+                "help": "Name of the disk"
+            }
+        ]
+    },
+    "sys_disk_read_time_seconds": {
+        "type": "counter",
+        "help": "Amount of time that the disk spent reading",
+        "added": "7.2.4",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "disk",
+                "help": "Name of the disk"
+            }
+        ]
+    },
+    "sys_disk_reads": {
+        "type": "counter",
+        "help": "Number of reads that the disk performed",
+        "added": "7.2.4",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "disk",
+                "help": "Name of the disk"
+            }
+        ]
+    },
+    "sys_disk_time_seconds": {
+        "type": "counter",
+        "help": "Amount of time that the disk spent performing IO",
+        "added": "7.2.4",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "disk",
+                "help": "Name of the disk"
+            }
+        ]
+    },
+    "sys_disk_usage_ratio": {
+        "type": "gauge",
+        "help": "Total usage % of a disk or partition",
+        "added": "7.6.0",
+        "stability": "internal",
+        "unit": "ratio",
+        "labels": [
+            {
+                "name": "disk",
+                "help": "Name of the disk"
+            }
+        ]
+    },
+    "sys_disk_write_bytes": {
+        "type": "counter",
+        "help": "Number of bytes written by the disk",
+        "added": "7.2.4",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "disk",
+                "help": "Name of the disk"
+            }
+        ]
+    },
+    "sys_disk_write_time_seconds": {
+        "type": "counter",
+        "help": "Amount of time that the disk spent writing",
+        "added": "7.2.4",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "disk",
+                "help": "Name of the disk"
+            }
+        ]
+    },
+    "sys_disk_writes": {
+        "type": "counter",
+        "help": "Number of writes that the disk performed",
+        "added": "7.2.4",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "disk",
+                "help": "Name of the disk"
+            }
+        ]
+    },
+    "sys_mem_actual_free": {
+        "type": "gauge",
+        "help": "Amount of system memory available, including buffers/cache",
+        "added": "7.0.0",
+        "unit": "bytes",
+        "stability": "committed"
+    },
+    "sys_mem_actual_used": {
+        "type": "gauge",
+        "help": "Amount of system memory used, excluding buffers/cache",
+        "added": "7.0.0",
+        "unit": "bytes",
+        "stability": "committed"
+    },
+    "sys_mem_cgroup_actual_used": {
+        "type": "gauge",
+        "help": "Amount of system memory used, excluding buffers/cache, in the control group",
+        "added": "7.2.0",
+        "unit": "bytes",
+        "stability": "committed"
+    },
+    "sys_mem_cgroup_limit": {
+        "type": "gauge",
+        "help": "System memory limit, in the control group",
+        "added": "7.2.0",
+        "unit": "bytes",
+        "stability": "committed"
+    },
+    "sys_mem_cgroup_used": {
+        "type": "gauge",
+        "help": "Amount of system memory used, including buffers/cache, in the control group",
+        "added": "7.2.0",
+        "unit": "bytes",
+        "stability": "committed"
+    },
+    "sys_mem_free": {
+        "type": "gauge",
+        "help": "Amount of system memory free, excluding buffers/cache",
+        "added": "7.0.0",
+        "unit": "bytes",
+        "stability": "committed"
+    },
+    "sys_mem_limit": {
+        "type": "gauge",
+        "help": "System memory limit",
+        "added": "7.0.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release. Use sys_mem_total or sys_mem_cgroup_limit",
+        "unit": "bytes",
+        "stability": "committed"
+    },
+    "sys_mem_total": {
+        "type": "gauge",
+        "help": "Total amount of system memory",
+        "added": "7.0.0",
+        "unit": "bytes",
+        "stability": "committed"
+    },
+    "sys_mem_used_sys": {
+        "type": "gauge",
+        "help": "Amount of system memory used, including buffers/cache",
+        "added": "7.0.0",
+        "unit": "bytes",
+        "stability": "committed"
+    },
+    "sys_pressure_share_time_stalled": {
+        "type": "gauge",
+        "help": "Percentage of time that tasks were stalled on a given resource",
+        "added": "7.2.4",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "level",
+                "help": "Level at which statistics are tracked (host|cgroup)"
+            },
+            {
+                "name": "resource",
+                "help": "Resource type (cpu|io|memory)"
+            },
+            {
+                "name": "quantifier",
+                "help": "Quantifies how many tasks were stalled (some|all)"
+            },
+            {
+                "name": "interval",
+                "help": "Time interval (in seconds) over which the stat was averaged (10|60|300)"
+            }
+        ]
+    },
+    "sys_pressure_total_stall_time_usec": {
+        "type": "counter",
+        "help": "Absolute stall time when tasks were stalled on a given resource",
+        "added": "7.2.4",
+        "unit": "microseconds",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "level",
+                "help": "Level at which statistics are tracked (host|cgroup)"
+            },
+            {
+                "name": "resource",
+                "help": "Resource type (cpu|io|memory)"
+            },
+            {
+                "name": "quantifier",
+                "help": "Quantifies how many tasks were stalled (some|all)"
+            }
+        ]
+    },
+    "sys_swap_total": {
+        "type": "gauge",
+        "help": "Total amount of swap space",
+        "added": "7.0.0",
+        "unit": "bytes",
+        "stability": "committed"
+    },
+    "sys_swap_used": {
+        "type": "gauge",
+        "help": "Amount of swap space used",
+        "added": "7.0.0",
+        "unit": "bytes",
+        "stability": "committed"
+    },
+    "sysproc_cpu_seconds_total": {
+        "type": "counter",
+        "help": "Amount of user CPU cycles used, by process",
+        "added": "7.2.4",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "proc",
+                "help": "Name of the process (e.g. babysitter, bash, etc.)"
+            },
+            {
+                "name": "mode",
+                "help": "type of usage (user, sys)"
+            }
+        ]
+    },
+    "sysproc_cpu_utilization": {
+        "type": "gauge",
+        "help": "CPU utilization rate, by process",
+        "added": "7.0.0",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in  8.0. Use irate of sysproc_cpu_seconds_total for user/sys modes.",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "proc",
+                "help": "Name of the process (e.g. babysitter, bash, etc.)"
+            }
+        ]
+    },
+    "sysproc_major_faults_raw": {
+        "type": "counter",
+        "help": "Number of major page faults, by process",
+        "added": "7.0.0",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "proc",
+                "help": "Name of the process (e.g. babysitter, bash, etc.)"
+            }
+        ]
+    },
+    "sysproc_mem_resident": {
+        "type": "gauge",
+        "help": "Amount of resident memory used, by process",
+        "added": "7.0.0",
+        "unit": "bytes",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "proc",
+                "help": "Name of the process (e.g. babysitter, bash, etc.)"
+            }
+        ]
+    },
+    "sysproc_mem_share": {
+        "type": "gauge",
+        "help": "Amount of shared memory used, by process",
+        "added": "7.0.0",
+        "unit": "bytes",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "proc",
+                "help": "Name of the process (e.g. babysitter, bash, etc.)"
+            }
+        ]
+    },
+    "sysproc_mem_size": {
+        "type": "gauge",
+        "help": "Amount of memory used, by process",
+        "added": "7.0.0",
+        "unit": "bytes",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "proc",
+                "help": "Name of the process (e.g. babysitter, bash, etc.)"
+            }
+        ]
+    },
+    "sysproc_minor_faults_raw": {
+        "type": "gauge",
+        "help": "Number of minor page faults, by process",
+        "added": "7.0.0",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "proc",
+                "help": "Name of the process (e.g. babysitter, bash, etc.)"
+            }
+        ]
+    },
+    "sysproc_page_faults_raw": {
+        "type": "gauge",
+        "help": "Number of page faults, by process",
+        "added": "7.0.0",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "proc",
+                "help": "Name of the process (e.g. babysitter, bash, etc.)"
+            }
+        ]
+    },
+    "sysproc_start_time": {
+        "type": "counter",
+        "help": "OS specific time when process was started",
+        "added": "7.2.4",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "proc",
+                "help": "Name of the process (e.g. babysitter, bash, etc.)"
             }
         ]
     }
