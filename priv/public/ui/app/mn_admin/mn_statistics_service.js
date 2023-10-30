@@ -911,6 +911,10 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           stats: {"@cbas.cbas_queued_http_requests_size": true},
           size: "small",
           specificStat: true
+        }, {
+          stats: {"@cbas.cbas_internal_error_total": true},
+          size: "small",
+          specificStat: true
         }]
       }, {
         name: "Eventing",

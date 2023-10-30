@@ -935,6 +935,11 @@ function get70CompatDesc() {
           unit: "number",
           title: "Analytics Total Rebalances Failed",
           desc: "Total number of rebalances failed for Analytics on this server."
+        },
+        "cbas_internal_error_total": {
+          unit: "number",
+          title: "Analytics Total Internal Errors",
+          desc: "Total number of internal errors for Analytics on this server."
         }
       }
     }
