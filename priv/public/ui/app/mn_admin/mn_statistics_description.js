@@ -930,6 +930,11 @@ function get70CompatDesc() {
           unit: "number",
           title: "Analytics Queued HTTP Requests",
           desc: "Number of queued http requests for Analytics on this server."
+        },
+        "cbas_rebalance_failed_total": {
+          unit: "number",
+          title: "Analytics Total Rebalances Failed",
+          desc: "Total number of rebalances failed for Analytics on this server."
         }
       }
     }
