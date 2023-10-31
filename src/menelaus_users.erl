@@ -1106,4 +1106,123 @@ upgrade_test_() ->
                        {?SCRAM_SALT_KEY, <<"0ues3mfZqA4OjuljBI/uQY5L0jI=">>},
                        {?SCRAM_ITERATIONS_KEY, 4000}])])]}.
 
+meck_ns_config_read_key_fast(Settings) ->
+    meck:expect(
+      ns_config, read_key_fast,
+      fun (K, Default) ->
+              proplists:get_value(K, Settings, Default)
+      end).
+
+maybe_update_plain_auth_hashes_test__(
+  OldAuth, Password, OldSettings, NewSettings) ->
+    meck_ns_config_read_key_fast(NewSettings),
+    NewAuth = maybe_update_plain_auth_hashes(OldAuth, Password),
+
+    NewSaltAndMac = get_salt_and_mac(NewAuth),
+    OldSaltAndMac = get_salt_and_mac(OldAuth),
+
+    %% Assert all new updates are correctly applied.
+    lists:foreach(
+      fun ({password_hash_alg, NV}) ->
+              ?assertEqual(
+                 NV, proplists:get_value(?HASH_ALG_KEY, NewSaltAndMac));
+          ({pbkdf2_sha512_iterations, NV}) ->
+              ?assertEqual(
+                 NV, proplists:get_value(?PBKDF2_ITER_KEY, NewSaltAndMac));
+          ({argon2id_time, NV}) ->
+              ?assertEqual(
+                 NV, proplists:get_value(?ARGON_TIME_KEY, NewSaltAndMac));
+          ({argon2id_mem, NV}) ->
+              ?assertEqual(
+                 NV, proplists:get_value(?ARGON_MEM_KEY, NewSaltAndMac))
+      end, NewSettings),
+
+    %% If OldSettings and NewSettings are same, assert the Auth isn't updated.
+    case OldSettings =:= NewSettings of
+        true ->
+            ?assertEqual(NewAuth, OldAuth);
+        false ->
+            ok
+    end,
+
+    %% Check none of the scram-shas have been touched (they are enabled by
+    %% default).
+    ?assertEqual(
+       NewAuth -- format_plain_auth(NewSaltAndMac),
+       OldAuth -- format_plain_auth(OldSaltAndMac)).
+
+maybe_update_plain_auth_hashes_test_() ->
+    Password = "dummy-password",
+    BuildSettings =
+        fun ({Alg, Settings}) ->
+                [{password_hash_alg, Alg}] ++
+                    case Alg of
+                        ?SHA1_HASH ->
+                            [];
+                        ?PBKDF2_HASH ->
+                            [{pbkdf2_sha512_iterations,
+                              proplists:get_value(
+                                iterations, Settings, ?DEFAULT_PBKDF2_ITER)}];
+                        ?ARGON2ID_HASH ->
+                            [{argon2id_time,
+                              proplists:get_value(
+                                time, Settings, ?DEFAULT_ARG2ID_TIME)},
+                             {argon2id_mem,
+                              proplists:get_value(
+                                mem, Settings, ?DEFAULT_ARG2ID_MEM)}]
+                    end
+        end,
+
+    Sha1Settings = {?SHA1_HASH, []},
+    PBKDFSettings = {?PBKDF2_HASH, [{iterations, ?PBKDF2_ITER_MIN}]},
+    PBKDFSettings1 = {?PBKDF2_HASH, [{iterations, ?PBKDF2_ITER_MIN + 1}]},
+    ArgonSettings =
+        {?ARGON2ID_HASH, [{time, ?ARGON_TIME_MIN}, {mem, ?ARGON_MEM_MIN}]},
+    ArgonSettings1 =
+        {?ARGON2ID_HASH, [{time, ?ARGON_TIME_MIN + 1}, {mem, ?ARGON_MEM_MIN}]},
+
+    TestArgs =
+        [%% Simple one to one hash alg change.
+         [{old_settings, Sha1Settings}, {new_settings, ArgonSettings}],
+         [{old_settings, ArgonSettings}, {new_settings, Sha1Settings}],
+         [{old_settings, Sha1Settings}, {new_settings, PBKDFSettings}],
+         [{old_settings, PBKDFSettings}, {new_settings, Sha1Settings}],
+         [{old_settings, PBKDFSettings}, {new_settings, ArgonSettings}],
+         [{old_settings, ArgonSettings}, {new_settings, PBKDFSettings}],
+         %% Don't change settings.
+         [{old_settings, Sha1Settings}, {new_settings, Sha1Settings}],
+         [{old_settings, PBKDFSettings}, {new_settings, PBKDFSettings}],
+         [{old_settings, ArgonSettings}, {new_settings, ArgonSettings}],
+         %% Don't change hash alg type, but change settings.
+         [{old_settings, PBKDFSettings}, {new_settings, PBKDFSettings1}],
+         [{old_settings, ArgonSettings}, {new_settings, ArgonSettings1}]],
+
+    TestFun =
+        fun ([OldSettings, NewSettings], _R) ->
+                 {lists:flatten(io_lib:format("Old Settings - ~p,~n"
+                                              "New Settings - ~p.~n",
+                                              [OldSettings, NewSettings])),
+                  fun () ->
+                          maybe_update_plain_auth_hashes_test__(
+                            %% Build both plain auth hashes and scram-sha
+                            %% hashes. scram-sha hashes are enabled by
+                            %% default.
+                            menelaus_users:build_auth([Password]),
+                            Password, OldSettings, NewSettings)
+                  end}
+        end,
+
+    {foreachx,
+     fun ([OldSettings, _NewSettings]) ->
+             meck:new([ns_config, cluster_compat_mode], [passthrough]),
+             meck_ns_config_read_key_fast(OldSettings),
+             meck:expect(
+               cluster_compat_mode, is_cluster_trinity,
+                fun () -> true end)
+     end,
+     fun (_X, _R) ->
+             meck:unload([ns_config, cluster_compat_mode])
+     end,
+     [{lists:map(fun ({_, S}) -> BuildSettings(S) end, TestArg), TestFun}
+      || TestArg <- TestArgs]}.
 -endif.
