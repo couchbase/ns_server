@@ -35,7 +35,7 @@
         "added": "7.6.0",
         "stability": "committed"
     },
-    "cm_rest_request_forbidden_access_total":{
+    "cm_rest_request_access_forbidden_total":{
         "type": "counter",
         "help": "Number of REST requests failing due inadequate permissions",
         "added": "7.6.0",
