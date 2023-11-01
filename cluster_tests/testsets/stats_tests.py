@@ -9,6 +9,7 @@
 import testlib
 import time
 import math
+import sys
 from pprint import pprint
 
 
@@ -240,6 +241,30 @@ class StatsRangeAPITests(testlib.BaseTestSet):
         assert res[10]['requestParams'] == req[10], \
                f'requestParams in result {res[10]["requestParams"]} is ' \
                f'expected to match the request ({req[10]})'
+
+
+    # Verify derived stats (those computed in prometheus at the direction
+    # of ns_server) are returned via /metrics. To do so ns_server queries
+    # prometheus for the stats and includes them in the results.
+    def derived_stats_test(self):
+        expected_stats = ["couch_docs_actual_disk_size",
+                          "sysproc_cpu_utilization",
+                          "sys_cpu_host_utilization_rate",
+                          "sys_cpu_host_user_rate",
+                          "sys_cpu_host_sys_rate",
+                          "sys_cpu_host_other_rate",
+                          "sys_cpu_host_idle_rate",
+                          "sys_cpu_utilization_rate",
+                          "sys_cpu_user_rate",
+                          "sys_cpu_sys_rate"]
+        if sys.platform == "linux":
+            expected_stats += ["sys_cpu_throttled_rate",
+                               "sys_cpu_burst_rate",
+                               "sys_cpu_irq_rate",
+                               "sys_cpu_stolen_rate"]
+        r = testlib.get_succ(self.cluster, '/metrics')
+        for stat in expected_stats:
+            assert stat in r.text, f'"{stat}" is missing from /metrics results'
 
 
 def range_api_get(cluster, stat, params={}):
