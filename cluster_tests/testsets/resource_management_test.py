@@ -359,7 +359,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             initial_code=400,
             initial_expected_error='{"rr_will_be_too_low":"The following '
                                    'buckets are expected to breach the '
-                                   'resident ratio minimum: test"}')
+                                   'resident ratio minimum: test."}')
 
         spare = self.cluster.spare_node()
 
@@ -395,7 +395,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             initial_code=400,
             initial_expected_error='{"rr_will_be_too_low":"The following '
                                    'buckets are expected to breach the '
-                                   'resident ratio minimum: test"}')
+                                   'resident ratio minimum: test."}')
 
     def rebalance_data_size_test(self):
         self.cluster.create_bucket({
@@ -423,7 +423,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             initial_code=400,
             initial_expected_error='{"data_size_will_be_too_high":"The '
                                    'following buckets are expected to breach '
-                                   'the maximum data size per node: test"}')
+                                   'the maximum data size per node: test."}')
 
         spare = self.cluster.spare_node()
 
@@ -454,7 +454,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             initial_code=400,
             initial_expected_error='{"data_size_will_be_too_high":"The '
                                    'following buckets are expected to breach '
-                                   'the maximum data size per node: test"}')
+                                   'the maximum data size per node: test."}')
 
     def rebalance_cores_per_bucket_test(self):
         pools = testlib.get_succ(self.cluster, "/pools/default").json()
@@ -520,7 +520,7 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
         error_msg = '{"not_enough_cores_for_num_buckets":"The following ' \
                     r'node\(s\) being added have insufficient cpu cores for ' \
                     r'the number of buckets already in the cluster: ' \
-                    f'{spare.otp_node()}"}}'
+                    f'{spare.otp_node()}. "}}'
         self.rebalance_with_cleanup(
             added_nodes=[spare],
             ejected_nodes=[],

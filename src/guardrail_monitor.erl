@@ -132,28 +132,44 @@ topology_change_error({data_size, Buckets}) ->
      iolist_to_binary(
        io_lib:format(
          "The following buckets are expected to "
-         "breach the maximum data size per node: ~s",
+         "breach the maximum data size per node: ~s.",
          [lists:join(", ", Buckets)]))};
 topology_change_error({resident_ratio, Buckets}) ->
     {rr_will_be_too_low,
      iolist_to_binary(
        io_lib:format(
          "The following buckets are expected to "
-         "breach the resident ratio minimum: ~s",
+         "breach the resident ratio minimum: ~s.",
          [lists:join(", ", Buckets)]))};
-topology_change_error({cores_per_bucket, Nodes}) ->
+topology_change_error({cores_per_bucket, LowCoreNodes, NoCoreNodes}) ->
     {not_enough_cores_for_num_buckets,
      iolist_to_binary(
-       io_lib:format(
-         "The following node(s) being added have insufficient cpu cores for "
-         "the number of buckets already in the cluster: ~s",
-         [lists:join(", ", lists:map(atom_to_list(_), Nodes))]))};
+       case LowCoreNodes of
+           [] ->
+               "";
+           _ ->
+               io_lib:format(
+                 "The following node(s) being added have insufficient cpu "
+                 "cores for the number of buckets already in the cluster: ~s. ",
+                 [lists:join(", ", LowCoreNodes)])
+       end ++
+           case NoCoreNodes of
+               [] ->
+                   "";
+               _ ->
+                   io_lib:format(
+                     "The following node(s) being added got error(s) fetching "
+                     "the number of cpu cores available, so may not have "
+                     "sufficient cores for the number of buckets already in "
+                     "the cluster: ~s.",
+                     [lists:join(", ", NoCoreNodes)])
+           end)};
 topology_change_error({disk_usage, Nodes}) ->
     {disk_usage_too_high,
      iolist_to_binary(
        io_lib:format(
          "The following node(s) have insufficient disk space to safely eject "
-         "data nodes from the cluster: ~s",
+         "data nodes from the cluster: ~s.",
          [lists:join(", ", lists:map(atom_to_list(_), Nodes))]))}.
 
 validate_topology_change_data_gr(Resource, ActiveKVNodes, EjectedNodes,
@@ -239,31 +255,55 @@ validate_topology_change_cores_per_bucket(NewKVNodes) ->
         MinCoresPerBucket ->
             NumBuckets = length(ns_bucket:get_bucket_names()),
             MinCores = MinCoresPerBucket * NumBuckets,
+            NodeCores = get_cores_from_nodes(NewKVNodes),
             BadNodes =
                 lists:filter(
-                  fun (Node) ->
-                          Props = ns_doctor:get_node(Node),
-                          case proplists:get_value(cpu_count, Props) of
-                              undefined ->
-                                  false;
-                              Cores when is_number(Cores) ->
-                                  Cores < MinCores;
-                              Other ->
-                                  ?log_error(
-                                     "Unable to check if node ~p has "
-                                     "sufficient cores, as its cpu_count is "
-                                     "not a number (~p). Will reject the "
-                                     "rebalance just in case", [Node, Other]),
-                                  true
-                          end
-                  end, NewKVNodes),
-            case BadNodes of
+                  fun ({Node, [{cpu_cores_available, 0}]}) ->
+                          ?log_error(
+                             "Got that node ~p has 0 cpu_cores_available. "
+                             "This is likely an error, so we will not permit "
+                             "the rebalance to go ahead.", [Node]),
+                          true;
+                      ({_Node, [{cpu_cores_available, C}]})
+                        when is_number(C), C < MinCores ->
+                          true;
+                      ({_Node, [{cpu_cores_available, C}]})
+                        when is_number(C), C >= MinCores ->
+                          false;
+                      ({Node, Other}) ->
+                          ?log_error(
+                             "Couldn't get cpu_cores_available for node ~p. "
+                             "Instead got ~w. Will not permit rebalance to "
+                             "go ahead.", [Node, Other]),
+                          true
+                  end, NodeCores),
+            {LowCoreNodes, NoCoreNodes} =
+                lists:partition(
+                  fun({_Node, [{cpu_cores_available, C}]})
+                        when is_number(C), C > 0 ->
+                          true;
+                     (_) ->
+                          false
+                  end, BadNodes),
+            case LowCoreNodes ++ NoCoreNodes of
                 [] ->
                     ok;
                 _ ->
-                    {error, topology_change_error({cores_per_bucket, BadNodes})}
+                    {error, topology_change_error(
+                              {cores_per_bucket,
+                               lists:map(?cut(atom_to_list(element(1, _))),
+                                         LowCoreNodes),
+                               lists:map(?cut(atom_to_list(element(1, _))),
+                                         NoCoreNodes)})}
             end
     end.
+
+get_cores_from_nodes(Nodes) ->
+    misc:parallel_map(
+      fun (Node) ->
+              {Node, rpc:call(Node, sigar, get_gauges,
+                              [[cpu_cores_available]], 60000)}
+      end, Nodes, 120000).
 
 validate_topology_change_disk_usage(EjectedNodes, KeepKVNodes) ->
     case {guardrail_monitor:get(disk_usage), EjectedNodes} of
@@ -631,10 +671,15 @@ check_disk_usage(Maximum, DiskStats) ->
 modules() ->
     [ns_config, leader_registry, chronicle_compat, stats_interface,
      janitor_agent, ns_bucket, cluster_compat_mode, config_profile,
-     ns_cluster_membership, ns_storage_conf, ns_doctor].
+     ns_cluster_membership, ns_storage_conf, rpc].
 
 basic_test_setup() ->
-    meck:new(modules(), [passthrough]).
+    %% We need unstick, so that we can meck rpc
+    meck:new(modules(), [passthrough, unstick]),
+
+    meck:expect(cluster_compat_mode, is_cluster_trinity, ?cut(true)),
+    meck:expect(config_profile, get_bool,
+                fun ({resource_management, enabled}) -> true end).
 
 basic_test_teardown() ->
     meck:unload(modules()).
@@ -1126,9 +1171,6 @@ check_resources_t() ->
                  check_resources()).
 
 validate_bucket_topology_change_t() ->
-    meck:expect(cluster_compat_mode, is_cluster_trinity, ?cut(true)),
-    meck:expect(config_profile, get_bool,
-                fun ({resource_management, enabled}) -> true end),
 
     Servers = [node1, node2],
     RRConfig = [{couchstore_minimum, 10},
@@ -1348,7 +1390,7 @@ validate_topology_change_data_grs_t() ->
                   {rr_will_be_too_low,
                    <<"The following buckets are expected to breach the "
                      "resident ratio minimum: couchstore_bucket, "
-                     "magma_bucket">>}},
+                     "magma_bucket.">>}},
                  test_validate_topology_change([node1, node2, node3],
                                                [node1, node2])),
 
@@ -1389,7 +1431,7 @@ validate_topology_change_data_grs_t() ->
     ?assertMatch({error,
                   {data_size_will_be_too_high,
                    <<"The following buckets are expected to breach the maximum "
-                     "data size per node: couchstore_bucket, magma_bucket">>}},
+                     "data size per node: couchstore_bucket, magma_bucket.">>}},
                  test_validate_topology_change([node1, node2, node3],
                                                [node1, node2])),
 
@@ -1401,9 +1443,10 @@ validate_topology_change_data_grs_t() ->
                                                [node1, node2])),
     ok.
 
-pretend_cpu_count(Node, Count) ->
-    meck:expect(ns_doctor, get_node,
-        fun(N) when N =:= Node -> [{cpu_count, Count}] end).
+pretend_cpu_cores_available(Node, Value) ->
+    meck:expect(rpc, call,
+                [Node, sigar, get_gauges, [[cpu_cores_available]], 60000],
+                Value).
 
 validate_topology_change_cores_per_bucket_t() ->
     meck:expect(ns_config, read_key_fast,
@@ -1417,7 +1460,7 @@ validate_topology_change_cores_per_bucket_t() ->
     %% For 2 buckets and 0.5 cores per bucket, the minimum will be 1
 
     %% Core count at minimum
-    pretend_cpu_count(node1, 1),
+    pretend_cpu_cores_available(node1, [{cpu_cores_available, 1}]),
     ?assertEqual(ok,
                  test_validate_topology_change([node1], [node1])),
     ?assertEqual(ok,
@@ -1426,7 +1469,7 @@ validate_topology_change_cores_per_bucket_t() ->
                  test_validate_topology_change([node1], [])),
 
     %% Core count below minimum
-    pretend_cpu_count(node2, 0.9),
+    pretend_cpu_cores_available(node2, [{cpu_cores_available, 0.9}]),
     ?assertEqual(ok,
                  test_validate_topology_change([node2], [])),
     ?assertMatch({error,
@@ -1436,7 +1479,19 @@ validate_topology_change_cores_per_bucket_t() ->
                   {not_enough_cores_for_num_buckets, _}},
                  test_validate_topology_change([node1], [node1, node2])),
     ?assertEqual(ok,
-                 test_validate_topology_change([node1, node2], [node1])).
+                 test_validate_topology_change([node1, node2], [node1])),
+
+    %% Get 0 cpu cores from sigar, which we treat as invalid
+    pretend_cpu_cores_available(node1, [{cpu_cores_available, 0.0}]),
+    ?assertMatch({error,
+                  {not_enough_cores_for_num_buckets, _}},
+                 test_validate_topology_change([], [node1])),
+
+    %% Get unexpected cpu cores from sigar
+    pretend_cpu_cores_available(node1, error),
+    ?assertMatch({error,
+                  {not_enough_cores_for_num_buckets, _}},
+                 test_validate_topology_change([], [node1])).
 
 pretend_disk_usages(UsageMap) ->
     meck:expect(stats_interface, disk_usages,
