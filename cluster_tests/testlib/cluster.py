@@ -14,6 +14,7 @@ import re
 from typing import List
 
 import requests
+from requests.exceptions import RequestException
 from urllib.error import URLError
 from copy import deepcopy
 
@@ -489,7 +490,17 @@ class Cluster:
         # is consistent and correct because is_met() functions may rely on it
         for n in self.nodes:
             if n in self.connected_nodes:
-                r = testlib.get_succ(n, '/pools/default')
+                try:
+                    r = testlib.get(n, '/pools/default')
+                except RequestException as e:
+                    raise InconsistentClusterError(
+                        f"Couldn't reach {n} /pools/default. "
+                        f"Got RequestException: {e}")
+                if r.status_code != 200:
+                    raise InconsistentClusterError(
+                        f"Node {n} expected to be connected but got status "
+                        f"{r.status_code} from /pools/default, with message "
+                        f"{r.text}")
                 got_nodes = r.json()['nodes']
                 if len(got_nodes) != len(self.connected_nodes):
                     raise InconsistentClusterError(
@@ -497,7 +508,15 @@ class Cluster:
                             f'Got nodes: {got_nodes}\n' \
                             f'Expected: {self.connected_nodes}')
             else:
-                r = testlib.get_succ(n, '/pools')
+                try:
+                    r = testlib.get(n, '/pools')
+                except requests.exceptions.RequestException as e:
+                    raise InconsistentClusterError(
+                        f"Couldn't reach {n} /pools. Got RequestException: {e}")
+                if r.status_code != 200:
+                    raise InconsistentClusterError(
+                        f"Node {n} expected to be up but got status "
+                        f"{r.status_code} from /pools, with message {r.text}")
                 if len(r.json()['pools']) > 0:
                     raise InconsistentClusterError(
                             f'Node {n} is not expected to be part of ' \
