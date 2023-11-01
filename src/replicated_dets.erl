@@ -18,7 +18,7 @@
 -behaviour(replicated_storage).
 
 -export([start_link/5, set/3, set/4,
-         change_multiple/2, change_multiple/3, delete/2, get/2, get/3,
+         change_multiple/2, change_multiple/3, delete/2, delete/3, get/2, get/3,
          get_last_modified/3, select/3, empty/1,
          select_with_update/4]).
 
@@ -67,10 +67,18 @@ change_multiple(Name, Docs, ExtraProps) when is_list(Docs),
       infinity).
 
 delete(Name, Id) ->
-    gen_server:call(Name, {interactive_update, delete_doc(Id)}, infinity).
+    delete(Name, Id, []).
+
+delete(Name, Id, ExtraProps) when is_list(ExtraProps) ->
+    gen_server:call(
+      Name, {interactive_update, delete_doc(Id, ExtraProps)}, infinity).
 
 delete_doc(Id) ->
-    #docv2{id = Id, value = [], props = [{deleted, true}, {rev, 0}]}.
+    delete_doc(Id, []).
+
+delete_doc(Id, ExtraProps) ->
+    #docv2{id = Id, value = [],
+           props = [{deleted, true}, {rev, 0}] ++ ExtraProps}.
 
 update_doc(Id, Value) ->
     update_doc(Id, Value, []).

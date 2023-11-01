@@ -569,7 +569,18 @@ change_password({_UserName, local} = Identity, Password) when is_list(Password) 
 delete_user({_, Domain} = Identity) ->
     case Domain of
         local ->
-            _ = replicated_dets:delete(storage_name(), {auth, Identity}),
+            %% Add deletes at a higher priority to make sure they take
+            %% precedence over any concurrent update to auth.
+            case cluster_compat_mode:is_cluster_trinity() of
+                true ->
+                    _ = replicated_dets:delete(
+                          storage_name(), {auth, Identity},
+                          [{priority, ?REPLICATED_DETS_HIGH_PRIORITY}]);
+                false ->
+                    _ = replicated_dets:delete(
+                          storage_name(), {auth, Identity})
+            end,
+
             _ = delete_profile(Identity);
         external ->
             ok
