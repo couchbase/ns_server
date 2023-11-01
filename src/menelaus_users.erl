@@ -394,18 +394,8 @@ build_auth(false, Password) ->
     build_auth([Password]);
 build_auth({_, _}, undefined) ->
     same;
-build_auth({_, CurrentAuth}, Password) ->
-    case authenticate_with_info(CurrentAuth, Password) of
-        true ->
-            case has_scram_hashes(CurrentAuth) of
-                false ->
-                    build_auth([Password]);
-                _ ->
-                    same
-            end;
-        false ->
-            build_auth([Password])
-    end.
+build_auth({_, _CurrentAuth}, Password) ->
+    build_auth([Password]).
 
 -spec store_user(rbac_identity(), rbac_user_name(),
                  {password, rbac_password()} | {auth, rbac_auth()},
@@ -604,9 +594,6 @@ obsolete_get_salt_and_mac(Auth) ->
     [{?HASH_ALG_KEY, ?SHA1_HASH},
      {?SALT_KEY, base64:encode(Salt)},
      {?HASHES_KEY, [base64:encode(Mac)]}].
-
-has_scram_hashes(Auth) ->
-    proplists:is_defined(<<"sha1">>, Auth).
 
 -spec authenticate(rbac_user_id(), rbac_password()) -> boolean().
 authenticate(Username, Password) ->
