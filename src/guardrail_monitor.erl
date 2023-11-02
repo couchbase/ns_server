@@ -111,7 +111,8 @@ validate_topology_change(EjectedLiveNodes, KeepNodes) ->
               [?cut(validate_topology_change_data_grs(ActiveKVNodes,
                                                       EjectedLiveNodes,
                                                       KeepKVNodes)),
-               ?cut(validate_topology_change_disk_usage(EjectedLiveNodes,
+               ?cut(validate_topology_change_disk_usage(ActiveKVNodes,
+                                                        EjectedLiveNodes,
                                                         KeepKVNodes)),
                ?cut(validate_topology_change_cores_per_bucket(NewKVNodes))]);
         false ->
@@ -305,13 +306,23 @@ get_cores_from_nodes(Nodes) ->
                               [[cpu_cores_available]], 60000)}
       end, Nodes, 120000).
 
-validate_topology_change_disk_usage(EjectedNodes, KeepKVNodes) ->
-    case {guardrail_monitor:get(disk_usage), EjectedNodes} of
+validate_topology_change_disk_usage(ActiveKVNodes, EjectedNodes, KeepKVNodes) ->
+    case {guardrail_monitor:get(disk_usage),
+          length(ActiveKVNodes) > length(KeepKVNodes)} of
         {undefined, _} ->
             ok;
-        {_, []} ->
+        {_, false} ->
+            %% The number of currently active kv nodes is no larger than the
+            %% number of kv nodes remaining after the rebalance, so we will
+            %% assume that the disk usage won't be any worse after the
+            %% rebalance. One exception to this would be a swap rebalance where
+            %% the new node has less disk space, which would be incorrectly
+            %% permitted.
             ok;
-        {Maximum, _} ->
+        {Maximum, true} ->
+            %% The rebalance will reduce the number of kv nodes, so we should
+            %% check that we've not already reached the guardrail limit for disk
+            %% usage, as we don't want to allow things to become worse
             Stats = stats_interface:disk_usages(KeepKVNodes ++ EjectedNodes),
             BadNodes =
                 lists:filtermap(
@@ -1519,19 +1530,19 @@ validate_topology_change_disk_usage_t() ->
     ?assertEqual(ok,
                  test_validate_topology_change([node1], [node1, node2])),
 
-    %% Permit rebalance when no nodes are removed
+    %% Permit rebalance when there is no reduction in the number of data nodes
     pretend_disk_usages(#{node1 => 100, node2 => 100}),
     ?assertEqual(ok,
                  test_validate_topology_change([], [node1])),
     ?assertEqual(ok,
                  test_validate_topology_change([node1], [node1, node2])),
+    ?assertEqual(ok,
+                 test_validate_topology_change([node1], [node2])),
 
-    %% Don't permit rebalance when a node is being removed and disk usage is
-    %% above the limit
+    %% Don't permit rebalance when there is a reduction in the number of data
+    %% nodes and the disk usage is above the limit
     ?assertMatch({error, {disk_usage_too_high, _}},
                  test_validate_topology_change([node1], [])),
-    ?assertMatch({error, {disk_usage_too_high, _}},
-                 test_validate_topology_change([node1], [node2])),
     ?assertMatch({error, {disk_usage_too_high, _}},
                  test_validate_topology_change([node1, node2], [node1])),
 
@@ -1539,7 +1550,7 @@ validate_topology_change_disk_usage_t() ->
                 fun ({resource_management, enabled}) -> false end),
     %% Don't validate rebalance when guardrails are disabled
     ?assertMatch(ok,
-                 test_validate_topology_change([node1], [])).
+                 test_validate_topology_change([node1, node2], [node1])).
 
 validate_storage_migration_t() ->
     DataSizeConfig0 = [{enabled, true},
@@ -1661,7 +1672,7 @@ basic_test_() ->
        fun () -> validate_topology_change_data_grs_t() end},
       {"validate topology change cores_per_bucket test",
        fun () -> validate_topology_change_cores_per_bucket_t() end},
-      {"validate topology change cores_per_bucket test",
+      {"validate topology change disk usage test",
        fun () -> validate_topology_change_disk_usage_t() end},
       {"validate storage migration test",
        fun () -> validate_storage_migration_t() end}]}.

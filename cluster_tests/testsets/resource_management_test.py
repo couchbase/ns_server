@@ -558,23 +558,22 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             added_nodes=[spare],
             ejected_nodes=[self.cluster.connected_nodes[1]])
 
-        # If the disk usage is above the limit, only rebalances that don't eject
-        # nodes should be permitted
+        # If the disk usage is above the limit, only rebalances that don't
+        # reduce the number of data nodes are permitted
         set_promql_queries(self.cluster, disk_usage=51)
         self.rebalance_with_cleanup(
             added_nodes=[spare],
             ejected_nodes=[])
-
-        # If a node is ejected, then we should reject the rebalance
-        set_promql_queries(self.cluster, disk_usage=51)
-        self.rebalance_with_cleanup(
-            added_nodes=[],
-            ejected_nodes=[self.cluster.connected_nodes[1]],
-            initial_code=400,
-            initial_expected_error='{"disk_usage_too_high')
         set_promql_queries(self.cluster, disk_usage=51)
         self.rebalance_with_cleanup(
             added_nodes=[spare],
+            ejected_nodes=[self.cluster.connected_nodes[1]])
+
+        # If the disk usage is above the limit and the rebalance will reduce the
+        # number of data nodes, then we don't permit the rebalance
+        set_promql_queries(self.cluster, disk_usage=51)
+        self.rebalance_with_cleanup(
+            added_nodes=[],
             ejected_nodes=[self.cluster.connected_nodes[1]],
             initial_code=400,
             initial_expected_error='{"disk_usage_too_high')
