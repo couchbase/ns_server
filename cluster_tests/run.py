@@ -61,6 +61,7 @@ from testsets import \
     hard_reset_test, \
     crud_tests, \
     settings_managers_tests, \
+    users_tests, \
     rest_eject_test
 
 tmp_cluster_dir = os.path.join(scriptdir, "test_cluster_data")
