@@ -110,8 +110,8 @@ key_api_to_config(logPath) ->
     log_path;
 key_api_to_config(disabledUsers) ->
     disabled_users;
-key_api_to_config(auditPruneAge) ->
-    audit_prune_age;
+key_api_to_config(pruneAge) ->
+    prune_age;
 key_api_to_config(X) when is_atom(X) ->
     X.
 
@@ -129,8 +129,8 @@ key_config_to_api(disabled_users) ->
     disabledUsers;
 key_config_to_api(uid) ->
     uid;
-key_config_to_api(audit_prune_age) ->
-    auditPruneAge;
+key_config_to_api(prune_age) ->
+    pruneAge;
 key_config_to_api(_) ->
     undefined.
 

@@ -199,7 +199,7 @@ default() ->
       [{auditd_enabled, false},
        {rotate_interval, 86400},
        {rotate_size, 20*1024*1024},
-       {audit_prune_age, ?DEFAULT_AUDIT_PRUNE_INTERVAL},
+       {prune_age, ?DEFAULT_AUDIT_PRUNE_INTERVAL},
        {disabled, []},
        {enabled, []},
        {disabled_users, []},
