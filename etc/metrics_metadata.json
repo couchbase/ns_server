@@ -129,7 +129,7 @@
     "sys_cpu_cgroup_seconds_total": {
         "type": "counter",
         "help": "Number of CPU seconds utilized in the cgroup, by mode",
-        "added": "7.6.0",
+        "added": "7.2.4",
         "unit": "seconds",
         "stability": "committed",
         "labels": [
@@ -255,7 +255,7 @@
     "sys_pressure_share_time_stalled": {
         "type": "gauge",
         "help": "Percentage of time that tasks were stalled on a given resource",
-        "added": "7.6.0",
+        "added": "7.2.4",
         "stability": "committed",
         "labels": [
             {
@@ -279,7 +279,7 @@
     "sys_pressure_total_stall_time_usec": {
         "type": "counter",
         "help": "Absolute stall time when tasks were stalled on a given resource",
-        "added": "7.6.0",
+        "added": "7.2.4",
         "unit": "microseconds",
         "stability": "committed",
         "labels": [
@@ -314,7 +314,7 @@
     "sysproc_cpu_seconds_total": {
         "type": "counter",
         "help": "Amount of user CPU cycles used, by process",
-        "added": "7.6.0",
+        "added": "7.2.4",
         "stability": "committed",
         "labels": [
             {
@@ -331,7 +331,7 @@
         "type": "gauge",
         "help": "CPU utilization rate, by process",
         "added": "7.0.0",
-        "notes": "7.6.0 changed to use irate of sysproc_cpu_seconds_total for user/sys modes.",
+        "notes": "7.2.4 changed to use irate of sysproc_cpu_seconds_total for user/sys modes.",
         "stability": "committed",
         "labels": [
             {
@@ -418,7 +418,7 @@
     "sysproc_start_time": {
         "type": "counter",
         "help": "OS specific time when process was started",
-        "added": "7.6.0",
+        "added": "7.2.4",
         "stability": "committed",
         "labels": [
             {
@@ -430,7 +430,7 @@
     "sys_disk_queue": {
         "type": "gauge",
         "help": "Current disk queue length of the disk",
-        "added": "7.6.0",
+        "added": "7.2.4",
         "stability": "committed",
         "labels": [
             {
@@ -442,7 +442,7 @@
     "sys_disk_queue_depth": {
         "type": "gauge",
         "help": "Maximum disk queue length of the disk",
-        "added": "7.6.0",
+        "added": "7.2.4",
         "stability": "committed",
         "labels": [
             {
@@ -454,7 +454,7 @@
     "sys_disk_time_seconds": {
         "type": "counter",
         "help": "Amount of time that the disk spent performing IO",
-        "added": "7.6.0",
+        "added": "7.2.4",
         "stability": "committed",
         "labels": [
             {
@@ -466,7 +466,7 @@
     "sys_disk_read_bytes": {
         "type": "counter",
         "help": "Number of bytes read by the disk",
-        "added": "7.6.0",
+        "added": "7.2.4",
         "stability": "committed",
         "labels": [
             {
@@ -478,7 +478,7 @@
     "sys_disk_read_time_seconds": {
         "type": "counter",
         "help": "Amount of time that the disk spent reading",
-        "added": "7.6.0",
+        "added": "7.2.4",
         "stability": "committed",
         "labels": [
             {
@@ -490,7 +490,7 @@
     "sys_disk_reads": {
         "type": "counter",
         "help": "Number of reads that the disk performed",
-        "added": "7.6.0",
+        "added": "7.2.4",
         "stability": "committed",
         "labels": [
             {
@@ -502,7 +502,7 @@
     "sys_disk_write_bytes": {
         "type": "counter",
         "help": "Number of bytes written by the disk",
-        "added": "7.6.0",
+        "added": "7.2.4",
         "stability": "committed",
         "labels": [
             {
@@ -514,7 +514,7 @@
     "sys_disk_write_time_seconds": {
         "type": "counter",
         "help": "Amount of time that the disk spent writing",
-        "added": "7.6.0",
+        "added": "7.2.4",
         "stability": "committed",
         "labels": [
             {
@@ -526,7 +526,7 @@
     "sys_disk_writes": {
         "type": "counter",
         "help": "Number of writes that the disk performed",
-        "added": "7.6.0",
+        "added": "7.2.4",
         "stability": "committed",
         "labels": [
             {
