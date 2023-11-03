@@ -221,11 +221,23 @@ handle_call(Call, From, State) ->
                  [Call, From, State]),
     {reply, nack, State}.
 
+retry_rebalance_status(Type, Params, ID, Chk) ->
+    Status = ns_orchestrator:retry_rebalance(Type, Params, ID, Chk),
+    case cluster_compat_mode:is_cluster_trinity() of
+        true ->
+            case Status of
+                {ok, _} when Type =:= rebalance -> ok;
+                _ -> Status
+            end;
+        false ->
+            Status
+    end.
+
 handle_info(retry_rebalance,
             #state{state = #retry_rebalance{params = Params, type = Type,
                                             retry_check = Chk,
                                             rebalance_id = ID} = RS} = S) ->
-    NewState = case ns_orchestrator:retry_rebalance(Type, Params, ID, Chk) of
+    NewState = case retry_rebalance_status(Type, Params, ID, Chk) of
                    ok ->
                        ?log_debug("Retrying ~s with Id:~s, params:~p ",
                                   [ns_orchestrator:rebalance_type2text(Type),
