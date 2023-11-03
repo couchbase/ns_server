@@ -627,6 +627,16 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
                 }
             })
 
+        def is_servers_populated():
+            r = testlib.get_succ(self.cluster,
+                                 f"/pools/default/buckets/{BUCKET_NAME}")
+            return len(r.json()["nodes"]) > 0
+        # Wait for janitor run to populate servers prop, so that the guardrail
+        # check knows which nodes to check the stats for. Without this, the
+        # subsequent bucket update may be incorrectly permitted
+        testlib.poll_for_condition(is_servers_populated, sleep_time=0.1,
+                                   attempts=1000)
+
         # Test that we can't perform bucket migration from couchstore to magma
         # when the bucket doesn't satisfy the couchstore limits
         set_promql_queries(self.cluster, data_size_tb=10, resident_ratio=5)
