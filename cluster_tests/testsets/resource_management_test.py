@@ -783,6 +783,52 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
         testlib.assert_in("RAM quota cannot be less than 500.0 MiB, to support "
                           "4 collections", r.text)
 
+    def num_replicas_test(self):
+        # Enable the guardrail
+        testlib.post_succ(self.cluster,
+                          "/settings/resourceManagement/diskUsage",
+                          json={
+                              "enabled": True,
+                              "maximum": 50
+                          })
+        self.cluster.create_bucket({
+            "name": BUCKET_NAME,
+            "ramQuota": 100,
+            "replicaNumber": 1
+        }, sync=True)
+
+        # Trigger the disk usage guardrail by setting the maximum to 0
+        set_disk_guardrail_maximum(self.cluster, 0)
+
+        # Test that the numReplicas cannot be increased
+        r = self.cluster.update_bucket({
+            "name": BUCKET_NAME,
+            "replicaNumber": 2
+        }, expected_code=400)
+        testlib.assert_in("The following data node(s) have insufficient disk "
+                          "space to safely increase the number of replicas: ",
+                          r.text)
+        # Test that the numReplicas can be set to the same value
+        self.cluster.update_bucket({
+            "name": BUCKET_NAME,
+            "replicaNumber": 1
+        })
+
+        # Test that the numReplicas can be decreased
+        self.cluster.update_bucket({
+            "name": BUCKET_NAME,
+            "replicaNumber": 0
+        })
+
+        # Set disk usage maximum to 100, so the guardrail is no longer triggered
+        set_disk_guardrail_maximum(self.cluster, 100)
+
+        # Test that the numReplicas can now be increased
+        self.cluster.update_bucket({
+            "name": BUCKET_NAME,
+            "replicaNumber": 2
+        })
+
 
 class DataIngressTests(testlib.BaseTestSet):
 

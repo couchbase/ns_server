@@ -84,6 +84,7 @@
          name_conflict/2,
          node_locator/1,
          num_replicas/1,
+         num_replicas/2,
          pitr_enabled/1,
          pitr_granularity/1,
          pitr_max_history_age/1,
@@ -800,6 +801,11 @@ num_replicas(Bucket) ->
         X when is_integer(X) ->
             X
     end.
+
+-spec num_replicas(proplists:proplist(), Default) -> pos_integer() | Default
+              when Default :: pos_integer() | undefined.
+num_replicas(Bucket, Default) ->
+    proplists:get_value(num_replicas, Bucket, Default).
 
 %% ns_server type (membase vs memcached)
 bucket_type(Bucket) ->

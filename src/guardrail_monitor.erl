@@ -19,7 +19,8 @@
 -behaviour(gen_server).
 
 -export([is_enabled/0, get_config/0, get/1, get/2, start_link/0,
-         validate_topology_change/2, validate_storage_migration/3]).
+         validate_topology_change/2, validate_storage_migration/3,
+         check_num_replicas_change/3]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
@@ -483,6 +484,54 @@ get_high_disk_usage_from_stats(Maximum, NodeDiskStats) ->
           ({Node, {error, Error}}) ->
               {true, {Node, Error}}
       end, NodeDiskStats).
+
+-spec check_num_replicas_change(pos_integer(), pos_integer(), [node()]) ->
+          ok | {error, binary()}.
+check_num_replicas_change(OldNumReplicas, NewNumReplicas, Nodes) ->
+    case {guardrail_monitor:get(disk_usage), OldNumReplicas < NewNumReplicas} of
+        {undefined, _} ->
+            ok;
+        {_Maximum, false} ->
+            %% The number of replicas is not being increased so no guardrail
+            %% needs to be checked, to ensure the change is safe to perform
+            ok;
+        {Maximum, true} ->
+            %% The number of replicas is being increased so we need to check
+            %% the disk usage, to ensure the change is safe to perform
+            BadNodes = get_high_disk_usage_from_nodes(Maximum, Nodes),
+            %% Split the bad nodes into those with an error and those with high
+            %% disk usage
+            {HighDiskNodes, ErrorDiskNodes} =
+                lists:partition(
+                  fun ({_Node, high_disk}) -> true;
+                      (_) -> false
+                  end, BadNodes),
+            case {HighDiskNodes, ErrorDiskNodes} of
+                {[], []} ->
+                    ok;
+                {_, []} ->
+                    {error,
+                     list_to_binary(
+                       io_lib:format(
+                         "The following data node(s) have insufficient disk "
+                         "space to safely increase the number of replicas: ~s",
+                         [lists:join(
+                            ", ",
+                            lists:map(?cut(atom_to_list(element(1, _))),
+                                      HighDiskNodes))]))};
+                {[], _} ->
+                    {error,
+                     list_to_binary(
+                       io_lib:format(
+                         "Couldn't determine safety of increasing number of "
+                         "replicas as there were errors getting disk usage on "
+                         "the following nodes: ~s",
+                         [lists:join(
+                            ", ",
+                            lists:map(?cut(atom_to_list(element(2, _))),
+                                      HighDiskNodes))]))}
+            end
+    end.
 
 -spec validate_storage_migration(bucket_name(), proplists:proplist(), atom()) ->
           ok | {error, data_size | resident_ratio, number()}.

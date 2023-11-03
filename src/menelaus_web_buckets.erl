@@ -1074,18 +1074,10 @@ num_replicas_warnings_validation(Ctx, NReplicas) ->
             true ->
                 []
         end ++
-        case {Ctx#bv_ctx.new, Ctx#bv_ctx.bucket_config} of
-            {true, _} ->
-                [];
-            {_, false} ->
-                [];
-            {false, BucketConfig} ->
-                case ns_bucket:num_replicas(BucketConfig) of
-                    NReplicas ->
-                        [];
-                    _ ->
-                        ["changing replica number may require rebalance"]
-                end
+        case get_existing_num_replicas(Ctx) of
+            undefined -> [];
+            NReplicas -> [];
+            _ -> ["changing replica number may require rebalance"]
         end,
     Msg = case Warnings of
               [] ->
@@ -1101,6 +1093,12 @@ num_replicas_warnings_validation(Ctx, NReplicas) ->
         _ ->
             [{replicaNumber, ?l2b("Warning: " ++ Msg ++ ".")}]
     end.
+
+get_existing_num_replicas(#bv_ctx{new = false, bucket_config = BucketConfig})
+  when BucketConfig =/= false ->
+    ns_bucket:num_replicas(BucketConfig, undefined);
+get_existing_num_replicas(_) ->
+    undefined.
 
 handle_bucket_flush(_PoolId, Id, Req) ->
     XDCRDocs = goxdcr_rest:find_all_replication_docs(),
@@ -1268,7 +1266,8 @@ validate_replicas_and_durability(Params, Ctx) ->
     NumReplicas = get_value_from_parms_or_bucket(num_replicas, Params, Ctx),
     DurabilityLevel = get_value_from_parms_or_bucket(durability_min_level,
                                                      Params, Ctx),
-    NodesCount = length(get_nodes(Ctx)),
+    Nodes = get_nodes(Ctx),
+    NodesCount = length(Nodes),
     case {NumReplicas, DurabilityLevel, NodesCount} of
         {0, _, _} -> [];
         {_, none, _} -> [];
@@ -1281,7 +1280,21 @@ validate_replicas_and_durability(Params, Ctx) ->
                        <<"You do not have enough data servers to support this "
                          "durability level">>}];
         {_, _, _} -> []
-    end.
+    end ++
+        case get_existing_num_replicas(Ctx) of
+            undefined ->
+                [];
+            NumReplicas ->
+                [];
+            OldNumReplicas ->
+                case guardrail_monitor:check_num_replicas_change(
+                       OldNumReplicas, NumReplicas, Nodes) of
+                    ok ->
+                        [];
+                    {error, Error} when is_binary(Error) ->
+                        [{num_replicas, Error}]
+                end
+        end.
 
 validate_magma_ram_quota(Params, Ctx) ->
     StorageMode = get_value_from_parms_or_bucket(storage_mode, Params, Ctx),
@@ -4771,5 +4784,91 @@ rank_params_screening_test() ->
     %% IsTrinity=false, rank=undefined, IsNew=false
     ?assertEqual(parse_validate_bucket_rank(NoRankParams, NotNew), ignore),
     meck:unload(cluster_compat_mode).
+
+test_num_replicas_guardrail_validation(#{disk_usage := DiskUsage,
+                                         old_num_replicas := OldNumReplicas,
+                                         new_num_replicas := NewNumReplicas}) ->
+    meck:expect(rpc, call,
+                fun (_Node, ns_disksup, get_disk_data, [], _Timeout) ->
+                        [{"/", 1, DiskUsage}]
+                end),
+    Servers = [node1, node2],
+    {New, BucketConfig} =
+        case OldNumReplicas of
+            undefined -> {true, false};
+            _ -> {false,
+                  [{num_replicas, OldNumReplicas},
+                   {servers, Servers}]}
+        end,
+    Ctx = #bv_ctx{
+             bucket_config=BucketConfig,
+             kv_nodes = Servers,
+             new = New},
+    Params = [{num_replicas, NewNumReplicas},
+              {durability_min_level, none}],
+    additional_bucket_params_validation(Params, Ctx).
+
+num_replicas_guardrail_validation_test_() ->
+    ExpectedError = [{num_replicas,
+                      <<"The following data node(s) have insufficient disk "
+                        "space to safely increase the number of replicas: "
+                        "node1, node2">>}],
+    {setup,
+     fun () ->
+             %% We need unstick, so that we can meck rpc
+             meck:new([rpc], [passthrough, unstick]),
+             meck:expect(ns_config, read_key_fast,
+                         fun(resource_management, _) ->
+                                 [{disk_usage,
+                                   [{enabled, true},
+                                    {maximum, 90}]}];
+                            (_, Default) -> Default end),
+
+             meck:expect(ns_storage_conf, this_node_dbdir,
+                         fun () -> {ok, ""} end),
+             meck:expect(ns_storage_conf, extract_disk_stats_for_path,
+                         fun ([Stats], _) -> {ok, Stats} end),
+             meck:expect(ns_config, get_timeout,
+                         fun (_, Default) -> Default end)
+     end,
+     fun (_) ->
+             meck:unload()
+     end,
+     [{"num_replicas can't be increased after disk usage guardrail hit",
+       ?_assertEqual(ExpectedError,
+                     test_num_replicas_guardrail_validation(
+                       #{disk_usage => 91,
+                         old_num_replicas => 1,
+                         new_num_replicas => 2}))},
+      {"num_replicas can be increased if disk usage guardrail not hit",
+       ?_assertEqual([],
+                     test_num_replicas_guardrail_validation(
+                       #{disk_usage => 90,
+                         old_num_replicas => 1,
+                         new_num_replicas => 2}))},
+      {"num_replicas can be decreased after disk usage guardrail hit",
+       ?_assertEqual([],
+                     test_num_replicas_guardrail_validation(
+                       #{disk_usage => 91,
+                         old_num_replicas => 2,
+                         new_num_replicas => 1}))},
+      {"num_replicas can be set unchanged after disk usage guardrail hit",
+       ?_assertEqual([],
+                     test_num_replicas_guardrail_validation(
+                       #{disk_usage => 91,
+                         old_num_replicas => 1,
+                         new_num_replicas => 1}))},
+      {"num_replicas can be decreased if disk usage guardrail not hit",
+       ?_assertEqual([],
+                     test_num_replicas_guardrail_validation(
+                       #{disk_usage => 90,
+                         old_num_replicas => 2,
+                         new_num_replicas => 1}))},
+      {"num_replicas can be set unchanged if disk usage guardrail not hit",
+       ?_assertEqual([],
+                     test_num_replicas_guardrail_validation(
+                       #{disk_usage => 90,
+                         old_num_replicas => 1,
+                         new_num_replicas => 1}))}]}.
 
 -endif.
