@@ -1260,24 +1260,30 @@ validate_ram(#ram_summary{this_alloc = Alloc, this_used = Used}) ->
     end.
 
 additional_bucket_params_validation(Params, Ctx) ->
+    lists:append([validate_replicas_and_durability(Params, Ctx),
+                  validate_magma_ram_quota(Params, Ctx),
+                  validate_pitr_params(Params, Ctx)]).
+
+validate_replicas_and_durability(Params, Ctx) ->
     NumReplicas = get_value_from_parms_or_bucket(num_replicas, Params, Ctx),
     DurabilityLevel = get_value_from_parms_or_bucket(durability_min_level,
                                                      Params, Ctx),
     NodesCount = length(get_nodes(Ctx)),
-    Err1 = case {NumReplicas, DurabilityLevel, NodesCount} of
-               {0, _, _} -> [];
-               {_, none, _} -> [];
-               {3, _, _} -> [{durability_min_level,
-                              <<"Durability minimum level cannot be specified with "
-                                "3 replicas">>}];
-               %% memcached bucket
-               {undefined, undefined, _} -> [];
-               {_, _, 1} -> [{durability_min_level,
-                              <<"You do not have enough data servers to support this "
-                                "durability level">>}];
-               {_, _, _} -> []
-           end,
+    case {NumReplicas, DurabilityLevel, NodesCount} of
+        {0, _, _} -> [];
+        {_, none, _} -> [];
+        {3, _, _} -> [{durability_min_level,
+                       <<"Durability minimum level cannot be specified with "
+                         "3 replicas">>}];
+        %% memcached bucket
+        {undefined, undefined, _} -> [];
+        {_, _, 1} -> [{durability_min_level,
+                       <<"You do not have enough data servers to support this "
+                         "durability level">>}];
+        {_, _, _} -> []
+    end.
 
+validate_magma_ram_quota(Params, Ctx) ->
     StorageMode = get_value_from_parms_or_bucket(storage_mode, Params, Ctx),
     RamQuota = get_value_from_parms_or_bucket(ram_quota, Params, Ctx),
 
@@ -1291,34 +1297,33 @@ additional_bucket_params_validation(Params, Ctx) ->
         ns_config:read_key_fast(magma_min_memory_quota,
                                 DefaultMagmaMinMemoryQuota),
 
-    Err2 = case {StorageMode, RamQuota} of
-               {magma, RamQuota}
-                 when RamQuota < MagmaMinMemoryQuota * 1024 * 1024 ->
-                   RamQ = list_to_binary(integer_to_list(MagmaMinMemoryQuota)),
-                   [{ramQuota,
-                     <<"Ram quota for magma must be at least ", RamQ/binary,
-                       " MiB">>}];
-               {_, _} ->
-                   []
-           end,
+    case {StorageMode, RamQuota} of
+        {magma, RamQuota}
+          when RamQuota < MagmaMinMemoryQuota * 1024 * 1024 ->
+            RamQ = list_to_binary(integer_to_list(MagmaMinMemoryQuota)),
+            [{ramQuota,
+              <<"Ram quota for magma must be at least ", RamQ/binary,
+                " MiB">>}];
+        {_, _} ->
+            []
+    end.
 
+validate_pitr_params(Params, Ctx) ->
     PitrGranularity = get_value_from_parms_or_bucket(pitr_granularity,
                                                      Params, Ctx),
     PitrMaxHistoryAge = get_value_from_parms_or_bucket(pitr_max_history_age,
                                                        Params, Ctx),
-    Err3 = case {PitrGranularity, PitrMaxHistoryAge} of
-               {undefined, undefined} ->
-                   %% memcached buckets don't support pitr
-                   [];
-               {Granularity, MaxAge} when Granularity > MaxAge ->
-                   [{pitrGranularity,
-                     <<"PITR granularity must be less than or equal to max "
-                       "history age">>}];
-               {_, _} ->
-                   []
-           end,
-
-    Err1 ++ Err2 ++ Err3.
+    case {PitrGranularity, PitrMaxHistoryAge} of
+        {undefined, undefined} ->
+            %% memcached buckets don't support pitr
+            [];
+        {Granularity, MaxAge} when Granularity > MaxAge ->
+            [{pitrGranularity,
+              <<"PITR granularity must be less than or equal to max "
+                "history age">>}];
+        {_, _} ->
+            []
+    end.
 
 %% Get the value from the params. If it wasn't specified and this isn't
 %% a bucket creation then get the existing value from the bucket config.
