@@ -27,6 +27,10 @@
 
 -record(state, {timeout, os, diskdata = [], port}).
 
+-type disk_stat() :: {string(), integer(), integer()}.
+-type disk_stats() :: [disk_stat()].
+-export_type([disk_stat/0, disk_stats/0]).
+
 %%----------------------------------------------------------------------
 %% API
 %%----------------------------------------------------------------------
@@ -39,6 +43,7 @@ start_link() ->
             ignore
     end.
 
+-spec get_disk_data() -> disk_stats().
 get_disk_data() ->
     case misc:is_linux() orelse misc:is_macos() of
         true ->

@@ -537,16 +537,12 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             initial_expected_error=error_msg)
 
     def rebalance_disk_usage_test(self):
-        # Set maximum disk usage
-        testlib.post_succ(self.cluster,
-                          "/settings/resourceManagement/diskUsage",
-                          json={
-                              "enabled": True,
-                              "maximum": 50
-                          })
+        # Set maximum disk usage to 100, so that the disk usage must be below
+        # the limit
+        set_disk_guardrail_maximum(self.cluster, 100)
 
-        # If the disk usage is at the limit, all rebalances should be permitted
-        set_promql_queries(self.cluster, disk_usage=50)
+        # If the disk usage is below the limit, all rebalances should be
+        # permitted
         self.rebalance_with_cleanup(
             added_nodes=[],
             ejected_nodes=[self.cluster.connected_nodes[1]])
@@ -558,20 +554,20 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             added_nodes=[spare],
             ejected_nodes=[self.cluster.connected_nodes[1]])
 
+        # Set the maximum to 0, so that the disk usage must be above the limit
+        set_disk_guardrail_maximum(self.cluster, 0)
+
         # If the disk usage is above the limit, only rebalances that don't
         # reduce the number of data nodes are permitted
-        set_promql_queries(self.cluster, disk_usage=51)
         self.rebalance_with_cleanup(
             added_nodes=[spare],
             ejected_nodes=[])
-        set_promql_queries(self.cluster, disk_usage=51)
         self.rebalance_with_cleanup(
             added_nodes=[spare],
             ejected_nodes=[self.cluster.connected_nodes[1]])
 
         # If the disk usage is above the limit and the rebalance will reduce the
         # number of data nodes, then we don't permit the rebalance
-        set_promql_queries(self.cluster, disk_usage=51)
         self.rebalance_with_cleanup(
             added_nodes=[],
             ejected_nodes=[self.cluster.connected_nodes[1]],
@@ -595,6 +591,8 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
 
             # Reset the promql queries so that rebalances are permitted
             set_promql_queries(self.cluster)
+            original_settings = get_guard_rail_settings(self.cluster)
+            disable_bucket_guard_rails(self.cluster)
 
             # Connected_nodes must be fixed if ejected_nodes weren't ejected
             self.cluster.connected_nodes = list(set(
@@ -602,6 +600,9 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
 
             # Rebalance ejected nodes back in and extra nodes out
             self.cluster.rebalance(ejected_nodes=added_nodes)
+
+            testlib.post_succ(self.cluster, "/settings/resourceManagement",
+                              json=original_settings)
             testlib.assert_eq(len(self.cluster.connected_nodes),
                               GuardRailRestrictionTests.num_connected,
                               "connected nodes")
@@ -924,12 +925,7 @@ class DataIngressTests(testlib.BaseTestSet):
 
         # Ensure that the guard rail is enabled, and set the limit high to avoid
         # false positives
-        testlib.post_succ(
-            self.cluster, "/settings/resourceManagement/diskUsage",
-            json={
-                "enabled": True,
-                "maximum": 85,
-            })
+        set_disk_guardrail_maximum(self.cluster, 100)
 
         testlib.poll_for_condition(is_warmed_up(self.cluster, BUCKET_NAME),
                                    sleep_time=0.5, attempts=120)
@@ -945,8 +941,8 @@ class DataIngressTests(testlib.BaseTestSet):
                                                           "test_doc"),
                                    sleep_time=0.5, attempts=120)
 
-        # Set disk usage above the maximum
-        set_promql_queries(self.cluster, disk_usage=90)
+        # Set the maximum to 0, so that the disk usage must be above the limit
+        set_disk_guardrail_maximum(self.cluster, 0)
 
         refresh_guard_rails(self.cluster)
         assert_bucket_resource_status(self.cluster, BUCKET_NAME, "disk_usage")
@@ -956,8 +952,8 @@ class DataIngressTests(testlib.BaseTestSet):
                           "Ingress disabled due to disk usage exceeding "
                           "configured limit")
 
-        # Set the disk usage back to 0, to verify the status goes back to ok
-        set_promql_queries(self.cluster, disk_usage=0)
+        # Set maximum to 100, so that the disk usage must be below the limit
+        set_disk_guardrail_maximum(self.cluster, 100)
 
         refresh_guard_rails(self.cluster)
         assert_bucket_resource_status(self.cluster, BUCKET_NAME, "ok")
@@ -966,6 +962,11 @@ class DataIngressTests(testlib.BaseTestSet):
         testlib.post_succ(
             self.cluster, "/pools/default/buckets/test/docs/test_doc",
             data="")
+
+
+def get_guard_rail_settings(cluster):
+    return testlib.get_succ(cluster,
+                            "/settings/resourceManagement/").json()
 
 
 def disable_bucket_guard_rails(cluster):
@@ -1002,10 +1003,17 @@ def set_promql_queries(cluster, data_size_tb=.0, data_size_bytes=0,
                             f"{data_size_tb} * {bucket_metric_base}",
                             "resourcePromQLOverride.dataSizePerNodeBytes":
                             f"{data_size_bytes} * {bucket_metric_base}",
-                            "resourcePromQLOverride.diskUsage":
-                            f"{disk_usage} * sgn(sys_disk_usage_ratio)",
                             "resourcePromQLOverride.dataResidentRatio":
                             f"{resident_ratio} * {bucket_metric_base}"})
+
+
+def set_disk_guardrail_maximum(cluster, value):
+    testlib.post_succ(cluster,
+                      "/settings/resourceManagement/diskUsage",
+                      json={
+                          "enabled": True,
+                          "maximum": value
+                      })
 
 
 def assert_bucket_resource_status(cluster, bucket, expected_status):

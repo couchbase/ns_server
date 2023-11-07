@@ -27,6 +27,12 @@
 %% Amount of time to wait between state checks (ms)
 -define(CHECK_INTERVAL, ?get_param(check_interval, 20000)).
 
+%% 60s should be sufficient time that we don't timeout when a node is busy
+-define(RPC_TIMEOUT, ?get_timeout(rpc_timeout, 60000)).
+%% 120s should be enough that we never hit it when the 60s timeout for an
+%% individual rpc call is reached
+-define(PARALLEL_RPC_TIMEOUT, ?get_timeout(parallel_rpc_timeout, 120000)).
+
 -define(SERVER, ?MODULE).
 
 -record(state, {
@@ -38,6 +44,16 @@
 -export_type([resource/0]).
 -type status() :: ok | data_ingress_status().
 -export_type([status/0]).
+
+-type disk_stats_error() :: no_dbdir
+                          | {dbdir_path_error, term()}
+                          | no_disk_stats_found.
+
+-type topology_change_error() :: data_size_will_be_too_high
+                               | rr_will_be_too_low
+                               | not_enough_cores_for_num_buckets
+                               | disk_usage_too_high
+                               | disk_usage_error.
 
 -spec is_enabled() -> boolean().
 is_enabled() ->
@@ -128,6 +144,13 @@ validate_topology_change_data_grs(ActiveKVNodes, EjectedNodes, KeepKVNodes) ->
               Err
       end, ok, [data_size, resident_ratio]).
 
+-spec topology_change_error(
+        {data_size, [bucket_name()]}
+        | {resident_ratio, [bucket_name()]}
+        | {cores_per_bucket, [string()], [string()]}
+        | {disk_usage_high, [string()]}
+        | {disk_usage_error, [string()]}) ->
+          {topology_change_error(), binary()}.
 topology_change_error({data_size, Buckets}) ->
     {data_size_will_be_too_high,
      iolist_to_binary(
@@ -165,13 +188,21 @@ topology_change_error({cores_per_bucket, LowCoreNodes, NoCoreNodes}) ->
                      "the cluster: ~s.",
                      [lists:join(", ", NoCoreNodes)])
            end)};
-topology_change_error({disk_usage, Nodes}) ->
+topology_change_error({disk_usage_high, HighDiskNodes}) ->
     {disk_usage_too_high,
      iolist_to_binary(
        io_lib:format(
-         "The following node(s) have insufficient disk space to safely eject "
+         "The following data node(s) have insufficient disk space to safely "
+         "eject data nodes from the cluster: ~s.",
+         [lists:join(", ", HighDiskNodes)]))};
+topology_change_error({disk_usage_error, ErrorDiskNodes}) ->
+    {disk_usage_error,
+     iolist_to_binary(
+       io_lib:format(
+         "The following data node(s) got error(s) fetching the disk usage "
+         "stats, so there may not be sufficient disk space to safely eject "
          "data nodes from the cluster: ~s.",
-         [lists:join(", ", lists:map(atom_to_list(_), Nodes))]))}.
+         [lists:join(", ", ErrorDiskNodes)]))}.
 
 validate_topology_change_data_gr(Resource, ActiveKVNodes, EjectedNodes,
                                  KeepKVNodes) ->
@@ -303,9 +334,11 @@ get_cores_from_nodes(Nodes) ->
     misc:parallel_map(
       fun (Node) ->
               {Node, rpc:call(Node, sigar, get_gauges,
-                              [[cpu_cores_available]], 60000)}
-      end, Nodes, 120000).
+                              [[cpu_cores_available]], ?RPC_TIMEOUT)}
+      end, Nodes, ?PARALLEL_RPC_TIMEOUT).
 
+-spec validate_topology_change_disk_usage([node()], [node()], [node()]) ->
+    ok | {error, topology_change_error()}.
 validate_topology_change_disk_usage(ActiveKVNodes, EjectedNodes, KeepKVNodes) ->
     case {guardrail_monitor:get(disk_usage),
           length(ActiveKVNodes) > length(KeepKVNodes)} of
@@ -323,24 +356,102 @@ validate_topology_change_disk_usage(ActiveKVNodes, EjectedNodes, KeepKVNodes) ->
             %% The rebalance will reduce the number of kv nodes, so we should
             %% check that we've not already reached the guardrail limit for disk
             %% usage, as we don't want to allow things to become worse
-            Stats = stats_interface:disk_usages(KeepKVNodes ++ EjectedNodes),
-            BadNodes =
-                lists:filtermap(
-                  fun ({Node, NodeStats}) ->
-                          case check_disk_usage(Maximum, NodeStats) of
-                              false ->
-                                  false;
-                              true ->
-                                  {true, Node}
-                          end
-                  end, Stats),
-            case BadNodes of
-                [] ->
+            Nodes = KeepKVNodes ++ EjectedNodes,
+            BadNodes = get_high_disk_usage_from_nodes(Maximum, Nodes),
+
+            %% Split the bad nodes into those that have high disk usage and
+            %% those that we failed to get disk usage stats for, in order to
+            %% give appropriate error messages
+            {HighDiskNodes, ErrorDiskNodes} =
+                lists:partition(
+                  fun ({_Node, high_disk}) -> true;
+                      (_) -> false
+                  end, BadNodes),
+            case {HighDiskNodes, ErrorDiskNodes} of
+                {[], []} ->
+                    %% Since no data node is currently above the disk usage
+                    %% limit, we assume that the rebalance is safe to perform.
+                    %% This is not a good assumption to make as it is entirely
+                    %% possible that the disk usage will increase to an unsafe
+                    %% limit, as we are reducing the total disk size for the
+                    %% cluster. However, it is not feasible to determine the
+                    %% resultant disk usage after the rebalance, as it is
+                    %% impacted by a number of factors, such as data no longer
+                    %% being compacted, and fragmentation.
                     ok;
-                _ ->
-                    {error, topology_change_error({disk_usage, BadNodes})}
+                {_, []} ->
+                    %% When there are no errors fetching disk stats, there are
+                    %% nodes with high disk usage, and the number of kv nodes
+                    %% is being reduced, we give an error specifying the high
+                    %% disk usage nodes
+                    {error,
+                     topology_change_error(
+                       {disk_usage_high,
+                        lists:map(?cut(atom_to_list(element(1, _))),
+                                  HighDiskNodes)})};
+                {_, _} ->
+                    %% If there were errors fetching the disk usage for any
+                    %% nodes, we will just report these as the reason for not
+                    %% permitting the rebalance, even if there were also nodes
+                    %% with high disk usage
+                    {error,
+                     topology_change_error(
+                       {disk_usage_error,
+                        lists:map(?cut(atom_to_list(element(1, _))),
+                                  ErrorDiskNodes)})}
             end
     end.
+
+-spec get_disk_stats_from_nodes([node()]) ->
+          [{ok,
+            {node(),
+             {ok, ns_disksup:disk_stat()}
+            | {badrpc, term()}
+            | {error, disk_stats_error()}}}].
+get_disk_stats_from_nodes(Nodes) ->
+    misc:parallel_map(
+      fun (Node) ->
+              case rpc:call(Node, ns_disksup, get_disk_data, [],
+                            ?RPC_TIMEOUT) of
+                  {badrpc, _} = Error ->
+                      {Node, Error};
+                  Mounts ->
+                      {Node, get_disk_data(Mounts)}
+              end
+      end, Nodes, ?PARALLEL_RPC_TIMEOUT).
+
+-spec get_high_disk_usage_from_nodes(number(), [node()]) ->
+          [{node(), high_disk | disk_stats_error() | any()}].
+get_high_disk_usage_from_nodes(Maximum, Nodes) ->
+    NodeDiskStats = get_disk_stats_from_nodes(Nodes),
+    get_high_disk_usage_from_stats(Maximum, NodeDiskStats).
+
+-spec get_high_disk_usage_from_stats(
+        number(),
+        [{node(),
+          {ok, ns_disksup:disk_stat()}
+         | {badrpc, any()}
+         | {error, disk_stats_error()}}]) ->
+          [{node(), high_disk | disk_stats_error() | any()}].
+get_high_disk_usage_from_stats(Maximum, NodeDiskStats) ->
+    lists:filtermap(
+      fun ({Node, {ok, DiskData}}) ->
+              case check_disk_usage(Maximum, DiskData) of
+                  false ->
+                      false;
+                  true ->
+                      {true, {Node, high_disk}}
+              end;
+          ({Node, {badrpc, Error}}) ->
+              %% If there is a communication issue, or an error getting
+              %% the disk stats, we want to bubble up a clear error,
+              %% rather than letting it fail later in a less clear way
+              ?log_error("Couldn't get disk stats for node ~p. Instead got ~w.",
+                         [Node, Error]),
+              {true, {Node, Error}};
+          ({Node, {error, Error}}) ->
+              {true, {Node, Error}}
+      end, NodeDiskStats).
 
 -spec validate_storage_migration(bucket_name(), proplists:proplist(), atom()) ->
           ok | {error, data_size | resident_ratio, number()}.
@@ -479,23 +590,34 @@ check({bucket, Config}, Stats) ->
                                      BucketStats)
                 end
         end, ns_bucket:get_buckets()));
-check({disk_usage = Resource, Config}, Stats) ->
+check({disk_usage = Resource, Config}, _Stats) ->
     case proplists:get_value(enabled, Config) of
         false ->
             [];
         true ->
             Maximum = proplists:get_value(maximum, Config),
-            DiskStats = proplists:get_value(disk_usage, Stats, []),
+
+            %% Get the live disk stats, which we do for consistency as we must
+            %% get live stats for node addition, to avoid waiting for stats to
+            %% be scraped on the new node
+            Node = node(),
             {Gauge, Statuses} =
-                case check_disk_usage(Maximum, DiskStats) of
-                    true ->
+                case get_high_disk_usage_from_nodes(Maximum, [Node]) of
+                    [{Node, high_disk}] ->
                         %% For now if we see disk usage reach the limit we apply
                         %% the guard for all buckets. In future we should allow
                         %% this to apply on a per-service and per-bucket level,
                         %% when these are mapped to different disk partitions
                         {1, [{{bucket, BucketName}, disk_usage}
                              || BucketName <- ns_bucket:get_bucket_names()]};
-                    false ->
+                    [{Node, _Error}] ->
+                        %% If we fail to get disk stats then we assume the disk
+                        %% usage is safe, rather than disabling data ingress.
+                        %% We do this because disabling data ingress is an
+                        %% extreme action that we do not want to take unless we
+                        %% are sure that we have to.
+                        {0, []};
+                    [] ->
                         {0, []}
                 end,
             ns_server_stats:notify_gauge(
@@ -654,28 +776,36 @@ get_data_size_maximum_on_nodes(ResourceConfig, BucketConfig, Nodes) ->
         Limits -> lists:min(Limits)
     end.
 
-check_disk_usage(Maximum, DiskStats) ->
-    Mounts = lists:filtermap(
-               fun({Disk, Value}) ->
-                       {true, {Disk, ignore, Value}};
-                  (_) ->
-                       false
-               end, DiskStats),
+-spec check_disk_usage(number(), ns_disksup:disk_stat()) -> boolean().
+check_disk_usage(Maximum, {_Disk, _Cap, Used}) ->
+    Used > Maximum.
+
+-spec get_disk_data(ns_disksup:disk_stats()) ->
+          {ok, ns_disksup:disk_stat()} | {error, disk_stats_error()}.
+get_disk_data(Mounts) ->
     case ns_storage_conf:this_node_dbdir() of
         {ok, DbDir} ->
             case misc:realpath(DbDir, "/") of
                 {ok, RealFile} ->
                     case ns_storage_conf:extract_disk_stats_for_path(
                            Mounts, RealFile) of
-                        {ok, {_Disk, _Cap, Used}} -> Used > Maximum;
-                        none -> false
+                        {ok, _} = DiskData ->
+                            DiskData;
+                        none ->
+                            ?log_error("Couldn't check disk space as ~p "
+                                       "wasn't found in ~p",
+                                       [RealFile, Mounts]),
+                            {error, no_disk_stats_found}
                     end;
-                _ ->
-                    false
+                Error ->
+                    ?log_error("Couldn't check disk space as ~p doesn't "
+                               "appear to be a valid path. Error: ~p",
+                               [DbDir, Error]),
+                    {error, {dbdir_path_error, Error}}
             end;
         {error, not_found} ->
-            ?log_warning("Couldn't check disk usage as node db dir is missing"),
-            false
+            ?log_error("Couldn't check disk usage as node db dir is missing"),
+            {error, no_dbdir}
     end.
 
 -ifdef(TEST).
@@ -1145,11 +1275,10 @@ check_resources_t() ->
                           [{enabled, true},
                            {maximum, 85}]}]
                 end),
+    pretend_disk_data(#{node() => [{"/", 1, 50}]}),
 
-    meck:expect(stats_interface, for_resource_management,
-                fun () ->
-                        [{disk_usage, [{"/", 50}]}]
-                end),
+    meck:expect(ns_config, get_timeout,
+                fun (_, Default) -> Default end),
 
     meck:expect(ns_storage_conf, this_node_dbdir,
                 fun () -> {ok, "invalid_file"} end),
@@ -1168,14 +1297,10 @@ check_resources_t() ->
     ?assertEqual([], check_resources()),
 
     meck:expect(ns_storage_conf, extract_disk_stats_for_path,
-                fun ([{"/", ignore, Value}], _) -> {ok, {0, 0, Value}} end),
+                fun ([Value], _) -> {ok, Value} end),
 
     ?assertEqual([], check_resources()),
-
-    meck:expect(stats_interface, for_resource_management,
-                fun () ->
-                        [{disk_usage, [{"/", 90}]}]
-                end),
+    pretend_disk_data(#{node() => [{"/", 1, 90}]}),
 
     ?assertEqual([{{bucket, "couchstore_bucket"}, disk_usage},
                   {{bucket, "magma_bucket"}, disk_usage}],
@@ -1504,12 +1629,11 @@ validate_topology_change_cores_per_bucket_t() ->
                   {not_enough_cores_for_num_buckets, _}},
                  test_validate_topology_change([], [node1])).
 
-pretend_disk_usages(UsageMap) ->
-    meck:expect(stats_interface, disk_usages,
-                lists:map(
-                  fun (Node) ->
-                          {Node, [{"/", maps:get(Node, UsageMap)}]}
-                  end, _)).
+pretend_disk_data(DiskDataMap) ->
+    meck:expect(rpc, call,
+                fun (Node, ns_disksup, get_disk_data, [], _Timeout) ->
+                        maps:get(Node, DiskDataMap)
+                end).
 
 validate_topology_change_disk_usage_t() ->
     meck:expect(ns_config, read_key_fast,
@@ -1518,9 +1642,45 @@ validate_topology_change_disk_usage_t() ->
                           [{enabled, true},
                            {maximum, 50}]}]
                 end),
+    meck:expect(ns_config, get_timeout,
+                fun (_, Default) -> Default end),
+
+    pretend_disk_data(#{node1 => {badrpc, nodedown}}),
+
+    %% Test case where we fail to get disk stats
+    ?assertMatch({error, {disk_usage_error, _}},
+                 test_validate_topology_change([node1], [])),
+
+    %% Set disk data over limit, to cover high disk usage case
+    pretend_disk_data(#{node1 => [{"/", 1, 51}],
+                        node2 => [{"/", 1, 51}]}),
+
+    %% Test case where we fail to extract disk stats for the data directory
+    meck:expect(ns_storage_conf, this_node_dbdir,
+                fun () -> {ok, "invalid_file"} end),
+
+    ?assertMatch({error, {disk_usage_error, _}},
+                 test_validate_topology_change([node1], [])),
+
+    meck:expect(ns_storage_conf, this_node_dbdir,
+                fun () -> {ok, ""} end),
+
+
+    meck:expect(ns_storage_conf, extract_disk_stats_for_path,
+                fun (_, _) -> none end),
+
+    %% Test case where we fail to get disk stats
+    ?assertMatch({error, {disk_usage_error, _}},
+                 test_validate_topology_change([node1], [])),
+
+    meck:expect(ns_storage_conf, extract_disk_stats_for_path,
+                fun ([Value], _) -> {ok, Value}
+                end),
 
     %% Permit all rebalances when disk usage is at the limit
-    pretend_disk_usages(#{node1 => 50, node2 => 50}),
+    pretend_disk_data(#{node1 => [{"/", 1, 50}],
+                        node2 => [{"/", 1, 50}]}),
+
     ?assertEqual(ok,
                  test_validate_topology_change([node2], [])),
     ?assertEqual(ok,
@@ -1530,8 +1690,10 @@ validate_topology_change_disk_usage_t() ->
     ?assertEqual(ok,
                  test_validate_topology_change([node1], [node1, node2])),
 
-    %% Permit rebalance when there is no reduction in the number of data nodes
-    pretend_disk_usages(#{node1 => 100, node2 => 100}),
+    %% Permit rebalance despite high disk usage when there is no reduction in
+    %% the number of data nodes
+    pretend_disk_data(#{node1 => [{"/", 1, 51}],
+                        node2 => [{"/", 1, 51}]}),
     ?assertEqual(ok,
                  test_validate_topology_change([], [node1])),
     ?assertEqual(ok,
@@ -1679,10 +1841,11 @@ basic_test_() ->
 
 check_test_modules() ->
     [ns_config, cluster_compat_mode, menelaus_web_guardrails,stats_interface,
-     config_profile, ns_bucket].
+     config_profile, ns_bucket, rpc].
 
 check_test_setup() ->
-    meck:new(check_test_modules(), [passthrough]).
+    %% We need unstick, so that we can meck rpc
+    meck:new(check_test_modules(), [passthrough, unstick]).
 
 regular_checks_t() ->
     meck:expect(ns_config, search_node_with_default,
@@ -1740,6 +1903,9 @@ regular_checks_t() ->
                 fun (database_dir) ->
                         {value, "dir"}
                 end),
+    meck:expect(ns_config, get_timeout,
+                fun (_, Default) -> Default end),
+    pretend_disk_data(#{node() => [{"/", 1, 50}]}),
 
     {ok, _Pid} = start_link(),
 

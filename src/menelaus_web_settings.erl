@@ -649,9 +649,7 @@ conf(internal) ->
        %% Data size in bytes query - requires label "bucket"
        %% This is for resident ratio calculation to check rebalance safeness
        {kv_data_size_raw, dataSizePerNodeBytes, ?KvDataSizeRawQuery,
-        fun get_string/1},
-       %% Disk usage query - requires label "disk", scaled for 0-100%
-       {disk_usage, diskUsage, ?DiskUsageQuery, fun get_string/1}
+        fun get_string/1}
       ]
      }
     ];
