@@ -363,7 +363,8 @@ get_buckets(direct) ->
     get_buckets(get_snapshot(all, [props]));
 get_buckets(Snapshot) when is_map(Snapshot) ->
     lists:map(fun (N) ->
-                      {ok, {Props, _}} = maps:find(sub_key(N, props), Snapshot),
+                      Props = chronicle_compat:get(Snapshot, sub_key(N, props),
+                                                   #{required => true}),
                       {N, Props}
               end, get_bucket_names(Snapshot)).
 
