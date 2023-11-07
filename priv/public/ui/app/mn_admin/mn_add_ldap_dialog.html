@@ -319,6 +319,14 @@ licenses/APL2.txt.
                      name="userDnMapping"
                      value="query">
                   <label for="user-dn-mapping-flag-query">LDAP Search</label>
+                  <input
+                     ng-if="addLdapDialogCtl.isEnterprise && addLdapDialogCtl.mnPoolDefault.export.compat.atLeast76"
+                     type="radio"
+                     id="user-dn-mapping-flag-advanced"
+                     ng-model="addLdapDialogCtl.config.userDnMapping"
+                     name="userDnMapping"
+                     value="advanced">
+                  <label ng-if="addLdapDialogCtl.isEnterprise && addLdapDialogCtl.mnPoolDefault.export.compat.atLeast76" for="user-dn-mapping-flag-advanced">Advanced Query</label>
                 </div>
               </div>
               <div class="formrow">
@@ -384,6 +392,18 @@ licenses/APL2.txt.
                       values="['base', 'one', 'sub']"
                       labels="['base object', 'one-level', 'subtree']">
                   </mn-select>
+                </div>
+                <div ng-if="addLdapDialogCtl.isEnterprise && addLdapDialogCtl.mnPoolDefault.export.compat.atLeast76 && addLdapDialogCtl.config.userDnMapping == 'advanced'">
+                  <label for="user-dn-mapping-advanced-template">Template</label>
+                  <textarea
+                     placeholder="{{addLdapDialogCtl.advancedTemplatePlaceholder}}"
+                     autocorrect="off"
+                     spellcheck="false"
+                     autocapitalize="off"
+                     mn-autocomplete-off="enforce"
+                     id="user-dn-mapping-advanced-template"
+                     rows="11"
+                     ng-model="addLdapDialogCtl.config.authentication.userDNMapping.advanced"></textarea>
                 </div>
                 <div
                    class="error"

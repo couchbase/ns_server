@@ -97,8 +97,7 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
   }
 
   function validateLDAPQuery(data) {
-    return !!(data.userDNMapping &&
-              data.userDNMapping.includes("query"));
+    return !!(data.userDNMapping && typeof data.userDNMapping === 'string' && data.userDNMapping.includes("query"));
   }
 
   function validateGroupQuery(data) {

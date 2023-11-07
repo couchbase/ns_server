@@ -55,6 +55,17 @@ function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModa
     vm.config.advanced.middleboxCompMode = false;
   }
 
+  vm.isEnterprise = mnPoolDefault.export.isEnterprise;
+
+  vm.advancedTemplatePlaceholder = `[{
+    "match": "(Service-.+)@subdomain.domain.NET",
+    "substitution": "cn={0},ou=engineering, dc=example,dc=com"
+  },
+  {
+    "match": "https://website.com/s/xxxxxxxxxxxxxxxx?domain=europa.rbsgrp.net",
+    "ldapQuery": "ou=engineering,dc=example, dc=com??one?(user={0})"
+  }
+]`;
   vm.save = save;
   vm.checkConnectivity = checkConnectivity;
   vm.checkAuthentication = checkAuthentication;
@@ -147,11 +158,13 @@ function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModa
       return {template: "", scope: "one"}
     }
     switch (type) {
-    case "template":
-      return {template: mapping.template, scope: "one"};
-    case "query":
-      var query = mapping.query.split("?");
-      return {base: query[0], scope: query[2] || "one", filter: query[3]};
+      case "template":
+        return {template: mapping.template, scope: "one"};
+      case "query":
+        var query = mapping.query.split("?");
+        return {base: query[0], scope: query[2] || "one", filter: query[3]};
+      case "advanced":
+        return {advanced: JSON.stringify(mapping.advanced, null, " ")};
     }
   }
 
@@ -161,6 +174,9 @@ function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModa
     }
     if (userDnMapping.query) {
       return "query";
+    }
+    if (userDnMapping.advanced) {
+      return "advanced";
     }
     return "template";
   }
@@ -188,14 +204,16 @@ function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModa
 
   function getUserDnMapping(config) {
     switch (vm.config.userDnMapping) {
-    case "template":
-      return JSON.stringify({template: config.userDNMapping.template || ""});
-    case "query":
-      var dnQuery =
-        (config.userDNMapping.base || "") + "??" +
-        (config.userDNMapping.scope || "") + "?" +
-        (config.userDNMapping.filter || "");
-      return JSON.stringify({query: dnQuery});
+      case "template":
+        return JSON.stringify({template: config.userDNMapping.template || ""});
+      case "query":
+        var dnQuery =
+          (config.userDNMapping.base || "") + "??" +
+          (config.userDNMapping.scope || "") + "?" +
+          (config.userDNMapping.filter || "");
+        return JSON.stringify({query: dnQuery});
+      case "advanced":
+        return JSON.stringify({advanced: JSON.parse(config.userDNMapping.advanced) || ""});
     }
   }
 
