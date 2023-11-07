@@ -2020,6 +2020,8 @@ handle_backup(Req, Params) ->
         pipes:compose([menelaus_users:select_users('_',
                                                    [name, user_roles, groups]),
                        security_filter(Req),
+                       domain_filter(local, Req),
+                       domain_filter(external, Req),
                        backup_filter(ExcludeFilters, IncludeFilters),
                        add_auth_transducer(),
                        jsonify_backup_users(false)]),
