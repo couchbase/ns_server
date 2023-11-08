@@ -2687,6 +2687,9 @@ def main():
     guts_initargs_path = None
 
     for initargs_path in initargs_variants:
+        # Collect the initargs files s/t we can reverse engineer dump-guts
+        # failures
+        all_tasks.append(CollectFileTask("Initargs file", initargs_path))
         d = get_server_guts(initargs_path)
         if len(d) > 0:
             guts = d
