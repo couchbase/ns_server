@@ -22,9 +22,11 @@ spawn_mover(Bucket, VBucket, OldChain, NewChain, Quirks) ->
     Pid = proc_lib:spawn_link(ns_single_vbucket_mover, mover,
                               [Parent, Bucket,
                                VBucket, OldChain, NewChain, Quirks]),
-    ?rebalance_debug("Spawned single vbucket mover: ~p (~p)",
-                     [[Parent, Bucket, VBucket,
-                       OldChain, NewChain, Quirks], Pid]),
+    ?rebalance_debug("Spawned single vbucket mover for Bucket ~s, vbucket ~p,"
+                     "Old chain ~p, NewChain ~p, Quirks ~p with Pid ~p and "
+                     "Parent ~p",
+                     [Bucket, VBucket, OldChain, NewChain, Quirks, Pid,
+                      Parent]),
     Pid.
 
 get_cleanup_list() ->
