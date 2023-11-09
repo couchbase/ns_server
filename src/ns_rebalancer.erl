@@ -470,8 +470,7 @@ rebalance_body(KeepNodes, EjectNodesAll, FailedNodesAll, DeltaNodes,
     ok = drop_old_2i_indexes(KeepNodes),
 
     master_activity_events:note_rebalance_stage_started(kv, LiveKVNodes),
-    %% wait till all bucket shutdowns are done on nodes we're
-    %% adding (or maybe adding).
+    %% wait till all bucket shutdowns are done on nodes we're keeping.
     do_wait_buckets_shutdown(KeepNodes),
 
     %% We run the janitor here to make sure that the vbucket map is in sync
