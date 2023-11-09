@@ -389,8 +389,7 @@ handle_test_progress(Id, TestProps, FailedTests) ->
                 false ->
                     FailedTests;
                 true ->
-                    Source = proplists:get_value(source, TestProps),
-                    [Source | FailedTests]
+                    [TestProps | FailedTests]
             end
     end.
 
@@ -400,11 +399,23 @@ handle_failed_tests(FailedTests) ->
     io:format("=======================================================~n"),
     io:format("  ~s:~n", [bold_red("Failed tests")]),
     lists:foreach(
-      fun (MFA) ->
-              io:format("    ~s~n", [format_mfa(MFA)])
+      fun (TestProps) ->
+              io:format("    ~s~n", [format_test_props(TestProps)])
       end, FailedTests),
     io:format("=======================================================~n"),
     failed.
+
+format_test_props([{_, _}|_]=TestProps) ->
+    MFA = proplists:get_value(source, TestProps),
+    Desc = proplists:get_value(desc, TestProps),
+    format_mfa(MFA) ++
+        case Desc of
+            undefined -> [];
+            _ when is_binary(Desc) -> io_lib:format(" (~s)", [Desc]);
+            _ -> io_lib:format(" (~p)", [Desc])
+        end;
+format_test_props(Other) ->
+    format_mfa(Other).
 
 format_mfa({M, F, A}) ->
     io_lib:format("~p:~p/~p", [M, F, A]);
