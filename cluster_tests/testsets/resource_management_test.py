@@ -329,11 +329,13 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
             testlib.delete_all_buckets(self.cluster)
 
     def rebalance_rr_test(self):
+        # Create the bucket synchronously, so that the bucket is ready for the
+        # rebalance checks to be performed correctly
         self.cluster.create_bucket({
             "name": BUCKET_NAME,
             "ramQuota": 1024,
             "storageBackend": "couchstore"
-        })
+        }, sync=True)
         quota_in_bytes = 1024 * 1024 * 1024  # 1,073,741,824 bytes
 
         # Ensure that the guard rail is enabled with a minimum of 10%
@@ -398,11 +400,13 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
                                    'resident ratio minimum: test."}')
 
     def rebalance_data_size_test(self):
+        # Create the bucket synchronously, so that the bucket is ready for the
+        # rebalance checks to be performed correctly
         self.cluster.create_bucket({
             "name": BUCKET_NAME,
             "ramQuota": 1024,
-            "storageMode": "couchstore"
-        })
+            "storageBackend": "couchstore"
+        }, sync=True)
 
         # Ensure that the guard rail is enabled with a maximum of 1GB
         testlib.post_succ(
@@ -605,11 +609,13 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
 
     def storage_migration_test(self):
         # Test migration from couchstore to magma
+        # Create the bucket synchronously, so that the bucket is ready for the
+        # migration checks to be performed correctly
         self.cluster.create_bucket({
             "name": BUCKET_NAME,
             "ramQuota": 1024,
             "storageBackend": "couchstore"
-        })
+        }, sync=True)
 
         # Ensure that the appropriate guard rails have expected limits
         testlib.post_succ(
@@ -626,16 +632,6 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
                     "magmaMaximum": 16
                 }
             })
-
-        def is_servers_populated():
-            r = testlib.get_succ(self.cluster,
-                                 f"/pools/default/buckets/{BUCKET_NAME}")
-            return len(r.json()["nodes"]) > 0
-        # Wait for janitor run to populate servers prop, so that the guardrail
-        # check knows which nodes to check the stats for. Without this, the
-        # subsequent bucket update may be incorrectly permitted
-        testlib.poll_for_condition(is_servers_populated, sleep_time=0.1,
-                                   attempts=1000)
 
         # Test that we can't perform bucket migration from couchstore to magma
         # when the bucket doesn't satisfy the couchstore limits

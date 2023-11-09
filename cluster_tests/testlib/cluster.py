@@ -377,10 +377,33 @@ class Cluster:
             node_urls=get_node_urls(self.nodes),
             verbose=verbose)
 
-    def create_bucket(self, data, verbose=False, expected_code=202):
+    def create_bucket(self, data, verbose=False, expected_code=202, sync=False):
+        """
+        Make a request to create a bucket on the cluster, by default expecting
+        the request to succeed with status code 202. If a rebalance is
+        occurring, the request will be made once the rebalance is complete.
+
+        :param data: Payload to provide to the bucket creation endpoint
+        :param verbose: Enable additional logging
+        :param expected_code: The status code that is expected to be returned,
+         by default 202
+        :param sync: Enable waiting for the bucket to be ready on all nodes
+         before returning
+        :return: Response to the bucket creation request
+        """
         self.wait_for_rebalance(verbose=verbose)
-        return testlib.post_succ(self, "/pools/default/buckets",
-                                 expected_code=expected_code, data=data)
+        response = testlib.post_succ(self, "/pools/default/buckets",
+                                     expected_code=expected_code, data=data)
+
+        # When the bucket creation was successful, we may wish to wait for the
+        # bucket to be ready on all nodes
+        if sync and response.status_code == 202:
+            name = data["name"]
+
+            testlib.poll_for_condition(
+                lambda: self.is_bucket_healthy_on_all_nodes(name),
+                sleep_time=0.5, timeout=60)
+        return response
 
     def update_bucket(self, data, verbose=False, expected_code=200):
         self.wait_for_rebalance(verbose=verbose)
@@ -391,6 +414,31 @@ class Cluster:
     def delete_bucket(self, name, verbose=False):
         self.wait_for_rebalance(verbose=verbose)
         return testlib.ensure_deleted(self, f"/pools/default/buckets/{name}")
+
+    def is_bucket_healthy_on_all_nodes(self, name):
+        # Check if bucket is in the buckets list yet
+        all_buckets_json = testlib.get_succ(
+            self, "/pools/default/buckets").json()
+        bucket_missing = True
+        for bucket in all_buckets_json:
+            if name == bucket["name"]:
+                bucket_missing = False
+                break
+        if bucket_missing:
+            return False
+
+        # Check if the bucket is healthy on every node
+        r = testlib.get_succ(self,
+                             f"/pools/default/buckets/{name}")
+        nodes = r.json()["nodes"]
+        if len(nodes) == 0:
+            return False
+
+        for node in nodes:
+            if node["status"] != "healthy":
+                return False
+
+        return True
 
     def get_orchestrator_node(self, node=None):
         cluster_or_node = self if node is None else node
