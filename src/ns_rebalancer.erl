@@ -737,7 +737,10 @@ run_mover(Bucket, Config, KeepNodes, ProgressFun, Map, FastForwardMap) ->
     %% being removed).
     true = ((KeepNodes -- Servers) =:= []),
 
-    ?rebalance_info("Target map (distance: ~p):~n~p", [(catch mb_map:vbucket_movements(Map, FastForwardMap)), FastForwardMap]),
+    ?rebalance_info("Target map for bucket ~s (distance: ~p):~n~p",
+                    [Bucket,
+                     (catch mb_map:vbucket_movements(Map, FastForwardMap)),
+                     FastForwardMap]),
     ns_bucket:set_fast_forward_map(Bucket, FastForwardMap),
     misc:with_trap_exit(
       fun () ->
