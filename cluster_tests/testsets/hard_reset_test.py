@@ -41,36 +41,38 @@ class HardResetTests(testlib.BaseTestSet):
             otp_other_node = other_node.otp_node()
             initial_orch_node, _ = self.cluster.get_orchestrator_node()
 
-            # Forcefully kill the other node's ns_server to be able to
-            # exercise unsafe failover (without chronicle quorum)
-            os.kill(ns_pid, signal.SIGSTOP)
+            try:
+                # Forcefully pause the other node's ns_server to be able to
+                # exercise unsafe failover (without chronicle quorum)
+                os.kill(ns_pid, signal.SIGSTOP)
 
-            # node must take over as orchestrator before attempting to failover
-            # other_node (which drops off after SIGSTOP).
-            self.cluster.wait_for_orchestrator(node)
+                # node must take over as orchestrator before attempting to
+                # failover other_node (which drops off after SIGSTOP).
+                self.cluster.wait_for_orchestrator(node)
 
-            if initial_orch_node == node.hostname():
-                # If node was the orchestrator to begin with, standard
-                # failover fails with quorum_lost.
-                self.cluster.failover_node(victim_node = other_node,
-                                           graceful=False,
-                                           victim_otp_node=otp_other_node,
-                                           expected_code=500)
-            else:
-                # If node wasn't the orchestrator, standard failover fails
-                # with orchestration_unsafe.
-                self.cluster.failover_node(victim_node = other_node,
-                                           graceful=False,
-                                           victim_otp_node=otp_other_node,
-                                           expected_code=504)
+                if initial_orch_node == node.hostname():
+                    # If node was the orchestrator to begin with, standard
+                    # failover fails with quorum_lost.
+                    self.cluster.failover_node(victim_node = other_node,
+                                               graceful=False,
+                                               victim_otp_node=otp_other_node,
+                                               expected_code=500)
+                else:
+                    # If node wasn't the orchestrator, standard failover fails
+                    # with orchestration_unsafe.
+                    self.cluster.failover_node(victim_node = other_node,
+                                               graceful=False,
+                                               victim_otp_node=otp_other_node,
+                                               expected_code=504)
 
-            # Force unsafe failover now that node is orchestrator.
-            self.cluster.failover_node(victim_node=other_node, graceful=False,
-                                       allow_unsafe=True, verbose=True,
-                                       victim_otp_node=otp_other_node)
-
-            # Resume other_node's ns_server process.
-            os.kill(ns_pid, signal.SIGCONT)
+                # Force unsafe failover now that node is orchestrator.
+                self.cluster.failover_node(victim_node=other_node,
+                                           graceful=False, allow_unsafe=True,
+                                           verbose=True,
+                                           victim_otp_node=otp_other_node)
+            finally:
+                # Resume other_node's ns_server process.
+                os.kill(ns_pid, signal.SIGCONT)
 
             # The node that initiated the failover shouldn't see the other node
             assert_cluster_size(node, 1)
