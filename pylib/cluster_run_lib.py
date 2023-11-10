@@ -597,19 +597,19 @@ def http_get_json(url):
     return json.loads(http_get(url))
 
 
-def http_get(url):
+def http_get(url, timeout=60):
     password_mgr = PasswordManager(default_username, default_pass)
     handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
     o = urllib.request.build_opener(handler)
-    return o.open(url).read()
+    return o.open(url, timeout=timeout).read()
 
 
-def http_post(url, data):
+def http_post(url, data, timeout=60):
     password_mgr = PasswordManager(default_username, default_pass)
     handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
     o = urllib.request.build_opener(handler)
     encoded_data = do_encode(data)
-    return o.open(url, encoded_data).read()
+    return o.open(url, encoded_data, timeout=timeout).read()
 
 
 def connect(num_nodes=0,
