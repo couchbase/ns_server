@@ -206,7 +206,9 @@ get_port(Key, Config, Node) ->
 
 services_port_keys(Services) ->
     AllPorts = all_ports(),
-    [P#port.key || P <- AllPorts, lists:member(P#port.service, Services)].
+    [P#port.key || P <- AllPorts, lists:member(P#port.service, Services),
+                   cluster_compat_mode:is_enterprise()
+                       orelse (P#port.secure =/= secure)].
 
 all_port_keys() ->
     [P#port.key || P <- all_ports()].
