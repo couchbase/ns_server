@@ -108,14 +108,15 @@
          update_buckets_for_delta_recovery/2,
          multi_prop_update/2,
          set_bucket_config/2,
-         set_buckets_config_failover/2,
+         update_servers_and_map/4,
+         validate_map/1,
          set_fast_forward_map/2,
          set_map/2,
          set_initial_map/4,
          set_map_opts/2,
          set_servers/2,
          set_restored_attributes/3,
-         remove_servers_from_buckets/2,
+         remove_servers_from_bucket/2,
          clear_hibernation_state/1,
          update_bucket_props/2,
          update_bucket_props/4,
@@ -175,6 +176,7 @@
          remove_override_props/2,
          remove_override_props_many/2,
          update_bucket_config/2,
+         update_buckets_config/1,
          all_keys/1]).
 
 -import(json_builder,
@@ -1663,19 +1665,19 @@ set_servers(Bucket, Servers) ->
 update_servers(Servers, BucketConfig) ->
     lists:keystore(servers, 1, BucketConfig, {servers, Servers}).
 
-remove_servers_from_buckets(Buckets, Nodes) ->
-    UpdtFunc =
-        fun(OldConfig) ->
-                Servers = get_servers(OldConfig),
-                C1 = update_servers(Servers -- Nodes, OldConfig),
-                case get_desired_servers(OldConfig) of
-                    undefined ->
-                        C1;
-                    DesiredServers ->
-                        update_desired_servers(DesiredServers -- Nodes, C1)
-                end
-        end,
-    ok = update_buckets_config([{Bucket, UpdtFunc} || Bucket <- Buckets]).
+maybe_update_desired_servers(BucketConfig, ToRemoveServers) ->
+    case get_desired_servers(BucketConfig) of
+        undefined ->
+            BucketConfig;
+        DesiredServers ->
+            update_desired_servers(DesiredServers -- ToRemoveServers,
+                                   BucketConfig)
+    end.
+
+remove_servers_from_bucket(BucketConfig, ToRemoveServers) ->
+    Servers = get_servers(BucketConfig),
+    C1 = update_servers(Servers -- ToRemoveServers, BucketConfig),
+    maybe_update_desired_servers(C1, ToRemoveServers).
 
 clear_hibernation_state(Bucket) ->
     ok = update_bucket_config(
@@ -1684,33 +1686,18 @@ clear_hibernation_state(Bucket) ->
                    proplists:delete(hibernation_state, OldConfig)
            end).
 
-bucket_failover_cfg_update(Bucket, OldConfig, FailedNodes, NewMap) ->
+update_servers_and_map(Bucket, OldConfig, FailedNodes, NewMap) ->
     Servers = ns_bucket:get_servers(OldConfig),
     C1 = misc:update_proplist(OldConfig, [{servers, Servers -- FailedNodes},
                                           {fastForwardMap, undefined},
                                           {map, NewMap}]),
-    NewConfig = case ns_bucket:get_desired_servers(C1) of
-                    undefined ->
-                        C1;
-                    DesiredServers ->
-                        ns_bucket:update_desired_servers(
-                          DesiredServers -- FailedNodes, C1)
-                end,
+    NewConfig = maybe_update_desired_servers(C1, FailedNodes),
     master_activity_events:note_set_ff_map(
       Bucket, undefined,
       proplists:get_value(fastForwardMap, OldConfig, [])),
     master_activity_events:note_set_map(
       Bucket, NewMap, proplists:get_value(map, OldConfig, [])),
     NewConfig.
-
-set_buckets_config_failover(BucketsAndMap, FailedNodes) ->
-    ok = update_buckets_config(
-           lists:map(
-             fun({Bucket, NewMap}) ->
-                     validate_map(NewMap),
-                     {Bucket, bucket_failover_cfg_update(Bucket, _, FailedNodes,
-                                                         NewMap)}
-             end, BucketsAndMap)).
 
 % Update the bucket config atomically.
 update_bucket_config(BucketName, Fun) ->
