@@ -106,6 +106,7 @@
          stats/2,
          warmup_stats/1,
          raw_stats/5,
+         raw_stats/6,
          flush/1,
          set/9, add/5, get/5, delete/5,
          get_from_replica/4,
@@ -614,8 +615,10 @@ do_handle_call(verify_warmup_status, _From, #state{bucket = Bucket,
         _ -> connected
     end,
     {reply, Response, State};
-do_handle_call({raw_stats, SubStat, StatsFun, StatsFunState}, _From, State) ->
-    try mc_binary:quick_stats(State#state.sock, SubStat, StatsFun, StatsFunState) of
+do_handle_call({raw_stats, SubStat, Value, StatsFun, StatsFunState},
+               _From, State) ->
+    try mc_binary:quick_stats(State#state.sock, SubStat, Value, StatsFun,
+                              StatsFunState) of
         Reply ->
             {reply, Reply, State}
     catch T:E ->
@@ -1372,11 +1375,16 @@ stats(Bucket, Key) ->
 warmup_stats(Bucket) ->
     do_call(server(Bucket), Bucket, warmup_stats, ?TIMEOUT).
 
--spec raw_stats(node(), bucket_name(), binary(), fun(), any()) -> {ok, any()} | {exception, any()} | {error, any()}.
+-spec raw_stats(node(), bucket_name(), binary(), fun(),
+                any()) -> {ok, any()} | {exception, any()} | {error, any()}.
 raw_stats(Node, Bucket, SubStats, Fn, FnState) ->
-    do_call({server(Bucket), Node}, Bucket,
-            {raw_stats, SubStats, Fn, FnState}, ?TIMEOUT).
+    raw_stats(Node, Bucket, SubStats, undefined, Fn, FnState).
 
+-spec raw_stats(node(), bucket_name(), binary(), binary() | undefined, fun(),
+                any()) -> {ok, any()} | {exception, any()} | {error, any()}.
+raw_stats(Node, Bucket, SubStats, Value, Fn, FnState) ->
+    do_call({server(Bucket), Node}, Bucket,
+            {raw_stats, SubStats, Value, Fn, FnState}, ?TIMEOUT).
 
 -spec get_vbucket_high_seqno(bucket_name(), vbucket_id()) ->
                                     {ok, {undefined | seq_no()}}.

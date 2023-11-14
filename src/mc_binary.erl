@@ -14,8 +14,8 @@
 -include("mc_entry.hrl").
 
 -export([bin/1, recv/2, recv/3,  quick_active_recv/3,
-         send/4, send/2, encode/3,
-         quick_stats/4, quick_stats/5, quick_stats_append/3,
+         send/4, send/2, encode/3, quick_stats/4, quick_stats/5,
+         quick_stats/6, quick_stats_append/3,
          decode_packet/1, decode_packet_ext/1,
          get_keys/6, get_xattrs/5,
          maybe_encode_uid_in_key/3]).
@@ -65,14 +65,24 @@ quick_active_recv(Sock, Data, TimeoutRef) ->
 quick_stats_append(K, V, Acc) ->
     [{K, V} | Acc].
 
+-spec quick_stats(port(), binary(), function(), term()) -> term().
 quick_stats(Sock, Key, CB, CBState) ->
-    quick_stats(Sock, Key, CB, CBState, ?QUICK_STATS_RECV_TIMEOUT).
+    quick_stats(Sock, Key, undefined, CB, CBState).
+
+quick_stats(Sock, Key, Value, CB, CBState) ->
+    quick_stats(Sock, Key, Value, CB, CBState, ?QUICK_STATS_RECV_TIMEOUT).
 
 %% quick_stats is like mc_client_binary:stats but with own buffering
 %% of stuff and thus much faster. Note: we don't expect any request
 %% pipelining here
-quick_stats(Sock, Key, CB, CBState, Timeout) ->
-    Req = encode(req, #mc_header{opcode=?STAT}, #mc_entry{key=Key}),
+quick_stats(Sock, Key, Value, CB, CBState, Timeout) ->
+    Entry = case Value of
+                undefined -> #mc_entry{key=Key};
+                _ -> #mc_entry{key = Key, data = Value,
+                               datatype = ?MC_DATATYPE_JSON}
+            end,
+
+    Req = encode(req, #mc_header{opcode=?STAT}, Entry),
     Ref = make_ref(),
     MaybeTimer = case Timeout of
                      infinity ->

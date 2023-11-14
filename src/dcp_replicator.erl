@@ -292,9 +292,13 @@ maybe_cut_name(Name, MaxToChop) ->
     string:slice(Name, Start, ?MIN_NODE_NAME).
 
 get_connections(Bucket) ->
+    %% KV supports passing a JSON filter for some stats groups as the value
+    %% of the request. It will skip anything not send us anything not matching
+    %% the filter.
+    Filter = ejson:encode({[{"filter", {[{"user", <<"@ns_server">>}]}}]}),
     {ok, Connections} =
         ns_memcached:raw_stats(
-          node(), Bucket, <<"dcp">>,
+          node(), Bucket, <<"dcp">>, Filter,
           fun(<<"eq_dcpq:replication:", K/binary>>, <<"consumer">>, Acc) ->
                   case binary:longest_common_suffix([K, <<":type">>]) of
                       5 ->
