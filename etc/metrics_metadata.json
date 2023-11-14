@@ -175,6 +175,18 @@
         "notes": "Will be removed in the 8.0 release",
         "stability": "committed"
     },
+    "sys_cpu_host_idle_rate": {
+        "type": "gauge",
+        "help": "Idle CPU utilization rate in the host",
+        "added": "7.2.4",
+        "stability": "committed"
+    },
+    "sys_cpu_host_other_rate": {
+        "type": "gauge",
+        "help": "Other (not idle/user/sys/irq/stolen) CPU utilization rate in the host",
+        "added": "7.2.4",
+        "stability": "committed"
+    },
     "sys_cpu_host_utilization_rate": {
         "type": "gauge",
         "help": "CPU utilization rate in the host",
