@@ -135,6 +135,10 @@ class Cluster:
     def __repr__(self):
         return self.__dict__.__repr__()
 
+    def disconnected_nodes(self):
+        return [node for node in self.nodes
+                if node not in self.connected_nodes]
+
     # Kill all associated nodes to avoid competing for resources with the active
     # cluster being tested against
     def teardown(self):
@@ -526,8 +530,7 @@ class Cluster:
         return f
 
     def spare_node(self):
-        spare_nodes = [node for node in self.nodes
-                       if node not in self.connected_nodes]
+        spare_nodes = self.disconnected_nodes()
         assert len(spare_nodes) > 0, "There is no known node that is not " \
                                      "connected to the cluster"
         return spare_nodes[0]

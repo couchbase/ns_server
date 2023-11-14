@@ -859,10 +859,7 @@ class DataIngressTests(testlib.BaseTestSet):
         # Ensure that if the node removal was incorrectly permitted, we can run
         # further tests, by adding the node back in
         if len(self.cluster.connected_nodes) < 2:
-            spare_nodes = [node for node in self.cluster.nodes
-                           if node not in self.cluster.connected_nodes]
-            assert len(spare_nodes) >= 1
-            node = spare_nodes[0]
+            node = self.cluster.spare_node()
             self.cluster.add_node(node, do_rebalance=True)
 
     def rr_growth_test(self):

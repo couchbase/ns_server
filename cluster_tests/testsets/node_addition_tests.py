@@ -23,13 +23,10 @@ class NodeAdditionTests(testlib.BaseTestSet):
 
     def __init__(self, cluster):
         super().__init__(cluster)
-        self.disconnected_nodes = None
         self.req_num_nodes = None
 
     def setup(self):
         self.req_num_nodes = len(self.cluster.nodes)
-        self.disconnected_nodes = [node for node in self.cluster.nodes
-                                   if node not in self.cluster.connected_nodes]
 
     def teardown(self):
         pass
@@ -65,7 +62,7 @@ class NodeAdditionTests(testlib.BaseTestSet):
         self.cluster.toggle_n2n_encryption(enable=enable)
 
         # Test a node addition method
-        for node in self.disconnected_nodes:
+        for node in self.cluster.disconnected_nodes():
             method(node)
         self.cluster.rebalance(wait=True)
 
@@ -456,10 +453,7 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         return self.cluster.connected_nodes[0]
 
     def new_node(self):
-        for n in self.cluster.nodes:
-            if n not in self.cluster.connected_nodes:
-                return n
-        assert False, 'Failed to find unconnected node'
+        return self.cluster.spare_node()
 
     def cluster_ootb_ca(self):
         return self.get_generated_CA(self.cluster_node())
