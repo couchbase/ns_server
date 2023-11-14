@@ -243,6 +243,7 @@ get_snapshot() ->
 %% effect immediately.
 failover(Nodes, Options) ->
     Snapshot = get_snapshot(),
+    BucketsConfig = ns_bucket:get_buckets(Snapshot),
 
     %% Whilst we also check this in ns_orchestrator in the auto_failover path,
     %% it could be the case that the config has materially changed before we
@@ -268,7 +269,7 @@ failover(Nodes, Options) ->
     %% Note that we are checking for fail over possibility whilst holding the
     %% quorum and after syncing the config to ensure that we have the most up
     %% to date config when checking if it is possible to fail over.
-    case is_possible(Nodes, Options) of
+    case is_possible(Nodes, Snapshot, Options) of
         ok -> continue;
         Error ->
           ?log_error("Failover is not possible due to ~p", [Error]),
@@ -276,12 +277,13 @@ failover(Nodes, Options) ->
     end,
 
     not maps:is_key(quorum_failover, Options) orelse
-        failover_collections(),
+        failover_collections(BucketsConfig),
 
-    KVNodes = ns_cluster_membership:service_nodes(Nodes, kv),
-    BktPrepResults = failover_buckets_prep(KVNodes,
-                                           ns_bucket:get_buckets_by_rank(),
-                                           Options),
+    KVNodes = ns_cluster_membership:service_nodes(Snapshot, Nodes, kv),
+    BktPrepResults =
+        failover_buckets_prep(KVNodes,
+                              ns_bucket:get_buckets_by_rank(BucketsConfig),
+                              Options),
 
     %% From this point onwards, no bucket failed exception is thrown.
     %% Partial failover is still possible if we update the service map (in
@@ -294,16 +296,18 @@ failover(Nodes, Options) ->
 
     %% Update service maps. Sets service_failover_pending for each service,
     %% which is cleared after a rebalance in complete_services_failover.
-    Services = ns_cluster_membership:failover_service_nodes(SvcNodes),
+    Services = ns_cluster_membership:failover_service_nodes(SvcNodes,
+                                                            Snapshot),
 
     KVErrorNodes = failover_buckets(KVNodes, BktPrepResults),
     ServicesErrorNodes = complete_services_failover(SvcNodes, Services),
 
     {lists:umerge([KVErrorNodes, ServicesErrorNodes]), UnsafeNodes}.
 
-failover_collections() ->
+failover_collections(BucketsConfig) ->
     [collections:bump_epoch(BucketName) ||
-        {BucketName, BucketConfig} <- ns_bucket:get_buckets_by_rank(),
+        {BucketName,
+         BucketConfig} <- ns_bucket:get_buckets_by_rank(BucketsConfig),
         collections:enabled(BucketConfig)].
 
 set_failover_config(PrepRes, Nodes) ->
@@ -841,11 +845,12 @@ node_vbuckets(Map, Node) ->
     [V || {V, Chain} <- misc:enumerate(Map, 0),
           lists:member(Node, Chain)].
 
-is_possible(FailoverNodes, Options) ->
-    ActiveNodes = ns_cluster_membership:active_nodes(),
-    KVActiveNodes = ns_cluster_membership:service_nodes(ActiveNodes, kv),
-    NodesWanted = ns_node_disco:nodes_wanted(),
+check_is_possible(FailoverNodes, Snapshot, Options) ->
     try
+        ActiveNodes = ns_cluster_membership:active_nodes(Snapshot),
+        KVActiveNodes =
+            ns_cluster_membership:service_nodes(Snapshot, ActiveNodes, kv),
+        NodesWanted = ns_node_disco:nodes_wanted(Snapshot),
         case KVActiveNodes -- FailoverNodes of
             [] ->
                 ?log_error("Attempt to fail over last KV node. "
@@ -880,11 +885,19 @@ is_possible(FailoverNodes, Options) ->
                         throw(inactive_node)
                 end
         end,
-        check_last_server(ns_bucket:get_buckets_by_rank(), FailoverNodes)
+        BucketsConfig = ns_bucket:get_buckets_by_rank(Snapshot),
+        check_last_server(BucketsConfig, FailoverNodes)
     catch
         throw:Error ->
             Error
     end.
+
+is_possible(FailoverNodes, Snapshot, Options) ->
+    check_is_possible(FailoverNodes, Snapshot, Options).
+
+is_possible(FailoverNodes, Options) ->
+    Snapshot = get_snapshot(),
+    is_possible(FailoverNodes, Snapshot, Options).
 
 check_last_server([], _FailoverNodes) ->
     ok;
