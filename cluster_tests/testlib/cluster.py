@@ -73,26 +73,27 @@ def build_cluster(auth, cluster_index, start_args, connect_args, kill_nodes):
         # If anything goes wrong after starting the clusters, we want to kill
         # the nodes, otherwise we end up with processes hanging around
         atexit.register(kill_nodes, processes, urls, get_terminal_attrs())
-    return get_cluster(cluster_index, port, auth, processes, nodes,
-                       connect_args['num_nodes'])
+    return get_cluster(cluster_index, port, auth, processes, nodes)
 
 
-def get_cluster(cluster_index, start_port, auth, processes, nodes, num_connected):
+def get_cluster(cluster_index, start_port, auth, processes, nodes):
     connected_nodes = []
     for i, node in enumerate(nodes):
         # Check that node is connected to the cluster.
-        if i < num_connected:
-            pools_default = f"{node.url}/pools/default"
-            try:
-                response = requests.get(pools_default, auth=auth)
-                connected_nodes.append(node)
-            except requests.exceptions.ConnectionError as e:
-                sys.exit(f"Failed to connect to {pools_default}\n"
-                         f"{e}")
-            if response.status_code != 200:
-                sys.exit(f"Failed to connect to {pools_default} "
-                         f"({response.status_code})\n"
-                         f"{response.text}")
+        pools_default = f"{node.url}/pools/default"
+        try:
+            response = requests.get(pools_default, auth=auth)
+        except requests.exceptions.ConnectionError as e:
+            raise RuntimeError(f"Failed to connect to {pools_default}\n{e}")
+        if response.status_code == 200:
+            connected_nodes.append(node)
+        elif response.status_code != 404:
+            raise RuntimeError(f"Failed to connect to {pools_default} "
+                               f"({response.status_code})\n"
+                               f"{response.text}")
+
+    if len(connected_nodes) == 0:
+        raise RuntimeError(f"None of the provided nodes are connected: {nodes}")
 
     cluster = Cluster(nodes=nodes,
                       connected_nodes=connected_nodes,

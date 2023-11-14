@@ -516,27 +516,27 @@ def discover_testsets():
 
 
 def get_existing_cluster(address, start_port, auth, num_nodes):
-    url = f"http://{address}:{start_port}"
-
-    # Check that node is online
-    pools_default = f"{url}/pools/default"
-    try:
-        response = requests.get(pools_default, auth=auth)
-    except requests.exceptions.ConnectionError as e:
-        error_exit(f"Failed to connect to {pools_default}\n"
-                   f"{e}")
-    if response.status_code != 200:
-        error_exit(f"Failed to connect to {pools_default} "
-                   f"({response.status_code})\n"
-                   f"{response.text}")
-    # Retrieve the number of nodes
-    nodes_found = len(response.json().get("nodes", []))
-    if nodes_found == 0:
-        error_exit(f"Failed to retrieve nodes from {pools_default}")
-
     if num_nodes is None:
-        # Assume that there are no nodes that are not already connected
-        num_nodes = nodes_found
+        # If a number of nodes was not provided, we assume that all required
+        # nodes are already in the cluster at the provided address
+        url = f"http://{address}:{start_port}"
+
+        # Check that node is online
+        pools_default = f"{url}/pools/default"
+        try:
+            response = requests.get(pools_default, auth=auth)
+            if response.status_code == 200:
+                # Retrieve the number of nodes
+                num_nodes = len(response.json().get("nodes", []))
+                if num_nodes == 0:
+                    raise RuntimeError(f"Failed to find any nodes at "
+                                       f"{pools_default}")
+            else:
+                raise RuntimeError(f"Failed to connect to {pools_default} "
+                                   f"({response.status_code})\n"
+                                   f"{response.text}")
+        except requests.exceptions.ConnectionError as e:
+            raise RuntimeError(f"Failed to connect to {pools_default}\n{e}")
 
     nodes = [testlib.Node(host=address,
                           port=start_port + i,
@@ -544,8 +544,7 @@ def get_existing_cluster(address, start_port, auth, num_nodes):
              for i in range(num_nodes)]
 
     with testlib.no_output("connecting to existing cluster"):
-        return testlib.cluster.get_cluster(0, start_port, auth, [], nodes,
-                                           nodes_found)
+        return testlib.cluster.get_cluster(0, start_port, auth, [], nodes)
 
 
 # Run each testset on the same cluster, counting how many individual tests were
