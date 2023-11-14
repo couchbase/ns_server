@@ -7,7 +7,7 @@
 %% will be governed by the Apache License, Version 2.0, included in the file
 %% licenses/APL2.txt.
 %%
-%% @doc suprevisor for dcp_replicator's
+%% @doc supervisor for dcp_replicator's
 %%
 -module(dcp_sup).
 
