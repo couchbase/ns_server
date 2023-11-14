@@ -33,7 +33,8 @@ class ServicelessNodeTests(testlib.BaseTestSet):
         print("Tearing down self.cluster")
         testlib.delete_all_buckets(self.cluster)
         # Rebalance the cluster and remove all but one node
-        self.cluster.rebalance(self.cluster.nodes[1:], wait=True, verbose=True)
+        self.cluster.rebalance(self.cluster.connected_nodes[1:], wait=True,
+                               verbose=True)
         # Wait for the number of remaining nodes in the cluster to reach one.
         retries = 60
         while retries > 0:
@@ -57,7 +58,7 @@ class ServicelessNodeTests(testlib.BaseTestSet):
                                     afamily="ipv4")]
 
     def joinNodes(self):
-        for node in self.cluster.nodes[1:]:
+        for node in self.cluster.disconnected_nodes():
             print(f'Joining {node.hostname()} to cluster')
             self.cluster.do_join_cluster(node, services=[])
         self.cluster.rebalance(wait=True)
@@ -67,7 +68,7 @@ class ServicelessNodeTests(testlib.BaseTestSet):
             f'Length of nodes: {len(resp.json()["nodes"])}'
 
     def addNodes(self):
-        for node in self.cluster.nodes[1:]:
+        for node in self.cluster.disconnected_nodes():
             print(f'Adding {node.hostname()} to cluster')
             self.cluster.add_node(node, services=[])
         self.cluster.rebalance(wait=True)
@@ -77,7 +78,7 @@ class ServicelessNodeTests(testlib.BaseTestSet):
             f'Length of nodes: {len(resp.json()["nodes"])}'
 
     def failover_and_recover_node(self):
-        node = self.cluster.nodes[-1]
+        node = self.cluster.connected_nodes[-1]
         print(f'Failover {node.hostname()} from cluster')
         # Graceful failovers are not supported for serviceless nodes. We
         # don't do a rebalance as that would remove the node.
