@@ -229,18 +229,24 @@ wait_for_data_move_on_one_node(Iterations, Connection,
             Error
     end.
 
-check_move_done({_, _, <<"does_not_exist">>}, _DoneLimit) ->
-    {error, no_stats_for_this_vbucket};
 check_move_done({_, _, <<"calculating-item-count">>}, _DoneLimit) ->
+    %% No stats from KV yet
     retry;
-check_move_done({N, _, _}, DoneLimit)
-  when N < DoneLimit ->
-    ok;
-check_move_done(_Estimate, _DoneLimit) ->
-    retry.
+check_move_done({N, _, Status}, DoneLimit)
+  when Status =:= <<"backfilling">>; Status =:= <<"in-memory">> ->
+    %% The statuses (backfilling and in-memory) that we generally expect to
+    %% see. Check if we are done.
+    case N < DoneLimit of
+        true -> ok;
+        false -> retry
+    end;
+check_move_done({_, _, UnexpectedStatus}, _DoneLimit) ->
+    %% Not a status we explicitly handled, error up because there's probably
+    %% a bug either in us or KV.
+    {error, {unexpected_status, UnexpectedStatus}}.
 
 -spec get_docs_estimate(bucket_name(), vbucket_id(), node()) ->
-                               {ok, {non_neg_integer(), non_neg_integer(), binary()}}.
+          {ok, {non_neg_integer(), non_neg_integer(), binary()}}.
 get_docs_estimate(Bucket, Partition, ConsumerNode) ->
     Connection = get_connection_name(ConsumerNode, node(), Bucket),
     ns_memcached:get_dcp_docs_estimate(Bucket, Partition, Connection).
