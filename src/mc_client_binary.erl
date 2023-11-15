@@ -824,7 +824,7 @@ wait_for_seqno_persistence(Sock, VBucket, SeqNo) ->
 -spec get_dcp_docs_estimate(port(), vbucket_id(), binary() | string()) ->
                                    {ok, {non_neg_integer(), non_neg_integer(), binary()}}.
 get_dcp_docs_estimate(Sock, VBucket, ConnName) ->
-    Default = {0, 0, <<"does_not_exist">>},
+    Default = {0, 0, <<"no_status_stat_seen">>},
     Key = iolist_to_binary([<<"dcp-vbtakeover ">>, integer_to_list(VBucket), $\s, ConnName]),
 
     RV = mc_binary:quick_stats(
