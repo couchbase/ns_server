@@ -160,6 +160,8 @@ command_2_atom(?DCP_OSO_SNAPSHOT) ->
     dcp_oso_snapshot;
 command_2_atom(?CMD_GET_ERROR_MAP) ->
     cmd_get_error_map;
+command_2_atom(?CMD_HELLO) ->
+    cmd_hello;
 command_2_atom(_) ->
     not_dcp.
 
