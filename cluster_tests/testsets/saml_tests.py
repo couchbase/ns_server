@@ -125,7 +125,8 @@ class SamlTests(testlib.BaseTestSet):
                              allow_redirects=False)
             assert_http_code(302, r)
 
-            r = session.get(self.cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.connected_nodes[0].url +
+                            '/pools/default',
                             headers=headers)
             assert_http_code(200, r)
 
@@ -189,18 +190,20 @@ class SamlTests(testlib.BaseTestSet):
                              allow_redirects=False)
             assert_http_code(302, r)
 
-            r = session.get(self.cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.connected_nodes[0].url +
+                            '/pools/default',
                             headers=headers)
             assert_http_code(200, r)
 
-            r = session.post(self.cluster.nodes[0].url + '/uilogout',
+            r = session.post(self.cluster.connected_nodes[0].url + '/uilogout',
                              headers=headers)
             assert_http_code(400, r)
             r = r.json()
             assert_in('redirect', r)
             assert_eq(r['redirect'], '/saml/deauth', 'redirect')
 
-            r = session.get(self.cluster.nodes[0].url + '/saml/deauth',
+            r = session.get(self.cluster.connected_nodes[0].url +
+                            '/saml/deauth',
                             headers=headers,
                             allow_redirects=False)
             assert_http_code(200, r)
@@ -213,7 +216,8 @@ class SamlTests(testlib.BaseTestSet):
             assert_eq(parsed_logout_req.message.name_id.text, name_id.text,
                       'name_id')
 
-            r = session.get(self.cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.connected_nodes[0].url +
+                            '/pools/default',
                             headers=headers)
             assert_http_code(401, r)
             logout_response = IDP.create_logout_response(
@@ -274,7 +278,8 @@ class SamlTests(testlib.BaseTestSet):
 
             session = requests.Session()
             headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
-            r = session.get(self.cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.connected_nodes[0].url +
+                            '/pools/default',
                             headers=headers)
             assert_http_code(401, r)
             r = session.post(destination,
@@ -282,13 +287,15 @@ class SamlTests(testlib.BaseTestSet):
                              headers=headers,
                              allow_redirects=False)
             assert_http_code(302, r)
-            r = session.get(self.cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.connected_nodes[0].url +
+                            '/pools/default',
                             headers=headers)
             assert_http_code(200, r)
-            r = session.post(self.cluster.nodes[0].url + '/uilogout',
+            r = session.post(self.cluster.connected_nodes[0].url + '/uilogout',
                              headers=headers)
             assert_http_code(200, r)
-            r = session.get(self.cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.connected_nodes[0].url +
+                            '/pools/default',
                             headers=headers)
             assert_http_code(401, r)
 
@@ -329,7 +336,8 @@ class SamlTests(testlib.BaseTestSet):
                              allow_redirects=False)
             assert_http_code(302, r)
 
-            r = session.get(self.cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.connected_nodes[0].url +
+                            '/pools/default',
                             headers=headers)
             assert_http_code(401, r)
 
@@ -382,12 +390,12 @@ class SamlTests(testlib.BaseTestSet):
                               data={'SAMLResponse': response_encoded},
                               headers=headers,
                               allow_redirects=False)
-            error_msg = catch_error_after_redirect(self.cluster.nodes[0],
-                                                   session2, r, headers)
+            error_msg = catch_error_after_redirect(
+                self.cluster.connected_nodes[0], session2, r, headers)
             assert_in("assertion replay protection", error_msg)
 
             dest_parsed = urlparse(destination)
-            node2_parsed = urlparse(self.cluster.nodes[1].url)
+            node2_parsed = urlparse(self.cluster.connected_nodes[1].url)
             dest2_parsed = dest_parsed._replace(netloc=node2_parsed.netloc)
             destination2 = urlunparse(dest2_parsed)
             # sending the same assertion again, but this time to another node
@@ -396,19 +404,22 @@ class SamlTests(testlib.BaseTestSet):
                               data={'SAMLResponse': response_encoded},
                               headers=headers,
                               allow_redirects=False)
-            error_msg = catch_error_after_redirect(self.cluster.nodes[1],
-                                                   session3, r, headers)
+            error_msg = catch_error_after_redirect(
+                self.cluster.connected_nodes[1], session3, r, headers)
             assert_in("assertion replay protection", error_msg)
 
-            r = session1.get(self.cluster.nodes[0].url + '/pools/default',
+            r = session1.get(self.cluster.connected_nodes[0].url +
+                             '/pools/default',
                              headers=headers)
             assert_http_code(200, r)
 
-            r = session2.get(self.cluster.nodes[0].url + '/pools/default',
+            r = session2.get(self.cluster.connected_nodes[0].url +
+                             '/pools/default',
                              headers=headers)
             assert_http_code(401, r)
 
-            r = session3.get(self.cluster.nodes[1].url + '/pools/default',
+            r = session3.get(self.cluster.connected_nodes[1].url +
+                             '/pools/default',
                              headers=headers)
             assert_http_code(401, r)
 
@@ -447,12 +458,13 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            error_msg = catch_error_after_redirect(self.cluster.nodes[0],
-                                                   session, r, headers)
+            error_msg = catch_error_after_redirect(
+                self.cluster.connected_nodes[0], session, r, headers)
 
             assert_in('expired SAML assertion', error_msg)
 
-            r = session.get(self.cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.connected_nodes[0].url +
+                            '/pools/default',
                             headers=headers)
             assert_http_code(401, r)
 
@@ -501,7 +513,7 @@ class SamlTests(testlib.BaseTestSet):
                              allow_redirects=False)
             assert_http_code(302, r)
 
-            r = session.get(self.cluster.nodes[0].url + '/whoami',
+            r = session.get(self.cluster.connected_nodes[0].url + '/whoami',
                             headers=headers)
             assert_http_code(200, r)
             roles = [a["role"] for a in r.json()["roles"]]
@@ -550,8 +562,8 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            error_msg = catch_error_after_redirect(self.cluster.nodes[0],
-                                                   session, r, headers)
+            error_msg = catch_error_after_redirect(
+                self.cluster.connected_nodes[0], session, r, headers)
             expected = 'Access denied for user "testuser2": ' \
                        'Insufficient Permissions. ' \
                        'Extracted groups: fakegroup1, fakegroup2. ' \
@@ -603,11 +615,12 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            error_msg = catch_error_after_redirect(self.cluster.nodes[0],
-                                                   session, r, headers)
+            error_msg = catch_error_after_redirect(
+                self.cluster.connected_nodes[0], session, r, headers)
             assert_in("certificate is not trusted", error_msg)
 
-            r = session.get(self.cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.connected_nodes[0].url +
+                            '/pools/default',
                             headers=headers)
             assert_http_code(401, r)
 
@@ -644,11 +657,12 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            error_msg = catch_error_after_redirect(self.cluster.nodes[0],
-                                                   session, r, headers)
+            error_msg = catch_error_after_redirect(
+                self.cluster.connected_nodes[0], session, r, headers)
             assert_in("certificate is not trusted", error_msg)
 
-            r = session.get(self.cluster.nodes[0].url + '/pools/default',
+            r = session.get(self.cluster.connected_nodes[0].url +
+                            '/pools/default',
                             headers=headers)
             assert_http_code(401, r)
 
@@ -786,7 +800,7 @@ def set_sso_options(cluster, **kwargs):
 
 def idp_config(cluster, spSignRequests=True, assertion_lifetime=15,
                certs_prefix="mockidp_", **kwargs):
-    sp_base_url = cluster.nodes[0].url
+    sp_base_url = cluster.connected_nodes[0].url
     idp_base_url = f"http://{mock_server_host}:{mock_server_port}"
     key_path = os.path.join(scriptdir, "resources", "saml",
                             f"{certs_prefix}key.pem")
