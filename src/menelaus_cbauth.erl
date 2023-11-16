@@ -41,16 +41,24 @@
 -define(VERSION_1, "v1").
 
 handle_rpc_connect(?VERSION_1, Label, Req) ->
-    validator:handle(
-      fun (Params) ->
-              json_rpc_connection_sup:handle_rpc_connect(
-                Label ++ "-auth",
-                misc:update_proplist(
-                  Params, [{type, auth}, {version, ?VERSION_1}]), Req)
-      end, Req, qs,
-      [validator:integer(heartbeat, 1, infinity, _),
-       validator:no_duplicates(_),
-       validator:unsupported(_)]);
+    case ns_cluster_membership:get_cluster_membership(node()) of
+        active ->
+            validator:handle(
+              fun (Params) ->
+                      json_rpc_connection_sup:handle_rpc_connect(
+                        Label ++ "-auth",
+                        misc:update_proplist(
+                          Params, [{type, auth}, {version, ?VERSION_1}]), Req)
+              end, Req, qs,
+              [validator:integer(heartbeat, 1, infinity, _),
+               validator:no_duplicates(_),
+               validator:unsupported(_)]);
+        Other ->
+            ?log_debug(
+               "Reject the revrpc connection from ~s because node is ~p",
+               [Label, Other]),
+            menelaus_util:reply_text(Req, "Node is not active", 503)
+    end;
 handle_rpc_connect(_, _Label, Req) ->
     menelaus_util:reply_text(Req, "Version is not supported", 400).
 
@@ -67,6 +75,7 @@ stats() ->
     gen_server:call(?MODULE, collect_stats).
 
 init([]) ->
+    erlang:process_flag(trap_exit, true),
     ns_pubsub:subscribe_link(json_rpc_events, fun json_rpc_event/1),
     ns_pubsub:subscribe_link(ns_node_disco_events, fun node_disco_event/1),
     chronicle_compat_events:subscribe(fun is_interesting/1,
@@ -102,6 +111,8 @@ node_disco_event(_Event) ->
 
 handle_config_event(client_cert_auth) ->
     ?MODULE ! client_cert_auth_event;
+handle_config_event({node, Node, membership}) when Node =:= node() ->
+    ?MODULE ! node_status_changed;
 handle_config_event(_) ->
     ?MODULE ! maybe_notify_cbauth.
 
@@ -111,7 +122,26 @@ user_storage_event(_Event) ->
 ssl_service_event(Event) ->
     ?MODULE ! {ssl_service_event, Event}.
 
-terminate(_Reason, _State)     -> ok.
+terminate(_Reason, State) ->
+    terminate_external_connections(State),
+    ok.
+
+terminate_external_connections(State = #state{rpc_processes = Processes}) ->
+    {NewProcesses, ToWait} =
+        maps:fold(
+          fun (Pid, #rpc_process{version = internal} = P, {Acc, ToWaitAcc}) ->
+                  {maps:put(Pid, P, Acc), ToWaitAcc};
+              (Pid, #rpc_process{label = Label, mref = MRef},
+               {Acc, ToWaitAcc}) ->
+                  ?log_debug("Killing connection ~p with pid = ~p",
+                             [Label, Pid]),
+                  true = erlang:demonitor(MRef, [flush]),
+                  exit(Pid, shutdown),
+                  {Acc, [Pid | ToWaitAcc]}
+          end, {#{}, []}, Processes),
+    [misc:wait_for_process(P, infinity) || P <- ToWait],
+    State#state{rpc_processes = NewProcesses}.
+
 code_change(_OldVsn, State, _) -> {ok, State}.
 
 is_interesting(client_cert_auth) -> true;
@@ -204,6 +234,16 @@ handle_info(client_cert_auth_event, State) ->
     self() ! maybe_notify_cbauth,
     {noreply, State#state{client_cert_auth_version =
                               client_cert_auth_version()}};
+handle_info(node_status_changed, State) ->
+    self() ! maybe_notify_cbauth,
+    case ns_cluster_membership:get_cluster_membership(node()) of
+        active ->
+            {noreply, State};
+        Other ->
+            ?log_debug("Killing all external connections due to node status"
+                       " changing to ~p", [Other]),
+            {noreply, terminate_external_connections(State)}
+    end;
 handle_info(maybe_notify_cbauth, State) ->
     misc:flush(maybe_notify_cbauth),
     {noreply, maybe_notify_cbauth(State)};
@@ -215,7 +255,9 @@ handle_info({'DOWN', MRef, _, Pid, Reason},
     {noreply, State#state{rpc_processes = NewProcesses}};
 handle_info(heartbeat, State) ->
     {noreply, process_heartbeats(State)};
-
+handle_info({'EXIT', Pid, Reason}, State) ->
+    ?log_debug("Linked process ~p exited with ~p. Exiting.", [Pid, Reason]),
+    {stop, Reason, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
