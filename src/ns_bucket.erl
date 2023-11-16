@@ -343,8 +343,8 @@ get_buckets_by_rank() ->
 
 -spec get_buckets_by_rank(proplists:proplist() | map()) ->
           proplists:proplist().
-get_buckets_by_rank(BucketConfig) ->
-    JustBuckets = maybe_isolate_bucket_props(BucketConfig),
+get_buckets_by_rank(BucketsConfig) ->
+    JustBuckets = maybe_isolate_bucket_props(BucketsConfig),
     case cluster_compat_mode:is_cluster_trinity() of
         true ->
             lists:sort(rank_sorting_fn(), JustBuckets);
