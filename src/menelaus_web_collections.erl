@@ -124,13 +124,17 @@ history_validator(BucketConfig, State) ->
     end.
 
 collection_modifiable_validators(BucketConfig) ->
-    [validator:boolean(history, _),
-     validator:valid_in_enterprise_only(history, _),
-     validator:changeable_in_72_only(history, false, _),
+    HistoryAllowedValues =
+        case cluster_compat_mode:is_enterprise() andalso
+             cluster_compat_mode:is_cluster_72() of
+            true -> ["true", "false"];
+            false -> ["false"]
+        end,
+    [validator:one_of(history, HistoryAllowedValues, _),
+     validator:boolean(history, _),
      history_validator(BucketConfig, _),
      validator:integer(maxTTL, -1, ?MC_MAXINT, _),
      validator:valid_in_enterprise_only(maxTTL, _),
-     validator:changeable_in_trinity_only(maxTTL, undefined, _),
      validator:no_duplicates(_)
     ].
 

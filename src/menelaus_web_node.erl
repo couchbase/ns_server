@@ -1223,20 +1223,48 @@ net_config_validators(SafeAction) ->
      end.
 
 afamily_validators() ->
-    [validator:one_of(afamily, ["ipv4", "ipv6"], _),
+    IsEnterprise = cluster_compat_mode:is_enterprise(),
+    AFamilyAllowedValues =
+        case IsEnterprise of
+            true -> ["ipv4", "ipv6"];
+            false -> ["ipv4"]
+        end,
+    AFamilyValidateFun =
+        case IsEnterprise of
+            true ->
+                fun ("ipv4") -> {value, inet};
+                    ("ipv6") -> {value, inet6}
+                end;
+            false ->
+                fun ("ipv4") -> {value, inet}
+                end
+        end,
+
+    [validator:one_of(afamily, AFamilyAllowedValues, _),
      validator:boolean(afamilyOnly, _),
-     validator:validate(fun ("ipv4") -> {value, inet};
-                            ("ipv6") -> {value, inet6}
-                        end, afamily, _),
-     validator:changeable_in_enterprise_only(afamily, inet, _)].
+     validator:validate(AFamilyValidateFun, afamily, _)].
 
 node_encryption_validators() ->
+    IsEnterprise = cluster_compat_mode:is_enterprise(),
+    NodeEncryptionAllowedValues =
+        case IsEnterprise of
+            true -> ["on", "off"];
+            false -> ["off"]
+        end,
+    NodeEncryptionValidateFun =
+        case IsEnterprise of
+            true ->
+                fun ("on") -> {value, true};
+                    ("off") -> {value, false}
+                end;
+            false ->
+                fun ("off") -> {value, false}
+                end
+        end,
+
     [validator:boolean(clientCertVerification, _),
-     validator:one_of(nodeEncryption, ["on", "off"], _),
-     validator:validate(fun ("on") -> {value, true};
-                            ("off") -> {value, false}
-                        end, nodeEncryption, _),
-     validator:changeable_in_enterprise_only(nodeEncryption, false, _),
+     validator:one_of(nodeEncryption, NodeEncryptionAllowedValues, _),
+     validator:validate(NodeEncryptionValidateFun, nodeEncryption, _),
      validator:validate_multiple(
        fun ([Encr, ClientVer]) ->
             ClientVer2 = case ClientVer of
