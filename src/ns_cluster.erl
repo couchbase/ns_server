@@ -463,10 +463,6 @@ leave_init() ->
 leave_body() ->
     ?cluster_log(0001, "Node ~p is leaving cluster.", [node()]),
 
-    %% empty users storage
-    users_storage_sup:stop_replicator(),
-    menelaus_users:empty_storage(),
-
     %% stop nearly everything
     ok = ns_server_cluster_sup:stop_ns_server(),
 
@@ -1589,9 +1585,6 @@ perform_actual_join(RemoteNode, NewCookie, ChronicleInfo) ->
     %% let ns_memcached know that we don't need to preserve data at all
     ns_config:set(i_am_a_dead_man, true),
 
-    %% empty users storage
-    menelaus_users:empty_storage(),
-
     %% Pull the rug out from under the app
     misc:create_marker(start_marker_path()),
     ok = ns_server_cluster_sup:stop_ns_server(),
@@ -1599,6 +1592,8 @@ perform_actual_join(RemoteNode, NewCookie, ChronicleInfo) ->
 
     ?cluster_debug("ns_cluster: joining cluster. Child has exited.", []),
     misc:create_marker(join_marker_path()),
+
+    menelaus_users:delete_storage_offline(),
     ns_cluster_membership:prepare_to_join(RemoteNode, NewCookie),
 
     ok = chronicle_local:prepare_join(ChronicleInfo),
@@ -1662,6 +1657,7 @@ perform_actual_join(RemoteNode, NewCookie, ChronicleInfo) ->
 perform_leave() ->
     chronicle_local:leave_cluster(),
 
+    menelaus_users:delete_storage_offline(),
     prometheus_cfg:wipe(),
     ns_ssl_services_setup:remove_node_certs(),
 

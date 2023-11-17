@@ -19,7 +19,7 @@
 
 -export([start_link/5, set/3, set/4,
          change_multiple/2, change_multiple/3, delete/2, delete/3, get/2, get/3,
-         get_last_modified/3, select/3, empty/1,
+         get_last_modified/3, select/3,
          select_with_update/4]).
 
 -export([init/1, init_after_ack/1, handle_call/3, handle_info/2,
@@ -88,9 +88,6 @@ update_doc(Id, Value, ExtraProps) ->
            props =
                [{deleted, false}, {rev, 0},
                 {last_modified, os:system_time(millisecond)}] ++ ExtraProps}.
-
-empty(Name) ->
-    gen_server:call(Name, empty, infinity).
 
 with_live_doc(TableName, Id, Default, Fun) ->
     case ets:lookup(TableName, Id) of
@@ -300,13 +297,6 @@ on_replicate_in(Doc) ->
 on_replicate_out(Doc) ->
     Doc.
 
-handle_call(empty, _From, #state{name = TableName,
-                                 child_module = ChildModule,
-                                 child_state = ChildState} = State) ->
-    ok = dets:delete_all_objects(TableName),
-    true = ets:delete_all_objects(TableName),
-    NewChildState = ChildModule:on_empty(ChildState),
-    {reply, ok, State#state{child_state = NewChildState}};
 handle_call(Msg, From, #state{name = TableName,
                               child_module = ChildModule,
                               child_state = ChildState} = State) ->

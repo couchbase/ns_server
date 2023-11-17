@@ -63,7 +63,7 @@
          authenticate_with_info/2,
          build_auth/1,
          format_plain_auth/1,
-         empty_storage/0,
+         delete_storage_offline/0,
          cleanup_bucket_roles/1,
          get_passwordless/0,
          get_salt_and_mac/1,
@@ -76,7 +76,7 @@
         ]).
 
 %% callbacks for replicated_dets
--export([init/1, on_save/2, on_empty/1, handle_call/4, handle_info/2]).
+-export([init/1, on_save/2, handle_call/4, handle_info/2]).
 
 -export([start_storage/0, start_replicator/0, start_auth_cache/0]).
 
@@ -102,10 +102,12 @@ versions_name() ->
 auth_cache_name() ->
     menelaus_users_cache.
 
+path() ->
+    filename:join(path_config:component_path(data, "config"), "users.dets").
+
 start_storage() ->
     Replicator = erlang:whereis(replicator_name()),
-    Path = filename:join(path_config:component_path(data, "config"), "users.dets"),
-    replicated_dets:start_link(?MODULE, [], storage_name(), Path, Replicator).
+    replicated_dets:start_link(?MODULE, [], storage_name(), path(), Replicator).
 
 get_users_version() ->
     case ns_node_disco:couchdb_node() == node() of
@@ -160,8 +162,15 @@ start_auth_cache() ->
               {get_auth_version(), get_users_version(), get_groups_version()}
       end).
 
-empty_storage() ->
-    replicated_dets:empty(storage_name()).
+delete_storage_offline() ->
+    Path = path(),
+    case file:delete(Path) of
+        ok ->
+            ?log_info("User storage ~p was deleted", [Path]);
+        {error, enoent} ->
+            ?log_info("User storage ~p does not exist. Nothing to delete",
+                      [Path])
+    end.
 
 get_passwordless() ->
     gen_server:call(storage_name(), get_passwordless, infinity).
@@ -253,10 +262,6 @@ handle_info({change_version, Key} = Msg, #state{base = Base} = State) ->
     misc:flush(Msg),
     Ver = ets:update_counter(versions_name(), Key, 1),
     gen_event:notify(user_storage_events, {Key, {Ver, Base}}),
-    {noreply, State}.
-
-on_empty(State) ->
-    true = ets:delete_all_objects(versions_name()),
     {noreply, State}.
 
 maybe_update_passwordless(_Identity, _Value, _Deleted, State = #state{passwordless = undefined}) ->
