@@ -166,6 +166,7 @@ is_interesting({security_settings, _}) -> true;
 is_interesting({cbauth_cache_size, _, _}) -> true;
 is_interesting({node, N, prometheus_auth_info}) when N =:= node() -> true;
 is_interesting({node, N, uuid}) when N =:= node() -> true;
+is_interesting(uuid) -> true;
 is_interesting(Key) -> collections:key_match(Key) =/= false.
 
 register_heartbeat(P) ->
@@ -516,7 +517,8 @@ build_auth_info(?VERSION_1, {AuthVersion, PermissionsVersion, CcaState, _Config,
      {clientCertAuthVersion, ClientCertAuthVersion},
      {extractUserFromCertEndpoint, <<?EXTRACT_USER_ENDPOINT>>},
      {clientCertAuthState, list_to_binary(CcaState)},
-     {nodeUUID, NodeUuid}];
+     {nodeUUID, NodeUuid},
+     {clusterUUID, menelaus_web:get_uuid()}];
 
 %% we free to modify the output of this function as soon as the golang client
 %% code is modified accordingly
