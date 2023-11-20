@@ -355,14 +355,15 @@ auto_failover_test_() ->
             partition_without_quorum => PartitionB},
 
     Tests = [
-        {"Auto failover",
-            fun auto_failover_t/2},
-        {"Auto failover post network partition stale config test",
-            fun auto_failover_post_network_partition_stale_config/2},
-        {"Auto failover post network partition stale config active nodes "
-         " changed test",
-            fun auto_failover_active_nodes_changed/2}
-    ],
+             {"Auto failover",
+              fun auto_failover_t/2},
+             {"Auto failover post network partition stale config test",
+              fun auto_failover_post_network_partition_stale_config/2},
+             {"Auto failover post network partition stale config active nodes "
+              " changed test",
+              fun auto_failover_active_nodes_changed/2},
+             {"Enable auto failover test", fun enable_auto_failover_test/2}
+            ],
 
     %% foreachx here to let us pass parameters to setup.
     {foreachx,
@@ -446,8 +447,17 @@ get_auto_failover_reported_errors(AutoFailoverPid) ->
     {state, _, _, _, _, _, _, _, Errors, _} = sys:get_state(AutoFailoverPid),
     sets:to_list(Errors).
 
+get_auto_failover_tick_period(AutoFailoverPid) ->
+    auto_failover:get_tick_period_from_state(sys:get_state(AutoFailoverPid)).
+
 auto_failover_t(_SetupConfig, PidMap) ->
     #{auto_failover := AutoFailoverPid} = PidMap,
+
+    %% Override tick period. This lets us tick auto_failover as few times as
+    %% possible in the test as we essentially don't have to wait for nodes to
+    %% be in a down state for n ticks at any point.
+    fake_ns_config:update_snapshot(auto_failover_tick_period, 100000),
+    AutoFailoverPid ! tick_period_updated,
 
     %% Part of our test, we should not have any reported errors yet.
     ?assertEqual([],
@@ -530,6 +540,12 @@ auto_failover_t(_SetupConfig, PidMap) ->
 auto_failover_post_network_partition_stale_config(SetupConfig, PidMap) ->
     #{auto_failover := AutoFailoverPid} = PidMap,
 
+    %% Override tick period. This lets us tick auto_failover as few times as
+    %% possible in the test as we essentially don't have to wait for nodes to
+    %% be in a down state for n ticks at any point.
+    fake_ns_config:update_snapshot(auto_failover_tick_period, 100000),
+    AutoFailoverPid ! tick_period_updated,
+
     %% Part of our test, we should not have any reported errors yet.
     ?assertEqual([],
         get_auto_failover_reported_errors(AutoFailoverPid)),
@@ -590,6 +606,12 @@ auto_failover_active_nodes_changed(
     SetupConfig, PidMap) ->
     #{auto_failover := AutoFailoverPid} = PidMap,
 
+    %% Override tick period. This lets us tick auto_failover as few times as
+    %% possible in the test as we essentially don't have to wait for nodes to
+    %% be in a down state for n ticks at any point.
+    fake_ns_config:update_snapshot(auto_failover_tick_period, 100000),
+    AutoFailoverPid ! tick_period_updated,
+
     %% Part of our test, we should not have any reported errors yet.
     ?assertEqual([],
         get_auto_failover_reported_errors(AutoFailoverPid)),
@@ -645,3 +667,30 @@ auto_failover_active_nodes_changed(
     %% error (active_nodes_changed) stored in the auto_failover state.
     ?assertEqual([active_nodes_changed],
         get_auto_failover_reported_errors(AutoFailoverPid)).
+
+enable_auto_failover_test(_SetupConfig, PidMap) ->
+    #{auto_failover := AutoFailoverPid} = PidMap,
+
+    %% With timeout 1 we should have set the tick period correctly to 100(ms).
+    ?assertEqual(100, get_auto_failover_tick_period(AutoFailoverPid)),
+
+    auto_failover:enable(1, 1, []),
+    ?assertEqual(100, get_auto_failover_tick_period(AutoFailoverPid)),
+
+    auto_failover:enable(2, 1, []),
+    ?assertEqual(200, get_auto_failover_tick_period(AutoFailoverPid)),
+
+    auto_failover:enable(3, 1, []),
+    ?assertEqual(300, get_auto_failover_tick_period(AutoFailoverPid)),
+
+    auto_failover:enable(4, 1, []),
+    ?assertEqual(400, get_auto_failover_tick_period(AutoFailoverPid)),
+
+    auto_failover:enable(5, 1, []),
+    ?assertEqual(1000, get_auto_failover_tick_period(AutoFailoverPid)),
+
+    auto_failover:enable(10, 1, []),
+    ?assertEqual(1000, get_auto_failover_tick_period(AutoFailoverPid)),
+
+    auto_failover:enable(120, 1, []),
+    ?assertEqual(1000, get_auto_failover_tick_period(AutoFailoverPid)).

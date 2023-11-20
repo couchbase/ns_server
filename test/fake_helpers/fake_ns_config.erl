@@ -48,7 +48,8 @@
 -export([new/0,
          unload/0,
          update_snapshot/1,
-         update_snapshot/2]).
+         update_snapshot/2,
+         delete_key/1]).
 
 %% Helper function API
 -export([setup_cluster_compat_version/1]).
@@ -81,6 +82,10 @@ update_snapshot(NewSnapshot) when is_list(NewSnapshot) ->
     StoreSnapshot = misc:update_proplist(OldSnapshot, NewSnapshot),
     store_ets_snapshot(StoreSnapshot).
 
+-spec delete_key(atom()) -> true.
+delete_key(Key) ->
+    OldSnapshot = get_ets_snapshot(),
+    store_ets_snapshot(proplists:delete(Key, OldSnapshot)).
 
 %% ----------------------
 %% API - Helper Functions
@@ -200,7 +205,7 @@ fetch_from_latest_snapshot(Key) ->
 fetch_with_default(Snapshot, Key, Default) ->
     case proplists:get_value(Key, Snapshot, undefined) of
         undefined -> Default;
-        V -> {value, V}
+        V -> V
     end.
 
 fetch_with_default_from_latest_snapshot(Key, Default) ->

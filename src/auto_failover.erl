@@ -74,6 +74,10 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+-ifdef(TEST).
+-export([get_tick_period_from_state/1]).
+-endif.
+
 -define(SERVER, {via, leader_registry, ?MODULE}).
 
 %% @doc The time a stats request to a bucket may take (in milliseconds)
@@ -222,9 +226,7 @@ init([]) ->
                     max_count = MaxCount,
                     count = Count,
                     auto_failover_logic_state = undefined,
-                    tick_period =
-                        ns_config:read_key_fast(auto_failover_tick_period,
-                                                ?DEFAULT_TICK_PERIOD)},
+                    tick_period = get_tick_period(Timeout)},
     State1 = init_reported(State0),
     case proplists:get_value(enabled, Config) of
         true ->
@@ -432,10 +434,13 @@ update_and_save_auto_failover_state(DisableMaxCount, NewTimeout, NewMax, Extras,
             ?log_debug("No change in max count ~p", [NewMax])
     end,
 
+    NewTickPeriod = get_tick_period(NewTimeout),
+
     NewState =
         maybe_update_auto_failover_logic_state(
           OldTimeout, NewTimeout,
           OldState#state{timeout = NewTimeout, max_count = NewMax,
+                         tick_period = NewTickPeriod,
                          disable_max_count = DisableMaxCount}),
 
     make_state_persistent(NewState, Extras),
@@ -1062,6 +1067,12 @@ validate_services_safety(NodesToFailover, DownNodes, KVNodes) ->
     {KVNodes ++ ValidNodes, UnsafeNodes}.
 
 -ifdef(TEST).
+%% Test function, gets the tick period from a provided state. Used outside of
+%% this module where we don't have access to the state record.
+-spec get_tick_period_from_state(#state{}) -> pos_integer().
+get_tick_period_from_state(#state{tick_period = TickPeriod}) ->
+    TickPeriod.
+
 -define(FLAG, autofailover_unsafe).
 reported_test() ->
     %% nothing reported initially
