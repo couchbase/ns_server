@@ -75,7 +75,8 @@
          terminate/2, code_change/3]).
 
 -ifdef(TEST).
--export([get_tick_period_from_state/1]).
+-export([get_tick_period_from_state/1,
+         get_errors_from_state/1]).
 -endif.
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
@@ -1072,6 +1073,12 @@ validate_services_safety(NodesToFailover, DownNodes, KVNodes) ->
 -spec get_tick_period_from_state(#state{}) -> pos_integer().
 get_tick_period_from_state(#state{tick_period = TickPeriod}) ->
     TickPeriod.
+
+%% Test function, gets the reported errors from a provided state. Used outside
+%% of this module where we don't have access to the state record.
+-spec get_errors_from_state(#state{}) -> sets:set().
+get_errors_from_state(#state{reported_errors = Errors}) ->
+    Errors.
 
 -define(FLAG, autofailover_unsafe).
 reported_test() ->

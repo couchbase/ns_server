@@ -441,11 +441,8 @@ auto_failover_test_teardown(Config, PidMap) ->
     manual_failover_test_teardown(Config, PidMap).
 
 get_auto_failover_reported_errors(AutoFailoverPid) ->
-    %% Little bit of a hack, we are relying on the format of the
-    %% auto_failover:state record, but this is exactly the information that we
-    %% want to check.
-    {state, _, _, _, _, _, _, _, Errors, _} = sys:get_state(AutoFailoverPid),
-    sets:to_list(Errors).
+    sets:to_list(
+      auto_failover:get_errors_from_state(sys:get_state(AutoFailoverPid))).
 
 get_auto_failover_tick_period(AutoFailoverPid) ->
     auto_failover:get_tick_period_from_state(sys:get_state(AutoFailoverPid)).
