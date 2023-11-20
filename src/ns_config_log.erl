@@ -23,6 +23,7 @@
 -include("ns_common.hrl").
 -include("ns_config.hrl").
 -include("generic.hrl").
+-include("cut.hrl").
 
 -record(state, {buckets=[]}).
 
@@ -89,8 +90,11 @@ compute_bucket_diff(NewProps, OldProps) ->
     NewFFMap = proplists:get_value(fastForwardMap, NewProps, []),
     FFMapDiff = misc:compute_map_diff(NewFFMap, OldFFMap),
 
-    misc:update_proplist(NewProps, [{map, MapDiff},
-                                    {fastForwardMap, FFMapDiff}]).
+    functools:chain(NewProps,
+                    [lists:keystore(map, 1, _,
+                                    {map_diff, MapDiff}),
+                     lists:keystore(fastForwardMap, 1, _,
+                                    {fastForwardMap_diff, FFMapDiff})]).
 
 do_tag_user_name("@" ++ _ = Name) ->
     {ok, Name};
