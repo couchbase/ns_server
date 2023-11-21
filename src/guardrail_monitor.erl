@@ -127,7 +127,7 @@ validate_topology_change(EjectedLiveNodes, KeepNodes) ->
               [?cut(validate_topology_change_data_grs(ActiveKVNodes,
                                                       EjectedLiveNodes,
                                                       KeepKVNodes)),
-               ?cut(validate_topology_change_disk_usage(ActiveKVNodes,
+               ?cut(validate_topology_change_disk_usage(NewKVNodes,
                                                         EjectedLiveNodes,
                                                         KeepKVNodes)),
                ?cut(validate_topology_change_cores_per_bucket(NewKVNodes))]);
@@ -193,15 +193,15 @@ topology_change_error({disk_usage_high, HighDiskNodes}) ->
      iolist_to_binary(
        io_lib:format(
          "The following data node(s) have insufficient disk space to safely "
-         "eject data nodes from the cluster: ~s.",
-         [lists:join(", ", HighDiskNodes)]))};
+         "reduce the total disk capacity of data nodes in the cluster: "
+         "~s.", [lists:join(", ", HighDiskNodes)]))};
 topology_change_error({disk_usage_error, ErrorDiskNodes}) ->
     {disk_usage_error,
      iolist_to_binary(
        io_lib:format(
          "The following data node(s) got error(s) fetching the disk usage "
-         "stats, so there may not be sufficient disk space to safely eject "
-         "data nodes from the cluster: ~s.",
+         "stats, so there may not be sufficient disk space to safely reduce "
+         "the total disk capacity of data nodes in the cluster: ~s.",
          [lists:join(", ", ErrorDiskNodes)]))}.
 
 validate_topology_change_data_gr(Resource, ActiveKVNodes, EjectedNodes,
@@ -339,25 +339,17 @@ get_cores_from_nodes(Nodes) ->
 
 -spec validate_topology_change_disk_usage([node()], [node()], [node()]) ->
     ok | {error, topology_change_error()}.
-validate_topology_change_disk_usage(ActiveKVNodes, EjectedNodes, KeepKVNodes) ->
-    case {guardrail_monitor:get(disk_usage),
-          length(ActiveKVNodes) > length(KeepKVNodes)} of
-        {undefined, _} ->
+validate_topology_change_disk_usage(AddedNodes, EjectedNodes, KeepKVNodes) ->
+    case guardrail_monitor:get(disk_usage) of
+        undefined ->
             ok;
-        {_, false} ->
-            %% The number of currently active kv nodes is no larger than the
-            %% number of kv nodes remaining after the rebalance, so we will
-            %% assume that the disk usage won't be any worse after the
-            %% rebalance. One exception to this would be a swap rebalance where
-            %% the new node has less disk space, which would be incorrectly
-            %% permitted.
-            ok;
-        {Maximum, true} ->
-            %% The rebalance will reduce the number of kv nodes, so we should
-            %% check that we've not already reached the guardrail limit for disk
-            %% usage, as we don't want to allow things to become worse
-            Nodes = KeepKVNodes ++ EjectedNodes,
-            BadNodes = get_high_disk_usage_from_nodes(Maximum, Nodes),
+        Maximum ->
+            %% Fetch disk stats for all nodes, so that we will be able to catch
+            %% if an existing or added node has got high disk usage
+            NodeDiskStats = get_disk_stats_from_nodes(
+                              KeepKVNodes ++ EjectedNodes),
+            BadNodes = get_high_disk_usage_from_stats(
+                         Maximum, NodeDiskStats),
 
             %% Split the bad nodes into those that have high disk usage and
             %% those that we failed to get disk usage stats for, in order to
@@ -380,15 +372,12 @@ validate_topology_change_disk_usage(ActiveKVNodes, EjectedNodes, KeepKVNodes) ->
                     %% being compacted, and fragmentation.
                     ok;
                 {_, []} ->
-                    %% When there are no errors fetching disk stats, there are
-                    %% nodes with high disk usage, and the number of kv nodes
-                    %% is being reduced, we give an error specifying the high
-                    %% disk usage nodes
-                    {error,
-                     topology_change_error(
-                       {disk_usage_high,
-                        lists:map(?cut(atom_to_list(element(1, _))),
-                                  HighDiskNodes)})};
+                    %% When there are no errors fetching disk stats and there
+                    %% are nodes with high disk usage, we should check that the
+                    %% rebalance won't decrease the total disk capacity, as that
+                    %% would make the high disk usage worse
+                    validate_disk_size_not_decreased(
+                      NodeDiskStats, EjectedNodes, AddedNodes, HighDiskNodes);
                 {_, _} ->
                     %% If there were errors fetching the disk usage for any
                     %% nodes, we will just report these as the reason for not
@@ -401,6 +390,45 @@ validate_topology_change_disk_usage(ActiveKVNodes, EjectedNodes, KeepKVNodes) ->
                                   ErrorDiskNodes)})}
             end
     end.
+
+-spec validate_disk_size_not_decreased(
+        [{node(), {string(), number(), number()}}],
+        [node()],
+        [node()],
+        [{atom(), term()}]) ->
+          ok | {error, term()}.
+validate_disk_size_not_decreased(NodeDiskStats, EjectedNodes, AddedNodes,
+                                 HighDiskNodes) ->
+    %% Compare the total disk sizes for the nodes being ejected with
+    %% that of those being added
+    case total_disk_size(NodeDiskStats, EjectedNodes) >
+        total_disk_size(NodeDiskStats, AddedNodes) of
+        false ->
+            %% We expect to have no less total disk space available
+            %% after the rebalance than before, so we assume that this
+            %% rebalance is safe to perform
+            ok;
+        true ->
+            %% The rebalance will reduce the total disk size
+            {error,
+             topology_change_error(
+               {disk_usage_high,
+                lists:map(?cut(atom_to_list(element(1, _))),
+                          HighDiskNodes)})}
+    end.
+
+-spec total_disk_size([{node(), {string(), number(), number()}}], [node()]) ->
+          number().
+total_disk_size(DiskStats, Nodes) ->
+    DataDiskSizes =
+        lists:filtermap(
+          fun ({Node, {ok, {_Disk, Size, _Used}}}) ->
+                  case lists:member(Node, Nodes) of
+                      true -> {true, Size};
+                      false -> false
+                  end
+          end, DiskStats),
+    lists:sum(DataDiskSizes).
 
 -spec get_disk_stats_from_nodes([node()]) ->
           [{ok,
@@ -1707,6 +1735,18 @@ validate_topology_change_disk_usage_t() ->
                  test_validate_topology_change([node1], [])),
     ?assertMatch({error, {disk_usage_too_high, _}},
                  test_validate_topology_change([node1, node2], [node1])),
+
+    %% Don't permit rebalance when there is a reduction in total disk size
+    pretend_disk_data(#{node1 => [{"/", 2, 51}],
+                        node2 => [{"/", 1, 51}]}),
+    ?assertMatch({error, {disk_usage_too_high, _}},
+                 test_validate_topology_change([node1], [node2])),
+
+    %% Permit rebalance when total disk size is reduced but GR not hit
+    pretend_disk_data(#{node1 => [{"/", 2, 50}],
+                        node2 => [{"/", 1, 50}]}),
+    ?assertMatch(ok,
+                 test_validate_topology_change([node1], [node2])),
 
     meck:expect(config_profile, get_bool,
                 fun ({resource_management, enabled}) -> false end),
