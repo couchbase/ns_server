@@ -1375,13 +1375,23 @@ stats(Bucket, Key) ->
 warmup_stats(Bucket) ->
     do_call(server(Bucket), Bucket, warmup_stats, ?TIMEOUT).
 
--spec raw_stats(node(), bucket_name(), binary(), fun(),
-                any()) -> {ok, any()} | {exception, any()} | {error, any()}.
+-spec raw_stats(node(), bucket_name(), binary(),
+                fun ((StatName, StatValue, Acc) -> Acc),
+                Acc) ->
+          {ok, any()} | {exception, any()} | {error, any()}
+              when StatName :: binary(),
+                   StatValue :: binary(),
+                   Acc :: any().
 raw_stats(Node, Bucket, SubStats, Fn, FnState) ->
     raw_stats(Node, Bucket, SubStats, undefined, Fn, FnState).
 
--spec raw_stats(node(), bucket_name(), binary(), binary() | undefined, fun(),
-                any()) -> {ok, any()} | {exception, any()} | {error, any()}.
+-spec raw_stats(node(), bucket_name(), binary(), binary() | undefined,
+                fun ((StatName, StatValue, Acc) -> Acc),
+                Acc) ->
+          {ok, any()} | {exception, any()} | {error, any()}
+              when StatName :: binary(),
+                   StatValue :: binary(),
+                   Acc :: any().
 raw_stats(Node, Bucket, SubStats, Value, Fn, FnState) ->
     do_call({server(Bucket), Node}, Bucket,
             {raw_stats, SubStats, Value, Fn, FnState}, ?TIMEOUT).

@@ -65,16 +65,33 @@ quick_active_recv(Sock, Data, TimeoutRef) ->
 quick_stats_append(K, V, Acc) ->
     [{K, V} | Acc].
 
--spec quick_stats(port(), binary(), function(), term()) -> term().
+-spec quick_stats(port(), binary(),
+                  fun ((StatName, StatValue, Acc) -> Acc),
+                  Acc) -> term()
+              when StatName :: binary(),
+                   StatValue :: binary(),
+                   Acc :: any().
 quick_stats(Sock, Key, CB, CBState) ->
     quick_stats(Sock, Key, undefined, CB, CBState).
 
+-spec quick_stats(port(), binary(), binary() | undefined,
+                  fun ((StatName, StatValue, Acc) -> Acc),
+                  Acc) -> term()
+              when StatName :: binary(),
+                   StatValue :: binary(),
+                   Acc :: any().
 quick_stats(Sock, Key, Value, CB, CBState) ->
     quick_stats(Sock, Key, Value, CB, CBState, ?QUICK_STATS_RECV_TIMEOUT).
 
 %% quick_stats is like mc_client_binary:stats but with own buffering
 %% of stuff and thus much faster. Note: we don't expect any request
 %% pipelining here
+-spec quick_stats(port(), binary(), binary() | undefined,
+                  fun ((StatName, StatValue, Acc) -> Acc),
+                  Acc, pos_integer()) -> term()
+              when StatName :: binary(),
+                   StatValue :: binary(),
+                   Acc :: any().
 quick_stats(Sock, Key, Value, CB, CBState, Timeout) ->
     Entry = case Value of
                 undefined -> #mc_entry{key=Key};
