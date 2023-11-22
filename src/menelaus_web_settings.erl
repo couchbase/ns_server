@@ -79,6 +79,8 @@
 -define(DEFAULT_INDEX_THROTTLE_CAPACITY, 1000000).
 -define(DEFAULT_FTS_THROTTLE_CAPACITY, 900000).
 -define(DEFAULT_N1QL_THROTTLE_CAPACITY, 6000000).
+-define(DISABLE_UI_OVER_HTTP_DEFAULT, false).
+-define(DISABLE_UI_OVER_HTTPS_DEFAULT, false).
 
 get_bool("true") ->
     {ok, true};
@@ -559,8 +561,10 @@ get_throttle_capacity_attributes() ->
       ?MAX_THROTTLE_LIMIT}].
 
 conf(security) ->
-    [{disable_ui_over_http, disableUIOverHttp, false, fun get_bool/1},
-     {disable_ui_over_https, disableUIOverHttps, false, fun get_bool/1},
+    [{disable_ui_over_http, disableUIOverHttp,
+      ?DISABLE_UI_OVER_HTTP_DEFAULT, fun get_bool/1},
+     {disable_ui_over_https, disableUIOverHttps,
+      ?DISABLE_UI_OVER_HTTPS_DEFAULT, fun get_bool/1},
      {disable_www_authenticate, disableWWWAuthenticate, false, fun get_bool/1},
      {secure_headers, responseHeaders, [], fun get_secure_headers/1},
      {ui_session_timeout, uiSessionTimeout, undefined,
@@ -762,6 +766,34 @@ jsonify_security_settings(Settings) ->
              end,
     json_builder:prepare_list([Format(S) || S <- Settings]).
 
+event_log_security_settings_changed(OldProps, NewProps) ->
+    OldPropsJSON = jsonify_security_settings(OldProps),
+    NewPropsJSON = jsonify_security_settings(NewProps),
+    event_log:maybe_add_log_settings_changed(
+      security_cfg_changed,
+      OldPropsJSON,
+      NewPropsJSON, []).
+
+maybe_log_saml_enabled_warning(false, _OldProps, _NewProps) ->
+    ok;
+maybe_log_saml_enabled_warning(true, OldProps, NewProps) ->
+    UIDisabledOverHttp =
+        ns_config:read_key_fast(
+          disable_ui_over_http, ?DISABLE_UI_OVER_HTTP_DEFAULT),
+    UIDisabledOverHttps =
+        ns_config:read_key_fast(
+          disable_ui_over_https, ?DISABLE_UI_OVER_HTTPS_DEFAULT),
+
+    SettingsToggled =
+        lists:any(
+          fun (K) ->
+                  proplists:get_value(K, OldProps) =/=
+                      proplists:get_value(K, NewProps)
+          end, [disable_ui_over_http, disable_ui_over_https]),
+
+    UIDisabledOverHttp andalso UIDisabledOverHttps andalso SettingsToggled
+        andalso ?log_warning("UI disabled while SAML is enabled.").
+
 handle_post(Type, Keys, Req) ->
     menelaus_util:survive_web_server_restart(
       fun () ->
@@ -780,12 +812,11 @@ handle_post(Type, Keys, Req) ->
                                           jsonify_security_settings(NewProps),
                                       ns_audit:settings(Req, security,
                                                         {json, NewPropsJSON}),
-                                      OldPropsJSON =
-                                          jsonify_security_settings(OldProps),
-                                      event_log:maybe_add_log_settings_changed(
-                                        security_cfg_changed,
-                                        OldPropsJSON,
-                                        NewPropsJSON, []);
+                                      event_log_security_settings_changed(
+                                        OldProps, NewProps),
+                                      maybe_log_saml_enabled_warning(
+                                        menelaus_web_saml:is_enabled(),
+                                        OldProps, NewProps);
                                   _ ->
                                       ns_audit:settings(Req, Type, NewProps)
                               end,
