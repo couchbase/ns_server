@@ -124,14 +124,15 @@ validate_topology_change(EjectedLiveNodes, KeepNodes) ->
             ActiveNodes = ns_cluster_membership:active_nodes(),
             ActiveKVNodes = ns_cluster_membership:service_nodes(ActiveNodes,
                                                                 kv),
+            NewNodes = KeepNodes -- ActiveNodes,
             NewKVNodes = KeepKVNodes -- ActiveKVNodes,
             functools:sequence_(
               [?cut(validate_topology_change_data_grs(ActiveKVNodes,
                                                       EjectedLiveNodes,
                                                       KeepKVNodes)),
-               ?cut(validate_topology_change_disk_usage(NewKVNodes,
+               ?cut(validate_topology_change_disk_usage(NewNodes,
                                                         EjectedLiveNodes,
-                                                        KeepKVNodes)),
+                                                        KeepNodes)),
                ?cut(validate_topology_change_cores_per_bucket(NewKVNodes))]);
         false ->
             ok
@@ -194,16 +195,16 @@ topology_change_error({disk_usage_high, HighDiskNodes}) ->
     {disk_usage_too_high,
      iolist_to_binary(
        io_lib:format(
-         "The following data node(s) have insufficient disk space to safely "
-         "reduce the total disk capacity of data nodes in the cluster: "
+         "The following node(s) have insufficient disk space to safely "
+         "reduce the total disk capacity of nodes in the cluster: "
          "~s.", [lists:join(", ", HighDiskNodes)]))};
 topology_change_error({disk_usage_error, ErrorDiskNodes}) ->
     {disk_usage_error,
      iolist_to_binary(
        io_lib:format(
-         "The following data node(s) got error(s) fetching the disk usage "
+         "The following node(s) got error(s) fetching the disk usage "
          "stats, so there may not be sufficient disk space to safely reduce "
-         "the total disk capacity of data nodes in the cluster: ~s.",
+         "the total disk capacity of nodes in the cluster: ~s.",
          [lists:join(", ", ErrorDiskNodes)]))}.
 
 validate_topology_change_data_gr(Resource, ActiveKVNodes, EjectedNodes,
@@ -341,7 +342,7 @@ get_cores_from_nodes(Nodes) ->
 
 -spec validate_topology_change_disk_usage([node()], [node()], [node()]) ->
     ok | {error, topology_change_error()}.
-validate_topology_change_disk_usage(AddedNodes, EjectedNodes, KeepKVNodes) ->
+validate_topology_change_disk_usage(AddedNodes, EjectedNodes, KeepNodes) ->
     case guardrail_monitor:get(disk_usage) of
         undefined ->
             ok;
@@ -349,7 +350,7 @@ validate_topology_change_disk_usage(AddedNodes, EjectedNodes, KeepKVNodes) ->
             %% Fetch disk stats for all nodes, so that we will be able to catch
             %% if an existing or added node has got high disk usage
             NodeDiskStats = get_disk_stats_from_nodes(
-                              KeepKVNodes ++ EjectedNodes),
+                              KeepNodes ++ EjectedNodes),
             BadNodes = get_high_disk_usage_from_stats(
                          Maximum, NodeDiskStats),
 
@@ -363,14 +364,14 @@ validate_topology_change_disk_usage(AddedNodes, EjectedNodes, KeepKVNodes) ->
                   end, BadNodes),
             case {HighDiskNodes, ErrorDiskNodes} of
                 {[], []} ->
-                    %% Since no data node is currently above the disk usage
+                    %% Since no node is currently above the disk usage
                     %% limit, we assume that the rebalance is safe to perform.
                     %% This is not a good assumption to make as it is entirely
                     %% possible that the disk usage will increase to an unsafe
                     %% limit, as we are reducing the total disk size for the
                     %% cluster. However, it is not feasible to determine the
                     %% resultant disk usage after the rebalance, as it is
-                    %% impacted by a number of factors, such as data no longer
+                    %% impacted by a number of factors, such as no longer
                     %% being compacted, and fragmentation.
                     ok;
                 {_, []} ->
@@ -1845,11 +1846,10 @@ validate_topology_change_disk_usage_t() ->
                      keep_nodes => [node2],
                      kv_nodes => [node1, node2, node3]})),
 
-    %% We should check non-kv nodes that are not ejected, but currently we
-    %% don't. This will be fixed in a subsequent patch
+    %% We should check non-kv nodes that are not ejected
     pretend_disk_data(#{node1 => [{"/", 1, 51}],
                         node2 => [{"/", 1, 50}]}),
-    ?assertMatch(ok,
+    ?assertMatch({error, {disk_usage_too_high, _}},
                  test_validate_topology_change(
                    #{active_nodes => [node1, node2],
                      keep_nodes => [node1],
