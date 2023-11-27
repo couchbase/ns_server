@@ -121,7 +121,9 @@ validate_topology_change(EjectedLiveNodes, KeepNodes) ->
     case is_enabled() of
         true ->
             KeepKVNodes = ns_cluster_membership:service_nodes(KeepNodes, kv),
-            ActiveKVNodes = ns_cluster_membership:service_active_nodes(kv),
+            ActiveNodes = ns_cluster_membership:active_nodes(),
+            ActiveKVNodes = ns_cluster_membership:service_nodes(ActiveNodes,
+                                                                kv),
             NewKVNodes = KeepKVNodes -- ActiveKVNodes,
             functools:sequence_(
               [?cut(validate_topology_change_data_grs(ActiveKVNodes,
@@ -1487,12 +1489,16 @@ validate_bucket_topology_change_t() ->
        {data_size, "couchstore_bucket", 2000, DataSizeConfig, true},
        {data_size, "magma_bucket", 2000, DataSizeConfig, true}]).
 
-test_validate_topology_change(ActiveKVNodes, KeepKVNodes) ->
+test_validate_topology_change(#{active_nodes := ActiveNodes,
+                                keep_nodes := KeepNodes,
+                                kv_nodes := KVNodes}) ->
     meck:expect(ns_cluster_membership, service_nodes,
-                fun (_Servers, kv) -> KeepKVNodes end),
-    meck:expect(ns_cluster_membership, service_active_nodes,
-                fun (kv) -> ActiveKVNodes end),
-    validate_topology_change(ActiveKVNodes -- KeepKVNodes, KeepKVNodes).
+                fun (Servers, kv) ->
+                        [Node || Node <- Servers, lists:member(Node, KVNodes)]
+                end),
+    meck:expect(ns_cluster_membership, active_nodes,
+                fun () -> ActiveNodes end),
+    validate_topology_change(ActiveNodes -- KeepNodes, KeepNodes).
 
 validate_topology_change_data_grs_t() ->
     RRResourceConfig0 = [{couchstore_minimum, 10},
@@ -1537,8 +1543,10 @@ validate_topology_change_data_grs_t() ->
                              "magma_bucket" => 2001} end),
 
     %% Don't give an error ejecting a node when the guard rail is disabled
-    ?assertEqual(ok, test_validate_topology_change([node1, node2, node3],
-                                                   [node1, node2])),
+    ?assertEqual(ok, test_validate_topology_change(
+                       #{active_nodes => [node1, node2, node3],
+                         keep_nodes => [node1, node2],
+                         kv_nodes => [node1, node2, node3]})),
 
     RRResourceConfig2 = [{enabled, true} | RRResourceConfig0],
     DataSizeResourceConfig2 = [{enabled, true} | DataSizeResourceConfig0],
@@ -1555,21 +1563,29 @@ validate_topology_change_data_grs_t() ->
                    <<"The following buckets are expected to breach the "
                      "resident ratio minimum: couchstore_bucket, "
                      "magma_bucket.">>}},
-                 test_validate_topology_change([node1, node2, node3],
-                                               [node1, node2])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1, node2, node3],
+                     keep_nodes => [node1, node2],
+                     kv_nodes => [node1, node2, node3]})),
 
     %% Don't give an error when no nodes are being ejected
-    ?assertEqual(ok, test_validate_topology_change([node1, node2],
-                                                   [node1, node2])),
+    ?assertEqual(ok, test_validate_topology_change(
+                       #{active_nodes => [node1, node2],
+                         keep_nodes => [node1, node2],
+                         kv_nodes => [node1, node2]})),
 
     %% Don't give an error when a node is being added
-    ?assertEqual(ok, test_validate_topology_change([node1],
-                                                   [node1, node2])),
+    ?assertEqual(ok, test_validate_topology_change(
+                       #{active_nodes => [node1],
+                         keep_nodes => [node1, node2],
+                         kv_nodes => [node1, node2]})),
 
     %% Don't give an error when ejecting a node while adding another
     ?assertMatch(ok,
-                 test_validate_topology_change([node1, node2],
-                                               [node1, node3])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1, node2],
+                     keep_nodes => [node1, node3],
+                     kv_nodes => [node1, node2, node3]})),
 
     %% For 3 nodes, with a total of 200/2000 bytes of data for couchstore and
     %% magma respectively, giving a RR% of 15/1.5% respectively, so to remove a
@@ -1586,8 +1602,10 @@ validate_topology_change_data_grs_t() ->
     %% Don't give an error when ejecting a node if the resident ratio is not too
     %% low
     ?assertMatch(ok,
-                 test_validate_topology_change([node1, node2, node3],
-                                               [node1, node2])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1, node2, node3],
+                     keep_nodes => [node1, node2],
+                     kv_nodes => [node1, node2, node3]})),
 
     meck:expect(stats_interface, total_active_logical_data_size,
                 fun (_) -> #{"couchstore_bucket" => 2001,
@@ -1596,15 +1614,27 @@ validate_topology_change_data_grs_t() ->
                   {data_size_will_be_too_high,
                    <<"The following buckets are expected to breach the maximum "
                      "data size per node: couchstore_bucket, magma_bucket.">>}},
-                 test_validate_topology_change([node1, node2, node3],
-                                               [node1, node2])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1, node2, node3],
+                     keep_nodes => [node1, node2],
+                     kv_nodes => [node1, node2, node3]})),
+
+    %% Ignore non-kv nodes
+    ?assertMatch(ok,
+                 test_validate_topology_change(
+                   #{active_nodes => [node1, node2, node3],
+                     keep_nodes => [node1, node2],
+                     kv_nodes => [node1, node2]})),
 
     meck:expect(stats_interface, total_active_logical_data_size,
                 fun (_) -> #{} end),
+
     %% If no data size can be found for the bucket, don't give an error
     ?assertMatch(ok,
-                 test_validate_topology_change([node1, node2, node3],
-                                               [node1, node2])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1, node2, node3],
+                     keep_nodes => [node1, node2],
+                     kv_nodes => [node1, node2]})),
     ok.
 
 pretend_cpu_cores_available(Node, Value) ->
@@ -1626,36 +1656,70 @@ validate_topology_change_cores_per_bucket_t() ->
     %% Core count at minimum
     pretend_cpu_cores_available(node1, [{cpu_cores_available, 1}]),
     ?assertEqual(ok,
-                 test_validate_topology_change([node1], [node1])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1],
+                     keep_nodes => [node1],
+                     kv_nodes => [node1, node2, node3]})),
     ?assertEqual(ok,
-                 test_validate_topology_change([], [node1])),
+                 test_validate_topology_change(
+                   #{active_nodes => [],
+                     keep_nodes => [node1],
+                     kv_nodes => [node1, node2, node3]})),
     ?assertEqual(ok,
-                 test_validate_topology_change([node1], [])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1],
+                     keep_nodes => [],
+                     kv_nodes => [node1, node2, node3]})),
 
     %% Core count below minimum
     pretend_cpu_cores_available(node2, [{cpu_cores_available, 0.9}]),
     ?assertEqual(ok,
-                 test_validate_topology_change([node2], [])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node2],
+                     keep_nodes => [],
+                     kv_nodes => [node1, node2, node3]})),
     ?assertMatch({error,
                   {not_enough_cores_for_num_buckets, _}},
-                 test_validate_topology_change([], [node2])),
+                 test_validate_topology_change(
+                   #{active_nodes => [],
+                     keep_nodes => [node2],
+                     kv_nodes => [node1, node2, node3]})),
     ?assertMatch({error,
                   {not_enough_cores_for_num_buckets, _}},
-                 test_validate_topology_change([node1], [node1, node2])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1],
+                     keep_nodes => [node1, node2],
+                     kv_nodes => [node1, node2, node3]})),
     ?assertEqual(ok,
-                 test_validate_topology_change([node1, node2], [node1])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1, node2],
+                     keep_nodes => [node1],
+                     kv_nodes => [node1, node2, node3]})),
+
+    %% Ignore non-kv nodes
+    ?assertEqual(ok,
+                 test_validate_topology_change(
+                   #{active_nodes => [node1],
+                     keep_nodes => [node3],
+                     kv_nodes => [node1, node2]})),
 
     %% Get 0 cpu cores from sigar, which we treat as invalid
     pretend_cpu_cores_available(node1, [{cpu_cores_available, 0.0}]),
     ?assertMatch({error,
                   {not_enough_cores_for_num_buckets, _}},
-                 test_validate_topology_change([], [node1])),
+                 test_validate_topology_change(
+                   #{active_nodes => [],
+                     keep_nodes => [node1],
+                     kv_nodes => [node1, node2, node3]})),
 
     %% Get unexpected cpu cores from sigar
     pretend_cpu_cores_available(node1, error),
     ?assertMatch({error,
                   {not_enough_cores_for_num_buckets, _}},
-                 test_validate_topology_change([], [node1])).
+                 test_validate_topology_change(
+                   #{active_nodes => [],
+                     keep_nodes => [node1],
+                     kv_nodes => [node1, node2, node3]})).
 
 pretend_disk_data(DiskDataMap) ->
     meck:expect(rpc, call,
@@ -1677,7 +1741,10 @@ validate_topology_change_disk_usage_t() ->
 
     %% Test case where we fail to get disk stats
     ?assertMatch({error, {disk_usage_error, _}},
-                 test_validate_topology_change([node1], [])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1],
+                     keep_nodes => [],
+                     kv_nodes => [node1, node2, node3]})),
 
     %% Set disk data over limit, to cover high disk usage case
     pretend_disk_data(#{node1 => [{"/", 1, 51}],
@@ -1688,7 +1755,10 @@ validate_topology_change_disk_usage_t() ->
                 fun () -> {ok, "invalid_file"} end),
 
     ?assertMatch({error, {disk_usage_error, _}},
-                 test_validate_topology_change([node1], [])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1],
+                     keep_nodes => [],
+                     kv_nodes => [node1, node2, node3]})),
 
     meck:expect(ns_storage_conf, this_node_dbdir,
                 fun () -> {ok, ""} end),
@@ -1699,7 +1769,10 @@ validate_topology_change_disk_usage_t() ->
 
     %% Test case where we fail to get disk stats
     ?assertMatch({error, {disk_usage_error, _}},
-                 test_validate_topology_change([node1], [])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1],
+                     keep_nodes => [],
+                     kv_nodes => [node1, node2, node3]})),
 
     meck:expect(ns_storage_conf, extract_disk_stats_for_path,
                 fun ([Value], _) -> {ok, Value}
@@ -1710,49 +1783,101 @@ validate_topology_change_disk_usage_t() ->
                         node2 => [{"/", 1, 50}]}),
 
     ?assertEqual(ok,
-                 test_validate_topology_change([node2], [])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node2],
+                     keep_nodes => [],
+                     kv_nodes => [node1, node2, node3]})),
     ?assertEqual(ok,
-                 test_validate_topology_change([], [node1])),
+                 test_validate_topology_change(
+                   #{active_nodes => [],
+                     keep_nodes => [node1],
+                     kv_nodes => [node1, node2, node3]})),
     ?assertEqual(ok,
-                 test_validate_topology_change([node1], [node2])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1],
+                     keep_nodes => [node2],
+                     kv_nodes => [node1, node2, node3]})),
     ?assertEqual(ok,
-                 test_validate_topology_change([node1], [node1, node2])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1],
+                     keep_nodes => [node1, node2],
+                     kv_nodes => [node1, node2, node3]})),
 
     %% Permit rebalance despite high disk usage when there is no reduction in
     %% the number of data nodes
     pretend_disk_data(#{node1 => [{"/", 1, 51}],
                         node2 => [{"/", 1, 51}]}),
     ?assertEqual(ok,
-                 test_validate_topology_change([], [node1])),
+                 test_validate_topology_change(
+                   #{active_nodes => [],
+                     keep_nodes => [node1],
+                     kv_nodes => [node1, node2, node3]})),
     ?assertEqual(ok,
-                 test_validate_topology_change([node1], [node1, node2])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1],
+                     keep_nodes => [node1, node2],
+                     kv_nodes => [node1, node2, node3]})),
     ?assertEqual(ok,
-                 test_validate_topology_change([node1], [node2])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1],
+                     keep_nodes => [node2],
+                     kv_nodes => [node1, node2, node3]})),
 
     %% Don't permit rebalance when there is a reduction in the number of data
     %% nodes and the disk usage is above the limit
     ?assertMatch({error, {disk_usage_too_high, _}},
-                 test_validate_topology_change([node1], [])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1],
+                     keep_nodes => [],
+                     kv_nodes => [node1, node2, node3]})),
     ?assertMatch({error, {disk_usage_too_high, _}},
-                 test_validate_topology_change([node1, node2], [node1])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1, node2],
+                     keep_nodes => [node1],
+                     kv_nodes => [node1, node2, node3]})),
 
     %% Don't permit rebalance when there is a reduction in total disk size
     pretend_disk_data(#{node1 => [{"/", 2, 51}],
                         node2 => [{"/", 1, 51}]}),
     ?assertMatch({error, {disk_usage_too_high, _}},
-                 test_validate_topology_change([node1], [node2])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1],
+                     keep_nodes => [node2],
+                     kv_nodes => [node1, node2, node3]})),
+
+    %% We should check non-kv nodes that are not ejected, but currently we
+    %% don't. This will be fixed in a subsequent patch
+    pretend_disk_data(#{node1 => [{"/", 1, 51}],
+                        node2 => [{"/", 1, 50}]}),
+    ?assertMatch(ok,
+                 test_validate_topology_change(
+                   #{active_nodes => [node1, node2],
+                     keep_nodes => [node1],
+                     kv_nodes => [node2]})),
+    %% We should check non-kv nodes being ejected
+    ?assertMatch({error, {disk_usage_too_high, _}},
+                 test_validate_topology_change(
+                   #{active_nodes => [node1, node2],
+                     keep_nodes => [node2],
+                     kv_nodes => [node2]})),
 
     %% Permit rebalance when total disk size is reduced but GR not hit
     pretend_disk_data(#{node1 => [{"/", 2, 50}],
                         node2 => [{"/", 1, 50}]}),
     ?assertMatch(ok,
-                 test_validate_topology_change([node1], [node2])),
+                 test_validate_topology_change(
+                   #{active_nodes => [node1],
+                     keep_nodes => [node2],
+                     kv_nodes => [node1, node2, node3]})),
 
     meck:expect(config_profile, get_bool,
                 fun ({resource_management, enabled}) -> false end),
     %% Don't validate rebalance when guardrails are disabled
     ?assertMatch(ok,
-                 test_validate_topology_change([node1, node2], [node1])).
+                 test_validate_topology_change(
+                   #{active_nodes => [node1, node2],
+                     keep_nodes => [node1],
+                     kv_nodes => [node1, node2, node3]})).
 
 validate_storage_migration_t() ->
     DataSizeConfig0 = [{enabled, true},
