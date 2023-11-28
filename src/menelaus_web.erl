@@ -1138,7 +1138,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, setup], write},
                      fun menelaus_web_node:handle_node_altaddr_external_delete/1};
                 _ ->
-                    {done, reply_text(Req, "Method Not Allowed", 405)}
+                    {done, reply_text(Req, "Object Not Found", 404)}
             end;
         'PUT' ->
             case PathTokens of
@@ -1192,7 +1192,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, setup], write},
                      fun menelaus_web_node:handle_node_altaddr_external/1};
                 _ ->
-                    {done, reply_text(Req, "Method Not Allowed", 405)}
+                    {done, reply_text(Req, "Object Not Found", 404)}
             end;
         "PATCH" ->
             case PathTokens of
@@ -1207,7 +1207,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_collections:handle_patch_collection/4,
                      [Id, Scope, CollectionId]};
                 _ ->
-                    {done, reply_text(Req, "Method Not Allowed", 405)}
+                    {done, reply_text(Req, "Object Not Found", 404)}
             end;
         "RPCCONNECT" ->
             case PathTokens of
