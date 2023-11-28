@@ -70,6 +70,7 @@
          assert_profile_flag/2,
          assert_is_trinity/0,
          assert_config_profile_flag/1,
+         assert_not_config_profile_flag/1,
          choose_node_consistently/2,
          compute_sec_headers/0,
          web_exception/2,
@@ -726,7 +727,13 @@ assert_cluster_version(Fun) ->
       Fun, "This http API endpoint isn't supported in mixed version clusters").
 
 assert_config_profile_flag(Flag) ->
-    assert(?cut(config_profile:get_bool(Flag)),
+    assert_config_profile_flag(Flag, fun (X) -> X end).
+
+assert_not_config_profile_flag(Flag) ->
+    assert_config_profile_flag(Flag, fun (X) -> not X end).
+
+assert_config_profile_flag(Flag, MapFun) ->
+    assert(?cut(MapFun(config_profile:get_bool(Flag))),
            "Operation not allowed in this config profile").
 
 assert(Fun, Error) ->
@@ -872,4 +879,15 @@ response_headers_test() ->
                  response_headers([{"Duplicate", "first"},
                                    {"Duplicate", "second"}])),
     meck:unload(ns_config).
+
+assert_config_profile_flag_test() ->
+    %% implied 'default' profile
+    ?assertEqual({web_exception, 400,
+                  "Operation not allowed in this config profile", []},
+                 catch(assert_config_profile_flag(
+                         disable_auto_rebalance_settings))),
+    ?assertEqual(ok,
+                 assert_not_config_profile_flag(
+                   disable_auto_rebalance_settings)).
+
 -endif.

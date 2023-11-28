@@ -1,5 +1,4 @@
 {name, "provisioned"}.
-{enable_auto_rebalance_settings, true}.
 {{resource_management, enabled}, true}.
 {{resource_management, configure_promql}, true}.
 {resource_management,

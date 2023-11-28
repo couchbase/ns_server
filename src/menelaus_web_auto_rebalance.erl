@@ -66,4 +66,5 @@ reply_with_retry_settings(Req) ->
 
 assert_api_supported() ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_config_profile_flag(enable_auto_rebalance_settings).
+    menelaus_util:assert_not_config_profile_flag(
+      disable_auto_rebalance_settings).

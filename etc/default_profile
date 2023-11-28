@@ -1,3 +1,2 @@
 {name, "default"}.
-{enable_auto_rebalance_settings, true}.
 {{indexer, disable_shard_affinity}, true}.
