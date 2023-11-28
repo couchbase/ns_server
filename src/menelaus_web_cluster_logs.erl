@@ -306,6 +306,13 @@ parse_validate_collect_params(Params) ->
                         [{error, {salt_without_level, log_redaction}}]
                 end
         end,
+    TaskRegExp =
+        case proplists:get_value("taskRegexp", Params) of
+            undefined ->
+                [];
+            RegExp ->
+                [{task_regexp, RegExp}]
+        end,
 
     MaybeUpload = case [F || {F, P} <- [{upload, UploadHost},
                                         {customer, Customer}],
@@ -327,9 +334,9 @@ parse_validate_collect_params(Params) ->
                   end,
 
     BasicErrors = [E || {error, E} <- NodesRV ++ TmpDir ++ LogDir ++
-                                      MaybeUploadProxy ++ RedactLevel ++
-                                      RedactSalt ++ MaybeUpload ++
-                                      BypassReachabilityChecks],
+                            MaybeUploadProxy ++ RedactLevel ++
+                            RedactSalt ++ MaybeUpload ++
+                            BypassReachabilityChecks],
     case BasicErrors of
         [] ->
             [{ok, Nodes}] = NodesRV,
@@ -341,7 +348,8 @@ parse_validate_collect_params(Params) ->
                                   []
                           end,
             Options = RedactLevel ++ RedactSalt ++ TmpDir ++
-                      LogDir ++ UploadProxy ++ BypassReachabilityChecks,
+                LogDir ++ UploadProxy ++ BypassReachabilityChecks ++
+                TaskRegExp,
             {ok, Nodes, Upload, Options};
         _ ->
             {errors, BasicErrors}

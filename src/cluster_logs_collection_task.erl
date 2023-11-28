@@ -276,7 +276,7 @@ start_collection_per_node(TimestampS, Parent, Options) ->
         end,
     TStart = erlang:monotonic_time(second),
     event_log:add_log(
-        cb_collect_started, [{file_name, list_to_binary(UploadFilename)}]),
+      cb_collect_started, [{file_name, list_to_binary(UploadFilename)}]),
     proc_lib:init_ack(Parent, {ok, self(), UploadFilename}),
 
     MaybeTmpDir = case proplists:get_value(tmp_dir, Options) of
@@ -284,8 +284,15 @@ start_collection_per_node(TimestampS, Parent, Options) ->
                       Value -> ["--tmp-dir=" ++ Value]
                   end,
 
+    MaybeTaskRegexp =
+        case proplists:get_value(task_regexp, Options) of
+            undefined -> [];
+            RegExp -> ["--task-regexp=" ++ RegExp]
+        end,
+
     Args0 = ["--watch-stdin"] ++ MaybeLogRedaction ++
-        MaybeTmpDir ++ ["--initargs=" ++ InitargsFilename, Filename],
+        MaybeTmpDir ++ ["--initargs=" ++ InitargsFilename, Filename] ++
+        MaybeTaskRegexp,
 
     ExtraArgs =
         ns_config:search_node_with_default(cbcollect_info_extra_args, []),
