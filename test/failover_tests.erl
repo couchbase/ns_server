@@ -176,8 +176,6 @@ manual_failover_test_setup(SetupConfig) ->
                         ok
                 end),
 
-    meck:expect(janitor_agent, maybe_set_data_ingress, 3, ok),
-
     %% We need to check auto_reprovision settings via a gen_server call so we
     %% must start up auto_reprovision. We can disable it though, because we
     %% don't really care which options it has set.

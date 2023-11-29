@@ -432,15 +432,7 @@ cleanup_apply_config_body(Bucket, Servers, BucketConfig, Options) ->
 
     maybe_reset_rebalance_status(Options),
 
-    Status = guardrail_enforcer:get_status({bucket, Bucket}),
-    case janitor_agent:maybe_set_data_ingress(Bucket, Status, Servers) of
-        ok ->
-            cleanup_mark_bucket_warmed(Bucket, Servers);
-        {errors, BadReplies0} ->
-            ?log_error("Failed to set ingress status for bucket `~p`."
-                       "~nBadReplies:~n~p", [Bucket, BadReplies0]),
-            {error, set_data_ingress_failed, [N || {N, _} <- BadReplies0]}
-    end.
+    cleanup_mark_bucket_warmed(Bucket, Servers).
 
 cleanup_mark_bucket_warmed(Bucket, Servers) ->
     case janitor_agent:mark_bucket_warmed(Bucket, Servers) of
@@ -925,7 +917,9 @@ janitor_buckets_group_test_() ->
       {"Cleanup Buckets With Map Test",
        fun  cleanup_buckets_with_map_test_body/0},
       {"Cleanup Buckets With States Test",
-       fun  cleanup_buckets_with_states_test_body/0}]
+       fun  cleanup_buckets_with_states_test_body/0},
+      {"Cleanup Mark Bucket Warmed Data Ingress Test",
+       fun cleanup_mark_bucket_warmed_data_ingress_test_body/0}]
     }.
 
 load_apply_config_prep_common_modules() ->
@@ -1186,6 +1180,49 @@ cleanup_buckets_with_states_test_body() ->
     ?assertEqual([{"B1", ok}, {"B2", ok}, {"B3", ok}, {"B4", ok}, {"B5", ok},
                   {"B6", ok}, {"B7", ok}, {"B8", ok}, {"B9", ok}], Res2),
     ok.
+
+test_mark_bucket_warmed(Status) ->
+    meck:expect(guardrail_enforcer, get_status, [{bucket, "B1"}], Status),
+    ok = cleanup_mark_bucket_warmed("B1", [node()]),
+    %% Return the status that mark_warmed received
+    meck:capture(last, ns_memcached, mark_warmed, ["B1", '_'], 2).
+
+cleanup_mark_bucket_warmed_data_ingress_test_body() ->
+    Node = node(),
+    meck:expect(cluster_compat_mode, is_cluster_trinity, ?cut(false)),
+
+    meck:expect(janitor_agent_sup, get_registry_pid,
+                fun (_) -> self() end),
+    meck:expect(ns_bucket, get_bucket,
+                fun ("B1") ->
+                        {ok, [{type, membase},
+                              {storage_mode, magma},
+                              {servers, [Node]}]}
+                end),
+    meck:expect(ns_config, get_timeout,
+                fun (_, Default) -> Default end),
+    meck:expect(dcp_sup, nuke,
+                fun (_) -> ok end),
+    meck:expect(ns_storage_conf, this_node_bucket_dbdir,
+                fun (_) -> {ok, ""} end),
+    meck:expect(ns_bucket, activate_bucket_data_on_this_node,
+                fun (_) -> ok end),
+    {ok, _} = janitor_agent:start_link("B1"),
+
+    meck:expect(ns_memcached, mark_warmed,
+                fun ("B1", _Status) -> ok end),
+
+    %% Pre-trinity, we can't set a status, so ns_memcached:mark_warmed should
+    %% get status undefined
+    ?assertEqual(undefined, test_mark_bucket_warmed(ok)),
+
+    meck:expect(cluster_compat_mode, is_cluster_trinity, ?cut(true)),
+
+    %% Post-trinity, ns_memcached:mark_warmed should receive whatever status we
+    %% get from guardrail_enforcer
+    ?assertEqual(undefined, test_mark_bucket_warmed(undefined)),
+    ?assertEqual(ok, test_mark_bucket_warmed(ok)),
+    ?assertEqual(resident_ratio, test_mark_bucket_warmed(resident_ratio)).
 
 data_loss_possible_t(Chain, States) ->
     data_loss_possible(0, Chain,

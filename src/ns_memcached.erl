@@ -85,7 +85,7 @@
          bucket_statuses/1,
          get_all_buckets_details/0,
          get_bucket_state/1,
-         mark_warmed/1,
+         mark_warmed/2,
          disable_traffic/2,
          set_data_ingress/2,
          delete_vbucket/2,
@@ -351,13 +351,22 @@ handle_call({set_bucket_data_ingress, Status}, _From, State) ->
             ?log_error("setting bucket data ingress failed: ~p", [Error]),
             {reply, Error, State}
     end;
-handle_call(mark_warmed, _From, #state{status=Status,
-                                       bucket=Bucket,
-                                       start_time=Start,
-                                       sock=Sock} = State) ->
+handle_call(mark_warmed, From, State) ->
+    handle_call({mark_warmed, undefined}, From, State);
+handle_call({mark_warmed, DataIngress}, _From, #state{status=Status,
+                                                      bucket=Bucket,
+                                                      start_time=Start,
+                                                      sock=Sock} = State) ->
     {NewStatus, Reply} =
         case Status of
             connected ->
+                case DataIngress of
+                    undefined ->
+                        ok;
+                    _ ->
+                        mc_client_binary:set_bucket_data_ingress(Sock, Bucket,
+                                                                 DataIngress)
+                end,
                 ?log_info("Enabling traffic to bucket ~p", [Bucket]),
                 case mc_client_binary:enable_traffic(Sock) of
                     ok ->
@@ -1082,9 +1091,10 @@ status(Node, Bucket, Timeout) ->
             no_status
     end.
 
--spec mark_warmed(bucket_name()) -> any().
-mark_warmed(Bucket) ->
-    gen_server:call(server(Bucket), mark_warmed, ?MARK_WARMED_TIMEOUT).
+-spec mark_warmed(bucket_name(), undefined | data_ingress_status()) -> any().
+mark_warmed(Bucket, DataIngress) ->
+    gen_server:call(server(Bucket), {mark_warmed, DataIngress},
+                    ?MARK_WARMED_TIMEOUT).
 
 -spec get_mark_warmed_timeout() -> pos_integer().
 get_mark_warmed_timeout() ->

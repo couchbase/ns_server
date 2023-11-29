@@ -253,10 +253,19 @@ do_query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
 
 -spec mark_bucket_warmed(Bucket::bucket_name(),
                          [node()]) -> ok | {errors, [{node(), term()}]}.
-
 mark_bucket_warmed(Bucket, Nodes) ->
+    DataIngress = guardrail_enforcer:get_status({bucket, Bucket}),
+    Call =
+        case cluster_compat_mode:is_cluster_trinity() of
+            false ->
+                %% Ensure that we send the correct call to down-version nodes
+                %% during upgrade
+                mark_warmed;
+            true ->
+                {mark_warmed, DataIngress}
+        end,
     process_multicall_rv(
-      multi_call(Bucket, Nodes, mark_warmed, warmed_timeout())).
+      multi_call(Bucket, Nodes, Call, warmed_timeout())).
 
 %% This timeout accounts for the timeouts of underlying operations plus
 %% an additional second to ensure we catch any occurrences of the worst
@@ -779,8 +788,11 @@ do_handle_call({get_failover_logs, VBucketsR}, From, State) ->
                       Error
               end
       end);
-do_handle_call(mark_warmed, _From, #state{bucket_name = Bucket} = State) ->
-    RV = ns_memcached:mark_warmed(Bucket),
+do_handle_call(mark_warmed, From, State) ->
+    do_handle_call({mark_warmed, undefined}, From, State);
+do_handle_call({mark_warmed, DataIngress}, _From,
+               #state{bucket_name = Bucket} = State) ->
+    RV = ns_memcached:mark_warmed(Bucket, DataIngress),
     ok = ns_bucket:activate_bucket_data_on_this_node(Bucket),
     {reply, RV, State}.
 
