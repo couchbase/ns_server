@@ -14,6 +14,10 @@
 
 -include_lib("public_key/include/public_key.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([decode_cert_chain/1,
          decode_single_certificate/1,
          generate_cluster_CA/2,
@@ -414,19 +418,22 @@ attribute_string(?'id-at-localityName') ->
     "L";
 attribute_string(?'id-at-organizationName') ->
     "O";
+attribute_string(?'id-at-organizationalUnitName') ->
+    "OU";
 attribute_string(?'id-at-commonName') ->
     "CN";
 attribute_string(_) ->
     undefined.
 
-format_attribute([#'AttributeTypeAndValue'{type = Type,
-                                           value = Value}], Acc) ->
-    case attribute_string(Type) of
-        undefined ->
-            Acc;
-        Str ->
-            [[Str, "=", format_value(Value)] | Acc]
-    end.
+format_attribute(MultiAttrs, Acc) when is_list(MultiAttrs) ->
+    Format = fun (#'AttributeTypeAndValue'{type = Type, value = Value}) ->
+                 case attribute_string(Type) of
+                     undefined -> false;
+                     Str -> {true, [Str, "=", format_value(Value)]}
+                 end
+             end,
+    FormattedAttrs = lists:filtermap(Format, MultiAttrs),
+    [lists:join("+", FormattedAttrs) || length(FormattedAttrs) > 0] ++ Acc.
 
 format_value({utf8String, Utf8Value}) ->
     unicode:characters_to_list(Utf8Value);
@@ -441,8 +448,41 @@ format_name({rdnSequence, STVList}) ->
     Attributes = lists:foldl(fun format_attribute/2, [], STVList),
     lists:flatten(string:join(lists:reverse(Attributes), ", ")).
 
+
+-ifdef(TEST).
+
+format_name_test() ->
+    Attr = fun (T, V) ->
+               #'AttributeTypeAndValue'{type = T, value = {printableString, V}}
+           end,
+    CN = Attr(?'id-at-commonName', "test"),
+    OU1 = Attr(?'id-at-organizationalUnitName', "ou1"),
+    OU2 = Attr(?'id-at-organizationalUnitName', "ou2"),
+    Unknown = Attr(unknown, "unknown"),
+    ?assertEqual("CN=test", format_name({rdnSequence, [[CN]]})),
+    ?assertEqual("OU=ou1, CN=test", format_name({rdnSequence, [[OU1], [CN]]})),
+    ?assertEqual("OU=ou1+OU=ou2, CN=test",
+                 format_name({rdnSequence, [[OU1, OU2], [CN]]})),
+    ?assertEqual("OU=ou1+OU=ou2, CN=test",
+                 format_name({rdnSequence, [[OU1, Unknown, OU2], [Unknown],
+                                            [CN]]})).
+
+
+extract_fields_by_type_test() ->
+    Attr = fun (T, V) ->
+               #'AttributeTypeAndValue'{type = T, value = {printableString, V}}
+           end,
+    Seq = {rdnSequence, [[Attr(a, "a1"), Attr(b, "b1"), Attr(b, "b2")],
+                         [Attr(a, "a2")],
+                         [Attr(b, "b3")]]},
+    ?assertEqual(["a1", "a2"], extract_fields_by_type(Seq, a)),
+    ?assertEqual(["b1", "b2", "b3"], extract_fields_by_type(Seq, b)).
+
+-endif.
+
 extract_fields_by_type({rdnSequence, STVList}, Type) ->
-    [format_value(V) || [#'AttributeTypeAndValue'{type = T, value = V}] <- STVList,
+    [format_value(V) || List <- STVList,
+                        #'AttributeTypeAndValue'{type = T, value = V} <- List,
                         T =:= Type];
 extract_fields_by_type(_, _) ->
     [].
