@@ -85,7 +85,6 @@
          bucket_statuses/1,
          get_all_buckets_details/0,
          get_bucket_state/1,
-         mark_warmed/2,
          mark_warmed/1,
          disable_traffic/2,
          set_data_ingress/2,
@@ -1082,15 +1081,6 @@ status(Node, Bucket, Timeout) ->
                        [Bucket, Node, {T, E, Stack}]),
             no_status
     end.
-
--spec mark_warmed([node()], bucket_name())
-                 -> Result
-                        when Result :: {Replies, BadNodes},
-                             Replies :: [{node(), any()}],
-                             BadNodes :: [node()].
-mark_warmed(Nodes, Bucket) ->
-    gen_server:multi_call(Nodes, server(Bucket),
-                          mark_warmed, ?MARK_WARMED_TIMEOUT).
 
 -spec mark_warmed(bucket_name()) -> any().
 mark_warmed(Bucket) ->
