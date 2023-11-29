@@ -59,6 +59,7 @@ idp_test_user_attrs = {"sn": "TestUser",
                        "displayName": "Test"}
 deflate_encoding = "urn:oasis:names:tc:SAML:2.0:bindings:URL-Encoding:DEFLATE"
 sp_entity_id = "sp_test_entity"
+ui_headers = {'Host': 'some_addr', 'ns-server-ui': 'yes'}
 
 
 class SamlTests(testlib.BaseTestSet):
@@ -90,45 +91,9 @@ class SamlTests(testlib.BaseTestSet):
 
 
     def unsolicited_authn_and_logout_test(self):
-        with saml_configured(self.cluster) as IDP:
-            identity = idp_test_user_attrs.copy()
-            binding_out, destination = \
-                IDP.pick_binding("assertion_consumer_service",
-                                 bindings=[BINDING_HTTP_POST],
-                                 entity_id=sp_entity_id)
-            name_id = NameID(text=testlib.random_str(16))
-
-            expiration = datetime.datetime.utcnow() + \
-                         datetime.timedelta(minutes=1)
-            expiration_iso = expiration.replace(microsecond=0).isoformat()
-
-            response = IDP.create_authn_response(
-                         identity,
-                         None, # InResponseTo is missing cause it is
-                               # an unsolicited response
-                         destination,
-                         sp_entity_id=sp_entity_id,
-                         userid=idp_test_username,
-                         name_id=name_id,
-                         sign_assertion=True,
-                         sign_response=True,
-                         authn={'class_ref': AUTHN_PASSWORD},
-                         session_not_on_or_after=expiration_iso)
-
-            response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
-
-            session = requests.Session()
-            headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
-            r = session.post(destination,
-                             data={'SAMLResponse': response_encoded},
-                             headers=headers,
-                             allow_redirects=False)
-            assert_http_code(302, r)
-
-            r = session.get(self.cluster.connected_nodes[0].url +
-                            '/pools/default',
-                            headers=headers)
-            assert_http_code(200, r)
+        with saml_configured(self.cluster.connected_nodes[0]) as IDP:
+            name_id, session = \
+                unsolicited_authn(IDP, self.cluster.connected_nodes[0].url)
 
             binding_out, destination = \
                 IDP.pick_binding("single_logout_service",
@@ -142,7 +107,7 @@ class SamlTests(testlib.BaseTestSet):
             logout_req_enc = base64.b64encode(f"{logout_req}".encode("utf-8"))
             r = session.post(destination,
                              data={'SAMLRequest': logout_req_enc},
-                             headers=headers,
+                             headers=ui_headers,
                              allow_redirects=False)
             assert_http_code(200, r)
 
@@ -152,8 +117,35 @@ class SamlTests(testlib.BaseTestSet):
             IDP.parse_logout_request_response(saml_response, binding=BINDING_HTTP_POST)
 
 
+    def unsolicited_authn_with_static_metadata_multinode_test(self):
+        # Testing the case when saml is configured via settings_node,
+        # and user authenticates using auth_node_url (different node)
+        settings_node = self.cluster.connected_nodes[0]
+        auth_node_url = self.cluster.connected_nodes[1].url
+
+        # Also test the case when idp metadata is uplodaded by admin (static)
+        with saml_configured(settings_node,
+                             idpMetadataOrigin='upload',
+                             idpMetadataURL=None,
+                             spBaseURLType='custom',
+                             spCustomBaseURL=auth_node_url) as IDP:
+            unsolicited_authn(IDP, auth_node_url)
+
+            # Change some settings to invalidate metadata cache
+            testlib.post_succ(settings_node, '/settings/saml',
+                              json={'idpSignsMetadata': False}),
+            testlib.post_succ(settings_node, '/settings/saml',
+                              json={'idpSignsMetadata': True}),
+
+            # Try authentication one more time to make sure that change of
+            # saml settings is not breaking anything (for example, we have
+            # metadata cached now, so we want to make sure it gets updated
+            # successfully)
+            unsolicited_authn(IDP, auth_node_url)
+
+
     def authn_via_post_and_single_logout_test(self):
-        with saml_configured(self.cluster) as IDP:
+        with saml_configured(self.cluster.connected_nodes[0]) as IDP:
             r = testlib.get_succ(self.cluster, '/saml/auth',
                                  allow_redirects=False)
             (redirect_url, saml_request) = \
@@ -183,20 +175,19 @@ class SamlTests(testlib.BaseTestSet):
             response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
 
             session = requests.Session()
-            headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
             r = session.post(destination,
                              data={'SAMLResponse': response_encoded},
-                             headers=headers,
+                             headers=ui_headers,
                              allow_redirects=False)
             assert_http_code(302, r)
 
             r = session.get(self.cluster.connected_nodes[0].url +
                             '/pools/default',
-                            headers=headers)
+                            headers=ui_headers)
             assert_http_code(200, r)
 
             r = session.post(self.cluster.connected_nodes[0].url + '/uilogout',
-                             headers=headers)
+                             headers=ui_headers)
             assert_http_code(400, r)
             r = r.json()
             assert_in('redirect', r)
@@ -204,7 +195,7 @@ class SamlTests(testlib.BaseTestSet):
 
             r = session.get(self.cluster.connected_nodes[0].url +
                             '/saml/deauth',
-                            headers=headers,
+                            headers=ui_headers,
                             allow_redirects=False)
             assert_http_code(200, r)
 
@@ -218,7 +209,7 @@ class SamlTests(testlib.BaseTestSet):
 
             r = session.get(self.cluster.connected_nodes[0].url +
                             '/pools/default',
-                            headers=headers)
+                            headers=ui_headers)
             assert_http_code(401, r)
             logout_response = IDP.create_logout_response(
                                   parsed_logout_req.message,
@@ -230,13 +221,14 @@ class SamlTests(testlib.BaseTestSet):
                                  entity_id=sp_entity_id)
             r = session.post(destination,
                              data={'SAMLResponse': response_encoded},
-                             headers=headers,
+                             headers=ui_headers,
                              allow_redirects=False)
             assert_http_code(302, r)
 
 
     def authn_via_redirect_and_regular_logout_test(self):
-        with saml_configured(self.cluster, idpAuthnBinding="redirect",
+        with saml_configured(self.cluster.connected_nodes[0],
+                             idpAuthnBinding="redirect",
                              spSignRequests=False,
                              singleLogoutEnabled=False) as IDP:
             r = testlib.get_fail(self.cluster, '/saml/auth', 302,
@@ -277,31 +269,30 @@ class SamlTests(testlib.BaseTestSet):
             response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
 
             session = requests.Session()
-            headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
             r = session.get(self.cluster.connected_nodes[0].url +
                             '/pools/default',
-                            headers=headers)
+                            headers=ui_headers)
             assert_http_code(401, r)
             r = session.post(destination,
                              data={'SAMLResponse': response_encoded},
-                             headers=headers,
+                             headers=ui_headers,
                              allow_redirects=False)
             assert_http_code(302, r)
             r = session.get(self.cluster.connected_nodes[0].url +
                             '/pools/default',
-                            headers=headers)
+                            headers=ui_headers)
             assert_http_code(200, r)
             r = session.post(self.cluster.connected_nodes[0].url + '/uilogout',
-                             headers=headers)
+                             headers=ui_headers)
             assert_http_code(200, r)
             r = session.get(self.cluster.connected_nodes[0].url +
                             '/pools/default',
-                            headers=headers)
+                            headers=ui_headers)
             assert_http_code(401, r)
 
 
     def session_expiration_test(self):
-        with saml_configured(self.cluster) as IDP:
+        with saml_configured(self.cluster.connected_nodes[0]) as IDP:
             identity = idp_test_user_attrs.copy()
             binding_out, destination = \
                 IDP.pick_binding("assertion_consumer_service",
@@ -329,16 +320,15 @@ class SamlTests(testlib.BaseTestSet):
             response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
 
             session = requests.Session()
-            headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
             r = session.post(destination,
                              data={'SAMLResponse': response_encoded},
-                             headers=headers,
+                             headers=ui_headers,
                              allow_redirects=False)
             assert_http_code(302, r)
 
             r = session.get(self.cluster.connected_nodes[0].url +
                             '/pools/default',
-                            headers=headers)
+                            headers=ui_headers)
             assert_http_code(401, r)
 
 
@@ -347,7 +337,8 @@ class SamlTests(testlib.BaseTestSet):
         # duplicate rejection on both nodes. If we don't disable it,
         # the assertion will be rejected with reason "bad_recipient", which is
         # not what we want to test here
-        with saml_configured(self.cluster, spSignRequests=False,
+        with saml_configured(self.cluster.connected_nodes[0],
+                             spSignRequests=False,
                              spVerifyRecipient='false') as IDP:
             identity = idp_test_user_attrs.copy()
             binding_out, destination = \
@@ -375,23 +366,22 @@ class SamlTests(testlib.BaseTestSet):
 
             response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
 
-            headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
             session1 = requests.Session()
             session2 = requests.Session()
             session3 = requests.Session()
             r = session1.post(destination,
                               data={'SAMLResponse': response_encoded},
-                              headers=headers,
+                              headers=ui_headers,
                               allow_redirects=False)
             assert_http_code(302, r)
 
             # sending the same assertion again and expect it to reject it
             r = session2.post(destination,
                               data={'SAMLResponse': response_encoded},
-                              headers=headers,
+                              headers=ui_headers,
                               allow_redirects=False)
             error_msg = catch_error_after_redirect(
-                self.cluster.connected_nodes[0], session2, r, headers)
+                self.cluster.connected_nodes[0], session2, r)
             assert_in("assertion replay protection", error_msg)
 
             dest_parsed = urlparse(destination)
@@ -402,30 +392,31 @@ class SamlTests(testlib.BaseTestSet):
             # it still should reject it
             r = session3.post(destination2,
                               data={'SAMLResponse': response_encoded},
-                              headers=headers,
+                              headers=ui_headers,
                               allow_redirects=False)
             error_msg = catch_error_after_redirect(
-                self.cluster.connected_nodes[1], session3, r, headers)
+                self.cluster.connected_nodes[1], session3, r)
             assert_in("assertion replay protection", error_msg)
 
             r = session1.get(self.cluster.connected_nodes[0].url +
                              '/pools/default',
-                             headers=headers)
+                             headers=ui_headers)
             assert_http_code(200, r)
 
             r = session2.get(self.cluster.connected_nodes[0].url +
                              '/pools/default',
-                             headers=headers)
+                             headers=ui_headers)
             assert_http_code(401, r)
 
             r = session3.get(self.cluster.connected_nodes[1].url +
                              '/pools/default',
-                             headers=headers)
+                             headers=ui_headers)
             assert_http_code(401, r)
 
 
     def expired_assertion_test(self):
-        with saml_configured(self.cluster, assertion_lifetime=-1) as IDP:
+        with saml_configured(self.cluster.connected_nodes[0],
+                             assertion_lifetime=-1) as IDP:
             identity = idp_test_user_attrs.copy()
             binding_out, destination = \
                 IDP.pick_binding("assertion_consumer_service",
@@ -453,24 +444,23 @@ class SamlTests(testlib.BaseTestSet):
             response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
 
             session = requests.Session()
-            headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
             r = session.post(destination,
                              data={'SAMLResponse': response_encoded},
-                             headers=headers,
+                             headers=ui_headers,
                              allow_redirects=False)
             error_msg = catch_error_after_redirect(
-                self.cluster.connected_nodes[0], session, r, headers)
+                self.cluster.connected_nodes[0], session, r)
 
             assert_in('expired SAML assertion', error_msg)
 
             r = session.get(self.cluster.connected_nodes[0].url +
                             '/pools/default',
-                            headers=headers)
+                            headers=ui_headers)
             assert_http_code(401, r)
 
 
     def groups_and_roles_attributes_test(self):
-        with saml_configured(self.cluster,
+        with saml_configured(self.cluster.connected_nodes[0],
                              groupsAttribute='groups',
                              groupsAttributeSep=', ',
                              groupsFilterRE='testgroup\\d+',
@@ -506,15 +496,14 @@ class SamlTests(testlib.BaseTestSet):
             response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
 
             session = requests.Session()
-            headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
             r = session.post(destination,
                              data={'SAMLResponse': response_encoded},
-                             headers=headers,
+                             headers=ui_headers,
                              allow_redirects=False)
             assert_http_code(302, r)
 
             r = session.get(self.cluster.connected_nodes[0].url + '/whoami',
-                            headers=headers)
+                            headers=ui_headers)
             assert_http_code(200, r)
             roles = [a["role"] for a in r.json()["roles"]]
             roles.sort()
@@ -525,7 +514,7 @@ class SamlTests(testlib.BaseTestSet):
 
     # Successfull authentication, but user doesn't have access to UI
     def access_denied_test(self):
-        with saml_configured(self.cluster,
+        with saml_configured(self.cluster.connected_nodes[0],
                              usernameAttribute='uid',
                              groupsAttribute='groups',
                              groupsAttributeSep=', ',
@@ -557,13 +546,12 @@ class SamlTests(testlib.BaseTestSet):
             response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
 
             session = requests.Session()
-            headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
             r = session.post(destination,
                              data={'SAMLResponse': response_encoded},
-                             headers=headers,
+                             headers=ui_headers,
                              allow_redirects=False)
             error_msg = catch_error_after_redirect(
-                self.cluster.connected_nodes[0], session, r, headers)
+                self.cluster.connected_nodes[0], session, r)
             expected = 'Access denied for user "testuser2": ' \
                        'Insufficient Permissions. ' \
                        'Extracted groups: fakegroup1, fakegroup2. ' \
@@ -574,7 +562,7 @@ class SamlTests(testlib.BaseTestSet):
     def metadata_with_invalid_signature_test(self):
         try:
             # trusted fingerprints will not match mockidp2* certs
-            with saml_configured(self.cluster,
+            with saml_configured(self.cluster.connected_nodes[0],
                                  metadata_certs_prefix="mockidp2_"):
                 assert False, "ns_server should reject metadata as it's " \
                               "signed by untrusted cert"
@@ -585,7 +573,7 @@ class SamlTests(testlib.BaseTestSet):
 
 
     def assertion_with_invalid_signature_test(self):
-        with saml_configured(self.cluster,
+        with saml_configured(self.cluster.connected_nodes[0],
                              spVerifyAssertionSig=True,
                              spVerifyAssertionEnvelopSig=False,
                              metadata_certs_prefix="mockidp_",
@@ -610,24 +598,23 @@ class SamlTests(testlib.BaseTestSet):
             response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
 
             session = requests.Session()
-            headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
             r = session.post(destination,
                              data={'SAMLResponse': response_encoded},
-                             headers=headers,
+                             headers=ui_headers,
                              allow_redirects=False)
             error_msg = catch_error_after_redirect(
-                self.cluster.connected_nodes[0], session, r, headers)
+                self.cluster.connected_nodes[0], session, r)
             assert_in("certificate is not trusted", error_msg)
 
             r = session.get(self.cluster.connected_nodes[0].url +
                             '/pools/default',
-                            headers=headers)
+                            headers=ui_headers)
             assert_http_code(401, r)
 
 
 
     def authn_response_with_invalid_signature_test(self):
-        with saml_configured(self.cluster,
+        with saml_configured(self.cluster.connected_nodes[0],
                              spVerifyAssertionSig=False,
                              spVerifyAssertionEnvelopSig=True,
                              metadata_certs_prefix="mockidp_",
@@ -652,33 +639,38 @@ class SamlTests(testlib.BaseTestSet):
             response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
 
             session = requests.Session()
-            headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
             r = session.post(destination,
                              data={'SAMLResponse': response_encoded},
-                             headers=headers,
+                             headers=ui_headers,
                              allow_redirects=False)
             error_msg = catch_error_after_redirect(
-                self.cluster.connected_nodes[0], session, r, headers)
+                self.cluster.connected_nodes[0], session, r)
             assert_in("certificate is not trusted", error_msg)
 
             r = session.get(self.cluster.connected_nodes[0].url +
                             '/pools/default',
-                            headers=headers)
+                            headers=ui_headers)
             assert_http_code(401, r)
 
 
 @contextmanager
-def saml_configured(cluster, **kwargs):
+def saml_configured(node, **kwargs):
     mock_server_process = None
+    metadata_origin = kwargs['idpMetadataOrigin'] \
+                      if 'idpMetadataOrigin' in kwargs \
+                      else 'http'
     try:
-        metadata = generate_mock_metadata(cluster, **kwargs)
-        with open(metadataFile, 'wb') as f:
-            f.write(metadata.encode("utf-8"))
-        mock_server_process = Process(target=start_mock_server)
-        mock_server_process.start()
-        wait_mock_server(f'http://{mock_server_host}:{mock_server_port}/ping', 150)
-        set_sso_options(cluster, **kwargs)
-        IDP = server.Server(idp_config(cluster, **kwargs))
+        metadata = generate_mock_metadata(node, **kwargs)
+        if metadata_origin != 'upload':
+            with open(metadataFile, 'wb') as f:
+                f.write(metadata.encode("utf-8"))
+            mock_server_process = Process(target=start_mock_server)
+            mock_server_process.start()
+            wait_mock_server(f'http://{mock_server_host}:{mock_server_port}/ping', 150)
+        else:
+            kwargs['idpMetadata'] = metadata
+        set_sso_options(node, **kwargs)
+        IDP = server.Server(idp_config(node, **kwargs))
         yield IDP
     finally:
         if mock_server_process is not None:
@@ -687,13 +679,13 @@ def saml_configured(cluster, **kwargs):
             os.remove(idp_subject_file)
         if os.path.exists(metadataFile):
             os.remove(metadataFile)
-        testlib.delete_succ(cluster, '/settings/saml')
+        testlib.delete_succ(node, '/settings/saml')
 
 
-def generate_mock_metadata(cluster, metadata_certs_prefix=None, **kwargs):
+def generate_mock_metadata(node, metadata_certs_prefix=None, **kwargs):
     if metadata_certs_prefix is not None:
         kwargs['certs_prefix'] = metadata_certs_prefix
-    cfg = idp_config(cluster, **kwargs)
+    cfg = idp_config(node, **kwargs)
     cfg['metadata'] = {} ## making sure it will not try connecting to ns_server
                          ## when server below is being created, because saml
                          ## configuration in ns_server is not created yet
@@ -741,7 +733,7 @@ class MockIDPMetadataHandler(BaseHTTPRequestHandler):
         return
 
 
-def set_sso_options(cluster, **kwargs):
+def set_sso_options(node, **kwargs):
     cert_path = os.path.join(scriptdir, "resources", "saml", "mocksp_cert.pem")
     with open(cert_path, 'r') as f:
         cert_pem = f.read()
@@ -759,6 +751,7 @@ def set_sso_options(cluster, **kwargs):
     settings = {'enabled': 'true',
                 'idpMetadataOrigin': "http",
                 'idpMetadataURL': metadataURL,
+                'idpMetadata': "",
                 'idpSignsMetadata': True,
                 'idpMetadataRefreshIntervalS': 1,
                 'idpMetadataConnectAddressFamily': 'inet',
@@ -768,7 +761,9 @@ def set_sso_options(cluster, **kwargs):
                 'spVerifyRecipient': 'consumeURL',
                 'spAssertionDupeCheck': 'global',
                 'spEntityId': sp_entity_id,
+                'spBaseURLType': 'node',
                 'spBaseURLScheme': 'http',
+                'spCustomBaseURL': 'http://127.0.0.1',
                 'spOrgName': 'Test Org',
                 'spOrgDisplayName': 'Test Display Name',
                 'spOrgURL': 'example.com',
@@ -793,14 +788,17 @@ def set_sso_options(cluster, **kwargs):
 
     for k in kwargs:
         if k in settings:
-            settings[k] = kwargs[k]
+            if kwargs[k] is not None:
+                settings[k] = kwargs[k]
+            else:
+                del settings[k]
 
-    testlib.post_succ(cluster, '/settings/saml', json=settings)
+    testlib.post_succ(node, '/settings/saml', json=settings)
 
 
-def idp_config(cluster, spSignRequests=True, assertion_lifetime=15,
+def idp_config(node, spSignRequests=True, assertion_lifetime=15,
                certs_prefix="mockidp_", **kwargs):
-    sp_base_url = cluster.connected_nodes[0].url
+    sp_base_url = node.url
     idp_base_url = f"http://{mock_server_host}:{mock_server_port}"
     key_path = os.path.join(scriptdir, "resources", "saml",
                             f"{certs_prefix}key.pem")
@@ -895,7 +893,7 @@ def extract_saml_message_from_form(msg_type, form_data):
 # In some cases we redirect user back to UI and show an error
 # This function retrives that error and makes sure that the user is not
 # logged in to UI
-def catch_error_after_redirect(node, session, response, ui_headers):
+def catch_error_after_redirect(node, session, response):
     assert_http_code(302, response)
 
     print(f'Redirected to: {response.headers["Location"]}')
@@ -924,3 +922,50 @@ def catch_error_after_redirect(node, session, response, ui_headers):
     error_msg = r.json()['error']
     print(f'Received error: {error_msg}')
     return error_msg
+
+
+def generate_unsolicited_authn_response(IDP):
+    identity = idp_test_user_attrs.copy()
+    binding_out, destination = \
+        IDP.pick_binding("assertion_consumer_service",
+                         bindings=[BINDING_HTTP_POST],
+                         entity_id=sp_entity_id)
+    name_id = NameID(text=testlib.random_str(16))
+
+    expiration = datetime.datetime.utcnow() + \
+                 datetime.timedelta(minutes=1)
+    expiration_iso = expiration.replace(microsecond=0).isoformat()
+
+    response = IDP.create_authn_response(
+                 identity,
+                 None, # InResponseTo is missing cause it is
+                       # an unsolicited response
+                 destination,
+                 sp_entity_id=sp_entity_id,
+                 userid=idp_test_username,
+                 name_id=name_id,
+                 sign_assertion=True,
+                 sign_response=True,
+                 authn={'class_ref': AUTHN_PASSWORD},
+                 session_not_on_or_after=expiration_iso)
+
+    return destination, base64.b64encode(f"{response}".encode("utf-8")), name_id
+
+
+def unsolicited_authn(IDP, auth_url):
+    destination, response_encoded, name_id = \
+        generate_unsolicited_authn_response(IDP)
+
+    session = requests.Session()
+    print(f"Sending authn response to {destination}...")
+    r = session.post(destination,
+                     data={'SAMLResponse': response_encoded},
+                     headers=ui_headers,
+                     allow_redirects=False)
+    assert_http_code(302, r)
+
+    r = session.get(auth_url + '/pools/default',
+                    headers=ui_headers)
+    assert_http_code(200, r)
+
+    return name_id, session

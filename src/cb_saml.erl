@@ -42,45 +42,48 @@ start_link() ->
 
 get_idp_metadata(Opts) ->
     SettingsUuid = proplists:get_value(uuid, Opts),
-    case ets:lookup(?MODULE, metadata) of
-        [{metadata, {MetaUuid, _RefreshDT, MetaExpirationDateTime, Meta}}] ->
-            %% If Uuid in cache doesn't match the Uuid of current settings,
-            %% it means settings have changed and we need to refresh the cache
-            CanReload = can_reload_metadata(Opts),
-            case (MetaUuid =/= SettingsUuid) orelse
-                 (CanReload andalso metadata_expired(MetaExpirationDateTime)) of
-                false ->
-                    ?log_debug("Loading IDP metadata from cache"),
-                    {ok, Meta};
+    CanReload = can_reload_metadata(Opts),
+
+    CacheRes =
+        case ets:lookup(?MODULE, metadata) of
+            [{metadata, {MetaUuid, _RefreshDT, _ExpTime, _Meta}}]
+                                                when MetaUuid /= SettingsUuid ->
+                {error, stale};
+            [{metadata, {_MetaUuid, _RefreshDT, ExpTime, Meta}}] ->
+                case CanReload andalso metadata_expired(ExpTime) of
+                    true ->
+                        {error, expired};
+                    false ->
+                        {ok, Meta}
+                end;
+            [] ->
+               {error, missing}
+        end,
+
+    case CacheRes of
+        {ok, CachedMeta} ->
+            ?log_debug("Loading IDP metadata from cache"),
+            {ok, CachedMeta};
+        {error, MetadataStatus} ->
+            case CanReload of
                 true ->
                     URL = proplists:get_value(idp_metadata_url, Opts),
-                    ?log_debug("IDP metadata has expired (will reload "
-                               "from ~s)", [URL]),
-                    case load_and_cache_idp_metadata(URL, Opts) of
-                        {ok, {_NewRefreshDT, NewMeta}} -> {ok, NewMeta};
-                        {error, _} = Error -> Error
-                    end
-            end;
-        [] ->
-            case can_reload_metadata(Opts) of
-                true ->
-                    URL = proplists:get_value(idp_metadata_url, Opts),
-                    ?log_debug("IDP metadata not found in cache (will "
-                               "reload from ~s)", [URL]),
+                    ?log_debug("IDP metadata is ~p (will reload from ~s)",
+                               [MetadataStatus, URL]),
                     case load_and_cache_idp_metadata(URL, Opts) of
                         {ok, {_NewRefreshDT, NewMeta}} -> {ok, NewMeta};
                         {error, _} = Error -> Error
                     end;
                 false ->
-                    ?log_debug("IDP metadata not found in cache (will "
-                               "load from configuration)"),
+                    ?log_debug("IDP metadata is ~p (will "
+                               "load from configuration)", [MetadataStatus]),
                     {zip, MetaZipped} = proplists:get_value(idp_metadata, Opts),
-                    Meta = zlib:unzip(MetaZipped),
-                    ParsedMetadata = try_parse_idp_metadata(Meta, false),
+                    NewRawMeta = zlib:unzip(MetaZipped),
+                    NewMeta = try_parse_idp_metadata(NewRawMeta, false),
                     save_fingerprints_from_metadata(Opts,
-                                                    ParsedMetadata),
-                    cache_idp_metadata(ParsedMetadata, Opts),
-                    {ok, ParsedMetadata}
+                                                    NewMeta),
+                    cache_idp_metadata(NewMeta, Opts),
+                    {ok, NewMeta}
             end
     end.
 
