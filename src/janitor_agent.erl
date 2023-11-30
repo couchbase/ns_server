@@ -297,8 +297,8 @@ maybe_set_data_ingress(Bucket, Status, Servers) ->
     RVs = lists:map(
             fun (Node) ->
                     {Node,
-                     servant_call(Bucket,
-                                  Node, {set_data_ingress, Status})}
+                     catch servant_call(Bucket, Node,
+                                        {set_data_ingress, Status})}
             end, Servers),
     RV = lists:filter(fun ({_Node, ok}) -> false;
                           (_) -> true

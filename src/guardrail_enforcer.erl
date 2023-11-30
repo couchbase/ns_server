@@ -420,11 +420,23 @@ update_statuses_t() ->
                  meck:num_calls(ns_memcached, set_data_ingress,
                                 ["bucket1", resident_ratio])),
 
+    meck:expect(ns_memcached, set_data_ingress,
+                fun (Bucket, Status) ->
+                        ?log_debug("Fail to set ingress status for '~p' to ~p",
+                                   [Bucket, Status]),
+                        throw(error)
+                end),
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}]}),
+    ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
+    ?assertEqual(?NODE_CALLS(3),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", resident_ratio])),
+
     %% When maybe_set_data_ingress has failed, we should retry even though the
     %% status has not changed
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}]}),
     ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
-    ?assertEqual(?NODE_CALLS(3),
+    ?assertEqual(?NODE_CALLS(4),
                  meck:num_calls(ns_memcached, set_data_ingress,
                                 ["bucket1", resident_ratio])),
 
@@ -435,7 +447,7 @@ update_statuses_t() ->
                 end),
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}]}),
     ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
-    ?assertEqual(?NODE_CALLS(4),
+    ?assertEqual(?NODE_CALLS(5),
                  meck:num_calls(ns_memcached, set_data_ingress,
                                 ["bucket1", resident_ratio])),
 
@@ -443,7 +455,7 @@ update_statuses_t() ->
     %% retrying
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}]}),
     ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
-    ?assertEqual(?NODE_CALLS(4),
+    ?assertEqual(?NODE_CALLS(5),
                  meck:num_calls(ns_memcached, set_data_ingress,
                                 ["bucket1", resident_ratio])),
 
@@ -458,7 +470,7 @@ update_statuses_t() ->
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, data_size}],
                            node2 => [{{bucket, "bucket1"}, resident_ratio}]}),
     ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
-    ?assertEqual(?NODE_CALLS(5),
+    ?assertEqual(?NODE_CALLS(6),
                  meck:num_calls(ns_memcached, set_data_ingress,
                                 ["bucket1", resident_ratio])),
 
@@ -474,7 +486,7 @@ update_statuses_t() ->
                            node2 => [{{bucket, "bucket1"}, data_size}],
                            node3 => [{{bucket, "bucket1"}, resident_ratio}]}),
     ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
-    ?assertEqual(?NODE_CALLS(6),
+    ?assertEqual(?NODE_CALLS(7),
                  meck:num_calls(ns_memcached, set_data_ingress,
                                 ["bucket1", resident_ratio])),
 
