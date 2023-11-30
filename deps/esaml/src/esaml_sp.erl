@@ -306,13 +306,11 @@ validate_assertion(Xml, DuplicateFun, SP = #esaml_sp{}) ->
                             R -> R
                         end,
             case esaml:validate_assertion(A, Recipient, get_entity_id(SP)) of
-                {ok, AR} -> AR;
-                {error, Reason} -> {error, Reason}
-            end
-        end,
-        fun(AR) ->
-            case DuplicateFun(AR, xmerl_dsig:digest(Xml)) of
-                ok -> AR;
+                {ok, AR} ->
+                    case DuplicateFun(AR, xmerl_dsig:digest(A)) of
+                        ok -> AR;
+                        {error, Reason} -> {error, Reason}
+                    end;
                 {error, Reason} -> {error, Reason}
             end
         end
