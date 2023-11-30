@@ -24,10 +24,14 @@
 
 -define(NOTIFY_TIMEOUT, ?get_timeout(notify, 1000)).
 
+%% Amount of time to wait between attempts to enforce the data ingress status
+-define(RETRY_INTERVAL, ?get_param(retry_interval, 20000)).
+
 -define(SERVER, ?MODULE).
 
 -record(state, {
-                statuses :: #{resource() => atom()}
+                statuses :: #{resource() => atom() | {atom(), retry}},
+                timer_ref = undefined :: undefined | reference()
                }).
 
 -type resource() :: guardrail_monitor:resource().
@@ -69,8 +73,15 @@ handle_cast(_Request, State = #state{}) ->
     {noreply, State}.
 
 handle_info(check_changes, #state{statuses = OldStatuses} = State0) ->
+    %% Flush message and cancel any notify timer, to avoid unnecessarily
+    %% checking and notifying
     ?flush(check_changes),
-    {noreply, State0#state{statuses = update_statuses(OldStatuses)}};
+
+    State1 = State0#state{statuses = update_statuses(OldStatuses)},
+    {noreply, maybe_retry(State1)};
+handle_info(notify, #state{statuses = Statuses} = State) ->
+    NewStatuses = maybe_notify_services(#{}, Statuses),
+    {noreply, maybe_retry(State#state{statuses = NewStatuses})};
 handle_info(_Info, State = #state{}) ->
     {noreply, State}.
 
@@ -83,6 +94,21 @@ code_change(_OldVsn, State = #state{}, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+%% We need to make sure there is only one timer at any given moment, otherwise
+%% the system would be fragile to future changes or diag/evals
+restart_timer(State0, Duration)->
+    State1 = cancel_retry(State0),
+    State1#state{timer_ref = erlang:send_after(Duration, self(), notify)}.
+
+cancel_retry(#state{timer_ref = Ref} = State) when is_reference(Ref) ->
+    erlang:cancel_timer(Ref),
+    %% Flush the message to avoid unnecessarily retrying when two messages come
+    %% through close together
+    ?flush(notify),
+    State#state{timer_ref = undefined};
+cancel_retry(State) ->
+    State.
 
 resource_status_change_callback({{node, _, resource_statuses}, _}) ->
     ?SERVER ! check_changes;
@@ -113,24 +139,31 @@ maybe_notify_services(AllOld, AllNew) ->
 
 get_changes(AllOld, AllNew) ->
     maps:filtermap(
-      fun (_Key, {Old, Old}) ->
+      fun (_Key, {change, Old, Old}) ->
               %% Don't notify for unchanged
               false;
-          (_Key, {_Old, New}) ->
+          (_Key, {change, _Old, {New, retry}}) ->
               %% Notify with new status if changed
               {true, New};
-          (Key, New) ->
+          (_Key, {change, _Old, New}) ->
+              %% Notify with new status if changed
+              {true, New};
+          (Key, Status) ->
               case maps:get(Key, AllNew, undefined) of
                   undefined ->
                       %% Status has been removed, so we should notify with ok
                       {true, ok};
-                  _ ->
+                  {New, retry} = Status ->
+                      %% Notify with new status when there is no old status,
+                      %% removing the 'retry' atom from the status
+                      {true, New};
+                  Status ->
                       %% Notify with new status when there is no old status
-                      {true, New}
+                      {true, Status}
               end
       end, maps:merge_with(
              fun (_Key, V1, V2) ->
-                     {V1, V2}
+                     {change, V1, V2}
              end, AllOld, AllNew)
      ).
 
@@ -187,6 +220,22 @@ resolve_status_conflict(PriorityOrder, Reasons) when is_list(PriorityOrder) ->
 resolve_status_conflict(Resource, Reasons) ->
     resolve_status_conflict(priority_order(Resource), Reasons).
 
+maybe_retry(#state{statuses = NewStatuses} = State) ->
+    case should_retry(NewStatuses) of
+        false ->
+            cancel_retry(State);
+        true ->
+            restart_timer(State, ?RETRY_INTERVAL)
+    end.
+
+
+-spec should_retry(#{resource() => atom() | {atom(), retry}}) -> boolean().
+should_retry(Changes) ->
+    lists:any(
+      fun ({_Resource, {_Status, retry}}) -> true;
+          (_) -> false
+      end, maps:to_list(Changes)).
+
 -ifdef(TEST).
 
 test_handle_status(Response, Resource, Statuses) ->
@@ -222,7 +271,16 @@ get_changes_test() ->
     %% Removing status should re-notify
     ?assertEqual(#{test => ok}, get_changes(#{test => other}, #{})),
     %% Removing ok will re-notify despite being unnecessary, to simplify logic
-    ?assertEqual(#{test => ok}, get_changes(#{test => ok}, #{})).
+    ?assertEqual(#{test => ok}, get_changes(#{test => ok}, #{})),
+    %% Changing the status to the same but with retry will count as a change
+    ?assertEqual(#{test => ok},
+                 get_changes(#{test => ok}, #{test => {ok, retry}})).
+
+should_retry_test() ->
+    ?assertEqual(false, should_retry(#{})),
+    ?assertEqual(false, should_retry(#{test1 => ok, test2 => other})),
+    ?assertEqual(true, should_retry(#{test1 => {ok, retry}, test2 => other})),
+    ?assertEqual(true, should_retry(#{test1 => ok, test2 => {other, retry}})).
 
 get_aggregated_status_test() ->
     ?assertEqual(ok,
@@ -290,6 +348,10 @@ start_guardrail_enforcer() ->
     %% update_statuses_t
     meck:expect(ns_config, search_node_with_default,
                 fun (_, _, resource_statuses, Default) ->
+                        Default
+                end),
+    meck:expect(ns_config, search_node_with_default,
+                fun ({guardrail_enforcer, retry_interval}, Default) ->
                         Default
                 end),
     start_link().
@@ -498,16 +560,44 @@ update_statuses_t() ->
                  meck:num_calls(ns_memcached, set_data_ingress,
                                 ["bucket1", data_size])).
 
+retry_notifying_service_t() ->
+    meck:expect(ns_config, search_node_with_default,
+                fun ({guardrail_enforcer, retry_interval}, _Default) ->
+                        %% Immediately retry, so that we can immediately test
+                        %% that the retry occurs
+                        0
+                end),
+    %% Fail precisely 2 times to set the data ingress, then succeed
+    meck:expect(janitor_agent, maybe_set_data_ingress,
+                ["bucket1", ok, '_'],
+                meck:seq([fun (_, _, _) -> {errors, []} end,
+                          fun (_, _, _) -> {errors, []} end,
+                          fun (_, _, _) -> ok end])),
+
+    %% Update a resource status
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, ok}]}),
+
+    %% Since the retry_interval is 0 and we expect to fail 2 times,
+    %% we should see 3 attempt to set the data ingress
+    meck:wait(3, janitor_agent, maybe_set_data_ingress,
+              ["bucket1", ok, '_'], 60000),
+
+    %% After the 3rd call, we should see the timer_ref undefined, as no further
+    %% attempts are required
+    ?assertEqual(undefined,
+                 (sys:get_state(guardrail_enforcer))#state.timer_ref).
+
 basic_test_teardown(JanitorPid) ->
     gen_server:stop(?SERVER),
     gen_server:stop(JanitorPid),
     meck:unload().
 
 basic_test_() ->
-    %% We can re-use (setup) the test environment that we setup/teardown here
-    %% for each test rather than create a new one (foreach) to save time.
-    {setup,
+    %% We use foreach to ensure that we have a new gen_server for each test
+    {foreach,
      fun basic_test_setup/0,
      fun basic_test_teardown/1,
-     [{"update statuses test", fun () -> update_statuses_t() end}]}.
+     [{"update statuses test", fun () -> update_statuses_t() end},
+      {"retry notifying service test",
+       fun () -> retry_notifying_service_t() end}]}.
 -endif.
