@@ -129,7 +129,8 @@ class CollectionTests(testlib.BaseTestSet):
     # Create the specified bucket and add a scope and collections within
     # the scope. The collections consist of:
     #   * default maxTTL (not provided...use the bucket's maxTTL)
-    #   * disabled maxTTL (maxTTL=0)
+    #   * maxTTL=0 (use the bucket's maxTTL)
+    #   * disabled maxTTL (maxTTL=-1)
     #   * maxTTL > 0
     def create_bucket_scopes_collections(self, bucket_name,
                                          bucket_type, storage):
@@ -145,8 +146,11 @@ class CollectionTests(testlib.BaseTestSet):
         testlib.post_succ(self.cluster, collection_url,
                           data={"name": f"{collection_name}_maxttl_default"})
         testlib.post_succ(self.cluster, collection_url,
-                          data={"name": f"{collection_name}_maxttl_disabled",
+                          data={"name": f"{collection_name}_maxttl_default2",
                                 "maxTTL": 0})
+        testlib.post_succ(self.cluster, collection_url,
+                          data={"name": f"{collection_name}_maxttl_disabled",
+                                "maxTTL": -1})
         testlib.post_succ(self.cluster, collection_url,
                           data={"name": f"{collection_name}_maxttl_456",
                                 "maxTTL": 456})
@@ -171,7 +175,7 @@ class CollectionTests(testlib.BaseTestSet):
             for item in json_obj:
                 self.remove_uid_keys(item)
 
-    # Update the specified collection's maxTTL to be -1. This is the value
+    # Update the specified collection's maxTTL to be 0. This is the value
     # which backup/restore uses to omit a collection maxTTL.
     def update_maxttl(self, manifest, scope_name, collection_name):
         scopes = manifest.get("scopes")
@@ -180,7 +184,7 @@ class CollectionTests(testlib.BaseTestSet):
                 collections = scope.get("collections", [])
                 for collection in collections:
                     if collection.get("name") == collection_name:
-                        collection["maxTTL"] = -1
+                        collection["maxTTL"] = 0
 
     # Ensure the manifest for a bucket can be applied back to the same
     # bucket.
@@ -236,6 +240,8 @@ class CollectionTests(testlib.BaseTestSet):
         self.change_maxttl("testBucket", "testBucketScope",
                            "testBucketCollection_maxttl_default", 333)
         self.change_maxttl("testBucket", "testBucketScope",
+                           "testBucketCollection_maxttl_default2", 777)
+        self.change_maxttl("testBucket", "testBucketScope",
                            "testBucketCollection_maxttl_disabled", 444)
         self.change_maxttl("testBucket", "testBucketScope",
                            "testBucketCollection_maxttl_456", 555)
@@ -248,9 +254,9 @@ class CollectionTests(testlib.BaseTestSet):
 
         # Restore the original manifest. Note we make a copy of the original
         # manifest as we have to modify it to mimic restore's use of
-        # 'maxTTL=-1' to set the TTL to "use the bucket's maxTTL".
+        # 'maxTTL=0' to set the TTL to "use the bucket's maxTTL".
         manifest1_copy = copy.deepcopy(manifest1)
-        self.update_maxttl(manifest1_copy, "testBucketScope", 
+        self.update_maxttl(manifest1_copy, "testBucketScope",
                            "testBucketCollection_maxttl_default")
 
         self.put_manifest("testBucket", manifest1_copy)

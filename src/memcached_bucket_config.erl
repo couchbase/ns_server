@@ -286,7 +286,8 @@ ensure_collections(Sock, #cfg{name = BucketName, snapshot = Snapshot}) ->
         false ->
             ok;
         {true, Prev, Next} ->
-            Manifest = collections:manifest_json(BucketName, Snapshot),
+            Manifest = collections:manifest_json_for_memcached(BucketName,
+                                                               Snapshot),
             ?log_debug(
                "Applying collection manifest to bucket ~p due to id change from"
                " ~p to ~p.", [BucketName, Prev, Next]),

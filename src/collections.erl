@@ -26,8 +26,8 @@
          uid/1,
          uid/2,
          num_collections/2,
-         manifest_json/2,
-         manifest_json/3,
+         manifest_json_for_memcached/2,
+         manifest_json_for_rest_response/3,
          create_scope/2,
          create_collection/4,
          modify_collection/4,
@@ -65,10 +65,10 @@
 -define(INCREMENT_COUNTER, 1).
 -define(NO_INCREMENT_COUNTER, 0).
 
-%% Specifies the collection's maxTTL value should be reset to "use the
-%% bucket's maxTTL". This is used by backup/restore when doing a bulk
-%% set_manifest.
--define(RESET_COLLECTION_MAXTTL, -1).
+%% Specifies the collection uses the bucket's maxTTL.
+-define(USE_BUCKET_MAXTTL, 0).
+%% Specifies the collection has no maxTTL...no expiry.
+-define(NO_EXPIRY, -1).
 
 start_link() ->
     work_queue:start_link(
@@ -128,6 +128,15 @@ get_default_collection_props(BucketConf) ->
             [];
         true ->
             [{metered, true}]
+    end ++
+    case cluster_compat_mode:is_cluster_trinity() of
+        false ->
+            [];
+        true ->
+            %% Prior to trinity the absence of maxTTL defaulted to "use
+            %% the bucket's maxTTL). As this inference lead to confusion
+            %% and bugs we explicitly set it.
+            [{maxTTL, ?USE_BUCKET_MAXTTL}]
     end.
 
 manifest_without_system_scope(BucketConf) ->
@@ -203,7 +212,7 @@ system_scope_collection_properties() ->
                   false ->
                       []
               end,
-    [{maxTTL, 0}, {history, false}] ++ Metered.
+    [{maxTTL, ?NO_EXPIRY}, {history, false}] ++ Metered.
 
 max_collections_for_bucket(BucketConfig, GlobalMax) ->
     case guardrail_monitor:get(collections_per_quota) of
@@ -296,6 +305,8 @@ collection_prop_to_memcached(_, V) ->
 %%
 %% 1) Reduces the size of the manifest
 %% 2) Improves readability of the manifest
+%%
+%% This function can be removed when trinity is the oldest supported release.
 default_collection_props() ->
     case cluster_compat_mode:is_cluster_trinity() of
         true ->
@@ -312,17 +323,33 @@ default_collection_props() ->
             [{maxTTL, 0}, {history, false}]
     end.
 
-collection_to_memcached(Name, Props, WithDefaults) ->
+maybe_modify_props(Name, Props, ForRestResponse) ->
     AdjustedProps =
-        case WithDefaults of
+        case ForRestResponse of
             true ->
                 %% Strip any properties that can be inferred.
                 misc:update_proplist(default_collection_props(), Props);
             false ->
-                Props
+                map_props_for_memcached(Props)
         end,
     {[{name, list_to_binary(Name)} |
       [{K, collection_prop_to_memcached(K, V)} || {K, V} <- AdjustedProps]]}.
+
+%% This function is needed to map properties used by ns_server into those
+%% used by memcached. This was done when the maxTTL bugs were resolved in
+%% trinity but memcached elected to not change their code.
+map_props_for_memcached(Props) ->
+    case proplists:get_value(maxTTL, Props) of
+        ?USE_BUCKET_MAXTTL ->
+            proplists:delete(maxTTL, Props);
+        ?NO_EXPIRY ->
+            lists:keyreplace(maxTTL, 1, Props, {maxTTL, 0});
+        N when is_number(N) andalso N > 0 ->
+            Props;
+        undefined ->
+            %% Mixed versions with pre-Trinity node
+            Props
+    end.
 
 filter_scopes_with_roles(Bucket, Scopes, Roles) ->
     lists:filter(
@@ -358,11 +385,15 @@ filter_collections_with_roles(Bucket, Scopes, Roles) ->
               end
       end, Scopes).
 
-manifest_json(Bucket, Snapshot) ->
+%% Build the manifest without any inferred values. This is used to pass
+%% to memcached.
+manifest_json_for_memcached(Bucket, Snapshot) ->
     Manifest = get_manifest(Bucket, Snapshot),
     jsonify_manifest(Manifest, false).
 
-manifest_json(AuthnRes, Bucket, Snapshot) ->
+%% Build the manifest with possible inferred values to return in REST
+%% results.
+manifest_json_for_rest_response(AuthnRes, Bucket, Snapshot) ->
     Roles = menelaus_roles:get_compiled_roles(AuthnRes),
     {ok, BucketConfig} = ns_bucket:get_bucket(Bucket, Snapshot),
     DefaultManifest = default_manifest(BucketConfig),
@@ -372,14 +403,19 @@ manifest_json(AuthnRes, Bucket, Snapshot) ->
                          Manifest),
     jsonify_manifest(FilteredManifest, true).
 
-jsonify_manifest(Manifest, WithDefaults) ->
+%% If 'ForRestResponse' is true then certain values are inferred. This was
+%% done in releases prior to trinity to save space in the manifest (see
+%% default_collection_props()). But the inferred values lead to confusion
+%% and bugs. Note: Until the cluster compat mode is trinity we continue
+%% to support the inferred values.
+jsonify_manifest(Manifest, ForRestResponse) ->
     ScopesJson =
         lists:map(
           fun ({ScopeName, Scope}) ->
                   {[{name, list_to_binary(ScopeName)},
                     {uid, uid(Scope)},
                     {collections,
-                     [collection_to_memcached(CollName, Coll, WithDefaults) ||
+                     [maybe_modify_props(CollName, Coll, ForRestResponse) ||
                          {CollName, Coll} <- get_collections(Scope)]}]}
           end, get_scopes(Manifest)),
     {[{uid, uid(Manifest)}, {scopes, ScopesJson}]}.
@@ -990,6 +1026,7 @@ maybe_add_history(BucketConfig) ->
      not ns_bucket:storage_mode_migration_in_progress(BucketConfig)].
 
 add_collection(Manifest, Name, ScopeName, SuppliedProps, BucketConf) ->
+    IsTrinity = cluster_compat_mode:is_cluster_trinity(),
     Uid = proplists:get_value(next_coll_uid, Manifest),
     Props0 =
         case proplists:get_value(history, SuppliedProps) of
@@ -1000,7 +1037,13 @@ add_collection(Manifest, Name, ScopeName, SuppliedProps, BucketConf) ->
                 % History defined by the user
                 SuppliedProps
         end,
-    Props1 = maybe_reset_maxttl(Props0),
+    Props1 =
+        case proplists:get_value(maxTTL, Props0) of
+            undefined when IsTrinity ->
+                Props0 ++ [{maxTTL, ?USE_BUCKET_MAXTTL}];
+            _ ->
+                Props0
+        end,
     Props = maybe_add_metered(Props1, ScopeName),
     SanitizedProps = remove_defaults(Props, ScopeName),
     on_collections([{Name, [{uid, Uid} | SanitizedProps]} | _], ScopeName,
@@ -1015,14 +1058,6 @@ maybe_add_metered(Props, ScopeName) ->
             Props ++ [{metered, true}]
     end.
 
-maybe_reset_maxttl(Props) ->
-    case proplists:get_value(maxTTL, Props) of
-        ?RESET_COLLECTION_MAXTTL ->
-            proplists:delete(maxTTL, Props);
-        _ ->
-            Props
-    end.
-
 modify_collection_props(Manifest, Name, ScopeName, DesiredProps) ->
     on_collections(
         fun (Collections) ->
@@ -1030,10 +1065,9 @@ modify_collection_props(Manifest, Name, ScopeName, DesiredProps) ->
             % sanitize the manifest as we can't remove them earlier in case we
             % are setting a value to the default.
             {Name, CurrentProps} = lists:keyfind(Name, 1, Collections),
-            NewProps0 = remove_defaults(misc:update_proplist(CurrentProps,
-                                                             DesiredProps),
+            NewProps = remove_defaults(misc:update_proplist(CurrentProps,
+                                                            DesiredProps),
                                        ScopeName),
-            NewProps = maybe_reset_maxttl(NewProps0),
             case lists:sort(NewProps) =:= lists:sort(CurrentProps) of
                 false ->
                     lists:keyreplace(Name, 1, Collections, {Name, NewProps});
@@ -1276,7 +1310,7 @@ chronicle_upgrade_to_72(Bucket, ChronicleTxn) ->
 upgrade_to_trinity(ManifestIn, BucketConfig) ->
     Manifest0 =
         on_scopes(
-          maybe_add_collection_history(BucketConfig, _),
+          maybe_add_collection_props(BucketConfig, _),
           ManifestIn),
 
     Manifest1 = do_create_scope(?SYSTEM_SCOPE_NAME, Manifest0,
@@ -1294,32 +1328,41 @@ upgrade_to_trinity(ManifestIn, BucketConfig) ->
     %% manifest.
     advance_manifest_id(upgrade, Manifest2).
 
-maybe_add_collection_history(BucketConfig, Scopes) ->
+maybe_add_collection_props(BucketConfig, Scopes) ->
     lists:map(
       fun ({ScopeName, ScopeProps}) ->
               NewCollections =
                 lists:map(
                   fun (Collection) ->
-                          maybe_add_collection_history_inner(Collection,
-                                                             BucketConfig)
+                          maybe_add_collection_props_inner(Collection,
+                                                           BucketConfig)
                   end, get_collections(ScopeProps)),
               NewScopeProps = update_collections(NewCollections, ScopeProps),
               {ScopeName, NewScopeProps}
       end, Scopes).
 
-maybe_add_collection_history_inner(Collection, BucketConfig) ->
+maybe_add_collection_props_inner(Collection, BucketConfig) ->
     {CollectionName, CollectionProps} = Collection,
-    case proplists:get_value(history, CollectionProps) of
-        undefined ->
-            NewProps =
+    NewProps0 =
+        case proplists:get_value(history, CollectionProps) of
+            undefined ->
                 CollectionProps ++
                 [{history,
                   ns_bucket:history_retention_collection_default(
-                    BucketConfig)}],
-                {CollectionName, NewProps};
-        _ ->
-            Collection
-    end.
+                    BucketConfig)}];
+            _ ->
+                CollectionProps
+        end,
+    NewProps =
+        case proplists:get_value(maxTTL, NewProps0) of
+            undefined ->
+                %% No longer want to infer behavior based on the absence
+                %% of a property so explicitly specify it.
+                NewProps0 ++ [{maxTTL, ?USE_BUCKET_MAXTTL}];
+            _ ->
+                NewProps0
+        end,
+    {CollectionName, NewProps}.
 
 -spec history_retention_enabled(
         Bucket:: bucket_name(), Snapshot :: map()) -> boolean().
@@ -1432,7 +1475,7 @@ create_collection_t() ->
     {commit, [{_, _, Manifest1}], _} =
         update_manifest_test_create_collection(default_manifest(BucketConf),
                                                "_default", "c1", []),
-    ?assertEqual([{uid, 10}, {history, true}],
+    ?assertEqual([{uid, 10}, {history, true}, {maxTTL, ?USE_BUCKET_MAXTTL}],
                  get_collection("c1", get_scope("_default", Manifest1))),
 
     %% Can't create collection with same name
@@ -1440,20 +1483,28 @@ create_collection_t() ->
        {abort, {error, {collection_already_exists, "_default", "c1"}}},
        update_manifest_test_create_collection(Manifest1, "_default", "c1", [])),
 
+    %% Not specifying maxTTL should result in the default (use the bucket's).
     {commit, [{_, _, Manifest2}], _} =
         update_manifest_test_create_collection(Manifest1, "_default", "c2", []),
-    ?assertEqual([{uid, 11}, {history, true}],
+    ?assertEqual([{uid, 11}, {history, true}, {maxTTL, ?USE_BUCKET_MAXTTL}],
                  get_collection("c2", get_scope("_default", Manifest2))),
 
-    %% Create collection with maxTTL=-1 which is the same as not specifying
-    %% maxTTL at all. Note: only backup/restore will provide a manifest
-    %% via bulk set_manifest containing maxTTL values of -1.
+    %% Explicitly specify maxTTL should use the bucket's.
     {commit, [{_, _, Manifest3}], _} =
         update_manifest_test_create_collection(Manifest1, "_default", "c3",
                                                [{maxTTL,
-                                                 ?RESET_COLLECTION_MAXTTL}]),
-    ?assertEqual([{uid, 11}, {history, true}],
+                                                 ?USE_BUCKET_MAXTTL}]),
+    ?assertEqual([{uid, 11}, {maxTTL, ?USE_BUCKET_MAXTTL}, {history, true}],
                  get_collection("c3", get_scope("_default", Manifest3))),
+
+    %% Specify no expiration for the collection.
+    {commit, [{_, _, Manifest3_1}], _} =
+        update_manifest_test_create_collection(Manifest1, "_default", "c3_1",
+                                               [{maxTTL,
+                                                 ?NO_EXPIRY}]),
+        ?assertEqual([{uid, 11}, {maxTTL, ?NO_EXPIRY}, {history, true}],
+                     get_collection("c3_1", get_scope("_default",
+                                                      Manifest3_1))),
 
     %% Collection hard limit
     meck:expect(ns_config, search,
@@ -1535,7 +1586,7 @@ drop_collection_t() ->
     {commit, [{_, _, Manifest1}], _} =
         update_manifest_test_create_collection(default_manifest(BucketConf),
                                                "_default", "c1", []),
-    ?assertEqual([{uid, 10}, {history, true}],
+    ?assertEqual([{uid, 10}, {history, true}, {maxTTL, ?USE_BUCKET_MAXTTL}],
                  get_collection("c1", get_scope("_default", Manifest1))),
 
     {commit, [{_, _, Manifest2}], _} =
@@ -1883,10 +1934,13 @@ set_manifest_t() ->
     ?assertEqual(
        [{"s1",
          [{uid,100},
-          {collections, [{"c4", [{uid, 103}, {history, true}]},
-                         {"c3", [{uid, 102}, {history, false}]},
+          {collections, [{"c4", [{uid, 103}, {history, true},
+                                 {maxTTL, ?USE_BUCKET_MAXTTL}]},
+                         {"c3", [{uid, 102}, {history, false},
+                                 {maxTTL, ?USE_BUCKET_MAXTTL}]},
                          {"c2", [{uid, 101}, {maxTTL, 8}, {history, true}]},
-                         {"c1", [{uid, 100}, {history, true}]}]}]}],
+                         {"c1", [{uid, 100}, {history, true},
+                                 {maxTTL, ?USE_BUCKET_MAXTTL}]}]}]}],
        get_scopes(Manifest1)),
 
     %% Drop and create collections
@@ -1919,10 +1973,12 @@ set_manifest_t() ->
         {"s1",
          [{uid, 9},
           {collections,
-           [{"c2", [{uid, 101}, {history, true}]}]}]},
+           [{"c2", [{uid, 101}, {history, true},
+                    {maxTTL, ?USE_BUCKET_MAXTTL}]}]}]},
         {"s2",
          [{uid, 10},
-          {collections, [{"c3",[{uid, 100}, {history, true}]},
+          {collections, [{"c3",[{uid, 100}, {history, true},
+                                {maxTTL, ?USE_BUCKET_MAXTTL}]},
                          {"c1",[{uid, 9}]},
                          {"c2",[{uid, 10}]}]}]}],
        get_scopes(Manifest2)),
@@ -1942,7 +1998,7 @@ set_manifest_t() ->
            {"s3",
             [{uid, 10},
              {collections, [{"ic1", [{uid, 11}]},
-                            {"ic2", [{uid, 12}, {maxTTL, 0}]},
+                            {"ic2", [{uid, 12}, {maxTTL, ?USE_BUCKET_MAXTTL}]},
                             {"ic3", [{uid, 13}]},
                             {"ic4", [{uid, 14}]},
                             {"ic5", [{uid, 15}, {history, false}]},
@@ -1954,7 +2010,7 @@ set_manifest_t() ->
             [{collections, [{"c1", []},
                             {"c2", []}]}]},
            {"s3", [{collections, [{"ic1", []},
-                                  {"ic2", [{maxTTL, 0}]},
+                                  {"ic2", [{maxTTL, ?USE_BUCKET_MAXTTL}]},
                                   {"ic3", [{history, false}]},
                                   {"ic4", [{history, true}]},
                                   {"ic5", [{history, true}]},
@@ -1962,12 +2018,13 @@ set_manifest_t() ->
     ?assertEqual(
        [{"s1",
          [{uid, 8},
-          {collections, [{"c2", [{uid, 100}, {history, true}]},
+          {collections, [{"c2", [{uid, 100}, {history, true},
+                                 {maxTTL, ?USE_BUCKET_MAXTTL}]},
                          {"c1", [{uid, 8}]}]}]},
         {"s3",
          [{uid, 10},
           {collections, [{"ic1", [{uid, 11}]},
-                         {"ic2", [{uid, 12}, {maxTTL, 0}]},
+                         {"ic2", [{uid, 12}, {maxTTL, ?USE_BUCKET_MAXTTL}]},
                          {"ic3", [{history, false}, {uid, 13}]},
                          {"ic4", [{history, true}, {uid, 14}]},
                          {"ic5", [{history, true}, {uid, 15}]},
@@ -2052,14 +2109,14 @@ set_manifest_t() ->
     ?assertEqual([{maxTTL, 10}, {uid, 8}, {history, true}],
                  get_collection("c1", get_scope("s1", Manifest5))),
 
-    %% The collection's maxTTL can be reset using "-1" (which means
+    %% The collection's maxTTL can be reset using "0" (which means
     %% use the bucket's maxTTL if it has one).
     {commit, [{_, _, Manifest5_1}], _} =
         update_manifest_test_set_manifest(
           ExistingManifest5,
           [{"s1",
-            [{collections, [{"c1", [{maxTTL, ?RESET_COLLECTION_MAXTTL}]}]}]}]),
-    ?assertEqual([{uid, 8}, {history, true}],
+            [{collections, [{"c1", [{maxTTL, ?USE_BUCKET_MAXTTL}]}]}]}]),
+    ?assertEqual([{maxTTL, ?USE_BUCKET_MAXTTL}, {uid, 8}, {history, true}],
                  get_collection("c1", get_scope("s1", Manifest5_1))),
 
     %% The collection's maxTTL can be specified when the collection doesn't
@@ -2089,8 +2146,8 @@ set_manifest_t() ->
         update_manifest_test_set_manifest(
           ExistingManifest5,
           [{"s1",
-            [{collections, [{"c1", [{maxTTL, 0}]}]}]}]),
-    ?assertEqual([{maxTTL, 0}, {uid, 8}, {history, true}],
+            [{collections, [{"c1", [{maxTTL, ?USE_BUCKET_MAXTTL}]}]}]}]),
+    ?assertEqual([{maxTTL, ?USE_BUCKET_MAXTTL}, {uid, 8}, {history, true}],
                  get_collection("c1", get_scope("s1", Manifest5_4))).
 
 upgrade_to_72_t() ->
