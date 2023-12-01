@@ -27,7 +27,8 @@
          get_failover_vbuckets/1, promote_max_replicas/4,
          clear_failover_vbuckets_sets/1,
          nodes_needed_for_durability_failover/2,
-         can_preserve_durability_majority/2]).
+         can_preserve_durability_majority/2,
+         get_snapshot/0]).
 
 -define(DATA_LOST, 1).
 -define(FAILOVER_OPS_TIMEOUT, ?get_timeout(failover_ops_timeout, 10000)).
@@ -233,9 +234,37 @@ deactivate_nodes(Nodes, Options) ->
             ok = chronicle_master:complete_failover(Nodes, Ref)
     end.
 
+get_snapshot() ->
+    chronicle_compat:get_snapshot(
+        [ns_bucket:fetch_snapshot(all, _, [props]),
+            ns_cluster_membership:fetch_snapshot(_)]).
+
 %% @doc Fail one or more nodes. Doesn't eject the node from the cluster. Takes
 %% effect immediately.
 failover(Nodes, Options) ->
+    Snapshot = get_snapshot(),
+    #{down_nodes := DownNodes} = Options,
+
+    %% Whilst we also check this in ns_orchestrator in the auto_failover path,
+    %% it could be the case that the config has materially changed before we
+    %% acquired our leader activity. We re-check KV safety here (we check
+    %% services safety again later) against the snapshot that we will perform
+    %% this failover on. If the snapshot proves to be stale when we attempt to
+    %% commit the transaction then we should abort the failover. It could be the
+    %% case that KV failover is no longer safe at this point too, in which case
+    %% we can abort early...
+    case maps:find(auto, Options) of
+        {ok, true} ->
+            case auto_failover:validate_kv(Snapshot, Nodes, DownNodes) of
+                ok -> continue;
+                {unsafe, Buckets} ->
+                    ?log_error("Failover is not possible, KV failover is "
+                               "unsafe for buckets ~p", [Buckets]),
+                    erlang:exit({autofailover_unsafe, Buckets})
+            end;
+        _ -> ok
+    end,
+
     %% Note that we are checking for fail over possibility whilst holding the
     %% quorum and after syncing the config to ensure that we have the most up
     %% to date config when checking if it is possible to fail over.
@@ -261,7 +290,7 @@ failover(Nodes, Options) ->
     %% the state of the node hasn't transitioned to inactiveFailed. A rebalance
     %% in such a state will reinstate any failed over services.
     {SvcNodes, UnsafeNodes} =
-        validate_failover_services_safety(Nodes, KVNodes, Options),
+        validate_failover_services_safety(Snapshot, Nodes, KVNodes, Options),
 
     %% Update service maps. Sets service_failover_pending for each service,
     %% which is cleared after a rebalance in complete_services_failover.
@@ -536,12 +565,13 @@ failover_bucket_prep(membase, Nodes, Bucket, BucketConfig, Map,
        bucket_map = NewMap,
        bucket_options = BucketOptions}.
 
-validate_failover_services_safety(Nodes, _, #{skip_safety_check := true}) ->
+validate_failover_services_safety(_Snapshot, Nodes, _,
+                                  #{skip_safety_check := true}) ->
     {Nodes, []};
-validate_failover_services_safety(Nodes, KVNodes,
-                                   #{auto := true, down_nodes := DownNodes}) ->
-    auto_failover:validate_services_safety(Nodes, DownNodes, KVNodes);
-validate_failover_services_safety(Nodes, _, _) ->
+validate_failover_services_safety(Snapshot, Nodes, KVNodes,
+                                  #{auto := true, down_nodes := DownNodes}) ->
+    auto_failover:validate_services_safety(Snapshot, Nodes, DownNodes, KVNodes);
+validate_failover_services_safety(_Snapshot, Nodes, _, _) ->
     {Nodes, []}.
 
 complete_services_failover(_Nodes, []) ->
