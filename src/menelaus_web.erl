@@ -21,6 +21,10 @@
 -include("ns_stats.hrl").
 -include("rbac.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([start_link/0,
          start_link/1,
          http_server/1,
@@ -154,6 +158,19 @@ webconfig() ->
 webconfig(Prop) ->
     proplists:get_value(Prop, webconfig()).
 
+parse_path_uri(RawPath) ->
+    RawPathSingleSlash =  lists:flatten(mochiweb_util:normalize_path(RawPath)),
+    case uri_string:parse(RawPathSingleSlash) of
+        #{path := "/" ++ P} -> P;
+        #{} ->
+            ?log_debug("Invalid path in: ~p", [RawPath]),
+            menelaus_util:web_exception(400, "Bad Request");
+        {error, _, _} = Error ->
+            ?log_debug("Invalid uri in http request: ~p, "
+                       "error: ~p", [RawPath, Error]),
+            menelaus_util:web_exception(400, "Bad Request")
+    end.
+
 loop(Req0, Config) ->
     ok = menelaus_sup:barrier_wait(),
     StartTime = erlang:monotonic_time(millisecond),
@@ -166,17 +183,7 @@ loop(Req0, Config) ->
               %% handed correctly, in that we delay converting %2F's to slash
               %% characters until after we split by slashes.
               RawPath = mochiweb_request:get(raw_path, Req),
-              Path =
-                  case uri_string:parse(RawPath) of
-                      #{path := "/" ++ P} -> P;
-                      #{} ->
-                          ?log_debug("Invalid path in: ~p", [RawPath]),
-                          menelaus_util:web_exception(400, "Bad Request");
-                      {error, _, _} = Error ->
-                          ?log_debug("Invalid uri in http request: ~p, "
-                                     "error: ~p", [RawPath, Error]),
-                          menelaus_util:web_exception(400, "Bad Request")
-                  end,
+              Path = parse_path_uri(RawPath),
               PathTokens = lists:map(fun mochiweb_util:unquote/1,
                                      string:tokens(Path, "/")),
               request_tracker:request(
@@ -1437,3 +1444,16 @@ response_time_ms(Req) ->
     Now = erlang:monotonic_time(millisecond),
     Time = mochiweb_request:get_meta(menelaus_start_time, undefined, Req),
     Now - Time.
+
+-ifdef(TEST).
+parse_http_path_uri_test() ->
+    ?assertEqual("fakePrefix/diag/eval/",
+                 parse_path_uri("//fakePrefix/diag/eval/")),
+    ?assertEqual("fakePrefix/diag/eval/",
+                 parse_path_uri("///////fakePrefix/diag/eval/")),
+    ?assertEqual("fake/path", parse_path_uri("/fake/path")),
+    ?assertEqual({web_exception, 400, "Bad Request", []},
+                 catch(parse_path_uri(""))),
+    ?assertEqual({web_exception, 400, "Bad Request", []},
+                 catch(parse_path_uri("\\/\/"))).
+-endif.
