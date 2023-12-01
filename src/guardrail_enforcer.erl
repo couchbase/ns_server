@@ -277,18 +277,11 @@ resolve_status_conflict_test() ->
                  resolve_status_conflict({bucket, ""},
                                            [resident_ratio, data_size])).
 
-modules() ->
-    [ns_cluster_membership,
-     ns_pubsub,
-     ns_config,
-     ns_bucket,
-     janitor_agent,
-     guardrail_monitor].
+-define(NODES, [node1, node2, node3]).
 
-basic_test_setup() ->
-    meck:new(modules(), [passthrough]),
+start_guardrail_enforcer() ->
     meck:expect(ns_cluster_membership, actual_active_nodes,
-                fun () -> [node1, node2, node3] end),
+                fun () -> ?NODES end),
     meck:expect(ns_pubsub, subscribe_link,
                 fun (ns_config_events, _) -> ok end),
     meck:expect(guardrail_monitor, is_enabled, ?cut(false)),
@@ -298,7 +291,30 @@ basic_test_setup() ->
     meck:expect(ns_config, search_node_with_default,
                 fun (_, _, resource_statuses, Default) ->
                         Default
-                end).
+                end),
+    start_link().
+
+start_janitor_agent() ->
+    meck:expect(janitor_agent_sup, get_registry_pid,
+                fun (_) -> self() end),
+    meck:expect(ns_bucket, get_bucket,
+                fun ("bucket1") ->
+                        {ok, [{type, membase},
+                              {storage_mode, magma},
+                              {servers, ?NODES}]}
+                end),
+    meck:expect(ns_config, get_timeout,
+                fun (_, Default) -> Default end),
+    meck:expect(dcp_sup, nuke,
+                fun (_) -> ok end),
+    meck:expect(ns_storage_conf, this_node_bucket_dbdir,
+                fun (_) -> {ok, ""} end),
+    janitor_agent:start_link("bucket1").
+
+basic_test_setup() ->
+    {ok, _} = start_guardrail_enforcer(),
+    {ok, JanitorPid} = start_janitor_agent(),
+    JanitorPid.
 
 test_update_statuses(NewNodes) ->
     meck:expect(ns_config, search_node_with_default,
@@ -307,156 +323,179 @@ test_update_statuses(NewNodes) ->
                 end),
     ?SERVER ! check_changes.
 
+%% Since we have three nodes that will all be called each time, we increment by
+%% 3 each time we expect the data ingress status to be set
+-define(NODE_CALLS(N), 3 * N).
+
 update_statuses_t() ->
-    {ok, _Pid} = start_link(),
     test_update_statuses(#{}),
     ?assertEqual(undefined, get_status(test)),
     meck:expect(guardrail_monitor, is_enabled, ?cut(true)),
     ?assertEqual(ok, get_status(test)),
 
-    Servers = ns_cluster_membership:actual_active_nodes(),
-    meck:expect(ns_bucket, get_bucket,
-                fun ("bucket1") ->
-                        {ok, [{type, membase},
-                              {storage_mode, magma},
-                              {servers, Servers}]}
-                end),
     meck:expect(janitor_agent, maybe_set_data_ingress,
                 fun (Bucket, Status, S) ->
-                        ?log_debug("Setting ingress status for '~p' to ~p for "
-                                   "~p", [Bucket, Status, S])
+                        %% Replace fake nodes with actual node so that it can
+                        %% be called
+                        meck:passthrough([Bucket, Status,
+                                          lists:map(fun (_) -> node() end, S)])
                 end),
+    meck:expect(ns_memcached, set_data_ingress,
+                fun (Bucket, Status) ->
+                        ?log_debug("Setting ingress status for '~p' to ~p",
+                                   [Bucket, Status])
+                end),
+    ?assertEqual(?NODE_CALLS(0),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", ok])),
 
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, ok}]}),
     ?assertEqual(ok, get_status({bucket, "bucket1"})),
-    ?assertEqual(1, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", ok, Servers])),
+    ?assertEqual(?NODE_CALLS(1),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", ok])),
 
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, ok}]}),
     ?assertEqual(ok, get_status({bucket, "bucket1"})),
-    ?assertEqual(1, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", ok, Servers])),
+    ?assertEqual(?NODE_CALLS(1),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", ok])),
 
+    ?assertEqual(?NODE_CALLS(0),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", resident_ratio])),
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}]}),
     ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
-    ?assertEqual(1, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", resident_ratio, Servers])),
+    ?assertEqual(?NODE_CALLS(1),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", resident_ratio])),
 
     %% Don't try to set ingress when status unchanged
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}]}),
     ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
-    ?assertEqual(1, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", resident_ratio, Servers])),
+    ?assertEqual(?NODE_CALLS(1),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", resident_ratio])),
 
     %% Don't try to set ingress when status unchanged
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}],
                            node2 => [{{bucket, "bucket1"}, resident_ratio}]}),
     ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
-    ?assertEqual(1, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", resident_ratio, Servers])),
+    ?assertEqual(?NODE_CALLS(1),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", resident_ratio])),
 
     %% Don't set ingress when only one becomes ok
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}],
                            node2 => [{{bucket, "bucket1"}, ok}]}),
     ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
-    ?assertEqual(1, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", resident_ratio, Servers])),
+    ?assertEqual(?NODE_CALLS(1),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", resident_ratio])),
 
     %% Update ingress when all nodes become ok
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, ok}],
                            node2 => [{{bucket, "bucket1"}, ok}]}),
     ?assertEqual(ok, get_status({bucket, "bucket1"})),
-    ?assertEqual(2, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", ok, Servers])),
+    ?assertEqual(?NODE_CALLS(2),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", ok])),
 
     %% Notify with ok when the status disappears
     test_update_statuses(#{node1 => []}),
     ?assertEqual(ok, get_status({bucket, "bucket1"})),
-    ?assertEqual(3, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", ok, Servers])),
+    ?assertEqual(?NODE_CALLS(3),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", ok])),
 
-    meck:expect(janitor_agent, maybe_set_data_ingress,
-                fun (Bucket, Status, S) ->
-                        ?log_debug("Setting ingress status for '~p' to ~p for "
-                                   "~p", [Bucket, Status, S]),
-                        {errors, []}
+    meck:expect(ns_memcached, set_data_ingress,
+                fun (Bucket, Status) ->
+                        ?log_debug("Fail to set ingress status for '~p' to ~p",
+                                   [Bucket, Status]),
+                        error
                 end),
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}]}),
     ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
-    ?assertEqual(2, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", resident_ratio, Servers])),
+    ?assertEqual(?NODE_CALLS(2),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", resident_ratio])),
 
     %% When maybe_set_data_ingress has failed, we should retry even though the
     %% status has not changed
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}]}),
     ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
-    ?assertEqual(3, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", resident_ratio, Servers])),
+    ?assertEqual(?NODE_CALLS(3),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", resident_ratio])),
 
-    meck:expect(janitor_agent, maybe_set_data_ingress,
-                fun (Bucket, Status, S) ->
-                        ?log_debug("Setting ingress status for '~p' to ~p for "
-                                   "~p", [Bucket, Status, S])
+    meck:expect(ns_memcached, set_data_ingress,
+                fun (Bucket, Status) ->
+                        ?log_debug("Setting ingress status for '~p' to ~p",
+                                   [Bucket, Status])
                 end),
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}]}),
     ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
-    ?assertEqual(4, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", resident_ratio, Servers])),
+    ?assertEqual(?NODE_CALLS(4),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", resident_ratio])),
 
     %% When set data ingress starts succeeding again, we should not keep
     %% retrying
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}]}),
     ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
-    ?assertEqual(4, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", resident_ratio, Servers])),
+    ?assertEqual(?NODE_CALLS(4),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", resident_ratio])),
 
     %% Update status to data_size
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, data_size}]}),
     ?assertEqual(data_size, get_status({bucket, "bucket1"})),
-    ?assertEqual(1, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", data_size, Servers])),
+    ?assertEqual(?NODE_CALLS(1),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", data_size])),
 
     %% Update both data_size and resident_ratio at same time
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, data_size}],
                            node2 => [{{bucket, "bucket1"}, resident_ratio}]}),
     ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
-    ?assertEqual(5, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", resident_ratio, Servers])),
+    ?assertEqual(?NODE_CALLS(5),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", resident_ratio])),
 
     %% Update status to disk_usage
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, disk_usage}]}),
     ?assertEqual(disk_usage, get_status({bucket, "bucket1"})),
-    ?assertEqual(1, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", disk_usage, Servers])),
+    ?assertEqual(?NODE_CALLS(1),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", disk_usage])),
 
     %% Update disk_usage, data_size and resident_ratio at same time
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, disk_usage}],
                            node2 => [{{bucket, "bucket1"}, data_size}],
                            node3 => [{{bucket, "bucket1"}, resident_ratio}]}),
     ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
-    ?assertEqual(6, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", resident_ratio, Servers])),
+    ?assertEqual(?NODE_CALLS(6),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", resident_ratio])),
 
     %% Update disk_usage and data_size at same time
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, disk_usage}],
                            node2 => [{{bucket, "bucket1"}, data_size}]}),
     ?assertEqual(data_size, get_status({bucket, "bucket1"})),
-    ?assertEqual(2, meck:num_calls(janitor_agent, maybe_set_data_ingress,
-                                   ["bucket1", data_size, Servers])).
+    ?assertEqual(?NODE_CALLS(2),
+                 meck:num_calls(ns_memcached, set_data_ingress,
+                                ["bucket1", data_size])).
 
-basic_test_teardown() ->
+basic_test_teardown(JanitorPid) ->
     gen_server:stop(?SERVER),
-    meck:unload(modules()).
+    gen_server:stop(JanitorPid),
+    meck:unload().
 
 basic_test_() ->
     %% We can re-use (setup) the test environment that we setup/teardown here
     %% for each test rather than create a new one (foreach) to save time.
     {setup,
-     fun() ->
-             basic_test_setup()
-     end,
-     fun(_) ->
-             basic_test_teardown()
-     end,
+     fun basic_test_setup/0,
+     fun basic_test_teardown/1,
      [{"update statuses test", fun () -> update_statuses_t() end}]}.
 -endif.
