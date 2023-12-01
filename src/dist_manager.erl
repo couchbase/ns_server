@@ -84,7 +84,8 @@ read_address_config_from_path(Path) ->
     case read_from_file(Path) of
         {error, Error} ->
             ?log_error("Failed to read ip config from `~s`: ~p",
-                       [Path, Error]);
+                       [Path, Error]),
+            read_error;
         RV ->
             RV
     end.
