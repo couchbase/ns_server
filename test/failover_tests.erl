@@ -370,10 +370,12 @@ auto_failover_test_setup(SetupConfig) ->
     {ok, RebalanceReportManagerPid} = ns_rebalance_report_manager:start_link(),
     {ok, CompatModeManagerPid} = compat_mode_manager:start_link(),
 
-    %% Config for auto_failover
+    %% Config for auto_failover, disabled by default. We will manually enable it
+    %% or work around that in our tests. We disable it by default to avoid ticks
+    %% that we may not want to handle.
     fake_ns_config:update_snapshot(
       [{auto_failover_cfg,
-        [{enabled, true},
+        [{enabled, false},
          {timeout, 1},
          {count, 0},
          {max_count, 5},
@@ -446,6 +448,7 @@ auto_failover_t(_SetupConfig, PidMap) ->
     %% be in a down state for n ticks at any point.
     fake_ns_config:update_snapshot(auto_failover_tick_period, 100000),
     AutoFailoverPid ! tick_period_updated,
+    auto_failover:enable(1, 5, []),
 
     %% Part of our test, we should not have any reported errors yet.
     ?assertEqual([],
@@ -529,6 +532,7 @@ auto_failover_post_network_partition_stale_config(SetupConfig, PidMap) ->
     %% be in a down state for n ticks at any point.
     fake_ns_config:update_snapshot(auto_failover_tick_period, 100000),
     AutoFailoverPid ! tick_period_updated,
+    auto_failover:enable(1, 5, []),
 
     %% Part of our test, we should not have any reported errors yet.
     ?assertEqual([],
