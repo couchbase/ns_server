@@ -203,6 +203,13 @@ get_keys_for_txn(_Keys, _Snapshot) ->
     %% this for now.
     get_ets_snapshot().
 
+do_commits(Commits) ->
+    NewMap = lists:foldl(
+        fun({set, Key, Value}, Acc) ->
+            Acc#{Key => Value}
+        end, #{}, Commits),
+    update_snapshot(NewMap).
+
 transaction(_Name, Keys, Fun, _Opts) ->
     Snapshot = get_keys_for_txn(Keys, {txn_slow, get_ets_snapshot()}),
     %% Not correct or safe by any means, but should be acceptable for unit
@@ -210,11 +217,12 @@ transaction(_Name, Keys, Fun, _Opts) ->
     case Fun(Snapshot) of
         %% Only handles commits and sets at the moment. Can be
         %% expanded in the future if necessary
-        {commit, New} ->
-            NewMap = lists:foldl(
-                fun({set, Key, Value}, Acc) ->
-                    Acc#{Key => Value}
-                end, #{}, New),
-            update_snapshot(NewMap),
-            {ok, 1}
+        {commit, Commits} ->
+            do_commits(Commits),
+            {ok, 1};
+        {commit, Commits, Results} ->
+            do_commits(Commits),
+            {ok, 1, Results};
+        {abort, Error} ->
+            Error
     end.

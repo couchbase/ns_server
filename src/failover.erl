@@ -33,12 +33,21 @@
 -define(DATA_LOST, 1).
 -define(FAILOVER_OPS_TIMEOUT, ?get_timeout(failover_ops_timeout, 10000)).
 -define(DEFAULT_JANITOR_BULK_FACTOR, 8).
+-define(MAX_FAILOVER_TRANSACTION_RETRIES, 10).
 
 -record(failover_params,
         {bucket_type :: bucket_type(),
          bucket_config :: list(),
          bucket_map :: vbucket_map() | nil(),
          bucket_options :: map()}).
+
+-record(failover_transaction_result,
+        {services :: [service()],
+         service_nodes :: [node()] | nil(),
+         unsafe_nodes :: list() | nil(),
+         kv_nodes :: [node()] | nil(),
+         transaction_snapshot :: map(),
+         buckets_prep_res :: list() | nil()}).
 
 start(Nodes, Options) ->
     Parent = self(),
@@ -236,97 +245,152 @@ deactivate_nodes(Nodes, Options) ->
 
 get_snapshot() ->
     chronicle_compat:get_snapshot(
-        [ns_bucket:fetch_snapshot(all, _, [props]),
-            ns_cluster_membership:fetch_snapshot(_)]).
+      [ns_bucket:fetch_snapshot(all, _, [props]),
+       ns_cluster_membership:fetch_snapshot(_)]).
+
+buckets_failover_commits(BucketsPrep, FailedNodes, Snapshot) ->
+    BucketsUpdates =
+        lists:map(
+          fun({Bucket, #failover_params{bucket_map = NewMap,
+                                        bucket_type = membase}}) ->
+                  %% Note even if the map is empty, we still write it back
+                  %% to force rev update which will invalidate any spurious
+                  %% updates from the past that may show up in the future
+                  NewMap =:= [] orelse ns_bucket:validate_map(NewMap),
+                  {Bucket,
+                   ns_bucket:update_servers_and_map(Bucket, _, FailedNodes,
+                                                    NewMap)};
+             ({Bucket, #failover_params{bucket_map = [],
+                                        bucket_type = memcached}}) ->
+                  {Bucket,
+                   ns_bucket:remove_servers_from_bucket(_, FailedNodes)}
+          end, BucketsPrep),
+
+
+    ns_bucket:get_commits_from_snapshot(BucketsUpdates, Snapshot).
+
+validate_snapshot_consistent(TransSnapshot, Snapshot) ->
+    A = chronicle_compat:get_keys_and_rev(TransSnapshot),
+    B = chronicle_compat:get_keys_and_rev(Snapshot),
+
+    case (A == B) of
+        true ->
+            ok;
+        false ->
+            %% Very unlikely but still worth the safety check
+            snapshot_rev_conflict
+    end.
+
+check_transaction_safety(
+    Nodes, TransSnapshot, Snapshot, Options) ->
+    functools:sequence_(
+      [?cut(validate_snapshot_consistent(TransSnapshot, Snapshot)),
+       ?cut(is_possible(Nodes, TransSnapshot, Options)),
+       ?cut(maybe_check_kv_safety(Nodes, TransSnapshot, Options))]).
+
+transaction_logic(ok, Nodes, BktPrepResults, SvcNodes, UnsafeNodes, Snapshot) ->
+    KVNodes =
+        ns_cluster_membership:service_nodes(Snapshot, Nodes, kv),
+
+    %% Update service maps. Sets service_failover_pending for each
+    %% service, which is cleared after a rebalance in
+    %% complete_services_failover.
+    {Services, ServicesCommits} =
+        ns_cluster_membership:failover_service_nodes_commits(SvcNodes,
+                                                             Snapshot),
+
+    BucketsCommits =
+        buckets_failover_commits(BktPrepResults, Nodes, Snapshot),
+
+    case lists:keyfind(abort, 1, BucketsCommits) of
+        false ->
+            {commit,
+             BucketsCommits ++ ServicesCommits,
+             #failover_transaction_result{
+                services = Services,
+                service_nodes = SvcNodes,
+                unsafe_nodes = UnsafeNodes,
+                kv_nodes = KVNodes,
+                transaction_snapshot = Snapshot,
+                buckets_prep_res = BktPrepResults}};
+        Res ->
+            Res
+    end;
+transaction_logic(Error, _Nodes, _BktPrepResults, _SvcNodes,
+                  _UnsafeNodes, _Snapshot) ->
+    {abort, {error, Error}}.
+
+failover_transaction(Nodes, BktPrepResults, SvcNodes, UnsafeNodes,
+                     Snapshot, Options) ->
+    Keys = maps:keys(Snapshot),
+    chronicle_kv:transaction(
+      kv, Keys,
+      fun(TransSnapshot) ->
+              IsSafe = check_transaction_safety(Nodes, TransSnapshot,
+                                                Snapshot, Options),
+              transaction_logic(IsSafe, Nodes, BktPrepResults, SvcNodes,
+                                UnsafeNodes, TransSnapshot)
+      end, #{retries => 0}).
+
+failover_transaction_with_retries(_Nodes, _Options, Rv, 0) ->
+    Rv;
+failover_transaction_with_retries(Nodes, Options, _Rv, Retries) ->
+    Snapshot = get_snapshot(),
+    assert_failover_possible(Nodes, Snapshot, Options),
+
+    BucketsConfig = ns_bucket:get_buckets_by_rank(Snapshot),
+    KVNodes = ns_cluster_membership:service_nodes(Snapshot, Nodes, kv),
+    BktPrepResults = failover_buckets_prep(KVNodes, BucketsConfig, Options),
+
+    {SvcNodes, UnsafeNodes} =
+        validate_failover_services_safety(Snapshot, Nodes, KVNodes, Options),
+
+    case failover_transaction(Nodes, BktPrepResults, SvcNodes, UnsafeNodes,
+                              Snapshot, Options) of
+        {ok, _, _}  = Rv ->
+            Rv;
+        {error, snapshot_rev_conflict} = Rv ->
+            ?log_warning("Retrying transaction due to: ~p", [Rv]),
+            failover_transaction_with_retries(Nodes, Options, Rv, Retries - 1);
+        {error, exceeded_retries} = Rv ->
+            %% We run the failover chronicle transaction with internal retries
+            %% set to 0, since we intend to retry the transaction externally,
+            %% so all safety can be rechecked. Therefore we handle the
+            %% failure here accordingly by issuing the external retry
+            ?log_warning("Retrying transaction due to internal Rev conflict"),
+            failover_transaction_with_retries(Nodes, Options, Rv, Retries - 1);
+        Rv ->
+            Rv
+    end.
+
+maybe_failover_collections(Snapshot, Options) ->
+    not maps:is_key(quorum_failover, Options) orelse
+        failover_collections(Snapshot).
 
 %% @doc Fail one or more nodes. Doesn't eject the node from the cluster. Takes
 %% effect immediately.
 failover(Nodes, Options) ->
-    Snapshot = get_snapshot(),
-    BucketsConfig = ns_bucket:get_buckets(Snapshot),
+    {ok, _, Results} =
+        failover_transaction_with_retries(Nodes, Options, undefined,
+                                          ?MAX_FAILOVER_TRANSACTION_RETRIES),
 
-    %% Whilst we also check this in ns_orchestrator in the auto_failover path,
-    %% it could be the case that the config has materially changed before we
-    %% acquired our leader activity. We re-check KV safety here (we check
-    %% services safety again later) against the snapshot that we will perform
-    %% this failover on. If the snapshot proves to be stale when we attempt to
-    %% commit the transaction then we should abort the failover. It could be the
-    %% case that KV failover is no longer safe at this point too, in which case
-    %% we can abort early...
-    case maps:find(auto, Options) of
-        {ok, true} ->
-            #{down_nodes := DownNodes} = Options,
-            case auto_failover:validate_kv(Snapshot, Nodes, DownNodes) of
-                ok -> continue;
-                {unsafe, Buckets} ->
-                    ?log_error("Failover is not possible, KV failover is "
-                               "unsafe for buckets ~p", [Buckets]),
-                    erlang:exit({autofailover_unsafe, Buckets})
-            end;
-        _ -> ok
-    end,
+    #failover_transaction_result{services = Services,
+                                 service_nodes = SvcNodes,
+                                 unsafe_nodes = UnsafeNodes,
+                                 kv_nodes = KVNodes,
+                                 transaction_snapshot = Snapshot,
+                                 buckets_prep_res = BktPrepResults} = Results,
 
-    %% Note that we are checking for fail over possibility whilst holding the
-    %% quorum and after syncing the config to ensure that we have the most up
-    %% to date config when checking if it is possible to fail over.
-    case is_possible(Nodes, Snapshot, Options) of
-        ok -> continue;
-        Error ->
-          ?log_error("Failover is not possible due to ~p", [Error]),
-          erlang:exit(Error)
-    end,
-
-    not maps:is_key(quorum_failover, Options) orelse
-        failover_collections(BucketsConfig),
-
-    KVNodes = ns_cluster_membership:service_nodes(Snapshot, Nodes, kv),
-    BktPrepResults =
-        failover_buckets_prep(KVNodes,
-                              ns_bucket:get_buckets_by_rank(BucketsConfig),
-                              Options),
-
-    %% From this point onwards, no bucket failed exception is thrown.
-    %% Partial failover is still possible if we update the service map (in
-    %% services prep) and crash thereafter before failover runs to completion.
-    %% Service failover is completed asynchronously in service_janitor even if
-    %% the state of the node hasn't transitioned to inactiveFailed. A rebalance
-    %% in such a state will reinstate any failed over services.
-    {SvcNodes, UnsafeNodes} =
-        validate_failover_services_safety(Snapshot, Nodes, KVNodes, Options),
-
-    %% Update service maps. Sets service_failover_pending for each service,
-    %% which is cleared after a rebalance in complete_services_failover.
-    Services = ns_cluster_membership:failover_service_nodes(SvcNodes,
-                                                            Snapshot),
-
-    KVErrorNodes = failover_buckets(KVNodes, BktPrepResults),
+    maybe_failover_collections(Snapshot, Options),
+    KVErrorNodes = complete_buckets_failover(KVNodes, BktPrepResults),
     ServicesErrorNodes = complete_services_failover(SvcNodes, Services),
-
     {lists:umerge([KVErrorNodes, ServicesErrorNodes]), UnsafeNodes}.
 
-failover_collections(BucketsConfig) ->
+failover_collections(Snapshot) ->
     [collections:bump_epoch(BucketName) ||
         {BucketName,
-         BucketConfig} <- ns_bucket:get_buckets_by_rank(BucketsConfig),
+         BucketConfig} <- ns_bucket:get_buckets_by_rank(Snapshot),
         collections:enabled(BucketConfig)].
-
-set_failover_config(PrepRes, Nodes) ->
-    ok = ns_bucket:update_buckets_config(
-           lists:map(
-             fun({Bucket, #failover_params{bucket_map = NewMap,
-                                           bucket_type = membase}}) ->
-                     %% Note even if the map is empty, we still write it back
-                     %% to force rev update which will invalidate any spurious
-                     %% updates from the past that may show up in the future
-                     NewMap =:= [] orelse ns_bucket:validate_map(NewMap),
-                     {Bucket,
-                      ns_bucket:update_servers_and_map(Bucket, _, Nodes,
-                                                       NewMap)};
-                ({Bucket, #failover_params{bucket_map = [],
-                                           bucket_type = memcached}}) ->
-                     {Bucket,
-                      ns_bucket:remove_servers_from_bucket(_, Nodes)}
-             end, PrepRes)).
 
 janitor_membase_buckets_group([], _Nodes) ->
     [];
@@ -371,8 +435,6 @@ get_janitor_bulk_factor() ->
     end.
 
 handle_buckets_failover(Nodes, PrepResults) ->
-    ok = set_failover_config(PrepResults, Nodes),
-
     MembaseParams =
         lists:filter(
           fun({_,  #failover_params{bucket_type = membase}}) ->
@@ -397,11 +459,11 @@ handle_buckets_failover(Nodes, PrepResults) ->
 
     Results.
 
-failover_buckets([], _PrepResults) ->
+complete_buckets_failover([], _PrepResults) ->
     [];
-failover_buckets(_Nodes, []) ->
+complete_buckets_failover(_Nodes, []) ->
     [];
-failover_buckets(Nodes, PrepResults) ->
+complete_buckets_failover(Nodes, PrepResults) ->
     Results = handle_buckets_failover(Nodes, PrepResults),
 
     update_failover_vbuckets(Results),
@@ -579,6 +641,7 @@ validate_failover_services_safety(_Snapshot, Nodes, _, _) ->
 complete_services_failover(_Nodes, []) ->
     [];
 complete_services_failover(Nodes, Services) ->
+    ?log_debug("Failover nodes ~p from services ~p", [Nodes, Services]),
     Results = lists:flatmap(complete_failover_service(Nodes, _), Services),
     failover_handle_results(Results).
 
@@ -899,6 +962,44 @@ is_possible(FailoverNodes, Options) ->
     Snapshot = get_snapshot(),
     is_possible(FailoverNodes, Snapshot, Options).
 
+maybe_check_kv_safety(Nodes, Snapshot, Options) ->
+    %% Whilst we also check this in ns_orchestrator in the auto_failover path,
+    %% it could be the case that the config has materially changed before we
+    %% acquired our leader activity. We re-check KV safety here (we check
+    %% services safety again later) against the snapshot that we will perform
+    %% this failover on. If the snapshot proves to be stale when we attempt to
+    %% commit the transaction then we should abort the failover. It could be the
+    %% case that KV failover is no longer safe at this point too, in which case
+    %% we can abort early...
+    case maps:find(auto, Options) of
+        {ok, true} ->
+            #{down_nodes := DownNodes} = Options,
+            case auto_failover:validate_kv(Snapshot, Nodes, DownNodes) of
+                ok -> ok;
+                {unsafe, _Buckets} = UnsafeBuckets ->
+                    UnsafeBuckets
+            end;
+        _ -> ok
+    end.
+
+assert_failover_possible(Nodes, Snapshot, Options) ->
+    case maybe_check_kv_safety(Nodes, Snapshot, Options) of
+        ok ->
+            ok;
+        {unsafe, Buckets} ->
+            ?log_error("Failover is not possible, KV failover is "
+                       "unsafe for buckets ~p", [Buckets]),
+            erlang:exit({autofailover_unsafe, Buckets})
+    end,
+
+    case is_possible(Nodes, Snapshot, Options) of
+        ok ->
+            ok;
+        Error ->
+            ?log_error("Failover is not possible due to ~p", [Error]),
+            erlang:exit(Error)
+    end.
+
 check_last_server([], _FailoverNodes) ->
     ok;
 check_last_server([{BucketName, BucketConfig} | Rest], FailoverNodes) ->
@@ -965,8 +1066,8 @@ meck_query_vbuckets(Input, Output) ->
 
 load_group_failover_test_common_modules() ->
     meck:new([ns_config, ns_janitor, master_activity_events,
-              cluster_compat_mode, chronicle_compat, ns_bucket, testconditions],
-             [passthrough]),
+              cluster_compat_mode, chronicle_compat, chronicle_kv, ns_bucket,
+              testconditions], [passthrough]),
 
     meck:expect(ns_janitor, check_server_list,
                 fun (_,_) ->
@@ -991,6 +1092,12 @@ load_group_failover_test_common_modules() ->
     meck:expect(cluster_compat_mode, preserve_durable_mutations,
                 fun () -> true end),
 
+    meck:expect(cluster_compat_mode, get_compat_version,
+                fun () -> [?MIN_SUPPORTED_VERSION] end),
+
+    meck:expect(cluster_compat_mode, is_cluster_76,
+                fun () -> true end),
+
     meck:expect(chronicle_compat, transaction,
                 fun (_,_) ->
                         {ok, ok}
@@ -1011,11 +1118,34 @@ load_group_failover_test_common_modules() ->
 get_test_bucket_config() ->
     B1Cfg = [{servers, [a,b,c]}, {type, membase}, {map, [[a, b], [c, a]]}],
     B2Cfg = [{servers, [a,b,c]}, {type, membase}, {map, []}],
-    B3Cfg = [{type, memcached}, {map, []}],
+    B3Cfg = [{servers, [a,b,c,d]}, {type, memcached}, {map, []}],
     B4Cfg = [{servers, [a,b,c,d]}, {type, membase}, {map, [[b, a], [a, b]]}],
     B5Cfg = [{servers, [a,b,c,d]}, {type, membase}, {map, [[a, b], [d, c]]}],
     [{"B1", B1Cfg}, {"B2", B2Cfg}, {"B3", B3Cfg}, {"B4", B4Cfg},
      {"B5", B5Cfg}].
+
+get_test_snapshot() ->
+    Version = 1,
+    {Snapshot, BucketNames} =
+        lists:foldl(
+          fun({Bucket, Cfg}, {Acc, Buckets}) ->
+                  {Acc#{{bucket, Bucket, props} => {Cfg, Version}},
+                   [Bucket | Buckets]}
+          end, {#{}, []}, get_test_bucket_config()),
+    Snapshot#{bucket_names => {BucketNames, Version},
+              cluster_compat_version => {?VERSION_76, Version},
+              nodes_wanted => {[a,b,c,d], Version},
+              {service_map, index} => {[a,c], Version},
+              {service_map, fts} => {[b,c,d], Version},
+              {node, a, services} => {[kv, index], Version},
+              {node, b, services} => {[kv, fts], Version},
+              {node, c, services} => {[kv, index, fts], Version},
+              {node, d, services} => {[kv, fts], Version},
+              {node, a, membership} => {active, Version},
+              {node, b, membership} => {active, Version},
+              {node, c, membership} => {active, Version},
+              {node, d, membership} => {active, Version}
+             }.
 
 failover_bucket_groups_test_() ->
     {foreach,
@@ -1028,7 +1158,13 @@ failover_bucket_groups_test_() ->
       {"Failover Buckets Group Success",
        fun failover_buckets_group_test_body/0},
       {"Failover Buckets Group Fail",
-       fun failover_buckets_group_failure_result_test_body/0}]
+       fun failover_buckets_group_failure_result_test_body/0},
+      {"Failover Transaction Test",
+       fun failover_transaction_test_body/0},
+      {"Failover Transaction Failure Test",
+       fun failover_transaction_failure_test_body/0},
+      {"Failover Transaction invoke Retries",
+       fun failover_transaction_invoke_retries/0}]
     }.
 
 failover_buckets_prep_test_body() ->
@@ -1073,20 +1209,6 @@ failover_buckets_group_test_body() ->
     FailedNodes = [a,d],
     BConfig = get_test_bucket_config(),
 
-    meck:expect(ns_bucket, remove_servers_from_bucket,
-                fun (_, Nodes) ->
-                        ?assertEqual(FailedNodes, Nodes)
-                end),
-
-    meck:expect(ns_bucket, update_buckets_config,
-                fun (BucketsUpdates) ->
-                        lists:foreach(
-                          fun({Bucket, Fun}) ->
-                                  Cfg = proplists:get_value(Bucket, BConfig),
-                                  Fun(Cfg)
-                          end, BucketsUpdates)
-                end),
-
     meck:expect(ns_janitor, cleanup_buckets,
                 fun (JanitorParams, _CleanupOpts) ->
                         Expected = ["B1", "B4", "B5"],
@@ -1109,14 +1231,8 @@ failover_buckets_group_test_body() ->
                              misc:split(?MAX_BUCKETS_SUPPORTED,
                                         PrepResults)),
 
-    MembaseExpectedMaps =
-        [{"B1", [[b, undefined], [c, undefined]]},
-         {"B2", []},
-         {"B4", [[b, undefined], [b, undefined]]},
-         {"B5", [[b, undefined], [c, undefined]]}],
-
     lists:foreach(
-      fun({Bucket, BucketConfig}) ->
+      fun({Bucket, _BucketConfig}) ->
               %% Ensure start and end failover events are reported for all
               %% buckets
               ?assertEqual(
@@ -1125,25 +1241,7 @@ failover_buckets_group_test_body() ->
                                                                   '_'])),
               ?assertEqual(
                  1, meck:num_calls(master_activity_events,
-                                   note_bucket_failover_ended, [Bucket, '_'])),
-
-              %% Ensure correct update function being called for bucket types
-              %% Ensure correct parameters during calls
-              case proplists:get_value(type, BucketConfig) of
-                  membase ->
-                      ExpectedMap =
-                          proplists:get_value(Bucket, MembaseExpectedMaps),
-                      ?assertEqual(
-                         1,
-                         meck:num_calls(ns_bucket, update_servers_and_map,
-                                        [Bucket, '_', FailedNodes,
-                                         ExpectedMap]));
-                  memcached ->
-                      ?assertEqual(
-                         1,
-                         meck:num_calls(ns_bucket, remove_servers_from_bucket,
-                                        ['_', FailedNodes]))
-              end
+                                   note_bucket_failover_ended, [Bucket, '_']))
       end, BConfig),
 
     ?assertEqual(lists:sort(Results1),
@@ -1262,6 +1360,211 @@ failover_buckets_group_failure_result_test_body() ->
                  janitor_membase_buckets_group(_, FailedNodes),
                  misc:split(1, PrepResultsUpdt)),
     ?assertEqual(lists:sort(Results1), lists:sort(Results3)),
+    ok.
+
+transaction_test_setup(FailedNodes) ->
+    Snapshot = get_test_snapshot(),
+    BConfig = ns_bucket:get_buckets(Snapshot),
+
+    meck:expect(ns_bucket, remove_servers_from_bucket,
+                fun (_, Nodes) ->
+                        ?assertEqual(FailedNodes, Nodes)
+                end),
+    meck:expect(ns_bucket, update_buckets_config,
+                fun (BucketsUpdates) ->
+                        lists:foreach(
+                          fun({Bucket, Fun}) ->
+                                  Cfg = proplists:get_value(Bucket, BConfig),
+                                  Fun(Cfg)
+                          end, BucketsUpdates)
+                end),
+
+    meck:expect(chronicle_compat, get_snapshot,
+                fun (_) ->
+                        Snapshot
+                end),
+    meck:delete(chronicle_compat, get, 3),
+
+    meck:expect(chronicle_kv, transaction,
+                fun (_, _, TransLogic, Opts) ->
+                        ?assertEqual(0, maps:get(retries, Opts)),
+                        case TransLogic(Snapshot) of
+                            {abort, Error} ->
+                                Error;
+                            Rv ->
+                                Rv
+                        end
+                end),
+
+    meck:expect(auto_failover, validate_services_safety,
+                fun (_, _, _, _) ->
+                        {FailedNodes, []}
+                end),
+
+    {Snapshot, BConfig}.
+
+failover_transaction_test_body() ->
+    FailedNodes = [a,d],
+    {_, BConfig} = transaction_test_setup(FailedNodes),
+    MembaseExpectedMaps =
+        [{"B1", [[b, undefined], [c, undefined]]},
+         {"B2", []},
+         {"B4", [[b, undefined], [b, undefined]]},
+         {"B5", [[b, undefined], [c, undefined]]}],
+
+    lists:foreach(
+      fun({Bucket, BucketConfig}) ->
+              %% Ensure correct update function being called for bucket types
+              case proplists:get_value(type, BucketConfig) of
+                  membase ->
+                      ExpectedMap =
+                          proplists:get_value(Bucket, MembaseExpectedMaps),
+                      ?assertEqual(
+                         1,
+                         meck:num_calls(ns_bucket, update_servers_and_map,
+                                        [Bucket, '_', FailedNodes,
+                                         ExpectedMap]));
+                  memcached ->
+                      ?assertEqual(
+                         1,
+                         meck:num_calls(ns_bucket, remove_servers_from_bucket,
+                                        ['_', FailedNodes]))
+              end
+      end, BConfig),
+
+    {commit, Commits, Results} =
+        failover_transaction_with_retries(FailedNodes, #{}, undefined,
+                                          ?MAX_FAILOVER_TRANSACTION_RETRIES),
+
+    #failover_transaction_result{services = Services,
+                                 service_nodes = SvcNodes,
+                                 unsafe_nodes = UnsafeNodes,
+                                 kv_nodes = KVNodes,
+                                 buckets_prep_res = _BktPrepResults} = Results,
+    ExpectedCommits =
+        [{set,
+          {bucket,"B1",props},
+          [{servers,[b,c]}, {fastForwardMap,undefined},
+           {map,[[b,undefined],[c,undefined]]}, {type,membase}]},
+         {set,
+          {bucket,"B2",props},
+          [{servers,[b,c]}, {fastForwardMap,undefined},
+           {map,[]}, {type,membase}]},
+         {set,{bucket,"B3",props},ok},
+         {set,
+          {bucket,"B4",props},
+          [{servers,[b,c]}, {fastForwardMap,undefined},
+           {map,[[b,undefined],[b,undefined]]}, {type,membase}]},
+         {set,
+          {bucket,"B5",props},
+          [{servers,[b,c]}, {fastForwardMap,undefined},
+           {map,[[b,undefined],[c,undefined]]}, {type,membase}]},
+         {set,{service_map,fts},[b,c]},
+         {set,{service_failover_pending,fts},true},
+         {set,{service_map,index},[c]},
+         {set,{service_failover_pending,index},true}],
+
+    ?assertEqual(ExpectedCommits, Commits),
+    ?assertEqual(Services, [fts, index]),
+    ?assertEqual(UnsafeNodes, []),
+    ?assertEqual(SvcNodes, [a,d]),
+    ?assertEqual(KVNodes, [a,d]),
+    ok.
+
+failover_transaction_failure_test_body() ->
+    FailedNodes1 = [a,b,c,d],
+    {Snapshot, _} =
+        transaction_test_setup(FailedNodes1),
+
+    BucketsConfig = ns_bucket:get_buckets_by_rank(Snapshot),
+    KVNodes = ns_cluster_membership:service_nodes(Snapshot, FailedNodes1, kv),
+    BktPrepResults = failover_buckets_prep(KVNodes, BucketsConfig, #{}),
+
+    %% Test for unsafe failover failure
+    Failure1 =
+        try
+            failover_transaction_with_retries(
+              FailedNodes1, #{}, undefined,
+              ?MAX_FAILOVER_TRANSACTION_RETRIES)
+        catch exit:Code ->
+                Code
+        end,
+    ?assertEqual(Failure1, last_node),
+    ?assertEqual({error, last_node},
+                 failover_transaction(FailedNodes1, BktPrepResults, [], [],
+                                      Snapshot, #{})),
+
+    %% Now force a mismatch between the keys of the external Snapshot
+    %% and the Transaction one and check for appropriate error
+    FailedNodes2 = [c,d],
+    meck:expect(chronicle_kv, transaction,
+                fun (_, _, TransLogic, _) ->
+                        case TransLogic(maps:remove({node, a, membership}, Snapshot)) of
+                            {abort, Error} ->
+                                Error;
+                            Rv ->
+                                Rv
+                        end
+                end),
+    ?assertEqual({error, snapshot_rev_conflict},
+                 failover_transaction_with_retries(
+                   FailedNodes2, #{}, undefined,
+                   ?MAX_FAILOVER_TRANSACTION_RETRIES)),
+
+    %% Modify the version of a buckets prop key and ensure proper error
+    %% after retries
+    meck:expect(chronicle_kv, transaction,
+                fun (_, _, TransLogic, _) ->
+                        {Val, Rev} = maps:get({bucket, "B4", props}, Snapshot),
+                        NewSnapShot = Snapshot#{{bucket, "B4", props} => {Val, Rev + 1}},
+                        case TransLogic(NewSnapShot) of
+                            {abort, Error} ->
+                                Error;
+                            Rv ->
+                                Rv
+                        end
+                end),
+    ?assertEqual({error, snapshot_rev_conflict},
+                 failover_transaction_with_retries(
+                   FailedNodes2, #{}, undefined,
+                   ?MAX_FAILOVER_TRANSACTION_RETRIES)),
+
+    ok.
+
+failover_transaction_invoke_retries() ->
+    FailedNodes = [c,d],
+    {Snapshot, _} = transaction_test_setup(FailedNodes),
+
+    %% Force a mismatch of the Snapshot on first try, and fix it on the second
+    %% try, therefore the transaction should succeed after retry
+    meck:expect(chronicle_kv, transaction,
+                fun (_, _, TransLogic, _) ->
+                        {Val, Rev} = maps:get({bucket, "B4", props}, Snapshot),
+                        NewSnapshot =
+                            Snapshot#{{bucket, "B4", props} => {Val, Rev + 1}},
+                        case TransLogic(NewSnapshot) of
+                            {abort, Error} ->
+                                meck:expect(chronicle_compat, get_snapshot,
+                                            fun (_) ->
+                                                    NewSnapshot
+                                            end),
+                                Error;
+                            Rv ->
+                                Rv
+                        end
+                end),
+
+
+    %% With just 1 retries, it should fail because we invoke mismatch on
+    %% first try
+    ?assertEqual({error, snapshot_rev_conflict},
+                 failover_transaction_with_retries(FailedNodes, #{},
+                                                   undefined, 1)),
+
+    %% Should work with the second try as test updates the Snapshot to match
+    {commit, _, _} =
+        failover_transaction_with_retries(FailedNodes, #{},
+                                          undefined, 2),
     ok.
 
 fix_vbucket_map_test_() ->
