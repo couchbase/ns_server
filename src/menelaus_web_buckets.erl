@@ -2398,11 +2398,11 @@ parse_validate_max_ttl_inner(true, MaxTTL, BucketCfg, IsNew) ->
     validate_with_missing(MaxTTL, DefaultVal, IsNew, fun do_parse_validate_max_ttl/1).
 
 do_parse_validate_max_ttl(Val) ->
-    case menelaus_util:parse_validate_number(Val, 0, ?MC_MAXINT) of
+    case menelaus_util:parse_validate_number(Val, 0, ?MAX_32BIT_UNSIGNED_INT) of
         {ok, X} ->
             {ok, max_ttl, X};
         _Error ->
-            Msg = io_lib:format("Max TTL must be an integer between 0 and ~p", [?MC_MAXINT]),
+            Msg = io_lib:format("Max TTL must be an integer between 0 and ~p", [?MAX_32BIT_UNSIGNED_INT]),
             {error, maxTTL, list_to_binary(Msg)}
     end.
 

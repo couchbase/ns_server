@@ -518,7 +518,7 @@ attribute_max(Name) ->
     case Name of
         pitr_granularity -> 18000;                  % 5 hours
         pitr_max_history_age -> 172800;             % 48 hours
-        version_pruning_window_hrs -> ?MC_MAXINT    % unit hours
+        version_pruning_window_hrs -> ?MAX_32BIT_UNSIGNED_INT    % unit hours
     end.
 
 %% Per-bucket-type point-in-time recovery attributes.  Point-in-time

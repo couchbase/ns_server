@@ -28,41 +28,41 @@
 %% These change values of keys in memcached.json.
 
 supported_setting_names() ->
-    [{max_connections, {int, 2000, ?MC_MAXINT}},
+    [{max_connections, {int, 2000, ?MAX_32BIT_UNSIGNED_INT}},
      {num_reader_threads, fun validate_num_threads/1},
      {num_writer_threads, fun validate_num_threads/1},
      {num_auxio_threads, fun validate_num_storage_auxio_nonio_threads/1},
      {num_nonio_threads, fun validate_num_storage_auxio_nonio_threads/1},
      {num_storage_threads, fun validate_num_storage_auxio_nonio_threads/1},
-     {system_connections, {int, 1000, ?MC_MAXINT}},
-     {verbosity, {int, 0, ?MC_MAXINT}},
+     {system_connections, {int, 1000, ?MAX_32BIT_UNSIGNED_INT}},
+     {verbosity, {int, 0, ?MAX_32BIT_UNSIGNED_INT}},
      {ssl_cipher_list, string},
-     {connection_idle_time, {int, 0, ?MC_MAXINT}},
+     {connection_idle_time, {int, 0, ?MAX_32BIT_UNSIGNED_INT}},
      {privilege_debug, bool},
      {breakpad_enabled, bool},
      {breakpad_minidump_dir_path, string},
      {dedupe_nmvb_maps, bool},
      {tracing_enabled, bool},
      {datatype_snappy, bool},
-     {tcp_keepalive_idle, {int, 0, ?MC_MAXINT}},
-     {tcp_keepalive_interval, {int, 0, ?MC_MAXINT}},
-     {tcp_keepalive_probes, {int, 0, ?MC_MAXINT}},
-     {tcp_user_timeout, {int, 0, ?MC_MAXINT}},
+     {tcp_keepalive_idle, {int, 0, ?MAX_32BIT_UNSIGNED_INT}},
+     {tcp_keepalive_interval, {int, 0, ?MAX_32BIT_UNSIGNED_INT}},
+     {tcp_keepalive_probes, {int, 0, ?MAX_32BIT_UNSIGNED_INT}},
+     {tcp_user_timeout, {int, 0, ?MAX_32BIT_UNSIGNED_INT}},
      {always_collect_trace_info, bool},
      {connection_limit_mode, {one_of, ["disconnect", "recycle"]}},
-     {free_connection_pool_size, {int, 0, ?MC_MAXINT}},
-     {max_client_connection_details, {int, 0, ?MC_MAXINT}}].
+     {free_connection_pool_size, {int, 0, ?MAX_32BIT_UNSIGNED_INT}},
+     {max_client_connection_details, {int, 0, ?MAX_32BIT_UNSIGNED_INT}}].
 
 %% Updates to these settings go to the '{node, node(), memcached_config_extra}'
 %% or 'memcached_config_extra' keys depending on whether the write is per-node
 %% or global. These add new keys to memcached.json.
 
 supported_extra_setting_names() ->
-    [{default_reqs_per_event, {int, 0, ?MC_MAXINT}},
-     {reqs_per_event_high_priority, {int, 0, ?MC_MAXINT}},
-     {reqs_per_event_med_priority, {int, 0, ?MC_MAXINT}},
-     {reqs_per_event_low_priority, {int, 0, ?MC_MAXINT}},
-     {threads, {int, 0, ?MC_MAXINT}}].
+    [{default_reqs_per_event, {int, 0, ?MAX_32BIT_UNSIGNED_INT}},
+     {reqs_per_event_high_priority, {int, 0, ?MAX_32BIT_UNSIGNED_INT}},
+     {reqs_per_event_med_priority, {int, 0, ?MAX_32BIT_UNSIGNED_INT}},
+     {reqs_per_event_low_priority, {int, 0, ?MAX_32BIT_UNSIGNED_INT}},
+     {threads, {int, 0, ?MAX_32BIT_UNSIGNED_INT}}].
 
 parse_validate_node("self") ->
     parse_validate_node(atom_to_list(node()));

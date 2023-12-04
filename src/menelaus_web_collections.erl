@@ -133,7 +133,7 @@ collection_modifiable_validators(BucketConfig) ->
     [validator:one_of(history, HistoryAllowedValues, _),
      validator:boolean(history, _),
      history_validator(BucketConfig, _),
-     validator:integer(maxTTL, -1, ?MC_MAXINT, _),
+     validator:integer(maxTTL, -1, ?MAX_32BIT_UNSIGNED_INT, _),
      validator:valid_in_enterprise_only(maxTTL, _),
      validator:no_duplicates(_)
     ].
