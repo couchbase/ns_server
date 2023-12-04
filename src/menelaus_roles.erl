@@ -383,8 +383,7 @@ roles() ->
                 "collection to retrieve data. This user can access the web "
                 "console and can read data, but not write it.">>}],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, select], [execute]},
-       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs],
-        [read, range_scan]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [read]},
        {[{bucket, bucket_name}, settings], [read]},
        {[ui], [read]},
        {[pools], [read]}]},
@@ -535,6 +534,14 @@ roles() ->
        {[{collection, [bucket_name, scope_name, any]}, collections], [read]},
        {[ui], [read]},
        {[pools], [read]}]},
+     {query_use_sequential_scans, ?RBAC_COLLECTION_PARAMS,
+      [{name, <<"Query Use Sequential Scans">>},
+       {folder, 'query'},
+       {desc, <<"Can use sequential scans for access to a given bucket, scope "
+                "or collection.">>}],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, sequential_scan],
+        [execute]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [range_scan]}]},
      {replication_target, [bucket_name],
       [{name, <<"XDCR Inbound">>},
        {folder, xdcr},
@@ -1714,60 +1721,58 @@ compile_and_assert(Role, Permissions, Params, Results) ->
             end
         end, Permissions)).
 
-do_collection_test_inner(Role, Op) ->
-    Permissions =
-        [{[{collection, ["default", "s", "c"]}, data, docs],
-             [Op, range_scan]},
-         {[{collection, ["default", "s", "c1"]}, data, docs],
-             [Op, range_scan]},
-         {[{collection, ["default", "s", "c2"]}, data, docs],
-             [Op, range_scan]},
-         {[{scope, ["default", "s"]}, data, docs],
-             [Op, range_scan]},
-         {[{scope, ["default", "s1"]}, data, docs],
-             [Op, range_scan]},
-         {[{scope, ["default", "s2"]}, data, docs],
-             [Op, range_scan]},
-         {[{bucket, "default"}, data, docs],
-             [Op, range_scan]},
-         {[{bucket, "default"}, settings], read}],
+collection_roles_test_() ->
+    Roles = [{data_reader, [read, range_scan]},
+             {query_select, [read]},
+             {query_delete, [delete, range_scan]},
+             {query_update, [upsert, range_scan]},
+             {query_use_sequential_scans, [range_scan]}],
 
-    Test = ?cut(fun () ->
-                        compile_and_assert(Role, Permissions, _, _)
-                end),
+    Permissions =
+        fun (Role, Ops) ->
+                [{P, Ops} ||
+                    P <- [[{collection, ["default", "s", "c"]}, data, docs],
+                          [{collection, ["default", "s", "c1"]}, data, docs],
+                          [{collection, ["default", "s", "c2"]}, data, docs],
+                          [{scope, ["default", "s"]}, data, docs],
+                          [{scope, ["default", "s1"]}, data, docs],
+                          [{scope, ["default", "s2"]}, data, docs],
+                          [{bucket, "default"}, data, docs]]] ++
+                    [{[{bucket, "default"}, settings], read} ||
+                        Role =/= query_use_sequential_scans]
+        end,
+
+    RolesWithPermissions = [{R, Permissions(R, Ops)} || {R, Ops} <- Roles],
+
+    TestTemplates =
+        [{"existing collection with id's",
+          [{"default", <<"default_id">>}, {"s", 1}, {"c", 1}],
+          [true, false, false, false, false, false, false, true]},
+         {"wrong collection id",
+          [{"default", <<"default_id">>}, {"s", 1}, {"c", 2}],
+          [false, false, false, false, false, false, false, false]},
+         {"existing collection without id's",
+          ["default", "s", "c"],
+          [true, false, false, false, false, false, false, true]},
+         {"scope",
+          ["default", "s", any],
+          [true, true, true, true, false, false, false, true]},
+         {"whole bucket",
+          ["default", any, any],
+          [true, true, true, true, true, true, true, true]},
+         {"another bucket",
+          ["test", any, any],
+          [false, false, false, false, false, false, false, false]}
+        ],
 
     {foreach, fun () -> ok end,
-     [{"existing collection with id's",
-       Test([{"default", <<"default_id">>}, {"s", 1}, {"c", 1}],
-            [true, false, false, false, false, false, false, true])},
-      {"wrong collection id",
-       Test([{"default", <<"default_id">>}, {"s", 1}, {"c", 2}],
-            [false, false, false, false, false, false, false, false])},
-      {"existing collection without id's",
-       Test(["default", "s", "c"],
-            [true, false, false, false, false, false, false, true])},
-      {"scope",
-       Test(["default", "s", any],
-            [true, true, true, true, false, false, false, true])},
-      {"whole bucket",
-       Test(["default", any, any],
-            [true, true, true, true, true, true, true, true])},
-      {"another bucket",
-       Test(["test", any, any],
-            [false, false, false, false, false, false, false, false])}
-     ]}.
-
-data_reader_collection_test_() ->
-    do_collection_test_inner(data_reader, read).
-
-query_select_collection_test_() ->
-    do_collection_test_inner(query_select, read).
-
-query_delete_collection_test_() ->
-    do_collection_test_inner(query_delete, delete).
-
-query_update_collection_test_() ->
-    do_collection_test_inner(query_update, upsert).
+     [{Title ++ ", role = " ++ atom_to_list(Role),
+       fun () ->
+               compile_and_assert(Role, Perm, Params,
+                                  lists:sublist(Expected, length(Perm)))
+       end} ||
+         {Title, Params, Expected} <- TestTemplates,
+         {Role, Perm} <- RolesWithPermissions]}.
 
 query_functions_test_() ->
     Roles = [{query_manage_functions, [n1ql, udf], manage},
