@@ -913,11 +913,11 @@ janitor_buckets_group_test_() ->
      [{"Apply Config Prep Test",
        fun apply_config_prep_test_body/0},
       {"Apply Config Prep Errors Test",
-       fun  apply_config_prep_test_errors_body/0},
+       fun apply_config_prep_test_errors_body/0},
       {"Cleanup Buckets With Map Test",
-       fun  cleanup_buckets_with_map_test_body/0},
+       fun cleanup_buckets_with_map_test_body/0},
       {"Cleanup Buckets With States Test",
-       fun  cleanup_buckets_with_states_test_body/0},
+       fun cleanup_buckets_with_states_test_body/0},
       {"Cleanup Mark Bucket Warmed Data Ingress Test",
        fun cleanup_mark_bucket_warmed_data_ingress_test_body/0}]
     }.
@@ -1058,7 +1058,7 @@ apply_config_prep_test_errors_body() ->
 cleanup_buckets_with_map_test_body() ->
     [Param1, Param2] = get_apply_config_prep_params(),
     {B1, #janitor_params{vbucket_states = States,
-                         bucket_config = BucketConfig1} =  JParam1} = Param1,
+                         bucket_config = BucketConfig1} = JParam1} = Param1,
     {B2, JParam2} = Param2,
     InputParam1 = {B1, JParam1#janitor_params{vbucket_states = undefined}},
     InputParam2 = {B2, JParam2#janitor_params{vbucket_states = undefined}},
@@ -1154,7 +1154,7 @@ cleanup_buckets_with_states_test_body() ->
     meck:expect(
       leader_activities, run_activity,
       fun ({ns_janitor, Buckets, apply_config}, {all, Servers}, _, _)
-            when (length(Buckets) =:= 3) and (Servers =:= [a, b, c])  ->
+            when (length(Buckets) =:= 3) and (Servers =:= [a, b, c]) ->
               ?assertEqual(["B1", "B2", "B3"], Buckets),
               {ok, [{Bucket, ok} || Bucket <- Buckets]};
           ({ns_janitor, Buckets, apply_config}, {all, Servers} ,_ ,_)
