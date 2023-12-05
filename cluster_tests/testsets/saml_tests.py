@@ -92,8 +92,9 @@ class SamlTests(testlib.BaseTestSet):
 
     def unsolicited_authn_and_logout_test(self):
         with saml_configured(self.cluster.connected_nodes[0]) as IDP:
-            name_id, session = \
-                unsolicited_authn(IDP, self.cluster.connected_nodes[0].url)
+            session = requests.Session()
+            _, name_id = send_unsolicited_authn(IDP, session)
+            check_access(session, self.cluster.connected_nodes[0].url, 200)
 
             binding_out, destination = \
                 IDP.pick_binding("single_logout_service",
@@ -129,7 +130,9 @@ class SamlTests(testlib.BaseTestSet):
                              idpMetadataURL=None,
                              spBaseURLType='custom',
                              spCustomBaseURL=auth_node_url) as IDP:
-            unsolicited_authn(IDP, auth_node_url)
+            session = requests.Session()
+            send_unsolicited_authn(IDP, session)
+            check_access(session, auth_node_url, 200)
 
             # Change some settings to invalidate metadata cache
             testlib.post_succ(settings_node, '/settings/saml',
@@ -141,7 +144,9 @@ class SamlTests(testlib.BaseTestSet):
             # saml settings is not breaking anything (for example, we have
             # metadata cached now, so we want to make sure it gets updated
             # successfully)
-            unsolicited_authn(IDP, auth_node_url)
+            session = requests.Session()
+            send_unsolicited_authn(IDP, session)
+            check_access(session, auth_node_url, 200)
 
 
     def authn_via_post_and_single_logout_test(self):
@@ -416,38 +421,12 @@ class SamlTests(testlib.BaseTestSet):
 
     def expired_assertion_test(self):
         with saml_configured(self.cluster.connected_nodes[0],
-                             assertion_lifetime=-1) as IDP:
-            identity = idp_test_user_attrs.copy()
-            binding_out, destination = \
-                IDP.pick_binding("assertion_consumer_service",
-                                 bindings=[BINDING_HTTP_POST],
-                                 entity_id=sp_entity_id)
-            name_id = NameID(text=testlib.random_str(16))
-
-            expiration = datetime.datetime.utcnow() + \
-                         datetime.timedelta(minutes=1)
-            expiration_iso = expiration.replace(microsecond=0).isoformat()
-
-            response = IDP.create_authn_response(
-                         identity,
-                         None, # InResponseTo is missing cause it is
-                               # an unsolicited response
-                         destination,
-                         sp_entity_id=sp_entity_id,
-                         userid=idp_test_username,
-                         name_id=name_id,
-                         sign_assertion=True,
-                         sign_response=True,
-                         authn={'class_ref': AUTHN_PASSWORD},
-                         session_not_on_or_after=expiration_iso)
-
-            response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
-
+                             # Moving NotOnOrAfter back to one minute
+                             assertion_lifetime=-1,
+                             # .. and allowing max clock skew 30 seconds
+                             spClockSkewS=30) as IDP:
             session = requests.Session()
-            r = session.post(destination,
-                             data={'SAMLResponse': response_encoded},
-                             headers=ui_headers,
-                             allow_redirects=False)
+            r, name_id = send_unsolicited_authn(IDP, session)
             error_msg = catch_error_after_redirect(
                 self.cluster.connected_nodes[0], session, r)
 
@@ -457,6 +436,18 @@ class SamlTests(testlib.BaseTestSet):
                             '/pools/default',
                             headers=ui_headers)
             assert_http_code(401, r)
+
+
+    def clock_skew_test(self):
+        with saml_configured(self.cluster.connected_nodes[0],
+                             # Moving NotOnOrAfter back to one minute
+                             assertion_lifetime=-1,
+                             # .. and allowing max clock skew 80 seconds which
+                             # is more than 1 minute
+                             spClockSkewS=80) as IDP:
+            session = requests.Session()
+            send_unsolicited_authn(IDP, session)
+            check_access(session, self.cluster.connected_nodes[0].url, 200)
 
 
     def groups_and_roles_attributes_test(self):
@@ -783,7 +774,8 @@ def set_sso_options(node, **kwargs):
                 'rolesAttribute': '',
                 'rolesAttributeSep': '',
                 'rolesFilterRE': '',
-                'singleLogoutEnabled': True}
+                'singleLogoutEnabled': True,
+                'spClockSkewS': 0}
 
 
     for k in kwargs:
@@ -952,20 +944,19 @@ def generate_unsolicited_authn_response(IDP):
     return destination, base64.b64encode(f"{response}".encode("utf-8")), name_id
 
 
-def unsolicited_authn(IDP, auth_url):
+def send_unsolicited_authn(IDP, session):
     destination, response_encoded, name_id = \
         generate_unsolicited_authn_response(IDP)
 
-    session = requests.Session()
     print(f"Sending authn response to {destination}...")
     r = session.post(destination,
                      data={'SAMLResponse': response_encoded},
                      headers=ui_headers,
                      allow_redirects=False)
     assert_http_code(302, r)
+    return r, name_id
 
-    r = session.get(auth_url + '/pools/default',
-                    headers=ui_headers)
-    assert_http_code(200, r)
 
-    return name_id, session
+def check_access(session, url, expected_code):
+    r = session.get(url + '/pools/default', headers=ui_headers)
+    assert_http_code(expected_code, r)

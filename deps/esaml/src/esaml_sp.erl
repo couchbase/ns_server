@@ -242,7 +242,7 @@ validate_assertion(Xml, SP = #esaml_sp{}) ->
 %% in the case of a replay attack.
 -spec validate_assertion(xml(), dupe_fun(), esaml:sp()) ->
         {ok, esaml:assertion()} | {error, Reason :: term()}.
-validate_assertion(Xml, DuplicateFun, SP = #esaml_sp{}) ->
+validate_assertion(Xml, DuplicateFun, SP = #esaml_sp{clock_skew = ClockSkew}) ->
     Ns = [{"samlp", 'urn:oasis:names:tc:SAML:2.0:protocol'},
           {"saml", 'urn:oasis:names:tc:SAML:2.0:assertion'}],
     SuccessStatus = "urn:oasis:names:tc:SAML:2.0:status:Success",
@@ -305,7 +305,8 @@ validate_assertion(Xml, DuplicateFun, SP = #esaml_sp{}) ->
                             undefined -> SP#esaml_sp.consume_uri;
                             R -> R
                         end,
-            case esaml:validate_assertion(A, Recipient, get_entity_id(SP)) of
+            case esaml:validate_assertion(A, Recipient, get_entity_id(SP),
+                                          ClockSkew) of
                 {ok, AR} ->
                     case DuplicateFun(AR, xmerl_dsig:digest(A)) of
                         ok -> AR;

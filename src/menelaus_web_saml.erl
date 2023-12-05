@@ -418,6 +418,7 @@ build_sp_metadata(Opts, Req) ->
     IdpSignsEnvelopes = proplists:get_value(verify_assertion_envelop_sig, Opts),
     IdpSignsLogoutReq = proplists:get_value(verify_logout_req_sig, Opts),
     CacheDuration = proplists:get_value(sp_md_cache_duration, Opts),
+    ClockSkew = proplists:get_value(clock_skew, Opts),
     Recipient = case proplists:get_value(verify_recipient, Opts) of
                     false -> any;
                     consumeURL -> undefined;
@@ -441,7 +442,8 @@ build_sp_metadata(Opts, Req) ->
                     name = ContactName,
                     email = ContactEmail
                   },
-           cache_duration = CacheDuration
+           cache_duration = CacheDuration,
+           clock_skew = ClockSkew
          },
 
     Cert = proplists:get_value(cert, Opts),
@@ -810,7 +812,10 @@ params() ->
         type => {read_only, string}}},
      {"spLogoutURL",
       #{cfg_key => sp_md_logout_url,
-        type => {read_only, string}}}].
+        type => {read_only, string}}},
+     {"spClockSkewS",
+      #{cfg_key => clock_skew,
+        type => int}}].
 
 defaults() ->
     [{enabled, false},
@@ -856,7 +861,8 @@ defaults() ->
      {sp_md_cache_duration, "P1M"},
      {sp_md_url, ""},
      {sp_md_consume_url, ""},
-     {sp_md_logout_url, ""}].
+     {sp_md_logout_url, ""},
+     {clock_skew, 180}].
 
 type_spec(saml_metadata) ->
     #{validators => [string, fun validate_saml_metadata/2],
@@ -960,6 +966,7 @@ handle_saml_assertion(Req, {ok, Assertion}, SSOOpts) ->
     Username = extract_username(Assertion, SSOOpts),
     ExtraGroups = extract_groups(Assertion, SSOOpts),
     ExtraRoles = extract_roles(Assertion, SSOOpts),
+    ClockSkew = proplists:get_value(clock_skew, SSOOpts),
     case is_list(Username) andalso length(Username) > 0 of
         true when NameID =/= undefined, length(NameID) > 0 ->
             ExpDatetimeUTC =
@@ -968,8 +975,14 @@ handle_saml_assertion(Req, {ok, Assertion}, SSOOpts) ->
                         undefined;
                     'SessionNotOnOrAfter' ->
                         Authn = Assertion#esaml_assertion.authn,
-                        proplists:get_value(session_not_on_or_after,
-                                            Authn)
+                        case proplists:get_value(session_not_on_or_after,
+                                                 Authn) of
+                            undefined -> undefined;
+                            DT ->
+                                calendar:gregorian_seconds_to_datetime(
+                                  calendar:datetime_to_gregorian_seconds(DT) +
+                                  ClockSkew)
+                        end
                 end,
             AuthnRes0 = menelaus_auth:init_auth({Username, external}),
             AuthnRes =

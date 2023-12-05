@@ -120,4 +120,5 @@
 	encrypt_mandatory = false :: boolean(),
 	entity_id :: string() | undefined,
 	assertion_recipient :: any | undefined | string(),
-	cache_duration :: string()}).
+	cache_duration :: string(),
+	clock_skew :: integer()}).

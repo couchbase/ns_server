@@ -17,7 +17,7 @@
 
 -export([start/2, stop/1, init/1]).
 -export([stale_time/1]).
--export([config/2, config/1, to_xml/1, decode_response/1, decode_assertion/1, validate_assertion/3, common_attrib_map/1]).
+-export([config/2, config/1, to_xml/1, decode_response/1, decode_assertion/1, validate_assertion/4, common_attrib_map/1]).
 -export([decode_logout_request/1, decode_logout_response/1, decode_idp_metadata/1]).
 
 -type org() :: #esaml_org{}.
@@ -394,21 +394,39 @@ stale_time(A) ->
         end
     ], none).
 
-check_stale(A) ->
+not_before_time(A) ->
+    Conds = A#esaml_assertion.conditions,
+    case proplists:get_value(not_before, Conds) of
+        undefined ->
+            IssueIsoTime = A#esaml_assertion.issue_instant,
+            Secs = calendar:datetime_to_gregorian_seconds(
+                     esaml_util:saml_to_datetime(IssueIsoTime)),
+            Secs;
+        IsoTime ->
+            calendar:datetime_to_gregorian_seconds(
+              esaml_util:saml_to_datetime(IsoTime))
+    end.
+
+check_stale(A, ClockSkewSecs) ->
     Now = erlang:localtime_to_universaltime(erlang:localtime()),
     NowSecs = calendar:datetime_to_gregorian_seconds(Now),
-    T = stale_time(A),
-    if (NowSecs > T) ->
-        {error, stale_assertion};
-    true ->
-        A
+    Stale = stale_time(A),
+    NotBefore = not_before_time(A),
+    if
+        NowSecs > Stale + ClockSkewSecs ->
+            {error, stale_assertion};
+        NowSecs < NotBefore - ClockSkewSecs ->
+            {error, not_before};
+        true ->
+            A
     end.
 
 %% @doc Parse and validate an assertion, returning it as a record
 %% @private
--spec validate_assertion(AssertionXml :: #xmlElement{}, Recipient :: string(), Audience :: string()) ->
+-spec validate_assertion(AssertionXml :: #xmlElement{}, Recipient :: string(),
+                         Audience :: string(), ClockSkew :: integer()) ->
         {ok, #esaml_assertion{}} | {error, Reason :: term()}.
-validate_assertion(AssertionXml, Recipient, Audience) ->
+validate_assertion(AssertionXml, Recipient, Audience, ClockSkew) ->
     case decode_assertion(AssertionXml) of
         {error, Reason} ->
             {error, Reason};
@@ -432,7 +450,7 @@ validate_assertion(AssertionXml, Recipient, Audience) ->
                         end;
                     _ -> A
                 end end,
-                fun check_stale/1
+                fun (A) -> check_stale(A, ClockSkew) end
             ], Assertion)
     end.
 
@@ -730,10 +748,10 @@ validate_assertion_test() ->
                 #xmlElement{name = 'saml:AudienceRestriction', content = [
                     #xmlElement{name = 'saml:Audience', content = [#xmlText{value = "foo"}]}] }] } ]
     }),
-    {ok, Assertion} = validate_assertion(E1, "foobar", "foo"),
+    {ok, Assertion} = validate_assertion(E1, "foobar", "foo", 0),
     #esaml_assertion{issue_instant = "now", recipient = "foobar", subject = #esaml_subject{notonorafter = Death}, conditions = [{audience, "foo"}]} = Assertion,
-    {error, bad_recipient} = validate_assertion(E1, "foo", "something"),
-    {error, bad_audience} = validate_assertion(E1, "foobar", "something"),
+    {error, bad_recipient} = validate_assertion(E1, "foo", "something", 0),
+    {error, bad_audience} = validate_assertion(E1, "foobar", "something", 0),
 
     E2 = esaml_util:build_nsinfo(Ns, #xmlElement{name = 'saml:Assertion',
         attributes = [#xmlAttribute{name = 'xmlns:saml', value = "urn:oasis:names:tc:SAML:2.0:assertion"}, #xmlAttribute{name = 'Version', value = "2.0"}, #xmlAttribute{name = 'IssueInstant', value = "now"}],
@@ -744,7 +762,7 @@ validate_assertion_test() ->
                 #xmlElement{name = 'saml:AudienceRestriction', content = [
                     #xmlElement{name = 'saml:Audience', content = [#xmlText{value = "foo"}]}] }] } ]
     }),
-    {error, bad_recipient} = validate_assertion(E2, "", "").
+    {error, bad_recipient} = validate_assertion(E2, "", "", 0).
 
 validate_stale_assertion_test() ->
     Ns = #xmlNamespace{nodes = [{"saml", 'urn:oasis:names:tc:SAML:2.0:assertion'}]},
@@ -759,6 +777,6 @@ validate_stale_assertion_test() ->
                                       #xmlAttribute{name = 'NotOnOrAfter', value = OldStamp}]
                     } ]} ]} ]
     }),
-    {error, stale_assertion} = validate_assertion(E1, "foobar", "foo").
+    {error, stale_assertion} = validate_assertion(E1, "foobar", "foo", 0).
 
 -endif.

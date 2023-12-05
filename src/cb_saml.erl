@@ -113,6 +113,10 @@ format_error({validate_assertion, Reason}) ->
             stale_assertion ->
                 "expired SAML assertion, make sure clocks on couchbase-server "
                 "and identity provider are synchronized";
+            not_before ->
+                "SAML assertion \"not before\" is in the future, make sure "
+                "clocks on couchbase-server and identity provider are "
+                "synchronized";
             duplicate_assertion ->
                 "assertion replay protection";
             {dupe_check_bad_nodes, Nodes} ->
