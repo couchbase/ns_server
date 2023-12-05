@@ -190,7 +190,8 @@ class MnWizardNewClusterConfigComponent extends MnLifeCycleHooksToStream {
     var services = [
       ["memoryQuota", "kv"],
       ["indexMemoryQuota", "index"],
-      ["ftsMemoryQuota", "fts"]
+      ["ftsMemoryQuota", "fts"],
+      ["queryMemoryQuota", "n1ql"]
     ];
     if (isEnterprise) {
       services.push(["eventingMemoryQuota", "eventing"]);

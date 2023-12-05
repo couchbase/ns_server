@@ -45,9 +45,9 @@ licenses/APL2.txt.
   </div>
 </div>
 
-<div ng-if="config.displayedServices.n1ql">
+<div ng-if="config.displayedServices.n1ql !== undefined">
   <div class="row formrow">
-    <div class="width-5">
+    <div class="width-6">
       <input
          ng-if="config.services"
          ng-model="config.services.model.n1ql"
@@ -55,18 +55,36 @@ licenses/APL2.txt.
          ng-disabled="config.services.disabled.n1ql"
          id="n1ql_ram_quota">
       <label
+         class="inline"
          for="n1ql_ram_quota">
         Query
       </label>
+      <span
+         class="fa-stack icon-info"
+         uib-tooltip-html="'The memory quota for the Query service is a soft limit target that the garbage collector works to respect, including running more frequently as the limit is approached or crossed. When set to 0 the soft limit target is disabled and the garbage collector runs as normal.'"
+         tooltip-placement="auto right"
+         tooltip-trigger="mouseenter">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+      </span>
     </div>
-    <small class="form-inline width-7 text-center">
+    <div class="row width-6 flex-right relative" ng-if="config.displayedServices.n1ql">
+      <div class="inside-label">MiB</div>
+      <input
+         type="text"
+         mn-focus
+         ng-disabled="config.services && !config.services.model.n1ql || (rbac && !rbac.cluster.pools.write)"
+         ng-model="config.queryMemoryQuota"
+         class="input-inside-label">
+    </div>
+    <small class="form-inline width-6 text-center" ng-if="!config.displayedServices.n1ql">
       - - - - - - - - -
     </small>
   </div>
   <div
      class="error"
-     ng-show="errors.n1qlMemoryQuota">
-    {{errors.n1qlMemoryQuota}}
+     ng-show="errors.queryMemoryQuota">
+    {{errors.queryMemoryQuota}}
   </div>
 </div>
 

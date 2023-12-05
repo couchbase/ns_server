@@ -106,7 +106,15 @@ class MnServicesConfigComponent extends MnLifeCycleHooksToStream {
 
   packQuotas(acc, name) {
     var service = this.getFlag(name);
-    var keyName = (name == "kv" ? "m" : (name + "M")) + "emoryQuota";
+    var keyName = name + 'MemoryQuota';
+    switch (name) {
+      case 'kv':
+        keyName = 'memoryQuota';
+        break;
+      case 'n1ql':
+        keyName = 'queryMemoryQuota';
+        break;
+    }
     if (!this.isFlagEnabled || (service && service.value)) {
       acc[keyName] = this.getField(name).value;
     }

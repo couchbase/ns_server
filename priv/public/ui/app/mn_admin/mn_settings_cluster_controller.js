@@ -278,8 +278,7 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
     var services = {
       kv: true,
       index: true,
-      fts: true,
-      n1ql: true
+      fts: true
     };
 
     if (mnPoolDefault.export.isEnterprise) {
@@ -287,6 +286,7 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
       services.eventing = mnPoolDefault.export.compat.atLeast55;
       services.backup = mnPoolDefault.export.compat.atLeast70;
     }
+    services.n1ql = mnPoolDefault.export.compat.atLeast76;
 
     if ($scope.rbac.cluster.xdcr.settings.read) {
       mnXDCRService.getSettingsReplications().then(function (rv) {

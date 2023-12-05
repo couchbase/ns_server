@@ -37,6 +37,19 @@ licenses/APL2.txt.
            [attr.for]="service + '-ram-flag'"
            class="checkbox">
           {{getServiceName(service)}}
+          <ng-template #query_details>
+            The memory quota for the Query service is a soft limit target that the garbage collector works to respect, including running more frequently as the limit is approached or crossed. When set to 0 the soft limit target is disabled and the garbage collector runs as normal.
+          </ng-template>
+          <span
+             *ngIf="service === 'n1ql'"
+             class="fa-stack icon-info margin-left-quarter"
+             [ngbTooltip]="query_details"
+             placement="right"
+             [closeDelay]="2000"
+             container="body">
+            <span class="icon fa-circle-thin fa-stack-2x"></span>
+            <span class="icon fa-info fa-stack-1x"></span>
+          </span>
         </label>
       </div>
       <label
@@ -47,12 +60,12 @@ licenses/APL2.txt.
       </label>
       <small
          class="form-inline width-6 text-center"
-         *ngIf="group.value.field && (service == 'n1ql' || service === 'backup')">
+         *ngIf="group.value.field && service === 'backup'">
         - - - - - - -
       </small>
       <div
          class="row width-6 flex-right relative"
-         *ngIf="group.value.field && (service !== 'n1ql' && service !== 'backup')"
+         *ngIf="group.value.field && service !== 'backup'"
          formGroupName="field">
         <input
            [attr.id]="service + '-service-field'"

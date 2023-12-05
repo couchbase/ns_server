@@ -60,8 +60,8 @@ class MnPoolsService {
       this.stream.isEnterprise
       .pipe(map(function (isEnterprise) {
         return isEnterprise ?
-          ["kv", "index", "fts", "cbas", "eventing"] :
-          ["kv", "index", "fts"];
+          ["kv", "index", "fts", "cbas", "eventing", "n1ql"] :
+          ["kv", "index", "fts", "n1ql"];
       }), shareReplay({refCount: true, bufferSize: 1}));
   }
 
@@ -80,6 +80,7 @@ class MnPoolsService {
   getServiceQuotaName(service) {
     switch (service) {
     case "kv": return "memoryQuota";
+    case "n1ql": return "queryMemoryQuota";
     default: return service + "MemoryQuota";
     }
   }

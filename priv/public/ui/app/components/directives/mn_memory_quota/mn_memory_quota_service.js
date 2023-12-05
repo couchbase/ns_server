@@ -47,6 +47,9 @@ function mnMemoryQuotaServiceFactory($http, $window, mnPoolDefault, mnHelper, IE
     rv.indexMemoryQuota = currentPool.indexMemoryQuota || 256;
     rv.ftsMemoryQuota = currentPool.ftsMemoryQuota || 256;
 
+    if (currentPool.compat.atLeast76) {
+      rv.queryMemoryQuota = currentPool.queryMemoryQuota || 0;
+    }
     if (currentPool.compat.atLeast55 && mnPoolDefault.export.isEnterprise) {
       rv.cbasMemoryQuota = currentPool.cbasMemoryQuota || 256;
       rv.eventingMemoryQuota = currentPool.eventingMemoryQuota || 256;
