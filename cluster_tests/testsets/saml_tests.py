@@ -41,6 +41,7 @@ debug=False
 scriptdir = sys.path[0]
 mock_server_port = 8119
 mock_server_host = "localhost"
+mock_server_url = f"http://{mock_server_host}:{mock_server_port}"
 mock_metadata_endpoint = "/mock/metadata"
 mock_sso_redirect_url = f"http://{mock_server_host}:{mock_server_port}/mock/auth"
 mock_sso_post_url = f"http://{mock_server_host}:{mock_server_port}/mock/auth/post"
@@ -147,6 +148,30 @@ class SamlTests(testlib.BaseTestSet):
             session = requests.Session()
             send_unsolicited_authn(IDP, session)
             check_access(session, auth_node_url, 200)
+
+
+    def unsolicited_authn_wrong_issuer_test(self):
+        with saml_configured(self.cluster.connected_nodes[0],
+                             idpMetadataOrigin='upload',
+                             idpMetadataURL=None,
+                             assertion_issuer="wrong") as IDP:
+            session = requests.Session()
+            r, name_id = send_unsolicited_authn(IDP, session)
+            error_msg = catch_error_after_redirect(
+                self.cluster.connected_nodes[0], session, r)
+            assert_in(f'Unexpected assertion issuer ("wrong")', error_msg)
+            check_access(session, self.cluster.connected_nodes[0].url, 401)
+
+
+    def unsolicited_authn_ignore_wrong_issuer_test(self):
+        with saml_configured(self.cluster.connected_nodes[0],
+                             idpMetadataOrigin='upload',
+                             idpMetadataURL=None,
+                             spVerifyIssuer=False,
+                             assertion_issuer="wrong") as IDP:
+            session = requests.Session()
+            r, name_id = send_unsolicited_authn(IDP, session)
+            check_access(session, self.cluster.connected_nodes[0].url, 200)
 
 
     def authn_via_post_and_single_logout_test(self):
@@ -645,7 +670,7 @@ class SamlTests(testlib.BaseTestSet):
 
 
 @contextmanager
-def saml_configured(node, **kwargs):
+def saml_configured(node, assertion_issuer=None, **kwargs):
     mock_server_process = None
     metadata_origin = kwargs['idpMetadataOrigin'] \
                       if 'idpMetadataOrigin' in kwargs \
@@ -661,7 +686,10 @@ def saml_configured(node, **kwargs):
         else:
             kwargs['idpMetadata'] = metadata
         set_sso_options(node, **kwargs)
-        IDP = server.Server(idp_config(node, **kwargs))
+        new_kwargs = kwargs.copy()
+        if assertion_issuer is not None:
+            new_kwargs['idp_entity_id'] = assertion_issuer
+        IDP = server.Server(idp_config(node, **new_kwargs))
         yield IDP
     finally:
         if mock_server_process is not None:
@@ -775,7 +803,8 @@ def set_sso_options(node, **kwargs):
                 'rolesAttributeSep': '',
                 'rolesFilterRE': '',
                 'singleLogoutEnabled': True,
-                'spClockSkewS': 0}
+                'spClockSkewS': 0,
+                'spVerifyIssuer': True}
 
 
     for k in kwargs:
@@ -789,15 +818,16 @@ def set_sso_options(node, **kwargs):
 
 
 def idp_config(node, spSignRequests=True, assertion_lifetime=15,
-               certs_prefix="mockidp_", **kwargs):
+               certs_prefix="mockidp_", idp_entity_id=None, **kwargs):
     sp_base_url = node.url
-    idp_base_url = f"http://{mock_server_host}:{mock_server_port}"
+    if idp_entity_id is None:
+        idp_entity_id = f"{mock_server_url}{mock_metadata_endpoint}"
     key_path = os.path.join(scriptdir, "resources", "saml",
                             f"{certs_prefix}key.pem")
     cert_path = os.path.join(scriptdir, "resources", "saml",
                             f"{certs_prefix}cert.pem")
     log_level = "DEBUG" if debug else "ERROR"
-    return {"entityid": f"{idp_base_url}{mock_metadata_endpoint}",
+    return {"entityid": idp_entity_id,
             "description": "My IDP",
             "valid_for": 1,
             "service": {

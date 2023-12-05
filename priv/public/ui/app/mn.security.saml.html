@@ -893,6 +893,14 @@
 
         <div class="formrow checkbox-list">
           <input
+             formControlName="spVerifyIssuer"
+             type="checkbox"
+             id="for-sp-verify-issuer">
+          <label for="for-sp-verify-issuer">Validate assertion issuer (should match IDP entity id)</label>
+        </div>
+
+        <div class="formrow checkbox-list">
+          <input
              formControlName="spVerifyRecipientFlag"
              type="checkbox"
              id="for-sp-verify-recipient">

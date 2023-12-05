@@ -140,6 +140,8 @@ format_error({validate_assertion, Reason}) ->
             {What, {error, multiple_signatures}} when What == assertion;
                                                       What == envelope ->
                 io_lib:format("~p contains multiple signatures", [What]);
+            {bad_issuer, Issuer} ->
+                io_lib:format("Unexpected assertion issuer (~p)", [Issuer]);
             _ ->
                 io_lib:format("~p", [Reason])
         end,

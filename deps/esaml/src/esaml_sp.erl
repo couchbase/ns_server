@@ -13,7 +13,7 @@
 -include_lib("xmerl/include/xmerl.hrl").
 
 -export([setup/1, generate_authn_request/2, generate_authn_request/3, generate_metadata/1]).
--export([validate_assertion/2, validate_assertion/3]).
+-export([validate_assertion/2, validate_assertion/3, validate_assertion/4]).
 -export([generate_logout_request/3, generate_logout_request/4, generate_logout_response/3]).
 -export([validate_logout_request/2, validate_logout_response/2]).
 
@@ -242,7 +242,13 @@ validate_assertion(Xml, SP = #esaml_sp{}) ->
 %% in the case of a replay attack.
 -spec validate_assertion(xml(), dupe_fun(), esaml:sp()) ->
         {ok, esaml:assertion()} | {error, Reason :: term()}.
-validate_assertion(Xml, DuplicateFun, SP = #esaml_sp{clock_skew = ClockSkew}) ->
+validate_assertion(Xml, DuplicateFun, SP) ->
+    validate_assertion(Xml, DuplicateFun, SP, any).
+
+-spec validate_assertion(xml(), dupe_fun(), esaml:sp(), string() | any) ->
+        {ok, esaml:assertion()} | {error, Reason :: term()}.
+validate_assertion(Xml, DuplicateFun, SP = #esaml_sp{clock_skew = ClockSkew},
+                   ExpectedIssuer) ->
     Ns = [{"samlp", 'urn:oasis:names:tc:SAML:2.0:protocol'},
           {"saml", 'urn:oasis:names:tc:SAML:2.0:assertion'}],
     SuccessStatus = "urn:oasis:names:tc:SAML:2.0:status:Success",
@@ -306,7 +312,7 @@ validate_assertion(Xml, DuplicateFun, SP = #esaml_sp{clock_skew = ClockSkew}) ->
                             R -> R
                         end,
             case esaml:validate_assertion(A, Recipient, get_entity_id(SP),
-                                          ClockSkew) of
+                                          ExpectedIssuer, ClockSkew) of
                 {ok, AR} ->
                     case DuplicateFun(AR, xmerl_dsig:digest(A)) of
                         ok -> AR;

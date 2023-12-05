@@ -17,7 +17,7 @@
 
 -export([start/2, stop/1, init/1]).
 -export([stale_time/1]).
--export([config/2, config/1, to_xml/1, decode_response/1, decode_assertion/1, validate_assertion/4, common_attrib_map/1]).
+-export([config/2, config/1, to_xml/1, decode_response/1, decode_assertion/1, validate_assertion/5, common_attrib_map/1]).
 -export([decode_logout_request/1, decode_logout_response/1, decode_idp_metadata/1]).
 
 -type org() :: #esaml_org{}.
@@ -423,10 +423,13 @@ check_stale(A, ClockSkewSecs) ->
 
 %% @doc Parse and validate an assertion, returning it as a record
 %% @private
--spec validate_assertion(AssertionXml :: #xmlElement{}, Recipient :: string(),
-                         Audience :: string(), ClockSkew :: integer()) ->
+-spec validate_assertion(AssertionXml :: #xmlElement{},
+                         Recipient :: string() | any,
+                         Audience :: string(),
+                         Issuer :: string() | any,
+                         ClockSkew :: integer()) ->
         {ok, #esaml_assertion{}} | {error, Reason :: term()}.
-validate_assertion(AssertionXml, Recipient, Audience, ClockSkew) ->
+validate_assertion(AssertionXml, Recipient, Audience, Issuer, ClockSkew) ->
     case decode_assertion(AssertionXml) of
         {error, Reason} ->
             {error, Reason};
@@ -441,6 +444,14 @@ validate_assertion(AssertionXml, Recipient, Audience, ClockSkew) ->
                     _ when Recipient == any -> A;
                     _ -> {error, bad_recipient}
                 end end,
+                fun(A) ->
+                    case A of
+                        #esaml_assertion{issuer = Issuer} -> A;
+                        #esaml_assertion{} when Issuer == any -> A;
+                        #esaml_assertion{issuer = BadIssuer} ->
+                            {error, {bad_issuer, BadIssuer}}
+                    end
+                end,
                 fun(A) -> case A of
                     #esaml_assertion{conditions = Conds} ->
                         case proplists:get_value(audience, Conds) of
@@ -738,6 +749,7 @@ validate_assertion_test() ->
     E1 = esaml_util:build_nsinfo(Ns, #xmlElement{name = 'saml:Assertion',
         attributes = [#xmlAttribute{name = 'xmlns:saml', value = "urn:oasis:names:tc:SAML:2.0:assertion"}, #xmlAttribute{name = 'Version', value = "2.0"}, #xmlAttribute{name = 'IssueInstant', value = "now"}],
         content = [
+            #xmlElement{name = 'saml:Issuer', content = [#xmlText{value = "issuer"}]},
             #xmlElement{name = 'saml:Subject', content = [
                 #xmlElement{name = 'saml:SubjectConfirmation', content = [
                     #xmlElement{name = 'saml:SubjectConfirmationData',
@@ -748,10 +760,17 @@ validate_assertion_test() ->
                 #xmlElement{name = 'saml:AudienceRestriction', content = [
                     #xmlElement{name = 'saml:Audience', content = [#xmlText{value = "foo"}]}] }] } ]
     }),
-    {ok, Assertion} = validate_assertion(E1, "foobar", "foo", 0),
-    #esaml_assertion{issue_instant = "now", recipient = "foobar", subject = #esaml_subject{notonorafter = Death}, conditions = [{audience, "foo"}]} = Assertion,
+    {ok, Assertion} = validate_assertion(E1, "foobar", "foo", "issuer", 0),
+    #esaml_assertion{issue_instant = "now",
+                     issuer = "issuer",
+                     recipient = "foobar",
+                     subject = #esaml_subject{notonorafter = Death},
+                     conditions = [{audience, "foo"}]} = Assertion,
     {error, bad_recipient} = validate_assertion(E1, "foo", "something", 0),
     {error, bad_audience} = validate_assertion(E1, "foobar", "something", 0),
+    {error, {bad_issuer, "issuer"}} =
+        validate_assertion(E1, "foobar", "foo", "something", 0),
+    {ok, _} = validate_assertion(E1, "foobar", "foo", any, 0),
 
     E2 = esaml_util:build_nsinfo(Ns, #xmlElement{name = 'saml:Assertion',
         attributes = [#xmlAttribute{name = 'xmlns:saml', value = "urn:oasis:names:tc:SAML:2.0:assertion"}, #xmlAttribute{name = 'Version', value = "2.0"}, #xmlAttribute{name = 'IssueInstant', value = "now"}],
@@ -762,7 +781,7 @@ validate_assertion_test() ->
                 #xmlElement{name = 'saml:AudienceRestriction', content = [
                     #xmlElement{name = 'saml:Audience', content = [#xmlText{value = "foo"}]}] }] } ]
     }),
-    {error, bad_recipient} = validate_assertion(E2, "", "", 0).
+    {error, bad_recipient} = validate_assertion(E2, "", "", any, 0).
 
 validate_stale_assertion_test() ->
     Ns = #xmlNamespace{nodes = [{"saml", 'urn:oasis:names:tc:SAML:2.0:assertion'}]},
@@ -777,6 +796,6 @@ validate_stale_assertion_test() ->
                                       #xmlAttribute{name = 'NotOnOrAfter', value = OldStamp}]
                     } ]} ]} ]
     }),
-    {error, stale_assertion} = validate_assertion(E1, "foobar", "foo", 0).
+    {error, stale_assertion} = validate_assertion(E1, "foobar", "foo", any, 0).
 
 -endif.

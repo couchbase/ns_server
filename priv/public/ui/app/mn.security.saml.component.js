@@ -118,6 +118,7 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
          spSessionExpire: null,
          spSignMetadata: null,
          spSignRequests: null,
+         spVerifyIssuer: null,
          spTrustedFingerprints: null,
          spTrustedFingerprintsUsage: null, // Values: everything, metadataOnly, metadataInitialOnly
          spVerifyAssertionEnvelopSig: null,

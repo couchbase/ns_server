@@ -263,7 +263,11 @@ handle_saml_consume(Req, UnvalidatedParams) ->
     ?log_debug("Starting saml consume"),
     %% Making sure metadata is up to date. By doing that we also update
     %% certificates that will be used for assertion verification
-    _IDPMetadata = try_get_idp_metadata(SSOOpts),
+    IDPMetadata = try_get_idp_metadata(SSOOpts),
+    ExpectedIssuer = case proplists:get_value(verify_issuer, SSOOpts) of
+                         true -> IDPMetadata#esaml_idp_metadata.entity_id;
+                         false -> any
+                     end,
     SPMetadata = build_sp_metadata(SSOOpts, Req),
     DupeCheck = proplists:get_value(dupe_check, SSOOpts),
     validator:handle(
@@ -276,7 +280,7 @@ handle_saml_consume(Req, UnvalidatedParams) ->
       [validator:string('SAMLEncoding', _),
        validator:default('SAMLEncoding', "", _),
        validate_authn_response('SAMLResponse', 'SAMLEncoding',
-                               SPMetadata, DupeCheck, Req, _),
+                               SPMetadata, ExpectedIssuer, DupeCheck, Req, _),
        validator:required('SAMLResponse', _),
        validator:string('RelayState', _)]).
 
@@ -500,7 +504,8 @@ try_get_idp_metadata(Opts) ->
             menelaus_util:web_exception(500, iolist_to_binary(Msg))
     end.
 
-validate_authn_response(NameResp, NameEnc, SPMetadata, DupeCheck, Req, State) ->
+validate_authn_response(NameResp, NameEnc, SPMetadata, ExpectedIssuer,
+                        DupeCheck, Req, State) ->
     validator:validate_relative(
       fun (Resp, Enc) ->
           SAMLEncoding = list_to_binary(Enc),
@@ -518,7 +523,8 @@ validate_authn_response(NameResp, NameEnc, SPMetadata, DupeCheck, Req, State) ->
                           disabled -> fun (_, _) -> ok end
                       end,
                   case esaml_sp:validate_assertion(Xml, DupeCheckFun,
-                                                   SPMetadata) of
+                                                   SPMetadata,
+                                                   ExpectedIssuer) of
                       {ok, Assertion} ->
                           ?log_debug("Assertion validated successfully"),
                           {value, {ok, Assertion}};
@@ -815,7 +821,10 @@ params() ->
         type => {read_only, string}}},
      {"spClockSkewS",
       #{cfg_key => clock_skew,
-        type => int}}].
+        type => int}},
+     {"spVerifyIssuer",
+      #{cfg_key => verify_issuer,
+        type => bool}}].
 
 defaults() ->
     [{enabled, false},
@@ -862,7 +871,8 @@ defaults() ->
      {sp_md_url, ""},
      {sp_md_consume_url, ""},
      {sp_md_logout_url, ""},
-     {clock_skew, 180}].
+     {clock_skew, 180},
+     {verify_issuer, true}].
 
 type_spec(saml_metadata) ->
     #{validators => [string, fun validate_saml_metadata/2],
