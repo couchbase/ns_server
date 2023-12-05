@@ -514,10 +514,10 @@ build_auth_info_ctx() ->
 %% corresponding version of cbauth would be compatible. in order to make
 %% any changes, the version should be increased and ns_server should still
 %% support all the previous versions.
-build_auth_info(?VERSION_1, {AuthVersion, PermissionsVersion, CcaState, _Config,
+build_auth_info(?VERSION_1, {AuthVersion, PermissionsVersion, CcaState, Config,
                              _Snapshot},
                 #state{client_cert_auth_version = ClientCertAuthVersion}) ->
-    {value, NodeUuid} = ns_config:search_node(uuid),
+    {value, NodeUuid} = ns_config:search_node(Config, uuid),
     [{authCheckEndpoint, <<?AUTH_CHECK_ENDPOINT>>},
      {authVersion, AuthVersion},
      {permissionCheckEndpoint, <<?PERM_CHECK_ENDPOINT>>},
