@@ -1086,21 +1086,29 @@ extract_roles(Assertion, SSOOpts) ->
                                              [{capture, none},
                                               notempty])
                          end, Rls),
-            lists:filtermap(
-              fun (R) ->
-                  case menelaus_web_rbac:parse_roles(R) of
-                      [{error, _}] ->
-                          ?log_warning("Ignoring invalid role: ~s",
-                                       [R]),
-                          false;
-                      [ParsedRole] ->
-                          {true, ParsedRole};
-                      [_ | _] ->
-                          ?log_warning("Ignoring invalid role: ~s",
-                                       [R]),
-                          false
-                  end
-              end, Filtered)
+
+            ParsedRoles =
+                lists:filtermap(
+                  fun (R) ->
+                      case menelaus_web_rbac:parse_roles(R) of
+                          [{error, _}] ->
+                              ?log_warning("Ignoring invalid role: ~s",
+                                           [R]),
+                              false;
+                          [ParsedRole] ->
+                              {true, ParsedRole};
+                          [_ | _] ->
+                              ?log_warning("Ignoring invalid role: ~s",
+                                           [R]),
+                              false
+                      end
+                  end, Filtered),
+
+              {GoodRoles, BadRoles} =
+                  menelaus_roles:validate_roles(ParsedRoles),
+              BadRoles /= [] andalso ?log_warning("ignoring invalid roles: ~p",
+                                                  [BadRoles]),
+              GoodRoles
     end.
 
 redirect_to_ui_with_error(Req, Msg) ->

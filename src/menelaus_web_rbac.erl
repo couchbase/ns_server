@@ -1040,14 +1040,13 @@ parse_groups(GroupsStr) ->
     [string:trim(G) || G <- GroupsTokens].
 
 validate_roles(Name, State) ->
-    Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),
     validator:validate(
       fun (RawRoles) ->
               Roles = parse_roles(RawRoles),
               BadRoles = [BadRole || BadRole = {error, _} <- Roles],
               GoodRoles = Roles -- BadRoles,
               {_, MoreBadRoles} =
-                  menelaus_roles:validate_roles(GoodRoles, Snapshot),
+                  menelaus_roles:validate_roles(GoodRoles),
               case {BadRoles, MoreBadRoles} of
                   {[], []} ->
                       {value, Roles};

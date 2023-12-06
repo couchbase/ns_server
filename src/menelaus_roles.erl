@@ -54,6 +54,7 @@
          get_roles/1,
          get_compiled_roles/1,
          compile_roles/3,
+         validate_roles/1,
          validate_roles/2,
          params_version/1,
          filter_out_invalid_roles/3,
@@ -1317,6 +1318,9 @@ get_visible_role_definitions() ->
               visible_roles_filter(),
               pipes:collect()).
 
+validate_roles(Roles) ->
+    validate_roles(Roles, ns_bucket:get_snapshot(all, [collections, uuid])).
+
 -spec validate_roles([rbac_role()], map()) ->
                             {GoodRoles :: [rbac_role()],
                              BadRoles :: [rbac_role()]}.
@@ -2031,7 +2035,7 @@ params_version_test() ->
         teardown_meck()
     end.
 
-validate_roles(Roles) ->
+validate_test_roles(Roles) ->
     lists:all(
       fun ({Name, Params, Desc, Permissions}) when is_atom(Name),
                                                    is_list(Params),
@@ -2061,8 +2065,8 @@ validate_roles(Roles) ->
 roles_format_test() ->
     setup_meck(),
 
-    ?assert(validate_roles(roles())),
-    ?assert(validate_roles(menelaus_old_roles:roles_pre_trinity())),
+    ?assert(validate_test_roles(roles())),
+    ?assert(validate_test_roles(menelaus_old_roles:roles_pre_trinity())),
 
     teardown_meck().
 
