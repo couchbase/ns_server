@@ -31,6 +31,10 @@
 -include("cut.hrl").
 -include_lib("esaml/include/esaml.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -define(PERSISTENT_NAMEID_FORMAT,
         "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent").
 
@@ -959,14 +963,32 @@ parse_fingerprint(BinStr) when is_binary(BinStr) ->
     end.
 
 get_all_attrs(AttrName, Attrs) ->
-    case proplists:get_value(AttrName, Attrs) of
-        undefined -> [];
-        [] -> [];
-        %% Trying to distinguish between list of strings
-        %% and a string
-        [[_|_] | _] = L -> L;
-        [_|_] = Str -> [Str]
-    end.
+    lists:flatmap(
+      fun ([]) -> [];
+          %% Trying to distinguish between list of strings
+          %% and a string
+          ([[_|_] | _] = L) -> L;
+          ([_|_] = Str) -> [Str]
+      end, proplists:get_all_values(AttrName, Attrs)).
+
+-ifdef(TEST).
+
+get_all_attrs_test() ->
+    ?assertEqual([], get_all_attrs(a, [])),
+    ?assertEqual([], get_all_attrs(a, [{n, "n"}])),
+    ?assertEqual([], get_all_attrs(a, [{n, "n"}, {a, []}])),
+    ?assertEqual(["a"], get_all_attrs(a, [{n, "n"}, {a, "a"}])),
+    ?assertEqual(["a", "b"], get_all_attrs(a, [{n, "n"}, {a, ["a", "b"]}])),
+    ?assertEqual(["a", "b", "c"],
+                 get_all_attrs(a, [{a, "a"}, {n, "n"}, {a, ["b", "c"]}])),
+    ?assertEqual(["a", "b", "c", "d"],
+                 get_all_attrs(a, [{a, ["a", "b"]}, {n, "n"},
+                                   {a, ["c", "d"]}])),
+    ?assertEqual(["a", "b", "c", "d"],
+                 get_all_attrs(a, [{a, ["a", "b"]}, {n, "n"}, {a, ["c", "d"]},
+                                   {a, []}])).
+
+-endif.
 
 handle_saml_assertion(Req, {error, Msg}, _SSOOpts) ->
     redirect_to_ui_with_error(Req, Msg);
