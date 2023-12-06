@@ -488,9 +488,10 @@ class SamlTests(testlib.BaseTestSet):
                                  "test3, testgroup2"
             # We don't expect analytics_admin to be used because separator is $;
             # We don't expect admin to be used because it should be filtered out
-            # roles filter
-            identity["roles"] = "unknown;analytics_reader;admin"\
-                                "test,analytics_admin;analytics_unknown"
+            # by the roles filter
+            identity["roles"] = ["unknown;analytics_reader;admin",
+                                 "test,analytics_admin;analytics_unknown",
+                                 "analytics_manager[*]"]
             identity["uid"] = "testuser2" # so we don't have such user in cb
             binding_out, destination = \
                 IDP.pick_binding("assertion_consumer_service",
@@ -523,8 +524,8 @@ class SamlTests(testlib.BaseTestSet):
             assert_http_code(200, r)
             roles = [a["role"] for a in r.json()["roles"]]
             roles.sort()
-            expected_roles = ['analytics_reader', 'external_stats_reader',
-                              'replication_admin']
+            expected_roles = ['analytics_manager', 'analytics_reader',
+                              'external_stats_reader', 'replication_admin']
             assert_eq(roles, expected_roles)
 
 
