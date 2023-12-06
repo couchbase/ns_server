@@ -665,12 +665,16 @@
         "type": "gauge",
         "help": "Idle CPU utilization rate in the host",
         "added": "7.2.4",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
         "stability": "committed"
     },
     "sys_cpu_host_other_rate": {
         "type": "gauge",
         "help": "Other (not idle/user/sys/irq/stolen) CPU utilization rate in the host",
         "added": "7.2.4",
+        "deprecated": "7.6.0",
+        "notes": "Will be removed in the 8.0 release",
         "stability": "committed"
     },
     "sys_cpu_host_seconds_total": {
