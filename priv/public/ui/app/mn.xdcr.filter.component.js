@@ -106,12 +106,16 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
       .trackSubmit()
       .clearErrors();
 
-    this.formHelper.group.patchValue({
-      enableFilters: !!this.group.get("filterExpression").value ||
-                     this.xdcrGroup.get("filterExpiration").value ||
-                     this.xdcrGroup.get("filterDeletion").value ||
-                     this.xdcrGroup.get("filterBypassExpiry").value ||
-                     this.xdcrGroup.get("filterBinary").value
+    this.settingsPipe
+    .pipe(takeUntil(this.mnOnDestroy))
+    .subscribe((settings) => {
+      this.formHelper.group.patchValue({
+        enableFilters: !!settings.filterExpression ||
+          settings.filterExpiration ||
+          settings.filterDeletion ||
+          settings.filterBypassExpiry ||
+          settings.filterBinary
+      });
     });
 
     let hasSourceBucketField = this.xdcrGroup.get("fromBucket");
