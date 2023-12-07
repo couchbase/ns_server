@@ -482,7 +482,14 @@ maybe_reply_setup_streams(#state{state = StreamState} = State) ->
                 case StreamState#stream_state.errors of
                     [] ->
                         ok;
-                    Errors ->
+                    Errors0 ->
+                        Errors =
+                            lists:map(
+                              fun ({Status, VB}) ->
+                                      %% Add some context, as opposed to just
+                                      %% the raw numbers, to aid in triage.
+                                      {{mcbp_status, Status}, {vbucket, VB}}
+                              end, Errors0),
                         {errors, Errors}
                 end,
             gen_server:reply(StreamState#stream_state.owner, Reply),
