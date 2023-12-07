@@ -44,7 +44,7 @@ licenses/APL2.txt.
             class="nowrap"
             style="margin-right: -3px;"
             [hidden]="!(permissions | async)?.cluster.collection[bucketName + ':' + scopeName + ':' + '*']?.collections?.write ||
-              collection.name.startsWith('_')"
+              collection.name.startsWith('_') || !(isEnterprise | async)"
             (click)="$event.stopPropagation();clickEditTTL.next();">
       Edit TTL</a>
     <a

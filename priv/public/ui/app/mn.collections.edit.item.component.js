@@ -56,7 +56,7 @@ class MnCollectionsEditItemComponent extends MnLifeCycleHooksToStream {
   }
 
   ngOnInit() {
-    this.form.group.patchValue({name: this.collectionName, maxTTL: this.maxTTL});
+    this.form.group.patchValue({name: this.collectionName, maxTTL: this.maxTTL === undefined ? '' : this.maxTTL});
   }
 
   prepareDataForSending([, isEnterprise]) {

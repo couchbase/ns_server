@@ -19,6 +19,7 @@ import {MnCollectionsService} from './mn.collections.service.js';
 import {MnCollectionsDeleteItemComponent} from './mn.collections.delete.item.component.js';
 import {MnCollectionsEditItemComponent} from './mn.collections.edit.item.component.js';
 import template from "./mn.collections.item.html";
+import { MnPoolsService } from './mn.pools.service.js';
 
 export {MnCollectionsItemComponent};
 
@@ -42,13 +43,15 @@ class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
     MnCollectionsService,
     MnPermissions,
     NgbModal,
-    $rootScope
+    $rootScope,
+    MnPoolsService
   ]}
 
-  constructor(mnCollectionsService, mnPermissions, modalService,  $rootScope) {
+  constructor(mnCollectionsService, mnPermissions, modalService, $rootScope, mnPoolsService) {
     super();
 
     var clickDeleteCollection = new Subject();
+    this.isEnterprise = mnPoolsService.stream.isEnterprise;
 
     clickDeleteCollection
       .pipe(takeUntil(this.mnOnDestroy))

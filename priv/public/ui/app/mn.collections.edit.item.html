@@ -17,8 +17,8 @@ licenses/APL2.txt.
     <div class="panel-content">
       <div
          class="error"
-         [hidden]="!(editCollectionHttp.error | async)?.errors?._">
-        {{(editCollectionHttp.error | async)?.errors?._}}
+         [hidden]="!(editCollectionHttp.error | async)?.error?.errors?._">
+        {{(editCollectionHttp.error | async)?.error?.errors?._}}
       </div>
       <div class="formrow">
         <label for="add-collection">Name</label>
@@ -34,8 +34,8 @@ licenses/APL2.txt.
            autocapitalize="off">
         <div
            class="error"
-           [hidden]="!(editCollectionHttp.error | async)?.errors?.name">
-          {{(editCollectionHttp.error | async)?.errors?.name}}
+           [hidden]="!(editCollectionHttp.error | async)?.error?.errors?.name">
+          {{(editCollectionHttp.error | async)?.error?.errors?.name}}
         </div>
       </div>
       <div class="formrow" *ngIf="isEnterprise | async">
@@ -66,8 +66,8 @@ licenses/APL2.txt.
            autocapitalize="off">
         <div
            class="error"
-           [hidden]="!(editCollectionHttp.error | async)?.errors?.maxTTL">
-          {{(editCollectionHttp.error | async)?.errors?.maxTTL}}
+           [hidden]="!(editCollectionHttp.error | async)?.error?.errors?.maxTTL">
+          {{(editCollectionHttp.error | async)?.error?.errors?.maxTTL}}
         </div>
       </div>
     </div>
