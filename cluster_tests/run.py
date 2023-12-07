@@ -663,6 +663,7 @@ def run_testsets(cluster, testsets, total_num,
                                "|master events"
                                "|memcached.*"
                                "|Collecting .*/snapshots"
+                               "|Chronicle dump"
                 )
 
                 path = testlib.wait_for_log_collection(node, start_time)
