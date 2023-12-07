@@ -686,20 +686,27 @@ aggregate_results(Results, AggParamsLabel, AggregationFun) ->
                         || {Props} <- Results,
                            [{<<"metric">>, {Metric}},
                             {<<"values">>, Values}] <- [lists:sort(Props)]],
+    Grouped =
+        maps:to_list(
+          maps:groups_from_list(
+            fun({M, _}) ->
+                    PName = maps:get(AggParamsLabel, M, default_param),
+                    %% if this metric is part of a derived metric,
+                    %% the name label will lead to incorrect grouping (we will
+                    %% set other name for it after aggregation anyway).
+                    LabelsToRemove = [AggParamsLabel] ++
+                        [<<"name">> || PName =/= default_param],
+                    maps:without(LabelsToRemove, M)
+            end,
+            fun ({M, V}) ->
+                    PName = maps:get(AggParamsLabel, M, default_param),
+                    {PName, V}
+            end, UnpackedResults)),
     lists:map(
       fun ({NamePropsMap, List}) ->
-          {[{<<"metric">>, {maps:to_list(NamePropsMap)}},
-            {<<"values">>, aggregate_values(List, AggregationFun)}]}
-      end, misc:groupby_map(
-             fun ({M, V}) ->
-                PName = maps:get(AggParamsLabel, M, default_param),
-                %% if this metric is part of a derived metric,
-                %% the name label will lead to incorrect groupping (we will
-                %% set other name for it after aggregation anyway).
-                LabelsToRemove = [AggParamsLabel] ++
-                                 [<<"name">> || PName =/= default_param],
-                {maps:without(LabelsToRemove, M), {PName, V}}
-             end, UnpackedResults)).
+              {[{<<"metric">>, {maps:to_list(NamePropsMap)}},
+                {<<"values">>, aggregate_values(List, AggregationFun)}]}
+      end, Grouped).
 
 %% List :: [{ParamName, list([Timestamp, ValueAsStr])}]
 %% Example:
@@ -714,7 +721,8 @@ aggregate_values(List, AggregationFun) ->
       %%            [[16243234, "2"],                  [16243236, "2"]]]},
       %%  {param2, [[[16243234, "3"], [16243235, "3"], [16243236, "3"]],
       %%            [[16243234, "4"], [16243235, "4"],                ]]}]
-      List2 = misc:groupby_map(fun functools:id/1, List),
+    List2 = maps:to_list(maps:groups_from_list(
+                           element(1, _), element(2, _), List)),
 
       Timestamps = lists:umerge(lists:map(?cut([TS || [TS, _V] <- _1]),
                                           [L || {_, L} <- List])),
@@ -1290,14 +1298,22 @@ build_stats_perm_map(UserRoles, PermCheckFun, RolesDefinitions) ->
           end, StrippedParams),
 
     Params =
-        misc:groupby_map(
-          fun ({[bucket_name], B}) -> {buckets, B};
-              ({?RBAC_SCOPE_PARAMS, [B, any]}) -> {buckets, [B]};
-              ({?RBAC_COLLECTION_PARAMS, [B, any, any]}) -> {buckets, [B]};
-              ({?RBAC_SCOPE_PARAMS, S}) -> {scopes, S};
-              ({?RBAC_COLLECTION_PARAMS, [B, S, any]}) -> {scopes, [B, S]};
-              ({?RBAC_COLLECTION_PARAMS, P}) -> {collections, P}
-          end, FilteredParams),
+        maps:to_list(
+          maps:groups_from_list(
+            fun ({[bucket_name], _}) -> buckets;
+                ({?RBAC_SCOPE_PARAMS, [_, any]}) -> buckets;
+                ({?RBAC_COLLECTION_PARAMS, [_, any, any]}) -> buckets;
+                ({?RBAC_SCOPE_PARAMS, _}) -> scopes;
+                ({?RBAC_COLLECTION_PARAMS, [_, _, any]}) -> scopes;
+                ({?RBAC_COLLECTION_PARAMS, _}) -> collections
+            end,
+            fun ({[bucket_name], B}) -> B;
+                ({?RBAC_SCOPE_PARAMS, [B, any]}) -> [B];
+                ({?RBAC_COLLECTION_PARAMS, [B, any, any]}) -> [B];
+                ({?RBAC_SCOPE_PARAMS, S}) -> S;
+                ({?RBAC_COLLECTION_PARAMS, [B, S, any]}) -> [B, S];
+                ({?RBAC_COLLECTION_PARAMS, P}) -> P
+            end, FilteredParams)),
 
     CheckParam =
         fun F([Obj], CheckPerm, Acc) ->

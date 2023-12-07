@@ -291,13 +291,15 @@ format_service_rebalance_needed(Descriptors) ->
       end, Descriptors).
 
 format_buckets_and_services(Fun, Descriptors) ->
+    Grouped = maps:to_list(maps:groups_from_list(
+                             element(1, _), element(2, _), Descriptors)),
     lists:map(
       fun ({Descriptor, Things}) ->
               {[{code, Descriptor},
                 {description,
                  ns_rebalancer:to_human_readable_reason(Descriptor)}]
                ++ Fun(Things)}
-      end, misc:groupby_map(fun functools:id/1, Descriptors)).
+      end, Grouped).
 
 build_rebalance_params(Id, UUID) ->
     RebalanceStatus = case rebalance:running() of
@@ -669,22 +671,21 @@ get_terse_cluster_info(ReqdPropNames, Props) ->
     {RV}.
 
 extract_bucket_specific_data() ->
-    BktsInfo =
-        misc:groupby_map(
-          fun({BName, BCfg}) ->
-                  CommonProps = [{ramQuota, ns_bucket:raw_ram_quota(BCfg)}],
-                  BProps = case ns_bucket:bucket_type(BCfg) of
-                               memcached ->
-                                   {BName, {CommonProps}};
-                               _ ->
-                                   NumReplicas = ns_bucket:num_replicas(BCfg),
-                                   EvictP = ns_bucket:eviction_policy(BCfg),
-                                   Props = [{numReplicas, NumReplicas},
-                                            {evictionPolicy, EvictP}],
-                                   {BName, {Props ++ CommonProps}}
-                           end,
-                  {ns_bucket:display_type(BCfg), BProps}
-          end, ns_bucket:get_buckets()),
+    BktsInfo = maps:to_list(maps:groups_from_list(
+            fun({_, BCfg}) -> ns_bucket:display_type(BCfg) end,
+            fun({BName, BCfg}) ->
+                    CommonProps = [{ramQuota, ns_bucket:raw_ram_quota(BCfg)}],
+                    case ns_bucket:bucket_type(BCfg) of
+                        memcached ->
+                            {BName, {CommonProps}};
+                        _ ->
+                            NumReplicas = ns_bucket:num_replicas(BCfg),
+                            EvictP = ns_bucket:eviction_policy(BCfg),
+                            Props = [{numReplicas, NumReplicas},
+                                     {evictionPolicy, EvictP}],
+                            {BName, {Props ++ CommonProps}}
+                    end
+            end, ns_bucket:get_buckets())),
 
         {[{DT, {AllBProps}} || {DT, AllBProps} <- BktsInfo]}.
 

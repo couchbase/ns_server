@@ -228,7 +228,9 @@ query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
     ConvertedResults =
         [convert_call_result(Node, ResultTuple)
          || {Node, {ok, Tuples}} <- NodeRVs, ResultTuple <- Tuples],
-    {dict:from_list(misc:groupby_map(fun functools:id/1, ConvertedResults)),
+    {dict:from_list(maps:to_list(maps:groups_from_list(
+                                   element(1, _), element(2, _),
+                                   ConvertedResults))),
      failures_to_zombies(Failures)}.
 
 %% TODO: consider supporting partial janitoring

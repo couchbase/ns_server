@@ -61,9 +61,10 @@ sysproc() ->
                 P = proplists:get_value(<<"proc">>, Props),
                 {true, {binary_to_atom(P, latin1), binary_to_atom(N, latin1)}}
             end),
-    misc:groupby_map(fun ({{Proc, Name}, Value}) ->
-                         {Proc, {Name, Value}}
-                     end, Res).
+    maps:to_list(maps:groups_from_list(
+                   fun({{Proc, _}, _}) -> Proc end,
+                   fun({{_, Name}, Value}) -> {Name, Value} end,
+                   Res)).
 
 buckets_interesting(Nodes) ->
     from_nodes(Nodes, buckets_interesting, [], ?DEFAULT_TIMEOUT).
@@ -101,9 +102,10 @@ buckets_interesting() ->
                         {true, {binary_to_list(B), binary_to_atom(N, latin1)}}
                     end),
     BucketStats = interesting_stats_backward_compat_mapping(
-                    misc:groupby_map(fun ({{Bucket, Name}, Value}) ->
-                                         {Bucket, {Name, Value}}
-                                     end, Res)),
+                    maps:to_list(maps:groups_from_list(
+                                   fun({{Bucket, _}, _}) -> Bucket end,
+                                   fun({{_, Name}, Value}) -> {Name, Value} end,
+                                   Res))),
 
     BucketInterestingStats =
         [curr_items, curr_items_tot, vb_replica_curr_items, mem_used,
@@ -178,9 +180,10 @@ for_alerts() ->
                                 false
                         end
                     end),
-    misc:groupby_map(fun ({{Bucket, Name}, Value}) ->
-                         {Bucket, {Name, Value}}
-                     end, Res).
+    maps:to_list(maps:groups_from_list(
+                   fun({{Bucket, _}, _}) -> Bucket end,
+                   fun({{_, Name}, Value}) -> {Name, Value} end,
+                   Res)).
 
 for_resource_management() ->
     List = [{<<"kv_resident_ratio">>,
@@ -203,9 +206,11 @@ for_resource_management() ->
                                false
                        end
                end),
-    misc:groupby_map(fun ({{Group, Name}, Value}) ->
-                             {Group, {Name, Value}}
-                     end, Res).
+    maps:to_list(
+      maps:groups_from_list(
+        fun({{Group, _}, _}) -> Group end,
+        fun({{_, Name}, Value}) -> {Name, Value} end,
+        Res)).
 
 -spec total_active_logical_data_size([node()]) -> #{bucket_name() => number()}.
 total_active_logical_data_size(Nodes) ->

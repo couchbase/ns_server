@@ -407,14 +407,15 @@ clear_failover_vbuckets_sets(Nodes) ->
     [{{node, N, failover_vbuckets}, []} || N <- Nodes].
 
 update_failover_vbuckets(Results) ->
-    GroupedByNode =
-        misc:groupby_map(fun (L) ->
-                                 Node   = proplists:get_value(node, L),
-                                 Bucket = proplists:get_value(bucket, L),
-                                 VBs    = proplists:get_value(vbuckets, L),
-
-                                 {Node, {Bucket, VBs}}
-                         end, Results),
+    GroupedByNode = maps:to_list(
+                      maps:groups_from_list(
+                        proplists:get_value(node, _),
+                        fun(L) ->
+                                Bucket = proplists:get_value(bucket, L),
+                                VBs = proplists:get_value(vbuckets, L),
+                                {Bucket, VBs}
+                        end,
+                        Results)),
     {ok, _} =
         chronicle_compat:transaction(
           [{node, N, failover_vbuckets} || {N, _} <- GroupedByNode],
@@ -440,9 +441,9 @@ update_failover_vbuckets_sets(Snapshot, {Node, BucketResults}) ->
     end.
 
 merge_failover_vbuckets(ExistingBucketResults, BucketResults) ->
-    Grouped =
-        misc:groupby_map(fun functools:id/1,
-                         ExistingBucketResults ++ BucketResults),
+    Grouped = maps:to_list(maps:groups_from_list(
+                             element(1, _), element(2, _),
+                             ExistingBucketResults ++ BucketResults)),
     lists:map(fun ({B, [VBs1, VBs2]}) when is_list(VBs1), is_list(VBs2) ->
                       {B, lists:usort(VBs1 ++ VBs2)};
                   ({B, [VBs]}) when is_list(VBs) ->
@@ -468,13 +469,10 @@ merge_failover_vbuckets_test() ->
 -endif.
 
 failover_handle_results(Results) ->
-    NodeStatuses =
-        misc:groupby_map(fun (Result) ->
-                                 Node   = proplists:get_value(node, Result),
-                                 Status = proplists:get_value(status, Result),
-
-                                 {Node, Status}
-                         end, Results),
+    NodeStatuses = maps:to_list(maps:groups_from_list(
+                                  proplists:get_value(node, _),
+                                  proplists:get_value(status, _),
+                                  Results)),
 
     lists:filtermap(fun ({Node, Statuses}) ->
                             NonOKs = [S || S <- Statuses, S =/= ok],
@@ -800,7 +798,8 @@ nodes_to_query(MarkedMap, FailoverNodes) ->
                                  not lists:member(Node, FailoverNodes)]
           end, MarkedMap),
     [{N, lists:usort(VBs)} ||
-        {N, VBs} <- misc:groupby_map(fun functools:id/1, NodeVBs),
+        {N, VBs} <- maps:to_list(maps:groups_from_list(
+                                   element(1, _), element(2, _), NodeVBs)),
         VBs =/= []].
 
 throw_failover_error(Msg, Params) ->

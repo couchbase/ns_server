@@ -372,13 +372,14 @@ flatten_json(_AllPossibleKeys, _JSON, _Path) ->
 
 group_elements([{[], Value}], _) -> Value;
 group_elements(Proplist, GroupFormatter) ->
-    Groupped = misc:groupby_map(fun ({[Head | Tail], Value}) ->
-                                    {Head, {Tail, Value}}
-                                end, Proplist),
+    Grouped = maps:to_list(maps:groups_from_list(
+                             fun ({[Head | _], _}) -> Head end,
+                             fun ({[_ | Tail], Value}) -> {Tail, Value} end,
+                             Proplist)),
     GroupFormatter(lists:map(
                      fun ({Key, Values}) ->
                          {Key, group_elements(Values, GroupFormatter)}
-                     end, Groupped)).
+                     end, Grouped)).
 
 extract_formatter(Type, TypesFuns) ->
     extract_formatter(Type, TypesFuns, []).
