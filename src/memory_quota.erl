@@ -336,12 +336,8 @@ remaining_default_quota(kv, Memory, NumServices) ->
     (Memory * 3) div NumServices;
 remaining_default_quota(index, Memory, NumServices) ->
     (Memory * 3) div NumServices;
-remaining_default_quota(n1ql, _Memory, _NumServices) ->
-    %% This needs to always return 0 as the set remaining default quota because
-    %% when the user initializes a cluster with setDefaultQuotas this function
-    %% will get called it must be equal to the min_quota/1 value for consistency
-    %% as well as the queryNodeQuota which the queryMemoryQuota shadows.
-    ?QUERY_NODE_QUOTA_DEFAULT;
+remaining_default_quota(n1ql, Memory, NumServices) ->
+    Memory div NumServices;
 remaining_default_quota(fts, Memory, NumServices) ->
     min(Memory div NumServices, ?MAX_DEFAULT_FTS_QUOTA - min_quota(fts));
 remaining_default_quota(cbas, Memory, NumServices) ->
