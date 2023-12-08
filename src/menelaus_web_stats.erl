@@ -715,55 +715,55 @@ aggregate_results(Results, AggParamsLabel, AggregationFun) ->
 %% [{param2, [[16243234, "3"], [16243235, "3"], [16243236, "3"]]},
 %% [{param2, [[16243234, "4"], [16243235, "4"]                 ]}]
 aggregate_values(List, AggregationFun) ->
-      %% List2 :: [{ParamName, list(list([Timestamp, ValueAsStr]))}]
-      %% Example:
-      %% [{param1, [[[16243234, "1"], [16243235, "1"], [16243236, "1"]],
-      %%            [[16243234, "2"],                  [16243236, "2"]]]},
-      %%  {param2, [[[16243234, "3"], [16243235, "3"], [16243236, "3"]],
-      %%            [[16243234, "4"], [16243235, "4"],                ]]}]
+    %% List2 :: [{ParamName, list(list([Timestamp, ValueAsStr]))}]
+    %% Example:
+    %% [{param1, [[[16243234, "1"], [16243235, "1"], [16243236, "1"]],
+    %%            [[16243234, "2"],                  [16243236, "2"]]]},
+    %%  {param2, [[[16243234, "3"], [16243235, "3"], [16243236, "3"]],
+    %%            [[16243234, "4"], [16243235, "4"],                ]]}]
     List2 = maps:to_list(maps:groups_from_list(
                            element(1, _), element(2, _), List)),
 
-      Timestamps = lists:umerge(lists:map(?cut([TS || [TS, _V] <- _1]),
-                                          [L || {_, L} <- List])),
-      Normalize = normalize_datapoints(Timestamps, _, []),
+    Timestamps = lists:umerge(lists:map(?cut([TS || [TS, _V] <- _1]),
+                                        [L || {_, L} <- List])),
+    Normalize = normalize_datapoints(Timestamps, _, []),
 
-      %% List4 :: [[[ValueAsStr]]]
-      %% Example:
-      %%        Node1              Node2
-      %% [ [["1", "1", "1"], ["2", "NaN", "2"]],   <- param1
-      %%   [["3", "3", "3"], ["4", "4", "NaN"]] ]  <- param2
-      {AggregationParams, List3} = lists:unzip(List2),
-      List4 = [lists:map(Normalize, L) || L <- List3],
+    %% List4 :: [[[ValueAsStr]]]
+    %% Example:
+    %%        Node1              Node2
+    %% [ [["1", "1", "1"], ["2", "NaN", "2"]],   <- param1
+    %%   [["3", "3", "3"], ["4", "4", "NaN"]] ]  <- param2
+    {AggregationParams, List3} = lists:unzip(List2),
+    List4 = [lists:map(Normalize, L) || L <- List3],
 
-      %% List5 :: [[[ValueAsStr]]]
-      %% Example: [ [["1", "2"], ["1", "NaN"], ["1", "2"]],
-      %%            [["3", "4"], ["3", "4"], ["3", "NaN"]] ]
-      List5 = lists:map(
-                fun ([]) ->
-                        [[] || _ <- Timestamps];
-                    (ValueLists) ->
-                        misc:zipwithN(fun (L) -> L end, ValueLists)
-                end, List4),
+    %% List5 :: [[[ValueAsStr]]]
+    %% Example: [ [["1", "2"], ["1", "NaN"], ["1", "2"]],
+    %%            [["3", "4"], ["3", "4"], ["3", "NaN"]] ]
+    List5 = lists:map(
+              fun ([]) ->
+                      [[] || _ <- Timestamps];
+                  (ValueLists) ->
+                      misc:zipwithN(fun (L) -> L end, ValueLists)
+              end, List4),
 
-      %% List6 :: [AggregatedValueAsStr]
-      %% Example: [AggregationFun([1, 2], [3, 4]),
-      %%           AggregationFun([1, undefined], [3, 4]),
-      %%           AggregationFun([1, 2], [3, undefined])]
-      %% and if AggregationFun is sum, List6 will be [10, 8, 6]
-      List6 = misc:zipwithN(
-                fun (ValuesLists) ->
-                   ParsedValuesMap =
-                     lists:zip(AggregationParams,
-                               [[promQL:parse_value(V) || V <- Values]
-                                || Values <- ValuesLists]),
-                   Res = AggregationFun(maps:from_list(ParsedValuesMap)),
-                   promQL:format_value(Res)
-                end, List5),
+    %% List6 :: [AggregatedValueAsStr]
+    %% Example: [AggregationFun([1, 2], [3, 4]),
+    %%           AggregationFun([1, undefined], [3, 4]),
+    %%           AggregationFun([1, 2], [3, undefined])]
+    %% and if AggregationFun is sum, List6 will be [10, 8, 6]
+    List6 = misc:zipwithN(
+              fun (ValuesLists) ->
+                      ParsedValuesMap =
+                          lists:zip(AggregationParams,
+                                    [[promQL:parse_value(V) || V <- Values]
+                                     || Values <- ValuesLists]),
+                      Res = AggregationFun(maps:from_list(ParsedValuesMap)),
+                      promQL:format_value(Res)
+              end, List5),
 
-      %% Values :: [ [Timestamp, AggregatedValueAsStr] ]
-      %% Example: [[16243234, 10], [16243235, 8], [16243236, 6]]
-      lists:zipwith(?cut([_1, _2]), Timestamps, List6).
+    %% Values :: [ [Timestamp, AggregatedValueAsStr] ]
+    %% Example: [[16243234, 10], [16243235, 8], [16243236, 6]]
+    lists:zipwith(?cut([_1, _2]), Timestamps, List6).
 
 -ifdef(TEST).
 
