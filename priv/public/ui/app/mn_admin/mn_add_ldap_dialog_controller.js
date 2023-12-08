@@ -57,14 +57,15 @@ function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModa
 
   vm.isEnterprise = mnPoolDefault.export.isEnterprise;
 
-  vm.advancedTemplatePlaceholder = `[{
-    "match": "(Service-.+)@subdomain.domain.NET",
-    "substitution": "cn={0},ou=engineering, dc=example,dc=com"
-  },
-  {
-    "match": "https://website.com/s/xxxxxxxxxxxxxxxx?domain=europa.rbsgrp.net",
-    "ldapQuery": "ou=engineering,dc=example, dc=com??one?(user={0})"
-  }
+  vm.advancedTemplatePlaceholder = `[
+ {
+  "match": "(.+)@(.+)\\\\.domain\\\\.net",
+  "substitution": "cn={0},ou={1},dc=domain1,dc=com"
+ },
+ {
+  "match": "(.+)@example\\\\.com",
+  "ldapQuery": "ou=admins,dc=example,dc=com??one?(uid={0})"
+ }
 ]`;
   vm.save = save;
   vm.checkConnectivity = checkConnectivity;
