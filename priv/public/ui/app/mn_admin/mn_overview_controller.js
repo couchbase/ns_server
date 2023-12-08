@@ -124,7 +124,6 @@ function mnOverviewController($scope, $rootScope, mnBucketsService, mnServersSer
   vm.addressFamily = mnPoolDefault.export.thisNode.addressFamily;
   vm.addressFamilyOnly = mnPoolDefault.export.thisNode.addressFamilyOnly;
   vm.nodeEncryption = mnPoolDefault.export.thisNode.nodeEncryption;
-  vm.currentYear = new Date().getFullYear();
 
   activate();
 

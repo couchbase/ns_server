@@ -37,8 +37,6 @@ class MnWizardComponent extends MnLifeCycleHooksToStream {
   constructor(mnWizardService, mnPoolsService, mnAdminService) {
     super();
 
-    this.currentYear = new Date().getFullYear();
-
     var newClusterConfig = mnWizardService.wizardForm.newClusterConfig;
     var joinCluster = mnWizardService.wizardForm.joinCluster;
     //MnExceptionHandlerService.stream.appException.subscribe(MnExceptionHandlerService.send);
