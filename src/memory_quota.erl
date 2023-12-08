@@ -336,8 +336,12 @@ remaining_default_quota(kv, Memory, NumServices) ->
     (Memory * 3) div NumServices;
 remaining_default_quota(index, Memory, NumServices) ->
     (Memory * 3) div NumServices;
-remaining_default_quota(n1ql, Memory, NumServices) ->
-    Memory div NumServices;
+remaining_default_quota(n1ql, _Memory, _NumServices) ->
+    %% This needs to always return 0 as the set remaining default quota because
+    %% when the user initializes a cluster with setDefaultQuotas this function
+    %% will get called it must be equal to the min_quota/1 value for consistency
+    %% as well as the queryNodeQuota which the queryMemoryQuota shadows.
+    ?QUERY_NODE_QUOTA_DEFAULT;
 remaining_default_quota(fts, Memory, NumServices) ->
     min(Memory div NumServices, ?MAX_DEFAULT_FTS_QUOTA - min_quota(fts));
 remaining_default_quota(cbas, Memory, NumServices) ->
@@ -403,17 +407,14 @@ calculate_remaining_default_quotas(Memory, MemoryMax,
 
 -ifdef(TEST).
 default_quotas_test() ->
-    meck:new(cluster_compat_mode, [passthrough]),
     MemSupData = {9822564352, undefined, undefined},
     Services = services_ranking(?LATEST_VERSION_NUM),
     Quotas = default_quotas(Services, MemSupData, ?LATEST_VERSION_NUM),
     TotalQuota = lists:sum([Q || {_, Q} <- Quotas]),
-    ?assertEqual(true, allowed_memory_usage_max(MemSupData) >= TotalQuota),
-    meck:unload(cluster_compat_mode).
+    ?assertEqual(true, allowed_memory_usage_max(MemSupData) >= TotalQuota).
 
 %% Ensure our calculations are equal on 7.2, Trinity, and LATEST_VERSION_NUM.
 default_quotas_by_version_test() ->
-    meck:new(cluster_compat_mode, [passthrough]),
     MemSupData = {9822564352, undefined, undefined},
     PreTrinityServices = [kv, cbas, index, fts, eventing],
     %% 7.2 quotas (pre-n1ql introduction)
@@ -433,7 +434,6 @@ default_quotas_by_version_test() ->
                                            MemSupData, ?VERSION_TRINITY)]),
     ?assertEqual(true,
                  allowed_memory_usage_max(MemSupData) >= TotalQuotaTrinity),
-    ?assertEqual(TotalQuota72, TotalQuotaTrinity),
 
     %% 'latest_version_num' quotas (smoke test for new versions)
     ServicesLatestVsn = services_ranking(?LATEST_VERSION_NUM),
@@ -444,6 +444,6 @@ default_quotas_by_version_test() ->
                                            MemSupData, ?LATEST_VERSION_NUM)]),
     ?assertEqual(true,
                  allowed_memory_usage_max(MemSupData) >= TotalQuotaLatestVsn),
-    ?assertEqual(TotalQuotaTrinity, TotalQuotaLatestVsn),
-    meck:unload(cluster_compat_mode).
+    ?assertEqual(TotalQuotaTrinity, TotalQuotaLatestVsn).
+
 -endif.
