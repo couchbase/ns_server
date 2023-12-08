@@ -47,6 +47,7 @@
          get_scope/2,
          get_collection/2,
          get_max_supported/1,
+         get_maxTTL_min_value/0,
          get_uid/1,
          get_collection_uid/3,
          get_scopes/1,
@@ -438,6 +439,14 @@ get_max_supported_inner(Type, Max) ->
                 false ->
                     Max
             end
+    end.
+
+get_maxTTL_min_value() ->
+    case cluster_compat_mode:is_cluster_trinity() of
+        false ->
+            ?USE_BUCKET_MAXTTL;
+        true ->
+            ?NO_EXPIRY
     end.
 
 create_scope(Bucket, Name) ->

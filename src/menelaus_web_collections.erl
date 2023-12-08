@@ -130,15 +130,11 @@ collection_modifiable_validators(BucketConfig) ->
             true -> ["true", "false"];
             false -> ["false"]
         end,
-    MaxTTLMinValue =
-        case cluster_compat_mode:is_cluster_trinity() of
-            false -> 0;
-            true -> -1
-        end,
     [validator:one_of(history, HistoryAllowedValues, _),
      validator:boolean(history, _),
      history_validator(BucketConfig, _),
-     validator:integer(maxTTL, MaxTTLMinValue, ?MAX_32BIT_UNSIGNED_INT, _),
+     validator:integer(maxTTL, collections:get_maxTTL_min_value(),
+                       ?MAX_32BIT_UNSIGNED_INT, _),
      validator:valid_in_enterprise_only(maxTTL, _),
      validator:no_duplicates(_)
     ].
