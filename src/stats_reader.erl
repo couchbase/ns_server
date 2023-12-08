@@ -23,6 +23,7 @@
 %% some time (5 seconds) in order to make sure we are not losing the last
 %% timestamp in a minute.
 -define(TS_TRACKING_TIME_MSEC, 65000).
+-define(MAX_MAILBOX_QUEUE_LEN, 500).
 
 -record(state, {bucket,
                 last_timestamps}).
@@ -128,6 +129,7 @@ init(Bucket) ->
 
 
 handle_call({latest, Period}, _From, State) ->
+    maybe_skip_some_requests(),
     Res =
         case get_stats(Period, default_step(Period), 1, all, State) of
             %% Converting results for backward compatibility reasons
@@ -138,12 +140,15 @@ handle_call({latest, Period}, _From, State) ->
     {reply, Res, State};
 
 handle_call({latest, Period, N}, _From, State) ->
+    maybe_skip_some_requests(),
     {reply, get_stats(Period, default_step(Period), N, all, State), State};
 
 handle_call({latest, Period, Step, N}, _From, State) ->
+    maybe_skip_some_requests(),
     {reply, get_stats(Period, Step, N, all, State), State};
 
 handle_call({latest_specific, Period, StatList}, _From, State) ->
+    maybe_skip_some_requests(),
     Res =
         case get_stats(Period, default_step(Period), 1, StatList, State) of
             %% Converting results for backward compatibility reasons
@@ -154,10 +159,12 @@ handle_call({latest_specific, Period, StatList}, _From, State) ->
     {reply, Res, State};
 
 handle_call({latest_specific, Period, N, StatList}, _From, State) ->
+    maybe_skip_some_requests(),
     StatEntries = get_stats(Period, default_step(Period), N, StatList, State),
     {reply, StatEntries, State};
 
 handle_call({latest_specific, Period, Step, N, StatList}, _From, State) ->
+    maybe_skip_some_requests(),
     {reply, get_stats(Period, Step, N, StatList, State), State}.
 
 handle_cast(_Msg, State) ->
@@ -182,6 +189,29 @@ terminate(_Reason, _State) ->
 %%
 %% Internal functions
 %%
+
+maybe_skip_some_requests() ->
+    {message_queue_len, QL} = erlang:process_info(self(), message_queue_len),
+    case QL > ?MAX_MAILBOX_QUEUE_LEN of
+        true ->
+            ?log_error("Process mailbox is full, skipping ~p requests...",
+                       [QL]),
+            drop_some_requests(QL);
+        false -> ok
+    end.
+
+drop_some_requests(0) -> ok;
+drop_some_requests(N) ->
+    receive
+        {'$gen_call', _From, Request}
+            when element(1, Request) == latest_specific;
+                 element(1, Request) == latest ->
+            %% Don't respond anything. Just let these requests time out.
+            %% It is likely that many of them have already timed out though.
+            drop_some_requests(N - 1)
+    after
+        0 -> ok
+    end.
 
 single_node_call(Bucket, Node, CallParams) ->
     gen_server:call({server(Bucket), Node}, CallParams).
