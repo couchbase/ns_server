@@ -88,9 +88,9 @@ default_roles() ->
      {ro_admin, [],
       [{name, <<"Read-Only Admin">>},
        {folder, admin},
-       {desc, <<"Can view all cluster statistics. This user can access the "
-                "web console. This user cannot read security-related "
-                "information, including listing users or groups.">>},
+       {desc, <<"Can view all cluster statistics. "
+                "This user cannot read security-related information, "
+                "including listing users or groups.">>},
        {ce, true}],
       [{[{bucket, any}, data], none},
        {[{bucket, any}, fts], none},
@@ -103,13 +103,21 @@ default_roles() ->
        {[eventing], none},
        {[analytics], none},
        {[backup], [read]},
+       {[ui], none},
        {[], [read, list]}]},
+     {ui_access, [],
+      [{name, <<"Web Console Access">>},
+       {folder, admin},
+       {desc, <<"Can access the web console.">>},
+       {ce, true}],
+      [{[ui], [read]},
+       {[pools], [read]}]},
      {security_admin, [],
       [{name, <<"Security Admin">>},
        {folder, admin},
        {desc, <<"Can view all cluster statistics, manage certificates, and "
-                "manage security related settings. This user can access the "
-                "web console. This user cannot read data.">>}],
+                "manage security related settings. "
+                "This user cannot read data.">>}],
       [{[admin, security, admin], none},
        {[admin, security], all},
        {[admin, security_info], all},
@@ -130,13 +138,14 @@ default_roles() ->
        {[xdcr], none},
        {[settings, fts], none},
        {[settings, metrics], none},
+       {[ui], none},
        {[], [read, list]}]},
      {ro_security_admin, [],
       [{name, <<"Read-Only Security Admin">>},
        {folder, admin},
        {desc, <<"Can view all cluster statistics. Can read security related "
-                "settings but cannot change them. This user can access the "
-                "web console. This user cannot read data.">>}],
+                "settings but cannot change them. "
+                "This user cannot read data.">>}],
       [{[admin, security, admin], none},
        {[admin, security], [read]},
        {[admin, security_info], [read]},
@@ -157,14 +166,14 @@ default_roles() ->
        {[xdcr], none},
        {[settings, fts], none},
        {[settings, metrics], none},
+       {[ui], none},
        {[], [read, list]}]},
      {user_admin_local, [],
       [{name, <<"Local User Admin">>},
        {folder, admin},
        {desc, <<"Can view all cluster statistics and manage local user "
                 "roles, but not grant Full Admin or Security Admin roles to "
-                "other users or itself. This user can access the web console. "
-                "This user cannot read data.">>}],
+                "other users or itself. This user cannot read data.">>}],
       [{[admin, security, admin], none},
        {[admin, security], none},
        {[admin, security_info], [read, write]},
@@ -187,14 +196,14 @@ default_roles() ->
        {[xdcr], none},
        {[settings, fts], none},
        {[settings, metrics], none},
+       {[ui], none},
        {[], [read, list]}]},
      {user_admin_external, [],
       [{name, <<"External User Admin">>},
        {folder, admin},
        {desc, <<"Can view all cluster statistics and manage external user "
                 "roles, but not grant Full Admin or Security Admin roles to "
-                "other users or itself. This user can access the web console. "
-                "This user cannot read data.">>}],
+                "other users or itself. This user cannot read data.">>}],
       [{[admin, security, admin], none},
        {[admin, security], none},
        {[admin, security_info], [read, write]},
@@ -217,13 +226,13 @@ default_roles() ->
        {[xdcr], none},
        {[settings, fts], none},
        {[settings, metrics], none},
+       {[ui], none},
        {[], [read, list]}]},
      {cluster_admin, [],
       [{name, <<"Cluster Admin">>},
        {folder, admin},
        {desc, <<"Can manage all cluster features except security and users. "
-                "This user can access the web console. This user cannot read "
-                "data.">>}],
+                "This user cannot read data.">>}],
       [{[admin, internal], none},
        {[admin, security], none},
        {[admin, security_info], none},
@@ -241,12 +250,12 @@ default_roles() ->
        {[eventing], none},
        {[analytics], none},
        {[backup], none},
+       {[ui], none},
        {[], all}]},
      {eventing_admin, [],
       [{name, <<"Eventing Full Admin">>},
        {folder, admin},
-       {desc, <<"Can create/manage eventing functions. This user can access "
-                "the web console">>}],
+       {desc, <<"Can create/manage eventing functions.">>}],
       [{[admin], none},
        {[xdcr], none},
        {[{bucket, any}, xdcr], none},
@@ -258,21 +267,21 @@ default_roles() ->
        {[analytics], all},
        {[buckets], all},
        {[settings, metrics], none},
+       {[ui], none},
        {[], [read]}]},
      {backup_admin, [],
       [{name, <<"Backup Full Admin">>},
        {folder, admin},
-       {desc, <<"Can perform backup related tasks. This user can access "
-                "the web console">>}],
+       {desc, <<"Can perform backup related tasks.">>}],
       [{[admin], none},
        {[settings, metrics], none},
+       {[ui], none},
        {[], all}]},
      {bucket_admin, [bucket_name],
       [{name, <<"Bucket Admin">>},
        {folder, bucket},
        {desc, <<"Can manage ALL bucket features for a given bucket (including "
-                "start/stop XDCR). This user can access the web console. This "
-                "user cannot read data.">>}],
+                "start/stop XDCR). This user cannot read data.">>}],
       [{[{bucket, bucket_name}, xdcr], [read, execute]},
        {[{bucket, bucket_name}, data], none},
        {[{bucket, bucket_name}, views], none},
@@ -289,20 +298,20 @@ default_roles() ->
        {[backup], none},
        {[settings, metrics], none},
        {[n1ql, meta], none},
+       {[ui], none},
        {[], [read]}]},
      {scope_admin, ?RBAC_SCOPE_PARAMS,
       [{name, <<"Manage Scopes">>},
        {folder, bucket},
        {desc, <<"Can create/delete scopes and collections within a given "
-                "bucket. This user cannot access the web console.">>}],
+                "bucket.">>}],
       [{[{collection, [bucket_name, scope_name, any]}, collections], all}]},
      {bucket_full_access, [bucket_name],
       [{name, <<"Application Access">>},
        {folder, bucket},
-       {desc, <<"Full access to bucket data. This user cannot access the web "
-                "console and is intended only for application access. This "
-                "user can read and write data except for the _system scope "
-                "which can only be read.">>},
+       {desc, <<"Full access to bucket data. This user is intended only for "
+                "application access. This user can read and write data except "
+                "for the _system scope which can only be read.">>},
        {ce, true}],
       [{[{bucket, bucket_name}, data, docs], [read, insert, delete, upsert,
                                               range_scan, sread]},
@@ -317,8 +326,8 @@ default_roles() ->
      {views_admin, [bucket_name],
       [{name, <<"Views Admin">>},
        {folder, admin},
-       {desc, <<"Can create and manage views of a given bucket. This user can "
-                "access the web console. This user can read some data.">>}],
+       {desc, <<"Can create and manage views of a given bucket. "
+                "This user can read some data.">>}],
       [{[{bucket, bucket_name}, views], all},
        {[{bucket, bucket_name}, data, docs], [read, sread]},
        {[{bucket, bucket_name}, data], [read]},
@@ -332,13 +341,14 @@ default_roles() ->
        {[analytics], none},
        {[backup], none},
        {[settings, metrics], none},
+       {[ui], none},
        {[], [read]}]},
      {views_reader, [bucket_name],
       [{name, <<"Views Reader">>},
        {folder, views},
        {desc, <<"Can read data from the views of a given bucket. This user "
-                "cannot access the web console and is intended only for "
-                "application access. This user can read some data.">>}],
+                "is intended only for application access. This user can read "
+                "some data.">>}],
       [{[{bucket, bucket_name}, views], [read]},
        {[{bucket, bucket_name}, data, docs], [read, sread]},
        {[pools], [read]},
@@ -347,8 +357,8 @@ default_roles() ->
       [{name, <<"XDCR Admin">>},
        {folder, xdcr},
        {desc, <<"Can administer XDCR features to create cluster references and "
-                "replication streams out of this cluster. This user can "
-                "access the web console. This user can read some data.">>}],
+                "replication streams out of this cluster. "
+                "This user can read some data.">>}],
       [{[{bucket, any}, xdcr], all},
        {[{bucket, any}, data, docs], [read, sread]},
        {[{bucket, any}, data], [read]},
@@ -363,14 +373,14 @@ default_roles() ->
        {[analytics], none},
        {[backup], none},
        {[settings, metrics], none},
+       {[ui], none},
        {[], [read]}]},
      {data_reader, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Data Reader">>},
        {folder, data},
        {desc, <<"Can read data from a given bucket, scope or collection. "
-                "This user cannot access the web console and is intended only "
-                "for application access. This user can read data, but cannot "
-                "write it.">>}],
+                "This user is intended only for application access. This user "
+                "can read data, but cannot write it.">>}],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs],
         [read, range_scan, sread]},
        {[{bucket, bucket_name}, settings], [read]},
@@ -380,9 +390,8 @@ default_roles() ->
       [{name, <<"Data Writer">>},
        {folder, data},
        {desc, <<"Can write data to a given bucket, scope or collection. "
-                "This user cannot access the web console and is intended only "
-                "for application access. This user can write data, but cannot "
-                "read it.">>}],
+                "This user is intended only for application access. "
+                "This user can write data, but cannot read it.">>}],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs],
         [insert, upsert, delete]},
        {[{bucket, bucket_name}, settings], [read]},
@@ -392,8 +401,8 @@ default_roles() ->
       [{name, <<"Data DCP Reader">>},
        {folder, data},
        {desc, <<"Can initiate DCP streams for a given bucket, scope or "
-                "collection. This user cannot access the web console and is "
-                "intended only for application access. "
+                "collection. "
+                "This user is intended only for application access. "
                 "This user can read data.">>}],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [read, sread]},
        {[{collection, ?RBAC_COLLECTION_PARAMS}, data, dcpstream], [read]},
@@ -409,8 +418,8 @@ default_roles() ->
       [{name, <<"Data Backup & Restore">>},
        {folder, backup},
        {desc, <<"Can backup and restore a given bucket’s data. This user "
-                "cannot access the web console and is intended only for "
-                "application access. This user can read data.">>}],
+                "is intended only for application access. This user can "
+                "read data.">>}],
       [{[{collection, [bucket_name, any, any]}, collections], all},
        {[{bucket, bucket_name}, data], all},
        {[{bucket, bucket_name}, views], [read, write]},
@@ -427,8 +436,8 @@ default_roles() ->
       [{name, <<"Data Monitor">>},
        {folder, data},
        {desc, <<"Can read statistics for a given bucket, scope or collection. "
-                "This user cannot access the web console and is intended only "
-                "for application access. This user cannot read data.">>}],
+                "This user is intended only for application access. This user "
+                "cannot read data.">>}],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, stats], [read]},
        {[{collection, ?RBAC_COLLECTION_PARAMS}, collections], [read]},
        {[{bucket, bucket_name}, settings], [read]},
@@ -437,24 +446,21 @@ default_roles() ->
      {fts_admin, [bucket_name],
       [{name, <<"Search Admin">>},
        {folder, search},
-       {desc, <<"Can administer all Full Text Search features. This user can "
-                "access the web console. This user can read some data.">>}],
+       {desc, <<"Can administer all Full Text Search features. "
+                "This user can read some data.">>}],
       [{[{bucket, bucket_name}, fts], [read, write, manage]},
        {[{bucket, bucket_name}, collections], [read]},
        {[{bucket, bucket_name}, data, docs], [read, sread]},
        {[settings, fts], [read, write, manage]},
-       {[ui], [read]},
        {[pools], [read]},
        {[{bucket, bucket_name}, settings], [read]}]},
      {fts_searcher, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Search Reader">>},
        {folder, search},
        {desc, <<"Can query Full Text Search indexes for a given bucket, scope "
-                "or collection. This user can access the web console. This "
-                "user can read some data.">>}],
+                "or collection. This user can read some data.">>}],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, fts], [read]},
        {[settings, fts], [read]},
-       {[ui], [read]},
        {[pools], [read]},
        {[{bucket, bucket_name}, settings], [read]},
        {[app_telemetry], [write]}]},
@@ -462,102 +468,91 @@ default_roles() ->
       [{name, <<"Query Select">>},
        {folder, 'query'},
        {desc, <<"Can execute a SELECT statement on a given bucket, scope or "
-                "collection to retrieve data. This user can access the web "
-                "console and can read data, but not write it.">>}],
+                "collection to retrieve data. This user can read data, "
+                "but not write it.">>}],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, select], [execute]},
        {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [read, sread]},
        {[{bucket, bucket_name}, settings], [read]},
-       {[ui], [read]},
        {[pools], [read]},
        {[app_telemetry], [write]}]},
      {query_update, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Query Update">>},
        {folder, 'query'},
        {desc, <<"Can execute an UPDATE statement on a given bucket, scope or "
-                "collection to update data. This user can access the web "
-                "console and write data, but cannot read it.">>}],
+                "collection to update data. This user can write data, "
+                "but cannot read it.">>}],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, update], [execute]},
        {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs],
         [upsert, range_scan]},
        {[{bucket, bucket_name}, settings], [read]},
-       {[ui], [read]},
        {[pools], [read]},
        {[app_telemetry], [write]}]},
      {query_insert, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Query Insert">>},
        {folder, 'query'},
        {desc, <<"Can execute an INSERT statement on a given bucket, scope or "
-                "collection to add data. This user can access the web console "
-                "and insert data, but cannot read it.">>}],
+                "collection to add data. This user can insert data, "
+                "but cannot read it.">>}],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, insert], [execute]},
        {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [insert]},
        {[{bucket, bucket_name}, settings], [read]},
-       {[ui], [read]},
        {[pools], [read]},
        {[app_telemetry], [write]}]},
      {query_delete, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Query Delete">>},
        {folder, 'query'},
        {desc, <<"Can execute a DELETE statement on a given bucket, scope or "
-                "collection to delete data. This user can access the web "
-                "console, but cannot read data. This user can delete data.">>}],
+                "collection to delete data. This user cannot read data. "
+                "This user can delete data.">>}],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, delete], [execute]},
        {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs],
         [delete, range_scan]},
        {[{bucket, bucket_name}, settings], [read]},
-       {[ui], [read]},
        {[pools], [read]},
        {[app_telemetry], [write]}]},
      {query_manage_index, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Query Manage Index">>},
        {folder, 'query'},
        {desc, <<"Can manage indexes for a given bucket, scope or collection. "
-                "This user can access the web console, can read statistics "
-                "for a given bucket, scope or collection. This user cannot "
-                "read data.">>
+                "This user can read statistics for a given bucket, scope or "
+                "collection. This user cannot read data.">>
        }],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, index], all},
        {[{collection, ?RBAC_COLLECTION_PARAMS}, collections], [read]},
        {[{bucket, bucket_name}, settings], [read]},
        {[{bucket, bucket_name}, stats], [read]},
        {[settings, indexes], [read]},
-       {[ui], [read]},
        {[pools], [read]}]},
      {query_list_index, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Query List Index">>},
        {folder, 'query'},
        {desc, <<"Can list indexes for a given bucket, scope or collection. "
-                "This user can access the web console, can read statistics "
-                "for a given bucket, scope or collection. This user cannot "
-                "read data.">>
+                "This user can read statistics for a given bucket, "
+                "scope or collection. This user cannot read data.">>
        }],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, index], [list, read]},
        {[{collection, ?RBAC_COLLECTION_PARAMS}, collections], [read]},
        {[{bucket, bucket_name}, settings], [read]},
        {[{bucket, bucket_name}, stats], [read]},
        {[settings, indexes], [read]},
-       {[ui], [read]},
        {[pools], [read]}]},
      {query_system_catalog, [],
       [{name, <<"Query System Catalog">>},
        {folder, 'query'},
        {desc, <<"Can look up system catalog information via N1QL. This user "
-                "can access the web console, but cannot read user data.">>}],
+                "cannot read user data.">>}],
       [{[{bucket, any}, n1ql, index], [list]},
        {[{bucket, any}, settings], [read]},
        {[n1ql, meta], [read]},
        {[settings, indexes], [read]},
-       {[ui], [read]},
        {[pools], [read]}]},
      {query_external_access, [],
       [{name, <<"Query CURL Access">>},
        {folder, 'query'},
        {desc, <<"Can execute the CURL statement from within N1QL. This user "
-                "can access the web console, but cannot read data (within "
-                "Couchbase).">>}],
+                "cannot read data (within Couchbase).">>}],
       [{[n1ql, curl], [execute]},
        {[{bucket, any}, settings], [read]},
-       {[ui], [read]},
        {[pools], [read]},
        {[app_telemetry], [write]}]},
      {query_manage_global_functions, [],
@@ -565,14 +560,12 @@ default_roles() ->
        {folder, 'query'},
        {desc, <<"Can manage global n1ql functions">>}],
       [{[n1ql, udf], [manage]},
-       {[ui], [read]},
        {[pools], [read]}]},
      {query_execute_global_functions, [],
       [{name, <<"Execute Global Functions">>},
        {folder, 'query'},
        {desc, <<"Can execute global n1ql functions">>}],
       [{[n1ql, udf], [execute]},
-       {[ui], [read]},
        {[pools], [read]},
        {[app_telemetry], [write]}]},
      {query_manage_functions, ?RBAC_SCOPE_PARAMS,
@@ -581,14 +574,12 @@ default_roles() ->
        {desc, <<"Can manage n1ql functions for a given scope">>}],
       [{[{collection, [bucket_name, scope_name, any]}, n1ql, udf], [manage]},
        {[{collection, [bucket_name, scope_name, any]}, collections], [read]},
-       {[ui], [read]},
        {[pools], [read]}]},
      {query_execute_functions, ?RBAC_SCOPE_PARAMS,
       [{name, <<"Execute Scope Functions">>},
        {folder, 'query'},
        {desc, <<"Can execute n1ql functions for a given scope">>}],
       [{[{collection, [bucket_name, scope_name, any]}, n1ql, udf], [execute]},
-       {[ui], [read]},
        {[pools], [read]},
        {[app_telemetry], [write]}]},
      {query_manage_global_external_functions, [],
@@ -596,14 +587,12 @@ default_roles() ->
        {folder, 'query'},
        {desc, <<"Can manage global external language functions">>}],
       [{[n1ql, udf_external], [manage]},
-       {[ui], [read]},
        {[pools], [read]}]},
      {query_execute_global_external_functions, [],
       [{name, <<"Execute Global External Functions">>},
        {folder, 'query'},
        {desc, <<"Can execute global external language functions">>}],
       [{[n1ql, udf_external], [execute]},
-       {[ui], [read]},
        {[pools], [read]},
        {[app_telemetry], [write]}]},
      {query_manage_external_functions, ?RBAC_SCOPE_PARAMS,
@@ -613,7 +602,6 @@ default_roles() ->
       [{[{collection, [bucket_name, scope_name, any]}, n1ql,
          udf_external], [manage]},
        {[{collection, [bucket_name, scope_name, any]}, collections], [read]},
-       {[ui], [read]},
        {[pools], [read]}]},
      {query_execute_external_functions, ?RBAC_SCOPE_PARAMS,
       [{name, <<"Execute Scope External Functions">>},
@@ -621,7 +609,6 @@ default_roles() ->
        {desc, <<"Can execute external language functions for a given scope">>}],
       [{[{collection, [bucket_name, scope_name, any]}, n1ql,
          udf_external], [execute]},
-       {[ui], [read]},
        {[pools], [read]},
        {[app_telemetry], [write]}]},
      {query_manage_sequences, ?RBAC_SCOPE_PARAMS,
@@ -631,7 +618,6 @@ default_roles() ->
       [{[{collection, [bucket_name, scope_name, any]}, n1ql, sequences],
         [manage]},
        {[{collection, [bucket_name, scope_name, any]}, collections], [read]},
-       {[ui], [read]},
        {[pools], [read]}]},
      {query_use_sequences, ?RBAC_SCOPE_PARAMS,
       [{name, <<"Use Sequences">>},
@@ -640,7 +626,6 @@ default_roles() ->
       [{[{collection, [bucket_name, scope_name, any]}, n1ql, sequences],
         [execute]},
        {[{collection, [bucket_name, scope_name, any]}, collections], [read]},
-       {[ui], [read]},
        {[pools], [read]},
        {[app_telemetry], [write]}]},
      {query_use_sequential_scans, ?RBAC_COLLECTION_PARAMS,
@@ -656,16 +641,13 @@ default_roles() ->
       [{name, <<"Query Manage System Catalog">>},
        {folder, query},
        {desc, <<"Can manage Query system catalogs via SQL++. "
-                "This user can access the web console. This user cannot "
-                "read data.">>}],
+                "This user cannot read data.">>}],
       [{[n1ql, meta], [manage]},
-       {[ui], [read]},
        {[pools], [read]}]},
      {replication_target, [bucket_name],
       [{name, <<"XDCR Inbound">>},
        {folder, xdcr},
-       {desc, <<"Can create XDCR streams into a given bucket. This user cannot "
-                "access the web console.">>}],
+       {desc, <<"Can create XDCR streams into a given bucket.">>}],
       [{[{bucket, bucket_name}, settings], [read]},
        {[{bucket, bucket_name}, data, docs], [read, sread, upsert]},
        {[{bucket, bucket_name}, data, meta], [write]},
@@ -680,49 +662,42 @@ default_roles() ->
        {folder, analytics},
        {desc, <<"Can manage Analytics local links. Can manage datasets on a "
                 "given bucket. Can query datasets created on this bucket. "
-                "This user can access the web console and read some data.">>}],
+                "This user can read some data.">>}],
       [{[{bucket, bucket_name}, analytics], [manage, select]},
-       {[ui], [read]},
        {[pools], [read]}]},
      {analytics_reader, [],
       [{name, <<"Analytics Reader">>},
        {folder, analytics},
        {desc, <<"Can query datasets. This is a global role as datasets may "
-                "be created on different buckets. This user can access the "
-                "web console and read some data.">>}],
+                "be created on different buckets. This user can read some "
+                "data.">>}],
       [{[analytics], [select]},
        {[{bucket, any}, analytics], [select]},
-       {[ui], [read]},
        {[pools], [read]},
        {[app_telemetry], [write]}]},
      {analytics_select, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Analytics Select">>},
        {folder, analytics},
        {desc, <<"Can query datasets on a given bucket, scope or "
-                "collection. This user can access the web console and read "
-                "some data.">>}],
+                "collection. This user can read some data.">>}],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, analytics], [select]},
-       {[ui], [read]},
        {[pools], [read]},
        {[app_telemetry], [write]}]},
      {analytics_admin, [],
       [{name, <<"Analytics Admin">>},
        {folder, analytics},
        {desc, <<"Can manage dataverses. Can manage all Analytics links. "
-                "Can manage all datasets. This user can access the web "
-                "console but cannot read data.">>}],
+                "Can manage all datasets. This user cannot read data.">>}],
       [{[analytics], [manage]},
        {[{bucket, any}, analytics], [manage]},
-       {[ui], [read]},
        {[pools], [read]}]},
      {mobile_sync_gateway, [bucket_name],
       [{name, <<"Sync Gateway">>},
        {folder, mobile},
        {desc, <<"Full access to bucket data as required by Sync Gateway. "
-                "This user cannot access the web console and is intended "
-                "only for use by Sync Gateway. This user can read and "
-                "write data, manage indexes and views, and read some "
-                "cluster information.">>}],
+                "This user is intended only for use by Sync Gateway. "
+                "This user can read and write data, manage indexes and views, "
+                "and read some cluster information.">>}],
       [{[{collection, [bucket_name, ?SYSTEM_SCOPE_NAME, "_mobile"]}, data],
         all},
        {[{bucket, bucket_name}, data, docs], [read, insert, delete, upsert,
@@ -785,14 +760,12 @@ default_roles() ->
       [{name, <<"External Stats Reader">>},
        {folder, admin},
        {desc, <<"Access to /metrics endpoint for Prometheus integration. "
-                "Can read all stats for all services. This user cannot "
-                "access the web console">>}],
+                "Can read all stats for all services.">>}],
       [{[admin, stats_export], [read]}]},
      {application_telemetry_writer, [],
       [{name, <<"Application Telemetry Writer">>},
        {folder, admin},
-       {desc, <<"Can report application telemetry through the SDK. "
-                "This user cannot access the web console">>}],
+       {desc, <<"Can report application telemetry through the SDK.">>}],
       [{[app_telemetry], [write]}]},
      {eventing_manage_functions, ?RBAC_SCOPE_PARAMS,
       [{name, <<"Manage Scope Functions">>},
@@ -802,7 +775,6 @@ default_roles() ->
         [manage]},
        {[{collection, [bucket_name, scope_name, any]}, collections], [read]},
        {[{bucket, bucket_name}, stats], [read]},
-       {[ui], [read]},
        {[pools], [read]}]}
     ].
 

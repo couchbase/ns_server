@@ -37,10 +37,11 @@ class AuthnTests(testlib.BaseTestSet):
         self.wrong_user_creds = (wrong_user, password)
         self.cert_user = testlib.random_str(8)
         testlib.put_succ(self.cluster, f'/settings/rbac/users/local/{username}',
-                         data={'roles': 'ro_admin', 'password': password})
+                         data={'roles': 'ro_admin,ui_access',
+                               'password': password})
         testlib.put_succ(self.cluster,
                          f'/settings/rbac/users/local/{self.cert_user}',
-                         data={'roles': 'ro_admin',
+                         data={'roles': 'ro_admin,ui_access',
                                'password': testlib.random_str(8)})
 
 
@@ -140,7 +141,7 @@ class AuthnTests(testlib.BaseTestSet):
         r = testlib.get_succ(self.cluster, '/whoami',
                              headers={'cb-on-behalf-of': OBO})
         res = r.json()
-        assert [{'role': 'ro_admin'}] == res['roles']
+        assert [{'role': 'ro_admin'}, {'role': 'ui_access'}] == res['roles']
         assert user == res['id']
         assert 'local' == res['domain']
 

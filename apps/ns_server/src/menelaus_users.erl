@@ -1331,8 +1331,31 @@ upgrade_props(?VERSION_76, auth, _Key, AuthProps) ->
 upgrade_props(?VERSION_79, user, _Key, UserProps) ->
     {ok, functools:chain(UserProps,
                          [maybe_substitute_user_roles(_)])};
+upgrade_props(?VERSION_TOTORO, UserOrGroup, _Key, Props)
+                            when UserOrGroup == user; UserOrGroup == group ->
+    {ok, maybe_add_ui_access_role(Props)};
 upgrade_props(_Vsn, _RecType, _Key, _Props) ->
     skip.
+
+maybe_add_ui_access_role(Props) ->
+    AllUIRoles = menelaus_old_roles:pre_totoro_ui_roles(),
+    ShouldAddUIRole = fun ({R, _}) -> lists:member(R, AllUIRoles);
+                          (R) -> lists:member(R, AllUIRoles)
+                      end,
+    MaybeAddUIRole = fun (Roles) ->
+                         ShouldAdd = lists:any(ShouldAddUIRole, Roles) andalso
+                                     not lists:member(ui_access, Roles),
+                         case ShouldAdd of
+                             true ->
+                                [ui_access | Roles];
+                             false ->
+                                Roles
+                         end
+                     end,
+    case misc:key_update(roles, Props, MaybeAddUIRole) of
+        false -> Props;
+        NewProps -> NewProps
+    end.
 
 %% For roles that have been eliminated or changed, substitute in their
 %% replacements.
@@ -1424,6 +1447,15 @@ upgrade_test_() ->
             end
         end,
 
+    CheckUIAccessRole =
+        fun (Type, User, ShouldHaveUIRole) ->
+            fun () ->
+                Props = get_props_raw(Type, User),
+                Roles = proplists:get_value(roles, Props, []),
+                ?assertEqual(ShouldHaveUIRole, lists:member(ui_access, Roles))
+            end
+        end,
+
     Test =
         fun (Version, Users, Checks) ->
                 {lists:flatten(io_lib:format("Upgrade to ~p", [Version])),
@@ -1490,7 +1522,32 @@ upgrade_test_() ->
            [{{user, {"unchanged-admin", local}},
             [{roles, [eventing_admin]}]}],
            [CheckUser("unchanged-admin", roles,
-                      [eventing_admin])])]}.
+                      [eventing_admin])]),
+      Test(?VERSION_TOTORO,
+           [{{user, {"u1", local}}, []},
+            {{user, {"u2", local}}, [{roles, []}]},
+            {{user, {"u3", local}}, [{roles, [admin]}]},
+            {{user, {"u4", local}}, [{roles, [ro_admin]}]},
+            {{user, {"u5", external}}, []},
+            {{user, {"u6", external}}, [{roles, []}]},
+            {{user, {"u7", external}}, [{roles, [admin]}]},
+            {{user, {"u8", external}}, [{roles, [ro_admin]}]},
+            {{group, "g1"}, []},
+            {{group, "g2"}, [{roles, []}]},
+            {{group, "g3"}, [{roles, [admin]}]},
+            {{group, "g4"}, [{roles, [ro_admin]}]}],
+           [CheckUIAccessRole(user, {"u1", local}, false),
+            CheckUIAccessRole(user, {"u2", local}, false),
+            CheckUIAccessRole(user, {"u3", local}, false),
+            CheckUIAccessRole(user, {"u4", local}, true),
+            CheckUIAccessRole(user, {"u5", external}, false),
+            CheckUIAccessRole(user, {"u6", external}, false),
+            CheckUIAccessRole(user, {"u7", external}, false),
+            CheckUIAccessRole(user, {"u8", external}, true),
+            CheckUIAccessRole(group, "g1", false),
+            CheckUIAccessRole(group, "g2", false),
+            CheckUIAccessRole(group, "g3", false),
+            CheckUIAccessRole(group, "g4", true)])]}.
 
 meck_ns_config_read_key_fast(Settings) ->
     meck:expect(

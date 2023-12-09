@@ -223,7 +223,8 @@ consider_switching_compat_mode() ->
 upgrades() ->
     [{?VERSION_76, rbac, menelaus_users, upgrade},
      {?VERSION_79, rbac, menelaus_users, upgrade},
-     {?VERSION_79, metakv, chronicle_metakv, upgrade_to_79}] ++
+     {?VERSION_79, metakv, chronicle_metakv, upgrade_to_79},
+     {?VERSION_TOTORO, rbac, menelaus_users, upgrade}] ++
     config_profile:get_value(upgrades, []).
 
 do_upgrades(undefined, _, _, _) ->

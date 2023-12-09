@@ -51,7 +51,7 @@ mock_slo_post_url = f"http://{mock_server_host}:{mock_server_port}/mock/logout/p
 metadataFile = os.path.join(scriptdir, "idp_metadata.xml")
 idp_subject_file_path = os.path.join(scriptdir, "idp.subject")
 idp_test_username = "testuser"
-idp_test_groups = [("testgroup1", "replication_admin"),
+idp_test_groups = [("testgroup1", "replication_admin, ui_access"),
                    ("testgroup2", "external_stats_reader"),
                    ("admingroup", "admin")]
 idp_test_user_attrs = {"sn": "TestUser",
@@ -503,7 +503,8 @@ class SamlTests(testlib.BaseTestSet):
             roles = [a["role"] for a in r.json()["roles"]]
             roles.sort()
             expected_roles = ['analytics_manager', 'analytics_reader',
-                              'external_stats_reader', 'replication_admin']
+                              'external_stats_reader', 'replication_admin',
+                              'ui_access']
             assert_eq(roles, expected_roles)
 
             # MB-62465: Test that SAML users can access the docs endpoint (which

@@ -15,7 +15,8 @@
 -include("ns_common.hrl").
 
 -export([roles_pre_76/0,
-         roles_pre_79/0]).
+         roles_pre_79/0,
+         pre_totoro_ui_roles/0]).
 
 -spec roles_pre_76() -> [rbac_role_def(), ...].
 roles_pre_76() ->
@@ -1188,3 +1189,18 @@ roles_pre_79() ->
        {[ui], [read]},
        {[pools], [read]}]}
     ].
+
+pre_totoro_ui_roles() ->
+    [ro_admin, security_admin, ro_security_admin, user_admin_local,
+     user_admin_external, cluster_admin, eventing_admin, backup_admin,
+     bucket_admin, views_admin, replication_admin, fts_admin, fts_searcher,
+     query_select, query_update, query_insert, query_delete, query_manage_index,
+     query_list_index, query_system_catalog, query_external_access,
+     query_manage_global_functions, query_execute_global_functions,
+     query_manage_functions, query_execute_functions,
+     query_manage_global_external_functions,
+     query_execute_global_external_functions, query_manage_external_functions,
+     query_execute_external_functions, query_manage_sequences,
+     query_use_sequences, query_manage_system_catalog, analytics_manager,
+     analytics_reader, analytics_select, analytics_admin,
+     eventing_manage_functions].
