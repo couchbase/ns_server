@@ -287,10 +287,6 @@ function getStatAdditionalConfig(statName) {
   case "@kv-.couch_views_fragmentation":
     return {nodesAggregation: "special", applyFunctions: ["sum"]};
 
-  case "@query.n1ql_avg_req_time":
-  case "@query.n1ql_avg_svc_time":
-  case "@query.n1ql_avg_response_size":
-  case "@query.n1ql_avg_result_count":
   case "@index.index_ram_percent":
   case "@index.index_remaining_ram":
   case "@index-.@items.index_num_docs_pending_and_queued":
@@ -304,6 +300,10 @@ function getStatAdditionalConfig(statName) {
   case "@kv-.kv_disk_write_queue":
     return {nodesAggregation: "special"};
 
+  case "@query.n1ql_avg_req_time":
+  case "@query.n1ql_avg_svc_time":
+  case "@query.n1ql_avg_response_size":
+  case "@query.n1ql_avg_result_count":
   case "@kv-.kv_hit_ratio":
   case "@kv-.kv_ep_cache_miss_ratio":
   case "@kv-.kv_avg_bg_wait_time_seconds":
