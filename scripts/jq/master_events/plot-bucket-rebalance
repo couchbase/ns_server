@@ -49,4 +49,4 @@ map(handle_move($minTS)) as $moves |
 
 "$DIRNAME"/group-moves | \
     jq --arg bucket "$BUCKET" "$SCRIPT" | \
-    "$DIRNAME"/plot-bucket-rebalance.py
+    "$DIRNAME"/plot_bucket_rebalance.py

@@ -34,14 +34,14 @@ def main():
     """
 
     scriptdir = sys.path[0]
-    master_events = subprocess.Popen([scriptdir + "/jq/master-events/read",
+    master_events = subprocess.Popen([scriptdir + "/jq/master_events/read",
                                      args.master_events],
                                      stdout=subprocess.PIPE)
     last_rebalance = subprocess.Popen(
-        [scriptdir + "/jq/master-events/last-rebalance"],
+        [scriptdir + "/jq/master_events/last-rebalance"],
         stdin=master_events.stdout, stdout=subprocess.PIPE)
 
-    subprocess.run([scriptdir + "/jq/master-events/plot-bucket-rebalance",
+    subprocess.run([scriptdir + "/jq/master_events/plot-bucket-rebalance",
                     args.bucket],
                    stdin=last_rebalance.stdout)
 
