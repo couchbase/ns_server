@@ -52,6 +52,7 @@
 
 -export([add_node_to_group/6,
          engage_cluster/1, complete_join/1,
+         add_node_timeout/0,
          check_host_port_connectivity/2, change_address/1,
          enforce_topology_limitation/1,
          rename_marker_path/0,
@@ -333,6 +334,9 @@ complete_join(NodeKVList) ->
     NodeKVListThunk  = fun () -> NodeKVList end,
     gen_server:call(?MODULE, {complete_join, NodeKVListThunk},
                     ?COMPLETE_TIMEOUT).
+
+add_node_timeout() ->
+    ?ADD_NODE_TIMEOUT.
 
 -spec change_address(string()) -> ok
                                   | {cannot_resolve, {inet:posix(), inet|inet6}}

@@ -269,7 +269,8 @@ class Cluster:
         if verbose:
             print(f"Adding node {data}")
         r = testlib.post_succ(self, f"/controller/addNode", data=data,
-                              expected_code=expected_code)
+                              expected_code=expected_code,
+                              timeout=240)
 
         if expected_code==200:
             # Update connected_nodes with the newly added node
@@ -301,7 +302,9 @@ class Cluster:
         r = testlib.post_succ(
             path="/node/controller/doJoinCluster",
             cluster_or_node=new_node,
-            data=data, expected_code=expected_code)
+            data=data,
+            expected_code=expected_code,
+            timeout=240)
 
         if expected_code==200:
             # Update connected_nodes with the newly added node
