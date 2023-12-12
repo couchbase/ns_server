@@ -462,7 +462,7 @@ parse_dn(DN) ->
 
 -define(ALLOWED_CHARS, "abcdefghijklmnopqrstuvwxyz"
                        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                       "0123456789 ").
+                       "0123456789 .").
 
 %% Escapes any special chars (RFC 4515) from a string representing a
 %% a search filter assertion value

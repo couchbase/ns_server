@@ -17,6 +17,7 @@ class LdapTests(testlib.BaseTestSet):
     admin_dn = 'cn=admin,dc=example,dc=com'
     admin_password = 'pass1'
     user = 'ldap_user'
+    user1 = 'ldap.user'
     user_password = 'test_password_472956922354'
     group = 'test_group'
 
@@ -28,6 +29,7 @@ class LdapTests(testlib.BaseTestSet):
 
     def setup(self):
         user_dn = f'cn={LdapTests.user},ou=users,dc=example,dc=com'
+        user1_dn = f'cn={LdapTests.user1},ou=users,dc=example,dc=com'
         delay_for_macos = 10 if sys.platform == "darwin" else 0
         self.server = LdapServer({
           'port': LdapTests.port,
@@ -44,6 +46,10 @@ class LdapTests(testlib.BaseTestSet):
              'dn': user_dn,
              'attributes': {'cn': LdapTests.user,
                             'userPassword': LdapTests.user_password}},
+            {'objectclass': 'person',
+             'dn': user1_dn,
+             'attributes': {'cn': LdapTests.user1,
+                            'userPassword': LdapTests.user_password}},
             {'objectclass': 'OrganizationalUnit',
              'dn': 'ou=groups,dc=example,dc=com',
              'attributes': {'ou': 'groups'}},
@@ -57,12 +63,14 @@ class LdapTests(testlib.BaseTestSet):
 
 
     def test_teardown(self):
+        testlib.ensure_deleted(
+            self.cluster, f'/settings/rbac/users/external/{LdapTests.user}')
+        testlib.ensure_deleted(
+            self.cluster, f'/settings/rbac/users/external/{LdapTests.user1}')
         testlib.delete_config_key(self.cluster, 'ldap_settings')
 
 
     def teardown(self):
-        testlib.ensure_deleted(
-            self.cluster, f'/settings/rbac/users/external/{LdapTests.user}')
         testlib.ensure_deleted(
             self.cluster, f'/settings/rbac/groups/{LdapTests.group}')
         self.server.stop()
@@ -145,24 +153,56 @@ class LdapTests(testlib.BaseTestSet):
         assert expected == actual, f"Returned settings are incorrect: {actual}"
 
 
-    def external_user_test(self):
-        testlib.post_succ(self.cluster, '/settings/ldap',
-                          data={'authenticationEnabled': 'false'})
-        testlib.put_succ(self.cluster, f'/settings/rbac/users/external/{LdapTests.user}',
-                         data={'roles': 'admin'})
-        testlib.get_fail(self.cluster, '/whoami', 401,
-                         auth=(LdapTests.user, LdapTests.user_password))
-        LDAPSettings = {'authenticationEnabled': 'true',
-                        'authorizationEnabled': 'false',
-                        'hosts': 'localhost',
-                        'port': LdapTests.port,
-                        'encryption': 'None',
-                        'bindDN': LdapTests.admin_dn,
-                        'bindPass': LdapTests.admin_password,
-                        'userDNMapping': '{"query":"ou=users,dc=example,dc=com??one?(cn=%u)"}'}
-        testlib.post_succ(self.cluster, '/settings/ldap', data=LDAPSettings)
-        res = testlib.get_succ(self.cluster, '/whoami', auth=(LdapTests.user, LdapTests.user_password))
-        assert [{'role': 'admin'}] == res.json()['roles']
+    def external_user_query_test(self):
+        settings = {'authenticationEnabled': 'true',
+                    'authorizationEnabled': 'false',
+                    'hosts': 'localhost',
+                    'port': LdapTests.port,
+                    'encryption': 'None',
+                    'bindDN': LdapTests.admin_dn,
+                    'bindPass': LdapTests.admin_password,
+                    'userDNMapping':
+                    '{"query":"ou=users,dc=example,dc=com??one?(cn=%u)"}'}
+        external_user_test(self, LdapTests.user, settings)
+
+
+    def external_user_template_test(self):
+        settings = {'authenticationEnabled': 'true',
+                    'authorizationEnabled': 'false',
+                    'hosts': 'localhost',
+                    'port': LdapTests.port,
+                    'encryption': 'None',
+                    'bindDN': LdapTests.admin_dn,
+                    'bindPass': LdapTests.admin_password,
+                    'userDNMapping':
+                    '{"template":"cn=%u,ou=users,dc=example,dc=com"}'}
+        external_user_test(self, LdapTests.user, settings)
+
+
+    def external_user1_query_test(self):
+        settings = {'authenticationEnabled': 'true',
+                    'authorizationEnabled': 'false',
+                    'hosts': 'localhost',
+                    'port': LdapTests.port,
+                    'encryption': 'None',
+                    'bindDN': LdapTests.admin_dn,
+                    'bindPass': LdapTests.admin_password,
+                    'userDNMapping':
+                    '{"query":"ou=users,dc=example,dc=com??one?(cn=%u)"}'}
+        external_user_test(self, LdapTests.user1, settings)
+
+
+    def external_user1_template_test(self):
+        settings = {'authenticationEnabled': 'true',
+                    'authorizationEnabled': 'false',
+                    'hosts': 'localhost',
+                    'port': LdapTests.port,
+                    'encryption': 'None',
+                    'bindDN': LdapTests.admin_dn,
+                    'bindPass': LdapTests.admin_password,
+                    'userDNMapping':
+                    '{"template":"cn=%u,ou=users,dc=example,dc=com"}'}
+        external_user_test(self, LdapTests.user1, settings)
 
 
     def ldap_group_test(self):
@@ -224,3 +264,18 @@ class LdapTests(testlib.BaseTestSet):
         testlib.get_fail(self.cluster, '/whoami', 401,
                          auth=('wrong_username@users.example.com',
                                LdapTests.user_password))
+
+
+def external_user_test(self, user, ldap_settings):
+        testlib.post_succ(self.cluster, '/settings/ldap',
+                          data={'authenticationEnabled': 'false'})
+        testlib.put_succ(self.cluster,
+                         f'/settings/rbac/users/external/{user}',
+                         data={'roles': 'admin'})
+        testlib.get_fail(self.cluster, '/whoami', 401,
+                         auth=(user, LdapTests.user_password))
+        testlib.post_succ(self.cluster, '/settings/ldap', data=ldap_settings)
+        res = testlib.get_succ(self.cluster,
+                               '/whoami',
+                               auth=(user, LdapTests.user_password))
+        assert [{'role': 'admin'}] == res.json()['roles']
