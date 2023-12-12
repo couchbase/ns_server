@@ -23,6 +23,7 @@
 %% some time (5 seconds) in order to make sure we are not losing the last
 %% timestamp in a minute.
 -define(TS_TRACKING_TIME_MSEC, 65000).
+-define(MAX_REPLIES, 100).
 -define(MAX_MAILBOX_QUEUE_LEN, 500).
 
 -record(state, {bucket,
@@ -128,8 +129,7 @@ init(Bucket) ->
                 last_timestamps = queue:new()}}.
 
 
-handle_call({latest, Period}, _From, State) ->
-    maybe_skip_some_requests(),
+handle_call({latest, Period} = R, From, State) ->
     Res =
         case get_stats(Period, default_step(Period), 1, all, State) of
             %% Converting results for backward compatibility reasons
@@ -137,18 +137,23 @@ handle_call({latest, Period}, _From, State) ->
             {ok, [E]} -> {ok, E};
             {error, _} = Error -> Error
         end,
-    {reply, Res, State};
-
-handle_call({latest, Period, N}, _From, State) ->
+    reply_to_all(R, From, Res, ?MAX_REPLIES),
     maybe_skip_some_requests(),
-    {reply, get_stats(Period, default_step(Period), N, all, State), State};
+    {noreply, State};
 
-handle_call({latest, Period, Step, N}, _From, State) ->
+handle_call({latest, Period, N} = R, From, State) ->
+    StatEntries = get_stats(Period, default_step(Period), N, all, State),
+    reply_to_all(R, From, StatEntries, ?MAX_REPLIES),
     maybe_skip_some_requests(),
-    {reply, get_stats(Period, Step, N, all, State), State};
+    {noreply, State};
 
-handle_call({latest_specific, Period, StatList}, _From, State) ->
+handle_call({latest, Period, Step, N} = R, From, State) ->
+    StatEntries = get_stats(Period, Step, N, all, State),
+    reply_to_all(R, From, StatEntries, ?MAX_REPLIES),
     maybe_skip_some_requests(),
+    {noreply, State};
+
+handle_call({latest_specific, Period, StatList} = R, From, State) ->
     Res =
         case get_stats(Period, default_step(Period), 1, StatList, State) of
             %% Converting results for backward compatibility reasons
@@ -156,16 +161,21 @@ handle_call({latest_specific, Period, StatList}, _From, State) ->
             {ok, [E]} -> {ok, E};
             {error, _} = Error -> Error
         end,
-    {reply, Res, State};
-
-handle_call({latest_specific, Period, N, StatList}, _From, State) ->
+    reply_to_all(R, From, Res, ?MAX_REPLIES),
     maybe_skip_some_requests(),
+    {noreply, State};
+
+handle_call({latest_specific, Period, N, StatList} = R, From, State) ->
     StatEntries = get_stats(Period, default_step(Period), N, StatList, State),
-    {reply, StatEntries, State};
-
-handle_call({latest_specific, Period, Step, N, StatList}, _From, State) ->
+    reply_to_all(R, From, StatEntries, ?MAX_REPLIES),
     maybe_skip_some_requests(),
-    {reply, get_stats(Period, Step, N, StatList, State), State}.
+    {noreply, State};
+
+handle_call({latest_specific, Period, Step, N, StatList} = R, From, State) ->
+    StatEntries = get_stats(Period, Step, N, StatList, State),
+    reply_to_all(R, From, StatEntries, ?MAX_REPLIES),
+    maybe_skip_some_requests(),
+    {noreply, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -189,6 +199,20 @@ terminate(_Reason, _State) ->
 %%
 %% Internal functions
 %%
+
+reply_to_all(Request, FirstFrom, Reply, RepliesLeft) ->
+    gen_server:reply(FirstFrom, Reply),
+    case RepliesLeft > 0 of
+        true ->
+            receive
+                {'$gen_call', NextFrom, Request} ->
+                    reply_to_all(Request, NextFrom, Reply, RepliesLeft - 1)
+            after
+                0 -> ok
+            end;
+        false ->
+            ok
+    end.
 
 maybe_skip_some_requests() ->
     {message_queue_len, QL} = erlang:process_info(self(), message_queue_len),
