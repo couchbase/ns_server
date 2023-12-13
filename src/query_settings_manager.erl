@@ -108,6 +108,25 @@ default_settings(Ver) ->
                 []
         end.
 
+n1ql_feature_ctrl_setting(Ver) ->
+    %% From Kamini Jagtiani - we can turn sequential scans off by ”OR”ing the
+    %% current n1ql_feat_ctrl with 0x0000004000 (Decimal: 16,384). I believe the
+    %% current value for n1ql_feat_ctrl is 4c (Decimal:76).
+    %%
+    %% So the new value should be 0x404c(Decimal: 16460) to turn it off.
+    Default = 16#4c,
+    SequentialScanDisabled =
+        cluster_compat_mode:is_version_trinity(Ver) andalso
+            config_profile:get_bool({n1ql, sequential_scan_disabled}),
+
+    Val =
+        case SequentialScanDisabled of
+            true -> Default bor 16#4000;
+            false -> Default
+        end,
+
+    [{queryN1QLFeatCtrl, "n1ql-feat-ctrl", Val}].
+
 general_settings(Ver) ->
     [{queryTmpSpaceDir, "query.settings.tmp_space_dir",
       list_to_binary(path_config:component_path(tmp))},
@@ -122,7 +141,6 @@ general_settings(Ver) ->
      {queryCompletedThreshold, "completed-threshold", 1000},
      {queryLogLevel,           "loglevel",            <<"info">>},
      {queryMaxParallelism,     "max-parallelism",     1},
-     {queryN1QLFeatCtrl,       "n1ql-feat-ctrl",      76},
      {queryTxTimeout,          "txtimeout",           <<"0ms">>},
      {queryMemoryQuota,        "memory-quota",        0},
      {queryUseCBO,             "use-cbo",             true},
@@ -141,7 +159,7 @@ general_settings(Ver) ->
               "completed-max-plan-size", 262144}];
         false ->
             []
-    end.
+    end ++ n1ql_feature_ctrl_setting(Ver).
 
 curl_whitelist_settings_len_props() ->
     [{queryCurlWhitelist, id_lens(<<"query.settings.curl_whitelist">>)}].
@@ -171,7 +189,29 @@ config_upgrade_test() ->
                    "\"node-quota-val-percent\":67,"
                    "\"num-cpus\":0,"
                    "\"use-replica\":\"unset\"}">>,
-                 Data).
+                 Data),
+
+    %% Upgrade to Trinity for provisioned profile should update n1ql-feat-ctrl
+    %% to disable sequential scans.
+
+    meck:new(config_profile, [passthrough]),
+    meck:expect(config_profile, get_bool,
+                fun ({n1ql, sequential_scan_disabled}) ->
+                        true
+                end),
+
+    CmdList1 = config_upgrade_to_trinity([]),
+    [{set, {metakv, Meta1}, Data1}] = CmdList1,
+    ?assertEqual(<<"/query/settings/config">>, Meta1),
+    ?assertEqual(<<"{\"completed-max-plan-size\":262144,"
+                   "\"n1ql-feat-ctrl\":16460,"
+                   "\"node-quota\":0,"
+                   "\"node-quota-val-percent\":67,"
+                   "\"num-cpus\":0,"
+                   "\"use-replica\":\"unset\"}">>,
+                 Data1),
+
+    meck:unload(config_profile).
 
 create_test_config_n1ql_quotas(NodeQuotaValue) when is_number(NodeQuotaValue) ->
     WOutNodeQuota = proplists:delete(queryNodeQuota,
