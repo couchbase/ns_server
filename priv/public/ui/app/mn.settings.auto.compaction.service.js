@@ -143,11 +143,11 @@ class MnSettingsAutoCompactionService {
     let values = clone(group.value);
 
     if (values.databaseFragmentationThreshold) {
-      values.databaseFragmentationThreshold.size = values.databaseFragmentationThreshold.size ?
+      values.databaseFragmentationThreshold.size = Number.isFinite(values.databaseFragmentationThreshold.size) ?
         this.mnHelperService.transformMBToBytes(values.databaseFragmentationThreshold.size) :
         "undefined";
 
-      values.databaseFragmentationThreshold.percentage = values.databaseFragmentationThreshold.percentage ?
+      values.databaseFragmentationThreshold.percentage =  Number.isFinite(values.databaseFragmentationThreshold.percentage) ?
         values.databaseFragmentationThreshold.percentage :
         "undefined";
 
@@ -156,11 +156,11 @@ class MnSettingsAutoCompactionService {
     }
 
     if (values.viewFragmentationThreshold) {
-      values.viewFragmentationThreshold.size = values.viewFragmentationThreshold.size ?
+      values.viewFragmentationThreshold.size = Number.isFinite(values.viewFragmentationThreshold.size) ?
         this.mnHelperService.transformMBToBytes(values.viewFragmentationThreshold.size) :
         "undefined";
 
-      values.viewFragmentationThreshold.percentage = values.viewFragmentationThreshold.percentage ?
+      values.viewFragmentationThreshold.percentage = Number.isFinite(values.viewFragmentationThreshold.percentage) ?
         values.viewFragmentationThreshold.percentage :
         "undefined";
 
@@ -181,11 +181,11 @@ class MnSettingsAutoCompactionService {
   }
 
   maybeDefaultPercentage(value) {
-    return Number.isInteger(value) ? value : "";
+    return Number.isFinite(value) ? value : "";
   }
 
   maybeDefaultSize(value) {
-    return Number.isInteger(value) ? this.mnHelperService.transformBytesToMB(value) : "";
+    return Number.isFinite(value) ? this.mnHelperService.transformBytesToMB(value) : "";
   }
 
   setThresholdGroup(threshold) {
