@@ -87,6 +87,9 @@ def plot_rebalance(payload):
 
 
     ax.fmt_ydata = format_y_coord
+    ax.yaxis.set_major_locator(plot.MaxNLocator(31, integer=True,
+                                                min_n_ticks=1))
+
     ax.invert_yaxis()
     ax.set_ylabel('VBucket')
     ax.set_xlabel('Time (s)')
