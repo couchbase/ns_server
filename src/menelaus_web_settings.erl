@@ -802,99 +802,144 @@ handle_post(Type, Keys, Req) ->
                                    mochiweb_request:recv_body(Req),
                                    is_allowed_setting(post, Req, _)) of
                   {ok, ToSet} ->
-                      case ns_config:run_txn(
-                             ?cut(set_keys_in_txn(_1, _2, ToSet,
-                                                  OriginalCfg))) of
-                          {commit, _, {OldProps, NewProps}} ->
-                              case Type of
-                                  security ->
-                                      NewPropsJSON =
-                                          jsonify_security_settings(NewProps),
-                                      ns_audit:settings(Req, security,
-                                                        {json, NewPropsJSON}),
-                                      event_log_security_settings_changed(
-                                        OldProps, NewProps),
-                                      maybe_log_saml_enabled_warning(
-                                        menelaus_web_saml:is_enabled(),
-                                        OldProps, NewProps);
-                                  _ ->
-                                      ns_audit:settings(Req, Type, NewProps)
-                              end,
-                              reply_json(Req, []);
-                          retry_needed ->
-                              erlang:error(exceeded_retries)
-                      end;
+                      handle_post_with_parsed_data(Type, ToSet, Req);
                   {error, Errors} ->
                       reply_json(Req, {[{errors, Errors}]}, 400)
               end
       end).
 
+handle_post_with_parsed_data(Type, ToSet, Req) ->
+    Cfg = conf(Type),
+    case ns_config:run_txn(?cut(set_keys_in_txn(_1, _2, ToSet, Cfg))) of
+        {commit, _, {OldProps, NewProps}} ->
+            case Type of
+                security ->
+                    NewPropsJSON =
+                        jsonify_security_settings(NewProps),
+                    ns_audit:settings(Req, security,
+                                      {json, NewPropsJSON}),
+                    event_log_security_settings_changed(
+                      OldProps, NewProps),
+                    maybe_log_saml_enabled_warning(
+                      menelaus_web_saml:is_enabled(),
+                      OldProps, NewProps);
+                _ ->
+                    ns_audit:settings(Req, Type, NewProps)
+            end,
+            reply_json(Req, []);
+        retry_needed ->
+            erlang:error(exceeded_retries)
+    end.
+
 set_keys_in_txn(Cfg, SetFn, ToSet, DefaultCfg) ->
-    {NewCfg, OldProps, NewProps} =
-        lists:foldl(
-          fun ({[K], V}, {CfgAcc, OldPropsAcc0, NewPropsAcc0}) ->
-                  case ns_config:search(CfgAcc, K) of
-                      {value, V} ->
-                          {CfgAcc, OldPropsAcc0, NewPropsAcc0};
-                      {value, OV} ->
-                          {SetFn(K, V, CfgAcc), OldPropsAcc0#{K => OV},
-                           NewPropsAcc0#{K => V}};
-                      _ ->
-                          {_, _, DefaultV, _} = proplists:lookup(K, DefaultCfg),
-                          %% Don't display values that didn't actually change
-                          {NewP, OldP} = case V =:= DefaultV of
-                                             true ->
-                                                 {NewPropsAcc0, OldPropsAcc0};
-                                             false ->
-                                                 {NewPropsAcc0#{K => V},
-                                                  OldPropsAcc0#{K => DefaultV}}
-                                         end,
-                          {SetFn(K, V, CfgAcc), OldP, NewP}
-                  end;
-              ({[K, SubK], V}, {CfgAcc, OldPropsAcc0, NewPropsAcc0}) ->
-                  CurProps = ns_config:search(CfgAcc, K, []),
-                  AppendSubKFn = fun(Var) ->
-                                         fun({L}) -> {[{SubK, Var} | L]} end
-                                 end,
-                  case proplists:lookup(SubK, CurProps) of
-                      {SubK, V} ->
-                          {CfgAcc, OldPropsAcc0, NewPropsAcc0};
-                      {SubK, OV} ->
-                          OldPropAcc =
-                              maps:update_with(K, AppendSubKFn(OV),
-                                               {[{SubK, OV}]}, OldPropsAcc0),
-                          NewProps = misc:update_proplist(CurProps,
-                                                          [{SubK, V}]),
-                          NewPropsAcc =
-                              maps:update_with(K, AppendSubKFn(V),
-                                               {[{SubK, V}]}, NewPropsAcc0),
-                          {SetFn(K, NewProps, CfgAcc), OldPropAcc, NewPropsAcc};
-                      _ ->
-                          {_, _, DefaultProps} =
-                              proplists:lookup(K, DefaultCfg),
-                          {_, _, DefaultV, _} =
-                              proplists:lookup(SubK, DefaultProps),
-                          case DefaultV of
-                              V ->
-                                  {CfgAcc, OldPropsAcc0, NewPropsAcc0};
-                              _ ->
-                                  OldPropAcc =
-                                      maps:update_with(K,
-                                                       AppendSubKFn(DefaultV),
-                                                       {[{SubK, DefaultV}]},
-                                                       OldPropsAcc0),
-                                  NewProps = misc:update_proplist(CurProps,
-                                                                  [{SubK, V}]),
-                                  NewPropsAcc =
-                                      maps:update_with(K, AppendSubKFn(V),
-                                                       {[{SubK, V}]},
-                                                       NewPropsAcc0),
-                                  {SetFn(K, NewProps, CfgAcc), OldPropAcc,
-                                   NewPropsAcc}
-                          end
-                  end
-          end, {Cfg, #{}, #{}}, ToSet),
-    {commit, NewCfg, {maps:to_list(OldProps), maps:to_list(NewProps)}}.
+    UpdateKey =
+        fun (Key, NewVal, CurCfg) ->
+                case ns_config:search(CurCfg, Key) of
+                    {value, NewVal} ->
+                        {{[Key], {NewVal, NewVal}}, CurCfg};
+                    {value, OldVal} ->
+                        {{[Key], {OldVal, NewVal}},
+                         SetFn(Key, NewVal, CurCfg)};
+                    _ ->
+                        {_, _, DefaultV, _} = proplists:lookup(Key, DefaultCfg),
+                        {{[Key], {DefaultV, NewVal}},
+                         SetFn(Key, NewVal, CurCfg)}
+                end
+        end,
+    UpdateSubKey =
+        fun (Key, SubKey, NewVal, CurCfg) ->
+                CurProps = ns_config:search(CurCfg, Key, []),
+                NewProps = misc:update_proplist(CurProps, [{SubKey, NewVal}]),
+                case proplists:lookup(SubKey, CurProps) of
+                    {SubKey, NewVal} ->
+                        {{[Key, SubKey], {NewVal, NewVal}}, CurCfg};
+                    {SubKey, OldVal} ->
+                        {{[Key, SubKey], {OldVal, NewVal}},
+                         SetFn(Key, NewProps, CurCfg)};
+                    _ ->
+                        {_, _, DefaultProps} =
+                            proplists:lookup(Key, DefaultCfg),
+                        {_, _, DefaultV, _} =
+                            proplists:lookup(SubKey, DefaultProps),
+                        {{[Key, SubKey], {DefaultV, NewVal}},
+                         SetFn(Key, NewProps, CurCfg)}
+                end
+        end,
+    {Changes, NewCfg} =
+        lists:mapfoldl(
+          fun ({[K], V}, CfgAcc) -> UpdateKey(K, V, CfgAcc);
+              ({[K, SubK], V}, CfgAcc) -> UpdateSubKey(K, SubK, V, CfgAcc)
+          end, Cfg, ToSet),
+    {commit, NewCfg, rearrange_changes(Changes)}.
+
+rearrange_changes(Changes) ->
+    RealChanges = lists:filter(fun ({_, {V, V}}) -> false;
+                                   ({_, {_, _}}) -> true
+                               end, Changes),
+    OldValues = [{K, V} || {K, {V, _}} <- RealChanges],
+    NewValues = [{K, V} || {K, {_, V}} <- RealChanges],
+    Rearrage = fun (L) ->
+                      L2 = misc:groupby_map(
+                             fun ({[K], V}) -> {{single, K}, V};
+                                 ({[K1, K2], V}) -> {{multi, K1}, {K2, V}}
+                             end, L),
+                      lists:map(fun ({{single, K}, [V]}) -> {K, V};
+                                    ({{multi, K}, Props}) -> {K, {Props}}
+                                end, L2)
+               end,
+    {Rearrage(OldValues), Rearrage(NewValues)}.
+
+-ifdef(TEST).
+
+rearrange_changes_test() ->
+                         %%  Key      OldVal, NewVal
+    Res = rearrange_changes([{[a],    {    1,      1}}, %% No change, top key
+                             {[a, b], {    1,      1}}, %% No change, subkey
+                             {[c],    {    1,      2}}, %% Change, top key
+                             {[d, e], {    3,      4}}, %% Change, subkey
+                             {[d, f], {    5,      6}}]),
+    ?assertEqual({[{d, {[{e, 3}, {f, 5}]}}, {c, 1}],
+                  [{d, {[{e, 4}, {f, 6}]}}, {c, 2}]}, Res).
+
+set_keys_in_txn_test() ->
+    SetFn = fun (K, V, [Cfg]) -> [lists:keystore(K, 1, Cfg, {K, V})] end,
+    ?assertEqual({commit, cfg, {[], []}},
+                 set_keys_in_txn(cfg, SetFn, [], [])),
+    CfgBefore = [[{k1, 1},
+                  {k2, 0},
+                  {k4, [{k5, 5}, {k99, 99}, {k6, 0}]}]],
+    ToSet = [{[k1], 1}, % No change
+             {[k2], 2}, % Change
+             {[k3], 3}, % New key
+             {[k4, k5], 5},  % Existing subkey, no change
+             {[k4, k6], 6},  % Existing subkey, change
+             {[k7, k8], 8},  % New key and new subkey
+             {[k7, k9], 9}], % Existing key, new subkey
+    Defaults = [{k1, 'K1', k1_default, undefined},
+                {k2, 'K2', 2, undefined},
+                {k3, 'K3', k3_default, undefined},
+                {k4, 'K4', [{k5, 'K5', k5_default, undefined},
+                            {k6, 'K6', 6, undefined}]},
+                {k7, 'K7', [{k8, 'K8', k8_default, undefined},
+                            {k9, 'K9', 9, undefined}]}],
+    CfgAfter = [[{k1, 1},
+                 {k2, 2},
+                 {k4, [{k6, 6}, {k5, 5}, {k99, 99}]},
+                 {k3, 3},
+                 {k7, [{k9, 9}, {k8, 8}]}]],
+    ChangedOldValues = [{k4, {[{k6, 0}]}},
+                        {k7, {[{k8, k8_default}]}},
+                        {k2, 0},
+                        {k3, k3_default}],
+    ChangedNewValues = [{k4, {[{k6, 6}]}},
+                        {k7, {[{k8, 8}]}},
+                        {k2, 2},
+                        {k3, 3}],
+
+    ?assertEqual({commit, CfgAfter, {ChangedOldValues, ChangedNewValues}},
+                 set_keys_in_txn(CfgBefore, SetFn, ToSet, Defaults)).
+
+-endif.
 
 parse_post_data(Conf, Keys, Data, KeyValidator) ->
     InvertedConf = invert_conf(Conf),
