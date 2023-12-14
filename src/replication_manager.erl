@@ -93,8 +93,9 @@ handle_call({remove_undesired_replications, FutureReps}, From, State) ->
     %% will not be included in the list.
     %% Closing the window entirely is a non-trvial and risky change.
     CurrentReps = get_actual_replications_as_list(State),
-    Diff = replications_difference(FutureReps, CurrentReps),
-    CleanedReps0 = [{N, ordsets:intersection(FutureVBs, CurrentVBs)} || {N, FutureVBs, CurrentVBs} <- Diff],
+    MergedReps = merge_replications(FutureReps, CurrentReps),
+    CleanedReps0 = [{N, ordsets:intersection(FutureVBs, CurrentVBs)} ||
+                    {N, FutureVBs, CurrentVBs} <- MergedReps],
     CleanedReps = [{N, VBs} || {N, [_|_] = VBs} <- CleanedReps0],
     handle_call({set_desired_replications, CleanedReps}, From, State);
 
@@ -131,7 +132,7 @@ handle_call({dcp_takeover, OldMasterNode, VBucket}, _From,
     {reply, dcp_replicator:takeover(OldMasterNode, Bucket, VBucket),
      State#state{desired_replications = DesiredReps}}.
 
-replications_difference(RepsA, RepsB) ->
+merge_replications(RepsA, RepsB) ->
     L = [{N, VBs, []} || {N, VBs} <- RepsA],
     R = [{N, [], VBs} || {N, VBs} <- RepsB],
     MergeFn = fun ({N, VBsL, []}, {N, [], VBsR}) ->
