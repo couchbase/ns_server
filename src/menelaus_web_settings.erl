@@ -904,14 +904,19 @@ parse_post_data(Conf, Keys, Data, KeyValidator) ->
             error -> mochiweb_util:parse_qs(Data)
         end,
 
+    Duplicates = proplists:get_keys(Params -- lists:ukeysort(1, Params)),
+
     Params2 = [{Keys ++ string:tokens(SJK, "."), SV}|| {SJK, SV} <- Params],
     Res = [parse_post_for_key(SJK, SV, InvertedConf, KeyValidator)
               || {SJK, SV} <- Params2],
 
-    case [M || {error, M} <- Res] of
-        [] ->
+    Errors = [M || {error, M} <- Res] ++
+             [iolist_to_binary(io_lib:format("~s - duplicate key", [D]))
+                 || D <- Duplicates],
+    case Errors == [] of
+        true ->
             {ok, [ToSet || {ok, ToSet} <- Res]};
-        Errors ->
+        false ->
             {error, Errors}
     end.
 
@@ -1487,7 +1492,8 @@ parse_post_data_test() ->
                                  KeyValidator)),
     ?assertEqual({error, [<<"Unknown key data.unknown1">>,
                           <<"data.cipherSuites - Invalid format. "
-                            "Expecting a list of ciphers.">>]},
+                            "Expecting a list of ciphers.">>,
+                          <<"cipherSuites - duplicate key">>]},
                  parse_post_data(Conf, ["data"],
                                  <<"unknown1=tlsv1.2&"
                                    "cipherSuites=[]&"
