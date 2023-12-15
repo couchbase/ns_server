@@ -76,7 +76,7 @@ def plot_rebalance(payload):
     ax.fmt_ydata = format_y_coord
     ax.invert_yaxis()
     ax.set_ylabel('VBucket')
-    ax.set_xlabel('Time')
+    ax.set_xlabel('Time (s)')
     ax.set_title(bucket)
 
     ax.legend()
