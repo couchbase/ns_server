@@ -39,6 +39,7 @@
 -export([increment_counter/2,
          get_ns_server_stats/0,
          add_histo/2,
+         delete_bucket_stats/1,
          stale_histo_epoch_cleaner/0,
          report_derived_stats/1,
          report_prom_stats/2,
@@ -353,6 +354,36 @@ report_ns_server_hc_stats(ReportFun) ->
               ok
       end, [], ?MODULE),
     ok.
+
+%% Delete stats for the specified bucket.
+delete_bucket_stats(Bucket) when is_list(Bucket) ->
+    ets:foldl(
+      fun (M, _) ->
+              Key = element(1, M),
+              case Key of
+                  {h, {Metric, Labels}, _Max, _Units} ->
+                      maybe_delete_stat(Bucket, Metric, Key, Labels);
+                  {c, {Metric, Labels}} ->
+                      maybe_delete_stat(Bucket, Metric, Key, Labels);
+                  {g, {Metric, Labels}} ->
+                      maybe_delete_stat(Bucket, Metric, Key, Labels);
+                  {mw, _F, _Window, {Metric, Labels}} ->
+                      maybe_delete_stat(Bucket, Metric, Key, Labels);
+                  _ ->
+                      ok
+              end
+      end, [], ?MODULE),
+    ok.
+
+maybe_delete_stat(Bucket, Metric, Key, Labels) ->
+    case lists:member({<<"bucket">>, list_to_binary(Bucket)}, Labels) of
+        true ->
+            ?log_debug("Deleting ~p for ~p from ets table",
+                       [Metric, Bucket]),
+            ets:delete(?MODULE, Key);
+        false ->
+            ok
+    end.
 
 report_erlang_stat(Stat, ReportFun) ->
     Prefix = <<"erlang_">>,
@@ -765,7 +796,37 @@ normalized_metric(N) when is_atom(N); is_binary(N) ->
 normalized_metric({N, L}) when is_atom(N) ->
     normalized_metric({atom_to_binary(N, latin1), L});
 normalized_metric({N, L}) when is_binary(N), is_list(L) ->
-    {N, lists:usort(L)}.
+    {N, lists:usort(normalized_labels(L))}.
+
+normalized_labels([]) ->
+    [];
+normalized_labels([{Key, Value} | Rest]) ->
+    BinaryKey = normalize_label_element(Key),
+    BinaryValue = normalize_label_element(Value),
+    [{BinaryKey, BinaryValue} | normalized_labels(Rest)].
+
+normalize_label_element(Item) when is_atom(Item) ->
+    atom_to_binary(Item);
+normalize_label_element(Item) when is_list(Item) ->
+    list_to_binary(Item);
+normalize_label_element(Item) ->
+    Item.
+
+-ifdef(TEST).
+
+normalized_test() ->
+    ?assertEqual({<<"abc">>, []}, normalized_metric(abc)),
+    ?assertEqual({<<"abc">>, []}, normalized_metric({abc, []})),
+    ?assertEqual({<<"abc">>, [{<<"key">>, <<"value">>}]},
+                 normalized_metric({abc, [{key, value}]})),
+    ?assertEqual({<<"abc">>, [{<<"key">>, <<"value">>}]},
+                 normalized_metric({<<"abc">>, [{<<"key">>, <<"value">>}]})),
+    ?assertEqual({<<"abc">>, [{<<"key">>, <<"value">>}]},
+                 normalized_metric({abc, [{"key", "value"}]})),
+    ?assertEqual({<<"abc">>, [{<<"key">>, 503}]},
+                 normalized_metric({abc, [{"key", 503}]})).
+
+-endif.
 
 notify_moving_window(F, Metric, Window, BucketSize, Now, Table, Val) ->
     Key = {mw, F, Window, normalized_metric(Metric)},
@@ -855,3 +916,60 @@ restart_cleanup_stats_timer(#state{cleanup_stats_timer = Ref} = State)
                                                     when is_reference(Ref) ->
     catch erlang:cancel_timer(Ref),
     restart_cleanup_stats_timer(State#state{cleanup_stats_timer = undefined}).
+
+-ifdef(TEST).
+%% Add each type of stat to the ns_server_stats table, delete them, and
+%% verify they are gone.
+stats_deletion_test() ->
+    ets:new(?MODULE, [public, named_table, set]),
+    Bucket = "testBucket",
+    Bucket2 = "testBucket2",
+
+    %% This group "resolves" to the same stat (same ets table key).
+    ns_server_stats:notify_histogram(
+      {<<"test_histogram">>, [{bucket, Bucket}]}, rand:uniform(1000)),
+    ns_server_stats:notify_histogram(
+      {test_histogram, [{bucket, Bucket}]}, rand:uniform(1000)),
+    ns_server_stats:notify_histogram(
+      {<<"test_histogram">>, [{<<"bucket">>, list_to_binary(Bucket)}]},
+      rand:uniform(1000)),
+    ns_server_stats:notify_histogram(
+      {test_histogram, [{<<"bucket">>, list_to_binary(Bucket)}]},
+      rand:uniform(1000)),
+    ns_server_stats:notify_histogram(
+      {<<"test_histogram">>, [{"bucket", Bucket}]},
+      rand:uniform(1000)),
+    ns_server_stats:notify_histogram(
+      {test_histogram, [{"bucket", Bucket}]},
+      rand:uniform(1000)),
+    ns_server_stats:notify_histogram(
+      {<<"test_histogram">>, [{bucket, list_to_atom(Bucket)}]},
+      rand:uniform(1000)),
+    ns_server_stats:notify_histogram(
+      {test_histogram, [{bucket, list_to_atom(Bucket)}]},
+      rand:uniform(1000)),
+
+    ns_server_stats:notify_histogram(
+      {<<"test_histogram">>, [{bucket, Bucket2 }]}, rand:uniform(1000)),
+    ns_server_stats:notify_counter(
+      {<<"test_counter">>, [{bucket, Bucket}]}),
+    ns_server_stats:notify_counter(
+      {<<"test_counter">>, [{bucket, Bucket2}]}),
+    ns_server_stats:notify_gauge(
+      {<<"test_gauge">>, [{bucket, Bucket}]}, rand:uniform(100)),
+    ns_server_stats:notify_gauge(
+      {<<"test_gauge">>, [{bucket, Bucket2}]}, rand:uniform(100)),
+    ns_server_stats:notify_max(
+      {{<<"test_window">>, [{bucket, Bucket}]}, 600, 10}, rand:uniform(1000)),
+    ns_server_stats:notify_max(
+      {{<<"test_window">>, [{bucket, Bucket2}]}, 600, 10}, rand:uniform(1000)),
+
+    ?assertEqual(8, ets:info(?MODULE, size)),
+    ns_server_stats:delete_bucket_stats(Bucket),
+    ?assertEqual(4, ets:info(?MODULE, size)),
+    ns_server_stats:delete_bucket_stats(Bucket2),
+    ?assertEqual(0, ets:info(?MODULE, size)),
+
+    ets:delete(?MODULE).
+
+-endif.

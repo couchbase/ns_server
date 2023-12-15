@@ -2277,6 +2277,7 @@ remove_bucket(BucketName) ->
     case delete_bucket(BucketName) of
         {ok, BucketConfig} ->
             ns_janitor_server:delete_bucket_request(BucketName),
+            ns_server_stats:delete_bucket_stats(BucketName),
             {ok, BucketConfig};
         Other ->
             Other
