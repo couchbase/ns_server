@@ -50,10 +50,11 @@ def get_vbucket_move(vb, rebalance_start):
 
 
 def timestamp(string):
-    if string[-1] == "Z":
-        return datetime.datetime.fromisoformat(string[:-1]).timestamp()
-    elif isinstance(string, str):
-        return datetime.datetime.fromisoformat(string).timestamp()
+    if isinstance(string, str):
+        if string[-1] == "Z":
+            return datetime.datetime.fromisoformat(string[:-1]).timestamp()
+        else:
+            return datetime.datetime.fromisoformat(string).timestamp()
     else:
         return None
 
@@ -67,6 +68,8 @@ def move_type(vb):
 
 def backfill_duration(vb):
     if vb["move"]["startTime"] is False:
+        return None
+    elif "completedTime" not in vb["backfill"]:
         return None
     elif vb["backfill"]["completedTime"] is False:
         return None
