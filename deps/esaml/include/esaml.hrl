@@ -63,6 +63,7 @@
 	in_response_to = "" :: string()}).
 
 -record(esaml_assertion, {
+	id = "" :: string(),
 	version = "2.0" :: esaml:version(),
 	issue_instant = "" :: esaml:datetime(),
 	recipient :: string(),

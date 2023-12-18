@@ -367,8 +367,11 @@ class SamlTests(testlib.BaseTestSet):
         # duplicate rejection on both nodes. If we don't disable it,
         # the assertion will be rejected with reason "bad_recipient", which is
         # not what we want to test here
+        # Also disable envelop signature verification in order to make sure that
+        # assertion signature check is enough in this case
         with saml_configured(self.cluster.connected_nodes[0],
                              spSignRequests=False,
+                             spVerifyAssertionEnvelopSig=False,
                              spVerifyRecipient='false') as IDP:
             identity = idp_test_user_attrs.copy()
             binding_out, destination = \
@@ -397,15 +400,19 @@ class SamlTests(testlib.BaseTestSet):
             response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
 
             session1 = requests.Session()
-            session2 = requests.Session()
-            session3 = requests.Session()
             r = session1.post(destination,
                               data={'SAMLResponse': response_encoded},
                               headers=ui_headers,
                               allow_redirects=False)
             assert_http_code(302, r)
 
+            r = session1.get(self.cluster.connected_nodes[0].url +
+                             '/pools/default',
+                             headers=ui_headers)
+            assert_http_code(200, r)
+
             # sending the same assertion again and expect it to reject it
+            session2 = requests.Session()
             r = session2.post(destination,
                               data={'SAMLResponse': response_encoded},
                               headers=ui_headers,
@@ -414,31 +421,50 @@ class SamlTests(testlib.BaseTestSet):
                 self.cluster.connected_nodes[0], session2, r)
             assert_in("assertion replay protection", error_msg)
 
-            dest_parsed = urlparse(destination)
-            node2_parsed = urlparse(self.cluster.connected_nodes[1].url)
-            dest2_parsed = dest_parsed._replace(netloc=node2_parsed.netloc)
-            destination2 = urlunparse(dest2_parsed)
-            # sending the same assertion again, but this time to another node
-            # it still should reject it
-            r = session3.post(destination2,
-                              data={'SAMLResponse': response_encoded},
-                              headers=ui_headers,
-                              allow_redirects=False)
-            error_msg = catch_error_after_redirect(
-                self.cluster.connected_nodes[1], session3, r)
-            assert_in("assertion replay protection", error_msg)
-
-            r = session1.get(self.cluster.connected_nodes[0].url +
-                             '/pools/default',
-                             headers=ui_headers)
-            assert_http_code(200, r)
-
             r = session2.get(self.cluster.connected_nodes[0].url +
                              '/pools/default',
                              headers=ui_headers)
             assert_http_code(401, r)
 
-            r = session3.get(self.cluster.connected_nodes[1].url +
+            # alter assertion id and retry
+            # dupe check will not help in this case but signature verification
+            # should catch it
+            session3 = requests.Session()
+            response_wrong_id = re.sub('Assertion Version="2\\.0" ID="id-',
+                                       'Assertion Version="2.0" ID="id1-',
+                                       response)
+            assert response_wrong_id != response
+            response_encoded_wrong_id = \
+                base64.b64encode(f"{response_wrong_id}".encode("utf-8"))
+            r = session3.post(destination,
+                              data={'SAMLResponse': response_encoded_wrong_id},
+                              headers=ui_headers,
+                              allow_redirects=False)
+            error_msg = catch_error_after_redirect(
+                self.cluster.connected_nodes[0], session3, r)
+            assert_in("bad assertion digest", error_msg)
+
+            r = session3.get(self.cluster.connected_nodes[0].url +
+                             '/pools/default',
+                             headers=ui_headers)
+            assert_http_code(401, r)
+
+            # sending the same assertion again, but this time to another node
+            # it still should reject it
+            session4 = requests.Session()
+            dest_parsed = urlparse(destination)
+            node2_parsed = urlparse(self.cluster.connected_nodes[1].url)
+            dest2_parsed = dest_parsed._replace(netloc=node2_parsed.netloc)
+            destination2 = urlunparse(dest2_parsed)
+            r = session4.post(destination2,
+                              data={'SAMLResponse': response_encoded},
+                              headers=ui_headers,
+                              allow_redirects=False)
+            error_msg = catch_error_after_redirect(
+                self.cluster.connected_nodes[1], session4, r)
+            assert_in("assertion replay protection", error_msg)
+
+            r = session4.get(self.cluster.connected_nodes[1].url +
                              '/pools/default',
                              headers=ui_headers)
             assert_http_code(401, r)

@@ -137,11 +137,18 @@ format_error({validate_assertion, Reason}) ->
             {What, {error, bad_signature}} when What == assertion;
                                                 What == envelope ->
                 io_lib:format("bad ~p signature", [What]);
+            {What, {error, bad_digest}} when What == assertion;
+                                             What == envelope ->
+                io_lib:format("bad ~p digest", [What]);
             {What, {error, multiple_signatures}} when What == assertion;
                                                       What == envelope ->
                 io_lib:format("~p contains multiple signatures", [What]);
             {bad_issuer, Issuer} ->
                 io_lib:format("Unexpected assertion issuer (~p)", [Issuer]);
+            {unexpected_assertion_id, ""} ->
+                "Missing assertion ID";
+            {unexpected_assertion_id, ID} ->
+                io_lib:format("Unexpected assertion ID: ~p", [ID]);
             _ ->
                 io_lib:format("~p", [Reason])
         end,
@@ -236,7 +243,8 @@ check_dupe_global(Assertion, Digest) ->
             {error, {dupe_check_bad_nodes, BadNodes}}
     end.
 
-check_dupe(Assertion, Digest) ->
+check_dupe(Assertion, _Digest) ->
+    ID = Assertion#esaml_assertion.id,
     ExpirationTimestamp = esaml:stale_time(Assertion), %% in gregorian seconds
     %% We assume that security is more important than RAM, so we are
     %% not setting any limit for the size of this table here.
@@ -249,11 +257,13 @@ check_dupe(Assertion, Digest) ->
     %% (because we can't hold cache for used assertions that long).
     Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
     case ExpirationTimestamp < Now + ?SECS_IN_DAY of
-        true ->
-            case ets:insert_new(?DUPE_ETS, {Digest, ExpirationTimestamp}) of
+        true when is_list(ID), ID /= "" ->
+            case ets:insert_new(?DUPE_ETS, {ID, ExpirationTimestamp}) of
                 true -> ok;
                 false -> {error, duplicate_assertion}
             end;
+        true -> %% strange id
+            {error, {unexpected_assertion_id, ID}};
         false ->
             {error, bad_not_on_or_after}
     end.
