@@ -283,4 +283,27 @@ upgrade_7_2_admin_auth_to_trinity_test() ->
     check_hash(get_salt_and_mac(Auth72), "asdasd"),
     check_hash(get_salt_and_mac(NewAuth), "asdasd").
 
+enacl_dirty_schedulers_test() ->
+    PrevWallTimeValue = erlang:system_flag(scheduler_wall_time, true),
+    try
+        Salt = <<175,163,193,248,24,140,199,101,242,135,111,31,184,88,204,206>>,
+        S1 = scheduler:get_sample(),
+        enacl:pwhash("asdasd", Salt, 1000, 8000000, argon2id13),
+        S2 = scheduler:get_sample(),
+        Res = scheduler:utilization(S1, S2),
+
+        %% Make sure there is at least one dirty scheduler that was used
+        %% during hash calculation. It is possible that something else
+        %% actually used that dirty scheduler but I don't know how we can test
+        %% it better
+        AnyDirtySchedulersUsed =
+            lists:any(fun ({cpu, _, Util, _}) when Util > 0.5 -> true;
+                          (_) -> false
+                      end, Res),
+        io:format("Schedulers utilization: ~p", [Res]),
+        ?assert(AnyDirtySchedulersUsed)
+    after
+        erlang:system_flag(scheduler_wall_time, PrevWallTimeValue)
+    end.
+
 -endif.
