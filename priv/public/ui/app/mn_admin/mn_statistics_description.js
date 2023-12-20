@@ -931,10 +931,20 @@ function get70CompatDesc() {
           title: "Analytics Queued HTTP Requests",
           desc: "Number of queued http requests for Analytics on this server."
         },
+        "cbas_rebalance_successful_total": {
+          unit: "number",
+          title: "Analytics Total Successful Rebalances",
+          desc: "Total number of successful rebalances for Analytics on this server."
+        },
+        "cbas_rebalance_cancelled_total": {
+          unit: "number",
+          title: "Analytics Total Cancelled Rebalances",
+          desc: "Total number of cancelled rebalances for Analytics on this server."
+        },
         "cbas_rebalance_failed_total": {
           unit: "number",
-          title: "Analytics Total Rebalances Failed",
-          desc: "Total number of rebalances failed for Analytics on this server."
+          title: "Analytics Total Failed Rebalances",
+          desc: "Total number of failed rebalances for Analytics on this server."
         },
         "cbas_internal_error_total": {
           unit: "number",
