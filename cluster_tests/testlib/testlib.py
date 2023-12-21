@@ -388,7 +388,7 @@ def patch_succ(cluster_or_node, path, expected_code=200, **kwargs):
     return request('PATCH', cluster_or_node, path, expected_code, **kwargs)
 
 
-def patch_fail(cluster_or_node, path, expected_code=200, **kwargs):
+def patch_fail(cluster_or_node, path, expected_code, **kwargs):
     return request('PATCH', cluster_or_node, path, expected_code, **kwargs)
 
 
@@ -422,6 +422,10 @@ def delete(cluster_or_node, path, **kwargs):
 
 
 def delete_succ(cluster_or_node, path, expected_code=200, **kwargs):
+    return request('DELETE', cluster_or_node, path, expected_code, **kwargs)
+
+
+def delete_fail(cluster_or_node, path, expected_code, **kwargs):
     return request('DELETE', cluster_or_node, path, expected_code, **kwargs)
 
 

@@ -267,3 +267,86 @@ class CollectionTests(testlib.BaseTestSet):
         if manifest3.items() != manifest1.items():
             print(f"Unexpected differences {diff(manifest1, manifest3)}")
         assert manifest3.items() == manifest1.items()
+
+    # Tests on the _system scope which is for internal couchbase use. Pretty
+    # much can't do anything to _system scope and its contained entities.
+    def system_scope_test(self):
+        bucket_name = "testBucket2"
+        self.create_bucket(bucket_name, "couchbase")
+        scope_url = BUCKETS_ENDPOINT + f"/{bucket_name}/scopes/_system"
+        # Deleting _system scope is disallowed
+        testlib.delete_fail(self.cluster, scope_url, 400)
+        collection_url = f"{scope_url}/collections"
+        # Adding a collection to _system scope is disallowed
+        testlib.post_fail(self.cluster, collection_url, 400,
+                          data={"name": "newcollection"})
+        # Deleting the "special" collections from _system scope is disallowed
+        testlib.delete_fail(self.cluster,
+                            f"{collection_url}/_mobile", 400)
+        testlib.delete_fail(self.cluster,
+                            f"{collection_url}/_query", 400)
+        # Changing attribute is disallowed
+        testlib.patch_fail(self.cluster,
+                           f"{collection_url}/_mobile", 400,
+                           data={"maxTTL": 456})
+        testlib.patch_fail(self.cluster,
+                           f"{collection_url}/_query", 400,
+                           data={"maxTTL": 456})
+
+    # Tests on the _default scope. There should be few restrictions.
+    def default_scope_test(self):
+        bucket_name = "testBucket3"
+        self.create_bucket(bucket_name, "couchbase")
+        scope_url = BUCKETS_ENDPOINT + f"/{bucket_name}/scopes/_default"
+        collection_url = f"{scope_url}/collections"
+        # Adding a collection to _default scope is allowed
+        testlib.post_succ(self.cluster,
+                          collection_url,
+                          data={"name": "new_collection"})
+        # Cannot add a collection starting with underscore
+        testlib.post_fail(self.cluster,
+                          collection_url, 400,
+                          data={"name": "_bad_collection"})
+        # Changing attribute of _default collection is allowed
+        testlib.patch_succ(self.cluster,
+                           f"{collection_url}/_default", 200,
+                           data={"maxTTL": 333})
+        # Deleting _default scope is disallowed
+        testlib.delete_fail(self.cluster, scope_url, 400)
+        # Deleting _default collection is allowed
+        testlib.delete_succ(self.cluster,
+                            f"{collection_url}/_default")
+
+    # Ensure invalid operations are disallowed.
+    def ensure_invalid_operations_test(self):
+        bucket_name = "testbucket4"
+        self.create_bucket(bucket_name, "couchbase")
+        scope_url = BUCKETS_ENDPOINT + f"/{bucket_name}/scopes"
+        collection_url = f"{scope_url}/scope4/collections"
+
+        testlib.post_succ(self.cluster, scope_url,
+                          data={"name": "scope4"})
+        testlib.post_succ(self.cluster, f"{collection_url}",
+                          data={"name": "collection4"})
+
+        # Cannot add a scope with an existing name
+        testlib.post_fail(self.cluster, scope_url, 400,
+                          data={"name": "scope4"})
+        # Cannot create a collection with an existing name
+        testlib.post_fail(self.cluster, f"{collection_url}", 400,
+                          data={"name": "collection4"})
+        # Cannot delete a non-existent scope
+        testlib.delete_fail(self.cluster, f"{scope_url}/non_existent_scope",
+                            404)
+        # Cannot delete a non-existent collection
+        testlib.delete_fail(self.cluster,
+                            f"{collection_url}/non_existent_collection",
+                            404)
+        # Cannot patch a non-existent collection
+        testlib.patch_fail(self.cluster,
+                           f"{collection_url}/non_existent_collection", 404,
+                           data={"maxTTL": 444})
+        # Cannot patch a non-existing attribute
+        testlib.patch_fail(self.cluster,
+                           f"{collection_url}/collection4", 400,
+                           data={"badAttribute": 444})
