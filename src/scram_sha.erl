@@ -28,7 +28,7 @@
          authenticate/1,
          get_fallback_salt/0,
          pbkdf2/4,
-         build_auth/1,
+         build_auth/2,
          fix_pre_trinity_auth_info/1,
          maybe_update_hashes/2]).
 
@@ -41,32 +41,32 @@ start_link() ->
 init() ->
     ok.
 
-build_auth(Passwords) ->
-    build_auth(Passwords, supported_types()).
+build_auth(Passwords, AuthType) ->
+    build_auth(Passwords, AuthType, supported_types()).
 
-build_auth(Passwords, Types) ->
+build_auth(Passwords, AuthType, ShaTypes) ->
     IsTrinity = cluster_compat_mode:is_cluster_trinity(),
     BuildAuth =
-        fun (Type) when IsTrinity ->
+        fun (ShaType) when IsTrinity ->
                 {Salt, Hashes, Iterations, _SaltedPasswords} =
-                    hash_passwords(Type, Passwords),
-                {auth_info_key(Type),
+                    hash_passwords(ShaType, Passwords, AuthType),
+                {auth_info_key(ShaType),
                     {[{?SCRAM_SALT_KEY, base64:encode(Salt)},
                       {?SCRAM_ITERATIONS_KEY, Iterations},
                       {?HASHES_KEY, [format_keys(StoredKey, ServerKey)
                                      || {StoredKey, ServerKey} <- Hashes]}]}};
-            (Type) ->
+            (ShaType) ->
                 {Salt, _Hashes, Iterations, [SaltedPassword | _]} =
-                    hash_passwords(Type, Passwords),
-                {pre_trinity_auth_info_key(Type),
+                    hash_passwords(ShaType, Passwords, AuthType),
+                {pre_trinity_auth_info_key(ShaType),
                     {[{?OLD_SCRAM_SALT_KEY, base64:encode(Salt)},
                       {?OLD_SCRAM_HASH_KEY, base64:encode(SaltedPassword)},
                       {?OLD_SCRAM_ITERATIONS_KEY, Iterations}]}}
         end,
-    [BuildAuth(Sha) || Sha <- Types, enabled(Sha)].
+    [BuildAuth(Sha) || Sha <- ShaTypes, enabled(Sha)].
 
 iterations_changed(Auth) ->
-    Iterations = iterations(),
+    Iterations = iterations(regular),
     lists:any(
       fun ({Key, {Info}}) ->
               lists:member(Key, auth_info_keys()) andalso
@@ -114,7 +114,7 @@ maybe_update_hashes(CurrentAuth, Password) ->
     functools:chain(
       CurrentAuth,
       [remove_types(_, NewlyDisabled),
-       misc:update_proplist(_, build_auth([Password], NewTypes))]).
+       misc:update_proplist(_, build_auth([Password], regular, NewTypes))]).
 
 format_keys(StoredKey, ServerKey) ->
     {[{?SCRAM_STORED_KEY_KEY, base64:encode(StoredKey)},
@@ -333,7 +333,7 @@ get_salt_and_iterations(Sha, Name) ->
                      crypto:mac(hmac, Sha, Name, get_fallback_salt())),
     case find_auth_info(Sha, Name) of
         undefined ->
-            {FallbackSalt, iterations()};
+            {FallbackSalt, iterations(regular)};
         {Props, _} ->
             {binary_to_list(proplists:get_value(?SCRAM_SALT_KEY, Props)),
              proplists:get_value(?SCRAM_ITERATIONS_KEY, Props)}
@@ -437,8 +437,8 @@ pbkdf2_iter(Sha, Password, Iteration, Prev, Acc) ->
     Next = crypto:mac(hmac, Sha, Password, Prev),
     pbkdf2_iter(Sha, Password, Iteration - 1, Next, crypto:exor(Next, Acc)).
 
-hash_passwords(Type, Passwords) ->
-    Iterations = iterations(),
+hash_passwords(Type, Passwords, AuthType) ->
+    Iterations = iterations(AuthType),
     Len = case Type of
               sha -> ?SHA_DIGEST_SIZE;
               sha256 -> ?SHA256_DIGEST_SIZE;
@@ -456,9 +456,12 @@ hash_passwords(Type, Passwords) ->
                end, SaltedPasswords),
     {Salt, Hashes, Iterations, SaltedPasswords}.
 
-iterations() ->
-    ns_config:read_key_fast(memcached_password_hash_iterations,
-                            ?DEFAULT_SCRAM_ITER).
+iterations(AuthType) ->
+    Key = case AuthType of
+              regular -> memcached_password_hash_iterations;
+              internal -> memcached_password_hash_iterations_internal
+          end,
+    ns_config:read_key_fast(Key, ?DEFAULT_SCRAM_ITER).
 
 supported_types() ->
     [sha512, sha256, sha].

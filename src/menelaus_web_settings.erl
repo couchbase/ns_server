@@ -655,7 +655,15 @@ conf(internal) ->
        {kv_data_size_raw, dataSizePerNodeBytes, ?KvDataSizeRawQuery,
         fun get_string/1}
       ]
-     }
+     },
+     {argon2id_time_internal, argon2idTime, ?DEFAULT_ARG2ID_TIME,
+      get_number(?ARGON_TIME_MIN, ?ARGON_TIME_MAX)},
+     {argon2id_mem_internal, argon2idMem, ?DEFAULT_ARG2ID_MEM,
+      get_number(?ARGON_MEM_MIN, ?ARGON_MEM_MAX)},
+     {pbkdf2_sha512_iterations_internal, pbkdf2HmacSha512Iterations,
+      ?DEFAULT_PBKDF2_ITER, get_number(?PBKDF2_ITER_MIN, ?PBKDF2_ITER_MAX)},
+     {memcached_password_hash_iterations_internal, scramShaIterations,
+      ?DEFAULT_SCRAM_ITER, get_number(?PBKDF2_ITER_MIN, ?PBKDF2_ITER_MAX)}
     ];
 
 conf(developer_preview) ->
