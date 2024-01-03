@@ -338,7 +338,7 @@
 -define(SCRAM_ITERATIONS_KEY, <<"iterations">>).
 
 -define(ARGON_MEM_MIN, 8_192).
--define(ARGON_MEM_MAX, 4_398_046_510_080).
+-define(ARGON_MEM_MAX, 1_073_741_824).
 -define(ARGON_TIME_MIN, 1).
 -define(ARGON_TIME_MAX, 4_294_967_295).
 
