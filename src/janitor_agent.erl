@@ -228,6 +228,15 @@ query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
     ConvertedResults =
         [convert_call_result(Node, ResultTuple)
          || {Node, {ok, Tuples}} <- NodeRVs, ResultTuple <- Tuples],
+
+    case Failures =/= [] of
+        true ->
+            ?log_debug("Query vbuckets for bucket ~p failed on some nodes:"
+                       "~n~p", [Bucket, Failures]);
+        false ->
+            ok
+    end,
+
     {dict:from_list(maps:to_list(maps:groups_from_list(
                                    element(1, _), element(2, _),
                                    ConvertedResults))),
