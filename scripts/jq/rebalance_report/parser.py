@@ -16,13 +16,27 @@ import datetime
 
 
 def get_vbucket_moves(report, bucket):
-    stage_infos = report["stageInfo"]
+    if not report.get("is_rebalancing", True):
+        print("Rebalance wasn't running")
+        return []
 
-    data_info = stage_infos["data"]
+    stage_infos = report.get("stageInfo")
+    if stage_infos is None:
+        print("No stageInfo found")
+        return []
 
-    details = data_info["details"]
+    data_info = stage_infos.get("data")
+    if data_info is None:
+        print("No data service rebalance found")
+        return []
+
+    details = data_info.get("details")
+    if details is None:
+        print("No details found")
+        return []
 
     if bucket not in details:
+        print(f"No details found for bucket '{bucket}'")
         return []
 
     bucket_details = details[bucket]
