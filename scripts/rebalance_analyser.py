@@ -35,13 +35,14 @@ def main():
         with open(args.report) as f:
             j = json.load(f)
 
-        last_rebalance = get_vbucket_moves(j, args.bucket)
+        last_rebalance, bucket = get_vbucket_moves(j, args.bucket)
         if len(last_rebalance) == 0:
-            print(f"No moves found for bucket '{args.bucket}'")
+            if bucket is not None:
+                print(f"No moves found for bucket '{args.bucket}'")
             return
 
         last_rebalance.sort(key=lambda move: move["start"])
-        plot_rebalance({"moves": last_rebalance, "bucket": args.bucket})
+        plot_rebalance({"moves": last_rebalance, "bucket": bucket})
     elif args.master_events is not None:
         """
          /jq/master_events/plot-bucket-rebalance is intended to be called in

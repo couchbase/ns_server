@@ -18,26 +18,34 @@ import datetime
 def get_vbucket_moves(report, bucket):
     if not report.get("is_rebalancing", True):
         print("Rebalance wasn't running")
-        return []
+        return [], None
 
     stage_infos = report.get("stageInfo")
     if stage_infos is None:
         print("No stageInfo found")
-        return []
+        return [], None
 
     data_info = stage_infos.get("data")
     if data_info is None:
         print("No data service rebalance found")
-        return []
+        return [], None
 
     details = data_info.get("details")
     if details is None:
         print("No details found")
-        return []
+        return [], None
 
+    if bucket == "":
+        if len(details) == 0:
+            print("No bucket rebalance found")
+            return [], None
+        else:
+            bucket = max(details.keys(),
+                         key=lambda name: details[name]
+                         ["startTime"])
     if bucket not in details:
         print(f"No details found for bucket '{bucket}'")
-        return []
+        return [], None
 
     bucket_details = details[bucket]
     vbs = bucket_details["vbucketLevelInfo"]["vbucketInfo"]
@@ -49,7 +57,7 @@ def get_vbucket_moves(report, bucket):
 
     return [get_vbucket_move(vb, start_time) for vb in vbs
             if "startTime" in vb["move"] and
-            vb["move"]["startTime"] is not False]
+            vb["move"]["startTime"] is not False], bucket
 
 
 def get_vbucket_move(vb, rebalance_start):
