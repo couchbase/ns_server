@@ -696,6 +696,67 @@ class SamlTests(testlib.BaseTestSet):
             assert_http_code(401, r)
 
 
+    def reject_large_saml_response_test(self):
+        with saml_configured(self.cluster.connected_nodes[0]) as IDP:
+            session = requests.Session()
+            _, destination = \
+                IDP.pick_binding("assertion_consumer_service",
+                                 bindings=[BINDING_HTTP_POST],
+                                 entity_id=sp_entity_id)
+            # Send a saml response that's one byte larger than the default
+            # configured max value (256 KiB).
+            large_response = '\x01' * (256 * 1024 + 1)
+
+            r = session.post(destination,
+                             data={'SAMLResponse': large_response},
+                             headers=ui_headers,
+                             allow_redirects=False)
+            error_msg = catch_error_after_redirect(
+                self.cluster.connected_nodes[0], session, r)
+            assert_in("SAML response larger than max configured size",
+                      error_msg)
+
+
+    def reject_non_default_max_saml_response_size_test(self):
+        max_size = 2 * 256 * 1024 # 512KiB
+        with saml_configured(self.cluster.connected_nodes[0],
+                             spSAMLResponseMaxSize=max_size) as IDP:
+            session = requests.Session()
+            _, destination = \
+                IDP.pick_binding("assertion_consumer_service",
+                                 bindings=[BINDING_HTTP_POST],
+                                 entity_id=sp_entity_id)
+            # Send a saml response that's one byte larger than the
+            # configured max value (512 KiB).
+            large_response = '\x01' * (max_size + 1)
+
+            r = session.post(destination,
+                             data={'SAMLResponse': large_response},
+                             headers=ui_headers,
+                             allow_redirects=False)
+            error_msg = catch_error_after_redirect(
+                self.cluster.connected_nodes[0], session, r)
+            assert_in("SAML response larger than max configured size",
+                      error_msg)
+
+
+    def reject_saml_response_size_max_setting_test(self):
+        min_size = 256 * 1024
+        max_size = 1024 * 1024
+
+        settings = {'spSAMLResponseMaxSize': min_size - 1}
+        testlib.post_fail(self.cluster,
+                          "/settings/saml",
+                          expected_code=400,
+                          json=settings)
+
+        settings = {'spSAMLResponseMaxSize': max_size + 1}
+        testlib.post_fail(self.cluster,
+                          "/settings/saml",
+                          expected_code=400,
+                          json=settings)
+
+
 @contextmanager
 def saml_configured(node, assertion_issuer=None, **kwargs):
     mock_server_process = None
@@ -831,7 +892,8 @@ def set_sso_options(node, **kwargs):
                 'rolesFilterRE': '',
                 'singleLogoutEnabled': True,
                 'spClockSkewS': 0,
-                'spVerifyIssuer': True}
+                'spVerifyIssuer': True,
+                'spSAMLResponseMaxSize': 256 * 1024}
 
 
     for k in kwargs:

@@ -38,6 +38,9 @@
 -define(PERSISTENT_NAMEID_FORMAT,
         "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent").
 
+-define(SAML_RESPONSE_MAX_SIZE_MIN, 256 * 1024).
+-define(SAML_RESPONSE_MAX_SIZE_MAX, 1024 * 1024).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -508,6 +511,56 @@ try_get_idp_metadata(Opts) ->
             menelaus_util:web_exception(500, iolist_to_binary(Msg))
     end.
 
+validate_assertion(SAMLResponse, SAMLEncoding, SPMetadata, ExpectedIssuer,
+                   DupeCheck, Req) ->
+    try esaml_binding:decode_response(SAMLEncoding, SAMLResponse) of
+        Xml ->
+            %% We can't use fun esaml_util:check_dupe_ets/2 because
+            %% it makes rpc:call to all nodes with a fun which is dangerous
+            DupeCheckFun =
+            case DupeCheck of
+                local -> fun cb_saml:check_dupe/2;
+                global -> fun cb_saml:check_dupe_global/2;
+                disabled -> fun (_, _) -> ok end
+            end,
+            case esaml_sp:validate_assertion(Xml, DupeCheckFun,
+                                             SPMetadata,
+                                             ExpectedIssuer) of
+                {ok, Assertion} ->
+                    ?log_debug("Assertion validated successfully"),
+                    {value, {ok, Assertion}};
+                {error, {decryption_problem, {E, ST}}} ->
+                    ?log_debug("Assertion decryption failed: ~p~n~p",
+                               [E, ST]),
+                    ns_audit:login_failure(Req),
+                    {value, {error, "Assertion decryption failed"}};
+                {error, E} ->
+                    ?log_debug("Assertion validation failed: ~p", [E]),
+                    ns_audit:login_failure(Req),
+                    Msg = cb_saml:format_error({validate_assertion, E}),
+                    {value, {error, Msg}}
+            end
+    catch
+        _:Reason ->
+            ?log_debug("Failed to decode authn response:~n~p", [Reason]),
+            Msg = io_lib:format("Assertion decode failed: ~p", [Reason]),
+            {value, {error, Msg}}
+    end.
+
+validate_saml_response_size(SAMLResponse) ->
+    Settings = extract_saml_settings(),
+    MaxSize = proplists:get_value(sp_saml_response_max_size, Settings),
+    Size = erlang:size(SAMLResponse),
+    case Size > MaxSize of
+        true ->
+            Msg = io_lib:format("SAML response larger than max configured size."
+                                " Max size - ~p bytes. Size ~p bytes",
+                                [MaxSize, Size]),
+            {error, Msg};
+        false ->
+            ok
+    end.
+
 validate_authn_response(NameResp, NameEnc, SPMetadata, ExpectedIssuer,
                         DupeCheck, Req, State) ->
     validator:validate_relative(
@@ -516,37 +569,12 @@ validate_authn_response(NameResp, NameEnc, SPMetadata, ExpectedIssuer,
           SAMLResponse = list_to_binary(Resp),
           ?log_debug("Received saml authn response: ~s~nEncoding: ~s",
                      [ns_config_log:tag_misc_item(SAMLResponse), SAMLEncoding]),
-          try esaml_binding:decode_response(SAMLEncoding, SAMLResponse) of
-              Xml ->
-                  %% We can't use fun esaml_util:check_dupe_ets/2 because
-                  %% it makes rpc:call to all nodes with a fun which is dangerous
-                  DupeCheckFun =
-                      case DupeCheck of
-                          local -> fun cb_saml:check_dupe/2;
-                          global -> fun cb_saml:check_dupe_global/2;
-                          disabled -> fun (_, _) -> ok end
-                      end,
-                  case esaml_sp:validate_assertion(Xml, DupeCheckFun,
-                                                   SPMetadata,
-                                                   ExpectedIssuer) of
-                      {ok, Assertion} ->
-                          ?log_debug("Assertion validated successfully"),
-                          {value, {ok, Assertion}};
-                      {error, {decryption_problem, {E, ST}}} ->
-                          ?log_debug("Assertion decryption failed: ~p~n~p",
-                                     [E, ST]),
-                          ns_audit:login_failure(Req),
-                          {value, {error, "Assertion decryption failed"}};
-                      {error, E} ->
-                          ?log_debug("Assertion validation failed: ~p", [E]),
-                          ns_audit:login_failure(Req),
-                          Msg = cb_saml:format_error({validate_assertion, E}),
-                          {value, {error, Msg}}
-                  end
-          catch
-              _:Reason ->
-                  ?log_debug("Failed to decode authn response:~n~p", [Reason]),
-                  Msg = io_lib:format("Assertion decode failed: ~p", [Reason]),
+          case validate_saml_response_size(SAMLResponse) of
+              ok ->
+                  validate_assertion(
+                    SAMLResponse, SAMLEncoding, SPMetadata,
+                    ExpectedIssuer, DupeCheck, Req);
+              {error, Msg} ->
                   {value, {error, Msg}}
           end
       end, NameResp, NameEnc, State).
@@ -828,7 +856,12 @@ params() ->
         type => int}},
      {"spVerifyIssuer",
       #{cfg_key => verify_issuer,
-        type => bool}}].
+        type => bool}},
+     {"spSAMLResponseMaxSize",
+      #{cfg_key => sp_saml_response_max_size,
+        type => {int,
+                 ?SAML_RESPONSE_MAX_SIZE_MIN,
+                 ?SAML_RESPONSE_MAX_SIZE_MAX}}}].
 
 defaults() ->
     [{enabled, false},
@@ -876,7 +909,8 @@ defaults() ->
      {sp_md_consume_url, ""},
      {sp_md_logout_url, ""},
      {clock_skew, 180},
-     {verify_issuer, true}].
+     {verify_issuer, true},
+     {sp_saml_response_max_size, ?SAML_RESPONSE_MAX_SIZE_MIN}].
 
 type_spec(saml_metadata) ->
     #{validators => [string, fun validate_saml_metadata/2],
