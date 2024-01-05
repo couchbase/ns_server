@@ -13,7 +13,7 @@
 
 -include("ns_common.hrl").
 -include("ns_config.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
 

@@ -11,7 +11,7 @@
 -include("ns_bucket.hrl").
 -include("ns_common.hrl").
 -include("ns_stats.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 %% needed to mock ns_config in tests
 -include("ns_config.hrl").

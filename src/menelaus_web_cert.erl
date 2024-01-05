@@ -12,7 +12,7 @@
 -module(menelaus_web_cert).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -export([handle_get_trustedCAs/1,
          handle_delete_trustedCA/2,

@@ -9,7 +9,7 @@
 %%
 -module(menelaus_web_queries).
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -export([handle_settings_get/1,
          handle_curl_whitelist_post/1,
          handle_curl_whitelist_get/1,

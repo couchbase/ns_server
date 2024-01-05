@@ -13,7 +13,7 @@
 
 -include("ns_common.hrl").
 -include("ns_config.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include_lib("ale/include/ale.hrl").
 
 -export([start_link/0,

@@ -9,7 +9,7 @@
 %%
 -module(leader_utils).
 
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("ns_common.hrl").
 
 -export([live_nodes/0, live_nodes/1, live_nodes/2]).

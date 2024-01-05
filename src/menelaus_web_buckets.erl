@@ -18,7 +18,7 @@
 -include("couch_db.hrl").
 -include("ns_stats.hrl").
 -include("ns_bucket.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("bucket_hibernation.hrl").
 
 -define(DEFAULT_MAGMA_MIN_MEMORY_QUOTA, 1024).

@@ -20,7 +20,7 @@
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("ns_test.hrl").
 
 -define(MAX_TS, 9999999999999).

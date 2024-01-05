@@ -15,7 +15,7 @@
 -include("ns_config.hrl").
 -include("rbac.hrl").
 -include("pipes.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

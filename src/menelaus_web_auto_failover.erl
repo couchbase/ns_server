@@ -9,7 +9,7 @@
 %%
 -module(menelaus_web_auto_failover).
 
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("ns_common.hrl").
 
 -ifdef(TEST).

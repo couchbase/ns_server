@@ -19,7 +19,7 @@
 -include("generic.hrl").
 
 -ifdef(TEST).
--include("triq.hrl").
+-include_lib("triq/include/triq.hrl").
 -endif.
 
 -export([transformb/2, transformb/3,

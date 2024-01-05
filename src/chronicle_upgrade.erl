@@ -12,7 +12,7 @@
 
 -module(chronicle_upgrade).
 
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("ns_common.hrl").
 
 -define(UPGRADE_PULL_TIMEOUT, ?get_timeout(upgrade_pull, 60000)).

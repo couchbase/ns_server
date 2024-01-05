@@ -11,7 +11,7 @@
 -module(diag_handler).
 -author('NorthScale <info@northscale.com>').
 
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("ns_common.hrl").
 -include("ns_log.hrl").
 -include_lib("kernel/include/file.hrl").

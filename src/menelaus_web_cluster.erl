@@ -12,7 +12,7 @@
 
 -module(menelaus_web_cluster).
 
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("ns_common.hrl").
 -include("menelaus_web.hrl").
 

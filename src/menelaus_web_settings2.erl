@@ -65,7 +65,7 @@
 -export([prepare_json/4, handle_get/5, handle_post/5, handle_post/7]).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.

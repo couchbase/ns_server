@@ -10,7 +10,7 @@
 -module(menelaus_web_cluster_logs).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -export([handle_start_collect_logs/1,
          handle_cancel_collect_logs/1,

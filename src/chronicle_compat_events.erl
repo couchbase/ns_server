@@ -23,7 +23,7 @@
 -export([init/1, handle_call/3]).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 start_link() ->
     gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).

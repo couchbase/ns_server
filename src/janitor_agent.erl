@@ -10,7 +10,7 @@
 
 -behavior(gen_server).
 
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("ns_common.hrl").
 
 -ifdef(TEST).

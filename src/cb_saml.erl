@@ -22,7 +22,7 @@
          terminate/2, code_change/3]).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -include_lib("esaml/include/esaml.hrl").
 

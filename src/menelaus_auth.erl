@@ -14,7 +14,7 @@
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -define(count_auth(Type, Res),
         ns_server_stats:notify_counter({<<"authentications">>,

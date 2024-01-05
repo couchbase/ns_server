@@ -12,7 +12,7 @@
 
 -module(stats_reader).
 
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("ns_common.hrl").
 -include("ns_stats.hrl").
 
@@ -436,4 +436,3 @@ align_timestamps(StatEntries, _EndTS, _Period, Step, TimestampsQ) ->
                       false
               end, StatEntries)
     end.
-

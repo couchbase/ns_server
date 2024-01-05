@@ -13,7 +13,7 @@
          proxy_req/4]).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -define(CONFIG_DIR, etc).
 -define(DOCROOTS_DIR, lib).

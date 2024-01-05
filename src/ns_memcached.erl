@@ -27,7 +27,7 @@
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -define(CHECK_INTERVAL, 10000).
 -define(CHECK_WARMUP_INTERVAL, 500).

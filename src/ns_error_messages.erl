@@ -10,7 +10,7 @@
 -module(ns_error_messages).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -export([decode_json_response_error/3,
          connection_error_message/3,

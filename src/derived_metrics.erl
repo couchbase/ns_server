@@ -11,7 +11,7 @@
 
 -export([is_metric/1, get_metric/2]).
 
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 is_metric(Name) ->
     get_metric(Name) =/= [].

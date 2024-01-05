@@ -13,7 +13,7 @@
 -module(menelaus_web_secrets).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -export([handle_change_master_password/1,
          handle_rotate_data_key/1,

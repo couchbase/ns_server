@@ -10,7 +10,7 @@
 -module(menelaus_web_analytics).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -export([handle_settings_get/1, handle_settings_post/1]).
 
 handle_settings_get(Req) ->

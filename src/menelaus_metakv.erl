@@ -13,7 +13,7 @@
 -export([handle_get/2, handle_put/2, handle_delete/2]).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("ns_config.hrl").
 
 get_key(Path) ->

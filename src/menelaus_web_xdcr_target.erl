@@ -10,7 +10,7 @@
 
 -module(menelaus_web_xdcr_target).
 
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("couch_db.hrl").
 -include("ns_common.hrl").
 

@@ -13,7 +13,7 @@
 -module(menelaus_web_license).
 
 -include("ns_common.hrl").
--include_lib("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -export([handle_settings_get/1,
          handle_settings_post/1,
@@ -71,4 +71,3 @@ set_settings(UpdatedProps) ->
     OldProps = ns_config:read_key_fast(license_settings, []),
     NewProps = misc:update_proplist(OldProps, UpdatedProps),
     ns_config:set(license_settings, NewProps).
-

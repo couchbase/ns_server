@@ -14,7 +14,7 @@
 -export([new/1]).
 -export([get_timeout/1, reset/1, next/1]).
 
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -record(backoff, { initial    :: pos_integer(),
                    threshold  :: non_neg_integer(),

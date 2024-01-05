@@ -15,7 +15,8 @@
   {registered, []},
   {applications, [
                   kernel,
-                  stdlib
+                  stdlib,
+                  ns_common
                  ]},
   {mod, {ns_couchdb, []}}
  ]}.

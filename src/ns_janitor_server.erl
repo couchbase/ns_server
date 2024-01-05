@@ -15,7 +15,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -export([start_link/0]).
 

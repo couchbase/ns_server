@@ -13,7 +13,7 @@
 -module(pipes).
 
 -include("pipes.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

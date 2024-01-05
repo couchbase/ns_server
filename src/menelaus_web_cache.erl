@@ -12,7 +12,7 @@
 %%
 -module(menelaus_web_cache).
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -export([start_link/0,
          get_static_value/1,

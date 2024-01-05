@@ -10,7 +10,7 @@
 -module(services_stats_sup).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -behaviour(supervisor).
 

@@ -11,7 +11,7 @@
 -module(menelaus_web_groups).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -export([handle_server_groups/1,
          handle_server_groups_put/1,

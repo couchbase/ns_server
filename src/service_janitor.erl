@@ -9,7 +9,7 @@
 %%
 -module(service_janitor).
 
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("ns_common.hrl").
 
 -export([cleanup/0, complete_service_failover/1]).

@@ -29,6 +29,7 @@
 
 start(Cookie) ->
     application:set_env(ns_server, babysitter_cookie, Cookie),
+    application:start(ns_common, permanent),
     application:start(ns_couchdb, permanent).
 
 start(_StartType, _StartArgs) ->

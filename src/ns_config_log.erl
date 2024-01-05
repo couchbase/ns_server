@@ -22,8 +22,8 @@
 
 -include("ns_common.hrl").
 -include("ns_config.hrl").
--include("generic.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/generic.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -record(state, {buckets=[]}).
 

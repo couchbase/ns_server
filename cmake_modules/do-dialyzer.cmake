@@ -37,6 +37,7 @@ EXECUTE_PROCESS (RESULT_VARIABLE _failure
   COMMAND_ECHO STDOUT
   COMMAND "${DIALYZER_EXECUTABLE}" --plt "${COUCHBASE_PLT}" ${DIALYZER_FLAGS}
   --apps ${beamfiles}
+  deps/ns_common/ebin
   deps/ale/ebin
   deps/ns_babysitter/ebin
   ${couchdb_beamfiles})

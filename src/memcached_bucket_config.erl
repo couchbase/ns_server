@@ -14,7 +14,7 @@
 
 -include("ns_common.hrl").
 -include("ns_bucket.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -record(cfg, {type, name, config, snapshot, engine_config, params}).
 

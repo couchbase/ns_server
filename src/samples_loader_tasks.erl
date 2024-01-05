@@ -11,7 +11,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("global_tasks.hrl").
 
 %% gen_server API

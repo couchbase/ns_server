@@ -16,7 +16,7 @@
 %% callbacks
 -export([init/1, translate_options/1]).
 
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("ns_common.hrl").
 -include("ns_config.hrl").
 -include("rbac.hrl").

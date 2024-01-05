@@ -10,7 +10,7 @@
 -module(hibernation_utils).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("bucket_hibernation.hrl").
 
 -export([supported_services/0,

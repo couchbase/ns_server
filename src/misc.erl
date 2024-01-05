@@ -12,8 +12,8 @@
 -include("ns_common.hrl").
 -include_lib("kernel/include/file.hrl").
 
--include("cut.hrl").
--include("generic.hrl").
+-include_lib("ns_common/include/cut.hrl").
+-include_lib("ns_common/include/generic.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

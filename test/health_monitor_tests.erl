@@ -10,7 +10,6 @@
 -module(health_monitor_tests).
 
 -include("ns_common.hrl").
--include("cut.hrl").
 
 -include_lib("eunit/include/eunit.hrl").
 

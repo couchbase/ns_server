@@ -28,7 +28,7 @@
          delete_logs/1]).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -record(state, {unique_recent,
                 recent_len_max,

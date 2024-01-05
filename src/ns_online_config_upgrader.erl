@@ -28,7 +28,7 @@
 %% information which is already present in the node's configuration. If this is
 %% not done, we can end up with duplicate information in the configuration.
 
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("ns_common.hrl").
 
 -export([upgrade_config/1]).

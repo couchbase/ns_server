@@ -1,5 +1,5 @@
 REBAR (TARGET ns_couchdb
-  DEPENDS ale ns_server
+  DEPENDS ale ns_server ns_common
   EUNIT
   EUNIT_DEPENDS triq meck
   CLEAN_HOOK ns_realclean)

@@ -12,7 +12,7 @@
 
 -module(collections).
 
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("ns_common.hrl").
 -include("ns_test.hrl").
 

@@ -13,7 +13,7 @@
 -module(menelaus_web_auto_rebalance).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 %% Retry rebalance attempts
 -define(RETRY_ATTEMPTS_MIN, 1).

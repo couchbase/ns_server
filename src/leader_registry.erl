@@ -49,7 +49,7 @@
          terminate/2, code_change/3]).
 -export([handle_job_death/3]).
 
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("ns_common.hrl").
 
 -define(SERVER, ?MODULE).

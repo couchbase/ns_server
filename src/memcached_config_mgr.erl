@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 %% API
 -export([start_link/0, trigger_tls_config_push/0,

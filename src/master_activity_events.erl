@@ -9,7 +9,7 @@
 %%
 -module(master_activity_events).
 
--include("cut.hrl").
+-include_lib("ns_common/include/cut.hrl").
 -include("ns_common.hrl").
 
 -export([start_link_timestamper/0,

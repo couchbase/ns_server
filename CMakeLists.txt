@@ -184,15 +184,17 @@ ADD_DEPENDENCIES (ns_distclean ns_realclean ns_dataclean)
 
 ADD_SUBDIRECTORY (deps)
 REBAR(TARGET ns_server
-  DEPENDS ns_cfg ale kv_mappings chronicle enacl esaml iso8601
+  DEPENDS ns_cfg ale ns_common kv_mappings chronicle enacl esaml iso8601
   EUNIT
   EUNIT_DEPENDS triq meck
   CLEAN_HOOK ns_realclean)
 
-ADD_CUSTOM_TARGET (erlang_deps DEPENDS gen_smtp ale ns_babysitter ns_couchdb chronicle enacl esaml iso8601)
+ADD_CUSTOM_TARGET (erlang_deps DEPENDS gen_smtp ale ns_common ns_babysitter
+        ns_couchdb chronicle enacl esaml iso8601)
 ADD_CUSTOM_TARGET (ns_server_all DEPENDS ns_server erlang_deps)
 ADD_CUSTOM_TARGET (ns_server_tests
-  DEPENDS ns_server-eunit ns_couchdb-eunit ns_babysitter-eunit ale-eunit erlang_deps)
+  DEPENDS ns_server-eunit ns_couchdb-eunit ns_babysitter-eunit
+          ns_common-eunit ale-eunit erlang_deps)
 
 # CMake won't let you add a build target as a dependency to a test. You can,
 # however, define a test as a set for a test fixture (set of tests) and it

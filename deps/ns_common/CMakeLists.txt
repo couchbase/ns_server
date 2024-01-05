@@ -1,0 +1,10 @@
+REBAR (TARGET ns_common
+       DEPENDS EUNIT
+       EUNIT_DEPENDS triq
+       REBAR_OPTS ${REBAR_OPTS}
+       CLEAN_HOOK ns_realclean)
+
+SET(INSTALL_DIR "${INST_LIBDIR}/ns_common")
+
+INSTALL (DIRECTORY ebin DESTINATION "${INSTALL_DIR}")
+
