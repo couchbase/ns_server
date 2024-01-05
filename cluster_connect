@@ -87,6 +87,7 @@ def main():
     arg_parser.add_argument(
         '--bucket-type', '-t',
         type=str.lower,
+        default="membase",
         help=f"<bucket type> e.g. "
              f"({', '.join(cluster_run_lib.valid_bucket_types)})"
              f"\ndefault: membase",
@@ -179,24 +180,35 @@ def main():
             sys.exit(f"Need a minimum of {min_nodes} nodes for a width of "
                      f"{args.width}, while using this configuration")
 
+    if args.dont_index_replicas:
+        replica_index = "0"
+    elif args.bucket_type == "ephemeral":
+        # replicaIndex can't be specified at all with ephemeral
+        replica_index = None
+    else:
+        # Default to 1
+        replica_index = "1"
+
     params = {
         "num_nodes": args.num_nodes,
         "start_index": args.start_index,
-        "buckettype": args.bucket_type,
         "memsize": args.bucket_quota,
         "indexmemsize": args.index_mem,
         "deploy": args.services,
         "index_storage_mode": args.index_type,
-        "replicas": args.replicas,
-        "replica_index": not args.dont_index_replicas,
         "protocol": args.afamily,
         "encryption": args.enable_encryption,
         "do_rebalance": not args.dont_rebalance,
-        "storage_backend": args.storage_backend,
         "serverless_groups": args.serverless_groups,
         "create_bucket": not args.dont_create_bucket,
-        "bucket_width": args.width,
-        "bucket_weight": args.weight
+        "bucket": {
+            "bucketType": args.bucket_type,
+            "replicaNumber": args.replicas,
+            "replicaIndex": replica_index,
+            "storageBackend": args.storage_backend,
+            "width": args.width,
+            "weight": args.weight
+        }
     }
 
     # Removing flags that the user hasn't specified; this means that the

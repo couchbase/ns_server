@@ -598,19 +598,16 @@ def http_post(url, data, timeout=60):
 def connect(num_nodes=0,
             start_index=0,
             deploy=['kv'],
-            buckettype="membase",
             memsize=256,
             indexmemsize=256,
             index_storage_mode=None,
-            replicas=1,
-            replica_index=True,
             protocol="ipv4",
             encryption=False,
             do_rebalance=True,
             do_wait_for_rebalance=False,
-            storage_backend="couchstore",
             serverless_groups=False,
             create_bucket=True,
+            bucket=None,
             bucket_weight=50,
             bucket_width=1):
     if isinstance(deploy, list):
@@ -620,23 +617,43 @@ def connect(num_nodes=0,
     if "kv" not in deploy.get("n0", []):
         deploy["n0"] = deploy.get("n0", []) + ["kv"]
 
-    if num_nodes == 0 or buckettype not in valid_bucket_types or \
-            int(memsize) < 256 or int(replicas) > 3 or \
+    if num_nodes == 0 or \
+            int(memsize) < 256 or \
             not set(deploy.keys()) <= \
             set(["n" + str(i) for i in range(num_nodes)]) or \
             not set(reduce(lambda x, y: x + y, deploy.values(), [])) <= \
             valid_service_types:
         return 1
 
+    print(f"Connecting {num_nodes} nodes, "
+          f"mem size {memsize}, password {default_pass}. "
+          f"Deployment plan: {deploy}\n")
+
     session = requests.Session()
     session.auth = (default_username, default_pass)
 
-    print(
-        f"Connecting {num_nodes} nodes, bucket type {buckettype}, "
-        f"mem size {memsize} "
-        f"with {replicas} replica copies, password {default_pass}, "
-        f"with a storage backend of {storage_backend}. "
-        f"Deployment plan: {deploy}\n")
+    if create_bucket:
+        if bucket is None:
+            bucket = {}
+        else:
+            # Remove any None values
+            bucket = {key: value for key, value in bucket.items()
+                      if value is not None}
+        bucket.setdefault("name", "default")
+        bucket.setdefault("bucketType", "membase")
+        bucket.setdefault("ramQuota", memsize)
+        bucket.setdefault("storageBackend", "couchstore")
+
+        bucket_type = bucket.get("bucketType")
+        if bucket_type not in valid_bucket_types:
+            print(f"Invalid bucket type {bucket_type}. "
+                  f"Expected: {valid_bucket_types}")
+            return 1
+        if "replicaNumber" in bucket:
+            replicas = bucket["replicaNumber"]
+            if replicas > 3:
+                print(f"Num replicas too large: {replicas}")
+                return 1
 
     base_port = 9000 + start_index
 
@@ -689,23 +706,16 @@ def connect(num_nodes=0,
             group_name_uri[group['name']] = group['uri']
 
     if create_bucket:
-        bucket_data = {'name': "default",
-                       'bucketType': buckettype,
-                       'storageBackend': storage_backend,
-                       'ramQuotaMB': memsize}
-        if buckettype != "memcached":
-            bucket_data['replicaNumber'] = replicas
-        if buckettype != "ephemeral":
-            bucket_data['replicaIndex'] = bool_request_value(replica_index)
         if serverless:
-            bucket_data['width'] = bucket_width
-            bucket_data['weight'] = bucket_weight
+            bucket['width'] = bucket_width
+            bucket['weight'] = bucket_weight
         # When using serverless with a width > 1, we need to wait for the
         # rebalance to complete before creating a bucket, otherwise it is safe
         # to create the bucket beforehand.
         if not do_wait_for_rebalance:
+            print("Creating bucket with params:", bucket)
             r = session.post("http://{0}:{1}/pools/default/buckets"
-                             .format(addr, base_port), bucket_data)
+                             .format(addr, base_port), bucket)
             assert r.status_code == 202,  (r.status_code, r.text)
 
     for i in range(1, num_nodes):
@@ -759,9 +769,10 @@ def connect(num_nodes=0,
                 print(err)
                 return 1
             if create_bucket:
+                print("Creating bucket with params:", bucket)
                 r = session.post("http://{0}:{1}/pools/default/buckets"
                                  .format(addr, base_port),
-                                 bucket_data)
+                                 bucket)
                 assert r.status_code == 202,  (r.status_code, r.text)
     return 0
 
