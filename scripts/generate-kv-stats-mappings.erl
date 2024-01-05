@@ -12,7 +12,7 @@
 
 -export([main/1]).
 
--include("../include/ns_stats.hrl").
+-include("../apps/ns_server/include/ns_stats.hrl").
 
 main([InputFilename, OutputFilename]) ->
     try

@@ -1,0 +1,19 @@
+{deps, [
+    {chronicle, {path, "deps/chronicle"}},
+    {enacl, {path, "deps/enacl"}},
+    {esaml, {path, "deps/esaml"}},
+    {gen_smtp, {path, "deps/gen_smtp"}},
+    {iso8601, {path, "deps/iso8601"}}
+]}.
+
+{erl_first_files, ["src/ns_log_categorizing.erl",
+                   "src/replicated_storage.erl",
+                   "src/json_settings_manager.erl",
+                   "src/memcached_cfg.erl"
+                   ]}.
+
+{erl_opts, [{src_dirs, ["src"]},
+            {i, "@COUCHDB_SRC_DIR@/src/couchdb"},
+            {i, "@COUCHDB_SRC_DIR@/src"},
+            {i, "@NS_SERVER_SRC_DIR@/deps/triq/include"},
+            {parse_transform, ale_transform}, warnings_as_errors]}.

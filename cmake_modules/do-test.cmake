@@ -8,22 +8,23 @@ IF (NOT DEFINED TEST_TARGET)
 ENDIF (NOT DEFINED TEST_TARGET)
 
 FILE (GLOB ebindirs RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
-  ebin deps/*/ebin deps/*/deps/*/ebin)
-# Bug in CMake?
-STRING (REGEX REPLACE "//" "/" ebindirs "${ebindirs}")
-
-FILE (GLOB eunitdirs
-  RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
-  .eunit deps/*/.eunit)
-# Bug in CMake?
-STRING (REGEX REPLACE "//" "/" eunitdirs "${eunitdirs}")
+        # We must include:
+        # 1) Any test profile beam files (needs to cover both ebin and test,
+        #    depending on the configuration we are likely to have files in both
+        #    locations
+        _build/test/lib/*/ebin
+        _build/test/lib/*/test
+        # 2) Other deps that we need for tests, we need to load the files to
+        #    run our tests. Deps are only compiled in default profile, not test
+        #    profile, hence the difference with the above test profile apps.
+        deps/*/_build/default/lib/*/ebin
+     )
 
 STRING (RANDOM LENGTH 16 NODE_NAME_RANDOM)
 SET (NODE_NAME "test-${NODE_NAME_RANDOM}")
 
 SET(TEST_COMMAND "${ERL_EXECUTABLE}"
-        # prefer eunitdirs
-        -pa ${ebindirs} ${eunitdirs}
+        -pa ${ebindirs}
         -pa "${COUCHDB_BIN_DIR}/src/couchdb"
         -pa "${COUCHDB_BIN_DIR}/src/mochiweb"
         -pa "${COUCHDB_BIN_DIR}/src/ejson"

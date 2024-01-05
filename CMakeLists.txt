@@ -131,8 +131,8 @@ INSTALL (FILES
 ADD_CUSTOM_TARGET (ns_realclean
   COMMAND "${CMAKE_COMMAND}" -E remove -f cov.html erl_crash.dump
   COMMAND "${CMAKE_COMMAND}" -E remove_directory test/log
-  COMMAND "${CMAKE_COMMAND}" -E remove -f rebar.config
-  COMMAND "${CMAKE_COMMAND}" -E remove -f src/ns_server.app.src
+  COMMAND "${CMAKE_COMMAND}" -E remove -f apps/ns_server/rebar.config
+  COMMAND "${CMAKE_COMMAND}" -E remove -f apps/ns_server/src/ns_server.app.src
   WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
   VERBATIM)
 ADD_DEPENDENCIES (realclean ns_realclean)
@@ -146,8 +146,8 @@ ADD_CUSTOM_TARGET (ns_dataclean
   WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
   VERBATIM)
 
-SET (ns_server_app_src "${PROJECT_SOURCE_DIR}/src/ns_server.app.src")
-SET (rebar_config "${PROJECT_SOURCE_DIR}/rebar.config")
+SET (ns_server_app_src "${PROJECT_SOURCE_DIR}/apps/ns_server/src/ns_server.app.src")
+SET (rebar_config "${PROJECT_SOURCE_DIR}/apps/ns_server/rebar.config")
 ADD_CUSTOM_TARGET (ns_cfg DEPENDS "${ns_server_app_src}" "${rebar_config}")
 ADD_CUSTOM_COMMAND(OUTPUT "${ns_server_app_src}"
   COMMAND "${CMAKE_COMMAND}" -D "INPUT_FILE=${ns_server_app_src}.in"
@@ -169,8 +169,8 @@ IF (NOT ESCRIPT_EXECUTABLE)
   MESSAGE (FATAL_ERROR "escript not found")
 ENDIF (NOT ESCRIPT_EXECUTABLE)
 
-SET (kv_stats_mapping_src "${PROJECT_SOURCE_DIR}/priv/kv_stats_mappings.txt")
-SET (kv_stats_mapping_target "${PROJECT_SOURCE_DIR}/src/kv_stats_mappings.erl")
+SET (kv_stats_mapping_src "${PROJECT_SOURCE_DIR}/apps/ns_server/priv/kv_stats_mappings.txt")
+SET (kv_stats_mapping_target "${PROJECT_SOURCE_DIR}/apps/ns_server/src/kv_stats_mappings.erl")
 ADD_CUSTOM_TARGET (kv_mappings DEPENDS "${kv_stats_mapping_target}")
 ADD_CUSTOM_COMMAND(OUTPUT "${kv_stats_mapping_target}"
   COMMAND "${ESCRIPT_EXECUTABLE}"
@@ -184,17 +184,12 @@ ADD_DEPENDENCIES (ns_distclean ns_realclean ns_dataclean)
 
 ADD_SUBDIRECTORY (deps)
 REBAR(TARGET ns_server
-  DEPENDS ns_cfg ale ns_common kv_mappings chronicle enacl esaml iso8601
+  DEPENDS ns_cfg kv_mappings
   EUNIT
-  EUNIT_DEPENDS triq meck
   CLEAN_HOOK ns_realclean)
 
-ADD_CUSTOM_TARGET (erlang_deps DEPENDS gen_smtp ale ns_common ns_babysitter
-        ns_couchdb chronicle enacl esaml iso8601)
-ADD_CUSTOM_TARGET (ns_server_all DEPENDS ns_server erlang_deps)
-ADD_CUSTOM_TARGET (ns_server_tests
-  DEPENDS ns_server-eunit ns_couchdb-eunit ns_babysitter-eunit
-          ns_common-eunit ale-eunit erlang_deps)
+ADD_CUSTOM_TARGET (ns_server_all DEPENDS ns_server)
+ADD_CUSTOM_TARGET (ns_server_tests DEPENDS ns_server-eunit)
 
 # CMake won't let you add a build target as a dependency to a test. You can,
 # however, define a test as a set for a test fixture (set of tests) and it
@@ -277,7 +272,28 @@ ADD_DEPENDENCIES (ns_dialyzer ns_server_all)
 #
 # Install
 #
-INSTALL (DIRECTORY ebin DESTINATION "${INST_LIBDIR}/ns_server")
+INSTALL (DIRECTORY _build/default/lib/chronicle/ebin DESTINATION
+        "${INST_LIBDIR}/chronicle")
+INSTALL (DIRECTORY _build/default/lib/enacl/ebin
+                   _build/default/lib/enacl/ebin DESTINATION
+        "${INST_LIBDIR}/enacl")
+INSTALL (DIRECTORY _build/default/lib/esaml/ebin DESTINATION
+        "${INST_LIBDIR}/esaml")
+INSTALL (DIRECTORY _build/default/lib/gen_smtp/ebin DESTINATION
+        "${INST_LIBDIR}/gen_smtp")
+INSTALL (DIRECTORY _build/default/lib/iso8601/ebin DESTINATION
+        "${INST_LIBDIR}/iso8601")
+
+INSTALL (DIRECTORY _build/default/lib/ale/ebin DESTINATION
+         "${INST_LIBDIR}/ale")
+INSTALL (DIRECTORY _build/default/lib/ns_couchdb/ebin DESTINATION
+         "${INST_LIBDIR}/ns_couchdb")
+INSTALL (DIRECTORY _build/default/lib/ns_babysitter/ebin DESTINATION
+         "${INST_LIBDIR}/ns_babysitter")
+INSTALL (DIRECTORY _build/default/lib/ns_common/ebin DESTINATION
+         "${INST_LIBDIR}/ns_common")
+INSTALL (DIRECTORY _build/default/lib/ns_server/ebin DESTINATION
+         "${INST_LIBDIR}/ns_server")
 
 PyWrapper (SCRIPTS cbcollect_info)
 

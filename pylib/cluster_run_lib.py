@@ -126,8 +126,7 @@ def setup_path(ns_server_app_path):
 
         return ebins
 
-    path = ebin_search(f'{ns_server_dir}/ebin') + \
-           ebin_search(f'{ns_server_dir}/deps')
+    path = ebin_search(f'{ns_server_dir}/_build/default/')
 
     if ns_server_app_path is not None:
         # The ns_server_app_path needs to be first in the path. We remove

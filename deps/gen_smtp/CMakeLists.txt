@@ -1,2 +1,0 @@
-REBAR (TARGET gen_smtp CLEAN_HOOK ns_realclean)
-INSTALL (DIRECTORY ebin DESTINATION "${INST_LIBDIR}/gen_smtp")

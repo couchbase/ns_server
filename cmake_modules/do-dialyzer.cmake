@@ -19,28 +19,27 @@ IF (NOT EXISTS "${COUCHBASE_PLT}")
     ${_couchdb_bin_dir}/src/lhttpc
     ${_couchdb_bin_dir}/src/erlang-oauth
     ${_couchdb_bin_dir}/src/ejson
-    deps/gen_smtp
-    deps/chronicle
-    deps/enacl
-    deps/esaml
-    deps/iso8601)
+    # Deps that we must include to pick up functions, but do not want to analyse
+    _build/default/lib/gen_smtp
+    _build/default/lib/chronicle
+    _build/default/lib/enacl
+    _build/default/lib/esaml
+    _build/default/lib/iso8601)
 ENDIF (NOT EXISTS "${COUCHBASE_PLT}")
-
-# Compute list of .beam files
-FILE (GLOB beamfiles RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" ebin/*.beam)
-STRING (REGEX REPLACE "ebin/(couch_api_wrap(_httpc)?).beam\;?" "" beamfiles "${beamfiles}")
-
-FILE (GLOB couchdb_beamfiles RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" deps/ns_couchdb/ebin/*.beam)
-STRING (REGEX REPLACE "deps/ns_couchdb/ebin/couch_log.beam\;?" "" couchdb_beamfiles "${couchdb_beamfiles}")
 
 EXECUTE_PROCESS (RESULT_VARIABLE _failure
   COMMAND_ECHO STDOUT
   COMMAND "${DIALYZER_EXECUTABLE}" --plt "${COUCHBASE_PLT}" ${DIALYZER_FLAGS}
-  --apps ${beamfiles}
-  deps/ns_common/ebin
-  deps/ale/ebin
-  deps/ns_babysitter/ebin
-  ${couchdb_beamfiles})
+  --apps
+        # TODO: MB-60458:
+        # Ideally we would test chronicle here too (rather than just include it
+        # in the plt above) but it has a couple of issues to solve first
+        _build/default/lib/ns_server/
+        _build/default/lib/ale/
+        _build/default/lib/ns_common/
+        _build/default/lib/ns_babysitter/
+        _build/default/lib/ns_couchdb/
+)
 IF (_failure)
   MESSAGE (FATAL_ERROR "failed running dialyzer")
 ENDIF (_failure)
