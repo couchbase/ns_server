@@ -821,11 +821,15 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         name: "Analytics",
         enterprise: true,
         charts: [{
-          stats: {"@cbas-.cbas/incoming_records_count": true},
+          stats: (mnPoolDefault.export.compat.atLeast76 ?
+              {"@cbas-.cbas/incoming_records_total": true} :
+              {"@cbas-.cbas/incoming_records_count": true}),
           size: "small",
           specificStat: true
         }, {
-          stats: {"@cbas-.cbas_failed_to_parse_records_count": true},
+          stats: (mnPoolDefault.export.compat.atLeast76 ?
+              {"@cbas-.cbas_failed_to_parse_records_total": true} :
+              {"@cbas-.cbas_failed_to_parse_records_count": true}),
           size: "small",
           specificStat: true
         }, {
@@ -845,7 +849,9 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           size: "small",
           specificStat: true
         }, {
-          stats: {"@cbas.cbas_disk_used": true},
+          stats: (mnPoolDefault.export.compat.atLeast76 ?
+              {"@cbas.cbas_disk_used_bytes": true} :
+              {"@cbas.cbas_disk_used": true}),
           size: "small",
           specificStat: true
         }, {
