@@ -30,9 +30,11 @@ function mnStatisticsDescriptionFactory($http, $q, mnPoolDefault) {
   };
 
   function getStats() {
-    return mnPoolDefault.export.compat.atLeast70 ?
-      mnStatsDescription["7.0"].stats :
-      mnStatsDescription["6.5"].stats;
+    return mnPoolDefault.export.compat.atLeast76 ?
+        mnStatsDescription["7.6"].stats
+        : mnPoolDefault.export.compat.atLeast70 ?
+            mnStatsDescription["7.0"].stats :
+            mnStatsDescription["6.5"].stats;
   }
 
   function getKvGroups() {

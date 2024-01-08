@@ -37,6 +37,8 @@ var compat65 = get65CompatDesc();
 
 var compat70 = get70CompatDesc();
 
+var compat76 = get76CompatDesc();
+
 var mapping70 = get70Mapping();
 
 var mapping65 = get65Mapping();
@@ -47,6 +49,14 @@ var mapping70to71 = {
   "@system.couch_views_actual_disk_size": "@kv-.couch_views_actual_disk_size",
   "@system.couch_views_data_size": "@kv-.couch_views_data_size"
 };
+
+var mapping71to76 = {
+  "@cbas.cbas_gc_time_milliseconds_total": "@cbas.cbas_gc_time_seconds_total",
+  "@cbas.cbas_disk_used_bytes_total": "@cbas.cbas_disk_used_bytes",
+  "@cbas-.cbas_incoming_records_count": "@cbas-.cbas_incoming_records_total",
+  "@cbas-.cbas_failed_to_parse_records_count": "@cbas-.cbas_failed_to_parse_records_total",
+};
+
 
 var compat70Combined = propertiesToArray(compat65.stats)
     .concat(propertiesToArray(compat70.stats))
@@ -69,6 +79,7 @@ var compat70Combined = propertiesToArray(compat65.stats)
 
       return acc;
     }, {});
+
 
 //per @items Modifier
 var stats70LabelsModifier = {
@@ -171,6 +182,9 @@ let service = {
   upgrade70to71: function (name) {
     return mapping70to71[name] || name;
   },
+  upgrade71to76: function (name) {
+    return mapping71to76[name] || name;
+  },
   maybeGetLabelsModifier: function (service) {
     return stats70LabelsModifier[service];
   },
@@ -178,6 +192,38 @@ let service = {
     return labelOperators[statNamePlusLabelName];
   }
 };
+
+// 7.6 has stats very similar to 7.0, but with some changes for analytics
+service["7.6"] = {
+  "kvGroups": service["7.0"].kvGroups,
+  stats: get76Stats(),
+};
+
+function get76Stats() {
+  // 7.6 should be a deep copy of 7.0 so we can modify it where necessary
+  const compat76Combined = {};
+  for (let category in compat70Combined) {
+    compat76Combined[category] = {};
+    for (let stat in compat70Combined[category]) {
+      compat76Combined[category][stat] = {};
+      Object.assign(compat76Combined[category][stat],compat70Combined[category][stat]);
+    }
+  }
+
+  // now add the new and updated stats for 76, which are in compat76
+  for (let category in compat76.stats) {
+    for (let stat in compat76.stats[category]) {
+      const statData = compat76.stats[category][stat];
+      const statName = statData.metric.name;
+      compat76Combined[category][statName] = compat76Combined[category][statName] || {};
+      Object.assign(compat76Combined[category][statName],statData);
+      Object.assign(compat76Combined[category][statName],getStatAdditionalConfig(`${category}.${statName}`));
+    }
+  }
+
+  return compat76Combined;
+}
+
 
 export default service;
 
@@ -331,7 +377,9 @@ function getStatAdditionalConfig(statName) {
     return {nodesAggregation: "special", applyFunctions: ["sum"]};
 
   case "@cbas-.cbas_incoming_records_count":
+  case "@cbas-.cbas_incoming_records_total":
   case "@cbas-.cbas_failed_to_parse_records_count":
+  case "@cbas-.cbas_failed_to_parse_records_total":
   case "@index-.index_num_docs_indexed":
   case "@index-.index_num_requests":
   case "@index-.index_num_rows_returned":
@@ -352,6 +400,7 @@ function getStatAdditionalConfig(statName) {
 
   case "@cbas.cbas_gc_count_total":
   case "@cbas.cbas_gc_time_milliseconds_total":
+  case "@cbas.cbas_gc_time_seconds_total":
   case "@kv-.kv_read_bytes":
   case "@kv-.kv_written_bytes":
   case "@kv-.kv_ep_bg_fetched":
@@ -794,6 +843,98 @@ function get70Mapping() {
   });
 }
 
+// here are the new stats and changed stats in 76
+function get76CompatDesc() {
+  return {
+    "stats": {
+      "@cbas-": {
+        "cbas/failed_at_parse_records_count": {
+          unit: "number/sec",
+          title: "Analytics Parse Fail Rate (Deprecated)",
+          desc: "Number of records Analytics failed to parse per second. (Deprecated)",
+          metric: {name: "cbas_failed_to_parse_records_count"},
+        },
+        "cbas_failed_to_parse_records_total": {
+          unit: "number/sec",
+          title: "Analytics Parse Fail Rate",
+          desc: "Number of records Analytics failed to parse per second.",
+          metric: {name: "cbas_failed_to_parse_records_total"},
+        },
+        "cbas/incoming_records_count": {
+          unit: "number/sec",
+          title: "Analytics Ops Rate (Deprecated)",
+          desc: "Operations (gets + sets + deletes) per second processed by Analytics for this bucket. (Deprecated)",
+          metric: {name: "cbas_incoming_records_count"},
+        },
+        "cbas_incoming_records_total": {
+          unit: "number/sec",
+          title: "Analytics Ops Rate",
+          desc: "Operations (gets + sets + deletes) per second processed by Analytics for this bucket.",
+          metric: {name: "cbas_incoming_records_total"},
+        },
+      },
+
+      "@cbas": {
+        "cbas_disk_used": {
+          unit: "bytes",
+          title: "Analytics Total Disk Size (Deprecated)",
+          desc: "The total disk size used by Analytics. (Deprecated)",
+          metric: {name: "cbas_disk_used_bytes_total"},
+        },
+        "cbas_disk_used_bytes": {
+          unit: "bytes",
+          title: "Analytics Total Disk Size",
+          desc: "The total disk size used by Analytics.",
+          metric: {name: "cbas_disk_used_bytes"},
+        },
+        "cbas_gc_time": {
+          unit: "millisecond/sec",
+          title: "Analytics Garbage Collection Time (Deprecated)",
+          desc: "The amount of time in milliseconds spent performing JVM garbage collections for Analytics node. (Deprecated)",
+          metric: {name: "cbas_gc_time_milliseconds_total"},
+        },
+        "cbas_gc_time_seconds_total": {
+          unit: "millisecond/sec",
+          title: "Analytics Garbage Collection Time",
+          desc: "The amount of time in seconds spent performing JVM garbage collections for Analytics node.",
+          metric: {name: "cbas_gc_time_seconds_total"},
+        },
+        "cbas_queued_http_requests_size": {
+          unit: "number",
+          title: "Analytics Queued HTTP Requests",
+          desc: "Number of queued http requests for Analytics on this server.",
+          metric: {name: "cbas_queued_http_requests_size"},
+        },
+        "cbas_rebalance_successful_total": {
+          unit: "number",
+          title: "Analytics Total Successful Rebalances",
+          desc: "Total number of successful rebalances for Analytics on this server.",
+          metric: {name: "cbas_rebalance_successful_total"},
+        },
+        "cbas_rebalance_cancelled_total": {
+          unit: "number",
+          title: "Analytics Total Cancelled Rebalances",
+          desc: "Total number of cancelled rebalances for Analytics on this server.",
+          metric: {name: "cbas_rebalance_cancelled_total"},
+        },
+        "cbas_rebalance_failed_total": {
+          unit: "number",
+          title: "Analytics Total Failed Rebalances",
+          desc: "Total number of failed rebalances for Analytics on this server.",
+          metric: {name: "cbas_rebalance_failed_total"},
+        },
+        "cbas_internal_error_total": {
+          unit: "number",
+          title: "Analytics Total Internal Errors",
+          desc: "Total number of internal errors for Analytics on this server.",
+          metric: {name: "cbas_internal_error_total"},
+        }
+
+      },
+    }
+  };
+}
+
 function get70CompatDesc() {
   return {
     "stats": {
@@ -883,7 +1024,7 @@ function get70CompatDesc() {
           unit: "number/sec",
           title: "Analytics Parse Fail Rate",
           desc: "Number of records Analytics failed to parse per second."
-        }
+        },
       },
       "@cbas": {
         "cbas_pending_merge_ops": {
@@ -926,31 +1067,6 @@ function get70CompatDesc() {
           title: "Analytics Total Requests",
           desc: "Total number of received requests for Analytics on this server."
         },
-        "cbas_queued_http_requests_size": {
-          unit: "number",
-          title: "Analytics Queued HTTP Requests",
-          desc: "Number of queued http requests for Analytics on this server."
-        },
-        "cbas_rebalance_successful_total": {
-          unit: "number",
-          title: "Analytics Total Successful Rebalances",
-          desc: "Total number of successful rebalances for Analytics on this server."
-        },
-        "cbas_rebalance_cancelled_total": {
-          unit: "number",
-          title: "Analytics Total Cancelled Rebalances",
-          desc: "Total number of cancelled rebalances for Analytics on this server."
-        },
-        "cbas_rebalance_failed_total": {
-          unit: "number",
-          title: "Analytics Total Failed Rebalances",
-          desc: "Total number of failed rebalances for Analytics on this server."
-        },
-        "cbas_internal_error_total": {
-          unit: "number",
-          title: "Analytics Total Internal Errors",
-          desc: "Total number of internal errors for Analytics on this server."
-        }
       }
     }
   };
