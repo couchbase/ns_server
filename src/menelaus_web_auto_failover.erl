@@ -12,6 +12,10 @@
 -include("cut.hrl").
 -include("ns_common.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([handle_settings_get/1,
          handle_settings_post/1,
          handle_settings_reset_count/1,
@@ -110,7 +114,7 @@ handle_settings_post_validated(Req, Props) ->
             auto_failover:enable(Timeout, MaxCount, Extras),
             ns_audit:enable_auto_failover(Req, Timeout, MaxCount, Extras);
         false ->
-            auto_failover:disable(disable_extras(Config)),
+            auto_failover:disable(disable_disk_failover(Config)),
             ns_audit:disable_auto_failover(Req)
     end,
     reply(Req, 200).
@@ -311,13 +315,11 @@ get_extra_settings(Config) ->
             []
     end.
 
-disable_extras(Config) ->
+disable_disk_failover(Config) ->
     case cluster_compat_mode:is_enterprise() of
         true ->
             {_, CurrTP} = get_failover_on_disk_issues(Config),
-            lists:flatten(
-              [disable_failover_on_disk_issues(CurrTP),
-               [{?CAN_ABORT_REBALANCE_CONFIG_KEY, false}]]);
+            disable_failover_on_disk_issues(CurrTP);
         false ->
             []
     end.
@@ -325,5 +327,20 @@ disable_extras(Config) ->
 config_upgrade_to_72(Config) ->
     [{set, ?ROOT_CONFIG_KEY,
       auto_failover:get_cfg(Config) ++
-            [{?FAILOVER_PRESERVE_DURABILITY_MAJORITY_CONFIG_KEY,
-              ?FAILOVER_PRESERVE_DURABILITY_MAJORITY_DEFAULT}]}].
+          [{?FAILOVER_PRESERVE_DURABILITY_MAJORITY_CONFIG_KEY,
+            ?FAILOVER_PRESERVE_DURABILITY_MAJORITY_DEFAULT}]}].
+
+-ifdef(TEST).
+dont_flipflop_can_abort_rebalance_test() ->
+    meck:new(cluster_compat_mode),
+    meck:expect(cluster_compat_mode, is_enterprise, fun () -> true end),
+    BaseConfig = [{?DATA_DISK_ISSUES_CONFIG_KEY, [{enabled, true},
+                                                  {timePeriod, 666}]}],
+    Out = disable_disk_failover(BaseConfig),
+    Result = [{?DATA_DISK_ISSUES_CONFIG_KEY,
+               [{enabled, false}, {timePeriod, 666}]}],
+    ?assertEqual(Out, Result),
+    Config1 = [{?CAN_ABORT_REBALANCE_CONFIG_KEY, true} | BaseConfig],
+    Out2 = disable_disk_failover(Config1),
+    ?assertEqual(Out2, Result).
+-endif.
