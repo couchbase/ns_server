@@ -655,7 +655,15 @@ conf(internal) ->
        {kv_data_size_raw, dataSizePerNodeBytes, ?KvDataSizeRawQuery,
         fun get_string/1}
       ]
-     }
+     },
+     {argon2id_time_internal, argon2idTime, ?DEFAULT_ARG2ID_TIME,
+      get_number(?ARGON_TIME_MIN, ?ARGON_TIME_MAX)},
+     {argon2id_mem_internal, argon2idMem, ?DEFAULT_ARG2ID_MEM,
+      get_number(?ARGON_MEM_MIN, ?ARGON_MEM_MAX)},
+     {pbkdf2_sha512_iterations_internal, pbkdf2HmacSha512Iterations,
+      ?DEFAULT_PBKDF2_ITER, get_number(?PBKDF2_ITER_MIN, ?PBKDF2_ITER_MAX)},
+     {memcached_password_hash_iterations_internal, scramShaIterations,
+      ?DEFAULT_SCRAM_ITER, get_number(?PBKDF2_ITER_MIN, ?PBKDF2_ITER_MAX)}
     ];
 
 conf(developer_preview) ->
@@ -802,99 +810,344 @@ handle_post(Type, Keys, Req) ->
                                    mochiweb_request:recv_body(Req),
                                    is_allowed_setting(post, Req, _)) of
                   {ok, ToSet} ->
-                      case ns_config:run_txn(
-                             ?cut(set_keys_in_txn(_1, _2, ToSet,
-                                                  OriginalCfg))) of
-                          {commit, _, {OldProps, NewProps}} ->
-                              case Type of
-                                  security ->
-                                      NewPropsJSON =
-                                          jsonify_security_settings(NewProps),
-                                      ns_audit:settings(Req, security,
-                                                        {json, NewPropsJSON}),
-                                      event_log_security_settings_changed(
-                                        OldProps, NewProps),
-                                      maybe_log_saml_enabled_warning(
-                                        menelaus_web_saml:is_enabled(),
-                                        OldProps, NewProps);
-                                  _ ->
-                                      ns_audit:settings(Req, Type, NewProps)
-                              end,
-                              reply_json(Req, []);
-                          retry_needed ->
-                              erlang:error(exceeded_retries)
-                      end;
+                      handle_post_with_parsed_data(Type, ToSet, Req);
                   {error, Errors} ->
                       reply_json(Req, {[{errors, Errors}]}, 400)
               end
       end).
 
-set_keys_in_txn(Cfg, SetFn, ToSet, DefaultCfg) ->
-    {NewCfg, OldProps, NewProps} =
-        lists:foldl(
-          fun ({[K], V}, {CfgAcc, OldPropsAcc0, NewPropsAcc0}) ->
-                  case ns_config:search(CfgAcc, K) of
-                      {value, V} ->
-                          {CfgAcc, OldPropsAcc0, NewPropsAcc0};
-                      {value, OV} ->
-                          {SetFn(K, V, CfgAcc), OldPropsAcc0#{K => OV},
-                           NewPropsAcc0#{K => V}};
-                      _ ->
-                          {_, _, DefaultV, _} = proplists:lookup(K, DefaultCfg),
-                          %% Don't display values that didn't actually change
-                          {NewP, OldP} = case V =:= DefaultV of
-                                             true ->
-                                                 {NewPropsAcc0, OldPropsAcc0};
-                                             false ->
-                                                 {NewPropsAcc0#{K => V},
-                                                  OldPropsAcc0#{K => DefaultV}}
-                                         end,
-                          {SetFn(K, V, CfgAcc), OldP, NewP}
-                  end;
-              ({[K, SubK], V}, {CfgAcc, OldPropsAcc0, NewPropsAcc0}) ->
-                  CurProps = ns_config:search(CfgAcc, K, []),
-                  AppendSubKFn = fun(Var) ->
-                                         fun({L}) -> {[{SubK, Var} | L]} end
-                                 end,
-                  case proplists:lookup(SubK, CurProps) of
-                      {SubK, V} ->
-                          {CfgAcc, OldPropsAcc0, NewPropsAcc0};
-                      {SubK, OV} ->
-                          OldPropAcc =
-                              maps:update_with(K, AppendSubKFn(OV),
-                                               {[{SubK, OV}]}, OldPropsAcc0),
-                          NewProps = misc:update_proplist(CurProps,
-                                                          [{SubK, V}]),
-                          NewPropsAcc =
-                              maps:update_with(K, AppendSubKFn(V),
-                                               {[{SubK, V}]}, NewPropsAcc0),
-                          {SetFn(K, NewProps, CfgAcc), OldPropAcc, NewPropsAcc};
-                      _ ->
-                          {_, _, DefaultProps} =
-                              proplists:lookup(K, DefaultCfg),
-                          {_, _, DefaultV, _} =
-                              proplists:lookup(SubK, DefaultProps),
-                          case DefaultV of
-                              V ->
-                                  {CfgAcc, OldPropsAcc0, NewPropsAcc0};
-                              _ ->
-                                  OldPropAcc =
-                                      maps:update_with(K,
-                                                       AppendSubKFn(DefaultV),
-                                                       {[{SubK, DefaultV}]},
-                                                       OldPropsAcc0),
-                                  NewProps = misc:update_proplist(CurProps,
-                                                                  [{SubK, V}]),
-                                  NewPropsAcc =
-                                      maps:update_with(K, AppendSubKFn(V),
-                                                       {[{SubK, V}]},
-                                                       NewPropsAcc0),
-                                  {SetFn(K, NewProps, CfgAcc), OldPropAcc,
-                                   NewPropsAcc}
-                          end
-                  end
-          end, {Cfg, #{}, #{}}, ToSet),
-    {commit, NewCfg, {maps:to_list(OldProps), maps:to_list(NewProps)}}.
+handle_post_with_parsed_data(Type, ToSet, Req) ->
+      %% Validate all keys together because keys may depend on each other.
+      %% They also may depend on values in ns_config.
+      %% It would be easier to do it inside of transaction,
+      %% but validation can be slow, and it is bad to run slow code inside of
+      %% a transaction. For that reason, we validate keys outside of transaction
+      %% but then (in transaction) we check that ns_config values
+      %% that we used during validation (ValuesToCheckInTxn)
+      %% have not changed. If those values change, user should retry.
+      %% Note that by doing so we will rerun only in case when very
+      %% specific keys change. While if we run the validation inside of
+      %% transaction, we will rerun in case of any ns_config key change.
+      case validate_all_keys(Type, ToSet, ns_config:latest()) of
+          {ok, ValuesToCheckInTxn} ->
+              Cfg = conf(Type),
+              case ns_config:run_txn(
+                     ?cut(set_keys_in_txn(_1, _2, ToSet, Cfg,
+                                          ValuesToCheckInTxn))) of
+                  {commit, _, {OldProps, NewProps}} ->
+                      case Type of
+                          security ->
+                              NewPropsJSON =
+                                  jsonify_security_settings(NewProps),
+                              ns_audit:settings(Req, security,
+                                                {json, NewPropsJSON}),
+                              event_log_security_settings_changed(
+                                OldProps, NewProps),
+                              maybe_log_saml_enabled_warning(
+                                menelaus_web_saml:is_enabled(),
+                                OldProps, NewProps);
+                          _ ->
+                              ns_audit:settings(Req, Type, NewProps)
+                      end,
+                      reply_json(Req, []);
+                  retry_needed ->
+                      Msg = <<"Temporary error occurred. "
+                              "Please try again later.">>,
+                      menelaus_util:reply_json(Req, Msg, 503)
+              end;
+          {error, Errors} ->
+              reply_json(Req, {[{errors, Errors}]}, 400)
+      end.
+
+validate_all_keys(security, ToSet, Config) ->
+    ExtractVal = fun (Key, Default) ->
+                     case proplists:lookup([Key], ToSet) of
+                         {_, V} ->
+                             %% Using the value that is about to be set
+                             {V, []};
+                         none ->
+                             %% We are not trying to set value for this key,
+                             %% so extracting the value from ns_config, and
+                             %% remember these values that we used from
+                             %% ns_config
+                             CfgValue = ns_config:search(Config, Key),
+                             Val = case CfgValue of
+                                       {value, V} -> V;
+                                       false -> Default
+                                   end,
+                             {Val, [{Key, CfgValue}]}
+                     end
+                 end,
+    validate_argon2id_params(ToSet, ExtractVal);
+
+validate_all_keys(_Type, _ToSet, _Config) ->
+    {ok, []}.
+
+validate_argon2id_params(ToSet, ExtractVal) ->
+    case proplists:is_defined([argon2id_time], ToSet) orelse
+         proplists:is_defined([argon2id_mem], ToSet) of
+        true ->
+            {Time, ToCheck1} = ExtractVal(argon2id_time,
+                                          ?DEFAULT_ARG2ID_TIME),
+            {Mem, ToCheck2} = ExtractVal(argon2id_mem,
+                                         ?DEFAULT_ARG2ID_MEM),
+            {MaxExecTime, ToCheck3} = ExtractVal(argon2id_max_exec_time,
+                                                 ?DEFAULT_ARG2ID_MAX_EXEC_TIME),
+            {MaxProduct, ToCheck4} = ExtractVal(argon2id_max_params_product,
+                                                ?DEFAULT_ARG2ID_MAX_PRODUCT),
+
+            case try_argon2id_hash(Time, Mem, MaxExecTime, MaxProduct) of
+                ok -> {ok, ToCheck1 ++ ToCheck2 ++ ToCheck3 ++ ToCheck4};
+                {error, Error} -> {error, [Error]}
+            end;
+        false ->
+            {ok, []}
+    end.
+
+try_argon2id_hash(Time, Mem, _MaxExecTime, MaxProduct)
+                                                when Time * Mem > MaxProduct ->
+    Msg = io_lib:format("The product of argon2id time and memory parameters "
+                        "must not exceed ~b", [MaxProduct]),
+    {error, iolist_to_binary(Msg)};
+try_argon2id_hash(Time, Mem, MaxExecTime, _MaxProduct) ->
+    ?log_debug("Testing argon2id hash with parameters: Time=~p, Mem=~p",
+               [Time, Mem]),
+    Res = async:run_with_timeout(
+            fun () ->
+                Str = "abcdefghijk",
+                Salt = crypto:strong_rand_bytes(enacl:pwhash_SALTBYTES()),
+                try
+                    {ok, enacl:pwhash(Str, Salt, Time, Mem, argon2id13)}
+                catch
+                    error:badarg -> {error, badarg}
+                end
+            end, MaxExecTime),
+    case Res of
+        {ok, {ok, _}} ->
+            ?log_debug("Test successful"),
+            ok;
+        {ok, {error, badarg}} ->
+            ?log_error("Test failed (badarg)"),
+            {error, <<"Invalid argon2id hash parameters">>};
+        {error, timeout} ->
+            ?log_error("Test failed (took too long)"),
+            Msg = io_lib:format(
+                    "Argon2id test hash calculation with provided parameters "
+                    "took more than ~b ms", [MaxExecTime]),
+            {error, iolist_to_binary(Msg)}
+    end.
+
+set_keys_in_txn(Cfg, SetFn, ToSet, DefaultCfg, CfgValuesToCheck) ->
+    UpdateKey =
+        fun (Key, NewVal, CurCfg) ->
+                case ns_config:search(CurCfg, Key) of
+                    {value, NewVal} ->
+                        {{[Key], {NewVal, NewVal}}, CurCfg};
+                    {value, OldVal} ->
+                        {{[Key], {OldVal, NewVal}},
+                         SetFn(Key, NewVal, CurCfg)};
+                    _ ->
+                        {_, _, DefaultV, _} = proplists:lookup(Key, DefaultCfg),
+                        {{[Key], {DefaultV, NewVal}},
+                         SetFn(Key, NewVal, CurCfg)}
+                end
+        end,
+    UpdateSubKey =
+        fun (Key, SubKey, NewVal, CurCfg) ->
+                CurProps = ns_config:search(CurCfg, Key, []),
+                NewProps = misc:update_proplist(CurProps, [{SubKey, NewVal}]),
+                case proplists:lookup(SubKey, CurProps) of
+                    {SubKey, NewVal} ->
+                        {{[Key, SubKey], {NewVal, NewVal}}, CurCfg};
+                    {SubKey, OldVal} ->
+                        {{[Key, SubKey], {OldVal, NewVal}},
+                         SetFn(Key, NewProps, CurCfg)};
+                    _ ->
+                        {_, _, DefaultProps} =
+                            proplists:lookup(Key, DefaultCfg),
+                        {_, _, DefaultV, _} =
+                            proplists:lookup(SubKey, DefaultProps),
+                        {{[Key, SubKey], {DefaultV, NewVal}},
+                         SetFn(Key, NewProps, CurCfg)}
+                end
+        end,
+    {Changes, NewCfg} =
+        lists:mapfoldl(
+          fun ({[K], V}, CfgAcc) -> UpdateKey(K, V, CfgAcc);
+              ({[K, SubK], V}, CfgAcc) -> UpdateSubKey(K, SubK, V, CfgAcc)
+          end, Cfg, ToSet),
+
+    SomeCfgValuesChanged = lists:any(fun ({K, V}) ->
+                                         V /= ns_config:search(Cfg, K)
+                                     end, CfgValuesToCheck),
+
+    case SomeCfgValuesChanged of
+        true ->
+            {abort, retry_needed};
+        false ->
+            {commit, NewCfg, rearrange_changes(Changes)}
+    end.
+
+rearrange_changes(Changes) ->
+    RealChanges = lists:filter(fun ({_, {V, V}}) -> false;
+                                   ({_, {_, _}}) -> true
+                               end, Changes),
+    OldValues = [{K, V} || {K, {V, _}} <- RealChanges],
+    NewValues = [{K, V} || {K, {_, V}} <- RealChanges],
+    Rearrage = fun (L) ->
+                      L2 = misc:groupby_map(
+                             fun ({[K], V}) -> {{single, K}, V};
+                                 ({[K1, K2], V}) -> {{multi, K1}, {K2, V}}
+                             end, L),
+                      lists:map(fun ({{single, K}, [V]}) -> {K, V};
+                                    ({{multi, K}, Props}) -> {K, {Props}}
+                                end, L2)
+               end,
+    {Rearrage(OldValues), Rearrage(NewValues)}.
+
+-ifdef(TEST).
+
+rearrange_changes_test() ->
+                         %%  Key      OldVal, NewVal
+    Res = rearrange_changes([{[a],    {    1,      1}}, %% No change, top key
+                             {[a, b], {    1,      1}}, %% No change, subkey
+                             {[c],    {    1,      2}}, %% Change, top key
+                             {[d, e], {    3,      4}}, %% Change, subkey
+                             {[d, f], {    5,      6}}]),
+    ?assertEqual({[{d, {[{e, 3}, {f, 5}]}}, {c, 1}],
+                  [{d, {[{e, 4}, {f, 6}]}}, {c, 2}]}, Res).
+
+set_keys_in_txn_test() ->
+    SetFn = fun (K, V, [Cfg]) -> [lists:keystore(K, 1, Cfg, {K, V})] end,
+    ?assertEqual({commit, cfg, {[], []}},
+                 set_keys_in_txn(cfg, SetFn, [], [], [])),
+    CfgBefore = [[{k1, 1},
+                  {k2, 0},
+                  {k4, [{k5, 5}, {k99, 99}, {k6, 0}]}]],
+    ToSet = [{[k1], 1}, % No change
+             {[k2], 2}, % Change
+             {[k3], 3}, % New key
+             {[k4, k5], 5},  % Existing subkey, no change
+             {[k4, k6], 6},  % Existing subkey, change
+             {[k7, k8], 8},  % New key and new subkey
+             {[k7, k9], 9}], % Existing key, new subkey
+    Defaults = [{k1, 'K1', k1_default, undefined},
+                {k2, 'K2', 2, undefined},
+                {k3, 'K3', k3_default, undefined},
+                {k4, 'K4', [{k5, 'K5', k5_default, undefined},
+                            {k6, 'K6', 6, undefined}]},
+                {k7, 'K7', [{k8, 'K8', k8_default, undefined},
+                            {k9, 'K9', 9, undefined}]}],
+    CfgAfter = [[{k1, 1},
+                 {k2, 2},
+                 {k4, [{k6, 6}, {k5, 5}, {k99, 99}]},
+                 {k3, 3},
+                 {k7, [{k9, 9}, {k8, 8}]}]],
+    ChangedOldValues = [{k4, {[{k6, 0}]}},
+                        {k7, {[{k8, k8_default}]}},
+                        {k2, 0},
+                        {k3, k3_default}],
+    ChangedNewValues = [{k4, {[{k6, 6}]}},
+                        {k7, {[{k8, 8}]}},
+                        {k2, 2},
+                        {k3, 3}],
+
+    ?assertEqual({commit, CfgAfter, {ChangedOldValues, ChangedNewValues}},
+                 set_keys_in_txn(CfgBefore, SetFn, ToSet, Defaults, [])),
+
+    %% Nothing changed in config between validation and txn:
+    ValuesToCheck1 = [{k1, {value, 1}}, {new_key, false}],
+    ?assertEqual({commit, CfgAfter, {ChangedOldValues, ChangedNewValues}},
+                 set_keys_in_txn(CfgBefore, SetFn, ToSet, Defaults,
+                                 ValuesToCheck1)),
+    %% Some key changed value:
+    ToCheck2 = [{k1, {value, 2}}, {new_key, false}],
+    ?assertEqual({abort, retry_needed},
+                 set_keys_in_txn(CfgBefore, SetFn, ToSet, Defaults, ToCheck2)),
+    %% Some key was undefined, now it is defined:
+    ToCheck3 = [{k1, {value, 2}}, {new_key, {value, 1}}],
+    ?assertEqual({abort, retry_needed},
+                 set_keys_in_txn(CfgBefore, SetFn, ToSet, Defaults, ToCheck3)),
+    %% Some key was defined, now it is undefined
+    ToCheck4 = [{k1, false}, {new_key, false}],
+    ?assertEqual({abort, retry_needed},
+                 set_keys_in_txn(CfgBefore, SetFn, ToSet, Defaults, ToCheck4)).
+
+validate_all_keys_test() ->
+    ?assertEqual({ok, []},
+                 validate_all_keys(security, [{[unknown], 1}], [[]])),
+    ?assertEqual({ok, [{argon2id_mem, false},
+                       {argon2id_max_exec_time, false},
+                       {argon2id_max_params_product, false}]},
+                 validate_all_keys(security,
+                                   [{[argon2id_time], 1}],
+                                   [[]])),
+    ?assertEqual({ok, [{argon2id_time, false},
+                       {argon2id_max_exec_time, false},
+                       {argon2id_max_params_product, false}]},
+                 validate_all_keys(security,
+                                   [{[argon2id_mem], 8192}],
+                                   [[]])),
+    ?assertEqual({ok, [{argon2id_max_exec_time, false},
+                       {argon2id_max_params_product, false}]},
+                 validate_all_keys(security,
+                                   [{[argon2id_mem], 8192},
+                                    {[argon2id_time], 1}],
+                                   [[]])),
+    ?assertEqual({ok, [{argon2id_mem, {value, 8192}},
+                       {argon2id_max_exec_time, false},
+                       {argon2id_max_params_product, false}]},
+                 validate_all_keys(security,
+                                   [{[argon2id_time], 1}],
+                                   [[{argon2id_time, 2},
+                                     {argon2id_mem, 8192}]])),
+    ?assertEqual({ok, [{argon2id_time, {value, 1}},
+                       {argon2id_max_exec_time, false},
+                       {argon2id_max_params_product, false}]},
+                 validate_all_keys(security,
+                                   [{[argon2id_mem], 8192}],
+                                   [[{argon2id_time, 1},
+                                     {argon2id_mem, 8193}]])),
+    ?assertEqual({ok, [{argon2id_max_exec_time, false},
+                       {argon2id_max_params_product, false}]},
+                 validate_all_keys(security,
+                                   [{[argon2id_mem], 8192},
+                                    {[argon2id_time], 1}],
+                                   [[{argon2id_time, 2},
+                                     {argon2id_mem, 8193}]])),
+    ?assertEqual({error, [<<"The product of argon2id time and memory "
+                            "parameters must not exceed 16385">>]},
+                 validate_all_keys(security,
+                                   [{[argon2id_mem], 8193}],
+                                   [[{argon2id_time, 2},
+                                     {argon2id_mem, 8192},
+                                     {argon2id_max_params_product,
+                                      8193 * 2 - 1}]])),
+    ?assertEqual({error, [<<"The product of argon2id time and memory "
+                            "parameters must not exceed 16385">>]},
+                 validate_all_keys(security,
+                                   [{[argon2id_time], 2}],
+                                   [[{argon2id_time, 1},
+                                     {argon2id_mem, 8193},
+                                     {argon2id_max_params_product,
+                                      8193 * 2 - 1}]])),
+    ?assertEqual({error, [<<"The product of argon2id time and memory "
+                            "parameters must not exceed 16385">>]},
+                 validate_all_keys(security,
+                                   [{[argon2id_time], 2},
+                                    {[argon2id_mem], 8193}],
+                                   [[{argon2id_time, 1},
+                                     {argon2id_mem, 8192},
+                                     {argon2id_max_params_product,
+                                      8193 * 2 - 1}]])),
+    ?assertEqual({error, [<<"Argon2id test hash calculation with provided "
+                            "parameters took more than 0 ms">>]},
+                 validate_all_keys(security,
+                                   [{[argon2id_time], 100},
+                                    {[argon2id_mem], 10000000}],
+                                   [[{argon2id_max_exec_time, 0}]])).
+
+-endif.
 
 parse_post_data(Conf, Keys, Data, KeyValidator) ->
     InvertedConf = invert_conf(Conf),
@@ -904,14 +1157,19 @@ parse_post_data(Conf, Keys, Data, KeyValidator) ->
             error -> mochiweb_util:parse_qs(Data)
         end,
 
+    Duplicates = proplists:get_keys(Params -- lists:ukeysort(1, Params)),
+
     Params2 = [{Keys ++ string:tokens(SJK, "."), SV}|| {SJK, SV} <- Params],
     Res = [parse_post_for_key(SJK, SV, InvertedConf, KeyValidator)
               || {SJK, SV} <- Params2],
 
-    case [M || {error, M} <- Res] of
-        [] ->
+    Errors = [M || {error, M} <- Res] ++
+             [iolist_to_binary(io_lib:format("~s - duplicate key", [D]))
+                 || D <- Duplicates],
+    case Errors == [] of
+        true ->
             {ok, [ToSet || {ok, ToSet} <- Res]};
-        Errors ->
+        false ->
             {error, Errors}
     end.
 
@@ -1487,7 +1745,8 @@ parse_post_data_test() ->
                                  KeyValidator)),
     ?assertEqual({error, [<<"Unknown key data.unknown1">>,
                           <<"data.cipherSuites - Invalid format. "
-                            "Expecting a list of ciphers.">>]},
+                            "Expecting a list of ciphers.">>,
+                          <<"cipherSuites - duplicate key">>]},
                  parse_post_data(Conf, ["data"],
                                  <<"unknown1=tlsv1.2&"
                                    "cipherSuites=[]&"

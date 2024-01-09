@@ -31,11 +31,11 @@
          get_admin_creds/1,
          is_system_provisioned/0,
          is_system_provisioned/1,
-         new_password_hash/2,
+         new_password_hash/3,
          hash_password/2,
          check_hash/2,
          config_upgrade_to_trinity/1,
-         configurable_hash_alg_settings/1]).
+         configurable_hash_alg_settings/2]).
 
 admin_cfg_key() ->
     rest_creds.
@@ -175,36 +175,45 @@ check_hash(HashInfo, Password) ->
     Hash1 = hash_password(HashInfo, Password),
     misc:compare_secure_many(Hash1, Hashes).
 
-new_password_hash(Type, Passwords) ->
-    Info = new_hash_info(Type),
+new_password_hash(HashType, AuthType, Passwords) ->
+    Info = new_hash_info(HashType, AuthType),
     Hashes = [base64:encode(hash_password(Info, P)) || P <- Passwords],
     [{?HASHES_KEY, Hashes} | Info].
 
-configurable_hash_alg_settings(?ARGON2ID_HASH) ->
-    [{?ARGON_TIME_KEY,
-      ns_config:read_key_fast(argon2id_time, ?DEFAULT_ARG2ID_TIME)},
-     {?ARGON_MEM_KEY,
-      ns_config:read_key_fast(argon2id_mem, ?DEFAULT_ARG2ID_MEM)}];
-configurable_hash_alg_settings(?PBKDF2_HASH) ->
-    [{?PBKDF2_ITER_KEY, ns_config:read_key_fast(pbkdf2_sha512_iterations,
+configurable_hash_alg_settings(?ARGON2ID_HASH, AuthType) ->
+    {Time, Mem} = case AuthType of
+                      regular ->
+                          {argon2id_time, argon2id_mem};
+                      internal ->
+                          {argon2id_time_internal, argon2id_mem_internal}
+                  end,
+    [{?ARGON_TIME_KEY, ns_config:read_key_fast(Time, ?DEFAULT_ARG2ID_TIME)},
+     {?ARGON_MEM_KEY, ns_config:read_key_fast(Mem, ?DEFAULT_ARG2ID_MEM)}];
+configurable_hash_alg_settings(?PBKDF2_HASH, AuthType) ->
+    IterKey = case AuthType of
+                  regular -> pbkdf2_sha512_iterations;
+                  internal -> pbkdf2_sha512_iterations_internal
+              end,
+    [{?PBKDF2_ITER_KEY, ns_config:read_key_fast(IterKey,
                                                 ?DEFAULT_PBKDF2_ITER)}];
-configurable_hash_alg_settings(?SHA1_HASH) ->
+configurable_hash_alg_settings(?SHA1_HASH, _AuthType) ->
     [].
 
-new_hash_info(T) ->
-    [{?HASH_ALG_KEY, T} | new_hash_info_int(T)].
+new_hash_info(HashType, AuthType) ->
+    [{?HASH_ALG_KEY, HashType} | new_hash_info_int(HashType, AuthType)].
 
-new_hash_info_int(?ARGON2ID_HASH) ->
+new_hash_info_int(?ARGON2ID_HASH, AuthType) ->
     SaltSize = enacl:pwhash_SALTBYTES(),
     [{?SALT_KEY, base64:encode(crypto:strong_rand_bytes(SaltSize))},
      %% we support only p=1 because enacl+libsodium always uses 1
-     {?ARGON_THREADS_KEY, 1} | configurable_hash_alg_settings(?ARGON2ID_HASH)];
-new_hash_info_int(?PBKDF2_HASH) ->
+     {?ARGON_THREADS_KEY, 1} |
+     configurable_hash_alg_settings(?ARGON2ID_HASH, AuthType)];
+new_hash_info_int(?PBKDF2_HASH, AuthType) ->
     [{?SALT_KEY, base64:encode(crypto:strong_rand_bytes(64))} |
-     configurable_hash_alg_settings(?PBKDF2_HASH)];
-new_hash_info_int(?SHA1_HASH) ->
+     configurable_hash_alg_settings(?PBKDF2_HASH, AuthType)];
+new_hash_info_int(?SHA1_HASH, AuthType) ->
     [{?SALT_KEY, base64:encode(crypto:strong_rand_bytes(16))} |
-     configurable_hash_alg_settings(?SHA1_HASH)].
+     configurable_hash_alg_settings(?SHA1_HASH, AuthType)].
 
 hash_password(HashInfo, Password) ->
     case proplists:get_value(?HASH_ALG_KEY, HashInfo) of

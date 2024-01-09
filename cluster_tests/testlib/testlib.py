@@ -338,6 +338,14 @@ def delete_config_key(cluster, key):
     return post_succ(cluster, '/diag/eval', data=f'ns_config:delete({key})')
 
 
+def set_config_key(cluster, key, value):
+    if type(value) == str:
+        value_str = f'"{value}"'
+    else:
+        value_str = str(value)
+    return diag_eval(cluster, f'ns_config:set({key}, {value_str}).')
+
+
 def request(method, cluster_or_node, path, expected_code=None, https=False,
             verbose=True, **kwargs):
     if 'timeout' not in kwargs:

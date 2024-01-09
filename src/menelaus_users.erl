@@ -61,6 +61,7 @@
 %% Actions:
          authenticate/2,
          authenticate_with_info/2,
+         build_internal_auth/1,
          build_auth/1,
          format_plain_auth/1,
          delete_storage_offline/0,
@@ -393,13 +394,13 @@ make_props_state(ItemList) ->
 select_auth_infos(KeySpec) ->
     replicated_dets:select(storage_name(), {auth, KeySpec}, 100).
 
-build_auth(false, undefined) ->
+rebuild_auth(false, undefined) ->
     password_required;
-build_auth(false, Password) ->
+rebuild_auth(false, Password) ->
     build_auth([Password]);
-build_auth({_, _}, undefined) ->
+rebuild_auth({_, _}, undefined) ->
     same;
-build_auth({_, _CurrentAuth}, Password) ->
+rebuild_auth({_, _CurrentAuth}, Password) ->
     build_auth([Password]).
 
 -spec store_user(rbac_identity(), rbac_user_name(),
@@ -490,7 +491,7 @@ prepare_store_user(Snapshot, CanOverwrite, {{_, Domain} = Identity, Props}) ->
                     {local, {password, Password}} ->
                         CurrentAuth = replicated_dets:get(storage_name(),
                                                           {auth, Identity}),
-                        case build_auth(CurrentAuth, Password) of
+                        case rebuild_auth(CurrentAuth, Password) of
                             password_required ->
                                 throw({error, password_required});
                             A -> A
@@ -555,7 +556,7 @@ change_password({_UserName, local} = Identity, Password) when is_list(Password) 
             user_not_found;
         _ ->
             CurrentAuth = replicated_dets:get(storage_name(), {auth, Identity}),
-            Auth = build_auth(CurrentAuth, Password),
+            Auth = rebuild_auth(CurrentAuth, Password),
             store_auth(Identity, Auth, ?REPLICATED_DETS_HIGH_PRIORITY)
     end.
 
@@ -626,7 +627,7 @@ maybe_update_plain_auth_hashes(CurrentAuth, Password) ->
         case HashAlg of
             CurrentHashAlg ->
                 Settings = ns_config_auth:configurable_hash_alg_settings(
-                             HashAlg),
+                             HashAlg, regular),
                 lists:any(
                   fun ({K, V}) ->
                           proplists:get_value(K, HashInfo) =/= V
@@ -640,7 +641,7 @@ maybe_update_plain_auth_hashes(CurrentAuth, Password) ->
             CurrentAuth;
         true ->
             misc:update_proplist(
-              CurrentAuth, build_plain_auth([Password]))
+              CurrentAuth, build_plain_auth([Password], regular))
     end.
 
 maybe_update_auth(CurrentAuth, Password) ->
@@ -913,19 +914,28 @@ get_user_uuid({_, local} = Identity, Default) ->
 get_user_uuid(_, _) ->
     undefined.
 
-build_auth(Passwords) ->
-    build_plain_auth(Passwords) ++ scram_sha:build_auth(Passwords).
+build_internal_auth(Passwords) ->
+    build_auth(Passwords, internal).
 
-build_plain_auth(Passwords) ->
+build_auth(Passwords) ->
+    build_auth(Passwords, regular).
+
+build_auth(Passwords, AuthType) ->
+    build_plain_auth(Passwords, AuthType) ++
+    scram_sha:build_auth(Passwords, AuthType).
+
+build_plain_auth(Passwords, AuthType) when AuthType =:= regular;
+                                           AuthType =:= internal ->
     case cluster_compat_mode:is_cluster_trinity() of
         true ->
             HashType = ns_config:read_key_fast(password_hash_alg,
                                                ?DEFAULT_PWHASH),
             format_plain_auth(ns_config_auth:new_password_hash(HashType,
+                                                               AuthType,
                                                                Passwords));
         false ->
             format_pre_trinity_plain_auth(
-              ns_config_auth:new_password_hash(?SHA1_HASH, Passwords))
+              ns_config_auth:new_password_hash(?SHA1_HASH, AuthType, Passwords))
     end.
 
 format_plain_auth(HashInfo) ->
