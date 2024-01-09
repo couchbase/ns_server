@@ -304,6 +304,58 @@ class PassHashingSettingsTests(testlib.BaseTestSet):
             type="sha512", iterations="20000", migrate="false")
 
 
+class Argon2SettingsTests(testlib.BaseTestSet):
+
+    @staticmethod
+    def requirements():
+        return testlib.ClusterRequirements()
+
+    def setup(self):
+        pass
+
+    def test_teardown(self):
+        testlib.delete_config_key(self.cluster, 'argon2id_max_params_product')
+        testlib.delete_config_key(self.cluster, 'argon2id_max_exec_time')
+
+    def teardown(self):
+        pass
+
+    def too_big_params_test(self):
+        testlib.set_config_key(self.cluster, 'argon2id_max_params_product', 1)
+        r = testlib.post_fail(self.cluster, f"/settings/security",
+                              expected_code=400,
+                              data={'argon2idTime': 2,
+                                    'argon2idMem': 8192}).json()
+        err = 'The product of argon2id time and memory parameters ' \
+              'must not exceed 1'
+        assert err in r['errors'], f'Expected error is missing in response'
+
+    def too_long_calculation_test(self):
+        testlib.set_config_key(self.cluster, 'argon2id_max_exec_time', 0)
+        r = testlib.post_fail(self.cluster, f"/settings/security",
+                              expected_code=400,
+                              data={'argon2idTime': 100,
+                                    'argon2idMem': 10000000}).json()
+        err = 'Argon2id test hash calculation with provided parameters took ' \
+              'more than 0 ms'
+        assert err in r['errors'], f'Expected error is missing in response'
+
+    def incorrect_params_test(self):
+        # Preformat payload because we want to specify argon2idTime multiple
+        # times
+        data = 'argon2idTime=abc&argon2idMem=0&argon2idTime=0'
+        r = testlib.post_fail(self.cluster, f"/settings/security",
+                              expected_code=400, data=data).json()
+        err = 'Argon2id test hash calculation with provided parameters took ' \
+              'more than 0 ms'
+
+        msgs = ['argon2idTime - The value must be between 1 and 4294967295.',
+                'argon2idMem - The value must be between 8192 and 1073741824.',
+                'argon2idTime - duplicate key']
+        for m in msgs:
+            assert m in r['errors'], f'Expected error is missing in response'
+
+
 def verify_hash_type(users, username, expected_hash_type):
     record = next(filter(lambda x: x['id'] == username, users))
     hash_type = record['auth']['hash']['algorithm']

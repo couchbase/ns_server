@@ -131,7 +131,7 @@ jsonify_auth(Users, AdminPasswords, RestCreds, PromAuth) ->
                undefined -> ok
            end,
 
-           AdminAuth = menelaus_users:build_auth(AdminPasswords),
+           AdminAuth = menelaus_users:build_internal_auth(AdminPasswords),
            [?yield({kv, memcached_user_info(U, AdminAuth)}) || U <- Users],
 
            pipes:foreach(
