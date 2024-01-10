@@ -96,6 +96,8 @@ params_internal() ->
      {"prometheus.listenAddr",
       #{cfg_key => listen_addr_type,
         type => {one_of, existing_atom, [loopback, any]}}},
+     {"prometheus.gomaxprocs",
+      #{cfg_key => gomaxprocs, type => pos_int_or_minus_one}},
      {"pruningInterval",
       #{cfg_key => pruning_interval, type => pos_int}},
      {"decimation.enabled",
