@@ -424,6 +424,8 @@ main_after_ns_config(Terms, NSConfig) ->
 
 strip_config_meta([{'_vclock', _} | Value]) ->
     Value;
+strip_config_meta([{'_vclock', _, _} | Value]) ->
+    Value;
 strip_config_meta(Value) ->
     Value.
 
