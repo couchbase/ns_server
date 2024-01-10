@@ -2228,6 +2228,66 @@ def find_script(name):
     return None
 
 
+def get_guts_common(initargs_path, script_path, args, timeout=None):
+    # Check if initargs exists and is read accessible.
+    if not os.path.exists(initargs_path):
+        log(f"initargs file '{initargs_path}' does not exist")
+        return []
+
+    if not os.access(initargs_path, os.R_OK):
+        log(f"Read access to '{initargs_path}' is required in order to proceed")
+        sys.exit(1)
+
+    print(f"Running {script_path} to get guts for {initargs_path}")
+    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    output, err = p.communicate()
+    p.wait(timeout)
+    rc = p.returncode
+    if rc != 0:
+        log(f"Error occurred running {script_path}: {err.decode(LATIN1)}")
+        return []
+    #print(f"args: {args} gave rc: {rc} and:\n\n{output}\n")
+    tokens = output.decode(LATIN1).rstrip("\0").split("\0")
+    return tokens
+
+
+def get_server_chronicle_guts(guts, initargs_path):
+    chronicle_snapshot_dir = read_guts(guts, "chronicle_snapshot_dir")
+    if chronicle_snapshot_dir is None:
+        log(f"Failed to find 'chronicle_snapshot_dir' in server guts")
+        return {}
+
+    escript_wrapper = find_script("escript-wrapper")
+    chronicle_dump_path = find_script("chronicle_dump")
+    if escript_wrapper is None or chronicle_dump_path is None:
+        return {}
+
+    if chronicle_dump_path is None:
+        log(f"Unable to find '{chronicle_dump_path}'")
+        return {}
+
+    kv_snapshot = os.path.join(chronicle_snapshot_dir, 'kv.snapshot')
+    if not os.path.exists(kv_snapshot):
+        log(f"kv snapshot file '{kv_snapshot}' does not exist")
+        return {}
+
+    if not os.path.isfile(kv_snapshot):
+        log(f"kv snapshot '{kv_snapshot}' is not a file")
+        return {}
+
+    escript = exec_name("escript")
+    args = [escript, escript_wrapper, "--initargs-path", initargs_path,
+            "--", chronicle_dump_path, "dumpguts", kv_snapshot]
+    d = {}
+    tokens = get_guts_common(initargs_path, chronicle_dump_path, args, 120)
+    if len(tokens) > 1:
+        # Remove trailing '\n' added by chronicle_dump
+        del tokens[-1]
+        for i in range(0, len(tokens), 2):
+            d[tokens[i]] = tokens[i + 1]
+    return d
+
+
 def get_server_guts(initargs_path):
     dump_guts_path = find_script("dump-guts")
 
@@ -2235,32 +2295,13 @@ def get_server_guts(initargs_path):
         log("Couldn't find dump-guts script. Some information will be missing")
         return {}
 
-    # Check if initargs exists and is read accessible.
-    if not os.path.exists(initargs_path):
-        log("initargs file '{}' does not exist".format(initargs_path))
-        return {}
-
-    if not os.access(initargs_path, os.R_OK):
-        log("Read access to '{}' is required in order to proceed".format(
-            initargs_path))
-        sys.exit(1)
-
     escript = exec_name("escript")
     extra_args = os.getenv("EXTRA_DUMP_GUTS_ARGS")
     args = [escript, dump_guts_path, "--initargs-path", initargs_path]
     if extra_args:
         args = args + extra_args.split(";")
-    print("Checking for server guts in %s..." % initargs_path)
-    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    output, err = p.communicate()
-    p.wait()
-    rc = p.returncode
     d = {}
-    if rc != 0:
-        log(f"Error occurred getting server guts: {err.decode(LATIN1)}")
-        return d
-    # print("args: %s gave rc: %d and:\n\n%s\n" % (args, rc, output))
-    tokens = output.decode(LATIN1).rstrip("\0").split("\0")
+    tokens = get_guts_common(initargs_path, dump_guts_path, args)
     if len(tokens) > 1:
         for i in range(0, len(tokens), 2):
             d[tokens[i]] = tokens[i + 1]
@@ -2748,6 +2789,21 @@ def main():
     set_local_addr(ipv6)
 
     populate_guts_with_additional_info(guts)
+
+    # Obtaining chronicle guts needs ns_config guts
+    chronicle_guts = get_server_chronicle_guts(guts, initargs_path)
+
+    # As nothing currently requires chronicle guts these serve as examples
+    # of usage. Keep these in place to detect any regression but only print
+    # if verbose.
+    cluster_compat_version = read_guts(chronicle_guts, 'cluster_compat_version')
+    bucket_names = read_guts(chronicle_guts, 'bucket_names')
+    bucket_names = correct_split(bucket_names, ',')
+    rebalance_type = read_guts(chronicle_guts, 'rebalance_type')
+    if options.verbosity:
+        print(f"The cluster, running compat version {cluster_compat_version}, "
+              f"has buckets named: {bucket_names}. The last rebalance type was "
+              f"'{rebalance_type}'.")
 
     all_tasks.extend(make_config_profile_task(guts))
 
