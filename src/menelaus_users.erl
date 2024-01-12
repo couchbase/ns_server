@@ -661,7 +661,13 @@ maybe_migrate_password_hashes(
         true ->
             try
                 Auth = maybe_update_auth(CurrentAuth, Password),
-                store_auth(Identity, Auth, ?REPLICATED_DETS_NORMAL_PRIORITY)
+                case Auth /= CurrentAuth of
+                    true ->
+                        store_auth(
+                          Identity, Auth, ?REPLICATED_DETS_NORMAL_PRIORITY);
+                    false ->
+                        ok
+                end
             catch
                 E:T:S ->
                     ?log_debug("Password migration failed. Identity - ~p.~n"
