@@ -91,7 +91,7 @@ class MnWizardJoinClusterComponent extends MnLifeCycleHooksToStream {
         return data;
       }))
       .setPostRequest(this.joinClusterHttp)
-      .setPackPipe(map(() => this.joinClusterForm.get("clusterAdmin").value))
+      .setPackPipe(map(() => [this.joinClusterForm.get("clusterAdmin").value, false]))
       .setPostRequest(mnAuthService.stream.postUILogin)
       .clearErrors()
       .showGlobalSpinner()

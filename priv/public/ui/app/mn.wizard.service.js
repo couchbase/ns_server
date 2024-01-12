@@ -288,7 +288,7 @@ class MnWizardService {
     data.user = data.username
     delete data.passwordVerify;
     delete data.username;
-    return data;
+    return [data, false];
   }
 
   createLookUpStream(subject) {
