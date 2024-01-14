@@ -73,7 +73,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
     tickMultiFormat: multiFormat,
     packStatsConfig: packStatsConfig,
     postStatsRange: postStatsRange,
-    postStats: postStats,
     createStatsPoller: createStatsPoller,
     mnAdminStatsPoller: createStatsPoller(rootScope),
     getChartStep: function (zoom) {
@@ -124,9 +123,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         new mnPoller(scope, function () {
           counter++;
           currentPerChartScopes = [...perChartScopes];
-          return mnPoolDefault.export.compat.atLeast70 ?
-            postStatsRange([...perChartConfig]) :
-            postStats([...perChartConfig]);
+          return postStatsRange([...perChartConfig]);
         })
         .setInterval(function (resp) {
           return (resp && resp.interval) || 10000;
@@ -416,18 +413,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
 
   function isPerBucketStat(path) {
     return path.split(".")[0].includes("-");
-  }
-
-  function postStats(perChartConfig) {
-    return $http({
-      url: '/_uistats',
-      method: 'POST',
-      mnHttp: {
-        group: "global",
-        isNotForm: true
-      },
-      data: perChartConfig
-    });
   }
 
   function postStatsRange(perChartConfig) {
