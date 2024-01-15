@@ -41,7 +41,6 @@
         ?get_param(min_data_disk_issues_timeperiod, 5)). %% seconds
 -define(MAX_DATA_DISK_ISSUES_TIMEPERIOD, 3600). %% seconds
 
--define(FAILOVER_SERVER_GROUP_CONFIG_KEY, failover_server_group).
 -define(FAILOVER_PRESERVE_DURABILITY_MAJORITY_CONFIG_KEY,
         failover_preserve_durability_majority).
 -define(FAILOVER_PRESERVE_DURABILITY_MAJORITY_DEFAULT, false).
@@ -69,9 +68,7 @@ default_config(?MIN_SUPPORTED_VERSION, IsEnterprise) ->
        {count, 0},
        {failover_on_data_disk_issues, [{enabled, false},
                                        {timePeriod, 120}]},
-       {failover_server_group, false},
        {max_count, 1},
-       {failed_over_server_groups, []},
        {?CAN_ABORT_REBALANCE_CONFIG_KEY, IsEnterprise}]}].
 
 max_events_allowed() ->

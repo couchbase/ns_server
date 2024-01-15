@@ -58,10 +58,10 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
         self.enterprise_only = [ 'maxCount',
                                  'failoverOnDataDiskIssues[enabled]',
                                  'failoverOnDataDiskIssues[timePeriod]',
-                                 'failoverServerGroup',
                                  'canAbortRebalance',
                                  'disableMaxCount' ]
         if self.is_enterprise:
+            assert not 'failoverServerGroup' in self.post_data_keys
             assert 'canAbortRebalance' in self.post_data_keys
             if self.is_76:
                 assert 'disableMaxCount' in self.post_data_keys
@@ -109,9 +109,6 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
                 self.limits['failoverOnDataDiskIssues[timePeriod]']['min'],
                 self.limits['failoverOnDataDiskIssues[timePeriod]']['max']]
 
-        if 'failoverServerGroup' in self.post_data_keys:
-            self.test_params['failoverServerGroup'] = [ None, 'true', 'false']
-
         if 'canAbortRebalance' in self.post_data_keys:
             self.test_params['canAbortRebalance'] = [ None, 'true', 'false' ]
 
@@ -135,8 +132,6 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
                 self.limits['failoverOnDataDiskIssues[timePeriod]']['min'] - 1,
                 self.limits['failoverOnDataDiskIssues[timePeriod]']['max'] + 1 ]
 
-        if 'failoverServerGroup' in self.post_data_keys:
-            self.bad_params['failoverServerGroup'] = [ 0 ]
         if 'canAbortRebalance' in self.post_data_keys:
             self.bad_params['canAbortRebalance'] = [ 1 ]
         if 'disableMaxCount' in self.post_data_keys:
@@ -239,9 +234,6 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
 
         if 'canAbortRebalance' in self.post_data_keys:
             errors.update(self.get_boolean_error(testData, 'canAbortRebalance'))
-        if 'failoverServerGroup' in self.post_data_keys:
-            errors.update(self.get_boolean_error(testData,
-                                                 'failoverServerGroup'))
 
         errors.update(self.get_unsupported_errors(testData))
         return errors

@@ -443,7 +443,6 @@
               "sessionid" : "",
               "failover_on_data_disk_issues" : {"enabled" : false,
                                                 "timePeriod" : 1},
-              "failover_server_group" : false,
               "can_abort_rebalance" :  true
           }
       },

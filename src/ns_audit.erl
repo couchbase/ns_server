@@ -738,8 +738,6 @@ build_auto_failover_extras(Extras) ->
     lists:foldl(
       fun ({failover_on_data_disk_issues, V}, Acc) ->
               [{failover_on_data_disk_issues, {prepare_list(V)}} | Acc];
-          ({failover_server_group, _} = T, Acc) ->
-              [T | Acc];
           ({can_abort_rebalance, _} = T, Acc) ->
               [T | Acc];
           ({disable_max_count, _} = T, Acc) ->
