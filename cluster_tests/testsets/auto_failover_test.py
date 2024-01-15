@@ -43,6 +43,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
         self.result_keys = list(self.prev_settings.keys())
         self.result_keys.remove('count')
         self.is_enterprise = self.cluster.is_enterprise
+        self.is_72 = self.cluster.is_72
         self.is_76 = self.cluster.is_76
         self.is_serverless = self.cluster.is_serverless
 
@@ -58,11 +59,22 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
         self.enterprise_only = [ 'maxCount',
                                  'failoverOnDataDiskIssues[enabled]',
                                  'failoverOnDataDiskIssues[timePeriod]',
+                                 'failoverPreserveDurabilityMajority',
                                  'canAbortRebalance',
                                  'disableMaxCount' ]
         if self.is_enterprise:
             assert not 'failoverServerGroup' in self.post_data_keys
             assert 'canAbortRebalance' in self.post_data_keys
+            assert 'failoverOnDataDiskIssues[enabled]' in self.post_data_keys
+            assert 'failoverOnDataDiskIssues[timePeriod]' in self.post_data_keys
+
+            if self.is_72:
+                assert 'failoverPreserveDurabilityMajority' in \
+                    self.post_data_keys
+            else:
+                assert not 'failoverPreserveDurabilityMajority' in \
+                    self.post_data_keys
+
             if self.is_76:
                 assert 'disableMaxCount' in self.post_data_keys
                 if self.is_serverless:
@@ -109,11 +121,13 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
                 self.limits['failoverOnDataDiskIssues[timePeriod]']['min'],
                 self.limits['failoverOnDataDiskIssues[timePeriod]']['max']]
 
-        if 'canAbortRebalance' in self.post_data_keys:
-            self.test_params['canAbortRebalance'] = [ None, 'true', 'false' ]
+        bool_params = [ None, 'true', 'false' ]
+        bool_keys = ['canAbortRebalance', 'disableMaxCount',
+                     'failoverPreserveDurabilityMajority']
 
-        if 'disableMaxCount' in self.post_data_keys:
-            self.test_params['disableMaxCount'] = [ None, 'true', 'false' ]
+        for key in bool_keys:
+            if key in self.post_data_keys:
+                self.test_params[key] = bool_params
 
     # Populate bad_params with invalid values for all supported parameters.
     def init_bad_params(self):
@@ -136,6 +150,8 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
             self.bad_params['canAbortRebalance'] = [ 1 ]
         if 'disableMaxCount' in self.post_data_keys:
             self.bad_params['disableMaxCount'] = ['disabled']
+        if 'failoverPreserveDurabilityMajority' in self.post_data_keys:
+            self.bad_params['failoverPreserveDurabilityMajority'] = ['bad']
 
     def get_integer_error(self, testData, field):
         if field in testData:
@@ -232,8 +248,10 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
                                             'failoverOnDataDiskIssues[enabled]',
                                         'failoverOnDataDiskIssues[timePeriod]'))
 
-        if 'canAbortRebalance' in self.post_data_keys:
-            errors.update(self.get_boolean_error(testData, 'canAbortRebalance'))
+        bool_keys = [ 'canAbortRebalance', 'failoverPreserveDurabilityMajority']
+        for key in bool_keys:
+            if key in self.post_data_keys:
+                errors.update(self.get_boolean_error(testData, key))
 
         errors.update(self.get_unsupported_errors(testData))
         return errors
@@ -358,7 +376,11 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
         if self.is_76:
             return 'failoverServerGroup'
 
-        return random.choice(['failoverServerGroup', 'disableMaxCount'])
+        if self.is_72:
+            return random.choice(['failoverServerGroup', 'disableMaxCount'])
+
+        return random.choice(['failoverServerGroup', 'disableMaxCount',
+                              'failoverPreserveDurabilityMajority'])
 
     """
     Given an input dictionary with possible parameter value(s):
