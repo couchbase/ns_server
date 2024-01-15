@@ -622,7 +622,8 @@ check(indexer_low_resident_percentage, Opaque, _History, Stats) ->
                     %% done to handle the case where Avg Resident Percent is
                     %% low due to indexer restart but there is sufficient
                     %% memory.
-                    case Threshold =/= undefined andalso
+                    case cluster_compat_mode:is_enterprise() andalso
+                        Threshold =/= undefined andalso
                         (NumIndexes > 0) andalso
                         (AvgPct < Threshold) andalso
                         (MemoryQuota > 0) andalso
