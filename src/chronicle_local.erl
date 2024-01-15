@@ -137,8 +137,35 @@ sync() ->
 
 provision() ->
     ?log_debug("Provision chronicle on this node"),
-    ok = chronicle:provision([{kv, chronicle_kv, []}]),
-    chronicle_upgrade:maybe_initialize().
+    try
+        ok = chronicle:provision([{kv, chronicle_kv, []}]),
+        chronicle_upgrade:maybe_initialize()
+    catch
+        E:T:S ->
+            ?log_error("Provision chronicle failed on this node.~n"
+                       "Error - ~p, Type - ~p, Stacktrace - ~p",
+                       [E, T, S]),
+            %% As a part of chronicle:provision/1, we do the following steps:
+            %%
+            %% 1. Add an entry to the append log with state = provisioned
+            %% 2. Spawn all chronicle related processes such as
+            %%    chronicle_leader, chronicle_server and
+            %%    chronicle_single_rsm_sup'es (for chronicle_config_rsm and
+            %%    chronicle_kv) etc via chronicle_secondary_sup.
+            %% 3. Wait for the all the processes to be spawned in the step
+            %%    above for 20 secs.
+            %%
+            %% And eventually seed the default keys in chronicle_kv.
+            %%
+            %% There is tight coupling between the internal state in
+            %% chronicle_config and chronicle_secondary_sup and it's very hard
+            %% to atomically perform all the above steps.
+            %%
+            %% If any of them fail, return to a clean slate and let retry do
+            %% it's magic.
+            ok = chronicle:wipe(),
+            erlang:raise(E, T, S)
+    end.
 
 handle_leave() ->
     ?log_debug("Leaving cluster"),
