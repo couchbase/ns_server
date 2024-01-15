@@ -385,8 +385,15 @@ uilogin(Req, Params) ->
                 end;
             false ->
                 Usr = proplists:get_value("user", Params),
-                Password = proplists:get_value("password", Params),
-                {Usr, authenticate({Usr, Password})}
+                case can_use_cert_for_auth(Req) of
+                    must_use ->
+                        %% client cert is mandatory, but user is trying
+                        %% to use a password to login
+                        {Usr, {error, auth_failure}};
+                    _ ->
+                        Password = proplists:get_value("password", Params),
+                        {Usr, authenticate({Usr, Password})}
+                end
         end,
 
     case AuthnStatus of
