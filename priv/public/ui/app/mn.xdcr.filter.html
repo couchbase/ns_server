@@ -37,7 +37,7 @@ licenses/APL2.txt.
 </div>
 
 <div
-   *ngIf="formHelper.group.get('enableFilters').value"
+   *ngIf="formHelper.group.get('enableFilters').valueChanges | async"
    [formGroup]="group">
   <div class="margin-bottom-1-5">
     <label class="inline margin-right-quarter">Filter Expression</label>

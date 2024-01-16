@@ -16,6 +16,7 @@ from testsets.cert_load_tests import read_cert_file, load_ca, \
 import tempfile
 import contextlib
 
+CERT_REQUIRED_ALERT = 'ALERT_CERTIFICATE_REQUIRED'
 
 class AuthnTests(testlib.BaseTestSet):
 
@@ -140,13 +141,12 @@ class AuthnTests(testlib.BaseTestSet):
         node = self.cluster.connected_nodes[0]
         with client_cert_auth(node, user, True, mandatory) as client_cert_file:
             if mandatory: # cert auth is mandatory, regular auth is not allowed
-                expected_alert = 'ALERT_CERTIFICATE_REQUIRED'
                 try:
                     testlib.get(self.cluster, self.testEndpoint,
                                 https=True, auth=self.creds)
-                    assert False, f'TLS alert {expected_alert} is expected'
+                    assert False, f'TLS alert {CERT_REQUIRED_ALERT} is expected'
                 except requests.exceptions.SSLError as e:
-                    testlib.assert_in(expected_alert, str(e))
+                    testlib.assert_in(CERT_REQUIRED_ALERT, str(e))
 
             else: # regular auth should still work
                 testlib.get_succ(self.cluster, self.testEndpoint, https=True,
@@ -164,17 +164,82 @@ class AuthnTests(testlib.BaseTestSet):
         self.client_cert_auth_test_base(mandatory=True)
 
 
-    def client_cert_ui_login_test(self):
-        (user, _) = self.creds
+    def mandatory_client_cert_ui_login_test(self):
+        self.client_cert_ui_login_base(mandatory=True)
+
+
+    def optional_client_cert_ui_login_test(self):
+        self.client_cert_ui_login_base(mandatory=False)
+
+
+    def client_cert_ui_login_base(self, mandatory=None):
+        (user, password) = self.creds
         node = self.cluster.connected_nodes[0]
         server_ca_file = os.path.join(node.data_path(),
                                       'config', 'certs', 'ca.pem')
-        with client_cert_auth(node, user, True, True) as client_cert_file:
+        with client_cert_auth(node, user, True, mandatory) as client_cert_file:
             self.uilogin_test_base(node,
                                    params={'use_cert_for_auth': '1'},
                                    https=True,
                                    cert=client_cert_file,
                                    verify=server_ca_file)
+            try:
+                self.uilogin_test_base(self.cluster.connected_nodes[0],
+                                       https=True,
+                                       verify=server_ca_file,
+                                       data={'user': user,
+                                             'password': password})
+                if mandatory:
+                    assert False, 'The UI login is expected to fail because ' \
+                                  'client cert authentication is mandatory'
+            except requests.exceptions.SSLError as e:
+                if mandatory:
+                    testlib.assert_in(CERT_REQUIRED_ALERT, str(e))
+                else:
+                    raise
+
+
+    def ui_auth_methods_api_test(self):
+        (user, _) = self.creds
+        node = self.cluster.connected_nodes[0]
+        # Client cert auth is disabled:
+        with client_cert_auth(node, user, False, False) as cert:
+            assert_client_cert_UI_login_availability(
+                node, https=True, cert=cert, expected="cannot_use")
+            assert_client_cert_UI_login_availability(
+                node, https=True, expected="cannot_use")
+            assert_client_cert_UI_login_availability(
+                node, https=False, expected="cannot_use")
+
+        # Client cert auth is optional:
+        with client_cert_auth(node, user, True, False) as cert:
+            assert_client_cert_UI_login_availability(
+                node, https=True, cert=cert, expected="can_use")
+            assert_client_cert_UI_login_availability(
+                node, https=True, expected="cannot_use")
+            assert_client_cert_UI_login_availability(
+                node, https=False, expected="cannot_use")
+
+        # Client cert auth is mandatory:
+        with client_cert_auth(node, user, True, True) as cert:
+            assert_client_cert_UI_login_availability(
+                node, https=True, cert=cert, expected="must_use")
+            try:
+                assert_client_cert_UI_login_availability(
+                    node, https=True, expected="impossible")
+            except requests.exceptions.SSLError as e:
+                testlib.assert_in(CERT_REQUIRED_ALERT, str(e))
+            assert_client_cert_UI_login_availability(
+                node, https=False, expected="cannot_use")
+
+
+
+def assert_client_cert_UI_login_availability(node, expected=None, **kwargs):
+    server_ca_file = os.path.join(node.data_path(), 'config', 'certs', 'ca.pem')
+    r = testlib.get_succ(node, "/_ui/authMethods", verify=server_ca_file,
+                         auth=None, **kwargs).json()
+    testlib.assert_eq(r['clientCertificates'], expected,
+                      name='clientCertificates value')
 
 
 @contextlib.contextmanager
