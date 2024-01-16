@@ -10,7 +10,7 @@ licenses/APL2.txt.
 
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {merge, pipe} from 'rxjs';
-import {map, filter, startWith,
+import {map, filter, startWith, delay,
         withLatestFrom, takeUntil} from 'rxjs/operators';
 
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
@@ -107,7 +107,8 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
       .clearErrors();
 
     this.settingsPipe
-    .pipe(takeUntil(this.mnOnDestroy))
+    .pipe(delay(0),
+          takeUntil(this.mnOnDestroy))
     .subscribe((settings) => {
       this.formHelper.group.patchValue({
         enableFilters: !!settings.filterExpression ||

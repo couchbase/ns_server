@@ -10,8 +10,8 @@ licenses/APL2.txt.
 
 export default mnAddLDAPDialogController;
 
-mnAddLDAPDialogController.$inject = ["mnUserRolesService", "mnPromiseHelper", "$uibModalInstance", "mnPoolDefault"];
-function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModalInstance, mnPoolDefault) {
+mnAddLDAPDialogController.$inject = ["$scope", "mnUserRolesService", "mnPromiseHelper", "$uibModalInstance", "mnPoolDefault"];
+function mnAddLDAPDialogController($scope, mnUserRolesService, mnPromiseHelper, $uibModalInstance, mnPoolDefault) {
   var vm = this;
 
   vm.config = {
@@ -104,6 +104,25 @@ function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModa
       vm.config.connect.clientTLSKey = config.clientTLSKey || "";
       vm.isCertLoaded = !!config.clientTLSCert;
     });
+    $scope.$watch("addLdapDialogCtl.config.authentication.userDNMapping.advanced", validateUserDNMappingAdvanced)
+  }
+
+  function maybeSetUserDNMappingError(error) {
+    vm.errors = vm.errors || {};
+    vm.errors.userDNMapping = error;
+  }
+
+  function validateUserDNMappingAdvanced(v) {
+    if (v) {
+      try {
+        JSON.parse(v);
+        maybeSetUserDNMappingError("");
+      } catch (e) {
+        maybeSetUserDNMappingError(e);
+      }
+    } else {
+      maybeSetUserDNMappingError("");
+    }
   }
 
   function getAuthType(data) {
@@ -214,7 +233,11 @@ function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModa
           (config.userDNMapping.filter || "");
         return JSON.stringify({query: dnQuery});
       case "advanced":
-        return JSON.stringify({advanced: JSON.parse(config.userDNMapping.advanced) || ""});
+        try {
+          return JSON.stringify({advanced: JSON.parse(config.userDNMapping.advanced) || ""});
+        } catch (e) {
+          return JSON.stringify({advanced: ""})
+        }
     }
   }
 
