@@ -33,7 +33,8 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
         "group",
         "xdcrGroup",
         "isEditMode",
-        "settingsPipe"
+        "settingsPipe",
+        "formHelper"
       ]
     })
   ]}
@@ -49,10 +50,6 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
     super();
 
     this.form = mnFormService.create(this);
-
-    this.formHelper =
-      mnFormService.create(this)
-      .setFormGroup({enableFilters: false});
 
     this.postRegexpValidation =
       mnXDCRService.stream.postRegexpValidation;
