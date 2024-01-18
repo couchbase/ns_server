@@ -94,6 +94,7 @@ licenses/APL2.txt.
          [bucket]="form.group.get('fromBucket').value"
          [settingsPipe]="getSettingsReplications"
          [group]="filterRegexpGroup"
+         [formHelper]="filterFormHelper"
          class="block"
          *ngIf="(isEnterprise | async)"></mn-xdcr-filter>
 

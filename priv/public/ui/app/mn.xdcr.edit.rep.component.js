@@ -65,6 +65,9 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
       mnXDCRService.stream.postSettingsReplications;
     this.createGetSettingsReplicationsPipe =
       mnXDCRService.createGetSettingsReplicationsPipe.bind(mnXDCRService);
+
+    this.filterFormHelper = mnFormService.create(this)
+      .setFormGroup({enableFilters: false});
   }
 
   ngOnInit() {
@@ -101,7 +104,7 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
                      networkUsageLimit: null,
                      logLevel: null})
       .setPackPipe(pipe(
-        withLatestFrom(this.isEnterprise, this.compatVersion55),
+        withLatestFrom(this.isEnterprise, this.compatVersion55, this.filterFormHelper.group.valueChanges),
         map(this.prepareReplicationSettigns),
         map(data => [this.item.id, data])))
       .setSourceShared(this.replicationSettings)

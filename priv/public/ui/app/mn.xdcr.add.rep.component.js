@@ -61,6 +61,9 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
     this.error = merge(this.postCreateReplication.error,
                        this.postCreateReplicationValidation.error);
 
+    this.filterFormHelper = mnFormService.create(this)
+                            .setFormGroup({enableFilters: false});
+
 
     this.form = mnFormService.create(this)
       .setFormGroup({fromBucket: ["", [Validators.required]],
@@ -94,8 +97,9 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
     this.form
       .setPackPipe(pipe(withLatestFrom(this.isEnterprise,
                                        mnAdminService.stream.compatVersion55,
+                                       this.filterFormHelper.group.valueChanges,
                                        this.isSaveButtonDisabled),
-                        filter(([, , , isDisabled]) => !isDisabled),
+                        filter(([, , , , isDisabled]) => !isDisabled),
                         map(mnXDCRService.prepareReplicationSettigns.bind(this))))
       .setSourceShared(this.getSettingsReplications)
       .setPostRequest(this.postCreateReplication)
