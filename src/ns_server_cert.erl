@@ -988,6 +988,8 @@ add_CAs_txn_fun(Type, Pem, Opts) when is_binary(Pem),
     SingleCert = proplists:get_bool(single_cert, Opts),
     ExtraCertProps = proplists:get_value(extra_props, Opts, []),
     case decode_certificates(Pem) of
+        {ok, []} ->
+            {error, empty_cert};
         {ok, DerCerts} when SingleCert,
                             length(DerCerts) > 1 ->
             {error, too_many_entries};
