@@ -36,12 +36,14 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
             self.limits['failoverOnDataDiskIssues[timePeriod]']['min'] = 5
             self.limits['failoverOnDataDiskIssues[timePeriod]']['max'] = 3600
 
+    def init_result_keys(self, keys):
+        self.result_keys = keys
+        self.result_keys.remove('count')
+
     def setup(self):
         self.endpoint = '/settings/autoFailover'
         self.prev_settings = testlib.get(self.cluster, self.endpoint).json()
-        # count cannot be modified using this request
-        self.result_keys = list(self.prev_settings.keys())
-        self.result_keys.remove('count')
+        self.init_result_keys(list(self.prev_settings.keys()))
         self.is_enterprise = self.cluster.is_enterprise
         self.is_72 = self.cluster.is_72
         self.is_76 = self.cluster.is_76
@@ -330,14 +332,14 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
                 # maxCount will be pruned from queried settings
                 assert 'maxCount' in self.prev_settings
                 del self.prev_settings['maxCount']
-                self.result_keys = list(self.prev_settings.keys())
+                self.init_result_keys(list(self.prev_settings.keys()))
             elif 'disableMaxCount' in delta and \
                  delta['disableMaxCount'] == 'false' and \
                  self.prev_settings['disableMaxCount']:
                 # maxCount will appear in the queried settings
                 assert 'maxCount' not in self.prev_settings
                 self.prev_settings['maxCount'] = resp.json()['maxCount']
-                self.result_keys = list(self.prev_settings.keys())
+                self.init_result_keys(list(self.prev_settings.keys()))
 
         self.compare_settings(resp.json(), delta)
         self.prev_settings = resp.json()
