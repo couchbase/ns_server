@@ -408,16 +408,6 @@ maybe_delete_stat(Bucket, Metric, Key, Labels) ->
             ok
     end.
 
-report_erlang_stat(Stat, ReportFun) ->
-    Prefix = <<"erlang_">>,
-    ATB = atom_to_binary(Stat),
-
-    report_stat(
-      {{g, {<<Prefix/binary, ATB/binary>>, []}},
-       {0, erlang:system_info(Stat)}},
-      ReportFun),
-    ok.
-
 report_erlang_stats(ReportFun) ->
     InterestingErlangStats = [
         port_count,
@@ -427,7 +417,8 @@ report_erlang_stats(ReportFun) ->
     ],
     lists:foreach(
         fun(Stat) ->
-            report_erlang_stat(Stat, ReportFun)
+            ReportFun({[?METRIC_PREFIX, <<"erlang_">>, atom_to_binary(Stat)],
+                       [], erlang:system_info(Stat)})
         end, InterestingErlangStats).
 
 %% Derived stats are those where ns_server has instructed prometheus to
