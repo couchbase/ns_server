@@ -47,6 +47,15 @@
 
 -type os_pid() :: integer().
 
+-type metric() :: atom() | binary() | {atom() | binary(), [label()]}.
+-type label() :: {atom() | binary() | iolist(),
+                  integer() | float() | atom() | binary() | iolist()}.
+
+-type gauge_value() :: undefined | infinity | neg_infinity | binary()
+                       | number().
+
+-type units() :: second | millisecond | microsecond.
+
 -record(state, {
           process_stats_timer :: reference() | undefined,
           cleanup_stats_timer :: reference() | undefined,
@@ -56,21 +65,28 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+-spec notify_counter(metric()) -> ok.
 notify_counter(Metric) ->
     notify_counter(Metric, 1).
+
+-spec notify_counter(metric(), pos_integer()) -> ok.
 notify_counter(Metric, Val) when Val > 0, is_integer(Val) ->
     Key = {c, normalized_metric(Metric)},
     catch ets:update_counter(?MODULE, Key, Val, {Key, 0}),
     ok.
 
+-spec notify_gauge(metric(), gauge_value()) -> ok.
 notify_gauge(Metric, Val) ->
     Key = {g, normalized_metric(Metric)},
     Now = erlang:monotonic_time(millisecond),
     catch ets:insert(?MODULE, {Key, {Now, Val}}),
     ok.
 
+-spec notify_histogram(metric(), integer()) -> ok.
 notify_histogram(Metric, Val) ->
     notify_histogram(Metric, ?DEFAULT_HIST_MAX, ?DEFAULT_HIST_UNIT, Val).
+
+-spec notify_histogram(metric(), pos_integer(), units(), integer()) -> ok.
 notify_histogram(Metric, Max, Units, Val) when Max > 0, Val >= 0,
                                                is_integer(Val) ->
     BucketN = get_histogram_bucket(Val, Max),
@@ -101,15 +117,19 @@ notify_histogram(Metric, _Max, _Units, Val) when Val < 0 ->
 
 %% It is unsafe to use this function from multiple processes with the same
 %% metric
+-spec notify_max({metric(), pos_integer(), pos_integer()}, number()) -> ok.
 notify_max({Metric, Window, BucketSize}, Val) ->
     Now = erlang:monotonic_time(millisecond),
     notify_moving_window(max, Metric, Window, BucketSize, Now, ?MODULE, Val).
 
+-spec report_prom_stats(
+        fun (({atom() | binary(), [label()], gauge_value()}) -> ok),
+        boolean(), undefined | pos_integer()) -> ok.
 report_prom_stats(ReportFun, IsHighCard, undefined) ->
     report_prom_stats(ReportFun, IsHighCard);
 report_prom_stats(ReportFun, IsHighCard, Timeout) ->
     case async:run_with_timeout(fun () ->
-                                    report_prom_stats(ReportFun, IsHighCard)
+                                        report_prom_stats(ReportFun, IsHighCard)
                                 end, Timeout) of
         {ok, Res} -> Res;
         {error, timeout} ->
@@ -117,6 +137,9 @@ report_prom_stats(ReportFun, IsHighCard, Timeout) ->
             {error, timeout}
     end.
 
+-spec report_prom_stats(
+        fun (({atom() | binary(), [label()], gauge_value()}) -> ok),
+        boolean()) -> ok.
 report_prom_stats(ReportFun, IsHighCard) ->
     Try = fun (Name, F) ->
               try F()
