@@ -34,7 +34,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -export([init_stats/0, notify_counter/1, notify_counter/2, notify_gauge/2,
-         notify_histogram/2, notify_histogram/4, notify_max/2]).
+         notify_gauge/3, notify_histogram/2, notify_histogram/4, notify_max/2]).
 
 -export([increment_counter/2,
          get_ns_server_stats/0,
@@ -77,9 +77,31 @@ notify_counter(Metric, Val) when Val > 0, is_integer(Val) ->
 
 -spec notify_gauge(metric(), gauge_value()) -> ok.
 notify_gauge(Metric, Val) ->
+    notify_gauge(Metric, Val, #{}).
+
+%% Store a value for a metric that we don't wish to fetch at scrape time.
+%% Stale values will be cleaned up after an expiration time, which is by default
+%% 3 minutes (the maximum scrape interval that we permit for the prometheus
+%% config).
+%% The expiration can be set to infinity to avoid the gauge ever getting cleaned
+%% up. However, we should only use infinity when updates to the metric could be
+%% arbitrarily far apart, and the metric is expected to be valid indefinitely.
+%% If the metric is associated with an entity which could disappear (for
+%% instance bucket deletion, or potentially in future, the removal of a
+%% service), then the gauge should get cleaned up at that point.
+-spec notify_gauge(metric(), gauge_value(),
+                   #{expiration_s => pos_integer() | infinity}) -> ok.
+notify_gauge(Metric, Val, Opts) ->
     Key = {g, normalized_metric(Metric)},
-    Now = erlang:monotonic_time(millisecond),
-    catch ets:insert(?MODULE, {Key, {Now, Val}}),
+    Expiration = maps:get(expiration_s, Opts,
+                          prometheus_cfg:max_scrape_int()),
+
+    ExpiryTime =
+        case Expiration of
+            infinity -> infinity;
+            _ ->  erlang:monotonic_time(millisecond) + Expiration * 1000
+        end,
+    catch ets:insert(?MODULE, {Key, {ExpiryTime, Val}}),
     ok.
 
 -spec notify_histogram(metric(), integer()) -> ok.
@@ -547,11 +569,11 @@ handle_info(process_ns_server_stats, State) ->
 handle_info(cleanup_ns_server_stats, State) ->
     misc:flush(cleanup_ns_server_stats),
     Now = erlang:monotonic_time(millisecond),
-    CreationTS = Now - prometheus_cfg:max_scrape_int() * 1000,
+
     NumDeleted = ets:select_delete(?MODULE,
                                    [{{{g, '_'}, {'$1', '_'}},
-                                    [{'=<', '$1', CreationTS}],
-                                    [true]}]),
+                                     [{'=<', '$1', Now}],
+                                     [true]}]),
     NumDeleted > 0
         andalso ?log_debug("Abandoned ~p ns_server stats", [NumDeleted]),
     {noreply, restart_cleanup_stats_timer(State)};
@@ -932,6 +954,53 @@ restart_cleanup_stats_timer(#state{cleanup_stats_timer = Ref} = State)
     restart_cleanup_stats_timer(State#state{cleanup_stats_timer = undefined}).
 
 -ifdef(TEST).
+cleanup_stats_test_() ->
+    State = #state{},
+    {foreach,
+     fun () ->
+             meck:expect(ns_config, get_timeout,
+                         fun({?MODULE, cleanup_stats}, _Default) ->
+                                 %% Large value to avoid unexpected cleanup
+                                 1000000
+                         end),
+             ets:new(?MODULE, [public, named_table, set])
+     end,
+     fun  (_) ->
+             meck:unload(),
+             ets:delete(?MODULE)
+     end,
+     [{"no-op cleanup",
+       fun () ->
+               ?assertEqual(0, ets:info(?MODULE, size)),
+               handle_info(cleanup_ns_server_stats, State),
+               ?assertEqual(0, ets:info(?MODULE, size))
+       end},
+      {"old value cleanup",
+       fun () ->
+               ?assertEqual(0, ets:info(?MODULE, size)),
+               ns_server_stats:notify_gauge(test, 0, #{expiration_s => 0}),
+               ?assertEqual(1, ets:info(?MODULE, size)),
+               handle_info(cleanup_ns_server_stats, State),
+               ?assertEqual(0, ets:info(?MODULE, size))
+       end},
+      {"new value no cleanup",
+       fun () ->
+               ?assertEqual(0, ets:info(?MODULE, size)),
+               ns_server_stats:notify_gauge(test, 0, #{expiration_s => 1000}),
+               ?assertEqual(1, ets:info(?MODULE, size)),
+               handle_info(cleanup_ns_server_stats, State),
+               ?assertEqual(1, ets:info(?MODULE, size))
+       end},
+      {"no expiration no cleanup",
+       fun () ->
+               ?assertEqual(0, ets:info(?MODULE, size)),
+               ns_server_stats:notify_gauge(test, 0,
+                                            #{expiration_s => infinity}),
+               ?assertEqual(1, ets:info(?MODULE, size)),
+               handle_info(cleanup_ns_server_stats, State),
+               ?assertEqual(1, ets:info(?MODULE, size))
+       end}]}.
+
 %% Add each type of stat to the ns_server_stats table, delete them, and
 %% verify they are gone.
 stats_deletion_test() ->
