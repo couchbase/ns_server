@@ -163,7 +163,7 @@ class MnXDCRService {
 
   }
 
-  prepareReplicationSettigns([, isEnterprise, compatVersion55]) {
+  prepareReplicationSettigns([, isEnterprise, compatVersion55, filterFormHelper]) {
     //this points to the component view instance
     var settings = Object.assign({}, this.form.group.value, this.filterRegexpGroup.value);
     delete settings.docId;
@@ -173,6 +173,14 @@ class MnXDCRService {
       delete settings.filterExpression;
       delete settings.filterSkipRestream;
       delete settings.priority;
+    }
+
+    if (!filterFormHelper.enableFilters) {
+      settings.filterExpression = '';
+      settings.filterExpiration = false;
+      settings.filterDeletion = false;
+      settings.filterBypassExpiry = false;
+      settings.filterBinary = false;
     }
 
     if (!this.isEditMode) {

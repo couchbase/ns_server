@@ -34,14 +34,21 @@ class AuthnTests(testlib.BaseTestSet):
         self.creds = (username, password)
         self.wrong_pass_creds = (username, wrong_password)
         self.wrong_user_creds = (wrong_user, password)
+        self.cert_user = testlib.random_str(8)
         testlib.put_succ(self.cluster, f'/settings/rbac/users/local/{username}',
                          data={'roles': 'ro_admin', 'password': password})
+        testlib.put_succ(self.cluster,
+                         f'/settings/rbac/users/local/{self.cert_user}',
+                         data={'roles': 'ro_admin',
+                               'password': testlib.random_str(8)})
 
 
     def teardown(self):
         (username, password) = self.creds
         testlib.ensure_deleted(self.cluster,
                                f'/settings/rbac/users/local/{username}')
+        testlib.ensure_deleted(self.cluster,
+                               f'/settings/rbac/users/local/{self.cert_user}')
 
 
     def basic_auth_test(self):
@@ -95,18 +102,22 @@ class AuthnTests(testlib.BaseTestSet):
                              auth=('@localtoken', token + 'foo'))
 
 
-    def uilogin_test_base(self, node, https=False, **kwargs):
+    def uilogin_test_base(self, node, expected_code=200, expected_username=None,
+                          https=False, **kwargs):
         session = requests.Session()
         base_url = node.url if not https else node.https_url()
         headers={'Host': testlib.random_str(8), 'ns-server-ui': 'yes'}
         r = session.post(base_url + '/uilogin', headers=headers, **kwargs)
-        testlib.assert_http_code(200, r)
-        r = session.get(base_url + self.testEndpoint, headers=headers)
-        testlib.assert_http_code(200, r)
-        r = session.post(base_url + '/uilogout', headers=headers)
-        testlib.assert_http_code(200, r)
-        r = session.get(base_url + self.testEndpoint, headers=headers)
-        testlib.assert_http_code(401, r)
+        testlib.assert_http_code(expected_code, r)
+        if expected_code == 200:
+            r = session.get(base_url + self.testEndpoint, headers=headers)
+            testlib.assert_http_code(200, r)
+            r = session.get(base_url + '/whoami', headers=headers).json()
+            testlib.assert_eq(r['id'], expected_username, name='username')
+            r = session.post(base_url + '/uilogout', headers=headers)
+            testlib.assert_http_code(200, r)
+            r = session.get(base_url + self.testEndpoint, headers=headers)
+            testlib.assert_http_code(401, r)
 
 
     def uitoken_test(self):
@@ -115,6 +126,7 @@ class AuthnTests(testlib.BaseTestSet):
         testlib.post_fail(self.cluster, '/uilogin', 400, auth=None,
                           data={'user': wrong_user, 'password': wrong_password})
         self.uilogin_test_base(self.cluster.connected_nodes[0],
+                               expected_username=user,
                                data={'user': user, 'password': password})
 
 
@@ -137,7 +149,7 @@ class AuthnTests(testlib.BaseTestSet):
 
 
     def client_cert_auth_test_base(self, mandatory=None):
-        (user, _) = self.creds
+        user = self.cert_user
         node = self.cluster.connected_nodes[0]
         with client_cert_auth(node, user, True, mandatory) as client_cert_file:
             if mandatory: # cert auth is mandatory, regular auth is not allowed
@@ -147,6 +159,11 @@ class AuthnTests(testlib.BaseTestSet):
                     assert False, f'TLS alert {CERT_REQUIRED_ALERT} is expected'
                 except requests.exceptions.SSLError as e:
                     testlib.assert_in(CERT_REQUIRED_ALERT, str(e))
+
+                r = testlib.get_succ(self.cluster, '/whoami', https=True,
+                                     auth=self.creds,
+                                     cert=client_cert_file).json()
+                testlib.assert_eq(r['id'], user, name='username')
 
             else: # regular auth should still work
                 testlib.get_succ(self.cluster, self.testEndpoint, https=True,
@@ -174,17 +191,22 @@ class AuthnTests(testlib.BaseTestSet):
 
     def client_cert_ui_login_base(self, mandatory=None):
         (user, password) = self.creds
+        cert_user = self.cert_user
         node = self.cluster.connected_nodes[0]
         server_ca_file = os.path.join(node.data_path(),
                                       'config', 'certs', 'ca.pem')
-        with client_cert_auth(node, user, True, mandatory) as client_cert_file:
+        with client_cert_auth(node, cert_user,
+                              True, mandatory) as client_cert_file:
             self.uilogin_test_base(node,
                                    params={'use_cert_for_auth': '1'},
+                                   expected_username=cert_user,
                                    https=True,
                                    cert=client_cert_file,
                                    verify=server_ca_file)
             try:
+                # Try using (User, Password) instead of certificate
                 self.uilogin_test_base(self.cluster.connected_nodes[0],
+                                       expected_username=user,
                                        https=True,
                                        verify=server_ca_file,
                                        data={'user': user,
@@ -198,12 +220,24 @@ class AuthnTests(testlib.BaseTestSet):
                 else:
                     raise
 
+            # Provide client certificate but try using username and password
+            # explicitly
+            expected_code = 400 if mandatory else 200
+            self.uilogin_test_base(self.cluster.connected_nodes[0],
+                                   expected_code=expected_code,
+                                   expected_username=user,
+                                   https=True,
+                                   verify=server_ca_file,
+                                   cert=client_cert_file,
+                                   data={'user': user,
+                                         'password': password})
+
 
     def ui_auth_methods_api_test(self):
         (user, _) = self.creds
         node = self.cluster.connected_nodes[0]
         # Client cert auth is disabled:
-        with client_cert_auth(node, user, False, False) as cert:
+        with client_cert_auth(node, self.cert_user, False, False) as cert:
             assert_client_cert_UI_login_availability(
                 node, https=True, cert=cert, expected="cannot_use")
             assert_client_cert_UI_login_availability(
@@ -212,7 +246,7 @@ class AuthnTests(testlib.BaseTestSet):
                 node, https=False, expected="cannot_use")
 
         # Client cert auth is optional:
-        with client_cert_auth(node, user, True, False) as cert:
+        with client_cert_auth(node, self.cert_user, True, False) as cert:
             assert_client_cert_UI_login_availability(
                 node, https=True, cert=cert, expected="can_use")
             assert_client_cert_UI_login_availability(
@@ -221,7 +255,7 @@ class AuthnTests(testlib.BaseTestSet):
                 node, https=False, expected="cannot_use")
 
         # Client cert auth is mandatory:
-        with client_cert_auth(node, user, True, True) as cert:
+        with client_cert_auth(node, self.cert_user, True, True) as cert:
             assert_client_cert_UI_login_availability(
                 node, https=True, cert=cert, expected="must_use")
             try:

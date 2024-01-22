@@ -763,8 +763,7 @@
           "enabled" : true,
           "filtering_permitted" : false,
           "mandatory_fields" : {
-              "timestamp" : "",
-              "identity" : {"domain" : "", "user" : ""}
+              "timestamp" : ""
           },
           "optional_fields" : {
               "real_userid" : {"domain" : "", "user" : ""},
