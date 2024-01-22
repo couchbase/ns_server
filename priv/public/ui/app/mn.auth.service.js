@@ -9,7 +9,7 @@ licenses/APL2.txt.
 */
 
 import {Injectable} from '@angular/core';
-import {HttpClient} from '@angular/common/http';
+import {HttpClient, HttpParams} from '@angular/common/http';
 import {map} from 'rxjs/operators';
 import {BehaviorSubject} from 'rxjs';
 import {shareReplay, switchMap} from 'rxjs/operators';
@@ -50,8 +50,9 @@ class MnAuthService {
     return this.http.get('/whoami');
   }
 
-  postUILogin(user) {
-    return this.http.post('/uilogin', user || {});
+  postUILogin([user, useCertForAuth]) {
+    const params = new HttpParams().set('use_cert_for_auth', useCertForAuth ? '1': '0');
+    return this.http.post('/uilogin', user || {}, {params});
     // should be moved into app.admin alerts
     // we should say something like you are using cached vesrion, reload the tab
     // return that.mnPoolsService

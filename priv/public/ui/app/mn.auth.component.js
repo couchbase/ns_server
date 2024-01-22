@@ -10,7 +10,7 @@ licenses/APL2.txt.
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {Validators} from '@angular/forms';
 import {BehaviorSubject, NEVER} from 'rxjs';
-import {pluck, switchMap, distinctUntilChanged, shareReplay} from 'rxjs/operators';
+import {pluck, switchMap, distinctUntilChanged, shareReplay, map} from 'rxjs/operators';
 import {UIRouter} from '@uirouter/angular';
 
 
@@ -58,6 +58,10 @@ class MnAuthComponent extends MnLifeCycleHooksToStream {
       .setFormGroup({
         user: ['', Validators.required],
         password: ['', Validators.required]})
+      .setPackPipe(map(() => ([
+        this.form.group.value,
+        false
+      ])))
       .setPostRequest(this.postUILogin)
       .showGlobalSpinner()
       .success(() => {
@@ -65,5 +69,11 @@ class MnAuthComponent extends MnLifeCycleHooksToStream {
         mnPools.clearCache();
         uiRouter.urlRouter.sync();
       });
+
+      this.certAuth = mnFormService.create(this)
+        .setFormGroup({})
+        .setPackPipe(map(() => ([null, true])))
+        .setPostRequest(this.postUILogin)
+        .hasNoHandler()
   }
 }
