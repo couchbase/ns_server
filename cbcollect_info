@@ -290,6 +290,10 @@ def log(message, new_line=True):
 
 
 def log_failed_rmtree(function, path, other):
+    (clazz, _instance, _traceback) = other
+    if clazz == FileNotFoundError:
+        return
+
     log(f"[{function}] Failed to remove file '{path}'. Extra info: {other}")
 
 
