@@ -34,6 +34,7 @@
          reply_json/4,
          parse_json/1,
          reply_not_found/1,
+         reply_text_404/0,
          handle_request/2,
          hibernate/4,
          serve_file/3,
@@ -186,7 +187,12 @@ reply_not_found(Req) ->
     reply_not_found(Req, []).
 
 reply_not_found(Req, ExtraHeaders) ->
-    reply_text(Req, "Requested resource not found.\r\n", 404, ExtraHeaders).
+    reply_text(Req, reply_text_404(), 404, ExtraHeaders).
+
+%% do not change the text, because unfortunately some clients parse it
+%% to distihgush between different kinds of 404's
+reply_text_404() ->
+    "Requested resource not found.\r\n".
 
 reply_text(Req, Message, Code) ->
     reply_text(Req, Message, Code, []).
