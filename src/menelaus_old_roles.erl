@@ -13,10 +13,10 @@
 
 -include("rbac.hrl").
 
--export([roles_pre_trinity/0]).
+-export([roles_pre_76/0]).
 
--spec roles_pre_trinity() -> [rbac_role_def(), ...].
-roles_pre_trinity() ->
+-spec roles_pre_76() -> [rbac_role_def(), ...].
+roles_pre_76() ->
     [{admin, [],
       [{name, <<"Full Admin">>},
        {folder, admin},

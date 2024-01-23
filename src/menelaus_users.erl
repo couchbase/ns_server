@@ -184,7 +184,7 @@ init([]) ->
     ns_pubsub:subscribe_link(
       ns_config_events,
       fun ({ldap_settings, _}) ->
-              case cluster_compat_mode:is_cluster_trinity() of
+              case cluster_compat_mode:is_cluster_76() of
                   true -> Self ! maybe_reinit_cache;
                   false -> ok
               end;
@@ -192,7 +192,7 @@ init([]) ->
       end),
 
     CacheSize =
-        case cluster_compat_mode:is_cluster_trinity() of
+        case cluster_compat_mode:is_cluster_76() of
             true -> ldap_util:get_setting(max_group_cache_size);
             false -> ?LDAP_GROUPS_CACHE_SIZE
         end,
@@ -243,7 +243,7 @@ on_save(Docs, State) ->
     NewState.
 
 handle_info(maybe_reinit_cache, #state{cache_size = CurrentSize} = State) ->
-    %% TODO: this check for undefined can be removed when trinity is no longer
+    %% TODO: this check for undefined can be removed when 7.6 is no longer
     %% supported.
     NewSize = case ldap_util:get_setting(max_group_cache_size) of
                   undefined -> ?LDAP_GROUPS_CACHE_SIZE;
@@ -422,7 +422,7 @@ store_users(Users, CanOverwrite) ->
     Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),
     case prepare_store_users_docs(Snapshot, Users, CanOverwrite) of
         {ok, {UpdatedUsers, PreparedDocs}} ->
-            case cluster_compat_mode:is_cluster_trinity() of
+            case cluster_compat_mode:is_cluster_76() of
                 true ->
                     ok = replicated_dets:change_multiple(
                            storage_name(), PreparedDocs,
@@ -540,7 +540,7 @@ store_user_changes(Identity, Props, Auth, Exists) ->
 store_auth(_Identity, same, _Priority) ->
     unchanged;
 store_auth(Identity, Auth, Priority) when is_list(Auth) ->
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         true ->
             ok = replicated_dets:set(
                    storage_name(), {auth, Identity}, Auth,
@@ -567,7 +567,7 @@ delete_user({_, Domain} = Identity) ->
         local ->
             %% Add deletes at a higher priority to make sure they take
             %% precedence over any concurrent update to auth.
-            case cluster_compat_mode:is_cluster_trinity() of
+            case cluster_compat_mode:is_cluster_76() of
                 true ->
                     _ = replicated_dets:delete(
                           storage_name(), {auth, Identity},
@@ -653,7 +653,7 @@ maybe_update_auth(CurrentAuth, Password) ->
 maybe_migrate_password_hashes(
   CurrentAuth, {Username, local} = Identity, Password) ->
     MigrateHashes =
-        cluster_compat_mode:is_cluster_trinity() andalso
+        cluster_compat_mode:is_cluster_76() andalso
             ns_config:read_key_fast(
               allow_hash_migration_during_auth, false),
 
@@ -932,7 +932,7 @@ build_auth(Passwords, AuthType) ->
 
 build_plain_auth(Passwords, AuthType) when AuthType =:= regular;
                                            AuthType =:= internal ->
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         true ->
             HashType = ns_config:read_key_fast(password_hash_alg,
                                                ?DEFAULT_PWHASH),
@@ -940,14 +940,14 @@ build_plain_auth(Passwords, AuthType) when AuthType =:= regular;
                                                                AuthType,
                                                                Passwords));
         false ->
-            format_pre_trinity_plain_auth(
+            format_pre_76_plain_auth(
               ns_config_auth:new_password_hash(?SHA1_HASH, AuthType, Passwords))
     end.
 
 format_plain_auth(HashInfo) ->
     [{<<"hash">>, {HashInfo}}].
 
-format_pre_trinity_plain_auth(HashInfo) ->
+format_pre_76_plain_auth(HashInfo) ->
     Salt = base64:decode(proplists:get_value(?SALT_KEY, HashInfo)),
     [Hash | _] = proplists:get_value(?HASHES_KEY, HashInfo),
     Mac = base64:decode(Hash),
@@ -1033,9 +1033,9 @@ upgrade(Version, Config, Nodes) ->
             error
     end.
 
-upgrade_props(?VERSION_TRINITY, auth, _Key, AuthProps) ->
+upgrade_props(?VERSION_76, auth, _Key, AuthProps) ->
     {ok, functools:chain(AuthProps,
-                         [scram_sha:fix_pre_trinity_auth_info(_),
+                         [scram_sha:fix_pre_76_auth_info(_),
                           get_rid_of_plain_key(_)])};
 upgrade_props(_Vsn, _RecType, _Key, _Props) ->
     skip.
@@ -1103,13 +1103,13 @@ upgrade_test_() ->
              meck:unload(replicated_dets),
              ets:delete(storage_name())
      end,
-     [Test(?VERSION_TRINITY,
+     [Test(?VERSION_76,
            [{{auth, {"migrated-user", local}},
              [{<<"hash">>, {[anything]}},
               {<<"scram-sha-1">>, {[anything]}}]}],
            [CheckAuth("migrated-user", <<"hash">>, [anything]),
             CheckAuth("migrated-user", <<"scram-sha-1">>, [anything])]),
-      Test(?VERSION_TRINITY,
+      Test(?VERSION_76,
            [{{auth, {"not-migrated-user", local}},
              [{<<"hash">>, {[anything]}},
               {<<"sha1">>,
@@ -1236,7 +1236,7 @@ maybe_update_plain_auth_hashes_test_() ->
              meck:new([ns_config, cluster_compat_mode], [passthrough]),
              meck_ns_config_read_key_fast(OldSettings),
              meck:expect(
-               cluster_compat_mode, is_cluster_trinity,
+               cluster_compat_mode, is_cluster_76,
                 fun () -> true end)
      end,
      fun (_X, _R) ->

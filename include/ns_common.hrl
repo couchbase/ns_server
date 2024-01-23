@@ -244,7 +244,7 @@
 -define(VERSION_70, [7, 0]).
 -define(VERSION_71, [7, 1]).
 -define(VERSION_72, [7, 2]).
--define(VERSION_TRINITY, [7, 6]).
+-define(VERSION_76, [7, 6]).
 
 -define(MIN_SUPPORTED_VERSION, ?VERSION_71).
 
@@ -256,7 +256,7 @@
 -define(LATEST_UI_COMPAT_VERSION, ?VERSION_70).
 
 %% Points to latest release
--define(LATEST_VERSION_NUM, ?VERSION_TRINITY).
+-define(LATEST_VERSION_NUM, ?VERSION_76).
 -define(MASTER_ADVERTISED_VERSION, [7, 6, 0]).
 
 -define(MIN_OF_MAX_MOVES_PER_NODE, 1).
@@ -303,7 +303,7 @@
 
 -define(CPU_COUNT_VAR, "COUCHBASE_CPU_COUNT").
 
-%% Known Trinity profiles
+%% Known profiles
 -define(SERVERLESS_PROFILE, serverless).
 -define(SERVERLESS_PROFILE_STR, "serverless").
 -define(PROVISIONED_PROFILE_STR, "provisioned").
@@ -347,7 +347,7 @@
 -define(PBKDF2_ITER_MIN, 1).
 -define(PBKDF2_ITER_MAX, 10_000_000).
 
-%% Pre-trinity keys (do not change these values):
+%% Pre-7.6 keys (do not change these values):
 -define(OLD_HASH_KEY,             <<"h">>).
 -define(OLD_SCRAM_SALT_KEY,       <<"s">>).
 -define(OLD_SCRAM_HASH_KEY,       <<"h">>).

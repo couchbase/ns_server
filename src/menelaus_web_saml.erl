@@ -47,7 +47,7 @@
 
 handle_get_settings(Path, Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_is_76(),
     SSOSettings = extract_saml_settings(),
     SSOSettingsUpdated =
         case proplists:get_value(enabled, SSOSettings) of
@@ -68,7 +68,7 @@ handle_get_settings(Path, Req) ->
 
 handle_post_settings(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_is_76(),
     CurrentProps = ns_config:read_key_fast(saml_settings, []),
     menelaus_web_settings2:handle_post(
       fun (Proplist, NewReq) ->
@@ -158,7 +158,7 @@ verify_metadata_settings(PropsToSet, CurPropsWithDefaults) ->
 
 handle_delete_settings(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_is_76(),
     ns_config:delete(saml_settings),
     cb_saml:cleanup_metadata(),
     is_enabled() orelse menelaus_ui_auth:logout_by_session_type(saml),
@@ -166,7 +166,7 @@ handle_delete_settings(Req) ->
 
 handle_auth(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_is_76(),
     SSOOpts = extract_saml_settings_if_enabled(),
     ?log_debug("Starting saml authentication "),
     IDPMetadata = try_get_idp_metadata(SSOOpts),
@@ -192,7 +192,7 @@ handle_auth(Req) ->
 %% automatically, which we don't need.
 handle_uilogout_post(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_is_76(),
     SSOOpts = extract_saml_settings(),
     case proplists:get_value(enabled, SSOOpts) andalso
          proplists:get_value(single_logout, SSOOpts) of
@@ -206,7 +206,7 @@ handle_uilogout_post(Req) ->
 
 handle_deauth(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_is_76(),
     SSOOpts = extract_saml_settings_if_enabled(),
     ?log_debug("Starting saml single logout"),
     case proplists:get_value(single_logout, SSOOpts) of
@@ -249,7 +249,7 @@ handle_single_logout(SSOOpts, NameID, ExtraHeaders, Req) ->
 
 handle_saml_metadata(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_is_76(),
     SSOOpts = extract_saml_settings_if_enabled(),
     SPMetadata = build_sp_metadata(SSOOpts, Req),
     SignedXml = esaml_sp:generate_metadata(SPMetadata),
@@ -265,7 +265,7 @@ handle_post_saml_consume(Req) ->
 
 handle_saml_consume(Req, UnvalidatedParams) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_is_76(),
     SSOOpts = extract_saml_settings_if_enabled(),
     ?log_debug("Starting saml consume"),
     %% Making sure metadata is up to date. By doing that we also update
@@ -293,7 +293,7 @@ handle_saml_consume(Req, UnvalidatedParams) ->
 
 handle_get_error(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_is_76(),
     _SSOOpts = extract_saml_settings_if_enabled(),
     validator:handle(
       fun (Params) ->
@@ -314,7 +314,7 @@ handle_post_saml_logout(Req) ->
 
 handle_saml_logout(Req, UnvalidatedParams) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_is_76(),
     SSOOpts = extract_saml_settings_if_enabled(),
     ?log_debug("Starting saml logout"),
     IDPMetadata = try_get_idp_metadata(SSOOpts),

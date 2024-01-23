@@ -283,7 +283,7 @@ get_internal_default(Key, Default) ->
     ns_config:read_key_fast(Key, Default).
 
 build_bucket_rank(BucketConfig) ->
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         true ->
             [{rank, ns_bucket:rank(BucketConfig)}];
         false ->
@@ -292,7 +292,7 @@ build_bucket_rank(BucketConfig) ->
 
 build_cross_cluster_versioning_params(BucketConfig) ->
     CcVersioningEnabledVal = ns_bucket:get_cc_versioning_enabled(BucketConfig),
-    case cluster_compat_mode:is_cluster_trinity() andalso
+    case cluster_compat_mode:is_cluster_76() andalso
          CcVersioningEnabledVal =/= undefined of
         true ->
             [{enableCrossClusterVersioning, CcVersioningEnabledVal}];
@@ -302,7 +302,7 @@ build_cross_cluster_versioning_params(BucketConfig) ->
 
 build_vbuckets_max_cas(BucketConfig) ->
     CasValues = ns_bucket:get_vbuckets_max_cas(BucketConfig),
-    case cluster_compat_mode:is_cluster_trinity() andalso
+    case cluster_compat_mode:is_cluster_76() andalso
          CasValues =/= undefined of
         true ->
             [{vbucketsMaxCas, [list_to_binary(Val) || Val <- CasValues]}];
@@ -312,7 +312,7 @@ build_vbuckets_max_cas(BucketConfig) ->
 
 build_vp_window_hrs(BucketConfig) ->
     VpWindowHrs = ns_bucket:get_vp_window_hrs(BucketConfig),
-    case cluster_compat_mode:is_cluster_trinity() andalso
+    case cluster_compat_mode:is_cluster_76() andalso
          VpWindowHrs =/= undefined of
         true ->
             [{versionPruningWindowHrs, VpWindowHrs}];
@@ -422,7 +422,7 @@ build_pitr_dynamic_bucket_info(BucketConfig) ->
             %% memcached buckets don't support pitr.
             [];
         _ ->
-            case cluster_compat_mode:is_cluster_trinity() of
+            case cluster_compat_mode:is_cluster_76() of
                 true ->
                     [{pitrEnabled,
                       ns_bucket:pitr_enabled(BucketConfig)},
@@ -1244,13 +1244,13 @@ validate_ram(#ram_summary{free = Free}) when Free < 0 ->
     [{ramQuota, <<"RAM quota specified is too large to be provisioned into "
                   "this cluster.">>}];
 validate_ram(#ram_summary{this_alloc = Alloc, this_used = Used}) ->
-    %% All buckets should have the same quota, but only since Trinity has
+    %% All buckets should have the same quota, but only since 7.6 has
     %% memcached supported a graceful quota reduction to values below the
     %% current RAM usage. As such, we should keep the existing check against
     %% RAM usage for mixed mode clusters as setting a quota below RAM usage
-    %% on any pre-Trinity memcached will result in a period of temporary
+    %% on any pre-7.6 memcached will result in a period of temporary
     %% failures while memory is reduced.
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         false when Alloc < Used ->
             [{ramQuota, <<"RAM quota cannot be set below current usage.">>}];
         _ ->
@@ -1371,15 +1371,15 @@ basic_bucket_params_screening(Ctx, Params) ->
 validate_common_params(#bv_ctx{bucket_name = BucketName,
                                bucket_config = BucketConfig, new = IsNew,
                                all_buckets = AllBuckets}, Params) ->
-    IsTrinity = cluster_compat_mode:is_cluster_trinity(),
+    Is76 = cluster_compat_mode:is_cluster_76(),
     IsEnterprise = cluster_compat_mode:is_enterprise(),
 
     [{ok, name, BucketName},
      parse_validate_flush_enabled(Params, IsNew),
      parse_validate_cross_cluster_versioning_enabled(Params, IsNew,
-                                                     IsTrinity, IsEnterprise),
+                                                     Is76, IsEnterprise),
      parse_validate_version_pruning_window(Params, IsNew,
-                                           IsTrinity, IsEnterprise),
+                                           Is76, IsEnterprise),
      validate_bucket_name(IsNew, BucketConfig, BucketName, AllBuckets),
      parse_validate_ram_quota(Params, BucketConfig)].
 
@@ -1430,7 +1430,7 @@ validate_memcached_bucket_params(CommonParams, Params, IsNew, BucketConfig,
 
 validate_membase_bucket_params(CommonParams, Params, Name,
                                IsNew, BucketConfig, Version, IsEnterprise) ->
-    AllowPitr = cluster_compat_mode:is_version_trinity(Version),
+    AllowPitr = cluster_compat_mode:is_version_76(Version),
     AllowStorageLimit = config_profile:get_bool(enable_storage_limits),
     AllowThrottleLimit = config_profile:get_bool(enable_throttle_limits),
     ReplicasNumResult = validate_replicas_number(Params, IsNew),
@@ -1643,10 +1643,10 @@ parse_validate_max_magma_shards(Params, _BucketConfig, Version, true) ->
                             {error, magmaMaxShards,
                              <<"Cannot set maximum magma shards on non-magma storage backend">>};
                         true ->
-                            case cluster_compat_mode:is_version_trinity(Version) of
+                            case cluster_compat_mode:is_version_76(Version) of
                                 false ->
                                     {error, magmaMaxShards,
-                                     <<"Not allowed until entire cluster is upgraded to trinity">>};
+                                     <<"Not allowed until entire cluster is upgraded to 7.6">>};
                                 true ->
                                     parse_validate_max_magma_shards_inner(Params)
                             end
@@ -1795,11 +1795,11 @@ parse_validate_storage_mode(Params, BucketConfig, Name, false = _IsNew, Version,
                             true = _IsEnterprise,
                             true = _IsStorageModeMigration,
                             false = _IsServerless) ->
-    case cluster_compat_mode:is_version_trinity(Version) of
+    case cluster_compat_mode:is_version_76(Version) of
         false ->
             {error, storageBackend,
              <<"Storage mode migration is not allowed until the entire cluster "
-               "is upgraded to Trinity">>};
+               "is upgraded to 7.6">>};
         true ->
             StorageBackend = proplists:get_value("storageBackend", Params),
             case do_get_storage_mode_based_on_storage_backend(StorageBackend) of
@@ -1892,16 +1892,16 @@ value_not_boolean_error(Param) ->
 pitr_not_supported_error(Param) ->
     {error, Param,
      <<"Point in time recovery is not supported until cluster is fully "
-        "Trinity">>}.
+        "7.6">>}.
 
 cross_cluster_versioning_not_supported_error(Param) ->
     {error, Param,
      <<"Cross Cluster Versioning is not supported until cluster is fully "
-       "Trinity">>}.
+       "7.6">>}.
 
 version_pruning_not_supported_error(Param) ->
     {error, Param,
-     <<"Version pruning is not supported until cluster is fully Trinity">>}.
+     <<"Version pruning is not supported until cluster is fully 7.6">>}.
 
 parse_validate_param_not_supported(Key, Params, ErrorFun) ->
     case proplists:is_defined(Key, Params) of
@@ -2353,7 +2353,7 @@ parse_compression_mode(_) ->
      <<"compressionMode can be set to 'off', 'passive' or 'active'">>}.
 
 parse_validate_bucket_rank(Params, IsNew) ->
-    parse_validate_rank_inner(cluster_compat_mode:is_cluster_trinity(),
+    parse_validate_rank_inner(cluster_compat_mode:is_cluster_76(),
                               proplists:get_value("rank", Params), IsNew).
 
 parse_validate_rank_inner(true, undefined, true = _IsNew) ->
@@ -2367,7 +2367,7 @@ parse_validate_rank_inner(false, undefined, _IsNew) ->
 parse_validate_rank_inner(false, _Value, _IsNew) ->
     {error, rank,
      <<"Bucket rank cannot be set until the cluster is fully "
-       "upgraded to Trinity.">>}.
+       "upgraded to 7.6.">>}.
 
 parse_validate_rank_inner(Rank) ->
     case menelaus_util:parse_validate_number(Rank, ?MIN_BUCKET_RANK,
@@ -3238,7 +3238,7 @@ basic_bucket_params_screening_setup() ->
                 end),
     meck:expect(ns_config, search_node_with_default,
                 fun (_, Default) -> Default end),
-    meck:expect(cluster_compat_mode, is_cluster_trinity,
+    meck:expect(cluster_compat_mode, is_cluster_76,
                 fun () -> true end),
     meck:expect(ns_config, search_node_with_default,
                 fun (_, Default) ->
@@ -3589,10 +3589,10 @@ basic_bucket_params_screening_t() ->
                      "fully running 7.2">>}],
                  E22),
 
-    %% put back the compat_mode to trinity
+    %% put back the compat_mode to 7.6
     meck:expect(cluster_compat_mode, supported_compat_version,
                 fun() ->
-                        ?VERSION_TRINITY
+                        ?VERSION_76
                 end),
 
     {_OK23, E23} = basic_bucket_params_screening(
@@ -3754,7 +3754,7 @@ basic_bucket_params_screening_test_() ->
 
 basic_parse_validate_bucket_auto_compaction_settings_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, is_cluster_trinity,
+    meck:expect(cluster_compat_mode, is_cluster_76,
                 fun () -> true end),
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, get,
@@ -3956,7 +3956,7 @@ parse_validate_max_magma_shards_test() ->
               {"durabilityMinLevel", "majority"},
               {"magmaMaxShards", "101"}],
     BucketConfig = [],
-    Version = ?VERSION_TRINITY,
+    Version = ?VERSION_76,
 
     Resp = parse_validate_max_magma_shards(Params, BucketConfig, Version, true),
     ?assertEqual(Resp,
@@ -4006,9 +4006,9 @@ parse_validate_max_magma_shards_test() ->
     meck:unload(config_profile),
     ok.
 
-validate_ram_used_trinity_test() ->
+validate_ram_used_76_test() ->
     meck:new(cluster_compat_mode),
-    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> true end),
+    meck:expect(cluster_compat_mode, is_cluster_76, fun () -> true end),
 
     ?assertEqual([],
         validate_ram(#ram_summary{this_alloc = 1, this_used = 2})),
@@ -4021,9 +4021,9 @@ validate_ram_used_trinity_test() ->
 
     meck:unload(cluster_compat_mode).
 
-validate_ram_used_pre_trinity_test() ->
+validate_ram_used_pre_76_test() ->
     meck:new(cluster_compat_mode),
-    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> false end),
+    meck:expect(cluster_compat_mode, is_cluster_76, fun () -> false end),
 
     ?assertEqual(
         [{ramQuota, <<"RAM quota cannot be set below current usage.">>}],
@@ -4478,8 +4478,8 @@ storage_mode_migration_cluster_compat_test(Version, CurrentStorageMode,
             ?assertEqual([{storageBackend,
                            <<"Storage mode migration is not allowed "
                              "until the entire cluster is "
-                             "upgraded to Trinity">>}], Errors);
-        ?VERSION_TRINITY ->
+                             "upgraded to 7.6">>}], Errors);
+        ?VERSION_76 ->
             ?assert(proplists:get_value(storage_mode, Oks) =:=
                     list_to_atom(NewStorageMode))
     end.
@@ -4488,8 +4488,8 @@ storage_mode_migration_cluster_compat_test_() ->
     %% TestArg: {ClusterVersion, CurrentStorageMode, NewStorageMode}.
     TestArgs = [{?VERSION_72, couchstore, "magma"},
                 {?VERSION_72, magma, "couchstore"},
-                {?VERSION_TRINITY, couchstore, "magma"},
-                {?VERSION_TRINITY, magma, "couchstore"}],
+                {?VERSION_76, couchstore, "magma"},
+                {?VERSION_76, magma, "couchstore"}],
 
     TestFun =
         fun ({Version, CurrentStorageMode, NewStorageMode}, _R) ->
@@ -4514,9 +4514,9 @@ storage_mode_migration_cluster_compat_test_() ->
      [{TestArg, TestFun} || TestArg <- TestArgs]}.
 
 storage_mode_migration_ram_quota_test() ->
-    storage_mode_migration_meck_setup(?VERSION_TRINITY),
-    %% bucket rank functions use cluster_compat_mode:is_cluster_trinity/0
-    meck:expect(cluster_compat_mode, is_cluster_trinity,
+    storage_mode_migration_meck_setup(?VERSION_76),
+    %% bucket rank functions use cluster_compat_mode:is_cluster_76/0
+    meck:expect(cluster_compat_mode, is_cluster_76,
                 fun () ->
                         true
                 end),
@@ -4668,48 +4668,48 @@ parse_validate_storage_mode_test_() ->
           ok},
          {{undefined, "magma", true, ?VERSION_71, false, false, false},
           error},
-         {{undefined, "magma", true, ?VERSION_TRINITY, true,
+         {{undefined, "magma", true, ?VERSION_76, true,
            false, false}, ok},
-         {{undefined, "magma", true, ?VERSION_TRINITY, false,
+         {{undefined, "magma", true, ?VERSION_76, false,
            false, false}, error},
          {{undefined, "couchstore", true, ?VERSION_71, true,
            false, false}, ok},
          {{undefined, "couchstore", true, ?VERSION_71, false,
            false, false}, ok},
-         {{undefined, "couchstore", true, ?VERSION_TRINITY, true,
+         {{undefined, "couchstore", true, ?VERSION_76, true,
            false, false}, ok},
-         {{undefined, "couchstore", true, ?VERSION_TRINITY, false,
+         {{undefined, "couchstore", true, ?VERSION_76, false,
            false, false}, ok},
          %% Storage mode migration.
          {{"magma", "couchstore", false, ?VERSION_71, true, true, false},
           error},
          {{"magma", "couchstore", false, ?VERSION_71, false, true, false},
           error},
-         {{"magma", "couchstore", false, ?VERSION_TRINITY, true,
+         {{"magma", "couchstore", false, ?VERSION_76, true,
            true, false}, ok},
-         {{"magma", "couchstore", false, ?VERSION_TRINITY, false,
+         {{"magma", "couchstore", false, ?VERSION_76, false,
            true, false}, error},
          {{"couchstore", "magma", false, ?VERSION_71, true, true, false},
           error},
          {{"couchstore", "magma", false, ?VERSION_71, false,
            true, false}, error},
-         {{"couchstore", "magma", false, ?VERSION_TRINITY, true,
+         {{"couchstore", "magma", false, ?VERSION_76, true,
            true, false}, ok},
-         {{"couchstore", "magma", false, ?VERSION_TRINITY, true,
+         {{"couchstore", "magma", false, ?VERSION_76, true,
            true, false}, ok},
-         {{"couchstore", "magma", false, ?VERSION_TRINITY, false,
+         {{"couchstore", "magma", false, ?VERSION_76, false,
            true, true}, error},
          %% Couchstore bucket updates.
          {{"couchstore", undefined, false, ?VERSION_71, true,
            false, false}, ok},
          {{"couchstore", undefined, false, ?VERSION_71, false,
            false, false}, ok},
-         {{"couchstore", undefined, false, ?VERSION_TRINITY, true,
+         {{"couchstore", undefined, false, ?VERSION_76, true,
            false, false}, ok},
-         {{"couchstore", undefined, false, ?VERSION_TRINITY, false,
+         {{"couchstore", undefined, false, ?VERSION_76, false,
            false, false}, ok},
          %% Magma bucket updates.
-         {{"magma", undefined, false, ?VERSION_TRINITY, true,
+         {{"magma", undefined, false, ?VERSION_76, true,
            false, false}, ok}],
 
     TestFun =
@@ -4736,9 +4736,9 @@ parse_validate_storage_mode_test_() ->
 
 rank_params_screening_test() ->
     %% These tests ensure that all the different cases are handled when we are
-    %% fully upgraded to trinity.
+    %% fully upgraded to 7.6.
     meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, is_cluster_trinity,
+    meck:expect(cluster_compat_mode, is_cluster_76,
                 fun () -> true end),
     Params = [{"bucketType", "couchbase"}, {"rank", "0"}],
     IsNew = true,
@@ -4756,32 +4756,32 @@ rank_params_screening_test() ->
     IsNew4 = false,
     ?assertEqual(parse_validate_bucket_rank(Params4, IsNew4), {ok, rank, 100}),
 
-    %% This case tests rank=undefined,IsNew=false,IsTrinity=true. This allows
+    %% This case tests rank=undefined,IsNew=false,Is76=true. This allows
     %% older nodes to join newer ones without issue.
     NoRankParams = [{"bucketType", "couchbase"}],
     NotNew = false,
     ?assertEqual(parse_validate_bucket_rank(NoRankParams, NotNew), ignore),
 
-    %% these tests ensure we return correct value when we are NOT in trinity
-    meck:expect(cluster_compat_mode, is_cluster_trinity,
+    %% these tests ensure we return correct value when we are NOT in 7.6
+    meck:expect(cluster_compat_mode, is_cluster_76,
                 fun () -> false end),
-    %% IsTrinity=false, rank=0, IsNew=true
+    %% Is76=false, rank=0, IsNew=true
     Params5 = [{"bucketType", "couchbase"}, {"rank", "0"}],
     IsNew5 = true,
     ?assertEqual(parse_validate_bucket_rank(Params5, IsNew5),
                  {error, rank,
                   <<"Bucket rank cannot be set until the cluster is fully "
-                    "upgraded to Trinity.">>}),
+                    "upgraded to 7.6.">>}),
 
-    %% IsTrinity=false, rank=10, IsNew=false
+    %% Is76=false, rank=10, IsNew=false
     Params6 = [{"bucketType", "couchbase"}, {"rank", "10"}],
     IsNew6 = false,
     ?assertEqual(parse_validate_bucket_rank(Params6, IsNew6),
                  {error, rank,
                   <<"Bucket rank cannot be set until the cluster is fully "
-                    "upgraded to Trinity.">>}),
+                    "upgraded to 7.6.">>}),
 
-    %% IsTrinity=false, rank=undefined, IsNew=false
+    %% Is76=false, rank=undefined, IsNew=false
     ?assertEqual(parse_validate_bucket_rank(NoRankParams, NotNew), ignore),
     meck:unload(cluster_compat_mode).
 

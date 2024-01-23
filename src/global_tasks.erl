@@ -61,7 +61,7 @@ get_tasks(TaskIds) when is_list(TaskIds) ->
                       lists:member(task_id(Task), TaskIds)
               end);
 get_tasks(Filter) when is_function(Filter, 1) ->
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         true ->
             case chronicle_compat:get(tasks, #{}) of
                 {ok, Tasks} ->
@@ -123,7 +123,7 @@ update_tasks(TaskIds, UpdateTask) ->
 %% Call a function on the tasks list, in a chronicle transaction
 -spec do_update_tasks(fun (([task()]) -> [task()])) -> ok.
 do_update_tasks(UpdateTasks) ->
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         true ->
             Result =
                 chronicle_compat:transaction(
@@ -393,7 +393,7 @@ modules() ->
 
 setup() ->
     meck:new(modules(), [passthrough]),
-    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> true end).
+    meck:expect(cluster_compat_mode, is_cluster_76, fun () -> true end).
 
 teardown(_) ->
     meck:unload(modules()).
@@ -492,7 +492,7 @@ get_tasks_test__() ->
     %% Confirm that the final tasks list can be converted to json
     ejson:encode(JSONTasks),
 
-    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> false end),
+    meck:expect(cluster_compat_mode, is_cluster_76, fun () -> false end),
 
     %% Confirm that get_tasks/1 returns [] for mixed version clusters
     ?assertEqual([], get_tasks(TaskIds)).
@@ -526,7 +526,7 @@ get_default_tasks_test__() ->
     %% Confirm that the final tasks list can be converted to json
     ejson:encode(JSONTasks),
 
-    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> false end),
+    meck:expect(cluster_compat_mode, is_cluster_76, fun () -> false end),
 
     %% Confirm that get_default_tasks/0 returns [] for mixed version clusters
     ?assertEqual([], get_default_tasks()).
@@ -640,7 +640,7 @@ update_task_test__() ->
     assert_update_tasks_together(TaskIds, generate_task_update(_),
                                  Transaction1),
 
-    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> false end),
+    meck:expect(cluster_compat_mode, is_cluster_76, fun () -> false end),
 
     %% Confirm that update_task/1 returns ok for mixed version clusters.
     %% The transaction shouldn't run

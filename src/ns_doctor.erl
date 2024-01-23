@@ -737,7 +737,7 @@ do_build_tasks_list(NodesDict, PoolId, AllRepDocs, Buckets, RebStatusTimeout) ->
     OrphanBucketsTasks = build_orphan_buckets_tasks(Buckets, NodesDict),
     GSITask = build_gsi_task(),
 
-    GlobalTasks = case cluster_compat_mode:is_cluster_trinity() of
+    GlobalTasks = case cluster_compat_mode:is_cluster_76() of
                    true -> global_tasks:get_default_tasks();
                    false -> []
                end,

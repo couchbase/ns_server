@@ -1226,7 +1226,7 @@ get_warnings() ->
     Config = ns_config:get(),
     Nodes = ns_node_disco:nodes_wanted(),
     TrustedCAs = trusted_CAs(pem),
-    IsTrinity = cluster_compat_mode:is_cluster_trinity(),
+    Is76 = cluster_compat_mode:is_cluster_76(),
     ClientWarnings =
         lists:flatmap(
             fun (Node) ->
@@ -1274,7 +1274,7 @@ get_warnings() ->
                                       _ -> false
                                   end,
                               UnusedClient =
-                                  case ClusterUsesClientCert and IsTrinity of
+                                  case ClusterUsesClientCert and Is76 of
                                       true ->
                                           case filter_nodes_by_ca(
                                                  client_cert, Nodes, CAPem) of

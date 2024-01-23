@@ -210,7 +210,7 @@ sanitize(Config, TagUserTuples) ->
               {stop, {admin_pass, "*****"}};
           ({pass, _}) ->
               {stop, {pass, "*****"}};
-          %% remove sanitization of this key when Trinity becomes the min
+          %% remove sanitization of this key when 7.6 becomes the min
           %% supported version
           ({cert_and_pkey, {Cert, PKey}}) ->
               {stop, {cert_and_pkey, {Cert, sanitize_value(PKey)}}};

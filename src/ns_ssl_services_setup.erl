@@ -48,7 +48,7 @@
          get_supported_tls_versions/2,
          remove_node_certs/0,
          update_certs_epoch/0,
-         config_upgrade_to_trinity/1]).
+         config_upgrade_to_76/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -212,7 +212,7 @@ sorted_map_head(Map, PredicateFun) ->
 %% that we support or no longer support and a number of different validation
 %% functions should "just work".
 get_tls_version_map() ->
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         true ->
             #{'tlsv1.3' => 3, 'tlsv1.2' => 2};
         false  ->
@@ -1280,7 +1280,7 @@ update_service_security_config(Service, Config) ->
         _ -> {set, {security_settings, Service}, NewProps}
     end.
 
-config_upgrade_to_trinity(Config) ->
+config_upgrade_to_76(Config) ->
     {MinVersion, _} = min_tls_version(),
     GlobalKeys = [{ssl_minimum_protocol, true},
                   {internal_ssl_minimum_protocol, false}],
@@ -1477,7 +1477,7 @@ services_to_reload(client_cert) -> [cb_dist_tls, client_cert_event].
 check_tls_min_max_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode,
-                is_cluster_trinity,
+                is_cluster_76,
                 fun() ->
                         true
                 end),
@@ -1509,7 +1509,7 @@ check_tls_min_max_test() ->
 
     meck:new(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode,
-                is_cluster_trinity,
+                is_cluster_76,
                 fun() ->
                         false
                 end),
@@ -1547,13 +1547,13 @@ check_tls_min_max_test() ->
 
 test_upgrade_config(Config, Expected) ->
     Map = maps:from_list(Config),
-    ?assertEqual(lists:sort(config_upgrade_to_trinity(Map)),
+    ?assertEqual(lists:sort(config_upgrade_to_76(Map)),
                  lists:sort(Expected)).
 
 config_upgrade_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode,
-                is_cluster_trinity,
+                is_cluster_76,
                 fun() ->
                         true
                 end),

@@ -56,7 +56,7 @@
          last_seen_ids_key/2,
          last_seen_ids_set/3,
          chronicle_upgrade_to_72/2,
-         upgrade_to_trinity/2,
+         upgrade_to_76/2,
          history_retention_enabled/2]).
 
 %% rpc from other nodes
@@ -130,11 +130,11 @@ get_default_collection_props(BucketConf) ->
         true ->
             [{metered, true}]
     end ++
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         false ->
             [];
         true ->
-            %% Prior to trinity the absence of maxTTL defaulted to "use
+            %% Prior to 7.6 the absence of maxTTL defaulted to "use
             %% the bucket's maxTTL). As this inference lead to confusion
             %% and bugs we explicitly set it.
             [{maxTTL, ?USE_BUCKET_MAXTTL}]
@@ -203,7 +203,7 @@ manifest_with_system_scope(BucketConf) ->
          {collections, Collections}]}]}].
 
 is_system_scope_enabled() ->
-    cluster_compat_mode:is_cluster_trinity().
+    cluster_compat_mode:is_cluster_76().
 
 %% Properties for collections within the _system scope.
 system_scope_collection_properties() ->
@@ -307,16 +307,16 @@ collection_prop_to_memcached(_, V) ->
 %% 1) Reduces the size of the manifest
 %% 2) Improves readability of the manifest
 %%
-%% This function can be removed when trinity is the oldest supported release.
+%% This function can be removed when 7.6 is the oldest supported release.
 default_collection_props() ->
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         true ->
             %% No longer remove inferred properties as the benefits don't
             %% out weigh the costs (e.g. see note below about the absense of
             %% maxTTL).
             [];
         false ->
-            %% Prior to trinity we didn't pass {maxTTL, 0} in the manifest
+            %% Prior to 7.6 we didn't pass {maxTTL, 0} in the manifest
             %% sent to kv. As a result it's absence meant to "use the bucket
             %% maxTTL if specified". If the user had wanted to disable
             %% TTL for the collection they would have specified maxTTL=0, as
@@ -338,7 +338,7 @@ maybe_modify_props(Name, Props, ForRestResponse) ->
 
 %% This function is needed to map properties used by ns_server into those
 %% used by memcached. This was done when the maxTTL bugs were resolved in
-%% trinity but memcached elected to not change their code.
+%% 7.6 but memcached elected to not change their code.
 map_props_for_memcached(Props) ->
     case proplists:get_value(maxTTL, Props) of
         ?USE_BUCKET_MAXTTL ->
@@ -348,7 +348,7 @@ map_props_for_memcached(Props) ->
         N when is_number(N) andalso N > 0 ->
             Props;
         undefined ->
-            %% Mixed versions with pre-Trinity node
+            %% Mixed versions with pre-7.6 node
             Props
     end.
 
@@ -405,9 +405,9 @@ manifest_json_for_rest_response(AuthnRes, Bucket, Snapshot) ->
     jsonify_manifest(FilteredManifest, true).
 
 %% If 'ForRestResponse' is true then certain values are inferred. This was
-%% done in releases prior to trinity to save space in the manifest (see
+%% done in releases prior to 7.6 to save space in the manifest (see
 %% default_collection_props()). But the inferred values lead to confusion
-%% and bugs. Note: Until the cluster compat mode is trinity we continue
+%% and bugs. Note: Until the cluster compat mode is 7.6 we continue
 %% to support the inferred values.
 jsonify_manifest(Manifest, ForRestResponse) ->
     ScopesJson =
@@ -442,7 +442,7 @@ get_max_supported_inner(Type, Max) ->
     end.
 
 get_maxTTL_min_value() ->
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         false ->
             ?USE_BUCKET_MAXTTL;
         true ->
@@ -665,7 +665,7 @@ check_cluster_limit(Counter, TotalInCluster) ->
     end.
 
 %% This function and the concept of "default" collection props can be deleted
-%% when the oldest supported release is trinity.
+%% when the oldest supported release is 7.6.
 remove_defaults(Props, ScopeName) ->
     case ScopeName =/= ?SYSTEM_SCOPE_NAME of
         true ->
@@ -788,11 +788,11 @@ compile_operation(Oper, _Bucket, _Manifest) ->
 
 modify_collection_allowed(ScopeName, Name, Manifest, SuppliedProps) ->
     %% We were originally only allowed to change history for a collection.
-    %% In Trinity, we are also able to modify maxTTL, but this does not mean
+    %% In 7.6, we are also able to modify maxTTL, but this does not mean
     %% that we can skip verification, as we still need to prevent modification
     %% of the uid property and any invalid properties
     AllowedCollectionPropChanges = [{history}] ++
-        case {cluster_compat_mode:is_cluster_trinity(), ScopeName} of
+        case {cluster_compat_mode:is_cluster_76(), ScopeName} of
             {false, _} -> [];
             %% Do not allow modification maxTTL for the _system scope
             {_, ?SYSTEM_SCOPE_NAME} -> [];
@@ -1035,7 +1035,7 @@ maybe_add_history(BucketConfig) ->
      not ns_bucket:storage_mode_migration_in_progress(BucketConfig)].
 
 add_collection(Manifest, Name, ScopeName, SuppliedProps, BucketConf) ->
-    IsTrinity = cluster_compat_mode:is_cluster_trinity(),
+    Is76 = cluster_compat_mode:is_cluster_76(),
     Uid = proplists:get_value(next_coll_uid, Manifest),
     Props0 =
         case proplists:get_value(history, SuppliedProps) of
@@ -1048,7 +1048,7 @@ add_collection(Manifest, Name, ScopeName, SuppliedProps, BucketConf) ->
         end,
     Props1 =
         case proplists:get_value(maxTTL, Props0) of
-            undefined when IsTrinity ->
+            undefined when Is76 ->
                 Props0 ++ [{maxTTL, ?USE_BUCKET_MAXTTL}];
             _ ->
                 Props0
@@ -1316,7 +1316,7 @@ chronicle_upgrade_to_72(Bucket, ChronicleTxn) ->
             chronicle_upgrade:set_key(key(Bucket), NewManifest2, ChronicleTxn)
     end.
 
-upgrade_to_trinity(ManifestIn, BucketConfig) ->
+upgrade_to_76(ManifestIn, BucketConfig) ->
     Manifest0 =
         on_scopes(
           maybe_add_collection_props(BucketConfig, _),
@@ -1410,7 +1410,7 @@ update_manifest_test_setup() ->
     meck:new(update_manifest_test_modules(), [passthrough]),
 
     meck:expect(cluster_compat_mode, is_cluster_72, fun () -> true end),
-    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> true end),
+    meck:expect(cluster_compat_mode, is_cluster_76, fun () -> true end),
     meck:expect(config_profile, get_bool,
                 fun (enable_metered_collections) -> false end),
 
@@ -1751,15 +1751,15 @@ modify_collection_t() ->
                                                get_scope("_default",
                                                          Manifest3)))),
 
-    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> false end),
-    %% Cannot set maxTTL from undefined pre-trinity
+    meck:expect(cluster_compat_mode, is_cluster_76, fun () -> false end),
+    %% Cannot set maxTTL from undefined pre-7.6
     ?assertEqual(
        {abort, {error, {cannot_modify_properties, "c1", [{maxTTL, 9}]}}},
        update_manifest_test_update_collection(Manifest3, "_default", "c1",
                                               [{maxTTL, 9}])),
 
-    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> true end),
-    %% Can set maxTTL from undefined in trinity
+    meck:expect(cluster_compat_mode, is_cluster_76, fun () -> true end),
+    %% Can set maxTTL from undefined in 7.6
     {commit, [{_, _, Manifest4}], _} =
         update_manifest_test_create_collection(Manifest3, "_default", "c2",
                                                [{maxTTL, 10}]),
@@ -1769,8 +1769,8 @@ modify_collection_t() ->
                                                     get_scope("_default",
                                                               Manifest4)))),
 
-    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> false end),
-    %% Cannot change maxTTL value pre-trinity
+    meck:expect(cluster_compat_mode, is_cluster_76, fun () -> false end),
+    %% Cannot change maxTTL value pre-7.6
     ?assertEqual(
        {abort, {error, {cannot_modify_properties, "c2", [{maxTTL, 11}]}}},
        update_manifest_test_update_collection(Manifest4, "_default", "c2",
@@ -1781,8 +1781,8 @@ modify_collection_t() ->
         update_manifest_test_update_collection(Manifest4, "_default", "c2",
                                                [{maxTTL, 10}]),
 
-    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> true end),
-    %% Cannot change maxTTL in trinity for the _system scope
+    meck:expect(cluster_compat_mode, is_cluster_76, fun () -> true end),
+    %% Cannot change maxTTL in 7.6 for the _system scope
     SystemCollection = hd(system_collections()),
     ?assertEqual(
        {abort, {error, {cannot_modify_properties, SystemCollection,
@@ -1791,7 +1791,7 @@ modify_collection_t() ->
                                                SystemCollection,
                                                [{maxTTL, 11}])),
 
-    %% Can change maxTTL value in trinity
+    %% Can change maxTTL value in 7.6
     {commit, [{_, _, Manifest5}], _} =
         update_manifest_test_update_collection(Manifest4, "_default", "c2",
                                                [{maxTTL, 11}]),
@@ -2047,8 +2047,8 @@ set_manifest_t() ->
             [{uid, 8},
              {collections, [{"c1", [{uid, 8}]}]}]}]}],
 
-    %% Cannot add maxTTL pre-trinity
-    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> false end),
+    %% Cannot add maxTTL pre-7.6
+    meck:expect(cluster_compat_mode, is_cluster_76, fun () -> false end),
     ?assertEqual(
        {abort,{error,{cannot_modify_properties,"c1",[{maxTTL,10}]}}},
        update_manifest_test_set_manifest(
@@ -2098,8 +2098,8 @@ set_manifest_t() ->
     ?assertEqual([{uid, 8}, {maxTTL, 8}],
                  get_collection("c1", get_scope("s1", Manifest4))),
 
-    %% Support for changing maxTTL beginning with trinity
-    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> true end),
+    %% Support for changing maxTTL beginning with 7.6
+    meck:expect(cluster_compat_mode, is_cluster_76, fun () -> true end),
 
     %% The collection's maxTTL can be changed.
     ExistingManifest5 =
@@ -2171,7 +2171,7 @@ upgrade_to_72_t() ->
     %% must check to ensure that we don't create collections with history=true
     %% in mixed mode clusters when using the default history value.
     meck:expect(cluster_compat_mode, is_cluster_72, fun() -> false end),
-    meck:expect(cluster_compat_mode, is_cluster_trinity, fun() -> false end),
+    meck:expect(cluster_compat_mode, is_cluster_76, fun() -> false end),
     meck:expect(config_profile, get_bool,
                 fun (enable_system_scope) -> false;
                     (enable_metered_collections) -> false
@@ -2212,17 +2212,17 @@ upgrade_to_72_t() ->
 
 %% The _system scope gets added on upgrade containing service-specific
 %% collections for query and mobile.
-upgrade_to_trinity_system_scope_t() ->
+upgrade_to_76_system_scope_t() ->
     %% The _system scope gets added on upgrade containing service-specific
     %% collections for query and mobile.
-    meck:expect(cluster_compat_mode, is_cluster_trinity, fun() -> false end),
+    meck:expect(cluster_compat_mode, is_cluster_76, fun() -> false end),
     {ok, BucketConf72} = get_bucket_config("bucket"),
     Manifest72 = default_manifest(BucketConf72),
     ?assertEqual(undefined, get_scope("_system", Manifest72)),
 
-    meck:expect(cluster_compat_mode, is_cluster_trinity, fun() -> true end),
-    {ok, BucketConfTrinity} = get_bucket_config("bucket"),
-    UpdatedManifest = upgrade_to_trinity(Manifest72, BucketConfTrinity),
+    meck:expect(cluster_compat_mode, is_cluster_76, fun() -> true end),
+    {ok, BucketConf76} = get_bucket_config("bucket"),
+    UpdatedManifest = upgrade_to_76(Manifest72, BucketConf76),
     SystemScope = get_scope("_system", UpdatedManifest),
     ?assertNotEqual(undefined, SystemScope),
     ?assertNotEqual(undefined, get_collection("_query", SystemScope)),
@@ -2231,7 +2231,7 @@ upgrade_to_trinity_system_scope_t() ->
                     proplists:get_value(uid, UpdatedManifest)).
 
 %% 'history' is added to collections which don't have a value
-upgrade_to_trinity_collection_history_t() ->
+upgrade_to_76_collection_history_t() ->
     ManifestIn = [{uid,3},
                   {next_uid,4},
                   {next_scope_uid,9},
@@ -2243,7 +2243,7 @@ upgrade_to_trinity_collection_history_t() ->
                              {collections,[{"testcollection2",[{uid,9}]},
                                            {"testcollection1",[{uid,8}]}]}]}]}],
     {ok, BucketConf} = get_bucket_config("bucket"),
-    ManifestOut = upgrade_to_trinity(ManifestIn, BucketConf),
+    ManifestOut = upgrade_to_76(ManifestIn, BucketConf),
     ?assertNotEqual(undefined,
                     proplists:get_value(history,
                                         get_collection("testcollection1",
@@ -2276,10 +2276,10 @@ basic_collections_manifest_test_() ->
       {"history default test", fun() -> history_default_t() end},
       {"set manifest test", fun() -> set_manifest_t() end},
       {"upgrade to 72 test", fun() -> upgrade_to_72_t() end},
-      {"upgrade to Trinity test (system scope)",
-       fun() -> upgrade_to_trinity_system_scope_t() end},
-      {"upgrade to Trinity test (collection history)",
-       fun() -> upgrade_to_trinity_collection_history_t() end}]}.
+      {"upgrade to 7.6 test (system scope)",
+       fun() -> upgrade_to_76_system_scope_t() end},
+      {"upgrade to 7.6 test (collection history)",
+       fun() -> upgrade_to_76_collection_history_t() end}]}.
 
 create_snapshot(Bucket, Props) ->
     Manifest =

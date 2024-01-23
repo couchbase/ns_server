@@ -237,7 +237,7 @@ validate_delta_recovery(KVKeep, DesiredServers,
 
 calculate_desired_servers(#{keep_nodes := KeepNodes,
                             delta_nodes := DeltaNodes} = Params) ->
-    %% defragment_zones can be missing in map if called from pre-Trinity nodes
+    %% defragment_zones can be missing in map if called from pre-7.6 nodes
     case bucket_placer:rebalance(
            KeepNodes,
            bucket_failover_vbuckets(_, DeltaNodes),

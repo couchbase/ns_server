@@ -43,7 +43,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
         self.result_keys = list(self.prev_settings.keys())
         self.result_keys.remove('count')
         self.is_enterprise = self.cluster.is_enterprise
-        self.is_trinity = self.cluster.is_trinity
+        self.is_76 = self.cluster.is_76
         self.is_serverless = self.cluster.is_serverless
 
         failKey = 'failoverOnDataDiskIssues'
@@ -63,7 +63,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
                                  'disableMaxCount' ]
         if self.is_enterprise:
             assert 'canAbortRebalance' in self.post_data_keys
-            if self.is_trinity:
+            if self.is_76:
                 assert 'disableMaxCount' in self.post_data_keys
                 if self.is_serverless:
                     assert self.prev_settings['disableMaxCount']
@@ -363,7 +363,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
         if not self.is_enterprise:
             return random.choice(self.enterprise_only)
 
-        if self.is_trinity:
+        if self.is_76:
             return 'failoverServerGroup'
 
         return random.choice(['failoverServerGroup', 'disableMaxCount'])
@@ -424,7 +424,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
                 self.check_enabled_time(testData,
                                         'failoverOnDataDiskIssues[enabled]',
                                     'failoverOnDataDiskIssues[timePeriod]') or \
-                self.is_trinity and self.check_max_count(testData)
+                self.is_76 and self.check_max_count(testData)
 
             if good:
                 if bad_param:

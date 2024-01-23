@@ -18,7 +18,7 @@
 
 -export([handle_get/2, handle_post/2]).
 
--export([default_config/0, config_upgrade_to_trinity/1,
+-export([default_config/0, config_upgrade_to_76/1,
          build_json_for_audit/1]).
 
 %% ------------------------------------------------------------------
@@ -26,14 +26,14 @@
 %% ------------------------------------------------------------------
 
 handle_get(Path, Req) ->
-    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_is_76(),
     menelaus_util:assert_config_profile_flag({resource_management, enabled}),
 
     menelaus_web_settings2:handle_get(Path, params(), undefined,
                                       guardrail_monitor:get_config(), Req).
 
 handle_post(Path, Req) ->
-    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_is_76(),
     menelaus_util:assert_config_profile_flag({resource_management, enabled}),
 
     menelaus_web_settings2:handle_post(
@@ -151,7 +151,7 @@ update_config(Changes) ->
     ns_config:set(resource_management, NewConfig),
     NewConfig.
 
-config_upgrade_to_trinity(_Config) ->
+config_upgrade_to_76(_Config) ->
     [{set, resource_management,
       proplists:get_value(resource_management, default_config())}].
 

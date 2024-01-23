@@ -31,7 +31,7 @@
          is_enabled/0,
          known_settings/0,
          on_update/2,
-         config_upgrade_to_trinity/1]).
+         config_upgrade_to_76/1]).
 
 -import(json_settings_manager,
         [id_lens/1]).
@@ -149,7 +149,7 @@ general_settings_lens_props(ClusterVersion) ->
       id_lens(<<"indexer.settings.num_replica">>)},
      {enablePageBloomFilter,
       id_lens(<<"indexer.settings.enable_page_bloom_filter">>)}] ++
-    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_TRINITY) of
+    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_76) of
          true ->
             [{memHighThreshold,
               id_lens(<<"indexer.settings.thresholds.mem_high">>)},
@@ -195,7 +195,7 @@ general_settings_defaults(ClusterVersion) ->
     [{redistributeIndexes, false},
      {numReplica, config_profile:get_value({indexer, num_replica}, 0)},
      {enablePageBloomFilter, false}] ++
-    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_TRINITY) of
+    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_76) of
         true ->
             [{memHighThreshold,
               config_profile:get_value({indexer, mem_high_threshold}, 70)},
@@ -283,9 +283,9 @@ compaction_defaults() ->
 compaction_lens() ->
     json_settings_manager:props_lens(compaction_lens_props()).
 
-config_upgrade_to_trinity(Config) ->
+config_upgrade_to_76(Config) ->
     config_upgrade_settings(Config, ?MIN_SUPPORTED_VERSION,
-                            ?VERSION_TRINITY).
+                            ?VERSION_76).
 
 -spec(default_shard_affinity() -> boolean()).
 default_shard_affinity() ->
@@ -322,7 +322,7 @@ invalid_json_blob_result(Err) ->
 
 config_upgrade_settings(Config, OldVersion, NewVersion) ->
     NewSettings =
-        case NewVersion =:= ?VERSION_TRINITY of
+        case NewVersion =:= ?VERSION_76 of
             true ->
                 Current = general_settings_defaults(NewVersion),
                 %% This section will check for a secret key in metakv and if
@@ -356,7 +356,7 @@ config_upgrade_settings(Config, OldVersion, NewVersion) ->
         io_lib:format("{\"indexer.default.enable_shard_affinity\": ~p}",
                       [__TRUE_FALSE])).
 default_test() ->
-    Versions = [?MIN_SUPPORTED_VERSION, ?VERSION_TRINITY],
+    Versions = [?MIN_SUPPORTED_VERSION, ?VERSION_76],
     lists:foreach(fun(V) -> default_versioned(V) end, Versions).
 
 default_versioned(Version) ->
@@ -444,7 +444,7 @@ config_upgrade_special_metakv_key_false_test_() ->
 
 
 config_upgrade_test_generic(Config, ShardAffinityValue) ->
-    CmdList = config_upgrade_to_trinity(Config),
+    CmdList = config_upgrade_to_76(Config),
     [{set, {metakv, Meta}, Data}] = CmdList,
     ?assertEqual(<<"/indexing/settings/config">>, Meta),
     Result =
@@ -460,14 +460,14 @@ config_upgrade_test_generic(Config, ShardAffinityValue) ->
                       [ShardAffinityValue]),
     ?assertEqual(list_to_binary(Result), Data).
 
-enable_shard_affinity_trinity_test() ->
+enable_shard_affinity_76_test() ->
     evaluate_with_profile(
       default,
       fun () ->
               ?assert(
                  proplists:is_defined(
                    enableShardAffinity,
-                   general_settings_defaults(?VERSION_TRINITY))),
+                   general_settings_defaults(?VERSION_76))),
               ?assert(
                  not proplists:is_defined(
                        enableShardAffinity,

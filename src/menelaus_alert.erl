@@ -130,7 +130,7 @@ handle_settings_alerts_post(Req) ->
               %% compatibility. This is basically a hack to make it possible to
               %% add new alert in a minor release. It can be removed when
               %% memory_alert_email is added as a proper alert
-              %% (support for pre-Trinity is dropped)
+              %% (support for pre-7.6 is dropped)
               SetMemAlertKey =
                   fun (NsConfigKey, AlertsKey, Cfg) ->
                       case proplists:get_all_values(AlertsKey, Cfg) of
@@ -151,7 +151,7 @@ handle_settings_alerts_post(Req) ->
                   end,
 
               Config2 =
-                  case cluster_compat_mode:is_cluster_trinity() of
+                  case cluster_compat_mode:is_cluster_76() of
                       true ->
                           Config;
                       false ->
@@ -423,7 +423,7 @@ get_config() ->
     %% memory_alert_email is not put to email_alerts for backward compatibility
     %% This is basically a hack to make it possible to add new alert in
     %% a minor release. It can be removed when memory_alert_email is added as
-    %% a proper alert (support for pre-Trinity is dropped)
+    %% a proper alert (support for pre-7.6 is dropped)
     ReplaceMemAlertKey =
         fun (NsConfigKey, AlertsKey, Cfg) ->
             case ns_config:read_key_fast(NsConfigKey, true) of
@@ -439,7 +439,7 @@ get_config() ->
                     Cfg
             end
         end,
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         true -> Config;
         false ->
             functools:chain(Config,

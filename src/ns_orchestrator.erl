@@ -563,7 +563,7 @@ handle_event({call, From}, Msg, StateName, State)
 handle_event({call, From}, EventData, ejecting, State) ->
     ejecting(From, EventData, State);
 
-%% called remotely from pre-Trinity nodes
+%% called remotely from pre-7.6 nodes
 handle_event({call, From},
              {maybe_start_rebalance, KnownNodes, EjectedNodes,
               DeltaRecoveryBuckets}, _StateName, _State) ->
@@ -934,7 +934,7 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
             ReturnValue =
-                case cluster_compat_mode:is_cluster_trinity() of
+                case cluster_compat_mode:is_cluster_76() of
                     true ->
                         {ok, RebalanceId};
                     false ->
@@ -1404,7 +1404,7 @@ do_cancel_stop_timer(TRef) when is_reference(TRef) ->
 maybe_try_autofailover(StopReason, EjectionInProgress) ->
     {NextState, NextStateData} =
         case EjectionInProgress andalso
-            cluster_compat_mode:is_cluster_trinity() of
+            cluster_compat_mode:is_cluster_76() of
             true ->
                 {ejecting, #ejecting_state{}};
             false ->
@@ -2056,7 +2056,7 @@ validate_create_bucket(BucketName, BucketConfig) ->
             throw({already_exists, BucketName}),
 
         ShutdownBuckets =
-            case cluster_compat_mode:is_cluster_trinity() of
+            case cluster_compat_mode:is_cluster_76() of
                 true ->
                     ns_bucket:get_bucket_names_marked_for_shutdown();
                 false ->
@@ -2118,7 +2118,7 @@ handle_delete_bucket(BucketName, From, CurrentState, StateData) ->
             Servers = ns_bucket:get_servers(BucketConfig),
             Timeout = ns_bucket:get_shutdown_timeout(BucketConfig),
 
-            case cluster_compat_mode:is_cluster_trinity() of
+            case cluster_compat_mode:is_cluster_76() of
                 true ->
                     Pid = erlang:spawn_link(
                             fun () ->
