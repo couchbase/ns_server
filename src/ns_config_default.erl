@@ -33,7 +33,7 @@ get_current_version() ->
     %% changed in 6.0.4 after 6.5.0 had shipped.  As 6.5.0 had no knowledge
     %% of the 6.0.4 version (as it didn't exist when 6.5.0 shipped) it
     %% was unable to perform an upgrade.
-    list_to_tuple(?VERSION_76).
+    list_to_tuple(?VERSION_MORPHEUS).
 
 get_min_supported_version() ->
     list_to_tuple(?MIN_SUPPORTED_VERSION).
