@@ -466,7 +466,20 @@ wait_seqno_persisted_many(Bucket, Parent, Nodes, VBucket, SeqNo) ->
       fun () ->
               RVs = misc:parallel_map(
                       fun (Node) ->
-                              {Node, (catch janitor_agent:wait_seqno_persisted(Bucket, Parent, Node, VBucket, SeqNo))}
+                              Res = (catch janitor_agent:wait_seqno_persisted(
+                                             Bucket, Parent, Node, VBucket,
+                                             SeqNo)),
+                              case Res of
+                                  ok ->
+                                      ?rebalance_debug(
+                                         "Seqno persisted. "
+                                         "Bucket: ~p, vBucket: ~p, seqno: ~p, "
+                                         "node: ~p.",
+                                         [Bucket, VBucket, SeqNo, Node]);
+                                  _ ->
+                                      ok
+                              end,
+                              {Node, Res}
                       end, Nodes, infinity),
               NonOks = [P || {_N, V} = P <- RVs,
                              V =/= ok],
