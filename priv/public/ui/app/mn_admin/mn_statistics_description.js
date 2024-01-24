@@ -218,6 +218,10 @@ function get76Stats() {
       compat76Combined[category][statName] = compat76Combined[category][statName] || {};
       Object.assign(compat76Combined[category][statName],statData);
       Object.assign(compat76Combined[category][statName],getStatAdditionalConfig(`${category}.${statName}`));
+      // nodesAggregation defaults to "sum" for all new stats
+      if (!compat76Combined[category][statName].nodesAggregation) {
+	compat76Combined[category][statName].nodesAggregation = "sum";
+      }
     }
   }
 
@@ -454,6 +458,36 @@ function getStatAdditionalConfig(statName) {
 
   case "@cbas-.cbas_failed_to_parse_records_count_total":
     return {metric: {name: "cbas_failed_to_parse_records_count"}, applyFunctions: ["sum"]};
+
+  case "@cbas.cbas_http_requests_failed_total":
+    return {applyFunctions: ["sum"], bucket: null};
+
+  case "@cbas.cbas_http_requests_failed_400_total":
+    return {metric: {name: "cbas_http_requests_failed_total", code: "400"}, applyFunctions: ["sum"]};
+
+  case "@cbas.cbas_http_requests_failed_401_total":
+    return {metric: {name: "cbas_http_requests_failed_total", code: "401"}, applyFunctions: ["sum"]};
+
+  case "@cbas.cbas_http_requests_failed_403_total":
+    return {metric: {name: "cbas_http_requests_failed_total", code: "403"}, applyFunctions: ["sum"]};
+
+  case "@cbas.cbas_http_requests_failed_404_total":
+    return {metric: {name: "cbas_http_requests_failed_total", code: "404"}, applyFunctions: ["sum"]};
+
+  case "@cbas.cbas_http_requests_failed_405_total":
+    return {metric: {name: "cbas_http_requests_failed_total", code: "405"}, applyFunctions: ["sum"]};
+
+  case "@cbas.cbas_http_requests_failed_409_total":
+    return {metric: {name: "cbas_http_requests_failed_total", code: "409"}, applyFunctions: ["sum"]};
+
+  case "@cbas.cbas_http_requests_failed_413_total":
+    return {metric: {name: "cbas_http_requests_failed_total", code: "413"}, applyFunctions: ["sum"]};
+
+  case "@cbas.cbas_http_requests_failed_500_total":
+    return {metric: {name: "cbas_http_requests_failed_total", code: "500"}, applyFunctions: ["sum"]};
+
+  case "@cbas.cbas_http_requests_failed_503_total":
+    return {metric: {name: "cbas_http_requests_failed_total", code: "503"}, applyFunctions: ["sum"]};
 
   case "@xdcr-.@items.xdcr_rate_replicated_docs_per_second":
     return {metric: {name: "xdcr_docs_written_total"}, applyFunctions: ["irate", "sum"]};
@@ -899,12 +933,6 @@ function get76CompatDesc() {
           desc: "The amount of time in seconds spent performing JVM garbage collections for Analytics node.",
           metric: {name: "cbas_gc_time_seconds_total"},
         },
-        "cbas_queued_http_requests_size": {
-          unit: "number",
-          title: "Analytics Queued HTTP Requests",
-          desc: "Number of queued http requests for Analytics on this server.",
-          metric: {name: "cbas_queued_http_requests_size"},
-        },
         "cbas_rebalance_successful_total": {
           unit: "number",
           title: "Analytics Total Successful Rebalances",
@@ -923,13 +951,72 @@ function get76CompatDesc() {
           desc: "Total number of failed rebalances for Analytics on this server.",
           metric: {name: "cbas_rebalance_failed_total"},
         },
-        "cbas_internal_error_total": {
+        "cbas_http_requests_total": {
           unit: "number",
-          title: "Analytics Total Internal Errors",
-          desc: "Total number of internal errors for Analytics on this server.",
-          metric: {name: "cbas_internal_error_total"},
+          title: "Analytics Total HTTP Requests",
+          desc: "Total number of received HTTP requests for Analytics on this server.",
+          metric: {name: "cbas_http_requests_total"},
+        },
+        "cbas_queued_http_requests_size": {
+          unit: "number",
+          title: "Analytics Queued HTTP Requests",
+          desc: "Number of queued http requests for Analytics on this server.",
+          metric: {name: "cbas_queued_http_requests_size"},
+        },
+        "cbas_http_requests_failed_400_total": {
+          unit: "number",
+          title: "Status 400",
+          desc: "Total number of failed requests with HTTP status code 400 for Analytics on this server.",
+          metric: {name: "cbas_http_requests_failed_400_total"},
+        },
+        "cbas_http_requests_failed_401_total": {
+          unit: "number",
+          title: "Status 401",
+          desc: "Total number of failed requests with HTTP status code 401 for Analytics on this server.",
+          metric: {name: "cbas_http_requests_failed_401_total"},
+        },
+        "cbas_http_requests_failed_403_total": {
+          unit: "number",
+          title: "Status 403",
+          desc: "Total number of failed requests with HTTP status code 403 for Analytics on this server.",
+          metric: {name: "cbas_http_requests_failed_403_total"},
+        },
+        "cbas_http_requests_failed_404_total": {
+          unit: "number",
+          title: "Status 404",
+          desc: "Total number of failed requests with HTTP status code 404 for Analytics on this server.",
+          metric: {name: "cbas_http_requests_failed_404_total"},
+        },
+        "cbas_http_requests_failed_405_total": {
+          unit: "number",
+          title: "Status 405",
+          desc: "Total number of failed requests with HTTP status code 405 for Analytics on this server.",
+          metric: {name: "cbas_http_requests_failed_405_total"},
+        },
+        "cbas_http_requests_failed_409_total": {
+          unit: "number",
+          title: "Status 409",
+          desc: "Total number of failed requests with HTTP status code 409 for Analytics on this server.",
+          metric: {name: "cbas_http_requests_failed_409_total"},
+        },
+        "cbas_http_requests_failed_413_total": {
+          unit: "number",
+          title: "Status 413",
+          desc: "Total number of failed requests with HTTP status code 413 for Analytics on this server.",
+          metric: {name: "cbas_http_requests_failed_413_total"},
+        },
+        "cbas_http_requests_failed_500_total": {
+          unit: "number",
+          title: "Status 500",
+          desc: "Total number of failed requests with HTTP status code 500 for Analytics on this server.",
+          metric: {name: "cbas_http_requests_failed_500_total"},
+        },
+        "cbas_http_requests_failed_503_total": {
+          unit: "number",
+          title: "Status 503",
+          desc: "Total number of failed requests with HTTP status code 503 for Analytics on this server.",
+          metric: {name: "cbas_http_requests_failed_503_total"},
         }
-
       },
     }
   };
@@ -1066,7 +1153,7 @@ function get70CompatDesc() {
           unit: "number",
           title: "Analytics Total Requests",
           desc: "Total number of received requests for Analytics on this server."
-        },
+        }
       }
     }
   };
