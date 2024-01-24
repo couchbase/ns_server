@@ -151,7 +151,7 @@ service_to_json_name(eventing) ->
 services_ranking(Vsn) ->
     [kv, cbas, index, fts, eventing]
         ++
-        case cluster_compat_mode:is_version_trinity(Vsn) of
+        case cluster_compat_mode:is_version_76(Vsn) of
             true ->
                 [n1ql];
             false ->
@@ -268,11 +268,11 @@ service_to_store_method(cbas) ->
 service_to_store_method(eventing) ->
     {manager, eventing_settings_manager};
 service_to_store_method(n1ql) ->
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         true ->
             {manager, query_settings_manager};
         false ->
-            {not_yet_supported, ?VERSION_TRINITY}
+            {not_yet_supported, ?VERSION_76}
     end.
 
 get_quota(Service) ->
@@ -413,37 +413,37 @@ default_quotas_test() ->
     TotalQuota = lists:sum([Q || {_, Q} <- Quotas]),
     ?assertEqual(true, allowed_memory_usage_max(MemSupData) >= TotalQuota).
 
-%% Ensure our calculations are equal on 7.2, Trinity, and LATEST_VERSION_NUM.
+%% Ensure our calculations are equal on 7.2, 7.6, and LATEST_VERSION_NUM.
 default_quotas_by_version_test() ->
     MemSupData = {9822564352, undefined, undefined},
-    PreTrinityServices = [kv, cbas, index, fts, eventing],
+    Pre76Services = [kv, cbas, index, fts, eventing],
     %% 7.2 quotas (pre-n1ql introduction)
     Services72 = services_ranking(?VERSION_72),
-    ?assertEqual(PreTrinityServices, Services72),
+    ?assertEqual(Pre76Services, Services72),
     TotalQuota72 =
         lists:sum([Q || {_, Q} <- default_quotas(Services72,
                                                  MemSupData, ?VERSION_72)]),
     ?assertEqual(true, allowed_memory_usage_max(MemSupData) >= TotalQuota72),
-    %% Trinity quotas
-    TrinityServices = [kv, cbas, index, fts, eventing, n1ql],
-    ServicesTrinity = services_ranking(?VERSION_TRINITY),
-    ?assertEqual(TrinityServices, ServicesTrinity),
-    TotalQuotaTrinity =
+    %% 7.6 quotas
+    SevenSixServices = [kv, cbas, index, fts, eventing, n1ql],
+    Services76 = services_ranking(?VERSION_76),
+    ?assertEqual(SevenSixServices, Services76),
+    TotalQuota76 =
         lists:sum([Q || {_, Q} <-
-                            default_quotas(ServicesTrinity,
-                                           MemSupData, ?VERSION_TRINITY)]),
+                            default_quotas(Services76,
+                                           MemSupData, ?VERSION_76)]),
     ?assertEqual(true,
-                 allowed_memory_usage_max(MemSupData) >= TotalQuotaTrinity),
+                 allowed_memory_usage_max(MemSupData) >= TotalQuota76),
 
     %% 'latest_version_num' quotas (smoke test for new versions)
     ServicesLatestVsn = services_ranking(?LATEST_VERSION_NUM),
-    ?assertEqual(TrinityServices, ServicesLatestVsn),
+    ?assertEqual(SevenSixServices, ServicesLatestVsn),
     TotalQuotaLatestVsn =
         lists:sum([Q || {_, Q} <-
                             default_quotas(ServicesLatestVsn,
                                            MemSupData, ?LATEST_VERSION_NUM)]),
     ?assertEqual(true,
                  allowed_memory_usage_max(MemSupData) >= TotalQuotaLatestVsn),
-    ?assertEqual(TotalQuotaTrinity, TotalQuotaLatestVsn).
+    ?assertEqual(TotalQuota76, TotalQuotaLatestVsn).
 
 -endif.

@@ -27,7 +27,7 @@
          is_enabled/0,
          known_settings/0,
          on_update/2,
-         config_upgrade_to_trinity/1]).
+         config_upgrade_to_76/1]).
 
 -import(json_settings_manager,
         [id_lens/1]).
@@ -84,7 +84,7 @@ known_settings(ClusterVersion) ->
 
 general_settings_defaults(ClusterVersion) ->
     [{numReplicas, 0}] ++
-        case cluster_compat_mode:is_version_trinity(ClusterVersion) of
+        case cluster_compat_mode:is_version_76(ClusterVersion) of
             true ->
                 [
                  {blobStorageScheme, <<"">>},
@@ -101,7 +101,7 @@ general_settings_lens(ClusterVersion) ->
 
 general_settings_lens_props(ClusterVersion) ->
     [{numReplicas, id_lens(<<"analytics.settings.num_replicas">>)}] ++
-        case cluster_compat_mode:is_version_trinity(ClusterVersion) of
+        case cluster_compat_mode:is_version_76(ClusterVersion) of
             true ->
                 [{blobStorageScheme,
                   id_lens(<<"analytics.settings.blob_storage_scheme">>)},
@@ -122,26 +122,26 @@ config_upgrade_settings(Config, OldVersion, NewVersion) ->
       ?MODULE, Config, [{generalSettings, NewSettings}],
       known_settings(NewVersion)).
 
-config_upgrade_to_trinity(Config) ->
-    config_upgrade_settings(Config, ?VERSION_72, ?VERSION_TRINITY).
+config_upgrade_to_76(Config) ->
+    config_upgrade_settings(Config, ?VERSION_72, ?VERSION_76).
 
 -ifdef(TEST).
 defaults_test() ->
-    Versions = [?MIN_SUPPORTED_VERSION, ?VERSION_TRINITY],
+    Versions = [?MIN_SUPPORTED_VERSION, ?VERSION_76],
     lists:foreach(fun(V) -> default_versioned(V) end, Versions).
 
 default_versioned(Version) ->
     Keys = fun (L) -> lists:sort([K || {K, _} <- L]) end,
 
     %% This only works across versions because the keys are the same
-    %% i.e. [generalSettings] in default_settings() and in trinity.
+    %% i.e. [generalSettings] in default_settings() and in 7.6.
     ?assertEqual(Keys(known_settings(Version)), Keys(default_settings())),
 
     ?assertEqual(Keys(general_settings_lens_props(Version)),
                  Keys(general_settings_defaults(Version))).
 
 config_upgrade_test() ->
-    CmdList = config_upgrade_to_trinity([]),
+    CmdList = config_upgrade_to_76([]),
     [{set, {metakv, Meta}, Data}] = CmdList,
     ?assertEqual(<<"/analytics/settings/config">>, Meta),
     ?assertEqual(<<"{\"analytics.settings.blob_storage_bucket\":\"\","

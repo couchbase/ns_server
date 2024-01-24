@@ -39,7 +39,7 @@
 %% API
 -export([start_link/0,
          master_node/0,
-         config_upgrade_to_trinity/1]).
+         config_upgrade_to_76/1]).
 
 
 %% gen_statem callbacks
@@ -736,7 +736,7 @@ refresh_high_priority_nodes(#state{higher_priority_nodes = Nodes,
           end, Nodes),
     State#state{higher_priority_nodes = NewNodes}.
 
-config_upgrade_to_trinity(_Config) ->
+config_upgrade_to_76(_Config) ->
     [{delete, mb33750_workaround_enabled}].
 
 update_service_weights(State) ->

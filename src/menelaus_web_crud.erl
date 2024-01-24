@@ -328,7 +328,7 @@ extract_flags(Params) ->
     end.
 
 extract_expiry(Params) ->
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         true ->
             case parse_int("expiry", Params, 0, ?MAX_32BIT_UNSIGNED_INT, ?NO_EXPIRY) of
                 {error, _E} ->
@@ -349,7 +349,7 @@ extract_expiry(Params) ->
     end.
 
 extract_preserve_ttl(Params) ->
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         true ->
             parse_bool(proplists:get_value("preserveTTL", Params), false);
         false ->

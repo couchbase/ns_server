@@ -398,7 +398,7 @@ get_cluster_encryption(Level) ->
     ValidLevel = lists:member(Level, SupportedLevels),
     IsMandatory = (ns_ssl_services_setup:client_cert_auth_state() =:=
                        "mandatory"),
-    IsTrinity = cluster_compat_mode:is_cluster_trinity(),
+    Is76 = cluster_compat_mode:is_cluster_76(),
     IsStrictPossibleUnencDist = misc:cluster_has_external_unencrpted_dist(),
     if
         not IsCEncryptEnabled  ->
@@ -410,7 +410,7 @@ get_cluster_encryption(Level) ->
                               [SupportedLevels]),
             {error, lists:flatten(M)};
         IsMandatory andalso (Level =:= "all" orelse Level =:= "strict") andalso
-        not IsTrinity ->
+        not Is76 ->
             M = "Can't set cluster encryption level to '" ++ Level ++
                 "' when client certificate authentication state is set "
                 "to 'mandatory'.",
@@ -438,21 +438,21 @@ services_with_security_settings() ->
     [kv, fts, index, eventing, n1ql, cbas, backup, ns_server].
 
 is_allowed_on_cluster([password_hash_alg]) ->
-    cluster_compat_mode:is_cluster_trinity();
+    cluster_compat_mode:is_cluster_76();
 is_allowed_on_cluster([allow_hash_migration_during_auth]) ->
-    cluster_compat_mode:is_cluster_trinity();
+    cluster_compat_mode:is_cluster_76();
 is_allowed_on_cluster([scram_sha1_enabled]) ->
-    cluster_compat_mode:is_cluster_trinity();
+    cluster_compat_mode:is_cluster_76();
 is_allowed_on_cluster([scram_sha256_enabled]) ->
-    cluster_compat_mode:is_cluster_trinity();
+    cluster_compat_mode:is_cluster_76();
 is_allowed_on_cluster([scram_sha512_enabled]) ->
-    cluster_compat_mode:is_cluster_trinity();
+    cluster_compat_mode:is_cluster_76();
 is_allowed_on_cluster([argon2id_time]) ->
-    cluster_compat_mode:is_cluster_trinity();
+    cluster_compat_mode:is_cluster_76();
 is_allowed_on_cluster([argon2id_mem]) ->
-    cluster_compat_mode:is_cluster_trinity();
+    cluster_compat_mode:is_cluster_76();
 is_allowed_on_cluster([pbkdf2_sha512_iterations]) ->
-    cluster_compat_mode:is_cluster_trinity();
+    cluster_compat_mode:is_cluster_76();
 is_allowed_on_cluster([{serverless, bucket_weight_limit}]) ->
     bucket_placer:is_enabled();
 is_allowed_on_cluster([{serverless, tenant_limit}]) ->
@@ -1354,12 +1354,12 @@ handle_settings_stats(Req) ->
 build_settings_stats() ->
     Defaults =
         default_settings_stats_config(cluster_compat_mode:is_enterprise(),
-                                      cluster_compat_mode:is_cluster_trinity()),
+                                      cluster_compat_mode:is_cluster_76()),
     [{send_stats, SendStats}] = ns_config:search_prop(
                                   ns_config:get(), settings, stats, Defaults),
     [{sendStats, SendStats}].
 
-default_settings_stats_config(false = _IsEnterprise, true = _IsTrinity) ->
+default_settings_stats_config(false = _IsEnterprise, true = _Is76) ->
     [{send_stats, true}];
 default_settings_stats_config(_, _) ->
     [{send_stats, false}].
@@ -1375,9 +1375,9 @@ handle_settings_stats_post(Req) ->
 
 apply_stats_settings(Props) ->
     apply_stats_settings(cluster_compat_mode:is_enterprise(),
-                         cluster_compat_mode:is_cluster_trinity(), Props).
+                         cluster_compat_mode:is_cluster_76(), Props).
 
-apply_stats_settings(false = _IsEnterprise, true = _IsTrinity, _Props) ->
+apply_stats_settings(false = _IsEnterprise, true = _Is76, _Props) ->
     ok;
 apply_stats_settings(_, _, Props) ->
     SendStats = proplists:get_value(sendStats, Props),
@@ -1615,7 +1615,7 @@ handle_settings_data_service(Req) ->
                200).
 
 handle_settings_data_service_post(Req) ->
-    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_is_76(),
     validator:handle(
       fun (Values) ->
               Num = proplists:get_value(minReplicasCount, Values),
@@ -1676,7 +1676,7 @@ test_conf() ->
 parse_post_data_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode,
-                is_cluster_trinity,
+                is_cluster_76,
                 fun() ->
                         true
                 end),
@@ -1780,7 +1780,7 @@ parse_post_data_test() ->
                                    "tlsMinVersion=tlsv1.1">>,
                                  KeyValidator)),
     meck:expect(cluster_compat_mode,
-                is_cluster_trinity,
+                is_cluster_76,
                 fun() ->
                         false
                 end),

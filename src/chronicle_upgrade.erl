@@ -122,7 +122,7 @@ upgrade_to(?VERSION_71, UpgradeTxn) ->
     {?VERSION_72, ns_bucket:chronicle_upgrade_to_72(UpgradeTxn)};
 
 upgrade_to(?VERSION_72, UpgradeTxn) ->
-    {?VERSION_TRINITY,
+    {?VERSION_76,
      functools:chain(
        UpgradeTxn,
-       [ns_bucket:chronicle_upgrade_to_trinity(_)])}.
+       [ns_bucket:chronicle_upgrade_to_76(_)])}.

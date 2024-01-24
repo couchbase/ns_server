@@ -25,8 +25,8 @@
          rebalance_ignore_view_compactions/0,
          is_cluster_72/0,
          is_version_72/1,
-         is_cluster_trinity/0,
-         is_version_trinity/1,
+         is_cluster_76/0,
+         is_version_76/1,
          is_enterprise/0,
          is_enterprise/1,
          is_saslauthd_enabled/0,
@@ -48,7 +48,7 @@
 n1ql_cluster_capabilities(Version) ->
     [costBasedOptimizer, indexAdvisor, javaScriptFunctions, inlineFunctions,
      enhancedPreparedStatements] ++
-        case is_enabled_at(Version, ?VERSION_TRINITY) of
+        case is_enabled_at(Version, ?VERSION_76) of
             true ->
                 [readFromReplica];
             false ->
@@ -118,11 +118,11 @@ is_version_72(ClusterVersion) ->
 is_cluster_72() ->
     is_enabled(?VERSION_72).
 
-is_version_trinity(ClusterVersion) ->
-    is_enabled_at(ClusterVersion, ?VERSION_TRINITY).
+is_version_76(ClusterVersion) ->
+    is_enabled_at(ClusterVersion, ?VERSION_76).
 
-is_cluster_trinity() ->
-    is_enabled(?VERSION_TRINITY).
+is_cluster_76() ->
+    is_enabled(?VERSION_76).
 
 is_index_aware_rebalance_on() ->
     not ns_config:read_key_fast(index_aware_rebalance_disabled, false).
@@ -183,7 +183,7 @@ consider_switching_compat_mode() ->
     end.
 
 upgrades() ->
-    [{?VERSION_TRINITY, rbac, menelaus_users, upgrade}].
+    [{?VERSION_76, rbac, menelaus_users, upgrade}].
 
 do_upgrades(undefined, _, _, _) ->
     %% this happens during the cluster initialization. no upgrade needed

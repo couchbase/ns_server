@@ -1953,7 +1953,7 @@ build_ui_values(collection_name, Collections) ->
 
 handle_backup(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_is_76(),
     validator:handle(
       handle_backup(Req, _), Req, qs,
       [validator:validate_multi_params(fun parse_backup_filter/1, include, _),
@@ -2181,7 +2181,7 @@ backup_filter_match(_, _, Cache) ->
 
 handle_backup_restore(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_is_76(),
     validator:handle(
       handle_backup_restore_validated(Req, _), Req, form,
       [validator:boolean(canOverwrite, _),

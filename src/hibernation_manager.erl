@@ -249,7 +249,7 @@ meck_expect_base() ->
     meck:expect(hibernation_utils, get_metadata_from_s3,
                 fun (_) ->
                         [{bucket_cfg, [{map, []}, {servers, []}]},
-                         {version, ?VERSION_TRINITY}, {bucket_manifest, []},
+                         {version, ?VERSION_76}, {bucket_manifest, []},
                          {bucket_uuid, 1}]
                 end),
     meck:expect(hibernation_utils, check_test_condition,
@@ -583,7 +583,7 @@ resume_helpers_test_body() ->
                                                   'n_1@127.0.0.1']},
                                        {desired_servers, ['n_0@127.0.0.1',
                                                           'n_1@127.0.0.1']}]},
-                         {version, ?VERSION_TRINITY}, {bucket_manifest, []},
+                         {version, ?VERSION_76}, {bucket_manifest, []},
                          {bucket_uuid, 1}]
                 end),
 

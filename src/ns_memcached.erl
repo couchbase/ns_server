@@ -769,7 +769,7 @@ do_handle_call(get_all_vb_seqnos, _From, State = #state{sock = Sock}) ->
     {reply, mc_client_binary:get_all_vb_seqnos(Sock), State};
 
 %% This is left in place to support backwards compat from nodes with version
-%% lower than Trinity.
+%% lower than 7.6.
 do_handle_call({get_keys, VBuckets, Params}, From, State) ->
     do_handle_call({get_keys, VBuckets, Params, undefined}, From, State);
 do_handle_call({get_keys, VBuckets, Params, Identity}, _From,
@@ -1798,7 +1798,7 @@ get_keys(Bucket, NodeVBuckets, Params, Identity) ->
 
 do_get_keys_call(Bucket, Node, VBuckets, Params, Identity) ->
     GetKeys = case Identity =:= undefined andalso
-                  not cluster_compat_mode:is_cluster_trinity() of
+                  not cluster_compat_mode:is_cluster_76() of
                   true ->
                       {get_keys, VBuckets, Params};
                   false ->
