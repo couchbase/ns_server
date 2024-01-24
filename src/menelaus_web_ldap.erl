@@ -154,7 +154,7 @@ params() ->
      {"clientTLSKey", #{cfg_key => client_tls_key, type => pkey}},
      {"extraTLSOpts", #{cfg_key => extra_tls_opts, type => tls_opts}},
      {"maxTLSVersion", #{cfg_key => max_tls_version, type => max_tls_version}}]
-        ++ case cluster_compat_mode:is_cluster_trinity() of
+        ++ case cluster_compat_mode:is_cluster_76() of
                true ->
                    [{"maxGroupCacheSize",
                      #{cfg_key => max_group_cache_size, type =>
@@ -261,11 +261,11 @@ parse_dn_mapping({[{<<"template">>, T}]}) ->
     end,
     [{<<"(.+)">>, {template, Template}}];
 parse_dn_mapping({[{<<"advanced">>, List}]}) when is_list(List) ->
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         true -> ok;
         false ->
             throw({error, "Advanced user-to-dn-mapping isn't supported "
-                          "in pre-trinity mixed version clusters"})
+                          "in pre-7.6 mixed version clusters"})
     end,
     CheckRE =
         fun (RE) ->

@@ -78,14 +78,14 @@ upgrade(?MIN_SUPPORTED_VERSION, Config) ->
         menelaus_web_alerts_srv:config_upgrade_to_72(Config)};
 
 upgrade(?VERSION_72, Config) ->
-    {?VERSION_TRINITY,
-     menelaus_web_auto_failover:config_upgrade_to_trinity(Config) ++
-         menelaus_web_alerts_srv:config_upgrade_to_trinity(Config) ++
-         index_settings_manager:config_upgrade_to_trinity(Config) ++
-         query_settings_manager:config_upgrade_to_trinity(Config) ++
-         analytics_settings_manager:config_upgrade_to_trinity(Config) ++
-         mb_master:config_upgrade_to_trinity(Config) ++
-         ns_ssl_services_setup:config_upgrade_to_trinity(Config) ++
-         ldap_util:config_upgrade_to_trinity(Config) ++
-         menelaus_web_guardrails:config_upgrade_to_trinity(Config) ++
-         ns_config_auth:config_upgrade_to_trinity(Config)}.
+    {?VERSION_76,
+     menelaus_web_auto_failover:config_upgrade_to_76(Config) ++
+         menelaus_web_alerts_srv:config_upgrade_to_76(Config) ++
+         index_settings_manager:config_upgrade_to_76(Config) ++
+         query_settings_manager:config_upgrade_to_76(Config) ++
+         analytics_settings_manager:config_upgrade_to_76(Config) ++
+         mb_master:config_upgrade_to_76(Config) ++
+         ns_ssl_services_setup:config_upgrade_to_76(Config) ++
+         ldap_util:config_upgrade_to_76(Config) ++
+         menelaus_web_guardrails:config_upgrade_to_76(Config) ++
+         ns_config_auth:config_upgrade_to_76(Config)}.

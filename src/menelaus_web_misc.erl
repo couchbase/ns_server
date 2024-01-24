@@ -162,7 +162,7 @@ handle_event_log_post(Req) ->
                      end, Req, json, event_log:validators()).
 
 handle_rotate_internal_creds(Req) ->
-    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_is_76(),
     case cb_creds_rotation:rotate_password() of
         {error, tmp_error} ->
             ErrStr = <<"System is being reconfigured. Please try later.">>,

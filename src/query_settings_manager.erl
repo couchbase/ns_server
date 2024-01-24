@@ -24,7 +24,7 @@
          update/2,
          update_txn/1,
          config_default/0,
-         config_upgrade_to_trinity/1]).
+         config_upgrade_to_76/1]).
 
 -export([cfg_key/0,
          is_enabled/0,
@@ -77,12 +77,12 @@ config_default() ->
                           maps:new(),
                           known_settings(?MIN_SUPPORTED_VERSION))}.
 
-config_upgrade_to_trinity(Config) ->
-    NewSettings = general_settings_defaults(?VERSION_TRINITY) --
+config_upgrade_to_76(Config) ->
+    NewSettings = general_settings_defaults(?VERSION_76) --
         general_settings_defaults(?MIN_SUPPORTED_VERSION),
     json_settings_manager:upgrade_existing_key(
       ?MODULE, Config, [{generalSettings, NewSettings}],
-      known_settings(?VERSION_TRINITY), fun functools:id/1).
+      known_settings(?VERSION_76), fun functools:id/1).
 
 known_settings() ->
     known_settings(cluster_compat_mode:get_ns_config_compat_version()).
@@ -90,7 +90,7 @@ known_settings() ->
 known_settings(Ver) ->
     [{generalSettings, general_settings_lens(Ver)},
      {curlWhitelistSettings, curl_whitelist_settings_lens()}] ++
-        case cluster_compat_mode:is_version_trinity(Ver) of
+        case cluster_compat_mode:is_version_76(Ver) of
             true ->
                 %% map the memoryQuota to node-quota parameter
                 [{memoryQuota, id_lens(<<"node-quota">>)}];
@@ -101,7 +101,7 @@ known_settings(Ver) ->
 default_settings(Ver) ->
     [{generalSettings, general_settings_defaults(Ver)},
      {curlWhitelistSettings, curl_whitelist_settings_defaults()}] ++
-        case cluster_compat_mode:is_version_trinity(Ver) of
+        case cluster_compat_mode:is_version_76(Ver) of
             true ->
                 [{memoryQuota, ?QUERY_NODE_QUOTA_DEFAULT}];
             false ->
@@ -116,7 +116,7 @@ n1ql_feature_ctrl_setting(Ver) ->
     %% So the new value should be 0x404c(Decimal: 16460) to turn it off.
     Default = 16#4c,
     SequentialScanDisabled =
-        cluster_compat_mode:is_version_trinity(Ver) andalso
+        cluster_compat_mode:is_version_76(Ver) andalso
             config_profile:get_bool({n1ql, sequential_scan_disabled}),
 
     Val =
@@ -148,7 +148,7 @@ general_settings(Ver) ->
      {queryCleanupLostAttempts, "cleanuplostattempts", true},
      {queryCleanupWindow,      "cleanupwindow",       <<"60s">>},
      {queryNumAtrs,            "numatrs",             1024}] ++
-    case cluster_compat_mode:is_version_trinity(Ver) of
+    case cluster_compat_mode:is_version_76(Ver) of
         true ->
             [{queryNodeQuota, "node-quota", ?QUERY_NODE_QUOTA_DEFAULT},
              {queryUseReplica, "use-replica", <<"unset">>},
@@ -181,7 +181,7 @@ curl_whitelist_settings_lens() ->
 
 -ifdef(TEST).
 config_upgrade_test() ->
-    CmdList = config_upgrade_to_trinity([]),
+    CmdList = config_upgrade_to_76([]),
     [{set, {metakv, Meta}, Data}] = CmdList,
     ?assertEqual(<<"/query/settings/config">>, Meta),
     ?assertEqual(<<"{\"completed-max-plan-size\":262144,"
@@ -191,7 +191,7 @@ config_upgrade_test() ->
                    "\"use-replica\":\"unset\"}">>,
                  Data),
 
-    %% Upgrade to Trinity for provisioned profile should update n1ql-feat-ctrl
+    %% Upgrade to 7.6 for provisioned profile should update n1ql-feat-ctrl
     %% to disable sequential scans.
 
     meck:new(config_profile, [passthrough]),
@@ -200,7 +200,7 @@ config_upgrade_test() ->
                         true
                 end),
 
-    CmdList1 = config_upgrade_to_trinity([]),
+    CmdList1 = config_upgrade_to_76([]),
     [{set, {metakv, Meta1}, Data1}] = CmdList1,
     ?assertEqual(<<"/query/settings/config">>, Meta1),
     ?assertEqual(<<"{\"completed-max-plan-size\":262144,"
@@ -215,7 +215,7 @@ config_upgrade_test() ->
 
 create_test_config_n1ql_quotas(NodeQuotaValue) when is_number(NodeQuotaValue) ->
     WOutNodeQuota = proplists:delete(queryNodeQuota,
-                                     general_settings(?VERSION_TRINITY)),
+                                     general_settings(?VERSION_76)),
     Settings =
         [{K, V} ||
             {K, _, V} <-
@@ -224,7 +224,7 @@ create_test_config_n1ql_quotas(NodeQuotaValue) when is_number(NodeQuotaValue) ->
     SettingsBlob = json_settings_manager:build_settings_json(
                      [{generalSettings, Settings}],
                      maps:new(),
-                     known_settings(?VERSION_TRINITY)),
+                     known_settings(?VERSION_76)),
     #config{static = [[], []], dynamic = [[{cfg_key(), SettingsBlob}], []]}.
 
 quota_test_fun(Number) when is_number(Number) ->
@@ -240,11 +240,11 @@ quota_test_fun(Number) when is_number(Number) ->
 n1ql_quota_test_() ->
     {setup,
      fun () -> meck:new(cluster_compat_mode, [passthrough]),
-               meck:expect(cluster_compat_mode, is_cluster_trinity,
+               meck:expect(cluster_compat_mode, is_cluster_76,
                            fun () -> true end),
                meck:expect(cluster_compat_mode,
                            get_ns_config_compat_version,
-                           fun () -> ?VERSION_TRINITY end)
+                           fun () -> ?VERSION_76 end)
      end,
      fun (_X) ->
              meck:unload(cluster_compat_mode)

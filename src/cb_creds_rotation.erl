@@ -230,7 +230,7 @@ start_rotation(Froms, Sleep) ->
                    end,
     {_Pid, MonRef} = spawn_opt(
                        fun () ->
-                           case cluster_compat_mode:is_cluster_trinity() of
+                           case cluster_compat_mode:is_cluster_76() of
                                true -> rotate_password(RotationType, Sleep);
                                false -> ok
                            end

@@ -258,7 +258,7 @@ do_query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
 mark_bucket_warmed(Bucket, Nodes) ->
     DataIngress = guardrail_enforcer:get_status({bucket, Bucket}),
     Call =
-        case cluster_compat_mode:is_cluster_trinity() of
+        case cluster_compat_mode:is_cluster_76() of
             false ->
                 %% Ensure that we send the correct call to down-version nodes
                 %% during upgrade

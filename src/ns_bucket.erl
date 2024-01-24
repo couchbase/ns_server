@@ -152,7 +152,7 @@
          activate_bucket_data_on_this_node/1,
          deactivate_bucket_data_on_this_node/1,
          chronicle_upgrade_to_72/1,
-         chronicle_upgrade_to_trinity/1,
+         chronicle_upgrade_to_76/1,
          extract_bucket_props/1,
          build_bucket_props_json/1,
          build_compaction_settings_json/1,
@@ -346,7 +346,7 @@ get_buckets_by_rank() ->
           proplists:proplist().
 get_buckets_by_rank(BucketsConfig) ->
     JustBuckets = maybe_isolate_bucket_props(BucketsConfig),
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         true ->
             lists:sort(rank_sorting_fn(), JustBuckets);
         false ->
@@ -1107,7 +1107,7 @@ get_bucket_names_marked_for_shutdown(Snapshot) ->
 delete_bucket(BucketName) ->
     RootKey = root(),
     PropsKey = sub_key(BucketName, props),
-    IsClusterTrinity = cluster_compat_mode:is_cluster_trinity(),
+    IsCluster76 = cluster_compat_mode:is_cluster_76(),
 
     RV = chronicle_kv:transaction(
            kv, [RootKey, PropsKey, nodes_wanted, uuid_key(BucketName),
@@ -1131,7 +1131,7 @@ delete_bucket(BucketName) ->
                                     N <- NodesWanted]],
                            {commit,
                             [{set, RootKey, BucketNames -- [BucketName]}] ++
-                            %% We need to ensure the cluster is trinity to avoid
+                            %% We need to ensure the cluster is 7.6 to avoid
                             %% running into issues similar to the one described
                             %% here:
                             %%
@@ -1139,7 +1139,7 @@ delete_bucket(BucketName) ->
                             %% 188906/comments/209b4dbb_78588f3e
                             [add_marked_for_shutdown(
                                Snapshot, {BucketName, BucketConfig}) ||
-                             IsClusterTrinity] ++
+                             IsCluster76] ++
                             [{delete, K} || K <- KeysToDelete],
                             [{uuid, UUID}] ++ BucketConfig}
                    end
@@ -1907,7 +1907,7 @@ last_balanced_vbmap_key(BucketName) ->
     sub_key(BucketName, last_balanced_vbmap).
 
 store_last_balanced_vbmap(BucketName, Map, Options) ->
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         true ->
             {ok, _} =
                 chronicle_kv:set(
@@ -1917,9 +1917,9 @@ store_last_balanced_vbmap(BucketName, Map, Options) ->
     end.
 
 %% this can be replaced with deleting vbucket_map_history key on
-%% ns_config upgrade after Trinity becomes min supported version
+%% ns_config upgrade after 7.6 becomes min supported version
 maybe_remove_vbucket_map_history() ->
-    case cluster_compat_mode:is_cluster_trinity() andalso
+    case cluster_compat_mode:is_cluster_76() andalso
         ns_config:search(vbucket_map_history) =/= false andalso
         lists:all(?cut(get_last_balanced_map(_) =/= not_found),
                   get_bucket_names_of_type(membase)) of
@@ -1933,11 +1933,11 @@ past_vbucket_maps(BucketName) ->
     past_vbucket_maps(BucketName, ns_config:latest()).
 
 past_vbucket_maps(BucketName, Config) ->
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         true ->
             case get_last_balanced_map(BucketName) of
                 not_found ->
-                    %% can be removed after Trinity becomes min supported
+                    %% can be removed after 7.6 becomes min supported
                     %% version
                     get_vbucket_map_history(Config);
                 MapAndOptions ->
@@ -2082,7 +2082,7 @@ chronicle_upgrade_bucket(Func, BucketNames, ChronicleTxn) ->
               Func(Name, Acc)
       end, ChronicleTxn, BucketNames).
 
-default_trinity_enterprise_props(true = _IsEnterprise) ->
+default_76_enterprise_props(true = _IsEnterprise) ->
     [{pitr_enabled, false},
      {pitr_granularity, attribute_default(pitr_granularity)},
      {pitr_max_history_age,
@@ -2090,14 +2090,14 @@ default_trinity_enterprise_props(true = _IsEnterprise) ->
      {cross_cluster_versioning_enabled, false},
      {version_pruning_window_hrs,
       attribute_default(version_pruning_window_hrs)}];
-default_trinity_enterprise_props(false = _IsEnterprise) ->
+default_76_enterprise_props(false = _IsEnterprise) ->
     [].
 
-chronicle_upgrade_bucket_to_trinity(BucketName, ChronicleTxn) ->
+chronicle_upgrade_bucket_to_76(BucketName, ChronicleTxn) ->
     PropsKey = sub_key(BucketName, props),
     AddProps =
         [{rank, ?DEFAULT_BUCKET_RANK}] ++
-        default_trinity_enterprise_props(cluster_compat_mode:is_enterprise()),
+        default_76_enterprise_props(cluster_compat_mode:is_enterprise()),
     {ok, BucketConfig} = chronicle_upgrade:get_key(PropsKey, ChronicleTxn),
     NewBucketConfig = misc:merge_proplists(fun (_, L, _) -> L end, AddProps,
                                            BucketConfig),
@@ -2108,15 +2108,15 @@ chronicle_upgrade_bucket_to_trinity(BucketName, ChronicleTxn) ->
         {error, not_found} ->
             ChronicleTxn2;
         {ok, Manifest} ->
-            NewManifest = collections:upgrade_to_trinity(Manifest,
+            NewManifest = collections:upgrade_to_76(Manifest,
                                                          BucketConfig),
             chronicle_upgrade:set_key(CollectionsKey, NewManifest,
                                       ChronicleTxn2)
     end.
 
-chronicle_upgrade_to_trinity(ChronicleTxn) ->
+chronicle_upgrade_to_76(ChronicleTxn) ->
     {ok, BucketNames} = chronicle_upgrade:get_key(root(), ChronicleTxn),
-    chronicle_upgrade_bucket(chronicle_upgrade_bucket_to_trinity(_, _),
+    chronicle_upgrade_bucket(chronicle_upgrade_bucket_to_76(_, _),
                              BucketNames, ChronicleTxn).
 
 upgrade_bucket_config_to_72(Bucket, ChronicleTxn) ->

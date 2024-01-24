@@ -28,7 +28,7 @@
          set_settings/1,
          replace_expressions/2,
          parse_dn/1,
-         config_upgrade_to_trinity/1,
+         config_upgrade_to_76/1,
          client_cert_auth_enabled/1]).
 
 -define(ELDAP_ERR_MSG, "Connect: ~p failed ~p~n").
@@ -291,7 +291,7 @@ default_settings(Version) ->
      {server_cert_validation, true},
      {bind_method, undefined},
      {extra_tls_opts, undefined}] ++
-        case cluster_compat_mode:is_version_trinity(Version) of
+        case cluster_compat_mode:is_version_76(Version) of
             true ->
                 [{max_group_cache_size, ?LDAP_GROUPS_CACHE_SIZE},
                  {middlebox_comp_mode, true}];
@@ -312,7 +312,7 @@ set_settings(Settings) ->
     OldProps = ns_config:read_key_fast(ldap_settings, []),
     ns_config:set(ldap_settings, misc:update_proplist(OldProps, Settings)).
 
-config_upgrade_to_trinity(Config) ->
+config_upgrade_to_76(Config) ->
     Current = ns_config:search(Config, ldap_settings, []),
     CurrentTls = proplists:get_value(extra_tls_opts, Current, []),
     Middlebox =
@@ -518,25 +518,25 @@ replace([{Type, Str} | Tail], Re, ValuesPropList, Res) ->
 
 -ifdef(TEST).
 
-upgrade_to_trinity_test() ->
+upgrade_to_76_test() ->
     %% empty case
     Config1 = [],
     Expected1 = [],
-    ?assertEqual(Expected1, config_upgrade_to_trinity(Config1)),
+    ?assertEqual(Expected1, config_upgrade_to_76(Config1)),
 
     %% true inside extra_tls_opts case
     Config2 = [[{ldap_settings, [{extra_tls_opts,
                                   [{middlebox_comp_mode, true}]}]}]],
     Expected2 = [{set, ldap_settings, [{extra_tls_opts, []},
                                        {middlebox_comp_mode, true}]}],
-    ?assertEqual(Expected2, config_upgrade_to_trinity(Config2)),
+    ?assertEqual(Expected2, config_upgrade_to_76(Config2)),
 
     %% false inside extra_tls_opts case
     Config3 = [[{ldap_settings, [{extra_tls_opts,
                                   [{middlebox_comp_mode, false}]}]}]],
     Expected3 = [{set, ldap_settings, [{extra_tls_opts, []},
                                        {middlebox_comp_mode, false}]}],
-    ?assertEqual(Expected3, config_upgrade_to_trinity(Config3)).
+    ?assertEqual(Expected3, config_upgrade_to_76(Config3)).
 
 escape_test() ->
 %% Examples from RFC 4515

@@ -58,7 +58,7 @@
 
 -spec is_enabled() -> boolean().
 is_enabled() ->
-    cluster_compat_mode:is_cluster_trinity() andalso
+    cluster_compat_mode:is_cluster_76() andalso
         config_profile:get_bool({resource_management, enabled}).
 
 
@@ -898,7 +898,7 @@ basic_test_setup() ->
     %% We need unstick, so that we can meck rpc
     meck:new(modules(), [passthrough, unstick]),
 
-    meck:expect(cluster_compat_mode, is_cluster_trinity, ?cut(true)),
+    meck:expect(cluster_compat_mode, is_cluster_76, ?cut(true)),
     meck:expect(config_profile, get_bool,
                 fun ({resource_management, enabled}) -> true end).
 
@@ -2070,7 +2070,7 @@ regular_checks_t() ->
     meck:expect(ns_config, set,
                 fun ({node, _, resource_statuses}, _) -> ok end),
 
-    meck:expect(cluster_compat_mode, is_cluster_trinity, ?cut(true)),
+    meck:expect(cluster_compat_mode, is_cluster_76, ?cut(true)),
     meck:expect(config_profile, get_bool,
                 fun ({resource_management, enabled}) -> false end),
 

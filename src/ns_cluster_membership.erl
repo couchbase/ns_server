@@ -490,7 +490,7 @@ prepare_to_join(RemoteNode, Cookie) ->
               %% the cluster we are joining. We create a fresh vector clock as
               %% opposed to incrementing the existing one, so we don't carry
               %% redundant history.
-              NewValue = pre_trinity_node_key_clean_up(Key, Value),
+              NewValue = pre_76_node_key_clean_up(Key, Value),
               {set_fresh, {{node, Node, Key}, NewValue}};
           ({K, _V}) ->
               %% Don't erase values we are about to set_initial, just to be
@@ -511,8 +511,8 @@ prepare_to_join(RemoteNode, Cookie) ->
               ns_config:set_initial(Key, Value)
       end, InitialKVs).
 
-%% This is needed for the case when trinity node is added to pre-trinity cluster
-pre_trinity_node_key_clean_up(memcached, List) ->
+%% This is needed for the case when 7.6 node is added to pre-7.6 cluster
+pre_76_node_key_clean_up(memcached, List) ->
     Res = misc:key_update(
             admin_pass,
             List,
@@ -523,7 +523,7 @@ pre_trinity_node_key_clean_up(memcached, List) ->
         false -> List;
         NewList when is_list(NewList) -> NewList
     end;
-pre_trinity_node_key_clean_up(_Key, Value) ->
+pre_76_node_key_clean_up(_Key, Value) ->
     Value.
 
 supported_services() ->

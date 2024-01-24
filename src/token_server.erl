@@ -334,7 +334,7 @@ handle_call({check, Token}, _From, State) ->
             {reply, false, State};
         #token_record{memo = Memo} ->
             Res =
-                case cluster_compat_mode:is_cluster_trinity() of
+                case cluster_compat_mode:is_cluster_76() of
                     true -> Memo;
                     false ->
                         %% token server should not know anything about

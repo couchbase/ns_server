@@ -33,7 +33,7 @@ get_current_version() ->
     %% changed in 6.0.4 after 6.5.0 had shipped.  As 6.5.0 had no knowledge
     %% of the 6.0.4 version (as it didn't exist when 6.5.0 shipped) it
     %% was unable to perform an upgrade.
-    list_to_tuple(?VERSION_TRINITY).
+    list_to_tuple(?VERSION_76).
 
 get_min_supported_version() ->
     list_to_tuple(?MIN_SUPPORTED_VERSION).
@@ -413,7 +413,7 @@ upgrade_config(Config) ->
             %% service_ports.
             service_ports:offline_upgrade(Config) ++
                 [{set, {node, node(), config_version}, CurrentVersion} |
-                 upgrade_config_from_7_2_to_trinity(Config)];
+                 upgrade_config_from_7_2_to_76(Config)];
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
                        "unsupported version ~p. Terminating.", [OldVersion]),
@@ -467,11 +467,11 @@ do_upgrade_config_from_7_1_to_7_2(_Config, DefaultConfig) ->
      upgrade_key(database_dir, DefaultConfig),
      upgrade_key(index_dir, DefaultConfig)].
 
-upgrade_config_from_7_2_to_trinity(Config) ->
-    DefaultConfig = default(?VERSION_TRINITY),
-    do_upgrade_config_from_7_2_to_trinity(Config, DefaultConfig).
+upgrade_config_from_7_2_to_76(Config) ->
+    DefaultConfig = default(?VERSION_76),
+    do_upgrade_config_from_7_2_to_76(Config, DefaultConfig).
 
-do_upgrade_config_from_7_2_to_trinity(_Config, DefaultConfig) ->
+do_upgrade_config_from_7_2_to_76(_Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig)].
 

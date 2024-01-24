@@ -38,7 +38,7 @@
          terminate/2, code_change/3, handle_settings_alerts_limits_post/1,
          handle_settings_alerts_limits_get/1]).
 
--export([alert_keys/0, config_upgrade_to_72/1, config_upgrade_to_trinity/1]).
+-export([alert_keys/0, config_upgrade_to_72/1, config_upgrade_to_76/1]).
 
 %% @doc Hold client state for any alerts that need to be shown in
 %% the browser, is used by menelaus_web to piggy back for a transport
@@ -405,7 +405,7 @@ config_email_alerts_upgrade(Config, Upgrade) ->
             Upgrade(EmailAlerts)
     end.
 
-config_upgrade_to_trinity(Config) ->
+config_upgrade_to_76(Config) ->
     Ret = case ns_config:search(Config, email_alerts) of
               false ->
                   [];
@@ -875,7 +875,7 @@ check(memory_threshold, Opaque, _History, Stats) ->
     Opaque;
 check(stuck_rebalance, Opaque, _History, _Stats) ->
     {Stuck, Opaque1} =
-        case cluster_compat_mode:is_cluster_trinity() and
+        case cluster_compat_mode:is_cluster_76() and
             %% Only check the alert from the orchestrator node, to avoid
             %% duplicate alerts and unnecessarily making ns_rebalance_observer
             %% calls from other nodes
@@ -1616,7 +1616,7 @@ basic_test_modules() ->
 
 basic_test() ->
     ok = meck:new(basic_test_modules(), [passthrough]),
-    ok = meck:expect(cluster_compat_mode, is_cluster_trinity,
+    ok = meck:expect(cluster_compat_mode, is_cluster_76,
                      fun () -> true end),
     meck:expect(ns_config, get_timeout,
                 fun ({menelaus_web_alerts_srv, sample_rate}, Default) ->
@@ -1671,10 +1671,10 @@ config_upgrade_to_72_test() ->
     [{set, email_alerts, Alerts}] = config_upgrade_to_72(Config),
     ?assertEqual(misc:sort_kv_list(ExpectedAlerts), misc:sort_kv_list(Alerts)).
 
-config_upgrade_to_trinity_test() ->
+config_upgrade_to_76_test() ->
     Config1 = [],
     Expected1 = [{delete, popup_alerts_auto_failover_upgrade_70_fixed}],
-    ?assertEqual(Expected1, config_upgrade_to_trinity(Config1)),
+    ?assertEqual(Expected1, config_upgrade_to_76(Config1)),
 
     Config2 =
         [[{email_alerts,
@@ -1694,7 +1694,7 @@ config_upgrade_to_trinity_test() ->
            {enabled,false}]},
          {delete,memory_alert_email},
          {delete,memory_alert_popup}] ++ Expected1,
-    ?assertEqual(Expected2, config_upgrade_to_trinity(Config2)).
+    ?assertEqual(Expected2, config_upgrade_to_76(Config2)).
 
 %% Test that the stuck time is correctly updated based on rebalance progress
 test_rebalance_progress(Service, Time, Progress, StuckStart, Opaque0) ->

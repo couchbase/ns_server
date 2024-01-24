@@ -417,7 +417,7 @@ common_test_setup() ->
     meck:expect(cluster_compat_mode,
                 get_compat_version,
                 fun() ->
-                        ?VERSION_TRINITY
+                        ?VERSION_76
                 end),
 
     ?meckNew(testconditions),

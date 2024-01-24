@@ -355,7 +355,7 @@ parse_join_cluster_params(Params, ThisIsJoin) ->
 
     ServicelessAllowed =
         cluster_compat_mode:is_enterprise() andalso
-        cluster_compat_mode:is_cluster_trinity(),
+        cluster_compat_mode:is_cluster_76(),
 
     Services = case proplists:get_value("services", Params) of
                    undefined ->
@@ -1135,12 +1135,12 @@ do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
                             "pausing/resuming.", 503);
         no_kv_nodes_left ->
             reply_json(Req, {[{noKVNodesLeft, 1}]}, 400);
-        %% pre-trinity responses
+        %% pre-7.6 responses
         ok ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes,
                                          DeltaRecoveryBuckets),
             reply(Req, 200);
-        %% trinity and next versions response
+        %% 7.6 and next versions response
         {ok, RebalanceId} ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes,
                                          DeltaRecoveryBuckets),

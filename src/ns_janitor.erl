@@ -1189,7 +1189,7 @@ test_mark_bucket_warmed(Status) ->
 
 cleanup_mark_bucket_warmed_data_ingress_test_body() ->
     Node = node(),
-    meck:expect(cluster_compat_mode, is_cluster_trinity, ?cut(false)),
+    meck:expect(cluster_compat_mode, is_cluster_76, ?cut(false)),
 
     meck:expect(janitor_agent_sup, get_registry_pid,
                 fun (_) -> self() end),
@@ -1212,13 +1212,13 @@ cleanup_mark_bucket_warmed_data_ingress_test_body() ->
     meck:expect(ns_memcached, mark_warmed,
                 fun ("B1", _Status) -> ok end),
 
-    %% Pre-trinity, we can't set a status, so ns_memcached:mark_warmed should
+    %% Pre-7.6, we can't set a status, so ns_memcached:mark_warmed should
     %% get status undefined
     ?assertEqual(undefined, test_mark_bucket_warmed(ok)),
 
-    meck:expect(cluster_compat_mode, is_cluster_trinity, ?cut(true)),
+    meck:expect(cluster_compat_mode, is_cluster_76, ?cut(true)),
 
-    %% Post-trinity, ns_memcached:mark_warmed should receive whatever status we
+    %% Post-7.6, ns_memcached:mark_warmed should receive whatever status we
     %% get from guardrail_enforcer
     ?assertEqual(undefined, test_mark_bucket_warmed(undefined)),
     ?assertEqual(ok, test_mark_bucket_warmed(ok)),

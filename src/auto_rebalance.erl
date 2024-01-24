@@ -223,7 +223,7 @@ handle_call(Call, From, State) ->
 
 retry_rebalance_status(Type, Params, ID, Chk) ->
     Status = ns_orchestrator:retry_rebalance(Type, Params, ID, Chk),
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         true ->
             case Status of
                 {ok, _} when Type =:= rebalance -> ok;

@@ -23,14 +23,14 @@
          config_check_can_abort_rebalance/0,
          default_config/1,
          config_upgrade_to_72/1,
-         config_upgrade_to_trinity/1]).
+         config_upgrade_to_76/1]).
 
 -import(menelaus_util,
         [reply/2,
          reply_json/2]).
 
--define(AUTO_FAILOVER_MIN_TIMEOUT_TRINITY, 1).
--define(AUTO_FAILOVER_MIN_TIMEOUT_PRE_TRINITY,
+-define(AUTO_FAILOVER_MIN_TIMEOUT_76, 1).
+-define(AUTO_FAILOVER_MIN_TIMEOUT_PRE_76,
             ?get_param(auto_failover_min_timeout, 5)).
 -define(AUTO_FAILOVER_MIN_CE_TIMEOUT, 30).
 -define(AUTO_FAILOVER_MAX_TIMEOUT, 3600).
@@ -77,7 +77,7 @@ default_config(?MIN_SUPPORTED_VERSION, IsEnterprise) ->
 max_events_allowed() ->
     100.
 
-config_upgrade_to_trinity(Config) ->
+config_upgrade_to_76(Config) ->
     [{set, auto_failover_cfg,
       misc:update_proplist(auto_failover:get_cfg(Config),
                            [{?DISABLE_MAX_COUNT_CONFIG_KEY,
@@ -144,12 +144,12 @@ get_failover_on_disk_issues(Config) ->
 
 %% Internal Functions
 get_min_timeout() ->
-    IsTrinity = cluster_compat_mode:is_cluster_trinity(),
+    Is76 = cluster_compat_mode:is_cluster_76(),
     case cluster_compat_mode:is_enterprise() of
-        true when IsTrinity->
-            ?AUTO_FAILOVER_MIN_TIMEOUT_TRINITY;
+        true when Is76->
+            ?AUTO_FAILOVER_MIN_TIMEOUT_76;
         true ->
-            ?AUTO_FAILOVER_MIN_TIMEOUT_PRE_TRINITY;
+            ?AUTO_FAILOVER_MIN_TIMEOUT_PRE_76;
         false ->
             ?AUTO_FAILOVER_MIN_CE_TIMEOUT
     end.
@@ -211,7 +211,7 @@ settings_extras_validators() ->
 maxcount_validators() ->
     [validator:integer(maxCount, ?MIN_EVENTS_ALLOWED,
         max_events_allowed(), _)] ++
-    case cluster_compat_mode:is_cluster_trinity() of
+    case cluster_compat_mode:is_cluster_76() of
         true ->
             [validator:boolean(disableMaxCount, _),
              validate_maxcount_param(_)];
@@ -299,7 +299,7 @@ get_extra_settings(Config) ->
               [{failoverOnDataDiskIssues,
                 {[{enabled, Enabled}, {timePeriod, TimePeriod}]}},
                [{disableMaxCount, DisableMaxCount} ||
-                   cluster_compat_mode:is_cluster_trinity()],
+                   cluster_compat_mode:is_cluster_76()],
                [{maxCount, proplists:get_value(?MAX_EVENTS_CONFIG_KEY,
                                                Config)} ||
                    not DisableMaxCount],
