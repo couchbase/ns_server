@@ -419,17 +419,6 @@ angular.module('mnSettingsNotificationsService', [
           mnStatsServiceDowngraded.postStatsRange(dayStatsConfigs).toPromise(),
           mnStatsServiceDowngraded.postStatsRange(hoursStatsConfigs).toPromise()
         ]));
-      } else {
-        var perBucketQueries =
-            buckets.byType.membase.concat(buckets.byType.ephemeral).map(function (bucket) {
-              return mnAnalyticsService.doGetStats({
-                $stateParams: {
-                  zoom: "week",
-                  bucket: bucket.name
-                }
-              }, mnHttpParams);
-            });
-        queries.push($q.all(perBucketQueries));
       }
       queries.push(pools);
       queries.push(poolDefault);

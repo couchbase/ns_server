@@ -270,6 +270,17 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     });
   }
 
+  function upgradeChartsNamesTo76(profile) {
+    profile.charts = profile.charts.map(chart => {
+      chart.stats = Object.keys(chart.stats)
+          .reduce((acc, stat71) => {
+            acc[mnStatsDesc.upgrade71to76(stat71)] = true;
+            return acc;
+          }, {});
+      return chart;
+    });
+  }
+
   function upgradeChartsNamesTo71(profile) {
     profile.charts = profile.charts.map(chart => {
       chart.stats = Object.keys(chart.stats)
@@ -339,6 +350,15 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
           upgradeChartsNamesTo71(profile);
           return putUserProfile({
             version: poolDefault.versions["71"],
+            scenarios: profile.scenarios,
+            groups: profile.groups,
+            charts: profile.charts
+          }).then(getUserProfile);
+        }
+        if (poolDefault.compat.atLeast76 && (profile.version < poolDefault.versions["76"])) {
+          upgradeChartsNamesTo76(profile);
+          return putUserProfile({
+            version: poolDefault.versions["76"],
             scenarios: profile.scenarios,
             groups: profile.groups,
             charts: profile.charts
