@@ -822,7 +822,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         enterprise: true,
         charts: [{
           stats: (mnPoolDefault.export.compat.atLeast76 ?
-              {"@cbas-.cbas/incoming_records_total": true} :
+              {"@cbas-.cbas_incoming_records_total": true} :
               {"@cbas-.cbas/incoming_records_count": true}),
           size: "small",
           specificStat: true
@@ -899,13 +899,25 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           size: "small",
           specificStat: true
         }, {
+          stats: {"@cbas.cbas_http_requests_total": true},
+          size: "small",
+          specificStat: true
+        }, {
           stats: {"@cbas.cbas_queued_http_requests_size": true},
           size: "small",
           specificStat: true
         }, {
-          stats: {"@cbas.cbas_internal_error_total": true},
+          stats: {"@cbas.cbas_http_requests_failed_400_total": true,
+                  "@cbas.cbas_http_requests_failed_401_total": true,
+                  "@cbas.cbas_http_requests_failed_403_total": true,
+                  "@cbas.cbas_http_requests_failed_404_total": true,
+                  "@cbas.cbas_http_requests_failed_405_total": true,
+                  "@cbas.cbas_http_requests_failed_409_total": true,
+                  "@cbas.cbas_http_requests_failed_413_total": true,
+                  "@cbas.cbas_http_requests_failed_500_total": true,
+                  "@cbas.cbas_http_requests_failed_503_total": true},
           size: "small",
-          specificStat: true
+          specificStat: false
         }]
       }, {
         name: "Eventing",
