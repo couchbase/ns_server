@@ -82,6 +82,7 @@
     {query_derived_request_timeout, pos_integer()} |
     {decimation_enabled, true | false} |
     {truncation_enabled, true | false} |
+    {gomaxprocs, integer() } |
     {clean_tombstones_enabled, true | false} |
     {query_derived_request_timeout, pos_integer()} |
     {decimation_defs,
@@ -167,6 +168,7 @@ default_settings() ->
      {query_derived_request_timeout, 500}, %% in msecs
      {decimation_enabled, false},
      {truncation_enabled, false},
+     {gomaxprocs, ?MISSING_INT}, %% -1 means it's disabled and won't be set
      {clean_tombstones_enabled, false},
      {query_derived_request_timeout, 500}, %% in msecs
      {decimation_defs, decimation_definitions_default()},
@@ -341,10 +343,31 @@ maybe_adjust_settings(Settings) ->
 
 specs(Settings) ->
     Args = generate_prometheus_args(Settings),
+    Env = generate_prometheus_env(Settings),
     LogFile = proplists:get_value(log_file_name, Settings),
     {prometheus, path_config:component_path(bin, "prometheus"), Args,
-     [via_goport, exit_status, stderr_to_stdout, {env, []},
+     [via_goport, exit_status, stderr_to_stdout, {env, Env},
       {log, LogFile}]}.
+
+%% currently only sets GOMAXPROCS in some situations
+generate_prometheus_env(Settings) ->
+    case proplists:get_value(gomaxprocs, Settings, ?MISSING_INT) of
+        N when is_number(N) andalso N =:= ?MISSING_INT ->
+            case misc:read_cpu_count_env() of
+                {ok, CbCpuCount} when is_number(CbCpuCount)
+                                      andalso CbCpuCount >= 1 ->
+                    gomaxprocs_env(CbCpuCount);
+                _ ->
+                    []
+            end;
+        CpuCount when is_number(CpuCount) andalso CpuCount >= 1 ->
+            gomaxprocs_env(CpuCount);
+        _ ->
+            []
+    end.
+
+gomaxprocs_env(CpuCount) ->
+    [{"GOMAXPROCS", integer_to_list(CpuCount)}].
 
 generate_prometheus_args(Settings) ->
     ConfigFile = prometheus_config_file(Settings),
@@ -2276,5 +2299,33 @@ build_decimation_summary_test() ->
                {small, 18, 111, 3}],
    Condensed = build_decimation_summary(Deletions),
    ?assertEqual(Expected, Condensed).
+
+ensure_gomaxprocs_set_correctly_test() ->
+    Settings = [{gomaxprocs, 666}],
+    Env = generate_prometheus_env(Settings),
+    ?assertEqual([{"GOMAXPROCS", "666"}], Env),
+
+    Settings2 = [{gomaxprocs, ?MISSING_INT}],
+    Env2 = generate_prometheus_env(Settings2),
+    ?assertEqual([], Env2),
+
+    Settings3 = [{gomaxprocs, 1234}],
+    Env3 = generate_prometheus_env(Settings3),
+    ?assertEqual([{"GOMAXPROCS", "1234"}], Env3),
+
+    try
+        %% have gomaxprocs flag override the COUCHBASE_CPU_COUNT env var
+        os:putenv(?CPU_COUNT_VAR, "6"),
+        Settings4 = [{gomaxprocs, 1234}],
+        Env4 = generate_prometheus_env(Settings4),
+        ?assertEqual([{"GOMAXPROCS", "1234"}], Env4),
+
+        %% but still use COUCHBASE_CPU_COUNT if we have this flag disabled
+        Settings5 = [{gomaxprocs, ?MISSING_INT}],
+        Env5 = generate_prometheus_env(Settings5),
+        ?assertEqual([{"GOMAXPROCS", "6"}], Env5)
+    after
+        os:unsetenv(?CPU_COUNT_VAR)
+    end.
 
 -endif.
