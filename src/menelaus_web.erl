@@ -1344,8 +1344,7 @@ check_bucket_uuid(Bucket, Req) ->
             ns_server_stats:notify_counter({<<"rest_request_failure">>,
                                             [{type, bucket_access},
                                              {code, 404}]}),
-            menelaus_util:web_exception(
-              404, "Attempt to access non existent bucket");
+            menelaus_util:web_exception(404, menelaus_util:reply_text_404());
         UUID ->
             ReqUUID = proplists:get_value("bucket_uuid",
                                           mochiweb_request:parse_qs(Req)),
