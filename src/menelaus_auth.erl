@@ -145,7 +145,7 @@ maybe_refresh_token(Req) ->
 maybe_store_rejected_user(undefined, Req) ->
     Req;
 maybe_store_rejected_user(User, Req) ->
-    store_authn_res(#authn_res{identity = {User, rejected}}, Req).
+    store_authn_res(#authn_res{identity = {User, unknown}}, Req).
 
 store_authn_res(#authn_res{} = AuthnRes, Req) ->
     mochiweb_request:set_meta(authn_res, AuthnRes, Req).

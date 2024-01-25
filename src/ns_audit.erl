@@ -534,6 +534,16 @@ convert_domain(admin) ->
     builtin;
 convert_domain(ro_admin) ->
     builtin;
+convert_domain(local_token) ->
+    builtin;
+convert_domain(bucket) ->
+    builtin;
+convert_domain(stats_reader) ->
+    builtin;
+convert_domain(wrong_token) ->
+    unknown;
+convert_domain(anonymous) ->
+    unknown;
 convert_domain(D) ->
     D.
 
