@@ -80,10 +80,11 @@ handle_get_descriptors(Req) ->
     Descriptors = ns_audit_cfg:get_descriptors(ns_config:latest()),
     reply_with_json_audit_descriptors(Req, Descriptors).
 
-audit_user_exists({_, external}) ->
-    %% Allow any external user to be specified as "disabled user",
-    %% since external users might not exist in CB users database
-    %% and still be able to perform auditable actions
+audit_user_exists({_, ExtOrUnknown}) when ExtOrUnknown =:= external
+                                          orelse ExtOrUnknown =:= unknown ->
+    %% Allow any external user (or unknown) to be specified as "disabled user",
+    %% since external users might not exist in CB users database and still be
+    %% able to perform auditable actions
     true;
 audit_user_exists(Identity) ->
     SpecIds = [{N, local} || N <- memcached_permissions:spec_users()],
