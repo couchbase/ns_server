@@ -218,8 +218,6 @@ endif ()
 ADD_CUSTOM_TARGET (ns_realclean
   COMMAND "${CMAKE_COMMAND}" -E remove -f cov.html erl_crash.dump
   COMMAND "${CMAKE_COMMAND}" -E remove_directory test/log
-  COMMAND "${CMAKE_COMMAND}" -E remove -f apps/ns_server/rebar.config
-  COMMAND "${CMAKE_COMMAND}" -E remove -f apps/ns_server/src/ns_server.app.src
   WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
   VERBATIM)
 ADD_DEPENDENCIES (realclean ns_realclean)
@@ -240,22 +238,6 @@ ELSE (BUILD_COLUMNAR)
   SET (DEFAULT_PROFILE "default")
   SET (PACKAGE_NAME "couchbase-server")
 ENDIF (BUILD_COLUMNAR)
-
-SET (ns_server_app_src "${PROJECT_SOURCE_DIR}/apps/ns_server/src/ns_server.app.src")
-
-ADD_CUSTOM_TARGET (ns_cfg DEPENDS "${ns_server_app_src}" "${rebar_config}")
-ADD_CUSTOM_COMMAND(OUTPUT "${ns_server_app_src}"
-  COMMAND "${CMAKE_COMMAND}" -D "INPUT_FILE=${ns_server_app_src}.in"
-  -D "OUTPUT_FILE=${ns_server_app_src}"
-  -D "SEARCH=NS_SERVER_VERSION"
-  -D "REPLACE=${NS_SERVER_VERSION}"
-  -P "${PROJECT_SOURCE_DIR}/cmake_modules/string-replace.cmake"
-  VERBATIM)
-
-SET (rebar_config "${PROJECT_SOURCE_DIR}/apps/ns_server/rebar.config")
-CONFIGURE_FILE ("${rebar_config}.in" "${rebar_config}" @ONLY)
-SET (babysitter_rebar_config "${PROJECT_SOURCE_DIR}/apps/ns_babysitter/rebar.config")
-CONFIGURE_FILE ("${babysitter_rebar_config}.in" "${babysitter_rebar_config}" @ONLY)
 
 IF (NOT ESCRIPT_EXECUTABLE)
   MESSAGE (FATAL_ERROR "escript not found")
@@ -279,11 +261,13 @@ REBAR(TARGET ns_server
       DEPENDS
         couchdb
         kv_mappings
-        ns_cfg
         ns_goport
         ns_gosecrets
         vbmap
       EUNIT
+      EXTRA_ENV "COUCHDB_SRC_DIR=${COUCHDB_SRC_DIR}"
+                "DEFAULT_PROFILE=${DEFAULT_PROFILE}"
+                "NS_SERVER_VERSION=${NS_SERVER_VERSION}"
       CLEAN_HOOK ns_realclean)
 
 ADD_CUSTOM_TARGET (ns_server_all DEPENDS ns_server)
