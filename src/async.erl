@@ -26,7 +26,7 @@
          wait/1, wait/2,
          wait_many/1, wait_many/2,
          wait_any/1, wait_any/2,
-         race/2, map/2, foreach/2, foreach/3,
+         map/2, foreach/2, foreach/3,
          run_with_timeout/2,
          get_identity/0]).
 
@@ -118,22 +118,6 @@ wait_any(Pids) ->
 
 wait_any(Pids, Flags) ->
     call_any(Pids, get_result, Flags).
-
-race(Fun1, Fun2) ->
-    with(
-      Fun1,
-      fun (Async1) ->
-              with(
-                Fun2,
-                fun (Async2) ->
-                        case wait_any([Async1, Async2]) of
-                            {Async1, R} ->
-                                {left, R};
-                            {Async2, R} ->
-                                {right, R}
-                        end
-                end)
-      end).
 
 map(Fun, List) ->
     with_many(
@@ -554,25 +538,6 @@ maybe_log_down_message({'DOWN', _MRef, process, Pid, Reason}) ->
 
 
 -ifdef(TEST).
-race_test() ->
-    0 = ?flush(_),
-
-    {_, Result} = race(?cut(a), ?cut(b)),
-    ?assert(lists:member(Result, [a, b])),
-
-    WaitFun = fun () ->
-                      Ref = make_ref(),
-                      receive
-                          Ref ->
-                              ok
-                      end
-              end,
-
-    ?assertEqual({left, a}, race(?cut(a), WaitFun)),
-    ?assertEqual({right, b}, race(WaitFun, ?cut(b))),
-
-    0 = ?flush(_).
-
 abort_after_test() ->
     A1 = async:start(?cut(timer:sleep(10000)), [{abort_after, 100}]),
     ?assertExit(timeout, async:wait(A1)),
