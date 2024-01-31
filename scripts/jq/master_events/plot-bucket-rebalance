@@ -38,9 +38,11 @@ def handle_move($minTS):
    vbucket: .vbucket,
    type: $moveType};
 
+# Filter buckets to only those with moves
+map(select(.moves | length > 0)) |
+sort_by(.moves[-1].moveStartTS) |
 if (. | length) > 0 then
- # If no bucket was provided, pick the last bucket in the list (not necessarily
- # the last bucket to be rebalanced)
+ # If no bucket was provided, pick the last bucket to be rebalanced
  (if $bucket == "" then .[-1].bucket else $bucket end) as $bucket |
    map(select(.bucket == $bucket))[0].moves |
    sort_by(.moveStartTS) |
