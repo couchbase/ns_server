@@ -16,15 +16,22 @@ import matplotlib.pyplot as plot
 
 
 def plot_rebalance(payload):
-
     bucket = payload['bucket']
+    all_moves = payload['moves']
+    if len(all_moves) == 0:
+        if bucket == "":
+            print("No vbucket moves found")
+        else:
+            print(f"No vbucket moves found for bucket '{bucket}'")
+        return
+
     vbuckets = []
     active_moves = []
     replica_moves = []
     backfills = []
     end = 0
 
-    for i, move in enumerate(payload['moves']):
+    for i, move in enumerate(all_moves):
         vbucket = move['vbucket']
         x = move['start']
         width = move['duration']
