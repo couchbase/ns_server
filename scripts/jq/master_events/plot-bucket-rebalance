@@ -38,13 +38,21 @@ def handle_move($minTS):
    vbucket: .vbucket,
    type: $moveType};
 
-(if $bucket == "" then .[-1].bucket else $bucket end) as $bucket |
-map(select(.bucket == $bucket))[0].moves |
-sort_by(.moveStartTS) |
-.[0].moveStartTS as $minTS |
-map(handle_move($minTS)) as $moves |
-{bucket: $bucket,
- moves: $moves}
+if (. | length) > 0 then
+ # If no bucket was provided, pick the last bucket in the list (not necessarily
+ # the last bucket to be rebalanced)
+ (if $bucket == "" then .[-1].bucket else $bucket end) as $bucket |
+   map(select(.bucket == $bucket))[0].moves |
+   sort_by(.moveStartTS) |
+   .[0].moveStartTS as $minTS |
+   map(handle_move($minTS)) as $moves |
+   {bucket: $bucket,
+    moves: $moves}
+else
+ # There are no buckets with any moves
+ {bucket: $bucket,
+  moves: []}
+end
 '
 
 "$DIRNAME"/group-moves | \
