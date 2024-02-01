@@ -15,18 +15,17 @@ class RestEjectTest(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(num_nodes=3, balanced=True)
+        return testlib.ClusterRequirements(
+            num_nodes=3,
+            balanced=True,
+            buckets=[{"name": "testbucket",
+                      "ramQuota": 200}])
 
     def setup(self):
-        testlib.delete_all_buckets(self.cluster)
-        bucket = {"name": "testbucket", "ramQuota": "200"}
-
-        # Wait for the bucket to be ready on all nodes to be able to
-        # handle an immediate failover of a node.
-        self.cluster.create_bucket(bucket, sync=True)
+        pass
 
     def teardown(self):
-        testlib.delete_all_buckets(self.cluster)
+        pass
 
     def rest_reject_test(self):
         failover_node = self.cluster.connected_nodes[0]

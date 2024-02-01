@@ -132,10 +132,12 @@ class SampleBucketTestSet(testlib.BaseTestSet, SampleBucketTasksBase):
     def requirements():
         return [testlib.ClusterRequirements(edition="Enterprise",
                                             min_num_nodes=2,
-                                            min_memsize=600),
+                                            min_memsize=600,
+                                            buckets=[]),
                 testlib.ClusterRequirements(edition="Serverless",
                                             min_num_nodes=2,
-                                            min_memsize=600)]
+                                            min_memsize=600,
+                                            buckets=[])]
 
     def setup(self):
         pass

@@ -19,16 +19,15 @@ class BucketDeletionTest(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(min_num_nodes=2)
+        return testlib.ClusterRequirements(
+            min_num_nodes=2,
+            buckets=[{"name": f"bucket-{i}",
+                      "storageBackend": "couchstore",
+                      "replicaNumber": 1,
+                      "ramQuota": 100} for i in range(1, 3)]
+        )
 
     def setup(self):
-        for i in range(1, 3):
-            testlib.post_succ(self.cluster, "/pools/default/buckets",
-                              expected_code=202,
-                              data={'name': f'bucket-{i}',
-                                    'storageBackend': 'couchstore',
-                                    'replicaNumber': 1,
-                                    'ramQuotaMB': 100})
         # Delay shutdown of bucket-1 by 5 secs.
         testlib.post_succ(self.cluster, "/diag/eval",
                           data="testconditions:set({wait_for_bucket_shutdown, "

@@ -208,10 +208,11 @@ class BucketMigrationTest(testlib.BaseTestSet):
         return testlib.ClusterRequirements(edition="Enterprise",
                                            min_num_nodes=4, min_memsize=2*1024,
                                            num_connected=2,
-                                           balanced=True)
+                                           balanced=True,
+                                           buckets=[])
 
     def setup(self):
-        testlib.delete_all_buckets(self.cluster)
+        pass
 
     def teardown(self):
         pass

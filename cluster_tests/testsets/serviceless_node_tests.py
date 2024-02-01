@@ -23,15 +23,12 @@ class ServicelessNodeTests(testlib.BaseTestSet):
 
     def setup(self):
         self.req_num_nodes = len(self.cluster._nodes)
-        bucket = {"name": "testbucket", "ramQuota": "200"}
-        self.cluster.create_bucket(bucket)
 
     def teardown(self):
         pass
 
     def test_teardown(self):
         print("Tearing down self.cluster")
-        testlib.delete_all_buckets(self.cluster)
         # Rebalance the cluster and remove all but one node
         self.cluster.rebalance(self.cluster.connected_nodes[1:], wait=True,
                                verbose=True)
@@ -54,8 +51,12 @@ class ServicelessNodeTests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return [ClusterRequirements(min_num_nodes=3, num_connected=1,
-                                    afamily="ipv4")]
+        return ClusterRequirements(
+            min_num_nodes=3,
+            num_connected=1,
+            afamily="ipv4",
+            buckets=[{"name": "testbucket",
+                      "ramQuota": 200}])
 
     def joinNodes(self):
         for node in self.cluster.disconnected_nodes():

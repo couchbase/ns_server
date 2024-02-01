@@ -53,13 +53,15 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
                                             num_nodes=2,
                                             services=list(testlib.Service),
                                             memsize=1024,
-                                            balanced=True),
+                                            balanced=True,
+                                            buckets=[]),
                 # Test with a single node. The hostname mapping is slightly
                 # different.
                 testlib.ClusterRequirements(edition="Enterprise",
                                             num_nodes=1,
                                             services=[testlib.Service.KV],
-                                            memsize=1024)]
+                                            memsize=1024,
+                                            buckets=[])]
 
     def setup(self):
         self.load_and_assert_sample_bucket(self.cluster, "travel-sample")
@@ -79,9 +81,7 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
         pass
 
     def teardown(self):
-        # Clean up the cloned stuff
-        self.cluster.delete_bucket("travel-sample")
-        self.cluster.delete_bucket("default")
+        pass
 
     def remap_cluster(self, old_cluster):
         old_start_index = old_cluster.first_node_index
@@ -153,6 +153,9 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
             # Turn on new rempped cluster
             print(f"Starting remapped cluster at node index "
                   f"{new_first_node_index}")
+
+            # Remove the buckets requirement, so that the bucket isn't deleted
+            old_cluster.requirements.requirements["buckets"] = None
             c = old_cluster.requirements.create_cluster(
                     old_cluster.auth,
                     old_cluster.index,

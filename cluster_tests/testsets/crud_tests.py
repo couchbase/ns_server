@@ -19,15 +19,12 @@ class CrudTests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(services=[Service.KV])
+        return testlib.ClusterRequirements(
+            services=[Service.KV],
+            buckets=[{"name": bucket_name,
+                      "ramQuota": 100}])
 
     def setup(self):
-        self.cluster.create_bucket(
-            {
-                "name": bucket_name,
-                "ramQuota": 100
-            })
-
         # Make sure that we can successfully write to the cluster
         testlib.poll_for_condition(self.cluster.can_write(bucket_name, doc),
                                    sleep_time=0.5, attempts=120)
@@ -35,7 +32,7 @@ class CrudTests(testlib.BaseTestSet):
                                expected_codes=[200])
 
     def teardown(self):
-        testlib.delete_all_buckets(self.cluster)
+        pass
 
     def test_teardown(self):
         testlib.ensure_deleted(self.cluster, doc_addr,

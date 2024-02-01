@@ -100,7 +100,8 @@ class CollectionTests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(num_nodes=1, memsize=1024)
+        return testlib.ClusterRequirements(num_nodes=1, memsize=1024,
+                                           buckets=[])
 
     def setup(self):
         # Decrease requirement for magma ram quota

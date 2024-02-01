@@ -569,23 +569,21 @@ BUCKET_NAME = "dummy-bucket"
 class NodeRemovalStreamingChunked(testlib.BaseTestSet):
 
     def setup(self):
-        # create default bucket
-        data = {"name": BUCKET_NAME,
-                "storageBackend": "couchstore",
-                "ramQuotaMB": "256"}
-        self.cluster.create_bucket(data, sync=True)
+        pass
 
     def teardown(self):
         self.cluster.add_node(self.cluster.disconnected_nodes()[0],
                               do_rebalance=True)
-        self.cluster.delete_bucket(BUCKET_NAME)
 
     @staticmethod
     def requirements():
         return [ClusterRequirements(edition="Enterprise",
                                     min_num_nodes=2, num_connected=2,
                                     services=[Service.KV, Service.CBAS],
-                                    balanced=True)]
+                                    balanced=True,
+                                    buckets=[{"name": BUCKET_NAME,
+                                              "storageBackend": "couchstore",
+                                              "ramQuota": 256}])]
 
     def basic_node_removal_test(self):
         # listen to the poolStreaming endpoint node A

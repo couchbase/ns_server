@@ -368,10 +368,10 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
         return testlib.ClusterRequirements(
             edition="Provisioned", min_num_nodes=3,
             num_connected=GuardRailRestrictionTests.num_connected,
-            min_memsize=1024)
+            min_memsize=1024,
+            buckets=[])
 
     def setup(self):
-        testlib.delete_all_buckets(self.cluster)
 
         # Get original settings, so that they can be set back on teardown
         original_settings = testlib.get_succ(self.cluster, "/internalSettings")\
@@ -381,8 +381,6 @@ class GuardRailRestrictionTests(testlib.BaseTestSet):
         self.original_promql = original_settings .get("resourcePromQLOverride")
 
     def teardown(self):
-        testlib.delete_all_buckets(self.cluster)
-
         # Set back modified internal settings to their original values
         testlib.post_succ(self.cluster, "/internalSettings",
                           data={"maxBucketCount": self.original_max_supported,
@@ -984,18 +982,18 @@ class DataIngressTests(testlib.BaseTestSet):
         #   guard rail has been hit. Note, assert_cant_write will be less likely
         #   to test both nodes if num_nodes increases, so it should be modified
         #   at the same time.
-        return testlib.ClusterRequirements(edition="Provisioned",
-                                           min_num_nodes=2, num_connected=2)
+        return testlib.ClusterRequirements(
+            edition="Provisioned",
+            min_num_nodes=2,
+            num_connected=2,
+            buckets=[{"name": BUCKET_NAME,
+                      "ramQuota": 100}])
 
     def setup(self):
-        testlib.delete_all_buckets(self.cluster)
-        self.cluster.create_bucket({
-            "name": BUCKET_NAME,
-            "ramQuota": 100
-        })
+        pass
 
     def teardown(self):
-        testlib.delete_all_buckets(self.cluster)
+        pass
 
     def test_teardown(self):
         # Reset the promQL queries to default values to ensure that they are

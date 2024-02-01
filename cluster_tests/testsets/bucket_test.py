@@ -350,9 +350,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
         self.is_dev_preview = self.cluster.is_dev_preview
         self.good_symbols = string.ascii_letters + string.digits + "._-%"
 
-        # Deleting existing buckets to make space
-        self.test_teardown()
-
     # TODO: Handle limits differently for greater ease of adding tests
     def init_limits(self, bucket_type, storage_backend, is_creation,
                     param=None):
@@ -2042,7 +2039,8 @@ class BasicBucketTestSet(BucketTestSetBase):
         # 1024MiB is required to test magma
         return testlib.ClusterRequirements(min_memsize=1024,
                                            num_nodes=1,
-                                           edition="Enterprise")
+                                           edition="Enterprise",
+                                           buckets=[])
 
     def name_test(self):
         self.test_param("name",
@@ -2266,7 +2264,8 @@ class ServerlessBucketTestSet(BucketTestSetBase):
     def requirements():
         return testlib.ClusterRequirements(min_memsize=1024,
                                            num_nodes=1,
-                                           edition="Serverless")
+                                           edition="Serverless",
+                                           buckets=[])
 
     def bucket_placer_test(self):
         main_params = {
@@ -2312,7 +2311,7 @@ class OnPremBucketTestSet(BucketTestSetBase):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(edition="Enterprise")
+        return testlib.ClusterRequirements(edition="Enterprise", buckets=[])
 
     def bucket_type_test(self):
         self.test_param("bucketType",
@@ -2369,7 +2368,9 @@ class MultiNodeBucketTestSet(BucketTestSetBase):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(num_nodes=4, balanced=True)
+        return testlib.ClusterRequirements(num_nodes=4,
+                                           balanced=True,
+                                           buckets=[])
 
     # def replica_number_test(self):
     #     self.test_param("replicaNumber",
