@@ -73,7 +73,10 @@
          upgrade/3,
          config_upgrade/0,
          upgrade_in_progress/0,
-         upgrade_props/4
+         upgrade_props/4,
+
+%% Misc:
+         allow_hash_migration_during_auth_default/0
         ]).
 
 %% callbacks for replicated_dets
@@ -650,12 +653,18 @@ maybe_update_auth(CurrentAuth, Password) ->
       [maybe_update_plain_auth_hashes(_, Password),
        scram_sha:maybe_update_hashes(_, Password)]).
 
+allow_hash_migration_during_auth_default() ->
+    cluster_compat_mode:is_cluster_76() andalso
+        config_profile:get_bool(allow_hash_migration_during_auth).
+
 maybe_migrate_password_hashes(
   CurrentAuth, {Username, local} = Identity, Password) ->
+    AllowHashMigrationDefault =
+        allow_hash_migration_during_auth_default(),
     MigrateHashes =
         cluster_compat_mode:is_cluster_76() andalso
             ns_config:read_key_fast(
-              allow_hash_migration_during_auth, false),
+              allow_hash_migration_during_auth, AllowHashMigrationDefault),
 
     case MigrateHashes of
         true ->
