@@ -22,6 +22,11 @@ class StatsRangeAPITests(testlib.BaseTestSet):
     def setup(self):
         self.align_timestamps_start = -100
         self.align_timestamps_step = 7
+        # Some stats needs a bucket to be present
+        self.bucket_name = testlib.random_str(10)
+        bucket = {"name": self.bucket_name, "ramQuota": "200"}
+        self.cluster.create_bucket(bucket)
+
         # wait for all nodes to scrape some stats first
         for node in self.cluster.connected_nodes:
             print(f'Waiting for stats at {node}')
@@ -30,7 +35,7 @@ class StatsRangeAPITests(testlib.BaseTestSet):
                                        msg='waiting for stats')
 
     def teardown(self):
-        pass
+        self.cluster.delete_bucket(self.bucket_name)
 
     def basic_range_api_test(self):
         data = range_api_get(self.cluster, 'sys_cpu_host_seconds_total')
