@@ -13,7 +13,8 @@ class PassHashingSettingsTests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements()
+        return [testlib.ClusterRequirements(edition="Provisioned"),
+                testlib.ClusterRequirements(edition="Enterprise")]
 
     def setup(self):
         self.username_argon = testlib.random_str(16)
@@ -303,6 +304,44 @@ class PassHashingSettingsTests(testlib.BaseTestSet):
             self.cluster, self.test_username,
             type="sha512", iterations="20000", migrate="false")
 
+class PasswordHashMigrationProvisionedProfileTests(testlib.BaseTestSet):
+    @staticmethod
+    def requirements():
+        return testlib.ClusterRequirements(edition="Provisioned")
+
+    def setup(self):
+        pass
+
+    def test_teardown(self):
+        pass
+
+    def teardown(self):
+        pass
+
+    def default_hash_migration_settings_test(self):
+        r = testlib.get_succ(self.cluster,
+                             '/settings/security').json()
+        testlib.assert_eq(r["allowHashMigrationDuringAuth"], True)
+
+class PasswordHashMigrationOnPremTests(testlib.BaseTestSet):
+    @staticmethod
+    def requirements():
+        return testlib.ClusterRequirements(edition="Enterprise")
+
+    def setup(self):
+        pass
+
+    def test_teardown(self):
+        pass
+
+    def teardown(self):
+        pass
+
+    def default_hash_migration_settings_test(self):
+        r = testlib.get_succ(self.cluster,
+                             '/settings/security').json()
+        testlib.assert_eq(r["allowHashMigrationDuringAuth"], False)
+
 
 class Argon2SettingsTests(testlib.BaseTestSet):
 
@@ -526,6 +565,18 @@ def update_pwd_hash_settings(cluster, alg, settings):
 
 
 def update_pwd_hash_migration_setting(cluster, enable):
+    enabled_by_default = testlib.diag_eval(
+        cluster,
+        code="config_profile:get_bool(allow_hash_migration_during_auth).").text
+    is_set = testlib.diag_eval(
+        cluster,
+        code="ns_config:read_key_fast(allow_hash_migration_during_auth, "
+        "undefined).").text
+
+    if enable == "true" and enabled_by_default == "true" \
+            and is_set == "undefined":
+        return
+
     testlib.post_succ(
         cluster, '/settings/security/allowHashMigrationDuringAuth',
         data=enable)
