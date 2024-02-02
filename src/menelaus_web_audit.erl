@@ -86,6 +86,8 @@ audit_user_exists({_, ExtOrUnknown}) when ExtOrUnknown =:= external
     %% since external users might not exist in CB users database and still be
     %% able to perform auditable actions
     true;
+audit_user_exists({_, bad_domain}) ->
+    false;
 audit_user_exists(Identity) ->
     SpecIds = [{N, local} || N <- memcached_permissions:spec_users()],
     menelaus_users:user_exists(Identity) orelse lists:member(Identity, SpecIds).
@@ -210,7 +212,7 @@ validate_users(Name, State) ->
               UsersFound =
                   lists:map(
                     fun ({U, [N, S]}) ->
-                            Identity = {N, menelaus_web_rbac:domain_to_atom(S)},
+                            Identity = {N, domain_to_atom(S)},
                             case audit_user_exists(Identity) of
                                 true ->
                                     Identity;
@@ -228,6 +230,17 @@ validate_users(Name, State) ->
                        "Unrecognized users: " ++ string:join(BadUsers, ",")}
               end
       end, Name, State).
+
+known_domains() ->
+    ["local", "external", "unknown"].
+
+domain_to_atom(Domain) ->
+    case lists:member(Domain, known_domains()) of
+        true ->
+            list_to_atom(Domain);
+        false ->
+            bad_domain
+    end.
 
 validators(Config) ->
     Descriptors = orddict:from_list(ns_audit_cfg:get_descriptors(Config)),
