@@ -114,7 +114,10 @@
           %% Keeps all errors that have been reported.
           reported_errors = sets:new() :: sets:set(),
           %% Frequency (in ms) at which to check for down nodes.
-          tick_period = ?DEFAULT_TICK_PERIOD :: integer()
+          tick_period = ?DEFAULT_TICK_PERIOD :: integer(),
+          %% Pid of a process driving an auto-failover. Prevents concurrent
+          %% auto-failover attempts.
+          auto_failover_ref = undefined :: undefined | pid()
         }).
 
 %%
@@ -360,6 +363,43 @@ handle_info(tick, State0) ->
 
     {noreply, NewState1#state{tick_ref = Ref}};
 
+handle_info({auto_failover_complete, Nodes, DownNodes, NodeStatuses, Result},
+            State) ->
+    %% Process a message sent when auto_failover completes.
+    %%
+    %% It could be the case that we have disabled auto-failover between an
+    %% auto-failover starting and now. The only part of the state that we touch
+    %% here is the reported_errors and the auto_failover_ref. We may reset
+    %% reported_errors if we reset the auto failover count. An additional error
+    %% message is not a big deal.
+    %%
+    %% Logs may look slightly odd as a result of the asynchronicity of the
+    %% auto-failover and the potential to disable/enable auto-failover in these
+    %% logs, but there is notable usability benefit in that changes to
+    %% auto-failover will apply immediately after a failover finishes
+    %% processing, and will not be blocked by the processing of said failover,
+    %% which may previously require the user to attempt to change the settings
+    %% multiple times.
+    NewState = case Result of
+                   {ok, UnsafeNodes} ->
+                       FailedOver = Nodes -- [N || {N, _} <- UnsafeNodes],
+                       [log_failover_success(N, DownNodes, NodeStatuses) ||
+                           N <- FailedOver],
+                       NewState1 = lists:foldl(fun log_unsafe_node/2, State,
+                                               UnsafeNodes),
+                       NewCount = NewState1#state.count + length(FailedOver),
+                       NewState2 = NewState1#state{count = NewCount},
+                       case FailedOver of
+                           [] ->
+                               NewState2;
+                           _ ->
+                               init_reported(NewState2)
+                       end;
+                   Error ->
+                       process_failover_error(Error, Nodes, State)
+               end,
+    {noreply, NewState#state{auto_failover_ref = undefined}};
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -562,54 +602,55 @@ maybe_report_max_node_reached(AllNodes, NotFailedOver, ErrMsg, S) ->
 failover_nodes([], S, _DownNodes, _NodeStatuses) ->
     S;
 failover_nodes(Nodes, S, DownNodes, NodeStatuses) ->
-    FailoverReasons = failover_reasons(Nodes, DownNodes, NodeStatuses),
     DownNodeNames = [N || {N, _, _} <- DownNodes],
-    case try_autofailover(Nodes, DownNodeNames, FailoverReasons) of
-        {ok, UnsafeNodes} ->
-            FailedOver = Nodes -- [N || {N, _} <- UnsafeNodes],
-            [log_failover_success(N, DownNodes, NodeStatuses) ||
-                N <- FailedOver],
-            NewState = lists:foldl(fun log_unsafe_node/2, S, UnsafeNodes),
-            NewCount = NewState#state.count + length(FailedOver),
-            NewState1 = NewState#state{count = NewCount},
-            case FailedOver of
-                [] ->
-                    NewState1;
-                _ ->
-                    init_reported(NewState1)
-            end;
-        Error ->
-            process_failover_error(Error, Nodes, S)
-    end.
+    try_autofailover(Nodes, DownNodeNames, DownNodes,
+                     NodeStatuses, S).
 
-
-try_autofailover(Nodes, DownNodes, FailoverReasons) ->
+try_autofailover(Nodes, DownNodeNames, DownNodes, NodeStatuses,
+                 State) ->
     case ns_cluster_membership:service_nodes(Nodes, kv) of
         [] ->
             Snapshot = failover:get_snapshot(),
             {ValidNodes, UnsafeNodes} =
-                validate_services_safety(Snapshot, Nodes, DownNodes, []),
+                validate_services_safety(Snapshot, Nodes, DownNodeNames, []),
             case ValidNodes of
                 [] ->
                     {ok, UnsafeNodes};
                 _ ->
-                    case ns_orchestrator:try_autofailover(
-                           ValidNodes,
-                           #{skip_safety_check => true,
-                             failover_reasons => FailoverReasons,
-                             down_nodes => DownNodes}) of
-                        {ok, UN} ->
-                            UN = [],
-                            {ok, UnsafeNodes};
-                        Error ->
-                            Error
-                    end
+                    trigger_autofailover(ValidNodes, NodeStatuses,
+                                         DownNodeNames, DownNodes,
+                                         #{skip_safety_check => true}, State)
             end;
         _ ->
-            ns_orchestrator:try_autofailover(
-              Nodes, #{failover_reasons => FailoverReasons,
-                       down_nodes => DownNodes})
+            trigger_autofailover(Nodes, NodeStatuses, DownNodeNames,
+                                 DownNodes, #{}, State)
     end.
+
+%% Failover not in progress, we can start one
+trigger_autofailover(Nodes, NodeStatuses, DownNodeNames, DownNodes, Opts,
+                     #state{auto_failover_ref = undefined} = State) ->
+    FailoverReasons = failover_reasons(Nodes, DownNodes, NodeStatuses),
+    Self = self(),
+    Pid = erlang:spawn_link(
+            fun() ->
+                    ?log_debug("Initiating failover request against "
+                               "orchestrator for ~p", [Nodes]),
+                    R = ns_orchestrator:try_autofailover(
+                          Nodes,
+                          Opts#{failover_reasons => FailoverReasons,
+                                down_nodes => DownNodeNames}),
+                    Self ! {auto_failover_complete, Nodes, DownNodes,
+                            NodeStatuses, R}
+            end),
+    State#state{auto_failover_ref = Pid};
+%% Failover in progress already
+trigger_autofailover(_Nodes, _NodeStatuses, _DownNodeNames, _DownNodes, _Opts,
+                     #state{auto_failover_ref = _} = State) ->
+    ?log_debug("Skipping failover request, one already in progress"),
+    %% Note that the return value is essentially the same here as it is for the
+    %% clause in which a failover is not already in progress. This is because we
+    %% rely on the next tick to "retry" the auto-failover if still relevant.
+    State.
 
 log_failover_success(Node, DownNodes, NodeStatuses) ->
     case failover_reason(Node, DownNodes, NodeStatuses) of

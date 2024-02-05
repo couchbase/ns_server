@@ -350,6 +350,8 @@ auto_failover_test_() ->
     Tests = [
              {"Auto failover",
               fun auto_failover_t/2},
+             {"Auto failover async",
+              fun auto_failover_async_t/2},
              {"Auto failover post network partition stale config test",
               fun auto_failover_post_network_partition_stale_config/2},
              {"Enable auto failover test", fun enable_auto_failover_test/2}
@@ -465,11 +467,13 @@ auto_failover_t(_SetupConfig, PidMap) ->
       end,
       lists:seq(0, 3)),
 
-    %% Disable auto-failover, this gen_server call will let us finish processing
-    %% the ticks that we have queued above (which will run the auto-failover to
-    %% completion), before returning which will mean that we've attempted an
-    %% auto-failover provided we've ticked enough.
-    gen_server:call(AutoFailoverPid, {disable_auto_failover, []}),
+    %% Failover is async to the auto_failover module. Poll for the failover
+    %% counter to get set (it is the only counter that should get set by this
+    %% test) to determine completion.
+    misc:poll_for_condition(
+      fun() ->
+              chronicle_compat:get(counters, #{}) =/= {error, not_found}
+      end, 5000, 100),
 
     %% We should have completed the failover.
     Counters = chronicle_compat:get(counters, #{required => true}),
@@ -480,6 +484,82 @@ auto_failover_t(_SetupConfig, PidMap) ->
     ?assertEqual([],
                  get_auto_failover_reported_errors(AutoFailoverPid)).
 
+auto_failover_async_t(_SetupConfig, PidMap) ->
+    #{auto_failover := AutoFailoverPid} = PidMap,
+
+    %% Override tick period. This lets us tick auto_failover as few times as
+    %% possible in the test as we essentially don't have to wait for nodes to
+    %% be in a down state for n ticks at any point.
+    fake_ns_config:update_snapshot(auto_failover_tick_period, 100000),
+    AutoFailoverPid ! tick_period_updated,
+    auto_failover:enable(1, 5, []),
+
+    %% Part of our test, we should not have any reported errors yet.
+    ?assertEqual([],
+                 get_auto_failover_reported_errors(AutoFailoverPid)),
+
+    %% Tick auto-failover 4 times. We could wait long enough to do the auto
+    %% failover but we can speed this test up a bit by manually ticking. This
+    %% amount of ticks should be the minimum to process the auto-failover.
+    lists:foreach(
+      fun(_) ->
+              AutoFailoverPid ! tick
+      end,
+      lists:seq(0, 3)),
+
+    %% Janitor is called during auto_failover to "cleanup" buckets, one step of
+    %% which is marking the buckets as warmed. We're already mocking the
+    %% janitor_agent here so we will add an extra mock to this function to
+    %% test that the auto_failover module isn't locked up mid-failover.
+    meck:expect(janitor_agent, mark_bucket_warmed,
+                fun(_,_) ->
+                        Ticks = meck:num_calls(ns_doctor, get_nodes, '_'),
+
+                        %% Send a bunch more ticks, we should be able to process
+                        %% these, check against the calls to ns_doctor that we
+                        %% are processing each tick as we send it.
+                        lists:foreach(
+                          fun(Count) ->
+                                  AutoFailoverPid ! tick,
+
+                                  misc:poll_for_condition(
+                                    fun() ->
+                                            Count + Ticks + 1 =:=
+                                                meck:num_calls(ns_doctor,
+                                                               get_nodes, '_')
+                                    end, 5000, 100)
+                          end,
+                          lists:seq(0, 3)),
+
+                        %% We shoud also be able to perform a call (to disable
+                        %% auto_failover in this instance)
+                        gen_server:call(AutoFailoverPid,
+                                        {disable_auto_failover, []}),
+
+                        %% And auto_failover should now be disabled
+                        ?assertNot(proplists:get_value(enabled,
+                                                       auto_failover:get_cfg()))
+                end),
+
+    %% Wait for the failover to complete
+    misc:poll_for_condition(
+      fun() ->
+              case chronicle_compat:get(counters, #{}) of
+                  %% No counters yet, keep waiting
+                  {error, not_found} -> false;
+                  {ok, Counters} ->
+                      undefined =/=
+                          proplists:get_value(failover_complete, Counters)
+              end
+      end, 5000, 100),
+
+    %% Without any auto-failover errors
+    ?assertEqual([],
+                 get_auto_failover_reported_errors(AutoFailoverPid)),
+
+    %% And auto_failover should still be disabled
+    Cfg = auto_failover:get_cfg(),
+    ?assertNot(proplists:get_value(enabled, Cfg)).
 
 %% Test post-network partition that we do not auto-failover nodes due to a stale
 %% config.
@@ -570,16 +650,13 @@ auto_failover_post_network_partition_stale_config(SetupConfig, PidMap) ->
       end,
       lists:seq(0, 3)),
 
-    %% Disable auto-failover, this gen_server call will let us finish processing
-    %% the ticks that we have queued above (which will run the auto-failover to
-    %% completion), before returning which will mean that we've attempted an
-    %% auto-failover provided we've ticked enough.
-    gen_server:call(AutoFailoverPid, {disable_auto_failover, []}),
-
     %% We should have failed to fail over, and, we should now have the reported
     %% error (autofailover_unsafe) stored in the auto_failover state.
-    ?assertEqual([autofailover_unsafe],
-                 get_auto_failover_reported_errors(AutoFailoverPid)).
+    misc:poll_for_condition(
+        fun() ->
+            get_auto_failover_reported_errors(AutoFailoverPid) =:=
+                [autofailover_unsafe]
+        end, 5000, 100).
 
 enable_auto_failover_test(_SetupConfig, PidMap) ->
     #{auto_failover := AutoFailoverPid} = PidMap,
