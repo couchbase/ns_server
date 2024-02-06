@@ -35,7 +35,8 @@
          hash_password/2,
          check_hash/2,
          config_upgrade_to_76/1,
-         configurable_hash_alg_settings/2]).
+         configurable_hash_alg_settings/2,
+         migrate_admin_auth/2]).
 
 admin_cfg_key() ->
     rest_creds.
@@ -161,12 +162,37 @@ authenticate_admin(User, Password) ->
         {User, Auth} ->
             case check_hash(get_salt_and_mac(Auth), Password) of
                 true ->
-                    {ok, {User, admin}};
+                    Identity = {User, admin},
+                    case Auth of
+                        {auth, AuthInfo} ->
+                            case menelaus_users:maybe_update_auth(AuthInfo,
+                                                                  Identity,
+                                                                  Password,
+                                                                  regular) of
+                                {new_auth, NewAuth} ->
+                                    migrate_admin_auth(User, NewAuth);
+                                no_change -> ok
+                            end;
+                        {password, _} ->
+                            %% Not yet upgraded auth
+                            ok
+                    end,
+                    {ok, Identity};
                 false ->
                     {error, auth_failure}
             end;
         {_, _} ->
             {error, auth_failure}
+    end.
+
+migrate_admin_auth(User, NewAuth) ->
+    case ns_node_disco:couchdb_node() == node() of
+        false ->
+            ns_server_stats:notify_counter(<<"pass_hash_migration">>),
+            set_admin_with_auth(User, NewAuth);
+        true ->
+            rpc:call(ns_node_disco:ns_server_node(), ?MODULE,
+                     migrate_admin_auth, [User, NewAuth])
     end.
 
 check_hash(HashInfo, Password) ->

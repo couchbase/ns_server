@@ -413,7 +413,17 @@ authenticate(User, Pass) ->
     case get_auth_info() of
         {User, AuthInfo} ->
             case menelaus_users:authenticate_with_info(AuthInfo, Pass) of
-                true -> {ok, {User, stats_reader}};
+                true ->
+                    Identity = {User, stats_reader},
+                    case menelaus_users:maybe_update_auth(AuthInfo, Identity,
+                                                          Pass, internal) of
+                        {new_auth, NewAuth} ->
+                            ns_server_stats:notify_counter(
+                              <<"pass_hash_migration">>),
+                            update_prom_auth_info(NewAuth);
+                        no_change -> ok
+                    end,
+                    {ok, Identity};
                 false -> {error, auth_failure}
             end;
         _ ->
@@ -618,10 +628,13 @@ generate_prometheus_auth_info(Settings) ->
     Token = menelaus_web_rbac:gen_password({256, [uppercase, lowercase,
                                                   digits]}),
     AuthInfo = menelaus_users:build_internal_auth([Token]),
-    ns_config:set({node, node(), prometheus_auth_info},
-                  {?USERNAME, {auth, AuthInfo}}),
+    update_prom_auth_info(AuthInfo),
     TokenFile = token_file(Settings),
     ok = misc:atomic_write_file(TokenFile, Token ++ "\n").
+
+update_prom_auth_info(AuthInfo) ->
+    ns_config:set({node, node(), prometheus_auth_info},
+                  {?USERNAME, {auth, AuthInfo}}).
 
 token_file(Settings) ->
     filename:join(path_config:component_path(data, "config"),
