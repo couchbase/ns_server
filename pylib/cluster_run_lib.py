@@ -16,10 +16,7 @@ import fnmatch
 import platform
 import errno
 import shutil
-import urllib.request
-import urllib.parse
-import urllib.error
-import json
+import requests
 from functools import reduce
 import time
 from urllib.error import URLError
@@ -580,35 +577,22 @@ def bool_request_value(value):
     return "1" if value else "0"
 
 
-class PasswordManager(urllib.request.HTTPPasswordMgr):
-    def __init__(self, username, password):
-        self.auth = (username, password)
-
-    def find_user_password(self, realm, authuri):
-        return self.auth
-
-
 def do_encode(input_string):
     return input_string.encode()
 
 
 def http_get_json(url):
-    return json.loads(http_get(url))
+    return http_get(url).json()
 
 
 def http_get(url, timeout=60):
-    password_mgr = PasswordManager(default_username, default_pass)
-    handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
-    o = urllib.request.build_opener(handler)
-    return o.open(url, timeout=timeout).read()
+    return requests.get(url, auth=(default_username, default_pass),
+                        timeout=timeout)
 
 
 def http_post(url, data, timeout=60):
-    password_mgr = PasswordManager(default_username, default_pass)
-    handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
-    o = urllib.request.build_opener(handler)
-    encoded_data = do_encode(data)
-    return o.open(url, encoded_data, timeout=timeout).read()
+    return requests.get(url, auth=(default_username, default_pass),
+                        timeout=timeout, data=data)
 
 
 def connect(num_nodes=0,
@@ -644,9 +628,8 @@ def connect(num_nodes=0,
             valid_service_types:
         return 1
 
-    password_mgr = PasswordManager(default_username, default_pass)
-    handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
-    o = urllib.request.build_opener(handler)
+    session = requests.Session()
+    session.auth = (default_username, default_pass)
 
     print(
         f"Connecting {num_nodes} nodes, bucket type {buckettype}, "
@@ -661,8 +644,7 @@ def connect(num_nodes=0,
     services = deploy["n0"]
     print("Connecting node 0 with services {0}".format(str(services)))
 
-    info = json.loads(o.open("http://{0}:{1}/pools".format(
-        addr, base_port)).read())
+    info = session.get("http://{0}:{1}/pools".format(addr, base_port)).json()
     community_edition = info['isEnterprise'] is not True
     serverless = info['configProfile'] == 'serverless'
     if not serverless and serverless_groups:
@@ -678,53 +660,53 @@ def connect(num_nodes=0,
     else:
         indStorageMode = default_idx_storage_mode_ep
 
-    data = do_encode(
-             f'afamily={protocol}&' \
-             f'nodeEncryption={"on" if encryption else "off"}&' \
-             f'memoryQuota={memsize}&' \
-             f'indexMemoryQuota={indexmemsize}&' \
-             'port=SAME&' \
-             f'username={default_username}&' \
-             f'password={default_pass}&' \
-             f'indexerStorageMode={indStorageMode}&' \
-             f'services=' + ",".join(services))
-    o.open(f'http://{addr}:{base_port}/clusterInit', data).read()
+    data = {'afamily': protocol,
+            'nodeEncryption': "on" if encryption else "off",
+            'memoryQuota': memsize,
+            'indexMemoryQuota': indexmemsize,
+            'port': "SAME",
+            'username': default_username,
+            'password': default_pass,
+            'indexerStorageMode': indStorageMode,
+            'services': ",".join(services)}
+    r = session.post(f'http://{addr}:{base_port}/clusterInit', data)
+    assert r.status_code == 200, (r.status_code, r.text)
 
     # Creating the groups (availability zones) for serverless.
     if serverless_groups:
         # Only need to create "Group 2" and "Group 3", since Group 1 is the
         # default
         for j in range(2, NUM_SERVERLESS_GROUPS + 1):
-            data = do_encode(f"name=Group {j}")
-            o.open(f"http://{addr}:{base_port}/pools/default/serverGroups",
-                   data).read()
+            data = {'name': f"Group {j}"}
+            r = session.post(
+                f"http://{addr}:{base_port}/pools/default/serverGroups", data)
+            assert r.status_code == 200,  (r.status_code, r.text)
         # Dictionary which matches the group name to the URI
         group_name_uri = {}
-        server_group_response = json.loads(o.open(
-            f"http://{addr}:{base_port}/pools/default/serverGroups").read())
+        server_group_response = session.get(
+            f"http://{addr}:{base_port}/pools/default/serverGroups").json()
         for group in server_group_response["groups"]:
             group_name_uri[group['name']] = group['uri']
 
     if create_bucket:
-        data_string = ("name=default" +
-                       "&bucketType=" + buckettype +
-                       "&storageBackend=" + storage_backend +
-                       "&ramQuotaMB=" + str(memsize)
-                       )
+        bucket_data = {'name': "default",
+                       'bucketType': buckettype,
+                       'storageBackend': storage_backend,
+                       'ramQuotaMB': memsize}
         if buckettype != "memcached":
-            data_string += "&replicaNumber=" + str(replicas)
+            bucket_data['replicaNumber'] = replicas
         if buckettype != "ephemeral":
-            data_string += "&replicaIndex=" + bool_request_value(replica_index)
+            bucket_data['replicaIndex'] = bool_request_value(replica_index)
         if serverless:
-            data_string += f"&width={bucket_width}&weight={bucket_weight}"
-        bucket_data_string = do_encode(data_string)
+            bucket_data['width'] = bucket_width
+            bucket_data['weight'] = bucket_weight
         # When using serverless with a width > 1, we need to wait for the
         # rebalance to complete before creating a bucket, otherwise it is safe
         # to create the bucket beforehand.
         if not do_wait_for_rebalance:
-            o.open("http://{0}:{1}/pools/default/buckets"
-                   .format(addr, base_port),
-                   bucket_data_string).read()
+            r = session.post("http://{0}:{1}/pools/default/buckets"
+                             .format(addr, base_port), bucket_data)
+            assert r.status_code == 202,  (r.status_code, r.text)
 
     for i in range(1, num_nodes):
         port = base_port + i
@@ -739,34 +721,37 @@ def connect(num_nodes=0,
         if serverless_groups:
             # If using serverless, add the node to a group,
             # otherwise joinCluster
-            data = do_encode(
-                f"user={default_username}&password={default_pass}&" +
-                f"hostname={addr}:{port + 10000}" +
-                f"&services={','.join(services)}")
+            data = {'user': default_username,
+                    'password': default_pass,
+                    'hostname': f"{addr}:{port + 10000}",
+                    'services': ','.join(services)}
             group_uri = \
                 f"{group_name_uri[f'Group {i % NUM_SERVERLESS_GROUPS + 1}']}"
-            o.open(f"http://{addr}:{base_port}{group_uri}/addNode", data).read()
+            r = session.post(f"http://{addr}:{base_port}{group_uri}/addNode",
+                             data)
+            assert r.status_code == 200,  (r.status_code, r.text)
         else:
-            data = do_encode(
-                f"user={default_username}&password={default_pass}&" +
-                "clusterMemberHostIp={0}".format(addr) +
-                "&clusterMemberPort={0}".format(cluster_member_port) +
-                "&services={0}".format(",".join(services)))
-            o.open("http://{0}:{1}/node/controller/doJoinCluster".format(
-                addr, port), data).read()
+            data = {'user': default_username,
+                    'password': default_pass,
+                    'clusterMemberHostIp': addr,
+                    'clusterMemberPort': cluster_member_port,
+                    'services': ",".join(services)}
+            r = session.post("http://{0}:{1}/node/controller/doJoinCluster"
+                             .format(addr, port), data)
+            assert r.status_code == 200,  (r.status_code, r.text)
 
     if do_rebalance:
         print("Getting node list")
-        info = json.loads(o.open("http://{0}:{1}/nodeStatuses".format(
-            addr, base_port)).read())
+        info = session.get("http://{0}:{1}/nodeStatuses"
+                           .format(addr, base_port)).json()
 
         print("Servers added, triggering rebalance.")
-        data = do_encode(urllib.parse.urlencode(
-            {'knownNodes': ",".join([info[k]['otpNode'] for k in info]),
-                'ejectedNodes': ''}))
+        data = {'knownNodes': ",".join([info[k]['otpNode'] for k in info]),
+                'ejectedNodes': ''}
 
-        o.open("http://{0}:{1}/controller/rebalance".format(addr, base_port),
-               data).read()
+        r = session.post("http://{0}:{1}/controller/rebalance"
+                         .format(addr, base_port), data)
+        assert r.status_code == 200,  (r.status_code, r.text)
 
         if do_wait_for_rebalance:
             err = wait_for_rebalance("http://{0}:{1}".format(addr, base_port))
@@ -774,9 +759,10 @@ def connect(num_nodes=0,
                 print(err)
                 return 1
             if create_bucket:
-                o.open("http://{0}:{1}/pools/default/buckets"
-                       .format(addr, base_port),
-                       bucket_data_string).read()
+                r = session.post("http://{0}:{1}/pools/default/buckets"
+                                 .format(addr, base_port),
+                                 bucket_data)
+                assert r.status_code == 202,  (r.status_code, r.text)
     return 0
 
 
