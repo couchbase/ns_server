@@ -28,7 +28,8 @@ def plot_rebalance(payload):
     vbuckets = []
     active_moves = []
     replica_moves = []
-    backfills = []
+    active_backfills = []
+    replica_backfills = []
     end = 0
 
     for i, move in enumerate(all_moves):
@@ -45,14 +46,18 @@ def plot_rebalance(payload):
         move_tuple = (i, x, width)
         if move['type'] == 'active':
             active_moves.append(move_tuple)
+            active_backfills.append((i, x, backfill_width))
         else:
             replica_moves.append(move_tuple)
+            replica_backfills.append((i, x, backfill_width))
 
-        backfills.append((i, x, backfill_width))
-
+    all_move_groups = [active_moves,
+                       replica_moves,
+                       active_backfills,
+                       replica_backfills]
     in_progress_moves = []
 
-    for moves in [active_moves, replica_moves, backfills]:
+    for moves in all_move_groups:
         for i, move in enumerate(moves):
             if move[2] is None:
                 moves[i] = (move[0], move[1], end - move[1])
@@ -64,7 +69,8 @@ def plot_rebalance(payload):
 
     charts = [(active_moves, 'active moves', {'color': 'green'}),
               (replica_moves, 'replica moves', {'color': 'orange'}),
-              (backfills, 'backfill phase', {'color': 'white', 'alpha': 0.5}),
+              (active_backfills, 'active backfill', {'color': '#5a5'}),
+              (replica_backfills, 'replica backfill', {'color': '#fda'}),
               (in_progress_moves, "in-progress moves",
                {'fill': False, "edgecolor": 'red'})]
     for data, label, style in charts:
