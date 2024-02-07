@@ -64,6 +64,7 @@
          build_internal_auth/1,
          build_auth/1,
          maybe_update_auth/4,
+         migrate_local_user_auth/2,
          format_plain_auth/1,
          delete_storage_offline/0,
          cleanup_bucket_roles/1,
@@ -693,10 +694,19 @@ maybe_update_auth(CurrentAuth, Identity, Password, Type) ->
 maybe_migrate_password_hashes(CurrentAuth, {_, local} = Identity, Password) ->
     case maybe_update_auth(CurrentAuth, Identity, Password, regular) of
         {new_auth, Auth} ->
-            ns_server_stats:notify_counter(<<"pass_hash_migration">>),
-            store_auth(Identity, Auth, ?REPLICATED_DETS_NORMAL_PRIORITY);
+            migrate_local_user_auth(Identity, Auth);
         no_change ->
             ok
+    end.
+
+migrate_local_user_auth(Identity, NewAuth) ->
+    case ns_node_disco:couchdb_node() == node() of
+        false ->
+            ns_server_stats:notify_counter(<<"pass_hash_migration">>),
+            store_auth(Identity, NewAuth, ?REPLICATED_DETS_NORMAL_PRIORITY);
+        true ->
+            rpc:call(ns_node_disco:ns_server_node(), ?MODULE,
+                     migrate_local_user_auth, [Identity, NewAuth])
     end.
 
 get_auth_info(Identity) ->
