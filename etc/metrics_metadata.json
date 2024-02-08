@@ -662,6 +662,13 @@
             }
         ]
     },
+    "sys_cpu_cgroup_usage_seconds_total": {
+        "type": "counter",
+        "help": "Number of 'user' and 'system' CPU seconds utilized in the cgroup",
+        "added": "7.6.0",
+        "unit": "seconds",
+        "stability": "committed"
+    },
     "sys_cpu_cores_available": {
         "type": "gauge",
         "help": "Number of available CPU cores in the control group",
