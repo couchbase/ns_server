@@ -415,19 +415,31 @@ authenticate(User, Pass) ->
             case menelaus_users:authenticate_with_info(AuthInfo, Pass) of
                 true ->
                     Identity = {User, stats_reader},
-                    case menelaus_users:maybe_update_auth(AuthInfo, Identity,
-                                                          Pass, internal) of
-                        {new_auth, NewAuth} ->
-                            ns_server_stats:notify_counter(
-                              <<"pass_hash_migration">>),
-                            update_prom_auth_info(NewAuth);
-                        no_change -> ok
-                    end,
+                    maybe_migrate_auth(Identity, AuthInfo, Pass),
                     {ok, Identity};
                 false -> {error, auth_failure}
             end;
         _ ->
             {error, auth_failure}
+    end.
+
+maybe_migrate_auth({User, _} = Identity, AuthInfo, Pass) ->
+    case menelaus_users:maybe_update_auth(AuthInfo, Identity, Pass, internal) of
+        {new_auth, NewAuth} ->
+            case ns_config:update_if_unchanged(
+                   {node, node(), prometheus_auth_info},
+                   {User, {auth, AuthInfo}}, {User, {auth, NewAuth}}) of
+                ok ->
+                    ns_server_stats:notify_counter(<<"pass_hash_migration">>);
+                {error, changed} ->
+                    %% Something else has already changed it
+                    ok;
+                {error, retry_needed} ->
+                    ?log_error("Hash migration transaction for prometheus"
+                               " failed")
+            end,
+            ok;
+        no_change -> ok
     end.
 
 %% This function should work even when prometheus_cfg is down
