@@ -176,6 +176,7 @@
          node_magma_fragmentation_percentage/1,
          remove_override_props/2,
          remove_override_props_many/2,
+         get_commits_from_snapshot/2,
          update_bucket_config/2,
          update_buckets_config/1,
          all_keys/1]).
@@ -1705,6 +1706,18 @@ update_servers_and_map(Bucket, OldConfig, FailedNodes, NewMap) ->
       Bucket, NewMap, proplists:get_value(map, OldConfig, [])),
     NewConfig.
 
+get_commits_from_snapshot(BucketsUpdates, Snapshot) ->
+    lists:map(
+      fun({BucketName, UpdtFun}) ->
+              case get_bucket(BucketName, Snapshot) of
+                  {ok, CurrentConfig} ->
+                      {set, sub_key(BucketName, props),
+                       UpdtFun(CurrentConfig)};
+                  not_present ->
+                      {abort, not_found}
+              end
+      end, BucketsUpdates).
+
 % Update the bucket config atomically.
 update_bucket_config(BucketName, Fun) ->
     update_bucket_config(BucketName, Fun, fun (_) -> ok end, [], #{}).
@@ -1725,17 +1738,8 @@ update_buckets_config(BucketsUpdates, Predicate, SubKeys, Opts) ->
                   case Predicate(Snapshot) of
                       ok ->
                           Commits =
-                              lists:map(
-                                fun({BucketName, UpdtFun}) ->
-                                        case get_bucket(BucketName, Snapshot) of
-                                            {ok, CurrentConfig} ->
-                                                {set, sub_key(
-                                                        BucketName, props),
-                                                 UpdtFun(CurrentConfig)};
-                                            not_present ->
-                                                {abort, not_found}
-                                        end
-                                end, BucketsUpdates),
+                              get_commits_from_snapshot(BucketsUpdates,
+                                                        Snapshot),
 
                           case lists:keyfind(abort, 1, Commits) of
                               false ->

@@ -28,6 +28,7 @@
          get_snapshot/1,
          get_snapshot/2,
          get_snapshot_with_revision/2,
+         get_keys_and_rev/1,
          pull/0,
          pull/1,
          push/1,
@@ -75,6 +76,13 @@ get(direct, Key, #{}) ->
                     Error
             end
     end.
+
+get_keys_and_rev(Snapshot) ->
+    maps:map(
+      fun(_Key, Val) ->
+              {_, Rev} = Val,
+              Rev
+      end, Snapshot).
 
 set_multiple([]) ->
     ok;
