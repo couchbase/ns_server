@@ -16,6 +16,11 @@
 -include("rbac.hrl").
 -include("cut.hrl").
 
+-define(count_auth(Type, Res),
+        ns_server_stats:notify_counter({<<"authentication">>,
+                                        [{<<"type">>, <<Type>>},
+                                         {<<"res">>, <<Res>>}]})).
+
 -export([has_permission/2,
          is_internal/1,
          filter_accessible_buckets/3,
@@ -282,14 +287,17 @@ init_auth(Identity) ->
           {unfinished, RespHeaders :: [RespHeader]}
                                         when RespHeader :: {string(), string()}.
 authenticate(error) ->
+    ?count_auth("error", "failure"),
     {error, auth_failure};
 authenticate(undefined) ->
+    ?count_auth("anon", "succ"),
     {ok, init_auth({"", anonymous}), []};
 authenticate({token, Token} = Param) ->
     case ns_node_disco:couchdb_node() == node() of
         false ->
             case menelaus_ui_auth:check(Token) of
                 false ->
+                    ?count_auth("token", "failure"),
                     %% this is needed so UI can get /pools on unprovisioned
                     %% system with leftover cookie
                     case ns_config_auth:is_system_provisioned() of
@@ -299,6 +307,7 @@ authenticate({token, Token} = Param) ->
                             {error, auth_failure}
                     end;
                 {ok, AuthnRes} ->
+                    ?count_auth("token", "succ"),
                     {ok, AuthnRes, []}
             end;
         true ->
@@ -306,6 +315,7 @@ authenticate({token, Token} = Param) ->
                      [Param])
     end;
 authenticate({client_cert_auth, "@" ++ _ = Username}) ->
+    ?count_auth("client_cert_int", "succ"),
     {ok, init_auth({Username, admin}), []};
 authenticate({client_cert_auth, Username} = Param) ->
     %% Just returning the username as the request is already authenticated based
@@ -314,13 +324,16 @@ authenticate({client_cert_auth, Username} = Param) ->
         false ->
             case ns_config_auth:get_user(admin) of
                 Username ->
+                    ?count_auth("client_cert", "succ"),
                     {ok, init_auth({Username, admin}), []};
                 _ ->
                     Identity = {Username, local},
                     case menelaus_users:user_exists(Identity) of
                         true ->
+                            ?count_auth("client_cert", "succ"),
                             {ok, init_auth(Identity), []};
                         false ->
+                            ?count_auth("client_cert", "failure"),
                             {error, auth_failure}
                     end
             end;
@@ -331,19 +344,24 @@ authenticate({client_cert_auth, Username} = Param) ->
 authenticate({scram_sha, AuthHeader}) ->
     case scram_sha:authenticate(AuthHeader) of
         {ok, Identity, RespHeaders} ->
+            ?count_auth("scram_sha", "succ"),
             {ok, init_auth(Identity), RespHeaders};
         {first_step, RespHeaders} ->
+            ?count_auth("scram_sha", "succ"),
             {unfinished, RespHeaders};
         auth_failure ->
+            ?count_auth("scram_sha", "failure"),
             {error, auth_failure}
     end;
 authenticate({Username, Password}) ->
     case ns_config_auth:authenticate(Username, Password) of
         {ok, Id} ->
+            ?count_auth("local", "succ"),
             {ok, init_auth(Id), []};
         {error, auth_failure}->
             authenticate_external(Username, Password);
         {error, Reason} ->
+            ?count_auth("local", "failure"),
             {error, Reason}
     end.
 
@@ -356,8 +374,10 @@ authenticate_external(Username, Password) ->
                  (saslauthd_auth:authenticate(Username, Password) orelse
                   ldap_auth_cache:authenticate(Username, Password)) of
                 true ->
+                    ?count_auth("external", "succ"),
                     {ok, init_auth({Username, external}), []};
                 false ->
+                    ?count_auth("external", "failure"),
                     {error, auth_failure}
             end;
         true ->

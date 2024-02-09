@@ -58,7 +58,13 @@ n1ql_cluster_capabilities(Version) ->
         end.
 
 cluster_capabilities(Version) ->
-    [{n1ql, n1ql_cluster_capabilities(Version)}].
+    [{n1ql, n1ql_cluster_capabilities(Version)}] ++
+        case is_cluster_76() of
+            true ->
+                [{search, [vectorSearch, scopedSearchIndex]}];
+            false ->
+                []
+        end.
 
 get_cluster_capabilities() ->
     cluster_capabilities(get_compat_version()).
