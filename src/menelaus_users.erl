@@ -702,8 +702,16 @@ maybe_migrate_password_hashes(CurrentAuth, {_, local} = Identity, Password) ->
 migrate_local_user_auth(Identity, NewAuth) ->
     case ns_node_disco:couchdb_node() == node() of
         false ->
-            ns_server_stats:notify_counter(<<"pass_hash_migration">>),
-            store_auth(Identity, NewAuth, ?REPLICATED_DETS_NORMAL_PRIORITY);
+            try
+                store_auth(Identity, NewAuth, ?REPLICATED_DETS_NORMAL_PRIORITY),
+                ns_server_stats:notify_counter(<<"pass_hash_migration">>)
+            catch
+                E:T:S ->
+                    ?log_debug("Auth store for auth migration failed. "
+                               "Identity - ~p.~nError - ~p",
+                               [ns_config_log:tag_user_data(Identity),
+                                {E, T, S}])
+            end;
         true ->
             rpc:call(ns_node_disco:ns_server_node(), ?MODULE,
                      migrate_local_user_auth, [Identity, NewAuth])
