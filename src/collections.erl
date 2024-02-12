@@ -166,6 +166,10 @@ manifest_without_system_scope(BucketConf) ->
           [{"_default",
               get_default_collection_props(BucketConf)}]}]}]}].
 
+%% Collections within the _system scope must begin with "_". This is
+%% required to simplify some of the testing and code paths in kv which
+%% deal with system collection privileges (especially on the DCP
+%% filtering path).
 system_collections() ->
     ["_mobile", "_query"] ++
         case config_profile:is_serverless() of
@@ -1588,7 +1592,21 @@ create_collection_t() ->
         update_manifest_test_create_collection(
           Manifest4, "_default", "c5", []),
 
-    ?assertEqual(undefined, get_history("c5", "_default", Manifest5)).
+    ?assertEqual(undefined, get_history("c5", "_default", Manifest5)),
+
+    %% Can't create collection in _system scope. If this is allowed in
+    %% the future the collection name must begin with a "_".
+    ?assertEqual(
+       {abort, {error, {cannot_create_collection_in_system_scope}}},
+       update_manifest_test_create_collection(Manifest1, "_system", "c1", [])),
+    ?assertEqual(
+       {abort, {error, {cannot_create_collection_in_system_scope}}},
+       update_manifest_test_create_collection(Manifest1, "_system", "_c1", [])),
+    %% Ensure defined collections meet this requirement.
+    lists:all(
+      fun (Name) ->
+              lists:sublist(Name, 1, 1) =:= "_"
+      end, collections:system_collections()).
 
 drop_collection_t() ->
     {ok, BucketConf} = get_bucket_config("bucket"),
