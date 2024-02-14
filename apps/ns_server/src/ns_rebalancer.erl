@@ -255,7 +255,6 @@ init_rebalance(#{keep_nodes := KeepNodes,
                  eject_nodes := EjectNodes,
                  failed_nodes := FailedNodes,
                  delta_nodes := DeltaNodes,
-                 delta_recovery_buckets := DeltaRecoveryBucketNames,
                  services := Services} = Params) ->
     DesiredServers =
         try
@@ -281,8 +280,7 @@ init_rebalance(#{keep_nodes := KeepNodes,
     master_activity_events:note_rebalance_start(
       self(), KeepNodes, EjectNodes, FailedNodes, DeltaNodes),
 
-    rebalance(KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
-              DeltaRecoveryBucketNames, Services, DesiredServers).
+    rebalance(Params, DesiredServers).
 
 should_rebalance_service(_, all) ->
     true;
@@ -300,10 +298,12 @@ move_vbuckets(Bucket, Moves) ->
     run_mover(Bucket, Config, ns_bucket:get_servers(Config),
               ProgressFun, Map, NewMap).
 
-rebalance_services(all, KeepNodes, EjectNodes) ->
-    rebalance_services(ns_cluster_membership:cluster_supported_services(),
-                       KeepNodes, EjectNodes);
-rebalance_services(AllSupportedServices, KeepNodes, EjectNodes) ->
+rebalance_services(#{services := all} = Params) ->
+    rebalance_services(
+      Params#{services => ns_cluster_membership:cluster_supported_services()});
+rebalance_services(#{keep_nodes := KeepNodes,
+                     eject_nodes := EjectNodes,
+                     services := AllSupportedServices}) ->
     Snapshot = ns_cluster_membership:get_snapshot(),
 
     AllServices = AllSupportedServices -- [kv],
@@ -450,18 +450,18 @@ do_maybe_delay_eject_nodes_inner(Timestamps, EjectNodes, EjectedServices) ->
             ok
     end.
 
-rebalance(KeepNodes, EjectNodesAll, FailedNodesAll,
-          DeltaNodes, DeltaRecoveryBucketNames, Services, DesiredServers) ->
+rebalance(Params, DesiredServers) ->
     ok = check_test_condition(rebalance_start),
     ok = leader_activities:run_activity(
            rebalance, majority,
-           ?cut(rebalance_body(KeepNodes, EjectNodesAll,
-                               FailedNodesAll,
-                               DeltaNodes, DeltaRecoveryBucketNames,
-                               Services, DesiredServers))).
+           ?cut(rebalance_body(Params, DesiredServers))).
 
-rebalance_body(KeepNodes, EjectNodesAll, FailedNodesAll, DeltaNodes,
-               DeltaRecoveryBucketNames, Services, DesiredServers) ->
+rebalance_body(#{keep_nodes := KeepNodes,
+                 eject_nodes := EjectNodesAll,
+                 failed_nodes := FailedNodesAll,
+                 delta_nodes := DeltaNodes,
+                 delta_recovery_buckets := DeltaRecoveryBucketNames,
+                 services := Services} = Params, DesiredServers) ->
     LiveNodes = KeepNodes ++ EjectNodesAll,
     LiveKVNodes = ns_cluster_membership:service_nodes(LiveNodes, kv),
 
@@ -514,7 +514,7 @@ rebalance_body(KeepNodes, EjectNodesAll, FailedNodesAll, DeltaNodes,
         rebalance_kv(KeepNodes, EjectNodesAll, DeltaRecoveryBuckets,
                      DesiredServers),
     master_activity_events:note_rebalance_stage_completed(kv),
-    rebalance_services(Services, KeepNodes, EjectNodesAll),
+    rebalance_services(Params),
 
     ok = leader_activities:deactivate_quorum_nodes(EjectNodesAll),
 
