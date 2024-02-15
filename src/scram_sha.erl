@@ -30,7 +30,7 @@
          pbkdf2/4,
          build_auth/2,
          fix_pre_76_auth_info/1,
-         maybe_update_hashes/2]).
+         maybe_update_hashes/3]).
 
 %% callback for token_server
 -export([init/0]).
@@ -65,8 +65,8 @@ build_auth(Passwords, AuthType, ShaTypes) ->
         end,
     [BuildAuth(Sha) || Sha <- ShaTypes, enabled(Sha)].
 
-iterations_changed(Auth) ->
-    Iterations = iterations(regular),
+iterations_changed(Auth, Type) ->
+    Iterations = iterations(Type),
     lists:any(
       fun ({Key, {Info}}) ->
               lists:member(Key, auth_info_keys()) andalso
@@ -98,8 +98,9 @@ remove_types(Auth, Types) ->
               lists:keydelete(auth_info_key(Sha), 1, NewAuth)
       end, Auth, Types).
 
-maybe_update_hashes(CurrentAuth, Password) ->
-    IterationsChanged = iterations_changed(CurrentAuth),
+%% Note: this functions assumes CurrentAuth is in 7.6 format
+maybe_update_hashes(CurrentAuth, Password, Type) ->
+    IterationsChanged = iterations_changed(CurrentAuth, Type),
     {NewlyEnabled, NewlyDisabled} = settings_toggled(CurrentAuth),
 
     NewTypes =
@@ -114,7 +115,7 @@ maybe_update_hashes(CurrentAuth, Password) ->
     functools:chain(
       CurrentAuth,
       [remove_types(_, NewlyDisabled),
-       misc:update_proplist(_, build_auth([Password], regular, NewTypes))]).
+       misc:update_proplist(_, build_auth([Password], Type, NewTypes))]).
 
 format_keys(StoredKey, ServerKey) ->
     {[{?SCRAM_STORED_KEY_KEY, base64:encode(StoredKey)},
@@ -651,7 +652,7 @@ maybe_update_hashes_teardown() ->
 
 maybe_update_hashes_test__(OldAuth, Password, OldSettings, NewSettings) ->
     meck_ns_config_read_key_fast(NewSettings),
-    NewAuth = maybe_update_hashes(OldAuth, Password),
+    NewAuth = maybe_update_hashes(OldAuth, Password, regular),
 
     OldIterations = proplists:get_value(
                       memcached_password_hash_iterations, OldSettings),

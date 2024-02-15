@@ -454,8 +454,10 @@ existing_atom(Name, State) ->
       Name,
       fun (Bin) when is_binary(Bin) ->
               erlang:binary_to_existing_atom(Bin, latin1);
-          (Str) ->
-              erlang:list_to_existing_atom(Str)
+          (Str) when is_list(Str) ->
+              erlang:list_to_existing_atom(Str);
+          (A) when is_atom(A) ->
+              A
       end, State).
 
 greater_than(Name, N, State) ->
@@ -536,6 +538,37 @@ or_type_test() ->
           SetBody(<<"t1=10&t2=a1&t3=false">>),
           handle_post(fun (Parsed, Req2) when Req == Req2 ->
                           ?assertEqual(ExpectedResult, Parsed)
+                      end, [], Params, TypeSpec, Req)
+      end).
+
+one_of_test() ->
+    Type = {one_of, existing_atom, [false, a1]},
+    Params = [{"t1", #{cfg_key => k1, type => Type}},
+              {"t2", #{cfg_key => k2, type => Type}},
+              {"t3", #{cfg_key => k3, type => Type}}],
+    TypeSpec = fun (undefined) -> ok end,
+    Format = fun (V) -> ejson:encode(prepare_json([], Params, TypeSpec, V)) end,
+
+    ?assertEqual(<<"{\"t1\":false,\"t2\":\"a1\"}">>,
+                 Format([{k1, false},
+                         {k2, a1}])),
+
+    with_request(
+      fun (SetContType, SetBody, Req) ->
+          SetContType("application/x-www-form-urlencoded"),
+          SetBody(<<"t1=false&t2=a1">>),
+          handle_post(fun (Parsed, Req2) when Req == Req2 ->
+                          ?assertEqual([{[k1], false}, {[k2], a1}], Parsed)
+                      end, [], Params, TypeSpec, Req)
+      end),
+
+    with_request(
+      fun (SetContType, SetBody, Req) ->
+          SetContType("application/json"),
+          SetBody(<<"{\"t1\": false, \"t2\": \"false\", \"t3\": \"a1\"}">>),
+          handle_post(fun (Parsed, Req2) when Req == Req2 ->
+                          ?assertEqual([{[k1], false}, {[k2], false},
+                                        {[k3], a1}], Parsed)
                       end, [], Params, TypeSpec, Req)
       end).
 

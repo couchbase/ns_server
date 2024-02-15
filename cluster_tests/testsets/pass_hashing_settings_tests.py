@@ -52,10 +52,8 @@ class PassHashingSettingsTests(testlib.BaseTestSet):
                             '/settings/security/allowHashMigrationDuringAuth')
 
     def change_admin_pass_respects_hash_alg_test(self):
-        admin = testlib.get_succ(self.cluster,
-                                 '/settings/web').json()['username']
-        assert admin == self.cluster.auth[0], \
-            'this test expects that cluster uses administrator auth'
+        assert_cluster_uses_admin_creds(self.cluster)
+        admin = self.cluster.auth[0]
         password = self.cluster.auth[1]
 
         def test_hash(expected_hash):
@@ -78,6 +76,126 @@ class PassHashingSettingsTests(testlib.BaseTestSet):
         testlib.post_succ(self.cluster, '/settings/security/passwordHashAlg',
                           data='argon2id')
         test_hash('argon2id')
+
+    def admin_hash_migration_test(self):
+        assert_cluster_uses_admin_creds(self.cluster)
+
+        def verify_admin_hash_params(to_verify):
+            # authenticate as admin in order to trigger automatic migration
+            testlib.get_succ(self.cluster, "/whoami")
+            backup = get_backup(self.cluster, 'admin')
+            auth = backup['admin']['auth']
+            for auth_type in to_verify:
+                for key in to_verify[auth_type]:
+                    testlib.assert_eq(auth[auth_type][key],
+                                      to_verify[auth_type][key])
+
+        testlib.post_succ(self.cluster, '/internalSettings/',
+                          data={'argon2idMem': 9000,
+                                'argon2idTime': 5,
+                                'scramShaIterations': 20})
+
+        testlib.post_succ(self.cluster, '/settings/security/',
+                          data={'passwordHashAlg': 'argon2id',
+                                'argon2idMem': 8192,
+                                'argon2idTime': 1,
+                                'allowHashMigrationDuringAuth': 'true',
+                                'scramShaIterations': 12})
+
+        # Checking that correct settings are used
+        verify_admin_hash_params({'hash': {'algorithm': 'argon2id',
+                                           'time': 1,
+                                           'memory': 8192},
+                                  'scram-sha-512': {'iterations': 12},
+                                  'scram-sha-256': {'iterations': 12},
+                                  'scram-sha-1': {'iterations': 12}})
+
+        # ----------------------------------------------------------------------
+
+        testlib.post_succ(self.cluster, '/internalSettings/',
+                          data={'argon2idMem': 9001,
+                                'argon2idTime': 6,
+                                'scramShaIterations': 21})
+
+        # Checking that there was no migration
+        verify_admin_hash_params({'hash': {'algorithm': 'argon2id',
+                                           'time': 1,
+                                           'memory': 8192},
+                                  'scram-sha-512': {'iterations': 12},
+                                  'scram-sha-256': {'iterations': 12},
+                                  'scram-sha-1': {'iterations': 12}})
+
+        # ----------------------------------------------------------------------
+
+        testlib.post_succ(self.cluster, '/settings/security/',
+                          data={'argon2idMem': 8193})
+
+        # Checking that there was a migration
+        verify_admin_hash_params({'hash': {'algorithm': 'argon2id',
+                                           'time': 1,
+                                           'memory': 8193},
+                                  'scram-sha-512': {'iterations': 12},
+                                  'scram-sha-256': {'iterations': 12},
+                                  'scram-sha-1': {'iterations': 12}})
+
+        # ----------------------------------------------------------------------
+
+        testlib.post_succ(self.cluster, '/settings/security/',
+                          data={'argon2idTime': 2})
+
+        # Checking that there was a migration
+        verify_admin_hash_params({'hash': {'algorithm': 'argon2id',
+                                           'time': 2,
+                                           'memory': 8193},
+                                  'scram-sha-512': {'iterations': 12},
+                                  'scram-sha-256': {'iterations': 12},
+                                  'scram-sha-1': {'iterations': 12}})
+
+        # ----------------------------------------------------------------------
+
+        testlib.post_succ(self.cluster, '/settings/security/',
+                          data={'scramShaIterations': 13})
+
+        # Checking that there was a migration
+        verify_admin_hash_params({'hash': {'algorithm': 'argon2id',
+                                           'time': 2,
+                                           'memory': 8193},
+                                  'scram-sha-512': {'iterations': 13},
+                                  'scram-sha-256': {'iterations': 13},
+                                  'scram-sha-1': {'iterations': 13}})
+
+        # ----------------------------------------------------------------------
+
+        testlib.post_succ(self.cluster, '/internalSettings/',
+                          data={'pbkdf2HmacSha512Iterations': 20})
+
+        testlib.post_succ(self.cluster, '/settings/security/',
+                          data={'passwordHashAlg': 'pbkdf2-hmac-sha512',
+                                'pbkdf2HmacSha512Iterations': 15})
+
+        # Checking that there was a migration
+        verify_admin_hash_params({'hash': {'algorithm': 'pbkdf2-hmac-sha512',
+                                           'iterations': 15},
+                                  'scram-sha-512': {'iterations': 13},
+                                  'scram-sha-256': {'iterations': 13},
+                                  'scram-sha-1': {'iterations': 13}})
+
+        # ----------------------------------------------------------------------
+
+        testlib.post_succ(self.cluster, '/settings/security/',
+                          data={'allowHashMigrationDuringAuth': 'false',
+                                'passwordHashAlg': 'SHA-1',
+                                'scramShaIterations': 14})
+        testlib.post_succ(self.cluster, '/internalSettings/',
+                          data={'scramShaIterations': 22})
+
+        # Checking that there was no migration
+        verify_admin_hash_params({'hash': {'algorithm': 'pbkdf2-hmac-sha512',
+                                           'iterations': 15},
+                                  'scram-sha-512': {'iterations': 13},
+                                  'scram-sha-256': {'iterations': 13},
+                                  'scram-sha-1': {'iterations': 13}})
+
 
     def user_creation_respects_hash_alg_test(self):
         testlib.post_succ(self.cluster, '/settings/security/passwordHashAlg',
@@ -709,3 +827,9 @@ def validate_scram_sha_auth(cluster, user, pwd, type):
     scram_type = get_scram_sha_key(type).upper()
     r = scram_sha_auth(scram_type, '/whoami', (user, pwd), cluster)
     testlib.assert_http_code(200, r)
+
+
+def assert_cluster_uses_admin_creds(cluster):
+    admin = testlib.get_succ(cluster, '/settings/web').json()['username']
+    assert admin == cluster.auth[0], \
+           'this test expects that cluster uses administrator auth'
