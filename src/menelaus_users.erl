@@ -63,6 +63,8 @@
          authenticate_with_info/2,
          build_internal_auth/1,
          build_auth/1,
+         maybe_update_auth/4,
+         migrate_local_user_auth/2,
          format_plain_auth/1,
          delete_storage_offline/0,
          cleanup_bucket_roles/1,
@@ -621,7 +623,8 @@ authenticate(Username, Password) ->
             Res
     end.
 
-maybe_update_plain_auth_hashes(CurrentAuth, Password) ->
+%% Note: this functions assumes CurrentAuth is in 7.6 format
+maybe_update_plain_auth_hashes(CurrentAuth, Password, Type) ->
     {HashInfo} = proplists:get_value(<<"hash">>, CurrentAuth),
     HashAlg = proplists:get_value(?HASH_ALG_KEY, HashInfo),
     CurrentHashAlg = ns_config:read_key_fast(
@@ -630,7 +633,7 @@ maybe_update_plain_auth_hashes(CurrentAuth, Password) ->
         case HashAlg of
             CurrentHashAlg ->
                 Settings = ns_config_auth:configurable_hash_alg_settings(
-                             HashAlg, regular),
+                             HashAlg, Type),
                 lists:any(
                   fun ({K, V}) ->
                           proplists:get_value(K, HashInfo) =/= V
@@ -644,50 +647,83 @@ maybe_update_plain_auth_hashes(CurrentAuth, Password) ->
             CurrentAuth;
         true ->
             misc:update_proplist(
-              CurrentAuth, build_plain_auth([Password], regular))
+              CurrentAuth, build_plain_auth([Password], Type))
     end.
-
-maybe_update_auth(CurrentAuth, Password) ->
-    functools:chain(
-      CurrentAuth,
-      [maybe_update_plain_auth_hashes(_, Password),
-       scram_sha:maybe_update_hashes(_, Password)]).
 
 allow_hash_migration_during_auth_default() ->
     cluster_compat_mode:is_cluster_76() andalso
         config_profile:get_bool(allow_hash_migration_during_auth).
 
-maybe_migrate_password_hashes(
-  CurrentAuth, {Username, local} = Identity, Password) ->
-    AllowHashMigrationDefault =
-        allow_hash_migration_during_auth_default(),
-    MigrateHashes =
-        cluster_compat_mode:is_cluster_76() andalso
-            ns_config:read_key_fast(
-              allow_hash_migration_during_auth, AllowHashMigrationDefault),
+%% Returns updated auth info iff any of the hash parameters has changed
+update_auth(CurrentAuth, Password, Type) ->
+    functools:chain(
+      CurrentAuth,
+      [maybe_update_plain_auth_hashes(_, Password, Type),
+       scram_sha:maybe_update_hashes(_, Password, Type)]).
 
-    case MigrateHashes of
-        true ->
-            try
-                Auth = maybe_update_auth(CurrentAuth, Password),
+%% Returns updated auth info iff any of the hash parameters has changed and
+%% hash migration is allowed
+maybe_update_auth(CurrentAuth, Identity, Password, Type) ->
+    try
+        AllowHashMigrationDefault =
+            allow_hash_migration_during_auth_default(),
+        MigrateHashes =
+            cluster_compat_mode:is_cluster_76() andalso
+                ns_config:read_key_fast(
+                  allow_hash_migration_during_auth, AllowHashMigrationDefault),
+
+        Pre76Auth =
+            (undefined /= proplists:get_value(<<"plain">>, CurrentAuth)),
+
+        case MigrateHashes of
+            true when not Pre76Auth ->
+                Auth = update_auth(CurrentAuth, Password, Type),
                 case Auth /= CurrentAuth of
                     true ->
-                        store_auth(
-                          Identity, Auth, ?REPLICATED_DETS_NORMAL_PRIORITY);
+                        {new_auth, Auth};
                     false ->
-                        ok
-                end
+                        no_change
+                end;
+            true ->
+                ?log_debug("Skipping hash migration for identity - ~p "
+                           "(pre-7.6 format)",
+                           [ns_config_log:tag_user_data(Identity)]),
+                no_change;
+            false ->
+                no_change
+        end
+    catch
+        E:T:S ->
+            ?log_debug("Password migration failed. Identity - ~p.~n"
+                       "Error - ~p",
+                       [ns_config_log:tag_user_data(Identity), {E, T, S}]),
+            no_change
+    end.
+
+maybe_migrate_password_hashes(CurrentAuth, {_, local} = Identity, Password) ->
+    case maybe_update_auth(CurrentAuth, Identity, Password, regular) of
+        {new_auth, Auth} ->
+            migrate_local_user_auth(Identity, Auth);
+        no_change ->
+            ok
+    end.
+
+migrate_local_user_auth(Identity, NewAuth) ->
+    case ns_node_disco:couchdb_node() == node() of
+        false ->
+            try
+                store_auth(Identity, NewAuth, ?REPLICATED_DETS_NORMAL_PRIORITY),
+                ns_server_stats:notify_counter(<<"pass_hash_migration">>)
             catch
                 E:T:S ->
-                    ?log_debug("Password migration failed. Identity - ~p.~n"
-                               "Error - ~p",
-                               [ns_config_log:tag_user_data(
-                                  [{user, list_to_binary(Username)}]),
-                                {E, T, S}]),
-                    ok
+                    ?log_debug("Auth store for auth migration failed. "
+                               "Identity - ~p.~nError - ~p",
+                               [ns_config_log:tag_user_data(Identity),
+                                {E, T, S}])
             end;
-        false ->
-            ok
+        true ->
+            rpc:call(ns_node_disco:ns_server_node(), ?MODULE,
+                     migrate_local_user_auth, [Identity, NewAuth])
     end.
 
 get_auth_info(Identity) ->
@@ -1144,7 +1180,7 @@ meck_ns_config_read_key_fast(Settings) ->
 maybe_update_plain_auth_hashes_test__(
   OldAuth, Password, OldSettings, NewSettings) ->
     meck_ns_config_read_key_fast(NewSettings),
-    NewAuth = maybe_update_plain_auth_hashes(OldAuth, Password),
+    NewAuth = maybe_update_plain_auth_hashes(OldAuth, Password, regular),
 
     NewSaltAndMac = get_salt_and_mac(NewAuth),
     OldSaltAndMac = get_salt_and_mac(OldAuth),
@@ -1253,4 +1289,87 @@ maybe_update_plain_auth_hashes_test_() ->
      end,
      [{lists:map(fun ({_, S}) -> BuildSettings(S) end, TestArg), TestFun}
       || TestArg <- TestArgs]}.
+
+maybe_update_auth_test() ->
+    CommonSettings = [{allow_hash_migration_during_auth, true}],
+    Sha1Settings = [{password_hash_alg, ?SHA1_HASH} | CommonSettings],
+    PbkdfSettings = fun (I1, I2) ->
+                        [{password_hash_alg, ?PBKDF2_HASH},
+                         {pbkdf2_sha512_iterations, I1},
+                         {pbkdf2_sha512_iterations_internal, I2}
+                         | CommonSettings]
+                    end,
+    ArgonSettings = fun (T, M, T2, M2) ->
+                        [{password_hash_alg, ?ARGON2ID_HASH},
+                         {argon2id_time, T},
+                         {argon2id_mem, M},
+                         {argon2id_time_internal, T2},
+                         {argon2id_mem_internal, M2}
+                         | CommonSettings]
+                    end,
+    ScramSettings = fun (I1, I2) ->
+                        [{memcached_password_hash_iterations, I1},
+                         {memcached_password_hash_iterations_internal, I2}
+                         | CommonSettings]
+                    end,
+    %% Just change the order in all lists without actually changing
+    %% anything meaningful
+    Rearrange = fun (A) ->
+                    generic:maybe_transform(
+                        fun (L) when is_list(L) -> {continue, lists:reverse(L)};
+                            (T) -> {continue, T}
+                        end, A)
+                end,
+    %% Generate auth record then change settings, and verify that auth
+    %% changes when it is expected to change
+    Check = fun (OldSettings, NewSettings, Type, ExpectChange) ->
+                Pass = "abc",
+                meck_ns_config_read_key_fast(OldSettings),
+                Auth = build_auth([Pass], Type),
+                meck_ns_config_read_key_fast(NewSettings),
+                Res = maybe_update_auth(Rearrange(Auth), {"test", local},
+                                        Pass, Type),
+                case ExpectChange of
+                    true -> ?assertMatch({new_auth, _}, Res);
+                    false -> ?assertEqual(no_change, Res)
+                end
+            end,
+    ShouldChange = Check(_, _, _, true),
+    ShouldNotChange = Check(_, _, _, false),
+    meck:new([ns_config, cluster_compat_mode], [passthrough]),
+    try
+        meck:expect(cluster_compat_mode, is_cluster_76,
+                    fun () -> true end),
+
+        %% Testing 2 things here:
+        %% - the fact auth doesn't change when unrelated settings change
+        %% - the fact that auth doesn't change if auth list is simply rearranged
+        ShouldNotChange(Sha1Settings, Sha1Settings, regular),
+        ShouldNotChange(Sha1Settings, Sha1Settings, internal),
+
+        ShouldChange(PbkdfSettings(10, 15), PbkdfSettings(11, 15), regular),
+        ShouldChange(PbkdfSettings(10, 15), PbkdfSettings(10, 16), internal),
+        ShouldNotChange(PbkdfSettings(10, 15), PbkdfSettings(10, 16), regular),
+        ShouldNotChange(PbkdfSettings(10, 15), PbkdfSettings(11, 15), internal),
+
+        ShouldChange(ArgonSettings(1, 8192, 1, 8192),
+                     ArgonSettings(2, 8192, 1, 8192), regular),
+        ShouldNotChange(ArgonSettings(1, 8192, 1, 8192),
+                        ArgonSettings(1, 8192, 2, 8192), regular),
+        ShouldChange(ArgonSettings(1, 8192, 1, 8192),
+                     ArgonSettings(1, 8193, 1, 8192), regular),
+        ShouldNotChange(ArgonSettings(1, 8192, 1, 8192),
+                        ArgonSettings(1, 8192, 1, 8193), regular),
+        ShouldChange(ArgonSettings(1, 8192, 1, 8192),
+                     ArgonSettings(1, 8192, 1, 8193), internal),
+        ShouldNotChange(ArgonSettings(1, 8192, 1, 8192),
+                        ArgonSettings(1, 8193, 1, 8192), internal),
+
+        ShouldChange(ScramSettings(10, 15), ScramSettings(11, 15), regular),
+        ShouldNotChange(ScramSettings(10, 15), ScramSettings(10, 16), regular),
+        ShouldChange(ScramSettings(10, 15), ScramSettings(10, 16), internal),
+        ShouldNotChange(ScramSettings(10, 15), ScramSettings(11, 15), internal)
+    after
+        meck:unload([ns_config, cluster_compat_mode])
+    end.
 -endif.

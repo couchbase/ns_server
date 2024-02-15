@@ -33,7 +33,7 @@
          set_initial/2,
          update/1, update_with_vclocks/1, update_with_vclocks/2,
          update_key/2, update_key/3,
-         update_sub_key/3, set_sub/2,
+         update_sub_key/3, update_if_unchanged/3, set_sub/2,
          search_node/4, search_node/3, search_node/2, search_node/1,
          search_node_prop/3, search_node_prop/4,
          search_node_prop/5,
@@ -1969,3 +1969,28 @@ drop_deletes(KVList) ->
                       {right, Pair}
               end
       end, KVList).
+
+update_key_in_txn(Key, Fun) ->
+    ns_config:run_txn(
+        fun (Cfg, Set) ->
+            V = ns_config:search(Cfg, Key),
+            case Fun(V) of
+                {commit, NewValue} ->
+                    {commit, Set(Key, NewValue, Cfg)};
+                {abort, Something} ->
+                    {abort, Something}
+            end
+        end).
+
+update_if_unchanged(Key, OldValue, NewValue) ->
+    case update_key_in_txn(
+           Key,
+           fun ({value, Cur}) when Cur == OldValue ->
+                   {commit, NewValue};
+               (_) ->
+                   {abort, changed}
+           end) of
+        {commit, _} -> ok;
+        retry_needed -> {error, retry_needed};
+        {abort, changed} -> {error, changed}
+    end.
