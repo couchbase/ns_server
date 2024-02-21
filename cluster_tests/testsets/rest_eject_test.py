@@ -21,7 +21,9 @@ class RestEjectTest(testlib.BaseTestSet):
         testlib.delete_all_buckets(self.cluster)
         bucket = {"name": "testbucket", "ramQuota": "200"}
 
-        self.cluster.create_bucket(bucket)
+        # Wait for the bucket to be ready on all nodes to be able to
+        # handle an immediate failover of a node.
+        self.cluster.create_bucket(bucket, sync=True)
 
     def teardown(self):
         testlib.delete_all_buckets(self.cluster)
