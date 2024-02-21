@@ -603,14 +603,12 @@ get_service_map(Snapshot, Service) ->
     chronicle_compat:get(Snapshot, {service_map, Service}, #{default => []}).
 
 failover_service_nodes_commits(Nodes, Snapshot) ->
-    Services0 = lists:flatmap(
-                  ns_cluster_membership:node_services(Snapshot, _), Nodes),
+    Services0 = lists:flatmap(node_services(Snapshot, _), Nodes),
     Services  = lists:usort(Services0) -- [kv],
 
     SvcMap = lists:flatmap(
                fun(Service) ->
-                       Map = ns_cluster_membership:get_service_map(Snapshot,
-                                                                   Service),
+                       Map = get_service_map(Snapshot, Service),
                        [{set, {service_map, Service}, Map -- Nodes},
                         {set, {service_failover_pending, Service}, true}]
                end, Services),
@@ -684,7 +682,7 @@ pick_service_node(Snapshot, Service) ->
     pick_service_node(Snapshot, Service, []).
 
 pick_service_node(Snapshot, Service, DownNodes) ->
-    ActiveNodes = ns_cluster_membership:service_active_nodes(Snapshot, Service),
+    ActiveNodes = service_active_nodes(Snapshot, Service),
 
     case ActiveNodes -- DownNodes of
         [] ->
