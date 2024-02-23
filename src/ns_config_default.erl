@@ -409,11 +409,14 @@ upgrade_config(Config) ->
             [{set, {node, node(), config_version}, {7,2}} |
              upgrade_config_from_7_1_to_7_2(Config)];
         {7,2} ->
+            [{set, {node, node(), config_version}, {7,6}} |
+             upgrade_config_from_7_2_to_76(Config)];
+        {7,6} ->
             %% When upgrading to the latest config_version always upgrade
             %% service_ports.
             service_ports:offline_upgrade(Config) ++
                 [{set, {node, node(), config_version}, CurrentVersion} |
-                 upgrade_config_from_7_2_to_76(Config)];
+                 upgrade_config_from_7_6_to_morpheus(Config)];
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
                        "unsupported version ~p. Terminating.", [OldVersion]),
@@ -474,6 +477,13 @@ upgrade_config_from_7_2_to_76(Config) ->
 do_upgrade_config_from_7_2_to_76(_Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig)].
+
+upgrade_config_from_7_6_to_morpheus(Config) ->
+    DefaultConfig = default(?VERSION_MORPHEUS),
+    do_upgrade_config_from_7_6_to_morpheus(Config, DefaultConfig).
+
+do_upgrade_config_from_7_6_to_morpheus(_Config, _DefaultConfig) ->
+    [].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
