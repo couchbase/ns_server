@@ -29,6 +29,7 @@
          build_alerts_json/1,
          build_alerts_config/1,
          alert_keys/0,
+         alert_keys_disabled_by_default/0,
          popup_alerts_config/0,
          get_config/0]).
 
@@ -219,6 +220,10 @@ alert_keys() ->
     Modules = [auto_failover, menelaus_web_alerts_srv],
     Keys = [M:alert_keys() || M <- Modules],
     lists:append(Keys).
+
+-spec alert_keys_disabled_by_default() -> [atom()].
+alert_keys_disabled_by_default() ->
+    [stuck_rebalance].
 
 %% @doc Returns the list of alerts which, if raised, should display
 %% a pop-up in the UI.

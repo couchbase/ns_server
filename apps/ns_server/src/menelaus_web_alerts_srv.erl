@@ -38,7 +38,8 @@
          terminate/2, code_change/3, handle_settings_alerts_limits_post/1,
          handle_settings_alerts_limits_get/1]).
 
--export([alert_keys/0, config_upgrade_to_72/1, config_upgrade_to_76/1]).
+-export([alert_keys/0, config_upgrade_to_72/1, config_upgrade_to_76/1,
+         config_upgrade_to_morpheus/1]).
 
 %% @doc Hold client state for any alerts that need to be shown in
 %% the browser, is used by menelaus_web to piggy back for a transport
@@ -137,6 +138,8 @@ short_description(history_size_warning) ->
     "history size approaching limit";
 short_description(memcached_connections) ->
     "data service connections approaching limit";
+short_description(stuck_rebalance) ->
+    "rebalance stage appears stuck";
 short_description(Other) ->
     %% this case is needed for tests to work
     couch_util:to_list(Other).
@@ -436,6 +439,16 @@ config_upgrade_to_76(Config) ->
     %% enabled over and over. Upgrade removes the need for the key, and so we
     %% can tidy it up here.
     Ret ++ [{delete, popup_alerts_auto_failover_upgrade_70_fixed}].
+
+config_upgrade_to_morpheus(Config) ->
+    case ns_config:search(Config, email_alerts) of
+          false ->
+              [];
+          {value, EmailAlerts} ->
+              upgrade_alerts(
+                EmailAlerts,
+                maybe_delete_stuck_rebalance_keys(Config))
+    end.
 
 %% @doc Sends any previously queued email alerts. Generally called when we first
 %% enable the email alerts and we need to flush any existing alerts that haven't
@@ -1459,6 +1472,37 @@ move_memory_alert_email_alerts(Key, NsConfigKey, PList) ->
          false -> PList
      end, [{delete, NsConfigKey}]}.
 
+%% The stuck rebalance alert was added in 7.6 but with an undefined threshold by
+%% default, which gave the behaviour of being disabled by default.
+%% In Morpheus it is now added to the UI, which means it needs to actually be
+%% disabled properly for it to show as disabled in the UI.
+%% This means that we need to explicitly remove the key from pop up alerts and
+%% email alerts.
+maybe_delete_stuck_rebalance_keys(Config) ->
+    Limits = ns_config:search(Config, alert_limits, []),
+    case proplists:get_value({stuck_rebalance_threshold_secs, kv}, Limits) of
+        undefined ->
+            [remove_proplist_list_elem(alerts, stuck_rebalance, _),
+             remove_proplist_list_elem(pop_up_alerts, stuck_rebalance, _)];
+        _Value ->
+            %% If a value has been set for the stuck rebalance threshold, then
+            %% we keep it enabled, by not deleting the keys, since it must have
+            %% been manually enabled already
+            []
+    end.
+
+%% If it is already present, remove Elem from the value of the proplist
+%% member {ListKey, <list_value>}, which is assumed to exist and have a
+%% list value.
+remove_proplist_list_elem(ListKey, Elem, PList) ->
+    List = misc:expect_prop_value(ListKey, PList),
+    case lists:member(Elem, List) of
+        true ->
+            misc:update_proplist(PList, [{ListKey, lists:delete(Elem, List)}]);
+        false ->
+            PList
+    end.
+
 %% If it is not already present, add Elem to the value of the proplist
 %% member {ListKey, <list_value>}, which is assumed to exist and have a
 %% list value.
@@ -1696,6 +1740,47 @@ config_upgrade_to_76_test() ->
          {delete,memory_alert_email},
          {delete,memory_alert_popup}] ++ Expected1,
     ?assertEqual(Expected2, config_upgrade_to_76(Config2)).
+
+config_upgrade_to_morpheus_test() ->
+    Config1 =
+        [[{email_alerts,
+           [{pop_up_alerts, [ip, disk]},
+            {alerts, [ip, time_out_of_sync]}]}]],
+    Expected1 = [],
+    %% No actions taken if stuck_rebalance keys not found
+    ?assertEqual(Expected1, config_upgrade_to_morpheus(Config1)),
+
+    Config2 =
+        [[{email_alerts,
+           [{pop_up_alerts, [ip, disk, stuck_rebalance]},
+            {alerts, [ip, time_out_of_sync, stuck_rebalance]}]}]],
+    Expected2 = [{set,email_alerts,
+                  [{pop_up_alerts, [ip, disk]},
+                   {alerts, [ip, time_out_of_sync]}]}],
+    %% Remove stuck_rebalance keys if found and threshold unspecified
+    ?assertEqual(Expected2, config_upgrade_to_morpheus(Config2)),
+
+    Config3 =
+        [[{email_alerts,
+           [{pop_up_alerts, [ip, disk, stuck_rebalance]},
+            {alerts, [ip, time_out_of_sync, stuck_rebalance]}]},
+          {alert_limits,
+           [{{{stuck_rebalance_threshold_secs, kv}, undefined}}]}]],
+    Expected3 = [{set,email_alerts,
+                  [{pop_up_alerts, [ip, disk]},
+                   {alerts, [ip, time_out_of_sync]}]}],
+    %% Remove stuck_rebalance keys if found and threshold undefined
+    ?assertEqual(Expected3, config_upgrade_to_morpheus(Config3)),
+
+    Config4 =
+        [[{email_alerts,
+           [{pop_up_alerts, [ip, disk, stuck_rebalance]},
+            {alerts, [ip, time_out_of_sync, stuck_rebalance]}]},
+          {alert_limits,
+           [{{stuck_rebalance_threshold_secs, kv}, 100}]}]],
+    Expected4 = [],
+    %% Don't remove stuck_rebalance keys if a threshold has been set
+    ?assertEqual(Expected4, config_upgrade_to_morpheus(Config4)).
 
 %% Test that the stuck time is correctly updated based on rebalance progress
 test_rebalance_progress(Service, Time, Progress, StuckStart, Opaque0) ->

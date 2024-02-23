@@ -233,9 +233,9 @@ default(Vsn) ->
        {tracing_enabled, IsEnterprise},
        {datatype_snappy, true},
        {num_reader_threads,
-         config_profile:get_value(num_reader_threads, <<"default">>)},
+        config_profile:get_value(num_reader_threads, <<"default">>)},
        {num_writer_threads,
-         config_profile:get_value(num_writer_threads, <<"default">>)},
+        config_profile:get_value(num_writer_threads, <<"default">>)},
        {num_auxio_threads, <<"default">>},
        {num_nonio_threads, <<"default">>},
        {num_storage_threads, <<"default">>},
@@ -321,9 +321,9 @@ default(Vsn) ->
            {cyclesize, log_cyclesize}]}},
 
         {external_auth_service,
-            {memcached_config_mgr, get_external_auth_service, []}},
+         {memcached_config_mgr, get_external_auth_service, []}},
         {active_external_users_push_interval,
-            {memcached_config_mgr, get_external_users_push_interval, []}},
+         {memcached_config_mgr, get_external_users_push_interval, []}},
         {prometheus, {memcached_config_mgr, prometheus_cfg, []}},
         {sasl_mechanisms, {memcached_config_mgr, sasl_mechanisms, []}},
         {ssl_sasl_mechanisms, {memcached_config_mgr, sasl_mechanisms, []}},
@@ -363,18 +363,22 @@ default(Vsn) ->
                        {host, "localhost"},
                        {port, 25},
                        {encrypt, false}]},
-       {alerts, menelaus_alert:alert_keys()},
+       {alerts, menelaus_alert:alert_keys() --
+            %% Disabled by default:
+            menelaus_alert:alert_keys_disabled_by_default()},
        %% The alerts which should produce UI pop-ups.
-       {pop_up_alerts, menelaus_alert:alert_keys()}
+       {pop_up_alerts, menelaus_alert:alert_keys() --
+            %% Disabled by default:
+            menelaus_alert:alert_keys_disabled_by_default()}
       ]},
      {alert_limits, [
-       %% Maximum percentage of overhead compared to max bucket size (%)
-       {max_overhead_perc, 50},
-       %% Maximum disk usage before warning (%)
-       {max_disk_used, 90},
-       %% Maximum Indexer RAM Usage before warning (%)
-       {max_indexer_ram, 75}
-      ]},
+                     %% Maximum percentage of overhead compared to max bucket size (%)
+                     {max_overhead_perc, 50},
+                     %% Maximum disk usage before warning (%)
+                     {max_disk_used, 90},
+                     %% Maximum Indexer RAM Usage before warning (%)
+                     {max_indexer_ram, 75}
+                    ]},
      {replication, [{enabled, true}]},
      {log_redaction_default_cfg, [{redact_level, none}]},
 
