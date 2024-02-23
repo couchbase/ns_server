@@ -245,9 +245,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 %% /pools/default
                 ["pools", "nodes"] ->
                     {{[pools], read}, fun menelaus_web_pools:check_and_handle_pool_info/2, ["default"]};
-                ["_uistats"] ->
-                    {{[ui], read},
-                     fun menelaus_stats:serve_ui_stats/1};
                 ["_uiroles"] ->
                     {{[ui], read}, fun menelaus_web_rbac:handle_get_uiroles/1};
                 ["_uiEnv"] ->
@@ -1022,9 +1019,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      ["couchBase",
                       drop_prefix(mochiweb_request:get(raw_path, Req)),
                       Plugins]};
-                ["_uistats"] ->
-                    {{[ui], read},
-                     fun menelaus_stats:handle_ui_stats_post/1};
                 ["_createStatsSnapshot"] ->
                     {local, fun menelaus_web_prometheus:handle_create_snapshot/1};
                 ["_exportChronicleSnapshot"] ->
