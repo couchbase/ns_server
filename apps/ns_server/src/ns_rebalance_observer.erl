@@ -277,8 +277,8 @@ handle_call({get_progress_for_alerting, kv}, From,
 handle_call({get_progress_for_alerting, Stage}, _From,
             #state{stage_info = StageInfo,
                    rebalance_id = Id} = State) ->
-    {reply, {Id,
-             rebalance_stage_info:get_stage_info_for_stage(StageInfo, Stage)},
+    {reply,
+     {Id, rebalance_stage_info:get_progress_for_stage(Stage, StageInfo, [])},
      State};
 handle_call({record_rebalance_report, {ResultType, ExitInfo}}, From,
             #state{nodes_info = NodesInfo,
@@ -1202,12 +1202,16 @@ setup_test_ns_rebalance_observer() ->
                                       {[], [{active_nodes, [n1, n0]}],
                                        rebalance, ?REBALANCE_ID},
                                       []),
+    %% Ensure that gen_server:cast({via, leader_registry makes it to the server
+    meck:expect(leader_registry, send,
+                fun (Name, {'$gen_cast', Msg}) ->
+                        gen_server:cast(Name, Msg)
+                end),
     Pid.
 
 teardown_test_ns_rebalance_observer(Pid) ->
     gen_server:stop(Pid),
-    meck:unload(janitor_agent),
-    meck:unload(ns_bucket).
+    meck:unload().
 
 ns_rebalance_observer_test_() ->
     {foreach,
@@ -1216,7 +1220,8 @@ ns_rebalance_observer_test_() ->
      [{"rebalance", fun rebalance/0},
       {"failover", fun failover/0},
       {"get_all_vb_seqnos", fun get_all_vb_seqnos/0},
-      {"get_seqnos_per_vb", fun get_seqnos_per_vb_t/0}]}.
+      {"get_seqnos_per_vb", fun get_seqnos_per_vb_t/0},
+      {"index progress", fun get_index_progress_t/0}]}.
 
 rebalance() ->
     submit_master_event({rebalance_stage_started, [kv], [n1, n0]}),
@@ -1486,4 +1491,23 @@ get_seqnos_per_vb_t() ->
 
     Actual = get_seqnos_per_vb([Move0, Move1], Bucket),
     ?assertEqual([Exp0, Exp1], Actual).
+
+test_update_progress(Service, ProgressList) ->
+    ns_rebalance_observer:update_progress(Service,
+                                          dict:from_list(ProgressList)).
+
+
+get_index_progress_t() ->
+    submit_master_event({rebalance_stage_started, [index], [n_0, n_1, n_2]}),
+    submit_master_event({set_service_map, "index", [n_0, n_1, n_2]}),
+
+    ?assertEqual({?REBALANCE_ID, [{n_0, 0}, {n_1, 0}, {n_2, 0}]},
+                 test_get_progress_for_alerting(index)),
+
+    submit_master_event({rebalance_stage_completed, [index]}),
+
+    test_update_progress(index, [{n_0, 1}, {n_1, 0.5}]),
+
+    ?assertEqual({?REBALANCE_ID, [{n_0, 1}, {n_1, 0.5}, {n_2, 0}]},
+                 test_get_progress_for_alerting(index)).
 -endif.

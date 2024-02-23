@@ -17,7 +17,7 @@
          get_stage_info/2,
          get_progress/1,
          get_current_stage/1,
-         get_stage_info_for_stage/2,
+         get_progress_for_stage/3,
          update_progress/3,
          update_stage_info/4,
          diff_timestamp/2,
@@ -140,8 +140,15 @@ get_current_stage(#stage_info{per_stage_info = PerStageInfo}) ->
         [Stage | _] -> Stage
     end.
 
-get_stage_info_for_stage(#stage_info{per_stage_info = PerStageInfo}, Stage) ->
-    dict:find(Stage, dict:from_list(PerStageInfo)).
+get_progress_for_stage(Stage,
+                       #stage_info{per_stage_progress = PerStageProgress},
+                       Default) ->
+    case dict:find(Stage, PerStageProgress) of
+        {ok, Progress} ->
+            dict:to_list(Progress);
+        error ->
+            Default
+    end.
 
 diff_timestamp(false, false) ->
     false;

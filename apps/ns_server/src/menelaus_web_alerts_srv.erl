@@ -89,9 +89,22 @@
 %% between checks is defined as threshold / check frequency
 -define(REBALANCE_CHECK_FREQ, ?get_param(stuck_rebalance_check_freq, 3)).
 
-%% The threshold (s) must be at least the number of checks before alerting *
-%% the alert sample rate (ms)
--define(MIN_REBALANCE_THRESHOLD, ?REBALANCE_CHECK_FREQ * ?SAMPLE_RATE / 1000).
+%% The stuck threshold (s) must be at least the number of checks before alerting
+%% multiplied by the alert sample rate (converted from ms to s)
+-define(MIN_REBALANCE_STUCK_THRESHOLD_S,
+        ?REBALANCE_CHECK_FREQ * ?SAMPLE_RATE / 1000).
+%% The index rebalance stuck threshold is additionally required to be no
+%% less than 10 minutes
+-define(MIN_INDEX_REBALANCE_STUCK_THRESHOLD_S,
+        max(?get_param(min_index_rebalance_stuck_threshold_s, 600),
+            ?MIN_REBALANCE_STUCK_THRESHOLD_S)).
+
+-define(DEFAULT_KV_REBALANCE_STUCK_THRESHOLD_S,
+        max(30 * 60,  %% 30mins
+            ?MIN_REBALANCE_STUCK_THRESHOLD_S)).
+-define(DEFAULT_INDEX_REBALANCE_STUCK_THRESHOLD_S,
+        max(30 * 60,  %% 30mins
+            ?MIN_INDEX_REBALANCE_STUCK_THRESHOLD_S)).
 
 -record(rebalance_progress, {
     progress :: {binary(), any()},
@@ -1575,9 +1588,13 @@ params() ->
                                                history_warning_threshold],
                                    default => ?HIST_WARN_PERC}},
      {"stuckRebalanceThresholdKV",
-      #{type => {int, ?MIN_REBALANCE_THRESHOLD, infinity},
+      #{type => {int, ?MIN_REBALANCE_STUCK_THRESHOLD_S, infinity},
         cfg_key => [alert_limits, {stuck_rebalance_threshold_secs, kv}],
-        default => undefined}},
+        default => ?DEFAULT_KV_REBALANCE_STUCK_THRESHOLD_S}},
+     {"stuckRebalanceThresholdIndex",
+      #{type => {int, ?MIN_INDEX_REBALANCE_STUCK_THRESHOLD_S, infinity},
+        cfg_key => [alert_limits, {stuck_rebalance_threshold_secs, index}],
+        default => ?DEFAULT_INDEX_REBALANCE_STUCK_THRESHOLD_S}},
      {"memcachedUserConnectionWarningThreshold",
       #{type => {int, 0, 100},
         cfg_key => [alert_limits,
@@ -1785,7 +1802,7 @@ config_upgrade_to_morpheus_test() ->
 %% Test that the stuck time is correctly updated based on rebalance progress
 test_rebalance_progress(Service, Time, Progress, StuckStart, Opaque0) ->
     meck:expect(ns_rebalance_observer, get_progress_for_alerting,
-                fun (kv) ->
+                fun (S) when S =:= Service ->
                         Progress
                 end),
     %% Ensure that the query period is 1s
@@ -1805,8 +1822,10 @@ test_rebalance_progress(Service, Time, Progress, StuckStart, Opaque0) ->
 test_kv_rebalance_progress(Time, Progress, StuckTime, Opaque0) ->
     test_rebalance_progress(kv, Time, Progress, StuckTime, Opaque0).
 
-check_rebalance_progress_test() ->
-    meck:new(ns_rebalance_observer),
+test_index_rebalance_progress(Time, Progress, StuckTime, Opaque0) ->
+    test_rebalance_progress(index, Time, Progress, StuckTime, Opaque0).
+
+check_kv_rebalance_progress_test() ->
     Opaque0 = dict:new(),
     %% Initialisation of rebalance progress:
     %% time = 0, progress = 0,
@@ -1864,14 +1883,55 @@ check_rebalance_progress_test() ->
     %% progress {<<>>, []} -> {<<>>, []} (unchanged) =>
     %% stuck time 8 -> 9 (not stuck)
     Opaque11 = test_kv_rebalance_progress(
-                  9,
-                  {<<>>, []},
-                  9, Opaque10),
+                 9,
+                 {<<>>, []},
+                 9, Opaque10),
     %% progress {<<>>, []} -> {<<0>>, []} (new rebalance) =>
     %% stuck time 9 -> 10 (not stuck)
     _Opaque12 = test_kv_rebalance_progress(
                   10,
                   {<<0>>, []},
                   10, Opaque11),
-    meck:unload(ns_rebalance_observer).
+    meck:unload().
+
+check_index_rebalance_progress_test() ->
+    Opaque0 = dict:new(),
+    %% Initialisation of rebalance progress:
+    %% time = 0, progress = 0,
+    %% expected stuck time = 0
+    Opaque1 = test_index_rebalance_progress(
+                0, {<<>>, 0},
+                0, Opaque0),
+    %% progress 0 -> 0 (unchanged), time 0 -> 1 =>
+    %% stuck time 0 -> 0 (stuck)
+    Opaque2 = test_index_rebalance_progress(
+                1, {<<>>, 0},
+                0, Opaque1),
+    %% progress 0 -> 1 (changed) =>
+    %% stuck time 0 -> 2 (not stuck)
+    Opaque3 = test_index_rebalance_progress(
+                2, {<<>>, 1},
+                2, Opaque2),
+    %% progress 1 -> 1 (unchanged) =>
+    %% stuck time 2 -> 2 (stuck)
+    Opaque4 = test_index_rebalance_progress(
+                3, {<<>>, 1},
+                2, Opaque3),
+    %% progress 1 -> 2 (changed) & timeout not reached =>
+    %% stuck time 2 -> 2 (unchanged)
+    Opaque5 = test_index_rebalance_progress(
+                3, {<<>>, 2},
+                2, Opaque4),
+    %% Stuck counter reset as progress changed (despite decreasing)
+    %% progress 1 -> 0 (changed) =>
+    %% stuck time 2 -> 4 (not stuck)
+    Opaque6 = test_index_rebalance_progress(
+                4, {<<>>, 0},
+                4, Opaque5),
+    %% progress 0 -> 0 (unchanged) =>
+    %% stuck time 4 -> 4 (stuck)
+    _Opaque7 = test_index_rebalance_progress(
+                5, {<<>>, 0},
+                4, Opaque6),
+    meck:unload().
 -endif.
