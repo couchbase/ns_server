@@ -202,6 +202,7 @@ class MnSettingsAlertsComponent extends MnLifeCycleHooksToStream {
       case knownAlerts[19]: return 'History size threshold exceeded';
       case knownAlerts[20]: return 'Approaching Indexer low resident percentage';
       case knownAlerts[21]: return 'Memcached connection threshold exceeded';
+      case knownAlerts[22]: return 'Rebalance stage appears stuck';
     }
   }
 }

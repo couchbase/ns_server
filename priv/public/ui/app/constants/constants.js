@@ -40,7 +40,8 @@ let knownAlerts = [
   'memory_threshold',
   'history_size_warning',
   'indexer_low_resident_percentage',
-  'memcached_connections'
+  'memcached_connections',
+  'stuck_rebalance'
 ];
 
 let timeUnitToSeconds = {
