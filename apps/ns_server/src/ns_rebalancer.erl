@@ -35,7 +35,8 @@
          to_human_readable_reason/1,
          check_test_condition/2,
          rebalance_topology_aware_services/3,
-         needs_rebalance_with_reason/3]).
+         needs_rebalance_with_reason/3,
+         get_desired_services_nodes/1]).
 
 -export([wait_local_buckets_shutdown_complete/0]). % used via rpc:multicall
 
@@ -303,7 +304,7 @@ rebalance_services(#{services := all} = Params) ->
       Params#{services => ns_cluster_membership:cluster_supported_services()});
 rebalance_services(#{keep_nodes := KeepNodes,
                      eject_nodes := EjectNodes,
-                     services := AllSupportedServices}) ->
+                     services := AllSupportedServices} = Params) ->
     Snapshot = ns_cluster_membership:get_snapshot(),
 
     AllServices = AllSupportedServices -- [kv],
@@ -314,7 +315,7 @@ rebalance_services(#{keep_nodes := KeepNodes,
     SimpleTSs = rebalance_simple_services(Snapshot, SimpleServices, KeepNodes),
     TopologyAwareTSs = rebalance_topology_aware_services(
                          Snapshot, TopologyAwareServices,
-                         KeepNodes, EjectNodes),
+                         KeepNodes, EjectNodes, Params),
 
     maybe_delay_eject_nodes(SimpleTSs ++ TopologyAwareTSs, EjectNodes).
 
@@ -341,32 +342,61 @@ update_service_map(Snapshot, Service, ServiceNodes0) ->
     CurrentNodes0 = ns_cluster_membership:get_service_map(Snapshot, Service),
     service_manager:update_service_map(Service, CurrentNodes0, ServiceNodes0).
 
+get_desired_services_nodes(Params) ->
+    maps:get(desired_services_nodes, Params, undefined).
+
+get_desired_service_nodes(Service, Params) ->
+    case get_desired_services_nodes(Params) of
+        undefined ->
+            undefined;
+        ServicesNodes ->
+            maps:get(Service, ServicesNodes, undefined)
+    end.
+
 rebalance_topology_aware_services(Services, KeepNodesAll, EjectNodesAll) ->
     Snapshot = ns_cluster_membership:get_snapshot(),
     rebalance_topology_aware_services(Snapshot, Services, KeepNodesAll,
-                                      EjectNodesAll).
+                                      EjectNodesAll, #{}).
 
 rebalance_topology_aware_services(Snapshot, Services, KeepNodesAll,
-                                  EjectNodesAll) ->
+                                  EjectNodesAll, Params) ->
     %% TODO: support this one day
     DeltaNodesAll = [],
 
     lists:filtermap(
       fun (Service) ->
+              UpdateNodes = get_desired_service_nodes(Service, Params),
               ok = check_test_condition(service_rebalance_start, Service),
-              KeepNodes = ns_cluster_membership:service_nodes(
-                            Snapshot, KeepNodesAll, Service),
-              DeltaNodes = ns_cluster_membership:service_nodes(
-                             Snapshot, DeltaNodesAll, Service),
-
               %% if a node being ejected is not active, then it means that it
               %% was never rebalanced in in the first place; so we can
               %% postpone the heat death of the universe a little bit by
               %% ignoring such nodes
               ActiveNodes =
                   ns_cluster_membership:get_service_map(Snapshot, Service),
-              EjectNodes = [N || N <- EjectNodesAll,
-                                 lists:member(N, ActiveNodes)],
+              CurrentKeepNodes = ns_cluster_membership:service_nodes(
+                                   Snapshot, KeepNodesAll, Service),
+              {KeepNodes, DeltaNodes, EjectNodes} =
+                  case UpdateNodes of
+                      undefined ->
+                          {CurrentKeepNodes,
+                           ns_cluster_membership:service_nodes(
+                             Snapshot, DeltaNodesAll, Service),
+                           [N || N <- EjectNodesAll,
+                                 lists:member(N, ActiveNodes)]};
+                      _ ->
+                          ToAdd = UpdateNodes -- CurrentKeepNodes,
+                          ok = ns_cluster_membership:add_service_nodes(
+                                 Service, ToAdd),
+                          {UpdateNodes,
+                           %% We better not couple delta recovery with service
+                           %% topology change even when it's going to be
+                           %% implemented. As of right now it's not implemented
+                           %% so we can safely return [] here
+                           [],
+                           %% nodes to be ejected from the service topology
+                           [N || N <- ActiveNodes,
+                                 not lists:member(N, UpdateNodes)]}
+                  end,
 
               AllNodes = EjectNodes ++ KeepNodes,
 
@@ -380,6 +410,15 @@ rebalance_topology_aware_services(Snapshot, Services, KeepNodesAll,
                              Service, KeepNodes, EjectNodes, DeltaNodes),
                       service_manager:update_service_map(Service, AllNodes,
                                                          KeepNodes),
+                      case UpdateNodes of
+                          undefined ->
+                              ok;
+                          _ ->
+                              ToDelete = KeepNodesAll -- UpdateNodes,
+                              ok = ns_cluster_membership:delete_service_nodes(
+                                     Service, ToDelete)
+                      end,
+
                       master_activity_events:note_rebalance_stage_completed(
                         Service),
                       {true, {Service, os:timestamp()}}

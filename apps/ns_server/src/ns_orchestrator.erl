@@ -69,7 +69,7 @@
          needs_rebalance/0,
          needs_rebalance_with_detail/0,
          start_link/0,
-         start_rebalance/5,
+         start_rebalance/6,
          retry_rebalance/4,
          stop_rebalance/0,
          start_recovery/1,
@@ -428,7 +428,7 @@ ensure_janitor_run(Item, Timeout) ->
       end, Timeout, 1000).
 
 -spec start_rebalance([node()], [node()], all | [bucket_name()],
-                      [list()], all | [atom()]) ->
+                      [list()], all | [atom()], map() | undefined) ->
                              {ok, binary()} | ok | in_progress |
                              already_balanced | nodes_mismatch |
                              no_active_nodes_left | in_recovery |
@@ -439,13 +439,14 @@ ensure_janitor_run(Item, Timeout) ->
                              {must_rebalance_services, list()} |
                              {unhosted_services, list()}.
 start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets,
-                DefragmentZones, Services) ->
+                DefragmentZones, Services, DesiredServicesNodes) ->
     call({maybe_start_rebalance,
           #{known_nodes => KnownNodes,
             eject_nodes => EjectNodes,
             delta_recovery_buckets => DeltaRecoveryBuckets,
             defragment_zones => DefragmentZones,
-            services => Services}}).
+            services => Services,
+            desired_services_nodes => DesiredServicesNodes}}).
 
 retry_rebalance(rebalance, Params, Id, Chk) ->
     call({maybe_start_rebalance,
@@ -625,7 +626,12 @@ handle_event({call, From}, {maybe_start_rebalance,
                  end,
         EjectedLiveNodes = EjectedNodes -- FailedNodes,
 
-        validate_services(Services, EjectedLiveNodes, DeltaNodes, Snapshot),
+        ServiceNodesMap = ns_rebalancer:get_desired_services_nodes(Params),
+        validate_services_nodes(ServiceNodesMap, KeepNodes, DeltaNodes,
+                                FailedNodes),
+
+        validate_services(Services, EjectedLiveNodes, DeltaNodes, Snapshot,
+                          ServiceNodesMap),
 
         check_guardrails(EjectedLiveNodes, KeepNodes),
 
@@ -920,13 +926,22 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
                     [DeltaNodes, DeltaRecoveryBuckets]))
         end,
 
+    MsgServicesTopology =
+        case ns_rebalancer:get_desired_services_nodes(Params) of
+            undefined ->
+                "";
+            Topology ->
+                lists:flatten(io_lib:format(";DesiredServiceNodes = ~p",
+                                            [Topology]))
+        end,
+
     Msg = lists:flatten(
             io_lib:format(
               "Starting rebalance, KeepNodes = ~p, EjectNodes = ~p, "
               "Failed over and being ejected nodes = ~p; ~s;~s "
               "Operation Id = ~s",
               [KeepNodes, EjectNodes, FailedNodes, DeltaRecoveryMsg,
-               ServicesMsg, RebalanceId])),
+               ServicesMsg, RebalanceId])) ++ MsgServicesTopology,
 
     ?log_info(Msg),
     case ns_rebalancer:start_link_rebalance(Params) of
@@ -1804,19 +1819,43 @@ get_delta_recovery_nodes(Snapshot, Nodes) ->
               andalso ns_cluster_membership:get_recovery_type(Snapshot, N)
               =:= delta].
 
-validate_services(all, _, _, _) ->
+validate_services_nodes(undefined, _, _, _) ->
     ok;
-validate_services(_, _, DeltaNodes, _) when DeltaNodes =/= [] ->
+validate_services_nodes(_, _, DeltaNodes, FailedNodes)
+  when DeltaNodes =/= [] orelse FailedNodes =/= [] ->
+    throw(nodes_mismatch);
+validate_services_nodes(ServiceNodesMap, KeepNodes, _, _) ->
+    maps:foreach(
+      fun (_, Nodes) ->
+              Nodes -- KeepNodes =:= [] orelse throw(nodes_mismatch)
+      end, ServiceNodesMap).
+
+validate_services(all, _, _, _, _) ->
+    ok;
+validate_services(_, _, DeltaNodes, _, _) when DeltaNodes =/= [] ->
     throw({must_rebalance_services, all});
-validate_services(Services, NodesToEject, [], Snapshot) ->
+validate_services(Services, NodesToEject, [], Snapshot, ServiceNodesMap) ->
+    ServicesWithNodesToChange =
+        case ServiceNodesMap of
+            undefined ->
+                [];
+            _ ->
+                maps:keys(ServiceNodesMap)
+        end,
     case Services -- ns_cluster_membership:hosted_services(Snapshot) of
         [] ->
             ok;
         ExtraServices ->
-            throw({unhosted_services, ExtraServices})
+            case ExtraServices -- ServicesWithNodesToChange of
+                [] ->
+                    ok;
+                ExtraServices1 ->
+                    throw({unhosted_services, ExtraServices1})
+            end
     end,
     case get_uninitialized_services(Services, Snapshot) ++
-        get_unejected_services(Services, NodesToEject, Snapshot) of
+        get_unejected_services(Services, NodesToEject, Snapshot) ++
+        (ServicesWithNodesToChange -- Services) of
         [] ->
             ok;
         NeededServices ->

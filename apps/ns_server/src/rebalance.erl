@@ -75,7 +75,7 @@ start(KnownNodes, EjectedNodes, DeltaRecoveryBuckets, DefragmentZones,
       Services) ->
     ns_orchestrator:start_rebalance(
       KnownNodes, EjectedNodes,
-      DeltaRecoveryBuckets, DefragmentZones, Services).
+      DeltaRecoveryBuckets, DefragmentZones, Services, undefined).
 
 stop(AllowUnsafe) ->
     %% NOTE: this is inherently raceful. But race is tiny and largely

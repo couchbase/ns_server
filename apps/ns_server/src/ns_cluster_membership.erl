@@ -13,6 +13,10 @@
 -include("ns_common.hrl").
 -include("ns_config.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([get_nodes_with_status/1,
          get_nodes_with_status/2,
          get_nodes_with_status/3,
@@ -65,6 +69,8 @@
          set_service_map/2,
          get_service_map/2,
          failover_service_nodes_commits/2,
+         add_service_nodes/2,
+         delete_service_nodes/2,
          service_has_pending_failover/2,
          service_clear_pending_failover/1,
          node_active_services/1,
@@ -677,6 +683,71 @@ service_nodes(Snapshot, Nodes, Service) ->
     [N || N <- Nodes,
           ServiceC <- node_services(Snapshot, N),
           ServiceC =:= Service].
+
+services_transaction(_Fun, []) ->
+    ok;
+services_transaction(Fun, Nodes) ->
+    RV = chronicle_kv:transaction(kv, [{node, N, services} || N <- Nodes],
+                                  ?cut({commit, Fun(_)})),
+    case RV of
+        {ok, _} ->
+            ok;
+        Other ->
+            Other
+    end.
+
+-spec add_service_nodes(atom(), [node()]) -> ok | {error, term()}.
+add_service_nodes(Service, NewNodes) ->
+    services_transaction(add_service_nodes_sets(Service, NewNodes, _),
+                         NewNodes).
+
+add_service_nodes_sets(Service, NewNodes, Snapshot) ->
+    lists:filtermap(
+      fun (N) ->
+              Key = {node, N, services},
+              {Services, _R} = maps:get(Key, Snapshot),
+              case lists:member(Service, Services) of
+                  true ->
+                      false;
+                  false ->
+                      {true, {set, Key, [Service | Services]}}
+              end
+      end, NewNodes).
+
+delete_service_nodes(Service, ToDelete) ->
+    services_transaction(delete_service_nodes_sets(Service, ToDelete, _),
+                         ToDelete).
+
+delete_service_nodes_sets(Service, ToDelete, Snapshot) ->
+    lists:filtermap(
+      fun (N) ->
+              Key = {node, N, services},
+              {Services, _R} = maps:get(Key, Snapshot),
+              case Services -- [Service] of
+                  Services ->
+                      false;
+                  NewServices ->
+                      {true, {set, Key, NewServices}}
+              end
+      end, ToDelete).
+
+-ifdef(TEST).
+add_service_nodes_sets_test() ->
+    ?assertEqual([{set, {node, b, services}, [index, kv, n1ql]}],
+                 lists:sort(
+                   add_service_nodes_sets(
+                     index, [a, b],
+                     #{{node, a, services} => {[index, kv], rev},
+                       {node, b, services} => {[kv, n1ql], rev}}))).
+
+delete_service_nodes_sets_test() ->
+    ?assertEqual([{set, {node, a, services}, [kv]}],
+                 delete_service_nodes_sets(
+                   index, [a, b],
+                   #{{node, a, services} => {[index, kv], rev},
+                     {node, b, services} => {[kv, n1ql], rev},
+                     {node, d, services} => {[index, kv], rev}})).
+-endif.
 
 pick_service_node(Snapshot, Service) ->
     pick_service_node(Snapshot, Service, []).
