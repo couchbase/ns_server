@@ -410,15 +410,15 @@ rebalance_topology_aware_services(Services, KeepNodesAll,
                         Service, AllNodes),
                       ok = rebalance_topology_aware_service(
                              Service, KeepNodes, EjectNodes, DeltaNodes),
-                      {ok, _} = ns_cluster_membership:update_service_map(
-                                  Service, KeepNodes),
                       case UpdateNodes of
                           undefined ->
-                              ok;
+                              {ok, _} =
+                                  ns_cluster_membership:update_service_map(
+                                    Service, KeepNodes);
                           _ ->
-                              ToDelete = KeepNodesAll -- UpdateNodes,
-                              ok = ns_cluster_membership:delete_service_nodes(
-                                     Service, ToDelete)
+                              {ok, _} =
+                                  ns_cluster_membership:set_map_and_topology(
+                                    Service, UpdateNodes, AllNodes)
                       end,
 
                       master_activity_events:note_rebalance_stage_completed(

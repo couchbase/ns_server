@@ -71,7 +71,6 @@
          get_service_map/2,
          failover_service_nodes_commits/2,
          add_service_nodes/2,
-         delete_service_nodes/2,
          set_map_and_topology/3,
          service_has_pending_failover/2,
          service_clear_pending_failover/1,
@@ -769,10 +768,6 @@ add_service_nodes_sets(Service, NewNodes, Snapshot) ->
                       {true, {set, Key, [Service | Services]}}
               end
       end, NewNodes).
-
-delete_service_nodes(Service, ToDelete) ->
-    services_transaction(delete_service_nodes_sets(Service, ToDelete, _),
-                         ToDelete).
 
 delete_service_nodes_sets(Service, ToDelete, Snapshot) ->
     lists:filtermap(
