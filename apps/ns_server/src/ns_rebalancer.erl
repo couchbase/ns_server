@@ -310,22 +310,31 @@ rebalance_services(#{keep_nodes := KeepNodes,
     SimpleServices = AllServices -- AllTopologyAwareServices,
     TopologyAwareServices = AllServices -- SimpleServices,
 
-    SimpleTSs = rebalance_simple_services(SimpleServices, KeepNodes),
+    SimpleTSs = rebalance_simple_services(SimpleServices, KeepNodes, EjectNodes,
+                                          Params),
     TopologyAwareTSs = rebalance_topology_aware_services(
                          TopologyAwareServices,
                          KeepNodes, EjectNodes, Params),
 
     maybe_delay_eject_nodes(SimpleTSs ++ TopologyAwareTSs, EjectNodes).
 
-rebalance_simple_services(Services, KeepNodes) ->
+rebalance_simple_services(Services, KeepNodes, EjectNodes, Params) ->
     lists:filtermap(
       fun (Service) ->
+              DesiredNodes = get_desired_service_nodes(Service, Params),
               ServiceNodes =
                   ns_cluster_membership:service_nodes(KeepNodes, Service),
               master_activity_events:note_rebalance_stage_started(
                 Service, ServiceNodes),
-              {ok, Updated} = ns_cluster_membership:update_service_map(
-                                Service, ServiceNodes),
+              {ok, Updated} =
+                  case DesiredNodes of
+                      undefined ->
+                          ns_cluster_membership:update_service_map(
+                            Service, ServiceNodes);
+                      _ ->
+                          ns_cluster_membership:set_map_and_topology(
+                            Service, DesiredNodes, KeepNodes ++ EjectNodes)
+                  end,
               master_activity_events:note_rebalance_stage_completed(Service),
               case Updated of
                   false ->

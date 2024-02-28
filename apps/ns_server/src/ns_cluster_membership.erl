@@ -72,6 +72,7 @@
          failover_service_nodes_commits/2,
          add_service_nodes/2,
          delete_service_nodes/2,
+         set_map_and_topology/3,
          service_has_pending_failover/2,
          service_clear_pending_failover/1,
          node_active_services/1,
@@ -633,6 +634,18 @@ announce_set_service_map(Service, Nodes) ->
     ?log_info("Service map for service ~p updated to ~p", [Service, Nodes]),
     master_activity_events:note_set_service_map(Service, Nodes).
 
+-spec set_map_and_topology(atom(), [node()], [node()]) ->
+          {ok, boolean()} | {error, term()}.
+set_map_and_topology(Service, Nodes, KnownNodes) ->
+    services_transaction(
+      fun (Snapshot) ->
+              Sets = update_service_map_sets(Service, Nodes, Snapshot) ++
+                  add_service_nodes_sets(Service, Nodes, Snapshot) ++
+                  delete_service_nodes_sets(Service, KnownNodes -- Nodes,
+                                            Snapshot),
+              {Sets, Sets =/= []}
+      end, KnownNodes, [{service_map, Service}]).
+
 get_service_map(Snapshot, kv) ->
     %% kv is special; just return active kv nodes
     ActiveNodes = active_nodes(Snapshot),
@@ -716,14 +729,25 @@ service_nodes(Snapshot, Nodes, Service) ->
           ServiceC <- node_services(Snapshot, N),
           ServiceC =:= Service].
 
-services_transaction(_Fun, []) ->
-    ok;
+pack_commit(Sets) when is_list(Sets) ->
+    {commit, Sets};
+pack_commit({Sets, Info}) when is_list(Sets) ->
+    {commit, Sets, Info}.
+
 services_transaction(Fun, Nodes) ->
-    RV = chronicle_kv:transaction(kv, [{node, N, services} || N <- Nodes],
-                                  ?cut({commit, Fun(_)})),
+    services_transaction(Fun, Nodes, []).
+
+services_transaction(_Fun, [], _) ->
+    ok;
+services_transaction(Fun, Nodes, ExtraKeys) ->
+    RV = chronicle_kv:transaction(
+           kv, [{node, N, services} || N <- Nodes] ++ ExtraKeys,
+           ?cut(pack_commit(Fun(_)))),
     case RV of
         {ok, _} ->
             ok;
+        {ok, _, Info} ->
+            {ok, Info};
         Other ->
             Other
     end.
