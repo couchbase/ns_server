@@ -13,7 +13,6 @@
 -module(menelaus_web_pools).
 
 -include("ns_common.hrl").
--include("ns_heart.hrl").
 -include_lib("ns_common/include/cut.hrl").
 
 -ifdef(TEST).
@@ -469,18 +468,11 @@ validate_memory_quota(Config, Snapshot, ValidatorState) ->
 
 do_validate_memory_quota(Config, Snapshot, Quotas, ValidatorState) ->
     Nodes = ns_cluster_membership:nodes_wanted(Snapshot),
-    case ns_doctor:wait_statuses(Nodes, 3 * ?HEART_BEAT_PERIOD) of
-        {ok, NodeStatuses} ->
+    case ns_doctor:get_memory_data(Nodes) of
+        {ok, NodesMemData} ->
             NodeInfos =
-                lists:map(
-                    fun (Node) ->
-                        NodeStatus = dict:fetch(Node, NodeStatuses),
-                        {_, MemoryData} =
-                            lists:keyfind(memory_data, 1, NodeStatus),
-                        NodeServices =
-                            ns_cluster_membership:node_services(Snapshot, Node),
-                        {Node, NodeServices, MemoryData}
-                    end, Nodes),
+                [{Node, ns_cluster_membership:node_services(Snapshot, Node),
+                  MemoryData} || {Node, MemoryData} <- NodesMemData],
 
             case memory_quota:check_quotas(NodeInfos,
                                            Config,
@@ -886,8 +878,8 @@ timeout_on_pools_default_post_test() ->
 
     meck:expect(ns_cluster_membership, nodes_wanted, fun(_) -> ok end),
     meck:expect(ns_doctor,
-                wait_statuses,
-                fun(_, _) ->
+                get_memory_data,
+                fun(_) ->
                         {error, {timeout, "1234"}}
                 end),
     meck:expect(validator, return_error, fun(_,_,_) -> ok end),

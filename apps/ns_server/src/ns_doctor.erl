@@ -14,6 +14,7 @@
 -define(MAX_XDCR_TASK_ERRORS, 10).
 
 -include("ns_common.hrl").
+-include("ns_heart.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -25,7 +26,8 @@
          code_change/3]).
 %% API
 -export([get_nodes/0, get_node/1, get_node/2,
-         get_tasks_version/0, build_tasks_list/2, wait_statuses/2]).
+         get_tasks_version/0, build_tasks_list/2, wait_statuses/2,
+         get_memory_data/1]).
 
 -record(state, {
           nodes :: dict:dict(),
@@ -1020,6 +1022,20 @@ process_heartbeat(Node, Status, State) ->
             ok
     end,
     NewState.
+
+get_memory_data(Nodes) ->
+    case wait_statuses(Nodes, 3 * ?HEART_BEAT_PERIOD) of
+        {ok, NodeStatuses} ->
+            {ok, lists:map(
+                   fun (Node) ->
+                           NodeStatus = dict:fetch(Node, NodeStatuses),
+                           {_, MemoryData} =
+                               lists:keyfind(memory_data, 1, NodeStatus),
+                           {Node, MemoryData}
+                   end, Nodes)};
+        Error ->
+            Error
+    end.
 
 -ifdef(TEST).
 
