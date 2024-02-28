@@ -67,6 +67,7 @@
          topology_aware_services_for_version/1,
          default_services/0,
          set_service_map/2,
+         update_service_map/2,
          get_service_map/2,
          failover_service_nodes_commits/2,
          add_service_nodes/2,
@@ -592,14 +593,45 @@ set_service_map(kv, _Nodes) ->
     %% kv is special; it's dealt with using different set of functions
     ok;
 set_service_map(Service, Nodes) ->
-    ?log_debug("Set service map for service ~p to ~p", [Service, Nodes]),
-    master_activity_events:note_set_service_map(Service, Nodes),
     case chronicle_kv:set(kv, {service_map, Service}, Nodes) of
         {ok, _} ->
+            announce_set_service_map(Service, Nodes),
             ok;
         Error ->
             Error
     end.
+
+update_service_map(Service, Nodes) ->
+    RV = chronicle_kv:transaction(
+           kv, [{service_map, Service}],
+           fun (Snapshot) ->
+                   Sets = update_service_map_sets(Service, Nodes, Snapshot),
+                   {commit, Sets, Sets =/= []}
+           end),
+    case RV of
+        {ok, _, true} ->
+            announce_set_service_map(Service, Nodes),
+            {ok, true};
+        {ok, _, false} ->
+            {ok, false};
+        Other ->
+            Other
+    end.
+
+update_service_map_sets(Service, Nodes, Snapshot) ->
+    CurrentNodes = lists:sort(get_service_map(Snapshot, Service)),
+    ServiceNodes = lists:sort(Nodes),
+
+    case CurrentNodes =:= ServiceNodes of
+        true ->
+            [];
+        false ->
+            [{set, {service_map, Service}, ServiceNodes}]
+    end.
+
+announce_set_service_map(Service, Nodes) ->
+    ?log_info("Service map for service ~p updated to ~p", [Service, Nodes]),
+    master_activity_events:note_set_service_map(Service, Nodes).
 
 get_service_map(Snapshot, kv) ->
     %% kv is special; just return active kv nodes

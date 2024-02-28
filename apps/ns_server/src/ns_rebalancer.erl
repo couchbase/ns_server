@@ -305,31 +305,28 @@ rebalance_services(#{services := all} = Params) ->
 rebalance_services(#{keep_nodes := KeepNodes,
                      eject_nodes := EjectNodes,
                      services := AllSupportedServices} = Params) ->
-    Snapshot = ns_cluster_membership:get_snapshot(),
-
     AllServices = AllSupportedServices -- [kv],
     AllTopologyAwareServices = ns_cluster_membership:topology_aware_services(),
     SimpleServices = AllServices -- AllTopologyAwareServices,
     TopologyAwareServices = AllServices -- SimpleServices,
 
-    SimpleTSs = rebalance_simple_services(Snapshot, SimpleServices, KeepNodes),
+    SimpleTSs = rebalance_simple_services(SimpleServices, KeepNodes),
     TopologyAwareTSs = rebalance_topology_aware_services(
-                         Snapshot, TopologyAwareServices,
+                         TopologyAwareServices,
                          KeepNodes, EjectNodes, Params),
 
     maybe_delay_eject_nodes(SimpleTSs ++ TopologyAwareTSs, EjectNodes).
 
-rebalance_simple_services(Snapshot, Services, KeepNodes) ->
+rebalance_simple_services(Services, KeepNodes) ->
     lists:filtermap(
       fun (Service) ->
               ServiceNodes =
                   ns_cluster_membership:service_nodes(KeepNodes, Service),
               master_activity_events:note_rebalance_stage_started(
                 Service, ServiceNodes),
-              Updated = update_service_map(Snapshot, Service, ServiceNodes),
-
-              master_activity_events:note_rebalance_stage_completed(
-                Service),
+              {ok, Updated} = ns_cluster_membership:update_service_map(
+                                Service, ServiceNodes),
+              master_activity_events:note_rebalance_stage_completed(Service),
               case Updated of
                   false ->
                       false;
@@ -337,10 +334,6 @@ rebalance_simple_services(Snapshot, Services, KeepNodes) ->
                       {true, {Service, os:timestamp()}}
               end
       end, Services).
-
-update_service_map(Snapshot, Service, ServiceNodes0) ->
-    CurrentNodes0 = ns_cluster_membership:get_service_map(Snapshot, Service),
-    service_manager:update_service_map(Service, CurrentNodes0, ServiceNodes0).
 
 get_desired_services_nodes(Params) ->
     maps:get(desired_services_nodes, Params, undefined).
@@ -354,12 +347,12 @@ get_desired_service_nodes(Service, Params) ->
     end.
 
 rebalance_topology_aware_services(Services, KeepNodesAll, EjectNodesAll) ->
-    Snapshot = ns_cluster_membership:get_snapshot(),
-    rebalance_topology_aware_services(Snapshot, Services, KeepNodesAll,
+    rebalance_topology_aware_services(Services, KeepNodesAll,
                                       EjectNodesAll, #{}).
 
-rebalance_topology_aware_services(Snapshot, Services, KeepNodesAll,
+rebalance_topology_aware_services(Services, KeepNodesAll,
                                   EjectNodesAll, Params) ->
+    Snapshot = ns_cluster_membership:get_snapshot(),
     %% TODO: support this one day
     DeltaNodesAll = [],
 
@@ -408,8 +401,8 @@ rebalance_topology_aware_services(Snapshot, Services, KeepNodesAll,
                         Service, AllNodes),
                       ok = rebalance_topology_aware_service(
                              Service, KeepNodes, EjectNodes, DeltaNodes),
-                      service_manager:update_service_map(Service, AllNodes,
-                                                         KeepNodes),
+                      {ok, _} = ns_cluster_membership:update_service_map(
+                                  Service, KeepNodes),
                       case UpdateNodes of
                           undefined ->
                               ok;
