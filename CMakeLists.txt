@@ -274,6 +274,11 @@ ADD_DEPENDENCIES (ns_dialyzer ns_server_all)
 #
 INSTALL (DIRECTORY _build/default/lib/chronicle/ebin DESTINATION
         "${INST_LIBDIR}/chronicle")
+# priv/ only exists on Linux currently, so make this OPTIONAL
+INSTALL (DIRECTORY _build/default/lib/chronicle/priv OPTIONAL DESTINATION
+        "${INST_LIBDIR}/chronicle")
+INSTALL (PROGRAMS _build/default/bin/chronicle_dump DESTINATION bin)
+
 INSTALL (DIRECTORY _build/default/lib/enacl/ebin
                    _build/default/lib/enacl/ebin DESTINATION
         "${INST_LIBDIR}/enacl")
