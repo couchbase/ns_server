@@ -280,7 +280,7 @@ INSTALL (DIRECTORY _build/default/lib/chronicle/priv OPTIONAL DESTINATION
 INSTALL (PROGRAMS _build/default/bin/chronicle_dump DESTINATION bin)
 
 INSTALL (DIRECTORY _build/default/lib/enacl/ebin
-                   _build/default/lib/enacl/ebin DESTINATION
+                   _build/default/lib/enacl/priv DESTINATION
         "${INST_LIBDIR}/enacl")
 INSTALL (DIRECTORY _build/default/lib/esaml/ebin DESTINATION
         "${INST_LIBDIR}/esaml")
