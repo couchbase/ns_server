@@ -1,9 +1,9 @@
 {deps, [
-    {chronicle, {path, "deps/chronicle"}},
+    {chronicle, {git, "https://github.com/couchbase/chronicle.git", {ref, "914d26"}}},
     {enacl, {path, "deps/enacl"}},
     {esaml, {path, "deps/esaml"}},
     {gen_smtp, {path, "deps/gen_smtp"}},
-    {iso8601, {path, "deps/iso8601"}}
+    {iso8601, "1.3.3"}
 ]}.
 
 {erl_first_files, ["src/ns_log_categorizing.erl",
@@ -15,5 +15,4 @@
 {erl_opts, [{src_dirs, ["src"]},
             {i, "@COUCHDB_SRC_DIR@/src/couchdb"},
             {i, "@COUCHDB_SRC_DIR@/src"},
-            {i, "@NS_SERVER_SRC_DIR@/deps/triq/include"},
             {parse_transform, ale_transform}, warnings_as_errors]}.

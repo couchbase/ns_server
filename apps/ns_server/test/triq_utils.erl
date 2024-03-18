@@ -9,7 +9,7 @@
 %%
 -module(triq_utils).
 
--include("triq.hrl").
+-include_lib("triq/include/triq.hrl").
 
 -export([smaller/1, min_size/2, random_integer_fun/0]).
 
