@@ -17,7 +17,7 @@
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
--include("triq.hrl").
+-include_lib("triq/include/triq.hrl").
 -endif.
 
 -compile(nowarn_export_all).

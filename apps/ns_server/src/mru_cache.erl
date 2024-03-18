@@ -10,7 +10,7 @@
 -module(mru_cache).
 
 -ifdef(TEST).
--include("triq.hrl").
+-include_lib("triq/include/triq.hrl").
 -endif.
 
 -export([new/2, dispose/1,
