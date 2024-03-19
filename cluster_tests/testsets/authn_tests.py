@@ -105,19 +105,21 @@ class AuthnTests(testlib.BaseTestSet):
     def uilogin_test_base(self, node, expected_code=200, expected_username=None,
                           https=False, **kwargs):
         session = requests.Session()
-        base_url = node.url if not https else node.https_url()
         headers={'Host': testlib.random_str(8), 'ns-server-ui': 'yes'}
-        r = session.post(base_url + '/uilogin', headers=headers, **kwargs)
-        testlib.assert_http_code(expected_code, r)
+        r = testlib.post(self.cluster, '/uilogin', headers=headers,
+                         session=session, https=https, auth=None,
+                         expected_code=expected_code, **kwargs)
         if expected_code == 200:
-            r = session.get(base_url + self.testEndpoint, headers=headers)
-            testlib.assert_http_code(200, r)
-            r = session.get(base_url + '/whoami', headers=headers).json()
+            testlib.get_succ(node, self.testEndpoint, headers=headers,
+                             session=session, https=https, auth=None)
+            r = testlib.get_succ(node, '/whoami', headers=headers,
+                                 session=session, https=https, auth=None).json()
             testlib.assert_eq(r['id'], expected_username, name='username')
-            r = session.post(base_url + '/uilogout', headers=headers)
-            testlib.assert_http_code(200, r)
-            r = session.get(base_url + self.testEndpoint, headers=headers)
-            testlib.assert_http_code(401, r)
+            testlib.post_succ(node, '/uilogout', headers=headers,
+                              session=session, https=https, auth=None)
+            testlib.get_fail(node, self.testEndpoint, headers=headers,
+                             session=session, expected_code=401,
+                             https=https, auth=None)
 
 
     def uitoken_test(self):

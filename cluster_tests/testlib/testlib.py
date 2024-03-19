@@ -346,10 +346,7 @@ def set_config_key(cluster, key, value):
     return diag_eval(cluster, f'ns_config:set({key}, {value_str}).')
 
 
-def request(method, cluster_or_node, path, expected_code=None, https=False,
-            verbose=True, **kwargs):
-    if 'timeout' not in kwargs:
-        kwargs['timeout'] = 60
+def request(method, cluster_or_node, path, https=False, **kwargs):
     kwargs_with_auth = set_default_auth(cluster_or_node, **kwargs)
     if isinstance(cluster_or_node, Node):
         node = cluster_or_node
@@ -365,10 +362,22 @@ def request(method, cluster_or_node, path, expected_code=None, https=False,
     else:
         url = node.url + path
 
+    return http_request(method, url, **kwargs_with_auth)
+
+def http_request(method, url, expected_code=None, verbose=True, session=None,
+                 **kwargs):
+    if 'timeout' not in kwargs:
+        kwargs['timeout'] = 60
+
+    session_str = f'(session {id(session)}) ' if session is not None else ""
+
     if verbose:
-        print(f'sending {method} {url} {kwargs} ' \
+        print(f'sending {session_str}{method} {url} {kwargs} ' \
               f'(expected code {expected_code})')
-    res = requests.request(method, url, **kwargs_with_auth)
+    if session is not None:
+        res = session.request(method, url, **kwargs)
+    else:
+        res = requests.request(method, url, **kwargs)
     if verbose:
         print(f'result: {res.status_code}')
     if expected_code is not None:
@@ -377,43 +386,51 @@ def request(method, cluster_or_node, path, expected_code=None, https=False,
 
 
 def put_succ(cluster_or_node, path, expected_code=200, **kwargs):
-    return request('PUT', cluster_or_node, path, expected_code, **kwargs)
+    return request('PUT', cluster_or_node, path, expected_code=expected_code,
+                   **kwargs)
 
 
 def patch_succ(cluster_or_node, path, expected_code=200, **kwargs):
-    return request('PATCH', cluster_or_node, path, expected_code, **kwargs)
+    return request('PATCH', cluster_or_node, path, expected_code=expected_code,
+                   **kwargs)
 
 
 def post_succ(cluster_or_node, path, expected_code=200, **kwargs):
-    return request('POST', cluster_or_node, path, expected_code, **kwargs)
+    return request('POST', cluster_or_node, path, expected_code=expected_code,
+                   **kwargs)
 
 
 def post_fail(cluster_or_node, path, expected_code, **kwargs):
-    return request('POST', cluster_or_node, path, expected_code, **kwargs)
+    return request('POST', cluster_or_node, path, expected_code=expected_code,
+                   **kwargs)
 
 
 def patch_succ(cluster_or_node, path, expected_code=200, **kwargs):
-    return request('PATCH', cluster_or_node, path, expected_code, **kwargs)
+    return request('PATCH', cluster_or_node, path, expected_code=expected_code,
+                   **kwargs)
 
 
 def patch_fail(cluster_or_node, path, expected_code, **kwargs):
-    return request('PATCH', cluster_or_node, path, expected_code, **kwargs)
+    return request('PATCH', cluster_or_node, path, expected_code=expected_code,
+                   **kwargs)
 
 
 def post(cluster_or_node, path, **kwargs):
-    return request('POST', cluster_or_node, path, None, **kwargs)
+    return request('POST', cluster_or_node, path, **kwargs)
 
 
 def get_succ(cluster_or_node, path, expected_code=200, **kwargs):
-    return request('GET', cluster_or_node, path, expected_code, **kwargs)
+    return request('GET', cluster_or_node, path, expected_code=expected_code,
+                   **kwargs)
 
 
 def get_fail(cluster_or_node, path, expected_code, **kwargs):
-    return request('GET', cluster_or_node, path, expected_code, **kwargs)
+    return request('GET', cluster_or_node, path, expected_code=expected_code,
+                   **kwargs)
 
 
 def get(cluster_or_node, path, **kwargs):
-    return request('GET', cluster_or_node, path, None, **kwargs)
+    return request('GET', cluster_or_node, path, **kwargs)
 
 
 def ensure_deleted(cluster, path, expected_codes=None, **kwargs):
@@ -426,15 +443,17 @@ def ensure_deleted(cluster, path, expected_codes=None, **kwargs):
 
 
 def delete(cluster_or_node, path, **kwargs):
-    return request('DELETE', cluster_or_node, path, None, **kwargs)
+    return request('DELETE', cluster_or_node, path, **kwargs)
 
 
 def delete_succ(cluster_or_node, path, expected_code=200, **kwargs):
-    return request('DELETE', cluster_or_node, path, expected_code, **kwargs)
+    return request('DELETE', cluster_or_node, path, expected_code=expected_code,
+                   **kwargs)
 
 
 def delete_fail(cluster_or_node, path, expected_code, **kwargs):
-    return request('DELETE', cluster_or_node, path, expected_code, **kwargs)
+    return request('DELETE', cluster_or_node, path, expected_code=expected_code,
+                   **kwargs)
 
 
 def set_default_auth(cluster_or_node, **kwargs):
