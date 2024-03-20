@@ -109,29 +109,34 @@ build_bucket_nodes_info(BucketName, BucketUUID, BucketConfig, Ctx) ->
                {error, no_map} -> dict:new()
            end,
     LocalAddr = menelaus_web_node:get_local_addr(Ctx),
-    add_couch_api_base_loop(Nodes, BucketName, BucketUUID, LocalAddr, F,
-                            Dict, [], []).
+    add_couch_api_base_loop(Nodes, BucketName, BucketUUID, BucketConfig,
+                            LocalAddr, F, Dict, [], []).
 
 
-add_couch_api_base_loop([], _BucketName, _BucketUUID, _LocalAddr, _F, _Dict, CAPINodes, NonCAPINodes) ->
+add_couch_api_base_loop([], _BucketName, _BucketUUID, _BucketConfig,
+                        _LocalAddr, _F, _Dict, CAPINodes, NonCAPINodes) ->
     CAPINodes ++ NonCAPINodes;
 add_couch_api_base_loop([Node | RestNodes],
-                        BucketName, BucketUUID, LocalAddr, F, Dict, CAPINodes, NonCAPINodes) ->
+                        BucketName, BucketUUID, BucketConfig, LocalAddr, F,
+                        Dict, CAPINodes, NonCAPINodes) ->
     {KV} = F(Node, BucketName),
     case dict:find(Node, Dict) of
         {ok, V} when V =/= [] ->
             %% note this is generally always expected, but let's play safe just in case
-            S = {add_couch_api_base(BucketName, BucketUUID, KV, Node,
-                                    LocalAddr)},
+            S = {add_couch_api_base(BucketName, BucketUUID, BucketConfig, KV,
+                                    Node, LocalAddr)},
             add_couch_api_base_loop(RestNodes, BucketName, BucketUUID,
-                                    LocalAddr, F, Dict, [S | CAPINodes], NonCAPINodes);
+                                    BucketConfig, LocalAddr, F, Dict,
+                                    [S | CAPINodes], NonCAPINodes);
         _ ->
             S = {KV},
             add_couch_api_base_loop(RestNodes, BucketName, BucketUUID,
-                                    LocalAddr, F, Dict, CAPINodes, [S | NonCAPINodes])
+                                    BucketConfig, LocalAddr, F, Dict,
+                                    CAPINodes, [S | NonCAPINodes])
     end.
 
-add_couch_api_base(BucketName, BucketUUID, KV, Node, LocalAddr) ->
+add_couch_api_base(BucketName, BucketUUID, BucketConfig, KV, Node,
+                   LocalAddr) ->
     %% Must completely remove these, as they are used as a signal to the SDK's
     %% regarding whether or not we support views on this couchbase cluster.
     NodesKeysList = ?COUCHDB_ENABLED([{Node, couchApiBase},
@@ -142,8 +147,7 @@ add_couch_api_base(BucketName, BucketUUID, KV, Node, LocalAddr) ->
                             undefined ->
                                 KVAcc;
                             Url ->
-                                {ok, BCfg} = ns_bucket:get_bucket(BucketName),
-                                case ns_bucket:bucket_type(BCfg) of
+                                case ns_bucket:bucket_type(BucketConfig) of
                                     membase ->
                                         [{Key, Url} | KVAcc];
                                     _ ->
