@@ -7,7 +7,7 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 import testlib
-
+from testlib.util import Service
 
 class RestEjectTest(testlib.BaseTestSet):
     def __init__(self, cluster):
@@ -17,6 +17,7 @@ class RestEjectTest(testlib.BaseTestSet):
     def requirements():
         return testlib.ClusterRequirements(
             num_nodes=3,
+            services=[Service.KV],
             balanced=True,
             buckets=[{"name": "testbucket",
                       "ramQuota": 200}])
