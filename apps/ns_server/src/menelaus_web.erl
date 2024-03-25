@@ -529,7 +529,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_settings:handle_get/2, [internal]};
                 ["nodes", "self", "secretsManagement" | PathRest] ->
                     {{[admin, security], read},
-                     fun menelaus_web_secrets:handle_get_settings/2, [PathRest]};
+                     fun menelaus_web_sm:handle_get_settings/2, [PathRest]};
                 ["nodes", NodeId] ->
                     {{[nodes], read}, fun menelaus_web_node:handle_node/2, [NodeId]};
                 ["nodes", "self", "xdcrSSLPorts"] ->
@@ -675,10 +675,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_cert:handle_load_ca_certs/1};
                 ["node", "controller", "changeMasterPassword"] ->
                     {{[admin, security], write},
-                     fun menelaus_web_secrets:handle_change_master_password/1};
+                     fun menelaus_web_sm:handle_change_master_password/1};
                 ["node", "controller", "rotateDataKey"] ->
                     {{[admin, security], write},
-                     fun menelaus_web_secrets:handle_rotate_data_key/1};
+                     fun menelaus_web_sm:handle_rotate_data_key/1};
                 ["node", "controller", "setupNetConfig"] ->
                     {{[admin, setup], write},
                      fun menelaus_web_node:handle_setup_net_config/1};
@@ -696,7 +696,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_misc:handle_rotate_internal_creds/1};
                 ["node", "controller", "secretsManagement" | PathRest] ->
                     {{[admin, security], write},
-                     fun menelaus_web_secrets:handle_post_settings/2,
+                     fun menelaus_web_sm:handle_post_settings/2,
                      [PathRest]};
                 ["settings", "web"] ->
                     {{[admin, setup], write}, fun menelaus_web_settings:handle_settings_web_post/1};

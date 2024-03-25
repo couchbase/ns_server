@@ -8,9 +8,9 @@
 %% licenses/APL2.txt.
 %%
 
-%% @doc rest api's for secrets
+%% @doc rest api's for node secrets manager
 
--module(menelaus_web_secrets).
+-module(menelaus_web_sm).
 
 -include("ns_common.hrl").
 -include_lib("ns_common/include/cut.hrl").
