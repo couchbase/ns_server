@@ -307,6 +307,8 @@ default(Vsn) ->
         {datatype_snappy, {memcached_config_mgr, is_snappy_enabled, []}},
         {xattr_enabled, true},
         {scramsha_fallback_salt, {memcached_config_mgr, get_fallback_salt, []}},
+        {scramsha_fallback_iteration_count,
+         {memcached_config_mgr, get_scram_fallback_iter_count, []}},
         {collections_enabled, true},
         {max_connections, max_connections},
         {system_connections, system_connections},
@@ -487,8 +489,8 @@ upgrade_config_from_7_6_to_morpheus(Config) ->
     DefaultConfig = default(?VERSION_MORPHEUS),
     do_upgrade_config_from_7_6_to_morpheus(Config, DefaultConfig).
 
-do_upgrade_config_from_7_6_to_morpheus(_Config, _DefaultConfig) ->
-    [].
+do_upgrade_config_from_7_6_to_morpheus(_Config, DefaultConfig) ->
+    [upgrade_key(memcached_config, DefaultConfig)].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),

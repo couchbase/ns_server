@@ -27,6 +27,7 @@
 -export([start_link/0,
          authenticate/1,
          get_fallback_salt/0,
+         get_fallback_iteration_count/0,
          pbkdf2/4,
          build_auth/2,
          fix_pre_76_auth_info/1,
@@ -327,6 +328,9 @@ find_auth_info(Sha, Name) ->
 
 get_fallback_salt() ->
     ns_config:read_key_fast(scramsha_fallback_salt, <<"salt">>).
+
+get_fallback_iteration_count() ->
+    iterations(regular).
 
 get_salt_and_iterations(Sha, Name) ->
     %% calculating it here to avoid performance shortcut

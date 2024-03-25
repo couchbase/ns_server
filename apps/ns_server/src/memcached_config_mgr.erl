@@ -22,6 +22,7 @@
 -export([get_minidump_dir/2, get_interfaces/2,
          client_cert_auth/2, is_snappy_enabled/2,
          is_snappy_enabled/0, get_fallback_salt/2,
+         get_scram_fallback_iter_count/2,
          get_external_users_push_interval/2,
          get_external_auth_service/2,
          is_external_auth_service_enabled/0,
@@ -464,6 +465,9 @@ is_snappy_enabled() ->
 
 get_fallback_salt([], _Params) ->
     base64:encode(scram_sha:get_fallback_salt()).
+
+get_scram_fallback_iter_count([], _Params) ->
+    scram_sha:get_fallback_iteration_count().
 
 get_external_users_push_interval([], _Params) ->
     max(menelaus_roles:external_auth_polling_interval() div 1000, 1).
