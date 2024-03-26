@@ -528,8 +528,8 @@ check_num_replicas_change(OldNumReplicas, NewNumReplicas, Nodes) ->
                          "the following nodes: ~s",
                          [lists:join(
                             ", ",
-                            lists:map(?cut(atom_to_list(element(2, _))),
-                                      HighDiskNodes))]))}
+                            lists:map(?cut(atom_to_list(element(1, _))),
+                                      ErrorDiskNodes))]))}
             end
     end.
 
@@ -1228,6 +1228,15 @@ check_resources_t() ->
                 fun () ->
                         [{"couchstore_bucket", CouchstoreBucket},
                          {"magma_bucket", MagmaBucket}]
+                end),
+    meck:expect(index_settings_manager, get,
+                fun (guardrails) ->
+                        [{index_creation_rr,
+                          [{enabled, false},
+                           {minimum, 10}]},
+                         {topology_change_rr,
+                          [{enabled, false},
+                           {minimum, 10}]}]
                 end),
 
     meck:expect(stats_interface, for_resource_management,
