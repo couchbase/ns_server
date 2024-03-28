@@ -1,6 +1,6 @@
 {deps, [
     {chronicle, {git, "https://github.com/couchbase/chronicle.git", {ref, "914d26"}}},
-    {enacl, {path, "deps/enacl"}},
+    {enacl, {git, "https://github.com/couchbasedeps/enacl.git", {ref, "d01e1f"}}},
     {esaml, {git, "https://github.com/couchbasedeps/esaml.git", {ref, "7457d8"}}},
     {gen_smtp, {path, "deps/gen_smtp"}},
     {iso8601, "1.3.3"}
