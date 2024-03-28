@@ -19,7 +19,7 @@
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
--include_lib("triq/include/triq.hrl").
+-include("triq.hrl").
 -endif.
 
 -export([stream_json/1,
