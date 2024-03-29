@@ -55,7 +55,8 @@ do_send_async(Subject, Body, Config, Callback) ->
     ServerConfig = proplists:get_value(email_server, Config),
     Options = config_to_options(ServerConfig),
     Message0 = mimemail:encode({<<"text">>, <<"plain">>,
-                                make_headers(Sender, Recipients, Subject), [],
+                                make_headers(Sender, Recipients, Subject),
+                                #{},
                                 couch_util:to_binary(Body)}),
     Message = binary_to_list(Message0),
 
