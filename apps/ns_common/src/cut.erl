@@ -114,7 +114,9 @@ pattern({bin,Line,Fs}) ->
 pattern({op,Line,Op,A}) ->
     {op,Line,Op,A};
 pattern({op,Line,Op,L,R}) ->
-    {op,Line,Op,L,R}.
+    {op,Line,Op,L,R};
+pattern({map_field_exact,Line,K,V}) ->
+    {map_field_exact,Line,K,V}.
 
 pattern_grp([{bin_element,L1,E1,S1,T1} | Fs]) ->
     S2 = case S1 of
@@ -218,6 +220,19 @@ expr({bc, Line, E0, Qs0}) ->
         {Pattern, Qs2} ->
             {'fun', Line, {clauses, [{clause, Line, Pattern, [],
                                       [{bc, Line, E1, Qs2}]}]}}
+    end;
+expr({mc, Line, E0, Qs0}) ->
+    %% Notes for {lc, ...} above apply here too (to stay consistent with
+    %% other comprehensions).
+    Qs1 = lc_bc_quals(Qs0),
+    [E1] = map_fields([E0]),
+    Qs = find_comprehension_cut_vars(Qs1),
+    case Qs of
+        {[], _Qs2} ->
+            {mc, Line, E1, Qs1};
+        {Pattern, Qs2} ->
+            {'fun', Line, {clauses, [{clause, Line, Pattern, [],
+                                      [{mc, Line, E1, Qs2}]}]}}
     end;
 expr({tuple, Line, Es0}) ->
     Es1 = expr_list(Es0),
@@ -478,6 +493,10 @@ lc_bc_quals([{b_generate, Line, P0, E0}|Qs]) ->
     E1 = expr(E0),
     P1 = pattern(P0),
     [{b_generate, Line, P1, E1}|lc_bc_quals(Qs)];
+lc_bc_quals([{m_generate, Line, P0, E0}|Qs]) ->
+    E1 = expr(E0),
+    P1 = pattern(P0),
+    [{m_generate, Line, P1, E1}|lc_bc_quals(Qs)];
 lc_bc_quals([E0|Qs]) ->
     E1 = expr(E0),
     [E1|lc_bc_quals(Qs)];
@@ -550,10 +569,13 @@ find_comprehension_cut_vars(Qs) ->
           ({generate,   _Line, _P0, _E0})                      -> [];
           ({b_generate, _Line, _P0, {var, _Line1, '_'} = Var}) -> [Var];
           ({b_generate, _Line, _P0, _E0})                      -> [];
+          ({m_generate, _Line, _P0, {var, _Line1, '_'} = Var}) -> [Var];
+          ({m_generate, _Line, _P0, _E0})                      -> [];
           (_)                                                  -> []
       end,
       fun ({generate,   Line, P0, _Var}, [Var]) -> {generate, Line, P0, Var};
-          ({b_generate, Line, P0, _Var}, [Var]) -> {b_generate, Line, P0, Var}
+          ({b_generate, Line, P0, _Var}, [Var]) -> {b_generate, Line, P0, Var};
+          ({m_generate, Line, P0, _Var}, [Var]) -> {m_generate, Line, P0, Var}
       end,
       Qs).
 

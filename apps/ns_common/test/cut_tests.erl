@@ -30,3 +30,15 @@ numbered_params_test() ->
     ?assertEqual({1, [2, 3]}, foo3(?cut({_1, [_2, _3]}), 1, 2, 3)),
     ?assertEqual({[3, 2], 1},
                  foo3(?cut({lists:reverse([_2, _3]), _1}), 1, 2, 3)).
+
+map_comprehensions_test() ->
+    A = #{a => 1, b => 2},
+    ?assertEqual(#{2 => b, 1 => a}, #{V => K || K := V <- A}),
+    F1 = #{V => K || K := V <- _},
+    ?assertEqual(#{2 => b, 1 => a}, F1(A)),
+    F2 = ?cut(#{V => K || K := V <- maps:merge(#{c => 3}, _)}),
+    ?assertEqual(#{2 => b, 1 => a, 3 => c}, F2(A)),
+    F3 = ?cut(#{K => _ || K := _V <- A}),
+    ?assertEqual(#{a => 5, b => 5}, F3(5)),
+    F4 = ?cut(#{K => _1 || K := _V <- _2}),
+    ?assertEqual(#{a => 5, b => 5}, F4(5, A)).
