@@ -1197,10 +1197,6 @@ get_params_from_permission({ObjectPattern, _}) ->
 -spec get_params_from_permissions([rbac_compiled_role()]) ->
           [[rbac_permission_pattern_vertex_param(),...]].
 get_params_from_permissions(CompiledRoles) ->
-    %% TODO: It's possible to exclude certain buckets, scopes or collections -
-    %% and grant them permissions. This does not iterate over proper subsets
-    %% that are excluded (or covered by the catch-all []), which must still be
-    %% granted permissions.
     lists:usort(
       lists:flatmap(
         fun(Perms) ->
