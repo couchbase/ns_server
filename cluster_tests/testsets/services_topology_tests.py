@@ -23,12 +23,13 @@ from testlib.util import Service
 class ServicesTopologyTests(testlib.BaseTestSet):
 
     def setup(self):
-        pass
+        self.old_mem_quotas = {}
 
     def teardown(self):
         pass
 
     def test_teardown(self):
+        self.restore_service_quotas()
         self.restore_initial_topology()
 
     initial_topology = [[Service.KV, Service.INDEX],
@@ -111,6 +112,17 @@ class ServicesTopologyTests(testlib.BaseTestSet):
             self.assert_service_map(service, node_indexes)
         return res
 
+    def set_service_quota(self, service, quota, json):
+        key = testlib.util.service_to_memory_quota_key(service)
+        if json is not None:
+            self.old_mem_quotas[service] = json[key]
+        testlib.post_succ(self.cluster, "/pools/default", data = {key: quota})
+
+    def restore_service_quotas(self):
+        for service, quota in self.old_mem_quotas.items():
+            self.set_service_quota(service, quota, None)
+        self.old_mem_quotas = {}
+
     def topology_aware_service_test(self):
         self.assert_topology(ServicesTopologyTests.initial_topology)
         self.assert_service_map(Service.INDEX, [0, 1])
@@ -154,6 +166,41 @@ class ServicesTopologyTests(testlib.BaseTestSet):
         self.assert_topology([[Service.KV, Service.INDEX, Service.BACKUP],
                               [Service.QUERY, Service.INDEX, Service.BACKUP],
                               [Service.QUERY]])
+
+    def set_large_quotas(self):
+        resp = testlib.get_succ(self.cluster, "/pools/default")
+        json = resp.json()
+        memtotal = resp.json()["nodes"][0]["memoryTotal"] / (1024 * 1024)
+        kvquota = json["memoryQuota"]
+        newquota = int((memtotal - kvquota) / 2 + 500)
+
+        self.set_service_quota(Service.INDEX, newquota, json)
+        self.set_service_quota(Service.FTS, newquota, json)
+
+    def enough_quota_test(self):
+        self.assert_topology(ServicesTopologyTests.initial_topology)
+        self.set_large_quotas()
+        self.change_services_topology({Service.FTS: [2]}, 200)
+
+    def exceed_quota_test(self):
+        self.assert_topology(ServicesTopologyTests.initial_topology)
+        self.set_large_quotas()
+
+        self.change_services_topology({Service.FTS: [0]}, 400)
+        self.assert_topology(ServicesTopologyTests.initial_topology)
+
+    def swap_services_with_large_quotas_test(self):
+        self.assert_topology(ServicesTopologyTests.initial_topology)
+        self.set_large_quotas()
+
+        self.change_services_topology({Service.FTS: [2]}, 200)
+
+        # Since the swap is not atomic we cannot guarantee that the quota
+        # will not be exceeded on one of the nodes if the operation is
+        # interrupted. So even if in the success case the quota is not
+        # exceeded, we have to deny this
+        self.change_services_topology({Service.FTS: [0], Service.INDEX: [2]},
+                                      400)
 
 def parse_nodes_list(text):
     sansbrackets = text.strip("[").strip("]")

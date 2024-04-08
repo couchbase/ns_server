@@ -53,3 +53,11 @@ def strings_to_services(services: List[str]):
                               "eventing": Service.EVENTING,
                               "cbas": Service.CBAS}[service],
                 services))
+
+def service_to_memory_quota_key(service: Service):
+    return {Service.KV: "memoryQuota",
+            Service.INDEX: "indexMemoryQuota",
+            Service.QUERY: "queryMemoryQuota",
+            Service.FTS: "ftsMemoryQuota",
+            Service.EVENTING: "eventingMemoryQuota",
+            Service.CBAS: "cbasMemoryQuota"}[service]
