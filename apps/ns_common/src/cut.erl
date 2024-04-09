@@ -434,7 +434,18 @@ expr({remote, Line, M0, F0}) ->
     %% see {call,...} for why cuts aren't here.
     M1 = expr(M0),
     F1 = expr(F0),
-    {remote, Line, M1, F1}.
+    {remote, Line, M1, F1};
+expr({'maybe', Line, Es0}) ->
+    Es1 = exprs(Es0),
+    {'maybe', Line, Es1};
+expr({'maybe', Line, Es0, {'else', Line2, Cs0}}) ->
+    Es1 = exprs(Es0),
+    Cs1 = icr_clauses(Cs0),
+    {'maybe', Line, Es1, {'else', Line2, Cs1}};
+expr({maybe_match, Line, P0, E0}) ->
+    E1 = expr(E0),
+    P1 = pattern(P0),
+    {maybe_match, Line, P1, E1}.
 
 %% -type expr_list([Expression]) -> [Expression].
 %%  These expressions are processed "in parallel" for purposes of variable

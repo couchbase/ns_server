@@ -42,3 +42,21 @@ map_comprehensions_test() ->
     ?assertEqual(#{a => 5, b => 5}, F3(5)),
     F4 = ?cut(#{K => _1 || K := _V <- _2}),
     ?assertEqual(#{a => 5, b => 5}, F4(5, A)).
+
+-if(?FEATURE_ENABLED(maybe_expr)).
+maybe_test() ->
+    F1 = fun (1) -> {ok, 1};
+             (2) -> {error, 2}
+         end,
+    %% There is an erlang bug that doesn't allow "maybe" to be a macro arg.
+    %% https://github.com/erlang/otp/issues/8268
+    %% For that reason we use cut:f instead of ?cut here until we upgrade.
+    Cut = cut:f(maybe
+                   {ok, 1} ?= F1(_1),
+                   _2
+               else
+                   {error, 2} -> _3
+               end),
+    ?assertEqual(succ, Cut(1, succ, err)),
+    ?assertEqual(err, Cut(2, succ, err)).
+-endif.
