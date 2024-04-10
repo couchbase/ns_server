@@ -9,6 +9,8 @@
 %% Use of this software is governed by the Erlang Public License,
 %% Version 1.1 included in the file licenses/EPL-1-1.txt.
 %%
+%% To get information about erlang AST (Abstract Syntax Tree)
+%% please read https://www.erlang.org/doc/apps/erts/absform
 
 -module(cut).
 
