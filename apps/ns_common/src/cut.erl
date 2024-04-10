@@ -199,7 +199,7 @@ expr({lc, Line, E0, Qs0}) ->
     %% Note that it is nonsensical to allow a cut on E0, as in all
     %% useful cases, it is defined by some expression of Qs0. Cuts are
     %% allowed only on generators of Qs0.
-    Qs1 = lc_bc_quals(Qs0),
+    Qs1 = comprehension_qualifiers(Qs0),
     E1 = expr(E0),
     Qs = find_comprehension_cut_vars(Qs1),
     case Qs of
@@ -211,7 +211,7 @@ expr({lc, Line, E0, Qs0}) ->
     end;
 expr({bc, Line, E0, Qs0}) ->
     %% Notes for {lc,...} above apply here too.
-    Qs1 = lc_bc_quals(Qs0),
+    Qs1 = comprehension_qualifiers(Qs0),
     E1 = expr(E0),
     Qs = find_comprehension_cut_vars(Qs1),
     case Qs of
@@ -224,7 +224,7 @@ expr({bc, Line, E0, Qs0}) ->
 expr({mc, Line, E0, Qs0}) ->
     %% Notes for {lc, ...} above apply here too (to stay consistent with
     %% other comprehensions).
-    Qs1 = lc_bc_quals(Qs0),
+    Qs1 = comprehension_qualifiers(Qs0),
     [E1] = map_fields([E0]),
     Qs = find_comprehension_cut_vars(Qs1),
     case Qs of
@@ -482,25 +482,25 @@ icr_clauses([C0|Cs]) ->
     [C1|icr_clauses(Cs)];
 icr_clauses([]) -> [].
 
-%% -type lc_bc_quals([Qualifier]) -> [Qualifier].
+%% -type comprehension_qualifiers([Qualifier]) -> [Qualifier].
 %%  Allow filters to be both guard tests and general expressions.
 
-lc_bc_quals([{generate, Line, P0, E0}|Qs]) ->
+comprehension_qualifiers([{generate, Line, P0, E0}|Qs]) ->
     E1 = expr(E0),
     P1 = pattern(P0),
-    [{generate, Line, P1, E1}|lc_bc_quals(Qs)];
-lc_bc_quals([{b_generate, Line, P0, E0}|Qs]) ->
+    [{generate, Line, P1, E1}|comprehension_qualifiers(Qs)];
+comprehension_qualifiers([{b_generate, Line, P0, E0}|Qs]) ->
     E1 = expr(E0),
     P1 = pattern(P0),
-    [{b_generate, Line, P1, E1}|lc_bc_quals(Qs)];
-lc_bc_quals([{m_generate, Line, P0, E0}|Qs]) ->
+    [{b_generate, Line, P1, E1}|comprehension_qualifiers(Qs)];
+comprehension_qualifiers([{m_generate, Line, P0, E0}|Qs]) ->
     E1 = expr(E0),
     P1 = pattern(P0),
-    [{m_generate, Line, P1, E1}|lc_bc_quals(Qs)];
-lc_bc_quals([E0|Qs]) ->
+    [{m_generate, Line, P1, E1}|comprehension_qualifiers(Qs)];
+comprehension_qualifiers([E0|Qs]) ->
     E1 = expr(E0),
-    [E1|lc_bc_quals(Qs)];
-lc_bc_quals([]) -> [].
+    [E1|comprehension_qualifiers(Qs)];
+comprehension_qualifiers([]) -> [].
 
 %% -type fun_clauses([Clause]) -> [Clause].
 
