@@ -54,6 +54,7 @@
          prohibited/2,
          valid_in_enterprise_only/2,
          string_array/2,
+         string_array/3,
          return_value/3,
          return_error/3,
          default/3,
@@ -720,13 +721,31 @@ valid_in_enterprise_only(Name, State) ->
     is_changeable(Name, Pred, State).
 
 string_array(Name, State) ->
+    string_array(Name, fun (_) -> ok end, State).
+
+-spec string_array(atom(), Fun, #state{}) -> #state{} when
+      Fun :: fun((string()) -> ok | {value, term()} | {error, string()}).
+string_array(Name, Fun, State) ->
     validate(
       fun (Array) when is_list(Array) ->
               case lists:all(?cut(is_binary(_1) andalso _1 =/= <<>>), Array) of
                   false ->
                       {error, "Must be an array of non-empty strings"};
                   true ->
-                      {value, [binary_to_list(B) || B <- Array]}
+                      List = [binary_to_list(B) || B <- Array],
+                      List2 = lists:map(fun (V) ->
+                                            case Fun(V) of
+                                                ok -> {value, V};
+                                                {value, V2} -> {value, V2};
+                                                {error, E} ->
+                                                    {error, V ++ " - " ++ E}
+                                            end
+                                         end, List),
+                      Errors = [E || {error, E} <- List2],
+                      case Errors of
+                          [] -> {value, [V || {value, V} <- List2]};
+                          _ -> {error, string:join(Errors, "; ")}
+                      end
               end;
           (_) ->
               {error, "Must be an array of non-empty strings"}
