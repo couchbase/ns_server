@@ -23,8 +23,10 @@
          get_max_node_ram_quota/1,
          check_quotas/4,
          check_this_node_quotas/2,
+         check_nodes_total_quota/2,
          get_quota/1,
          get_quota/2,
+         get_quotas/1,
          set_quotas/2,
          default_quotas/2,
          service_to_json_name/1,
@@ -118,9 +120,12 @@ allowed_memory_usage_max(MemSupData) ->
     MaxMemoryMB.
 
 -type quota_result() :: ok | {error, quota_error()}.
--type quota_error() ::
-        {total_quota_too_high, node(), Value :: integer(), MaxAllowed :: pos_integer()} |
-        {service_quota_too_low, service(), Value :: integer(), MinRequired :: pos_integer()}.
+-type quota_too_high_error() :: {total_quota_too_high, node(),
+                                 Value :: integer(),
+                                 MaxAllowed :: pos_integer()}.
+-type quota_error() :: quota_too_high_error() |
+                       {service_quota_too_low, service(), Value :: integer(),
+                        MinRequired :: pos_integer()}.
 -type quotas() :: [{service(), integer()}].
 
 -spec check_quotas([NodeInfo], ns_config(), map(), quotas()) ->
@@ -130,10 +135,14 @@ check_quotas(NodeInfos, Config, Snapshot, UpdatedQuotas) ->
     case check_service_quotas(UpdatedQuotas, Snapshot) of
         ok ->
             AllQuotas = get_all_quotas(Config, UpdatedQuotas),
-            check_quotas_loop(NodeInfos, AllQuotas);
+            check_nodes_total_quota(NodeInfos, AllQuotas);
         Error ->
             Error
     end.
+
+-spec get_quotas(ns_config()) -> quotas().
+get_quotas(Config) ->
+    get_all_quotas(Config, []).
 
 service_to_json_name(kv) ->
     memoryQuota;
@@ -189,13 +198,17 @@ get_all_quotas(Config, UpdatedQuotas) ->
               {Service, Value}
       end, Services).
 
-check_quotas_loop([], _) ->
+-spec check_nodes_total_quota([NodeInfo], quotas()) ->
+          ok | {error, quota_too_high_error()} when
+      NodeInfo :: {node(), [service()], MemoryData :: term()}.
+check_nodes_total_quota([], _) ->
     ok;
-check_quotas_loop([{Node, Services, MemoryData} | Rest], AllQuotas) ->
-    TotalQuota = lists:sum([Q || {S, Q} <- AllQuotas, lists:member(S, Services)]),
+check_nodes_total_quota([{Node, Services, MemoryData} | Rest], AllQuotas) ->
+    TotalQuota = lists:sum([Q || {S, Q} <- AllQuotas,
+                                 lists:member(S, Services)]),
     case check_node_total_quota(Node, TotalQuota, MemoryData) of
         ok ->
-            check_quotas_loop(Rest, AllQuotas);
+            check_nodes_total_quota(Rest, AllQuotas);
         Error ->
             Error
     end.

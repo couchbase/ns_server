@@ -1543,10 +1543,10 @@ check_memory_size(NodeKVList, Services) ->
     case memory_quota:check_this_node_quotas(Services, Quotas) of
         ok ->
             ok;
-        {error, {total_quota_too_high, _, TotalQuota, MaxQuota}} ->
+        {error, {total_quota_too_high, Node, TotalQuota, MaxQuota}} ->
             {error, bad_memory_size,
              ns_error_messages:bad_memory_size_error(Services, TotalQuota,
-                                                     MaxQuota)}
+                                                     MaxQuota, Node)}
     end.
 
 check_can_join_to(NodeKVList, Services) ->

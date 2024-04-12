@@ -433,20 +433,27 @@ ensure_janitor_run(Item, Timeout) ->
                              already_balanced | nodes_mismatch |
                              no_active_nodes_left | in_recovery |
                              in_bucket_hibernation |
-                             in_buckets_shutdown |
+                             in_buckets_shutdown | {nodes_down, [atom()]} |
                              delta_recovery_not_possible | no_kv_nodes_left |
                              {need_more_space, list()} |
                              {must_rebalance_services, list()} |
-                             {unhosted_services, list()}.
+                             {unhosted_services, list()} |
+                             {total_quota_too_high, list()}.
 start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets,
                 DefragmentZones, Services, DesiredServicesNodes) ->
-    call({maybe_start_rebalance,
-          #{known_nodes => KnownNodes,
-            eject_nodes => EjectNodes,
-            delta_recovery_buckets => DeltaRecoveryBuckets,
-            defragment_zones => DefragmentZones,
-            services => Services,
-            desired_services_nodes => DesiredServicesNodes}}).
+    case get_services_nodes_memory_data(DesiredServicesNodes, KnownNodes) of
+        {error, E} ->
+            E;
+        {ok, MemoryData} ->
+            call({maybe_start_rebalance,
+                  #{known_nodes => KnownNodes,
+                    eject_nodes => EjectNodes,
+                    delta_recovery_buckets => DeltaRecoveryBuckets,
+                    defragment_zones => DefragmentZones,
+                    services => Services,
+                    desired_services_nodes => DesiredServicesNodes,
+                    memory_data => MemoryData}})
+    end.
 
 retry_rebalance(rebalance, Params, Id, Chk) ->
     call({maybe_start_rebalance,
@@ -632,6 +639,8 @@ handle_event({call, From}, {maybe_start_rebalance,
 
         validate_services(Services, EjectedLiveNodes, DeltaNodes, Snapshot,
                           ServiceNodesMap),
+
+        validate_quotas(ServiceNodesMap, Params, Snapshot),
 
         check_guardrails(EjectedLiveNodes, KeepNodes),
 
@@ -1862,6 +1871,77 @@ validate_services(Services, NodesToEject, [], Snapshot, ServiceNodesMap) ->
             throw({must_rebalance_services, lists:usort(NeededServices)})
     end.
 
+get_nodes_to_change(ServiceNodesMap, KnownNodes, Snapshot) ->
+    lists:usort(
+      maps:fold(
+        fun (Service, DesiredNodes, Acc) ->
+                ServiceNodes = ns_cluster_membership:service_nodes(
+                                 Snapshot, KnownNodes, Service),
+                NewServiceNodes = DesiredNodes -- ServiceNodes,
+                Acc ++ NewServiceNodes
+        end, [], ServiceNodesMap)).
+
+get_services_nodes_memory_data(undefined, _) ->
+    {ok, undefined};
+get_services_nodes_memory_data(ServiceNodesMap, KnownNodes) ->
+    get_services_nodes_memory_data(ServiceNodesMap, KnownNodes,
+                                   ns_cluster_membership:get_snapshot()).
+
+get_services_nodes_memory_data(ServiceNodesMap, KnownNodes, Snapshot) ->
+    InterestingNodes = get_nodes_to_change(ServiceNodesMap, KnownNodes,
+                                           Snapshot),
+    case ns_doctor:get_memory_data(InterestingNodes) of
+        {ok, MemoryData} ->
+            {ok, MemoryData};
+        {error, {timeout, Missing}} ->
+            ?log_error("Cannot fetch memory data from nodes ~p", [Missing]),
+            {error, {nodes_down, Missing}}
+    end.
+
+validate_quotas(undefined, _, _) ->
+    ok;
+validate_quotas(_, #{memory_data := []}, _) ->
+    ok;
+validate_quotas(ServiceNodesMap, #{memory_data := MemoryData}, Snapshot)  ->
+    validate_quotas(ServiceNodesMap, MemoryData, Snapshot,
+                    memory_quota:get_quotas(ns_config:get())).
+
+validate_quotas(ServiceNodesMap, MemoryData, Snapshot, Quotas) ->
+    %% verify that nothing significant was changed since the memory
+    %% data was fetched
+    KnownNodes = lists:usort(lists:flatmap(fun ({_, Nodes}) -> Nodes end,
+                                           maps:to_list(ServiceNodesMap))),
+    [N || {N, _} <- MemoryData] =:=
+        get_nodes_to_change(ServiceNodesMap, KnownNodes, Snapshot)
+        orelse throw(nodes_mismatch),
+
+    NodeInfos =
+        lists:map(
+          fun ({Node, MD}) ->
+                  CurrentServices =
+                      ns_cluster_membership:node_services(Snapshot, Node),
+                  DesiredServices =
+                      lists:filtermap(
+                        fun ({Service, ServiceNodes}) ->
+                                case lists:member(Node, ServiceNodes) of
+                                    true ->
+                                        {true, Service};
+                                    false ->
+                                        false
+                                end
+                        end, maps:to_list(ServiceNodesMap)),
+                  {Node, lists:usort(CurrentServices ++ DesiredServices), MD}
+          end, MemoryData),
+
+    case memory_quota:check_nodes_total_quota(NodeInfos, Quotas) of
+        ok ->
+            ok;
+        {error, {total_quota_too_high, Node, TotalQuota, Max}} ->
+            throw({total_quota_too_high,
+                   ns_error_messages:bad_memory_size_error(
+                     maps:keys(ServiceNodesMap), TotalQuota, Max, Node)})
+    end.
+
 check_guardrails(EjectedLiveNodes, KeepNodes) ->
     case guardrail_monitor:validate_topology_change(EjectedLiveNodes,
                                                     KeepNodes) of
@@ -2222,5 +2302,52 @@ get_unejected_services_test() ->
     ?assertEqual([], get_unejected_services([kv], [], Snapshot)),
     ?assertEqual([kv], get_unejected_services(
                          [index, n1ql], [n1, n2], Snapshot)).
+
+validate_quotas_test_() ->
+    Snapshot =
+        #{{node, n1 ,services} => {[index], rev},
+          {node, n2 ,services} => {[n1ql], rev}},
+    Test =
+        fun (ServiceNodesMap, Quotas) ->
+                {ok, MemoryData} = get_services_nodes_memory_data(
+                                     ServiceNodesMap, [n1, n2], Snapshot),
+                try validate_quotas(ServiceNodesMap, MemoryData, Snapshot,
+                                    Quotas)
+                catch throw:Err -> Err end
+        end,
+    MinRam = ?MIN_FREE_RAM * ?MIB,
+    {foreach,
+     fun () ->
+             ok = meck:new(ns_doctor),
+             ok =
+                 meck:expect(
+                   ns_doctor, get_memory_data,
+                   fun (Nodes) ->
+                           {ok, [{N, {MinRam * 10, 0, 0}} || N <- Nodes]}
+                   end)
+     end,
+     fun (_) ->
+             ok = meck:unload(ns_doctor)
+     end,
+     [{"Enough quota to change services topology",
+       fun () ->
+               ?assertEqual(ok, Test(#{index => [n1, n2], n1ql => [n1, n2]},
+                                     [{index, ?MIN_FREE_RAM * 3},
+                                      {n1ql, ?MIN_FREE_RAM * 3}]))
+       end},
+      {"Not enough quota to change services topology",
+       fun () ->
+               ?assertMatch({total_quota_too_high, _},
+                            Test(#{index => [n1, n2], n1ql => [n1, n2]},
+                                 [{index, ?MIN_FREE_RAM * 6},
+                                  {n1ql, ?MIN_FREE_RAM * 6}]))
+       end},
+      {"Swapping 2 services with large quotas",
+       fun () ->
+               ?assertMatch({total_quota_too_high, _},
+                            Test(#{index => [n2], n1ql => [n1]},
+                                 [{index, ?MIN_FREE_RAM * 6},
+                                  {n1ql, ?MIN_FREE_RAM * 6}]))
+       end}]}.
 
 -endif.
