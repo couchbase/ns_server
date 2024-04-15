@@ -128,4 +128,7 @@ upgrade_to(?VERSION_72, UpgradeTxn) ->
        [ns_bucket:chronicle_upgrade_to_76(_)])};
 
 upgrade_to(?VERSION_76, UpgradeTxn) ->
-    {?VERSION_MORPHEUS, UpgradeTxn}.
+    {?VERSION_MORPHEUS,
+     functools:chain(
+       UpgradeTxn,
+        [ns_bucket:chronicle_upgrade_to_morpheus(_)])}.

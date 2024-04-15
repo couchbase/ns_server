@@ -57,6 +57,8 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
       ns_bucket:pitr_granularity(BucketConfig)},
      {"pitr_max_history_age",  [{reload, flush}],
       ns_bucket:pitr_max_history_age(BucketConfig)},
+     {"access_scanner_enabled", [{reload, flush}],
+      ns_bucket:get_access_scanner_enabled(BucketConfig)},
      {"hlc_drift_ahead_threshold_us", [no_param, {reload, vbucket}],
       DriftAheadThreshold},
      {"hlc_drift_behind_threshold_us", [no_param, {reload, vbucket}],

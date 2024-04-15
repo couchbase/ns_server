@@ -138,6 +138,7 @@
          get_default_num_vbuckets/0,
          allow_variable_num_vbuckets/0,
          get_cc_versioning_enabled/1,
+         get_access_scanner_enabled/1,
          get_vbuckets_max_cas/1,
          get_vp_window_hrs/1,
          get_num_vbuckets/1,
@@ -153,6 +154,7 @@
          deactivate_bucket_data_on_this_node/1,
          chronicle_upgrade_to_72/1,
          chronicle_upgrade_to_76/1,
+         chronicle_upgrade_to_morpheus/1,
          extract_bucket_props/1,
          build_bucket_props_json/1,
          build_compaction_settings_json/1,
@@ -976,6 +978,15 @@ get_cc_versioning_enabled(BucketConfig) ->
             undefined;
         membase ->
             proplists:get_value(cross_cluster_versioning_enabled, BucketConfig)
+    end.
+
+-spec get_access_scanner_enabled(proplists:proplist()) -> boolean() | undefined.
+get_access_scanner_enabled(BucketConfig) ->
+    case is_persistent(BucketConfig) of
+        true ->
+            proplists:get_value(access_scanner_enabled, BucketConfig);
+        false ->
+            undefined
     end.
 
 get_vbuckets_max_cas(BucketConfig) ->
@@ -2091,6 +2102,36 @@ chronicle_upgrade_bucket(Func, BucketNames, ChronicleTxn) ->
               Func(Name, Acc)
       end, ChronicleTxn, BucketNames).
 
+chronicle_upgrade_bucket_to_morpheus(BucketName, ChronicleTxn) ->
+    PropsKey = sub_key(BucketName, props),
+    {ok, BucketConfig} = chronicle_upgrade:get_key(PropsKey, ChronicleTxn),
+    AddProps =
+        case bucket_type(BucketConfig) of
+            memcached ->
+                [];
+            membase ->
+                case is_persistent(BucketConfig) of
+                    true ->
+                        [{access_scanner_enabled, true}];
+                    false ->
+                        []
+                end
+        end,
+    case AddProps of
+       [] ->
+           ChronicleTxn;
+       _ ->
+            NewBucketConfig = misc:merge_proplists(fun(_, L, _) -> L end,
+                                                   AddProps, BucketConfig),
+            chronicle_upgrade:set_key(PropsKey, NewBucketConfig,
+                                      ChronicleTxn)
+    end.
+
+chronicle_upgrade_to_morpheus(ChronicleTxn) ->
+    {ok, BucketNames} = chronicle_upgrade:get_key(root(), ChronicleTxn),
+    chronicle_upgrade_bucket(chronicle_upgrade_bucket_to_morpheus(_, _),
+                             BucketNames, ChronicleTxn).
+
 default_76_enterprise_props(true = _IsEnterprise) ->
     [{pitr_enabled, false},
      {pitr_granularity, attribute_default(pitr_granularity)},
@@ -2177,6 +2218,7 @@ extract_bucket_props(Props) ->
                          cross_cluster_versioning_enabled, vbuckets_max_cas,
                          version_pruning_window_hrs,
                          pitr_enabled, pitr_granularity, pitr_max_history_age,
+                         access_scanner_enabled,
                          autocompaction, purge_interval, flush_enabled,
                          num_threads, eviction_policy, conflict_resolution_type,
                          drift_ahead_threshold_ms, drift_behind_threshold_ms,

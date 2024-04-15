@@ -412,6 +412,14 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
          false ->
              []
      end,
+     case cluster_compat_mode:is_cluster_morpheus() andalso
+          ns_bucket:is_persistent(BucketConfig) of
+         true ->
+             [{accessScannerEnabled,
+               ns_bucket:get_access_scanner_enabled(BucketConfig)}];
+         false ->
+             []
+     end,
      case ns_bucket:drift_thresholds(BucketConfig) of
          undefined ->
              [];
@@ -1451,6 +1459,8 @@ validate_membase_bucket_params(CommonParams, Params, Name,
     ReplicasNumResult = validate_replicas_number(Params, IsNew),
     IsStorageModeMigration = is_storage_mode_migration(
                                IsNew, BucketConfig, Params),
+    IsMorpheus = cluster_compat_mode:is_version_morpheus(Version),
+    IsPersistent = is_ephemeral(Params, BucketConfig, IsNew) =:= false,
 
     HistRetSecs = parse_validate_history_retention_seconds(
                     Params, BucketConfig, IsNew, Version, IsEnterprise,
@@ -1475,6 +1485,8 @@ validate_membase_bucket_params(CommonParams, Params, Name,
                                          IsEnterprise),
          parse_validate_pitr_max_history_age(Params, IsNew, AllowPitr,
                                              IsEnterprise),
+         parse_validate_access_scanner_enabled(Params, IsNew, IsMorpheus,
+                                               IsPersistent),
          parse_validate_storage_quota_percentage(
            Params, BucketConfig, IsNew, IsEnterprise,
            IsStorageModeMigration),
@@ -1926,6 +1938,14 @@ parse_validate_param_not_supported(Key, Params, ErrorFun) ->
             ignore
     end.
 
+not_supported_until_morpheus_error(Param) ->
+    {error, Param,
+     <<"Argument is not supported until cluster is fully morpheus">>}.
+
+not_supported_for_ephemeral_buckets(Param) ->
+    {error, Param,
+     <<"Argument is not supported for ephemeral buckets">>}.
+
 %% Parameter parsing and validation when not in enterprise mode.
 parse_validate_param_not_enterprise(Key, Params) ->
     case proplists:is_defined(Key, Params) of
@@ -2091,6 +2111,22 @@ validate_numeric_param(Value, Param, ConfigKey) ->
         too_large ->
             value_not_in_range_error(Param, Value, Min, Max)
     end.
+
+parse_validate_access_scanner_enabled(Params, _IsNew, false = _IsMorpheus,
+                                      _IsPersistent) ->
+    parse_validate_param_not_supported(
+      "accessScannerEnabled", Params, fun not_supported_until_morpheus_error/1);
+parse_validate_access_scanner_enabled(Params, _IsNew, true = _IsMorpheus,
+                                      false = _IsPersistent) ->
+    parse_validate_param_not_supported(
+      "accessScannerEnabled", Params,
+      fun not_supported_for_ephemeral_buckets/1);
+parse_validate_access_scanner_enabled(Params, IsNew, true = _IsMorpheus,
+                                      true = _IsPersistent) ->
+    Result = menelaus_util:parse_validate_boolean_field("accessScannerEnabled",
+                                                        '_', Params),
+    process_boolean_param_validation(accessScannerEnabled,
+                                     access_scanner_enabled, Result, IsNew).
 
 get_storage_mode_based_on_storage_backend(Params, IsEnterprise) ->
     StorageBackend = proplists:get_value("storageBackend", Params,
@@ -3801,6 +3837,35 @@ basic_bucket_params_screening_t() ->
                    <<"Cross Cluster Versioning cannot be disabled once "
                      "it has been enabled">>}],
                  E32),
+
+    %% put back the compat_mode to our current version
+    meck:expect(cluster_compat_mode, supported_compat_version,
+                fun() ->
+                        ?LATEST_VERSION_NUM
+                end),
+
+    %% Cannot specify a non-true/false value.
+    {_OK33, E33} = basic_bucket_params_screening(
+                     true,
+                     "bucket33",
+                     [{"bucketType", "membase"},
+                      {"ramQuota", "1024"},
+                      {"accessScannerEnabled", "neitherTrueNorFalse"}],
+                     AllBuckets),
+    ?assertEqual([{accessScannerEnabled,
+                   <<"accessScannerEnabled must be true or false">>}], E33),
+
+    %% Cannot specify for ephemeral buckets
+    {_OK34, E34} = basic_bucket_params_screening(
+                     true,
+                     "bucket34",
+                     [{"bucketType", "ephemeral"},
+                      {"ramQuota", "1024"},
+                      {"accessScannerEnabled", "true"}],
+                     AllBuckets),
+    ?assertEqual([{"accessScannerEnabled",
+                   <<"Argument is not supported for ephemeral buckets">>}],
+                 E34),
 
     %% Back to default action
     meck:expect(ns_config, read_key_fast,
