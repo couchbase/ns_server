@@ -2045,8 +2045,8 @@ parse_validate_pitr_granularity(Params, _IsNew, true = _AllowPitr,
     parse_validate_param_not_enterprise("pitrGranularity", Params);
 parse_validate_pitr_granularity(Params, IsNew, true = _AllowPitr,
                                 true = _IsEnterprise) ->
-    parse_validate_pitr_numeric_param(Params, pitrGranularity,
-                                      pitr_granularity, IsNew).
+    parse_validate_numeric_param(Params, pitrGranularity,
+                                 pitr_granularity, IsNew).
 
 parse_validate_pitr_max_history_age(Params, _IsNew, false = _AllowPitr,
                                     _IsEnterprise) ->
@@ -2057,10 +2057,10 @@ parse_validate_pitr_max_history_age(Params, _IsNew, true = _AllowPitr,
     parse_validate_param_not_enterprise("pitrMaxHistoryAge", Params);
 parse_validate_pitr_max_history_age(Params, IsNew, true = _AllowPitr,
                                     true = _IsEnterprise) ->
-    parse_validate_pitr_numeric_param(Params, pitrMaxHistoryAge,
-                                      pitr_max_history_age, IsNew).
+    parse_validate_numeric_param(Params, pitrMaxHistoryAge,
+                                 pitr_max_history_age, IsNew).
 
-parse_validate_pitr_numeric_param(Params, Param, ConfigKey, IsNew) ->
+parse_validate_numeric_param(Params, Param, ConfigKey, IsNew) ->
     Value = proplists:get_value(atom_to_list(Param), Params),
     case {Value, IsNew} of
         {undefined, true} ->
@@ -2073,11 +2073,11 @@ parse_validate_pitr_numeric_param(Params, Param, ConfigKey, IsNew) ->
             %% default used when the bucket was created.
             ignore;
         {_, _} ->
-            validate_pitr_numeric_param(Value, Param, ConfigKey)
+            validate_numeric_param(Value, Param, ConfigKey)
     end.
 
 %% Validates defined numeric parameters.
-validate_pitr_numeric_param(Value, Param, ConfigKey) ->
+validate_numeric_param(Value, Param, ConfigKey) ->
     Min = ns_bucket:attribute_min(ConfigKey),
     Max = ns_bucket:attribute_max(ConfigKey),
     Result = menelaus_util:parse_validate_number(Value, Min, Max),
@@ -3886,7 +3886,7 @@ basic_parse_validate_bucket_auto_compaction_settings_test() ->
     ok.
 
 parse_validate_pitr_max_history_age_test() ->
-    %% "Constants" used to make parse_validate_pitr_numeric_param() calls in
+    %% "Constants" used to make parse_validate_numeric_param() calls in
     %% this test clearer.
     IsNewTrue = true,
     IsNewFalse = false,
@@ -3896,7 +3896,7 @@ parse_validate_pitr_max_history_age_test() ->
     %% For these legitimate params tests, the value of IsNew shouldn't matter.
 
     %% sub-test: legitimate params, IsNew true
-    Result1 = parse_validate_pitr_numeric_param(
+    Result1 = parse_validate_numeric_param(
                 LegitParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
@@ -3905,7 +3905,7 @@ parse_validate_pitr_max_history_age_test() ->
     ?assertEqual(Expected1, Result1),
 
     %% sub-test: legitimate params, IsNew false
-    Result2 = parse_validate_pitr_numeric_param(
+    Result2 = parse_validate_numeric_param(
                 LegitParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
@@ -3916,7 +3916,7 @@ parse_validate_pitr_max_history_age_test() ->
     NonNumericParams = [{"pitrMaxHistoryAge", "foo"}],
 
     %% sub-test: non-numeric params, IsNew true
-    Result3 = parse_validate_pitr_numeric_param(
+    Result3 = parse_validate_numeric_param(
                 NonNumericParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
@@ -3925,7 +3925,7 @@ parse_validate_pitr_max_history_age_test() ->
     ?assertEqual(Expected3, Result3),
 
     %% sub-test: non-numeric params, IsNew false
-    Result4 = parse_validate_pitr_numeric_param(
+    Result4 = parse_validate_numeric_param(
                 NonNumericParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
@@ -3936,7 +3936,7 @@ parse_validate_pitr_max_history_age_test() ->
     TooSmallParams = [{"pitrMaxHistoryAge", "0"}],
 
     %% sub-test: too small params, IsNew true
-    Result5 = parse_validate_pitr_numeric_param(
+    Result5 = parse_validate_numeric_param(
                 TooSmallParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
@@ -3948,7 +3948,7 @@ parse_validate_pitr_max_history_age_test() ->
     ?assertEqual(Expected5, Result5),
 
     %% sub-test: too small params, IsNew false
-    Result6 = parse_validate_pitr_numeric_param(
+    Result6 = parse_validate_numeric_param(
                 TooSmallParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
@@ -3962,7 +3962,7 @@ parse_validate_pitr_max_history_age_test() ->
     TooBigParams = [{"pitrMaxHistoryAge", "172801"}],
 
     %% sub-test: too big params, IsNew true
-    Result7 = parse_validate_pitr_numeric_param(
+    Result7 = parse_validate_numeric_param(
                 TooBigParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
@@ -3974,7 +3974,7 @@ parse_validate_pitr_max_history_age_test() ->
     ?assertEqual(Expected7, Result7),
 
     %% sub-test: too big params, IsNew false
-    Result8 = parse_validate_pitr_numeric_param(
+    Result8 = parse_validate_numeric_param(
                 TooBigParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
@@ -3989,7 +3989,7 @@ parse_validate_pitr_max_history_age_test() ->
 
     %% sub-test: missing params, IsNew true
     %% The result should be the default value.
-    Result9 = parse_validate_pitr_numeric_param(
+    Result9 = parse_validate_numeric_param(
                 MissingParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
@@ -3999,7 +3999,7 @@ parse_validate_pitr_max_history_age_test() ->
 
     %% sub-test: missing params, IsNew false.
     %% The missing parameters should be ignored.
-    Result10 = parse_validate_pitr_numeric_param(
+    Result10 = parse_validate_numeric_param(
                  MissingParams,
                  pitrMaxHistoryAge,
                  pitr_max_history_age,
