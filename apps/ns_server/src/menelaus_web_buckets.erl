@@ -413,10 +413,31 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
              []
      end,
      case cluster_compat_mode:is_cluster_morpheus() andalso
-          ns_bucket:is_persistent(BucketConfig) of
+          ns_bucket:bucket_type(BucketConfig) =:= membase of
          true ->
-             [{accessScannerEnabled,
-               ns_bucket:get_access_scanner_enabled(BucketConfig)}];
+             [{expiryPagerSleepTime,
+               ns_bucket:get_expiry_pager_sleep_time(BucketConfig)},
+              {warmupMinMemoryThreshold,
+               ns_bucket:get_warmup_min_memory_threshold(BucketConfig)},
+              {warmupMinItemsThreshold,
+               ns_bucket:get_warmup_min_items_threshold(BucketConfig)},
+              {memoryLowWatermark,
+               ns_bucket:get_memory_low_watermark(BucketConfig)},
+              {memoryHighWatermark,
+               ns_bucket:get_memory_high_watermark(BucketConfig)},
+              {secondaryWarmupMinMemoryThreshold,
+               ns_bucket:get_secondary_warmup_min_memory_threshold(
+                 BucketConfig)},
+              {secondaryWarmupMinItemsThreshold,
+               ns_bucket:get_secondary_warmup_min_items_threshold(
+                 BucketConfig)}] ++
+             case ns_bucket:is_persistent(BucketConfig) of
+                 true ->
+                     [{accessScannerEnabled,
+                       ns_bucket:get_access_scanner_enabled(BucketConfig)}];
+                 false ->
+                     []
+             end;
          false ->
              []
      end,
@@ -1487,6 +1508,15 @@ validate_membase_bucket_params(CommonParams, Params, Name,
                                              IsEnterprise),
          parse_validate_access_scanner_enabled(Params, IsNew, IsMorpheus,
                                                IsPersistent),
+         parse_validate_expiry_pager_sleep_time(Params, IsNew, IsMorpheus),
+         parse_validate_warmup_min_memory_threshold(Params, IsNew, IsMorpheus),
+         parse_validate_warmup_min_items_threshold(Params, IsNew, IsMorpheus),
+         parse_validate_memory_low_watermark(Params, IsNew, IsMorpheus),
+         parse_validate_memory_high_watermark(Params, IsNew, IsMorpheus),
+         parse_validate_secondary_warmup_min_memory_threshold(Params, IsNew,
+                                                              IsMorpheus),
+         parse_validate_secondary_warmup_min_items_threshold(Params, IsNew,
+                                                             IsMorpheus),
          parse_validate_storage_quota_percentage(
            Params, BucketConfig, IsNew, IsEnterprise,
            IsStorageModeMigration),
@@ -2127,6 +2157,66 @@ parse_validate_access_scanner_enabled(Params, IsNew, true = _IsMorpheus,
                                                         '_', Params),
     process_boolean_param_validation(accessScannerEnabled,
                                      access_scanner_enabled, Result, IsNew).
+
+parse_validate_expiry_pager_sleep_time(Params, _IsNew, false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "expiryPagerSleepTime", Params, fun not_supported_until_morpheus_error/1);
+parse_validate_expiry_pager_sleep_time(Params, IsNew, true = _IsMorpheus) ->
+    parse_validate_numeric_param(Params, expiryPagerSleepTime,
+                                 expiry_pager_sleep_time, IsNew).
+
+parse_validate_warmup_min_memory_threshold(Params, _IsNew,
+                                           false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "warmupMinMemoryThreshold", Params,
+      fun not_supported_until_morpheus_error/1);
+parse_validate_warmup_min_memory_threshold(Params, IsNew,
+                                           true = _IsMorpheus) ->
+    parse_validate_numeric_param(Params, warmupMinMemoryThreshold,
+                                 warmup_min_memory_threshold, IsNew).
+
+parse_validate_warmup_min_items_threshold(Params, _IsNew,
+                                          false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "warmupMinItemsThreshold", Params,
+      fun not_supported_until_morpheus_error/1);
+parse_validate_warmup_min_items_threshold(Params, IsNew, true = _IsMorpheus) ->
+    parse_validate_numeric_param(Params, warmupMinItemsThreshold,
+                                 warmup_min_items_threshold, IsNew).
+
+parse_validate_memory_low_watermark(Params, _IsNew, false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "memoryLowWatermark", Params, fun not_supported_until_morpheus_error/1);
+parse_validate_memory_low_watermark(Params, IsNew, true = _IsMorpheus) ->
+    parse_validate_numeric_param(Params, memoryLowWatermark,
+                                 memory_low_watermark, IsNew).
+
+parse_validate_memory_high_watermark(Params, _IsNew, false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "memoryHighWatermark", Params, fun not_supported_until_morpheus_error/1);
+parse_validate_memory_high_watermark(Params, IsNew, true = _IsMorpheus) ->
+    parse_validate_numeric_param(Params, memoryHighWatermark,
+                                 memory_high_watermark, IsNew).
+
+parse_validate_secondary_warmup_min_memory_threshold(Params, _IsNew,
+                                                     false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "secondaryWarmupMinMemoryThreshold", Params,
+      fun not_supported_until_morpheus_error/1);
+parse_validate_secondary_warmup_min_memory_threshold(Params, IsNew,
+                                                     true = _IsMorpheus) ->
+    parse_validate_numeric_param(Params, secondaryWarmupMinMemoryThreshold,
+                                 secondary_warmup_min_memory_threshold, IsNew).
+
+parse_validate_secondary_warmup_min_items_threshold(Params, _IsNew,
+                                                    false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "secondaryWarmupMinItemsThreshold", Params,
+      fun not_supported_until_morpheus_error/1);
+parse_validate_secondary_warmup_min_items_threshold(Params, IsNew,
+                                                    true = _IsMorpheus) ->
+    parse_validate_numeric_param(Params, secondaryWarmupMinItemsThreshold,
+                                 secondary_warmup_min_items_threshold, IsNew).
 
 get_storage_mode_based_on_storage_backend(Params, IsEnterprise) ->
     StorageBackend = proplists:get_value("storageBackend", Params,
@@ -3866,6 +3956,71 @@ basic_bucket_params_screening_t() ->
     ?assertEqual([{"accessScannerEnabled",
                    <<"Argument is not supported for ephemeral buckets">>}],
                  E34),
+
+    %% Specify invalid values. This isn't intended to be exhaustive. It
+    %% tests the parsing/validation of each item.
+    {_OK35, E35} = basic_bucket_params_screening(
+                     true,
+                     "bucket35",
+                     [{"bucketType", "membase"},
+                      {"ramQuota", "1024"},
+                      {"expiryPagerSleepTime", "-1"},
+                      {"warmupMinMemoryThreshold", "1000"},
+                      {"warmupMinItemsThreshold", "777"},
+                      {"memoryLowWatermark", "-888"},
+                      {"memoryHighWatermark", "-33"},
+                      {"secondaryWarmupMinMemoryThreshold", "123"},
+                      {"secondaryWarmupMinItemsThreshold", "-456"}],
+                     AllBuckets),
+    ?assertEqual([{expiryPagerSleepTime,
+                   <<"The value of expiryPagerSleepTime (-1) must be in the "
+                     "range 0 to 2147483647 inclusive">>},
+                  {warmupMinMemoryThreshold,
+                   <<"The value of warmupMinMemoryThreshold (1000) must be "
+                     "in the range 0 to 100 inclusive">>},
+                  {warmupMinItemsThreshold,
+                   <<"The value of warmupMinItemsThreshold (777) must be in "
+                     "the range 0 to 100 inclusive">>},
+                  {memoryLowWatermark,
+                   <<"The value of memoryLowWatermark (-888) must be in the "
+                     "range 0 to 2147483647 inclusive">>},
+                  {memoryHighWatermark,
+                   <<"The value of memoryHighWatermark (-33) must be in the "
+                     "range 0 to 2147483647 inclusive">>},
+                  {secondaryWarmupMinMemoryThreshold,
+                   <<"The value of secondaryWarmupMinMemoryThreshold (123) "
+                     "must be in the range 0 to 100 inclusive">>},
+                  {secondaryWarmupMinItemsThreshold,
+                   <<"The value of secondaryWarmupMinItemsThreshold (-456) "
+                     "must be in the range 0 to 100 inclusive">>}], E35),
+
+    %% Specify valid values. This isn't intended to be exhaustive. It
+    %% tests the parsing/validation of each item.
+    {OK36, E36} = basic_bucket_params_screening(
+                     true,
+                     "bucket36",
+                     [{"bucketType", "membase"},
+                      {"ramQuota", "1024"},
+                      {"accessScannerEnabled", "false"},
+                      {"expiryPagerSleepTime", "12345"},
+                      {"warmupMinMemoryThreshold", "44"},
+                      {"warmupMinItemsThreshold", "77"},
+                      {"memoryLowWatermark", "88"},
+                      {"memoryHighWatermark", "33"},
+                      {"secondaryWarmupMinMemoryThreshold", "12"},
+                      {"secondaryWarmupMinItemsThreshold", "56"}],
+                     AllBuckets),
+    ?assertEqual([], E36),
+    ?assertEqual(false, proplists:get_value(access_scanner_enabled, OK36)),
+    ?assertEqual(12345, proplists:get_value(expiry_pager_sleep_time, OK36)),
+    ?assertEqual(44, proplists:get_value(warmup_min_memory_threshold, OK36)),
+    ?assertEqual(77, proplists:get_value(warmup_min_items_threshold, OK36)),
+    ?assertEqual(88, proplists:get_value(memory_low_watermark, OK36)),
+    ?assertEqual(33, proplists:get_value(memory_high_watermark, OK36)),
+    ?assertEqual(12, proplists:get_value(secondary_warmup_min_memory_threshold,
+                                         OK36)),
+    ?assertEqual(56, proplists:get_value(secondary_warmup_min_items_threshold,
+                                         OK36)),
 
     %% Back to default action
     meck:expect(ns_config, read_key_fast,
