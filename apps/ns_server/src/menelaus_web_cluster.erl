@@ -1109,15 +1109,75 @@ parse_rebalance_params(Params) ->
                        end
                end,
 
+    ServiceNodesMap =
+        case cluster_compat_mode:is_cluster_morpheus() of
+            true ->
+                parse_topology_params(Params, Services,
+                                      KnownNodesS -- EjectedNodesS);
+            false ->
+                undefined
+        end,
+
     [[list_to_existing_atom(N) || N <- KnownNodesS],
      [list_to_existing_atom(N) || N <- EjectedNodesS],
-     DeltaRecoveryBuckets, DefragmentZones, Services].
+     DeltaRecoveryBuckets, DefragmentZones, Services, ServiceNodesMap].
+
+parse_topology_params(Params, Services, KeepNodes) ->
+    {ok, MP} = re:compile("^topology\\[(\\w+)\\]$"),
+    SupportedServives =
+        [atom_to_list(S) || S <- ns_cluster_membership:supported_services()],
+    DesiredSevicesTopology =
+        lists:filtermap(
+          fun ({Param, Val}) ->
+                  case re:run(Param, MP) of
+                      {match, [_, {Start, Length}]} ->
+                          Service = lists:sublist(Param, Start + 1, Length),
+                          lists:member(Service, SupportedServives) orelse
+                              throw("Unknown service " ++ Service),
+                          Nodes = string:tokens(Val, ","),
+                          case Nodes -- KeepNodes of
+                              [] ->
+                                  ok;
+                              UnknownNodes ->
+                                  throw(io_lib:format(
+                                          "Unknown or ejected nodes ~p",
+                                          [UnknownNodes]))
+                          end,
+                          {true,
+                           {Service, [list_to_existing_atom(N) || N <- Nodes]}};
+                      nomatch ->
+                          false
+                  end
+          end, Params),
+    case DesiredSevicesTopology of
+        [] ->
+            undefined;
+        _ ->
+            ServiceNodesMap =
+                maps:from_list([{list_to_existing_atom(S), N} ||
+                                   {S, N} <- DesiredSevicesTopology]),
+            map_size(ServiceNodesMap) =:= length(DesiredSevicesTopology) orelse
+                throw("Duplicate topology parameters"),
+
+            case Services of
+                all ->
+                    ok;
+                _ ->
+                    maps:keys(ServiceNodesMap) -- Services =:= []
+                        orelse
+                        throw("Not all services with new topology are included"
+                              " in the rebalance")
+            end,
+
+            ServiceNodesMap
+    end.
 
 do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
-                          DefragmentZones, Services] = Params) ->
+                          DefragmentZones, Services, DesiredSevicesTopology]
+                    = Params) ->
     ?log_info("Starting rebalance with params ~p", [Params]),
     case rebalance:start(KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
-                         DefragmentZones, Services) of
+                         DefragmentZones, Services, DesiredSevicesTopology) of
         already_balanced ->
             reply(Req, 200);
         in_progress ->
@@ -1135,6 +1195,10 @@ do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
                             "pausing/resuming.", 503);
         no_kv_nodes_left ->
             reply_json(Req, {[{noKVNodesLeft, 1}]}, 400);
+        {nodes_down, Nodes} ->
+            reply_text(Req,
+                       io_lib:format("Cannot contact the following nodes: ~p",
+                                     [Nodes]), 503);
         %% pre-7.6 responses
         ok ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes,
