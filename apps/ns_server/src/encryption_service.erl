@@ -132,9 +132,8 @@ change_config(NewCfg) ->
     ?log_debug("Change config started.~nOld cfg: ~p~nNew cfg: ~p",
                [OldCfg, NewCfg]),
     MarkerPath = change_cfg_marker(),
-    MarkerBody = io_lib:format("~p.", [{config_change, {OldCfg, NewCfg}}]),
-    misc:create_marker(MarkerPath, iolist_to_binary(MarkerBody)),
-    case change_config(NewCfg, OldCfg, MarkerPath, _CopySecrets = true,
+    write_change_cfg_marker(MarkerPath, {config_change, {OldCfg, NewCfg}}),
+    case change_config(NewCfg, OldCfg, MarkerPath, _CopySecrets = needed,
                        _ResetPassword = true) of
         ok ->
             misc:remove_marker(MarkerPath),
@@ -145,17 +144,18 @@ change_config(NewCfg) ->
 %% Note: We don't need to copy secrets if we are recovering after failure
 %% because if we have removed old cfg secrets, the config change is actually
 %% already finished.
-change_config(NewCfg, OldCfg, MarkerPath, _CopySecrets = true,
+change_config(NewCfg, OldCfg, MarkerPath, _CopySecrets = needed,
               ResetPassword = true) ->
     case cb_gosecrets_runner:copy_secrets(?RUNNER, NewCfg) of
         {ok, <<"same">>} ->
-            ok;
+            write_change_cfg_marker(MarkerPath, {config_change_same_secrets,
+                                                 {OldCfg, NewCfg}}),
+            change_config(NewCfg, OldCfg, MarkerPath, not_needed,
+                          false);
         {ok, <<"copied">>} ->
-            MarkerBody = io_lib:format("~p.",
-                                       [{config_change_copy_done,
-                                         {OldCfg, NewCfg}}]),
-            misc:create_marker(MarkerPath, iolist_to_binary(MarkerBody)),
-            change_config(NewCfg, OldCfg, MarkerPath, false, ResetPassword);
+            write_change_cfg_marker(MarkerPath, {config_change_copy_done,
+                                                 {OldCfg, NewCfg}}),
+            change_config(NewCfg, OldCfg, MarkerPath, done, ResetPassword);
         {error, _} = Error ->
             Error
     end;
@@ -163,10 +163,22 @@ change_config(NewCfg, OldCfg, MarkerPath, _CopySecrets = true,
 %% reset it. Looks like we don't really need to support that case anyway.
 %% The only scenario when we don't want to reset password is when we are
 %% recovering after unsuccessful change_config attempt.
-change_config(_NewCfg, _OldCfg, _MarkerPath, _CopySecrets = true,
+change_config(_NewCfg, _OldCfg, _MarkerPath, _CopySecrets = needed,
               _ResetPassword = false) ->
     error(not_supported);
-change_config(NewCfg, OldCfg, MarkerPath, false, ResetPassword) ->
+%% Can't (and shouldn't) reset password here because password is reset during
+%% copying of secrets, since no copying is done, the password should stay
+%% the same
+change_config(NewCfg, _OldCfg, _MarkerPath, _CopySecrets = not_needed,
+              ResetPassword = false) ->
+    ns_config:set(ns_config_sm_key(), NewCfg),
+    case cb_gosecrets_runner:set_config(?RUNNER, NewCfg, ResetPassword) of
+        ok ->
+            ok;
+        {error, _} = Error ->
+            Error
+    end;
+change_config(NewCfg, OldCfg, MarkerPath, _CopySecrets = done, ResetPassword) ->
     ns_config:set(ns_config_sm_key(), NewCfg),
     case cb_gosecrets_runner:set_config(?RUNNER, NewCfg, ResetPassword) of
         ok ->
@@ -175,9 +187,7 @@ change_config(NewCfg, OldCfg, MarkerPath, false, ResetPassword) ->
             %% (because old secrets can be already removed and we can't
             %% copy secrets back because of that hard error).
             %% So it seems like it is safer to not return error here.
-            MarkerBody = io_lib:format("~p.",
-                                       [{cleanup_secrets, OldCfg}]),
-            misc:create_marker(MarkerPath, iolist_to_binary(MarkerBody)),
+            write_change_cfg_marker(MarkerPath, {cleanup_secrets, OldCfg}),
             cb_gosecrets_runner:cleanup_secrets(?RUNNER, OldCfg),
             ok;
         {error, _} = Error ->
@@ -209,7 +219,24 @@ recover() ->
                          "recover to old config~nOld cfg: ~p~nNew cfg: ~p",
                          [OldCfg, NewCfg]),
             case change_config(OldCfg, NewCfg, MarkerPath,
-                               _CopySecrets = false, _ResetPassword = false) of
+                               _CopySecrets = done, _ResetPassword = false) of
+                ok ->
+                    ?log_debug("Recover finished successfully"),
+                    misc:remove_marker(MarkerPath),
+                    ok;
+                {error, _} = Error ->
+                    ?log_error("Recover failed with reason: ~p", [Error]),
+                    Error
+            end;
+        %% Copy of configs was not needed, and actual config change has probably
+        %% started.
+        {ok, [{config_change_same_secrets, {OldCfg, NewCfg}}]} ->
+            ?log_warning("Found change config marker. Starting gosecrets "
+                         "recover to old config~nOld cfg: ~p~nNew cfg: ~p",
+                         [OldCfg, NewCfg]),
+            case change_config(OldCfg, NewCfg, MarkerPath,
+                               _CopySecrets = not_needed,
+                               _ResetPassword = false) of
                 ok ->
                     ?log_debug("Recover finished successfully"),
                     misc:remove_marker(MarkerPath),
@@ -241,6 +268,10 @@ recover() ->
 change_cfg_marker() ->
     filename:join(path_config:component_path(data, "config"),
                   "sm_load_config_marker").
+
+write_change_cfg_marker(MarkerPath, Term) ->
+    MarkerBody = io_lib:format("~p.", [Term]),
+    misc:create_marker(MarkerPath, iolist_to_binary(MarkerBody)).
 
 ns_config_sm_key() -> {node, node(), secret_mngmt_cfg}.
 

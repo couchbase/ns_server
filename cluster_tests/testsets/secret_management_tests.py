@@ -109,6 +109,26 @@ class SecretManagementTests(testlib.BaseTestSet):
         change_password(self.cluster, password='')
         check_decrypt(self.cluster, encrypted_data, data)
 
+    def unchanged_config_reload_test(self):
+        data = testlib.random_str(32)
+        encrypted_data = encrypt(self.cluster, data)
+        change_password(self.cluster)
+        check_decrypt(self.cluster, encrypted_data, data)
+        # Checking that reloading of unchanged config doesn't break anything
+        post_es_config(self.cluster, {'keyStorageType': 'file',
+                                      'keyEncrypted': 'true',
+                                      'passwordSource': 'env'})
+        check_decrypt(self.cluster, encrypted_data, data)
+        post_es_config(self.cluster, {'keyStorageType': 'file',
+                                      'keyEncrypted': 'true',
+                                      'passwordSource': 'env'})
+        # ... even when password changes between reloads
+        change_password(self.cluster)
+        post_es_config(self.cluster, {'keyStorageType': 'file',
+                                      'keyEncrypted': 'true',
+                                      'passwordSource': 'env'})
+        check_decrypt(self.cluster, encrypted_data, data)
+
     def gosecrets_crash_test(self):
         password = change_password(self.cluster)
 

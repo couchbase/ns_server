@@ -789,6 +789,28 @@ config_reload_test() ->
           ?assertEqual({ok, <<"default">>}, get_state(Pid))
       end).
 
+unchanged_config_reload_after_password_change_test() ->
+    Cfg1 = [],
+    with_gosecrets(
+      Cfg1,
+      fun (CfgPath, Pid) ->
+          Data = rand:bytes(512),
+          Password = binary_to_list(rand:bytes(128)),
+          ?assertEqual({ok, <<"default">>}, get_state(Pid)),
+          ok = change_password(Pid, Password),
+          ?assertEqual({ok, <<"user_configured">>}, get_state(Pid)),
+          {ok, Encrypted} = encrypt(Pid, Data),
+
+          {ok, <<"same">>} = copy_secrets(Pid, Cfg1),
+          ok = set_config(Pid, Cfg1, false),
+          %% checking that we haven't reset the password
+          ?assertEqual({ok, <<"user_configured">>}, get_state(Pid)),
+          ?assertEqual({ok, Data}, decrypt(Pid, Encrypted)),
+          {ok, CurCfgBin} = file:read_file(CfgPath),
+          ?assertEqual(ejson:encode(cfg_to_json(Cfg1)),
+                       ejson:encode(ejson:decode(CurCfgBin)))
+      end).
+
 env_password_test() ->
     with_tmp_datakey_cfg(
       fun (Cfg) ->
