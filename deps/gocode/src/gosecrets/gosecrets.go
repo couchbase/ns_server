@@ -919,7 +919,7 @@ func copySecret(from, to secretIface) (string, error) {
 		reflect.TypeOf(from), reflect.TypeOf(to))
 
 	if from.sameSettings(to) {
-		log_dbg("load config: same configs, nothing to do")
+		log_dbg("same secret configs, nothing to do")
 		return "same", nil
 	}
 
