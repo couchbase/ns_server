@@ -48,7 +48,6 @@ supported_setting_names() ->
      {tcp_keepalive_interval, {int, 0, ?MAX_32BIT_UNSIGNED_INT}},
      {tcp_keepalive_probes, {int, 0, ?MAX_32BIT_UNSIGNED_INT}},
      {tcp_user_timeout, {int, 0, ?MAX_32BIT_UNSIGNED_INT}},
-     {always_collect_trace_info, bool},
      {connection_limit_mode, {one_of, ["disconnect", "recycle"]}},
      {free_connection_pool_size, {int, 0, ?MAX_32BIT_UNSIGNED_INT}},
      {max_client_connection_details, {int, 0, ?MAX_32BIT_UNSIGNED_INT}}].
