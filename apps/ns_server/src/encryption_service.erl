@@ -7,13 +7,17 @@
 -export([start_link/0,
          decrypt/1,
          encrypt/1,
+         encrypt_key/2,
+         decrypt_key/2,
          change_password/1,
          get_keys_ref/0,
          rotate_data_key/0,
          maybe_clear_backup_key/1,
          get_state/0,
          os_pid/0,
-         reconfigure/1]).
+         reconfigure/1,
+         store_bucket_dek/4,
+         store_kek/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -52,13 +56,41 @@ os_pid() ->
 reconfigure(NewCfg) ->
     safe_call({change_config, NewCfg}, infinity).
 
+store_bucket_dek(Bucket, Id, Key, KekId) when is_list(Bucket) ->
+    Name = iolist_to_binary(filename:join([Bucket, "deks", Id])),
+    store_key(bucketDek, Name, raw, Key, KekId).
+
+store_kek(Id, Key) ->
+    store_key(kek, Id, raw, Key, <<"encryptionService">>).
+
+encrypt_key(Data, KekId) when is_binary(Data), is_binary(KekId) ->
+    wrap_error_msg(
+      cb_gosecrets_runner:encrypt_with_key(?RUNNER, Data, kek, KekId),
+      encrypt_key_error).
+
+decrypt_key(Data, KekId) when is_binary(Data), is_binary(KekId) ->
+    wrap_error_msg(
+      cb_gosecrets_runner:decrypt_with_key(?RUNNER, Data, kek, KekId),
+      decrypt_key_error).
+
 %%%===================================================================
 %%% callbacks
 %%%===================================================================
 
 init([]) ->
     case recover() of
-        ok -> {ok, #{}};
+        ok ->
+            EventFilter = fun (database_dir) -> true;
+                              (_) -> false
+                          end,
+            chronicle_compat_events:notify_if_key_changes(
+                                      EventFilter, update),
+            case maybe_update_dek_path_in_config() of
+                ok ->
+                    {ok, #{}};
+                {error, Reason} ->
+                    {stop, Reason}
+            end;
         {error, _} = Error -> {stop, {recover_failed, Error}}
     end.
 
@@ -77,6 +109,12 @@ handle_call(Msg, _From, State) ->
 handle_cast(Msg, State) ->
     ?log_error("unhandled cast: ~p", [Msg]),
     {noreply, State}.
+
+handle_info(update, State) ->
+    case maybe_update_dek_path_in_config() of
+        ok -> {noreply, State};
+        {error, Reason} -> {stop, Reason, State}
+    end;
 
 handle_info(Info, State) ->
     ?log_error("unhandled info: ~p", [Info]),
@@ -242,3 +280,39 @@ wait_for_server_start() ->
               _:_ -> false
           end
       end, ?RESTART_WAIT_TIMEOUT, 100).
+
+store_key(Kind, Name, Type, Data, EncryptionKeyId)
+                                            when is_atom(Kind),
+                                                 is_binary(Name),
+                                                 is_atom(Type),
+                                                 is_binary(Data),
+                                                 is_binary(EncryptionKeyId) ->
+    wrap_error_msg(
+      cb_gosecrets_runner:store_key(?RUNNER, Kind, Name, Type, Data,
+                                    EncryptionKeyId),
+      store_key_error).
+
+maybe_update_dek_path_in_config() ->
+    case ns_storage_conf:this_node_dbdir() of
+        {ok, BucketDekPath} ->
+            Cfg = ns_config:read_key_fast(ns_config_sm_key(), []),
+            case proplists:get_value(bucket_dek_path, Cfg) of
+                BucketDekPath -> ok;
+                OldBucketDekPath ->
+                    ?log_debug("Dek directory needs to be updated "
+                               "(old value: ~p, new value: ~p)",
+                               [OldBucketDekPath, BucketDekPath]),
+                    NewCfg = misc:update_proplist(
+                               Cfg, [{bucket_dek_path, BucketDekPath}]),
+                    case change_config(NewCfg) of
+                        ok -> ok;
+                        {error, _} = Error ->
+                            {error, {change_cfg_failed, Error}}
+                    end
+            end;
+        {error, not_found} -> ok
+    end.
+
+wrap_error_msg(ok, _A) -> ok;
+wrap_error_msg({ok, _} = R, _A) -> R;
+wrap_error_msg({error, Msg}, A) when is_list(Msg) -> {error, {A, Msg}}.

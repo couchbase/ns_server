@@ -159,5 +159,5 @@ cleanup_settings(Settings) ->
                 end;
             script ->
                 [es_read_cmd, es_write_cmd, es_delete_cmd]
-        end ++ [es_key_storage_type, es_password_state],
+        end ++ [es_key_storage_type, es_password_state, bucket_dek_path],
     lists:filter(fun ({K, _}) -> lists:member(K, Fields) end, Settings).

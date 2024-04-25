@@ -32,6 +32,9 @@
          copy_secrets/2,
          cleanup_secrets/2,
          set_config/3,
+         store_key/6,
+         encrypt_with_key/4,
+         decrypt_with_key/4,
          defaults/0]).
 
 -record(state, {config :: file:filename(),
@@ -108,6 +111,19 @@ set_config(Name, Cfg, ResetPassword) ->
             ?log_error("set_config failed: ~p~nConfig: ~p", [Error, Cfg]),
             Error
     end.
+
+store_key(Name, Kind, KeyName, KeyType, KeyData, EncryptionKeyId) ->
+    gen_server:call(
+      Name, {store_key, Kind, KeyName, KeyType, KeyData, EncryptionKeyId},
+      infinity).
+
+encrypt_with_key(Name, Data, KeyKind, KeyName) ->
+    gen_server:call(Name, {encrypt_with_key, Data, KeyKind, KeyName},
+                    infinity).
+
+decrypt_with_key(Name, Data, KeyKind, KeyName) ->
+    gen_server:call(Name, {decrypt_with_key, Data, KeyKind, KeyName},
+                    infinity).
 
 start_link() ->
     start_link(gosecrets_cfg_path()).
@@ -253,13 +269,7 @@ call_init(HiddenPass, State) ->
 handle_call({encrypt, Data}, _From, State) ->
     {reply, call_gosecrets({encrypt, Data}, State), State};
 handle_call({decrypt, Data}, _From, State) ->
-    {reply,
-     case call_gosecrets({decrypt, Data}, State) of
-         ok ->
-             {ok, <<>>};
-         Ret ->
-             Ret
-     end, State};
+    {reply, convert_empty_data(call_gosecrets({decrypt, Data}, State)), State};
 handle_call({change_password, HiddenPass}, _From, State) ->
     Reply = call_gosecrets({change_password, HiddenPass}, State),
     case Reply of
@@ -308,6 +318,16 @@ handle_call({copy_secrets, Cfg}, _From, State) ->
 handle_call({cleanup_secrets, Cfg}, _From, State) ->
     CfgBin = ejson:encode(cfg_to_json(Cfg)),
     {reply, call_gosecrets({cleanup_secrets, CfgBin}, State), State};
+handle_call({store_key, Kind, Name, KeyType, KeyData, EncryptionKeyId},
+            _From, State) ->
+    {reply,
+     call_gosecrets({store_key, Kind, Name, KeyType, KeyData, EncryptionKeyId},
+                    State),
+     State};
+handle_call({encrypt_with_key, _Data, _KeyKind, _Name} = Cmd, _From, State) ->
+    {reply, convert_empty_data(call_gosecrets(Cmd, State)), State};
+handle_call({decrypt_with_key, _Data, _KeyKind, _Name} = Cmd, _From, State) ->
+    {reply, convert_empty_data(call_gosecrets(Cmd, State)), State};
 handle_call(Call, _From, State) ->
     ?log_warning("Unhandled call: ~p", [Call]),
     {reply, {error, not_allowed}, State}.
@@ -420,7 +440,28 @@ encode({reload_config, HiddenPass}) ->
 encode({copy_secrets, ConfigBin}) ->
     <<10, ConfigBin/binary>>;
 encode({cleanup_secrets, ConfigBin}) ->
-    <<11, ConfigBin/binary>>.
+    <<11, ConfigBin/binary>>;
+encode({store_key, Kind, Name, KeyType, KeyData, EncryptionKeyId}) ->
+    KindBin = atom_to_binary(Kind),
+    <<12, (encode_param(KindBin))/binary,
+          (encode_param(Name))/binary,
+          (encode_param(KeyType))/binary,
+          (encode_param(KeyData))/binary,
+          (encode_param(EncryptionKeyId))/binary>>;
+encode({encrypt_with_key, Data, KeyKind, Name}) ->
+    <<13, (encode_param(Data))/binary,
+          (encode_param(KeyKind))/binary,
+          (encode_param(Name))/binary>>;
+encode({decrypt_with_key, Data, KeyKind, Name}) ->
+    <<14, (encode_param(Data))/binary,
+          (encode_param(KeyKind))/binary,
+          (encode_param(Name))/binary>>.
+
+encode_param(B) when is_atom(B) ->
+    encode_param(atom_to_binary(B));
+encode_param(B) when is_binary(B) ->
+    S = size(B),
+    <<S:32/big-unsigned-integer, B/binary>>.
 
 encode_password(HiddenPass) ->
     case ?UNHIDE(HiddenPass) of
@@ -489,6 +530,18 @@ cfg_to_json(Props) ->
                   proplists:get_value(K, Props, D)
               end,
     ExtractBin = fun (K) -> iolist_to_binary(Extract(K)) end,
+
+    KeksStoreConfig = {[{kind, kek},
+                        {path, key_path(kek, Props)},
+                        {encryptBy, kek}]},
+    DeksStoreConfig = case key_path(bucketDek, Props) of
+                          undefined -> [];
+                          DeksPath -> [{[{kind, bucketDek},
+                                         {path, DeksPath},
+                                         {encryptBy, kek}]}]
+                      end,
+    StoredKeysJson = {storedKeys, [KeksStoreConfig | DeksStoreConfig]},
+
     case Extract(es_key_storage_type) of
         file ->
             Encr = Extract(es_encrypt_key),
@@ -523,7 +576,8 @@ cfg_to_json(Props) ->
                {[{keyStorageType, file},
                  {keyStorageSettings,
                   {[{path, Path},
-                    {encryptWithPassword, Encr}] ++ PasswordCfg}}]}}]};
+                    {encryptWithPassword, Encr}] ++ PasswordCfg}}]}},
+              StoredKeysJson]};
         script ->
             R = ExtractBin(es_read_cmd),
             W = ExtractBin(es_write_cmd),
@@ -533,7 +587,19 @@ cfg_to_json(Props) ->
                  {keyStorageSettings,
                   {[{readCmd, R} || R /= <<>>] ++
                    [{writeCmd, W} || W /= <<>>] ++
-                   [{deleteCmd, D} || D /= <<>>]}}]}}]}
+                   [{deleteCmd, D} || D /= <<>>]}}]}},
+              StoredKeysJson]}
+    end.
+
+%% Some keys are static, and can't be changed via config (main reason for that
+%% is the fact that we need those path before ns_config has started)
+key_path(kek, _Cfg) ->
+    proplists:get_value(kek_path, defaults(), undefined);
+key_path(bucketDek, Cfg) ->
+    Key = bucket_dek_path,
+    case proplists:get_value(Key, Cfg) of
+        undefined -> proplists:get_value(Key, defaults(), undefined);
+        P -> iolist_to_binary(P)
     end.
 
 defaults() ->
@@ -541,7 +607,10 @@ defaults() ->
      {es_password_source, env},
      {es_encrypt_key, true},
      {es_key_path_type, auto},
-     {es_key_storage_type, 'file'}].
+     {es_key_storage_type, 'file'},
+     {kek_path,
+      iolist_to_binary(
+        filename:join(path_config:component_path(data, "config"), "keks"))}].
 
 format_error({write_failed, CfgPath, Error}) ->
     io_lib:format("Could not write file '~s': ~s (~p)",
@@ -568,6 +637,9 @@ should_prompt_the_password(#state{config = Path}) ->
         _ ->
             false
     end.
+
+convert_empty_data(ok) -> {ok, <<>>};
+convert_empty_data(Res) -> Res.
 
 -ifdef(TEST).
 
