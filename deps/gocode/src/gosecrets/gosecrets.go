@@ -1001,10 +1001,10 @@ func readOrCreateKeys(keys secretIface) error {
 func atomicWriteFile(path string, binary []byte, perm fs.FileMode) (err error) {
 	tmpfile, err := ioutil.TempFile(
 		filepath.Dir(path), filepath.Base(path)+"-*.tmp")
-	log_dbg("using tmp file %s when writing to %s", tmpfile.Name(), path)
 	if err != nil {
 		return err
 	}
+	log_dbg("using tmp file %s when writing to %s", tmpfile.Name(), path)
 
 	defer func() {
 		if err != nil {
