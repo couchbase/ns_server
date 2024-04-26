@@ -38,7 +38,6 @@ supported_setting_names() ->
      {verbosity, {int, 0, ?MAX_32BIT_UNSIGNED_INT}},
      {ssl_cipher_list, string},
      {connection_idle_time, {int, 0, ?MAX_32BIT_UNSIGNED_INT}},
-     {privilege_debug, bool},
      {breakpad_enabled, bool},
      {breakpad_minidump_dir_path, string},
      {dedupe_nmvb_maps, bool},

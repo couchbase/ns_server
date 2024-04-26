@@ -222,7 +222,6 @@ default(Vsn) ->
        {system_connections, 5000},
        {connection_idle_time, 0},
        {verbosity, 0},
-       {privilege_debug, false},
        {breakpad_enabled, true},
        %% Location that Breakpad should write minidumps upon memcached crash.
        {breakpad_minidump_dir_path, BreakpadMinidumpDir},
@@ -291,7 +290,6 @@ default(Vsn) ->
         {client_cert_auth, {memcached_config_mgr, client_cert_auth, []}},
 
         {connection_idle_time, connection_idle_time},
-        {privilege_debug, privilege_debug},
 
         {breakpad,
          {[{enabled, breakpad_enabled},
