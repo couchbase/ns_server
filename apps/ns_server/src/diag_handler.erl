@@ -749,7 +749,6 @@ grab_system_info() ->
                driver_version,
                dynamic_trace,
                dynamic_trace_probes,
-               elib_malloc,
                ets_limit,
                fullsweep_after,
                garbage_collection,
