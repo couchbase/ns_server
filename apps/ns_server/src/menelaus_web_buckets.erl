@@ -784,7 +784,8 @@ update_props_with_cas(NodeCasVals, Map, Props) ->
               end, misc:enumerate(Map, 0)),
         {ok, [{vbuckets_max_cas, CasValues} | Props]}
     catch
-        _:_ ->
+        T:E ->
+            ?log_error("Failed to retrieve max_cas: ~p", [{T,E}]),
             {error, max_cas_vbucket_retrieval}
     end.
 
