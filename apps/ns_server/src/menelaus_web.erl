@@ -524,6 +524,12 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "resourceManagement" | PathRest] ->
                     {{[admin, settings], read},
                      fun menelaus_web_guardrails:handle_get/2, [PathRest]};
+                ["settings", "secrets"] ->
+                    {{[admin, security], read},
+                     fun menelaus_web_secrets:handle_get_secrets/1};
+                ["settings", "secrets", SecretId] ->
+                    {{[admin, security], read},
+                     fun menelaus_web_secrets:handle_get_secret/2, [SecretId]};
                 ["internalSettings"] ->
                     {{[admin, settings], read},
                      fun menelaus_web_settings:handle_get/2, [internal]};
@@ -809,6 +815,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "resourceManagement" | PathRest] ->
                     {{[admin, settings], write},
                      fun menelaus_web_guardrails:handle_post/2, [PathRest]};
+                ["settings", "secrets"] ->
+                    {{[admin, security], write},
+                     fun menelaus_web_secrets:handle_post_secret/1};
                 ["internalSettings"] ->
                     {{[admin, settings], write},
                      fun menelaus_web_settings:handle_post/2, [internal]};
@@ -1106,6 +1115,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "saml"] ->
                     {{[admin, security, external], write},
                      fun menelaus_web_saml:handle_delete_settings/1};
+                ["settings", "secrets", SecretId] ->
+                    {{[admin, security], write},
+                     fun menelaus_web_secrets:handle_delete_secret/2,
+                     [SecretId]};
                 ["couchBase" | _] -> {no_check_disallow_anonymous,
                                       fun menelaus_pluggable_ui:proxy_req/4,
                                       ["couchBase",
@@ -1158,6 +1171,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "rbac", "backup"] ->
                     {{[admin, security], write},
                      fun menelaus_web_rbac:handle_backup_restore/1};
+                ["settings", "secrets", SecretId] ->
+                    {{[admin, security], write},
+                     fun menelaus_web_secrets:handle_put_secret/2, [SecretId]};
                 ["pools", "default", "buckets", Id, "scopes"] ->
                     {{[{collection, [Id, any, any]}, collections], write},
                      fun menelaus_web_collections:handle_set_manifest/2, [Id]};
