@@ -65,7 +65,8 @@
          is_enabled/0,
          is_enabled/1,
          validate_kv/3,
-         validate_services_safety/4]).
+         validate_services_safety/4,
+         hidden_failover_ephemeral_setting/0]).
 
 %% For email alert notificatons
 -export([alert_keys/0]).
@@ -177,6 +178,22 @@ should_preserve_durability_majority() ->
 
 should_preserve_durability_majority(Config) ->
     proplists:get_bool(failover_preserve_durability_majority, Config).
+
+%% failover_ephemeral_no_replicas was introduced in 7.6.2 as a hidden setting:
+%% diag/eval "ns_config:set(failover_ephemeral_no_replicas, true)".
+hidden_failover_ephemeral_setting() ->
+    DefaultSetting = config_profile:get_bool(failover_ephemeral_no_replicas),
+    case ns_config:read_key_fast(failover_ephemeral_no_replicas, undefined) of
+        X when is_boolean(X) -> X;
+        _ -> DefaultSetting
+    end.
+
+allow_failover_ephemeral_no_replicas() ->
+    case cluster_compat_mode:is_cluster_morpheus() of
+        true -> proplists:get_bool(allow_failover_ephemeral_no_replicas,
+                                   get_cfg());
+        false -> hidden_failover_ephemeral_setting()
+    end.
 
 %% Call has a large timeout by default. Calls are handled to reconfigure
 %% auto-failover and the auto_failover gen_server is expected to be unresponsive
@@ -925,16 +942,8 @@ validate_bucket_safety(_BucketName, Map, Nodes) ->
               end, mb_map:promote_replicas(Map, Nodes)).
 
 validate_membase_buckets(Snapshot, ValidateFun) ->
-    AllowEphemeralFailover =
-        case ns_config:read_key_fast(failover_ephemeral_no_replicas,
-                                     undefined) of
-            undefined ->
-                config_profile:get_bool(failover_ephemeral_no_replicas);
-            X when is_boolean(X) -> X;
-            _ -> false
-        end,
     ValidateEphemeral =
-        case AllowEphemeralFailover of
+        case allow_failover_ephemeral_no_replicas() of
             true -> fun(_, _) -> false end;
             false -> ValidateFun
         end,

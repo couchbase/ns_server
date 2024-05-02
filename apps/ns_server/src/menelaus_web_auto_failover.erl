@@ -23,7 +23,8 @@
          config_check_can_abort_rebalance/0,
          default_config/1,
          config_upgrade_to_72/1,
-         config_upgrade_to_76/1]).
+         config_upgrade_to_76/1,
+         config_upgrade_to_morpheus/1]).
 
 -import(menelaus_util,
         [reply/2,
@@ -44,6 +45,9 @@
 -define(FAILOVER_PRESERVE_DURABILITY_MAJORITY_CONFIG_KEY,
         failover_preserve_durability_majority).
 -define(FAILOVER_PRESERVE_DURABILITY_MAJORITY_DEFAULT, false).
+
+-define(ALLOW_FAILOVER_EPHEMERAL_NO_REPLICAS_CONFIG_KEY,
+        allow_failover_ephemeral_no_replicas).
 
 -define(ROOT_CONFIG_KEY, auto_failover_cfg).
 
@@ -80,6 +84,13 @@ config_upgrade_to_76(Config) ->
                            [{?DISABLE_MAX_COUNT_CONFIG_KEY,
                              config_profile:get_bool(
                                failover_disable_max_count)}])}].
+
+config_upgrade_to_morpheus(Config) ->
+    [{set, auto_failover_cfg,
+      misc:update_proplist(
+        auto_failover:get_cfg(Config),
+        [{?ALLOW_FAILOVER_EPHEMERAL_NO_REPLICAS_CONFIG_KEY,
+          auto_failover:hidden_failover_ephemeral_setting()}])}].
 
 handle_settings_get(Req) ->
     Config = auto_failover:get_cfg(),
@@ -200,7 +211,8 @@ settings_extras_validators() ->
             maxcount_validators() ++
             disk_issues_validators() ++
             can_abort_rebalance_validators() ++
-            preserve_durability_majority_validators();
+            preserve_durability_majority_validators() ++
+            failover_ephemeral_no_replicas_validators();
         false ->
             []
     end.
@@ -228,6 +240,13 @@ preserve_durability_majority_validators() ->
         false -> [];
         true ->
             [validator:boolean(failoverPreserveDurabilityMajority, _)]
+    end.
+
+failover_ephemeral_no_replicas_validators() ->
+    case cluster_compat_mode:is_cluster_morpheus() of
+        false -> [];
+        true ->
+            [validator:boolean(allowFailoverEphemeralNoReplicas, _)]
     end.
 
 can_abort_rebalance_validators() ->
@@ -264,7 +283,9 @@ process_extras(Props, Config) ->
     BoolParams = [{canAbortRebalance, ?CAN_ABORT_REBALANCE_CONFIG_KEY},
                   {disableMaxCount, ?DISABLE_MAX_COUNT_CONFIG_KEY},
                   {failoverPreserveDurabilityMajority,
-                   ?FAILOVER_PRESERVE_DURABILITY_MAJORITY_CONFIG_KEY}],
+                   ?FAILOVER_PRESERVE_DURABILITY_MAJORITY_CONFIG_KEY},
+                  {allowFailoverEphemeralNoReplicas,
+                   ?ALLOW_FAILOVER_EPHEMERAL_NO_REPLICAS_CONFIG_KEY}],
     Extras = functools:chain(
                [{extras, []}],
                [process_failover_on_disk_issues(Props, Config, _) |
@@ -307,7 +328,12 @@ get_extra_settings(Config) ->
                  proplists:get_value(
                      ?FAILOVER_PRESERVE_DURABILITY_MAJORITY_CONFIG_KEY,
                      Config)}
-                   || cluster_compat_mode:is_cluster_72()]]);
+                   || cluster_compat_mode:is_cluster_72()],
+               [{allowFailoverEphemeralNoReplicas,
+                 proplists:get_value(
+                   ?ALLOW_FAILOVER_EPHEMERAL_NO_REPLICAS_CONFIG_KEY,
+                   Config)}
+                || cluster_compat_mode:is_cluster_morpheus()]]);
         false ->
             []
     end.
