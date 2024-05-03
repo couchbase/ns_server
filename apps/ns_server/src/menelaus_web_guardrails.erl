@@ -136,19 +136,23 @@ params() ->
      {"index.indexOverheadPerNode.maximum",
       #{type => {num, 0, infinity},
         cfg_key => [metakv, index, index_overhead_per_node, maximum]}},
-     %% Max disk usage % per node
+     %% Disk usage % per node thresholds (for notifying index service)
+     {"index.diskUsage.enabled",
+      #{type => bool,
+        cfg_key => [index, disk_usage, enabled]}},
+     {"index.diskUsage.critical",
+      #{type => {num, 0, 100},
+        cfg_key => [index, disk_usage, critical]}},
+     {"index.diskUsage.serious",
+      #{type => {num, 0, 100},
+        cfg_key => [index, disk_usage, serious]}},
+     %% Max disk usage % per node for disabling data service mutations
      {"diskUsage.enabled",
       #{type => bool,
         cfg_key => [disk_usage, enabled]}},
      {"diskUsage.maximum",
       #{type => {num, 0, 100},
         cfg_key => [disk_usage, maximum]}},
-     {"diskUsage.critical",
-      #{type => {num, 0, 100},
-        cfg_key => [disk_usage, critical]}},
-     {"diskUsage.serious",
-      #{type => {num, 0, 100},
-        cfg_key => [disk_usage, serious]}},
      %% Min number of cores per node per bucket
      {"coresPerBucket.enabled",
       #{type => bool,
@@ -195,7 +199,11 @@ raw_default_for_ns_config() ->
         [{enabled, false},
          {warning, 15},
          {serious, 12.5},
-         {critical, 10}]}]},
+         {critical, 10}]},
+       {disk_usage,
+        [{enabled, false},
+         {critical, 85},
+         {serious, 80}]}]},
      %% Minimum cores required per bucket
      {cores_per_bucket,
       [{enabled, false},
@@ -203,9 +211,7 @@ raw_default_for_ns_config() ->
      %% Max disk usage % per node
      {disk_usage,
       [{enabled, false},
-       {maximum, 96},
-       {critical, 85},
-       {serious, 80}]},
+       {maximum, 96}]},
      %% Max no. of collections per bucket quota in MB
      {collections_per_quota,
       [{enabled, false},
@@ -218,18 +224,22 @@ raw_default_for_metakv() ->
     [
      %% Index service resources
      {index,
-      %% Minimum estimated resident ratio percentage to permit index creation
-      [{index_creation_rr,
-        [{enabled, false},
-         {minimum, 10}]},
+      [
+       %% The following settings have been commented out as the index service
+       %% currently logs errors when these metakv settings are defined
+       %%
+       %% Minimum estimated resident ratio percentage to permit index creation
+       %% {index_creation_rr,
+       %%  [{enabled, false},
+       %%   {minimum, 10}]},
        %% Minimum resident ratio that a topology change must not breach
-       {topology_change_rr,
-        [{enabled, false},
-         {minimum, 10}]},
+       %% {topology_change_rr,
+       %%  [{enabled, false},
+       %%   {minimum, 10}]},
        %% max index overhead per node
-       {index_overhead_per_node,
-        [{enabled, false},
-         {maximum, 1}]}
+       %% {index_overhead_per_node,
+       %%  [{enabled, false},
+       %%   {maximum, 1}]}
       ]}
     ].
 
@@ -297,11 +307,11 @@ basic_test_setup() ->
 
 default_config_t() ->
     ?assertProplistsEqualRecursively(
-      raw_default_for_ns_config(),
-      default_for_ns_config()),
+       raw_default_for_ns_config(),
+       default_for_ns_config()),
     ?assertProplistsEqualRecursively(
-      raw_default_for_metakv(),
-      default_for_metakv()),
+       raw_default_for_metakv(),
+       default_for_metakv()),
 
     ConfigProfile = [{resource_management,
                       [{[bucket, resident_ratio, enabled], true},
@@ -350,7 +360,11 @@ default_config_t() ->
            [{enabled, true},
             {critical, 1},
             {serious, 2},
-            {warning, 3}]}]},
+            {warning, 3}]},
+          {disk_usage,
+           [{enabled, false},
+            {serious, 80},
+            {critical, 85}]}]},
         {cores_per_bucket,
          [{enabled, true},
           {minimum, 0.4}]},
@@ -362,21 +376,21 @@ default_config_t() ->
         {collections_per_quota,
          [{enabled, true},
           {maximum, 1}]}],
-      default_for_ns_config()),
+       default_for_ns_config()),
 
     ?assertProplistsEqualRecursively(
-      [{index,
-        [{index_creation_rr,
-          [{enabled, true},
-           {minimum, 10}]},
-         {topology_change_rr,
-          [{enabled, true},
+       [{index,
+         [{index_creation_rr,
+           [{enabled, true},
+            {minimum, 10}]},
+          {topology_change_rr,
+           [{enabled, true},
             {minimum, 10}]},
           {index_overhead_per_node,
            [{enabled, true},
             {maximum, 2}]}]
-       }],
-      default_for_metakv()).
+        }],
+       default_for_metakv()).
 
 assert_config_update(Expected, Update, Initial) ->
     InitialServiceConfig = proplists:get_value(metakv, Initial, []),
