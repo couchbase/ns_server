@@ -168,7 +168,8 @@ get_state(Timeout) ->
                            {error, {incorrect_parameters, nonempty_string()}} |
                            rebalance_running | in_recovery |
                            in_bucket_hibernation |
-                           in_buckets_shutdown.
+                           in_buckets_shutdown |
+                           {error, secret_not_found}.
 create_bucket(BucketType, BucketName, NewConfig) ->
     call({create_bucket, BucketType, BucketName, NewConfig}, infinity).
 
@@ -183,6 +184,7 @@ create_bucket(BucketType, BucketName, NewConfig) ->
                                     history_retention_enabled_on_bucket}} |
                            {error, {storage_mode_migration,
                                     history_retention_enabled_on_collections}} |
+                           {error, secret_not_found} |
                            rebalance_running | in_recovery |
                            in_bucket_hibernation |
                            in_buckets_shutdown.
@@ -770,23 +772,24 @@ janitor_running(_Event, _State) ->
 
 %% Synchronous idle events
 idle({create_bucket, BucketType, BucketName, BucketConfig}, From, _State) ->
-    case validate_create_bucket(BucketName, BucketConfig) of
-        {ok, NewBucketConfig} ->
-            {ok, UUID, ActualBucketConfig} =
-                ns_bucket:create_bucket(BucketType, BucketName,
-                                        NewBucketConfig),
-            ConfigJSON = ns_bucket:build_bucket_props_json(
-                           ns_bucket:extract_bucket_props(ActualBucketConfig)),
-            master_activity_events:note_bucket_creation(BucketName, BucketType,
-                                                        ConfigJSON),
-            event_log:add_log(
-              bucket_created,
-              [{bucket, list_to_binary(BucketName)},
-               {bucket_uuid, UUID},
-               {bucket_type, ns_bucket:display_type(ActualBucketConfig)},
-               {bucket_props, {ConfigJSON}}]),
-            request_janitor_run({bucket, BucketName}),
-            {keep_state_and_data, [{reply, From, ok}]};
+    maybe
+        {ok, NewBucketConfig} ?=
+            validate_create_bucket(BucketName, BucketConfig),
+        {ok, UUID, ActualBucketConfig} ?=
+            ns_bucket:create_bucket(BucketType, BucketName, NewBucketConfig),
+        ConfigJSON = ns_bucket:build_bucket_props_json(
+                       ns_bucket:extract_bucket_props(ActualBucketConfig)),
+        master_activity_events:note_bucket_creation(BucketName, BucketType,
+                                                    ConfigJSON),
+        event_log:add_log(
+          bucket_created,
+          [{bucket, list_to_binary(BucketName)},
+           {bucket_uuid, UUID},
+           {bucket_type, ns_bucket:display_type(ActualBucketConfig)},
+           {bucket_props, {ConfigJSON}}]),
+        request_janitor_run({bucket, BucketName}),
+        {keep_state_and_data, [{reply, From, ok}]}
+    else
         {error, _} = Error ->
             {keep_state_and_data, [{reply, From, Error}]}
     end;

@@ -20,6 +20,7 @@
 -include("ns_bucket.hrl").
 -include_lib("ns_common/include/cut.hrl").
 -include("bucket_hibernation.hrl").
+-include("cb_cluster_secrets.hrl").
 
 -define(DEFAULT_MAGMA_MIN_MEMORY_QUOTA, 1024).
 -define(CAS_GET_TIMEOUT, 60000).
@@ -281,7 +282,8 @@ build_bucket_info(Id, Ctx, InfoLevel, SkipMap) ->
         build_cross_cluster_versioning_params(BucketConfig),
         build_vbuckets_max_cas(BucketConfig),
         build_vp_window_hrs(BucketConfig),
-        build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx)])}.
+        build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx),
+        build_encryption_at_rest_bucket_info(BucketConfig)])}.
 
 get_internal_default(Key, Default) ->
     ns_config:read_key_fast(Key, Default).
@@ -448,6 +450,22 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
              [{driftAheadThresholdMs, DriftAheadThreshold},
               {driftBehindThresholdMs, DriftBehindThreshold}]
      end].
+
+build_encryption_at_rest_bucket_info(BucketConfig) ->
+    case cluster_compat_mode:is_cluster_morpheus() of
+        true ->
+            [{encryptionAtRestSecretId,
+              proplists:get_value(encryption_secret_id, BucketConfig,
+                                  ?SECRET_ID_NOT_SET)},
+             {encryptionAtRestDekRotation,
+              proplists:get_bool(encryption_dek_rotation, BucketConfig)},
+             {encryptionAtRestDekRotationInterval,
+              proplists:get_value(encryption_dek_rotation_interval,
+                                  BucketConfig,
+                                  ?DEFAULT_DEK_ROTATION_INTERVAL_S)}];
+        false ->
+            []
+    end.
 
 build_pitr_dynamic_bucket_info(BucketConfig) ->
     case ns_bucket:bucket_type(BucketConfig) of
@@ -863,6 +881,8 @@ update_via_orchestrator(Req, BucketId, StorageMode, BucketType, UpdatedProps,
                                     UpdatedProps, false);
         {error, {storage_mode_migration, Error}} ->
             reply_storage_mode_migration_error(Req, Error);
+        {error, secret_not_found} ->
+            reply_text(Req, "Encryption secret does not exist", 400);
         {exit, {not_found, _}, _} ->
             %% if this happens then our validation raced, so repeat everything
             retry
@@ -922,6 +942,9 @@ do_bucket_create(Req, Name, ParsedProps) ->
             {errors, [{'_', need_more_space_error(Zones)}]};
         {error, {incorrect_parameters, Error}} ->
             {errors, [{'_', list_to_binary(Error)}]};
+        {error, secret_not_found} ->
+            {errors, [{encryptionAtRestSecretId,
+                       <<"encryption secret does not exist">>}]};
         rebalance_running ->
             {errors_500, [{'_', <<"Cannot create buckets during rebalance">>}]};
         in_recovery ->
@@ -1581,7 +1604,8 @@ validate_membase_bucket_params(CommonParams, Params, Name,
           fun menelaus_web_settings:get_storage_limit_attributes/0) ++
         parse_validate_limits(
           Params, BucketConfig, IsNew, AllowThrottleLimit,
-          fun menelaus_web_settings:get_throttle_limit_attributes/0),
+          fun menelaus_web_settings:get_throttle_limit_attributes/0) ++
+        validate_bucket_encryption_at_rest_settings(Params, Version),
 
     validate_bucket_purge_interval(Params, BucketConfig, IsNew) ++
         get_conflict_resolution_type_and_thresholds(
@@ -1822,6 +1846,62 @@ parse_validate_bucket_auto_compaction_settings(Params) ->
                 Error ->
                     Error
             end
+    end.
+
+validate_bucket_encryption_at_rest_settings(Params, Version) ->
+    Allowed = cluster_compat_mode:is_version_morpheus(Version),
+    case parse_validate_encryption_secret_id(Params) of
+        [{ok, encryption_secret_id, Id}] when not Allowed,
+                                              Id /= ?SECRET_ID_NOT_SET ->
+            [{error, encryptionAtRestSecretId,
+              <<"Encryption At-Rest is not allowed until the entire cluster "
+                "is upgraded to Morpheus">>}];
+        RV -> RV
+    end ++
+    parse_validate_encryption_dek_rotation(Params) ++
+    parse_validate_encryption_rotation_interval(Params).
+
+parse_validate_encryption_secret_id(Params) ->
+    maybe
+        [IdStr] ?= proplists:get_all_values("encryptionAtRestSecretId", Params),
+        {ok, Id} ?= menelaus_util:parse_validate_number(IdStr, -1, undefined),
+        %% Secret existance is checked in bucket create/update transaction
+        [{ok, encryption_secret_id, Id}]
+    else
+        [] ->
+            [];
+        [_ | _] ->
+            [{error, encryptionAtRestSecretId, <<"too many values">>}];
+        {error, _} ->
+            [{error, encryptionAtRestSecretId, <<"invalid secret id">>}];
+        E when E == too_small; E == too_large; E == invalid ->
+            [{error, encryptionAtRestSecretId, <<"invalid secret id">>}]
+    end.
+
+parse_validate_encryption_dek_rotation(Params) ->
+    case menelaus_util:parse_validate_boolean_field(
+           "encryptionAtRestDekRotation", encryption_dek_rotation, Params) of
+        [] -> [];
+        [{ok, _, _}] = RV -> RV;
+        [{error, _, Reason}] -> [{error, encryptionAtRestDekRotation, Reason}]
+    end.
+
+parse_validate_encryption_rotation_interval(Params) ->
+    maybe
+        [ValStr] ?= proplists:get_all_values(
+                      "encryptionAtRestDekRotationInterval",
+                      Params),
+        {ok, Val} ?= menelaus_util:parse_validate_number(ValStr, 0, undefined),
+        [{ok, encryption_dek_rotation_interval, Val}]
+    else
+        [] ->
+            [];
+        [_ | _] ->
+            [{error, encryptionAtRestDekRotationInterval,
+              <<"too many values">>}];
+        E when E == too_small; E == too_large; E == invalid ->
+            [{error, encryptionAtRestDekRotationInterval,
+              <<"invalid interval">>}]
     end.
 
 validate_replicas_number(Params, IsNew) ->
@@ -4075,7 +4155,56 @@ basic_bucket_params_screening_t() ->
     meck:expect(ns_config, read_key_fast,
                 fun (_, Default) ->
                         Default
-                end).
+                end),
+
+    %% Parsing encryption at rest params
+    {OK38, E38} = basic_bucket_params_screening(
+                     true,
+                     "bucket35",
+                     [{"bucketType", "membase"},
+                      {"ramQuota", "1024"},
+                      {"encryptionAtRestSecretId", "1"},
+                      {"encryptionAtRestDekRotation", "true"},
+                      {"encryptionAtRestDekRotationInterval", "1000"}],
+                     AllBuckets),
+
+    ?assertEqual([], E38),
+    ?assertEqual(1, proplists:get_value(encryption_secret_id, OK38)),
+    ?assertEqual(true, proplists:get_value(encryption_dek_rotation, OK38)),
+    ?assertEqual(1000,
+                 proplists:get_value(encryption_dek_rotation_interval, OK38)),
+
+    %% Invalid encryption at rest
+    {_OK39, E39} = basic_bucket_params_screening(
+                     true,
+                     "bucket35",
+                     [{"bucketType", "membase"},
+                      {"ramQuota", "1024"},
+                      {"encryptionAtRestSecretId", "-3"},
+                      {"encryptionAtRestDekRotation", "bad"},
+                      {"encryptionAtRestDekRotationInterval", "bad"}],
+                     AllBuckets),
+
+    ?assertEqual(<<"invalid secret id">>,
+                 proplists:get_value(encryptionAtRestSecretId, E39)),
+    ?assertEqual(<<"encryptionAtRestDekRotation is invalid">>,
+                 proplists:get_value(encryptionAtRestDekRotation, E39)),
+    ?assertEqual(<<"invalid interval">>,
+                 proplists:get_value(encryptionAtRestDekRotationInterval, E39)),
+
+    %% Default encryption at rest params
+    {OK40, E40} = basic_bucket_params_screening(
+                     true,
+                     "bucket35",
+                     [{"bucketType", "membase"},
+                      {"ramQuota", "1024"}],
+                     AllBuckets),
+
+    ?assertEqual([], E40),
+    ?assertEqual([], proplists:get_all_values(encryption_secret_id, OK40)),
+    ?assertEqual([], proplists:get_all_values(encryption_dek_rotation, OK40)),
+    ?assertEqual([], proplists:get_all_values(encryption_dek_rotation_interval,
+                                              OK40)).
 
 basic_bucket_params_screening_test_() ->
     {setup,

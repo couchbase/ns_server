@@ -6,5 +6,6 @@
 -define(GENERATED_KEY_TYPE, 'auto-generated-aes-key-256').
 -define(AWSKMS_KEY_TYPE, 'awskms-aes-key-256').
 -define(ENVELOP_CIPHER, aes_256_gcm).
+-define(SECRET_ID_NOT_SET, -1).
 
 -endif.

@@ -12,6 +12,7 @@
 -include("ns_common.hrl").
 -include("ns_bucket.hrl").
 -include_lib("ns_common/include/cut.hrl").
+-include("cb_cluster_secrets.hrl").
 
 -ifdef(TEST).
 -include("ns_test.hrl").
@@ -1086,23 +1087,27 @@ create_bucket(BucketType, BucketName, NewConfig) ->
                              NewConfig),
     BucketUUID = couch_uuids:random(),
     Manifest = collections:default_manifest(MergedConfig),
-    do_create_bucket(BucketName, MergedConfig, BucketUUID, Manifest),
-    %% The janitor will handle creating the map.
-    {ok, BucketUUID, MergedConfig}.
+    case do_create_bucket(BucketName, MergedConfig, BucketUUID, Manifest) of
+        ok ->
+            %% The janitor will handle creating the map.
+            {ok, BucketUUID, MergedConfig};
+        {error, _} = Error ->
+            Error
+    end.
 
 restore_bucket(BucketName, NewConfig, BucketUUID, Manifest) ->
     case is_valid_bucket_name(BucketName) of
         true ->
-            do_create_bucket(BucketName, NewConfig, BucketUUID, Manifest),
-            ok;
+            do_create_bucket(BucketName, NewConfig, BucketUUID, Manifest);
         {error, _} ->
             {error, {invalid_bucket_name, BucketName}}
     end.
 
 do_create_bucket(BucketName, Config, BucketUUID, Manifest) ->
-    {ok, _} =
+    Result =
         chronicle_kv:transaction(
-          kv, [root(), nodes_wanted, buckets_marked_for_shutdown_key()],
+          kv, [root(), nodes_wanted, buckets_marked_for_shutdown_key(),
+               ?CHRONICLE_SECRETS_KEY],
           fun (Snapshot) ->
                   BucketNames = get_bucket_names(Snapshot),
                   %% We make similar checks via validate_create_bucket/2 in
@@ -1122,18 +1127,25 @@ do_create_bucket(BucketName, Config, BucketUUID, Manifest) ->
                       get_bucket_names_marked_for_shutdown(Snapshot),
 
                   case {name_conflict(BucketName, BucketNames),
-                        name_conflict(BucketName, ShutdownBucketNames)} of
-                      {true, _} ->
+                        name_conflict(BucketName, ShutdownBucketNames),
+                        encryption_secret_conflict(Config, Snapshot)} of
+                      {true, _, _} ->
                           {abort, already_exists};
-                      {_, true} ->
+                      {_, true, _} ->
                           {abort, still_exists};
-                      {false, false} ->
+                      {_, _, true} ->
+                          {abort, {error, secret_not_found}};
+                      {false, false, false} ->
                           {commit, create_bucket_sets(BucketName, BucketNames,
                                                       BucketUUID, Config) ++
                                    collections_sets(BucketName, Config,
                                                     Snapshot, Manifest)}
                   end
-          end).
+          end),
+    case Result of
+        {ok, _} -> ok;
+        {error, _} = Error -> Error
+    end.
 
 create_bucket_sets(Bucket, Buckets, BucketUUID, Config) ->
     [{set, root(), lists:usort([Bucket | Buckets])},
@@ -1440,14 +1452,35 @@ update_bucket_props_inner(Type, OldStorageMode, BucketName, Props) ->
     {Props1, MaybeDeleteCasKey} =
         maybe_delete_cas_props(PrevProps, Props),
 
+    NewSecretId = proplists:get_value(encryption_secret_id, Props,
+                                      ?SECRET_ID_NOT_SET),
+    PrevSecretId = proplists:get_value(encryption_secret_id, PrevProps,
+                                       ?SECRET_ID_NOT_SET),
+    IsSecretIdChanging = (PrevSecretId =/= NewSecretId),
+
+    SecretIdCheckPredicate =
+        case IsSecretIdChanging of
+            true when NewSecretId =/= ?SECRET_ID_NOT_SET ->
+                fun (Snapshot) ->
+                    case cb_cluster_secrets:get_secret(NewSecretId, Snapshot) of
+                        {ok, _} -> ok;
+                        {error, not_found} ->
+                            {error, secret_not_found}
+                    end
+                end;
+            _ ->
+                fun (_) -> ok end
+        end,
+
     NewStorageMode = proplists:get_value(storage_mode, Props),
     IsStorageModeMigration = OldStorageMode =/= NewStorageMode,
 
     RV =
         case IsStorageModeMigration of
             false ->
-                update_bucket_props(
-                  BucketName, Props1, MaybeDeleteCasKey);
+                update_bucket_props_with_predicate(
+                    BucketName, Props1, MaybeDeleteCasKey,
+                    SecretIdCheckPredicate, [], #{});
             true ->
                 %% Reject storage migration if servers haven't been
                 %% populated yet (This is extremely unlikely to happen,
@@ -1478,7 +1511,7 @@ update_bucket_props_inner(Type, OldStorageMode, BucketName, Props) ->
                             case collections:history_retention_enabled(
                                    BucketName, Snapshot) of
                                 false ->
-                                    ok;
+                                    SecretIdCheckPredicate(Snapshot);
                                 true ->
                                     {error,
                                      {storage_mode_migration,
@@ -1813,6 +1846,7 @@ update_buckets_config(BucketsUpdates, Predicate, SubKeys, Opts) ->
     RV =
         chronicle_kv:transaction(
           kv,
+          [?CHRONICLE_SECRETS_KEY] ++
           [sub_key(BucketName, SubKey) ||
            {BucketName, _} <- BucketsUpdates, SubKey <- [props | SubKeys]],
           fun (Snapshot) ->
@@ -2320,7 +2354,10 @@ extract_bucket_props(Props) ->
                          history_retention_seconds, history_retention_bytes,
                          magma_key_tree_data_blocksize,
                          magma_seq_tree_data_blocksize,
-                         history_retention_collection_default, rank]],
+                         history_retention_collection_default, rank,
+                         encryption_secret_id,
+                         encryption_dek_rotation_interval,
+                         encryption_dek_rotation]],
           X =/= false].
 
 build_threshold({Percentage, Size}) ->
@@ -2408,6 +2445,17 @@ remove_bucket(BucketName) ->
             {ok, BucketConfig};
         Other ->
             Other
+    end.
+
+encryption_secret_conflict(BucketConfig, Snapshot) ->
+    case proplists:get_value(encryption_secret_id, BucketConfig,
+                             ?SECRET_ID_NOT_SET) of
+        ?SECRET_ID_NOT_SET -> false;
+        SecretId ->
+            case cb_cluster_secrets:get_secret(SecretId, Snapshot) of
+                {ok, _} -> false;
+                {error, not_found} -> true
+            end
     end.
 
 -ifdef(TEST).
