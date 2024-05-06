@@ -570,7 +570,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, logs], read}, fun diag_handler:handle_sasl_logs/2, [LogName]};
                 ["images" | _] ->
                     {ui, IsSSL, fun handle_serve_file/4, [AppRoot, Path, 30000000]};
-                ["couchBase" | _] -> {no_check,
+                ["couchBase" | _] -> {no_check_disallow_anonymous,
                                       fun menelaus_pluggable_ui:proxy_req/4,
                                       ["couchBase",
                                        drop_prefix(mochiweb_request:get(raw_path, Req)),
@@ -606,7 +606,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 [?PLUGGABLE_UI, "ui" | _] ->
                     {ui, IsSSL, fun handle_serve_file/4, [AppRoot, Path, 10]};
                 [?PLUGGABLE_UI, RestPrefix | _] ->
-                    {no_check,
+                    {no_check_disallow_anonymous,
                      fun (PReq) ->
                              menelaus_pluggable_ui:proxy_req(
                                RestPrefix,
@@ -1015,7 +1015,8 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["diag", "eval"] ->
                     {{[admin, diag], write}, fun diag_handler:handle_diag_eval/1};
                 ["couchBase" | _] ->
-                    {no_check, fun menelaus_pluggable_ui:proxy_req/4,
+                    {no_check_disallow_anonymous,
+                     fun menelaus_pluggable_ui:proxy_req/4,
                      ["couchBase",
                       drop_prefix(mochiweb_request:get(raw_path, Req)),
                       Plugins]};
@@ -1025,7 +1026,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {local,
                      fun menelaus_web_node:handle_export_chronicle_snapshot/1};
                 [?PLUGGABLE_UI, RestPrefix | _] ->
-                    {no_check,
+                    {no_check_disallow_anonymous,
                      fun (PReq) ->
                              menelaus_pluggable_ui:proxy_req(
                                RestPrefix,
@@ -1105,7 +1106,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "saml"] ->
                     {{[admin, security, external], write},
                      fun menelaus_web_saml:handle_delete_settings/1};
-                ["couchBase" | _] -> {no_check,
+                ["couchBase" | _] -> {no_check_disallow_anonymous,
                                       fun menelaus_pluggable_ui:proxy_req/4,
                                       ["couchBase",
                                        drop_prefix(mochiweb_request:get(raw_path, Req)),
@@ -1117,7 +1118,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["_metakv" | _] ->
                     {{[admin, metakv], all}, fun menelaus_metakv:handle_delete/2, [Path]};
                 [?PLUGGABLE_UI, RestPrefix | _] ->
-                    {no_check,
+                    {no_check_disallow_anonymous,
                      fun (PReq) ->
                              menelaus_pluggable_ui:proxy_req(
                                RestPrefix,
@@ -1161,7 +1162,8 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[{collection, [Id, any, any]}, collections], write},
                      fun menelaus_web_collections:handle_set_manifest/2, [Id]};
                 ["couchBase" | _] ->
-                    {no_check, fun menelaus_pluggable_ui:proxy_req/4,
+                    {no_check_disallow_anonymous,
+                     fun menelaus_pluggable_ui:proxy_req/4,
                      ["couchBase",
                       drop_prefix(mochiweb_request:get(raw_path, Req)),
                       Plugins]};
@@ -1171,7 +1173,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["_metakv" | _] ->
                     {{[admin, metakv], all}, fun menelaus_metakv:handle_put/2, [Path]};
                 [?PLUGGABLE_UI, RestPrefix | _] ->
-                    {no_check,
+                    {no_check_disallow_anonymous,
                      fun (PReq) ->
                              menelaus_pluggable_ui:proxy_req(
                                RestPrefix,
