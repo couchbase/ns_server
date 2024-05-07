@@ -12,10 +12,6 @@
 -include_lib("ns_common/include/cut.hrl").
 -include("ns_common.hrl").
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
-
 -export([handle_settings_get/1,
          handle_settings_post/1,
          handle_settings_reset_count/1,
@@ -352,18 +348,3 @@ config_upgrade_to_72(Config) ->
       auto_failover:get_cfg(Config) ++
           [{?FAILOVER_PRESERVE_DURABILITY_MAJORITY_CONFIG_KEY,
             ?FAILOVER_PRESERVE_DURABILITY_MAJORITY_DEFAULT}]}].
-
--ifdef(TEST).
-dont_flipflop_can_abort_rebalance_test() ->
-    meck:new(cluster_compat_mode),
-    meck:expect(cluster_compat_mode, is_enterprise, fun () -> true end),
-    BaseConfig = [{?DATA_DISK_ISSUES_CONFIG_KEY, [{enabled, true},
-                                                  {timePeriod, 666}]}],
-    Out = disable_disk_failover(BaseConfig),
-    Result = [{?DATA_DISK_ISSUES_CONFIG_KEY,
-               [{enabled, false}, {timePeriod, 666}]}],
-    ?assertEqual(Out, Result),
-    Config1 = [{?CAN_ABORT_REBALANCE_CONFIG_KEY, true} | BaseConfig],
-    Out2 = disable_disk_failover(Config1),
-    ?assertEqual(Out2, Result).
--endif.

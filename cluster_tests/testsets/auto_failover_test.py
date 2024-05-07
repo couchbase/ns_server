@@ -301,8 +301,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
 
     def validate_settings(self, testData, errors):
         # Get new settings to check whether the requested settings were applied.
-        resp = testlib.get(self.cluster, self.endpoint)
-        assert resp.status_code == 200
+        resp = testlib.get_succ(self.cluster, self.endpoint)
 
         delta = {}
         if not errors:
@@ -463,6 +462,79 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
         self.test_body(good=False)
         assert(self.good_count == 0)
 
+    def disable_failover(self):
+        # Init with non-default values for all params to make sure user
+        # settings are retained, even if auto-failover is disabled later
+        testData = {
+            'enabled': 'true',
+            'timeout': 60,
+            'disableMaxCount': 'false',
+            'maxCount': 3,
+            'failoverOnDataDiskIssues[enabled]': 'true',
+            'failoverOnDataDiskIssues[timePeriod]': 30,
+            'canAbortRebalance': 'true',
+            'failoverPreserveDurabilityMajority': 'true',
+            'allowFailoverEphemeralNoReplicas': 'true'
+        }
+
+        def verify_settings_match(baseline, response, excluded):
+            for key in self.result_keys:
+                if key not in excluded:
+                    assert response[key] == baseline[key]
+
+        testlib.post_succ(self.cluster, self.endpoint, data=testData)
+        baseline = self.get_delta_from_form_data(testData)
+        resp = testlib.get_succ(self.cluster, self.endpoint).json()
+        verify_settings_match(baseline, resp, {})
+        previous = resp
+
+        # Disabling auto-failover sets 'failoverOnDataDiskIssues[enabled]'
+        # to false and retains all other settings.
+        testData = { 'enabled': 'false' }
+        testlib.post_succ(self.cluster, self.endpoint, data=testData)
+
+        resp = testlib.get_succ(self.cluster, self.endpoint).json()
+        exclude = ['enabled', 'failoverOnDataDiskIssues']
+        verify_settings_match(previous, resp, exclude)
+
+        assert not resp['enabled']
+        assert not resp['failoverOnDataDiskIssues']['enabled']
+        assert resp['failoverOnDataDiskIssues']['timePeriod'] == \
+            previous['failoverOnDataDiskIssues']['timePeriod']
+        previous = resp
+
+        # A disable auto-failover request ignores any additional settings.
+        # Set 'disableMaxCount' but not maxCount.
+        testData = {
+            'enabled': 'false',
+            'disableMaxCount': 'true',
+            'timeout': 30,
+            'failoverOnDataDiskIssues[enabled]': 'true',
+            'failoverOnDataDiskIssues[timePeriod]': 40,
+            'canAbortRebalance': 'false',
+            'failoverPreserveDurabilityMajority': 'false'
+        }
+
+        testlib.post_succ(self.cluster, self.endpoint, data=testData)
+        resp = testlib.get_succ(self.cluster, self.endpoint).json()
+        verify_settings_match(previous, resp, {})
+
+        # A disable auto-failover request ignores any additional settings.
+        # Set maxCount but not 'disableMaxCount'.
+        testData = {
+            'enabled': 'false',
+            'maxCount': 5,
+            'timeout': 30,
+            'failoverOnDataDiskIssues[enabled]': 'true',
+            'failoverOnDataDiskIssues[timePeriod]': 40,
+            'canAbortRebalance': 'false',
+            'failoverPreserveDurabilityMajority': 'false'
+        }
+
+        testlib.post_succ(self.cluster, self.endpoint, data=testData)
+        resp = testlib.get_succ(self.cluster, self.endpoint).json()
+        verify_settings_match(previous, resp, {})
+
 class OnPremAutoFailoverSettingsTest(AutoFailoverSettingsTestBase):
     @staticmethod
     def requirements():
@@ -470,6 +542,8 @@ class OnPremAutoFailoverSettingsTest(AutoFailoverSettingsTestBase):
 
     def server_test(self):
         self.run_combinations()
+        if self.is_76 and self.is_enterprise:
+            self.disable_failover()
 
 class ServerlessAutoFailoverSettingsTest(AutoFailoverSettingsTestBase):
     @staticmethod
@@ -478,3 +552,6 @@ class ServerlessAutoFailoverSettingsTest(AutoFailoverSettingsTestBase):
 
     def server_test(self):
         self.run_combinations()
+        if self.is_76 and self.is_enterprise:
+            self.disable_failover()
+
