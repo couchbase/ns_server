@@ -182,10 +182,9 @@ should_preserve_durability_majority(Config) ->
 %% failover_ephemeral_no_replicas was introduced in 7.6.2 as a hidden setting:
 %% diag/eval "ns_config:set(failover_ephemeral_no_replicas, true)".
 hidden_failover_ephemeral_setting() ->
-    DefaultSetting = config_profile:get_bool(failover_ephemeral_no_replicas),
     case ns_config:read_key_fast(failover_ephemeral_no_replicas, undefined) of
         X when is_boolean(X) -> X;
-        _ -> DefaultSetting
+        _ -> false
     end.
 
 allow_failover_ephemeral_no_replicas() ->
