@@ -172,6 +172,8 @@ orchestrate(Nodes, Options) when Nodes =/= [] ->
     ale:info(?USER_LOGGER, "Starting failing over ~p", [Nodes]),
     master_activity_events:note_failover(Nodes),
 
+    ok = testconditions:check_test_condition(failover_start),
+
     Res =
         case config_sync_and_orchestrate(Nodes, Options) of
             {done, ErrorNodes, UnsafeNodes} ->
@@ -453,8 +455,8 @@ handle_buckets_failover(Nodes, PrepResults) ->
 
     lists:map(
       fun ({Bucket, _}) ->
-              ok = check_test_condition(
-                     {fail_finalize_failover_at_bucket, Bucket})
+              ok = testconditions:check_test_condition(
+                  {fail_finalize_failover_at_bucket, Bucket})
       end, PrepResults),
 
     Results.
@@ -1020,17 +1022,6 @@ get_failover_vbuckets(Node) ->
 get_failover_vbuckets(Snapshot, Node) ->
     chronicle_compat:get(Snapshot, {node, Node, failover_vbuckets},
                          #{default => []}).
-
-check_test_condition({Step, Bucket}) ->
-    case testconditions:get({Step, Bucket}) of
-        fail ->
-            ?log_debug("Failing at step: ~p, Bucket: ~p due to test condition",
-                       [Step, Bucket]),
-            testconditions:delete({Step, Bucket}),
-            fail_by_test_condition;
-        _ ->
-            ok
-    end.
 
 -ifdef(TEST).
 

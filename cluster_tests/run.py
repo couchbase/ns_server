@@ -14,7 +14,6 @@ import sys
 import getopt
 import shutil
 import inspect
-import atexit
 from datetime import datetime, timezone
 from math import floor
 
@@ -148,11 +147,6 @@ def remove_temp_cluster_directories():
         shutil.rmtree(dir)
 
 
-def kill_nodes(processes, urls, terminal_attrs):
-    with testlib.no_output("kill nodes"):
-        cluster_run_lib.kill_nodes(processes, terminal_attrs, urls)
-
-
 def main():
     # we use assert statements in tests, so make sure they are not disabled
     if not __debug__:
@@ -182,7 +176,6 @@ def main():
     start_port = cluster_run_lib.base_api_port
     tests = None
     keep_tmp_dirs = False
-    intercept_output = True
     seed = testlib.random_str(16)
     reuse_clusters = True
     randomize_clusters = False
@@ -223,7 +216,7 @@ def main():
         elif o in ('--keep-tmp-dirs', '-k'):
             keep_tmp_dirs = True
         elif o in ('--dont-intercept-output', '-o'):
-            intercept_output = False
+            testlib.config['intercept_output'] = False
         elif o in ('--seed', '-s'):
             seed = a
         elif o == '--colors':
@@ -329,14 +322,13 @@ def main():
                                                       (username, password),
                                                       configuration,
                                                       tmp_cluster_dir,
-                                                      kill_nodes,
                                                       reuse_clusters,
                                                       start_index)
         testset_start_ts = time.time_ns()
         # Run the testsets on the cluster
-        tests_executed, testset_errors, testset_not_ran, log_collection_time = \
+        tests_executed, testset_errors, testset_not_ran, log_collection_time,\
+            cluster = \
             run_testsets(cluster, testsets, total_num,
-                         intercept_output=intercept_output,
                          seed=seed,
                          stop_after_first_error=stop_after_first_error,
                          collect_logs=collect_logs)
@@ -405,8 +397,6 @@ def main():
         # need to keep around data from successful tests
         cluster.teardown()
         remove_temp_cluster_directories()
-        # Unregister the kill nodes atexit handler as the nodes are now down
-        atexit.unregister(kill_nodes)
 
 
 # If there are core files, the tests may have passed but something went wrong in
@@ -569,8 +559,7 @@ def get_existing_cluster(address, start_port, auth, num_nodes):
 
 # Run each testset on the same cluster, counting how many individual tests were
 # ran, and keeping track of all errors
-def run_testsets(cluster, testsets, total_num,
-                 intercept_output=True, seed=None,
+def run_testsets(cluster, testsets, total_num, seed=None,
                  stop_after_first_error=False, collect_logs=False):
     executed = 0
     errors = {}
@@ -618,12 +607,12 @@ def run_testsets(cluster, testsets, total_num,
         try:
             res = testlib.run_testset(
                 testset, cluster, total_num,
-                intercept_output=intercept_output,
                 seed=seed,
                 stop_after_first_error=stop_after_first_error)
             executed += res[0]
             testset_errors = res[1]
             not_ran += res[2]
+            cluster = res[3]
         # We use a catch-all here because if we hit any errors while running
         # a testset, but not in a test, then it is likely an issue with the
         # cluster, so we should keep running more tests
@@ -681,7 +670,7 @@ def run_testsets(cluster, testsets, total_num,
                 print(f"Collected logs for {node.url}: {path}")
 
         log_collection_time += (time.time_ns() - collect_start_time)
-    return executed, errors, not_ran, log_collection_time
+    return executed, errors, not_ran, log_collection_time, cluster
 
 
 if __name__ == '__main__':

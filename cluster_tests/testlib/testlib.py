@@ -31,7 +31,8 @@ def support_colors():
 config={'colors': support_colors(),
         'verbose': False,
         'screen_width': 80,
-        'dry_run': False}
+        'dry_run': False,
+        'intercept_output':True}
 
 
 def try_reuse_cluster(requirements, cluster):
@@ -54,7 +55,7 @@ def try_reuse_cluster(requirements, cluster):
 
 
 def get_appropriate_cluster(cluster, auth, requirements,
-                            tmp_cluster_dir, kill_nodes, reuse_clusters,
+                            tmp_cluster_dir, reuse_clusters,
                             first_node_index):
     cluster_index = 0
     if cluster is not None:
@@ -65,9 +66,6 @@ def get_appropriate_cluster(cluster, auth, requirements,
 
         # Teardown the old cluster
         cluster.teardown()
-        # We no longer need to kill these nodes. A new atexit function will
-        # be registered in requirements.create_cluster
-        atexit.unregister(kill_nodes)
 
         cluster_index = cluster.index + 1
         print()
@@ -77,14 +75,14 @@ def get_appropriate_cluster(cluster, auth, requirements,
           f"{requirements}")
     cluster = requirements.create_cluster(auth, cluster_index,
                                           tmp_cluster_dir,
-                                          kill_nodes, first_node_index)
+                                          first_node_index)
     maybe_print("\n======================================="
                 "=========================================\n")
     return cluster
 
 
-def run_testset(testset, cluster, total_testsets_num,
-                intercept_output=True, seed=None, stop_after_first_error=False):
+def run_testset(testset, cluster, total_testsets_num, seed=None,
+                stop_after_first_error=False):
     errors = []
     not_ran = []
     executed = 0
@@ -101,7 +99,6 @@ def run_testset(testset, cluster, total_testsets_num,
     teardown_seed = apply_with_seed(random, 'randbytes', [16], testset_seed)
 
     _, err = safe_test_function_call(testset_instance, 'setup', [], 0,
-                                     intercept_output=intercept_output,
                                      seed=testset_seed)
 
     if err is not None:
@@ -125,14 +122,15 @@ def run_testset(testset, cluster, total_testsets_num,
                              f'starting test {test} from {testset["name"]}')
             _, err = safe_test_function_call(testset_instance, test,
                                              [], testiter, verbose=True,
-                                             intercept_output=intercept_output,
                                              seed=test_seed)
+
+            cluster = testset_instance.cluster
+
             if err is not None:
                 errors.append(err)
 
             _, err = safe_test_function_call(testset_instance, 'test_teardown',
                                              [], testiter,
-                                             intercept_output=intercept_output,
                                              seed=test_teardown_seed)
             if err is not None:
                 errors.append(err)
@@ -155,12 +153,11 @@ def run_testset(testset, cluster, total_testsets_num,
     finally:
         _, err = safe_test_function_call(testset_instance, 'teardown',
                                          [], 0,
-                                         intercept_output=intercept_output,
                                          seed=teardown_seed)
         if err is not None:
             errors.append(err)
 
-    return executed, errors, not_ran
+    return executed, errors, not_ran, cluster
 
 
 def test_name(testset, testname, testiter):
@@ -173,8 +170,7 @@ def test_name(testset, testname, testiter):
 
 
 def safe_test_function_call(testset, testfunction, args, testiter,
-                            verbose=False, intercept_output=True, seed=None,
-                            dry_run=None):
+                            verbose=False, seed=None, dry_run=None):
     if dry_run is None:
         dry_run = config['dry_run']
     res = None
@@ -182,10 +178,10 @@ def safe_test_function_call(testset, testfunction, args, testiter,
     testname = test_name(testset, testfunction, testiter)
 
     report_call = call_reported(testname, verbose=verbose,
-                                res_on_same_line=intercept_output)
+                                res_on_same_line=config['intercept_output'])
     try:
         with no_output(testname, extra_context=report_call,
-                       verbose=not intercept_output):
+                       verbose=not config['intercept_output']):
             if not dry_run:
                 res = apply_with_seed(testset, testfunction, args, seed)
     except Exception as e:
