@@ -67,6 +67,7 @@ from testsets import \
     settings_managers_tests, \
     users_tests, \
     web_settings_tests, \
+    native_encryption_tests, \
     rest_eject_test, \
     node_remap_tests, \
     services_topology_tests, \
