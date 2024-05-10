@@ -617,8 +617,18 @@ func (s *encryptionService) cmdClearBackupKey(ref []byte) {
 		replyError("Key ref mismatch")
 		return
 	}
+	ctx := &storedKeysCtx{
+		storedKeyConfigs:           s.config.StoredKeyConfigs,
+		encryptionServiceKey:       s.encryptionKeys.getSecret().key,
+		backupEncryptionServiceKey: s.encryptionKeys.getSecret().backupKey,
+	}
+	err := reencryptStoredKeys(ctx)
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
 	key := s.encryptionKeys.getSecret().key
-	err := saveKeys(s.encryptionKeys, key, nil)
+	err = saveKeys(s.encryptionKeys, key, nil)
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -1395,6 +1405,66 @@ func readKeyRaw(keySettings *storedKeyConfig, keyName string) (storedKeyIface, e
 
 func storedKeyPath(keySettings *storedKeyConfig, keyName string) string {
 	return filepath.Join(keySettings.Path, keyName)
+}
+
+// Reencrypt keys that use secret management (SM) encryption key
+// Needed for SM data key rotation
+func reencryptStoredKeys(ctx *storedKeysCtx) error {
+	for _, cfg := range ctx.storedKeyConfigs {
+		if cfg.KeyKind != "kek" {
+			continue
+		}
+		files, dirReadErr := os.ReadDir(cfg.Path)
+		log_dbg("Will check if the following keys need reencryption: %v", files)
+		if dirReadErr != nil {
+			if os.IsNotExist(dirReadErr) {
+				return nil
+			}
+		}
+		errorsCounter := 0
+		// Even in case of an error ReadDir can return files
+		// Reencrypt everything we can
+		if files != nil {
+			for _, file := range files {
+				keyName := file.Name()
+				log_dbg("Maybe reencrypting key \"%s\"...", keyName)
+				keyIface, err := readKeyRaw(&cfg, keyName)
+				if err != nil {
+					log_dbg(err.Error())
+					errorsCounter++
+					continue
+				}
+				if !keyIface.usesSecretManagementKey() {
+					log_dbg("Skipping \"%s\", because it is not using secret management service", keyName)
+				}
+				err = keyIface.decryptMe(ctx)
+				if err != nil {
+					log_dbg(err.Error())
+					errorsCounter++
+					continue
+				}
+				err = keyIface.encryptMe(ctx)
+				if err != nil {
+					log_dbg(err.Error())
+					errorsCounter++
+					continue
+				}
+				err = writeKeyToDisk(keyIface, &cfg)
+				if err != nil {
+					log_dbg(err.Error())
+					errorsCounter++
+					continue
+				}
+			}
+		}
+		if dirReadErr != nil {
+			return errors.New(fmt.Sprintf("Could not reencrypt keys because could not read dir \"%s\": %s", cfg.Path, dirReadErr.Error()))
+		}
+		if errorsCounter > 0 {
+			return errors.New(fmt.Sprintf("Could not reencrypt some keys in \"%s\"", cfg.Path))
+		}
+	}
+	return nil
 }
 
 // Implementation of storedKeyIface for raw keys
