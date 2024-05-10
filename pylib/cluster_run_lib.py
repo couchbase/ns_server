@@ -60,7 +60,7 @@ def read_configuration():
 config = read_configuration()
 PREFIX = config['prefix']
 
-valid_bucket_types = ["ephemeral", "membase", "memcached"]
+valid_bucket_types = ["ephemeral", "membase", "couchbase", "memcached"]
 valid_service_types = {"kv", "n1ql", "index", "fts", "cbas", "eventing",
         "backup", "none"}
 
