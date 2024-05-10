@@ -320,8 +320,15 @@ INSTALL(FILES
         pylib/installed_script_helpers.py
         scripts/node_remap.py
         DESTINATION lib/python)
+
+INSTALL(FILES
+        pylib/gosecrets_client_lib.py
+        DESTINATION lib/python)
+
 PyWrapper (SCRIPTS cbcollect_info)
 PyWrapper (SCRIPTS scripts/node_remap)
+PyWrapper (SCRIPTS scripts/dump-keys)
+PyWrapper (SCRIPTS scripts/dump-bucket-deks)
 
 INSTALL (PROGRAMS cbbrowse_logs DESTINATION bin)
 INSTALL (PROGRAMS scripts/cbdump-config scripts/dump-guts DESTINATION bin)

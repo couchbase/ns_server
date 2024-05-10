@@ -181,6 +181,16 @@ type storedKeysCtx struct {
 	backupEncryptionServiceKey []byte
 }
 
+type readKeyReply struct {
+	Type string          `json:"type"`
+	Info json.RawMessage `json:"info"`
+}
+
+type readKeyAesKeyResponse struct {
+	Key             string `json:"key"`
+	EncryptionKeyId string `json:"encryptionKeyId"`
+}
+
 func main() {
 	defer func() {
 		if err := recover(); err != nil {
@@ -309,6 +319,8 @@ func (s *encryptionService) processCommand() {
 		s.cmdEncryptWithKey(data)
 	case 14:
 		s.cmdDecryptWithKey(data)
+	case 15:
+		s.cmdReadKey(data)
 	default:
 		panic(fmt.Sprintf("Unknown command %v", command))
 	}
@@ -784,6 +796,58 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 	}
 
 	replySuccess()
+}
+
+func (s *encryptionService) cmdReadKey(data []byte) {
+	keyKind, data := readBigField(data)
+	keyName, data := readBigField(data)
+	keyKindStr := string(keyKind)
+	keyNameStr := string(keyName)
+	keySettings, err := getStoredKeyConfig(keyKindStr, s.config.StoredKeyConfigs)
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
+	keyIface, err := readKeyRaw(keySettings, keyNameStr)
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
+	ctx := &storedKeysCtx{
+		storedKeyConfigs:           s.config.StoredKeyConfigs,
+		encryptionServiceKey:       s.encryptionKeys.getSecret().key,
+		backupEncryptionServiceKey: s.encryptionKeys.getSecret().backupKey,
+	}
+	err = keyIface.decryptMe(ctx)
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
+	rawKey, ok := keyIface.(*rawAesGcmStoredKey)
+	if !ok {
+		replyError("key type not supported")
+		return
+	}
+	keyBase64 := base64.StdEncoding.EncodeToString(rawKey.DecryptedKey)
+	keyToMarshal := readKeyAesKeyResponse{
+		Key:             keyBase64,
+		EncryptionKeyId: rawKey.EncryptionKeyName,
+	}
+	keyJson, err := json.Marshal(keyToMarshal)
+	if err != nil {
+		replyError(fmt.Sprintf("failed to marshal key: %s", err.Error()))
+		return
+	}
+	replyToMarshal := readKeyReply{
+		Type: string(rawAESGCMKey),
+		Info: keyJson,
+	}
+	replyJson, err := json.Marshal(replyToMarshal)
+	if err != nil {
+		replyError(fmt.Sprintf("failed to marshal reply: %s", err.Error()))
+		return
+	}
+	replySuccessWithData(replyJson)
 }
 
 func (s *encryptionService) cmdEncryptWithKey(data []byte) {
