@@ -14,10 +14,6 @@ FILE (GLOB ebindirs RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
         #    locations
         _build/test/lib/*/ebin
         _build/test/lib/*/test
-        # 2) Other deps that we need for tests, we need to load the files to
-        #    run our tests. Deps are only compiled in default profile, not test
-        #    profile, hence the difference with the above test profile apps.
-        deps/*/_build/default/lib/*/ebin
      )
 
 STRING (RANDOM LENGTH 16 NODE_NAME_RANDOM)
