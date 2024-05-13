@@ -1,0 +1,59 @@
+%% 1) We are going to set the base_dir to the build directory first
+BaseDir = case os:getenv("REBAR_BUILD_DIR") of
+              false -> [];
+              [] -> [];
+              BuildDir ->
+                  [{base_dir, BuildDir}]
+          end,
+
+Config0 = lists:keymerge(1, BaseDir, lists:keysort(1, CONFIG)),
+
+%% 2) Now we need to handle the chronicle overrides. We need to:
+%%    a) Add a base_dir override such that chronicle_dump will build in the
+%%       same location - why rebar doesn't just do this for escripts in deps
+%%       is beyond me.
+%%    b) Add an artifacts override such that we will check for chronicle_dump
+%%       in the build directory.
+OldOverrides = case lists:keyfind(overrides, 1, Config0) of
+                   false -> [];
+                   {overrides, O} ->
+                       O
+               end,
+
+ChronicleDumpArtifactPath =
+case BaseDir of
+    [] -> [];
+    [{base_dir, Dir}] -> filename:join(Dir, "default/bin/chronicle_dump")
+end,
+
+OldChronicleOverrides = case lists:keyfind(chronicle, 2, OldOverrides) of
+                            false -> [];
+                            {override, chronicle, CO} ->
+                                CO
+                        end,
+
+OldChronicleArtifacts =
+case lists:keyfind(artifacts, 1, OldChronicleOverrides) of
+    false -> [];
+    {artifacts, AO} ->
+        AO
+end,
+
+NewChronicleArtifacts = [ChronicleDumpArtifactPath] ++ OldChronicleArtifacts,
+NewChronicleArtifactsOverride = {artifacts, NewChronicleArtifacts},
+
+ChronicleOverrides0 = lists:keystore(artifacts,
+                                     1,
+                                     OldChronicleOverrides,
+                                     NewChronicleArtifactsOverride),
+
+ChronicleOverrides1 = lists:keymerge(1,
+                                     BaseDir,
+                                     lists:keysort(1, ChronicleOverrides0)),
+
+NewOverrides = lists:keystore(chronicle,
+                              2,
+                              OldOverrides,
+                              {override, chronicle, ChronicleOverrides1}),
+
+Config1 = lists:keystore(overrides, 1, Config0, {overrides, NewOverrides}).

@@ -218,8 +218,10 @@ get_modules(Filter) ->
                 %% eunit is smart enough to only run each module once though so
                 %% we aren't repeating any effort, we just "discover" the module
                 %% multiple times.
-                filename:join(["**", "_build/test/lib/**/**",
-                    Wildcard]) ++ Ext
+                RebarBuildDir = os:getenv("REBAR_BUILD_DIR"),
+                filename:join([RebarBuildDir,
+                               "test/lib/**/**",
+                               Wildcard]) ++ Ext
         end,
 
     Files = filelib:wildcard(FullWildcard, config(root_dir)),

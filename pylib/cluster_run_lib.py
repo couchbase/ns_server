@@ -44,7 +44,15 @@ default_idx_storage_mode_ce = "forestdb"
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 ns_server_dir = os.path.dirname(script_dir)
-configpath = os.path.join(ns_server_dir, "build", "cluster_run.configuration")
+# TODO: It would be good for this to be configurable
+# We use the default build directory for the configuration file, but it might
+# not be there if we are using some custom build directory.
+configpath = os.path.join(ns_server_dir, "..", "build", "ns_server",
+                          "cluster_run.configuration")
+
+ns_server_build_dir = os.path.join(ns_server_dir, "..", "build", "ns_server")
+rebar_build_dir = os.path.join(ns_server_build_dir, "_build")
+rebar_default_profile_build_dir = os.path.join(rebar_build_dir, "default")
 
 NUM_SERVERLESS_GROUPS = 3
 
@@ -87,7 +95,7 @@ def setup_extra_ns_server_app_file(force_community, start_index):
 
     if force_community:
         found_enterprise = False
-        with open(f"{ns_server_dir}/_build/default/lib/ns_server/ebin/"
+        with open(f"{rebar_default_profile_build_dir}/lib/ns_server/ebin/"
                   f"ns_server.app", "r") as src_f:
             lines = src_f.readlines()
 
@@ -125,7 +133,7 @@ def setup_path(ns_server_app_path):
 
         return ebins
 
-    path = ebin_search(f'{ns_server_dir}/_build/default/')
+    path = ebin_search(rebar_default_profile_build_dir)
 
     if ns_server_app_path is not None:
         # The ns_server_app_path needs to be first in the path. We remove
@@ -595,7 +603,7 @@ def start_code_watchdog(num_nodes, start_index):
                 except Exception as e:
                     print(f"*** reload failed for {module_name} on {node}: {e}")
 
-    code_path = os.path.join(ns_server_dir, '_build', 'default', 'lib')
+    code_path = os.path.join(rebar_default_profile_build_dir, 'lib')
     print(f"*** Starting code watchdog for {code_path}")
     # Create a watchdog observer
     observer = Observer()

@@ -12,8 +12,8 @@ FILE (GLOB ebindirs RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
         # 1) Any test profile beam files (needs to cover both ebin and test,
         #    depending on the configuration we are likely to have files in both
         #    locations
-        _build/test/lib/*/ebin
-        _build/test/lib/*/test
+        ${REBAR_BUILD_DIR}/test/lib/*/ebin
+        ${REBAR_BUILD_DIR}/test/lib/*/test
      )
 
 STRING (RANDOM LENGTH 16 NODE_NAME_RANDOM)
@@ -44,6 +44,7 @@ SET(TEST_COMMAND "${ERL_EXECUTABLE}"
         -pa "${COUCHDB_BIN_DIR}/ejson/ebin"
         -pa "${COUCHDB_BIN_DIR}/couch_index_merger/ebin"
         -env OVERRIDE_EXECUTABLE_PATHS ${OVERRIDE_EXECUTABLE_PATHS}
+        -env REBAR_BUILD_DIR ${REBAR_BUILD_DIR}
         -noshell
         -kernel logger "[{handler, default, undefined}]"
         -shutdown_time 10000

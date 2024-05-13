@@ -19,7 +19,6 @@ import argparse
 currentdir = os.path.dirname(os.path.realpath(__file__))
 pylib = os.path.join(currentdir, "pylib")
 sys.path.append(pylib)
-
 import cluster_run_lib
 
 LOGLEVELS = ["debug", "info", "warn", "error", "critical"]
