@@ -52,7 +52,8 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
                 testlib.ClusterRequirements(edition="Enterprise",
                                             num_nodes=2,
                                             services=list(testlib.Service),
-                                            memsize=1024),
+                                            memsize=1024,
+                                            balanced=True),
                 # Test with a single node. The hostname mapping is slightly
                 # different.
                 testlib.ClusterRequirements(edition="Enterprise",

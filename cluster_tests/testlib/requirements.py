@@ -27,7 +27,7 @@ class ClusterRequirements:
                  memsize=None, min_memsize=None, num_connected=None,
                  min_num_connected=None, afamily=None, services=None,
                  master_password_state=None, num_vbuckets=None,
-                 encryption=None):
+                 encryption=None, balanced=None):
 
         def maybe(ReqClass, *args):
             if all(x is None for x in args):
@@ -46,7 +46,8 @@ class ClusterRequirements:
                 'master_password_state': maybe(MasterPasswordState,
                                                master_password_state),
                 'num_vbuckets': maybe(NumVbuckets, num_vbuckets),
-                'encryption': maybe(N2nEncryption, encryption)
+                'encryption': maybe(N2nEncryption, encryption),
+                'balanced': maybe(Balanced, balanced)
             }
 
     def __str__(self):
@@ -96,7 +97,10 @@ class ClusterRequirements:
                 # test sets creating a bucket if needed in setup, and eventually
                 # with an explicit cluster requirement, to offload bucket
                 # creation and teardown to the test framework
-                'create_bucket': False
+                'create_bucket': False,
+                # Not every testset needs a balanced cluster. Those that do
+                # should specify the balanced=True requirement to override this
+                'do_rebalance': False
                }
 
     def as_list(self):
@@ -196,7 +200,8 @@ class ClusterRequirements:
                             ('services', Services),
                             ('master_password_state', MasterPasswordState),
                             ('num_vbuckets', NumVbuckets),
-                            ('encryption', N2nEncryption)]
+                            ('encryption', N2nEncryption),
+                            ('balanced', Balanced)]
         for req_name, req_class in generation_order:
             if self.requirements[req_name] is None:
                 new_req = req_class.random(req_dict)
@@ -391,13 +396,6 @@ class NumNodes(Requirement):
         self.connect_args = \
             {'num_nodes': self.num_connected if self.num_connected is not None
                                              else self.min_num_nodes}
-
-        if (self.num_connected is not None and self.num_connected > 1) or \
-           (self.min_num_connected is not None and self.min_num_connected > 1):
-            self.connect_args.update({'do_rebalance': True,
-                                      'do_wait_for_rebalance': True})
-        else:
-            self.connect_args.update({'do_rebalance': False})
 
 
     def is_met(self, cluster):
@@ -645,6 +643,39 @@ class N2nEncryption(Requirement):
         else:
             encryption = random.choice([True, False])
         return N2nEncryption(encryption)
+
+
+class Balanced(Requirement):
+    def __init__(self, balanced):
+        if not balanced:
+            # It doesn't make sense to require an unbalanced cluster, as this
+            # tells us nothing about the way in which the cluster is unbalanced.
+            # We could extend this requirement to support requiring unbalanced,
+            # at a later date, if a use-case arises.
+            raise ValueError("balanced must be None or True")
+        super().__init__(balanced=True)
+        self.connect_args = {'do_rebalance': True,
+                             'do_wait_for_rebalance': True}
+
+    def is_met(self, cluster):
+        for n in cluster.connected_nodes:
+            r = testlib.get(n, '/pools/default')
+            if r.status_code != 200:
+                return False
+            data = r.json()
+            if not data['balanced']:
+                return False
+        return True
+
+    def can_be_met(self):
+        return True
+
+    def make_met(self, cluster):
+        cluster.rebalance()
+
+    @staticmethod
+    def random(_req_dict):
+        return Balanced(True)
 
 
 # Intersects two limits where each limit is defined either by exact match,

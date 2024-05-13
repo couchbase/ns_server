@@ -584,7 +584,8 @@ class NodeRemovalStreamingChunked(testlib.BaseTestSet):
     def requirements():
         return [ClusterRequirements(edition="Enterprise",
                                     min_num_nodes=2, num_connected=2,
-                                    services=[Service.KV, Service.CBAS])]
+                                    services=[Service.KV, Service.CBAS],
+                                    balanced=True)]
 
     def basic_node_removal_test(self):
         # listen to the poolStreaming endpoint node A

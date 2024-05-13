@@ -2369,7 +2369,7 @@ class MultiNodeBucketTestSet(BucketTestSetBase):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(num_nodes=4)
+        return testlib.ClusterRequirements(num_nodes=4, balanced=True)
 
     # def replica_number_test(self):
     #     self.test_param("replicaNumber",

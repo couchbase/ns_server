@@ -84,18 +84,37 @@ def build_cluster(auth, cluster_index, start_args, connect, connect_args):
 def get_cluster(cluster_index, start_port, auth, processes, nodes):
     connected_nodes = []
     for i, node in enumerate(nodes):
-        # Check that node is connected to the cluster.
-        pools_default = f"{node.url}/pools/default"
-        try:
-            response = requests.get(pools_default, auth=auth)
-        except requests.exceptions.ConnectionError as e:
-            raise RuntimeError(f"Failed to connect to {pools_default}\n{e}")
-        if response.status_code == 200:
-            connected_nodes.append(node)
-        elif response.status_code != 404:
-            raise RuntimeError(f"Failed to connect to {pools_default} "
-                               f"({response.status_code})\n"
-                               f"{response.text}")
+        pools_default = f"/pools/default"
+
+        def node_up():
+            try:
+                response = testlib.get(node, pools_default, auth=auth)
+            except requests.exceptions.ConnectionError as e:
+                print(f"Failed to connect to {pools_default}\n{e}")
+                # Retry
+                return False
+
+            # Check if node is connected to the cluster.
+            if response.status_code == 200:
+                connected_nodes.append(node)
+                return True
+            # If status code isn't 200, then we expect the node to not yet be
+            # connected, so the node is up if the status is 404
+            elif response.status_code == 404:
+                return True
+            # Otherwise the node is not quite up, so we should retry
+            else:
+                print(testlib.format_http_error(response, [200, 404]))
+                return False
+
+        # There is a race when provisioning a cluster immediately after starting
+        # the node, which can lead to /pools/default getting a server error,
+        # returning status code 500 (see MB-62153), so we must poll for this
+        # endpoint to return an expected status.
+        testlib.poll_for_condition(node_up,
+                                   sleep_time=0.1,
+                                   attempts=10,
+                                   msg=f"connect to {pools_default}")
 
     if len(connected_nodes) == 0:
         raise RuntimeError(f"None of the provided nodes are connected: {nodes}")

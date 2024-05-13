@@ -207,7 +207,8 @@ class BucketMigrationTest(testlib.BaseTestSet):
     def requirements():
         return testlib.ClusterRequirements(edition="Enterprise",
                                            min_num_nodes=4, min_memsize=2*1024,
-                                           num_connected=2)
+                                           num_connected=2,
+                                           balanced=True)
 
     def setup(self):
         testlib.delete_all_buckets(self.cluster)

@@ -19,8 +19,11 @@ class HardResetTests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(num_nodes=2, num_connected=2,
-                                        services=HardResetTests.services_to_run)
+        return testlib.ClusterRequirements(
+            num_nodes=2,
+            num_connected=2,
+            services=HardResetTests.services_to_run,
+            balanced=True)
 
     def setup(self):
         pass

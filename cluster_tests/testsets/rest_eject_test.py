@@ -15,7 +15,7 @@ class RestEjectTest(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(num_nodes=3)
+        return testlib.ClusterRequirements(num_nodes=3, balanced=True)
 
     def setup(self):
         testlib.delete_all_buckets(self.cluster)
