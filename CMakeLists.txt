@@ -302,6 +302,9 @@ INSTALL (DIRECTORY _build/default/lib/ns_common/ebin DESTINATION
 INSTALL (DIRECTORY _build/default/lib/ns_server/ebin DESTINATION
          "${INST_LIBDIR}/ns_server")
 
+INSTALL(FILES
+        pylib/installed_script_helpers.py
+        DESTINATION lib/python)
 PyWrapper (SCRIPTS cbcollect_info)
 
 INSTALL (PROGRAMS cbbrowse_logs DESTINATION bin)
