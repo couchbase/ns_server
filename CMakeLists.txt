@@ -48,6 +48,16 @@ ENDIF (NOT EXISTS "${COUCHDB_SRC_DIR}/src/couchdb/couch_db.hrl")
 
 FILE (WRITE "${PROJECT_BINARY_DIR}/cluster_run.configuration"
   "prefix=\"${CMAKE_INSTALL_PREFIX}\"\n")
+# Create "cluster_run" and "cluster_connect" scripts in the binary
+# directory that use the shipped Python interpreter
+ConfigureWrapper(
+  "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_INSTALL_PREFIX}/lib"
+  "${CBPY_INSTALL}" "${CMAKE_CURRENT_BINARY_DIR}/cluster_run"
+)
+ConfigureWrapper(
+  "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_INSTALL_PREFIX}/lib"
+  "${CBPY_INSTALL}" "${CMAKE_CURRENT_BINARY_DIR}/cluster_connect"
+)
 
 GET_FILENAME_COMPONENT (_couchdb_src "${COUCHDB_SRC_DIR}" REALPATH)
 GET_FILENAME_COMPONENT (_couchdb_bin "${COUCHDB_BIN_DIR}" REALPATH)
