@@ -263,6 +263,6 @@ validators(Config) ->
      validator:integer(rotateSize, 0, 500*1024*1024, _),
      validate_events(disabled, Descriptors, _),
      validate_users(disabledUsers, _),
-     validator:integer(pruneAge, 0, ?MAX_32BIT_UNSIGNED_INT div 60, _),
+     validator:integer(pruneAge, 0, ?MAX_32BIT_SIGNED_INT div 60, _),
      validator:no_duplicates(_),
      validator:unsupported(_)].

@@ -549,7 +549,7 @@ attribute_max(Name) ->
         pitr_granularity -> 18000;                  % 5 hours
         pitr_max_history_age -> 172800;             % 48 hours
         version_pruning_window_hrs ->
-            ?MAX_32BIT_UNSIGNED_INT;                  % unit hours
+            ?MAX_32BIT_SIGNED_INT;                  % unit hours
         expiry_pager_sleep_time ->
             ?MAX_64BIT_UNSIGNED_INT;                  % unit seconds
         warmup_min_memory_threshold -> 100;           % percentage

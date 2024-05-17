@@ -330,12 +330,12 @@ extract_flags(Params) ->
 extract_expiry(Params) ->
     case cluster_compat_mode:is_cluster_76() of
         true ->
-            case parse_int("expiry", Params, 0, ?MAX_32BIT_UNSIGNED_INT, ?NO_EXPIRY) of
+            case parse_int("expiry", Params, 0, ?MAX_32BIT_SIGNED_INT, ?NO_EXPIRY) of
                 {error, _E} ->
                     menelaus_util:web_exception(
                       400,
                       io_lib:format("'expiry' must be a valid positive integer "
-                                    "between 0 and ~p", [?MAX_32BIT_UNSIGNED_INT]));
+                                    "between 0 and ~p", [?MAX_32BIT_SIGNED_INT]));
                 Val ->
                     Val
             end;

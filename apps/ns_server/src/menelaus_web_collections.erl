@@ -134,7 +134,7 @@ collection_modifiable_validators(BucketConfig) ->
      validator:boolean(history, _),
      history_validator(BucketConfig, _),
      validator:integer(maxTTL, collections:get_maxTTL_min_value(),
-                       ?MAX_32BIT_UNSIGNED_INT, _),
+                       ?MAX_32BIT_SIGNED_INT, _),
      validator:valid_in_enterprise_only(maxTTL, _),
      validator:no_duplicates(_)
     ].

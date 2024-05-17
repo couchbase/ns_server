@@ -242,7 +242,7 @@
 -define(DEFAULT_MAX_ROLLBACK_PTS_FORESTDB, 5).
 
 %% common memcached settings are ints which is usually 32-bits wide
--define(MAX_32BIT_UNSIGNED_INT, 16#7FFFFFFF).
+-define(MAX_32BIT_SIGNED_INT, 16#7FFFFFFF).
 
 %% Many memcached bucket parameters use size_t which will almost certainly be a
 %% 64 bit unsigned integer. We should prevent larger values than this being

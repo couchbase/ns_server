@@ -439,7 +439,7 @@ get_max_supported_inner(Type, Max) ->
                                           false) of
                 unlimited ->
                     %% Effectively no limit
-                    ?MAX_32BIT_UNSIGNED_INT;
+                    ?MAX_32BIT_SIGNED_INT;
                 false ->
                     Max
             end
