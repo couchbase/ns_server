@@ -3975,7 +3975,7 @@ basic_bucket_params_screening_t() ->
                      AllBuckets),
     ?assertEqual([{expiryPagerSleepTime,
                    <<"The value of expiryPagerSleepTime (-1) must be in the "
-                     "range 0 to 2147483647 inclusive">>},
+                     "range 0 to 18446744073709551615 inclusive">>},
                   {warmupMinMemoryThreshold,
                    <<"The value of warmupMinMemoryThreshold (1000) must be "
                      "in the range 0 to 100 inclusive">>},
@@ -3984,10 +3984,10 @@ basic_bucket_params_screening_t() ->
                      "the range 0 to 100 inclusive">>},
                   {memoryLowWatermark,
                    <<"The value of memoryLowWatermark (-888) must be in the "
-                     "range 0 to 2147483647 inclusive">>},
+                     "range 0 to 18446744073709551615 inclusive">>},
                   {memoryHighWatermark,
                    <<"The value of memoryHighWatermark (-33) must be in the "
-                     "range 0 to 2147483647 inclusive">>},
+                     "range 0 to 18446744073709551615 inclusive">>},
                   {secondaryWarmupMinMemoryThreshold,
                    <<"The value of secondaryWarmupMinMemoryThreshold (123) "
                      "must be in the range 0 to 100 inclusive">>},

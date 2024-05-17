@@ -517,9 +517,9 @@ attribute_default(Name) ->
         warmup_min_memory_threshold -> 0;   % percentage
         warmup_min_items_threshold -> 0;    % percentage
         memory_low_watermark ->
-            ?MAX_32BIT_UNSIGNED_INT;        % bytes
+            ?MAX_64BIT_UNSIGNED_INT;        % bytes
         memory_high_watermark ->
-            ?MAX_32BIT_UNSIGNED_INT;        % bytes
+            ?MAX_64BIT_UNSIGNED_INT;        % bytes
         secondary_warmup_min_memory_threshold ->
             100;                            % percentage
         secondary_warmup_min_items_threshold ->
@@ -551,13 +551,13 @@ attribute_max(Name) ->
         version_pruning_window_hrs ->
             ?MAX_32BIT_UNSIGNED_INT;                  % unit hours
         expiry_pager_sleep_time ->
-            ?MAX_32BIT_UNSIGNED_INT;                  % unit seconds
+            ?MAX_64BIT_UNSIGNED_INT;                  % unit seconds
         warmup_min_memory_threshold -> 100;           % percentage
         warmup_min_items_threshold -> 100;            % percentage
         memory_low_watermark ->
-            ?MAX_32BIT_UNSIGNED_INT;                  % bytes
+            ?MAX_64BIT_UNSIGNED_INT;                  % bytes
         memory_high_watermark ->
-            ?MAX_32BIT_UNSIGNED_INT;                  % bytes
+            ?MAX_64BIT_UNSIGNED_INT;                  % bytes
         secondary_warmup_min_memory_threshold -> 100; % percentage
         secondary_warmup_min_items_threshold -> 100   % percentage
     end.
