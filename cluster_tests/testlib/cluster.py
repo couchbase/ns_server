@@ -153,10 +153,11 @@ class Cluster:
         atexit.unregister(kill_nodes)
 
     # Check every 0.5s until there is no rebalance running or 600s have passed
-    def wait_for_rebalance(self, timeout_s=600, interval_s=0.5, verbose=False):
+    def wait_for_rebalance(self, timeout_s=600, interval_s=0.5,
+                           wait_balanced=True, verbose=False):
         return cluster_run_lib.wait_for_rebalance(self.connected_nodes[0].url,
                                                   timeout_s, interval_s,
-                                                  verbose)
+                                                  wait_balanced, verbose)
 
     # Rebalance the cluster, and possibly eject nodes at the same time.
     # Can optionally wait for the rebalance to finish.
@@ -343,8 +344,10 @@ class Cluster:
             if allow_unsafe:
                 self.connected_nodes.remove(victim_node)
 
-            # Wait for the failover to complete
-            self.wait_for_rebalance(verbose=verbose)
+            # Wait for the failover to complete.
+            # Note: Failover doesn't result in a balanced cluster, so we don't
+            # wait for the cluster to be balanced.
+            self.wait_for_rebalance(wait_balanced=False, verbose=verbose)
         else:
             r = testlib.post_fail(non_victim_nodes[0],
                                   f"/controller/{failover_type}",
