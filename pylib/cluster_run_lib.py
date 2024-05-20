@@ -781,7 +781,7 @@ def connect(num_nodes=0,
 # running
 def is_rebalance_running(url):
     rebalance_running = False
-    (tasks, ) = http_get_json(url + "/pools/default/tasks"),
+    tasks = http_get_json(url + "/pools/default/tasks")
 
     for task in tasks:
         if task.get("type") == "rebalance" and \
@@ -791,7 +791,7 @@ def is_rebalance_running(url):
 
 
 def rebalance_error(url):
-    (tasks, ) = http_get_json(url + "/pools/default/tasks"),
+    tasks = http_get_json(url + "/pools/default/tasks")
     for task in tasks:
         if task.get("type") == "rebalance":
             return task.get("errorMessage")
