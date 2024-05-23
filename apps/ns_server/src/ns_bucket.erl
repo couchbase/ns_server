@@ -139,13 +139,6 @@
          allow_variable_num_vbuckets/0,
          get_cc_versioning_enabled/1,
          get_access_scanner_enabled/1,
-         get_expiry_pager_sleep_time/1,
-         get_warmup_min_memory_threshold/1,
-         get_warmup_min_items_threshold/1,
-         get_memory_low_watermark/1,
-         get_memory_high_watermark/1,
-         get_secondary_warmup_min_memory_threshold/1,
-         get_secondary_warmup_min_items_threshold/1,
          get_vbuckets_max_cas/1,
          get_vp_window_hrs/1,
          get_num_vbuckets/1,
@@ -512,18 +505,7 @@ attribute_default(Name) ->
     case Name of
         pitr_granularity -> 600;          % 10 minutes
         pitr_max_history_age -> 86400;    % 24 hours
-        version_pruning_window_hrs -> 720;  % 30 days
-        expiry_pager_sleep_time -> 600;     % 10 minutes
-        warmup_min_memory_threshold -> 0;   % percentage
-        warmup_min_items_threshold -> 0;    % percentage
-        memory_low_watermark ->
-            ?MAX_64BIT_UNSIGNED_INT;        % bytes
-        memory_high_watermark ->
-            ?MAX_64BIT_UNSIGNED_INT;        % bytes
-        secondary_warmup_min_memory_threshold ->
-            100;                            % percentage
-        secondary_warmup_min_items_threshold ->
-            100                             % percentage
+        version_pruning_window_hrs -> 720 % 30 days
     end.
 
 %% The minimum value of the attribute. Currently PITR-only.
@@ -531,16 +513,7 @@ attribute_min(Name) ->
     case Name of
         pitr_granularity -> 1;           % 1 second
         pitr_max_history_age -> 1;       % 1 second
-        version_pruning_window_hrs -> 24; % 24 hours
-        expiry_pager_sleep_time -> 0;     % unit seconds
-        warmup_min_memory_threshold -> 0; % percentage
-        warmup_min_items_threshold -> 0;  % percentage
-        memory_low_watermark -> 0;        % bytes
-        memory_high_watermark -> 0;       % bytes
-        secondary_warmup_min_memory_threshold ->
-            0;                            % percentage
-        secondary_warmup_min_items_threshold ->
-            0                             % percentage
+        version_pruning_window_hrs -> 24 % 24 hours
     end.
 
 %% The maximum value of the attribute. Currently PITR-only.
@@ -548,18 +521,7 @@ attribute_max(Name) ->
     case Name of
         pitr_granularity -> 18000;                  % 5 hours
         pitr_max_history_age -> 172800;             % 48 hours
-        version_pruning_window_hrs ->
-            ?MAX_32BIT_SIGNED_INT;                  % unit hours
-        expiry_pager_sleep_time ->
-            ?MAX_64BIT_UNSIGNED_INT;                  % unit seconds
-        warmup_min_memory_threshold -> 100;           % percentage
-        warmup_min_items_threshold -> 100;            % percentage
-        memory_low_watermark ->
-            ?MAX_64BIT_UNSIGNED_INT;                  % bytes
-        memory_high_watermark ->
-            ?MAX_64BIT_UNSIGNED_INT;                  % bytes
-        secondary_warmup_min_memory_threshold -> 100; % percentage
-        secondary_warmup_min_items_threshold -> 100   % percentage
+        version_pruning_window_hrs -> ?MAX_32BIT_SIGNED_INT    % unit hours
     end.
 
 %% Per-bucket-type point-in-time recovery attributes.  Point-in-time
@@ -572,56 +534,23 @@ pitr_enabled(BucketConfig) ->
             proplists:get_bool(pitr_enabled, BucketConfig)
     end.
 
-membase_bucket_config_value_getter(Key, BucketConfig) ->
+pitr_granularity(BucketConfig) ->
     case bucket_type(BucketConfig) of
         memcached ->
             undefined;
         membase ->
-            proplists:get_value(Key, BucketConfig, attribute_default(Key))
+            proplists:get_value(pitr_granularity, BucketConfig,
+                                attribute_default(pitr_granularity))
     end.
 
-pitr_granularity(BucketConfig) ->
-    membase_bucket_config_value_getter(pitr_granularity, BucketConfig).
-
 pitr_max_history_age(BucketConfig) ->
-    membase_bucket_config_value_getter(pitr_max_history_age, BucketConfig).
-
--spec get_expiry_pager_sleep_time(proplists:proplist()) -> boolean() |
-                                                           undefined.
-get_expiry_pager_sleep_time(BucketConfig) ->
-    membase_bucket_config_value_getter(expiry_pager_sleep_time, BucketConfig).
-
--spec get_warmup_min_memory_threshold(proplists:proplist()) -> boolean() |
-                                                               undefined.
-get_warmup_min_memory_threshold(BucketConfig) ->
-    membase_bucket_config_value_getter(warmup_min_memory_threshold,
-                                       BucketConfig).
-
--spec get_warmup_min_items_threshold(proplists:proplist()) -> boolean() |
-                                                              undefined.
-get_warmup_min_items_threshold(BucketConfig) ->
-    membase_bucket_config_value_getter(warmup_min_items_threshold,
-                                       BucketConfig).
-
--spec get_memory_low_watermark(proplists:proplist()) -> boolean() | undefined.
-get_memory_low_watermark(BucketConfig) ->
-    membase_bucket_config_value_getter(memory_low_watermark, BucketConfig).
-
--spec get_memory_high_watermark(proplists:proplist()) -> boolean() | undefined.
-get_memory_high_watermark(BucketConfig) ->
-    membase_bucket_config_value_getter(memory_high_watermark, BucketConfig).
-
--spec get_secondary_warmup_min_memory_threshold(proplists:proplist()) ->
-    boolean() | undefined.
-get_secondary_warmup_min_memory_threshold(BucketConfig) ->
-    membase_bucket_config_value_getter(secondary_warmup_min_memory_threshold,
-                                       BucketConfig).
-
--spec get_secondary_warmup_min_items_threshold(proplists:proplist()) ->
-    boolean() | undefined.
-get_secondary_warmup_min_items_threshold(BucketConfig) ->
-    membase_bucket_config_value_getter(secondary_warmup_min_items_threshold,
-                                       BucketConfig).
+    case bucket_type(BucketConfig) of
+        memcached ->
+            undefined;
+        membase ->
+            proplists:get_value(pitr_max_history_age, BucketConfig,
+                                attribute_default(pitr_max_history_age))
+    end.
 
 %% returns bucket ram quota multiplied by number of nodes this bucket
 %% will reside after initial cleanup. I.e. gives amount of ram quota that will
@@ -2181,22 +2110,6 @@ chronicle_upgrade_bucket_to_morpheus(BucketName, ChronicleTxn) ->
             memcached ->
                 [];
             membase ->
-                [{expiry_pager_sleep_time,
-                  attribute_default(expiry_pager_sleep_time)},
-                 {warmup_min_memory_threshold,
-                  attribute_default(warmup_min_memory_threshold)},
-                 {warmup_min_items_threshold,
-                  attribute_default(warmup_min_items_threshold)},
-                 {memory_low_watermark,
-                  attribute_default(memory_low_watermark)},
-                 {memory_high_watermark,
-                  attribute_default(memory_high_watermark)},
-                 {secondary_warmup_min_memory_threshold,
-                  attribute_default(
-                    secondary_warmup_min_memory_threshold)},
-                 {secondary_warmup_min_items_threshold,
-                  attribute_default(
-                    secondary_warmup_min_items_threshold)}] ++
                 case is_persistent(BucketConfig) of
                     true ->
                         [{access_scanner_enabled, true}];
@@ -2305,12 +2218,7 @@ extract_bucket_props(Props) ->
                          cross_cluster_versioning_enabled, vbuckets_max_cas,
                          version_pruning_window_hrs,
                          pitr_enabled, pitr_granularity, pitr_max_history_age,
-                         access_scanner_enabled, expiry_pager_sleep_time,
-                         warmup_min_memory_threshold,
-                         warmup_min_items_threshold,
-                         memory_low_watermark, memory_high_watermark,
-                         secondary_warmup_min_memory_threshold,
-                         secondary_warmup_min_items_threshold,
+                         access_scanner_enabled,
                          autocompaction, purge_interval, flush_enabled,
                          num_threads, eviction_policy, conflict_resolution_type,
                          drift_ahead_threshold_ms, drift_behind_threshold_ms,
