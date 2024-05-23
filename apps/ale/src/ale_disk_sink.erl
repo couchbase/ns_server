@@ -487,7 +487,7 @@ remove_unnecessary_log_files(LogFilePath, NumFiles) ->
     Name = filename:basename(LogFilePath),
     {ok, RegExp} = re:compile("^" ++ Name ++ "\.([1-9][0-9]*)(?:\.gz)?$"),
 
-    {ok, DirFiles} = file:list_dir(Dir),
+    DirFiles = filelib:wildcard(Name ++ ".*", Dir),
     lists:foreach(
       fun (File) ->
               FullPath = filename:join(Dir, File),
