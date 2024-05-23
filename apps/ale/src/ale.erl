@@ -65,7 +65,7 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 start_sink(Name, Module, Args) ->
-    gen_server:call(?MODULE, {start_sink, Name, Module:meta(), Module, Args}).
+    gen_server:call(?MODULE, {start_sink, Name, Module:meta(), Module, Args}, infinity).
 
 with_configuration_batching(Body) ->
     Old = freeze_compilations(),
