@@ -18,6 +18,7 @@
          get_failover_on_disk_issues/1,
          config_check_can_abort_rebalance/0,
          default_config/1,
+         get_stats/0,
          config_upgrade_to_72/1,
          config_upgrade_to_76/1,
          config_upgrade_to_morpheus/1]).
@@ -88,14 +89,35 @@ config_upgrade_to_morpheus(Config) ->
         [{?ALLOW_FAILOVER_EPHEMERAL_NO_REPLICAS_CONFIG_KEY,
           auto_failover:hidden_failover_ephemeral_setting()}])}].
 
+interesting_stats() ->
+    [enabled, count, maxCount].
+
+exported_stat_name(maxCount) -> max_count;
+exported_stat_name(Other) -> Other.
+
+get_stats() ->
+    Settings = settings_get_inner(),
+    lists:filtermap(
+      fun (Name) ->
+              case lists:keyfind(Name, 1, Settings) of
+                  {Name, Value} ->
+                      {true, {exported_stat_name(Name), Value}};
+                  false ->
+                      false
+              end
+      end, interesting_stats()).
+
 handle_settings_get(Req) ->
+    Settings = settings_get_inner(),
+    reply_json(Req, {Settings}).
+
+settings_get_inner() ->
     Config = auto_failover:get_cfg(),
     Enabled = proplists:get_value(enabled, Config),
     Timeout = proplists:get_value(timeout, Config),
     Count = proplists:get_value(count, Config),
-    Settings0 = [{enabled, Enabled}, {timeout, Timeout}, {count, Count}],
-    Settings =  Settings0 ++ get_extra_settings(Config),
-    reply_json(Req, {Settings}).
+    Settings = [{enabled, Enabled}, {timeout, Timeout}, {count, Count}],
+    Settings ++ get_extra_settings(Config).
 
 handle_settings_post_validated(Req, Props) ->
     Config = auto_failover:get_cfg(),
