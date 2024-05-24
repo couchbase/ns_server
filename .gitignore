@@ -52,3 +52,4 @@ apps/ns_server/src/ldap_rfc4515_parser.erl
 apps/ns_server/src/kv_stats_mappings.erl
 /cluster_tests/test_cluster_data*
 **/__pycache__/
+/deps/config_remap/config_remap
