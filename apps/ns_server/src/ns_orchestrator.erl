@@ -1337,8 +1337,8 @@ perform_bucket_flushing_with_config(BucketName, BucketConfig) ->
                                        [JanitorRV])
                     end,
                     RV;
-                _ ->
-                    RV
+                {error, Reason} ->
+                    Reason
             end
     end.
 
