@@ -1156,6 +1156,9 @@ do_handle_bucket_flush(BucketName, Req) ->
         flush_disabled ->
             reply_json(Req, {[{'_',
                                <<"Flush is disabled for the bucket">>}]}, 400);
+        {flush_wait_failed, _, _} ->
+            reply_json(Req, {[{'_',
+                               <<"Flush failed or timed out">>}]}, 504);
         _ ->
             reply_json(Req, {[{'_',
                                <<"Flush failed with unexpected error. "

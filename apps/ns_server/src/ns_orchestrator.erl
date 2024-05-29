@@ -770,6 +770,10 @@ idle({flush_bucket, BucketName}, From, _State) ->
     RV = perform_bucket_flushing(BucketName),
     case RV of
         ok -> ok;
+        {flush_wait_failed, _FailedNodes, _FailedCalls} ->
+            ale:info(?USER_LOGGER,
+                     "Flushing ~p failed or timed out with error: ~n~p",
+                     [BucketName, RV]);
         _ ->
             ale:info(?USER_LOGGER, "Flushing ~p failed with error: ~n~p",
                      [BucketName, RV])
