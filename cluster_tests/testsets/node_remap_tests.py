@@ -29,7 +29,6 @@ import sys
 from pathlib import Path
 
 scripts_dir = os.path.join(run.scriptdir, "..", "scripts/")
-print(scripts_dir)
 sys.path.append(scripts_dir)
 
 import node_remap
