@@ -154,6 +154,7 @@
          get_continuous_backup_interval/1,
          get_continuous_backup_location/1,
          get_invalid_hlc_strategy/1,
+         get_num_dcp_connections/1,
          uuid_key/1,
          uuid/2,
          uuids/0,
@@ -637,6 +638,13 @@ get_continuous_backup_location(BucketConfig) ->
     undefined | error | ignore | replace.
 get_invalid_hlc_strategy(BucketConfig) ->
     membase_bucket_config_value_getter(invalid_hlc_strategy, BucketConfig).
+
+-spec get_num_dcp_connections(proplists:proplist()) -> pos_integer().
+get_num_dcp_connections(BucketConfig) ->
+    case proplists:get_value(dcp_connections_between_nodes, BucketConfig) of
+        undefined -> ?DEFAULT_DCP_CONNECTIONS;
+        Other -> Other
+    end.
 
 %% returns bucket ram quota multiplied by number of nodes this bucket
 %% will reside after initial cleanup. I.e. gives amount of ram quota that will

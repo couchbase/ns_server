@@ -55,6 +55,7 @@
 -define(MIN_REPLICAS_SUPPORTED, 0).
 
 -define(MAX_DCP_CONNECTION_NAME, 200).
+-define(DEFAULT_DCP_CONNECTIONS, 1).
 
 -define(DEFAULT_LOG_FILENAME, "info.log").
 -define(ERRORS_LOG_FILENAME, "error.log").

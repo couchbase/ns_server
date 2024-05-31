@@ -24,6 +24,8 @@
          remove_undesired_replications/2,
          dcp_takeover/3]).
 
+-export([update_replication_count/2]).
+
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 server_name(Bucket) ->
@@ -95,7 +97,7 @@ handle_call({remove_undesired_replications, FutureReps}, From, State) ->
     CurrentReps = get_actual_replications_as_list(State),
     MergedReps = merge_replications(FutureReps, CurrentReps),
     CleanedReps0 = [{N, ordsets:intersection(FutureVBs, CurrentVBs)} ||
-                    {N, FutureVBs, CurrentVBs} <- MergedReps],
+                       {N, FutureVBs, CurrentVBs} <- MergedReps],
     CleanedReps = [{N, VBs} || {N, [_|_] = VBs} <- CleanedReps0],
     handle_call({set_desired_replications, CleanedReps}, From, State);
 
@@ -130,7 +132,34 @@ handle_call({dcp_takeover, OldMasterNode, VBucket}, _From,
                                     end
                             end, CurrentReps),
     {reply, dcp_replicator:takeover(OldMasterNode, Bucket, VBucket),
-     State#state{desired_replications = DesiredReps}}.
+     State#state{desired_replications = DesiredReps}};
+handle_call({update_replication_count, DesiredCount}, _From,
+            #state{bucket_name = Bucket} = State) ->
+    %% We will call into here on every janitor run, check if the
+    %% replication count is the same to avoid nuking it and reconnecting if it
+    %% is not necessary.
+    CurrentCount = dcp_replication_manager:get_connection_count(Bucket),
+
+    NewState1 = case CurrentCount =/= DesiredCount of
+                    false -> State;
+                    true ->
+                        ?log_info("Changing number of DCP connections from ~p "
+                                  "to ~p for bucket ~p",
+                                  [CurrentCount, DesiredCount, Bucket]),
+                        %% Changed the number of DCP connections between nodes.
+                        %% We're going to nuke everything and start over... We
+                        %% do this here because we have access to the
+                        %% replication map to fix it up afterwards.
+                        dcp_sup:nuke(Bucket),
+                        dcp_replication_manager:set_connection_count(
+                          Bucket, DesiredCount),
+                        %% Not re-creating connections here, this should only be
+                        %% called from the janitor which will recreate them
+                        %% soon after this call.
+                        State#state{desired_replications = []}
+                end,
+
+    {reply, ok, NewState1}.
 
 merge_replications(RepsA, RepsB) ->
     L = [{N, VBs, []} || {N, VBs} <- RepsA],
@@ -147,3 +176,7 @@ get_actual_replications_as_list(#state{bucket_name = Bucket}) ->
         Reps ->
             Reps
     end.
+
+update_replication_count(Bucket, ConnectionCount) ->
+    gen_server:call(server_name(Bucket),
+        {update_replication_count, ConnectionCount}).

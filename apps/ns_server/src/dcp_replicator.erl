@@ -24,14 +24,15 @@
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
--export([start_link/3, start_link/6,
+-export([start_link/4, start_link/6,
          get_partitions/1,
-         setup_replication/2, setup_replication/3,
+         setup_replication/2, setup_replication/4,
          takeover/2, takeover/3,
          wait_for_data_move/3,
          trim_common_prefix/2,
          get_docs_estimate/3,
-         get_connections/1]).
+         get_connections/1,
+         get_connection_name/4]).
 
 -record(state, {proxies,
                 consumer_conn :: pid(),
@@ -101,14 +102,27 @@ start_link(Name, ConsumerNode, ProducerNode, Bucket, ConnName, RepFeatures) ->
             end,
     erlang:apply(gen_server, start_link, Args).
 
-start_link(ProducerNode, Bucket, RepFeatures) ->
+start_link(ProducerNode, Bucket, RepFeatures, ConnNum) ->
     ConsumerNode = node(),
-    ConnName = get_connection_name(ConsumerNode, ProducerNode, Bucket),
-    start_link(server_name(ProducerNode, Bucket),
+    ConnName = get_connection_name(ConsumerNode, ProducerNode, Bucket, ConnNum),
+    start_link(server_name(ProducerNode, Bucket, ConnNum),
                ConsumerNode, ProducerNode, Bucket, ConnName, RepFeatures).
 
-server_name(ProducerNode, Bucket) ->
-    list_to_atom(?MODULE_STRING ++ "-" ++ Bucket ++ "-" ++ atom_to_list(ProducerNode)).
+%% We special case the first connection (index 0). This significantly reduces
+%% the complexity of handling mixed mode clusters in which the down version does
+%% not support multiple connections between nodes. This is required because
+%% names are "generated" on both consumer and producer sides so we need a
+%% semi-common naming schema. For the first connection we continue to use the
+%% legacy naming convention which does not include the connection number.
+get_connection_suffix(0) ->
+    "";
+get_connection_suffix(ConnNum) when is_integer(ConnNum) ->
+    "/" ++ integer_to_list(ConnNum).
+
+server_name(ProducerNode, Bucket, ConnNum) ->
+    list_to_atom(?MODULE_STRING ++ "-" ++ Bucket ++ "-" ++
+                     atom_to_list(ProducerNode) ++
+                     get_connection_suffix(ConnNum)).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
@@ -173,17 +187,72 @@ get_partitions(Pid) ->
 setup_replication(Pid, Partitions) ->
     gen_server:call(Pid, {setup_replication, Partitions}, infinity).
 
--spec setup_replication(node(), bucket_name(), [vbucket_id()]) ->
+-spec setup_replication(node(), bucket_name(), [vbucket_id()], pos_integer()) ->
           ok | {errors, [{{mcbp_status, non_neg_integer()},
                           {vbucket, vbucket_id()}}]}.
-setup_replication(ProducerNode, Bucket, Partitions) ->
-    setup_replication(whereis(server_name(ProducerNode, Bucket)), Partitions).
+setup_replication(ProducerNode, Bucket, Partitions, ConnectionCount) ->
+    %% This one is a little more complicated, we need to work out which
+    %% replicators to run each partition on, and dispatch them accordingly. We
+    %% have to build up this full map to remove any undesired replications
+    %% (which filters down to here anyways) as the
+    %% dcp_replicator:setup_replication/dcp_consumer_conn:setup_streams
+    %% functions take the full map and close streams when they are no longer
+    %% needed... Hopefully we can clear this up a bit in the future.
+
+    %% Start by pre-populating a map, one empty list for each connection.
+    BaseMap =
+        lists:foldl(fun(Conn, Acc) -> Acc#{Conn => []} end, #{},
+                    dcp_sup:connection_iterator_list(
+                      ConnectionCount)),
+
+    %% Now lets populate that map for all the new partitions that we want
+    Map = lists:foldl(
+            fun(P, Acc) ->
+                    Conn =
+                        dcp_replication_manager:get_connection_for_partition(
+                          ConnectionCount, P),
+
+                    NewList = case maps:find(Conn, Acc) of
+                                  {ok, Value} -> Value ++ [P];
+                                  error -> erlang:exit(connection_missing)
+                              end,
+                    Acc#{Conn => lists:sort(NewList)}
+            end, BaseMap, Partitions),
+
+    %% And we can set up those replications
+    Errors = maps:fold(
+               fun(Key, Value, Acc) ->
+                       case whereis(server_name(ProducerNode, Bucket, Key)) of
+                           undefined ->
+                               %% The server not being up for this connection is
+                               %% valid and fine if we don't have/need any
+                               %% connections for it. We can't assert that it is
+                               %% not undefined though when we have an empty
+                               %% list of streams to set up because it may be
+                               %% the case that it did exist and we are trying
+                               %% to remove all of the streams.
+                               [] = Value,
+                               Acc;
+                           Pid ->
+                               case setup_replication(Pid, Value) of
+                                   ok -> Acc;
+                                   {errors, Errors} -> Errors ++ Acc
+                               end
+                       end
+               end, [], Map),
+
+    case Errors of
+        [] -> ok;
+        _ -> Errors
+    end.
 
 takeover(Replicator, Partition) ->
     gen_server:call(Replicator, {takeover, Partition}, infinity).
 
 takeover(ProducerNode, Bucket, Partition) ->
-    takeover(whereis(server_name(ProducerNode, Bucket)), Partition).
+    ConnNum =
+        dcp_replication_manager:get_connection_for_partition(Bucket, Partition),
+    takeover(whereis(server_name(ProducerNode, Bucket, ConnNum)), Partition).
 
 wait_for_data_move(Nodes, Bucket, Partition) ->
     DoneLimit = ns_config:read_key_fast(dcp_move_done_limit, 1000),
@@ -192,7 +261,9 @@ wait_for_data_move(Nodes, Bucket, Partition) ->
 wait_for_data_move_loop([], _, _, _DoneLimit) ->
     ok;
 wait_for_data_move_loop([Node | Rest], Bucket, Partition, DoneLimit) ->
-    Connection = get_connection_name(Node, node(), Bucket),
+    ConnNum = dcp_replication_manager:get_connection_for_partition(Bucket,
+                                                                   Partition),
+    Connection = get_connection_name(Node, node(), Bucket, ConnNum),
     case wait_for_data_move_on_one_node(0, Connection,
                                         Bucket, Partition, DoneLimit) of
         ok ->
@@ -251,13 +322,17 @@ check_move_done({_, _, UnexpectedStatus}, _DoneLimit) ->
 -spec get_docs_estimate(bucket_name(), vbucket_id(), node()) ->
           {ok, {non_neg_integer(), non_neg_integer(), binary()}}.
 get_docs_estimate(Bucket, Partition, ConsumerNode) ->
-    Connection = get_connection_name(ConsumerNode, node(), Bucket),
+    ConnNum = dcp_replication_manager:get_connection_for_partition(Bucket,
+                                                                   Partition),
+    Connection = get_connection_name(ConsumerNode, node(), Bucket, ConnNum),
     ns_memcached:get_dcp_docs_estimate(Bucket, Partition, Connection).
 
-get_connection_name(ConsumerNode, ProducerNode, Bucket) ->
+-spec get_connection_name(node(), node(), bucket_name(), non_neg_integer()) ->
+          list().
+get_connection_name(ConsumerNode, ProducerNode, Bucket, ConnNum) ->
     CName = "replication:" ++ atom_to_list(ProducerNode) ++ "->" ++
-        atom_to_list(ConsumerNode) ++ ":" ++ Bucket,
-
+        atom_to_list(ConsumerNode) ++ ":" ++ Bucket ++
+        get_connection_suffix(ConnNum),
     case length(CName) =< ?MAX_DCP_CONNECTION_NAME of
         true ->
             CName;
@@ -377,7 +452,7 @@ get_connection_name_test_() ->
     TrimmedName =
         "replication:1.platform-couchbase-cluster.couchb->0.platform-couchbase"
         "-cluster.couchb:com.yyyyyy.digital.ms.shoppingcart.shoppingcart."
-        "123456789012:TYFMH5ZD2gPLOaLgcuA2VijsZvc=",
+        "123456789012:w3alxj4OikI3A7xWNfPr+8pFoA0=",
     {foreach,
      fun () ->
              ok
@@ -386,9 +461,9 @@ get_connection_name_test_() ->
        fun () ->
                Conn = get_connection_name(
                         'nodeA.eng.couchbase.com', 'nodeB.eng.couchbase.com',
-                        "bucket1"),
+                        "bucket1", 1),
                ?assertEqual("replication:nodeB.eng.couchbase.com->"
-                            "nodeA.eng.couchbase.com:bucket1", Conn),
+                            "nodeA.eng.couchbase.com:bucket1/1", Conn),
                ?assertEqual(true, length(Conn) =< ?MAX_DCP_CONNECTION_NAME)
        end},
       {"Connection name won't fit into the maximum allowed.",
@@ -396,7 +471,7 @@ get_connection_name_test_() ->
                ?assertEqual(
                   TrimmedName,
                   get_connection_name(ConsumerNode, ProducerNode,
-                                      VeryLongBucket))
+                                      VeryLongBucket, 1))
        end},
       {"Test that the node names aren't shortened too much (note the only "
        "difference is the last character).",
@@ -406,12 +481,13 @@ get_connection_name_test_() ->
                Node2 = "ManyManyManyManyCommonCharacters_ns_1@platform-"
                    "couchbase-cluster-0001",
                Conn = get_connection_name(
-                        list_to_atom(Node1), list_to_atom(Node2), LongBucket),
+                        list_to_atom(Node1), list_to_atom(Node2), LongBucket,
+                        1),
                ?assertEqual(
                   "replication:s_1@platform-couchbase-cluster-0001->"
                   "s_1@platform-couchbase-cluster-0000:travel-sample-with-a-"
                   "very-very-very-very-long-bucket-name:"
-                  "D/D56MpAKsDt/0yqg6IXKBEaIcY=", Conn)
+                  "xTwxM/eoOT2oWMVsTzP9/YV8FZ0=", Conn)
        end},
       {"Test with unique node names but one is much longer than the other.",
        fun () ->
@@ -420,10 +496,11 @@ get_connection_name_test_() ->
                    "couchbase-cluster-AndEvenMoreCharactersToMakeThisNodeName"
                    "LongEnoughToRequireItToBeShortened",
                Conn = get_connection_name(
-                        list_to_atom(Node1), list_to_atom(Node2), LongBucket),
+                        list_to_atom(Node1), list_to_atom(Node2), LongBucket,
+                        1),
                ?assertEqual(
                   "replication:ManyManyManyManyCommonCharacters_ns->"
-                  "AShortNodeName:travel-sample-with-a-very-very-very-very-"
-                  "long-bucket-name:A3aPD1Sik+5ZIz43M6NNTGn9XFw=", Conn)
+                  "AShortNodeName:travel-sample-with-a-very-very-very-very-long"
+                  "-bucket-name:D2K3xTLIijnhEm579aGJvEY6bMs=", Conn)
        end}]}.
 -endif.

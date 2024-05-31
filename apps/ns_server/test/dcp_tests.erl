@@ -20,10 +20,34 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+set_conn_count_for_buckets(Buckets, Conns) ->
+    lists:foreach(
+      fun(Bucket) ->
+              fake_chronicle_kv:update_snapshot(
+                  {bucket, Bucket, props},
+                  [{dcp_connections_between_nodes, Conns}])
+      end, Buckets).
+
 dcp_test_setup(#{nodes := Nodes,
-                 buckets := Buckets} = _SetupCfg) ->
+                 buckets := Buckets,
+                 connections := Conns} = _SetupCfg) ->
     fake_ns_config:setup(),
     fake_chronicle_kv:new(),
+
+    set_conn_count_for_buckets(Buckets, Conns),
+
+    %% We call some stats in memcached to wait for the connections to run some
+    %% final connection shutdown. We don't really need to test that here, so
+    %% we'll meck it away and test that the connection has gone by this point.
+    meck:new(ns_memcached, [passthrough]),
+    meck:expect(ns_memcached,
+                raw_stats,
+                fun(_,_,_,_,_,_) ->
+                        %% It should have gone away
+                        assert_connections_for_nodes(Nodes, 0),
+                        %% Return an empty list to skip the final socket closing
+                        {ok, []}
+                end),
 
     %% Now, start up a fake DCP server on all of the "nodes"
     DebugLogging = false,
@@ -43,6 +67,9 @@ dcp_test_setup(#{nodes := Nodes,
                       dcp_replication_manager:start_link(Bucket),
                   {ok, ReplicationManagerPid} =
                       replication_manager:start_link(Bucket),
+
+                  replication_manager:update_replication_count(Bucket, Conns),
+
                   [DcpSupPid, DCPReplicationManagerPid, ReplicationManagerPid |
                    Acc]
           end, [], Buckets),
@@ -60,6 +87,8 @@ dcp_test_teardown(_SetupCfg, PidMap) ->
                 end,
                 Pids)
       end, PidMap),
+
+    meck:unload(ns_memcached),
 
     fake_chronicle_kv:unload(),
     fake_ns_config:teardown().
@@ -123,7 +152,8 @@ assert_replication_map_for_nodes_and_buckets(Buckets, Map) ->
       end, Buckets).
 
 two_node_conn_and_map_t(#{nodes := Nodes,
-                          buckets := Buckets} = _SetupCfg, _PidMap) ->
+                          buckets := Buckets,
+                          connections := Connections} = _SetupCfg, _PidMap) ->
     %% We always run DCP replication "stuff" on the consumer side, so we will
     %% always set up for, and pass in node() as Node1.
     ThisNode = node(),
@@ -132,7 +162,7 @@ two_node_conn_and_map_t(#{nodes := Nodes,
     %% Sanity check
     assert_connections_for_nodes(Nodes, 0),
 
-    ConnectionsMultiple = length(Buckets),
+    ConnectionsMultiple = length(Buckets) * Connections,
 
     %% Lets replicate vBucket 0
     Map0 = [{OtherNode, [0]}],
@@ -176,13 +206,14 @@ two_node_conn_and_map_t(#{nodes := Nodes,
     assert_replication_map_for_nodes_and_buckets(Buckets, Map0).
 
 multi_node_conn_and_map_t(#{nodes := Nodes,
-                            buckets := Buckets}, _PidMap) ->
+                            buckets := Buckets,
+                            connections := Connections}, _PidMap) ->
     ThisNode = node(),
     [ThisNode, OtherNode1, OtherNode2] = Nodes,
 
     %% Sanity check
     assert_connections_for_nodes(Nodes, 0),
-    ConnectionsMultiple = length(Buckets),
+    ConnectionsMultiple = length(Buckets) * Connections,
 
     Map0 = [{OtherNode1, [0]}],
     set_replication_for_buckets(Buckets, Map0),
@@ -238,6 +269,51 @@ multi_node_conn_and_map_t(#{nodes := Nodes,
     assert_connections_for_nodes([OtherNode2], 0 * ConnectionsMultiple),
     assert_replication_map_for_nodes_and_buckets(Buckets, Map0).
 
+change_connection_count_t(#{nodes := Nodes,
+                            buckets := Buckets}, _PidMap) ->
+    %% First we need a connection to test with
+    [_, OtherNode] = Nodes,
+    Map0 = [{OtherNode, [0, 1]}],
+
+    set_replication_for_buckets(Buckets, Map0),
+
+    %% Sanity check
+    assert_connections_for_nodes(Nodes, 1),
+
+    %% Now lets update our key
+    set_conn_count_for_buckets(Buckets, 2),
+
+    %% Nothing happens until we prod the replication_manager, which the janitor
+    %% does.
+    assert_connections_for_nodes(Nodes, 1),
+
+    %% Before we do that, we must record our existing replications, usually the
+    %% janitor works this out for us, but we aren't running it in these tests
+    BucketReps =
+        lists:map(
+          fun(Bucket) ->
+                  {Bucket, replication_manager:get_incoming_replication_map(Bucket)}
+                                                % replication_manager:update_replication_count(Bucket, 2)
+          end, Buckets),
+
+    %% First the janitor nukes the existing replications
+    lists:foreach(
+      fun(Bucket) ->
+              replication_manager:update_replication_count(Bucket, 2)
+      end, Buckets),
+
+    assert_connections_for_nodes(Nodes, 0),
+
+    %% Then the call is made to create the new ones
+    lists:foreach(
+      fun({Bucket, Replications}) ->
+              replication_manager:set_incoming_replication_map(Bucket, Replications)
+      end, BucketReps),
+
+    %% And we should have more connections now.
+    assert_connections_for_nodes(Nodes, 2),
+    assert_replication_map_for_nodes_and_buckets(Buckets, Map0).
+
 make_nodes(Count) ->
     [node()] ++
         lists:map(
@@ -253,31 +329,50 @@ make_nodes(Count) ->
 
 dcp_test_() ->
     BucketCombinations = [["Bucket1"], ["Bucket1", "Bucket2"]],
+    ConnectionCombinations = [1, 2, 4],
 
     TwoNodeTest =
         [{list_to_binary(
-            io_lib:format("Two node conn and map test buckets ~p",
-                          [Buckets])),
+            io_lib:format("Two node conn and map test buckets ~p "
+                          "connections ~p",
+                          [Buckets, Conns])),
           fun two_node_conn_and_map_t/2,
           2,
-          Buckets} || Buckets <- BucketCombinations],
+          Buckets,
+          Conns} || Buckets <- BucketCombinations,
+                    Conns <- ConnectionCombinations],
 
     MultiNodeTest =
         [{list_to_binary(
-            io_lib:format("Multi node conn and map test buckets ~p",
-                          [Buckets])),
+            io_lib:format("Multi node conn and map test buckets ~p "
+                          "connections ~p",
+                          [Buckets, Conns])),
           fun multi_node_conn_and_map_t/2,
           3,
-          Buckets} || Buckets <- BucketCombinations],
+          Buckets,
+          Conns} || Buckets <- BucketCombinations,
+                    Conns <- ConnectionCombinations],
 
-    TestCombinations = TwoNodeTest ++ MultiNodeTest,
+    ConnectionCountChangeTest =
+        [{list_to_binary(
+            io_lib:format("Conn count change test buckets ~p "
+                          "connections ~p",
+                          [Buckets, Conns])),
+            fun change_connection_count_t/2,
+            2,
+            Buckets,
+            Conns} || Buckets <- [["Bucket1"]],
+            Conns <- [1]],
+
+    TestCombinations = TwoNodeTest ++ MultiNodeTest ++ ConnectionCountChangeTest,
 
     %% foreachx here to let us pass parameters to setup.
     {foreachx,
      fun dcp_test_setup/1,
      fun dcp_test_teardown/2,
      [{#{buckets => Buckets,
-         nodes => make_nodes(Nodes)},
+         nodes => make_nodes(Nodes),
+         connections => Conns},
        fun(T, R) ->
                {Name, ?_test(TestFun(T, R))}
-       end} || {Name, TestFun, Nodes, Buckets} <- TestCombinations]}.
+       end} || {Name, TestFun, Nodes, Buckets, Conns} <- TestCombinations]}.

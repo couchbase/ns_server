@@ -1258,6 +1258,21 @@ handle_apply_new_config(Node, NewBucketConfig,
     State2 = State#state{last_applied_vbucket_states = NewWanted,
                          rebalance_only_vbucket_states = NewRebalance},
 
+    %% We are going to tell the replication manager to update the connection
+    %% count. This is a no-op change if it is the same, and we don't expect it
+    %% to change very often. We are doing this in the janitor because we want to
+    %% make sure that the number of connections is the expected amount during a
+    %% rebalance, and consistent between all nodes. Doing this in the janitor
+    %% means that we are doing this with the orchestrator, a single node as up
+    %% to date as possible, and we are using the orchestrators view of the
+    %% BucketConfig ensuring that we set this to the same value on all nodes.
+    %% If we had different numbers of connections on different nodes then we
+    %% would see rebalance failures as we would fail to find connections or
+    %% streams belonging to connections where we expect.
+    DesiredConnections = ns_bucket:get_num_dcp_connections(NewBucketConfig),
+    replication_manager:update_replication_count(BucketName,
+                                                 DesiredConnections),
+
     %% before changing vbucket states (i.e. activating or killing
     %% vbuckets) we must stop replications into those vbuckets
     WantedReplicas = [{Src, VBucket}

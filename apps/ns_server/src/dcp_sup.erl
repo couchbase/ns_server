@@ -17,7 +17,8 @@
 
 -export([start_link/1, init/1]).
 
--export([get_children/1, manage_replicators/2, nuke/1]).
+-export([get_children/1, manage_replicators/3, nuke/1,
+         foreach_connection/2, connection_iterator_list/1]).
 -export([get_replication_features/0]).
 
 start_link(Bucket) ->
@@ -35,33 +36,47 @@ init([]) ->
 
 get_children(Bucket) ->
     [{Node, C, T, M} ||
-        {{Node, _RepFeatures}, C, T, M}
+        {{Node, _RepFeatures, _ConnNum}, C, T, M}
             <- supervisor:which_children(server_name(Bucket)),
         is_pid(C)].
 
-build_child_spec(Bucket, {ProducerNode, RepFeatures} = ChildId) ->
+build_child_spec(Bucket, {ProducerNode, RepFeatures, ConnNum} = ChildId) ->
     #{id => ChildId,
       start => {dcp_replicator, start_link,
-                [ProducerNode, Bucket, RepFeatures]},
+                [ProducerNode, Bucket, RepFeatures, ConnNum]},
       restart => temporary,
       shutdown => 60000,
       type => worker,
       modules => [dcp_replicator]}.
 
-start_replicator(Bucket, {ProducerNode, RepFeatures} = ChildId) ->
-    ?log_debug("Starting DCP replication from ~p for bucket ~p (Features = ~p)",
-               [ProducerNode, Bucket, RepFeatures]),
+start_replicator(Bucket, {ProducerNode, RepFeatures}, ConnectionCount) ->
+    ?log_debug("Starting ~p DCP replications from ~p for bucket ~p "
+               "(Features = ~p)",
+               [ConnectionCount, ProducerNode, Bucket, RepFeatures]),
 
-    case supervisor:start_child(server_name(Bucket),
-                                build_child_spec(Bucket, ChildId)) of
-        {ok, _} -> ok;
-        {ok, _, _} -> ok
-    end.
+    foreach_connection(
+      ConnectionCount,
+      fun(ConnNum) ->
+              ChildID = {ProducerNode, RepFeatures, ConnNum},
+              case supervisor:start_child(server_name(Bucket),
+                                          build_child_spec(Bucket, ChildID)) of
+                  {ok, _} -> ok;
+                  {ok, _, _} -> ok
+              end
+      end).
 
-kill_replicator(Bucket, {ProducerNode, RepFeatures} = ChildId) ->
-    ?log_debug("Going to stop DCP replication from ~p for bucket ~p "
-               "(Features = ~p)", [ProducerNode, Bucket, RepFeatures]),
-    _ = supervisor:terminate_child(server_name(Bucket), ChildId),
+kill_replicator(Bucket, {ProducerNode, RepFeatures} = _ChildId,
+                ConnectionCount) ->
+    ?log_debug("Going to stop ~p DCP replications from ~p for bucket ~p "
+               "(Features = ~p)",
+               [ConnectionCount, ProducerNode, Bucket, RepFeatures]),
+
+    foreach_connection(
+      ConnectionCount,
+      fun(ConnNum) ->
+              ChildID = {ProducerNode, RepFeatures, ConnNum},
+              _ = supervisor:terminate_child(server_name(Bucket), ChildID)
+      end),
     ok.
 
 %% Replicators need to negotiate features while opening DCP connections
@@ -93,15 +108,29 @@ get_replication_features() ->
                   {del_user_xattr, true}],
     misc:canonical_proplist(FeatureSet).
 
-manage_replicators(Bucket, NeededNodes) ->
-    CurrNodes = [ChildId || {ChildId, _C, _T, _M} <-
-                                supervisor:which_children(server_name(Bucket))],
+manage_replicators(Bucket, NeededNodes, NeededConnections) ->
+    CurrNodes =
+        [{Node, RepFeatures} ||
+            {{Node, RepFeatures, _}, _C, _T, _M} <-
+                supervisor:which_children(server_name(Bucket))],
 
     RepFeatures = get_replication_features(),
     ExpectedNodes = [{Node, RepFeatures} || Node <- NeededNodes],
 
-    [kill_replicator(Bucket, CurrId) || CurrId <- CurrNodes -- ExpectedNodes],
-    [start_replicator(Bucket, NewId) || NewId <- ExpectedNodes -- CurrNodes].
+
+    ToKill = lists:filter(
+               fun({Node, _Features}) ->
+                       case lists:keyfind(Node, 1, ExpectedNodes) of
+                           %% not found - keep - kill
+                           false -> true;
+                           %% match - don't keep - don't kill
+                           _ -> false
+                       end
+               end, CurrNodes),
+
+    [kill_replicator(Bucket, CurrId, NeededConnections) || CurrId <- ToKill],
+    [start_replicator(Bucket, NewId, NeededConnections) ||
+        NewId <- ExpectedNodes -- CurrNodes].
 
 nuke(Bucket) ->
     Children = try get_children(Bucket) of
@@ -124,3 +153,19 @@ nuke(Bucket) ->
       infinity),
 
     ok.
+
+-spec foreach_connection(pos_integer(), fun((integer()) -> any())) -> any().
+%% @doc Iterate over the connections that this dcp_replication_manager knows
+%% about. This is executed in the context of the caller, although a call may
+%% be made to dcp_connection_manager to fetch the connection count.
+foreach_connection(ConnectionCount, Fun) when is_integer(ConnectionCount) ->
+    lists:foreach(
+        fun(ConnNum) ->
+            Fun(ConnNum)
+        end, connection_iterator_list(ConnectionCount)).
+
+-spec connection_iterator_list(pos_integer()) -> list().
+%% @doc A list of the connection numbers between nodes for use when iterating
+%% over connections.
+connection_iterator_list(ConnectionCount) when is_integer(ConnectionCount) ->
+    lists:seq(0, ConnectionCount - 1).
