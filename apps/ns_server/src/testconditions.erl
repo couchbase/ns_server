@@ -61,11 +61,11 @@ check_test_condition(Step) ->
 check_test_condition(Logger, Step) ->
     check_test_condition(Logger, Step, [], undefined).
 
--spec check_test_condition(atom(), term(), list()) -> term().
+-spec check_test_condition(atom(), term(), term()) -> term().
 check_test_condition(Logger, Step, Kind) ->
     check_test_condition(Logger, Step, Kind, undefined).
 
--spec check_test_condition(atom(), term(), list(),
+-spec check_test_condition(atom(), term(), term(),
                            undefined | fun((term()) -> term())) -> term().
 check_test_condition(Logger, Step, Kind, ExtendedHandler) ->
     case testconditions:get(Step) of
