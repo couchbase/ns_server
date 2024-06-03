@@ -29,7 +29,7 @@ you specified so). You can run this script for normal single node
 startup.
 
 During development it's convenient to have several 'nodes' on your
-machine. There's `./cluster_run` script in root directory for achieving
+machine. There's `./build/cluster_run` script in root directory for achieving
 that. Feel free to ask `--help`. You normally need something like -n2
 where 2 is number of nodes you want.
 
@@ -48,7 +48,7 @@ Other alternative is setting up and clustering nodes via REST
 API. couchbase-cli allows that. And you can easily write your own
 script(s).
 
-There's `./cluster_connect` script that eases cluster configuration for
+There's `./build/cluster_connect` script that eases cluster configuration for
 development clusters. Again, ask `--help`.
 
 Sometimes during debugging/development you want smaller number of
