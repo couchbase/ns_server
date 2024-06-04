@@ -102,8 +102,32 @@ exec(Cmd, InitArgs) ->
                      fun (PathDir) ->
                              ["--pa", [$- | PathDir]]
                      end, CodePath),
+
+    NsServerEnv = proplists:get_value(ns_server, InitArgs),
+    QuoteVar =
+        fun (P) ->
+            P1 = re:replace(P, "\\\\", "\\\\\\\\", [{return, list}, global]),
+            P2 = re:replace(P1, "\"", "\\\\\"", [{return, list}, global]),
+            lists:flatten(io_lib:format("\"~s\"", [P2]))
+        end,
+    OtherPathArgs = lists:flatmap(
+                      fun (P) ->
+                          case proplists:get_value(P, NsServerEnv) of
+                              undefined -> [];
+                              V ->
+                                  ["--ns_server",
+                                   [$- | atom_to_list(P)],
+                                   [$- | QuoteVar(V)]]
+                          end
+                      end,
+                      [path_config_bindir,
+                       path_config_libdir,
+                       path_config_datadir,
+                       path_config_tmpdir,
+                       path_config_secdir]),
+
     Port = erlang:open_port({spawn_executable, Escript},
-                            [{args, CodePathArgs ++ Cmd},
+                            [{args, CodePathArgs ++ OtherPathArgs ++ Cmd},
                              stream, stderr_to_stdout,
                              exit_status, hide, binary]),
     exec_loop(Port).
