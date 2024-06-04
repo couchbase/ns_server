@@ -127,16 +127,23 @@ type storedKeyIface interface {
 	decryptMe(*storedKeysCtx) error
 	encryptData([]byte) ([]byte, error)
 	decryptData([]byte) ([]byte, error)
-	marshal() (string, []byte, error)
+	marshal() (storedKeyType, []byte, error)
 	unmarshal(json.RawMessage) error
 	usesSecretManagementKey() bool
 }
 
 // Struct for marshalling/unmarshalling of a generic stored key
 type storedKeyJson struct {
-	Type string          `json:"Type"`
+	Type storedKeyType   `json:"type"`
 	Raw  json.RawMessage `json:"keyData"`
 }
+
+type storedKeyType string
+
+const (
+	rawAESGCMKey storedKeyType = "raw-aes-gcm"
+	awskmKey     storedKeyType = "awskm"
+)
 
 // Struct for marshalling/unmarshalling of a raw aes-gcm stored key
 type rawAesGcmStoredKeyJson struct {
@@ -155,6 +162,17 @@ type rawAesGcmStoredKey struct {
 	EncryptedKey      []byte
 	EncryptedBy       string
 	EncryptionKeyName string
+}
+
+type awsStoredKey struct {
+	Name       string `json:"name"`
+	Kind       string `json:"kind"`
+	KeyArn     string `json:"keyArn"`
+	Region     string `json:"region"`
+	ConfigFile string `json:"configFile"`
+	CredsFile  string `json:"credsFile"`
+	Profile    string `json:"profile"`
+	UseIMDS    bool   `jspn:"useIMDS"`
 }
 
 type storedKeysCtx struct {
@@ -690,13 +708,23 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 	log_dbg("Received request to store key %s (%s) on disk", keyNameStr, keyKindStr)
 	var err error
 	var keyInfo storedKeyIface
-	if keyTypeStr == "raw" {
+	if keyTypeStr == string(rawAESGCMKey) {
 		keyInfo = &rawAesGcmStoredKey{
 			Name:              keyNameStr,
 			Kind:              keyKindStr,
 			DecryptedKey:      keyData,
 			EncryptionKeyName: encryptionKeyName,
 		}
+	} else if keyTypeStr == string(awskmKey) {
+		var awsk awsStoredKey
+		err = json.Unmarshal(keyData, &awsk)
+		if err != nil {
+			replyError(fmt.Sprintf("invalid json: %v", keyData))
+			return
+		}
+		awsk.Name = keyNameStr
+		awsk.Kind = keyKindStr
+		keyInfo = &awsk
 	} else {
 		replyError(fmt.Sprintf("unknown type: %s", keyTypeStr))
 		return
@@ -1337,8 +1365,14 @@ func readKeyRaw(keySettings *storedKeyConfig, keyName string) (storedKeyIface, e
 		return nil, errors.New(fmt.Sprintf("Failed to unmarshal key from file %s: %s", path, err.Error()))
 	}
 
-	if keyJson.Type == "raw" {
+	if keyJson.Type == rawAESGCMKey {
 		var k rawAesGcmStoredKey
+		k.unmarshal(keyJson.Raw)
+		return &k, nil
+	}
+
+	if keyJson.Type == awskmKey {
+		var k awsStoredKey
 		k.unmarshal(keyJson.Raw)
 		return &k, nil
 	}
@@ -1455,7 +1489,7 @@ func (k *rawAesGcmStoredKey) usesSecretManagementKey() bool {
 	return k.EncryptionKeyName == "encryptionService"
 }
 
-func (k *rawAesGcmStoredKey) marshal() (string, []byte, error) {
+func (k *rawAesGcmStoredKey) marshal() (storedKeyType, []byte, error) {
 	if k.EncryptedKey == nil {
 		return "", nil, errors.New(fmt.Sprintf("Cant' store key \"%s\" to disk because the key is not encrypted", k.Name))
 	}
@@ -1469,5 +1503,56 @@ func (k *rawAesGcmStoredKey) marshal() (string, []byte, error) {
 	if err != nil {
 		return "", nil, errors.New(fmt.Sprintf("Failed to marshal key %s: %s", k.Name, err.Error()))
 	}
-	return "raw", data, nil
+	return rawAESGCMKey, data, nil
+}
+
+// Implementation of storedKeyIface for aws keys
+
+func (k *awsStoredKey) name() string {
+	return k.Name
+}
+
+func (k *awsStoredKey) needRewrite(settings *storedKeyConfig) bool {
+	// since we don't need to encrypt anything in this case, it seems like
+	// it would be simpler to always rewrite it on disk
+	return true
+}
+
+func (k *awsStoredKey) encryptMe(ctx *storedKeysCtx) error {
+	// Nothing to encrypt here, configuration should contain no secrets
+	return nil
+}
+
+func (k *awsStoredKey) decryptMe(ctx *storedKeysCtx) error {
+	return nil
+}
+
+func (k *awsStoredKey) encryptData(data []byte) ([]byte, error) {
+	// implement me
+	return data, nil
+}
+
+func (k *awsStoredKey) decryptData(data []byte) ([]byte, error) {
+	// implement me
+	return data, nil
+}
+
+func (k *awsStoredKey) unmarshal(data json.RawMessage) error {
+	err := json.Unmarshal(data, k)
+	if err != nil {
+		return errors.New(fmt.Sprintf("invalid raw key json: %s", err.Error()))
+	}
+	return nil
+}
+
+func (k *awsStoredKey) marshal() (storedKeyType, []byte, error) {
+	data, err := json.Marshal(k)
+	if err != nil {
+		return "", nil, errors.New(fmt.Sprintf("Failed to marshal key %s: %s", k.Name, err.Error()))
+	}
+	return awskmKey, data, nil
+}
+
+func (k *awsStoredKey) usesSecretManagementKey() bool {
+	return false
 }

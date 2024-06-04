@@ -76,7 +76,7 @@ handle_put_secret(IdStr, Req) ->
 secret_validators(CurProps) ->
     [validator:string(name, _),
      validator:required(name, _),
-     validator:one_of(type, [?GENERATED_KEY_TYPE], _),
+     validator:one_of(type, [?GENERATED_KEY_TYPE, ?AWSKMS_KEY_TYPE], _),
      validator:convert(type, binary_to_atom(_, latin1), _),
      validator:required(type, _),
      validate_key_usage(usage, _),
@@ -106,7 +106,11 @@ keys_remap() ->
     #{creation_time => creationDateTime,
       rotation_interval => rotationIntervalInDays,
       auto_rotation => autoRotation,
-      first_rotation_time => firstRotationTime}.
+      first_rotation_time => firstRotationTime,
+      key_arn => keyARN,
+      credentials_file => credentialsFile,
+      config_file => configFile,
+      use_imds => useIMDS}.
 
 keys_to_json(Term) ->
     transform_keys(keys_remap(), Term).
@@ -141,7 +145,9 @@ export_secret(#{type := DataType} = Props) ->
                                                     BucketName])
                           end, UList)};
             ({data, D}) when DataType == ?GENERATED_KEY_TYPE ->
-                {data, {format_auto_generated_key_data(D)}}
+                {data, {format_auto_generated_key_data(D)}};
+            ({data, D}) when DataType == ?AWSKMS_KEY_TYPE ->
+                {data, {format_aws_key_data(D)}}
         end, maps:to_list(Props))).
 
 format_auto_generated_key_data(Props) ->
@@ -159,6 +165,16 @@ format_auto_generated_key_data(Props) ->
                            {format_key(KeyProps, ActiveKeyId)}
                        end, Keys)}
       end, maps:to_list(maps:remove(active_key_id, Props))).
+
+format_aws_key_data(Props) ->
+    lists:map(
+      fun ({key_arn, U}) -> {key_arn, iolist_to_binary(U)};
+          ({region, R}) -> {region, iolist_to_binary(R)};
+          ({credentials_file, F}) -> {credentials_file, iolist_to_binary(F)};
+          ({config_file, F}) -> {config_file, iolist_to_binary(F)};
+          ({profile, P}) -> {profile, iolist_to_binary(P)};
+          ({use_imds, U}) -> {use_imds, U}
+      end, maps:to_list(maps:remove(uuid, Props))).
 
 format_key(Props, ActiveKeyId) ->
     lists:flatmap(fun ({id, Id}) ->
@@ -192,6 +208,8 @@ validate_secrets_data(Name, CurSecretProps, State) ->
                 case Type of
                     ?GENERATED_KEY_TYPE ->
                         generated_key_validators(CurSecretProps);
+                    ?AWSKMS_KEY_TYPE ->
+                        awskms_key_validators(CurSecretProps);
                     _ -> []
                 end,
             validator:decoded_json(
@@ -209,6 +227,27 @@ generated_key_validators(_CurSecretProps) ->
      validator:range(rotationIntervalInDays, 1, infinity, _),
      validate_iso8601_datetime(firstRotationTime, _),
      validator:validate(fun (_) -> {error, "read only"} end, keys, _)].
+
+awskms_key_validators(CurSecretProps) ->
+    [validator:string(keyARN, _),
+     validator:required(keyARN, _),
+     validator:string(region, _),
+     validator:default(region, "", _),
+     validator:boolean(useIMDS, _),
+     validator:default(useIMDS, false, _),
+     validator:string(credentialsFile, _),
+     validator:default(credentialsFile, "", _),
+     validator:string(configFile, _),
+     validator:default(configFile, "", _),
+     validator:string(profile, _),
+     validator:default(profile, "", _)] ++
+    case CurSecretProps of
+        #{data := #{key_arn := KeyArn, region := Region}} ->
+            [enforce_static_field_validator(keyARN, KeyArn, _),
+             enforce_static_field_validator(region, Region, _)];
+        #{} when map_size(CurSecretProps) == 0 ->
+            []
+    end.
 
 validate_iso8601_datetime(Name, State) ->
     validator:validate(

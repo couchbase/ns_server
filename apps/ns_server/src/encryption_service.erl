@@ -17,7 +17,8 @@
          os_pid/0,
          reconfigure/1,
          store_bucket_dek/4,
-         store_kek/2]).
+         store_kek/2,
+         store_awskey/7]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -58,10 +59,19 @@ reconfigure(NewCfg) ->
 
 store_bucket_dek(Bucket, Id, Key, KekId) when is_list(Bucket) ->
     Name = iolist_to_binary(filename:join([Bucket, "deks", Id])),
-    store_key(bucketDek, Name, raw, Key, KekId).
+    store_key(bucketDek, Name, 'raw-aes-gcm', Key, KekId).
 
 store_kek(Id, Key) ->
-    store_key(kek, Id, raw, Key, <<"encryptionService">>).
+    store_key(kek, Id, 'raw-aes-gcm', Key, <<"encryptionService">>).
+
+store_awskey(Id, KeyArn, Region, Profile, CredsFile, ConfigFile, UseIMDS) ->
+    Data = ejson:encode({[{keyArn, iolist_to_binary(KeyArn)},
+                          {region, iolist_to_binary(Region)},
+                          {profile, iolist_to_binary(Profile)},
+                          {credsFile, iolist_to_binary(CredsFile)},
+                          {configFile, iolist_to_binary(ConfigFile)},
+                          {useIMDS, UseIMDS}]}),
+    store_key(kek, Id, awskm, Data, <<"encryptionService">>).
 
 encrypt_key(Data, KekId) when is_binary(Data), is_binary(KekId) ->
     wrap_error_msg(
