@@ -9,6 +9,8 @@
 %%
 -module(cb_cluster_secrets).
 
+-behaviour(gen_server).
+
 -include("ns_common.hrl").
 -include_lib("ns_common/include/cut.hrl").
 -include("cb_cluster_secrets.hrl").
@@ -16,13 +18,23 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+%% gen_server callbacks
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+         terminate/2]).
+
+-record(node_monitor, {}).
+-record(master_monitor, {}).
+
 %% API
--export([
+-export([start_link_node_monitor/0,
+         start_link_master_monitor/0,
          add_new_secret/1,
          replace_secret/2,
          get_all/0,
          get_secret/1,
          get_secret/2]).
+
+-define(MASTER_MONITOR, {via, leader_registry, cb_cluster_secrets_master}).
 
 -type secret_props() ::
     #{id := secret_id(),
@@ -48,6 +60,17 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
+
+%% Starts on each cluster node
+-spec start_link_node_monitor() -> {ok, pid()}.
+start_link_node_monitor() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [node_monitor], []).
+
+%% Starts on the master node only
+-spec start_link_master_monitor() -> {ok, pid()}.
+start_link_master_monitor() ->
+    misc:start_singleton(gen_server, start_link,
+                         [?MASTER_MONITOR, ?MODULE, [master_monitor], []]).
 
 -spec get_all() -> [secret_props()].
 get_all() -> get_all(direct).
@@ -122,6 +145,44 @@ replace_secret(OldProps, NewProps) ->
 generate_raw_key(Cipher) ->
     #{key_length := Length} = crypto:cipher_info(Cipher),
     crypto:strong_rand_bytes(Length).
+
+%%%===================================================================
+%%% gen_server callbacks
+%%%===================================================================
+
+init([Type]) ->
+    EventFilter =
+        fun (?CHRONICLE_SECRETS_KEY) -> true;
+            (_Key) -> false
+        end,
+    Self = self(),
+    chronicle_compat_events:subscribe(
+      EventFilter, fun (Key) -> Self ! {config_change, Key} end),
+    State = case Type of
+                master_monitor ->
+                    #master_monitor{};
+                node_monitor ->
+                    #node_monitor{}
+            end,
+    {ok, State}.
+
+handle_call(Request, _From, State) ->
+    ?log_warning("Unhandled call: ~p", [Request]),
+    {noreply, State}.
+
+handle_cast(Msg, State) ->
+    ?log_warning("Unhandled cast: ~p", [Msg]),
+    {noreply, State}.
+
+handle_info({config_change, _}, State) ->
+    {noreply, State};
+
+handle_info(Info, State) ->
+    ?log_warning("Unhandled info: ~p", [Info]),
+    {noreply, State}.
+
+terminate(_Reason, _State) ->
+    ok.
 
 %%%===================================================================
 %%% Internal functions

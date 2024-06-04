@@ -178,6 +178,9 @@ child_specs() ->
          start_link, []},
         {permanent, 1, ?MAX_R, ?MAX_T}, 5000, worker, [encryption_service]}),
 
+     {cb_cluster_secrets, {cb_cluster_secrets, start_link_node_monitor, []},
+      permanent, 1000, worker, []},
+
      {menelaus, {menelaus_sup, start_link, []},
       permanent, infinity, supervisor,
       [menelaus_sup]},
