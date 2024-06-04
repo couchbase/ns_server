@@ -146,6 +146,18 @@ generate_raw_key(Cipher) ->
     #{key_length := Length} = crypto:cipher_info(Cipher),
     crypto:strong_rand_bytes(Length).
 
+%% Just a helper function
+-spec many_to_one_result([{T, ok} | {T, {error, R}}]) ->
+                        ok | {error, [{T, R}]} when T :: term(), R :: term().
+many_to_one_result(Results) ->
+    Errors = lists:filtermap(fun ({T, {error, R}}) -> {true, {T, R}};
+                                 ({_T, ok}) -> false
+                             end, Results),
+    case Errors of
+        [] -> ok;
+        _ -> {error, Errors}
+    end.
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -162,6 +174,7 @@ init([Type]) ->
                 master_monitor ->
                     #master_monitor{};
                 node_monitor ->
+                    ok = ensure_all_keks_are_on_disk(),
                     #node_monitor{}
             end,
     {ok, State}.
@@ -173,6 +186,13 @@ handle_call(Request, _From, State) ->
 handle_cast(Msg, State) ->
     ?log_warning("Unhandled cast: ~p", [Msg]),
     {noreply, State}.
+
+%% KEK list has updated
+%% This can be creation of kek, kek rotation, historical kek removal
+handle_info({config_change, ?CHRONICLE_SECRETS_KEY},
+            #node_monitor{} = State) ->
+    ok = ensure_all_keks_are_on_disk(),
+    {noreply, State};
 
 handle_info({config_change, _}, State) ->
     {noreply, State};
@@ -237,6 +257,30 @@ replace_secret_in_list(NewProps, List) ->
                          end
                  end,
     ReplaceFun(List, []).
+
+-spec ensure_all_keks_are_on_disk() -> ok | {error, list()}.
+ensure_all_keks_are_on_disk() ->
+    RV = lists:map(fun (#{id := Id,
+                          type := ?GENERATED_KEY_TYPE} = SecretProps)  ->
+                           {Id, ensure_generated_keks_on_disk(SecretProps)};
+                       (#{id := Id}) ->
+                           {Id, ok}
+                   end, get_all()),
+    many_to_one_result(RV).
+
+-spec ensure_generated_keks_on_disk(secret_props()) -> ok | {error, list()}.
+ensure_generated_keks_on_disk(#{type := ?GENERATED_KEY_TYPE, id := SecretId,
+                                data := #{keys := Keys}}) ->
+    ?log_debug("Ensure all keys are on disk for secret ~p "
+               "(number of keys to check: ~b)", [SecretId, length(Keys)]),
+    Res = lists:map(fun (#{id := Id} = K) ->
+                        {Id, ensure_kek_on_disk(K)}
+                    end, Keys),
+    many_to_one_result(Res).
+
+-spec ensure_kek_on_disk(kek_props()) -> ok | {error, _}.
+ensure_kek_on_disk(#{id := Id, key := {sensitive, Key}}) ->
+    encryption_service:store_kek(Id, Key).
 
 -spec maybe_encrypt_key(binary(), secret_props()) ->
                            {ok, {sensitive, binary()}} | {error, _}.
