@@ -431,24 +431,34 @@ master(info,
         true ->
             Now = erlang:monotonic_time(),
 
-            case higher_priority_node(NodeInfo, ServiceWeights) of
-                true ->
-                    ?log_info("Surrendering mastership to ~p", [Node]),
-                    NewState = shutdown_master_sup(State),
-                    announce_leader(Node),
-                    %% @state_change
-                    %% @from master
-                    %% @to candidate
-                    %% @reason Surrendering mastership, newer node in cluster
-                    {next_state, candidate,
-                     update_high_priority_nodes(
-                       {Node, Now},
-                       NewState#state{last_heard = Now,
-                                      master = Node})};
-                false ->
-                    ?log_info("Got master heartbeat from ~p when I'm master",
+            case rebalance:status() of
+                running ->
+                    ?log_info("Got master heartbeat from ~p when in rebalance."
+                              " Not considering surrendering mastership.",
                               [Node]),
-                    {keep_state, State#state{last_heard=Now}}
+                    {keep_state, State#state{last_heard=Now}};
+                _ ->
+                    case higher_priority_node(NodeInfo, ServiceWeights) of
+                        true ->
+                            ?log_info("Surrendering mastership to ~p", [Node]),
+                            NewState = shutdown_master_sup(State),
+                            announce_leader(Node),
+                            %% @state_change
+                            %% @from master
+                            %% @to candidate
+                            %% @reason Surrendering mastership, newer node in
+                            %% cluster
+                            {next_state, candidate,
+                             update_high_priority_nodes(
+                               {Node, Now},
+                               NewState#state{last_heard = Now,
+                                              master = Node})};
+                        false ->
+                            ?log_info(
+                               "Got master heartbeat from ~p when I'm master",
+                               [Node]),
+                            {keep_state, State#state{last_heard=Now}}
+                    end
             end;
         false ->
             ?log_warning("Master got master heartbeat from node ~p which is "
