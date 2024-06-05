@@ -39,9 +39,11 @@
 %% Can be called by other nodes:
 -export([add_new_secret_internal/1,
          replace_secret_internal/2,
-         rotate_internal/1]).
+         rotate_internal/1,
+         sync_with_node_monitor/0]).
 
 -define(MASTER_MONITOR, {via, leader_registry, cb_cluster_secrets_master}).
+-define(SYNC_TIMEOUT, ?get_timeout(sync, 60000)).
 
 -type secret_props() ::
     #{id := secret_id(),
@@ -141,7 +143,9 @@ add_new_secret_internal(Props) ->
                end
             end),
     case RV of
-        {ok, _, Res} -> {ok, Res};
+        {ok, _, Res} ->
+            sync_with_all_node_monitors(),
+            {ok, Res};
         {error, _} = Error -> Error
     end.
 
@@ -175,7 +179,9 @@ replace_secret_internal(OldProps, NewProps) ->
               end
            end),
     case Res of
-        {ok, _} -> {ok, Props};
+        {ok, _} ->
+            sync_with_all_node_monitors(),
+            {ok, Props};
         {error, _} = Error -> Error
     end.
 
@@ -195,7 +201,9 @@ rotate_internal(Id) ->
         {ok, #{type := ?GENERATED_KEY_TYPE} = SecretProps} ?= get_secret(Id),
         ?log_info("Rotating secret #~b", [Id]),
         {ok, NewKey} ?= generate_key(erlang:universaltime(), SecretProps),
-        ok ?= add_active_key(Id, NewKey)
+        ok ?= add_active_key(Id, NewKey),
+        sync_with_all_node_monitors(),
+        ok
     else
         {ok, #{}} ->
             ?log_info("Secret #~p rotation failed: not_supported", [Id]),
@@ -215,6 +223,18 @@ get_active_key_id(SecretId, Snapshot) ->
     else
         {error, _} = Err -> Err
     end.
+
+-spec sync_with_node_monitor() -> ok.
+sync_with_node_monitor() ->
+    %% Mostly needed to make sure local cb_cluster_secret has pushed all new
+    %% keys to disk before we try using them.
+    %% chronicle_kv:sync() makes sure we have the latest chronicle data
+    %% chronicle_compat_events:sync() makes sure all notifications has been sent
+    %% sync([node()]) makes sure local cb_cluster_secret has handled that
+    %% notification
+    ok = chronicle_kv:sync(kv, ?SYNC_TIMEOUT),
+    chronicle_compat_events:sync(),
+    gen_server:call(?MODULE, sync, ?SYNC_TIMEOUT).
 
 %% Just a helper function
 -spec many_to_one_result([{T, ok} | {T, {error, R}}]) ->
@@ -260,6 +280,9 @@ handle_call({call, {M, F, A} = MFA}, _From, #master_monitor{} = State) ->
             ?log_warning("Call ~p failed: ~p:~p~n~p", [MFA, C, E, ST]),
             {reply, {exception, {C, E, ST}}, State}
     end;
+
+handle_call(sync, _From, #node_monitor{} = State) ->
+    {reply, ok, State};
 
 handle_call(Request, _From, State) ->
     ?log_warning("Unhandled call: ~p", [Request]),
@@ -551,7 +574,9 @@ maybe_reencrypt_secrets() ->
                end
            end),
     case RV of
-        {commit, _} -> ok;
+        {commit, _} ->
+            sync_with_node_monitor(),
+            ok;
         no_change -> ok
     end.
 
@@ -623,6 +648,26 @@ maybe_reencrypt_kek(#{key := {sensitive, _Bin},
                       encrypted_by := undefined},
                     undefined) ->
     no_change.
+
+-spec sync_with_all_node_monitors() -> ok | {error, [atom()]}.
+sync_with_all_node_monitors() ->
+    Nodes = ns_node_disco:nodes_actual(),
+    Res = erpc:multicall(Nodes, ?MODULE, sync_with_node_monitor, [],
+                         ?SYNC_TIMEOUT),
+    BadNodes = lists:filtermap(
+                 fun ({_Node, {ok, _}}) ->
+                         false;
+                     ({Node, {Class, Exception}}) ->
+                         ?log_error("Node ~p sync failed: ~p ~p",
+                                    [Node, Class, Exception]),
+                         {true, Node}
+                 end, lists:zip(Nodes, Res)),
+    case BadNodes of
+        [] -> ok;
+        _ ->
+            ?log_error("Sync failed, bad nodes: ~p", [BadNodes]),
+            {error, BadNodes}
+    end.
 
 -ifdef(TEST).
 replace_secret_in_list_test() ->
