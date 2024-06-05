@@ -514,7 +514,7 @@ encrypt_and_save(Config) ->
             {ok, KeysRef} = encryption_service:get_keys_ref(),
             EncryptedConfig = encrypt(Dynamic),
             ns_config:save_config_sync([EncryptedConfig], DirPath),
-            encryption_service:maybe_clear_backup_key(KeysRef);
+            ok = encryption_service:maybe_clear_backup_key(KeysRef);
         false ->
             ns_config:save_config_sync([Dynamic], DirPath)
     end.
