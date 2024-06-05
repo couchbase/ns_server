@@ -9,6 +9,7 @@
 from pprint import pprint
 
 import testlib
+from testlib import Service
 
 BUCKET_NAME = "test"
 
@@ -18,7 +19,9 @@ class ResourceManagementAPITests(testlib.BaseTestSet):
     @staticmethod
     def requirements():
         # - Provisioned edition required for guard rails to be configurable
-        return testlib.ClusterRequirements(edition="Provisioned")
+        # TODO: Add Service.INDEX once indexing has added support
+        return testlib.ClusterRequirements(edition="Provisioned",
+                                           services=[Service.KV])
 
     def setup(self):
         # Set the promQL queries to default values to ensure that they are
