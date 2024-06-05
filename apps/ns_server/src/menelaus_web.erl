@@ -525,10 +525,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, settings], read},
                      fun menelaus_web_guardrails:handle_get/2, [PathRest]};
                 ["settings", "secrets"] ->
-                    {{[admin, security], read},
+                    {no_check_disallow_anonymous,
                      fun menelaus_web_secrets:handle_get_secrets/1};
                 ["settings", "secrets", SecretId] ->
-                    {{[admin, security], read},
+                    {no_check_disallow_anonymous,
                      fun menelaus_web_secrets:handle_get_secret/2, [SecretId]};
                 ["internalSettings"] ->
                     {{[admin, settings], read},
@@ -816,7 +816,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, settings], write},
                      fun menelaus_web_guardrails:handle_post/2, [PathRest]};
                 ["settings", "secrets"] ->
-                    {{[admin, security], write},
+                    {no_check_disallow_anonymous,
                      fun menelaus_web_secrets:handle_post_secret/1};
                 ["internalSettings"] ->
                     {{[admin, settings], write},
@@ -1119,7 +1119,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, security, external], write},
                      fun menelaus_web_saml:handle_delete_settings/1};
                 ["settings", "secrets", SecretId] ->
-                    {{[admin, security], write},
+                    {no_check_disallow_anonymous,
                      fun menelaus_web_secrets:handle_delete_secret/2,
                      [SecretId]};
                 ["couchBase" | _] -> {no_check_disallow_anonymous,
@@ -1175,7 +1175,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, security], write},
                      fun menelaus_web_rbac:handle_backup_restore/1};
                 ["settings", "secrets", SecretId] ->
-                    {{[admin, security], write},
+                    {no_check_disallow_anonymous,
                      fun menelaus_web_secrets:handle_put_secret/2, [SecretId]};
                 ["pools", "default", "buckets", Id, "scopes"] ->
                     {{[{collection, [Id, any, any]}, collections], write},

@@ -24,17 +24,23 @@
          handle_rotate/2]).
 
 handle_get_secrets(Req) ->
+    All = cb_cluster_secrets:get_all(),
+    FilteredSecrets = read_filter_secrets_by_permission(All, Req),
     Res = lists:map(
             fun (Props) ->
                 {export_secret(Props)}
-            end, cb_cluster_secrets:get_all()),
+            end, FilteredSecrets),
     menelaus_util:reply_json(Req, Res).
 
 handle_get_secret(IdStr, Req) when is_list(IdStr) ->
     case cb_cluster_secrets:get_secret(parse_id(IdStr)) of
         {ok, Props} ->
-            Res = {export_secret(Props)},
-            menelaus_util:reply_json(Req, Res);
+            case read_filter_secrets_by_permission([Props], Req) of
+                [] -> menelaus_util:reply_not_found(Req);
+                [_] ->
+                    Res = {export_secret(Props)},
+                    menelaus_util:reply_json(Req, Res)
+            end;
         {error, not_found} ->
             menelaus_util:reply_not_found(Req)
     end.
@@ -42,11 +48,15 @@ handle_get_secret(IdStr, Req) when is_list(IdStr) ->
 handle_post_secret(Req) ->
     validator:handle(
       fun (RawProps) ->
-          ToAdd = import_secret(RawProps),
-          case cb_cluster_secrets:add_new_secret(ToAdd) of
-              {ok, Res} ->
-                  Formatted = export_secret(Res),
-                  menelaus_util:reply_json(Req, {Formatted});
+          maybe
+              ToAdd = import_secret(RawProps),
+              [_] ?= write_filter_secrets_by_permission([ToAdd], Req),
+              {ok, Res} ?= cb_cluster_secrets:add_new_secret(ToAdd),
+              Formatted = export_secret(Res),
+              menelaus_util:reply_json(Req, {Formatted})
+          else
+              [] ->
+                  menelaus_util:web_exception(403, "Forbidden");
               {error, {encrypt_id, not_found}} ->
                   menelaus_util:reply_global_error(
                     Req, "encryption secret does not exist");
@@ -64,11 +74,16 @@ handle_put_secret(IdStr, Req) ->
         {ok, CurProps} ->
             validator:handle(
               fun (RawProps) ->
-                  Props = import_secret(RawProps),
-                  case cb_cluster_secrets:replace_secret(CurProps, Props) of
-                      {ok, Res} ->
-                          Formatted = export_secret(Res),
-                          menelaus_util:reply_json(Req, {Formatted});
+                  maybe
+                      Props = import_secret(RawProps),
+                      [_] ?= write_filter_secrets_by_permission([Props], Req),
+                      {ok, Res} ?= cb_cluster_secrets:replace_secret(CurProps,
+                                                                     Props),
+                      Formatted = export_secret(Res),
+                      menelaus_util:reply_json(Req, {Formatted})
+                  else
+                      [] ->
+                          menelaus_util:web_exception(403, "Forbidden");
                       {error, {usage, in_use}} ->
                           menelaus_util:reply_global_error(
                             Req, "can't modify usage as this secret is in use");
@@ -225,7 +240,7 @@ validate_key_usage(Name, State) ->
               _ ->
                   {error, "unknown usage"}
           end
-      end, State).
+      end, false, State).
 
 validate_secrets_data(Name, CurSecretProps, State) ->
     Type = validator:get_value(type, State),
@@ -344,6 +359,27 @@ validate_datetime_in_the_future(Name, State) ->
               false -> {error, "must be in the future"}
           end
       end, Name, State).
+
+is_usage_allowed({bucket_encryption, "*"}, Req) ->
+    menelaus_auth:has_permission({[buckets], create}, Req) orelse
+    menelaus_auth:has_permission({[admin, security], write}, Req);
+is_usage_allowed({bucket_encryption, B}, Req) ->
+    menelaus_auth:has_permission({[{bucket, B}, settings], write}, Req) orelse
+    menelaus_auth:has_permission({[admin, security], write}, Req);
+is_usage_allowed(secrets_encryption, Req) ->
+    menelaus_auth:has_permission({[admin, security], write}, Req).
+
+read_filter_secrets_by_permission(Secrets, Req) ->
+    lists:filter(
+      fun (#{usage := List}) when List /= [] ->
+          lists:any(is_usage_allowed(_, Req), List)
+      end, Secrets).
+
+write_filter_secrets_by_permission(Secrets, Req) ->
+    lists:filter(
+      fun (#{usage := List}) when List /= [] ->
+          lists:all(is_usage_allowed(_, Req), List)
+      end, Secrets).
 
 parse_id(Str) when is_list(Str) ->
     try list_to_integer(Str) of

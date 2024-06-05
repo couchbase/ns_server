@@ -55,6 +55,7 @@
          valid_in_enterprise_only/2,
          string_array/2,
          string_array/3,
+         string_array/4,
          return_value/3,
          return_error/3,
          default/3,
@@ -726,8 +727,13 @@ string_array(Name, State) ->
 -spec string_array(atom(), Fun, #state{}) -> #state{} when
       Fun :: fun((string()) -> ok | {value, term()} | {error, string()}).
 string_array(Name, Fun, State) ->
+    string_array(Name, Fun, true, State).
+
+string_array(Name, Fun, CanBeEmpty, State) ->
     validate(
-      fun (Array) when is_list(Array) ->
+      fun ([]) when not CanBeEmpty ->
+              {error, "Must contain at least one element"};
+          (Array) when is_list(Array) ->
               case lists:all(?cut(is_binary(_1) andalso _1 =/= <<>>), Array) of
                   false ->
                       {error, "Must be an array of non-empty strings"};
