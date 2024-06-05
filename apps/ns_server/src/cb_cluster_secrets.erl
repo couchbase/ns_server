@@ -36,6 +36,11 @@
          rotate/1,
          many_to_one_result/1]).
 
+%% Can be called by other nodes:
+-export([add_new_secret_internal/1,
+         replace_secret_internal/2,
+         rotate_internal/1]).
+
 -define(MASTER_MONITOR, {via, leader_registry, cb_cluster_secrets_master}).
 
 -type secret_props() ::
@@ -110,6 +115,11 @@ get_secret(SecretId, Snapshot) when is_integer(SecretId) ->
 
 -spec add_new_secret(secret_props()) -> {ok, secret_props()} | {error, _}.
 add_new_secret(Props) ->
+    execute_on_master({?MODULE, add_new_secret_internal, [Props]}).
+
+-spec add_new_secret_internal(secret_props()) ->
+                                            {ok, secret_props()} | {error, _}.
+add_new_secret_internal(Props) ->
     CurrentDateTime = erlang:universaltime(),
     PropsWTime = Props#{creation_time => CurrentDateTime},
     RV = chronicle_kv:transaction(
@@ -140,6 +150,11 @@ add_new_secret(Props) ->
                                     {error, not_found | encrypt_id_not_found |
                                             encrypt_id_not_allowed}.
 replace_secret(OldProps, NewProps) ->
+    execute_on_master({?MODULE, replace_secret_internal, [OldProps, NewProps]}).
+
+-spec replace_secret_internal(secret_props(), map()) ->
+                                    {ok, secret_props()} | {error, not_found}.
+replace_secret_internal(OldProps, NewProps) ->
     Props = copy_static_props(OldProps, NewProps),
     Res =
         chronicle_kv:transaction(
@@ -172,6 +187,10 @@ generate_raw_key(Cipher) ->
 
 -spec rotate(secret_id() | string()) -> ok | {error, term()}.
 rotate(Id) ->
+    execute_on_master({?MODULE, rotate_internal, [Id]}).
+
+-spec rotate_internal(secret_id()) -> ok | {error, term()}.
+rotate_internal(Id) ->
     maybe
         {ok, #{type := ?GENERATED_KEY_TYPE} = SecretProps} ?= get_secret(Id),
         ?log_info("Rotating secret #~b", [Id]),
@@ -231,6 +250,16 @@ init([Type]) ->
                     #node_monitor{}
             end,
     {ok, State}.
+
+handle_call({call, {M, F, A} = MFA}, _From, #master_monitor{} = State) ->
+    try
+        ?log_debug("Calling ~p", [MFA]),
+        {reply, {succ, erlang:apply(M, F, A)}, State}
+    catch
+        C:E:ST ->
+            ?log_warning("Call ~p failed: ~p:~p~n~p", [MFA, C, E, ST]),
+            {reply, {exception, {C, E, ST}}, State}
+    end;
 
 handle_call(Request, _From, State) ->
     ?log_warning("Unhandled call: ~p", [Request]),
@@ -468,6 +497,14 @@ validate_secret_in_txn(#{type := ?GENERATED_KEY_TYPE,
     end;
 validate_secret_in_txn(_NewProps, _PrevProps, _Snapshot) ->
     ok.
+
+-spec execute_on_master({module(), atom(), [term()]}) -> term().
+execute_on_master({_, _, _} = MFA) ->
+    misc:wait_for_global_name(cb_cluster_secrets_master),
+    case gen_server:call(?MASTER_MONITOR, {call, MFA}, 60000) of
+        {succ, Res} -> Res;
+        {exception, {C, E, ST}} -> erlang:raise(C, E, ST)
+    end.
 
 -spec get_active_key_id_from_secret(secret_props()) -> {ok, kek_id()} |
                                                        {error, not_supported}.
