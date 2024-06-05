@@ -119,9 +119,10 @@ handle_rotate(IdStr, Req) ->
 
 keys_remap() ->
     #{creation_time => creationDateTime,
-      rotation_interval => rotationIntervalInDays,
+      rotation_interval_in_days => rotationIntervalInDays,
+      next_rotation_time => nextRotationTime,
+      last_rotation_time => lastRotationTime,
       auto_rotation => autoRotation,
-      first_rotation_time => firstRotationTime,
       key_arn => keyARN,
       credentials_file => credentialsFile,
       config_file => configFile,
@@ -174,10 +175,12 @@ format_auto_generated_key_data(Props) ->
     lists:map(
       fun ({auto_rotation, B}) ->
               {auto_rotation, B};
-          ({rotation_interval, Interval}) ->
-              {rotation_interval, Interval};
-          ({first_rotation_time, DateTime}) ->
-              {first_rotation_time, iso8601:format(DateTime)};
+          ({rotation_interval_in_days, Interval}) ->
+              {rotation_interval_in_days, Interval};
+          ({next_rotation_time, DateTime}) ->
+              {next_rotation_time, iso8601:format(DateTime)};
+          ({last_rotation_time, DateTime}) ->
+              {last_rotation_time, iso8601:format(DateTime)};
           ({encrypt_by, E}) ->
               {encrypt_by, E};
           ({encrypt_secret_id, SId}) ->
@@ -249,8 +252,11 @@ validate_secrets_data(Name, CurSecretProps, State) ->
 
 generated_key_validators(CurSecretProps) ->
     [validator:boolean(autoRotation, _),
+     validator:default(autoRotation, true, _),
      validator:range(rotationIntervalInDays, 1, infinity, _),
-     validate_iso8601_datetime(firstRotationTime, _),
+     validate_iso8601_datetime(nextRotationTime, _),
+     validate_datetime_in_the_future(nextRotationTime, _),
+     mandatory_rotation_fields(_),
      validator:validate(fun (_) -> {error, "read only"} end, keys, _),
      validator:one_of(encryptBy, ["nodeSecretManager", "clusterSecret"], _),
      validator:convert(encryptBy, binary_to_atom(_, latin1), _),
@@ -309,6 +315,16 @@ awskms_key_validators(CurSecretProps) ->
             []
     end.
 
+mandatory_rotation_fields(State) ->
+    case validator:get_value(autoRotation, State) of
+        true ->
+            functools:chain(State,
+                            [validator:required(nextRotationTime, _),
+                             validator:required(rotationIntervalInDays, _)]);
+        false ->
+            State
+    end.
+
 validate_iso8601_datetime(Name, State) ->
     validator:validate(
       fun (S) ->
@@ -317,6 +333,15 @@ validate_iso8601_datetime(Name, State) ->
           catch
               _:_ ->
                   {error, "invalid ISO 8601 time"}
+          end
+      end, Name, State).
+
+validate_datetime_in_the_future(Name, State) ->
+    validator:validate(
+      fun (DT) ->
+          case DT > calendar:universal_time() of
+              true -> ok;
+              false -> {error, "must be in the future"}
           end
       end, Name, State).
 
