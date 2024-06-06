@@ -30,6 +30,7 @@ apps/ns_server/src/ns_server.app.src
 /tmp/version_num.tmp
 TAGS
 bin
+extra
 cluster_run_n_*
 ebucketmigrator
 ebucketmigrator**.tmp

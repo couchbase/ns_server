@@ -86,7 +86,8 @@ def setup_extra_ns_server_app_file(force_community, start_index):
 
     if force_community:
         found_enterprise = False
-        with open(f"{ns_server_dir}/ebin/ns_server.app", "r") as src_f:
+        with open(f"{ns_server_dir}/_build/default/lib/ns_server/ebin/"
+                  f"ns_server.app", "r") as src_f:
             lines = src_f.readlines()
 
         lines_out = ""
