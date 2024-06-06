@@ -413,10 +413,31 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
              []
      end,
      case cluster_compat_mode:is_cluster_morpheus() andalso
-         ns_bucket:is_persistent(BucketConfig) of
+          ns_bucket:bucket_type(BucketConfig) =:= membase of
          true ->
-             [{accessScannerEnabled,
-               ns_bucket:get_access_scanner_enabled(BucketConfig)}];
+             [{expiryPagerSleepTime,
+               ns_bucket:get_expiry_pager_sleep_time(BucketConfig)},
+              {warmupMinMemoryThreshold,
+               ns_bucket:get_warmup_min_memory_threshold(BucketConfig)},
+              {warmupMinItemsThreshold,
+               ns_bucket:get_warmup_min_items_threshold(BucketConfig)},
+              {memoryLowWatermark,
+               ns_bucket:get_memory_low_watermark(BucketConfig)},
+              {memoryHighWatermark,
+               ns_bucket:get_memory_high_watermark(BucketConfig)},
+              {secondaryWarmupMinMemoryThreshold,
+               ns_bucket:get_secondary_warmup_min_memory_threshold(
+                 BucketConfig)},
+              {secondaryWarmupMinItemsThreshold,
+               ns_bucket:get_secondary_warmup_min_items_threshold(
+                 BucketConfig)}] ++
+             case ns_bucket:is_persistent(BucketConfig) of
+                 true ->
+                     [{accessScannerEnabled,
+                       ns_bucket:get_access_scanner_enabled(BucketConfig)}];
+                 false ->
+                     []
+             end;
          false ->
              []
      end,
@@ -1279,7 +1300,8 @@ validate_ram(#ram_summary{this_alloc = Alloc, this_used = Used}) ->
 additional_bucket_params_validation(Params, Ctx) ->
     lists:append([validate_replicas_and_durability(Params, Ctx),
                   validate_magma_ram_quota(Params, Ctx),
-                  validate_pitr_params(Params, Ctx)]).
+                  validate_pitr_params(Params, Ctx),
+                  validate_watermarks(Params, Ctx)]).
 
 validate_replicas_and_durability(Params, Ctx) ->
     NumReplicas = get_value_from_parms_or_bucket(num_replicas, Params, Ctx),
@@ -1353,6 +1375,37 @@ validate_pitr_params(Params, Ctx) ->
             [{pitrGranularity,
               <<"PITR granularity must be less than or equal to max "
                 "history age">>}];
+        {_, _} ->
+            []
+    end.
+
+%% Validate the relationship between the low and high watermarks.
+validate_watermarks(Params, Ctx) ->
+    LowWatermark = get_value_from_parms_or_bucket(memory_low_watermark,
+                                                  Params, Ctx),
+    HighWatermark = get_value_from_parms_or_bucket(memory_high_watermark,
+                                                   Params, Ctx),
+    case {LowWatermark, HighWatermark} of
+        {undefined, undefined} ->
+            %% memcached buckets don't support watermarks
+            [];
+        {undefined, _} ->
+            %% Low watermark was found to have an error during parsing and
+            %% validation. But the high watermark is valid so we get into
+            %% this relationship validation code. The error is already
+            %% queued up to be returned to the user.
+            [];
+        {_, undefined} ->
+            %% Same as above except the high watermark is valid and the
+            %% low watermark has an error queued up to be returned to the
+            %% user.
+            [];
+        {LowWatermark, HighWatermark} when LowWatermark >= HighWatermark ->
+            Low = list_to_binary(integer_to_list(LowWatermark)),
+            High = list_to_binary(integer_to_list(HighWatermark)),
+            [{memoryLowWatermark,
+              <<"The low watermark ", Low/binary, " must be less "
+                "than the high watermark ", High/binary>>}];
         {_, _} ->
             []
     end.
@@ -1491,6 +1544,15 @@ validate_membase_bucket_params(CommonParams, Params, Name,
                                              IsEnterprise),
          parse_validate_access_scanner_enabled(Params, IsNew, IsMorpheus,
                                                IsPersistent),
+         parse_validate_expiry_pager_sleep_time(Params, IsNew, IsMorpheus),
+         parse_validate_warmup_min_memory_threshold(Params, IsNew, IsMorpheus),
+         parse_validate_warmup_min_items_threshold(Params, IsNew, IsMorpheus),
+         parse_validate_memory_low_watermark(Params, IsNew, IsMorpheus),
+         parse_validate_memory_high_watermark(Params, IsNew, IsMorpheus),
+         parse_validate_secondary_warmup_min_memory_threshold(Params, IsNew,
+                                                              IsMorpheus),
+         parse_validate_secondary_warmup_min_items_threshold(Params, IsNew,
+                                                             IsMorpheus),
          parse_validate_storage_quota_percentage(
            Params, BucketConfig, IsNew, IsEnterprise,
            IsStorageModeMigration),
@@ -2131,6 +2193,66 @@ parse_validate_access_scanner_enabled(Params, IsNew, true = _IsMorpheus,
                                                         '_', Params),
     process_boolean_param_validation(accessScannerEnabled,
                                      access_scanner_enabled, Result, IsNew).
+
+parse_validate_expiry_pager_sleep_time(Params, _IsNew, false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "expiryPagerSleepTime", Params, fun not_supported_until_morpheus_error/1);
+parse_validate_expiry_pager_sleep_time(Params, IsNew, true = _IsMorpheus) ->
+    parse_validate_numeric_param(Params, expiryPagerSleepTime,
+                                 expiry_pager_sleep_time, IsNew).
+
+parse_validate_warmup_min_memory_threshold(Params, _IsNew,
+                                           false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "warmupMinMemoryThreshold", Params,
+      fun not_supported_until_morpheus_error/1);
+parse_validate_warmup_min_memory_threshold(Params, IsNew,
+                                           true = _IsMorpheus) ->
+    parse_validate_numeric_param(Params, warmupMinMemoryThreshold,
+                                 warmup_min_memory_threshold, IsNew).
+
+parse_validate_warmup_min_items_threshold(Params, _IsNew,
+                                          false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "warmupMinItemsThreshold", Params,
+      fun not_supported_until_morpheus_error/1);
+parse_validate_warmup_min_items_threshold(Params, IsNew, true = _IsMorpheus) ->
+    parse_validate_numeric_param(Params, warmupMinItemsThreshold,
+                                 warmup_min_items_threshold, IsNew).
+
+parse_validate_memory_low_watermark(Params, _IsNew, false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "memoryLowWatermark", Params, fun not_supported_until_morpheus_error/1);
+parse_validate_memory_low_watermark(Params, IsNew, true = _IsMorpheus) ->
+    parse_validate_numeric_param(Params, memoryLowWatermark,
+                                 memory_low_watermark, IsNew).
+
+parse_validate_memory_high_watermark(Params, _IsNew, false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "memoryHighWatermark", Params, fun not_supported_until_morpheus_error/1);
+parse_validate_memory_high_watermark(Params, IsNew, true = _IsMorpheus) ->
+    parse_validate_numeric_param(Params, memoryHighWatermark,
+                                 memory_high_watermark, IsNew).
+
+parse_validate_secondary_warmup_min_memory_threshold(Params, _IsNew,
+                                                     false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "secondaryWarmupMinMemoryThreshold", Params,
+      fun not_supported_until_morpheus_error/1);
+parse_validate_secondary_warmup_min_memory_threshold(Params, IsNew,
+                                                     true = _IsMorpheus) ->
+    parse_validate_numeric_param(Params, secondaryWarmupMinMemoryThreshold,
+                                 secondary_warmup_min_memory_threshold, IsNew).
+
+parse_validate_secondary_warmup_min_items_threshold(Params, _IsNew,
+                                                    false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "secondaryWarmupMinItemsThreshold", Params,
+      fun not_supported_until_morpheus_error/1);
+parse_validate_secondary_warmup_min_items_threshold(Params, IsNew,
+                                                    true = _IsMorpheus) ->
+    parse_validate_numeric_param(Params, secondaryWarmupMinItemsThreshold,
+                                 secondary_warmup_min_items_threshold, IsNew).
 
 get_storage_mode_based_on_storage_backend(Params, IsEnterprise) ->
     StorageBackend = proplists:get_value("storageBackend", Params,
@@ -3870,6 +3992,84 @@ basic_bucket_params_screening_t() ->
     ?assertEqual([{"accessScannerEnabled",
                    <<"Argument is not supported for ephemeral buckets">>}],
                  E34),
+
+    %% Specify invalid values. This isn't intended to be exhaustive. It
+    %% tests the parsing/validation of each item.
+    {_OK35, E35} = basic_bucket_params_screening(
+                     true,
+                     "bucket35",
+                     [{"bucketType", "membase"},
+                      {"ramQuota", "1024"},
+                      {"expiryPagerSleepTime", "-1"},
+                      {"warmupMinMemoryThreshold", "1000"},
+                      {"warmupMinItemsThreshold", "777"},
+                      {"memoryLowWatermark", "-888"},
+                      {"memoryHighWatermark", "333"},
+                      {"secondaryWarmupMinMemoryThreshold", "123"},
+                      {"secondaryWarmupMinItemsThreshold", "-456"}],
+                     AllBuckets),
+    ?assertEqual([{expiryPagerSleepTime,
+                   <<"The value of expiryPagerSleepTime (-1) must be in the "
+                     "range 0 to 18446744073709551615 inclusive">>},
+                  {warmupMinMemoryThreshold,
+                   <<"The value of warmupMinMemoryThreshold (1000) must be "
+                     "in the range 0 to 100 inclusive">>},
+                  {warmupMinItemsThreshold,
+                   <<"The value of warmupMinItemsThreshold (777) must be in "
+                     "the range 0 to 100 inclusive">>},
+                  {memoryLowWatermark,
+                   <<"The value of memoryLowWatermark (-888) must be in the "
+                     "range 50 to 89 inclusive">>},
+                  {memoryHighWatermark,
+                   <<"The value of memoryHighWatermark (333) must be in the "
+                     "range 51 to 90 inclusive">>},
+                  {secondaryWarmupMinMemoryThreshold,
+                   <<"The value of secondaryWarmupMinMemoryThreshold (123) "
+                     "must be in the range 0 to 100 inclusive">>},
+                  {secondaryWarmupMinItemsThreshold,
+                   <<"The value of secondaryWarmupMinItemsThreshold (-456) "
+                     "must be in the range 0 to 100 inclusive">>}], E35),
+
+    %% Test related values.
+    {_OK36, E36} = basic_bucket_params_screening(
+                    true,
+                    "bucket36",
+                     [{"bucketType", "membase"},
+                      {"ramQuota", "1024"},
+                      {"memoryLowWatermark", "88"},
+                      {"memoryHighWatermark", "77"}],
+                     AllBuckets),
+    ?assertEqual([{memoryLowWatermark,
+                   <<"The low watermark 88 must be less than the high "
+                     "watermark 77">>}], E36),
+
+    %% Specify valid values. This isn't intended to be exhaustive. It
+    %% tests the parsing/validation of each item.
+    {OK37, E37} = basic_bucket_params_screening(
+                     true,
+                     "bucket37",
+                     [{"bucketType", "membase"},
+                      {"ramQuota", "1024"},
+                      {"accessScannerEnabled", "false"},
+                      {"expiryPagerSleepTime", "12345"},
+                      {"warmupMinMemoryThreshold", "44"},
+                      {"warmupMinItemsThreshold", "77"},
+                      {"memoryLowWatermark", "68"},
+                      {"memoryHighWatermark", "70"},
+                      {"secondaryWarmupMinMemoryThreshold", "12"},
+                      {"secondaryWarmupMinItemsThreshold", "56"}],
+                     AllBuckets),
+    ?assertEqual([], E37),
+    ?assertEqual(false, proplists:get_value(access_scanner_enabled, OK37)),
+    ?assertEqual(12345, proplists:get_value(expiry_pager_sleep_time, OK37)),
+    ?assertEqual(44, proplists:get_value(warmup_min_memory_threshold, OK37)),
+    ?assertEqual(77, proplists:get_value(warmup_min_items_threshold, OK37)),
+    ?assertEqual(68, proplists:get_value(memory_low_watermark, OK37)),
+    ?assertEqual(70, proplists:get_value(memory_high_watermark, OK37)),
+    ?assertEqual(12, proplists:get_value(secondary_warmup_min_memory_threshold,
+                                         OK37)),
+    ?assertEqual(56, proplists:get_value(secondary_warmup_min_items_threshold,
+                                         OK37)),
 
     %% Back to default action
     meck:expect(ns_config, read_key_fast,

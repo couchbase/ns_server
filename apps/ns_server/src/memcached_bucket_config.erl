@@ -59,6 +59,20 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
       ns_bucket:pitr_max_history_age(BucketConfig)},
      {"access_scanner_enabled", [{reload, flush}],
       ns_bucket:get_access_scanner_enabled(BucketConfig)},
+     {"exp_pager_stime", [{reload, flush}],
+      ns_bucket:get_expiry_pager_sleep_time(BucketConfig)},
+     {"warmup_min_memory_threshold", [{reload, flush}],
+      ns_bucket:get_warmup_min_memory_threshold(BucketConfig)},
+     {"warmup_min_items_threshold", [{reload, flush}],
+      ns_bucket:get_warmup_min_items_threshold(BucketConfig)},
+     {"mem_low_wat_percent", [{reload, flush}],
+      get_memory_watermark(low, BucketConfig)},
+     {"mem_high_wat_percent", [{reload, flush}],
+      get_memory_watermark(high, BucketConfig)},
+     {"secondary_warmup_min_memory_threshold", [{reload, flush}],
+      ns_bucket:get_secondary_warmup_min_memory_threshold(BucketConfig)},
+     {"secondary_warmup_min_items_threshold", [{reload, flush}],
+      ns_bucket:get_secondary_warmup_min_items_threshold(BucketConfig)},
      {"hlc_drift_ahead_threshold_us", [no_param, {reload, vbucket}],
       DriftAheadThreshold},
      {"hlc_drift_behind_threshold_us", [no_param, {reload, vbucket}],
@@ -134,6 +148,20 @@ persistent_metadata_purge_age(BucketName, BucketConfig) ->
             %% the global auto-compaction purge interval may be used.
             PI = compaction_api:get_purge_interval(list_to_binary(BucketName)),
             erlang:round(PI * 24 * 3600)
+    end.
+
+get_memory_watermark(Type, BucketConfig) ->
+    Watermark = case Type of
+                    low ->
+                        ns_bucket:get_memory_low_watermark(BucketConfig);
+                    high ->
+                        ns_bucket:get_memory_high_watermark(BucketConfig)
+                end,
+    case Watermark of
+        undefined ->
+            undefined;
+        _ ->
+            Watermark / 100
     end.
 
 get(BucketName) ->
