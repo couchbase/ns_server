@@ -1170,10 +1170,11 @@ get_seqnos_per_vb(Moves, Bucket) ->
 
 -ifdef(TEST).
 test_get_rebalance_info() ->
-    gen_server:call(?MODULE, {get_rebalance_info, [{add_vbucket_info, true}]}).
+    gen_server:call(?MODULE, {get_rebalance_info, [{add_vbucket_info, true}]},
+                    30000).
 
 test_get_progress_for_alerting(Service) ->
-    gen_server:call(?MODULE, {get_progress_for_alerting, Service}).
+    gen_server:call(?MODULE, {get_progress_for_alerting, Service}, 30000).
 
 -define(REBALANCE_ID, <<"rebalanceID">>).
 
