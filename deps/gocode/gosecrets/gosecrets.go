@@ -33,11 +33,12 @@ import (
 
 	"context"
 	"encoding/base64"
-	"gocbutils"
 	"os/exec"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/couchbase/ns_server/deps/gocode/gocbutils"
 )
 
 const keySize = 32

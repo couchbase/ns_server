@@ -24,7 +24,7 @@ import (
 	"syscall"
 	"time"
 
-	"gocbutils"
+	"github.com/couchbase/ns_server/deps/gocode/gocbutils"
 )
 
 var (

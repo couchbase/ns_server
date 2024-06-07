@@ -94,7 +94,7 @@ FILE (GLOB_RECURSE UI_SRC_CSS_FILES CONFIGURE_DEPENDS "${NS_UI_SRC}/*.css")
 
 ADD_CUSTOM_COMMAND (OUTPUT "${NS_UI_BUILD_DIR}/out.js.stamp"
   COMMAND "${CMAKE_COMMAND}" -E rm -rf "${NS_UI_PUB_JS_OUT_DIR}"
-  COMMAND "${PROJECT_BINARY_DIR}/deps/gomodules/minify_js/minify_js"
+  COMMAND "${PROJECT_BINARY_DIR}/deps/gocode/minify_js"
   "--in-dir=${NS_UI_PUB_DIR}"
   "--out-dir=${NS_UI_PUB_JS_OUT_DIR}"
   "--importmap-path=${NS_UI_SRC}/importmap.json"
@@ -104,7 +104,7 @@ ADD_CUSTOM_COMMAND (OUTPUT "${NS_UI_BUILD_DIR}/out.js.stamp"
   VERBATIM)
 ADD_CUSTOM_COMMAND (OUTPUT "${NS_UI_BUILD_DIR}/out.css.stamp"
   COMMAND "${CMAKE_COMMAND}" -E rm -rf "${NS_UI_PUB_CSS_OUT_DIR}"
-  COMMAND "${PROJECT_BINARY_DIR}/deps/gomodules/minify_css/minify_css"
+  COMMAND "${PROJECT_BINARY_DIR}/deps/gocode/minify_css"
   "--in-path=${NS_UI_PUB_DIR}/ui/index.css"
   "--out-dir=${NS_UI_PUB_CSS_OUT_DIR}"
   COMMAND "${CMAKE_COMMAND}" -E touch "${NS_UI_BUILD_DIR}/out.css.stamp"

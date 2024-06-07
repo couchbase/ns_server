@@ -1,2 +1,1 @@
 ADD_SUBDIRECTORY (gocode)
-ADD_SUBDIRECTORY (gomodules)

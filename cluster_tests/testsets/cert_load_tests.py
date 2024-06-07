@@ -14,9 +14,9 @@ import sys
 
 scriptdir = sys.path[0]
 certs_path = os.path.join(scriptdir, 'resources', 'test_certs')
-generate_cert_path = os.path.join(scriptdir, '..', 'deps', 'gocode', 'bin',
-                                  'generate_cert')
-openssl_path = os.path.join(scriptdir, '..', '..', 'install', 'bin', 'openssl')
+bin_path = os.path.join(scriptdir, '..', '..', 'install', 'bin')
+generate_cert_path = os.path.join(bin_path, 'generate_cert')
+openssl_path = os.path.join(bin_path, 'openssl')
 
 
 class CertLoadTests(testlib.BaseTestSet):

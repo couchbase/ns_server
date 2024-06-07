@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"gocbutils"
+	"github.com/couchbase/ns_server/deps/gocode/gocbutils"
 )
 
 func readdir(path string) (infos []os.FileInfo, err error) {
