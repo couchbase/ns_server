@@ -24,7 +24,9 @@ IF (NOT EXISTS "${COUCHBASE_PLT}")
     _build/default/lib/chronicle
     _build/default/lib/enacl
     _build/default/lib/esaml
-    _build/default/lib/iso8601)
+    _build/default/lib/iso8601
+    _build/default/lib/jose
+    _build/default/lib/jiffy)
 ENDIF (NOT EXISTS "${COUCHBASE_PLT}")
 
 EXECUTE_PROCESS (RESULT_VARIABLE _failure
