@@ -417,6 +417,7 @@ goport_args(projector, Config, _Cmd, _NodeUUID) ->
     RestPort = service_ports:get_port(rest_port, Config),
     LocalMemcachedPort = service_ports:get_port(memcached_port, Config),
     MinidumpDir = path_config:minidump_dir(),
+    {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
 
     ["--deploymentModel=" ++ config_profile:name()] ++
     build_https_args(projector_ssl_port, "--httpsPort", "--certFile",
@@ -426,6 +427,7 @@ goport_args(projector, Config, _Cmd, _NodeUUID) ->
     ["-kvaddrs=" ++ misc:local_url(LocalMemcachedPort, [no_scheme]),
      build_port_arg("-adminport", ":", projector_port, Config),
      "-diagDir=" ++ MinidumpDir,
+     "-logDir=" ++ LogDir,
      misc:local_url(RestPort, [no_scheme])];
 
 goport_args(goxdcr, Config, _Cmd, _NodeUUID) ->
