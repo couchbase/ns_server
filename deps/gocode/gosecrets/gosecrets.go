@@ -38,6 +38,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/couchbase/ns_server/deps/gocode/awsutils"
 	"github.com/couchbase/ns_server/deps/gocode/gocbutils"
 )
 
@@ -1691,7 +1692,6 @@ func (k *rawAesGcmStoredKey) marshal() (storedKeyType, []byte, error) {
 }
 
 // Implementation of storedKeyIface for aws keys
-
 func (k *awsStoredKey) name() string {
 	return k.Name
 }
@@ -1712,13 +1712,11 @@ func (k *awsStoredKey) decryptMe(ctx *storedKeysCtx) error {
 }
 
 func (k *awsStoredKey) encryptData(data []byte) ([]byte, error) {
-	// implement me
-	return data, nil
+	return awsutils.KmsEncryptData(k.KeyArn, data)
 }
 
 func (k *awsStoredKey) decryptData(data []byte) ([]byte, error) {
-	// implement me
-	return data, nil
+	return awsutils.KmsDecryptData(k.KeyArn, data)
 }
 
 func (k *awsStoredKey) unmarshal(data json.RawMessage) error {
