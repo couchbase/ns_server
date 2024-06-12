@@ -1199,6 +1199,8 @@ do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
             reply_text(Req,
                        io_lib:format("Cannot contact the following nodes: ~p",
                                      [Nodes]), 503);
+        {params_mismatch, Error} ->
+            reply_text(Req, Error, 400);
         %% pre-7.6 responses
         ok ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes,

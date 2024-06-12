@@ -438,7 +438,8 @@ ensure_janitor_run(Item, Timeout) ->
                              {need_more_space, list()} |
                              {must_rebalance_services, list()} |
                              {unhosted_services, list()} |
-                             {total_quota_too_high, list()}.
+                             {total_quota_too_high, list()} |
+                             {params_mismatch, list()}.
 start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets,
                 DefragmentZones, Services, DesiredServicesNodes) ->
     case get_services_nodes_memory_data(DesiredServicesNodes, KnownNodes) of
@@ -1830,9 +1831,15 @@ get_delta_recovery_nodes(Snapshot, Nodes) ->
 
 validate_services_nodes(undefined, _, _, _) ->
     ok;
-validate_services_nodes(_, _, DeltaNodes, FailedNodes)
-  when DeltaNodes =/= [] orelse FailedNodes =/= [] ->
-    throw(nodes_mismatch);
+validate_services_nodes(_, _, DeltaNodes, _)
+  when DeltaNodes =/= [] ->
+    throw({params_mismatch,
+           "Service topology change is incompatible with delta recovery"});
+validate_services_nodes(_, _, _, FailedNodes)
+  when FailedNodes =/= [] ->
+    throw({params_mismatch,
+           "Service topology change is not possible if some nodes are failed "
+           "over"});
 validate_services_nodes(ServiceNodesMap, KeepNodes, _, _) ->
     maps:foreach(
       fun (_, Nodes) ->
