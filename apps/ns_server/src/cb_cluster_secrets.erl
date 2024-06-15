@@ -32,7 +32,9 @@
          replace_secret/2,
          get_all/0,
          get_secret/1,
-         get_secret/2]).
+         get_secret/2,
+         rotate/1,
+         many_to_one_result/1]).
 
 -define(MASTER_MONITOR, {via, leader_registry, cb_cluster_secrets_master}).
 
@@ -146,6 +148,22 @@ generate_raw_key(Cipher) ->
     #{key_length := Length} = crypto:cipher_info(Cipher),
     crypto:strong_rand_bytes(Length).
 
+-spec rotate(secret_id() | string()) -> ok | {error, term()}.
+rotate(Id) ->
+    maybe
+        {ok, #{type := ?GENERATED_KEY_TYPE} = SecretProps} ?= get_secret(Id),
+        ?log_info("Rotating secret #~b", [Id]),
+        {ok, NewKey} ?= generate_key(erlang:universaltime(), SecretProps),
+        ok ?= add_active_key(Id, NewKey)
+    else
+        {ok, #{}} ->
+            ?log_info("Secret #~p rotation failed: not_supported", [Id]),
+            {error, not_supported};
+        {error, Reason} ->
+            ?log_error("Secret #~p rotation failed: ~p", [Id, Reason]),
+            {error, Reason}
+    end.
+
 %% Just a helper function
 -spec many_to_one_result([{T, ok} | {T, {error, R}}]) ->
                         ok | {error, [{T, R}]} when T :: term(), R :: term().
@@ -174,6 +192,7 @@ init([Type]) ->
                 master_monitor ->
                     #master_monitor{};
                 node_monitor ->
+                    ok = maybe_reencrypt_per_node_deks(),
                     ok = ensure_all_keks_are_on_disk(),
                     #node_monitor{}
             end,
@@ -192,6 +211,7 @@ handle_cast(Msg, State) ->
 handle_info({config_change, ?CHRONICLE_SECRETS_KEY},
             #node_monitor{} = State) ->
     ok = ensure_all_keks_are_on_disk(),
+    ok = maybe_reencrypt_per_node_deks(),
     {noreply, State};
 
 handle_info({config_change, _}, State) ->
@@ -258,6 +278,32 @@ replace_secret_in_list(NewProps, List) ->
                  end,
     ReplaceFun(List, []).
 
+-spec add_active_key(secret_id(), kek_props()) -> ok | {error, not_found}.
+add_active_key(Id, #{id := KekId} = Kek) ->
+    RV = chronicle_kv:transaction(
+           kv, [?CHRONICLE_SECRETS_KEY],
+           fun (Snapshot) ->
+               case get_secret(Id, Snapshot) of
+                   {ok, #{type := ?GENERATED_KEY_TYPE,
+                          data := #{keys := CurKeks}} = SecretProps} ->
+                       Updated = functools:chain(
+                                   SecretProps,
+                                   [set_keys_in_props(_, [Kek | CurKeks]),
+                                    set_active_key_in_props(_, KekId)]),
+                       NewList = replace_secret_in_list(Updated,
+                                                        get_all(Snapshot)),
+                       true = is_list(NewList),
+                       {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewList}]};
+                   {error, not_found} ->
+                       {abort, not_found}
+               end
+           end),
+
+    case RV of
+        {ok, _} -> ok;
+        not_found -> {error, not_found}
+    end.
+
 -spec ensure_all_keks_are_on_disk() -> ok | {error, list()}.
 ensure_all_keks_are_on_disk() ->
     RV = lists:map(fun (#{id := Id,
@@ -301,6 +347,11 @@ prepare_new_secret(#{type := ?GENERATED_KEY_TYPE,
     end;
 prepare_new_secret(#{type := _Type}) ->
     {error, not_supported}.
+
+-spec maybe_reencrypt_per_node_deks() -> ok.
+maybe_reencrypt_per_node_deks() ->
+    %% TODO
+    ok.
 
 -ifdef(TEST).
 replace_secret_in_list_test() ->

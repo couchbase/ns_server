@@ -902,6 +902,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {local, fun menelaus_web_settings:handle_reset_ciphers_suites/1};
                 ["controller", "changePassword"] ->
                     {no_check, fun menelaus_web_rbac:handle_change_password/1};
+                ["controller", "rotateSecret", SecretId] ->
+                    {{[admin, security], write},
+                     fun menelaus_web_secrets:handle_rotate/2, [SecretId]};
                 ["pools", "default", "buckets", Id] ->
                     {{[{bucket, Id}, settings], write},
                      fun menelaus_web_buckets:handle_bucket_update/3,

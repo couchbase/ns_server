@@ -20,7 +20,8 @@
          handle_get_secret/2,
          handle_post_secret/1,
          handle_put_secret/2,
-         handle_delete_secret/2]).
+         handle_delete_secret/2,
+         handle_rotate/2]).
 
 handle_get_secrets(Req) ->
     Res = lists:map(
@@ -90,6 +91,16 @@ enforce_static_field_validator(Name, CurValue, State) ->
 
 handle_delete_secret(_Id, _Req) ->
     ok.
+
+handle_rotate(IdStr, Req) ->
+    case cb_cluster_secrets:rotate(parse_id(IdStr)) of
+        ok -> menelaus_util:reply(Req, 200);
+        {error, not_found} ->
+            menelaus_util:reply_not_found(Req);
+        {error, Error} ->
+            Msg = iolist_to_binary(io_lib:format("~p", [Error])),
+            menelaus_util:reply(Req, Msg, 500, [])
+    end.
 
 keys_remap() ->
     #{creation_time => creationDateTime,
