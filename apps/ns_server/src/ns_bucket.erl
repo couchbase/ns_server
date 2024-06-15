@@ -192,7 +192,8 @@
          get_commits_from_snapshot/2,
          update_bucket_config/2,
          update_buckets_config/1,
-         all_keys/1]).
+         all_keys/1,
+         get_encryption/2]).
 
 -import(json_builder,
         [to_binary/1,
@@ -2515,6 +2516,22 @@ validate_encryption_secret(SecretId, Bucket, Snapshot) ->
         ok -> ok;
         {error, not_found} -> {error, secret_not_found};
         {error, not_allowed} -> {error, secret_not_allowed}
+    end.
+
+get_encryption(BucketName, Snapshot) ->
+    case get_bucket(BucketName, Snapshot) of
+        {ok, BucketConfig} ->
+            case proplists:get_value(encryption_secret_id, BucketConfig,
+                                     ?SECRET_ID_NOT_SET) of
+                ?SECRET_ID_NOT_SET -> {ok, disabled};
+                Id ->
+                    case lists:member(node(), get_servers(BucketConfig)) of
+                        true -> {ok, {secret, Id}};
+                        false -> {error, not_found}
+                    end
+            end;
+        not_present ->
+            {error, not_found}
     end.
 
 -ifdef(TEST).

@@ -265,7 +265,12 @@ maybe_reencrypt_deks(Kind, Deks, NewEncryptionKeyFun) ->
 %% Returns false otherwise.
 dek_chronicle_keys_filter(?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY) ->
     [chronicleDek];
-dek_chronicle_keys_filter(_Key) -> false.
+dek_chronicle_keys_filter(Key) ->
+    case ns_bucket:sub_key_match(Key) of
+        {true, Bucket, props} -> [{bucketDek, Bucket}];
+        {true, _Bucket, _} -> false;
+        false -> false
+    end.
 
 %% encryption_method_callback - called to determine if encryption is enabled
 %% or not for that type of entity.
@@ -290,7 +295,14 @@ dek_config(chronicleDek) ->
       encryption_method_callback => fun chronicle_local:get_encryption/1,
       set_active_key_callback => fun chronicle_local:set_active_dek/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
-      required_usage => config_encryption}.
+      required_usage => config_encryption};
+dek_config({bucketDek, Bucket}) ->
+    #{name => {bucket, Bucket},
+      encryption_method_callback => ns_bucket:get_encryption(Bucket, _),
+      set_active_key_callback => ns_memcached:set_active_dek(Bucket, _),
+      chronicle_txn_keys => [ns_bucket:root(),
+                             ns_bucket:sub_key(Bucket, props)],
+      required_usage => {bucket_encryption, Bucket}}.
 
 %% Returns all possible deks kinds on the node.
 %% The list was supposed to be static if not buckets. Buckets can be created and
@@ -298,5 +310,6 @@ dek_config(chronicleDek) ->
 %% list doesn't depend if encryption is on or off.
 dek_kinds_list() ->
     dek_kinds_list(direct).
-dek_kinds_list(_Snapshot) ->
-    [chronicleDek].
+dek_kinds_list(Snapshot) ->
+    Buckets = ns_bucket:get_bucket_names(Snapshot),
+    [chronicleDek] ++ [{bucketDek, B} || B <- Buckets].

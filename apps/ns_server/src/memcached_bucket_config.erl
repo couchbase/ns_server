@@ -15,15 +15,19 @@
 -include("ns_common.hrl").
 -include("ns_bucket.hrl").
 -include_lib("ns_common/include/cut.hrl").
+-include("cb_cluster_secrets.hrl").
+
+-define(MCD_DISABLED_ENCRYPTION_KEY_ID, <<"">>).
 
 -record(cfg, {type, name, config, snapshot, engine_config, params}).
 
 -export([get/1,
          get_bucket_config/1,
          ensure/2,
-         start_params/1,
+         start_params/3,
          ensure_collections/2,
-         get_current_collections_uid/1]).
+         get_current_collections_uid/1,
+         format_mcd_keys/2]).
 
 params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
     {DriftAheadThreshold, DriftBehindThreshold} =
@@ -301,6 +305,18 @@ ensure(Sock, #cfg{type = memcached}) ->
                       end, not_present),
     ok.
 
+format_mcd_keys(ActiveDek, Deks) ->
+    DeksJsonMcd = lists:map(fun format_mcd_key/1, Deks),
+    ActiveKeyMcd = case ActiveDek of
+                       undefined -> ?MCD_DISABLED_ENCRYPTION_KEY_ID;
+                       #{id := ActiveId} -> ActiveId
+                   end,
+    {[{keys, DeksJsonMcd}, {active, ActiveKeyMcd}]}.
+
+format_mcd_key(#{id := Id, type := 'raw-aes-gcm', info := #{key := KeyFun}}) ->
+    Encoded = base64:encode(KeyFun()),
+    {[{id, Id}, {cipher, <<"AES-256-GCM">>}, {key, Encoded}]}.
+
 get_current_collections_uid(Sock) ->
     case mc_client_binary:get_collections_manifest(Sock) of
         {memcached_error, no_coll_manifest, _} ->
@@ -343,7 +359,7 @@ ensure_collections(Sock, #cfg{name = BucketName, snapshot = Snapshot}) ->
 
 start_params(#cfg{config = BucketConfig,
                   params = Params,
-                  engine_config = EngineConfig}) ->
+                  engine_config = EngineConfig}, ActiveDek, Deks) ->
     Engine = proplists:get_value(engine, EngineConfig),
 
     StaticConfigString =
@@ -368,7 +384,13 @@ start_params(#cfg{config = BucketConfig,
                   end
           end, Params),
 
-    ExtraParams = [P || P <- [StaticConfigString, ExtraConfigString], P =/= ""],
+    EncodedDeks = binary_to_list(ejson:encode(format_mcd_keys(ActiveDek,
+                                                              Deks))),
+
+    DeksConfigString = "encryption=" ++ EncodedDeks,
+
+    ExtraParams = [P || P <- [StaticConfigString, ExtraConfigString,
+                              DeksConfigString], P =/= ""],
     {Engine, string:join(DynamicParams ++ ExtraParams, ";")}.
 
 get_bucket_config(#cfg{config = BucketConfig}) ->

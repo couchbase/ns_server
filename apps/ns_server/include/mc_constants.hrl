@@ -124,6 +124,8 @@
 -define(CMD_RBAC_REFRESH, 16#f7).
 -define(CMD_GET_ERROR_MAP, 16#fe).
 
+-define(CMD_SET_ENCRYPTION_KEY, 16#2d).
+
 -define(RGET,        16#30).
 -define(RSET,        16#31).
 -define(RSETQ,       16#32).

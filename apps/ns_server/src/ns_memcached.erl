@@ -28,6 +28,7 @@
 -include("ns_common.hrl").
 -include("rbac.hrl").
 -include_lib("ns_common/include/cut.hrl").
+-include("cb_cluster_secrets.hrl").
 
 -define(CHECK_INTERVAL, 10000).
 -define(CHECK_WARMUP_INTERVAL, 500).
@@ -42,6 +43,7 @@
 -define(GET_KEYS_TIMEOUT,       ?get_timeout(get_keys, 60000)).
 -define(GET_KEYS_OUTER_TIMEOUT, ?get_timeout(get_keys_outer, 70000)).
 -define(MAGMA_CREATION_TIMEOUT, ?get_timeout(magma_creation, 300000)).
+-define(DEKS_TIMEOUT,           ?get_timeout(deks, 60000)).
 
 -define(RECBUF, ?get_param(recbuf, 64 * 1024)).
 -define(SNDBUF, ?get_param(sndbuf, 64 * 1024)).
@@ -132,7 +134,8 @@
          get_collections_uid/1,
          maybe_add_impersonate_user_frame_info/2,
          delete_bucket/2,
-         get_config_stats/2
+         get_config_stats/2,
+         set_active_dek/2
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -149,6 +152,11 @@
 %%
 
 start_link(Bucket) ->
+    %% Sync with node monitor to make sure the key is created by the time
+    %% when ns_memcached is started. Note that ns_memcached can't call
+    %% cb_cluster_secrets, because cb_cluster_secrets calls ns_memcached, so
+    %% deadlock is possible.
+    cb_cluster_secrets:sync_with_node_monitor(),
     gen_server:start_link({local, server(Bucket)}, ?MODULE, Bucket, []).
 
 
@@ -822,7 +830,6 @@ handle_info({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
     gen_event:notify(buckets_events, {started, Bucket}),
     erlang:process_flag(trap_exit, true),
     Self = self(),
-
     case RV of
         {ok, Sock} ->
             try ensure_bucket(Sock, Bucket, false) of
@@ -942,6 +949,7 @@ handle_info(Message, #state{worker_features = WF, control_queue = Q,
   when Message =:= check_config_soon orelse Message =:= check_config ->
     misc:flush(check_config_soon),
     misc:flush(check_config),
+
     case get_worker_features() of
         WF ->
             Self = self(),
@@ -1568,9 +1576,19 @@ do_ensure_bucket(Sock, Bucket, BConf, false) ->
             {ok, DBSubDir} =
                 ns_storage_conf:this_node_bucket_dbdir(Bucket),
             ok = filelib:ensure_dir(DBSubDir),
-
+            {ok, {ActiveDekId, DekIds, IsEnabled}} =
+                cb_deks:list({bucketDek, Bucket}),
+            {ok, Deks} = cb_deks:read({bucketDek, Bucket}, DekIds),
+            {value, ActiveDek} =
+                case IsEnabled of
+                    true ->
+                        lists:search(fun (#{id := Id}) -> Id == ActiveDekId end,
+                                     Deks);
+                    _ ->
+                        {value, undefined}
+                end,
             {Engine, ConfigString} =
-                memcached_bucket_config:start_params(BConf),
+                memcached_bucket_config:start_params(BConf, ActiveDek, Deks),
 
             BucketConfig = memcached_bucket_config:get_bucket_config(BConf),
             Timeout = case ns_bucket:node_kv_backend_type(BucketConfig) of
@@ -1844,6 +1862,29 @@ set_tls_config(Config) ->
               {memcached_error, S, Msg} -> {reply, {error, {S, Msg}}}
           end
       end).
+
+set_active_dek(TypeOrBucket, ActiveDek) ->
+    ?log_debug("Setting active encryption key id for ~p: ~p...",
+               [TypeOrBucket, maps:get(id, ActiveDek)]),
+
+    RV = perform_very_long_call(
+           fun (Sock) ->
+               case mc_client_binary:set_active_encryption_key(Sock,
+                                                               TypeOrBucket,
+                                                               ActiveDek) of
+                   ok -> {reply, ok};
+                   {memcached_error, S, Msg} ->
+                       ?log_error("Setting encryption key for ~p failed: ~p",
+                                  [TypeOrBucket, {S, Msg}]),
+                       {reply, {error, {S, Msg}}}
+               end
+           end),
+
+    case RV of
+        ok -> ok;
+        {error, couldnt_connect_to_memcached} -> {error, retry};
+        {error, E} -> {error, E}
+    end.
 
 get_bucket_stats(RootKey, StatKey, SubKey) ->
     perform_very_long_call(
