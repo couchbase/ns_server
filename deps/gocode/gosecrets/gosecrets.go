@@ -1712,11 +1712,25 @@ func (k *awsStoredKey) decryptMe(ctx *storedKeysCtx) error {
 }
 
 func (k *awsStoredKey) encryptData(data []byte) ([]byte, error) {
-	return awsutils.KmsEncryptData(k.KeyArn, data)
+	opts := awsutils.AwsConfigOpts{
+		Region:     k.Region,
+		ConfigFile: k.ConfigFile,
+		CredsFile:  k.CredsFile,
+		Profile:    k.Profile,
+		UseIMDS:    k.UseIMDS,
+	}
+	return awsutils.KmsEncryptData(k.KeyArn, data, opts)
 }
 
 func (k *awsStoredKey) decryptData(data []byte) ([]byte, error) {
-	return awsutils.KmsDecryptData(k.KeyArn, data)
+	opts := awsutils.AwsConfigOpts{
+		Region:     k.Region,
+		ConfigFile: k.ConfigFile,
+		CredsFile:  k.CredsFile,
+		Profile:    k.Profile,
+		UseIMDS:    k.UseIMDS,
+	}
+	return awsutils.KmsDecryptData(k.KeyArn, data, opts)
 }
 
 func (k *awsStoredKey) unmarshal(data json.RawMessage) error {

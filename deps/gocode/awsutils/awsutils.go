@@ -14,16 +14,56 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"gocloud.dev/secrets"
 	"gocloud.dev/secrets/awskms"
 )
+
+type AwsConfigOpts struct {
+	Region     string
+	ConfigFile string
+	CredsFile  string
+	Profile    string
+	UseIMDS    bool
+}
 
 func keeperGetError(err error) error {
 	return fmt.Errorf("failed to get keeper due to error: %w", err)
 }
 
-func getAwsSecretsKeeper(ctx context.Context, keyArn string) (*secrets.Keeper, error) {
-	cfg, err := config.LoadDefaultConfig(ctx)
+func getAwsCfgs(opts AwsConfigOpts) *[]func(*config.LoadOptions) error {
+	var configs []func(*config.LoadOptions) error
+
+	if opts.Region != "" {
+		configs = append(configs, config.WithRegion(opts.Region))
+	}
+
+	if opts.ConfigFile != "" {
+		configs = append(configs, config.WithSharedConfigFiles([]string{opts.ConfigFile}))
+	}
+
+	if opts.CredsFile != "" {
+		configs = append(configs, config.WithSharedCredentialsFiles([]string{opts.CredsFile}))
+	}
+
+	if opts.Profile != "" {
+		configs = append(configs, config.WithSharedConfigProfile(opts.Profile))
+	}
+
+	imdsState := imds.ClientDisabled
+	if opts.UseIMDS {
+		imdsState = imds.ClientEnabled
+	}
+
+	configs = append(configs, config.WithEC2IMDSClientEnableState(imdsState))
+
+	return &configs
+}
+
+func getAwsSecretsKeeper(ctx context.Context,
+	keyArn string, opts AwsConfigOpts) (*secrets.Keeper, error) {
+	addnlCfgs := getAwsCfgs(opts)
+	cfg, err := config.LoadDefaultConfig(ctx, *addnlCfgs...)
 	if err != nil {
 		return nil, keeperGetError(err)
 	}
@@ -37,9 +77,9 @@ func getAwsSecretsKeeper(ctx context.Context, keyArn string) (*secrets.Keeper, e
 	return keeper, nil
 }
 
-func KmsEncryptData(keyArn string, data []byte) ([]byte, error) {
+func KmsEncryptData(keyArn string, data []byte, opts AwsConfigOpts) ([]byte, error) {
 	ctx := context.Background()
-	keeper, err := getAwsSecretsKeeper(ctx, keyArn)
+	keeper, err := getAwsSecretsKeeper(ctx, keyArn, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -53,9 +93,9 @@ func KmsEncryptData(keyArn string, data []byte) ([]byte, error) {
 	return encryptedData, nil
 }
 
-func KmsDecryptData(keyArn string, data []byte) ([]byte, error) {
+func KmsDecryptData(keyArn string, data []byte, opts AwsConfigOpts) ([]byte, error) {
 	ctx := context.Background()
-	keeper, err := getAwsSecretsKeeper(ctx, keyArn)
+	keeper, err := getAwsSecretsKeeper(ctx, keyArn, opts)
 	if err != nil {
 		return nil, err
 	}
