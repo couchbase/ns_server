@@ -115,7 +115,6 @@
          get_seqno_stats/2,
          get_mass_dcp_docs_estimate/2,
          get_dcp_docs_estimate/3,
-         set_cluster_config/4,
          set_cluster_config/3,
          get_ep_startup_time_for_xdcr/1,
          perform_checkpoint_commit_for_xdcr/3,
@@ -740,10 +739,6 @@ do_handle_call({get_dcp_docs_estimate, VBucketId, ConnName}, _From, State) ->
     {reply, mc_client_binary:get_dcp_docs_estimate(State#state.sock, VBucketId, ConnName), State};
 do_handle_call({get_mass_dcp_docs_estimate, VBuckets}, _From, State) ->
     {reply, mc_client_binary:get_mass_dcp_docs_estimate(State#state.sock, VBuckets), State};
-do_handle_call({set_cluster_config, Rev, RevEpoch, Blob}, _From,
-               State = #state{bucket = Bucket, sock = Sock}) ->
-    {reply, mc_client_binary:set_cluster_config(Sock, Bucket, Rev, RevEpoch, Blob),
-     State};
 do_handle_call({get_random_key, CollectionsUid}, _From, State) ->
     CollectionsEnabled = proplists:get_bool(collections,
                                             State#state.worker_features),
@@ -1733,10 +1728,6 @@ get_dcp_docs_estimate(Bucket, VBucketId, ConnName) ->
 get_mass_dcp_docs_estimate(Bucket, VBuckets) ->
     do_call(server(Bucket), Bucket,
             {get_mass_dcp_docs_estimate, VBuckets}, ?TIMEOUT_VERY_HEAVY).
-
--spec set_cluster_config(bucket_name(), integer(), integer(), binary()) -> ok | mc_error().
-set_cluster_config(Bucket, Rev, RevEpoch, Blob) ->
-    do_call(server(Bucket), Bucket, {set_cluster_config, Rev, RevEpoch, Blob}, ?TIMEOUT).
 
 %% The function might be rpc'ed beginning from 6.5
 get_random_key(Bucket) ->
