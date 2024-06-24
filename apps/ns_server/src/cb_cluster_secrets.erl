@@ -49,7 +49,9 @@
          rotate/1,
          get_secret_by_kek_id_map/1,
          ensure_can_encrypt_dek_kind/3,
-         generate_raw_key/1]).
+         is_allowed_usage_for_secret/3,
+         generate_raw_key/1,
+         sync_with_all_node_monitors/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -343,6 +345,19 @@ ensure_can_encrypt_dek_kind(SecretId, DekKind, Snapshot) ->
     maybe
         {ok, SecretProps} ?= get_secret(SecretId, Snapshot),
         true ?= can_secret_props_encrypt_dek_kind(SecretProps, DekKind),
+        ok
+    else
+        false -> {error, not_allowed};
+        {error, not_found} -> {error, not_found}
+    end.
+
+-spec is_allowed_usage_for_secret(secret_id(), secret_usage(),
+                                  chronicle_snapshot()) ->
+          ok | {error, not_allowed | not_found}.
+is_allowed_usage_for_secret(SecretId, Usage, Snapshot) ->
+    maybe
+        {ok, #{usage := AllowedUsages}} ?= get_secret(SecretId, Snapshot),
+        true ?= is_allowed([Usage], AllowedUsages),
         ok
     else
         false -> {error, not_allowed};

@@ -153,12 +153,8 @@ sync() ->
     gen_server2:call(?MODULE, sync, ?CALL_TIMEOUT).
 
 get_encryption(Snapshot) ->
-    Settings = chronicle_compat:get(Snapshot,
-                                    ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY,
-                                    #{default => #{}}),
-    ConfigEncryptionSettings = maps:get(config_encryption, Settings,
-                                        #{encryption => disabled,
-                                          secret_id => ?SECRET_ID_NOT_SET}),
+    #{config_encryption := ConfigEncryptionSettings} =
+        menelaus_web_encr_at_rest:get_settings(Snapshot),
     {ok, case ConfigEncryptionSettings of
              #{encryption := disabled} -> disabled;
              #{encryption := encryption_service} -> encryption_service;

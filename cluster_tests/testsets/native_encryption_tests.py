@@ -34,6 +34,7 @@ class NativeEncryptionTests(testlib.BaseTestSet):
         pass
 
     def test_teardown(self):
+        set_cfg_encryption(self.cluster, 'disabled', -1)
         self.cluster.delete_bucket(self.bucket_name)
         for s in get_secrets(self.cluster):
             delete_secret(self.cluster, s['id'])
@@ -558,6 +559,39 @@ class NativeEncryptionTests(testlib.BaseTestSet):
         testlib.poll_for_condition(
             lambda: rotation_happened(3, next_rotation),
             sleep_time=0.3, timeout=10)
+
+    def cfg_encryption_api_test(self):
+        secret = auto_generated_secret(usage=['bucket-encryption-*'])
+        bad_id = create_secret(self.random_node(), secret)
+        secret['usage'] = ['bucket-encryption-*', 'configuration-encryption']
+        good_id = create_secret(self.random_node(), secret)
+        node = self.random_node()
+        set_cfg_encryption(node, 'disabled', -1)
+        set_cfg_encryption(node, 'encryption_service', -1)
+        set_cfg_encryption(node, 'secret', -1, expected_code=400)
+        set_cfg_encryption(node, 'secret', bad_id, expected_code=400)
+        set_cfg_encryption(node, 'secret', good_id)
+
+        secret['usage'] = ['bucket-encryption-*']
+        errors = update_secret(node, good_id, secret, expected_code=400)
+        assert errors['_'] == 'can\'t modify usage as this secret is in use', \
+               f'unexpected error: {errors}'
+
+        set_cfg_encryption(node, 'encryption_service', -1)
+
+        update_secret(node, good_id, secret)
+
+
+def set_cfg_encryption(cluster, mode, secret, expected_code=200):
+    testlib.post_succ(cluster, '/settings/security/encryptionAtRest/config',
+                      json={'encryptionMethod': mode,
+                            'encryptionSecretId': secret},
+                      expected_code=expected_code)
+    if expected_code == 200:
+        r = testlib.get_succ(cluster, '/settings/security/encryptionAtRest')
+        r = r.json()
+        testlib.assert_eq(r['config']['encryptionMethod'], mode)
+        testlib.assert_eq(r['config']['encryptionSecretId'], secret)
 
 
 def auto_generated_secret(name=None,
