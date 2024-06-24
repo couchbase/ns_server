@@ -24,6 +24,8 @@ class ServicesTopologyTests(testlib.BaseTestSet):
 
     def setup(self):
         self.old_mem_quotas = {}
+        self.otp_nodes = [node.otp_node()
+                          for node in self.cluster.connected_nodes]
 
     def teardown(self):
         pass
@@ -44,13 +46,16 @@ class ServicesTopologyTests(testlib.BaseTestSet):
                                     balanced=True, num_nodes=3, num_connected=3,
                                     services = topology)]
 
+    def otp_node(self, index):
+        return self.otp_nodes[index]
+
     def get_topology(self):
         resp = testlib.get_succ(self.cluster, "/pools/default")
         return {node["otpNode"]: set(node["services"])
                 for node in resp.json()["nodes"]}
 
     def assert_topology(self, topology):
-        expected = {self.cluster.otp_node(k):
+        expected = {self.otp_node(k):
                     set(testlib.util.services_to_strings(v))
                     for k, v in list(enumerate(topology))}
         actual = self.get_topology()
@@ -63,7 +68,7 @@ class ServicesTopologyTests(testlib.BaseTestSet):
                    for k, v in self.get_topology().items()}
         services = set()
         for n, s in enumerate(ServicesTopologyTests.initial_topology):
-            node = self.cluster.otp_node(n)
+            node = self.otp_node(n)
             diff = current[node].symmetric_difference(set(s))
             services.update(diff)
 
@@ -87,21 +92,21 @@ class ServicesTopologyTests(testlib.BaseTestSet):
             f"{service.value}).")
 
         actual = set(parse_nodes_list(res.content.decode('ascii')))
-        expected = set([self.cluster.otp_node(n) for n in node_indexes])
+        expected = set([self.otp_node(n) for n in node_indexes])
 
         assert actual == expected, \
             f"Incorrect map for the service {service} " \
             f"Expected: {expected}, Actual: {actual}"
 
     def change_services_topology(self, topology, expected_code):
-        known_nodes = [self.cluster.otp_node(n) for n in [0, 1, 2]]
+        known_nodes = [self.otp_node(n) for n in [0, 1, 2]]
         services = [s.value for s in topology.keys()]
         data = {'knownNodes': ','.join(known_nodes),
                 'services': ','.join(services),
                 'ejectedNodes': ""}
 
         for service, node_indexes in topology.items():
-            otp_nodes = [self.cluster.otp_node(n) for n in node_indexes]
+            otp_nodes = [self.otp_node(n) for n in node_indexes]
             data[f"topology[{service.value}]"] = ','.join(otp_nodes)
 
         res = testlib.post_succ(self.cluster, "/controller/rebalance",

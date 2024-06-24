@@ -661,9 +661,6 @@ class Cluster:
         r = testlib.get_succ(self, f'/pools/default/b/{bucket}')
         return r.json()['uuid']
 
-    def otp_node(self, index):
-        return "n_{i}@127.0.0.1".format(i = index + self.first_node_index)
-
 def get_services_string(services: List[Service]):
     return ",".join(services_to_strings(services))
 
