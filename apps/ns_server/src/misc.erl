@@ -2597,6 +2597,20 @@ convert_to_boolean(false) ->
 convert_to_boolean(_) ->
     error("invalid boolean value").
 
+-spec(convert_to_binary(integer() | float() | atom() | binary() | string()) ->
+    binary()).
+
+convert_to_binary(N) when is_integer(N) ->
+    integer_to_binary(N);
+convert_to_binary(F) when is_float(F) ->
+    float_to_binary(F);
+convert_to_binary(A) when is_atom(A) ->
+    atom_to_binary(A, latin1);
+convert_to_binary(Bin) when is_binary(Bin) ->
+    Bin;
+convert_to_binary(Str) when is_list(Str) ->
+    list_to_binary(Str).
+
 -spec item_count(list(), term()) -> non_neg_integer().
 item_count(List, Item) ->
     lists:foldl(

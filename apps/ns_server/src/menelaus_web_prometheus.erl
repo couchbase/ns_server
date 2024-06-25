@@ -285,7 +285,7 @@ name_to_iolist(A) when is_atom(A) -> atom_to_binary(A, latin1);
 name_to_iolist(A) -> A.
 
 format_label_value(Val) ->
-    ValBin = label_val_to_bin(Val),
+    ValBin = misc:convert_to_binary(Val),
     lists:foldl(
       fun ({Re, Replace}, Acc) ->
           re:replace(Acc, Re, Replace, [global, {return, binary}])
@@ -301,9 +301,3 @@ format_label_value_test() ->
     ?assertEqual(Result, format_label_value(list_to_binary(OriginalStr))).
 
 -endif.
-
-label_val_to_bin(N) when is_integer(N) -> integer_to_binary(N);
-label_val_to_bin(F) when is_float(F) -> float_to_binary(F);
-label_val_to_bin(A) when is_atom(A) -> atom_to_binary(A, latin1);
-label_val_to_bin(Bin) when is_binary(Bin) -> Bin;
-label_val_to_bin(Str) when is_list(Str) -> list_to_binary(Str).
