@@ -62,11 +62,14 @@ class HardResetTests(testlib.BaseTestSet):
                                                expected_code=500)
                 else:
                     # If node wasn't the orchestrator, standard failover fails
-                    # with orchestration_unsafe.
-                    self.cluster.failover_node(victim_node = other_node,
-                                               graceful=False,
-                                               victim_otp_node=otp_other_node,
-                                               expected_code=504)
+                    # with orchestration_unsafe (504) and occasionally with
+                    # leader_activities_error, not_leader when it fails to
+                    # acquire the leader lease.
+                    r = self.cluster.failover_node(victim_node = other_node,
+                                                   graceful=False,
+                                                   victim_otp_node=otp_other_node,
+                                                   expected_code=None)
+                    assert r.status_code in [504, 500]
 
                 # Force unsafe failover now that node is orchestrator.
                 self.cluster.failover_node(victim_node=other_node,
