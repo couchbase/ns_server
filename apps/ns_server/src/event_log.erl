@@ -13,6 +13,8 @@
 -include_lib("ns_common/include/cut.hrl").
 
 -export([validators/0,
+         valid_component/0,
+         valid_info_levels/0,
          log/1,
          add_log/1,
          add_log/2,

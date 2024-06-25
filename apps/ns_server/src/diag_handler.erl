@@ -471,7 +471,7 @@ handle_just_diag(Req, Extra) ->
                                   mochiweb_response:write_chunk([JSON, $\n],
                                                                 Resp)
                           end
-                  end, event_log_server:build_events_json(undefined, -1)),
+                  end, event_log_server:build_events_json(undefined, -1, [])),
 
     mochiweb_response:write_chunk(
       <<"-------------------------------\n\n\n">>, Resp),

@@ -34,7 +34,7 @@
 %% API
 -export([start_link/0]).
 
--export([log/3, recent/0, delete_log/0, build_events_json/2,
+-export([log/3, recent/0, delete_log/0, build_events_json/3,
          recent/1]).
 
 %% exports for gossip_replicator.
@@ -250,42 +250,95 @@ recent(StartSeqNum) ->
     {MaxSeqNum, [{get_event(strip_seqnum(L))} || L <- Logs]}.
 
 -spec build_events_json(SinceTime :: undefined | string(),
-                        Limit :: -1 | non_neg_integer()) ->
+                        Limit :: -1 | non_neg_integer(),
+                        %% The content of the filters is opaque to this
+                        %% module which results in using term()
+                        Filters :: [] | [{term(), term()}]) ->
         [term()].
-build_events_json(SinceTime, Limit) ->
-    Logs0 = recent(),
-    Logs = case {SinceTime, Limit} of
-               {_, 0} ->
-                   [];
-               {undefined, -1} ->
-                   Logs0;
-               {undefined, L} ->
-                   %% If SinceTime is 'undefined', return the most recent
-                   %% "Limit" number of logs.
-                   lists:sublist(Logs0, L);
-               _ ->
-                   FilteredLogs = lists:filter(
-                                    fun (Log0) ->
-                                            Log = strip_seqnum(Log0),
-                                            TStamp = Log#log_entry.timestamp,
-                                            if
-                                                TStamp >= SinceTime ->
-                                                    true;
-                                                true ->
-                                                    false
-                                            end
-                                    end, Logs0),
-                   %% Limit = -1 implies, return all logs. We validate 'Limit'
-                   %% is >= -1 before calling this function.
-                   case Limit of
-                       -1 ->
-                           FilteredLogs;
-                       L ->
-                           misc:tail_of_length(FilteredLogs, L)
-                   end
-           end,
+build_events_json(_SinceTime, 0, _Filters) ->
+    [];
+build_events_json(SinceTime, Limit, Filters) ->
+    Logs = recent(),
+    build_events_json_inner(Logs, SinceTime, Limit, Filters).
+
+build_events_json_inner(Logs0, SinceTime, Limit, Filters) ->
+    Logs1 =
+        lists:filter(
+          fun (Log) ->
+                  case SinceTime of
+                      undefined ->
+                          matches_filters(Log, Filters);
+                      _ ->
+                          case time_in_range(Log, SinceTime) of
+                              false ->
+                                  false;
+                              true ->
+                                  matches_filters(Log, Filters)
+                          end
+                  end
+          end, Logs0),
+    Logs =
+        case Limit of
+            -1 ->
+                Logs1;
+            L ->
+                case SinceTime of
+                    undefined ->
+                        %% If SinceTime is 'undefined', return the most recent
+                        %% "Limit" number of logs.
+                        lists:sublist(Logs1, L);
+                    _ ->
+                        %% SinceTime was specified, return the specified number
+                        %% of events since SinceTime (which may not include
+                        %% most recent events).
+                        misc:tail_of_length(Logs1, L)
+                end
+        end,
+
     %% Reverse the logs since they are stored in the descending order of time.
     [{get_event(strip_seqnum(Log))} || Log <- lists:reverse(Logs)].
+
+time_in_range(Log, SinceTime) ->
+    Log0 = strip_seqnum(Log),
+    TStamp = Log0#log_entry.timestamp,
+    TStamp >= SinceTime.
+
+matches_filters(_Log, []) ->
+    true;
+matches_filters(Log, Filters) ->
+    Event = get_event(strip_seqnum(Log)),
+    lists:all(
+      fun ({Key, Value}) ->
+              event_matches_filter(Event, Key, Value)
+      end, Filters).
+
+%% Some events are constructed with binaries and some with atoms so we have
+%% to handle all the cases.
+%%
+%% Have to handle case such as:
+%%     {<<"component">>,<<"analytics">>},
+%% vs
+%%     {component,data},
+%%
+%% Using a filter:
+%%     [{component,"ns_server"},{severity,"info"},{event_id,1}]
+%%
+%% To do this we do the comparisons using binaries
+event_matches_filter(Event, Key, Value) ->
+    KeyBin = misc:convert_to_binary(Key),
+    ValueBin = misc:convert_to_binary(Value),
+    lists:any(
+      fun ({K, V}) ->
+              KBin = misc:convert_to_binary(K),
+              case KeyBin =:= KBin of
+                  true ->
+                      VBin = misc:convert_to_binary(V),
+                      ValueBin =:= VBin;
+                  false ->
+                      false
+              end
+      end, Event).
+
 
 -ifdef(TEST).
 order_entries_test() ->
@@ -334,4 +387,63 @@ merge_remote_logs_test() ->
     [D, A, B, C] = merge_remote_logs([D], Logs, 5),
     [D, A, B, C] = merge_remote_logs([D, B], Logs, 5),
     [D, A, B, C] = merge_remote_logs(Logs, [D, B], 5).
+
+event_filter_info_test() ->
+    Events =
+        [[{seq_num,19}|
+          {log_entry,"2024-07-03T19:22:07.081Z",
+           <<"92c5a173-bb80-46db-b894-837b928cc082">>,
+           [{timestamp,<<"2024-07-03T19:22:07.081Z">>},
+            {event_id,1},
+            {component,ns_server},
+            {severity,info},
+            {uuid,<<"92c5a173-bb80-46db-b894-837b928cc082">>}]}],
+         [{seq_num,18}|
+          {log_entry,"2024-07-03T19:22:07.072Z",
+           <<"ba8aca40-1a45-4ac0-b23f-e8ee33645b55">>,
+           [{timestamp,<<"2024-07-03T19:22:07.072Z">>},
+            {event_id,1},
+            {component,data},
+            {severity,info},
+            {uuid,<<"ba8aca40-1a45-4ac0-b23f-e8ee33645b55">>}]}],
+         [{seq_num,15}|
+          {log_entry,"2024-07-03T19:22:06.778Z",
+           <<"c28bd440-d89b-4e72-919f-77223661eb61">>,
+           [{timestamp,<<"2024-07-03T19:22:06.778Z">>},
+            {event_id,1},
+            {component,ns_server},
+            {severity,info},
+            {uuid,<<"c28bd440-d89b-4e72-919f-77223661eb61">>}]}],
+         [{seq_num,14}|
+          {log_entry,"2024-07-03T19:22:06.489Z",
+           <<"62ffec3d-fea6-4a32-9f9b-6a8bf5ee5b80">>,
+           [{timestamp,<<"2024-07-03T19:22:06.489Z">>},
+            {event_id,1},
+            {component,eventing},
+            {severity,info},
+            {uuid,<<"62ffec3d-fea6-4a32-9f9b-6a8bf5ee5b80">>}]}],
+         [{seq_num,13}|
+          {log_entry,"2024-07-03T19:22:06.325Z",
+           <<"8bebbddf-1ab3-41c8-b414-71fc2d93cb4a">>,
+           [{timestamp,<<"2024-07-03T19:22:06.325Z">>},
+            {event_id,18},
+            {component,ns_server},
+            {severity,info},
+            {uuid,<<"8bebbddf-1ab3-41c8-b414-71fc2d93cb4a">>}]}]],
+
+    Logs = build_events_json_inner(Events, undefined, -1,
+                                   [{component, ns_server}]),
+    ?assertEqual(3, length(Logs)),
+    Logs1 = build_events_json_inner(Events, undefined, -1,
+                                    [{component, eventing}]),
+    ?assertEqual(1, length(Logs1)),
+    Logs2 = build_events_json_inner(Events, undefined, -1,
+                                    [{component, ns_server},
+                                     {event_id, 18}]),
+    ?assertEqual(1, length(Logs2)),
+    Logs3 = build_events_json_inner(Events, "2024-07-03T19:22:06Z", -1, []),
+    ?assertEqual(2, length(Logs3)),
+    Logs4 = build_events_json_inner(Events, "2024-07-03T19:22:06Z", 1, []),
+    ?assertEqual(1, length(Logs4)).
+
 -endif.

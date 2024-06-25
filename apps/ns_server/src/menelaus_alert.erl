@@ -79,19 +79,48 @@ get_handle_events_params(Values) ->
                 L ->
                     L
             end,
-    {SinceTime, Limit}.
+    Filters = filter_params(Values),
+    {SinceTime, Limit, Filters}.
+
+filter_types() ->
+    [component, severity, event_id].
+
+filter_params(Params) ->
+    lists:filtermap(
+      fun (FilterType) ->
+              case proplists:get_value(FilterType, Params) of
+                  undefined ->
+                      false;
+                  Value ->
+                      {true, {FilterType, Value}}
+              end
+      end, filter_types()).
 
 handle_events_validators() ->
     [validator:iso_8601_utc(sinceTime, [], _),
-     validator:integer(limit, -1, infinity, _),
-     validator:no_duplicates(_),
+     validator:integer(limit, -1, infinity, _)] ++
+    case cluster_compat_mode:is_cluster_morpheus() of
+        true ->
+            [validator:string(component, _),
+             validator:one_of(component, event_log:valid_component(), _),
+             %% component is optional so can't do finer grained validation (e.g.
+             %% range check) of event_id.
+             validator:integer(event_id, _),
+             validator:string(severity, _),
+             validator:one_of(severity, event_log:valid_info_levels(), _)];
+        false ->
+            []
+    end ++
+    [validator:no_duplicates(_),
      validator:unsupported(_)].
 
 handle_events(Req) ->
     validator:handle(fun (Values) ->
-                       {SinceTime, Limit} = get_handle_events_params(Values),
+                       {SinceTime, Limit, Filters} =
+                         get_handle_events_params(Values),
                        Events = event_log_server:build_events_json(SinceTime,
-                                                                   Limit),
+                                                                   Limit,
+                                                                   Filters),
                        reply_json(Req, {[{events, Events}]})
                      end, Req, qs, handle_events_validators()).
 
