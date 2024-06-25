@@ -501,6 +501,16 @@ class SamlTests(testlib.BaseTestSet):
                               'external_stats_reader', 'replication_admin']
             assert_eq(roles, expected_roles)
 
+            # Test that SAML users can access the docs endpoint (which requires
+            # making a request to memcached on their behalf).
+            # Polling is required because external authentication can take up
+            # to a second to get enabled in memcached after SAML is enabled.
+            testlib.poll_for_condition(
+                lambda: ui_request('get', self.cluster.connected_nodes[0],
+                                    '/pools/default/buckets/test/docs',
+                                    session).status_code == 200,
+                sleep_time=0.5,
+                timeout=60)
 
     # Successfull authentication, but user doesn't have access to UI
     def access_denied_test(self):
