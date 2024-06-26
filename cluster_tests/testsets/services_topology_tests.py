@@ -26,11 +26,17 @@ class ServicesTopologyTests(testlib.BaseTestSet):
         self.old_mem_quotas = {}
         self.otp_nodes = [node.otp_node()
                           for node in self.cluster.connected_nodes]
+        self.failed_node = None
 
     def teardown(self):
         pass
 
     def test_teardown(self):
+        if self.failed_node != None:
+            self.cluster.recover_node(
+                self.failed_node, recovery_type="full", do_rebalance=True)
+            self.failed_node = None
+
         self.restore_service_quotas()
         self.restore_initial_topology()
 
@@ -99,11 +105,16 @@ class ServicesTopologyTests(testlib.BaseTestSet):
             f"Expected: {expected}, Actual: {actual}"
 
     def change_services_topology(self, topology, expected_code):
+        services = topology.keys()
+        return self.rebalance(topology, services, expected_code)
+
+    def rebalance(self, topology, services, expected_code):
         known_nodes = [self.otp_node(n) for n in [0, 1, 2]]
-        services = [s.value for s in topology.keys()]
         data = {'knownNodes': ','.join(known_nodes),
-                'services': ','.join(services),
                 'ejectedNodes': ""}
+
+        if services != None:
+            data['services'] = ','.join([s.value for s in services]),
 
         for service, node_indexes in topology.items():
             otp_nodes = [self.otp_node(n) for n in node_indexes]
@@ -206,6 +217,31 @@ class ServicesTopologyTests(testlib.BaseTestSet):
         # exceeded, we have to deny this
         self.change_services_topology({Service.FTS: [0], Service.INDEX: [2]},
                                       400)
+
+    def full_rebalance_test(self):
+        self.assert_topology(ServicesTopologyTests.initial_topology)
+        self.rebalance({Service.BACKUP: [1, 2]}, None, 200)
+        self.assert_topology([[Service.KV, Service.INDEX],
+                              [Service.QUERY, Service.INDEX, Service.BACKUP],
+                              [Service.QUERY, Service.BACKUP]])
+
+    def not_rebalancing_service_test(self):
+        self.rebalance({Service.BACKUP: [1, 2]}, [Service.INDEX], 400)
+        self.assert_topology(ServicesTopologyTests.initial_topology)
+
+    def delta_recovery_test(self):
+        failover_node = self.cluster.connected_nodes[1]
+        self.failed_node = failover_node
+        self.cluster.failover_node(failover_node, graceful=False)
+        self.cluster.recover_node(
+            failover_node, recovery_type="delta", do_rebalance=False)
+        self.change_services_topology({Service.BACKUP: [2]}, 400)
+
+    def failed_node_test(self):
+        failover_node = self.cluster.connected_nodes[1]
+        self.failed_node = failover_node
+        self.cluster.failover_node(failover_node, graceful=False)
+        self.change_services_topology({Service.BACKUP: [2]}, 400)
 
 def parse_nodes_list(text):
     sansbrackets = text.strip("[").strip("]")
