@@ -82,7 +82,8 @@
          ensure_janitor_run/2,
          rebalance_type2text/1,
          start_graceful_failover/1,
-         request_janitor_run/1]).
+         request_janitor_run/1,
+         get_state/1]).
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
 
@@ -154,6 +155,10 @@ call(Msg, Timeout, RetriesLeftIfLeavingCluster) ->
         _ ->
             Res
     end.
+
+-spec get_state(integer()) -> atom().
+get_state(Timeout) ->
+    gen_statem:call(?SERVER, get_state, Timeout).
 
 -spec create_bucket(memcached|membase, nonempty_string(), list()) ->
                            ok | {error, {already_exists, nonempty_string()}} |
@@ -549,6 +554,9 @@ init([]) ->
     process_flag(trap_exit, true),
 
     {ok, idle, #idle_state{}, {{timeout, janitor}, 0, run_janitor}}.
+
+handle_event({call, From}, get_state, StateName, _State) ->
+    {keep_state_and_data, [{reply, From, StateName}]};
 
 handle_event({call, From}, recovery_status, StateName, State) ->
     case StateName of

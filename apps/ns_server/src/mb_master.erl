@@ -22,6 +22,7 @@
 -define(HEARTBEAT_INTERVAL, ?get_param(heartbeat_interval, 2000)).
 -define(TIMEOUT_INTERVAL_COUNT, ?get_param(timeout_interval_count, 5)).
 -define(TIMEOUT, ?HEARTBEAT_INTERVAL * ?TIMEOUT_INTERVAL_COUNT).
+-define(ORCHESTRATOR_TIMEOUT, ?get_timeout(orchestrator, 5000)).
 
 -type services() :: [service()].
 -type node_info() :: {version(), node(), services()}.
@@ -431,15 +432,10 @@ master(info,
         true ->
             Now = erlang:monotonic_time(),
 
-            case rebalance:status() of
-                running ->
-                    ?log_info("Got master heartbeat from ~p when in rebalance."
-                              " Not considering surrendering mastership.",
-                              [Node]),
-                    {keep_state, State#state{last_heard=Now}};
-                _ ->
-                    case higher_priority_node(NodeInfo, ServiceWeights) of
-                        true ->
+            case higher_priority_node(NodeInfo, ServiceWeights) of
+                true ->
+                    case get_orchestrator_state() of
+                        idle ->
                             ?log_info("Surrendering mastership to ~p", [Node]),
                             NewState = shutdown_master_sup(State),
                             announce_leader(Node),
@@ -453,12 +449,18 @@ master(info,
                                {Node, Now},
                                NewState#state{last_heard = Now,
                                               master = Node})};
-                        false ->
+                        Other ->
                             ?log_info(
-                               "Got master heartbeat from ~p when I'm master",
-                               [Node]),
+                               "Got master heartbeat from ~p when "
+                               "ns_orchestrator is in state ~p. "
+                               "Not considering surrendering mastership.",
+                               [Node, Other]),
                             {keep_state, State#state{last_heard=Now}}
-                    end
+                    end;
+                false ->
+                    ?log_info("Got master heartbeat from ~p when I'm master",
+                              [Node]),
+                    {keep_state, State#state{last_heard=Now}}
             end;
         false ->
             ?log_warning("Master got master heartbeat from node ~p which is "
@@ -494,6 +496,18 @@ handle_event(Type, Msg, State, StateData) ->
 %%
 %% Internal functions
 %%
+
+get_orchestrator_state() ->
+    try
+        ns_orchestrator:get_state(?ORCHESTRATOR_TIMEOUT)
+    catch T:E ->
+            ?log_debug("Failed to get ns_orchestrator state. ~p",
+                       [{T, E}]),
+            %% Orchestrator is absent or irresponsive for some reason.
+            %% The best course of action would be to proceed with
+            %% mastership change.
+            idle
+    end.
 
 %% @private
 %% @doc Send an heartbeat to a list of nodes, except this one.
