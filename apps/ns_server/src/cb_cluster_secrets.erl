@@ -18,12 +18,15 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-define(MASTER_MONITOR_NAME, {via, leader_registry, cb_cluster_secrets_master}).
+-define(RETRY_TIME, ?get_param(retry_time, 10000)).
+-define(SYNC_TIMEOUT, ?get_timeout(sync, 60000)).
+-define(NODE_PROC, node_monitor_process).
+-define(MASTER_PROC, master_monitor_process).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2]).
-
--record(node_monitor, {}).
--record(master_monitor, {}).
 
 %% API
 -export([start_link_node_monitor/0,
@@ -42,8 +45,10 @@
          rotate_internal/1,
          sync_with_node_monitor/0]).
 
--define(MASTER_MONITOR, {via, leader_registry, cb_cluster_secrets_master}).
--define(SYNC_TIMEOUT, ?get_timeout(sync, 60000)).
+-record(state, {proc_type :: ?NODE_PROC | ?MASTER_PROC,
+                jobs :: [node_job()] | [master_job()],
+                timers = #{retry_jobs => undefined}
+                         :: #{atom() := reference() | undefined}}).
 
 -type secret_props() ::
     #{id := secret_id(),
@@ -78,6 +83,10 @@
 -type kek_id() :: uuid().
 -type chronicle_snapshot() :: direct | map().
 -type uuid() :: binary(). %% uuid as binary string
+-type node_job() :: ensure_all_keks_on_disk |
+                    maybe_reencrypt_per_node_deks.
+
+-type master_job() :: maybe_reencrypt_secrets.
 
 %%%===================================================================
 %%% API
@@ -86,13 +95,13 @@
 %% Starts on each cluster node
 -spec start_link_node_monitor() -> {ok, pid()}.
 start_link_node_monitor() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [node_monitor], []).
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [?NODE_PROC], []).
 
 %% Starts on the master node only
 -spec start_link_master_monitor() -> {ok, pid()}.
 start_link_master_monitor() ->
     misc:start_singleton(gen_server, start_link,
-                         [?MASTER_MONITOR, ?MODULE, [master_monitor], []]).
+                         [?MASTER_MONITOR_NAME, ?MODULE, [?MASTER_PROC], []]).
 
 -spec get_all() -> [secret_props()].
 get_all() -> get_all(direct).
@@ -260,18 +269,17 @@ init([Type]) ->
     Self = self(),
     chronicle_compat_events:subscribe(
       EventFilter, fun (Key) -> Self ! {config_change, Key} end),
-    State = case Type of
-                master_monitor ->
-                    ok = maybe_reencrypt_secrets(),
-                    #master_monitor{};
-                node_monitor ->
-                    ok = maybe_reencrypt_per_node_deks(),
-                    ok = ensure_all_keks_are_on_disk(),
-                    #node_monitor{}
-            end,
-    {ok, State}.
+    Jobs = case Type of
+               ?MASTER_PROC ->
+                   [maybe_reencrypt_secrets];
+               ?NODE_PROC ->
+                   [ensure_all_keks_on_disk,
+                    maybe_reencrypt_per_node_deks]
+           end,
+    {ok, work(#state{proc_type = Type, jobs = Jobs})}.
 
-handle_call({call, {M, F, A} = MFA}, _From, #master_monitor{} = State) ->
+handle_call({call, {M, F, A} = MFA}, _From,
+            #state{proc_type = ?MASTER_PROC} = State) ->
     try
         ?log_debug("Calling ~p", [MFA]),
         {reply, {succ, erlang:apply(M, F, A)}, State}
@@ -281,7 +289,7 @@ handle_call({call, {M, F, A} = MFA}, _From, #master_monitor{} = State) ->
             {reply, {exception, {C, E, ST}}, State}
     end;
 
-handle_call(sync, _From, #node_monitor{} = State) ->
+handle_call(sync, _From, #state{proc_type = ?NODE_PROC} = State) ->
     {reply, ok, State};
 
 handle_call(Request, _From, State) ->
@@ -292,23 +300,30 @@ handle_cast(Msg, State) ->
     ?log_warning("Unhandled cast: ~p", [Msg]),
     {noreply, State}.
 
-%% KEK list has updated
-%% This can be creation of kek, kek rotation, historical kek removal
-handle_info({config_change, ?CHRONICLE_SECRETS_KEY},
-            #node_monitor{} = State) ->
-    ok = ensure_all_keks_are_on_disk(),
-    ok = maybe_reencrypt_per_node_deks(),
-    {noreply, State};
+handle_info({config_change, ?CHRONICLE_SECRETS_KEY} = Msg,
+            #state{proc_type = ?NODE_PROC} = State) ->
+    ?log_debug("Secrets in chronicle have changed..."),
+    misc:flush(Msg),
+    NewJobs = [ensure_all_keks_on_disk,  %% Adding keks + AWS key change
+               maybe_reencrypt_per_node_deks], %% Keks rotation
+    {noreply, add_jobs(NewJobs, State)};
 
-%% Secret list has updated
-%% Could be the case that active kek has changed
-handle_info({config_change, ?CHRONICLE_SECRETS_KEY},
-            #master_monitor{} = State) ->
-    ok = maybe_reencrypt_secrets(),
-    {noreply, State};
+handle_info({config_change, ?CHRONICLE_SECRETS_KEY} = Msg,
+            #state{proc_type = ?MASTER_PROC} = State) ->
+    ?log_debug("Secrets in chronicle have changed..."),
+    misc:flush(Msg),
+    NewJobs = [maybe_reencrypt_secrets], %% Modififcation of encryptBy or
+                                         %% rotation of secret that encrypts
+                                         %% other secrets
+    {noreply, add_jobs(NewJobs, State)};
 
 handle_info({config_change, _}, State) ->
     {noreply, State};
+
+handle_info({timer, retry_jobs}, State) ->
+    ?log_debug("Retrying jobs"),
+    misc:flush({timer, retry_jobs}),
+    {noreply, work(State)};
 
 handle_info(Info, State) ->
     ?log_warning("Unhandled info: ~p", [Info]),
@@ -446,8 +461,8 @@ add_active_key(Id, #{id := KekId, encrypted_by := EncryptedBy} = Kek) ->
         {error, Reason} -> {error, Reason}
     end.
 
--spec ensure_all_keks_are_on_disk() -> ok | {error, list()}.
-ensure_all_keks_are_on_disk() ->
+-spec ensure_all_keks_on_disk() -> ok | {error, list()}.
+ensure_all_keks_on_disk() ->
     RV = lists:map(fun (#{id := Id,
                           type := ?GENERATED_KEY_TYPE} = SecretProps)  ->
                            {Id, ensure_generated_keks_on_disk(SecretProps)};
@@ -524,7 +539,7 @@ validate_secret_in_txn(_NewProps, _PrevProps, _Snapshot) ->
 -spec execute_on_master({module(), atom(), [term()]}) -> term().
 execute_on_master({_, _, _} = MFA) ->
     misc:wait_for_global_name(cb_cluster_secrets_master),
-    case gen_server:call(?MASTER_MONITOR, {call, MFA}, 60000) of
+    case gen_server:call(?MASTER_MONITOR_NAME, {call, MFA}, 60000) of
         {succ, Res} -> Res;
         {exception, {C, E, ST}} -> erlang:raise(C, E, ST)
     end.
@@ -648,6 +663,60 @@ maybe_reencrypt_kek(#{key := {sensitive, _Bin},
                       encrypted_by := undefined},
                     undefined) ->
     no_change.
+
+-spec add_jobs([node_job()] | [master_job()], #state{}) -> #state{}.
+add_jobs(NewJobs, #state{jobs = Jobs} = State) ->
+    work(State#state{jobs = NewJobs ++ (Jobs -- NewJobs)}).
+
+-spec work(#state{}) -> #state{}.
+work(#state{jobs = Jobs} = State) ->
+    NewJobs = lists:filter(
+                fun (J) ->
+                    ?log_debug("Starting job: ~p", [J]),
+                    try do(J) of
+                        ok ->
+                            ?log_debug("Job complete: ~p", [J]),
+                            false;
+                        BadRes ->
+                            ?log_error("Job ~p returned: ~p", [J, BadRes]),
+                            true
+                    catch
+                        C:E:ST ->
+                            ?log_error("Job ~p failed: ~p:~p~nStacktrace:~p~n"
+                                       "State: ~p", [J, C, E, ST, State]),
+                            true
+                    end
+                end, Jobs),
+    UpdatedState = State#state{jobs = NewJobs},
+    case NewJobs of
+        [] -> stop_timer(retry_jobs, UpdatedState);
+        [_ | _] -> restart_timer(retry_jobs, ?RETRY_TIME, UpdatedState)
+    end.
+
+-spec do(node_job() | master_job()) -> ok | {error, _}.
+do(ensure_all_keks_on_disk) ->
+    ensure_all_keks_on_disk();
+do(maybe_reencrypt_secrets) ->
+    maybe_reencrypt_secrets();
+do(maybe_reencrypt_per_node_deks) ->
+    maybe_reencrypt_per_node_deks().
+
+-spec stop_timer(Name :: atom(), #state{}) -> #state{}.
+stop_timer(Name, #state{timers = Timers} = State) ->
+    case maps:get(Name, Timers) of
+        undefined -> State;
+        Ref ->
+            erlang:cancel_timer(Ref),
+            State#state{timers = Timers#{Name => undefined}}
+    end.
+
+-spec restart_timer(Name :: atom(), Time :: non_neg_integer(), #state{}) ->
+          #state{}.
+restart_timer(Name, Time, #state{timers = Timers} = State) ->
+    NewState = stop_timer(Name, State),
+    ?log_debug("Starting ~p timer for ~b...", [Name, Time]),
+    Ref = erlang:send_after(Time, self(), {timer, Name}),
+    NewState#state{timers = Timers#{Name => Ref}}.
 
 -spec sync_with_all_node_monitors() -> ok | {error, [atom()]}.
 sync_with_all_node_monitors() ->
