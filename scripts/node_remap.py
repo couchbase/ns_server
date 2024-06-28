@@ -43,7 +43,7 @@ def run_config_remap_via_escript_wrapper(initargs,
            '--output-path', output_path,
            '--regenerate-cookie',
            '--regenerate-cluster-uuid',
-           '--regenerate-bucket-uuids',
+           '--remove-alternate-addresses',
            '--log-level', log_level] + remap_args
 
     pr = subprocess.run(cmd, capture_output=capture_output)

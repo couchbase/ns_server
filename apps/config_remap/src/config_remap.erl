@@ -34,17 +34,27 @@
 -define(CHRONICLE_KV_SNAPSHOT, "kv.snapshot").
 -define(CHRONICLE_CONFIG_RSM_SNAPSHOT, "chronicle_config_rsm.snapshot").
 
+rewrite_term(BeforeTerm, #{node_map := NodeMap}) ->
+    maps:fold(
+        fun(OldNode, NewNode, Acc) ->
+            misc:rewrite_value(list_to_atom(OldNode),
+                list_to_atom(NewNode), Acc)
+        end, BeforeTerm, NodeMap).
+
+rewrite_term(BeforeTerm, LogAs, Args) when is_map(BeforeTerm) ->
+    %% We can't maps:map here because we might rewrite keys as well as values
+    maps:fold(
+        fun(Key, Value, Acc) ->
+            {NewKey, NewValue} = rewrite_term({Key, Value}, LogAs, Args),
+            Acc#{NewKey => NewValue}
+        end, #{}, BeforeTerm);
 rewrite_term(BeforeTerm, LogAs, Args) when is_list(BeforeTerm) ->
     lists:map(
       fun(Term) ->
               rewrite_term(Term, LogAs, Args)
       end, BeforeTerm);
-rewrite_term(BeforeTerm, LogAs, #{node_map := NodeMap}) ->
-    AfterTerm = maps:fold(
-                  fun(OldNode, NewNode, Acc) ->
-                          misc:rewrite_value(list_to_atom(OldNode),
-                                             list_to_atom(NewNode), Acc)
-                  end, BeforeTerm, NodeMap),
+rewrite_term(BeforeTerm, LogAs, Args) ->
+    AfterTerm = rewrite_term(BeforeTerm, Args),
 
     %% We should avoid writing too much to the log that isn't useful, only log
     %% if different.
@@ -78,11 +88,25 @@ rewrite_ns_config(#{output_path := OutputPath} = Args) ->
     NewCfg = functools:chain(OriginalCfg,
                              [modify_ns_config_tuples(_, Args),
                               maybe_rewrite_cookie(_, Args),
-                              maybe_rewrite_cluster_uuid(_, Args)]),
+                              maybe_rewrite_cluster_uuid(_, Args),
+                              maybe_remove_alternate_addresses(_, Args)]),
 
     NsConfigPath = filename:join(OutputPath, ?NS_CONFIG_NAME),
     ok = filelib:ensure_dir(NsConfigPath),
     ok = file:write_file(NsConfigPath, term_to_binary([NewCfg])).
+
+maybe_remove_alternate_addresses(Cfg, Args) ->
+    case maps:find(remove_alternate_addresses, Args) of
+        {ok, true} -> remove_alternate_addresses(Cfg);
+        _ -> Cfg
+    end.
+
+remove_alternate_addresses(Cfg) ->
+    ?log_info("Removing configured alternate addresses"),
+    lists:filter(
+        fun({{_, _, alternate_addresses}, _}) -> false;
+            (_) -> true
+        end, Cfg).
 
 maybe_rewrite_cluster_uuid(Cfg, Args) ->
     case maps:find(regenerate_cluster_uuid, Args) of
@@ -140,68 +164,6 @@ rewrite_cookie(Cfg, #{go_secrets_pid := SecretsPid,
               {otp, [VClock, {cookie, {encrypted, EncryptedCookie}}]};
          (V) -> V
       end, Cfg).
-
-get_new_bucket_uuid(Bucket, OldUUID, Args) ->
-    case ets:lookup(bucket_uuids, Bucket) of
-        [{Bucket, UUID}] -> UUID;
-        [] ->
-            NewUUID = generate_uuid(OldUUID, Args),
-            ets:insert(bucket_uuids, {Bucket, NewUUID}),
-            NewUUID
-    end.
-
-rewrite_chronicle_set_bucket_uuid(BeforeTerm, LogAs,
-                                  #{regenerate_bucket_uuids := true} = Args) ->
-    AfterTerm =
-        generic:transformt(
-          fun (Var) ->
-                  case Var of
-                      {set, {bucket, Bucket, uuid}, OldUUID} ->
-                          NewUUID = get_new_bucket_uuid(Bucket, OldUUID, Args),
-                          {set,{bucket, Bucket, uuid}, NewUUID};
-                      _ -> Var
-                  end
-          end, BeforeTerm),
-
-    %% We should avoid writing too much to the log that isn't useful, only log
-    %% if different.
-    case BeforeTerm of
-        AfterTerm ->
-            AfterTerm;
-        _ ->
-            ?log_debug("Rewriting ~s bucket uuid ~p as ~p",
-                       [LogAs, BeforeTerm, AfterTerm]),
-            AfterTerm
-    end;
-rewrite_chronicle_set_bucket_uuid(BeforeTerm, _LogAs, _Args) ->
-    BeforeTerm.
-
-rewrite_chronicle_snapshot_bucket_uuid(BeforeTerm,
-                                       #{regenerate_bucket_uuids := true}
-                                       = Args) ->
-    {snapshot, A, B, C, Map, D} = BeforeTerm,
-
-    NewMap =
-        maps:map(
-          fun(Key, Value) ->
-                  case Key of
-                      {bucket, Bucket, uuid} ->
-
-                          {OldUUID, Meta} = Value,
-                          NewUUID = get_new_bucket_uuid(Bucket, OldUUID, Args),
-
-                          ?log_debug("Rewriting bucket uuid for ~p. Old value "
-                                     "~p New value ~p",
-                                     [Bucket, OldUUID, NewUUID]),
-                          {NewUUID, Meta};
-                      _ -> Value
-                  end
-          end, Map),
-
-
-    {snapshot, A, B, C, NewMap, D};
-rewrite_chronicle_snapshot_bucket_uuid(BeforeTerm, _Args) ->
-    BeforeTerm.
 
 rewrite_chronicle(#{?INITARGS_DATA_DIR := InputDir,
                     output_path := OutputDir} = Args) ->
@@ -266,17 +228,18 @@ rewrite_chronicle_rsm_snapshot(Seqno, Snapshot,
     {ok, NewSnapData} = chronicle_storage:read_rsm_snapshot(SnapshotType,
                                                             IntegerSeqno).
 
-%% kv snapshot may need to rewrite bucket uuids
 rewrite_chronicle_snapshot_term(?CHRONICLE_KV_SNAPSHOT, Term, Args) ->
     Msg = io_lib:format("chronicle ~s snapshot", [?CHRONICLE_KV_SNAPSHOT]),
-
-    functools:chain(Term, [rewrite_term(_, Msg, Args),
-                           rewrite_chronicle_snapshot_bucket_uuid(_, Args)]);
+    rewrite_chronicle_snapshot_term(Msg, Term, Args);
 rewrite_chronicle_snapshot_term(?CHRONICLE_CONFIG_RSM_SNAPSHOT, Term, Args) ->
     Msg = io_lib:format("chronicle ~s snapshot",
                         [?CHRONICLE_CONFIG_RSM_SNAPSHOT]),
-    rewrite_term(Term, Msg, Args).
-
+    rewrite_chronicle_snapshot_term(Msg, Term, Args);
+rewrite_chronicle_snapshot_term(Msg,
+                                {snapshot, Seqno, HistoryId, RSM, Term, Config},
+                                Args) ->
+    {snapshot, Seqno, HistoryId, RSM, rewrite_term(Term, Msg, Args),
+                                      rewrite_term(Config, Msg, Args)}.
 
 rewrite_chronicle_log_header(Header, #{output_path := OutputPath,
                                        args := Args} = State) ->
@@ -295,18 +258,36 @@ rewrite_chronicle_log_header(Header, #{output_path := OutputPath,
     %% Return out log in the state to re-use it, rather than open the file again
     State#{log_file => Log}.
 
+sanitize_chronicle_log_command(root_cert_and_pkey, Value) ->
+    %% root_cert_and_pkey includes the OOTB CA cert and private key. We probably
+    %% don't want to log it
+    ?HIDE(Value);
+sanitize_chronicle_log_command(_Key, Value) ->
+    Value.
+
 rewrite_chronicle_log_command({command, Packed},
                               #{args := Args,
                                 output_path := OutputPath}) ->
     Unpacked = chronicle_rsm:unpack_command(Packed),
 
     LogNum = filename:basename(OutputPath),
-    Msg = io_lib:format("chronicle log ~p command", [LogNum]),
 
-    Rewritten =
-        functools:chain(Unpacked,
-                        [rewrite_term(_, Msg, Args),
-                         rewrite_chronicle_set_bucket_uuid(_, Msg, Args)]),
+    Rewritten = rewrite_term(Unpacked, Args),
+    case Rewritten of
+        Unpacked -> ok;
+        _ ->
+            %% Different, lets log, but we must sanitize the term to avoid
+            %% printing private keys
+            Before = chronicle_kv:sanitize_command(
+                fun sanitize_chronicle_log_command/2,
+                Unpacked),
+            After = chronicle_kv:sanitize_command(
+                fun sanitize_chronicle_log_command/2,
+                Rewritten),
+
+            ?log_debug("Rewriting chronicle log ~p command term ~p as ~p",
+                        [LogNum, Before, After])
+    end,
 
     Repacked = chronicle_rsm:pack_command(Rewritten),
     {command, Repacked}.
@@ -524,7 +505,7 @@ default_args() ->
     #{log_level => info,
       regenerate_cookie => false,
       regenerate_cluster_uuid => false,
-      regenerate_bucket_uuids => false}.
+      remove_alternate_addresses => false}.
 
 -spec parse_args(list(), map()) -> map().
 parse_args(["--output-path", Path | Rest], Map) ->
@@ -543,8 +524,8 @@ parse_args(["--regenerate-cookie" | Rest], Map) ->
     parse_args(Rest, Map#{regenerate_cookie => true});
 parse_args(["--regenerate-cluster-uuid" | Rest], Map) ->
     parse_args(Rest, Map#{regenerate_cluster_uuid => true});
-parse_args(["--regenerate-bucket-uuids" | Rest], Map) ->
-    parse_args(Rest, Map#{regenerate_bucket_uuids => true});
+parse_args(["--remove-alternate-addresses" | Rest], Map) ->
+    parse_args(Rest, Map#{remove_alternate_addresses => true});
 parse_args([], Map) ->
     Map;
 parse_args(Args, _Map) ->
@@ -611,18 +592,6 @@ setup(Args) ->
 
     ArgsMap2 = maybe_derive_output_path(ArgsMap1),
     ArgsMap3 = init_gosecrets(ArgsMap2),
-
-    %% We may rewrite bucket uuids. We don't know which buckets we have til we
-    %% iterate the config, without iterating the data dirs anyways, and we may
-    %% have multiple keys to rewrite in the case of things like chronicle log.
-    %% We should ensure that we use the same uuid everywhere, so we will store
-    %% them after creating them. We will put them in an ETS table instead of
-    %% in the Args map, this saves us from having to update and pass new Args
-    %% maps in every function, instead we can just lookup in the table.
-    case maps:get(regenerate_bucket_uuids, ArgsMap3) of
-        false -> ok;
-        true -> ets:new(bucket_uuids, [public, named_table])
-    end,
 
     ?log_debug("Final args map ~p", [ArgsMap3]),
     ArgsMap3.
