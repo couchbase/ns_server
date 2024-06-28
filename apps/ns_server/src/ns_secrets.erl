@@ -14,7 +14,8 @@
 -export([start_link/0,
          get_pkey_pass/1,
          load_passphrase/2,
-         extract_pkey_pass/1]).
+         extract_pkey_pass/1,
+         call_external_script/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,

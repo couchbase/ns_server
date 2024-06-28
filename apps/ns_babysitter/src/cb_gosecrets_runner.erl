@@ -35,7 +35,9 @@
          store_key/7,
          encrypt_with_key/4,
          decrypt_with_key/4,
-         defaults/0]).
+         read_key/3,
+         defaults/0,
+         key_path/2]).
 
 -record(state, {config :: file:filename(),
                 loop :: pid()}).
@@ -119,6 +121,9 @@ store_key(Name, Kind, KeyName, KeyType, KeyData, IsKeyDataEncrypted,
       {store_key, Kind, KeyName, KeyType, KeyData, IsKeyDataEncrypted,
        EncryptionKeyId},
       infinity).
+
+read_key(Name, Kind, KeyName) ->
+    gen_server:call(Name, {read_key, Kind, KeyName}, infinity).
 
 encrypt_with_key(Name, Data, KeyKind, KeyName) ->
     gen_server:call(Name, {encrypt_with_key, Data, KeyKind, KeyName},
@@ -324,6 +329,8 @@ handle_call({cleanup_secrets, Cfg}, _From, State) ->
 handle_call({store_key, _Kind, _Name, _KeyType, _KeyData, _IsKeyDataEncrypted,
              _EncryptionKeyId} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
+handle_call({read_key, _Kind, _Name} = Cmd, _From, State) ->
+    {reply, call_gosecrets(Cmd, State), State};
 handle_call({encrypt_with_key, _Data, _KeyKind, _Name} = Cmd, _From, State) ->
     {reply, convert_empty_data(call_gosecrets(Cmd, State)), State};
 handle_call({decrypt_with_key, _Data, _KeyKind, _Name} = Cmd, _From, State) ->
@@ -457,7 +464,9 @@ encode({encrypt_with_key, Data, KeyKind, Name}) ->
 encode({decrypt_with_key, Data, KeyKind, Name}) ->
     <<14, (encode_param(Data))/binary,
           (encode_param(KeyKind))/binary,
-          (encode_param(Name))/binary>>.
+          (encode_param(Name))/binary>>;
+encode({read_key, Kind, Name}) ->
+    <<15, (encode_param(Kind))/binary, (encode_param(Name))/binary>>.
 
 encode_param(B) when is_atom(B) ->
     encode_param(atom_to_binary(B));
@@ -536,13 +545,17 @@ cfg_to_json(Props) ->
     KeksStoreConfig = {[{kind, kek},
                         {path, key_path(kek, Props)},
                         {encryptByKind, kek}]},
+    ChronicleDeksConfig = {[{kind, chronicleDek},
+                            {path, key_path(chronicleDek, Props)},
+                            {encryptByKind, kek}]},
     DeksStoreConfig = case key_path(bucketDek, Props) of
                           undefined -> [];
                           DeksPath -> [{[{kind, bucketDek},
                                          {path, DeksPath},
                                          {encryptByKind, kek}]}]
                       end,
-    StoredKeysJson = {storedKeys, [KeksStoreConfig | DeksStoreConfig]},
+    StoredKeysJson = {storedKeys, [KeksStoreConfig, ChronicleDeksConfig
+                                   | DeksStoreConfig]},
 
     case Extract(es_key_storage_type) of
         file ->
@@ -597,6 +610,8 @@ cfg_to_json(Props) ->
 %% is the fact that we need those path before ns_config has started)
 key_path(kek, _Cfg) ->
     proplists:get_value(kek_path, defaults(), undefined);
+key_path(chronicleDek, _Cfg) ->
+    proplists:get_value(chronicle_dek_path, defaults(), undefined);
 key_path(bucketDek, Cfg) ->
     Key = bucket_dek_path,
     case proplists:get_value(Key, Cfg) of
@@ -605,14 +620,15 @@ key_path(bucketDek, Cfg) ->
     end.
 
 defaults() ->
+    ConfigDir = path_config:component_path(data, "config"),
     [{es_password_env, "CB_MASTER_PASSWORD"},
      {es_password_source, env},
      {es_encrypt_key, true},
      {es_key_path_type, auto},
      {es_key_storage_type, 'file'},
-     {kek_path,
-      iolist_to_binary(
-        filename:join(path_config:component_path(data, "config"), "keks"))}].
+     {kek_path, iolist_to_binary(filename:join(ConfigDir, "keks"))},
+     {chronicle_dek_path,
+      iolist_to_binary(filename:join([ConfigDir, "chronicle", "deks"]))}].
 
 format_error({write_failed, CfgPath, Error}) ->
     io_lib:format("Could not write file '~s': ~s (~p)",
@@ -789,6 +805,49 @@ config_reload_test() ->
           ok = cleanup_secrets(Pid, Cfg3),
           ?assertEqual({ok, Data}, decrypt(Pid, Encrypted)),
           ?assertEqual({ok, <<"default">>}, get_state(Pid))
+      end).
+
+store_and_read_key_test() ->
+    Cfg = [],
+    DecodeKey = fun (EncodedData) ->
+                    {Props} = ejson:decode(EncodedData),
+                    Type = proplists:get_value(<<"type">>, Props, <<>>),
+                    {KeyProps} = proplists:get_value(<<"info">>, Props),
+                    KeyBase64 = proplists:get_value(<<"key">>, KeyProps),
+                    Bin = base64:decode(KeyBase64),
+                    EncrKey = proplists:get_value(<<"encryptionKeyId">>,
+                                                  KeyProps),
+                    #{type => binary_to_atom(Type),
+                      key => Bin,
+                      encr_key => EncrKey}
+                end,
+    with_all_stored_keys_cleaned(
+      Cfg,
+      fun () ->
+          with_gosecrets(
+            Cfg,
+            fun (_CfgPath, Pid) ->
+                Key1 = rand:bytes(32),
+                Key2 = rand:bytes(32),
+                Type = 'raw-aes-gcm',
+                ?assertEqual(ok, store_key(Pid, kek, <<"key1">>, Type, Key1,
+                                           false, <<"encryptionService">>)),
+                ?assertEqual(ok, store_key(Pid, chronicleDek, <<"key2">>, Type,
+                                           Key2, false, <<"key1">>)),
+                {ok, Key1Encoded} = read_key(Pid, kek, <<"key1">>),
+                {ok, Key2Encoded} = read_key(Pid, chronicleDek, <<"key2">>),
+                ?assertMatch(#{type := Type,
+                               key := Key1,
+                               encr_key := <<"encryptionService">>},
+                             DecodeKey(Key1Encoded)),
+                ?assertMatch(#{type := Type,
+                               key := Key2,
+                               encr_key := <<"key1">>},
+                             DecodeKey(Key2Encoded)),
+                %% Unknown key
+                ?assertMatch({error, "Failed to read key from file" ++ _},
+                             read_key(Pid, chronicleDek, <<"key3">>))
+            end)
       end).
 
 unchanged_config_reload_after_password_change_test() ->
@@ -1102,6 +1161,18 @@ with_tmp_datakey_cfg(Fun) ->
     after
         file:delete(DKFile),
         os:unsetenv("CB_MASTER_PASSWORD")
+    end.
+
+with_all_stored_keys_cleaned(Cfg, Fun) ->
+    KeksPath = binary_to_list(key_path(kek, Cfg)),
+    DeksPath = binary_to_list(key_path(chronicleDek, Cfg)),
+    ok = misc:rm_rf(KeksPath), %% In case if there are leftovers
+    ok = misc:rm_rf(DeksPath),
+    try
+        Fun()
+    after
+        ok = misc:rm_rf(KeksPath),
+        ok = misc:rm_rf(DeksPath)
     end.
 
 with_password_sent(WrongPassword, CorrectPassword, Fun) ->

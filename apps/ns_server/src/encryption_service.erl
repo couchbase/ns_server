@@ -16,9 +16,12 @@
          get_state/0,
          os_pid/0,
          reconfigure/1,
-         store_bucket_dek/4,
          store_kek/4,
-         store_awskey/7]).
+         store_awskey/7,
+         store_dek/4,
+         read_dek/2,
+         key_path/1,
+         decode_key_info/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -57,14 +60,15 @@ os_pid() ->
 reconfigure(NewCfg) ->
     safe_call({change_config, NewCfg}, infinity).
 
-store_bucket_dek(Bucket, Id, Key, KekId) when is_list(Bucket) ->
-    Name = iolist_to_binary(filename:join([Bucket, "deks", Id])),
-    store_key(bucketDek, Name, 'raw-aes-gcm', Key, true, KekId).
-
 store_kek(Id, Key, false, undefined) ->
     store_key(kek, Id, 'raw-aes-gcm', Key, false, <<"encryptionService">>);
 store_kek(Id, Key, AlreadEncrypted, KekIdToEncrypt) ->
     store_key(kek, Id, 'raw-aes-gcm', Key, AlreadEncrypted, KekIdToEncrypt).
+
+store_dek({bucketDek, Bucket}, Id, Key, KekIdToEncrypt) ->
+    store_dek(bucketDek, bucket_dek_id(Bucket, Id), Key, KekIdToEncrypt);
+store_dek(Kind, Id, Key, KekIdToEncrypt) ->
+    store_key(Kind, Id, 'raw-aes-gcm', Key, false, KekIdToEncrypt).
 
 store_awskey(Id, KeyArn, Region, Profile, CredsFile, ConfigFile, UseIMDS) ->
     Data = ejson:encode({[{keyArn, iolist_to_binary(KeyArn)},
@@ -74,6 +78,39 @@ store_awskey(Id, KeyArn, Region, Profile, CredsFile, ConfigFile, UseIMDS) ->
                           {configFile, iolist_to_binary(ConfigFile)},
                           {useIMDS, UseIMDS}]}),
     store_key(kek, Id, awskm, Data, false, <<"encryptionService">>).
+
+read_dek(Kind, DekId) ->
+    {NewId, NewKind} = case Kind of
+                           {bucketDek, Bucket} ->
+                               {bucket_dek_id(Bucket, DekId), bucketDek};
+                           _ ->
+                               {DekId, Kind}
+                       end,
+    case wrap_error_msg(
+           cb_gosecrets_runner:read_key(?RUNNER, NewKind, NewId),
+           read_key_error) of
+        {ok, Json} ->
+            {Props} = ejson:decode(Json),
+            Res = maps:from_list(
+                    lists:map(fun ({<<"type">>, <<"raw-aes-gcm">>}) -> 
+                                      {type, 'raw-aes-gcm'};
+                                  ({<<"info">>, InfoProps}) ->
+                                      {info, decode_key_info(InfoProps)}
+                              end, Props)),
+            {ok, Res#{id => DekId}};
+        {error, Error} ->
+            {error, Error}
+    end.
+
+decode_key_info({InfoProps}) ->
+    maps:from_list(
+      lists:map(
+        fun ({<<"key">>, B64Key}) ->
+                Key = base64:decode(B64Key),
+                {key, fun () -> Key end};
+            ({<<"encryptionKeyId">>, KekId}) ->
+                {encryption_key_id, KekId}
+        end, InfoProps)).
 
 encrypt_key(Data, KekId) when is_binary(Data), is_binary(KekId) ->
     wrap_error_msg(
@@ -360,3 +397,23 @@ maybe_update_dek_path_in_config() ->
 wrap_error_msg(ok, _A) -> ok;
 wrap_error_msg({ok, _} = R, _A) -> R;
 wrap_error_msg({error, Msg}, A) when is_list(Msg) -> {error, {A, Msg}}.
+
+key_path({bucketDek, Bucket}) ->
+    case key_path(bucketDek) of
+        undefined ->
+            undefined;
+        PathToDeks ->
+            iolist_to_binary(filename:join([PathToDeks, Bucket, "deks"]))
+    end;
+%% Only bucketDek can change in config, other paths are static.
+%% Moreover we don't have ns_config started yet when we already need other
+%% paths (like chronicleDek path), so we can't call ns_config:read_key_fast for
+%% those paths.
+key_path(bucketDek) ->
+    Cfg = ns_config:read_key_fast(ns_config_sm_key(), []),
+    cb_gosecrets_runner:key_path(bucketDek, Cfg);
+key_path(Kind) ->
+    cb_gosecrets_runner:key_path(Kind, []).
+
+bucket_dek_id(Bucket, DekId) ->
+    iolist_to_binary(filename:join([Bucket, "deks", DekId])).

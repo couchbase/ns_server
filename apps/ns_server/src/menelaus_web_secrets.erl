@@ -176,6 +176,8 @@ export_secret(#{type := DataType} = Props) ->
                           fun ({bucket_encryption, BucketName}) ->
                                   iolist_to_binary([<<"bucket-encryption-">>,
                                                     BucketName]);
+                              (config_encryption) ->
+                                  <<"configuration-encryption">>;
                               (secrets_encryption) ->
                                   <<"secrets-encryption">>
                           end, UList)};
@@ -237,6 +239,8 @@ validate_key_usage(Name, State) ->
                   {value, {bucket_encryption, binary_to_list(N)}};
               <<"secrets-encryption">> ->
                   {value, secrets_encryption};
+              <<"configuration-encryption">> ->
+                  {value, config_encryption};
               _ ->
                   {error, "unknown usage"}
           end
@@ -367,6 +371,8 @@ is_usage_allowed({bucket_encryption, B}, Req) ->
     menelaus_auth:has_permission({[{bucket, B}, settings], write}, Req) orelse
     menelaus_auth:has_permission({[admin, security], write}, Req);
 is_usage_allowed(secrets_encryption, Req) ->
+    menelaus_auth:has_permission({[admin, security], write}, Req);
+is_usage_allowed(config_encryption, Req) ->
     menelaus_auth:has_permission({[admin, security], write}, Req).
 
 read_filter_secrets_by_permission(Secrets, Req) ->

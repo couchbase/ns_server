@@ -2509,8 +2509,9 @@ remove_bucket(BucketName) ->
     end.
 
 validate_encryption_secret(SecretId, Bucket, Snapshot) ->
-    case cb_cluster_secrets:ensure_can_encrypt_bucket(SecretId, Bucket,
-                                                      Snapshot) of
+    case cb_cluster_secrets:ensure_can_encrypt_dek_kind(SecretId,
+                                                        {bucketDek, Bucket},
+                                                        Snapshot) of
         ok -> ok;
         {error, not_found} -> {error, secret_not_found};
         {error, not_allowed} -> {error, secret_not_allowed}
