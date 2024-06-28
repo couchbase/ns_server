@@ -1171,17 +1171,24 @@ do_create_bucket(BucketName, Config, BucketUUID, Manifest) ->
 
                   ShutdownBucketNames =
                       get_bucket_names_marked_for_shutdown(Snapshot),
-
+                  EncryptionSecretOk =
+                      case proplists:get_value(encryption_secret_id,
+                                               Config, ?SECRET_ID_NOT_SET) of
+                          ?SECRET_ID_NOT_SET -> ok;
+                          SecretId ->
+                              validate_encryption_secret(SecretId, BucketName,
+                                                         Snapshot)
+                      end,
                   case {name_conflict(BucketName, BucketNames),
                         name_conflict(BucketName, ShutdownBucketNames),
-                        encryption_secret_conflict(Config, Snapshot)} of
+                        EncryptionSecretOk} of
                       {true, _, _} ->
                           {abort, already_exists};
                       {_, true, _} ->
                           {abort, still_exists};
-                      {_, _, true} ->
-                          {abort, {error, secret_not_found}};
-                      {false, false, false} ->
+                      {_, _, {error, Reason}} ->
+                          {abort, {error, Reason}};
+                      {false, false, ok} ->
                           {commit, create_bucket_sets(BucketName, BucketNames,
                                                       BucketUUID, Config) ++
                                    collections_sets(BucketName, Config,
@@ -1507,13 +1514,7 @@ update_bucket_props_inner(Type, OldStorageMode, BucketName, Props) ->
     SecretIdCheckPredicate =
         case IsSecretIdChanging of
             true when NewSecretId =/= ?SECRET_ID_NOT_SET ->
-                fun (Snapshot) ->
-                    case cb_cluster_secrets:get_secret(NewSecretId, Snapshot) of
-                        {ok, _} -> ok;
-                        {error, not_found} ->
-                            {error, secret_not_found}
-                    end
-                end;
+                validate_encryption_secret(NewSecretId, BucketName, _);
             _ ->
                 fun (_) -> ok end
         end,
@@ -2507,15 +2508,12 @@ remove_bucket(BucketName) ->
             Other
     end.
 
-encryption_secret_conflict(BucketConfig, Snapshot) ->
-    case proplists:get_value(encryption_secret_id, BucketConfig,
-                             ?SECRET_ID_NOT_SET) of
-        ?SECRET_ID_NOT_SET -> false;
-        SecretId ->
-            case cb_cluster_secrets:get_secret(SecretId, Snapshot) of
-                {ok, _} -> false;
-                {error, not_found} -> true
-            end
+validate_encryption_secret(SecretId, Bucket, Snapshot) ->
+    case cb_cluster_secrets:ensure_can_encrypt_bucket(SecretId, Bucket,
+                                                      Snapshot) of
+        ok -> ok;
+        {error, not_found} -> {error, secret_not_found};
+        {error, not_allowed} -> {error, secret_not_allowed}
     end.
 
 -ifdef(TEST).

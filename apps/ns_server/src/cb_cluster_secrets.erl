@@ -37,7 +37,8 @@
          get_secret/1,
          get_secret/2,
          rotate/1,
-         many_to_one_result/1]).
+         many_to_one_result/1,
+         ensure_can_encrypt_bucket/3]).
 
 %% Can be called by other nodes:
 -export([add_new_secret_internal/1,
@@ -88,6 +89,9 @@
 
 -type master_job() :: maybe_reencrypt_secrets.
 
+-type bad_encrypt_id() :: {encrypt_id, not_allowed | not_found}.
+-type bad_usage_change() :: {usage, in_use}.
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -124,17 +128,24 @@ get_secret(SecretId, Snapshot) when is_integer(SecretId) ->
             {error, not_found}
     end.
 
--spec add_new_secret(secret_props()) -> {ok, secret_props()} | {error, _}.
+-spec add_new_secret(secret_props()) -> {ok, secret_props()} |
+                                        {error, not_supported |
+                                                bad_encrypt_id() |
+                                                bad_usage_change()}.
 add_new_secret(Props) ->
     execute_on_master({?MODULE, add_new_secret_internal, [Props]}).
 
 -spec add_new_secret_internal(secret_props()) ->
-                                            {ok, secret_props()} | {error, _}.
+                                            {ok, secret_props()} |
+                                            {error, not_supported |
+                                                    bad_encrypt_id() |
+                                                    bad_usage_change()}.
 add_new_secret_internal(Props) ->
     CurrentDateTime = erlang:universaltime(),
     PropsWTime = Props#{creation_time => CurrentDateTime},
     RV = chronicle_kv:transaction(
-           kv, [?CHRONICLE_SECRETS_KEY, ?CHRONICLE_NEXT_ID_KEY],
+           kv, [?CHRONICLE_SECRETS_KEY, ?CHRONICLE_NEXT_ID_KEY,
+                ns_bucket:root()],
            fun (Snapshot) ->
                CurList = get_all(Snapshot),
                NextId = chronicle_compat:get(Snapshot, ?CHRONICLE_NEXT_ID_KEY,
@@ -160,19 +171,25 @@ add_new_secret_internal(Props) ->
 
 -spec replace_secret(secret_props(), map()) ->
                                     {ok, secret_props()} |
-                                    {error, not_found | encrypt_id_not_found |
-                                            encrypt_id_not_allowed}.
+                                    {error, not_found | bad_encrypt_id() |
+                                            bad_usage_change()}.
 replace_secret(OldProps, NewProps) ->
     execute_on_master({?MODULE, replace_secret_internal, [OldProps, NewProps]}).
 
 -spec replace_secret_internal(secret_props(), map()) ->
-                                    {ok, secret_props()} | {error, not_found}.
+                                    {ok, secret_props()} |
+                                    {error, not_found | bad_encrypt_id() |
+                                            bad_usage_change()}.
 replace_secret_internal(OldProps, NewProps) ->
     Props = copy_static_props(OldProps, NewProps),
     Res =
-        chronicle_kv:transaction(
-          kv, [?CHRONICLE_SECRETS_KEY],
-          fun (Snapshot) ->
+        chronicle_compat:txn(
+          fun (Txn) ->
+              SecretsSnapshot =
+                  chronicle_compat:txn_get_many([?CHRONICLE_SECRETS_KEY], Txn),
+              BucketSnapshot =
+                  ns_bucket:fetch_snapshot(all, Txn, [props]),
+              Snapshot = maps:merge(BucketSnapshot, SecretsSnapshot),
               CurList = get_all(Snapshot),
               case replace_secret_in_list(Props, CurList) of
                   false -> %% already removed, we should not create new
@@ -200,11 +217,14 @@ generate_raw_key(Cipher) ->
     #{key_length := Length} = crypto:cipher_info(Cipher),
     crypto:strong_rand_bytes(Length).
 
--spec rotate(secret_id() | string()) -> ok | {error, term()}.
+-spec rotate(secret_id()) -> ok | {error, not_found | not_supported |
+                                          bad_encrypt_id()}.
 rotate(Id) ->
     execute_on_master({?MODULE, rotate_internal, [Id]}).
 
--spec rotate_internal(secret_id()) -> ok | {error, term()}.
+-spec rotate_internal(secret_id()) -> ok | {error, not_found |
+                                                   not_supported |
+                                                   bad_encrypt_id()}.
 rotate_internal(Id) ->
     maybe
         {ok, #{type := ?GENERATED_KEY_TYPE} = SecretProps} ?= get_secret(Id),
@@ -244,6 +264,18 @@ sync_with_node_monitor() ->
     ok = chronicle_kv:sync(kv, ?SYNC_TIMEOUT),
     chronicle_compat_events:sync(),
     gen_server:call(?MODULE, sync, ?SYNC_TIMEOUT).
+
+-spec ensure_can_encrypt_bucket(secret_id(), string(), chronicle_snapshot()) ->
+                                        ok | {error, not_allowed | not_found}.
+ensure_can_encrypt_bucket(SecretId, BucketName, Snapshot) ->
+    maybe
+        {ok, SecretProps} ?= get_secret(SecretId, Snapshot),
+        true ?= can_secret_props_encrypt_bucket(SecretProps, BucketName),
+        ok
+    else
+        false -> {error, not_allowed};
+        {error, not_found} -> {error, not_found}
+    end.
 
 %% Just a helper function
 -spec many_to_one_result([{T, ok} | {T, {error, R}}]) ->
@@ -337,7 +369,8 @@ terminate(_Reason, _State) ->
 %%%===================================================================
 
 -spec generate_key(Creation :: calendar:datetime(), secret_props()) ->
-                                            {ok, kek_props()} | {error, _}.
+                                            {ok, kek_props()} |
+                                            {error, bad_encrypt_id()}.
 generate_key(CreationDateTime, #{data := SecretData}) ->
     maybe
         Key = generate_raw_key(?ENVELOP_CIPHER),
@@ -350,9 +383,9 @@ generate_key(CreationDateTime, #{data := SecretData}) ->
                         {ok, EncKekId} ->
                             {ok, {EncSecretId, EncKekId}};
                         {error, not_found} ->
-                            {error, encrypt_id_not_found};
+                            {error, {encrypt_id, not_found}};
                         {error, not_supported} ->
-                            {error, encrypt_id_not_allowed}
+                            {error, {encrypt_id, not_allowed}}
                     end
             end,
         KeyProps = #{id => misc:uuid_v4(),
@@ -499,7 +532,8 @@ ensure_aws_kek_on_disk(#{data := Data}) ->
     encryption_service:store_awskey(UUID, KeyArn, Region, Profile,
                                     CredsFile, ConfigFile, UseIMDS).
 
--spec prepare_new_secret(secret_props()) -> {ok, secret_props()} | {error, _}.
+-spec prepare_new_secret(secret_props()) ->
+            {ok, secret_props()} | {error, not_supported | bad_encrypt_id()}.
 prepare_new_secret(#{type := ?GENERATED_KEY_TYPE,
                      creation_time := CurrentTime} = Props) ->
     maybe
@@ -521,20 +555,17 @@ maybe_reencrypt_per_node_deks() ->
     ok.
 
 -spec validate_secret_in_txn(secret_props(), #{} | secret_props(),
-                             chronicle_snapshot()) -> ok | {error, _}.
-validate_secret_in_txn(#{type := ?GENERATED_KEY_TYPE,
-                         data := #{encrypt_by := clusterSecret,
-                                   encrypt_secret_id := Id}},
-                       _PrevProps, Snapshot) ->
-    case get_active_key_id(Id, Snapshot) of
-        {ok, _} -> ok;
-        {error, not_supported} ->
-            {error, encrypt_id_not_allowed};
-        {error, not_found} ->
-            {error, encrypt_id_not_found}
-    end;
-validate_secret_in_txn(_NewProps, _PrevProps, _Snapshot) ->
-    ok.
+                             chronicle_snapshot()) ->
+                                            ok | {error, bad_encrypt_id() |
+                                                         bad_usage_change()}.
+validate_secret_in_txn(NewProps, PrevProps, Snapshot) ->
+    maybe
+        ok ?= validate_secrets_encryption_usage_change(NewProps, PrevProps,
+                                                       Snapshot),
+        ok ?= validate_encryption_secret_id(NewProps, Snapshot),
+        ok ?= validate_bucket_encryption_usage_change(NewProps, PrevProps,
+                                                      Snapshot)
+    end.
 
 -spec execute_on_master({module(), atom(), [term()]}) -> term().
 execute_on_master({_, _, _} = MFA) ->
@@ -718,6 +749,88 @@ restart_timer(Name, Time, #state{timers = Timers} = State) ->
     Ref = erlang:send_after(Time, self(), {timer, Name}),
     NewState#state{timers = Timers#{Name => Ref}}.
 
+-spec validate_encryption_secret_id(secret_props(), chronicle_snapshot()) ->
+                    ok | {error, bad_encrypt_id()}.
+validate_encryption_secret_id(#{type := ?GENERATED_KEY_TYPE,
+                                data := #{encrypt_by := clusterSecret,
+                                          encrypt_secret_id := Id}},
+                              Snapshot) ->
+    case secret_can_encrypt_secrets(Id, Snapshot) of
+        ok -> ok;
+        {error, not_found} -> {error, {encrypt_id, not_found}};
+        {error, not_allowed} -> {error, {encrypt_id, not_allowed}}
+    end;
+validate_encryption_secret_id(#{}, _Snapshot) ->
+    ok.
+
+-spec secret_can_encrypt_secrets(secret_id(), chronicle_snapshot()) ->
+                                        ok | {error, not_found | not_allowed}.
+secret_can_encrypt_secrets(SecretId, Snapshot) ->
+    case get_secret(SecretId, Snapshot) of
+        {ok, #{usage := Usage}} ->
+            case lists:member(secrets_encryption, Usage) of
+                true -> ok;
+                false -> {error, not_allowed}
+            end;
+        {error, not_found} -> {error, not_found}
+    end.
+
+-spec validate_secrets_encryption_usage_change(secret_props(),
+                                               #{} | secret_props(),
+                                               chronicle_snapshot()) ->
+                                            ok | {error, bad_usage_change()}.
+validate_secrets_encryption_usage_change(NewProps, PrevProps, Snapshot) ->
+    PrevUsage = maps:get(usage, PrevProps, []),
+    NewUsage = maps:get(usage, NewProps, []),
+    case (not lists:member(secrets_encryption, NewUsage)) andalso
+         (lists:member(secrets_encryption, PrevUsage)) of
+        true ->
+            #{id := PrevId} = PrevProps,
+            case secret_encrypts_other_secrets(PrevId, Snapshot) of
+                true -> {error, {usage, in_use}};
+                false -> ok
+            end;
+        false ->
+            ok
+    end.
+
+-spec secret_encrypts_other_secrets(secret_id(), chronicle_snapshot()) ->
+                                                                    boolean().
+secret_encrypts_other_secrets(Id, Snapshot) ->
+    lists:any(fun (#{type := ?GENERATED_KEY_TYPE,
+                     data := #{encrypt_by := clusterSecret,
+                               encrypt_secret_id := EncId}}) ->
+                      EncId == Id;
+                  (#{}) ->
+                      false
+              end, get_all(Snapshot)).
+
+-dialyzer({nowarn_function, validate_bucket_encryption_usage_change/3}).
+-spec validate_bucket_encryption_usage_change(secret_props(),
+                                              #{} | secret_props(),
+                                              chronicle_snapshot()) ->
+                                            ok | {error, bad_usage_change()}.
+validate_bucket_encryption_usage_change(_NewProps, PrevProps, _Snapshot)
+                                        when map_size(PrevProps) == 0 ->
+    %% it is a new secret
+    ok;
+validate_bucket_encryption_usage_change(NewProps, #{id := PrevId}, Snapshot) ->
+    case lists:all(
+           fun (Bucket) ->
+               can_secret_props_encrypt_bucket(NewProps, Bucket)
+           end,
+           get_buckets_by_secret_id(PrevId, Snapshot)) of
+        true -> ok;
+        false -> {error, {usage, in_use}}
+    end.
+
+-spec can_secret_props_encrypt_bucket(secret_props(), string()) -> boolean().
+can_secret_props_encrypt_bucket(#{usage := List}, BucketName) ->
+    lists:any(fun ({bucket_encryption, "*"}) -> true;
+                  ({bucket_encryption, B}) -> B == BucketName;
+                  (_) -> false
+              end, List).
+
 -spec sync_with_all_node_monitors() -> ok | {error, [atom()]}.
 sync_with_all_node_monitors() ->
     Nodes = ns_node_disco:nodes_actual(),
@@ -737,6 +850,14 @@ sync_with_all_node_monitors() ->
             ?log_error("Sync failed, bad nodes: ~p", [BadNodes]),
             {error, BadNodes}
     end.
+
+-spec get_buckets_by_secret_id(secret_id(), chronicle_snapshot()) -> [string()].
+get_buckets_by_secret_id(Id, Snapshot) ->
+    Buckets = ns_bucket:get_bucket_names(Snapshot),
+    lists:filter(fun (B) ->
+                     {ok, BConfig} = ns_bucket:get_bucket(B),
+                     Id == proplists:get_value(encryption_secret_id, BConfig)
+                 end, Buckets).
 
 -ifdef(TEST).
 replace_secret_in_list_test() ->

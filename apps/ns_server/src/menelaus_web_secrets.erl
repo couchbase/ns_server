@@ -47,10 +47,10 @@ handle_post_secret(Req) ->
               {ok, Res} ->
                   Formatted = export_secret(Res),
                   menelaus_util:reply_json(Req, {Formatted});
-              {error, encrypt_id_not_found} ->
+              {error, {encrypt_id, not_found}} ->
                   menelaus_util:reply_global_error(
                     Req, "encryption secret does not exist");
-              {error, encrypt_id_not_allowed} ->
+              {error, {encrypt_id, not_allowed}} ->
                   menelaus_util:reply_global_error(
                     Req, "encryption secret not allowed");
               {error, Reason} ->
@@ -69,10 +69,13 @@ handle_put_secret(IdStr, Req) ->
                       {ok, Res} ->
                           Formatted = export_secret(Res),
                           menelaus_util:reply_json(Req, {Formatted});
-                      {error, encrypt_id_not_found} ->
+                      {error, {usage, in_use}} ->
+                          menelaus_util:reply_global_error(
+                            Req, "can't modify usage as this secret is in use");
+                      {error, {encrypt_id, not_found}} ->
                           menelaus_util:reply_global_error(
                             Req, "encryption secret does not exist");
-                      {error, encrypt_id_not_allowed} ->
+                      {error, {encrypt_id, not_allowed}} ->
                           menelaus_util:reply_global_error(
                             Req, "encryption secret not allowed");
                       {error, not_found} ->

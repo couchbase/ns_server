@@ -897,6 +897,8 @@ update_via_orchestrator(Req, BucketId, StorageMode, BucketType, UpdatedProps,
             reply_storage_mode_migration_error(Req, Error);
         {error, secret_not_found} ->
             reply_text(Req, "Encryption secret does not exist", 400);
+        {error, secret_not_allowed} ->
+            reply_text(Req, "Encryption secret can't encrypt this bucket", 400);
         {exit, {not_found, _}, _} ->
             %% if this happens then our validation raced, so repeat everything
             retry
@@ -956,9 +958,15 @@ do_bucket_create(Req, Name, ParsedProps) ->
             {errors, [{'_', need_more_space_error(Zones)}]};
         {error, {incorrect_parameters, Error}} ->
             {errors, [{'_', list_to_binary(Error)}]};
+        {error, {kek_not_found, _}} ->
+            {errors, [{encryptionAtRestSecretId,
+                       <<"encryption secret does not exist">>}]};
         {error, secret_not_found} ->
             {errors, [{encryptionAtRestSecretId,
                        <<"encryption secret does not exist">>}]};
+        {error, secret_not_allowed} ->
+            {errors, [{encryptionAtRestSecretId,
+                       <<"Encryption secret can't encrypt this bucket">>}]};
         rebalance_running ->
             {errors_500, [{'_', <<"Cannot create buckets during rebalance">>}]};
         in_recovery ->
@@ -2017,8 +2025,6 @@ parse_validate_encryption_secret_id(Params) ->
             [];
         [_ | _] ->
             [{error, encryptionAtRestSecretId, <<"too many values">>}];
-        {error, _} ->
-            [{error, encryptionAtRestSecretId, <<"invalid secret id">>}];
         E when E == too_small; E == too_large; E == invalid ->
             [{error, encryptionAtRestSecretId, <<"invalid secret id">>}]
     end.

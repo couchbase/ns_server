@@ -169,7 +169,9 @@ get_state(Timeout) ->
                            rebalance_running | in_recovery |
                            in_bucket_hibernation |
                            in_buckets_shutdown |
-                           {error, secret_not_found}.
+                           {error, {kek_not_found, nonempty_string()}} |
+                           {error, secret_not_found} |
+                           {error, secret_not_allowed}.
 create_bucket(BucketType, BucketName, NewConfig) ->
     call({create_bucket, BucketType, BucketName, NewConfig}, infinity).
 
@@ -185,6 +187,7 @@ create_bucket(BucketType, BucketName, NewConfig) ->
                            {error, {storage_mode_migration,
                                     history_retention_enabled_on_collections}} |
                            {error, secret_not_found} |
+                           {error, secret_not_allowed} |
                            rebalance_running | in_recovery |
                            in_bucket_hibernation |
                            in_buckets_shutdown.
