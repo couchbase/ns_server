@@ -17,7 +17,7 @@
          os_pid/0,
          reconfigure/1,
          store_bucket_dek/4,
-         store_kek/2,
+         store_kek/4,
          store_awskey/7]).
 
 %% gen_server callbacks
@@ -59,10 +59,12 @@ reconfigure(NewCfg) ->
 
 store_bucket_dek(Bucket, Id, Key, KekId) when is_list(Bucket) ->
     Name = iolist_to_binary(filename:join([Bucket, "deks", Id])),
-    store_key(bucketDek, Name, 'raw-aes-gcm', Key, KekId).
+    store_key(bucketDek, Name, 'raw-aes-gcm', Key, true, KekId).
 
-store_kek(Id, Key) ->
-    store_key(kek, Id, 'raw-aes-gcm', Key, <<"encryptionService">>).
+store_kek(Id, Key, false, undefined) ->
+    store_key(kek, Id, 'raw-aes-gcm', Key, false, <<"encryptionService">>);
+store_kek(Id, Key, AlreadEncrypted, KekIdToEncrypt) ->
+    store_key(kek, Id, 'raw-aes-gcm', Key, AlreadEncrypted, KekIdToEncrypt).
 
 store_awskey(Id, KeyArn, Region, Profile, CredsFile, ConfigFile, UseIMDS) ->
     Data = ejson:encode({[{keyArn, iolist_to_binary(KeyArn)},
@@ -71,7 +73,7 @@ store_awskey(Id, KeyArn, Region, Profile, CredsFile, ConfigFile, UseIMDS) ->
                           {credsFile, iolist_to_binary(CredsFile)},
                           {configFile, iolist_to_binary(ConfigFile)},
                           {useIMDS, UseIMDS}]}),
-    store_key(kek, Id, awskm, Data, <<"encryptionService">>).
+    store_key(kek, Id, awskm, Data, false, <<"encryptionService">>).
 
 encrypt_key(Data, KekId) when is_binary(Data), is_binary(KekId) ->
     wrap_error_msg(
@@ -322,15 +324,16 @@ wait_for_server_start() ->
           end
       end, ?RESTART_WAIT_TIMEOUT, 100).
 
-store_key(Kind, Name, Type, Data, EncryptionKeyId)
+store_key(Kind, Name, Type, KeyData, IsKeyDataEncrypted, EncryptionKeyId)
                                             when is_atom(Kind),
                                                  is_binary(Name),
                                                  is_atom(Type),
-                                                 is_binary(Data),
+                                                 is_binary(KeyData),
+                                                 is_boolean(IsKeyDataEncrypted),
                                                  is_binary(EncryptionKeyId) ->
     wrap_error_msg(
-      cb_gosecrets_runner:store_key(?RUNNER, Kind, Name, Type, Data,
-                                    EncryptionKeyId),
+      cb_gosecrets_runner:store_key(?RUNNER, Kind, Name, Type, KeyData,
+                                    IsKeyDataEncrypted, EncryptionKeyId),
       store_key_error).
 
 maybe_update_dek_path_in_config() ->

@@ -47,9 +47,15 @@ handle_post_secret(Req) ->
               {ok, Res} ->
                   Formatted = export_secret(Res),
                   menelaus_util:reply_json(Req, {Formatted});
+              {error, encrypt_id_not_found} ->
+                  menelaus_util:reply_global_error(
+                    Req, "encryption secret does not exist");
+              {error, encrypt_id_not_allowed} ->
+                  menelaus_util:reply_global_error(
+                    Req, "encryption secret not allowed");
               {error, Reason} ->
                   menelaus_util:reply_global_error(
-                    Req, io_lib:format("Error: ~p", [Reason]))
+                    Req, io_lib:format("~p", [Reason]))
           end
       end, Req, json, secret_validators(#{})).
 
@@ -63,6 +69,12 @@ handle_put_secret(IdStr, Req) ->
                       {ok, Res} ->
                           Formatted = export_secret(Res),
                           menelaus_util:reply_json(Req, {Formatted});
+                      {error, encrypt_id_not_found} ->
+                          menelaus_util:reply_global_error(
+                            Req, "encryption secret does not exist");
+                      {error, encrypt_id_not_allowed} ->
+                          menelaus_util:reply_global_error(
+                            Req, "encryption secret not allowed");
                       {error, not_found} ->
                           menelaus_util:reply_not_found(Req)
                   end
@@ -110,7 +122,9 @@ keys_remap() ->
       key_arn => keyARN,
       credentials_file => credentialsFile,
       config_file => configFile,
-      use_imds => useIMDS}.
+      use_imds => useIMDS,
+      encrypt_by => encryptBy,
+      encrypt_secret_id => encryptSecretId}.
 
 keys_to_json(Term) ->
     transform_keys(keys_remap(), Term).
@@ -142,7 +156,9 @@ export_secret(#{type := DataType} = Props) ->
                 {usage, lists:map(
                           fun ({bucket_encryption, BucketName}) ->
                                   iolist_to_binary([<<"bucket-encryption-">>,
-                                                    BucketName])
+                                                    BucketName]);
+                              (secrets_encryption) ->
+                                  <<"secrets-encryption">>
                           end, UList)};
             ({data, D}) when DataType == ?GENERATED_KEY_TYPE ->
                 {data, {format_auto_generated_key_data(D)}};
@@ -159,6 +175,10 @@ format_auto_generated_key_data(Props) ->
               {rotation_interval, Interval};
           ({first_rotation_time, DateTime}) ->
               {first_rotation_time, iso8601:format(DateTime)};
+          ({encrypt_by, E}) ->
+              {encrypt_by, E};
+          ({encrypt_secret_id, SId}) ->
+              {encrypt_secret_id, SId};
           ({keys, Keys}) ->
               {keys, lists:map(
                        fun (KeyProps) ->
@@ -185,7 +205,7 @@ format_key(Props, ActiveKeyId) ->
                       [{active, Active}];
                   ({key, {_, _Binary}}) ->
                       [{key, <<"******">>}]
-              end, maps:to_list(Props)).
+              end, maps:to_list(maps:remove(encrypted_by, Props))).
 
 validate_key_usage(Name, State) ->
     validator:string_array(
@@ -194,6 +214,8 @@ validate_key_usage(Name, State) ->
           case iolist_to_binary(Str) of
               <<"bucket-encryption-", N/binary>> when size(N) > 0 ->
                   {value, {bucket_encryption, binary_to_list(N)}};
+              <<"secrets-encryption">> ->
+                  {value, secrets_encryption};
               _ ->
                   {error, "unknown usage"}
           end
@@ -222,11 +244,46 @@ validate_secrets_data(Name, CurSecretProps, State) ->
             enforce_static_field_validator(type, CurType, State)
     end.
 
-generated_key_validators(_CurSecretProps) ->
+generated_key_validators(CurSecretProps) ->
     [validator:boolean(autoRotation, _),
      validator:range(rotationIntervalInDays, 1, infinity, _),
      validate_iso8601_datetime(firstRotationTime, _),
-     validator:validate(fun (_) -> {error, "read only"} end, keys, _)].
+     validator:validate(fun (_) -> {error, "read only"} end, keys, _),
+     validator:one_of(encryptBy, ["nodeSecretManager", "clusterSecret"], _),
+     validator:convert(encryptBy, binary_to_atom(_, latin1), _),
+     validate_encrypt_by(encryptBy, _),
+     validator:default(encryptBy, nodeSecretManager, _),
+     validator:integer(encryptSecretId, 0, infinity, _),
+     validate_encrypt_secret_id(encryptSecretId, CurSecretProps, _)].
+
+validate_encrypt_by(Name, State) ->
+    validator:validate(
+      fun (clusterSecret) ->
+              case validator:get_value(encryptSecretId, State) of
+                  undefined ->
+                      {error, "encryptSecretId must be set when "
+                              "'clusterSecret' is used"};
+                  _ -> ok
+              end;
+          (nodeSecretManager) ->
+              ok
+      end, Name, State).
+
+validate_encrypt_secret_id(Name, CurSecretProps, State) ->
+    CurId = case CurSecretProps of
+                #{id := Id} -> Id;
+                #{} when map_size(CurSecretProps) == 0 -> undefined
+            end,
+    validator:validate_relative(
+      fun (?SECRET_ID_NOT_SET, nodeSecretManager) ->
+              ok;
+          (_, nodeSecretManager) ->
+              {error, "can't be set when encryptBy is nodeSecretManager"};
+          (EId, clusterSecret) when EId == CurId, CurId =/= undefined ->
+              {error, "key can't encrypt itself"};
+          (_EId, clusterSecret) ->
+              ok
+      end, Name, encryptBy, State).
 
 awskms_key_validators(CurSecretProps) ->
     [validator:string(keyARN, _),

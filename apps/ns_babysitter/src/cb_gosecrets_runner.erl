@@ -32,7 +32,7 @@
          copy_secrets/2,
          cleanup_secrets/2,
          set_config/3,
-         store_key/6,
+         store_key/7,
          encrypt_with_key/4,
          decrypt_with_key/4,
          defaults/0]).
@@ -112,9 +112,12 @@ set_config(Name, Cfg, ResetPassword) ->
             Error
     end.
 
-store_key(Name, Kind, KeyName, KeyType, KeyData, EncryptionKeyId) ->
+store_key(Name, Kind, KeyName, KeyType, KeyData, IsKeyDataEncrypted,
+          EncryptionKeyId) ->
     gen_server:call(
-      Name, {store_key, Kind, KeyName, KeyType, KeyData, EncryptionKeyId},
+      Name,
+      {store_key, Kind, KeyName, KeyType, KeyData, IsKeyDataEncrypted,
+       EncryptionKeyId},
       infinity).
 
 encrypt_with_key(Name, Data, KeyKind, KeyName) ->
@@ -318,12 +321,9 @@ handle_call({copy_secrets, Cfg}, _From, State) ->
 handle_call({cleanup_secrets, Cfg}, _From, State) ->
     CfgBin = ejson:encode(cfg_to_json(Cfg)),
     {reply, call_gosecrets({cleanup_secrets, CfgBin}, State), State};
-handle_call({store_key, Kind, Name, KeyType, KeyData, EncryptionKeyId},
-            _From, State) ->
-    {reply,
-     call_gosecrets({store_key, Kind, Name, KeyType, KeyData, EncryptionKeyId},
-                    State),
-     State};
+handle_call({store_key, _Kind, _Name, _KeyType, _KeyData, _IsKeyDataEncrypted,
+             _EncryptionKeyId} = Cmd, _From, State) ->
+    {reply, call_gosecrets(Cmd, State), State};
 handle_call({encrypt_with_key, _Data, _KeyKind, _Name} = Cmd, _From, State) ->
     {reply, convert_empty_data(call_gosecrets(Cmd, State)), State};
 handle_call({decrypt_with_key, _Data, _KeyKind, _Name} = Cmd, _From, State) ->
@@ -441,12 +441,14 @@ encode({copy_secrets, ConfigBin}) ->
     <<10, ConfigBin/binary>>;
 encode({cleanup_secrets, ConfigBin}) ->
     <<11, ConfigBin/binary>>;
-encode({store_key, Kind, Name, KeyType, KeyData, EncryptionKeyId}) ->
+encode({store_key, Kind, Name, KeyType, KeyData, IsKeyDataEncrypted,
+        EncryptionKeyId}) ->
     KindBin = atom_to_binary(Kind),
     <<12, (encode_param(KindBin))/binary,
           (encode_param(Name))/binary,
           (encode_param(KeyType))/binary,
           (encode_param(KeyData))/binary,
+          (encode_param(IsKeyDataEncrypted))/binary,
           (encode_param(EncryptionKeyId))/binary>>;
 encode({encrypt_with_key, Data, KeyKind, Name}) ->
     <<13, (encode_param(Data))/binary,

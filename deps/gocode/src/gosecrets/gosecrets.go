@@ -700,21 +700,39 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 	keyName, data := readBigField(data)
 	keyType, data := readBigField(data)
 	keyData, data := readBigField(data)
+	isKeyDataEncryptedBin, data := readBigField(data)
 	encryptionKeyNameBin, _ := readBigField(data)
 	keyKindStr := string(keyKind)
 	keyNameStr := string(keyName)
 	keyTypeStr := string(keyType)
 	encryptionKeyName := string(encryptionKeyNameBin)
-	log_dbg("Received request to store key %s (%s) on disk", keyNameStr, keyKindStr)
-	var err error
+	isKeyDataEncryptedStr := string(isKeyDataEncryptedBin)
+	isKeyDataEncrypted := (isKeyDataEncryptedStr == "true")
+	if isKeyDataEncryptedStr != "true" && isKeyDataEncryptedStr != "false" {
+		replyError(fmt.Sprintf("invalid isKeyDataEncrypted param: %v", isKeyDataEncryptedBin))
+		return
+	}
+	log_dbg("Received request to store key %s (kind: %s, type: %s, encrypted: %v, encryptionKey: %s) on disk",
+		keyNameStr, keyKindStr, keyTypeStr, isKeyDataEncrypted, encryptionKeyName)
+	keySettings, err := getStoredKeyConfig(keyKindStr, s.config.StoredKeyConfigs)
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
 	var keyInfo storedKeyIface
 	if keyTypeStr == string(rawAESGCMKey) {
-		keyInfo = &rawAesGcmStoredKey{
+		rawKeyInfo := &rawAesGcmStoredKey{
 			Name:              keyNameStr,
 			Kind:              keyKindStr,
-			DecryptedKey:      keyData,
 			EncryptionKeyName: encryptionKeyName,
 		}
+		if isKeyDataEncrypted {
+			rawKeyInfo.EncryptedKey = keyData
+			rawKeyInfo.EncryptedByKind = keySettings.EncryptByKind
+		} else {
+			rawKeyInfo.DecryptedKey = keyData
+		}
+		keyInfo = rawKeyInfo
 	} else if keyTypeStr == string(awskmKey) {
 		var awsk awsStoredKey
 		err = json.Unmarshal(keyData, &awsk)
@@ -730,11 +748,6 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 		return
 	}
 
-	keySettings, err := getStoredKeyConfig(keyKindStr, s.config.StoredKeyConfigs)
-	if err != nil {
-		replyError(err.Error())
-		return
-	}
 	ctx := &storedKeysCtx{
 		storedKeyConfigs:           s.config.StoredKeyConfigs,
 		encryptionServiceKey:       s.encryptionKeys.getSecret().key,
@@ -1408,6 +1421,42 @@ func (k *rawAesGcmStoredKey) encryptMe(ctx *storedKeysCtx) error {
 	settings, err := getStoredKeyConfig(k.Kind, ctx.storedKeyConfigs)
 	if err != nil {
 		return err
+	}
+	if k.EncryptedKey != nil {
+		reencryptNeeded := false
+		// Seems like the key is already encrypted
+		// Checking that we can decrypt it just in case
+		log_dbg("Verifying encryption for key \"%s\"", k.Name)
+		if k.usesSecretManagementKey() {
+			_, err = decrypt(ctx.encryptionServiceKey, k.EncryptedKey)
+			if err != nil {
+				log_dbg("Failed to decrypt key using main data key: %s", err.Error())
+				if ctx.backupEncryptionServiceKey != nil {
+					decryptedKey, err2 := decrypt(ctx.backupEncryptionServiceKey, k.EncryptedKey)
+					if err2 == nil {
+						err = nil
+						log_dbg("Decrypted using backup data key")
+						reencryptNeeded = true
+						k.DecryptedKey = decryptedKey
+					} else {
+						log_dbg("Failed to decrypt key using backup data key: %s", err2.Error())
+					}
+				} else {
+					log_dbg("Backup key is not set")
+				}
+			}
+		} else {
+			_, err = decryptWithKey(k.EncryptedByKind, k.EncryptionKeyName, k.EncryptedKey, ctx)
+		}
+		if err != nil {
+			return errors.New(fmt.Sprintf("key \"%s\" is already encrypted but encryption verification failed (could not decrypt): %s", k.Name, err.Error()))
+		}
+		if !reencryptNeeded {
+			return nil
+		}
+	}
+	if k.DecryptedKey == nil {
+		return errors.New("key is empty")
 	}
 	k.EncryptedByKind = settings.EncryptByKind
 	if k.usesSecretManagementKey() {
