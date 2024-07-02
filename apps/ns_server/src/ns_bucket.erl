@@ -153,6 +153,9 @@
          get_max_buckets_supported/0,
          get_max_buckets/0,
          get_min_replicas/0,
+         get_continuous_backup_enabled/1,
+         get_continuous_backup_interval/1,
+         get_continuous_backup_location/1,
          uuid_key/1,
          uuid/2,
          uuids/0,
@@ -524,7 +527,10 @@ attribute_default(Name) ->
         cross_cluster_versioning_enabled -> % boolean
             false;
         pitr_enabled -> false;              % boolean
-        access_scanner_enabled -> false     % boolean
+        access_scanner_enabled -> false;    % boolean
+        continuous_backup_enabled -> false; % boolean
+        continuous_backup_interval -> 2;    % minutes
+        continuous_backup_location -> ""    % path or URI
     end.
 
 %% The minimum value of the attribute.
@@ -541,7 +547,8 @@ attribute_min(Name) ->
         secondary_warmup_min_memory_threshold ->
             0;                            % percentage
         secondary_warmup_min_items_threshold ->
-            0                             % percentage
+            0;                            % percentage
+        continuous_backup_interval -> 2   % minutes
     end.
 
 %% The maximum value of the attribute.
@@ -558,7 +565,9 @@ attribute_max(Name) ->
         memory_low_watermark -> 89;                   % percentage
         memory_high_watermark -> 90;                  % percentage
         secondary_warmup_min_memory_threshold -> 100; % percentage
-        secondary_warmup_min_items_threshold -> 100   % percentage
+        secondary_warmup_min_items_threshold -> 100;  % percentage
+        continuous_backup_interval ->
+            ?MAX_32BIT_SIGNED_INT                     % minutes
     end.
 
 %% Per-bucket-type point-in-time recovery attributes.  Point-in-time
@@ -621,6 +630,39 @@ get_secondary_warmup_min_memory_threshold(BucketConfig) ->
 get_secondary_warmup_min_items_threshold(BucketConfig) ->
     membase_bucket_config_value_getter(secondary_warmup_min_items_threshold,
                                        BucketConfig).
+
+-spec get_continuous_backup_enabled(proplists:proplist()) -> undefined |
+                                                             boolean().
+get_continuous_backup_enabled(BucketConfig) ->
+    case is_magma(BucketConfig) of
+        false ->
+            undefined;
+        true ->
+            membase_bucket_config_value_getter(continuous_backup_enabled,
+                                               BucketConfig)
+    end.
+
+-spec get_continuous_backup_interval(proplists:proplist()) -> undefined |
+                                                              non_neg_integer().
+get_continuous_backup_interval(BucketConfig) ->
+    case is_magma(BucketConfig) of
+        false ->
+            undefined;
+        true ->
+            membase_bucket_config_value_getter(continuous_backup_interval,
+                                               BucketConfig)
+    end.
+
+-spec get_continuous_backup_location(proplists:proplist()) -> undefined |
+                                                              string().
+get_continuous_backup_location(BucketConfig) ->
+    case is_magma(BucketConfig) of
+        false ->
+            undefined;
+        true ->
+            membase_bucket_config_value_getter(continuous_backup_location,
+                                               BucketConfig)
+    end.
 
 %% returns bucket ram quota multiplied by number of nodes this bucket
 %% will reside after initial cleanup. I.e. gives amount of ram quota that will
@@ -2234,6 +2276,17 @@ chronicle_upgrade_bucket_to_morpheus(BucketName, ChronicleTxn) ->
                         [{access_scanner_enabled, true}];
                     false ->
                         []
+                end ++
+                case ns_bucket:is_magma(BucketConfig) of
+                    true ->
+                        [{continuous_backup_enabled,
+                          attribute_default(continuous_backup_enabled)},
+                         {continuous_backup_interval,
+                          attribute_default(continuous_backup_interval)},
+                         {continuous_backup_location,
+                          attribute_default(continuous_backup_location)}];
+                    false ->
+                        []
                 end
         end,
     case AddProps of
@@ -2361,7 +2414,10 @@ extract_bucket_props(Props) ->
                          history_retention_collection_default, rank,
                          encryption_secret_id,
                          encryption_dek_rotation_interval,
-                         encryption_dek_rotation]],
+                         encryption_dek_rotation,
+                         continuous_backup_enabled,
+                         continuous_backup_interval,
+                         continuous_backup_location]],
           X =/= false].
 
 build_threshold({Percentage, Size}) ->

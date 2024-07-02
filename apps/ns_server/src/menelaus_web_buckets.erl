@@ -510,6 +510,20 @@ build_magma_bucket_info(BucketConfig) ->
                       ns_bucket:magma_seq_tree_data_blocksize(BucketConfig)}]
             end
             ++
+            case cluster_compat_mode:is_cluster_morpheus() of
+                false -> [];
+                true ->
+                    Location =
+                        ns_bucket:get_continuous_backup_location(BucketConfig),
+
+                    [{continuousBackupEnabled,
+                      ns_bucket:get_continuous_backup_enabled(BucketConfig)},
+                     {continuousBackupInterval,
+                      ns_bucket:get_continuous_backup_interval(BucketConfig)},
+                     {continuousBackupLocation,
+                      list_to_binary(Location)}]
+            end
+            ++
             case config_profile:search({magma, can_set_max_shards}, false) of
                 true ->
                     [{magmaMaxShards,
@@ -1576,6 +1590,15 @@ validate_membase_bucket_params(CommonParams, Params, Name,
                                                               IsMorpheus),
          parse_validate_secondary_warmup_min_items_threshold(Params, IsNew,
                                                              IsMorpheus),
+         parse_validate_continuous_backup_enabled(Params, BucketConfig, IsNew,
+                                                  IsMorpheus,
+                                                  IsStorageModeMigration),
+         parse_validate_continuous_backup_interval(Params, BucketConfig, IsNew,
+                                                   IsMorpheus,
+                                                   IsStorageModeMigration),
+         parse_validate_continuous_backup_location(Params, BucketConfig, IsNew,
+                                                   IsMorpheus,
+                                                   IsStorageModeMigration),
          parse_validate_storage_quota_percentage(
            Params, BucketConfig, IsNew, IsEnterprise,
            IsStorageModeMigration),
@@ -1612,6 +1635,128 @@ validate_membase_bucket_params(CommonParams, Params, Name,
           Params, HistRetSecs, BucketConfig, IsNew) ++
         validate_bucket_placer_params(Params, IsNew, BucketConfig) ++
         BucketParams.
+
+parse_validate_continuous_backup_enabled(Params, BucketConfig, IsNew,
+                                         IsMorpheus, IsStorageModeMigration) ->
+    IsMagma = is_magma(Params, BucketConfig, IsNew, IsStorageModeMigration),
+    parse_validate_continuous_backup_enabled_inner(Params, IsNew, IsMorpheus,
+                                                   IsMagma).
+
+parse_validate_continuous_backup_enabled_inner(Params, _IsNew, _IsMorpheus,
+                                               false = _IsMagma) ->
+    parse_validate_param_not_supported(
+      "continuousBackupEnabled", Params, fun only_supported_on_magma/1);
+parse_validate_continuous_backup_enabled_inner(Params, _IsNew,
+                                               false = _IsMorpheus, _IsMagma) ->
+    parse_validate_param_not_supported(
+      "continuousBackupEnabled", Params,
+      fun not_supported_until_morpheus_error/1);
+parse_validate_continuous_backup_enabled_inner(Params, IsNew,
+                                               true = _IsMorpheus,
+                                               true = _IsMagma) ->
+    Result = menelaus_util:parse_validate_boolean_field(
+               "continuousBackupEnabled", '_', Params),
+    process_boolean_param_validation(continuousBackupEnabled,
+                                     continuous_backup_enabled, Result, IsNew).
+
+parse_validate_continuous_backup_interval(Params, BucketConfig, IsNew,
+                                          IsMorpheus, IsStorageModeMigration) ->
+    IsMagma = is_magma(Params, BucketConfig, IsNew, IsStorageModeMigration),
+    parse_validate_continuous_backup_interval_inner(Params, IsNew, IsMorpheus,
+                                                    IsMagma).
+
+parse_validate_continuous_backup_interval_inner(Params, _IsNew, _IsMorpheus,
+                                                false = _IsMagma) ->
+    parse_validate_param_not_supported(
+      "continuousBackupInterval", Params, fun only_supported_on_magma/1);
+parse_validate_continuous_backup_interval_inner(Params, _IsNew,
+                                                false = _IsMorpheus,
+                                                _IsMagma) ->
+    parse_validate_param_not_supported(
+      "continuousBackupInterval", Params,
+      fun not_supported_until_morpheus_error/1);
+parse_validate_continuous_backup_interval_inner(Params, IsNew,
+                                                true = _IsMorpheus,
+                                                true = _IsMagma) ->
+    parse_validate_numeric_param(Params, continuousBackupInterval,
+                                 continuous_backup_interval, IsNew).
+
+parse_validate_continuous_backup_location(Params, BucketConfig, IsNew,
+                                          IsMorpheus, IsStorageModeMigration) ->
+    IsMagma = is_magma(Params, BucketConfig, IsNew, IsStorageModeMigration),
+    parse_validate_continuous_backup_location_inner(Params, IsNew, IsMorpheus,
+                                                    IsMagma).
+
+parse_validate_continuous_backup_location_inner(Params, _IsNew, _IsMorpheus,
+                                                false = _IsMagma) ->
+    parse_validate_param_not_supported(
+      "continuousBackupLocation", Params, fun only_supported_on_magma/1);
+parse_validate_continuous_backup_location_inner(Params, _IsNew,
+                                                false = _IsMorpheus,
+                                                _IsMagma) ->
+    parse_validate_param_not_supported(
+      "continuousBackupLocation", Params,
+      fun not_supported_until_morpheus_error/1);
+parse_validate_continuous_backup_location_inner(Params, IsNew,
+                                                true = _IsMorpheus,
+                                                true = _IsMagma) ->
+    parse_validate_path_or_uri(Params, continuousBackupLocation,
+                               continuous_backup_location, IsNew).
+
+parse_validate_path_or_uri(Params, Param, ConfigKey, IsNew) ->
+    Value = proplists:get_value(atom_to_list(Param), Params),
+    case {Value, IsNew} of
+        {undefined, true} ->
+            %% The value wasn't supplied and we're creating a bucket:
+            %% use the default value.
+            {ok, ConfigKey, ns_bucket:attribute_default(ConfigKey)};
+        {undefined, false} ->
+            %% The value wasn't supplied and we're modifying a bucket:
+            %% don't complain since the value was either specified or a
+            %% default used when the bucket was created.
+            ignore;
+        {_, _} ->
+            validate_path_or_uri(Value, Param, ConfigKey)
+    end.
+
+validate_path_or_uri(Value, Param, ConfigKey) ->
+    case is_valid_uri(Value) orelse is_writable_dir(Value) of
+        true ->
+            {ok, ConfigKey, Value};
+        false ->
+            {error, Param, <<"Must be a valid path or uri writable "
+                             "by 'couchbase' user">>}
+    end.
+
+is_valid_uri(URI) ->
+    case string:tokens(URI, "://") of
+        [Scheme | _] ->
+            lists:member(Scheme, ["s3", "az", "gs"]);
+        _ ->
+            false
+    end.
+
+-ifdef(TEST).
+    is_valid_uri_test() ->
+        ?assert(is_valid_uri("s3://bucket/object")),
+        ?assert(is_valid_uri("az://container/blob")),
+        ?assert(is_valid_uri("gs://bucket/object")),
+        ?assertNot(is_valid_uri("http://couchbase.com")),
+        ?assertNot(is_valid_uri("/tmp/dir/")).
+-endif.
+
+is_writable_dir(Dir) ->
+    case misc:is_absolute_path(Dir) of
+        true ->
+            case misc:ensure_writable_dirs([Dir]) of
+                ok ->
+                    true;
+                error ->
+                    false
+            end;
+        false ->
+            false
+    end.
 
 validate_unknown_bucket_params(Params) ->
     [{error, bucketType, <<"invalid bucket type">>}
@@ -2091,6 +2236,10 @@ not_supported_until_morpheus_error(Param) ->
 not_supported_for_ephemeral_buckets(Param) ->
     {error, Param,
      <<"Argument is not supported for ephemeral buckets">>}.
+
+only_supported_on_magma(Param) ->
+    {error, Param,
+     <<"Argument is only supported for magma buckets">>}.
 
 %% Parameter parsing and validation when not in enterprise mode.
 parse_validate_param_not_enterprise(Key, Params) ->
@@ -3569,6 +3718,11 @@ basic_bucket_params_screening_t() ->
     ?assertNot(proplists:is_defined(history_retention_bytes, OK1)),
     ?assertNot(proplists:is_defined(history_retention_collection_default, OK1)),
 
+    % Only supported on magma
+    ?assertNot(proplists:is_defined(continuousBackupEnabled, OK1)),
+    ?assertNot(proplists:is_defined(continuousBackupInterval, OK1)),
+    ?assertNot(proplists:is_defined(continuousBackupLocation, OK1)),
+
     %% it is not possible to create bucket with duplicate name
     {_OK2, E2} = basic_bucket_params_screening(true, "mcd",
                                                [{"bucketType", "membase"},
@@ -4079,6 +4233,7 @@ basic_bucket_params_screening_t() ->
                      true,
                      "bucket35",
                      [{"bucketType", "membase"},
+                      {"storageBackend", "magma"},
                       {"ramQuota", "1024"},
                       {"expiryPagerSleepTime", "-1"},
                       {"warmupMinMemoryThreshold", "1000"},
@@ -4086,7 +4241,10 @@ basic_bucket_params_screening_t() ->
                       {"memoryLowWatermark", "-888"},
                       {"memoryHighWatermark", "333"},
                       {"secondaryWarmupMinMemoryThreshold", "123"},
-                      {"secondaryWarmupMinItemsThreshold", "-456"}],
+                      {"secondaryWarmupMinItemsThreshold", "-456"},
+                      {"continuousBackupEnabled", "hello"},
+                      {"continuousBackupInterval", "1"},
+                      {"continuousBackupLocation", "yahoo://storage/blob"}],
                      AllBuckets),
     ?assertEqual([{expiryPagerSleepTime,
                    <<"The value of expiryPagerSleepTime (-1) must be in the "
@@ -4108,7 +4266,16 @@ basic_bucket_params_screening_t() ->
                      "must be in the range 0 to 100 inclusive">>},
                   {secondaryWarmupMinItemsThreshold,
                    <<"The value of secondaryWarmupMinItemsThreshold (-456) "
-                     "must be in the range 0 to 100 inclusive">>}], E35),
+                     "must be in the range 0 to 100 inclusive">>},
+                  {continuousBackupEnabled,
+                   <<"continuousBackupEnabled must be true or false">>},
+                  {continuousBackupInterval,
+                   <<"The value of continuousBackupInterval (1) must be "
+                     "in the range 2 to 2147483647 inclusive">>},
+                  {continuousBackupLocation,
+                   <<"Must be a valid path or uri writable by "
+                     "'couchbase' user">>}
+                 ], E35),
 
     %% Test related values.
     {_OK36, E36} = basic_bucket_params_screening(
@@ -4129,6 +4296,7 @@ basic_bucket_params_screening_t() ->
                      true,
                      "bucket37",
                      [{"bucketType", "membase"},
+                      {"storageBackend", "magma"},
                       {"ramQuota", "1024"},
                       {"accessScannerEnabled", "false"},
                       {"expiryPagerSleepTime", "12345"},
@@ -4137,7 +4305,10 @@ basic_bucket_params_screening_t() ->
                       {"memoryLowWatermark", "68"},
                       {"memoryHighWatermark", "70"},
                       {"secondaryWarmupMinMemoryThreshold", "12"},
-                      {"secondaryWarmupMinItemsThreshold", "56"}],
+                      {"secondaryWarmupMinItemsThreshold", "56"},
+                      {"continuousBackupEnabled", "true"},
+                      {"continuousBackupInterval", "123"},
+                      {"continuousBackupLocation", "s3://hello/world"}],
                      AllBuckets),
     ?assertEqual([], E37),
     ?assertEqual(false, proplists:get_value(access_scanner_enabled, OK37)),
@@ -4150,6 +4321,10 @@ basic_bucket_params_screening_t() ->
                                          OK37)),
     ?assertEqual(56, proplists:get_value(secondary_warmup_min_items_threshold,
                                          OK37)),
+    ?assertEqual(true, proplists:get_value(continuous_backup_enabled, OK37)),
+    ?assertEqual(123, proplists:get_value(continuous_backup_interval, OK37)),
+    ?assertEqual("s3://hello/world",
+                 proplists:get_value(continuous_backup_location, OK37)),
 
     %% Back to default action
     meck:expect(ns_config, read_key_fast,
