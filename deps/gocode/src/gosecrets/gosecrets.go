@@ -110,13 +110,13 @@ type Config struct {
 // Configuration for stored keys, describes where to store keys, and what
 // kind of key should encrypt it. It is read from main gosecrets config.
 // Typical configuration can have two kinds of keys:
-// [{kind: dek, path: "/path/to/dek", encryptBy: kek},
-//
-//	{kind: kek, path: "/path/to/kek", encryptBy: encryptionService}]
+// [{"kind": "dek", "path": "/path/to/dek", "encryptByKind": "kek"},
+//  {"kind": "kek", "path": "/path/to/kek", "encryptByKind": "encryptionService"}]
+
 type storedKeyConfig struct {
-	KeyKind   string `json:"kind"`
-	Path      string `json:"path"`
-	EncryptBy string `json:"encryptBy"`
+	KeyKind       string `json:"kind"`
+	Path          string `json:"path"`
+	EncryptByKind string `json:"encryptByKind"`
 }
 
 // Low level interface that all kinds of stored keys should support
@@ -150,7 +150,7 @@ type rawAesGcmStoredKeyJson struct {
 	Name              string `json:"name"`
 	KeyKind           string `json:"kind"`
 	SealedKeyData     []byte `json:"sealedKeyData"`
-	EncryptedBy       string `json:"encryptedBy"`
+	EncryptedByKind   string `json:"encryptedByKind"`
 	EncryptionKeyName string `json:"encryptionKeyName"`
 }
 
@@ -160,7 +160,7 @@ type rawAesGcmStoredKey struct {
 	Kind              string
 	DecryptedKey      []byte
 	EncryptedKey      []byte
-	EncryptedBy       string
+	EncryptedByKind   string
 	EncryptionKeyName string
 }
 
@@ -1401,7 +1401,7 @@ func (k *rawAesGcmStoredKey) needRewrite(settings *storedKeyConfig) bool {
 		log_dbg("key %s changed type, rewriting", k.Name)
 		return true
 	}
-	return onDiskKey.EncryptedBy != settings.EncryptBy || onDiskKey.EncryptionKeyName != k.EncryptionKeyName
+	return onDiskKey.EncryptedByKind != settings.EncryptByKind || onDiskKey.EncryptionKeyName != k.EncryptionKeyName
 }
 
 func (k *rawAesGcmStoredKey) encryptMe(ctx *storedKeysCtx) error {
@@ -1409,7 +1409,7 @@ func (k *rawAesGcmStoredKey) encryptMe(ctx *storedKeysCtx) error {
 	if err != nil {
 		return err
 	}
-	k.EncryptedBy = settings.EncryptBy
+	k.EncryptedByKind = settings.EncryptByKind
 	if k.usesSecretManagementKey() {
 		// Encrypting with encryption service's data key
 		log_dbg("Will use encryption service to encrypt key %s", k.Name)
@@ -1425,7 +1425,7 @@ func (k *rawAesGcmStoredKey) encryptMe(ctx *storedKeysCtx) error {
 	}
 	// Encrypting with another stored key (kek) that we will read from disk
 	log_dbg("Will use key %s to encrypt key %s", k.EncryptionKeyName, k.Name)
-	encryptedData, err := encryptWithKey(settings.EncryptBy, k.EncryptionKeyName, k.DecryptedKey, ctx)
+	encryptedData, err := encryptWithKey(settings.EncryptByKind, k.EncryptionKeyName, k.DecryptedKey, ctx)
 	if err != nil {
 		return err
 	}
@@ -1448,7 +1448,7 @@ func (k *rawAesGcmStoredKey) decryptMe(ctx *storedKeysCtx) error {
 		k.DecryptedKey = decryptedData
 		return nil
 	}
-	decryptedData, err := decryptWithKey(k.EncryptedBy, k.EncryptionKeyName, k.EncryptedKey, ctx)
+	decryptedData, err := decryptWithKey(k.EncryptedByKind, k.EncryptionKeyName, k.EncryptedKey, ctx)
 	if err != nil {
 		return err
 	}
@@ -1480,7 +1480,7 @@ func (k *rawAesGcmStoredKey) unmarshal(data json.RawMessage) error {
 	k.Kind = decoded.KeyKind
 	k.DecryptedKey = nil
 	k.EncryptedKey = decoded.SealedKeyData
-	k.EncryptedBy = decoded.EncryptedBy
+	k.EncryptedByKind = decoded.EncryptedByKind
 	k.EncryptionKeyName = decoded.EncryptionKeyName
 	return nil
 }
@@ -1497,7 +1497,7 @@ func (k *rawAesGcmStoredKey) marshal() (storedKeyType, []byte, error) {
 		Name:              k.Name,
 		KeyKind:           k.Kind,
 		SealedKeyData:     k.EncryptedKey,
-		EncryptedBy:       k.EncryptedBy,
+		EncryptedByKind:   k.EncryptedByKind,
 		EncryptionKeyName: k.EncryptionKeyName})
 
 	if err != nil {

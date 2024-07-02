@@ -533,12 +533,12 @@ cfg_to_json(Props) ->
 
     KeksStoreConfig = {[{kind, kek},
                         {path, key_path(kek, Props)},
-                        {encryptBy, kek}]},
+                        {encryptByKind, kek}]},
     DeksStoreConfig = case key_path(bucketDek, Props) of
                           undefined -> [];
                           DeksPath -> [{[{kind, bucketDek},
                                          {path, DeksPath},
-                                         {encryptBy, kek}]}]
+                                         {encryptByKind, kek}]}]
                       end,
     StoredKeysJson = {storedKeys, [KeksStoreConfig | DeksStoreConfig]},
 
