@@ -3,6 +3,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-include("cb_cluster_secrets.hrl").
 
 -export([start_link/0,
          decrypt/1,
@@ -21,7 +22,8 @@
          store_dek/4,
          read_dek/2,
          key_path/1,
-         decode_key_info/1]).
+         decode_key_info/1,
+         garbage_collect_keks/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -59,6 +61,9 @@ os_pid() ->
 
 reconfigure(NewCfg) ->
     safe_call({change_config, NewCfg}, infinity).
+
+garbage_collect_keks(InUseKeyIds) ->
+    garbage_collect_keys(kek, InUseKeyIds).
 
 store_kek(Id, Key, false, undefined) ->
     store_key(kek, Id, 'raw-aes-gcm', Key, false, <<"encryptionService">>);
@@ -398,6 +403,40 @@ wrap_error_msg(ok, _A) -> ok;
 wrap_error_msg({ok, _} = R, _A) -> R;
 wrap_error_msg({error, Msg}, A) when is_list(Msg) -> {error, {A, Msg}}.
 
+garbage_collect_keys(Kind, InUseKeyIds) ->
+    KeyDir = key_path(Kind),
+    %% Just making sure the list is in expected format (so we don't end up
+    %% comparing string and binary)
+    lists:foreach(fun (Id) -> true = is_binary(Id) end, InUseKeyIds),
+    IdsInUseSet = maps:from_keys(InUseKeyIds, true),
+    ToRemove = lists:filter(
+                 fun (Id) when is_binary(Id) ->
+                      not maps:get(Id, IdsInUseSet, false)
+                 end, get_all_keys_in_dir(KeyDir)),
+    case ToRemove of
+        [] ->
+            ?log_debug("~p keys gc: no keys to retire", [Kind]),
+            ok;
+        _ ->
+            ?log_info("~p keys gc: retiring ~p", [Kind, ToRemove]),
+            lists:foreach(fun (Id) -> retire_key(Kind, Id) end, ToRemove),
+            ok
+    end.
+
+get_all_keys_in_dir(KeyDir) ->
+    case file:list_dir(KeyDir) of
+        {ok, Filenames} ->
+            AllFiles = [iolist_to_binary(F) || F <- Filenames],
+            Keys = AllFiles -- [iolist_to_binary(?ACTIVE_KEY_FILENAME)],
+            [F || F <- Keys, misc:is_valid_v4uuid(F)];
+        {error, enoent} ->
+            [];
+        {error, Reason} ->
+            ?log_error("Failed to get list of files in ~p: ~p",
+                       [KeyDir, Reason]),
+            []
+    end.
+
 key_path({bucketDek, Bucket}) ->
     case key_path(bucketDek) of
         undefined ->
@@ -417,3 +456,25 @@ key_path(Kind) ->
 
 bucket_dek_id(Bucket, DekId) ->
     iolist_to_binary(filename:join([Bucket, "deks", DekId])).
+
+retire_key(Kind, Id) ->
+    Dir = key_path(Kind),
+    FromPath = filename:join(Dir, Id),
+    {{Y, M, _}, _} = calendar:universal_time(),
+    MonthDir = lists:flatten(io_lib:format("~b-~b", [Y, M])),
+    ToPath = filename:join([path_config:component_path(data),
+                            "retired_keys",
+                            MonthDir,
+                            Id]),
+    case filelib:ensure_dir(ToPath) of
+        ok ->
+            case misc:atomic_rename(FromPath, ToPath) of
+                ok -> ok;
+                {error, Reason} ->
+                    ?log_error("Failed to retire ~p key ~p (~p): ~p",
+                                [Kind, Id, FromPath, Reason])
+            end;
+        {error, Reason} ->
+            ?log_error("Failed to ensure dir ~p when retiring key ~p: ~p",
+                       [ToPath, Id, Reason])
+    end.

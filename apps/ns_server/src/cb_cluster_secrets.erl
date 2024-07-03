@@ -23,6 +23,7 @@
 -define(SYNC_TIMEOUT, ?get_timeout(sync, 60000)).
 -define(NODE_PROC, node_monitor_process).
 -define(MASTER_PROC, master_monitor_process).
+-define(DEK_COUNTERS_UPDATE_TIMEOUT, ?get_timeout(counters_update, 30000)).
 
 -ifndef(TEST).
 -define(MIN_RECHECK_ROTATION_INTERVAL, ?get_param(min_rotation_recheck_interval,
@@ -39,6 +40,7 @@
          start_link_master_monitor/0,
          add_new_secret/1,
          replace_secret/2,
+         delete_secret/1,
          get_all/0,
          get_secret/1,
          get_secret/2,
@@ -57,7 +59,9 @@
 -export([add_new_secret_internal/1,
          replace_secret_internal/2,
          rotate_internal/1,
-         sync_with_node_monitor/0]).
+         sync_with_node_monitor/0,
+         delete_secret_internal/1,
+         get_node_deks_info/0]).
 
 -record(state, {proc_type :: ?NODE_PROC | ?MASTER_PROC,
                 jobs :: [node_job()] | [master_job()],
@@ -103,15 +107,19 @@
 -type kek_id() :: uuid().
 -type chronicle_snapshot() :: direct | map().
 -type uuid() :: binary(). %% uuid as binary string
--type node_job() :: ensure_all_keks_on_disk |
+-type node_job() :: garbage_collect_keks |
+                    ensure_all_keks_on_disk |
                     {maybe_update_deks, cb_deks:dek_kind()} |
                     maybe_reencrypt_deks |
                     {maybe_reencrypt_deks, cb_deks:dek_kind()}.
 
--type master_job() :: maybe_reencrypt_secrets.
+-type master_job() :: maybe_reencrypt_secrets | maybe_reset_deks_counters.
 
 -type bad_encrypt_id() :: {encrypt_id, not_allowed | not_found}.
 -type bad_usage_change() :: {usage, in_use}.
+
+-type secret_in_use() :: {used_by, [{bucket, string()} |
+                                    {secret, secret_id()}]}.
 
 -type deks_info() :: #{active_id := cb_deks:dek_id() | undefined,
                        deks := [cb_deks:dek()],
@@ -231,6 +239,41 @@ replace_secret_internal(OldProps, NewProps) ->
         {error, _} = Error -> Error
     end.
 
+-spec delete_secret(secret_id()) -> ok | {error, not_found | secret_in_use()}.
+delete_secret(Id) ->
+    execute_on_master({?MODULE, delete_secret_internal, [Id]}).
+
+-spec delete_secret_internal(secret_id()) ->
+          ok | {error, not_found | secret_in_use()}.
+delete_secret_internal(Id) ->
+    %% Make sure we have most recent information about which secrets are in use
+    maybe_reset_deks_counters(),
+    RV = chronicle_compat:txn(
+           fun (Txn) ->
+               maybe
+                   Snapshot = fetch_snapshot_in_txn(Txn),
+                   {ok, #{id := Id} = Props} ?= get_secret(Id, Snapshot),
+                   ok ?= can_delete_secret(Props, Snapshot),
+                   CurSecrets = get_all(Snapshot),
+                   NewSecrets = lists:filter(
+                                  fun (#{id := Id2}) -> Id2 /= Id end,
+                                  CurSecrets),
+                   true = (length(NewSecrets) + 1 == length(CurSecrets)),
+                   {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewSecrets}], Props}
+               else
+                   {error, Reason} -> {abort, Reason}
+               end
+           end),
+    case RV of
+        {ok, _, #{type := _Type} = _SecretProps} ->
+            sync_with_all_node_monitors(),
+            ok;
+        not_found ->
+            ok;
+        {used_by, _} = Reason ->
+            {error, Reason}
+    end.
+
 %% Cipher should have type crypto:cipher() but it is not exported
 -spec generate_raw_key(Cipher :: atom()) -> binary().
 generate_raw_key(Cipher) ->
@@ -311,6 +354,10 @@ get_secret_by_kek_id_map(Snapshot) ->
                          [{KeyId, Id} ||  KeyId <- get_all_keys_from_props(S)]
                      end, get_all(Snapshot))).
 
+-spec get_node_deks_info() -> #{cb_deks:dek_kind() := [cb_deks:dek()]} | retry.
+get_node_deks_info() ->
+    gen_server:call(?MODULE, get_node_deks_info, ?DEK_COUNTERS_UPDATE_TIMEOUT).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -335,10 +382,12 @@ init([Type]) ->
       end),
     Jobs = case Type of
                ?MASTER_PROC ->
-                   [maybe_reencrypt_secrets];
+                   [maybe_reencrypt_secrets,
+                    maybe_reset_deks_counters];
                ?NODE_PROC ->
                    [{maybe_update_deks, K} || K <- cb_deks:dek_kinds_list()] ++
-                   [ensure_all_keks_on_disk,
+                   [garbage_collect_keks,
+                    ensure_all_keks_on_disk,
                     maybe_reencrypt_deks]
            end,
     {ok, restart_rotation_timer(run_jobs(#state{proc_type = Type,
@@ -358,6 +407,30 @@ handle_call({call, {M, F, A} = MFA}, _From,
 handle_call(sync, _From, #state{proc_type = ?NODE_PROC} = State) ->
     {reply, ok, State};
 
+handle_call(get_node_deks_info, _From, #state{proc_type = ?NODE_PROC,
+                                              deks = Deks} = State) ->
+    NewState = run_jobs(State), %% Run jobs to make sure all deks are up to date
+    maybe
+        [] ?= NewState#state.jobs,
+        StripKeyMaterial =
+            fun (Keys) ->
+                lists:map(fun (#{type := 'raw-aes-gcm', info := Info} = K) ->
+                              K#{info => maps:remove(key, Info)}
+                          end, Keys)
+            end,
+        Res = maps:map(fun (_K, #{deks := Keys}) -> StripKeyMaterial(Keys) end,
+                       Deks),
+        {reply, Res, State}
+    else
+        [_ | _] ->
+            %% There are still unfinished jobs. That means deks in our state
+            %% can be not up to date (dek might exist on disk, but this
+            %% process hasn't read it yet). Since this function is used
+            %% in final checks before kek removal, it should not return
+            %% {ok, _} reuslt in this case
+            {reply, retry, State}
+    end;
+
 handle_call(Request, _From, State) ->
     ?log_warning("Unhandled call: ~p", [Request]),
     {noreply, State}.
@@ -370,8 +443,9 @@ handle_info({config_change, ?CHRONICLE_SECRETS_KEY} = Msg,
             #state{proc_type = ?NODE_PROC} = State) ->
     ?log_debug("Secrets in chronicle have changed..."),
     misc:flush(Msg),
-    NewJobs = [ensure_all_keks_on_disk,  %% Adding keks + AWS key change
-               maybe_reencrypt_deks], %% Keks rotation
+    NewJobs = [garbage_collect_keks,     %% Removal of generated keks and AWS
+               ensure_all_keks_on_disk,  %% Adding keks + AWS key change
+               maybe_reencrypt_deks],    %% Keks rotation
     {noreply, add_and_run_jobs(NewJobs, State)};
 
 handle_info({config_change, ?CHRONICLE_SECRETS_KEY} = Msg,
@@ -600,6 +674,23 @@ ensure_aws_kek_on_disk(#{data := Data}) ->
       use_imds := UseIMDS} = Data,
     encryption_service:store_awskey(UUID, KeyArn, Region, Profile,
                                     CredsFile, ConfigFile, UseIMDS).
+
+-spec garbage_collect_keks() -> ok.
+garbage_collect_keks() ->
+    AllKekIds = all_kek_ids(),
+    ?log_debug("KEYS GC: All existing keks: ~p", [AllKekIds]),
+    encryption_service:garbage_collect_keks(AllKekIds).
+
+-spec all_kek_ids() -> [kek_id()].
+all_kek_ids() ->
+    lists:flatmap(fun (#{type := ?AWSKMS_KEY_TYPE, data := #{uuid := UUID}}) ->
+                          [UUID];
+                      (#{type := ?GENERATED_KEY_TYPE,
+                         data := #{keys := Keys}}) ->
+                          [Id || #{id := Id} <- Keys];
+                      (#{}) ->
+                          []
+                  end, get_all()).
 
 -spec prepare_new_secret(secret_props()) ->
             {ok, secret_props()} | {error, not_supported | bad_encrypt_id()}.
@@ -835,6 +926,57 @@ execute_on_master({_, _, _} = MFA) ->
         {exception, {C, E, ST}} -> erlang:raise(C, E, ST)
     end.
 
+-spec can_delete_secret(secret_props(), chronicle_snapshot()) ->
+                                            ok | {error, secret_in_use()}.
+can_delete_secret(#{id := Id}, Snapshot) ->
+    %% Places where this secret is used directly in encryption configuration
+    EncryptionConfigUsages =
+        lists:filtermap(
+          fun (Kind) ->
+               case call_dek_callback(encryption_method_callback, Kind,
+                                      [Snapshot]) of
+                  {succ, {ok, {secret, Id}}} ->
+                      {true, maps:get(name, cb_deks:dek_config(Kind))};
+                  {succ, {ok, _}} ->
+                      false;
+                  {succ, {error, not_found}} ->
+                      false
+              end
+          end, cb_deks:dek_kinds_list(Snapshot)),
+    %% Places where this secret is used for encryption of another secrets
+    Secrets = get_secrets_used_by_secret_id(Id, Snapshot),
+    %% Places where this secret is used to encrypt deks (such deks can exist
+    %% even if encryption is disabled for this entity)
+    Deks = get_dek_kinds_used_by_secret_id(Id, Snapshot),
+    AllEntities =
+        EncryptionConfigUsages ++ [{secret, SId} || SId <- Secrets] ++
+        [{deks, D} || D <- Deks],
+    case AllEntities of
+        [] -> ok;
+        _ -> {error, {used_by, AllEntities}}
+    end.
+
+-spec get_secrets_used_by_secret_id(secret_id(), chronicle_snapshot()) ->
+                                                                [secret_id()].
+get_secrets_used_by_secret_id(Id, Snapshot) ->
+    lists:filtermap(
+      fun (#{type := ?GENERATED_KEY_TYPE,
+             id := SecretId,
+             data := #{encrypt_by := clusterSecret,
+                       encrypt_secret_id := Id2}}) when Id2 == Id ->
+                {true, SecretId};
+           (#{}) ->
+                false
+      end, get_all(Snapshot)).
+
+-spec get_dek_kinds_used_by_secret_id(secret_id(), chronicle_snapshot()) ->
+                                                        [cb_deks:dek_kind()].
+get_dek_kinds_used_by_secret_id(Id, Snapshot) ->
+    Map = chronicle_compat:get(Snapshot,
+                               ?CHRONICLE_DEK_COUNTERS_KEY,
+                               #{default => #{}}),
+    maps:keys(maps:get({secret, Id}, Map, #{})).
+
 -spec get_active_key_id_from_secret(secret_props()) -> {ok, kek_id()} |
                                                        {error, not_supported}.
 get_active_key_id_from_secret(#{type := ?GENERATED_KEY_TYPE,
@@ -976,6 +1118,9 @@ run_jobs(#state{jobs = Jobs} = State) ->
                   ok ->
                       ?log_debug("Job complete: ~p", [J]),
                       {JobsAcc, StateAcc};
+                  {error, retry} ->
+                      ?log_debug("Job ~p returned 'retry'", [J]),
+                      {[J | JobsAcc], StateAcc};
                   {error, NewStateAcc, retry} ->
                       ?log_debug("Job ~p returned 'retry'", [J]),
                       {[J | JobsAcc], NewStateAcc};
@@ -1001,10 +1146,14 @@ run_jobs(#state{jobs = Jobs} = State) ->
 
 -spec do(node_job() | master_job(), #state{}) ->
           ok | {ok, #state{}} | retry | {error, _} | {error, #state{}, _}.
+do(garbage_collect_keks, _) ->
+    garbage_collect_keks();
 do(ensure_all_keks_on_disk, _) ->
     ensure_all_keks_on_disk();
 do(maybe_reencrypt_secrets, _) ->
     maybe_reencrypt_secrets();
+do(maybe_reset_deks_counters, _) ->
+    maybe_reset_deks_counters();
 do({maybe_update_deks, Kind}, State) ->
     maybe_update_deks(Kind, State);
 do({maybe_reencrypt_deks, K}, State) ->
@@ -1260,6 +1409,166 @@ sync_with_all_node_monitors() ->
             {error, BadNodes}
     end.
 
+%% Every time we start using a secret to encrypt a dek, we increment a counter
+%% in chronicle. This is needed so we always have an understanding what secrets
+%% are used for what (for example we need this information in order to be able
+%% to remove KEKs safely).
+%%
+%% Current those counter look like the following:
+%% #{ {secret, 23} => #{ chronicleDek => 14,
+%%                       {bucketDek, "beer-sample"} => 2 },
+%%    {secret, 26} => #{ {bucketDek, "travel-sample"} => 6 } }
+%%
+%% This function is supposed to cleanup these counters by basically removing
+%% those dek types that don't use the secret anymore.
+%% It asks all the nodes for deks information that they have. Then it calculates
+%% what secrets are used to encrypt those deks. Then it removes all dek types
+%% from the counters map that don't use the secret anymore.
+-spec maybe_reset_deks_counters() ->
+          ok | {error, retry | node_errors | missing_nodes}.
+maybe_reset_deks_counters() ->
+    AllNodes = ns_node_disco:nodes_wanted(),
+    MissingNodes = AllNodes -- ns_node_disco:nodes_actual(),
+    case MissingNodes of
+        [] ->
+            case chronicle_kv:get(kv, ?CHRONICLE_DEK_COUNTERS_KEY) of
+                {ok, {OldMap, _}} when OldMap == #{} ->
+                    ok;
+                {ok, {OldMap, _}} ->
+                    %% Each node returns information about its deks
+                    %% So we can calculate which secrets are actually in use
+                    %% and update that information in chronicle
+                    Res = erpc:multicall(AllNodes, ?MODULE, get_node_deks_info,
+                                         [], ?DEK_COUNTERS_UPDATE_TIMEOUT),
+                    {NonErrors, Errors} =
+                        misc:partitionmap(fun ({N, {ok, R}}) -> {left, {N, R}};
+                                              ({N, E}) -> {right, {N, E}}
+                                          end, lists:zip(AllNodes, Res)),
+                    {SuccRes, Retries} =
+                        misc:partitionmap(
+                          fun ({N, retry}) -> {right, N};
+                              ({_N, R}) -> {left, R}
+                          end, NonErrors),
+                    case {Errors, Retries} of
+                        {[], []} ->
+                            %% Merge results from all nodes into one map
+                            DekInfo = lists:foldl(
+                                        fun (M, Acc) ->
+                                            maps:merge_with(fun (_, V1, V2) ->
+                                                                V1 ++ V2
+                                                            end, M, Acc)
+                                        end, #{}, SuccRes),
+                            reset_dek_counters(OldMap, DekInfo);
+                        {[], _} ->
+                            ?log_debug("Some nodes returned retry: ~p~n"
+                                       "All responses: ~p", [Retries, Res]),
+                            {error, retry};
+                        {Errors, []} ->
+                            ?log_error("Failed to update deks counters because "
+                                       "some nodes returns errors: ~p~n"
+                                       "All responses: ~p", [Errors, Res]),
+                            {error, node_errors}
+                    end;
+                {error, not_found} ->
+                    %% Nothing to update yet
+                    ok
+            end;
+        _ ->
+            ?log_debug("Skipping deks counters update because some nodes "
+                       "are missing: ~p", [MissingNodes]),
+            {error, missing_nodes}
+    end.
+
+-spec reset_dek_counters(
+        #{EncryptionMethod := Counters},
+        #{cb_deks:dek_kind() => [cb_deks:dek()]}) ->
+        ok when EncryptionMethod :: {secret, secret_id()} | encryption_service,
+                Counters :: #{cb_deks:dek_kind() := non_neg_integer()}.
+reset_dek_counters(OldCountersMap, ActualDeksUsageInfo) ->
+    Res =
+        chronicle_kv:transaction(
+          kv, [?CHRONICLE_SECRETS_KEY, ?CHRONICLE_DEK_COUNTERS_KEY],
+          fun (Snapshot) ->
+              reset_dek_counters_txn(OldCountersMap, ActualDeksUsageInfo,
+                                     Snapshot)
+          end),
+
+    case Res of
+        nothing_changed -> ok;
+        {ok, _} -> ok
+    end.
+
+reset_dek_counters_txn(OldCountersMap, ActualDeksUsageInfo, Snapshot) ->
+    KeksToSecrets = get_secret_by_kek_id_map(Snapshot),
+    GetEncryptionMethod =
+        fun (#{type := 'raw-aes-gcm',
+               info := #{encryption_key_id := <<"encryptionService">>}}) ->
+                {ok, encryption_service};
+             (#{type := 'raw-aes-gcm',
+               info := #{encryption_key_id := CurKekId}}) ->
+                case maps:find(CurKekId, KeksToSecrets) of
+                    {ok, SId} -> {ok, {secret, SId}};
+                    error -> error
+                end
+        end,
+
+    %% Turn #{DekKind => [Dek]} map into #{DekKind => [{secret, SecretId}]} map
+    %% It represents information about which dek type uses which secret.
+    SecretInfo =
+        maps:map(fun (_K, Deks) ->
+                     lists:filtermap(
+                       fun (D) ->
+                           case GetEncryptionMethod(D) of
+                               {ok, Res} -> {true, Res};
+                               error ->
+                                   ?log_error("orphaned dek: ~p", [D]),
+                                   false
+                           end
+                       end, Deks)
+                 end, ActualDeksUsageInfo),
+
+    DekStillUsesSecretId =
+        fun (DekKind, SecretId) ->
+            SecretsIdsList = maps:get(DekKind, SecretInfo, []),
+            lists:member(SecretId, SecretsIdsList)
+        end,
+
+    %% Filter out those dek types that do not use that secretId anymore.
+    FilterCountersForSecret =
+        fun (SecretId, Map) -> %% The Map variable here represents all
+                               %% dek types that still uses that secret
+            maybe
+                {ok, OldMap} ?= maps:find(SecretId, OldCountersMap),
+                NewMap = maps:filter(
+                           fun (DekKind, Counter) ->
+                               DekStillUsesSecretId(DekKind, SecretId) orelse
+                               %% Checking if counter has changed since before
+                               %% we started deks info aggregation;
+                               %% If so, that means that something started just
+                               %% started using it and we should not remove it
+                               %% from the map
+                               (Counter /= maps:get(DekKind, OldMap, 0))
+                           end, Map),
+                case maps:size(NewMap) of
+                    0 -> false;
+                    _ -> {true, NewMap}
+                end
+            else
+                %% This SecretId was missing in the first check, this means
+                %% that something just started using that secret
+                error -> true
+            end
+        end,
+
+    Old = chronicle_compat:get(Snapshot,
+                               ?CHRONICLE_DEK_COUNTERS_KEY,
+                               #{default => #{}}),
+    New = maps:filtermap(FilterCountersForSecret, Old),
+    case New == Old of
+        true -> {abort, nothing_changed};
+        false -> {commit, [{set, ?CHRONICLE_DEK_COUNTERS_KEY, New}]}
+    end.
+
 %% Fetches a snapshot in transaction with all dek related chronicle keys,
 %% and all secrets related chronicle keys.
 fetch_snapshot_in_txn(Txn) ->
@@ -1276,6 +1585,7 @@ fetch_snapshot_in_txn(Txn) ->
           cb_deks:dek_kinds_list(BucketListSnapshot)),
     SecretsSnapshot = chronicle_compat:txn_get_many(
                         [?CHRONICLE_SECRETS_KEY,
+                         ?CHRONICLE_DEK_COUNTERS_KEY,
                          ?CHRONICLE_NEXT_ID_KEY],
                         Txn),
     maps:merge(DeksRelatedSnapshot, SecretsSnapshot).

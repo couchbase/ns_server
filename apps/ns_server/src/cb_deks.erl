@@ -27,8 +27,6 @@
 
 -export_type([dek_id/0, dek/0, dek_kind/0, encryption_method/0]).
 
--define(ACTIVE_KEY_FILENAME, "active_key").
-
 -type encryption_method() :: {secret, cb_cluster_secrets:secret_id()} |
                              encryption_service |
                              disabled.
@@ -110,8 +108,10 @@ read(Kind, DekIds) ->
                    cb_cluster_secrets:chronicle_snapshot()) ->
         {ok, dek_id()} | {error, _} when Id :: cb_cluster_secrets:secret_id().
 generate_new(Kind, encryption_service, _Snapshot) ->
+    increment_counter_in_chronicle(Kind, encryption_service),
     new(Kind, <<"encryptionService">>);
 generate_new(Kind, {secret, Id}, Snapshot) ->
+    increment_counter_in_chronicle(Kind, {secret, Id}),
     maybe
         {ok, KekId} ?= cb_cluster_secrets:get_active_key_id(Id, Snapshot),
         new(Kind, KekId)
@@ -238,6 +238,10 @@ maybe_reencrypt_deks(Kind, Deks, NewEncryptionKeyFun) ->
     case ToReencrypt of
         [] -> no_change;
         _ ->
+            IdsToBeUsed = lists:usort(lists:map(
+                                        fun ({_Dek, {SId, _KId}}) -> SId end,
+                                        ToReencrypt)),
+            [increment_counter_in_chronicle(Kind, Id) || Id <- IdsToBeUsed],
             Errors =
                 lists:filtermap(
                   fun ({#{type := 'raw-aes-gcm',
@@ -258,6 +262,22 @@ maybe_reencrypt_deks(Kind, Deks, NewEncryptionKeyFun) ->
                   end, ToReencrypt),
             {changed, Errors}
     end.
+
+increment_counter_in_chronicle(Kind, SecretId) ->
+    {ok, _} =
+        chronicle_kv:transaction(
+          kv, [?CHRONICLE_DEK_COUNTERS_KEY],
+          fun (Snapshot) ->
+               All = chronicle_compat:get(Snapshot,
+                                          ?CHRONICLE_DEK_COUNTERS_KEY,
+                                          #{default => #{}}),
+               SecretCounters = maps:get(SecretId, All, #{}),
+               Counter = maps:get(Kind, SecretCounters, 0),
+               NewSecretCounters = SecretCounters#{Kind => Counter + 1},
+               NewDEKCounters = All#{SecretId => NewSecretCounters},
+               {commit, [{set, ?CHRONICLE_DEK_COUNTERS_KEY, NewDEKCounters}]}
+          end),
+    ok.
 
 %% Chronicle keys that can trigger dek reencryption, enablement/disablement
 %% of encryption, etc...

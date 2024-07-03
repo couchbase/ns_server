@@ -119,8 +119,16 @@ enforce_static_field_validator(Name, CurValue, State) ->
                             (_) -> {error, "the field can't be changed"}
                        end, Name, State).
 
-handle_delete_secret(_Id, _Req) ->
-    ok.
+handle_delete_secret(IdStr, Req) ->
+    case cb_cluster_secrets:delete_secret(parse_id(IdStr)) of
+        ok ->
+            menelaus_util:reply(Req, 200);
+        {error, not_found} ->
+            menelaus_util:reply_not_found(Req);
+        {error, Reason} ->
+            menelaus_util:reply_global_error(
+              Req, io_lib:format("Error: ~p", [Reason]))
+    end.
 
 handle_rotate(IdStr, Req) ->
     case cb_cluster_secrets:rotate(parse_id(IdStr)) of
