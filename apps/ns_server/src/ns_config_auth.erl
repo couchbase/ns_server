@@ -187,23 +187,20 @@ authenticate_admin(User, Password) ->
     end.
 
 migrate_admin_auth(User, NewAuth, CurUserAndAuth) ->
-    case ns_node_disco:couchdb_node() == node() of
-        false ->
-            case ns_config:update_if_unchanged(admin_cfg_key(), CurUserAndAuth,
-                                             {User, {auth, NewAuth}}) of
-                ok ->
-                    ns_server_stats:notify_counter(<<"pass_hash_migration">>);
-                {error, changed} ->
-                    %% Something else has already changed it
-                    ok;
-                {error, retry_needed} ->
-                    ?log_error("Hash migration transaction for admin failed")
-            end,
-            ok;
-        true ->
-            rpc:call(ns_node_disco:ns_server_node(), ?MODULE,
-                     migrate_admin_auth, [User, NewAuth, CurUserAndAuth])
-    end.
+    ?call_on_ns_server_node(
+       begin
+           case ns_config:update_if_unchanged(admin_cfg_key(), CurUserAndAuth,
+                                              {User, {auth, NewAuth}}) of
+               ok ->
+                   ns_server_stats:notify_counter(<<"pass_hash_migration">>);
+               {error, changed} ->
+                   %% Something else has already changed it
+                   ok;
+               {error, retry_needed} ->
+                   ?log_error("Hash migration transaction for admin failed")
+           end,
+           ok
+       end, [User, NewAuth, CurUserAndAuth]).
 
 check_hash(HashInfo, Password) ->
     Base64Hashes = proplists:get_value(?HASHES_KEY, HashInfo),

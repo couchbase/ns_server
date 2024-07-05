@@ -291,54 +291,44 @@ authenticate(undefined) ->
     ?count_auth("anon", "succ"),
     {ok, init_auth({"", anonymous}), []};
 authenticate({token, Token} = Param) ->
-    case ns_node_disco:couchdb_node() == node() of
-        false ->
-            case menelaus_ui_auth:check(Token) of
-                false ->
-                    ?count_auth("token", "failure"),
-                    %% this is needed so UI can get /pools on unprovisioned
-                    %% system with leftover cookie
-                    case ns_config_auth:is_system_provisioned() of
-                        false ->
-                            {ok, init_auth({"", wrong_token}), []};
-                        true ->
-                            {error, auth_failure}
-                    end;
-                {ok, AuthnRes} ->
-                    ?count_auth("token", "succ"),
-                    {ok, AuthnRes, []}
-            end;
-        true ->
-            rpc:call(ns_node_disco:ns_server_node(), ?MODULE, authenticate,
-                     [Param])
-    end;
+    ?call_on_ns_server_node(
+       case menelaus_ui_auth:check(Token) of
+           false ->
+               ?count_auth("token", "failure"),
+               %% this is needed so UI can get /pools on unprovisioned
+               %% system with leftover cookie
+               case ns_config_auth:is_system_provisioned() of
+                   false ->
+                       {ok, init_auth({"", wrong_token}), []};
+                   true ->
+                       {error, auth_failure}
+               end;
+           {ok, AuthnRes} ->
+               ?count_auth("token", "succ"),
+               {ok, AuthnRes, []}
+       end, [Param]);
 authenticate({client_cert_auth, "@" ++ _ = Username}) ->
     ?count_auth("client_cert_int", "succ"),
     {ok, init_auth({Username, admin}), []};
 authenticate({client_cert_auth, Username} = Param) ->
     %% Just returning the username as the request is already authenticated based
     %% on the client certificate.
-    case ns_node_disco:couchdb_node() == node() of
-        false ->
-            case ns_config_auth:get_user(admin) of
-                Username ->
-                    ?count_auth("client_cert", "succ"),
-                    {ok, init_auth({Username, admin}), []};
-                _ ->
-                    Identity = {Username, local},
-                    case menelaus_users:user_exists(Identity) of
-                        true ->
-                            ?count_auth("client_cert", "succ"),
-                            {ok, init_auth(Identity), []};
-                        false ->
-                            ?count_auth("client_cert", "failure"),
-                            {error, auth_failure}
-                    end
-            end;
-        true ->
-            rpc:call(ns_node_disco:ns_server_node(), ?MODULE, authenticate,
-                     [Param])
-    end;
+    ?call_on_ns_server_node(
+       case ns_config_auth:get_user(admin) of
+           Username ->
+               ?count_auth("client_cert", "succ"),
+               {ok, init_auth({Username, admin}), []};
+           _ ->
+               Identity = {Username, local},
+               case menelaus_users:user_exists(Identity) of
+                   true ->
+                       ?count_auth("client_cert", "succ"),
+                       {ok, init_auth(Identity), []};
+                   false ->
+                       ?count_auth("client_cert", "failure"),
+                       {error, auth_failure}
+               end
+       end, [Param]);
 authenticate({scram_sha, AuthHeader}) ->
     case scram_sha:authenticate(AuthHeader) of
         {ok, Identity, RespHeaders} ->

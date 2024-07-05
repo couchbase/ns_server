@@ -116,24 +116,20 @@ start_storage() ->
     replicated_dets:start_link(?MODULE, [], storage_name(), path(), Replicator).
 
 get_users_version() ->
-    case ns_node_disco:couchdb_node() == node() of
-        false ->
-            [{user_version, V, Base}] = ets:lookup(versions_name(), user_version),
-            {V, Base};
-        true ->
-            rpc:call(ns_node_disco:ns_server_node(), ?MODULE, get_users_version, [])
-    end.
+    ?call_on_ns_server_node(
+       begin
+           [{user_version, V, Base}] = ets:lookup(versions_name(),
+                                                  user_version),
+           {V, Base}
+       end, []).
 
 get_groups_version() ->
-    case ns_node_disco:couchdb_node() == node() of
-        false ->
-            [{group_version, V, Base}] = ets:lookup(versions_name(),
-                                                    group_version),
-            {V, Base};
-        true ->
-            rpc:call(ns_node_disco:ns_server_node(), ?MODULE,
-                     get_groups_version, [])
-    end.
+    ?call_on_ns_server_node(
+       begin
+           [{group_version, V, Base}] = ets:lookup(versions_name(),
+                                                   group_version),
+           {V, Base}
+       end, []).
 
 get_auth_version() ->
     case ns_node_disco:couchdb_node() == node() of
@@ -709,22 +705,17 @@ maybe_migrate_password_hashes(CurrentAuth, {_, local} = Identity, Password) ->
     end.
 
 migrate_local_user_auth(Identity, NewAuth) ->
-    case ns_node_disco:couchdb_node() == node() of
-        false ->
-            try
-                store_auth(Identity, NewAuth, ?REPLICATED_DETS_NORMAL_PRIORITY),
-                ns_server_stats:notify_counter(<<"pass_hash_migration">>)
-            catch
-                E:T:S ->
-                    ?log_debug("Auth store for auth migration failed. "
-                               "Identity - ~p.~nError - ~p",
-                               [ns_config_log:tag_user_data(Identity),
-                                {E, T, S}])
-            end;
-        true ->
-            rpc:call(ns_node_disco:ns_server_node(), ?MODULE,
-                     migrate_local_user_auth, [Identity, NewAuth])
-    end.
+    ?call_on_ns_server_node(
+       try
+           store_auth(Identity, NewAuth, ?REPLICATED_DETS_NORMAL_PRIORITY),
+           ns_server_stats:notify_counter(<<"pass_hash_migration">>)
+       catch
+           E:T:S ->
+               ?log_debug("Auth store for auth migration failed. "
+                          "Identity - ~p.~nError - ~p",
+                          [ns_config_log:tag_user_data(Identity),
+                           {E, T, S}])
+       end, [Identity, NewAuth]).
 
 get_auth_info(Identity) ->
     case ns_node_disco:couchdb_node() == node() of
