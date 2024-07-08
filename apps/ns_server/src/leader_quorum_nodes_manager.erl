@@ -15,8 +15,6 @@
 -export([start_link/0]).
 -export([set_quorum_nodes/2]).
 
--export([get_quorum_nodes_unsafe/0, set_quorum_nodes_unsafe/1]).
-
 %% gen_server2 callbacks
 -export([init/1, handle_call/3, handle_info/2]).
 
@@ -32,14 +30,6 @@ start_link() ->
 
 set_quorum_nodes(Pid, QuorumNodes) ->
     gen_server2:call(Pid, {set_quorum_nodes, QuorumNodes}, infinity).
-
-%% The following two functions are only exported for use by leader_activities
-%% when new orchestration is disabled.
-get_quorum_nodes_unsafe() ->
-    get_quorum_nodes_from_config().
-
-set_quorum_nodes_unsafe(QuorumNodes) ->
-    set_quorum_nodes_in_config(lists:usort(QuorumNodes)).
 
 %% gen_server2 callbacks
 init([]) ->
