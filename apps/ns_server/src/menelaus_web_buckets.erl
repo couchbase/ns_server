@@ -2140,7 +2140,7 @@ process_boolean_param_validation(Param, Key, Result, IsNew) ->
         {[], true} ->
             %% The value wasn't supplied and we're creating a bucket:
             %% use the default value.
-            {ok, Key, false};
+            {ok, Key, ns_bucket:attribute_default(Key)};
         {[], false} ->
             %% The value wasn't supplied and we're modifying a bucket:
             %% don't complain since the value was either specified or a

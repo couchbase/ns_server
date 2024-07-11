@@ -520,7 +520,11 @@ attribute_default(Name) ->
         secondary_warmup_min_memory_threshold ->
             100;                            % percentage
         secondary_warmup_min_items_threshold ->
-            100                             % percentage
+            100;                            % percentage
+        cross_cluster_versioning_enabled -> % boolean
+            false;
+        pitr_enabled -> false;              % boolean
+        access_scanner_enabled -> false     % boolean
     end.
 
 %% The minimum value of the attribute.
