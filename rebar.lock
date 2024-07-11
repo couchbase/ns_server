@@ -1,7 +1,7 @@
 {"1.2.0",
 [{<<"chronicle">>,
   {git,"https://github.com/couchbase/chronicle.git",
-       {ref,"ada759d578cb8fe5b930241616512d9a3f5ee562"}},
+       {ref,"a3330d3d676eb1245d5741ec07991f3d24ae2097"}},
   0},
  {<<"enacl">>,
   {git,"https://github.com/couchbasedeps/enacl.git",
