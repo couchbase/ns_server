@@ -34,6 +34,7 @@ base_prometheus_port = 7900
 base_backup_http_port= 7100
 base_backup_https_port= 17100
 base_backup_grpc_port = 7200
+base_cont_backup_http_port = 7300
 
 node_start_timeout_s = 60
 default_username = "Administrator"
@@ -327,6 +328,7 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix, root_dir):
         "backup_http_port", str(base_backup_http_port + i),
         "backup_https_port", str(base_backup_https_port + i),
         "backup_grpc_port", str(base_backup_grpc_port + i),
+        "cont_backup_http_port", str(base_cont_backup_http_port + i),
 
     ] + extra_args
 

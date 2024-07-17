@@ -81,6 +81,7 @@
 -define(CBAS_LOG_FILENAME, "analytics_info.log").
 -define(BACKUP_LOG_FILENAME, "backup_service.log").
 -define(TLS_KEY_LOG_FILENAME, "key.log").
+-define(CONT_BACKUP_LOG_FILENAME, "cont_backup.log").
 
 -define(NS_SERVER_LOGGER, ns_server).
 -define(NS_SERVER_TRACE_LOGGER, ns_server_trace).

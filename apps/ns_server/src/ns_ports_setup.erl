@@ -315,9 +315,16 @@ build_port_arg(ArgName, PortPrefix, PortName, Config) ->
 build_port_args(Args, Config) ->
     [build_port_arg(ArgName, PortName, Config) || {ArgName, PortName} <- Args].
 
-get_writable_ix_subdir(SubDir) ->
-    {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
-    Dir = filename:join(IdxDir, SubDir),
+get_writable_subdir(DirType, SubDirName) ->
+    ParentDir = case DirType of
+                    idx ->
+                        {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
+                        IdxDir;
+                    data ->
+                        {ok, DataDir} = ns_storage_conf:this_node_dbdir(),
+                        DataDir
+                end,
+    Dir = filename:join(ParentDir, SubDirName),
     case misc:ensure_writable_dir(Dir) of
         ok ->
             ok;
@@ -352,7 +359,10 @@ goport_defs() ->
                        log = ?EVENTING_LOG_FILENAME},
       backup => #def{exe = "backup",
                      rpc = backup,
-                     log = ?BACKUP_LOG_FILENAME}}.
+                     log = ?BACKUP_LOG_FILENAME},
+      cont_backup => #def{exe = "cbcontbk",
+                          rpc = cbcontbk,
+                          log = ?CONT_BACKUP_LOG_FILENAME}}.
 
 get_rpc_prefix(Service) ->
     #def{rpc = RPCService} = maps:get(Service, goport_defs()),
@@ -363,6 +373,8 @@ should_run(goxdcr, _Snapshot) ->
 should_run(projector, Snapshot) ->
     ns_cluster_membership:should_run_service(Snapshot, kv, node()) andalso
         not config_profile:search({indexer, projector_disabled}, false);
+should_run(cont_backup, Snapshot) ->
+    ns_cluster_membership:should_run_service(Snapshot, kv, node());
 should_run(Service, Snapshot) ->
     ns_cluster_membership:should_run_service(Snapshot, Service, node()).
 
@@ -500,6 +512,15 @@ goport_args(backup, Config, _Cmd, NodeUUID) ->
                           service_ports:get_port(rest_port, Config),
                           [no_scheme])];
 
+goport_args(cont_backup, Config, _Cmd, _NodeUUID) ->
+    ContBackupDir = get_writable_subdir(data, "@continuous_backup"),
+
+    ["backup"] ++
+    build_port_args([{"--admin-port", rest_port},
+                     {"--stats-port", cont_backup_http_port}], Config) ++
+    ["--username=" ++ "@ns_server",
+     "--backup-path=" ++ ContBackupDir];
+
 goport_args(fts, Config, _Cmd, NodeUUID) ->
     NsRestPort = service_ports:get_port(rest_port, Config),
     Host = misc:extract_node_address(node()),
@@ -517,7 +538,7 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
                 end
         end,
 
-    FTSIdxDir = get_writable_ix_subdir("@fts"),
+    FTSIdxDir = get_writable_subdir(idx, "@fts"),
 
     BindHttp = BuildHostPortArgs("-bindHttp", fts_http_port),
     BindHttps =

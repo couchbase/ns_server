@@ -113,7 +113,10 @@ all_ports() ->
      ?define_port(cbas_metadata_port,          undefined,       misc, 9121),
      ?define_port(cbas_parent_port,            cbasParent,      misc, 9122),
      ?define_port(cbas_debug_port,             cbasDebug,       misc, -1),
+
+     %% Misc ports
      ?define_port(prometheus_http_port,        prometheusPort,  misc, 9123),
+     ?define_port(cont_backup_http_port,       contBackupPort,  misc, 9125),
 
      %% Backup service ports
      ?define_port(backup_http_port,  backupAPI,      backup, 8097),
