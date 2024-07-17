@@ -1124,7 +1124,7 @@ parse_rebalance_params(Params) ->
 
 parse_topology_params(Params, Services, KeepNodes) ->
     {ok, MP} = re:compile("^topology\\[(\\w+)\\]$"),
-    SupportedServives =
+    SupportedServices =
         [atom_to_list(S) || S <- ns_cluster_membership:supported_services()],
     DesiredSevicesTopology =
         lists:filtermap(
@@ -1132,7 +1132,7 @@ parse_topology_params(Params, Services, KeepNodes) ->
                   case re:run(Param, MP) of
                       {match, [_, {Start, Length}]} ->
                           Service = lists:sublist(Param, Start + 1, Length),
-                          lists:member(Service, SupportedServives) orelse
+                          lists:member(Service, SupportedServices) orelse
                               throw("Unknown service " ++ Service),
                           Service =/= "kv" orelse
                               throw("Cannot change topology for data service"),
