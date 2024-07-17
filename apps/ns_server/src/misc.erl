@@ -3668,3 +3668,28 @@ parse_url_test() ->
                             {scheme_validation_fun, SchemeValidation},
                             {return, string}])).
 -endif.
+
+%% Returns ok if all results in a list are ok,
+%% returns {error, List} if at least one result is {error, _}
+-spec many_to_one_result([{T, ok} | {T, {error, R}}]) ->
+                        ok | {error, [{T, R}]} when T :: term(), R :: term().
+many_to_one_result(Results) ->
+    Errors = lists:filtermap(fun ({T, {error, R}}) -> {true, {T, R}};
+                                 ({_T, ok}) -> false
+                             end, Results),
+    case Errors of
+        [] -> ok;
+        _ -> {error, Errors}
+    end.
+
+-ifdef(TEST).
+many_to_one_result_test() ->
+    ?assertEqual(ok, many_to_one_result([])),
+    ?assertEqual(ok, many_to_one_result([{o1, ok}, {o2, ok}, {o3, ok}])),
+    ?assertEqual({error, [{o1, e1}]}, many_to_one_result([{o1, {error, e1}}])),
+    ?assertEqual({error, [{o2, e1}, {o4, e2}]},
+                 many_to_one_result([{o1, ok},
+                                     {o2, {error, e1}},
+                                     {o3, ok},
+                                     {o4, {error, e2}}])).
+-endif.

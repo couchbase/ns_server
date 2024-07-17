@@ -37,7 +37,6 @@
          get_secret/1,
          get_secret/2,
          rotate/1,
-         many_to_one_result/1,
          ensure_can_encrypt_bucket/3]).
 
 %% Can be called by other nodes:
@@ -277,18 +276,6 @@ ensure_can_encrypt_bucket(SecretId, BucketName, Snapshot) ->
         {error, not_found} -> {error, not_found}
     end.
 
-%% Just a helper function
--spec many_to_one_result([{T, ok} | {T, {error, R}}]) ->
-                        ok | {error, [{T, R}]} when T :: term(), R :: term().
-many_to_one_result(Results) ->
-    Errors = lists:filtermap(fun ({T, {error, R}}) -> {true, {T, R}};
-                                 ({_T, ok}) -> false
-                             end, Results),
-    case Errors of
-        [] -> ok;
-        _ -> {error, Errors}
-    end.
-
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -504,7 +491,7 @@ ensure_all_keks_on_disk() ->
                        (#{id := Id}) ->
                            {Id, ok}
                    end, get_all()),
-    many_to_one_result(RV).
+    misc:many_to_one_result(RV).
 
 -spec ensure_generated_keks_on_disk(secret_props()) -> ok | {error, list()}.
 ensure_generated_keks_on_disk(#{type := ?GENERATED_KEY_TYPE, id := SecretId,
@@ -514,7 +501,7 @@ ensure_generated_keks_on_disk(#{type := ?GENERATED_KEY_TYPE, id := SecretId,
     Res = lists:map(fun (#{id := Id} = K) ->
                         {Id, ensure_kek_on_disk(K)}
                     end, Keys),
-    many_to_one_result(Res).
+    misc:many_to_one_result(Res).
 
 -spec ensure_kek_on_disk(kek_props()) -> ok | {error, _}.
 ensure_kek_on_disk(#{id := Id, key := {sensitive, Key},
