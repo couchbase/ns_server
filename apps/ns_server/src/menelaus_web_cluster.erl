@@ -1134,6 +1134,8 @@ parse_topology_params(Params, Services, KeepNodes) ->
                           Service = lists:sublist(Param, Start + 1, Length),
                           lists:member(Service, SupportedServives) orelse
                               throw("Unknown service " ++ Service),
+                          Service =/= "kv" orelse
+                              throw("Cannot change topology for data service"),
                           Nodes = string:tokens(Val, ","),
                           case Nodes -- KeepNodes of
                               [] ->

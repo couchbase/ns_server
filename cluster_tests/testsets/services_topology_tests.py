@@ -243,6 +243,9 @@ class ServicesTopologyTests(testlib.BaseTestSet):
         self.cluster.failover_node(failover_node, graceful=False)
         self.change_services_topology({Service.BACKUP: [2]}, 400)
 
+    def kv_not_allowed_test(self):
+        self.change_services_topology({Service.KV: [1, 2]}, 400)
+
 def parse_nodes_list(text):
     sansbrackets = text.strip("[").strip("]")
     if sansbrackets == '':
