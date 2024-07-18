@@ -391,8 +391,12 @@ build_bucket_stats(_, Id, Ctx) ->
     Snapshot = menelaus_web_node:get_snapshot(Ctx),
     menelaus_stats:basic_stats(Id, Snapshot).
 
-build_dynamic_bucket_info(streaming, _Id, _BucketConfig, _) ->
-    [];
+build_dynamic_bucket_info(streaming, _Id, BucketConfig, _) ->
+    case ns_bucket:storage_mode(BucketConfig) of
+        magma -> build_continuous_backup_info(BucketConfig);
+        _ -> []
+    end;
+
 build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
     [[{replicaNumber, ns_bucket:num_replicas(BucketConfig)},
       {threadsNumber, proplists:get_value(num_threads, BucketConfig,
@@ -486,6 +490,20 @@ build_pitr_dynamic_bucket_info(BucketConfig) ->
             end
     end.
 
+build_continuous_backup_info(BucketConfig) ->
+    case cluster_compat_mode:is_cluster_morpheus() of
+        true ->
+            [{continuousBackupEnabled,
+              ns_bucket:get_continuous_backup_enabled(BucketConfig)},
+             {continuousBackupInterval,
+              ns_bucket:get_continuous_backup_interval(BucketConfig)},
+             {continuousBackupLocation,
+              list_to_binary(ns_bucket:get_continuous_backup_location(
+                               BucketConfig))}];
+        false ->
+            []
+    end.
+
 build_magma_bucket_info(BucketConfig) ->
     case ns_bucket:storage_mode(BucketConfig) of
         magma ->
@@ -510,19 +528,7 @@ build_magma_bucket_info(BucketConfig) ->
                       ns_bucket:magma_seq_tree_data_blocksize(BucketConfig)}]
             end
             ++
-            case cluster_compat_mode:is_cluster_morpheus() of
-                false -> [];
-                true ->
-                    Location =
-                        ns_bucket:get_continuous_backup_location(BucketConfig),
-
-                    [{continuousBackupEnabled,
-                      ns_bucket:get_continuous_backup_enabled(BucketConfig)},
-                     {continuousBackupInterval,
-                      ns_bucket:get_continuous_backup_interval(BucketConfig)},
-                     {continuousBackupLocation,
-                      list_to_binary(Location)}]
-            end
+            build_continuous_backup_info(BucketConfig)
             ++
             case config_profile:search({magma, can_set_max_shards}, false) of
                 true ->
