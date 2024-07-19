@@ -10,11 +10,16 @@ import testlib
 import json
 import re
 import random
+import os
+import sys
+import subprocess
+import base64
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from testsets.secret_management_tests import change_password, post_es_config
 from testlib.requirements import Service
 
+scriptdir = sys.path[0]
 
 class NativeEncryptionTests(testlib.BaseTestSet):
     @staticmethod
@@ -582,6 +587,96 @@ class NativeEncryptionTests(testlib.BaseTestSet):
         update_secret(node, good_id, secret)
 
 
+    def dump_keks_test(self):
+        secret = auto_generated_secret()
+        node = self.random_node()
+        secret_id = create_secret(node, secret)
+        n = 5
+        for i in range(n):
+            rotate_secret(node, secret_id)
+
+        ids = get_all_kek_ids(node, secret_id)
+        testlib.assert_eq(len(ids), n + 1)
+        unknown_id = 'unknown'
+        res = run_dump_keys(node, ['--key-kind', 'kek', \
+                                   '--key-ids', unknown_id] + ids)
+
+        verify_key_presense_in_dump_key_response(res, ids, [unknown_id])
+
+    def dump_bucket_deks_test(self):
+        secret = auto_generated_secret(usage=['bucket-encryption-*'])
+        secret_id = create_secret(self.random_node(), secret)
+        bucket_props = {'name': self.bucket_name,
+                        'ramQuota': 100,
+                        'encryptionAtRestSecretId': secret_id}
+        self.cluster.create_bucket(bucket_props, sync=True)
+        node = self.random_node()
+        ids = get_key_list(node, '{bucketDek, \'' + self.bucket_name + '\'}')
+        print(ids)
+        unknown_id = 'unknown'
+        res = run_dump_bucket_deks(node, ['--bucket', self.bucket_name,
+                                          '--key-ids', unknown_id] + ids)
+
+        verify_key_presense_in_dump_key_response(res, ids, [unknown_id])
+
+
+
+def get_key_list(node, kind_as_str):
+    res = testlib.diag_eval(
+            node,
+            '{ok, {_, List, _}} = cb_deks:list(' + kind_as_str + '), ' \
+            'lists:flatten(lists:join(",", [binary_to_list(K) || K <- List])).')
+    if res.text == "[]":
+        return []
+    re_res = re.search('"(.*)"', res.text)
+    assert re_res is not None, f'unexpected diag eval return: {res.text}'
+    keys_str = re_res.group(1)
+    return keys_str.split(',')
+
+
+def run_dump_keys(node, args):
+    return run_dump_key_utility(node, 'dump-keys', args)
+
+
+def run_dump_bucket_deks(node, args):
+    return run_dump_key_utility(node, 'dump-bucket-deks', args)
+
+
+def run_dump_key_utility(node, name, args):
+    data_dir = node.data_path()
+    gosecrets_cfg_path = os.path.join(data_dir, 'config', 'gosecrets.cfg')
+    gosecrets_path = os.path.join(scriptdir, '..', 'build', 'deps', 'gocode',
+                                  'gosecrets')
+    utility_path = os.path.join(scriptdir, '..', 'scripts', name)
+    pylib_path = os.path.join(scriptdir, "..", "pylib")
+    all_args = ['--config', gosecrets_cfg_path,
+                '--gosecrets', gosecrets_path] + args
+    env = {'PYTHONPATH': pylib_path, "PATH": os.environ['PATH']}
+    r = subprocess.run([utility_path] + all_args, capture_output=True, env=env)
+    assert r.returncode == 0, \
+           f'{name} returned {r.returncode}\n' \
+           f'stdout: {r.stdout.decode()}\n' \
+           f'stderr: {r.stderr.decode()}'
+    print(f'{name} reponse: {r.stdout.decode()}')
+    resp = json.loads(r.stdout)
+    return resp
+
+
+def verify_key_presense_in_dump_key_response(response, good_ids, unknown_ids):
+    for k in good_ids:
+        testlib.assert_in(k, response)
+        testlib.assert_in('result', response[k])
+        testlib.assert_eq(response[k]['result'], 'raw-aes-gcm')
+        testlib.assert_in('key', response[k]['response'])
+        key = base64.b64decode(response[k]['response']['key'])
+        testlib.assert_eq(len(key), 32)
+
+    for k in unknown_ids:
+        testlib.assert_in(k, response)
+        testlib.assert_in('result', response[k])
+        testlib.assert_eq(response[k]['result'], 'error')
+
+
 def set_cfg_encryption(cluster, mode, secret, expected_code=200):
     testlib.post_succ(cluster, '/settings/security/encryptionAtRest/config',
                       json={'encryptionMethod': mode,
@@ -719,6 +814,13 @@ def get_kek_id(cluster, secret_id):
         for k in r['data']['keys']:
             if k['active']:
                 return k['id']
+    return None
+
+
+def get_all_kek_ids(cluster, secret_id):
+    r = get_secret(cluster, secret_id)
+    if r['type'] == 'auto-generated-aes-key-256':
+        return [k['id'] for k in r['data']['keys']]
     return None
 
 
