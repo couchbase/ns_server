@@ -27,7 +27,6 @@
          rename/1,
          get_snapshot/1,
          sync/0,
-         get_encryption/1,
          set_active_dek/1]).
 
 %% exported callbacks used by chronicle
@@ -120,9 +119,8 @@ handle_call(get_snapshot, _From, Pid) ->
                 {error, cannot_get_snapshot}
         end,
     {reply, RV, Pid};
-handle_call({set_active_dek, NewActiveKey}, _From, State) ->
-    set_active_dek_internal(NewActiveKey),
-    {reply, ok, State};
+handle_call({set_active_dek, _NewActiveKey}, _From, State) ->
+    {reply, maybe_force_new_keys(), State};
 handle_call(sync, _From, State) ->
     {reply, ok, State}.
 
@@ -152,14 +150,6 @@ get_snapshot(Node) ->
 sync() ->
     gen_server2:call(?MODULE, sync, ?CALL_TIMEOUT).
 
-get_encryption(Snapshot) ->
-    #{config_encryption := ConfigEncryptionSettings} =
-        menelaus_web_encr_at_rest:get_settings(Snapshot),
-    {ok, case ConfigEncryptionSettings of
-             #{encryption := disabled} -> disabled;
-             #{encryption := encryption_service} -> encryption_service;
-             #{encryption := secret, secret_id := Id} -> {secret, Id}
-         end}.
 
 set_active_dek(ActiveDek) ->
     gen_server2:call(?MODULE, {set_active_dek, ActiveDek}, ?CALL_TIMEOUT).
@@ -243,58 +233,40 @@ report_stats({gauge, Metric, Value}) ->
 report_stats({max, Metric, Window, Bucket, Value}) ->
     ns_server_stats:notify_max({Metric, Window, Bucket}, Value).
 
-set_chronicle_encryption_keys(IVBase, IVAtomic, ActiveKey, Keys) ->
-    ok = persistent_term:put(chronicle_encryption_keys,
-                             {IVBase, IVAtomic, ActiveKey, Keys}).
+set_chronicle_deks_snapshot(DeksSnapshot) ->
+    ok = persistent_term:put(chronicle_deks_snapshot, DeksSnapshot).
 
-get_chronicle_encryption_keys() ->
-    persistent_term:get(chronicle_encryption_keys, undefined).
+get_chronicle_deks_snapshot() ->
+    persistent_term:get(chronicle_deks_snapshot, undefined).
 
 %% We assume that data is in erlang external term format, this is important
 %% because that's how we determine if it is encrypted or not
-encrypt_data(<<131, _/binary>> = D) ->
-    {IVBase, IVAtomic, ActiveKey, _Keys} = get_chronicle_encryption_keys(),
-    case ActiveKey of
-        undefined -> D;
-        #{type := 'raw-aes-gcm', info := #{key := K}} when is_function(K, 0) ->
-            %% For GCM IV must be unique, and don't have to be unpredictable
-            IVCounter = atomics:add_get(IVAtomic, 1, 1),
-            IV = <<IVBase/binary, IVCounter:64/big-unsigned-integer>>,
-            12 = size(IV),
-            %% Tag size is 16 bytes as it is specified in requirements
-            {Encrypted, Tag} = crypto:crypto_one_time_aead(
-                                 aes_256_gcm, K(), IV, D, <<>>, 16, true),
-            16 = size(Tag),
-            Version = 1, % Version of encryption
-            <<?ENCRYPTION_MAGIC, Version, IV/binary, Tag/binary,
-              Encrypted/binary>>
+encrypt_data(<<131, _/binary>> = Data) ->
+    DeksSnapshot = get_chronicle_deks_snapshot(),
+    case cb_crypto:encrypt(Data, <<>>, DeksSnapshot) of
+        {ok, EncryptedData} ->
+            Version = 0,
+            <<?ENCRYPTION_MAGIC, Version, EncryptedData/binary>>;
+        {error, no_active_key} ->
+            Data %% Encryption is disabled
     end.
 
 decrypt_data(<<131, _/binary>> = D) -> {ok, D};
-decrypt_data(<<?ENCRYPTION_MAGIC, 1, IV:12/binary, Tag:16/binary, D/binary>>) ->
-    {_IVBase, _IVAtomic, _Active, Keys} = get_chronicle_encryption_keys(),
-    try_decrypt(IV, Tag, D, Keys).
+decrypt_data(<<?ENCRYPTION_MAGIC, 0, Data/binary>>) ->
+    DeksSnapshot = get_chronicle_deks_snapshot(),
+    cb_crypto:decrypt(Data, <<>>, DeksSnapshot).
 
-try_decrypt(_IV, _Tag, _D, []) ->
-    {error, decrypt_error};
-try_decrypt(IV, Tag, D, [#{type := 'raw-aes-gcm', info := #{key := K}} | T]) ->
-    case crypto:crypto_one_time_aead(aes_256_gcm, K(), IV, D, <<>>, Tag,
-                                     false) of
-        error -> %% wrong key? try another one
-            try_decrypt(IV, Tag, D, T);
-        DecryptedData ->
-            {ok, DecryptedData}
-    end.
-
+%% This functions is supposed to be called from chronicle_dump only
 external_decrypt(Data) ->
     maybe
-        ok ?= case get_chronicle_encryption_keys() of
+        ok ?= case get_chronicle_deks_snapshot() of
                   undefined -> external_setup_keys();
-                  {_, _, _, _} -> ok
+                  _ -> ok
               end,
         decrypt_data(Data)
     end.
 
+%% This functions is supposed to be called from chronicle_dump only
 external_setup_keys() ->
     %% In order to make path_config work
     application:load(ns_server),
@@ -343,11 +315,15 @@ external_setup_keys() ->
                                              KeyProps)}}
                   end
               end, JsonKeys),
-        set_chronicle_encryption_keys(undefined, undefined, not_needed, Keys),
+        DeksSnapshot = cb_crypto:create_deks_snapshot(undefined, Keys,
+                                                      undefined),
+        set_chronicle_deks_snapshot(DeksSnapshot),
         ok
     else
         {empty, []} ->
-            set_chronicle_encryption_keys(undefined, undefined, not_needed, []),
+            AnotherDeksSnapshot = cb_crypto:create_deks_snapshot(undefined, [],
+                                                                 undefined),
+            set_chronicle_deks_snapshot(AnotherDeksSnapshot),
             ok;
         {Status, ErrorsBin} when is_integer(Status) ->
             {error, {dump_keys_returned, Status, ErrorsBin}};
@@ -357,28 +333,11 @@ external_setup_keys() ->
 
 read_and_set_data_keys() ->
     maybe
-        {ok, {ActiveId, Ids, IsEnabled}} ?= cb_deks:list(chronicleDek),
-        {ok, Keys} ?= cb_deks:read(chronicleDek, Ids),
-        {value, ActiveKey} =
-            case IsEnabled of
-                true ->
-                    lists:search(fun (#{id := Id}) -> Id == ActiveId end, Keys);
-                _ ->
-                    {value, undefined}
-            end,
-
-        %% Random 4 byte base + unique 8 byte integer = unique 12 byte IV
-        %% (note that atomics are 8 byte integers)
-        IVBase = crypto:strong_rand_bytes(4),
-        IVAtomic =
-            case get_chronicle_encryption_keys() of
-                undefined -> atomics:new(1, [{signed, false}]);
-                {_OldIVBase, OldIVAtomic, _OldActive, _OldKeys} -> OldIVAtomic
-            end,
-        set_chronicle_encryption_keys(IVBase, IVAtomic, ActiveKey, Keys)
+        {ok, DeksSnapshot} ?= cb_crypto:fetch_deks_snapshot(chronicleDek),
+        set_chronicle_deks_snapshot(DeksSnapshot)
     else
         {error, Reason} ->
-            ?log_error("Failed to set encryption keys for chronicle: ~p",
+            ?log_error("Failed to get encryption keys for chronicle: ~p",
                        [Reason]),
             {error, Reason}
     end.
@@ -408,34 +367,17 @@ rewrite_chronicle_data() ->
             {error, Reason}
     end.
 
-set_active_dek_internal(NewActive) ->
-    {IVBase, IVAtomic, OldActive, OldKeys} = get_chronicle_encryption_keys(),
-    GetId = fun (undefined) -> undefined;
-                (#{id := Id}) -> Id
-            end,
-    OldId = GetId(OldActive),
-    NewId = GetId(NewActive),
-    case OldId == NewId of
-        true -> %% nothing has changed
+maybe_force_new_keys() ->
+    Old = get_chronicle_deks_snapshot(),
+    {ok, New} = cb_crypto:fetch_deks_snapshot(chronicleDek),
+    NewWithoutHistDeks = cb_crypto:without_historical_deks(New),
+    case (cb_crypto:get_dek_id(Old) /= cb_crypto:get_dek_id(New)) orelse
+         (NewWithoutHistDeks /= New) of
+        true ->
+            set_chronicle_deks_snapshot(New),
+            ok = rewrite_chronicle_data(),
+            set_chronicle_deks_snapshot(NewWithoutHistDeks),
             ok;
         false ->
-            NewKeys =
-                case lists:search(fun (#{id := Id}) -> Id == NewId end,
-                                  OldKeys) of
-                    {value, _} -> OldKeys;
-                    false -> [NewActive | OldKeys]
-                end,
-            ok = set_chronicle_encryption_keys(IVBase, IVAtomic, NewActive,
-                                               NewKeys),
-            ok = rewrite_chronicle_data(),
-            case NewActive of
-                undefined ->
-                    ok = set_chronicle_encryption_keys(IVBase, IVAtomic,
-                                                       undefined,
-                                                       []);
-                #{} ->
-                    ok = set_chronicle_encryption_keys(IVBase, IVAtomic,
-                                                       NewActive,
-                                                       [NewActive])
-            end
+            ok
     end.

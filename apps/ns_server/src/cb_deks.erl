@@ -312,7 +312,8 @@ dek_chronicle_keys_filter(Key) ->
 %% allowed to encrypt this kind of deks
 dek_config(chronicleDek) ->
     #{name => chronicle,
-      encryption_method_callback => fun chronicle_local:get_encryption/1,
+      encryption_method_callback => cb_crypto:get_encryption_method(
+                                      config_encryption, _),
       set_active_key_callback => fun chronicle_local:set_active_dek/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
       required_usage => config_encryption};

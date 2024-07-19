@@ -1031,17 +1031,12 @@ set_tls_config(Sock, TLSConfigJSON) ->
             process_error_response(Response)
     end.
 
-set_active_encryption_key(Sock, Bucket, ActiveKey) ->
+set_active_encryption_key(Sock, Bucket, DeksSnapshot) ->
     report_counter(?FUNCTION_NAME),
-    Key = iolist_to_binary(Bucket),
-    %% TODO: We should pass all available keys here
-    AllKeys = case ActiveKey of
-                  undefined -> [];
-                  _ -> [ActiveKey]
-              end,
-    Value = memcached_bucket_config:format_mcd_keys(ActiveKey, AllKeys),
-    Entry = #mc_entry{key = Key,
-                      data = ejson:encode(Value)},
+    {ActiveDek, AllDeks} = cb_crypto:get_all_deks(DeksSnapshot),
+    DeksJson = memcached_bucket_config:format_mcd_keys(ActiveDek, AllDeks),
+    Entry = #mc_entry{key = iolist_to_binary(Bucket),
+                      data = ejson:encode(DeksJson)},
     case cmd(?CMD_SET_ENCRYPTION_KEY, Sock, undefined, undefined,
              {#mc_header{}, Entry}) of
         {ok, #mc_header{status=?SUCCESS}, _, _} ->

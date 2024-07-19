@@ -811,14 +811,19 @@ call_set_active_cb(Kind, #state{deks = AllDeks} = State) ->
                 ActiveKey;
             false -> undefined
         end,
-    case call_dek_callback(set_active_key_callback, Kind,
-                           [NewActiveKey]) of
-        {succ, ok} ->
-            {ok, State};
-        {succ, {error, Reason}} ->
-            {error, State, Reason};
-        {except, {_, E, _}} ->
-            {error, State, E}
+    case cb_crypto:reset_dek_cache(Kind, NewActiveKey) of
+        {ok, _} ->
+            case call_dek_callback(set_active_key_callback, Kind,
+                                   [NewActiveKey]) of
+                {succ, ok} ->
+                    {ok, State};
+                {succ, {error, Reason}} ->
+                    {error, State, Reason};
+                {except, {_, E, _}} ->
+                    {error, State, E}
+            end;
+        {error, Reason} ->
+            {error, State, Reason}
     end.
 
 call_dek_callback(CallbackName, Kind, Args) ->
