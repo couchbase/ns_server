@@ -542,20 +542,22 @@ cfg_to_json(Props) ->
               end,
     ExtractBin = fun (K) -> iolist_to_binary(Extract(K)) end,
 
-    KeksStoreConfig = {[{kind, kek},
-                        {path, key_path(kek, Props)},
-                        {encryptByKind, kek}]},
-    ChronicleDeksConfig = {[{kind, chronicleDek},
-                            {path, key_path(chronicleDek, Props)},
-                            {encryptByKind, kek}]},
+    KeyCfg = fun (Kind) ->
+                 {[{kind, Kind},
+                   {path, key_path(Kind, Props)},
+                   {encryptByKind, kek}]}
+             end,
+    KeksStoreConfig = KeyCfg(kek),
+    ChronicleDeksConfig = KeyCfg(chronicleDek),
+    ConfigDeksConfig = KeyCfg(configDek),
     DeksStoreConfig = case key_path(bucketDek, Props) of
                           undefined -> [];
                           DeksPath -> [{[{kind, bucketDek},
                                          {path, DeksPath},
                                          {encryptByKind, kek}]}]
                       end,
-    StoredKeysJson = {storedKeys, [KeksStoreConfig, ChronicleDeksConfig
-                                   | DeksStoreConfig]},
+    StoredKeysJson = {storedKeys, [KeksStoreConfig, ChronicleDeksConfig,
+                                   ConfigDeksConfig | DeksStoreConfig]},
 
     case Extract(es_key_storage_type) of
         file ->
@@ -612,6 +614,8 @@ key_path(kek, _Cfg) ->
     proplists:get_value(kek_path, defaults(), undefined);
 key_path(chronicleDek, _Cfg) ->
     proplists:get_value(chronicle_dek_path, defaults(), undefined);
+key_path(configDek, _Cfg) ->
+    proplists:get_value(config_dek_path, defaults(), undefined);
 key_path(bucketDek, Cfg) ->
     Key = bucket_dek_path,
     case proplists:get_value(Key, Cfg) of
@@ -627,6 +631,7 @@ defaults() ->
      {es_key_path_type, auto},
      {es_key_storage_type, 'file'},
      {kek_path, iolist_to_binary(filename:join(ConfigDir, "keks"))},
+     {config_dek_path, iolist_to_binary(filename:join(ConfigDir, "deks"))},
      {chronicle_dek_path,
       iolist_to_binary(filename:join([ConfigDir, "chronicle", "deks"]))}].
 
