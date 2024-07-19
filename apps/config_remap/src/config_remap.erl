@@ -187,6 +187,12 @@ rewrite_chronicle(#{?INITARGS_DATA_DIR := InputDir,
                     output_path := OutputDir} = Args) ->
     ?log_info("Rewriting chronicle"),
 
+    %% Required to re-use chronicle snapshot storage write fun
+    ChronicleEnvDataDir = filename:join([OutputDir, ?CONFIG_DIR]),
+    ?log_debug("Rewriting chronicle files to ~p", [ChronicleEnvDataDir]),
+    application:set_env(chronicle, data_dir, ChronicleEnvDataDir),
+    application:set_env(chronicle, setup_logger_filter, false),
+    ok = chronicle_env:setup(),
     LogsDir = filename:join(InputDir, ?CHRONICLE_LOGS_DIR),
     {ok, Logs} = file:list_dir(LogsDir),
     lists:foreach(
@@ -194,11 +200,6 @@ rewrite_chronicle(#{?INITARGS_DATA_DIR := InputDir,
               LogPath = filename:join(LogsDir, Log),
               rewrite_chronicle_log(LogPath, Args)
       end, Logs),
-
-    %% Required to re-use chronicle snapshot storage write fun
-    ChronicleEnvDataDir = filename:join([OutputDir, ?CONFIG_DIR]),
-    ?log_debug("Rewriting chronicle files to ~p", [ChronicleEnvDataDir]),
-    application:set_env(chronicle, data_dir, ChronicleEnvDataDir),
 
     SnapshotDir = filename:join(InputDir, ?CHRONICLE_SNAPSHOT_DIR),
     {ok, Snapshots} = file:list_dir(SnapshotDir),
