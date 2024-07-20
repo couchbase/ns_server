@@ -15,7 +15,7 @@
 
 %% API
 -export([start_link/1, start_link_named/2,
-         is_active/1, activate/1]).
+         is_active/1, activate/1, activate/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -59,7 +59,10 @@ is_active(Pid) ->
     gen_server:call(Pid, is_active, infinity).
 
 activate(Pid) ->
-    gen_server:call(Pid, activate, infinity).
+    activate(Pid, undefined).
+
+activate(Pid, ExtraData) ->
+    gen_server:call(Pid, {activate, ExtraData}, infinity).
 
 %% gen_server callbacks
 init(Fun) ->
@@ -161,12 +164,18 @@ handle_info({'EXIT', Port, Reason} = Exit, #state{port=Port} = State) ->
 handle_call(is_active, _From, #state{port = Port} = State) ->
     {reply, Port =/= undefined, State};
 
-handle_call(activate, _From, #state{port = undefined,
+handle_call({activate, ExtraData}, _From, #state{port = undefined,
                                     params = Params} = State) ->
     {Port, OsPid} = port_open(Params, State),
+    case ExtraData of
+        undefined ->
+            ok;
+        Data ->
+            port_write(Port, Data)
+    end,
     State2 = State#state{port = Port, os_pid = OsPid},
     {reply, ok, State2};
-handle_call(activate, _From, State) ->
+handle_call({activate, _}, _From, State) ->
     {reply, {error, already_active}, State}.
 
 handle_cast(unhandled, unhandled) ->
