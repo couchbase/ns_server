@@ -703,7 +703,7 @@ memcached_environment_variables(Config) ->
 
 memcached_spec(Config) ->
     {memcached, path_config:component_path(bin, "memcached"),
-     ["-C", {"~s", [{memcached, config_path}]}],
+     ["-C", {"~s", [{memcached, config_path}]}, "--stdin"],
      [{env, memcached_environment_variables(Config)},
       use_stdio,
       stderr_to_stdout, exit_status,
