@@ -16,7 +16,7 @@
 
 %% API
 -export([start_link/0, trigger_tls_config_push/0,
-         memcached_port_pid/0]).
+         memcached_port_pid/0, push_config_encryption_key/0]).
 
 %% referenced from ns_config_default
 -export([get_minidump_dir/2, get_interfaces/2,
@@ -49,6 +49,17 @@ trigger_tls_config_push() ->
         ok
     catch
         error:badarg -> {error, no_proccess}
+    end.
+
+push_config_encryption_key() ->
+    try
+        gen_server:call(?MODULE, push_config_encryption_key, 60000)
+    catch
+        exit:{noproc, {gen_server, call,
+                       [?MODULE, push_config_encryption_key, _]}} ->
+            ?log_debug("Can't push config encryption key: ~p is not "
+                       "started yet...", [?MODULE]),
+            {error, retry}
     end.
 
 init([]) ->
@@ -90,12 +101,15 @@ init([]) ->
             inactive ->
                 delete_prev_config_file(),
                 McdConfigPath = get_memcached_config_path(),
-                ok = misc:atomic_write_file(McdConfigPath, WantedMcdConfig),
+                {ok, DeksSnapshot} = cb_crypto:fetch_deks_snapshot(configDek),
+                ok = cb_crypto:atomic_write_file(McdConfigPath, WantedMcdConfig,
+                                                 DeksSnapshot),
                 ?log_debug("wrote memcached config to ~s. Will activate "
                            "memcached port server",
                            [McdConfigPath]),
-                BootstrapKeysData = prepare_bootstrap_keys(),
+                BootstrapKeysData = prepare_bootstrap_keys(DeksSnapshot),
                 ok = ns_port_server:activate(Pid, BootstrapKeysData),
+                set_global_memcached_deks(DeksSnapshot),
                 ?log_debug("activated memcached port server"),
                 WantedMcdConfig;
             _ ->
@@ -107,8 +121,7 @@ init([]) ->
                    memcached_config = ActualMcdConfig},
     gen_server:enter_loop(?MODULE, [], State).
 
-prepare_bootstrap_keys() ->
-    {ok, DeksSnapshot} = cb_crypto:fetch_deks_snapshot(configDek),
+prepare_bootstrap_keys(DeksSnapshot) ->
     {ActiveDek, AllDeks} = cb_crypto:get_all_deks(DeksSnapshot),
     DeksJson = memcached_bucket_config:format_mcd_keys(ActiveDek, AllDeks),
     BootstrapKeysJson = ejson:encode({[{<<"@config">>, DeksJson}]}),
@@ -194,6 +207,20 @@ find_port_pid_loop(Tries, Delay) when Tries > 0 ->
             timer:sleep(Delay),
             find_port_pid_loop(Tries - 1, Delay)
     end.
+
+handle_call(push_config_encryption_key, _From,
+            #state{memcached_config = CurrentMcdConfig} = State) ->
+    maybe
+        {ok, DeksSnapshot} ?= cb_crypto:fetch_deks_snapshot(configDek),
+        ok ?= maybe_push_config_encryption_key(DeksSnapshot),
+        ok ?= hot_reload_config(CurrentMcdConfig, [inet, inet6], State, 10, []),
+        {reply, ok, State}
+    else
+        {error, Reason} ->
+            {reply, {error, Reason}, State};
+        {memcached_error, _Status, _Msg} = Reason ->
+            {reply, {error, Reason}, State}
+    end;
 
 handle_call(_, _From, _State) ->
     erlang:error(unsupported).
@@ -334,7 +361,8 @@ hot_reload_config(NewMcdConfig, _, State, Tries, LastErr) when Tries < 1 ->
               "succeed. Error: ~p. Giving up. Restart memcached to apply that "
               "config change. Updated keys: ~p",
               [LastErr, changed_keys(State#state.memcached_config,
-                                     NewMcdConfig)]);
+                                     NewMcdConfig)]),
+    LastErr;
 hot_reload_config(NewMcdConfig, AFamiliesToTry, State, Tries, _LastErr) ->
     FilePath = get_memcached_config_path(),
     PrevFilePath = FilePath ++ ".prev",
@@ -344,26 +372,59 @@ hot_reload_config(NewMcdConfig, AFamiliesToTry, State, Tries, _LastErr) ->
         read_current_memcached_config(State#state.port_pid),
     true = (CurrentMcdConfig =:= State#state.memcached_config),
 
-    %% now we save currently active config to .prev
-    ok = misc:atomic_write_file(PrevFilePath, CurrentMcdConfig),
-    %% if we crash here, .prev has copy of active memcached config and
-    %% we'll be able to retry hot or cold config update
-    ok = misc:atomic_write_file(FilePath, NewMcdConfig),
+    maybe
+        {ok, DeksSnapshot} = cb_crypto:fetch_deks_snapshot(configDek),
+        ok ?= maybe_push_config_encryption_key(DeksSnapshot),
+        %% now we save currently active config to .prev
+        ok = cb_crypto:atomic_write_file(PrevFilePath, CurrentMcdConfig,
+                                         DeksSnapshot),
+        %% if we crash here, .prev has copy of active memcached config and
+        %% we'll be able to retry hot or cold config update
+        ok = cb_crypto:atomic_write_file(FilePath, NewMcdConfig,
+                                         DeksSnapshot),
 
-    case ns_memcached:config_reload(AFamiliesToTry) of
-        ok ->
-            delete_prev_config_file(),
-            ale:info(?USER_LOGGER,
-                     "Hot-reloaded memcached.json for config change of the "
-                     "following keys: ~p",
-                     [changed_keys(CurrentMcdConfig, NewMcdConfig)]),
-            ok;
-        Err ->
+        ok ?= ns_memcached:config_reload(AFamiliesToTry),
+
+        delete_prev_config_file(),
+        ale:info(?USER_LOGGER,
+                 "Hot-reloaded memcached.json for config change of the "
+                 "following keys: ~p",
+                 [changed_keys(CurrentMcdConfig, NewMcdConfig)]),
+        ok
+    else
+        Error ->
             ?log_error("Failed to reload memcached config. "
-                       "Will retry. Error: ~p", [Err]),
+                       "Will retry. Error: ~p", [Error]),
             timer:sleep(1000),
             hot_reload_config(NewMcdConfig, AFamiliesToTry, State,
-                              Tries - 1, Err)
+                              Tries - 1, Error)
+    end.
+
+maybe_push_config_encryption_key(DeksSnapshot) ->
+    ShouldUpdate =
+        case get_global_memcached_deks() of
+            undefined -> true;
+            OldDeksSnapshot ->
+                cb_crypto:get_dek_id(DeksSnapshot) =/=
+                    cb_crypto:get_dek_id(OldDeksSnapshot)
+        end,
+    case ShouldUpdate of
+        true ->
+            ?log_debug("Pushing new config encryption key to memcached: ~0p",
+                       [cb_crypto:get_dek(DeksSnapshot)]),
+            case ns_memcached:set_active_dek("@config", DeksSnapshot) of
+                ok ->
+                    set_global_memcached_deks(DeksSnapshot),
+                    ok;
+                {error, Err} ->
+                    ?log_error("Failed to push config encryption key to "
+                               "memcached: ~p", [Err]),
+                    {error, Err}
+            end;
+        false ->
+            %% memcached already knows about that key
+            ?log_debug("No need to update config encryption key"),
+            ok
     end.
 
 get_memcached_config_path() ->
@@ -389,8 +450,10 @@ do_read_current_memcached_config([]) ->
                "does not exist"),
     missing;
 do_read_current_memcached_config([Path | Rest]) ->
-    case file:read_file(Path) of
-        {ok, Contents} ->
+    case cb_crypto:read_file(Path, configDek) of
+        {decrypted, Contents} ->
+            {ok, Contents};
+        {raw, Contents} ->
             {ok, Contents};
         {error, Error} ->
             ?log_debug("Got ~p while trying to read active "
@@ -621,3 +684,9 @@ get_host(Proto, IsSSL) ->
         false ->
             <<"*">>
     end.
+
+set_global_memcached_deks(DeksSnapshot) ->
+    persistent_term:put(memcached_native_encryption_deks, DeksSnapshot).
+
+get_global_memcached_deks() ->
+    persistent_term:get(memcached_native_encryption_deks, undefined).

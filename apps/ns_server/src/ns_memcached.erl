@@ -135,6 +135,7 @@
          maybe_add_impersonate_user_frame_info/2,
          delete_bucket/2,
          get_config_stats/2,
+         set_active_dek_for_bucket/2,
          set_active_dek/2
         ]).
 
@@ -1863,19 +1864,22 @@ set_tls_config(Config) ->
           end
       end).
 
-set_active_dek(Bucket, _ActiveDek) ->
+set_active_dek_for_bucket(Bucket, _ActiveDek) ->
     {ok, DeksSnapshot} = cb_crypto:fetch_deks_snapshot({bucketDek, Bucket}),
+    set_active_dek(Bucket, DeksSnapshot).
+
+set_active_dek(TypeOrBucket, DeksSnapshot) ->
     ?log_debug("Setting active encryption key id for ~p: ~p...",
-               [Bucket, cb_crypto:get_dek(DeksSnapshot)]),
+               [TypeOrBucket, cb_crypto:get_dek(DeksSnapshot)]),
     RV = perform_very_long_call(
            fun (Sock) ->
                case mc_client_binary:set_active_encryption_key(Sock,
-                                                               Bucket,
+                                                               TypeOrBucket,
                                                                DeksSnapshot) of
                    ok -> {reply, ok};
                    {memcached_error, S, Msg} ->
                        ?log_error("Setting encryption key for ~p failed: ~p",
-                                  [Bucket, {S, Msg}]),
+                                  [TypeOrBucket, {S, Msg}]),
                        {reply, {error, {S, Msg}}}
                end
            end),

@@ -321,15 +321,14 @@ dek_config(configDek) ->
     #{name => configuration,
       encryption_method_callback => cb_crypto:get_encryption_method(
                                       config_encryption, _),
-      set_active_key_callback => fun (_) ->
-                                     ok
-                                 end,
+      set_active_key_callback => fun set_config_active_key/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
       required_usage => config_encryption};
 dek_config({bucketDek, Bucket}) ->
     #{name => {bucket, Bucket},
       encryption_method_callback => ns_bucket:get_encryption(Bucket, _),
-      set_active_key_callback => ns_memcached:set_active_dek(Bucket, _),
+      set_active_key_callback => ns_memcached:set_active_dek_for_bucket(Bucket,
+                                                                        _),
       chronicle_txn_keys => [ns_bucket:root(),
                              ns_bucket:sub_key(Bucket, props)],
       required_usage => {bucket_encryption, Bucket}}.
@@ -343,3 +342,6 @@ dek_kinds_list() ->
 dek_kinds_list(Snapshot) ->
     Buckets = ns_bucket:get_bucket_names(Snapshot),
     [chronicleDek, configDek] ++ [{bucketDek, B} || B <- Buckets].
+
+set_config_active_key(_ActiveDek) ->
+    ok = memcached_config_mgr:push_config_encryption_key().
