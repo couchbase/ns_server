@@ -344,4 +344,8 @@ dek_kinds_list(Snapshot) ->
     [chronicleDek, configDek] ++ [{bucketDek, B} || B <- Buckets].
 
 set_config_active_key(_ActiveDek) ->
-    ok = memcached_config_mgr:push_config_encryption_key().
+    maybe
+        ok ?= memcached_config_mgr:push_config_encryption_key(true),
+        ok ?= memcached_passwords:sync_reload(),
+        ok ?= memcached_permissions:sync_reload()
+    end.

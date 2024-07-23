@@ -16,7 +16,8 @@
 
 %% API
 -export([start_link/0, trigger_tls_config_push/0,
-         memcached_port_pid/0, push_config_encryption_key/0]).
+         memcached_port_pid/0, push_config_encryption_key/1,
+         get_global_memcached_deks/0]).
 
 %% referenced from ns_config_default
 -export([get_minidump_dir/2, get_interfaces/2,
@@ -51,12 +52,12 @@ trigger_tls_config_push() ->
         error:badarg -> {error, no_proccess}
     end.
 
-push_config_encryption_key() ->
+push_config_encryption_key(ReloadCfg) ->
     try
-        gen_server:call(?MODULE, push_config_encryption_key, 60000)
+        gen_server:call(?MODULE, {push_config_encryption_key, ReloadCfg}, 60000)
     catch
         exit:{noproc, {gen_server, call,
-                       [?MODULE, push_config_encryption_key, _]}} ->
+                       [?MODULE, {push_config_encryption_key, _}, _]}} ->
             ?log_debug("Can't push config encryption key: ~p is not "
                        "started yet...", [?MODULE]),
             {error, retry}
@@ -208,12 +209,18 @@ find_port_pid_loop(Tries, Delay) when Tries > 0 ->
             find_port_pid_loop(Tries - 1, Delay)
     end.
 
-handle_call(push_config_encryption_key, _From,
+handle_call({push_config_encryption_key, NeedConfigReload}, _From,
             #state{memcached_config = CurrentMcdConfig} = State) ->
     maybe
         {ok, DeksSnapshot} ?= cb_crypto:fetch_deks_snapshot(configDek),
-        ok ?= maybe_push_config_encryption_key(DeksSnapshot),
-        ok ?= hot_reload_config(CurrentMcdConfig, [inet, inet6], State, 10, []),
+        {ok, Changed} ?= maybe_push_config_encryption_key(DeksSnapshot),
+        ok ?= case NeedConfigReload andalso (Changed == changed) of
+                  true ->
+                      hot_reload_config(CurrentMcdConfig, [inet, inet6],
+                                        State, 10, []);
+                  false ->
+                      ok
+              end,
         {reply, ok, State}
     else
         {error, Reason} ->
@@ -374,7 +381,7 @@ hot_reload_config(NewMcdConfig, AFamiliesToTry, State, Tries, _LastErr) ->
 
     maybe
         {ok, DeksSnapshot} = cb_crypto:fetch_deks_snapshot(configDek),
-        ok ?= maybe_push_config_encryption_key(DeksSnapshot),
+        {ok, _} ?= maybe_push_config_encryption_key(DeksSnapshot),
         %% now we save currently active config to .prev
         ok = cb_crypto:atomic_write_file(PrevFilePath, CurrentMcdConfig,
                                          DeksSnapshot),
@@ -415,7 +422,7 @@ maybe_push_config_encryption_key(DeksSnapshot) ->
             case ns_memcached:set_active_dek("@config", DeksSnapshot) of
                 ok ->
                     set_global_memcached_deks(DeksSnapshot),
-                    ok;
+                    {ok, changed};
                 {error, Err} ->
                     ?log_error("Failed to push config encryption key to "
                                "memcached: ~p", [Err]),
@@ -424,7 +431,7 @@ maybe_push_config_encryption_key(DeksSnapshot) ->
         false ->
             %% memcached already knows about that key
             ?log_debug("No need to update config encryption key"),
-            ok
+            {ok, unchanged}
     end.
 
 get_memcached_config_path() ->

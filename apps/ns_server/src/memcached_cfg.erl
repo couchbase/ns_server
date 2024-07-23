@@ -160,9 +160,11 @@ write_cfg(#state{path = Path,
         Producer ->
             ok = filelib:ensure_dir(TmpPath),
             ?log_debug("Writing config file for: ~p", [Path]),
-            case misc:write_file(TmpPath,
-                                 ?cut(pipes:run(Producer,
-                                                pipes:write_file(_)))) of
+            WriteConsumer = pipes:write_encrypted_file(_,
+                                                       filename:basename(Path),
+                                                       extract_deks_snapshot()),
+            WriteFun = ?cut(pipes:run(Producer, WriteConsumer(_))),
+            case misc:write_file(TmpPath, WriteFun) of
                 ok ->
                     ok;
                 Error ->
@@ -173,6 +175,28 @@ write_cfg(#state{path = Path,
                     erlang:exit({failed_to_write_configuration, TmpPath})
             end,
             rename_and_refresh(State, ?MAX_RENAME_RETRIES, 101)
+    end.
+
+extract_deks_snapshot() ->
+    case memcached_config_mgr:get_global_memcached_deks() of
+        undefined ->
+            {ok, DS} = cb_crypto:fetch_deks_snapshot(configDek),
+            case memcached_config_mgr:push_config_encryption_key(false) of
+                ok ->
+                    memcached_config_mgr:get_global_memcached_deks();
+                {error, retry} ->
+                    %% This means the process is not started yet
+                    %% (which is normal because it starts after this
+                    %% process). If so, we are ok to use prefetched
+                    %% encryption keys. The biggest risk is if we use the
+                    %% key that is not known by memcached. Since here we
+                    %% fetch keys before we call memcached_config_mgr,
+                    %% it is guaranteed that the prefetched keys will not be
+                    %% newer than those that memcached_config_mgr
+                    %% will push to memcached.
+                    DS
+            end;
+        DS -> DS
     end.
 
 rename_and_refresh(#state{path = Path,

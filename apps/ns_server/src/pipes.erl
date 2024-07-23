@@ -25,6 +25,7 @@
 
 -export([read_file/1, read_file/2,
          write_file/1, write_file/2,
+         write_encrypted_file/3,
          gzip/0, gzip/1, gunzip/0,
          buffer/1, simple_buffer/1,
          marshal_terms/0, marshal_terms/1, unmarshal_terms/0,
@@ -172,6 +173,28 @@ write_file(File, Options) ->
                    fun (Data) ->
                            ok = file:write(File, Data)
                    end)
+       end).
+
+write_encrypted_file(File, Filename, DeksSnapshot) ->
+    write_encrypted_file(File, Filename, DeksSnapshot, []).
+
+write_encrypted_file(File, Filename, DeksSnapshot, Options) ->
+    BufSize = proplists:get_value(bufsize, Options, 1024 * 1024),
+
+    ?make_consumer(
+       begin
+           {FileEncrptionHeader, EncrState} =
+               cb_crypto:file_encrypt_init(Filename, DeksSnapshot),
+           ok = file:write(File, FileEncrptionHeader),
+           Producer = run(?producer(), simple_buffer(BufSize)),
+           fold(Producer,
+                fun (Data, EncrStateAcc) ->
+                        {EncryptedData, NewEncrStateAcc} =
+                            cb_crypto:file_encrypt_chunk(Data, EncrStateAcc),
+                        ok = file:write(File, EncryptedData),
+                        NewEncrStateAcc
+                end, EncrState),
+           ok
        end).
 
 simple_buffer(BufSize) ->
