@@ -34,7 +34,9 @@ start_link() ->
 
 init([]) ->
     {ok, {{one_for_one, 10, 1},
-          [{local_tasks, {local_tasks, start_link, []},
+          [{atomic_persistent_term, {cb_atomic_persistent_term, start_link, []},
+            permanent, 5000, worker, [cb_atomic_persistent_term]},
+           {local_tasks, {local_tasks, start_link, []},
             permanent, brutal_kill, worker, [local_tasks]},
            {log_os_info, {log_os_info, start_link, []},
             transient, 1000, worker, [log_os_info]},
