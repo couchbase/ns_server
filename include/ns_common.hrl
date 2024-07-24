@@ -253,6 +253,7 @@
 -define(VERSION_71, [7, 1]).
 -define(VERSION_72, [7, 2]).
 -define(VERSION_76, [7, 6]).
+-define(VERSION_CYPHER, [7,7]).
 
 -define(MIN_SUPPORTED_VERSION, ?VERSION_71).
 
@@ -264,8 +265,8 @@
 -define(LATEST_UI_COMPAT_VERSION, ?VERSION_70).
 
 %% Points to latest release
--define(LATEST_VERSION_NUM, ?VERSION_76).
--define(MASTER_ADVERTISED_VERSION, [7, 6, 0]).
+-define(LATEST_VERSION_NUM, ?VERSION_CYPHER).
+-define(MASTER_ADVERTISED_VERSION, [7, 7, 0]).
 
 -define(MIN_OF_MAX_MOVES_PER_NODE, 1).
 -define(MAX_OF_MAX_MOVES_PER_NODE, 64).

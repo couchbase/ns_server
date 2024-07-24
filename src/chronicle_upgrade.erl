@@ -125,4 +125,7 @@ upgrade_to(?VERSION_72, UpgradeTxn) ->
     {?VERSION_76,
      functools:chain(
        UpgradeTxn,
-       [ns_bucket:chronicle_upgrade_to_76(_)])}.
+       [ns_bucket:chronicle_upgrade_to_76(_)])};
+
+upgrade_to(?VERSION_76, UpgradeTxn) ->
+    {?VERSION_CYPHER, UpgradeTxn}.

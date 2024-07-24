@@ -33,7 +33,7 @@ get_current_version() ->
     %% changed in 6.0.4 after 6.5.0 had shipped.  As 6.5.0 had no knowledge
     %% of the 6.0.4 version (as it didn't exist when 6.5.0 shipped) it
     %% was unable to perform an upgrade.
-    list_to_tuple(?VERSION_76).
+    list_to_tuple(?LATEST_VERSION_NUM).
 
 get_min_supported_version() ->
     list_to_tuple(?MIN_SUPPORTED_VERSION).
@@ -410,11 +410,14 @@ upgrade_config(Config) ->
             [{set, {node, node(), config_version}, {7,2}} |
              upgrade_config_from_7_1_to_7_2(Config)];
         {7,2} ->
+            [{set, {node, node(), config_version}, {7,6}} |
+             upgrade_config_from_7_2_to_76(Config)];
+        {7,6} ->
             %% When upgrading to the latest config_version always upgrade
             %% service_ports.
             service_ports:offline_upgrade(Config) ++
                 [{set, {node, node(), config_version}, CurrentVersion} |
-                 upgrade_config_from_7_2_to_76(Config)];
+                 upgrade_config_from_76_to_77(Config)];
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
                        "unsupported version ~p. Terminating.", [OldVersion]),
@@ -475,6 +478,13 @@ upgrade_config_from_7_2_to_76(Config) ->
 do_upgrade_config_from_7_2_to_76(_Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig)].
+
+upgrade_config_from_76_to_77(Config) ->
+    DefaultConfig = default(?VERSION_CYPHER),
+    do_upgrade_config_from_76_to_77(Config, DefaultConfig).
+
+do_upgrade_config_from_76_to_77(_Config, _DefaultConfig) ->
+    [].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),

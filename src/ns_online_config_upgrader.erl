@@ -88,4 +88,7 @@ upgrade(?VERSION_72, Config) ->
          ns_ssl_services_setup:config_upgrade_to_76(Config) ++
          ldap_util:config_upgrade_to_76(Config) ++
          menelaus_web_guardrails:config_upgrade_to_76(Config) ++
-         ns_config_auth:config_upgrade_to_76(Config)}.
+         ns_config_auth:config_upgrade_to_76(Config)};
+
+upgrade(?VERSION_76, _Config) ->
+    {?VERSION_CYPHER, []}.

@@ -27,6 +27,8 @@
          is_version_72/1,
          is_cluster_76/0,
          is_version_76/1,
+         is_cluster_cypher/0,
+         is_cluster_cypher/1,
          is_enterprise/0,
          is_enterprise/1,
          is_saslauthd_enabled/0,
@@ -129,6 +131,12 @@ is_version_76(ClusterVersion) ->
 
 is_cluster_76() ->
     is_enabled(?VERSION_76).
+
+is_cluster_cypher(ClusterVersion) ->
+    is_enabled_at(ClusterVersion, ?VERSION_CYPHER).
+
+is_cluster_cypher() ->
+    is_enabled(?VERSION_CYPHER).
 
 is_index_aware_rebalance_on() ->
     not ns_config:read_key_fast(index_aware_rebalance_disabled, false).
