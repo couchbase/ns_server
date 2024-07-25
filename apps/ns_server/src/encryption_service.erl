@@ -437,7 +437,7 @@ get_all_keys_in_dir(KeyDir) ->
         {ok, Filenames} ->
             AllFiles = [iolist_to_binary(F) || F <- Filenames],
             Keys = AllFiles -- [iolist_to_binary(?ACTIVE_KEY_FILENAME)],
-            [F || F <- Keys, misc:is_valid_v4uuid(F)];
+            [F || F <- Keys, cb_cluster_secrets:is_valid_key_id(F)];
         {error, enoent} ->
             [];
         {error, Reason} ->

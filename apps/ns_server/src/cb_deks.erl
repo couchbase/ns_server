@@ -30,11 +30,11 @@
 -type encryption_method() :: {secret, cb_cluster_secrets:secret_id()} |
                              encryption_service |
                              disabled.
--type dek_id() :: binary().
+-type dek_id() :: cb_cluster_secrets:key_id().
 -type dek_kind() :: kek | chronicleDek | configDek | {bucketDek, string()}.
 -type dek() :: #{id := dek_id(), type := 'raw-aes-gcm',
                  info := #{key := fun(() -> binary()),
-                           encryption_key_id := cb_cluster_secrets:kek_id()}}.
+                           encryption_key_id := cb_cluster_secrets:key_id()}}.
 
 -spec list(dek_kind()) ->
     {ok, {undefined | dek_id(), [dek_id()], ExtraInfo :: term()}} | {error, _}.
@@ -67,7 +67,8 @@ external_list(Kind) ->
             KeyFilenames = Filenames -- [?ACTIVE_KEY_FILENAME],
 
             %% Ignore files that doesn't look like keys:
-            Ids = [F || F <- KeyFilenames, misc:is_valid_v4uuid(F)],
+            Ids = [F || F <- KeyFilenames,
+                   cb_cluster_secrets:is_valid_key_id(iolist_to_binary(F))],
             IgnoredFiles = KeyFilenames -- Ids,
             BinIds = [list_to_binary(Id) || Id <- Ids],
             case file:read_file(ActiveKeyPath) of
@@ -117,12 +118,11 @@ generate_new(Kind, {secret, Id}, Snapshot) ->
         new(Kind, KekId)
     end.
 
--spec new(dek_kind(), cb_cluster_secrets:kek_id()) ->
+-spec new(dek_kind(), cb_cluster_secrets:key_id()) ->
                                                     {ok, dek_id()} | {error, _}.
 new(Kind, KekIdToEncrypt) ->
     ?log_debug("Generating new dek (~p)", [Kind]),
-    Id = misc:uuid_v4(),
-    true = misc:is_valid_v4uuid(Id),
+    Id = cb_cluster_secrets:new_key_id(),
     Bin = cb_cluster_secrets:generate_raw_key(aes_256_gcm),
     case encryption_service:store_dek(Kind, Id, Bin, KekIdToEncrypt) of
         ok -> {ok, Id};

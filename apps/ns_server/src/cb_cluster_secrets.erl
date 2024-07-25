@@ -51,7 +51,9 @@
          ensure_can_encrypt_dek_kind/3,
          is_allowed_usage_for_secret/3,
          generate_raw_key/1,
-         sync_with_all_node_monitors/0]).
+         sync_with_all_node_monitors/0,
+         new_key_id/0,
+         is_valid_key_id/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -72,7 +74,7 @@
                          :: #{atom() := reference() | undefined},
                 deks = #{} :: #{cb_deks:dek_kind() := deks_info()}}).
 
--export_type([secret_id/0, kek_id/0, chronicle_snapshot/0]).
+-export_type([secret_id/0, key_id/0, chronicle_snapshot/0]).
 
 -type secret_props() ::
     #{id := secret_id(),
@@ -88,16 +90,16 @@
                                     rotation_interval_in_days := pos_integer(),
                                     next_rotation_time := calendar:datetime(),
                                     last_rotation_time := calendar:datetime(),
-                                    active_key_id := kek_id(),
+                                    active_key_id := key_id(),
                                     keys := [kek_props()],
                                     encrypt_by := nodeSecretManager |
                                                   clusterSecret,
                                     encrypt_secret_id := secret_id() |
                                                          ?SECRET_ID_NOT_SET}.
--type kek_props() :: #{id := kek_id(),
+-type kek_props() :: #{id := key_id(),
                        creation_time := calendar:datetime(),
                        key := {sensitive | encrypted_binary, binary()},
-                       encrypted_by := undefined | {secret_id(), kek_id()}}.
+                       encrypted_by := undefined | {secret_id(), key_id()}}.
 -type aws_key_data() :: #{key_arn := string(),
                           region := string(),
                           profile := string(),
@@ -106,7 +108,7 @@
                           use_imds := boolean(),
                           uuid := uuid()}.
 -type secret_id() :: non_neg_integer().
--type kek_id() :: uuid().
+-type key_id() :: uuid().
 -type chronicle_snapshot() :: direct | map().
 -type uuid() :: binary(). %% uuid as binary string
 -type node_job() :: garbage_collect_keks |
@@ -310,13 +312,13 @@ rotate_internal(Id) ->
             {error, Reason}
     end.
 
--spec get_active_key_id(secret_id()) -> {ok, kek_id()} |
+-spec get_active_key_id(secret_id()) -> {ok, key_id()} |
                                         {error, not_found | not_supported}.
 get_active_key_id(SecretId) ->
     get_active_key_id(SecretId, direct).
 
 -spec get_active_key_id(secret_id(), chronicle_snapshot()) ->
-                                            {ok, kek_id()} |
+                                            {ok, key_id()} |
                                             {error, not_found | not_supported}.
 get_active_key_id(SecretId, Snapshot) ->
     maybe
@@ -365,7 +367,7 @@ is_allowed_usage_for_secret(SecretId, Usage, Snapshot) ->
     end.
 
 -spec get_secret_by_kek_id_map(chronicle_snapshot()) ->
-                                                    #{kek_id() := secret_id()}.
+                                                    #{key_id() := secret_id()}.
 get_secret_by_kek_id_map(Snapshot) ->
     maps:from_list(lists:flatmap(
                      fun (#{id := Id} = S) ->
@@ -375,6 +377,15 @@ get_secret_by_kek_id_map(Snapshot) ->
 -spec get_node_deks_info() -> #{cb_deks:dek_kind() := [cb_deks:dek()]} | retry.
 get_node_deks_info() ->
     gen_server:call(?MODULE, get_node_deks_info, ?DEK_COUNTERS_UPDATE_TIMEOUT).
+
+-spec new_key_id() -> key_id().
+new_key_id() ->
+    Id = misc:uuid_v4(),
+    true = is_valid_key_id(Id),
+    Id.
+
+-spec is_valid_key_id(binary()) -> boolean().
+is_valid_key_id(Bin) -> misc:is_valid_v4uuid(Bin).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -543,7 +554,7 @@ generate_key(CreationDateTime, #{data := SecretData}) ->
                             {error, {encrypt_id, not_allowed}}
                     end
             end,
-        KeyProps = #{id => misc:uuid_v4(),
+        KeyProps = #{id => new_key_id(),
                      creation_time => CreationDateTime,
                      key => {sensitive, Key},
                      encrypted_by => undefined},
@@ -555,7 +566,7 @@ generate_key(CreationDateTime, #{data := SecretData}) ->
         {error, Reason} -> {error, Reason}
     end.
 
--spec set_active_key_in_props(secret_props(), kek_id()) -> secret_props().
+-spec set_active_key_in_props(secret_props(), key_id()) -> secret_props().
 set_active_key_in_props(#{type := ?GENERATED_KEY_TYPE,
                           data := Data} = SecretProps,
                         KeyId) ->
@@ -699,7 +710,7 @@ garbage_collect_keks() ->
     ?log_debug("KEYS GC: All existing keks: ~p", [AllKekIds]),
     encryption_service:garbage_collect_keks(AllKekIds).
 
--spec all_kek_ids() -> [kek_id()].
+-spec all_kek_ids() -> [key_id()].
 all_kek_ids() ->
     lists:flatmap(fun (#{type := ?AWSKMS_KEY_TYPE, data := #{uuid := UUID}}) ->
                           [UUID];
@@ -723,7 +734,7 @@ prepare_new_secret(#{type := ?GENERATED_KEY_TYPE,
         {error, _} = Error -> Error
     end;
 prepare_new_secret(#{type := ?AWSKMS_KEY_TYPE, data := Data} = Props) ->
-    {ok, Props#{data => Data#{uuid => misc:uuid_v4()}}};
+    {ok, Props#{data => Data#{uuid => new_key_id()}}};
 prepare_new_secret(#{type := _Type}) ->
     {error, not_supported}.
 
@@ -921,7 +932,7 @@ deks_config_snapshot(Kind) ->
                                                      DekKeys]),
     Snapshot.
 
--spec get_all_keys_from_props(secret_props()) -> [kek_id()].
+-spec get_all_keys_from_props(secret_props()) -> [key_id()].
 get_all_keys_from_props(#{type := ?GENERATED_KEY_TYPE,
                           data := #{keys := Keys}}) ->
     lists:map(fun (#{id := Id}) -> Id end, Keys);
@@ -1000,7 +1011,7 @@ get_dek_kinds_used_by_secret_id(Id, Snapshot) ->
                                #{default => #{}}),
     maps:keys(maps:get({secret, Id}, Map, #{})).
 
--spec get_active_key_id_from_secret(secret_props()) -> {ok, kek_id()} |
+-spec get_active_key_id_from_secret(secret_props()) -> {ok, key_id()} |
                                                        {error, not_supported}.
 get_active_key_id_from_secret(#{type := ?GENERATED_KEY_TYPE,
                                 data := #{active_key_id := Id}}) ->
@@ -1051,7 +1062,7 @@ maybe_reencrypt_secrets() ->
         no_change -> ok
     end.
 
--spec maybe_reencrypt_secret_txn(secret_props(), #{secret_id() := kek_id()}) ->
+-spec maybe_reencrypt_secret_txn(secret_props(), #{secret_id() := key_id()}) ->
                                                 false | {true, secret_props()}.
 maybe_reencrypt_secret_txn(#{type := ?GENERATED_KEY_TYPE} = Secret, KeksMap) ->
     #{data := #{keys := Keys} = Data} = Secret,
@@ -1063,7 +1074,7 @@ maybe_reencrypt_secret_txn(#{}, _) ->
     false.
 
 -spec maybe_reencrypt_keks([kek_props()], secret_props(),
-                           #{secret_id() := kek_id()}) ->
+                           #{secret_id() := key_id()}) ->
                                                 {ok, [kek_props()]} | no_change.
 maybe_reencrypt_keks(Keys, #{data := SecretData}, KeksMap) ->
     NewEncryptedBy =
@@ -1086,7 +1097,7 @@ maybe_reencrypt_keks(Keys, #{data := SecretData}, KeksMap) ->
         {_, no_change} -> no_change
     end.
 
--spec maybe_reencrypt_kek(kek_props(), undefined | {secret_id(), kek_id()}) ->
+-spec maybe_reencrypt_kek(kek_props(), undefined | {secret_id(), key_id()}) ->
                                                         no_change | kek_props().
 %% Already encrypted with correct key
 maybe_reencrypt_kek(#{key := {encrypted_binary, _},
