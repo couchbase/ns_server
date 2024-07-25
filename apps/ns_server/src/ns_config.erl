@@ -61,7 +61,7 @@
 
 -export([compute_global_rev/1]).
 
--export([save_config_sync/1, save_config_sync/2, do_not_save_config/1]).
+-export([save_config_sync/3, do_not_save_config/1]).
 
 % Exported for tests only
 -ifdef(TEST).
@@ -1163,17 +1163,15 @@ load_config(ConfigPath, DirPath, PolicyMod) ->
             E
     end.
 
-save_config_sync(#config{dynamic = D}, DirPath) ->
-    save_config_sync(D, DirPath);
+save_config_sync(#config{dynamic = D}, DirPath, ShouldEncrypt) ->
+    save_config_sync(D, DirPath, ShouldEncrypt);
 
-save_config_sync(Dynamic, DirPath) when is_list(Dynamic) ->
+save_config_sync(Dynamic, DirPath, ShouldEncrypt) when is_list(Dynamic) ->
     C = dynamic_config_path(DirPath),
-    ok = save_file(bin, C, Dynamic),
-    ok.
-
-save_config_sync(Config) ->
-    {value, DirPath} = search(Config, directory),
-    save_config_sync(Config, DirPath).
+    case ShouldEncrypt of
+        true -> ok = save_file_encrypted(C, Dynamic);
+        false -> ok = save_file(bin, C, Dynamic)
+    end.
 
 do_not_save_config(_Config) ->
     ok.
@@ -1224,11 +1222,20 @@ erase_ets_dup(Keys) ->
 load_file(txt, ConfigPath) -> read_includes(ConfigPath);
 
 load_file(bin, ConfigPath) ->
-    case file:read_file(ConfigPath) of
-        {ok, <<>>} -> not_found;
-        {ok, B}    -> {ok, binary_to_term(B)};
-        _          -> not_found
+    case cb_crypto:read_file(ConfigPath, configDek) of
+        {decrypted, B} -> {ok, binary_to_term(B)};
+        {raw, <<>>} -> not_found;
+        {raw, B} -> {ok, binary_to_term(B)};
+        Error ->
+            ?log_error("ns_config load_file(~s) returned error: ~p",
+                       [ConfigPath, Error]),
+            not_found
     end.
+
+save_file_encrypted(ConfigPath, Config) ->
+    {ok, DeksSnapshot} = cb_crypto:fetch_deks_snapshot(configDek),
+    cb_crypto:atomic_write_file(ConfigPath, term_to_binary(Config),
+                                DeksSnapshot).
 
 save_file(bin, ConfigPath, X) ->
     TempFile = path_config:tempfile(filename:dirname(ConfigPath),

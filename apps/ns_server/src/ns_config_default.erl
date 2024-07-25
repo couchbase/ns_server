@@ -504,37 +504,11 @@ upgrade_config_from_77_to_morpheus(Config) ->
 do_upgrade_config_from_77_to_morpheus(_Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig)].
 
-encrypt_config_val(Val) ->
-    {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
-    {encrypted, Encrypted}.
-
-encrypt(Config) ->
-    misc:rewrite_tuples(fun ({admin_pass, Pass}) ->
-                                {stop, {admin_pass, encrypt_config_val(Pass)}};
-                            ({metakv_sensitive, Val}) ->
-                                {stop, {metakv_sensitive, encrypt_config_val(Val)}};
-                            ({cookie, Cookie}) ->
-                                {stop, {cookie, encrypt_config_val(Cookie)}};
-                            ({pass, Pass}) ->
-                                {stop, {pass, encrypt_config_val(Pass)}};
-                            ({password, Pass}) ->
-                                {stop, {password, encrypt_config_val(Pass)}};
-                            (_) ->
-                                continue
-                        end, Config).
-
 encrypt_and_save(Config) ->
     {value, DirPath} = ns_config:search(Config, directory),
     Dynamic = ns_config:get_kv_list_with_config(Config),
-    case cluster_compat_mode:is_enterprise() of
-        true ->
-            {ok, KeysRef} = encryption_service:get_keys_ref(),
-            EncryptedConfig = encrypt(Dynamic),
-            ns_config:save_config_sync([EncryptedConfig], DirPath),
-            ok = encryption_service:maybe_clear_backup_key(KeysRef);
-        false ->
-            ns_config:save_config_sync([Dynamic], DirPath)
-    end.
+    ns_config:save_config_sync([Dynamic], DirPath,
+                               cluster_compat_mode:is_enterprise()).
 
 decrypt(Config) ->
     misc:rewrite_tuples(fun ({encrypted, Val}) when is_binary(Val) ->

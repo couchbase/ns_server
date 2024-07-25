@@ -10,7 +10,7 @@
 -module(cb_atomic_persistent_term).
 
 %% API
--export([start_link/0, set/2, get_or_set_if_undefined/2]).
+-export([start_link/0, stop/1, set/2, get_or_set_if_undefined/2]).
 
 %%%===================================================================
 %%% API
@@ -18,6 +18,9 @@
 
 start_link() ->
     work_queue:start_link(?MODULE).
+
+stop(Reason) ->
+    misc:terminate_and_wait(whereis(?MODULE), Reason).
 
 get_or_set_if_undefined(Name, ValueFun) ->
     maybe

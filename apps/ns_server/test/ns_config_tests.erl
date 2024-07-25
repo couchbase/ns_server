@@ -310,7 +310,7 @@ test_save_config() ->
     {ok, #config{dynamic = [Dynamic]} = E} = R,
     X = E#config{dynamic = [misc:update_proplist(Dynamic, [{x,2},{y,3}])],
                  policy_mod = ?MODULE},
-    ?assertEqual(ok, ns_config:save_config_sync(X, test_dir())),
+    ?assertEqual(ok, ns_config:save_config_sync(X, test_dir(), false)),
     R2 = ns_config:load_config(CP, test_dir(), ?MODULE),
     ?assertMatch({ok, X}, R2),
     ok.
@@ -397,6 +397,7 @@ test_include_missing_config() ->
     ok.
 
 test_setup() ->
+    {ok, _} = cb_atomic_persistent_term:start_link(),
     process_flag(trap_exit, true),
     misc:rm_rf(test_dir()),
     ns_config:mock_tombstone_agent(),
@@ -406,7 +407,8 @@ test_teardown(_) ->
     file:delete(data_file()),
     misc:rm_rf(test_dir()),
     ns_config:unmock_tombstone_agent(),
-    meck:unload().
+    meck:unload(),
+    cb_atomic_persistent_term:stop(shutdown).
 
 test_dir() ->
   Dir = filename:join([t:config(priv_dir), "data", "config"]),

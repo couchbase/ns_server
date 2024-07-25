@@ -43,11 +43,8 @@ handle_rotate_data_key(Req) ->
     menelaus_util:assert_is_enterprise(),
 
     RV = encryption_service:rotate_data_key(),
-    %% the reason that resave is called regardless of the return value of
-    %% rotate_data_key is that in case of previous insuccessful attempt to
-    %% rotate, the backup key is still might be set in encryption_service
-    %% and we want to clean it up, so the next attempt to rotate will succeed
-    ns_config:resave(),
+    {ok, KeysRef} = encryption_service:get_keys_ref(),
+    ok = encryption_service:maybe_clear_backup_key(KeysRef),
     case RV of
         ok ->
             ns_audit:data_key_rotation(Req, undefined),

@@ -347,5 +347,6 @@ set_config_active_key(_ActiveDek) ->
     maybe
         ok ?= memcached_config_mgr:push_config_encryption_key(true),
         ok ?= memcached_passwords:sync_reload(),
-        ok ?= memcached_permissions:sync_reload()
+        ok ?= memcached_permissions:sync_reload(),
+        ok ?= ns_config:resave()
     end.
