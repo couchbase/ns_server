@@ -25,6 +25,10 @@
          file_encrypt_init/2,
          file_encrypt_chunk/2,
 
+         read_file/2,
+         file_decrypt_init/3,
+         file_decrypt_next_chunk/2,
+
          new_aes_gcm_iv/1,
 
          %% Manage deks in persistent_term storage:
@@ -50,6 +54,11 @@
                           iv_random :: binary(),
                           iv_atomic_counter :: atomics:atomics_ref() ,
                           offset :: non_neg_integer()}).
+
+-record(file_decr_state, {vsn :: non_neg_integer(),
+                          filename = <<>> :: binary(),
+                          key :: cb_deks:dek(),
+                          offset = 0 :: non_neg_integer()}).
 
 %%%===================================================================
 %%% API
@@ -124,6 +133,63 @@ file_encrypt_chunk(Data, #file_encr_state{key = Dek,
     ChunkWithSize = <<ChunkSize:32/big-unsigned-integer, Chunk/binary>>,
     NewOffset = Offset + size(ChunkWithSize),
     {ChunkWithSize, State#file_encr_state{offset = NewOffset}}.
+
+-spec read_file(string(), cb_deks:dek_kind()) -> {decrypted, binary()} |
+                                                 {raw, binary()} |
+                                                 {error, term()}.
+read_file(Path, DekKind) ->
+    maybe
+        {ok, Data} ?= file:read_file(Path),
+        Filename = filename:basename(Path),
+        case decrypt_file_data(Data, Filename, DekKind) of
+            {ok, Decrypted} ->
+                {decrypted, Decrypted};
+            {error, unknown_magic} ->
+                %% File is not encrypted?
+                {raw, Data};
+            {error, _} = Error ->
+                Error
+        end
+    end.
+
+-spec file_decrypt_init(binary(), string(), #dek_snapshot{}) ->
+          {ok, {#file_decr_state{}, RestData :: binary()}} |
+          need_more_data |
+          {error, term()}.
+file_decrypt_init(Data, Filename, DekSnapshot) ->
+    maybe
+        {ok, {Vsn, Id, Offset, Chunks}} ?= parse_header(Data),
+        {ok, Dek} ?= find_key(Id, DekSnapshot),
+        State = #file_decr_state{vsn = Vsn,
+                                 filename = iolist_to_binary(Filename),
+                                 key = Dek,
+                                 offset = Offset},
+        {ok, {State, Chunks}}
+    end.
+
+-spec file_decrypt_next_chunk(binary(), #file_decr_state{}) ->
+          {ok, {NewState :: #file_decr_state{},
+                DecryptedChunk :: binary(),
+                RestData :: binary()}} |
+          need_more_data | eof | {error, term()}.
+file_decrypt_next_chunk(Data, #file_decr_state{vsn = 0,
+                                               key = Dek,
+                                               offset = Offset} = State) ->
+    case bite_next_chunk(Data) of
+        {ok, {SizeEaten, Chunk}, Rest} ->
+            AD = file_assoc_data(State),
+            case decrypt_internal(Chunk, AD, [Dek]) of
+                {ok, DecryptedData} ->
+                    NewOffset = Offset + SizeEaten,
+                    NewState = State#file_decr_state{offset = NewOffset},
+                    {ok, {NewState, DecryptedData, Rest}};
+                {error, _} = Error ->
+                    Error
+            end;
+        eof -> eof;
+        need_more_data -> need_more_data;
+        {error, _} = Error -> Error
+    end.
 
 -spec new_aes_gcm_iv(#dek_snapshot{}) -> binary().
 new_aes_gcm_iv(#dek_snapshot{iv_random = IVRandom,
@@ -299,5 +365,66 @@ new_aes_gcm_iv(IVRandom, IVAtomic) ->
     ?IV_LEN = size(IV),
     IV.
 
-file_assoc_data(#file_encr_state{filename = Filename, offset = Offset}) ->
+file_assoc_data(State) ->
+    {Filename, Offset} =
+        case State of
+            #file_encr_state{filename = F, offset = O} -> {F, O};
+            #file_decr_state{filename = F, offset = O} -> {F, O}
+        end,
     <<Filename/binary, ":", (integer_to_binary(Offset))/binary>>.
+
+decrypt_file_data(Data, Filename, DekKind) ->
+    maybe
+        {ok, DekSnapshot} ?= fetch_deks_snapshot(DekKind),
+        {ok, {State, Chunks}} ?= file_decrypt_init(Data, Filename, DekSnapshot),
+        {ok, _} ?= decrypt_all_chunks(State, Chunks, <<>>)
+    else
+        need_more_data ->
+            {error, invalid_file_encryption};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+decrypt_all_chunks(State, Data, Acc) ->
+    case file_decrypt_next_chunk(Data, State) of
+        {ok, {NewState, Chunk, Rest}} ->
+            decrypt_all_chunks(NewState, Rest, <<Acc/binary, Chunk/binary>>);
+        eof ->
+            {ok, Acc};
+        need_more_data ->
+            {error, invalid_file_encryption}
+    end.
+
+parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, KeyLen, HeaderTail:36/binary,
+             Rest/binary>>) ->
+    case KeyLen =< 36 of
+        true ->
+            <<Key:KeyLen/binary, _/binary>> = HeaderTail,
+            {ok, {0, Key, ?ENCRYPTED_FILE_HEADER_LEN, Rest}};
+        false ->
+            {error, invalid_encryption_header}
+    end;
+parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, _/binary>>) ->
+    need_more_data;
+parse_header(<<?ENCRYPTED_FILE_MAGIC, V, _/binary>>) ->
+    {error, {unsupported_encryption_version, V}};
+parse_header(_) ->
+    {error, unknown_magic}.
+
+bite_next_chunk(<<ChunkSize:32/big-unsigned-integer, Chunk:ChunkSize/binary,
+                   Rest/binary>>) ->
+    DataSize = ChunkSize - ?IV_LEN - ?TAG_LEN,
+    case DataSize > 0 of
+        true -> {ok, {ChunkSize + 4, Chunk}, Rest};
+        false -> {error, invalid_data_chunk}
+    end;
+bite_next_chunk(<<>>) ->
+    eof;
+bite_next_chunk(<<_/binary>>) ->
+    need_more_data.
+
+find_key(WantedId, #dek_snapshot{all_keys = AllDeks}) ->
+    case lists:search(fun (#{id := Id}) -> Id == WantedId end, AllDeks) of
+        {value, Key} -> {ok, Key};
+        false -> {error, key_not_found}
+    end.
