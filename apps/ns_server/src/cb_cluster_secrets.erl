@@ -1653,10 +1653,6 @@ test_secret(NextTime, Interval, AutoRotation) ->
                  rotation_interval_in_days => Interval,
                  next_rotation_time => NextTime}}.
 
-add_seconds(DateTime, Seconds) ->
-    calendar:gregorian_seconds_to_datetime(
-      calendar:datetime_to_gregorian_seconds(DateTime) + Seconds).
-
 calculate_next_rotation_time_test() ->
     CurTime = {{2016, 09, 30}, {16, 00, 00}},
     Secret = ?cut(test_secret(_1, 1, _2)),
@@ -1665,8 +1661,8 @@ calculate_next_rotation_time_test() ->
     MinSec = Min div 1000,
     Max = ?MAX_RECHECK_ROTATION_INTERVAL,
     MaxSec = Max div 1000,
-    Future = ?cut(add_seconds(CurTime, _)),
-    Past = ?cut(add_seconds(CurTime, -(_))),
+    Future = ?cut(misc:datetime_add(CurTime, _)),
+    Past = ?cut(misc:datetime_add(CurTime, -(_))),
     ?assertEqual(Max, Calc([])),
     ?assertEqual(Min, Calc([Secret(CurTime, true)])),
     ?assertEqual(Max, Calc([Secret(CurTime, false)])),
@@ -1702,8 +1698,8 @@ update_next_rotation_time_test() ->
                end
            end,
     D = ?SECS_IN_DAY,
-    Future = ?cut(add_seconds(CurTime, _)),
-    Past = ?cut(add_seconds(CurTime, -(_))),
+    Future = ?cut(misc:datetime_add(CurTime, _)),
+    Past = ?cut(misc:datetime_add(CurTime, -(_))),
 
     ?assertEqual(false,             Calc(CurTime, 3, false)),
     ?assertEqual(false,             Calc(Past(1), 3, false)),

@@ -1044,10 +1044,7 @@ handle_saml_assertion(Req, {ok, Assertion}, SSOOpts) ->
                         case proplists:get_value(session_not_on_or_after,
                                                  Authn) of
                             undefined -> undefined;
-                            DT ->
-                                calendar:gregorian_seconds_to_datetime(
-                                  calendar:datetime_to_gregorian_seconds(DT) +
-                                  ClockSkew)
+                            DT -> misc:datetime_add(DT, ClockSkew)
                         end
                 end,
             AuthnRes0 = menelaus_auth:init_auth({Username, external}),
