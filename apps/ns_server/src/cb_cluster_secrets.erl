@@ -24,6 +24,9 @@
 -define(NODE_PROC, node_monitor_process).
 -define(MASTER_PROC, master_monitor_process).
 -define(DEK_COUNTERS_UPDATE_TIMEOUT, ?get_timeout(counters_update, 30000)).
+-define(DEK_TIMER_RETRY_TIME_S, ?get_param(dek_retry_interval, 60)).
+-define(DEK_DROP_RETRY_TIME_S(Kind),
+        ?get_param({dek_removal_min_interval, Kind}, 60*60*3)).
 
 -ifndef(TEST).
 -define(MIN_RECHECK_ROTATION_INTERVAL, ?get_param(min_rotation_recheck_interval,
@@ -53,7 +56,8 @@
          generate_raw_key/1,
          sync_with_all_node_monitors/0,
          new_key_id/0,
-         is_valid_key_id/1]).
+         is_valid_key_id/1,
+         dek_drop_complete/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -70,7 +74,8 @@
 -record(state, {proc_type :: ?NODE_PROC | ?MASTER_PROC,
                 jobs :: [node_job()] | [master_job()],
                 timers = #{retry_jobs => undefined,
-                           rotate_keks => undefined}
+                           rotate_keks => undefined,
+                           dek_cleanup => undefined}
                          :: #{atom() := reference() | undefined},
                 deks = #{} :: #{cb_deks:dek_kind() := deks_info()}}).
 
@@ -128,7 +133,9 @@
 
 -type deks_info() :: #{active_id := cb_deks:dek_id() | undefined,
                        deks := [cb_deks:dek()],
-                       is_enabled := boolean()}.
+                       is_enabled := boolean(),
+                       deks_being_dropped := [cb_deks:dek_id()],
+                       last_drop_timestamp := undefined | non_neg_integer()}.
 
 %%%===================================================================
 %%% API
@@ -388,6 +395,11 @@ new_key_id() ->
 -spec is_valid_key_id(binary()) -> boolean().
 is_valid_key_id(Bin) -> misc:is_valid_v4uuid(Bin).
 
+-spec dek_drop_complete(cb_deks:dek_kind()) -> ok.
+dek_drop_complete(DekKind) ->
+    ?MODULE ! {dek_drop_complete, DekKind},
+    ok.
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -423,8 +435,10 @@ init([Type]) ->
                     ensure_all_keks_on_disk,
                     maybe_reencrypt_deks]
            end,
-    {ok, restart_rotation_timer(run_jobs(#state{proc_type = Type,
-                                                jobs = Jobs}))}.
+    {ok, functools:chain(#state{proc_type = Type, jobs = Jobs},
+                         [run_jobs(_),
+                          restart_dek_cleanup_timer(_),
+                          restart_rotation_timer(_)])}.
 
 handle_call({call, {M, F, A} = MFA}, _From,
             #state{proc_type = ?MASTER_PROC} = State) ->
@@ -526,6 +540,26 @@ handle_info({timer, rotate_keks}, #state{proc_type = ?MASTER_PROC} = State) ->
           end
       end, IdsToRotate),
     {noreply, restart_rotation_timer(State)};
+
+handle_info({timer, dek_cleanup} = Msg, #state{proc_type = ?NODE_PROC,
+                                               deks = DeksInfo} = State) ->
+    ?log_debug("DEK cleanup timer"),
+    misc:flush(Msg),
+    NewState =
+        maps:fold(
+          fun (Kind, KindDeks, StateAcc) ->
+              case deks_to_drop(Kind, KindDeks) of
+                  [] -> StateAcc;
+                  ToDrop -> initiate_deks_drop(Kind, ToDrop, StateAcc)
+              end
+          end, State, DeksInfo),
+    {noreply, restart_dek_cleanup_timer(NewState)};
+
+handle_info({dek_drop_complete, Kind} = Msg,
+            #state{proc_type = ?NODE_PROC} = State) ->
+    ?log_debug("Dek drop complete: ~p", [Kind]),
+    misc:flush(Msg),
+    {noreply, add_and_run_jobs([{garbage_collect_deks, Kind}], State)};
 
 handle_info(Info, State) ->
     ?log_warning("Unhandled info: ~p", [Info]),
@@ -956,9 +990,16 @@ read_deks(Kind, #state{deks = AllDeks} = State) ->
                     undefined -> false
                 end,
     {ok, Deks} = cb_deks:read(Kind, DekIds),
-    State#state{deks = AllDeks#{Kind => #{active_id => ActiveDek,
-                                          deks => Deks,
-                                          is_enabled => IsEnabled}}}.
+    CurKindDeks = maps:get(Kind, AllDeks, #{}),
+    CurDeksDropped = maps:get(deks_being_dropped, CurKindDeks, []),
+    CurDeksDroppedCleaned = CurDeksDropped -- (CurDeksDropped -- DekIds),
+    CurLastDropTS = maps:get(last_drop_timestamp, CurKindDeks, undefined),
+    KindDeks = #{active_id => ActiveDek,
+                 deks => Deks,
+                 is_enabled => IsEnabled,
+                 deks_being_dropped => CurDeksDroppedCleaned,
+                 last_drop_timestamp => CurLastDropTS},
+    restart_dek_cleanup_timer(State#state{deks = AllDeks#{Kind => KindDeks}}).
 
 -spec generate_new_dek(cb_deks:dek_kind(), cb_deks:encryption_method(),
                        chronicle_snapshot()) -> ok | {error, _}.
@@ -1323,21 +1364,93 @@ restart_rotation_timer(#state{proc_type = ?MASTER_PROC} = State) ->
 -spec calculate_next_rotation_time(calendar:datetime(), [secret_props()]) ->
                                             TimeInMs :: non_neg_integer().
 calculate_next_rotation_time(CurDateTime, Secrets) ->
-    Cur = calendar:datetime_to_gregorian_seconds(CurDateTime),
-    Intervals = lists:map(next_rotation_time(_, Cur), Secrets),
-    lists:min([?MAX_RECHECK_ROTATION_INTERVAL | Intervals]).
+    Times = [T || S <- Secrets, T <- [get_rotation_time(S)], T =/= undefined],
+    time_to_first_event(CurDateTime, Times).
 
--spec next_rotation_time(secret_props(), non_neg_integer()) ->
-                                                TimeInMs :: non_neg_integer().
-next_rotation_time(#{type := ?GENERATED_KEY_TYPE,
-                     data := #{auto_rotation := true,
-                               next_rotation_time := Next}}, CurTimeGregSec) ->
-    NextGregSec = calendar:datetime_to_gregorian_seconds(Next),
-    ExpireIn = (NextGregSec - CurTimeGregSec) * 1000, %% can be negative
-    min(max(ExpireIn, ?MIN_RECHECK_ROTATION_INTERVAL),
-        ?MAX_RECHECK_ROTATION_INTERVAL);
-next_rotation_time(#{}, _Now) ->
-    ?MAX_RECHECK_ROTATION_INTERVAL.
+-spec get_rotation_time(secret_props()) -> calendar:datetime() | undefined.
+get_rotation_time(#{type := ?GENERATED_KEY_TYPE,
+                    data := #{auto_rotation := true,
+                              next_rotation_time := Next}}) ->
+    Next;
+get_rotation_time(#{}) ->
+    undefined.
+
+-spec time_to_first_event(calendar:datetime(), [calendar:datetime()]) ->
+          non_neg_integer().
+time_to_first_event(_CurDateTime, []) -> ?MAX_RECHECK_ROTATION_INTERVAL;
+time_to_first_event(CurDateTime, EventTimes) ->
+    MinDateTime = lists:min(EventTimes),
+    CurSec = calendar:datetime_to_gregorian_seconds(CurDateTime),
+    MinSec = calendar:datetime_to_gregorian_seconds(MinDateTime),
+    TimeRemains = max(?MIN_RECHECK_ROTATION_INTERVAL, (MinSec - CurSec) * 1000),
+    min(?MAX_RECHECK_ROTATION_INTERVAL, TimeRemains).
+
+-spec restart_dek_cleanup_timer(#state{}) -> #state{}.
+restart_dek_cleanup_timer(#state{proc_type = ?MASTER_PROC} = State) ->
+    State;
+restart_dek_cleanup_timer(#state{proc_type = ?NODE_PROC,
+                                 deks = DeksInfo} = State) ->
+    CurDateTime = calendar:universal_time(),
+    Time = calculate_next_dek_cleanup(CurDateTime, DeksInfo),
+    restart_timer(dek_cleanup, Time, State).
+
+-spec calculate_next_dek_cleanup(calendar:datetime(), #{}) ->
+          TimeInMs :: non_neg_integer().
+calculate_next_dek_cleanup(CurDateTime, DeksInfo) ->
+    Times =
+        maps:fold(
+          fun (Kind, KindDeks, Acc) ->
+              Snapshot = deks_config_snapshot(Kind),
+              case call_dek_callback(lifetime_callback, Kind, [Snapshot]) of
+                  {succ, {ok, undefined}} ->
+                      Acc;
+                  {succ, {ok, LifeTimeInSec}} ->
+                      ExpirationTimes = dek_expiration_times(LifeTimeInSec,
+                                                             KindDeks),
+                      [DT || {DT, _} <- ExpirationTimes] ++ Acc;
+                  {succ, {error, not_found}} ->
+                      %% Assume there is not such entity anymore, we just
+                      %% haven't removed deks yet, ignoring them
+                      Acc;
+                  {except, _} ->
+                      [misc:datetime_add(CurDateTime,
+                                         ?DEK_TIMER_RETRY_TIME_S) | Acc]
+              end
+          end, [], DeksInfo),
+    time_to_first_event(CurDateTime, Times).
+
+-spec get_expired_deks(cb_deks:dek_kind(), deks_info()) ->
+          [cb_deks:dek_id()].
+get_expired_deks(Kind, DeksInfo) ->
+    Snapshot = deks_config_snapshot(Kind),
+    case call_dek_callback(lifetime_callback, Kind, [Snapshot]) of
+        {succ, {ok, undefined}} ->
+            [];
+        {succ, {ok, LifeTimeInSec}} ->
+            DekExpirationTimes = dek_expiration_times(LifeTimeInSec, DeksInfo),
+            CurDateTime = calendar:universal_time(),
+            lists:filtermap(fun ({ExpirationTime, Id}) ->
+                             case CurDateTime >= ExpirationTime of
+                                 true -> {true, Id};
+                                 false -> false
+                             end
+                         end, DekExpirationTimes);
+        {succ, {error, not_found}} ->
+            [];
+        {except, _} ->
+            []
+    end.
+
+-spec dek_expiration_times(non_neg_integer(), deks_info()) ->
+          [{calendar:datetime(), cb_deks:dek_id()}].
+dek_expiration_times(LifetimeInSec, #{deks := Deks}) ->
+    CreationTimes = lists:map(
+                      fun (#{type := 'raw-aes-gcm',
+                             id := Id,
+                             info := #{creation_time := Time}}) ->
+                          {Time, Id}
+                      end, Deks),
+    [{misc:datetime_add(DT, LifetimeInSec), Id} || {DT, Id} <- CreationTimes].
 
 -spec validate_encryption_secret_id(secret_props(), chronicle_snapshot()) ->
                     ok | {error, bad_encrypt_id()}.
@@ -1730,6 +1843,94 @@ fetch_snapshot_in_txn(Txn) ->
                          ?CHRONICLE_NEXT_ID_KEY],
                         Txn),
     maps:merge(DeksRelatedSnapshot, SecretsSnapshot).
+
+-spec deks_to_drop(cb_deks:dek_kind(), deks_info()) -> [cb_deks:dek_id()].
+deks_to_drop(Kind, KindDeks) ->
+    CurTime = calendar:universal_time(),
+    NowS = calendar:datetime_to_gregorian_seconds(CurTime),
+    ExpiredIds = get_expired_deks(Kind, KindDeks),
+    #{deks_being_dropped := AlreadyBeingDropped,
+      last_drop_timestamp := LastDropS} = KindDeks,
+    DropRetryInterval = ?DEK_DROP_RETRY_TIME_S(Kind),
+    LastDropTime = case LastDropS of
+                       undefined -> undefined;
+                       _ -> calendar:gregorian_seconds_to_datetime(LastDropS)
+                   end,
+    ?log_debug("The following ~p DEKs has expired: ~p~n"
+               "Among them DEKs that are already being dropped: ~p~n"
+               "Last drop attempt time: ~p",
+               [Kind, ExpiredIds, AlreadyBeingDropped, LastDropTime]),
+    %% If we have already started dropping something, we should continue
+    %% even if it is not "expired" anymore.
+    AllExpired = lists:usort(ExpiredIds ++ AlreadyBeingDropped),
+    ToDrop =
+        maybe
+            #{is_enabled := true, active_id := ActiveId} ?= KindDeks,
+            true ?= lists:member(ActiveId, AllExpired),
+            ?log_error("Active DEK (~p) has expired for "
+                       "~p (ignoring attempt to drop it)",
+                       [ActiveId, Kind]),
+            AllExpired -- [ActiveId]
+        else
+            #{is_enabled := false} -> AllExpired;
+            false -> AllExpired
+        end,
+    ShouldAttemptDrop =
+        case ToDrop -- AlreadyBeingDropped of
+            [_|_] ->
+                true; %% there are new deks in the list
+            [] when ToDrop == [] ->
+                false; %% no deks to drop
+            [] when NowS > LastDropS + DropRetryInterval ->
+                true; %% no new deks to drop, but it's been a while
+                      %% since last drop attempt; will retry
+            [] ->
+                false %% no new deks to drop
+        end,
+    case ShouldAttemptDrop of
+        true -> ToDrop;
+        false -> []
+    end.
+
+-spec initiate_deks_drop(cb_deks:dek_kind(), [cb_deks:dek_id()], #state{}) ->
+         #state{}.
+initiate_deks_drop(Kind, IdsToDrop, #state{deks = DeksInfo} = State0) ->
+    CurTime = calendar:universal_time(),
+    NowS = calendar:datetime_to_gregorian_seconds(CurTime),
+    #{Kind := KindDeks} = DeksInfo,
+    ?log_debug("Trying to drop ~p DEKs: ~0p", [Kind, IdsToDrop]),
+    case call_dek_callback(drop_callback, Kind, [IdsToDrop]) of
+        {succ, {ok, Res}} ->
+            NewKindDeks = KindDeks#{deks_being_dropped => IdsToDrop,
+                                    last_drop_timestamp => NowS},
+            State = State0#state{deks = DeksInfo#{Kind => NewKindDeks}},
+            case Res of
+                done ->
+                    %% 'done' means that all all ids have been dropped and it is
+                    %% safe to remove them
+                    AllIds = [Id || #{id := Id} <- maps:get(deks, KindDeks)],
+                    IdsInUse = AllIds -- IdsToDrop,
+                    case retire_unused_deks(Kind, IdsInUse, State) of
+                        {ok, NewState} ->
+                            NewState;
+                        {error, NewState, Reason} ->
+                            ?log_error("Failed to retire ~p deks: ~p. "
+                                       "Ignoring. Will garbage collect later",
+                                       [Kind, Reason]),
+                            NewState
+                    end;
+                started ->
+                    State
+            end;
+        {succ, {error, not_found}} -> State0;
+        {succ, {error, retry}} -> State0; %% compaction daemon not started yet
+        {succ, {error, Reason}} ->
+            ?log_error("drop_callback for ~p returned error: ~p",
+                       [Kind, Reason]),
+            State0;
+        {except, _} ->
+            State0
+    end.
 
 -ifdef(TEST).
 replace_secret_in_list_test() ->

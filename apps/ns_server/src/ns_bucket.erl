@@ -194,7 +194,8 @@
          update_bucket_config/2,
          update_buckets_config/1,
          all_keys/1,
-         get_encryption/2]).
+         get_encryption/2,
+         get_dek_lifetime/2]).
 
 -import(json_builder,
         [to_binary/1,
@@ -2446,6 +2447,7 @@ extract_bucket_props(Props) ->
                          encryption_secret_id,
                          encryption_dek_rotation_interval,
                          encryption_dek_rotation,
+                         encryption_dek_lifetime,
                          continuous_backup_enabled,
                          continuous_backup_interval,
                          continuous_backup_location]],
@@ -2559,6 +2561,19 @@ get_encryption(BucketName, Snapshot) ->
                     end;
                 false ->
                     {error, not_found}
+            end;
+        not_present ->
+            {error, not_found}
+    end.
+
+get_dek_lifetime(BucketName, Snapshot) ->
+    case get_bucket(BucketName, Snapshot) of
+        {ok, BucketConfig} ->
+            Val = proplists:get_value(encryption_dek_lifetime, BucketConfig,
+                                      ?DEFAULT_DEK_LIFETIME_S),
+            case Val of
+                0 -> {ok, undefined};
+                _ -> {ok, Val}
             end;
         not_present ->
             {error, not_found}

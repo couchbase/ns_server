@@ -28,6 +28,7 @@
          get_snapshot/1,
          sync/0,
          set_active_dek/1,
+         drop_deks/1,
          get_encryption_dek_ids/0]).
 
 %% exported callbacks used by chronicle
@@ -120,7 +121,7 @@ handle_call(get_snapshot, _From, Pid) ->
                 {error, cannot_get_snapshot}
         end,
     {reply, RV, Pid};
-handle_call({set_active_dek, _NewActiveKey}, _From, State) ->
+handle_call(maybe_force_new_keys, _From, State) ->
     {reply, maybe_force_new_keys(), State};
 handle_call(get_encryption_dek_ids, _From, State) ->
     DeksSnapshot = get_chronicle_deks_snapshot(),
@@ -156,8 +157,19 @@ get_snapshot(Node) ->
 sync() ->
     gen_server2:call(?MODULE, sync, ?CALL_TIMEOUT).
 
-set_active_dek(ActiveDek) ->
-    gen_server2:call(?MODULE, {set_active_dek, ActiveDek}, ?CALL_TIMEOUT).
+set_active_dek(_ActiveDek) ->
+    case gen_server2:call(?MODULE, maybe_force_new_keys, ?CALL_TIMEOUT) of
+        {changed, IdsInUse} -> {ok, IdsInUse};
+        {unchanged, _} -> ok
+    end.
+
+drop_deks(IdsToDrop) ->
+    {_, InUse} = gen_server2:call(?MODULE, maybe_force_new_keys, ?CALL_TIMEOUT),
+    StillInUse = [Id || Id <- InUse, lists:member(Id, IdsToDrop)],
+    case StillInUse of
+        [] -> {ok, done};
+        [_ | _] -> {error, {still_in_use, StillInUse}}
+    end.
 
 get_encryption_dek_ids() ->
     gen_server2:call(?MODULE, get_encryption_dek_ids, ?CALL_TIMEOUT).
@@ -379,16 +391,17 @@ maybe_force_new_keys() ->
     Old = get_chronicle_deks_snapshot(),
     {ok, New} = cb_crypto:fetch_deks_snapshot(chronicleDek),
     NewWithoutHistDeks = cb_crypto:without_historical_deks(New),
+    IdsInUse = fun (S) ->
+                   {_, Deks} = cb_crypto:get_all_deks(S),
+                   [cb_crypto:get_dek_id(D) || D <- Deks]
+               end,
     case (cb_crypto:get_dek_id(Old) /= cb_crypto:get_dek_id(New)) orelse
          (NewWithoutHistDeks /= New) of
         true ->
             set_chronicle_deks_snapshot(New),
             ok = rewrite_chronicle_data(),
             set_chronicle_deks_snapshot(NewWithoutHistDeks),
-            case cb_crypto:get_dek_id(NewWithoutHistDeks) of
-                undefined -> {ok, []};
-                ActiveId when is_binary(ActiveId) -> {ok, [ActiveId]}
-            end;
+            {changed, IdsInUse(NewWithoutHistDeks)};
         false ->
-            ok
+            {unchanged, IdsInUse(Old)}
     end.

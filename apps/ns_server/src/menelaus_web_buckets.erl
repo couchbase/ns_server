@@ -465,7 +465,11 @@ build_encryption_at_rest_bucket_info(BucketConfig) ->
              {encryptionAtRestDekRotationInterval,
               proplists:get_value(encryption_dek_rotation_interval,
                                   BucketConfig,
-                                  ?DEFAULT_DEK_ROTATION_INTERVAL_S)}];
+                                  ?DEFAULT_DEK_ROTATION_INTERVAL_S)},
+             {encryptionAtRestDekLifetime,
+              proplists:get_value(encryption_dek_lifetime,
+                                  BucketConfig,
+                                  ?DEFAULT_DEK_LIFETIME_S)}];
         false ->
             []
     end.
@@ -2052,7 +2056,8 @@ validate_bucket_encryption_at_rest_settings(Params, Version) ->
         RV -> RV
     end ++
     parse_validate_encryption_dek_rotation(Params) ++
-    parse_validate_encryption_rotation_interval(Params).
+    parse_validate_encryption_rotation_interval(Params) ++
+    parse_validate_encryption_dek_lifetime(Params).
 
 parse_validate_encryption_secret_id(Params) ->
     maybe
@@ -2092,6 +2097,24 @@ parse_validate_encryption_rotation_interval(Params) ->
               <<"too many values">>}];
         E when E == too_small; E == too_large; E == invalid ->
             [{error, encryptionAtRestDekRotationInterval,
+              <<"invalid interval">>}]
+    end.
+
+parse_validate_encryption_dek_lifetime(Params) ->
+    maybe
+        [ValStr] ?= proplists:get_all_values(
+                      "encryptionAtRestDekLifetime",
+                      Params),
+        {ok, Val} ?= menelaus_util:parse_validate_number(ValStr, 0, undefined),
+        [{ok, encryption_dek_lifetime, Val}]
+    else
+        [] ->
+            [];
+        [_ | _] ->
+            [{error, encryptionAtRestDekLifetime,
+              <<"too many values">>}];
+        E when E == too_small; E == too_large; E == invalid ->
+            [{error, encryptionAtRestDekLifetime,
               <<"invalid interval">>}]
     end.
 
@@ -4448,7 +4471,8 @@ basic_bucket_params_screening_t() ->
                       {"ramQuota", "1024"},
                       {"encryptionAtRestSecretId", "1"},
                       {"encryptionAtRestDekRotation", "true"},
-                      {"encryptionAtRestDekRotationInterval", "1000"}],
+                      {"encryptionAtRestDekRotationInterval", "1000"},
+                      {"encryptionAtRestDekLifetime", "2000"}],
                      AllBuckets),
 
     ?assertEqual([], E38),
@@ -4456,6 +4480,8 @@ basic_bucket_params_screening_t() ->
     ?assertEqual(true, proplists:get_value(encryption_dek_rotation, OK38)),
     ?assertEqual(1000,
                  proplists:get_value(encryption_dek_rotation_interval, OK38)),
+    ?assertEqual(2000,
+                 proplists:get_value(encryption_dek_lifetime, OK38)),
 
     %% Invalid encryption at rest
     {_OK39, E39} = basic_bucket_params_screening(
@@ -4465,7 +4491,8 @@ basic_bucket_params_screening_t() ->
                       {"ramQuota", "1024"},
                       {"encryptionAtRestSecretId", "-3"},
                       {"encryptionAtRestDekRotation", "bad"},
-                      {"encryptionAtRestDekRotationInterval", "bad"}],
+                      {"encryptionAtRestDekRotationInterval", "bad"},
+                      {"encryptionAtRestDekLifetime", "bad"}],
                      AllBuckets),
 
     ?assertEqual(<<"invalid secret id">>,
@@ -4474,6 +4501,8 @@ basic_bucket_params_screening_t() ->
                  proplists:get_value(encryptionAtRestDekRotation, E39)),
     ?assertEqual(<<"invalid interval">>,
                  proplists:get_value(encryptionAtRestDekRotationInterval, E39)),
+    ?assertEqual(<<"invalid interval">>,
+                 proplists:get_value(encryptionAtRestDekLifetime, E39)),
 
     %% Default encryption at rest params
     {OK40, E40} = basic_bucket_params_screening(
@@ -4488,6 +4517,7 @@ basic_bucket_params_screening_t() ->
     ?assertEqual([], proplists:get_all_values(encryption_dek_rotation, OK40)),
     ?assertEqual([], proplists:get_all_values(encryption_dek_rotation_interval,
                                               OK40)),
+    ?assertEqual([], proplists:get_all_values(encryption_dek_lifetime, OK40)),
 
     %% Default bucket is magma...and only 100MB ram is needed.
     {OK41, _E41} = basic_bucket_params_screening(

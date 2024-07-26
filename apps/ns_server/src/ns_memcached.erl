@@ -137,7 +137,8 @@
          get_config_stats/2,
          set_active_dek_for_bucket/2,
          set_active_dek/2,
-         get_dek_ids_in_use/1
+         get_dek_ids_in_use/1,
+         drop_deks/4
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -2081,3 +2082,12 @@ get_config_stats(Bucket, SubKey) ->
                       {reply, Err}
               end
       end, Bucket).
+
+drop_deks(BucketName, IdsToDrop, ContinuationId, Continuation) ->
+    ?log_debug("Initiating db compaction for bucket ~p in order to get rid of "
+               "old keys: ~p...", [BucketName, IdsToDrop]),
+    case compaction_api:force_partially_compact_db_files(
+           BucketName, IdsToDrop, ContinuationId, Continuation) of
+        ok -> {ok, started};
+        {error, Reason} -> {error, Reason}
+    end.

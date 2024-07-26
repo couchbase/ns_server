@@ -22,7 +22,10 @@ params() ->
                  [disabled, encryption_service, secret]}}},
      {"config.encryptionSecretId",
       #{cfg_key => [config_encryption, secret_id],
-        type => {int, -1, infinity}}}].
+        type => {int, -1, infinity}}},
+     {"config.dekLifetime",
+      #{cfg_key => [config_encryption, dek_lifetime_in_sec],
+        type => {int, 0, infinity}}}].
 
 handle_get(Path, Req) ->
     Settings = get_settings(direct),
@@ -75,7 +78,8 @@ get_settings(Snapshot, ExtraSettings) ->
 
 defaults() ->
     #{config_encryption => #{encryption => disabled,
-                             secret_id => ?SECRET_ID_NOT_SET}}.
+                             secret_id => ?SECRET_ID_NOT_SET,
+                             dek_lifetime_in_sec => 365*60*60*24}}.
 
 validate_sec_settings(_, #{encryption := disabled,
                            secret_id := ?SECRET_ID_NOT_SET}, _) ->

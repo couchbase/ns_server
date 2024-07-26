@@ -41,7 +41,8 @@
          without_historical_deks/1,
 
          %% Other:
-         get_encryption_method/2
+         get_encryption_method/2,
+         get_dek_kind_lifetime/2
         ]).
 
 -record(dek_snapshot, {iv_random :: binary(),
@@ -285,6 +286,16 @@ get_encryption_method(Type, Snapshot) ->
                  end};
         #{} ->
             {error, not_found}
+    end.
+
+-spec get_dek_kind_lifetime(config_encryption,
+                            cb_cluster_secrets:chronicle_snapshot()) ->
+          {ok, pos_integer()} | {error, not_found}.
+get_dek_kind_lifetime(Type, Snapshot) ->
+    case menelaus_web_encr_at_rest:get_settings(Snapshot) of
+        #{Type := #{dek_lifetime_in_sec := 0}} -> {ok, undefined};
+        #{Type := #{dek_lifetime_in_sec := Lifetime}} -> {ok, Lifetime};
+        #{} -> {error, not_found}
     end.
 
 %%%===================================================================

@@ -320,7 +320,10 @@ dek_config(chronicleDek) ->
       encryption_method_callback => cb_crypto:get_encryption_method(
                                       config_encryption, _),
       set_active_key_callback => fun chronicle_local:set_active_dek/1,
+      lifetime_callback => cb_crypto:get_dek_kind_lifetime(
+                             config_encryption, _),
       get_ids_in_use_callback => fun chronicle_local:get_encryption_dek_ids/0,
+      drop_callback => fun chronicle_local:drop_deks/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
       required_usage => config_encryption};
 dek_config(configDek) ->
@@ -328,7 +331,10 @@ dek_config(configDek) ->
       encryption_method_callback => cb_crypto:get_encryption_method(
                                       config_encryption, _),
       set_active_key_callback => fun set_config_active_key/1,
+      lifetime_callback => cb_crypto:get_dek_kind_lifetime(
+                             config_encryption, _),
       get_ids_in_use_callback => fun get_config_dek_ids_in_use/0,
+      drop_callback => fun drop_config_deks/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
       required_usage => config_encryption};
 dek_config({bucketDek, Bucket}) ->
@@ -336,9 +342,11 @@ dek_config({bucketDek, Bucket}) ->
       encryption_method_callback => ns_bucket:get_encryption(Bucket, _),
       set_active_key_callback => ns_memcached:set_active_dek_for_bucket(Bucket,
                                                                         _),
+      lifetime_callback => ns_bucket:get_dek_lifetime(Bucket, _),
       get_ids_in_use_callback => fun () ->
                                      ns_memcached:get_dek_ids_in_use(Bucket)
                                  end,
+      drop_callback => drop_bucket_deks(Bucket, _),
       chronicle_txn_keys => [ns_bucket:root(),
                              ns_bucket:sub_key(Bucket, props)],
       required_usage => {bucket_encryption, Bucket}}.
@@ -353,15 +361,21 @@ dek_kinds_list(Snapshot) ->
     Buckets = ns_bucket:get_bucket_names(Snapshot),
     [chronicleDek, configDek] ++ [{bucketDek, B} || B <- Buckets].
 
-set_config_active_key(ActiveDek) ->
+set_config_active_key(_ActiveDek) ->
+    force_config_encryption_keys().
+
+force_config_encryption_keys() ->
+    %% Here we assume that keys can't changed while this function is
+    %% working (because it is called from cb_cluster_secrets process).
+    {ok, Snapshot} = cb_crypto:fetch_deks_snapshot(configDek),
     maybe
         ok ?= memcached_config_mgr:push_config_encryption_key(true),
         ok ?= memcached_passwords:sync_reload(),
         ok ?= memcached_permissions:sync_reload(),
         ok ?= ns_config:resave(),
-        case ActiveDek of
+        case cb_crypto:get_dek_id(Snapshot) of
             undefined -> {ok, []};
-            #{id := Id} -> {ok, [Id]}
+            Id when is_binary(Id) -> {ok, [Id]}
         end
     end.
 
@@ -369,3 +383,19 @@ get_config_dek_ids_in_use() ->
     {ok, Snapshot} = cb_crypto:fetch_deks_snapshot(configDek),
     {_, AllDeks} = cb_crypto:get_all_deks(Snapshot),
     {ok, [Id || #{id := Id} <- AllDeks]}.
+
+drop_config_deks(DekIdsToDrop) ->
+    maybe
+        {ok, DekIdsInUse} ?= force_config_encryption_keys(),
+        StillInUse = [Id || Id <- DekIdsInUse, lists:member(Id, DekIdsToDrop)],
+        case StillInUse of
+            [] -> {ok, done};
+            [_ | _] -> {error, {still_in_use, StillInUse}}
+        end
+    end.
+
+drop_bucket_deks(Bucket, DekIds) ->
+    Continuation = fun (_) ->
+                       cb_cluster_secrets:dek_drop_complete({bucketDek, Bucket})
+                   end,
+    ns_memcached:drop_deks(Bucket, DekIds, cb_cluster_secrets, Continuation).

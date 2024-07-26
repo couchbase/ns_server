@@ -153,8 +153,13 @@ force_compact_db_files(Bucket) ->
 
 force_partially_compact_db_files(Bucket, ObsoleteKeyIds,
                                  ContinuationId, Continuation) ->
-    call_local({force_partially_compact_db_files, Bucket, ObsoleteKeyIds,
-                ContinuationId, Continuation}).
+    try
+        call_local({force_partially_compact_db_files, Bucket, ObsoleteKeyIds,
+                    ContinuationId, Continuation})
+    catch
+        exit:{noproc, {gen_server, call, [compaction_daemon, _, _]}} ->
+            {error, retry}
+    end.
 
 force_compact_view(Bucket, DDocId) ->
     multi_call({force_compact_view, Bucket, DDocId}).
