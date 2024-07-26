@@ -90,7 +90,10 @@ upgrade(?VERSION_72, Config) ->
          menelaus_web_guardrails:config_upgrade_to_76(Config) ++
          ns_config_auth:config_upgrade_to_76(Config)};
 
-upgrade(?VERSION_76, Config) ->
+upgrade(?VERSION_76, _Config) ->
+    {?VERSION_CYPHER, []};
+
+upgrade(?VERSION_CYPHER, Config) ->
     {?VERSION_MORPHEUS,
      menelaus_web_alerts_srv:config_upgrade_to_morpheus(Config) ++
          menelaus_web_auto_failover:config_upgrade_to_morpheus(Config)}.
