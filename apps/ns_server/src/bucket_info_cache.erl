@@ -476,7 +476,7 @@ build_cluster_capabilities() ->
     Caps = cluster_compat_mode:get_cluster_capabilities(),
     [{clusterCapabilitiesVer, [1, 0]},
      {clusterCapabilities, {Caps}}] ++
-    case cluster_compat_mode:is_cluster_morpheus() of
+    case cluster_compat_mode:is_cluster_cypher() of
         false ->
             [];
         true ->
@@ -628,7 +628,7 @@ verify_compatibility_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode, is_cluster_72, fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_76, fun () -> true end),
-    meck:expect(cluster_compat_mode, is_cluster_morpheus, fun () -> true end),
+    meck:expect(cluster_compat_mode, is_cluster_cypher, fun () -> true end),
     meck:expect(cluster_compat_mode, is_enterprise, fun () -> true end),
     meck:expect(cluster_compat_mode, get_cluster_capabilities,
                 fun () -> [{n1ql, [costBasedOptimizer, indexAdvisor]}] end),
