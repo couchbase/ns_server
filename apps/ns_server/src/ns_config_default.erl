@@ -33,7 +33,7 @@ get_current_version() ->
     %% changed in 6.0.4 after 6.5.0 had shipped.  As 6.5.0 had no knowledge
     %% of the 6.0.4 version (as it didn't exist when 6.5.0 shipped) it
     %% was unable to perform an upgrade.
-    list_to_tuple(?VERSION_MORPHEUS).
+    list_to_tuple(?LATEST_VERSION_NUM).
 
 get_min_supported_version() ->
     list_to_tuple(?MIN_SUPPORTED_VERSION).
@@ -414,11 +414,14 @@ upgrade_config(Config) ->
             [{set, {node, node(), config_version}, {7,6}} |
              upgrade_config_from_7_2_to_76(Config)];
         {7,6} ->
+            [{set, {node, node(), config_version}, {7,7}} |
+              upgrade_config_from_76_to_77(Config)];
+        {7,7} ->
             %% When upgrading to the latest config_version always upgrade
             %% service_ports.
             service_ports:offline_upgrade(Config) ++
                 [{set, {node, node(), config_version}, CurrentVersion} |
-                 upgrade_config_from_7_6_to_morpheus(Config)];
+                 upgrade_config_from_77_to_morpheus(Config)];
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
                        "unsupported version ~p. Terminating.", [OldVersion]),
@@ -480,11 +483,18 @@ do_upgrade_config_from_7_2_to_76(_Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig)].
 
-upgrade_config_from_7_6_to_morpheus(Config) ->
-    DefaultConfig = default(?VERSION_MORPHEUS),
-    do_upgrade_config_from_7_6_to_morpheus(Config, DefaultConfig).
+upgrade_config_from_76_to_77(Config) ->
+    DefaultConfig = default(?VERSION_CYPHER),
+    do_upgrade_config_from_76_to_77(Config, DefaultConfig).
 
-do_upgrade_config_from_7_6_to_morpheus(_Config, DefaultConfig) ->
+do_upgrade_config_from_76_to_77(_Config, _DefaultConfig) ->
+    [].
+
+upgrade_config_from_77_to_morpheus(Config) ->
+    DefaultConfig = default(?VERSION_MORPHEUS),
+    do_upgrade_config_from_77_to_morpheus(Config, DefaultConfig).
+
+do_upgrade_config_from_77_to_morpheus(_Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig)].
 
 encrypt_config_val(Val) ->

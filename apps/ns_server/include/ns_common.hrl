@@ -253,6 +253,7 @@
 -define(VERSION_71, [7, 1]).
 -define(VERSION_72, [7, 2]).
 -define(VERSION_76, [7, 6]).
+-define(VERSION_CYPHER, [7,7]).
 -define(VERSION_MORPHEUS, [8, 0]).
 
 -define(MIN_SUPPORTED_VERSION, ?VERSION_71).
@@ -264,7 +265,6 @@
 %% This require coordination with the UI to update the version.
 -define(LATEST_UI_COMPAT_VERSION, ?VERSION_70).
 
-%% Points to latest release
 -define(LATEST_VERSION_NUM, ?VERSION_MORPHEUS).
 -define(MASTER_ADVERTISED_VERSION, [8, 0, 0]).
 
