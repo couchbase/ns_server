@@ -690,19 +690,24 @@ ensure_generated_keks_on_disk(#{type := ?GENERATED_KEY_TYPE, id := SecretId,
 
 -spec ensure_kek_on_disk(kek_props()) -> ok | {error, _}.
 ensure_kek_on_disk(#{id := Id, key := {sensitive, Key},
-                     encrypted_by := undefined}) ->
-    encryption_service:store_kek(Id, Key, _IsEncrypted = false, undefined);
+                     encrypted_by := undefined,
+                     creation_time := CreationTime}) ->
+    encryption_service:store_kek(Id, Key, _IsEncrypted = false, undefined,
+                                 CreationTime);
 ensure_kek_on_disk(#{id := Id, key := {encrypted_binary, Key},
-                     encrypted_by := {_ESecretId, EKekId}}) ->
-    encryption_service:store_kek(Id, Key, _IsEncrypted = true, EKekId).
+                     encrypted_by := {_ESecretId, EKekId},
+                     creation_time := CreationTime}) ->
+    encryption_service:store_kek(Id, Key, _IsEncrypted = true, EKekId,
+                                 CreationTime).
 
 -spec ensure_aws_kek_on_disk(secret_props()) -> ok | {error, _}.
-ensure_aws_kek_on_disk(#{data := Data}) ->
+ensure_aws_kek_on_disk(#{creation_time := CreationTime, data := Data}) ->
     #{uuid := UUID, key_arn := KeyArn, region := Region, profile := Profile,
       config_file := ConfigFile, credentials_file := CredsFile,
       use_imds := UseIMDS} = Data,
     encryption_service:store_awskey(UUID, KeyArn, Region, Profile,
-                                    CredsFile, ConfigFile, UseIMDS).
+                                    CredsFile, ConfigFile, UseIMDS,
+                                    CreationTime).
 
 -spec garbage_collect_keks() -> ok.
 garbage_collect_keks() ->

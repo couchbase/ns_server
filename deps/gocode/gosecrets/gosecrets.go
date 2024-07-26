@@ -154,6 +154,7 @@ type rawAesGcmStoredKeyJson struct {
 	SealedKeyData     []byte `json:"sealedKeyData"`
 	EncryptedByKind   string `json:"encryptedByKind"`
 	EncryptionKeyName string `json:"encryptionKeyName"`
+	CreationTime      string `json:"creationTime"`
 }
 
 // Struct represents raw aes-gcm stored key
@@ -164,17 +165,19 @@ type rawAesGcmStoredKey struct {
 	EncryptedKey      []byte
 	EncryptedByKind   string
 	EncryptionKeyName string
+	CreationTime      string
 }
 
 type awsStoredKey struct {
-	Name       string `json:"name"`
-	Kind       string `json:"kind"`
-	KeyArn     string `json:"keyArn"`
-	Region     string `json:"region"`
-	ConfigFile string `json:"configFile"`
-	CredsFile  string `json:"credsFile"`
-	Profile    string `json:"profile"`
-	UseIMDS    bool   `jspn:"useIMDS"`
+	Name         string `json:"name"`
+	Kind         string `json:"kind"`
+	KeyArn       string `json:"keyArn"`
+	Region       string `json:"region"`
+	ConfigFile   string `json:"configFile"`
+	CredsFile    string `json:"credsFile"`
+	Profile      string `json:"profile"`
+	UseIMDS      bool   `jspn:"useIMDS"`
+	CreationTime string `json:"creationTime"`
 }
 
 type storedKeysCtx struct {
@@ -191,6 +194,7 @@ type readKeyReply struct {
 type readKeyAesKeyResponse struct {
 	Key             string `json:"key"`
 	EncryptionKeyId string `json:"encryptionKeyId"`
+	CreationTime    string `json:"creationTime"`
 }
 
 func main() {
@@ -725,11 +729,13 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 	keyType, data := readBigField(data)
 	keyData, data := readBigField(data)
 	isKeyDataEncryptedBin, data := readBigField(data)
-	encryptionKeyNameBin, _ := readBigField(data)
+	encryptionKeyNameBin, data := readBigField(data)
+	creationTime, _ := readBigField(data)
 	keyKindStr := string(keyKind)
 	keyNameStr := string(keyName)
 	keyTypeStr := string(keyType)
 	encryptionKeyName := string(encryptionKeyNameBin)
+	creationTimeStr := string(creationTime)
 	isKeyDataEncryptedStr := string(isKeyDataEncryptedBin)
 	isKeyDataEncrypted := (isKeyDataEncryptedStr == "true")
 	if isKeyDataEncryptedStr != "true" && isKeyDataEncryptedStr != "false" {
@@ -749,6 +755,7 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 			Name:              keyNameStr,
 			Kind:              keyKindStr,
 			EncryptionKeyName: encryptionKeyName,
+			CreationTime:      creationTimeStr,
 		}
 		if isKeyDataEncrypted {
 			rawKeyInfo.EncryptedKey = keyData
@@ -766,6 +773,7 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 		}
 		awsk.Name = keyNameStr
 		awsk.Kind = keyKindStr
+		awsk.CreationTime = creationTimeStr
 		keyInfo = &awsk
 	} else {
 		replyError(fmt.Sprintf("unknown type: %s", keyTypeStr))
@@ -834,6 +842,7 @@ func (s *encryptionService) cmdReadKey(data []byte) {
 	keyToMarshal := readKeyAesKeyResponse{
 		Key:             keyBase64,
 		EncryptionKeyId: rawKey.EncryptionKeyName,
+		CreationTime:    rawKey.CreationTime,
 	}
 	keyJson, err := json.Marshal(keyToMarshal)
 	if err != nil {
@@ -1667,6 +1676,7 @@ func (k *rawAesGcmStoredKey) unmarshal(data json.RawMessage) error {
 	k.EncryptedKey = decoded.SealedKeyData
 	k.EncryptedByKind = decoded.EncryptedByKind
 	k.EncryptionKeyName = decoded.EncryptionKeyName
+	k.CreationTime = decoded.CreationTime
 	return nil
 }
 
@@ -1683,7 +1693,8 @@ func (k *rawAesGcmStoredKey) marshal() (storedKeyType, []byte, error) {
 		KeyKind:           k.Kind,
 		SealedKeyData:     k.EncryptedKey,
 		EncryptedByKind:   k.EncryptedByKind,
-		EncryptionKeyName: k.EncryptionKeyName})
+		EncryptionKeyName: k.EncryptionKeyName,
+		CreationTime:      k.CreationTime})
 
 	if err != nil {
 		return "", nil, errors.New(fmt.Sprintf("Failed to marshal key %s: %s", k.Name, err.Error()))

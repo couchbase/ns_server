@@ -34,7 +34,8 @@
 -type dek_kind() :: kek | chronicleDek | configDek | {bucketDek, string()}.
 -type dek() :: #{id := dek_id(), type := 'raw-aes-gcm',
                  info := #{key := fun(() -> binary()),
-                           encryption_key_id := cb_cluster_secrets:key_id()}}.
+                           encryption_key_id := cb_cluster_secrets:key_id(),
+                           creation_time := calendar:datetime()}}.
 
 -spec list(dek_kind()) ->
     {ok, {undefined | dek_id(), [dek_id()], ExtraInfo :: term()}} | {error, _}.
@@ -124,7 +125,9 @@ new(Kind, KekIdToEncrypt) ->
     ?log_debug("Generating new dek (~p)", [Kind]),
     Id = cb_cluster_secrets:new_key_id(),
     Bin = cb_cluster_secrets:generate_raw_key(aes_256_gcm),
-    case encryption_service:store_dek(Kind, Id, Bin, KekIdToEncrypt) of
+    CreateTime = calendar:universal_time(),
+    case encryption_service:store_dek(Kind, Id, Bin, KekIdToEncrypt,
+                                      CreateTime) of
         ok -> {ok, Id};
         {error, Reason} ->
             ?log_error("Failed to store key ~p on disk: ~p", [Id, Reason]),
@@ -247,12 +250,14 @@ maybe_reencrypt_deks(Kind, Deks, NewEncryptionKeyFun) ->
                   fun ({#{type := 'raw-aes-gcm',
                           id := DekId,
                           info := #{encryption_key_id := CurKekId,
-                                    key := DekKey}}, {EncMethod, NewKekId}}) ->
+                                    key := DekKey,
+                                    creation_time := CT}},
+                        {EncMethod, NewKekId}}) ->
                       ?log_debug("Dek ~p is encrypted with ~p, "
                                  "while correct kek is ~p (~p), will reencrypt",
                                  [DekId, CurKekId, NewKekId, EncMethod]),
                       case encryption_service:store_dek(
-                             Kind, DekId, DekKey(), NewKekId) of
+                             Kind, DekId, DekKey(), NewKekId, CT) of
                           ok -> false;
                           {error, Reason} ->
                               ?log_error("Failed to store key ~p on disk: "

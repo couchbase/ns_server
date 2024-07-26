@@ -26,9 +26,9 @@
          get_state/0,
          os_pid/0,
          reconfigure/1,
-         store_kek/4,
-         store_awskey/7,
-         store_dek/4,
+         store_kek/5,
+         store_awskey/8,
+         store_dek/5,
          read_dek/2,
          key_path/1,
          decode_key_info/1,
@@ -74,24 +74,28 @@ reconfigure(NewCfg) ->
 garbage_collect_keks(InUseKeyIds) ->
     garbage_collect_keys(kek, InUseKeyIds).
 
-store_kek(Id, Key, false, undefined) ->
-    store_key(kek, Id, 'raw-aes-gcm', Key, false, <<"encryptionService">>);
-store_kek(Id, Key, AlreadEncrypted, KekIdToEncrypt) ->
-    store_key(kek, Id, 'raw-aes-gcm', Key, AlreadEncrypted, KekIdToEncrypt).
+store_kek(Id, Key, false, undefined, CreationDT) ->
+    store_key(kek, Id, 'raw-aes-gcm', Key, false, <<"encryptionService">>,
+              CreationDT);
+store_kek(Id, Key, AlreadEncrypted, KekIdToEncrypt, CreationDT) ->
+    store_key(kek, Id, 'raw-aes-gcm', Key, AlreadEncrypted, KekIdToEncrypt,
+              CreationDT).
 
-store_dek({bucketDek, Bucket}, Id, Key, KekIdToEncrypt) ->
-    store_dek(bucketDek, bucket_dek_id(Bucket, Id), Key, KekIdToEncrypt);
-store_dek(Kind, Id, Key, KekIdToEncrypt) ->
-    store_key(Kind, Id, 'raw-aes-gcm', Key, false, KekIdToEncrypt).
+store_dek({bucketDek, Bucket}, Id, Key, KekIdToEncrypt, CreationDT) ->
+    store_dek(bucketDek, bucket_dek_id(Bucket, Id), Key, KekIdToEncrypt,
+              CreationDT);
+store_dek(Kind, Id, Key, KekIdToEncrypt, CreationDT) ->
+    store_key(Kind, Id, 'raw-aes-gcm', Key, false, KekIdToEncrypt, CreationDT).
 
-store_awskey(Id, KeyArn, Region, Profile, CredsFile, ConfigFile, UseIMDS) ->
+store_awskey(Id, KeyArn, Region, Profile, CredsFile, ConfigFile, UseIMDS,
+             CreationDT) ->
     Data = ejson:encode({[{keyArn, iolist_to_binary(KeyArn)},
                           {region, iolist_to_binary(Region)},
                           {profile, iolist_to_binary(Profile)},
                           {credsFile, iolist_to_binary(CredsFile)},
                           {configFile, iolist_to_binary(ConfigFile)},
                           {useIMDS, UseIMDS}]}),
-    store_key(kek, Id, awskm, Data, false, <<"encryptionService">>).
+    store_key(kek, Id, awskm, Data, false, <<"encryptionService">>, CreationDT).
 
 read_dek(Kind, DekId) ->
     {NewId, NewKind} = case Kind of
@@ -123,7 +127,9 @@ decode_key_info({InfoProps}) ->
                 Key = base64:decode(B64Key),
                 {key, fun () -> Key end};
             ({<<"encryptionKeyId">>, KekId}) ->
-                {encryption_key_id, KekId}
+                {encryption_key_id, KekId};
+            ({<<"creationTime">>, CreationTimeISO}) ->
+                {creation_time, iso8601:parse(CreationTimeISO)}
         end, InfoProps)).
 
 encrypt_key(Data, KekId) when is_binary(Data), is_binary(KekId) ->
@@ -375,16 +381,19 @@ wait_for_server_start() ->
           end
       end, ?RESTART_WAIT_TIMEOUT, 100).
 
-store_key(Kind, Name, Type, KeyData, IsKeyDataEncrypted, EncryptionKeyId)
+store_key(Kind, Name, Type, KeyData, IsKeyDataEncrypted, EncryptionKeyId,
+          {{_, _, _}, {_, _, _}} = CreationDT)
                                             when is_atom(Kind),
                                                  is_binary(Name),
                                                  is_atom(Type),
                                                  is_binary(KeyData),
                                                  is_boolean(IsKeyDataEncrypted),
                                                  is_binary(EncryptionKeyId) ->
+    CreationDTISO = iso8601:format(CreationDT),
     wrap_error_msg(
       cb_gosecrets_runner:store_key(?RUNNER, Kind, Name, Type, KeyData,
-                                    IsKeyDataEncrypted, EncryptionKeyId),
+                                    IsKeyDataEncrypted, EncryptionKeyId,
+                                    CreationDTISO),
       store_key_error).
 
 maybe_update_dek_path_in_config() ->

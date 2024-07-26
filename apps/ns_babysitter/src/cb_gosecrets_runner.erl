@@ -32,7 +32,7 @@
          copy_secrets/2,
          cleanup_secrets/2,
          set_config/3,
-         store_key/7,
+         store_key/8,
          encrypt_with_key/4,
          decrypt_with_key/4,
          read_key/3,
@@ -115,11 +115,11 @@ set_config(Name, Cfg, ResetPassword) ->
     end.
 
 store_key(Name, Kind, KeyName, KeyType, KeyData, IsKeyDataEncrypted,
-          EncryptionKeyId) ->
+          EncryptionKeyId, CreationDT) ->
     gen_server:call(
       Name,
       {store_key, Kind, KeyName, KeyType, KeyData, IsKeyDataEncrypted,
-       EncryptionKeyId},
+       EncryptionKeyId, CreationDT},
       infinity).
 
 read_key(Name, Kind, KeyName) ->
@@ -327,7 +327,7 @@ handle_call({cleanup_secrets, Cfg}, _From, State) ->
     CfgBin = ejson:encode(cfg_to_json(Cfg)),
     {reply, call_gosecrets({cleanup_secrets, CfgBin}, State), State};
 handle_call({store_key, _Kind, _Name, _KeyType, _KeyData, _IsKeyDataEncrypted,
-             _EncryptionKeyId} = Cmd, _From, State) ->
+             _EncryptionKeyId, _CreationDT} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
 handle_call({read_key, _Kind, _Name} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
@@ -449,14 +449,15 @@ encode({copy_secrets, ConfigBin}) ->
 encode({cleanup_secrets, ConfigBin}) ->
     <<11, ConfigBin/binary>>;
 encode({store_key, Kind, Name, KeyType, KeyData, IsKeyDataEncrypted,
-        EncryptionKeyId}) ->
+        EncryptionKeyId, CreationDT}) ->
     KindBin = atom_to_binary(Kind),
     <<12, (encode_param(KindBin))/binary,
           (encode_param(Name))/binary,
           (encode_param(KeyType))/binary,
           (encode_param(KeyData))/binary,
           (encode_param(IsKeyDataEncrypted))/binary,
-          (encode_param(EncryptionKeyId))/binary>>;
+          (encode_param(EncryptionKeyId))/binary,
+          (encode_param(CreationDT))/binary>>;
 encode({encrypt_with_key, Data, KeyKind, Name}) ->
     <<13, (encode_param(Data))/binary,
           (encode_param(KeyKind))/binary,
@@ -822,9 +823,11 @@ store_and_read_key_test() ->
                     Bin = base64:decode(KeyBase64),
                     EncrKey = proplists:get_value(<<"encryptionKeyId">>,
                                                   KeyProps),
+                    CT = proplists:get_value(<<"creationTime">>, KeyProps),
                     #{type => binary_to_atom(Type),
                       key => Bin,
-                      encr_key => EncrKey}
+                      encr_key => EncrKey,
+                      creation_time => CT}
                 end,
     with_all_stored_keys_cleaned(
       Cfg,
@@ -836,18 +839,22 @@ store_and_read_key_test() ->
                 Key2 = rand:bytes(32),
                 Type = 'raw-aes-gcm',
                 ?assertEqual(ok, store_key(Pid, kek, <<"key1">>, Type, Key1,
-                                           false, <<"encryptionService">>)),
+                                           false, <<"encryptionService">>,
+                                           <<"2024-07-26T19:32:19Z">>)),
                 ?assertEqual(ok, store_key(Pid, chronicleDek, <<"key2">>, Type,
-                                           Key2, false, <<"key1">>)),
+                                           Key2, false, <<"key1">>,
+                                           <<"2024-07-26T19:32:19Z">>)),
                 {ok, Key1Encoded} = read_key(Pid, kek, <<"key1">>),
                 {ok, Key2Encoded} = read_key(Pid, chronicleDek, <<"key2">>),
                 ?assertMatch(#{type := Type,
                                key := Key1,
-                               encr_key := <<"encryptionService">>},
+                               encr_key := <<"encryptionService">>,
+                               creation_time := <<"2024-07-26T19:32:19Z">>},
                              DecodeKey(Key1Encoded)),
                 ?assertMatch(#{type := Type,
                                key := Key2,
-                               encr_key := <<"key1">>},
+                               encr_key := <<"key1">>,
+                               creation_time := <<"2024-07-26T19:32:19Z">>},
                              DecodeKey(Key2Encoded)),
                 %% Unknown key
                 ?assertMatch({error, "Failed to read key from file" ++ _},
