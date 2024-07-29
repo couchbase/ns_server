@@ -415,12 +415,19 @@ upgrade_config(Config) ->
              upgrade_config_from_7_2_to_76(Config)];
         {7,6} ->
             [{set, {node, node(), config_version}, {7,7}} |
-              upgrade_config_from_76_to_77(Config)];
+             upgrade_config_from_76_to_77(Config)];
         {7,7} ->
             %% When upgrading to the latest config_version always upgrade
             %% service_ports.
             service_ports:offline_upgrade(Config) ++
-                [{set, {node, node(), config_version}, CurrentVersion} |
+                %% Note, we explicitly set the config version to the actual next
+                %% version, not CurrentVersion, to ensure that if we forget to
+                %% upgrade this function, it causes a test failure.
+                %% Otherwise, when we update get_current_version/0, the unit
+                %% test will still pass, despite the fact that offline upgrades
+                %% from the version immediately prior to CurrentVersion would
+                %% not actually be allowed.
+                [{set, {node, node(), config_version}, {8,0}} |
                  upgrade_config_from_77_to_morpheus(Config)];
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
