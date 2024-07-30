@@ -32,7 +32,8 @@
          read_dek/2,
          key_path/1,
          decode_key_info/1,
-         garbage_collect_keks/1]).
+         garbage_collect_keks/1,
+         garbage_collect_keys/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -427,18 +428,31 @@ garbage_collect_keys(Kind, InUseKeyIds) ->
     %% comparing string and binary)
     lists:foreach(fun (Id) -> true = is_binary(Id) end, InUseKeyIds),
     IdsInUseSet = maps:from_keys(InUseKeyIds, true),
+    AllKeys = get_all_keys_in_dir(KeyDir),
     ToRemove = lists:filter(
                  fun (Id) when is_binary(Id) ->
                       not maps:get(Id, IdsInUseSet, false)
-                 end, get_all_keys_in_dir(KeyDir)),
+                 end, AllKeys),
     case ToRemove of
         [] ->
-            ?log_debug("~p keys gc: no keys to retire", [Kind]),
-            ok;
+            ?log_debug("~p keys gc: no keys to retire (all keys: ~0p, "
+                       "in use: ~0p)", [Kind, AllKeys, InUseKeyIds]),
+            {ok, []};
         _ ->
-            ?log_info("~p keys gc: retiring ~p", [Kind, ToRemove]),
-            lists:foreach(fun (Id) -> retire_key(Kind, Id) end, ToRemove),
-            ok
+            ?log_info("~p keys gc: retiring ~p (all keys: ~0p, "
+                      "in use: ~0p)", [Kind, ToRemove, AllKeys, InUseKeyIds]),
+            {SuccList, FailedList} =
+                misc:partitionmap(
+                  fun (Id) ->
+                      case retire_key(Kind, Id) of
+                          ok -> {left, Id};
+                          {error, Reason} -> {right, {Id, Reason}}
+                      end
+                  end, ToRemove),
+            case FailedList of
+                [] -> {ok, SuccList};
+                _ -> {error, FailedList}
+            end
     end.
 
 get_all_keys_in_dir(KeyDir) ->
@@ -490,9 +504,11 @@ retire_key(Kind, Id) ->
                 ok -> ok;
                 {error, Reason} ->
                     ?log_error("Failed to retire ~p key ~p (~p): ~p",
-                                [Kind, Id, FromPath, Reason])
+                                [Kind, Id, FromPath, Reason]),
+                    {error, Reason}
             end;
         {error, Reason} ->
             ?log_error("Failed to ensure dir ~p when retiring key ~p: ~p",
-                       [ToPath, Id, Reason])
+                       [ToPath, Id, Reason]),
+            {error, Reason}
     end.

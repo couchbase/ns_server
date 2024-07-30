@@ -136,7 +136,8 @@
          delete_bucket/2,
          get_config_stats/2,
          set_active_dek_for_bucket/2,
-         set_active_dek/2
+         set_active_dek/2,
+         get_dek_ids_in_use/1
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -1886,6 +1887,37 @@ set_active_dek(TypeOrBucket, DeksSnapshot) ->
 
     case RV of
         ok -> ok;
+        {error, couldnt_connect_to_memcached} -> {error, retry};
+        {error, E} -> {error, E}
+    end.
+
+get_dek_ids_in_use(BucketName) ->
+    RV = perform_very_long_call(
+           fun (Sock) ->
+               StatName = <<"encryption-key-ids">>,
+               case mc_binary:quick_stats(
+                      Sock, StatName,
+                      fun (Name, V, _Acc) when Name == StatName ->
+                          %% Format:
+                          %%  {
+                          %%   "key1": [vbucket1, vbucket2, ...],
+                          %%   "key2": [vbucket3, vbucket4, ...],
+                          %%    ...
+                          %%  }
+                          {Proplist} = ejson:decode(V),
+                          [K || {K, _} <- Proplist]
+                      end, []) of
+                   {ok, Ids} ->
+                       {reply, {ok, Ids}};
+                   {memcached_error, Error, Msg} ->
+                       ?log_error("Failed to get dek ids in use for "
+                                  "bucket ~p: ~p", [BucketName, {Error, Msg}]),
+                       {reply, {error, Error}}
+               end
+           end, BucketName),
+
+    case RV of
+        {ok, _} -> RV;
         {error, couldnt_connect_to_memcached} -> {error, retry};
         {error, E} -> {error, E}
     end.

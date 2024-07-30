@@ -221,16 +221,24 @@ create_deks_snapshot(ActiveDek, AllDeks, PrevDekSnapshot) ->
                   active_key = ActiveDek,
                   all_keys = AllDeks}.
 
--spec reset_dek_cache(cb_deks:dek_kind(), cb_deks:dek()) ->
+-spec reset_dek_cache(cb_deks:dek_kind(),
+                      Reason :: {new_active, cb_deks:dek()} | cleanup) ->
           {ok, changed | unchanged} | {error, term()}.
-reset_dek_cache(DekKind, NewActiveDek) ->
+reset_dek_cache(DekKind, Reason) ->
     %% Technically we can simply erase the persistent term, but it will result
     %% in two global GC's then (erase and set). So we read and set new value
     %% instead, which gives us only one global GC.
     cb_atomic_persistent_term:set(
       {encryption_keys, DekKind},
       fun (PrevSnapshot) ->
-          case get_dek_id(PrevSnapshot) =/= get_dek_id(NewActiveDek) of
+          Changed =
+              case Reason of
+                  {new_active, NewActiveDek} ->
+                      get_dek_id(PrevSnapshot) =/= get_dek_id(NewActiveDek);
+                  cleanup ->
+                      true
+              end,
+          case Changed of
               true ->
                   case read_deks(DekKind, PrevSnapshot) of
                       {ok, NewSnapshot} -> {set, NewSnapshot, {ok, changed}};

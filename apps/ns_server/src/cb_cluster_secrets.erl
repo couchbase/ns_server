@@ -112,6 +112,7 @@
 -type chronicle_snapshot() :: direct | map().
 -type uuid() :: binary(). %% uuid as binary string
 -type node_job() :: garbage_collect_keks |
+                    {garbage_collect_deks, cb_deks:dek_kind()} |
                     ensure_all_keks_on_disk |
                     {maybe_update_deks, cb_deks:dek_kind()} |
                     maybe_reencrypt_deks |
@@ -414,7 +415,10 @@ init([Type]) ->
                    [maybe_reencrypt_secrets,
                     maybe_reset_deks_counters];
                ?NODE_PROC ->
-                   [{maybe_update_deks, K} || K <- cb_deks:dek_kinds_list()] ++
+                    lists:flatmap(fun (K) ->
+                                      [{maybe_update_deks, K},
+                                       {garbage_collect_deks, K}]
+                                  end, cb_deks:dek_kinds_list()) ++
                    [garbage_collect_keks,
                     ensure_all_keks_on_disk,
                     maybe_reencrypt_deks]
@@ -712,8 +716,11 @@ ensure_aws_kek_on_disk(#{creation_time := CreationTime, data := Data}) ->
 -spec garbage_collect_keks() -> ok.
 garbage_collect_keks() ->
     AllKekIds = all_kek_ids(),
-    ?log_debug("KEYS GC: All existing keks: ~p", [AllKekIds]),
-    encryption_service:garbage_collect_keks(AllKekIds).
+    ?log_debug("keks gc: All existing keks: ~p", [AllKekIds]),
+    case encryption_service:garbage_collect_keks(AllKekIds) of
+        {ok, _} -> ok;
+        {error, _} = Error -> Error
+    end.
 
 -spec all_kek_ids() -> [key_id()].
 all_kek_ids() ->
@@ -766,7 +773,8 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                 %% On disk it is enabled but in config it is disabled:
                 true when EncrMethod == disabled ->
                     ok = cb_deks:set_active(Kind, ActiveId, false),
-                    NewState = read_deks(Kind, State),
+                    NewState = add_jobs([{garbage_collect_deks, Kind}],
+                                        read_deks(Kind, State)),
                     call_set_active_cb(Kind, NewState);
 
                 %% It is enabled on disk and in config:
@@ -796,7 +804,10 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                     %% we should generate a new dek
                     case generate_new_dek(Kind, EncrMethod, Snapshot) of
                         ok ->
-                            NewState = read_deks(Kind, State),
+                            %% adding jobs inside a job, so there is no need to
+                            %% call add_and_run_jobs
+                            NewState = add_jobs([{garbage_collect_deks, Kind}],
+                                                read_deks(Kind, State)),
                             call_set_active_cb(Kind, NewState);
                         {error, Reason} ->
                             {error, State, Reason}
@@ -810,6 +821,85 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
             %% Note that bucket can exist globally, but can be missing at this
             %% specific node.
             {ok, OldState#state{deks = maps:remove(Kind, CurDeks)}}
+    end.
+
+%% Remove DEKs that are not being used anymore
+-spec garbage_collect_deks(cb_deks:dek_kind(), #state{}) ->
+          {ok, #state{}} | {error, #state{}, term()}.
+garbage_collect_deks(Kind, #state{deks = DeksInfo} = State) ->
+    case maps:find(Kind, DeksInfo) of
+        {ok, #{active_id := _ActiveId,
+               deks := []}} ->
+            %% There is no deks, nothing to remove
+            {ok, State};
+        {ok, #{is_enabled := true, deks := [_]}} ->
+            %% If encryption is enabled, one dek is a minimum. Can't be removed.
+            {ok, State};
+        {ok, #{}} ->
+            case call_dek_callback(get_ids_in_use_callback, Kind, []) of
+                {succ, {ok, IdList}} ->
+                    retire_unused_deks(Kind, IdList, State);
+                {succ, {error, not_found}} ->
+                    %% The entity that uses deks does not exist.
+                    %% Ignoring it here because we assume that deks will
+                    %% be removed by maybe_update_deks
+                    {ok, State};
+                {succ, {error, Reason}} ->
+                    {error, State, Reason};
+                {except, {_, E, _}} ->
+                    {error, State, E}
+            end;
+        error ->
+            {ok, State}
+    end.
+
+-spec retire_unused_deks(cb_deks:dek_kind(), [cb_deks:dek_id()], #state{}) ->
+          {ok, #state{}} | {error, #state{}, term()}.
+retire_unused_deks(Kind, DekIdsInUse0, State) ->
+    case maybe_reset_active_file(Kind, DekIdsInUse0, State) of
+        {ok, DekIdsInUse, NewState} ->
+            case encryption_service:garbage_collect_keys(Kind, DekIdsInUse) of
+                {ok, []} ->
+                    {ok, NewState};
+                {ok, _} ->
+                    case cb_crypto:reset_dek_cache(Kind, cleanup) of
+                        {ok, _} ->
+                            {ok, read_deks(Kind, NewState)};
+                        {error, Reason} ->
+                            {error, NewState, Reason}
+                    end;
+                {error, Reason} ->
+                    {error, NewState, Reason}
+            end;
+        {error, Reason} ->
+            {error, State, Reason}
+    end.
+
+-spec maybe_reset_active_file(cb_deks:dek_kind(), [cb_deks:dek_id()],
+                              #state{}) ->
+          {ok, [cb_deks:dek_id()], #state{}} | {error, term()}.
+%% Resets the active key file before active key removal
+maybe_reset_active_file(Kind, DekIdsInUse, #state{deks = DeksInfo} = State) ->
+    #{Kind := #{active_id := ActiveId, is_enabled := IsEnabled}} = DeksInfo,
+    case lists:member(ActiveId, DekIdsInUse) of
+        false when IsEnabled ->
+            true = is_binary(ActiveId),
+            ?log_error("Attempt to remove active dek ~p for ~p "
+                       "while encryption is on", [ActiveId, Kind]),
+            {ok, [ActiveId | DekIdsInUse], State};
+        false when ActiveId == undefined ->
+            {ok, DekIdsInUse, State};
+        false ->
+            %% This is ok to remove active dek because encryption is off
+            %% and that key is not used anymore. We should remove it
+            %% from "active" file though.
+            maybe
+                ok ?= cb_deks:set_active(Kind, undefined, false),
+                {ok, _} ?= cb_crypto:reset_dek_cache(Kind, cleanup),
+                {ok, DekIdsInUse, read_deks(Kind, State)}
+            end;
+        true ->
+            {ok, DekIdsInUse, State}
     end.
 
 -spec call_set_active_cb(cb_deks:dek_kind(), #state{}) ->
@@ -827,12 +917,14 @@ call_set_active_cb(Kind, #state{deks = AllDeks} = State) ->
                 ActiveKey;
             false -> undefined
         end,
-    case cb_crypto:reset_dek_cache(Kind, NewActiveKey) of
+    case cb_crypto:reset_dek_cache(Kind, {new_active, NewActiveKey}) of
         {ok, _} ->
             case call_dek_callback(set_active_key_callback, Kind,
                                    [NewActiveKey]) of
                 {succ, ok} ->
                     {ok, State};
+                {succ, {ok, DekIdsInUse}} ->
+                    retire_unused_deks(Kind, DekIdsInUse, State);
                 {succ, {error, Reason}} ->
                     {error, State, Reason};
                 {except, {_, E, _}} ->
@@ -1195,6 +1287,8 @@ do(maybe_reset_deks_counters, _) ->
     maybe_reset_deks_counters();
 do({maybe_update_deks, Kind}, State) ->
     maybe_update_deks(Kind, State);
+do({garbage_collect_deks, Kind}, State) ->
+    garbage_collect_deks(Kind, State);
 do({maybe_reencrypt_deks, K}, State) ->
     maybe_reencrypt_deks(K, State);
 do(maybe_reencrypt_deks, State) ->

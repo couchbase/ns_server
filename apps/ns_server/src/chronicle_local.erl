@@ -27,7 +27,8 @@
          rename/1,
          get_snapshot/1,
          sync/0,
-         set_active_dek/1]).
+         set_active_dek/1,
+         get_encryption_dek_ids/0]).
 
 %% exported callbacks used by chronicle
 -export([log/4, report_stats/1, encrypt_data/1, decrypt_data/1,
@@ -121,6 +122,11 @@ handle_call(get_snapshot, _From, Pid) ->
     {reply, RV, Pid};
 handle_call({set_active_dek, _NewActiveKey}, _From, State) ->
     {reply, maybe_force_new_keys(), State};
+handle_call(get_encryption_dek_ids, _From, State) ->
+    DeksSnapshot = get_chronicle_deks_snapshot(),
+    {_, AllDeks} = cb_crypto:get_all_deks(DeksSnapshot),
+    Ids = [cb_crypto:get_dek_id(D) || D <- AllDeks],
+    {reply, {ok, Ids}, State};
 handle_call(sync, _From, State) ->
     {reply, ok, State}.
 
@@ -150,9 +156,11 @@ get_snapshot(Node) ->
 sync() ->
     gen_server2:call(?MODULE, sync, ?CALL_TIMEOUT).
 
-
 set_active_dek(ActiveDek) ->
     gen_server2:call(?MODULE, {set_active_dek, ActiveDek}, ?CALL_TIMEOUT).
+
+get_encryption_dek_ids() ->
+    gen_server2:call(?MODULE, get_encryption_dek_ids, ?CALL_TIMEOUT).
 
 provision() ->
     ?log_debug("Provision chronicle on this node"),
@@ -377,7 +385,10 @@ maybe_force_new_keys() ->
             set_chronicle_deks_snapshot(New),
             ok = rewrite_chronicle_data(),
             set_chronicle_deks_snapshot(NewWithoutHistDeks),
-            ok;
+            case cb_crypto:get_dek_id(NewWithoutHistDeks) of
+                undefined -> {ok, []};
+                ActiveId when is_binary(ActiveId) -> {ok, [ActiveId]}
+            end;
         false ->
             ok
     end.
