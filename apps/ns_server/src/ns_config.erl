@@ -15,6 +15,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -844,7 +845,7 @@ wait_saver(State, Timeout) ->
         undefined ->
             ?log_debug("Done waiting for saver."),
             {ok, State};
-        Pid ->
+        {Pid, _Continuation} ->
             ?log_debug("Waiting for running saver"),
             receive
                 {'EXIT', Pid, _Reason} = X ->
@@ -870,18 +871,20 @@ handle_cast(stop, State) ->
     {stop, shutdown, State}.
 
 handle_info({'EXIT', Pid, Reason},
-            #config{saver_pid = MyPid,
+            #config{saver_pid = {MyPid, Continuation},
                     pending_more_save = NeedMore} = State) when MyPid =:= Pid ->
     NewState = State#config{saver_pid = undefined},
     case Reason of
         normal ->
+            Continuation(ok),
             ok;
         _ ->
+            Continuation(Reason),
             ?log_error("Saving ns_config failed. Trying to ignore: ~p", [Reason])
     end,
     S = case NeedMore of
-            true ->
-                initiate_save_config(NewState);
+            {true, AnotherContinuation} ->
+                initiate_save_config(NewState, AnotherContinuation);
             false ->
                 NewState
         end,
@@ -903,8 +906,8 @@ handle_call(reload, _From, State) ->
             {reply, {error, Error}, State}
     end;
 
-handle_call(resave, _From, State) ->
-    {reply, ok, initiate_save_config(State)};
+handle_call(resave, From, State) ->
+    {noreply, initiate_save_config(State, gen_server:reply(From, _))};
 
 handle_call(reannounce, _From, State) ->
     %% we have to assume those are all genuine just made local changes
@@ -973,9 +976,8 @@ handle_call({clear, Keep}, From, State) ->
                  end,
                  config_dynamic(State)),
     NewList = [{{node, node(), uuid}, attach_vclock(NewUUID, NewUUID)} | NewList0],
-    {reply, _, NewState} = handle_call(resave, From,
-                                       State#config{dynamic=[NewList],
-                                                    uuid=NewUUID}),
+    NewState = initiate_save_config(State#config{dynamic=[NewList],
+                                                 uuid=NewUUID}),
     RV = handle_call(reload, From, NewState),
     ?log_debug("Full result of clear:~n~p", [ns_config_log:sanitize(RV)]),
     RV;
@@ -1177,15 +1179,26 @@ do_not_save_config(_Config) ->
     ok.
 
 initiate_save_config(Config) ->
+    initiate_save_config(Config, fun(_Res) -> ok end).
+initiate_save_config(Config, NewContinuation) ->
     case Config#config.saver_pid of
         undefined ->
             {M, F, ASuffix} = Config#config.saver_mfa,
             A = [Config | ASuffix],
             Pid = proc_lib:spawn_link(M, F, A),
-            Config#config{saver_pid = Pid,
+            Config#config{saver_pid = {Pid, NewContinuation},
                           pending_more_save = false};
         _ ->
-            Config#config{pending_more_save = true}
+            case Config of
+                #config{pending_more_save = false} ->
+                    Config#config{pending_more_save = {true, NewContinuation}};
+                #config{pending_more_save = {true, PrevContinuation}} ->
+                    Continuation = fun (Res) ->
+                                       PrevContinuation(Res),
+                                       NewContinuation(Res)
+                                   end,
+                    Config#config{pending_more_save = {true, Continuation}}
+            end
     end.
 
 announce_locally_made_changes([]) ->
@@ -1607,7 +1620,8 @@ test_with_saver_set_and_stop() ->
 
                                %% check that pending_more_save is false
                                Cfg2 = ns_config:get(),
-                               ?assertEqual(true, Cfg2#config.pending_more_save),
+                               ?assertMatch({true, _},
+                                            Cfg2#config.pending_more_save),
 
                                %% and kill ns_config
                                gen_server:cast(?MODULE, stop)
@@ -1648,7 +1662,7 @@ do_test_with_saver(KillerFn, PostKillerFn) ->
 
     %% and actually check that pending_more_save is true
     Cfg1 = ns_config:get(),
-    ?assertEqual(true, Cfg1#config.pending_more_save),
+    ?assertMatch({true, _}, Cfg1#config.pending_more_save),
 
     %% now signal save completed
     Pid1 ! {Ref1, ok},

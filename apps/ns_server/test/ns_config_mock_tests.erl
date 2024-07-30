@@ -37,7 +37,8 @@ all_test_() ->
      [{"test_basic", fun test_basic/0},
       {"test_set", fun test_set/0},
       {"test_cas_config", fun test_cas_config/0},
-      {"test_update", fun test_update/0}]}.
+      {"test_update", fun test_update/0},
+      {"test_multiple_saves", fun test_multiple_saves/0}]}.
 
 do_setup() ->
     ok = meck:new(ns_config, [passthrough]),
@@ -71,6 +72,66 @@ test_basic() ->
                              {reply, Fun, {}}
                      end),
     ?assertEqual(F, gen_server:call(ns_config, {update_with_changes, F})).
+
+test_multiple_saves() ->
+    Self = self(),
+    Cfg0 = #config{dynamic=[[{a,1},{b,1}]],
+                   saver_mfa = {ns_config, send_config, [Self]},
+                   saver_pid = undefined,
+                   pending_more_save = false},
+
+    AssertNoCallResponses = fun () ->
+                                receive
+                                    {R, _} = M when is_reference(R) ->
+                                        error({unexpected_call_resp, M})
+                                after
+                                    100 -> ok
+                                end
+                            end,
+
+    HandleSave = fun (Cfg) ->
+                     receive
+                         {saving, SR, _, SP} ->
+                             AssertNoCallResponses(),
+                             SP ! {SR, ok},
+                             ns_config:handle_info({'EXIT', SP, normal}, Cfg)
+                     after
+                         5000 -> error(timeout)
+                     end
+                  end,
+    ReceiveCallResponse = fun (FromRef) ->
+                              receive
+                                  {Ref, ok} ->
+                                      ?assertEqual(FromRef, Ref)
+                              after
+                                  5000 -> error(timeout)
+                              end
+                          end,
+
+    %% Two saves should happen. Save #1 is started when req 1 is received.
+    %% Save #2 is started to handle requests 2 and 3.
+    Save1Ref = make_ref(),
+    {noreply, Cfg1} = ns_config:handle_call(resave, {Self, Save1Ref}, Cfg0),
+    Save2Ref = make_ref(),
+    {noreply, Cfg2} = ns_config:handle_call(resave, {Self, Save2Ref}, Cfg1),
+    Save3Ref = make_ref(),
+    {noreply, Cfg3} = ns_config:handle_call(resave, {Self, Save3Ref}, Cfg2),
+
+    %% Make sure save #1 happens and we receive response for req 1 only
+    {noreply, Cfg4} = HandleSave(Cfg3),
+    ReceiveCallResponse(Save1Ref),
+    AssertNoCallResponses(), %% No response for requests 2 and 3
+
+    %% Make sure save #2 happens and we receive response for req 2 and 3
+    {noreply, _Cfg5} = HandleSave(Cfg4),
+    ReceiveCallResponse(Save2Ref),
+    ReceiveCallResponse(Save3Ref),
+    %% There should be no other {savings, ...}
+    receive
+        M -> error({unexpected_msg, M})
+    after
+        100 -> ok
+    end.
 
 -define(assertConfigEquals(A, B),
         ?assertEqual(lists:sort([{K, ns_config:strip_metadata(V)} || {K,V} <- A]),
@@ -141,8 +202,8 @@ do_test_cas_config(Self) ->
 
     Config = #config{dynamic=[[{a,1},{b,1}]],
                      saver_mfa = {?MODULE, send_config, [Self]},
-                     saver_pid = Self,
-                     pending_more_save = true},
+                     saver_pid = {Self, fun (_) -> ok end},
+                     pending_more_save = {true, fun (_) -> ok end}},
     DynamicConfig = ns_config:get_kv_list_with_config(Config),
 
     ?assertEqual([{a,1},{b,1}], DynamicConfig),
@@ -151,7 +212,9 @@ do_test_cas_config(Self) ->
     {reply, true, NewConfig} = ns_config:handle_call({cas_config, [{a,2}], [],
                                                       DynamicConfig, remote}, [], Config),
     NewDynamicConfig = ns_config:get_kv_list_with_config(NewConfig),
-    ?assertEqual(NewConfig, Config#config{dynamic=[NewDynamicConfig]}),
+    NewPendingSave = NewConfig#config.pending_more_save,
+    ?assertEqual(NewConfig, Config#config{dynamic=[NewDynamicConfig],
+                                          pending_more_save = NewPendingSave}),
     ?assertEqual([{a,2}], NewDynamicConfig),
     {reply, false, NewConfig} = ns_config:handle_call({cas_config, [{a,3}], [],
                                                        DynamicConfig, remote}, [], NewConfig).
