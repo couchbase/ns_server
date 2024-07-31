@@ -1352,7 +1352,8 @@ additional_bucket_params_validation(Params, Ctx) ->
     lists:append([validate_replicas_and_durability(Params, Ctx),
                   validate_magma_ram_quota(Params, Ctx),
                   validate_pitr_params(Params, Ctx),
-                  validate_watermarks(Params, Ctx)]).
+                  validate_watermarks(Params, Ctx),
+                  validate_thresholds(Params, Ctx)]).
 
 validate_replicas_and_durability(Params, Ctx) ->
     NumReplicas = get_value_from_parms_or_bucket(num_replicas, Params, Ctx),
@@ -1432,31 +1433,56 @@ validate_pitr_params(Params, Ctx) ->
 
 %% Validate the relationship between the low and high watermarks.
 validate_watermarks(Params, Ctx) ->
-    LowWatermark = get_value_from_parms_or_bucket(memory_low_watermark,
-                                                  Params, Ctx),
-    HighWatermark = get_value_from_parms_or_bucket(memory_high_watermark,
-                                                   Params, Ctx),
-    case {LowWatermark, HighWatermark} of
+    validate_high_low_values(Params, Ctx,
+                             memory_low_watermark,
+                             memoryLowWatermark,
+                             memory_high_watermark,
+                             memoryHighWatermark,
+                             less_than).
+
+validate_thresholds(Params, Ctx) ->
+    validate_high_low_values(Params, Ctx,
+                             warmup_min_items_threshold,
+                             warmupMinItemsThreshold,
+                             secondary_warmup_min_items_threshold,
+                             secondaryWarmupMinItemsThreshold,
+                             less_than_or_equal) ++
+    validate_high_low_values(Params, Ctx,
+                             warmup_min_memory_threshold,
+                             warmupMinMemoryThreshold,
+                             secondary_warmup_min_memory_threshold,
+                             secondaryWarmupMinMemoryThreshold,
+                             less_than_or_equal).
+
+validate_high_low_values(Params, Ctx, LowParam, LowParamExtName,
+                         HighParam, HighParamExtName, Check) ->
+    Low = get_value_from_parms_or_bucket(LowParam, Params, Ctx),
+    High = get_value_from_parms_or_bucket(HighParam, Params, Ctx),
+    case {Low, High} of
         {undefined, undefined} ->
-            %% memcached buckets don't support watermarks
             [];
         {undefined, _} ->
-            %% Low watermark was found to have an error during parsing and
-            %% validation. But the high watermark is valid so we get into
+            %% Low param was found to have an error during parsing and
+            %% validation. But the high param is valid so we get into
             %% this relationship validation code. The error is already
             %% queued up to be returned to the user.
             [];
         {_, undefined} ->
-            %% Same as above except the high watermark is valid and the
-            %% low watermark has an error queued up to be returned to the
+            %% Same as above except the high param is valid and the
+            %% low param has an error queued up to be returned to the
             %% user.
             [];
-        {LowWatermark, HighWatermark} when LowWatermark >= HighWatermark ->
-            Low = list_to_binary(integer_to_list(LowWatermark)),
-            High = list_to_binary(integer_to_list(HighWatermark)),
-            [{memoryLowWatermark,
-              <<"The low watermark ", Low/binary, " must be less "
-                "than the high watermark ", High/binary>>}];
+        {Low, High} when Check =:= less_than_or_equal andalso Low > High ->
+            Msg = io_lib:format("~p (~p) must be less than or equal "
+                                "to ~p (~p)",
+                                [LowParamExtName, Low, HighParamExtName, High]),
+            [{LowParamExtName,
+              list_to_binary(Msg)}];
+        {Low, High} when Check =:= less_than andalso Low >= High ->
+            Msg = io_lib:format("~p (~p) must be less than ~p (~p)",
+                                [LowParamExtName, Low, HighParamExtName, High]),
+            [{LowParamExtName,
+              list_to_binary(Msg)}];
         {_, _} ->
             []
     end.
@@ -4296,11 +4322,22 @@ basic_bucket_params_screening_t() ->
                      [{"bucketType", "membase"},
                       {"ramQuota", "1024"},
                       {"memoryLowWatermark", "88"},
-                      {"memoryHighWatermark", "77"}],
+                      {"memoryHighWatermark", "77"},
+                      {"warmupMinItemsThreshold", "55"},
+                      {"secondaryWarmupMinItemsThreshold", "50"},
+                      {"warmupMinMemoryThreshold", "34"},
+                      {"secondaryWarmupMinMemoryThreshold", "27"}],
                      AllBuckets),
     ?assertEqual([{memoryLowWatermark,
-                   <<"The low watermark 88 must be less than the high "
-                     "watermark 77">>}], E36),
+                   <<"memoryLowWatermark (88) must be less than "
+                     "memoryHighWatermark (77)">>},
+                  {warmupMinItemsThreshold,
+                   <<"warmupMinItemsThreshold (55) must be less than or "
+                     "equal to secondaryWarmupMinItemsThreshold (50)">>},
+                  {warmupMinMemoryThreshold,
+                   <<"warmupMinMemoryThreshold (34) must be less than or "
+                     "equal to secondaryWarmupMinMemoryThreshold (27)">>}],
+                 E36),
 
     %% Specify valid values. This isn't intended to be exhaustive. It
     %% tests the parsing/validation of each item.
@@ -4313,10 +4350,10 @@ basic_bucket_params_screening_t() ->
                       {"accessScannerEnabled", "false"},
                       {"expiryPagerSleepTime", "12345"},
                       {"warmupMinMemoryThreshold", "44"},
-                      {"warmupMinItemsThreshold", "77"},
+                      {"warmupMinItemsThreshold", "46"},
                       {"memoryLowWatermark", "68"},
                       {"memoryHighWatermark", "70"},
-                      {"secondaryWarmupMinMemoryThreshold", "12"},
+                      {"secondaryWarmupMinMemoryThreshold", "72"},
                       {"secondaryWarmupMinItemsThreshold", "56"},
                       {"continuousBackupEnabled", "true"},
                       {"continuousBackupInterval", "123"},
@@ -4326,10 +4363,10 @@ basic_bucket_params_screening_t() ->
     ?assertEqual(false, proplists:get_value(access_scanner_enabled, OK37)),
     ?assertEqual(12345, proplists:get_value(expiry_pager_sleep_time, OK37)),
     ?assertEqual(44, proplists:get_value(warmup_min_memory_threshold, OK37)),
-    ?assertEqual(77, proplists:get_value(warmup_min_items_threshold, OK37)),
+    ?assertEqual(46, proplists:get_value(warmup_min_items_threshold, OK37)),
     ?assertEqual(68, proplists:get_value(memory_low_watermark, OK37)),
     ?assertEqual(70, proplists:get_value(memory_high_watermark, OK37)),
-    ?assertEqual(12, proplists:get_value(secondary_warmup_min_memory_threshold,
+    ?assertEqual(72, proplists:get_value(secondary_warmup_min_memory_threshold,
                                          OK37)),
     ?assertEqual(56, proplists:get_value(secondary_warmup_min_items_threshold,
                                          OK37)),
