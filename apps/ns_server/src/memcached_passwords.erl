@@ -12,7 +12,7 @@
 
 -behaviour(memcached_cfg).
 
--export([start_link/0, sync/0]).
+-export([start_link/0, sync/0, sync_reload/0]).
 
 %% callbacks
 -export([format_status/1, init/0, filter_event/1, handle_event/2, producer/1, refresh/0]).
@@ -31,6 +31,9 @@ start_link() ->
 
 sync() ->
     memcached_cfg:sync(?MODULE).
+
+sync_reload() ->
+    memcached_cfg:sync_reload(?MODULE).
 
 format_status(State) ->
     State#state{admin_passwords="*****"}.

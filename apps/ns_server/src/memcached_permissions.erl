@@ -17,7 +17,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([start_link/0, sync/0, jsonify_user_with_cache/2, spec_users/0]).
+-export([start_link/0, sync/0, sync_reload/0, jsonify_user_with_cache/2,
+         spec_users/0]).
 
 %% callbacks
 -export([init/0, filter_event/1, handle_event/2, producer/1, refresh/0]).
@@ -118,6 +119,9 @@ start_link() ->
 
 sync() ->
     memcached_cfg:sync(?MODULE).
+
+sync_reload() ->
+    memcached_cfg:sync_reload(?MODULE).
 
 init() ->
     #state{buckets = ns_bucket:uuids(),

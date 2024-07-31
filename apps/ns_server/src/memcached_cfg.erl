@@ -15,7 +15,7 @@
 
 -include_lib("ns_common/include/cut.hrl").
 
--export([start_link/2, sync/1]).
+-export([start_link/2, sync/1, sync_reload/1]).
 
 %% gen_event callbacks
 -export([init/1, handle_cast/2, handle_call/3,
@@ -53,6 +53,10 @@ sync(Module) ->
     gen_server:call(Module, sync, infinity),
     memcached_refresh:sync().
 
+sync_reload(Module) ->
+    gen_server:cast(Module, reload_file),
+    sync(Module).
+
 start_link(Module, Path) ->
     gen_server:start_link({local, Module}, ?MODULE, [Module, Path], []).
 
@@ -89,6 +93,8 @@ init([Module, Path]) ->
 terminate(_Reason, _State)     -> ok.
 code_change(_OldVsn, State, _) -> {ok, State}.
 
+handle_cast(reload_file, State) ->
+    {noreply, initiate_write(State)};
 handle_cast(full_reset, State = #state{module = Module}) ->
     {noreply, initiate_write(State#state{stuff = Module:init()})}.
 
