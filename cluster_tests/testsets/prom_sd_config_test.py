@@ -99,7 +99,8 @@ class PromSdConfigTest(testlib.BaseTestSet):
             assert (portSSL == int(self.build_portnum(node_num, True)))
         return True
 
-    def build_url(self, ret_type, disposition, port, network):
+    def build_url(self, ret_type, disposition, port, network,
+                  return_identifiers=False, return_uuid=False):
         assert (ret_type in ["json", "yaml"])
         assert (disposition in ["inline", "attachment"])
         assert (port in ["secure", "insecure"])
@@ -110,9 +111,17 @@ class PromSdConfigTest(testlib.BaseTestSet):
         self.disposition = disposition
         self.port = port
         self.network = network
+        self.return_identifiers = return_identifiers
+        self.return_uuid = return_uuid
 
         url = f"/prometheus_sd_config?type={ret_type}&" \
               f"disposition={disposition}&port={port}&network={network}"
+
+        # Needed to convert 'True' to 'true'
+        if return_identifiers:
+            url += "&include_cluster_identifiers=true"
+        elif return_uuid:
+            url += "&include_cluster_uuid=true"
 
         print(f"\nTesting url: {url}")
         return url
@@ -144,6 +153,10 @@ class PromSdConfigTest(testlib.BaseTestSet):
             r = json.loads(json.dumps(yaml_resp))
         targets = r[0]["targets"]
 
+        # Labels are returned only if they were "asked" for. This is to
+        # ensure backwards compatibility.
+        assert ("labels" not in r[0])
+
         if self.disposition == "attachment":
             content = resp.headers['content-disposition']
             expected = f'attachment; ' \
@@ -168,6 +181,60 @@ class PromSdConfigTest(testlib.BaseTestSet):
 
         assert (len(targets) == 0)
 
+    def verify_label_info(self):
+        # Give the cluster a name
+        testlib.post_succ(self.cluster, "/pools/default",
+                          data={"clusterName": "prom_sd_config"})
+        # Get the cluster UUID
+        r = testlib.get_succ(self.cluster, "/pools/default/nodeServices")
+        rj = r.json()
+        clusterUUID = rj["clusterUUID"]
+
+        for type in ["yaml", "json"]:
+            # Request cluster identifiers (UUID and name)
+            url = self.build_url(ret_type=type,
+                                 disposition="inline",
+                                 port="insecure",
+                                 network="default",
+                                 return_identifiers=True)
+            resp = testlib.get_succ(self.cluster, url)
+            self.validate_label_info_response(clusterUUID, resp)
+            # Request just the cluster UUID
+            url = self.build_url(ret_type=type,
+                                 disposition="inline",
+                                 port="insecure",
+                                 network="default",
+                                 return_uuid=True)
+            resp = testlib.get_succ(self.cluster, url)
+            self.validate_label_info_response(clusterUUID, resp)
+            # Request neither
+            url = self.build_url(ret_type=type,
+                                 disposition="inline",
+                                 port="insecure",
+                                 network="default")
+            resp = testlib.get_succ(self.cluster, url)
+            self.validate_label_info_response(clusterUUID, resp)
+
+    def validate_label_info_response(self, expected_cluster_uuid, resp):
+        if self.ret_type == "json":
+            r = resp.json()
+        else:  # yaml
+            yaml_resp = yaml.safe_load(resp.text)
+            r = json.loads(json.dumps(yaml_resp))
+
+        if self.return_identifiers:
+            labels = r[0]["labels"]
+            uuid_with_dashes = labels["cluster_uuid"]
+            assert (uuid_with_dashes.replace("-", "") == expected_cluster_uuid)
+            assert (labels["cluster_name"] == "prom_sd_config")
+        elif self.return_uuid:
+            labels = r[0]["labels"]
+            uuid_with_dashes = labels["cluster_uuid"]
+            assert (uuid_with_dashes.replace("-", "") == expected_cluster_uuid)
+            assert ("cluster_name" not in labels)
+        else:
+            assert ("labels" not in r[0])
+
     def negative_tests(self):
         # Failures occur when alternate addresses/ports are not configured
         url = self.build_url("json", "inline", "insecure", "external")
@@ -184,3 +251,6 @@ class PromSdConfigTest(testlib.BaseTestSet):
         self.verify_alt_addresses()
         # Positive tests
         self.verify_sd_config()
+
+        # Optional label info
+        self.verify_label_info()
