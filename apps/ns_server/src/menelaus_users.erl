@@ -22,7 +22,7 @@
 -endif.
 
 -export([
-%% User management:
+         %% User management:
          store_user/5,
          store_users/2,
          delete_user/1,
@@ -40,7 +40,7 @@
          get_user_uuid/1,
          change_password/2,
 
-%% Group management:
+         %% Group management:
          store_group/4,
          delete_group/1,
          select_groups/1,
@@ -52,13 +52,13 @@
          group_exists/1,
          get_groups_version/0,
 
-%% UI Profiles
+         %% UI Profiles
          get_profile/1,
          store_profile/2,
          delete_profile/1,
          select_profiles/0,
 
-%% Actions:
+         %% Actions:
          authenticate/2,
          authenticate_with_info/2,
          build_internal_auth/1,
@@ -71,13 +71,13 @@
          get_passwordless/0,
          get_salt_and_mac/1,
 
-%% Backward compatibility:
+         %% Backward compatibility:
          upgrade/3,
          config_upgrade/0,
          upgrade_in_progress/0,
          upgrade_props/4,
 
-%% Misc:
+         %% Misc:
          allow_hash_migration_during_auth_default/0
         ]).
 
@@ -340,52 +340,52 @@ make_props(Id, Props, ItemList, {Passwordless, Definitions,
                 end,
 
     EvalProp =
-      fun (password_change_timestamp, Cache) ->
-              {replicated_dets:get_last_modified(
-                 storage_name(), {auth, Id}, undefined), Cache};
-          (group_roles, Cache) ->
-              {Groups, NewCache} = GetGroups(Cache),
-              Roles = get_groups_roles(Groups, Definitions, Snapshot),
-              {Roles, NewCache};
-          (user_roles, Cache) ->
-              UserRoles = get_user_roles(Props, Definitions, Snapshot),
-              {UserRoles, Cache};
-          (roles, Cache) ->
-              {DirtyGroups, NewCache} = GetDirtyGroups(Cache),
-              UserRoles = get_user_roles(Props, Definitions, Snapshot),
-              GroupsAndRoles = get_groups_roles(DirtyGroups, Definitions,
-                                                Snapshot),
-              GroupRoles = lists:concat([R || {_, R} <- GroupsAndRoles]),
-              {lists:usort(UserRoles ++ GroupRoles), NewCache};
-          (passwordless, Cache) ->
-              {lists:member(Id, Passwordless), Cache};
-          (groups, Cache) ->
-              {{Groups, _}, NewCache} = GetGroups(Cache),
-              {Groups, NewCache};
-          (external_groups, Cache) ->
-              {{_, ExtGroups}, NewCache} = GetGroups(Cache),
-              {ExtGroups, NewCache};
-          (dirty_groups, Cache) ->
-              {DirtyGroups, NewCache} = GetDirtyGroups(Cache),
-              {DirtyGroups, NewCache};
-          (Name, Cache) ->
-              {proplists:get_value(Name, Props), Cache}
+        fun (password_change_timestamp, Cache) ->
+                {replicated_dets:get_last_modified(
+                   storage_name(), {auth, Id}, undefined), Cache};
+            (group_roles, Cache) ->
+                {Groups, NewCache} = GetGroups(Cache),
+                Roles = get_groups_roles(Groups, Definitions, Snapshot),
+                {Roles, NewCache};
+            (user_roles, Cache) ->
+                UserRoles = get_user_roles(Props, Definitions, Snapshot),
+                {UserRoles, Cache};
+            (roles, Cache) ->
+                {DirtyGroups, NewCache} = GetDirtyGroups(Cache),
+                UserRoles = get_user_roles(Props, Definitions, Snapshot),
+                GroupsAndRoles = get_groups_roles(DirtyGroups, Definitions,
+                                                  Snapshot),
+                GroupRoles = lists:concat([R || {_, R} <- GroupsAndRoles]),
+                {lists:usort(UserRoles ++ GroupRoles), NewCache};
+            (passwordless, Cache) ->
+                {lists:member(Id, Passwordless), Cache};
+            (groups, Cache) ->
+                {{Groups, _}, NewCache} = GetGroups(Cache),
+                {Groups, NewCache};
+            (external_groups, Cache) ->
+                {{_, ExtGroups}, NewCache} = GetGroups(Cache),
+                {ExtGroups, NewCache};
+            (dirty_groups, Cache) ->
+                {DirtyGroups, NewCache} = GetDirtyGroups(Cache),
+                {DirtyGroups, NewCache};
+            (Name, Cache) ->
+                {proplists:get_value(Name, Props), Cache}
         end,
 
     {Res, _} = lists:mapfoldl(
-                   fun (Key, Cache) ->
-                           {Value, NewCache} = EvalProp(Key, Cache),
-                           {{Key, Value}, NewCache}
-                   end, #{}, ItemList),
+                 fun (Key, Cache) ->
+                         {Value, NewCache} = EvalProp(Key, Cache),
+                         {{Key, Value}, NewCache}
+                 end, #{}, ItemList),
     Res.
 
 make_props_state(ItemList) ->
     Passwordless = lists:member(passwordless, ItemList) andalso
-                       get_passwordless(),
+        get_passwordless(),
     {Definitions, Snapshot} =
         case lists:member(roles, ItemList) orelse
-             lists:member(user_roles, ItemList) orelse
-             lists:member(group_roles, ItemList) of
+            lists:member(user_roles, ItemList) orelse
+            lists:member(group_roles, ItemList) of
             true -> {menelaus_roles:get_definitions(public),
                      ns_bucket:get_snapshot(all, [collections, uuid])};
             false -> {undefined, undefined}
@@ -407,13 +407,13 @@ rebuild_auth({_, _CurrentAuth}, Password) ->
 -spec store_user(rbac_identity(), rbac_user_name(),
                  {password, rbac_password()} | {auth, rbac_auth()},
                  [rbac_role()], [rbac_group_id()]) ->
-    ok | {error, {roles_validation, _}} |
-    {error, password_required} | {error, too_many}.
+          ok | {error, {roles_validation, _}} |
+          {error, password_required} | {error, too_many}.
 store_user(Identity, Name, PasswordOrAuth, Roles, Groups) ->
     Props = [{name, Name} || Name =/= undefined] ++
-            [{groups, Groups} || Groups =/= undefined] ++
-            [{pass_or_auth, PasswordOrAuth},
-             {roles, Roles}],
+        [{groups, Groups} || Groups =/= undefined] ++
+        [{pass_or_auth, PasswordOrAuth},
+         {roles, Roles}],
     case store_users([{Identity, Props}], true) of
         {ok, _UpdatedUsers} -> ok;
         {error, _} = Error -> Error
@@ -561,8 +561,9 @@ change_password({_UserName, local} = Identity, Password) when is_list(Password) 
             store_auth(Identity, Auth, ?REPLICATED_DETS_HIGH_PRIORITY)
     end.
 
--spec delete_user(rbac_identity()) -> {commit, ok} |
-                                      {abort, {error, not_found}}.
+-spec delete_user(rbac_identity()) ->
+          {commit, ok} |
+          {abort, {error, not_found}}.
 delete_user({_, Domain} = Identity) ->
     case Domain of
         local ->

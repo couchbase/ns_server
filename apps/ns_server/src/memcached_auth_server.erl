@@ -315,36 +315,39 @@ process_data_test() ->
     with_mocked_users(
       Users,
       fun () ->
-          test_process_data(
-            {?MC_AUTH_REQUEST, undefined,
-             {[{mechanism, <<"PLAIN">>}, {challenge, <<"AFVzZXIxAGZvbw==">>}]}},
-            fun (?MC_AUTH_REQUEST, ?SUCCESS, undefined,
-                 {[{<<"rbac">>, {[{<<"User1">>,
-                                   {[{<<"buckets">>, {[]}},
-                                     {<<"privileges">>, []},
-                                     {<<"domain">>, <<"local">>}]}}]}}
-                  ]}) -> ok
-            end),
-          test_process_data(
-            {?MC_AUTH_REQUEST, undefined,
-             {[{mechanism, <<"PLAIN">>}, {challenge, <<"AFVzZXIyAGJhcg==">>}]}},
-            fun (?MC_AUTH_REQUEST, ?SUCCESS, undefined,
-                 {[{<<"rbac">>,
-                    {[{<<"User2">>,
-                       {[{<<"buckets">>,
-                          {[{<<"b1">>, {[{<<"privileges">>, [_|_]}]}}]}},
-                         {<<"privileges">>, [_|_]},
-                         {<<"domain">>, <<"external">>}]}}]}}
-                  ]}) -> ok
-            end),
-          test_process_data(
-            {?MC_AUTH_REQUEST, undefined,
-             {[{mechanism, <<"PLAIN">>}, {challenge, <<"AGpvaG4AYmFy">>}]}},
-            fun (?MC_AUTH_REQUEST, ?KEY_ENOENT, undefined,
-                 {[{<<"error">>, {[
-                      {<<"context">>, <<"Authentication failed">>},
-                      {<<"ref">>, _}]}}]}) -> ok
-            end)
+              test_process_data(
+                {?MC_AUTH_REQUEST, undefined,
+                 {[{mechanism, <<"PLAIN">>},
+                   {challenge, <<"AFVzZXIxAGZvbw==">>}]}},
+                fun (?MC_AUTH_REQUEST, ?SUCCESS, undefined,
+                     {[{<<"rbac">>, {[{<<"User1">>,
+                                       {[{<<"buckets">>, {[]}},
+                                         {<<"privileges">>, []},
+                                         {<<"domain">>, <<"local">>}]}}]}}
+                      ]}) -> ok
+                end),
+              test_process_data(
+                {?MC_AUTH_REQUEST, undefined,
+                 {[{mechanism, <<"PLAIN">>},
+                   {challenge, <<"AFVzZXIyAGJhcg==">>}]}},
+                fun (?MC_AUTH_REQUEST, ?SUCCESS, undefined,
+                     {[{<<"rbac">>,
+                        {[{<<"User2">>,
+                           {[{<<"buckets">>,
+                              {[{<<"b1">>, {[{<<"privileges">>, [_|_]}]}}]}},
+                             {<<"privileges">>, [_|_]},
+                             {<<"domain">>, <<"external">>}]}}]}}
+                      ]}) -> ok
+                end),
+              test_process_data(
+                {?MC_AUTH_REQUEST, undefined,
+                 {[{mechanism, <<"PLAIN">>},
+                   {challenge, <<"AGpvaG4AYmFy">>}]}},
+                fun (?MC_AUTH_REQUEST, ?KEY_ENOENT, undefined,
+                     {[{<<"error">>,
+                        {[{<<"context">>, <<"Authentication failed">>},
+                          {<<"ref">>, _}]}}]}) -> ok
+                end)
       end),
     ok.
 

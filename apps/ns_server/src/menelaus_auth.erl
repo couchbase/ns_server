@@ -485,8 +485,8 @@ can_use_cert_for_auth(Req) ->
 
 -spec verify_rest_auth(mochiweb_request(),
                        rbac_permission() | no_check | local) ->
-                              {auth_failure | forbidden | allowed
-                              | temporary_failure, mochiweb_request()}.
+          {auth_failure | forbidden | allowed
+          | temporary_failure, mochiweb_request()}.
 verify_rest_auth(Req, Permission) ->
     Auth = extract_auth(Req),
     case authenticate(Auth) of
@@ -770,7 +770,7 @@ check_permission(#authn_res{identity = Identity} = AuthnRes, Permission) ->
                     ?log_debug("Access denied.~nIdentity: ~p~nRoles: ~p~n"
                                "Permission: ~p~n",
                                [ns_config_log:tag_user_data(Identity),
-                               Roles, Permission]),
+                                Roles, Permission]),
                     case Identity of
                         {"", anonymous} ->
                             %% we do allow some api's for anonymous

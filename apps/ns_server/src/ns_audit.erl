@@ -637,8 +637,8 @@ password_change(Req, Identity) ->
 
 set_user(Req, Identity, Roles, Name, Groups, Reason) ->
     put(set_user, Req, [{identity, get_identity(Identity)},
-                        {roles, {list, [menelaus_web_rbac:role_to_string(Role) ||
-                                        Role <- Roles]}},
+                        {roles, {list, [menelaus_web_rbac:role_to_string(Role)
+                                        || Role <- Roles]}},
                         {full_name, Name},
                         {groups, {list, [G || Groups =/= undefined,
                                               G <- Groups]}},

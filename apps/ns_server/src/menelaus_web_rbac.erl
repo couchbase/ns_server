@@ -242,13 +242,15 @@ user_to_json({Id, Domain}, Props) ->
     {[{id, list_to_binary(Id)},
       {domain, Domain},
       {roles, RolesJson}] ++
-     [{groups, [list_to_binary(G) || G <- Groups]} || Groups =/= undefined] ++
-     [{external_groups, [list_to_binary(G) || G <- ExtGroups]}
+         [{groups, [list_to_binary(G) || G <- Groups]}
+          || Groups =/= undefined] ++
+         [{external_groups, [list_to_binary(G) || G <- ExtGroups]}
           || ExtGroups =/= undefined] ++
-     [{name, list_to_binary(Name)} || Name =/= undefined] ++
-     [{uuid, UUID} || UUID =/= undefined] ++
-     [{passwordless, Passwordless} || Passwordless == true] ++
-     [{password_change_date, PassChangeTime} || PassChangeTime =/= undefined]}.
+         [{name, list_to_binary(Name)} || Name =/= undefined] ++
+         [{uuid, UUID} || UUID =/= undefined] ++
+         [{passwordless, Passwordless} || Passwordless == true] ++
+         [{password_change_date, PassChangeTime}
+          || PassChangeTime =/= undefined]}.
 
 user_roles_to_json(Props) ->
     UserRoles = proplists:get_value(user_roles, Props, []),
@@ -982,19 +984,19 @@ validate_password(State) ->
 put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword) ->
     ExtraRolesFun =
         fun (State) ->
-            Id = {_, Domain} = GetUserIdFun(State),
-            %% Domain is validated above but it can fail the validation
-            %% so it will be undefined here and lead to get_roles crash
-            case Domain == local orelse Domain == external of
-                true -> menelaus_users:get_roles(Id);
-                false -> []
-            end ++
-            case validator:get_value(groups, State) of
-                undefined -> [];
-                Groups ->
-                    lists:append([menelaus_users:get_group_roles(G)
-                                  || G <- Groups])
-            end
+                Id = {_, Domain} = GetUserIdFun(State),
+                %% Domain is validated above but it can fail the validation
+                %% so it will be undefined here and lead to get_roles crash
+                case Domain == local orelse Domain == external of
+                    true -> menelaus_users:get_roles(Id);
+                    false -> []
+                end ++
+                    case validator:get_value(groups, State) of
+                        undefined -> [];
+                        Groups ->
+                            lists:append([menelaus_users:get_group_roles(G)
+                                          || G <- Groups])
+                    end
         end,
 
     [validator:touch(name, _),
@@ -1002,8 +1004,8 @@ put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword) ->
      validate_roles(roles, _),
      validator_verify_security_roles_access(roles, Req, ?SECURITY_WRITE,
                                             ExtraRolesFun, _)] ++
-    [validate_password(_) || ValidatePassword] ++
-    [validator:unsupported(_)].
+        [validate_password(_) || ValidatePassword] ++
+        [validator:unsupported(_)].
 
 bad_roles_error(BadRoles) ->
     Str = string:join(BadRoles, ","),
@@ -2111,19 +2113,21 @@ jsonify_backup_users(IsAdmin) ->
            pipes:foreach(
              ?producer(),
              fun ({{user, {Id, Domain}}, Props, Auth}) ->
-                 Name = proplists:get_value(name, Props),
-                 Roles = proplists:get_value(user_roles, Props),
-                 Groups = proplists:get_value(groups, Props),
-                 Json = {[{id, list_to_binary(Id)}] ++
-                         [{domain, Domain} || not IsAdmin] ++
-                         [{groups, [list_to_binary(G)
-                                    || G <- Groups]} || Groups /= undefined] ++
-                         [{roles, [list_to_binary(role_to_string(R))
-                                   || R <- Roles]} || (not IsAdmin) andalso
-                                                      Roles /= undefined] ++
-                         [{name, list_to_binary(Name)} || Name /= undefined] ++
-                         [{auth, {Auth}} || Auth =/= undefined]},
-                 ?yield({json, Json})
+                     Name = proplists:get_value(name, Props),
+                     Roles = proplists:get_value(user_roles, Props),
+                     Groups = proplists:get_value(groups, Props),
+                     Json =
+                         {[{id, list_to_binary(Id)}] ++
+                              [{domain, Domain} || not IsAdmin] ++
+                              [{groups, [list_to_binary(G) || G <- Groups]}
+                               || Groups /= undefined] ++
+                              [{roles, [list_to_binary(role_to_string(R))
+                                        || R <- Roles]}
+                               || (not IsAdmin) andalso Roles /= undefined] ++
+                              [{name, list_to_binary(Name)}
+                               || Name /= undefined] ++
+                              [{auth, {Auth}} || Auth =/= undefined]},
+                     ?yield({json, Json})
              end)
        end).
 
@@ -2133,17 +2137,18 @@ jsonify_backup_groups() ->
            pipes:foreach(
              ?producer(),
              fun ({{group, Name}, Props}) ->
-                 Descr = proplists:get_value(description, Props),
-                 Roles = proplists:get_value(roles, Props),
-                 LdapRef = proplists:get_value(ldap_group_ref, Props),
-                 Json = {[{name, list_to_binary(Name)}] ++
-                         [{description, list_to_binary(Descr)}
-                          || Descr /= undefined] ++
-                         [{roles, [list_to_binary(role_to_string(R))
-                                   || R <- Roles]} || Roles /= undefined] ++
-                         [{ldap_group_ref, list_to_binary(LdapRef)}
-                          || LdapRef /= undefined]},
-                 ?yield({json, Json})
+                     Descr = proplists:get_value(description, Props),
+                     Roles = proplists:get_value(roles, Props),
+                     LdapRef = proplists:get_value(ldap_group_ref, Props),
+                     Json = {[{name, list_to_binary(Name)}] ++
+                                 [{description, list_to_binary(Descr)}
+                                  || Descr /= undefined] ++
+                                 [{roles, [list_to_binary(role_to_string(R))
+                                           || R <- Roles]}
+                                  || Roles /= undefined] ++
+                                 [{ldap_group_ref, list_to_binary(LdapRef)}
+                                  || LdapRef /= undefined]},
+                     ?yield({json, Json})
              end)
        end).
 
@@ -2256,22 +2261,23 @@ handle_backup_restore_validated(Req, Params) ->
     {GroupsSkipped, GroupsUpdated} =
         lists:foldl(
           fun ({GroupProps}, {SAcc, OAcc}) ->
-              GroupId = proplists:get_value(name, GroupProps),
-              case do_store_group(GroupId, proplists:delete(name, GroupProps),
-                                  CanOverwrite, Req) of
-                  added -> {SAcc, OAcc};
-                  updated -> {SAcc, [GroupId | OAcc]};
-                  {error, already_exists} -> {[GroupId | SAcc], OAcc}
-              end
+                  GroupId = proplists:get_value(name, GroupProps),
+                  case do_store_group(GroupId,
+                                      proplists:delete(name, GroupProps),
+                                      CanOverwrite, Req) of
+                      added -> {SAcc, OAcc};
+                      updated -> {SAcc, [GroupId | OAcc]};
+                      {error, already_exists} -> {[GroupId | SAcc], OAcc}
+                  end
           end, {[], []}, Groups),
 
     Users = lists:map(
               fun ({UserProps}) ->
-                  Auth = proplists:get_value(auth, UserProps),
-                  Id = proplists:get_value(id, UserProps),
-                  Domain = proplists:get_value(domain, UserProps),
-                  Identity = {Id, Domain},
-                  {Identity, [{pass_or_auth, {auth, Auth}} | UserProps]}
+                      Auth = proplists:get_value(auth, UserProps),
+                      Id = proplists:get_value(id, UserProps),
+                      Domain = proplists:get_value(domain, UserProps),
+                      Identity = {Id, Domain},
+                      {Identity, [{pass_or_auth, {auth, Auth}} | UserProps]}
               end, proplists:get_value(users, Backup)),
 
     UpdatedUsers =
@@ -2284,18 +2290,18 @@ handle_backup_restore_validated(Req, Params) ->
 
     lists:foreach(
       fun ({AddedOrUpdated, {Identity, UserProps}}) ->
-          ns_audit:set_user(
-            Req,
-            Identity,
-            proplists:get_value(roles, UserProps, []),
-            proplists:get_value(name, UserProps),
-            proplists:get_value(groups, UserProps),
-            AddedOrUpdated)
+              ns_audit:set_user(
+                Req,
+                Identity,
+                proplists:get_value(roles, UserProps, []),
+                proplists:get_value(name, UserProps),
+                proplists:get_value(groups, UserProps),
+                AddedOrUpdated)
       end, UpdatedUsers),
 
     UsersCreatedCount =
         lists:sum([1 || {added, _} <- UpdatedUsers] ++
-                  [1 || AdminRes == created]),
+                      [1 || AdminRes == created]),
 
     FormatUser = fun ({N, D}) -> {[{name, list_to_binary(N)}, {domain, D}]} end,
     UsersSkipped =
@@ -2310,7 +2316,7 @@ handle_backup_restore_validated(Req, Params) ->
     GroupsUpdatedCount = length(GroupsUpdated),
     GroupsSkippedCount = length(GroupsSkipped),
     GroupsCreatedCount = length(Groups) - GroupsUpdatedCount -
-                         GroupsSkippedCount,
+        GroupsSkippedCount,
 
     menelaus_util:reply_json(
       Req, {[{stats,
