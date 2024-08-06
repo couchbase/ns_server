@@ -927,6 +927,9 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
                  {eject_nodes, EjectNodes},
                  {delta_nodes, DeltaNodes},
                  {failed_nodes, FailedNodes}],
+
+    DesiredServicesNodes = ns_rebalancer:get_desired_services_nodes(Params),
+
     Type = rebalance,
 
     {ServicesToObserve, ServicesMsg} =
@@ -951,7 +954,7 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
         end,
 
     MsgServicesTopology =
-        case ns_rebalancer:get_desired_services_nodes(Params) of
+        case DesiredServicesNodes of
             undefined ->
                 "";
             Topology ->
@@ -971,9 +974,18 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
     case ns_rebalancer:start_link_rebalance(Params) of
         {ok, Pid} ->
             ale:info(?USER_LOGGER, Msg),
+            TopologyParams =
+                case DesiredServicesNodes of
+                    undefined ->
+                        [];
+                    _ ->
+                        [{set_services_topology,
+                          {maps:to_list(DesiredServicesNodes)}}]
+                end,
             event_log:add_log(rebalance_initiated,
                               [{operation_id, RebalanceId},
-                               {nodes_info, {NodesInfo}}]),
+                               {nodes_info, {NodesInfo}},
+                               {services, Services}] ++ TopologyParams),
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
             ReturnValue =
