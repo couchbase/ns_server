@@ -1110,7 +1110,8 @@ parse_rebalance_params(Params) ->
                end,
 
     ServiceNodesMap =
-        case cluster_compat_mode:is_cluster_morpheus() of
+        case cluster_compat_mode:is_cluster_morpheus() andalso
+            cluster_compat_mode:is_enterprise() of
             true ->
                 parse_topology_params(Params, Services,
                                       KnownNodesS -- EjectedNodesS);
