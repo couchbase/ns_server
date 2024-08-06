@@ -172,7 +172,8 @@
               "local" : {"ip" : "", "port" : 1},
               "known_nodes" : [],
               "ejected_nodes" : [],
-              "delta_recovery_buckets" : []
+              "delta_recovery_buckets" : [],
+              "services" : []
           },
           "optional_fields" : {
               "authenticated_userid" : {"domain" : "", "user" : ""},
@@ -196,6 +197,7 @@
               "props" : ""
           },
           "optional_fields" : {
+              "set_services_topology" : [],
               "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }

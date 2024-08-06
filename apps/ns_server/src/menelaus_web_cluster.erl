@@ -1206,12 +1206,14 @@ do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
         %% pre-7.6 responses
         ok ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes,
-                                         DeltaRecoveryBuckets),
+                                         DeltaRecoveryBuckets, Services,
+                                         DesiredSevicesTopology),
             reply(Req, 200);
         %% 7.6 and next versions response
         {ok, RebalanceId} ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes,
-                                         DeltaRecoveryBuckets),
+                                         DeltaRecoveryBuckets, Services,
+                                         DesiredSevicesTopology),
             reply_json(Req, {[{rebalance_id, RebalanceId}]}, 200);
         OtherError ->
             reply_json(Req, {[OtherError]}, 400)
