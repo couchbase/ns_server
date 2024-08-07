@@ -31,7 +31,8 @@
                              encryption_service |
                              disabled.
 -type dek_id() :: cb_cluster_secrets:key_id().
--type dek_kind() :: kek | chronicleDek | configDek | {bucketDek, string()}.
+-type dek_kind() :: kek | chronicleDek | configDek | logDek |
+                    {bucketDek, string()}.
 -type dek() :: #{id := dek_id(), type := 'raw-aes-gcm',
                  info := #{key := fun(() -> binary()),
                            encryption_key_id := cb_cluster_secrets:key_id(),
@@ -289,7 +290,7 @@ increment_counter_in_chronicle(Kind, SecretId) ->
 %% Returns a dek kind that is affected by a given chronicle key.
 %% Returns false otherwise.
 dek_chronicle_keys_filter(?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY) ->
-    [chronicleDek, configDek];
+    [chronicleDek, configDek, logDek];
 dek_chronicle_keys_filter(Key) ->
     case ns_bucket:sub_key_match(Key) of
         {true, Bucket, props} -> [{bucketDek, Bucket}];
@@ -335,10 +336,22 @@ dek_config(configDek) ->
                              config_encryption, _),
       rotation_int_callback => cb_crypto:get_dek_rotation_interval(
                                  config_encryption, _),
-      get_ids_in_use_callback => fun get_config_dek_ids_in_use/0,
+      get_ids_in_use_callback => ?cut(get_dek_ids_in_use(configDek)),
       drop_callback => fun drop_config_deks/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
       required_usage => config_encryption};
+dek_config(logDek) ->
+    #{encryption_method_callback => cb_crypto:get_encryption_method(
+                                      log_encryption, _),
+      set_active_key_callback => fun(_) -> ok end,
+      lifetime_callback => cb_crypto:get_dek_kind_lifetime(
+                             log_encryption, _),
+      rotation_int_callback => cb_crypto:get_dek_rotation_interval(
+                                 log_encryption, _),
+      get_ids_in_use_callback => ?cut(get_dek_ids_in_use(logDek)),
+      drop_callback => fun drop_log_deks/1,
+      chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
+      required_usage => log_encryption};
 dek_config({bucketDek, Bucket}) ->
     #{encryption_method_callback => ns_bucket:get_encryption(Bucket, _),
       set_active_key_callback => ns_memcached:set_active_dek_for_bucket(Bucket,
@@ -361,7 +374,7 @@ dek_kinds_list() ->
     dek_kinds_list(direct).
 dek_kinds_list(Snapshot) ->
     Buckets = ns_bucket:get_bucket_names(Snapshot),
-    [chronicleDek, configDek] ++ [{bucketDek, B} || B <- Buckets].
+    [chronicleDek, configDek, logDek] ++ [{bucketDek, B} || B <- Buckets].
 
 set_config_active_key(_ActiveDek) ->
     force_config_encryption_keys().
@@ -381,8 +394,8 @@ force_config_encryption_keys() ->
         end
     end.
 
-get_config_dek_ids_in_use() ->
-    {ok, Snapshot} = cb_crypto:fetch_deks_snapshot(configDek),
+get_dek_ids_in_use(Type) ->
+    {ok, Snapshot} = cb_crypto:fetch_deks_snapshot(Type),
     {_, AllDeks} = cb_crypto:get_all_deks(Snapshot),
     {ok, [Id || #{id := Id} <- AllDeks]}.
 
@@ -395,6 +408,9 @@ drop_config_deks(DekIdsToDrop) ->
             [_ | _] -> {error, {still_in_use, StillInUse}}
         end
     end.
+
+drop_log_deks(_DekIdsToDrop) ->
+    {ok, done}.
 
 drop_bucket_deks(Bucket, DekIds) ->
     Continuation = fun (_) ->

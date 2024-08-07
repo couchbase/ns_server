@@ -551,6 +551,7 @@ cfg_to_json(Props) ->
     KeksStoreConfig = KeyCfg(kek),
     ChronicleDeksConfig = KeyCfg(chronicleDek),
     ConfigDeksConfig = KeyCfg(configDek),
+    LogDeksConfig = KeyCfg(logDek),
     DeksStoreConfig = case key_path(bucketDek, Props) of
                           undefined -> [];
                           DeksPath -> [{[{kind, bucketDek},
@@ -558,7 +559,8 @@ cfg_to_json(Props) ->
                                          {encryptByKind, kek}]}]
                       end,
     StoredKeysJson = {storedKeys, [KeksStoreConfig, ChronicleDeksConfig,
-                                   ConfigDeksConfig | DeksStoreConfig]},
+                                   ConfigDeksConfig,
+                                   LogDeksConfig | DeksStoreConfig]},
 
     case Extract(es_key_storage_type) of
         file ->
@@ -617,6 +619,8 @@ key_path(chronicleDek, _Cfg) ->
     proplists:get_value(chronicle_dek_path, defaults(), undefined);
 key_path(configDek, _Cfg) ->
     proplists:get_value(config_dek_path, defaults(), undefined);
+key_path(logDek, _Cfg) ->
+    proplists:get_value(log_dek_path, defaults(), undefined);
 key_path(bucketDek, Cfg) ->
     Key = bucket_dek_path,
     case proplists:get_value(Key, Cfg) of
@@ -626,6 +630,7 @@ key_path(bucketDek, Cfg) ->
 
 defaults() ->
     ConfigDir = path_config:component_path(data, "config"),
+    {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
     [{es_password_env, "CB_MASTER_PASSWORD"},
      {es_password_source, env},
      {es_encrypt_key, true},
@@ -633,6 +638,8 @@ defaults() ->
      {es_key_storage_type, 'file'},
      {kek_path, iolist_to_binary(filename:join(ConfigDir, "keks"))},
      {config_dek_path, iolist_to_binary(filename:join(ConfigDir, "deks"))},
+     {log_dek_path,
+      iolist_to_binary(filename:join([LogDir, "deks"]))},
      {chronicle_dek_path,
       iolist_to_binary(filename:join([ConfigDir, "chronicle", "deks"]))}].
 

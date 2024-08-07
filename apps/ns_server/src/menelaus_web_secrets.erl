@@ -493,21 +493,23 @@ format_secrets_used_by_list(UsedByMap) ->
 
     FormatUsages =
         fun (Usages) ->
-            {Buckets, Other} = misc:partitionmap(
-                                 fun ({bucket_encryption, B}) -> {left, B};
-                                     (K) -> {right, K}
-                                 end, Usages),
-            FormattedUsages = lists:map(fun (config_encryption) ->
-                                            "configuration"
-                                        end, Other),
-            Buckets2 = ["\"" ++ B ++ "\"" || B <- Buckets],
-            BucketsStr =
-                case length(Buckets) of
-                    0 -> [];
-                    1 -> ["bucket " ++ Buckets2];
-                    _ -> ["buckets " ++ lists:join(", ", Buckets2)]
-                end,
-            FormattedUsages ++ BucketsStr
+                {Buckets, Other} = misc:partitionmap(
+                                     fun ({bucket_encryption, B}) -> {left, B};
+                                         (K) -> {right, K}
+                                     end, Usages),
+                FormattedUsages = lists:map(fun (config_encryption) ->
+                                                    "configuration";
+                                                (log_encryption) ->
+                                                    "logs"
+                                            end, Other),
+                Buckets2 = ["\"" ++ B ++ "\"" || B <- Buckets],
+                BucketsStr =
+                    case length(Buckets) of
+                        0 -> [];
+                        1 -> ["bucket " ++ Buckets2];
+                        _ -> ["buckets " ++ lists:join(", ", Buckets2)]
+                    end,
+                FormattedUsages ++ BucketsStr
         end,
     Kind2Usage = ?cut(maps:get(required_usage, cb_deks:dek_config(_))),
     UsagesUsedByCfg = lists:uniq(lists:map(Kind2Usage, UsedByCfg)),
@@ -536,25 +538,25 @@ format_secrets_used_by_list_test() ->
     All = cb_deks:dek_kinds_list(#{bucket_names => {["b1", "b2"], 1}}),
     Secrets = ["s1", "s2"],
     F = ?cut(lists:flatten(format_secrets_used_by_list(_))),
-    ?assertEqual("this secret is configured to encrypt configuration, "
+    ?assertEqual("this secret is configured to encrypt configuration, logs, "
                  "buckets \"b1\", \"b2\"",
                  F(#{by_deks => All, by_config => All, by_secrets => []})),
-    ?assertEqual("this secret is configured to encrypt configuration, "
+    ?assertEqual("this secret is configured to encrypt configuration, logs, "
                  "buckets \"b1\", \"b2\"",
                  F(#{by_deks => [], by_config => All, by_secrets => []})),
-    ?assertEqual("this secret still encrypts some data in configuration, "
+    ?assertEqual("this secret still encrypts some data in configuration, logs, "
                  "buckets \"b1\", \"b2\"",
                  F(#{by_deks => All, by_config => [], by_secrets => []})),
     ?assertEqual("this secret is configured to encrypt secrets s1, s2",
                  F(#{by_deks => [], by_config => [], by_secrets => Secrets})),
-    ?assertEqual("this secret is configured to encrypt configuration, "
+    ?assertEqual("this secret is configured to encrypt configuration, logs, "
                  "buckets \"b1\", \"b2\", secrets s1, s2",
                  F(#{by_deks => [], by_config => All, by_secrets => Secrets})),
-    ?assertEqual("this secret is configured to encrypt configuration, "
+    ?assertEqual("this secret is configured to encrypt configuration, logs, "
                  "buckets \"b1\", \"b2\", secrets s1, s2",
                  F(#{by_deks => All, by_config => All, by_secrets => Secrets})),
     ?assertEqual("this secret is configured to encrypt configuration; it also "
-                 "still encrypts some data in buckets \"b1\", \"b2\"",
+                 "still encrypts some data in logs, buckets \"b1\", \"b2\"",
                  F(#{by_deks => All, by_config => [configDek],
                      by_secrets => []})),
     ?assertEqual("this secret is configured to encrypt configuration, "

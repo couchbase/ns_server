@@ -274,7 +274,7 @@ without_historical_deks(#dek_snapshot{active_key = undefined} = Snapshot) ->
 without_historical_deks(#dek_snapshot{active_key = Dek} = Snapshot) ->
     Snapshot#dek_snapshot{all_keys = [Dek]}.
 
--spec get_encryption_method(config_encryption,
+-spec get_encryption_method(config_encryption | log_encryption,
                             cb_cluster_secrets:chronicle_snapshot()) ->
           {ok, cb_deks:encryption_method()} | {error, not_found}.
 get_encryption_method(Type, Snapshot) ->
@@ -289,7 +289,7 @@ get_encryption_method(Type, Snapshot) ->
             {error, not_found}
     end.
 
--spec get_dek_kind_lifetime(config_encryption,
+-spec get_dek_kind_lifetime(config_encryption | log_encryption,
                             cb_cluster_secrets:chronicle_snapshot()) ->
           {ok, pos_integer()} | {error, not_found}.
 get_dek_kind_lifetime(Type, Snapshot) ->
@@ -299,7 +299,7 @@ get_dek_kind_lifetime(Type, Snapshot) ->
         #{} -> {error, not_found}
     end.
 
--spec get_dek_rotation_interval(config_encryption,
+-spec get_dek_rotation_interval(config_encryption | log_encryption,
                                 cb_cluster_secrets:chronicle_snapshot()) ->
           {ok, undefined | pos_integer()} | {error, not_found}.
 get_dek_rotation_interval(Type, Snapshot) ->
