@@ -112,8 +112,8 @@ sd_config_validators() ->
      validator:convert(port, fun list_to_atom/1, _),
      validator:one_of(network, ["default", "external"], _),
      validator:convert(network, fun list_to_atom/1, _),
-     validator:boolean(include_cluster_identifiers, _),
-     validator:boolean(include_cluster_uuid, _),
+     validator:one_of(clusterLabels, ["none", "uuidOnly", "uuidAndName"], _),
+     validator:convert(clusterLabels, fun list_to_atom/1, _),
      validator:unsupported(_)
     ].
 
@@ -125,11 +125,15 @@ do_handle_sd_config(Req, Params) ->
                insecure -> rest_port
            end,
     Network = proplists:get_value(network, Params, default),
-    IncClusterIdentifiers = proplists:get_bool(include_cluster_identifiers,
-                                               Params),
-    %% If include_cluster_identifiers is 'true' then we ignore the
-    %% value of include_cluster_uuid as it will also be included.
-    IncClusterUuid = proplists:get_bool(include_cluster_uuid, Params),
+    {IncClusterName, IncClusterUuid} =
+        case proplists:get_value(clusterLabels, Params, none) of
+            none ->
+                {false, false};
+            uuidOnly ->
+                {false, true};
+            uuidAndName ->
+                {true, true}
+        end,
     Nodes = menelaus_web_node:get_hostnames(Req, any, [{port, Port}]),
     Hosts =
         case Network of
@@ -163,14 +167,14 @@ do_handle_sd_config(Req, Params) ->
             ok
     end,
     Labels =
-        case IncClusterIdentifiers orelse IncClusterUuid of
+        case IncClusterUuid of
             false ->
                 [];
             true ->
                 Uuid = misc:format_v4uuid(menelaus_web:get_uuid()),
                 [{cluster_uuid, list_to_binary(Uuid)}]
         end ++
-        case IncClusterIdentifiers of
+        case IncClusterName of
             false ->
                 [];
             true ->
