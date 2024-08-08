@@ -3227,6 +3227,8 @@ is_valid_iso_8601_utc_test() ->
 -endif.
 
 %% Formats a UUID into 8-4-4-4-12 format.
+format_v4uuid(<<>>) ->
+    [];
 format_v4uuid(UUID) when is_binary(UUID) ->
     <<Part1:8/binary, Part2:4/binary, Part3:4/binary, Part4:4/binary,
       Part5:12/binary>> = UUID,
