@@ -100,28 +100,26 @@ class PromSdConfigTest(testlib.BaseTestSet):
         return True
 
     def build_url(self, ret_type, disposition, port, network,
-                  return_identifiers=False, return_uuid=False):
+                  return_cluster_labels=None):
         assert (ret_type in ["json", "yaml"])
         assert (disposition in ["inline", "attachment"])
         assert (port in ["secure", "insecure"])
         assert (network in ["default", "external"])
+        assert (return_cluster_labels in
+                [None, "none", "uuidOnly", "uuidAndName"])
 
         # Save args for validating the response
         self.ret_type = ret_type
         self.disposition = disposition
         self.port = port
         self.network = network
-        self.return_identifiers = return_identifiers
-        self.return_uuid = return_uuid
+        self.return_cluster_labels = return_cluster_labels
 
         url = f"/prometheus_sd_config?type={ret_type}&" \
               f"disposition={disposition}&port={port}&network={network}"
 
-        # Needed to convert 'True' to 'true'
-        if return_identifiers:
-            url += "&include_cluster_identifiers=true"
-        elif return_uuid:
-            url += "&include_cluster_uuid=true"
+        if return_cluster_labels is not None:
+            url += f"&clusterLabels={return_cluster_labels}"
 
         print(f"\nTesting url: {url}")
         return url
@@ -191,29 +189,14 @@ class PromSdConfigTest(testlib.BaseTestSet):
         clusterUUID = rj["clusterUUID"]
 
         for type in ["yaml", "json"]:
-            # Request cluster identifiers (UUID and name)
-            url = self.build_url(ret_type=type,
-                                 disposition="inline",
-                                 port="insecure",
-                                 network="default",
-                                 return_identifiers=True)
-            resp = testlib.get_succ(self.cluster, url)
-            self.validate_label_info_response(clusterUUID, resp)
-            # Request just the cluster UUID
-            url = self.build_url(ret_type=type,
-                                 disposition="inline",
-                                 port="insecure",
-                                 network="default",
-                                 return_uuid=True)
-            resp = testlib.get_succ(self.cluster, url)
-            self.validate_label_info_response(clusterUUID, resp)
-            # Request neither
-            url = self.build_url(ret_type=type,
-                                 disposition="inline",
-                                 port="insecure",
-                                 network="default")
-            resp = testlib.get_succ(self.cluster, url)
-            self.validate_label_info_response(clusterUUID, resp)
+            for labels_wanted in ["none", "uuidOnly", "uuidAndName"]:
+                url = self.build_url(ret_type=type,
+                                     disposition="inline",
+                                     port="insecure",
+                                     network="default",
+                                     return_cluster_labels=labels_wanted)
+                resp = testlib.get_succ(self.cluster, url)
+                self.validate_label_info_response(clusterUUID, resp)
 
     def validate_label_info_response(self, expected_cluster_uuid, resp):
         if self.ret_type == "json":
@@ -222,12 +205,12 @@ class PromSdConfigTest(testlib.BaseTestSet):
             yaml_resp = yaml.safe_load(resp.text)
             r = json.loads(json.dumps(yaml_resp))
 
-        if self.return_identifiers:
+        if self.return_cluster_labels == "uuidAndName":
             labels = r[0]["labels"]
             uuid_with_dashes = labels["cluster_uuid"]
             assert (uuid_with_dashes.replace("-", "") == expected_cluster_uuid)
             assert (labels["cluster_name"] == "prom_sd_config")
-        elif self.return_uuid:
+        elif self.return_cluster_labels == "uuidOnly":
             labels = r[0]["labels"]
             uuid_with_dashes = labels["cluster_uuid"]
             assert (uuid_with_dashes.replace("-", "") == expected_cluster_uuid)
