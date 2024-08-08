@@ -15,20 +15,40 @@
 
 -export([handle_get/2, handle_post/2, get_settings/1]).
 
+encr_method(Param, EncrType) ->
+    {Param,
+     #{cfg_key => [EncrType, encryption],
+       type => {one_of, existing_atom,
+                [disabled, encryption_service, secret]}}}.
+
+encr_secret_id(Param, EncrType) ->
+    {Param,
+     #{cfg_key => [EncrType, secret_id],
+       type => {int, -1, infinity}}}.
+
+encr_dek_lifetime(Param, EncrType) ->
+    {Param,
+     #{cfg_key => [EncrType, dek_lifetime_in_sec],
+       type => {int, 0, infinity}}}.
+
+encr_dek_rotate_intrvl(Param, EncrType) ->
+    {Param,
+     #{cfg_key => [EncrType, dek_rotation_interval_in_sec],
+       type => {int, 0, infinity}}}.
+
+
 params() ->
-    [{"config.encryptionMethod",
-      #{cfg_key => [config_encryption, encryption],
-        type => {one_of, existing_atom,
-                 [disabled, encryption_service, secret]}}},
-     {"config.encryptionSecretId",
-      #{cfg_key => [config_encryption, secret_id],
-        type => {int, -1, infinity}}},
-     {"config.dekLifetime",
-      #{cfg_key => [config_encryption, dek_lifetime_in_sec],
-        type => {int, 0, infinity}}},
-     {"config.dekRotationInterval",
-      #{cfg_key => [config_encryption, dek_rotation_interval_in_sec],
-        type => {int, 0, infinity}}}].
+    [encr_method("config.encryptionMethod", config_encryption),
+     encr_method("log.encryptionMethod", log_encryption),
+
+     encr_secret_id("config.encryptionSecretId", config_encryption),
+     encr_secret_id("log.encryptionSecretId", log_encryption),
+
+     encr_dek_lifetime("config.dekLifetime", config_encryption),
+     encr_dek_lifetime("log.dekLifetime", log_encryption),
+
+     encr_dek_rotate_intrvl("config.dekRotationInterval", config_encryption),
+     encr_dek_rotate_intrvl("log.dekRotationInterval",log_encryption)].
 
 handle_get(Path, Req) ->
     Settings = get_settings(direct),
@@ -90,7 +110,11 @@ defaults() ->
     #{config_encryption => #{encryption => disabled,
                              secret_id => ?SECRET_ID_NOT_SET,
                              dek_lifetime_in_sec => 365*60*60*24,
-                             dek_rotation_interval_in_sec => 30*60*60*24}}.
+                             dek_rotation_interval_in_sec => 30*60*60*24},
+      log_encryption => #{encryption => disabled,
+                          secret_id => ?SECRET_ID_NOT_SET,
+                          dek_lifetime_in_sec => 365*60*60*24,
+                          dek_rotation_interval_in_sec => 30*60*60*24}}.
 
 validate_no_unencrypted_secrets(config_encryption,
                                 #{encryption := disabled,

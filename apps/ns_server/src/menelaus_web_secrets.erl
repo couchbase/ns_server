@@ -205,7 +205,9 @@ export_secret(#{type := DataType} = Props) ->
                         (config_encryption) ->
                             <<"configuration-encryption">>;
                         (secrets_encryption) ->
-                            <<"secrets-encryption">>
+                            <<"secrets-encryption">>;
+                        (log_encryption) ->
+                            <<"log-encryption">>
                     end, UList);
               (data, D) when DataType == ?GENERATED_KEY_TYPE ->
                   {format_auto_generated_key_data(D)};
@@ -276,6 +278,8 @@ validate_key_usage(Name, State) ->
                   {value, secrets_encryption};
               <<"configuration-encryption">> ->
                   {value, config_encryption};
+              <<"log-encryption">> ->
+                  {value, log_encryption};
               _ ->
                   {error, "unknown usage"}
           end
@@ -444,6 +448,11 @@ is_usage_allowed(secrets_encryption, read, Req) ->
 is_usage_allowed(config_encryption, write, Req) ->
     menelaus_auth:has_permission({[admin, security], write}, Req);
 is_usage_allowed(config_encryption, read, Req) ->
+    menelaus_auth:has_permission({[admin, security], read}, Req);
+
+is_usage_allowed(log_encryption, write, Req) ->
+    menelaus_auth:has_permission({[admin, security], write}, Req);
+is_usage_allowed(log_encryption, read, Req) ->
     menelaus_auth:has_permission({[admin, security], read}, Req).
 
 read_filter_secrets_by_permission(Secrets, Req) ->
