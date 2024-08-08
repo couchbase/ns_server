@@ -516,10 +516,12 @@ goport_args(cont_backup, Config, _Cmd, _NodeUUID) ->
     ContBackupDir = get_writable_subdir(data, "@continuous_backup"),
 
     ["backup"] ++
-    build_port_args([{"--admin-port", rest_port},
-                     {"--stats-port", cont_backup_http_port}], Config) ++
+    build_port_args([{"--stats-port", cont_backup_http_port}], Config) ++
     ["--username=" ++ "@ns_server",
-     "--backup-path=" ++ ContBackupDir];
+     "--backup-path=" ++ ContBackupDir,
+     "--local-host=" ++ misc:local_url(
+                          service_ports:get_port(rest_port, Config),
+                          [])];
 
 goport_args(fts, Config, _Cmd, NodeUUID) ->
     NsRestPort = service_ports:get_port(rest_port, Config),
