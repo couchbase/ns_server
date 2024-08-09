@@ -81,7 +81,7 @@ class PsiStatsParser:
                     index = datetime.strptime(match.group(1),
                                               '%Y-%m-%dT%H:%M:%S')
 
-                elif "{'ns_1@" in line:
+                elif line.startswith(" {'ns_1@") or line.startswith("[{'ns_1@"):
                     # Parse node name:
                     # '{ns_1@svc-d-node-001.9cbdee2pnijuve2.cloud.couchbase.com'
                     match = re.search(r"{'ns_1@([\S]+)'", line)
