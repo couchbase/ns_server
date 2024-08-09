@@ -987,6 +987,7 @@ class DataIngressTests(testlib.BaseTestSet):
             min_num_nodes=2,
             num_connected=2,
             buckets=[{"name": BUCKET_NAME,
+                      "storageBackend": "couchstore",
                       "ramQuota": 100}])
 
     def setup(self):

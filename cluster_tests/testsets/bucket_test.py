@@ -282,7 +282,8 @@ class BucketTestSetBase(testlib.BaseTestSet):
         if errors:
             if actual_errors:
                 assert actual_errors == errors, \
-                    "Different errors were found to those expected"
+                    f"Different errors {actual_errors} were found to those " \
+                    f"expected {errors}"
             else:
                 assert actual_errors == errors, \
                     "Expected errors missing"
@@ -359,7 +360,8 @@ class BucketTestSetBase(testlib.BaseTestSet):
         # ----------------------------------------------------------------------
         self.limits['ramQuota']['max'] = self.memsize
         if storage_backend == "magma":
-            self.limits['ramQuota']['min'] = 1024
+            # The magma minimum was changed from 1024 to 100 in morpheus.
+            self.limits['ramQuota']['min'] = 100
         elif bucket_type == "memcached":
             self.limits['ramQuota']['min'] = 64
         else:
@@ -1132,7 +1134,10 @@ class BucketTestSetBase(testlib.BaseTestSet):
             return {field1: "The RAM quota number must be specified and must be "
                             "a non-negative integer."}
         elif quota < 100 and bucket_type != "memcached":
-            return {field1: "RAM quota cannot be less than 100 MiB"}
+            if storage_backend == "magma":
+                return {field1: "Ram quota for magma must be at least 100 MiB"}
+            else:
+                return {field1: "RAM quota cannot be less than 100 MiB"}
         elif quota < 64 and bucket_type == "memcached":
             return {field1: "RAM quota cannot be less than 64 MiB"}
         elif not is_creation and bucket_type == "memcached":
@@ -1150,7 +1155,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
             else:
                 return {field1: "RAM quota specified is too large to be "
                                 "provisioned into this cluster."}
-        elif storage_backend == "magma" and quota < 1024:
+        elif storage_backend == "magma" and quota < 100:
             return {field1: "Ram quota for magma must be at least 1024 MiB"}
         elif not self.is_76 and original_data is not None \
                 and original_data['ramQuota'] > quota:

@@ -36,6 +36,7 @@ def update_collection(cluster, bucket, scope, collection, data):
 def create_bucket(cluster, bucket, storage_mode, ram_quota_mb):
     data = {'name': f'{bucket}',
             'storageBackend': f'{storage_mode}',
+            'numVBuckets': 1024,
             'ramQuotaMB': f'{ram_quota_mb}'}
     cluster.create_bucket(data)
 
@@ -96,6 +97,7 @@ def create_and_update_bucket(cluster, bucket_name, old_storage_mode,
 
     cluster.update_bucket(
         {'name': f'{bucket_name}',
+         'numVBuckets': 1024,
          'storageBackend': f'{new_storage_mode}'})
 
 
@@ -232,6 +234,7 @@ class BucketMigrationTest(testlib.BaseTestSet):
         bucket = "bucket-1"
         data = {'name': bucket,
                 'storageBackend': "magma",
+                'numVBuckets': 1024,
                 'ramQuotaMB': 1024}
 
         self.cluster.create_bucket(data)

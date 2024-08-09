@@ -1060,6 +1060,8 @@ basic_test_setup() ->
     meck:new([ns_server_stats], [passthrough]),
 
     meck:expect(cluster_compat_mode, is_cluster_76, ?cut(true)),
+    meck:expect(cluster_compat_mode, is_cluster_morpheus, ?cut(true)),
+    meck:expect(cluster_compat_mode, is_enterprise, ?cut(true)),
     meck:expect(config_profile, get_bool,
                 fun ({resource_management, enabled}) -> true end),
     meck:expect(ns_config, get_timeout,
@@ -2430,6 +2432,8 @@ regular_checks_t() ->
                 fun ({node, _, _}, _) -> ok end),
 
     meck:expect(cluster_compat_mode, is_cluster_76, ?cut(true)),
+    meck:expect(cluster_compat_mode, is_cluster_morpheus, ?cut(true)),
+    meck:expect(cluster_compat_mode, is_enterprise, ?cut(true)),
     meck:expect(config_profile, get_bool,
                 fun ({resource_management, enabled}) -> false end),
 
@@ -2568,6 +2572,8 @@ initial_check_t() ->
                 fun ({node, _, _}, _) -> ok end),
 
     meck:expect(cluster_compat_mode, is_cluster_76, ?cut(true)),
+    meck:expect(cluster_compat_mode, is_cluster_morpheus, ?cut(true)),
+    meck:expect(cluster_compat_mode, is_enterprise, ?cut(true)),
     meck:expect(config_profile, get_bool,
                 fun ({resource_management, enabled}) -> false end),
 

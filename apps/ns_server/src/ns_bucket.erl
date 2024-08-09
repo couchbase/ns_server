@@ -100,6 +100,7 @@
          history_retention_collection_default/1,
          rank/1,
          eviction_policy/1,
+         default_storage_mode/1,
          storage_mode/1,
          storage_backend/1,
          raw_ram_quota/1,
@@ -136,7 +137,7 @@
          can_have_views/1,
          is_magma/1,
          get_view_nodes/1,
-         get_default_num_vbuckets/0,
+         get_default_num_vbuckets/1,
          allow_variable_num_vbuckets/0,
          get_cc_versioning_enabled/1,
          get_access_scanner_enabled/1,
@@ -464,13 +465,26 @@ node_storage_mode(Node, BucketConfig) ->
             NodeStorageMode
     end.
 
+-spec default_storage_mode(memcached|membase) -> atom().
+default_storage_mode(memcached) ->
+    undefined;
+default_storage_mode(membase) ->
+    case cluster_compat_mode:is_cluster_morpheus() andalso
+         cluster_compat_mode:is_enterprise() of
+        true ->
+            magma;
+        false ->
+            couchstore
+    end.
+
 -spec storage_mode(proplists:proplist()) -> atom().
 storage_mode(BucketConfig) ->
     case bucket_type(BucketConfig) of
         memcached ->
             undefined;
         membase ->
-            proplists:get_value(storage_mode, BucketConfig, couchstore)
+            proplists:get_value(storage_mode, BucketConfig,
+                                default_storage_mode(membase))
     end.
 
 autocompaction_settings(BucketConfig) ->
@@ -1070,11 +1084,23 @@ get_max_buckets() ->
 get_min_replicas() ->
     ns_config:read_key_fast(min_replicas_count, ?MIN_REPLICAS_SUPPORTED).
 
-get_default_num_vbuckets() ->
+get_default_num_vbuckets(couchstore) ->
+    get_default_num_vbuckets_helper(?DEFAULT_VBUCKETS_COUCHSTORE);
+get_default_num_vbuckets(magma) ->
+    get_default_num_vbuckets_helper(?DEFAULT_VBUCKETS_MAGMA);
+get_default_num_vbuckets(ephemeral) ->
+    get_default_num_vbuckets_helper(?DEFAULT_VBUCKETS_COUCHSTORE);
+get_default_num_vbuckets(undefined) ->
+    %% Occurs when parsing invalid bucket parameters. Doesn't get used
+    %% for a resultant bucket.
+    -1.
+
+get_default_num_vbuckets_helper(DefaultNumVBs) ->
     case ns_config:search(couchbase_num_vbuckets_default) of
         false ->
             misc:getenv_int("COUCHBASE_NUM_VBUCKETS",
-              config_profile:get_value(default_num_vbuckets, 1024));
+              config_profile:get_value(default_num_vbuckets,
+                                       DefaultNumVBs));
         {value, X} ->
             X
     end.
@@ -1110,7 +1136,10 @@ get_vp_window_hrs(BucketConfig) ->
 
 new_bucket_default_params(membase) ->
     [{type, membase},
-     {num_vbuckets, get_default_num_vbuckets()},
+     %% The default number of vbuckets cannot be determined until the
+     %% type of storage backend (magma vs couchstore) is known. This is
+     %% done after the bucket creation attributes are all parsed.
+     %% {num_vbuckets, ???}
      {num_replicas, 1},
      {ram_quota, 0},
      {replication_topology, star},
@@ -2628,6 +2657,12 @@ update_bucket_props_allowed_test() ->
                  update_bucket_props_allowed(NewProps3, BucketConfig1)).
 
 add_override_props_test() ->
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode, is_cluster_morpheus,
+                fun () -> true end),
+    meck:expect(cluster_compat_mode, is_enterprise,
+                fun () -> true end),
+
     Servers = [n0, n1],
 
     MagmaACSettings = [{magma_fragement_percentage, 60}],
@@ -2675,7 +2710,9 @@ add_override_props_test() ->
         add_override_props(Props1, BucketConfig1),
 
     ?assertListsEqual(NewProps1, ExpectedProps1),
-    ?assertListsEqual(DK1, DeleteKeys).
+    ?assertListsEqual(DK1, DeleteKeys),
+
+    meck:unload(cluster_compat_mode).
 
 remove_override_props_test() ->
     Props = [{type, membase},

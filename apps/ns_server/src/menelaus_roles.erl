@@ -1399,6 +1399,10 @@ setup_meck() ->
                 fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_72,
         fun () -> true end),
+    meck:expect(cluster_compat_mode, is_cluster_morpheus,
+        fun () -> true end),
+    meck:expect(cluster_compat_mode, is_enterprise,
+        fun () -> true end),
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, search_node_with_default,
                 fun (_, Default) -> Default end).

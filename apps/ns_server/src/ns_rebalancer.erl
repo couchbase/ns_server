@@ -1583,6 +1583,12 @@ map_to_vbuckets_dict_test() ->
                  lists:sort(dict:to_list(map_to_vbuckets_dict(Map)))).
 
 get_buckets_to_delta_recovery_test() ->
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode, is_cluster_morpheus,
+                fun () -> true end),
+    meck:expect(cluster_compat_mode, is_enterprise,
+                fun () -> true end),
+
     Buckets = [{"b1", [{type, membase}]},
                {"b2", [{type, memcached}]},
                {"b3", [{type, membase},
@@ -1597,7 +1603,9 @@ get_buckets_to_delta_recovery_test() ->
     ?assertMatch([{"b1", _}, {"b3", _}, {"b5", _}],
                  get_buckets_to_delta_recover(Buckets, all)),
     ?assertMatch([{"b3", _}],
-                 get_buckets_to_delta_recover(Buckets, ["b3", "b4"])).
+                 get_buckets_to_delta_recover(Buckets, ["b3", "b4"])),
+
+    meck:unload(cluster_compat_mode).
 -endif.
 
 prepare_rebalance(Nodes) ->

@@ -608,10 +608,18 @@ class NumVbuckets(Requirement):
         self.start_args = {"num_vbuckets": num_vbuckets}
 
     def is_met(self, cluster):
-        r = testlib.diag_eval(cluster,
-                              code="ns_bucket:get_default_num_vbuckets()")
-        default_num_vbuckets = r.content.decode('ascii')
-        return int(default_num_vbuckets) == self.num_vbuckets
+        def get_default_num_vbuckets(bucket_type):
+            func = f"ns_bucket:get_default_num_vbuckets({bucket_type})"
+            r = testlib.diag_eval(cluster, code=func)
+            return r.content.decode('ascii')
+
+        # The default number of vbuckets for 'magma' is different than for
+        # 'couchstore' so we check for either.
+        couchstore_num_vbuckets = int(get_default_num_vbuckets("couchstore"))
+        magma_num_vbuckets = int(get_default_num_vbuckets("magma"))
+
+        return (couchstore_num_vbuckets == self.num_vbuckets or
+                magma_num_vbuckets == self.num_vbuckets)
 
     @staticmethod
     def random(req_dict):

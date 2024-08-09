@@ -22,7 +22,6 @@
 -include("bucket_hibernation.hrl").
 -include("cb_cluster_secrets.hrl").
 
--define(DEFAULT_MAGMA_MIN_MEMORY_QUOTA, 1024).
 -define(CAS_GET_TIMEOUT, 60000).
 
 -ifdef(TEST).
@@ -1392,13 +1391,22 @@ validate_replicas_and_durability(Params, Ctx) ->
 validate_magma_ram_quota(Params, Ctx) ->
     StorageMode = get_value_from_parms_or_bucket(storage_mode, Params, Ctx),
     RamQuota = get_value_from_parms_or_bucket(ram_quota, Params, Ctx),
+    NumVBuckets = get_value_from_parms_or_bucket(num_vbuckets, Params, Ctx),
 
     %% We fetch the magma min memory quota from the config profile, then
     %% possibly override it with the value in ns_config, as this is the way
     %% QE currently sets the value for testing purposes
+    DefaultMemoryQuota =
+        case NumVBuckets =:= ?MAX_NUM_VBUCKETS of
+            true ->
+                ?DEFAULT_MAGMA_MIN_MEMORY_QUOTA_1024_VBS;
+            false ->
+                ?DEFAULT_MAGMA_MIN_MEMORY_QUOTA_128_VBS
+        end,
+
     DefaultMagmaMinMemoryQuota =
         config_profile:get_value({magma, min_memory_quota},
-                                 ?DEFAULT_MAGMA_MIN_MEMORY_QUOTA),
+                                 DefaultMemoryQuota),
     MagmaMinMemoryQuota =
         ns_config:read_key_fast(magma_min_memory_quota,
                                 DefaultMagmaMinMemoryQuota),
@@ -2522,8 +2530,15 @@ parse_validate_secondary_warmup_min_items_threshold(Params, IsNew,
                                  secondary_warmup_min_items_threshold, IsNew).
 
 get_storage_mode_based_on_storage_backend(Params, IsEnterprise) ->
+    DefaultStorageBackend =
+        case IsEnterprise andalso cluster_compat_mode:is_cluster_morpheus() of
+            true ->
+                "magma";
+            false ->
+                "couchstore"
+        end,
     StorageBackend = proplists:get_value("storageBackend", Params,
-                                         "couchstore"),
+                                         DefaultStorageBackend),
     do_get_storage_mode_based_on_storage_backend(
       StorageBackend, IsEnterprise).
 
@@ -2976,12 +2991,13 @@ do_validate_limit(Param, InternalName, Val, Min, Max) ->
 parse_validate_num_vbuckets(Params, BucketConfig, IsNew) ->
     NumVBs = proplists:get_value("numVBuckets", Params),
     IsEnabled = ns_bucket:allow_variable_num_vbuckets(),
-    do_parse_validate_num_vbuckets(NumVBs, BucketConfig, IsNew, IsEnabled).
+    do_parse_validate_num_vbuckets(NumVBs, BucketConfig, Params, IsNew,
+                                   IsEnabled).
 
-do_parse_validate_num_vbuckets(undefined, _BucketConfig, false = _IsNew,
-                               _IsEnabled) ->
+do_parse_validate_num_vbuckets(undefined, _BucketConfig, _Params,
+                               false = _IsNew, _IsEnabled) ->
     ignore;
-do_parse_validate_num_vbuckets(NumVBs, BucketConfig, false = _IsNew,
+do_parse_validate_num_vbuckets(NumVBs, BucketConfig, _Params, false = _IsNew,
                                _IsEnabled) ->
     CurVal = integer_to_list(proplists:get_value(num_vbuckets, BucketConfig)),
     case NumVBs =:= CurVal of
@@ -2991,17 +3007,52 @@ do_parse_validate_num_vbuckets(NumVBs, BucketConfig, false = _IsNew,
             {error, numVBuckets,
              <<"Number of vbuckets cannot be modified">>}
     end;
-do_parse_validate_num_vbuckets(NumVBs, _BucketConfig, true = _IsNew,
+do_parse_validate_num_vbuckets(NumVBs, _BucketConfig, Params, true = _IsNew,
                                false = _IsEnabled) when NumVBs =/= undefined ->
-    {error, numVBuckets,
-     <<"Support for variable number of vbuckets is not enabled">>};
-do_parse_validate_num_vbuckets(NumVBs, _BucketConfig, true = _IsNew,
+    StorageBackend = proplists:get_value("storageBackend", Params, "magma"),
+    %% Specifying variable number of vbuckets is not enabled. But, for magma
+    %% buckets we allow specifying 128 or 1024; for couchstore 1024.
+
+    case menelaus_util:parse_validate_number(NumVBs, ?DEFAULT_VBUCKETS_MAGMA,
+                                             ?MAX_NUM_VBUCKETS) of
+        {ok, N} when StorageBackend =:= "magma" andalso
+                     (N =:= ?DEFAULT_VBUCKETS_MAGMA orelse
+                      N =:= ?MAX_NUM_VBUCKETS) ->
+            {ok, num_vbuckets, N};
+        {ok, N} when StorageBackend =:= "couchstore" andalso
+                     N =:= ?DEFAULT_VBUCKETS_COUCHSTORE ->
+            {ok, num_vbuckets, N};
+        {ok, _N} when StorageBackend =/= "magma" andalso
+                     StorageBackend =/= "couchstore" ->
+            %% Invalid value will be caught during parse/validation of
+            %% StorageBackend.
+            ignore;
+        _ ->
+            Msg = io_lib:format("Number of vbuckets must be ~p or ~p "
+                                "(magma) or ~p (couchstore)",
+                                [?DEFAULT_VBUCKETS_MAGMA, ?MAX_NUM_VBUCKETS,
+                                 ?DEFAULT_VBUCKETS_COUCHSTORE]),
+            {error, numVBuckets, list_to_binary(Msg)}
+    end;
+do_parse_validate_num_vbuckets(NumVBs, _BucketConfig, Params, true = _IsNew,
                                _IsEnabled) ->
     case NumVBs of
-        undefined -> {ok, num_vbuckets, ns_bucket:get_default_num_vbuckets()};
-        _ -> validate_num_vbuckets(NumVBs)
+        undefined ->
+            case proplists:get_value("storageBackend", Params, "magma") of
+                "magma" ->
+                    {ok, num_vbuckets,
+                     ns_bucket:get_default_num_vbuckets(magma)};
+                "couchstore" ->
+                    {ok, num_vbuckets,
+                     ns_bucket:get_default_num_vbuckets(couchstore)};
+                _ ->
+                    %% Invalid value will be caught during parse/validation
+                    %% of storageBackend.
+                    ignore
+            end;
+        _ ->
+            validate_num_vbuckets(NumVBs)
     end.
-
 validate_num_vbuckets(Val) ->
     case menelaus_util:parse_validate_number(Val, ?MIN_NUM_VBUCKETS,
                                              ?MAX_NUM_VBUCKETS) of
@@ -3688,11 +3739,14 @@ basic_bucket_params_screening_setup() ->
                 end),
     meck:expect(ns_config, search,
                 fun (couchbase_num_vbuckets_default) ->
-                        {value, 1024}
+                        %% This value is what the tests are using.
+                        {value, 16}
                 end),
     meck:expect(ns_config, search_node_with_default,
                 fun (_, Default) -> Default end),
     meck:expect(cluster_compat_mode, is_cluster_76,
+                fun () -> true end),
+    meck:expect(cluster_compat_mode, is_cluster_morpheus,
                 fun () -> true end),
     meck:expect(cluster_compat_mode, is_enterprise,
                 fun () -> true end),
@@ -3722,6 +3776,7 @@ basic_bucket_params_screening_t() ->
                   {"third",
                    [{type, membase},
                     {num_vbuckets, 16},
+                    {storage_mode, couchstore},
                     {num_replicas, 1},
                     {servers, [node1, node2]},
                     %% Used for test to verify this cannot be disabled
@@ -3729,12 +3784,14 @@ basic_bucket_params_screening_t() ->
                     {ram_quota, 768 * ?MIB}]},
                   {"fourth",
                    [{type, membase},
+                    {storage_mode, couchstore},
                     {num_vbuckets, 16},
                     {num_replicas, 3},
                     {servers, [node1, node2]},
                     {ram_quota, 100 * ?MIB}]},
                   {"fifth",
                    [{type, membase},
+                    {storage_mode, couchstore},
                     {num_vbuckets, 16},
                     {num_replicas, 0},
                     {servers, [node1]},
@@ -3743,6 +3800,7 @@ basic_bucket_params_screening_t() ->
     %% it is possible to create bucket with ok params
     {OK1, E1} = basic_bucket_params_screening(true, "mcd",
                                               [{"bucketType", "membase"},
+                                               {"storageBackend", "couchstore"},
                                                {"ramQuota", "400"}, {"replicaNumber", "2"}],
                                               tl(AllBuckets)),
     [] = E1,
@@ -3922,6 +3980,7 @@ basic_bucket_params_screening_t() ->
               {_OK18a, E18a} = basic_bucket_params_screening(
                                  true, "ReplicaDurability",
                                  [{"bucketType", "membase"},
+                                  {"storageBackend", "couchstore"},
                                   {"ramQuota", "400"},
                                   {"replicaNumber", ReplicaNumber},
                                   {"durabilityMinLevel", DurabilityLevel}],
@@ -4384,7 +4443,7 @@ basic_bucket_params_screening_t() ->
     %% Parsing encryption at rest params
     {OK38, E38} = basic_bucket_params_screening(
                      true,
-                     "bucket35",
+                     "bucket38",
                      [{"bucketType", "membase"},
                       {"ramQuota", "1024"},
                       {"encryptionAtRestSecretId", "1"},
@@ -4401,7 +4460,7 @@ basic_bucket_params_screening_t() ->
     %% Invalid encryption at rest
     {_OK39, E39} = basic_bucket_params_screening(
                      true,
-                     "bucket35",
+                     "bucket39",
                      [{"bucketType", "membase"},
                       {"ramQuota", "1024"},
                       {"encryptionAtRestSecretId", "-3"},
@@ -4419,7 +4478,7 @@ basic_bucket_params_screening_t() ->
     %% Default encryption at rest params
     {OK40, E40} = basic_bucket_params_screening(
                      true,
-                     "bucket35",
+                     "bucket40",
                      [{"bucketType", "membase"},
                       {"ramQuota", "1024"}],
                      AllBuckets),
@@ -4428,7 +4487,57 @@ basic_bucket_params_screening_t() ->
     ?assertEqual([], proplists:get_all_values(encryption_secret_id, OK40)),
     ?assertEqual([], proplists:get_all_values(encryption_dek_rotation, OK40)),
     ?assertEqual([], proplists:get_all_values(encryption_dek_rotation_interval,
-                                              OK40)).
+                                              OK40)),
+
+    %% Default bucket is magma...and only 100MB ram is needed.
+    {OK41, _E41} = basic_bucket_params_screening(
+                     true,
+                     "bucket41",
+                     [{"bucketType", "membase"},
+                      {"ramQuota", "100"}],
+                     AllBuckets),
+    ?assertEqual(magma, proplists:get_value(storage_mode, OK41)),
+
+    %% Number of vbuckets for magma must be 128 or 1024
+    {_OK42, E42} = basic_bucket_params_screening(
+                     true,
+                     "bucket42",
+                     [{"bucketType", "membase"},
+                      {"numVBuckets", "777"},
+                      {"storageBackend", "magma"},
+                      {"ramQuota", "100"}],
+                     AllBuckets),
+    ?assertEqual([{numVBuckets,
+                   <<"Number of vbuckets must be 128 or 1024 (magma) or "
+                     "1024 (couchstore)">>}],
+                 E42),
+
+    %% magma with 1024 vbuckets requires 1GB ram
+    {_OK43, E43} = basic_bucket_params_screening(
+                     true,
+                     "bucket43",
+                     [{"bucketType", "membase"},
+                      {"numVBuckets", "1024"},
+                      {"storageBackend", "magma"},
+                      {"ramQuota", "100"}],
+                     AllBuckets),
+    ?assertEqual([{ramQuota,
+                   <<"Ram quota for magma must be at least 1024 MiB">>}],
+                 E43),
+
+    %% Number of vbuckets for couchstore must be 1024
+    {_OK44, E44} = basic_bucket_params_screening(
+                     true,
+                     "bucket44",
+                     [{"bucketType", "membase"},
+                      {"numVBuckets", "333"},
+                      {"storageBackend", "couchstore"},
+                      {"ramQuota", "100"}],
+                     AllBuckets),
+    ?assertEqual([{numVBuckets,
+                   <<"Number of vbuckets must be 128 or 1024 (magma) or "
+                     "1024 (couchstore)">>}],
+                 E44).
 
 basic_bucket_params_screening_test_() ->
     {setup,
@@ -4776,6 +4885,8 @@ validate_dura_min_level_before_server_list_populated_test() ->
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config,
                 read_key_fast, fun(_, Default) -> Default end),
+    meck:expect(ns_config, search,
+                fun (couchbase_num_vbuckets_default) -> false end),
     %% BucketConfig before the server list has been populated
     BucketConfig = [{servers, []},
                     {desired_servers, [node1]},
@@ -5134,6 +5245,10 @@ storage_mode_migration_meck_setup(Version) ->
                 fun (_, Default) ->
                         Default
                 end),
+    meck:expect(ns_config, search,
+                fun (couchbase_num_vbuckets_default) ->
+                        false
+                end),
     meck:expect(config_profile, get_value,
                 fun (_, Default) ->
                         Default
@@ -5141,6 +5256,10 @@ storage_mode_migration_meck_setup(Version) ->
     meck:expect(cluster_compat_mode, supported_compat_version,
                 fun () ->
                         Version
+                end),
+    meck:expect(cluster_compat_mode, is_cluster_morpheus,
+                fun () ->
+                        true
                 end),
     meck:expect(guardrail_monitor, validate_storage_migration,
                 fun (_, _, _) -> ok end),
@@ -5301,7 +5420,12 @@ storage_mode_migration_validate_attributes_test() ->
 parse_validate_storage_mode_setup() ->
     meck:new(guardrail_monitor),
     meck:expect(guardrail_monitor, validate_storage_migration,
-                fun (_, _, _) -> ok end).
+                fun (_, _, _) -> ok end),
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode, is_enterprise,
+                fun () -> true end),
+    meck:expect(cluster_compat_mode, is_cluster_morpheus,
+                fun () -> true end).
 
 parse_validate_storage_mode_test__(
   {{OldStorageMode, NewStorageMode, IsNewBucket, Version,
@@ -5340,7 +5464,8 @@ parse_validate_storage_mode_test__(
     end.
 
 parse_validate_storage_mode_teardown() ->
-    meck:unload(guardrail_monitor).
+    meck:unload(guardrail_monitor),
+    meck:unload(cluster_compat_mode).
 
 parse_validate_storage_mode_test_() ->
     %% TestArgs: {{OldStorageMode, NewStorageMode,
@@ -5515,6 +5640,8 @@ num_replicas_guardrail_validation_test_() ->
                                    [{enabled, true},
                                     {maximum, 90}]}];
                             (_, Default) -> Default end),
+             meck:expect(ns_config, search,
+                         fun (couchbase_num_vbuckets_default) -> false end),
 
              meck:expect(ns_storage_conf, this_node_dbdir,
                          fun () -> {ok, ""} end),

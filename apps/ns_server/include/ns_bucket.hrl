@@ -39,8 +39,16 @@
 -define(MAX_NUM_REPLICAS, 3).
 -define(MIN_DRIFT_BEHIND_THRESHOLD, 100).
 
+%% Min/Max number of vbuckets that can be specified when
+%% 'allow_variable_num_vbuckets' is enabled. Otherwise the number is
+%% fixed at 1024 for couchstore and 128 or 1024 for magma.
 -define(MIN_NUM_VBUCKETS, 16).
 -define(MAX_NUM_VBUCKETS, 1024).
+-define(DEFAULT_VBUCKETS_MAGMA, 128).
+-define(DEFAULT_VBUCKETS_COUCHSTORE, 1024).
+%% Minimum memory required for magma depends on the number of vbuckets.
+-define(DEFAULT_MAGMA_MIN_MEMORY_QUOTA_1024_VBS, 1024).
+-define(DEFAULT_MAGMA_MIN_MEMORY_QUOTA_128_VBS, 100).
 
 %% Storage limits in GiBs
 -define(DEFAULT_KV_STORAGE_LIMIT, 500).

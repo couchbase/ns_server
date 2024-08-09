@@ -1189,6 +1189,12 @@ setup_test_ns_rebalance_observer() ->
                         [{ok, {VB, 0, <<"backfilling">>}}]
                 end),
 
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode, is_enterprise,
+                fun () -> true end),
+    meck:expect(cluster_compat_mode, is_cluster_morpheus,
+                fun () -> true end),
+
     meck:new(ns_bucket, [passthrough]),
     meck:expect(ns_bucket, get_buckets,
                 fun () ->
