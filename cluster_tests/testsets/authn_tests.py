@@ -110,8 +110,11 @@ class AuthnTests(testlib.BaseTestSet):
                          session=session, https=https, auth=None,
                          expected_code=expected_code, **kwargs)
         if expected_code == 200:
-            testlib.get_succ(node, self.testEndpoint, headers=headers,
+            session.cert = kwargs.get('cert', None)
+            session.verify = kwargs.get('verify', None)
+            r = testlib.get_succ(node, self.testEndpoint, headers=headers,
                              session=session, https=https, auth=None)
+            testlib.assert_http_code(200, r)
             r = testlib.get_succ(node, '/whoami', headers=headers,
                                  session=session, https=https, auth=None).json()
             testlib.assert_eq(r['id'], expected_username, name='username')
