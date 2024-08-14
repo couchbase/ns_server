@@ -96,4 +96,5 @@ upgrade(?VERSION_76, _Config) ->
 upgrade(?VERSION_CYPHER, Config) ->
     {?VERSION_MORPHEUS,
      menelaus_web_alerts_srv:config_upgrade_to_morpheus(Config) ++
-         menelaus_web_auto_failover:config_upgrade_to_morpheus(Config)}.
+         menelaus_web_auto_failover:config_upgrade_to_morpheus(Config) ++
+         query_settings_manager:config_upgrade_to_morpheus(Config)}.

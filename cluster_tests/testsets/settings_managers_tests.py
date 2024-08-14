@@ -86,6 +86,7 @@ QUERY_SETTINGS = {
     "queryNodeQuotaValPercent": create_inner(67),
     "queryNumCpus": create_inner(0),
     "queryCompletedMaxPlanSize": create_inner(262144),
+    "queryActivityWorkloadReporting": create_inner(""),
     "queryCurlWhitelist": create_inner({"all_access": False, "allowed_urls": [],
                                         "disallowed_urls": []})
 }

@@ -24,7 +24,8 @@
          update/2,
          update_txn/1,
          config_default/0,
-         config_upgrade_to_76/1]).
+         config_upgrade_to_76/1,
+         config_upgrade_to_morpheus/1]).
 
 -export([cfg_key/0,
          is_enabled/0,
@@ -83,6 +84,13 @@ config_upgrade_to_76(Config) ->
     json_settings_manager:upgrade_existing_key(
       ?MODULE, Config, [{generalSettings, NewSettings}],
       known_settings(?VERSION_76), fun functools:id/1).
+
+config_upgrade_to_morpheus(Config) ->
+    NewSettings = general_settings_defaults(?VERSION_MORPHEUS) --
+        general_settings_defaults(?VERSION_76),
+    json_settings_manager:upgrade_existing_key(
+      ?MODULE, Config, [{generalSettings, NewSettings}],
+      known_settings(?VERSION_MORPHEUS), fun functools:id/1).
 
 known_settings() ->
     known_settings(cluster_compat_mode:get_ns_config_compat_version()).
@@ -159,6 +167,13 @@ general_settings(Ver) ->
               "completed-max-plan-size", 262144}];
         false ->
             []
+    end ++
+    case cluster_compat_mode:is_version_morpheus(Ver) of
+        true ->
+            [{queryActivityWorkloadReporting, "activity-workload-reporting",
+              <<"">>}];
+        false ->
+            []
     end ++ n1ql_feature_ctrl_setting(Ver).
 
 curl_whitelist_settings_len_props() ->
@@ -210,6 +225,12 @@ config_upgrade_test() ->
                    "\"num-cpus\":0,"
                    "\"use-replica\":\"unset\"}">>,
                  Data1),
+
+    CmdList2 = config_upgrade_to_morpheus([]),
+    [{set, {metakv, Meta2}, Data2}] = CmdList2,
+    ?assertEqual(<<"/query/settings/config">>, Meta2),
+    ?assertEqual(<<"{\"activity-workload-reporting\":\"\"}">>,
+                 Data2),
 
     meck:unload(config_profile).
 
