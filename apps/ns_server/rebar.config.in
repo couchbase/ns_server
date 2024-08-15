@@ -1,11 +1,3 @@
-{deps, [
-    {chronicle, {git, "https://github.com/couchbase/chronicle.git", {branch, "master"}}},
-    {enacl, {git, "https://github.com/couchbasedeps/enacl.git", {branch, "couchbase-master"}}},
-    {esaml, {git, "https://github.com/couchbasedeps/esaml.git", {branch, "couchbase-master"}}},
-    {gen_smtp, {git, "https://github.com/couchbasedeps/gen_smtp.git", {branch, "couchbase-master"}}},
-    {iso8601, "~> 1.3.3"}
-]}.
-
 {erl_first_files, ["src/ns_log_categorizing.erl",
                    "src/replicated_storage.erl",
                    "src/json_settings_manager.erl",
