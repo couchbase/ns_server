@@ -82,12 +82,21 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
         for node in self.cluster._nodes:
             node.set_alternate_address(node.host)
 
+        testlib.post_succ(self.cluster, '/settings/autoFailover', data={
+            "enabled": "true",
+            "timeout": 120})
+
 
     def test_teardown(self):
         pass
 
     def teardown(self):
         pass
+
+        # The remap script should turn off AFO, turn it back on
+        testlib.post_succ(self.cluster, '/settings/autoFailover', data={
+            "enabled": "true",
+            "timeout": 120})
 
     def remap_cluster(self, old_cluster):
         old_start_index = old_cluster.first_node_index
@@ -184,6 +193,11 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
             for node in c._nodes:
                 current_alt_address = node.get_alternate_addresses()
                 assert None == current_alt_address
+
+            for node in c._nodes:
+                afo_settings = testlib.get_succ(self.cluster,
+                                                '/settings/autoFailover').json()
+                assert not afo_settings["enabled"]
 
             # Sanity check and shut down the remapped cluster
             c.smog_check()

@@ -70,7 +70,8 @@ from testsets import \
     rest_eject_test, \
     node_remap_tests, \
     services_topology_tests, \
-    cbcollect_tests
+    cbcollect_tests, \
+    config_remap_tests
 
 tmp_cluster_dir = os.path.join(scriptdir, "test_cluster_data")
 
