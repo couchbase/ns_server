@@ -52,6 +52,8 @@ child_specs() ->
       permanent, 1000, worker, []},
      {guardrail_enforcer, {guardrail_enforcer, start_link, []},
       permanent, 1000, worker, []},
+     {activity_aggregator, {activity_aggregator, start_link, []},
+      permanent, 1000, worker, []},
      {cb_cluster_secrets, {cb_cluster_secrets, start_link_master_monitor, []},
       permanent, 1000, worker, []}] ++
         [{license_reporting, {license_reporting, start_link, []},

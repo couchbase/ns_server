@@ -20,14 +20,19 @@
 
 -export([start_link/0,
          default/0,
+         get_config/0,
          handle_activity/1,
-         is_tracked/1]).
+         is_tracked/1,
+         get_activity_from_node/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
 -define(SERVER, ?MODULE).
 -define(TABLE, ?MODULE).
 -define(CONFIG_KEY, user_activity).
+
+%% 60s should be sufficient time that we don't timeout when a node is busy
+-define(RPC_TIMEOUT, ?get_timeout(rpc_timeout, 60000)).
 
 -define(DEFAULT_TRACKED_ROLES,
         [admin, ro_admin, security_admin_local, security_admin_external,
@@ -90,6 +95,12 @@ is_user_covered(UserProps, Config, TrackedCategory, Category) ->
     TrackedSet = sets:from_list(TrackedList),
     Set = sets:from_list(List),
     not sets:is_disjoint(TrackedSet, Set).
+
+-spec get_activity_from_node(node()) -> [{rbac_identity(), non_neg_integer()}].
+get_activity_from_node(Node) ->
+    %% This function will be called from remote nodes, so changing the message
+    %% will require backwards compatibility handling
+    gen_server:call({?SERVER, Node}, last_activity, ?RPC_TIMEOUT).
 
 
 %%%===================================================================

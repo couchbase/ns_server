@@ -80,7 +80,8 @@
          upgrade_props/4,
 
          %% Misc:
-         allow_hash_migration_during_auth_default/0
+         allow_hash_migration_during_auth_default/0,
+         store_activity/1
         ]).
 
 %% callbacks for replicated_dets
@@ -617,6 +618,14 @@ store_user_changes(Identity, Props, Auth, Locked, Exists) ->
     %% Only store a locked entry for locked users
     [{set, {locked, Identity}, Locked} || Locked =:= true] ++
     [{delete, {locked, Identity}} || Locked =:= false].
+
+-spec store_activity(#{rbac_identity() => non_neg_integer()}) -> ok.
+store_activity(ActivityMap) ->
+    PreparedDocs = lists:flatmap(
+                     fun ({Identity, Timestamp}) ->
+                             [{set, {activity, Identity}, Timestamp}]
+                     end, maps:to_list(ActivityMap)),
+    replicated_dets:change_multiple(storage_name(), PreparedDocs).
 
 store_auth(_Identity, same, _Priority) ->
     unchanged;
