@@ -90,7 +90,7 @@ def put_user(cluster_or_node, domain, userid, password=None, roles=None,
         testlib.assert_eq(r['domain'], domain)
         testlib.assert_eq(r['name'], full_name)
         if roles is None:
-            role_num = 0
+            roles_num = 0
         else:
             roles_num = len(roles.split(','))
         testlib.assert_eq(len(r['roles']), roles_num)
