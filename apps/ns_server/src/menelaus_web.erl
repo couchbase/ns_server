@@ -1215,7 +1215,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
             case PathTokens of
                 ["settings", "rbac", "users", "local", UserId] ->
                     {{[admin, security], write},
-                     fun menelaus_web_rbac:handle_user_change_password_patch/2,
+                     fun menelaus_web_rbac:handle_patch_user/2,
                      [UserId]};
                 ["pools", "default", "buckets", Id, "scopes", Scope,
                  "collections", CollectionId] ->

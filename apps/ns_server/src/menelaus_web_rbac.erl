@@ -29,7 +29,7 @@
          handle_get_user/3,
          handle_whoami/1,
          handle_put_user/3,
-         handle_user_change_password_patch/2,
+         handle_patch_user/2,
          handle_delete_user/3,
          handle_change_password/1,
          handle_reset_admin_password/1,
@@ -59,7 +59,7 @@
          handle_backup/1,
          handle_backup_restore/1,
          parse_roles/1
-]).
+        ]).
 
 -define(MIN_USERS_PAGE_SIZE, 2).
 -define(MAX_USERS_PAGE_SIZE, 100).
@@ -942,11 +942,12 @@ is_valid_password(P, {MinLength, MustPresent}) ->
 
     execute_verifiers(Verifiers).
 
-handle_user_change_password_patch(UserId, Req) ->
+handle_patch_user(UserId, Req) ->
     assert_no_users_upgrade(),
     case validate_cred(UserId, username) of
         true ->
-            handle_change_password_with_identity(Req, {UserId, local});
+            handle_patch_user_with_identity(Req, {UserId, local},
+                                            patch_user_validators());
         Error ->
             menelaus_util:reply_global_error(Req, Error)
     end.
@@ -1167,17 +1168,21 @@ change_password_validators() ->
      validate_password(_),
      validator:unsupported(_)].
 
+patch_user_validators() ->
+    change_password_validators().
+
 handle_change_password(Req) ->
     menelaus_util:assert_is_enterprise(),
     assert_no_on_behalf(Req),
 
     case menelaus_auth:is_UI_req(Req) of
         false ->
+            Validators = change_password_validators(),
             case menelaus_auth:get_identity(Req) of
                 {_, local} = Identity ->
-                    handle_change_password_with_identity(Req, Identity);
+                    handle_patch_user_with_identity(Req, Identity, Validators);
                 {_, admin} = Identity ->
-                    handle_change_password_with_identity(Req, Identity);
+                    handle_patch_user_with_identity(Req, Identity, Validators);
                 _ ->
                     menelaus_util:reply_json(
                       Req,
@@ -1188,21 +1193,26 @@ handle_change_password(Req) ->
             menelaus_util:require_auth(Req)
     end.
 
-handle_change_password_with_identity(Req, Identity) ->
+handle_patch_user_with_identity(Req, Identity, Validators) ->
     validator:handle(
       fun (Values) ->
-              case do_change_password(Identity,
-                                      proplists:get_value(password, Values)) of
-                  ok ->
-                      ns_audit:password_change(Req, Identity),
-                      menelaus_util:reply(Req, 200);
-                  user_not_found ->
-                      menelaus_util:reply_json(Req, <<"User was not found.">>,
-                                               404);
-                  unchanged ->
-                      menelaus_util:reply(Req, 200)
+              case proplists:get_value(password, Values) of
+                  undefined ->
+                      ok;
+                  Password ->
+                      case do_change_password(Identity,
+                                              Password) of
+                          ok ->
+                              ns_audit:password_change(Req, Identity),
+                              menelaus_util:reply(Req, 200);
+                          user_not_found ->
+                              menelaus_util:reply_json(
+                                Req, <<"User was not found.">>, 404);
+                          unchanged ->
+                              menelaus_util:reply(Req, 200)
+                      end
               end
-      end, Req, form, change_password_validators()).
+      end, Req, form, Validators).
 
 do_change_password({_, local} = Identity, Password) ->
     menelaus_users:change_password(Identity, Password);
