@@ -213,6 +213,9 @@ replace_secret(OldProps, NewProps) ->
                                     {error, not_found | bad_encrypt_id() |
                                             bad_usage_change()}.
 replace_secret_internal(OldProps, NewProps) ->
+    %% Make sure we have most recent information about which secrets are in use
+    %% This is needed for verification of 'usage' modification
+    maybe_reset_deks_counters(),
     Props = copy_static_props(OldProps, NewProps),
     Res =
         chronicle_compat:txn(
@@ -1261,14 +1264,22 @@ validate_dek_related_usage_change(NewProps, PrevProps, Snapshot) ->
     %%   1. [{bucket_encryption, "a"}] -> [{bucket_encryption, "b"}].
     %%   2. [{bucket_encryption, "a"}] -> [config_encryption].
     #{id := Id} = PrevProps,
+    %% Check existing deks. If this secret still encrypts any deks, we should
+    %% not allow corresponding usage removal
+    KindsOfExistingDeks = get_dek_kinds_used_by_secret_id(Id, Snapshot),
     DekKindRequirements =
         fun (Kind) ->
             #{required_usage := Requirement} = cb_deks:dek_config(Kind),
-            {succ, RV} = call_dek_callback(encryption_method_callback, Kind,
-                                           [Snapshot]),
-            case {ok, {secret, Id}} == RV of
+            case lists:member(Kind, KindsOfExistingDeks) of
                 true -> {true, Requirement};
-                false -> false
+                false ->
+                    {succ, RV} = call_dek_callback(encryption_method_callback,
+                                                   Kind,
+                                                   [Snapshot]),
+                    case {ok, {secret, Id}} == RV of
+                        true -> {true, Requirement};
+                        false -> false
+                    end
             end
         end,
     InUseList = lists:filtermap(DekKindRequirements,
