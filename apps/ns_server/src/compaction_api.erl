@@ -15,6 +15,7 @@
          get_purge_interval/1,
          force_compact_bucket/1,
          force_compact_db_files/1,
+         force_partially_compact_db_files/4,
          force_compact_view/2,
          force_purge_compact_bucket/1,
          cancel_forced_bucket_compaction/1,
@@ -67,6 +68,10 @@ get_purge_interval(BucketName) ->
 
 to_bin({Command, Arg}) ->
     {Command, list_to_binary(Arg)};
+to_bin({force_partially_compact_db_files, Bucket, ObsoleteKeyIds,
+        ContId, Cont}) ->
+    {force_partially_compact_db_files, list_to_binary(Bucket), ObsoleteKeyIds,
+     ContId, Cont};
 to_bin({Command, Arg1, Arg2}) ->
     {Command, list_to_binary(Arg1), list_to_binary(Arg2)}.
 
@@ -92,6 +97,13 @@ multi_call(Request) ->
     end,
     ok.
 
+call_local(Request) ->
+    RequestBin = to_bin(Request),
+    case handle_call(RequestBin) of
+        ok -> ok;
+        Res -> log_failed(Request, [{node(), Res}])
+    end.
+
 handle_call(Request) ->
     gen_server:call(compaction_daemon, Request, infinity).
 
@@ -106,6 +118,10 @@ log_failed({force_purge_compact_bucket, Bucket}, Failed) ->
 log_failed({force_compact_db_files, Bucket}, Failed) ->
     ale:error(?USER_LOGGER,
               "Failed to start bucket databases compaction "
+              "for `~s` on some nodes: ~n~p", [Bucket, Failed]);
+log_failed({force_partially_compact_db_files, Bucket, _, _, _}, Failed) ->
+    ale:error(?USER_LOGGER,
+              "Failed to start partial bucket databases compaction "
               "for `~s` on some nodes: ~n~p", [Bucket, Failed]);
 log_failed({force_compact_view, Bucket, DDocId}, Failed) ->
     ale:error(?USER_LOGGER,
@@ -134,6 +150,11 @@ force_purge_compact_bucket(Bucket) ->
 
 force_compact_db_files(Bucket) ->
     multi_call({force_compact_db_files, Bucket}).
+
+force_partially_compact_db_files(Bucket, ObsoleteKeyIds,
+                                 ContinuationId, Continuation) ->
+    call_local({force_partially_compact_db_files, Bucket, ObsoleteKeyIds,
+                ContinuationId, Continuation}).
 
 force_compact_view(Bucket, DDocId) ->
     multi_call({force_compact_view, Bucket, DDocId}).

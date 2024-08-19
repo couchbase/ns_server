@@ -1727,14 +1727,18 @@ wait_for_seqno_persistence(Bucket, VBucketId, SeqNo) ->
       end, Bucket).
 
 -spec compact_vbucket(bucket_name(), vbucket_id(),
-                      {integer(), integer(), boolean()}) ->
+                      {integer(), integer(), boolean(), [cb_deks:dek_id()]}) ->
                              ok | mc_error().
-compact_vbucket(Bucket, VBucket, {PurgeBeforeTS, PurgeBeforeSeqNo, DropDeletes}) ->
+compact_vbucket(Bucket, VBucket, {PurgeBeforeTS, PurgeBeforeSeqNo, DropDeletes,
+                                  ObsoleteKeyIds}) ->
     perform_very_long_call(
       fun (Sock) ->
               {reply, mc_client_binary:compact_vbucket(Sock, VBucket,
-                                                       PurgeBeforeTS, PurgeBeforeSeqNo, DropDeletes)}
-      end, Bucket).
+                                                       PurgeBeforeTS,
+                                                       PurgeBeforeSeqNo,
+                                                       DropDeletes,
+                                                       ObsoleteKeyIds)}
+      end, Bucket, [json]).
 
 
 -spec get_dcp_docs_estimate(bucket_name(), vbucket_id(), string()) ->

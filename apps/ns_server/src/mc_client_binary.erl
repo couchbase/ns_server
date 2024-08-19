@@ -57,7 +57,7 @@
          ext/2,
          set_cluster_config/5,
          get_random_key/2,
-         compact_vbucket/5,
+         compact_vbucket/6,
          wait_for_seqno_persistence/3,
          vbucket_state_to_atom/1,
          config_validate/2,
@@ -475,7 +475,8 @@ do_pipeline_send_recv(Sock, Opcode, Requests, Timeout) ->
         misc:flush(TRef)
     end.
 
-compact_vbucket(Sock, VBucket, PurgeBeforeTS, PurgeBeforeSeqNo, DropDeletes) ->
+compact_vbucket(Sock, VBucket, PurgeBeforeTS, PurgeBeforeSeqNo, DropDeletes,
+                ObsoleteKeyIds) ->
     report_counter(?FUNCTION_NAME),
     DD = case DropDeletes of
              true ->
@@ -484,8 +485,15 @@ compact_vbucket(Sock, VBucket, PurgeBeforeTS, PurgeBeforeSeqNo, DropDeletes) ->
                  0
          end,
     Ext = <<PurgeBeforeTS:64, PurgeBeforeSeqNo:64, DD:8, 0:8, 0:16, 0:32>>,
+    Data = case ObsoleteKeyIds of
+               undefined -> undefined;
+               KeyList when is_list(KeyList) -> ejson:encode(KeyList)
+           end,
     case cmd(?CMD_COMPACT_DB, Sock, undefined, undefined,
-             {#mc_header{vbucket = VBucket}, #mc_entry{ext = Ext}},
+             {#mc_header{vbucket = VBucket},
+              #mc_entry{ext = Ext,
+                        datatype = ?MC_DATATYPE_JSON,
+                        data = Data}},
              infinity) of
         {ok, #mc_header{status=?SUCCESS}, _, _} ->
             ok;

@@ -82,8 +82,12 @@
                  to_minute,
                  abort_outside}).
 
--record(forced_compaction, {type :: bucket | bucket_purge | db | view,
+-record(forced_compaction, {type :: bucket | bucket_purge | db | view |
+                                    db_partial,
                             name :: binary()}).
+
+-record(forced_compaction_data,
+        {continuations = [] :: [{term(), fun ((_) -> ok)}]}).
 
 -define(MASTER_COMPACTION_INTERVAL, 3600).
 
@@ -195,7 +199,7 @@ handle_call({force_compact_bucket, Bucket}, _From, State) ->
             false ->
                 Configs = compaction_config(Bucket),
                 Pid = spawn_forced_bucket_compactor(Bucket, Configs),
-                register_forced_compaction(Pid, Compaction, State)
+                register_forced_compaction(Pid, Compaction, [], State)
         end,
     {reply, ok, NewState};
 handle_call({force_purge_compact_bucket, Bucket}, _From, State) ->
@@ -209,7 +213,8 @@ handle_call({force_purge_compact_bucket, Bucket}, _From, State) ->
                 {Config, Props} = compaction_config(Bucket),
                 Pid = spawn_forced_bucket_compactor(Bucket,
                                                     {Config#config{do_purge = true}, Props}),
-                State1 = register_forced_compaction(Pid, Compaction, State),
+                State1 = register_forced_compaction(Pid, Compaction, [],
+                                                    State),
                 ale:info(?USER_LOGGER,
                          "Started deletion purge compaction for bucket `~s`",
                          [Bucket]),
@@ -226,8 +231,27 @@ handle_call({force_compact_db_files, Bucket}, _From, State) ->
             false ->
                 {Config, _} = compaction_config(Bucket),
                 OriginalTarget = {[{type, db}]},
-                Pid = spawn_dbs_compactor(Bucket, Config, true, OriginalTarget),
-                register_forced_compaction(Pid, Compaction, State)
+                Pid = spawn_dbs_compactor(Bucket, Config, true, OriginalTarget,
+                                          undefined),
+                register_forced_compaction(Pid, Compaction, [], State)
+        end,
+    {reply, ok, NewState};
+handle_call({force_partially_compact_db_files, Bucket, ObsoleteKeyIds,
+             ContId, Cont}, _From, State) ->
+    Compaction = #forced_compaction{type=db_partial, name=Bucket},
+
+    NewState =
+        case is_already_being_compacted(Compaction, State) of
+            true ->
+                register_force_compaction_continuation(ContId, Cont, Compaction,
+                                                       State);
+            false ->
+                {Config, _} = compaction_config(Bucket),
+                OriginalTarget = {[{type, db}]},
+                Pid = spawn_dbs_compactor(Bucket, Config, true, OriginalTarget,
+                                          ObsoleteKeyIds),
+                register_forced_compaction(Pid, Compaction,
+                                           [{ContId, Cont}], State)
         end,
     {reply, ok, NewState};
 handle_call({force_compact_view, Bucket, DDocId}, _From, State) ->
@@ -244,7 +268,7 @@ handle_call({force_compact_view, Bucket, DDocId}, _From, State) ->
                                    {name, DDocId}]},
                 Pid = spawn_view_compactor(Bucket, DDocId, Config, true,
                                            OriginalTarget),
-                register_forced_compaction(Pid, Compaction, State)
+                register_forced_compaction(Pid, Compaction, [], State)
         end,
     {reply, ok, NewState};
 handle_call({cancel_forced_bucket_compaction, Bucket}, _From, State) ->
@@ -398,7 +422,8 @@ handle_info({'EXIT', Compactor, Reason},
 handle_info({'EXIT', Pid, Reason},
             #state{running_forced_compactions=Compactions} = State) ->
     case dict:find(Pid, Compactions) of
-        {ok, #forced_compaction{type=Type, name=Name}} ->
+        {ok, {#forced_compaction{type=Type, name=Name},
+              #forced_compaction_data{continuations=Continuations}}} ->
             case Reason of
                 normal ->
                     case Type of
@@ -425,6 +450,8 @@ handle_info({'EXIT', Pid, Reason},
                                       [Type, Name, Reason])
                     end
             end,
+
+            [C(Reason) || {_Id, C} <- lists:reverse(Continuations)],
 
             {noreply, unregister_forced_compaction(Pid, State)};
         error ->
@@ -462,8 +489,8 @@ get_dbs_compactor(BucketName, Config, Force) ->
     [{type, database},
      {important, true},
      {name, BucketName},
-     {fa, {fun spawn_dbs_compactor/4,
-           [BucketName, Config, Force, OriginalTarget]}}].
+     {fa, {fun spawn_dbs_compactor/5,
+           [BucketName, Config, Force, OriginalTarget, undefined]}}].
 
 get_forced_master_db_compactor(BucketName, Config) ->
     [{type, database},
@@ -617,7 +644,8 @@ do_chain_compactors(Parent, [Compactor | Compactors]) ->
             end
     end.
 
-spawn_dbs_compactor(BucketName, Config, Force, OriginalTarget) ->
+spawn_dbs_compactor(BucketName, Config, Force, OriginalTarget,
+                    ObsoleteKeyIds) ->
     proc_lib:spawn_link(
       fun () ->
               VBucketDbs = all_bucket_dbs(BucketName),
@@ -645,7 +673,7 @@ spawn_dbs_compactor(BucketName, Config, Force, OriginalTarget) ->
               {Options, SafeViewSeqs} =
                   case Config#config.do_purge of
                       true ->
-                          {{0, 0, true}, []};
+                          {{0, 0, true, ObsoleteKeyIds}, []};
                       _ ->
                           {NowMegaSec, NowSec, _} = os:timestamp(),
                           NowEpoch = NowMegaSec * 1000000 + NowSec,
@@ -664,7 +692,8 @@ spawn_dbs_compactor(BucketName, Config, Force, OriginalTarget) ->
                                             PurgeTS0
                                     end,
 
-                          {{PurgeTS, 0, false}, ns_couchdb_api:get_safe_purge_seqs(BucketName)}
+                          {{PurgeTS, 0, false, ObsoleteKeyIds},
+                           ns_couchdb_api:get_safe_purge_seqs(BucketName)}
                   end,
 
               Force orelse get_kv_token(),
@@ -703,12 +732,13 @@ do_vbucket_compaction_config({FragLimit, FragSizeLimit}, NumVBuckets)
 do_vbucket_compaction_config(FragThreshold, _) ->
     FragThreshold.
 
-make_per_vbucket_compaction_options({TS, 0, DD} = GeneralOption, {Vb, _}, SafeViewSeqs) ->
+make_per_vbucket_compaction_options({TS, 0, DD, OKeys} = GeneralOption, {Vb, _},
+                                    SafeViewSeqs) ->
     case lists:keyfind(Vb, 1, SafeViewSeqs) of
         false ->
             GeneralOption;
         {_, Seq} ->
-            {TS, Seq, DD}
+            {TS, Seq, DD, OKeys}
     end.
 
 vbucket_needs_compaction({DataSize, FileSize}, Config) ->
@@ -1469,23 +1499,38 @@ exit_if_uninhibit_requsted_for_non_parallel_compaction() ->
     end.
 
 -spec register_forced_compaction(pid(), #forced_compaction{},
+                                 [{term(), fun((_) -> ok)}],
                                  #state{}) -> #state{}.
-register_forced_compaction(Pid, Compaction,
+register_forced_compaction(Pid, Compaction, Continuations,
                     #state{running_forced_compactions=Compactions,
                            forced_compaction_pids=CompactionPids} = State) ->
     error = dict:find(Compaction, CompactionPids),
 
-    NewCompactions = dict:store(Pid, Compaction, Compactions),
+    CompactionData = #forced_compaction_data{continuations = Continuations},
+    NewCompactions = dict:store(Pid, {Compaction, CompactionData}, Compactions),
     NewCompactionPids = dict:store(Compaction, Pid, CompactionPids),
 
     State#state{running_forced_compactions=NewCompactions,
                 forced_compaction_pids=NewCompactionPids}.
 
+-spec register_force_compaction_continuation(term(), fun ((_) -> ok),
+                                             #forced_compaction{},
+                                             #state{}) -> #state{}.
+register_force_compaction_continuation(ContId, Cont, Compaction, State) ->
+    {ok, Pid} = find_force_compaction_pid(Compaction, State),
+    #state{running_forced_compactions = Compactions} = State,
+    {ok, {_Compaction, CurData}} = dict:find(Pid, Compactions),
+    #forced_compaction_data{continuations = CurConts} = CurData,
+    NewConts = [{ContId, Cont} | proplists:delete(ContId, CurConts)],
+    NewData = CurData#forced_compaction_data{continuations = NewConts},
+    NewCompactions = dict:store(Pid, {Compaction, NewData}, Compactions),
+    State#state{running_forced_compactions = NewCompactions}.
+
 -spec unregister_forced_compaction(pid(), #state{}) -> #state{}.
 unregister_forced_compaction(Pid,
                              #state{running_forced_compactions=Compactions,
                                     forced_compaction_pids=CompactionPids} = State) ->
-    Compaction = dict:fetch(Pid, Compactions),
+    {Compaction, _CompactionData} = dict:fetch(Pid, Compactions),
 
     NewCompactions = dict:erase(Pid, Compactions),
     NewCompactionPids = dict:erase(Compaction, CompactionPids),
@@ -1494,14 +1539,18 @@ unregister_forced_compaction(Pid,
                 forced_compaction_pids=NewCompactionPids}.
 
 -spec is_already_being_compacted(#forced_compaction{}, #state{}) -> boolean().
-is_already_being_compacted(Compaction,
-                           #state{forced_compaction_pids=CompactionPids}) ->
-    dict:find(Compaction, CompactionPids) =/= error.
+is_already_being_compacted(Compaction, State) ->
+    find_force_compaction_pid(Compaction, State) =/= error.
+
+-spec find_force_compaction_pid(#forced_compaction{}, #state{}) ->
+          {ok, pid()} | error.
+find_force_compaction_pid(Compaction,
+                          #state{forced_compaction_pids=CompactionPids}) ->
+    dict:find(Compaction, CompactionPids).
 
 -spec maybe_cancel_compaction(#forced_compaction{}, #state{}) -> #state{}.
-maybe_cancel_compaction(Compaction,
-                        #state{forced_compaction_pids=CompactionPids} = State) ->
-    case dict:find(Compaction, CompactionPids) of
+maybe_cancel_compaction(Compaction, State) ->
+    case find_force_compaction_pid(Compaction, State) of
         error ->
             State;
         {ok, Pid} ->
