@@ -13,6 +13,7 @@
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -20,6 +21,8 @@
 
 -export([start_link/0,
          default/0,
+         handle_get/1,
+         handle_post/1,
          get_config/0,
          handle_activity/1,
          is_tracked/1,
@@ -50,6 +53,85 @@ default() ->
     [{enabled, false},
      {tracked_roles, ?DEFAULT_TRACKED_ROLES},
      {tracked_groups, []}].
+
+handle_get(Req) ->
+    menelaus_util:assert_is_morpheus(),
+
+    menelaus_web_settings2:handle_get([], params(), fun type_spec/1,
+                                      get_config(), Req).
+
+handle_post(Req) ->
+    menelaus_util:assert_is_morpheus(),
+
+    menelaus_web_settings2:handle_post(
+      fun (Params, Req2) ->
+              case Params of
+                  [] -> ok;
+                  _ ->
+                      Props = lists:map(fun ({[K], V}) -> {K, V} end, Params),
+                      set_config(Props)
+              end,
+              handle_get(Req2)
+      end, [], params(), fun type_spec/1, get_config(), [], Req).
+
+set_config(Changes) ->
+    OldConfig = get_config(),
+
+    NewConfig = misc:update_proplist(OldConfig, Changes),
+    ns_config:set(?CONFIG_KEY, NewConfig).
+
+params() ->
+    [{"enabled",
+      #{type => bool,
+        cfg_key => enabled}},
+     {"trackedRoles",
+      #{type => tracked_roles, cfg_key => tracked_roles, default => false}},
+     {"trackedGroups",
+      #{type => tracked_groups, cfg_key => tracked_groups, default => false}}].
+
+type_spec(tracked_roles) ->
+    #{validators => [string,
+        validator:validate(fun get_roles/1, _, _)]};
+type_spec(tracked_groups) ->
+    #{validators => [string,
+        validator:validate(fun get_groups/1, _, _)]}.
+
+parse_role(RoleStr, Definitions) ->
+    try
+        RoleName = menelaus_web_rbac:role_to_atom(RoleStr),
+        case lists:keyfind(RoleName, 1, Definitions) of
+            false ->
+                {error, RoleStr};
+            _ -> RoleName
+        end
+    catch
+        error:badarg -> {error, RoleStr}
+    end.
+
+get_roles(RolesStr) ->
+    Definitions = menelaus_roles:get_definitions(public),
+    RolesRaw = string:tokens(RolesStr, ","),
+    Roles = [parse_role(string:trim(RoleRaw), Definitions)
+             || RoleRaw <- RolesRaw],
+
+    %% Gather erroneous roles
+    BadRoles = [BadRole || {error, BadRole} <- Roles],
+    case BadRoles of
+        [] -> {value, Roles};
+        _ -> {error,
+              io_lib:format("The following roles are invalid: ~s",
+                            [string:join(BadRoles, ",")])}
+    end.
+
+get_groups(Str) ->
+    Groups = string:lexemes(Str, ","),
+    UnexpectedGroups = [Group || Group <- Groups,
+                                 menelaus_users:group_exists(Group)],
+    case UnexpectedGroups of
+        [] -> {value, Groups};
+        _ -> {error, io_lib:format("The following groups do not exist: ~s",
+                                   string:join(UnexpectedGroups, ","))}
+    end.
 
 -spec get_config() -> proplists:proplist().
 get_config() ->

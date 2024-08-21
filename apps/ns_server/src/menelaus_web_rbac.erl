@@ -40,6 +40,7 @@
          handle_get_user_buckets_for_cbauth/1,
          forbidden_response/1,
          role_to_string/1,
+         role_to_atom/1,
          validate_cred/2,
          handle_get_password_policy/1,
          handle_post_password_policy/1,
