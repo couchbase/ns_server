@@ -97,7 +97,7 @@
 -define(MAX_USERS_ON_CE, 20).
 -define(DEFAULT_PROPS, [name, uuid, user_roles, group_roles, passwordless,
                         password_change_timestamp, groups, external_groups,
-                        locked, temporary_password]).
+                        locked, temporary_password, last_activity_time]).
 -define(DEFAULT_GROUP_PROPS, [description, roles, ldap_group_ref]).
 
 -record(state, {base, user_lists, cache_size = ?LDAP_GROUPS_CACHE_SIZE}).
@@ -421,6 +421,11 @@ make_props(Id, Props, ItemList, {Passwordless, TemporaryPassword, Definitions,
                 {is_user_locked(Id), Cache};
             (temporary_password, Cache) ->
                 {lists:member(Id, TemporaryPassword), Cache};
+            (last_activity_time, Cache) ->
+                {case replicated_dets:get(storage_name(), {activity, Id}) of
+                     {{activity, Id}, Time} -> Time;
+                     false -> undefined
+                 end, Cache};
             (Name, Cache) ->
                 {proplists:get_value(Name, Props), Cache}
         end,

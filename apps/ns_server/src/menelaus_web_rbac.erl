@@ -241,6 +241,8 @@ user_to_json({Id, Domain}, Props) ->
                        proplists:get_value(password_change_timestamp, Props)),
     Locked = proplists:get_value(locked, Props),
     TemporaryPassword = proplists:get_value(temporary_password, Props),
+    ActivityTime = format_activity_time(
+                     proplists:get_value(last_activity_time, Props)),
 
     {[{id, list_to_binary(Id)},
       {domain, Domain},
@@ -256,7 +258,8 @@ user_to_json({Id, Domain}, Props) ->
           || PassChangeTime =/= undefined] ++
          [{locked, Locked} || Locked =/= undefined] ++
          [{temporary_password, TemporaryPassword}
-          || TemporaryPassword =/= undefined]}.
+          || TemporaryPassword =/= undefined] ++
+         [{last_activity_time, ActivityTime} || ActivityTime =/= undefined]}.
 
 user_roles_to_json(Props) ->
     UserRoles = proplists:get_value(user_roles, Props, []),
@@ -282,6 +285,12 @@ format_password_change_time(TS) ->
     Local = calendar:now_to_local_time(misc:time_to_timestamp(TS, millisecond)),
     menelaus_util:format_server_time(Local).
 
+format_activity_time(undefined) -> undefined;
+format_activity_time(TS) ->
+    Local = erlang:universaltime_to_localtime(
+              calendar:gregorian_seconds_to_datetime(TS)),
+    menelaus_util:format_server_time(Local).
+
 handle_get_users(Path, Req) ->
     handle_get_users_with_domain(Req, '_', Path).
 
@@ -292,7 +301,8 @@ get_users_page_validators(DomainAtom, HasStartFrom) ->
     [validator:integer(pageSize, ?MIN_USERS_PAGE_SIZE, ?MAX_USERS_PAGE_SIZE, _),
      validator:touch(startFrom, _),
      validator:one_of(sortBy, ["id", "name", "domain",
-                               "password_change_timestamp", "locked"], _),
+                               "password_change_timestamp", "locked",
+                               "last_activity_time"], _),
      validator:convert(sortBy, fun list_to_atom/1, _),
      validator:one_of(order, ["asc", "desc"], _),
      validator:touch(substr, _),
