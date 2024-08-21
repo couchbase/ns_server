@@ -25,6 +25,9 @@ params() ->
         type => {int, -1, infinity}}},
      {"config.dekLifetime",
       #{cfg_key => [config_encryption, dek_lifetime_in_sec],
+        type => {int, 0, infinity}}},
+     {"config.dekRotationInterval",
+      #{cfg_key => [config_encryption, dek_rotation_interval_in_sec],
         type => {int, 0, infinity}}}].
 
 handle_get(Path, Req) ->
@@ -79,7 +82,8 @@ get_settings(Snapshot, ExtraSettings) ->
 defaults() ->
     #{config_encryption => #{encryption => disabled,
                              secret_id => ?SECRET_ID_NOT_SET,
-                             dek_lifetime_in_sec => 365*60*60*24}}.
+                             dek_lifetime_in_sec => 365*60*60*24,
+                             dek_rotation_interval_in_sec => 30*60*60*24}}.
 
 validate_sec_settings(_, #{encryption := disabled,
                            secret_id := ?SECRET_ID_NOT_SET}, _) ->

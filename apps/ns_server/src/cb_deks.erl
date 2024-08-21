@@ -322,6 +322,8 @@ dek_config(chronicleDek) ->
       set_active_key_callback => fun chronicle_local:set_active_dek/1,
       lifetime_callback => cb_crypto:get_dek_kind_lifetime(
                              config_encryption, _),
+      rotation_int_callback => cb_crypto:get_dek_rotation_interval(
+                                 config_encryption, _),
       get_ids_in_use_callback => fun chronicle_local:get_encryption_dek_ids/0,
       drop_callback => fun chronicle_local:drop_deks/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
@@ -333,6 +335,8 @@ dek_config(configDek) ->
       set_active_key_callback => fun set_config_active_key/1,
       lifetime_callback => cb_crypto:get_dek_kind_lifetime(
                              config_encryption, _),
+      rotation_int_callback => cb_crypto:get_dek_rotation_interval(
+                                 config_encryption, _),
       get_ids_in_use_callback => fun get_config_dek_ids_in_use/0,
       drop_callback => fun drop_config_deks/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
@@ -343,6 +347,7 @@ dek_config({bucketDek, Bucket}) ->
       set_active_key_callback => ns_memcached:set_active_dek_for_bucket(Bucket,
                                                                         _),
       lifetime_callback => ns_bucket:get_dek_lifetime(Bucket, _),
+      rotation_int_callback => ns_bucket:get_dek_rotation_interval(Bucket, _),
       get_ids_in_use_callback => fun () ->
                                      ns_memcached:get_dek_ids_in_use(Bucket)
                                  end,

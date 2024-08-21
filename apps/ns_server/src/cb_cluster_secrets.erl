@@ -75,7 +75,8 @@
                 jobs :: [node_job()] | [master_job()],
                 timers = #{retry_jobs => undefined,
                            rotate_keks => undefined,
-                           dek_cleanup => undefined}
+                           dek_cleanup => undefined,
+                           rotate_deks => undefined}
                          :: #{atom() := reference() | undefined},
                 deks = #{} :: #{cb_deks:dek_kind() := deks_info()}}).
 
@@ -510,10 +511,17 @@ handle_info({config_change, _}, State) ->
 handle_info({dek_settings_updated, KindList},
             #state{proc_type = ?NODE_PROC} = State) ->
     ?log_debug("Dek settings updated for ~p", [KindList]),
-    {noreply, add_and_run_jobs(
-                [{maybe_update_deks, Kind} || Kind <- KindList] ++
-                [{maybe_reencrypt_deks, Kind} || Kind <- KindList],
-                State)};
+    NewState = functools:chain(
+                 State,
+                 [add_and_run_jobs(
+                    [{maybe_update_deks, Kind} || Kind <- KindList] ++
+                    [{maybe_reencrypt_deks, Kind} || Kind <- KindList],
+                    _),
+                  %% We should restart these timers because rotation settings
+                  %% can change
+                  restart_dek_rotation_timer(_),
+                  restart_dek_cleanup_timer(_)]),
+    {noreply, NewState};
 
 handle_info({timer, retry_jobs}, State) ->
     ?log_debug("Retrying jobs"),
@@ -521,7 +529,7 @@ handle_info({timer, retry_jobs}, State) ->
     {noreply, run_jobs(State)};
 
 handle_info({timer, rotate_keks}, #state{proc_type = ?MASTER_PROC} = State) ->
-    ?log_debug("Rotate timer"),
+    ?log_debug("Rotate keks timer"),
     misc:flush({timer, rotate_keks}),
     CurTime = calendar:universal_time(),
     %% Intentionally update next_rotation time first, and run rotations after.
@@ -560,6 +568,24 @@ handle_info({dek_drop_complete, Kind} = Msg,
     ?log_debug("Dek drop complete: ~p", [Kind]),
     misc:flush(Msg),
     {noreply, add_and_run_jobs([{garbage_collect_deks, Kind}], State)};
+
+handle_info({timer, rotate_deks} = Msg, #state{proc_type = ?NODE_PROC,
+                                               deks = Deks} = State) ->
+    ?log_debug("Rotate DEKs timer"),
+    misc:flush(Msg),
+    CurDT = calendar:universal_time(),
+    NewJobs = maps:fold(fun (Kind, KindDeks, Acc) ->
+                            Snapshot = deks_config_snapshot(Kind),
+                            case dek_rotation_needed(Kind, KindDeks, CurDT,
+                                                     Snapshot) of
+                                true ->
+                                    ?log_debug("Dek rotation needed for ~p",
+                                               [Kind]),
+                                    [{maybe_update_deks, Kind} | Acc];
+                                false -> Acc
+                            end
+                        end, [], Deks),
+    {noreply, restart_dek_rotation_timer(add_and_run_jobs(NewJobs, State))};
 
 handle_info(Info, State) ->
     ?log_warning("Unhandled info: ~p", [Info]),
@@ -798,7 +824,10 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                 end,
 
             #{Kind := #{active_id := ActiveId,
-                        is_enabled := WasEnabled}} = AllDeks,
+                        is_enabled := WasEnabled} = KindDeks} = AllDeks,
+
+            CurDT = calendar:universal_time(),
+            ShouldRotate = dek_rotation_needed(Kind, KindDeks, CurDT, Snapshot),
 
             %% Check current encryption settings and push actual active key to
             %% dek users
@@ -812,7 +841,7 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                     call_set_active_cb(Kind, NewState);
 
                 %% It is enabled on disk and in config:
-                true ->
+                true when not ShouldRotate ->
                     %% We should push it even when nothing changes in order to
                     %% handle the scenario when we crash between
                     %% cb_deks:set_active and SetActiveCB
@@ -827,13 +856,14 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
 
                 %% On disk it is disabled but in config it is enabled
                 %% and we already have a dek
-                false when is_binary(ActiveId) ->
+                false when is_binary(ActiveId) and not ShouldRotate ->
                     ok = cb_deks:set_active(Kind, ActiveId, true),
                     NewState = read_deks(Kind, State),
                     call_set_active_cb(Kind, NewState);
 
                 %% On disk it is disabled but in config it is enabled
-                false when ActiveId == undefined ->
+                %% or rotation is needed
+                V when (V == false) orelse ShouldRotate ->
                     %% There is no active dek currently, but encryption is on,
                     %% we should generate a new dek
                     case generate_new_dek(Kind, EncrMethod, Snapshot) of
@@ -999,7 +1029,9 @@ read_deks(Kind, #state{deks = AllDeks} = State) ->
                  is_enabled => IsEnabled,
                  deks_being_dropped => CurDeksDroppedCleaned,
                  last_drop_timestamp => CurLastDropTS},
-    restart_dek_cleanup_timer(State#state{deks = AllDeks#{Kind => KindDeks}}).
+    functools:chain(State#state{deks = AllDeks#{Kind => KindDeks}},
+                    [restart_dek_cleanup_timer(_),
+                     restart_dek_rotation_timer(_)]).
 
 -spec generate_new_dek(cb_deks:dek_kind(), cb_deks:encryption_method(),
                        chronicle_snapshot()) -> ok | {error, _}.
@@ -1451,6 +1483,62 @@ dek_expiration_times(LifetimeInSec, #{deks := Deks}) ->
                           {Time, Id}
                       end, Deks),
     [{misc:datetime_add(DT, LifetimeInSec), Id} || {DT, Id} <- CreationTimes].
+
+-spec restart_dek_rotation_timer(#state{}) -> #state{}.
+restart_dek_rotation_timer(#state{proc_type = ?MASTER_PROC} = State) ->
+    State;
+restart_dek_rotation_timer(#state{proc_type = ?NODE_PROC,
+                                  deks = Deks} = State) ->
+    CurDT = calendar:universal_time(),
+    Times =
+        maps:fold(fun (Kind, KindDeks, Acc) ->
+                      Snapshot = deks_config_snapshot(Kind),
+                      case dek_rotation_time(Kind, KindDeks, Snapshot) of
+                          {value, ExpDT} -> [ExpDT | Acc];
+                          false -> Acc;
+                          {error, _} ->
+                              [misc:datetime_add(CurDT,
+                                                 ?DEK_TIMER_RETRY_TIME_S) | Acc]
+                      end
+                  end, [], Deks),
+    TimerTime = time_to_first_event(CurDT, Times),
+    restart_timer(rotate_deks, TimerTime, State).
+
+-spec dek_rotation_needed(cb_deks:dek_kind(), deks_info(), calendar:datetime(),
+                          chronicle_snapshot()) -> boolean().
+dek_rotation_needed(Kind, KindDeks, CurDT, Snapshot) ->
+    case dek_rotation_time(Kind, KindDeks, Snapshot) of
+        {value, ExpDT} -> ExpDT =< CurDT;
+        false -> false;
+        {error, _} -> false
+    end.
+
+-spec dek_rotation_time(cb_deks:dek_kind(), deks_info(),
+                        chronicle_snapshot()) ->
+          {value, calendar:datetime()} | false | {error, _}.
+dek_rotation_time(_Kind, #{is_enabled := false}, _Snapshot) ->
+    false;
+dek_rotation_time(Kind, #{is_enabled := true, active_id := ActiveId,
+                          deks := Keys}, Snapshot) ->
+    {value, #{type := 'raw-aes-gcm',
+              info := #{creation_time := CDT}}} =
+        lists:search(fun (#{id := Id}) -> Id == ActiveId end, Keys),
+    case call_dek_callback(rotation_int_callback, Kind, [Snapshot]) of
+        {succ, {ok, undefined}} ->
+            false;
+        {succ, {ok, ExpirationInSec}} ->
+            {value, misc:datetime_add(CDT, ExpirationInSec)};
+        {succ, {error, not_found}} ->
+            false;
+        {succ, {error, R}} ->
+            ?log_error("Failed to calculate next rotation time for dek ~p: ~p",
+                       [Kind, R]),
+            {error, R};
+        {except, {_, E, _}} ->
+            ?log_error("Failed to calculate next rotation time for dek ~p: ~p",
+                       [Kind, E]),
+            {error, E}
+    end.
 
 -spec validate_encryption_secret_id(secret_props(), chronicle_snapshot()) ->
                     ok | {error, bad_encrypt_id()}.

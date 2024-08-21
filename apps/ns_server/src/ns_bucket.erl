@@ -195,7 +195,8 @@
          update_buckets_config/1,
          all_keys/1,
          get_encryption/2,
-         get_dek_lifetime/2]).
+         get_dek_lifetime/2,
+         get_dek_rotation_interval/2]).
 
 -import(json_builder,
         [to_binary/1,
@@ -2571,6 +2572,20 @@ get_dek_lifetime(BucketName, Snapshot) ->
         {ok, BucketConfig} ->
             Val = proplists:get_value(encryption_dek_lifetime, BucketConfig,
                                       ?DEFAULT_DEK_LIFETIME_S),
+            case Val of
+                0 -> {ok, undefined};
+                _ -> {ok, Val}
+            end;
+        not_present ->
+            {error, not_found}
+    end.
+
+get_dek_rotation_interval(BucketName, Snapshot) ->
+    case get_bucket(BucketName, Snapshot) of
+        {ok, BucketConfig} ->
+            Val = proplists:get_value(encryption_dek_rotation_interval,
+                                      BucketConfig,
+                                      ?DEFAULT_DEK_ROTATION_INTERVAL_S),
             case Val of
                 0 -> {ok, undefined};
                 _ -> {ok, Val}
