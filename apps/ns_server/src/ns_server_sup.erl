@@ -178,6 +178,9 @@ child_specs() ->
          start_link, []},
         {permanent, 1, ?MAX_R, ?MAX_T}, 5000, worker, [encryption_service]}),
 
+     {ns_memcached_sockets_pool, {ns_memcached_sockets_pool, start_link, []},
+      permanent, 1000, worker, []},
+
      {cb_cluster_secrets, {cb_cluster_secrets, start_link_node_monitor, []},
       permanent, 1000, worker, []},
 
@@ -194,9 +197,6 @@ child_specs() ->
 
      {service_agent_sup, {service_agent_sup, start_link, []},
       permanent, infinity, supervisor, [service_agent_sup]},
-
-     {ns_memcached_sockets_pool, {ns_memcached_sockets_pool, start_link, []},
-      permanent, 1000, worker, []},
 
      {memcached_auth_server, {memcached_auth_server, start_link, []},
       permanent, 1000, worker, []},
