@@ -30,7 +30,8 @@ class UsersTestSet(testlib.BaseTestSet):
         self.user = testlib.random_str(10)
 
     def teardown(self):
-        pass
+        testlib.post_succ(self.cluster, '/settings/security/userActivity',
+                          data={'enabled': 'false'})
 
     def test_teardown(self):
         testlib.ensure_deleted(
@@ -196,6 +197,55 @@ class UsersTestSet(testlib.BaseTestSet):
         delete_user(self.cluster, 'local', user)
         assert_wrong_password(self.cluster, user, password2)
 
+    def activity_tracking_test(self):
+        user = self.user
+        name1 = testlib.random_str(10)
+        password1 = testlib.random_str(10)
+
+        # User creation
+        put_user(self.cluster, 'local', user, password=password1,
+                 roles='admin', full_name=name1, groups='',
+                 validate_user_props=True)
+
+        # Enable activity tracking without yet covering this user
+        testlib.post_succ(self.cluster, '/settings/security/userActivity',
+                          data={'enabled': 'true',
+                                'trackedRoles': ''})
+
+        testlib.get_succ(self.cluster, '/pools/default',
+                         auth=(user, password1))
+
+        sync_activity(self.cluster)
+
+        # No activity
+        for node in self.cluster.connected_nodes:
+            activity = testlib.diag_eval(
+                node, "gen_server:call(activity_tracker, last_activity)").text
+            assert "[]" == activity, activity
+        r = testlib.get_succ(self.cluster, '/settings/rbac/users/local/' + user)
+        assert r.json().get('last_activity_time') is None
+
+        # Enable activity tracking
+        testlib.post_succ(self.cluster, '/settings/security/userActivity',
+                          data={'enabled': 'true',
+                                'trackedRoles': 'admin'})
+
+        testlib.get_succ(self.cluster, '/pools/default',
+                         auth=(user, password1))
+
+        sync_activity(self.cluster)
+
+        # New activity
+        found_activity = False
+        for node in self.cluster.connected_nodes:
+            activity = testlib.diag_eval(
+                node, "gen_server:call(activity_tracker, last_activity)").text
+            if "[]" != activity:
+                found_activity = True
+        assert found_activity
+        r = testlib.get_succ(self.cluster, '/settings/rbac/users/local/' + user)
+        assert r.json().get('last_activity_time') is not None, \
+            "'last_activity_time' missing"
 
 def put_user(cluster_or_node, domain, userid, password=None, roles=None,
              full_name=None, groups=None, locked=None, temporary_password=None,
@@ -255,6 +305,13 @@ def lock_user(cluster, user):
 def unlock_user(cluster, user):
     testlib.patch_succ(cluster, '/settings/rbac/users/local/' + user,
                        data={"locked": "false"})
+
+
+def sync_activity(cluster):
+    testlib.diag_eval(
+        cluster.get_node_from_hostname(cluster.get_orchestrator_node()[0]),
+        "activity_aggregator ! refresh,"
+        "gen_server:call(activity_aggregator, sync)")
 
 
 def assert_authn_and_roles(cluster_or_node, user, password, expected_roles):
