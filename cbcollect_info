@@ -656,8 +656,6 @@ class DoubleStream(Writer):
 
 @unique
 class Platform(Enum):
-    SUNOS5 = "sunos5"
-    SOLARIS = "solaris"
     LINUX = "linux"
     WIN32 = "win32"
     CYGWIN = "cygwin"
@@ -916,10 +914,6 @@ class Task:
         return f"<{self.__class__.__qualname__}: {self.__dict__}>"
 
 
-class SolarisTask(Task):
-    platforms = [Platform.SUNOS5, Platform.SOLARIS]
-
-
 class LinuxTask(Task):
     platforms = [Platform.LINUX]
 
@@ -932,9 +926,8 @@ class MacOSXTask(Task):
     platforms = [Platform.DARWIN]
 
 
-class UnixTask(SolarisTask, LinuxTask, MacOSXTask):
-    platforms = SolarisTask.platforms + LinuxTask.platforms \
-        + MacOSXTask.platforms
+class UnixTask(LinuxTask, MacOSXTask):
+    platforms = LinuxTask.platforms + MacOSXTask.platforms
 
 
 class AllOsTask(UnixTask, WindowsTask):
@@ -1507,13 +1500,6 @@ def make_os_tasks():
         WindowsTask("Computer system", "wmic computersystem"),
         WindowsTask("Computer OS", "wmic os"),
         LinuxTask("System Hardware", "lshw -json || lshw"),
-        SolarisTask("Process list snapshot",
-                    "prstat -a -c -n 100 -t -v -L 1 10"),
-        SolarisTask("Process list", "ps -ef"),
-        SolarisTask("Service configuration", "svcs -a"),
-        SolarisTask("Swap configuration", "swap -l"),
-        SolarisTask("Disk activity", "zpool iostat 1 10"),
-        SolarisTask("Disk activity", "iostat -E 1 10"),
         LinuxTask("Process list snapshot",
                   "unset TERM LD_LIBRARY_PATH; top -Hb -n1 || top -H n1"),
         LinuxTask(
@@ -2360,8 +2346,7 @@ def guess_utility(command):
 
 
 def dump_utilities(*args, **kwargs):
-    specific_platforms = {SolarisTask: 'Solaris',
-                          LinuxTask: 'Linux',
+    specific_platforms = {LinuxTask: 'Linux',
                           WindowsTask: 'Windows',
                           MacOSXTask: 'Mac OS X'}
     platform_utils = dict((name, set())
