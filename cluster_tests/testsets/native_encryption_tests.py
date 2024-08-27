@@ -27,9 +27,11 @@ scriptdir = sys.path[0]
 class NativeEncryptionTests(testlib.BaseTestSet):
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(min_num_nodes = 2,
+        return testlib.ClusterRequirements(num_nodes = 3,
                                            edition='Enterprise',
-                                           services=[Service.KV],
+                                           services={'n0': [Service.KV],
+                                                     'n1': [Service.QUERY],
+                                                     'n2': [Service.KV]},
                                            balanced=True)
 
     def setup(self):
@@ -814,13 +816,28 @@ def poll_verify_kek_files(*args, **kwargs):
 
 def verify_bucket_deks_files(cluster, bucket, **kwargs):
     deks_path = Path() / 'data' / bucket / 'deks'
-    verify_dek_files(cluster, deks_path, **kwargs)
+
+    def is_kv_node(node):
+        return Service.KV in node.get_services()
+
+    def is_not_kv_node(node):
+        return not is_kv_node(node)
+
+    verify_dek_files(cluster, deks_path, node_filter=is_kv_node, **kwargs)
+    verify_dek_files(cluster, deks_path, node_filter=is_not_kv_node,
+                     verify_key_count=0)
 
 
-def verify_dek_files(cluster, relative_path, verify_key_count=1, **kwargs):
+def verify_dek_files(cluster, relative_path, verify_key_count=1,
+                     node_filter=None, **kwargs):
     for node in cluster.connected_nodes:
         deks_path = Path(node.data_path()) / relative_path
-        print(f'Checking deks in {deks_path}...')
+        print(f'Checking deks in {deks_path} (cheking ' \
+              f'verify_key_count={verify_key_count} and also {kwargs})... ')
+        if node_filter is not None:
+            if not node_filter(node):
+                print(f'Skipping check of {node}')
+                continue
         if not deks_path.exists():
             if verify_key_count == 0:
                 return
