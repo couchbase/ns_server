@@ -36,6 +36,7 @@ import re
 import datetime
 import glob
 import sys
+from testlib.requirements import Service
 
 debug=False
 scriptdir = sys.path[0]
@@ -65,13 +66,15 @@ ui_headers = {'Host': 'some_addr', 'ns-server-ui': 'yes'}
 bucket = "test"
 
 class SamlTests(testlib.BaseTestSet):
+    services_to_run = [Service.QUERY, Service.BACKUP, Service.CBAS]
 
     @staticmethod
     def requirements():
         return testlib.ClusterRequirements(min_num_nodes=2,
                                            edition="Enterprise",
                                            buckets=[{'name': bucket,
-                                                     'ramQuota': 100}])
+                                                     'ramQuota': 100}],
+                                           services=SamlTests.services_to_run)
 
 
     def setup(self):
@@ -501,16 +504,136 @@ class SamlTests(testlib.BaseTestSet):
                               'external_stats_reader', 'replication_admin']
             assert_eq(roles, expected_roles)
 
-            # Test that SAML users can access the docs endpoint (which requires
-            # making a request to memcached on their behalf).
+            # MB-62465: Test that SAML users can access the docs endpoint (which
+            # requires making a request to memcached on their behalf).
             # Polling is required because external authentication can take up
             # to a second to get enabled in memcached after SAML is enabled.
             testlib.poll_for_condition(
                 lambda: ui_request('get', self.cluster.connected_nodes[0],
-                                    '/pools/default/buckets/test/docs',
-                                    session).status_code == 200,
+                                   f'/pools/default/buckets/{bucket}/docs',
+                                   session).status_code == 200,
                 sleep_time=0.5,
                 timeout=60)
+
+            # MB-62604: Query uses cbauth IsAllowed to determine whether it
+            # has cluster.n1ql.meta!read permission. replication_admin role
+            # grants it. This will fail without the UI session info in context.
+            # @cbq-engine "GET /_cbauth/checkPermission?audit=true&context=ui...
+            # &domain=external&permission=cluster.n1ql.meta%21read&
+            # user=testuser2"
+            ui_request('get', self.cluster.connected_nodes[0],
+                       '/_p/query/admin/vitals', session, expected_code=200)
+
+            # testuser2 doesn't have permissions to do backup reads.
+            ui_request('get', self.cluster.connected_nodes[0],
+                       '/_p/backup/api/v1/plan',
+                       session, expected_code=403)
+
+            # MB-62604, MB-63208: Query uses cbauth GetBuckets to determine the
+            # accessible buckets. replication_admin role makes all buckets
+            # accessible. Without UI session info in context, no buckets will be
+            # returned.
+            # @cbq-engine "GET /_cbauth/getUserBuckets?audit=true&context=ui...
+            # &domain=external&user=testuser2"
+            r = ui_request('post', self.cluster.connected_nodes[0],
+                           '/_p/query/query/service',
+                           session,
+                           data={'statement': 'select * from system:buckets;'},
+                           expected_code=200)
+            bkts = []
+            for x in r.json()['results']:
+                bkts.append(x['buckets']['name'])
+                assert bkts == [f'{bucket}']
+
+            # MB-62604, MB-63214: cbas doesn't use cbauth. It uses a combination
+            # of /pools/default/checkPermissions, /_cbauth/checkPermission. cbas
+            # parses cb-on-behalf-extras headers and populates context (similar
+            # to cbauth) before calling ns_server /_cbauth/checkPermission.
+
+            # Create analytics collection in test._default._default. This will
+            # fail - we don't have cluster.analytics!manage. Analytics and full
+            # admin roles have the permission (see admin_test).
+            r = ui_request('post', self.cluster.connected_nodes[0],
+                           '/_p/cbas/query/service',
+                           session,
+                           data={'statement':
+                                 'alter collection '
+                                 f'`{bucket}`.`_default`.`_default` '
+                                 'enable analytics;'},
+                           expected_code=403)
+
+            # Exercise goxdcr_rest:proxy(), which also populates cb-on-behalf
+            # headers. (The previous test cases populate cb-on-behalf headers in
+            # the pluggable UI endpoint (i.e. /_p/<service>).
+            # @goxdcr "GET /_cbauth/checkPermission?audit=true&context=ui...
+            # &domain=external&permission=cluster.xdcr.remote_clusters%21read
+            # &user=testuser2"
+            ui_request('get', self.cluster.connected_nodes[0],
+                       '/pools/default/remoteClusters',
+                       session,
+                       expected_code=200)
+
+    def groups_and_roles_admin_test(self):
+        with saml_configured(self.cluster.connected_nodes[0],
+                             groupsAttribute='groups',
+                             groupsAttributeSep=', ',
+                             groupsFilterRE='admin') as IDP:
+            identity = idp_test_user_attrs.copy()
+            identity["groups"] = "test2, admingroup, testgroup1, "\
+                "test3, testgroup2"
+            identity["uid"] = "adminuser" # so we don't have such user in cb
+            binding_out, destination = \
+                IDP.pick_binding("assertion_consumer_service",
+                                 bindings=[BINDING_HTTP_POST],
+                                 entity_id=sp_entity_id)
+            name_id = NameID(text=testlib.random_str(16))
+
+            response = IDP.create_authn_response(
+                identity,
+                None, # InResponseTo is missing cause it is
+                # an unsolicited response
+                         destination,
+                sp_entity_id=sp_entity_id,
+                userid=idp_test_username,
+                name_id=name_id,
+                sign_assertion=True,
+                sign_response=True)
+
+            session = requests.Session()
+            post_saml_response(destination, response, session,
+                               expected_code=302)
+
+            # All 403 test cases in groups_and_roles_attributes_test should
+            # pass now as full admin.
+            r = ui_request('get', self.cluster.connected_nodes[0],
+                           '/whoami', session, expected_code=200)
+            roles = [a["role"] for a in r.json()["roles"]]
+            roles.sort()
+            expected_roles = ['admin']
+            assert_eq(roles, expected_roles)
+
+            # Backup pluggable UI request
+            ui_request('get', self.cluster.connected_nodes[0],
+                       '/_p/backup/api/v1/plan',
+                       session, expected_code=200)
+
+            # Create analytics collection in test._default._default.
+            r = ui_request('post', self.cluster.connected_nodes[0],
+                           '/_p/cbas/query/service',
+                           session,
+                           data={'statement':
+                                 'alter collection '
+                                 f'`{bucket}`.`_default`.`_default` '
+                                 'enable analytics;'},
+                           expected_code=200)
+
+            # Query analytics collections. They should exist.
+            r = ui_request('post', self.cluster.connected_nodes[0],
+                           '/_p/cbas/query/service',
+                           session,
+                           data={'statement':
+                                 f'select * from `{bucket}`'},
+                           expected_code=200)
 
     # Successfull authentication, but user doesn't have access to UI
     def access_denied_test(self):
