@@ -163,8 +163,16 @@ find_port_pid_loop(Tries, Delay) when Tries > 0 ->
     case RV of
         Pid when is_pid(Pid) ->
             Pid1 = supervisor_cushion:child_pid(Pid),
-            ?log_debug("Found memcached port ~p", [Pid1]),
-            Pid1;
+            case Pid1 of
+                undefined -> %% it is already down, continue waiting
+                    ?log_debug("Failed to obtain memcached port pid from "
+                               "supervisor_cushion ~p. Will retry", [Pid]),
+                    timer:sleep(Delay),
+                    find_port_pid_loop(Tries - 1, Delay);
+                _ when is_pid(Pid1) ->
+                    ?log_debug("Found memcached port ~p", [Pid1]),
+                    Pid1
+            end;
         Other ->
             ?log_debug("Failed to obtain memcached port pid (~p). Will retry",
                        [Other]),
