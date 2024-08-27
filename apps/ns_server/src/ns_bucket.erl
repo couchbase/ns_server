@@ -2447,7 +2447,6 @@ extract_bucket_props(Props) ->
                          history_retention_collection_default, rank,
                          encryption_secret_id,
                          encryption_dek_rotation_interval,
-                         encryption_dek_rotation,
                          encryption_dek_lifetime,
                          continuous_backup_enabled,
                          continuous_backup_interval,

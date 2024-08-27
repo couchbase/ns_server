@@ -460,8 +460,6 @@ build_encryption_at_rest_bucket_info(BucketConfig) ->
             [{encryptionAtRestSecretId,
               proplists:get_value(encryption_secret_id, BucketConfig,
                                   ?SECRET_ID_NOT_SET)},
-             {encryptionAtRestDekRotation,
-              proplists:get_bool(encryption_dek_rotation, BucketConfig)},
              {encryptionAtRestDekRotationInterval,
               proplists:get_value(encryption_dek_rotation_interval,
                                   BucketConfig,
@@ -2055,7 +2053,6 @@ validate_bucket_encryption_at_rest_settings(Params, Version) ->
                 "is upgraded to Morpheus">>}];
         RV -> RV
     end ++
-    parse_validate_encryption_dek_rotation(Params) ++
     parse_validate_encryption_rotation_interval(Params) ++
     parse_validate_encryption_dek_lifetime(Params).
 
@@ -2072,14 +2069,6 @@ parse_validate_encryption_secret_id(Params) ->
             [{error, encryptionAtRestSecretId, <<"too many values">>}];
         E when E == too_small; E == too_large; E == invalid ->
             [{error, encryptionAtRestSecretId, <<"invalid secret id">>}]
-    end.
-
-parse_validate_encryption_dek_rotation(Params) ->
-    case menelaus_util:parse_validate_boolean_field(
-           "encryptionAtRestDekRotation", encryption_dek_rotation, Params) of
-        [] -> [];
-        [{ok, _, _}] = RV -> RV;
-        [{error, _, Reason}] -> [{error, encryptionAtRestDekRotation, Reason}]
     end.
 
 parse_validate_encryption_rotation_interval(Params) ->
@@ -4470,14 +4459,12 @@ basic_bucket_params_screening_t() ->
                      [{"bucketType", "membase"},
                       {"ramQuota", "1024"},
                       {"encryptionAtRestSecretId", "1"},
-                      {"encryptionAtRestDekRotation", "true"},
                       {"encryptionAtRestDekRotationInterval", "1000"},
                       {"encryptionAtRestDekLifetime", "2000"}],
                      AllBuckets),
 
     ?assertEqual([], E38),
     ?assertEqual(1, proplists:get_value(encryption_secret_id, OK38)),
-    ?assertEqual(true, proplists:get_value(encryption_dek_rotation, OK38)),
     ?assertEqual(1000,
                  proplists:get_value(encryption_dek_rotation_interval, OK38)),
     ?assertEqual(2000,
@@ -4490,15 +4477,12 @@ basic_bucket_params_screening_t() ->
                      [{"bucketType", "membase"},
                       {"ramQuota", "1024"},
                       {"encryptionAtRestSecretId", "-3"},
-                      {"encryptionAtRestDekRotation", "bad"},
                       {"encryptionAtRestDekRotationInterval", "bad"},
                       {"encryptionAtRestDekLifetime", "bad"}],
                      AllBuckets),
 
     ?assertEqual(<<"invalid secret id">>,
                  proplists:get_value(encryptionAtRestSecretId, E39)),
-    ?assertEqual(<<"encryptionAtRestDekRotation is invalid">>,
-                 proplists:get_value(encryptionAtRestDekRotation, E39)),
     ?assertEqual(<<"invalid interval">>,
                  proplists:get_value(encryptionAtRestDekRotationInterval, E39)),
     ?assertEqual(<<"invalid interval">>,
@@ -4514,7 +4498,6 @@ basic_bucket_params_screening_t() ->
 
     ?assertEqual([], E40),
     ?assertEqual([], proplists:get_all_values(encryption_secret_id, OK40)),
-    ?assertEqual([], proplists:get_all_values(encryption_dek_rotation, OK40)),
     ?assertEqual([], proplists:get_all_values(encryption_dek_rotation_interval,
                                               OK40)),
     ?assertEqual([], proplists:get_all_values(encryption_dek_lifetime, OK40)),
