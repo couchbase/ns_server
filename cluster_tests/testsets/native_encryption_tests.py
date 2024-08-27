@@ -19,6 +19,8 @@ from datetime import datetime, timedelta, timezone
 import dateutil
 from testsets.secret_management_tests import change_password, post_es_config
 from testlib.requirements import Service
+import time
+
 
 scriptdir = sys.path[0]
 
@@ -620,6 +622,45 @@ class NativeEncryptionTests(testlib.BaseTestSet):
 
         verify_key_presense_in_dump_key_response(res, ids, [unknown_id])
 
+    def dek_automatic_rotation_test(self):
+        # Enable encryption and set dek rotation int = 1 sec
+        # Wait some time and check if dek has rotated
+        secret = auto_generated_secret(usage=['configuration-encryption'])
+        secret_id = create_secret(self.random_node(), secret)
+        kek_id = get_kek_id(self.random_node(), secret_id)
+        set_cfg_encryption(self.random_node(), 'secret', secret_id,
+                           dek_rotation=60*60*24*30)
+
+        dek_path = Path() / 'config' / 'deks'
+
+        current_dek_ids = poll_verify_deks_and_collect_ids(self.cluster,
+                                                           dek_path,
+                                                           verify_key_count=1)
+
+        rotation_enabling_time = datetime.now(timezone.utc)
+
+        set_cfg_encryption(self.random_node(), 'secret', secret_id,
+                           dek_rotation=1)
+
+        time.sleep(2) # let it rotate deks
+
+        set_cfg_encryption(self.random_node(), 'secret', secret_id,
+                           dek_rotation=60*60*24*30)
+
+        # Verify that current dek was created after we've enabled the rotation
+        def verify_ct(ct_str):
+            key_creation_time = parse_iso8601(ct_str)
+            return key_creation_time > rotation_enabling_time
+
+        # Verify that config dek dir has only one dek (all old deks are
+        # supposed to be removed immediatelly for config encryption)
+        # Also verify that all deks existed before the rotation are gone now
+        poll_verify_dek_files(self.cluster, dek_path,
+                              verify_key_count=1,
+                              verify_creation_time=verify_ct,
+                              verify_encryption_kek=kek_id,
+                              verify_id=lambda n: n not in current_dek_ids)
+
 
 
 def get_key_list(node, kind_as_str):
@@ -678,10 +719,13 @@ def verify_key_presense_in_dump_key_response(response, good_ids, unknown_ids):
         testlib.assert_eq(response[k]['result'], 'error')
 
 
-def set_cfg_encryption(cluster, mode, secret, expected_code=200):
+def set_cfg_encryption(cluster, mode, secret, dek_lifetime=60*60*24*365,
+                       dek_rotation=60*60*24*30, expected_code=200):
     testlib.post_succ(cluster, '/settings/security/encryptionAtRest/config',
                       json={'encryptionMethod': mode,
-                            'encryptionSecretId': secret},
+                            'encryptionSecretId': secret,
+                            'dekLifetime': dek_lifetime,
+                            'dekRotationInterval': dek_rotation},
                       expected_code=expected_code)
     if expected_code == 200:
         r = testlib.get_succ(cluster, '/settings/security/encryptionAtRest')
@@ -768,10 +812,14 @@ def poll_verify_kek_files(*args, **kwargs):
       sleep_time=0.2, attempts=50, retry_on_assert=True, verbose=True)
 
 
-def verify_bucket_deks_files(cluster, bucket, verify_key_count=1,
-                             **kwargs):
+def verify_bucket_deks_files(cluster, bucket, **kwargs):
+    deks_path = Path() / 'data' / bucket / 'deks'
+    verify_dek_files(cluster, deks_path, **kwargs)
+
+
+def verify_dek_files(cluster, relative_path, verify_key_count=1, **kwargs):
     for node in cluster.connected_nodes:
-        deks_path = Path(node.data_path()) / 'data' / bucket / 'deks'
+        deks_path = Path(node.data_path()) / relative_path
         print(f'Checking deks in {deks_path}...')
         if not deks_path.exists():
             if verify_key_count == 0:
@@ -795,7 +843,14 @@ def poll_verify_bucket_deks_files(*args, **kwargs):
       sleep_time=0.2, attempts=50, retry_on_assert=True, verbose=True)
 
 
-def verify_key_file(path, verify_missing=False, verify_encryption_kek=None):
+def poll_verify_dek_files(*args, **kwargs):
+    testlib.poll_for_condition(
+      lambda: verify_dek_files(*args, **kwargs),
+      sleep_time=0.2, attempts=50, retry_on_assert=True, verbose=True)
+
+
+def verify_key_file(path, verify_missing=False, verify_encryption_kek=None,
+                    verify_creation_time=None, verify_id=None):
     if verify_missing:
         assert not path.is_file(), f'key file exists: {path}'
     else:
@@ -806,6 +861,13 @@ def verify_key_file(path, verify_missing=False, verify_encryption_kek=None):
             assert has_kek == verify_encryption_kek, \
                    f'key is encrypted by wrong kek {has_kek} ' \
                    f'(expected: {verify_encryption_kek})'
+        if verify_creation_time is not None:
+            ct = content['keyData']['creationTime']
+            assert verify_creation_time(ct), \
+                   f'Unexpected key creation time: {ct} ' \
+                   f'(cur time: {datetime.now(timezone.utc)})'
+        if verify_id is not None:
+            assert verify_id(path.name), f'unexpected key id: {path.name}'
         assert content['type'] == 'raw-aes-gcm'
 
 
@@ -857,6 +919,25 @@ def decrypt_with_key(cluster, kek_id, b64data):
 
 def rotate_secret(cluster, secret_id):
     testlib.post_succ(cluster, f'/controller/rotateSecret/{secret_id}')
+
+
+def poll_verify_deks_and_collect_ids(*args, **kwargs):
+    current_dek_ids = []
+
+    def collect_ids(dek_id):
+        current_dek_ids.append(dek_id)
+        return True
+
+    def verify():
+        current_dek_ids = []
+        verify_dek_files(verify_id=collect_ids, *args, **kwargs)
+
+    testlib.poll_for_condition(
+      verify, sleep_time=0.2, attempts=50, retry_on_assert=True, verbose=True)
+
+    print(f'key list extracted: {current_dek_ids}')
+
+    return current_dek_ids
 
 
 def parse_iso8601(s):
