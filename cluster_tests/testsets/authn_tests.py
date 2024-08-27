@@ -153,8 +153,8 @@ class AuthnTests(testlib.BaseTestSet):
                          headers={'cb-on-behalf-of': OBO})
 
 
-    def client_cert_auth_test_base(self, mandatory=None):
-        user = self.cert_user
+    def client_cert_auth_test_base(self, user, mandatory=None):
+        print(f'Using user: {user}')
         node = self.cluster.connected_nodes[0]
         with client_cert_auth(node, user, True, mandatory) as client_cert_file:
             if mandatory: # cert auth is mandatory, regular auth is not allowed
@@ -176,11 +176,19 @@ class AuthnTests(testlib.BaseTestSet):
 
 
     def client_cert_optional_auth_test(self):
-        self.client_cert_auth_test_base(mandatory=False)
+        self.client_cert_auth_test_base(self.cert_user, mandatory=False)
 
 
     def client_cert_mandatory_auth_test(self):
-        self.client_cert_auth_test_base(mandatory=True)
+        self.client_cert_auth_test_base(self.cert_user, mandatory=True)
+
+
+    def admin_client_cert_optional_auth_test(self):
+        self.client_cert_auth_test_base(self.cluster.auth[0], mandatory=False)
+
+
+    def admin_client_cert_mandatory_auth_test(self):
+        self.client_cert_auth_test_base(self.cluster.auth[0], mandatory=True)
 
 
     def mandatory_client_cert_ui_login_test(self):
