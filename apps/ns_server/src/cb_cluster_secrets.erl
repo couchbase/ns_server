@@ -880,7 +880,7 @@ maybe_reencrypt_secrets() ->
                end
            end),
     case RV of
-        {commit, _} ->
+        {ok, _} ->
             sync_with_node_monitor(),
             ok;
         no_change -> ok
