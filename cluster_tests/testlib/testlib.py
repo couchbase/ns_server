@@ -32,7 +32,8 @@ config={'colors': support_colors(),
         'verbose': False,
         'screen_width': 80,
         'dry_run': False,
-        'intercept_output':True}
+        'intercept_output': True,
+        'report_time': True}
 
 
 def try_reuse_cluster(requirements, cluster):
@@ -619,7 +620,8 @@ def no_output(name, verbose=None, extra_context=contextlib.nullcontext()):
             print(
                 f"================== {name} output begin =================\n"
                 f"{output}{extra_cr}"
-                f"=================== {name} output end ==================\n")
+                f"=================== {name} output end ==================\n",
+                show_time=False)
 
         raise e
 
@@ -650,7 +652,7 @@ def call_reported(full_name, name, succ_str="ok", fail_str="failed",
                 res = right_aligned(succ_str, taken=width_taken)
             else:
                 res = succ_str
-            print(green(res) + timedelta_str(start))
+            print(green(res) + timedelta_str(start), show_time=False)
     except Exception as e:
         short_exception = red('\n'.join(format_exception_only(type(e), e))
                               .strip('\n'))
@@ -659,14 +661,16 @@ def call_reported(full_name, name, succ_str="ok", fail_str="failed",
                 res = right_aligned(fail_str, taken=width_taken)
             else:
                 res = fail_str
-            print(red(res) + timedelta_str(start))
+            print(red(res) + timedelta_str(start), show_time=False)
             print(f'    {short_exception}')
         else:
             print(red(f"{full_name} {fail_str} ({short_exception})"))
         raise e
 
 
-def right_aligned(s, taken=0, width=config['screen_width']):
+def right_aligned(s, taken=0, width=None):
+    if width is None:
+        width = config['screen_width'] - (9 if config['report_time'] else 0)
     corrected_width = max(0, width - taken)
     return f'{s: >{corrected_width}}'
 
@@ -678,7 +682,9 @@ def no_output_decorator(f):
     return wrapped_f
 
 
-def maybe_print(s, verbose=None, print_fun=print):
+def maybe_print(s, verbose=None, print_fun=None):
+    if print_fun is None:
+        print_fun = print
     if verbose is None:
         verbose = config['verbose']
     if verbose:

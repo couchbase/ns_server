@@ -23,6 +23,7 @@ import time
 import random
 import pprint
 from copy import deepcopy
+import builtins
 
 # Pretty prints any tracebacks that may be generated if the process dies
 from traceback_with_variables import activate_by_import
@@ -122,7 +123,9 @@ Usage: {program_name}
         Stop running testsets after the first error
     [--collect-logs-after-error]
         Collect a zip of logs for each node in and out of the cluster after a
-        failed test.
+        failed test
+    [--dont-report-time]
+        Do not prepend any output with current time
     [--help]
         Show this help
 """
@@ -171,7 +174,8 @@ def main():
                                            'start-index=',
                                            'test-iterations=',
                                            'stop-after-error',
-                                           'collect-logs-after-error'])
+                                           'collect-logs-after-error',
+                                           'dont-report-time'])
     except getopt.GetoptError as err:
         bad_args_exit(str(err))
 
@@ -232,6 +236,8 @@ def main():
             testlib.config['verbose'] = True
         elif o == '--dry-run':
             testlib.config['dry_run'] = True
+        elif o == '--dont-report-time':
+            testlib.config['report_time'] = False
         elif o == '--dont-reuse-clusters':
             reuse_clusters = False
         elif o == '--randomize-clusters':
@@ -253,6 +259,8 @@ def main():
             exit(0)
         else:
             assert False, f"unhandled options: {o}"
+
+    override_print()
 
     random.seed(seed)
     discovered_tests = discover_testsets()
@@ -347,6 +355,8 @@ def main():
             errors[k].extend(testset_errors[k])
         not_ran += testset_not_ran
         total_log_collection_time += log_collection_time
+
+    restore_print()
 
     ns_in_sec = 1000000000
     total_time = time.time_ns() - start_ts
@@ -679,6 +689,44 @@ def run_testsets(cluster, testsets, total_num, seed=None,
 
         log_collection_time += (time.time_ns() - collect_start_time)
     return executed, errors, not_ran, log_collection_time, cluster
+
+
+def print_with_time(*args, show_time=True, **kwargs):
+    forbidden = not testlib.config['report_time']
+    if len(args) == 0 or not show_time or forbidden:
+        __builtins__.__old_print_fun(*args, **kwargs)
+        return
+
+    cr_count = 0
+    first_arg = args[0]
+
+    if isinstance(first_arg, str):
+        while True:
+            # This is needed in order to handle calls like print("\nbla")
+            # the following way: \n<time> bla
+            # instead of: <time> \nbla
+            if first_arg.startswith('\n'):
+                first_arg = first_arg[1:]
+                cr_count += 1
+            else:
+                break
+
+    cr = '\n' * cr_count
+    local_time = datetime.now().strftime('%H:%M:%S')
+    prefix = f'{cr}{local_time}'
+    __builtins__.__old_print_fun(prefix, first_arg, *(args[1:]), **kwargs)
+
+
+def override_print():
+    if not hasattr(builtins, '__old_print_fun'):
+        builtins.__old_print_fun = builtins.print
+        builtins.print = print_with_time
+
+
+def restore_print():
+    if hasattr(builtins, '__old_print_fun'):
+        builtins.print = builtins.__old_print_fun
+        del builtins.__old_print_fun
 
 
 if __name__ == '__main__':
