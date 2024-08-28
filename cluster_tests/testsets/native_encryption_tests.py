@@ -20,6 +20,7 @@ import dateutil
 from testsets.secret_management_tests import change_password, post_es_config
 from testlib.requirements import Service
 import time
+import uuid
 
 
 scriptdir = sys.path[0]
@@ -845,13 +846,24 @@ def verify_dek_files(cluster, relative_path, verify_key_count=1,
                 assert False, f'directory {deks_path} doesn\'t exist'
         c = 0
         for path in deks_path.iterdir():
-            if path.name != 'active_key':
+            if is_valid_key_id(path.name):
                 c += 1
                 verify_key_file(path, **kwargs)
+            else:
+                print(f'Skipping file {path} (doesn\'t seem to be a key file)')
 
         if verify_key_count is not None:
             assert c == verify_key_count, f'dek count is unexpected: {c} ' \
                                           f'(expected: {verify_key_count})'
+
+
+def is_valid_key_id(name):
+    # Just testing that it is a uuid. This solution is not perfect but helps
+    # most of the time (e.g. when some temporary file is found in dek directory)
+    try:
+        return name == str(uuid.UUID(name))
+    except ValueError:
+        return False
 
 
 def poll_verify_bucket_deks_files(*args, **kwargs):
