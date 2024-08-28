@@ -47,8 +47,8 @@ filter_event(auth_version) ->
     true;
 filter_event(rest_creds) ->
     true;
-filter_event({node, Node, prometheus_auth_info}) when Node =:= node() ->
-    true;
+filter_event({node, Node, prometheus_auth_info}) ->
+    Node =:= node();
 filter_event({node, Node, memcached}) ->
     Node =:= dist_manager:this_node();
 filter_event(_Key) ->
@@ -73,6 +73,8 @@ handle_event({node, Node, prometheus_auth_info},
         Other ->
             {changed, State#state{prometheus_auth = Other}}
     end;
+handle_event({node, _OtherNode, prometheus_auth_info}, #state{} = _State) ->
+    unchanged;
 handle_event({node, _Node, memcached}, #state{} = State) ->
     Config = ns_config:get(),
     NewState = State#state{users = extract_users(Config),

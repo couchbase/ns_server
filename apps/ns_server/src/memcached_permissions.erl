@@ -144,8 +144,8 @@ filter_event(user_version) ->
     true;
 filter_event(rest_creds) ->
     true;
-filter_event({node, Node, prometheus_auth_info}) when Node =:= node() ->
-    true;
+filter_event({node, Node, prometheus_auth_info}) ->
+    Node =:= node();
 filter_event(Key) ->
     (collections:key_match(Key) =/= false)
         orelse ns_bucket:buckets_change(Key).
@@ -169,6 +169,8 @@ handle_event({node, Node, prometheus_auth_info},
         Other ->
             {changed, State#state{prometheus_user = Other}}
     end;
+handle_event({node, _OtherNode, prometheus_auth_info}, #state{} = _State) ->
+    unchanged;
 handle_event(Key, #state{buckets = Buckets} = State) ->
     case collections:key_match(Key) of
         false ->
