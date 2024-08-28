@@ -160,13 +160,15 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
     return executed, errors, not_ran, cluster
 
 
-def test_name(testset, testname, testiter):
+def test_name(testset, testname, testiter, short_form=False):
     iter_str = f'#{testiter+1}' if testiter != 0 else ''
-    if hasattr(testset, '__name__'):
-        testname = f"{testset.__name__}.{testname}{iter_str}"
-    else:
-        testname = f"{type(testset).__name__}.{testname}{iter_str}"
-    return testname
+    prefix = ''
+    if not short_form:
+        if hasattr(testset, '__name__'):
+            prefix = f'{testset.__name__}.'
+        else:
+            prefix = f'{type(testset).__name__}.'
+    return f'{prefix}{testname}{iter_str}'
 
 
 def safe_test_function_call(testset, testfunction, args, testiter,
@@ -176,8 +178,10 @@ def safe_test_function_call(testset, testfunction, args, testiter,
     res = None
     error = None
     testname = test_name(testset, testfunction, testiter)
+    short_testname = test_name(testset, testfunction, testiter,
+                                short_form=True)
 
-    report_call = call_reported(testname, verbose=verbose,
+    report_call = call_reported(testname, short_testname, verbose=verbose,
                                 res_on_same_line=config['intercept_output'])
     try:
         with no_output(testname, extra_context=report_call,
@@ -621,8 +625,8 @@ def no_output(name, verbose=None, extra_context=contextlib.nullcontext()):
 
 
 @contextlib.contextmanager
-def call_reported(name, succ_str="ok", fail_str="failed", verbose=False,
-                  res_on_same_line=True):
+def call_reported(full_name, name, succ_str="ok", fail_str="failed",
+                  verbose=False, res_on_same_line=True):
     """
     Executes context body and reports result in the following format:
       <name>...           <succ_str> [<time_taken>]
@@ -658,7 +662,7 @@ def call_reported(name, succ_str="ok", fail_str="failed", verbose=False,
             print(red(res) + timedelta_str(start))
             print(f'    {short_exception}')
         else:
-            print(red(f"{name} {fail_str} ({short_exception})"))
+            print(red(f"{full_name} {fail_str} ({short_exception})"))
         raise e
 
 
