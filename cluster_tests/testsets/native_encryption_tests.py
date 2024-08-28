@@ -623,7 +623,7 @@ class NativeEncryptionTests(testlib.BaseTestSet):
 
         verify_key_presense_in_dump_key_response(res, ids, [unknown_id])
 
-    def dek_automatic_rotation_test(self):
+    def config_dek_automatic_rotation_test(self):
         # Enable encryption and set dek rotation int = 1 sec
         # Wait some time and check if dek has rotated
         secret = auto_generated_secret(usage=['configuration-encryption'])
@@ -662,6 +662,30 @@ class NativeEncryptionTests(testlib.BaseTestSet):
                               verify_encryption_kek=kek_id,
                               verify_id=lambda n: n not in current_dek_ids)
 
+    def bucket_dek_automatic_rotation_test(self):
+        # Enable encryption and set dek rotation int = 1 sec
+        # Wait some time and check if dek has rotated
+        secret = auto_generated_secret(usage=['bucket-encryption-*'])
+        secret_id = create_secret(self.random_node(), secret)
+        kek_id = get_kek_id(self.random_node(), secret_id)
+
+        self.cluster.create_bucket({'name': self.bucket_name, 'ramQuota': 100,
+                                    'encryptionAtRestSecretId': secret_id},
+                                   sync=True)
+        poll_verify_bucket_deks_files(self.cluster, self.bucket_name,
+                                      verify_key_count=1)
+
+        self.cluster.update_bucket({'name': self.bucket_name,
+                                    'encryptionAtRestDekRotationInterval': 1})
+
+        time.sleep(2) # let it rotate deks
+
+        self.cluster.update_bucket({'name': self.bucket_name,
+                                    'encryptionAtRestDekRotationInterval': 0})
+
+        # Verify that bucket has more than one dek now
+        poll_verify_bucket_deks_files(self.cluster, self.bucket_name,
+                                      verify_key_count=lambda n: n > 1)
 
 
 def get_key_list(node, kind_as_str):
@@ -851,8 +875,11 @@ def verify_dek_files(cluster, relative_path, verify_key_count=1,
                 print(f'Skipping file {path} (doesn\'t seem to be a key file)')
 
         if verify_key_count is not None:
-            assert c == verify_key_count, f'dek count is unexpected: {c} ' \
-                                          f'(expected: {verify_key_count})'
+            if callable(verify_key_count):
+                assert verify_key_count(c), f'dek count is unexpected: {c}'
+            else:
+                assert c == verify_key_count, f'dek count is unexpected: {c} ' \
+                                              f'(expected: {verify_key_count})'
 
 
 def is_valid_key_id(name):
