@@ -385,6 +385,7 @@ with_mocked_users(Users, Fun) ->
     meck:new(mc_binary, [passthrough]),
     meck:new(menelaus_roles, [passthrough]),
     meck:new(menelaus_auth, [passthrough]),
+    meck:new(menelaus_users, [passthrough]),
     try
         meck:expect(menelaus_auth, authenticate,
                     fun ({Name, Pass}) ->
@@ -407,11 +408,14 @@ with_mocked_users(Users, Fun) ->
         meck:expect(menelaus_roles, get_roles,
                     fun ({_Name, _Domain}) -> [] end),
         meck:expect(menelaus_roles, get_definitions, fun (all) -> [] end),
+        meck:expect(menelaus_users, is_user_locked, fun (_) -> false end),
         Fun(),
+        true = meck:validate(menelaus_users),
         true = meck:validate(menelaus_auth),
         true = meck:validate(menelaus_roles),
         true = meck:validate(mc_binary)
     after
+        meck:unload(menelaus_users),
         meck:unload(menelaus_auth),
         meck:unload(menelaus_roles),
         meck:unload(mc_binary)

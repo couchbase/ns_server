@@ -476,10 +476,16 @@ jsonify_users(Users, RoleDefinitions, ClusterAdmin, PromUser) ->
 
            EmitUser =
                fun (Identity, Roles) ->
-                       Permissions =
-                           permissions_for_user(Roles, Snapshot,
-                                                RoleDefinitions),
-                       ?yield({kv, jsonify_user(Identity, Permissions)})
+                       case menelaus_users:is_user_locked(Identity) of
+                           false ->
+                               Permissions =
+                                   permissions_for_user(Roles, Snapshot,
+                                                        RoleDefinitions),
+                               ?yield({kv,
+                                       jsonify_user(Identity, Permissions)});
+                           true ->
+                               ok
+                       end
                end,
 
            EmitLocalUser =
