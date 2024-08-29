@@ -126,6 +126,8 @@ Usage: {program_name}
         failed test
     [--dont-report-time]
         Do not prepend any output with current time
+    [--test-timeout=N]
+        Set test timeout to N seconds
     [--help]
         Show this help
 """
@@ -175,7 +177,8 @@ def main():
                                            'test-iterations=',
                                            'stop-after-error',
                                            'collect-logs-after-error',
-                                           'dont-report-time'])
+                                           'dont-report-time',
+                                           'test-timeout='])
     except getopt.GetoptError as err:
         bad_args_exit(str(err))
 
@@ -254,6 +257,8 @@ def main():
             stop_after_first_error = True
         elif o == '--collect-logs-after-error':
             collect_logs = True
+        elif o == '--test-timeout':
+            testlib.config['test_timeout'] = int(a)
         elif o in ('--help', '-h'):
             usage()
             exit(0)

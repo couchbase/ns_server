@@ -22,6 +22,7 @@ from traceback import format_exception_only
 import traceback_with_variables as traceback
 from ipaddress import ip_address, IPv6Address
 import os
+import signal
 
 from testlib.node import Node
 
@@ -33,7 +34,8 @@ config={'colors': support_colors(),
         'screen_width': 80,
         'dry_run': False,
         'intercept_output': True,
-        'report_time': True}
+        'report_time': True,
+        'test_timeout': 600}
 
 
 def try_reuse_cluster(requirements, cluster):
@@ -173,7 +175,10 @@ def test_name(testset, testname, testiter, short_form=False):
 
 
 def safe_test_function_call(testset, testfunction, args, testiter,
-                            verbose=False, seed=None, dry_run=None):
+                            verbose=False, seed=None, dry_run=None,
+                            timeout=None):
+    if timeout is None:
+        timeout = config['test_timeout']
     if dry_run is None:
         dry_run = config['dry_run']
     res = None
@@ -184,6 +189,15 @@ def safe_test_function_call(testset, testfunction, args, testiter,
 
     report_call = call_reported(testname, short_testname, verbose=verbose,
                                 res_on_same_line=config['intercept_output'])
+
+    def timeout_handler(snum, frame):
+        print(f'{testname} timed out (timeout: {timeout}s)')
+        raise TimeoutError('timed out')
+
+    if timeout is not None:
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(timeout)
+
     try:
         with no_output(testname, extra_context=report_call,
                        verbose=not config['intercept_output']):
@@ -192,6 +206,9 @@ def safe_test_function_call(testset, testfunction, args, testiter,
     except Exception as e:
         print_traceback()
         error = (testname, e)
+    finally:
+        if timeout is not None:
+            signal.alarm(0)
     return res, error
 
 
