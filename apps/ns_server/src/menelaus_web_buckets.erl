@@ -1567,36 +1567,15 @@ validate_bucket_type_specific_params(CommonParams, Params,
 
     case BucketType of
         memcached ->
-            validate_memcached_bucket_params(CommonParams, Params, IsNew,
-                                             BucketConfig, Name);
+            %% Remove in major release after morpheus.
+            [{error, bucketType,
+              <<"memcached buckets are no longer supported">>}];
         membase ->
             validate_membase_bucket_params(CommonParams, Params, Name, IsNew,
                                            BucketConfig, Version, IsEnterprise);
         _ ->
             validate_unknown_bucket_params(Params)
     end.
-
-validate_memcached_params(Params) ->
-    case proplists:get_value("replicaNumber", Params) of
-        undefined ->
-            case proplists:get_value("enableCrossClusterVersioning", Params) of
-                undefined ->
-                    ignore;
-                _ ->
-                    {error, enableCrossClusterVersioning,
-                     <<"enableCrossClusterVersioning is not valid for "
-                       "memcached buckets">>}
-            end;
-        _ ->
-            {error, replicaNumber,
-             <<"replicaNumber is not valid for memcached buckets">>}
-    end.
-
-validate_memcached_bucket_params(CommonParams, Params, IsNew, BucketConfig,
-                                 Name) ->
-    [{ok, bucketType, memcached},
-     validate_memcached_params(Params),
-     quota_size_error(CommonParams, memcached, IsNew, BucketConfig, Name)].
 
 validate_membase_bucket_params(CommonParams, Params, Name,
                                IsNew, BucketConfig, Version, IsEnterprise) ->
@@ -1621,7 +1600,7 @@ validate_membase_bucket_params(CommonParams, Params, Name,
          parse_validate_threads_number(Params, IsNew),
          parse_validate_eviction_policy(
            Params, BucketConfig, IsNew, IsStorageModeMigration),
-         quota_size_error(CommonParams, membase, IsNew, BucketConfig, Name),
+         quota_size_error(CommonParams, Name),
          parse_validate_storage_mode(Params, BucketConfig, Name, IsNew, Version,
                                      IsEnterprise, IsStorageModeMigration,
                                      config_profile:is_serverless()),
@@ -1854,10 +1833,9 @@ get_bucket_type(false = _IsNew, BucketConfig, _Params)
   when is_list(BucketConfig) ->
     ns_bucket:bucket_type(BucketConfig);
 get_bucket_type(_IsNew, _BucketConfig, Params) ->
-    DisallowMemcached = config_profile:get_bool(disallow_memcached_buckets),
     case proplists:get_value("bucketType", Params) of
-        "memcached" when DisallowMemcached =/= true ->
-            memcached;
+        %% Removed in major release after morpheus.
+        "memcached" -> memcached;
         "membase" -> membase;
         "couchbase" -> membase;
         "ephemeral" -> membase;
@@ -1865,7 +1843,7 @@ get_bucket_type(_IsNew, _BucketConfig, Params) ->
         _ -> invalid
     end.
 
-quota_size_error(CommonParams, BucketType, IsNew, BucketConfig, Name) ->
+quota_size_error(CommonParams, Name) ->
     case lists:keyfind(ram_quota, 2, CommonParams) of
         {ok, ram_quota, RAMQuota} ->
             NumCollections = collections:num_collections(Name, direct),
@@ -1884,19 +1862,10 @@ quota_size_error(CommonParams, BucketType, IsNew, BucketConfig, Name) ->
                     {ColPerQ, NumCollections} when ColPerQ > 0 ->
                         NumCollections / ColPerQ
                 end,
-            {MinQuota, Msg}
-                = case BucketType of
-                      membase ->
-                          Q = misc:get_env_default(membase_min_ram_quota, 100),
-                          Qv = list_to_binary(integer_to_list(Q)),
-                          {Q, <<"RAM quota cannot be less than ", Qv/binary,
-                                " MiB">>};
-                      memcached ->
-                          Q = misc:get_env_default(memcached_min_ram_quota, 64),
-                          Qv = list_to_binary(integer_to_list(Q)),
-                          {Q, <<"RAM quota cannot be less than ", Qv/binary,
-                                " MiB">>}
-                  end,
+            MinQuota = misc:get_env_default(membase_min_ram_quota, 100),
+            MinQuotaBin = list_to_binary(integer_to_list(MinQuota)),
+            Msg = <<"RAM quota cannot be less than ", MinQuotaBin/binary,
+                    " MiB">>,
             if
                 RAMQuota < MinQuota * ?MIB ->
                     {error, ramQuota, Msg};
@@ -1907,12 +1876,6 @@ quota_size_error(CommonParams, BucketType, IsNew, BucketConfig, Name) ->
                          "RAM quota cannot be less than ~.1f MiB, to "
                          "support ~b collections", [MinQuotaForCollections,
                                                     NumCollections]))};
-                IsNew =/= true andalso BucketConfig =/= false andalso BucketType =:= memcached ->
-                    case ns_bucket:raw_ram_quota(BucketConfig) of
-                        RAMQuota -> ignore;
-                        _ ->
-                            {error, ramQuota, <<"cannot change quota of memcached buckets">>}
-                    end;
                 true ->
                     ignore
             end;
@@ -3792,11 +3755,11 @@ basic_bucket_params_screening_setup() ->
 
 basic_bucket_params_screening_t() ->
     AllBuckets = [{"mcd",
-                   [{type, memcached},
+                   [{type, membase},
                     {num_vbuckets, 16},
                     {num_replicas, 1},
                     {servers, [node1, node2]},
-                    {ram_quota, 76 * ?MIB}]},
+                    {ram_quota, 100 * ?MIB}]},
                   {"default",
                    [{type, membase},
                     {num_vbuckets, 16},
@@ -3888,13 +3851,6 @@ basic_bucket_params_screening_t() ->
     ?assertEqual(false, lists:keyfind(num_threads, 1, OK6)),
     ?assertEqual(false, lists:keyfind(eviction_policy, 1, OK6)),
     ?assertEqual(false, lists:keyfind(replica_index, 1, OK6)),
-
-    %% its not possible to update memcached bucket ram quota
-    {_OK7, E7} = basic_bucket_params_screening(false, "mcd",
-                                               [{"bucketType", "membase"},
-                                                {"ramQuota", "1024"}, {"replicaNumber", "2"}],
-                                               AllBuckets),
-    ?assertEqual(true, lists:member(ramQuota, proplists:get_keys(E7))),
 
     {_OK8, E8} = basic_bucket_params_screening(true, undefined,
                                                [{"bucketType", "membase"},
@@ -4324,16 +4280,6 @@ basic_bucket_params_screening_t() ->
                    <<"Cross Cluster Versioning cannot be enabled on bucket "
                      "create">>}],
                  E30),
-
-    %% Cannot enable enableCrossClusterVersioning on a memcached bucket.
-    {_OK31, E31} = basic_bucket_params_screening(
-                     false, "mcd",
-                     [{"enableCrossClusterVersioning", "true"}],
-                     AllBuckets),
-    ?assertEqual([{enableCrossClusterVersioning,
-                   <<"enableCrossClusterVersioning is not valid for memcached "
-                     "buckets">>}],
-                 E31),
 
     %% Cannot disable enableCrossClusterVersioning once it has been enabled.
     {_OK32, E32} = basic_bucket_params_screening(

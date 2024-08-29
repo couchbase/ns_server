@@ -274,7 +274,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
             return r
 
         assert r.status_code == code,\
-            "Unexpected status code"
+                f"Unexpected status code {r.status_code}, expected {code}"
         if errors:
             if actual_errors:
                 assert actual_errors == errors, \
@@ -355,13 +355,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
         # Ram Quota
         # ----------------------------------------------------------------------
         self.limits['ramQuota']['max'] = self.memsize
-        if storage_backend == "magma":
-            # The magma minimum was changed from 1024 to 100 in morpheus.
-            self.limits['ramQuota']['min'] = 100
-        elif bucket_type == "memcached":
-            self.limits['ramQuota']['min'] = 64
-        else:
-            self.limits['ramQuota']['min'] = 100
+        self.limits['ramQuota']['min'] = 100
 
         # Bucket rank
         # ----------------------------------------------------------------------
@@ -553,7 +547,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
         # ----------------------------------------------------------------------
         self.test_params['ramQuota'] = []
         if param == 'ramQuota':
-            if is_creation or bucket_type != "memcached":
+            if is_creation:
                 self.add_limits('ramQuota')
             self.test_params['ramQuotaMB'] = self.test_params['ramQuota']
         else:
@@ -565,219 +559,218 @@ class BucketTestSetBase(testlib.BaseTestSet):
         self.test_params['flushEnabled'] = [None]
         self.add_limits('flushEnabled')
 
-        if bucket_type != "memcached":
+        # Replica Number
+        # ------------------------------------------------------------------
 
-            # Replica Number
-            # ------------------------------------------------------------------
+        self.test_params['replicaNumber'] = [None]
 
-            # Only 0 is valid with just_validate, since otherwise it will
-            # default to 1, and warn about not enough nodes
-            self.test_params['replicaNumber'] = [None, 0]
+        # Only 0 is valid with just_validate, since otherwise it will
+        # default to 1, and warn about not enough nodes
+        self.test_params['replicaNumber'] = [None, 0]
 
-            # A warning is given as an error when just validating an update of
-            # replicaNumber, so we don't test this case
-            if self.num_nodes > 1 and (not just_validate or is_creation):
-                self.add_limits('replicaNumber')
+        # A warning is given as an error when just validating an update of
+        # replicaNumber, so we don't test this case
+        if self.num_nodes > 1 and (not just_validate or is_creation):
+            self.add_limits('replicaNumber')
 
-            # Storage Backend
-            # ------------------------------------------------------------------
+        # Storage Backend
+        # ------------------------------------------------------------------
 
-            self.test_params['storageBackend'] = [storage_backend]
+        self.test_params['storageBackend'] = [storage_backend]
 
-            # Eviction Policy
-            # ------------------------------------------------------------------
+        # Eviction Policy
+        # ------------------------------------------------------------------
 
-            self.test_params['evictionPolicy'] = [None]
-            if bucket_type == "ephemeral":
-                if is_creation:
-                    self.test_params['evictionPolicy'] += ["noEviction",
-                                                           "nruEviction"]
-            elif bucket_type != "memcached":
-                self.test_params['evictionPolicy'] += ["valueOnly",
-                                                       "fullEviction"]
-
-            # Durability Minimum Level
-            # ------------------------------------------------------------------
-
-            self.test_params['durabilityMinLevel'] = [None, "none"]
-
-            # Durability minimum level cannot be specified with 3 replicas,
-            # so to avoid that error, we don't test both at the same time
-            if self.num_nodes > 1 and param != "replicaNumber":
-                self.test_params['durabilityMinLevel'] += ["majority"]
-                if bucket_type != "ephemeral":
-                    self.test_params['durabilityMinLevel'] += [
-                        "majorityAndPersistActive",
-                        "persistToMajority"]
-
-            # Threads Number
-            # ------------------------------------------------------------------
-
-            self.test_params['threadsNumber'] = [None]
-            self.add_limits('threadsNumber')
-
-            # Rank
-            # ------------------------------------------------------------------
-            self.test_params['rank'] = [rank]
-            self.add_limits('rank')
-
-            # Compression Mode
-            # ------------------------------------------------------------------
-
-            self.test_params['compressionMode'] = [None]
-            if self.is_enterprise:
-                self.test_params['compressionMode'] += ["off", "passive",
-                                                        "active"]
-
-            # Max TTL
-            # ------------------------------------------------------------------
-
-            self.test_params['maxTTL'] = [None]
-            if self.is_enterprise:
-                self.add_limits('maxTTL')
-
-            # Replica Index
-            # ------------------------------------------------------------------
-
-            self.test_params['replicaIndex'] = [None]
-            if is_creation and bucket_type != "ephemeral" \
-                    and storage_backend != "magma" \
-                    and not self.is_serverless:
-                self.add_limits('replicaIndex')
-
-            # Conflict Resolution Type
-            # ------------------------------------------------------------------
-
+        self.test_params['evictionPolicy'] = [None]
+        if bucket_type == "ephemeral":
             if is_creation:
-                self.test_params['conflictResolutionType'] = [
-                    conflict_resolution_type]
+                self.test_params['evictionPolicy'] += ["noEviction",
+                                                       "nruEviction"]
+        else:
+            self.test_params['evictionPolicy'] += ["valueOnly",
+                                                   "fullEviction"]
 
-            # Magma Max Shards
-            # ------------------------------------------------------------------
+        # Durability Minimum Level
+        # ------------------------------------------------------------------
 
-            self.test_params['magmaMaxShards'] = [None]
-            if self.is_serverless and is_creation and self.is_76 \
-                    and storage_backend == "magma":
-                self.add_limits('magmaMaxShards')
+        self.test_params['durabilityMinLevel'] = [None, "none"]
 
-            # Pitr Enabled
-            # ------------------------------------------------------------------
+        # Durability minimum level cannot be specified with 3 replicas,
+        # so to avoid that error, we don't test both at the same time
+        if self.num_nodes > 1 and param != "replicaNumber":
+            self.test_params['durabilityMinLevel'] += ["majority"]
+            if bucket_type != "ephemeral":
+                self.test_params['durabilityMinLevel'] += [
+                    "majorityAndPersistActive",
+                    "persistToMajority"]
 
-            self.test_params['pitrEnabled'] = [None]
-            if self.is_enterprise and self.is_76 \
-                    and bucket_type != "memcached":
-                self.test_params['pitrEnabled'] += ["true", "false"]
+        # Threads Number
+        # ------------------------------------------------------------------
 
-            if self.is_76 and self.is_enterprise:
-                # Pitr Granularity and Pitr Max History Age
-                # --------------------------------------------------------------
+        self.test_params['threadsNumber'] = [None]
+        self.add_limits('threadsNumber')
 
-                self.test_params[PITR_PARAMS] = [None]
-                if param == PITR_PARAMS:
-                    granu_min = self.limits['pitrGranularity']['min']
-                    granu_max = self.limits['pitrGranularity']['max']
-                    mha_min = self.limits['pitrMaxHistoryAge']['min']
-                    mha_max = self.limits['pitrMaxHistoryAge']['max']
-                    self.test_params[PITR_PARAMS] += [
-                        (granu_min, mha_min),
-                        (granu_max, mha_max),
-                        (granu_max, granu_max)
-                    ]
+        # Rank
+        # ------------------------------------------------------------------
+        self.test_params['rank'] = [rank]
+        self.add_limits('rank')
 
-            if conflict_resolution_type == "lww":
-                # Drift Ahead Threshold ms
-                # --------------------------------------------------------------
+        # Compression Mode
+        # ------------------------------------------------------------------
 
-                self.test_params['driftAheadThresholdMs'] = [None]
-                self.add_limits('driftAheadThresholdMs')
+        self.test_params['compressionMode'] = [None]
+        if self.is_enterprise:
+            self.test_params['compressionMode'] += ["off", "passive",
+                                                    "active"]
 
-                # Drift Behind Threshold ms
-                # --------------------------------------------------------------
+        # Max TTL
+        # ------------------------------------------------------------------
 
-                self.test_params['driftBehindThresholdMs'] = [None]
-                self.add_limits('driftBehindThresholdMs')
+        self.test_params['maxTTL'] = [None]
+        if self.is_enterprise:
+            self.add_limits('maxTTL')
 
-            # Storage Quota Percentage
-            # ------------------------------------------------------------------
+        # Replica Index
+        # ------------------------------------------------------------------
 
-            self.test_params['storageQuotaPercentage'] = [None]
-            if self.is_enterprise and storage_backend == "magma":
-                self.add_limits('storageQuotaPercentage')
+        self.test_params['replicaIndex'] = [None]
+        if is_creation and bucket_type != "ephemeral" \
+                and storage_backend != "magma" \
+                and not self.is_serverless:
+            self.add_limits('replicaIndex')
 
-            # Width
-            # ------------------------------------------------------------------
+        # Conflict Resolution Type
+        # ------------------------------------------------------------------
 
-            if not bucket_placer:
-                self.test_params['width'] = [None]
-            if self.is_serverless and is_creation and bucket_placer:
-                self.add_limits('width')
+        if is_creation:
+            self.test_params['conflictResolutionType'] = [
+                conflict_resolution_type]
 
-            # Weight
-            # ------------------------------------------------------------------
-            if not bucket_placer:
-                self.test_params['weight'] = [None]
-            if self.is_serverless and is_creation and bucket_placer:
-                self.add_limits('weight')
+        # Magma Max Shards
+        # ------------------------------------------------------------------
 
-            # Num VBuckets
-            # ------------------------------------------------------------------
+        self.test_params['magmaMaxShards'] = [None]
+        if self.is_serverless and is_creation and self.is_76 \
+                and storage_backend == "magma":
+            self.add_limits('magmaMaxShards')
 
-            self.test_params['numVBuckets'] = [None]
-            if self.is_serverless and is_creation:
-                self.add_limits('numVBuckets')
+        # Pitr Enabled
+        # ------------------------------------------------------------------
 
-            # Auto Compaction Defined
-            # ------------------------------------------------------------------
+        self.test_params['pitrEnabled'] = [None]
+        if self.is_enterprise and self.is_76:
+            self.test_params['pitrEnabled'] += ["true", "false"]
 
-            self.test_params['autoCompactionDefined'] = [
-                auto_compaction_defined]
+        if self.is_76 and self.is_enterprise:
+            # Pitr Granularity and Pitr Max History Age
+            # --------------------------------------------------------------
 
-            if auto_compaction_defined == "true" and storage_backend != "magma":
-                self.test_params['parallelDBAndViewCompaction'] = ["true",
-                                                                   "false"]
+            self.test_params[PITR_PARAMS] = [None]
+            if param == PITR_PARAMS:
+                granu_min = self.limits['pitrGranularity']['min']
+                granu_max = self.limits['pitrGranularity']['max']
+                mha_min = self.limits['pitrMaxHistoryAge']['min']
+                mha_max = self.limits['pitrMaxHistoryAge']['max']
+                self.test_params[PITR_PARAMS] += [
+                    (granu_min, mha_min),
+                    (granu_max, mha_max),
+                    (granu_max, granu_max)
+                ]
 
-            self.test_params['databaseFragmentationThreshold[percentage]'] = [
-                None]
-            self.test_params['databaseFragmentationThreshold[size]'] = [None]
-            self.test_params['viewFragmentationThreshold[percentage]'] = [None]
-            self.test_params['viewFragmentationThreshold[size]'] = [None]
+        if conflict_resolution_type == "lww":
+            # Drift Ahead Threshold ms
+            # --------------------------------------------------------------
 
-            if not allowed_time_period:
-                self.test_params[ALLOWED_TIME_PERIOD_PARAMS] = [None]
+            self.test_params['driftAheadThresholdMs'] = [None]
+            self.add_limits('driftAheadThresholdMs')
 
-            # Not magma and autoCompactionDefined
-            if storage_backend != "magma" and auto_compaction_defined == "true":
-                # Only valid values allowed
-                self.add_limits('databaseFragmentationThreshold[percentage]')
+            # Drift Behind Threshold ms
+            # --------------------------------------------------------------
 
-                self.add_limits('databaseFragmentationThreshold[size]')
+            self.test_params['driftBehindThresholdMs'] = [None]
+            self.add_limits('driftBehindThresholdMs')
 
-                self.add_limits('viewFragmentationThreshold[percentage]')
+        # Storage Quota Percentage
+        # ------------------------------------------------------------------
 
-                self.add_limits('viewFragmentationThreshold[size]')
+        self.test_params['storageQuotaPercentage'] = [None]
+        if self.is_enterprise and storage_backend == "magma":
+            self.add_limits('storageQuotaPercentage')
 
-                if allowed_time_period:
-                    # Generate legal sets of values, rather than ignoring tests
-                    # with start time equals end time
-                    self.test_params[ALLOWED_TIME_PERIOD_PARAMS] = [
-                        (0, 0, 23, 59, "true"),
-                        (23, 59, 0, 0, "false")
-                    ]
+        # Width
+        # ------------------------------------------------------------------
 
-            # Purge Interval
-            # ------------------------------------------------------------------
+        if not bucket_placer:
+            self.test_params['width'] = [None]
+        if self.is_serverless and is_creation and bucket_placer:
+            self.add_limits('width')
 
-            self.test_params['purgeInterval'] = [None]
-            if auto_compaction_defined == "true" or bucket_type == "ephemeral":
-                self.add_limits('purgeInterval')
+        # Weight
+        # ------------------------------------------------------------------
+        if not bucket_placer:
+            self.test_params['weight'] = [None]
+        if self.is_serverless and is_creation and bucket_placer:
+            self.add_limits('weight')
 
-            # Magma Fragmentation Percentage
-            # ------------------------------------------------------------------
+        # Num VBuckets
+        # ------------------------------------------------------------------
 
-            self.test_params['magmaFragmentationPercentage'] = [None]
-            if auto_compaction_defined == "true" and \
-                    storage_backend == "magma":
-                self.add_limits('magmaFragmentationPercentage')
+        self.test_params['numVBuckets'] = [None]
+        if self.is_serverless and is_creation:
+            self.add_limits('numVBuckets')
+
+        # Auto Compaction Defined
+        # ------------------------------------------------------------------
+
+        self.test_params['autoCompactionDefined'] = [
+            auto_compaction_defined]
+
+        if auto_compaction_defined == "true" and storage_backend != "magma":
+            self.test_params['parallelDBAndViewCompaction'] = ["true",
+                                                               "false"]
+
+        self.test_params['databaseFragmentationThreshold[percentage]'] = [
+            None]
+        self.test_params['databaseFragmentationThreshold[size]'] = [None]
+        self.test_params['viewFragmentationThreshold[percentage]'] = [None]
+        self.test_params['viewFragmentationThreshold[size]'] = [None]
+
+        if not allowed_time_period:
+            self.test_params[ALLOWED_TIME_PERIOD_PARAMS] = [None]
+
+        # Not magma and autoCompactionDefined
+        if storage_backend != "magma" and auto_compaction_defined == "true":
+            # Only valid values allowed
+            self.add_limits('databaseFragmentationThreshold[percentage]')
+
+            self.add_limits('databaseFragmentationThreshold[size]')
+
+            self.add_limits('viewFragmentationThreshold[percentage]')
+
+            self.add_limits('viewFragmentationThreshold[size]')
+
+            if allowed_time_period:
+                # Generate legal sets of values, rather than ignoring tests
+                # with start time equals end time
+                self.test_params[ALLOWED_TIME_PERIOD_PARAMS] = [
+                    (0, 0, 23, 59, "true"),
+                    (23, 59, 0, 0, "false")
+                ]
+
+        # Purge Interval
+        # ------------------------------------------------------------------
+
+        self.test_params['purgeInterval'] = [None]
+        if auto_compaction_defined == "true" or bucket_type == "ephemeral":
+            self.add_limits('purgeInterval')
+
+        # Magma Fragmentation Percentage
+        # ------------------------------------------------------------------
+
+        self.test_params['magmaFragmentationPercentage'] = [None]
+        if auto_compaction_defined == "true" and \
+                storage_backend == "magma":
+            self.add_limits('magmaFragmentationPercentage')
 
         controlled_by_main_dict = [
             'bucketType',
@@ -833,8 +826,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
         # Bucket Type
         # ----------------------------------------------------------------------
         if is_creation:
-            if self.is_serverless:
-                self.bad_params['bucketType'].append("memcached")
             self.bad_params['bucketType'].append("bogus")
         elif bucket_type == "ephemeral":
             self.bad_params['bucketType'] = ["couchbase"]
@@ -849,12 +840,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
             self.bad_params['ramQuota'] = [self.limits['ramQuota']['min'] - 1]
         else:
             if not is_creation:
-                if bucket_type == "memcached":
-                    # -1 is added to avoid setting ramQuota to current value
-                    self.bad_params['ramQuota'] = \
-                        [self.limits['ramQuota']['max'] - 1]
-                else:
-                    self.add_limits_bad('ramQuota')
+                self.add_limits_bad('ramQuota')
 
         # Flush Enabled
         # ----------------------------------------------------------------------
@@ -867,16 +853,8 @@ class BucketTestSetBase(testlib.BaseTestSet):
 
         # Replica Number
         # ----------------------------------------------------------------------
-        if bucket_type == "memcached":
-            self.bad_params['replicaNumber'] = [2]
         self.add_limits_bad('replicaNumber')
         self.bad_params['replicaNumber'].append("bogus")
-
-        # All further params are ignored for memcached
-        # ----------------------------------------------------------------------
-        if bucket_type == "memcached":
-            return
-        # ----------------------------------------------------------------------
 
         # Storage Backend
         # ----------------------------------------------------------------------
@@ -1110,8 +1088,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
         if field in test_data:
             bucket_type = test_data[field]
             if bucket_type not in ["couchbase", "membase", "ephemeral"]:
-                if self.is_serverless or bucket_type != "memcached":
-                    return {field: "invalid bucket type"}
+                return {field: "invalid bucket type"}
 
         return {}
 
@@ -1132,19 +1109,8 @@ class BucketTestSetBase(testlib.BaseTestSet):
         if not isinstance(quota, int):
             return {field1: "The RAM quota number must be specified and must be "
                             "a non-negative integer."}
-        elif quota < 100 and bucket_type != "memcached":
-            if storage_backend == "magma":
-                return {field1: "Ram quota for magma must be at least 100 MiB"}
-            else:
-                return {field1: "RAM quota cannot be less than 100 MiB"}
-        elif quota < 64 and bucket_type == "memcached":
-            return {field1: "RAM quota cannot be less than 64 MiB"}
-        elif not is_creation and bucket_type == "memcached":
-            return {field1: "cannot change quota of memcached buckets"}
         elif quota > self.memsize:
-            if not is_creation and just_validate and bucket_type == "memcached":
-                return {field1: "cannot change quota of memcached buckets"}
-            elif "width" in test_data:
+            if "width" in test_data:
                 if just_validate:
                     return {}
                 else:
@@ -1154,8 +1120,11 @@ class BucketTestSetBase(testlib.BaseTestSet):
             else:
                 return {field1: "RAM quota specified is too large to be "
                                 "provisioned into this cluster."}
-        elif storage_backend == "magma" and quota < 100:
-            return {field1: "Ram quota for magma must be at least 1024 MiB"}
+        elif quota < 100:
+            if storage_backend == "magma":
+                return {field1: "Ram quota for magma must be at least 100 MiB"}
+            else:
+                return {field1: "RAM quota cannot be less than 100 MiB"}
         elif not self.is_76 and original_data is not None \
                 and original_data['ramQuota'] > quota:
             return {field1: "RAM quota cannot be set below current usage."}
@@ -1244,11 +1213,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
         if is_creation or field in test_data:
             # replicaNumber defaults to 1
             num = test_data.get(field, 1)
-            if test_data.get('bucketType') == "memcached":
-                if field in test_data:
-                    return {field:
-                            "replicaNumber is not valid for memcached buckets"}
-            elif not isinstance(num, int):
+            if not isinstance(num, int):
                 return {field:
                             "The replica number must be specified and must be "
                             "a non-negative integer."}
@@ -1803,8 +1768,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
                 errors.update(self.max_ttl_error(test_data))
                 errors.update(self.flush_enabled_error(test_data))
                 errors.update(self.magma_max_shards_error(test_data, is_creation))
-                if test_data.get('bucketType') != "memcached":
-                    errors.update(self.pitr_errors(test_data, original_data))
+                errors.update(self.pitr_errors(test_data, original_data))
                 errors.update(self.drift_threshold_errors(test_data))
                 errors.update(self.storage_quota_percentage_error(test_data))
                 errors.update(self.width_weight_error(test_data, original_data))
@@ -1911,22 +1875,17 @@ class BucketTestSetBase(testlib.BaseTestSet):
                     # Since we are testing bucket creation then we will not
                     # reuse this bucket, so we need to delete it.
                     self.test_delete(f"{endpoint}/{name}")
-                elif self.is_enterprise and self.is_76 \
-                        and test_data['bucketType'] != "memcached":
+                elif self.is_enterprise and self.is_76:
                     pitr_reset = {'pitrGranularity': 600,
                                   'pitrMaxHistoryAge': 86400}
                     self.test_request('POST', endpoint, pitr_reset)
 
     def main_params_valid(self, main_dict):
-        memcached = main_dict['bucket_type'] == "memcached"
         ephemeral = main_dict['bucket_type'] == "ephemeral"
         magma = main_dict['storage_backend'] == "magma"
         auto_compaction = main_dict['auto_compaction_defined'] is not None
 
-        if memcached and self.is_serverless:
-            # No memcached on serverless
-            return False
-        elif ephemeral and (auto_compaction or magma):
+        if ephemeral and (auto_compaction or magma):
             # No auto compaction or magma for ephemeral buckets
             return False
         else:
@@ -2111,7 +2070,7 @@ class BasicBucketTestSet(BucketTestSetBase):
 
     def eviction_policy_test(self):
         self.test_param("evictionPolicy",
-                        bucket_type=["couchbase", "memcached", "ephemeral"],
+                        bucket_type=["couchbase", "ephemeral"],
                         storage_backend=["couchstore"],
                         auto_compaction_defined=[None],
                         conflict_resolution_type=["seqno"],
@@ -2123,7 +2082,7 @@ class BasicBucketTestSet(BucketTestSetBase):
 
     def dura_min_level_test(self):
         self.test_param("durabilityMinLevel",
-                        bucket_type=["couchbase", "memcached", "ephemeral"],
+                        bucket_type=["couchbase", "ephemeral"],
                         storage_backend=["couchstore"],
                         rank=[0],
                         auto_compaction_defined=[None],
@@ -2342,7 +2301,7 @@ class MultiNodeBucketTestSet(BucketTestSetBase):
     def dura_min_level_test(self):
 
         self.test_param("durabilityMinLevel",
-                        bucket_type=["couchbase", "memcached", "ephemeral"],
+                        bucket_type=["couchbase", "ephemeral"],
                         storage_backend=["couchstore"],
                         auto_compaction_defined=[None],
                         conflict_resolution_type=["seqno"],
