@@ -789,6 +789,42 @@ class NativeEncryptionTests(testlib.BaseTestSet):
         poll_verify_bucket_deks_files(self.cluster, self.bucket_name,
                                       verify_key_count=lambda n: n > 1)
 
+    def dont_remove_active_dek_test(self):
+        # enable encryption and set dek lifetime = 1 sec,
+        # wait some time and make sure active dek is not removed
+        secret = auto_generated_secret(usage=['configuration-encryption'])
+        secret_id = create_secret(self.random_node(), secret)
+        kek_id = get_kek_id(self.random_node(), secret_id)
+        set_cfg_encryption(self.random_node(), 'secret', secret_id,
+                           dek_rotation=60*60*24*30,
+                           dek_lifetime=1)
+
+        dek_path = Path() / 'config' / 'deks'
+
+        dek_ids1 = poll_verify_deks_and_collect_ids(self.cluster,
+                                                    dek_path,
+                                                    verify_key_count=1)
+
+        time.sleep(2)
+
+        dek_ids2 = poll_verify_deks_and_collect_ids(self.cluster,
+                                                    dek_path,
+                                                    verify_key_count=1)
+
+        assert sorted(dek_ids1) == sorted(dek_ids2), \
+               f'deks have changed: {dek_ids1} {dek_ids2}'
+
+        set_cfg_encryption(self.random_node(), 'secret', secret_id,
+                           dek_rotation=1,
+                           dek_lifetime=3)
+
+        # Dek should get rotated immediatelly because first dek is 3 sec old
+        # while the rotation interval is 1 sec
+        poll_verify_dek_files(self.cluster,
+                              dek_path,
+                              verify_key_count=1,
+                              verify_id=lambda n: n not in dek_ids2)
+
     def basic_aws_secret_test(self):
         # Create an AWS key and use it to encrypt bucket, config, and secrets
         secret_json = aws_test_secret(name='AWS Key',
