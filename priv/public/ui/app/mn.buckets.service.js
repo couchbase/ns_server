@@ -386,11 +386,15 @@ class MnBucketsService {
       durabilityMinLevel: 'none',
       storageBackend: 'couchstore',
       autoCompactionDefined: false,
-      autoCompactionSettings
+      autoCompactionSettings,
+      enableEncryptionAtRest: false,
+      encryptionAtRestSecretId: null,
+      encryptionAtRestDekRotationInterval: 2592000 / 86_400,
+      encryptionAtRestDekLifetime: 31536000 / 86_400
     };
   }
 
-  getBucketFormData(defaultAutoCompaction, bucket) {
+  getBucketFormData(defaultAutoCompaction, bucket, secrets) {
     let result = {
       name: bucket.name,
       ramQuotaMB: this.mnHelperService.transformBytesToMB(bucket.quota.rawRAM),
@@ -412,6 +416,14 @@ class MnBucketsService {
       autoCompactionDefined: !!bucket.autoCompactionSettings,
     };
 
+    //secrets is null in case cluster compat mode is less than 8.0 or is not EE
+    if (secrets) {
+      result.enableEncryptionAtRest = bucket.encryptionAtRestSecretId !== -1,
+      result.encryptionAtRestSecretId = bucket.encryptionAtRestSecretId === -1 ? null : secrets.find(s => s.id === bucket.encryptionAtRestSecretId) ,
+      result.encryptionAtRestDekRotationInterval = bucket.encryptionAtRestDekRotationInterval / 86_400,
+      result.encryptionAtRestDekLifetime = bucket.encryptionAtRestDekLifetime / 86_400
+    }
+
     let autoCompaction = this.mnSettingsAutoCompactionService.getSettingsSource(
       bucket.autoCompactionSettings ? bucket : {autoCompactionSettings: defaultAutoCompaction});
     autoCompaction.purgeInterval = bucket.autoCompactionSettings ?
@@ -421,9 +433,9 @@ class MnBucketsService {
     return result;
   }
 
-  createBucketFormData(bucket) {
+  createBucketFormData(bucket, secrets) {
     return this.stream.defaultAutoCompactionData
-      .pipe(map(v => this.getBucketFormData(v, bucket)));
+      .pipe(map(v => this.getBucketFormData(v, bucket, secrets)));
   }
 
   createInitialFormData(storageTotals) {

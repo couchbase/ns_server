@@ -9,8 +9,8 @@ licenses/APL2.txt.
 */
 
 import {Component, ChangeDetectionStrategy} from '@angular/core';
-import {Subject, BehaviorSubject, combineLatest} from 'rxjs';
-import {map, takeUntil, switchMap} from 'rxjs/operators';
+import {Subject, BehaviorSubject, combineLatest, forkJoin, of} from 'rxjs';
+import {map, takeUntil, switchMap, withLatestFrom} from 'rxjs/operators';
 import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
 
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
@@ -18,9 +18,12 @@ import {MnBucketsService} from "./mn.buckets.service.js";
 import {MnHelperService} from './mn.helper.service.js';
 import {MnAdminService} from './mn.admin.service.js';
 import {MnPermissions} from './ajs.upgraded.providers.js';
+import {MnPoolsService} from './mn.pools.service.js';
 
 import {MnBucketDialogComponent} from './mn.bucket.dialog.component.js';
 import {MnBucketFullDialogComponent} from './mn.bucket.full.dialog.component.js';
+
+import {MnSecuritySecretsService} from './mn.security.secrets.service.js';
 
 import template from './mn.buckets.html';
 
@@ -42,11 +45,13 @@ class MnBucketsComponent extends MnLifeCycleHooksToStream {
       MnHelperService,
       MnAdminService,
       MnPermissions,
+      MnSecuritySecretsService,
+      MnPoolsService,
       NgbModal
     ]
   }
 
-  constructor(mnBucketsService, mnHelperService, mnAdminService, mnPermissions, modalService) {
+  constructor(mnBucketsService, mnHelperService, mnAdminService, mnPermissions, mnSecuritySecretsService, mnPoolsService, modalService) {
     super();
 
     this.modalService = modalService;
@@ -64,15 +69,21 @@ class MnBucketsComponent extends MnLifeCycleHooksToStream {
 
     this.onAddBucketClick = new Subject();
     this.onAddBucketClick
-      .pipe(switchMap(() => mnAdminService.getPoolsDefault()),
+      .pipe(withLatestFrom(mnAdminService.stream.compatVersion80,
+                           mnPoolsService.stream.isEnterprise),
+            switchMap(([ ,isCompatVersion80, isEnterprise]) => forkJoin({
+              resp: mnAdminService.getPoolsDefault(),
+              secrets: isCompatVersion80 && isEnterprise ? mnSecuritySecretsService.getSecrets() : of(null)
+            })),
             takeUntil(this.mnOnDestroy))
-      .subscribe((resp) => {
+      .subscribe(({resp, secrets}) => {
         let ram = resp.storageTotals.ram;
         if (!ram || ram.quotaTotal === ram.quotaUsed) {
           this.modalService.open(MnBucketFullDialogComponent);
         } else {
           let ref = this.modalService.open(MnBucketDialogComponent);
           ref.componentInstance.storageTotals = resp.storageTotals;
+          ref.componentInstance.secrets = secrets;
         }
       });
 

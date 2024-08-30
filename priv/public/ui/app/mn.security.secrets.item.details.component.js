@@ -1,0 +1,81 @@
+/*
+Copyright 2020-Present Couchbase, Inc.
+
+Use of this software is governed by the Business Source License included in
+the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+file, in accordance with the Business Source License, use of this software will
+be governed by the Apache License, Version 2.0, included in the file
+licenses/APL2.txt.
+*/
+
+import {Component, ChangeDetectionStrategy} from '@angular/core'
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {Subject} from 'rxjs';
+import {takeUntil, map} from 'rxjs/operators';
+
+import {MnPermissions} from './ajs.upgraded.providers.js';
+import {MnLifeCycleHooksToStream} from './mn.core.js';
+import {MnFormService} from "./mn.form.service.js";
+import {MnHelperService} from "./mn.helper.service.js";
+import {MnSecuritySecretsDeleteDialogComponent} from "./mn.security.secrets.delete.dialog.component.js";
+import {MnSecuritySecretsAddDialogComponent} from "./mn.security.secrets.add.dialog.component.js";
+import template from "./mn.security.secrets.item.details.html";
+import {MnSecuritySecretsService} from "./mn.security.secrets.service.js";
+
+
+export {MnSecuritySecretsItemDetailsComponent};
+
+class MnSecuritySecretsItemDetailsComponent extends MnLifeCycleHooksToStream {
+  static get annotations() { return [
+    new Component({
+      selector: "mn-security-secrets-item-details",
+      template,
+      changeDetection: ChangeDetectionStrategy.OnPush,
+      inputs: [
+        "item"
+      ]
+    })
+  ]}
+
+  static get parameters() { return [
+    MnPermissions,
+    MnFormService,
+    NgbModal,
+    MnHelperService,
+    MnSecuritySecretsService
+  ]}
+
+  constructor(mnPermissions, mnFormService, modalService, mnHelperService, mnSecuritySecretsService) {
+    super();
+
+    var onDeleteKey = new Subject();
+    onDeleteKey
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(item => {
+        var ref = modalService.open(MnSecuritySecretsDeleteDialogComponent);
+        ref.componentInstance.item = item;
+      });
+
+    var onEditKey = new Subject();
+    onEditKey
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(item => {
+        var ref = modalService.open(MnSecuritySecretsAddDialogComponent);
+        ref.componentInstance.item = item;
+      });
+    
+    this.rotateKey = mnFormService.create(this)
+      .setFormGroup({})
+      .setPackPipe(map(() => this.item.id))
+      .setPostRequest(mnSecuritySecretsService.stream.postRotateSecret)
+      .trackSubmit()
+      .successMessage("Key was rotated successfully!")
+      .errorMessage("An error occurred rotating the key.")
+      .success(() => mnSecuritySecretsService.stream.updateSecretsList.next())
+
+    this.permissions = mnPermissions.stream;
+    this.onDeleteKey = onDeleteKey;
+    this.onEditKey = onEditKey;
+    this.toggler = mnHelperService.createToggle();
+  }
+}

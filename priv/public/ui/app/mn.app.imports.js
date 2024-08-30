@@ -57,6 +57,12 @@ let samlState = {
   lazyLoad: mnLoadNgModule(() => import('./mn.security.saml.module.js'), 'MnSecuritySamlModule')
 };
 
+let secretsState = {
+  name: 'app.admin.security.secrets.**',
+  url: '/secrets',
+  lazyLoad: mnLoadNgModule(() => import('./mn.security.secrets.module.js'), 'MnSecuritySecretsModule')
+};
+
 let overviewState = {
   name: 'app.admin.overview.**',
   url: '/overview',
@@ -232,6 +238,7 @@ let mnAppImports = [
       otherSecuritySettingsState,
       auditState,
       samlState,
+      secretsState,
     ]
   }),
 

@@ -8,12 +8,12 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 -->
 
-<div
-   class="delayed-spinner expanded-spinner">
+<div class="delayed-spinner expanded-spinner">
   <div class="row flex-left items-top resp-sml">
     <div
-       class="cbui-table-bucketprops cursor-text"
-       (click)="$event.stopPropagation();">
+      class="cbui-table-bucketprops cursor-text"
+      (click)="$event.stopPropagation();"
+    >
       <div class="nowrap">
         <strong>Type: </strong>
         <span>{{bucket.bucketType | mnBucketsType}}</span>
@@ -24,117 +24,130 @@ licenses/APL2.txt.
       </div>
       <div class="nowrap">
         <strong>Cluster RAM Quota: </strong>
-        {{bucket.basicStats.storageTotals.ram.quotaTotalPerNode | mnFormatQuantity}}
+        {{bucket.basicStats.storageTotals.ram.quotaTotalPerNode |
+        mnFormatQuantity}}
       </div>
-      <div
-         class="nowrap"
-         *ngIf="bucket.bucketType !== 'memcached'">
+      <div class="nowrap" *ngIf="bucket.bucketType !== 'memcached'">
         <strong>Replicas:</strong>
         {{bucket.replicaNumber != 0 ? bucket.replicaNumber : 'disabled'}}
       </div>
       <div class="nowrap">
         <strong>Server Nodes: </strong> {{ bucket.nodes.length }}
       </div>
-      <div
-         class="nowrap"
-         *ngIf="bucket.bucketType !== 'memcached'">
+      <div class="nowrap" *ngIf="bucket.bucketType !== 'memcached'">
         <strong>Ejection Method: </strong>
         {{ejectionMethod | async}}
       </div>
       <div class="nowrap" *ngIf="bucket.bucketType !== 'memcached'">
         <strong>Conflict Resolution: </strong>
-        <span>{{bucket.conflictResolutionType | mnConflictResolutionType}}</span>
+        <span
+          >{{bucket.conflictResolutionType | mnConflictResolutionType}}</span
+        >
       </div>
-      <div
-         class="nowrap"
-         *ngIf="bucket.bucketType === 'membase'">
+      <div class="nowrap" *ngIf="bucket.bucketType === 'membase'">
         <strong>Compaction:</strong>
         {{compactionProgress | async}}
       </div>
-      <div
-         class="nowrap initialcaps"
-         *ngIf="bucket.bucketType !== 'memcached'">
+      <div class="nowrap initialcaps" *ngIf="bucket.bucketType !== 'memcached'">
         <strong>Compression:</strong>
         {{bucket.compressionMode}}
       </div>
-      <div
-         class="nowrap initialcaps"
-         *ngIf="bucket.bucketType === 'ephemeral'">
+      <div class="nowrap initialcaps" *ngIf="bucket.bucketType === 'ephemeral'">
         <strong>Metadata Purge Interval:</strong>
         {{bucket.purgeInterval}}
       </div>
-      <div
-         class="nowrap"
-         *ngIf="bucket.bucketType === 'membase'">
+      <div class="nowrap" *ngIf="bucket.bucketType === 'membase'">
         <strong>Storage Backend: </strong>
         {{storageBackend | async}}
       </div>
-      <div
-         class="nowrap"
-         *ngIf="bucket.bucketType !== 'memcached'">
+      <div class="nowrap" *ngIf="bucket.bucketType !== 'memcached'">
         <strong>Minimum Durability Level:</strong>
         {{bucket.durabilityMinLevel}}
+      </div>
+      <div
+        class="nowrap"
+        *ngIf="bucket.bucketType !== 'memcached' && (compatVersion80 | async) && (isEnterprise | async)"
+      >
+        <strong>Encryption At Rest:</strong>
+        {{bucket.encryptionAtRestSecretId === -1 ? 'Disabled' : 'Enabled'}}
       </div>
     </div>
 
     <div class="cbui-table-meters buckets">
       <h5>Memory</h5>
-      <hr>
+      <hr />
       <mn-bar-usage
-         class="bar-usages mn-bar-usages"
-         (click)="$event.stopPropagation();"
-         [total]="bucketRamConfigTotal"
-         [baseInfo]="bucketRamConfig">
+        class="bar-usages mn-bar-usages"
+        (click)="$event.stopPropagation();"
+        [total]="bucketRamConfigTotal"
+        [baseInfo]="bucketRamConfig"
+      >
       </mn-bar-usage>
     </div>
-    <div
-       class="cbui-table-meters buckets">
+    <div class="cbui-table-meters buckets">
       <h5 [hidden]="bucket.bucketType !== 'membase'">Disk</h5>
-      <hr [hidden]="bucket.bucketType !== 'membase'">
+      <hr [hidden]="bucket.bucketType !== 'membase'" />
       <div *ngIf="bucket.bucketType === 'membase'">
         <mn-bar-usage
-           class="bar-usages mn-bar-usages"
-           (click)="$event.stopPropagation();"
-           [total]="bucketDiskConfigTotal"
-           [baseInfo]="bucketDiskConfig">
+          class="bar-usages mn-bar-usages"
+          (click)="$event.stopPropagation();"
+          [total]="bucketDiskConfigTotal"
+          [baseInfo]="bucketDiskConfig"
+        >
         </mn-bar-usage>
       </div>
     </div>
   </div>
   <mn-warmup-progress
-     *ngIf="(warmUpTasks | async)?.length"
-     [mnTasks]="warmUpTasks"
-     mnSortBy="hostname"
-     class="margin-bottom-1">
+    *ngIf="(warmUpTasks | async)?.length"
+    [mnTasks]="warmUpTasks"
+    mnSortBy="hostname"
+    class="margin-bottom-1"
+  >
   </mn-warmup-progress>
 
   <div class="row flex-right">
     <span>
       <button
-         class="outline"
-         [disabled]="isRebalancing | async"
-         [hidden]="!(permissions | async)?.cluster.bucket[bucket.name].delete"
-         (click)="clickDelete.next($event)">Drop</button>
+        class="outline"
+        [disabled]="isRebalancing | async"
+        [hidden]="!(permissions | async)?.cluster.bucket[bucket.name].delete"
+        (click)="clickDelete.next($event)"
+      >
+        Drop
+      </button>
 
       <button
-         class="outline"
-         [hidden]="!(showCompactBtn | async)"
-         [disabled]="disableCompactBtn | async"
-         (click)="clickCompact.next($event)">Compact</button>
+        class="outline"
+        [hidden]="!(showCompactBtn | async)"
+        [disabled]="disableCompactBtn | async"
+        (click)="clickCompact.next($event)"
+      >
+        Compact
+      </button>
       <button
-         class="orange"
-         [hidden]="!(showCancelCompactBtn | async)"
-         [disabled]="disableCancelCompactBtn | async"
-         (click)="clickCancelCompact.next($event)">Cancel Compaction</button>
+        class="orange"
+        [hidden]="!(showCancelCompactBtn | async)"
+        [disabled]="disableCancelCompactBtn | async"
+        (click)="clickCancelCompact.next($event)"
+      >
+        Cancel Compaction
+      </button>
       <button
-         class="outline"
-         [disabled]="isRebalancing | async"
-         [hidden]="!(showFlushBtn | async)"
-         (click)="clickFlush.next($event)">Flush</button>
+        class="outline"
+        [disabled]="isRebalancing | async"
+        [hidden]="!(showFlushBtn | async)"
+        (click)="clickFlush.next($event)"
+      >
+        Flush
+      </button>
       <button
-         [hidden]="!(permissions | async)?.cluster.bucket[bucket.name].settings.write"
-         [disabled]="isRebalancing | async"
-         (click)="clickEdit.next($event)">Edit</button>
+        [hidden]="!(permissions | async)?.cluster.bucket[bucket.name].settings.write"
+        [disabled]="isRebalancing | async"
+        (click)="clickEdit.next($event)"
+      >
+        Edit
+      </button>
     </span>
   </div>
 </div>

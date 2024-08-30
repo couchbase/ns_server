@@ -9,7 +9,7 @@ licenses/APL2.txt.
 */
 
 import {Component, ChangeDetectionStrategy} from '@angular/core';
-import {Subject, combineLatest, timer, merge} from 'rxjs';
+import {Subject, combineLatest, timer, merge, of} from 'rxjs';
 import {distinctUntilChanged, pluck, map, shareReplay,
         withLatestFrom, filter, takeUntil, switchMap, mapTo} from 'rxjs/operators';
 import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
@@ -19,10 +19,12 @@ import {MnTasksService} from './mn.tasks.service.js';
 import {MnAdminService} from './mn.admin.service.js';
 import {MnBucketsService} from './mn.buckets.service.js';
 import {MnPermissions} from './ajs.upgraded.providers.js';
+import {MnPoolsService} from './mn.pools.service.js';
 
 import {MnBucketDialogComponent} from './mn.bucket.dialog.component.js';
 import {MnBucketDeleteDialogComponent} from './mn.bucket.delete.dialog.component.js';
 import {MnBucketFlushDialogComponent} from './mn.bucket.flush.dialog.component.js';
+import {MnSecuritySecretsService} from './mn.security.secrets.service.js';
 import template from "./mn.bucket.item.details.html";
 
 export {MnBucketItemDetailsComponent};
@@ -44,20 +46,25 @@ class MnBucketItemDetailsComponent extends MnLifeCycleHooksToStream {
   static get parameters() {
     return [
       MnBucketsService,
+      MnPoolsService,
       MnAdminService,
       MnTasksService,
       MnPermissions,
+      MnSecuritySecretsService,
       NgbModal
     ];
   }
 
-  constructor(mnBucketsService, mnAdminService, mnTasksService, mnPermissions, modalService) {
+  constructor(mnBucketsService, mnPoolsService, mnAdminService, mnTasksService, mnPermissions, mnSecuritySecretsService, modalService) {
     super();
 
+    this.compatVersion80 = mnAdminService.stream.compatVersion80;
     this.permissions = mnPermissions.stream;
     this.mnTasksService = mnTasksService;
     this.mnBucketsService = mnBucketsService;
     this.modalService = modalService;
+    this.mnSecuritySecretsService = mnSecuritySecretsService;
+    this.isEnterprise = mnPoolsService.stream.isEnterprise;
 
     let currentBucket = this.mnOnChanges
       .pipe(filter(v => v !== undefined),
@@ -182,10 +189,13 @@ class MnBucketItemDetailsComponent extends MnLifeCycleHooksToStream {
     this.clickEdit = new Subject();
     this.clickEdit
       .pipe(map(this.stopEvent.bind(this)),
+            withLatestFrom(this.compatVersion80, this.isEnterprise),
+            switchMap(([,isCompatVersion80, isEnterprise]) => isCompatVersion80 && isEnterprise ? this.mnSecuritySecretsService.getSecrets() : of(null)),
             takeUntil(this.mnOnDestroy))
-      .subscribe(() => {
+      .subscribe((secrets) => {
         let ref = this.modalService.open(MnBucketDialogComponent);
         ref.componentInstance.bucket = this.bucket;
+        ref.componentInstance.secrets = secrets;
       });
 
     this.clickFlush = new Subject();

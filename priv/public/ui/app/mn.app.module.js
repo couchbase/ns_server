@@ -54,6 +54,7 @@ import {MnViewsListService} from './mn.views.list.service.js';
 import {MnViewsEditingService} from './mn.views.editing.service.js';
 import {MnRouterService} from './mn.router.service.js';
 import {MnDocumentsService} from './mn.documents.service.js';
+import {MnSecuritySecretsService} from './mn.security.secrets.service.js';
 
 
 export {MnAppModule};
@@ -104,6 +105,7 @@ class MnAppModule {
         MnViewsEditingService,
         MnRouterService,
         MnDocumentsService,
+        MnSecuritySecretsService,
         {
           provide: HTTP_INTERCEPTORS,
           useClass: MnHttpInterceptor,

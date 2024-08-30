@@ -25,6 +25,11 @@ licenses/APL2.txt.
        ui-sref-active="selected"
        class="resp-hide-sml">Certificates</a>
     <a
+       ng-show="pools.isEnterprise && poolDefault.compat.atLeast80"
+       ui-sref="app.admin.security.secrets"
+       ui-sref-active="selected"
+       class="resp-hide-sml">Secrets</a>
+    <a
        ng-show="pools.isEnterprise"
        ui-sref="app.admin.security.audit"
        ui-sref-active="selected">Audit</a>
@@ -48,6 +53,10 @@ licenses/APL2.txt.
            ng-show="pools.isEnterprise"
            ui-sref="app.admin.security.certificate"
            ui-sref-active="selected">Certificates</a>
+         <a
+           ng-show="pools.isEnterprise && poolDefault.compat.atLeast80"
+           ui-sref-active="selected"
+           class="resp-hide-sml">Secrets</a>
         <a
            ui-sref="app.admin.security.other"
            ui-sref-active="selected">Other Settings</a>

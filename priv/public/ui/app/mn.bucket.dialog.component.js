@@ -26,6 +26,7 @@ import {MnBucketsService} from './mn.buckets.service.js';
 import {MnUserRolesService} from './mn.user.roles.service.js';
 import {MnPermissionsService} from './mn.permissions.service.js';
 import {MnSettingsAutoCompactionService} from './mn.settings.auto.compaction.service.js';
+import {MnSecuritySecretsService} from './mn.security.secrets.service.js';
 import template from "./mn.bucket.dialog.html";
 
 export {MnBucketDialogComponent};
@@ -34,10 +35,10 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
 
   static get annotations() { return [
     new Component({
-      selector: 'mn-buckets-dialog',
       template,
       inputs: [
-        'bucket'
+        'bucket',
+        'secrets'
       ],
       changeDetection: ChangeDetectionStrategy.OnPush
     })
@@ -57,12 +58,13 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
       MnPermissionsService,
       MnUserRolesService,
       MnSettingsAutoCompactionService,
+      MnSecuritySecretsService,
       UIRouter
   ]}
 
   constructor(activeModal, mnPoolsService, mnAdminService, mnFormService, formBuilder,
       mnHelperService, mnBucketsService, mnAlerts, mnPermissions, mnPermissionsService,
-      mnUserRolesService, mnSettingsAutoCompactionService, uiRouter) {
+      mnUserRolesService, mnSettingsAutoCompactionService, mnSecuritySecretsService, uiRouter) {
     super();
 
     this.activeModal = activeModal;
@@ -74,6 +76,7 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
     this.formBuilder = formBuilder;
     this.mnHelperService = mnHelperService;
     this.mnSettingsAutoCompactionService = mnSettingsAutoCompactionService;
+    this.mnSecuritySecretsService = mnSecuritySecretsService;
     this.focusFieldSubject = new BehaviorSubject(true);
     this.isDeveloperPreview = mnPoolsService.stream.isDeveloperPreview;
     this.majorMinorVersion = mnAdminService.stream.majorMinorVersion;
@@ -83,14 +86,22 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
     this.uiRouter = uiRouter;
     this.isEnterprise = this.mnPoolsService.stream.isEnterprise;
     this.compatVersion55 = this.mnAdminService.stream.compatVersion55;
+    this.compatVersion80 = this.mnAdminService.stream.compatVersion80;
   }
 
   ngOnInit() {
     let postRequest = this.mnBucketsService.createPostBucketPipe(this.bucket && this.bucket.uuid);
     let postValidation = this.mnBucketsService.createPostValidationPipe(this.bucket && this.bucket.uuid);
 
+    this.filteredSecrets =
+      this.secrets ?
+        this.secrets.filter(secret =>
+          secret.usage.find(u =>
+              u.includes('bucket-encryption-*') ||
+              this.bucket && u.includes('bucket-encryption-' + this.bucket.name) )) : this.secrets;
+
     let formData = this.bucket ?
-      this.mnBucketsService.createBucketFormData(this.bucket) :
+      this.mnBucketsService.createBucketFormData(this.bucket, this.secrets) :
       this.mnBucketsService.createInitialFormData(this.storageTotals);
 
     this.form = this.mnFormService.create(this)
@@ -134,9 +145,15 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
             size: null}),
           parallelDBAndViewCompaction: null,
           purgeInterval: null,
-          timePeriodFlag: null})}))
+          timePeriodFlag: null
+        }),
+        enableEncryptionAtRest: false,
+        encryptionAtRestSecretId: null,
+        encryptionAtRestDekRotationInterval: 2592000 / 86_400,
+        encryptionAtRestDekLifetime: 31536000 / 86_400
+      }))
       .setSource(formData)
-      .setPackPipe(pipe(withLatestFrom(this.compatVersion55, this.isEnterprise),
+      .setPackPipe(pipe(withLatestFrom(this.compatVersion55, this.compatVersion80, this.isEnterprise),
                    map(this.packData.bind(this))))
       .setPostRequest(postRequest)
       .setValidation(postValidation, undefined, undefined, true)
@@ -361,7 +378,7 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
     return this.mnUserRolesService.getUniqueUsers(usersByPermission, whoAmI);
   }
 
-  packData([, compat55, isEnterprise]) {
+  packData([, compat55, compat80, isEnterprise]) {
     let formData = this.form.group.getRawValue();
     let saveData = {};
 
@@ -430,9 +447,21 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
       }
     }
 
+    if (isEnterprise && compat80 && isMembase) {
+      saveData.encryptionAtRestSecretId = formData.enableEncryptionAtRest ? formData.encryptionAtRestSecretId?.id ?? -1 : -1;
+      if (saveData.encryptionAtRestSecretId !== -1) {
+        saveData.encryptionAtRestDekRotationInterval = formData.encryptionAtRestDekRotationInterval * 86_400;
+        saveData.encryptionAtRestDekLifetime = formData.encryptionAtRestDekLifetime * 86_400;
+      }
+    }
+
     copyProperties(['ramQuotaMB', 'flushEnabled']);
     saveData.flushEnabled = saveData.flushEnabled ? 1 : 0;
 
     return saveData;
+  }
+
+  secretsMapping(item) {
+    return item ? item.name || '[empty name]' : item;
   }
 }
