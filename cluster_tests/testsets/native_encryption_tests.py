@@ -532,8 +532,10 @@ class NativeEncryptionTests(testlib.BaseTestSet):
         assert errors['data']['nextRotationTime'] == 'must be in the future', \
                f'unexpected error: {errors}'
 
+        rotation_days = 3
         next_rotation = (now(-7) + moment).isoformat()
         secret = auto_generated_secret(auto_rotation=True,
+                                       rotation_interval=rotation_days,
                                        next_rotation_time=next_rotation)
         secret_id = create_secret(self.random_node(), secret)
 
@@ -549,6 +551,13 @@ class NativeEncryptionTests(testlib.BaseTestSet):
                    f'rotation happened too early'
             assert (rotation_time - expected_time).seconds <= 10, \
                    f'rotation happend too late'
+            next_rotation_time_iso = s['data']['nextRotationTime']
+            next_rotation_time = parse_iso8601(next_rotation_time_iso)
+            expected_next_rotation_time = expected_time + \
+                                          timedelta(days=rotation_days)
+            assert next_rotation_time == expected_next_rotation_time, \
+                   f'bad next rotation time, got: {next_rotation_time}, ' \
+                   f'expected: {expected_next_rotation_time}'
             return True
 
         testlib.poll_for_condition(
