@@ -447,6 +447,12 @@ func (k *awsStoredKey) decryptMe(ctx *storedKeysCtx) error {
 }
 
 func (k *awsStoredKey) encryptData(data []byte) ([]byte, error) {
+	if k.KeyArn == "TEST_AWS_KEY_ARN" {
+		// This code should be used for test purposes only
+		log_dbg("Encrypting data using test key")
+		zero_key := make([]byte, 32)
+		return aesgcmEncrypt(zero_key, data), nil
+	}
 	opts := awsutils.AwsConfigOpts{
 		Region:     k.Region,
 		ConfigFile: k.ConfigFile,
@@ -458,6 +464,12 @@ func (k *awsStoredKey) encryptData(data []byte) ([]byte, error) {
 }
 
 func (k *awsStoredKey) decryptData(data []byte) ([]byte, error) {
+	if k.KeyArn == "TEST_AWS_KEY_ARN" {
+		// This code should be used for test purposes only
+		log_dbg("Decrypting data using test key")
+		zero_key := make([]byte, 32)
+		return aesgcmDecrypt(zero_key, data)
+	}
 	opts := awsutils.AwsConfigOpts{
 		Region:     k.Region,
 		ConfigFile: k.ConfigFile,
