@@ -289,11 +289,19 @@ init_auth(Identity) ->
               when RespHeader :: {string(), string()}.
 authenticate(Auth) ->
     case do_authenticate(Auth) of
-        {ok, #authn_res{authenticated_identity = Identity}, _} = Result ->
+        {ok, #authn_res{authenticated_identity = Identity,
+                        session_id = SessionId}, _} = Result ->
             case menelaus_users:is_user_locked(Identity) of
                 false ->
                     Result;
                 true ->
+                    case SessionId of
+                        undefined ->
+                            ok;
+                        _ ->
+                           %% Expire token
+                           menelaus_ui_auth:logout(SessionId)
+                    end,
                     ?count_auth("error", "locked"),
                     {error, auth_failure}
             end;
