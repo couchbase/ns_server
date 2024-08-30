@@ -438,7 +438,7 @@ handle_call(get_node_deks_info, _From, #state{proc_type = ?NODE_PROC,
             end,
         Res = maps:map(fun (_K, #{deks := Keys}) -> StripKeyMaterial(Keys) end,
                        Deks),
-        {reply, Res, State}
+        {reply, Res, NewState}
     else
         [_ | _] ->
             %% There are still unfinished jobs. That means deks in our state
@@ -446,7 +446,7 @@ handle_call(get_node_deks_info, _From, #state{proc_type = ?NODE_PROC,
             %% process hasn't read it yet). Since this function is used
             %% in final checks before kek removal, it should not return
             %% {ok, _} reuslt in this case
-            {reply, retry, State}
+            {reply, retry, NewState}
     end;
 
 handle_call(Request, _From, State) ->
