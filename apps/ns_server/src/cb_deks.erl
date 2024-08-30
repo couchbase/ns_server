@@ -78,8 +78,8 @@ generate_new(Kind, {secret, Id}, Snapshot) ->
 -spec new(dek_kind(), cb_cluster_secrets:key_id()) ->
                                                     {ok, dek_id()} | {error, _}.
 new(Kind, KekIdToEncrypt) ->
-    ?log_debug("Generating new dek (~p)", [Kind]),
     Id = cb_cluster_secrets:new_key_id(),
+    ?log_debug("Generating new dek (~p): ~p", [Kind, Id]),
     Bin = cb_cluster_secrets:generate_raw_key(aes_256_gcm),
     CreateTime = calendar:universal_time(),
     case encryption_service:store_dek(Kind, Id, Bin, KekIdToEncrypt,

@@ -482,6 +482,7 @@ handle_call(sync, _From, #state{proc_type = ?NODE_PROC} = State) ->
 
 handle_call(get_node_deks_info, _From,
             #state{proc_type = ?NODE_PROC} = State) ->
+    ?log_debug("Received get_node_deks_info request..."),
     NewState = run_jobs(State), %% Run jobs to make sure all deks are up to date
     maybe
         [] ?= NewState#state.jobs,
@@ -1139,7 +1140,7 @@ call_dek_callback(CallbackName, Kind, Args) ->
     #{CallbackName := CB} = cb_deks:dek_config(Kind),
     try erlang:apply(CB, Args) of
         RV ->
-            ?log_debug("~p for ~p returned: ~p", [CallbackName, Kind, RV]),
+            ?log_debug("~p for ~p returned: ~0p", [CallbackName, Kind, RV]),
             {succ, RV}
     catch
         C:E:ST ->
@@ -1598,6 +1599,8 @@ calculate_next_dek_cleanup(CurDateTime, DeksInfo) ->
           fun (Kind, KindDeks, Acc) ->
               case dek_expiration_times(Kind, KindDeks) of
                   {ok, ExpirationTimes} ->
+                      ?log_debug("~p DEKs expiration times: ~0p",
+                                 [Kind, ExpirationTimes]),
                       [DT || {DT, _} <- ExpirationTimes] ++ Acc;
                   {error, not_found} ->
                       %% Assume there is not such entity anymore, we just

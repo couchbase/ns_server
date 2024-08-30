@@ -37,6 +37,8 @@ get_dek_list(DekPath, Log) ->
     Log(debug, "Reading list of keys from (~p)...", [DekPath]),
     case external_list(DekPath) of
         {ok, ActiveKeyId, AllIds, [], ExtraInfo} ->
+            Log(debug, "DEK read res: Active: ~0p, AllIds: ~0p, Extra: ~0p",
+                [ActiveKeyId, AllIds, ExtraInfo]),
             {ok, {ActiveKeyId, AllIds, ExtraInfo}};
         {ok, ActiveKeyId, AllIds, OtherFiles, ExtraInfo} ->
             Log(warning, "Ignoring key files ~p as their names are "
