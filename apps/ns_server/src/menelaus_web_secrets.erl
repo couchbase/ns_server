@@ -240,8 +240,9 @@ format_aws_key_data(Props) ->
           ({credentials_file, F}) -> {credentials_file, iolist_to_binary(F)};
           ({config_file, F}) -> {config_file, iolist_to_binary(F)};
           ({profile, P}) -> {profile, iolist_to_binary(P)};
-          ({use_imds, U}) -> {use_imds, U}
-      end, maps:to_list(maps:remove(uuid, Props))).
+          ({use_imds, U}) -> {use_imds, U};
+          ({uuid, U}) -> {uuid, U}
+      end, maps:to_list(Props)).
 
 format_key(Props, ActiveKeyId) ->
     lists:flatmap(fun ({id, Id}) ->
@@ -357,6 +358,7 @@ awskms_key_validators(CurSecretProps) ->
      validator:default(credentialsFile, "", _),
      validator:string(configFile, _),
      validator:default(configFile, "", _),
+     validator:validate(fun (_) -> {error, "read only"} end, uuid, _),
      validator:string(profile, _),
      validator:default(profile, "", _)] ++
     case CurSecretProps of

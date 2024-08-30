@@ -687,6 +687,48 @@ class NativeEncryptionTests(testlib.BaseTestSet):
         poll_verify_bucket_deks_files(self.cluster, self.bucket_name,
                                       verify_key_count=lambda n: n > 1)
 
+    def basic_aws_secret_test(self):
+        # Create an AWS key and use it to encrypt bucket, config, and secrets
+        secret_json = aws_test_secret(name='AWS Key',
+                                      usage=['bucket-encryption-*',
+                                             'configuration-encryption',
+                                             'secrets-encryption'])
+        aws_secret_id = create_secret(self.random_node(), secret_json)
+        kek_id = get_kek_id(self.random_node(), aws_secret_id)
+
+        # Create a bucket and encrypt it using AWS key:
+        bucket_props = {'name': self.bucket_name,
+                        'ramQuota': 100,
+                        'encryptionAtRestSecretId': aws_secret_id}
+        self.cluster.create_bucket(bucket_props)
+
+        poll_verify_bucket_deks_files(self.cluster, self.bucket_name,
+                                      verify_key_count=1,
+                                      verify_encryption_kek=kek_id)
+
+        # Use AWS key to encrypt configuration
+        set_cfg_encryption(self.random_node(), 'secret', aws_secret_id)
+        dek_path = Path() / 'config' / 'deks'
+        poll_verify_dek_files(self.cluster,
+                              dek_path,
+                              verify_key_count=1,
+                              verify_encryption_kek=kek_id)
+
+        # Create an generated secret and encrypt it with AWS secret
+        generated_secret = auto_generated_secret(
+                             name='test',
+                             encrypt_by='clusterSecret',
+                             encrypt_secret_id=aws_secret_id)
+        generated_secret_id = create_secret(self.random_node(),
+                                            generated_secret)
+        verify_kek_files(self.cluster,
+                         get_secret(self.random_node(), generated_secret_id),
+                         verify_encryption_kek=kek_id,
+                         verify_key_count=1)
+
+        # Can't delete because it is in use
+        delete_secret(self.random_node(), aws_secret_id, expected_code=400)
+
 
 def get_key_list(node, kind_as_str):
     res = testlib.diag_eval(
@@ -780,6 +822,20 @@ def auto_generated_secret(name=None,
             'data': {'autoRotation': auto_rotation,
                      'rotationIntervalInDays': rotation_interval,
                      'encryptBy': encrypt_by, **optional}}
+
+# This secret does not actually go to aws when asked encrypt or decrypt data.
+# All AWS secrets with special ARN=TEST_AWS_KEY_ARN simply encrypt data using
+# dummy key.
+def aws_test_secret(name=None, usage=None):
+    if usage is None:
+        usage = ['bucket-encryption-*', 'secrets-encryption']
+    if name is None:
+        name = f'Test secret {testlib.random_str(5)}'
+
+    return {'name': name,
+            'type': 'awskms-aes-key-256',
+            'usage': usage,
+            'data': {'keyARN': 'TEST_AWS_KEY_ARN'}}
 
 
 def get_secret(cluster, secret_id):
@@ -931,6 +987,8 @@ def get_kek_id(cluster, secret_id):
         for k in r['data']['keys']:
             if k['active']:
                 return k['id']
+    if r['type'] == 'awskms-aes-key-256':
+        return r['data']['uuid']
     return None
 
 
