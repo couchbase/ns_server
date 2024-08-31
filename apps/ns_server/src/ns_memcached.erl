@@ -893,14 +893,14 @@ handle_info({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
                                           status = paused}};
                 Error ->
                     ?log_info("ensure_bucket failed: ~p", [Error]),
-                    {stop, Error}
+                    {stop, Error, State}
             catch
                 exit:{shutdown, reconfig} ->
                     {stop, {shutdown, reconfig}, State#state{sock = Sock}}
             end;
         Error ->
             ?log_info("Failed to establish ns_memcached connection: ~p", [RV]),
-            {stop, Error}
+            {stop, Error, State}
     end;
 handle_info(check_started, #state{status=Status} = State)
   when Status =:= connected orelse Status =:= warmed ->
