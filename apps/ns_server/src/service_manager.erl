@@ -36,7 +36,8 @@
                  op_type :: failover | rebalance | pause_bucket | resume_bucket,
                  op_body :: function(),
                  op_args :: #rebalance_args{} |
-                 {#bucket_hibernation_op_args{}, tuple()},
+                            {#bucket_hibernation_op_args{}, tuple()},
+                 dynamic_topology = false :: boolean(),
                  progress_callback :: fun ((dict:dict()) -> any())}).
 
 rebalance(Service, KeepNodes, EjectNodes, DeltaNodes, ProgressCallback, Opts) ->
@@ -253,8 +254,8 @@ do_run_op(#state{op_body = OpBody,
 
     ?log_debug("Using node ~p as a leader", [Leader]),
 
-    OpBody(State, OpArgs, Id, Leader, NodeInfos),
-    wait_for_task_completion(State).
+    NewState = OpBody(State, OpArgs, Id, Leader, NodeInfos),
+    wait_for_task_completion(NewState).
 
 wait_for_task_completion(#state{service = Service, op_type = Type} = State) ->
     Timeout = ?get_timeout({Type, Service}, 10 * 60 * 1000),
@@ -262,6 +263,9 @@ wait_for_task_completion(#state{service = Service, op_type = Type} = State) ->
 
 wait_for_task_completion_loop(Timeout, #state{op_type = Type} = State) ->
     receive
+        {new_topology, Nodes} ->
+            maybe_update_service_map(Nodes, State),
+            wait_for_task_completion_loop(Timeout, State);
         {task_progress, Progress} ->
             report_progress(Progress, State),
             wait_for_task_completion_loop(Timeout, State);
@@ -284,6 +288,19 @@ wait_for_task_completion_loop(Timeout, #state{op_type = Type} = State) ->
             exit({task_failed, Type, inactivity_timeout})
     end.
 
+maybe_update_service_map(Nodes, #state{service = Service,
+                                       all_nodes = AllNodes,
+                                       dynamic_topology = true}) ->
+    case Nodes -- AllNodes of
+        [] ->
+            ns_cluster_membership:update_service_map(Service, Nodes);
+        ExtraNodes ->
+            ?log_error("Service ~p is trying to include unknown nodes ~p "
+                       "into the service map", [Service, ExtraNodes])
+    end;
+maybe_update_service_map(_, _) ->
+    ok.
+
 report_progress(Progress, #state{all_nodes = AllNodes,
                                  progress_callback = Callback}) ->
     D = dict:from_list([{N, Progress} || N <- AllNodes]),
@@ -303,17 +320,33 @@ rebalance_op(#state{
                 op_type = Type,
                 service = Service,
                 all_nodes = AllNodes,
-                service_manager = Manager},
+                service_manager = Manager} = State,
              #rebalance_args{
                 keep_nodes = KeepNodes,
                 eject_nodes = EjectNodes,
                 delta_nodes = DeltaNodes}, Id, Leader, NodeInfos) ->
 
-    ?rebalance_info("Rebalancing service ~p with id ~p."
-                    "~nKeepNodes: ~p~nEjectNodes: ~p~nDeltaNodes: ~p",
-                    [Service, Id, KeepNodes, EjectNodes, DeltaNodes]),
+    DynamicTopology = case service_agent:get_params(Service, Leader) of
+                          {ok, Params} ->
+                              proplists:get_value(<<"dynamicTopology">>, Params,
+                                                  false);
+                          _ ->
+                              false
+                      end,
 
-    {ok, _} = ns_cluster_membership:update_service_map(Service, AllNodes),
+    ?rebalance_info("Rebalancing service ~p with id ~p."
+                    "~nKeepNodes: ~p~nEjectNodes: ~p~nDeltaNodes: ~p"
+                    "~nDynamicTopology: ~p",
+                    [Service, Id, KeepNodes, EjectNodes, DeltaNodes,
+                     DynamicTopology]),
+
+    case DynamicTopology of
+        true ->
+            ok;
+        false ->
+            {ok, _} =
+                ns_cluster_membership:update_service_map(Service, AllNodes)
+    end,
 
     {KeepNodesArg, EjectNodesArg} = build_rebalance_args(KeepNodes, EjectNodes,
                                                          DeltaNodes, NodeInfos),
@@ -322,20 +355,22 @@ rebalance_op(#state{
                                          Id, Type, KeepNodesArg, EjectNodesArg),
 
     ok = service_agent:start_rebalance(Service, Leader, Manager,
-                                       Id, Type, KeepNodesArg, EjectNodesArg).
+                                       Id, Type, KeepNodesArg, EjectNodesArg),
+    State#state{dynamic_topology = DynamicTopology}.
 
 pause_bucket_op(#state{service = Service,
                        all_nodes = Nodes,
-                       service_manager = Manager},
+                       service_manager = Manager} = State,
                 {#bucket_hibernation_op_args{} = Args, _ExtraArgs},
                 Id, Leader, _NodesInfo) ->
     ok = testconditions:check_test_condition({pause_bucket, Service}),
     ok = service_agent:prepare_pause_bucket(Service, Nodes, Id, Args, Manager),
-    ok = service_agent:pause_bucket(Service, Leader, Id, Args, Manager).
+    ok = service_agent:pause_bucket(Service, Leader, Id, Args, Manager),
+    State.
 
 resume_bucket_op(#state{service = Service,
                         all_nodes = Nodes,
-                        service_manager = Manager},
+                        service_manager = Manager} = State,
                  {#bucket_hibernation_op_args{} = Args,
                   {DryRun, _ServerMapping}},
                  Id, Leader, _NodesInfo) ->
@@ -344,7 +379,8 @@ resume_bucket_op(#state{service = Service,
     ok = service_agent:prepare_resume_bucket(
            Service, Nodes, Id, Args, DryRun, Manager),
     ok = service_agent:resume_bucket(
-           Service, Leader, Id, Args, DryRun, Manager).
+           Service, Leader, Id, Args, DryRun, Manager),
+    State.
 
 build_rebalance_args(KeepNodes, EjectNodes, DeltaNodes0, NodeInfos0) ->
     NodeInfos = dict:from_list(NodeInfos0),
@@ -400,21 +436,20 @@ do_run_kv_op(#state{
 
     OpBody(State, OpArgs).
 
-kv_pause_bucket_op(#state{
-                      all_nodes = Nodes,
-                      service_manager = Manager},
+kv_pause_bucket_op(#state{all_nodes = Nodes,
+                          service_manager = Manager} = State,
                    {Args, {Snapshot}}) ->
     ok = hibernation_utils:upload_metadata_to_s3(Args, Snapshot),
     hibernation_utils:run_hibernation_op(
       fun (Node) ->
               ok = kv_hibernation_agent:pause_bucket(Args, Node, Manager)
-      end, Nodes, ?PAUSE_BUCKET_TIMEOUT).
+      end, Nodes, ?PAUSE_BUCKET_TIMEOUT),
+    State.
 
-kv_resume_bucket_op(#state{
-                       all_nodes = Nodes,
-                       service_manager = Manager},
+kv_resume_bucket_op(#state{all_nodes = Nodes,
+                           service_manager = Manager} = State,
                     {#bucket_hibernation_op_args{
-                       remote_path = RemotePath} = Args,
+                        remote_path = RemotePath} = Args,
                      {_DryRun, ServerMapping}}) ->
     hibernation_utils:run_hibernation_op(
       fun (Node) ->
@@ -424,4 +459,5 @@ kv_resume_bucket_op(#state{
               ok = kv_hibernation_agent:resume_bucket(
                      Args#bucket_hibernation_op_args{
                        remote_path = SourceRemotePath}, Node, Manager)
-      end, Nodes, ?RESUME_BUCKET_TIMEOUT).
+      end, Nodes, ?RESUME_BUCKET_TIMEOUT),
+    State.
