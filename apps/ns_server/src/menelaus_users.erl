@@ -228,6 +228,8 @@ on_save(Docs, State) ->
                    replicated_dets:get_value(Doc),
                    replicated_dets:is_deleted(Doc),
                    S)};
+            ({locked, _}, _Doc, S) ->
+                {{change_version, auth_version}, S};
             (_, _, S) ->
                 {undefined, S}
         end,

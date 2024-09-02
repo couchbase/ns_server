@@ -9,13 +9,18 @@
 import requests
 
 import testlib
+from testlib import Service
 
 
 class UsersTestSet(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements()
+        return testlib.ClusterRequirements(services=[Service.KV,
+                                                     Service.QUERY,
+                                                     Service.CBAS],
+                                           # i.e. wait for service up
+                                           balanced=True)
 
     def setup(self):
         self.user = testlib.random_str(10)
@@ -84,6 +89,15 @@ class UsersTestSet(testlib.BaseTestSet):
         testlib.get_succ(node, '/pools', headers=headers,
                          session=session, auth=None)
 
+        # Test query endpoint
+        testlib.get_succ(self.cluster, '/admin/vitals', service=Service.QUERY,
+                         expected_code=200, auth=(user, password))
+
+        # Test CBAS endpoint
+        testlib.get_succ(self.cluster, '/analytics/admin/active_requests',
+                         service=Service.CBAS, expected_code=200,
+                         auth=(user, password))
+
         # Lock user via PATCH
         lock_user(self.cluster, user)
         assert_locked(self.cluster, user, password)
@@ -92,6 +106,15 @@ class UsersTestSet(testlib.BaseTestSet):
         # shows as logged out
         testlib.get_fail(node, '/pools', headers=headers,
                          session=session, expected_code=401, auth=None)
+
+        # Query service gives authentication failure error
+        testlib.get_fail(self.cluster, '/admin/vitals', service=Service.QUERY,
+                         expected_code=401, auth=(user, password))
+
+        # CBAS gives authentication failure error
+        testlib.get_fail(self.cluster, '/analytics/admin/active_requests',
+                         service=Service.CBAS, expected_code=401,
+                         auth=(user, password))
 
         # Unlock user via PATCH
         unlock_user(self.cluster, user)
