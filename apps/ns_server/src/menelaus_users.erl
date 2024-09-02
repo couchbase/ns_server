@@ -23,7 +23,7 @@
 
 -export([
          %% User management:
-         store_user/5,
+         store_user/6,
          store_users/2,
          delete_user/1,
          select_users/1,
@@ -39,6 +39,8 @@
          get_user_props/2,
          get_user_uuid/1,
          change_password/2,
+         is_user_locked/1,
+         store_lock/2,
 
          %% Group management:
          store_group/4,
@@ -91,7 +93,8 @@
 
 -define(MAX_USERS_ON_CE, 20).
 -define(DEFAULT_PROPS, [name, uuid, user_roles, group_roles, passwordless,
-                        password_change_timestamp, groups, external_groups]).
+                        password_change_timestamp, groups, external_groups,
+                        locked]).
 -define(DEFAULT_GROUP_PROPS, [description, roles, ldap_group_ref]).
 
 -record(state, {base, passwordless, cache_size = ?LDAP_GROUPS_CACHE_SIZE}).
@@ -368,6 +371,8 @@ make_props(Id, Props, ItemList, {Passwordless, Definitions,
             (dirty_groups, Cache) ->
                 {DirtyGroups, NewCache} = GetDirtyGroups(Cache),
                 {DirtyGroups, NewCache};
+            (locked, Cache) ->
+                {is_user_locked(Id), Cache};
             (Name, Cache) ->
                 {proplists:get_value(Name, Props), Cache}
         end,
@@ -406,14 +411,15 @@ rebuild_auth({_, _CurrentAuth}, Password) ->
 
 -spec store_user(rbac_identity(), rbac_user_name(),
                  {password, rbac_password()} | {auth, rbac_auth()},
-                 [rbac_role()], [rbac_group_id()]) ->
+                 [rbac_role()], [rbac_group_id()], boolean()) ->
           ok | {error, {roles_validation, _}} |
           {error, password_required} | {error, too_many}.
-store_user(Identity, Name, PasswordOrAuth, Roles, Groups) ->
+store_user(Identity, Name, PasswordOrAuth, Roles, Groups, Locked) ->
     Props = [{name, Name} || Name =/= undefined] ++
         [{groups, Groups} || Groups =/= undefined] ++
         [{pass_or_auth, PasswordOrAuth},
-         {roles, Roles}],
+         {roles, Roles},
+         {locked, Locked}],
     case store_users([{Identity, Props}], true) of
         {ok, _UpdatedUsers} -> ok;
         {error, _} = Error -> Error
@@ -469,10 +475,11 @@ prepare_store_user(Snapshot, CanOverwrite, {{_, Domain} = Identity, Props}) ->
             Groups = proplists:get_value(groups, Props),
             PasswordOrAuth = proplists:get_value(pass_or_auth, Props),
             Roles = proplists:get_value(roles, Props),
+            Locked = proplists:get_value(locked, Props, false),
 
             UserProps = [{name, Name} || Name =/= undefined] ++
-                        [{uuid, UUID} || UUID =/= undefined] ++
-                        [{groups, Groups} || Groups =/= undefined],
+                [{uuid, UUID} || UUID =/= undefined] ++
+                [{groups, Groups} || Groups =/= undefined],
 
             UserProps2 =
                 case menelaus_roles:validate_roles(Roles, Snapshot) of
@@ -503,7 +510,8 @@ prepare_store_user(Snapshot, CanOverwrite, {{_, Domain} = Identity, Props}) ->
                       true -> updated;
                       false -> added
                   end,
-            {Res, store_user_changes(Identity, UserProps2, Auth, Exists)}
+            {Res,
+             store_user_changes(Identity, UserProps2, Auth, Locked, Exists)}
     end.
 
 count_users() ->
@@ -527,7 +535,7 @@ check_limit(Identity) ->
             end
     end.
 
-store_user_changes(Identity, Props, Auth, Exists) ->
+store_user_changes(Identity, Props, Auth, Locked, Exists) ->
     case Exists of
         false ->
             [{delete, {limits, Identity}},
@@ -536,7 +544,10 @@ store_user_changes(Identity, Props, Auth, Exists) ->
             []
     end ++
     [{set, {user, Identity}, Props}] ++
-    [{set, {auth, Identity}, Auth} || Auth /= same].
+    [{set, {auth, Identity}, Auth} || Auth /= same] ++
+    %% Only store a locked entry for locked users
+    [{set, {locked, Identity}, Locked} || Locked =:= true] ++
+    [{delete, {locked, Identity}} || Locked =:= false].
 
 store_auth(_Identity, same, _Priority) ->
     unchanged;
@@ -561,6 +572,32 @@ change_password({_UserName, local} = Identity, Password) when is_list(Password) 
             store_auth(Identity, Auth, ?REPLICATED_DETS_HIGH_PRIORITY)
     end.
 
+is_user_locked({_, local} = Identity) ->
+    ?call_on_ns_server_node(
+       case replicated_dets:get(storage_name(), {locked, Identity}) of
+           {{locked, Identity}, true} -> true;
+           false -> false
+       end, [Identity]);
+is_user_locked(_) ->
+    %% Non-local users can't be locked
+    false.
+
+store_lock(Identity, Locked) ->
+    case is_user_locked(Identity) of
+        Locked ->
+            %% No change
+            ok;
+        _ ->
+            case Locked of
+                true ->
+                    ok = replicated_dets:set(storage_name(),
+                                             {locked, Identity}, true);
+                false ->
+                    ok = replicated_dets:delete(storage_name(),
+                                                {locked, Identity})
+            end
+    end.
+
 -spec delete_user(rbac_identity()) ->
           {commit, ok} |
           {abort, {error, not_found}}.
@@ -579,7 +616,9 @@ delete_user({_, Domain} = Identity) ->
                           storage_name(), {auth, Identity})
             end,
 
-            _ = delete_profile(Identity);
+            _ = delete_profile(Identity),
+
+            _ = replicated_dets:delete(storage_name(), {locked, Identity});
         external ->
             ok
     end,

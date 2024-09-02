@@ -52,6 +52,7 @@
          no_duplicates/1,
          required/2,
          prohibited/2,
+         prohibited/3,
          valid_in_enterprise_only/2,
          string_array/2,
          string_array/3,
@@ -696,12 +697,15 @@ required(Name, #state{kv = Props} = State) ->
           end
        end]).
 
-prohibited(Name, #state{kv = Props} = State) ->
+prohibited(Name, State) ->
+    prohibited(Name, "The value must not be supplied", State).
+
+prohibited(Name, Error, #state{kv = Props} = State) ->
     case lists:keymember(name_to_list(Name), 1, Props) of
         false ->
             State;
         true ->
-            return_error(Name, "The value must not be supplied", State)
+            return_error(Name, Error, State)
     end.
 
 is_changeable(Name, Pred, State) ->

@@ -690,6 +690,7 @@
               "identity" : {"domain" : "", "user" : ""},
               "roles" : "",
               "groups": "",
+              "locked": false,
               "reason" : ""
           },
           "optional_fields" : {
@@ -1559,6 +1560,26 @@
         "optional_fields" : {
             "real_userid" : {"domain" : "", "user" : ""}
         }
+      },
+      {
+        "id" : 8276,
+        "name" : "user locked/unlocked",
+        "description" : "User was either locked or unlocked",
+        "sync" : false,
+        "enabled" : true,
+        "filtering_permitted": false,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "identity" : {"domain" : "", "user" : ""}
+          },
+          "optional_fields" : {
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "local" : {"ip" : "", "port" : 1},
+              "authenticated_userid" : {"domain" : "", "user" : ""},
+              "sessionid" : "",
+              "locked": false
+          }
       }
     ]
 }

@@ -238,6 +238,7 @@ user_to_json({Id, Domain}, Props) ->
     Passwordless = proplists:get_value(passwordless, Props),
     PassChangeTime = format_password_change_time(
                        proplists:get_value(password_change_timestamp, Props)),
+    Locked = proplists:get_value(locked, Props),
 
     {[{id, list_to_binary(Id)},
       {domain, Domain},
@@ -250,7 +251,8 @@ user_to_json({Id, Domain}, Props) ->
          [{uuid, UUID} || UUID =/= undefined] ++
          [{passwordless, Passwordless} || Passwordless == true] ++
          [{password_change_date, PassChangeTime}
-          || PassChangeTime =/= undefined]}.
+          || PassChangeTime =/= undefined] ++
+         [{locked, Locked} || Locked =/= undefined]}.
 
 user_roles_to_json(Props) ->
     UserRoles = proplists:get_value(user_roles, Props, []),
@@ -999,12 +1001,14 @@ put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword) ->
                                           || G <- Groups])
                     end
         end,
+    IsMorpheus = cluster_compat_mode:is_cluster_morpheus(),
 
     [validator:touch(name, _),
      validate_user_groups(groups, GroupCheckFun, Req, _),
      validate_roles(roles, _),
      validator_verify_security_roles_access(roles, Req, ?SECURITY_WRITE,
                                             ExtraRolesFun, _)] ++
+        [validate_locked(GetUserIdFun, _) || IsMorpheus] ++
         [validate_password(_) || ValidatePassword] ++
         [validator:unsupported(_)].
 
@@ -1059,6 +1063,17 @@ validate_roles(Name, State) ->
               end
       end, Name, State).
 
+validate_locked(GetUserIdFun, State0) ->
+    State1 = validator:boolean(locked, State0),
+    case GetUserIdFun(State0) of
+        {_, local} ->
+            State1;
+        _ ->
+            %% Only local users can be locked
+            validator:prohibited(locked, "Only permitted for local users",
+                                 State1)
+    end.
+
 handle_put_user_with_identity({_UserId, Domain} = Identity, Req) ->
     validator:handle(
       fun (Values) ->
@@ -1109,15 +1124,16 @@ do_store_user({User, Domain} = Identity, Props, Req) ->
     Roles = proplists:get_value(roles, Props, []),
     Groups = proplists:get_value(groups, Props),
     UniqueRoles = lists:usort(Roles),
+    Locked = proplists:get_value(locked, Props, false),
 
     Reason = case menelaus_users:user_exists(Identity) of
                  true -> updated;
                  false -> added
              end,
     case menelaus_users:store_user(Identity, Name, PassOrAuth,
-                                   UniqueRoles, Groups) of
+                                   UniqueRoles, Groups, Locked) of
         ok ->
-            ns_audit:set_user(Req, Identity, UniqueRoles, Name, Groups,
+            ns_audit:set_user(Req, Identity, UniqueRoles, Name, Groups, Locked,
                               Reason),
             {_, SanitizedUser} = ns_config_log:sanitize_value(User, [add_salt]),
             ?log_debug("User added - ~p:~p, ~p.",
@@ -1164,12 +1180,14 @@ reply_put_delete_users(Req) ->
     menelaus_util:reply_json(Req, <<>>, 200).
 
 change_password_validators() ->
-    [validator:required(password, _),
-     validate_password(_),
+    [validate_password(_),
      validator:unsupported(_)].
 
 patch_user_validators() ->
-    change_password_validators().
+    IsMorpheus = cluster_compat_mode:is_cluster_morpheus(),
+    [validator:has_params(_)] ++
+        [validator:boolean(locked, _) || IsMorpheus] ++
+        change_password_validators().
 
 handle_change_password(Req) ->
     menelaus_util:assert_is_enterprise(),
@@ -1177,11 +1195,10 @@ handle_change_password(Req) ->
 
     case menelaus_auth:is_UI_req(Req) of
         false ->
-            Validators = change_password_validators(),
+            Validators = [validator:required(password, _) |
+                          change_password_validators()],
             case menelaus_auth:get_identity(Req) of
-                {_, local} = Identity ->
-                    handle_patch_user_with_identity(Req, Identity, Validators);
-                {_, admin} = Identity ->
+                {_, D} = Identity when D =:= local; D =:= admin ->
                     handle_patch_user_with_identity(Req, Identity, Validators);
                 _ ->
                     menelaus_util:reply_json(
@@ -1196,23 +1213,40 @@ handle_change_password(Req) ->
 handle_patch_user_with_identity(Req, Identity, Validators) ->
     validator:handle(
       fun (Values) ->
-              case proplists:get_value(password, Values) of
-                  undefined ->
-                      ok;
-                  Password ->
-                      case do_change_password(Identity,
-                                              Password) of
-                          ok ->
-                              ns_audit:password_change(Req, Identity),
-                              menelaus_util:reply(Req, 200);
-                          user_not_found ->
-                              menelaus_util:reply_json(
-                                Req, <<"User was not found.">>, 404);
-                          unchanged ->
-                              menelaus_util:reply(Req, 200)
-                      end
+              maybe
+                  ok ?= maybe_change_password(Req, Identity, Values),
+                  ok ?= maybe_change_lock(Req, Identity, Values),
+                  menelaus_util:reply(Req, 200)
+              else
+                  user_not_found ->
+                      menelaus_util:reply_json(
+                          Req, <<"User was not found.">>, 404)
               end
+
       end, Req, form, Validators).
+
+maybe_change_password(Req, Identity, Values) ->
+    case proplists:get_value(password, Values) of
+        undefined ->
+            ok;
+        Password ->
+            case do_change_password(Identity, Password) of
+                ok ->
+                    ns_audit:password_change(Req, Identity);
+                user_not_found ->
+                    user_not_found;
+                unchanged ->
+                    ok
+            end
+    end.
+
+maybe_change_lock(Req, Identity, Values) ->
+    case proplists:get_value(locked, Values) of
+        undefined -> ok;
+        Locked ->
+            menelaus_users:store_lock(Identity, Locked),
+            ns_audit:locked_change(Req, Identity, Locked)
+    end.
 
 do_change_password({_, local} = Identity, Password) ->
     menelaus_users:change_password(Identity, Password);
@@ -2306,6 +2340,7 @@ handle_backup_restore_validated(Req, Params) ->
                 proplists:get_value(roles, UserProps, []),
                 proplists:get_value(name, UserProps),
                 proplists:get_value(groups, UserProps),
+                proplists:get_value(locked, UserProps, false),
                 AddedOrUpdated)
       end, UpdatedUsers),
 

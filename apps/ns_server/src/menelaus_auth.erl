@@ -39,6 +39,7 @@
          get_session_id/1,
          is_UI_req/1,
          verify_rest_auth/2,
+         authenticate/1,
          new_session_id/0,
          get_resp_headers/1,
          acting_on_behalf/1,
@@ -47,7 +48,7 @@
          get_authn_res_from_on_behalf_of/3]).
 
 %% rpc from ns_couchdb node
--export([authenticate/1,
+-export([do_authenticate/1,
          authenticate_external/2]).
 
 %% External API
@@ -285,14 +286,37 @@ init_auth(Identity) ->
           {ok, #authn_res{}, [RespHeader]} |
           {error, auth_failure | temporary_failure} |
           {unfinished, RespHeaders :: [RespHeader]}
-                                        when RespHeader :: {string(), string()}.
-authenticate(error) ->
+              when RespHeader :: {string(), string()}.
+authenticate(Auth) ->
+    case do_authenticate(Auth) of
+        {ok, #authn_res{authenticated_identity = Identity}, _} = Result ->
+            case menelaus_users:is_user_locked(Identity) of
+                false ->
+                    Result;
+                true ->
+                    ?count_auth("error", "locked"),
+                    {error, auth_failure}
+            end;
+        Other ->
+            Other
+    end.
+
+-spec do_authenticate(error | undefined |
+                      {token, auth_token()} |
+                      {scram_sha, string()} |
+                      {client_cert_auth, string()} |
+                      {rbac_user_id(), rbac_password()}) ->
+          {ok, #authn_res{}, [RespHeader]} |
+          {error, auth_failure | temporary_failure} |
+          {unfinished, RespHeaders :: [RespHeader]}
+              when RespHeader :: {string(), string()}.
+do_authenticate(error) ->
     ?count_auth("error", "failure"),
     {error, auth_failure};
-authenticate(undefined) ->
+do_authenticate(undefined) ->
     ?count_auth("anon", "succ"),
     {ok, init_auth({"", anonymous}), []};
-authenticate({token, Token} = Param) ->
+do_authenticate({token, Token} = Param) ->
     ?call_on_ns_server_node(
        case menelaus_ui_auth:check(Token) of
            false ->
@@ -309,10 +333,10 @@ authenticate({token, Token} = Param) ->
                ?count_auth("token", "succ"),
                {ok, AuthnRes, []}
        end, [Param]);
-authenticate({client_cert_auth, "@" ++ _ = Username}) ->
+do_authenticate({client_cert_auth, "@" ++ _ = Username}) ->
     ?count_auth("client_cert_int", "succ"),
     {ok, init_auth({Username, admin}), []};
-authenticate({client_cert_auth, Username} = Param) ->
+do_authenticate({client_cert_auth, Username} = Param) ->
     %% Just returning the username as the request is already authenticated based
     %% on the client certificate.
     ?call_on_ns_server_node(
@@ -331,7 +355,7 @@ authenticate({client_cert_auth, Username} = Param) ->
                        {error, auth_failure}
                end
        end, [Param]);
-authenticate({scram_sha, AuthHeader}) ->
+do_authenticate({scram_sha, AuthHeader}) ->
     case scram_sha:authenticate(AuthHeader) of
         {ok, Identity, RespHeaders} ->
             ?count_auth("scram_sha", "succ"),
@@ -343,7 +367,7 @@ authenticate({scram_sha, AuthHeader}) ->
             ?count_auth("scram_sha", "failure"),
             {error, auth_failure}
     end;
-authenticate({Username, Password}) ->
+do_authenticate({Username, Password}) ->
     case ns_config_auth:authenticate(Username, Password) of
         {ok, Id} ->
             ?count_auth("local", "succ"),
@@ -499,8 +523,16 @@ verify_rest_auth(Req, Permission) ->
                              get_rejected_user(Auth), Req2),
                     {auth_failure, Req3};
                 AuthnRes2 ->
-                    {check_permission(AuthnRes2, Permission),
-                     store_authn_res(AuthnRes2, Req2)}
+                    Req3 = store_authn_res(AuthnRes2, Req2),
+                    Identity = AuthnRes2#authn_res.identity,
+                    %% Check on-behalf-of user is not locked
+                    case menelaus_users:is_user_locked(Identity) of
+                        false ->
+                            {check_permission(AuthnRes2, Permission), Req3};
+                        true ->
+                            ?count_auth("error", "locked"),
+                            {auth_failure, Req3}
+                    end
             end;
         {error, auth_failure} ->
             Req2 = maybe_store_rejected_user(get_rejected_user(Auth), Req),
