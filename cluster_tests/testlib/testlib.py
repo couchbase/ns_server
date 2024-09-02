@@ -107,7 +107,7 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
             not_ran.append((test_name(testset_instance, not_ran_test['name'],
                                       not_ran_test['iter']),
                             "testset setup failed"))
-        return 0, [err], not_ran
+        return 0, [err], not_ran, cluster
 
     try:
         for test_dict in testset['test_name_list']:
