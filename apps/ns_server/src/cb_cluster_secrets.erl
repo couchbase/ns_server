@@ -27,6 +27,7 @@
 -define(DEK_TIMER_RETRY_TIME_S, ?get_param(dek_retry_interval, 60)).
 -define(DEK_DROP_RETRY_TIME_S(Kind),
         ?get_param({dek_removal_min_interval, Kind}, 60*60*3)).
+-define(MAX_DEK_NUM(Kind), ?get_param({max_dek_num, Kind}, 50)).
 -define(MIN_DEK_GC_INTERVAL_S, ?get_param(min_dek_gc_interval, 60)).
 
 -ifndef(TEST).
@@ -859,7 +860,8 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                 end,
 
             #{Kind := #{active_id := ActiveId,
-                        is_enabled := WasEnabled} = KindDeks} = AllDeks,
+                        is_enabled := WasEnabled,
+                        deks := Deks} = KindDeks} = AllDeks,
 
             CurDT = calendar:universal_time(),
             ShouldRotate = dek_rotation_needed(Kind, KindDeks, CurDT, Snapshot),
@@ -901,13 +903,33 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                 V when (V == false) orelse ShouldRotate ->
                     %% There is no active dek currently, but encryption is on,
                     %% we should generate a new dek
-                    case generate_new_dek(Kind, EncrMethod, Snapshot) of
+                    case generate_new_dek(Kind, Deks, EncrMethod, Snapshot) of
                         ok ->
                             %% adding jobs inside a job, so there is no need to
                             %% call add_and_run_jobs
                             NewState = add_jobs([{garbage_collect_deks, Kind}],
                                                 read_deks(Kind, State)),
                             call_set_active_cb(Kind, NewState);
+                        %% Too many DEKs and encryption is being enabled
+                        %% We could not create new DEK, but should still
+                        %% enable the encryption
+                        %% Note that ActiveId can't be undefined because
+                        %% we know there are too many deks.
+                        %% It should be ok to return ok if set_active_cb
+                        %% succeeds.
+                        {error, too_many_deks} when V == false ->
+                            true = is_binary(ActiveId),
+                            ok = cb_deks:set_active(Kind, ActiveId, true),
+                            NewState = add_jobs([{garbage_collect_deks, Kind}],
+                                                read_deks(Kind, State)),
+                            call_set_active_cb(Kind, NewState);
+                        %% This just a dek rotation attempt. No need to call
+                        %% cb_deks:set_active because nothing changes.
+                        {error, too_many_deks} ->
+                            NewState = add_jobs([{garbage_collect_deks, Kind}],
+                                                State),
+                            %% We will retry anyway because of rotate_deks timer
+                            {ok, NewState};
                         {error, Reason} ->
                             {error, State, Reason}
                     end
@@ -1101,15 +1123,28 @@ read_deks(Kind, #state{deks = AllDeks} = State) ->
                     [restart_dek_cleanup_timer(_),
                      restart_dek_rotation_timer(_)]).
 
--spec generate_new_dek(cb_deks:dek_kind(), cb_deks:encryption_method(),
+-spec generate_new_dek(cb_deks:dek_kind(),
+                       [cb_deks:dek()],
+                       cb_deks:encryption_method(),
                        chronicle_snapshot()) -> ok | {error, _}.
-generate_new_dek(Kind, EncryptionMethod, Snapshot) ->
-    maybe
-        ?log_debug("Generating new ~p dek, encryption is ~p...",
-                   [Kind, EncryptionMethod]),
-        {ok, DekId} ?= cb_deks:generate_new(Kind, EncryptionMethod, Snapshot),
-        ok ?= cb_deks:set_active(Kind, DekId, true),
-        ok
+generate_new_dek(Kind, CurrentDeks, EncryptionMethod, Snapshot) ->
+    %% Rotation is needed but if there are too many deks already
+    %% we should not generate new deks (something is wrong)
+    CurrentDekNum = length(CurrentDeks),
+    case CurrentDekNum < ?MAX_DEK_NUM(Kind) of
+        true ->
+            maybe
+                ?log_debug("Generating new ~p dek, encryption is ~p...",
+                           [Kind, EncryptionMethod]),
+                {ok, DekId} ?= cb_deks:generate_new(Kind, EncryptionMethod,
+                                                    Snapshot),
+                ok ?= cb_deks:set_active(Kind, DekId, true),
+                ok
+            end;
+        false ->
+            ?log_error("Skip ~p DEK creation/rotation: "
+                       "too many DEKs (~p)", [Kind, CurrentDekNum]),
+            {error, too_many_deks}
     end.
 
 -spec maybe_reencrypt_deks(#state{}) ->
