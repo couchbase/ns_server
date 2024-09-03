@@ -239,6 +239,7 @@ user_to_json({Id, Domain}, Props) ->
     PassChangeTime = format_password_change_time(
                        proplists:get_value(password_change_timestamp, Props)),
     Locked = proplists:get_value(locked, Props),
+    TemporaryPassword = proplists:get_value(temporary_password, Props),
 
     {[{id, list_to_binary(Id)},
       {domain, Domain},
@@ -252,7 +253,9 @@ user_to_json({Id, Domain}, Props) ->
          [{passwordless, Passwordless} || Passwordless == true] ++
          [{password_change_date, PassChangeTime}
           || PassChangeTime =/= undefined] ++
-         [{locked, Locked} || Locked =/= undefined]}.
+         [{locked, Locked} || Locked =/= undefined] ++
+         [{temporary_password, TemporaryPassword}
+          || TemporaryPassword =/= undefined]}.
 
 user_roles_to_json(Props) ->
     UserRoles = proplists:get_value(user_roles, Props, []),
@@ -1010,6 +1013,8 @@ put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword) ->
                                             ExtraRolesFun, _)] ++
         [validate_locked(GetUserIdFun, _) || IsMorpheus] ++
         [validate_password(_) || ValidatePassword] ++
+        [validator:boolean(temporaryPassword, _)
+         || IsMorpheus and ValidatePassword] ++
         [validator:unsupported(_)].
 
 bad_roles_error(BadRoles) ->
@@ -1121,6 +1126,7 @@ do_store_user({User, Domain} = Identity, Props, Req) ->
                      A ->
                          {auth, A}
                  end,
+    TemporaryPassword = proplists:get_value(temporaryPassword, Props),
     Roles = proplists:get_value(roles, Props, []),
     Groups = proplists:get_value(groups, Props),
     UniqueRoles = lists:usort(Roles),
@@ -1131,10 +1137,11 @@ do_store_user({User, Domain} = Identity, Props, Req) ->
                  false -> added
              end,
     case menelaus_users:store_user(Identity, Name, PassOrAuth,
-                                   UniqueRoles, Groups, Locked) of
+                                   UniqueRoles, Groups, Locked,
+                                   TemporaryPassword) of
         ok ->
             ns_audit:set_user(Req, Identity, UniqueRoles, Name, Groups, Locked,
-                              Reason),
+                              TemporaryPassword, Reason),
             {_, SanitizedUser} = ns_config_log:sanitize_value(User, [add_salt]),
             ?log_debug("User added - ~p:~p, ~p.",
                        [ns_config_log:tag_user_name(User), Domain,
@@ -2319,7 +2326,7 @@ handle_backup_restore_validated(Req, Params) ->
 
     Users = lists:map(
               fun ({UserProps}) ->
-                      Auth = proplists:get_value(auth, UserProps),
+                      Auth = proplists:get_value(auth, UserProps, []),
                       Id = proplists:get_value(id, UserProps),
                       Domain = proplists:get_value(domain, UserProps),
                       Identity = {Id, Domain},
@@ -2336,6 +2343,8 @@ handle_backup_restore_validated(Req, Params) ->
 
     lists:foreach(
       fun ({AddedOrUpdated, {Identity, UserProps}}) ->
+              {auth, Auth} = proplists:get_value(pass_or_auth, UserProps,
+                                                 {auth, []}),
               ns_audit:set_user(
                 Req,
                 Identity,
@@ -2343,6 +2352,7 @@ handle_backup_restore_validated(Req, Params) ->
                 proplists:get_value(name, UserProps),
                 proplists:get_value(groups, UserProps),
                 proplists:get_value(locked, UserProps, false),
+                proplists:get_value(<<"expiry">>, Auth) =:= 0,
                 AddedOrUpdated)
       end, UpdatedUsers),
 
@@ -2457,6 +2467,7 @@ validate_auth(Name, State) ->
                   validate_scram_auth('scram-sha-512', _),
                   validate_scram_auth('scram-sha-256', _),
                   validate_scram_auth('scram-sha-1', _),
+                  validator:integer(expiry, _),
                   validator:unsupported(_)],
                  State1)),
     validator:validate(

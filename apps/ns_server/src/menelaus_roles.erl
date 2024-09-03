@@ -880,6 +880,8 @@ operation_allowed(Operation, AllowedOperations) ->
 
 -spec is_allowed(rbac_permission(),
                  #authn_res{} | [rbac_compiled_role()]) -> boolean().
+is_allowed(_Permission, #authn_res{password_expired = true}) ->
+    false;
 is_allowed(Permission, #authn_res{} = AuthnRes) ->
     Roles = get_compiled_roles(AuthnRes),
     is_allowed(Permission, Roles);

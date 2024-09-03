@@ -691,6 +691,7 @@
               "roles" : "",
               "groups": "",
               "locked": false,
+              "temporary_password": false,
               "reason" : ""
           },
           "optional_fields" : {

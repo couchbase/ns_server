@@ -16,6 +16,7 @@
 -include("ns_common.hrl").
 -include("menelaus_web.hrl").
 -include("pipes.hrl").
+-include("rbac.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -35,6 +36,7 @@
          parse_json/1,
          reply_not_found/1,
          reply_text_404/0,
+         reply_password_expired/1,
          handle_request/2,
          hibernate/4,
          serve_file/3,
@@ -232,6 +234,12 @@ reply_server_error_before_close(Req, Type, What, Stack) ->
     {Msg, Report} = server_error_report(Req, Type, What, Stack),
     ?log_error("Server error during processing: ~p", [Report]),
     reply_json(Req, [Msg], 500, [{"Connection", "close"}]).
+
+-spec reply_password_expired(mochiweb_request()) -> mochiweb_response().
+reply_password_expired(Req) ->
+    Msg = {[{message, <<"Password expired">>},
+            {passwordExpired, true}]},
+    menelaus_util:reply_json(Req, Msg, 403).
 
 hibernate(Req, M, F, A) when is_atom(M), is_atom(F), is_list(A) ->
     erlang:hibernate(?MODULE, wake_up, [Req, M, F, A]).

@@ -534,10 +534,17 @@ handle_cbauth_post(Req) ->
                                     true -> admin;
                                     false -> Domain
                                 end,
-            menelaus_util:reply_json(
-              Req, {[{user, erlang:list_to_binary(User)},
-                     {domain, DomainForServices}] ++
-                        [{uuid, UUID} || UUID =/= undefined]});
+            case menelaus_auth:is_password_expired(Req) of
+                false ->
+                    menelaus_util:reply_json(
+                      Req, {[{user, erlang:list_to_binary(User)},
+                             {domain, DomainForServices}] ++
+                                [{uuid, UUID} || UUID =/= undefined]});
+                true ->
+                    %% We just provide a generic authentication error, for
+                    %% consistency of service behaviour with memcached
+                    menelaus_util:require_auth(Req)
+            end;
         false ->
             menelaus_util:require_auth(Req)
     end.

@@ -84,7 +84,8 @@
          identity :: rbac_identity() | '_' | {'_', admin},
          extra_groups = [],
          extra_roles = [],
-         expiration_datetime_utc :: calendar:datetime() | undefined | '_'}).
+         expiration_datetime_utc :: calendar:datetime() | undefined | '_',
+         password_expired = false :: boolean() | '_'}).
 
 -record(uisession,
         {type :: simple | saml | '_',

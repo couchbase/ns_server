@@ -1360,6 +1360,8 @@ perform_action(Req, {Permission, Fun, Args}) ->
             ns_server_stats:notify_counter(<<"rest_request_access_forbidden">>),
             menelaus_util:reply_json(
               NewReq, menelaus_web_rbac:forbidden_response([Permission]), 403);
+        password_expired ->
+            menelaus_util:reply_password_expired(NewReq);
         temporary_failure ->
             Msg = <<"Temporary error occurred. Please try again later.">>,
             menelaus_util:reply_json(NewReq, Msg, 503)

@@ -203,6 +203,25 @@ class UsersBackupTests(testlib.BaseTestSet):
         check_group_description(self.cluster, self.groupname,
                                 self.group_description)
 
+        # Test user with a temporary password
+        put_user(self.cluster, 'local', self.username, password=self.password,
+                 temporary_password="true")
+
+        backup = testlib.get_succ(self.cluster, '/settings/rbac/backup').json()
+
+        # Now delete the user and check that it will be recreated
+        delete_user(self.cluster, 'local', self.username)
+
+        restore(self.cluster, backup, can_overwrite=False,
+                expected_counters={'usersCreated': 1,
+                                   'usersSkipped': users_count,
+                                   'groupsCreated': 0,
+                                   'groupsSkipped': groups_count})
+
+        # Now password should give a 403 error as it is single use
+        check_user_pass_fail(self.cluster, self.username, self.password,
+                             status=403)
+
 
 def restore(cluster, backup, expected_counters=None, can_overwrite=False):
     can_overwrite_str = 'true' if can_overwrite else 'false'
@@ -243,8 +262,9 @@ def check_user_pass(cluster, username, password):
     testlib.get_succ(cluster, '/pools/default', auth=(username, password))
 
 
-def check_user_pass_fail(cluster, username, password):
-    testlib.get_fail(cluster, '/pools/default', 401, auth=(username, password))
+def check_user_pass_fail(cluster, username, password, status=401):
+    testlib.get_fail(cluster, '/pools/default', status,
+                     auth=(username, password))
 
 
 def check_group_description(cluster, group, description):

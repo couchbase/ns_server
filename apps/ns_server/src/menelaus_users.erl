@@ -23,7 +23,7 @@
 
 -export([
          %% User management:
-         store_user/6,
+         store_user/7,
          store_users/2,
          delete_user/1,
          select_users/1,
@@ -65,12 +65,12 @@
          authenticate_with_info/2,
          build_internal_auth/1,
          build_auth/1,
+         build_auth/2,
          maybe_update_auth/4,
          migrate_local_user_auth/2,
          format_plain_auth/1,
          delete_storage_offline/0,
          cleanup_bucket_roles/1,
-         get_passwordless/0,
          get_salt_and_mac/1,
 
          %% Backward compatibility:
@@ -95,10 +95,10 @@
 -define(MAX_USERS_ON_CE, 20).
 -define(DEFAULT_PROPS, [name, uuid, user_roles, group_roles, passwordless,
                         password_change_timestamp, groups, external_groups,
-                        locked]).
+                        locked, temporary_password]).
 -define(DEFAULT_GROUP_PROPS, [description, roles, ldap_group_ref]).
 
--record(state, {base, passwordless, cache_size = ?LDAP_GROUPS_CACHE_SIZE}).
+-record(state, {base, user_lists, cache_size = ?LDAP_GROUPS_CACHE_SIZE}).
 
 replicator_name() ->
     users_replicator.
@@ -197,8 +197,8 @@ delete_storage_offline() ->
                       [Path])
     end.
 
-get_passwordless() ->
-    gen_server:call(storage_name(), get_passwordless, infinity).
+get_user_lists() ->
+    gen_server:call(storage_name(), get_user_lists, infinity).
 
 init([]) ->
     _ = ets:new(versions_name(), [protected, named_table]),
@@ -243,7 +243,7 @@ on_save(Docs, State) ->
                 {{change_version, user_version}, S};
             ({auth, Identity}, Doc, S) ->
                 {{change_version, auth_version},
-                 maybe_update_passwordless(
+                 maybe_update_user_lists(
                    Identity,
                    replicated_dets:get_value(Doc),
                    replicated_dets:is_deleted(Doc),
@@ -291,42 +291,64 @@ handle_info({change_version, Key} = Msg, #state{base = Base} = State) ->
     gen_event:notify(user_storage_events, {Key, {Ver, Base}}),
     {noreply, State}.
 
-maybe_update_passwordless(_Identity, _Value, _Deleted, State = #state{passwordless = undefined}) ->
+maybe_update_user_lists(_Identity, _Value, _Deleted,
+                        State = #state{user_lists = undefined}) ->
     State;
-maybe_update_passwordless(Identity, _Value, true, State = #state{passwordless = Passwordless}) ->
-    State#state{passwordless = lists:delete(Identity, Passwordless)};
-maybe_update_passwordless(Identity, Auth, false, State = #state{passwordless = Passwordless}) ->
-    NewPasswordless =
-        case authenticate_with_info(Auth, "") of
-            true ->
-                case lists:member(Identity, Passwordless) of
-                    true ->
-                        Passwordless;
-                    false ->
-                        [Identity | Passwordless]
-                end;
-            false ->
-                lists:delete(Identity, Passwordless)
-        end,
-    State#state{passwordless = NewPasswordless}.
+maybe_update_user_lists(Identity, _Value, _Deleted = true,
+                          State = #state{user_lists = {Passwordless,
+                                                       TemporaryPassword}}) ->
+    State#state{user_lists = {lists:delete(Identity, Passwordless),
+                              lists:delete(Identity, TemporaryPassword)}};
+maybe_update_user_lists(Identity, Auth, false,
+                        State = #state{user_lists = {Passwordless,
+                                                     TemporaryPassword}}) ->
+    IsPasswordless = authenticate_with_info(Auth, ""),
+    NewPasswordless = update_list(Identity, IsPasswordless, Passwordless),
+    IsTemporaryPassword = is_temporary_password(Auth),
+    NewTemporaryPassword = update_list(Identity, IsTemporaryPassword,
+                                       TemporaryPassword),
+    State#state{user_lists = {NewPasswordless, NewTemporaryPassword}}.
 
-handle_call(get_passwordless, _From, TableName, #state{passwordless = undefined} = State) ->
-    Passwordless =
+update_list(Value, _Include = true, List) ->
+    case lists:member(Value, List) of
+        true ->
+            List;
+        false ->
+            [Value | List]
+    end;
+update_list(Value, _Include = false, List) ->
+    lists:delete(Value, List).
+
+handle_call(get_user_lists, _From, TableName,
+            #state{user_lists = undefined} = State) ->
+    {Passwordless, TemporaryPassword} =
         pipes:run(
           replicated_dets:select(TableName, {auth, '_'}, 100),
           ?make_consumer(
              pipes:fold(?producer(),
-                        fun ({{auth, Identity}, Auth}, Acc) ->
-                                case authenticate_with_info(Auth, "") of
-                                    true ->
-                                        [Identity | Acc];
-                                    false ->
-                                        Acc
-                                end
-                        end, []))),
-    {reply, Passwordless, State#state{passwordless = Passwordless}};
-handle_call(get_passwordless, _From, _TableName, #state{passwordless = Passwordless} = State) ->
-    {reply, Passwordless, State}.
+                        fun ({{auth, Identity}, Auth},
+                             {AccPasswordless, AccTemporaryPassword}) ->
+                                NewPasswordless =
+                                    case authenticate_with_info(Auth, "") of
+                                        true ->
+                                            [Identity | AccPasswordless];
+                                        false ->
+                                            AccPasswordless
+                                    end,
+                                NewTemporaryPassword =
+                                    case is_temporary_password(Auth) of
+                                        true ->
+                                            [Identity | AccTemporaryPassword];
+                                        false ->
+                                            AccTemporaryPassword
+                                    end,
+                                {NewPasswordless, NewTemporaryPassword}
+                        end, {[], []}))),
+    {reply, {Passwordless, TemporaryPassword},
+     State#state{user_lists = {Passwordless, TemporaryPassword}}};
+handle_call(get_user_lists, _From, _TableName,
+            #state{user_lists = UserLists} = State) ->
+    {reply, UserLists, State}.
 
 select_users(KeySpec) ->
     select_users(KeySpec, ?DEFAULT_PROPS).
@@ -344,7 +366,7 @@ make_props_transducer(ItemList) ->
 make_props(Id, Props, ItemList) ->
     make_props(Id, Props, ItemList, make_props_state(ItemList)).
 
-make_props(Id, Props, ItemList, {Passwordless, Definitions,
+make_props(Id, Props, ItemList, {Passwordless, TemporaryPassword, Definitions,
                                  Snapshot}) ->
 
     %% Groups calculation might be heavy, so we want to make sure they
@@ -395,6 +417,8 @@ make_props(Id, Props, ItemList, {Passwordless, Definitions,
                 {DirtyGroups, NewCache};
             (locked, Cache) ->
                 {is_user_locked(Id), Cache};
+            (temporary_password, Cache) ->
+                {lists:member(Id, TemporaryPassword), Cache};
             (Name, Cache) ->
                 {proplists:get_value(Name, Props), Cache}
         end,
@@ -407,8 +431,12 @@ make_props(Id, Props, ItemList, {Passwordless, Definitions,
     Res.
 
 make_props_state(ItemList) ->
-    Passwordless = lists:member(passwordless, ItemList) andalso
-        get_passwordless(),
+    {Passwordless, TemporaryPassword} =
+        case lists:member(passwordless, ItemList) orelse
+            lists:member(temporary_password, ItemList) of
+            false -> {[], []};
+            true -> get_user_lists()
+        end,
     {Definitions, Snapshot} =
         case lists:member(roles, ItemList) orelse
             lists:member(user_roles, ItemList) orelse
@@ -417,31 +445,47 @@ make_props_state(ItemList) ->
                      ns_bucket:get_snapshot(all, [collections, uuid])};
             false -> {undefined, undefined}
         end,
-    {Passwordless, Definitions, Snapshot}.
+    {Passwordless, TemporaryPassword, Definitions, Snapshot}.
 
 select_auth_infos(KeySpec) ->
     replicated_dets:select(storage_name(), {auth, KeySpec}, 100).
 
-rebuild_auth(false, undefined) ->
-    password_required;
 rebuild_auth(false, Password) ->
-    build_auth([Password]);
-rebuild_auth({_, _}, undefined) ->
-    same;
-rebuild_auth({_, _CurrentAuth}, Password) ->
-    build_auth([Password]).
+    build_auth([Password], false);
+rebuild_auth({_, CurrentAuth}, Password) ->
+    TemporaryPassword = is_temporary_password(CurrentAuth),
+    build_auth([Password], TemporaryPassword).
+
+rebuild_auth(false, undefined, _TemporaryPassword) ->
+    password_required;
+rebuild_auth(false, Password, TemporaryPassword) ->
+    build_auth([Password], TemporaryPassword);
+rebuild_auth({_, CurrentAuth}, undefined, TemporaryPassword) ->
+    case {is_temporary_password(CurrentAuth), TemporaryPassword} of
+        {true, true} -> same;
+        {false, false} -> same;
+        {false, true} ->
+            expire_password(CurrentAuth);
+        {true, false} ->
+            remove_password_expiry(CurrentAuth)
+    end;
+rebuild_auth({_, _CurrentAuth}, Password, TemporaryPassword) ->
+    build_auth([Password], TemporaryPassword).
 
 -spec store_user(rbac_identity(), rbac_user_name(),
                  {password, rbac_password()} | {auth, rbac_auth()},
-                 [rbac_role()], [rbac_group_id()], boolean()) ->
+                 [rbac_role()], [rbac_group_id()], boolean(), boolean()) ->
           ok | {error, {roles_validation, _}} |
           {error, password_required} | {error, too_many}.
-store_user(Identity, Name, PasswordOrAuth, Roles, Groups, Locked) ->
+store_user(Identity, Name, PasswordOrAuth, Roles, Groups, Locked,
+           TemporaryPassword) ->
     Props = [{name, Name} || Name =/= undefined] ++
         [{groups, Groups} || Groups =/= undefined] ++
         [{pass_or_auth, PasswordOrAuth},
          {roles, Roles},
-         {locked, Locked}],
+         {locked, Locked}] ++
+        [{temporary_password, TemporaryPassword}
+         || TemporaryPassword =/= undefined],
     case store_users([{Identity, Props}], true) of
         {ok, _UpdatedUsers} -> ok;
         {error, _} = Error -> Error
@@ -496,6 +540,7 @@ prepare_store_user(Snapshot, CanOverwrite, {{_, Domain} = Identity, Props}) ->
             Name = proplists:get_value(name, Props),
             Groups = proplists:get_value(groups, Props),
             PasswordOrAuth = proplists:get_value(pass_or_auth, Props),
+            TemporaryPassword = proplists:get_bool(temporary_password, Props),
             Roles = proplists:get_value(roles, Props),
             Locked = proplists:get_value(locked, Props, false),
 
@@ -521,7 +566,8 @@ prepare_store_user(Snapshot, CanOverwrite, {{_, Domain} = Identity, Props}) ->
                     {local, {password, Password}} ->
                         CurrentAuth = replicated_dets:get(storage_name(),
                                                           {auth, Identity}),
-                        case rebuild_auth(CurrentAuth, Password) of
+                        case rebuild_auth(CurrentAuth, Password,
+                                          TemporaryPassword) of
                             password_required ->
                                 throw({error, password_required});
                             A -> A
@@ -584,14 +630,19 @@ store_auth(Identity, Auth, Priority) when is_list(Auth) ->
                    storage_name(), {auth, Identity}, Auth)
     end.
 
-change_password({_UserName, local} = Identity, Password) when is_list(Password) ->
+change_password({_UserName, local} = Identity, Password)
+  when is_list(Password) ->
     case replicated_dets:get(storage_name(), {user, Identity}) of
         false ->
             user_not_found;
         _ ->
             CurrentAuth = replicated_dets:get(storage_name(), {auth, Identity}),
-            Auth = rebuild_auth(CurrentAuth, Password),
-            store_auth(Identity, Auth, ?REPLICATED_DETS_HIGH_PRIORITY)
+            Auth0 = rebuild_auth(CurrentAuth, Password),
+            %% Note, if the password is the same, we still disable expiry.
+            %% We may in a later patch compare the hashes and only disable
+            %% expiry if the password changes
+            Auth1 = proplists:delete(<<"expiry">>, Auth0),
+            store_auth(Identity, Auth1, ?REPLICATED_DETS_HIGH_PRIORITY)
     end.
 
 is_user_locked({_, local} = Identity) ->
@@ -672,7 +723,7 @@ obsolete_get_salt_and_mac(Auth) ->
      {?HASHES_KEY, [base64:encode(Mac)]}].
 
 -spec authenticate(rbac_user_id(), rbac_password()) ->
-    {ok, rbac_identity()} | {error, auth_failure}.
+    {ok | expired, rbac_identity()} | {error, auth_failure}.
 authenticate(Username, Password) ->
     Identity = {Username, local},
     case get_auth_info(Identity) of
@@ -682,8 +733,12 @@ authenticate(Username, Password) ->
             Res = authenticate_with_info(Auth, Password),
             case Res of
                 true ->
-                    maybe_migrate_password_hashes(Auth, Identity, Password),
-                    {ok, Identity};
+                    maybe_migrate_password_hashes(Auth, Identity,
+                                                  Password),
+                    case proplists:get_value(<<"expiry">>, Auth) of
+                        0 -> {expired, Identity};
+                        _ -> {ok, Identity}
+                    end;
                 false ->
                     {error, auth_failure}
             end
@@ -707,14 +762,21 @@ maybe_update_plain_auth_hashes(CurrentAuth, Password, Type) ->
             _ ->
                 true
         end,
+    TemporaryPassword = is_temporary_password(CurrentAuth),
 
     case Migrate of
         false ->
             CurrentAuth;
         true ->
             misc:update_proplist(
-              CurrentAuth, build_plain_auth([Password], Type))
+              CurrentAuth, build_plain_auth([Password], Type, TemporaryPassword))
     end.
+
+is_temporary_password(false) ->
+    false;
+is_temporary_password(Auth) ->
+    %% expiry=0 is used for temporary password
+    proplists:get_value(<<"expiry">>, Auth) == 0.
 
 allow_hash_migration_during_auth_default() ->
     cluster_compat_mode:is_cluster_76() andalso
@@ -894,7 +956,7 @@ get_group_props(GroupId, Items) ->
 
 get_group_props(GroupId, Items, Definitions, Buckets) ->
     Props = get_props_raw(group, GroupId),
-    make_group_props(Props, Items, {[], Definitions, Buckets}).
+    make_group_props(Props, Items, {[], [], Definitions, Buckets}).
 
 group_exists(GroupId) ->
     false =/= replicated_dets:get(storage_name(), {group, GroupId}).
@@ -920,7 +982,7 @@ get_group_roles(GroupId, Definitions, Snapshot) ->
 make_group_props(Props, Items) ->
     make_group_props(Props, Items, make_props_state(Items)).
 
-make_group_props(Props, Items, {_, Definitions, Snapshot}) ->
+make_group_props(Props, Items, {_, _, Definitions, Snapshot}) ->
     lists:map(
       fun (roles = Name) ->
               Roles = proplists:get_value(roles, Props, []),
@@ -1020,35 +1082,49 @@ get_user_uuid(Identity) ->
     get_user_uuid(Identity, undefined).
 
 -spec get_user_uuid(rbac_identity(), binary() | undefined) -> binary() |
-                                                              undefined.
+          undefined.
 get_user_uuid({_, local} = Identity, Default) ->
     proplists:get_value(uuid, get_props_raw(user, Identity), Default);
 get_user_uuid(_, _) ->
     undefined.
 
 build_internal_auth(Passwords) ->
-    build_auth(Passwords, internal).
+    build_auth(Passwords, internal, false).
 
 build_auth(Passwords) ->
-    build_auth(Passwords, regular).
+    build_auth(Passwords, regular, false).
 
-build_auth(Passwords, AuthType) ->
-    build_plain_auth(Passwords, AuthType) ++
-    scram_sha:build_auth(Passwords, AuthType).
+build_auth(Passwords, TemporaryPassword) ->
+    build_auth(Passwords, regular, TemporaryPassword).
 
-build_plain_auth(Passwords, AuthType) when AuthType =:= regular;
-                                           AuthType =:= internal ->
-    case cluster_compat_mode:is_cluster_76() of
-        true ->
-            HashType = ns_config:read_key_fast(password_hash_alg,
-                                               ?DEFAULT_PWHASH),
-            format_plain_auth(ns_config_auth:new_password_hash(HashType,
-                                                               AuthType,
-                                                               Passwords));
-        false ->
-            format_pre_76_plain_auth(
-              ns_config_auth:new_password_hash(?SHA1_HASH, AuthType, Passwords))
+build_auth(Passwords, AuthType, TemporaryPassword) ->
+    build_plain_auth(Passwords, AuthType, TemporaryPassword) ++
+        scram_sha:build_auth(Passwords, AuthType).
+
+build_plain_auth(Passwords, AuthType, TemporaryPassword)
+  when AuthType =:= regular; AuthType =:= internal ->
+    Auth =
+        case cluster_compat_mode:is_cluster_76() of
+            true ->
+                HashType = ns_config:read_key_fast(password_hash_alg,
+                                                   ?DEFAULT_PWHASH),
+                format_plain_auth(ns_config_auth:new_password_hash(HashType,
+                                                                   AuthType,
+                                                                   Passwords));
+            false ->
+                format_pre_76_plain_auth(
+                  ns_config_auth:new_password_hash(?SHA1_HASH, AuthType, Passwords))
+        end,
+    case TemporaryPassword of
+        true -> expire_password(Auth);
+        false -> Auth
     end.
+
+expire_password(Auth) ->
+    Auth ++ [{<<"expiry">>, 0}].
+
+remove_password_expiry(Auth) ->
+    proplists:delete(<<"expiry">>, Auth).
 
 format_plain_auth(HashInfo) ->
     [{<<"hash">>, {HashInfo}}].
@@ -1324,17 +1400,17 @@ maybe_update_plain_auth_hashes_test_() ->
 
     TestFun =
         fun ([OldSettings, NewSettings], _R) ->
-                 {lists:flatten(io_lib:format("Old Settings - ~p,~n"
-                                              "New Settings - ~p.~n",
-                                              [OldSettings, NewSettings])),
-                  fun () ->
-                          maybe_update_plain_auth_hashes_test__(
-                            %% Build both plain auth hashes and scram-sha
-                            %% hashes. scram-sha hashes are enabled by
-                            %% default.
-                            menelaus_users:build_auth([Password]),
-                            Password, OldSettings, NewSettings)
-                  end}
+                {lists:flatten(io_lib:format("Old Settings - ~p,~n"
+                                             "New Settings - ~p.~n",
+                                             [OldSettings, NewSettings])),
+                 fun () ->
+                         maybe_update_plain_auth_hashes_test__(
+                           %% Build both plain auth hashes and scram-sha
+                           %% hashes. scram-sha hashes are enabled by
+                           %% default.
+                           menelaus_users:build_auth([Password]),
+                           Password, OldSettings, NewSettings)
+                 end}
         end,
 
     {foreachx,
@@ -1343,7 +1419,10 @@ maybe_update_plain_auth_hashes_test_() ->
              meck_ns_config_read_key_fast(OldSettings),
              meck:expect(
                cluster_compat_mode, is_cluster_76,
-                fun () -> true end)
+               fun () -> true end),
+             meck:expect(
+               cluster_compat_mode, is_cluster_morpheus,
+               fun () -> true end)
      end,
      fun (_X, _R) ->
              meck:unload([ns_config, cluster_compat_mode])
@@ -1355,51 +1434,53 @@ maybe_update_auth_test() ->
     CommonSettings = [{allow_hash_migration_during_auth, true}],
     Sha1Settings = [{password_hash_alg, ?SHA1_HASH} | CommonSettings],
     PbkdfSettings = fun (I1, I2) ->
-                        [{password_hash_alg, ?PBKDF2_HASH},
-                         {pbkdf2_sha512_iterations, I1},
-                         {pbkdf2_sha512_iterations_internal, I2}
-                         | CommonSettings]
+                            [{password_hash_alg, ?PBKDF2_HASH},
+                             {pbkdf2_sha512_iterations, I1},
+                             {pbkdf2_sha512_iterations_internal, I2}
+                            | CommonSettings]
                     end,
     ArgonSettings = fun (T, M, T2, M2) ->
-                        [{password_hash_alg, ?ARGON2ID_HASH},
-                         {argon2id_time, T},
-                         {argon2id_mem, M},
-                         {argon2id_time_internal, T2},
-                         {argon2id_mem_internal, M2}
-                         | CommonSettings]
+                            [{password_hash_alg, ?ARGON2ID_HASH},
+                             {argon2id_time, T},
+                             {argon2id_mem, M},
+                             {argon2id_time_internal, T2},
+                             {argon2id_mem_internal, M2}
+                            | CommonSettings]
                     end,
     ScramSettings = fun (I1, I2) ->
-                        [{memcached_password_hash_iterations, I1},
-                         {memcached_password_hash_iterations_internal, I2}
-                         | CommonSettings]
+                            [{memcached_password_hash_iterations, I1},
+                             {memcached_password_hash_iterations_internal, I2}
+                            | CommonSettings]
                     end,
     %% Just change the order in all lists without actually changing
     %% anything meaningful
     Rearrange = fun (A) ->
-                    generic:maybe_transform(
-                        fun (L) when is_list(L) -> {continue, lists:reverse(L)};
-                            (T) -> {continue, T}
-                        end, A)
+                        generic:maybe_transform(
+                          fun (L) when is_list(L) -> {continue, lists:reverse(L)};
+                              (T) -> {continue, T}
+                          end, A)
                 end,
     %% Generate auth record then change settings, and verify that auth
     %% changes when it is expected to change
     Check = fun (OldSettings, NewSettings, Type, ExpectChange) ->
-                Pass = "abc",
-                meck_ns_config_read_key_fast(OldSettings),
-                Auth = build_auth([Pass], Type),
-                meck_ns_config_read_key_fast(NewSettings),
-                Res = maybe_update_auth(Rearrange(Auth), {"test", local},
-                                        Pass, Type),
-                case ExpectChange of
-                    true -> ?assertMatch({new_auth, _}, Res);
-                    false -> ?assertEqual(no_change, Res)
-                end
+                    Pass = "abc",
+                    meck_ns_config_read_key_fast(OldSettings),
+                    Auth = build_auth([Pass], Type, false),
+                    meck_ns_config_read_key_fast(NewSettings),
+                    Res = maybe_update_auth(Rearrange(Auth), {"test", local},
+                                            Pass, Type),
+                    case ExpectChange of
+                        true -> ?assertMatch({new_auth, _}, Res);
+                        false -> ?assertEqual(no_change, Res)
+                    end
             end,
     ShouldChange = Check(_, _, _, true),
     ShouldNotChange = Check(_, _, _, false),
     meck:new([ns_config, cluster_compat_mode], [passthrough]),
     try
         meck:expect(cluster_compat_mode, is_cluster_76,
+                    fun () -> true end),
+        meck:expect(cluster_compat_mode, is_cluster_morpheus,
                     fun () -> true end),
 
         %% Testing 2 things here:

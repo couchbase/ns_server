@@ -20,7 +20,9 @@ class UsersTestSet(testlib.BaseTestSet):
                                                      Service.QUERY,
                                                      Service.CBAS],
                                            # i.e. wait for service up
-                                           balanced=True)
+                                           balanced=True,
+                                           buckets=[{"name": "test",
+                                                     "ramQuota": 100}])
 
     def setup(self):
         self.user = testlib.random_str(10)
@@ -130,9 +132,64 @@ class UsersTestSet(testlib.BaseTestSet):
                  roles='admin', full_name=name, groups='', locked="false")
         assert_not_locked(self.cluster, user, password)
 
+    def expired_user_test(self):
+        user = self.user
+        name1 = testlib.random_str(10)
+        password1 = testlib.random_str(10)
+        assert_wrong_password(self.cluster, user, password1)
+
+        # User creation
+        put_user(self.cluster, 'local', user, password=password1,
+                 roles='admin', full_name=name1, groups='',
+                 validate_user_props=True)
+        assert_password_not_expired(self.cluster, user, password1)
+
+        # Set password to temporary and test that this can be reverted
+        put_user(self.cluster, 'local', user,
+                 roles='admin', full_name=name1, groups='',
+                 temporary_password="true", validate_user_props=True)
+        assert_password_expired(self.cluster, user, password1)
+
+        put_user(self.cluster, 'local', user,
+                 roles='admin', full_name=name1, groups='',
+                 temporary_password="false", validate_user_props=True)
+        assert_password_not_expired(self.cluster, user, password1)
+
+        # Set password to temporary again
+        put_user(self.cluster, 'local', user, password=password1,
+                 roles='admin', full_name=name1, groups='',
+                 temporary_password="true", validate_user_props=True)
+
+        # UI session should fail
+        node = self.cluster.connected_nodes[0]  # Need consistent node for UI
+        session = requests.Session()
+        headers = {'Host': testlib.random_str(8), 'ns-server-ui': 'yes'}
+        testlib.post_fail(node, '/uilogin', headers=headers,
+                          session=session, auth=None, expected_code=403,
+                          data={'user': user, 'password': password1})
+
+        # Change password
+        password2 = testlib.random_str(10)
+        change_user_password(self.cluster, user, password1, password2)
+
+        # New password should work
+        assert_password_not_expired(self.cluster, user, password2)
+
+        # Start UI session
+        session, headers, node = start_ui_session(self.cluster, user, password2)
+
+        # UI session works
+        testlib.get_succ(node, '/pools', headers=headers,
+                         session=session, auth=None)
+
+        # Delete user
+        delete_user(self.cluster, 'local', user)
+        assert_wrong_password(self.cluster, user, password2)
+
 
 def put_user(cluster_or_node, domain, userid, password=None, roles=None,
-             full_name=None, groups=None, locked=None, validate_user_props=False):
+             full_name=None, groups=None, locked=None, temporary_password=None,
+             validate_user_props=False):
     data = {}
     if roles is not None:
         data['roles'] = roles
@@ -144,6 +201,8 @@ def put_user(cluster_or_node, domain, userid, password=None, roles=None,
         data['groups'] = groups
     if locked is not None:
         data['locked'] = locked
+    if temporary_password is not None:
+        data['temporaryPassword'] = temporary_password
     testlib.put_succ(cluster_or_node,
                      f'/settings/rbac/users/{domain}/{userid}',
                      data=data)
@@ -215,6 +274,31 @@ def assert_not_locked(cluster, user, password):
     testlib.assert_eq(user_info.get('locked'), False)
 
     testlib.get_succ(cluster, '/pools/default',
+                     auth=(user, password))
+
+
+def assert_password_expired(cluster, user, password):
+    user_info = testlib.get_succ(cluster,
+                                 '/settings/rbac/users/local/' + user).json()
+    testlib.assert_eq(user_info.get('temporary_password'), True)
+
+    r = testlib.get_fail(cluster, '/pools/default', expected_code=403,
+                         auth=(user, password))
+    testlib.assert_eq(r.json(), {"message": "Password expired",
+                                 "passwordExpired": True})
+
+    testlib.get_fail(cluster, '/admin/vitals', service=Service.QUERY,
+                     expected_code=401, auth=(user, password))
+
+
+def assert_password_not_expired(cluster, user, password):
+    user_info = testlib.get_succ(cluster,
+                                 '/settings/rbac/users/local/' + user).json()
+    testlib.assert_eq(user_info.get('temporary_password'), False)
+
+    testlib.get_succ(cluster, '/pools/default', auth=(user, password))
+
+    testlib.get_succ(cluster, '/admin/vitals', service=Service.QUERY,
                      auth=(user, password))
 
 

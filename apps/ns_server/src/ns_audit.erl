@@ -23,7 +23,7 @@
          delete_user/2,
          password_change/2,
          locked_change/3,
-         set_user/7,
+         set_user/8,
          add_node/7,
          remove_node/2,
          failover_nodes/3,
@@ -642,8 +642,10 @@ locked_change(Req, Identity, Locked) ->
     put(locked_change, Req, [{identity, get_identity(Identity)},
                              {locked, Locked}]).
 
-set_user(Req, Identity, Roles, Name, Groups, Locked, Reason) ->
+set_user(Req, Identity, Roles, Name, Groups, Locked, TemporaryPassword,
+         Reason) ->
     put(set_user, Req, [{identity, get_identity(Identity)},
+                        {temporary_password, TemporaryPassword},
                         {roles, {list, [menelaus_web_rbac:role_to_string(Role)
                                         || Role <- Roles]}},
                         {full_name, Name},

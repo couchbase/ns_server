@@ -38,6 +38,7 @@
          get_user_id/1,
          get_session_id/1,
          is_UI_req/1,
+         is_password_expired/1,
          verify_rest_auth/2,
          authenticate/1,
          new_session_id/0,
@@ -205,6 +206,14 @@ is_UI_req(Req) ->
         #authn_res{} -> false
     end.
 
+-spec is_password_expired(mochiweb_request()) -> boolean().
+is_password_expired(Req) ->
+    case get_authn_res(Req) of
+        undefined -> false;
+        #authn_res{password_expired = true} -> true;
+        #authn_res{} -> false
+    end.
+
 -spec extract_auth(mochiweb_request()) -> {User :: string(), Passwd :: string()}
                                               | {scram_sha, string()}
                                               | {token, string() | undefined}
@@ -276,7 +285,13 @@ is_internal_identity({"@" ++ _, admin}) -> true;
 is_internal_identity(_) -> false.
 
 init_auth(Identity) ->
-    #authn_res{identity = Identity, authenticated_identity = Identity}.
+    #authn_res{identity = Identity,
+               authenticated_identity = Identity}.
+
+init_auth_password_expired(Identity) ->
+    #authn_res{identity = Identity,
+               authenticated_identity = Identity,
+               password_expired = true}.
 
 -spec authenticate(error | undefined |
                    {token, auth_token()} |
@@ -380,7 +395,16 @@ do_authenticate({Username, Password}) ->
         {ok, Id} ->
             ?count_auth("local", "succ"),
             {ok, init_auth(Id), []};
-        {error, auth_failure}->
+        {expired, Id} ->
+            %% Note, we also count the auth failure if we determine that the
+            %% request can't be performed with an expired password
+            %% (i.e. the permission is not 'no_check').
+            %% While this does mean double counting the authentication, it's not
+            %% worth the complexity to make sure we only count the successful
+            %% auth when the request can be performed
+            ?count_auth("local", "succ"),
+            {ok, init_auth_password_expired(Id), []};
+        {error, auth_failure} ->
             authenticate_external(Username, Password);
         {error, Reason} ->
             ?count_auth("local", "failure"),
@@ -463,7 +487,10 @@ uilogin(Req, Params) ->
                     menelaus_util:reply_json(
                       Req,
                       menelaus_web_rbac:forbidden_response([UIPermission]),
-                      403)
+                      403);
+                {error, password_expired} ->
+                    menelaus_util:reply_password_expired(Req)
+
             end;
         {error, auth_failure} ->
             ns_audit:login_failure(
@@ -491,7 +518,10 @@ uilogin_phase2(Req, UISessionType, UISessionName,
                     {ok, [CookieHeader]};
                 AuthzRes when AuthzRes == forbidden; AuthzRes == auth_failure ->
                     ns_audit:login_failure(store_authn_res(AuthnRes, Req)),
-                    {error, {access_denied, UIPermission}}
+                    {error, {access_denied, UIPermission}};
+                password_expired ->
+                    ns_audit:login_failure(store_authn_res(AuthnRes, Req)),
+                    {error, password_expired}
             end;
         true ->
             {error, internal}
@@ -518,7 +548,7 @@ can_use_cert_for_auth(Req) ->
 -spec verify_rest_auth(mochiweb_request(),
                        rbac_permission() | no_check | local) ->
           {auth_failure | forbidden | allowed
-          | temporary_failure, mochiweb_request()}.
+          | temporary_failure | password_expired, mochiweb_request()}.
 verify_rest_auth(Req, Permission) ->
     Auth = extract_auth(Req),
     case authenticate(Auth) of
@@ -780,7 +810,7 @@ extract_identity_from_cert(CertDer) ->
     end.
 
 -spec check_permission(#authn_res{}, rbac_permission() | no_check | local) ->
-                              auth_failure | forbidden | allowed.
+          auth_failure | forbidden | allowed | password_expired.
 check_permission(_AuthnRes, no_check) ->
     allowed;
 check_permission(#authn_res{identity = {"@" ++ _, local_token}}, local) ->
@@ -795,7 +825,11 @@ check_permission(#authn_res{identity = Identity},
         _ ->
             allowed
     end;
-check_permission(#authn_res{identity = Identity} = AuthnRes, Permission) ->
+check_permission(#authn_res{password_expired=true}, _) ->
+    ?count_auth("error", "password_expired"),
+    password_expired;
+check_permission(#authn_res{identity = Identity} = AuthnRes,
+                 Permission) ->
     Roles = menelaus_roles:get_compiled_roles(AuthnRes),
     case Roles of
         [] ->
