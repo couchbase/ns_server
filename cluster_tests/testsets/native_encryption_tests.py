@@ -69,6 +69,8 @@ class NativeEncryptionTests(testlib.BaseTestSet):
                                       'keyEncrypted': 'true',
                                       'passwordSource': 'env'})
         change_password(self.sm_node, password='')
+        set_cfg_dek_limit(self.cluster, None)
+        set_bucket_dek_limit(self.cluster, self.bucket_name, None)
 
     def random_node(self):
         return random.choice(self.cluster.connected_nodes)
@@ -822,6 +824,30 @@ class NativeEncryptionTests(testlib.BaseTestSet):
         # Can't delete because it is in use
         delete_secret(self.random_node(), aws_secret_id, expected_code=400)
 
+    def dek_limit_test(self):
+        set_cfg_dek_limit(self.cluster, 2)
+        set_bucket_dek_limit(self.cluster, self.bucket_name, 2)
+
+        secret = auto_generated_secret(
+                     usage=[f'bucket-encryption-{self.bucket_name}',
+                            'configuration-encryption'])
+        secret_id = create_secret(self.random_node(), secret)
+
+        set_cfg_encryption(self.random_node(), 'secret', secret_id,
+                           dek_rotation=1)
+        self.cluster.create_bucket({'name': self.bucket_name, 'ramQuota': 100,
+                                    'encryptionAtRestSecretId': secret_id,
+                                    'encryptionAtRestDekRotationInterval': 1},
+                                   sync=True)
+
+        time.sleep(3)
+
+        verify_bucket_deks_files(self.cluster, self.bucket_name,
+                                 verify_key_count=lambda n: n <= 2)
+
+        verify_dek_files(self.cluster, Path() / 'config' / 'deks',
+                         verify_key_count=lambda n: n <= 2)
+
 
 class NativeEncryptionPermissionsTests(testlib.BaseTestSet):
 
@@ -1300,6 +1326,22 @@ def poll_verify_deks_and_collect_ids(*args, **kwargs):
     print(f'key list extracted: {current_dek_ids}')
 
     return current_dek_ids
+
+
+def set_cfg_dek_limit(cluster, n):
+    key = '{cb_cluster_secrets, {max_dek_num, configDek}}'
+    if n is None:
+        testlib.diag_eval(cluster, f'ns_config:delete({key}).')
+    else:
+        testlib.diag_eval(cluster, f'ns_config:set({key}, {n}).')
+
+
+def set_bucket_dek_limit(cluster, bucket, n):
+    key = '{cb_cluster_secrets, {max_dek_num, {bucketDek, "' + bucket + '"}}}'
+    if n is None:
+        testlib.diag_eval(cluster, f'ns_config:delete({key}).')
+    else:
+        testlib.diag_eval(cluster, f'ns_config:set({key}, {n}).')
 
 
 def parse_iso8601(s):
