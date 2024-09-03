@@ -186,63 +186,66 @@ import_secret(Props) ->
 
 export_secret(#{type := DataType} = Props) ->
     keys_to_json(
-      lists:map(
-        fun ({id, Id}) ->
-                {id, Id};
-            ({name, Name}) ->
-                {name, iolist_to_binary(Name)};
-            ({creation_time, DateTime}) ->
-                {creation_time, iso8601:format(DateTime)};
-            ({type, T}) ->
-                {type, T};
-            ({usage, UList}) ->
-                {usage, lists:map(
-                          fun ({bucket_encryption, BucketName}) ->
-                                  iolist_to_binary([<<"bucket-encryption-">>,
-                                                    BucketName]);
-                              (config_encryption) ->
-                                  <<"configuration-encryption">>;
-                              (secrets_encryption) ->
-                                  <<"secrets-encryption">>
-                          end, UList)};
-            ({data, D}) when DataType == ?GENERATED_KEY_TYPE ->
-                {data, {format_auto_generated_key_data(D)}};
-            ({data, D}) when DataType == ?AWSKMS_KEY_TYPE ->
-                {data, {format_aws_key_data(D)}}
-        end, maps:to_list(Props))).
+      maps:to_list(
+        maps:map(
+          fun (id, Id) ->
+                  Id;
+              (name, Name) ->
+                  iolist_to_binary(Name);
+              (creation_time, DateTime) ->
+                  iso8601:format(DateTime);
+              (type, T) ->
+                  T;
+              (usage, UList) ->
+                  lists:map(
+                    fun ({bucket_encryption, BucketName}) ->
+                            iolist_to_binary([<<"bucket-encryption-">>,
+                                              BucketName]);
+                        (config_encryption) ->
+                            <<"configuration-encryption">>;
+                        (secrets_encryption) ->
+                            <<"secrets-encryption">>
+                    end, UList);
+              (data, D) when DataType == ?GENERATED_KEY_TYPE ->
+                  {format_auto_generated_key_data(D)};
+              (data, D) when DataType == ?AWSKMS_KEY_TYPE ->
+                  {format_aws_key_data(D)}
+          end, Props))).
 
 format_auto_generated_key_data(Props) ->
     ActiveKeyId = maps:get(active_key_id, Props),
-    lists:map(
-      fun ({auto_rotation, B}) ->
-              {auto_rotation, B};
-          ({rotation_interval_in_days, Interval}) ->
-              {rotation_interval_in_days, Interval};
-          ({next_rotation_time, DateTime}) ->
-              {next_rotation_time, iso8601:format(DateTime)};
-          ({last_rotation_time, DateTime}) ->
-              {last_rotation_time, iso8601:format(DateTime)};
-          ({encrypt_by, E}) ->
-              {encrypt_by, E};
-          ({encrypt_secret_id, SId}) ->
-              {encrypt_secret_id, SId};
-          ({keys, Keys}) ->
-              {keys, lists:map(
-                       fun (KeyProps) ->
-                           {format_key(KeyProps, ActiveKeyId)}
-                       end, Keys)}
-      end, maps:to_list(maps:remove(active_key_id, Props))).
+    maps:to_list(
+      maps:map(
+        fun (auto_rotation, B) ->
+                B;
+            (rotation_interval_in_days, Interval) ->
+                Interval;
+            (next_rotation_time, DateTime) ->
+                iso8601:format(DateTime);
+            (last_rotation_time, DateTime) ->
+                iso8601:format(DateTime);
+            (encrypt_by, E) ->
+                E;
+            (encrypt_secret_id, SId) ->
+                SId;
+            (keys, Keys) ->
+                lists:map(
+                  fun (KeyProps) ->
+                      {format_key(KeyProps, ActiveKeyId)}
+                  end, Keys)
+        end, maps:remove(active_key_id, Props))).
 
 format_aws_key_data(Props) ->
-    lists:map(
-      fun ({key_arn, U}) -> {key_arn, iolist_to_binary(U)};
-          ({region, R}) -> {region, iolist_to_binary(R)};
-          ({credentials_file, F}) -> {credentials_file, iolist_to_binary(F)};
-          ({config_file, F}) -> {config_file, iolist_to_binary(F)};
-          ({profile, P}) -> {profile, iolist_to_binary(P)};
-          ({use_imds, U}) -> {use_imds, U};
-          ({uuid, U}) -> {uuid, U}
-      end, maps:to_list(Props)).
+    maps:to_list(
+      maps:map(
+        fun (key_arn, U) -> iolist_to_binary(U);
+            (region, R) -> iolist_to_binary(R);
+            (credentials_file, F) -> iolist_to_binary(F);
+            (config_file, F) -> iolist_to_binary(F);
+            (profile, P) -> iolist_to_binary(P);
+            (use_imds, U) -> U;
+            (uuid, U) -> U
+        end, Props)).
 
 format_key(Props, ActiveKeyId) ->
     lists:flatmap(fun ({id, Id}) ->
