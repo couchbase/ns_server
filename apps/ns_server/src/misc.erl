@@ -83,6 +83,15 @@ datetime_add(DateTime, Seconds) ->
     calendar:gregorian_seconds_to_datetime(
       calendar:datetime_to_gregorian_seconds(DateTime) + Seconds).
 
+utc_to_iso8601(UTCDatetime, Offset) ->
+    LocalDatetime = calendar:universal_time_to_local_time(UTCDatetime),
+    UTCOffset = case Offset of
+                    local -> get_utc_offset(LocalDatetime, UTCDatetime);
+                    utc -> {0, 0};
+                    {_, _} -> Offset
+                end,
+    iolist_to_binary(iso_8601_fmt(LocalDatetime, undefined, UTCOffset)).
+
 % formats time (see erlang:localtime/0) as ISO-8601 text
 iso_8601_fmt({{Year,Month,Day},{Hour,Min,Sec}}, Millis, UTCOffset) ->
     TimeS = iso_8601_fmt_datetime({{Year,Month,Day}, {Hour,Min,Sec}}, "-", ":"),

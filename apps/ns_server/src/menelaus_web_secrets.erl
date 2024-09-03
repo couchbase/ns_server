@@ -193,7 +193,7 @@ export_secret(#{type := DataType} = Props) ->
               (name, Name) ->
                   iolist_to_binary(Name);
               (creation_time, DateTime) ->
-                  iso8601:format(DateTime);
+                  misc:utc_to_iso8601(DateTime, local);
               (type, T) ->
                   T;
               (usage, UList) ->
@@ -221,9 +221,9 @@ format_auto_generated_key_data(Props) ->
             (rotation_interval_in_days, Interval) ->
                 Interval;
             (next_rotation_time, DateTime) ->
-                iso8601:format(DateTime);
+                misc:utc_to_iso8601(DateTime, local);
             (last_rotation_time, DateTime) ->
-                iso8601:format(DateTime);
+                misc:utc_to_iso8601(DateTime, local);
             (encrypt_by, E) ->
                 E;
             (encrypt_secret_id, SId) ->
@@ -251,7 +251,7 @@ format_key(Props, ActiveKeyId) ->
     lists:flatmap(fun ({id, Id}) ->
                       [{id, Id}, {active, Id == ActiveKeyId}];
                   ({creation_time, DateTime}) ->
-                      [{creation_time, iso8601:format(DateTime)}];
+                      [{creation_time, misc:utc_to_iso8601(DateTime, local)}];
                   ({active, Active}) ->
                       [{active, Active}];
                   ({key, {_, _Binary}}) ->
