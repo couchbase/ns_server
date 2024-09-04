@@ -671,21 +671,22 @@ obsolete_get_salt_and_mac(Auth) ->
      {?SALT_KEY, base64:encode(Salt)},
      {?HASHES_KEY, [base64:encode(Mac)]}].
 
--spec authenticate(rbac_user_id(), rbac_password()) -> boolean().
+-spec authenticate(rbac_user_id(), rbac_password()) ->
+    {ok, rbac_identity()} | {error, auth_failure}.
 authenticate(Username, Password) ->
     Identity = {Username, local},
     case get_auth_info(Identity) of
         false ->
-            false;
+            {error, auth_failure};
         Auth ->
             Res = authenticate_with_info(Auth, Password),
             case Res of
                 true ->
-                    maybe_migrate_password_hashes(Auth, Identity, Password);
+                    maybe_migrate_password_hashes(Auth, Identity, Password),
+                    {ok, Identity};
                 false ->
-                    ok
-            end,
-            Res
+                    {error, auth_failure}
+            end
     end.
 
 %% Note: this functions assumes CurrentAuth is in 7.6 format

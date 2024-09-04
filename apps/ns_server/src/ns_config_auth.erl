@@ -145,12 +145,7 @@ authenticate(Username, Password) ->
         {ok, Id} ->
             {ok, Id};
         {error, auth_failure} ->
-            case menelaus_users:authenticate(Username, Password) of
-                true ->
-                    {ok, {Username, local}};
-                false ->
-                    {error, auth_failure}
-            end;
+            menelaus_users:authenticate(Username, Password);
         {error, Reason} ->
             {error, Reason}
     end.
