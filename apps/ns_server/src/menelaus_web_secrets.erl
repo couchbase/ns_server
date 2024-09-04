@@ -167,7 +167,8 @@ keys_remap() ->
       config_file => configFile,
       use_imds => useIMDS,
       encrypt_by => encryptBy,
-      encrypt_secret_id => encryptSecretId}.
+      encrypt_secret_id => encryptSecretId,
+      stored_ids => storedKeyIds}.
 
 keys_to_json(Term) ->
     transform_keys(keys_remap(), Term).
@@ -193,7 +194,7 @@ export_secret(#{type := DataType} = Props) ->
               (name, Name) ->
                   iolist_to_binary(Name);
               (creation_time, DateTime) ->
-                  misc:utc_to_iso8601(DateTime, local);
+                  format_datetime(DateTime);
               (type, T) ->
                   T;
               (usage, UList) ->
@@ -221,9 +222,9 @@ format_auto_generated_key_data(Props) ->
             (rotation_interval_in_days, Interval) ->
                 Interval;
             (next_rotation_time, DateTime) ->
-                misc:utc_to_iso8601(DateTime, local);
+                format_datetime(DateTime);
             (last_rotation_time, DateTime) ->
-                misc:utc_to_iso8601(DateTime, local);
+                format_datetime(DateTime);
             (encrypt_by, E) ->
                 E;
             (encrypt_secret_id, SId) ->
@@ -244,19 +245,24 @@ format_aws_key_data(Props) ->
             (config_file, F) -> iolist_to_binary(F);
             (profile, P) -> iolist_to_binary(P);
             (use_imds, U) -> U;
-            (uuid, U) -> U
+            (stored_ids, StoredIds) ->
+                [{[{id, Id}, {creation_time, format_datetime(CT)}]}
+                 || #{id := Id, creation_time := CT} <- StoredIds]
         end, Props)).
 
 format_key(Props, ActiveKeyId) ->
     lists:flatmap(fun ({id, Id}) ->
                       [{id, Id}, {active, Id == ActiveKeyId}];
                   ({creation_time, DateTime}) ->
-                      [{creation_time, misc:utc_to_iso8601(DateTime, local)}];
+                      [{creation_time, format_datetime(DateTime)}];
                   ({active, Active}) ->
                       [{active, Active}];
                   ({key, {_, _Binary}}) ->
                       [{key, <<"******">>}]
               end, maps:to_list(maps:remove(encrypted_by, Props))).
+
+format_datetime(DateTime) ->
+    misc:utc_to_iso8601(DateTime, local).
 
 validate_key_usage(Name, State) ->
     validator:string_array(
@@ -366,7 +372,7 @@ awskms_key_validators(CurSecretProps) ->
      validator:default(credentialsFile, "", _),
      validator:string(configFile, _),
      validator:default(configFile, "", _),
-     validator:validate(fun (_) -> {error, "read only"} end, uuid, _),
+     validator:validate(fun (_) -> {error, "read only"} end, storedKeyIds, _),
      validator:string(profile, _),
      validator:default(profile, "", _)] ++
     case CurSecretProps of

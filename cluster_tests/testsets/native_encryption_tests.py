@@ -1238,7 +1238,7 @@ def get_kek_id(cluster, secret_id):
             if k['active']:
                 return k['id']
     if r['type'] == 'awskms-aes-key-256':
-        return r['data']['uuid']
+        return r['data']['storedKeyIds'][0]['id']
     return None
 
 

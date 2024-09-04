@@ -118,7 +118,9 @@
                           config_file := string(),
                           credentials_file := string(),
                           use_imds := boolean(),
-                          uuid := uuid()}.
+                          stored_ids :=
+                            [#{id := key_id(),
+                               creation_time := calendar:datetime()}]}.
 -type secret_id() :: non_neg_integer().
 -type key_id() :: uuid().
 -type chronicle_snapshot() :: direct | map().
@@ -694,9 +696,9 @@ copy_static_props(#{type := Type, id := Id,
                set_active_key_in_props(_, OldActiveId),
                set_last_rotation_time_in_props(_, LastRotationTime)]);
         #{type := ?AWSKMS_KEY_TYPE} ->
-            #{data := #{uuid := UUID}} = OldSecretProps,
+            #{data := #{stored_ids := StoredIds}} = OldSecretProps,
             #{data := NewData} = NewSecretProps2,
-            NewSecretProps2#{data => NewData#{uuid => UUID}};
+            NewSecretProps2#{data => NewData#{stored_ids => StoredIds}};
         _ ->
             NewSecretProps2
     end.
@@ -801,13 +803,19 @@ ensure_kek_on_disk(#{id := Id, key := {encrypted_binary, Key},
                                  CreationTime).
 
 -spec ensure_aws_kek_on_disk(secret_props()) -> ok | {error, _}.
-ensure_aws_kek_on_disk(#{creation_time := CreationTime, data := Data}) ->
-    #{uuid := UUID, key_arn := KeyArn, region := Region, profile := Profile,
-      config_file := ConfigFile, credentials_file := CredsFile,
-      use_imds := UseIMDS} = Data,
-    encryption_service:store_awskey(UUID, KeyArn, Region, Profile,
-                                    CredsFile, ConfigFile, UseIMDS,
-                                    CreationTime).
+ensure_aws_kek_on_disk(#{data := Data}) ->
+    #{stored_ids := StoredIds, key_arn := KeyArn, region := Region,
+      profile := Profile, config_file := ConfigFile,
+      credentials_file := CredsFile, use_imds := UseIMDS} = Data,
+
+    Res = lists:map(
+            fun (#{id := Id, creation_time := CreationTime}) ->
+                {Id, encryption_service:store_awskey(Id, KeyArn, Region,
+                                                     Profile, CredsFile,
+                                                     ConfigFile, UseIMDS,
+                                                     CreationTime)}
+            end, StoredIds),
+    misc:many_to_one_result(Res).
 
 -spec garbage_collect_keks() -> ok.
 garbage_collect_keks() ->
@@ -820,14 +828,7 @@ garbage_collect_keks() ->
 
 -spec all_kek_ids() -> [key_id()].
 all_kek_ids() ->
-    lists:flatmap(fun (#{type := ?AWSKMS_KEY_TYPE, data := #{uuid := UUID}}) ->
-                          [UUID];
-                      (#{type := ?GENERATED_KEY_TYPE,
-                         data := #{keys := Keys}}) ->
-                          [Id || #{id := Id} <- Keys];
-                      (#{}) ->
-                          []
-                  end, get_all()).
+    lists:flatmap(get_all_keys_from_props(_), get_all()).
 
 -spec prepare_new_secret(secret_props()) ->
             {ok, secret_props()} | {error, not_supported | bad_encrypt_id()}.
@@ -841,8 +842,10 @@ prepare_new_secret(#{type := ?GENERATED_KEY_TYPE,
     else
         {error, _} = Error -> Error
     end;
-prepare_new_secret(#{type := ?AWSKMS_KEY_TYPE, data := Data} = Props) ->
-    {ok, Props#{data => Data#{uuid => new_key_id()}}};
+prepare_new_secret(#{type := ?AWSKMS_KEY_TYPE, data := Data,
+                     creation_time := CT} = Props) ->
+    {ok, Props#{data => Data#{stored_ids => [#{id => new_key_id(),
+                                               creation_time => CT}]}}};
 prepare_new_secret(#{type := _Type}) ->
     {error, not_supported}.
 
@@ -1210,8 +1213,8 @@ get_all_keys_from_props(#{type := ?GENERATED_KEY_TYPE,
                           data := #{keys := Keys}}) ->
     lists:map(fun (#{id := Id}) -> Id end, Keys);
 get_all_keys_from_props(#{type := ?AWSKMS_KEY_TYPE,
-                          data := #{uuid := Id}}) ->
-    [Id].
+                          data := #{stored_ids := StoredIds}}) ->
+    lists:map(fun (#{id := Id}) -> Id end, StoredIds).
 
 -spec validate_secret_in_txn(secret_props(), #{} | secret_props(),
                              chronicle_snapshot()) ->
@@ -1299,8 +1302,8 @@ get_active_key_id_from_secret(#{type := ?GENERATED_KEY_TYPE,
                                 data := #{active_key_id := Id}}) ->
     {ok, Id};
 get_active_key_id_from_secret(#{type := ?AWSKMS_KEY_TYPE,
-                                data := #{uuid := UUID}}) ->
-    {ok, UUID};
+                                data := #{stored_ids := [#{id := Id} | _]}}) ->
+    {ok, Id};
 get_active_key_id_from_secret(#{}) ->
     {error, not_supported}.
 
