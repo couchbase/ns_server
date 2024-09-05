@@ -25,7 +25,8 @@
          default_config/1,
          get_stats/0,
          config_upgrade_to_72/1,
-         config_upgrade_to_76/1]).
+         config_upgrade_to_76/1,
+         config_upgrade_to_cypher/1]).
 
 -import(menelaus_util,
         [reply/2,
@@ -44,7 +45,16 @@
 -define(MAX_DATA_DISK_ISSUES_TIMEPERIOD, 3600). %% seconds
 
 -define(DATA_DISK_NON_RESPONSIVENESS_CONFIG_KEY,
-    failover_on_data_disk_non_responsiveness).
+        failover_on_data_disk_non_responsiveness).
+-define(MIN_DATA_DISK_NON_RESPONSIVENESS_TIMEPERIOD,
+  ?get_param(min_data_disk_non_responsiveness_timeperiod, 5)). %% seconds
+-define(DEFAULT_DATA_DISK_NON_RESPONSIVENESS_TIMEPERIOD,
+  ?get_param(default_data_disk_non_responsiveness_timeperiod, 120)). %% seconds
+-define(MAX_DATA_DISK_NON_RESPONSIVENESS_TIMEPERIOD, 3600). %% seconds
+-define(FAILOVER_ON_DATA_DISK_NON_RESPONSIVENESS_DEFAULT,
+  {?DATA_DISK_NON_RESPONSIVENESS_CONFIG_KEY,
+    [{enabled, false},
+     {timePeriod, ?DEFAULT_DATA_DISK_NON_RESPONSIVENESS_TIMEPERIOD}]}).
 
 -define(FAILOVER_SERVER_GROUP_CONFIG_KEY, failover_server_group).
 
@@ -89,6 +99,13 @@ config_upgrade_to_76(Config) ->
                            [{?DISABLE_MAX_COUNT_CONFIG_KEY,
                              config_profile:get_bool(
                                failover_disable_max_count)}])}].
+
+config_upgrade_to_cypher(Config) ->
+  %% Merging existing cfg over the default to retain any already configured
+  %% settings (we may have configured some in 7.6.3 or newer).
+  [{set, auto_failover_cfg,
+    misc:update_proplist([?FAILOVER_ON_DATA_DISK_NON_RESPONSIVENESS_DEFAULT],
+                          auto_failover:get_cfg(Config))}].
 
 interesting_stats() ->
     [enabled, count, maxCount].
@@ -239,6 +256,7 @@ settings_extras_validators() ->
         true ->
             maxcount_validators() ++
             disk_issues_validators() ++
+            disk_non_responsiveness_validators() ++
             can_abort_rebalance_validators() ++
             preserve_durability_majority_validators();
         false ->
@@ -261,6 +279,15 @@ disk_issues_validators() ->
     [validator:boolean(KeyEnabled, _),
      validator:integer(KeyTimePeriod, ?MIN_DATA_DISK_ISSUES_TIMEPERIOD,
                        ?MAX_DATA_DISK_ISSUES_TIMEPERIOD, _),
+     validate_enabled_param(KeyEnabled, KeyTimePeriod, _)].
+
+disk_non_responsiveness_validators() ->
+    KeyEnabled = 'failoverOnDataDiskNonResponsiveness[enabled]',
+    KeyTimePeriod = 'failoverOnDataDiskNonResponsiveness[timePeriod]',
+    [validator:boolean(KeyEnabled, _),
+     validator:integer(KeyTimePeriod,
+                       ?MIN_DATA_DISK_NON_RESPONSIVENESS_TIMEPERIOD,
+                       ?MAX_DATA_DISK_NON_RESPONSIVENESS_TIMEPERIOD, _),
      validate_enabled_param(KeyEnabled, KeyTimePeriod, _)].
 
 preserve_durability_majority_validators() ->
@@ -290,6 +317,23 @@ process_failover_on_disk_issues(Props, Config, Extras) ->
             Extras
     end.
 
+process_failover_on_disk_non_responsiveness(Props, Config, Extras) ->
+    KeyEnabled = 'failoverOnDataDiskNonResponsiveness[enabled]',
+    KeyTimePeriod = 'failoverOnDataDiskNonResponsiveness[timePeriod]',
+    TimePeriod = proplists:get_value(KeyTimePeriod, Props),
+    DiskEnabled = proplists:get_value(KeyEnabled, Props),
+    case DiskEnabled of
+        true ->
+            Extra = set_failover_on_disk_non_responsiveness(true, TimePeriod),
+            add_extras(Extra, Extras);
+        false ->
+            {_, CurrTP} = get_failover_on_disk_non_responsiveness(Config),
+            Extra = disable_failover_on_disk_non_responsiveness(CurrTP),
+            add_extras(Extra, Extras);
+        undefined ->
+            Extras
+    end.
+
 process_boolean_extra(Props, Name, ConfigKey, Extras) ->
     CVal = proplists:get_value(Name, Props),
     case CVal of
@@ -309,14 +353,23 @@ process_extras(Props, Config) ->
                [{extras, []}],
                [process_failover_on_disk_issues(Props, Config, _) |
                 [process_boolean_extra(Props, Name, ConfigKey, _) ||
-                    {Name, ConfigKey} <- BoolParams]]),
+                    {Name, ConfigKey} <- BoolParams]] ++
+               [process_failover_on_disk_non_responsiveness(Props, Config, _)
+                   || cluster_compat_mode:is_cluster_cypher()]),
     proplists:get_value(extras, Extras).
 
 disable_failover_on_disk_issues(TP) ->
     set_failover_on_disk_issues(false, TP).
 
+disable_failover_on_disk_non_responsiveness(TP) ->
+  set_failover_on_disk_non_responsiveness(false, TP).
+
 set_failover_on_disk_issues(Enabled, TP) ->
     [{?DATA_DISK_ISSUES_CONFIG_KEY, [{enabled, Enabled}, {timePeriod, TP}]}].
+
+set_failover_on_disk_non_responsiveness(Enabled, TP) ->
+    [{?DATA_DISK_NON_RESPONSIVENESS_CONFIG_KEY,
+     [{enabled, Enabled}, {timePeriod, TP}]}].
 
 add_extras(Add, CurrRV) ->
     {extras, Old} = lists:keyfind(extras, 1, CurrRV),
@@ -347,7 +400,12 @@ get_extra_settings(Config) ->
                  proplists:get_value(
                      ?FAILOVER_PRESERVE_DURABILITY_MAJORITY_CONFIG_KEY,
                      Config)}
-                   || cluster_compat_mode:is_cluster_72()]]);
+                   || cluster_compat_mode:is_cluster_72()],
+               [{failoverOnDataDiskNonResponsiveness,
+                 {[{enabled, DNREnabled}, {timePeriod, DNRTimePeriod}]}} ||
+                {DNREnabled, DNRTimePeriod} <-
+                    [get_failover_on_disk_non_responsiveness(Config)],
+                   cluster_compat_mode:is_cluster_cypher()]]);
         false ->
             []
     end.
@@ -355,8 +413,15 @@ get_extra_settings(Config) ->
 disable_disk_failover(Config) ->
     case cluster_compat_mode:is_enterprise() of
         true ->
-            {_, CurrTP} = get_failover_on_disk_issues(Config),
-            disable_failover_on_disk_issues(CurrTP);
+            {_, IssuesTP} = get_failover_on_disk_issues(Config),
+            disable_failover_on_disk_issues(IssuesTP) ++
+                case cluster_compat_mode:is_cluster_cypher() of
+                    false -> [];
+                    true ->
+                        {_, NonRespTP} =
+                            get_failover_on_disk_non_responsiveness(Config),
+                        disable_failover_on_disk_non_responsiveness(NonRespTP)
+                end;
         false ->
             []
     end.
@@ -366,3 +431,34 @@ config_upgrade_to_72(Config) ->
       auto_failover:get_cfg(Config) ++
           [{?FAILOVER_PRESERVE_DURABILITY_MAJORITY_CONFIG_KEY,
             ?FAILOVER_PRESERVE_DURABILITY_MAJORITY_DEFAULT}]}].
+
+-ifdef(TEST).
+config_upgrade_to_cypher_test() ->
+    meck:new(cluster_compat_mode),
+    meck:expect(cluster_compat_mode, is_cluster_cypher, fun() -> true end),
+
+    meck:new(ns_config, [passthrough]),
+    meck:expect(ns_config, search_node_with_default,
+        fun(_, Default) ->
+            Default
+        end),
+
+    BaseConfig = default_config(true),
+    [{set, auto_failover_cfg, DefaultUpgradedCfg}] =
+        config_upgrade_to_cypher([BaseConfig]),
+    ?assertEqual([{enabled, false}, {timePeriod, 120}],
+                 proplists:get_value(?DATA_DISK_NON_RESPONSIVENESS_CONFIG_KEY,
+                                     DefaultUpgradedCfg)),
+
+    ExistingCfg =
+        misc:update_proplist(DefaultUpgradedCfg,
+                             [{?DATA_DISK_NON_RESPONSIVENESS_CONFIG_KEY,
+                               [{enabled, true}, {timePeriod, 5}]}]),
+    [{set, auto_failover_cfg, IgnoreExistingDiskNonRespCfg}] =
+        config_upgrade_to_cypher([[{?ROOT_CONFIG_KEY, ExistingCfg}]]),
+    ?assertEqual([{enabled, true}, {timePeriod, 5}],
+                 proplists:get_value(?DATA_DISK_NON_RESPONSIVENESS_CONFIG_KEY,
+                                     IgnoreExistingDiskNonRespCfg)),
+
+    meck:unload().
+-endif.
