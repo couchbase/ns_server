@@ -449,6 +449,7 @@ ensure_janitor_run(Item, Timeout) ->
                              {must_rebalance_services, list()} |
                              {unhosted_services, list()} |
                              {total_quota_too_high, list()} |
+                             {rebalance_not_allowed, list()} |
                              {params_mismatch, list()}.
 start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets,
                 DefragmentZones, Services, DesiredServicesNodes) ->
@@ -637,7 +638,7 @@ handle_event({call, From}, {maybe_start_rebalance,
             ok -> ok;
             {error, Msg} ->
                 set_rebalance_status(rebalance, {none, Msg}, undefined),
-                throw(ok)
+                throw({rebalance_not_allowed, Msg})
         end,
         NewChk = case retry_ok(Snapshot, FailedNodes, NewParams) of
                      false ->
@@ -1997,8 +1998,9 @@ rebalance_allowed(Snapshot) ->
         [] ->
             ok;
         Nodes ->
-            {error, io_lib:format("Unfinished failover of nodes ~p was found.",
-                                  [Nodes])}
+            Msg = io_lib:format("Unfinished failover of nodes ~p was found.",
+                                [Nodes]),
+            {error, lists:flatten(Msg)}
     end.
 
 handle_start_failover(Nodes, AllowUnsafe, From, Wait, FailoverType, Options) ->

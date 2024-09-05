@@ -1194,6 +1194,8 @@ do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
         in_bucket_hibernation ->
             reply_text(Req, "Cannot rebalance when another bucket is "
                             "pausing/resuming.", 503);
+        {rebalance_not_allowed, Reason} ->
+            reply_text(Req, Reason, 503);
         no_kv_nodes_left ->
             reply_json(Req, {[{noKVNodesLeft, 1}]}, 400);
         {nodes_down, Nodes} ->
