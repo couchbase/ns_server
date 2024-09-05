@@ -440,7 +440,7 @@ ensure_janitor_run(Item, Timeout) ->
 -spec start_rebalance([node()], [node()], all | [bucket_name()],
                       [list()], all | [atom()], map() | undefined) ->
                              {ok, binary()} | ok | in_progress |
-                             already_balanced | nodes_mismatch |
+                             nodes_mismatch |
                              no_active_nodes_left | in_recovery |
                              in_bucket_hibernation |
                              in_buckets_shutdown | {nodes_down, [atom()]} |

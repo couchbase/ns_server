@@ -1181,8 +1181,6 @@ do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
     ?log_info("Starting rebalance with params ~p", [Params]),
     case rebalance:start(KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
                          DefragmentZones, Services, DesiredSevicesTopology) of
-        already_balanced ->
-            reply(Req, 200);
         in_progress ->
             reply(Req, 200);
         nodes_mismatch ->
