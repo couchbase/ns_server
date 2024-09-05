@@ -33,8 +33,7 @@ class ConfigRemapTest(testlib.BaseTestSet):
     def requirements():
         return [
             testlib.ClusterRequirements(edition="Enterprise",
-                                        num_nodes=1,
-                                        memsize=1024)]
+                                        num_nodes=1)]
 
     def setup(self):
         testlib.post_succ(self.cluster, '/settings/autoFailover',

@@ -52,7 +52,7 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
                 testlib.ClusterRequirements(edition="Enterprise",
                                             num_nodes=2,
                                             services=list(testlib.Service),
-                                            memsize=1024,
+                                            min_memsize=1024,
                                             balanced=True,
                                             buckets=[]),
                 # Test with a single node. The hostname mapping is slightly
@@ -60,7 +60,7 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
                 testlib.ClusterRequirements(edition="Enterprise",
                                             num_nodes=1,
                                             services=[testlib.Service.KV],
-                                            memsize=1024,
+                                            min_memsize=1024,
                                             buckets=[])]
 
     def setup(self):
