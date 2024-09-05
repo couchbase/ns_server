@@ -33,7 +33,7 @@ sys.path.append(scripts_dir)
 
 import node_remap
 
-REMAP_MULTIPLE = 2
+REMAP_OFFSET = 10
 
 class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
 
@@ -100,7 +100,7 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
 
     def remap_cluster(self, old_cluster):
         old_start_index = old_cluster.first_node_index
-        new_start_index = old_start_index * REMAP_MULTIPLE
+        new_start_index = old_start_index + REMAP_OFFSET
 
         cluster_path = (run.scriptdir /
                         Path(f'test_cluster_data-{old_cluster.index}'))
@@ -152,7 +152,7 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
         # that it was remapped properly. We can't check the ip files because
         # they will all list localhost/cb.local.
         old_start_index = old_cluster.first_node_index
-        new_start_index = old_start_index * REMAP_MULTIPLE
+        new_start_index = old_start_index + REMAP_OFFSET
 
         cluster_path = (run.scriptdir /
                         Path(f'test_cluster_data-{old_cluster.index}'))
@@ -186,7 +186,7 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
         # ports.
         cluster_run_lib.base_api_port -= old_cluster.first_node_index
 
-        new_first_node_index = old_cluster.first_node_index * REMAP_MULTIPLE
+        new_first_node_index = old_cluster.first_node_index + REMAP_OFFSET
         try:
             # Turn on new rempped cluster
             print(f"Starting remapped cluster at node index "
@@ -198,7 +198,7 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
                     old_cluster.auth,
                     old_cluster.index,
                     run.tmp_cluster_dir,
-                    old_cluster.first_node_index * REMAP_MULTIPLE,
+                    old_cluster.first_node_index + REMAP_OFFSET,
                     connect=False)
 
             # Bucket should come back
