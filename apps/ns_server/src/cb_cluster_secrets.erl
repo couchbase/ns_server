@@ -1598,11 +1598,28 @@ calculate_next_dek_cleanup(CurDateTime, DeksInfo) ->
     Times =
         maps:fold(
           fun (Kind, KindDeks, Acc) ->
+              #{deks_being_dropped := IdsBeingDropped,
+                last_drop_timestamp := LastDropTS} = KindDeks,
+              DropRetryInterval = ?DEK_DROP_RETRY_TIME_S(Kind),
               case dek_expiration_times(Kind, KindDeks) of
                   {ok, ExpirationTimes} ->
-                      ?log_debug("~p DEKs expiration times: ~0p",
-                                 [Kind, ExpirationTimes]),
-                      [DT || {DT, _} <- ExpirationTimes] ++ Acc;
+                      ?log_debug("~p DEKs expiration times: ~0p, deks already "
+                                 "being dropped: ~0p (last drop time: ~0p)",
+                                 [Kind, ExpirationTimes, IdsBeingDropped,
+                                  LastDropTS]),
+                      lists:map(
+                        fun ({DT, Id}) ->
+                            case lists:member(Id, IdsBeingDropped) of
+                                true ->
+                                    LastDropDT =
+                                        calendar:gregorian_seconds_to_datetime(
+                                          LastDropTS),
+                                    misc:datetime_add(LastDropDT,
+                                                      DropRetryInterval);
+                                false ->
+                                    DT
+                            end
+                        end, ExpirationTimes) ++ Acc;
                   {error, not_found} ->
                       %% Assume there is not such entity anymore, we just
                       %% haven't removed deks yet, ignoring them
