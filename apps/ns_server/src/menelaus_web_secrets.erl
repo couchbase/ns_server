@@ -245,6 +245,7 @@ format_aws_key_data(Props) ->
             (config_file, F) -> iolist_to_binary(F);
             (profile, P) -> iolist_to_binary(P);
             (use_imds, U) -> U;
+            (last_rotation_time, DT) -> format_datetime(DT);
             (stored_ids, StoredIds) ->
                 [{[{id, Id}, {creation_time, format_datetime(CT)}]}
                  || #{id := Id, creation_time := CT} <- StoredIds]

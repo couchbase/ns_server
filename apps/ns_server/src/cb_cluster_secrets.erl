@@ -120,7 +120,8 @@
                           use_imds := boolean(),
                           stored_ids :=
                             [#{id := key_id(),
-                               creation_time := calendar:datetime()}]}.
+                               creation_time := calendar:datetime()}],
+                          last_rotation_time := calendar:datetime()}.
 -type secret_id() :: non_neg_integer().
 -type key_id() :: uuid().
 -type chronicle_snapshot() :: direct | map().
@@ -316,20 +317,12 @@ rotate(Id) ->
     execute_on_master({?MODULE, rotate_internal, [Id]}).
 
 -spec rotate_internal(secret_id()) -> ok | {error, not_found |
-                                                   not_supported |
                                                    bad_encrypt_id()}.
 rotate_internal(Id) ->
-    maybe
-        {ok, #{type := ?GENERATED_KEY_TYPE} = SecretProps} ?= get_secret(Id),
-        ?log_info("Rotating secret #~b", [Id]),
-        {ok, NewKey} ?= generate_key(erlang:universaltime(), SecretProps),
-        ok ?= add_active_key(Id, NewKey, _UpdateRotationTime = true),
-        sync_with_all_node_monitors(),
-        ok
-    else
-        {ok, #{}} ->
-            ?log_info("Secret #~p rotation failed: not_supported", [Id]),
-            {error, not_supported};
+    ?log_info("Rotating secret #~b", [Id]),
+    case get_secret(Id) of
+        {ok, SecretProps} ->
+            rotate_secret(SecretProps);
         {error, Reason} ->
             ?log_error("Secret #~p rotation failed: ~p", [Id, Reason]),
             {error, Reason}
@@ -636,6 +629,53 @@ terminate(_Reason, _State) ->
 %%% Internal functions
 %%%===================================================================
 
+-spec rotate_secret(secret_props()) -> ok | {error, not_found |
+                                                    bad_encrypt_id()}.
+rotate_secret(#{id := Id, type := ?GENERATED_KEY_TYPE} = SecretProps) ->
+    maybe
+        {ok, NewKey} ?= generate_key(erlang:universaltime(), SecretProps),
+        ok ?= add_active_key(Id, NewKey, _UpdateRotationTime = true),
+        sync_with_all_node_monitors(),
+        ok
+    else
+        {ok, #{}} ->
+            ?log_info("Secret #~p rotation failed: not_supported", [Id]),
+            {error, not_supported};
+        {error, Reason} ->
+            ?log_error("Secret #~p rotation failed: ~p", [Id, Reason]),
+            {error, Reason}
+    end;
+rotate_secret(#{id := Id, type := ?AWSKMS_KEY_TYPE}) ->
+    RV = chronicle_kv:transaction(
+           kv, [?CHRONICLE_SECRETS_KEY],
+           fun (Snapshot) ->
+               maybe
+                   {ok, #{type := ?AWSKMS_KEY_TYPE,
+                          data := #{stored_ids := StoredIds} = Data} = Props} ?=
+                       get_secret(Id, Snapshot),
+
+                   Time = calendar:universal_time(),
+                   NewStoredIds = [#{id => new_key_id(),
+                                     creation_time => Time} | StoredIds],
+                   NewData = Data#{stored_ids => NewStoredIds},
+                   Updated = functools:chain(
+                               Props,
+                               [_#{data => NewData},
+                                set_last_rotation_time_in_props(_, Time),
+                                replace_secret_in_list(_,
+                                                       get_all(Snapshot))]),
+                   true = is_list(Updated),
+                   {commit, [{set, ?CHRONICLE_SECRETS_KEY, Updated}]}
+               else
+                   {error, not_found} ->
+                       {abort, {error, not_found}}
+               end
+           end),
+    case RV of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
 -spec generate_key(Creation :: calendar:datetime(), secret_props()) ->
                                             {ok, kek_props()} |
                                             {error, bad_encrypt_id()}.
@@ -696,9 +736,12 @@ copy_static_props(#{type := Type, id := Id,
                set_active_key_in_props(_, OldActiveId),
                set_last_rotation_time_in_props(_, LastRotationTime)]);
         #{type := ?AWSKMS_KEY_TYPE} ->
-            #{data := #{stored_ids := StoredIds}} = OldSecretProps,
+            #{data := #{stored_ids := StoredIds} = OldData} = OldSecretProps,
+            LastRotationTime = maps:get(last_rotation_time, OldData, undefined),
             #{data := NewData} = NewSecretProps2,
-            NewSecretProps2#{data => NewData#{stored_ids => StoredIds}};
+            set_last_rotation_time_in_props(
+              NewSecretProps2#{data => NewData#{stored_ids => StoredIds}},
+              LastRotationTime);
         _ ->
             NewSecretProps2
     end.
@@ -1852,8 +1895,10 @@ update_next_rotation_time(_CurTime, #{}) ->
                                                             secret_props().
 set_last_rotation_time_in_props(Secret, undefined) ->
     Secret;
-set_last_rotation_time_in_props(#{type := ?GENERATED_KEY_TYPE,
-                                  data := Data} = Secret, CurUTCTime) ->
+set_last_rotation_time_in_props(#{type := T,
+                                  data := Data} = Secret, CurUTCTime)
+                                            when T == ?GENERATED_KEY_TYPE;
+                                                 T == ?AWSKMS_KEY_TYPE ->
     Secret#{data => Data#{last_rotation_time => CurUTCTime}}.
 
 -spec sync_with_all_node_monitors() -> ok | {error, [atom()]}.
