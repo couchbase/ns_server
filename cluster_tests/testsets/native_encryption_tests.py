@@ -16,6 +16,7 @@ import subprocess
 import base64
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
+import dateutil
 from testsets.secret_management_tests import change_password, post_es_config
 from testlib.requirements import Service
 
@@ -539,8 +540,8 @@ class NativeEncryptionTests(testlib.BaseTestSet):
                 return False
             assert 'lastRotationTime' in s['data'], f'no lastRotationTime: {s}'
             rotation_time_iso = s['data']['lastRotationTime']
-            rotation_time = datetime.fromisoformat(rotation_time_iso)
-            expected_time = datetime.fromisoformat(expected_rotation_time_iso)
+            rotation_time = parse_iso8601(rotation_time_iso)
+            expected_time = parse_iso8601(expected_rotation_time_iso)
             assert rotation_time >= expected_time, \
                    f'rotation happened too early'
             assert (rotation_time - expected_time).seconds <= 10, \
@@ -856,3 +857,9 @@ def decrypt_with_key(cluster, kek_id, b64data):
 
 def rotate_secret(cluster, secret_id):
     testlib.post_succ(cluster, f'/controller/rotateSecret/{secret_id}')
+
+
+def parse_iso8601(s):
+    # can't use datetime.fromisoformat because it doesn't parse UTC datetimes
+    # before version 3.11
+    return dateutil.parser.parse(s)
