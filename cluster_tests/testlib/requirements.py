@@ -27,7 +27,8 @@ class ClusterRequirements:
                  memsize=None, min_memsize=None, num_connected=None,
                  min_num_connected=None, afamily=None, services=None,
                  master_password_state=None, num_vbuckets=None,
-                 encryption=None, balanced=None, buckets=None):
+                 encryption=None, balanced=None, buckets=None,
+                 test_generated_cluster=None):
 
         def maybe(ReqClass, *args):
             if all(x is None for x in args):
@@ -48,7 +49,9 @@ class ClusterRequirements:
                 'num_vbuckets': maybe(NumVbuckets, num_vbuckets),
                 'encryption': maybe(N2nEncryption, encryption),
                 'balanced': maybe(Balanced, balanced),
-                'buckets': maybe(Buckets, buckets)
+                'buckets': maybe(Buckets, buckets),
+                'test_generated_cluster': maybe(TestGeneratedCluster,
+                                                test_generated_cluster)
             }
 
     def __str__(self):
@@ -746,6 +749,29 @@ class Buckets(Requirement):
             random.choice([[],
                            [{"name": "default",
                              "ramQuota": ram_quota}]]))
+
+
+# Requirement that the test is run on a test generated cluster, rather than an
+# existing (user supplied) cluster.
+class TestGeneratedCluster(Requirement):
+    def __init__(self, tg):
+        super().__init__(test_generated_cluster = tg)
+
+    def is_met(self, cluster):
+        return not cluster.existing_cluster
+
+    def can_be_met(self):
+        return False
+
+    @staticmethod
+    def random(req_dict):
+        # This doesn't really make sense to randomise. The test, if specified,
+        # cannot run on a user supplied cluster, so that should be respected or
+        # we will see failures. Anything not specifying this should be able to
+        # run on both, but the user may have supplied a cluster so we should use
+        # that if possible, i.e. leave the value as the implicit False.
+        req = req_dict.get("test_generated_cluster")
+        return req is True
 
 
 # Intersects two limits where each limit is defined either by exact match,

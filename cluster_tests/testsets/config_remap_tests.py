@@ -32,8 +32,10 @@ class ConfigRemapTest(testlib.BaseTestSet):
     @staticmethod
     def requirements():
         return [
+            # We make assumptions about paths, we cannot use a provided cluster.
             testlib.ClusterRequirements(edition="Enterprise",
-                                        num_nodes=1)]
+                                        num_nodes=1,
+                                        test_generated_cluster=True)]
 
     def setup(self):
         testlib.post_succ(self.cluster, '/settings/autoFailover',

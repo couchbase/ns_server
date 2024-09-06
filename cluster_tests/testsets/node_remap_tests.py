@@ -48,20 +48,24 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
                 # Test with multiple nodes, we should be able to establish
                 # connectivity. Currently testing with all services. We could
                 # drop that to just KV if we see other services cause issues in
-                # our tests.
+                # our tests. We make assumptions about paths, we cannot use a
+                # provided cluster.
                 testlib.ClusterRequirements(edition="Enterprise",
                                             num_nodes=2,
                                             services=list(testlib.Service),
                                             min_memsize=1024,
                                             balanced=True,
-                                            buckets=[]),
+                                            buckets=[],
+                                            test_generated_cluster=True),
                 # Test with a single node. The hostname mapping is slightly
-                # different.
+                # different. We make assumptions about paths, we cannot use a
+                # provided cluster.
                 testlib.ClusterRequirements(edition="Enterprise",
                                             num_nodes=1,
                                             services=[testlib.Service.KV],
                                             min_memsize=1024,
-                                            buckets=[])]
+                                            buckets=[],
+                                            test_generated_cluster=True)]
 
     def setup(self):
         self.load_and_assert_sample_bucket(self.cluster, "travel-sample")

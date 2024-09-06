@@ -81,7 +81,8 @@ def build_cluster(auth, cluster_index, start_args, connect, connect_args):
     return get_cluster(cluster_index, port, auth, processes, nodes)
 
 
-def get_cluster(cluster_index, start_port, auth, processes, nodes):
+def get_cluster(cluster_index, start_port, auth, processes, nodes,
+                existing_cluster=False):
     connected_nodes = []
     for i, node in enumerate(nodes):
         pools_default = f"/pools/default"
@@ -124,14 +125,15 @@ def get_cluster(cluster_index, start_port, auth, processes, nodes):
                       first_node_index=start_port - cluster_run_lib.base_api_port,
                       processes=processes,
                       auth=auth,
-                      index=cluster_index)
+                      index=cluster_index,
+                      existing_cluster=existing_cluster)
     print(f"Successfully connected to cluster: {cluster}")
     return cluster
 
 
 class Cluster:
     def __init__(self, nodes, connected_nodes, first_node_index, processes,
-                 auth, index):
+                 auth, index, existing_cluster=False):
         self._nodes = nodes
         self.connected_nodes = connected_nodes
         self.first_node_index = first_node_index
@@ -152,6 +154,7 @@ class Cluster:
         self.is_provisioned = get_bool("config_profile:is_provisioned()")
         self.is_dev_preview = get_bool("cluster_compat_mode:"
                                        "is_developer_preview().")
+        self.existing_cluster = existing_cluster
 
 
     def __str__(self):

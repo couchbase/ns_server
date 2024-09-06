@@ -561,7 +561,8 @@ def get_existing_cluster(address, start_port, auth, num_nodes):
              for i in range(num_nodes)]
 
     with testlib.no_output("connecting to existing cluster"):
-        return testlib.cluster.get_cluster(0, start_port, auth, [], nodes)
+        return testlib.cluster.get_cluster(0, start_port, auth, [], nodes,
+                                           existing_cluster=True)
 
 
 # Run each testset on the same cluster, counting how many individual tests were
