@@ -163,7 +163,6 @@ code_change(_OldVsn, State, _) -> {ok, State}.
 
 is_interesting(client_cert_auth) -> true;
 is_interesting({node, _, services}) -> true;
-is_interesting({service_map, _}) -> true;
 is_interesting({node, _, membership}) -> true;
 is_interesting({node, _, memcached}) -> true;
 is_interesting({node, _, capi_port}) -> true;
@@ -335,14 +334,7 @@ build_node_info(N, Config, Snapshot) ->
 build_node_info(_N, undefined, _Config, _Snapshot) ->
     undefined;
 build_node_info(N, User, Config, Snapshot) ->
-    IncludedServices =
-        case config_profile:get_bool({cbauth, include_non_active_services}) of
-            true ->
-                ns_cluster_membership:node_services(Snapshot, N);
-            false ->
-                ns_cluster_membership:node_active_services(Snapshot, N)
-        end,
-    Services = [rest | IncludedServices],
+    Services = [rest | ns_cluster_membership:node_services(Snapshot, N)],
     Ports0 = [Port || {_Key, Port} <- service_ports:get_ports_for_services(
                                         N, Config, Services)],
 
