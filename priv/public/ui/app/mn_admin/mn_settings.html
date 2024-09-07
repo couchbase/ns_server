@@ -19,6 +19,11 @@ licenses/APL2.txt.
     <a
        class="resp-hide-sml"
        ng-show="rbac.cluster.settings.read"
+       ui-sref="app.admin.settings.query"
+       ui-sref-active="selected">Query</a>
+    <a
+       class="resp-hide-sml"
+       ng-show="rbac.cluster.settings.read"
        ui-sref="app.admin.settings.autoCompaction"
        ui-sref-active="selected">Auto-Compaction</a>
     <a
@@ -44,6 +49,10 @@ licenses/APL2.txt.
            ng-show="rbac.cluster.settings.read"
            ui-sref="app.admin.settings.autoCompaction"
            ui-sref-active="selected">Auto-Compaction</a>
+        <a
+           ng-show="rbac.cluster.settings.read"
+           ui-sref="app.admin.settings.query"
+           ui-sref-active="selected">Query</a>
       </div>
     </span>
   </nav>

@@ -111,43 +111,6 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
       queries.push(promise2);
     }
 
-    if (mnPoolDefault.export.compat.atLeast55 && $scope.rbac.cluster.settings.write) {
-      let settings = [
-        "queryTmpSpaceDir", "queryTmpSpaceSize", "queryPipelineBatch", "queryPipelineCap",
-        "queryScanCap", "queryTimeout", "queryPreparedLimit", "queryCompletedLimit",
-        "queryCompletedThreshold", "queryLogLevel", "queryMaxParallelism",
-        "queryN1QLFeatCtrl"
-      ];
-      if (mnPoolDefault.export.compat.atLeast70) {
-        settings = settings.concat(["queryTxTimeout", "queryMemoryQuota"]);
-        if (mnPoolDefault.export.isEnterprise) {
-          settings.push("queryUseCBO");
-        }
-      }
-      if (mnPoolDefault.export.compat.atLeast75) {
-        settings.push("queryUseReplica");
-      }
-      promise3 = mnPromiseHelper(
-        vm,
-        mnClusterConfigurationService.postQuerySettings(
-          settings.reduce(function (acc, key) {
-            acc[key] = vm.querySettings[key];
-            return acc;
-          }, {})))
-        .catchErrors("querySettingsErrors")
-        .getPromise();
-
-      promise5 = mnPromiseHelper(vm, mnClusterConfigurationService.postCurlWhitelist(
-        vm.querySettings.queryCurlWhitelist,
-        vm.initialCurlWhitelist
-      ))
-        .catchErrors("curlWhitelistErrors")
-        .onSuccess(prepareQueryCurl)
-        .getPromise();
-
-      queries.push(promise3, promise5);
-    }
-
     if (mnPoolDefault.export.isEnterprise &&
         mnPoolDefault.export.compat.atLeast65 &&
         $scope.rbac.cluster.settings.write) {
@@ -230,25 +193,10 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
       saveSettings();
     }
   }
-  function maybeSetInititalValue(array, value) {
-    if (array.length === 0) {
-      array.push(value);
-    }
-  }
-  function prepareQueryCurl(querySettings) {
-    var queryCurl = querySettings.queryCurlWhitelist;
-    queryCurl.allowed_urls = queryCurl.allowed_urls || [];
-    queryCurl.disallowed_urls = queryCurl.disallowed_urls || [];
-    maybeSetInititalValue(queryCurl.allowed_urls, "");
-    maybeSetInititalValue(queryCurl.disallowed_urls, "");
-    vm.initialCurlWhitelist = _.cloneDeep(queryCurl);
-    vm.querySettings = querySettings;
-  }
   function isFormInitialized() {
     let compat = mnPoolDefault.export.compat;
     let cluster = $scope.rbac.cluster;
     return (vm.clusterName != void 0) && (vm.initialMemoryQuota != void 0) &&
-      ((compat.atLeast55 && cluster.settings.read) ? (vm.querySettings != void 0) : true) &&
       (cluster.xdcr.settings.read ? (vm.replicationSettings != void 0) : true) &&
       (cluster.admin.memcached.read ? (vm.readerThreads != void 0) : true) &&
       ((compat.atLeast66 && cluster.settings.read) ? (vm.settingsRebalance != void 0) : true) &&
@@ -259,7 +207,6 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
         (vm.settingsAnalytics != void 0) : true) &&
 
       mnSettingsClusterService.getInitChecker().every(v => v());
-
   }
   function activate() {
     mnSettingsClusterService.clearSubmitCallbacks();
@@ -269,11 +216,6 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
       .applyToScope(function (resp) {
         vm.clusterName = resp.clusterName;
       });
-
-    if (mnPoolDefault.export.compat.atLeast55 && $scope.rbac.cluster.settings.read) {
-      mnPromiseHelper(vm, mnClusterConfigurationService.getQuerySettings())
-        .onSuccess(prepareQueryCurl);
-    }
 
     var services = {
       kv: true,

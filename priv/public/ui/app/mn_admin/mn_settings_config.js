@@ -16,10 +16,12 @@ import mnElementCrane from "../components/directives/mn_element_crane/mn_element
 
 import mnSettingsNotifications from "./mn_settings_notifications_controller.js";
 import mnSettingsCluster from "./mn_settings_cluster_controller.js";
+import mnSettingsQuery from "./mn_settings_query_controller.js";
 import mnSettingsAutoFailover from "./mn_settings_auto_failover_controller.js";
 import mnSettingsNotificationsService from "./mn_settings_notifications_service.js";
 
 import mnSettingsTemplate from "./mn_settings.html";
+import mnSettingsQueryTemplate from "./mn_settings_query.html";
 import mnSettingsClusterTemplate from "./mn_settings_cluster.html";
 import mnSettingsAutoFailoverTemplate from "./mn_settings_auto_failover.html";
 import mnSettingsNotificationsTemplate from "./mn_settings_notifications.html";
@@ -34,6 +36,7 @@ angular
     mnSettingsNotifications,
     mnSettingsAutoFailover,
     mnSettingsCluster,
+    mnSettingsQuery,
     mnSettingsNotificationsService
   ])
   .config(["$stateProvider", mnSettingsConfig])
@@ -75,4 +78,18 @@ function mnSettingsConfig($stateProvider) {
         }
       }
     })
+    .state('app.admin.settings.query', {
+      url: '/cluster/query',
+      views: {
+        "": {
+          controller: 'mnSettingsQueryController as settingsClusterCtl',
+          template: mnSettingsQueryTemplate
+        },
+      },
+      data: {
+          permissions: "cluster.settings.read",
+          compat: "atLeast55"
+      },
+    })
+
 }
