@@ -959,6 +959,49 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                         min_time=drop_time,
                                         old_dek_ids=new_dek_ids)
 
+    def remove_old_deks_test(self):
+        secret = auto_generated_secret(usage=['bucket-encryption-*'])
+        secret_id = create_secret(self.random_node(), secret)
+        kek_id = get_kek_id(self.random_node(), secret_id)
+
+        create_time = datetime.now(timezone.utc).replace(microsecond=0)
+        self.cluster.create_bucket({'name': self.bucket_name, 'ramQuota': 100,
+                                    'encryptionAtRestSecretId': secret_id},
+                                   sync=True)
+        # Memorize deks in use (there should one on each kv node)
+        dek_ids = assert_bucket_deks_have_changed(self.cluster,
+                                                  self.bucket_name,
+                                                  verify_key_count=1,
+                                                  min_time=create_time,
+                                                  old_dek_ids=[])
+
+        self.cluster.update_bucket({'name': self.bucket_name,
+                                    'encryptionAtRestDekRotationInterval': 1})
+
+        # Now it generates a dek every sec, but it won't have more than 2 deks
+        # because we don't write any new data to the bucket, and we are not
+        # running compactions, so there always should be two deks: the one that
+        # was used to encrypt data (the very first dek), and the one that is
+        # active now.
+        poll_verify_bucket_deks_files(self.cluster, self.bucket_name,
+                                      verify_key_count=lambda n: n >= 2)
+
+        # Change dek lifetime to 1 second and wait...
+        self.cluster.update_bucket({'name': self.bucket_name,
+                                    'encryptionAtRestDekLifetime': 1,
+                                    'encryptionAtRestDekRotationInterval': 600})
+
+        # Now the very first dek should expire and the system should start
+        # a compaction in order to get rid of it
+        time.sleep(2)
+
+        assert_bucket_deks_have_changed(self.cluster,
+                                        self.bucket_name,
+                                        verify_key_count=1,
+                                        min_time=create_time,
+                                        old_dek_ids=dek_ids)
+
+
 class NativeEncryptionPermissionsTests(testlib.BaseTestSet):
 
     @staticmethod
@@ -1318,6 +1361,7 @@ def verify_dek_files(cluster, relative_path, verify_key_count=1,
                 print(f'Skipping file {path} (doesn\'t seem to be a key file)')
 
         if verify_key_count is not None:
+            print(f'dek count at {node}: {c}')
             if callable(verify_key_count):
                 assert verify_key_count(c), f'dek count is unexpected: {c}'
             else:
