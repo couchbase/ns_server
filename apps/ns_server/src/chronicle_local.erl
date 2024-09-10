@@ -180,7 +180,8 @@ get_encryption_dek_ids() ->
 provision() ->
     ?log_debug("Provision chronicle on this node"),
     try
-        ok = chronicle:provision([{kv, chronicle_kv, []}]),
+        ok = chronicle:provision([{kv, chronicle_kv, []},
+                                  {metakv, chronicle_kv, []}]),
         chronicle_upgrade:maybe_initialize()
     catch
         E:T:S ->

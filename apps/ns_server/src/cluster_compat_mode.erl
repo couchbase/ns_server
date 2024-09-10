@@ -197,7 +197,8 @@ consider_switching_compat_mode() ->
     end.
 
 upgrades() ->
-    [{?VERSION_76, rbac, menelaus_users, upgrade}].
+    [{?VERSION_76, rbac, menelaus_users, upgrade},
+     {?VERSION_MORPHEUS, metakv, chronicle_metakv, upgrade_to_morpheus}].
 
 do_upgrades(undefined, _, _, _) ->
     %% this happens during the cluster initialization. no upgrade needed
