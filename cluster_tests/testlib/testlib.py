@@ -409,7 +409,14 @@ def http_request(method, url, expected_code=None, verbose=True, session=None,
     else:
         res = requests.request(method, url, **kwargs)
     if verbose:
-        print(f'result: {res.status_code}')
+        text = ''
+        if hasattr(res, 'text') and res.text is not None:
+            max_len = 40
+            if len(res.text) > max_len:
+                text = f' {res.text[0:max_len]}...'
+            else:
+                text = f' {res.text}'
+        print(f'result: {res.status_code}{text}')
     if expected_code is not None:
         assert_http_code(expected_code, res),
     return res
