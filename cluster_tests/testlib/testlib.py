@@ -351,7 +351,7 @@ def set_config_key(cluster, key, value):
     return diag_eval(cluster, f'ns_config:set({key}, {value_str}).')
 
 
-def request(method, cluster_or_node, path, https=False, **kwargs):
+def request(method, cluster_or_node, path, https=False, session=None, **kwargs):
     kwargs_with_auth = set_default_auth(cluster_or_node, **kwargs)
     if isinstance(cluster_or_node, Node):
         node = cluster_or_node
@@ -367,14 +367,22 @@ def request(method, cluster_or_node, path, https=False, **kwargs):
     else:
         url = node.url + path
 
-    return http_request(method, url, **kwargs_with_auth)
+    print_session = True
+    if session is None:
+        session = node.get_default_session()
+        print_session = False
+
+    return http_request(method, url, session=session,
+                        print_session=print_session, **kwargs_with_auth)
 
 def http_request(method, url, expected_code=None, verbose=True, session=None,
-                 **kwargs):
+                 print_session=True, **kwargs):
     if 'timeout' not in kwargs:
         kwargs['timeout'] = 60
 
-    session_str = f'(session {id(session)}) ' if session is not None else ""
+    session_str = ''
+    if session is not None and print_session:
+        session_str = f'(session {id(session)}) '
 
     if verbose:
         print(f'sending {session_str}{method} {url} {kwargs} ' \

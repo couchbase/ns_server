@@ -9,6 +9,7 @@
 
 import testlib
 from testlib.util import strings_to_services
+import requests
 
 
 class Node:
@@ -22,6 +23,7 @@ class Node:
         self.data_path_cache = None
         self.tls_port_cache = None
         self.services_cached = None
+        self.session = None
 
     def __str__(self):
         return self.hostname()
@@ -106,3 +108,8 @@ class Node:
         # .get('xyz') over ['xyz'] because we want to return None if this does
         # not exist for tests
         return r.json().get('alternateAddresses')
+
+    def get_default_session(self):
+        if self.session is None:
+            self.session = requests.Session()
+        return self.session
