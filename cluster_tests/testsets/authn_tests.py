@@ -17,6 +17,7 @@ import tempfile
 import contextlib
 
 CERT_REQUIRED_ALERT = 'ALERT_CERTIFICATE_REQUIRED'
+HANDSHAKE_FAILURE_ALERT = 'SSLV3_ALERT_HANDSHAKE_FAILURE'
 
 class AuthnTests(testlib.BaseTestSet):
 
@@ -355,7 +356,7 @@ def assert_tls_cert_required_alert(fun):
     def do():
         try:
             fun()
-            assert False, f'TLS alert {CERT_REQUIRED_ALERT} is expected'
+            assert False, f'TLS alert is expected'
         except requests.exceptions.SSLError as e:
             print(f'Received {e}')
             # This error may appear intermittently for unknown reason.
@@ -363,7 +364,10 @@ def assert_tls_cert_required_alert(fun):
             # is received.
             if 'EOF occurred in violation of protocol' in str(e):
                 return False
-            testlib.assert_in(CERT_REQUIRED_ALERT, str(e))
+            assert CERT_REQUIRED_ALERT in str(e) or \
+                   HANDSHAKE_FAILURE_ALERT in str(e), \
+                   f'{CERT_REQUIRED_ALERT} (TLS1.3) or ' \
+                   f'{HANDSHAKE_FAILURE_ALERT} (TLS1.2) is expected, got: {e}'
         return True
 
     testlib.poll_for_condition(do, 0.1, attempts=10,
