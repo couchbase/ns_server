@@ -19,6 +19,7 @@ start({Cookie, LogDeks}) ->
         application:set_env(os_mon, disk_space_check_interval, 1),
         application:set_env(ns_server, babysitter_cookie, Cookie),
         application:set_env(ns_server, initial_log_deks, LogDeks),
+        application:set_env(ale, encryption_callbacks, ?ALE_ENCR_CALLBACKS),
 
         Apps = [ale, asn1, crypto, public_key, ssl, lhttpc, inets, sasl, os_mon,
                 xmerl, esaml, ns_common, ns_server],

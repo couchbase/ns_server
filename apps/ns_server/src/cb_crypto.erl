@@ -32,6 +32,7 @@
          file_encrypt_chunk/2,
 
          read_file/2,
+         file_encrypt_state_match/2,
          file_decrypt_init/3,
          file_decrypt_next_chunk/2,
 
@@ -112,6 +113,18 @@ atomic_write_file(Path, Bytes, DekSnapshot, Opts) when is_binary(Bytes) ->
           Filename = filename:basename(Path),
           encrypt_to_file(IODevice, Filename, Bytes, MaxChunkSize, DekSnapshot)
       end).
+
+get_key_id(undefined) ->
+    undefined;
+get_key_id(#{id := KeyId} = _Key) ->
+    KeyId.
+
+-spec file_encrypt_state_match(#dek_snapshot{},
+                               #file_encr_state{}) -> boolean().
+file_encrypt_state_match(#dek_snapshot{active_key = ActiveKey},
+                         #file_encr_state{key = FileActiveKey}) ->
+
+    get_key_id(ActiveKey) =:= get_key_id(FileActiveKey).
 
 -spec file_encrypt_init(string(), #dek_snapshot{}) ->
           {binary(), #file_encr_state{}}.

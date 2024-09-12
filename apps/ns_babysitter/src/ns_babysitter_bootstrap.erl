@@ -18,6 +18,8 @@ start() ->
 
 start({nocookie, nologdek}) ->
     try
+        application:set_env(ale, encryption_callbacks, ?ALE_ENCR_CALLBACKS),
+
         ok = application:start(ale),
         ok = application:start(sasl),
         ok = application:start(ns_babysitter, permanent),

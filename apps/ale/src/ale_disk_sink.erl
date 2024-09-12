@@ -46,7 +46,8 @@
           rotation_size :: non_neg_integer(),
           rotation_num_files :: pos_integer(),
           rotation_compress :: boolean(),
-          rotation_check_interval :: non_neg_integer()
+          rotation_check_interval :: non_neg_integer(),
+          encr_state :: any()
          }).
 
 start_link(Name, Path) ->
@@ -96,17 +97,22 @@ init([Name, Path, Opts]) ->
 
     {ok, State}.
 
-handle_call(sync, From, #state{worker = Worker} = State) ->
-    NewState = flush_buffer(State),
-
+do_work(Worker, Call, From, Timeout) ->
     Parent = self(),
     proc_lib:spawn_link(
       fun () ->
-              gen_server:reply(From, gen_server:call(Worker, sync, infinity)),
+              gen_server:reply(From, gen_server:call(Worker, Call, Timeout)),
               erlang:unlink(Parent)
-      end),
+      end).
 
+handle_call(sync, From, #state{worker = Worker} = State) ->
+    NewState = flush_buffer(State),
+    do_work(Worker, sync, From, infinity),
     {noreply, NewState};
+handle_call(notify_active_key_updt, From,
+            #state{worker = Worker} = State) ->
+    do_work(Worker, notify_active_key_updt, From, infinity),
+    {noreply, State};
 handle_call(Request, _From, State) ->
     {stop, {unexpected_call, Request}, State}.
 
@@ -287,16 +293,18 @@ do_rotate_file(From0, To0, Compress) ->
             Error
     end.
 
-maybe_rotate_files(#worker_state{sink_name = Name,
-                                 file_size = FileSize,
-                                 rotation_size = RotSize} = State)
-  when RotSize =/= 0, FileSize >= RotSize ->
+do_rotate_files(#worker_state{sink_name = Name} = State) ->
     time_stat(Name, rotation_time,
               fun () ->
                       ok = rotate_files(State),
                       ok = maybe_compress_post_rotate(State),
                       open_log_file(State)
-              end);
+              end).
+
+maybe_rotate_files(#worker_state{file_size = FileSize,
+                                 rotation_size = RotSize} = State)
+  when RotSize =/= 0, FileSize >= RotSize ->
+    do_rotate_files(State);
 maybe_rotate_files(State) ->
     State.
 
@@ -428,16 +436,21 @@ spawn_worker(WorkerState) ->
               worker_init(WorkerState)
       end).
 
-worker_init(#worker_state{rotation_check_interval = RotCheckInterval} = State0) ->
+worker_init(#worker_state{rotation_check_interval = RotCheckInterval,
+                          path = Path} = State0) ->
     case RotCheckInterval > 0 of
         true ->
             erlang:send_after(RotCheckInterval, self(), check_file);
         false ->
             ok
     end,
-    worker_loop(open_log_file(State0)).
 
-worker_loop(State) ->
+    DS = ale:create_no_deks_snapshot(),
+    {<<>>, EncrState} = ale:file_encrypt_init(filename:basename(Path), DS),
+    worker_loop(
+        open_log_file(State0#worker_state{encr_state = EncrState})).
+
+worker_loop(#worker_state{sink_name = SinkName} = State) ->
     NewState =
         receive
             {write, Data0, DataSize0} ->
@@ -450,6 +463,13 @@ worker_loop(State) ->
             {'$gen_call', From, sync} ->
                 gen_server:reply(From, ok),
                 State;
+            {'$gen_call', From, notify_active_key_updt} ->
+                #worker_state{encr_state = EncrState} = State,
+                DS = ale:get_sink_ds(SinkName),
+                UpdtReq = not ale:file_encrypt_state_match(DS, EncrState),
+                UpdatedState = process_key_update_work(UpdtReq, DS, State),
+                gen_server:reply(From, ok),
+                UpdatedState;
             Msg ->
                 exit({unexpected_msg, Msg})
         end,
@@ -466,21 +486,45 @@ receive_more_writes(Data, DataSize) ->
             {Data, DataSize}
     end.
 
-write_data(Data, DataSize,
+maybe_encrypt_data(InputData, EncrState) ->
+    ale:file_encrypt_chunk(InputData, EncrState).
+
+write_data(InputData, InputDataSize,
            #worker_state{sink_name = Name,
                          file = File,
                          file_size = FileSize,
-                         parent = Parent} = State) ->
-    broadcast_stat(Name, write_size, DataSize),
-
+                         parent = Parent,
+                         encr_state = EncrState} = State) ->
+    {WriteData, NewEncrState} = maybe_encrypt_data(InputData, EncrState),
+    WriteDataSize = byte_size(WriteData),
+    broadcast_stat(Name, write_size, WriteDataSize),
     time_stat(Name, write_time,
               fun () ->
-                      ok = file:write(File, Data)
+                      ok = file:write(File, WriteData)
               end),
 
-    Parent ! {written, DataSize},
-    NewState = State#worker_state{file_size = FileSize + DataSize},
+    Parent ! {written, InputDataSize},
+    NewState = State#worker_state{file_size = FileSize + WriteDataSize,
+                                  encr_state = NewEncrState},
     maybe_rotate_files(NewState).
+
+process_key_update_work(false = _UpdtReq, _DS, State) ->
+    State;
+process_key_update_work(true = _UpdtReq, DS,
+                        #worker_state{sink_name = Name,
+                                      path = Path} = State) ->
+    {Header, EncryptState} =
+        ale:file_encrypt_init(filename:basename(Path), DS),
+    NewState = do_rotate_files(State),
+    #worker_state{file = File,
+                  file_size = 0,
+                  path = Path} = NewState,
+    time_stat(Name, write_time,
+              fun () ->
+                      ok = file:write(File, Header)
+              end),
+    NewState#worker_state{file_size = byte_size(Header),
+                          encr_state = EncryptState}.
 
 remove_unnecessary_log_files(LogFilePath, NumFiles) ->
     Dir = filename:dirname(LogFilePath),

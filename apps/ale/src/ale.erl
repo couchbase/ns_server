@@ -21,8 +21,16 @@
          sync_sink/1,
          sync_all_sinks/0,
          init_log_encryption_ds/1,
+         get_sink_ds/1,
          set_global_log_deks_snapshot/1,
          get_global_log_deks_snapshot/0,
+         set_log_deks_snapshot/1,
+
+         %% Callbacks for encryption
+         create_no_deks_snapshot/0,
+         file_encrypt_state_match/2,
+         file_encrypt_init/2,
+         file_encrypt_chunk/2,
 
          with_configuration_batching/1,
 
@@ -122,27 +130,94 @@ set_sink_loglevel(LoggerName, SinkName, LogLevel) ->
 get_sink_loglevel(LoggerName, SinkName) ->
     gen_server:call(?MODULE, {get_sink_loglevel, LoggerName, SinkName}).
 
-sync_sink(SinkName) ->
+call_disk_sink(SinkName, Call, Timeout) ->
     try
-        gen_server:call(ale_utils:sink_id(SinkName), sync, infinity)
+        gen_server:call(ale_utils:sink_id(SinkName), Call, Timeout)
     catch
         exit:{noproc, _} ->
             {error, unknown_sink}
     end.
+
+sync_sink(SinkName) ->
+    call_disk_sink(SinkName, sync, infinity).
 
 sync_all_sinks() ->
     Sinks = gen_server:call(?MODULE, get_sink_names, infinity),
     [sync_sink(SinkName) || SinkName <- Sinks],
     ok.
 
+get_encr_enabled_disk_sinks() ->
+    #{ale_utils:sink_id(disk_debug) => true}.
+
+is_encr_enabled_sink(SinkId) ->
+    EncrEnabledSinks = get_encr_enabled_disk_sinks(),
+    case maps:find(SinkId, EncrEnabledSinks) of
+        {ok, true} ->
+            true;
+        _ ->
+            false
+    end.
+
+set_log_deks_snapshot(LogsDS) ->
+    set_global_log_deks_snapshot(LogsDS),
+    Sinks = gen_server:call(?MODULE, get_sink_names, infinity),
+    EncryptedSinks =
+        lists:filter(
+            fun(SinkName) ->
+                is_encr_enabled_sink(ale_utils:sink_id(SinkName))
+           end, Sinks),
+    RVs =
+        misc:parallel_map(
+          fun(SinkName) ->
+                  {SinkName, call_disk_sink(SinkName,
+                                            notify_active_key_updt, infinity)}
+          end, EncryptedSinks, infinity),
+
+    Failures = [Result || {_Sink, R} = Result <- RVs, R =/= ok],
+    case Failures of
+        [] ->
+            ok;
+        _ ->
+            {error, Failures}
+    end.
+
 init_log_encryption_ds(LogDS) ->
     set_global_log_deks_snapshot(LogDS).
+
+get_sink_ds(SinkId) ->
+    case is_encr_enabled_sink(SinkId) of
+        true ->
+            get_global_log_deks_snapshot();
+        false ->
+            create_no_deks_snapshot()
+    end.
 
 set_global_log_deks_snapshot(LogsDs) ->
     persistent_term:put(log_deks_snapshot, LogsDs).
 
 get_global_log_deks_snapshot() ->
     persistent_term:get(log_deks_snapshot, undefined).
+
+get_encryption_cb(CbType) ->
+    CBs = persistent_term:get(ale_encryption_callbacks, undefined),
+    #{CbType := Callback} = CBs,
+    Callback.
+
+create_no_deks_snapshot() ->
+    Callback = get_encryption_cb(create_no_deks_snapshot),
+    Callback().
+
+file_encrypt_state_match(DS, EncrState) ->
+    Callback = get_encryption_cb(file_encrypt_state_match),
+    Callback(DS, EncrState).
+
+file_encrypt_init(FileName, DS) ->
+    Callback = get_encryption_cb(file_encrypt_init),
+    Callback(FileName, DS).
+
+file_encrypt_chunk(Data, EncrState) ->
+    Callback = get_encryption_cb(file_encrypt_chunk),
+    Callback(Data, EncrState).
 
 get_effective_loglevel(LoggerName) ->
     call_logger_impl(LoggerName, get_effective_loglevel, []).
@@ -334,9 +409,36 @@ init([]) ->
     %% Erlang starts this for us when we disable default handler.
     _ = logger:remove_handler(simple),
 
+    case application:get_env(ale, encryption_callbacks) of
+        {ok, EncrCBs} ->
+            persistent_term:put(ale_encryption_callbacks,
+                                EncrCBs);
+        _ ->
+            persistent_term:put(ale_encryption_callbacks,
+                                default_encr_disabled_cbs())
+    end,
+
     ok = set_error_logger_handler(),
     ok = set_noisy_progress_reports_handler(),
     {ok, State3}.
+
+default_encr_disabled_cbs() ->
+    #{create_no_deks_snapshot =>
+          fun() ->
+                  #{}
+          end,
+      file_encrypt_state_match =>
+          fun(_DS, _EncrState) ->
+                  true
+          end,
+      file_encrypt_init =>
+          fun(_FileName, _DS) ->
+                  {<<>>, #{}}
+          end,
+      file_encrypt_chunk =>
+          fun(Data, EncrState) ->
+                  {Data, EncrState}
+          end}.
 
 handle_call(get_state, _From, State) ->
     {reply, State, State};

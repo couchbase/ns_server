@@ -30,6 +30,7 @@
 start({Cookie, LogDeks}) ->
     application:set_env(ns_server, babysitter_cookie, Cookie),
     application:set_env(ns_server, initial_log_deks, LogDeks),
+    application:set_env(ale, encryption_callbacks, ?ALE_ENCR_CALLBACKS),
     application:start(ns_common, permanent),
     application:start(ns_couchdb, permanent).
 

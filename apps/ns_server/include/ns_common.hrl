@@ -461,4 +461,22 @@
                          ?FUNCTION_NAME, Args)
         end).
 
+-define(ALE_ENCR_CALLBACKS,
+    #{create_no_deks_snapshot =>
+          fun() ->
+                  cb_crypto:create_deks_snapshot(undefined, [], undefined)
+          end,
+      file_encrypt_state_match =>
+          fun(DS, EncrState) ->
+                  cb_crypto:file_encrypt_state_match(DS, EncrState)
+          end,
+      file_encrypt_init =>
+          fun(FileName, DS) ->
+                  cb_crypto:file_encrypt_init(FileName, DS)
+          end,
+      file_encrypt_chunk =>
+          fun(Data, EncrState) ->
+                  cb_crypto:file_encrypt_chunk(Data, EncrState)
+          end}).
+
 -endif.
