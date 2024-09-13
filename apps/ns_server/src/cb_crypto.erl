@@ -141,14 +141,13 @@ file_encrypt_chunk(Data, #file_encr_state{key = Dek,
     NewOffset = Offset + size(ChunkWithSize),
     {ChunkWithSize, State#file_encr_state{offset = NewOffset}}.
 
--spec read_file(string(), cb_deks:dek_kind()) -> {decrypted, binary()} |
-                                                 {raw, binary()} |
-                                                 {error, term()}.
-read_file(Path, DekKind) ->
+-spec read_file(string(), cb_deks:dek_kind() | fun(() -> #dek_snapshot{})) ->
+          {decrypted, binary()} | {raw, binary()} | {error, term()}.
+read_file(Path, GetDekSnapshotFun) when is_function(GetDekSnapshotFun, 0) ->
     maybe
         {ok, Data} ?= file:read_file(Path),
         Filename = filename:basename(Path),
-        case decrypt_file_data(Data, Filename, DekKind) of
+        case decrypt_file_data(Data, Filename, GetDekSnapshotFun) of
             {ok, Decrypted} ->
                 {decrypted, Decrypted};
             {error, unknown_magic} ->
@@ -157,15 +156,23 @@ read_file(Path, DekKind) ->
             {error, _} = Error ->
                 Error
         end
-    end.
+    end;
+read_file(Path, DekKind) ->
+    GetSnapshotFun = fun () -> fetch_deks_snapshot(DekKind) end,
+    read_file(Path, GetSnapshotFun).
 
--spec file_decrypt_init(binary(), string(), #dek_snapshot{}) ->
+-spec file_decrypt_init(binary(), string(), #dek_snapshot{} |
+                                            fun(() -> #dek_snapshot{})) ->
           {ok, {#file_decr_state{}, RestData :: binary()}} |
           need_more_data |
           {error, term()}.
-file_decrypt_init(Data, Filename, DekSnapshot) ->
+file_decrypt_init(Data, Filename, #dek_snapshot{} = DekSnapshot) ->
+    file_decrypt_init(Data, Filename, fun () -> {ok, DekSnapshot} end);
+file_decrypt_init(Data, Filename, GetDekSnapshotFun)
+                                    when is_function(GetDekSnapshotFun, 0) ->
     maybe
         {ok, {Vsn, Id, Offset, Chunks}} ?= parse_header(Data),
+        {ok, DekSnapshot} ?= GetDekSnapshotFun(),
         {ok, Dek} ?= find_key(Id, DekSnapshot),
         State = #file_decr_state{vsn = Vsn,
                                  filename = iolist_to_binary(Filename),
@@ -413,10 +420,10 @@ file_assoc_data(State) ->
         end,
     <<Filename/binary, ":", (integer_to_binary(Offset))/binary>>.
 
-decrypt_file_data(Data, Filename, DekKind) ->
+decrypt_file_data(Data, Filename, GetDekSnapshotFun) ->
     maybe
-        {ok, DekSnapshot} ?= fetch_deks_snapshot(DekKind),
-        {ok, {State, Chunks}} ?= file_decrypt_init(Data, Filename, DekSnapshot),
+        {ok, {State, Chunks}} ?= file_decrypt_init(Data, Filename,
+                                                   GetDekSnapshotFun),
         {ok, _} ?= decrypt_all_chunks(State, Chunks, <<>>)
     else
         need_more_data ->
