@@ -273,17 +273,23 @@ encrypt_data(<<131, _/binary>> = Data) ->
 
 decrypt_data(<<131, _/binary>> = D) -> {ok, D};
 decrypt_data(<<?ENCRYPTION_MAGIC, 0, Data/binary>>) ->
-    DeksSnapshot = get_chronicle_deks_snapshot(),
-    cb_crypto:decrypt(Data, <<>>, DeksSnapshot).
+    case get_chronicle_deks_snapshot() of
+        undefined -> {error, no_keys};
+        DeksSnapshot -> cb_crypto:decrypt(Data, <<>>, DeksSnapshot)
+    end.
 
 %% This functions is supposed to be called from chronicle_dump only
 external_decrypt(Data) ->
-    maybe
-        ok ?= case get_chronicle_deks_snapshot() of
-                  undefined -> external_setup_keys();
-                  _ -> ok
-              end,
-        decrypt_data(Data)
+    case decrypt_data(Data) of
+        {ok, Decrypted} ->
+            {ok, Decrypted};
+        {error, no_keys} ->
+            maybe
+                ok ?= external_setup_keys(),
+                decrypt_data(Data)
+            end;
+        {error, E} ->
+            {error, E}
     end.
 
 %% This functions is supposed to be called from chronicle_dump only
