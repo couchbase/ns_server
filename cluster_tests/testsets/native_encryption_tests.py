@@ -1001,6 +1001,61 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                         min_time=create_time,
                                         old_dek_ids=dek_ids)
 
+    def dek_reencryption_test(self):
+        # reenable encryption using different secret
+        # and check if old dek is the same and that it gets reencrypted
+        secret1 = auto_generated_secret(usage=['bucket-encryption-*'])
+        secret_id1 = create_secret(self.random_node(), secret1)
+        kek_id1 = get_kek_id(self.random_node(), secret_id1)
+
+        secret2 = auto_generated_secret(usage=['bucket-encryption-*'])
+        secret_id2 = create_secret(self.random_node(), secret2)
+        kek_id2 = get_kek_id(self.random_node(), secret_id2)
+
+        create_time = datetime.now(timezone.utc).replace(microsecond=0)
+        self.cluster.create_bucket({'name': self.bucket_name, 'ramQuota': 100,
+                                    'encryptionAtRestSecretId': secret_id1},
+                                   sync=True)
+        # Memorize deks in use (there should one on each kv node)
+        dek_ids1 = poll_verify_bucket_deks_and_collect_ids(
+                     self.cluster,
+                     self.bucket_name,
+                     verify_key_count=1,
+                     verify_encryption_kek=kek_id1)
+
+        # Disable encryption for bucket
+        self.cluster.update_bucket({'name': self.bucket_name,
+                                    'encryptionAtRestSecretId': -1})
+
+        # Now, while encryption is disabled, dek should still exist (because
+        # there were no compaction). Rotate kek and verify that dek gets
+        # re-encrypted.
+        rotate_secret(self.random_node(), secret_id1)
+        new_kek_id1 = get_kek_id(self.random_node(), secret_id1)
+
+        dek_ids2 = poll_verify_bucket_deks_and_collect_ids(
+                     self.cluster,
+                     self.bucket_name,
+                     verify_key_count=1,
+                     verify_encryption_kek=new_kek_id1)
+
+        assert dek_ids2 == dek_ids1, \
+               f'deks have changed, old deks: {dek_ids1}, new deks: {dek_ids2}'
+
+        # Enabled encryption again, but use another secret this time and
+        # verify that dek gets rotated
+        self.cluster.update_bucket({'name': self.bucket_name,
+                                    'encryptionAtRestSecretId': secret_id2})
+
+        dek_ids3 = poll_verify_bucket_deks_and_collect_ids(
+                     self.cluster,
+                     self.bucket_name,
+                     verify_key_count=1,
+                     verify_encryption_kek=kek_id2)
+
+        assert dek_ids3 == dek_ids1, \
+               f'deks have changed, old deks: {dek_ids1}, new deks: {dek_ids3}'
+
 
 class NativeEncryptionPermissionsTests(testlib.BaseTestSet):
 
