@@ -630,7 +630,8 @@ key_path(bucketDek, Cfg) ->
 
 defaults() ->
     ConfigDir = path_config:component_path(data, "config"),
-    {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
+    %% Note: when it is invoked from dump-guts, error_logger_mf_dir is not set
+    LogDir = application:get_env(ns_server, error_logger_mf_dir, undefined),
     [{es_password_env, "CB_MASTER_PASSWORD"},
      {es_password_source, env},
      {es_encrypt_key, true},

@@ -1422,7 +1422,8 @@ def make_chronicle_snapshots_task(guts, initargs_path):
     return make_chronicle_dump_task(
         "Chronicle dump",
         ["snapshot",
-         "--sanitize", "chronicle_kv_log:sanitize_snapshot"] + snapshots,
+         "--sanitize", "chronicle_kv_log:sanitize_snapshot",
+         "--decrypt", "chronicle_local:external_decrypt"] + snapshots,
         initargs_path)
 
 
@@ -1446,7 +1447,8 @@ def make_chronicle_logs_task(guts, initargs_path):
 
     return make_chronicle_dump_task(
         "Chronicle logs",
-        ["log", "--sanitize", "chronicle_kv_log:sanitize_log"] + logs,
+        ["log", "--sanitize", "chronicle_kv_log:sanitize_log",
+         "--decrypt", "chronicle_local:external_decrypt"] + logs,
         initargs_path,
         log_file="chronicle_logs.log")
 
@@ -2274,9 +2276,12 @@ def get_guts_common(initargs_path, script_path, args, timeout=None):
     p.wait(timeout)
     rc = p.returncode
     if rc != 0:
-        log(f"Error occurred running {script_path}: {err.decode(LATIN1)}")
+        log(f"Error occurred running {script_path}:\n" \
+            f"All args: {args}\n" \
+            f"Error: {err.decode(LATIN1)}")
         return []
-    #print(f"args: {args} gave rc: {rc} and:\n\n{output}\n")
+    full_cmd_line = ' '.join(args)
+    log(f"Call {full_cmd_line} - OK")
     tokens = output.decode(LATIN1).rstrip("\0").split("\0")
     return tokens
 
@@ -2307,7 +2312,8 @@ def get_server_chronicle_guts(guts, initargs_path):
 
     escript = exec_name("escript")
     args = [escript, escript_wrapper, "--initargs-path", initargs_path,
-            "--", chronicle_dump_path, "dumpguts", kv_snapshot]
+            "--", chronicle_dump_path, "dumpguts",
+            "--decrypt", "chronicle_local:external_decrypt", kv_snapshot]
     d = {}
     tokens = get_guts_common(initargs_path, chronicle_dump_path, args, 120)
     if len(tokens) > 1:
@@ -2327,7 +2333,12 @@ def get_server_guts(initargs_path):
 
     escript = exec_name("escript")
     extra_args = os.getenv("EXTRA_DUMP_GUTS_ARGS")
-    args = [escript, dump_guts_path, "--initargs-path", initargs_path]
+    escript_wrapper = find_script("escript-wrapper")
+    if escript_wrapper is None:
+        log("Couldn't find escript-wrapper script for dump-guts")
+        return {}
+    args = [escript, escript_wrapper, "--initargs-path", initargs_path, "--",
+            dump_guts_path, "--initargs-path", initargs_path]
     if extra_args:
         args = args + extra_args.split(";")
     d = {}
