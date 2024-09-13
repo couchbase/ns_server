@@ -29,10 +29,13 @@
          atomic_write_file/3,
          atomic_write_file/4,
          file_encrypt_init/2,
+         file_encrypt_cont/3,
          file_encrypt_chunk/2,
 
          read_file/2,
          file_encrypt_state_match/2,
+         is_file_encr_by_ds/2,
+         is_file_encrypted/1,
          file_decrypt_init/3,
          file_decrypt_next_chunk/2,
 
@@ -114,18 +117,6 @@ atomic_write_file(Path, Bytes, DekSnapshot, Opts) when is_binary(Bytes) ->
           encrypt_to_file(IODevice, Filename, Bytes, MaxChunkSize, DekSnapshot)
       end).
 
-get_key_id(undefined) ->
-    undefined;
-get_key_id(#{id := KeyId} = _Key) ->
-    KeyId.
-
--spec file_encrypt_state_match(#dek_snapshot{},
-                               #file_encr_state{}) -> boolean().
-file_encrypt_state_match(#dek_snapshot{active_key = ActiveKey},
-                         #file_encr_state{key = FileActiveKey}) ->
-
-    get_key_id(ActiveKey) =:= get_key_id(FileActiveKey).
-
 -spec file_encrypt_init(string(), #dek_snapshot{}) ->
           {binary(), #file_encr_state{}}.
 file_encrypt_init(Filename,
@@ -149,6 +140,18 @@ file_encrypt_init(Filename,
                               iv_atomic_counter = IVCounter,
                               offset = size(Header)}}.
 
+-spec file_encrypt_cont(string(), non_neg_integer(), #dek_snapshot{}) ->
+          #file_encr_state{}.
+file_encrypt_cont(Filename, Offset,
+                  #dek_snapshot{active_key = ActiveKey,
+                                iv_random = IVRandom,
+                                iv_atomic_counter = IVCounter}) ->
+    #file_encr_state{filename = iolist_to_binary(Filename),
+                     key = ActiveKey,
+                     iv_random = IVRandom,
+                     iv_atomic_counter = IVCounter,
+                     offset = Offset}.
+
 -spec file_encrypt_chunk(binary(), #file_encr_state{}) ->
           {binary(), #file_encr_state{}}.
 file_encrypt_chunk(Data, #file_encr_state{key = undefined} = State) ->
@@ -163,6 +166,32 @@ file_encrypt_chunk(Data, #file_encr_state{key = Dek,
     ChunkWithSize = <<ChunkSize:32/big-unsigned-integer, Chunk/binary>>,
     NewOffset = Offset + size(ChunkWithSize),
     {ChunkWithSize, State#file_encr_state{offset = NewOffset}}.
+
+-spec file_encrypt_state_match(#dek_snapshot{},
+                               #file_encr_state{}) -> boolean().
+file_encrypt_state_match(#dek_snapshot{active_key = ActiveKey},
+                         #file_encr_state{key = FileActiveKey}) ->
+    get_key_id(ActiveKey) =:= get_key_id(FileActiveKey).
+
+-spec is_file_encr_by_ds(string(), #dek_snapshot{}) -> true | false.
+is_file_encr_by_ds(Path, #dek_snapshot{active_key = undefined}) ->
+    not is_file_encrypted(Path);
+is_file_encr_by_ds(Path, #dek_snapshot{active_key = #{id := KeyId}}) ->
+    {ok, File} = file:open(Path, [read, raw, binary]),
+    try
+        header_key_match(file:read(File, ?ENCRYPTED_FILE_HEADER_LEN), KeyId)
+    after
+        file:close(File)
+    end.
+
+-spec is_file_encrypted(string()) -> true | false.
+is_file_encrypted(Path) ->
+    {ok, File} = file:open(Path, [read, raw, binary]),
+    try
+        is_valid_encr_header(file:read(File, ?ENCRYPTED_FILE_HEADER_LEN))
+    after
+        file:close(File)
+    end.
 
 -spec read_file(string(), cb_deks:dek_kind() | fun(() -> fetch_deks_res())) ->
           {decrypted, binary()} | {raw, binary()} | {error, term()}.
@@ -351,6 +380,31 @@ get_dek_rotation_interval(Type, Snapshot) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+is_valid_encr_header({ok, HeaderData}) ->
+    case parse_header(HeaderData) of
+        {ok, _Parsed} ->
+            true;
+        _ ->
+            false
+    end;
+is_valid_encr_header(eof) ->
+    false.
+
+header_key_match({ok, HeaderData}, KeyId) ->
+    case parse_header(HeaderData) of
+        {ok, {0, KeyId, ?ENCRYPTED_FILE_HEADER_LEN, _Rest}} ->
+            true;
+        _ ->
+            false
+    end;
+header_key_match(eof, _KeyId) ->
+    false.
+
+get_key_id(undefined) ->
+    undefined;
+get_key_id(#{id := KeyId} = _Key) ->
+    KeyId.
 
 encrypt_internal(Data, AD, IVRandom, IVAtomic, #{type := 'raw-aes-gcm',
                                                  info := #{key := KeyFun}}) ->

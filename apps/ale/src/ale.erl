@@ -29,7 +29,10 @@
          %% Callbacks for encryption
          create_no_deks_snapshot/0,
          file_encrypt_state_match/2,
+         is_file_encr_by_ds/2,
+         is_file_encrypted/1,
          file_encrypt_init/2,
+         file_encrypt_cont/3,
          file_encrypt_chunk/2,
 
          with_configuration_batching/1,
@@ -211,9 +214,21 @@ file_encrypt_state_match(DS, EncrState) ->
     Callback = get_encryption_cb(file_encrypt_state_match),
     Callback(DS, EncrState).
 
+is_file_encr_by_ds(Path, DS) ->
+    Callback = get_encryption_cb(is_file_encr_by_ds),
+    Callback(Path, DS).
+
+is_file_encrypted(Path) ->
+    Callback = get_encryption_cb(is_file_encrypted),
+    Callback(Path).
+
 file_encrypt_init(FileName, DS) ->
     Callback = get_encryption_cb(file_encrypt_init),
     Callback(FileName, DS).
+
+file_encrypt_cont(FileName, Offset, DS) ->
+    Callback = get_encryption_cb(file_encrypt_cont),
+    Callback(FileName, Offset, DS).
 
 file_encrypt_chunk(Data, EncrState) ->
     Callback = get_encryption_cb(file_encrypt_chunk),
@@ -431,9 +446,21 @@ default_encr_disabled_cbs() ->
           fun(_DS, _EncrState) ->
                   true
           end,
+      is_file_encr_by_ds =>
+          fun(_Path, _DS) ->
+                  true
+          end,
+      is_file_encrypted =>
+          fun(_Path) ->
+                  false
+          end,
       file_encrypt_init =>
           fun(_FileName, _DS) ->
                   {<<>>, #{}}
+          end,
+      file_encrypt_cont =>
+          fun(_FileName, _Offset, _DS) ->
+                  #{}
           end,
       file_encrypt_chunk =>
           fun(Data, EncrState) ->

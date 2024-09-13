@@ -470,9 +470,21 @@
           fun(DS, EncrState) ->
                   cb_crypto:file_encrypt_state_match(DS, EncrState)
           end,
+      is_file_encr_by_ds =>
+          fun(Path, DS) ->
+                  cb_crypto:is_file_encr_by_ds(Path, DS)
+          end,
+      is_file_encrypted =>
+          fun(Path) ->
+                  cb_crypto:is_file_encrypted(Path)
+          end,
       file_encrypt_init =>
           fun(FileName, DS) ->
                   cb_crypto:file_encrypt_init(FileName, DS)
+          end,
+      file_encrypt_cont =>
+          fun(FileName, Offset, DS) ->
+                  cb_crypto:file_encrypt_cont(FileName, Offset, DS)
           end,
       file_encrypt_chunk =>
           fun(Data, EncrState) ->

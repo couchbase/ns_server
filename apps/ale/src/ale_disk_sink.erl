@@ -308,8 +308,45 @@ maybe_rotate_files(#worker_state{file_size = FileSize,
 maybe_rotate_files(State) ->
     State.
 
+maybe_write_header(_SinkName, _File, <<>>) ->
+    ok;
+maybe_write_header(SinkName, File, Header) ->
+    time_stat(SinkName, write_time,
+              fun () ->
+                      ok = file:write(File, Header)
+              end).
+
+update_file_encr_state(true = _ActiveKeyMatch,
+                       #worker_state{path = Path} = State, DS) ->
+    {ok, File, #file_info{size = Size, inode = Inode}} = open_file(Path),
+    ContEncrState =
+        ale:file_encrypt_cont(filename:basename(Path), Size, DS),
+    State#worker_state{file = File,
+                       file_size = Size,
+                       file_inode = Inode,
+                       encr_state = ContEncrState};
+update_file_encr_state(false = _ActiveKeyMatch, State, _DS) ->
+    do_rotate_files(State).
+
+open_with_encr_state(true = _IsNewFile,
+                     #worker_state{sink_name = SinkName,
+                                   path = Path} = State, DS) ->
+    {ok, File, #file_info{size = 0, inode = Inode}} = open_file(Path),
+    {Header, EncrState} =
+        ale:file_encrypt_init(filename:basename(Path), DS),
+    maybe_write_header(SinkName, File, Header),
+    State#worker_state{file = File,
+                       file_size = byte_size(Header),
+                       file_inode = Inode,
+                       encr_state = EncrState};
+open_with_encr_state(false = _IsNewFile,
+                     #worker_state{path = Path} = State, DS) ->
+    ActiveKeyMatch = ale:is_file_encr_by_ds(Path, DS),
+    update_file_encr_state(ActiveKeyMatch, State, DS).
+
 open_log_file(#worker_state{path = Path,
-                            file = OldFile} = State) ->
+                            file = OldFile,
+                            sink_name = SinkName} = State) ->
     case OldFile of
         undefined ->
             ok;
@@ -317,11 +354,11 @@ open_log_file(#worker_state{path = Path,
             file:close(OldFile)
     end,
 
-    {ok, File, #file_info{size = Size,
-                          inode = Inode}} = open_file(Path),
-    State#worker_state{file = File,
-                       file_size = Size,
-                       file_inode = Inode}.
+    IsNewFile = not filelib:is_file(Path) orelse
+                filelib:file_size(Path) =:= 0,
+
+    DS = ale:get_sink_ds(SinkName),
+    open_with_encr_state(IsNewFile, State#worker_state{file = undefined}, DS).
 
 check_log_file(#worker_state{path = Path,
                              file_inode = FileInode} = State) ->
@@ -436,8 +473,8 @@ spawn_worker(WorkerState) ->
               worker_init(WorkerState)
       end).
 
-worker_init(#worker_state{rotation_check_interval = RotCheckInterval,
-                          path = Path} = State0) ->
+worker_init(#worker_state{
+               rotation_check_interval = RotCheckInterval} = State0) ->
     case RotCheckInterval > 0 of
         true ->
             erlang:send_after(RotCheckInterval, self(), check_file);
@@ -445,10 +482,8 @@ worker_init(#worker_state{rotation_check_interval = RotCheckInterval,
             ok
     end,
 
-    DS = ale:create_no_deks_snapshot(),
-    {<<>>, EncrState} = ale:file_encrypt_init(filename:basename(Path), DS),
     worker_loop(
-        open_log_file(State0#worker_state{encr_state = EncrState})).
+      open_log_file(State0)).
 
 worker_loop(#worker_state{sink_name = SinkName} = State) ->
     NewState =
@@ -467,7 +502,7 @@ worker_loop(#worker_state{sink_name = SinkName} = State) ->
                 #worker_state{encr_state = EncrState} = State,
                 DS = ale:get_sink_ds(SinkName),
                 UpdtReq = not ale:file_encrypt_state_match(DS, EncrState),
-                UpdatedState = process_key_update_work(UpdtReq, DS, State),
+                UpdatedState = process_key_update_work(UpdtReq, State),
                 gen_server:reply(From, ok),
                 UpdatedState;
             Msg ->
@@ -508,23 +543,10 @@ write_data(InputData, InputDataSize,
                                   encr_state = NewEncrState},
     maybe_rotate_files(NewState).
 
-process_key_update_work(false = _UpdtReq, _DS, State) ->
+process_key_update_work(false = _UpdtReq, State) ->
     State;
-process_key_update_work(true = _UpdtReq, DS,
-                        #worker_state{sink_name = Name,
-                                      path = Path} = State) ->
-    {Header, EncryptState} =
-        ale:file_encrypt_init(filename:basename(Path), DS),
-    NewState = do_rotate_files(State),
-    #worker_state{file = File,
-                  file_size = 0,
-                  path = Path} = NewState,
-    time_stat(Name, write_time,
-              fun () ->
-                      ok = file:write(File, Header)
-              end),
-    NewState#worker_state{file_size = byte_size(Header),
-                          encr_state = EncryptState}.
+process_key_update_work(true = _UpdtReq, State) ->
+    do_rotate_files(State).
 
 remove_unnecessary_log_files(LogFilePath, NumFiles) ->
     Dir = filename:dirname(LogFilePath),
