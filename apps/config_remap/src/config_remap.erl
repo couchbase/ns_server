@@ -394,8 +394,8 @@ rewrite_string_file(File, #{?INITARGS_DATA_DIR := InputDir,
     InputFileName = filename:join(InputDir, File),
     {ok, OldContents} = file:read_file(InputFileName),
     NewContents =
-        case NodeMap of
-            #{} -> OldContents;
+        case maps:size(NodeMap) of
+            0 -> OldContents;
             _ ->
                 R = maps:fold(
                     fun(Key, Value, Acc) ->
@@ -436,8 +436,8 @@ rewrite_ip_file(File, #{?INITARGS_DATA_DIR := InputDir,
 
     InputFileName = filename:join(InputDir, File),
     {ok, Contents} = file:read_file(InputFileName),
-    IP = case NodeMap of
-        #{} -> Contents;
+    IP = case maps:size(NodeMap) of
+        0 -> Contents;
         _ ->
             R = maps:fold(
                  fun(FullKey, FullValue, Acc) ->
