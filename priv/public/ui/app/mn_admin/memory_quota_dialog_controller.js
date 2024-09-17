@@ -75,8 +75,10 @@ function mnMemoryQuotaDialogController($q, $uibModalInstance, mnPoolDefault, mnP
     var services = [];
     if (firstTimeAddedServices.index)
       services.push("GSI Index");
+    if (firstTimeAddedServices.n1ql)
+      services.push("Query");
     if (firstTimeAddedServices.fts)
-      services.push("Full Text");
+      services.push("Full Text Search");
     if (firstTimeAddedServices.cbas)
       services.push("Analytics");
     if (firstTimeAddedServices.eventing)

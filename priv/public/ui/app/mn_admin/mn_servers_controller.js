@@ -47,6 +47,7 @@ import mnServersListItemController from "./mn_servers_list_item_controller.js";
 import mnServersFailOverDialogController from "./mn_servers_failover_dialog_controller.js";
 import mnServersEjectDialogController from "./mn_servers_eject_dialog_controller.js";
 import mnServersAddDialogController from "./mn_servers_add_dialog_controller.js";
+import mnServersModifyServicesController from "./mn_servers_modify_services_controller.js";
 import mnMultipleFailoverDialogController from "./mn_multiple_failover_dialog.js";
 import mnClusterConfigurationService from "../mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js";
 import mnServersTemplate from "./mn_servers.html";
@@ -55,6 +56,7 @@ import mnServersListItemDetailsTemplate from "./mn_servers_list_item_details.htm
 import mnServersListItemTemplate from "./mn_servers_list_item.html";
 import mnMultipleFailoverDialogTemplate from "./mn_multiple_failover_dialog.html";
 import mnServersAddDialogTemplate from "./mn_servers_add_dialog.html";
+import mnServersModifyServicesTemplate from "./mn_servers_modify_services.html";
 
 export default "mnServers";
 
@@ -98,6 +100,7 @@ angular
   .controller('mnServersFailOverDialogController', mnServersFailOverDialogController)
   .controller('mnServersEjectDialogController', mnServersEjectDialogController)
   .controller('mnServersAddDialogController', mnServersAddDialogController)
+  .controller('mnServersModifyServicesController', mnServersModifyServicesController)
   .controller('mnMultipleFailoverDialogController', mnMultipleFailoverDialogController);
 
 function configure($stateProvider) {
@@ -147,6 +150,7 @@ function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller,
   vm.onStopRecovery = onStopRecovery;
   vm.postRebalance = postRebalance;
   vm.addServer = addServer;
+  vm.modifyServices = modifyServices;
   vm.filterField = "";
   vm.sortByGroup = sortByGroup;
   vm.multipleFailoverDialog = multipleFailoverDialog;
@@ -219,6 +223,15 @@ function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller,
           });
         }
       }
+    });
+  }
+  function modifyServices() {
+    $uibModal.open({
+        template: mnServersModifyServicesTemplate,
+        controller: 'mnServersModifyServicesController as serversModifyServicesCtl',
+        resolve: {
+            nodes: mnHelper.wrapInFunction(vm.nodes),
+        }
     });
   }
   function postRebalance() {

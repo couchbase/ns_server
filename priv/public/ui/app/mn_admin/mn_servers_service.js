@@ -31,6 +31,7 @@ function mnServersFactory($http, $q, $uibModal, mnPoolDefault) {
     setPendingEject: setPendingEject,
     reAddNode: reAddNode,
     setupServices: setupServices,
+    modifyServices: modifyServices,
     cancelFailOverNode: cancelFailOverNode,
     stopRebalance: stopRebalance,
     stopRebalanceWithConfirm: stopRebalanceWithConfirm,
@@ -316,6 +317,13 @@ function mnServersFactory($http, $q, $uibModal, mnPoolDefault) {
       method: 'POST',
       url: (selectedGroup && selectedGroup.addNodeURI) || '/controller/addNode',
       data: credentials
+    });
+  }
+  function modifyServices(config) {
+    return $http({
+      method: 'POST',
+      url: '/controller/rebalance',
+      data: config,
     });
   }
 }

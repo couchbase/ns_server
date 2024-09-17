@@ -29,6 +29,12 @@
        class="resp-hide-sml">
       ADD SERVER
     </a>
+    <a
+       ng-show="poolDefault && !poolDefault.rebalancing && rbac.cluster.pools.write && poolDefault.compat.atLeast80 && poolDefault.isEnterprise"
+       ng-click="serversCtl.modifyServices()"
+       class="resp-hide-sml">
+       MODIFY SERVICES
+    </a>
   </div>
 </mn-element-cargo>
 
