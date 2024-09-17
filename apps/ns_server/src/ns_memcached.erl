@@ -2086,7 +2086,7 @@ get_config_stats(Bucket, SubKey) ->
 drop_deks(BucketName, IdsToDrop, ContinuationId, Continuation) ->
     ?log_debug("Initiating db compaction for bucket ~p in order to get rid of "
                "old keys: ~p...", [BucketName, IdsToDrop]),
-    case compaction_api:force_partially_compact_db_files(
+    case compaction_api:partially_compact_db_files(
            BucketName, IdsToDrop, ContinuationId, Continuation) of
         ok -> {ok, started};
         {error, Reason} -> {error, Reason}

@@ -15,7 +15,7 @@
          get_purge_interval/1,
          force_compact_bucket/1,
          force_compact_db_files/1,
-         force_partially_compact_db_files/4,
+         partially_compact_db_files/4,
          force_compact_view/2,
          force_purge_compact_bucket/1,
          cancel_forced_bucket_compaction/1,
@@ -68,9 +68,9 @@ get_purge_interval(BucketName) ->
 
 to_bin({Command, Arg}) ->
     {Command, list_to_binary(Arg)};
-to_bin({force_partially_compact_db_files, Bucket, ObsoleteKeyIds,
+to_bin({partially_compact_db_files, Bucket, ObsoleteKeyIds,
         ContId, Cont}) ->
-    {force_partially_compact_db_files, list_to_binary(Bucket), ObsoleteKeyIds,
+    {partially_compact_db_files, list_to_binary(Bucket), ObsoleteKeyIds,
      ContId, Cont};
 to_bin({Command, Arg1, Arg2}) ->
     {Command, list_to_binary(Arg1), list_to_binary(Arg2)}.
@@ -119,7 +119,7 @@ log_failed({force_compact_db_files, Bucket}, Failed) ->
     ale:error(?USER_LOGGER,
               "Failed to start bucket databases compaction "
               "for `~s` on some nodes: ~n~p", [Bucket, Failed]);
-log_failed({force_partially_compact_db_files, Bucket, _, _, _}, Failed) ->
+log_failed({partially_compact_db_files, Bucket, _, _, _}, Failed) ->
     ale:error(?USER_LOGGER,
               "Failed to start partial bucket databases compaction "
               "for `~s` on some nodes: ~n~p", [Bucket, Failed]);
@@ -151,10 +151,10 @@ force_purge_compact_bucket(Bucket) ->
 force_compact_db_files(Bucket) ->
     multi_call({force_compact_db_files, Bucket}).
 
-force_partially_compact_db_files(Bucket, ObsoleteKeyIds,
+partially_compact_db_files(Bucket, ObsoleteKeyIds,
                                  ContinuationId, Continuation) ->
     try
-        call_local({force_partially_compact_db_files, Bucket, ObsoleteKeyIds,
+        call_local({partially_compact_db_files, Bucket, ObsoleteKeyIds,
                     ContinuationId, Continuation})
     catch
         exit:{noproc, {gen_server, call, [compaction_daemon, _, _]}} ->

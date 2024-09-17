@@ -236,7 +236,7 @@ handle_call({force_compact_db_files, Bucket}, _From, State) ->
                 register_forced_compaction(Pid, Compaction, [], State)
         end,
     {reply, ok, NewState};
-handle_call({force_partially_compact_db_files, Bucket, ObsoleteKeyIds,
+handle_call({partially_compact_db_files, Bucket, ObsoleteKeyIds,
              ContId, Cont}, _From, State) ->
     Compaction = #forced_compaction{type=db_partial, name=Bucket},
 
@@ -248,7 +248,7 @@ handle_call({force_partially_compact_db_files, Bucket, ObsoleteKeyIds,
             false ->
                 {Config, _} = compaction_config(Bucket),
                 OriginalTarget = {[{type, db}]},
-                Pid = spawn_dbs_compactor(Bucket, Config, true, OriginalTarget,
+                Pid = spawn_dbs_compactor(Bucket, Config, false, OriginalTarget,
                                           ObsoleteKeyIds),
                 register_forced_compaction(Pid, Compaction,
                                            [{ContId, Cont}], State)
@@ -657,6 +657,11 @@ spawn_dbs_compactor(BucketName, Config, Force, OriginalTarget,
                           ?log_info("Forceful compaction of bucket ~s requested",
                                     [BucketName]),
                           true;
+                      false when ObsoleteKeyIds =/= undefined andalso
+                                 ObsoleteKeyIds =/= [] ->
+                          ?log_info("Partial compaction of bucket ~s requested",
+                                    [BucketName]),
+                          true;
                       false ->
                           bucket_needs_compaction(BucketName, NumVBuckets, Config)
                   end,
@@ -772,7 +777,17 @@ maybe_compact_vbucket(BucketName, {VBucket, DbName},
                 exit({stats_error, Error})
         end,
 
-    Force orelse vbucket_needs_compaction(SizeInfo, Config) orelse exit(normal),
+    HasObsoleteKeys =
+        case Options of
+            {_PurgeTS, _PurgeSeqNo, _DropDeletes, undefined} -> false;
+            {_PurgeTS, _PurgeSeqNo, _DropDeletes, []} -> false;
+            {_PurgeTS, _PurgeSeqNo, _DropDeletes, _} -> true
+        end,
+
+    Force
+        orelse HasObsoleteKeys
+        orelse vbucket_needs_compaction(SizeInfo, Config)
+        orelse exit(normal),
 
     %% effectful
     ensure_can_db_compact(DbName, SizeInfo),
