@@ -290,64 +290,16 @@ external_decrypt(Data) ->
 external_setup_keys() ->
     %% In order to make path_config work
     application:load(ns_server),
-    maybe
-        {ok, _Active, KeyIdsBin, _, _} ?= cb_deks:external_list(chronicleDek),
-        KeyIds = [binary_to_list(K) || K <- KeyIdsBin],
-        {empty, [_ | _]} ?= {empty, KeyIds},
-        ConfigDir =
-            case os:getenv("CB_CONFIG_PATH") of
-                false ->
-                    path_config:component_path(data, "config");
-                P ->
-                    P
-            end,
-        GosecretsCfg = filename:join(ConfigDir, "gosecrets.cfg"),
-        GosecretsPath = path_config:component_path(bin, "gosecrets"),
-        Path = path_config:component_path(bin, "dump-keys"),
-        {ok, DumpKeysPath} ?= case os:find_executable(Path) of
-                                  false -> {error, {no_dump_keys, Path}};
-                                  DKPath -> {ok, DKPath}
-                              end,
-        {0, Output} ?= ns_secrets:call_external_script(
-                         DumpKeysPath,
-                         ["--gosecrets", GosecretsPath,
-                          "--config", GosecretsCfg,
-                          "--key-kind", "chronicleDek",
-                          "--key-ids"] ++ KeyIds,
-                         60000),
-        {JsonKeys} = ejson:decode(Output),
-        Keys =
-            lists:filtermap(
-              fun ({Id, {Props}}) ->
-                  case maps:from_list(Props) of
-                      #{<<"result">> := <<"error">>,
-                        <<"response">> := Error} ->
-                          %% Not clear where to write the error; we can't use
-                          %% logger here because this function can be called
-                          %% from CLI
-                          io:format("Error: ~s~n", [Error]),
-                          false;
-                      #{<<"result">> := <<"raw-aes-gcm">>,
-                        <<"response">> := KeyProps} ->
-                          {true, #{type => 'raw-aes-gcm',
-                                   id => Id,
-                                   info => encryption_service:decode_key_info(
-                                             KeyProps)}}
-                  end
-              end, JsonKeys),
-        DeksSnapshot = cb_crypto:create_deks_snapshot(undefined, Keys,
-                                                      undefined),
-        set_chronicle_deks_snapshot(DeksSnapshot),
-        ok
-    else
-        {empty, []} ->
-            AnotherDeksSnapshot = cb_crypto:create_deks_snapshot(undefined, [],
-                                                                 undefined),
-            set_chronicle_deks_snapshot(AnotherDeksSnapshot),
-            ok;
-        {Status, ErrorsBin} when is_integer(Status) ->
-            {error, {dump_keys_returned, Status, ErrorsBin}};
-        {error, _} = Error ->
+    Opts = case os:getenv("CB_CONFIG_PATH") of
+               false ->
+                   #{};
+               Path ->
+                   #{config_path_override => Path}
+           end,
+    case cb_deks_raw_utils:bootstrap_get_deks(chronicleDek, Opts) of
+        {ok, DS} ->
+            set_chronicle_deks_snapshot(DS);
+        Error ->
             Error
     end.
 

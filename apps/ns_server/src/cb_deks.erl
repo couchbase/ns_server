@@ -15,7 +15,6 @@
 -include_lib("ns_common/include/cut.hrl").
 
 -export([list/1,
-         external_list/1,
          read/2,
          generate_new/3,
          set_active/3,
@@ -41,53 +40,8 @@
 -spec list(dek_kind()) ->
     {ok, {undefined | dek_id(), [dek_id()], ExtraInfo :: term()}} | {error, _}.
 list(Kind) ->
-    ?log_debug("Reading list of keys (~p)...", [Kind]),
-    case external_list(Kind) of
-        {ok, ActiveKeyId, AllIds, [], ExtraInfo} ->
-            {ok, {ActiveKeyId, AllIds, ExtraInfo}};
-        {ok, ActiveKeyId, AllIds, OtherFiles, ExtraInfo} ->
-            ?log_warning("Ignoring key files ~p as their names are "
-                         "not proper uuids or active keys file is missing",
-                         [OtherFiles]),
-            {ok, {ActiveKeyId, AllIds, ExtraInfo}};
-        {error, {read_dir_error, {DekDir, Reason}}} = Error ->
-            ?log_error("Failed to read directory \"~s\": ~p",
-                       [DekDir, Reason]),
-            Error;
-        {error, {read_active_key_error, {ActiveKeyPath, Reason}}} = Error ->
-            ?log_error("Failed to read active key file \"~s\": ~p",
-                      [ActiveKeyPath, Reason]),
-            Error
-    end.
-
-external_list(Kind) ->
-    DekDir = encryption_service:key_path(Kind),
-    ActiveKeyPath = filename:join(DekDir, ?ACTIVE_KEY_FILENAME),
-    case file:list_dir(DekDir) of
-        {ok, Filenames} ->
-            %% Ignore file that contains active key id:
-            KeyFilenames = Filenames -- [?ACTIVE_KEY_FILENAME],
-
-            %% Ignore files that doesn't look like keys:
-            Ids = [F || F <- KeyFilenames,
-                   cb_cluster_secrets:is_valid_key_id(iolist_to_binary(F))],
-            IgnoredFiles = KeyFilenames -- Ids,
-            BinIds = [list_to_binary(Id) || Id <- Ids],
-            case file:read_file(ActiveKeyPath) of
-                {ok, <<Vsn, Bin/binary>>} when Vsn == 0 ->
-                    {ActiveKeyId, ExtraInfo} = binary_to_term(Bin),
-                    {ok, ActiveKeyId, BinIds, IgnoredFiles, ExtraInfo};
-                {error, enoent} ->
-                    %% Ignoring all keys in this case
-                    {ok, undefined, [], KeyFilenames, undefined};
-                {error, Reason} ->
-                    {error, {read_active_key_error, {ActiveKeyPath, Reason}}}
-            end;
-        {error, enoent} ->
-            {ok, undefined, [], [], undefined};
-        {error, Reason} ->
-            {error, {read_dir_error, {DekDir, Reason}}}
-    end.
+    DekPath = encryption_service:key_path(Kind),
+    cb_deks_raw_utils:dek_list(DekPath, ns_server_logger).
 
 -spec read(dek_kind(), [dek_id()]) -> {ok, [dek()]}.
 read(Kind, DekIds) ->

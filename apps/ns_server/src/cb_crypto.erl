@@ -46,6 +46,8 @@
          get_dek_rotation_interval/2
         ]).
 
+-export_type([dek_snapshot/0]).
+
 -record(dek_snapshot, {iv_random :: binary(),
                        iv_atomic_counter :: atomics:atomics_ref(),
                        active_key :: cb_deks:dek() | undefined,
@@ -61,6 +63,8 @@
                           filename = <<>> :: binary(),
                           key :: cb_deks:dek(),
                           offset = 0 :: non_neg_integer()}).
+
+-type dek_snapshot() :: #dek_snapshot{}.
 
 %%%===================================================================
 %%% API
