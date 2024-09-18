@@ -35,6 +35,14 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
             self.limits['maxCount']['max'] = 100
             self.limits['failoverOnDataDiskIssues[timePeriod]']['min'] = 5
             self.limits['failoverOnDataDiskIssues[timePeriod]']['max'] = 3600
+            self.limits['failoverOnDataDiskNonResponsiveness[timePeriod]'] \
+                ['min'] = 5
+            self.limits['failoverOnDataDiskNonResponsiveness[timePeriod]'] \
+                ['max'] = 3600
+
+    def init_result_keys(self, keys):
+        self.result_keys = keys
+        self.result_keys.remove('count')
 
     def init_result_keys(self, keys):
         self.result_keys = keys
@@ -47,23 +55,31 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
         self.is_enterprise = self.cluster.is_enterprise
         self.is_72 = self.cluster.is_72
         self.is_76 = self.cluster.is_76
+        self.is_cypher = self.cluster.is_cypher
         self.is_serverless = self.cluster.is_serverless
 
-        failKey = 'failoverOnDataDiskIssues'
-        self.post_data_keys = [ k for k in self.result_keys if k != failKey ]
-        if failKey in self.result_keys:
+        diskIssuesKeys = ['failoverOnDataDiskIssues',
+                          'failoverOnDataDiskNonResponsiveness']
+        self.post_data_keys = \
+            [k for k in self.result_keys if k not in diskIssuesKeys]
+        diskIssuesResponses = \
+            [k for k in self.result_keys if k in diskIssuesKeys]
+        for k in diskIssuesResponses:
             assert self.is_enterprise
-            self.post_data_keys.append(failKey + '[enabled]')
-            self.post_data_keys.append(failKey + '[timePeriod]')
+            self.post_data_keys.append(k + '[enabled]')
+            self.post_data_keys.append(k + '[timePeriod]')
 
         assert 'enabled' in self.post_data_keys
         assert 'timeout' in self.post_data_keys
-        self.enterprise_only = [ 'maxCount',
-                                 'failoverOnDataDiskIssues[enabled]',
-                                 'failoverOnDataDiskIssues[timePeriod]',
-                                 'failoverPreserveDurabilityMajority',
-                                 'canAbortRebalance',
-                                 'disableMaxCount' ]
+        self.enterprise_only = \
+            ['maxCount',
+             'failoverOnDataDiskIssues[enabled]',
+             'failoverOnDataDiskIssues[timePeriod]',
+             'failoverOnDataDiskNonResponsiveness[enabled]',
+             'failoverOnDataDiskNonResponsiveness[timePeriod]',
+             'failoverPreserveDurabilityMajority',
+             'canAbortRebalance',
+             'disableMaxCount']
         if self.is_enterprise:
             assert not 'failoverServerGroup' in self.post_data_keys
             assert 'canAbortRebalance' in self.post_data_keys
@@ -91,6 +107,12 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
                     self.post_data_keys.append('maxCount')
             else:
                 assert 'maxCount' in self.result_keys
+
+            if self.is_cypher:
+                assert 'failoverOnDataDiskNonResponsiveness[enabled]' in \
+                       self.post_data_keys
+                assert 'failoverOnDataDiskNonResponsiveness[timePeriod]' in \
+                       self.post_data_keys
         else:
             for x in self.enterprise_only:
                 assert x not in self.post_data_keys
@@ -119,9 +141,10 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
             self.test_params['failoverOnDataDiskIssues[enabled]'] = [ None,
                                                                       'true',
                                                                      'false']
-            self.test_params['failoverOnDataDiskIssues[timePeriod]'] = [ None,
-                self.limits['failoverOnDataDiskIssues[timePeriod]']['min'],
-                self.limits['failoverOnDataDiskIssues[timePeriod]']['max']]
+            self.test_params['failoverOnDataDiskIssues[timePeriod]'] =\
+                [None,
+                 self.limits['failoverOnDataDiskIssues[timePeriod]']['min'],
+                 self.limits['failoverOnDataDiskIssues[timePeriod]']['max']]
 
         bool_params = [ None, 'true', 'false' ]
         bool_keys = ['canAbortRebalance', 'disableMaxCount',
@@ -161,10 +184,10 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
                 val = int(testData[field])
                 assert field in self.limits
                 if val < self.limits[field]['min'] or \
-                   val > self.limits[field]['max']:
+                        val > self.limits[field]['max']:
                     return { field: 'The value must be in range from ' +
-                             str(self.limits[field]['min']) + ' to ' +
-                             str(self.limits[field]['max']) }
+                                    str(self.limits[field]['min']) + ' to ' +
+                                    str(self.limits[field]['max']) }
             except ValueError:
                 return { field: 'The value must be an integer' }
         return {}
@@ -172,7 +195,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
     def get_boolean_error(self, testData, field):
         if field in testData and testData[field] not in ['true', 'false']:
             return { field: 'The value must be one of the following: [true,'
-                     'false]' }
+                            'false]' }
         return {}
 
     def get_unsupported_errors(self, testData):
@@ -197,12 +220,12 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
                                                   'boolean')
         maxCountUndefined = self.is_undefined(testData, 'maxCount', 'integer')
         err = {'_': 'disableMaxCount is true. Set it to false for maxCount'
-               ' to take effect.' }
+                    ' to take effect.' }
         if 'disableMaxCount' in testData and \
-           testData['disableMaxCount'] == 'true' and not maxCountUndefined:
+                testData['disableMaxCount'] == 'true' and not maxCountUndefined:
             return err
         elif disableCountUndefined and not maxCountUndefined and \
-             self.prev_settings['disableMaxCount']:
+                self.prev_settings['disableMaxCount']:
             return err
         return {}
 
@@ -210,12 +233,12 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
         field1_undefined = self.is_undefined(testData, field1, 'boolean')
         field2_undefined = self.is_undefined(testData, field2, 'integer')
         if field1 in testData and testData[field1] == 'true' and \
-           field2_undefined:
+                field2_undefined:
             return {'_': field1 + ' is true. A value must be supplied for ' +
-                    field2 }
+                         field2 }
         elif field1_undefined and not field2_undefined:
             return {'_': field1 + ' must be true for ' + field2 + ' to take '
-                    'effect'}
+                                                                  'effect'}
         return {}
 
     def get_errors(self, testData):
@@ -239,15 +262,18 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
         if 'disableMaxCount' in self.post_data_keys and '_' not in errors:
             errors.update(self.check_max_count(testData))
 
-        errors.update(self.get_boolean_error(testData,
-                                    'failoverOnDataDiskIssues[enabled]'))
-        errors.update(self.get_integer_error(testData,
-                                    'failoverOnDataDiskIssues[timePeriod]'))
+        errors.update(
+            self.get_boolean_error(testData,
+                                   'failoverOnDataDiskIssues[enabled]'))
+        errors.update(
+            self.get_integer_error(testData,
+                                   'failoverOnDataDiskIssues[timePeriod]'))
 
         # Only one validate_multiple error is tracked
         if '_' not in errors:
-            errors.update(self.check_enabled_time(testData,
-                                            'failoverOnDataDiskIssues[enabled]',
+            errors.update(
+                self.check_enabled_time(testData,
+                                        'failoverOnDataDiskIssues[enabled]',
                                         'failoverOnDataDiskIssues[timePeriod]'))
 
         bool_keys = [ 'canAbortRebalance', 'failoverPreserveDurabilityMajority']
@@ -307,34 +333,39 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
         if not errors:
             delta = testData
 
-            # A request with 'enabled' set to 'false', ignores the rest of the
-            # settings but sets failoverOnDataDiskIssues[enabled] to false.
-            # All other settings are not modified (i.e. they retain previous
-            # values) even if new values are specified in the POST request.
-
             if 'enabled' in delta and delta['enabled'] == 'false':
                 delta = {'enabled':'false'}
-                if 'failoverOnDataDiskIssues' in self.result_keys:
-                    delta['failoverOnDataDiskIssues[enabled]'] = 'false'
 
-            # If failoverOnDataDiskIssues[enabled] is false,
-            # failoverOnDataDiskIssues[timePeriod] is ignored.
-            if 'failoverOnDataDiskIssues[enabled]' in delta and \
-               delta['failoverOnDataDiskIssues[enabled]'] == 'false':
-                delta['failoverOnDataDiskIssues[timePeriod]'] = \
-                    self.prev_settings['failoverOnDataDiskIssues']['timePeriod']
+            # A request with 'enabled' set to 'false', ignores the rest of the
+            # settings but sets failoverOnDataDiskIssues[enabled] and
+            # failoverOnDataDiskNonResponsiveness[enabled] to false. All other
+            # settings are not modified (i.e. they retain previous values) even
+            # if new values are specified in the POST request.
+            contextual_keys = ['failoverOnDataDiskIssues',
+                               'failoverOnDataDiskNonResponsiveness']
+            for key in contextual_keys:
+                enabled_key = key + '[enabled]'
+                time_period_key = key + '[timePeriod]'
+
+                if 'enabled' in delta and delta['enabled'] == 'false':
+                    if enabled_key in self.result_keys:
+                        delta[enabled_key] = 'false'
+
+                if enabled_key in delta and delta[enabled_key] == 'false':
+                    delta[time_period_key] = \
+                        self.prev_settings[key]['timePeriod']
 
             # Toggling disableMaxCount causes maxCount to be added/removed
             if 'disableMaxCount' in delta and \
-               delta['disableMaxCount'] == 'true' and \
-               not self.prev_settings['disableMaxCount']:
+                    delta['disableMaxCount'] == 'true' and \
+                    not self.prev_settings['disableMaxCount']:
                 # maxCount will be pruned from queried settings
                 assert 'maxCount' in self.prev_settings
                 del self.prev_settings['maxCount']
                 self.init_result_keys(list(self.prev_settings.keys()))
             elif 'disableMaxCount' in delta and \
-                 delta['disableMaxCount'] == 'false' and \
-                 self.prev_settings['disableMaxCount']:
+                    delta['disableMaxCount'] == 'false' and \
+                    self.prev_settings['disableMaxCount']:
                 # maxCount will appear in the queried settings
                 assert 'maxCount' not in self.prev_settings
                 self.prev_settings['maxCount'] = resp.json()['maxCount']
@@ -432,13 +463,17 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
             # is True.
             # 'enabled' (or 'failoverOnDataDiskIssues[enabled]') must be
             # specified if 'timeout' (or 'failoverOnDataDiskIssues[timePeriod]')
-            # is a valid value.
+            # is a valid value. Same for 'failoverOnDataDiskNonResponsiveness'.
             # disableMaxCount must be false if maxCount is specified.
             bad_param = \
                 self.check_enabled_time(testData, 'enabled', 'timeout') or \
                 self.check_enabled_time(testData,
                                         'failoverOnDataDiskIssues[enabled]',
-                                    'failoverOnDataDiskIssues[timePeriod]') or \
+                                        'failoverOnDataDiskIssues[timePeriod]') or \
+                self.check_enabled_time( \
+                    testData,
+                    'failoverOnDataDiskNonResponsiveness[enabled]',
+                    'failoverOnDataDiskNonResponsiveness[timePeriod]') or \
                 self.is_76 and self.check_max_count(testData)
 
             if good:
@@ -474,7 +509,9 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
             'failoverOnDataDiskIssues[timePeriod]': 30,
             'canAbortRebalance': 'true',
             'failoverPreserveDurabilityMajority': 'true',
-            'allowFailoverEphemeralNoReplicas': 'true'
+            'failoverOnDataDiskNonResponsiveness[enabled]': 'true',
+            'failoverOnDataDiskNonResponsiveness[timePeriod]': 40,
+            'allowFailoverEphemeralNoReplicas': 'true',
         }
 
         def verify_settings_match(baseline, response, excluded):
@@ -494,13 +531,17 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
         testlib.post_succ(self.cluster, self.endpoint, data=testData)
 
         resp = testlib.get_succ(self.cluster, self.endpoint).json()
-        exclude = ['enabled', 'failoverOnDataDiskIssues']
+        exclude = ['enabled', 'failoverOnDataDiskIssues',
+                   'failoverOnDataDiskNonResponsiveness']
         verify_settings_match(previous, resp, exclude)
 
         assert not resp['enabled']
         assert not resp['failoverOnDataDiskIssues']['enabled']
         assert resp['failoverOnDataDiskIssues']['timePeriod'] == \
-            previous['failoverOnDataDiskIssues']['timePeriod']
+               previous['failoverOnDataDiskIssues']['timePeriod']
+        assert not resp['failoverOnDataDiskNonResponsiveness']['enabled']
+        assert resp['failoverOnDataDiskNonResponsiveness']['timePeriod'] == \
+               previous['failoverOnDataDiskNonResponsiveness']['timePeriod']
         previous = resp
 
         # A disable auto-failover request ignores any additional settings.
@@ -512,7 +553,9 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
             'failoverOnDataDiskIssues[enabled]': 'true',
             'failoverOnDataDiskIssues[timePeriod]': 40,
             'canAbortRebalance': 'false',
-            'failoverPreserveDurabilityMajority': 'false'
+            'failoverPreserveDurabilityMajority': 'false',
+            'failoverOnDataDiskNonResponsiveness[enabled]': 'true',
+            'failoverOnDataDiskNonResponsiveness[timePeriod]': 50,
         }
 
         testlib.post_succ(self.cluster, self.endpoint, data=testData)
@@ -528,7 +571,9 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
             'failoverOnDataDiskIssues[enabled]': 'true',
             'failoverOnDataDiskIssues[timePeriod]': 40,
             'canAbortRebalance': 'false',
-            'failoverPreserveDurabilityMajority': 'false'
+            'failoverPreserveDurabilityMajority': 'false',
+            'failoverOnDataDiskNonResponsiveness[enabled]': 'true',
+            'failoverOnDataDiskNonResponsiveness[timePeriod]': 50,
         }
 
         testlib.post_succ(self.cluster, self.endpoint, data=testData)
@@ -554,4 +599,3 @@ class ServerlessAutoFailoverSettingsTest(AutoFailoverSettingsTestBase):
         self.run_combinations()
         if self.is_76 and self.is_enterprise:
             self.disable_failover()
-

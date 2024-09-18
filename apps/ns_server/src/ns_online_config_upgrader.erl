@@ -90,8 +90,9 @@ upgrade(?VERSION_72, Config) ->
          menelaus_web_guardrails:config_upgrade_to_76(Config) ++
          ns_config_auth:config_upgrade_to_76(Config)};
 
-upgrade(?VERSION_76, _Config) ->
-    {?VERSION_CYPHER, []};
+upgrade(?VERSION_76, Config) ->
+    {?VERSION_CYPHER,
+     menelaus_web_auto_failover:config_upgrade_to_cypher(Config)};
 
 upgrade(?VERSION_CYPHER, Config) ->
     {?VERSION_MORPHEUS,
