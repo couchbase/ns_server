@@ -111,7 +111,7 @@ class NativeEncryptionTests(testlib.BaseTestSet):
                         'encryptionAtRestSecretId': secret1_id + 1}
         resp = self.cluster.create_bucket(bucket_props, expected_code=400)
         errors = resp.json()
-        e = errors['encryptionAtRestSecretId']
+        e = errors['errors']['encryptionAtRestSecretId']
         assert e == 'encryption secret does not exist', \
                f'unexpected error: {errors}'
 
@@ -186,7 +186,7 @@ class NativeEncryptionTests(testlib.BaseTestSet):
         # Trying to use a secret that is not allowed to encrypt this bucket
         resp = self.cluster.create_bucket(bucket_props, expected_code=400)
         errors = resp.json()
-        e = errors['encryptionAtRestSecretId']
+        e = errors['errors']['encryptionAtRestSecretId']
         assert e == 'Encryption secret can\'t encrypt this bucket', \
                f'unexpected error: {errors}'
 

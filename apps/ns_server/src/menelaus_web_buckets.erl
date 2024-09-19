@@ -1016,17 +1016,17 @@ do_bucket_create(Req, Name, Params, Ctx) ->
                   parse_bucket_params(Ctx, Params)} of
                 {_, _, {errors, Errors, JSONSummaries}} ->
                     {format_error_response(Errors, JSONSummaries), 400};
-                {false, _, {ok, ParsedProps, _}} ->
+                {false, _, {ok, ParsedProps, JSONSummaries}} ->
                     case do_bucket_create(Req, Name, ParsedProps) of
                         ok -> ok;
                         {errors, Errors} ->
                             ?log_debug("Failed to create bucket '~s' with 40X error(s): ~p",
                                        [Name, Errors]),
-                            {{Errors}, 400};
+                            {format_error_response(Errors, JSONSummaries), 400};
                         {errors_500, Errors} ->
                             ?log_debug("Failed to create bucket '~s' with 50X error(s): ~p",
                                        [Name, Errors]),
-                            {{Errors}, 503}
+                            {format_error_response(Errors, JSONSummaries), 503}
                     end;
                 {true, true, {ok, _, JSONSummaries}} ->
                     {format_error_response([], JSONSummaries), 200};
