@@ -390,6 +390,35 @@ default(Vsn) ->
         [{resource_management,
           menelaus_web_guardrails:default_for_ns_config()}].
 
+stop_if_memcached_buckets_in_use() ->
+    ?log_debug("Checking to see if memcached buckets are being used."),
+    case ns_bucket:memcached_buckets_in_use() of
+        true ->
+            %% Stop running before anything is changed which would prevent
+            %% rebooting the older release that still supports memcached
+            %% buckets.
+            do_remote_stop(),
+            exit(memcached_buckets_present);
+        false ->
+            ok
+    end.
+
+%% Do a remote_stop on a separate process in order to not deadlock with
+%% the shutdown.
+do_remote_stop() ->
+    BabysitterNode = ns_server:get_babysitter_node(),
+    Msg = "Unable to start when memcached buckets are configured.  Node is "
+          "being stopped. The prior, older, version of Couchbase server can "
+          "still be used.",
+    ?log_error(Msg),
+    Pid = proc_lib:spawn_link(
+            fun () ->
+                    rpc:call(BabysitterNode, io, put_chars,
+                             [standard_error, Msg]),
+                    ns_babysitter_bootstrap:remote_stop(BabysitterNode)
+            end),
+    ?log_error("Started remote_stop process: ~p", [Pid]).
+
 %% returns list of changes to config to upgrade it to current version.
 %% This will be invoked repeatedly by ns_config until list is empty.
 %%
@@ -404,6 +433,17 @@ upgrade_config(Config) ->
                                                        UnsupportedVersion),
     assert_not_developer_preview(CurrentVersion, ConfigVersion, Config),
     MinVersion = get_min_supported_version(),
+
+    case CurrentVersion =:= ConfigVersion of
+        true ->
+            ok;
+        false ->
+            %% If there's memcached buckets in use we don't want to come up
+            %% and we don't want to change anything that would prevent the
+            %% older release from coming up.
+            stop_if_memcached_buckets_in_use()
+    end,
+
     case ConfigVersion of
         CurrentVersion ->
             [];
@@ -541,12 +581,16 @@ all_upgrades_test_() ->
                          fun () ->  #{supported => false} end),
              meck:new(ns_storage_conf),
              meck:expect(ns_storage_conf, default_config,
-                         fun () -> mock_ns_storage_conf_default_config() end)
+                         fun () -> mock_ns_storage_conf_default_config() end),
+             meck:new(ns_bucket),
+             meck:expect(ns_bucket, memcached_buckets_in_use,
+                         fun () -> false end)
      end,
      fun (_) ->
              meck:unload(sigar),
              ns_config:unmock_tombstone_agent(),
-             meck:unload(ns_storage_conf)
+             meck:unload(ns_storage_conf),
+             meck:unload(ns_bucket)
      end,
      ?_test(test_all_upgrades())}.
 

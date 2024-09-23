@@ -778,7 +778,7 @@ janitor_running(_Event, _State) ->
 idle({create_bucket, BucketType, BucketName, BucketConfig}, From, _State) ->
     maybe
         {ok, NewBucketConfig} ?=
-            validate_create_bucket(BucketName, BucketConfig),
+            validate_create_bucket(BucketName, BucketType, BucketConfig),
         {ok, UUID, ActualBucketConfig} ?=
             ns_bucket:create_bucket(BucketType, BucketName, NewBucketConfig),
         ConfigJSON = ns_bucket:build_bucket_props_json(
@@ -2210,10 +2210,14 @@ handle_info_in_buckets_shutdown({'EXIT', Pid, Reason}, State) ->
             {keep_state, NewState, [{reply, From, Reply}]}
     end.
 
-validate_create_bucket(BucketName, BucketConfig) ->
+validate_create_bucket(BucketName, BucketType, BucketConfig) ->
     try
         not ns_bucket:name_conflict(BucketName) orelse
             throw({already_exists, BucketName}),
+
+        BucketType =/= memcached orelse
+            throw({incorrect_parameters,
+                 "memcached buckets are no longer supported"}),
 
         ShutdownBuckets =
             case cluster_compat_mode:is_cluster_76() of

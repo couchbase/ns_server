@@ -1834,7 +1834,7 @@ get_bucket_type(false = _IsNew, BucketConfig, _Params)
     ns_bucket:bucket_type(BucketConfig);
 get_bucket_type(_IsNew, _BucketConfig, Params) ->
     case proplists:get_value("bucketType", Params) of
-        %% Removed in major release after morpheus.
+        %% Remove in major release after morpheus.
         "memcached" -> memcached;
         "membase" -> membase;
         "couchbase" -> membase;

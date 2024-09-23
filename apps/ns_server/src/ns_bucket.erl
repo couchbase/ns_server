@@ -79,6 +79,7 @@
          is_persistent/1,
          is_ephemeral_bucket/1,
          is_valid_bucket_name/1,
+         memcached_buckets_in_use/0,
          live_bucket_nodes/1,
          live_bucket_nodes_from_config/1,
          map_to_replicas/1,
@@ -914,6 +915,9 @@ num_replicas(Bucket, Default) ->
     proplists:get_value(num_replicas, Bucket, Default).
 
 %% ns_server type (membase vs memcached)
+%% Once morpheus is the oldest supported release all vestiges of 'memcached'
+%% can be removed. Until then it's possible for a morpheus node to see a
+%% memcached bucket and thus must be able to return info about such bucket.
 bucket_type(Bucket) ->
     proplists:get_value(type, Bucket).
 
@@ -1025,6 +1029,21 @@ is_valid_bucket_name_inner([Char | Rest]) ->
                 _ -> is_valid_bucket_name_inner(Rest)
             end;
         _ -> {error, invalid}
+    end.
+
+-spec memcached_buckets_in_use() -> boolean().
+memcached_buckets_in_use() ->
+    Snapshot = chronicle_compat:get_snapshot(
+              [ns_bucket:fetch_snapshot(all, _, [props])],
+              #{}),
+
+    BucketConfigs = ns_bucket:get_buckets(Snapshot),
+    case ns_bucket:get_bucket_names_of_type(memcached, BucketConfigs) of
+        [] ->
+            false;
+        Names ->
+            ?log_error("Found unsupported memcached buckets: ~p", [Names]),
+            true
     end.
 
 get_max_buckets_supported() ->

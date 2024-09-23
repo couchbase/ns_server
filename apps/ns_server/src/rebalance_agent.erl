@@ -162,9 +162,18 @@ server(Node) ->
     {?SERVER, Node}.
 
 handle_prepare_rebalance(Pid, State) ->
-    NewState = maybe_unset_rebalancer(Pid, State),
-    MRef = erlang:monitor(process, Pid),
-    {reply, ok, NewState#state{rebalancer = {Pid, MRef}}}.
+    case ns_bucket:memcached_buckets_in_use() of
+        false ->
+            NewState = maybe_unset_rebalancer(Pid, State),
+            MRef = erlang:monitor(process, Pid),
+            {reply, ok, NewState#state{rebalancer = {Pid, MRef}}};
+        true ->
+            %% memcached buckets are no longer supported so prevent any
+            %% rebalance if there are any in use.
+            ?log_error("Rebalance is prevented when memcached buckets are "
+                       "configured."),
+            {reply, {error, memcached_buckets_present}, State}
+    end.
 
 maybe_unset_rebalancer(Pid, State) ->
     case rebalancer_pid(State) of

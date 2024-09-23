@@ -122,8 +122,16 @@ start_buckets(Buckets) ->
     lists:foreach(fun start_one_bucket/1, Buckets).
 
 start_one_bucket(Bucket) ->
-    ?log_debug("Starting new bucket: ~p", [Bucket]),
-    ok = ns_bucket_sup:start_bucket(Bucket).
+    {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
+    case proplists:get_value(type, BucketConfig) of
+        memcached ->
+            ale:error(?USER_LOGGER,
+                      "Not starting unsupported memcached bucket: ~p",
+                      [Bucket]);
+        _ ->
+            ?log_debug("Starting new bucket: ~p", [Bucket]),
+            ok = ns_bucket_sup:start_bucket(Bucket)
+    end.
 
 stop_buckets(Buckets) ->
     lists:foreach(fun stop_one_bucket/1, Buckets).
