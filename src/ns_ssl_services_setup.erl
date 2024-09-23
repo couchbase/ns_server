@@ -374,6 +374,13 @@ sweet32_ciphers() ->
      "SRP-RSA-3DES-EDE-CBC-SHA",
      "SRP-DSS-3DES-EDE-CBC-SHA"].
 
+lucky13_ciphers() ->
+    ["DHE-RSA-AES128-GCM-SHA256",
+     "AES256-GCM-SHA384",
+     "AES128-GCM-SHA256",
+     "AES256-SHA",
+     "AES128-SHA"].
+
 openssl_cipher_to_erlang(Cipher) ->
     try ssl_cipher_format:suite_openssl_str_to_map(Cipher) of
         V ->
@@ -385,9 +392,10 @@ openssl_cipher_to_erlang(Cipher) ->
     end.
 
 %% Right now this list includes ciphers we already know aren't secure as well
-%% as the 'sweet32' specific ciphers.
+%% as the 'SWEET32' and 'LUCKY13' specific ciphers.
 low_security_ciphers() ->
-    List = low_security_ciphers_openssl() ++ sweet32_ciphers(),
+    List = low_security_ciphers_openssl() ++ sweet32_ciphers() ++
+        lucky13_ciphers(),
     [EC || C <- List, {ok, EC} <- [openssl_cipher_to_erlang(C)]].
 
 
