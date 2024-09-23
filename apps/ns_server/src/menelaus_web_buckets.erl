@@ -237,6 +237,12 @@ build_durability_min_level(BucketConfig) ->
             <<"persistToMajority">>
     end.
 
+build_durability_impossible_fallback(BucketConfig) ->
+    case ns_bucket:durability_impossible_fallback(BucketConfig) of
+        disabled -> <<"disabled">>;
+        fallback_to_master_ack -> <<"fallbackToActiveAck">>
+    end.
+
 build_buckets_info(Req, Buckets, Ctx, InfoLevel) ->
     SkipMap = InfoLevel =/= streaming andalso
         proplists:get_value(
@@ -435,7 +441,9 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
                  BucketConfig)},
               {secondaryWarmupMinItemsThreshold,
                ns_bucket:get_secondary_warmup_min_items_threshold(
-                 BucketConfig)}] ++
+                 BucketConfig)},
+              {durabilityImpossibleFallback,
+               build_durability_impossible_fallback(BucketConfig)}] ++
              case ns_bucket:is_persistent(BucketConfig) of
                  true ->
                      [{accessScannerEnabled,
@@ -1623,6 +1631,7 @@ validate_membase_bucket_params(CommonParams, Params, Name,
                                      IsEnterprise, IsStorageModeMigration,
                                      config_profile:is_serverless()),
          parse_validate_durability_min_level(Params, BucketConfig, IsNew),
+         parse_validate_durability_impossible_fallback(Params, IsNew),
          parse_validate_pitr_enabled(Params, IsNew, AllowPitr,
                                      IsEnterprise),
          parse_validate_pitr_granularity(Params, IsNew, AllowPitr,
@@ -2237,6 +2246,20 @@ parse_validate_ephemeral_durability_min_level(_Other) ->
     {error, durability_min_level,
      <<"Durability minimum level must be either 'none' or 'majority' for "
        "ephemeral buckets">>}.
+
+parse_validate_durability_impossible_fallback(Params, IsNew) ->
+    Mode = proplists:get_value("durabilityImpossibleFallback", Params),
+    validate_with_missing(Mode, "disabled", IsNew,
+                          fun parse_validate_durability_impossible_fallback/1).
+
+parse_validate_durability_impossible_fallback("disabled") ->
+    {ok, durability_impossible_fallback, disabled};
+parse_validate_durability_impossible_fallback("fallbackToActiveAck") ->
+    {ok, durability_impossible_fallback, fallback_to_master_ack};
+parse_validate_durability_impossible_fallback(_) ->
+    {error, durability_impossible_fallback,
+     <<"Durability impossible fallback must be either 'none' or "
+       "'fallbackToActiveAck'">>}.
 
 -spec value_not_in_range_error(Param, Value, Min, Max) -> Result when
       Param :: atom(),
@@ -4550,7 +4573,32 @@ basic_bucket_params_screening_t() ->
     ?assertEqual([{numVBuckets,
                    <<"Number of vbuckets must be 128 or 1024 (magma) or "
                      "1024 (couchstore)">>}],
-                 E44).
+                 E44),
+
+    {_OK45, []} = basic_bucket_params_screening(
+                    true, "bucket45",
+                    [{"bucketType", "membase"},
+                     {"ramQuota", "100"},
+                     {"durabilityImpossibleFallback", "disabled"}],
+                    AllBuckets),
+
+    {_OK46, []} = basic_bucket_params_screening(
+                    true, "bucket46",
+                    [{"bucketType", "membase"},
+                     {"ramQuota", "100"},
+                     {"durabilityImpossibleFallback", "fallbackToActiveAck"}],
+                    AllBuckets),
+
+    {_OK47, E47} = basic_bucket_params_screening(
+                     true, "bucket47",
+                     [{"bucketType", "membase"},
+                      {"ramQuota", "100"},
+                      {"durabilityImpossibleFallback", "badValue"}],
+                     AllBuckets),
+    ?assertEqual([{durability_impossible_fallback,
+                   <<"Durability impossible fallback must be either 'none' "
+                     "or 'fallbackToActiveAck'">>}],
+                 E47).
 
 basic_bucket_params_screening_test_() ->
     {setup,

@@ -49,6 +49,7 @@
          display_type/2,
          external_bucket_type/1,
          durability_min_level/1,
+         durability_impossible_fallback/1,
          failover_warnings/1,
          root/0,
          sub_key/2,
@@ -524,6 +525,14 @@ durability_min_level(BucketConfig) ->
                 persistToMajority ->
                     persist_to_majority
             end
+    end.
+
+durability_impossible_fallback(BucketConfig) ->
+    case bucket_type(BucketConfig) of
+        memcached -> undefined;
+        membase ->
+            proplists:get_value(durability_impossible_fallback, BucketConfig,
+                                disabled)
     end.
 
 %% The default value of the attribute.
@@ -2418,7 +2427,8 @@ chronicle_upgrade_to_72(ChronicleTxn) ->
 extract_bucket_props(Props) ->
     [X || X <- [lists:keyfind(Y, 1, Props) ||
                    Y <- [num_replicas, replica_index, ram_quota,
-                         durability_min_level, frag_percent,
+                         durability_min_level, durability_impossible_fallback,
+                         frag_percent,
                          storage_quota_percentage, num_vbuckets,
                          cross_cluster_versioning_enabled, vbuckets_max_cas,
                          version_pruning_window_hrs,

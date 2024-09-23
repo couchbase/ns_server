@@ -55,6 +55,8 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
      {"bucket_type", [], ns_bucket:kv_bucket_type(BucketConfig)},
      {"durability_min_level", [{reload, flush}],
       ns_bucket:durability_min_level(BucketConfig)},
+     {"durability_impossible_fallback", [{reload, flush}],
+      ns_bucket:durability_impossible_fallback(BucketConfig)},
      {"pitr_enabled",  [{reload, flush}],
       ns_bucket:pitr_enabled(BucketConfig)},
      {"pitr_granularity",  [{reload, flush}],
