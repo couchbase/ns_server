@@ -160,6 +160,7 @@ angular.module('mnSettingsNotificationsService', [
         couchstore: bucketsList.byType.membase
           .filter((bucket) => bucket.storageBackend === "couchstore").length,
         membase: bucketsList.byType.membase.length,
+        // TODO: remove when backend no longer supports memcached buckets
         memcached: bucketsList.byType.memcached.length,
         ephemeral: bucketsList.byType.ephemeral.length
       },

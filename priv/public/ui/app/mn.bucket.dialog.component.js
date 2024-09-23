@@ -355,8 +355,6 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
     switch(bucketType) {
       case 'membase':
         return durabilityMinLevelOptionsComplete;
-      case 'memcached':
-        return durabilityMinLevelOptionsBasic;
       case 'ephemeral':
         return durabilityMinLevelOptionsBasic;
     }

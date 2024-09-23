@@ -49,17 +49,16 @@ function mnBucketsServiceFactory($q, mnBucketsStats) {
     }
     return mnBucketsStats.get(mnHttpParams).then(function (resp) {
       var bucketsDetails = resp.data;
+      // TODO: remove memcached type once backend no longer supports them
       bucketsDetails.byType = {membase: [], memcached: [], ephemeral: []};
       bucketsDetails.byName = {};
       bucketsDetails.byType.membase.isMembase = true;
-      bucketsDetails.byType.memcached.isMemcached = true;
       bucketsDetails.byType.ephemeral.isEphemeral = true;
       _.each(bucketsDetails, function (bucket) {
         bucketsDetails.byName[bucket.name] = bucket;
         bucketsDetails.byType[bucket.bucketType].push(bucket);
         bucket.isMembase = bucket.bucketType === 'membase';
         bucket.isEphemeral = bucket.bucketType === 'ephemeral';
-        bucket.isMemcached = bucket.bucketType === 'memcached';
       });
       bucketsDetails.byType.names = _.pluck(bucketsDetails, 'name');
 

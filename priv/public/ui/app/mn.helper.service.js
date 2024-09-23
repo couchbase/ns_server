@@ -336,4 +336,3 @@ class MnHelperService {
   // })();
   // mn.pipes.MnIsMembase = mn.helper.createBucketTypePipe("membase")
 // mn.pipes.MnIsEphemeral = mn.helper.createBucketTypePipe("ephemeral");
-// mn.pipes.MnIsMemcached = mn.helper.createBucketTypePipe("memcached");

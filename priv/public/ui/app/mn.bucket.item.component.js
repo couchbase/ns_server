@@ -128,9 +128,7 @@ class MnBucketItemComponent extends MnLifeCycleHooksToStream {
   isScopesAndCollectionsLinkVisible([permissions, compat70]) {
     let bucketPerm = permissions.cluster.collection[this.bucket.name + ':.:.'];
 
-    return compat70 &&
-           bucketPerm && bucketPerm.collections.read &&
-           this.bucket.bucketType !== 'memcached';
+    return compat70 && bucketPerm && bucketPerm.collections.read;
   }
 
   isWarmUpProgressVisible([warmupProgress, permissions]) {

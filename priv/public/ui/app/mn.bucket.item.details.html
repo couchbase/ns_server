@@ -27,18 +27,18 @@ licenses/APL2.txt.
         {{bucket.basicStats.storageTotals.ram.quotaTotalPerNode |
         mnFormatQuantity}}
       </div>
-      <div class="nowrap" *ngIf="bucket.bucketType !== 'memcached'">
+      <div class="nowrap">
         <strong>Replicas:</strong>
         {{bucket.replicaNumber != 0 ? bucket.replicaNumber : 'disabled'}}
       </div>
       <div class="nowrap">
         <strong>Server Nodes: </strong> {{ bucket.nodes.length }}
       </div>
-      <div class="nowrap" *ngIf="bucket.bucketType !== 'memcached'">
+      <div class="nowrap">
         <strong>Ejection Method: </strong>
         {{ejectionMethod | async}}
       </div>
-      <div class="nowrap" *ngIf="bucket.bucketType !== 'memcached'">
+      <div class="nowrap">
         <strong>Conflict Resolution: </strong>
         <span
           >{{bucket.conflictResolutionType | mnConflictResolutionType}}</span
@@ -48,7 +48,7 @@ licenses/APL2.txt.
         <strong>Compaction:</strong>
         {{compactionProgress | async}}
       </div>
-      <div class="nowrap initialcaps" *ngIf="bucket.bucketType !== 'memcached'">
+      <div class="nowrap initialcaps">
         <strong>Compression:</strong>
         {{bucket.compressionMode}}
       </div>
@@ -60,13 +60,13 @@ licenses/APL2.txt.
         <strong>Storage Backend: </strong>
         {{storageBackend | async}}
       </div>
-      <div class="nowrap" *ngIf="bucket.bucketType !== 'memcached'">
+      <div class="nowrap">
         <strong>Minimum Durability Level:</strong>
         {{bucket.durabilityMinLevel}}
       </div>
       <div
         class="nowrap"
-        *ngIf="bucket.bucketType !== 'memcached' && (compatVersion80 | async) && (isEnterprise | async)"
+        *ngIf="(compatVersion80 | async) && (isEnterprise | async)"
       >
         <strong>Encryption At Rest:</strong>
         {{bucket.encryptionAtRestSecretId === -1 ? 'Disabled' : 'Enabled'}}

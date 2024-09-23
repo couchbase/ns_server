@@ -74,25 +74,12 @@ licenses/APL2.txt.
         />
         <label for="for-bucket-type-membase">Couchbase</label>
         <input
-          type="radio"
-          value="memcached"
-          formControlName="bucketType"
-          id="for-bucket-type-memcached"
-        />
-        <label for="for-bucket-type-memcached">Memcached</label>
-        <input
-          type="radio"
-          value="ephemeral"
-          formControlName="bucketType"
-          id="for-bucket-type-ephemeral"
-        />
-        <label for="for-bucket-type-ephemeral">Ephemeral</label>
-        <div
-          class="error error-form"
-          [hidden]="(bucketType | async) !== 'memcached'"
-        >
-          Warning: Memcached buckets are deprecated.
-        </div>
+           type="radio"
+           value="ephemeral"
+           formControlName="bucketType"
+           id="for-bucket-type-ephemeral">
+        <label
+           for="for-bucket-type-ephemeral">Ephemeral</label>
       </div>
 
       <div
@@ -152,10 +139,7 @@ licenses/APL2.txt.
         </span>
       </div>
       <div [hidden]="!(showAdvancedSettings.state | async)">
-        <div
-          class="formrow checkbox-list"
-          [hidden]="(bucketType | async) === 'memcached'"
-        >
+        <div class="formrow checkbox-list">
           <label>Replicas</label>
           <div class="row flex-left">
             <span class="column">
@@ -492,7 +476,7 @@ licenses/APL2.txt.
           </div>
         </div>
 
-        <div [hidden]="(bucketType | async) === 'memcached'">
+        <div>
           <label class="inline">Bucket Priority</label>
 
           <ng-template #bucketPriorityTooltip>
@@ -530,7 +514,7 @@ licenses/APL2.txt.
           </div>
         </div>
 
-        <div class="formrow" [hidden]="(bucketType | async) === 'memcached'">
+        <div class="formrow">
           <div>
             <label class="inline">Minimum Durability Level</label>
 
@@ -667,8 +651,6 @@ licenses/APL2.txt.
         <label class="inline">Flush</label>
         <ng-template #flushTooltip>
           When flushed, ALL items in the bucket are removed as soon as possible.
-          NOTE: This does not immediately show in item count statistics with
-          memcached buckets.
         </ng-template>
         <span
           [ngbTooltip]="flushTooltip"

@@ -373,7 +373,7 @@ class MnBucketsType {
     case "membase":
       return "Couchbase";
     case "ephemeral":
-    case "memcached":
+    case "memcached": // TODO: remove once backend no longer supports memcached buckets
       return type.charAt(0).toUpperCase() + type.slice(1);
     }
   }

@@ -39,28 +39,24 @@ let bucketSpecificPermissions = [function (bucket) {
     "cluster.bucket[" + name + "].collections!write",
     "cluster.collection[" + name + ":.:.].stats!read",
     "cluster.collection[" + name + ":.:.].collections!read",
-    "cluster.collection[" + name + ":.:.].collections!write"
+    "cluster.collection[" + name + ":.:.].collections!write",
+    "cluster.bucket[" + name + "].data!write",
+    "cluster.bucket[" + name + "].data!read",
+    "cluster.bucket[" + name + "].data.docs!read",
+    "cluster.bucket[" + name + "].data.docs!write",
+    "cluster.bucket[" + name + "].data.docs!upsert",
+    "cluster.collection[" + name + ":.:.].data.docs!read",
+    "cluster.collection[" + name + ":.:.].data.docs!write",
+    "cluster.collection[" + name + ":.:.].data.docs!upsert",
+    "cluster.collection[" + name + ":.:.].n1ql.index!read",
+    "cluster.collection[" + name + ":.:.].n1ql.index!write",
+    "cluster.collection[" + name + ":.:.].n1ql.select!execute"
   ];
   if (bucket.name === "." || (bucket.bucketType === "membase")) {
     basePermissions = basePermissions.concat([
       "cluster.bucket[" + name + "].views!read",
       "cluster.bucket[" + name + "].views!write",
       "cluster.bucket[" + name + "].views!compact"
-    ]);
-  }
-  if (bucket.name === "." || (bucket.bucketType !== "memcached")) {
-    basePermissions = basePermissions.concat([
-      "cluster.bucket[" + name + "].data!write",
-      "cluster.bucket[" + name + "].data!read",
-      "cluster.bucket[" + name + "].data.docs!read",
-      "cluster.bucket[" + name + "].data.docs!write",
-      "cluster.bucket[" + name + "].data.docs!upsert",
-      "cluster.collection[" + name + ":.:.].data.docs!read",
-      "cluster.collection[" + name + ":.:.].data.docs!write",
-      "cluster.collection[" + name + ":.:.].data.docs!upsert",
-      "cluster.collection[" + name + ":.:.].n1ql.index!read",
-      "cluster.collection[" + name + ":.:.].n1ql.index!write",
-      "cluster.collection[" + name + ":.:.].n1ql.select!execute"
     ]);
   }
 
