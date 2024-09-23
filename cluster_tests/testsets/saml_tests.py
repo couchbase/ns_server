@@ -66,7 +66,7 @@ ui_headers = {'Host': 'some_addr', 'ns-server-ui': 'yes'}
 bucket = "test"
 
 class SamlTests(testlib.BaseTestSet):
-    services_to_run = [Service.QUERY, Service.BACKUP]
+    services_to_run = [Service.QUERY, Service.BACKUP, Service.CBAS]
 
     @staticmethod
     def requirements():
@@ -552,14 +552,14 @@ class SamlTests(testlib.BaseTestSet):
             # Create analytics collection in test._default._default. This will
             # fail - we don't have cluster.analytics!manage. Analytics and full
             # admin roles have the permission (see admin_test).
-            # r = ui_request('post', self.cluster.connected_nodes[0],
-            #                '/_p/cbas/query/service',
-            #                session,
-            #                data={'statement':
-            #                      'alter collection '
-            #                      f'`{bucket}`.`_default`.`_default` '
-            #                      'enable analytics;'},
-            #                expected_code=403)
+            r = ui_request('post', self.cluster.connected_nodes[0],
+                           '/_p/cbas/query/service',
+                           session,
+                           data={'statement':
+                                 'alter collection '
+                                 f'`{bucket}`.`_default`.`_default` '
+                                 'enable analytics;'},
+                           expected_code=403)
 
             # Exercise goxdcr_rest:proxy(), which also populates cb-on-behalf
             # headers. (The previous test cases populate cb-on-behalf headers in
@@ -617,22 +617,22 @@ class SamlTests(testlib.BaseTestSet):
                        session, expected_code=200)
 
             # Create analytics collection in test._default._default.
-            # r = ui_request('post', self.cluster.connected_nodes[0],
-            #                '/_p/cbas/query/service',
-            #                session,
-            #                data={'statement':
-            #                      'alter collection '
-            #                      f'`{bucket}`.`_default`.`_default` '
-            #                      'enable analytics;'},
-            #                expected_code=200)
+            r = ui_request('post', self.cluster.connected_nodes[0],
+                           '/_p/cbas/query/service',
+                           session,
+                           data={'statement':
+                                 'alter collection '
+                                 f'`{bucket}`.`_default`.`_default` '
+                                 'enable analytics;'},
+                           expected_code=200)
 
             # Query analytics collections. They should exist.
-            # r = ui_request('post', self.cluster.connected_nodes[0],
-            #                '/_p/cbas/query/service',
-            #                session,
-            #                data={'statement':
-            #                      f'select * from `{bucket}`'},
-            #                expected_code=200)
+            r = ui_request('post', self.cluster.connected_nodes[0],
+                           '/_p/cbas/query/service',
+                           session,
+                           data={'statement':
+                                 f'select * from `{bucket}`'},
+                           expected_code=200)
 
     # Successfull authentication, but user doesn't have access to UI
     def access_denied_test(self):
