@@ -20,6 +20,8 @@
          set_sink_loglevel/3, get_sink_loglevel/2,
          sync_sink/1,
          sync_all_sinks/0,
+         set_global_log_deks_snapshot/1,
+         get_global_log_deks_snapshot/0,
 
          with_configuration_batching/1,
 
@@ -131,6 +133,12 @@ sync_all_sinks() ->
     Sinks = gen_server:call(?MODULE, get_sink_names, infinity),
     [sync_sink(SinkName) || SinkName <- Sinks],
     ok.
+
+set_global_log_deks_snapshot(LogsDs) ->
+    persistent_term:put(log_deks_snapshot, LogsDs).
+
+get_global_log_deks_snapshot() ->
+    persistent_term:get(log_deks_snapshot, undefined).
 
 get_effective_loglevel(LoggerName) ->
     call_logger_impl(LoggerName, get_effective_loglevel, []).

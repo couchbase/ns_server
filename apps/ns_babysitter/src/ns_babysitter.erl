@@ -105,6 +105,10 @@ setup_static_config() ->
                           end
                   end, Terms).
 
+init_log_encryption() ->
+    {ok, DekSnapshot} = cb_deks_raw_utils:bootstrap_get_deks(logDek, #{}),
+    ale:set_global_log_deks_snapshot(DekSnapshot).
+
 init_logging() ->
     ale:with_configuration_batching(
       fun () ->
@@ -114,6 +118,8 @@ init_logging() ->
 
 do_init_logging() ->
     {ok, Dir} = application:get_env(ns_server, error_logger_mf_dir),
+
+    ok = init_log_encryption(),
 
     ok = misc:mkdir_p(Dir),
     ok = convert_disk_log_files(Dir),

@@ -161,13 +161,18 @@ extract_pkey_pass_with_script(PassSettings) ->
     end.
 
 call_external_script(Path, Args, Timeout) ->
-    Port = erlang:open_port({spawn_executable, Path},
-                            [stderr_to_stdout, binary,
-                             stream, exit_status, hide,
-                             {args, Args}]),
-    StartTime = erlang:system_time(millisecond),
-    Deadline = StartTime + Timeout,
-    wait_for_exit(Port, <<>>, Deadline).
+    %% Execute on new process to contain the port exit after executable
+    %% completes and exits
+    misc:executing_on_new_process(
+      fun() ->
+              Port = erlang:open_port({spawn_executable, Path},
+                                      [stderr_to_stdout, binary,
+                                       stream, exit_status, hide,
+                                       {args, Args}]),
+              StartTime = erlang:system_time(millisecond),
+              Deadline = StartTime + Timeout,
+              wait_for_exit(Port, <<>>, Deadline)
+      end).
 
 wait_for_exit(Port, Output, Deadline) ->
     Now = erlang:system_time(millisecond),
