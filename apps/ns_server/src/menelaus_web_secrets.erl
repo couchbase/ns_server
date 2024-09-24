@@ -289,7 +289,7 @@ generated_key_validators(CurSecretProps) ->
      validator:convert(encryptBy, binary_to_atom(_, latin1), _),
      validate_encrypt_by(encryptBy, _),
      validator:default(encryptBy, nodeSecretManager, _),
-     validator:integer(encryptSecretId, 0, infinity, _),
+     validator:integer(encryptSecretId, -1, infinity, _),
      validate_encrypt_secret_id(encryptSecretId, CurSecretProps, _)].
 
 validate_encrypt_by(Name, State) ->
