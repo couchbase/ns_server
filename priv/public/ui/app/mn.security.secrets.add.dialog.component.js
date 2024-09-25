@@ -30,7 +30,8 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
     new Component({
       template,
       inputs: [
-        'item'
+        'item',
+        'secrets'
       ],
       changeDetection: ChangeDetectionStrategy.OnPush
     })
@@ -75,6 +76,8 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         name: '',
         type: 'awskms-aes-key-256',
         'generated-secret': this.formBuilder.group({
+          encryptBy: 'nodeSecretManager',
+          encryptSecretId: null,
           autoRotation: false,
           rotationIntervalInDays: null,
           nextRotationTime: this.formBuilder.group({
@@ -107,6 +110,8 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         this.mnSecuritySecretsService.stream.updateSecretsList.next();
         this.activeModal.dismiss();
       });
+
+      this.filteredSecrets = this.secrets.filter(secret => secret.usage.find(u => u.includes('secrets-encryption')));
 
       this.form.group.disable();
 
@@ -179,6 +184,11 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
           autoRotation: item.data.autoRotation
         };
       }
+      const {encryptSecretId, encryptBy} = item.data;
+      rv['generated-secret'].encryptBy = encryptBy;
+      if (encryptBy === 'clusterSecret') {
+        rv['generated-secret']['encryptSecretId'] = (encryptSecretId === null || encryptSecretId === undefined || encryptSecretId < 0) ? null : this.secrets.find(i => i.id === encryptSecretId);
+      }
     } else {
       rv['aws-secret'] = item.data
     }
@@ -191,8 +201,11 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
 
     let data = {};
     if (type === 'auto-generated-aes-key-256') {
-      const {rotationIntervalInDays, nextRotationTime, autoRotation} = generatedSecret;
-      data = {autoRotation};
+      const {rotationIntervalInDays, nextRotationTime, autoRotation, encryptBy, encryptSecretId} = generatedSecret;
+      data = {autoRotation, encryptBy};
+      if (encryptBy === 'clusterSecret') {
+        data.encryptSecretId = encryptSecretId?.id ?? -1
+      }
       if (autoRotation) {
         data.rotationIntervalInDays = rotationIntervalInDays;
         const {date, hour, minute} = nextRotationTime;
@@ -208,5 +221,9 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
     }
 
     return [{ name, type, usage: Object.keys(usage).filter(v => usage[v]), data}, this.item?.id];
+  }
+
+  valuesMapping(item) {
+    return item ? item.name || '[empty name]' : item;
   }
 }

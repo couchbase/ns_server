@@ -11,7 +11,7 @@ licenses/APL2.txt.
 import {Component, ChangeDetectionStrategy} from '@angular/core'
 import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
 import {Subject} from 'rxjs';
-import {takeUntil, map} from 'rxjs/operators';
+import {takeUntil, map, withLatestFrom} from 'rxjs/operators';
 
 import {MnPermissions} from './ajs.upgraded.providers.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
@@ -58,10 +58,12 @@ class MnSecuritySecretsItemDetailsComponent extends MnLifeCycleHooksToStream {
 
     var onEditKey = new Subject();
     onEditKey
-      .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(item => {
+      .pipe(withLatestFrom(mnSecuritySecretsService.stream.getSecrets),
+            takeUntil(this.mnOnDestroy))
+      .subscribe(([item, secrets]) => {
         var ref = modalService.open(MnSecuritySecretsAddDialogComponent);
         ref.componentInstance.item = item;
+        ref.componentInstance.secrets = secrets;
       });
     
     this.rotateKey = mnFormService.create(this)

@@ -50,19 +50,21 @@ class MnSecuritySecretsComponent extends MnLifeCycleHooksToStream {
 
     this.onAddSecretClick = new Subject();
     this.onAddSecretClick
-      .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(() => {
+      .pipe(withLatestFrom(mnSecuritySecretsService.stream.getSecrets),
+            takeUntil(this.mnOnDestroy))
+      .subscribe(([, secrets]) => {
         const ref = this.modalService.open(MnSecuritySecretsAddDialogComponent);
         ref.componentInstance.item = null;
+        ref.componentInstance.secrets = secrets;
       });
 
     this.onEncryptionAtRestClick = new Subject();
     this.onEncryptionAtRestClick
       .pipe(withLatestFrom(mnSecuritySecretsService.stream.getSecrets),
             takeUntil(this.mnOnDestroy))
-      .subscribe(([, items]) => {
+      .subscribe(([, secrets]) => {
         const ref = this.modalService.open(MnSecuritySecretsEncryptionDialogComponent);
-        ref.componentInstance.items = items;
+        ref.componentInstance.secrets = secrets;
       });
 
     this.secrets = mnSecuritySecretsService.stream.getSecrets;
