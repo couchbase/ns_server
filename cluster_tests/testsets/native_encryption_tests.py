@@ -572,6 +572,7 @@ class NativeEncryptionTests(testlib.BaseTestSet):
         secret = auto_generated_secret(usage=['bucket-encryption-*'])
         bad_id = create_secret(self.random_node(), secret)
         secret['usage'] = ['bucket-encryption-*', 'configuration-encryption']
+        secret['name'] = secret['name'] + ' (good)' # has to be unique
         good_id = create_secret(self.random_node(), secret)
         node = self.random_node()
         set_cfg_encryption(node, 'disabled', -1)

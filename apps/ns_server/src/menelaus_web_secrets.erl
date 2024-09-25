@@ -96,6 +96,9 @@ handle_put_secret(IdStr, Req) ->
                       {error, {encrypt_id, not_allowed}} ->
                           menelaus_util:reply_global_error(
                             Req, "encryption secret not allowed");
+                      {error, name_not_unique} ->
+                          menelaus_util:reply_global_error(
+                            Req, "name is not unique");
                       {error, not_found} ->
                           menelaus_util:reply_not_found(Req)
                   end
@@ -109,6 +112,17 @@ handle_put_secret(IdStr, Req) ->
 secret_validators(CurProps) ->
     [validator:string(name, _),
      validator:required(name, _),
+     validator:validate(
+       fun ("") -> {error, "Must not not be empty"};
+           (Str) ->
+               Id = maps:get(id, CurProps, ?SECRET_ID_NOT_SET),
+               case cb_cluster_secrets:is_name_unique(Id, Str, direct) of
+                   true -> ok;
+                   %% Checking it here and inside transaction later
+                   %% Check here is needed mostly to make it user friendly in UI
+                   false -> {error, "Must be unique"}
+               end
+       end, name, _),
      validator:one_of(type, [?GENERATED_KEY_TYPE, ?AWSKMS_KEY_TYPE], _),
      validator:convert(type, binary_to_atom(_, latin1), _),
      validator:required(type, _),

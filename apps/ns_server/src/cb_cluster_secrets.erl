@@ -57,7 +57,8 @@
          sync_with_all_node_monitors/0,
          new_key_id/0,
          is_valid_key_id/1,
-         dek_drop_complete/1]).
+         dek_drop_complete/1,
+         is_name_unique/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -401,6 +402,12 @@ is_valid_key_id(Bin) -> misc:is_valid_v4uuid(Bin).
 dek_drop_complete(DekKind) ->
     ?MODULE ! {dek_drop_complete, DekKind},
     ok.
+
+-spec is_name_unique(secret_id(), string(), chronicle_snapshot()) -> boolean().
+is_name_unique(Id, Name, Snapshot) ->
+    lists:all(fun (#{id := Id2}) when Id == Id2 -> true;
+                  (#{name := Name2}) -> Name /= Name2
+              end, get_all(Snapshot)).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -1121,7 +1128,8 @@ validate_secret_in_txn(NewProps, PrevProps, Snapshot) ->
         ok ?= validate_secrets_encryption_usage_change(NewProps, PrevProps,
                                                        Snapshot),
         ok ?= validate_dek_related_usage_change(NewProps, PrevProps, Snapshot),
-        ok ?= validate_encryption_secret_id(NewProps, Snapshot)
+        ok ?= validate_encryption_secret_id(NewProps, Snapshot),
+        ok ?= validate_name_uniqueness(NewProps, Snapshot)
     end.
 
 -spec execute_on_master({module(), atom(), [term()]}) -> term().
@@ -2027,6 +2035,14 @@ initiate_deks_drop(Kind, IdsToDrop, #state{deks = DeksInfo} = State0) ->
             State0;
         {except, _} ->
             State0
+    end.
+
+-spec validate_name_uniqueness(secret_props(), chronicle_snapshot()) ->
+          ok | {error, name_not_unique}.
+validate_name_uniqueness(#{id := Id, name := Name}, Snapshot) ->
+    case is_name_unique(Id, Name, Snapshot) of
+        true -> ok;
+        false -> {error, name_not_unique}
     end.
 
 -ifdef(TEST).
