@@ -121,6 +121,7 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
         flushEnabled: null,
         threadsNumber: null,
         storageBackend: null,
+        numVBuckets: null,
         durabilityMinLevel: null,
         purgeInterval: null,
         autoCompactionDefined: null,
@@ -265,7 +266,7 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
       .subscribe(v => this.maybeDisableField('purgeInterval', v));
 
     if (this.bucket) {
-      ['name', 'bucketType', 'conflictResolutionType',
+      ['name', 'bucketType', 'conflictResolutionType','storageBackend','numVBuckets',
         'evictionPolicyEphemeral']
         .forEach(field =>
                  this.maybeDisableField(field, false));
@@ -399,6 +400,9 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
 
     if (isEnterprise && isMembase) {
       copyProperty('storageBackend');
+      if (compat80) {
+        copyProperty('numVBuckets');
+      }
     }
     if (isMembase) {
       copyProperties(['autoCompactionDefined', 'evictionPolicy']);
@@ -428,6 +432,10 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
         if (isEnterprise) {
           copyProperty('conflictResolutionType');
         }
+      }
+
+      if (formData.storageBackend === 'couchstore' || !saveData.numVBuckets) {
+        delete saveData.numVBuckets;
       }
 
       if (formData.autoCompactionDefined) {

@@ -88,6 +88,13 @@ licenses/APL2.txt.
       >
         <label>Storage Backend</label>
         <div class="formrow checkbox-list">
+           <input
+              type="radio"
+              formControlName="storageBackend"
+              value="magma"
+              id="for-storage-backend-magma"
+            />
+            <label for="for-storage-backend-magma">Magma</label>
           <input
             type="radio"
             formControlName="storageBackend"
@@ -95,13 +102,7 @@ licenses/APL2.txt.
             id="for-storage-backend-couchstore"
           />
           <label for="for-storage-backend-couchstore">CouchStore</label>
-          <input
-            type="radio"
-            formControlName="storageBackend"
-            value="magma"
-            id="for-storage-backend-magma"
-          />
-          <label for="for-storage-backend-magma">Magma</label>
+
           <div
             class="error"
             [hidden]="!(httpError | async)?.errors?.storageBackend"
@@ -109,8 +110,39 @@ licenses/APL2.txt.
             {{(httpError | async)?.errors?.storageBackend}}
           </div>
         </div>
+        <div class="margin-left-1-5 margin-top-half" *ngIf="compatVersion80 | async" [hidden]="(storageBackend | async) === 'couchstore'">
+           <label>Magma Configuration
+              <ng-template #numVBucketTooltip>
+                 Magma configuration affects performance and memory usage.
+                 <ul>
+                    <li>The minimum bucket memory quota allowed for Configuration 1 is 100 MiB.</li>
+                    <li>The minimum bucket memory quota allowed for Configuration 2 is 1 GiB.</li>
+                    <li>To create an XDCR replication to or from a bucket in Server version lower than 8.0, you must choose Configuration 2.</li>
+                 </ul>
+                </ng-template>
+                <span
+                   class="fa-stack icon-info"
+                   [ngbTooltip]="numVBucketTooltip"
+                   triggers="click"
+                   placement="top">
+                   <span class="icon fa-circle-thin fa-stack-2x"></span>
+                   <span class="icon fa-info fa-stack-1x"></span>
+                </span>
+            </label>
+            <input
+               type="radio"
+               formControlName="numVBuckets"
+               value=""
+               id="for-magma-128">
+            <label for="for-magma-128">Configuration 1</label>
+            <input
+               type="radio"
+               formControlName="numVBuckets"
+               value="1024"
+               id="for-magma-1024">
+            <label for="for-magma-1024">Configuration 2</label>
+        </div>
       </div>
-
       <div class="formrow">
         <label>Memory Quota <small>in mebibytes per server node</small></label>
         <div class="form-inline margin-bottom-1">

@@ -59,6 +59,13 @@ licenses/APL2.txt.
       <div class="nowrap" *ngIf="bucket.bucketType === 'membase'">
         <strong>Storage Backend: </strong>
         {{storageBackend | async}}
+          <span *ngIf="(storageBackend | async) === 'Magma'">
+            (Configuration {{(numVBuckets | async) == 1024 ? '2' : '1'}})
+          </span>
+      </div>
+      <div class="nowrap" *ngIf="bucket.bucketType === 'membase'">
+          <strong>#vbuckets: </strong>
+          {{numVBuckets | async}}
       </div>
       <div class="nowrap">
         <strong>Minimum Durability Level:</strong>

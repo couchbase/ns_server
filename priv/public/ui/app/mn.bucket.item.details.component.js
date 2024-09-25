@@ -106,6 +106,10 @@ class MnBucketItemDetailsComponent extends MnLifeCycleHooksToStream {
       .pipe(map(v => mnBucketsService.prepareStorageBackendText(v)),
             shareReplay({refCount: true, bufferSize: 1}));
 
+    this.numVBuckets = currentBucket
+        .pipe(map(v => mnBucketsService.getNumVBuckets(v)),
+            shareReplay({refCount: true, bufferSize: 1}));
+
     this.warmUpTasks = mnTasksService.stream.tasksWarmingUp
       .pipe(withLatestFrom(currentBucket),
             filter(([tasks, bucket]) => tasks && bucket),

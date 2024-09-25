@@ -325,6 +325,10 @@ class MnBucketsService {
     }
   }
 
+  getNumVBuckets(bucket) {
+    return bucket.numVBuckets
+  }
+
   prepareCompactionProgressText(compactionTask) {
     return compactionTask ? (compactionTask.progress + '% complete') : 'Not active';
   }
@@ -384,7 +388,8 @@ class MnBucketsService {
       threadsNumber: '3',
       purgeInterval: 3,
       durabilityMinLevel: 'none',
-      storageBackend: 'couchstore',
+      storageBackend: 'magma',
+      numVBuckets: '',
       autoCompactionDefined: false,
       autoCompactionSettings,
       enableEncryptionAtRest: false,
@@ -413,6 +418,8 @@ class MnBucketsService {
       purgeInterval: bucket.purgeInterval,
       durabilityMinLevel: bucket.durabilityMinLevel,
       storageBackend: bucket.storageBackend,
+      // Magma Configuration needs numVBuckets as either '1024' or ''
+      numVBuckets: (bucket.numVBuckets == 1024 ? bucket.numVBuckets + '' : ''),
       autoCompactionDefined: !!bucket.autoCompactionSettings,
     };
 
