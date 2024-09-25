@@ -316,8 +316,7 @@ dek_chronicle_keys_filter(Key) ->
 %% required_usage - the secret usage that secret must contain in order to be
 %% allowed to encrypt this kind of deks
 dek_config(chronicleDek) ->
-    #{name => chronicle,
-      encryption_method_callback => cb_crypto:get_encryption_method(
+    #{encryption_method_callback => cb_crypto:get_encryption_method(
                                       config_encryption, _),
       set_active_key_callback => fun chronicle_local:set_active_dek/1,
       lifetime_callback => cb_crypto:get_dek_kind_lifetime(
@@ -329,8 +328,7 @@ dek_config(chronicleDek) ->
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
       required_usage => config_encryption};
 dek_config(configDek) ->
-    #{name => configuration,
-      encryption_method_callback => cb_crypto:get_encryption_method(
+    #{encryption_method_callback => cb_crypto:get_encryption_method(
                                       config_encryption, _),
       set_active_key_callback => fun set_config_active_key/1,
       lifetime_callback => cb_crypto:get_dek_kind_lifetime(
@@ -342,8 +340,7 @@ dek_config(configDek) ->
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
       required_usage => config_encryption};
 dek_config({bucketDek, Bucket}) ->
-    #{name => {bucket, Bucket},
-      encryption_method_callback => ns_bucket:get_encryption(Bucket, _),
+    #{encryption_method_callback => ns_bucket:get_encryption(Bucket, _),
       set_active_key_callback => ns_memcached:set_active_dek_for_bucket(Bucket,
                                                                         _),
       lifetime_callback => ns_bucket:get_dek_lifetime(Bucket, _),

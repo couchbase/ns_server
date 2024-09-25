@@ -129,8 +129,9 @@
 -type bad_encrypt_id() :: {encrypt_id, not_allowed | not_found}.
 -type bad_usage_change() :: {usage, in_use}.
 
--type secret_in_use() :: {used_by, [{bucket, string()} |
-                                    {secret, secret_id()}]}.
+-type secret_in_use() :: {used_by, #{by_config := [cb_deks:dek_kind()],
+                                     by_secret := [secret_id()],
+                                     by_deks := [cb_deks:dek_kind()]}}.
 
 -type deks_info() :: #{active_id := cb_deks:dek_id() | undefined,
                        deks := [cb_deks:dek()],
@@ -1141,7 +1142,7 @@ can_delete_secret(#{id := Id}, Snapshot) ->
                case call_dek_callback(encryption_method_callback, Kind,
                                       [Snapshot]) of
                   {succ, {ok, {secret, Id}}} ->
-                      {true, maps:get(name, cb_deks:dek_config(Kind))};
+                      {true, Kind};
                   {succ, {ok, _}} ->
                       false;
                   {succ, {error, not_found}} ->
@@ -1153,12 +1154,19 @@ can_delete_secret(#{id := Id}, Snapshot) ->
     %% Places where this secret is used to encrypt deks (such deks can exist
     %% even if encryption is disabled for this entity)
     Deks = get_dek_kinds_used_by_secret_id(Id, Snapshot),
-    AllEntities =
-        EncryptionConfigUsages ++ [{secret, SId} || SId <- Secrets] ++
-        [{deks, D} || D <- Deks],
-    case AllEntities of
-        [] -> ok;
-        _ -> {error, {used_by, AllEntities}}
+    SecretNames =
+        lists:map(fun (SId) ->
+                      {ok, #{name := SName}} = get_secret(SId, Snapshot),
+                      SName
+                  end, Secrets),
+
+    case length(EncryptionConfigUsages) + length(SecretNames) + length(Deks) of
+        0 -> ok;
+        _ ->
+            M = #{by_config => EncryptionConfigUsages,
+                  by_secrets => SecretNames,
+                  by_deks => Deks},
+            {error, {used_by, M}}
     end.
 
 -spec get_secrets_used_by_secret_id(secret_id(), chronicle_snapshot()) ->
