@@ -455,8 +455,8 @@ handle_call({call, {M, F, A} = MFA}, _From,
 handle_call(sync, _From, #state{proc_type = ?NODE_PROC} = State) ->
     {reply, ok, State};
 
-handle_call(get_node_deks_info, _From, #state{proc_type = ?NODE_PROC,
-                                              deks = Deks} = State) ->
+handle_call(get_node_deks_info, _From,
+            #state{proc_type = ?NODE_PROC} = State) ->
     NewState = run_jobs(State), %% Run jobs to make sure all deks are up to date
     maybe
         [] ?= NewState#state.jobs,
@@ -466,6 +466,7 @@ handle_call(get_node_deks_info, _From, #state{proc_type = ?NODE_PROC,
                               K#{info => maps:remove(key, Info)}
                           end, Keys)
             end,
+        #state{deks = Deks} = NewState,
         Res = maps:map(fun (_K, #{deks := Keys}) -> StripKeyMaterial(Keys) end,
                        Deks),
         {reply, Res, NewState}

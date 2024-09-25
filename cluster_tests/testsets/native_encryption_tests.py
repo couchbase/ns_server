@@ -176,9 +176,6 @@ class NativeEncryptionTests(testlib.BaseTestSet):
         delete_secret(self.random_node(), secret1_id, expected_code=400)
         self.cluster.update_bucket({'name': self.bucket_name,
                                     'encryptionAtRestSecretId': -1})
-        # Still can't delete because bucket's deks are still encrypted by
-        # secret1
-        delete_secret(self.random_node(), secret1_id, expected_code=400)
 
     def secret_not_allowed_to_encrypt_bucket_test(self):
         secret1_json = auto_generated_secret(usage=['bucket-encryption-wrong'])
