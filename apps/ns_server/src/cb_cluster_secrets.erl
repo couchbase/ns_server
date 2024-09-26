@@ -43,7 +43,7 @@
 -export([start_link_node_monitor/0,
          start_link_master_monitor/0,
          add_new_secret/1,
-         replace_secret/2,
+         replace_secret/3,
          delete_secret/1,
          get_all/0,
          get_secret/1,
@@ -67,7 +67,7 @@
 
 %% Can be called by other nodes:
 -export([add_new_secret_internal/1,
-         replace_secret_internal/2,
+         replace_secret_internal/3,
          rotate_internal/1,
          sync_with_node_monitor/0,
          delete_secret_internal/1,
@@ -218,44 +218,46 @@ add_new_secret_internal(Props) ->
         {error, _} = Error -> Error
     end.
 
--spec replace_secret(secret_props(), map()) ->
-                                    {ok, secret_props()} |
-                                    {error, not_found | bad_encrypt_id() |
-                                            bad_usage_change()}.
-replace_secret(OldProps, NewProps) ->
-    execute_on_master({?MODULE, replace_secret_internal, [OldProps, NewProps]}).
+-spec replace_secret(secret_id(), map(), fun((secret_props()) -> boolean())) ->
+          {ok, secret_props()} |
+          {error, not_found | bad_encrypt_id() | bad_usage_change() |
+                  forbidden}.
+replace_secret(Id, NewProps, IsSecretWritableFun) ->
+    execute_on_master({?MODULE, replace_secret_internal,
+                       [Id, NewProps, IsSecretWritableFun]}).
 
--spec replace_secret_internal(secret_props(), map()) ->
-                                    {ok, secret_props()} |
-                                    {error, not_found | bad_encrypt_id() |
-                                            bad_usage_change()}.
-replace_secret_internal(OldProps, NewProps) ->
+-spec replace_secret_internal(secret_id(), map(),
+                              fun((secret_props()) -> boolean())) ->
+          {ok, secret_props()} |
+          {error, not_found | bad_encrypt_id() | bad_usage_change() |
+                  forbidden}.
+replace_secret_internal(Id, NewProps, IsSecretWritableFun) ->
     %% Make sure we have most recent information about which secrets are in use
     %% This is needed for verification of 'usage' modification
     maybe_reset_deks_counters(),
-    Props = copy_static_props(OldProps, NewProps),
     Res =
         chronicle_compat:txn(
           fun (Txn) ->
-              Snapshot = fetch_snapshot_in_txn(Txn),
-              CurList = get_all(Snapshot),
-              case replace_secret_in_list(Props, CurList) of
-                  false -> %% already removed, we should not create new
-                      {abort, {error, not_found}};
-                  NewList ->
-                      case validate_secret_in_txn(Props, OldProps, Snapshot) of
-                          ok ->
-                              {commit,
-                               [{set, ?CHRONICLE_SECRETS_KEY, NewList}]};
-                          {error, _} = Error ->
-                              {abort, Error}
-                      end
+              maybe
+                  Snapshot = fetch_snapshot_in_txn(Txn),
+                  {ok, OldProps} ?= get_secret(Id, Snapshot),
+                  true ?= IsSecretWritableFun(OldProps),
+                  Props = copy_static_props(OldProps, NewProps),
+                  CurList = get_all(Snapshot),
+                  NewList = replace_secret_in_list(Props, CurList),
+                  ok ?= validate_secret_in_txn(Props, OldProps, Snapshot),
+                  {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewList}], Props}
+              else
+                  false ->
+                      {abort, {error, forbidden}};
+                  {error, _} = Err ->
+                      {abort, Err}
               end
            end),
     case Res of
-        {ok, _} ->
+        {ok, _, ResProps} ->
             sync_with_all_node_monitors(),
-            {ok, Props};
+            {ok, ResProps};
         {error, _} = Error -> Error
     end.
 

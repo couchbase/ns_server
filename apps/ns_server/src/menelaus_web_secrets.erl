@@ -53,12 +53,12 @@ handle_post_secret(Req) ->
       fun (RawProps) ->
           maybe
               ToAdd = import_secret(RawProps),
-              [_] ?= write_filter_secrets_by_permission([ToAdd], Req),
+              true ?= is_writable(ToAdd, Req),
               {ok, Res} ?= cb_cluster_secrets:add_new_secret(ToAdd),
               Formatted = export_secret(Res),
               menelaus_util:reply_json(Req, {Formatted})
           else
-              [] ->
+              false ->
                   menelaus_util:web_exception(403, "Forbidden");
               {error, {encrypt_id, not_found}} ->
                   menelaus_util:reply_global_error(
@@ -73,19 +73,27 @@ handle_post_secret(Req) ->
       end, Req, json, secret_validators(#{})).
 
 handle_put_secret(IdStr, Req) ->
-    case cb_cluster_secrets:get_secret(parse_id(IdStr)) of
+    Id = parse_id(IdStr),
+    case cb_cluster_secrets:get_secret(Id) of
         {ok, CurProps} ->
             validator:handle(
               fun (RawProps) ->
                   maybe
                       Props = import_secret(RawProps),
-                      [_] ?= write_filter_secrets_by_permission([Props], Req),
-                      {ok, Res} ?= cb_cluster_secrets:replace_secret(CurProps,
-                                                                     Props),
+                      %% Note: All "usages" should be writable by current user.
+                      %% This includes "new usages" (usages that are being set)
+                      %% and "old usages" (usages that are being replaced)
+                      %% Checking "new usages" here:
+                      true ?= is_writable(Props, Req),
+                      %% replace_secret will check "old usages" inside txn
+                      {ok, Res} ?= cb_cluster_secrets:replace_secret(
+                                     Id, Props, is_writable(_, Req)),
                       Formatted = export_secret(Res),
                       menelaus_util:reply_json(Req, {Formatted})
                   else
-                      [] ->
+                      false ->
+                          menelaus_util:web_exception(403, "Forbidden");
+                      {error, forbidden} ->
                           menelaus_util:web_exception(403, "Forbidden");
                       {error, {usage, in_use}} ->
                           menelaus_util:reply_global_error(
@@ -109,6 +117,9 @@ handle_put_secret(IdStr, Req) ->
             menelaus_util:reply_not_found(Req)
     end.
 
+%% Note: CurProps can only be used for static fields validation here.
+%% Any field that can be modified and needs to use CurProps should be
+%% checked in transaction in cb_cluster_secret:replace_secret_internal.
 secret_validators(CurProps) ->
     [validator:string(name, _),
      validator:required(name, _),
@@ -272,6 +283,9 @@ validate_key_usage(Name, State) ->
           end
       end, false, State).
 
+%% Note: CurSecretProps can only be used for static fields validation here.
+%% Any field that can be modified and needs to use CurProps should be
+%% checked in transaction in cb_cluster_secret:replace_secret_internal.
 validate_secrets_data(Name, CurSecretProps, State) ->
     Type = validator:get_value(type, State),
     CurType = maps:get(type, CurSecretProps, Type),
@@ -295,6 +309,9 @@ validate_secrets_data(Name, CurSecretProps, State) ->
             enforce_static_field_validator(type, CurType, State)
     end.
 
+%% Note: CurSecretProps can only be used for static fields validation here.
+%% Any field that can be modified and needs to use CurProps should be
+%% checked in transaction in cb_cluster_secret:replace_secret_internal.
 generated_key_validators(CurSecretProps) ->
     [validator:boolean(autoRotation, _),
      validator:default(autoRotation, true, _),
@@ -339,6 +356,9 @@ validate_encrypt_secret_id(Name, CurSecretProps, State) ->
               ok
       end, Name, encryptBy, State).
 
+%% Note: CurSecretProps can only be used for static fields validation here.
+%% Any field that can be modified and needs to use CurProps should be
+%% checked in transaction in cb_cluster_secret:replace_secret_internal.
 awskms_key_validators(CurSecretProps) ->
     [validator:string(keyARN, _),
      validator:required(keyARN, _),
@@ -423,16 +443,13 @@ is_usage_allowed(config_encryption, read, Req) ->
     menelaus_auth:has_permission({[admin, security], read}, Req).
 
 read_filter_secrets_by_permission(Secrets, Req) ->
-    lists:filter(
-      fun (#{usage := List}) when List /= [] ->
-          lists:any(is_usage_allowed(_, read, Req), List)
-      end, Secrets).
+    lists:filter(is_readable(_, Req), Secrets).
 
-write_filter_secrets_by_permission(Secrets, Req) ->
-    lists:filter(
-      fun (#{usage := List}) when List /= [] ->
-          lists:all(is_usage_allowed(_, write, Req), List)
-      end, Secrets).
+is_readable(#{usage := Usages}, Req) when Usages /= [] ->
+    lists:any(is_usage_allowed(_, read, Req), Usages).
+
+is_writable(#{usage := Usages}, Req) when Usages /= [] ->
+    lists:all(is_usage_allowed(_, write, Req), Usages).
 
 parse_id(Str) when is_list(Str) ->
     try list_to_integer(Str) of
