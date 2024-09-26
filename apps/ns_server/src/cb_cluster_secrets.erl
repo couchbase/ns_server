@@ -44,7 +44,7 @@
          start_link_master_monitor/0,
          add_new_secret/1,
          replace_secret/3,
-         delete_secret/1,
+         delete_secret/2,
          get_all/0,
          get_secret/1,
          get_secret/2,
@@ -70,7 +70,7 @@
          replace_secret_internal/3,
          rotate_internal/1,
          sync_with_node_monitor/0,
-         delete_secret_internal/1,
+         delete_secret_internal/2,
          get_node_deks_info/0]).
 
 -record(state, {proc_type :: ?NODE_PROC | ?MASTER_PROC,
@@ -261,13 +261,15 @@ replace_secret_internal(Id, NewProps, IsSecretWritableFun) ->
         {error, _} = Error -> Error
     end.
 
--spec delete_secret(secret_id()) -> ok | {error, not_found | secret_in_use()}.
-delete_secret(Id) ->
-    execute_on_master({?MODULE, delete_secret_internal, [Id]}).
+-spec delete_secret(secret_id(), fun((secret_props()) -> boolean())) ->
+          ok | {error, not_found | secret_in_use() | forbidden}.
+delete_secret(Id, IsSecretWritableFun) ->
+    execute_on_master({?MODULE, delete_secret_internal,
+                       [Id, IsSecretWritableFun]}).
 
--spec delete_secret_internal(secret_id()) ->
-          ok | {error, not_found | secret_in_use()}.
-delete_secret_internal(Id) ->
+-spec delete_secret_internal(secret_id(), fun((secret_props()) -> boolean())) ->
+          ok | {error, not_found | secret_in_use() | forbidden}.
+delete_secret_internal(Id, IsSecretWritableFun) ->
     %% Make sure we have most recent information about which secrets are in use
     maybe_reset_deks_counters(),
     RV = chronicle_compat:txn(
@@ -275,24 +277,24 @@ delete_secret_internal(Id) ->
                maybe
                    Snapshot = fetch_snapshot_in_txn(Txn),
                    {ok, #{id := Id} = Props} ?= get_secret(Id, Snapshot),
+                   true ?= IsSecretWritableFun(Props),
                    ok ?= can_delete_secret(Props, Snapshot),
                    CurSecrets = get_all(Snapshot),
                    NewSecrets = lists:filter(
                                   fun (#{id := Id2}) -> Id2 /= Id end,
                                   CurSecrets),
                    true = (length(NewSecrets) + 1 == length(CurSecrets)),
-                   {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewSecrets}], Props}
+                   {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewSecrets}]}
                else
-                   {error, Reason} -> {abort, Reason}
+                   false -> {abort, {error, forbidden}};
+                   {error, _} = Error -> {abort, Error}
                end
            end),
     case RV of
-        {ok, _, #{type := _Type} = _SecretProps} ->
+        {ok, _} ->
             sync_with_all_node_monitors(),
             ok;
-        not_found ->
-            ok;
-        {used_by, _} = Reason ->
+        {error, Reason} ->
             {error, Reason}
     end.
 

@@ -148,9 +148,12 @@ enforce_static_field_validator(Name, CurValue, State) ->
                        end, Name, State).
 
 handle_delete_secret(IdStr, Req) ->
-    case cb_cluster_secrets:delete_secret(parse_id(IdStr)) of
+    case cb_cluster_secrets:delete_secret(parse_id(IdStr),
+                                          is_writable(_, Req)) of
         ok ->
             menelaus_util:reply(Req, 200);
+        {error, forbidden} ->
+            menelaus_util:web_exception(403, "Forbidden");
         {error, not_found} ->
             menelaus_util:reply_not_found(Req);
         {error, {used_by, UsedByList}} ->
