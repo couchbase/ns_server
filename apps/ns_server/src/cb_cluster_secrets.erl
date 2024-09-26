@@ -27,6 +27,7 @@
 -define(DEK_TIMER_RETRY_TIME_S, ?get_param(dek_retry_interval, 60)).
 -define(DEK_DROP_RETRY_TIME_S(Kind),
         ?get_param({dek_removal_min_interval, Kind}, 60*60*3)).
+-define(MIN_DEK_GC_INTERVAL_S, ?get_param(min_dek_gc_interval, 60)).
 
 -ifndef(TEST).
 -define(MIN_RECHECK_ROTATION_INTERVAL, ?get_param(min_rotation_recheck_interval,
@@ -138,6 +139,7 @@
                        deks := [cb_deks:dek()],
                        is_enabled := boolean(),
                        deks_being_dropped := [cb_deks:dek_id()],
+                       last_deks_gc_datetime := undefined | calendar:datetime(),
                        last_drop_timestamp := undefined | non_neg_integer()}.
 
 %%%===================================================================
@@ -474,10 +476,16 @@ handle_call(get_node_deks_info, _From,
                               K#{info => maps:remove(key, Info)}
                           end, Keys)
             end,
-        #state{deks = Deks} = NewState,
+
+        %% Run gc for deks; it is usefull in case if a compaction has been run
+        %% recently.
+        NewState2 = maps:fold(fun (Kind, _, Acc) ->
+                                  maybe_garbage_collect_deks(Kind, Acc)
+                              end, NewState, NewState#state.deks),
+        #state{deks = Deks} = NewState2,
         Res = maps:map(fun (_K, #{deks := Keys}) -> StripKeyMaterial(Keys) end,
                        Deks),
-        {reply, Res, NewState}
+        {reply, Res, NewState2}
     else
         [_ | _] ->
             %% There are still unfinished jobs. That means deks in our state
@@ -896,10 +904,37 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
             {ok, OldState#state{deks = maps:remove(Kind, CurDeks)}}
     end.
 
+-spec maybe_garbage_collect_deks(cb_deks:dek_kind(), #state{}) -> #state{}.
+maybe_garbage_collect_deks(Kind, #state{deks = DeksInfo} = State) ->
+    ShouldRun =
+        case maps:find(Kind, DeksInfo) of
+            {ok, #{last_deks_gc_datetime := undefined}} ->
+                true;
+            {ok, #{last_deks_gc_datetime := DT}} ->
+                %% The goal is to not call it too often
+                Deadline = misc:datetime_add(DT, ?MIN_DEK_GC_INTERVAL_S),
+                calendar:universal_time() > Deadline;
+            error ->
+                false
+        end,
+    case ShouldRun of
+        true ->
+            case garbage_collect_deks(Kind, State) of
+                {ok, NewState} -> NewState;
+                {error, NewState, Error} ->
+                    ?log_error("Garbage collecting DEKs failed: ~p", [Error]),
+                    NewState
+            end;
+        false ->
+            ?log_debug("Skipping garbage collect for ~p", [Kind]),
+            State
+    end.
+
 %% Remove DEKs that are not being used anymore
 -spec garbage_collect_deks(cb_deks:dek_kind(), #state{}) ->
           {ok, #state{}} | {error, #state{}, term()}.
 garbage_collect_deks(Kind, #state{deks = DeksInfo} = State) ->
+    ?log_debug("Garbage collecting ~p DEKs", [Kind]),
     case maps:find(Kind, DeksInfo) of
         {ok, #{active_id := _ActiveId,
                deks := []}} ->
@@ -908,10 +943,14 @@ garbage_collect_deks(Kind, #state{deks = DeksInfo} = State) ->
         {ok, #{is_enabled := true, deks := [_]}} ->
             %% If encryption is enabled, one dek is a minimum. Can't be removed.
             {ok, State};
-        {ok, #{}} ->
+        {ok, #{} = KindDeks} ->
             case call_dek_callback(get_ids_in_use_callback, Kind, []) of
                 {succ, {ok, IdList}} ->
-                    retire_unused_deks(Kind, IdList, State);
+                    NewKindDeks = KindDeks#{last_deks_gc_datetime =>
+                                            calendar:universal_time()},
+                    NewState = State#state{deks = DeksInfo#{
+                                                    Kind => NewKindDeks}},
+                    retire_unused_deks(Kind, IdList, NewState);
                 {succ, {error, not_found}} ->
                     %% The entity that uses deks does not exist.
                     %% Ignoring it here because we assume that deks will
@@ -1033,11 +1072,13 @@ read_deks(Kind, #state{deks = AllDeks} = State) ->
     CurDeksDropped = maps:get(deks_being_dropped, CurKindDeks, []),
     CurDeksDroppedCleaned = CurDeksDropped -- (CurDeksDropped -- DekIds),
     CurLastDropTS = maps:get(last_drop_timestamp, CurKindDeks, undefined),
+    GCDeksDT = maps:get(last_deks_gc_datetime, CurKindDeks, undefined),
     KindDeks = #{active_id => ActiveDek,
                  deks => Deks,
                  is_enabled => IsEnabled,
                  deks_being_dropped => CurDeksDroppedCleaned,
-                 last_drop_timestamp => CurLastDropTS},
+                 last_drop_timestamp => CurLastDropTS,
+                 last_deks_gc_datetime => GCDeksDT},
     functools:chain(State#state{deks = AllDeks#{Kind => KindDeks}},
                     [restart_dek_cleanup_timer(_),
                      restart_dek_rotation_timer(_)]).
