@@ -32,7 +32,7 @@ How to add a new test for a new parameter, param:
     was_auto_compaction_change_made to parse the values from the response to a bucket
     GET request, in order to verify that the new parameter value is present
 - Add a test function to the appropriate test class (BasicBucketTestSet,
-    OnPremBucketTestSet, MultiNodeBucketTestSet, or ServerlessBucketTestSet).
+    MultiNodeBucketTestSet, or ServerlessBucketTestSet).
     This should contain a call of self.test_param("param", **main_params) with
     main_params defining which tests are to be performed
 Note:
@@ -2311,64 +2311,6 @@ class ServerlessBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True, False])
 
-
-class OnPremBucketTestSet(BucketTestSetBase):
-
-    @staticmethod
-    def requirements():
-        return testlib.ClusterRequirements(edition="Enterprise", buckets=[])
-
-    def bucket_type_test(self):
-        self.test_param("bucketType",
-                        bucket_type=["memcached"],
-                        storage_backend=["couchstore"],
-                        auto_compaction_defined=[None],
-                        rank=[0],
-                        conflict_resolution_type=["seqno"],
-                        bucket_placer=[False],
-                        allowed_time_period=[False],
-                        just_validate=[True, False],
-                        is_creation=[True])
-
-    def ram_quota_test(self):
-        self.test_param("ramQuota",
-                        bucket_type=["memcached"],
-                        storage_backend=["couchstore"],
-                        auto_compaction_defined=[None],
-                        conflict_resolution_type=["seqno"],
-                        rank=[0],
-                        bucket_placer=[False],
-                        allowed_time_period=[False],
-                        just_validate=[True, False],
-                        is_creation=[True, False])
-
-    # TOFIX: replica_index and replica_number give different errors based
-    # whether just_validate is True or False and also if the num_nodes is less
-    # than or greater than the set value.
-
-    # def replica_index_test(self):
-    #     self.test_param("replicaIndex",
-    #                     bucket_type=["couchbase", "memcached"],
-    #                     storage_backend=["couchstore"],
-    #                     auto_compaction_defined=[None],
-    #                     conflict_resolution_type=["seqno"],
-    #                     bucket_placer=[False],
-    #                     allowed_time_period=[False],
-    #                     just_validate=[True, False],
-    #                     is_creation=[True])
-
-    # def replica_number_test(self):
-    #     self.test_param("replicaNumber",
-    #                     bucket_type=["couchbase"],
-    #                     storage_backend=["couchstore"],
-    #                     auto_compaction_defined=[None],
-    #                     conflict_resolution_type=["seqno"],
-    #                     bucket_placer=[False],
-    #                     allowed_time_period=[False],
-    #                     just_validate=[True, False],
-    #                     is_creation=[True, False])
-
-
 class MultiNodeBucketTestSet(BucketTestSetBase):
 
     @staticmethod
@@ -2376,6 +2318,10 @@ class MultiNodeBucketTestSet(BucketTestSetBase):
         return testlib.ClusterRequirements(num_nodes=4,
                                            balanced=True,
                                            buckets=[])
+
+    # TOFIX: replica_number give different errors based
+    # whether just_validate is True or False and also if the num_nodes is less
+    # than or greater than the set value.
 
     # def replica_number_test(self):
     #     self.test_param("replicaNumber",
