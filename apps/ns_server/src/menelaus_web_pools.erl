@@ -314,11 +314,19 @@ build_rebalance_params(Id, UUID) ->
      {stopRebalanceUri, build_controller_uri("stopRebalance", UUID)}].
 
 build_internal_params(internal) ->
-    case ns_audit_cfg:get_uid() of
-        undefined ->
-            [];
-        AuditUID ->
-            [{auditUid, list_to_binary(AuditUID)}]
+    try
+        case ns_audit_cfg:get_uid() of
+            undefined ->
+                [];
+            AuditUID ->
+                [{auditUid, list_to_binary(AuditUID)}]
+        end
+    catch Error:Type ->
+            %% When memcached is starting up, ns_audit_cfg will also not yet be
+            %% up, so rather than crashing menelaus_web_cache and causing
+            %% potentially multiple 500 errors, we should just report the error
+            ?log_error("Got ~p fetching audit uid: ~p", [Type, Error]),
+            []
     end;
 build_internal_params(_) ->
     [].
