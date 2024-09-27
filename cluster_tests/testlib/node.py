@@ -8,14 +8,14 @@
 # licenses/APL2.txt.
 
 import testlib
-from testlib.util import strings_to_services
+from testlib.util import strings_to_services, Service
 import requests
 
 
 class Node:
     def __init__(self, host, port, auth):
-        host_with_brackets = testlib.maybe_add_brackets(host)
-        self.url = f"http://{host_with_brackets}:{port}"
+        self.host_with_brackets = testlib.maybe_add_brackets(host)
+        self.url = f"http://{self.host_with_brackets}:{port}"
         self.hostname_cached = None
         self.host = host
         self.port = port
@@ -23,7 +23,8 @@ class Node:
         self.data_path_cache = None
         self.tmp_path_cache = None
         self.logs_path_cache = None
-        self.tls_port_cache = None
+        self.port_cache = {}
+        self.tls_port_cache = {}
         self.services_cached = None
         self.session = None
 
@@ -73,17 +74,33 @@ class Node:
         assert afamily in ['inet', 'inet6'], f'unexpected afamily: {afamily}'
         return 'ipv6' if afamily == 'inet6' else 'ipv4'
 
-    def tls_port(self):
-        if self.tls_port_cache is None:
-            data = 'service_ports:get_port(ssl_rest_port).'
+    def service_port(self, service: Service):
+        if self.port_cache.get(service) is None:
+            data = f'service_ports:get_port({service.port_atom()}).'
             r = testlib.post_succ(self, '/diag/eval', data=data)
-            self.tls_port_cache = int(r.text)
-        return self.tls_port_cache
+            self.port_cache[service] = int(r.text)
+        return self.port_cache[service]
 
-    def https_url(self):
-        port = self.tls_port()
-        host = testlib.maybe_add_brackets(self.host)
-        return f'https://{host}:{port}'
+    def tls_service_port(self, service: Service = None):
+        if self.tls_port_cache.get(service) is None:
+            if service is None:
+                data = 'service_ports:get_port(ssl_rest_port).'
+            else:
+                data = f'service_ports:get_port({service.tls_port_atom()}).'
+            r = testlib.post_succ(self, '/diag/eval', data=data)
+            self.tls_port_cache[service] = int(r.text)
+        return self.tls_port_cache[service]
+
+    def service_url(self, service: Service):
+        if service is None:
+            port = self.port
+        else:
+            port = self.service_port(service)
+        return f"http://{self.host_with_brackets}:{port}"
+
+    def https_service_url(self, service: Service = None):
+        port = self.tls_service_port(service)
+        return f'https://{self.host_with_brackets}:{port}'
 
     def otp_port(self, encryption=None):
         encryption_param = 'cb_dist:external_encryption()'

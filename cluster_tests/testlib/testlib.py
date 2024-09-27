@@ -408,7 +408,8 @@ def set_config_key(cluster, key, value):
     return diag_eval(cluster, f'ns_config:set({key}, {value_str}).')
 
 
-def request(method, cluster_or_node, path, https=False, session=None, **kwargs):
+def request(method, cluster_or_node, path, https=False, session=None,
+            service=None, **kwargs):
     kwargs_with_auth = set_default_auth(cluster_or_node, **kwargs)
     if isinstance(cluster_or_node, Node):
         node = cluster_or_node
@@ -416,13 +417,13 @@ def request(method, cluster_or_node, path, https=False, session=None, **kwargs):
         node = cluster_or_node.connected_nodes[0]
 
     if https:
-        url = node.https_url() + path
+        url = node.https_service_url(service) + path
         if 'verify' not in kwargs_with_auth:
             server_ca_file = os.path.join(node.data_path(),
                                           'config', 'certs', 'ca.pem')
             kwargs_with_auth['verify'] = server_ca_file
     else:
-        url = node.url + path
+        url = node.service_url(service) + path
 
     print_session = True
     if session is None:

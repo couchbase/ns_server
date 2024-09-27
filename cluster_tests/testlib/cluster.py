@@ -291,8 +291,8 @@ class Cluster:
         # port
         data = {"user": self.auth[0],
                 "password": self.auth[1],
-                "hostname": new_node.https_url() if self.is_enterprise else
-                            new_node.url,
+                "hostname": new_node.https_service_url() if self.is_enterprise
+                            else new_node.url,
                 "services": get_services_string(services)}
         if verbose:
             print(f"Adding node {data}")
@@ -314,7 +314,7 @@ class Cluster:
         if services is None:
             services = self.connected_nodes[0].get_services()
 
-        data = {"hostname": self.connected_nodes[0].https_url()
+        data = {"hostname": self.connected_nodes[0].https_service_url()
                             if self.is_enterprise else
                             self.connected_nodes[0].url,
                 "services": get_services_string(services)}

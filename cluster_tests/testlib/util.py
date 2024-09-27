@@ -20,6 +20,14 @@ class Service(Enum):
     EVENTING = "eventing"
     CBAS = "cbas"
 
+    def port_atom(self):
+        return {Service.KV: "memcached_port",
+                Service.QUERY: "query_port",
+                Service.CBAS: "cbas_http_port"}[self]
+
+    def tls_port_atom(self):
+        return {Service.KV: "memcached_ssl_port",}[self]
+
 
 def services_to_strings(services: Union[List[Service],
                                         Dict[str, List[Service]]]):
