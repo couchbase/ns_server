@@ -516,7 +516,8 @@ def discover_testsets():
     testsets = []
 
     def add_testset(testset_name, testset_class, configuration):
-        tests = [test for test in dir(testset) if test.endswith('_test')]
+        tests = [test for test in dir(testset) if test.endswith('_test') or \
+                                                  test.endswith('_test_gen')]
         if len(tests) > 0:
             testsets.append((testset_name, testset_class, tests, configuration))
 

@@ -23,6 +23,7 @@ import traceback_with_variables as traceback
 from ipaddress import ip_address, IPv6Address
 import os
 import signal
+from types import MethodType
 
 from testlib.node import Node
 
@@ -104,6 +105,9 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
                                    seed + str(testset['iter']))
     teardown_seed = apply_with_seed(random, 'randbytes', [16], testset_seed)
 
+    test_seed = lambda i: apply_with_seed(random, 'randbytes', [16],
+                                          testset_seed + str(i).encode())
+
     _, err = safe_test_function_call(testset_instance, 'setup', [], 0,
                                      seed=testset_seed)
 
@@ -116,19 +120,52 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
         return 0, [err], not_ran, cluster
 
     try:
+        tests_to_run = []
         for test_dict in testset['test_name_list']:
+            if test_dict['name'].endswith('_test_gen'):
+                generated, err = safe_test_function_call(
+                                   testset_instance,
+                                   test_dict['name'],
+                                   [], test_dict['iter'],
+                                   verbose=True,
+                                   seed=test_seed(test_dict['iter']))
+                if err is not None:
+                    errors.append(err)
+                    break
+                maybe_print(f'generated {len(generated)} tests: {generated}')
+                for n in generated:
+                    tests_to_run.append({'name': n,
+                                         'iter': test_dict['iter'],
+                                         'fun': generated[n]})
+            else:
+                tests_to_run.append(test_dict)
+
+        for test_dict in tests_to_run:
             test = test_dict['name']
             testiter = test_dict['iter']
-            test_seed = apply_with_seed(random, 'randbytes', [16],
-                                        testset_seed + str(testiter).encode())
             test_teardown_seed = apply_with_seed(random, 'randbytes', [16],
-                                                 test_seed)
+                                                 test_seed(testiter))
             executed += 1
             log_at_all_nodes(cluster,
                              f'starting test {test} from {testset["name"]}')
+
+            if 'fun' in test_dict: # this test is generated
+                if hasattr(testset_instance, test):
+                    # testset already has this test, skipping...
+                    not_ran.append((test_name(testset_instance,
+                                              test,
+                                              testiter),
+                                    "test already exists"))
+                    break
+                setattr(testset_instance, test,
+                        MethodType(test_dict['fun'], testset_instance))
+
             _, err = safe_test_function_call(testset_instance, test,
                                              [], testiter, verbose=True,
-                                             seed=test_seed)
+                                             seed=test_seed(testiter))
+
+            if 'fun' in test_dict: # this test is generated
+                delattr(testset_instance, test)
 
             cluster = testset_instance.cluster
 
@@ -142,7 +179,7 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
                 errors.append(err)
                 # Don't try to run further tests as test_teardown failure will
                 # likely cause additional test failures which are irrelevant
-                for not_ran_test in testset['test_name_list'][executed:]:
+                for not_ran_test in tests_to_run[executed:]:
                     not_ran.append((test_name(testset_instance,
                                               not_ran_test['name'],
                                               not_ran_test['iter']),
@@ -150,7 +187,7 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
                 break
 
             if len(errors) > 0 and stop_after_first_error:
-                for not_ran_test in testset['test_name_list'][executed:]:
+                for not_ran_test in tests_to_run[executed:]:
                     not_ran.append((test_name(testset_instance,
                                               not_ran_test['name'],
                                               not_ran_test['iter']),
