@@ -21,6 +21,7 @@ from testsets.secret_management_tests import change_password, post_es_config
 from testlib.requirements import Service
 import time
 import uuid
+from testsets.users_tests import put_user
 
 
 class NativeEncryptionTests(testlib.BaseTestSet):
@@ -798,6 +799,140 @@ class NativeEncryptionTests(testlib.BaseTestSet):
         delete_secret(self.random_node(), aws_secret_id, expected_code=400)
 
 
+class NativeEncryptionPermissionsTests(testlib.BaseTestSet):
+
+    @staticmethod
+    def requirements():
+        return testlib.ClusterRequirements(edition='Enterprise')
+
+    def setup(self):
+        set_cfg_encryption(self.cluster, 'encryption_service', -1)
+        self.bucket_name = testlib.random_str(8)
+        self.password = testlib.random_str(8)
+        bucket_props = {'name': self.bucket_name,
+                        'ramQuota': 100,
+                        'encryptionAtRestSecretId': -1}
+        self.cluster.create_bucket(bucket_props, sync=True)
+        self.pre_existing_ids = [s['id'] for s in get_secrets(self.cluster)]
+
+        create_user = lambda n, r: put_user(self.cluster, 'local', n,
+                                            password=self.password, roles=r)
+
+        admin = 'admin_' + testlib.random_str(4)
+        create_user(admin, 'admin')
+
+        ro_admin = 'ro_admin_' + testlib.random_str(4)
+        create_user(ro_admin, 'ro_admin')
+
+        bucket_creator = 'bucket_creator_' + testlib.random_str(4)
+        create_user(bucket_creator, 'cluster_admin')
+
+        bucket_admin = 'bucket_admin_' + testlib.random_str(4)
+        create_user(bucket_admin, f'bucket_admin[{self.bucket_name}]')
+
+        bucket_reader = 'bucket_reader_' + testlib.random_str(4)
+        create_user(bucket_reader, f'data_reader[{self.bucket_name}]')
+
+        no_priv_user = 'no_priv_user_' + testlib.random_str(4)
+        create_user(no_priv_user, f'external_stats_reader')
+
+        # Usages:
+        cfg = 'configuration-encryption'
+        sec = 'secrets-encryption'
+        all_b = 'bucket-encryption-*'
+        b = f'bucket-encryption-{self.bucket_name}'
+
+        self.writing = \
+            {admin:          {cfg: True,  sec: True,  all_b: True,  b: True},
+             ro_admin:       {cfg: False, sec: False, all_b: False, b: False},
+             bucket_creator: {cfg: False, sec: False, all_b: True,  b: True},
+             bucket_admin:   {cfg: False, sec: False, all_b: False, b: True} ,
+             bucket_reader:  {cfg: False, sec: False, all_b: False, b: False},
+             no_priv_user:   {cfg: False, sec: False, all_b: False, b: False}}
+
+        self.reading = \
+            {admin:          {cfg: True,  sec: True,  all_b: True,  b: True},
+             ro_admin:       {cfg: True,  sec: True,  all_b: True,  b: True},
+             bucket_creator: {cfg: False, sec: False, all_b: True,  b: True},
+             bucket_admin:   {cfg: False, sec: False, all_b: True,  b: True} ,
+             bucket_reader:  {cfg: False, sec: False, all_b: True,  b: True},
+             no_priv_user:   {cfg: False, sec: False, all_b: False, b: False}}
+
+    def teardown(self):
+        self.cluster.delete_bucket(self.bucket_name)
+        for u in self.writing:
+            testlib.ensure_deleted(
+                self.cluster, f'/settings/rbac/users/local/{u}')
+        set_cfg_encryption(self.cluster, 'disabled', -1)
+
+    def test_teardown(self):
+        for s in get_secrets(self.cluster):
+            if s['id'] not in self.pre_existing_ids:
+                delete_secret(self.cluster, s['id'])
+
+    def secrets_test_gen(self):
+        tests = {}
+        for user in self.writing:
+            for usage in self.writing[user]:
+                tests[f'create_secret({user}, {usage})'] = \
+                    lambda s, n=user, u=usage: s.create_secret_test_(n, u)
+                tests[f'update_secret({user}, {usage})'] = \
+                    lambda s, n=user, u=usage: s.update_secret_test_(n, u)
+                tests[f'read_secret({user}, {usage})'] = \
+                    lambda s, n=user, u=usage: s.read_secret_test_(n, u)
+        return tests
+
+    def create_secret_test_(self, username, usage):
+        creds = (username, self.password)
+        secret = auto_generated_secret(usage=[usage])
+        expected_code = 200 if self.writing[username][usage] else 403
+        create_secret(self.cluster, secret, auth=creds,
+                      expected_code=expected_code)
+
+    def update_secret_test_(self, username, usage):
+        creds = (username, self.password)
+        secret = auto_generated_secret(usage=[usage])
+        secret_id = create_secret(self.cluster, secret) # note: admin creates it
+        secret['name'] = secret['name'] + ' foo'
+        expected_code = 200 if self.writing[username][usage] else 403
+        update_secret(self.cluster, secret_id, secret, auth=creds,
+                      expected_code=expected_code)
+        delete_secret(self.cluster, secret_id, auth=creds,
+                      expected_code=expected_code)
+
+    def read_secret_test_(self, name, usage):
+        creds = (name, self.password)
+        forbidden = [u for u in self.reading[name] if not self.reading[name][u]]
+        secret_with_usage = auto_generated_secret(usage=[usage] + forbidden)
+        # Note: admin creates this secret
+        secret_with_usage_id = create_secret(self.cluster, secret_with_usage)
+
+        # All usages but one are unreadable, so readability of this secret
+        # depends on readability of 'usage'
+        should_be_readable = self.reading[name][usage]
+        expected_code = 200 if should_be_readable else 404
+        get_secret(self.cluster, secret_with_usage_id, auth=creds,
+                   expected_code=expected_code)
+
+        secrets = get_secrets(self.cluster, auth=creds)
+        filtered = [s for s in secrets if s['id'] == secret_with_usage_id]
+        if should_be_readable:
+            assert len(filtered) == 1, f'unexpected secrets: {secrets}'
+        else:
+            assert len(filtered) == 0, f'unexpected secrets: {secrets}'
+
+        if len(forbidden) > 0:
+            not_readable_secret = auto_generated_secret(usage=forbidden)
+            # Note: admin creates this secret
+            not_readable_secret_id = create_secret(self.cluster,
+                                                   not_readable_secret)
+            get_secret(self.cluster, not_readable_secret_id, auth=creds,
+                       expected_code=404)
+            secrets = get_secrets(self.cluster, auth=creds)
+            filtered = [s for s in secrets if s['id'] == not_readable_secret]
+            assert filtered == [], f'unexpected secrets: {secrets}'
+
+
 def get_key_list(node, kind_as_str):
     res = testlib.diag_eval(
             node,
@@ -908,30 +1043,49 @@ def aws_test_secret(name=None, usage=None):
             'data': {'keyARN': 'TEST_AWS_KEY_ARN'}}
 
 
-def get_secret(cluster, secret_id):
-    return testlib.get_succ(cluster, f'/settings/secrets/{secret_id}').json()
-
-
-def get_secrets(cluster):
-    return testlib.get_succ(cluster, '/settings/secrets').json()
-
-
-def create_secret(cluster, json, expected_code=200):
-    r = testlib.post_succ(cluster, '/settings/secrets', json=json,
-                          expected_code=expected_code)
-    r = r.json()
+def get_secret(cluster, secret_id, expected_code=200, auth=None):
+    if auth is None:
+        auth = cluster.auth
+    r = testlib.get_succ(cluster, f'/settings/secrets/{secret_id}',
+                         expected_code=expected_code, auth=auth)
     if expected_code == 200:
-        return r['id']
-    else:
-        return r['errors']
+        return r.json()
+    return r.text
 
 
-def update_secret(cluster, secret_id, json, expected_code=200):
-    r = testlib.put_succ(cluster, f'/settings/secrets/{secret_id}', json=json,
-                         expected_code=expected_code)
+def get_secrets(cluster, auth=None):
+    if auth is None:
+        auth = cluster.auth
+    return testlib.get_succ(cluster, '/settings/secrets', auth=auth).json()
+
+
+def create_secret(cluster, json, expected_code=200, auth=None):
+    if auth is None:
+        auth = cluster.auth
+    r = testlib.post_succ(cluster, '/settings/secrets', json=json,
+                          expected_code=expected_code, auth=auth)
+
+
     if expected_code == 200:
         r = r.json()
         return r['id']
+    elif expected_code == 403:
+        return r.text
+    else:
+        r = r.json()
+        return r['errors']
+
+
+def update_secret(cluster, secret_id, json, expected_code=200, auth=None):
+    if auth is None:
+        auth = cluster.auth
+    r = testlib.put_succ(cluster, f'/settings/secrets/{secret_id}', json=json,
+                         expected_code=expected_code, auth=auth)
+    if expected_code == 200:
+        r = r.json()
+        return r['id']
+    elif expected_code == 403:
+        return r.text
     elif expected_code == 404:
         return r.text
     else:
@@ -939,9 +1093,11 @@ def update_secret(cluster, secret_id, json, expected_code=200):
         return r['errors']
 
 
-def delete_secret(cluster, secret_id, expected_code=200):
+def delete_secret(cluster, secret_id, expected_code=200, auth=None):
+    if auth is None:
+        auth = cluster.auth
     testlib.delete(cluster, f'/settings/secrets/{secret_id}',
-                   expected_code=expected_code)
+                   expected_code=expected_code, auth=auth)
 
 
 def verify_kek_files(cluster, secret, verify_key_count=1, **kwargs):
