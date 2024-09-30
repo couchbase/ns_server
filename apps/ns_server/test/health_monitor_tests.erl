@@ -301,33 +301,34 @@ kv_stats_mon_io_slow_zero({StatNum, StatSlow}) ->
     %% special case this though, because equality of any other value would drive
     %% a failover.
     meck:expect(ns_memcached, stats,
-        fun(_Bucket, <<"disk-slowness 1">>) ->
-            {ok, [{atom_to_binary(StatNum), integer_to_binary(0)},
-                  {atom_to_binary(StatSlow), integer_to_binary(0)}]}
-        end),
+                fun(_Bucket, <<"disk-slowness 1">>) ->
+                        {ok, [{atom_to_binary(StatNum), integer_to_binary(0)},
+                              {atom_to_binary(StatSlow), integer_to_binary(0)}]}
+                end),
 
     %% Timeout as we will remain healthy
     ?assertEqual(timeout, misc:poll_for_condition(
-        fun() ->
-            is_node_unhealthy(node())
-        end, 2000, 100),
-        %% This test fails sometimes, dump some extra info in case it does
-        dict:find(self(), node_status_analyzer:get_statuses())).
+                            fun() ->
+                                    is_node_unhealthy(node())
+                            end, 2000, 100),
+                 %% This test fails sometimes, dump some extra info in case it
+                 %% does
+                 dict:find(self(), node_status_analyzer:get_statuses())).
 
 kv_stats_monitor_io_slow_detection_t({StatNum, StatSlow}) ->
     %% Another healthy case, Slow < Count.
     meck:expect(ns_memcached, stats,
-        fun(_Bucket, <<"disk-slowness 1">>) ->
-            {ok, [{atom_to_binary(StatNum), integer_to_binary(1)},
-                  {atom_to_binary(StatSlow), integer_to_binary(0)}]}
-        end),
+                fun(_Bucket, <<"disk-slowness 1">>) ->
+                        {ok, [{atom_to_binary(StatNum), integer_to_binary(1)},
+                              {atom_to_binary(StatSlow), integer_to_binary(0)}]}
+                end),
 
     %% Timeout as we will remain healthy
     ?assertEqual(timeout, misc:poll_for_condition(
-        fun() ->
-            is_node_unhealthy(node())
-        end, 2000, 100),
-        dict:find(self(), node_status_analyzer:get_statuses())).
+                            fun() ->
+                                    is_node_unhealthy(node())
+                            end, 2000, 100),
+                 dict:find(self(), node_status_analyzer:get_statuses())).
 
 kv_stats_mon_io_slow_equal_count({StatNum, StatSlow}) ->
     meck:expect(ns_memcached, stats,
