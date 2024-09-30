@@ -12,12 +12,13 @@
 -behaviour(gen_server2).
 
 -export([sanitize/2]).
--export([sanitize_snapshot/2, sanitize_log/2]).
+-export([sanitize_snapshot/2, sanitize_log/2, sanitize_value/1]).
 
 %% gen_server callbacks:
 -export([start_link/0, init/1, handle_info/2]).
 
 -include("ns_common.hrl").
+-include("cb_cluster_secrets.hrl").
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -61,9 +62,14 @@ log(K, VFun, R, State) ->
 
 
 sanitize(root_cert_and_pkey, V) ->
-    {sanitized, base64:encode(crypto:hash(sha256, term_to_binary(V)))};
+    sanitize_value(V);
+sanitize(?CHRONICLE_SECRETS_KEY, V) ->
+    cb_cluster_secrets:sanitize_chronicle_cfg(V);
 sanitize(_, V) ->
     V.
+
+sanitize_value(V) ->
+    {sanitized, base64:encode(crypto:hash(sha256, term_to_binary(V)))}.
 
 sanitize_snapshot(Mod, ModState) ->
     case Mod of

@@ -59,7 +59,8 @@
          new_key_id/0,
          is_valid_key_id/1,
          dek_drop_complete/1,
-         is_name_unique/3]).
+         is_name_unique/3,
+         sanitize_chronicle_cfg/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -414,6 +415,10 @@ is_name_unique(Id, Name, Snapshot) ->
     lists:all(fun (#{id := Id2}) when Id == Id2 -> true;
                   (#{name := Name2}) -> Name /= Name2
               end, get_all(Snapshot)).
+
+-spec sanitize_chronicle_cfg([secret_props()]) -> [term()].
+sanitize_chronicle_cfg(Value) ->
+    lists:map(fun sanitize_secret/1, Value).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -2089,6 +2094,18 @@ validate_name_uniqueness(#{id := Id, name := Name}, Snapshot) ->
         true -> ok;
         false -> {error, name_not_unique}
     end.
+
+-spec sanitize_secret(secret_props()) -> term().
+sanitize_secret(#{type := ?GENERATED_KEY_TYPE, data := Data} = S) ->
+    #{keys := Keys} = Data,
+    NewKeys = lists:map(fun (#{key := {sensitive, _} = K} = Key) ->
+                                Key#{key => chronicle_kv_log:sanitize_value(K)};
+                            (#{key := {encrypted_binary, _}} = Key) ->
+                                Key
+                          end, Keys),
+    S#{data => Data#{keys => NewKeys}};
+sanitize_secret(#{type := ?AWSKMS_KEY_TYPE} = S) ->
+    S.
 
 -ifdef(TEST).
 replace_secret_in_list_test() ->
