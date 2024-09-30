@@ -30,7 +30,7 @@ class MnSecuritySecretsEncryptionDialogComponent extends MnLifeCycleHooksToStrea
     new Component({
       template,
       inputs: [
-        'items'
+        'secrets'
       ],
       changeDetection: ChangeDetectionStrategy.OnPush
     })
@@ -108,7 +108,7 @@ class MnSecuritySecretsEncryptionDialogComponent extends MnLifeCycleHooksToStrea
       }, {});
 
       this.dropFilteredSecrets = this.types.reduce((acc, type) => {
-        acc[type] = this.items.filter(secret =>
+        acc[type] = this.secrets.filter(secret =>
           secret.usage.find(u => u.includes(this.mapTypeToSecret(type) + '-encryption') ))
         return acc;
       }, {});
@@ -117,7 +117,7 @@ class MnSecuritySecretsEncryptionDialogComponent extends MnLifeCycleHooksToStrea
   doUnpack({encryptionMethod, encryptionSecretId, dekLifetime, dekRotationInterval}) {
     return {
       encryptionMethod: encryptionMethod || 'disabled',
-      encryptionSecretId: (encryptionSecretId === null || encryptionSecretId === undefined || encryptionSecretId < 0) ? null : this.items.find(i => i.id === encryptionSecretId),
+      encryptionSecretId: (encryptionSecretId === null || encryptionSecretId === undefined || encryptionSecretId < 0) ? null : this.secrets.find(i => i.id === encryptionSecretId),
       dekLifetime: (dekLifetime ? dekLifetime : 31536000) / 86_400,
       dekRotationInterval: (dekRotationInterval ? dekRotationInterval : 2592000) / 86_400
     };
@@ -127,8 +127,8 @@ class MnSecuritySecretsEncryptionDialogComponent extends MnLifeCycleHooksToStrea
     return {
       encryptionMethod,
       encryptionSecretId: encryptionMethod === 'secret' ? encryptionSecretId?.id ?? -1 : -1,
-      dekLifetime: dekLifetime * 86_400,
-      dekRotationInterval: dekRotationInterval * 86_400
+      dekLifetime: Math.round(dekLifetime * 86_400),
+      dekRotationInterval: Math.round(dekRotationInterval * 86_400)
     };
   }
 

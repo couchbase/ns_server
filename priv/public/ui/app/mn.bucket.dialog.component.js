@@ -448,8 +448,8 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
     if (isEnterprise && compat80 && isMembase) {
       saveData.encryptionAtRestSecretId = formData.enableEncryptionAtRest ? formData.encryptionAtRestSecretId?.id ?? -1 : -1;
       if (saveData.encryptionAtRestSecretId !== -1) {
-        saveData.encryptionAtRestDekRotationInterval = formData.encryptionAtRestDekRotationInterval * 86_400;
-        saveData.encryptionAtRestDekLifetime = formData.encryptionAtRestDekLifetime * 86_400;
+        saveData.encryptionAtRestDekRotationInterval = Math.round(formData.encryptionAtRestDekRotationInterval * 86_400);
+        saveData.encryptionAtRestDekLifetime = Math.round(formData.encryptionAtRestDekLifetime * 86_400);
       }
     }
 
