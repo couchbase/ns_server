@@ -586,11 +586,25 @@ handle_info({timer, dek_cleanup} = Msg, #state{proc_type = ?NODE_PROC,
                                                deks = DeksInfo} = State) ->
     ?log_debug("DEK cleanup timer"),
     misc:flush(Msg),
+    DeksToDropFun =
+        fun (Kind, StateAcc) ->
+            case deks_to_drop(Kind, StateAcc) of
+                [] -> {[], StateAcc};
+                [_|_] ->
+                    %% It is possible that these deks are already not being used
+                    %% so try garbage collecting them first (as it is a
+                    %% cheaper thing to do), and only if it doesn't help,
+                    %% perform the drop keys precedure (which is expensive for
+                    %% buckets)
+                    NewStateAcc = maybe_garbage_collect_deks(Kind, StateAcc),
+                    {deks_to_drop(Kind, NewStateAcc), NewStateAcc}
+            end
+        end,
     NewState =
         maps:fold(
-          fun (Kind, KindDeks, StateAcc) ->
-              ToDrop = deks_to_drop(Kind, KindDeks),
-              initiate_deks_drop(Kind, ToDrop, StateAcc)
+          fun (Kind, _KindDeks, StateAcc) ->
+              {ToDrop, NewStateAcc} = DeksToDropFun(Kind, StateAcc),
+              initiate_deks_drop(Kind, ToDrop, NewStateAcc)
           end, State, DeksInfo),
     {noreply, restart_dek_cleanup_timer(NewState)};
 
@@ -2179,8 +2193,13 @@ fetch_snapshot_in_txn(Txn) ->
                         Txn),
     maps:merge(DeksRelatedSnapshot, SecretsSnapshot).
 
--spec deks_to_drop(cb_deks:dek_kind(), deks_info()) ->
+-spec deks_to_drop(cb_deks:dek_kind(), deks_info() | #state{}) ->
           [cb_deks:dek_id() | ?NULL_DEK].
+deks_to_drop(Kind, #state{deks = DeksInfo}) ->
+    case maps:find(Kind, DeksInfo) of
+        {ok, KindDeks} -> deks_to_drop(Kind, KindDeks);
+        error -> []
+    end;
 deks_to_drop(Kind, KindDeks) ->
     CurTime = calendar:universal_time(),
     NowS = calendar:datetime_to_gregorian_seconds(CurTime),
