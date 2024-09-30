@@ -310,7 +310,9 @@ kv_stats_mon_io_slow_zero({StatNum, StatSlow}) ->
     ?assertEqual(timeout, misc:poll_for_condition(
         fun() ->
             is_node_unhealthy(node())
-        end, 2000, 100)).
+        end, 2000, 100),
+        %% This test fails sometimes, dump some extra info in case it does
+        dict:find(self(), node_status_analyzer:get_statuses())).
 
 kv_stats_monitor_io_slow_detection_t({StatNum, StatSlow}) ->
     %% Another healthy case, Slow < Count.
@@ -324,7 +326,8 @@ kv_stats_monitor_io_slow_detection_t({StatNum, StatSlow}) ->
     ?assertEqual(timeout, misc:poll_for_condition(
         fun() ->
             is_node_unhealthy(node())
-        end, 2000, 100)).
+        end, 2000, 100),
+        dict:find(self(), node_status_analyzer:get_statuses())).
 
 kv_stats_mon_io_slow_equal_count({StatNum, StatSlow}) ->
     meck:expect(ns_memcached, stats,
