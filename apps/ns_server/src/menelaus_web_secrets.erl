@@ -325,7 +325,12 @@ validate_encrypt_by(Name, State) ->
                   _ -> ok
               end;
           (nodeSecretManager) ->
-              ok
+              case cb_crypto:get_encryption_method(config_encryption, direct) of
+                  {ok, disabled} ->
+                      {error, format_error(config_encryption_disabled)};
+                  {ok, _} ->
+                      ok
+              end
       end, Name, State).
 
 validate_encrypt_secret_id(Name, CurSecretProps, State) ->
@@ -456,6 +461,9 @@ format_error({usage, in_use}) ->
     "Can't modify usage as this secret is in use";
 format_error(name_not_unique) ->
     "Name is not unique";
+format_error(config_encryption_disabled) ->
+    "Can't use master password for encryption because "
+    "config encryption is disabled";
 format_error(Reason) ->
     lists:flatten(io_lib:format("~p", [Reason])).
 

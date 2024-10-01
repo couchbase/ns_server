@@ -40,12 +40,14 @@ class NativeEncryptionTests(testlib.BaseTestSet):
         # all HTTP requests in all tests that use node secret management (SM)
         self.sm_node = random.choice(self.cluster.connected_nodes)
         self.bucket_name = testlib.random_str(8)
+        set_cfg_encryption(self.cluster, 'encryption_service', -1)
 
     def teardown(self):
+        set_cfg_encryption(self.cluster, 'disabled', -1)
         pass
 
     def test_teardown(self):
-        set_cfg_encryption(self.cluster, 'disabled', -1)
+        set_cfg_encryption(self.cluster, 'encryption_service', -1)
         self.cluster.delete_bucket(self.bucket_name)
         for s in get_secrets(self.cluster):
             delete_secret(self.cluster, s['id'])
@@ -575,7 +577,9 @@ class NativeEncryptionTests(testlib.BaseTestSet):
         secret['name'] = secret['name'] + ' (good)' # has to be unique
         good_id = create_secret(self.random_node(), secret)
         node = self.random_node()
-        set_cfg_encryption(node, 'disabled', -1)
+        # There is a secret that is encrypted by master password; if we disable
+        # config encryption that secret we be stored unencrypted in chronicle
+        set_cfg_encryption(node, 'disabled', -1, expected_code=400)
         set_cfg_encryption(node, 'encryption_service', -1)
         set_cfg_encryption(node, 'secret', -1, expected_code=400)
         set_cfg_encryption(node, 'secret', bad_id, expected_code=400)
@@ -590,6 +594,38 @@ class NativeEncryptionTests(testlib.BaseTestSet):
 
         update_secret(node, good_id, secret)
 
+    def dont_store_secret_in_unencrypted_chronicle_test(self):
+        node = self.random_node()
+        set_cfg_encryption(node, 'disabled', -1)
+
+        secret = auto_generated_secret()
+        # Can't create secret because it will be stored unencrypted in
+        # chronicle then
+        create_secret(node, secret, expected_code=400)
+
+        # Enabled config encryption and try again. Now creation works:
+        set_cfg_encryption(node, 'encryption_service', -1)
+        secret_id = create_secret(node, secret)
+
+        # ... and can't disable config encryption anymore:
+        set_cfg_encryption(node, 'disabled', -1, expected_code=400)
+
+        # Now try encrypt that secret by another secret. It should become
+        # posible to store it in unencrypted chronicle then
+        aws_secret = aws_test_secret(name='AWS Key',
+                                     usage=['secrets-encryption'])
+        aws_secret_id = create_secret(node, aws_secret)
+        secret['data']['encryptBy'] = 'clusterSecret'
+        secret['data']['encryptSecretId'] = aws_secret_id
+        update_secret(node, secret_id, secret)
+
+        # Now we can disable config encryption:
+        set_cfg_encryption(node, 'disabled', -1)
+
+        # ... but can't update the secret to use "master password" again
+        secret['data']['encryptBy'] = 'nodeSecretManager'
+        secret['data']['encryptSecretId'] = -1
+        update_secret(node, secret_id, secret, expected_code=400)
 
     def dump_keks_test(self):
         secret = auto_generated_secret()

@@ -46,6 +46,7 @@
          replace_secret/3,
          delete_secret/2,
          get_all/0,
+         get_all/1,
          get_secret/1,
          get_secret/2,
          get_active_key_id/1,
@@ -54,6 +55,7 @@
          get_secret_by_kek_id_map/1,
          ensure_can_encrypt_dek_kind/3,
          is_allowed_usage_for_secret/3,
+         is_encrypted_by_secret_manager/1,
          generate_raw_key/1,
          sync_with_all_node_monitors/0,
          new_key_id/0,
@@ -383,6 +385,13 @@ is_allowed_usage_for_secret(SecretId, Usage, Snapshot) ->
         false -> {error, not_allowed};
         {error, not_found} -> {error, not_found}
     end.
+
+-spec is_encrypted_by_secret_manager(secret_props()) -> boolean().
+is_encrypted_by_secret_manager(#{type := ?GENERATED_KEY_TYPE,
+                                 data := #{encrypt_by := nodeSecretManager}}) ->
+    true;
+is_encrypted_by_secret_manager(#{}) ->
+    false.
 
 -spec get_secret_by_kek_id_map(chronicle_snapshot()) ->
                                                     #{key_id() := secret_id()}.
@@ -1179,6 +1188,7 @@ validate_secret_in_txn(NewProps, PrevProps, Snapshot) ->
                                                        Snapshot),
         ok ?= validate_dek_related_usage_change(NewProps, PrevProps, Snapshot),
         ok ?= validate_encryption_secret_id(NewProps, Snapshot),
+        ok ?= validate_for_config_encryption(NewProps, Snapshot),
         ok ?= validate_name_uniqueness(NewProps, Snapshot)
     end.
 
@@ -1606,6 +1616,16 @@ dek_rotation_time(Kind, #{is_enabled := true, active_id := ActiveId,
                        [Kind, E]),
             {error, E}
     end.
+
+validate_for_config_encryption(#{type := ?GENERATED_KEY_TYPE,
+                                 data := #{encrypt_by := nodeSecretManager}},
+                               Snapshot) ->
+    case cb_crypto:get_encryption_method(config_encryption, Snapshot) of
+        {ok, disabled} -> {error, config_encryption_disabled};
+        {ok, _} -> ok
+    end;
+validate_for_config_encryption(#{}, _Snapshot) ->
+    ok.
 
 -spec validate_encryption_secret_id(secret_props(), chronicle_snapshot()) ->
                     ok | {error, bad_encrypt_id()}.

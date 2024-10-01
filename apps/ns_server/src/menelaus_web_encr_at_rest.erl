@@ -47,10 +47,9 @@ handle_post(Path, Req) ->
                  kv, [?CHRONICLE_SECRETS_KEY,
                       ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
                  fun (Snapshot) ->
-                     #{config_encryption := Cfg} = ToApply =
-                        get_settings(Snapshot, NewSettings),
-                     case validate_sec_settings(config_encryption,
-                                                Cfg, Snapshot) of
+                     ToApply = get_settings(Snapshot, NewSettings),
+                     case validate_all_settings_txn(maps:to_list(ToApply),
+                                                    Snapshot) of
                          ok ->
                              {commit, [{set,
                                         ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY,
@@ -68,6 +67,14 @@ handle_post(Path, Req) ->
          end
       end, Path, params(), undefined, Req).
 
+validate_all_settings_txn([], _Snapshot) -> ok;
+validate_all_settings_txn([{Usage, Cfg} | Tail], Snapshot) ->
+    maybe
+        ok ?= validate_sec_settings(Usage, Cfg, Snapshot),
+        ok ?= validate_no_unencrypted_secrets(Usage, Cfg, Snapshot),
+        validate_all_settings_txn(Tail, Snapshot)
+    end.
+
 get_settings(Snapshot) -> get_settings(Snapshot, #{}).
 get_settings(Snapshot, ExtraSettings) ->
     Merge = fun (Settings1, Settings2) ->
@@ -84,6 +91,23 @@ defaults() ->
                              secret_id => ?SECRET_ID_NOT_SET,
                              dek_lifetime_in_sec => 365*60*60*24,
                              dek_rotation_interval_in_sec => 30*60*60*24}}.
+
+validate_no_unencrypted_secrets(config_encryption,
+                                #{encryption := disabled,
+                                  secret_id := ?SECRET_ID_NOT_SET}, Snapshot) ->
+    Secrets = lists:filter(
+                fun cb_cluster_secrets:is_encrypted_by_secret_manager/1,
+                cb_cluster_secrets:get_all(Snapshot)),
+    Names = lists:map(fun (#{name := Name}) -> Name end, Secrets),
+    case Names of
+        [] -> ok;
+        [_ | _] ->
+            NamesStr = lists:join(", ", Names),
+            {error, "Encryption can't be disabled because it will leave "
+                    "some cluster secrets unencrypted: " ++ NamesStr}
+    end;
+validate_no_unencrypted_secrets(_, #{}, _Snapshot) ->
+    ok.
 
 validate_sec_settings(_, #{encryption := disabled,
                            secret_id := ?SECRET_ID_NOT_SET}, _) ->
