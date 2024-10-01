@@ -1631,7 +1631,8 @@ validate_membase_bucket_params(CommonParams, Params, Name,
                                      IsEnterprise, IsStorageModeMigration,
                                      config_profile:is_serverless()),
          parse_validate_durability_min_level(Params, BucketConfig, IsNew),
-         parse_validate_durability_impossible_fallback(Params, IsNew),
+         parse_validate_durability_impossible_fallback(Params, IsNew,
+                                                       IsMorpheus),
          parse_validate_pitr_enabled(Params, IsNew, AllowPitr,
                                      IsEnterprise),
          parse_validate_pitr_granularity(Params, IsNew, AllowPitr,
@@ -2247,7 +2248,12 @@ parse_validate_ephemeral_durability_min_level(_Other) ->
      <<"Durability minimum level must be either 'none' or 'majority' for "
        "ephemeral buckets">>}.
 
-parse_validate_durability_impossible_fallback(Params, IsNew) ->
+parse_validate_durability_impossible_fallback(Params, _IsNew,
+                                              false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "durabilityImpossibleFallback", Params,
+      fun not_supported_until_morpheus_error/1);
+parse_validate_durability_impossible_fallback(Params, IsNew, _IsMorpheus) ->
     Mode = proplists:get_value("durabilityImpossibleFallback", Params),
     validate_with_missing(Mode, "disabled", IsNew,
                           fun parse_validate_durability_impossible_fallback/1).
