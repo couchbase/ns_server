@@ -40,16 +40,31 @@ class NativeEncryptionTests(testlib.BaseTestSet):
         self.sm_node = random.choice(self.cluster.connected_nodes)
         self.bucket_name = testlib.random_str(8)
         set_cfg_encryption(self.cluster, 'encryption_service', -1)
+        # Creating a few keys whose role is to just exist while other tests
+        # are running. It increases code coverage.
+        id1 = create_secret(self.random_node(), aws_test_secret())
+        id2 = create_secret(self.random_node(),
+                            auto_generated_secret(encrypt_by='clusterSecret',
+                                                  encrypt_secret_id=id1))
+        self.pre_created_ids = [id2, id1] # so we can remove them later
+        # Memorize all existing ids so we don't remove them in test_teardown
+        self.pre_existing_ids = [s['id'] for s in get_secrets(self.cluster)]
 
     def teardown(self):
+        new_existing_ids = [s['id'] for s in get_secrets(self.cluster)]
+        for s_id in self.pre_existing_ids:
+            assert s_id in new_existing_ids, \
+                   f'Secret {s_id} disappeared during tests'
+        for s_id in self.pre_created_ids:
+            delete_secret(self.cluster, s_id)
         set_cfg_encryption(self.cluster, 'disabled', -1)
-        pass
 
     def test_teardown(self):
         set_cfg_encryption(self.cluster, 'encryption_service', -1)
         self.cluster.delete_bucket(self.bucket_name)
         for s in get_secrets(self.cluster):
-            delete_secret(self.cluster, s['id'])
+            if s['id'] not in self.pre_existing_ids:
+                delete_secret(self.cluster, s['id'])
         post_es_config(self.sm_node, {'keyStorageType': 'file',
                                       'keyEncrypted': 'true',
                                       'passwordSource': 'env'})
