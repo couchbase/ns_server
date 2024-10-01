@@ -60,15 +60,8 @@ handle_post_secret(Req) ->
           else
               false ->
                   menelaus_util:web_exception(403, "Forbidden");
-              {error, {encrypt_id, not_found}} ->
-                  menelaus_util:reply_global_error(
-                    Req, "encryption secret does not exist");
-              {error, {encrypt_id, not_allowed}} ->
-                  menelaus_util:reply_global_error(
-                    Req, "encryption secret not allowed");
               {error, Reason} ->
-                  menelaus_util:reply_global_error(
-                    Req, io_lib:format("~p", [Reason]))
+                  menelaus_util:reply_global_error(Req, format_error(Reason))
           end
       end, Req, json, secret_validators(#{})).
 
@@ -95,20 +88,11 @@ handle_put_secret(IdStr, Req) ->
                           menelaus_util:web_exception(403, "Forbidden");
                       {error, forbidden} ->
                           menelaus_util:web_exception(403, "Forbidden");
-                      {error, {usage, in_use}} ->
-                          menelaus_util:reply_global_error(
-                            Req, "can't modify usage as this secret is in use");
-                      {error, {encrypt_id, not_found}} ->
-                          menelaus_util:reply_global_error(
-                            Req, "encryption secret does not exist");
-                      {error, {encrypt_id, not_allowed}} ->
-                          menelaus_util:reply_global_error(
-                            Req, "encryption secret not allowed");
-                      {error, name_not_unique} ->
-                          menelaus_util:reply_global_error(
-                            Req, "name is not unique");
                       {error, not_found} ->
-                          menelaus_util:reply_not_found(Req)
+                          menelaus_util:reply_not_found(Req);
+                      {error, Reason} ->
+                          menelaus_util:reply_global_error(
+                            Req, format_error(Reason))
                   end
               end, Req, json,
               secret_validators(CurProps));
@@ -461,6 +445,17 @@ parse_id(Str) when is_list(Str) ->
         _:_ ->
             menelaus_util:web_exception(404, menelaus_util:reply_text_404())
     end.
+
+format_error({encrypt_id, not_found}) ->
+    "Encryption secret does not exist";
+format_error({encrypt_id, not_allowed}) ->
+    "Encryption secret not allowed";
+format_error({usage, in_use}) ->
+    "Can't modify usage as this secret is in use";
+format_error(name_not_unique) ->
+    "Name is not unique";
+format_error(Reason) ->
+    lists:flatten(io_lib:format("~p", [Reason])).
 
 format_secrets_used_by_list(UsedByMap) ->
     UsedByCfg = maps:get(by_config, UsedByMap, []),

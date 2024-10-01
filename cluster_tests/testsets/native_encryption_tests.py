@@ -212,7 +212,7 @@ class NativeEncryptionTests(testlib.BaseTestSet):
         del secret1_json['usage'][1]
         errors = update_secret(self.random_node(), secret1_id, secret1_json,
                                expected_code=400)
-        assert errors['_'] == 'can\'t modify usage as this secret is in use', \
+        assert errors['_'] == 'Can\'t modify usage as this secret is in use', \
                f'unexpected error: {errors}'
 
         # Trying again, but now we add permission to encrypt all buckets
@@ -376,7 +376,7 @@ class NativeEncryptionTests(testlib.BaseTestSet):
                                        encrypt_secret_id=bad_secret_id)
 
         errors = create_secret(self.random_node(), secret, expected_code=400)
-        assert errors['_'] == 'encryption secret not allowed', \
+        assert errors['_'] == 'Encryption secret not allowed', \
                f'unexpected error: {errors}'
 
         secret['data']['encryptSecretId'] = good_secret_id
@@ -385,7 +385,7 @@ class NativeEncryptionTests(testlib.BaseTestSet):
         secret['data']['encryptSecretId'] = bad_secret_id
         errors = update_secret(self.random_node(), secret_id, secret,
                                expected_code=400)
-        assert errors['_'] == 'encryption secret not allowed', \
+        assert errors['_'] == 'Encryption secret not allowed', \
                f'unexpected error: {errors}'
 
     def change_encrypt_id_for_kek_test(self):
@@ -446,7 +446,7 @@ class NativeEncryptionTests(testlib.BaseTestSet):
         secret1['usage'] = ['bucket-encryption-*']
         errors = update_secret(self.random_node(), secret1_id, secret1,
                                expected_code=400)
-        assert errors['_'] == 'can\'t modify usage as this secret is in use', \
+        assert errors['_'] == 'Can\'t modify usage as this secret is in use', \
                f'unexpected error: {errors}'
 
         # Stop using secret1 for encryption
@@ -583,7 +583,7 @@ class NativeEncryptionTests(testlib.BaseTestSet):
 
         secret['usage'] = ['bucket-encryption-*']
         errors = update_secret(node, good_id, secret, expected_code=400)
-        assert errors['_'] == 'can\'t modify usage as this secret is in use', \
+        assert errors['_'] == 'Can\'t modify usage as this secret is in use', \
                f'unexpected error: {errors}'
 
         set_cfg_encryption(node, 'encryption_service', -1)
