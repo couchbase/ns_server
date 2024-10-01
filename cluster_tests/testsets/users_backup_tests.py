@@ -8,7 +8,7 @@
 # licenses/APL2.txt.
 import testlib
 import json
-from testsets.users_tests import put_user, delete_user
+from testsets.users_tests import put_user, delete_user, lock_user, unlock_user
 
 
 class UsersBackupTests(testlib.BaseTestSet):
@@ -177,6 +177,10 @@ class UsersBackupTests(testlib.BaseTestSet):
         check_group_description(self.cluster, self.groupname,
                                 self.group_description)
 
+        # Lock the user, to check that locked status is correctly restored
+        lock_user(self.cluster, self.username)
+        backup = testlib.get_succ(self.cluster, '/settings/rbac/backup').json()
+
         # Now delete the user and check that it will be recreated
         delete_user(self.cluster, 'local', self.username)
         testlib.delete_succ(self.cluster,
@@ -188,7 +192,13 @@ class UsersBackupTests(testlib.BaseTestSet):
                                    'groupsCreated': 1,
                                    'groupsSkipped': groups_count - 1})
 
+        # Password should not yet work, because user is locked
+        check_user_pass_fail(self.cluster, self.username, self.password)
+
+        unlock_user(self.cluster, self.username)
+
         # Now password should work, because the user is restored from backup
+        # (and unlocked)
         check_user_pass(self.cluster, self.username, self.password)
         check_group_description(self.cluster, self.groupname,
                                 self.group_description)

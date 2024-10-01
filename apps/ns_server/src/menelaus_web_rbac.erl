@@ -2160,6 +2160,7 @@ jsonify_backup_users(IsAdmin) ->
                      Name = proplists:get_value(name, Props),
                      Roles = proplists:get_value(user_roles, Props),
                      Groups = proplists:get_value(groups, Props),
+                     Locked = menelaus_users:is_user_locked({Id, Domain}),
                      Json =
                          {[{id, list_to_binary(Id)}] ++
                               [{domain, Domain} || not IsAdmin] ++
@@ -2170,7 +2171,8 @@ jsonify_backup_users(IsAdmin) ->
                                || (not IsAdmin) andalso Roles /= undefined] ++
                               [{name, list_to_binary(Name)}
                                || Name /= undefined] ++
-                              [{auth, {Auth}} || Auth =/= undefined]},
+                              [{auth, {Auth}} || Auth =/= undefined] ++
+                              [{locked, Locked} || Locked =:= true]},
                      ?yield({json, Json})
              end)
        end).
