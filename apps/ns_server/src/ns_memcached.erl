@@ -661,7 +661,6 @@ do_handle_call({delete_vbucket, VBucket}, _From, #state{sock=Sock} = State) ->
     end;
 do_handle_call({sync_delete_vbucket, VBucket}, _From, #state{sock=Sock} = State) ->
     ?log_info("sync-deleting vbucket ~p", [VBucket]),
-    ok = mc_client_binary:set_vbucket(Sock, VBucket, dead),
     Reply = mc_client_binary:sync_delete_vbucket(Sock, VBucket),
     {reply, Reply, State};
 do_handle_call({get_vbucket_details_stats, VBucket, Keys}, _From, State) ->
