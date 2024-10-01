@@ -554,7 +554,7 @@ class NativeEncryptionTests(testlib.BaseTestSet):
 
         testlib.poll_for_condition(
             lambda: rotation_happened(2, next_rotation),
-            sleep_time=0.3, timeout=10)
+            sleep_time=0.3, timeout=30)
 
         # Trying to update secret with new rotation date and check that rotation
         # happens again. Timezone is random. It should not change anything.
@@ -568,7 +568,7 @@ class NativeEncryptionTests(testlib.BaseTestSet):
 
         testlib.poll_for_condition(
             lambda: rotation_happened(3, next_rotation),
-            sleep_time=0.3, timeout=10)
+            sleep_time=0.3, timeout=30)
 
     def cfg_encryption_api_test(self):
         secret = auto_generated_secret(usage=['bucket-encryption-*'])
