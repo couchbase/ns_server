@@ -407,6 +407,14 @@ do_open_file(Path, #file_info{inode = Inode}) ->
             Error
     end.
 
+compress_unencrypted(false = _IsEncrypted, Name, UncompressPth, CompressPth) ->
+    time_stat(Name, compression_time,
+              fun () ->
+                      compress_file(UncompressPth, CompressPth)
+              end);
+compress_unencrypted(true = _IsEncrypted, _, _, _) ->
+    ok.
+
 maybe_compress_post_rotate(#worker_state{sink_name = Name,
                                          path = Path,
                                          rotation_num_files = NumFiles,
@@ -415,10 +423,8 @@ maybe_compress_post_rotate(#worker_state{sink_name = Name,
     UncompressedPath = Path ++ ".1",
     CompressedPath = Path ++ ".1.gz",
 
-    time_stat(Name, compression_time,
-              fun () ->
-                      compress_file(UncompressedPath, CompressedPath)
-              end);
+    IsEncrypted = ale:is_file_encrypted(UncompressedPath),
+    compress_unencrypted(IsEncrypted, Name, UncompressedPath, CompressedPath);
 maybe_compress_post_rotate(_) ->
     ok.
 
