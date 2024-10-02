@@ -236,7 +236,7 @@ roles() ->
                 "which can only be read.">>},
        {ce, true}],
       [{[{bucket, bucket_name}, data, docs], [read, insert, delete, upsert,
-                                             range_scan, sread]},
+                                              range_scan, sread]},
        {[{bucket, bucket_name}, data], all},
        {[{bucket, bucket_name}, views], all},
        {[{bucket, bucket_name}, n1ql, index], all},
@@ -550,6 +550,15 @@ roles() ->
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, sequential_scan],
         [execute]},
        {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [range_scan]}]},
+     {query_manage_system_catalog, [],
+      [{name, <<"Query Manage System Catalog">>},
+       {folder, query},
+       {desc, <<"Can manage Query system catalogs via SQL++. "
+                "This user can access the web console. This user cannot "
+                "read data.">>}],
+      [{[n1ql, meta], [manage]},
+       {[ui], [read]},
+       {[pools], [read]}]},
      {replication_target, [bucket_name],
       [{name, <<"XDCR Inbound">>},
        {folder, xdcr},
@@ -775,6 +784,7 @@ public_definitions(Version) ->
 
 public_definitions() ->
     [{?VERSION_76, fun menelaus_old_roles:roles_pre_76/0},
+     {?VERSION_MORPHEUS, fun menelaus_old_roles:roles_pre_morpheus/0},
      {undefined, ?cut(roles() ++ maybe_add_developer_preview_roles()
                       ++ maybe_add_serverless_roles())}].
 
