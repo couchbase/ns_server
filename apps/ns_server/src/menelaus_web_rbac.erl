@@ -288,7 +288,7 @@ get_users_page_validators(DomainAtom, HasStartFrom) ->
     [validator:integer(pageSize, ?MIN_USERS_PAGE_SIZE, ?MAX_USERS_PAGE_SIZE, _),
      validator:touch(startFrom, _),
      validator:one_of(sortBy, ["id", "name", "domain",
-                               "password_change_timestamp"], _),
+                               "password_change_timestamp", "locked"], _),
      validator:convert(sortBy, fun list_to_atom/1, _),
      validator:one_of(order, ["asc", "desc"], _),
      validator:touch(substr, _),
