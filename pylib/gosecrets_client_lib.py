@@ -105,13 +105,18 @@ def wait_response(proc):
             remains -= len(new)
         return data
 
+    last_log_message = None
     while True:
         size_bin = read_exact(4)
         if len(size_bin) == 0:
+            # Unexpected eof usually means panic. In this case the very last
+            # log message is very helpful for investigation.
+            maybe_print_last_log(last_log_message)
             raise UnexpectedReply('Unexpected eof from gosecrets')
         size = int.from_bytes(size_bin, "big")
         msg = read_exact(size)
         if len(msg) == 0:
+            maybe_print_last_log(last_log_message)
             raise UnexpectedReply('Unexpected eof from gosecrets')
         reply_type = msg[0]
         reply = msg[1:]
@@ -124,11 +129,18 @@ def wait_response(proc):
             return ('error', reply)
 
         if reply_type == ord('L'):
-            debug(reply.decode())
+            text = reply.decode()
+            debug(text)
+            if not global_debug_on:
+                last_log_message = text
             continue
 
         raise UnexpectedReply(f'Received unexpected reply: {reply_type}')
 
+
+def maybe_print_last_log(last_log):
+    if last_log is not None:
+        print_err(f'Last gosecrets log:\n{last_log}')
 
 
 def encode_init(password):
