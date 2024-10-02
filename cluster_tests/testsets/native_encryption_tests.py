@@ -643,6 +643,22 @@ class NativeEncryptionTests(testlib.BaseTestSet):
 
         verify_key_presense_in_dump_key_response(res, ids, [unknown_id])
 
+        # Make sure that we return correct code and error in case
+        # of wrong password (other utilities can rely on that)
+        wrong_password = testlib.random_str(8)
+        error = run_dump_keys(node,
+                              ['-p', wrong_password, '--key-kind', 'kek', \
+                               '--key-ids', unknown_id] + ids,
+                              expected_return_code=2)
+        assert error == 'Incorrect master password\n', \
+               f'unexpected error: {error}'
+
+        # Make sure incorrect args don't lead to exit code 2 (used to be
+        # the case), so it is not mixed with incorrect password
+        run_dump_keys(node,
+                      ['-p', wrong_password, '--key-kind', 'kek'],
+                       expected_return_code=1)
+
     def dump_bucket_deks_test(self):
         secret = auto_generated_secret(usage=['bucket-encryption-*'])
         secret_id = create_secret(self.random_node(), secret)
@@ -658,6 +674,24 @@ class NativeEncryptionTests(testlib.BaseTestSet):
                                           '--key-ids', unknown_id] + ids)
 
         verify_key_presense_in_dump_key_response(res, ids, [unknown_id])
+
+        # making sure that we return correct code and error in case
+        # of wrong password (other utilities can rely on that)
+        wrong_password = testlib.random_str(8)
+        error = run_dump_bucket_deks(node,
+                                     ['-p', wrong_password,
+                                      '--bucket', self.bucket_name,
+                                      '--key-ids', unknown_id] + ids,
+                                     expected_return_code=2)
+        assert error == 'Incorrect master password\n', \
+               f'unexpected error: {error}'
+
+        # Make sure incorrect args don't lead to exit code 2 (used to be
+        # the case), so it is not mixed with incorrect password
+        run_dump_bucket_deks(node,
+                             ['-p', wrong_password,
+                              '--bucket', self.bucket_name],
+                             expected_return_code=1)
 
     def config_dek_automatic_rotation_test(self):
         # Enable encryption and set dek rotation int = 1 sec
@@ -779,15 +813,15 @@ def get_key_list(node, kind_as_str):
     return keys_str.split(',')
 
 
-def run_dump_keys(node, args):
-    return run_dump_key_utility(node, 'dump-keys', args)
+def run_dump_keys(node, *args, **kwargs):
+    return run_dump_key_utility(node, 'dump-keys', *args, **kwargs)
 
 
-def run_dump_bucket_deks(node, args):
-    return run_dump_key_utility(node, 'dump-bucket-deks', args)
+def run_dump_bucket_deks(node, *args, **kwargs):
+    return run_dump_key_utility(node, 'dump-bucket-deks', *args, **kwargs)
 
 
-def run_dump_key_utility(node, name, args):
+def run_dump_key_utility(node, name, args, expected_return_code=0):
     data_dir = node.data_path()
     gosecrets_cfg_path = os.path.join(data_dir, 'config', 'gosecrets.cfg')
     gosecrets_path = os.path.join(scriptdir, '..', 'build', 'deps', 'gocode',
@@ -798,13 +832,15 @@ def run_dump_key_utility(node, name, args):
                 '--gosecrets', gosecrets_path] + args
     env = {'PYTHONPATH': pylib_path, "PATH": os.environ['PATH']}
     r = subprocess.run([utility_path] + all_args, capture_output=True, env=env)
-    assert r.returncode == 0, \
+    assert r.returncode == expected_return_code, \
            f'{name} returned {r.returncode}\n' \
            f'stdout: {r.stdout.decode()}\n' \
            f'stderr: {r.stderr.decode()}'
     print(f'{name} reponse: {r.stdout.decode()}')
-    resp = json.loads(r.stdout)
-    return resp
+    if expected_return_code == 0:
+        return json.loads(r.stdout)
+
+    return r.stderr.decode()
 
 
 def verify_key_presense_in_dump_key_response(response, good_ids, unknown_ids):

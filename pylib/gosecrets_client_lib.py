@@ -42,7 +42,10 @@ def read_keys(key_usage, key_ids, config_path, gosecrets_path=None,
         (init_res, data) = wait_response(proc)
 
         if init_res != 'success':
-            raise InitFailed(f'Initialization failed\n{data.decode()}')
+            error_msg = data.decode()
+            if error_msg == "key decrypt failed: cipher: message authentication failed":
+                raise BadMasterPassword("Incorrect master password")
+            raise InitFailed(f'Initialization failed\n{error_msg}')
 
         keys_map = {}
         for key_id in key_ids:
@@ -162,6 +165,10 @@ def encode_msg(msg):
     return cmd
 
 
+class BadMasterPassword(Exception):
+    pass
+
+
 class BadArg(Exception):
     pass
 
@@ -191,12 +198,14 @@ def script_exception_handler(e):
     error = str(e)
     if isinstance(e, BadArg):
         code = 1
-    elif isinstance(e, InitFailed):
+    elif isinstance(e, BadMasterPassword):
         code = 2
     elif isinstance(e, NoKey):
         code = 3
     elif isinstance(e, UnexpectedReply):
         code = 4
+    elif isinstance(e, InitFailed):
+        code = 5
     else:
         code = 19
         error = traceback.format_exc()
