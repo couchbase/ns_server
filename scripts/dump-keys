@@ -12,21 +12,22 @@ import argparse
 import getpass
 import gosecrets_client_lib
 import json
+import sys
 
 def main():
-    args = parse_args()
-    gosecrets_client_lib.set_debug(args.debug)
-    gosecrets_path = None
-    if args.gosecrets is not None:
-        gosecrets_path = args.gosecrets
-
-    password_arg_set, password = args.password
-    if password_arg_set == 1 and password is None:
-        password = getpass.getpass()
-    elif args.stdin_password:
-        password = input()
-
     try:
+        args = parse_args()
+        gosecrets_client_lib.set_debug(args.debug)
+        gosecrets_path = None
+        if args.gosecrets is not None:
+            gosecrets_path = args.gosecrets
+
+        password_arg_set, password = args.password
+        if password_arg_set == 1 and password is None:
+            password = getpass.getpass()
+        elif args.stdin_password:
+            password = input()
+
         res = gosecrets_client_lib.read_keys(
                 args.key_kind,
                 args.key_ids,
@@ -40,7 +41,7 @@ def main():
 
 
 def parse_args():
-    arg_parser = argparse.ArgumentParser(prog='./dump-deks')
+    arg_parser = ArgumentParser(prog='./dump-deks')
     arg_parser.add_argument('--config', '-c', type=str,
                             metavar='<gosecrets_config_path>',
                             help='path to gosecrets config', required=True)
@@ -80,6 +81,12 @@ class PasswordAction(argparse.Action):
             setattr(args, self.dest, (1, None))
         else:
             setattr(args, self.dest, (1, values))
+
+
+class ArgumentParser(argparse.ArgumentParser):
+    def error(self, message):
+        self.print_help(sys.stderr)
+        raise gosecrets_client_lib.BadArg(f'{self.prog}: error: {message}')
 
 
 if __name__ == '__main__':
