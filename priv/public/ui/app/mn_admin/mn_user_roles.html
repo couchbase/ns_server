@@ -68,8 +68,22 @@
                   'dynamic-inverted': userRolesCtl.isOrderBy('id')
                   && userRolesCtl.isDesc()}">username</span>
       </span>
-      <span class="cbui-table-cell flex-grow-half"
-         ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast65">
+      <span
+        class="cbui-table-cell flex-grow-half"
+        ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast80"
+      >
+        <span
+          class="sorter"
+          ng-click="userRolesCtl.sortByChanged('locked')"
+          ng-class="{'dynamic-active': userRolesCtl.isOrderBy('locked'),
+                     'dynamic-inverted': userRolesCtl.isOrderBy('locked') && userRolesCtl.isDesc()}"
+          >locked</span
+        >
+      </span>
+      <span
+        class="cbui-table-cell flex-grow-half"
+        ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast65"
+      >
         <span>groups</span>
       </span>
       <span class="cbui-table-cell flex-grow-3">
@@ -100,8 +114,20 @@
           {{user.id}}
           <span ng-show="user.passwordless" class="label lt-blue">no password</span>
         </span>
-        <span class="cbui-table-cell flex-grow-half wrap"
-           ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast65">
+        <span
+          class="cbui-table-cell flex-grow-half wrap"
+          ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast80"
+        >
+          <span
+            class="icon margin-right"
+            ng-class="user.locked ? 'fa-lock' : 'fa-unlock'"
+          >
+          </span>
+        </span>
+        <span
+          class="cbui-table-cell flex-grow-half wrap"
+          ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast65"
+        >
           {{userRolesCtl.parseGroupNames(user)}}
         </span>
         <span class="cbui-table-cell flex-grow-3 wrap">
