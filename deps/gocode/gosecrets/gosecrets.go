@@ -227,6 +227,8 @@ func (s *encryptionService) processCommand() {
 		s.cmdDecryptWithKey(data)
 	case 15:
 		s.cmdReadKey(data)
+	case 16:
+		s.cmdReadKeyFile(data)
 	default:
 		panic(fmt.Sprintf("Unknown command %v", command))
 	}
@@ -708,6 +710,17 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 	replySuccess()
 }
 
+func (s *encryptionService) cmdReadKeyFile(data []byte) {
+	keyPath, data := readBigField(data)
+	keyPathStr := string(keyPath)
+	keyIface, err := readKeyFromFileRaw(keyPathStr)
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
+	replyReadKey(s, keyIface)
+}
+
 func (s *encryptionService) cmdReadKey(data []byte) {
 	keyKind, data := readBigField(data)
 	keyName, data := readBigField(data)
@@ -723,12 +736,16 @@ func (s *encryptionService) cmdReadKey(data []byte) {
 		replyError(err.Error())
 		return
 	}
+	replyReadKey(s, keyIface)
+}
+
+func replyReadKey(s *encryptionService, keyIface storedKeyIface) {
 	ctx := &storedKeysCtx{
 		storedKeyConfigs:           s.config.StoredKeyConfigs,
 		encryptionServiceKey:       s.encryptionKeys.getSecret().key,
 		backupEncryptionServiceKey: s.encryptionKeys.getSecret().backupKey,
 	}
-	err = keyIface.decryptMe(ctx)
+	err := keyIface.decryptMe(ctx)
 	if err != nil {
 		replyError(err.Error())
 		return

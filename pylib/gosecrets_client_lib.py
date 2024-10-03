@@ -20,7 +20,7 @@ import json
 global_debug_on = False
 
 
-def read_keys(key_usage, key_ids, config_path, gosecrets_path=None,
+def read_keys(key_specs, config_path, gosecrets_path=None,
               password="", all_must_succeed=False):
     if gosecrets_path is None:
         gosecrets_path = find_binary("gosecrets")
@@ -48,8 +48,17 @@ def read_keys(key_usage, key_ids, config_path, gosecrets_path=None,
             raise InitFailed(f'Initialization failed\n{error_msg}')
 
         keys_map = {}
-        for key_id in key_ids:
-            send_command(proc, 'read_key', key_usage, key_id)
+        for spec in key_specs:
+
+            if spec['type'] == 'keyPath':
+                send_command(proc, 'read_key_file', spec['path'])
+            elif spec['type'] == 'keyId':
+                send_command(proc, 'read_key', spec['kind'], spec['id'])
+            else:
+                raise BadArg(f'unknown key spec type: {spec["type"]}')
+
+            key_id = spec['id']
+
             (res, data) = wait_response(proc)
             if res == 'success':
                 data_parsed = json.loads(data)
@@ -88,6 +97,8 @@ def send_command(proc, cmd, *args):
         data = encode_init(*args)
     elif cmd == 'read_key':
         data = encode_read_key(*args)
+    elif cmd == 'read_key_file':
+        data = encode_read_key_file(*args)
     else:
         raise ValueError
     debug(f'<== {cmd} {args}')
@@ -157,6 +168,10 @@ def encode_read_key(key_usage, key_name):
     return encode_msg(b'\x0f' +
                       encode_msg(key_usage.encode()) +
                       encode_msg(key_name.encode()))
+
+
+def encode_read_key_file(key_file):
+    return encode_msg(b'\x10' + encode_msg(key_file.encode()))
 
 
 def encode_msg(msg):

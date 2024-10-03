@@ -32,10 +32,12 @@ def main():
 
         ids_map = {os.path.join(args.bucket, "deks", key_id): key_id \
                                                     for key_id in args.key_ids}
+        key_specs = [{'type': 'keyId',
+                      'kind': 'bucketDek',
+                      'id': key} for key in ids_map]
 
         res = gosecrets_client_lib.read_keys(
-                'bucketDek',
-                ids_map.keys(),
+                key_specs,
                 args.config,
                 gosecrets_path=gosecrets_path,
                 password=password,

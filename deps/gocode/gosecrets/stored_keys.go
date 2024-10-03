@@ -176,7 +176,11 @@ func getStoredKeyConfig(keyKind string, configs []storedKeyConfig) (*storedKeyCo
 
 func readKeyRaw(keySettings *storedKeyConfig, keyName string) (storedKeyIface, error) {
 	path := storedKeyPath(keySettings, keyName)
-	log_dbg("Reading key %s from file %s", keyName, path)
+	return readKeyFromFileRaw(path)
+}
+
+func readKeyFromFileRaw(path string) (storedKeyIface, error) {
+	log_dbg("Reading key from file %s", path)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("Failed to read key from file %s: %s", path, err.Error()))
