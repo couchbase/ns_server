@@ -2212,6 +2212,7 @@ roles_format_test() ->
 
     ?assert(validate_test_roles(roles())),
     ?assert(validate_test_roles(menelaus_old_roles:roles_pre_76())),
+    ?assert(validate_test_roles(menelaus_old_roles:roles_pre_morpheus())),
 
     teardown_meck().
 
