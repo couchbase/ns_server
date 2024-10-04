@@ -41,11 +41,11 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
     MnPoolsService,
     MnAdminService,
     UIRouter,
-    FormBuilder
+    FormBuilder,
   ]}
 
   constructor(mnXDCRService, mnFormService, mnPoolsService, mnAdminService, uiRouter,
-              formBuilder) {
+    formBuilder) {
     super();
     this.item = uiRouter.globals.params.item;
     this.uiRouter = uiRouter;
@@ -88,6 +88,9 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
                      priority: null,
                      collectionsExplicitMapping: false,
                      collectionsMigrationMode: false,
+                     conflictLogging: {},
+                     enableConflictLog: false,
+                     conflictLogMapping: false,
                      filterBinary: false,
                      filterExpiration: false,
                      filterSkipRestream: "false",
@@ -136,6 +139,8 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
 
     this.explicitMappingRules = new BehaviorSubject({});
     this.explicitMappingMigrationRules = new BehaviorSubject({});
+    this.conflictLogRules = new BehaviorSubject({});
+    this.conflictLogging = new BehaviorSubject({});
   }
 
   unpackReplicationSettings(v) {
@@ -215,6 +220,26 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
     this.isMigrationMode = migrationMode.valueChanges.pipe(startWith(v.collectionsMigrationMode));
     let explicitMappingMode = this.form.group.get("collectionsExplicitMapping");
     this.isExplicitMappingMode = explicitMappingMode.valueChanges.pipe(startWith(v.collectionsExplicitMapping));
+
+    let conflictLogRulesGroup = {};
+    conflictLogRulesGroup.scopes = this.formBuilder.group({});
+
+    v.conflictLogging = v.conflictLogging || {};
+    const { disabled, ...conflictLogRules } = v.conflictLogging;
+    this.conflictLogRules.next(conflictLogRules);
+    this.isConflictLogEnbled = !disabled;
+
+    let hasRootConflictLog = !!(v.conflictLogging.bucket && v.conflictLogging.collection);
+    this.conflictLogMappingGroup = {
+      rootControls: this.formBuilder.group({
+        enableConflictLog: this.formBuilder.control(this.isConflictLogEnbled),
+        root_scopes_checkAll: this.formBuilder.control(hasRootConflictLog),
+        root_bucket: this.formBuilder.control({value: v.conflictLogging.bucket ? v.conflictLogging.bucket : '', disabled: !hasRootConflictLog}),
+        root_collection: this.formBuilder.control({value: v.conflictLogging.collection ? v.conflictLogging.collection : '', disabled: !hasRootConflictLog}),
+      }),
+      ruleControls: conflictLogRulesGroup,
+    };
+    this.conflictLogging.next(v.conflictLogging);
 
     this.unpackMobileSetting(v);
   }

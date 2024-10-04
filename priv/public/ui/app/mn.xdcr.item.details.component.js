@@ -67,7 +67,10 @@ class MnXDCRItemDetailsComponent extends MnLifeCycleHooksToStream {
     this.explicitMappingMigrationRules = new BehaviorSubject({});
     this.isMigrationMode = new BehaviorSubject();
     this.isExplicitMappingMode = new BehaviorSubject();
-    this.toggler = mnHelperService.createToggle();
+    this.mappingRulesToggler = mnHelperService.createToggle();
+
+    this.conflictLogRules = new BehaviorSubject({});
+    this.conflictLogRulesToggler = mnHelperService.createToggle();
   }
 
   ngOnInit() {
@@ -101,6 +104,11 @@ class MnXDCRItemDetailsComponent extends MnLifeCycleHooksToStream {
             map(([mappingRules, mappingMigrationRules]) => {
               return Object.keys(mappingRules).length || Object.keys(mappingMigrationRules).length;
             }));
+
+    this.areThereConflictLogRules = this.conflictLogRules
+    .pipe(map((mappingRules) => {
+        return Object.keys(mappingRules).length;
+      }));
   }
 
   unpackReplicationMappings(v) {
@@ -108,6 +116,9 @@ class MnXDCRItemDetailsComponent extends MnLifeCycleHooksToStream {
     this.explicitMappingMigrationRules.next(v.collectionsMigrationMode ? v.colMappingRules : {});
     this.isMigrationMode.next(v.collectionsMigrationMode);
     this.isExplicitMappingMode.next(v.collectionsExplicitMapping);
+    v.conflictLogging = v.conflictLogging || {};
+    const { disabled, ...conflictLogRules } = v.conflictLogging;
+    this.conflictLogRules.next(conflictLogRules);
   }
 
   getStatus(row) {

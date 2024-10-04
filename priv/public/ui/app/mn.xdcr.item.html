@@ -42,6 +42,12 @@
       {{item.source}}
       <span
          class="label lt-blue"
+         *ngIf="(isConflictLoggingEnabled | async)"
+         (click)="$event.stopPropagation()">
+        Conflict Logging Enabled
+      </span>
+      <span
+         class="label lt-blue"
          *ngIf="item.filterExpression || item.filterExpiration || item.filterDeletion || item.filterBypassExpiry || item.filterBinary"
          (click)="$event.stopPropagation()"
          [ngbTooltip]="filterTooltipTemplate"

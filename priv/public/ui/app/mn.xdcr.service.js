@@ -221,6 +221,24 @@ class MnXDCRService {
         settings.collectionsMigrationMode = false;
       }
     }
+
+    // conflict logging
+    let conflictLogRules = this.conflictLogRules.getValue();
+    // don't send empty values to backend
+    if (!conflictLogRules.bucket) {
+      delete conflictLogRules.bucket;
+    }
+    if (!conflictLogRules.collection) {
+      delete conflictLogRules.collection;
+    }
+
+    if (settings.conflictLogMapping &&
+      ((conflictLogRules.loggingRules && Object.keys(conflictLogRules.loggingRules).length) || conflictLogRules.bucket || conflictLogRules.collection)) {
+      settings.conflictLogging = JSON.stringify({...conflictLogRules, ...{disabled: !this.conflictLogMappingGroup.rootControls.get('enableConflictLog').value}});
+    } else {
+      settings.conflictLogging = JSON.stringify({});
+    }
+
     settings.replicationType = "continuous";
 
     if (!isEnterprise || !compatVersion80) {

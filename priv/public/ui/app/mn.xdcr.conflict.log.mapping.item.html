@@ -1,0 +1,75 @@
+<!--
+     Copyright 2024-Present Couchbase, Inc.
+
+     Use of this software is governed by the Business Source License included
+     in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+     in that file, in accordance with the Business Source License, use of this
+     software will be governed by the Apache License, Version 2.0, included in
+     the file licenses/APL2.txt.
+-->
+
+
+<span class="nowrap flex flex-gap-10 flex-items-center">
+  <span
+     class="inline middle"
+     [formGroup]="group">
+    <input
+       type="checkbox"
+       [attr.id]="'conflict_log_dynamic_collection_' + parent + '_' + keyspace + '_' + item.name"
+       [formControlName]="item.name + '_' + keyspace + '_checkAll'"
+       (click)="$event.stopPropagation();">
+    <label
+       [attr.title]="item.name"
+       [class.max-width-4]="'root' !== parent"
+       [class.max-width-5]="'root' == parent"
+       class="checkbox bold ellipsis margin-top-quarter"
+       [attr.for]="'conflict_log_dynamic_collection_' + parent + '_' + keyspace + '_' + item.name" (click)="$event.stopPropagation();">
+      {{item.name}}
+    </label>
+  </span>
+  &gt;&nbsp;
+  <span
+     class="text-medium flex flex-gap-10 flex-items-center"
+     [formGroup]="group">
+    Conflict Log Collection:
+    <span
+       *ngIf="keyspace === 'scopes'"
+       class="fa-stack icon-info margin-right-half"
+       ngbTooltip="All conflict logs and documents from this scope are logged in this collection."
+       placement="auto right"
+       container="body">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x" style="left: 5px;"></span>
+    </span>
+    <span
+       *ngIf="keyspace === 'collections'"
+       style="margin-right: 10px;"
+       class="fa-stack icon-info"
+       ngbTooltip="All conflict logs and documents from this collection are logged in this collection."
+       placement="auto right"
+       container="body">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x" style="left: 5px;"></span>
+    </span>
+    <input
+       style="display: table; background-color: inherit;"
+       placeholder="bucket"
+       type="text"
+       autocorrect="off"
+       spellcheck="false"
+       autocapitalize="off"
+       formControlName="bucket"
+       [id]="item.name + '_bucket'"
+       (click)="$event.stopPropagation();">
+    <input
+       placeholder="scope.collection"
+       style="display: table; background-color: inherit;"
+       type="text"
+       autocorrect="off"
+       spellcheck="false"
+       autocapitalize="off"
+       formControlName="collection"
+       [id]="item.name + '_collection'"
+       (click)="$event.stopPropagation();">
+  </span>
+</span>

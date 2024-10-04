@@ -72,6 +72,9 @@ class MnXDCRItemComponent extends MnLifeCycleHooksToStream {
       .pipe(map(this.getCluster.bind(this)));
 
     this.onShowErrorsReplication = onShowErrorsReplication;
+
+    this.isConflictLoggingEnabled = itemStream.pipe(map(this.isLoggingEnabled),
+      shareReplay({refCount: true, bufferSize: 1}));
   }
 
   ngOnInit() {
@@ -117,5 +120,13 @@ class MnXDCRItemComponent extends MnLifeCycleHooksToStream {
       default: return 'starting up';
       }
     }
+  }
+
+  isLoggingEnabled(row) {
+    // should have the conflictLoggingDisabled here, waiting for https://jira.issues.couchbase.com/browse/MB-63693
+    if (row.conflictLoggingDisabled === undefined) {
+      return false;
+    }
+    return !row.conflictLoggingDisabled;
   }
 }

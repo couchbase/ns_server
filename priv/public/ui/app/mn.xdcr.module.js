@@ -46,6 +46,11 @@ import { MnXDCRSettingsComponent } from "./mn.xdcr.settings.component.js";
 import { MnXDCREditRepComponent } from "./mn.xdcr.edit.rep.component.js";
 import { MnXDCRErrorsComponent } from "./mn.xdcr.errors.component.js";
 import { MnXDCRRepMessageComponent } from "./mn.xdcr.rep.message.component.js";
+import { MnXDCRConflictLogComponent } from "./mn.xdcr.conflict.log.component.js";
+import { MnXDCRConflictLogMappingControlsComponent } from "./mn.xdcr.conflict.log.mapping.controls.component.js"
+import { MnXDCRConflictLogScopeComponent } from "./mn.xdcr.conflict.log.scope.component.js"
+import { MnXDCRConflictLogMappingItemComponent } from "./mn.xdcr.conflict.log.mapping.item.component.js";
+import { MnXDCRConflictLogMappingRulesComponent } from "./mn.xdcr.conflict.log.mapping.rules.component.js";
 
 import { MnDetailStatsDirective } from "./ajs.upgraded.components.js";
 
@@ -155,6 +160,11 @@ class MnXDCRModule {
         MnXDCRIncomingDetailsComponent,
         MnXDCRIncomingReplicationDetailsComponent,
         MnXDCRIncomingReplicationSettingsComponent,
+        MnXDCRConflictLogComponent,
+        MnXDCRConflictLogMappingControlsComponent,
+        MnXDCRConflictLogScopeComponent,
+        MnXDCRConflictLogMappingItemComponent,
+        MnXDCRConflictLogMappingRulesComponent,
         MnXDCRMobileSettingComponent
       ],
       imports: [

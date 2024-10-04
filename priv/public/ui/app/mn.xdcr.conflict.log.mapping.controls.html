@@ -1,0 +1,105 @@
+<!--
+Copyright 2024-Present Couchbase, Inc.
+
+Use of this software is governed by the Business Source License included in
+the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+file, in accordance with the Business Source License, use of this software will
+be governed by the Apache License, Version 2.0, included in the file
+licenses/APL2.txt.
+-->
+
+<div [ngClass]="{'row' : parent === 'root'}">
+
+  <div [formGroup]="group" class="width-12">
+    <span class="indent-1 flex flex-items-center flex-gap-10">
+      <input (click)="$event.stopPropagation();" *ngIf="parent === 'root'"
+         [attr.id]="'conflict_log_dynamic_check_all' + keyspace + parent"
+         [formControlName]="parent + '_' + keyspace + '_checkAll'"
+         type="checkbox">
+      <label (click)="$event.stopPropagation();"
+         [attr.for]="'conflict_log_dynamic_check_all' + keyspace + parent">
+        <span *ngIf="parent === 'root'">Log all conflicts into </span>
+      </label>
+      <span class="text-medium" *ngIf="parent === 'root'">Conflict Log Collection: </span>
+      <span *ngIf="parent === 'root'"
+         class="fa-stack icon-info"
+         ngbTooltip="All conflict logs and documents for this replication are logged in this collection. Exceptions can be made by completing a log collection at the scope/collection level."
+         placement="auto right"
+         container="body">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+      </span>
+      <input
+         *ngIf="parent === 'root'"
+         class="width-3"
+         id="conflict_log_root_bucket"
+         placeholder="bucket"
+         type="text"
+         autocorrect="off"
+         spellcheck="false"
+         autocapitalize="off"
+         [formControlName]="parent + '_bucket'">
+      <input
+         *ngIf="parent === 'root'"
+         class="width-3"
+         id="conflict_log_root_scope_collection"
+         placeholder="scope.collection"
+         type="text"
+         autocorrect="off"
+         spellcheck="false"
+         autocapitalize="off"
+         [formControlName]="parent + '_collection'">
+    </span>
+  </div>
+</div>
+<div class="indent-1 margin-top-1 width-3">
+  <mn-input-filter
+     class="width-12"
+     [group]="filter.group"
+     [mnPlaceholder]="'filter ' + keyspace + '...'">
+  </mn-input-filter>
+</div>
+<div *ngIf="keyspace == 'scopes'">
+  <div class="cbui-table">
+    <div class="cbui-table-header min-height-1"></div>
+    <div *ngFor="let scope of (scopesPaginator.page | async);">
+      <mn-xdcr-conflict-log-scope
+         [item]="scope"
+         [mappingGroup]="mappingGroup"
+         [mappingRules]="mappingRules">
+      </mn-xdcr-conflict-log-scope>
+    </div>
+  </div>
+  <ngb-pagination
+     *ngIf="(scopesPaginator.values | async)?.size && (filteredItems | async)?.length"
+     [page]="(scopesPaginator.values | async)?.page"
+     [maxSize]="5"
+     [pageSize]="(scopesPaginator.values | async)?.size"
+     [collectionSize]="(filteredItems | async)?.length"
+     (pageChange)="scopesPaginator.group.patchValue({page:$event})">
+    <ng-template ngbPaginationPrevious>&#60; prev</ng-template>
+    <ng-template ngbPaginationNext>next &#62;</ng-template>
+  </ngb-pagination>
+</div>
+<div
+   class="cbui-table-body margin-top-1 margin-bottom-2 max-height-280 margin-left-1"
+   *ngIf="keyspace == 'collections'">
+  <span
+     [hidden]="(filteredItems | async)?.length"
+     class="zero-content">
+    there's nothing here
+  </span>
+  <div
+     [hidden]="!(filteredItems | async)?.length"
+     class="border-0">
+    <mn-xdcr-conflict-log-mapping-item
+       *ngFor="let coll of (filteredItems | async); trackBy: trackCollectionsBy"
+       class="block nowrap padding-quarter"
+       [item]="coll"
+       [keyspace]="keyspace"
+       [parent]="item.name"
+       [mappingGroup]="mappingGroup"
+       [mappingRules]="mappingRules">
+    </mn-xdcr-conflict-log-mapping-item>
+  </div>
+</div>

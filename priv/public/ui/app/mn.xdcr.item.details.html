@@ -39,21 +39,39 @@ licenses/APL2.txt.
 
   <div
      *ngIf="areThereMappingRules | async"
-     class="margin-bottom-half"
+     class="margin-bottom-1-5"
      (click)="$event.stopPropagation();">
     <p
        class="disclosure"
-       [ngClass]="{disclosed: (toggler.state | async)}"
-       (click)="toggler.click.next()">
+       [ngClass]="{disclosed: (mappingRulesToggler.state | async)}"
+       (click)="mappingRulesToggler.click.next()">
       Mapping Rules
     </p>
     <mn-xdcr-mapping-rules
-       *ngIf="toggler.state | async"
+       *ngIf="mappingRulesToggler.state | async"
        [isMigrationMode]="isMigrationMode"
        [isExplicitMappingMode]="isExplicitMappingMode"
        [explicitMappingRules]="explicitMappingRules"
        [explicitMappingMigrationRules]="explicitMappingMigrationRules">
     </mn-xdcr-mapping-rules>
+  </div>
+  <div
+     *ngIf="areThereConflictLogRules | async"
+     class="margin-bottom-half"
+     (click)="$event.stopPropagation();">
+    <p
+       class="disclosure"
+       [ngClass]="{disclosed: (conflictLogRulesToggler.state | async)}"
+       (click)="conflictLogRulesToggler.click.next()">
+      Conflict Logging Rules
+    </p>
+    <mn-xdcr-conflict-log-mapping-rules
+       *ngIf="conflictLogRulesToggler.state | async"
+       class="block"
+       [isEditMode]="false"
+       [mappingRules]="conflictLogRules"
+       [mappingGroup]="conflictLogMappingGroup">
+    </mn-xdcr-conflict-log-mapping-rules>
   </div>
   <mn-detail-stats
      bucket="{{item.source}}"

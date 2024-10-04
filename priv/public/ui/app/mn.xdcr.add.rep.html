@@ -22,7 +22,7 @@ licenses/APL2.txt.
    [formGroup]="form.group"
    class="forms">
   <div class="row flex-left items-stretch resp-sml margin-bottom-4">
-    <div class="width-10">
+    <div class="width-9">
       <div
          class="error"
          [hidden]="!(error | async)?._">
@@ -106,6 +106,14 @@ licenses/APL2.txt.
          class="block"
          [group]="form.group"></mn-xdcr-mapping>
 
+      <mn-xdcr-conflict-log
+         class="block"
+         *ngIf="(isEnterprise | async) && (compatVersion80 | async)"
+         [mappingRules]="conflictLogRules"
+         [mappingGroup]="conflictLogMappingGroup"
+         [conflictLogging]="conflictLogging"
+         [group]="form.group"></mn-xdcr-conflict-log>
+
       <mn-xdcr-mobile-setting
          [group]="form.group"
          [fromBucket]="form.group.get('fromBucket')">
@@ -122,21 +130,37 @@ licenses/APL2.txt.
        style="flex-basis: 1; margin: 0 16px;"
        class="resp-hide-sml">&nbsp;</div>
 
-    <div class="width-2"
+    <div class="width-3"
        *ngIf="(isEnterprise | async) && (compatVersion70 | async)">
       <h4
          class="inline margin-right-1">
         Mapping Rules
       </h4>
-      <mn-xdcr-mapping-rules
-         class="block"
-         [isEditMode]="true"
-         [isMigrationMode]="isMigrationMode"
-         [isExplicitMappingMode]="isExplicitMappingMode"
-         [explicitMappingRules]="explicitMappingRules"
-         [explicitMappingMigrationRules]="explicitMappingMigrationRules"
-         [explicitMappingGroup]="explicitMappingGroup">
-      </mn-xdcr-mapping-rules>
+      <div style="display: block; overflow: scroll; height: 300px;">
+        <mn-xdcr-mapping-rules
+           class="block"
+           [isEditMode]="true"
+           [isMigrationMode]="isMigrationMode"
+           [isExplicitMappingMode]="isExplicitMappingMode"
+           [explicitMappingRules]="explicitMappingRules"
+           [explicitMappingMigrationRules]="explicitMappingMigrationRules"
+           [explicitMappingGroup]="explicitMappingGroup">
+        </mn-xdcr-mapping-rules>
+      </div>
+      <div class="margin-top-2" *ngIf="(isEnterprise | async) && (compatVersion80 | async)">
+        <h4
+           class="block margin-right-1">
+          Conflict Logging Rules
+        </h4>
+        <div style="display: block; overflow: scroll; height: 300px;">
+          <mn-xdcr-conflict-log-mapping-rules
+             class="block"
+             [isEditMode]="true"
+             [mappingRules]="conflictLogRules"
+             [mappingGroup]="conflictLogMappingGroup">
+          </mn-xdcr-conflict-log-mapping-rules>
+        </div>
+      </div>
     </div>
   </div>
 

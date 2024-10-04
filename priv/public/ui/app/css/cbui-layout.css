@@ -275,6 +275,9 @@ footer {
 .flex-gap-5 {
   gap: 5px;
 }
+.flex-gap-10 {
+  gap: 10px;
+}
 
 /* min/max width ------------------------------------------------------- */
 .min-width-zero {

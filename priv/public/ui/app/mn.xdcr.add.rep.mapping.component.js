@@ -122,7 +122,7 @@ class MnXDCRAddRepMappingComponent extends MnLifeCycleHooksToStream {
             errors.error : errors.key);
     }));
 
-    let keyChanges = this.explicitMappingGroup.migrationMode.get('key').valueChanges;
+    let keyChanges = this.explicitMappingGroup?.migrationMode.get('key').valueChanges;
     keyChanges
       .pipe(filter(e => !!e),
             debounceTime(500),
@@ -144,11 +144,11 @@ class MnXDCRAddRepMappingComponent extends MnLifeCycleHooksToStream {
             filter(([, errors]) => !errors),
             takeUntil(this.mnOnDestroy))
       .subscribe(() => {
-        let newRule = this.explicitMappingGroup.migrationMode.value;
+        let newRule = this.explicitMappingGroup?.migrationMode.value;
         let rules = this.explicitMappingMigrationRules.getValue();
         rules[newRule.key || "_default._default"] = newRule.target;
         this.explicitMappingMigrationRules.next(rules);
-        this.explicitMappingGroup.migrationMode.patchValue({key: "", target: ""});
+        this.explicitMappingGroup?.migrationMode.patchValue({key: "", target: ""});
       });
   }
 }

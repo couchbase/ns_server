@@ -52,6 +52,7 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
 
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.compatVersion70 = mnAdminService.stream.compatVersion70;
+    this.compatVersion80 = mnAdminService.stream.compatVersion80;
     this.bucketsMembaseEphemeral = mnBucketsService.stream.bucketsMembaseEphemeral.pipe(map((buckets)=> buckets.map((bucket) => bucket.name)));
     this.getSettingsReplications = mnXDCRService.stream.getSettingsReplications;
     this.remoteClusters = mnXDCRService.stream.getRemoteClustersFiltered.pipe(map((clusters)=> clusters.map((cluster) => cluster.name)));
@@ -72,6 +73,9 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
                      priority: null,
                      collectionsExplicitMapping: false,
                      collectionsMigrationMode: false,
+                     conflictLogging: {},
+                     enableConflictLog: false,
+                     conflictLogMapping: false,
                      filterBinary: false,
                      filterExpiration: false,
                      filterSkipRestream: "false",
@@ -128,6 +132,23 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
       filterExpression: "",
     });
 
+    function createConflictLogRulesGroup() {
+      let conflictLogRulesGroup = {};
+      conflictLogRulesGroup.scopes = formBuilder.group({});
+      return conflictLogRulesGroup;
+    }
+
+    function createEmptyConflictLogGroup(rulesGroup) {
+      return { rootControls: formBuilder.group({
+                 enableConflictLog: false,
+                 root_scopes_checkAll: false,
+                 root_bucket: formBuilder.control({value: '', disabled: true}),
+                 root_collection: formBuilder.control({value: '', disabled: true})
+                }),
+                ruleControls: rulesGroup,
+      };
+    }
+
     this.explicitMappingGroup = {};
     this.explicitMappingRules = new BehaviorSubject();
     this.explicitMappingMigrationRules = new BehaviorSubject();
@@ -136,6 +157,9 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
     this.isMigrationMode = migrationMode.valueChanges.pipe(startWith(migrationMode.value));
     let explicitMappingMode = this.form.group.get("collectionsExplicitMapping");
     this.isExplicitMappingMode = explicitMappingMode.valueChanges.pipe(startWith(explicitMappingMode.value));
+    this.conflictLogMappingGroup = createEmptyConflictLogGroup(createConflictLogRulesGroup());
+    this.conflictLogRules = new BehaviorSubject({});
+    this.conflictLogging = new BehaviorSubject({});
 
     function resetMappingRules() {
       this.explicitMappingGroup.scopesControls = {};
@@ -144,13 +168,15 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
       this.explicitMappingGroup.collectionsControls = {};
       this.explicitMappingRules.next({});
       this.explicitMappingMigrationRules.next({});
+      this.conflictLogMappingGroup = createEmptyConflictLogGroup(createConflictLogRulesGroup());
+      this.conflictLogRules.next({});
+      this.conflictLogging.next({});
     }
     resetMappingRules.bind(this)();
 
     this.form.group.get("fromBucket").valueChanges
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(resetMappingRules.bind(this));
-
   }
 
   unpackReplicationSettings(v) {
