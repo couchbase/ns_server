@@ -18,6 +18,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-include("ns_bucket.hrl").
+
 -export([is_http/1,
          handle_get/1,
          handle_post/1]).
@@ -28,13 +30,24 @@
 
 -define(COUCHDB_REQUIRED_SAMPLES, ["gamesim-sample", "beer-sample"]).
 -define(SAMPLE_BUCKET_QUOTA_MB, 200).
--define(SAMPLE_BUCKET_QUOTA, 1024 * 1024 * ?SAMPLE_BUCKET_QUOTA_MB).
 
 -record(sample, {sample_name :: string(),
                  bucket_name :: string() | undefined,
                  http_cache_directory :: string() | undefined,
                  must_bucket_exist :: bucket_must_exist |
                                       bucket_must_not_exist}).
+
+sample_bucket_quota_mb() ->
+    %% The default bucket is a magma bucket with 128 vbuckets. Unlike
+    %% couchstore buckets the minimum ram quota for magma can be changed
+    %% via /internalSettings.
+    MagmaMinQuota =
+        ns_config:read_key_fast(magma_min_memory_quota,
+                                ?DEFAULT_MAGMA_MIN_MEMORY_QUOTA_128_VBS),
+    max(MagmaMinQuota, ?SAMPLE_BUCKET_QUOTA_MB).
+
+sample_bucket_quota() ->
+    sample_bucket_quota_mb() * 1024 * 1024.
 
 handle_get(Req) ->
     Buckets = [Bucket || {Bucket, _} <- ns_bucket:get_buckets()],
@@ -44,7 +57,7 @@ handle_get(Req) ->
                 Installed = lists:member(Name, Buckets),
                 {[{name, list_to_binary(Name)},
                   {installed, Installed},
-                  {quotaNeeded, ?SAMPLE_BUCKET_QUOTA}]}
+                  {quotaNeeded, sample_bucket_quota()}]}
             end || Path <- list_sample_files() ],
 
     reply_json(Req, Map).
@@ -223,7 +236,7 @@ start_loading_sample(Req, #sample{sample_name = Sample, bucket_name = Bucket,
                                   http_cache_directory = CacheDir,
                                   must_bucket_exist = BucketState}) ->
     {TaskState, TaskId} = samples_loader_tasks:start_loading_sample(
-                            Sample, Bucket, ?SAMPLE_BUCKET_QUOTA_MB, CacheDir,
+                            Sample, Bucket, sample_bucket_quota_mb(), CacheDir,
                             BucketState),
     case TaskState of
         newly_started ->
@@ -275,7 +288,8 @@ check_quota(Samples) ->
     RamQuotas = proplists:get_value(ram, StorageInfo),
     QuotaUsed = proplists:get_value(quotaUsed, RamQuotas),
     QuotaTotal = proplists:get_value(quotaTotal, RamQuotas),
-    Required = ?SAMPLE_BUCKET_QUOTA * length(BucketsToCreate),
+    BucketQuota = sample_bucket_quota(),
+    Required = BucketQuota * length(BucketsToCreate),
 
     case (QuotaTotal - QuotaUsed) <  (Required * NodesCount) of
         true ->
@@ -283,19 +297,20 @@ check_quota(Samples) ->
                    " to install sample buckets"],
             [{error, list_to_binary(Err)}];
         false ->
-            case lists:flatmap(check_bucket_quota(_), ExistingBuckets) of
+            case lists:flatmap(check_bucket_quota(_, BucketQuota),
+                               ExistingBuckets) of
                 [] -> ok;
                 Errs -> Errs
             end
     end.
 
 %% Check an existing bucket's ram quota is sufficient to import a sample into
-check_bucket_quota(#sample{bucket_name = Bucket}) ->
+check_bucket_quota(#sample{bucket_name = Bucket}, BucketQuota) ->
     {ok, BucketCfg} = ns_bucket:get_bucket(Bucket),
-    case ns_bucket:raw_ram_quota(BucketCfg) < ?SAMPLE_BUCKET_QUOTA of
+    case ns_bucket:raw_ram_quota(BucketCfg) < BucketQuota of
         true ->
             Err = ["Not enough Quota, you need to allocate ",
-                   format_MB(?SAMPLE_BUCKET_QUOTA), " for bucket '", Bucket,
+                   format_MB(BucketQuota), " for bucket '", Bucket,
                    "' to install sample buckets"],
             [{error, list_to_binary(Err)}];
         false ->
@@ -369,6 +384,8 @@ check_quota_setup() ->
     meck:new(check_quota_modules(), [passthrough]),
     meck:expect(ns_config, get,
                 fun () -> [] end),
+    meck:expect(ns_config, read_key_fast,
+                fun (_, Default) -> Default end),
     meck:expect(chronicle_compat, get_snapshot,
                 fun (_, _) -> [] end),
     meck:expect(ns_cluster_membership, service_active_nodes,
@@ -388,7 +405,7 @@ check_quota_test__() ->
     meck:expect(ns_storage_conf, cluster_storage_info,
                 fun (_, _) ->
                         [{ram, [{quotaUsed, 0},
-                                {quotaTotal, ?SAMPLE_BUCKET_QUOTA-1}]}]
+                                {quotaTotal, sample_bucket_quota() - 1}]}]
                 end),
     Samples1 = [#sample{bucket_name = "test",
                         must_bucket_exist = bucket_must_not_exist}],
@@ -398,7 +415,7 @@ check_quota_test__() ->
     %% Insufficient ram quota when installing to existing sample bucket
     meck:expect(ns_bucket, get_bucket,
                 fun (_) ->
-                        {ok, [{ram_quota, ?SAMPLE_BUCKET_QUOTA-1},
+                        {ok, [{ram_quota, sample_bucket_quota() - 1},
                               {servers, [node]}]}
                 end),
     Samples2 = [#sample{bucket_name = "test",
@@ -410,7 +427,7 @@ check_quota_test__() ->
     %% 2 nodes
     meck:expect(ns_bucket, get_bucket,
                 fun (_) ->
-                        {ok, [{ram_quota, ?SAMPLE_BUCKET_QUOTA-1},
+                        {ok, [{ram_quota, sample_bucket_quota() - 1},
                               {servers, [node1, node2]}]}
                 end),
     Samples3 = [#sample{bucket_name = "test",
@@ -422,7 +439,7 @@ check_quota_test__() ->
     meck:expect(ns_storage_conf, cluster_storage_info,
                 fun (_, _) ->
                         [{ram, [{quotaUsed, 0},
-                                {quotaTotal, ?SAMPLE_BUCKET_QUOTA}]}]
+                                {quotaTotal, sample_bucket_quota()}]}]
                 end),
     Samples4 = [#sample{bucket_name = "test",
                         must_bucket_exist = bucket_must_not_exist}],
@@ -432,7 +449,7 @@ check_quota_test__() ->
     %% Sufficient ram quota when installing to existing sample bucket
     meck:expect(ns_bucket, get_bucket,
                 fun (_) ->
-                        {ok, [{ram_quota, ?SAMPLE_BUCKET_QUOTA},
+                        {ok, [{ram_quota, sample_bucket_quota()},
                               {servers, [node]}]}
                 end),
     Samples5 = [#sample{bucket_name = "test",
@@ -444,7 +461,7 @@ check_quota_test__() ->
     %% nodes
     meck:expect(ns_bucket, get_bucket,
                 fun (_) ->
-                        {ok, [{ram_quota, ?SAMPLE_BUCKET_QUOTA},
+                        {ok, [{ram_quota, sample_bucket_quota()},
                               {servers, [node1, node2]}]}
                 end),
     Samples6 = [#sample{bucket_name = "test",
