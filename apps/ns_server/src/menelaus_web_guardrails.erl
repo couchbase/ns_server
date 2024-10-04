@@ -21,6 +21,7 @@
 -export([default_for_ns_config/0,
          default_for_metakv/0,
          config_upgrade_to_76/1,
+         config_upgrade_to_morpheus/1,
          build_json_for_audit/1]).
 
 %% ------------------------------------------------------------------
@@ -211,7 +212,7 @@ raw_default_for_ns_config() ->
      %% Max disk usage % per node
      {disk_usage,
       [{enabled, false},
-       {maximum, 96}]},
+       {maximum, 85}]},
      %% Max no. of collections per bucket quota in MB
      {collections_per_quota,
       [{enabled, false},
@@ -284,6 +285,34 @@ set_services_configs(OldConfigAll, NewConfigAll) ->
 
 config_upgrade_to_76(_Config) ->
     [{set, resource_management, default_for_ns_config()}].
+
+config_upgrade_to_morpheus(Config) ->
+    Current = ns_config:search(Config, resource_management, []),
+    Default = default_for_ns_config(),
+    Changes = update_disk_usage_maximum_to_new_default(Default, Current),
+    New = misc:update_proplist(Current, Changes),
+    [{set, resource_management, New}].
+
+update_disk_usage_maximum_to_new_default(DefaultConfig, CurrentConfig) ->
+    Default = proplists:get_value(disk_usage, DefaultConfig),
+    Current = proplists:get_value(disk_usage, CurrentConfig),
+    case Current of
+        undefined ->
+            %% Need to populate the value
+            [{disk_usage, Default}];
+        _ ->
+            case proplists:get_value(maximum, Current) of
+                96 ->
+                    %% If the value is currently 96, and that's not the default,
+                    %% then this is a self-managed cluster, so the value needs
+                    %% updating to the correct default
+                    [{disk_usage, Default}];
+                _ ->
+                    %% If the maximum has changed from the default and it's not
+                    %% a self-managed cluster, then we don't want to override it
+                    []
+            end
+    end.
 
 -spec build_json_for_audit(proplists:proplist()) -> proplists:proplist().
 build_json_for_audit(Settings) ->

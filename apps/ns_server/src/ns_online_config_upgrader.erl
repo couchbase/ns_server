@@ -75,7 +75,7 @@ maybe_final_upgrade(_) ->
 upgrade(?MIN_SUPPORTED_VERSION, Config) ->
     {?VERSION_72,
      menelaus_web_auto_failover:config_upgrade_to_72(Config) ++
-        menelaus_web_alerts_srv:config_upgrade_to_72(Config)};
+         menelaus_web_alerts_srv:config_upgrade_to_72(Config)};
 
 upgrade(?VERSION_72, Config) ->
     {?VERSION_76,
@@ -93,4 +93,5 @@ upgrade(?VERSION_72, Config) ->
 upgrade(?VERSION_76, Config) ->
     {?VERSION_MORPHEUS,
      menelaus_web_alerts_srv:config_upgrade_to_morpheus(Config) ++
-         menelaus_web_auto_failover:config_upgrade_to_morpheus(Config)}.
+         menelaus_web_auto_failover:config_upgrade_to_morpheus(Config) ++
+         menelaus_web_guardrails:config_upgrade_to_morpheus(Config)}.
