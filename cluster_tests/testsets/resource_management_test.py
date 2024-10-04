@@ -18,7 +18,7 @@ class ResourceManagementAPITests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        # - Provisioned edition required for guard rails to be configurable
+        # - Provisioned edition required for all guard rails to be configurable
         # TODO: Add Service.INDEX once indexing has added support
         return testlib.ClusterRequirements(edition="Provisioned",
                                            services=[Service.KV])
@@ -350,6 +350,65 @@ class ResourceManagementAPITests(testlib.BaseTestSet):
             })
         assert get("enabled", r) is True
         assert get("maximum", r) == 13
+
+
+class GuardrailSelfManagedAPITests(testlib.BaseTestSet):
+    @staticmethod
+    def requirements():
+        # - Self-managed edition has limited guardrails configured
+        return testlib.ClusterRequirements(edition="Enterprise",
+                                           services=[Service.KV])
+
+    def setup(self):
+        self.original_settings = testlib.get_succ(
+            self.cluster, "/settings/resourceManagement").json()
+
+    def teardown(self):
+        pass
+
+    def test_teardown(self):
+        # Reset guard rail config
+        testlib.post_succ(self.cluster, "/settings/resourceManagement",
+                          json=self.original_settings)
+
+    def get_guardrails_test(self):
+        config = testlib.get_succ(
+            self.cluster, "/settings/resourceManagement").json()
+        # No other guardrails included in the response
+        assert list(config.keys()) == ["diskUsage"]
+        disk_usage_config = config.get("diskUsage")
+        assert disk_usage_config.get("enabled") is not None
+        assert disk_usage_config.get("maximum") is not None
+
+    def set_guardrails_json_test(self):
+        # Set guard rails with json
+        r = testlib.post_succ(
+            self.cluster, "/settings/resourceManagement/diskUsage",
+            data={
+                "enabled": "false",
+                "maximum": 91
+            })
+
+        assert get("enabled", r) is False
+        assert get("maximum", r) == 91
+
+    def set_provisioned_guardrails_test(self):
+        provisioned_fields = {
+                "bucket.residentRatio.enabled": "false",
+                "bucket.residentRatio.couchstoreMinimum": 6,
+                "bucket.residentRatio.magmaMinimum": 0.6,
+                "bucket.dataSizePerNode.enabled": "false",
+                "bucket.dataSizePerNode.couchstoreMaximum": 33,
+                "bucket.dataSizePerNode.magmaMaximum": 65,
+                "bucket.collectionsPerQuota.enabled": "false",
+                "bucket.collectionsPerQuota.maximum": 3,
+                "coresPerBucket.enabled": "false",
+                "coresPerBucket.minimum": 0.3
+            }
+        for field, value in provisioned_fields.items():
+            testlib.post_fail(
+                self.cluster, "/settings/resourceManagement",
+                data={field: value}, expected_code=400)
 
 
 class GuardRailRestrictionTests(testlib.BaseTestSet):

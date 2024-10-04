@@ -35,7 +35,7 @@ handle_get(Path, Req) ->
         true -> ok
     end,
 
-    menelaus_web_settings2:handle_get(Path, params(), undefined,
+    menelaus_web_settings2:handle_get(Path, filtered_params(), undefined,
                                       get_full_config(), Req).
 
 handle_post(Path, Req) ->
@@ -55,12 +55,25 @@ handle_post(Path, Req) ->
                       ns_audit:resource_management(Req, Values)
               end,
               handle_get(Path, Req2)
-      end, Path, params(), undefined, get_full_config(), [], Req).
+      end, Path, filtered_params(), undefined, get_full_config(), [], Req).
 
 get_full_config() ->
     IndexConfig = index_settings_manager:get(guardrails),
     MetakvConfig = [{index, IndexConfig} || IndexConfig =/= undefined],
     [{metakv, MetakvConfig} | guardrail_monitor:get_config()].
+
+filtered_params() ->
+    Configurables = config_profile:search({resource_management, configurables},
+                                          []),
+    Params = params(),
+    lists:filter(
+      fun ({ParamPath, _}) ->
+              lists:any(
+                fun (Prefix) ->
+                        %% Filter any path matching the filter prefix
+                        lists:sublist(ParamPath, length(Prefix)) =:= Prefix
+                end, Configurables)
+      end, Params).
 
 params() ->
     [
