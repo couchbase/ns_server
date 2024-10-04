@@ -62,8 +62,10 @@
 
 -spec is_enabled() -> boolean().
 is_enabled() ->
-    cluster_compat_mode:is_cluster_76() andalso
-        config_profile:get_bool({resource_management, enabled}).
+    cluster_compat_mode:is_cluster_morpheus()
+        orelse (cluster_compat_mode:is_cluster_76()
+                andalso config_profile:get_bool({resource_management,
+                                                 enabled})).
 
 
 -spec get_config() -> proplists:proplist().

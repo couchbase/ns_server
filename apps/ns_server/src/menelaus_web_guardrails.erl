@@ -29,14 +29,22 @@
 
 handle_get(Path, Req) ->
     menelaus_util:assert_is_76(),
-    menelaus_util:assert_config_profile_flag({resource_management, enabled}),
+    case cluster_compat_mode:is_cluster_morpheus() of
+        false -> menelaus_util:assert_config_profile_flag({resource_management,
+                                                           enabled});
+        true -> ok
+    end,
 
     menelaus_web_settings2:handle_get(Path, params(), undefined,
                                       get_full_config(), Req).
 
 handle_post(Path, Req) ->
     menelaus_util:assert_is_76(),
-    menelaus_util:assert_config_profile_flag({resource_management, enabled}),
+    case cluster_compat_mode:is_cluster_morpheus() of
+        false -> menelaus_util:assert_config_profile_flag({resource_management,
+                                                           enabled});
+        true -> ok
+    end,
 
     menelaus_web_settings2:handle_post(
       fun (Params, Req2) ->
