@@ -13,12 +13,6 @@ import subprocess
 import sys
 import time
 
-scriptdir = sys.path[0]
-certs_path = os.path.join(scriptdir, 'resources', 'test_certs')
-bin_path = os.path.join(scriptdir, '..', '..', 'install', 'bin')
-generate_cert_path = os.path.join(bin_path, 'generate_cert')
-openssl_path = os.path.join(bin_path, 'openssl')
-
 
 class CertLoadTests(testlib.BaseTestSet):
 
@@ -27,10 +21,10 @@ class CertLoadTests(testlib.BaseTestSet):
         return testlib.ClusterRequirements(edition='Enterprise')
 
     def setup(self):
-        ca_path = os.path.join(certs_path, 'test_CA.pem')
+        ca_path = os.path.join(certs_path(), 'test_CA.pem')
         with open(ca_path, 'r') as f:
             self.ca_pem = f.read()
-        ca_key = os.path.join(certs_path, 'test_CA.pkey')
+        ca_key = os.path.join(certs_path(), 'test_CA.pkey')
         with open(ca_key, 'r') as f:
             self.ca_key = f.read()
 
@@ -247,7 +241,7 @@ def load_ca(node, CA):
 
 
 def run_generate_cert(args, env):
-    r = subprocess.run([generate_cert_path] + args,
+    r = subprocess.run([testlib.get_utility_path('generate_cert')] + args,
                        capture_output=True, env=env)
     assert r.returncode == 0, f'generate_cert returned {r.returncode}'
 
@@ -291,7 +285,8 @@ def to_pkcs8(key, passphrase):
     args = ['pkcs8', '-topk8']
     encr_args = ['-v2', 'aes256', '-passout', f'pass:{passphrase}'] \
                 if passphrase is not None else ['-nocrypt']
-    r = subprocess.run([openssl_path] + args + encr_args, capture_output=True,
+    r = subprocess.run([testlib.get_utility_path('openssl')] + args + encr_args,
+                       capture_output=True,
                        input=key.encode("utf-8"))
     assert r.returncode == 0, f'openssl pkcs8 returned {r.returncode}\n' \
                               f'stdout: {r.stdout.decode()}\n' \
@@ -317,7 +312,8 @@ def write_pkcs12(cert, key, out_file, passphrase=None):
                     ['-keypbe',  'NONE', '-certpbe', 'NONE', '-nomaciter',
                      '-passout', 'pass:']
 
-        r = subprocess.run([openssl_path] + args + encr_args,
+        r = subprocess.run([testlib.get_utility_path('openssl')] + args + \
+                           encr_args,
                            capture_output=True)
         assert r.returncode == 0, f'openssl pkcs12 returned {r.returncode}\n' \
                                   f'stdout: {r.stdout.decode()}\n' \
@@ -330,6 +326,10 @@ def write_pkcs12(cert, key, out_file, passphrase=None):
 
 
 def read_cert_file(filename):
-    with open(os.path.join(certs_path, filename), 'r') as f:
+    with open(os.path.join(certs_path(), filename), 'r') as f:
         pem = f.read()
     return pem
+
+
+def certs_path():
+    return os.path.join(testlib.get_resources_dir(), 'test_certs')

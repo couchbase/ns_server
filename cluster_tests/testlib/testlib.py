@@ -26,6 +26,9 @@ import signal
 
 from testlib.node import Node
 
+THIS_FILE_DIR = os.path.dirname(os.path.realpath(__file__))
+NS_SERVER_DIR = os.path.join(THIS_FILE_DIR, '..', '..')
+
 def support_colors():
     return hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
 
@@ -822,3 +825,35 @@ def log_collection_complete(node, start_time):
                         per_node.get("status") == "collected"):
                     return per_node.get('path')
     return False
+
+
+def get_cluster_test_dir():
+    return os.path.join(THIS_FILE_DIR, '..')
+
+
+def get_install_dir():
+    return os.path.join(NS_SERVER_DIR, '..', 'install')
+
+
+def get_bin_dir():
+    return os.path.join(get_install_dir(), 'bin')
+
+
+def get_utility_path(utility_name):
+    return os.path.join(get_bin_dir(), utility_name)
+
+
+def get_ns_server_dir():
+    return NS_SERVER_DIR
+
+
+def get_resources_dir():
+    return os.path.join(THIS_FILE_DIR, '..', 'resources')
+
+
+def get_pylib_dir():
+    return os.path.join(NS_SERVER_DIR, 'pylib')
+
+
+def get_scripts_dir():
+    return os.path.join(NS_SERVER_DIR, 'scripts')

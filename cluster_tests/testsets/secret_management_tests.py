@@ -21,8 +21,7 @@ import signal
 import subprocess
 import random
 
-scriptdir = sys.path[0]
-resourcedir = os.path.join(scriptdir, "resources", "secrets_management")
+resourcedir = os.path.join(testlib.get_resources_dir(), "secrets_management")
 
 
 class SecretManagementTests(testlib.BaseTestSet):

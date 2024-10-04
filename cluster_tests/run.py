@@ -28,14 +28,11 @@ import builtins
 # Pretty prints any tracebacks that may be generated if the process dies
 from traceback_with_variables import activate_by_import
 
-scriptdir = sys.path[0]
-pylib = os.path.join(scriptdir, "..", "pylib")
-rootdir = os.path.join(scriptdir, '..', '..', 'install')
-bindir = os.path.join(rootdir, 'bin')
-sys.path.append(pylib)
+import testlib
+
+sys.path.append(testlib.get_pylib_dir())
 
 import cluster_run_lib
-import testlib
 from testlib import UnmetRequirementsError
 from testlib.cluster import InconsistentClusterError
 
@@ -75,7 +72,8 @@ from testsets import \
     cbcollect_tests, \
     config_remap_tests
 
-tmp_cluster_dir = os.path.join(scriptdir, "test_cluster_data")
+tmp_cluster_dir = os.path.join(testlib.get_cluster_test_dir(),
+                               "test_cluster_data")
 
 USAGE_STRING = """
 Usage: {program_name}
@@ -527,8 +525,9 @@ def discover_testsets():
             continue
         if sys.modules[m].__file__ is None:
             continue
-        if os.path.join(scriptdir, "testsets") != \
-                os.path.dirname(sys.modules[m].__file__):
+        if os.path.normpath(os.path.join(testlib.get_cluster_test_dir(),
+                                         "testsets")) != \
+                os.path.normpath(os.path.dirname(sys.modules[m].__file__)):
             continue
         for name, testset in inspect.getmembers(sys.modules[m], inspect.isclass):
             if testset == testlib.BaseTestSet:

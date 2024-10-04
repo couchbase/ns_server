@@ -21,9 +21,7 @@ from copy import deepcopy
 import testlib
 from testlib.util import services_to_strings, Service
 
-scriptdir = os.path.dirname(os.path.realpath(__file__))
-pylib = os.path.join(scriptdir, "..", "pylib")
-sys.path.append(pylib)
+sys.path.append(testlib.get_pylib_dir())
 
 import cluster_run_lib
 

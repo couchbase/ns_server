@@ -28,8 +28,7 @@ import time
 import sys
 from pathlib import Path
 
-scripts_dir = os.path.join(run.scriptdir, "..", "scripts/")
-sys.path.append(scripts_dir)
+sys.path.append(testlib.get_scripts_dir())
 
 import node_remap
 
@@ -106,7 +105,7 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
         old_start_index = old_cluster.first_node_index
         new_start_index = old_start_index + REMAP_OFFSET
 
-        cluster_path = (run.scriptdir /
+        cluster_path = (testlib.get_cluster_test_dir() /
                         Path(f'test_cluster_data-{old_cluster.index}'))
 
         # We must tell all nodes about all nodes being remapped, because all
@@ -144,7 +143,7 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
 
             # And now we remap the config in the new (remapped) node directory
             node_remap.run_config_remap_via_escript_wrapper(
-                root_dir=run.rootdir,
+                root_dir=testlib.get_install_dir(),
                 initargs=[f'{cluster_path}/data/n_{new_node_index}/initargs'],
                 output_path=f'{cluster_path}/data/n_{new_node_index}',
                 remap=remap_args,
@@ -158,7 +157,7 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
         old_start_index = old_cluster.first_node_index
         new_start_index = old_start_index + REMAP_OFFSET
 
-        cluster_path = (run.scriptdir /
+        cluster_path = (testlib.get_cluster_test_dir() /
                         Path(f'test_cluster_data-{old_cluster.index}'))
 
         hostname = '127.0.0.1'

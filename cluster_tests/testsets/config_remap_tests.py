@@ -22,8 +22,7 @@ import sys
 
 from pathlib import Path
 
-scripts_dir = os.path.join(run.scriptdir, "..", "scripts/")
-sys.path.append(scripts_dir)
+sys.path.append(testlib.get_scripts_dir())
 
 import node_remap
 
@@ -61,7 +60,7 @@ class ConfigRemapTest(testlib.BaseTestSet):
     def disable_afo(self, old_cluster):
         old_start_index = old_cluster.first_node_index
 
-        cluster_path = (run.scriptdir /
+        cluster_path = (testlib.get_cluster_test_dir() /
                         Path(f'test_cluster_data-{old_cluster.index}'))
 
         for i in range(len(old_cluster._nodes)):
@@ -69,7 +68,7 @@ class ConfigRemapTest(testlib.BaseTestSet):
 
 
             node_remap.disable_afo_via_config_remap(
-                root_dir=run.rootdir,
+                root_dir=testlib.get_install_dir(),
                 initargs=[f'{cluster_path}/data/n_{old_node_index}/initargs'],
                 output_path=f'{cluster_path}/data/tmp',
                 capture_output=testlib.config['intercept_output']

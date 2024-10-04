@@ -894,15 +894,17 @@ class MockIDPMetadataHandler(BaseHTTPRequestHandler):
 
 
 def set_sso_options(node, **kwargs):
-    cert_path = os.path.join(scriptdir, "resources", "saml", "mocksp_cert.pem")
+    cert_path = os.path.join(testlib.get_resources_dir(), "saml",
+                             "mocksp_cert.pem")
     with open(cert_path, 'r') as f:
         cert_pem = f.read()
 
-    key_path = os.path.join(scriptdir, "resources", "saml", "mocksp_key.pem")
+    key_path = os.path.join(testlib.get_resources_dir(), "saml",
+                            "mocksp_key.pem")
     with open(key_path, 'r') as f:
         key_pem = f.read()
 
-    idpcert_fp_path = os.path.join(scriptdir, "resources", "saml",
+    idpcert_fp_path = os.path.join(testlib.get_resources_dir(), "saml",
                                    "mockidp_cert_fingerprints.pem")
     with open(idpcert_fp_path, 'r') as f:
         trusted_fps = f.read()
@@ -964,9 +966,9 @@ def idp_config(node, spSignRequests=True, assertion_lifetime=15,
     sp_base_url = node.url
     if idp_entity_id is None:
         idp_entity_id = f"{mock_server_url}{mock_metadata_endpoint}"
-    key_path = os.path.join(scriptdir, "resources", "saml",
+    key_path = os.path.join(testlib.get_resources_dir(), "saml",
                             f"{certs_prefix}key.pem")
-    cert_path = os.path.join(scriptdir, "resources", "saml",
+    cert_path = os.path.join(testlib.get_resources_dir(), "saml",
                             f"{certs_prefix}cert.pem")
     log_level = "DEBUG" if debug else "ERROR"
     return {"entityid": idp_entity_id,
