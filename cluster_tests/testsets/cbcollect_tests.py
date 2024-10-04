@@ -16,86 +16,101 @@ import testlib
 from testlib.util import Service
 from testlib import ClusterRequirements
 
-from subprocess import Popen
+import subprocess
 
-MAX_TIMEOUT = 60 * 5 # 5 minute timeout
-ANALYTICS_DEBUG = "analytics_debug.log"
+FAKE_LOG_FILE = "analytics_debug.log"
+regex_unredacted = re.compile("<ud>(?![a-f0-9]{40}</ud>)")
 
 class CbcollectTest(testlib.BaseTestSet):
+    @staticmethod
+    def requirements():
+        return [ClusterRequirements(edition="Enterprise")]
+
     def setup(self):
-        os.mkdir("temp-zip", mode=0o777)
+        node = self.cluster.connected_nodes[0]
+        self.zip_dir = os.path.join(node.tmp_path(), "temp-zip")
+        os.mkdir(self.zip_dir, mode=0o777)
 
     def teardown(self):
-        shutil.rmtree("./temp-zip", ignore_errors=True)
+        # Not removing zip_dir on purpose.
+        # It will be removed automatically because it is located in
+        # test_cluster_data-*. At the same time having dumps unremoved is very
+        # practical in case of test failure.
+        pass
 
     def test_teardown(self):
         pass
 
-    @staticmethod
-    def requirements():
-        return [ClusterRequirements(edition="Enterprise",
-                                    balanced=True, num_nodes=3,
-                                    num_connected=3, services=[Service.KV])]
+    def log_redaction_test(self):
+        node = self.cluster.connected_nodes[0]
 
-    def get_path(self, cwd):
-        return f"{cwd}/../../install/lib/python/interp/bin"
+        shutil.copyfile(Path(testlib.get_resources_dir()) / "fixtures" /
+                        FAKE_LOG_FILE,
+                        Path(node.logs_path()) / FAKE_LOG_FILE)
 
-    def get_pythonpath(self, cwd):
-        return f"{self.get_code_dir(cwd)}:{cwd}/../pylib"
+        zip_filename = Path(self.zip_dir) / 'log_redaction_test_dump'
+        task_regexp = f'couchbase logs \\({FAKE_LOG_FILE}\\)'
 
-    def get_code_dir(self, cwd):
-        return f"{cwd}/../../install/lib/python"
+        # cbcollect creates two zips, one is redacted and the other one is not
+        run_cbcollect(node, zip_filename, redaction_level="partial",
+                      task_regexp=task_regexp)
 
-    def get_cbcollect_env(self, cwd):
-        return {"PATH": self.get_path(cwd),
-                "PYTHONPATH": self.get_pythonpath(cwd)}
+        # verify that the unredacted zip actually contains unredacted data
+        with zipfile.ZipFile(f'{zip_filename}.zip', mode="r") as z:
+            file_to_check = cbcollect_filename(z, f'ns_server.{FAKE_LOG_FILE}')
+            assert_file_has_undedacted_data(z, file_to_check)
 
-    def start_cbcollect(self, cwd, init, base):
-        return Popen(["python3", "-s",
-                      f"{self.get_code_dir(cwd)}/cbcollect_info",
-                      "--initargs", init,
-                      f"temp-zip/test-cbcollect-{base}.zip",
-                      "--log-redaction-level", "partial"],
-                     env=self.get_cbcollect_env(cwd))
+        # verify that the redacted zip doesn't contain redacted data
+        with zipfile.ZipFile(f'{zip_filename}-redacted.zip', mode="r") as z:
+            file_to_check = cbcollect_filename(z, f'ns_server.{FAKE_LOG_FILE}')
+            assert_file_is_redacted(z, file_to_check)
 
-    def redacted_analytics_test(self):
-        procs = []
-        redacted_zips = []
-        cwd = os.getcwd()
-        regex = re.compile("<ud>(?![a-f0-9]{40})</ud>")
 
-        # copy over the analytics_debug.log
-        for logs_dir in \
-                Path(f'test_cluster_data-{self.cluster.index}/logs/').glob("n*"):
-            base = os.path.basename(logs_dir)
-            shutil.copyfile(f"./resources/fixtures/{ANALYTICS_DEBUG}",
-                            Path(f"{logs_dir}/{ANALYTICS_DEBUG}"))
-            redacted_zips.append(f"temp-zip/test-cbcollect-{base}-redacted.zip")
+def run_cbcollect(node, path_to_zip, redaction_level=None, task_regexp=None):
+    initargs = os.path.join(node.data_path(), "initargs")
+    args = [testlib.get_utility_path('cbcollect_info'),
+            "--initargs", initargs, str(path_to_zip)]
+    env = {"PATH": os.environ['PATH'],
+           "PYTHONPATH": testlib.get_pylib_dir()}
 
-        # start cbcollect processes
-        for zips_dir in \
-                Path(f'test_cluster_data-{self.cluster.index}/data/').glob("n*"):
-            procs.append(
-                self.start_cbcollect(cwd, Path(f"{cwd}/{zips_dir}/initargs"),
-                                     os.path.basename(zips_dir)))
+    if redaction_level is not None:
+        args.extend(["--log-redaction-level", redaction_level])
 
-        # wait for collections to end + get result
-        for proc in procs:
-            assert proc.wait(MAX_TIMEOUT) == 0
+    if task_regexp is not None:
+        args.extend(["--task-regexp", task_regexp])
 
-        # unzip the zip files and check that there are no <ud>...</ud> that
-        # aren't correctly filled..
-        unzipped_dirs = {}
-        for zipp in redacted_zips:
-            with zipfile.ZipFile(zipp, mode="r") as zObj:
-                zObj.extractall(path="temp-zip/.")
+    r = subprocess.run(args, capture_output=True, env=env)
+    assert r.returncode == 0
 
-            for g in Path('.').glob("temp-zip/*/"):
-                unzipped_dirs[g] = True
 
-        for zip_dir in unzipped_dirs.keys():
-            os.chdir(f"{zip_dir}")
-            with open(f"ns_server.{ANALYTICS_DEBUG}") as analytics_logfile:
-                for line in analytics_logfile.readlines():
-                    assert regex.search(line) is None
-            os.chdir("../..")
+def cbcollect_dirname(zip_obj):
+    names = zip_obj.namelist()
+
+    p = names[0]
+
+    # calculating the most left component which is the main cbcollect dump dir
+    dir_name = None
+    while p:
+        p, dir_name = os.path.split(p)
+
+    return dir_name
+
+
+def cbcollect_filename(zip_obj, name):
+    return os.path.join(cbcollect_dirname(zip_obj), name)
+
+
+def assert_file_has_undedacted_data(zip_obj, filename):
+    # checking that file contains at list one unredacted tag <ud>
+    with zip_obj.open(filename) as f:
+        for line in f.readlines():
+            if regex_unredacted.search(line.decode()) is not None:
+                return
+    assert False, f'file {filename} is expected to have unredacted data'
+
+
+def assert_file_is_redacted(zip_obj, filename):
+    with zip_obj.open(filename) as f:
+        for line in f.readlines():
+            assert regex_unredacted.search(line.decode()) is None, \
+                   f'line {line} in {filename} is unredacted'

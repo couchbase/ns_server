@@ -21,6 +21,8 @@ class Node:
         self.port = port
         self.auth = auth
         self.data_path_cache = None
+        self.tmp_path_cache = None
+        self.logs_path_cache = None
         self.tls_port_cache = None
         self.services_cached = None
         self.session = None
@@ -37,6 +39,20 @@ class Node:
             self.data_path_cache = r.text.strip('\"')
 
         return self.data_path_cache
+
+    def tmp_path(self):
+        if self.tmp_path_cache is None:
+            r = testlib.diag_eval(self, "path_config:component_path(tmp).")
+            self.tmp_path_cache = r.text.strip('\"')
+
+        return self.tmp_path_cache
+
+    def logs_path(self):
+        if self.logs_path_cache is None:
+            r = testlib.diag_eval(self, "{ok, Dir} = application:get_env(ns_server, error_logger_mf_dir), Dir.")
+            self.logs_path_cache = r.text.strip('\"')
+
+        return self.logs_path_cache
 
     def addr(self, afamily=None):
         afamily_param = ''
