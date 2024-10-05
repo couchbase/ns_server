@@ -2298,8 +2298,9 @@ def get_guts_common(initargs_path, script_path, args, master_password=None,
             log("Incorrect master password")
             sys.exit(2)
 
-        log(f"Error occurred running {script_path}:\n" \
+        log(f"Error occurred running {script_path}: {rc}\n" \
             f"All args: {args}\n" \
+            f"Output: {output.decode()}\n" \
             f"Error: {err.decode(LATIN1)}")
         return []
     full_cmd_line = ' '.join(args)
