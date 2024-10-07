@@ -433,7 +433,8 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
               {memoryHighWatermark,
                ns_bucket:get_memory_high_watermark(BucketConfig)},
               {durabilityImpossibleFallback,
-               build_durability_impossible_fallback(BucketConfig)}] ++
+               build_durability_impossible_fallback(BucketConfig)},
+              {warmupBehavior, ns_bucket:warmup_behavior(BucketConfig)}] ++
              case ns_bucket:is_persistent(BucketConfig) of
                  true ->
                      [{accessScannerEnabled,
@@ -1602,6 +1603,7 @@ validate_membase_bucket_params(CommonParams, Params, Name,
          parse_validate_durability_min_level(Params, BucketConfig, IsNew),
          parse_validate_durability_impossible_fallback(Params, IsNew,
                                                        IsMorpheus),
+         parse_validate_warmup_behavior(Params, IsNew, IsMorpheus),
          parse_validate_pitr_enabled(Params, IsNew, AllowPitr,
                                      IsEnterprise),
          parse_validate_pitr_granularity(Params, IsNew, AllowPitr,
@@ -2229,6 +2231,26 @@ parse_validate_durability_impossible_fallback(_) ->
     {error, durability_impossible_fallback,
      <<"Durability impossible fallback must be either 'none' or "
        "'fallbackToActiveAck'">>}.
+
+parse_validate_warmup_behavior(Params, _IsNew, false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "warmupBehavior", Params,
+      fun not_supported_until_morpheus_error/1);
+parse_validate_warmup_behavior(Params, IsNew, _IsMorpheus) ->
+    Behavior = proplists:get_value("warmupBehavior", Params),
+    validate_with_missing(Behavior, "background", IsNew,
+                          fun parse_validate_warmup_behavior/1).
+
+parse_validate_warmup_behavior("background") ->
+    {ok, warmup_behavior, background};
+parse_validate_warmup_behavior("blocking") ->
+    {ok, warmup_behavior, blocking};
+parse_validate_warmup_behavior("none") ->
+    {ok, warmup_behavior, none};
+parse_validate_warmup_behavior(_) ->
+    {error, warmup_behavior,
+     <<"Warmup behavior must be either 'background' or 'blocking' "
+       "or 'none'">>}.
 
 -spec value_not_in_range_error(Param, Value, Min, Max) -> Result when
       Param :: atom(),
@@ -4479,39 +4501,52 @@ basic_bucket_params_screening_t() ->
                     true, "bucket45",
                     [{"bucketType", "membase"},
                      {"ramQuota", "100"},
-                     {"durabilityImpossibleFallback", "disabled"}],
+                     {"durabilityImpossibleFallback", "disabled"},
+                     {"warmupBehavior", "background"}],
                     AllBuckets),
 
     {_OK46, []} = basic_bucket_params_screening(
                     true, "bucket46",
                     [{"bucketType", "membase"},
                      {"ramQuota", "100"},
-                     {"durabilityImpossibleFallback", "fallbackToActiveAck"}],
+                     {"durabilityImpossibleFallback", "fallbackToActiveAck"},
+                     {"warmupBehavior", "blocking"}],
                     AllBuckets),
 
-    {_OK47, E47} = basic_bucket_params_screening(
-                     true, "bucket47",
+    {_OK47, []} = basic_bucket_params_screening(
+                    true, "bucket46",
+                    [{"bucketType", "membase"},
+                     {"ramQuota", "100"},
+                     {"warmupBehavior", "none"}],
+                    AllBuckets),
+
+    {_OK48, E48} = basic_bucket_params_screening(
+                     true, "bucket48",
                      [{"bucketType", "membase"},
                       {"ramQuota", "100"},
-                      {"durabilityImpossibleFallback", "badValue"}],
+                      {"durabilityImpossibleFallback", "badValue"},
+                      {"warmupBehavior", "badValue"}],
                      AllBuckets),
     ?assertEqual([{durability_impossible_fallback,
                    <<"Durability impossible fallback must be either 'none' "
-                     "or 'fallbackToActiveAck'">>}],
-                 E47),
+                     "or 'fallbackToActiveAck'">>},
+                  {warmup_behavior,
+                   <<"Warmup behavior must be either 'background' or "
+                     "'blocking' or 'none'">>}],
+                 E48),
 
     %% Reset this so "real" default is used.
     meck:expect(ns_config, search,
                 fun (couchbase_num_vbuckets_default) -> false end),
 
     %% Verify default number of vbuckets for an ephemeral bucket.
-    {OK48, []} = basic_bucket_params_screening(
-                   true, "bucket48",
+    {OK49, []} = basic_bucket_params_screening(
+                   true, "bucket49",
                    [{"bucketType", "ephemeral"},
                     {"ramQuota", "100"}],
                    AllBuckets),
     ?assertEqual(?DEFAULT_VBUCKETS_EPHEMERAL,
-                 proplists:get_value(num_vbuckets, OK48)),
+                 proplists:get_value(num_vbuckets, OK49)),
     %% and put it back
     meck:expect(ns_config, search,
                 fun (couchbase_num_vbuckets_default) -> 16 end).

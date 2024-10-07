@@ -71,6 +71,8 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
       get_memory_watermark(low, BucketConfig)},
      {"mem_high_wat_percent", [{reload, flush}],
       get_memory_watermark(high, BucketConfig)},
+     {"warmup_behavior", [{reload, flush}],
+      ns_bucket:warmup_behavior(BucketConfig)},
      {"continuous_backup_enabled", [{reload, flush}],
       ns_bucket:get_continuous_backup_enabled(BucketConfig)},
      {"continuous_backup_interval", [{reload, flush}],

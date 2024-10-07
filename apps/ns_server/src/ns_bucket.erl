@@ -50,6 +50,7 @@
          external_bucket_type/1,
          durability_min_level/1,
          durability_impossible_fallback/1,
+         warmup_behavior/1,
          failover_warnings/1,
          root/0,
          sub_key/2,
@@ -529,6 +530,14 @@ durability_impossible_fallback(BucketConfig) ->
         membase ->
             proplists:get_value(durability_impossible_fallback, BucketConfig,
                                 disabled)
+    end.
+
+warmup_behavior(BucketConfig) ->
+    case bucket_type(BucketConfig) of
+        memcached -> undefined;
+        membase ->
+            proplists:get_value(warmup_behavior, BucketConfig,
+                                background)
     end.
 
 %% The default value of the attribute.
@@ -2374,7 +2383,7 @@ extract_bucket_props(Props) ->
     [X || X <- [lists:keyfind(Y, 1, Props) ||
                    Y <- [num_replicas, replica_index, ram_quota,
                          durability_min_level, durability_impossible_fallback,
-                         frag_percent,
+                         frag_percent, warmup_behavior,
                          storage_quota_percentage, num_vbuckets,
                          cross_cluster_versioning_enabled, vbuckets_max_cas,
                          version_pruning_window_hrs,
