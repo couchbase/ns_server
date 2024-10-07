@@ -143,12 +143,8 @@
          get_cc_versioning_enabled/1,
          get_access_scanner_enabled/1,
          get_expiry_pager_sleep_time/1,
-         get_warmup_min_memory_threshold/1,
-         get_warmup_min_items_threshold/1,
          get_memory_low_watermark/1,
          get_memory_high_watermark/1,
-         get_secondary_warmup_min_memory_threshold/1,
-         get_secondary_warmup_min_items_threshold/1,
          get_vbuckets_max_cas/1,
          get_vp_window_hrs/1,
          get_num_vbuckets/1,
@@ -542,14 +538,8 @@ attribute_default(Name) ->
         pitr_max_history_age -> 86400;    % 24 hours
         version_pruning_window_hrs -> 720;  % 30 days
         expiry_pager_sleep_time -> 600;     % 10 minutes
-        warmup_min_memory_threshold -> 0;   % percentage
-        warmup_min_items_threshold -> 0;    % percentage
         memory_low_watermark -> 75;         % percentage
         memory_high_watermark -> 85;        % percentage
-        secondary_warmup_min_memory_threshold ->
-            100;                            % percentage
-        secondary_warmup_min_items_threshold ->
-            100;                            % percentage
         cross_cluster_versioning_enabled -> % boolean
             false;
         pitr_enabled -> false;              % boolean
@@ -566,14 +556,8 @@ attribute_min(Name) ->
         pitr_max_history_age -> 1;       % 1 second
         version_pruning_window_hrs -> 24; % 24 hours
         expiry_pager_sleep_time -> 0;     % unit seconds
-        warmup_min_memory_threshold -> 0; % percentage
-        warmup_min_items_threshold -> 0;  % percentage
         memory_low_watermark -> 50;       % percentage
         memory_high_watermark -> 51;      % percentage
-        secondary_warmup_min_memory_threshold ->
-            0;                            % percentage
-        secondary_warmup_min_items_threshold ->
-            0;                            % percentage
         continuous_backup_interval -> 2   % minutes
     end.
 
@@ -586,12 +570,8 @@ attribute_max(Name) ->
             ?MAX_32BIT_SIGNED_INT;                  % unit hours
         expiry_pager_sleep_time ->
             ?MAX_64BIT_UNSIGNED_INT;                  % unit seconds
-        warmup_min_memory_threshold -> 100;           % percentage
-        warmup_min_items_threshold -> 100;            % percentage
         memory_low_watermark -> 89;                   % percentage
         memory_high_watermark -> 90;                  % percentage
-        secondary_warmup_min_memory_threshold -> 100; % percentage
-        secondary_warmup_min_items_threshold -> 100;  % percentage
         continuous_backup_interval ->
             ?MAX_32BIT_SIGNED_INT                     % minutes
     end.
@@ -625,18 +605,6 @@ pitr_max_history_age(BucketConfig) ->
 get_expiry_pager_sleep_time(BucketConfig) ->
     membase_bucket_config_value_getter(expiry_pager_sleep_time, BucketConfig).
 
--spec get_warmup_min_memory_threshold(proplists:proplist()) -> integer() |
-                                                               undefined.
-get_warmup_min_memory_threshold(BucketConfig) ->
-    membase_bucket_config_value_getter(warmup_min_memory_threshold,
-                                       BucketConfig).
-
--spec get_warmup_min_items_threshold(proplists:proplist()) -> integer() |
-                                                              undefined.
-get_warmup_min_items_threshold(BucketConfig) ->
-    membase_bucket_config_value_getter(warmup_min_items_threshold,
-                                       BucketConfig).
-
 -spec get_memory_low_watermark(proplists:proplist()) -> integer() | undefined.
 get_memory_low_watermark(BucketConfig) ->
     membase_bucket_config_value_getter(memory_low_watermark, BucketConfig).
@@ -644,18 +612,6 @@ get_memory_low_watermark(BucketConfig) ->
 -spec get_memory_high_watermark(proplists:proplist()) -> integer() | undefined.
 get_memory_high_watermark(BucketConfig) ->
     membase_bucket_config_value_getter(memory_high_watermark, BucketConfig).
-
--spec get_secondary_warmup_min_memory_threshold(proplists:proplist()) ->
-    integer() | undefined.
-get_secondary_warmup_min_memory_threshold(BucketConfig) ->
-    membase_bucket_config_value_getter(secondary_warmup_min_memory_threshold,
-                                       BucketConfig).
-
--spec get_secondary_warmup_min_items_threshold(proplists:proplist()) ->
-    integer() | undefined.
-get_secondary_warmup_min_items_threshold(BucketConfig) ->
-    membase_bucket_config_value_getter(secondary_warmup_min_items_threshold,
-                                       BucketConfig).
 
 -spec get_continuous_backup_enabled(proplists:proplist()) -> undefined |
                                                              boolean().
@@ -2299,20 +2255,10 @@ chronicle_upgrade_bucket_to_morpheus(BucketName, ChronicleTxn) ->
             membase ->
                 [{expiry_pager_sleep_time,
                   attribute_default(expiry_pager_sleep_time)},
-                 {warmup_min_memory_threshold,
-                  attribute_default(warmup_min_memory_threshold)},
-                 {warmup_min_items_threshold,
-                  attribute_default(warmup_min_items_threshold)},
                  {memory_low_watermark,
                   attribute_default(memory_low_watermark)},
                  {memory_high_watermark,
-                  attribute_default(memory_high_watermark)},
-                 {secondary_warmup_min_memory_threshold,
-                  attribute_default(
-                    secondary_warmup_min_memory_threshold)},
-                 {secondary_warmup_min_items_threshold,
-                  attribute_default(
-                    secondary_warmup_min_items_threshold)}] ++
+                  attribute_default(memory_high_watermark)}] ++
                 case is_persistent(BucketConfig) of
                     true ->
                         [{access_scanner_enabled, true}];
@@ -2434,11 +2380,7 @@ extract_bucket_props(Props) ->
                          version_pruning_window_hrs,
                          pitr_enabled, pitr_granularity, pitr_max_history_age,
                          access_scanner_enabled, expiry_pager_sleep_time,
-                         warmup_min_memory_threshold,
-                         warmup_min_items_threshold,
                          memory_low_watermark, memory_high_watermark,
-                         secondary_warmup_min_memory_threshold,
-                         secondary_warmup_min_items_threshold,
                          autocompaction, purge_interval, flush_enabled,
                          num_threads, eviction_policy, conflict_resolution_type,
                          drift_ahead_threshold_ms, drift_behind_threshold_ms,

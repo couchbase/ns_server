@@ -428,20 +428,10 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
          true ->
              [{expiryPagerSleepTime,
                ns_bucket:get_expiry_pager_sleep_time(BucketConfig)},
-              {warmupMinMemoryThreshold,
-               ns_bucket:get_warmup_min_memory_threshold(BucketConfig)},
-              {warmupMinItemsThreshold,
-               ns_bucket:get_warmup_min_items_threshold(BucketConfig)},
               {memoryLowWatermark,
                ns_bucket:get_memory_low_watermark(BucketConfig)},
               {memoryHighWatermark,
                ns_bucket:get_memory_high_watermark(BucketConfig)},
-              {secondaryWarmupMinMemoryThreshold,
-               ns_bucket:get_secondary_warmup_min_memory_threshold(
-                 BucketConfig)},
-              {secondaryWarmupMinItemsThreshold,
-               ns_bucket:get_secondary_warmup_min_items_threshold(
-                 BucketConfig)},
               {durabilityImpossibleFallback,
                build_durability_impossible_fallback(BucketConfig)}] ++
              case ns_bucket:is_persistent(BucketConfig) of
@@ -1361,8 +1351,7 @@ additional_bucket_params_validation(Params, Ctx) ->
     lists:append([validate_replicas_and_durability(Params, Ctx),
                   validate_magma_ram_quota(Params, Ctx),
                   validate_pitr_params(Params, Ctx),
-                  validate_watermarks(Params, Ctx),
-                  validate_thresholds(Params, Ctx)]).
+                  validate_watermarks(Params, Ctx)]).
 
 validate_replicas_and_durability(Params, Ctx) ->
     NumReplicas = get_value_from_parms_or_bucket(num_replicas, Params, Ctx),
@@ -1458,20 +1447,6 @@ validate_watermarks(Params, Ctx) ->
                              memoryHighWatermark,
                              less_than).
 
-validate_thresholds(Params, Ctx) ->
-    validate_high_low_values(Params, Ctx,
-                             warmup_min_items_threshold,
-                             warmupMinItemsThreshold,
-                             secondary_warmup_min_items_threshold,
-                             secondaryWarmupMinItemsThreshold,
-                             less_than_or_equal) ++
-    validate_high_low_values(Params, Ctx,
-                             warmup_min_memory_threshold,
-                             warmupMinMemoryThreshold,
-                             secondary_warmup_min_memory_threshold,
-                             secondaryWarmupMinMemoryThreshold,
-                             less_than_or_equal).
-
 validate_high_low_values(Params, Ctx, LowParam, LowParamExtName,
                          HighParam, HighParamExtName, Check) ->
     Low = get_value_from_parms_or_bucket(LowParam, Params, Ctx),
@@ -1490,12 +1465,6 @@ validate_high_low_values(Params, Ctx, LowParam, LowParamExtName,
             %% low param has an error queued up to be returned to the
             %% user.
             [];
-        {Low, High} when Check =:= less_than_or_equal andalso Low > High ->
-            Msg = io_lib:format("~p (~p) must be less than or equal "
-                                "to ~p (~p)",
-                                [LowParamExtName, Low, HighParamExtName, High]),
-            [{LowParamExtName,
-              list_to_binary(Msg)}];
         {Low, High} when Check =:= less_than andalso Low >= High ->
             Msg = io_lib:format("~p (~p) must be less than ~p (~p)",
                                 [LowParamExtName, Low, HighParamExtName, High]),
@@ -1642,14 +1611,8 @@ validate_membase_bucket_params(CommonParams, Params, Name,
          parse_validate_access_scanner_enabled(Params, IsNew, IsMorpheus,
                                                IsPersistent),
          parse_validate_expiry_pager_sleep_time(Params, IsNew, IsMorpheus),
-         parse_validate_warmup_min_memory_threshold(Params, IsNew, IsMorpheus),
-         parse_validate_warmup_min_items_threshold(Params, IsNew, IsMorpheus),
          parse_validate_memory_low_watermark(Params, IsNew, IsMorpheus),
          parse_validate_memory_high_watermark(Params, IsNew, IsMorpheus),
-         parse_validate_secondary_warmup_min_memory_threshold(Params, IsNew,
-                                                              IsMorpheus),
-         parse_validate_secondary_warmup_min_items_threshold(Params, IsNew,
-                                                             IsMorpheus),
          parse_validate_continuous_backup_enabled(Params, BucketConfig, IsNew,
                                                   IsMorpheus,
                                                   IsStorageModeMigration),
@@ -2517,25 +2480,6 @@ parse_validate_expiry_pager_sleep_time(Params, IsNew, true = _IsMorpheus) ->
     parse_validate_numeric_param(Params, expiryPagerSleepTime,
                                  expiry_pager_sleep_time, IsNew).
 
-parse_validate_warmup_min_memory_threshold(Params, _IsNew,
-                                           false = _IsMorpheus) ->
-    parse_validate_param_not_supported(
-      "warmupMinMemoryThreshold", Params,
-      fun not_supported_until_morpheus_error/1);
-parse_validate_warmup_min_memory_threshold(Params, IsNew,
-                                           true = _IsMorpheus) ->
-    parse_validate_numeric_param(Params, warmupMinMemoryThreshold,
-                                 warmup_min_memory_threshold, IsNew).
-
-parse_validate_warmup_min_items_threshold(Params, _IsNew,
-                                          false = _IsMorpheus) ->
-    parse_validate_param_not_supported(
-      "warmupMinItemsThreshold", Params,
-      fun not_supported_until_morpheus_error/1);
-parse_validate_warmup_min_items_threshold(Params, IsNew, true = _IsMorpheus) ->
-    parse_validate_numeric_param(Params, warmupMinItemsThreshold,
-                                 warmup_min_items_threshold, IsNew).
-
 parse_validate_memory_low_watermark(Params, _IsNew, false = _IsMorpheus) ->
     parse_validate_param_not_supported(
       "memoryLowWatermark", Params, fun not_supported_until_morpheus_error/1);
@@ -2549,26 +2493,6 @@ parse_validate_memory_high_watermark(Params, _IsNew, false = _IsMorpheus) ->
 parse_validate_memory_high_watermark(Params, IsNew, true = _IsMorpheus) ->
     parse_validate_numeric_param(Params, memoryHighWatermark,
                                  memory_high_watermark, IsNew).
-
-parse_validate_secondary_warmup_min_memory_threshold(Params, _IsNew,
-                                                     false = _IsMorpheus) ->
-    parse_validate_param_not_supported(
-      "secondaryWarmupMinMemoryThreshold", Params,
-      fun not_supported_until_morpheus_error/1);
-parse_validate_secondary_warmup_min_memory_threshold(Params, IsNew,
-                                                     true = _IsMorpheus) ->
-    parse_validate_numeric_param(Params, secondaryWarmupMinMemoryThreshold,
-                                 secondary_warmup_min_memory_threshold, IsNew).
-
-parse_validate_secondary_warmup_min_items_threshold(Params, _IsNew,
-                                                    false = _IsMorpheus) ->
-    parse_validate_param_not_supported(
-      "secondaryWarmupMinItemsThreshold", Params,
-      fun not_supported_until_morpheus_error/1);
-parse_validate_secondary_warmup_min_items_threshold(Params, IsNew,
-                                                    true = _IsMorpheus) ->
-    parse_validate_numeric_param(Params, secondaryWarmupMinItemsThreshold,
-                                 secondary_warmup_min_items_threshold, IsNew).
 
 get_storage_mode_based_on_storage_backend(Params, IsEnterprise) ->
     DefaultStorageBackend =
@@ -4380,12 +4304,8 @@ basic_bucket_params_screening_t() ->
                       {"storageBackend", "magma"},
                       {"ramQuota", "1024"},
                       {"expiryPagerSleepTime", "-1"},
-                      {"warmupMinMemoryThreshold", "1000"},
-                      {"warmupMinItemsThreshold", "777"},
                       {"memoryLowWatermark", "-888"},
                       {"memoryHighWatermark", "333"},
-                      {"secondaryWarmupMinMemoryThreshold", "123"},
-                      {"secondaryWarmupMinItemsThreshold", "-456"},
                       {"continuousBackupEnabled", "hello"},
                       {"continuousBackupInterval", "1"},
                       {"continuousBackupLocation", "yahoo://storage/blob"}],
@@ -4393,24 +4313,12 @@ basic_bucket_params_screening_t() ->
     ?assertEqual([{expiryPagerSleepTime,
                    <<"The value of expiryPagerSleepTime (-1) must be in the "
                      "range 0 to 18446744073709551615 inclusive">>},
-                  {warmupMinMemoryThreshold,
-                   <<"The value of warmupMinMemoryThreshold (1000) must be "
-                     "in the range 0 to 100 inclusive">>},
-                  {warmupMinItemsThreshold,
-                   <<"The value of warmupMinItemsThreshold (777) must be in "
-                     "the range 0 to 100 inclusive">>},
                   {memoryLowWatermark,
                    <<"The value of memoryLowWatermark (-888) must be in the "
                      "range 50 to 89 inclusive">>},
                   {memoryHighWatermark,
                    <<"The value of memoryHighWatermark (333) must be in the "
                      "range 51 to 90 inclusive">>},
-                  {secondaryWarmupMinMemoryThreshold,
-                   <<"The value of secondaryWarmupMinMemoryThreshold (123) "
-                     "must be in the range 0 to 100 inclusive">>},
-                  {secondaryWarmupMinItemsThreshold,
-                   <<"The value of secondaryWarmupMinItemsThreshold (-456) "
-                     "must be in the range 0 to 100 inclusive">>},
                   {continuousBackupEnabled,
                    <<"continuousBackupEnabled must be true or false">>},
                   {continuousBackupInterval,
@@ -4428,21 +4336,11 @@ basic_bucket_params_screening_t() ->
                      [{"bucketType", "membase"},
                       {"ramQuota", "1024"},
                       {"memoryLowWatermark", "88"},
-                      {"memoryHighWatermark", "77"},
-                      {"warmupMinItemsThreshold", "55"},
-                      {"secondaryWarmupMinItemsThreshold", "50"},
-                      {"warmupMinMemoryThreshold", "34"},
-                      {"secondaryWarmupMinMemoryThreshold", "27"}],
+                      {"memoryHighWatermark", "77"}],
                      AllBuckets),
     ?assertEqual([{memoryLowWatermark,
                    <<"memoryLowWatermark (88) must be less than "
-                     "memoryHighWatermark (77)">>},
-                  {warmupMinItemsThreshold,
-                   <<"warmupMinItemsThreshold (55) must be less than or "
-                     "equal to secondaryWarmupMinItemsThreshold (50)">>},
-                  {warmupMinMemoryThreshold,
-                   <<"warmupMinMemoryThreshold (34) must be less than or "
-                     "equal to secondaryWarmupMinMemoryThreshold (27)">>}],
+                     "memoryHighWatermark (77)">>}],
                  E36),
 
     %% Specify valid values. This isn't intended to be exhaustive. It
@@ -4455,12 +4353,8 @@ basic_bucket_params_screening_t() ->
                       {"ramQuota", "1024"},
                       {"accessScannerEnabled", "false"},
                       {"expiryPagerSleepTime", "12345"},
-                      {"warmupMinMemoryThreshold", "44"},
-                      {"warmupMinItemsThreshold", "46"},
                       {"memoryLowWatermark", "68"},
                       {"memoryHighWatermark", "70"},
-                      {"secondaryWarmupMinMemoryThreshold", "72"},
-                      {"secondaryWarmupMinItemsThreshold", "56"},
                       {"continuousBackupEnabled", "true"},
                       {"continuousBackupInterval", "123"},
                       {"continuousBackupLocation", "s3://hello/world"}],
@@ -4468,14 +4362,8 @@ basic_bucket_params_screening_t() ->
     ?assertEqual([], E37),
     ?assertEqual(false, proplists:get_value(access_scanner_enabled, OK37)),
     ?assertEqual(12345, proplists:get_value(expiry_pager_sleep_time, OK37)),
-    ?assertEqual(44, proplists:get_value(warmup_min_memory_threshold, OK37)),
-    ?assertEqual(46, proplists:get_value(warmup_min_items_threshold, OK37)),
     ?assertEqual(68, proplists:get_value(memory_low_watermark, OK37)),
     ?assertEqual(70, proplists:get_value(memory_high_watermark, OK37)),
-    ?assertEqual(72, proplists:get_value(secondary_warmup_min_memory_threshold,
-                                         OK37)),
-    ?assertEqual(56, proplists:get_value(secondary_warmup_min_items_threshold,
-                                         OK37)),
     ?assertEqual(true, proplists:get_value(continuous_backup_enabled, OK37)),
     ?assertEqual(123, proplists:get_value(continuous_backup_interval, OK37)),
     ?assertEqual("s3://hello/world",
