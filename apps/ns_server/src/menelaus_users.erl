@@ -86,7 +86,8 @@
 %% callbacks for replicated_dets
 -export([init/1, on_save/2, handle_call/4, handle_info/2]).
 
--export([start_storage/0, start_replicator/0, start_auth_cache/0]).
+-export([start_storage/0, start_replicator/0, start_auth_cache/0,
+         start_lock_cache/0]).
 
 %% RPC'd from ns_couchdb node
 -export([get_auth_info_on_ns_server/1]).
@@ -110,6 +111,9 @@ versions_name() ->
 
 auth_cache_name() ->
     menelaus_users_cache.
+
+lock_cache_name() ->
+    menelaus_users_lock_cache.
 
 path() ->
     filename:join(path_config:component_path(data, "config"), "users.dets").
@@ -166,6 +170,22 @@ start_auth_cache() ->
       fun () ->
               {get_auth_version(), get_users_version(), get_groups_version()}
       end).
+
+start_lock_cache() ->
+    versioned_cache:start_link(
+      lock_cache_name(), 200,
+      fun (I) ->
+              ?log_debug("Retrieve lock for user ~p from ns_server node",
+                         [ns_config_log:tag_user_data(I)]),
+              rpc:call(ns_node_disco:ns_server_node(), ?MODULE,
+                       is_user_locked_on_ns_server, [I])
+      end,
+      fun () ->
+              dist_manager:wait_for_node(fun ns_node_disco:ns_server_node/0),
+              [{{user_storage_events, ns_node_disco:ns_server_node()},
+                fun (_) -> true end}]
+      end,
+      fun get_auth_version/0).
 
 delete_storage_offline() ->
     Path = path(),
@@ -575,14 +595,21 @@ change_password({_UserName, local} = Identity, Password) when is_list(Password) 
     end.
 
 is_user_locked({_, local} = Identity) ->
-    ?call_on_ns_server_node(
-       case replicated_dets:get(storage_name(), {locked, Identity}) of
-           {{locked, Identity}, true} -> true;
-           false -> false
-       end, [Identity]);
+    case ns_node_disco:couchdb_node() == node() of
+        false ->
+            is_user_locked_on_ns_server(Identity);
+        true ->
+            versioned_cache:get(auth_cache_name(), {locked, Identity})
+    end;
 is_user_locked(_) ->
     %% Non-local users can't be locked
     false.
+
+is_user_locked_on_ns_server(Identity) ->
+    case replicated_dets:get(storage_name(), {locked, Identity}) of
+           {{locked, Identity}, true} -> true;
+           false -> false
+    end.
 
 store_lock(Identity, Locked) ->
     case is_user_locked(Identity) of
