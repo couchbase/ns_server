@@ -660,16 +660,16 @@ change_password({_UserName, local} = Identity, Password)
             store_auth(Identity, Auth1, ?REPLICATED_DETS_HIGH_PRIORITY)
     end.
 
-is_user_locked({_, local} = Identity) ->
+is_user_locked({_, external} = _Identity) ->
+    %% External users can't be locked
+    false;
+is_user_locked(Identity) ->
     case ns_node_disco:couchdb_node() == node() of
         false ->
             is_user_locked_on_ns_server(Identity);
         true ->
             versioned_cache:get(lock_cache_name(), Identity)
-    end;
-is_user_locked(_) ->
-    %% Non-local users can't be locked
-    false.
+    end.
 
 is_user_locked_on_ns_server(Identity) ->
     case replicated_dets:get(storage_name(), {locked, Identity}) of

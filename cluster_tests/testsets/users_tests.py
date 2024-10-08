@@ -247,6 +247,56 @@ class UsersTestSet(testlib.BaseTestSet):
         assert r.json().get('last_activity_time') is not None, \
             "'last_activity_time' missing"
 
+    def admin_user_lock_unlock_test(self):
+        admin_auth = self.cluster.auth
+        admin_user, admin_password = admin_auth
+
+        # Start UI session
+        session, headers, node = start_ui_session(self.cluster, admin_user,
+                                                  admin_password)
+
+        # Use UI session
+        testlib.get_succ(node, '/pools', headers=headers,
+                         session=session, auth=None)
+
+        # Test query endpoint
+        testlib.get_succ(self.cluster, '/admin/vitals', service=Service.QUERY,
+                         expected_code=200)
+
+        # Test CBAS endpoint
+        testlib.get_succ(self.cluster, '/analytics/admin/active_requests',
+                         service=Service.CBAS, expected_code=200)
+
+        # Test views endpoint
+        testlib.get_succ(self.cluster, '/test', service=Service.VIEWS,
+                         expected_code=404)
+        try:
+            # Lock admin
+            lock_admin(self.cluster)
+            testlib.get_fail(self.cluster, '/pools/default', expected_code=401)
+
+            # UI session terminated with status 401, such that the UI correctly
+            # shows as logged out
+            testlib.get_fail(node, '/pools', headers=headers,
+                             session=session, expected_code=401, auth=None)
+
+            # Query service gives authentication failure error
+            testlib.get_fail(self.cluster, '/admin/vitals',
+                             service=Service.QUERY, expected_code=401)
+
+            # CBAS gives authentication failure error
+            testlib.get_fail(self.cluster, '/analytics/admin/active_requests',
+                             service=Service.CBAS, expected_code=401)
+
+            # Views error
+            testlib.get_fail(self.cluster, '/test', service=Service.VIEWS,
+                             expected_code=401)
+        finally:
+            # Unlock admin
+            unlock_admin(self.cluster)
+            testlib.get_succ(self.cluster, '/pools/default')
+
+
 def put_user(cluster_or_node, domain, userid, password=None, roles=None,
              full_name=None, groups=None, locked=None, temporary_password=None,
              validate_user_props=False):
@@ -305,6 +355,20 @@ def lock_user(cluster, user):
 def unlock_user(cluster, user):
     testlib.patch_succ(cluster, '/settings/rbac/users/local/' + user,
                        data={"locked": "false"})
+
+
+def lock_admin(cluster):
+    node = cluster.connected_nodes[0]
+    token = node.get_localtoken()
+    testlib.post_succ(node, '/controller/lockAdmin',
+                      auth=("@localtoken", token))
+
+
+def unlock_admin(cluster):
+    node = cluster.connected_nodes[0]
+    token = node.get_localtoken()
+    testlib.post_succ(node, '/controller/unlockAdmin',
+                      auth=("@localtoken", token))
 
 
 def sync_activity(cluster):

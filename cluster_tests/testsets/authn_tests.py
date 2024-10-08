@@ -93,14 +93,12 @@ class AuthnTests(testlib.BaseTestSet):
 
 
     def local_token_test(self):
-        tokenPath = os.path.join(self.cluster.connected_nodes[0].data_path(),
-                                 "localtoken")
-        with open(tokenPath, 'r') as f:
-            token = f.read().rstrip()
-            testlib.get_succ(self.cluster, '/diag/password',
-                             auth=('@localtoken', token))
-            testlib.get_fail(self.cluster, '/diag/password', 401,
-                             auth=('@localtoken', token + 'foo'))
+        node = self.cluster.connected_nodes[0]
+        token = node.get_localtoken()
+        testlib.get_succ(node, '/diag/password',
+                         auth=('@localtoken', token))
+        testlib.get_fail(node, '/diag/password', 401,
+                         auth=('@localtoken', token + 'foo'))
 
 
     def uilogin_test_base(self, node, expected_code=200, expected_username=None,

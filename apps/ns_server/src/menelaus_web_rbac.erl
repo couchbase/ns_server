@@ -33,6 +33,8 @@
          handle_delete_user/3,
          handle_change_password/1,
          handle_reset_admin_password/1,
+         handle_lock_admin/1,
+         handle_unlock_admin/1,
          handle_check_permissions_post/1,
          check_permissions_url_version/1,
          handle_check_permission_for_cbauth/1,
@@ -1346,6 +1348,42 @@ handle_reset_admin_password(Req) ->
                 {error, Error} ->
                     menelaus_util:reply_global_error(Req, Error)
             end
+    end.
+
+handle_lock_admin(Req) ->
+    assert_no_users_upgrade(),
+    menelaus_util:ensure_local(Req),
+
+    case get_admin_identity() of
+        undefined ->
+            Error = "Failed to lock builtin administrator. Node is "
+                "not initialized.",
+            menelaus_util:reply_global_error(Req, Error);
+        UserId ->
+            maybe_change_lock(Req, UserId, [{locked, true}]),
+            menelaus_util:reply(Req, 200)
+    end.
+
+handle_unlock_admin(Req) ->
+    assert_no_users_upgrade(),
+    menelaus_util:ensure_local(Req),
+
+    case get_admin_identity() of
+        undefined ->
+            Error = "Failed to unlock builtin administrator. Node is "
+                    "not initialized.",
+            menelaus_util:reply_global_error(Req, Error);
+        UserId ->
+            maybe_change_lock(Req, UserId, [{locked, false}]),
+            menelaus_util:reply(Req, 200)
+    end.
+
+get_admin_identity() ->
+    case ns_config_auth:get_user(admin) of
+        undefined ->
+            undefined;
+        UserId ->
+            {UserId, admin}
     end.
 
 list_to_rbac_atom(List) ->

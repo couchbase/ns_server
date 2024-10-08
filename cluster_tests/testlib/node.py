@@ -10,6 +10,7 @@
 import testlib
 from testlib.util import strings_to_services, Service
 import requests
+import os
 
 
 class Node:
@@ -146,3 +147,8 @@ class Node:
         if self.session is None:
             self.session = requests.Session()
         return self.session
+
+    def get_localtoken(self):
+        token_path = os.path.join(self.data_path(), "localtoken")
+        with open(token_path, 'r') as f:
+            return f.read().rstrip()
