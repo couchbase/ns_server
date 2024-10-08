@@ -14,6 +14,7 @@ import {UIRouterModule} from '@uirouter/angular';
 import {ReactiveFormsModule, Validators} from '@angular/forms';
 
 import {MnAuthComponent} from './mn.auth.component.js';
+import {MnAuthChangePasswordComponent} from './mn.auth.change.password.component.js';
 import {MnSharedModule} from './mn.shared.module.js';
 
 let authState = {
@@ -26,7 +27,18 @@ let authState = {
     }
   },
   component: MnAuthComponent
-}
+};
+
+let authChangePasswordState = {
+  name: "app.authChangePassword",
+  component: MnAuthChangePasswordComponent,
+  params: {
+    auth: {
+      value: null,
+      dynamic: true
+    }
+  },
+};
 
 export { MnAuthModule };
 
@@ -34,16 +46,18 @@ class MnAuthModule {
   static get annotations() { return [
     new NgModule({
       declarations: [
-        MnAuthComponent
+        MnAuthComponent,
+        MnAuthChangePasswordComponent
       ],
       imports: [
         CommonModule,
         ReactiveFormsModule,
         MnSharedModule,
-        UIRouterModule.forChild({ states: [authState] })
+        UIRouterModule.forChild({ states: [authState, authChangePasswordState] })
       ],
       entryComponents: [
-        MnAuthComponent
+        MnAuthComponent,
+        MnAuthChangePasswordComponent
       ],
       providers: [
         Validators,

@@ -9,7 +9,7 @@ licenses/APL2.txt.
 */
 
 import {Injectable} from '@angular/core';
-import {HttpClient, HttpParams} from '@angular/common/http';
+import {HttpClient, HttpParams, HttpHeaders} from '@angular/common/http';
 import {map} from 'rxjs/operators';
 import {BehaviorSubject} from 'rxjs';
 import {shareReplay, switchMap} from 'rxjs/operators';
@@ -32,10 +32,20 @@ class MnAuthService {
     this.http = http;
     this.stream = {};
 
+    this.stream.postChangePassword =
+      new MnHttpRequest(this.postChangePassword.bind(this))
+      .addSuccess()
+      .addError();
+
     this.stream.postUILogin =
       new MnHttpRequest(this.postUILogin.bind(this))
       .addSuccess()
-      .addError(map(rv => rv.status));
+      .addError(map(rv => {
+        if (rv.status === 403 && rv.passwordExpired) {
+          return 'passwordExpired';
+        }
+        return rv.status;
+      }));
 
     this.stream.getAuthMethods =
       (new BehaviorSubject()).pipe(
@@ -48,6 +58,13 @@ class MnAuthService {
 
   whoami() {
     return this.http.get('/whoami');
+  }
+
+  postChangePassword([{password}, auth]) {
+    let headers = new HttpHeaders();
+    headers = headers.set('ns-server-ui', 'no');
+    headers = headers.set('Authorization', 'Basic ' + auth);
+    return this.http.post("/controller/changePassword", {password}, {headers});
   }
 
   postUILogin([user, useCertForAuth]) {

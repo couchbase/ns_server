@@ -64,6 +64,12 @@ class MnAuthComponent extends MnLifeCycleHooksToStream {
       ])))
       .setPostRequest(this.postUILogin)
       .showGlobalSpinner()
+      .error((status) => {
+        if (status === 'passwordExpired') {
+          const {user, password} = this.form.group.value;
+          uiRouter.stateService.go('app.authChangePassword', {auth: btoa(user + ":" + password)}, {location: false});
+        }
+      })
       .success(() => {
         $rootScope.mnGlobalSpinnerFlag = true;
         mnPools.clearCache();

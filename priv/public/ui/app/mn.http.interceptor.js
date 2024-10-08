@@ -37,9 +37,12 @@ class MnHttpInterceptor {
         'invalid-auth-response': 'on',
         'Cache-Control': 'no-cache',
         'Pragma': 'no-cache',
-        'ns-server-ui': 'yes'
       }
     });
+
+    if (!mnReq.headers?.get('ns-server-ui')) {
+      mnReq.headers = mnReq.headers.set('ns-server-ui', 'yes');
+    }
 
     var params;
     var headers;

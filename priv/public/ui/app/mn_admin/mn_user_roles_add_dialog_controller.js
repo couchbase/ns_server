@@ -215,7 +215,11 @@ function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, m
                                                    vm.state.selectedRolesConfigs);
 
     mnPromiseHelper(vm, mnUserRolesService.addUser(
-      vm.user, roles, mnHelper.checkboxesToList(vm.selectedGroups), vm.isEditingMode,
+      vm.user, roles, mnHelper.checkboxesToList(vm.selectedGroups),
+      vm.isEditingMode,
+      false,
+      mnPoolDefault.export.isEnterprise,
+      mnPoolDefault.export.compat.atLeast80
     ), $uibModalInstance)
       .showGlobalSpinner()
       .catchErrors(function (errors) {
