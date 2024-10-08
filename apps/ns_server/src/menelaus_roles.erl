@@ -570,6 +570,7 @@ roles() ->
        {[{bucket, bucket_name}, data, sxattr], [read, write]},
        {[{bucket, bucket_name}, stats], [read]},
        {[{bucket, bucket_name}, collections], [read]},
+       {[xdcr, c2c_communications], all},
        {[pools], [read]}]},
      {analytics_manager, [bucket_name],
       [{name, <<"Analytics Manager">>},
