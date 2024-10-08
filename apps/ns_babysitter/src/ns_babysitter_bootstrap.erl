@@ -9,14 +9,14 @@
 -module(ns_babysitter_bootstrap).
 
 -export([start/0, start/1, stop/0, get_quick_stop/0, remote_stop/1,
-         should_read_cookie/0]).
+         should_read_boot_params/0]).
 
 -include("ns_common.hrl").
 
 start() ->
-    start(nocookie).
+    start({nocookie, nologdek}).
 
-start(nocookie) ->
+start({nocookie, nologdek}) ->
     try
         ok = application:start(ale),
         ok = application:start(sasl),
@@ -46,7 +46,7 @@ remote_stop(Node) ->
                  end,
     init:stop(ExitStatus).
 
-should_read_cookie() ->
+should_read_boot_params() ->
     false.
 
 get_quick_stop() ->

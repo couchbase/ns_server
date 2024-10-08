@@ -84,17 +84,20 @@ open_port_args() ->
            {"CHILD_ERLANG_ENV_ARGS", misc:inspect_term(AppEnvArgs)} | Env0],
     Cookie = atom_to_binary(erlang:get_cookie()),
     ?COOKIE_HEX_LEN = size(Cookie),
+    LogDS = ale:get_global_log_deks_snapshot(),
+    LogDeks = base64:encode(term_to_binary(cb_crypto:get_all_deks(LogDS))),
     {ErlPath, AllArgs, [{env, Env}, exit_status, use_stdio, stream, eof,
                         {write_data,
-                            %% Whilst we could just pass the cookie manually
-                            %% we would also end up logging it in SASL
-                            %% progress reports et. al. and we don't want to
-                            %% leak it in the logs so we instead pass as
-                            %% function returning the cookie as a result to
-                            %% avoid logging the actual cookie.
-                            fun() ->
-                                <<"COOKIE:", Cookie/binary, "\n">>
-                            end}]}.
+                         %% Whilst we could just pass the sensitive info
+                         %% manually we would also end up logging it in SASL
+                         %% progress reports et. al. and we don't want to
+                         %% leak it in the logs so we instead pass as
+                         %% function returning the info as a result to
+                         %% avoid logging the sensitive info
+                         fun() ->
+                                 <<"COOKIE:", Cookie/binary, "\n", "LOGDEKS:",
+                                   LogDeks/binary, "\n">>
+                         end}]}.
 
 child_start(Arg) ->
     try
@@ -120,14 +123,14 @@ do_child_start([ModuleToBootAsString]) ->
     erlang:group_leader(StdErr, erlang:whereis(application_controller)),
 
     BootModule = list_to_atom(ModuleToBootAsString),
-    Cookie =
-        case BootModule:should_read_cookie() of
+    {Cookie, LogDeks} =
+        case BootModule:should_read_boot_params() of
             true ->
-                read_cookie();
+                read_boot_params();
             false ->
-                nocookie
+                {nocookie, nologdek}
         end,
-    BootModule:start(Cookie),
+    BootModule:start({Cookie, LogDeks}),
     %% NOTE: win32 support in erlang handles {fd, 0, 1} specially and
     %% does the right thing. {fd, 0, 0} would not work for example
     Port = erlang:open_port({fd, 0, 1}, [in, stream, binary, eof]),
@@ -175,18 +178,22 @@ child_loop(Port, BootModule) ->
             misc:halt(1)
     end.
 
-read_cookie() ->
+read_boot_params() ->
     Port = erlang:open_port({fd, 0, 1}, [in, stream, binary, eof]),
     try
-        read_cookie(Port)
+        read_boot_params(Port)
     after
         erlang:port_close(Port)
     end.
 
-read_cookie(Port) ->
+read_boot_params(Port) ->
     receive
-        {Port, {data, <<"COOKIE:", CookieBin:?COOKIE_HEX_LEN/binary, "\n">>}} ->
-            binary_to_atom(CookieBin);
+        {Port, {data, <<"COOKIE:", CookieBin:?COOKIE_HEX_LEN/binary, "\n",
+                        "LOGDEKS:", Rest/binary>>}} ->
+            LogDeksSize = byte_size(Rest) - 1,
+            <<LogDeksBase64:LogDeksSize/binary, "\n">> = Rest,
+            {binary_to_atom(CookieBin),
+             binary_to_term(base64:decode(LogDeksBase64))};
         Unexpected ->
             io:format("Waiting for cookie, got unexpected message: ~p~n",
                       [Unexpected]),

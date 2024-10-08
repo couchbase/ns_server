@@ -11,11 +11,10 @@
 
 -behavior(application).
 
--export([start/2, stop/1, get_loglevel/1, setup_node_names/0,
-         get_babysitter_node/0, get_babysitter_cookie/0, get_babysitter_pid/0,
-         read_cookie_file/1,
-         start_disk_sink/2, get_disk_sink_rotation_opts/1, adjust_loglevel/2,
-         set_tls_key_log/1]).
+-export([start/2, stop/1, get_loglevel/1, init_log_encryption/0,
+         setup_node_names/0, get_babysitter_node/0, get_babysitter_cookie/0,
+         get_babysitter_pid/0, read_cookie_file/1, start_disk_sink/2,
+         get_disk_sink_rotation_opts/1, adjust_loglevel/2, set_tls_key_log/1]).
 
 -include("ns_common.hrl").
 -include_lib("ale/include/ale.hrl").
@@ -179,6 +178,11 @@ init_logging() ->
       end),
     ale:info(?NS_SERVER_LOGGER, "Started & configured logging").
 
+init_log_encryption() ->
+    {ok, {ActiveDek, Deks}} = application:get_env(ns_server, initial_log_deks),
+    LogDS = cb_crypto:create_deks_snapshot(ActiveDek, Deks, undefined),
+    ale:init_log_encryption_ds(LogDS).
+
 do_init_logging() ->
     StdLoggers = [?ALE_LOGGER, ?ERROR_LOGGER, ?TRACE_LOGGER],
     AllLoggers = [?TLS_KEY_LOGGER, ?CHRONICLE_ALE_LOGGER,
@@ -189,6 +193,8 @@ do_init_logging() ->
               ale:stop_logger(Logger)
       end, ?LOGGERS ++ [?ACCESS_LOGGER, ?CHRONICLE_ALE_LOGGER, ?TLS_KEY_LOGGER,
                         ?NS_SERVER_TRACE_LOGGER]),
+
+    ok = init_log_encryption(),
 
     ok = start_disk_sink(disk_default, ?DEFAULT_LOG_FILENAME),
     ok = start_disk_sink(disk_error, ?ERRORS_LOG_FILENAME),

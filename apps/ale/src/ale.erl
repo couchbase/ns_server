@@ -20,6 +20,7 @@
          set_sink_loglevel/3, get_sink_loglevel/2,
          sync_sink/1,
          sync_all_sinks/0,
+         init_log_encryption_ds/1,
          set_global_log_deks_snapshot/1,
          get_global_log_deks_snapshot/0,
 
@@ -133,6 +134,9 @@ sync_all_sinks() ->
     Sinks = gen_server:call(?MODULE, get_sink_names, infinity),
     [sync_sink(SinkName) || SinkName <- Sinks],
     ok.
+
+init_log_encryption_ds(LogDS) ->
+    set_global_log_deks_snapshot(LogDS).
 
 set_global_log_deks_snapshot(LogsDs) ->
     persistent_term:put(log_deks_snapshot, LogsDs).

@@ -18,7 +18,7 @@
 -export([start/2, stop/1]).
 
 %% child_erlang callbacks
--export([start/1, stop/0, should_read_cookie/0]).
+-export([start/1, stop/0, should_read_boot_params/0]).
 
 -include("ns_common.hrl").
 -include_lib("ale/include/ale.hrl").
@@ -27,8 +27,9 @@
 %% Application callbacks
 %% ===================================================================
 
-start(Cookie) ->
+start({Cookie, LogDeks}) ->
     application:set_env(ns_server, babysitter_cookie, Cookie),
+    application:set_env(ns_server, initial_log_deks, LogDeks),
     application:start(ns_common, permanent),
     application:start(ns_couchdb, permanent).
 
@@ -67,7 +68,7 @@ start(_StartType, _StartArgs) ->
 stop(_State) ->
     ok.
 
-should_read_cookie() ->
+should_read_boot_params() ->
     true.
 
 %% called by child_erlang when we're asked to exit.
@@ -97,6 +98,8 @@ init_logging() ->
       fun (Logger) ->
               ale:stop_logger(Logger)
       end, Loggers),
+
+    ok = ns_server:init_log_encryption(),
 
     ok = ns_server:start_disk_sink(ns_couchdb_sink, ?NS_COUCHDB_LOG_FILENAME),
     ok = ns_server:start_disk_sink(disk_couchdb, ?COUCHDB_LOG_FILENAME),

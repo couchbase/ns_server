@@ -107,7 +107,7 @@ setup_static_config() ->
 
 init_log_encryption() ->
     {ok, DekSnapshot} = cb_deks_raw_utils:bootstrap_get_deks(logDek, #{}),
-    ale:set_global_log_deks_snapshot(DekSnapshot).
+    ale:init_log_encryption_ds(DekSnapshot).
 
 init_logging() ->
     ale:with_configuration_batching(
