@@ -305,17 +305,18 @@ init_auth_password_expired(Identity) ->
 authenticate(Auth) ->
     case do_authenticate(Auth) of
         {ok, #authn_res{authenticated_identity = Identity,
-                        session_id = SessionId}, _} = Result ->
+                        session_id = SessionId} = AuthnRes, _} = Result ->
             case menelaus_users:is_user_locked(Identity) of
                 false ->
+                    activity_tracker:handle_activity(AuthnRes),
                     Result;
                 true ->
                     case SessionId of
                         undefined ->
                             ok;
                         _ ->
-                           %% Expire token
-                           menelaus_ui_auth:logout(SessionId)
+                            %% Expire token
+                            menelaus_ui_auth:logout(SessionId)
                     end,
                     ?count_auth("error", "locked"),
                     {error, auth_failure}
@@ -566,6 +567,14 @@ verify_rest_auth(Req, Permission) ->
                     %% Check on-behalf-of user is not locked
                     case menelaus_users:is_user_locked(Identity) of
                         false ->
+                            case AuthnRes2#authn_res.identity =:=
+                                AuthnRes#authn_res.identity of
+                                true ->
+                                    ok;
+                                false ->
+                                    %% Need to track on-behalf user's activity
+                                    activity_tracker:handle_activity(AuthnRes2)
+                            end,
                             {check_permission(AuthnRes2, Permission), Req3};
                         true ->
                             ?count_auth("error", "locked"),

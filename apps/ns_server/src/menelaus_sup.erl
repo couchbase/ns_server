@@ -104,6 +104,10 @@ init([]) ->
               {menelaus_cbauth, start_link, []},
               permanent, 1000, worker, dynamic},
 
+    ActivityTracker = {activity_tracker,
+                       {activity_tracker, start_link, []},
+                       permanent, 1000, worker, dynamic},
+
     Processes = [UIAuth, ScramSha, LocalAuth, Cache, StatsGatherer, RpcEvents,
-                 WebSup, Alerts, GuardrailMonitor, CBAuth],
+                 WebSup, Alerts, GuardrailMonitor, CBAuth, ActivityTracker],
     {ok, {{one_for_one, 10, 10}, Processes}}.

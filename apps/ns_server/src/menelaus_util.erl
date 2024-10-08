@@ -72,6 +72,7 @@
          assert_is_enterprise/1,
          assert_profile_flag/2,
          assert_is_76/0,
+         assert_is_morpheus/0,
          assert_config_profile_flag/1,
          assert_not_config_profile_flag/1,
          choose_node_consistently/2,
@@ -756,6 +757,9 @@ assert_profile_flag(Flag, ParamName) ->
 
 assert_is_76() ->
     assert_cluster_version(fun cluster_compat_mode:is_cluster_76/0).
+
+assert_is_morpheus() ->
+    assert_cluster_version(fun cluster_compat_mode:is_cluster_morpheus/0).
 
 assert_cluster_version(Fun) ->
     assert(

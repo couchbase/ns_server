@@ -388,7 +388,8 @@ default(Vsn) ->
         menelaus_web_auto_failover:default_config(IsEnterprise) ++
         ns_storage_conf:default_config() ++
         [{resource_management,
-          menelaus_web_guardrails:default_for_ns_config()}].
+          menelaus_web_guardrails:default_for_ns_config()}] ++
+        [{user_activity, activity_tracker:default()}].
 
 stop_if_memcached_buckets_in_use() ->
     ?log_debug("Checking to see if memcached buckets are being used."),
