@@ -552,14 +552,18 @@ class SamlTests(testlib.BaseTestSet):
             # Create analytics collection in test._default._default. This will
             # fail - we don't have cluster.analytics!manage. Analytics and full
             # admin roles have the permission (see admin_test).
-            r = ui_request('post', self.cluster.connected_nodes[0],
-                           '/_p/cbas/query/service',
-                           session,
-                           data={'statement':
-                                 'alter collection '
-                                 f'`{bucket}`.`_default`.`_default` '
-                                 'enable analytics;'},
-                           expected_code=403)
+            testlib.poll_for_condition(
+                lambda: ui_request('post', self.cluster.connected_nodes[0],
+                                   '/_p/cbas/query/service',
+                                   session,
+                                   data={'statement':
+                                         'alter collection '
+                                         f'`{bucket}`.`_default`.`_default` '
+                                         'enable analytics;'}).
+                status_code == 403,
+                sleep_time=0.5,
+                timeout=60,
+                retry_on_assert=True)
 
             # Exercise goxdcr_rest:proxy(), which also populates cb-on-behalf
             # headers. (The previous test cases populate cb-on-behalf headers in
@@ -617,22 +621,41 @@ class SamlTests(testlib.BaseTestSet):
                        session, expected_code=200)
 
             # Create analytics collection in test._default._default.
-            r = ui_request('post', self.cluster.connected_nodes[0],
-                           '/_p/cbas/query/service',
-                           session,
-                           data={'statement':
-                                 'alter collection '
-                                 f'`{bucket}`.`_default`.`_default` '
-                                 'enable analytics;'},
-                           expected_code=200)
+            testlib.poll_for_condition(
+                lambda: ui_request('post', self.cluster.connected_nodes[0],
+                                   '/_p/cbas/query/service',
+                                   session,
+                                   data={'statement': 'create analytics '
+                                   'collection myCollection ON '
+                                   f'`{bucket}`.`_default`.`_default`'}).
+                status_code == 200,
+                sleep_time=0.5,
+                timeout=60,
+                retry_on_assert=True)
 
             # Query analytics collections. They should exist.
-            r = ui_request('post', self.cluster.connected_nodes[0],
-                           '/_p/cbas/query/service',
-                           session,
-                           data={'statement':
-                                 f'select * from `{bucket}`'},
-                           expected_code=200)
+            testlib.poll_for_condition(
+                lambda: ui_request('post', self.cluster.connected_nodes[0],
+                                   '/_p/cbas/query/service',
+                                   session,
+                                   data={'statement': 'select * from '
+                                         'myCollection'}).
+                status_code == 200,
+                sleep_time=0.5,
+                timeout=60,
+                retry_on_assert=True)
+
+            # Disable analytics collection in test._default._default as cleanup.
+            testlib.poll_for_condition(
+                lambda: ui_request('post', self.cluster.connected_nodes[0],
+                                   '/_p/cbas/query/service',
+                                   session,
+                                   data={'statement': 'drop analytics '
+                                         'collection myCollection'}).
+                status_code == 200,
+                sleep_time=0.5,
+                timeout=60,
+                retry_on_assert=True)
 
     # Successfull authentication, but user doesn't have access to UI
     def access_denied_test(self):
