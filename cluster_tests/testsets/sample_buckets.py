@@ -153,8 +153,10 @@ class SampleBucketTestSet(testlib.BaseTestSet, SampleBucketTasksBase):
         testlib.delete_all_buckets(self.cluster)
 
     # Create a bucket with name and ram_quota specified
-    def create_bucket(self, name, ram_quota=200):
-        bucket = {"name": name, "ramQuota": ram_quota}
+    def create_bucket(self, name, ram_quota=200, storage_backend='magma'):
+        bucket = {"name": name,
+                  "ramQuota": ram_quota,
+                  "storageBackend": storage_backend}
         self.cluster.create_bucket(bucket)
 
     # Test the /sampleBuckets endpoint for fetching the list of sample buckets
@@ -235,7 +237,12 @@ class SampleBucketTestSet(testlib.BaseTestSet, SampleBucketTasksBase):
 
     def post_with_couchdb_sample_test(self):
         sample_bucket = "gamesim-sample"
-        payload = [sample_bucket]
+        # Create a couchstore bucket, so that views are imported
+        self.create_bucket(sample_bucket,
+                           ram_quota=200,
+                           storage_backend='couchstore')
+        payload = [{"sample": sample_bucket,
+                    "bucket": sample_bucket}]
         if self.cluster.is_serverless:
             # Confirm that loading gamesim-sample fails in serverless, as
             # couchdb is disabled
