@@ -41,7 +41,8 @@ let knownAlerts = [
   'history_size_warning',
   'indexer_low_resident_percentage',
   'memcached_connections',
-  'stuck_rebalance'
+  'stuck_rebalance',
+  'disk_guardrail'
 ];
 
 let timeUnitToSeconds = {

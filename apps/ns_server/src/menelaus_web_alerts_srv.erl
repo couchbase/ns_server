@@ -106,6 +106,8 @@
         max(30 * 60,  %% 30mins
             ?MIN_INDEX_REBALANCE_STUCK_THRESHOLD_S)).
 
+-define(DEFAULT_MAX_DATA_DISK_USED, 75).
+
 -record(rebalance_progress, {
     progress :: {binary(), any()},
     last_timestamp :: integer(),
@@ -127,6 +129,8 @@ short_description(overhead) ->
     "metadata overhead warning";
 short_description(disk) ->
     "approaching full disk warning";
+short_description(disk_guardrail) ->
+    "approaching disk usage limit for data service mutations";
 short_description(audit_dropped_events) ->
     "audit write failure";
 short_description(indexer_ram_max_usage) ->
@@ -168,6 +172,17 @@ errors(overhead) ->
     "Metadata overhead warning. Over  ~p% of RAM allocated to bucket  \"~s\" on node \"~s\" is taken up by keys and metadata.";
 errors(disk) ->
     "Approaching full disk warning. Usage of disk \"~s\" on node \"~s\" is around ~p%.";
+errors(data_disk_warning) ->
+    "Warning: Your data disk (~s) is ~p% full on node \"~s\", above the ~p% "
+    "warning threshold.";
+errors(data_disk_guardrail_warning) ->
+    "Warning: Your data disk (~s) is ~p% full on node \"~s\", within 10% of "
+    "the configured maximum disk usage for data service mutations (~p%).";
+errors(data_disk_guardrail_critical) ->
+    "Critical: Your data disk (~s) is ~p% full on node \"~s\", above the "
+    "configured maximum disk usage for data service mutations (~p%). "
+    "Data service mutations will no longer be permitted, until the disk "
+    "usage is brought back below the limit.";
 errors(audit_dropped_events) ->
     "Audit Write Failure. Attempt to write to audit log on node \"~s\" was unsuccessful";
 errors(indexer_ram_max_usage) ->
@@ -407,7 +422,7 @@ alert_keys() ->
      ep_clock_cas_drift_threshold_exceeded,
      communication_issue, time_out_of_sync, disk_usage_analyzer_stuck,
      cert_expires_soon, cert_expired, memory_threshold, history_size_warning,
-     stuck_rebalance, memcached_connections].
+     stuck_rebalance, memcached_connections, disk_guardrail].
 
 config_upgrade_to_72(Config) ->
     config_email_alerts_upgrade(
@@ -460,7 +475,9 @@ config_upgrade_to_morpheus(Config) ->
           {value, EmailAlerts} ->
               upgrade_alerts(
                 EmailAlerts,
-                maybe_delete_stuck_rebalance_keys(Config))
+                maybe_delete_stuck_rebalance_keys(Config) ++
+                [add_proplist_list_elem(alerts, disk_guardrail, _),
+                 add_proplist_list_elem(pop_up_alerts, disk_guardrail, _)])
     end.
 
 %% @doc Sends any previously queued email alerts. Generally called when we first
@@ -492,7 +509,7 @@ global_checks() ->
      indexer_ram_max_usage, cas_drift_threshold, communication_issue,
      time_out_of_sync, disk_usage_analyzer_stuck, certs, xdcr_certs,
      memory_threshold, history_size_warning, indexer_low_resident_percentage,
-     stuck_rebalance, memcached_connections].
+     stuck_rebalance, memcached_connections, disk_guardrail].
 
 %% @doc fires off various checks
 check_alerts(Opaque, Hist, Stats) ->
@@ -947,6 +964,43 @@ check(memcached_connections, Opaque, _History, Stats) ->
         GlobalStats ->
             check_memcached_connections(user, GlobalStats),
             check_memcached_connections(system, GlobalStats)
+    end,
+    Opaque;
+check(disk_guardrail, Opaque, _History, _Stats) ->
+    {Thresholds, Enforceable} =
+        case guardrail_monitor:get(disk_usage) of
+            undefined ->
+                %% Alert thresholds for when guardrail isn't enabled
+                AlertLimits = ns_config:read_key_fast(alert_limits, []),
+                {[{warning, proplists:get_value(max_data_disk_used, AlertLimits,
+                                                ?DEFAULT_MAX_DATA_DISK_USED)}],
+                 false};
+            Limits ->
+                Critical = proplists:get_value(maximum, Limits),
+                Warning = Critical - 10,
+                {[{warning, Warning} | Limits], true}
+        end,
+    case {guardrail_monitor:check_alert(disk, Thresholds), Enforceable} of
+        {ok, _} ->
+            ok;
+        {{warning, BadDisk, Value}, false} ->
+            %% Data disk usage is high, writes won't be prevented
+            Limit = proplists:get_value(warning, Thresholds),
+            Msg = fmt_to_bin(errors(data_disk_warning),
+                             [BadDisk, Value, node(), Limit]),
+            global_alert(disk_guardrail, Msg);
+        {{warning, BadDisk, Value}, true} ->
+            %% Data disk usage is high, writes will soon be prevented
+            Limit = proplists:get_value(maximum, Thresholds),
+            Msg = fmt_to_bin(errors(data_disk_guardrail_warning),
+                             [BadDisk, Value, node(), Limit]),
+            global_alert(disk_guardrail, Msg);
+        {{maximum, BadDisk, Value}, true} ->
+            %% Data disk usage is high, and writes are being prevented
+            Limit = proplists:get_value(maximum, Thresholds),
+            Msg = fmt_to_bin(errors(data_disk_guardrail_critical),
+                             [BadDisk, Value, node(), Limit]),
+            global_alert(disk_guardrail, Msg)
     end,
     Opaque.
 
@@ -1563,6 +1617,9 @@ params() ->
                            cfg_key => [alert_limits, max_overhead_perc]}},
      {"maxDiskUsedPerc", #{type => {int, 0, 100},
                            cfg_key => [alert_limits, max_disk_used]}},
+     {"maxDataDiskUsedPerc", #{type => {int, 0, 100},
+                               cfg_key => [alert_limits, max_data_disk_used],
+                               default => ?DEFAULT_MAX_DATA_DISK_USED}},
      {"maxIndexerRamPerc", #{type => {int, 0, 100},
                              cfg_key => [alert_limits, max_indexer_ram]}},
      {"certExpirationDays", #{type => pos_int,
@@ -1763,17 +1820,23 @@ config_upgrade_to_morpheus_test() ->
         [[{email_alerts,
            [{pop_up_alerts, [ip, disk]},
             {alerts, [ip, time_out_of_sync]}]}]],
-    Expected1 = [],
-    %% No actions taken if stuck_rebalance keys not found
+    Expected1 = [{set, email_alerts,
+                  [{pop_up_alerts,
+                    [disk, disk_guardrail, ip]},
+                   {alerts,
+                    [disk_guardrail, ip, time_out_of_sync]}]}],
+    %% Add disk_guardrail keys
     ?assertEqual(Expected1, config_upgrade_to_morpheus(Config1)),
 
     Config2 =
         [[{email_alerts,
            [{pop_up_alerts, [ip, disk, stuck_rebalance]},
             {alerts, [ip, time_out_of_sync, stuck_rebalance]}]}]],
-    Expected2 = [{set,email_alerts,
-                  [{pop_up_alerts, [ip, disk]},
-                   {alerts, [ip, time_out_of_sync]}]}],
+    Expected2 = [{set, email_alerts,
+                  [{pop_up_alerts,
+                    [disk, disk_guardrail, ip]},
+                   {alerts,
+                    [disk_guardrail, ip, time_out_of_sync]}]}],
     %% Remove stuck_rebalance keys if found and threshold unspecified
     ?assertEqual(Expected2, config_upgrade_to_morpheus(Config2)),
 
@@ -1783,9 +1846,11 @@ config_upgrade_to_morpheus_test() ->
             {alerts, [ip, time_out_of_sync, stuck_rebalance]}]},
           {alert_limits,
            [{{{stuck_rebalance_threshold_secs, kv}, undefined}}]}]],
-    Expected3 = [{set,email_alerts,
-                  [{pop_up_alerts, [ip, disk]},
-                   {alerts, [ip, time_out_of_sync]}]}],
+    Expected3 =[{set, email_alerts,
+                 [{pop_up_alerts,
+                   [disk, disk_guardrail, ip]},
+                  {alerts,
+                   [disk_guardrail, ip, time_out_of_sync]}]}],
     %% Remove stuck_rebalance keys if found and threshold undefined
     ?assertEqual(Expected3, config_upgrade_to_morpheus(Config3)),
 
@@ -1795,7 +1860,11 @@ config_upgrade_to_morpheus_test() ->
             {alerts, [ip, time_out_of_sync, stuck_rebalance]}]},
           {alert_limits,
            [{{stuck_rebalance_threshold_secs, kv}, 100}]}]],
-    Expected4 = [],
+    Expected4 = [{set, email_alerts,
+                  [{pop_up_alerts,
+                    [disk, disk_guardrail, ip, stuck_rebalance]},
+                   {alerts,
+                    [disk_guardrail, ip, stuck_rebalance, time_out_of_sync]}]}],
     %% Don't remove stuck_rebalance keys if a threshold has been set
     ?assertEqual(Expected4, config_upgrade_to_morpheus(Config4)).
 

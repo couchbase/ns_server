@@ -19,7 +19,7 @@
 -behaviour(gen_server).
 
 -export([is_enabled/0, get_config/0, get/1, get/2, start_link/0,
-         check_num_replicas_change/3, get_local_status/3]).
+         check_num_replicas_change/3, get_local_status/3, check_alert/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
@@ -43,7 +43,7 @@
 -type resource() :: {bucket, bucket_name()} | disk | index.
 -export_type([resource/0]).
 
--type disk_severity() :: serious | critical | maximum.
+-type disk_severity() :: warning | serious | critical | maximum.
 -type index_severity() :: warning | serious | critical.
 -type status() :: ok | data_ingress_status() | disk_severity() |
                   index_severity().
@@ -114,6 +114,25 @@ get(bucket, Key) ->
 get_local_status(Resource, Config, Default) ->
     ns_config:search_node_prop(Config, local_resource_statuses, Resource,
                                Default).
+
+-spec check_alert(Guardrail, Limits) -> ok | {Level, Disk, Value} when
+      Guardrail :: disk,
+      Level :: warning | maximum,
+      Limits :: [{Level, integer()}],
+      Disk :: string(),
+      Value :: integer().
+check_alert(disk, Thresholds) ->
+    case get_disk_data(ns_disksup:get_disk_data()) of
+        {ok, DiskEntry} ->
+            {Disk, _, Value} = DiskEntry,
+            case check_disk_usage(Thresholds, DiskEntry) of
+                ok -> ok;
+                Severity -> {Severity, Disk, Value}
+            end;
+        _Error ->
+            %% No need to log here, since the error gets logged earlier
+            ok
+    end.
 
 
 start_link() ->
@@ -542,7 +561,7 @@ get_severity_for_thresholds(Resource, Thresholds, Metric, Order) ->
               NotOk
       end, ok, ThresholdsSorted).
 
--spec check_disk_usage([{atom(), number()}], ns_disksup:disk_stat()) ->
+-spec check_disk_usage([{disk_severity(), number()}], ns_disksup:disk_stat()) ->
     ok | disk_severity().
 check_disk_usage(Thresholds, {_Disk, _Cap, Used}) ->
     get_severity_for_thresholds(disk, Thresholds, Used, descending).
