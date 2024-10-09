@@ -232,9 +232,9 @@ default(Vsn) ->
        {tracing_enabled, IsEnterprise},
        {datatype_snappy, true},
        {num_reader_threads,
-        config_profile:get_value(num_reader_threads, <<"default">>)},
+        config_profile:get_value(num_reader_threads, <<"disk_io_optimized">>)},
        {num_writer_threads,
-        config_profile:get_value(num_writer_threads, <<"default">>)},
+        config_profile:get_value(num_writer_threads, <<"disk_io_optimized">>)},
        {num_auxio_threads, <<"default">>},
        {num_nonio_threads, <<"default">>},
        {num_storage_threads, <<"default">>},
@@ -533,7 +533,8 @@ upgrade_config_from_76_to_morpheus(Config) ->
     do_upgrade_config_from_76_to_morpheus(Config, DefaultConfig).
 
 do_upgrade_config_from_76_to_morpheus(_Config, DefaultConfig) ->
-    [upgrade_key(memcached_config, DefaultConfig)].
+    [upgrade_key(memcached_config, DefaultConfig),
+     upgrade_key(memcached_defaults, DefaultConfig)].
 
 encrypt_and_save(Config) ->
     {value, DirPath} = ns_config:search(Config, directory),

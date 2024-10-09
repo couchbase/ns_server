@@ -187,6 +187,7 @@ validate_param(Value, Fun) when is_function(Fun, 1) ->
 
 validate_num_threads("default") -> {ok, <<"default">>};
 validate_num_threads("disk_io_optimized") -> {ok, <<"disk_io_optimized">>};
+validate_num_threads("disk_io_bounded") -> {ok, <<"disk_io_bounded">>};
 validate_num_threads(Value) -> validate_param(Value, {int, 1, 64}).
 
 validate_num_storage_auxio_nonio_threads("default") -> {ok, <<"default">>};
