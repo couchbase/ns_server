@@ -26,7 +26,7 @@
          get_current_stage/0,
          get_progress_for_alerting/1,
          record_rebalance_report/1,
-         update_progress/2,
+         update_progress/3,
          submit_master_event/1,
          get_current_rebalance_report/0]).
 
@@ -141,8 +141,9 @@ record_rebalance_report(Args) ->
 get_current_rebalance_report() ->
     generic_get_call(get_current_rebalance_report).
 
-update_progress(Stage, StageProgress) ->
-    gen_server:cast(?SERVER, {update_progress, Stage, StageProgress}).
+update_progress(Stage, NotifyMetric, StageProgress) ->
+    gen_server:cast(?SERVER, {update_progress, Stage, NotifyMetric,
+                              StageProgress}).
 
 get_registered_local_name() ->
     ?MODULE.
@@ -388,10 +389,10 @@ handle_cast({update_stats, BucketName, VBucket, NodeToDocsLeft}, State) ->
                Move#vbucket_info{stats = NewStats}
        end)};
 
-handle_cast({update_progress, Stage, StageProgress},
+handle_cast({update_progress, Stage, NotifyMetric, StageProgress},
             #state{stage_info = Old} = State) ->
     NewStageInfo = rebalance_stage_info:update_progress(
-                     Stage, StageProgress, Old),
+                     Stage, NotifyMetric, StageProgress, Old),
     {noreply, State#state{stage_info = NewStageInfo}};
 
 handle_cast(Req, _State) ->
@@ -1501,7 +1502,7 @@ get_seqnos_per_vb_t() ->
     ?assertEqual([Exp0, Exp1], Actual).
 
 test_update_progress(Service, ProgressList) ->
-    ns_rebalance_observer:update_progress(Service,
+    ns_rebalance_observer:update_progress(Service, false,
                                           dict:from_list(ProgressList)).
 
 

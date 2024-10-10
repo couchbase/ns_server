@@ -428,9 +428,13 @@ rebalance_topology_aware_services(Services, KeepNodesAll,
       end, Services).
 
 rebalance_topology_aware_service(Service, KeepNodes, EjectNodes, DeltaNodes) ->
+    %% We want to notify the progress metric on every update, since Service is a
+    %% top level stage, not a sub-stage
+    NotifyMetric = true,
     ProgressCallback =
         fun (Progress) ->
-                ns_rebalance_observer:update_progress(Service, Progress)
+                ns_rebalance_observer:update_progress(Service, NotifyMetric,
+                                                      Progress)
         end,
 
     service_manager:rebalance(
@@ -607,7 +611,8 @@ make_progress_fun(BucketCompletion, NumBuckets) ->
     end.
 
 update_kv_progress(Progress) ->
-    ns_rebalance_observer:update_progress(kv, Progress).
+    NotifyMetric = true,
+    ns_rebalance_observer:update_progress(kv, NotifyMetric, Progress).
 
 update_kv_progress(Nodes, Progress) ->
     update_kv_progress(dict:from_list([{N, Progress} || N <- Nodes])).

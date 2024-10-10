@@ -18,7 +18,7 @@
          get_progress/1,
          get_current_stage/1,
          get_progress_for_stage/3,
-         update_progress/3,
+         update_progress/4,
          update_stage_info/4,
          diff_timestamp/2,
          binarify_timestamp/1]).
@@ -60,11 +60,11 @@ get_progress(#stage_info{aggregated = Aggregated}) ->
     Aggregated.
 
 update_progress(
-  Stage, StageProgress,
+  ProgressStage, NotifyMetric, StageProgress,
   #stage_info{per_stage_progress = OldPerStageProgress} = StageInfo) ->
-    NewPerStageProgress = do_update_progress(Stage, StageProgress,
+    NewPerStageProgress = do_update_progress(ProgressStage, StageProgress,
                                              OldPerStageProgress),
-    notify_progress(Stage, NewPerStageProgress),
+    NotifyMetric andalso notify_progress(ProgressStage, NewPerStageProgress),
     Aggregated = aggregate(NewPerStageProgress),
     StageInfo#stage_info{
       per_stage_progress = NewPerStageProgress,
@@ -304,13 +304,16 @@ maybe_create_new_stage_progress(
   #stage_info{per_stage_progress = PerStageProgress} = StageInfo)
   when Nodes =/= [] ->
     ProgressStage = lists:last(Stage),
+    %% Only notify metric if this is a top level stage, not a sub-stage
+    %% (such as failover of each bucket, and the kv_delta_recovery sub-stage)
+    NotifyMetric = length(Stage) =:= 1,
     case dict:find(ProgressStage, PerStageProgress) of
         {ok, _} ->
             StageInfo;
         _ ->
             [{ProgressStage, Dict}] =
                 init_per_stage_progress([{ProgressStage, Nodes}]),
-            update_progress(ProgressStage, Dict, StageInfo)
+            update_progress(ProgressStage, NotifyMetric, Dict, StageInfo)
     end;
 maybe_create_new_stage_progress([Stage], completed, StageInfo) ->
     %% Make sure that completed stages get their progress set to 100%.
