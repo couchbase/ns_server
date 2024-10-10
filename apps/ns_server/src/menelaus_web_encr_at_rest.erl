@@ -13,7 +13,8 @@
 -include_lib("ns_common/include/cut.hrl").
 -include("cb_cluster_secrets.hrl").
 
--export([handle_get/2, handle_post/2, get_settings/1]).
+-export([handle_get/2, handle_post/2, get_settings/1, handle_drop_keys/2,
+         handle_bucket_drop_keys/2]).
 
 encr_method(Param, EncrType) ->
     {Param,
@@ -36,6 +37,10 @@ encr_dek_rotate_intrvl(Param, EncrType) ->
      #{cfg_key => [EncrType, dek_rotation_interval_in_sec],
        type => {int, 0, infinity}}}.
 
+encr_deks_drop_date(Param, EncrType) ->
+    {Param,
+     #{cfg_key => [EncrType, dek_drop_datetime],
+       type => {read_only, {optional, datetime_iso8601}}}}.
 
 params() ->
     [encr_method("config.encryptionMethod", config_encryption),
@@ -52,7 +57,11 @@ params() ->
 
      encr_dek_rotate_intrvl("config.dekRotationInterval", config_encryption),
      encr_dek_rotate_intrvl("log.dekRotationInterval", log_encryption),
-     encr_dek_rotate_intrvl("audit.dekRotationInterval", audit_encryption)].
+     encr_dek_rotate_intrvl("audit.dekRotationInterval", audit_encryption),
+
+     encr_deks_drop_date("config.dekLastDropDate", config_encryption),
+     encr_deks_drop_date("log.dekLastDropDate", log_encryption),
+     encr_deks_drop_date("audit.dekLastDropDate", audit_encryption)].
 
 handle_get(Path, Req) ->
     Settings = get_settings(direct),
@@ -71,7 +80,9 @@ handle_post(Path, Req) ->
                  kv, [?CHRONICLE_SECRETS_KEY,
                       ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
                  fun (Snapshot) ->
-                     ToApply = get_settings(Snapshot, NewSettings),
+                     MergedNewSettings = get_settings(Snapshot, NewSettings),
+                     ToApply = apply_auto_fields(
+                                 Snapshot, MergedNewSettings),
                      case validate_all_settings_txn(maps:to_list(ToApply),
                                                     Snapshot) of
                          ok ->
@@ -90,6 +101,62 @@ handle_post(Path, Req) ->
                  menelaus_util:reply_global_error(Req2, Msg)
          end
       end, Path, params(), undefined, Req).
+
+handle_bucket_drop_keys(Bucket, Req) ->
+    handle_set_drop_time(
+      fun (Time) ->
+          Key = ns_bucket:sub_key(Bucket, encr_at_rest),
+          chronicle_kv:transaction(
+            kv, [ns_bucket:root(), ns_bucket:sub_key(Bucket, props), Key],
+            fun (Snapshot) ->
+                case ns_bucket:bucket_exists(Bucket, Snapshot) of
+                    true ->
+                        CurVal = chronicle_compat:get(Snapshot, Key,
+                                                      #{default => #{}}),
+                        NewVal = CurVal#{dek_drop_datetime => Time},
+                        {commit, [{set, Key, NewVal}]};
+                    false ->
+                        menelaus_util:web_exception(
+                          404, "Requested resource not found.\r\n")
+                end
+            end)
+      end, Req).
+
+handle_drop_keys(TypeName, Req) ->
+    handle_set_drop_time(
+      fun (Time) ->
+          TypeKey =
+              case TypeName of
+                  "config" -> config_encryption
+                  %% assuming other types will be added soon
+              end,
+          chronicle_kv:transaction(
+            kv, [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
+            fun (Snapshot) ->
+                AllSettings = chronicle_compat:get(
+                                Snapshot,
+                                ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY,
+                                #{default => #{}}),
+                SubSettings = maps:get(TypeKey, AllSettings, #{}),
+                NewSubSetting = SubSettings#{dek_drop_datetime => {set, Time}},
+                NewSettings = AllSettings#{TypeKey => NewSubSetting},
+                {commit,
+                 [{set, ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY, NewSettings}]}
+            end)
+      end, Req).
+
+handle_set_drop_time(SetTimeFun, Req) ->
+    validator:handle(
+      fun (ParsedList) ->
+          Time = case proplists:get_value(datetime, ParsedList) of
+                     undefined -> calendar:universal_time();
+                     DT -> DT
+                 end,
+          SetTimeFun(Time),
+          Reply = {[{dropKeysDate, iso8601:format(Time)}]},
+          menelaus_util:reply_json(Req, Reply)
+      end, Req, form, [validator:iso_8601_parsed(datetime, _),
+                       validator:unsupported(_)]).
 
 validate_all_settings_txn([], _Snapshot) -> ok;
 validate_all_settings_txn([{Usage, Cfg} | Tail], Snapshot) ->
@@ -114,15 +181,18 @@ defaults() ->
     #{config_encryption => #{encryption => encryption_service,
                              secret_id => ?SECRET_ID_NOT_SET,
                              dek_lifetime_in_sec => 365*60*60*24,
-                             dek_rotation_interval_in_sec => 30*60*60*24},
+                             dek_rotation_interval_in_sec => 30*60*60*24,
+                             dek_drop_datetime => {not_set, ""}},
       log_encryption => #{encryption => disabled,
                           secret_id => ?SECRET_ID_NOT_SET,
                           dek_lifetime_in_sec => 365*60*60*24,
-                          dek_rotation_interval_in_sec => 30*60*60*24},
+                          dek_rotation_interval_in_sec => 30*60*60*24,
+                          dek_drop_datetime => {not_set, ""}},
       audit_encryption => #{encryption => disabled,
                             secret_id => ?SECRET_ID_NOT_SET,
                             dek_lifetime_in_sec => 365*60*60*24,
-                            dek_rotation_interval_in_sec => 30*60*60*24}}.
+                            dek_rotation_interval_in_sec => 30*60*60*24,
+                            dek_drop_datetime => {not_set, ""}}}.
 
 validate_no_unencrypted_secrets(config_encryption,
                                 #{encryption := disabled,
@@ -163,3 +233,16 @@ validate_sec_settings(Name, #{encryption := secret,
         {error, not_found} -> {error, "Secret not found"};
         {error, not_allowed} -> {error, "Secret not allowed"}
     end.
+
+apply_auto_fields(Snapshot, NewSettings) ->
+    CurSettings = get_settings(Snapshot),
+    IsEnabled = fun (S) -> maps:get(encryption, S) == disabled end,
+    maps:fold(
+      fun (T, V1, Acc) ->
+          #{T := V2} = Acc,
+          case IsEnabled(V1) /= IsEnabled(V2) of
+              true -> Acc#{T => V2#{encryption_last_toggle_datetime =>
+                                        calendar:universal_time()}};
+              false -> Acc
+          end
+      end, NewSettings, CurSettings).

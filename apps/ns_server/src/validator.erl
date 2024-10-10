@@ -46,6 +46,7 @@
          email_address/2,
          time_duration/2,
          iso_8601_utc/3,
+         iso_8601_parsed/2,
          v4uuid/2,
          has_params/1,
          unsupported/1,
@@ -618,6 +619,16 @@ iso_8601_utc(Name, Options, State) ->
                         {error, "The value must be a valid ISO 8601 UTC"}
                 end
              end, Name, State).
+
+iso_8601_parsed(Name, State) ->
+    validator:validate(
+      fun (DT) ->
+          try
+              {value, iso8601:parse(DT)}
+          catch
+              _:_ -> {error, "The value must be a valid ISO 8601"}
+          end
+      end, Name, State).
 
 v4uuid(Name, State) ->
     validate(fun (Value) ->

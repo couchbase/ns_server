@@ -116,6 +116,6 @@ class MnSecuritySecretsService {
   }
 
   postDropAtRestKeys(type) {
-    return () => this.http.post('/controller/dropEncryptionAtRestKeys/' + encodeURIComponent(type));
+    return () => this.http.post('/controller/dropEncryptionAtRestDeks/' + encodeURIComponent(type));
   }
 }

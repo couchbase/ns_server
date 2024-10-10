@@ -149,6 +149,9 @@ type_spec({string_list, Separator}) ->
 type_spec(empty_str) ->
     #{validators => [string, validate_empty_string(_, _)],
       formatter => string};
+type_spec(datetime_iso8601) ->
+    #{validators => [validator:iso_8601_parsed(_, _)],
+      formatter => fun (DT) -> {value, misc:utc_to_iso8601(DT, local)} end};
 type_spec({optional, Type}) ->
     OrType = {'or', [{not_set, empty_str}, {set, Type}]},
     #{validators => [OrType], formatter => OrType};

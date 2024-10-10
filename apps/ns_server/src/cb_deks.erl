@@ -249,6 +249,7 @@ dek_chronicle_keys_filter(?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY) ->
 dek_chronicle_keys_filter(Key) ->
     case ns_bucket:sub_key_match(Key) of
         {true, Bucket, props} -> [{bucketDek, Bucket}];
+        {true, Bucket, encr_at_rest} -> [{bucketDek, Bucket}];
         {true, _Bucket, _} -> false;
         false -> false
     end.

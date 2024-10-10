@@ -1298,6 +1298,7 @@ delete_bucket(BucketName) ->
                            KeysToDelete =
                                [collections:key(BucketName),
                                 last_balanced_vbmap_key(BucketName),
+                                sub_key(BucketName, encr_at_rest),
                                 uuid_key(BucketName), PropsKey |
                                 [collections:last_seen_ids_key(N, BucketName) ||
                                     N <- NodesWanted]],
@@ -1751,6 +1752,22 @@ update_bucket_props_with_predicate(
               cleanup_bucket_props(NewProps1)
       end, Predicate, SubKeys, Opts).
 
+set_auto_fields(CurBucketConfig, UpdatedBucketConfig) ->
+    IsEnabled = fun (Id) -> Id /= ?SECRET_ID_NOT_SET end,
+    CurEncr = proplists:get_value(encryption_secret_id, CurBucketConfig,
+                                  ?SECRET_ID_NOT_SET),
+    NewEncr = proplists:get_value(encryption_secret_id, UpdatedBucketConfig,
+                                  ?SECRET_ID_NOT_SET),
+    case IsEnabled(CurEncr) /= IsEnabled(NewEncr) of
+        true ->
+            ToggleKey = encryption_last_toggle_datetime,
+            ToggleTime = calendar:universal_time(),
+            [{ToggleKey, ToggleTime} |
+             proplists:delete(ToggleKey, UpdatedBucketConfig)];
+        false ->
+            UpdatedBucketConfig
+    end.
+
 set_property(Bucket, Key, Value, Default, Fun) ->
     ok = update_bucket_config(
            Bucket,
@@ -1898,7 +1915,7 @@ get_commits_from_snapshot(BucketsUpdates, Snapshot) ->
               case get_bucket(BucketName, Snapshot) of
                   {ok, CurrentConfig} ->
                       {set, sub_key(BucketName, props),
-                       UpdtFun(CurrentConfig)};
+                       set_auto_fields(CurrentConfig, UpdtFun(CurrentConfig))};
                   not_present ->
                       {abort, not_found}
               end
