@@ -264,7 +264,10 @@ replace_secret_internal(Id, NewProps, IsSecretWritableFun) ->
            end),
     case Res of
         {ok, _, ResProps} ->
+            %% In order to make sure all keys are reencrypted by the time when
+            %% the call is finished
             sync_with_all_node_monitors(),
+            maybe_reencrypt_secrets(),
             {ok, ResProps};
         {error, _} = Error -> Error
     end.
@@ -387,6 +390,9 @@ is_allowed_usage_for_secret(SecretId, Usage, Snapshot) ->
 is_encrypted_by_secret_manager(#{type := ?GENERATED_KEY_TYPE,
                                  data := #{encrypt_by := nodeSecretManager}}) ->
     true;
+is_encrypted_by_secret_manager(#{type := ?GENERATED_KEY_TYPE,
+                                 data := #{keys := Keys}}) ->
+    lists:any(fun (#{encrypted_by := EB}) -> EB == undefined end, Keys);
 is_encrypted_by_secret_manager(#{}) ->
     false.
 
