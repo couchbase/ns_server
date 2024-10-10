@@ -1362,16 +1362,29 @@ can_delete_secret(#{id := Id}, Snapshot) ->
 
 -spec get_secrets_used_by_secret_id(secret_id(), chronicle_snapshot()) ->
                                                                 [secret_id()].
-get_secrets_used_by_secret_id(Id, Snapshot) ->
+get_secrets_used_by_secret_id(SecretId, Snapshot) ->
     lists:filtermap(
-      fun (#{type := ?GENERATED_KEY_TYPE,
-             id := SecretId,
-             data := #{encrypt_by := clusterSecret,
-                       encrypt_secret_id := Id2}}) when Id2 == Id ->
-                {true, SecretId};
-           (#{}) ->
-                false
+      fun (#{id := Id} = Props) ->
+          case lists:member(SecretId, get_secrets_that_encrypt_props(Props)) of
+              true -> {true, Id};
+              false -> false
+          end
       end, get_all(Snapshot)).
+
+-spec get_secrets_that_encrypt_props(secret_props()) -> [secret_id()].
+get_secrets_that_encrypt_props(#{type := ?GENERATED_KEY_TYPE,
+                                 data := #{keys := Keys} = Data}) ->
+    L = case Data of
+            #{encrypt_by := clusterSecret, encrypt_secret_id := Id} -> [Id];
+            #{} -> []
+        end ++
+        lists:filtermap(
+          fun (#{encrypted_by := {Id, _}}) -> {true, Id};
+              (#{encrypted_by := undefined}) -> false
+          end, Keys),
+    lists:uniq(L);
+get_secrets_that_encrypt_props(#{type := ?AWSKMS_KEY_TYPE}) ->
+    [].
 
 -spec get_dek_kinds_used_by_secret_id(secret_id(), chronicle_snapshot()) ->
                                                         [cb_deks:dek_kind()].
