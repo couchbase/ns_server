@@ -14,7 +14,13 @@
 -define(ENCRYPTED_FILE_HEADER_LEN, 64).
 -define(IV_LEN, 12).
 -define(TAG_LEN, 16).
--define(ENCRYPTED_FILE_MAGIC, 0, "Couchbase Encrypted File", 0).
+-define(ENCRYPTED_FILE_MAGIC, 0, "Couchbase Encrypted", 0).
+-define(NO_COMPRESSION, 0).
+-define(SNAPPY_COMPRESSION, 1).
+-define(ZLIB_COMPRESSION, 2).
+-define(GZIP_COMPRESSION, 3).
+-define(ZSTD_COMPRESSION, 4).
+-define(BZIP2_COMPRESSION, 5).
 
 -export([%% Encryption/decryption functions:
          encrypt/3,
@@ -116,7 +122,8 @@ file_encrypt_init(Filename,
             #{id := Id} ->
                 Len = size(Id),
                 Vsn = 0,
-                H = <<?ENCRYPTED_FILE_MAGIC, Vsn, Len, Id/binary>>,
+                H = <<?ENCRYPTED_FILE_MAGIC, Vsn, ?NO_COMPRESSION, 0, 0, 0, 0,
+                      Len, Id/binary>>,
                 ?ENCRYPTED_FILE_HEADER_LEN = size(H),
                 H
         end,
@@ -442,7 +449,8 @@ decrypt_all_chunks(State, Data, Acc) ->
             {error, invalid_file_encryption}
     end.
 
-parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, KeyLen, HeaderTail:36/binary,
+parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, ?NO_COMPRESSION, _, _, _, _,
+               KeyLen, HeaderTail:36/binary,
              Rest/binary>>) ->
     case KeyLen =< 36 of
         true ->
