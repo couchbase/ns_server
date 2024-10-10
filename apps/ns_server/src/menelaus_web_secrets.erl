@@ -501,6 +501,8 @@ format_error({decrypt_key_error, Msg}) when is_list(Msg) ->
 format_error({used_by, UsedByList}) ->
     Formatted = format_secrets_used_by_list(UsedByList),
     lists:flatten(io_lib:format("Can't be removed because ~s", [Formatted]));
+format_error({cycle, _}) ->
+    "Circular dependency between secrets";
 format_error(Reason) ->
     lists:flatten(io_lib:format("~p", [Reason])).
 

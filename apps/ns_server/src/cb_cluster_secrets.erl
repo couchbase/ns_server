@@ -137,6 +137,8 @@
 
 -type bad_encrypt_id() :: {encrypt_id, not_allowed | not_found}.
 -type bad_usage_change() :: {usage, in_use}.
+-type inconsistent_graph() :: {cycle, [secret_id()]} |
+                              {unknown_id, secret_id()}.
 
 -type secret_in_use() :: {used_by, #{by_config := [cb_deks:dek_kind()],
                                      by_secret := [secret_id()],
@@ -197,7 +199,8 @@ add_new_secret(Props) ->
                                             {ok, secret_props()} |
                                             {error, not_supported |
                                                     bad_encrypt_id() |
-                                                    bad_usage_change()}.
+                                                    bad_usage_change() |
+                                                    inconsistent_graph()}.
 add_new_secret_internal(Props) ->
     CurrentDateTime = erlang:universaltime(),
     PropsWTime = Props#{creation_time => CurrentDateTime},
@@ -212,6 +215,7 @@ add_new_secret_internal(Props) ->
                    {ok, FinalProps} ?= prepare_new_secret(PropsWId),
                    NewList = [FinalProps | CurList],
                    ok ?= validate_secret_in_txn(FinalProps, #{}, Snapshot),
+                   ok ?= validate_secrets_consistency(NewList),
                    {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewList},
                              {set, ?CHRONICLE_NEXT_ID_KEY, NextId + 1}],
                     FinalProps}
@@ -238,7 +242,7 @@ replace_secret(Id, NewProps, IsSecretWritableFun) ->
                               fun((secret_props()) -> boolean())) ->
           {ok, secret_props()} |
           {error, not_found | bad_encrypt_id() | bad_usage_change() |
-                  forbidden}.
+                  forbidden | inconsistent_graph()}.
 replace_secret_internal(Id, NewProps, IsSecretWritableFun) ->
     %% Make sure we have most recent information about which secrets are in use
     %% This is needed for verification of 'usage' modification
@@ -254,6 +258,7 @@ replace_secret_internal(Id, NewProps, IsSecretWritableFun) ->
                   CurList = get_all(Snapshot),
                   NewList = replace_secret_in_list(Props, CurList),
                   ok ?= validate_secret_in_txn(Props, OldProps, Snapshot),
+                  ok ?= validate_secrets_consistency(NewList),
                   {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewList}], Props}
               else
                   false ->
@@ -279,7 +284,8 @@ delete_secret(Id, IsSecretWritableFun) ->
                        [Id, IsSecretWritableFun]}).
 
 -spec delete_secret_internal(secret_id(), fun((secret_props()) -> boolean())) ->
-          ok | {error, not_found | secret_in_use() | forbidden}.
+          ok | {error, not_found | secret_in_use() | forbidden |
+                       inconsistent_graph()}.
 delete_secret_internal(Id, IsSecretWritableFun) ->
     %% Make sure we have most recent information about which secrets are in use
     maybe_reset_deks_counters(),
@@ -295,6 +301,7 @@ delete_secret_internal(Id, IsSecretWritableFun) ->
                                   fun (#{id := Id2}) -> Id2 /= Id end,
                                   CurSecrets),
                    true = (length(NewSecrets) + 1 == length(CurSecrets)),
+                   ok ?= validate_secrets_consistency(NewSecrets),
                    {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewSecrets}]}
                else
                    false -> {abort, {error, forbidden}};
@@ -664,7 +671,8 @@ rotate_secret_by_id(Id) ->
     end.
 
 -spec rotate_secret(secret_props()) -> ok | {error, not_found |
-                                                    bad_encrypt_id()}.
+                                                    bad_encrypt_id() |
+                                                    inconsistent_graph()}.
 rotate_secret(#{id := Id, type := ?GENERATED_KEY_TYPE} = SecretProps) ->
     maybe
         {ok, NewKey} ?= generate_key(erlang:universaltime(), SecretProps),
@@ -698,10 +706,11 @@ rotate_secret(#{id := Id, type := ?AWSKMS_KEY_TYPE}) ->
                                 replace_secret_in_list(_,
                                                        get_all(Snapshot))]),
                    true = is_list(Updated),
+                   ok ?= validate_secrets_consistency(Updated),
                    {commit, [{set, ?CHRONICLE_SECRETS_KEY, Updated}]}
                else
-                   {error, not_found} ->
-                       {abort, {error, not_found}}
+                   {error, _} = Error ->
+                       {abort, Error}
                end
            end),
     case RV of
@@ -794,7 +803,8 @@ replace_secret_in_list(NewProps, List) ->
     ReplaceFun(List, []).
 
 -spec add_active_key(secret_id(), kek_props(), boolean()) ->
-                        ok | {error, not_found | encrypt_secret_has_changed}.
+                        ok | {error, not_found | encrypt_secret_has_changed |
+                                     inconsistent_graph()}.
 add_active_key(Id, #{id := KekId, encrypted_by := EncryptedBy} = Kek,
                true = _UpdateRotationTime) ->
     %% Id of the secret that encrypted that new kek
@@ -831,10 +841,11 @@ add_active_key(Id, #{id := KekId, encrypted_by := EncryptedBy} = Kek,
                    NewList = replace_secret_in_list(Updated,
                                                     get_all(Snapshot)),
                    true = is_list(NewList),
+                   ok ?= validate_secrets_consistency(NewList),
                    {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewList}]}
                else
-                   {error, not_found} ->
-                       {abort, {error, not_found}};
+                   {error, _} = Error ->
+                       {abort, Error};
                    {expected, _} ->
                        {abort, {error, encrypt_secret_has_changed}}
                end
@@ -1435,6 +1446,9 @@ maybe_reencrypt_secrets() ->
                    [] -> {abort, no_change};
                    [_ | _] ->
                        NewSecretsList = Changed ++ Unchanged,
+                       %% In theory reencryption should never lead to any
+                       %% cycles in graph, but we still should check it
+                       ok = validate_secrets_consistency(NewSecretsList),
                        {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewSecretsList}]}
                end
            end),
@@ -1984,6 +1998,7 @@ update_secrets(Fun) ->
                case ChangedIds of
                    [] -> {abort, no_change};
                    _ ->
+                       ok = validate_secrets_consistency(NewList),
                        {commit,
                         [{set, ?CHRONICLE_SECRETS_KEY, NewList}],
                         ChangedIds}
@@ -2350,6 +2365,36 @@ validate_name_uniqueness(#{id := Id, name := Name}, Snapshot) ->
     case is_name_unique(Id, Name, Snapshot) of
         true -> ok;
         false -> {error, name_not_unique}
+    end.
+
+-spec validate_secrets_consistency([secret_props()]) ->
+          ok | {error, inconsistent_graph()}.
+validate_secrets_consistency(Secrets) ->
+    %% Make sure secrets graph has no cycles and all ids that are
+    %% mentioned in props are actually present
+    G = digraph:new([acyclic]),
+    try
+        lists:foreach(fun (#{id := Id}) -> digraph:add_vertex(G, Id) end,
+                      Secrets),
+        Res = lists:foldl(
+                fun (#{}, {error, _} = Acc) -> Acc;
+                    (#{id := Id} = P, ok) ->
+                      lists:foldl(
+                        fun (_Id2, {error, _} = Acc2) -> Acc2;
+                            (Id2, ok) ->
+                            case digraph:add_edge(G, Id2, Id) of
+                                ['$e' | _] -> ok;
+                                {error, _} = E -> E
+                            end
+                        end, ok, get_secrets_that_encrypt_props(P))
+                end, ok, Secrets),
+        case Res of
+            ok -> ok;
+            {error, {bad_edge, Ids}} -> {error, {cycle, Ids}};
+            {error, {bad_vertex, Id}} -> {error, {unknown_id, Id}}
+        end
+    after
+        digraph:delete(G)
     end.
 
 -spec sanitize_secret(secret_props()) -> term().
