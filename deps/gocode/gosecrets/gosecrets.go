@@ -541,6 +541,7 @@ func (s *encryptionService) cmdClearBackupKey(ref []byte) {
 		storedKeyConfigs:           s.config.StoredKeyConfigs,
 		encryptionServiceKey:       s.encryptionKeys.getSecret().key,
 		backupEncryptionServiceKey: s.encryptionKeys.getSecret().backupKey,
+		keysTouched:                map[string]bool{},
 	}
 	err := reencryptStoredKeys(ctx)
 	if err != nil {
@@ -686,6 +687,7 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 		storedKeyConfigs:           s.config.StoredKeyConfigs,
 		encryptionServiceKey:       s.encryptionKeys.getSecret().key,
 		backupEncryptionServiceKey: s.encryptionKeys.getSecret().backupKey,
+		keysTouched:                map[string]bool{},
 	}
 
 	if !keyInfo.needRewrite(keySettings) {
@@ -695,7 +697,7 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 		return
 	}
 
-	err = keyInfo.encryptMe(ctx)
+	err = encryptKey(keyInfo, ctx)
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -744,8 +746,9 @@ func replyReadKey(s *encryptionService, keyIface storedKeyIface) {
 		storedKeyConfigs:           s.config.StoredKeyConfigs,
 		encryptionServiceKey:       s.encryptionKeys.getSecret().key,
 		backupEncryptionServiceKey: s.encryptionKeys.getSecret().backupKey,
+		keysTouched:                map[string]bool{},
 	}
-	err := keyIface.decryptMe(ctx)
+	err := decryptKey(keyIface, ctx)
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -789,6 +792,7 @@ func (s *encryptionService) cmdEncryptWithKey(data []byte) {
 		storedKeyConfigs:           s.config.StoredKeyConfigs,
 		encryptionServiceKey:       s.encryptionKeys.getSecret().key,
 		backupEncryptionServiceKey: s.encryptionKeys.getSecret().backupKey,
+		keysTouched:                map[string]bool{},
 	}
 	encryptedData, err := encryptWithKey(keyKind, keyName, toEncrypt, ctx)
 	if err != nil {
@@ -809,6 +813,7 @@ func (s *encryptionService) cmdDecryptWithKey(data []byte) {
 		storedKeyConfigs:           s.config.StoredKeyConfigs,
 		encryptionServiceKey:       s.encryptionKeys.getSecret().key,
 		backupEncryptionServiceKey: s.encryptionKeys.getSecret().backupKey,
+		keysTouched:                map[string]bool{},
 	}
 	decryptedData, err := decryptWithKey(keyKind, keyName, toDecrypt, ctx)
 	if err != nil {

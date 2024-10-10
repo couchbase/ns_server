@@ -95,6 +95,7 @@ type storedKeysCtx struct {
 	storedKeyConfigs           []storedKeyConfig
 	encryptionServiceKey       []byte
 	backupEncryptionServiceKey []byte
+	keysTouched                map[string]bool
 }
 
 type readKeyReply struct {
@@ -109,6 +110,24 @@ type readKeyAesKeyResponse struct {
 }
 
 // Stored keys managenement functions
+
+func encryptKey(keyIface storedKeyIface, ctx *storedKeysCtx) error {
+	// Mark it as in use, to make sure we don't try to use it for encryption
+	// or decryption while we are encrypting or decrypting this key
+	name := keyIface.name()
+	ctx.keysTouched[name] = true
+	defer delete(ctx.keysTouched, name)
+	return keyIface.encryptMe(ctx)
+}
+
+func decryptKey(keyIface storedKeyIface, ctx *storedKeysCtx) error {
+	// Mark it as in use, to make sure we don't try to use it for encryption
+	// or decryption while we are encrypting or decrypting this key
+	name := keyIface.name()
+	ctx.keysTouched[name] = true
+	defer delete(ctx.keysTouched, name)
+	return keyIface.decryptMe(ctx)
+}
 
 func writeKeyToDisk(keyIface storedKeyIface, keySettings *storedKeyConfig) error {
 	keytype, data, err := keyIface.marshal()
@@ -135,6 +154,9 @@ func writeKeyToDisk(keyIface storedKeyIface, keySettings *storedKeyConfig) error
 }
 
 func encryptWithKey(keyKind, keyName string, data []byte, ctx *storedKeysCtx) ([]byte, error) {
+	if _, ok := ctx.keysTouched[keyName]; ok {
+		return nil, errors.New("Key encryption cycle")
+	}
 	keySettings, err := getStoredKeyConfig(keyKind, ctx.storedKeyConfigs)
 	if err != nil {
 		return nil, err
@@ -143,7 +165,7 @@ func encryptWithKey(keyKind, keyName string, data []byte, ctx *storedKeysCtx) ([
 	if err != nil {
 		return nil, err
 	}
-	err = keyIface.decryptMe(ctx)
+	err = decryptKey(keyIface, ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -151,6 +173,10 @@ func encryptWithKey(keyKind, keyName string, data []byte, ctx *storedKeysCtx) ([
 }
 
 func decryptWithKey(keyKind, keyName string, data []byte, ctx *storedKeysCtx) ([]byte, error) {
+	if _, ok := ctx.keysTouched[keyName]; ok {
+		return nil, errors.New("Key encryption loop")
+	}
+
 	keySettings, err := getStoredKeyConfig(keyKind, ctx.storedKeyConfigs)
 	if err != nil {
 		return nil, err
@@ -159,7 +185,7 @@ func decryptWithKey(keyKind, keyName string, data []byte, ctx *storedKeysCtx) ([
 	if err != nil {
 		return nil, err
 	}
-	err = keyIface.decryptMe(ctx)
+	err = decryptKey(keyIface, ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -246,13 +272,13 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 					log_dbg("Skipping \"%s\", because it is not using secret management service", keyName)
 					continue
 				}
-				err = keyIface.decryptMe(ctx)
+				err = decryptKey(keyIface, ctx)
 				if err != nil {
 					log_dbg(err.Error())
 					errorsCounter++
 					continue
 				}
-				err = keyIface.encryptMe(ctx)
+				err = encryptKey(keyIface, ctx)
 				if err != nil {
 					log_dbg(err.Error())
 					errorsCounter++
