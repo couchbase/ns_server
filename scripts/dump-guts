@@ -403,6 +403,10 @@ main_with_static_config(Terms) ->
             case (catch read_config(DataDir)) of
                 {ok, NSConfig} ->
                     main_after_ns_config(Terms, NSConfig);
+                {error, {dump_keys_returned, 2, _}} ->
+                    %% Exit code 2 means incorrect master password
+                    complain("Incorrect master password", []),
+                    erlang:halt(2);
                 Err ->
                     complain("Failed to read ns_config: ~p~n", [Err]),
                     erlang:halt(1)

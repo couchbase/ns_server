@@ -38,6 +38,7 @@ from enum import Enum, unique
 from io import BytesIO, StringIO
 from abc import ABC, abstractmethod
 import gzip
+import getpass
 
 
 from installed_script_helpers import basedir, get_initargs_variants, find_binary
@@ -1392,8 +1393,8 @@ def make_redaction_task():
     return LiteralTask("Log Redaction", "RedactLevel:none")
 
 
-def make_chronicle_dump_task(name, args,
-                             initargs_path, log_file=DEFAULT_LOG):
+def make_chronicle_dump_task(name, args, initargs_path, master_password=None,
+                             log_file=DEFAULT_LOG):
     escript = exec_name("escript")
     escript_wrapper = find_script("escript-wrapper")
     chronicle_dump_path = find_script("chronicle_dump")
@@ -1401,16 +1402,21 @@ def make_chronicle_dump_task(name, args,
     if escript_wrapper is None or chronicle_dump_path is None:
         return []
 
+    kwargs = {}
+    if master_password is not None:
+        kwargs={'addenv': [("CB_MASTER_PASSWORD", master_password)]}
+
     return AllOsTask(name,
                      [escript,
                       escript_wrapper,
                       "--initargs-path", initargs_path, "--",
                       chronicle_dump_path] + args,
                      timeout=600,
-                     log_file=log_file)
+                     log_file=log_file,
+                     **kwargs)
 
 
-def make_chronicle_snapshots_task(guts, initargs_path):
+def make_chronicle_snapshots_task(guts, initargs_path, master_password):
     chronicle_snapshot_dir = read_guts(guts, "chronicle_snapshot_dir")
     if chronicle_snapshot_dir is None:
         return []
@@ -1424,10 +1430,10 @@ def make_chronicle_snapshots_task(guts, initargs_path):
         ["snapshot",
          "--sanitize", "chronicle_kv_log:sanitize_snapshot",
          "--decrypt", "chronicle_local:external_decrypt"] + snapshots,
-        initargs_path)
+        initargs_path, master_password=master_password)
 
 
-def make_chronicle_logs_task(guts, initargs_path):
+def make_chronicle_logs_task(guts, initargs_path, master_password):
     chronicle_dir = read_guts(guts, "chronicle_dir")
     if not chronicle_dir:
         return []
@@ -1449,7 +1455,7 @@ def make_chronicle_logs_task(guts, initargs_path):
         "Chronicle logs",
         ["log", "--sanitize", "chronicle_kv_log:sanitize_log",
          "--decrypt", "chronicle_local:external_decrypt"] + logs,
-        initargs_path,
+        initargs_path, master_password=master_password,
         log_file="chronicle_logs.log")
 
 
@@ -1750,7 +1756,7 @@ def correct_split(string, splitchar):
 
 
 def make_product_task(guts, initargs_path, local_token_creds_fun,
-                      memcached_pass_fun, options):
+                      memcached_pass_fun, master_password, options):
     if read_guts(guts, "tls") == "true":
         tls = True
     else:
@@ -2235,8 +2241,10 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
 
     _tasks = flatten([getent_tasks,
                       lookup_tasks,
-                      make_chronicle_snapshots_task(guts, initargs_path),
-                      make_chronicle_logs_task(guts, initargs_path),
+                      make_chronicle_snapshots_task(guts, initargs_path,
+                                                    master_password),
+                      make_chronicle_logs_task(guts, initargs_path,
+                                               master_password),
                       query_tasks,
                       index_tasks,
                       projector_tasks,
@@ -2260,7 +2268,8 @@ def find_script(name):
     return None
 
 
-def get_guts_common(initargs_path, script_path, args, timeout=None):
+def get_guts_common(initargs_path, script_path, args, master_password=None,
+                    timeout=None):
     # Check if initargs exists and is read accessible.
     if not os.path.exists(initargs_path):
         log(f"initargs file '{initargs_path}' does not exist")
@@ -2271,11 +2280,24 @@ def get_guts_common(initargs_path, script_path, args, timeout=None):
         sys.exit(1)
 
     print(f"Running {script_path} to get guts for {initargs_path}")
-    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    env = os.environ.copy()
+    # Ideally we should not use env here, and pass it via stdin instead,
+    # but since the scripts that are being called here don't support it yet,
+    # we have to use env
+    if master_password is not None:
+        env['CB_MASTER_PASSWORD'] = master_password
+    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         env=env)
     output, err = p.communicate()
     p.wait(timeout)
     rc = p.returncode
     if rc != 0:
+
+        if rc == 2:
+            log("Incorrect master password")
+            sys.exit(2)
+
         log(f"Error occurred running {script_path}:\n" \
             f"All args: {args}\n" \
             f"Error: {err.decode(LATIN1)}")
@@ -2286,7 +2308,7 @@ def get_guts_common(initargs_path, script_path, args, timeout=None):
     return tokens
 
 
-def get_server_chronicle_guts(guts, initargs_path):
+def get_server_chronicle_guts(guts, initargs_path, master_password):
     chronicle_snapshot_dir = read_guts(guts, "chronicle_snapshot_dir")
     if chronicle_snapshot_dir is None:
         log(f"Failed to find 'chronicle_snapshot_dir' in server guts")
@@ -2315,7 +2337,8 @@ def get_server_chronicle_guts(guts, initargs_path):
             "--", chronicle_dump_path, "dumpguts",
             "--decrypt", "chronicle_local:external_decrypt", kv_snapshot]
     d = {}
-    tokens = get_guts_common(initargs_path, chronicle_dump_path, args, 120)
+    tokens = get_guts_common(initargs_path, chronicle_dump_path, args,
+                             master_password=master_password, timeout=120)
     if len(tokens) > 1:
         # Remove trailing '\n' added by chronicle_dump
         del tokens[-1]
@@ -2324,7 +2347,7 @@ def get_server_chronicle_guts(guts, initargs_path):
     return d
 
 
-def get_server_guts(initargs_path):
+def get_server_guts(initargs_path, master_password):
     dump_guts_path = find_script("dump-guts")
 
     if dump_guts_path is None:
@@ -2342,7 +2365,8 @@ def get_server_guts(initargs_path):
     if extra_args:
         args = args + extra_args.split(";")
     d = {}
-    tokens = get_guts_common(initargs_path, dump_guts_path, args)
+    tokens = get_guts_common(initargs_path, dump_guts_path, args,
+                             master_password=master_password)
     if len(tokens) > 1:
         for i in range(0, len(tokens), 2):
             d[tokens[i]] = tokens[i + 1]
@@ -2374,7 +2398,7 @@ def dump_utilities(*args, **kwargs):
         def __getattr__(self, name):
             return None
 
-    tasks = make_os_tasks() + make_product_task({}, "", lambda: "@:", lambda: "", FakeOptions())
+    tasks = make_os_tasks() + make_product_task({}, "", lambda: "@:", lambda: "", None, FakeOptions())
 
     for task in tasks:
         utility = guess_utility(task.command)
@@ -2694,11 +2718,36 @@ def main():
         help="set the temp dir used while processing collected data. Overrides the TMPDIR env variable if set")
     parser.add_option("--upload-proxy", dest="upload_proxy", default="",
                       help="specifies proxy for upload")
+
+    parser.add_option(
+        "--stdin-password",
+        dest="stdin_password",
+        action="store_true",
+        default=False,
+        help="Read master password from stdin, format: <password>\\n")
+
+    parser.add_option(
+        '--password',
+        dest="password",
+        action="store_true",
+        default=False,
+        help='Prompt the user for a master password without echoing')
+
     options, args = parser.parse_args()
 
     if len(args) != 1:
         parser.error(
             "incorrect number of arguments. Expecting filename to collect diagnostics into")
+
+    if options.stdin_password and options.password:
+        parser.error("options --password and --stdin-password are " \
+                     "mutually exclusive")
+
+    master_password = None
+    if options.stdin_password:
+        master_password = input()
+    elif options.password:
+        master_password = getpass.getpass()
 
     if options.watch_stdin:
         setup_stdin_watcher()
@@ -2775,7 +2824,7 @@ def main():
         # Collect the initargs files s/t we can reverse engineer dump-guts
         # failures
         all_tasks.append(CollectFileTask("Initargs file", initargs_path))
-        d = get_server_guts(initargs_path)
+        d = get_server_guts(initargs_path, master_password)
         if len(d) > 0:
             guts = d
             guts_initargs_path = os.path.abspath(initargs_path)
@@ -2824,7 +2873,8 @@ def main():
     populate_guts_with_additional_info(guts)
 
     # Obtaining chronicle guts needs ns_config guts
-    chronicle_guts = get_server_chronicle_guts(guts, initargs_path)
+    chronicle_guts = get_server_chronicle_guts(guts, initargs_path,
+                                               master_password)
 
     # As nothing currently requires chronicle guts these serve as examples
     # of usage. Keep these in place to detect any regression but only print
@@ -2869,7 +2919,8 @@ def main():
     all_tasks.append(diag_header_task)
     all_tasks.extend(make_product_task(guts, guts_initargs_path,
                                        local_token_creds_fun,
-                                       memcached_password_fun, options))
+                                       memcached_password_fun,
+                                       master_password, options))
 
     for f in glob.glob(os.path.join(guts.get("path_config_datadir"),
                                     "config", "certs", "*")):
