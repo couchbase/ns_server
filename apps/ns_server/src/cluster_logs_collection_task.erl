@@ -290,9 +290,21 @@ start_collection_per_node(TimestampS, Parent, Options) ->
             RegExp -> ["--task-regexp=" ++ RegExp]
         end,
 
+    HiddenMasterPass = rpc:call(ns_server:get_babysitter_node(),
+                                cb_gosecrets_runner,
+                                extract_hidden_pass,
+                                [], 30000),
+
+    PasswordInput = case ?UNHIDE(HiddenMasterPass) of
+                        undefined -> undefined;
+                        "" -> undefined;
+                        P -> ?HIDE(P ++ "\n")
+                    end,
+    IsMasterPassSet = (PasswordInput /= undefined),
+
     Args0 = ["--watch-stdin"] ++ MaybeLogRedaction ++
         MaybeTmpDir ++ ["--initargs=" ++ InitargsFilename, Filename] ++
-        MaybeTaskRegexp,
+        MaybeTaskRegexp ++ ["--stdin-password" || IsMasterPassSet],
 
     ExtraArgs =
         ns_config:search_node_with_default(cbcollect_info_extra_args, []),
@@ -306,7 +318,8 @@ start_collection_per_node(TimestampS, Parent, Options) ->
     {Status, Output} =
         misc:run_external_tool(
           path_config:component_path(bin, "cbcollect_info"),
-          Args, Env, [graceful_shutdown]),
+          Args, Env, [graceful_shutdown] ++
+                     [{hidden_input, PasswordInput} || IsMasterPassSet]),
     Duration = erlang:monotonic_time(second) - TStart,
     case Status of
         0 ->

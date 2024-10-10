@@ -1979,6 +1979,10 @@ run_external_tool(Path, Args, Env, Opts) ->
                             {graceful_shutdown, GracefulShutdown}],
               {ok, Port} = goport:start_link(Path, GoportOpts),
               goport:deliver(Port),
+              case proplists:get_value(hidden_input, Opts) of
+                  undefined -> ok;
+                  Input -> goport:write(Port, ?UNHIDE(Input))
+              end,
               collect_external_tool_output(Port, [])
       end).
 
