@@ -323,12 +323,14 @@ rotate(Id) ->
 -spec rotate_internal(secret_id()) -> ok | {error, not_found |
                                                    bad_encrypt_id()}.
 rotate_internal(Id) ->
-    ?log_info("Rotating secret #~b", [Id]),
-    case get_secret(Id) of
-        {ok, SecretProps} ->
-            rotate_secret(SecretProps);
+    case rotate_secret_by_id(Id) of
+        ok ->
+            %% In order to make sure all keys are reencrypted by
+            %% the time when the call is finished
+            sync_with_all_node_monitors(),
+            maybe_reencrypt_secrets(),
+            ok;
         {error, Reason} ->
-            ?log_error("Secret #~p rotation failed: ~p", [Id, Reason]),
             {error, Reason}
     end.
 
@@ -579,7 +581,7 @@ handle_info({timer, rotate_keks}, #state{proc_type = ?MASTER_PROC} = State) ->
     lists:foreach(
       fun (Id) ->
           try
-              ok = rotate_internal(Id)
+              ok = rotate_secret_by_id(Id)
           catch
               C:E:ST ->
                   ?log_error("Secret #~p rotation crashed: ~p:~p~n~p",
@@ -649,13 +651,24 @@ terminate(_Reason, _State) ->
 %%% Internal functions
 %%%===================================================================
 
+-spec rotate_secret_by_id(secret_id()) -> ok | {error, not_found |
+                                                       bad_encrypt_id()}.
+rotate_secret_by_id(Id) ->
+    ?log_info("Rotating secret #~b", [Id]),
+    case get_secret(Id) of
+        {ok, SecretProps} ->
+            rotate_secret(SecretProps);
+        {error, Reason} ->
+            ?log_error("Secret #~p rotation failed: ~p", [Id, Reason]),
+            {error, Reason}
+    end.
+
 -spec rotate_secret(secret_props()) -> ok | {error, not_found |
                                                     bad_encrypt_id()}.
 rotate_secret(#{id := Id, type := ?GENERATED_KEY_TYPE} = SecretProps) ->
     maybe
         {ok, NewKey} ?= generate_key(erlang:universaltime(), SecretProps),
         ok ?= add_active_key(Id, NewKey, _UpdateRotationTime = true),
-        sync_with_all_node_monitors(),
         ok
     else
         {ok, #{}} ->
