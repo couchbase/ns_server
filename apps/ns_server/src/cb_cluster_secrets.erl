@@ -715,8 +715,9 @@ generate_key(CreationDateTime, #{data := SecretData}) ->
                      key => {sensitive, Key},
                      encrypted_by => undefined},
         case maybe_reencrypt_kek(KeyProps, EncryptedBy) of
-            no_change -> {ok, KeyProps};
-            NewKeyProps -> {ok, NewKeyProps}
+            {ok, no_change} -> {ok, KeyProps};
+            {ok, NewKeyProps} -> {ok, NewKeyProps};
+            {error, R} -> {error, R}
         end
     else
         {error, Reason} -> {error, Reason}
@@ -1438,8 +1439,8 @@ maybe_reencrypt_keks(Keys, #{data := SecretData}, KeksMap) ->
     RV = lists:mapfoldl(
            fun (Key, Acc) ->
                case maybe_reencrypt_kek(Key, NewEncryptedBy) of
-                   no_change -> {Key, Acc};
-                   NewKey -> {NewKey, changed}
+                   {ok, no_change} -> {Key, Acc};
+                   {ok, NewKey} -> {NewKey, changed}
                end
            end, no_change, Keys),
     case RV of
@@ -1448,38 +1449,45 @@ maybe_reencrypt_keks(Keys, #{data := SecretData}, KeksMap) ->
     end.
 
 -spec maybe_reencrypt_kek(kek_props(), undefined | {secret_id(), key_id()}) ->
-                                                        no_change | kek_props().
+          {ok, no_change | kek_props()} |
+          {error, {encrypt_key_error | decrypt_key_error, string()}}.
 %% Already encrypted with correct key
 maybe_reencrypt_kek(#{key := {encrypted_binary, _},
                       encrypted_by := {SecretId, KekId}},
                     {SecretId, KekId}) ->
-    no_change;
+    {ok, no_change};
 %% Encrypted with wrong key, should reencrypt
 maybe_reencrypt_kek(#{key := {encrypted_binary, Bin},
                       encrypted_by := {_SecretId, KekId}} = Key,
                     {NewSecretId, NewKekId}) ->
-    {ok, RawKey} = encryption_service:decrypt_key(Bin, KekId),
-    {ok, EncryptedKey} = encryption_service:encrypt_key(RawKey, NewKekId),
-    Key#{key => {encrypted_binary, EncryptedKey},
-         encrypted_by => {NewSecretId, NewKekId}};
+    maybe
+        {ok, RawKey} ?= encryption_service:decrypt_key(Bin, KekId),
+        {ok, EncryptedKey} ?= encryption_service:encrypt_key(RawKey, NewKekId),
+        {ok, Key#{key => {encrypted_binary, EncryptedKey},
+                  encrypted_by => {NewSecretId, NewKekId}}}
+    end;
 %% Encrypted, but we want it to be unencrypted (encrypted by node SM actually)
 maybe_reencrypt_kek(#{key := {encrypted_binary, Bin},
                       encrypted_by := {_SecretId, KekId}} = Key,
                     undefined) ->
-    {ok, RawKey} = encryption_service:decrypt_key(Bin, KekId),
-    Key#{key => {sensitive, RawKey}, encrypted_by => undefined};
+    maybe
+        {ok, RawKey} ?= encryption_service:decrypt_key(Bin, KekId),
+        {ok, Key#{key => {sensitive, RawKey}, encrypted_by => undefined}}
+    end;
 %% Not encrypted but should be
 maybe_reencrypt_kek(#{key := {sensitive, Bin},
                       encrypted_by := undefined} = Key,
                     {NewSecretId, NewKekId}) ->
-    {ok, EncryptedKey} = encryption_service:encrypt_key(Bin, NewKekId),
-    Key#{key => {encrypted_binary, EncryptedKey},
-         encrypted_by => {NewSecretId, NewKekId}};
+    maybe
+        {ok, EncryptedKey} ?= encryption_service:encrypt_key(Bin, NewKekId),
+        {ok, Key#{key => {encrypted_binary, EncryptedKey},
+                  encrypted_by => {NewSecretId, NewKekId}}}
+    end;
 %% Not encrypted, and that's right
 maybe_reencrypt_kek(#{key := {sensitive, _Bin},
                       encrypted_by := undefined},
                     undefined) ->
-    no_change.
+    {ok, no_change}.
 
 -spec add_jobs([node_job()] | [master_job()], #state{}) -> #state{}.
 add_jobs(NewJobs, #state{jobs = Jobs} = State) ->

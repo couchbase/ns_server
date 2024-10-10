@@ -490,6 +490,10 @@ format_error(name_not_unique) ->
 format_error(config_encryption_disabled) ->
     "Can't use master password for encryption because "
     "config encryption is disabled";
+format_error({encrypt_key_error, Msg}) when is_list(Msg) ->
+    lists:flatten(io_lib:format("Key encryption failed: ~s", [Msg]));
+format_error({decrypt_key_error, Msg}) when is_list(Msg) ->
+    lists:flatten(io_lib:format("Key decryption failed: ~s", [Msg]));
 format_error({used_by, UsedByList}) ->
     Formatted = format_secrets_used_by_list(UsedByList),
     lists:flatten(io_lib:format("Can't be removed because ~s", [Formatted]));
