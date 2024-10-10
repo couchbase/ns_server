@@ -65,12 +65,13 @@ def parse_args():
                             metavar='<key_id>', default=[],
                             help='list of key ids to be extracted',
                             required=True)
-    arg_parser.add_argument('--password', '-p', nargs='?',
+    pass_group = arg_parser.add_mutually_exclusive_group(required=False)
+    pass_group.add_argument('--password', '-p', nargs='?',
                             action=PasswordAction,
                             metavar='<password>', default=(0, None),
                             help='couchbase master password (if empty, prompt '\
                                  'the user for a password without echoing)')
-    arg_parser.add_argument('--stdin-password', '-P',
+    pass_group.add_argument('--stdin-password', '-P',
                             action='store_true',
                             default=False,
                             help='read couchbase master password from stdin')
