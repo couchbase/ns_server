@@ -338,9 +338,23 @@ force_config_encryption_keys() ->
     %% working (because it is called from cb_cluster_secrets process).
     {ok, Snapshot} = cb_crypto:fetch_deks_snapshot(configDek),
     maybe
+        %% How it works:
+        %%  1. memcached_config_mgr pushes new keys to memcached and saves the
+        %%     DekSnapshot in persistent_term memcached_native_encryption_deks.
+        %%     This persistent_term determines DEKs that memcached knows about.
+        %%     Only these DEKs can be used for encryption of files that are
+        %%     to be read by memcached
+        %%  2. memcached_config_mgr reloads memcached.json encrypted by the new
+        %%     dek
+        %%  3. password and permissions files get reencrypted on disk
+        %%     (sync_reload) with the DekSnapshot taken from
+        %%     memcached_native_encryption_deks
+        %%  4. all historical keys in memcached_native_encryption_deks get
+        %%     dropped, because old deks are not used anywhere
         ok ?= memcached_config_mgr:push_config_encryption_key(true),
         ok ?= memcached_passwords:sync_reload(),
         ok ?= memcached_permissions:sync_reload(),
+        ok ?= memcached_config_mgr:drop_historical_deks(),
         ok ?= ns_config:resave(),
         case cb_crypto:get_dek_id(Snapshot) of
             undefined -> {ok, []};

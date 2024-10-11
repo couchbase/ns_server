@@ -17,6 +17,7 @@
 %% API
 -export([start_link/0, trigger_tls_config_push/0,
          memcached_port_pid/0, push_config_encryption_key/1,
+         drop_historical_deks/0,
          get_global_memcached_deks/0]).
 
 %% referenced from ns_config_default
@@ -58,6 +59,16 @@ push_config_encryption_key(ReloadCfg) ->
     catch
         exit:{noproc, {gen_server, call,
                        [?MODULE, {push_config_encryption_key, _}, _]}} ->
+            ?log_debug("Can't push config encryption key: ~p is not "
+                       "started yet...", [?MODULE]),
+            {error, retry}
+    end.
+
+drop_historical_deks() ->
+    try
+        gen_server:call(?MODULE, drop_historical_deks, 60000)
+    catch
+        exit:{noproc, {gen_server, call, [?MODULE, drop_historical_deks, _]}} ->
             ?log_debug("Can't push config encryption key: ~p is not "
                        "started yet...", [?MODULE]),
             {error, retry}
@@ -228,6 +239,15 @@ handle_call({push_config_encryption_key, NeedConfigReload}, _From,
         {memcached_error, _Status, _Msg} = Reason ->
             {reply, {error, Reason}, State}
     end;
+
+handle_call(drop_historical_deks, _From, State) ->
+    CurDS = get_global_memcached_deks(),
+    DSWithoutHistDeks = cb_crypto:without_historical_deks(CurDS),
+    Res = case maybe_push_config_encryption_key(DSWithoutHistDeks) of
+              {ok, _} -> ok;
+              {error, _} = Err -> Err
+          end,
+    {reply, Res, State};
 
 handle_call(_, _From, _State) ->
     erlang:error(unsupported).
@@ -412,8 +432,7 @@ maybe_push_config_encryption_key(DeksSnapshot) ->
         case get_global_memcached_deks() of
             undefined -> true;
             OldDeksSnapshot ->
-                cb_crypto:get_dek_id(DeksSnapshot) =/=
-                    cb_crypto:get_dek_id(OldDeksSnapshot)
+                not cb_crypto:same_snapshots(OldDeksSnapshot, DeksSnapshot)
         end,
     case ShouldUpdate of
         true ->

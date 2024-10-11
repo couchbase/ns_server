@@ -39,6 +39,7 @@
          get_dek_id/1,
          get_dek/1,
          without_historical_deks/1,
+         same_snapshots/2,
 
          %% Other:
          get_encryption_method/2,
@@ -277,6 +278,11 @@ without_historical_deks(#dek_snapshot{active_key = undefined} = Snapshot) ->
     Snapshot#dek_snapshot{all_keys = []};
 without_historical_deks(#dek_snapshot{active_key = Dek} = Snapshot) ->
     Snapshot#dek_snapshot{all_keys = [Dek]}.
+
+-spec same_snapshots(#dek_snapshot{}, #dek_snapshot{}) -> boolean().
+same_snapshots(#dek_snapshot{active_key = AK1, all_keys = All1},
+               #dek_snapshot{active_key = AK2, all_keys = All2}) ->
+    (AK1 == AK2) andalso (lists:usort(All1) == lists:usort(All2)).
 
 -spec get_encryption_method(config_encryption | log_encryption,
                             cb_cluster_secrets:chronicle_snapshot()) ->
