@@ -657,8 +657,6 @@ handle_event({call, From}, {maybe_start_rebalance,
 
         validate_quotas(ServiceNodesMap, Params, Snapshot),
 
-        check_guardrails(EjectedLiveNodes, KeepNodes),
-
         NewParams1 = NewParams#{keep_nodes => KeepNodes,
                                 eject_nodes => EjectedLiveNodes,
                                 failed_nodes => FailedNodes,
@@ -1974,15 +1972,6 @@ validate_quotas(ServiceNodesMap, MemoryData, Snapshot, Quotas) ->
             throw({total_quota_too_high,
                    ns_error_messages:bad_memory_size_error(
                      maps:keys(ServiceNodesMap), TotalQuota, Max, Node)})
-    end.
-
-check_guardrails(EjectedLiveNodes, KeepNodes) ->
-    case guardrail_monitor:validate_topology_change(EjectedLiveNodes,
-                                                    KeepNodes) of
-        ok ->
-            ok;
-        {error, E} ->
-            throw(E)
     end.
 
 get_uninitialized_services(Services, Snapshot) ->
