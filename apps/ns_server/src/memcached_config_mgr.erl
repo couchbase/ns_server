@@ -400,8 +400,7 @@ hot_reload_config(NewMcdConfig, AFamiliesToTry, State, Tries, _LastErr) ->
     true = (CurrentMcdConfig =:= State#state.memcached_config),
 
     maybe
-        {ok, DeksSnapshot} = cb_crypto:fetch_deks_snapshot(configDek),
-        {ok, _} ?= maybe_push_config_encryption_key(DeksSnapshot),
+        DeksSnapshot = get_global_memcached_deks(),
         %% now we save currently active config to .prev
         ok = cb_crypto:atomic_write_file(PrevFilePath, CurrentMcdConfig,
                                          DeksSnapshot),
