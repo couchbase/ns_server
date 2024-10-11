@@ -54,7 +54,8 @@
          %% Other:
          get_encryption_method/2,
          get_dek_kind_lifetime/2,
-         get_dek_rotation_interval/2
+         get_dek_rotation_interval/2,
+         get_drop_keys_timestamp/2
         ]).
 
 -export_type([dek_snapshot/0, encryption_type/0]).
@@ -381,6 +382,22 @@ get_dek_rotation_interval(Type, Snapshot) ->
         #{Type := #{dek_rotation_interval_in_sec := 0}} -> {ok, undefined};
         #{Type := #{dek_rotation_interval_in_sec := Int}} -> {ok, Int};
         #{} -> {error, not_found}
+    end.
+
+-spec get_drop_keys_timestamp(encryption_type(),
+                              cb_cluster_secrets:chronicle_snapshot()) ->
+          {ok, undefined | calendar:datetime()} | {error, not_found}.
+get_drop_keys_timestamp(Type, Snapshot) ->
+    case menelaus_web_encr_at_rest:get_settings(Snapshot) of
+        #{Type := #{dek_drop_datetime := {set, DT},
+                    encryption_last_toggle_datetime := TDT}} when TDT > DT ->
+            {ok, undefined};
+        #{Type := #{dek_drop_datetime := {set, DT}}} ->
+            {ok, DT};
+        #{Type := #{dek_drop_datetime := {not_set, _}}} ->
+            {ok, undefined};
+        #{} ->
+            {error, not_found}
     end.
 
 %%%===================================================================

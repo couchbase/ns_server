@@ -146,6 +146,7 @@
                        deks := [cb_deks:dek()],
                        is_enabled := boolean(),
                        deks_being_dropped := [cb_deks:dek_id() | ?NULL_DEK],
+                       has_unencrypted_data := undefined | boolean(),
                        last_deks_gc_datetime := undefined | calendar:datetime(),
                        last_drop_timestamp := undefined | non_neg_integer()}.
 
@@ -1015,6 +1016,7 @@ maybe_garbage_collect_deks(Kind, #state{deks = DeksInfo} = State) ->
     end.
 
 %% Remove DEKs that are not being used anymore
+%% Also update has_unencrypted_data in state
 -spec garbage_collect_deks(cb_deks:dek_kind(), #state{}) ->
           {ok, #state{}} | {error, #state{}, term()}.
 garbage_collect_deks(Kind, #state{deks = DeksInfo} = State) ->
@@ -1030,7 +1032,9 @@ garbage_collect_deks(Kind, #state{deks = DeksInfo} = State) ->
         {ok, #{} = KindDeks} ->
             case call_dek_callback(get_ids_in_use_callback, Kind, []) of
                 {succ, {ok, IdList}} ->
-                    NewKindDeks = KindDeks#{last_deks_gc_datetime =>
+                    NewKindDeks = KindDeks#{has_unencrypted_data =>
+                                            lists:member(?NULL_DEK, IdList),
+                                            last_deks_gc_datetime =>
                                             calendar:universal_time()},
                     NewState = State#state{deks = DeksInfo#{
                                                     Kind => NewKindDeks}},
@@ -1158,12 +1162,14 @@ read_deks(Kind, #state{deks = AllDeks} = State) ->
     CurDeksDroppedCleaned = (CurDeksDropped -- (CurDeksDropped -- DekIds))
                             -- [?NULL_DEK || not IsEnabled],
     CurLastDropTS = maps:get(last_drop_timestamp, CurKindDeks, undefined),
+    CurHasUnencrData = maps:get(has_unencrypted_data, CurKindDeks, undefined),
     GCDeksDT = maps:get(last_deks_gc_datetime, CurKindDeks, undefined),
     KindDeks = #{active_id => ActiveDek,
                  deks => Deks,
                  is_enabled => IsEnabled,
                  deks_being_dropped => CurDeksDroppedCleaned,
                  last_drop_timestamp => CurLastDropTS,
+                 has_unencrypted_data => CurHasUnencrData,
                  last_deks_gc_datetime => GCDeksDT},
     functools:chain(State#state{deks = AllDeks#{Kind => KindDeks}},
                     [restart_dek_cleanup_timer(_),
@@ -1590,19 +1596,14 @@ calculate_next_dek_cleanup(CurDateTime, DeksInfo) ->
     Times =
         maps:fold(
           fun (Kind, KindDeks, Acc) ->
-              Snapshot = deks_config_snapshot(Kind),
-              case call_dek_callback(lifetime_callback, Kind, [Snapshot]) of
-                  {succ, {ok, undefined}} ->
-                      Acc;
-                  {succ, {ok, LifeTimeInSec}} ->
-                      ExpirationTimes = dek_expiration_times(LifeTimeInSec,
-                                                             KindDeks),
+              case dek_expiration_times(Kind, KindDeks) of
+                  {ok, ExpirationTimes} ->
                       [DT || {DT, _} <- ExpirationTimes] ++ Acc;
-                  {succ, {error, not_found}} ->
+                  {error, not_found} ->
                       %% Assume there is not such entity anymore, we just
                       %% haven't removed deks yet, ignoring them
                       Acc;
-                  {except, _} ->
+                  {error, _} ->
                       [misc:datetime_add(CurDateTime,
                                          ?DEK_TIMER_RETRY_TIME_S) | Acc]
               end
@@ -1612,12 +1613,8 @@ calculate_next_dek_cleanup(CurDateTime, DeksInfo) ->
 -spec get_expired_deks(cb_deks:dek_kind(), deks_info()) ->
           [cb_deks:dek_id() | ?NULL_DEK].
 get_expired_deks(Kind, DeksInfo) ->
-    Snapshot = deks_config_snapshot(Kind),
-    case call_dek_callback(lifetime_callback, Kind, [Snapshot]) of
-        {succ, {ok, undefined}} ->
-            [];
-        {succ, {ok, LifeTimeInSec}} ->
-            DekExpirationTimes = dek_expiration_times(LifeTimeInSec, DeksInfo),
+    case dek_expiration_times(Kind, DeksInfo) of
+        {ok, DekExpirationTimes} ->
             CurDateTime = calendar:universal_time(),
             lists:filtermap(fun ({ExpirationTime, Id}) ->
                                 case CurDateTime >= ExpirationTime of
@@ -1625,22 +1622,69 @@ get_expired_deks(Kind, DeksInfo) ->
                                     false -> false
                                 end
                             end, DekExpirationTimes);
-        {succ, {error, not_found}} ->
-            [];
-        {except, _} ->
-            []
+        {error, _} -> []
     end.
 
--spec dek_expiration_times(non_neg_integer(), deks_info()) ->
-          [{calendar:datetime(), cb_deks:dek_id()}].
-dek_expiration_times(LifetimeInSec, #{deks := Deks}) ->
-    CreationTimes = lists:map(
-                      fun (#{type := 'raw-aes-gcm',
-                             id := Id,
-                             info := #{creation_time := Time}}) ->
-                          {Time, Id}
-                      end, Deks),
-    [{misc:datetime_add(DT, LifetimeInSec), Id} || {DT, Id} <- CreationTimes].
+-spec dek_expiration_times(cb_deks:dek_kind(), deks_info()) ->
+          {ok, [{calendar:datetime(), cb_deks:dek_id() | ?NULL_DEK}]} |
+          {error, _}.
+dek_expiration_times(Kind, #{deks := Deks, is_enabled := IsEnabled,
+                             has_unencrypted_data := HasUnencryptedData}) ->
+    Snapshot = deks_config_snapshot(Kind),
+    maybe
+        {succ, {ok, LifeTimeInSec}} ?=
+            call_dek_callback(lifetime_callback, Kind, [Snapshot]),
+        {succ, {ok, DropKeysTS}} ?=
+            call_dek_callback(drop_keys_timestamp_callback, Kind, [Snapshot]),
+        RegularKeyTimes =
+            lists:filtermap(
+              fun (#{id := Id} = Key) ->
+                  case dek_expiration_time(LifeTimeInSec, DropKeysTS, Key) of
+                      {value, DT} -> {true, {DT, Id}};
+                      false -> false
+                  end
+              end, Deks),
+        EmptyKeyTimes =
+            case DropKeysTS =/= undefined andalso IsEnabled
+                 andalso HasUnencryptedData of
+                true -> [{DropKeysTS, ?NULL_DEK}];
+                %% This means HasUnencryptedData is undefined. We assume that
+                %% bucket has unencrypted data in this case, just in case
+                undefined -> [{DropKeysTS, ?NULL_DEK}];
+                false -> []
+            end,
+        {ok, RegularKeyTimes ++ EmptyKeyTimes}
+    else
+        {succ, {error, not_found}} ->
+            {error, not_found};
+        {except, Err} ->
+            {error, Err}
+    end.
+
+dek_expiration_time(undefined, undefined, _) -> false;
+dek_expiration_time(undefined, DropKeysTS,
+                    #{type := 'raw-aes-gcm',
+                      info := #{creation_time := CreationTime}}) ->
+    %% Note: We should not treat keys with CreationTime == DropKeysTS as expired
+    %% because newly created keys will be treated as expired then
+    case CreationTime < DropKeysTS of
+        true -> {value, DropKeysTS};
+        false -> false
+    end;
+dek_expiration_time(LifetimeInSec, undefined,
+                    #{type := 'raw-aes-gcm',
+                      info := #{creation_time := CreationTime}}) ->
+    {value, misc:datetime_add(CreationTime, LifetimeInSec)};
+dek_expiration_time(LifetimeInSec, DropKeysTS,
+                    #{type := 'raw-aes-gcm',
+                      info := #{creation_time := CreationTime}}) ->
+    ExpDT = misc:datetime_add(CreationTime, LifetimeInSec),
+    %% Note: We should not treat keys with CreationTime == DropKeysTS as expired
+    %% because newly created keys will be treated as expired then
+    case CreationTime < DropKeysTS of
+        true -> {value, min(ExpDT, DropKeysTS)};
+        false -> {value, ExpDT}
+    end.
 
 -spec restart_dek_rotation_timer(#state{}) -> #state{}.
 restart_dek_rotation_timer(#state{proc_type = ?MASTER_PROC} = State) ->
@@ -1681,13 +1725,25 @@ dek_rotation_time(Kind, #{is_enabled := true, active_id := ActiveId,
     {value, #{type := 'raw-aes-gcm',
               info := #{creation_time := CDT}}} =
         lists:search(fun (#{id := Id}) -> Id == ActiveId end, Keys),
-    case call_dek_callback(rotation_int_callback, Kind, [Snapshot]) of
-        {succ, {ok, undefined}} ->
-            false;
-        {succ, {ok, ExpirationInSec}} ->
-            {value, misc:datetime_add(CDT, ExpirationInSec)};
-        {succ, {error, not_found}} ->
-            false;
+    maybe
+        %% We should remove all keys that were created before this date:
+        {succ, {ok, DKTS}} ?=
+            call_dek_callback(drop_keys_timestamp_callback, Kind, [Snapshot]),
+        %% This is how often we should create new deks:
+        {succ, {ok, RotationInt}} ?=
+            call_dek_callback(rotation_int_callback, Kind, [Snapshot]),
+
+        %% Note: We should not treat keys with CDT == DKTS as expired
+        %% because newly created keys will be treated as expired then
+        Candidates = [DKTS || DKTS /= undefined, CDT < DKTS] ++
+                     [misc:datetime_add(CDT, RotationInt)
+                      || RotationInt /= undefined],
+        case Candidates of
+            [] -> false;
+            [_ | _] -> {value, lists:min(Candidates)}
+        end
+    else
+        {succ, {error, not_found}} -> false;
         {succ, {error, R}} ->
             ?log_error("Failed to calculate next rotation time for dek ~p: ~p",
                        [Kind, R]),

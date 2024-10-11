@@ -281,6 +281,8 @@ dek_chronicle_keys_filter(Key) ->
         fun ( (Snapshot) -> {ok, IntOrUndefined} | {error, not_found} ),
       rotation_int_callback :=
         fun ( (Snapshot) -> {ok, IntOrUndefined} | {error, not_found} ),
+      drop_keys_timestamp_callback :=
+        fun ( (Snapshot) -> {ok, IntOrUndefined} | {error, not_found} ),
       get_ids_in_use_callback :=
         fun ( () -> {ok, Ids} | {error, not_found | _}),
       drop_callback :=
@@ -298,6 +300,8 @@ dek_config(chronicleDek) ->
                              config_encryption, _),
       rotation_int_callback => cb_crypto:get_dek_rotation_interval(
                                  config_encryption, _),
+      drop_keys_timestamp_callback => cb_crypto:get_drop_keys_timestamp(
+                                        config_encryption, _),
       get_ids_in_use_callback => fun chronicle_local:get_encryption_dek_ids/0,
       drop_callback => fun chronicle_local:drop_deks/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
@@ -310,6 +314,8 @@ dek_config(configDek) ->
                              config_encryption, _),
       rotation_int_callback => cb_crypto:get_dek_rotation_interval(
                                  config_encryption, _),
+      drop_keys_timestamp_callback => cb_crypto:get_drop_keys_timestamp(
+                                        config_encryption, _),
       get_ids_in_use_callback => ?cut(get_dek_ids_in_use(configDek)),
       drop_callback => fun drop_config_deks/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
@@ -322,6 +328,8 @@ dek_config(logDek) ->
                              log_encryption, _),
       rotation_int_callback => cb_crypto:get_dek_rotation_interval(
                                  log_encryption, _),
+      drop_keys_timestamp_callback => cb_crypto:get_drop_keys_timestamp(
+                                        log_encryption, _),
       get_ids_in_use_callback => ?cut(get_dek_ids_in_use(logDek)),
       drop_callback => fun drop_log_deks/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
@@ -336,6 +344,8 @@ dek_config(auditDek) ->
                              audit_encryption, _),
       rotation_int_callback => cb_crypto:get_dek_rotation_interval(
                                  audit_encryption, _),
+      drop_keys_timestamp_callback => cb_crypto:get_drop_keys_timestamp(
+                                        audit_encryption, _),
       get_ids_in_use_callback => ?cut(get_dek_ids_in_use(auditDek)),
       drop_callback => fun (_) -> {ok, done} end,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
@@ -346,12 +356,15 @@ dek_config({bucketDek, Bucket}) ->
                                                                         _),
       lifetime_callback => ns_bucket:get_dek_lifetime(Bucket, _),
       rotation_int_callback => ns_bucket:get_dek_rotation_interval(Bucket, _),
+      drop_keys_timestamp_callback => ns_bucket:get_drop_keys_timestamp(Bucket,
+                                                                        _),
       get_ids_in_use_callback => fun () ->
                                      ns_memcached:get_dek_ids_in_use(Bucket)
                                  end,
       drop_callback => drop_bucket_deks(Bucket, _),
       chronicle_txn_keys => [ns_bucket:root(),
-                             ns_bucket:sub_key(Bucket, props)],
+                             ns_bucket:sub_key(Bucket, props),
+                             ns_bucket:sub_key(Bucket, encr_at_rest)],
       required_usage => {bucket_encryption, Bucket}}.
 
 %% Returns all possible deks kinds on the node.

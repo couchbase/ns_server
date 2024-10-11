@@ -195,7 +195,8 @@
          all_keys/1,
          get_encryption/2,
          get_dek_lifetime/2,
-         get_dek_rotation_interval/2]).
+         get_dek_rotation_interval/2,
+         get_drop_keys_timestamp/2]).
 
 -import(json_builder,
         [to_binary/1,
@@ -2588,6 +2589,24 @@ get_dek_rotation_interval(BucketName, Snapshot) ->
             end;
         not_present ->
             {error, not_found}
+    end.
+
+get_drop_keys_timestamp(Bucket, Snapshot) ->
+    maybe
+        {ok, Config} ?= get_bucket(Bucket, Snapshot),
+        {ok, #{dek_drop_datetime := DT}} ?=
+            chronicle_compat:get(Snapshot, sub_key(Bucket, encr_at_rest), #{}),
+        ToggleDate = proplists:get_value(encryption_last_toggle_datetime,
+                                         Config),
+        case ToggleDate of
+            undefined -> {ok, DT};
+            {_, _} when ToggleDate =< DT -> {ok, DT};
+            {_, _} -> {ok, undefined}
+        end
+    else
+        not_present -> {error, not_found};
+        {ok, #{}} -> {ok, undefined};
+        {error, not_found} -> {ok, undefined}
     end.
 
 -ifdef(TEST).
