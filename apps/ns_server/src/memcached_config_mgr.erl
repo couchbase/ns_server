@@ -120,8 +120,8 @@ init([]) ->
                            "memcached port server",
                            [McdConfigPath]),
                 BootstrapKeysData = prepare_bootstrap_keys(DeksSnapshot),
-                ok = ns_port_server:activate(Pid, BootstrapKeysData),
                 set_global_memcached_deks(DeksSnapshot),
+                ok = ns_port_server:activate(Pid, BootstrapKeysData),
                 ?log_debug("activated memcached port server"),
                 WantedMcdConfig;
             _ ->
