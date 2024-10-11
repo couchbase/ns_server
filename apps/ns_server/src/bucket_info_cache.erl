@@ -475,15 +475,9 @@ call_build_node_services() ->
 build_cluster_capabilities() ->
     Caps = cluster_compat_mode:get_cluster_capabilities(),
     [{clusterCapabilitiesVer, [1, 0]},
-     {clusterCapabilities, {Caps}}] ++
-    case cluster_compat_mode:is_cluster_cypher() of
-        false ->
-            [];
-        true ->
-            [{clusterUUID, menelaus_web:get_uuid()},
-             {clusterName,
-              list_to_binary(menelaus_web_pools:get_cluster_name())}]
-    end.
+     {clusterCapabilities, {Caps}},
+     {clusterUUID, menelaus_web:get_uuid()},
+     {clusterName, list_to_binary(menelaus_web_pools:get_cluster_name())}].
 
 do_build_node_services() ->
     Config = ns_config:get(),
