@@ -1100,7 +1100,7 @@ get_default_num_vbuckets(couchstore) ->
 get_default_num_vbuckets(magma) ->
     get_default_num_vbuckets_helper(?DEFAULT_VBUCKETS_MAGMA);
 get_default_num_vbuckets(ephemeral) ->
-    get_default_num_vbuckets_helper(?DEFAULT_VBUCKETS_COUCHSTORE);
+    get_default_num_vbuckets_helper(?DEFAULT_VBUCKETS_EPHEMERAL);
 get_default_num_vbuckets(undefined) ->
     %% Occurs when parsing invalid bucket parameters. Doesn't get used
     %% for a resultant bucket.

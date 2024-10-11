@@ -1622,7 +1622,7 @@ validate_membase_bucket_params(CommonParams, Params, Name,
          ReplicasNumResult,
          parse_validate_max_magma_shards(Params, BucketConfig, Version, IsNew),
          parse_validate_replica_index(Params, ReplicasNumResult, IsNew),
-         parse_validate_num_vbuckets(Params, BucketConfig, IsNew),
+         parse_validate_num_vbuckets(Params, BucketConfig, IsNew, IsPersistent),
          parse_validate_threads_number(Params, IsNew),
          parse_validate_eviction_policy(
            Params, BucketConfig, IsNew, IsStorageModeMigration),
@@ -3029,17 +3029,17 @@ do_validate_limit(Param, InternalName, Val, Min, Max) ->
             {error, Param, list_to_binary(Msg)}
     end.
 
-parse_validate_num_vbuckets(Params, BucketConfig, IsNew) ->
+parse_validate_num_vbuckets(Params, BucketConfig, IsNew, IsPersistent) ->
     NumVBs = proplists:get_value("numVBuckets", Params),
     IsEnabled = ns_bucket:allow_variable_num_vbuckets(),
     do_parse_validate_num_vbuckets(NumVBs, BucketConfig, Params, IsNew,
-                                   IsEnabled).
+                                   IsEnabled, IsPersistent).
 
 do_parse_validate_num_vbuckets(undefined, _BucketConfig, _Params,
-                               false = _IsNew, _IsEnabled) ->
+                               false = _IsNew, _IsEnabled, _IsPersistent) ->
     ignore;
 do_parse_validate_num_vbuckets(NumVBs, BucketConfig, _Params, false = _IsNew,
-                               _IsEnabled) ->
+                               _IsEnabled, _IsPersistent) ->
     CurVal = integer_to_list(proplists:get_value(num_vbuckets, BucketConfig)),
     case NumVBs =:= CurVal of
         true ->
@@ -3049,7 +3049,8 @@ do_parse_validate_num_vbuckets(NumVBs, BucketConfig, _Params, false = _IsNew,
              <<"Number of vbuckets cannot be modified">>}
     end;
 do_parse_validate_num_vbuckets(NumVBs, _BucketConfig, Params, true = _IsNew,
-                               false = _IsEnabled) when NumVBs =/= undefined ->
+                               false = _IsEnabled, _IsPersistent)
+  when NumVBs =/= undefined ->
     StorageBackend = proplists:get_value("storageBackend", Params, "magma"),
     %% Specifying variable number of vbuckets is not enabled. But, for magma
     %% buckets we allow specifying 128 or 1024; for couchstore 1024.
@@ -3076,14 +3077,19 @@ do_parse_validate_num_vbuckets(NumVBs, _BucketConfig, Params, true = _IsNew,
             {error, numVBuckets, list_to_binary(Msg)}
     end;
 do_parse_validate_num_vbuckets(NumVBs, _BucketConfig, Params, true = _IsNew,
-                               _IsEnabled) ->
+                               _IsEnabled, IsPersistent) ->
     case NumVBs of
         undefined ->
-            case proplists:get_value("storageBackend", Params, "magma") of
-                "magma" ->
+            StorageBackend = proplists:get_value("storageBackend", Params,
+                                                 "magma"),
+            case {IsPersistent, StorageBackend} of
+                {false, _} ->
+                    {ok, num_vbuckets,
+                     ns_bucket:get_default_num_vbuckets(ephemeral)};
+                {true, "magma"} ->
                     {ok, num_vbuckets,
                      ns_bucket:get_default_num_vbuckets(magma)};
-                "couchstore" ->
+                {true, "couchstore"} ->
                     {ok, num_vbuckets,
                      ns_bucket:get_default_num_vbuckets(couchstore)};
                 _ ->
@@ -4604,7 +4610,23 @@ basic_bucket_params_screening_t() ->
     ?assertEqual([{durability_impossible_fallback,
                    <<"Durability impossible fallback must be either 'none' "
                      "or 'fallbackToActiveAck'">>}],
-                 E47).
+                 E47),
+
+    %% Reset this so "real" default is used.
+    meck:expect(ns_config, search,
+                fun (couchbase_num_vbuckets_default) -> false end),
+
+    %% Verify default number of vbuckets for an ephemeral bucket.
+    {OK48, []} = basic_bucket_params_screening(
+                   true, "bucket48",
+                   [{"bucketType", "ephemeral"},
+                    {"ramQuota", "100"}],
+                   AllBuckets),
+    ?assertEqual(?DEFAULT_VBUCKETS_EPHEMERAL,
+                 proplists:get_value(num_vbuckets, OK48)),
+    %% and put it back
+    meck:expect(ns_config, search,
+                fun (couchbase_num_vbuckets_default) -> 16 end).
 
 basic_bucket_params_screening_test_() ->
     {setup,

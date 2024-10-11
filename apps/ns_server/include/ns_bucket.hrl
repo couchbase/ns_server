@@ -46,6 +46,7 @@
 -define(MAX_NUM_VBUCKETS, 1024).
 -define(DEFAULT_VBUCKETS_MAGMA, 128).
 -define(DEFAULT_VBUCKETS_COUCHSTORE, 1024).
+-define(DEFAULT_VBUCKETS_EPHEMERAL, 1024).
 %% Minimum memory required for magma depends on the number of vbuckets.
 -define(DEFAULT_MAGMA_MIN_MEMORY_QUOTA_1024_VBS, 1024).
 -define(DEFAULT_MAGMA_MIN_MEMORY_QUOTA_128_VBS, 100).
