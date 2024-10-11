@@ -1912,7 +1912,9 @@ get_dek_ids_in_use(BucketName) ->
                           %%    ...
                           %%  }
                           {Proplist} = ejson:decode(V),
-                          [K || {K, _} <- Proplist]
+                          lists:map(fun ({<<"unencrypted">>, _}) -> ?NULL_DEK;
+                                        ({K, _}) -> K
+                                    end, Proplist)
                       end, []) of
                    {ok, Ids} ->
                        {reply, {ok, Ids}};
@@ -2088,8 +2090,11 @@ get_config_stats(Bucket, SubKey) ->
 drop_deks(BucketName, IdsToDrop, ContinuationId, Continuation) ->
     ?log_debug("Initiating db compaction for bucket ~p in order to get rid of "
                "old keys: ~p...", [BucketName, IdsToDrop]),
+    IdsToDropMcd = lists:map(fun (?NULL_DEK) -> <<"unencrypted">>;
+                                 (Id) -> Id
+                             end, IdsToDrop),
     case compaction_api:partially_compact_db_files(
-           BucketName, IdsToDrop, ContinuationId, Continuation) of
+           BucketName, IdsToDropMcd, ContinuationId, Continuation) of
         ok -> {ok, started};
         {error, Reason} -> {error, Reason}
     end.

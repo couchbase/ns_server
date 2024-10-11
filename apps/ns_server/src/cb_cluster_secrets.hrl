@@ -10,5 +10,6 @@
 -define(ENVELOP_CIPHER, aes_256_gcm).
 -define(SECRET_ID_NOT_SET, -1).
 -define(ACTIVE_KEY_FILENAME, "active_key").
+-define(NULL_DEK, null_dek_id).
 
 -endif.

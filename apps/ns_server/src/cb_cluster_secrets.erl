@@ -145,7 +145,7 @@
 -type deks_info() :: #{active_id := cb_deks:dek_id() | undefined,
                        deks := [cb_deks:dek()],
                        is_enabled := boolean(),
-                       deks_being_dropped := [cb_deks:dek_id()],
+                       deks_being_dropped := [cb_deks:dek_id() | ?NULL_DEK],
                        last_deks_gc_datetime := undefined | calendar:datetime(),
                        last_drop_timestamp := undefined | non_neg_integer()}.
 
@@ -587,10 +587,8 @@ handle_info({timer, dek_cleanup} = Msg, #state{proc_type = ?NODE_PROC,
     NewState =
         maps:fold(
           fun (Kind, KindDeks, StateAcc) ->
-              case deks_to_drop(Kind, KindDeks) of
-                  [] -> StateAcc;
-                  ToDrop -> initiate_deks_drop(Kind, ToDrop, StateAcc)
-              end
+              ToDrop = deks_to_drop(Kind, KindDeks),
+              initiate_deks_drop(Kind, ToDrop, StateAcc)
           end, State, DeksInfo),
     {noreply, restart_dek_cleanup_timer(NewState)};
 
@@ -1036,7 +1034,8 @@ garbage_collect_deks(Kind, #state{deks = DeksInfo} = State) ->
                                             calendar:universal_time()},
                     NewState = State#state{deks = DeksInfo#{
                                                     Kind => NewKindDeks}},
-                    retire_unused_deks(Kind, IdList, NewState);
+                    CleanedIdList = lists:delete(?NULL_DEK, IdList),
+                    retire_unused_deks(Kind, CleanedIdList, NewState);
                 {succ, {error, not_found}} ->
                     %% The entity that uses deks does not exist.
                     %% Ignoring it here because we assume that deks will
@@ -1156,7 +1155,8 @@ read_deks(Kind, #state{deks = AllDeks} = State) ->
     {ok, Deks} = cb_deks:read(Kind, DekIds),
     CurKindDeks = maps:get(Kind, AllDeks, #{}),
     CurDeksDropped = maps:get(deks_being_dropped, CurKindDeks, []),
-    CurDeksDroppedCleaned = CurDeksDropped -- (CurDeksDropped -- DekIds),
+    CurDeksDroppedCleaned = (CurDeksDropped -- (CurDeksDropped -- DekIds))
+                            -- [?NULL_DEK || not IsEnabled],
     CurLastDropTS = maps:get(last_drop_timestamp, CurKindDeks, undefined),
     GCDeksDT = maps:get(last_deks_gc_datetime, CurKindDeks, undefined),
     KindDeks = #{active_id => ActiveDek,
@@ -1610,7 +1610,7 @@ calculate_next_dek_cleanup(CurDateTime, DeksInfo) ->
     time_to_first_event(CurDateTime, Times).
 
 -spec get_expired_deks(cb_deks:dek_kind(), deks_info()) ->
-          [cb_deks:dek_id()].
+          [cb_deks:dek_id() | ?NULL_DEK].
 get_expired_deks(Kind, DeksInfo) ->
     Snapshot = deks_config_snapshot(Kind),
     case call_dek_callback(lifetime_callback, Kind, [Snapshot]) of
@@ -1620,11 +1620,11 @@ get_expired_deks(Kind, DeksInfo) ->
             DekExpirationTimes = dek_expiration_times(LifeTimeInSec, DeksInfo),
             CurDateTime = calendar:universal_time(),
             lists:filtermap(fun ({ExpirationTime, Id}) ->
-                             case CurDateTime >= ExpirationTime of
-                                 true -> {true, Id};
-                                 false -> false
-                             end
-                         end, DekExpirationTimes);
+                                case CurDateTime >= ExpirationTime of
+                                    true -> {true, Id};
+                                    false -> false
+                                end
+                            end, DekExpirationTimes);
         {succ, {error, not_found}} ->
             [];
         {except, _} ->
@@ -2102,7 +2102,8 @@ fetch_snapshot_in_txn(Txn) ->
                         Txn),
     maps:merge(DeksRelatedSnapshot, SecretsSnapshot).
 
--spec deks_to_drop(cb_deks:dek_kind(), deks_info()) -> [cb_deks:dek_id()].
+-spec deks_to_drop(cb_deks:dek_kind(), deks_info()) ->
+          [cb_deks:dek_id() | ?NULL_DEK].
 deks_to_drop(Kind, KindDeks) ->
     CurTime = calendar:universal_time(),
     NowS = calendar:datetime_to_gregorian_seconds(CurTime),
@@ -2130,8 +2131,10 @@ deks_to_drop(Kind, KindDeks) ->
                        [ActiveId, Kind]),
             AllExpired -- [ActiveId]
         else
-            #{is_enabled := false} -> AllExpired;
-            false -> AllExpired
+            #{is_enabled := false} ->
+                AllExpired;
+            false ->
+                AllExpired
         end,
     ShouldAttemptDrop =
         case ToDrop -- AlreadyBeingDropped of
@@ -2150,12 +2153,27 @@ deks_to_drop(Kind, KindDeks) ->
         false -> []
     end.
 
--spec initiate_deks_drop(cb_deks:dek_kind(), [cb_deks:dek_id()], #state{}) ->
-         #state{}.
-initiate_deks_drop(Kind, IdsToDrop, #state{deks = DeksInfo} = State0) ->
+-spec initiate_deks_drop(cb_deks:dek_kind(), [cb_deks:dek_id() | ?NULL_DEK],
+                         #state{}) -> #state{}.
+initiate_deks_drop(_Kind, [], #state{} = State) -> State;
+initiate_deks_drop(Kind, IdsToDrop0, #state{deks = DeksInfo} = State0) ->
     CurTime = calendar:universal_time(),
     NowS = calendar:datetime_to_gregorian_seconds(CurTime),
     #{Kind := KindDeks} = DeksInfo,
+    IdsToDrop =
+        case DeksInfo of
+            #{Kind := #{is_enabled := true}} ->
+                %% We have at least one expired dek, and encryption is enabled,
+                %% it is probably time to encrypt data that is not encrypted yet
+                %% (if there is such data)
+                lists:uniq(IdsToDrop0 ++ [?NULL_DEK]);
+            #{Kind := #{is_enabled := false}} ->
+                %% If encryption is disabled we should never try dropping empty
+                %% dek because it beasically means "encrypt everything", which
+                %% doesn't make sense in this case
+                lists:uniq(IdsToDrop0) -- [?NULL_DEK]
+        end,
+
     ?log_debug("Trying to drop ~p DEKs: ~0p", [Kind, IdsToDrop]),
     case call_dek_callback(drop_callback, Kind, [IdsToDrop]) of
         {succ, {ok, Res}} ->
