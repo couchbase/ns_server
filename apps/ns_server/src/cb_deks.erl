@@ -297,7 +297,7 @@ dek_config(configDek) ->
 dek_config(logDek) ->
     #{encryption_method_callback => cb_crypto:get_encryption_method(
                                       log_encryption, _),
-      set_active_key_callback => fun(_) -> ok end,
+      set_active_key_callback => fun set_log_active_key/1,
       lifetime_callback => cb_crypto:get_dek_kind_lifetime(
                              log_encryption, _),
       rotation_int_callback => cb_crypto:get_dek_rotation_interval(
@@ -332,6 +332,10 @@ dek_kinds_list(Snapshot) ->
 
 set_config_active_key(_ActiveDek) ->
     force_config_encryption_keys().
+
+set_log_active_key(_ActiveDek) ->
+    {ok, LogDeksSnapshot} = cb_crypto:fetch_deks_snapshot(logDek),
+    ns_memcached:set_active_dek("@logs", LogDeksSnapshot).
 
 force_config_encryption_keys() ->
     %% Here we assume that keys can't changed while this function is

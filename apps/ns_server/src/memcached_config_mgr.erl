@@ -113,14 +113,14 @@ init([]) ->
             inactive ->
                 delete_prev_config_file(),
                 McdConfigPath = get_memcached_config_path(),
-                {ok, DeksSnapshot} = cb_crypto:fetch_deks_snapshot(configDek),
+                {ok, CfgDeksSnapshot} = cb_crypto:fetch_deks_snapshot(configDek),
                 ok = cb_crypto:atomic_write_file(McdConfigPath, WantedMcdConfig,
-                                                 DeksSnapshot),
+                                                 CfgDeksSnapshot),
                 ?log_debug("wrote memcached config to ~s. Will activate "
                            "memcached port server",
                            [McdConfigPath]),
-                BootstrapKeysData = prepare_bootstrap_keys(DeksSnapshot),
-                set_global_memcached_deks(DeksSnapshot),
+                BootstrapKeysData = prepare_bootstrap_keys(CfgDeksSnapshot),
+                set_global_memcached_deks(CfgDeksSnapshot),
                 ok = ns_port_server:activate(Pid, BootstrapKeysData),
                 ?log_debug("activated memcached port server"),
                 WantedMcdConfig;
@@ -133,17 +133,25 @@ init([]) ->
                    memcached_config = ActualMcdConfig},
     gen_server:enter_loop(?MODULE, [], State).
 
-prepare_bootstrap_keys(DeksSnapshot) ->
-    {ActiveDek, AllDeks} = cb_crypto:get_all_deks(DeksSnapshot),
-    DeksJson = memcached_bucket_config:format_mcd_keys(ActiveDek, AllDeks),
-    BootstrapKeysJson = ejson:encode({[{<<"@config">>, DeksJson}]}),
+prepare_bootstrap_keys(CfgDeksSnapshot) ->
+    FormatKeys =
+        fun (DS, Name) ->
+            {ActiveDek, AllDeks} = cb_crypto:get_all_deks(DS),
+            EncryptionStatusStr = case ActiveDek of
+                                      #{} -> "on";
+                                      undefined -> "off"
+                                  end,
+            ?log_debug("~p bootstrap ~s keys will be written to memcached's "
+                       "stdin (~s encryption is ~s)",
+                       [length(AllDeks), Name, Name, EncryptionStatusStr]),
+            memcached_bucket_config:format_mcd_keys(ActiveDek, AllDeks)
+        end,
+    {ok, LogDeksSnapshot} = cb_crypto:fetch_deks_snapshot(logDek),
+    CfgDeksJson = FormatKeys(CfgDeksSnapshot, "config"),
+    LogDeksJson = FormatKeys(LogDeksSnapshot, "log"),
+    BootstrapKeysJson = ejson:encode({[{<<"@config">>, CfgDeksJson},
+                                       {<<"@logs">>, LogDeksJson}]}),
     BootstrapData = <<"BOOTSTRAP_DEK=", BootstrapKeysJson/binary, "\nDONE\n">>,
-    EncryptionStatusStr = case ActiveDek of
-                              #{} -> "on";
-                              undefined -> "off"
-                          end,
-    ?log_debug("~p bootstrap config keys will be written to memcached's stdin "
-               "(encryption is ~s)", [length(AllDeks), EncryptionStatusStr]),
     BootstrapData.
 
 delete_prev_config_file() ->
