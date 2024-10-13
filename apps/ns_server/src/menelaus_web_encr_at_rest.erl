@@ -40,15 +40,19 @@ encr_dek_rotate_intrvl(Param, EncrType) ->
 params() ->
     [encr_method("config.encryptionMethod", config_encryption),
      encr_method("log.encryptionMethod", log_encryption),
+     encr_method("audit.encryptionMethod", audit_encryption),
 
      encr_secret_id("config.encryptionSecretId", config_encryption),
      encr_secret_id("log.encryptionSecretId", log_encryption),
+     encr_secret_id("audit.encryptionSecretId", audit_encryption),
 
      encr_dek_lifetime("config.dekLifetime", config_encryption),
      encr_dek_lifetime("log.dekLifetime", log_encryption),
+     encr_dek_lifetime("audit.dekLifetime", audit_encryption),
 
      encr_dek_rotate_intrvl("config.dekRotationInterval", config_encryption),
-     encr_dek_rotate_intrvl("log.dekRotationInterval",log_encryption)].
+     encr_dek_rotate_intrvl("log.dekRotationInterval", log_encryption),
+     encr_dek_rotate_intrvl("audit.dekRotationInterval", audit_encryption)].
 
 handle_get(Path, Req) ->
     Settings = get_settings(direct),
@@ -114,7 +118,11 @@ defaults() ->
       log_encryption => #{encryption => disabled,
                           secret_id => ?SECRET_ID_NOT_SET,
                           dek_lifetime_in_sec => 365*60*60*24,
-                          dek_rotation_interval_in_sec => 30*60*60*24}}.
+                          dek_rotation_interval_in_sec => 30*60*60*24},
+      audit_encryption => #{encryption => disabled,
+                            secret_id => ?SECRET_ID_NOT_SET,
+                            dek_lifetime_in_sec => 365*60*60*24,
+                            dek_rotation_interval_in_sec => 30*60*60*24}}.
 
 validate_no_unencrypted_secrets(config_encryption,
                                 #{encryption := disabled,

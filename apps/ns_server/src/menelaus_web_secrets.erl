@@ -206,6 +206,8 @@ export_secret(#{type := DataType} = Props) ->
                             <<"configuration-encryption">>;
                         (secrets_encryption) ->
                             <<"secrets-encryption">>;
+                        (audit_encryption) ->
+                            <<"audit-encryption">>;
                         (log_encryption) ->
                             <<"log-encryption">>
                     end, UList);
@@ -278,6 +280,8 @@ validate_key_usage(Name, State) ->
                   {value, secrets_encryption};
               <<"configuration-encryption">> ->
                   {value, config_encryption};
+              <<"audit-encryption">> ->
+                  {value, audit_encryption};
               <<"log-encryption">> ->
                   {value, log_encryption};
               _ ->
@@ -448,6 +452,11 @@ is_usage_allowed(secrets_encryption, read, Req) ->
 is_usage_allowed(config_encryption, write, Req) ->
     menelaus_auth:has_permission({[admin, security], write}, Req);
 is_usage_allowed(config_encryption, read, Req) ->
+    menelaus_auth:has_permission({[admin, security], read}, Req);
+
+is_usage_allowed(audit_encryption, write, Req) ->
+    menelaus_auth:has_permission({[admin, security], write}, Req);
+is_usage_allowed(audit_encryption, read, Req) ->
     menelaus_auth:has_permission({[admin, security], read}, Req);
 
 is_usage_allowed(log_encryption, write, Req) ->

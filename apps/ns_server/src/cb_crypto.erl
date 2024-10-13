@@ -53,7 +53,7 @@
          get_dek_rotation_interval/2
         ]).
 
--export_type([dek_snapshot/0]).
+-export_type([dek_snapshot/0, encryption_type/0]).
 
 -record(dek_snapshot, {iv_random :: binary(),
                        iv_atomic_counter :: atomics:atomics_ref(),
