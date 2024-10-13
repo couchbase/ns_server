@@ -548,19 +548,14 @@ cfg_to_json(Props) ->
                    {path, key_path(Kind, Props)},
                    {encryptByKind, kek}]}
              end,
-    KeksStoreConfig = KeyCfg(kek),
-    ChronicleDeksConfig = KeyCfg(chronicleDek),
-    ConfigDeksConfig = KeyCfg(configDek),
-    LogDeksConfig = KeyCfg(logDek),
+    Kinds = [kek, chronicleDek, configDek, logDek, auditDek],
     DeksStoreConfig = case key_path(bucketDek, Props) of
                           undefined -> [];
                           DeksPath -> [{[{kind, bucketDek},
                                          {path, DeksPath},
                                          {encryptByKind, kek}]}]
                       end,
-    StoredKeysJson = {storedKeys, [KeksStoreConfig, ChronicleDeksConfig,
-                                   ConfigDeksConfig,
-                                   LogDeksConfig | DeksStoreConfig]},
+    StoredKeysJson = {storedKeys, [KeyCfg(K) || K <- Kinds] ++ DeksStoreConfig},
 
     case Extract(es_key_storage_type) of
         file ->
@@ -621,6 +616,8 @@ key_path(configDek, _Cfg) ->
     proplists:get_value(config_dek_path, defaults(), undefined);
 key_path(logDek, _Cfg) ->
     proplists:get_value(log_dek_path, defaults(), undefined);
+key_path(auditDek, _Cfg) ->
+    proplists:get_value(audit_dek_path, defaults(), undefined);
 key_path(bucketDek, Cfg) ->
     Key = bucket_dek_path,
     case proplists:get_value(Key, Cfg) of
@@ -639,6 +636,7 @@ defaults() ->
      {es_key_storage_type, 'file'},
      {kek_path, iolist_to_binary(filename:join(ConfigDir, "keks"))},
      {config_dek_path, iolist_to_binary(filename:join(ConfigDir, "deks"))},
+     {audit_dek_path, iolist_to_binary(filename:join(LogDir, "audit_deks"))},
      {log_dek_path,
       iolist_to_binary(filename:join([LogDir, "deks"]))},
      {chronicle_dek_path,

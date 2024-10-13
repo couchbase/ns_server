@@ -81,7 +81,7 @@ external_list(DekPath) ->
             {error, {read_dir_error, {DekPath, Reason}}}
     end.
 
--spec bootstrap_get_deks(chronicleDek | configDek | logDek, map()) ->
+-spec bootstrap_get_deks(chronicleDek | configDek | logDek | auditDek, map()) ->
           {ok, cb_crypto:dek_snapshot()} | {error, _}.
 bootstrap_get_deks(DekKind, Opts) ->
     maybe

@@ -72,6 +72,8 @@
                           offset = 0 :: non_neg_integer()}).
 
 -type dek_snapshot() :: #dek_snapshot{}.
+-type encryption_type() :: config_encryption | log_encryption |
+                           audit_encryption.
 
 %%%===================================================================
 %%% API
@@ -298,7 +300,7 @@ same_snapshots(#dek_snapshot{active_key = AK1, all_keys = All1},
                #dek_snapshot{active_key = AK2, all_keys = All2}) ->
     (AK1 == AK2) andalso (lists:usort(All1) == lists:usort(All2)).
 
--spec get_encryption_method(config_encryption | log_encryption,
+-spec get_encryption_method(encryption_type(),
                             cb_cluster_secrets:chronicle_snapshot()) ->
           {ok, cb_deks:encryption_method()} | {error, not_found}.
 get_encryption_method(Type, Snapshot) ->
@@ -313,7 +315,7 @@ get_encryption_method(Type, Snapshot) ->
             {error, not_found}
     end.
 
--spec get_dek_kind_lifetime(config_encryption | log_encryption,
+-spec get_dek_kind_lifetime(encryption_type(),
                             cb_cluster_secrets:chronicle_snapshot()) ->
           {ok, pos_integer()} | {error, not_found}.
 get_dek_kind_lifetime(Type, Snapshot) ->
@@ -323,7 +325,7 @@ get_dek_kind_lifetime(Type, Snapshot) ->
         #{} -> {error, not_found}
     end.
 
--spec get_dek_rotation_interval(config_encryption | log_encryption,
+-spec get_dek_rotation_interval(encryption_type(),
                                 cb_cluster_secrets:chronicle_snapshot()) ->
           {ok, undefined | pos_integer()} | {error, not_found}.
 get_dek_rotation_interval(Type, Snapshot) ->

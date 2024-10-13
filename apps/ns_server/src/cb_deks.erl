@@ -30,7 +30,7 @@
                              encryption_service |
                              disabled.
 -type dek_id() :: cb_cluster_secrets:key_id().
--type dek_kind() :: kek | chronicleDek | configDek | logDek |
+-type dek_kind() :: kek | chronicleDek | configDek | logDek | auditDek |
                     {bucketDek, string()}.
 -type dek() :: #{id := dek_id(), type := 'raw-aes-gcm',
                  info := #{key := fun(() -> binary()),
@@ -244,7 +244,7 @@ increment_counter_in_chronicle(Kind, SecretId) ->
 %% Returns a dek kind that is affected by a given chronicle key.
 %% Returns false otherwise.
 dek_chronicle_keys_filter(?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY) ->
-    [chronicleDek, configDek, logDek];
+    [chronicleDek, configDek, logDek, auditDek];
 dek_chronicle_keys_filter(Key) ->
     case ns_bucket:sub_key_match(Key) of
         {true, Bucket, props} -> [{bucketDek, Bucket}];
@@ -306,6 +306,18 @@ dek_config(logDek) ->
       drop_callback => fun drop_log_deks/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
       required_usage => log_encryption};
+dek_config(auditDek) ->
+    #{encryption_method_callback => cb_crypto:get_encryption_method(
+                                      audit_encryption, _),
+      set_active_key_callback => fun (_) -> ok end,
+      lifetime_callback => cb_crypto:get_dek_kind_lifetime(
+                             audit_encryption, _),
+      rotation_int_callback => cb_crypto:get_dek_rotation_interval(
+                                 audit_encryption, _),
+      get_ids_in_use_callback => ?cut(get_dek_ids_in_use(auditDek)),
+      drop_callback => fun (_) -> {ok, done} end,
+      chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
+      required_usage => audit_encryption};
 dek_config({bucketDek, Bucket}) ->
     #{encryption_method_callback => ns_bucket:get_encryption(Bucket, _),
       set_active_key_callback => ns_memcached:set_active_dek_for_bucket(Bucket,
@@ -328,7 +340,8 @@ dek_kinds_list() ->
     dek_kinds_list(direct).
 dek_kinds_list(Snapshot) ->
     Buckets = ns_bucket:get_bucket_names(Snapshot),
-    [chronicleDek, configDek, logDek] ++ [{bucketDek, B} || B <- Buckets].
+    [chronicleDek, configDek, logDek, auditDek] ++
+    [{bucketDek, B} || B <- Buckets].
 
 set_config_active_key(_ActiveDek) ->
     force_config_encryption_keys().

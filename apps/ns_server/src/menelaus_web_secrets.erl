@@ -500,7 +500,9 @@ format_secrets_used_by_list(UsedByMap) ->
                 FormattedUsages = lists:map(fun (config_encryption) ->
                                                     "configuration";
                                                 (log_encryption) ->
-                                                    "logs"
+                                                    "logs";
+                                                (audit_encryption) ->
+                                                    "audit"
                                             end, Other),
                 Buckets2 = ["\"" ++ B ++ "\"" || B <- Buckets],
                 BucketsStr =
@@ -539,24 +541,25 @@ format_secrets_used_by_list_test() ->
     Secrets = ["s1", "s2"],
     F = ?cut(lists:flatten(format_secrets_used_by_list(_))),
     ?assertEqual("this secret is configured to encrypt configuration, logs, "
-                 "buckets \"b1\", \"b2\"",
+                 "audit, buckets \"b1\", \"b2\"",
                  F(#{by_deks => All, by_config => All, by_secrets => []})),
     ?assertEqual("this secret is configured to encrypt configuration, logs, "
-                 "buckets \"b1\", \"b2\"",
+                 "audit, buckets \"b1\", \"b2\"",
                  F(#{by_deks => [], by_config => All, by_secrets => []})),
     ?assertEqual("this secret still encrypts some data in configuration, logs, "
-                 "buckets \"b1\", \"b2\"",
+                 "audit, buckets \"b1\", \"b2\"",
                  F(#{by_deks => All, by_config => [], by_secrets => []})),
     ?assertEqual("this secret is configured to encrypt secrets s1, s2",
                  F(#{by_deks => [], by_config => [], by_secrets => Secrets})),
     ?assertEqual("this secret is configured to encrypt configuration, logs, "
-                 "buckets \"b1\", \"b2\", secrets s1, s2",
+                 "audit, buckets \"b1\", \"b2\", secrets s1, s2",
                  F(#{by_deks => [], by_config => All, by_secrets => Secrets})),
     ?assertEqual("this secret is configured to encrypt configuration, logs, "
-                 "buckets \"b1\", \"b2\", secrets s1, s2",
+                 "audit, buckets \"b1\", \"b2\", secrets s1, s2",
                  F(#{by_deks => All, by_config => All, by_secrets => Secrets})),
     ?assertEqual("this secret is configured to encrypt configuration; it also "
-                 "still encrypts some data in logs, buckets \"b1\", \"b2\"",
+                 "still encrypts some data in logs, audit, "
+                 "buckets \"b1\", \"b2\"",
                  F(#{by_deks => All, by_config => [configDek],
                      by_secrets => []})),
     ?assertEqual("this secret is configured to encrypt configuration, "
@@ -565,6 +568,5 @@ format_secrets_used_by_list_test() ->
                  F(#{by_deks => [configDek, {bucketDek, "b1"}],
                      by_config => [{bucketDek, "b2"}, chronicleDek],
                      by_secrets => Secrets})).
-
 
 -endif.
