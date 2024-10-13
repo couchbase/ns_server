@@ -86,7 +86,7 @@
                          :: #{atom() := reference() | undefined},
                 deks = #{} :: #{cb_deks:dek_kind() := deks_info()}}).
 
--export_type([secret_id/0, key_id/0, chronicle_snapshot/0]).
+-export_type([secret_id/0, key_id/0, chronicle_snapshot/0, secret_usage/0]).
 
 -type secret_props() ::
     #{id := secret_id(),

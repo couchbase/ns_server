@@ -270,6 +270,24 @@ dek_chronicle_keys_filter(Key) ->
 %%
 %% required_usage - the secret usage that secret must contain in order to be
 %% allowed to encrypt this kind of deks
+-spec dek_config(dek_kind()) ->
+    #{encryption_method_callback :=
+        fun( (Snapshot) -> {ok, encryption_method()} | {error, not_found} ),
+      set_active_key_callback :=
+        fun ( (undefined | dek_id()) -> ok | {ok, Ids} | {error, _}),
+      lifetime_callback :=
+        fun ( (Snapshot) -> {ok, IntOrUndefined} | {error, not_found} ),
+      rotation_int_callback :=
+        fun ( (Snapshot) -> {ok, IntOrUndefined} | {error, not_found} ),
+      get_ids_in_use_callback :=
+        fun ( () -> {ok, Ids} | {error, not_found | _}),
+      drop_callback :=
+        fun ( (Ids) -> {ok, done | started} | {error, not_found | retry | _} ),
+      chronicle_txn_keys := [term()],
+      required_usage := cb_cluster_secrets:secret_usage()
+     } when Ids :: [dek_id()],
+            Snapshot :: cb_cluster_secrets:chronicle_snapshot(),
+            IntOrUndefined :: undefined | pos_integer().
 dek_config(chronicleDek) ->
     #{encryption_method_callback => cb_crypto:get_encryption_method(
                                       config_encryption, _),
