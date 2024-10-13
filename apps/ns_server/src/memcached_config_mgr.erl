@@ -147,10 +147,13 @@ prepare_bootstrap_keys(CfgDeksSnapshot) ->
             memcached_bucket_config:format_mcd_keys(ActiveDek, AllDeks)
         end,
     {ok, LogDeksSnapshot} = cb_crypto:fetch_deks_snapshot(logDek),
+    {ok, AuditDeksSnapshot} = cb_crypto:fetch_deks_snapshot(auditDek),
     CfgDeksJson = FormatKeys(CfgDeksSnapshot, "config"),
     LogDeksJson = FormatKeys(LogDeksSnapshot, "log"),
+    AuditDeksJson = FormatKeys(AuditDeksSnapshot, "audit"),
     BootstrapKeysJson = ejson:encode({[{<<"@config">>, CfgDeksJson},
-                                       {<<"@logs">>, LogDeksJson}]}),
+                                       {<<"@logs">>, LogDeksJson},
+                                       {<<"@audit">>, AuditDeksJson}]}),
     BootstrapData = <<"BOOTSTRAP_DEK=", BootstrapKeysJson/binary, "\nDONE\n">>,
     BootstrapData.
 
