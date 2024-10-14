@@ -37,6 +37,7 @@
 
 %% Need StageNodes as when rebalance starts we need to show a minimum stages of
 %% rebalance that are expected to occur, usually the services involved.
+-spec init([node()]) -> #stage_info{}.
 init(StageNodes) ->
     PerStageProgress = dict:from_list(init_per_stage_progress(StageNodes)),
     Aggregated = aggregate(PerStageProgress),
@@ -56,9 +57,12 @@ init_per_stage_progress(StageNodes) ->
 init_per_stage_info(StageNodes) ->
     [{Stage, #stage_details{}} || {Stage, Nodes} <- StageNodes, Nodes =/= []].
 
+-spec get_progress(#stage_info{}) -> dict:dict().
 get_progress(#stage_info{aggregated = Aggregated}) ->
     Aggregated.
 
+-spec update_progress(atom(), boolean(), dict:dict(), #stage_info{}) ->
+    #stage_info{}.
 update_progress(
   ProgressStage, NotifyMetric, StageProgress,
   #stage_info{per_stage_progress = OldPerStageProgress} = StageInfo) ->
@@ -122,6 +126,7 @@ aggregate(PerStage) ->
                      Sum / Count
              end, TmpAggr).
 
+-spec get_stage_info(#stage_info{}, [{atom(), list()}]) -> {list()}.
 get_stage_info(StageInfo, AllStageDetails) ->
     {get_per_stage_info(StageInfo, AllStageDetails)}.
 
@@ -140,6 +145,7 @@ get_current_stage(#stage_info{per_stage_info = PerStageInfo}) ->
         [Stage | _] -> Stage
     end.
 
+-spec get_progress_for_stage(atom(), #stage_info{}, list()) -> list().
 get_progress_for_stage(Stage,
                        #stage_info{per_stage_progress = PerStageProgress},
                        Default) ->
@@ -150,6 +156,8 @@ get_progress_for_stage(Stage,
             Default
     end.
 
+-spec diff_timestamp(false | erlang:timestamp(), false | erlang:timestamp()) ->
+    integer().
 diff_timestamp(false, false) ->
     false;
 diff_timestamp(false, StartTS) ->
@@ -157,6 +165,7 @@ diff_timestamp(false, StartTS) ->
 diff_timestamp(EndTS, StartTS) ->
     round(timer:now_diff(EndTS, StartTS) / 1000).
 
+-spec binarify_timestamp(false | erlang:timestamp()) -> binary().
 binarify_timestamp(false) ->
     false;
 binarify_timestamp(Time) ->
@@ -261,6 +270,10 @@ update_stage({notable_event, Text}, TS,
     Msg = list_to_binary(Text),
     StageInfo#stage_details{notable_events = [{Time, Msg} | NotableEvents]}.
 
+-spec update_stage_info(atom() | [atom()],
+                        {started, [node()]} | completed
+                       | {notable_event, string()},
+                        erlang:timestamp(), #stage_info{}) -> #stage_info{}.
 update_stage_info(Stage, StageInfoUpdate, TS, StageInfo) ->
     NewStageInfo =
         maybe_create_new_stage_progress(Stage, StageInfoUpdate, StageInfo),
