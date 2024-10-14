@@ -111,7 +111,7 @@ get_settings(Snapshot, ExtraSettings) ->
     Merge(Merge(defaults(), Settings), ExtraSettings).
 
 defaults() ->
-    #{config_encryption => #{encryption => disabled,
+    #{config_encryption => #{encryption => encryption_service,
                              secret_id => ?SECRET_ID_NOT_SET,
                              dek_lifetime_in_sec => 365*60*60*24,
                              dek_rotation_interval_in_sec => 30*60*60*24},
