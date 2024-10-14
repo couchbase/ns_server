@@ -78,19 +78,11 @@ function mnSettingsQueryController($scope, $q, $uibModal, mnPoolDefault, mnSetti
       if (mnPoolDefault.export.compat.atLeast75) {
         settings.push("queryUseReplica");
       }
-      if (mnPoolDefault.export.compat.atLeast80) {
-        settings.push("queryActivityWorkloadReporting");
-      }
       promise3 = mnPromiseHelper(
           vm,
           mnClusterConfigurationService.postQuerySettings(
               settings.reduce(function (acc, key) {
-                // activityWorkloadReporting must be re-encoded as a JSON string
-                if (key === "queryActivityWorkloadReporting") {
-                  acc[key] = JSON.stringify(vm.querySettings[key]);
-                } else {
-                  acc[key] = vm.querySettings[key];
-                }
+                acc[key] = vm.querySettings[key];
                 return acc;
               }, {})))
           .catchErrors("querySettingsErrors")
@@ -139,19 +131,6 @@ function mnSettingsQueryController($scope, $q, $uibModal, mnPoolDefault, mnSetti
     maybeSetInititalValue(queryCurl.allowed_urls, "");
     maybeSetInititalValue(queryCurl.disallowed_urls, "");
     vm.initialCurlWhitelist = _.cloneDeep(queryCurl);
-    // activityWorkloadReporting is encoded as a JSON string
-    if (querySettings.queryActivityWorkloadReporting) {
-      querySettings.queryActivityWorkloadReporting = JSON.parse(querySettings.queryActivityWorkloadReporting);
-    } else {
-      querySettings.queryActivityWorkloadReporting = {
-        enabled: false,
-        interval: "",
-        location: "",
-        num_statements: 10000,
-        queue_len: 160,        // not shown to user - but value from server should be maintained
-        threshold: "",
-      };
-    }
     vm.querySettings = querySettings;
   }
 
