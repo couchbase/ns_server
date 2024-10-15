@@ -71,9 +71,29 @@ read_term_from_file(Path) ->
     {ok, Data} = file:read_file(Path),
     erlang:binary_to_term(Data).
 
-read_ns_config_from_file(Path) ->
-    [Config | _] = read_term_from_file(Path),
-    Config.
+get_dek_snapshot(DekKind) ->
+    %% In order to make path_config work
+    application:load(ns_server),
+    case cb_deks_raw_utils:bootstrap_get_deks(DekKind, #{}) of
+        {ok, Snapshot} -> Snapshot;
+        {error, Reason} ->
+            erlang:exit("Failed to read ~p encryption keys. Got error ~p",
+                        [DekKind, Reason])
+    end.
+
+read_ns_config_from_file(Path, DekSnapshot) ->
+    case cb_crypto:read_file(Path, DekSnapshot) of
+        {ResType, Data} when ResType == decrypted; ResType == raw ->
+            [Config | _] = erlang:binary_to_term(Data),
+            Config;
+        {error, Reason} ->
+            erlang:exit("Failed to read ~s. Got error ~p", [Path, Reason])
+    end.
+
+write_ns_config(Path, NewCfg, DekSnapshot) ->
+    ok = filelib:ensure_dir(Path),
+    Data = term_to_binary([NewCfg]),
+    ok = cb_crypto:atomic_write_file(Path, Data, DekSnapshot).
 
 modify_ns_config_tuples(Config, Args) ->
     rewrite_term(Config, "ns_config", Args).
@@ -83,8 +103,8 @@ get_ns_config_path(#{?INITARGS_DATA_DIR := Path}) ->
 
 rewrite_ns_config(#{output_path := OutputPath} = Args) ->
     ?log_info("Rewriting ns_config"),
-
-    OriginalCfg = read_ns_config_from_file(get_ns_config_path(Args)),
+    Deks = get_dek_snapshot(configDek),
+    OriginalCfg = read_ns_config_from_file(get_ns_config_path(Args), Deks),
     NewCfg = functools:chain(OriginalCfg,
                              [modify_ns_config_tuples(_, Args),
                               maybe_rewrite_cookie(_, Args),
@@ -93,8 +113,7 @@ rewrite_ns_config(#{output_path := OutputPath} = Args) ->
                               maybe_disable_auto_failover(_, Args)]),
 
     NsConfigPath = filename:join(OutputPath, ?NS_CONFIG_NAME),
-    ok = filelib:ensure_dir(NsConfigPath),
-    ok = file:write_file(NsConfigPath, term_to_binary([NewCfg])).
+    write_ns_config(NsConfigPath, NewCfg, Deks).
 
 maybe_disable_auto_failover(Cfg, Args) ->
     case maps:find(disable_auto_failover, Args) of
@@ -163,33 +182,33 @@ maybe_rewrite_cookie(Cfg, Args) ->
         _ -> Cfg
     end.
 
-rewrite_cookie(Cfg, #{go_secrets_pid := SecretsPid,
-                      node_map := NodeMap}) ->
+rewrite_cookie(Cfg, #{node_map := NodeMap}) ->
     ?log_info("Rewriting ns_config cookie"),
     lists:map(
-      fun({otp, [VClock, {cookie, {encrypted, OldCookie}}]}) ->
-              {ok, OldUnencryptedCookie} =
-                  cb_gosecrets_runner:decrypt(SecretsPid, OldCookie),
-              NewCookie =
-                  term_to_binary(generate_cookie(OldUnencryptedCookie,
-                                                 NodeMap)),
-
-              {ok, EncryptedCookie} =
-                  cb_gosecrets_runner:encrypt(SecretsPid,NewCookie),
-
+      fun({otp, [VClock, {cookie, OldCookie}]}) ->
+              NewCookie = generate_cookie(OldCookie, NodeMap),
               ?log_debug("Replacing encrypted cookie ~p with ~p",
-                         [OldCookie, EncryptedCookie]),
-              {otp, [VClock, {cookie, {encrypted, EncryptedCookie}}]};
+                         [ns_cookie_manager:sanitize_cookie(OldCookie),
+                          ns_cookie_manager:sanitize_cookie(NewCookie)]),
+              {otp, [VClock, {cookie, NewCookie}]};
          (V) -> V
       end, Cfg).
 
 rewrite_chronicle(#{?INITARGS_DATA_DIR := InputDir,
                     output_path := OutputDir} = Args) ->
     ?log_info("Rewriting chronicle"),
+    Deks = get_dek_snapshot(chronicleDek),
 
     %% Required to re-use chronicle snapshot storage write fun
     ChronicleEnvDataDir = filename:join([OutputDir, ?CONFIG_DIR]),
     ?log_debug("Rewriting chronicle files to ~p", [ChronicleEnvDataDir]),
+
+    chronicle_local:set_chronicle_deks_snapshot(Deks),
+    application:set_env(chronicle, encrypt_function,
+                        {chronicle_local, encrypt_data}),
+    application:set_env(chronicle, decrypt_function,
+                        {chronicle_local, decrypt_data}),
+
     application:set_env(chronicle, data_dir, ChronicleEnvDataDir),
     application:set_env(chronicle, setup_logger_filter, false),
     ok = chronicle_env:setup(),
@@ -511,22 +530,6 @@ maybe_tweak_log_verbosity(#{log_level := Level}) ->
     ok = ale:set_loglevel(?NS_SERVER_LOGGER, Level),
     ok = ale:set_sink_loglevel(?NS_SERVER_LOGGER, stderr, Level).
 
-start_gosecrets(#{?INITARGS_DATA_DIR := InputPath}) ->
-    CfgPath = filename:join(InputPath, "config/gosecrets.cfg"),
-
-    ?log_debug("Spawning gosecrets with cfg path ~p~n", [CfgPath]),
-
-    %% We are assuming here that the gosecrets.cfg exists, which requires that
-    %% the installation is EE.
-    {ok, Pid} = cb_gosecrets_runner:start_link(CfgPath),
-    ?log_debug("Gosecrets loop started with pid = ~p", [Pid]),
-    Pid.
-
-init_gosecrets(Args) ->
-    ?log_info("Initializing gosecrets"),
-    Pid = start_gosecrets(Args),
-    Args#{go_secrets_pid => Pid}.
-
 usage(Args) ->
     ?log_error("Invalid args specified ~p", [Args]),
     erlang:halt(1).
@@ -586,10 +589,6 @@ load_initargs(#{initargs_path := Path} = Args) ->
     LogDir = misc:expect_prop_value(?INITARGS_LOG_DIR, NsServerProps),
     DataDir = misc:expect_prop_value(?INITARGS_DATA_DIR, NsServerProps),
 
-    %% Required for gosecrets/cb_gosecrets_runner which uses path_config
-    application:set_env(ns_server, ?INITARGS_DATA_DIR, DataDir),
-    application:set_env(ns_server, ?INITARGS_BIN_DIR, BinDir),
-
     Args#{?INITARGS_BIN_DIR => BinDir,
           ?INITARGS_LOG_DIR => LogDir,
           ?INITARGS_DATA_DIR => DataDir}.
@@ -619,10 +618,9 @@ setup(Args) ->
     setup_file_logging(ArgsMap1),
 
     ArgsMap2 = maybe_derive_output_path(ArgsMap1),
-    ArgsMap3 = init_gosecrets(ArgsMap2),
 
-    ?log_debug("Final args map ~p", [ArgsMap3]),
-    ArgsMap3.
+    ?log_debug("Final args map ~p", [ArgsMap2]),
+    ArgsMap2.
 
 main(CmdLineArgs) ->
     Args = setup(CmdLineArgs),

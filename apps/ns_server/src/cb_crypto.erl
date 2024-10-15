@@ -193,7 +193,9 @@ is_file_encrypted(Path) ->
         file:close(File)
     end.
 
--spec read_file(string(), cb_deks:dek_kind() | fun(() -> fetch_deks_res())) ->
+-spec read_file(string(),
+                cb_deks:dek_kind() | #dek_snapshot{} |
+                fun(() -> fetch_deks_res())) ->
           {decrypted, binary()} | {raw, binary()} | {error, term()}.
 read_file(Path, GetDekSnapshotFun) when is_function(GetDekSnapshotFun, 0) ->
     maybe
@@ -209,6 +211,8 @@ read_file(Path, GetDekSnapshotFun) when is_function(GetDekSnapshotFun, 0) ->
                 Error
         end
     end;
+read_file(Path, #dek_snapshot{} = DekSnapshot) ->
+    read_file(Path, fun () -> {ok, DekSnapshot} end);
 read_file(Path, DekKind) ->
     GetSnapshotFun = fun () -> fetch_deks_snapshot(DekKind) end,
     read_file(Path, GetSnapshotFun).

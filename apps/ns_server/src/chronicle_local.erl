@@ -35,6 +35,9 @@
 -export([log/4, report_stats/1, encrypt_data/1, decrypt_data/1,
          external_decrypt/1]).
 
+%% used by config_remap
+-export([set_chronicle_deks_snapshot/1]).
+
 %% exported for log formatting
 -export([format_msg/2, format_time/1]).
 
