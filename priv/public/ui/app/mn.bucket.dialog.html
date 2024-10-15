@@ -83,7 +83,7 @@ licenses/APL2.txt.
       </div>
 
       <div
-        [hidden]="isNotEnterpriseOrEditAndNotMembase | async"
+        [hidden]="(isNotEnterpriseOrEditAndNotMembase | async) || (bucketType | async) !== 'membase'"
         class="formrow checkbox-list"
       >
         <label>Storage Backend</label>
