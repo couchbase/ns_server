@@ -363,6 +363,7 @@ decrypt_internal(Data, AD, DekList) ->
             {error, invalid_data_chunk}
     end.
 
+try_decrypt(_IV, _Data, _Tag, _AD, []) -> {error, decrypt_error};
 try_decrypt(IV, Data, Tag, AD, [#{type := 'raw-aes-gcm', info := #{key := K}} | T]) ->
     case crypto:crypto_one_time_aead(aes_256_gcm, K(), IV, Data, AD,
                                      Tag, false) of
