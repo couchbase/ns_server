@@ -588,10 +588,14 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["_metakv" | _] ->
                     {{[admin, metakv], all}, fun menelaus_metakv:handle_get/2, [Path]};
                 ["xdcr", "c2cCommunications" | _RestPath] ->
+                    %% Pass the raw path so all information, e.g. query
+                    %% parameters, etc, are included.
                     XdcrPath = mochiweb_request:get(raw_path, Req),
                     {{[xdcr, c2c_communications], all},
                      fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["xdcr" | _RestPath] ->
+                    %% Pass the raw path so all information, e.g. query
+                    %% parameters, etc, are included.
                     XdcrPath = mochiweb_request:get(raw_path, Req),
                     {{[admin, internal], all},
                      fun goxdcr_rest:proxy/2, [XdcrPath]};
@@ -1029,10 +1033,14 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_xdcr_target:handle_pre_replicate/2,
                      [Bucket]};
                 ["xdcr", "c2cCommunications" | _RestPath] ->
+                    %% Pass the raw path so all information, e.g. query
+                    %% parameters, etc, are included.
                     XdcrPath = mochiweb_request:get(raw_path, Req),
                     {{[xdcr, c2c_communications], all},
                      fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["xdcr" | _RestPath] ->
+                    %% Pass the raw path so all information, e.g. query
+                    %% parameters, etc, are included.
                     XdcrPath = mochiweb_request:get(raw_path, Req),
                     {{[admin, internal], all},
                      fun goxdcr_rest:proxy/2, [XdcrPath]};
@@ -1142,10 +1150,14 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                                        drop_prefix(mochiweb_request:get(raw_path, Req)),
                                        Plugins]};
                 ["xdcr", "c2cCommunications" | _RestPath] ->
+                    %% Pass the raw path so all information, e.g. query
+                    %% parameters, etc, are included.
                     XdcrPath = mochiweb_request:get(raw_path, Req),
                     {{[xdcr, c2c_communications], all},
                      fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["xdcr" | _RestPath] ->
+                    %% Pass the raw path so all information, e.g. query
+                    %% parameters, etc, are included.
                     XdcrPath = mochiweb_request:get(raw_path, Req),
                     {{[admin, internal], all},
                      fun goxdcr_rest:proxy/2, [XdcrPath]};
