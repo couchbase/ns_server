@@ -74,6 +74,7 @@
 -type dek_snapshot() :: #dek_snapshot{}.
 -type encryption_type() :: config_encryption | log_encryption |
                            audit_encryption.
+-type fetch_deks_res() :: {ok, #dek_snapshot{}} | {error, term()}.
 
 %%%===================================================================
 %%% API
@@ -150,7 +151,7 @@ file_encrypt_chunk(Data, #file_encr_state{key = Dek,
     NewOffset = Offset + size(ChunkWithSize),
     {ChunkWithSize, State#file_encr_state{offset = NewOffset}}.
 
--spec read_file(string(), cb_deks:dek_kind() | fun(() -> #dek_snapshot{})) ->
+-spec read_file(string(), cb_deks:dek_kind() | fun(() -> fetch_deks_res())) ->
           {decrypted, binary()} | {raw, binary()} | {error, term()}.
 read_file(Path, GetDekSnapshotFun) when is_function(GetDekSnapshotFun, 0) ->
     maybe
@@ -171,7 +172,7 @@ read_file(Path, DekKind) ->
     read_file(Path, GetSnapshotFun).
 
 -spec file_decrypt_init(binary(), string(), #dek_snapshot{} |
-                                            fun(() -> #dek_snapshot{})) ->
+                                            fun(() -> fetch_deks_res())) ->
           {ok, {#file_decr_state{}, RestData :: binary()}} |
           need_more_data |
           {error, term()}.
@@ -219,8 +220,7 @@ new_aes_gcm_iv(#dek_snapshot{iv_random = IVRandom,
                              iv_atomic_counter = IVAtomic}) ->
     new_aes_gcm_iv(IVRandom, IVAtomic).
 
--spec fetch_deks_snapshot(cb_deks:dek_kind()) -> {ok, #dek_snapshot{}} |
-                                                 {error, term()}.
+-spec fetch_deks_snapshot(cb_deks:dek_kind()) -> fetch_deks_res().
 fetch_deks_snapshot(DekKind) ->
     cb_atomic_persistent_term:get_or_set_if_undefined(
       {encryption_keys, DekKind},
