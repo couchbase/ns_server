@@ -213,7 +213,7 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
             new_uuid = c.get_cluster_uuid()
             assert old_uuid != new_uuid
 
-            new_cookie = c.get_cluster_uuid
+            new_cookie = c.get_cookie()
             assert old_cookie != new_cookie
 
             # MB-62201: alternate addresses should be removed
