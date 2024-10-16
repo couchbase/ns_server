@@ -433,7 +433,7 @@ get_auth_info() ->
     end.
 
 -spec authenticate(rbac_user_id(), rbac_password()) ->
-                                                {ok, rbac_identity()} | false.
+          {ok, rbac_identity()} | {error, auth_failure}.
 authenticate(User, Pass) ->
     case get_auth_info() of
         {User, AuthInfo} ->
