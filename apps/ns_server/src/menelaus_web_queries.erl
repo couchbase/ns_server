@@ -67,14 +67,6 @@ settings_post_validators() ->
             false ->
                 []
         end ++
-        case cluster_compat_mode:is_cluster_morpheus() of
-            true ->
-                [validator:string(queryActivityWorkloadReporting, _),
-                 validator:convert(queryActivityWorkloadReporting,
-                                   fun list_to_binary/1, _)];
-            false ->
-                []
-        end ++
         [validator:unsupported(_)].
 
 validate_tmp_space_size(Name, State) ->
