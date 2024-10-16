@@ -632,8 +632,6 @@ conf(internal) ->
      {event_logs_limit, eventLogsLimit, 10000,
       get_number(3000, 20000, 10000)},
      {gotraceback, gotraceback, <<"single">>, fun get_string/1},
-     {{auto_failover_disabled, index}, indexAutoFailoverDisabled, false,
-      fun get_bool/1},
      {failover_bulk_buckets_janitor_factor, failoverBulkJanitorFactor,
       1, get_number(1, ?MAX_BUCKETS_SUPPORTED)},
      {{cert, use_sha1}, certUseSha1, false, fun get_bool/1},
