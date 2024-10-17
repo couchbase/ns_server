@@ -178,8 +178,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
         super().__init__(cluster)
         self.memsize = None
         self.next_bucket_id = 0
-        self.good_count = 0
-        self.bad_count = 0
 
     @staticmethod
     def requirements():
@@ -193,21 +191,17 @@ class BucketTestSetBase(testlib.BaseTestSet):
     # checking that any expected bucket changes were made
     def test_request(self, method, endpoint, data=None, json_data=None,
                      headers=None, code=None, errors=None, log=False,
-                     params=None, expected_good=None, just_validate=False,
-                     original_data=None):
+                     params=None, just_validate=False,
+                     expected_response=None):
         r = self.request(method, endpoint, data=data, json=json_data,
                          headers=headers, params=params)
-        response = None
 
         if params is None:
             params = []
 
+        # Determine the expected error code and whether we need to validate that
+        # the request was performed
         if method == 'POST':
-            if errors is None:
-                is_creation = endpoint == BUCKETS_ENDPOINT
-                errors = self.get_errors(endpoint, data, original_data,
-                                         just_validate, is_creation)
-                response = errors.get("_top_level_error")
             if code is None:
                 if errors:
                     code = 400
@@ -229,8 +223,10 @@ class BucketTestSetBase(testlib.BaseTestSet):
             errors = {}
             validate = False
 
-        if response is not None:
-            errors = response
+        if expected_response is not None:
+            # We will compare the text directly, for the case where the response
+            # may not be json
+            errors = expected_response
             actual_errors = r.text
         else:
             try:
@@ -241,17 +237,17 @@ class BucketTestSetBase(testlib.BaseTestSet):
         if r.status_code != code or (errors and actual_errors != errors):
             log = True
 
-        if expected_good is not None:
-            if code == 400:
-                self.bad_count += 1
-                if expected_good == True:
-                    log = True
-            else:
-                self.good_count += 1
-                if expected_good == False:
-                    log = True
+        expected_good = errors is None or len(errors) == 0
 
-        # If a change should has been made, check it was correctly made
+        # Determine whether the response is as expected
+        if code == 400:
+            if expected_good:
+                log = True
+        else:
+            if not expected_good:
+                log = True
+
+        # If a change should have been made, check it was correctly made
         if not actual_errors and validate and not just_validate:
             validated = self.validate_settings(endpoint, data)
             if not validated:
@@ -574,7 +570,9 @@ class BucketTestSetBase(testlib.BaseTestSet):
             # Replica Number
             # ------------------------------------------------------------------
 
-            self.test_params['replicaNumber'] = [None]
+            # Only 0 is valid with just_validate, since otherwise it will
+            # default to 1, and warn about not enough nodes
+            self.test_params['replicaNumber'] = [None, 0]
 
             # A warning is given as an error when just validating an update of
             # replicaNumber, so we don't test this case
@@ -1071,7 +1069,8 @@ class BucketTestSetBase(testlib.BaseTestSet):
     def add_required_fields(self, request_data):
         data = {
             "name": self.get_next_name(),
-            "ramQuota": 256
+            "ramQuota": 256,
+            "replicaNumber": 0  # To avoid 'not enough data servers' warning
         }
         for key, value in request_data.items():
             data[key] = value
@@ -1242,10 +1241,12 @@ class BucketTestSetBase(testlib.BaseTestSet):
 
     def replica_number_error(self, test_data, is_creation, just_validate):
         field = "replicaNumber"
-        if field in test_data:
-            num = test_data[field]
+        if is_creation or field in test_data:
+            # replicaNumber defaults to 1
+            num = test_data.get(field, 1)
             if test_data.get('bucketType') == "memcached":
-                return {field:
+                if field in test_data:
+                    return {field:
                             "replicaNumber is not valid for memcached buckets"}
             elif not isinstance(num, int):
                 return {field:
@@ -1830,6 +1831,10 @@ class BucketTestSetBase(testlib.BaseTestSet):
             errors.update({"replicaNumber":
                                "Warning: changing replica number may require "
                                "rebalance."})
+        if ("replicaNumber" not in errors and errors and not is_creation and not just_validate and test_data.get("replicaNumber", 1) > self.num_nodes - 1):
+            errors.update({"replicaNumber":
+                           "Warning: you do not have enough data servers or "
+                           "server groups to support this number of replicas."})
         return errors
 
     def gen_params(self, good, just_validate, test_param):
@@ -1886,10 +1891,17 @@ class BucketTestSetBase(testlib.BaseTestSet):
             else:
                 params = {}
 
+            is_creation = endpoint == BUCKETS_ENDPOINT
+
+            # Determine expected result of the test
+            errors = self.get_errors(endpoint, test_data, original_data,
+                                     just_validate, is_creation)
+            expected_response = errors.get("_top_level_error")
+
             r = self.test_request('POST', endpoint, test_data, params=params,
-                                  expected_good=good,
                                   just_validate=just_validate,
-                                  original_data=original_data)
+                                  errors=errors,
+                                  expected_response=expected_response)
 
             if good and not just_validate:
                 if endpoint == BUCKETS_ENDPOINT and r.status_code == 202:
@@ -1946,7 +1958,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
     """
 
     def test_all_configurations(self, good, param, main_params):
-        self.bad_count = self.good_count = 0
 
         gen = self.get_main_dicts(**main_params)
 
@@ -1991,11 +2002,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
             if not is_creation:
                 self.test_delete(endpoint)
 
-        # TODO: make this message clearer and more concise
-        print(f"Tested {['bad', 'good'][good]} values for {param}. "
-              "Results: " + str(self.good_count) + " good cases, " +
-              str(self.bad_count) + " bad cases.")
-
     def eliminate_incompatible_values(self, main_params):
         def remove_value(param, value):
             if value in main_params[param]:
@@ -2032,10 +2038,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
     def test_param(self, param, **main_params):
         self.eliminate_incompatible_values(main_params)
         self.test_all_configurations(True, param, main_params)
-        # TODO: Add these asserts earlier to be more useful (or remove if unused)
-        assert self.bad_count == 0, "Error occurred for good request"
-        self.test_all_configurations(False, param, main_params)
-        assert self.good_count == 0, "Missing error for bad request"
 
 
 class BasicBucketTestSet(BucketTestSetBase):
@@ -2260,7 +2262,10 @@ class BasicBucketTestSet(BucketTestSetBase):
                      })
         self.init_limits("couchbase", "couchstore", False)
         self.test_request('POST', BUCKET_ENDPOINT_DEFAULT,
-                          data={"ramQuota": self.cluster.memory_quota()*2})
+                          data={"ramQuota": self.cluster.memory_quota()*2},
+                          errors={'ramQuota':
+                                  'RAM quota specified is too large to be '
+                                  'provisioned into this cluster.'})
 
 
 class ServerlessBucketTestSet(BucketTestSetBase):
