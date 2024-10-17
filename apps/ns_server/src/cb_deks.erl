@@ -18,6 +18,7 @@
          read/2,
          generate_new/3,
          set_active/3,
+         handle_ale_log_dek_update/1,
          maybe_reencrypt_deks/4,
          dek_kinds_list/0,
          dek_kinds_list/1,
@@ -370,7 +371,9 @@ push_memcached_dek(MemcachedDekName, Kind) ->
     {ok, LogDeksSnapshot} = cb_crypto:fetch_deks_snapshot(Kind),
     ns_memcached:set_active_dek(MemcachedDekName, LogDeksSnapshot).
 
-update_ds_for_ale_logs(Old, New) ->
+handle_ale_log_dek_update(CreateNewDS) ->
+    Old = ale:get_global_log_deks_snapshot(),
+    New = CreateNewDS(Old),
     case (cb_crypto:get_dek_id(Old) /= cb_crypto:get_dek_id(New)) of
         true ->
             ale:set_log_deks_snapshot(New);
@@ -379,11 +382,29 @@ update_ds_for_ale_logs(Old, New) ->
     end.
 
 set_log_active_key(_ActiveKey) ->
-    Old = ale:get_global_log_deks_snapshot(),
-    {ok, New} = cb_crypto:fetch_deks_snapshot(logDek),
+    %% DS can't be shared across nodes since it has atomic references, so we
+    %% pass in function to allow local nodes to create DS based on same keys
+    {ok, CurrDS} = cb_crypto:fetch_deks_snapshot(logDek),
+    CreateNewDS =
+        fun(PrevDS) ->
+                {ActiveKey, AllKeys} = cb_crypto:get_all_deks(CurrDS),
+                cb_crypto:create_deks_snapshot(ActiveKey, AllKeys, PrevDS)
+        end,
+
     maybe
-        ok ?= ns_memcached:set_active_dek("@logs", New),
-        ok ?= update_ds_for_ale_logs(Old, New)
+        %% Push the dek update to the local memcached instance
+        ok ?= ns_memcached:set_active_dek("@logs", CurrDS),
+
+        %% Push the dek update locally to ns_server disk sinks
+        ok ?= handle_ale_log_dek_update(CreateNewDS),
+
+        %% Push the dek update to babysitter node disk sinks
+        ok ?= rpc:call(ns_server:get_babysitter_node(), cb_deks,
+                       handle_ale_log_dek_update, [CreateNewDS]),
+
+        %% Push the dek update to couchdb node disk sinks
+        ok ?= rpc:call(ns_node_disco:couchdb_node(), cb_deks,
+                       handle_ale_log_dek_update, [CreateNewDS])
     end.
 
 force_config_encryption_keys() ->

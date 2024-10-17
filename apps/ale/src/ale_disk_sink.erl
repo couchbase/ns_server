@@ -58,7 +58,8 @@ start_link(Name, Path, Opts) ->
 
 meta() ->
     [{async, true},
-     {type, preformatted}].
+     {type, preformatted},
+     {encryption_supported, true}].
 
 init([Name, Path, Opts]) ->
     process_flag(trap_exit, true),

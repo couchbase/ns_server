@@ -149,32 +149,16 @@ sync_all_sinks() ->
     [sync_sink(SinkName) || SinkName <- Sinks],
     ok.
 
-get_encr_enabled_disk_sinks() ->
-    #{ale_utils:sink_id(disk_debug) => true}.
-
-is_encr_enabled_sink(SinkId) ->
-    EncrEnabledSinks = get_encr_enabled_disk_sinks(),
-    case maps:find(SinkId, EncrEnabledSinks) of
-        {ok, true} ->
-            true;
-        _ ->
-            false
-    end.
-
 set_log_deks_snapshot(LogsDS) ->
     set_global_log_deks_snapshot(LogsDS),
-    Sinks = gen_server:call(?MODULE, get_sink_names, infinity),
-    EncryptedSinks =
-        lists:filter(
-            fun(SinkName) ->
-                is_encr_enabled_sink(ale_utils:sink_id(SinkName))
-           end, Sinks),
+    EncryptableSinks =
+        gen_server:call(?MODULE, get_encryptable_sink_names, infinity),
     RVs =
         misc:parallel_map(
           fun(SinkName) ->
                   {SinkName, call_disk_sink(SinkName,
                                             notify_active_key_updt, infinity)}
-          end, EncryptedSinks, infinity),
+          end, EncryptableSinks, infinity),
 
     Failures = [Result || {_Sink, R} = Result <- RVs, R =/= ok],
     case Failures of
@@ -187,13 +171,8 @@ set_log_deks_snapshot(LogsDS) ->
 init_log_encryption_ds(LogDS) ->
     set_global_log_deks_snapshot(LogDS).
 
-get_sink_ds(SinkId) ->
-    case is_encr_enabled_sink(SinkId) of
-        true ->
-            get_global_log_deks_snapshot();
-        false ->
-            create_no_deks_snapshot()
-    end.
+get_sink_ds(_SinkId) ->
+    get_global_log_deks_snapshot().
 
 set_global_log_deks_snapshot(LogsDs) ->
     persistent_term:put(log_deks_snapshot, LogsDs).
@@ -510,6 +489,14 @@ handle_call({get_sink_loglevel, LoggerName, SinkName}, _From, State) ->
 
 handle_call(get_sink_names, _From, State) ->
     {reply, dict:fetch_keys(State#state.sinks), State};
+
+handle_call(get_encryptable_sink_names, _From, State) ->
+    EncrSinks =
+        dict:filter(
+          fun(_SinkName, Metadata) ->
+                  proplists:get_bool(encryption_supported, Metadata)
+          end, State#state.sinks),
+    {reply, dict:fetch_keys(EncrSinks), State};
 
 handle_call(freeze_compilations, _From, State) ->
     {reply, State#state.compile_frozen, State#state{compile_frozen = true}};
