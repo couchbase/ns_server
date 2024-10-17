@@ -196,11 +196,12 @@ add_new_secret(Props) ->
     execute_on_master({?MODULE, add_new_secret_internal, [Props]}).
 
 -spec add_new_secret_internal(secret_props()) ->
-                                            {ok, secret_props()} |
-                                            {error, not_supported |
-                                                    bad_encrypt_id() |
-                                                    bad_usage_change() |
-                                                    inconsistent_graph()}.
+          {ok, secret_props()} |
+          {error, not_supported |
+                  bad_encrypt_id() |
+                  bad_usage_change() |
+                  inconsistent_graph() |
+                  encryption_service:stored_key_error()}.
 add_new_secret_internal(Props) ->
     CurrentDateTime = erlang:universaltime(),
     PropsWTime = Props#{creation_time => CurrentDateTime},
@@ -212,7 +213,9 @@ add_new_secret_internal(Props) ->
                                              #{default => 0}),
                PropsWId = PropsWTime#{id => NextId},
                maybe
-                   {ok, FinalProps} ?= prepare_new_secret(PropsWId),
+                   Prepared = prepare_new_secret(PropsWId),
+                   {ok, FinalProps} ?= ensure_secret_encrypted_txn(Prepared,
+                                                                   Snapshot),
                    NewList = [FinalProps | CurList],
                    ok ?= validate_secret_in_txn(FinalProps, #{}, Snapshot),
                    ok ?= validate_secrets_consistency(NewList),
@@ -242,7 +245,8 @@ replace_secret(Id, NewProps, IsSecretWritableFun) ->
                               fun((secret_props()) -> boolean())) ->
           {ok, secret_props()} |
           {error, not_found | bad_encrypt_id() | bad_usage_change() |
-                  forbidden | inconsistent_graph()}.
+                  forbidden | inconsistent_graph() |
+                  encryption_service:stored_key_error() | bad_encrypt_id()}.
 replace_secret_internal(Id, NewProps, IsSecretWritableFun) ->
     %% Make sure we have most recent information about which secrets are in use
     %% This is needed for verification of 'usage' modification
@@ -256,10 +260,12 @@ replace_secret_internal(Id, NewProps, IsSecretWritableFun) ->
                   true ?= IsSecretWritableFun(OldProps),
                   Props = copy_static_props(OldProps, NewProps),
                   CurList = get_all(Snapshot),
-                  NewList = replace_secret_in_list(Props, CurList),
-                  ok ?= validate_secret_in_txn(Props, OldProps, Snapshot),
+                  {ok, FinalProps} ?= ensure_secret_encrypted_txn(Props,
+                                                                  Snapshot),
+                  NewList = replace_secret_in_list(FinalProps, CurList),
+                  ok ?= validate_secret_in_txn(FinalProps, OldProps, Snapshot),
                   ok ?= validate_secrets_consistency(NewList),
-                  {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewList}], Props}
+                  {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewList}], FinalProps}
               else
                   false ->
                       {abort, {error, forbidden}};
@@ -673,9 +679,9 @@ rotate_secret_by_id(Id) ->
 -spec rotate_secret(secret_props()) -> ok | {error, not_found |
                                                     bad_encrypt_id() |
                                                     inconsistent_graph()}.
-rotate_secret(#{id := Id, type := ?GENERATED_KEY_TYPE} = SecretProps) ->
+rotate_secret(#{id := Id, type := ?GENERATED_KEY_TYPE}) ->
     maybe
-        {ok, NewKey} ?= generate_key(erlang:universaltime(), SecretProps),
+        NewKey = generate_key(erlang:universaltime()),
         ok ?= add_active_key(Id, NewKey, _UpdateRotationTime = true),
         ok
     else
@@ -718,38 +724,13 @@ rotate_secret(#{id := Id, type := ?AWSKMS_KEY_TYPE}) ->
         {error, Reason} -> {error, Reason}
     end.
 
--spec generate_key(Creation :: calendar:datetime(), secret_props()) ->
-                                            {ok, kek_props()} |
-                                            {error, bad_encrypt_id()}.
-generate_key(CreationDateTime, #{data := SecretData}) ->
-    maybe
-        Key = generate_raw_key(?ENVELOP_CIPHER),
-        {ok, EncryptedBy} ?=
-            case SecretData of
-                #{encrypt_by := nodeSecretManager} -> {ok, undefined};
-                #{encrypt_by := clusterSecret,
-                  encrypt_secret_id := EncSecretId} ->
-                    case get_active_key_id(EncSecretId, direct) of
-                        {ok, EncKekId} ->
-                            {ok, {EncSecretId, EncKekId}};
-                        {error, not_found} ->
-                            {error, {encrypt_id, not_found}};
-                        {error, not_supported} ->
-                            {error, {encrypt_id, not_allowed}}
-                    end
-            end,
-        KeyProps = #{id => new_key_id(),
-                     creation_time => CreationDateTime,
-                     key => {sensitive, Key},
-                     encrypted_by => undefined},
-        case maybe_reencrypt_kek(KeyProps, EncryptedBy) of
-            {ok, no_change} -> {ok, KeyProps};
-            {ok, NewKeyProps} -> {ok, NewKeyProps};
-            {error, R} -> {error, R}
-        end
-    else
-        {error, Reason} -> {error, Reason}
-    end.
+-spec generate_key(Creation :: calendar:datetime()) -> kek_props().
+generate_key(CreationDateTime) ->
+    Key = generate_raw_key(?ENVELOP_CIPHER),
+    #{id => new_key_id(),
+      creation_time => CreationDateTime,
+      key => {sensitive, Key},
+      encrypted_by => undefined}.
 
 -spec set_active_key_in_props(secret_props(), key_id()) -> secret_props().
 set_active_key_in_props(#{type := ?GENERATED_KEY_TYPE,
@@ -803,15 +784,11 @@ replace_secret_in_list(NewProps, List) ->
     ReplaceFun(List, []).
 
 -spec add_active_key(secret_id(), kek_props(), boolean()) ->
-                        ok | {error, not_found | encrypt_secret_has_changed |
-                                     inconsistent_graph()}.
-add_active_key(Id, #{id := KekId, encrypted_by := EncryptedBy} = Kek,
+                        ok | {error, not_found | inconsistent_graph() |
+                                     encryption_service:stored_key_error() |
+                                     bad_encrypt_id()}.
+add_active_key(Id, #{id := KekId} = Kek,
                true = _UpdateRotationTime) ->
-    %% Id of the secret that encrypted that new kek
-    ESecretId = case EncryptedBy of
-                    undefined -> undefined;
-                    {S, _} -> S
-                end,
     RV = chronicle_kv:transaction(
            kv, [?CHRONICLE_SECRETS_KEY],
            fun (Snapshot) ->
@@ -820,34 +797,22 @@ add_active_key(Id, #{id := KekId, encrypted_by := EncryptedBy} = Kek,
                           data := SecretData} = SecretProps} ?=
                        get_secret(Id, Snapshot),
                    #{keys := CurKeks} = SecretData,
-                   ExpectedESecretId =
-                      case SecretData of
-                          #{encrypt_by := clusterSecret,
-                            encrypt_secret_id := SId} -> SId;
-                          #{encrypt_by := nodeSecretManager} -> undefined
-                      end,
-                   %% Making sure that encryption secret id hasn't changed
-                   %% since we encrypted new active kek.
-                   %% It should not normally happen because modification of
-                   %% secrets and rotations are supposed to run in the same
-                   %% process.
-                   {expected, ExpectedESecretId} ?= {expected, ESecretId},
                    Time = calendar:universal_time(),
                    Updated = functools:chain(
                                SecretProps,
                                [set_keys_in_props(_, [Kek | CurKeks]),
                                 set_active_key_in_props(_, KekId),
                                 set_last_rotation_time_in_props(_, Time)]),
-                   NewList = replace_secret_in_list(Updated,
+                   {ok, FinalProps} ?= ensure_secret_encrypted_txn(Updated,
+                                                                   Snapshot),
+                   NewList = replace_secret_in_list(FinalProps,
                                                     get_all(Snapshot)),
                    true = is_list(NewList),
                    ok ?= validate_secrets_consistency(NewList),
                    {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewList}]}
                else
                    {error, _} = Error ->
-                       {abort, Error};
-                   {expected, _} ->
-                       {abort, {error, encrypt_secret_has_changed}}
+                       {abort, Error}
                end
            end),
 
@@ -918,24 +883,17 @@ garbage_collect_keks() ->
 all_kek_ids() ->
     lists:flatmap(get_all_keys_from_props(_), get_all()).
 
--spec prepare_new_secret(secret_props()) ->
-            {ok, secret_props()} | {error, not_supported | bad_encrypt_id()}.
+-spec prepare_new_secret(secret_props()) -> secret_props().
 prepare_new_secret(#{type := ?GENERATED_KEY_TYPE,
                      creation_time := CurrentTime} = Props) ->
-    maybe
-        %% Creating new auto-generated key
-        {ok, #{id := KekId} = KeyProps} ?= generate_key(CurrentTime, Props),
-        {ok, functools:chain(Props, [set_keys_in_props(_, [KeyProps]),
-                                     set_active_key_in_props(_, KekId)])}
-    else
-        {error, _} = Error -> Error
-    end;
+    %% Creating new auto-generated key
+    #{id := KekId} = KeyProps = generate_key(CurrentTime),
+    functools:chain(Props, [set_keys_in_props(_, [KeyProps]),
+                            set_active_key_in_props(_, KekId)]);
 prepare_new_secret(#{type := ?AWSKMS_KEY_TYPE, data := Data,
                      creation_time := CT} = Props) ->
-    {ok, Props#{data => Data#{stored_ids => [#{id => new_key_id(),
-                                               creation_time => CT}]}}};
-prepare_new_secret(#{type := _Type}) ->
-    {error, not_supported}.
+    Props#{data => Data#{stored_ids => [#{id => new_key_id(),
+                                          creation_time => CT}]}}.
 
 -spec maybe_update_deks(cb_deks:dek_kind(), #state{}) ->
           {ok, #state{}} | {error, #state{}, term()}.
@@ -1434,10 +1392,11 @@ maybe_reencrypt_secrets() ->
                                    false
                            end
                        end, All)),
+               GetKekId = fun (SId) -> {ok, maps:get(SId, KeksMap)} end,
                {Changed, Unchanged} =
                    misc:partitionmap(
                      fun (Secret) ->
-                         case maybe_reencrypt_secret_txn(Secret, KeksMap) of
+                         case maybe_reencrypt_secret_txn(Secret, GetKekId) of
                              {true, NewSecret} -> {left, NewSecret};
                              false -> {right, Secret}
                          end
@@ -1459,39 +1418,64 @@ maybe_reencrypt_secrets() ->
         no_change -> ok
     end.
 
--spec maybe_reencrypt_secret_txn(secret_props(), #{secret_id() := key_id()}) ->
-                                                false | {true, secret_props()}.
-maybe_reencrypt_secret_txn(#{type := ?GENERATED_KEY_TYPE} = Secret, KeksMap) ->
+-spec ensure_secret_encrypted_txn(secret_props(), chronicle_snapshot()) ->
+          {ok, secret_props()} |
+          {error, encryption_service:stored_key_error() | bad_encrypt_id()}.
+ensure_secret_encrypted_txn(Props, Snapshot) ->
+    GetKekId = get_active_key_id(_, Snapshot),
+    case maybe_reencrypt_secret_txn(Props, GetKekId) of
+        {true, NewProps} -> {ok, NewProps};
+        false -> {ok, Props};
+        {error, _} = Error -> Error
+    end.
+
+-spec maybe_reencrypt_secret_txn(secret_props(),
+                                 fun ((secret_id()) -> key_id())) ->
+          false | {true, secret_props()} |
+          {error, encryption_service:stored_key_error() | bad_encrypt_id()}.
+maybe_reencrypt_secret_txn(#{type := ?GENERATED_KEY_TYPE} = Secret, GetKekId) ->
     #{data := #{keys := Keys} = Data} = Secret,
-    case maybe_reencrypt_keks(Keys, Secret, KeksMap) of
+    case maybe_reencrypt_keks(Keys, Secret, GetKekId) of
         {ok, NewKeks} -> {true, Secret#{data => Data#{keys => NewKeks}}};
-        no_change -> false
+        no_change -> false;
+        {error, _} = Error -> Error
     end;
 maybe_reencrypt_secret_txn(#{}, _) ->
     false.
 
 -spec maybe_reencrypt_keks([kek_props()], secret_props(),
-                           #{secret_id() := key_id()}) ->
-                                                {ok, [kek_props()]} | no_change.
-maybe_reencrypt_keks(Keys, #{data := SecretData}, KeksMap) ->
-    NewEncryptedBy =
-        case SecretData of
-            #{encrypt_by := nodeSecretManager} -> undefined;
-            #{encrypt_by := clusterSecret,
-              encrypt_secret_id := TargetSecretId} ->
-                TargetKekId = maps:get(TargetSecretId, KeksMap),
-                {TargetSecretId, TargetKekId}
-        end,
-    RV = lists:mapfoldl(
-           fun (Key, Acc) ->
-               case maybe_reencrypt_kek(Key, NewEncryptedBy) of
-                   {ok, no_change} -> {Key, Acc};
-                   {ok, NewKey} -> {NewKey, changed}
-               end
-           end, no_change, Keys),
-    case RV of
-        {NewKeyList, changed} -> {ok, NewKeyList};
-        {_, no_change} -> no_change
+                           fun ((secret_id()) -> key_id())) ->
+          {ok, [kek_props()]} | no_change |
+          {error, encryption_service:stored_key_error() | bad_encrypt_id()}.
+maybe_reencrypt_keks(Keys, #{data := SecretData}, GetKekId) ->
+    try
+        NewEncryptedBy =
+            case SecretData of
+                #{encrypt_by := nodeSecretManager} -> undefined;
+                #{encrypt_by := clusterSecret,
+                  encrypt_secret_id := TargetSecretId} ->
+                    case GetKekId(TargetSecretId) of
+                        {ok, TargetKekId} -> {TargetSecretId, TargetKekId};
+                        {error, not_found} ->
+                            throw({error, {encrypt_id, not_found}});
+                        {error, not_supported} ->
+                            throw({error, {encrypt_id, not_allowed}})
+                    end
+            end,
+        RV = lists:mapfoldl(
+               fun (Key, Acc) ->
+                   case maybe_reencrypt_kek(Key, NewEncryptedBy) of
+                       {ok, no_change} -> {Key, Acc};
+                       {ok, NewKey} -> {NewKey, changed};
+                       {error, _} = E -> throw(E)
+                   end
+               end, no_change, Keys),
+        case RV of
+            {NewKeyList, changed} -> {ok, NewKeyList};
+            {_, no_change} -> no_change
+        end
+    catch
+        throw:{error, _} = Error -> Error
     end.
 
 -spec maybe_reencrypt_kek(kek_props(), undefined | {secret_id(), key_id()}) ->

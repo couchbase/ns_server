@@ -35,6 +35,12 @@
          garbage_collect_keks/1,
          garbage_collect_keys/2]).
 
+
+-export_type([stored_key_error/0]).
+
+-type stored_key_error() :: {encrypt_key_error | decrypt_key_error |
+                             store_key_error | read_key_error, string()}.
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2]).

@@ -677,6 +677,11 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret['data']['encryptSecretId'] = -1
         update_secret(node, secret_id, secret, expected_code=400)
 
+        # Switching secret back to nodeSecretManager so it can be removed
+        # in teardown
+        set_cfg_encryption(node, 'encryption_service', -1)
+        update_secret(node, secret_id, secret)
+
     def dump_keks_test(self):
         secret = auto_generated_secret()
         node = self.random_node()
