@@ -222,15 +222,7 @@ get_modules(Filter) ->
                     Wildcard]) ++ Ext
         end,
 
-
-    io:format("fullwildcard ~s~n", [FullWildcard]),
-
-    io:format("rootdir ~s~n", [config(root_dir)]),
-
     Files = filelib:wildcard(FullWildcard, config(root_dir)),
-
-
-    io:format("files ~s~n", [Files]),
     [list_to_atom(filename:basename(F, Ext)) || F <- Files].
 
 run_eunit_tests(Modules0) ->
