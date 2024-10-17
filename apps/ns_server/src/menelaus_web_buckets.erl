@@ -2266,7 +2266,7 @@ parse_validate_durability_impossible_fallback("fallbackToActiveAck") ->
     {ok, durability_impossible_fallback, fallback_to_master_ack};
 parse_validate_durability_impossible_fallback(_) ->
     {error, durability_impossible_fallback,
-     <<"Durability impossible fallback must be either 'none' or "
+     <<"Durability impossible fallback must be either 'disabled' or "
        "'fallbackToActiveAck'">>}.
 
 parse_validate_warmup_behavior(Params, _IsNew, false = _IsMorpheus) ->
@@ -4586,7 +4586,7 @@ basic_bucket_params_screening_t() ->
                       {"warmupBehavior", "badValue"}],
                      AllBuckets),
     ?assertEqual([{durability_impossible_fallback,
-                   <<"Durability impossible fallback must be either 'none' "
+                   <<"Durability impossible fallback must be either 'disabled' "
                      "or 'fallbackToActiveAck'">>},
                   {warmup_behavior,
                    <<"Warmup behavior must be either 'background' or "
