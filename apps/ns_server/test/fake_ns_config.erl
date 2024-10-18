@@ -18,8 +18,7 @@
 %% trivial due to the extra features that ns_config has (i.e. writing to
 %% files and replicating config).
 %%
-%% This module exposes a meck like interface to create and unload the
-%% required mocks (i.e. fake_ns_config:new(), fake_ns_config:unload()).
+%% This module can be started with setup() and torn down with teardown().
 %%
 %% All config is stored in an ets table as a proplist (similarly to ns_config).
 %%
@@ -29,7 +28,7 @@
 %% future users to simply add the additional interface functions required.
 %%
 %% Use should be as follows:
-%%     1) fake_ns_config:new(),
+%%     1) fake_ns_config:setup(),
 %%     2a) Merge a proplist to the snapshot
 %%         fake_ns_config:update_snapshot([{auto_failover_cfg,
 %%                                          [{enabled, true},
@@ -39,7 +38,7 @@
 %%     2b) Upsert an individual key value pair to the snapshot
 %%         fake_ns_config:update_snapshot(auto_failover_cfg, []),
 %%     3) Perform test
-%%     4) fake_ns_config:unload(),
+%%     4) fake_ns_config:teardown(),
 -module(fake_ns_config).
 
 -include("ns_config.hrl").
