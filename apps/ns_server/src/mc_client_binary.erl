@@ -32,6 +32,7 @@
          sync_delete_vbucket/2,
          flush/1,
          hello_features/1,
+         hello_features_map/0,
          hello/3,
          refresh_isasl/1,
          noop/1,
