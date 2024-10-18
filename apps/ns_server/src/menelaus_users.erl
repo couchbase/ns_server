@@ -456,11 +456,22 @@ make_props_state(ItemList) ->
 select_auth_infos(KeySpec) ->
     replicated_dets:select(storage_name(), {auth, KeySpec}, 100).
 
+%% Build a new auth entry with the new password, unless the password is the same
 rebuild_auth(false, Password) ->
     build_regular_auth([Password], false);
 rebuild_auth({_, CurrentAuth}, Password) ->
-    TemporaryPassword = is_temporary_password(CurrentAuth),
-    build_regular_auth([Password], TemporaryPassword).
+    case is_password_reused(CurrentAuth, Password) of
+        true ->
+            %% Password is the same, so no need to rebuild
+            same;
+        false ->
+            %% This is a new password, so we must build a new auth entry.
+            %% The password should not be temporary, because the password is new
+            build_regular_auth([Password], false)
+    end.
+
+is_password_reused(Auth, Password) ->
+    authenticate_with_info(Auth, Password).
 
 rebuild_auth(false, undefined, _TemporaryPassword) ->
     password_required;
@@ -644,6 +655,8 @@ store_auth(Identity, Auth, Priority) when is_list(Auth) ->
                    storage_name(), {auth, Identity}, Auth)
     end.
 
+-spec change_password(rbac_identity(), rbac_password()) ->
+    user_not_found | unchanged | ok.
 change_password({_UserName, local} = Identity, Password)
   when is_list(Password) ->
     case replicated_dets:get(storage_name(), {user, Identity}) of
@@ -651,12 +664,13 @@ change_password({_UserName, local} = Identity, Password)
             user_not_found;
         _ ->
             CurrentAuth = replicated_dets:get(storage_name(), {auth, Identity}),
-            Auth0 = rebuild_auth(CurrentAuth, Password),
-            %% Note, if the password is the same, we still disable expiry.
-            %% We may in a later patch compare the hashes and only disable
-            %% expiry if the password changes
-            Auth1 = proplists:delete(<<"expiry">>, Auth0),
-            store_auth(Identity, Auth1, ?REPLICATED_DETS_HIGH_PRIORITY)
+            Auth = rebuild_auth(CurrentAuth, Password),
+            case Auth of
+                same ->
+                    unchanged;
+                _ ->
+                    store_auth(Identity, Auth, ?REPLICATED_DETS_HIGH_PRIORITY)
+            end
     end.
 
 is_user_locked({_, external} = _Identity) ->

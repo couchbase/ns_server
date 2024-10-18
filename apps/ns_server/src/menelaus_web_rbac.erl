@@ -1233,13 +1233,17 @@ handle_change_password(Req) ->
 handle_patch_user_with_identity(Req, Identity, Validators) ->
     validator:handle(
       fun (Values) ->
-          case maybe_change_password(Req, Identity, Values) of
-              ok ->
-                  change_lock(Req, Identity, Values),
-                  menelaus_util:reply(Req, 200);
-              user_not_found ->
-                  menelaus_util:reply_json(Req, <<"User was not found.">>, 404)
-          end
+              case maybe_change_password(Req, Identity, Values) of
+                  ok ->
+                      change_lock(Req, Identity, Values),
+                      menelaus_util:reply(Req, 200);
+                  user_not_found ->
+                      menelaus_util:reply_json(
+                        Req, <<"User was not found.">>, 404);
+                  unchanged ->
+                      menelaus_util:reply_json(
+                        Req, <<"Password has already been used.">>, 400)
+              end
       end, Req, form, Validators).
 
 maybe_change_password(Req, Identity, Values) ->
@@ -1250,10 +1254,8 @@ maybe_change_password(Req, Identity, Values) ->
             case do_change_password(Identity, Password) of
                 ok ->
                     ns_audit:password_change(Req, Identity);
-                user_not_found ->
-                    user_not_found;
-                unchanged ->
-                    ok
+                Res ->
+                    Res
             end
     end.
 

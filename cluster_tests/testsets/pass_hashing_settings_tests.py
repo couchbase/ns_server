@@ -579,8 +579,13 @@ def scram_sha_disable_test(cluster, user, setting_endpoint, scram_type):
 
 
 def touch_user_password(cluster, user, password):
+    # Need to actually change the password, for it to be updated
+    password1 = testlib.random_str(16)
     testlib.post_succ(cluster, '/controller/changePassword',
-                      auth=(user, password), data={'password': password})
+                      auth=(user, password), data={'password': password1})
+    # Change password back
+    testlib.post_succ(cluster, '/controller/changePassword',
+                      auth=(user, password1), data={'password': password})
 
 
 def pwd_hash_migration_alg_change_test(

@@ -170,6 +170,7 @@ class UsersTestSet(testlib.BaseTestSet):
         put_user(self.cluster, 'local', user, password=password1,
                  roles='admin', full_name=name1, groups='',
                  temporary_password="true", validate_user_props=True)
+        assert_password_expired(self.cluster, user, password1)
 
         # UI session should fail
         node = self.cluster.connected_nodes[0]  # Need consistent node for UI
@@ -178,6 +179,11 @@ class UsersTestSet(testlib.BaseTestSet):
         testlib.post_fail(node, '/uilogin', headers=headers,
                           session=session, auth=None, expected_code=403,
                           data={'user': user, 'password': password1})
+
+        # Changing password to the existing value should fail
+        change_user_password(self.cluster, user, password1, password1,
+                             expected_code=400)
+        assert_password_expired(self.cluster, user, password1)
 
         # Change password
         password2 = testlib.random_str(10)
@@ -342,9 +348,11 @@ def delete_user(cluster_or_node, domain, userid):
                         f'/settings/rbac/users/{domain}/{userid}')
 
 
-def change_user_password(cluster_or_node, user, password, new_password):
-    testlib.post_succ(cluster_or_node, '/controller/changePassword',
-                      data={'password': new_password}, auth=(user, password))
+def change_user_password(cluster_or_node, user, password, new_password,
+                         expected_code=200):
+    testlib.post(cluster_or_node, '/controller/changePassword',
+                 data={'password': new_password}, auth=(user, password),
+                 expected_code=expected_code)
 
 
 def lock_user(cluster, user):
