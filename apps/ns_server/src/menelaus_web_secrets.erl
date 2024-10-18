@@ -257,14 +257,14 @@ format_aws_key_data(Props) ->
 
 format_key(Props, ActiveKeyId) ->
     lists:flatmap(fun ({id, Id}) ->
-                      [{id, Id}, {active, Id == ActiveKeyId}];
-                  ({creation_time, DateTime}) ->
-                      [{creation_time, format_datetime(DateTime)}];
-                  ({active, Active}) ->
-                      [{active, Active}];
-                  ({key, {_, _Binary}}) ->
-                      [{key, <<"******">>}]
-              end, maps:to_list(maps:remove(encrypted_by, Props))).
+                          [{id, Id}, {active, Id == ActiveKeyId}];
+                      ({creation_time, DateTime}) ->
+                          [{creation_time, format_datetime(DateTime)}];
+                      ({active, Active}) ->
+                          [{active, Active}];
+                      ({key, #{data := _Binary}}) ->
+                          [{key, <<"******">>}]
+                  end, maps:to_list(Props)).
 
 format_datetime(DateTime) ->
     misc:utc_to_iso8601(DateTime, local).
