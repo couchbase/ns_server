@@ -25,6 +25,10 @@ import { MnXDCRItemComponent } from "./mn.xdcr.item.component.js";
 import { MnXDCRItemDetailsComponent,
          MnReplicationStatus } from "./mn.xdcr.item.details.component.js";
 import { MnXDCRRefItemComponent } from "./mn.xdcr.ref.item.component.js";
+import { MnXDCRIncomingComponent } from "./mn.xdcr.incoming.component.js";
+import { MnXDCRIncomingDetailsComponent } from "./mn.xdcr.incoming.details.component.js";
+import { MnXDCRIncomingReplicationDetailsComponent } from "./mn.xdcr.incoming.replication.details.component.js";
+import { MnXDCRIncomingReplicationSettingsComponent } from "./mn.xdcr.incoming.replication.settings.component.js";
 
 
 import { MnXDCRAddRefComponent } from "./mn.xdcr.add.ref.component.js";
@@ -53,6 +57,14 @@ let XDCRState = {
   },
   params: {
     xdcrDetails: {
+      array: true,
+      dynamic: true
+    },
+    xdcrIncomingDetails: {
+      array: true,
+      dynamic: true
+    },
+    xdcrIncomingReplicationDetails: {
       array: true,
       dynamic: true
     }
@@ -113,7 +125,8 @@ class MnXDCRModule {
         MnXDCRDeleteRefComponent,
         MnXDCRDeleteRepComponent,
         MnXDCREditRepComponent,
-        MnXDCRErrorsComponent
+        MnXDCRErrorsComponent,
+        MnXDCRIncomingReplicationSettingsComponent
       ],
       declarations: [
         MnDetailStatsDirective,
@@ -136,7 +149,11 @@ class MnXDCRModule {
         MnXDCRFilterComponent,
         MnXDCRErrorsComponent,
         MnReplicationStatus,
-        MnXDCRRepMessageComponent
+        MnXDCRRepMessageComponent,
+        MnXDCRIncomingComponent,
+        MnXDCRIncomingDetailsComponent,
+        MnXDCRIncomingReplicationDetailsComponent,
+        MnXDCRIncomingReplicationSettingsComponent
       ],
       imports: [
         NgbModule,

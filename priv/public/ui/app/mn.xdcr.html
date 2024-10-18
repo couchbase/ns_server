@@ -110,7 +110,7 @@
      class="zero-content"
      *ngIf="!(hasReplications | async)">
     <span [hidden]="!(isEnterprise | async)">
-      There are currently no replications defined.
+      There are currently no outgoing replications defined.
       <span [hidden]="!(hasReferencesAndHasPermissionsToWrite | async)"> Use ADD REPLICATION to set one up.</span>
     </span>
     <span [hidden]="(isEnterprise | async)">
@@ -119,6 +119,54 @@
       <a href="https://blog.couchbase.com/couchbase-modifies-license-free-community-edition-package/"
          rel="noopener noreferrer"
          target="_blank">this link</a> for details.
+    </span>
+  </div>
+</div>
+
+<!-- Incoming Replications ************************************************ -->
+<ng-template #incomingTooltip>
+  <p>There is a lag time for target awareness of replications.</p>
+  <p>The lag time is dependent on the target awareness heartbeat interval set on the source cluster, which, by default,
+     could be from one to five minutes depending on replication activity.</p>
+  <p>See documentation for more info.</p>
+</ng-template>
+<div
+   *ngIf="(compatVersion80 | async) && (isEnterprise | async) && (xdcrSettingsRead | async)"
+   [mnSpinner]="(incomingSourcesSpinner | async)"
+   class="margin-top-1-5">
+  <div class="flex items-end flex-gap-5">
+    <h4>Incoming Replications</h4>
+    <span
+       class="fa-stack icon-info"
+       [ngbTooltip]="incomingTooltip"
+       placement="right">
+      <span class="icon fa-circle-thin fa-stack-2x"></span>
+      <span class="icon fa-info fa-stack-1x"></span>
+    </span>
+  </div>
+  <div
+     class="cbui-table"
+     *ngIf="(hasIncomingSources | async)">
+    <div class="cbui-table-header">
+      <span class="cbui-table-cell">
+        source cluster name
+      </span>
+      <span class="cbui-table-cell padding-left-1-25">
+        source cluster uuid
+      </span>
+      <span class="cbui-table-cell ">
+        replication count
+      </span>
+    </div>
+    <mn-xdcr-incoming
+       *ngFor="let incomingSource of (incomingSources | async); trackBy: incomingSourcesTrackByFn;"
+       [item]="incomingSource"></mn-xdcr-incoming>
+  </div>
+  <div
+     class="zero-content"
+     *ngIf="!(hasIncomingSources | async)">
+    <span [hidden]="!(isEnterprise | async)">
+      There are currently no incoming sources defined.
     </span>
   </div>
 </div>

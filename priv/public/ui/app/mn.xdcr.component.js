@@ -21,6 +21,7 @@ import {MnXDCRService} from './mn.xdcr.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnTasksService} from './mn.tasks.service.js';
 import {MnHelperService} from './mn.helper.service.js';
+import {MnAdminService} from './mn.admin.service.js';
 
 import {MnXDCRAddRefComponent} from "./mn.xdcr.add.ref.component.js";
 import template from "./mn.xdcr.html";
@@ -39,12 +40,13 @@ class MnXDCRComponent extends MnLifeCycleHooksToStream {
     MnPermissions,
     MnXDCRService,
     MnPoolsService,
+    MnAdminService,
     MnTasksService,
     MnHelperService,
     NgbModal
   ]}
 
-  constructor(mnPermissions, mnXDCRService, mnPoolsService, mnTasksService,
+  constructor(mnPermissions, mnXDCRService, mnPoolsService, mnAdminService, mnTasksService,
               mnHelperService, modalService) {
     super();
 
@@ -57,10 +59,13 @@ class MnXDCRComponent extends MnLifeCycleHooksToStream {
 
     this.tasksXDCR = mnTasksService.stream.tasksXDCR;
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
+    this.compatVersion80 = mnAdminService.stream.compatVersion80;
     this.permissions = mnPermissions.stream;
     this.getRemoteClustersFiltered = mnXDCRService.stream.getRemoteClustersFiltered;
     this.getRemoteClustersSorted = this.getRemoteClustersFiltered
       .pipe(referenceSorter.pipe);
+
+    this.incomingSources = mnXDCRService.stream.getIncomingSources;
 
     let remoteClusterRead = this.permissions
         .pipe(pluck("cluster", "xdcr", "remote_clusters", "read"),
@@ -92,11 +97,25 @@ class MnXDCRComponent extends MnLifeCycleHooksToStream {
               distinctUntilChanged(),
               shareReplay({refCount: true, bufferSize: 1}));
 
+    let xdcrSettingsRead = this.permissions
+    .pipe(pluck("cluster", "xdcr", "settings", "read"),
+      distinctUntilChanged());
+
+    let hasIncomingSources = this.incomingSources
+    .pipe(filter(v => v),
+      map(v => v.length),
+      startWith(0),
+      distinctUntilChanged(),
+      shareReplay({refCount: true, bufferSize: 1}));
+
     this.remoteClustersSpinner =
       this.getRemoteClustersSorted.pipe(combineLatest(this.isEnterprise));
 
     this.tasksSpinner =
       this.tasksXDCR.pipe(combineLatest(this.isEnterprise));
+
+    this.incomingSourcesSpinner =
+      this.incomingSources.pipe(combineLatest(this.isEnterprise));
 
     this.hasReferencesAndHasPermissionsToWrite = hasReferences
       .pipe(combineLatest(hasPermissionsToWrite),
@@ -111,6 +130,8 @@ class MnXDCRComponent extends MnLifeCycleHooksToStream {
     this.referenceSorter = referenceSorter;
     this.hasReferences = hasReferences;
     this.hasReplications = hasReplications;
+    this.xdcrSettingsRead = xdcrSettingsRead;
+    this.hasIncomingSources = hasIncomingSources;
     this.tasksRead = tasksRead;
     this.remoteClusterRead = remoteClusterRead;
 
@@ -124,5 +145,9 @@ class MnXDCRComponent extends MnLifeCycleHooksToStream {
 
   tasksTrackByFn(_, row) {
     return row.id;
+  }
+
+  incomingSourcesTrackByFn(_, row) {
+    return row.SourceClusterUUID;
   }
 }

@@ -126,6 +126,17 @@ class MnXDCRService {
             distinctUntilChanged(),
             switchMap((canRead) => canRead ? doGetRemoteClusters : NEVER));
 
+    let doGetIncomingSources =
+      timer(0, 10000)
+      .pipe(switchMap(this.getIncomingSources.bind(this)),
+        shareReplay({refCount: true, bufferSize: 1}));
+
+    this.stream.getIncomingSources = mnPermissions.stream
+    .pipe(
+      distinctUntilChanged(),
+      switchMap((canRead) => canRead ? doGetIncomingSources : NEVER),
+      map((incomingSources) => (incomingSources || []).sort((s1, s2) => s1.SourceClusterName.localeCompare(s2.SourceClusterName))));
+
     this.stream.getRemoteClustersFiltered = this.stream.getRemoteClusters
       .pipe(map(pipe(filter(propEq('deleted', false)),
                      sortBy(prop('name')))),
@@ -262,6 +273,10 @@ class MnXDCRService {
 
   getRemoteClusters() {
     return this.http.get("/pools/default/remoteClusters");
+  }
+
+  getIncomingSources() {
+    return this.http.get("/xdcr/sourceClusters");
   }
 
   prepareRequestBody(source) {
