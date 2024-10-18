@@ -143,7 +143,8 @@ init({Bucket, Nodes, OldMap, NewMap, ProgressCallback}) ->
                        ?MAX_INFLIGHT_MOVES_PER_NODE),
 
     ns_rebalance_observer:submit_master_event(
-      {planned_moves, Bucket, vbucket_move_scheduler:get_moves(SchedulerState)}),
+      {planned_moves, Bucket,
+       vbucket_move_scheduler:get_moves(SchedulerState), true}),
 
     {ok, #state{bucket = Bucket,
                 disco_events_subscription = Subscription,
