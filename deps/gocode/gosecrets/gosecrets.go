@@ -537,13 +537,7 @@ func (s *encryptionService) cmdClearBackupKey(ref []byte) {
 		replyError("Key ref mismatch")
 		return
 	}
-	ctx := &storedKeysCtx{
-		storedKeyConfigs:           s.config.StoredKeyConfigs,
-		encryptionServiceKey:       s.encryptionKeys.getSecret().key,
-		backupEncryptionServiceKey: s.encryptionKeys.getSecret().backupKey,
-		keysTouched:                map[string]bool{},
-	}
-	err := reencryptStoredKeys(ctx)
+	err := reencryptStoredKeys(s.newStoredKeyCtx())
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -630,7 +624,7 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 	keyKind, data := readBigField(data)
 	keyName, data := readBigField(data)
 	keyType, data := readBigField(data)
-	keyData, data := readBigField(data)
+	otherData, data := readBigField(data)
 	isKeyDataEncryptedBin, data := readBigField(data)
 	encryptionKeyNameBin, data := readBigField(data)
 	creationTime, _ := readBigField(data)
@@ -647,80 +641,25 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 	}
 	log_dbg("Received request to store key %s (kind: %s, type: %s, encrypted: %v, encryptionKey: %s) on disk",
 		keyNameStr, keyKindStr, keyTypeStr, isKeyDataEncrypted, encryptionKeyName)
-	keySettings, err := getStoredKeyConfig(keyKindStr, s.config.StoredKeyConfigs)
+
+	ctx := s.newStoredKeyCtx()
+	err := store_key(keyNameStr, keyKindStr, keyTypeStr, isKeyDataEncrypted, encryptionKeyName, creationTimeStr, otherData, ctx)
 	if err != nil {
 		replyError(err.Error())
 		return
 	}
-	var keyInfo storedKeyIface
-	if keyTypeStr == string(rawAESGCMKey) {
-		rawKeyInfo := &rawAesGcmStoredKey{
-			Name:              keyNameStr,
-			Kind:              keyKindStr,
-			EncryptionKeyName: encryptionKeyName,
-			CreationTime:      creationTimeStr,
-		}
-		if isKeyDataEncrypted {
-			rawKeyInfo.EncryptedKey = keyData
-			rawKeyInfo.EncryptedByKind = keySettings.EncryptByKind
-		} else {
-			rawKeyInfo.DecryptedKey = keyData
-		}
-		keyInfo = rawKeyInfo
-	} else if keyTypeStr == string(awskmKey) {
-		var awsk awsStoredKey
-		err = json.Unmarshal(keyData, &awsk)
-		if err != nil {
-			replyError(fmt.Sprintf("invalid json: %v", keyData))
-			return
-		}
-		awsk.Name = keyNameStr
-		awsk.Kind = keyKindStr
-		awsk.CreationTime = creationTimeStr
-		keyInfo = &awsk
-	} else {
-		replyError(fmt.Sprintf("unknown type: %s", keyTypeStr))
-		return
-	}
-
-	ctx := &storedKeysCtx{
-		storedKeyConfigs:           s.config.StoredKeyConfigs,
-		encryptionServiceKey:       s.encryptionKeys.getSecret().key,
-		backupEncryptionServiceKey: s.encryptionKeys.getSecret().backupKey,
-		keysTouched:                map[string]bool{},
-	}
-
-	if !keyInfo.needRewrite(keySettings) {
-		// key is already on disk and encrypted with the correct key
-		log_dbg("Key %s is already on disk, will do nothing", keyNameStr)
-		replySuccess()
-		return
-	}
-
-	err = encryptKey(keyInfo, ctx)
-	if err != nil {
-		replyError(err.Error())
-		return
-	}
-
-	err = writeKeyToDisk(keyInfo, keySettings)
-	if err != nil {
-		replyError(err.Error())
-		return
-	}
-
 	replySuccess()
 }
 
 func (s *encryptionService) cmdReadKeyFile(data []byte) {
 	keyPath, data := readBigField(data)
 	keyPathStr := string(keyPath)
-	keyIface, err := readKeyFromFileRaw(keyPathStr)
+	keyIface, err := readKeyFromFile(keyPathStr, s.newStoredKeyCtx())
 	if err != nil {
 		replyError(err.Error())
 		return
 	}
-	replyReadKey(s, keyIface)
+	replyReadKey(keyIface)
 }
 
 func (s *encryptionService) cmdReadKey(data []byte) {
@@ -728,31 +667,15 @@ func (s *encryptionService) cmdReadKey(data []byte) {
 	keyName, data := readBigField(data)
 	keyKindStr := string(keyKind)
 	keyNameStr := string(keyName)
-	keySettings, err := getStoredKeyConfig(keyKindStr, s.config.StoredKeyConfigs)
+	keyIface, err := readKey(keyNameStr, keyKindStr, s.newStoredKeyCtx())
 	if err != nil {
 		replyError(err.Error())
 		return
 	}
-	keyIface, err := readKeyRaw(keySettings, keyNameStr)
-	if err != nil {
-		replyError(err.Error())
-		return
-	}
-	replyReadKey(s, keyIface)
+	replyReadKey(keyIface)
 }
 
-func replyReadKey(s *encryptionService, keyIface storedKeyIface) {
-	ctx := &storedKeysCtx{
-		storedKeyConfigs:           s.config.StoredKeyConfigs,
-		encryptionServiceKey:       s.encryptionKeys.getSecret().key,
-		backupEncryptionServiceKey: s.encryptionKeys.getSecret().backupKey,
-		keysTouched:                map[string]bool{},
-	}
-	err := decryptKey(keyIface, ctx)
-	if err != nil {
-		replyError(err.Error())
-		return
-	}
+func replyReadKey(keyIface storedKeyIface) {
 	rawKey, ok := keyIface.(*rawAesGcmStoredKey)
 	if !ok {
 		replyError("key type not supported")
@@ -788,13 +711,7 @@ func (s *encryptionService) cmdEncryptWithKey(data []byte) {
 	keyKind := string(keyKindBin)
 	keyName := string(keyNameBin)
 
-	ctx := &storedKeysCtx{
-		storedKeyConfigs:           s.config.StoredKeyConfigs,
-		encryptionServiceKey:       s.encryptionKeys.getSecret().key,
-		backupEncryptionServiceKey: s.encryptionKeys.getSecret().backupKey,
-		keysTouched:                map[string]bool{},
-	}
-	encryptedData, err := encryptWithKey(keyKind, keyName, toEncrypt, ctx)
+	encryptedData, err := encryptWithKey(keyKind, keyName, toEncrypt, s.newStoredKeyCtx())
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -809,18 +726,21 @@ func (s *encryptionService) cmdDecryptWithKey(data []byte) {
 	keyKind := string(keyKindBin)
 	keyName := string(keyNameBin)
 
-	ctx := &storedKeysCtx{
-		storedKeyConfigs:           s.config.StoredKeyConfigs,
-		encryptionServiceKey:       s.encryptionKeys.getSecret().key,
-		backupEncryptionServiceKey: s.encryptionKeys.getSecret().backupKey,
-		keysTouched:                map[string]bool{},
-	}
-	decryptedData, err := decryptWithKey(keyKind, keyName, toDecrypt, ctx)
+	decryptedData, err := decryptWithKey(keyKind, keyName, toDecrypt, s.newStoredKeyCtx())
 	if err != nil {
 		replyError(err.Error())
 		return
 	}
 	replySuccessWithData(decryptedData)
+}
+
+func (s *encryptionService) newStoredKeyCtx() *storedKeysCtx {
+	return &storedKeysCtx{
+		storedKeyConfigs:           s.config.StoredKeyConfigs,
+		encryptionServiceKey:       s.encryptionKeys.getSecret().key,
+		backupEncryptionServiceKey: s.encryptionKeys.getSecret().backupKey,
+		keysTouched:                map[string]bool{},
+	}
 }
 
 func generateLockKey(password []byte) []byte {

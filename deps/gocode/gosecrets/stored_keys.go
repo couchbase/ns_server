@@ -111,6 +111,70 @@ type readKeyAesKeyResponse struct {
 
 // Stored keys managenement functions
 
+func store_key(name, kind, keyType string, isEncrypted bool, encryptionKeyName, creationTime string, otherData []byte, ctx *storedKeysCtx) error {
+	keySettings, err := getStoredKeyConfig(kind, ctx.storedKeyConfigs)
+	if err != nil {
+		return err
+	}
+	var keyInfo storedKeyIface
+	if keyType == string(rawAESGCMKey) {
+		keyInfo = newAesGcmKey(name, kind, creationTime, encryptionKeyName, isEncrypted, otherData, keySettings)
+	} else if keyType == string(awskmKey) {
+		keyInfo, err = newAwsKey(name, kind, creationTime, otherData)
+		if err != nil {
+			return err
+		}
+	} else {
+		return errors.New(fmt.Sprintf("unknown type: %s", keyType))
+	}
+
+	if !keyInfo.needRewrite(keySettings) {
+		// key is already on disk and encrypted with the correct key
+		log_dbg("Key %s is already on disk, will do nothing", name)
+		return nil
+	}
+
+	err = encryptKey(keyInfo, ctx)
+	if err != nil {
+		return err
+	}
+
+	err = writeKeyToDisk(keyInfo, keySettings)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func readKeyFromFile(path string, ctx *storedKeysCtx) (storedKeyIface, error) {
+	keyIface, err := readKeyFromFileRaw(path)
+	if err != nil {
+		return nil, err
+	}
+	err = decryptKey(keyIface, ctx)
+	if err != nil {
+		return nil, err
+	}
+	return keyIface, nil
+}
+
+func readKey(name, kind string, ctx *storedKeysCtx) (storedKeyIface, error) {
+	keySettings, err := getStoredKeyConfig(kind, ctx.storedKeyConfigs)
+	if err != nil {
+		return nil, err
+	}
+	keyIface, err := readKeyRaw(keySettings, name)
+	if err != nil {
+		return nil, err
+	}
+	err = decryptKey(keyIface, ctx)
+	if err != nil {
+		return nil, err
+	}
+	return keyIface, nil
+}
+
 func encryptKey(keyIface storedKeyIface, ctx *storedKeysCtx) error {
 	// Mark it as in use, to make sure we don't try to use it for encryption
 	// or decryption while we are encrypting or decrypting this key
@@ -304,6 +368,22 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 
 // Implementation of storedKeyIface for raw keys
 
+func newAesGcmKey(name, kind, creationTime, encryptionKeyName string, isEncrypted bool, data []byte, keySettings *storedKeyConfig) *rawAesGcmStoredKey {
+	rawKeyInfo := &rawAesGcmStoredKey{
+		Name:              name,
+		Kind:              kind,
+		EncryptionKeyName: encryptionKeyName,
+		CreationTime:      creationTime,
+	}
+	if isEncrypted {
+		rawKeyInfo.EncryptedKey = data
+		rawKeyInfo.EncryptedByKind = keySettings.EncryptByKind
+	} else {
+		rawKeyInfo.DecryptedKey = data
+	}
+	return rawKeyInfo
+}
+
 func (k *rawAesGcmStoredKey) name() string {
 	return k.Name
 }
@@ -463,6 +543,19 @@ func (k *rawAesGcmStoredKey) marshal() (storedKeyType, []byte, error) {
 }
 
 // Implementation of storedKeyIface for aws keys
+
+func newAwsKey(name, kind, creationTime string, data []byte) (*awsStoredKey, error) {
+	var awsk awsStoredKey
+	err := json.Unmarshal(data, &awsk)
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("invalid json: %v", data))
+	}
+	awsk.Name = name
+	awsk.Kind = kind
+	awsk.CreationTime = creationTime
+	return &awsk, nil
+}
+
 func (k *awsStoredKey) name() string {
 	return k.Name
 }
