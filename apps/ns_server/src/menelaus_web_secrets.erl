@@ -118,7 +118,8 @@ secret_validators(CurProps) ->
                    false -> {error, "Must be unique"}
                end
        end, name, _),
-     validator:one_of(type, [?GENERATED_KEY_TYPE, ?AWSKMS_KEY_TYPE], _),
+     validator:one_of(type, [?GENERATED_KEY_TYPE, ?AWSKMS_KEY_TYPE,
+                             ?KMIP_KEY_TYPE], _),
      validator:convert(type, binary_to_atom(_, latin1), _),
      validator:required(type, _),
      validate_key_usage(usage, _),
@@ -166,7 +167,13 @@ keys_remap() ->
       use_imds => useIMDS,
       encrypt_by => encryptBy,
       encrypt_secret_id => encryptSecretId,
-      stored_ids => storedKeyIds}.
+      stored_ids => storedKeyIds,
+      key_cert_path => keyCertPath,
+      key_passphrase => keyPassphrase,
+      encryption_approach => encryptionApproach,
+      active_key => activeKey,
+      hist_keys => historicalKeys,
+      kmip_id => kmipId}.
 
 keys_to_json(Term) ->
     transform_keys(keys_remap(), Term).
@@ -176,6 +183,11 @@ keys_from_json(Term) ->
 
 transform_keys(Map, Term) ->
     generic:transformt(fun ({K, V}) -> {maps:get(K, Map, K), V};
+                           (#{} = M) ->
+                               maps:from_list(
+                                 lists:map(fun ({K, V}) ->
+                                               {maps:get(K, Map, K), V}
+                                           end, maps:to_list(M)));
                            (T) -> T
                        end, Term).
 
@@ -214,7 +226,9 @@ export_secret(#{type := DataType} = Props) ->
               (data, D) when DataType == ?GENERATED_KEY_TYPE ->
                   {format_auto_generated_key_data(D)};
               (data, D) when DataType == ?AWSKMS_KEY_TYPE ->
-                  {format_aws_key_data(D)}
+                  {format_aws_key_data(D)};
+              (data, D) when DataType == ?KMIP_KEY_TYPE ->
+                  {format_kmip_key_data(D)}
           end, Props))).
 
 format_auto_generated_key_data(Props) ->
@@ -254,6 +268,25 @@ format_aws_key_data(Props) ->
                 [{[{id, Id}, {creation_time, format_datetime(CT)}]}
                  || #{id := Id, creation_time := CT} <- StoredIds]
         end, Props)).
+
+format_kmip_key_data(Props) ->
+    maps:to_list(
+      maps:map(
+        fun (host, U) -> iolist_to_binary(U);
+            (port, R) -> R;
+            (key_cert_path, F) -> iolist_to_binary(F);
+            (key_passphrase, _) -> <<"******">>;
+            (active_key, K) -> format_kmip_key(K);
+            (hist_keys, L) -> [format_kmip_key(K) || K <- L];
+            (encrypt_by, E) -> E;
+            (encrypt_secret_id, SId) -> SId;
+            (encryption_approach, use_get) -> <<"useGet">>;
+            (encryption_approach, use_encrypt_decrypt) ->
+                <<"useEncryptDecrypt">>
+        end, Props)).
+
+format_kmip_key(#{id := Id, kmip_id := KmipId, creation_time := CT}) ->
+    {[{id, Id}, {kmip_id, KmipId}, {creation_time, format_datetime(CT)}]}.
 
 format_key(Props, ActiveKeyId) ->
     lists:flatmap(fun ({id, Id}) ->
@@ -305,6 +338,8 @@ validate_secrets_data(Name, CurSecretProps, State) ->
                         generated_key_validators(CurSecretProps);
                     ?AWSKMS_KEY_TYPE ->
                         awskms_key_validators(CurSecretProps);
+                    ?KMIP_KEY_TYPE ->
+                        kmip_key_validators(CurSecretProps);
                     _ -> []
                 end,
             validator:decoded_json(
@@ -393,6 +428,40 @@ awskms_key_validators(CurSecretProps) ->
         #{} when map_size(CurSecretProps) == 0 ->
             []
     end.
+
+kmip_key_validators(CurSecretProps) ->
+    [validator:string(host, _),
+     validator:required(host, _),
+     validator:integer(port, 1, 65535, _),
+     validator:required(port, _),
+     validator:string(keyCertPath, _),
+     validator:required(keyCertPath, _),
+     validator:string(keyPassphrase, _),
+     validator:default(keyPassphrase, "", _),
+     validator:convert(keyPassphrase, iolist_to_binary(_), _),
+     validator:validate(fun (P) -> {value, ?HIDE(P)} end, keyPassphrase, _),
+     validator:one_of(encryptionApproach, ["useGet",
+                                           "useEncryptDecrypt"], _),
+     validator:convert(encryptionApproach,
+                       fun (<<"useGet">>) -> use_get;
+                           (<<"useEncryptDecrypt">>) -> use_encrypt_decrypt
+                       end, _),
+     validator:default(encryptionApproach, use_get, _),
+     validator:decoded_json(activeKey,
+                            [validator:string(kmipId, _),
+                             validator:required(kmipId, _),
+                             validator:convert(kmipId, iolist_to_binary(_), _),
+                             validator:unsupported(_)], _),
+     validator:required(activeKey, _),
+     validator:validate(fun (P) -> {value, maps:from_list(P)} end,
+                        activeKey, _),
+     validator:validate(fun (_) -> {error, "read only"} end, historicalKeys, _),
+     validator:one_of(encryptBy, ["nodeSecretManager", "clusterSecret"], _),
+     validator:convert(encryptBy, binary_to_atom(_, latin1), _),
+     validate_encrypt_by(encryptBy, _),
+     validator:default(encryptBy, nodeSecretManager, _),
+     validator:integer(encryptSecretId, -1, infinity, _),
+     validate_encrypt_secret_id(encryptSecretId, CurSecretProps, _)].
 
 mandatory_rotation_fields(State) ->
     case validator:get_value(autoRotation, State) of

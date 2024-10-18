@@ -708,10 +708,10 @@ func newKmipKey(name, kind, creationTime, encryptionKeyName string, isEncrypted 
 		CreationTime:       creationTime,
 	}
 	if isEncrypted {
-		rawKeyInfo.EncryptedPassphrase = data
+		rawKeyInfo.EncryptedPassphrase = decoded.Passphrase
 		rawKeyInfo.EncryptedByKind = keySettings.EncryptByKind
 	} else {
-		rawKeyInfo.decryptedPassphrase = data
+		rawKeyInfo.decryptedPassphrase = decoded.Passphrase
 	}
 	return rawKeyInfo, nil
 }

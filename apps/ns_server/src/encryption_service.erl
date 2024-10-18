@@ -28,6 +28,7 @@
          reconfigure/1,
          store_kek/5,
          store_awskey/8,
+         store_kmip_key/4,
          store_dek/5,
          read_dek/2,
          key_path/1,
@@ -103,6 +104,13 @@ store_awskey(Id, KeyArn, Region, Profile, CredsFile, ConfigFile, UseIMDS,
                           {configFile, iolist_to_binary(ConfigFile)},
                           {useIMDS, UseIMDS}]}),
     store_key(kek, Id, awskm, Data, false, <<"encryptionService">>, CreationDT).
+
+store_kmip_key(Id, Params, undefined, CreationDT) ->
+    store_key(kek, Id, kmip, ejson:encode({Params}), false,
+              <<"encryptionService">>, CreationDT);
+store_kmip_key(Id, Params, KekIdToEncrypt, CreationDT) ->
+    store_key(kek, Id, kmip, ejson:encode({Params}), true,
+              KekIdToEncrypt, CreationDT).
 
 read_dek(Kind, DekId) ->
     {NewId, NewKind} = case Kind of
