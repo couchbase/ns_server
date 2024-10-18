@@ -90,7 +90,6 @@ manual_failover_test_setup(SetupConfig) ->
     setup_node_config(maps:get(nodes, SetupConfig)),
     setup_bucket_config(maps:get(buckets, SetupConfig)),
 
-
     meck:new(leader_activities, [passthrough]),
     meck:expect(leader_activities, run_activity,
         fun(_Name, _Quorum, Body, _Opts) ->
@@ -369,6 +368,7 @@ auto_failover_test_setup(SetupConfig) ->
     Pids = manual_failover_test_setup(SetupConfig),
 
     %% Needed to complete a failover(/subsequent rebalance)
+    fake_ns_config:update_snapshot(rest_creds, null),
     {ok, RebalanceReportManagerPid} = ns_rebalance_report_manager:start_link(),
     {ok, CompatModeManagerPid} = compat_mode_manager:start_link(),
 
