@@ -50,7 +50,8 @@
          teardown/0,
          update_snapshot/1,
          update_snapshot/2,
-         delete_key/1]).
+         delete_key/1,
+         get_ets_snapshot/0]).
 
 %% Helper function API
 -export([setup_cluster_compat_version/1]).
