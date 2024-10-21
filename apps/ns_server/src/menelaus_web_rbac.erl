@@ -1233,16 +1233,13 @@ handle_change_password(Req) ->
 handle_patch_user_with_identity(Req, Identity, Validators) ->
     validator:handle(
       fun (Values) ->
-              maybe
-                  ok ?= maybe_change_password(Req, Identity, Values),
-                  ok ?= maybe_change_lock(Req, Identity, Values),
-                  menelaus_util:reply(Req, 200)
-              else
-                  user_not_found ->
-                      menelaus_util:reply_json(
-                          Req, <<"User was not found.">>, 404)
-              end
-
+          case maybe_change_password(Req, Identity, Values) of
+              ok ->
+                  change_lock(Req, Identity, Values),
+                  menelaus_util:reply(Req, 200);
+              user_not_found ->
+                  menelaus_util:reply_json(Req, <<"User was not found.">>, 404)
+          end
       end, Req, form, Validators).
 
 maybe_change_password(Req, Identity, Values) ->
@@ -1260,7 +1257,7 @@ maybe_change_password(Req, Identity, Values) ->
             end
     end.
 
-maybe_change_lock(Req, Identity, Values) ->
+change_lock(Req, Identity, Values) ->
     case proplists:get_value(locked, Values) of
         undefined -> ok;
         Locked ->
@@ -1360,7 +1357,7 @@ handle_lock_admin(Req) ->
                 "not initialized.",
             menelaus_util:reply_global_error(Req, Error);
         UserId ->
-            maybe_change_lock(Req, UserId, [{locked, true}]),
+            change_lock(Req, UserId, [{locked, true}]),
             menelaus_util:reply(Req, 200)
     end.
 
@@ -1371,10 +1368,10 @@ handle_unlock_admin(Req) ->
     case get_admin_identity() of
         undefined ->
             Error = "Failed to unlock builtin administrator. Node is "
-                    "not initialized.",
+                "not initialized.",
             menelaus_util:reply_global_error(Req, Error);
         UserId ->
-            maybe_change_lock(Req, UserId, [{locked, false}]),
+            change_lock(Req, UserId, [{locked, false}]),
             menelaus_util:reply(Req, 200)
     end.
 
