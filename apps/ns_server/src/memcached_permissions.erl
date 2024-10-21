@@ -426,11 +426,11 @@ permissions_for_user(Roles, Snapshot, RoleDefinitions) ->
                                                  Snapshot),
     check_permissions(Snapshot, CompiledRoles).
 
-jsonify_user_with_cache(Identity, Snapshot) ->
-    jsonify_user(Identity,
+jsonify_user_with_cache(AuthnRes, Snapshot) ->
+    jsonify_user(AuthnRes,
                  check_permissions(
                    Snapshot,
-                   menelaus_roles:get_compiled_roles(Identity))).
+                   menelaus_roles:get_compiled_roles(AuthnRes))).
 
 jsonify_key(String) when is_list(String) ->
     list_to_binary(String);
@@ -449,7 +449,8 @@ jsonify_privs([SectionKey | Rest], Map) ->
                            map_size(Children) =/= 0]}} | Acc]
         end, [], Map)}}.
 
-jsonify_user({UserName, Domain}, {GlobalPermissions, BucketPermissions}) ->
+jsonify_user(#authn_res{identity = {UserName, Domain}},
+             {GlobalPermissions, BucketPermissions}) ->
     Buckets =
         case BucketPermissions of
             all ->
@@ -463,10 +464,10 @@ jsonify_user({UserName, Domain}, {GlobalPermissions, BucketPermissions}) ->
 memcached_admin_json("@ns_server" = User) ->
     Privileges =
         lists:usort(admin_user_privileges() ++ other_users_privileges(User)),
-    jsonify_user({User, local}, {Privileges, all});
+    jsonify_user(#authn_res{identity={User, local}}, {Privileges, all});
 memcached_admin_json(User) ->
     Privileges = other_users_privileges(User),
-    jsonify_user({User, local}, {Privileges, all}).
+    jsonify_user(#authn_res{identity={User, local}}, {Privileges, all}).
 
 jsonify_users(Users, RoleDefinitions, ClusterAdmin, PromUser) ->
     Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),
@@ -483,7 +484,9 @@ jsonify_users(Users, RoleDefinitions, ClusterAdmin, PromUser) ->
                            permissions_for_user(Roles, Snapshot,
                                                 RoleDefinitions),
                        ?yield({kv,
-                               jsonify_user(Identity, Permissions)})
+                               jsonify_user(
+                                 #authn_res{identity=Identity},
+                                 Permissions)})
                end,
 
            EmitLocalUser =

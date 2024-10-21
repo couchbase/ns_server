@@ -142,8 +142,8 @@ process_req(#mc_header{opcode = ?MC_AUTH_REQUEST} = Header,
     Mechanism = proplists:get_value(<<"mechanism">>, AuthReq),
     NeedRBAC = not proplists:get_bool(<<"authentication-only">>, AuthReq),
     case authenticate(Mechanism, AuthReq) of
-        {ok, Id} ->
-            Resp = [{rbac, get_user_rbac_record_json(Id, Snapshot)} ||
+        {ok, AuthnRes} ->
+            Resp = [{rbac, get_user_rbac_record_json(AuthnRes, Snapshot)} ||
                        NeedRBAC],
             {Header#mc_header{status = ?SUCCESS},
              #mc_entry{data = ejson:encode({Resp})},
@@ -162,7 +162,8 @@ process_req(#mc_header{opcode = ?MC_AUTH_REQUEST} = Header,
 process_req(#mc_header{opcode = ?MC_AUTHORIZATION_REQUEST} = Header,
             #mc_entry{key = UserBin}, #s{snapshot = Snapshot} = State) ->
     User = binary_to_list(UserBin),
-    Resp = [{rbac, get_user_rbac_record_json({User, external}, Snapshot)}],
+    Resp = [{rbac, get_user_rbac_record_json(
+                     #authn_res{identity={User, external}}, Snapshot)}],
     {Header#mc_header{status = ?SUCCESS},
      #mc_entry{data = ejson:encode({Resp})},
      State};
@@ -190,16 +191,19 @@ process_req(Header, Data, State) ->
                [Header, Data]),
     {Header#mc_header{status = ?UNKNOWN_COMMAND}, #mc_entry{}, State}.
 
+
+%% Note that JWT authentication requests alone may return ExtraGroups and
+%% ExtraRoles in AuthnRes. These must be accoounted for in the RBAC record.
 authenticate(<<"PLAIN">>, AuthReq) ->
     Challenge = proplists:get_value(<<"challenge">>, AuthReq),
     case sasl_decode_plain_challenge(Challenge) of
         {ok, {Authzid, Username, Password}} when Authzid == "";
                                                  Authzid == Username ->
             case menelaus_auth:authenticate({Username, Password}) of
-                {ok, #authn_res{identity = Id}, _} ->
+                {ok, AuthnRes, _} ->
                     ?log_debug("Successful ext authentication for ~p",
                                [ns_config_log:tag_user_name(Username)]),
-                    {ok, Id};
+                    {ok, AuthnRes};
                 {error, _} ->
                     {error, "Invalid username or password"}
             end;
@@ -211,8 +215,8 @@ authenticate(<<"PLAIN">>, AuthReq) ->
 authenticate(Unknown, _) ->
     {error, io_lib:format("Unknown mechanism: ~p", [Unknown])}.
 
-get_user_rbac_record_json(Identity, Snapshot) ->
-    {[memcached_permissions:jsonify_user_with_cache(Identity, Snapshot)]}.
+get_user_rbac_record_json(AuthnRes, Snapshot) ->
+    {[memcached_permissions:jsonify_user_with_cache(AuthnRes, Snapshot)]}.
 
 cmd_auth_provider(Sock) ->
     Resp = mc_client_binary:cmd_vocal(?MC_AUTH_PROVIDER, Sock,
@@ -283,7 +287,7 @@ sasl_decode_plain_challenge(Challenge) ->
 
 update_mcd_rbac([], _) -> ok;
 update_mcd_rbac([Id|Tail], Snapshot) ->
-    RBACJson = get_user_rbac_record_json(Id, Snapshot),
+    RBACJson = get_user_rbac_record_json(#authn_res{identity=Id}, Snapshot),
     ?log_debug("Updating rbac record for user ~p",
                [ns_config_log:tag_user_data(Id)]),
     case mcd_update_user_permissions(RBACJson) of
@@ -306,11 +310,13 @@ mcd_update_user_permissions(RBACJson) ->
 
 -ifdef(TEST).
 process_data_test() ->
-    Roles = [[{[admin, memcached], all},
-              {[{bucket, any}], [read]}],
+    Roles = [[{[admin, memcached], all}],
              [{[{bucket, "b1"}, data, docs], [insert, upsert]}]],
-    Users = [{{"User1", "foo"}, local, []},
-             {{"User2", "bar"}, external, Roles}],
+    ExtraRoles = [[{[{bucket, "b2"}, data, docs], [read]}]],
+    %% Four-tuple format: {Name, Pass}, Domain, Roles, ExtraRoles
+    Users = [{{"User1", "foo"}, local, [], []},
+             {{"User2", "bar"}, external, Roles, []},
+             {{"User3", "jwt"}, external, Roles, ExtraRoles}],
 
     with_mocked_users(
       Users,
@@ -347,6 +353,24 @@ process_data_test() ->
                      {[{<<"error">>,
                         {[{<<"context">>, <<"Authentication failed">>},
                           {<<"ref">>, _}]}}]}) -> ok
+                end),
+              test_process_data(
+                {?MC_AUTH_REQUEST, undefined,
+                 {[{mechanism, <<"PLAIN">>},
+                   {challenge, <<"AFVzZXIzAGp3dA==">>}]}},
+                fun (?MC_AUTH_REQUEST, ?SUCCESS, undefined,
+                     {[{<<"rbac">>,
+                        {[{<<"User3">>,
+                           {[{<<"buckets">>, Buckets},
+                             {<<"privileges">>, [_|_]},
+                             {<<"domain">>, <<"external">>}]}}]}}]}) ->
+                        B1 = proplists:get_value(<<"b1">>, element(1, Buckets)),
+                        B2 = proplists:get_value(<<"b2">>, element(1, Buckets)),
+                        case {B1, B2} of
+                            {{[{<<"privileges">>, [_|_]}]},
+                             {[{<<"privileges">>, [_|_]}]}} -> ok;
+                            _ -> error
+                        end
                 end)
       end),
     ok.
@@ -376,8 +400,9 @@ test_process_data(InputMessages, Validator) when is_list(InputMessages) ->
                  process_data(#s{mcd_socket = my_socket,
                                  data = <<Bin/binary, "rest">>,
                                  snapshot = ns_bucket:toy_buckets(
-                                              [{"b1",
-                                                [{uuid, <<"b1id">>}]}])}));
+                                              [{"b1", [{uuid, <<"b1id">>}]},
+                                               {"b2",
+                                                [{uuid, <<"b2id">>}]}])}));
 test_process_data(InputMessage, Validator) ->
     test_process_data([InputMessage], Validator).
 
@@ -389,18 +414,24 @@ with_mocked_users(Users, Fun) ->
     try
         meck:expect(menelaus_auth, authenticate,
                     fun ({Name, Pass}) ->
-                            case [{N, D} || {{N, P}, D, _} <- Users,
-                                            N == Name, P == Pass] of
-                                [Id] -> {ok, #authn_res{identity = Id}, []};
+                            case [{N, D, ER} || {{N, P}, D, _, ER} <- Users,
+                                                N == Name, P == Pass] of
+                                [{N, D, ER}] ->
+                                    {ok, #authn_res{identity = {N, D},
+                                                    extra_roles = ER}, []};
                                 [] -> {error, auth_failure}
                             end
                     end),
 
         meck:expect(menelaus_roles, get_compiled_roles,
-                    fun ({Name, Domain}) ->
-                            [Roles] = [R || {{N, _}, D, R} <- Users,
-                                            N == Name, D == Domain],
-                            Roles
+                    fun (#authn_res{identity = {Name, Domain},
+                                    extra_roles = ExtraRoles}) ->
+                            [BaseRoles] = [R || {{N, _}, D, R, _} <- Users,
+                                                N == Name, D == Domain],
+                            case ExtraRoles of
+                                undefined -> BaseRoles;
+                                _ -> BaseRoles ++ ExtraRoles
+                            end
                     end),
         %% the following 2 funs are used for checking collection specific
         %% permissions only, so returning [] from both will just result in
