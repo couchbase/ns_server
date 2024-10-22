@@ -16,13 +16,15 @@ class UsersTestSet(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(services=[Service.KV,
-                                                     Service.QUERY,
-                                                     Service.CBAS],
-                                           # i.e. wait for service up
-                                           balanced=True,
-                                           buckets=[{"name": "test",
-                                                     "ramQuota": 100}])
+        return testlib.ClusterRequirements(
+            services=[Service.KV,
+                      Service.QUERY,
+                      Service.CBAS],
+            # i.e. wait for service up
+            balanced=True,
+            buckets=[{"name": "test",
+                      "ramQuota": 100,
+                      "storageBackend": "couchstore"}])
 
     def setup(self):
         self.user = testlib.random_str(10)
@@ -81,14 +83,14 @@ class UsersTestSet(testlib.BaseTestSet):
 
         # User creation
         put_user(self.cluster, 'local', user, password=password,
-                 roles='admin', full_name=name, groups='')
+                 roles='admin,views_admin[test]', full_name=name, groups='')
         assert_not_locked(self.cluster, user, password)
 
         # Start UI session
         session, headers, node = start_ui_session(self.cluster, user, password)
 
         # Use UI session
-        testlib.get_succ(node, '/pools', headers=headers,
+        testlib.get_succ(node, '/pools/default/buckets/test', headers=headers,
                          session=session, auth=None)
 
         # Test query endpoint
@@ -99,6 +101,10 @@ class UsersTestSet(testlib.BaseTestSet):
         testlib.get_succ(self.cluster, '/analytics/admin/active_requests',
                          service=Service.CBAS, expected_code=200,
                          auth=(user, password))
+
+        # Test views endpoint
+        testlib.get_succ(self.cluster, '/test', service=Service.VIEWS,
+                         expected_code=404, auth=(user, password))
 
         # Lock user via PATCH
         lock_user(self.cluster, user)
@@ -117,6 +123,10 @@ class UsersTestSet(testlib.BaseTestSet):
         testlib.get_fail(self.cluster, '/analytics/admin/active_requests',
                          service=Service.CBAS, expected_code=401,
                          auth=(user, password))
+
+        # Views error
+        testlib.get_fail(self.cluster, '/test', service=Service.VIEWS,
+                         expected_code=401, auth=(user, password))
 
         # Unlock user via PATCH
         unlock_user(self.cluster, user)

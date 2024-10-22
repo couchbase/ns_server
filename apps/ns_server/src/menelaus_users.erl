@@ -90,7 +90,8 @@
          start_lock_cache/0]).
 
 %% RPC'd from ns_couchdb node
--export([get_auth_info_on_ns_server/1]).
+-export([get_auth_info_on_ns_server/1,
+         is_user_locked_on_ns_server/1]).
 
 -define(MAX_USERS_ON_CE, 20).
 -define(DEFAULT_PROPS, [name, uuid, user_roles, group_roles, passwordless,
@@ -650,7 +651,7 @@ is_user_locked({_, local} = Identity) ->
         false ->
             is_user_locked_on_ns_server(Identity);
         true ->
-            versioned_cache:get(auth_cache_name(), {locked, Identity})
+            versioned_cache:get(lock_cache_name(), Identity)
     end;
 is_user_locked(_) ->
     %% Non-local users can't be locked
