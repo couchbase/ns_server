@@ -31,7 +31,7 @@ start_link(Bucket) ->
                           Bucket, []).
 
 server_name(Bucket) ->
-    list_to_atom(?MODULE_STRING "-" ++ Bucket).
+    list_to_atom(?MODULE_STRING ++ "-" ++ Bucket).
 
 init(Bucket) ->
     {ok, Bucket}.

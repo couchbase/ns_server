@@ -108,7 +108,7 @@ start_link(ProducerNode, Bucket, RepFeatures) ->
                ConsumerNode, ProducerNode, Bucket, ConnName, RepFeatures).
 
 server_name(ProducerNode, Bucket) ->
-    list_to_atom(?MODULE_STRING "-" ++ Bucket ++ "-" ++ atom_to_list(ProducerNode)).
+    list_to_atom(?MODULE_STRING ++ "-" ++ Bucket ++ "-" ++ atom_to_list(ProducerNode)).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
