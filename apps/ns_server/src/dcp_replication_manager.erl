@@ -26,6 +26,8 @@
 -export([start_link/1, get_actual_replications/1, set_desired_replications/2,
          get_replicator_pid/2]).
 
+-record(state, {bucket = undefined :: bucket_name()}).
+
 start_link(Bucket) ->
     gen_server:start_link({local, server_name(Bucket)}, ?MODULE,
                           Bucket, []).
@@ -34,7 +36,7 @@ server_name(Bucket) ->
     list_to_atom(?MODULE_STRING ++ "-" ++ Bucket).
 
 init(Bucket) ->
-    {ok, Bucket}.
+    {ok, #state{bucket = Bucket}}.
 
 get_actual_replications(Bucket) ->
     try gen_server:call(server_name(Bucket), get_actual_replications, infinity) of
@@ -79,14 +81,16 @@ handle_info(Msg, State) ->
     ?rebalance_warning("Unexpected handle_info(~p, ~p)", [Msg, State]),
     {noreply, State}.
 
-handle_call({manage_replicators, NeededNodes}, _From, Bucket) ->
+handle_call({manage_replicators, NeededNodes}, _From,
+            #state{bucket = Bucket} = State) ->
     dcp_sup:manage_replicators(Bucket, NeededNodes),
-    {reply, ok, Bucket};
-handle_call(get_actual_replications, _From, Bucket) ->
+    {reply, ok, State};
+handle_call(get_actual_replications, _From, #state{bucket = Bucket} = State) ->
     Reps = lists:sort([{Node, dcp_replicator:get_partitions(Pid)} ||
                           {Node, Pid, _, _} <- dcp_sup:get_children(Bucket)]),
-    {reply, Reps, Bucket};
-handle_call({get_replicator_pid, Partition}, _From, Bucket) ->
+    {reply, Reps, State};
+handle_call({get_replicator_pid, Partition}, _From,
+            #state{bucket = Bucket} = State) ->
     ChildrenTail =
         lists:dropwhile(fun ({_, Pid, _, _}) ->
                                 not lists:member(Partition,
@@ -98,4 +102,4 @@ handle_call({get_replicator_pid, Partition}, _From, Bucket) ->
              _ ->
                  undefined
          end,
-    {reply, RV, Bucket}.
+    {reply, RV, State}.
