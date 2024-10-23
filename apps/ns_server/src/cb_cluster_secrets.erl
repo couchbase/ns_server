@@ -169,6 +169,16 @@
                        last_drop_timestamp := undefined | non_neg_integer(),
                        statuses := #{node_job() := ok | retry | {error, _}}}.
 
+-type external_dek_info() :: #{data_status := encrypted |
+                                              partially_encrypted |
+                                              unencrypted | unknown,
+                               issues := [{dek_issue(), pending | failed}],
+                               deks := [cb_deks:dek()],
+                               dek_num := non_neg_integer(),
+                               oldest_dek_datetime := calendar:datetime()}.
+
+-type dek_issue() :: dek_job() | proc_communication.
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -440,9 +450,21 @@ get_secret_by_kek_id_map(Snapshot) ->
                          [{KeyId, Id} ||  KeyId <- get_all_keys_from_props(S)]
                      end, get_all(Snapshot))).
 
--spec get_node_deks_info() -> #{cb_deks:dek_kind() := [cb_deks:dek()]} | retry.
+-spec get_node_deks_info() -> #{cb_deks:dek_kind() := external_dek_info()}.
 get_node_deks_info() ->
-    gen_server:call(?MODULE, get_node_deks_info, ?DEK_COUNTERS_UPDATE_TIMEOUT).
+    try
+        gen_server:call(?MODULE, get_node_deks_info,
+                        ?DEK_COUNTERS_UPDATE_TIMEOUT)
+    catch
+        _:E ->
+            ?log_error("Failed to get node deks_info: ~p", [E]),
+            Kinds = cb_deks:dek_kinds_list(),
+            maps:from_list(
+              lists:map(
+                fun (K) ->
+                    {K, #{issues => [{proc_communication, failed}]}}
+                end, Kinds))
+    end.
 
 -spec new_key_id() -> key_id().
 new_key_id() ->
@@ -525,35 +547,21 @@ handle_call(sync, _From, #state{proc_type = ?NODE_PROC} = State) ->
 
 handle_call(get_node_deks_info, _From,
             #state{proc_type = ?NODE_PROC} = State) ->
-    ?log_debug("Received get_node_deks_info request..."),
-    NewState = run_jobs(State), %% Run jobs to make sure all deks are up to date
-    maybe
-        [] ?= NewState#state.jobs,
-        StripKeyMaterial =
-            fun (Keys) ->
-                lists:map(fun (#{type := 'raw-aes-gcm', info := Info} = K) ->
-                              K#{info => maps:remove(key, Info)}
-                          end, Keys)
-            end,
+    #state{deks = Deks} = State,
+    Kinds = maps:keys(Deks),
+    {Res, NewState} =
+        lists:foldl(
+          fun (Kind, {ResAcc, StateAcc}) ->
+               %% Run gc for deks; it is usefull in case if a compaction
+               %% has been run recently
+               NewStateAcc = maybe_garbage_collect_deks(Kind, false, StateAcc),
+               case extract_dek_info(Kind, NewStateAcc) of
+                   {ok, I} -> {ResAcc#{Kind => I}, NewStateAcc};
+                   {error, not_found} -> {ResAcc, NewStateAcc}
+               end
+          end, {#{}, State}, Kinds),
 
-        %% Run gc for deks; it is usefull in case if a compaction has been run
-        %% recently.
-        NewState2 = maps:fold(fun (Kind, _, Acc) ->
-                                  maybe_garbage_collect_deks(Kind, false, Acc)
-                              end, NewState, NewState#state.deks),
-        #state{deks = Deks} = NewState2,
-        Res = maps:map(fun (_K, #{deks := Keys}) -> StripKeyMaterial(Keys) end,
-                       Deks),
-        {reply, Res, NewState2}
-    else
-        [_ | _] ->
-            %% There are still unfinished jobs. That means deks in our state
-            %% can be not up to date (dek might exist on disk, but this
-            %% process hasn't read it yet). Since this function is used
-            %% in final checks before kek removal, it should not return
-            %% {ok, _} reuslt in this case
-            {reply, retry, NewState}
-    end;
+    {reply, Res, NewState};
 
 handle_call(Request, _From, State) ->
     ?log_warning("Unhandled call: ~p", [Request]),
@@ -2247,31 +2255,43 @@ maybe_reset_deks_counters() ->
                     Res = erpc:multicall(AllNodes, ?MODULE, get_node_deks_info,
                                          [], ?DEK_COUNTERS_UPDATE_TIMEOUT),
                     {NonErrors, Errors} =
-                        misc:partitionmap(fun ({N, {ok, R}}) -> {left, {N, R}};
+                        misc:partitionmap(fun ({_N, {ok, R}}) -> {left, R};
                                               ({N, E}) -> {right, {N, E}}
                                           end, lists:zip(AllNodes, Res)),
-                    {SuccRes, Retries} =
-                        misc:partitionmap(
-                          fun ({N, retry}) -> {right, N};
-                              ({_N, R}) -> {left, R}
+
+                    %% If some deks have issues we should not remove anything
+                    %% until those issues are resolved
+                    ShouldRetry =
+                        lists:any(
+                          fun (L) ->
+                              lists:any(fun (#{issues := I}) -> I /= [] end,
+                                        maps:values(L))
                           end, NonErrors),
-                    case {Errors, Retries} of
-                        {[], []} ->
-                            %% Merge results from all nodes into one map
+                    OnlyKeys =
+                        lists:map(
+                          fun (FullInfo) ->
+                              maps:filtermap(fun (_, #{deks := K}) -> {true, K};
+                                                 (_, #{}) -> false
+                                             end, FullInfo)
+                          end, NonErrors),
+
+                    case {Errors, ShouldRetry} of
+                        {[], false} ->
+                            %% Merge deks from all nodes into one map
                             DekInfo = lists:foldl(
                                         fun (M, Acc) ->
                                             maps:merge_with(fun (_, V1, V2) ->
                                                                 V1 ++ V2
                                                             end, M, Acc)
-                                        end, #{}, SuccRes),
+                                        end, #{}, OnlyKeys),
                             reset_dek_counters(OldMap, DekInfo);
-                        {[], _} ->
-                            ?log_debug("Some nodes returned retry: ~p~n"
-                                       "All responses: ~p", [Retries, Res]),
+                        {[], true} ->
+                            ?log_debug("Some deks have issues. "
+                                       "All responses: ~p", [Res]),
                             {error, retry};
-                        {Errors, []} ->
+                        {Errors, _} ->
                             ?log_error("Failed to update deks counters because "
-                                       "some nodes returns errors: ~p~n"
+                                       "some nodes returned errors: ~p~n"
                                        "All responses: ~p", [Errors, Res]),
                             {error, node_errors}
                     end;
@@ -2562,6 +2582,49 @@ sanitize_sensitive_data(#{type := sensitive, data := D} = Data) ->
     Data#{data => chronicle_kv_log:sanitize_value(D)};
 sanitize_sensitive_data(#{type := encrypted} = Data) ->
     Data.
+
+-spec extract_dek_info(cb_deks:dek_kind(), #state{}) ->
+          {ok, external_dek_info()} | {error, not_found}.
+extract_dek_info(Kind, #state{deks = DeksInfo}) ->
+    StripKeyMaterial =
+        fun (Keys) ->
+            lists:map(fun (#{type := 'raw-aes-gcm', info := Info} = K) ->
+                          K#{info => maps:remove(key, Info)}
+                      end, Keys)
+        end,
+
+    maybe
+        {ok, #{has_unencrypted_data := HasUnencryptedData,
+               statuses := Statuses,
+               deks := Keys}} ?= maps:find(Kind, DeksInfo),
+        Issues = maps:fold(fun (_J, ok, Acc) -> Acc;
+                               (J, retry, Acc) -> [{J, pending} | Acc];
+                               (J, {error, _}, Acc) -> [{J, failed} | Acc]
+                           end, [], Statuses),
+        CreationTime = fun (#{type := 'raw-aes-gcm',
+                              info := #{creation_time := CT}}) -> CT
+                       end,
+        HasEncryptedData = length(Keys) > 0,
+        Status = case {HasUnencryptedData, HasEncryptedData} of
+                     {undefined, _} -> unknown;
+                     {true, false} -> unencrypted;
+                     {false, true} -> encrypted;
+                     {true, true} -> partially_encrypted;
+                     {false, false} -> unknown
+                 end,
+        Res = #{data_status => Status,
+                issues => Issues,
+                deks => StripKeyMaterial(Keys),
+                dek_num => length(Keys)},
+        case Keys of
+            [] -> {ok, Res};
+            _ ->
+                MinCreationTime = lists:min([CreationTime(D) || D <- Keys]),
+                {ok, Res#{oldest_dek_datetime => MinCreationTime}}
+        end
+    else
+        error -> {error, not_found}
+    end.
 
 -ifdef(TEST).
 replace_secret_in_list_test() ->
