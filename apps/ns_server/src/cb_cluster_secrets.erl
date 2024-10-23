@@ -537,7 +537,7 @@ handle_call(get_node_deks_info, _From,
         %% Run gc for deks; it is usefull in case if a compaction has been run
         %% recently.
         NewState2 = maps:fold(fun (Kind, _, Acc) ->
-                                  maybe_garbage_collect_deks(Kind, Acc)
+                                  maybe_garbage_collect_deks(Kind, false, Acc)
                               end, NewState, NewState#state.deks),
         #state{deks = Deks} = NewState2,
         Res = maps:map(fun (_K, #{deks := Keys}) -> StripKeyMaterial(Keys) end,
@@ -638,7 +638,8 @@ handle_info({timer, dek_cleanup} = Msg, #state{proc_type = ?NODE_PROC,
                     %% cheaper thing to do), and only if it doesn't help,
                     %% perform the drop keys precedure (which is expensive for
                     %% buckets)
-                    NewStateAcc = maybe_garbage_collect_deks(Kind, StateAcc),
+                    NewStateAcc = maybe_garbage_collect_deks(Kind, false,
+                                                             StateAcc),
                     {deks_to_drop(Kind, NewStateAcc), NewStateAcc}
             end
         end,
@@ -1035,8 +1036,7 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                 %% On disk it is enabled but in config it is disabled:
                 true when EncrMethod == disabled ->
                     ok = cb_deks:set_active(Kind, ActiveId, false),
-                    NewState = add_jobs([{garbage_collect_deks, Kind}],
-                                        read_deks(Kind, State)),
+                    NewState = read_deks(Kind, State),
                     call_set_active_cb(Kind, NewState);
 
                 %% It is enabled on disk and in config:
@@ -1067,10 +1067,7 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                     %% we should generate a new dek
                     case generate_new_dek(Kind, Deks, EncrMethod, Snapshot) of
                         ok ->
-                            %% adding jobs inside a job, so there is no need to
-                            %% call add_and_run_jobs
-                            NewState = add_jobs([{garbage_collect_deks, Kind}],
-                                                read_deks(Kind, State)),
+                            NewState = read_deks(Kind, State),
                             call_set_active_cb(Kind, NewState);
                         %% Too many DEKs and encryption is being enabled
                         %% We could not create new DEK, but should still
@@ -1082,14 +1079,13 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                         {error, too_many_deks} when V == false ->
                             true = is_binary(ActiveId),
                             ok = cb_deks:set_active(Kind, ActiveId, true),
-                            NewState = add_jobs([{garbage_collect_deks, Kind}],
-                                                read_deks(Kind, State)),
+                            NewState = read_deks(Kind, State),
                             call_set_active_cb(Kind, NewState);
                         %% This just a dek rotation attempt. No need to call
                         %% cb_deks:set_active because nothing changes.
                         {error, too_many_deks} ->
-                            NewState = add_jobs([{garbage_collect_deks, Kind}],
-                                                State),
+                            NewState = maybe_garbage_collect_deks(Kind, false,
+                                                                  State),
                             %% We will retry anyway because of rotate_deks timer
                             {ok, NewState};
                         {error, Reason} ->
@@ -1106,8 +1102,9 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
             {ok, OldState#state{deks = maps:remove(Kind, CurDeks)}}
     end.
 
--spec maybe_garbage_collect_deks(cb_deks:dek_kind(), #state{}) -> #state{}.
-maybe_garbage_collect_deks(Kind, #state{deks = DeksInfo} = State) ->
+-spec maybe_garbage_collect_deks(cb_deks:dek_kind(), boolean(), #state{}) ->
+          #state{}.
+maybe_garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
     ShouldRun =
         case maps:find(Kind, DeksInfo) of
             {ok, #{last_deks_gc_datetime := undefined}} ->
@@ -1119,13 +1116,13 @@ maybe_garbage_collect_deks(Kind, #state{deks = DeksInfo} = State) ->
             error ->
                 false
         end,
-    case ShouldRun of
+    case ShouldRun orelse Force of
         true ->
             case garbage_collect_deks(Kind, State) of
                 {ok, NewState} -> NewState;
                 {error, NewState, Error} ->
                     ?log_error("Garbage collecting DEKs failed: ~p", [Error]),
-                    NewState
+                    add_jobs([{garbage_collect_deks, Kind}], NewState)
             end;
         false ->
             ?log_debug("Skipping garbage collect for ~p", [Kind]),
@@ -1241,7 +1238,7 @@ call_set_active_cb(Kind, #state{deks = AllDeks} = State) ->
             case call_dek_callback(set_active_key_callback, Kind,
                                    [NewActiveKey]) of
                 {succ, ok} ->
-                    {ok, State};
+                    {ok, maybe_garbage_collect_deks(Kind, true, State)};
                 {succ, {ok, DekIdsInUse}} ->
                     retire_unused_deks(Kind, DekIdsInUse, State);
                 {succ, {error, Reason}} ->
