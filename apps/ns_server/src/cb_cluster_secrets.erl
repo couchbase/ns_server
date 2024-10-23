@@ -1662,42 +1662,43 @@ add_and_run_jobs(NewJobs, State) ->
 
 -spec run_jobs(#state{}) -> #state{}.
 run_jobs(#state{jobs = Jobs} = State) ->
-    {NewJobsReversed, NewState} =
-        lists:foldl(
-          fun (J, {JobsAcc, StateAcc}) ->
-              ?log_debug("Starting job: ~p", [J]),
-              try do(J, StateAcc) of
-                  {ok, NewStateAcc} ->
-                      ?log_debug("Job complete: ~p", [J]),
-                      {JobsAcc, NewStateAcc};
-                  ok ->
-                      ?log_debug("Job complete: ~p", [J]),
-                      {JobsAcc, StateAcc};
-                  {error, retry} ->
-                      ?log_debug("Job ~p returned 'retry'", [J]),
-                      {[J | JobsAcc], StateAcc};
-                  {error, NewStateAcc, retry} ->
-                      ?log_debug("Job ~p returned 'retry'", [J]),
-                      {[J | JobsAcc], NewStateAcc};
-                  {error, NewStateAcc, Error} ->
-                      ?log_error("Job ~p returned error: ~p", [J, Error]),
-                      {[J | JobsAcc], NewStateAcc};
-                  BadRes ->
-                      ?log_error("Job ~p returned: ~p", [J, BadRes]),
-                      {[J | JobsAcc], StateAcc}
-              catch
-                  C:E:ST ->
-                      ?log_error("Job ~p failed: ~p:~p~nStacktrace:~p~n"
-                                 "State: ~p", [J, C, E, ST, State]),
-                      {[J | JobsAcc], StateAcc}
-              end
-          end, {[], State#state{jobs = []}}, Jobs),
+    NewState = lists:foldl(fun run_job/2, State#state{jobs = []}, Jobs),
 
-    UpdatedState = add_jobs(lists:reverse(NewJobsReversed), NewState),
-    case UpdatedState#state.jobs of
-        [] -> stop_timer(retry_jobs, UpdatedState);
-        [_ | _] -> restart_timer(retry_jobs, ?RETRY_TIME, UpdatedState)
+    case NewState#state.jobs of
+        [] -> stop_timer(retry_jobs, NewState);
+        [_ | _] -> restart_timer(retry_jobs, ?RETRY_TIME, NewState)
     end.
+
+-spec run_job(node_job() | master_job(), #state{}) -> #state{}.
+run_job(J, State) ->
+    ?log_debug("Starting job: ~p", [J]),
+    {Res, NewState} =
+        try normalize_job_res(do(J, State), State)
+        catch
+            C:E:ST ->
+                ?log_error("Job ~p failed: ~p:~p~nStacktrace:~p~n"
+                           "State: ~p", [J, C, E, ST, State]),
+                {{error, exception}, State}
+        end,
+    case Res of
+        ok ->
+            ?log_debug("Job complete: ~p", [J]),
+            NewState;
+        retry ->
+            ?log_debug("Job ~p returned 'retry'", [J]),
+            add_jobs([J], NewState);
+        {error, Error} ->
+            ?log_error("Job ~p returned error: ~p", [J, Error]),
+            add_jobs([J], NewState)
+    end.
+
+-spec normalize_job_res(Res :: term(), #state{}) -> {ok | retry | {error, _}, #state{}}.
+normalize_job_res(ok, State) -> {ok, State};
+normalize_job_res({ok, State}, _) -> {ok, State};
+normalize_job_res({error, State, retry}, _) -> {retry, State};
+normalize_job_res({error, retry}, State) -> {retry, State};
+normalize_job_res({error, State, Reason}, _) -> {{error, Reason}, State};
+normalize_job_res({error, Reason}, State) -> {{error, Reason}, State}.
 
 -spec do(node_job() | master_job(), #state{}) ->
           ok | {ok, #state{}} | retry | {error, _} | {error, #state{}, _}.
