@@ -54,7 +54,8 @@
 
 -type disk_stats_error() :: no_dbdir
                           | {dbdir_path_error, term()}
-                          | no_disk_stats_found.
+                          | no_disk_stats_found
+                          | service_not_active_on_this_node.
 
 -spec is_enabled() -> boolean().
 is_enabled() ->
@@ -519,24 +520,32 @@ check_disk_usage_for_service(Service, Config) ->
             [];
         Thresholds ->
             Node = node(),
-            {Severity, Statuses} =
-                case get_high_disk_usage_from_nodes(Thresholds, [Node],
-                                                    Service) of
-                    [{Node, {error, _Error}}] ->
-                        %% If we fail to get disk stats then we assume the disk
-                        %% usage is safe, rather than disabling data ingress.
-                        %% We do this because disabling data ingress is an
-                        %% extreme action that we do not want to take unless we
-                        %% are sure that we have to.
-                        {ok, []};
-                    [{Node, Sev}] ->
-                        {Sev,
-                         get_disk_usage_statuses_for_service(Service, Sev)};
-                    [] ->
-                        {ok, []}
-                end,
-            notify_disk_usage_severity_for_service(Service, Severity),
-            Statuses
+            Services = ns_cluster_membership:node_active_services(Node),
+            case lists:member(Service, Services) of
+                false ->
+                    [];
+                true ->
+                    {Severity, Statuses} =
+                        case get_high_disk_usage_from_nodes(Thresholds, [Node],
+                                                            Service) of
+                            [{Node, {error, _Error}}] ->
+                                %% If we fail to get disk stats then we assume
+                                %% the disk usage is safe, rather than disabling
+                                %% data ingress.
+                                %% We do this because disabling data ingress is
+                                %% an extreme action that we do not want to take
+                                %% unless we are sure that we have to.
+                                {ok, []};
+                            [{Node, Sev}] ->
+                                {Sev,
+                                 get_disk_usage_statuses_for_service(Service,
+                                                                     Sev)};
+                            [] ->
+                                {ok, []}
+                        end,
+                    notify_disk_usage_severity_for_service(Service, Severity),
+                    Statuses
+            end
     end.
 
 get_disk_usage_statuses_for_service(kv, maximum) ->
@@ -1189,11 +1198,7 @@ check_resources_t() ->
 
     ?assertEqual([], check_resources()),
     ?assertResourceMetrics(
-       #{[{resource, index_disk_usage},
-          {severity, serious}] => 0,
-         [{resource, index_disk_usage},
-          {severity, critical}] => 0,
-         [{resource, kv_disk_usage},
+       #{[{resource, kv_disk_usage},
           {severity, maximum}] => 0}),
 
     meck:expect(ns_storage_conf, this_node_dbdir,
@@ -1201,11 +1206,7 @@ check_resources_t() ->
 
     ?assertEqual([], check_resources()),
     ?assertResourceMetrics(
-       #{[{resource, index_disk_usage},
-          {severity, serious}] => 0,
-         [{resource, index_disk_usage},
-          {severity, critical}] => 0,
-         [{resource, kv_disk_usage},
+       #{[{resource, kv_disk_usage},
           {severity, maximum}] => 0}),
 
     meck:expect(ns_storage_conf, extract_disk_stats_for_path,
@@ -1213,11 +1214,7 @@ check_resources_t() ->
 
     ?assertEqual([], check_resources()),
     ?assertResourceMetrics(
-       #{[{resource, index_disk_usage},
-          {severity, serious}] => 0,
-         [{resource, index_disk_usage},
-          {severity, critical}] => 0,
-         [{resource, kv_disk_usage},
+       #{[{resource, kv_disk_usage},
           {severity, maximum}] => 0}),
 
     pretend_disk_data(#{node() => #{kv => {"/", 1, 97}}}),
@@ -1226,11 +1223,7 @@ check_resources_t() ->
                   {{bucket, "magma_bucket"}, disk_usage}],
                  check_resources()),
     ?assertResourceMetrics(
-       #{[{resource, index_disk_usage},
-          {severity, serious}] => 0,
-         [{resource, index_disk_usage},
-          {severity, critical}] => 0,
-         [{resource, kv_disk_usage},
+       #{[{resource, kv_disk_usage},
           {severity, maximum}] => 1}),
 
     pretend_disk_data(#{node() => #{kv => {"/", 1, 86},
@@ -1358,6 +1351,15 @@ check_resources_t() ->
     ok.
 
 pretend_disk_data(DiskDataMap) ->
+    meck:expect(ns_cluster_membership, node_active_services,
+                fun (Node) ->
+                    case maps:find(Node, DiskDataMap) of
+                        {ok, NodeMap} ->
+                            maps:keys(NodeMap);
+                        error ->
+                            {badrpc, noproc}
+                    end
+                end),
     meck:expect(rpc, call,
                 fun (Node, guardrail_monitor, get_disk_data_for_service,
                      [Service], _Timeout) ->
@@ -1391,7 +1393,7 @@ basic_test_() ->
 
 check_test_modules() ->
     [ns_config, cluster_compat_mode, menelaus_web_guardrails,stats_interface,
-     config_profile, ns_bucket, rpc].
+     config_profile, ns_bucket, rpc, ns_cluster_membership].
 
 check_test_setup() ->
     %% We need unstick, so that we can meck rpc

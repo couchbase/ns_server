@@ -5707,6 +5707,8 @@ rank_params_screening_test() ->
 test_num_replicas_guardrail_validation(#{disk_usage := DiskUsage,
                                          old_num_replicas := OldNumReplicas,
                                          new_num_replicas := NewNumReplicas}) ->
+    meck:expect(ns_cluster_membership, node_active_services,
+                fun (_Node) -> [kv] end),
     meck:expect(rpc, call,
                 fun (_Node, guardrail_monitor, get_disk_data_for_service, [kv],
                      _Timeout) ->
