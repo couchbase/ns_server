@@ -1895,6 +1895,9 @@ set_active_dek(TypeOrBucket, DeksSnapshot) ->
     case RV of
         ok -> ok;
         {error, couldnt_connect_to_memcached} -> {error, retry};
+        %% It can happen during start, when bucket is not created yet
+        {error, {key_enoent, undefined}} -> {error, retry};
+        {error, {not_supported, undefined}} -> {error, retry};
         {error, E} -> {error, E}
     end.
 
@@ -1931,6 +1934,9 @@ get_dek_ids_in_use(BucketName) ->
     case RV of
         {ok, _} -> RV;
         {error, couldnt_connect_to_memcached} -> {error, retry};
+        %% It can happen during start, when bucket is not created yet
+        {error, {select_bucket_failed,
+                 {memcached_error, key_enoent, undefined}}} -> {error, retry};
         {error, E} -> {error, E}
     end.
 
