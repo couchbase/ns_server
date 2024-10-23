@@ -1658,7 +1658,8 @@ maybe_reencrypt_data(#{type := sensitive, data := _Bin,
 
 -spec add_jobs([node_job()] | [master_job()], #state{}) -> #state{}.
 add_jobs(NewJobs, #state{jobs = Jobs} = State) ->
-    State#state{jobs = NewJobs ++ (Jobs -- NewJobs)}.
+    ensure_timer_started(retry_jobs, ?RETRY_TIME,
+                         State#state{jobs = NewJobs ++ (Jobs -- NewJobs)}).
 
 -spec add_and_run_jobs([node_job()] | [master_job()], #state{}) -> #state{}.
 add_and_run_jobs(NewJobs, State) ->
@@ -1724,7 +1725,7 @@ do({maybe_reencrypt_deks, K}, State) ->
 stop_timer(Name, #state{timers = Timers} = State) ->
     case maps:get(Name, Timers) of
         undefined -> State;
-        Ref ->
+        Ref when is_reference(Ref) ->
             erlang:cancel_timer(Ref),
             State#state{timers = Timers#{Name => undefined}}
     end.
@@ -1736,6 +1737,15 @@ restart_timer(Name, Time, #state{timers = Timers} = State) ->
     ?log_debug("Starting ~p timer for ~b...", [Name, Time]),
     Ref = erlang:send_after(Time, self(), {timer, Name}),
     NewState#state{timers = Timers#{Name => Ref}}.
+
+-spec ensure_timer_started(Name :: atom(), Time :: non_neg_integer(),
+                           #state{}) ->
+          #state{}.
+ensure_timer_started(Name, Time, #state{timers = Timers} = State) ->
+    case maps:get(Name, Timers) of
+        undefined -> restart_timer(Name, Time, State);
+        Ref when is_reference(Ref) -> State
+    end.
 
 -spec restart_rotation_timer(#state{}) -> #state{}.
 restart_rotation_timer(#state{proc_type = ?NODE_PROC} = State) ->
