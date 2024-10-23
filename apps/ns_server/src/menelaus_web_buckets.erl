@@ -453,6 +453,14 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
          {DriftAheadThreshold, DriftBehindThreshold} ->
              [{driftAheadThresholdMs, DriftAheadThreshold},
               {driftBehindThresholdMs, DriftBehindThreshold}]
+     end,
+     case cluster_compat_mode:is_cluster_morpheus() of
+         true ->
+            [{encryptionAtRestInfo,
+              menelaus_web_encr_at_rest:build_bucket_encr_at_rest_info(
+                Id, BucketConfig)}];
+         false ->
+            []
      end].
 
 build_encryption_at_rest_bucket_info(BucketConfig) ->

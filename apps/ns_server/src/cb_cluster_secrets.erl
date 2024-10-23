@@ -63,7 +63,9 @@
          is_valid_key_id/1,
          dek_drop_complete/1,
          is_name_unique/3,
-         sanitize_chronicle_cfg/1]).
+         sanitize_chronicle_cfg/1,
+         merge_dek_infos/2,
+         format_dek_issues/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -177,7 +179,7 @@
                                dek_num := non_neg_integer(),
                                oldest_dek_datetime := calendar:datetime()}.
 
--type dek_issue() :: dek_job() | proc_communication.
+-type dek_issue() :: dek_job() | proc_communication | node_info.
 
 %%%===================================================================
 %%% API
@@ -489,6 +491,50 @@ is_name_unique(Id, Name, Snapshot) ->
 -spec sanitize_chronicle_cfg([secret_props()]) -> [term()].
 sanitize_chronicle_cfg(Value) ->
     lists:map(fun sanitize_secret/1, Value).
+
+-spec merge_dek_infos(external_dek_info(), external_dek_info()) ->
+          external_dek_info().
+merge_dek_infos(M1, M2) ->
+    MergeIssues = fun (Issues1, Issues2) ->
+                      maps:to_list(
+                        maps:merge_with(fun (_, failed, _) -> failed;
+                                            (_, _, failed) -> failed;
+                                            (_, pending, pending) -> pending
+                                        end,
+                                        maps:from_list(Issues1),
+                                        maps:from_list(Issues2)))
+                  end,
+    maps:merge_with(
+      fun (data_status, unknown, _) -> unknown;
+          (data_status, _, unknown) -> unknown;
+          (data_status, encrypted, encrypted) -> encrypted;
+          (data_status, unencrypted, unencrypted) -> unencrypted;
+          (data_status, _, _) -> partially_encrypted;
+          (issues, A, B) -> MergeIssues(A, B);
+          (dek_num, A, B) -> A + B;
+          (deks, A, B) -> A ++ B;
+          (oldest_dek_datetime, A, B) -> min(A, B)
+      end, M1, M2).
+
+-spec format_dek_issues([{dek_issue(), pending | failed}]) -> [binary()].
+format_dek_issues(List) ->
+    lists:map(fun ({maybe_update_deks, pending}) ->
+                      <<"keys update pending">>;
+                  ({maybe_update_deks, failed}) ->
+                      <<"keys update failed">>;
+                  ({garbage_collect_deks, pending}) ->
+                      <<"keys garbage collection pending">>;
+                  ({garbage_collect_deks, failed}) ->
+                      <<"keys garbage collection failed">>;
+                  ({maybe_reencrypt_deks, pending}) ->
+                      <<"keys reencryption pending">>;
+                  ({maybe_reencrypt_deks, failed}) ->
+                      <<"keys reencryption failed">>;
+                  ({node_info, pending}) ->
+                      <<"information missing for some nodes">>;
+                  ({proc_communication, failed}) ->
+                      <<"encryption manager does not respond">>
+              end, List).
 
 %%%===================================================================
 %%% gen_server callbacks

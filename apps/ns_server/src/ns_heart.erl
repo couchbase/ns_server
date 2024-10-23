@@ -314,8 +314,27 @@ current_status_slow_inner() ->
                                   cpu_cores_available, allocstall]]},
          {interesting_stats, InterestingStats},
          {per_bucket_interesting_stats, PerBucketInterestingStats},
-         {processes_stats, ProcessesStats}
+         {processes_stats, ProcessesStats},
+         {encryption_at_rest_info, get_encryption_at_rest_info()}
          | element(2, ns_info:basic_info())].
+
+get_encryption_at_rest_info() ->
+    DekInfos = cb_cluster_secrets:get_node_deks_info(),
+    GroupedInfos =
+        maps:fold(
+          fun (K, I, Acc) ->
+              EncryptionType = maps:get(required_usage, cb_deks:dek_config(K)),
+              New = case maps:find(EncryptionType, Acc) of
+                        {ok, Cur} -> cb_cluster_secrets:merge_dek_infos(Cur, I);
+                        error -> I
+                    end,
+              Acc#{EncryptionType => New}
+          end, #{}, DekInfos),
+    maps:to_list(
+      maps:map(
+        fun (_, Map) ->
+            maps:to_list(maps:remove(deks, Map))
+        end, GroupedInfos)).
 
 %% returns dict as if returned by ns_doctor:get_nodes/0 but containing only
 %% failover safeness fields (or down bool property). Instead of going

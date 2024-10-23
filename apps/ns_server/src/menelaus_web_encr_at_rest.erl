@@ -14,7 +14,8 @@
 -include("cb_cluster_secrets.hrl").
 
 -export([handle_get/2, handle_post/2, get_settings/1, handle_drop_keys/2,
-         handle_bucket_drop_keys/2]).
+         handle_bucket_drop_keys/2, build_bucket_encr_at_rest_info/2,
+         format_encr_at_rest_info/1]).
 
 encr_method(Param, EncrType) ->
     {Param,
@@ -42,6 +43,10 @@ encr_deks_drop_date(Param, EncrType) ->
      #{cfg_key => [EncrType, dek_drop_datetime],
        type => {read_only, {optional, datetime_iso8601}}}}.
 
+encr_info(Param, EncrType) ->
+    {Param, #{cfg_key => [EncrType, info],
+              type => {read_only, encr_info}}}.
+
 params() ->
     [encr_method("config.encryptionMethod", config_encryption),
      encr_method("log.encryptionMethod", log_encryption),
@@ -61,12 +66,29 @@ params() ->
 
      encr_deks_drop_date("config.dekLastDropDate", config_encryption),
      encr_deks_drop_date("log.dekLastDropDate", log_encryption),
-     encr_deks_drop_date("audit.dekLastDropDate", audit_encryption)].
+     encr_deks_drop_date("audit.dekLastDropDate", audit_encryption),
+
+     encr_info("config.info", config_encryption),
+     encr_info("log.info", log_encryption),
+     encr_info("audit.info", audit_encryption)].
+
+type_spec(encr_info) ->
+    #{validators => [not_supported],
+      formatter => fun (undefined) -> ignore;
+                       (Info) -> {value, format_encr_at_rest_info(Info)}
+                   end}.
 
 handle_get(Path, Req) ->
     Settings = get_settings(direct),
-    List = maps:to_list(maps:map(fun (_, V) -> maps:to_list(V) end, Settings)),
-    menelaus_web_settings2:handle_get(Path, params(), undefined, List, Req).
+    NodesInfo = ns_doctor:get_nodes(),
+    Nodes = ns_cluster_membership:nodes_wanted(),
+    List = maps:to_list(maps:map(fun (K, V) ->
+                                     maps:to_list(V) ++
+                                     [{info, aggregated_EAR_info(K, NodesInfo,
+                                                                 Nodes)}]
+                                 end, Settings)),
+    menelaus_web_settings2:handle_get(Path, params(), fun type_spec/1, List,
+                                      Req).
 
 handle_post(Path, Req) ->
     menelaus_web_settings2:handle_post(
@@ -100,7 +122,7 @@ handle_post(Path, Req) ->
              {error, Msg} ->
                  menelaus_util:reply_global_error(Req2, Msg)
          end
-      end, Path, params(), undefined, Req).
+      end, Path, params(), fun type_spec/1, Req).
 
 handle_bucket_drop_keys(Bucket, Req) ->
     handle_set_drop_time(
@@ -121,6 +143,26 @@ handle_bucket_drop_keys(Bucket, Req) ->
                 end
             end)
       end, Req).
+
+build_bucket_encr_at_rest_info(BucketName, BucketConfig) ->
+    NodesInfo = ns_doctor:get_nodes(),
+    Nodes = ns_bucket:get_servers(BucketConfig),
+    I = aggregated_EAR_info({bucket_encryption, BucketName}, NodesInfo, Nodes),
+    format_encr_at_rest_info(I).
+
+format_encr_at_rest_info(Info) ->
+    {lists:map(fun ({data_status, partially_encrypted}) ->
+                       {dataStatus, partiallyEncrypted};
+                   ({data_status, S}) ->
+                       {dataStatus, S};
+                   ({issues, L}) ->
+                       {issues, cb_cluster_secrets:format_dek_issues(L)};
+                   ({dek_num, V}) ->
+                       {dekNumber, V};
+                   ({oldest_dek_datetime, D}) ->
+                       {oldestDekCreationDatetime,
+                        misc:utc_to_iso8601(D, local)}
+                end, Info)}.
 
 handle_drop_keys(TypeName, Req) ->
     handle_set_drop_time(
@@ -247,3 +289,26 @@ apply_auto_fields(Snapshot, NewSettings) ->
               false -> Acc
           end
       end, NewSettings, CurSettings).
+
+aggregated_EAR_info(_Type, _NodesInfo, []) ->
+    [];
+aggregated_EAR_info(Type, NodesInfo, Nodes) ->
+    maps:to_list(
+      lists:foldl(
+        fun (N, Acc) ->
+            Info =
+                case dict:find(N, NodesInfo) of
+                    {ok, NodeInfo} ->
+                        EARInfo = proplists:get_value(encryption_at_rest_info,
+                                                      NodeInfo, []),
+                        proplists:get_value(Type, EARInfo,
+                                            [{issues, [{node_info, pending}]}]);
+                    error ->
+                        [{issues, [{node_info, pending}]}]
+                end,
+            InfoMap = maps:from_list(Info),
+            case Acc of
+                undefined -> InfoMap;
+                _ -> cb_cluster_secrets:merge_dek_infos(Acc, InfoMap)
+            end
+        end, undefined, Nodes)).

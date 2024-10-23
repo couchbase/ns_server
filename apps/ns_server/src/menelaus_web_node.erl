@@ -447,6 +447,7 @@ do_build_nodes_info_fun(#ctx{ns_config = Config,
                  end,
                  build_failover_status(Snapshot, WantENode),
                  LimitsAndBucketPlacerInfoBuilder(WantENode)] ++
+                 build_encryption_at_rest_info(Bucket, InfoNode) ++
                    PerNodeStorageBackendBuilder(WantENode, Bucket),
 
             NodeHash = erlang:phash2(StableInfo),
@@ -460,6 +461,28 @@ do_build_nodes_info_fun(#ctx{ns_config = Config,
                                    build_extra_node_info(Config, WantENode,
                                                          InfoNode)
                            end])}
+    end.
+
+build_encryption_at_rest_info(Bucket, NsDoctorInfo) ->
+    AllInfos = proplists:get_value(encryption_at_rest_info, NsDoctorInfo, []),
+    CfgInfo = proplists:get_value(config_encryption, AllInfos, []),
+    LogInfo = proplists:get_value(log_encryption, AllInfos, []),
+    AuditInfo = proplists:get_value(audit_encryption, AllInfos, []),
+
+    Format = fun menelaus_web_encr_at_rest:format_encr_at_rest_info/1,
+
+    NodeInfo = {[{configuration, Format(CfgInfo)},
+                 {logs, Format(LogInfo)},
+                 {audits, Format(AuditInfo)}]},
+
+    [{encryptionAtRestInfo, NodeInfo}]
+    ++
+    case Bucket of
+        undefined -> [];
+        _ ->
+            BucketInfo = proplists:get_value({bucket_encryption, Bucket},
+                                            AllInfos, []),
+            [{bucketEncryptionAtRestInfo, Format(BucketInfo)}]
     end.
 
 build_storage_backend(Node, BucketConfig) ->
