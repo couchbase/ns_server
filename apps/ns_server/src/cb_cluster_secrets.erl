@@ -1135,13 +1135,9 @@ maybe_garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
 garbage_collect_deks(Kind, #state{deks = DeksInfo} = State) ->
     ?log_debug("Garbage collecting ~p DEKs", [Kind]),
     case maps:find(Kind, DeksInfo) of
-        {ok, #{active_id := _ActiveId,
-               deks := []}} ->
-            %% There is no deks, nothing to remove
-            {ok, State};
-        {ok, #{is_enabled := true, deks := [_]}} ->
-            %% If encryption is enabled, one dek is a minimum. Can't be removed.
-            {ok, State};
+        %% Note: we can't skip this phase even when we don't have deks
+        %% (or have only one dek), because we need to update
+        %% "has_unencrypted_data" info anyway
         {ok, #{} = KindDeks} ->
             case call_dek_callback(get_ids_in_use_callback, Kind, []) of
                 {succ, {ok, IdList}} ->
