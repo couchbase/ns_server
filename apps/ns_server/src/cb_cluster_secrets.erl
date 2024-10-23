@@ -143,10 +143,11 @@
 -type chronicle_snapshot() :: direct | map().
 -type uuid() :: binary(). %% uuid as binary string
 -type node_job() :: garbage_collect_keks |
-                    {garbage_collect_deks, cb_deks:dek_kind()} |
                     ensure_all_keks_on_disk |
-                    {maybe_update_deks, cb_deks:dek_kind()} |
-                    {maybe_reencrypt_deks, cb_deks:dek_kind()}.
+                    {dek_job(), cb_deks:dek_kind()}.
+
+-type dek_job() :: maybe_update_deks | garbage_collect_deks |
+                   maybe_reencrypt_deks.
 
 -type master_job() :: maybe_reencrypt_secrets | maybe_reset_deks_counters.
 
@@ -165,7 +166,8 @@
                        deks_being_dropped := [cb_deks:dek_id() | ?NULL_DEK],
                        has_unencrypted_data := undefined | boolean(),
                        last_deks_gc_datetime := undefined | calendar:datetime(),
-                       last_drop_timestamp := undefined | non_neg_integer()}.
+                       last_drop_timestamp := undefined | non_neg_integer(),
+                       statuses := #{node_job() := ok | retry | {error, _}}}.
 
 %%%===================================================================
 %%% API
@@ -1274,13 +1276,15 @@ read_deks(Kind, #state{deks = AllDeks} = State) ->
     CurLastDropTS = maps:get(last_drop_timestamp, CurKindDeks, undefined),
     CurHasUnencrData = maps:get(has_unencrypted_data, CurKindDeks, undefined),
     GCDeksDT = maps:get(last_deks_gc_datetime, CurKindDeks, undefined),
+    CurStatuses = maps:get(statuses, CurKindDeks, #{}),
     KindDeks = #{active_id => ActiveDek,
                  deks => Deks,
                  is_enabled => IsEnabled,
                  deks_being_dropped => CurDeksDroppedCleaned,
                  last_drop_timestamp => CurLastDropTS,
                  has_unencrypted_data => CurHasUnencrData,
-                 last_deks_gc_datetime => GCDeksDT},
+                 last_deks_gc_datetime => GCDeksDT,
+                 statuses => CurStatuses},
     functools:chain(State#state{deks = AllDeks#{Kind => KindDeks}},
                     [restart_dek_cleanup_timer(_),
                      restart_dek_rotation_timer(_)]).
@@ -1680,16 +1684,17 @@ run_job(J, State) ->
                            "State: ~p", [J, C, E, ST, State]),
                 {{error, exception}, State}
         end,
+    NewState2 = update_job_status(J, Res, NewState),
     case Res of
         ok ->
             ?log_debug("Job complete: ~p", [J]),
-            NewState;
+            NewState2;
         retry ->
             ?log_debug("Job ~p returned 'retry'", [J]),
-            add_jobs([J], NewState);
+            add_jobs([J], NewState2);
         {error, Error} ->
             ?log_error("Job ~p returned error: ~p", [J, Error]),
-            add_jobs([J], NewState)
+            add_jobs([J], NewState2)
     end.
 
 -spec normalize_job_res(Res :: term(), #state{}) -> {ok | retry | {error, _}, #state{}}.
@@ -1699,6 +1704,20 @@ normalize_job_res({error, State, retry}, _) -> {retry, State};
 normalize_job_res({error, retry}, State) -> {retry, State};
 normalize_job_res({error, State, Reason}, _) -> {{error, Reason}, State};
 normalize_job_res({error, Reason}, State) -> {{error, Reason}, State}.
+
+-spec update_job_status(node_job() | master_job(),
+                        ok | retry |{error, _},
+                        #state{}) -> #state{}.
+update_job_status({Name, Kind}, Res, #state{deks = DeksInfo} = State) ->
+    case maps:find(Kind, DeksInfo) of
+        {ok, #{statuses := S} = D} ->
+            NewDeksInfo = DeksInfo#{Kind => D#{statuses => S#{Name => Res}}},
+            State#state{deks = NewDeksInfo};
+        error ->
+            State
+    end;
+update_job_status(_, _Res, #state{} = State) ->
+    State.
 
 -spec do(node_job() | master_job(), #state{}) ->
           ok | {ok, #state{}} | retry | {error, _} | {error, #state{}, _}.
