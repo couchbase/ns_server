@@ -1125,7 +1125,6 @@ maybe_garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
                     add_jobs([{garbage_collect_deks, Kind}], NewState)
             end;
         false ->
-            ?log_debug("Skipping garbage collect for ~p", [Kind]),
             State
     end.
 
