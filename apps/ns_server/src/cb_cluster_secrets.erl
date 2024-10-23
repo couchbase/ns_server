@@ -146,7 +146,6 @@
                     {garbage_collect_deks, cb_deks:dek_kind()} |
                     ensure_all_keks_on_disk |
                     {maybe_update_deks, cb_deks:dek_kind()} |
-                    maybe_reencrypt_deks |
                     {maybe_reencrypt_deks, cb_deks:dek_kind()}.
 
 -type master_job() :: maybe_reencrypt_secrets | maybe_reset_deks_counters.
@@ -494,13 +493,14 @@ init([Type]) ->
                    [maybe_reencrypt_secrets,
                     maybe_reset_deks_counters];
                ?NODE_PROC ->
+                    Kinds = cb_deks:dek_kinds_list(),
                     lists:flatmap(fun (K) ->
                                       [{maybe_update_deks, K},
                                        {garbage_collect_deks, K}]
-                                  end, cb_deks:dek_kinds_list()) ++
+                                  end, Kinds) ++
                    [garbage_collect_keks,
-                    ensure_all_keks_on_disk,
-                    maybe_reencrypt_deks]
+                    ensure_all_keks_on_disk] ++
+                   [{maybe_reencrypt_deks, K} || K <- Kinds]
            end,
     {ok, functools:chain(#state{proc_type = Type, jobs = Jobs},
                          [run_jobs(_),
@@ -562,12 +562,13 @@ handle_cast(Msg, State) ->
     {noreply, State}.
 
 handle_info({config_change, ?CHRONICLE_SECRETS_KEY} = Msg,
-            #state{proc_type = ?NODE_PROC} = State) ->
+            #state{proc_type = ?NODE_PROC, deks = Deks} = State) ->
     ?log_debug("Secrets in chronicle have changed..."),
     misc:flush(Msg),
-    NewJobs = [garbage_collect_keks,     %% Removal of generated keks and AWS
-               ensure_all_keks_on_disk,  %% Adding keks + AWS key change
-               maybe_reencrypt_deks],    %% Keks rotation
+    Kinds = maps:keys(Deks),
+    NewJobs = [garbage_collect_keks,       %% Removal of generated keks and AWS
+               ensure_all_keks_on_disk] ++ %% Adding keks + AWS key change
+              [{maybe_reencrypt_deks, K} || K <- Kinds], %% Keks rotation
     {noreply, add_and_run_jobs(NewJobs, State)};
 
 handle_info({config_change, ?CHRONICLE_SECRETS_KEY} = Msg,
@@ -1316,24 +1317,6 @@ generate_new_dek(Kind, CurrentDeks, EncryptionMethod, Snapshot) ->
             {error, too_many_deks}
     end.
 
--spec maybe_reencrypt_deks(#state{}) ->
-          {ok, #state{}} | {error, list()}.
-maybe_reencrypt_deks(#state{deks = Deks} = State) ->
-    {AllErrors, NewState} =
-        lists:foldl(
-          fun (Kind, {ErrorsAcc, StateAcc}) ->
-              case maybe_reencrypt_deks(Kind, StateAcc) of
-                  {ok, NewStateAcc} -> {ErrorsAcc, NewStateAcc};
-                  {error, NewStateAcc, Error} ->
-                      NewErrorsAcc = [{Kind, Error} | ErrorsAcc],
-                      {NewErrorsAcc, NewStateAcc}
-              end
-          end, {[], State}, maps:keys(Deks)),
-    case AllErrors of
-        [] -> {ok, NewState};
-        _ -> {error, NewState, AllErrors}
-    end.
-
 -spec maybe_reencrypt_deks(cb_deks:dek_kind(), #state{}) ->
           {ok, #state{}} | {error, #state{}, term()}.
 maybe_reencrypt_deks(Kind, #state{deks = Deks} = State) ->
@@ -1738,9 +1721,7 @@ do({maybe_update_deks, Kind}, State) ->
 do({garbage_collect_deks, Kind}, State) ->
     garbage_collect_deks(Kind, State);
 do({maybe_reencrypt_deks, K}, State) ->
-    maybe_reencrypt_deks(K, State);
-do(maybe_reencrypt_deks, State) ->
-    maybe_reencrypt_deks(State).
+    maybe_reencrypt_deks(K, State).
 
 -spec stop_timer(Name :: atom(), #state{}) -> #state{}.
 stop_timer(Name, #state{timers = Timers} = State) ->
