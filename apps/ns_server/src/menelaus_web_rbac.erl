@@ -70,11 +70,11 @@
 -define(SECURITY_READ, {[admin, security, admin], read}).
 -define(SECURITY_WRITE, {[admin, security, admin], write}).
 
--define(EXTERNAL_READ, {[admin, security, external], read}).
--define(EXTERNAL_WRITE, {[admin, security, external], write}).
+-define(EXTERNAL_READ, {[admin, users, external], read}).
+-define(EXTERNAL_WRITE, {[admin, users, external], write}).
 
--define(LOCAL_READ, {[admin, security, local], read}).
--define(LOCAL_WRITE, {[admin, security, local], write}).
+-define(LOCAL_READ, {[admin, users, local], read}).
+-define(LOCAL_WRITE, {[admin, users, local], write}).
 
 assert_is_saslauthd_enabled() ->
     case cluster_compat_mode:is_saslauthd_enabled() of
@@ -381,6 +381,7 @@ security_filter(Req) ->
         true ->
             pipes:filter(fun (_) -> true end);
         false ->
+            %% Filter out security related roles.
             SecurityRoles = get_security_roles(),
             pipes:filterfold(
               fun (User, Cache) ->
@@ -408,6 +409,7 @@ domain_filter(Domain, Req) ->
         true ->
             pipes:filter(fun (_) -> true end);
         false ->
+            %% Filter out users which don't match the specified domain.
             pipes:filter(
               fun ({{_, {_, D}}, _}) when D =:= Domain ->
                       false;
@@ -485,6 +487,10 @@ handle_get_user(Domain, UserId, Req) ->
                 true ->
                     verify_security_roles_access(
                       Req, ?SECURITY_READ, menelaus_users:get_roles(Identity)),
+                    Permission = get_domain_access_permission(read,
+                                                              DomainAtom),
+                    verify_security_roles_access(
+                      Req, Permission, menelaus_users:get_roles(Identity)),
                     ns_audit:rbac_info_retrieved(Req, users),
                     menelaus_util:reply_json(Req, get_user_json(Identity))
             end
@@ -1000,7 +1006,8 @@ validate_password(State) ->
               end
       end, password, State).
 
-put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword) ->
+put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword,
+                   DoingRestore) ->
     ExtraRolesFun =
         fun (State) ->
                 Id = {_, Domain} = GetUserIdFun(State),
@@ -1023,10 +1030,16 @@ put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword) ->
      validate_user_groups(groups, GroupCheckFun, Req, _),
      validator:default(roles, [], _),
      validate_roles(roles, _),
-     validator_verify_security_roles_access(roles, Req, ?SECURITY_WRITE,
+     validator_verify_security_roles_access(roles, Req, ?LOCAL_WRITE,
                                             ExtraRolesFun, _),
      validator:valid_in_enterprise_only(locked, _),
      validator:valid_in_enterprise_only(temporaryPassword, _)] ++
+        %% If there's a security role and a restore isn't being done then
+        %% adequate permission is required. If a restore is being done then
+        %% any security role will be skipped.
+        [validator_verify_security_roles_access(
+           roles, Req, ?SECURITY_WRITE, ExtraRolesFun, _) || not DoingRestore]
+        ++
         [validate_locked(GetUserIdFun, _) || IsMorpheus] ++
         [validate_password(_) || ValidatePassword] ++
         [validator:boolean(temporaryPassword, _)
@@ -1071,7 +1084,8 @@ validate_roles(Name, State) ->
       fun (RawRoles) ->
               Roles = parse_roles(RawRoles),
               BadRoles = [BadRole || BadRole = {error, _} <- Roles],
-              GoodRoles = Roles -- BadRoles,
+              GoodRoles0 = Roles -- BadRoles,
+              GoodRoles = menelaus_users:maybe_substitute_roles(GoodRoles0),
               {_, MoreBadRoles} =
                   menelaus_roles:validate_roles(GoodRoles),
               case {BadRoles, MoreBadRoles} of
@@ -1103,7 +1117,7 @@ handle_put_user_with_identity({_UserId, Domain} = Identity, Req) ->
       end, Req, form, put_user_validators(Req,
                                           fun (_) -> Identity end,
                                           menelaus_users:group_exists(_),
-                                          Domain == local)).
+                                          Domain == local, false)).
 
 validator_verify_security_roles_access(RolesName, Req, Permission,
                                        ExtraRolesFun, State) ->
@@ -1116,6 +1130,8 @@ validator_verify_security_roles_access(RolesName, Req, Permission,
           verify_security_roles_access(Req, Permission, AllRoles)
       end, RolesName, State).
 
+%% If any of the roles are "security roles" ensure the request has the
+%% specified permission.
 verify_security_roles_access(Req, Permission, Roles) ->
     case overlap(Roles, get_security_roles()) of
         true ->
@@ -1180,6 +1196,10 @@ handle_delete_user(Domain, UserId, Req) ->
             Identity = {UserId, T},
             verify_security_roles_access(
               Req, ?SECURITY_WRITE, menelaus_users:get_roles(Identity)),
+            Permission = get_domain_access_permission(write,
+                                                      domain_to_atom(Domain)),
+            verify_security_roles_access(
+              Req, Permission, menelaus_users:get_roles(Identity)),
 
             verify_domain_access(Req, Identity),
 
@@ -1721,6 +1741,8 @@ put_group_validators(Req, GetGroupNameFun) ->
      validator:required(roles, _),
      validate_roles(roles, _),
      validator_verify_security_roles_access(roles, Req, ?SECURITY_WRITE,
+                                            ExtraRolesFun, _),
+     validator_verify_security_roles_access(roles, Req, ?LOCAL_WRITE,
                                             ExtraRolesFun, _),
      validate_ldap_ref(ldap_group_ref, _),
      validator_verify_group_ldap_access(ldap_group_ref,
@@ -2387,11 +2409,38 @@ handle_backup_restore_validated(Req, Params) ->
                       Id = proplists:get_value(id, UserProps),
                       Domain = proplists:get_value(domain, UserProps),
                       Identity = {Id, Domain},
-                      {Identity, [{pass_or_auth, {auth, Auth}} | UserProps]}
+                      UserProps1 =
+                        menelaus_users:maybe_substitute_user_roles(UserProps),
+                      {Identity, [{pass_or_auth, {auth, Auth}} | UserProps1]}
               end, proplists:get_value(users, Backup)),
 
+    %% If we don't have the proper security permission we have to filter out
+    %% any roles being restored that are security roles.
+    {FilteredUsers, UsersRemoved} =
+        lists:foldl(
+          fun ({Identity, UserProps} = User, {Keep, Remove}) ->
+                  Roles = proplists:get_value(roles, UserProps),
+                  case overlap(Roles, get_security_roles()) of
+                      true ->
+                          %% A security-role is being restore...
+                          case menelaus_auth:has_permission(?SECURITY_WRITE,
+                                                            Req) of
+                              true ->
+                                  %% ...but we have the security to do so
+                                  {[User | Keep], Remove};
+                              false ->
+                                  ?log_debug("Not restoring '~p' as it has a "
+                                             "security role.", [Identity]),
+                                  {Keep, [Identity | Remove]}
+                          end;
+                      false ->
+                          %% Not a security-role being restored.
+                          {[User | Keep], Remove}
+                  end
+          end, {[], []}, Users),
+
     UpdatedUsers =
-        case menelaus_users:store_users(Users, CanOverwrite) of
+        case menelaus_users:store_users(FilteredUsers, CanOverwrite) of
             {ok, Res} -> Res;
             {error, too_many} ->
                 Msg = <<"You cannot create any more users">>,
@@ -2421,7 +2470,8 @@ handle_backup_restore_validated(Req, Params) ->
     UsersSkipped =
         [FormatUser({proplists:get_value(id, Admin), admin})
          || AdminRes == skipped] ++
-        [FormatUser(U) || {skipped, {U, _}} <- UpdatedUsers],
+        [FormatUser(U) || {skipped, {U, _}} <- UpdatedUsers] ++
+        [FormatUser(U) || U <- UsersRemoved],
     UsersOverwritten =
         [FormatUser({proplists:get_value(id, Admin), admin})
          || AdminRes == overwritten] ++
@@ -2503,7 +2553,7 @@ validate_backup_users(Name, GroupsName, Req, State) ->
        validator:string_array(groups, _),
        validator_join(groups, ",", _),
        validate_auth(auth, _) |
-       put_user_validators(Req, GetUserIdFun, GroupExistsFun, false)],
+       put_user_validators(Req, GetUserIdFun, GroupExistsFun, false, true)],
       State).
 
 validator_join(Name, Sep, State) ->

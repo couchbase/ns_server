@@ -8,6 +8,7 @@
 # licenses/APL2.txt.
 import testlib
 import json
+import os
 from testsets.users_tests import put_user, delete_user, lock_user, unlock_user
 
 
@@ -223,11 +224,118 @@ class UsersBackupTests(testlib.BaseTestSet):
                              status=403)
 
 
-def restore(cluster, backup, expected_counters=None, can_overwrite=False):
+    # Restore a backup taken on a 7.6.x system containing roles that have
+    # been replaced with new ones. The restoration should transform the old
+    # roles into the new ones.
+    def secure_restore_from_older_release_backup_file_test(self):
+        # File is a result of /setting/rbac/backup on 7.6.x system.
+        backup_file_path = os.path.join(testlib.get_resources_dir(), "fixtures",
+                                        "full_backup.json")
+        with open(backup_file_path) as f:
+            backup = json.load(f)
+
+        try:
+            # Create a user with admin role to do the restore. The admin is
+            # needed as the backup contains users with security roles. It's
+            # some of these security roles whose transformation we're verifying.
+            user = 'FullAdmin'
+            name = testlib.random_str(10)
+            password = testlib.random_str(10)
+            put_user(self.cluster, 'local', user, password, roles='admin',
+                     full_name=name, groups='', validate_user_props=True)
+
+            restore(self.cluster, backup, can_overwrite=False,
+                    expected_counters={'usersCreated': 11,
+                                       # Skip 'Administrator'
+                                       'usersSkipped': 1,
+                                       'groupsCreated': 0,
+                                       'groupsSkipped': 0},
+                    auth_user=(user, password))
+
+            # Ensure these tranformations have occurred where old roles, no
+            # longer supported on morpheus are replaced with supported roles.
+            #
+            #   localsecurityadmin76:
+            #       security_admin_local => security_admin + user_admin_local
+            #   externalsecurityadmin76:
+            #       security_admin_external => security_admin +
+            #                                   user_admin_external
+            #   localsecurityandbackupadmin76:
+            #       data_backup + local_admin_security =>
+            #           data_backup + Local User Admin + Security Admin
+
+            verify_roles(self.cluster, 'localsecurityadmin76',
+                         ['security_admin', 'user_admin_local'])
+            verify_roles(self.cluster, 'externalsecurityadmin76',
+                         ['security_admin', 'user_admin_external'])
+            verify_roles(self.cluster, 'localsecurityandbackupadmin76',
+                         ['data_backup', 'security_admin', 'user_admin_local'])
+        finally:
+            # Cleanup the users created by the restore
+            users = [user["id"] for user in backup.get("users", [])]
+            for u in users:
+                testlib.ensure_deleted(
+                    self.cluster, f'/settings/rbac/users/local/{u}')
+
+            # Cleanup the backup admin created by this test
+            testlib.ensure_deleted(
+                    self.cluster, f'/settings/rbac/users/local/{user}')
+
+    # Restore a backup taken on a 7.6.x system containing roles that
+    # are security roles. This is done by a user without a security role
+    # and so the result should be that none of the security roles get
+    # restored.
+    def unsecure_restore_from_older_release_backup_file_test(self):
+        # File is a result of /setting/rbac/backup on 7.6.x system.
+        backup_file_path = os.path.join(testlib.get_resources_dir(), "fixtures",
+                                        "full_backup.json")
+        with open(backup_file_path) as f:
+            backup = json.load(f)
+
+        try:
+            # Create a user with the backup_admin + local_user_admin roles
+            user = 'BackupLocalUserAdmin'
+            name = testlib.random_str(10)
+            password = testlib.random_str(10)
+            put_user(self.cluster, 'local', user, password,
+                     roles='backup_admin,user_admin_local',
+                     full_name=name, groups='', validate_user_props=True)
+            restore(self.cluster, backup, can_overwrite=False,
+                    expected_counters={'usersCreated': 6,
+                                       'usersSkipped': 6,
+                                       'groupsCreated': 0,
+                                       'groupsSkipped': 0},
+                    auth_user=(user, password))
+
+        finally:
+            # Cleanup the users created by the restore
+            users = [user["id"] for user in backup.get("users", [])]
+            for u in users:
+                testlib.ensure_deleted(
+                        self.cluster, f'/settings/rbac/users/local/{u}')
+
+            # Cleanup the admin created by this test
+            testlib.ensure_deleted(
+                    self.cluster, f'/settings/rbac/users/local/{user}')
+
+
+def verify_roles(cluster, username, expected_roles):
+    path = f'/settings/rbac/users/local/{username}'
+    user_info = testlib.get_succ(cluster, path).json()
+    user_roles = [role["role"] for role in user_info.get("roles", [])]
+
+    for r in expected_roles:
+        assert r in user_roles, f"Missing {r} in {user_roles}"
+
+
+def restore(cluster, backup, expected_counters=None, can_overwrite=False,
+            auth_user=None):
     can_overwrite_str = 'true' if can_overwrite else 'false'
+    kwargs = {"auth": auth_user} if auth_user is not None else {}
     res = testlib.put_succ(cluster, '/settings/rbac/backup',
                            data={'backup': json.dumps(backup),
-                                 'canOverwrite': can_overwrite_str}).json()
+                                 'canOverwrite': can_overwrite_str},
+                           **kwargs).json()
 
     assert 'stats' in res
     assert 'usersSkipped' in res

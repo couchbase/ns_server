@@ -308,25 +308,25 @@ class UsersTestSet(testlib.BaseTestSet):
             unlock_admin(self.cluster)
             testlib.get_succ(self.cluster, '/pools/default')
 
-    # This test verifies a user with security_admin_local cannot create
+    # This test verifies a user with user_admin_local cannot create
     # a user in a group that has an admin role. This would be a privilege
     # escalation.
     def prevent_role_elevation_test(self):
-        user = "localusersecurityadmin"
+        user = "localuseradmin"
         name = testlib.random_str(10)
         password = testlib.random_str(10)
         put_user(self.cluster, 'local', user, password=password,
-                 roles='security_admin_local', full_name=name, groups='',
+                 roles='user_admin_local', full_name=name, groups='',
                  validate_user_props=True)
         assert_authn_and_roles(self.cluster, user, password,
-                               ['security_admin_local'])
+                               ['user_admin_local'])
 
         # Create a secure group
         testlib.put_succ(self.cluster, f'/settings/rbac/groups/securegroup',
                          data={'roles': 'admin'})
 
         # Try to create a user in the secure group. This will fail as a
-        # 'security_admin_local' role cannot create a user with an 'admin'
+        # 'user_admin_local' role cannot create a user with an 'admin'
         # role...even doing it indirectly via a 'group'.
         testlib.put_fail(self.cluster,
                          f'/settings/rbac/users/local/securityAdminFail',
@@ -340,9 +340,181 @@ class UsersTestSet(testlib.BaseTestSet):
                             f'/settings/rbac/groups/securegroup')
 
 
-def put_user(cluster_or_node, domain, userid, password=None, roles=None,
-             full_name=None, groups=None, locked=None, temporary_password=None,
-             validate_user_props=False):
+    def user_admin_role_test(self):
+        try:
+            user = 'localUserAdmin'
+            name = testlib.random_str(10)
+            password = testlib.random_str(10)
+            put_user(self.cluster, 'local', user, password,
+                     roles='user_admin_local',
+                     full_name=name, validate_user_props=True)
+            assert_authn_and_roles(self.cluster, user, password,
+                                   ['user_admin_local'])
+
+            # 'user_admin_local' isn't allowed to "elevate" its role
+            data = build_payload(roles='admin,ro_admin', password=password,
+                                 full_name=name)
+            testlib.put_fail(self.cluster, f'/settings/rbac/users/local/{user}',
+                             403, data=data, auth=(user, password))
+
+            # 'user_admin_local' is allowed to add a user
+            newuser = testlib.random_str(10)
+            data = build_payload(roles='eventing_admin',
+                                 password=testlib.random_str(10),
+                                 full_name=newuser)
+            testlib.put_succ(self.cluster,
+                             f'/settings/rbac/users/local/{newuser}',
+                             data=data, auth=(user, password))
+
+            # ...and is allowed to modify a user's role as long as it's not
+            # being "elevated" to a security role
+            data['roles'] = 'eventing_admin, cluster_admin'
+            testlib.put_succ(self.cluster,
+                             f'/settings/rbac/users/local/{newuser}',
+                             data=data, auth=(user, password))
+
+            # ...but cannot modify a user to "elevate" it's role to a security
+            # role
+            data['roles'] = 'security_admin'
+            testlib.put_fail(self.cluster,
+                             f'/settings/rbac/users/local/{newuser}',
+                             403, data=data, auth=(user, password))
+
+            # ...and allowed to delete a user
+            testlib.delete_succ(self.cluster,
+                                f'/settings/rbac/users/local/{newuser}',
+                                auth=(user, password))
+
+            # Create an 'admin' user
+            admin_user = 'FullAdmin'
+            admin_name = testlib.random_str(10)
+            admin_password = testlib.random_str(10)
+            put_user(self.cluster, 'local', admin_user, admin_password,
+                     roles='admin', full_name=admin_name,
+                     validate_user_props=True)
+            assert_authn_and_roles(self.cluster, admin_user, admin_password,
+                                   ['admin'])
+
+            # 'user_admin_local' is not allowed to delete a user with a
+            # security role.
+            testlib.delete_fail(self.cluster,
+                                f'/settings/rbac/users/local/{admin_user}',
+                                403, auth=(user, password))
+        finally:
+            # Clean up the users created by this test
+            delete_user(self.cluster, 'local', user)
+            delete_user(self.cluster, 'local', admin_user)
+
+    def security_admin_role_test(self):
+        try:
+            # Create a user with 'security_admin' role
+            user = 'securityAdmin'
+            name = testlib.random_str(10)
+            password = testlib.random_str(10)
+            put_user(self.cluster, 'local', user, password,
+                     roles='security_admin', full_name=name,
+                     validate_user_props=True)
+            assert_authn_and_roles(self.cluster, user, password,
+                                   ['security_admin'])
+
+            # 'security_admin' cannot add a user...
+            name2 = testlib.random_str(10)
+            password2 = testlib.random_str(10)
+            data = build_payload(roles='cluster_admin', password=password2,
+                                 full_name=name2)
+            testlib.put_fail(self.cluster,
+                             f'/settings/rbac/users/local/{name2}',
+                             403, data=data, auth=(user, password))
+
+            # 'security_admin' cannot promote itself
+            data = build_payload(roles='admin', full_name=name,
+                                 password=password)
+            testlib.put_fail(self.cluster, f'/settings/rbac/users/local/{user}',
+                             403, data=data, auth=(user, password))
+
+            # Create a user (note: not being done by 'security_admin'
+            user3 = 'anotherUser'
+            name3 = testlib.random_str(10)
+            password3 = testlib.random_str(10)
+            put_user(self.cluster, 'local', user3, password3, roles='ro_admin',
+                     full_name=name3, validate_user_props=True)
+            assert_authn_and_roles(self.cluster, user3, password3,
+                                   ['ro_admin'])
+
+            # 'security_admin' cannot modify the user
+            data = build_payload(roles='eventing_admin', full_name=name3,
+                                 password=password3)
+            testlib.put_fail(self.cluster,
+                             f'/settings/rbac/users/local/{user3}',
+                             403, data=data, auth=(user, password))
+
+            # 'security_admin' cannot delete the user
+            testlib.delete_fail(self.cluster,
+                                f'/settings/rbac/users/local/{user3}',
+                                403, auth=(user, password))
+        finally:
+            # Delete the user (note: not being done by 'security_admin'
+            delete_user(self.cluster, 'local', user3)
+
+            # Clean up the security_admin
+            delete_user(self.cluster, 'local', user)
+
+    def security_user_admin_role_test(self):
+        try:
+            # Create a user with 'security_admin' and 'user_admin_local' roles.
+            user = 'securityUserAdmin'
+            name = testlib.random_str(10)
+            password = testlib.random_str(10)
+            put_user(self.cluster, 'local', user, password,
+                     roles='security_admin,user_admin_local',
+                     full_name=name, validate_user_props=True)
+            assert_authn_and_roles(self.cluster, user, password,
+                                   ['security_admin','user_admin_local'])
+
+            # securityUserAdmin is allowed to create a user with a non-security
+            # role
+            non_secure_user = 'eventingAdmin'
+            non_secure_name = testlib.random_str(10)
+            non_secure_password = testlib.random_str(10)
+            data = build_payload(roles='eventing_admin',
+                                 password=non_secure_password,
+                                 full_name=non_secure_name)
+            testlib.put_succ(self.cluster,
+                             f'/settings/rbac/users/local/{non_secure_user}',
+                             data=data, auth=(user, password))
+
+            # securityUserAdmin is not allowed to create a user with a security
+            # role.
+            data = build_payload(roles='security_admin',
+                                 password=testlib.random_str(10),
+                                 full_name=testlib.random_str(10))
+            testlib.put_fail(self.cluster,
+                             f'/settings/rbac/users/local/securityAdminFail',
+                             403, data=data, auth=(user, password))
+
+            # create an admin user
+            admin_user = "fullAdmin"
+            admin_password = testlib.random_str(10)
+
+            put_user(self.cluster, 'local', admin_user, password=admin_password,
+                     roles='admin', full_name=testlib.random_str(10),
+                     validate_user_props=True)
+            assert_authn_and_roles(self.cluster, admin_user, admin_password,
+                                   ['admin'])
+
+            # securityUserAdmin is not allowed to delete the admin user.
+            testlib.delete_fail(self.cluster,
+                                f'/settings/rbac/users/local/{admin_user}',
+                                403, auth=(user, password))
+        finally:
+            # Clean up users created in this test
+            delete_user(self.cluster, 'local', user)
+            delete_user(self.cluster, 'local', non_secure_user)
+            delete_user(self.cluster, 'local', admin_user)
+
+
+def build_payload(password=None, roles=None, full_name=None, groups=None,
+                  locked=None, temporary_password=None):
     data = {}
     if roles is not None:
         data['roles'] = roles
@@ -356,6 +528,14 @@ def put_user(cluster_or_node, domain, userid, password=None, roles=None,
         data['locked'] = locked
     if temporary_password is not None:
         data['temporaryPassword'] = temporary_password
+
+    return data
+
+def put_user(cluster_or_node, domain, userid, password=None, roles=None,
+             full_name=None, groups=None, locked=None, temporary_password=None,
+             validate_user_props=False):
+    data = build_payload(password, roles, full_name, groups, locked,
+                         temporary_password)
     testlib.put_succ(cluster_or_node,
                      f'/settings/rbac/users/{domain}/{userid}',
                      data=data)

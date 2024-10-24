@@ -31,6 +31,8 @@
          select_auth_infos/1,
          user_exists/1,
          get_roles/1,
+         maybe_substitute_user_roles/1,
+         maybe_substitute_roles/1,
          get_user_name/1,
          get_users_version/0,
          get_auth_version/0,
@@ -532,6 +534,8 @@ prepare_store_users_docs(Snapshot, Users, CanOverwrite) ->
             lists:mapfoldr(
               fun (U, Updates) ->
                   case prepare_store_user(Snapshot, CanOverwrite, U) of
+                      %% Currently only skipped if user exists and we're
+                      %% not overwriting
                       skipped ->
                           {{skipped, U}, Updates};
                       {added, NewUpdates} ->
@@ -1245,8 +1249,34 @@ upgrade_props(?VERSION_76, auth, _Key, AuthProps) ->
     {ok, functools:chain(AuthProps,
                          [scram_sha:fix_pre_76_auth_info(_),
                           get_rid_of_plain_key(_)])};
+upgrade_props(?VERSION_MORPHEUS, user, _Key, UserProps) ->
+    {ok, functools:chain(UserProps,
+                         [maybe_substitute_user_roles(_)])};
 upgrade_props(_Vsn, _RecType, _Key, _Props) ->
     skip.
+
+%% For roles that have been eliminated, substitute in their replacments.
+maybe_substitute_user_roles(User) ->
+    lists:map(
+      fun ({roles, Roles}) ->
+              {roles, maybe_substitute_roles(Roles)};
+          (Other) ->
+              Other
+      end, User).
+
+%% Replacement roles for ones that have been removed. This only needs to be
+%% done for the same releases as supported in our upgrade matrix. These
+%% replacments are being done in morpheus. Once morpheus is the oldest
+%% supported release we no longer have to support this replacement.
+maybe_substitute_roles(Roles) ->
+    lists:flatmap(
+      fun (security_admin_local) ->
+              [security_admin, user_admin_local];
+          (security_admin_external) ->
+              [security_admin, user_admin_external];
+          (Role) ->
+              [Role]
+      end, Roles).
 
 get_rid_of_plain_key(Auth) ->
     lists:map(
@@ -1284,6 +1314,15 @@ upgrade_test_() ->
             fun () ->
                 Props = get_props_raw(auth, {User, local}),
                 {Actual} = proplists:get_value(AuthType, Props, []),
+                ?assertEqual(lists:sort(Expected),
+                             lists:sort(Actual))
+            end
+        end,
+    CheckUser =
+        fun (User, UserType, Expected) ->
+            fun () ->
+                Props = get_props_raw(user, {User, local}),
+                Actual = proplists:get_value(UserType, Props, []),
                 ?assertEqual(lists:sort(Expected),
                              lists:sort(Actual))
             end
@@ -1331,7 +1370,22 @@ upgrade_test_() ->
                                         {?SCRAM_SERVER_KEY_KEY,
                                          <<"Vkelr1rzrz9tT0Z/AhLvKJVuWJs=">>}]}]},
                        {?SCRAM_SALT_KEY, <<"0ues3mfZqA4OjuljBI/uQY5L0jI=">>},
-                       {?SCRAM_ITERATIONS_KEY, 4000}])])]}.
+                       {?SCRAM_ITERATIONS_KEY, 4000}])]),
+      Test(?VERSION_MORPHEUS,
+           [{{user, {"local-security-admin", local}},
+             [{roles, [security_admin_local]}]}],
+           [CheckUser("local-security-admin", roles,
+                      [security_admin, user_admin_local])]),
+      Test(?VERSION_MORPHEUS,
+           [{{user, {"external-security-admin", local}},
+             [{roles, [security_admin_external]}]}],
+           [CheckUser("external-security-admin", roles,
+                      [security_admin, user_admin_external])]),
+      Test(?VERSION_MORPHEUS,
+           [{{user, {"unchanged-admin", local}},
+            [{roles, [ro_admin]}]}],
+           [CheckUser("unchanged-admin", roles,
+                      [ro_admin])])]}.
 
 meck_ns_config_read_key_fast(Settings) ->
     meck:expect(

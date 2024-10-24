@@ -198,6 +198,7 @@ consider_switching_compat_mode() ->
 
 upgrades() ->
     [{?VERSION_76, rbac, menelaus_users, upgrade},
+     {?VERSION_MORPHEUS, rbac, menelaus_users, upgrade},
      {?VERSION_MORPHEUS, metakv, chronicle_metakv, upgrade_to_morpheus}].
 
 do_upgrades(undefined, _, _, _) ->

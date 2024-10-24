@@ -473,38 +473,38 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, security], read},
                      fun menelaus_web_audit:handle_get_non_filterable_descriptors/1};
                 ["settings", "rbac", "roles"] ->
-                    {{[admin, security], read},
+                    {{[admin, users], read},
                      fun menelaus_web_rbac:handle_get_roles/1};
                 ["settings", "rbac", "users"] ->
-                    {{[admin, security], read},
+                    {{[admin, users], read},
                      fun menelaus_web_rbac:handle_get_users/2, [Path]};
                 ["settings", "rbac", "users", Domain] ->
-                    {{[admin, security], read},
+                    {{[admin, users], read},
                      fun menelaus_web_rbac:handle_get_users/3, [Path, Domain]};
                 ["settings", "rbac", "users", Domain, UserId] ->
-                    {{[admin, security], read},
+                    {{[admin, users], read},
                      fun menelaus_web_rbac:handle_get_user/3, [Domain, UserId]};
                 ["settings", "rbac", "groups"] ->
-                    {{[admin, security], read},
+                    {{[admin, users], read},
                      fun menelaus_web_rbac:handle_get_groups/2, [Path]};
                 ["settings", "rbac", "groups", GroupId] ->
-                    {{[admin, security], read},
+                    {{[admin, users], read},
                      fun menelaus_web_rbac:handle_get_group/2, [GroupId]};
                 ["settings", "rbac", "profiles"] ->
-                    {{[admin, security], read},
+                    {{[admin, users], read},
                      fun menelaus_web_rbac:handle_get_profiles/1};
                 ["settings", "rbac", "profiles", "@self"] ->
                     {no_check,
                      fun menelaus_web_rbac:handle_get_profile/2, [self]};
                 ["settings", "rbac", "profiles", Domain, UserId] ->
-                    {{[admin, security], read},
+                    {{[admin, users], read},
                      fun menelaus_web_rbac:handle_get_profile/2,
                      [{UserId, Domain}]};
                 ["settings", "rbac", "lookupLDAPUser", Name] ->
                     {{[admin, security, external], read},
                      fun menelaus_web_rbac:handle_lookup_ldap_user/2, [Name]};
                 ["settings", "rbac", "backup"] ->
-                    {{[admin, security], read},
+                    {{[admin, users], read},
                      fun menelaus_web_rbac:handle_backup/1};
                 ["settings", "passwordPolicy"] ->
                     {{[admin, security], read},
@@ -1147,19 +1147,19 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, memcached], write},
                      fun menelaus_web_mcd_settings:handle_node_setting_delete/3, [Node, Name]};
                 ["settings", "rbac", "users", UserId] ->
-                    {{[admin, security], write},
+                    {{[admin, users], write},
                      fun menelaus_web_rbac:handle_delete_user/3, ["external", UserId]};
                 ["settings", "rbac", "users", Domain, UserId] ->
-                    {{[admin, security], write},
+                    {{[admin, users], write},
                      fun menelaus_web_rbac:handle_delete_user/3, [Domain, UserId]};
                 ["settings", "rbac", "groups", GroupId] ->
-                    {{[admin, security], write},
+                    {{[admin, users], write},
                      fun menelaus_web_rbac:handle_delete_group/2, [GroupId]};
                 ["settings", "rbac", "profiles", "@self"] ->
                     {no_check,
                      fun menelaus_web_rbac:handle_delete_profile/2, [self]};
                 ["settings", "rbac", "profiles", Domain, UserId] ->
-                    {{[admin, security], write},
+                    {{[admin, users], write},
                      fun menelaus_web_rbac:handle_delete_profile/2,
                      [{UserId, Domain}]};
                 ["settings", "security" | Keys] ->
@@ -1218,23 +1218,23 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[server_groups], write},
                      fun menelaus_web_groups:handle_server_group_update/2, [GroupUUID]};
                 ["settings", "rbac", "users", UserId] ->
-                    {{[admin, security], write},
+                    {{[admin, users], write},
                      fun menelaus_web_rbac:handle_put_user/3, ["external", UserId]};
                 ["settings", "rbac", "users", Domain, UserId] ->
-                    {{[admin, security], write},
+                    {{[admin, users], write},
                      fun menelaus_web_rbac:handle_put_user/3, [Domain, UserId]};
                 ["settings", "rbac", "groups", GroupId] ->
-                    {{[admin, security], write},
+                    {{[admin, users], write},
                      fun menelaus_web_rbac:handle_put_group/2, [GroupId]};
                 ["settings", "rbac", "profiles", "@self"] ->
                     {no_check,
                      fun menelaus_web_rbac:handle_put_profile/2, [self]};
                 ["settings", "rbac", "profiles", Domain, UserId] ->
-                    {{[admin, security], write},
+                    {{[admin, users], write},
                      fun menelaus_web_rbac:handle_put_profile/2,
                      [{UserId, Domain}]};
                 ["settings", "rbac", "backup"] ->
-                    {{[admin, security], write},
+                    {{[admin, users], write},
                      fun menelaus_web_rbac:handle_backup_restore/1};
                 ["settings", "secrets", SecretId] ->
                     {no_check_disallow_anonymous,
@@ -1277,7 +1277,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
         "PATCH" ->
             case PathTokens of
                 ["settings", "rbac", "users", "local", UserId] ->
-                    {{[admin, security], write},
+                    {{[admin, users], write},
                      fun menelaus_web_rbac:handle_patch_user/2,
                      [UserId]};
                 ["pools", "default", "buckets", Id, "scopes", Scope,
