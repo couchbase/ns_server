@@ -26,7 +26,6 @@
          get_stats/0,
          config_upgrade_to_72/1,
          config_upgrade_to_76/1,
-         config_upgrade_to_cypher/1,
          config_upgrade_to_morpheus/1]).
 
 -import(menelaus_util,
@@ -101,18 +100,14 @@ config_upgrade_to_76(Config) ->
                                failover_disable_max_count)}])}].
 
 config_upgrade_to_morpheus(Config) ->
+    %% Merging existing cfg over the default to retain any already configured
+    %% settings (we may have configured some in 7.6.3 or newer).
     [{set, auto_failover_cfg,
       misc:update_proplist(
-        auto_failover:get_cfg(Config),
         [{?ALLOW_FAILOVER_EPHEMERAL_NO_REPLICAS_CONFIG_KEY,
-          auto_failover:hidden_failover_ephemeral_setting()}])}].
-
-config_upgrade_to_cypher(Config) ->
-  %% Merging existing cfg over the default to retain any already configured
-  %% settings (we may have configured some in 7.6.3 or newer).
-  [{set, auto_failover_cfg,
-    misc:update_proplist([?FAILOVER_ON_DATA_DISK_NON_RESPONSIVENESS_DEFAULT],
-                          auto_failover:get_cfg(Config))}].
+          auto_failover:hidden_failover_ephemeral_setting()},
+         ?FAILOVER_ON_DATA_DISK_NON_RESPONSIVENESS_DEFAULT],
+        auto_failover:get_cfg(Config))}].
 
 interesting_stats() ->
     [enabled, count, maxCount].
@@ -372,7 +367,7 @@ process_extras(Props, Config) ->
                 [process_boolean_extra(Props, Name, ConfigKey, _) ||
                     {Name, ConfigKey} <- BoolParams]] ++
                [process_failover_on_disk_non_responsiveness(Props, Config, _)
-                   || cluster_compat_mode:is_cluster_cypher()]),
+                   || cluster_compat_mode:is_cluster_morpheus()]),
     proplists:get_value(extras, Extras).
 
 disable_failover_on_disk_issues(TP) ->
@@ -422,7 +417,7 @@ get_extra_settings(Config) ->
                  {[{enabled, DNREnabled}, {timePeriod, DNRTimePeriod}]}} ||
                 {DNREnabled, DNRTimePeriod} <-
                     [get_failover_on_disk_non_responsiveness(Config)],
-                   cluster_compat_mode:is_cluster_cypher()],
+                   cluster_compat_mode:is_cluster_morpheus()],
                [{allowFailoverEphemeralNoReplicas,
                  proplists:get_value(
                    ?ALLOW_FAILOVER_EPHEMERAL_NO_REPLICAS_CONFIG_KEY,
@@ -437,7 +432,7 @@ disable_disk_failover(Config) ->
         true ->
             {_, IssuesTP} = get_failover_on_disk_issues(Config),
             disable_failover_on_disk_issues(IssuesTP) ++
-                case cluster_compat_mode:is_cluster_cypher() of
+                case cluster_compat_mode:is_cluster_morpheus() of
                     false -> [];
                     true ->
                         {_, NonRespTP} =
@@ -455,19 +450,23 @@ config_upgrade_to_72(Config) ->
             ?FAILOVER_PRESERVE_DURABILITY_MAJORITY_DEFAULT}]}].
 
 -ifdef(TEST).
-config_upgrade_to_cypher_test() ->
+config_upgrade_to_morpheus_test() ->
     meck:new(cluster_compat_mode),
-    meck:expect(cluster_compat_mode, is_cluster_cypher, fun() -> true end),
+    meck:expect(cluster_compat_mode, is_cluster_morpheus, fun() -> true end),
 
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, search_node_with_default,
         fun(_, Default) ->
             Default
         end),
+    meck:expect(ns_config, read_key_fast,
+        fun(_, Default) ->
+            Default
+        end),
 
     BaseConfig = default_config(true),
     [{set, auto_failover_cfg, DefaultUpgradedCfg}] =
-        config_upgrade_to_cypher([BaseConfig]),
+        config_upgrade_to_morpheus([BaseConfig]),
     ?assertEqual([{enabled, false}, {timePeriod, 120}],
                  proplists:get_value(?DATA_DISK_NON_RESPONSIVENESS_CONFIG_KEY,
                                      DefaultUpgradedCfg)),
@@ -477,7 +476,7 @@ config_upgrade_to_cypher_test() ->
                              [{?DATA_DISK_NON_RESPONSIVENESS_CONFIG_KEY,
                                [{enabled, true}, {timePeriod, 5}]}]),
     [{set, auto_failover_cfg, IgnoreExistingDiskNonRespCfg}] =
-        config_upgrade_to_cypher([[{?ROOT_CONFIG_KEY, ExistingCfg}]]),
+        config_upgrade_to_morpheus([[{?ROOT_CONFIG_KEY, ExistingCfg}]]),
     ?assertEqual([{enabled, true}, {timePeriod, 5}],
                  proplists:get_value(?DATA_DISK_NON_RESPONSIVENESS_CONFIG_KEY,
                                      IgnoreExistingDiskNonRespCfg)),

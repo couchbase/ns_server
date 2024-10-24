@@ -55,7 +55,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
         self.is_enterprise = self.cluster.is_enterprise
         self.is_72 = self.cluster.is_72
         self.is_76 = self.cluster.is_76
-        self.is_cypher = self.cluster.is_cypher
+        self.is_morpheus = self.cluster.is_morpheus
         self.is_serverless = self.cluster.is_serverless
 
         diskIssuesKeys = ['failoverOnDataDiskIssues',
@@ -108,7 +108,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
             else:
                 assert 'maxCount' in self.result_keys
 
-            if self.is_cypher:
+            if self.is_morpheus:
                 assert 'failoverOnDataDiskNonResponsiveness[enabled]' in \
                        self.post_data_keys
                 assert 'failoverOnDataDiskNonResponsiveness[timePeriod]' in \
