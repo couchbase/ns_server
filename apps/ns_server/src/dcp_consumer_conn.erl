@@ -429,7 +429,7 @@ process_stream_response(Header, PendingPartitions, Errors, Type, Side, ParentSta
             Status = Header#mc_header.status,
             Success = is_successful_stream_response(Type, Status),
 
-            note_stream_response(Type, Partition, Partition, Side,
+            note_stream_response(Type, Partition, Opaque, Side,
                                  Status, Success, ParentState),
 
             case Success of
