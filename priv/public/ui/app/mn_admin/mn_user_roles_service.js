@@ -26,6 +26,8 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     getState: getState,
     addUser: addUser,
     deleteUser: deleteUser,
+    unlockUser: unlockUser,
+    lockUser: lockUser,
     getRoles: getRoles,
     getUsers: getUsers,
     getUser: getUser,
@@ -439,6 +441,26 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
   function deleteUser(user) {
     return $http({
       method: "DELETE",
+      url: getUserUrl(user)
+    });
+  }
+
+  function unlockUser(user) {
+    return $http({
+      method: "PATCH",
+      data: {
+        locked: false
+      },
+      url: getUserUrl(user)
+    });
+  }
+
+  function lockUser(user) {
+    return $http({
+      method: "PATCH",
+      data: {
+        locked: true
+      },
       url: getUserUrl(user)
     });
   }

@@ -73,6 +73,7 @@ function mnHttpFactory(mnPendingQueryKeeper, $q, $timeout, jQueryLikeParamSerial
     switch (config.method.toLowerCase()) {
     case 'post':
     case 'put':
+    case 'patch':
       config.headers = config.headers || {};
       if (!mnHttpConfig.isNotForm) {
         config.headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';

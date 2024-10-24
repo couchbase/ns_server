@@ -30,12 +30,16 @@ import mnUserRolesService from "./mn_user_roles_service.js";
 import mnAddLDAPDialogController from "./mn_add_ldap_dialog_controller.js";
 import mnUserRolesAddDialogController from "./mn_user_roles_add_dialog_controller.js";
 import mnUserRolesDeleteDialogController from "./mn_user_roles_delete_dialog_controller.js";
+import mnUserRolesLockDialogController from "./mn_user_roles_lock_dialog_controller.js";
+import mnUserRolesUnlockDialogController from "./mn_user_roles_unlock_dialog_controller.js";
 import mnUserRolesResetPasswordDialogController from "./mn_user_roles_reset_password_dialog_controller.js";
 
 import mnRolesController from "./mn_roles_controller.js";
 import mnUserRolesAddDialogTemplate from "./mn_user_roles_add_dialog.html";
 import mnUserRolesResetPasswordDialogTemplate from "./mn_user_roles_reset_password_dialog.html";
 import mnUserRolesDeleteDialogTemplate from "./mn_user_roles_delete_dialog.html";
+import mnUserRolesLockDialogTemplate from "./mn_user_roles_lock_dialog.html";
+import mnUserRolesUnlockDialogTemplate from "./mn_user_roles_unlock_dialog.html";
 
 export default "mnUserRoles";
 
@@ -60,6 +64,8 @@ angular
   .controller("mnUserRolesController", ["$scope", "$uibModal", "mnPromiseHelper", "mnUserRolesService", "mnPoller", "mnHelper", "$state", "poolDefault", "permissions", mnUserRolesController])
   .controller("mnAddLDAPDialogController", mnAddLDAPDialogController)
   .controller("mnUserRolesDeleteDialogController", mnUserRolesDeleteDialogController)
+  .controller("mnUserRolesLockDialogController", mnUserRolesLockDialogController)
+  .controller("mnUserRolesUnlockDialogController", mnUserRolesUnlockDialogController)
   .controller("mnUserRolesResetPasswordDialogController", mnUserRolesResetPasswordDialogController)
   .controller("mnUserRolesAddDialogController", mnUserRolesAddDialogController)
   .controller("mnRolesController", mnRolesController);
@@ -68,6 +74,8 @@ function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesSe
   var vm = this;
 
   vm.deleteUser = deleteUser;
+  vm.lockUser = lockUser;
+  vm.unlockUser = unlockUser;
   vm.editUser = editUser;
   vm.resetUserPassword = resetUserPassword;
 
@@ -165,6 +173,25 @@ function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesSe
       }
     });
   }
+  function lockUser(user) {
+    $uibModal.open({
+      template: mnUserRolesLockDialogTemplate,
+      controller: 'mnUserRolesLockDialogController as userRolesLockDialogCtl',
+      resolve: {
+        user: mnHelper.wrapInFunction(user)
+      }
+    });
+  }
+  function unlockUser(user) {
+    $uibModal.open({
+      template: mnUserRolesUnlockDialogTemplate,
+      controller: 'mnUserRolesUnlockDialogController as userRolesUnlockDialogCtl',
+      resolve: {
+        user: mnHelper.wrapInFunction(user)
+      }
+    });
+  }
+
   function deleteUser(user) {
     $uibModal.open({
       template: mnUserRolesDeleteDialogTemplate,
