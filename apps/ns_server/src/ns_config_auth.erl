@@ -42,7 +42,8 @@ admin_cfg_key() ->
     rest_creds.
 
 set_admin_credentials(User, Password) ->
-    set_admin_with_auth(User, menelaus_users:build_auth([Password], false)).
+    set_admin_with_auth(User,
+                        menelaus_users:build_regular_auth([Password], false)).
 
 set_admin_with_auth(User, Auth) ->
     ns_config:set(admin_cfg_key(), {User, {auth, Auth}}).

@@ -64,8 +64,7 @@
          authenticate/2,
          authenticate_with_info/2,
          build_internal_auth/1,
-         build_auth/1,
-         build_auth/2,
+         build_regular_auth/2,
          maybe_update_auth/4,
          migrate_local_user_auth/2,
          format_plain_auth/1,
@@ -458,15 +457,15 @@ select_auth_infos(KeySpec) ->
     replicated_dets:select(storage_name(), {auth, KeySpec}, 100).
 
 rebuild_auth(false, Password) ->
-    build_auth([Password], false);
+    build_regular_auth([Password], false);
 rebuild_auth({_, CurrentAuth}, Password) ->
     TemporaryPassword = is_temporary_password(CurrentAuth),
-    build_auth([Password], TemporaryPassword).
+    build_regular_auth([Password], TemporaryPassword).
 
 rebuild_auth(false, undefined, _TemporaryPassword) ->
     password_required;
 rebuild_auth(false, Password, TemporaryPassword) ->
-    build_auth([Password], TemporaryPassword);
+    build_regular_auth([Password], TemporaryPassword);
 rebuild_auth({_, CurrentAuth}, undefined, TemporaryPassword) ->
     case {is_temporary_password(CurrentAuth), TemporaryPassword} of
         {true, true} -> same;
@@ -477,7 +476,7 @@ rebuild_auth({_, CurrentAuth}, undefined, TemporaryPassword) ->
             remove_password_expiry(CurrentAuth)
     end;
 rebuild_auth({_, _CurrentAuth}, Password, TemporaryPassword) ->
-    build_auth([Password], TemporaryPassword).
+    build_regular_auth([Password], TemporaryPassword).
 
 -spec store_user(rbac_identity(), rbac_user_name(),
                  {password, rbac_password()} | {auth, rbac_auth()},
@@ -1103,13 +1102,11 @@ get_user_uuid({_, local} = Identity, Default) ->
 get_user_uuid(_, _) ->
     undefined.
 
+%% Build auth entry for internal users
 build_internal_auth(Passwords) ->
     build_auth(Passwords, internal, false).
 
-build_auth(Passwords) ->
-    build_auth(Passwords, regular, false).
-
-build_auth(Passwords, TemporaryPassword) ->
+build_regular_auth(Passwords, TemporaryPassword) ->
     build_auth(Passwords, regular, TemporaryPassword).
 
 build_auth(Passwords, AuthType, TemporaryPassword) ->
@@ -1423,7 +1420,7 @@ maybe_update_plain_auth_hashes_test_() ->
                            %% Build both plain auth hashes and scram-sha
                            %% hashes. scram-sha hashes are enabled by
                            %% default.
-                           menelaus_users:build_auth([Password]),
+                           build_auth([Password], regular, false),
                            Password, OldSettings, NewSettings)
                  end}
         end,

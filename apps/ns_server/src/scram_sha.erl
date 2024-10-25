@@ -617,7 +617,7 @@ setup_t() ->
     Passwords = ["qwerty", "asdasd"],
     Nonce = gen_nonce(),
 
-    Auth = menelaus_users:build_auth(Passwords),
+    Auth = menelaus_users:build_regular_auth(Passwords, false),
     ns_config:test_setup([{rest_creds, {User, {auth, Auth}}}]),
     {User, Passwords, Nonce, Pid}.
 
@@ -761,8 +761,8 @@ maybe_update_hashes_test_() ->
                  fun () ->
                          maybe_update_hashes_test__(
                            %% Build both plain auth hashes and scram-sha hashes.
-                           menelaus_users:build_auth([Password]),
-                             Password, OldSettings, NewSettings)
+                           menelaus_users:build_regular_auth([Password], false),
+                           Password, OldSettings, NewSettings)
                  end}
         end,
 
