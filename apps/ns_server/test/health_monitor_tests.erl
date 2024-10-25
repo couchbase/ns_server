@@ -315,6 +315,20 @@ kv_stats_mon_io_slow_zero({StatNum, StatSlow}) ->
                  %% does
                  dict:find(self(), node_status_analyzer:get_statuses())).
 
+wait_for_status_to_propagate_to_node_status_analyzer() ->
+    %% We're working here under the assumption that the gen_servers are going to
+    %% process these messages in order. The refreshes perform the updates that
+    %% we want to propagate the status, the get_statuses() calls block til they
+    %% respond giving us a synchronization point.
+    node_monitor ! refresh,
+    node_monitor:get_statuses(),
+    node_status_analyzer ! refresh,
+    node_status_analyzer:get_statuses().
+
+wait_for_memcached_stats_to_propagate() ->
+    meck:wait(1, ns_memcached, stats, '_', 10000),
+    wait_for_status_to_propagate_to_node_status_analyzer().
+
 kv_stats_monitor_io_slow_detection_t({StatNum, StatSlow}) ->
     %% Another healthy case, Slow < Count.
     meck:expect(ns_memcached, stats,
@@ -323,12 +337,29 @@ kv_stats_monitor_io_slow_detection_t({StatNum, StatSlow}) ->
                               {atom_to_binary(StatSlow), integer_to_binary(0)}]}
                 end),
 
-    %% Timeout as we will remain healthy
-    ?assertEqual(timeout, misc:poll_for_condition(
-                            fun() ->
-                                    is_node_unhealthy(node())
-                            end, 2000, 100),
-                 dict:find(self(), node_status_analyzer:get_statuses())).
+    wait_for_memcached_stats_to_propagate(),
+
+    %% Just in case this test fails again lets make sure that we print something
+    %% useful to further debug.
+    Test = misc:poll_for_condition(
+        fun() ->
+                is_node_unhealthy(node())
+        end,
+        2000, 100),
+    case Test of
+        timeout -> ok;
+        Other ->
+            ?log_error("Failed with ~p, node status analyzer statuses ~p, "
+                        "node_monitor statuses ~p, kv monitor statuses ~p, "
+                        "kv stats monitor statuses ~p",
+                       [Other,
+                        dict:find(self(), node_status_analyzer:get_statuses()),
+                        dict:to_list(node_status_analyzer:get_statuses()),
+                        node_monitor:get_statuses(),
+                        dict:to_list(kv_monitor:get_statuses()),
+                        kv_stats_monitor:get_statuses()]),
+            ?assert(false)
+    end.
 
 kv_stats_mon_io_slow_equal_count({StatNum, StatSlow}) ->
     meck:expect(ns_memcached, stats,
