@@ -1581,17 +1581,18 @@ do_ensure_bucket(Sock, Bucket, BConf, false) ->
             {ok, DBSubDir} =
                 ns_storage_conf:this_node_bucket_dbdir(Bucket),
             ok = filelib:ensure_dir(DBSubDir),
-            {ok, {ActiveDekId, DekIds, IsEnabled}} =
-                cb_deks:list({bucketDek, Bucket}),
-            {ok, Deks} = cb_deks:read({bucketDek, Bucket}, DekIds),
-            {value, ActiveDek} =
-                case IsEnabled of
-                    true ->
-                        lists:search(fun (#{id := Id}) -> Id == ActiveDekId end,
-                                     Deks);
-                    _ ->
-                        {value, undefined}
-                end,
+
+            %% Note: cb_cluster_secrets should have deks created by this moment
+            %% (we do sync with cb_cluster_secret before start_link for that).
+            %% Also note that there is no race between the process of creating
+            %% a bucket with deks (this process), and dek removal by
+            %% cb_cluster_secrets because cb_cluster_secrets can only remove
+            %% a dek if encryption-key-ids stat returns a list that doesn't
+            %% include the dek. But since the bucket is not created yet, that
+            %% stat request should never succeed, which makes removal
+            %% impossible.
+            {ok, DS} = cb_crypto:fetch_deks_snapshot({bucketDek, Bucket}),
+            {ActiveDek, Deks} = cb_crypto:get_all_deks(DS),
             {Engine, ConfigString} =
                 memcached_bucket_config:start_params(BConf, ActiveDek, Deks),
 
