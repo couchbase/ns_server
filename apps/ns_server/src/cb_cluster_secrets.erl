@@ -1819,12 +1819,15 @@ add_and_run_jobs(NewJobs, State) ->
     run_jobs(add_jobs(NewJobs, State)).
 
 -spec run_jobs(#state{}) -> #state{}.
-run_jobs(#state{jobs = Jobs} = State) ->
+run_jobs(#state{jobs = Jobs, proc_type = ProcType} = State) ->
     NewState = lists:foldl(fun run_job/2, State#state{jobs = []}, Jobs),
 
     case NewState#state.jobs of
-        [] -> stop_timer(retry_jobs, NewState);
-        [_ | _] -> restart_timer(retry_jobs, ?RETRY_TIME, NewState)
+        [] ->
+            ?log_debug("[~p] All jobs completed", [ProcType]),
+            stop_timer(retry_jobs, NewState);
+        [_ | _] ->
+            restart_timer(retry_jobs, ?RETRY_TIME, NewState)
     end.
 
 -spec run_job(node_job() | master_job(), #state{}) -> #state{}.
