@@ -1730,14 +1730,7 @@ run_jobs(#state{jobs = Jobs} = State) ->
 -spec run_job(node_job() | master_job(), #state{}) -> #state{}.
 run_job(J, State) ->
     ?log_debug("Starting job: ~p", [J]),
-    {Res, NewState} =
-        try normalize_job_res(do(J, State), State)
-        catch
-            C:E:ST ->
-                ?log_error("Job ~p failed: ~p:~p~nStacktrace:~p~n"
-                           "State: ~p", [J, C, E, ST, State]),
-                {{error, exception}, State}
-        end,
+    {Res, NewState} = normalize_job_res(do(J, State), State),
     NewState2 = update_job_status(J, Res, NewState),
     case Res of
         ok ->
