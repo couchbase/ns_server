@@ -1189,10 +1189,17 @@ maybe_garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
         end,
     case ShouldRun orelse Force of
         true ->
-            case garbage_collect_deks(Kind, State) of
+            case garbage_collect_deks(Kind, Force, State) of
                 {ok, NewState} -> NewState;
                 {error, NewState, Error} ->
-                    ?log_error("Garbage collecting DEKs failed: ~p", [Error]),
+                    case Error of
+                        retry ->
+                            ?log_debug("~p DEK garbage collection returned "
+                                       "retry", [Kind]);
+                        _ ->
+                            ?log_error("~p DEK garbage collection failed: ~p",
+                                       [Kind, Error])
+                    end,
                     add_jobs([{garbage_collect_deks, Kind}], NewState)
             end;
         false ->
@@ -1201,17 +1208,18 @@ maybe_garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
 
 %% Remove DEKs that are not being used anymore
 %% Also update has_unencrypted_data in state
--spec garbage_collect_deks(cb_deks:dek_kind(), #state{}) ->
+-spec garbage_collect_deks(cb_deks:dek_kind(), boolean(), #state{}) ->
           {ok, #state{}} | {error, #state{}, term()}.
-garbage_collect_deks(Kind, #state{deks = DeksInfo} = State) ->
+garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
     ?log_debug("Garbage collecting ~p DEKs", [Kind]),
     case maps:find(Kind, DeksInfo) of
         %% Note: we can't skip this phase even when we don't have deks
         %% (or have only one dek), because we need to update
         %% "has_unencrypted_data" info anyway
-        {ok, #{} = KindDeks} ->
+        {ok, #{statuses := Statuses} = KindDeks} ->
+            UpdateStatus = maps:get(maybe_update_deks, Statuses, undefined),
             case call_dek_callback(get_ids_in_use_callback, Kind, []) of
-                {succ, {ok, IdList}} ->
+                {succ, {ok, IdList}} when (UpdateStatus == ok) orelse Force ->
                     UniqIdList = lists:uniq(IdList),
                     NewKindDeks = KindDeks#{has_unencrypted_data =>
                                             lists:member(?NULL_DEK, UniqIdList),
@@ -1221,6 +1229,21 @@ garbage_collect_deks(Kind, #state{deks = DeksInfo} = State) ->
                                                     Kind => NewKindDeks}},
                     CleanedIdList = lists:delete(?NULL_DEK, UniqIdList),
                     {ok, retire_unused_deks(Kind, CleanedIdList, NewState)};
+                {succ, {ok, IdList}} ->
+                    %% UpdateStatus is not ok. This means update of deks
+                    %% finished unsuccesfully, so we don't really know if
+                    %% set_active_key_callback has actually finished.
+                    %% It is hypothetically possible that we receive error,
+                    %% but set_active_key_callback is still working (e.g. in
+                    %% memcached). In this case it is possible that we remove
+                    %% the keys that are being pushed.
+                    NewKindDeks = KindDeks#{has_unencrypted_data =>
+                                            lists:member(?NULL_DEK, IdList)},
+                    NewState = State#state{deks = DeksInfo#{
+                                                    Kind => NewKindDeks}},
+                    ?log_debug("Skipping ~p deks retiring because update "
+                               "status is ~p", [Kind, UpdateStatus]),
+                    {error, NewState, retry};
                 {succ, {error, not_found}} ->
                     %% The entity that uses deks does not exist.
                     %% Ignoring it here because we assume that deks will
@@ -1904,7 +1927,7 @@ do(maybe_reset_deks_counters, _) ->
 do({maybe_update_deks, Kind}, State) ->
     maybe_update_deks(Kind, State);
 do({garbage_collect_deks, Kind}, State) ->
-    garbage_collect_deks(Kind, State);
+    garbage_collect_deks(Kind, false, State);
 do({maybe_reencrypt_deks, K}, State) ->
     maybe_reencrypt_deks(K, State).
 
