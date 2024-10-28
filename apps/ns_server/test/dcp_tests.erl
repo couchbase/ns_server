@@ -66,10 +66,27 @@ dcp_test_teardown(_SetupCfg, PidMap) ->
 
 set_replication_for_buckets(Buckets, Replications) ->
     lists:foreach(
-        fun(Bucket) ->
-                replication_manager:set_incoming_replication_map(Bucket,
-                                                                 Replications)
-        end, Buckets).
+      fun(Bucket) ->
+              replication_manager:set_incoming_replication_map(Bucket,
+                                                               Replications)
+      end, Buckets).
+
+%% @doc Add vBucket replication for given vBucket from node for given Buckets
+-spec change_vbucket_replications_for_buckets([bucket_name()], vbucket_id(),
+                                              node()) -> ok.
+change_vbucket_replications_for_buckets(Buckets, VBucket, Node) ->
+    lists:foreach(
+      fun(Bucket) ->
+              replication_manager:change_vbucket_replication(Bucket, VBucket,
+                                                             Node)
+      end, Buckets).
+
+remove_undesired_reps_for_buckets(Buckets, Replications) ->
+    lists:foreach(
+      fun(Bucket) ->
+              replication_manager:remove_undesired_replications(Bucket,
+                                                                Replications)
+      end, Buckets).
 
 assert_connections(Node, Connections) ->
     %% We don't process the socket close synchronously to the proxy end of the
@@ -143,7 +160,20 @@ two_node_conn_and_map_t(#{nodes := Nodes,
     %% And remove 0
     set_replication_for_buckets(Buckets, []),
     assert_connections_for_nodes(Nodes, 0 * ConnectionsMultiple),
-    assert_replication_map_for_nodes_and_buckets(Buckets, []).
+    assert_replication_map_for_nodes_and_buckets(Buckets, []),
+
+    %% Now some tests that build up and take down replications over time
+    change_vbucket_replications_for_buckets(Buckets, 0, OtherNode),
+    assert_connections_for_nodes(Nodes, 1 * ConnectionsMultiple),
+    assert_replication_map_for_nodes_and_buckets(Buckets, Map0),
+
+    change_vbucket_replications_for_buckets(Buckets, 1, OtherNode),
+    assert_connections_for_nodes(Nodes, 1 * ConnectionsMultiple),
+    assert_replication_map_for_nodes_and_buckets(Buckets, Map1),
+
+    remove_undesired_reps_for_buckets(Buckets, [{OtherNode, [0]}]),
+    assert_connections_for_nodes(Nodes, 1 * ConnectionsMultiple),
+    assert_replication_map_for_nodes_and_buckets(Buckets, Map0).
 
 multi_node_conn_and_map_t(#{nodes := Nodes,
                             buckets := Buckets}, _PidMap) ->
@@ -175,7 +205,38 @@ multi_node_conn_and_map_t(#{nodes := Nodes,
                                  1 * ConnectionsMultiple),
     assert_connections_for_nodes([ThisNode], 2 * 1 * ConnectionsMultiple),
     assert_replication_map_for_nodes_and_buckets(
-      Buckets, Map2).
+      Buckets, Map2),
+
+    set_replication_for_buckets(Buckets, []),
+    assert_connections_for_nodes(Nodes, 0 * ConnectionsMultiple),
+    assert_replication_map_for_nodes_and_buckets(Buckets, []),
+
+    %% Now some tests that build up and take down replications over time
+    change_vbucket_replications_for_buckets(Buckets, 0, OtherNode1),
+    assert_connections_for_nodes([OtherNode1], 1 * ConnectionsMultiple),
+    assert_replication_map_for_nodes_and_buckets(Buckets, Map0),
+
+    change_vbucket_replications_for_buckets(Buckets, 1, OtherNode2),
+    assert_connections_for_nodes([OtherNode1, OtherNode2],
+                                 1 * ConnectionsMultiple),
+    assert_replication_map_for_nodes_and_buckets(Buckets, Map2),
+
+    Map3 = [{OtherNode1, [0, 2]}, {OtherNode2, [1]}],
+    change_vbucket_replications_for_buckets(Buckets, 2, OtherNode1),
+    assert_connections_for_nodes([OtherNode1, OtherNode2],
+                                 1 * ConnectionsMultiple),
+    assert_replication_map_for_nodes_and_buckets(Buckets, Map3),
+
+    Map4 = [{OtherNode1, [0, 2]}, {OtherNode2, [1, 3]}],
+    change_vbucket_replications_for_buckets(Buckets, 3, OtherNode2),
+    assert_connections_for_nodes([OtherNode1, OtherNode2],
+                                 1 * ConnectionsMultiple),
+    assert_replication_map_for_nodes_and_buckets(Buckets, Map4),
+
+    remove_undesired_reps_for_buckets(Buckets, [{OtherNode1, [0]}]),
+    assert_connections_for_nodes([OtherNode1], 1 * ConnectionsMultiple),
+    assert_connections_for_nodes([OtherNode2], 0 * ConnectionsMultiple),
+    assert_replication_map_for_nodes_and_buckets(Buckets, Map0).
 
 make_nodes(Count) ->
     [node()] ++
