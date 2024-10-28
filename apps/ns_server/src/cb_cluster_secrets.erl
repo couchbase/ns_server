@@ -573,6 +573,20 @@ init([Type]) ->
                     ensure_all_keks_on_disk] ++
                    [{maybe_reencrypt_deks, K} || K <- Kinds]
            end,
+
+    %% If we are starting after joininig the cluster (or after leaving cluster),
+    %% it means that secrets configuration in chronicle has magically changed
+    %% while this process was down.
+    %% For example, KEKs on disk do not exist in configuration any more,
+    %% and they will be garbage collected by the garbage_collect_keks job.
+    %% This can be a problem because there could be DEKs that are encrypted with
+    %% those KEKs. In order to smoothly migrate from old configuration, it is
+    %% important to run reencryption of DEKs before garbage collecting KEKs.
+    %% It is also important to not garbage collect KEKs until reencryption of
+    %% DEKs finishes successfully.
+    %% Note that this means that this process can't start until the reecnryption
+    %% is finished.
+
     {ok, functools:chain(#state{proc_type = Type, jobs = Jobs},
                          [maybe_read_deks(_),
                           run_jobs(_),
@@ -1389,7 +1403,15 @@ deks_file_path() ->
 maybe_read_deks(#state{proc_type = ?NODE_PROC, deks = undefined} = State) ->
     #state{deks = Deks} = NewState = read_all_deks(State),
     Kinds = maps:keys(Deks),
-    add_jobs([{maybe_update_deks, K} || K <- Kinds], NewState);
+
+    ok = ensure_all_keks_on_disk(),
+    NewState2 = lists:foldl(
+                  fun (K, Acc) ->
+                      {ok, NewAcc} = maybe_reencrypt_deks(K, Acc),
+                      NewAcc
+                  end, NewState, Kinds),
+    ok = garbage_collect_keks(),
+    add_jobs([{maybe_update_deks, K} || K <- Kinds], NewState2);
 maybe_read_deks(#state{} = State) ->
     State.
 
