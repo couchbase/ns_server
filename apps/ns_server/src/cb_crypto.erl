@@ -156,6 +156,8 @@ file_encrypt_cont(Filename, Offset,
           {binary(), #file_encr_state{}}.
 file_encrypt_chunk(Data, #file_encr_state{key = undefined} = State) ->
     {Data, State};
+file_encrypt_chunk(<<>>, State) ->
+    {<<>>, State};
 file_encrypt_chunk(Data, #file_encr_state{key = Dek,
                                           iv_random = IVRandom,
                                           iv_atomic_counter = IVAtomic,
