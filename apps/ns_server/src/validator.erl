@@ -87,6 +87,10 @@ handle(Fun, Req, json_array, Validators) ->
     handle_multiple(Fun, Req, with_json_array(
                                 mochiweb_request:recv_body(Req), Validators));
 
+handle(Fun, Req, json_map, Validators) ->
+    handle_multiple(Fun, Req, with_json_map(
+                                mochiweb_request:recv_body(Req), Validators));
+
 handle(Fun, Req, form, Validators) ->
     handle(Fun, Req, add_input_type(form, mochiweb_request:parse_post(Req)),
            Validators);
@@ -256,6 +260,25 @@ with_json_array(Body, Validators) ->
             [with_decoded_object(Object, Validators) || Object <- Objects];
         _ ->
             [#state{errors = [{<<"_">>, <<"A Json list must be specified.">>}]}]
+    catch _:_ ->
+            [#state{errors = [{<<"_">>, <<"Invalid Json">>}]}]
+    end.
+
+with_json_map(Body, Validators) ->
+    try ejson:decode(Body) of
+        {KVS} when is_list(KVS) ->
+            Objects = [{[{<<"key">>, K} | Props]} || {K, {Props}} <- KVS],
+            case length(Objects) < length(KVS) of
+                true ->
+                    [#state{
+                        errors =
+                            [{<<"_">>, <<"Must be a map K -> JsonObject.">>}]}];
+                false ->
+                    [with_decoded_object(Object, Validators) ||
+                        Object <- Objects]
+            end;
+        _ ->
+            [#state{errors = [{<<"_">>, <<"A Json map must be specified.">>}]}]
     catch _:_ ->
             [#state{errors = [{<<"_">>, <<"Invalid Json">>}]}]
     end.
