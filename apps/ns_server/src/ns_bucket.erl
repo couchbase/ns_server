@@ -1412,13 +1412,16 @@ wait_for_bucket_shutdown(BucketName, Nodes0, Timeout) ->
                 LeftoverNodes0
         end,
 
-    testconditions:check_test_condition({wait_for_bucket_shutdown, BucketName}),
-
-    case LeftoverNodes of
-        [] ->
-            ok;
-        _ ->
-            {shutdown_failed, LeftoverNodes}
+    case testconditions:check_test_condition({wait_for_bucket_shutdown,
+                                              BucketName}) of
+        ok ->
+            case LeftoverNodes of
+                [] ->
+                    ok;
+                _ ->
+                    {shutdown_failed, LeftoverNodes}
+            end;
+        Other -> Other
     end.
 
 override_keys() ->

@@ -66,3 +66,16 @@ class BucketDeletionTest(testlib.BaseTestSet):
         delete_bucket(self.cluster.connected_nodes[0], "bucket-2")
         p.join()
         assert p.exitcode == 0
+
+    def slow_bucket_deletion_test(self):
+        testlib.diag_eval(
+            self.cluster,
+            code="testconditions:set({wait_for_bucket_shutdown, \"bucket-1\"},"
+                 " {return, {shutdown_failed, [foo]}})")
+
+        res = testlib.delete(self.cluster,
+                             "/pools/default/buckets/bucket-1")
+        code = res.status_code
+
+        assert code == 500, testlib.format_http_error(res, [500])
+        assert "Bucket deletion not yet complete" in res.text

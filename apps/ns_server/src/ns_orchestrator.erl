@@ -2275,8 +2275,12 @@ handle_delete_bucket(BucketName, From, CurrentState, StateData) ->
                 true ->
                     Pid = erlang:spawn_link(
                             fun () ->
-                                    ok = ns_bucket:wait_for_bucket_shutdown(
-                                           BucketName, Servers, Timeout)
+                                    RV = ns_bucket:wait_for_bucket_shutdown(
+                                           BucketName, Servers, Timeout),
+                                    case RV of
+                                        ok -> ok;
+                                        Error -> exit(Error)
+                                    end
                             end),
                     NewStateData =
                         [#bucket_shutdown_ctx{
