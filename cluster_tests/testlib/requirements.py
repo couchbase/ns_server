@@ -7,6 +7,7 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from typing import Dict, List, Union
 
 import testlib
@@ -709,7 +710,7 @@ class Buckets(Requirement):
 
     def is_met(self, cluster):
         buckets = testlib.get_succ(cluster, "/pools/default/buckets").json()
-        missing_buckets = self.buckets
+        missing_buckets = deepcopy(self.buckets)
         undesired_buckets = []
         for bucket in buckets:
             desired = False

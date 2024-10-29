@@ -32,6 +32,7 @@ class NativeEncryptionTests(testlib.BaseTestSet):
                                            services={'n0': [Service.KV],
                                                      'n1': [Service.QUERY],
                                                      'n2': [Service.KV]},
+                                           buckets=[],
                                            balanced=True)
 
     def setup(self):
