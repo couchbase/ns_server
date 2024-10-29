@@ -40,9 +40,13 @@ get_children(Bucket) ->
         is_pid(C)].
 
 build_child_spec(Bucket, {ProducerNode, RepFeatures} = ChildId) ->
-    {ChildId,
-     {dcp_replicator, start_link, [ProducerNode, Bucket, RepFeatures]},
-     temporary, 60000, worker, [dcp_replicator]}.
+    #{id => ChildId,
+      start => {dcp_replicator, start_link,
+                [ProducerNode, Bucket, RepFeatures]},
+      restart => temporary,
+      shutdown => 60000,
+      type => worker,
+      modules => [dcp_replicator]}.
 
 start_replicator(Bucket, {ProducerNode, RepFeatures} = ChildId) ->
     ?log_debug("Starting DCP replication from ~p for bucket ~p (Features = ~p)",
