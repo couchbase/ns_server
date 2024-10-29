@@ -82,6 +82,12 @@ check_test_condition(Logger, Step, Kind, ExtendedHandler) ->
             %% Triggered by:
             %%  testconditions:set(rebalance_start, {delay, 60000})
             trigger_delay(Logger, Step, [], Sleep);
+        {return, Value} ->
+            %% E.g. return a timeout for bucket shutdown wait.
+            %% Triggered by:
+            %% testconditions:set(wait_for_bucket_shutdown,
+            %%                    {return, {shutdown_failed, [foo]}})
+            trigger_return(Logger, Step, [], Value);
         {fail, Kind} ->
             %% E.g. fail verify_replication for bucket "test".
             %% Triggered by:
@@ -93,6 +99,12 @@ check_test_condition(Logger, Step, Kind, ExtendedHandler) ->
             %%  testconditions:set(service_rebalance_start,
             %%                     {delay, index, 1000})
             trigger_delay(Logger, Step, Kind, Sleep);
+        {return, Kind, Value} ->
+            %% E.g. return a timeout for bucket shutdown wait.
+            %% Triggered by:
+            %% testconditions:set({wait_for_bucket_shutdown, \"bucket-1\"},
+            %%                    {return, {shutdown_failed, [foo]}})
+            trigger_return(Logger, Step, Kind, Value);
         Condition ->
             case ExtendedHandler of
                 undefined -> ok;
@@ -125,3 +137,15 @@ trigger_delay(Logger, Step, Kind, Sleep) ->
 
     testconditions:delete(Step),
     timer:sleep(Sleep).
+
+trigger_return(Logger, Step, Kind, Value) ->
+    Msg = case Kind of
+              [] ->
+                  io_lib:format("Returning value ~p during ~p", [Value, Step]);
+              _ ->
+                  io_lib:format("Returning value ~p during ~p for ~p",
+                      [Value, Step, Kind])
+          end,
+    ale:error(Logger, "~s", [lists:flatten(Msg)]),
+    testconditions:delete(Step),
+    Value.
