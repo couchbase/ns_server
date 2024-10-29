@@ -15,6 +15,18 @@ def delete_bucket(node, bucket):
     testlib.ensure_deleted(node, f"/pools/default/buckets/{bucket}")
 
 
+def ensure_deleted(cluster):
+    def check_all_buckets_deleted():
+        r = testlib.diag_eval(
+            cluster, "ns_bucket:get_bucket_names_marked_for_shutdown()")
+
+        return r.text == "[]"
+
+    testlib.poll_for_condition(check_all_buckets_deleted,
+                               sleep_time=1, attempts=60,
+                               msg=f"Wait for all buckets to be deleted")
+
+
 class BucketDeletionTest(testlib.BaseTestSet):
 
     @staticmethod
@@ -29,6 +41,12 @@ class BucketDeletionTest(testlib.BaseTestSet):
 
     def setup(self):
         pass
+
+    def test_teardown(self):
+        # We need to re-create our buckets between tests, just repair the
+        # requirements to do that
+        ensure_deleted(self.cluster)
+        self.cluster.maybe_repair_cluster_requirements()
 
     def teardown(self):
         # Nuke any testconditions outstanding in case the test failed.
