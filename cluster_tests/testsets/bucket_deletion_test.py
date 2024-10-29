@@ -28,18 +28,20 @@ class BucketDeletionTest(testlib.BaseTestSet):
         )
 
     def setup(self):
-        # Delay shutdown of bucket-1 by 5 secs.
+        pass
+
+    def teardown(self):
+        # Nuke any testconditions outstanding in case the test failed.
+        testlib.post_succ(self.cluster, "/diag/eval",
+                          data="testconditions:clear()")
+
+    def concurrent_bucket_deletion_test(self):
+        # Delay shutdown of bucket-1 by 5 secs. Testconditions are deleted
+        # after they are hit.
         testlib.post_succ(self.cluster, "/diag/eval",
                           data="testconditions:set({wait_for_bucket_shutdown, "
                                "\"bucket-1\"}, {delay, 5000})")
 
-    def teardown(self):
-        testlib.post_succ(self.cluster, "/diag/eval",
-                          data=
-                          "testconditions:delete({wait_for_bucket_shutdown, "
-                          "\"bucket-1\"})")
-
-    def concurrent_bucket_deletion_test(self):
         p = Process(target=delete_bucket,
                     args=(self.cluster.connected_nodes[0], "bucket-1"))
         p.start()
