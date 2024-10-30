@@ -47,6 +47,7 @@
           rotation_num_files :: pos_integer(),
           rotation_compress :: boolean(),
           rotation_check_interval :: non_neg_integer(),
+          in_use_deks :: list(),
           encr_state :: any()
          }).
 
@@ -83,7 +84,8 @@ init([Name, Path, Opts]) ->
                                 rotation_size = RotSize,
                                 rotation_num_files = RotNumFiles,
                                 rotation_compress = RotCompress,
-                                rotation_check_interval = RotCheckInterval},
+                                rotation_check_interval = RotCheckInterval,
+                                in_use_deks = []},
     Worker = spawn_worker(WorkerState),
 
     State = #state{buffer = <<>>,
@@ -113,6 +115,10 @@ handle_call(sync, From, #state{worker = Worker} = State) ->
 handle_call(notify_active_key_updt, From,
             #state{worker = Worker} = State) ->
     do_work(Worker, notify_active_key_updt, From, infinity),
+    {noreply, State};
+handle_call(get_in_use_deks, From,
+            #state{worker = Worker} = State) ->
+    do_work(Worker, get_in_use_deks, From, infinity),
     {noreply, State};
 handle_call(Request, _From, State) ->
     {stop, {unexpected_call, Request}, State}.
@@ -294,12 +300,13 @@ do_rotate_file(From0, To0, Compress) ->
             Error
     end.
 
-do_rotate_files(#worker_state{sink_name = Name} = State) ->
+do_rotate_files(#worker_state{sink_name = Name} = State0) ->
     time_stat(Name, rotation_time,
               fun () ->
-                      ok = rotate_files(State),
-                      ok = maybe_compress_post_rotate(State),
-                      open_log_file(State)
+                      ok = rotate_files(State0),
+                      ok = maybe_compress_post_rotate(State0),
+                      State1  = open_log_file(State0),
+                      update_in_use_deks(State1)
               end).
 
 maybe_rotate_files(#worker_state{file_size = FileSize,
@@ -308,6 +315,18 @@ maybe_rotate_files(#worker_state{file_size = FileSize,
     do_rotate_files(State);
 maybe_rotate_files(State) ->
     State.
+
+update_in_use_deks(#worker_state{path = LogFilePath} = State) ->
+    Dir = filename:dirname(LogFilePath),
+    BaseName = filename:basename(LogFilePath),
+
+    DirFiles = [BaseName | filelib:wildcard(BaseName ++ ".*", Dir)],
+    FilePaths = lists:map(
+                  fun(FileName) ->
+                          filename:join(Dir, FileName)
+                  end, DirFiles),
+
+    State#worker_state{in_use_deks = ale:get_in_use_deks(FilePaths)}.
 
 maybe_write_header(_SinkName, _File, <<>>) ->
     ok;
@@ -489,8 +508,9 @@ worker_init(#worker_state{
             ok
     end,
 
+    State1 = open_log_file(State0),
     worker_loop(
-      open_log_file(State0)).
+      update_in_use_deks(State1)).
 
 worker_loop(#worker_state{sink_name = SinkName} = State) ->
     NewState =
@@ -512,6 +532,10 @@ worker_loop(#worker_state{sink_name = SinkName} = State) ->
                 UpdatedState = process_key_update_work(UpdtReq, State),
                 gen_server:reply(From, ok),
                 UpdatedState;
+            {'$gen_call', From, get_in_use_deks} ->
+                #worker_state{in_use_deks = InUseDeks} = State,
+                gen_server:reply(From, InUseDeks),
+                State;
             Msg ->
                 exit({unexpected_msg, Msg})
         end,

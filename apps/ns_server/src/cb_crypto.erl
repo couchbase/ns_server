@@ -36,7 +36,7 @@
          file_encrypt_state_match/2,
          is_file_encr_by_ds/2,
          is_file_encrypted/1,
-         get_file_dek_ids/1,
+         get_in_use_deks/1,
          file_decrypt_init/3,
          file_decrypt_next_chunk/2,
 
@@ -202,6 +202,16 @@ get_file_dek_ids(Path) ->
         {error, enoent} -> {ok, []};
         {error, R} -> {error, R}
     end.
+
+-spec get_in_use_deks([string()]) -> [cb_deks:dek_id()].
+get_in_use_deks(FilePaths) ->
+    InUseDeks =
+        lists:flatmap(
+            fun(FilePath) ->
+                {ok, DekIds} = get_file_dek_ids(FilePath),
+                DekIds
+            end, FilePaths),
+    lists:usort(InUseDeks).
 
 -spec read_file(string(),
                 cb_deks:dek_kind() | #dek_snapshot{} |

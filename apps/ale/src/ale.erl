@@ -34,6 +34,7 @@
          file_encrypt_init/2,
          file_encrypt_cont/3,
          file_encrypt_chunk/2,
+         get_in_use_deks/1,
 
          with_configuration_batching/1,
 
@@ -212,6 +213,10 @@ file_encrypt_cont(FileName, Offset, DS) ->
 file_encrypt_chunk(Data, EncrState) ->
     Callback = get_encryption_cb(file_encrypt_chunk),
     Callback(Data, EncrState).
+
+get_in_use_deks(FilePaths) ->
+    Callback = get_encryption_cb(get_in_use_deks),
+    Callback(FilePaths).
 
 get_effective_loglevel(LoggerName) ->
     call_logger_impl(LoggerName, get_effective_loglevel, []).
@@ -444,6 +449,10 @@ default_encr_disabled_cbs() ->
       file_encrypt_chunk =>
           fun(Data, EncrState) ->
                   {Data, EncrState}
+          end,
+      get_in_use_deks =>
+          fun(_FilePaths) ->
+                  []
           end}.
 
 handle_call(get_state, _From, State) ->

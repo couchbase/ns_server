@@ -488,6 +488,9 @@
       file_encrypt_chunk =>
           fun(Data, EncrState) ->
                   cb_crypto:file_encrypt_chunk(Data, EncrState)
+          end,
+      get_in_use_deks =>
+          fun(FilePaths) ->
+                  cb_crypto:get_in_use_deks(FilePaths)
           end}).
-
 -endif.
