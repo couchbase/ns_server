@@ -36,6 +36,7 @@
          file_encrypt_state_match/2,
          is_file_encr_by_ds/2,
          is_file_encrypted/1,
+         get_file_dek_ids/1,
          file_decrypt_init/3,
          file_decrypt_next_chunk/2,
 
@@ -180,20 +181,26 @@ file_encrypt_state_match(#dek_snapshot{active_key = ActiveKey},
 is_file_encr_by_ds(Path, #dek_snapshot{active_key = undefined}) ->
     not is_file_encrypted(Path);
 is_file_encr_by_ds(Path, #dek_snapshot{active_key = #{id := KeyId}}) ->
-    {ok, File} = file:open(Path, [read, raw, binary]),
-    try
-        header_key_match(file:read(File, ?ENCRYPTED_FILE_HEADER_LEN), KeyId)
-    after
-        file:close(File)
-    end.
+    header_key_match(read_file_header(Path), KeyId).
 
 -spec is_file_encrypted(string()) -> true | false.
 is_file_encrypted(Path) ->
-    {ok, File} = file:open(Path, [read, raw, binary]),
-    try
-        is_valid_encr_header(file:read(File, ?ENCRYPTED_FILE_HEADER_LEN))
-    after
-        file:close(File)
+    is_valid_encr_header(read_file_header(Path)).
+
+-spec get_file_dek_ids(Path :: string()) ->
+          {ok, [cb_deks:dek_id() | undefined]} | {error, _}.
+get_file_dek_ids(Path) ->
+    case read_file_header(Path) of
+        {ok, Bin} ->
+            case parse_header(Bin) of
+                {ok, {0, KeyId, _Offset, _Rest}} -> {ok, [KeyId]};
+                need_more_data -> {ok, [undefined]};
+                {error, unknown_magic} -> {ok, [undefined]};
+                {error, E} -> {error, E}
+            end;
+        eof -> {ok, []};
+        {error, enoent} -> {ok, []};
+        {error, R} -> {error, R}
     end.
 
 -spec read_file(string(),
@@ -411,6 +418,8 @@ is_valid_encr_header({ok, HeaderData}) ->
         _ ->
             false
     end;
+is_valid_encr_header({error, enoent}) ->
+    false;
 is_valid_encr_header(eof) ->
     false.
 
@@ -421,6 +430,8 @@ header_key_match({ok, HeaderData}, KeyId) ->
         _ ->
             false
     end;
+header_key_match({error, enoent}, _KeyId) ->
+    false;
 header_key_match(eof, _KeyId) ->
     false.
 
@@ -575,4 +586,14 @@ find_key(WantedId, #dek_snapshot{all_keys = AllDeks}) ->
     case lists:search(fun (#{id := Id}) -> Id == WantedId end, AllDeks) of
         {value, Key} -> {ok, Key};
         false -> {error, key_not_found}
+    end.
+
+read_file_header(Path) ->
+    maybe
+        {ok, File} ?= file:open(Path, [read, raw, binary]),
+        try
+            file:read(File, ?ENCRYPTED_FILE_HEADER_LEN)
+        after
+            file:close(File)
+        end
     end.
