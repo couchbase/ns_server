@@ -75,7 +75,6 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                    f'Secret {s_id} disappeared during tests'
         for s_id in self.pre_created_ids:
             delete_secret(self.cluster, s_id)
-        set_cfg_encryption(self.cluster, 'disabled', -1)
 
     def test_teardown(self):
         set_cfg_encryption(self.cluster, 'encryption_service', -1)
