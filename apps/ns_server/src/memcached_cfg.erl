@@ -15,7 +15,7 @@
 
 -include_lib("ns_common/include/cut.hrl").
 
--export([start_link/2, sync/1, sync_reload/1]).
+-export([start_link/2, sync/1, sync_reload/1, get_key_ids_in_use/1]).
 
 %% gen_event callbacks
 -export([init/1, handle_cast/2, handle_call/3,
@@ -38,7 +38,8 @@
                 retry_timer,
                 path,
                 tmp_path,
-                sync_froms = []}).
+                sync_froms = [],
+                keys_in_use}).
 
 format_status(_Opt, [_PDict, #state{module = Mod, stuff = Stuff} = State]) ->
     case erlang:function_exported(Mod, format_status, 1) of
@@ -56,6 +57,9 @@ sync(Module) ->
 sync_reload(Module) ->
     gen_server:cast(Module, reload_file),
     sync(Module).
+
+get_key_ids_in_use(Module) ->
+    gen_server:call(Module, get_key_ids_in_use).
 
 start_link(Module, Path) ->
     gen_server:start_link({local, Module}, ?MODULE, [Module, Path], []).
@@ -98,6 +102,13 @@ handle_cast(reload_file, State) ->
 handle_cast(full_reset, State = #state{module = Module}) ->
     {noreply, initiate_write(State#state{stuff = Module:init()})}.
 
+handle_call(get_key_ids_in_use, _from, #state{keys_in_use = InUse} = State) ->
+    Res = case InUse of
+              #{cfg := {ok, K1}, tmp := {ok, K2}} -> {ok, K1 ++ K2};
+              #{cfg := {error, E}, tmp := _} -> {error, {read_file_error, E}};
+              #{cfg := _, tmp := {error, E}} -> {error, {read_file_error, E}}
+          end,
+    {reply, Res, State};
 handle_call(sync, _From, #state{retry_timer = undefined} = State) ->
     {reply, ok, State};
 handle_call(sync, From, #state{sync_froms = Froms} = State) ->
@@ -121,7 +132,7 @@ handle_info({retry_rename_and_refresh, Tries, SleepTime}, State) ->
                        %% Error still happened so new timer started.
                        State#state{retry_timer = TRef}
                end,
-    {noreply, NewState};
+    {noreply, update_keys_in_use(NewState)};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -142,13 +153,14 @@ initiate_write(#state{retry_timer = TRef} = State) ->
     %% If we're retrying a rename we'll just punt on that and start over
     %% with new config information.
     cancel_retry_timer(TRef),
-    case write_cfg(State) of
-        ok ->
-            reply_to_syncs(State#state{retry_timer = undefined});
-        NewTRef when is_reference(NewTRef) ->
-            %% Rename failed and needs to be retried
-            State#state{retry_timer = NewTRef}
-    end.
+    NewState = case write_cfg(State) of
+                    ok ->
+                        reply_to_syncs(State#state{retry_timer = undefined});
+                    NewTRef when is_reference(NewTRef) ->
+                        %% Rename failed and needs to be retried
+                        State#state{retry_timer = NewTRef}
+                end,
+    update_keys_in_use(NewState).
 
 write_cfg(#state{path = Path,
                  tmp_path = TmpPath,
@@ -230,3 +242,7 @@ rename_and_refresh(#state{path = Path,
                                        SleepTime * 2})
             end
     end.
+
+update_keys_in_use(#state{tmp_path = TmpPath, path = Path} = State) ->
+    State#state{keys_in_use = #{cfg => cb_crypto:get_file_dek_ids(Path),
+                                tmp => cb_crypto:get_file_dek_ids(TmpPath)}}.

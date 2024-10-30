@@ -18,7 +18,8 @@
 -export([start_link/0, trigger_tls_config_push/0,
          memcached_port_pid/0, push_config_encryption_key/1,
          drop_historical_deks/0,
-         get_global_memcached_deks/0]).
+         get_global_memcached_deks/0,
+         get_key_ids_in_use/0]).
 
 %% referenced from ns_config_default
 -export([get_minidump_dir/2, get_interfaces/2,
@@ -39,7 +40,9 @@
 -record(state, {
           port_pid :: pid(),
           memcached_config :: binary(),
-          tls_config_timer :: undefined | reference()
+          tls_config_timer :: undefined | reference(),
+          keys_in_use :: #{cfg | prev := {ok, [cb_deks:dek_id()]} | {error, _}}
+                         | undefined
          }).
 
 start_link() ->
@@ -69,8 +72,18 @@ drop_historical_deks() ->
         gen_server:call(?MODULE, drop_historical_deks, 60000)
     catch
         exit:{noproc, {gen_server, call, [?MODULE, drop_historical_deks, _]}} ->
-            ?log_debug("Can't push config encryption key: ~p is not "
-                       "started yet...", [?MODULE]),
+            ?log_debug("Can't drop hist keys: ~p is not started yet...",
+                       [?MODULE]),
+            {error, retry}
+    end.
+
+get_key_ids_in_use() ->
+    try
+        gen_server:call(?MODULE, get_key_ids_in_use, 60000)
+    catch
+        exit:{noproc, {gen_server, call, [?MODULE, get_key_ids_in_use, _]}} ->
+            ?log_debug("Can't get key ids in use: ~p is not started yet...",
+                       [?MODULE]),
             {error, retry}
     end.
 
@@ -131,7 +144,13 @@ init([]) ->
 
     State = #state{port_pid = Pid,
                    memcached_config = ActualMcdConfig},
-    gen_server:enter_loop(?MODULE, [], State).
+    gen_server:enter_loop(?MODULE, [], update_keys_in_use(State)).
+
+update_keys_in_use(State) ->
+    CfgPath = get_memcached_config_path(),
+    PrevPath = get_memcached_prev_config_path(),
+    State#state{keys_in_use = #{cfg => cb_crypto:get_file_dek_ids(CfgPath),
+                                prev => cb_crypto:get_file_dek_ids(PrevPath)}}.
 
 prepare_bootstrap_keys(CfgDeksSnapshot) ->
     FormatKeys =
@@ -158,7 +177,7 @@ prepare_bootstrap_keys(CfgDeksSnapshot) ->
     BootstrapData.
 
 delete_prev_config_file() ->
-    PrevMcdConfigPath = get_memcached_config_path() ++ ".prev",
+    PrevMcdConfigPath = get_memcached_prev_config_path(),
     case file:delete(PrevMcdConfigPath) of
         ok -> ok;
         {error, enoent} -> ok;
@@ -243,7 +262,7 @@ handle_call({push_config_encryption_key, NeedConfigReload}, _From,
                   false ->
                       ok
               end,
-        {reply, ok, State}
+        {reply, ok, update_keys_in_use(State)}
     else
         {error, Reason} ->
             {reply, {error, Reason}, State};
@@ -257,6 +276,14 @@ handle_call(drop_historical_deks, _From, State) ->
     Res = case maybe_push_config_encryption_key(DSWithoutHistDeks) of
               {ok, _} -> ok;
               {error, _} = Err -> Err
+          end,
+    {reply, Res, State};
+
+handle_call(get_key_ids_in_use, _from, #state{keys_in_use = InUse} = State) ->
+    Res = case InUse of
+              #{cfg := {ok, K1}, prev := {ok, K2}} -> {ok, K1 ++ K2};
+              #{cfg := {error, E}, prev := _} -> {error, {read_file_error, E}};
+              #{cfg := _, prev := {error, E}} -> {error, {read_file_error, E}}
           end,
     {reply, Res, State};
 
@@ -351,7 +378,8 @@ apply_changed_memcached_config(DifferentConfig, State) ->
         ok ->
             ?log_debug("New memcached config is hot-reloadable."),
             hot_reload_config(DifferentConfig, AFamiliesToTry, State, 10, []),
-            {noreply, State#state{memcached_config = DifferentConfig}};
+            {noreply, update_keys_in_use(
+                        State#state{memcached_config = DifferentConfig})};
         {memcached_error, einval, _} ->
             ?log_debug("Memcached config is not hot-reloadable"),
             RestartMemcached =
@@ -403,7 +431,7 @@ hot_reload_config(NewMcdConfig, _, State, Tries, LastErr) when Tries < 1 ->
     LastErr;
 hot_reload_config(NewMcdConfig, AFamiliesToTry, State, Tries, _LastErr) ->
     FilePath = get_memcached_config_path(),
-    PrevFilePath = FilePath ++ ".prev",
+    PrevFilePath = get_memcached_prev_config_path(),
 
     %% lets double check everything
     {active, CurrentMcdConfig} =
@@ -469,11 +497,14 @@ get_memcached_config_path() ->
     true = is_list(Path),
     Path.
 
+get_memcached_prev_config_path() ->
+    get_memcached_config_path() ++ ".prev".
+
 read_current_memcached_config(McdPortServer) ->
     case ns_port_server:is_active(McdPortServer) of
         true ->
             FilePath = get_memcached_config_path(),
-            PrevFilePath = FilePath ++ ".prev",
+            PrevFilePath = get_memcached_prev_config_path(),
             {ok, Contents} = do_read_current_memcached_config([PrevFilePath,
                                                                FilePath]),
             {active, Contents};

@@ -18,7 +18,7 @@
 -endif.
 
 -export([start_link/0, sync/0, sync_reload/0, jsonify_user_with_cache/2,
-         spec_users/0]).
+         spec_users/0, get_key_ids_in_use/0]).
 
 %% callbacks
 -export([init/0, filter_event/1, handle_event/2, producer/1, refresh/0]).
@@ -122,6 +122,9 @@ sync() ->
 
 sync_reload() ->
     memcached_cfg:sync_reload(?MODULE).
+
+get_key_ids_in_use() ->
+    memcached_cfg:get_key_ids_in_use(?MODULE).
 
 init() ->
     #state{buckets = ns_bucket:uuids(),
