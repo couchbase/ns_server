@@ -86,7 +86,8 @@
                            dek_cleanup => undefined,
                            rotate_deks => undefined}
                          :: #{atom() := reference() | undefined},
-                deks = #{} :: #{cb_deks:dek_kind() := deks_info()}}).
+                deks = undefined :: #{cb_deks:dek_kind() := deks_info()} |
+                                    undefined}).
 
 -export_type([secret_id/0, key_id/0, chronicle_snapshot/0, secret_usage/0]).
 
@@ -573,7 +574,8 @@ init([Type]) ->
                    [{maybe_reencrypt_deks, K} || K <- Kinds]
            end,
     {ok, functools:chain(#state{proc_type = Type, jobs = Jobs},
-                         [run_jobs(_),
+                         [maybe_read_deks(_),
+                          run_jobs(_),
                           restart_dek_cleanup_timer(_),
                           restart_rotation_timer(_)])}.
 
@@ -1034,10 +1036,7 @@ ensure_kmip_kek_on_disk(#{data := #{active_key := ActiveKey,
 garbage_collect_keks() ->
     AllKekIds = all_kek_ids(),
     ?log_debug("keks gc: All existing keks: ~p", [AllKekIds]),
-    case encryption_service:garbage_collect_keks(AllKekIds) of
-        {ok, _} -> ok;
-        {error, _} = Error -> Error
-    end.
+    encryption_service:garbage_collect_keks(AllKekIds).
 
 -spec all_kek_ids() -> [key_id()].
 all_kek_ids() ->
@@ -1075,7 +1074,9 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
             State = #state{deks = AllDeks} =
                 case maps:find(Kind, CurDeks) of
                     {ok, _} -> OldState;
-                    error -> read_deks(Kind, OldState)
+                    error ->
+                        EmptyDeks = new_dek_info(undefined, [], false),
+                        OldState#state{deks = CurDeks#{Kind => EmptyDeks}}
                 end,
 
             #{Kind := #{active_id := ActiveId,
@@ -1091,29 +1092,27 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
 
                 %% On disk it is enabled but in config it is disabled:
                 true when EncrMethod == disabled ->
-                    ok = cb_deks:set_active(Kind, ActiveId, false),
-                    NewState = read_deks(Kind, State),
+                    NewState = set_active(Kind, ActiveId, false, State),
                     call_set_active_cb(Kind, NewState);
 
                 %% It is enabled on disk and in config:
                 true when not ShouldRotate ->
                     %% We should push it even when nothing changes in order to
                     %% handle the scenario when we crash between
-                    %% cb_deks:set_active and SetActiveCB
+                    %% set_active and SetActiveCB
                     call_set_active_cb(Kind, State);
 
                 %% It is disabled on disk and in config:
                 false when EncrMethod == disabled ->
                     %% We should push it even when nothing changes in order to
                     %% handle the scenario when we crash between
-                    %% cb_deks:set_active and SetActiveCB
+                    %% set_active and SetActiveCB
                     call_set_active_cb(Kind, State);
 
                 %% On disk it is disabled but in config it is enabled
                 %% and we already have a dek
                 false when is_binary(ActiveId) and not ShouldRotate ->
-                    ok = cb_deks:set_active(Kind, ActiveId, true),
-                    NewState = read_deks(Kind, State),
+                    NewState = set_active(Kind, ActiveId, true, State),
                     call_set_active_cb(Kind, NewState);
 
                 %% On disk it is disabled but in config it is enabled
@@ -1122,8 +1121,8 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                     %% There is no active dek currently, but encryption is on,
                     %% we should generate a new dek
                     case generate_new_dek(Kind, Deks, EncrMethod, Snapshot) of
-                        ok ->
-                            NewState = read_deks(Kind, State),
+                        {ok, DekId} ->
+                            NewState = set_active(Kind, DekId, true, State),
                             call_set_active_cb(Kind, NewState);
                         %% Too many DEKs and encryption is being enabled
                         %% We could not create new DEK, but should still
@@ -1134,11 +1133,10 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                         %% succeeds.
                         {error, too_many_deks} when V == false ->
                             true = is_binary(ActiveId),
-                            ok = cb_deks:set_active(Kind, ActiveId, true),
-                            NewState = read_deks(Kind, State),
+                            NewState = set_active(Kind, ActiveId, true, State),
                             call_set_active_cb(Kind, NewState);
                         %% This just a dek rotation attempt. No need to call
-                        %% cb_deks:set_active because nothing changes.
+                        %% set_active because nothing changes.
                         {error, too_many_deks} ->
                             NewState = maybe_garbage_collect_deks(Kind, false,
                                                                   State),
@@ -1155,7 +1153,10 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
             %% Just make sure we don't monitor those DEKs anymore.
             %% Note that bucket can exist globally, but can be missing at this
             %% specific node.
-            {ok, OldState#state{deks = maps:remove(Kind, CurDeks)}}
+            ?log_debug("DEK ~p doesn't seem to exist. Forgetting about it"),
+            State = OldState#state{deks = maps:remove(Kind, CurDeks)},
+            write_deks_cfg_file(State),
+            {ok, on_deks_update(Kind, State)}
     end.
 
 -spec maybe_garbage_collect_deks(cb_deks:dek_kind(), boolean(), #state{}) ->
@@ -1205,7 +1206,7 @@ garbage_collect_deks(Kind, #state{deks = DeksInfo} = State) ->
                     NewState = State#state{deks = DeksInfo#{
                                                     Kind => NewKindDeks}},
                     CleanedIdList = lists:delete(?NULL_DEK, UniqIdList),
-                    retire_unused_deks(Kind, CleanedIdList, NewState);
+                    {ok, retire_unused_deks(Kind, CleanedIdList, NewState)};
                 {succ, {error, not_found}} ->
                     %% The entity that uses deks does not exist.
                     %% Ignoring it here because we assume that deks will
@@ -1221,52 +1222,46 @@ garbage_collect_deks(Kind, #state{deks = DeksInfo} = State) ->
     end.
 
 -spec retire_unused_deks(cb_deks:dek_kind(), [cb_deks:dek_id()], #state{}) ->
-          {ok, #state{}} | {error, #state{}, term()}.
-retire_unused_deks(Kind, DekIdsInUse0, State) ->
-    case maybe_reset_active_file(Kind, DekIdsInUse0, State) of
-        {ok, DekIdsInUse, NewState} ->
-            case encryption_service:garbage_collect_keys(Kind, DekIdsInUse) of
-                {ok, []} ->
-                    {ok, NewState};
-                {ok, _} ->
-                    case cb_crypto:reset_dek_cache(Kind, cleanup) of
-                        {ok, _} ->
-                            {ok, read_deks(Kind, NewState)};
-                        {error, Reason} ->
-                            {error, NewState, Reason}
-                    end;
-                {error, Reason} ->
-                    {error, NewState, Reason}
-            end;
-        {error, Reason} ->
-            {error, State, Reason}
-    end.
+          #state{}.
+retire_unused_deks(Kind, DekIdsInUse, #state{deks = DeksInfo} = State) ->
+    #{Kind := #{active_id := ActiveId,
+                is_enabled := IsEnabled,
+                deks := Deks} = KindDeks} = DeksInfo,
+    NewDeks =
+        lists:filter(
+          fun (#{id := Id}) ->
+              case lists:member(Id, DekIdsInUse) of
+                  true ->
+                      true;
+                  false when Id == ActiveId, IsEnabled ->
+                      %% We should not remove active key
+                      ?log_error("Attempt to remove active dek ~p for ~p "
+                                 "while encryption is on", [ActiveId, Kind]),
+                      true;
+                  false ->
+                      false
+              end
+          end, Deks),
 
--spec maybe_reset_active_file(cb_deks:dek_kind(), [cb_deks:dek_id()],
-                              #state{}) ->
-          {ok, [cb_deks:dek_id()], #state{}} | {error, term()}.
-%% Resets the active key file before active key removal
-maybe_reset_active_file(Kind, DekIdsInUse, #state{deks = DeksInfo} = State) ->
-    #{Kind := #{active_id := ActiveId, is_enabled := IsEnabled}} = DeksInfo,
-    case lists:member(ActiveId, DekIdsInUse) of
-        false when IsEnabled ->
-            true = is_binary(ActiveId),
-            ?log_error("Attempt to remove active dek ~p for ~p "
-                       "while encryption is on", [ActiveId, Kind]),
-            {ok, [ActiveId | DekIdsInUse], State};
-        false when ActiveId == undefined ->
-            {ok, DekIdsInUse, State};
+    case length(NewDeks) == length(Deks) of
+        true -> State;
         false ->
-            %% This is ok to remove active dek because encryption is off
-            %% and that key is not used anymore. We should remove it
-            %% from "active" file though.
-            maybe
-                ok ?= cb_deks:set_active(Kind, undefined, false),
-                {ok, _} ?= cb_crypto:reset_dek_cache(Kind, cleanup),
-                {ok, DekIdsInUse, read_deks(Kind, State)}
-            end;
-        true ->
-            {ok, DekIdsInUse, State}
+            NewKindDeks =
+                case lists:member(ActiveId, DekIdsInUse) of
+                    false ->
+                        false = IsEnabled,
+                        KindDeks#{deks => NewDeks, active_id => undefined};
+                    true ->
+                        KindDeks#{deks => NewDeks}
+                end,
+            NewState = State#state{deks = DeksInfo#{Kind => NewKindDeks}},
+            write_deks_cfg_file(NewState),
+            %% It doesn't make sense to fail this job if file removal fails
+            %% because when retried the job will do nothing anyway (because
+            %% state doesn't have those deks)
+            encryption_service:garbage_collect_keys(Kind, DekIdsInUse),
+            {ok, _} = cb_crypto:reset_dek_cache(Kind, cleanup),
+            on_deks_update(Kind, NewState)
     end.
 
 -spec call_set_active_cb(cb_deks:dek_kind(), #state{}) ->
@@ -1291,7 +1286,7 @@ call_set_active_cb(Kind, #state{deks = AllDeks} = State) ->
                 {succ, ok} ->
                     {ok, maybe_garbage_collect_deks(Kind, true, State)};
                 {succ, {ok, DekIdsInUse}} ->
-                    retire_unused_deks(Kind, DekIdsInUse, State);
+                    {ok, retire_unused_deks(Kind, DekIdsInUse, State)};
                 {succ, {error, Reason}} ->
                     {error, State, Reason};
                 {except, {_, E, _}} ->
@@ -1314,53 +1309,158 @@ call_dek_callback(CallbackName, Kind, Args) ->
             {except, {C, E, ST}}
     end.
 
--spec read_deks(cb_deks:dek_kind(), #state{}) -> #state{}.
-read_deks(Kind, #state{deks = AllDeks} = State) ->
-    {ok, {ActiveDek, DekIds, Info}} = cb_deks:list(Kind),
-    IsEnabled = case Info of
-                    true -> true;
-                    false -> false;
-                    undefined -> false
-                end,
-    {ok, Deks} = cb_deks:read(Kind, DekIds),
-    CurKindDeks = maps:get(Kind, AllDeks, #{}),
-    CurDeksDropped = maps:get(deks_being_dropped, CurKindDeks, []),
-    CurDeksDroppedCleaned = (CurDeksDropped -- (CurDeksDropped -- DekIds))
-                            -- [?NULL_DEK || not IsEnabled],
-    CurLastDropTS = maps:get(last_drop_timestamp, CurKindDeks, undefined),
-    CurHasUnencrData = maps:get(has_unencrypted_data, CurKindDeks, undefined),
-    GCDeksDT = maps:get(last_deks_gc_datetime, CurKindDeks, undefined),
-    CurStatuses = maps:get(statuses, CurKindDeks, #{}),
-    KindDeks = #{active_id => ActiveDek,
-                 deks => Deks,
-                 is_enabled => IsEnabled,
-                 deks_being_dropped => CurDeksDroppedCleaned,
-                 last_drop_timestamp => CurLastDropTS,
-                 has_unencrypted_data => CurHasUnencrData,
-                 last_deks_gc_datetime => GCDeksDT,
-                 statuses => CurStatuses},
-    functools:chain(State#state{deks = AllDeks#{Kind => KindDeks}},
-                    [restart_dek_cleanup_timer(_),
-                     restart_dek_rotation_timer(_)]).
+-spec on_deks_update(cb_deks:dek_kind(), #state{}) -> #state{}.
+on_deks_update(Kind, #state{deks = AllDeks} = State) ->
+    case maps:find(Kind, AllDeks) of
+        {ok, #{deks_being_dropped := CurDeksDropped,
+               deks := CurDeks,
+               is_enabled := IsEnabled} = CurKindDeks} ->
+            DekIds = lists:map(fun (#{id := Id}) -> Id end, CurDeks),
+            NewDeksDropped = (CurDeksDropped -- (CurDeksDropped -- DekIds))
+                             -- [?NULL_DEK || not IsEnabled],
+            NewKindDeks = CurKindDeks#{deks_being_dropped => NewDeksDropped},
+            functools:chain(State#state{deks = AllDeks#{Kind => NewKindDeks}},
+                            [restart_dek_cleanup_timer(_),
+                             restart_dek_rotation_timer(_)]);
+        error ->
+            State
+    end.
+
+-spec set_active(cb_deks:dek_kind(), undefined | cb_deks:dek_id(), boolean(),
+                 #state{}) -> #state{}.
+set_active(Kind, ActiveId, IsEnabled, #state{deks = DeksInfo} = State) ->
+    #{Kind := #{active_id := CurActiveId, deks := CurDeks} = D} = DeksInfo,
+    NewDeks =
+        case ActiveId of
+            undefined -> CurDeks;
+            CurActiveId -> CurDeks;
+            _ ->
+                {ok, NewDek} = encryption_service:read_dek(Kind, ActiveId),
+                %% We assume that we never add old keys, only newly generated ones
+                false = lists:search(fun (#{id := Id}) ->
+                                         Id == ActiveId
+                                     end, CurDeks),
+                [NewDek | CurDeks]
+        end,
+    NewD = D#{active_id => ActiveId, is_enabled => IsEnabled, deks => NewDeks},
+    NewState = State#state{deks = DeksInfo#{Kind => NewD}},
+    write_deks_cfg_file(NewState),
+    on_deks_update(Kind, NewState).
+
+-spec write_deks_cfg_file(#state{}) -> ok.
+write_deks_cfg_file(#state{deks = DeksInfo}) ->
+    Path = deks_file_path(),
+    Term = maps:map(
+             fun (_Kind, #{is_enabled := IsEnabled,
+                           active_id := ActiveId,
+                           deks := Deks}) ->
+                 cb_deks_raw_utils:new_deks_file_record(
+                   ActiveId, IsEnabled, [Id || #{id := Id} <- Deks])
+             end, DeksInfo),
+    Bin = term_to_binary(Term),
+
+    ConfigDekInfo = case maps:find(configDek, DeksInfo) of
+                        {ok, C} -> C;
+                        error ->
+                            #{is_enabled => false,
+                              active_id => undefined,
+                              deks => []}
+                    end,
+
+    case ConfigDekInfo of
+        #{is_enabled := false} ->
+            ok = file:write_file(Path, Bin);
+        #{is_enabled := true, active_id := CfgActiveId, deks := CfgDeks} ->
+            {value, CfgActiveKey} = lists:search(fun (#{id := Id}) ->
+                                                         Id == CfgActiveId
+                                                 end, CfgDeks),
+            DS = cb_crypto:create_deks_snapshot(CfgActiveKey, [CfgActiveKey],
+                                                undefined),
+            ok = cb_crypto:atomic_write_file(Path, Bin, DS)
+    end,
+    ok.
+
+-spec deks_file_path() -> string().
+deks_file_path() ->
+    filename:join(path_config:component_path(data, "config"),
+                  ?DEK_CFG_FILENAME).
+
+-spec maybe_read_deks(#state{}) -> #state{}.
+maybe_read_deks(#state{proc_type = ?NODE_PROC, deks = undefined} = State) ->
+    #state{deks = Deks} = NewState = read_all_deks(State),
+    Kinds = maps:keys(Deks),
+    add_jobs([{maybe_update_deks, K} || K <- Kinds], NewState);
+maybe_read_deks(#state{} = State) ->
+    State.
+
+-spec read_all_deks(#state{}) -> #state{}.
+read_all_deks(#state{} = State) ->
+    GetCfgDek = encryption_service:read_dek(configDek, _),
+    {ok, Term} = cb_deks_raw_utils:read_deks_file(deks_file_path(), GetCfgDek),
+    Deks = maps:filtermap(
+             fun (Kind, #{is_enabled := IsEnabled,
+                          active_id := ActiveId,
+                          dek_ids := DekIds}) ->
+                 {Keys, Errors} = cb_deks:read(Kind, DekIds),
+                 case Errors of
+                    #{ActiveId := Reason} when IsEnabled ->
+                        ?log_warning("Failed to read active ~p DEK: ~p",
+                                     [Kind, Reason]),
+                        %% Not creating that DEK in configuration
+                        %% We can't start using undefined as an active key
+                        %% because this can lead to data being decrypted
+                        %% which is probably not what we want here. We should
+                        %% rather show an error or crash instead of silently
+                        %% decrypting the data.
+                        %% It is also possible that all deks were removed
+                        %% intentinally (with the data). In this case we should
+                        %% not crash but rather ignore these deks at all.
+                        false;
+                    #{} ->
+                        %% Ignoring other key errors and hoping that those keys
+                        %% will not be needed for data decryption.
+                        {true, new_dek_info(ActiveId, Keys, IsEnabled)}
+                 end
+             end, Term),
+    State#state{deks = Deks}.
+
+-spec reread_deks(cb_deks:dek_kind(), #state{}) -> #state{}.
+reread_deks(Kind, #state{deks = DeksInfo} = State) ->
+    #{Kind := #{deks := CurDeks} = KindDeks} = DeksInfo,
+    NewDeks =
+        lists:map(
+          fun (#{id := DekId}) ->
+              {ok, K} = encryption_service:read_dek(Kind, DekId),
+              K
+          end, CurDeks),
+    State#state{deks = DeksInfo#{Kind => KindDeks#{deks => NewDeks}}}.
+
+-spec new_dek_info(undefined | cb_deks:dek_id(), [cb_deks:dek()],
+                     boolean()) -> deks_info().
+new_dek_info(ActiveId, Keys, IsEnabled) ->
+    #{active_id => ActiveId,
+      deks => Keys,
+      is_enabled => IsEnabled,
+      deks_being_dropped => [],
+      last_drop_timestamp => undefined,
+      has_unencrypted_data => undefined,
+      last_deks_gc_datetime => undefined,
+      statuses => #{}}.
 
 -spec generate_new_dek(cb_deks:dek_kind(),
                        [cb_deks:dek()],
                        cb_deks:encryption_method(),
-                       chronicle_snapshot()) -> ok | {error, _}.
+                       chronicle_snapshot()) ->
+          {ok, cb_deks:dek_id()} | {error, _}.
 generate_new_dek(Kind, CurrentDeks, EncryptionMethod, Snapshot) ->
     %% Rotation is needed but if there are too many deks already
     %% we should not generate new deks (something is wrong)
     CurrentDekNum = length(CurrentDeks),
     case CurrentDekNum < ?MAX_DEK_NUM(Kind) of
         true ->
-            maybe
-                ?log_debug("Generating new ~p dek, encryption is ~p...",
-                           [Kind, EncryptionMethod]),
-                {ok, DekId} ?= cb_deks:generate_new(Kind, EncryptionMethod,
-                                                    Snapshot),
-                ok ?= cb_deks:set_active(Kind, DekId, true),
-                ok
-            end;
+            ?log_debug("Generating new ~p dek, encryption is ~p...",
+                       [Kind, EncryptionMethod]),
+            cb_deks:generate_new(Kind, EncryptionMethod, Snapshot);
         false ->
             ?log_error("Skip ~p DEK creation/rotation: "
                        "too many DEKs (~p)", [Kind, CurrentDekNum]),
@@ -1384,7 +1484,7 @@ maybe_reencrypt_deks(Kind, #state{deks = Deks} = State) ->
             no_change ->
                 {ok, State};
             {changed, Errors} ->
-                NewState = read_deks(Kind, State),
+                NewState = on_deks_update(Kind, reread_deks(Kind, State)),
                 case Errors of
                     [] -> {ok, NewState};
                     _ -> {error, NewState, Errors}
@@ -2544,15 +2644,7 @@ initiate_deks_drop(Kind, IdsToDrop0, #state{deks = DeksInfo} = State0) ->
                     %% safe to remove them
                     AllIds = [Id || #{id := Id} <- maps:get(deks, KindDeks)],
                     IdsInUse = AllIds -- IdsToDrop,
-                    case retire_unused_deks(Kind, IdsInUse, State) of
-                        {ok, NewState} ->
-                            NewState;
-                        {error, NewState, Reason} ->
-                            ?log_error("Failed to retire ~p deks: ~p. "
-                                       "Ignoring. Will garbage collect later",
-                                       [Kind, Reason]),
-                            NewState
-                    end;
+                    retire_unused_deks(Kind, IdsInUse, State);
                 started ->
                     State
             end;

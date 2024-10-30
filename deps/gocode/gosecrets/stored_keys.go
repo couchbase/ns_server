@@ -356,9 +356,6 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 		if files != nil {
 			for _, file := range files {
 				keyName := file.Name()
-				if keyName == "active_key" {
-					continue
-				}
 				log_dbg("Maybe reencrypting key \"%s\"...", keyName)
 				keyIface, err := readKeyRaw(&cfg, keyName)
 				if err != nil {

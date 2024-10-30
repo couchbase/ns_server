@@ -10,7 +10,7 @@
 -define(KMIP_KEY_TYPE, 'kmip-aes-key-256').
 -define(ENVELOP_CIPHER, aes_256_gcm).
 -define(SECRET_ID_NOT_SET, -1).
--define(ACTIVE_KEY_FILENAME, "active_key").
+-define(DEK_CFG_FILENAME, "deks.cfg").
 -define(NULL_DEK, null_dek_id).
 
 -endif.

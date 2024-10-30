@@ -451,21 +451,24 @@ garbage_collect_keys(Kind, InUseKeyIds) ->
         [] ->
             ?log_debug("~p keys gc: no keys to retire (all keys: ~0p, "
                        "in use: ~0p)", [Kind, AllKeys, InUseKeyIds]),
-            {ok, []};
+            ok;
         _ ->
             ?log_info("~p keys gc: retiring ~p (all keys: ~0p, "
                       "in use: ~0p)", [Kind, ToRemove, AllKeys, InUseKeyIds]),
-            {SuccList, FailedList} =
-                misc:partitionmap(
+            FailedList =
+                lists:filtermap(
                   fun (Id) ->
                       case retire_key(Kind, Id) of
-                          ok -> {left, Id};
-                          {error, Reason} -> {right, {Id, Reason}}
+                          ok -> false;
+                          {error, Reason} -> {true, {Id, Reason}}
                       end
                   end, ToRemove),
             case FailedList of
-                [] -> {ok, SuccList};
-                _ -> {error, FailedList}
+                [] -> ok;
+                _ ->
+                    ?log_error("Failed to retire some key files:~n~p",
+                               [FailedList]),
+                    {error, FailedList}
             end
     end.
 
@@ -473,8 +476,7 @@ get_all_keys_in_dir(KeyDir) ->
     case file:list_dir(KeyDir) of
         {ok, Filenames} ->
             AllFiles = [iolist_to_binary(F) || F <- Filenames],
-            Keys = AllFiles -- [iolist_to_binary(?ACTIVE_KEY_FILENAME)],
-            [F || F <- Keys, cb_cluster_secrets:is_valid_key_id(F)];
+            [F || F <- AllFiles, cb_cluster_secrets:is_valid_key_id(F)];
         {error, enoent} ->
             [];
         {error, Reason} ->

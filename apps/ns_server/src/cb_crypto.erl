@@ -214,10 +214,12 @@ get_in_use_deks(FilePaths) ->
     lists:usort(InUseDeks).
 
 -spec read_file(string(),
-                cb_deks:dek_kind() | #dek_snapshot{} |
-                fun(() -> fetch_deks_res())) ->
+                cb_deks:dek_kind() |
+                #dek_snapshot{} |
+                fun(() -> fetch_deks_res()) |
+                fun((cb_deks:dek_id()) -> cb_deks:dek())) ->
           {decrypted, binary()} | {raw, binary()} | {error, term()}.
-read_file(Path, GetDekSnapshotFun) when is_function(GetDekSnapshotFun, 0) ->
+read_file(Path, GetDekSnapshotFun) when is_function(GetDekSnapshotFun) ->
     maybe
         {ok, Data} ?= file:read_file(Path),
         Filename = filename:basename(Path),
@@ -237,8 +239,10 @@ read_file(Path, DekKind) ->
     GetSnapshotFun = fun () -> fetch_deks_snapshot(DekKind) end,
     read_file(Path, GetSnapshotFun).
 
--spec file_decrypt_init(binary(), string(), #dek_snapshot{} |
-                                            fun(() -> fetch_deks_res())) ->
+-spec file_decrypt_init(binary(), string(),
+                        #dek_snapshot{} |
+                        fun(() -> fetch_deks_res()) |
+                        fun((cb_deks:dek_id()) -> cb_deks:dek())) ->
           {ok, {#file_decr_state{}, RestData :: binary()}} |
           need_more_data |
           {error, term()}.
@@ -246,10 +250,17 @@ file_decrypt_init(Data, Filename, #dek_snapshot{} = DekSnapshot) ->
     file_decrypt_init(Data, Filename, fun () -> {ok, DekSnapshot} end);
 file_decrypt_init(Data, Filename, GetDekSnapshotFun)
                                     when is_function(GetDekSnapshotFun, 0) ->
+    GetKey = fun (Id) ->
+                 maybe
+                     {ok, DekSnapshot} ?= GetDekSnapshotFun(),
+                     find_key(Id, DekSnapshot)
+                 end
+             end,
+    file_decrypt_init(Data, Filename, GetKey);
+file_decrypt_init(Data, Filename, GetKeyFun) when is_function(GetKeyFun, 1) ->
     maybe
         {ok, {Vsn, Id, Offset, Chunks}} ?= parse_header(Data),
-        {ok, DekSnapshot} ?= GetDekSnapshotFun(),
-        {ok, Dek} ?= find_key(Id, DekSnapshot),
+        {ok, Dek} ?= GetKeyFun(Id),
         State = #file_decr_state{vsn = Vsn,
                                  filename = iolist_to_binary(Filename),
                                  key = Dek,
@@ -487,12 +498,14 @@ try_decrypt(IV, Data, Tag, AD, [#{type := 'raw-aes-gcm', info := #{key := K}} | 
 read_deks(DekKind, PrevDekSnapshot) ->
     maybe
         {ok, {ActiveId, Ids, IsEnabled}} ?= cb_deks:list(DekKind),
-        {ok, Keys} ?= cb_deks:read(DekKind, Ids),
-        {value, ActiveKey} =
-            case IsEnabled of
-                true ->
+        {Keys, Errors} = cb_deks:read(DekKind, Ids),
+        {value, ActiveKey} ?=
+            case Errors of
+                #{ActiveId := Error} when IsEnabled ->
+                    {error, {read_active_key_error, Error}};
+                #{} when IsEnabled ->
                     lists:search(fun (#{id := Id}) -> Id == ActiveId end, Keys);
-                _ ->
+                #{} ->
                     {value, undefined}
             end,
         {ok, create_deks_snapshot(ActiveKey, Keys, PrevDekSnapshot)}

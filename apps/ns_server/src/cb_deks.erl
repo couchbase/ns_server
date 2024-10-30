@@ -17,7 +17,6 @@
 -export([list/1,
          read/2,
          generate_new/3,
-         set_active/3,
          handle_ale_log_dek_update/1,
          maybe_reencrypt_deks/4,
          dek_kinds_list/0,
@@ -41,28 +40,36 @@
                            creation_time := calendar:datetime()}}.
 
 -spec list(dek_kind()) ->
-    {ok, {undefined | dek_id(), [dek_id()], ExtraInfo :: term()}} | {error, _}.
+    {ok, {undefined | dek_id(), [dek_id()], boolean()}} | {error, _}.
 list(Kind) ->
-    DekPath = encryption_service:key_path(Kind),
-    cb_deks_raw_utils:dek_list(DekPath, ns_server_logger).
+    GetCfgDekFun = encryption_service:read_dek(configDek, _),
+    ?log_debug("Reading list of ~p deks...", [Kind]),
+    case cb_deks_raw_utils:external_list(Kind, GetCfgDekFun, #{}) of
+        {ok, {ActiveKeyId, AllIds, IsEnabled}} ->
+            ?log_debug("~p DEK read res: Active: ~0p, AllIds: ~0p, "
+                       "IsEnabled: ~0p",
+                       [Kind, ActiveKeyId, AllIds, IsEnabled]),
+            {ok, {ActiveKeyId, AllIds, IsEnabled}};
+        {error, {read_dek_cfg_file_error, {Path, Reason}}} = Error ->
+            ?log_error("Failed to read dek cfg file \"~s\": ~p",
+                       [Path, Reason]),
+            Error
+    end.
 
--spec read(dek_kind(), [dek_id()]) -> {ok, [dek()]}.
+-spec read(dek_kind(), [dek_id()]) -> {[dek()], #{dek_id() := Error :: term()}}.
 read(Kind, DekIds) ->
     ?log_debug("Reading the following keys (~p) from disk: ~p", [Kind, DekIds]),
-    {Keys, Errors} = misc:partitionmap(
-                       fun (DekId) when is_binary(DekId) ->
-                           case encryption_service:read_dek(Kind, DekId) of
-                               {ok, B} -> {left, B};
-                               {error, R} -> {right, {DekId, R}}
-                           end
-                       end, DekIds),
-    case Errors of
-        [] ->
-            {ok, Keys};
-        _ ->
-            ?log_error("Failed to read some keys: ~p", [Errors]),
-            {error, {read_key_errors, Errors}}
-    end.
+    {Keys, Errors} =
+        misc:partitionmap(
+            fun (DekId) when is_binary(DekId) ->
+                case encryption_service:read_dek(Kind, DekId) of
+                    {ok, B} -> {left, B};
+                    {error, R} ->
+                        ?log_error("Failed to read key ~s: ~p", [DekId, R]),
+                        {right, {DekId, R}}
+                end
+            end, DekIds),
+    {Keys, maps:from_list(Errors)}.
 
 -spec generate_new(dek_kind(), {secret, Id} | encryption_service,
                    cb_cluster_secrets:chronicle_snapshot()) ->
@@ -89,29 +96,6 @@ new(Kind, KekIdToEncrypt) ->
         ok -> {ok, Id};
         {error, Reason} ->
             ?log_error("Failed to store key ~p on disk: ~p", [Id, Reason]),
-            {error, Reason}
-    end.
-
--spec set_active(dek_kind(), undefined | dek_id(), term()) -> ok | {error, _}.
-set_active(Kind, KeyId, ExtraInfo) ->
-    ?log_debug("Writing new active key file for ~p (KeyId: ~p, Info: ~p)",
-               [Kind, KeyId, ExtraInfo]),
-    DirStr = binary_to_list(encryption_service:key_path(Kind)),
-    ActiveKeyPath = filename:join(DirStr, ?ACTIVE_KEY_FILENAME),
-    ToWrite = <<0, (term_to_binary({KeyId, ExtraInfo}))/binary>>,
-    case filelib:ensure_dir(ActiveKeyPath) of
-        ok ->
-            case misc:atomic_write_file(ActiveKeyPath, ToWrite) of
-                ok ->
-                    ok;
-                {error, Reason} ->
-                    ?log_error("Failed to write file \"~s\": ~p",
-                               [ActiveKeyPath, Reason]),
-                    {error, Reason}
-            end;
-        {error, Reason} ->
-            ?log_error("Failed to ensure dir for \"~s\": ~p",
-                               [ActiveKeyPath, Reason]),
             {error, Reason}
     end.
 
