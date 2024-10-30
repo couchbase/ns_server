@@ -264,6 +264,12 @@ class NativeEncryptionTests(testlib.BaseTestSet):
             sleep_time=0.2, attempts=50, retry_on_assert=True, verbose=True)
         check_decrypt(self.sm_node, kek_id, encrypted, data)
 
+        # Testing that config deks are also reencrypted
+        # Cache reset should fail if it can't read keys from disk
+        testlib.diag_eval(
+          self.sm_node,
+          '{ok, changed} = cb_crypto:reset_dek_cache(configDek, cleanup).')
+
     def change_SM_config_test(self):
         data = testlib.random_str(8)
         # Creating a secret that will be encrypted by node SM

@@ -214,7 +214,9 @@ func storedKeyPath(keySettings *storedKeyConfig, keyName string) string {
 // Needed for SM data key rotation
 func reencryptStoredKeys(ctx *storedKeysCtx) error {
 	for _, cfg := range ctx.storedKeyConfigs {
-		if cfg.KeyKind != "kek" {
+		// All keys but bucketDeks can be encrypted with
+		// encryption_service
+		if cfg.KeyKind == "bucketDek" {
 			continue
 		}
 		files, dirReadErr := os.ReadDir(cfg.Path)
@@ -230,6 +232,9 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 		if files != nil {
 			for _, file := range files {
 				keyName := file.Name()
+				if keyName == "active_key" {
+					continue
+				}
 				log_dbg("Maybe reencrypting key \"%s\"...", keyName)
 				keyIface, err := readKeyRaw(&cfg, keyName)
 				if err != nil {
@@ -239,6 +244,7 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 				}
 				if !keyIface.usesSecretManagementKey() {
 					log_dbg("Skipping \"%s\", because it is not using secret management service", keyName)
+					continue
 				}
 				err = keyIface.decryptMe(ctx)
 				if err != nil {
