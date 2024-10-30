@@ -590,6 +590,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["sampleBuckets"] -> {{[samples], read}, fun menelaus_web_samples:handle_get/1};
                 ["_metakv" | _] ->
                     {{[admin, metakv], all}, fun menelaus_metakv:handle_get/2, [Path]};
+                ["_metakv2" | _] ->
+                    {{[admin, internal, metakv2], read},
+                     fun menelaus_metakv2:handle_get/2, [Path]};
                 ["xdcr", "c2cCommunications" | _RestPath] ->
                     %% Pass the raw path so all information, e.g. query
                     %% parameters, etc, are included.
@@ -1049,6 +1052,15 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[{bucket, Bucket}, data, docs], read},
                      fun menelaus_web_xdcr_target:handle_pre_replicate/2,
                      [Bucket]};
+                ["_metakv2", "_controller", "getSnapshot"] ->
+                    {{[admin, internal, metakv2], read},
+                     fun menelaus_metakv2:handle_post_get_snapshot/1, []};
+                ["_metakv2", "_controller", "setMultiple"] ->
+                    {{[admin, internal, metakv2], write},
+                     fun menelaus_metakv2:handle_post_set_multiple/1, []};
+                ["_metakv2", "_controller", "syncQuorum"] ->
+                    {{[admin, internal, metakv2], read},
+                     fun menelaus_metakv2:handle_post_sync_quorum/1, []};
                 ["xdcr", "c2cCommunications" | _RestPath] ->
                     %% Pass the raw path so all information, e.g. query
                     %% parameters, etc, are included.
@@ -1180,6 +1192,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["_metakv" | _] ->
                     {{[admin, metakv], all}, fun menelaus_metakv:handle_delete/2, [Path]};
+                ["_metakv2" | _] ->
+                    {{[admin, internal, metakv2], write},
+                     fun menelaus_metakv2:handle_delete/2, [Path]};
                 [?PLUGGABLE_UI, RestPrefix | _] ->
                     {no_check_disallow_anonymous,
                      fun (PReq) ->
@@ -1242,6 +1257,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, internal], all}, fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["_metakv" | _] ->
                     {{[admin, metakv], all}, fun menelaus_metakv:handle_put/2, [Path]};
+                ["_metakv2" | _] ->
+                    {{[admin, internal, metakv2], write},
+                     fun menelaus_metakv2:handle_put/2, [Path]};
                 [?PLUGGABLE_UI, RestPrefix | _] ->
                     {no_check_disallow_anonymous,
                      fun (PReq) ->
