@@ -18,6 +18,7 @@
 -export([get/1,
          set/2,
          delete/1,
+         clear/0,
          check_test_condition/1,
          check_test_condition/2,
          check_test_condition/3,
@@ -35,6 +36,9 @@ set(Key, Value) ->
 
 delete(Key) ->
     simple_store:delete(?TESTCONDITION_STORE, Key).
+
+clear() ->
+    simple_store:clear(?TESTCONDITION_STORE).
 
 %%
 %% Generic test condition handling:

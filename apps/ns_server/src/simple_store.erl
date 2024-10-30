@@ -25,6 +25,7 @@
          set/3,
          delete/2,
          delete_matching/2,
+         clear/1,
          iterate_matching/2]).
 
 %% Macros
@@ -59,6 +60,9 @@ set(StoreName, Key, Value) ->
 
 delete(StoreName, Key) ->
     do_work(StoreName, fun delete_from_store/2, [Key]).
+
+clear(StoreName) ->
+    do_work(StoreName, fun clear_store/2, []).
 
 %% Delete keys with matching prefix
 delete_matching(StoreName, KeyPattern) ->
@@ -127,6 +131,11 @@ update_store(StoreName, [Key, Value]) ->
 delete_from_store(StoreName, [Key]) ->
     ?metakv_debug("Deleting key ~p in table ~p.", [Key, StoreName]),
     ets:delete(StoreName, Key),
+    schedule_flush(StoreName, ?FLUSH_RETRIES).
+
+clear_store(StoreName, []) ->
+    ?metakv_debug("Deleting all keys in table ~p.", [StoreName]),
+    ets:delete_all_objects(StoreName),
     schedule_flush(StoreName, ?FLUSH_RETRIES).
 
 del_matching(StoreName, [KeyPattern]) ->
