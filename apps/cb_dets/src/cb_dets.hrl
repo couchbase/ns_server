@@ -28,7 +28,7 @@
 -define(BAG, 2).
 -define(DUPLICATE_BAG, 3).
 
--define(MAGIC, 16#0abcdef).   % dets cookie, won't ever change.
+-define(MAGIC, 16#0abcdef).   % cb_dets cookie, won't ever change.
 %% Status values.
 -define(FREE, 16#3abcdef).
 -define(ACTIVE, 16#12345678).
@@ -37,14 +37,14 @@
 
 -define(CHUNK_SIZE, 8192).
 
--define(SERVER_NAME, dets).
+-define(SERVER_NAME, cb_dets).
 
 -define(POW(X), (1 bsl (X))).
 
 %% REM2(A,B) = A rem B, if B is a power of 2.
 -define(REM2(A, B), ((A) band ((B)-1))).
 
--define(DETS_CALL(Pid, Req), {'$dets_call', Pid, Req}).
+-define(DETS_CALL(Pid, Req), {'$cb_dets_call', Pid, Req}).
 
 -type access()      :: 'read' | 'read_write'.
 -type auto_save()   :: 'infinity' | non_neg_integer().

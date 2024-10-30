@@ -17,10 +17,10 @@
 %% 
 %% %CopyrightEnd%
 %%
--module(dets_utils).
+-module(cb_dets_utils).
 
-%% Utility functions common to several dets file formats.
-%% To be used from modules dets and dets_v9 only.
+%% Utility functions common to several cb_dets file formats.
+%% To be used from modules cb_dets and cb_dets_v9 only.
 
 -export([cmp/2, msort/1, mkeysort/2, mkeysearch/3, family/1]).
 
@@ -55,7 +55,7 @@
 -export([init_disk_map/1, stop_disk_map/0, 
          disk_map_segment_p/2, disk_map_segment/2]).
 
--include("dets.hrl").
+-include("cb_dets.hrl").
 
 %%% A total ordering of all Erlang terms.
 
@@ -364,7 +364,7 @@ pread_n(Fd, Position, Max) ->
 
 read_4(Fd, Position) ->
     {ok, _} = file:position(Fd, Position),
-    <<Four:32>> = dets_utils:read_n(Fd, 4),
+    <<Four:32>> = cb_dets_utils:read_n(Fd, 4),
     Four.
 
 corrupt_file(Head, {error, Reason}) ->
@@ -388,7 +388,7 @@ corrupt_reason(Head, Reason0) ->
 corrupt(Head, Error) ->
     case get(verbose) of
 	yes -> 
-	    error_logger:format("** dets: Corrupt table ~tp: ~tp\n",
+	    error_logger:format("** cb_dets: Corrupt table ~tp: ~tp\n",
 				[Head#head.name, Error]);
 	_ -> ok
     end,
@@ -838,7 +838,7 @@ adjust_addr(Addr, Pos, Base) ->
 
 %%%-----------------------------------------------------------------
 %%% The Disk Map is used for debugging only.
-%%% Very tightly coupled to the way dets_v9 works.
+%%% Very tightly coupled to the way cb_dets_v9 works.
 %%%-----------------------------------------------------------------
 
 -define(DM, disk_map).
@@ -850,7 +850,7 @@ get_disk_map() ->
     end.
 
 init_disk_map(Name) ->
-    error_logger:info_msg("** dets: (debug) using disk map for ~p~n", [Name]),
+    error_logger:info_msg("** cb_dets: (debug) using disk map for ~p~n", [Name]),
     put(?DM, ets:new(any,[ordered_set])).
 
 stop_disk_map() ->
@@ -1044,7 +1044,7 @@ next(P, PSz, T) ->
 %%Returns a key in a leaf at position Pos.
 -define(GET_LEAF_KEY(Leaf, Pos), element(Pos+1, Leaf)).
 
-%% Special for dets.
+%% Special for cb_dets.
 collect_tree(v, _TI, Acc) -> Acc;
 collect_tree(T, TI, Acc) ->
     Pow = ?POW(TI-1),
@@ -1072,7 +1072,7 @@ collect_node(Node, I, Pow, Acc) ->
     Acc1 = collect_tree2(bplus_get_tree(Node, I), Pow, Acc),
     collect_node(Node, I-1, Pow, Acc1).
 
-%% Special for dets.
+%% Special for cb_dets.
 tree_to_bin(v, _F, _Max, Ws, WsSz) -> {Ws, WsSz};
 tree_to_bin(T, F, Max, Ws, WsSz) ->
     {N, L1, Ws1, WsSz1} = tree_to_bin2(T, F, Max, 0, [], Ws, WsSz),
@@ -1104,7 +1104,7 @@ leaf_to_bin([N | L], Acc) ->
 leaf_to_bin([], Acc) ->
     Acc.
 
-%% Special for dets. 
+%% Special for cb_dets. 
 list_to_tree(L) ->
     leafs_to_nodes(L, length(L), fun bplus_mk_leaf/1, []).
 
@@ -1140,7 +1140,7 @@ get_first_key(T) ->
 	    get_first_key(bplus_get_tree(T, 1))
     end.
 
-%% Special for dets.
+%% Special for cb_dets.
 collect_interval(v, _TI, _L, _U, Acc) -> Acc;
 collect_interval(T, TI, L, U, Acc) ->
     Pow = ?POW(TI-1),

@@ -17,7 +17,7 @@
 %%
 %% %CopyrightEnd%
 %%
--module(dets_sup).
+-module(cb_dets_sup).
 
 -behaviour(supervisor).
 
@@ -26,14 +26,14 @@
 -spec start_link() -> {'ok', pid()} | 'ignore' | {'error', term()}.
 
 start_link() ->
-    supervisor:start_link({local, dets_sup}, dets_sup, []).
+    supervisor:start_link({local, cb_dets_sup}, cb_dets_sup, []).
 
 -spec init([]) ->
         {'ok', {{'simple_one_for_one', 4, 3600},
-		[{'dets', {'dets', 'istart_link', []},
-		  'temporary', 30000, 'worker', ['dets']}]}}.
+		[{'cb_dets', {'cb_dets', 'istart_link', []},
+		  'temporary', 30000, 'worker', ['cb_dets']}]}}.
 
 init([]) ->
     SupFlags = {simple_one_for_one, 4, 3600},
-    Child = {dets, {dets, istart_link, []}, temporary, 30000, worker, [dets]},
+    Child = {cb_dets, {cb_dets, istart_link, []}, temporary, 30000, worker, [cb_dets]},
     {ok, {SupFlags, [Child]}}.

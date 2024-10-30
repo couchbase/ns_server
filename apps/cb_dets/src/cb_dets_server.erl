@@ -17,7 +17,7 @@
 %% 
 %% %CopyrightEnd%
 %%
--module(dets_server).
+-module(cb_dets_server).
 
 %% Disk based linear hashing lookup dictionary. Server part.
 
@@ -37,14 +37,14 @@
 %% record for not yet handled reqeusts to open or close files
 -record(pending, {tab, ref, pid, from, reqtype, clients}). % [{From,Args}]
 
-%% state for the dets server
+%% state for the cb_dets server
 -record(state, {store, parent, pending}). % [pending()]
 
--include("dets.hrl").
+-include("cb_dets.hrl").
 
--define(REGISTRY, dets_registry).  % {Table, NoUsers, TablePid}
--define(OWNERS, dets_owners).      % {TablePid, Table}
--define(STORE, dets).              % {User, Table} and {{links,User}, NoLinks}
+-define(REGISTRY, cb_dets_registry).  % {Table, NoUsers, TablePid}
+-define(OWNERS, cb_dets_owners).      % {TablePid, Table}
+-define(STORE, cb_dets).              % {User, Table} and {{links,User}, NoLinks}
 
 %%-define(DEBUGF(X,Y), io:format(X, Y)).
 -define(DEBUGF(X,Y), void).
@@ -57,7 +57,7 @@
 
 %% Internal.
 start_link() ->
-    gen_server:start_link({local, ?SERVER_NAME}, dets_server, [self()], []).
+    gen_server:start_link({local, ?SERVER_NAME}, cb_dets_server, [self()], []).
 
 start() -> 
     ensure_started().
@@ -235,8 +235,8 @@ code_change(_OldVsn, State, _Extra) ->
 ensure_started() ->
     case whereis(?SERVER_NAME) of
 	undefined -> 
-	    DetsSup = {dets_sup, {dets_sup, start_link, []}, permanent,
-		      1000, supervisor, [dets_sup]},
+	    DetsSup = {cb_dets_sup, {cb_dets_sup, start_link, []}, permanent,
+		      1000, supervisor, [cb_dets_sup]},
 	    _ = supervisor:start_child(kernel_safe_sup, DetsSup),
 	    DetsServer = {?SERVER_NAME, {?MODULE, start_link, []},
 			  permanent, 2000, worker, [?MODULE]},
@@ -253,7 +253,7 @@ init() ->
     ets:new(?STORE, [duplicate_bag]).
 
 verbose_flag() ->
-    case init:get_argument(dets) of
+    case init:get_argument(cb_dets) of
 	{ok, Args} ->
 	    lists:member(["verbose"], Args);
 	_ ->
@@ -309,7 +309,7 @@ do_open(State, Req, From, Args, Tab) ->
 
 %% -> {pending, NewState} | {Reply, NewState}
 do_internal_open(State, From, Args) ->
-    case supervisor:start_child(dets_sup, [self()]) of 
+    case supervisor:start_child(cb_dets_sup, [self()]) of 
         {ok, Pid} ->
             Ref = make_ref(),
             Tab = case Args of
@@ -388,13 +388,13 @@ pending_call(Tab, Pid, Ref, {FromPid, _Tag}=From, Args, ReqT, State) ->
     F = fun() -> 
                 Res = case ReqT of 
                           add_user -> 
-                              dets:add_user(Pid, Tab, Args);
+                              cb_dets:add_user(Pid, Tab, Args);
                           internal_open -> 
-                              dets:internal_open(Pid, Ref, Args);
+                              cb_dets:internal_open(Pid, Ref, Args);
                           internal_close ->
-                              dets:internal_close(Pid);
+                              cb_dets:internal_close(Pid);
                           remove_user ->
-                              dets:remove_user(Pid, FromPid)
+                              cb_dets:remove_user(Pid, FromPid)
                       end,
                 Server ! {pending_reply, {Ref, Res}}
         end,
