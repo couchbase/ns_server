@@ -41,6 +41,7 @@ EXECUTE_PROCESS (RESULT_VARIABLE _failure
         _build/default/lib/ns_common/
         _build/default/lib/ns_babysitter/
         _build/default/lib/ns_couchdb/
+        _build/default/lib/cb_dets/
 )
 IF (_failure)
   MESSAGE (FATAL_ERROR "failed running dialyzer")

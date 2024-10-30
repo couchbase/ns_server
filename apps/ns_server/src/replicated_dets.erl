@@ -190,11 +190,12 @@ open(#state{path = Path, name = TableName}) ->
 do_open(_Path, _TableName, 0) ->
     error;
 do_open(Path, TableName, Tries) ->
-    case dets:open_file(TableName,
-                        [{type, set},
-                         {auto_save, ns_config:read_key_fast(replicated_dets_auto_save, 60000)},
-                         {keypos, #docv2.id},
-                         {file, Path}]) of
+    ASave = ns_config:read_key_fast(replicated_dets_auto_save, 60000),
+    case cb_dets:open_file(TableName,
+                           [{type, set},
+                            {auto_save, ASave},
+                            {keypos, #docv2.id},
+                            {file, Path}]) of
         {ok, TableName} ->
             DocSpec = #docv2{id = '_', value = '_', props = '_'},
             MatchSpec = [{DocSpec, [], ['$_']}],
@@ -211,7 +212,7 @@ do_open(Path, TableName, Tries) ->
                                                              ok
                                                      end
                                              end, Selection)
-                                   end, dets)),
+                                   end, cb_dets)),
               fun(Doc) ->
                       true = ets:insert(TableName, Doc)
               end),
@@ -233,7 +234,7 @@ find_doc(Id, #state{name = TableName}) ->
         [Doc] ->
             Doc;
         [] ->
-            case dets:lookup(TableName, Id) of
+            case cb_dets:lookup(TableName, Id) of
                 [DDoc] -> DDoc;
                 [] -> false
             end
@@ -243,7 +244,7 @@ all_docs(_Pid, #state{name = TableName}) ->
     ?make_producer(select_from_table(TableName, [{'_', [], ['$_']}], 500,
                                      fun (Batch) ->
                                              ?yield({batch, Batch})
-                                     end, dets)).
+                                     end, cb_dets)).
 
 get_revision(#docv2{props = Props}) ->
     proplists:get_value(rev, Props).
@@ -284,7 +285,7 @@ save_docs(Docs, #state{name = TableName,
                   false -> [Doc | Acc]
               end
           end, [], Docs),
-    ok = dets:insert(TableName, Docs),
+    ok = cb_dets:insert(TableName, Docs),
     %% Only insert live, non-deleted documents
     true = ets:insert(TableName, Live),
     NewChildState = ChildModule:on_save(Docs, ChildState),
