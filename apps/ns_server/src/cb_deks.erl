@@ -302,7 +302,7 @@ dek_config(configDek) ->
                                  config_encryption, _),
       drop_keys_timestamp_callback => cb_crypto:get_drop_keys_timestamp(
                                         config_encryption, _),
-      get_ids_in_use_callback => ?cut(get_dek_ids_in_use(configDek)),
+      get_ids_in_use_callback => ?cut(get_config_dek_ids_in_use()),
       drop_callback => fun drop_config_deks/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
       required_usage => config_encryption};
@@ -443,6 +443,17 @@ force_config_encryption_keys() ->
         end
     end.
 
+get_config_dek_ids_in_use() ->
+    maybe
+        {ok, Ids1} ?= memcached_config_mgr:get_key_ids_in_use(),
+        {ok, Ids2} ?= memcached_passwords:get_key_ids_in_use(),
+        {ok, Ids3} ?= memcached_permissions:get_key_ids_in_use(),
+        {ok, Ids4} ?= ns_config:get_key_ids_in_use(),
+        {ok, lists:map(fun (undefined) -> ?NULL_DEK;
+                           (Id) -> Id
+                       end, lists:uniq(Ids1 ++ Ids2 ++ Ids3 ++ Ids4))}
+    end.
+
 get_dek_ids_in_use(logDek) ->
     maybe
         {ok, InUseMemcached} ?= ns_memcached:get_dek_ids_in_use("@logs"),
@@ -478,7 +489,8 @@ get_dek_ids_in_use(Type) ->
 
 drop_config_deks(DekIdsToDrop) ->
     maybe
-        {ok, DekIdsInUse} ?= force_config_encryption_keys(),
+        {ok, _} ?= force_config_encryption_keys(),
+        {ok, DekIdsInUse} ?= get_config_dek_ids_in_use(),
         StillInUse = [Id || Id <- DekIdsInUse, lists:member(Id, DekIdsToDrop)],
         case StillInUse of
             [] -> {ok, done};
