@@ -2755,8 +2755,10 @@ def main():
 
     master_password = None
     if options.stdin_password:
+        log("Reading master password from stdin...")
         master_password = input()
     elif options.password:
+        log("Reading master password using getpass...")
         master_password = getpass.getpass()
 
     if options.watch_stdin:

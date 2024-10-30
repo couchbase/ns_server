@@ -2630,7 +2630,7 @@ deks_to_drop(Kind, KindDeks) ->
         maybe
             #{is_enabled := true, active_id := ActiveId} ?= KindDeks,
             true ?= lists:member(ActiveId, AllExpired),
-            ?log_error("Active DEK (~p) has expired for "
+            ?log_debug("Active DEK (~p) has expired for "
                        "~p (ignoring attempt to drop it)",
                        [ActiveId, Kind]),
             AllExpired -- [ActiveId]

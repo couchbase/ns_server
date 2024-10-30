@@ -764,6 +764,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                                            verify_key_count=1)
 
         rotation_enabling_time = datetime.now(timezone.utc)
+        print(f'Rotation enabling time: {rotation_enabling_time}')
 
         set_cfg_encryption(self.random_node(), 'secret', secret_id,
                            dek_rotation=1)

@@ -440,7 +440,7 @@ garbage_collect_keys(Kind, InUseKeyIds) ->
     KeyDir = key_path(Kind),
     %% Just making sure the list is in expected format (so we don't end up
     %% comparing string and binary)
-    lists:foreach(fun (Id) -> true = is_binary(Id) end, InUseKeyIds),
+    lists:foreach(fun (Id) -> {_, true} = {Id, is_binary(Id)} end, InUseKeyIds),
     IdsInUseSet = maps:from_keys(InUseKeyIds, true),
     AllKeys = get_all_keys_in_dir(KeyDir),
     ToRemove = lists:filter(

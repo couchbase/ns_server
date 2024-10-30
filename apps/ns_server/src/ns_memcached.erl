@@ -1880,27 +1880,30 @@ set_active_dek_for_bucket(Bucket, _ActiveDek) ->
 
 set_active_dek(TypeOrBucket, DeksSnapshot) ->
     ?log_debug("Setting active encryption key id for ~p: ~p...",
-               [TypeOrBucket, cb_crypto:get_dek(DeksSnapshot)]),
+               [TypeOrBucket, cb_crypto:get_dek_id(DeksSnapshot)]),
     RV = perform_very_long_call(
            fun (Sock) ->
                case mc_client_binary:set_active_encryption_key(Sock,
                                                                TypeOrBucket,
                                                                DeksSnapshot) of
                    ok -> {reply, ok};
-                   {memcached_error, S, Msg} ->
-                       ?log_error("Setting encryption key for ~p failed: ~p",
-                                  [TypeOrBucket, {S, Msg}]),
-                       {reply, {error, {S, Msg}}}
+                   {memcached_error, S, Msg} -> {reply, {error, {S, Msg}}}
                end
            end),
 
     case RV of
-        ok -> ok;
+        ok ->
+            ?log_debug("Setting encryption key for ~p succeeded",
+                       [TypeOrBucket]),
+            ok;
         {error, couldnt_connect_to_memcached} -> {error, retry};
         %% It can happen during start, when bucket is not created yet
         {error, {key_enoent, undefined}} -> {error, retry};
         {error, {not_supported, undefined}} -> {error, retry};
-        {error, E} -> {error, E}
+        {error, E} ->
+            ?log_error("Setting encryption key for ~p failed: ~p",
+                       [TypeOrBucket, E]),
+            {error, E}
     end.
 
 get_dek_ids_in_use("@logs") ->
