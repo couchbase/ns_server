@@ -14,7 +14,10 @@
                  saver_pid,
                  pending_more_save = false,
                  uuid,
-                 upgrade_config_fun
+                 upgrade_config_fun,
+                 key_ids_in_use = {ok, []},
+                 pending_dek_ids = [],
+                 supports_encryption = false
                 }).
 -define(METADATA_VCLOCK, '_vclock').
 -define(DELETED_MARKER, '_deleted').

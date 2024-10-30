@@ -16,7 +16,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([default/1, upgrade_config/1, get_current_version/0, encrypt_and_save/1,
+-export([default/1, upgrade_config/1, get_current_version/0, encrypt_and_save/2,
          decrypt/1, fixup/1, init_is_enterprise/0, generate_internal_pass/0]).
 
 -define(ISASL_PW, "isasl.pw").
@@ -536,11 +536,10 @@ do_upgrade_config_from_76_to_morpheus(_Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig)].
 
-encrypt_and_save(Config) ->
+encrypt_and_save(Config, DekSnapshot) ->
     {value, DirPath} = ns_config:search(Config, directory),
     Dynamic = ns_config:get_kv_list_with_config(Config),
-    ns_config:save_config_sync([Dynamic], DirPath,
-                               cluster_compat_mode:is_enterprise()).
+    ns_config:save_config_sync([Dynamic], DirPath, DekSnapshot).
 
 decrypt(Config) ->
     misc:rewrite_tuples(fun ({encrypted, Val}) when is_binary(Val) ->

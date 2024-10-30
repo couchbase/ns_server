@@ -271,17 +271,28 @@ merge_kv_pairs_same_value_test() ->
 test_bin_persist() ->
     CP = data_file(),
     D = [[{x,1},{y,2},{z,3}]],
-    ?assertEqual(ok, ns_config:save_file(bin, CP, D)),
-    R = ns_config:load_file(bin, CP),
+    DS = generate_test_deks(),
+    ?assertEqual(ok, ns_config:save_file(CP, D, DS)),
+    R = ns_config:load_file(bin, CP, DS),
     ?assertEqual({ok, D}, R),
     ok.
+
+
+generate_test_deks() ->
+    KeyBin = cb_cluster_secrets:generate_raw_key(aes_256_gcm),
+    Key = #{id => cb_cluster_secrets:new_key_id(),
+            type => 'raw-aes-gcm',
+            info => #{key => fun () -> KeyBin end,
+                      encryption_key_id => <<"encryptionService">>,
+                      creation_time => {{2024, 01, 01}, {22, 00, 00}}}},
+    cb_crypto:create_deks_snapshot(Key, [Key], undefined).
 
 test_load_config_improper() ->
     CP = data_file(),
     {ok, F} = file:open(CP, [write, raw]),
     ok = file:write(F, <<"improper config file">>),
     ok = file:close(F),
-    R = ns_config:load_config(CP, test_dir(), ?MODULE),
+    R = ns_config:load_config(CP, test_dir(), ?MODULE, undefined),
     ?assertMatch({error, _}, R),
     ok.
 
@@ -290,7 +301,7 @@ test_load_config() ->
     {ok, F} = file:open(CP, [write, raw]),
     ok = file:write(F, <<"{x,1}.">>),
     ok = file:close(F),
-    R = ns_config:load_config(CP, test_dir(), ?MODULE),
+    R = ns_config:load_config(CP, test_dir(), ?MODULE, undefined),
     ?assertMatch({ok, #config{static = [[{x,1}], []],
                               dynamic = [[{x,1}, {{node, _, uuid}, _}]],
                               policy_mod = ?MODULE,
@@ -302,7 +313,7 @@ test_save_config() ->
     {ok, F} = file:open(CP, [write, raw]),
     ok = file:write(F, <<"{x,1}.">>),
     ok = file:close(F),
-    R = ns_config:load_config(CP, test_dir(), ?MODULE),
+    R = ns_config:load_config(CP, test_dir(), ?MODULE, undefined),
     ?assertMatch({ok, #config{static = [[{x,1}], []],
                               dynamic = [[{x,1}, {{node, _, uuid}, _}]],
                               policy_mod = ?MODULE,
@@ -310,9 +321,13 @@ test_save_config() ->
     {ok, #config{dynamic = [Dynamic]} = E} = R,
     X = E#config{dynamic = [misc:update_proplist(Dynamic, [{x,2},{y,3}])],
                  policy_mod = ?MODULE},
-    ?assertEqual(ok, ns_config:save_config_sync(X, test_dir(), false)),
-    R2 = ns_config:load_config(CP, test_dir(), ?MODULE),
+    ?assertEqual(ok, ns_config:save_config_sync(X, test_dir(), undefined)),
+    R2 = ns_config:load_config(CP, test_dir(), ?MODULE, undefined),
     ?assertMatch({ok, X}, R2),
+    DS = generate_test_deks(),
+    ?assertEqual(ok, ns_config:save_config_sync(X, test_dir(), DS)),
+    R3 = ns_config:load_config(CP, test_dir(), ?MODULE, DS),
+    ?assertMatch({ok, X}, R3),
     ok.
 
 test_svc() ->
@@ -375,7 +390,7 @@ test_include_config() ->
     {ok, F2} = file:open(CP2, [write, raw]),
     ok = file:write(F2, <<"{z,9}.">>),
     ok = file:close(F2),
-    R = ns_config:load_config(CP1, test_dir(), ?MODULE),
+    R = ns_config:load_config(CP1, test_dir(), ?MODULE, undefined),
     ?assertMatch({ok, #config{static = [[{x,1}, {z,9}, {y,1}], []],
                               policy_mod = ?MODULE}},
                  R),
@@ -392,7 +407,7 @@ test_include_missing_config() ->
     ok = file:write(F1, list_to_binary(X)),
     ok = file:write(F1, <<"{y,1}.\n">>),
     ok = file:close(F1),
-    R = ns_config:load_config(CP1, test_dir(), ?MODULE),
+    R = ns_config:load_config(CP1, test_dir(), ?MODULE, undefined),
     ?assertEqual({error, {bad_config_path, "not_a_config_path"}}, R),
     ok.
 

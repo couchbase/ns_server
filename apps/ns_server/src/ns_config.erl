@@ -58,16 +58,17 @@
          search_node_with_default/2,
          search_node_with_default/3,
          search_node_with_default/4,
-         reload/0]).
+         reload/0,
+         get_key_ids_in_use/0]).
 
 -export([compute_global_rev/1]).
 
--export([save_config_sync/3, do_not_save_config/1]).
+-export([save_config_sync/3, do_not_save_config/2]).
 
 % Exported for tests only
 -ifdef(TEST).
--export([save_file/3, load_config/3,
-         load_file/2, send_config/2,
+-export([save_file/3, load_config/4,
+         load_file/3, send_config/3,
          test_setup/1, upgrade_config/2,
          do_announce_changes/1]).
 -export([mock_tombstone_agent/0, unmock_tombstone_agent/0]).
@@ -432,6 +433,9 @@ clear(Keep) -> gen_server:call(?MODULE, {clear, Keep}).
 
 reload() ->
     gen_server:call(?MODULE, reload).
+
+get_key_ids_in_use() ->
+    gen_server:call(?MODULE, get_key_ids_in_use).
 
 % ----------------------------------------
 
@@ -804,17 +808,20 @@ do_init(Config) ->
                 UpgradedConfig
         end,
     update_ets_dup(config_dynamic(InitialState)),
-    {ok, InitialState}.
+    {ok, update_keys_in_use(InitialState)}.
 
 init({with_state, LoadedConfig} = Init) ->
     do_init(LoadedConfig#config{init = Init});
 init({full, ConfigPath, DirPath, PolicyMod} = Init) ->
     erlang:process_flag(priority, high),
-    case load_config(ConfigPath, DirPath, PolicyMod) of
+    {ok, DekSnapshot} = cb_crypto:fetch_deks_snapshot(configDek),
+    case load_config(ConfigPath, DirPath, PolicyMod, DekSnapshot) of
         {ok, Config} ->
             tombstone_agent:refresh(),
+            IsEnterprise = cluster_compat_mode:is_enterprise(Config),
             do_init(Config#config{init = Init,
                                   saver_mfa = {PolicyMod, encrypt_and_save, []},
+                                  supports_encryption = IsEnterprise,
                                   upgrade_config_fun = fun upgrade_config/1});
         Error ->
             {stop, Error}
@@ -873,7 +880,7 @@ handle_cast(stop, State) ->
 handle_info({'EXIT', Pid, Reason},
             #config{saver_pid = {MyPid, Continuation},
                     pending_more_save = NeedMore} = State) when MyPid =:= Pid ->
-    NewState = State#config{saver_pid = undefined},
+    NewState = State#config{saver_pid = undefined, pending_dek_ids = []},
     case Reason of
         normal ->
             Continuation(ok),
@@ -888,7 +895,7 @@ handle_info({'EXIT', Pid, Reason},
             false ->
                 NewState
         end,
-    {noreply, S};
+    {noreply, update_keys_in_use(S)};
 handle_info(Info, State) ->
     ?log_warning("Unhandled message: ~p", [Info]),
     {noreply, State}.
@@ -1069,8 +1076,16 @@ handle_call({upgrade_config_explicitly, Upgrader}, _From, State) ->
             update_ets_dup(Diff),
             announce_locally_made_changes(Diff),
             {reply, ok, initiate_save_config(NewConfig)}
-    end.
+    end;
 
+handle_call(get_key_ids_in_use, _From,
+            #config{key_ids_in_use = CurKeyIds,
+                    pending_dek_ids = Pending} = State) ->
+    Res = case CurKeyIds of
+              {ok, Ids} -> {ok, Ids ++ Pending};
+              {error, E} -> {error, E}
+          end,
+    {reply, Res, State}.
 
 %%--------------------------------------------------------------------
 
@@ -1110,11 +1125,11 @@ do_merge_dynamic_and_static(Dynamic, #config{static = [S, DefaultConfig], uuid =
                                        lists:append(Dynamic ++ [S, DefaultConfigWithVClocks])),
     DynamicPropList.
 
-load_config(ConfigPath, DirPath, PolicyMod) ->
+load_config(ConfigPath, DirPath, PolicyMod, DekSnapshot) ->
     DefaultConfig = PolicyMod:default(?LATEST_VERSION_NUM),
     % Static config file.
     ?log_info("Loading static config from ~p", [ConfigPath]),
-    case load_file(txt, ConfigPath) of
+    case load_file(txt, ConfigPath, DekSnapshot) of
         {ok, S} ->
             % Dynamic data directory.
             DirPath2 =
@@ -1128,8 +1143,10 @@ load_config(ConfigPath, DirPath, PolicyMod) ->
             C = dynamic_config_path(DirPath2),
             ok = filelib:ensure_dir(C),
             ?log_info("Loading dynamic config from ~p", [C]),
-            Dynamic0 = case load_file(bin, C) of
+            Dynamic0 = case load_file(bin, C, DekSnapshot) of
                            {ok, DRead} ->
+                               %% This is needed for backward compatibility
+                               %% (to read config.dat created by pre-morpheus)
                                PolicyMod:decrypt(DRead);
                            not_found ->
                                ?log_info("No dynamic config file found. Assuming we're brand new node"),
@@ -1165,17 +1182,14 @@ load_config(ConfigPath, DirPath, PolicyMod) ->
             E
     end.
 
-save_config_sync(#config{dynamic = D}, DirPath, ShouldEncrypt) ->
-    save_config_sync(D, DirPath, ShouldEncrypt);
+save_config_sync(#config{dynamic = D}, DirPath, DS) ->
+    save_config_sync(D, DirPath, DS);
 
-save_config_sync(Dynamic, DirPath, ShouldEncrypt) when is_list(Dynamic) ->
+save_config_sync(Dynamic, DirPath, DS) when is_list(Dynamic) ->
     C = dynamic_config_path(DirPath),
-    case ShouldEncrypt of
-        true -> ok = save_file_encrypted(C, Dynamic);
-        false -> ok = save_file(bin, C, Dynamic)
-    end.
+    ok = save_file(C, Dynamic, DS).
 
-do_not_save_config(_Config) ->
+do_not_save_config(_Config, _DekSnapshot) ->
     ok.
 
 initiate_save_config(Config) ->
@@ -1183,11 +1197,21 @@ initiate_save_config(Config) ->
 initiate_save_config(Config, NewContinuation) ->
     case Config#config.saver_pid of
         undefined ->
+            {DekSnapshot, PendingDekId} =
+                case Config#config.supports_encryption of
+                    true ->
+                        {ok, DS} = cb_crypto:fetch_deks_snapshot(configDek),
+                        DekId = cb_crypto:get_dek_id(DS),
+                        {DS, DekId};
+                    false ->
+                        {undefined, []}
+                end,
             {M, F, ASuffix} = Config#config.saver_mfa,
-            A = [Config | ASuffix],
+            A = [Config, DekSnapshot | ASuffix],
             Pid = proc_lib:spawn_link(M, F, A),
             Config#config{saver_pid = {Pid, NewContinuation},
-                          pending_more_save = false};
+                          pending_more_save = false,
+                          pending_dek_ids = [PendingDekId]};
         _ ->
             case Config of
                 #config{pending_more_save = false} ->
@@ -1232,10 +1256,10 @@ erase_ets_dup(Keys) ->
               ets:delete(ns_config_ets_dup, Key)
       end, Keys).
 
-load_file(txt, ConfigPath) -> read_includes(ConfigPath);
+load_file(txt, ConfigPath, _) -> read_includes(ConfigPath);
 
-load_file(bin, ConfigPath) ->
-    case cb_crypto:read_file(ConfigPath, configDek) of
+load_file(bin, ConfigPath, DekSnapshot) ->
+    case cb_crypto:read_file(ConfigPath, DekSnapshot) of
         {decrypted, B} -> {ok, binary_to_term(B)};
         {raw, <<>>} -> not_found;
         {raw, B} -> {ok, binary_to_term(B)};
@@ -1245,20 +1269,11 @@ load_file(bin, ConfigPath) ->
             not_found
     end.
 
-save_file_encrypted(ConfigPath, Config) ->
-    {ok, DeksSnapshot} = cb_crypto:fetch_deks_snapshot(configDek),
+save_file(ConfigPath, Config, undefined) ->
+    misc:atomic_write_file(ConfigPath, term_to_binary(Config));
+save_file(ConfigPath, Config, DekSnapshot) ->
     cb_crypto:atomic_write_file(ConfigPath, term_to_binary(Config),
-                                DeksSnapshot).
-
-save_file(bin, ConfigPath, X) ->
-    TempFile = path_config:tempfile(filename:dirname(ConfigPath),
-                                    filename:basename(ConfigPath),
-                                    ".tmp"),
-    {ok, F} = file:open(TempFile, [write, raw]),
-    ok = file:write(F, term_to_binary(X)),
-    ok = file:sync(F),
-    ok = file:close(F),
-    file:rename(TempFile, ConfigPath).
+                                DekSnapshot).
 
 -define(TOUCHED_KEYS, touched_keys).
 touch_key(Key) ->
@@ -1541,7 +1556,7 @@ test_set_kvlist() ->
     ?assertMatch([{'_vclock', [{<<"uuid">>, _}]}, {suba, a}, {subb, b}],
                  FooVal).
 
-send_config(Config, Pid) ->
+send_config(Config, _DekSnapshot, Pid) ->
     Ref = erlang:make_ref(),
     Pid ! {saving, Ref, Config, self()},
     receive
@@ -2019,3 +2034,14 @@ update_if_unchanged(Key, OldValue, NewValue) ->
         retry_needed -> {error, retry_needed};
         {abort, changed} -> {error, changed}
     end.
+
+update_keys_in_use(#config{init = {full, _, _, _}} = State) ->
+    case ns_config:search(State, directory) of
+        {value, DirPath} ->
+            CfgPath = dynamic_config_path(DirPath),
+            State#config{key_ids_in_use = cb_crypto:get_file_dek_ids(CfgPath)};
+        false ->
+            State#config{key_ids_in_use = {error, no_directory}}
+    end;
+update_keys_in_use(#config{} = State) ->
+    State#config{key_ids_in_use = {error, not_supported}}.

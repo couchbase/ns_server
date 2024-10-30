@@ -36,6 +36,7 @@
          file_encrypt_state_match/2,
          is_file_encr_by_ds/2,
          is_file_encrypted/1,
+         get_file_dek_ids/1,
          get_in_use_deks/1,
          file_decrypt_init/3,
          file_decrypt_next_chunk/2,
