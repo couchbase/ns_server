@@ -48,6 +48,8 @@
 % number should work
 -define(ENCRYPTION_MAGIC, 45).
 
+-record(state, {keys_applied = false}).
+
 start_link() ->
     gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
 
@@ -89,7 +91,8 @@ init([]) ->
         false ->
             ok
     end,
-    {ok, []}.
+
+    {ok, #state{keys_applied = false}}.
 
 handle_call({prepare_join, Info}, _From, State) ->
     ?log_debug("Wiping chronicle before prepare join."),
@@ -124,13 +127,22 @@ handle_call(get_snapshot, _From, Pid) ->
                 {error, cannot_get_snapshot}
         end,
     {reply, RV, Pid};
-handle_call(maybe_force_new_keys, _From, State) ->
-    {reply, maybe_force_new_keys(), State};
-handle_call(get_encryption_dek_ids, _From, State) ->
-    DeksSnapshot = get_chronicle_deks_snapshot(),
-    {_, AllDeks} = cb_crypto:get_all_deks(DeksSnapshot),
-    Ids = [cb_crypto:get_dek_id(D) || D <- AllDeks],
-    {reply, {ok, Ids}, State};
+handle_call(maybe_apply_new_keys, _From, State) ->
+    Force = not State#state.keys_applied,
+    {reply, maybe_apply_new_keys(Force), State#state{keys_applied = true}};
+handle_call(get_encryption_dek_ids, _From,
+            #state{keys_applied = Applied} = State) ->
+    %% If we haven't rewritten chronicle data with the most recent key yet,
+    %% we can still have some data unencrypted, so add ?NULL_DEK just in case
+    %% in this case.
+    {Active, AllDeks} = cb_crypto:get_all_deks(get_chronicle_deks_snapshot()),
+    AllIds = [cb_crypto:get_dek_id(D) || D <- AllDeks],
+    Res = case Active of
+              undefined -> [?NULL_DEK | AllIds];
+              _ when not Applied -> [?NULL_DEK | AllIds];
+              _ -> AllIds
+          end,
+    {reply, {ok, Res}, State};
 handle_call(sync, _From, State) ->
     {reply, ok, State}.
 
@@ -161,13 +173,11 @@ sync() ->
     gen_server2:call(?MODULE, sync, ?CALL_TIMEOUT).
 
 set_active_dek(_ActiveDek) ->
-    case gen_server2:call(?MODULE, maybe_force_new_keys, ?CALL_TIMEOUT) of
-        {changed, IdsInUse} -> {ok, IdsInUse};
-        {unchanged, _} -> ok
-    end.
+    _ = gen_server2:call(?MODULE, maybe_apply_new_keys, ?CALL_TIMEOUT),
+    ok.
 
 drop_deks(IdsToDrop) ->
-    {_, InUse} = gen_server2:call(?MODULE, maybe_force_new_keys, ?CALL_TIMEOUT),
+    InUse = gen_server2:call(?MODULE, maybe_apply_new_keys, ?CALL_TIMEOUT),
     StillInUse = [Id || Id <- InUse, lists:member(Id, IdsToDrop)],
     case StillInUse of
         [] -> {ok, done};
@@ -349,7 +359,7 @@ rewrite_chronicle_data() ->
             {error, Reason}
     end.
 
-maybe_force_new_keys() ->
+maybe_apply_new_keys(Force) ->
     Old = get_chronicle_deks_snapshot(),
     {ok, New} = cb_crypto:fetch_deks_snapshot(chronicleDek),
     NewWithoutHistDeks = cb_crypto:without_historical_deks(New),
@@ -358,12 +368,14 @@ maybe_force_new_keys() ->
                    [cb_crypto:get_dek_id(D) || D <- Deks]
                end,
     case (cb_crypto:get_dek_id(Old) /= cb_crypto:get_dek_id(New)) orelse
-         (NewWithoutHistDeks /= New) of
+         (NewWithoutHistDeks /= New) orelse Force of
         true ->
             set_chronicle_deks_snapshot(New),
+            %% Note that get_encryption_dek_ids assumes that this process
+            %% crashes if it can't reencrypt everything here
             ok = rewrite_chronicle_data(),
             set_chronicle_deks_snapshot(NewWithoutHistDeks),
-            {changed, IdsInUse(NewWithoutHistDeks)};
+            IdsInUse(NewWithoutHistDeks);
         false ->
-            {unchanged, IdsInUse(Old)}
+            IdsInUse(Old)
     end.
