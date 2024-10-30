@@ -262,7 +262,7 @@ dek_chronicle_keys_filter(Key) ->
     #{encryption_method_callback :=
         fun( (Snapshot) -> {ok, encryption_method()} | {error, not_found} ),
       set_active_key_callback :=
-        fun ( (undefined | dek_id()) -> ok | {ok, Ids} | {error, _}),
+        fun ( (undefined | dek_id()) -> ok | {error, _}),
       lifetime_callback :=
         fun ( (Snapshot) -> {ok, IntOrUndefined} | {error, not_found} ),
       rotation_int_callback :=
@@ -415,9 +415,6 @@ set_log_active_key(_ActiveKey) ->
     end.
 
 force_config_encryption_keys() ->
-    %% Here we assume that keys can't changed while this function is
-    %% working (because it is called from cb_cluster_secrets process).
-    {ok, Snapshot} = cb_crypto:fetch_deks_snapshot(configDek),
     maybe
         %% How it works:
         %%  1. memcached_config_mgr pushes new keys to memcached and saves the
@@ -437,10 +434,7 @@ force_config_encryption_keys() ->
         ok ?= memcached_permissions:sync_reload(),
         ok ?= memcached_config_mgr:drop_historical_deks(),
         ok ?= ns_config:resave(),
-        case cb_crypto:get_dek_id(Snapshot) of
-            undefined -> {ok, []};
-            Id when is_binary(Id) -> {ok, [Id]}
-        end
+        ok
     end.
 
 get_config_dek_ids_in_use() ->
@@ -489,7 +483,7 @@ get_dek_ids_in_use(Type) ->
 
 drop_config_deks(DekIdsToDrop) ->
     maybe
-        {ok, _} ?= force_config_encryption_keys(),
+        ok ?= force_config_encryption_keys(),
         {ok, DekIdsInUse} ?= get_config_dek_ids_in_use(),
         StillInUse = [Id || Id <- DekIdsInUse, lists:member(Id, DekIdsToDrop)],
         case StillInUse of

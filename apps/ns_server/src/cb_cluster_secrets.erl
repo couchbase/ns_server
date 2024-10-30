@@ -1322,8 +1322,6 @@ call_set_active_cb(Kind, #state{deks = AllDeks} = State) ->
                                    [NewActiveKey]) of
                 {succ, ok} ->
                     {ok, maybe_garbage_collect_deks(Kind, true, State)};
-                {succ, {ok, DekIdsInUse}} ->
-                    {ok, retire_unused_deks(Kind, DekIdsInUse, State)};
                 {succ, {error, Reason}} ->
                     {error, State, Reason};
                 {except, {_, E, _}} ->
