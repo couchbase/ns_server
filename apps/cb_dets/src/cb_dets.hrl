@@ -18,6 +18,11 @@
 %% %CopyrightEnd%
 %%
 
+%%
+%% Oct 31, 2024 - Added ability to use custom term_to_binary and binary_to_term
+%%                functions (by Couchbase <info@couchbase.com>)
+%%
+
 -define(DEFAULT_MIN_NO_SLOTS, 256).
 -define(DEFAULT_MAX_NO_SLOTS, 32*1024*1024).
 -define(DEFAULT_AUTOSAVE, 3). % minutes

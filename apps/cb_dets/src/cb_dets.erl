@@ -17,6 +17,11 @@
 %%
 %% %CopyrightEnd%
 %%
+
+%%
+%% Oct 31, 2024 - Added ability to use custom term_to_binary and binary_to_term
+%%                functions (by Couchbase <info@couchbase.com>)
+%%
 -module(cb_dets).
 
 %% Disk based linear hashing lookup dictionary.
@@ -969,7 +974,7 @@ do_trav_bins(State, Proc, Acc, Fun, []) ->
     do_trav(State, Proc, Acc, Fun);
 do_trav_bins(State, Proc, Acc, Fun, [Bin | Bins]) ->
     %% Unpack one binary at a time, using the client's heap.
-    case catch binary_to_term(Bin) of 
+    case catch cb_dets_utils:binary_to_term_callback(Bin) of
 	{'EXIT', _} ->
 	    req(Proc, {corrupt, cb_dets_utils:bad_object(do_trav_bins, Bin)});
 	Term ->
@@ -1052,13 +1057,13 @@ foldl_bins([], Terms) ->
     %% Preserve time order.
     Terms;
 foldl_bins([Bin | Bins], Terms) ->    
-    foldl_bins(Bins, [binary_to_term(Bin) | Terms]).
+    foldl_bins(Bins, [cb_dets_utils:binary_to_term_callback(Bin) | Terms]).
 
 foldl_bins([], _MP, Terms) ->
     %% Preserve time order.
     Terms;
 foldl_bins([Bin | Bins], MP, Terms) ->
-    Term = binary_to_term(Bin),
+    Term = cb_dets_utils:binary_to_term_callback(Bin),
     case ets:match_spec_run([Term], MP) of
 	[] ->
 	    foldl_bins(Bins, MP, Terms);
@@ -1850,7 +1855,7 @@ do_bchunk_init(Head, Tab) ->
                               L =:= <<>> -> eof;
                               true -> <<>>
                           end,
-		    BinParms = term_to_binary(Parms),
+		    BinParms = cb_dets_utils:term_to_binary_callback(Parms),
 		    {H2, {#cb_dets_cont{no_objs = default, bin = Bin, alloc = L,
                                      tab = Tab, proc = self(),what = bchunk},
                           [BinParms]}}
@@ -2051,7 +2056,7 @@ finfo(H, bchunk_format) ->
                 undefined = Undef ->
                     {H2, Undef};
                 Parms ->
-                    {H2, term_to_binary(Parms)}
+                    {H2, cb_dets_utils:term_to_binary_callback(Parms)}
             end;
         {H2, _} = HeadError when is_record(H2, head) ->
             HeadError
@@ -2395,7 +2400,7 @@ do_fmatch_constant_keys(Head, Keys, {match_spec, MP}) ->
     end.
 
 filter_binary_terms([Bin | Bins], MP, L) ->
-    Term = binary_to_term(Bin),
+    Term = cb_dets_utils:binary_to_term_callback(Bin),
     case ets:match_spec_run([Term], MP) of
 	[true] -> 
 	    filter_binary_terms(Bins, MP, [Term | L]);

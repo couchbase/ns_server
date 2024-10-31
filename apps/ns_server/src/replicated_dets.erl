@@ -166,6 +166,8 @@ init_ets(Name, Access) ->
 
 init_after_ack(State = #state{name = TableName}) ->
     Start = os:timestamp(),
+    cb_dets_utils:setup_callbacks(fun erlang:term_to_binary/1,
+                                  fun erlang:binary_to_term/1),
     ok = open(State),
     ?log_debug("Loading ~p items, ~p words took ~pms",
                [ets:info(TableName, size),

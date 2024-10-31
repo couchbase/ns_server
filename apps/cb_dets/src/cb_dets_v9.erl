@@ -17,6 +17,12 @@
 %% 
 %% %CopyrightEnd%
 %%
+
+%%
+%% Oct 31, 2024 - Added ability to use custom term_to_binary and binary_to_term
+%%                functions (by Couchbase <info@couchbase.com>)
+%%
+
 -module(cb_dets_v9).
 -compile([{nowarn_deprecated_function, [{erlang,phash,2}]}]).
 
@@ -647,7 +653,7 @@ bulk_input(Head, InitFun, Ref, Seq) ->
     end.
 
 bulk_objects([T | Ts], Head, Kp, Seq, L) ->
-    BT = term_to_binary(T),
+    BT = cb_dets_utils:term_to_binary_callback(T),
     Key = element(Kp, T),
     bulk_objects(Ts, Head, Kp, Seq+1, [make_object(Head, Key, Seq, BT) | L]);
 bulk_objects([], _Head, Kp, Seq, L) when is_integer(Kp), is_integer(Seq) ->
@@ -834,10 +840,10 @@ compact_objs(Head, WHead, SizeT, <<Size:32, St:32, _Sz:32, KO/binary>> = Bin,
 	    <<SlotObjs:Size2/binary, NewBin/binary>> = Bin,
 	    Term = if
 		       Head#head.type =:= set ->
-			   binary_to_term(KO);
+			   cb_dets_utils:binary_to_term_callback(KO);
 		       true ->
 			   <<_KSz:32,B2/binary>> = KO,
-			   binary_to_term(B2)
+			   cb_dets_utils:binary_to_term_callback(B2)
 		   end,
 	    Key = element(Head#head.keypos, Term),
 	    Slot = db_hash(Key, Head),
@@ -924,10 +930,10 @@ bchunks(Head, L, <<Size:32, St:32, _Sz:32, KO/binary>> = Bin, Bs, ASz,
 	    %% make_slots/6.
 	    Term = if
 		       Head#head.type =:= set ->
-			   binary_to_term(KO);
+			   cb_dets_utils:binary_to_term_callback(KO);
 		       true ->
 			   <<_KSz:32,B2/binary>> = KO,
-			   binary_to_term(B2)
+			   cb_dets_utils:binary_to_term_callback(B2)
 		   end,
 	    Key = element(Head#head.keypos, Term),
 	    Slot = db_hash(Key, Head),
@@ -1005,7 +1011,7 @@ bchunk_init(Head, InitFun) ->
 try_bchunk_header(ParmsBin, Head) ->
     #head{type = Type, keypos = Kp, hash_bif = HashBif} = Head,
     HashMethod = hash_method_to_code(HashBif),
-    case catch binary_to_term(ParmsBin) of
+    case catch cb_dets_utils:binary_to_term_callback(ParmsBin) of
         Parms when is_record(Parms, ?HASH_PARMS),
                    Parms#?HASH_PARMS.type =:= Type,
                    Parms#?HASH_PARMS.keypos =:= Kp,
@@ -1243,7 +1249,7 @@ bin2term(Bin, Kp) ->
     bin2term1(Bin, Kp, []).
 
 bin2term1([<<Slot:32, Seq:32, BinTerm/binary>> | BTs], Kp, L) ->
-    Term = binary_to_term(BinTerm),
+    Term = cb_dets_utils:binary_to_term_callback(BinTerm),
     Key = element(Kp, Term),
     bin2term1(BTs, Kp, [{Slot, Key, Seq, Term, BinTerm} | L]);
 bin2term1([], _Kp, L) ->
@@ -1635,8 +1641,8 @@ file_header(Head, FreeListsPointer, ClosedProperly, NoColls) ->
     [H1, DigH, MD5, Base | <<0:?RESERVED/unit:8>>].
 
 %% Going through some trouble to avoid creating one single binary for
-%% the free lists. If the free lists are huge, binary_to_term and
-%% term_to_binary could otherwise stop the emulator for quite some time.
+%% the free lists. If the free lists are huge, cb_dets_utils:binary_to_term_callback and
+%% cb_dets_utils:term_to_binary_callback could otherwise stop the emulator for quite some time.
 
 -define(MAXFREEOBJ, 4096).
 -define(ENDFREE, 12345).
@@ -2335,7 +2341,7 @@ same_terms(_L1, _L2) ->
 make_bins([{_Term,_Seq,B} | L], W, Sz) when is_binary(B) ->
     make_bins(L, [W | B], Sz + byte_size(B));
 make_bins([{Term,_Seq,insert} | L], W, Sz) ->
-    B = term_to_binary(Term),
+    B = cb_dets_utils:term_to_binary_callback(Term),
     BSize = byte_size(B) + 4,
     make_bins(L, [W, [<<BSize:32>> | B]], Sz + BSize);
 make_bins([], W, Sz) ->
@@ -2524,7 +2530,7 @@ scan_skip(Bin, From, To, L, Ts, R, Type, Skip) ->
     end.
 
 %% Appends objects in reversed order. All objects of the slot are
-%% extracted. Note that binary_to_term/1 ignores garbage at the end.
+%% extracted. Note that cb_dets_utils:binary_to_term_callback/1 ignores garbage at the end.
 bin2bins(Bin, From, To, L, Ts, R, Type=set, Size, ObjSz0) ->
     ObjsSz1 = Size - ObjSz0,
     if
@@ -2670,7 +2676,7 @@ per_key(Head, <<BinSize:32, ?ACTIVE:32, Bin/binary>> = B) ->
 
 per_set_key(<<Size:32, T/binary>> = B, KeyPos, L) ->
     <<KeyBin:Size/binary, R/binary>> = B,
-    Term = binary_to_term(T),
+    Term = cb_dets_utils:binary_to_term_callback(T),
     Key = element(KeyPos, Term),
     Item = {Term, ?SEQSTART, KeyBin},
     per_set_key(R, KeyPos, [{Key,Size,KeyBin,Item,[]} | L]);
@@ -2683,7 +2689,7 @@ per_bag_key(<<Size:32, ObjSz:32, T/binary>> = B, KeyPos, L) ->
     Size1 = Size - ObjSz - 4,
     <<_:ObjSz1/binary, KeyObjs:Size1/binary, _/binary>> = T,
     <<_Size:32, Bin:ObjSz/binary, _/binary>> = B,
-    Term = binary_to_term(T),
+    Term = cb_dets_utils:binary_to_term_callback(T),
     Key = element(KeyPos, Term),
     Item = {Term, ?SEQSTART, Bin},
     per_bag_key(R, KeyPos, [{Key,Size,KeyBin,Item,KeyObjs} | L]);
@@ -2699,11 +2705,11 @@ binobjs2terms(<<>>) ->
     [].
 
 binobjs2terms(Bin, Obj, _ObjSz, _Size=0, N, L) ->
-    lists:reverse(L, [{binary_to_term(Obj), N, Bin}]);
+    lists:reverse(L, [{cb_dets_utils:binary_to_term_callback(Obj), N, Bin}]);
 binobjs2terms(Bin, Bin1, ObjSz, Size, N, L) ->
     <<B:ObjSz/binary, T/binary>> = Bin,
     <<NObjSz:32, T1/binary>> = T,
-    Item = {binary_to_term(Bin1), N, B},
+    Item = {cb_dets_utils:binary_to_term_callback(Bin1), N, B},
     binobjs2terms(T, T1, NObjSz, Size-NObjSz, N+1, [Item | L]).
 
 
@@ -2721,10 +2727,10 @@ bin2objs2(<<>>, Ts) ->
 
 bin2objs(Bin, ObjSz, _Size=0, Ts) ->
     <<_:ObjSz/binary, T/binary>> = Bin,
-    bin2objs2(T, [binary_to_term(Bin) | Ts]);
+    bin2objs2(T, [cb_dets_utils:binary_to_term_callback(Bin) | Ts]);
 bin2objs(Bin, ObjSz, Size, Ts) ->
     <<_:ObjSz/binary, NObjSz:32, T/binary>> = Bin,
-    bin2objs(T, NObjSz-4, Size-NObjSz, [binary_to_term(Bin) | Ts]).
+    bin2objs(T, NObjSz-4, Size-NObjSz, [cb_dets_utils:binary_to_term_callback(Bin) | Ts]).
 
 
 bin2keybins(KeysObjs, Head) when Head#head.type =:= set ->
@@ -2740,9 +2746,9 @@ bin2keybins2(<<>>, Kp, L) when is_integer(Kp) ->
 
 bin2keybins(Bin, Kp, ObjSz, _Size=0, L) ->
     <<Obj:ObjSz/binary, T/binary>> = Bin,
-    Term = binary_to_term(Obj),
+    Term = cb_dets_utils:binary_to_term_callback(Obj),
     bin2keybins2(T, Kp, [{element(Kp, Term),Obj} | L]);
 bin2keybins(Bin, Kp, ObjSz, Size, L) ->
     <<Obj:ObjSz/binary, NObjSz:32, T/binary>> = Bin,
-    Term = binary_to_term(Obj),
+    Term = cb_dets_utils:binary_to_term_callback(Obj),
     bin2keybins(T, Kp, NObjSz-4, Size-NObjSz, [{element(Kp,Term),Obj} | L]).

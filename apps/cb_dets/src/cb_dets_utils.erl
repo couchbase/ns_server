@@ -17,6 +17,12 @@
 %% 
 %% %CopyrightEnd%
 %%
+
+%%
+%% Oct 31, 2024 - Added ability to use custom term_to_binary and binary_to_term
+%%                functions (by Couchbase <info@couchbase.com>)
+%%
+
 -module(cb_dets_utils).
 
 %% Utility functions common to several cb_dets file formats.
@@ -46,6 +52,9 @@
 
 -export([list_to_tree/1, tree_to_bin/5]).
 
+-export([setup_callbacks/2, term_to_binary_callback/1,
+         binary_to_term_callback/1]).
+
 -compile({inline, [{sz2pos,1}, {adjust_addr,3}]}).
 -compile({inline, [{bplus_mk_leaf,1}, {bplus_get_size,1},
 		   {bplus_get_tree,2}, {bplus_get_lkey,2},
@@ -56,6 +65,26 @@
          disk_map_segment_p/2, disk_map_segment/2]).
 
 -include("cb_dets.hrl").
+
+-define(T2B_CALLBACK, cb_dist_term_to_binary_callback).
+-define(B2T_CALLBACK, cb_dist_binary_to_term_callback).
+
+setup_callbacks(TermToBin, BinToTerm) when is_function(TermToBin, 1),
+                                           is_function(BinToTerm, 1) ->
+    %% Just a sanity check:
+    Term = {a, b, c},
+    B = TermToBin(Term),
+    true = is_binary(B),
+    Term = BinToTerm(B),
+
+    persistent_term:put(?T2B_CALLBACK, TermToBin),
+    persistent_term:put(?B2T_CALLBACK, BinToTerm).
+
+term_to_binary_callback(T) ->
+    (persistent_term:get(?T2B_CALLBACK))(T).
+
+binary_to_term_callback(B) ->
+    (persistent_term:get(?B2T_CALLBACK))(B).
 
 %%% A total ordering of all Erlang terms.
 
@@ -973,10 +1002,10 @@ dm([{P,<<X:32>>} | Bs], T) ->
     dm(Bs, T);
 dm([{P,<<_Sz:32,B0/binary>>=B} | Bs], T) ->
     Overwrite = 
-        case catch binary_to_term(B0) of % accepts garbage at end of binary
+        case catch cb_dets_utils:binary_to_term_callback(B0) of % accepts garbage at end of binary
             {'EXIT', _} ->
                 <<_Sz1:32,B1/binary>> = B0,
-                case catch binary_to_term(B1) of
+                case catch cb_dets_utils:binary_to_term_callback(B1) of
                     {'EXIT', _}  ->
                         false;
                     _ ->

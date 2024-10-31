@@ -17,6 +17,12 @@
 %%
 %% %CopyrightEnd%
 %%
+
+%%
+%% Oct 31, 2024 - Added ability to use custom term_to_binary and binary_to_term
+%%                functions (by Couchbase <info@couchbase.com>)
+%%
+
 -module(cb_dets_sup).
 
 -behaviour(supervisor).
