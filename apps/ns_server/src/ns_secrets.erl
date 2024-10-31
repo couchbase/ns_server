@@ -15,6 +15,7 @@
          get_pkey_pass/1,
          load_passphrase/2,
          extract_pkey_pass/1,
+         is_pkey_pass_set/1,
          call_external_script/4]).
 
 %% gen_server callbacks
@@ -37,6 +38,9 @@ load_passphrase(Type, PassSettings) when is_list(PassSettings) ->
 
 get_pkey_pass(Type) when Type == node_cert; Type == client_cert ->
     gen_server:call(?MODULE, {get_pkey_pass, Type}, 30000).
+
+is_pkey_pass_set(PassSettings) ->
+    undefined /= proplists:get_value(type, PassSettings).
 
 %%%===================================================================
 %%% callbacks

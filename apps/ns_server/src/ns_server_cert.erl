@@ -13,6 +13,7 @@
 -include_lib("ns_common/include/cut.hrl").
 
 -include_lib("public_key/include/public_key.hrl").
+-include_lib("public_key/include/PKCS-FRAME.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -50,7 +51,8 @@
          cert_expiration_warning_days/0,
          extract_internal_client_cert_user/1,
          invalid_client_cert_nodes/3,
-         verify_cert_hostname_strict/2]).
+         verify_cert_hostname_strict/2,
+         encrypt_pkey/2]).
 
 inbox_ca_path() ->
     filename:join(path_config:component_path(data, "inbox"), "CA").
@@ -290,6 +292,41 @@ validate_cert_pem_entry({BadType, _, _}) ->
 -define(SUPPORTED_PKEY_TYPE(T), (T) == 'RSAPrivateKey';
                                 (T) == 'DSAPrivateKey';
                                 (T) == 'ECPrivateKey').
+
+
+encrypt_pkey(PKeyPemBin, Pass) ->
+    %% We expect the key to be valid and unencrypted here
+    [Entry] = public_key:pem_decode(PKeyPemBin),
+    Entity = public_key:pem_entry_decode(Entry),
+    PemEntry = public_key:pem_entry_encode('PrivateKeyInfo', Entity,
+                                           {cipher_info(), ?UNHIDE(Pass)}),
+    public_key:pem_encode([PemEntry]).
+
+cipher_info() ->
+    ASN1OctetStrTag = 4,
+    IVLen = 16,
+    IV = crypto:strong_rand_bytes(IVLen),
+    Params = <<ASN1OctetStrTag, IVLen:8/unsigned-big-integer, IV/binary>>,
+    EncryptionScheme = #'PBES2-params_encryptionScheme'{
+                         algorithm = ?'id-aes256-CBC',
+                         parameters = {asn1_OPENTYPE, Params}
+                       },
+    KDF = #'PBES2-params_keyDerivationFunc'{
+            algorithm = ?'id-PBKDF2',
+            parameters = #'PBKDF2-params'{
+                           salt = {specified, crypto:strong_rand_bytes(32)},
+                           iterationCount = 2048,
+                           prf = #'PBKDF2-params_prf'{
+                                   algorithm = ?'id-hmacWithSHA1',
+                                   parameters = 'NULL'
+                                 }
+                         }
+          },
+
+    {"AES-256-CBC", #'PBES2-params'{
+                      keyDerivationFunc = KDF,
+                      encryptionScheme = EncryptionScheme
+                    }}.
 
 validate_pkey(PKeyPemBin, PassFun) ->
     try public_key:pem_decode(PKeyPemBin) of
