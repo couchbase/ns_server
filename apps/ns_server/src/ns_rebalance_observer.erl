@@ -1209,6 +1209,13 @@ setup_test_ns_rebalance_observer() ->
                            {servers, ['n_0', 'n_1']},
                            {map, [['n_0','n_1'], ['n_1','n_0']]}]}]
                 end),
+    meck:new(ale, [passthrough]),
+    meck:expect(ale, debug,
+                fun (_, _) -> ok end),
+    meck:expect(ale, debug,
+                fun (_, _, _) -> ok end),
+    meck:expect(ale, debug,
+                fun (_, _, _, _) -> ok end),
     {ok, Pid} = gen_server:start_link(?MODULE,
                                       {[], [{active_nodes, [n1, n0]}],
                                        rebalance, ?REBALANCE_ID},
