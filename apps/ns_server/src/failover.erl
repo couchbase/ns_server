@@ -1360,8 +1360,10 @@ transaction_test_setup(FailedNodes) ->
     BConfig = ns_bucket:get_buckets(Snapshot),
 
     meck:expect(ns_bucket, remove_servers_from_bucket,
-                fun (_, Nodes) ->
-                        ?assertEqual(FailedNodes, Nodes)
+                fun (BCfg, Nodes) ->
+                        ?assertEqual(FailedNodes, Nodes),
+                        Servers = ns_bucket:get_servers(BCfg) -- Nodes,
+                        ns_bucket:update_servers(Servers, BCfg)
                 end),
     meck:expect(ns_bucket, update_buckets_config,
                 fun (BucketsUpdates) ->
@@ -1443,7 +1445,8 @@ failover_transaction_test_body() ->
           {bucket,"B2",props},
           [{servers,[b,c]}, {fastForwardMap,undefined},
            {map,[]}, {type,membase}]},
-         {set,{bucket,"B3",props},ok},
+         {set,{bucket,"B3",props},
+          [{servers,[b,c]},{type,memcached},{map,[]}]},
          {set,
           {bucket,"B4",props},
           [{servers,[b,c]}, {fastForwardMap,undefined},
