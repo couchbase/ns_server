@@ -14,8 +14,12 @@
 -include("ns_common.hrl").
 -include("pipes.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
+-include("cb_cluster_secrets.hrl").
 
 -behaviour(replicated_storage).
+
+-define(ENCRYPTION_MAGIC, 45).
+-define(RESAVE_TIMEOUT_MS, 120000).
 
 -export([start_link/5, set/3, set/4,
          change_multiple/2, change_multiple/3, delete/2, delete/3, get/2, get/3,
@@ -26,7 +30,7 @@
          get_id/1, get_value/1, find_doc/2, all_docs/2,
          get_revision/1, set_revision/2, is_deleted/1, save_docs/2,
          handle_mass_update/3, on_replicate_in/1, on_replicate_out/1,
-         is_higher_priority/2]).
+         is_higher_priority/2, apply_keys_and_resave/1, get_key_ids_in_use/1]).
 
 %% unit test helpers
 -export([toy_init/1, toy_set/3, toy_select_with_update/4]).
@@ -152,6 +156,12 @@ handle_mass_update({Name, KeySpec, N, UpdateFun}, Updater, _State) ->
     Errors = [{Id, Error} || {#docv2{id = Id}, Error} <- RawErrors],
     {Errors, ParentState}.
 
+apply_keys_and_resave(Name) ->
+    gen_server:call(Name, apply_encryption_keys, ?RESAVE_TIMEOUT_MS).
+
+get_key_ids_in_use(Name) ->
+    gen_server:call(Name, get_key_ids_in_use, ?RESAVE_TIMEOUT_MS).
+
 init([Name, ChildModule, InitParams, Path, Replicator]) ->
     ChildState = ChildModule:init(InitParams),
     replicated_storage:announce_startup(Replicator),
@@ -166,14 +176,42 @@ init_ets(Name, Access) ->
 
 init_after_ack(State = #state{name = TableName}) ->
     Start = os:timestamp(),
-    cb_dets_utils:setup_callbacks(fun erlang:term_to_binary/1,
-                                  fun erlang:binary_to_term/1),
+
+    {ok, DekSnapshot} = cb_crypto:fetch_deks_snapshot(configDek),
+    set_deks_snapshot(DekSnapshot),
+    cb_dets_utils:setup_callbacks(fun encrypt_term/1,
+                                  fun decrypt_term/1),
     ok = open(State),
     ?log_debug("Loading ~p items, ~p words took ~pms",
                [ets:info(TableName, size),
                 ets:info(TableName, memory),
                 timer:now_diff(os:timestamp(), Start) div 1000]),
     State.
+
+encrypt_term(Term) ->
+    Bin = term_to_binary(Term),
+    case cb_crypto:encrypt(Bin, <<>>, get_deks_snapshot()) of
+        {ok, EncryptedData} ->
+            Version = 0,
+            Size = byte_size(EncryptedData),
+            <<?ENCRYPTION_MAGIC, Version, Size:32/unsigned-integer,
+              EncryptedData/binary>>;
+        {error, no_active_key} ->
+            Bin
+    end.
+
+decrypt_term(<<131, _/binary>> = D) ->
+    binary_to_term(D);
+decrypt_term(<<?ENCRYPTION_MAGIC, 0, Size:32/unsigned-integer, Data:Size/binary,
+             _Rest/binary>>) ->
+    {ok, Decrypted} = cb_crypto:decrypt(Data, <<>>, get_deks_snapshot()),
+    binary_to_term(Decrypted).
+
+set_deks_snapshot(DeksSnapshot) ->
+    ok = persistent_term:put(dets_deks_snapshot, DeksSnapshot).
+
+get_deks_snapshot() ->
+    persistent_term:get(dets_deks_snapshot, undefined).
 
 open(#state{path = Path, name = TableName}) ->
     ?log_debug("Opening file ~p", [Path]),
@@ -189,16 +227,21 @@ open(#state{path = Path, name = TableName}) ->
             ok = do_open(Path, TableName, 1)
     end.
 
+dets_opts(Path) ->
+    ASave = ns_config:read_key_fast(replicated_dets_auto_save, 60000),
+    [{type, set},
+     {auto_save, ASave},
+     {keypos, #docv2.id},
+     {file, Path}].
+
 do_open(_Path, _TableName, 0) ->
     error;
 do_open(Path, TableName, Tries) ->
-    ASave = ns_config:read_key_fast(replicated_dets_auto_save, 60000),
-    case cb_dets:open_file(TableName,
-                           [{type, set},
-                            {auto_save, ASave},
-                            {keypos, #docv2.id},
-                            {file, Path}]) of
+    Opts = dets_opts(Path),
+    case cb_dets:open_file(TableName, Opts) of
         {ok, TableName} ->
+            %% Resaving to make sure latest encryption key is used
+            ok = resave_dets(TableName, Opts),
             DocSpec = #docv2{id = '_', value = '_', props = '_'},
             MatchSpec = [{DocSpec, [], ['$_']}],
             pipes:foreach(
@@ -223,6 +266,47 @@ do_open(Path, TableName, Tries) ->
             ?log_error("Unable to open ~p, Error: ~p", [Path, Error]),
             timer:sleep(1000),
             do_open(Path, TableName, Tries - 1)
+    end.
+
+apply_encryption_keys(#state{name = TableName, path = Path}) ->
+    Old = get_deks_snapshot(),
+    {ok, New} = cb_crypto:fetch_deks_snapshot(configDek),
+    NewWithoutHistDeks = cb_crypto:without_historical_deks(New),
+    case (cb_crypto:get_dek_id(Old) /= cb_crypto:get_dek_id(New)) orelse
+         (NewWithoutHistDeks /= New) of
+        true ->
+            set_deks_snapshot(New),
+            ok = resave_dets(TableName, dets_opts(Path)),
+            set_deks_snapshot(NewWithoutHistDeks);
+        false ->
+            ok
+    end.
+
+resave_dets(TableName, Opts) ->
+    maybe
+        TmpName = list_to_atom(atom_to_list(TableName) ++ "_tmp_table"),
+        CurFilename = proplists:get_value(file, Opts),
+        TmpFilename = CurFilename ++ ".resave.tmp",
+        TmpOptsMap = maps:with([type, keypos], proplists:to_map(Opts)),
+        TmpOpts = proplists:from_map(TmpOptsMap#{file => TmpFilename,
+                                                 ram_file => true}),
+        ok ?= case file:delete(TmpFilename) of
+                  ok -> ok;
+                  {error, enoent} -> ok;
+                  {error, _} = E -> E
+              end,
+        {ok, TmpName} ?= cb_dets:open_file(TmpName, TmpOpts),
+        cb_dets:traverse(
+          TableName,
+          fun (Obj) ->
+              cb_dets:insert(TmpName, Obj),
+              continue
+          end),
+        ok ?= cb_dets:close(TmpName),
+        ok ?= cb_dets:close(TableName),
+        ok ?= misc:atomic_rename(TmpFilename, CurFilename),
+        {ok, TableName} ?= cb_dets:open_file(TableName, Opts),
+        ok
     end.
 
 get_id(#docv2{id = Id}) ->
@@ -299,6 +383,21 @@ on_replicate_in(Doc) ->
 
 on_replicate_out(Doc) ->
     Doc.
+
+handle_call(apply_encryption_keys, _From, #state{} = State) ->
+    ok = apply_encryption_keys(State),
+    {reply, ok, State};
+
+handle_call(get_key_ids_in_use, _From, State) ->
+    DekSnapshot = get_deks_snapshot(),
+    %% This process crashes apply_encryption_keys fails.
+    %% This means that we can't actually use two keys at this place:
+    %% either we use one key (active) or this process is actually down.
+    DekId = case cb_crypto:get_dek_id(DekSnapshot) of
+                undefined -> ?NULL_DEK;
+                Id when is_binary(Id) -> Id
+            end,
+    {reply, {ok, [DekId]}, State};
 
 handle_call(Msg, From, #state{name = TableName,
                               child_module = ChildModule,

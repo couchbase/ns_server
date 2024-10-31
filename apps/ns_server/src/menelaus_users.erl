@@ -89,7 +89,7 @@
 -export([init/1, on_save/2, handle_call/4, handle_info/2]).
 
 -export([start_storage/0, start_replicator/0, start_auth_cache/0,
-         start_lock_cache/0]).
+         start_lock_cache/0, apply_keys_and_resave/0, get_key_ids_in_use/0]).
 
 %% RPC'd from ns_couchdb node
 -export([get_auth_info_on_ns_server/1,
@@ -1305,6 +1305,12 @@ do_upgrade(Version) ->
 
     [] = replicated_dets:select_with_update(
            storage_name(), '_', 100, UpdateFun).
+
+apply_keys_and_resave() ->
+    replicated_dets:apply_keys_and_resave(storage_name()).
+
+get_key_ids_in_use() ->
+    replicated_dets:get_key_ids_in_use(storage_name()).
 
 -ifdef(TEST).
 

@@ -434,6 +434,7 @@ force_config_encryption_keys() ->
         ok ?= memcached_permissions:sync_reload(),
         ok ?= memcached_config_mgr:drop_historical_deks(),
         ok ?= ns_config:resave(),
+        ok ?= menelaus_users:apply_keys_and_resave(),
         ok
     end.
 
@@ -443,9 +444,10 @@ get_config_dek_ids_in_use() ->
         {ok, Ids2} ?= memcached_passwords:get_key_ids_in_use(),
         {ok, Ids3} ?= memcached_permissions:get_key_ids_in_use(),
         {ok, Ids4} ?= ns_config:get_key_ids_in_use(),
+        {ok, Ids5} ?= menelaus_users:get_key_ids_in_use(),
         {ok, lists:map(fun (undefined) -> ?NULL_DEK;
                            (Id) -> Id
-                       end, lists:uniq(Ids1 ++ Ids2 ++ Ids3 ++ Ids4))}
+                       end, lists:uniq(Ids1 ++ Ids2 ++ Ids3 ++ Ids4 ++ Ids5))}
     end.
 
 get_dek_ids_in_use(logDek) ->
