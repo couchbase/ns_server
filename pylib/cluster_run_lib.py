@@ -519,20 +519,19 @@ def wait_nodes_up(num_nodes=1, start_index=0, timeout_s=node_start_timeout_s,
     # Wait for node to be responsive. Returns the last response or error
     def wait_node_up(url):
         last_error = None
-        print_if_verbose(f"Waiting for node {url}", end="")
+        print_if_verbose(f"Waiting for node {url}")
         sys.stdout.flush()
         while time.time() < deadline:
             try:
                 http_get_json(url + "/pools")
                 time_delta = time.time() - start
-                print_if_verbose(f" UP [took: {time_delta:.2f}s timeout:{timeout_s}s]")
+                print_if_verbose(f"UP [took: {time_delta:.2f}s timeout:{timeout_s}s]")
                 return
             except Exception as e:
                 last_error = e.__str__()
-                print_if_verbose('.', end='')
                 sys.stdout.flush()
                 time.sleep(0.5)
-        print_if_verbose(f" TIMEOUT {timeout_s}s")
+        print_if_verbose(f"TIMEOUT {timeout_s}s")
         raise RuntimeError(f"Node {url} wait timed out "
                            f"(last error: {last_error})")
     if node_urls is None:
@@ -827,18 +826,16 @@ def wait_for_rebalance(url, timeout_s=60, interval_s=0.5, wait_balanced=False,
             print(*args, **kwargs)
 
     if is_rebalance_running(url):
-        print_if_verbose(f"Waiting up to {timeout_s}s for rebalance to "
-                         f"finish", end='')
+        print_if_verbose(f"Waiting up to {timeout_s}s for rebalance to finish")
         timeout_time = time.time() + timeout_s
         while is_rebalance_running(url):
             if time.time() > timeout_time:
                 print_if_verbose("Timed out waiting for rebalance")
                 return "timeout"
-            print_if_verbose('.', end='')
             sys.stdout.flush()
             time.sleep(interval_s)
 
-        print_if_verbose(" Finished.")
+        print_if_verbose("Finished.")
 
     err = rebalance_error(url)
     if (err is None and wait_balanced and
