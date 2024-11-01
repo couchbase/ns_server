@@ -42,6 +42,16 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                            balanced=True)
 
     def setup(self):
+        # Wait for orchestrator to move to non kv node.
+        # Here we assume that there is only one non kv node:
+        non_kv_node = None
+        for n in self.cluster.connected_nodes:
+            if Service.KV not in n.get_services():
+                assert non_kv_node is None
+                non_kv_node = n
+        assert non_kv_node is not None
+        self.cluster.wait_for_orchestrator(non_kv_node)
+
         # since master password is per-node, we should use the same node for
         # all HTTP requests in all tests that use node secret management (SM)
         self.sm_node = random.choice(self.cluster.connected_nodes)
