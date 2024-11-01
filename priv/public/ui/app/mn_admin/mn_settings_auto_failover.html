@@ -174,6 +174,29 @@ licenses/APL2.txt.
             {{settingsAutoFailoverCtl.postAutoReprovisionSettingsErrors.maxNodes}}
           </div>
         </div>
+
+         <div class="row flex-left text-medium flex-wrap" ng-if="adminCtl.poolDefault.compat.atLeast80 &&
+                     adminCtl.poolDefault.isEnterprise">
+            <input
+                type="checkbox"
+                ng-disabled="!rbac.cluster.settings.write"
+                ng-model="settingsAutoFailoverCtl.autoFailoverSettings.allowFailoverEphemeralNoReplicas"
+                id="for-auto-failover-no-replica-enable">
+            <label for="for-auto-failover-no-replica-enable" class="margin-right-zero">
+               Allow auto-failover for ephemeral buckets with no replicas
+            </label>
+            <span
+                class="fa-stack icon-info"
+                uib-tooltip="When enabled, this option allows auto-failover to occur even when there are ephemeral
+                buckets with no replicas (so data loss will occur).  The ephemeral buckets without replicas will
+                be rebalanced to add the missing (lost) vBuckets to the remaining nodes, but without data.  (This
+                option makes it possible for auto-failover to be considered even when there are ephemeral buckets
+                with no replicas, benefitting non-ephemeral buckets on the node that do have replicas.)"
+                tooltip-placement="auto top">
+            <span class="icon fa-circle-thin fa-stack-2x"></span>
+            <span class="icon fa-info fa-stack-1x"></span>
+          </span>
+         </div>
       </div>
     </div>
   </div>

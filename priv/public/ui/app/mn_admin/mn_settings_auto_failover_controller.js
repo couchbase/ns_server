@@ -55,6 +55,11 @@ function mnSettingsAutoFailoverController($scope, $q, mnPromiseHelper, mnSetting
         if (mnPoolDefault.export.compat.atLeast72) {
             settings.failoverPreserveDurabilityMajority = vm.autoFailoverSettings.failoverPreserveDurabilityMajority;
         }
+
+        if (mnPoolDefault.export.compat.atLeast80) {
+            settings.allowFailoverEphemeralNoReplicas =
+                vm.autoFailoverSettings.allowFailoverEphemeralNoReplicas;
+        }
     }
 
     return settings;
