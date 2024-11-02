@@ -888,9 +888,11 @@ settings(Req, Key, Settings) ->
     put(AuditKey, Req, [{settings, {Settings2}}]).
 
 start_log_collection(Req, Nodes, BaseURL, Options) ->
+    Sanitized = lists:map(fun ({encr_password, _}) -> {encr_password, "******"};
+                              (KV) -> KV
+                          end, Options),
     put(start_log_collection, Req,
-        [{nodes, {list, Nodes}}, {base_url, BaseURL}] ++
-            Options).
+        [{nodes, {list, Nodes}}, {base_url, BaseURL}] ++ Sanitized).
 
 modify_log_redaction_settings(Req, Settings) ->
     put(modify_log_redaction_settings, Req,

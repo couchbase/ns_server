@@ -181,7 +181,8 @@ def run_cbcollect(node, path_to_zip, redaction_level=None, task_regexp=None,
         args.extend(["--task-regexp", task_regexp])
 
     if stdin_master_password is not None:
-        args.append("--stdin-password")
+        args.append("--master-password")
+        args.append("--use-stdin")
 
     print(f'args: {args}\nenv: {env}')
     p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,

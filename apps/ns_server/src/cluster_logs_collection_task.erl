@@ -219,18 +219,17 @@ wait_child(P, Node, Subtask) ->
 do_run_node_collection(Node, BaseURL, TimestampS, Options) ->
     get_token(collect_throttle),
     ?log_debug("Starting collection task for: ~p", [{Node, BaseURL, TimestampS, Options}]),
-    OptionsWithSalt =
-        case proplists:get_value(redact_salt_fun, Options) of
-            undefined ->
-                Options;
-            Fun ->
-                [{redact_salt, Fun()} | Options]
-        end,
+
+    PreparedOptsions =
+        lists:map(fun ({redact_salt_fun, Fun}) -> {redact_salt, Fun()};
+                      ({encr_password, Pass}) -> {encr_password, ?UNHIDE(Pass)};
+                      (KV) -> KV
+                  end, Options),
 
     {ok, P, Path} = start_subtask(Node, collection,
                                   cluster_logs_collection_task,
                                   start_collection_per_node,
-                                  [TimestampS, self(), OptionsWithSalt]),
+                                  [TimestampS, self(), PreparedOptsions]),
     update_ets_status({{Node, collection}, started, Path}),
     case wait_child(P, Node, collection) of
         ok ->
@@ -295,16 +294,24 @@ start_collection_per_node(TimestampS, Parent, Options) ->
                                 extract_hidden_pass,
                                 [], 30000),
 
-    PasswordInput = case ?UNHIDE(HiddenMasterPass) of
-                        undefined -> undefined;
-                        "" -> undefined;
-                        P -> ?HIDE(P ++ "\n")
-                    end,
-    IsMasterPassSet = (PasswordInput /= undefined),
+    MasterPasswordInput = case ?UNHIDE(HiddenMasterPass) of
+                              undefined -> undefined;
+                              "" -> undefined;
+                              P -> ?HIDE(P ++ "\n")
+                          end,
+    IsMasterPassSet = (MasterPasswordInput /= undefined),
+
+    EncrPasswordInput =
+        case proplists:get_value(encr_password, Options) of
+            undefined -> undefined;
+            EncryptionPassword -> ?HIDE(EncryptionPassword ++ "\n")
+        end,
+    IsEncrPasswordInputSet = (EncrPasswordInput /= undefined),
 
     Args0 = ["--watch-stdin"] ++ MaybeLogRedaction ++
         MaybeTmpDir ++ ["--initargs=" ++ InitargsFilename, Filename] ++
-        MaybeTaskRegexp ++ ["--stdin-password" || IsMasterPassSet],
+        MaybeTaskRegexp ++ ["--master-password" || IsMasterPassSet] ++
+        ["--encrypt-unredacted" || IsEncrPasswordInputSet] ++ ["--use-stdin"],
 
     ExtraArgs =
         ns_config:search_node_with_default(cbcollect_info_extra_args, []),
@@ -315,11 +322,14 @@ start_collection_per_node(TimestampS, Parent, Options) ->
     ?log_debug("spawning collectinfo:~n"
                "  Args: ~p~n"
                "  Env: ~p", [Args -- MaybeLogRedaction, Env]),
+
+    Inputs = [MasterPasswordInput || IsMasterPassSet] ++
+             [EncrPasswordInput || IsEncrPasswordInputSet],
+
     {Status, Output} =
         misc:run_external_tool(
           path_config:component_path(bin, "cbcollect_info"),
-          Args, Env, [graceful_shutdown] ++
-                     [{hidden_input, PasswordInput} || IsMasterPassSet]),
+          Args, Env, [graceful_shutdown, {hidden_inputs, Inputs}]),
     Duration = erlang:monotonic_time(second) - TStart,
     case Status of
         0 ->

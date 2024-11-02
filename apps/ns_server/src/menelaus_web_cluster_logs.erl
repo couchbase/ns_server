@@ -333,6 +333,12 @@ parse_validate_collect_params(Params) ->
                           [{error, missing_customer}]
                   end,
 
+    EncryptionPassword =
+        case proplists:get_value("encryptionPassword", Params) of
+            undefined -> [];
+            P -> [{encr_password, ?HIDE(P)}]
+        end,
+
     BasicErrors = [E || {error, E} <- NodesRV ++ TmpDir ++ LogDir ++
                             MaybeUploadProxy ++ RedactLevel ++
                             RedactSalt ++ MaybeUpload ++
@@ -349,7 +355,7 @@ parse_validate_collect_params(Params) ->
                           end,
             Options = RedactLevel ++ RedactSalt ++ TmpDir ++
                 LogDir ++ UploadProxy ++ BypassReachabilityChecks ++
-                TaskRegExp,
+                TaskRegExp ++ EncryptionPassword,
             {ok, Nodes, Upload, Options};
         _ ->
             {errors, BasicErrors}

@@ -33,7 +33,8 @@ import array
 import mmap
 from io import BytesIO, StringIO
 from typing import BinaryIO, Dict, List, Optional, Iterable, Pattern, Tuple, TypeVar, Union, IO, Any, Callable
-from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
+import zipfile
+import pyzipper
 from enum import Enum, unique
 from io import BytesIO, StringIO
 from abc import ABC, abstractmethod
@@ -437,12 +438,23 @@ class ZipStream:
     do one large fsync at the end.
     """
     _fp: FSyncedFile
-    _zipfile: ZipFile
+    _zipfile: Union[pyzipper.AESZipFile, zipfile.ZipFile]
     _prefix: Optional[str]
+    _password: str
 
-    def __init__(self, zipfile: str, prefix: Optional[str]):
-        self._fp = FSyncedFile(zipfile, "wb")
-        self._zipfile = ZipFile(self._fp, mode="w", compression=ZIP_DEFLATED)
+    def __init__(self, zipname: str, prefix: Optional[str], password=None):
+        self._fp = FSyncedFile(zipname, "wb")
+        self._password = password
+        if self._password is not None:
+            self._zipfile = pyzipper.AESZipFile(
+                              self._fp, mode="w",
+                              compression=pyzipper.ZIP_DEFLATED,
+                              encryption=pyzipper.WZ_AES)
+            self._zipfile.setpassword(self._password.encode(LATIN1))
+        else:
+            self._zipfile = zipfile.ZipFile(self._fp, mode="w",
+                                            compression=zipfile.ZIP_DEFLATED)
+
         self._prefix = prefix
 
     def open(self, path: str) -> "ZippedFileStream":
@@ -454,8 +466,16 @@ class ZipStream:
         if self._prefix:
             fullfilename = f"{self._prefix}/{path}"
 
-        zinfo = ZipInfo(fullfilename, date_time=self.get_time_tuple_now())
-        zinfo.compress_type = ZIP_DEFLATED
+        if self._password is not None:
+            zinfo = pyzipper.zipfile_aes.AESZipInfo(
+                      fullfilename,
+                      date_time=self.get_time_tuple_now())
+            zinfo.compress_type = pyzipper.ZIP_DEFLATED
+        else:
+            zinfo = zipfile.ZipInfo(fullfilename,
+                                    date_time=self.get_time_tuple_now())
+            zinfo.compress_type = zipfile.ZIP_DEFLATED
+
         zfile: IO[bytes] = self._zipfile.open(zinfo, mode="w")
         return ZippedFileStream(path, zfile)
 
@@ -1107,7 +1127,8 @@ class TaskRunner:
     zip_name_redacted: Optional[str] = None
 
     def __init__(self, zipfile, verbosity=0, task_regexp="", tmp_dir=None,
-                 salt_value="", prefix=None):
+                 salt_value="", prefix=None, zip_password=None,
+                 redacted_zip_password=None):
         self.verbosity = verbosity
         self.start_time = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
         self.salt_value = salt_value
@@ -1136,11 +1157,13 @@ class TaskRunner:
         AltExit.register(self.finalize)
 
         self.zip_name = zipfile
-        self.zip_out = ZipStream(self.zip_name, prefix)
+        self.zip_out = ZipStream(self.zip_name, prefix,
+                                 password=zip_password)
         redact_zip_file: str = zipfile[:-4] + "-redacted" + zipfile[-4:]
         self.zip_name_redacted = redact_zip_file
         if self.salt_value:
-            self.redacted_zip_out = ZipStream(self.zip_name_redacted, prefix)
+            self.redacted_zip_out = ZipStream(self.zip_name_redacted, prefix,
+                                              password=redacted_zip_password)
 
     def run_tasks(self, *tasks: Task):
         categorized = self._categorize_tasks(*tasks, tmp_dir=self.tmpdir)
@@ -2730,18 +2753,37 @@ def main():
                       help="specifies proxy for upload")
 
     parser.add_option(
-        "--stdin-password",
-        dest="stdin_password",
+        "--use-stdin",
+        dest="stdin_passwords",
         action="store_true",
         default=False,
-        help="Read master password from stdin, format: <password>\\n")
+        help="Read all passwords from stdin, format: <password1>\\n<password2>\\n")
 
     parser.add_option(
-        '--password',
-        dest="password",
+        '--master-password',
+        dest="master_password",
         action="store_true",
         default=False,
-        help='Prompt the user for a master password without echoing')
+        help='Prompt the user for a master password without echoing or read ' \
+             'the password from stdin (if --use-stdin is also specified)')
+
+    parser.add_option(
+        '--encrypt-unredacted',
+        dest="encrypt_unredacted",
+        action="store_true",
+        default=False,
+        help='Prompt the user for a password and AES encrypt ' \
+             'all collected unredacted data. Password is read from stdin if ' \
+             '--use-stdin is also specified')
+
+    parser.add_option(
+        '--encrypt-redacted',
+        dest="encrypt_redacted",
+        action="store_true",
+        default=False,
+        help='Prompt the user for a password and AES encrypt ' \
+             'all collected redacted data. Password is read from stdin if ' \
+             '--use-stdin is also specified')
 
     options, args = parser.parse_args()
 
@@ -2749,17 +2791,36 @@ def main():
         parser.error(
             "incorrect number of arguments. Expecting filename to collect diagnostics into")
 
-    if options.stdin_password and options.password:
-        parser.error("options --password and --stdin-password are " \
-                     "mutually exclusive")
-
     master_password = None
-    if options.stdin_password:
-        log("Reading master password from stdin...")
-        master_password = input()
-    elif options.password:
-        log("Reading master password using getpass...")
-        master_password = getpass.getpass()
+    if options.master_password:
+        if options.stdin_passwords:
+            log("Reading master password from stdin...")
+            master_password = input()
+        else:
+            log("Reading master password using getpass...")
+            prompt = "Master password: "
+            master_password = getpass.getpass(prompt)
+
+    zip_password = None
+    redacted_zip_password = None
+    if options.encrypt_unredacted or options.encrypt_redacted:
+        if options.stdin_passwords:
+            log("Reading zip password from stdin...")
+            zip_p = input()
+        else:
+            log("Reading zip password using getpass...")
+            prompt = 'Password to encrypt collected data: '
+            zip_p = getpass.getpass(prompt)
+            prompt = 'Confirm password to encrypt collected data: '
+            zip_c = getpass.getpass(prompt)
+            if zip_p != zip_c:
+                log('Passwords entered do not match, please retry')
+                sys.exit(1)
+
+        if options.encrypt_unredacted:
+            zip_password = zip_p
+        if options.encrypt_redacted:
+            redacted_zip_password = zip_p
 
     if options.watch_stdin:
         setup_stdin_watcher()
@@ -2925,7 +2986,9 @@ def main():
                         salt_value=salt_value,
                         tmp_dir=options.tmp_dir,
                         verbosity=options.verbosity,
-                        task_regexp=options.task_regexp)
+                        task_regexp=options.task_regexp,
+                        zip_password=zip_password,
+                        redacted_zip_password=redacted_zip_password)
 
     diag_header_task = runner.literal_task(
         "product diag header", "Found server initargs at %s (%d)" %
