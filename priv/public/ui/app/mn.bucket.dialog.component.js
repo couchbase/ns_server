@@ -28,6 +28,7 @@ import {MnPermissionsService} from './mn.permissions.service.js';
 import {MnSettingsAutoCompactionService} from './mn.settings.auto.compaction.service.js';
 import {MnSecuritySecretsService} from './mn.security.secrets.service.js';
 import template from "./mn.bucket.dialog.html";
+import {timeUnitToSeconds} from './constants/constants.js';
 
 export {MnBucketDialogComponent};
 
@@ -150,8 +151,8 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
         }),
         enableEncryptionAtRest: false,
         encryptionAtRestSecretId: null,
-        encryptionAtRestDekRotationInterval: 2592000 / 86_400,
-        encryptionAtRestDekLifetime: 31536000 / 86_400
+        encryptionAtRestDekRotationInterval: timeUnitToSeconds.month / timeUnitToSeconds.day,
+        encryptionAtRestDekLifetime: timeUnitToSeconds.year / timeUnitToSeconds.day
       }))
       .setSource(formData)
       .setPackPipe(pipe(withLatestFrom(this.compatVersion55, this.compatVersion80, this.isEnterprise),

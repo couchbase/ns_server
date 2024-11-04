@@ -49,8 +49,8 @@ let timeUnitToSeconds = {
   hour: 3600,
   day: 86400,
   week: 691200,
-  month: 2678400,
-  year: 31622400
+  month: 2592000,
+  year: 31536000
 };
 
 let docsLimit = 1000;

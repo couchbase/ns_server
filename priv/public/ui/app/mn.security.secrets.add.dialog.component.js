@@ -100,6 +100,8 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         }, {
           'configuration-encryption': false,
           'secrets-encryption': false,
+          'log-encryption': false,
+          'audit-encryption': false
         }))
       })
       .setPackPipe(map(this.packData.bind(this)))

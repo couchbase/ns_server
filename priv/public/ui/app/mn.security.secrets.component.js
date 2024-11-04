@@ -19,6 +19,8 @@ import template from "./mn.security.secrets.html";
 import {MnSecuritySecretsAddDialogComponent} from './mn.security.secrets.add.dialog.component.js';
 import {MnSecuritySecretsEncryptionDialogComponent} from './mn.security.secrets.encryption.dialog.component.js';
 import {Subject} from 'rxjs';
+import {timeUnitToSeconds} from './constants/constants.js';
+import {MnFormService} from './mn.form.service.js';
 
 export {MnSecuritySecretsComponent};
 
@@ -34,19 +36,36 @@ class MnSecuritySecretsComponent extends MnLifeCycleHooksToStream {
     MnPermissions,
     MnSecuritySecretsService,
     MnHelperService,
-    NgbModal
+    NgbModal,
+    MnFormService
   ]}
 
-  constructor(mnPermissions, mnSecuritySecretsService, mnHelperService, modalService) {
+  constructor(mnPermissions, mnSecuritySecretsService, mnHelperService, modalService, mnFormService) {
     super();
+
+    this.secondsInDay = timeUnitToSeconds.day;
+
+    this.getEncryptionAtRest = mnSecuritySecretsService.stream.getEncryptionAtRest;
+    this.getEncryptionAtRestKeys = mnSecuritySecretsService.stream.getEncryptionAtRestKeys;
+    this.mapTypeToNames = mnSecuritySecretsService.mapTypeToNames;
+    this.mapMethodToNames = mnSecuritySecretsService.mapMethodToNames;
+    this.secretsByIds = mnSecuritySecretsService.stream.secretsByIds;
 
     this.modalService = modalService;
     this.permissions = mnPermissions.stream;
+    this.types = mnSecuritySecretsService.types;
 
     this.sorter = mnHelperService.createSorter('creationDateTime', true);
     this.filter = mnHelperService.createFilter(this,
                                                ['name', 'type', 'usage', 'creationDateTime'],
                                                true);
+
+    this.dropForms = mnFormService.create(this)
+      .setPostRequest(mnSecuritySecretsService.stream.postDropAtRestKeys)
+      .trackSubmit()
+      .successMessage("Key was dropped successfully!")
+      .errorMessage("An error occurred dropping the key.")
+      .success(() => mnSecuritySecretsService.stream.updateSecretsList.next());
 
     this.onAddSecretClick = new Subject();
     this.onAddSecretClick
@@ -60,11 +79,14 @@ class MnSecuritySecretsComponent extends MnLifeCycleHooksToStream {
 
     this.onEncryptionAtRestClick = new Subject();
     this.onEncryptionAtRestClick
-      .pipe(withLatestFrom(mnSecuritySecretsService.stream.getSecrets),
+      .pipe(withLatestFrom(mnSecuritySecretsService.stream.getSecrets,
+                           mnSecuritySecretsService.stream.getEncryptionAtRest),
             takeUntil(this.mnOnDestroy))
-      .subscribe(([, secrets]) => {
+      .subscribe(([type, secrets, config]) => {
         const ref = this.modalService.open(MnSecuritySecretsEncryptionDialogComponent);
+        ref.componentInstance.type = type;
         ref.componentInstance.secrets = secrets;
+        ref.componentInstance.config = config;
       });
 
     this.secrets = mnSecuritySecretsService.stream.getSecrets;

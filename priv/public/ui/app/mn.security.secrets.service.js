@@ -9,9 +9,10 @@ licenses/APL2.txt.
 */
 
 import {Injectable} from '@angular/core';
-import {HttpClient, HttpHeaders } from '@angular/common/http';
-import {switchMap, shareReplay} from 'rxjs/operators';
+import {HttpClient, HttpHeaders} from '@angular/common/http';
+import {switchMap, shareReplay, map} from 'rxjs/operators';
 import {BehaviorSubject, combineLatest, timer} from 'rxjs';
+import {keys, groupBy, prop} from 'ramda';
 
 import {MnHttpRequest} from './mn.http.request.js';
 import {singletonGuard} from './mn.core.js';
@@ -32,10 +33,13 @@ class MnSecuritySecretsService {
 
     this.http = http;
     this.stream = {};
-    // this.types = ['config', 'logs', 'audit'];
-    this.types = ['config'];
+
+    this.types = ['config', 'log', 'audit'];
 
     this.stream.updateSecretsList =
+      new BehaviorSubject();
+
+    this.stream.updateEncryptionAtRest =
       new BehaviorSubject();
 
     this.stream.getSecrets =
@@ -45,8 +49,16 @@ class MnSecuritySecretsService {
             shareReplay({refCount: true, bufferSize: 1}));
 
     this.stream.getEncryptionAtRest =
-      (new BehaviorSubject())
+      combineLatest(timer(0, 10000),
+                    this.stream.updateEncryptionAtRest)
       .pipe(switchMap(this.getEncryptionAtRest.bind(this)),
+            shareReplay({refCount: true, bufferSize: 1}));
+
+    this.stream.getEncryptionAtRestKeys =
+      this.stream.getEncryptionAtRest.pipe(map(keys));
+
+    this.stream.secretsByIds = this.stream.getSecrets
+      .pipe(map(groupBy(prop('id'))),
             shareReplay({refCount: true, bufferSize: 1}));
 
     this.stream.deleteSecrets =
@@ -74,17 +86,15 @@ class MnSecuritySecretsService {
       .addSuccess()
       .addError();
 
+    this.stream.postEncryptionAtRestType =
+      new MnHttpRequest(this.postEncryptionAtRestType.bind(this))
+      .addSuccess()
+      .addError();
+
     this.stream.postDropAtRestKeys =
       new MnHttpRequest(this.postDropAtRestKeys.bind(this))
       .addSuccess()
       .addError();
-
-    this.types.forEach(type => {
-      this.stream[type +'PostDropAtRestKeys'] =
-        new MnHttpRequest(this.postDropAtRestKeys.bind(this)(type))
-        .addSuccess()
-        .addError();
-    });
   }
 
   getSecrets() {
@@ -111,11 +121,33 @@ class MnSecuritySecretsService {
     return this.http.post('/settings/security/encryptionAtRest', params, { headers: new HttpHeaders().set("isNotForm", true) });
   }
 
+  postEncryptionAtRestType([type, params]) {
+    return this.http.post('/settings/security/encryptionAtRest/' + encodeURIComponent(type), params, { headers: new HttpHeaders().set("isNotForm", true) });
+  }
+
   postRotateSecret(id) {
     return this.http.post('/controller/rotateSecret/' + encodeURIComponent(id));
   }
 
   postDropAtRestKeys(type) {
-    return () => this.http.post('/controller/dropEncryptionAtRestDeks/' + encodeURIComponent(type));
+    return this.http.post('/controller/dropEncryptionAtRestKeys/' + encodeURIComponent(type));
+  }
+
+  mapTypeToNames(type) {
+    switch (type) {
+      case "config": return "Config";
+      case "log": return "Logs";
+      case "audit": return "Audit";
+      default: return type;
+    }
+  }
+
+  mapMethodToNames(type) {
+    switch (type) {
+      case "disabled": return "Disabled";
+      case "encryption_service": return "Master Password";
+      case "secret": return "Secret";
+      default: return type;
+    }
   }
 }

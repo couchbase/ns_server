@@ -22,6 +22,7 @@ import {MnPermissions} from './ajs.upgraded.providers.js';
 import {MnHttpRequest} from './mn.http.request.js';
 import {MnHelperService} from './mn.helper.service.js';
 import {MnSettingsAutoCompactionService} from './mn.settings.auto.compaction.service.js';
+import {timeUnitToSeconds} from './constants/constants.js';
 
 export {MnBucketsService};
 
@@ -394,8 +395,8 @@ class MnBucketsService {
       autoCompactionSettings,
       enableEncryptionAtRest: false,
       encryptionAtRestSecretId: null,
-      encryptionAtRestDekRotationInterval: 2592000 / 86_400,
-      encryptionAtRestDekLifetime: 31536000 / 86_400
+      encryptionAtRestDekRotationInterval: timeUnitToSeconds.month / timeUnitToSeconds.day,
+      encryptionAtRestDekLifetime: timeUnitToSeconds.year / timeUnitToSeconds.day
     };
   }
 
