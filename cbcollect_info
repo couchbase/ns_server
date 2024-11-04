@@ -1293,25 +1293,36 @@ def make_cbstats_all_buckets_task(kind, memcached_pass_fun, guts):
     return make_cbstats_task(kind, memcached_pass_fun, guts, "-a")
 
 
-def read_local_token(path):
-    token = ""
-    try:
-        with open(path, 'r') as f:
-            token = f.read().rstrip('\n')
-    except IOError as e:
-        log("I/O error(%s): %s" % (e.errno, e.strerror))
-    return token
+def read_local_token(path, gosecrets_cfg_path, master_pass):
+    cbcat_path = find_script("cbcat")
+    args = [cbcat_path, '--with-gosecrets', gosecrets_cfg_path,
+            '--password', '-', path]
+    if master_pass is None:
+        master_pass = ''
+    r = subprocess.run(args, input=master_pass, text=True, capture_output=True)
+
+    if r.returncode == 2: # cbcat returns 2 if and only it is incorrect password
+        log('Could not read localtoken: Invalid master password')
+        return ""
+
+    if r.returncode != 0:
+        log('Could not read localtoken: cbcat returned non zero return ' \
+            f'code: {r.stderr}')
+        return ""
+
+    return r.stdout.rstrip()
 
 
-def get_localtoken_creds_fun(guts):
+def get_localtoken_creds_fun(guts, master_pass):
     path = read_guts(guts, "localtoken_path")
-    return lambda: f"@localtoken:{read_local_token(path)}"
+    gosecrets_cfg_path = read_guts(guts, "gosecrets_cfg_path")
+    return lambda: f"@localtoken:{read_local_token(path, gosecrets_cfg_path, master_pass)}"
 
 
 def get_memcached_password_fun(guts):
     port = read_guts(guts, "rest_port")
     url = "http://%s:%s/diag/password" % (local_url_addr, port)
-    creds_fun = get_localtoken_creds_fun(guts)
+    creds_fun = guts['get_localtoken_creds_fun']
 
     def get_memcached_password():
         command = ["curl", "-sS", "--proxy", "", "-K-", url]
@@ -1708,11 +1719,16 @@ def read_guts(guts, key):
     return guts.get(key, "")
 
 
-def populate_guts_with_additional_info(guts):
+def populate_guts_with_additional_info(guts, master_pass):
     add_db_idx_dirs(guts)
     add_required_data_paths(guts)
     add_bucket_info(guts)
+    add_localtoken_fun(guts, master_pass)
     add_chronicle_snapshot_dir(guts)
+
+
+def add_localtoken_fun(guts, master_pass):
+    guts['get_localtoken_creds_fun'] = get_localtoken_creds_fun(guts, master_pass)
 
 
 def add_chronicle_snapshot_dir(guts):
@@ -1728,6 +1744,7 @@ def add_required_data_paths(guts):
     guts["dist_cfg_path"] = os.path.join(data_dir, "config", "dist_cfg")
     guts["chronicle_dir"] = os.path.join(data_dir, "config", "chronicle")
     guts["localtoken_path"] = os.path.join(data_dir, "localtoken")
+    guts["gosecrets_cfg_path"] = os.path.join(data_dir, "config", "gosecrets.cfg")
 
     rpd = read_guts(guts, "relative_prom_stats_dir")
     guts["prom_stats_dir"] = os.path.join(data_dir, rpd)
@@ -2588,7 +2605,7 @@ def cleanup_old_prometheus_stats(guts):
 
 def post_rest_api(description, api, guts):
     port = read_guts(guts, "rest_port")
-    user_and_password = get_localtoken_creds_fun(guts)()
+    user_and_password = guts['get_localtoken_creds_fun']()
     url = f"http://{local_url_addr}:{port}/{api}"
 
     command = ["curl", "-X", "POST", "-sS", "--proxy", "", "--fail",
@@ -2945,7 +2962,7 @@ def main():
     ipv6 = read_guts(guts, "ipv6") == "true"
     set_local_addr(ipv6)
 
-    populate_guts_with_additional_info(guts)
+    populate_guts_with_additional_info(guts, master_password)
 
     # Obtaining chronicle guts needs ns_config guts
     chronicle_guts = get_server_chronicle_guts(guts, initargs_path,
@@ -2965,7 +2982,7 @@ def main():
 
     all_tasks.extend(make_config_profile_task(guts))
 
-    local_token_creds_fun = get_localtoken_creds_fun(guts)
+    local_token_creds_fun = guts['get_localtoken_creds_fun']
     memcached_password_fun = get_memcached_password_fun(guts)
     zip_node = read_guts(guts, "node")
     zip_filename = args[0]

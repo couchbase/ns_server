@@ -11,6 +11,7 @@ import testlib
 from testlib.util import strings_to_services, Service
 import requests
 import os
+import subprocess
 
 
 class Node:
@@ -148,7 +149,31 @@ class Node:
             self.session = requests.Session()
         return self.session
 
-    def get_localtoken(self):
+    def get_localtoken(self, master_password=None):
         token_path = os.path.join(self.data_path(), "localtoken")
-        with open(token_path, 'r') as f:
-            return f.read().rstrip()
+        if master_password is None:
+            master_password = ''
+        return self.run_cbcat(master_password, token_path)
+
+    def run_cbcat(self, master_password, encrypted_file_path):
+        cbcat_path = testlib.get_utility_path("cbcat")
+        gosecrets_cfg_path = os.path.join(self.data_path(), "config",
+                                          "gosecrets.cfg")
+        args = [cbcat_path, '--with-gosecrets', gosecrets_cfg_path,
+                '--password', '-', encrypted_file_path]
+
+        print(f'running cbcat with args: {args}')
+        r = subprocess.run(args, input=master_password, text=True,
+                           capture_output=True)
+
+        assert r.returncode != 2, \
+               f'Could not read file {encrypted_file_path}: ' \
+               'Invalid master password'
+
+        assert r.returncode == 0, \
+               f'Could not read localtoken: cbcat returned non zero return ' \
+               f'code: {r.returncode} \n' \
+               f'stderr: {r.stderr}\n' \
+               f'stdout: {r.stdout}'
+
+        return r.stdout.rstrip()
