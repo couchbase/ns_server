@@ -385,15 +385,15 @@ group_elements(Proplist, GroupFormatter) ->
                      end, Grouped)).
 
 extract_formatter(Type, TypesFuns) ->
-    extract_formatter(Type, TypesFuns, []).
-extract_formatter({'or', List}, TypesFuns, TypesSeen) ->
+    extract_formatter(Type, TypesFuns, TypesFuns, []).
+extract_formatter({'or', List}, _TypesFuns, AllTypesFuns, TypesSeen) ->
     fun ({ValueType, Value}) ->
         Type = proplists:get_value(ValueType, List),
-        Fun = extract_formatter(Type, TypesFuns, TypesSeen),
+        Fun = extract_formatter(Type, AllTypesFuns, AllTypesFuns, TypesSeen),
         Fun(Value)
     end;
-extract_formatter(Type, [], _) -> error({unknown_type, Type});
-extract_formatter(Type, [F | Tail], TypesSeen) ->
+extract_formatter(Type, [], _, _) -> error({unknown_type, Type});
+extract_formatter(Type, [F | Tail], AllTypesFuns, TypesSeen) ->
     case lists:member(Type, TypesSeen) of
         true -> error({circular_dependency, Type});
         false -> ok
@@ -401,10 +401,12 @@ extract_formatter(Type, [F | Tail], TypesSeen) ->
     try F(Type) of
         #{formatter := Formatter} when is_function(Formatter) -> Formatter;
         #{formatter := SubType} ->
-            extract_formatter(SubType, [F | Tail], [Type|TypesSeen]);
+            extract_formatter(SubType, AllTypesFuns, AllTypesFuns,
+                              [Type|TypesSeen]);
         #{} -> fun (V) -> {value, V} end
     catch
-        error:function_clause -> extract_formatter(Type, Tail, TypesSeen)
+        error:function_clause -> extract_formatter(Type, Tail, AllTypesFuns,
+                                                   TypesSeen)
     end.
 
 extract_validators(Type, TypesFuns) ->
