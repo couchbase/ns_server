@@ -42,7 +42,6 @@ class HardResetTests(testlib.BaseTestSet):
             other_node = self.cluster.connected_nodes[i ^ 1]
             ns_pid = other_node.get_ns_server_pid()
             otp_other_node = other_node.otp_node()
-            initial_orch_node, _ = self.cluster.get_orchestrator_node()
 
             try:
                 # Forcefully pause the other node's ns_server to be able to
@@ -53,25 +52,21 @@ class HardResetTests(testlib.BaseTestSet):
                 # failover other_node (which drops off after SIGSTOP).
                 self.cluster.wait_for_orchestrator(node)
 
-                if initial_orch_node == node.hostname():
-                    # If node was the orchestrator to begin with, standard
-                    # failover fails with quorum_lost.
-                    self.cluster.failover_node(victim_node = other_node,
-                                               graceful=False,
-                                               victim_otp_node=otp_other_node,
-                                               expected_code=500)
-                else:
-                    # If node wasn't the orchestrator, standard failover fails
-                    # with orchestration_unsafe (504) and occasionally with
-                    # leader_activities_error, not_leader when it fails to
-                    # acquire the leader lease.
-                    r = self.cluster.failover_node(victim_node = other_node,
-                                                   graceful=False,
-                                                   victim_otp_node=otp_other_node,
-                                                   expected_code=None)
-                    assert r.status_code in [504, 500]
+                # Hard failover will fail. Poll to wait until the leader lease
+                # is acquired by the possibly new orchestrator.
+                testlib.poll_for_condition(
+                    lambda: self.cluster.failover_node(
+                        victim_node = other_node,
+                        graceful=False,
+                        victim_otp_node=otp_other_node,
+                        expected_code=None).text == "Cannot safely perform a "
+                    "failover at the moment",
+                    sleep_time=0.5,
+                    timeout=60,
+                    retry_on_assert=True)
 
-                # Force unsafe failover now that node is orchestrator.
+                # Force unsafe failover now that node is orchestrator and lease
+                # has been acquired.
                 self.cluster.failover_node(victim_node=other_node,
                                            graceful=False, allow_unsafe=True,
                                            verbose=True,
