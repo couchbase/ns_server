@@ -1033,13 +1033,14 @@ garbage_collect_deks(Kind, #state{deks = DeksInfo} = State) ->
         {ok, #{} = KindDeks} ->
             case call_dek_callback(get_ids_in_use_callback, Kind, []) of
                 {succ, {ok, IdList}} ->
+                    UniqIdList = lists:uniq(IdList),
                     NewKindDeks = KindDeks#{has_unencrypted_data =>
-                                            lists:member(?NULL_DEK, IdList),
+                                            lists:member(?NULL_DEK, UniqIdList),
                                             last_deks_gc_datetime =>
                                             calendar:universal_time()},
                     NewState = State#state{deks = DeksInfo#{
                                                     Kind => NewKindDeks}},
-                    CleanedIdList = lists:delete(?NULL_DEK, IdList),
+                    CleanedIdList = lists:delete(?NULL_DEK, UniqIdList),
                     retire_unused_deks(Kind, CleanedIdList, NewState);
                 {succ, {error, not_found}} ->
                     %% The entity that uses deks does not exist.
