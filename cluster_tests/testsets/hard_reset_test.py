@@ -139,10 +139,18 @@ class HardResetTests(testlib.BaseTestSet):
         self.cluster.wait_for_orchestrator(node)
         otp_other_node = other_node.otp_node()
 
-        # Force unsafe failover now that node is orchestrator.
-        self.cluster.failover_node(victim_node=other_node, graceful=False,
-                                   allow_unsafe=True, verbose=True,
-                                   victim_otp_node=otp_other_node)
+        # Force unsafe failover now that node is orchestrator. Occasionally,
+        # chronicles times out in electing a leader, retry until there is one.
+        testlib.poll_for_condition(
+            lambda: self.cluster.failover_node(
+                victim_node = other_node,
+                graceful=False,
+                allow_unsafe=True,
+                verbose=True,
+                victim_otp_node=otp_other_node).status_code == 200,
+            sleep_time=0.5,
+            timeout=60,
+            retry_on_assert=True)
 
         # Add node back to original cluster
         add_node_fun(other_node, services=HardResetTests.services_to_run)
