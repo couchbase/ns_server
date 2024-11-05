@@ -553,14 +553,23 @@ def assert_http_code(expected_code, res):
     code = res.status_code
     assert code == expected_code, format_http_error(res, [expected_code])
 
+def assert_http_body_string(expected, res):
+    assert res.text == expected, format_res_info(res) + \
+        f" (expected body: {expected})"
 
-def format_http_error(res, expected_codes):
-    expected_codes_str = " or ".join([str(c) for c in expected_codes])
+def format_res_info(res):
     return f"{res.request.method} {res.url} " \
-           f"returned {res.status_code} {res.reason} " \
-           f"(expected {expected_codes_str})" \
+           f"returned {res.status_code} {res.reason}" \
            f", response body: {res.text}"
 
+def format_error(resp, error):
+    if resp == None:
+        return "Error: " + error
+    return format_res_info(resp) + " Error: " + error
+
+def format_http_error(res, expected_codes=None):
+    expected_codes_str = " or ".join([str(c) for c in expected_codes])
+    return format_res_info(res) + f" (expected codes: {expected_codes_str})"
 
 def assert_json_key(expected_key, json, context):
     assert expected_key in json.keys(), \
@@ -568,9 +577,9 @@ def assert_json_key(expected_key, json, context):
     return json[expected_key]
 
 
-def assert_eq(got, expected, name='value'):
-    assert expected == got, f'unexpected {name}: {got}, expected: {expected}'
-
+def assert_eq(got, expected, name='value', resp=None):
+    assert expected == got, \
+        format_error(resp, f'unexpected {name}: {got}, expected: {expected}')
 
 def assert_gt(got, lower_bound, name='value'):
     assert got > lower_bound, \

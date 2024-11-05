@@ -70,7 +70,8 @@ from testsets import \
     node_remap_tests, \
     services_topology_tests, \
     cbcollect_tests, \
-    config_remap_tests
+    config_remap_tests, \
+    metakv2_tests
 
 tmp_cluster_dir = os.path.join(testlib.get_cluster_test_dir(),
                                "test_cluster_data")
