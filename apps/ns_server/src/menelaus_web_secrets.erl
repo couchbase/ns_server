@@ -60,6 +60,8 @@ handle_post_secret(Req) ->
           else
               false ->
                   menelaus_util:web_exception(403, "Forbidden");
+              {error, no_quorum} ->
+                  menelaus_util:web_exception(503, format_error(no_quorum));
               {error, Reason} ->
                   menelaus_util:reply_global_error(Req, format_error(Reason))
           end
@@ -88,6 +90,9 @@ handle_put_secret(IdStr, Req) ->
                           menelaus_util:web_exception(403, "Forbidden");
                       {error, forbidden} ->
                           menelaus_util:web_exception(403, "Forbidden");
+                      {error, no_quorum} ->
+                          menelaus_util:web_exception(503,
+                                                      format_error(no_quorum));
                       {error, not_found} ->
                           menelaus_util:reply_not_found(Req);
                       {error, Reason} ->
@@ -141,6 +146,8 @@ handle_delete_secret(IdStr, Req) ->
             menelaus_util:web_exception(403, "Forbidden");
         {error, not_found} ->
             menelaus_util:reply_not_found(Req);
+        {error, no_quorum} ->
+            menelaus_util:web_exception(503, format_error(no_quorum));
         {error, Reason} ->
             menelaus_util:reply_global_error(Req, format_error(Reason))
     end.
@@ -150,6 +157,8 @@ handle_rotate(IdStr, Req) ->
         ok -> menelaus_util:reply(Req, 200);
         {error, not_found} ->
             menelaus_util:reply_not_found(Req);
+        {error, no_quorum} ->
+            menelaus_util:web_exception(503, format_error(no_quorum));
         {error, Reason} ->
             Msg = iolist_to_binary(format_error(Reason)),
             menelaus_util:reply(Req, Msg, 500, [])
@@ -572,6 +581,8 @@ format_error({used_by, UsedByList}) ->
     lists:flatten(io_lib:format("Can't be removed because ~s", [Formatted]));
 format_error({cycle, _}) ->
     "Circular dependency between secrets";
+format_error(no_quorum) ->
+    "Operation temporarily cannot be performed possibly due to loss of quorum";
 format_error(Reason) ->
     lists:flatten(io_lib:format("~p", [Reason])).
 

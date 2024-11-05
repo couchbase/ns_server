@@ -75,11 +75,13 @@ read(Kind, DekIds) ->
                    cb_cluster_secrets:chronicle_snapshot()) ->
         {ok, dek_id()} | {error, _} when Id :: cb_cluster_secrets:secret_id().
 generate_new(Kind, encryption_service, _Snapshot) ->
-    increment_counter_in_chronicle(Kind, encryption_service),
-    new(Kind, <<"encryptionService">>);
-generate_new(Kind, {secret, Id}, Snapshot) ->
-    increment_counter_in_chronicle(Kind, {secret, Id}),
     maybe
+        ok ?= increment_counter_in_chronicle(Kind, encryption_service),
+        new(Kind, <<"encryptionService">>)
+    end;
+generate_new(Kind, {secret, Id}, Snapshot) ->
+    maybe
+        ok ?= increment_counter_in_chronicle(Kind, {secret, Id}),
         {ok, KekId} ?= cb_cluster_secrets:get_active_key_id(Id, Snapshot),
         new(Kind, KekId)
     end.
@@ -183,10 +185,6 @@ maybe_reencrypt_deks(Kind, Deks, NewEncryptionKeyFun) ->
     case ToReencrypt of
         [] -> no_change;
         _ ->
-            IdsToBeUsed = lists:usort(lists:map(
-                                        fun ({_Dek, {SId, _KId}}) -> SId end,
-                                        ToReencrypt)),
-            [increment_counter_in_chronicle(Kind, Id) || Id <- IdsToBeUsed],
             Errors =
                 lists:filtermap(
                   fun ({#{type := 'raw-aes-gcm',
@@ -198,12 +196,15 @@ maybe_reencrypt_deks(Kind, Deks, NewEncryptionKeyFun) ->
                       ?log_debug("Dek ~p is encrypted with ~p, "
                                  "while correct kek is ~p (~p), will reencrypt",
                                  [DekId, CurKekId, NewKekId, EncMethod]),
-                      case encryption_service:store_dek(
-                             Kind, DekId, DekKey(), NewKekId, CT) of
-                          ok -> false;
+                      maybe
+                          ok ?= increment_counter_in_chronicle(Kind, EncMethod),
+                          ok ?= encryption_service:store_dek(
+                                  Kind, DekId, DekKey(), NewKekId, CT),
+                          false
+                      else
                           {error, Reason} ->
-                              ?log_error("Failed to store key ~p on disk: "
-                                         "~p", [DekId, Reason]),
+                              ?log_error("Failed to reencrypt dek ~p: ~p",
+                                         [DekId, Reason]),
                               {true, {DekId, Reason}}
                       end
                   end, ToReencrypt),
@@ -211,20 +212,18 @@ maybe_reencrypt_deks(Kind, Deks, NewEncryptionKeyFun) ->
     end.
 
 increment_counter_in_chronicle(Kind, SecretId) ->
-    {ok, _} =
-        chronicle_kv:transaction(
-          kv, [?CHRONICLE_DEK_COUNTERS_KEY],
-          fun (Snapshot) ->
-               All = chronicle_compat:get(Snapshot,
-                                          ?CHRONICLE_DEK_COUNTERS_KEY,
-                                          #{default => #{}}),
-               SecretCounters = maps:get(SecretId, All, #{}),
-               Counter = maps:get(Kind, SecretCounters, 0),
-               NewSecretCounters = SecretCounters#{Kind => Counter + 1},
-               NewDEKCounters = All#{SecretId => NewSecretCounters},
-               {commit, [{set, ?CHRONICLE_DEK_COUNTERS_KEY, NewDEKCounters}]}
-          end),
-    ok.
+    cb_cluster_secrets:chronicle_transaction(
+      [?CHRONICLE_DEK_COUNTERS_KEY],
+      fun (Snapshot) ->
+           All = chronicle_compat:get(Snapshot,
+                                      ?CHRONICLE_DEK_COUNTERS_KEY,
+                                      #{default => #{}}),
+           SecretCounters = maps:get(SecretId, All, #{}),
+           Counter = maps:get(Kind, SecretCounters, 0),
+           NewSecretCounters = SecretCounters#{Kind => Counter + 1},
+           NewDEKCounters = All#{SecretId => NewSecretCounters},
+           {commit, [{set, ?CHRONICLE_DEK_COUNTERS_KEY, NewDEKCounters}]}
+      end).
 
 %% Chronicle keys that can trigger dek reencryption, enablement/disablement
 %% of encryption, etc...

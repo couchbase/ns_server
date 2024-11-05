@@ -65,7 +65,8 @@
          is_name_unique/3,
          sanitize_chronicle_cfg/1,
          merge_dek_infos/2,
-         format_dek_issues/1]).
+         format_dek_issues/1,
+         chronicle_transaction/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -218,10 +219,14 @@ get_secret(SecretId, Snapshot) when is_integer(SecretId) ->
             {error, not_found}
     end.
 
--spec add_new_secret(secret_props()) -> {ok, secret_props()} |
-                                        {error, not_supported |
-                                                bad_encrypt_id() |
-                                                bad_usage_change()}.
+-spec add_new_secret(secret_props()) ->
+          {ok, secret_props()} |
+          {error, not_supported |
+                  bad_encrypt_id() |
+                  bad_usage_change() |
+                  inconsistent_graph() |
+                  encryption_service:stored_key_error() |
+                  no_quorum}.
 add_new_secret(Props) ->
     execute_on_master({?MODULE, add_new_secret_internal, [Props]}).
 
@@ -231,11 +236,12 @@ add_new_secret(Props) ->
                   bad_encrypt_id() |
                   bad_usage_change() |
                   inconsistent_graph() |
-                  encryption_service:stored_key_error()}.
+                  encryption_service:stored_key_error() |
+                  no_quorum}.
 add_new_secret_internal(Props) ->
     CurrentDateTime = erlang:universaltime(),
     PropsWTime = Props#{creation_time => CurrentDateTime},
-    RV = chronicle_compat:txn(
+    RV = chronicle_compat_txn(
            fun (Txn) ->
                Snapshot = fetch_snapshot_in_txn(Txn),
                CurList = get_all(Snapshot),
@@ -257,7 +263,7 @@ add_new_secret_internal(Props) ->
                end
             end),
     case RV of
-        {ok, _, Res} ->
+        {ok, Res} ->
             sync_with_all_node_monitors(),
             {ok, Res};
         {error, _} = Error -> Error
@@ -266,7 +272,9 @@ add_new_secret_internal(Props) ->
 -spec replace_secret(secret_id(), map(), fun((secret_props()) -> boolean())) ->
           {ok, secret_props()} |
           {error, not_found | bad_encrypt_id() | bad_usage_change() |
-                  forbidden}.
+                  forbidden | inconsistent_graph() |
+                  encryption_service:stored_key_error() | bad_encrypt_id() |
+                  no_quorum}.
 replace_secret(Id, NewProps, IsSecretWritableFun) ->
     execute_on_master({?MODULE, replace_secret_internal,
                        [Id, NewProps, IsSecretWritableFun]}).
@@ -276,13 +284,14 @@ replace_secret(Id, NewProps, IsSecretWritableFun) ->
           {ok, secret_props()} |
           {error, not_found | bad_encrypt_id() | bad_usage_change() |
                   forbidden | inconsistent_graph() |
-                  encryption_service:stored_key_error() | bad_encrypt_id()}.
+                  encryption_service:stored_key_error() | bad_encrypt_id() |
+                  no_quorum}.
 replace_secret_internal(Id, NewProps, IsSecretWritableFun) ->
     %% Make sure we have most recent information about which secrets are in use
     %% This is needed for verification of 'usage' modification
     maybe_reset_deks_counters(),
     Res =
-        chronicle_compat:txn(
+        chronicle_compat_txn(
           fun (Txn) ->
               maybe
                   Snapshot = fetch_snapshot_in_txn(Txn),
@@ -304,7 +313,7 @@ replace_secret_internal(Id, NewProps, IsSecretWritableFun) ->
               end
            end),
     case Res of
-        {ok, _, ResProps} ->
+        {ok, ResProps} ->
             %% In order to make sure all keys are reencrypted by the time when
             %% the call is finished
             sync_with_all_node_monitors(),
@@ -314,18 +323,19 @@ replace_secret_internal(Id, NewProps, IsSecretWritableFun) ->
     end.
 
 -spec delete_secret(secret_id(), fun((secret_props()) -> boolean())) ->
-          ok | {error, not_found | secret_in_use() | forbidden}.
+          ok | {error, not_found | secret_in_use() | forbidden |
+                       inconsistent_graph() | no_quorum}.
 delete_secret(Id, IsSecretWritableFun) ->
     execute_on_master({?MODULE, delete_secret_internal,
                        [Id, IsSecretWritableFun]}).
 
 -spec delete_secret_internal(secret_id(), fun((secret_props()) -> boolean())) ->
           ok | {error, not_found | secret_in_use() | forbidden |
-                       inconsistent_graph()}.
+                       inconsistent_graph() | no_quorum}.
 delete_secret_internal(Id, IsSecretWritableFun) ->
     %% Make sure we have most recent information about which secrets are in use
     maybe_reset_deks_counters(),
-    RV = chronicle_compat:txn(
+    RV = chronicle_compat_txn(
            fun (Txn) ->
                maybe
                    Snapshot = fetch_snapshot_in_txn(Txn),
@@ -345,7 +355,7 @@ delete_secret_internal(Id, IsSecretWritableFun) ->
                end
            end),
     case RV of
-        {ok, _} ->
+        ok ->
             sync_with_all_node_monitors(),
             ok;
         {error, Reason} ->
@@ -358,13 +368,17 @@ generate_raw_key(Cipher) ->
     #{key_length := Length} = crypto:cipher_info(Cipher),
     crypto:strong_rand_bytes(Length).
 
--spec rotate(secret_id()) -> ok | {error, not_found | not_supported |
-                                          bad_encrypt_id()}.
+-spec rotate(secret_id()) -> ok | {error, not_found | bad_encrypt_id() |
+                                          inconsistent_graph() | not_supported |
+                                          no_quorum}.
 rotate(Id) ->
     execute_on_master({?MODULE, rotate_internal, [Id]}).
 
 -spec rotate_internal(secret_id()) -> ok | {error, not_found |
-                                                   bad_encrypt_id()}.
+                                                   bad_encrypt_id() |
+                                                   inconsistent_graph() |
+                                                   not_supported |
+                                                   no_quorum}.
 rotate_internal(Id) ->
     case rotate_secret_by_id(Id) of
         ok ->
@@ -683,17 +697,22 @@ handle_info({timer, rotate_keks}, #state{proc_type = ?MASTER_PROC} = State) ->
     %% Reason: in case of a crash during rotation we don't want to retry.
     %% Rotation generates keys. If we get stuck in a loop, we can generate
     %% too many keys which can lead to unpredictable results.
-    IdsToRotate = update_secrets(update_next_rotation_time(CurTime, _)),
-    lists:foreach(
-      fun (Id) ->
-          try
-              ok = rotate_secret_by_id(Id)
-          catch
-              C:E:ST ->
-                  ?log_error("Secret #~p rotation crashed: ~p:~p~n~p",
-                             [Id, C, E, ST])
-          end
-      end, IdsToRotate),
+    case update_secrets(update_next_rotation_time(CurTime, _)) of
+        {ok, IdsToRotate} ->
+            lists:foreach(
+              fun (Id) ->
+                  try
+                      ok = rotate_secret_by_id(Id)
+                  catch
+                      C:E:ST ->
+                          ?log_error("Secret #~p rotation crashed: ~p:~p~n~p",
+                                     [Id, C, E, ST])
+                  end
+              end, IdsToRotate);
+        {error, _} ->
+            %% we will retry
+            ok
+    end,
     {noreply, restart_rotation_timer(State)};
 
 handle_info({timer, dek_cleanup} = Msg, #state{proc_type = ?NODE_PROC,
@@ -759,7 +778,10 @@ terminate(_Reason, _State) ->
 %%%===================================================================
 
 -spec rotate_secret_by_id(secret_id()) -> ok | {error, not_found |
-                                                       bad_encrypt_id()}.
+                                                       bad_encrypt_id() |
+                                                       inconsistent_graph() |
+                                                       not_supported |
+                                                       no_quorum}.
 rotate_secret_by_id(Id) ->
     ?log_info("Rotating secret #~b", [Id]),
     case get_secret(Id) of
@@ -773,7 +795,8 @@ rotate_secret_by_id(Id) ->
 -spec rotate_secret(secret_props()) -> ok | {error, not_found |
                                                     bad_encrypt_id() |
                                                     inconsistent_graph() |
-                                                    not_supported}.
+                                                    not_supported |
+                                                    no_quorum}.
 rotate_secret(#{id := Id, type := ?GENERATED_KEY_TYPE}) ->
     maybe
         NewKey = generate_key(erlang:universaltime()),
@@ -788,36 +811,32 @@ rotate_secret(#{id := Id, type := ?GENERATED_KEY_TYPE}) ->
             {error, Reason}
     end;
 rotate_secret(#{id := Id, type := ?AWSKMS_KEY_TYPE}) ->
-    RV = chronicle_kv:transaction(
-           kv, [?CHRONICLE_SECRETS_KEY],
-           fun (Snapshot) ->
-               maybe
-                   {ok, #{type := ?AWSKMS_KEY_TYPE,
-                          data := #{stored_ids := StoredIds} = Data} = Props} ?=
-                       get_secret(Id, Snapshot),
+    chronicle_transaction(
+      [?CHRONICLE_SECRETS_KEY],
+      fun (Snapshot) ->
+          maybe
+              {ok, #{type := ?AWSKMS_KEY_TYPE,
+                     data := #{stored_ids := StoredIds} = Data} = Props} ?=
+                  get_secret(Id, Snapshot),
 
-                   Time = calendar:universal_time(),
-                   NewStoredIds = [#{id => new_key_id(),
-                                     creation_time => Time} | StoredIds],
-                   NewData = Data#{stored_ids => NewStoredIds},
-                   Updated = functools:chain(
-                               Props,
-                               [_#{data => NewData},
-                                set_last_rotation_time_in_props(_, Time),
-                                replace_secret_in_list(_,
-                                                       get_all(Snapshot))]),
-                   true = is_list(Updated),
-                   ok ?= validate_secrets_consistency(Updated),
-                   {commit, [{set, ?CHRONICLE_SECRETS_KEY, Updated}]}
-               else
-                   {error, _} = Error ->
-                       {abort, Error}
-               end
-           end),
-    case RV of
-        {ok, _} -> ok;
-        {error, Reason} -> {error, Reason}
-    end;
+              Time = calendar:universal_time(),
+              NewStoredIds = [#{id => new_key_id(),
+                                creation_time => Time} | StoredIds],
+              NewData = Data#{stored_ids => NewStoredIds},
+              Updated = functools:chain(
+                          Props,
+                          [_#{data => NewData},
+                           set_last_rotation_time_in_props(_, Time),
+                           replace_secret_in_list(_,
+                                                  get_all(Snapshot))]),
+              true = is_list(Updated),
+              ok ?= validate_secrets_consistency(Updated),
+              {commit, [{set, ?CHRONICLE_SECRETS_KEY, Updated}]}
+          else
+              {error, _} = Error ->
+                  {abort, Error}
+          end
+      end);
 rotate_secret(#{type := ?KMIP_KEY_TYPE}) ->
     {error, not_supported}.
 
@@ -931,40 +950,35 @@ replace_secret_in_list(NewProps, List) ->
 -spec add_active_key(secret_id(), kek_props(), boolean()) ->
                         ok | {error, not_found | inconsistent_graph() |
                                      encryption_service:stored_key_error() |
-                                     bad_encrypt_id()}.
+                                     bad_encrypt_id() | no_quorum}.
 add_active_key(Id, #{id := KekId} = Kek,
                true = _UpdateRotationTime) ->
-    RV = chronicle_kv:transaction(
-           kv, [?CHRONICLE_SECRETS_KEY],
-           fun (Snapshot) ->
-               maybe
-                   {ok, #{type := ?GENERATED_KEY_TYPE,
-                          data := SecretData} = SecretProps} ?=
-                       get_secret(Id, Snapshot),
-                   #{keys := CurKeks} = SecretData,
-                   Time = calendar:universal_time(),
-                   Updated = functools:chain(
-                               SecretProps,
-                               [set_keys_in_props(_, [Kek | CurKeks]),
-                                set_active_key_in_props(_, KekId),
-                                set_last_rotation_time_in_props(_, Time)]),
-                   {ok, FinalProps} ?= ensure_secret_encrypted_txn(Updated,
-                                                                   Snapshot),
-                   NewList = replace_secret_in_list(FinalProps,
-                                                    get_all(Snapshot)),
-                   true = is_list(NewList),
-                   ok ?= validate_secrets_consistency(NewList),
-                   {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewList}]}
-               else
-                   {error, _} = Error ->
-                       {abort, Error}
-               end
-           end),
-
-    case RV of
-        {ok, _} -> ok;
-        {error, Reason} -> {error, Reason}
-    end.
+    chronicle_transaction(
+      [?CHRONICLE_SECRETS_KEY],
+      fun (Snapshot) ->
+          maybe
+              {ok, #{type := ?GENERATED_KEY_TYPE,
+                     data := SecretData} = SecretProps} ?=
+                  get_secret(Id, Snapshot),
+              #{keys := CurKeks} = SecretData,
+              Time = calendar:universal_time(),
+              Updated = functools:chain(
+                          SecretProps,
+                          [set_keys_in_props(_, [Kek | CurKeks]),
+                           set_active_key_in_props(_, KekId),
+                           set_last_rotation_time_in_props(_, Time)]),
+              {ok, FinalProps} ?= ensure_secret_encrypted_txn(Updated,
+                                                              Snapshot),
+              NewList = replace_secret_in_list(FinalProps,
+                                               get_all(Snapshot)),
+              true = is_list(NewList),
+              ok ?= validate_secrets_consistency(NewList),
+              {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewList}]}
+          else
+              {error, _} = Error ->
+                  {abort, Error}
+          end
+      end).
 
 -spec ensure_all_keks_on_disk() -> ok | {error, list()}.
 ensure_all_keks_on_disk() ->
@@ -1679,10 +1693,10 @@ get_active_key_id_from_secret(#{type := ?KMIP_KEY_TYPE,
 get_active_key_id_from_secret(#{}) ->
     {error, not_supported}.
 
--spec maybe_reencrypt_secrets() -> ok.
+-spec maybe_reencrypt_secrets() -> ok | {error, no_quorum}.
 maybe_reencrypt_secrets() ->
-    RV = chronicle_kv:transaction(
-           kv, [?CHRONICLE_SECRETS_KEY],
+    RV = chronicle_transaction(
+           [?CHRONICLE_SECRETS_KEY],
            fun (Snapshot) ->
                All = get_all(Snapshot),
                KeksMap =
@@ -1717,10 +1731,11 @@ maybe_reencrypt_secrets() ->
                end
            end),
     case RV of
-        {ok, _} ->
+        ok ->
             sync_with_node_monitor(),
             ok;
-        no_change -> ok
+        no_change -> ok;
+        {error, _} = Error -> Error
     end.
 
 -spec ensure_secret_encrypted_txn(secret_props(), chronicle_snapshot()) ->
@@ -2324,10 +2339,10 @@ can_secret_props_encrypt_dek_kind(#{usage := UsageList}, DekKind) ->
 
 -spec update_secrets(
         fun((secret_props()) -> {value, secret_props()} | false)) ->
-                                                    [UpdatedIds :: secret_id()].
+          {ok, [UpdatedIds :: secret_id()]} | {error, no_quorum}.
 update_secrets(Fun) ->
-    RV = chronicle_kv:transaction(
-           kv, [?CHRONICLE_SECRETS_KEY],
+    RV = chronicle_transaction(
+           [?CHRONICLE_SECRETS_KEY],
            fun (Snapshot) ->
                {NewList, ChangedIds} =
                    lists:mapfoldl(fun (#{id := Id} = S, Acc) ->
@@ -2346,8 +2361,9 @@ update_secrets(Fun) ->
                end
            end),
     case RV of
-        {ok, _, UpdatedIds} -> UpdatedIds;
-        no_change -> []
+        {ok, UpdatedIds} -> {ok, UpdatedIds};
+        no_change -> {ok, []};
+        {error, _} = Error -> Error
     end.
 
 -spec update_next_rotation_time(calendar:datetime(), secret_props()) ->
@@ -2424,7 +2440,7 @@ sync_with_all_node_monitors() ->
 %% what secrets are used to encrypt those deks. Then it removes all dek types
 %% from the counters map that don't use the secret anymore.
 -spec maybe_reset_deks_counters() ->
-          ok | {error, retry | node_errors | missing_nodes}.
+          ok | {error, retry | node_errors | missing_nodes | no_quorum}.
 maybe_reset_deks_counters() ->
     AllNodes = ns_node_disco:nodes_wanted(),
     MissingNodes = AllNodes -- ns_node_disco:nodes_actual(),
@@ -2493,12 +2509,13 @@ maybe_reset_deks_counters() ->
 -spec reset_dek_counters(
         #{EncryptionMethod := Counters},
         #{cb_deks:dek_kind() => [cb_deks:dek()]}) ->
-        ok when EncryptionMethod :: {secret, secret_id()} | encryption_service,
-                Counters :: #{cb_deks:dek_kind() := non_neg_integer()}.
+        ok | {error, no_quorum}
+        when EncryptionMethod :: {secret, secret_id()} | encryption_service,
+             Counters :: #{cb_deks:dek_kind() := non_neg_integer()}.
 reset_dek_counters(OldCountersMap, ActualDeksUsageInfo) ->
     Res =
-        chronicle_kv:transaction(
-          kv, [?CHRONICLE_SECRETS_KEY, ?CHRONICLE_DEK_COUNTERS_KEY],
+        chronicle_transaction(
+          [?CHRONICLE_SECRETS_KEY, ?CHRONICLE_DEK_COUNTERS_KEY],
           fun (Snapshot) ->
               reset_dek_counters_txn(OldCountersMap, ActualDeksUsageInfo,
                                      Snapshot)
@@ -2506,7 +2523,8 @@ reset_dek_counters(OldCountersMap, ActualDeksUsageInfo) ->
 
     case Res of
         nothing_changed -> ok;
-        {ok, _} -> ok
+        ok -> ok;
+        {error, _} = Error -> Error
     end.
 
 reset_dek_counters_txn(OldCountersMap, ActualDeksUsageInfo, Snapshot) ->
@@ -2801,6 +2819,28 @@ extract_dek_info(Kind, #state{deks = DeksInfo}) ->
         end
     else
         error -> {error, not_found}
+    end.
+
+chronicle_transaction(Keys, Fun) ->
+    try chronicle_kv:transaction(kv, Keys, Fun) of
+        {ok, _Rev} -> ok;
+        {ok, _Rev, Res} -> {ok, Res};
+        Else -> Else
+    catch
+        exit:timeout ->
+            ?log_error("Chronicle transaction failed with reason timeout"),
+            {error, no_quorum}
+    end.
+
+chronicle_compat_txn(Fun) ->
+    try chronicle_compat:txn(Fun) of
+        {ok, _Rev} -> ok;
+        {ok, _Rev, Res} -> {ok, Res};
+        Else -> Else
+    catch
+        exit:timeout ->
+            ?log_error("Chronicle transaction failed with reason timeout"),
+            {error, no_quorum}
     end.
 
 -ifdef(TEST).
