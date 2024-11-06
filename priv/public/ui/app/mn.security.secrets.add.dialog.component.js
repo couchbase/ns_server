@@ -19,6 +19,7 @@ import {FormBuilder} from '@angular/forms';
 import {UIRouter} from '@uirouter/angular';
 import {map, startWith, takeUntil, first} from 'rxjs/operators';
 import {MnSecuritySecretsService} from './mn.security.secrets.service.js';
+import {MnHelperService} from "./mn.helper.service.js";
 
 import {MnPermissions} from './ajs.upgraded.providers.js';
 
@@ -44,18 +45,19 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
     UIRouter,
     FormBuilder,
     MnPermissions,
+    MnHelperService
   ]}
 
-  constructor(mnSecuritySecretsService, activeModal, mnFormService, uiRouter, formBuilder, mnPermissions) {
+  constructor(mnSecuritySecretsService, activeModal, mnFormService, uiRouter, formBuilder, mnPermissions, mnHelperService) {
     super();
 
     this.formBuilder = formBuilder;
     this.activeModal = activeModal;
-    this.mnPermissions = mnPermissions;
     this.permissions = mnPermissions.stream;
     this.mnSecuritySecretsService = mnSecuritySecretsService;
     this.mnFormService = mnFormService;
     this.uiRouter = uiRouter;
+    this.toggler = mnHelperService.createToggle();
   }
 
   ngOnInit() {
@@ -66,10 +68,9 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
   }
 
   doInit(buckets) {
-    this.permissionsAdminSecurityWrite = this.mnPermissions.stream
-      .pipe(map(permissions => permissions.cluster.admin.security.write));
-
-    this.bucketNames = ['*', ...buckets || []];
+    this.bucketNames = buckets || [];
+    this.options = ['secrets', 'bucket', ...this.mnSecuritySecretsService.types];
+    this.mapTypeToNames = this.mnSecuritySecretsService.mapTypeToNames;
 
     this.form = this.mnFormService.create(this)
       .setFormGroup({
@@ -94,15 +95,16 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
           configFile: "",
           profile: ""
         }),
-        usage: this.formBuilder.group(this.bucketNames.reduce((acc, bucket) => {
-          acc['bucket-encryption-' + bucket] = false;
+        usageBuckets: this.formBuilder.group(this.bucketNames.reduce((acc, bucket) => {
+          //set false by default for editing mode and true for adding mode
+          acc['bucket-encryption-' + bucket] = !this.item;
           return acc;
-        }, {
-          'configuration-encryption': false,
-          'secrets-encryption': false,
-          'log-encryption': false,
-          'audit-encryption': false
-        }))
+        }, {})),
+        usage: this.formBuilder.group(this.options.reduce((acc, v) => {
+          //set false by default for editing mode and true for adding mode
+          acc[v + '-encryption'] = !this.item;
+          return acc;
+        }, {}))
       })
       .setPackPipe(map(this.packData.bind(this)))
       .setPostRequest(this.item ? this.mnSecuritySecretsService.stream.putSecret : this.mnSecuritySecretsService.stream.postSecret)
@@ -115,8 +117,6 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
 
       this.filteredSecrets = this.secrets.filter(secret => secret.usage.find(u => u.includes('secrets-encryption')));
 
-      this.form.group.disable();
-
       this.httpError = this.item ?
         this.mnSecuritySecretsService.stream.putSecret.error : this.mnSecuritySecretsService.stream.postSecret.error;
 
@@ -124,17 +124,29 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         this.form.group.get('type').valueChanges
         .pipe(startWith(this.form.group.get('type').value));
 
-      this.isAutoRotationEnabled =
+      const isAutoRotationEnabled =
         this.form.group.get('generated-secret.autoRotation').valueChanges
         .pipe(startWith(this.form.group.get('generated-secret.autoRotation').value));
 
-      this.permissionsAdminSecurityWrite
-        .pipe(takeUntil(this.mnOnDestroy))
-        .subscribe(this.maybeEnableForm.bind(this));
+      const isDataEnabled =
+        this.form.group.get('usage.bucket-encryption').valueChanges
+        .pipe(startWith(this.form.group.get('usage.bucket-encryption').value));
 
-      this.isAutoRotationEnabled
+      const usageBucketsChanged =
+        this.form.group.get('usageBuckets').valueChanges
+        .pipe(startWith(this.form.group.get('usageBuckets').value));
+
+      isDataEnabled
+        .pipe(takeUntil(this.mnOnDestroy))
+        .subscribe(this.maybeToggleAllBuckets.bind(this));
+
+      isAutoRotationEnabled
         .pipe(takeUntil(this.mnOnDestroy))
         .subscribe(this.maybeEnableRotation.bind(this));
+
+      usageBucketsChanged
+        .pipe(takeUntil(this.mnOnDestroy))
+        .subscribe(this.handleUsageBucketsChange.bind(this));
 
     if (this.item) {
       setTimeout(() => {
@@ -144,6 +156,25 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         this.form.group.get('aws-secret.keyARN').disable();
       });
     }
+  }
+
+  isAllUsesSelected() {
+    return Object.values(this.form.group.get('usage').value).every(v => v);
+  }
+
+  getSelected() {
+    return this.options.filter(v => this.form.group.get('usage').value[v + '-encryption']).map(this.mapTypeToNames).join(', ');
+  }
+
+  maybeToggleAllBuckets(value) {
+    this.form.group.get('usageBuckets').patchValue(this.bucketNames.reduce((acc, bucket) => {
+      acc['bucket-encryption-' + bucket] = value;
+      return acc;
+    }, {}), {emitEvent: false});
+  }
+
+  handleUsageBucketsChange(value) {
+    this.form.group.get('usage.bucket-encryption').setValue(Object.values(value).every(v => v), {emitEvent: false});
   }
 
   maybeEnableRotation(enable) {
@@ -164,7 +195,15 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
       name: item.name,
       type: item.type,
       usage: item.usage.reduce((acc, v) => {
-        acc[v] = true;
+        //it is safe to unpack both usage and usageBuckets equally since
+        //angular's patchValue filters out unknown keys
+        acc[this.unpackUsage(v)] = true;
+        return acc;
+      }, {}),
+      usageBuckets: item.usage.reduce((acc, v) => {
+        //it is safe to unpack both usage and usageBuckets equally since
+        //angular's patchValue filters out unknown keys
+        acc[this.unpackUsage(v)] = true;
         return acc;
       }, {})
     };
@@ -199,14 +238,14 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
 
   packData() {
     let value = this.form.group.getRawValue();
-    let {usage, name, type, 'generated-secret': generatedSecret, 'aws-secret': awsSecret} = value;
+    let {usage, usageBuckets, name, type, 'generated-secret': generatedSecret, 'aws-secret': awsSecret} = value;
 
     let data = {};
     if (type === 'auto-generated-aes-key-256') {
       const {rotationIntervalInDays, nextRotationTime, autoRotation, encryptBy, encryptSecretId} = generatedSecret;
       data = {autoRotation, encryptBy};
       if (encryptBy === 'clusterSecret') {
-        data.encryptSecretId = encryptSecretId?.id ?? -1
+        data.encryptSecretId = encryptSecretId?.id ?? -1;
       }
       if (autoRotation) {
         data.rotationIntervalInDays = rotationIntervalInDays;
@@ -222,7 +261,32 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
       data = awsSecret;
     }
 
-    return [{ name, type, usage: Object.keys(usage).filter(v => usage[v]), data}, this.item?.id];
+    let usageToSend = Object.keys(usage).filter(v => usage[v]).map(this.packUsage);
+    usageToSend = usageToSend.concat(Object.keys(usageBuckets).filter(v => usageBuckets[v]));
+
+    return [{ name, type, usage: usageToSend, data}, this.item?.id];
+  }
+
+  packUsage(usage) {
+    switch (usage) {
+      case 'config-encryption':
+        return 'configuration-encryption';
+      case 'bucket-encryption':
+          return 'bucket-encryption-*';
+      default:
+        return usage;
+    }
+  }
+
+  unpackUsage(usage) {
+    switch (usage) {
+      case 'configuration-encryption':
+        return 'config-encryption';
+      case 'bucket-encryption-*':
+        return 'bucket-encryption';
+      default:
+        return usage;
+    }
   }
 
   valuesMapping(item) {
