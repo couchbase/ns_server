@@ -1916,16 +1916,10 @@ get_dek_ids_in_use(BucketName) ->
                case mc_binary:quick_stats(
                       Sock, StatName,
                       fun (Name, V, _Acc) when Name == StatName ->
-                          %% Format:
-                          %%  {
-                          %%   "key1": [vbucket1, vbucket2, ...],
-                          %%   "key2": [vbucket3, vbucket4, ...],
-                          %%    ...
-                          %%  }
-                          {Proplist} = ejson:decode(V),
-                          lists:map(fun ({<<"unencrypted">>, _}) -> ?NULL_DEK;
-                                        ({K, _}) -> K
-                                    end, Proplist)
+                          %% Format: ["key1", "key2", ...],
+                          lists:map(fun (<<"unencrypted">>) -> ?NULL_DEK;
+                                        (K) -> K
+                                    end, ejson:decode(V))
                       end, []) of
                    {ok, Ids} ->
                        {reply, {ok, Ids}};
