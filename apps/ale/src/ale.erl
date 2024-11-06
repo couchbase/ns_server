@@ -65,7 +65,8 @@
 
 -record(state, {compile_frozen = false :: boolean(),
                 sinks                  :: dict:dict(),
-                loggers                :: dict:dict()}).
+                loggers                :: dict:dict(),
+                historical_deks        :: dict:dict()}).
 
 -record(logger, {name      :: atom(),
                  loglevel  :: loglevel(),
@@ -135,6 +136,12 @@ set_sink_loglevel(LoggerName, SinkName, LogLevel) ->
 get_sink_loglevel(LoggerName, SinkName) ->
     gen_server:call(?MODULE, {get_sink_loglevel, LoggerName, SinkName}).
 
+set_log_deks_snapshot(LogDS) ->
+    gen_server:call(?MODULE, {set_log_deks_snapshot, LogDS}, infinity).
+
+get_all_used_deks() ->
+    gen_server:call(?MODULE, get_all_used_deks, infinity).
+
 call_disk_sink(SinkName, Call, Timeout) ->
     try
         gen_server:call(ale_utils:sink_id(SinkName), Call, Timeout)
@@ -151,10 +158,25 @@ sync_all_sinks() ->
     [sync_sink(SinkName) || SinkName <- Sinks],
     ok.
 
-set_log_deks_snapshot(LogsDS) ->
+get_encryptable_sink_names(State) ->
+    EncrSinks =
+        dict:filter(
+          fun(_SinkName, Metadata) ->
+                  proplists:get_bool(encryption_supported, Metadata)
+          end, State#state.sinks),
+    dict:fetch_keys(EncrSinks).
+
+get_historical_deks(CurrLiveEcrSinks, #state{historical_deks = HistDeks}) ->
+    HistSinks = dict:fetch_keys(HistDeks),
+    lists:flatmap(
+      fun(SinkName) ->
+              {ok, Deks} = dict:find(SinkName, HistDeks),
+              Deks
+      end, HistSinks -- CurrLiveEcrSinks).
+
+do_set_log_deks_snapshot(LogsDS, State) ->
     set_global_log_deks_snapshot(LogsDS),
-    EncryptableSinks =
-        gen_server:call(?MODULE, get_encryptable_sink_names, infinity),
+    EncryptableSinks = get_encryptable_sink_names(State),
     RVs =
         misc:parallel_map(
           fun(SinkName) ->
@@ -170,17 +192,19 @@ set_log_deks_snapshot(LogsDS) ->
             {error, Failures}
     end.
 
-get_all_used_deks() ->
-    EncryptableSinks =
-        gen_server:call(?MODULE, get_encryptable_sink_names, infinity),
-    AllInUseDeks =
+do_get_all_used_deks(State) ->
+    EncryptableSinks = get_encryptable_sink_names(State),
+    InUseDeks =
         lists:flatmap(
           fun(SinkName) ->
                   {ok, InUseDeks} =
                       call_disk_sink(SinkName, get_in_use_deks, infinity),
                   InUseDeks
           end, EncryptableSinks),
-    {ok, lists:usort(AllInUseDeks)}.
+
+    AddnlInUseDeks = get_historical_deks(EncryptableSinks, State),
+
+    {ok, lists:usort(InUseDeks ++ AddnlInUseDeks)}.
 
 init_log_encryption_ds(LogDS) ->
     set_global_log_deks_snapshot(LogDS).
@@ -404,7 +428,8 @@ log(#{level:=Level, msg:=Msg, meta:=Meta}, #{id:=Logger}) ->
 %%%-----------------------------------------------------------------
 init([]) ->
     State = #state{sinks=dict:new(),
-                   loggers=dict:new()},
+                   loggers=dict:new(),
+                   historical_deks=dict:new()},
 
     {ok, State1} = do_start_logger(?ERROR_LOGGER, ?DEFAULT_LOGLEVEL,
                                    ?DEFAULT_FORMATTER, State),
@@ -512,13 +537,11 @@ handle_call({get_sink_loglevel, LoggerName, SinkName}, _From, State) ->
 handle_call(get_sink_names, _From, State) ->
     {reply, dict:fetch_keys(State#state.sinks), State};
 
-handle_call(get_encryptable_sink_names, _From, State) ->
-    EncrSinks =
-        dict:filter(
-          fun(_SinkName, Metadata) ->
-                  proplists:get_bool(encryption_supported, Metadata)
-          end, State#state.sinks),
-    {reply, dict:fetch_keys(EncrSinks), State};
+handle_call({set_log_deks_snapshot, LogDS}, _From, State) ->
+    {reply, do_set_log_deks_snapshot(LogDS, State), State};
+
+handle_call(get_all_used_deks, _From, State) ->
+    {reply, do_get_all_used_deks(State), State};
 
 handle_call(freeze_compilations, _From, State) ->
     {reply, State#state.compile_frozen, State#state{compile_frozen = true}};
@@ -569,6 +592,14 @@ ensure_sink(SinkName, #state{sinks=Sinks} = _State, Fn) ->
             {error, unknown_sink}
     end.
 
+ensure_sink_with_meta(SinkName, #state{sinks=Sinks} = _State, Fn) ->
+    case dict:find(SinkName, Sinks) of
+        {ok, Meta} ->
+            Fn(Meta);
+        error ->
+            {error, unknown_sink}
+    end.
+
 ensure_logger(LoggerName, #state{loggers=Loggers} = _State, Fn) ->
     case dict:find(LoggerName, Loggers) of
         {ok, Logger} ->
@@ -587,7 +618,9 @@ handle_result(Result, OldState) ->
             {reply, Result, OldState}
     end.
 
-do_start_sink(Name, SinkMeta, Module, Args, #state{sinks=Sinks} = State) ->
+do_start_sink(Name, SinkMeta, Module, Args,
+              #state{sinks=Sinks,
+                     historical_deks = HistoricalDeks} = State) ->
     case dict:find(Name, Sinks) of
         {ok, _} ->
             {error, duplicate_sink};
@@ -599,21 +632,34 @@ do_start_sink(Name, SinkMeta, Module, Args, #state{sinks=Sinks} = State) ->
             case RV of
                 {ok, _} ->
                     NewSinks = dict:store(Name, SinkMeta, Sinks),
-                    NewState = State#state{sinks=NewSinks},
+                    UpdtHistDeks = dict:erase(Name, HistoricalDeks),
+                    NewState =
+                        State#state{sinks=NewSinks,
+                                    historical_deks = UpdtHistDeks},
                     {ok, NewState};
                 _Other ->
                     RV
             end
     end.
 
-do_stop_sink(Name, #state{sinks=Sinks} = State) ->
-    ensure_sink(
-      Name, State,
-      fun () ->
+maybe_add_historical_deks(_IsEncryptable = true, SinkName,
+                          #state{historical_deks = OldHistory} = State) ->
+    {ok, InUseDeks} = call_disk_sink(SinkName, get_in_use_deks, infinity),
+    NewHistory = dict:store(SinkName, InUseDeks, OldHistory),
+    State#state{historical_deks = NewHistory};
+maybe_add_historical_deks(_IsEncryptable = false, _SinkName, State) ->
+    State.
+
+do_stop_sink(Name, #state{sinks=Sinks} = State0) ->
+    ensure_sink_with_meta(
+      Name, State0,
+      fun (Meta) ->
               SinkId = ale_utils:sink_id(Name),
+              IsEncryptable = proplists:get_bool(encryption_supported, Meta),
+              State1 = maybe_add_historical_deks(IsEncryptable, Name, State0),
               ok = ale_dynamic_sup:stop_child(SinkId),
               NewSinks = dict:erase(Name, Sinks),
-              NewState = State#state{sinks=NewSinks},
+              NewState = State1#state{sinks=NewSinks},
               {ok, NewState}
       end).
 
