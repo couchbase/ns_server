@@ -684,9 +684,8 @@ handle_info({dek_settings_updated, KindList},
                   restart_dek_cleanup_timer(_)]),
     {noreply, NewState};
 
-handle_info({timer, retry_jobs}, State) ->
-    ?log_debug("Retrying jobs"),
-    misc:flush({timer, retry_jobs}),
+handle_info({timer, retry_jobs}, #state{proc_type = ProcType} = State) ->
+    ?log_debug("[~p] Retrying jobs", [ProcType]),
     {noreply, run_jobs(State)};
 
 handle_info({timer, rotate_keks}, #state{proc_type = ?MASTER_PROC} = State) ->
@@ -1868,18 +1867,22 @@ maybe_reencrypt_data(#{type := sensitive, data := _Bin,
     no_change.
 
 -spec add_jobs([node_job()] | [master_job()], #state{}) -> #state{}.
-add_jobs(NewJobs, #state{jobs = Jobs} = State) ->
+add_jobs(NewJobs, State) ->
     ensure_timer_started(retry_jobs, ?RETRY_TIME,
-                         State#state{jobs = Jobs ++ (NewJobs -- Jobs)}).
+                         add_jobs_to_state(NewJobs, State)).
+
+add_jobs_to_state(NewJobs, #state{jobs = Jobs} = State) ->
+    State#state{jobs = Jobs ++ (NewJobs -- Jobs)}.
 
 -spec add_and_run_jobs([node_job()] | [master_job()], #state{}) -> #state{}.
 add_and_run_jobs(NewJobs, State) ->
-    run_jobs(add_jobs(NewJobs, State)).
+    run_jobs(add_jobs_to_state(NewJobs, State)).
 
 -spec run_jobs(#state{}) -> #state{}.
 run_jobs(#state{jobs = Jobs, proc_type = ProcType} = State) ->
     NewState = lists:foldl(fun run_job/2, State#state{jobs = []}, Jobs),
 
+    misc:flush({timer, retry_jobs}),
     case NewState#state.jobs of
         [] ->
             ?log_debug("[~p] All jobs completed", [ProcType]),
@@ -1899,10 +1902,10 @@ run_job(J, State) ->
             NewState2;
         retry ->
             ?log_debug("Job ~p returned 'retry'", [J]),
-            add_jobs([J], NewState2);
+            add_jobs_to_state([J], NewState2);
         {error, Error} ->
             ?log_error("Job ~p returned error: ~p", [J, Error]),
-            add_jobs([J], NewState2)
+            add_jobs_to_state([J], NewState2)
     end.
 
 -spec normalize_job_res(Res :: term(), #state{}) -> {ok | retry | {error, _}, #state{}}.
