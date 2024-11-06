@@ -1898,6 +1898,9 @@ set_active_dek(TypeOrBucket, DeksSnapshot) ->
         {error, E} -> {error, E}
     end.
 
+get_dek_ids_in_use("@logs") ->
+    %% Stubbed out for now, but needs to get this info from memcached
+    {ok, []};
 get_dek_ids_in_use(BucketName) ->
     RV = perform_very_long_call(
            fun (Sock) ->

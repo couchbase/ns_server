@@ -534,7 +534,7 @@ worker_loop(#worker_state{sink_name = SinkName} = State) ->
                 UpdatedState;
             {'$gen_call', From, get_in_use_deks} ->
                 #worker_state{in_use_deks = InUseDeks} = State,
-                gen_server:reply(From, InUseDeks),
+                gen_server:reply(From, {ok, InUseDeks}),
                 State;
             Msg ->
                 exit({unexpected_msg, Msg})

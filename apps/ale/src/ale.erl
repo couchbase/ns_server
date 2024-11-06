@@ -25,6 +25,7 @@
          set_global_log_deks_snapshot/1,
          get_global_log_deks_snapshot/0,
          set_log_deks_snapshot/1,
+         get_all_used_deks/0,
 
          %% Callbacks for encryption
          create_no_deks_snapshot/0,
@@ -168,6 +169,18 @@ set_log_deks_snapshot(LogsDS) ->
         _ ->
             {error, Failures}
     end.
+
+get_all_used_deks() ->
+    EncryptableSinks =
+        gen_server:call(?MODULE, get_encryptable_sink_names, infinity),
+    AllInUseDeks =
+        lists:flatmap(
+          fun(SinkName) ->
+                  {ok, InUseDeks} =
+                      call_disk_sink(SinkName, get_in_use_deks, infinity),
+                  InUseDeks
+          end, EncryptableSinks),
+    {ok, lists:usort(AllInUseDeks)}.
 
 init_log_encryption_ds(LogDS) ->
     set_global_log_deks_snapshot(LogDS).

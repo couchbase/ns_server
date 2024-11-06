@@ -450,6 +450,27 @@ force_config_encryption_keys() ->
         end
     end.
 
+get_dek_ids_in_use(logDek) ->
+    maybe
+        {ok, InUseMemcached} ?= ns_memcached:get_dek_ids_in_use("@logs"),
+
+        {ok, InUseLocal} ?= ale:get_all_used_deks(),
+
+        {ok, InuseBabySitter} ?= rpc:call(ns_server:get_babysitter_node(),
+                                          ale, get_all_used_deks, []),
+
+        {ok, InuseCouchDb} ?= rpc:call(ns_server:get_babysitter_node(),
+                                       ale, get_all_used_deks, []),
+
+        AllInUse = lists:usort(InUseMemcached ++ InUseLocal ++
+                                   InuseBabySitter ++ InuseCouchDb),
+
+        {ok, lists:map(fun(undefined) ->
+                               ?NULL_DEK;
+                          (Elem) ->
+                               Elem
+                       end, AllInUse)}
+    end;
 get_dek_ids_in_use(Type) ->
     {ok, Snapshot} = cb_crypto:fetch_deks_snapshot(Type),
     {_, AllDeks} = cb_crypto:get_all_deks(Snapshot),
