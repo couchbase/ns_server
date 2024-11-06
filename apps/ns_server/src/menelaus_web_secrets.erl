@@ -197,11 +197,13 @@ export_secret(#{type := DataType} = Props) ->
                   T;
               (usage, UList) ->
                   lists:map(
-                    fun ({bucket_encryption, BucketName}) ->
+                    fun ({bucket_encryption, "*"}) ->
+                            <<"bucket-encryption">>;
+                        ({bucket_encryption, BucketName}) ->
                             iolist_to_binary([<<"bucket-encryption-">>,
                                               BucketName]);
                         (config_encryption) ->
-                            <<"configuration-encryption">>;
+                            <<"config-encryption">>;
                         (secrets_encryption) ->
                             <<"secrets-encryption">>;
                         (audit_encryption) ->
@@ -272,11 +274,13 @@ validate_key_usage(Name, State) ->
       Name,
       fun (Str) ->
           case iolist_to_binary(Str) of
+              <<"bucket-encryption">> ->
+                  {value, {bucket_encryption, "*"}};
               <<"bucket-encryption-", N/binary>> when size(N) > 0 ->
                   {value, {bucket_encryption, binary_to_list(N)}};
               <<"secrets-encryption">> ->
                   {value, secrets_encryption};
-              <<"configuration-encryption">> ->
+              <<"config-encryption">> ->
                   {value, config_encryption};
               <<"audit-encryption">> ->
                   {value, audit_encryption};

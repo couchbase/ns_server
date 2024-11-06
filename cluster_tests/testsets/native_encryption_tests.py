@@ -253,7 +253,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                f'unexpected error: {errors}'
 
         # Trying again, but now we add permission to encrypt all buckets
-        secret1_json['usage'].append('bucket-encryption-*')
+        secret1_json['usage'].append('bucket-encryption')
         update_secret(self.random_node(), secret1_id, secret1_json)
 
 
@@ -407,12 +407,12 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         good_secret_id = create_secret(
                            self.random_node(),
                            auto_generated_secret(name='Good Secret',
-                                                 usage=['bucket-encryption-*',
+                                                 usage=['bucket-encryption',
                                                         'secrets-encryption']))
         bad_secret_id = create_secret(
                           self.random_node(),
                           auto_generated_secret(name='Bad Secret',
-                                                usage=['bucket-encryption-*']))
+                                                usage=['bucket-encryption']))
 
         secret = auto_generated_secret(name='Lever 2 (key1)',
                                        encrypt_by='clusterSecret',
@@ -486,7 +486,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         # Can't remove 'secrets-encryption' usage because this secret is
         # currently encrypting another secret
-        secret1['usage'] = ['bucket-encryption-*']
+        secret1['usage'] = ['bucket-encryption']
         errors = update_secret(self.random_node(), secret1_id, secret1,
                                expected_code=400)
         assert errors['_'] == 'Can\'t modify usage as this secret is in use', \
@@ -621,9 +621,9 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
             sleep_time=0.3, timeout=30)
 
     def cfg_encryption_api_test(self):
-        secret = auto_generated_secret(usage=['bucket-encryption-*'])
+        secret = auto_generated_secret(usage=['bucket-encryption'])
         bad_id = create_secret(self.random_node(), secret)
-        secret['usage'] = ['bucket-encryption-*', 'configuration-encryption']
+        secret['usage'] = ['bucket-encryption', 'config-encryption']
         secret['name'] = secret['name'] + ' (good)' # has to be unique
         good_id = create_secret(self.random_node(), secret)
         node = self.random_node()
@@ -635,7 +635,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         set_cfg_encryption(node, 'secret', bad_id, expected_code=400)
         set_cfg_encryption(node, 'secret', good_id)
 
-        secret['usage'] = ['bucket-encryption-*']
+        secret['usage'] = ['bucket-encryption']
         errors = update_secret(node, good_id, secret, expected_code=400)
         assert errors['_'] == 'Can\'t modify usage as this secret is in use', \
                f'unexpected error: {errors}'
@@ -710,7 +710,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                        expected_return_code=1)
 
     def dump_bucket_deks_test(self):
-        secret = auto_generated_secret(usage=['bucket-encryption-*'])
+        secret = auto_generated_secret(usage=['bucket-encryption'])
         secret_id = create_secret(self.random_node(), secret)
         bucket_props = {'name': self.bucket_name,
                         'ramQuota': 100,
@@ -746,7 +746,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
     def config_dek_automatic_rotation_test(self):
         # Enable encryption and set dek rotation int = 1 sec
         # Wait some time and check if dek has rotated
-        secret = auto_generated_secret(usage=['configuration-encryption'])
+        secret = auto_generated_secret(usage=['config-encryption'])
         secret_id = create_secret(self.random_node(), secret)
         kek_id = get_kek_id(self.random_node(), secret_id)
         set_cfg_encryption(self.random_node(), 'secret', secret_id,
@@ -784,7 +784,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
     def bucket_dek_automatic_rotation_test(self):
         # Enable encryption and set dek rotation int = 1 sec
         # Wait some time and check if dek has rotated
-        secret = auto_generated_secret(usage=['bucket-encryption-*'])
+        secret = auto_generated_secret(usage=['bucket-encryption'])
         secret_id = create_secret(self.random_node(), secret)
         kek_id = get_kek_id(self.random_node(), secret_id)
 
@@ -809,7 +809,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
     def dont_remove_active_dek_test(self):
         # enable encryption and set dek lifetime = 1 sec,
         # wait some time and make sure active dek is not removed
-        secret = auto_generated_secret(usage=['configuration-encryption'])
+        secret = auto_generated_secret(usage=['config-encryption'])
         secret_id = create_secret(self.random_node(), secret)
         kek_id = get_kek_id(self.random_node(), secret_id)
         set_cfg_encryption(self.random_node(), 'secret', secret_id,
@@ -845,8 +845,8 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
     def basic_aws_secret_test(self):
         # Create an AWS key and use it to encrypt bucket, config, and secrets
         secret_json = aws_test_secret(name='AWS Key',
-                                      usage=['bucket-encryption-*',
-                                             'configuration-encryption',
+                                      usage=['bucket-encryption',
+                                             'config-encryption',
                                              'secrets-encryption'])
         aws_secret_id = create_secret(self.random_node(), secret_json)
         kek_id = get_kek_id(self.random_node(), aws_secret_id)
@@ -890,7 +890,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         secret = auto_generated_secret(
                      usage=[f'bucket-encryption-{self.bucket_name}',
-                            'configuration-encryption'])
+                            'config-encryption'])
         secret_id = create_secret(self.random_node(), secret)
 
         set_cfg_encryption(self.random_node(), 'secret', secret_id,
@@ -913,7 +913,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         poll_verify_bucket_deks_files(self.cluster,
                                       self.sample_bucket,
                                       verify_key_count=0)
-        secret_json = aws_test_secret(usage=['bucket-encryption-*'])
+        secret_json = aws_test_secret(usage=['bucket-encryption'])
         aws_secret_id = create_secret(self.random_node(), secret_json)
         self.cluster.update_bucket({'name': self.sample_bucket,
                                     'encryptionAtRestSecretId': aws_secret_id})
@@ -960,7 +960,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                         old_dek_ids=new_dek_ids)
 
     def remove_old_deks_test(self):
-        secret = auto_generated_secret(usage=['bucket-encryption-*'])
+        secret = auto_generated_secret(usage=['bucket-encryption'])
         secret_id = create_secret(self.random_node(), secret)
         kek_id = get_kek_id(self.random_node(), secret_id)
 
@@ -1004,11 +1004,11 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
     def dek_reencryption_test(self):
         # reenable encryption using different secret
         # and check if old dek is the same and that it gets reencrypted
-        secret1 = auto_generated_secret(usage=['bucket-encryption-*'])
+        secret1 = auto_generated_secret(usage=['bucket-encryption'])
         secret_id1 = create_secret(self.random_node(), secret1)
         kek_id1 = get_kek_id(self.random_node(), secret_id1)
 
-        secret2 = auto_generated_secret(usage=['bucket-encryption-*'])
+        secret2 = auto_generated_secret(usage=['bucket-encryption'])
         secret_id2 = create_secret(self.random_node(), secret2)
         kek_id2 = get_kek_id(self.random_node(), secret_id2)
 
@@ -1095,9 +1095,9 @@ class NativeEncryptionPermissionsTests(testlib.BaseTestSet):
         create_user(no_priv_user, f'external_stats_reader')
 
         # Usages:
-        cfg = 'configuration-encryption'
+        cfg = 'config-encryption'
         sec = 'secrets-encryption'
-        all_b = 'bucket-encryption-*'
+        all_b = 'bucket-encryption'
         b = f'bucket-encryption-{self.bucket_name}'
 
         self.writing = \
@@ -1271,7 +1271,7 @@ def auto_generated_secret(name=None,
                           encrypt_by='nodeSecretManager',
                           encrypt_secret_id=None):
     if usage is None:
-        usage = ['bucket-encryption-*', 'secrets-encryption']
+        usage = ['bucket-encryption', 'secrets-encryption']
     if name is None:
         name = f'Test secret {testlib.random_str(5)}'
     optional = {}
@@ -1291,7 +1291,7 @@ def auto_generated_secret(name=None,
 # dummy key.
 def aws_test_secret(name=None, usage=None):
     if usage is None:
-        usage = ['bucket-encryption-*', 'secrets-encryption']
+        usage = ['bucket-encryption', 'secrets-encryption']
     if name is None:
         name = f'Test secret {testlib.random_str(5)}'
 
