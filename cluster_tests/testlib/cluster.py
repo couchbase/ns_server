@@ -175,7 +175,7 @@ class Cluster:
 
     # Check every 0.5s until there is no rebalance running or 60s have passed
     def wait_for_rebalance(self, timeout_s=60, interval_s=0.5,
-                           wait_balanced=True, balanced_timeout=10,
+                           wait_balanced=False, balanced_timeout=10,
                            balanced_interval=0.5, verbose=False):
         return cluster_run_lib.wait_for_rebalance(self.connected_nodes[0].url,
                                                   timeout_s, interval_s,
@@ -254,7 +254,10 @@ class Cluster:
 
             # Optionally wait for the rebalance to complete
             if wait:
+                # Note: We wait for the cluster to be balanced (unless there are
+                # errors)
                 error = self.wait_for_rebalance(timeout_s=timeout_s,
+                                                wait_balanced=True,
                                                 verbose=verbose)
                 assert error is expected_error, \
                     f"Expected final rebalance status: {expected_error}\n" \
@@ -433,7 +436,10 @@ class Cluster:
          before returning
         :return: Response to the bucket creation request
         """
-        self.wait_for_rebalance(verbose=verbose)
+        # We can create a bucket without the cluster being balanced, so we
+        # should only wait for the rebalance itself to occur, so that we don't
+        # get an error creating the bucket
+        self.wait_for_rebalance(wait_balanced=False, verbose=verbose)
         response = testlib.post_succ(self, "/pools/default/buckets",
                                      expected_code=expected_code, data=data)
 
@@ -464,13 +470,15 @@ class Cluster:
             sleep_time=0.5, timeout=60)
 
     def update_bucket(self, data, verbose=False, expected_code=200):
-        self.wait_for_rebalance(verbose=verbose)
+        # Note: no need to wait for the cluster to be balanced
+        self.wait_for_rebalance(wait_balanced=False, verbose=verbose)
         bucket_name = data['name']
         return testlib.post_succ(self, f"/pools/default/buckets/{bucket_name}",
                                  data=data, expected_code=expected_code)
 
     def delete_bucket(self, name, verbose=False):
-        self.wait_for_rebalance(verbose=verbose)
+        # Note: no need to wait for the cluster to be balanced
+        self.wait_for_rebalance(wait_balanced=False, verbose=verbose)
         return testlib.ensure_deleted(self, f"/pools/default/buckets/{name}")
 
     def is_bucket_healthy_on_all_nodes(self, name):

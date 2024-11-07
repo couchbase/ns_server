@@ -767,7 +767,8 @@ def connect(num_nodes=0,
         assert r.status_code == 200,  (r.status_code, r.text)
 
         if do_wait_for_rebalance:
-            err = wait_for_rebalance("http://{0}:{1}".format(addr, base_port))
+            err = wait_for_rebalance("http://{0}:{1}".format(addr, base_port),
+                                     wait_balanced=True)
             if err is not None:
                 print(err)
                 return 1
@@ -818,7 +819,7 @@ def wait_for_balanced(url, timeout_s, interval_s):
 
 # Wait for a rebalance to complete, by checking every half second for up to
 # 60s, and returning whether or not the rebalance completed in that time
-def wait_for_rebalance(url, timeout_s=60, interval_s=0.5, wait_balanced=True,
+def wait_for_rebalance(url, timeout_s=60, interval_s=0.5, wait_balanced=False,
                        balanced_timeout=10, balanced_interval=0.5,
                        verbose=False):
     def print_if_verbose(*args, **kwargs):
@@ -839,7 +840,8 @@ def wait_for_rebalance(url, timeout_s=60, interval_s=0.5, wait_balanced=True,
 
         print_if_verbose(" Finished.")
 
-        if wait_balanced and not wait_for_balanced(url, balanced_timeout,
-                                                   balanced_interval):
-            return "timeout"
-    return rebalance_error(url)
+    err = rebalance_error(url)
+    if (err is None and wait_balanced and
+            not wait_for_balanced(url, balanced_timeout, balanced_interval)):
+        return "timeout"
+    return err

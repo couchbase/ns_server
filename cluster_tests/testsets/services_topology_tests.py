@@ -124,7 +124,8 @@ class ServicesTopologyTests(testlib.BaseTestSet):
             data=data, expected_code=expected_code)
 
         if res.status_code == 200:
-            self.cluster.wait_for_rebalance()
+            # The cluster should be balanced after the rebalance
+            self.cluster.wait_for_rebalance(wait_balanced=True)
             self.assert_service_map(service, node_indexes)
         return res
 
