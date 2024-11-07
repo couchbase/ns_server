@@ -569,8 +569,8 @@ def sync_loggers(urls):
     try:
         for url in urls:
             http_post(url + "/diag/eval", "ale:sync_all_sinks().")
-    except URLError as e:
-        print(f"Error encountered syncing loggers: {e.reason}\n"
+    except Exception as e:
+        print(f"Error encountered syncing loggers: {e}\n"
               f"Sleeping for 1 second to give the cluster the opportunity "
               f"to flush logs.")
         time.sleep(1)
