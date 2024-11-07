@@ -679,8 +679,11 @@ def run_testsets(cluster, testsets, total_num, seed=None,
 
             for node in cluster._nodes:
                 if node not in cluster.connected_nodes:
-                    testlib.wait_for_ejected_node(node)
-
+                    try:
+                        testlib.wait_for_ejected_node(node)
+                    except AssertionError:
+                        print(f"Wait for ejected node {node} to be ejected "
+                              f"timed-out, attempting to collect logs anyway")
                 start_time = floor(datetime.now(timezone.utc).timestamp())
                 testlib.start_log_collection(
                     node,
