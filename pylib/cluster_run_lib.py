@@ -816,8 +816,8 @@ def wait_for_balanced(url, timeout_time, interval_s):
 
 
 # Wait for a rebalance to complete, by checking every half second for up to
-# 10mins, and returning whether or not the rebalance completed in that time
-def wait_for_rebalance(url, timeout_s=600, interval_s=0.5, wait_balanced=True,
+# 60s, and returning whether or not the rebalance completed in that time
+def wait_for_rebalance(url, timeout_s=60, interval_s=0.5, wait_balanced=True,
                        verbose=False):
     def print_if_verbose(*args, **kwargs):
         if verbose:

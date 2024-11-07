@@ -173,8 +173,8 @@ class Cluster:
                    get_terminal_attrs())
         atexit.unregister(kill_nodes)
 
-    # Check every 0.5s until there is no rebalance running or 600s have passed
-    def wait_for_rebalance(self, timeout_s=600, interval_s=0.5,
+    # Check every 0.5s until there is no rebalance running or 60s have passed
+    def wait_for_rebalance(self, timeout_s=60, interval_s=0.5,
                            wait_balanced=True, verbose=False):
         return cluster_run_lib.wait_for_rebalance(self.connected_nodes[0].url,
                                                   timeout_s, interval_s,
@@ -186,7 +186,7 @@ class Cluster:
     # is responsible for ensuring that if there is an unexpected rebalance, the
     # cluster is still in an equivalent state after teardown to its state before
     # the TestSet was executed on the cluster.
-    def rebalance(self, ejected_nodes=None, wait=True, timeout_s=600,
+    def rebalance(self, ejected_nodes=None, wait=True, timeout_s=60,
                   verbose=False, expected_error=None, initial_code=200,
                   initial_expected_error=None):
         # We have to use the otpNode names instead of the node ips.
