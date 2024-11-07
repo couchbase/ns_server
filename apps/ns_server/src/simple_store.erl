@@ -28,6 +28,10 @@
          clear/1,
          iterate_matching/2]).
 
+%% gen_server callbacks
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+         terminate/2]).
+
 %% Macros
 
 %% Persist the ETS table to file after 10 secs.
@@ -38,11 +42,14 @@
 %% Max number of unsucessful flush attempts before giving up.
 -define(FLUSH_RETRIES, 10).
 
+-record(state, {flush_pending :: undefined | erlang:reference(),
+                store_name :: atom()}).
+
 %% Exported APIs
 
 start_link(StoreName) ->
     ProcName = get_proc_name(StoreName),
-    work_queue:start_link(ProcName, fun () -> init(StoreName) end).
+    gen_server:start_link({local, ProcName}, ?MODULE, StoreName, []).
 
 get(StoreName, Key) ->
     get(StoreName, Key, false).
@@ -83,9 +90,6 @@ iterate_matching(StoreName, KeyPattern) ->
 
 %% Internal
 init(StoreName) ->
-    %% Initialize flush_pending to false.
-    erlang:put(flush_pending, false),
-
     %% Populate the table from the file if the file exists otherwise create
     %% an empty table.
     FilePath = path_config:component_path(data, get_file_name(StoreName)),
@@ -112,33 +116,56 @@ init(StoreName) ->
             ?metakv_debug("Creating Table: ~p", [StoreName]),
             ets:new(StoreName, [named_table, set, protected]),
             ok
-    end.
+    end,
+    {ok, #state{flush_pending = undefined, store_name = StoreName}}.
+
+handle_call({work, Fun}, _From, State) ->
+    {Res, NewState} = Fun(State),
+    {reply, Res, NewState, hibernate};
+
+handle_call(Unhandled, _From, State) ->
+    ?log_error("Unhandled call: ~p", [Unhandled]),
+    {noreply, State}.
+
+handle_cast(Unhandled, State) ->
+    ?log_error("Unhandled cast: ~p", [Unhandled]),
+    {noreply, State}.
+
+handle_info({timer, flush, NumRetries}, State) ->
+    ?flush({timer, flush, _}),
+    {noreply, flush_table(NumRetries, State)};
+
+handle_info(Unhandled, State) ->
+    ?log_error("Unhandled info: ~p", [Unhandled]),
+    {noreply, State}.
+
+terminate(_Reason, _State) ->
+    ok.
 
 do_work(StoreName, Fun, Args) ->
-    work_queue:submit_sync_work(
+    gen_server:call(
       get_proc_name(StoreName),
-      fun () ->
-              Fun(StoreName, Args)
-      end).
+      {work, fun (S) -> erlang:apply(Fun, [Args, S]) end},
+       infinity).
 
 %% Update the ETS table and schedule a flush to the file.
-update_store(StoreName, [Key, Value]) ->
+update_store([Key, Value], #state{store_name = StoreName} = State) ->
     ?metakv_debug("Updating data ~p in table ~p.", [[{Key, Value}], StoreName]),
     ets:insert(StoreName, [{Key, Value}]),
-    schedule_flush(StoreName, ?FLUSH_RETRIES).
+    {ok, schedule_flush(?FLUSH_RETRIES, State)}.
 
 %% Delete from the ETS table and schedule a flush to the file.
-delete_from_store(StoreName, [Key]) ->
+delete_from_store([Key], #state{store_name = StoreName} = State) ->
     ?metakv_debug("Deleting key ~p in table ~p.", [Key, StoreName]),
     ets:delete(StoreName, Key),
-    schedule_flush(StoreName, ?FLUSH_RETRIES).
+    {ok, schedule_flush(?FLUSH_RETRIES, State)}.
 
-clear_store(StoreName, []) ->
+clear_store([], #state{store_name = StoreName} = State) ->
     ?metakv_debug("Deleting all keys in table ~p.", [StoreName]),
     ets:delete_all_objects(StoreName),
-    schedule_flush(StoreName, ?FLUSH_RETRIES).
+    {ok, schedule_flush(?FLUSH_RETRIES, State)}.
 
-del_matching(StoreName, [KeyPattern]) ->
+del_matching([KeyPattern], #state{store_name = StoreName} = State) ->
     ets:foldl(
       fun ({Key, _}, _) ->
               case misc:is_prefix(KeyPattern, Key) of
@@ -149,47 +176,44 @@ del_matching(StoreName, [KeyPattern]) ->
                       ok
               end
       end, undefined, StoreName),
-    schedule_flush(StoreName, ?FLUSH_RETRIES).
+    {ok, schedule_flush(?FLUSH_RETRIES, State)}.
 
 %% Nothing can be done if we failed to flush repeatedly.
-schedule_flush(StoreName, 0) ->
+schedule_flush(0, #state{store_name = StoreName} = _State) ->
     ?metakv_debug("Tried to flush table ~p ~p times but failed. Giving up.",
                   [StoreName, ?FLUSH_RETRIES]),
     exit(flush_failed);
 
 %% If flush is pending then nothing else to do otherwise schedule a
 %% flush to the file for later.
-schedule_flush(StoreName, NumRetries) ->
-    case erlang:get(flush_pending) of
-        true ->
-            ?metakv_debug("Flush is already pending."),
-            ok;
-        false ->
-            erlang:put(flush_pending, true),
-            {ok, _} = timer:apply_after(?FLUSH_AFTER, work_queue, submit_work,
-                                        [self(),
-                                         fun () ->
-                                                 flush_table(StoreName, NumRetries)
-                                         end]),
-            ?metakv_debug("Successfully scheduled a flush to the file."),
-            ok
-    end.
+schedule_flush(_NumRetries,
+               #state{flush_pending = Ref} = State) when is_reference(Ref) ->
+    ?metakv_debug("Flush is already pending."),
+    State;
+schedule_flush(NumRetries, #state{flush_pending = undefined} = State) ->
+    Ref = erlang:send_after(?FLUSH_AFTER, self(), {timer, flush, NumRetries}),
+    ?metakv_debug("Successfully scheduled a flush to the file."),
+    State#state{flush_pending = Ref}.
 
 %% Flush the table to the file.
-flush_table(StoreName, NumRetries) ->
-    %% Reset flush pending.
-    erlang:put(flush_pending, false),
+flush_table(NumRetries, #state{store_name = StoreName} = State) ->
+    NewState = stop_flush_timer(State),
     FilePath = path_config:component_path(data, get_file_name(StoreName)),
     ?metakv_debug("Persisting Table ~p to file ~p.", [StoreName, FilePath]),
     case ets:tab2file(StoreName, FilePath, [{extended_info, [object_count]}]) of
         ok ->
-            ok;
+            NewState;
         {error, Error} ->
             ?metakv_debug("Failed to persist table ~p to file ~p with error ~p.",
                           [StoreName, FilePath, Error]),
             %% Reschedule another flush.
-            schedule_flush(StoreName, NumRetries - 1)
+            schedule_flush(NumRetries - 1, NewState)
     end.
+
+stop_flush_timer(#state{flush_pending = undefined} = State) -> State;
+stop_flush_timer(#state{flush_pending = Ref} = State) when is_reference(Ref) ->
+    catch erlang:cancel_timer(Ref),
+    State#state{flush_pending = undefined}.
 
 get_proc_name(StoreName) ->
     list_to_atom(get_file_name(StoreName)).
