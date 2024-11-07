@@ -75,8 +75,14 @@ from testsets import \
 tmp_cluster_dir = os.path.join(testlib.get_cluster_test_dir(),
                                "test_cluster_data")
 
-USAGE_STRING = """
-Usage: {program_name}
+log_collection_default_regex = (".*diags"
+                                "|master events"
+                                "|memcached.*"
+                                "|Collecting .*/snapshots"
+                                "|Chronicle dump")
+
+USAGE_STRING = f"""
+Usage: {{program_name}}
     [--cluster | -c <address>:<port>]
         Specify already started cluster to connect to.
     [--user | -u <admin>]
@@ -122,6 +128,10 @@ Usage: {program_name}
     [--collect-logs-after-error]
         Collect a zip of logs for each node in and out of the cluster after a
         failed test
+    [--logs-task-regex=Regex]
+        Specify the Regex for log collection after any errors.
+        If no Regex is specified, the following regex will be used:
+        {log_collection_default_regex}
     [--dont-report-time]
         Do not prepend any output with current time
     [--test-timeout=N]
@@ -175,6 +185,7 @@ def main():
                                            'test-iterations=',
                                            'stop-after-error',
                                            'collect-logs-after-error',
+                                           'logs-task-regex=',
                                            'dont-report-time',
                                            'test-timeout='])
     except getopt.GetoptError as err:
@@ -197,6 +208,7 @@ def main():
     start_index = 10
     stop_after_first_error = False
     collect_logs = False
+    log_collection_regex = log_collection_default_regex
 
     for o, a in optlist:
         if o in ('--cluster', '-c'):
@@ -255,6 +267,8 @@ def main():
             stop_after_first_error = True
         elif o == '--collect-logs-after-error':
             collect_logs = True
+        elif o == "--logs-task-regex":
+            log_collection_regex = a
         elif o == '--test-timeout':
             testlib.config['test_timeout'] = int(a)
         elif o in ('--help', '-h'):
@@ -346,7 +360,7 @@ def main():
         # Run the testsets on the cluster
         tests_executed, testset_errors, testset_not_ran, log_collection_time,\
             cluster = \
-            run_testsets(cluster, testsets, total_num,
+            run_testsets(cluster, testsets, total_num, log_collection_regex,
                          seed=seed,
                          stop_after_first_error=stop_after_first_error,
                          collect_logs=collect_logs)
@@ -584,7 +598,7 @@ def get_existing_cluster(address, start_port, auth, num_nodes):
 
 # Run each testset on the same cluster, counting how many individual tests were
 # ran, and keeping track of all errors
-def run_testsets(cluster, testsets, total_num, seed=None,
+def run_testsets(cluster, testsets, total_num, log_collection_regex, seed=None,
                  stop_after_first_error=False, collect_logs=False):
     executed = 0
     errors = {}
@@ -685,14 +699,8 @@ def run_testsets(cluster, testsets, total_num, seed=None,
                         print(f"Wait for ejected node {node} to be ejected "
                               f"timed-out, attempting to collect logs anyway")
                 start_time = floor(datetime.now(timezone.utc).timestamp())
-                testlib.start_log_collection(
-                    node,
-                    taskRegexp=".*diags"
-                               "|master events"
-                               "|memcached.*"
-                               "|Collecting .*/snapshots"
-                               "|Chronicle dump"
-                )
+                testlib.start_log_collection(node,
+                                             taskRegexp=log_collection_regex)
 
                 path = testlib.wait_for_log_collection(node, start_time)
                 print(f"Collected logs for {node.url}: {path}")
