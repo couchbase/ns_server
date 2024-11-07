@@ -178,11 +178,11 @@ do_set_log_deks_snapshot(LogsDS, State) ->
     set_global_log_deks_snapshot(LogsDS),
     EncryptableSinks = get_encryptable_sink_names(State),
     RVs =
-        misc:parallel_map(
+        lists:map(
           fun(SinkName) ->
                   {SinkName, call_disk_sink(SinkName,
                                             notify_active_key_updt, infinity)}
-          end, EncryptableSinks, infinity),
+          end, EncryptableSinks),
 
     Failures = [Result || {_Sink, R} = Result <- RVs, R =/= ok],
     case Failures of
