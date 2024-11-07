@@ -489,10 +489,12 @@ def group_testsets(testsets, reuse_clusters, randomize_clusters,
 def find_tests(test_names, discovered_list):
     results = {}
     discovered_dict = {n: (cl, t, cf) for n, cl, t, cf in discovered_list}
+    test_list = list(discovered_dict.keys())
+    test_list.sort()
     for class_name, test_name in test_names:
         assert class_name in discovered_dict, \
             f"Testset {class_name} is not found. "\
-            f"Available testsets: {list(discovered_dict.keys())}"
+            f"Available testsets: {test_list}"
         testset, tests, configurations = discovered_dict[class_name]
         if test_name == '*':
             results[class_name] = (testset, tests, configurations)
