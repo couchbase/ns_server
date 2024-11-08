@@ -37,6 +37,7 @@
          file_encrypt_chunk/2,
 
          read_file/2,
+         read_file_chunks/5,
          file_encrypt_state_match/2,
          is_file_encr_by_ds/2,
          is_file_encrypted/1,
@@ -244,6 +245,39 @@ read_file(Path, #dek_snapshot{} = DekSnapshot) ->
 read_file(Path, DekKind) ->
     GetSnapshotFun = fun () -> fetch_deks_snapshot(DekKind) end,
     read_file(Path, GetSnapshotFun).
+
+-spec read_file_chunks(Path, Fun, Acc, Deks, Opts) -> {ok, Acc} | {error, _}
+          when Path :: string(),
+               Fun :: fun ( (binary(), Acc) -> {ok, Acc} | {error, _} ),
+               Acc :: term(),
+               Deks :: #dek_snapshot{},
+               Opts :: #{read_chunk_size => pos_integer()}.
+read_file_chunks(Path, Fun, AccInit, Deks, Opts) ->
+    Filename = filename:basename(Path),
+    ReadChunkSize = maps:get(read_chunk_size, Opts, 65536),
+    F = fun (Data, {init, Acc}) ->
+                case file_decrypt_init(Data, Filename, Deks) of
+                    {ok, {EncrState, Rest}} ->
+                        {ok, {process, EncrState, Acc}, Rest};
+                    incomplete_magic -> need_more_data;
+                    need_more_data -> need_more_data;
+                    {error, _} = E -> E
+                end;
+            (Data, {process, EncrState, Acc}) ->
+                maybe
+                    {ok, {NewEncrState, Chunk, Rest}} ?=
+                        file_decrypt_next_chunk(Data, EncrState),
+                    {ok, NewAcc} ?= Fun(Chunk, Acc),
+                    {ok, {process, NewEncrState, NewAcc}, Rest}
+                end
+        end,
+    case misc:fold_file(Path, F, {init, AccInit}, ReadChunkSize) of
+        {ok, {init, Acc}} -> {ok, Acc};
+        {ok, {process, _, Acc}} -> {ok, Acc};
+        {unhandled_data, _Data, _Acc} -> {error, invalid_file_encryption};
+        {error, unknown_magic} -> {error, unknown_magic};
+        {error, _} = E -> E
+    end.
 
 -spec file_decrypt_init(binary(), string(),
                         #dek_snapshot{} |
@@ -672,6 +706,35 @@ decrypt_file_data_test() ->
     {error, invalid_file_encryption} =
         decrypt_file_data(<<?ENCRYPTED_FILE_MAGIC, 0, ?NO_COMPRESSION>>,
                           Filename, DS).
+
+read_write_file_test() ->
+    Path = path_config:tempfile("cb_crypto_test", ".tmp"),
+    Bin = iolist_to_binary(lists:seq(0,255)),
+    DS = generate_test_deks(),
+    ok = misc:atomic_write_file(Path, Bin),
+    {raw, Bin} = read_file(Path, DS),
+    ok = atomic_write_file(Path, Bin, DS, #{max_chunk_size => 7}),
+    {decrypted, Bin} = read_file(Path, DS),
+    %% Note that chunks are actually reversed here:
+    {ok, Chunks1} = read_file_chunks(Path, fun (C, Acc) -> {ok, [C | Acc]} end,
+                                     [], DS, #{read_chunk_size => 11}),
+    {ok, Chunks2} = read_file_chunks(Path, fun (C, Acc) -> {ok, [C | Acc]} end,
+                                     [], DS, #{read_chunk_size => 7}),
+    {ok, Chunks3} = read_file_chunks(Path, fun (C, Acc) -> {ok, [C | Acc]} end,
+                                     [], DS, #{read_chunk_size => 3}),
+    {ok, Chunks4} = read_file_chunks(Path, fun (C, Acc) -> {ok, [C | Acc]} end,
+                                     [], DS, #{read_chunk_size => 1000000000}),
+    %% All chunks should be the same. It should not matter how we read them
+    Chunks1 = Chunks2,
+    Chunks1 = Chunks3,
+    Chunks1 = Chunks4,
+    %% Last chunk should be 4 byte chunk, other chunks should be 7 bytes.
+    [LastChunk | OtherChunks] = Chunks1,
+    4 = byte_size(LastChunk),
+    [7] = lists:uniq([byte_size(C) || C <- OtherChunks]),
+
+    %% If we concatenate all chunks, we should get the original data
+    Bin = iolist_to_binary(lists:reverse(Chunks1)).
 
 generate_test_deks() ->
     KeyBin = cb_cluster_secrets:generate_raw_key(aes_256_gcm),

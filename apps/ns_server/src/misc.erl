@@ -1081,6 +1081,119 @@ raw_read_loop(File, Acc) ->
             Error
     end.
 
+%% Incrementally process a file by folding over its contents in chunks.
+%%
+%% Fun(Data, Acc) must return:
+%%   need_more_data       - Current data insufficient, read next chunk
+%%   {ok, NewAcc, Rest}   - Process chunk and continue (Rest may be <<>>)
+%%   {error, Reason}      - Stop with error
+%%
+%% Returns:
+%%   {ok, FinalAcc}                     - Success
+%%   {unhandled_data, Rest, FinalAcc}   - EOF with unprocessed data
+%%   {error, Reason}                    - Error occurred
+-spec fold_file(Path, Fun, Acc, ChunkSize) ->
+          {ok, Acc} | {unhandled_data, binary(), Acc} | {error, _}
+          when Path :: string(),
+               Fun :: fun( (binary(), Acc) -> need_more_data |
+                                              {ok, Acc} |
+                                              {error, _} ),
+               Acc :: term(),
+               ChunkSize :: pos_integer().
+fold_file(Path, Fun, AccInit, ChunkSize) ->
+    F = fun Read(Handle, Acc, feed, Data) ->
+                case Fun(Data, Acc) of
+                    need_more_data -> Read(Handle, Acc, read, Data);
+                    {ok, NewAcc, <<>>} -> Read(Handle, NewAcc, read, <<>>);
+                    {ok, NewAcc, Rest} -> Read(Handle, NewAcc, feed, Rest);
+                    {error, _} = E -> E
+                end;
+            Read(Handle, Acc, read, PrevData) ->
+                case file:read(Handle, ChunkSize) of
+                    {ok, Bytes} ->
+                        NewData = <<PrevData/binary, Bytes/binary>>,
+                        Read(Handle, Acc, feed, NewData);
+                    eof when PrevData == <<>> ->
+                        {ok, Acc};
+                    eof ->
+                        {unhandled_data, PrevData, Acc};
+                    {error, _} = Error ->
+                        Error
+                end
+        end,
+    with_file(Path, [read, binary], F(_, AccInit, read, <<>>)).
+
+-ifdef(TEST).
+fold_file_test_() ->
+    {setup,
+     fun () ->
+             Dir = path_config:tempfile(".", "fold_file_test_dir", ""),
+             ok = file:make_dir(Dir),
+
+             %% Create test files
+             EmptyFile = filename:join(Dir, "empty.txt"),
+             ok = file:write_file(EmptyFile, <<>>),
+
+             SmallFile = filename:join(Dir, "small.txt"),
+             ok = file:write_file(SmallFile, <<"abc">>),
+
+             ExactFile = filename:join(Dir, "exact.txt"),
+             ok = file:write_file(ExactFile, <<"abcde">>),
+
+             BigFile = filename:join(Dir, "big.txt"),
+             ok = file:write_file(BigFile, <<"abcdefghijk">>),
+
+             NonExistentFile = filename:join(Dir, "nonexistent.txt"),
+
+             {Dir, EmptyFile, SmallFile, ExactFile, BigFile, NonExistentFile}
+     end,
+     fun ({Dir, _, _, _, _, _}) ->
+             misc:rm_rf(Dir)
+     end,
+     fun ({_Dir, EmptyFile, SmallFile, ExactFile, BigFile, NonExistentFile}) ->
+             ChunkSize = 5,
+             Collector = fun (Data, Acc) ->
+                             {ok, <<Acc/binary, Data/binary>>, <<>>}
+                         end,
+             [
+              %% Non-existent file
+              ?_assertMatch({error, enoent},
+                            fold_file(NonExistentFile, Collector, <<>>,
+                                      ChunkSize)),
+
+              %% Empty file
+              ?_assertEqual({ok, <<>>},
+                            fold_file(EmptyFile, Collector, <<>>, ChunkSize)),
+
+              %% File smaller than chunk size (3 bytes vs 5)
+              ?_assertEqual({ok, <<"abc">>},
+                            fold_file(SmallFile, Collector, <<>>, ChunkSize)),
+
+              %% File exactly chunk size (5 bytes)
+              ?_assertEqual({ok, <<"abcde">>},
+                            fold_file(ExactFile, Collector, <<>>, ChunkSize)),
+
+              %% File bigger than chunk size (11 bytes vs 5)
+              ?_assertEqual({ok, <<"abcdefghijk">>},
+                            fold_file(BigFile, Collector, <<>>, ChunkSize)),
+
+              %% Verify chunking for big file
+              ?_test(begin
+                         Chunks = [],
+                         {ok, FinalChunks} =
+                             fold_file(BigFile,
+                                       fun (Data, Acc) ->
+                                               {ok, [Data | Acc], <<>>}
+                                       end,
+                                       Chunks,
+                                       ChunkSize),
+                         ?assertEqual([<<"k">>, <<"fghij">>, <<"abcde">>],
+                                      FinalChunks)
+                     end)
+             ]
+     end}.
+-endif.
+
 assoc_multicall_results_rec([], _ResL, _BadNodes, SuccessAcc, ErrorAcc) ->
     {SuccessAcc, ErrorAcc};
 assoc_multicall_results_rec([N | Nodes], Results, BadNodes,
