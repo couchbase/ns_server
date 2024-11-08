@@ -175,10 +175,14 @@ class Cluster:
 
     # Check every 0.5s until there is no rebalance running or 60s have passed
     def wait_for_rebalance(self, timeout_s=60, interval_s=0.5,
-                           wait_balanced=True, verbose=False):
+                           wait_balanced=True, balanced_timeout=10,
+                           balanced_interval=0.5, verbose=False):
         return cluster_run_lib.wait_for_rebalance(self.connected_nodes[0].url,
                                                   timeout_s, interval_s,
-                                                  wait_balanced, verbose)
+                                                  wait_balanced,
+                                                  balanced_timeout,
+                                                  balanced_interval,
+                                                  verbose)
 
     # Rebalance the cluster, and possibly eject nodes at the same time.
     # Can optionally wait for the rebalance to finish.

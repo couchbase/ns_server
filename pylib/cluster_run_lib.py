@@ -803,11 +803,12 @@ def rebalance_error(url):
 
 # Poll for the cluster to be balanced, up until a timeout, returning whether the
 # cluster became balanced within that timeout.
-def wait_for_balanced(url, timeout_time, interval_s):
+def wait_for_balanced(url, timeout_s, interval_s):
     def is_balanced():
         info = http_get_json(url + "/pools/default")
         return info.get("balanced", False)
 
+    timeout_time = time.time() + timeout_s
     while not is_balanced():
         if time.time() > timeout_time:
             return False
@@ -818,6 +819,7 @@ def wait_for_balanced(url, timeout_time, interval_s):
 # Wait for a rebalance to complete, by checking every half second for up to
 # 60s, and returning whether or not the rebalance completed in that time
 def wait_for_rebalance(url, timeout_s=60, interval_s=0.5, wait_balanced=True,
+                       balanced_timeout=10, balanced_interval=0.5,
                        verbose=False):
     def print_if_verbose(*args, **kwargs):
         if verbose:
@@ -837,7 +839,7 @@ def wait_for_rebalance(url, timeout_s=60, interval_s=0.5, wait_balanced=True,
 
         print_if_verbose(" Finished.")
 
-        if wait_balanced and not wait_for_balanced(url, timeout_time,
-                                                   interval_s):
+        if wait_balanced and not wait_for_balanced(url, balanced_timeout,
+                                                   balanced_interval):
             return "timeout"
     return rebalance_error(url)
