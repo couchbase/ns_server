@@ -17,16 +17,19 @@
 -module(simple_store).
 
 -include("ns_common.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 %% APIs
 
--export([start_link/1,
+-export([start_link/2,
          get/2, get/3,
          set/3,
          delete/2,
          delete_matching/2,
          clear/1,
-         iterate_matching/2]).
+         iterate_matching/2,
+         resave/1,
+         get_key_ids_in_use/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -43,13 +46,16 @@
 -define(FLUSH_RETRIES, 10).
 
 -record(state, {flush_pending :: undefined | erlang:reference(),
-                store_name :: atom()}).
+                store_name :: atom(),
+                keys_in_use = [] :: [undefined | cb_deks:dek_id()],
+                should_encrypt = true :: boolean()}).
 
 %% Exported APIs
 
-start_link(StoreName) ->
+start_link(StoreName, ShouldEncrypt) ->
     ProcName = get_proc_name(StoreName),
-    gen_server:start_link({local, ProcName}, ?MODULE, StoreName, []).
+    gen_server:start_link({local, ProcName}, ?MODULE,
+                          [StoreName, ShouldEncrypt], []).
 
 get(StoreName, Key) ->
     get(StoreName, Key, false).
@@ -88,36 +94,71 @@ iterate_matching(StoreName, KeyPattern) ->
               end
       end, [], StoreName).
 
+resave(StoreName) ->
+    do_work(StoreName, fun resave/2, []).
+
+get_key_ids_in_use(StoreName) ->
+    do_work(StoreName, fun get_key_ids/2, []).
+
 %% Internal
-init(StoreName) ->
+init([StoreName, ShouldEncrypt]) ->
     %% Populate the table from the file if the file exists otherwise create
     %% an empty table.
     FilePath = path_config:component_path(data, get_file_name(StoreName)),
-    Read =
-        case filelib:is_regular(FilePath) of
-            true ->
-                ?metakv_debug("Reading ~p content from ~s", [StoreName, FilePath]),
-                case ets:file2tab(FilePath, [{verify, true}]) of
-                    {ok, StoreName} ->
-                        true;
-                    {error, Error} ->
-                        ?metakv_debug("Failed to read ~p content from ~s: ~p",
-                                      [StoreName, FilePath, Error]),
-                        false
-                end;
-            false ->
-                false
+    {Created, KeysInUse} =
+        case cb_crypto:get_file_dek_ids(FilePath) of
+            {ok, []} ->
+                {false, []};
+            {ok, [undefined]} ->
+                ?metakv_debug("Reading ~p content from unencrypted ~s",
+                              [StoreName, FilePath]),
+                {init_unencrypted(StoreName, FilePath), [undefined]};
+            {ok, [KeyId]} when is_binary(KeyId) ->
+                ?metakv_debug("Reading ~p content from encrypted ~s",
+                              [StoreName, FilePath]),
+                {init_encrypted(StoreName, FilePath), [KeyId]};
+            {error, Error} ->
+                ?metakv_debug("Failed to read ~p content from ~s: ~p",
+                              [StoreName, FilePath, Error]),
+                {false, []}
         end,
 
-    case Read of
+    case Created of
         true ->
             ok;
         false ->
             ?metakv_debug("Creating Table: ~p", [StoreName]),
-            ets:new(StoreName, [named_table, set, protected]),
-            ok
+            init_new(StoreName)
     end,
-    {ok, #state{flush_pending = undefined, store_name = StoreName}}.
+
+    State = #state{flush_pending = undefined, store_name = StoreName,
+                   should_encrypt = ShouldEncrypt},
+    {ok, State#state{keys_in_use = KeysInUse}}.
+
+init_new(StoreName) ->
+    ets:new(StoreName, [named_table, set, protected]).
+
+init_encrypted(StoreName, FilePath) ->
+    init_new(StoreName),
+    {ok, DS} = cb_crypto:fetch_deks_snapshot(configDek),
+    case file2tab_encrypted(StoreName, FilePath, DS) of
+        ok ->
+            true;
+        {error, Error} ->
+            ?metakv_debug("Failed to read ~p content from ~s: ~p",
+                          [StoreName, FilePath, Error]),
+            false
+    end.
+
+init_unencrypted(StoreName, FilePath) ->
+    case ets:file2tab(FilePath, [{verify, true}]) of
+        {ok, StoreName} ->
+            true;
+        {error, Error} ->
+            ?metakv_debug("Failed to read ~p content from ~s: ~p",
+                          [StoreName, FilePath, Error]),
+            false
+    end.
 
 handle_call({work, Fun}, _From, State) ->
     {Res, NewState} = Fun(State),
@@ -178,6 +219,17 @@ del_matching([KeyPattern], #state{store_name = StoreName} = State) ->
       end, undefined, StoreName),
     {ok, schedule_flush(?FLUSH_RETRIES, State)}.
 
+resave([], #state{keys_in_use = InUse} = State) ->
+    {ok, DS} = cb_crypto:fetch_deks_snapshot(configDek),
+    ActiveKeyId = cb_crypto:get_dek_id(DS),
+    case [ActiveKeyId] == InUse of
+        true -> {ok, State};
+        false -> write_table_to_disk(DS, State)
+    end.
+
+get_key_ids([], #state{keys_in_use = KeyIds} = State) ->
+    {{ok, KeyIds}, State}.
+
 %% Nothing can be done if we failed to flush repeatedly.
 schedule_flush(0, #state{store_name = StoreName} = _State) ->
     ?metakv_debug("Tried to flush table ~p ~p times but failed. Giving up.",
@@ -196,18 +248,34 @@ schedule_flush(NumRetries, #state{flush_pending = undefined} = State) ->
     State#state{flush_pending = Ref}.
 
 %% Flush the table to the file.
-flush_table(NumRetries, #state{store_name = StoreName} = State) ->
-    NewState = stop_flush_timer(State),
-    FilePath = path_config:component_path(data, get_file_name(StoreName)),
-    ?metakv_debug("Persisting Table ~p to file ~p.", [StoreName, FilePath]),
-    case ets:tab2file(StoreName, FilePath, [{extended_info, [object_count]}]) of
-        ok ->
+flush_table(NumRetries, State) ->
+    {ok, DS} = cb_crypto:fetch_deks_snapshot(configDek),
+    case write_table_to_disk(DS, stop_flush_timer(State)) of
+        {ok, NewState} ->
             NewState;
-        {error, Error} ->
-            ?metakv_debug("Failed to persist table ~p to file ~p with error ~p.",
-                          [StoreName, FilePath, Error]),
+        {{error, _Error}, NewState} ->
             %% Reschedule another flush.
             schedule_flush(NumRetries - 1, NewState)
+    end.
+
+write_table_to_disk(DS, #state{store_name = StoreName,
+                               should_encrypt = ShouldEncrypt} = State) ->
+    FilePath = path_config:component_path(data, get_file_name(StoreName)),
+    ?metakv_debug("Persisting Table ~p to file ~p.", [StoreName, FilePath]),
+    ActiveKeyId = cb_crypto:get_dek_id(DS),
+    EncryptionEnabled = (ActiveKeyId /= undefined),
+    Res = case ShouldEncrypt andalso EncryptionEnabled of
+              true -> tab2file_encrypted(StoreName, FilePath, DS);
+              false -> ets:tab2file(StoreName, FilePath,
+                                    [{extended_info, [object_count]}])
+          end,
+    case Res of
+        ok ->
+            {ok, State#state{keys_in_use = [ActiveKeyId]}};
+        {error, Error} ->
+            ?metakv_debug("Failed to persist table ~p to file ~p with error "
+                          "~p.", [StoreName, FilePath, Error]),
+            {{error, Error}, State}
     end.
 
 stop_flush_timer(#state{flush_pending = undefined} = State) -> State;
@@ -220,3 +288,44 @@ get_proc_name(StoreName) ->
 
 get_file_name(StoreName) ->
     atom_to_list(?MODULE) ++ "_" ++ atom_to_list(StoreName).
+
+file2tab_encrypted(StoreName, FilePath, DS) ->
+    F = fun (Chunk, Acc) ->
+            Records = binary_to_term(Chunk),
+            ets:insert(StoreName, Records),
+            {ok, Acc}
+        end,
+    case cb_crypto:read_file_chunks(FilePath, F, ok, DS, #{}) of
+        {ok, _} -> ok;
+        {error, _} = E -> E
+    end.
+
+tab2file_encrypted(StoreName, FilePath, DS) ->
+    FileName = filename:basename(FilePath),
+    WriteFun = write_terms(_, init, {FileName, StoreName, DS}),
+    try
+        ets:safe_fixtable(StoreName, true),
+        misc:atomic_write_file(FilePath, WriteFun)
+    after
+        ets:safe_fixtable(StoreName, false)
+    end.
+
+write_terms(FileHandle, init, {FileName, StoreName, DS}) ->
+    {Header, EncrState} = cb_crypto:file_encrypt_init(FileName, DS),
+    case file:write(FileHandle, Header) of
+        ok ->
+            write_terms(FileHandle,
+                        ets:select(StoreName, [{'_', [], ['$_']}], 100),
+                        EncrState);
+        {error, _} = E ->
+            E
+    end;
+write_terms(FileHandle, {Records, Continuation}, State) ->
+    Data = term_to_binary(Records),
+    {EncryptedData, NewState} = cb_crypto:file_encrypt_chunk(Data, State),
+    case file:write(FileHandle, EncryptedData) of
+        ok -> write_terms(FileHandle, ets:select(Continuation), NewState);
+        {error, _} = E -> E
+    end;
+write_terms(_FileHandle, '$end_of_table', _State) ->
+    ok.

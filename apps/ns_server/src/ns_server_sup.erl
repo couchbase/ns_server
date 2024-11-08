@@ -145,7 +145,7 @@ child_specs() ->
       permanent, brutal_kill, worker, dynamic},
 
      {xdcr_ckpt_store,
-      {simple_store, start_link, [?XDCR_CHECKPOINT_STORE]},
+      {simple_store, start_link, [?XDCR_CHECKPOINT_STORE, true]},
       permanent, 1000, worker, []},
 
      {metakv_worker,
@@ -213,7 +213,7 @@ child_specs() ->
        {memcached_config_mgr, {memcached_config_mgr, start_link, []},
         {permanent, 4, ?MAX_R, ?MAX_T}, 1000, worker, []}),
 
-     {testconditions_store, {simple_store, start_link, [testconditions]},
+     {testconditions_store, {simple_store, start_link, [testconditions, false]},
       permanent, 1000, worker, []},
 
      {terse_cluster_info_uploader,
