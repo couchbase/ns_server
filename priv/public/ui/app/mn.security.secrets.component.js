@@ -18,9 +18,9 @@ import {MnPermissions} from './ajs.upgraded.providers.js';
 import template from "./mn.security.secrets.html";
 import {MnSecuritySecretsAddDialogComponent} from './mn.security.secrets.add.dialog.component.js';
 import {MnSecuritySecretsEncryptionDialogComponent} from './mn.security.secrets.encryption.dialog.component.js';
+import {MnSecuritySecretsReencryptConfirmationComponent} from './mn.security.secrets.reencrypt.confirmation.component.js';
 import {Subject} from 'rxjs';
 import {timeUnitToSeconds} from './constants/constants.js';
-import {MnFormService} from './mn.form.service.js';
 
 export {MnSecuritySecretsComponent};
 
@@ -36,11 +36,10 @@ class MnSecuritySecretsComponent extends MnLifeCycleHooksToStream {
     MnPermissions,
     MnSecuritySecretsService,
     MnHelperService,
-    NgbModal,
-    MnFormService
+    NgbModal
   ]}
 
-  constructor(mnPermissions, mnSecuritySecretsService, mnHelperService, modalService, mnFormService) {
+  constructor(mnPermissions, mnSecuritySecretsService, mnHelperService, modalService) {
     super();
 
     this.secondsInDay = timeUnitToSeconds.day;
@@ -59,13 +58,6 @@ class MnSecuritySecretsComponent extends MnLifeCycleHooksToStream {
     this.filter = mnHelperService.createFilter(this,
                                                ['name', 'type', 'usage', 'creationDateTime'],
                                                true);
-
-    this.dropForms = mnFormService.create(this)
-      .setPostRequest(mnSecuritySecretsService.stream.postDropAtRestKeys)
-      .trackSubmit()
-      .successMessage("Key was dropped successfully!")
-      .errorMessage("An error occurred dropping the key.")
-      .success(() => mnSecuritySecretsService.stream.updateSecretsList.next());
 
     this.onAddSecretClick = new Subject();
     this.onAddSecretClick
@@ -87,6 +79,14 @@ class MnSecuritySecretsComponent extends MnLifeCycleHooksToStream {
         ref.componentInstance.type = type;
         ref.componentInstance.secrets = secrets;
         ref.componentInstance.config = config;
+      });
+
+    this.onReencryptClick = new Subject();
+    this.onReencryptClick
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe((type) => {
+        const ref = this.modalService.open(MnSecuritySecretsReencryptConfirmationComponent);
+        ref.componentInstance.type = type;
       });
 
     this.secrets = mnSecuritySecretsService.stream.getSecrets;

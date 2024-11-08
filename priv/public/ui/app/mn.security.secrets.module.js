@@ -26,6 +26,7 @@ import {MnSecuritySecretsItemDetailsComponent} from './mn.security.secrets.item.
 import {MnInputFilterModule} from './mn.input.filter.module.js';
 import {MnPipesModule} from './mn.pipes.module.js';
 import {MnElementCraneModule} from './mn.element.crane.js';
+import {MnSecuritySecretsReencryptConfirmationComponent} from './mn.security.secrets.reencrypt.confirmation.component.js';
 
 let secretsState = {
   url: "/secrets?openedSecrets",
@@ -56,11 +57,13 @@ class MnSecuritySecretsModule {
           MnSecuritySecretsAddDialogComponent,
           MnSecuritySecretsDeleteDialogComponent,
           MnSecuritySecretsEncryptionDialogComponent,
+          MnSecuritySecretsReencryptConfirmationComponent,
         ],
         declarations: [
           MnSecuritySecretsAddDialogComponent,
           MnSecuritySecretsDeleteDialogComponent,
           MnSecuritySecretsEncryptionDialogComponent,
+          MnSecuritySecretsReencryptConfirmationComponent,
           MnSecuritySecretsComponent,
           MnSecuritySecretsItemDetailsComponent,
           MnSecuritySecretsItemComponent,
