@@ -156,6 +156,7 @@
          get_continuous_backup_enabled/1,
          get_continuous_backup_interval/1,
          get_continuous_backup_location/1,
+         get_invalid_hlc_strategy/1,
          uuid_key/1,
          uuid/2,
          uuids/0,
@@ -557,7 +558,8 @@ attribute_default(Name) ->
         access_scanner_enabled -> false;    % boolean
         continuous_backup_enabled -> false; % boolean
         continuous_backup_interval -> 2;    % minutes
-        continuous_backup_location -> ""    % path or URI
+        continuous_backup_location -> "";   % path or URI
+        invalid_hlc_strategy -> error       % atom
     end.
 
 %% The minimum value of the attribute.
@@ -656,6 +658,11 @@ get_continuous_backup_location(BucketConfig) ->
             membase_bucket_config_value_getter(continuous_backup_location,
                                                BucketConfig)
     end.
+
+-spec get_invalid_hlc_strategy(proplists:proplist()) ->
+    undefined | error | ignore | replace.
+get_invalid_hlc_strategy(BucketConfig) ->
+    membase_bucket_config_value_getter(invalid_hlc_strategy, BucketConfig).
 
 %% returns bucket ram quota multiplied by number of nodes this bucket
 %% will reside after initial cleanup. I.e. gives amount of ram quota that will
@@ -2307,7 +2314,10 @@ chronicle_upgrade_bucket_to_morpheus(BucketName, ChronicleTxn) ->
                  {memory_low_watermark,
                   attribute_default(memory_low_watermark)},
                  {memory_high_watermark,
-                  attribute_default(memory_high_watermark)}] ++
+                  attribute_default(memory_high_watermark)},
+                 %% The default value isn't used for existing buckets as it
+                 %% may lead to XDCR setups stopping.
+                 {invalid_hlc_strategy, ignore}] ++
                 case is_persistent(BucketConfig) of
                     true ->
                         [{access_scanner_enabled, true}];
@@ -2446,6 +2456,7 @@ extract_bucket_props(Props) ->
                          magma_key_tree_data_blocksize,
                          magma_seq_tree_data_blocksize,
                          history_retention_collection_default, rank,
+                         invalid_hlc_strategy,
                          encryption_secret_id,
                          encryption_dek_rotation_interval,
                          encryption_dek_lifetime,

@@ -434,7 +434,9 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
                ns_bucket:get_memory_high_watermark(BucketConfig)},
               {durabilityImpossibleFallback,
                build_durability_impossible_fallback(BucketConfig)},
-              {warmupBehavior, ns_bucket:warmup_behavior(BucketConfig)}] ++
+              {warmupBehavior, ns_bucket:warmup_behavior(BucketConfig)},
+              {invalidHlcStrategy,
+               ns_bucket:get_invalid_hlc_strategy(BucketConfig)}] ++
              case ns_bucket:is_persistent(BucketConfig) of
                  true ->
                      [{accessScannerEnabled,
@@ -1628,6 +1630,7 @@ validate_membase_bucket_params(CommonParams, Params, Name,
          parse_validate_continuous_backup_location(Params, BucketConfig, IsNew,
                                                    IsMorpheus,
                                                    IsStorageModeMigration),
+         parse_validate_invalid_hlc_strategy(Params, IsNew, IsMorpheus),
          parse_validate_storage_quota_percentage(
            Params, BucketConfig, IsNew, IsEnterprise,
            IsStorageModeMigration),
@@ -1664,6 +1667,41 @@ validate_membase_bucket_params(CommonParams, Params, Name,
           Params, HistRetSecs, BucketConfig, IsNew) ++
         validate_bucket_placer_params(Params, IsNew, BucketConfig) ++
         BucketParams.
+
+parse_validate_invalid_hlc_strategy(Params, _IsNew, false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "invalidHlcStrategy", Params,
+      fun not_supported_until_morpheus_error/1);
+parse_validate_invalid_hlc_strategy(Params, IsNew, _IsMorpheus) ->
+    parse_validate_one_of(Params, invalidHlcStrategy, invalid_hlc_strategy,
+                          IsNew, ["error", "ignore", "replace"]).
+
+parse_validate_one_of(Params, Param, ConfigKey, IsNew, ValidValues) ->
+    Value = proplists:get_value(atom_to_list(Param), Params),
+    case {Value, IsNew} of
+        {undefined, true} ->
+            %% The value wasn't supplied and we're creating a bucket:
+            %% use the default value.
+            {ok, ConfigKey, ns_bucket:attribute_default(ConfigKey)};
+        {undefined, false} ->
+            %% The value wasn't supplied and we're modifying a bucket:
+            %% don't complain since the value was either specified or a
+            %% default used when the bucket was created.
+            ignore;
+        {_, _} ->
+            validate_one_of(Value, Param, ConfigKey, ValidValues)
+    end.
+
+validate_one_of(Value, Param, ConfigKey, ValidValues) ->
+    case lists:member(Value, ValidValues) of
+        true ->
+            {ok, ConfigKey, list_to_atom(Value)};
+        false ->
+            AtomValues = lists:map(fun(V) -> list_to_atom(V) end, ValidValues),
+            Msg = list_to_binary(
+                    io_lib:format("Must be one of ~0p", [AtomValues])),
+            {error, Param, Msg}
+    end.
 
 parse_validate_continuous_backup_enabled(Params, BucketConfig, IsNew,
                                          IsMorpheus, IsStorageModeMigration) ->
@@ -4316,7 +4354,8 @@ basic_bucket_params_screening_t() ->
                       {"memoryHighWatermark", "333"},
                       {"continuousBackupEnabled", "hello"},
                       {"continuousBackupInterval", "1"},
-                      {"continuousBackupLocation", "yahoo://storage/blob"}],
+                      {"continuousBackupLocation", "yahoo://storage/blob"},
+                      {"invalidHlcStrategy", "badvalue"}],
                      AllBuckets),
     ?assertEqual([{expiryPagerSleepTime,
                    <<"The value of expiryPagerSleepTime (-1) must be in the "
@@ -4334,8 +4373,10 @@ basic_bucket_params_screening_t() ->
                      "in the range 2 to 2147483647 inclusive">>},
                   {continuousBackupLocation,
                    <<"Must be a valid path or uri writable by "
-                     "'couchbase' user">>}
-                 ], E35),
+                     "'couchbase' user">>},
+                  {invalidHlcStrategy,
+                   <<"Must be one of [error,ignore,replace]">>}],
+                 E35),
 
     %% Test related values.
     {_OK36, E36} = basic_bucket_params_screening(
@@ -4535,7 +4576,19 @@ basic_bucket_params_screening_t() ->
                  proplists:get_value(num_vbuckets, OK49)),
     %% and put it back
     meck:expect(ns_config, search,
-                fun (couchbase_num_vbuckets_default) -> 16 end).
+                fun (couchbase_num_vbuckets_default) -> {value, 16} end),
+
+    lists:foreach(
+      fun (InvalidHlcArg) ->
+              {OK50, []} = basic_bucket_params_screening(
+                              true, "bucket50",
+                              [{"bucketType", "membase"},
+                               {"ramQuota", "100"},
+                               {"invalidHlcStrategy", InvalidHlcArg}],
+                              AllBuckets),
+              ?assertEqual(list_to_atom(InvalidHlcArg),
+                           proplists:get_value(invalid_hlc_strategy, OK50))
+      end, ["error", "ignore", "replace"]).
 
 basic_bucket_params_screening_test_() ->
     {setup,

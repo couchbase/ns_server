@@ -81,6 +81,8 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
       DriftAheadThreshold},
      {"hlc_drift_behind_threshold_us", [no_param, {reload, vbucket}],
       DriftBehindThreshold},
+     {"hlc_invalid_strategy", [no_param, {reload, vbucket}],
+      get_invalid_hlc_strategy(BucketConfig)},
      {"item_eviction_policy", maybe_restart(),
       get_eviction_policy(true, BucketConfig)},
      {"ephemeral_full_policy", [{reload, flush}],
@@ -160,6 +162,15 @@ persistent_metadata_purge_age(BucketName, BucketConfig) ->
             %% the global auto-compaction purge interval may be used.
             PI = compaction_api:get_purge_interval(list_to_binary(BucketName)),
             erlang:round(PI * 24 * 3600)
+    end.
+
+
+get_invalid_hlc_strategy(BucketConfig) ->
+    case cluster_compat_mode:is_cluster_morpheus() of
+        false ->
+            undefined;
+        true ->
+            ns_bucket:get_invalid_hlc_strategy(BucketConfig)
     end.
 
 get_memory_watermark(Type, BucketConfig) ->
