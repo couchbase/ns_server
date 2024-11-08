@@ -93,10 +93,7 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
     def requirements():
         return [ClusterRequirements(edition="Enterprise",
                                     min_num_nodes=2, num_connected=1,
-                                    encryption=False, afamily='ipv4'),
-                ClusterRequirements(edition="Enterprise",
-                                    min_num_nodes=2, num_connected=1,
-                                    encryption=True, afamily='ipv6')]
+                                    encryption=False, afamily='ipv4')]
 
     def setup(self):
         self.cluster_ca = read_cert_file('test_CA.pem')
@@ -507,6 +504,31 @@ class NodeAdditionWithCertsTests(testlib.BaseTestSet):
         assert_msg_in_error('Please review the CAs available on the new node',
                             response[0])
         assert_failed_to_connect_error(self.cluster_node(), response[0])
+
+
+
+class NodeAdditionWithCertsIPv6Tests(testlib.BaseTestSet):
+    @staticmethod
+    def requirements():
+        return [ClusterRequirements(edition="Enterprise",
+                                    min_num_nodes=2, num_connected=1,
+                                    encryption=True, afamily='ipv6')]
+
+    def __init__(self, cluster):
+        super().__init__(cluster)
+        self.wrapped = NodeAdditionWithCertsTests(cluster)
+
+    def setup(self):
+        self.wrapped.setup()
+
+    def teardown(self):
+        self.wrapped.teardown()
+
+    def test_teardown(self):
+        self.wrapped.test_teardown()
+
+    def add_trusted_node_to_trusted_cluster_test(self):
+        self.wrapped.add_trusted_node_to_trusted_cluster_test()
 
 
 def assert_msg_in_error(msg, error):
