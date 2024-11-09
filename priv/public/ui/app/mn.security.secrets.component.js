@@ -10,7 +10,7 @@ licenses/APL2.txt.
 
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {MnHelperService} from './mn.helper.service.js';
-import {takeUntil, withLatestFrom} from 'rxjs/operators';
+import {takeUntil, withLatestFrom, map, shareReplay} from 'rxjs/operators';
 import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
 import {MnSecuritySecretsService} from './mn.security.secrets.service.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
@@ -21,6 +21,7 @@ import {MnSecuritySecretsEncryptionDialogComponent} from './mn.security.secrets.
 import {MnSecuritySecretsReencryptConfirmationComponent} from './mn.security.secrets.reencrypt.confirmation.component.js';
 import {Subject} from 'rxjs';
 import {timeUnitToSeconds} from './constants/constants.js';
+import {DatePipe} from '@angular/common';
 
 export {MnSecuritySecretsComponent};
 
@@ -36,13 +37,15 @@ class MnSecuritySecretsComponent extends MnLifeCycleHooksToStream {
     MnPermissions,
     MnSecuritySecretsService,
     MnHelperService,
-    NgbModal
+    NgbModal,
+    DatePipe
   ]}
 
-  constructor(mnPermissions, mnSecuritySecretsService, mnHelperService, modalService) {
+  constructor(mnPermissions, mnSecuritySecretsService, mnHelperService, modalService, datePipe) {
     super();
 
     this.secondsInDay = timeUnitToSeconds.day;
+    this.datePipe = datePipe;
 
     this.getEncryptionAtRest = mnSecuritySecretsService.stream.getEncryptionAtRest;
     this.getEncryptionAtRestKeys = mnSecuritySecretsService.stream.getEncryptionAtRestKeys;
@@ -56,7 +59,7 @@ class MnSecuritySecretsComponent extends MnLifeCycleHooksToStream {
 
     this.sorter = mnHelperService.createSorter('creationDateTime', true);
     this.filter = mnHelperService.createFilter(this,
-                                               ['name', 'type', 'usage', 'creationDateTime'],
+                                               ['name', 'type', '_uiUsage', '_uiCreationDateTime', '_uiMediumTime'],
                                                true);
 
     this.onAddSecretClick = new Subject();
@@ -92,11 +95,32 @@ class MnSecuritySecretsComponent extends MnLifeCycleHooksToStream {
     this.secrets = mnSecuritySecretsService.stream.getSecrets;
 
     this.filteredSecrets = this.secrets
-      .pipe(this.filter.pipe,
-            this.sorter.pipe);
+      .pipe(map(this.addUiFields.bind(this)),
+        this.filter.pipe,
+        this.sorter.pipe,
+        shareReplay({refCount: true, bufferSize: 1}));
   }
 
   trackByMethod(i, item) {
     return item.id;
+  }
+
+  usageToReadableWords(usage) {
+    const usages = usage.filter(usage => usage.endsWith('-encryption'));
+    const usagesBucket = usage.filter(usage => usage.includes('-encryption-'));
+    const rv = usages.map(usage => this.mapTypeToNames(usage.split('-')[0]));
+    if (usagesBucket.length) {
+      rv.push(`Data (${usagesBucket.map(usage => usage.split('-')[2])})`);
+    }
+    return rv.join(', ');
+  }
+
+  addUiFields(secrets) {
+    return secrets.map(secret => {
+      secret._uiUsage = this.usageToReadableWords(secret.usage);
+      secret._uiMediumTime = this.datePipe.transform(secret.creationDateTime, 'mediumTime', 'UTC', 'en-US')
+      secret._uiCreationDateTime = this.datePipe.transform(secret.creationDateTime, 'd MMM, y', 'UTC', 'en-US');
+      return secret;
+    });
   }
 }

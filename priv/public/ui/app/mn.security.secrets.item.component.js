@@ -52,12 +52,4 @@ class MnSecuritySecretsItemComponent extends MnLifeCycleHooksToStream {
       new DetailsHashObserver(this.uiRouter, this, 'openedSecrets', this.item.id.toString());
   }
 
-  usageToWords(usage) {
-    const usages = usage.filter(usage => usage.endsWith('-encryption'));
-    const usagesBucket = usage.filter(usage => usage.includes('-encryption-'));
-    const rv = usages.map(usage => this.mapTypeToNames(usage.split('-')[0]));
-    rv.push(`Data (${usagesBucket.map(usage => usage.split('-')[2])})`);
-    return rv.join(', ');
-  }
-
 }

@@ -13,6 +13,7 @@ import {NgModule} from '@angular/core';
 import {UIRouterModule} from '@uirouter/angular';
 import {NgbModule} from '@ng-bootstrap/ng-bootstrap';
 import {ReactiveFormsModule} from '@angular/forms';
+import {DatePipe} from '@angular/common';
 
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnSelectModule} from './mn.select.module.js';
@@ -77,6 +78,9 @@ class MnSecuritySecretsModule {
           MnElementCraneModule,
           ReactiveFormsModule,
           UIRouterModule.forChild({states: [secretsState]})
+        ],
+        providers: [
+          DatePipe
         ]
       })
     ]
