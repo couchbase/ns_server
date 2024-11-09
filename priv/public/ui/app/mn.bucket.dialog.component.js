@@ -98,7 +98,7 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
       this.secrets ?
         this.secrets.filter(secret =>
           secret.usage.find(u =>
-              u.includes('bucket-encryption-*') ||
+              u.includes('bucket-encryption') ||
               this.bucket && u.includes('bucket-encryption-' + this.bucket.name) )) : this.secrets;
 
     let formData = this.bucket ?

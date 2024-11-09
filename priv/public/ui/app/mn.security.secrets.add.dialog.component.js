@@ -132,10 +132,6 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         this.form.group.get('usage.bucket-encryption').valueChanges
         .pipe(startWith(this.form.group.get('usage.bucket-encryption').value));
 
-      const usageBucketsChanged =
-        this.form.group.get('usageBuckets').valueChanges
-        .pipe(startWith(this.form.group.get('usageBuckets').value));
-
       isDataEnabled
         .pipe(takeUntil(this.mnOnDestroy))
         .subscribe(this.maybeToggleAllBuckets.bind(this));
@@ -143,10 +139,6 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
       isAutoRotationEnabled
         .pipe(takeUntil(this.mnOnDestroy))
         .subscribe(this.maybeEnableRotation.bind(this));
-
-      usageBucketsChanged
-        .pipe(takeUntil(this.mnOnDestroy))
-        .subscribe(this.handleUsageBucketsChange.bind(this));
 
     if (this.item) {
       setTimeout(() => {
@@ -163,18 +155,16 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
   }
 
   getSelected() {
-    return this.options.filter(v => this.form.group.get('usage').value[v + '-encryption']).map(this.mapTypeToNames).join(', ');
+    const isAnyBucketSelected = Object.values(this.form.group.get('usageBuckets').value).some(v => v);
+    const selected = this.options.filter(v => this.form.group.get('usage').value[v + '-encryption']).map(this.mapTypeToNames).join(', ');
+    if (isAnyBucketSelected && !selected.includes('Data')) {
+        return selected.length ? selected + ', Data (Custom)' : 'Data (Custom)';
+    }
+    return selected;
   }
 
   maybeToggleAllBuckets(value) {
-    this.form.group.get('usageBuckets').patchValue(this.bucketNames.reduce((acc, bucket) => {
-      acc['bucket-encryption-' + bucket] = value;
-      return acc;
-    }, {}), {emitEvent: false});
-  }
-
-  handleUsageBucketsChange(value) {
-    this.form.group.get('usage.bucket-encryption').setValue(Object.values(value).every(v => v), {emitEvent: false});
+    this.form.group.get('usageBuckets')[value ? 'disable' : 'enable']({emitEvent: false});
   }
 
   maybeEnableRotation(enable) {
@@ -197,13 +187,13 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
       usage: item.usage.reduce((acc, v) => {
         //it is safe to unpack both usage and usageBuckets equally since
         //angular's patchValue filters out unknown keys
-        acc[this.unpackUsage(v)] = true;
+        acc[v] = true;
         return acc;
       }, {}),
       usageBuckets: item.usage.reduce((acc, v) => {
         //it is safe to unpack both usage and usageBuckets equally since
         //angular's patchValue filters out unknown keys
-        acc[this.unpackUsage(v)] = true;
+        acc[v] = true;
         return acc;
       }, {})
     };
@@ -261,32 +251,12 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
       data = awsSecret;
     }
 
-    let usageToSend = Object.keys(usage).filter(v => usage[v]).map(this.packUsage);
-    usageToSend = usageToSend.concat(Object.keys(usageBuckets).filter(v => usageBuckets[v]));
+    let usageToSend = Object.keys(usage).filter(v => usage[v]);
+    if (!usageToSend.includes('bucket-encryption')) {
+      usageToSend = usageToSend.concat(Object.keys(usageBuckets).filter(v => usageBuckets[v]));
+    }
 
     return [{ name, type, usage: usageToSend, data}, this.item?.id];
-  }
-
-  packUsage(usage) {
-    switch (usage) {
-      case 'config-encryption':
-        return 'configuration-encryption';
-      case 'bucket-encryption':
-          return 'bucket-encryption-*';
-      default:
-        return usage;
-    }
-  }
-
-  unpackUsage(usage) {
-    switch (usage) {
-      case 'configuration-encryption':
-        return 'config-encryption';
-      case 'bucket-encryption-*':
-        return 'bucket-encryption';
-      default:
-        return usage;
-    }
   }
 
   valuesMapping(item) {

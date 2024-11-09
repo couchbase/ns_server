@@ -13,6 +13,7 @@ import {UIRouter} from '@uirouter/angularjs';
 import {MnPermissions} from './ajs.upgraded.providers.js';
 import {MnLifeCycleHooksToStream, DetailsHashObserver} from './mn.core.js';
 import template from "./mn.security.secrets.item.html";
+import {MnSecuritySecretsService} from "./mn.security.secrets.service.js";
 
 export {MnSecuritySecretsItemComponent};
 
@@ -33,20 +34,30 @@ class MnSecuritySecretsItemComponent extends MnLifeCycleHooksToStream {
   static get parameters() {
     return [
       UIRouter,
-      MnPermissions
+      MnPermissions,
+      MnSecuritySecretsService
     ];
   }
 
-  constructor(uiRouter, mnPermissions) {
+  constructor(uiRouter, mnPermissions, mnSecuritySecretsService) {
     super();
 
     this.uiRouter = uiRouter;
     this.permissions = mnPermissions.stream;
+    this.mapTypeToNames = mnSecuritySecretsService.mapTypeToNames;
   }
 
   ngOnInit() {
     this.detailsHashObserver =
       new DetailsHashObserver(this.uiRouter, this, 'openedSecrets', this.item.id.toString());
+  }
+
+  usageToWords(usage) {
+    const usages = usage.filter(usage => usage.endsWith('-encryption'));
+    const usagesBucket = usage.filter(usage => usage.includes('-encryption-'));
+    const rv = usages.map(usage => this.mapTypeToNames(usage.split('-')[0]));
+    rv.push(`Data (${usagesBucket.map(usage => usage.split('-')[2])})`);
+    return rv.join(', ');
   }
 
 }

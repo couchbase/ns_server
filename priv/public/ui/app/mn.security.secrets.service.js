@@ -135,8 +135,7 @@ class MnSecuritySecretsService {
 
   mapTypeToNames(type) {
     switch (type) {
-      case "config":
-      case "configuration": return "Configuration";
+      case "config": return "Configuration";
       case "log": return "Logs";
       case "audit": return "Audit";
       case "bucket": return "Data";
