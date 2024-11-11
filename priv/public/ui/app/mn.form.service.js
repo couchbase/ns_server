@@ -120,6 +120,16 @@ class MnForm {
     return this;
   }
 
+  fieldToggler([togglerPath, fieldPath]) {
+    this.group.get(togglerPath).valueChanges
+      .pipe(startWith(this.group.get(togglerPath).value),
+            takeUntil(this.component.mnOnDestroy))
+      .subscribe((value) => {
+        this.group.get(fieldPath)[value ? "enable": "disable"]({emitEvent: false});
+      });
+    return this;
+  }
+
   disableFields(path) {
     return (value) => {
       this.group.get(path)[value ? "disable" : "enable"]({emitEvent: false});
