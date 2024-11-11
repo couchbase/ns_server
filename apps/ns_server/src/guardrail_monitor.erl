@@ -40,7 +40,7 @@
                 timer_ref = undefined :: undefined | reference()
                }).
 
--type resource() :: {bucket, bucket_name()} | index.
+-type resource() :: {bucket, bucket_name()} | disk | index.
 -export_type([resource/0]).
 
 -type disk_severity() :: serious | critical | maximum.
@@ -545,7 +545,7 @@ get_severity_for_thresholds(Resource, Thresholds, Metric, Order) ->
 -spec check_disk_usage([{atom(), number()}], ns_disksup:disk_stat()) ->
     ok | disk_severity().
 check_disk_usage(Thresholds, {_Disk, _Cap, Used}) ->
-    get_severity_for_thresholds(index, Thresholds, Used, descending).
+    get_severity_for_thresholds(disk, Thresholds, Used, descending).
 
 -spec get_disk_data(ns_disksup:disk_stats()) ->
           {ok, ns_disksup:disk_stat()} | {error, disk_stats_error()}.

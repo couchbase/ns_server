@@ -201,8 +201,10 @@ get_aggregated_status(Resource, NodeStatuses) ->
 -spec priority_order(resource()) -> [status()].
 priority_order({bucket, _}) ->
     [resident_ratio, data_size, disk_usage];
+priority_order(disk) ->
+    [maximum, critical, serious, warning];
 priority_order(index) ->
-    [maximum, critical, serious, warning].
+    [critical, serious, warning].
 
 -spec resolve_status_conflict([status()] | resource(), [status()]) ->
           status().
