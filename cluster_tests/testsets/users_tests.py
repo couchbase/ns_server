@@ -181,8 +181,14 @@ class UsersTestSet(testlib.BaseTestSet):
                           data={'user': user, 'password': password1})
 
         # Changing password to the existing value should fail
-        change_user_password(self.cluster, user, password1, password1,
-                             expected_code=400)
+        r = change_user_password(self.cluster, user, password1, password1,
+                                 expected_code=400)
+        testlib.assert_eq(
+            {
+                "errors": {
+                    "password": "Password has already been used."
+                }
+            }, r.json())
         assert_password_expired(self.cluster, user, password1)
 
         # Change password
@@ -381,9 +387,9 @@ def delete_user(cluster_or_node, domain, userid):
 
 def change_user_password(cluster_or_node, user, password, new_password,
                          expected_code=200):
-    testlib.post(cluster_or_node, '/controller/changePassword',
-                 data={'password': new_password}, auth=(user, password),
-                 expected_code=expected_code)
+    return testlib.post(cluster_or_node, '/controller/changePassword',
+                        data={'password': new_password}, auth=(user, password),
+                        expected_code=expected_code)
 
 
 def lock_user(cluster, user):

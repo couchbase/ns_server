@@ -1247,8 +1247,9 @@ handle_patch_user_with_identity(Req, Identity, Validators) ->
                       menelaus_util:reply_json(
                         Req, <<"User was not found.">>, 404);
                   unchanged ->
+                      Error = <<"Password has already been used.">>,
                       menelaus_util:reply_json(
-                        Req, <<"Password has already been used.">>, 400)
+                        Req, {[{errors, {[{password, Error}]}}]}, 400)
               end
       end, Req, form, Validators).
 
