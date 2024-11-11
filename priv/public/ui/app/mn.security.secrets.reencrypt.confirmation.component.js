@@ -25,7 +25,8 @@ class MnSecuritySecretsReencryptConfirmationComponent extends MnLifeCycleHooksTo
       template,
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
-        "type"
+        "type",
+        "bucketName"
       ]
     })
   ]}
@@ -39,22 +40,24 @@ class MnSecuritySecretsReencryptConfirmationComponent extends MnLifeCycleHooksTo
   constructor(activeModal, mnSecuritySecretsService, mnFormService) {
     super();
     this.activeModal = activeModal;
-
+    this.mnFormService = mnFormService;
+    this.mnSecuritySecretsService = mnSecuritySecretsService;
     this.mapTypeToNames = mnSecuritySecretsService.mapTypeToNames;
+  }
 
-    this.form = mnFormService.create(this)
+  ngOnInit() {
+    this.form = this.mnFormService.create(this)
       .setFormGroup({})
-      .setPackPipe(map(() => this.type))
-      .setPostRequest(mnSecuritySecretsService.stream.postDropAtRestKeys)
+      .setPackPipe(map(() => [this.type, this.bucketName]))
+      .setPostRequest(this.mnSecuritySecretsService.stream.postDropAtRestKeys)
       .showGlobalSpinner()
       .successMessage("Re-encryption was successfully initiated!")
       .errorMessage("An error occurred during re-encryption initialization.")
       .success(() => {
-        activeModal.close();
-        mnSecuritySecretsService.stream.updateSecretsList.next();
+        this.activeModal.close();
+        this.mnSecuritySecretsService.stream.updateSecretsList.next();
       }).error(() => {
-        activeModal.close();
+        this.activeModal.close();
       });
   }
-
 }

@@ -90,6 +90,7 @@ class MnSecuritySecretsComponent extends MnLifeCycleHooksToStream {
       .subscribe((type) => {
         const ref = this.modalService.open(MnSecuritySecretsReencryptConfirmationComponent);
         ref.componentInstance.type = type;
+        ref.componentInstance.bucketName = null;
       });
 
     this.secrets = mnSecuritySecretsService.stream.getSecrets;

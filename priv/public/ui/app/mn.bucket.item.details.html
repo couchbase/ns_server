@@ -59,13 +59,13 @@ licenses/APL2.txt.
       <div class="nowrap" *ngIf="bucket.bucketType === 'membase'">
         <strong>Storage Backend: </strong>
         {{storageBackend | async}}
-          <span *ngIf="(storageBackend | async) === 'Magma'">
-            (Configuration {{(numVBuckets | async) == 1024 ? '2' : '1'}})
-          </span>
+        <span *ngIf="(storageBackend | async) === 'Magma'">
+          (Configuration {{(numVBuckets | async) == 1024 ? '2' : '1'}})
+        </span>
       </div>
       <div class="nowrap" *ngIf="bucket.bucketType === 'membase'">
-          <strong>#vbuckets: </strong>
-          {{numVBuckets | async}}
+        <strong>#vbuckets: </strong>
+        {{numVBuckets | async}}
       </div>
       <div class="nowrap">
         <strong>Minimum Durability Level:</strong>
@@ -116,6 +116,15 @@ licenses/APL2.txt.
   <div class="row flex-right">
     <span>
       <button
+        *ngIf="bucket.encryptionAtRestSecretId !== -1"
+        class="outline"
+        [disabled]="isRebalancing | async"
+        [hidden]="!(permissions | async)?.cluster.bucket[bucket.name].settings.write"
+        (click)="clickReencrypt.next($event)"
+      >
+        Re-encrypt
+      </button>
+      <button
         class="outline"
         [disabled]="isRebalancing | async"
         [hidden]="!(permissions | async)?.cluster.bucket[bucket.name].delete"
@@ -123,7 +132,6 @@ licenses/APL2.txt.
       >
         Drop
       </button>
-
       <button
         class="outline"
         [hidden]="!(showCompactBtn | async)"

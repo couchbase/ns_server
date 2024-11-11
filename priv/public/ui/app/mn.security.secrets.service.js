@@ -129,8 +129,8 @@ class MnSecuritySecretsService {
     return this.http.post('/controller/rotateSecret/' + encodeURIComponent(id));
   }
 
-  postDropAtRestKeys(type) {
-    return this.http.post('/controller/dropEncryptionAtRestDeks/' + encodeURIComponent(type));
+  postDropAtRestKeys([type, bucketName]) {
+    return this.http.post('/controller/dropEncryptionAtRestDeks/' + encodeURIComponent(type) + (bucketName ? '/' + encodeURIComponent(bucketName) : ''));
   }
 
   mapTypeToNames(type) {

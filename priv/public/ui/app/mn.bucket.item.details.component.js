@@ -23,6 +23,7 @@ import {MnPoolsService} from './mn.pools.service.js';
 
 import {MnBucketDialogComponent} from './mn.bucket.dialog.component.js';
 import {MnBucketDeleteDialogComponent} from './mn.bucket.delete.dialog.component.js';
+import {MnSecuritySecretsReencryptConfirmationComponent} from './mn.security.secrets.reencrypt.confirmation.component.js';
 import {MnBucketFlushDialogComponent} from './mn.bucket.flush.dialog.component.js';
 import {MnSecuritySecretsService} from './mn.security.secrets.service.js';
 import template from "./mn.bucket.item.details.html";
@@ -189,6 +190,16 @@ class MnBucketItemDetailsComponent extends MnLifeCycleHooksToStream {
         let ref = this.modalService.open(MnBucketDeleteDialogComponent);
         ref.componentInstance.bucket = this.bucket;
       });
+
+    this.clickReencrypt = new Subject();
+    this.clickReencrypt
+        .pipe(map(this.stopEvent.bind(this)),
+              takeUntil(this.mnOnDestroy))
+        .subscribe(() => {
+          let ref = this.modalService.open(MnSecuritySecretsReencryptConfirmationComponent);
+          ref.componentInstance.type = 'bucket';
+          ref.componentInstance.bucketName = this.bucket.name;
+        });
 
     this.clickEdit = new Subject();
     this.clickEdit

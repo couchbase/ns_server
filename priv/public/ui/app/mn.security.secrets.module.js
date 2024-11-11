@@ -58,13 +58,11 @@ class MnSecuritySecretsModule {
           MnSecuritySecretsAddDialogComponent,
           MnSecuritySecretsDeleteDialogComponent,
           MnSecuritySecretsEncryptionDialogComponent,
-          MnSecuritySecretsReencryptConfirmationComponent,
         ],
         declarations: [
           MnSecuritySecretsAddDialogComponent,
           MnSecuritySecretsDeleteDialogComponent,
           MnSecuritySecretsEncryptionDialogComponent,
-          MnSecuritySecretsReencryptConfirmationComponent,
           MnSecuritySecretsComponent,
           MnSecuritySecretsItemDetailsComponent,
           MnSecuritySecretsItemComponent,

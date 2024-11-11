@@ -16,11 +16,16 @@ import {MnFocusDirective} from './mn.focus.directive.js';
 import {MnSpinnerDirective} from './mn.spinner.directive.js';
 import {MnMainSpinnerDirective} from './ajs.upgraded.components.js';
 
+import {MnSecuritySecretsReencryptConfirmationComponent} from './mn.security.secrets.reencrypt.confirmation.component.js';
+
 export {MnSharedModule}
 
 class MnSharedModule {
   static get annotations() { return [
     new NgModule({
+      entryComponents: [
+        MnSecuritySecretsReencryptConfirmationComponent
+      ],
       imports: [
         ReactiveFormsModule,
         CommonModule,
@@ -29,7 +34,8 @@ class MnSharedModule {
       declarations: [
         MnFocusDirective,
         MnMainSpinnerDirective,
-        MnSpinnerDirective
+        MnSpinnerDirective,
+        MnSecuritySecretsReencryptConfirmationComponent
         // mn.components.MnAutoCompactionForm,
         // mn.components.MnPeriod,
         // mn.components.MnServicesConfig,
