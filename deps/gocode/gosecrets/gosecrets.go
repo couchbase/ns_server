@@ -625,7 +625,6 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 	keyName, data := readBigField(data)
 	keyType, data := readBigField(data)
 	otherData, data := readBigField(data)
-	isKeyDataEncryptedBin, data := readBigField(data)
 	encryptionKeyNameBin, data := readBigField(data)
 	creationTime, _ := readBigField(data)
 	keyKindStr := string(keyKind)
@@ -633,17 +632,11 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 	keyTypeStr := string(keyType)
 	encryptionKeyName := string(encryptionKeyNameBin)
 	creationTimeStr := string(creationTime)
-	isKeyDataEncryptedStr := string(isKeyDataEncryptedBin)
-	isKeyDataEncrypted := (isKeyDataEncryptedStr == "true")
-	if isKeyDataEncryptedStr != "true" && isKeyDataEncryptedStr != "false" {
-		replyError(fmt.Sprintf("invalid isKeyDataEncrypted param: %v", isKeyDataEncryptedBin))
-		return
-	}
-	log_dbg("Received request to store key %s (kind: %s, type: %s, encrypted: %v, encryptionKey: %s) on disk",
-		keyNameStr, keyKindStr, keyTypeStr, isKeyDataEncrypted, encryptionKeyName)
+	log_dbg("Received request to store key %s (kind: %s, type: %s, encryptionKey: %s) on disk",
+		keyNameStr, keyKindStr, keyTypeStr, encryptionKeyName)
 
 	ctx := s.newStoredKeyCtx()
-	err := store_key(keyNameStr, keyKindStr, keyTypeStr, isKeyDataEncrypted, encryptionKeyName, creationTimeStr, otherData, ctx)
+	err := store_key(keyNameStr, keyKindStr, keyTypeStr, encryptionKeyName, creationTimeStr, otherData, ctx)
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -706,12 +699,13 @@ func replyReadKey(keyIface storedKeyIface) {
 
 func (s *encryptionService) cmdEncryptWithKey(data []byte) {
 	toEncrypt, data := readBigField(data)
+	AD, data := readBigField(data)
 	keyKindBin, data := readBigField(data)
 	keyNameBin, data := readBigField(data)
 	keyKind := string(keyKindBin)
 	keyName := string(keyNameBin)
 
-	encryptedData, err := encryptWithKey(keyKind, keyName, toEncrypt, s.newStoredKeyCtx())
+	encryptedData, err := encryptWithKey(keyKind, keyName, toEncrypt, AD, s.newStoredKeyCtx())
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -721,12 +715,13 @@ func (s *encryptionService) cmdEncryptWithKey(data []byte) {
 
 func (s *encryptionService) cmdDecryptWithKey(data []byte) {
 	toDecrypt, data := readBigField(data)
+	AD, data := readBigField(data)
 	keyKindBin, data := readBigField(data)
 	keyNameBin, data := readBigField(data)
 	keyKind := string(keyKindBin)
 	keyName := string(keyNameBin)
 
-	decryptedData, err := decryptWithKey(keyKind, keyName, toDecrypt, s.newStoredKeyCtx())
+	decryptedData, err := decryptWithKey(keyKind, keyName, toDecrypt, AD, s.newStoredKeyCtx())
 	if err != nil {
 		replyError(err.Error())
 		return

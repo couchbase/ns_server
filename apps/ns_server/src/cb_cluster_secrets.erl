@@ -995,27 +995,29 @@ ensure_all_keks_on_disk() ->
 
 -spec ensure_generated_keks_on_disk(secret_props()) -> ok | {error, list()}.
 ensure_generated_keks_on_disk(#{type := ?GENERATED_KEY_TYPE, id := SecretId,
-                                data := #{keys := Keys}}) ->
+                                data := #{keys := Keys}} = Secret) ->
     ?log_debug("Ensure all keys are on disk for secret ~p "
                "(number of keys to check: ~b)", [SecretId, length(Keys)]),
     Res = lists:map(fun (#{id := Id} = K) ->
-                        {Id, ensure_kek_on_disk(K)}
+                        {Id, ensure_kek_on_disk(K, secret_ad(Secret))}
                     end, Keys),
     misc:many_to_one_result(Res).
 
--spec ensure_kek_on_disk(kek_props()) -> ok | {error, _}.
+-spec ensure_kek_on_disk(kek_props(), binary()) -> ok | {error, _}.
 ensure_kek_on_disk(#{id := Id,
                      key := #{type := sensitive, data := Key,
                               encrypted_by := undefined},
-                     creation_time := CreationTime}) ->
-    encryption_service:store_kek(Id, Key, _IsEncrypted = false, undefined,
-                                 CreationTime);
+                     creation_time := CreationTime}, _) ->
+    encryption_service:store_kek(Id, Key, undefined, CreationTime);
 ensure_kek_on_disk(#{id := Id,
-                     key := #{type := encrypted, data := Key,
+                     key := #{type := encrypted, data := EncryptedKey,
                               encrypted_by := {_ESecretId, EKekId}},
-                     creation_time := CreationTime}) ->
-    encryption_service:store_kek(Id, Key, _IsEncrypted = true, EKekId,
-                                 CreationTime).
+                     creation_time := CreationTime} = KeyProps, SecretAD) ->
+    AD = auto_generated_key_ad(SecretAD, KeyProps),
+    maybe
+        {ok, Key} ?= encryption_service:decrypt_key(EncryptedKey, AD, EKekId),
+        encryption_service:store_kek(Id, Key, EKekId, CreationTime)
+    end.
 
 -spec ensure_aws_kek_on_disk(secret_props()) -> ok | {error, _}.
 ensure_aws_kek_on_disk(#{data := Data}) ->
@@ -1039,25 +1041,33 @@ ensure_kmip_kek_on_disk(#{data := #{active_key := ActiveKey,
                                     port := Port,
                                     key_cert_path := KeyPath,
                                     key_passphrase := Pass,
-                                    encryption_approach := Appr}}) ->
-    {PassData, KekId} =
+                                    encryption_approach := Appr}} = Secret) ->
+    {DecryptRes, KekId} =
         case Pass of
             #{type := sensitive, data := D, encrypted_by := undefined} ->
-                {D, undefined};
-            #{type := encrypted, data := D, encrypted_by := {_, KId}} ->
-                {D, KId}
+                {{ok, D}, undefined};
+            #{type := encrypted, data := ED, encrypted_by := {_, KId}} ->
+                AD = secret_ad(Secret),
+                R = encryption_service:decrypt_key(ED, AD, KId),
+                {R, KId}
         end,
-    Params = [{host, iolist_to_binary(Host)}, {port, Port},
-              {keyCertPath, iolist_to_binary(KeyPath)},
-              {keyPassphrase, base64:encode(PassData)},
-              {encryptionApproach, Appr}],
-    Res = lists:map(
-            fun (#{id := Id, kmip_id := KmipId,
-                   creation_time := CreationTime}) ->
-                {Id, encryption_service:store_kmip_key(
-                       Id, [{kmipId, KmipId} | Params], KekId, CreationTime)}
-            end, [ActiveKey | OtherKeys]),
-    misc:many_to_one_result(Res).
+    case DecryptRes of
+        {ok, PassData} ->
+            Params = [{host, iolist_to_binary(Host)}, {port, Port},
+                      {keyCertPath, iolist_to_binary(KeyPath)},
+                      {keyPassphrase, base64:encode(PassData)},
+                      {encryptionApproach, Appr}],
+            Res = lists:map(
+                    fun (#{id := Id, kmip_id := KmipId,
+                           creation_time := CreationTime}) ->
+                        {Id, encryption_service:store_kmip_key(
+                               Id, [{kmipId, KmipId} | Params], KekId,
+                               CreationTime)}
+                    end, [ActiveKey | OtherKeys]),
+            misc:many_to_one_result(Res);
+        {error, _} = E ->
+            E
+    end.
 
 -spec garbage_collect_keks() -> ok.
 garbage_collect_keks() ->
@@ -1764,8 +1774,9 @@ maybe_reencrypt_secret_txn(#{type := ?KMIP_KEY_TYPE} = Secret, GetKekId) ->
     Pass = maps:get(key_passphrase, Data),
     EncryptBy = maps:get(encrypt_by, Data, undefined),
     SecretId = maps:get(encrypt_secret_id, Data, undefined),
+    AD = secret_ad(Secret),
 
-    case maybe_reencrypt_data(Pass, EncryptBy, SecretId, GetKekId) of
+    case maybe_reencrypt_data(Pass, AD, EncryptBy, SecretId, GetKekId) of
         {ok, NewPass} ->
             {true, Secret#{data => Data#{key_passphrase => NewPass}}};
         no_change ->
@@ -1780,14 +1791,16 @@ maybe_reencrypt_secret_txn(#{}, _) ->
                            fun ((secret_id()) -> key_id())) ->
           {ok, [kek_props()]} | no_change |
           {error, encryption_service:stored_key_error() | bad_encrypt_id()}.
-maybe_reencrypt_keks(Keys, #{data := SecretData}, GetKekId) ->
+maybe_reencrypt_keks(Keys, #{data := SecretData} = Secret, GetKekId) ->
     try
         EncryptBy = maps:get(encrypt_by, SecretData, undefined),
         SecretId = maps:get(encrypt_secret_id, SecretData, undefined),
 
         RV = lists:mapfoldl(
-               fun (#{key := KeyData} = Key, Acc) ->
-                   case maybe_reencrypt_data(KeyData, EncryptBy, SecretId,
+               fun (#{key := KeyData} = Key,Acc) ->
+                   SecretAD = secret_ad(Secret),
+                   AD = auto_generated_key_ad(SecretAD, Key),
+                   case maybe_reencrypt_data(KeyData, AD, EncryptBy, SecretId,
                                              GetKekId) of
                        no_change -> {Key, Acc};
                        {ok, NewKeyData} -> {Key#{key => NewKeyData}, changed};
@@ -1802,20 +1815,31 @@ maybe_reencrypt_keks(Keys, #{data := SecretData}, GetKekId) ->
         throw:{error, _} = Error -> Error
     end.
 
+-spec secret_ad(secret_props()) -> binary().
+secret_ad(#{id := Id, type := T, creation_time := CT}) ->
+    CTISO = iso8601:format(CT),
+    iolist_to_binary([integer_to_binary(Id), atom_to_binary(T), CTISO]).
+
+-spec auto_generated_key_ad(binary(), kek_props()) -> binary().
+auto_generated_key_ad(SecretAD, #{id := Id, creation_time := CT}) ->
+    CTISO = iso8601:format(CT),
+    iolist_to_binary([SecretAD, Id, CTISO]).
+
 -spec maybe_reencrypt_data(sensitive_data(),
+                           binary(),
                            nodeSecretManager | clusterSecret,
                            undefined | secret_id(),
                            fun ((secret_id()) -> key_id())) ->
           {ok, sensitive_data()} |
           no_change |
           {error, encryption_service:stored_key_error() | bad_encrypt_id()}.
-maybe_reencrypt_data(Data, EncryptBy, SecretId, GetKekId) ->
+maybe_reencrypt_data(Data, AD, EncryptBy, SecretId, GetKekId) ->
     case EncryptBy of
-        nodeSecretManager -> maybe_reencrypt_data(Data, undefined);
+        nodeSecretManager -> maybe_reencrypt_data(Data, AD, undefined);
         clusterSecret ->
             case GetKekId(SecretId) of
                 {ok, KekId} ->
-                    maybe_reencrypt_data(Data, {SecretId, KekId});
+                    maybe_reencrypt_data(Data, AD, {SecretId, KekId});
                 {error, not_found} ->
                     {error, {encrypt_id, not_found}};
                 {error, not_supported} ->
@@ -1823,7 +1847,7 @@ maybe_reencrypt_data(Data, EncryptBy, SecretId, GetKekId) ->
             end
     end.
 
--spec maybe_reencrypt_data(sensitive_data(),
+-spec maybe_reencrypt_data(sensitive_data(), binary(),
                            undefined | {secret_id(), key_id()}) ->
           {ok, sensitive_data()} |
           no_change |
@@ -1831,38 +1855,43 @@ maybe_reencrypt_data(Data, EncryptBy, SecretId, GetKekId) ->
 %% Already encrypted with correct key
 maybe_reencrypt_data(#{type := encrypted, data := _Bin,
                        encrypted_by := EncryptedBy},
+                     _AD,
                      EncryptedBy) ->
     no_change;
 %% Encrypted with wrong key, should reencrypt
 maybe_reencrypt_data(#{type := encrypted, data := Bin,
                        encrypted_by := {_SecretId, KekId}},
+                     AD,
                      {NewSecretId, NewKekId}) ->
     maybe
-        {ok, RawBin} ?= encryption_service:decrypt_key(Bin, KekId),
-        {ok, NewBin} ?= encryption_service:encrypt_key(RawBin, NewKekId),
+        {ok, RawBin} ?= encryption_service:decrypt_key(Bin, AD, KekId),
+        {ok, NewBin} ?= encryption_service:encrypt_key(RawBin, AD, NewKekId),
         {ok, #{type => encrypted, data => NewBin,
                encrypted_by => {NewSecretId, NewKekId}}}
     end;
 %% Encrypted, but we want it to be unencrypted (encrypted by node SM actually)
 maybe_reencrypt_data(#{type := encrypted, data := Bin,
                        encrypted_by := {_SecretId, KekId}},
+                     AD,
                      undefined) ->
     maybe
-        {ok, RawBin} ?= encryption_service:decrypt_key(Bin, KekId),
+        {ok, RawBin} ?= encryption_service:decrypt_key(Bin, AD, KekId),
         {ok, #{type => sensitive, data => RawBin, encrypted_by => undefined}}
     end;
 %% Not encrypted but should be
 maybe_reencrypt_data(#{type := sensitive, data := Bin,
                        encrypted_by := undefined},
+                     AD,
                      {NewSecretId, NewKekId}) ->
     maybe
-        {ok, NewBin} ?= encryption_service:encrypt_key(Bin, NewKekId),
+        {ok, NewBin} ?= encryption_service:encrypt_key(Bin, AD, NewKekId),
         {ok, #{type => encrypted, data => NewBin,
                encrypted_by => {NewSecretId, NewKekId}}}
     end;
 %% Not encrypted, and that's right
 maybe_reencrypt_data(#{type := sensitive, data := _Bin,
                        encrypted_by := undefined},
+                     _AD,
                      undefined) ->
     no_change.
 

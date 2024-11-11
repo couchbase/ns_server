@@ -61,7 +61,7 @@ func getAwsCfgs(opts AwsConfigOpts) *[]func(*config.LoadOptions) error {
 }
 
 func getAwsSecretsKeeper(ctx context.Context,
-	keyArn string, opts AwsConfigOpts) (*secrets.Keeper, error) {
+	keyArn string, opts AwsConfigOpts, AD string) (*secrets.Keeper, error) {
 	addnlCfgs := getAwsCfgs(opts)
 	cfg, err := config.LoadDefaultConfig(ctx, *addnlCfgs...)
 	if err != nil {
@@ -72,14 +72,14 @@ func getAwsSecretsKeeper(ctx context.Context,
 	if err != nil {
 		return nil, keeperGetError(err)
 	}
-
-	keeper := awskms.OpenKeeperV2(client, keyArn, nil)
+	keeperOpts := &awskms.KeeperOptions{EncryptionContext: map[string]string{"AD": AD}}
+	keeper := awskms.OpenKeeperV2(client, keyArn, keeperOpts)
 	return keeper, nil
 }
 
-func KmsEncryptData(keyArn string, data []byte, opts AwsConfigOpts) ([]byte, error) {
+func KmsEncryptData(keyArn string, data []byte, AD string, opts AwsConfigOpts) ([]byte, error) {
 	ctx := context.Background()
-	keeper, err := getAwsSecretsKeeper(ctx, keyArn, opts)
+	keeper, err := getAwsSecretsKeeper(ctx, keyArn, opts, AD)
 	if err != nil {
 		return nil, err
 	}
@@ -93,9 +93,9 @@ func KmsEncryptData(keyArn string, data []byte, opts AwsConfigOpts) ([]byte, err
 	return encryptedData, nil
 }
 
-func KmsDecryptData(keyArn string, data []byte, opts AwsConfigOpts) ([]byte, error) {
+func KmsDecryptData(keyArn string, data []byte, AD string, opts AwsConfigOpts) ([]byte, error) {
 	ctx := context.Background()
-	keeper, err := getAwsSecretsKeeper(ctx, keyArn, opts)
+	keeper, err := getAwsSecretsKeeper(ctx, keyArn, opts, AD)
 	if err != nil {
 		return nil, err
 	}

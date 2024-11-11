@@ -27,22 +27,30 @@ import (
 	"time"
 )
 
-func encrypt(key []byte, data []byte) []byte {
-	encrypted := aesgcmEncrypt(key, data)
+func encrypt(key, data []byte) []byte {
+	return encryptWithAD(key, data, nil)
+}
+
+func encryptWithAD(key, data, AD []byte) []byte {
+	encrypted := aesgcmEncrypt(key, data, AD)
 	return append([]byte{0}, encrypted...)
 }
 
-func decrypt(key []byte, data []byte) ([]byte, error) {
+func decrypt(key, data []byte) ([]byte, error) {
+	return decryptWithAD(key, data, nil)
+}
+
+func decryptWithAD(key, data, AD []byte) ([]byte, error) {
 	if len(data) < 1 {
 		return nil, errors.New("ciphertext is too short")
 	}
 	if data[0] != 0 {
 		return nil, errors.New("unsupported cipher")
 	}
-	return aesgcmDecrypt(key, data[1:len(data)])
+	return aesgcmDecrypt(key, data[1:len(data)], AD)
 }
 
-func aesgcmEncrypt(key []byte, data []byte) []byte {
+func aesgcmEncrypt(key, data, AD []byte) []byte {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		panic(err.Error())
@@ -56,10 +64,10 @@ func aesgcmEncrypt(key []byte, data []byte) []byte {
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		panic(err.Error())
 	}
-	return aesgcm.Seal(nonce[:aesgcm.NonceSize()], nonce, data, nil)
+	return aesgcm.Seal(nonce[:aesgcm.NonceSize()], nonce, data, AD)
 }
 
-func aesgcmDecrypt(key []byte, data []byte) ([]byte, error) {
+func aesgcmDecrypt(key, data, AD []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		panic(err.Error())
@@ -75,7 +83,7 @@ func aesgcmDecrypt(key []byte, data []byte) ([]byte, error) {
 	nonce := data[:aesgcm.NonceSize()]
 	data = data[aesgcm.NonceSize():]
 
-	return aesgcm.Open(nil, nonce, data, nil)
+	return aesgcm.Open(nil, nonce, data, AD)
 }
 
 func atomicWriteFile(path string, binary []byte, perm fs.FileMode) (err error) {

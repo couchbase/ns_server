@@ -32,9 +32,9 @@
          copy_secrets/2,
          cleanup_secrets/2,
          set_config/3,
-         store_key/8,
-         encrypt_with_key/4,
-         decrypt_with_key/4,
+         store_key/7,
+         encrypt_with_key/5,
+         decrypt_with_key/5,
          read_key/3,
          defaults/0,
          key_path/2]).
@@ -114,23 +114,21 @@ set_config(Name, Cfg, ResetPassword) ->
             Error
     end.
 
-store_key(Name, Kind, KeyName, KeyType, KeyData, IsKeyDataEncrypted,
-          EncryptionKeyId, CreationDT) ->
+store_key(Name, Kind, KeyName, KeyType, KeyData, EncryptionKeyId, CreationDT) ->
     gen_server:call(
       Name,
-      {store_key, Kind, KeyName, KeyType, KeyData, IsKeyDataEncrypted,
-       EncryptionKeyId, CreationDT},
+      {store_key, Kind, KeyName, KeyType, KeyData, EncryptionKeyId, CreationDT},
       infinity).
 
 read_key(Name, Kind, KeyName) ->
     gen_server:call(Name, {read_key, Kind, KeyName}, infinity).
 
-encrypt_with_key(Name, Data, KeyKind, KeyName) ->
-    gen_server:call(Name, {encrypt_with_key, Data, KeyKind, KeyName},
+encrypt_with_key(Name, Data, AD, KeyKind, KeyName) ->
+    gen_server:call(Name, {encrypt_with_key, Data, AD, KeyKind, KeyName},
                     infinity).
 
-decrypt_with_key(Name, Data, KeyKind, KeyName) ->
-    gen_server:call(Name, {decrypt_with_key, Data, KeyKind, KeyName},
+decrypt_with_key(Name, Data, AD, KeyKind, KeyName) ->
+    gen_server:call(Name, {decrypt_with_key, Data, AD, KeyKind, KeyName},
                     infinity).
 
 start_link() ->
@@ -326,14 +324,16 @@ handle_call({copy_secrets, Cfg}, _From, State) ->
 handle_call({cleanup_secrets, Cfg}, _From, State) ->
     CfgBin = ejson:encode(cfg_to_json(Cfg)),
     {reply, call_gosecrets({cleanup_secrets, CfgBin}, State), State};
-handle_call({store_key, _Kind, _Name, _KeyType, _KeyData, _IsKeyDataEncrypted,
-             _EncryptionKeyId, _CreationDT} = Cmd, _From, State) ->
+handle_call({store_key, _Kind, _Name, _KeyType, _KeyData, _EncryptionKeyId,
+             _CreationDT} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
 handle_call({read_key, _Kind, _Name} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
-handle_call({encrypt_with_key, _Data, _KeyKind, _Name} = Cmd, _From, State) ->
+handle_call({encrypt_with_key, _Data, _AD, _KeyKind, _Name} = Cmd, _From,
+            State) ->
     {reply, convert_empty_data(call_gosecrets(Cmd, State)), State};
-handle_call({decrypt_with_key, _Data, _KeyKind, _Name} = Cmd, _From, State) ->
+handle_call({decrypt_with_key, _Data, _AD, _KeyKind, _Name} = Cmd, _From,
+            State) ->
     {reply, convert_empty_data(call_gosecrets(Cmd, State)), State};
 handle_call(Call, _From, State) ->
     ?log_warning("Unhandled call: ~p", [Call]),
@@ -448,22 +448,23 @@ encode({copy_secrets, ConfigBin}) ->
     <<10, ConfigBin/binary>>;
 encode({cleanup_secrets, ConfigBin}) ->
     <<11, ConfigBin/binary>>;
-encode({store_key, Kind, Name, KeyType, KeyData, IsKeyDataEncrypted,
-        EncryptionKeyId, CreationDT}) ->
+encode({store_key, Kind, Name, KeyType, KeyData, EncryptionKeyId,
+        CreationDT}) ->
     KindBin = atom_to_binary(Kind),
     <<12, (encode_param(KindBin))/binary,
           (encode_param(Name))/binary,
           (encode_param(KeyType))/binary,
           (encode_param(KeyData))/binary,
-          (encode_param(IsKeyDataEncrypted))/binary,
           (encode_param(EncryptionKeyId))/binary,
           (encode_param(CreationDT))/binary>>;
-encode({encrypt_with_key, Data, KeyKind, Name}) ->
+encode({encrypt_with_key, Data, AD, KeyKind, Name}) ->
     <<13, (encode_param(Data))/binary,
+          (encode_param(AD))/binary,
           (encode_param(KeyKind))/binary,
           (encode_param(Name))/binary>>;
-encode({decrypt_with_key, Data, KeyKind, Name}) ->
+encode({decrypt_with_key, Data, AD, KeyKind, Name}) ->
     <<14, (encode_param(Data))/binary,
+          (encode_param(AD))/binary,
           (encode_param(KeyKind))/binary,
           (encode_param(Name))/binary>>;
 encode({read_key, Kind, Name}) ->
@@ -845,10 +846,10 @@ store_and_read_key_test() ->
                 Key2 = rand:bytes(32),
                 Type = 'raw-aes-gcm',
                 ?assertEqual(ok, store_key(Pid, kek, <<"key1">>, Type, Key1,
-                                           false, <<"encryptionService">>,
+                                           <<"encryptionService">>,
                                            <<"2024-07-26T19:32:19Z">>)),
                 ?assertEqual(ok, store_key(Pid, chronicleDek, <<"key2">>, Type,
-                                           Key2, false, <<"key1">>,
+                                           Key2, <<"key1">>,
                                            <<"2024-07-26T19:32:19Z">>)),
                 {ok, Key1Encoded} = read_key(Pid, kek, <<"key1">>),
                 {ok, Key2Encoded} = read_key(Pid, chronicleDek, <<"key2">>),

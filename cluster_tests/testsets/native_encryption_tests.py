@@ -1523,6 +1523,7 @@ def encrypt_with_key(cluster, kek_id, string):
     res = testlib.diag_eval(
             cluster,
             '{ok, B} = ' f'encryption_service:encrypt_key(<<"{string}">>, '
+                                                         '<<"ad">>,'
                                                         f'<<"{kek_id}">>),'
             'R = base64:encode_to_string(B),'
             '"Success:" ++ R.')
@@ -1542,7 +1543,8 @@ def decrypt_with_key(cluster, kek_id, b64data):
     res = testlib.diag_eval(
             cluster,
             f'B = base64:decode("{b64data}"),'
-            '{ok, R} = ' f'encryption_service:decrypt_key(B, <<"{kek_id}">>),'
+            '{ok, R} = encryption_service:decrypt_key(B, <<"ad">>, '
+                                                    f'<<"{kek_id}">>),'
             '"Success:" ++ binary_to_list(R).')
     search_res = re.search('"Success:(.*)"', res.text)
     assert search_res is not None, f'unexpected decrypt result: {res.text}'

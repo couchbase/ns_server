@@ -17,8 +17,8 @@
 -export([start_link/0,
          decrypt/1,
          encrypt/1,
-         encrypt_key/2,
-         decrypt_key/2,
+         encrypt_key/3,
+         decrypt_key/3,
          change_password/1,
          get_keys_ref/0,
          rotate_data_key/0,
@@ -26,7 +26,7 @@
          get_state/0,
          os_pid/0,
          reconfigure/1,
-         store_kek/5,
+         store_kek/4,
          store_awskey/8,
          store_kmip_key/4,
          store_dek/5,
@@ -82,18 +82,16 @@ reconfigure(NewCfg) ->
 garbage_collect_keks(InUseKeyIds) ->
     garbage_collect_keys(kek, InUseKeyIds).
 
-store_kek(Id, Key, false, undefined, CreationDT) ->
-    store_key(kek, Id, 'raw-aes-gcm', Key, false, <<"encryptionService">>,
-              CreationDT);
-store_kek(Id, Key, AlreadEncrypted, KekIdToEncrypt, CreationDT) ->
-    store_key(kek, Id, 'raw-aes-gcm', Key, AlreadEncrypted, KekIdToEncrypt,
-              CreationDT).
+store_kek(Id, Key, undefined, CreationDT) ->
+    store_key(kek, Id, 'raw-aes-gcm', Key, <<"encryptionService">>, CreationDT);
+store_kek(Id, Key, KekIdToEncrypt, CreationDT) ->
+    store_key(kek, Id, 'raw-aes-gcm', Key, KekIdToEncrypt, CreationDT).
 
 store_dek({bucketDek, Bucket}, Id, Key, KekIdToEncrypt, CreationDT) ->
     store_dek(bucketDek, bucket_dek_id(Bucket, Id), Key, KekIdToEncrypt,
               CreationDT);
 store_dek(Kind, Id, Key, KekIdToEncrypt, CreationDT) ->
-    store_key(Kind, Id, 'raw-aes-gcm', Key, false, KekIdToEncrypt, CreationDT).
+    store_key(Kind, Id, 'raw-aes-gcm', Key, KekIdToEncrypt, CreationDT).
 
 store_awskey(Id, KeyArn, Region, Profile, CredsFile, ConfigFile, UseIMDS,
              CreationDT) ->
@@ -103,14 +101,14 @@ store_awskey(Id, KeyArn, Region, Profile, CredsFile, ConfigFile, UseIMDS,
                           {credsFile, iolist_to_binary(CredsFile)},
                           {configFile, iolist_to_binary(ConfigFile)},
                           {useIMDS, UseIMDS}]}),
-    store_key(kek, Id, awskm, Data, false, <<"encryptionService">>, CreationDT).
+    store_key(kek, Id, awskm, Data, <<"encryptionService">>, CreationDT).
 
 store_kmip_key(Id, Params, undefined, CreationDT) ->
-    store_key(kek, Id, kmip, ejson:encode({Params}), false,
-              <<"encryptionService">>, CreationDT);
+    store_key(kek, Id, kmip, ejson:encode({Params}), <<"encryptionService">>,
+              CreationDT);
 store_kmip_key(Id, Params, KekIdToEncrypt, CreationDT) ->
-    store_key(kek, Id, kmip, ejson:encode({Params}), true,
-              KekIdToEncrypt, CreationDT).
+    store_key(kek, Id, kmip, ejson:encode({Params}), KekIdToEncrypt,
+              CreationDT).
 
 read_dek(Kind, DekId) ->
     {NewId, NewKind} = case Kind of
@@ -147,14 +145,18 @@ decode_key_info({InfoProps}) ->
                 {creation_time, iso8601:parse(CreationTimeISO)}
         end, InfoProps)).
 
-encrypt_key(Data, KekId) when is_binary(Data), is_binary(KekId) ->
+encrypt_key(Data, AD, KekId) when is_binary(Data), is_binary(AD),
+                                  is_binary(KekId) ->
+    FinalAD = <<AD/binary, KekId/binary>>,
     wrap_error_msg(
-      cb_gosecrets_runner:encrypt_with_key(?RUNNER, Data, kek, KekId),
+      cb_gosecrets_runner:encrypt_with_key(?RUNNER, Data, FinalAD, kek, KekId),
       encrypt_key_error).
 
-decrypt_key(Data, KekId) when is_binary(Data), is_binary(KekId) ->
+decrypt_key(Data, AD, KekId) when is_binary(Data), is_binary(AD),
+                                  is_binary(KekId) ->
+    FinalAD = <<AD/binary, KekId/binary>>,
     wrap_error_msg(
-      cb_gosecrets_runner:decrypt_with_key(?RUNNER, Data, kek, KekId),
+      cb_gosecrets_runner:decrypt_with_key(?RUNNER, Data, FinalAD, kek, KekId),
       decrypt_key_error).
 
 %%%===================================================================
@@ -396,19 +398,17 @@ wait_for_server_start() ->
           end
       end, ?RESTART_WAIT_TIMEOUT, 100).
 
-store_key(Kind, Name, Type, KeyData, IsKeyDataEncrypted, EncryptionKeyId,
+store_key(Kind, Name, Type, KeyData, EncryptionKeyId,
           {{_, _, _}, {_, _, _}} = CreationDT)
                                             when is_atom(Kind),
                                                  is_binary(Name),
                                                  is_atom(Type),
                                                  is_binary(KeyData),
-                                                 is_boolean(IsKeyDataEncrypted),
                                                  is_binary(EncryptionKeyId) ->
     CreationDTISO = iso8601:format(CreationDT),
     wrap_error_msg(
       cb_gosecrets_runner:store_key(?RUNNER, Kind, Name, Type, KeyData,
-                                    IsKeyDataEncrypted, EncryptionKeyId,
-                                    CreationDTISO),
+                                    EncryptionKeyId, CreationDTISO),
       store_key_error).
 
 maybe_update_dek_path_in_config() ->
