@@ -173,6 +173,9 @@ get_partitions(Pid) ->
 setup_replication(Pid, Partitions) ->
     gen_server:call(Pid, {setup_replication, Partitions}, infinity).
 
+-spec setup_replication(node(), bucket_name(), [vbucket_id()]) ->
+          ok | {errors, [{{mcbp_status, non_neg_integer()},
+                          {vbucket, vbucket_id()}}]}.
 setup_replication(ProducerNode, Bucket, Partitions) ->
     setup_replication(whereis(server_name(ProducerNode, Bucket)), Partitions).
 
