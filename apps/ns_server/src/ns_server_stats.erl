@@ -36,8 +36,9 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
--export([init_stats/0, notify_counter/1, notify_counter/2, notify_gauge/2,
-         notify_gauge/3, notify_histogram/2, notify_histogram/4, notify_max/2]).
+-export([init_stats/0, notify_counter/1, notify_counter/2, notify_counter_raw/1,
+         notify_counter_raw/2, notify_gauge/2, notify_gauge/3,
+         notify_histogram/2, notify_histogram/4, notify_max/2]).
 
 -export([increment_counter/2,
          get_ns_server_stats/0,
@@ -80,6 +81,19 @@ notify_counter(Metric) ->
 -spec notify_counter(metric(), pos_integer()) -> ok.
 notify_counter(Metric, Val) when Val > 0, is_integer(Val) ->
     Key = {c, normalized_metric(Metric)},
+    catch ets:update_counter(?MODULE, Key, Val, {Key, 0}),
+    ok.
+
+-spec notify_counter_raw(metric()) -> ok.
+notify_counter_raw(Metric) ->
+    notify_counter_raw(Metric, 1).
+
+-spec notify_counter_raw(metric(), pos_integer()) -> ok.
+notify_counter_raw(_Metric, 0) ->
+    %% No change, no need to do anything
+    ok;
+notify_counter_raw(Metric, Val) when Val > 0, is_integer(Val) ->
+    Key = {c_raw, normalized_metric(Metric)},
     catch ets:update_counter(?MODULE, Key, Val, {Key, 0}),
     ok.
 
@@ -531,6 +545,8 @@ report_stat({{g, {BinName, Labels}}, {_TS, Value}}, ReportFun) ->
 report_stat({{c, {BinName, Labels}}, Value}, ReportFun) ->
     NameIOList = [[?METRIC_PREFIX, BinName], <<"_total">>],
     ReportFun({NameIOList, Labels, Value});
+report_stat({{c_raw, {BinName, Labels}}, Value}, ReportFun) ->
+    ReportFun({BinName, Labels, Value});
 report_stat({{mw, F, Window, {BinName, Labels}}, BucketsQ}, ReportFun) ->
     Now = erlang:monotonic_time(millisecond),
     PrunedBucketsQ = prune_buckets(Now - Window, BucketsQ),

@@ -132,12 +132,14 @@ get_telemetry(Pid) ->
 handle_data({binary, <<?SUCCESS:8, Data/binary>>}) ->
     Updates = parse_metric_updates(Data),
     lists:foreach(
-      fun ({_Node, _Metric, _Value}) ->
-              %% TODO: Aggregate metric in ets
+      fun ({Node, Metric, Value}) when Node =:= node() ->
+              ns_server_stats:notify_counter_raw(Metric, Value);
+          ({_Node, _Metric, _Value}) ->
+              %% TODO: Aggregate remote metrics
               ok;
           ({error, E}) ->
               ?log_warning("Failed to parse metric line. Error: ~p", [E]),
-              ok
+              ns_server_stats:notify_counter_raw(<<"sdk_invalid_metric_total">>)
       end, Updates);
 handle_data({binary, <<Status:8, _Rest/binary>>}) ->
     {error, Status};
