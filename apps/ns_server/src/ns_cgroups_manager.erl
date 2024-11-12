@@ -89,19 +89,34 @@ handle_event(_Event) ->
 handle_call({delete_override, Service}, _From, State) ->
     OldList = get_ns_config_overrides(),
     NewList = proplists:delete(Service, OldList),
-    Output = case NewList =/= OldList of
-                 true ->
-                     ok = ns_config:set({node, node(), cgroup_overrides},
-                                        NewList),
-                     true;
-                 false ->
-                     false
-             end,
+    Output =
+        case NewList =/= OldList of
+            true ->
+                ok = ns_config:set({node, node(), cgroup_overrides},
+                                   NewList),
+                MemoryQuota =
+                    case memory_quota:get_quota(Service) of
+                        {ok, Quota} ->
+                            Quota;
+                        _ ->
+                            max
+                    end,
+                #limits{hard=H, soft=S} =
+                    merge_with_memory_quota(
+                      cgroups:service_to_limits_type(Service), MemoryQuota),
+                event_log:add_log(cgroups_changed,
+                                  [{Service,
+                                    {[{hard, zero_to_max(H)},
+                                      {soft, zero_to_max(S)}]}}]),
+                true;
+            false ->
+                false
+        end,
     {reply, Output, check_cgroups_reset_timer(State)};
 handle_call(get_overrides, _From, State) ->
     {reply, get_ns_config_overrides(), State};
 handle_call({set_overrides,
-             {Service, #limits{hard=_H, soft=_S} = Limits}}, _From, State) ->
+             {Service, #limits{hard=H, soft=S} = Limits}}, _From, State) ->
     Old = case ns_config:search_node(cgroup_overrides) of
               {value, X} ->
                   proplists:delete(Service, X);
@@ -110,6 +125,7 @@ handle_call({set_overrides,
           end,
     New = Old ++ [{Service, Limits}],
     ok = ns_config:set({node, node(), cgroup_overrides}, New),
+    event_log:add_log(cgroups_changed, [{Service, {[{hard, H}, {soft, S}]}}]),
     {reply, New, check_cgroups_reset_timer(State)};
 handle_call(_T, _From, State) ->
     {reply, ok, State}.
