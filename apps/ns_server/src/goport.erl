@@ -33,7 +33,8 @@
 
           window_size :: pos_integer(),
           testing_graceful_shutdown :: boolean(),
-          graceful_shutdown :: boolean()}).
+          graceful_shutdown :: boolean(),
+          cgroup :: undefined | string()}).
 
 -record(decoding_context, {
           data = <<>> :: binary(),
@@ -264,10 +265,16 @@ goport_args(Config) ->
     WindowSize = Config#config.window_size,
     GracefulShutdown = Config#config.graceful_shutdown,
     TestingGracefulShutdown = Config#config.testing_graceful_shutdown,
+    MaybeCgroups = case Config#config.cgroup of
+                       undefined ->
+                           [];
+                       Path when is_list(Path) ->
+                           ["-cgroup=" ++ Path]
+                   end,
 
     ["-testing-graceful-shutdown=" ++ atom_to_list(TestingGracefulShutdown),
      "-graceful-shutdown=" ++ atom_to_list(GracefulShutdown),
-     "-window-size=" ++ integer_to_list(WindowSize)].
+     "-window-size=" ++ integer_to_list(WindowSize)] ++ MaybeCgroups.
 
 build_config(Cmd, Opts) ->
     Args = proplists:get_value(args, Opts, []),
@@ -275,6 +282,7 @@ build_config(Cmd, Opts) ->
     GracefulShutdown = proplists:get_bool(graceful_shutdown, Opts),
     TestingGracefulShutdown =
         proplists:get_bool(testing_graceful_shutdown, Opts),
+    CgroupPath = proplists:get_value(cgroup, Opts),
 
     StderrToStdout = proplists:get_bool(stderr_to_stdout, Opts),
     Env = proplists:get_value(env, Opts, []),
@@ -301,7 +309,7 @@ build_config(Cmd, Opts) ->
                                              window_size, graceful_shutdown,
                                              stderr_to_stdout, env, cd,
                                              exit_status, line, args, name,
-                                             binary, stream])],
+                                             binary, stream, cgroup])],
 
     case LeftoverOpts of
         [] ->
@@ -314,7 +322,8 @@ build_config(Cmd, Opts) ->
                              line = Line,
                              window_size = WindowSize,
                              testing_graceful_shutdown = TestingGracefulShutdown,
-                             graceful_shutdown = GracefulShutdown},
+                             graceful_shutdown = GracefulShutdown,
+                             cgroup = CgroupPath},
             {ok, Config};
         _ ->
             {error, {unsupported_opts, proplists:get_keys(LeftoverOpts)}}

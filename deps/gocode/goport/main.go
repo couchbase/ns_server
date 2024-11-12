@@ -28,7 +28,7 @@ import (
 )
 
 var (
-	errProcessExited = errors.New("process exited")
+	errProcessExited        = errors.New("process exited")
 	gracefulShutdownTimeout = time.Minute * 10
 )
 
@@ -40,6 +40,7 @@ type portSpec struct {
 	interactive             bool
 	gracefulShutdown        bool
 	testingGracefulShutdown bool
+	cgroup                  string
 }
 
 type processState int
@@ -79,7 +80,7 @@ func newPort(spec portSpec) *port {
 }
 
 func (p *port) startChild() error {
-	child, err := StartProcess(p.childSpec.cmd, p.childSpec.args)
+	child, err := StartProcess(p.childSpec.cmd, p.childSpec.args, p.childSpec.cgroup)
 	if err != nil {
 		return err
 	}
@@ -578,6 +579,7 @@ func main() {
 	var interactive bool
 	var gracefulShutdown bool
 	var testingGracefulShutdown bool
+	var cgroup string
 
 	flag.IntVar(&windowSize, "window-size", 64*1024, "window size")
 	flag.BoolVar(&interactive, "interactive", false,
@@ -589,6 +591,7 @@ func main() {
 			"signal, waiting for 10 min to close then sending KILL")
 	flag.Var((*cmdFlag)(&cmd), "cmd", "command to execute")
 	flag.Var((*argsFlag)(&args), "args", "command arguments")
+	flag.StringVar(&cgroup, "cgroup", "", "cgroup path")
 	flag.Parse()
 
 	log.SetPrefix("[goport] ")
@@ -612,6 +615,7 @@ func main() {
 		interactive:             interactive,
 		gracefulShutdown:        gracefulShutdown,
 		testingGracefulShutdown: testingGracefulShutdown,
+		cgroup:                  cgroup,
 	})
 
 	err := port.loop()

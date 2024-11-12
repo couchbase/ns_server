@@ -309,11 +309,21 @@ port_open({Name, Cmd, Args, OptsIn}, #state{logger = Logger}) ->
                            end,
                 {P, ChildPid};
             false ->
+                %% Normal ports are spawned in parent cgroup, but will be moved
+                %% immediately if configured to use cgroups.
                 P = erlang:open_port({spawn_executable, Cmd}, Opts),
                 Pid = case erlang:port_info(P, os_pid) of
                           {os_pid, Pid0} -> Pid0;
                           _ -> undefined
                       end,
+
+                case cgroups:service_cgroup_path(Name) of
+                    none ->
+                        ok;
+                    Path when is_list(Path) ->
+                        ok = cgroups:move_process(Pid, Path)
+                end,
+
                 {P, Pid}
         end,
 

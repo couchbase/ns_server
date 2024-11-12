@@ -396,9 +396,10 @@ build_goport_spec(Service, #def{exe = Executable,
             EnvVars = build_go_service_env_vars(Service) ++
                       build_cbauth_dynamic_remote_env_vars(RPCService),
             Args = goport_args(Service, Config, Cmd, binary_to_list(NodeUUID)),
+            MaybeCgroups = cgroups:maybe_service_cgroup_path(Service),
             [{Service, Cmd, Args,
               [via_goport, exit_status, stderr_to_stdout, {env, EnvVars}] ++
-                  [{log, Log} || Log =/= undefined]}]
+                  [{log, Log} || Log =/= undefined] ++ MaybeCgroups}]
     end.
 
 build_goport_specs(Config, Snapshot) ->

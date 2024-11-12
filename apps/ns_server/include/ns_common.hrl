@@ -496,5 +496,23 @@
           end}).
 
 -define(MAX_PHASH2_RANGE, 4294967296).
+-define(DEFAULT_SYSTEMD_CGROUP_ROOT,
+        "/sys/fs/cgroup/system.slice/couchbase-server.service").
+
+-type cgroup_val() :: max | non_neg_integer().
+-record(limits, {hard = max :: cgroup_val(), soft = max :: cgroup_val()}).
+
+%% NOTE: we use erlang:list_to_existing_atom/1 so we need to make sure all the
+%% service names are valid atoms already loaded into the runtime system.
+%% Otherwise this will cause a crash. Using list_to_atom would be a security
+%% issue since you could easily run out of atoms by just spamming the API with
+%% different atoms as the "service name".
+-define(ALL_SERVICE_ATOMS, [n1ql, fts, prometheus, kv, projector, ns_server,
+                            backup, index, cbas, goxdcr, eventing, cont_backup,
+                            evaluator, saslauthd_port, ns_couchdb]).
+
+-type service_name() :: n1ql | fts | prometheus | kv | projector | ns_server |
+                        backup | index | cbas | goxdcr | eventing |
+                        cont_backup | evaluator | saslauthd_port | ns_couchdb.
 
 -endif.

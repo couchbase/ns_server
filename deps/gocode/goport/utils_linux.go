@@ -1,5 +1,5 @@
 // @author Couchbase <info@couchbase.com>
-// @copyright 2015-Present Couchbase, Inc.
+// @copyright 2025-Present Couchbase, Inc.
 //
 // Use of this software is governed by the Business Source License included in
 // the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
@@ -7,20 +7,23 @@
 // will be governed by the Apache License, Version 2.0, included in the file
 // licenses/APL2.txt.
 
-// +build !linux,!darwin,!freebsd,!solaris,!netbsd,!openbsd
+// +build linux
 
 package main
 
 import (
 	"os/exec"
+	"syscall"
 )
 
-func doSetPgid(_ *exec.Cmd) {
+func doSetPgid(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 
-func doSetCgroup(_ *exec.Cmd, _ uintptr) {
+func doSetCgroup(cmd *exec.Cmd, fd uintptr) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{CgroupFD: int(fd), UseCgroupFD: true}
 }
 
 func doKillPgroup(cmd *exec.Cmd) error {
-	return cmd.Process.Kill()
+	return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 }

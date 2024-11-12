@@ -14,3 +14,22 @@
   {[collections_per_quota, enabled], true}]}.
 {{n1ql, sequential_scan_disabled}, true}.
 {allow_hash_migration_during_auth, true}.
+
+%% The base path where services will be placed (by their name).
+%% Ex: 'kv'   -> ./services/kv
+%%     'cbas' -> ./services/cbas
+{cgroup_base_path,
+    "/sys/fs/cgroup/system.slice/couchbase-server.service/services"}.
+
+%% NOTE: Only services with an existing concept of a memoryQuota will
+%% actually have their limits set. Otherwise the defaults for any cgroup are
+%% maintained. For example [ns_server, prometheus] do not currently have the
+%% concept of a 'memoryQuota' but it would be pretty easy to add it in the
+%% future.
+%%
+%% To change limit VALUES for services without a memoryQuota, you can use
+%% an override. Overrides take precedance over the memoryQuota (if it exists).
+{cgroups_memory_hard, [n1ql, fts]}.
+{cgroups_memory_soft, [n1ql, fts, prometheus, kv, projector,
+                       ns_server, backup, index, cbas, goxdcr,
+                       eventing, cont_backup]}.

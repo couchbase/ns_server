@@ -96,6 +96,11 @@ func SetPgid(cmd *exec.Cmd) {
 	doSetPgid(cmd)
 }
 
+// SetCgroup changes exec.Cmd attributes to start the process in its own cgroup
+func SetCgroup(cmd *exec.Cmd, fd uintptr) {
+	doSetCgroup(cmd, fd)
+}
+
 // KillPgroup kills an entire process group if the platform supports this.
 func KillPgroup(cmd *exec.Cmd) error {
 	return doKillPgroup(cmd)

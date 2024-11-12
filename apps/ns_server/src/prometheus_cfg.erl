@@ -347,9 +347,10 @@ specs(Settings) ->
     Args = generate_prometheus_args(Settings),
     Env = generate_prometheus_env(Settings),
     LogFile = proplists:get_value(log_file_name, Settings),
+    MaybeCgroups = cgroups:maybe_service_cgroup_path(prometheus),
     {prometheus, path_config:component_path(bin, "prometheus"), Args,
      [via_goport, exit_status, stderr_to_stdout, {env, Env},
-      {log, LogFile}]}.
+      {log, LogFile}] ++ MaybeCgroups}.
 
 %% currently only sets GOMAXPROCS in some situations
 generate_prometheus_env(Settings) ->

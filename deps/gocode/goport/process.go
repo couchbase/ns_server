@@ -11,6 +11,7 @@ package main
 import (
 	"errors"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"sync"
@@ -51,7 +52,7 @@ type Process struct {
 
 // StartProcess starts a process given a path and a list of arguments to pass
 // to the executable.
-func StartProcess(path string, args []string) (*Process, error) {
+func StartProcess(path string, args []string, cgroup string) (*Process, error) {
 	// files we'll need after fork
 	keepFiles := ([]io.Closer)(nil)
 
@@ -98,6 +99,18 @@ func StartProcess(path string, args []string) (*Process, error) {
 	cmd.Stderr = stderrW
 
 	SetPgid(cmd)
+
+	// handle cgroups and spawn the child directly into it
+	if cgroup != "" {
+		f, err := os.Open(cgroup)
+
+		if err != nil {
+			log.Fatalf("Error: '%s' opening path: '%s'", err, cgroup)
+			return nil, err
+		}
+		keepFile(f)
+		SetCgroup(cmd, f.Fd())
+	}
 
 	err = cmd.Start()
 	if err != nil {

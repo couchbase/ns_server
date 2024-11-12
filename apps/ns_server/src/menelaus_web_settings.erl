@@ -675,8 +675,14 @@ conf(internal) ->
                  ?HIGHEST_ALLOWED_MAX_DOCS_SKIP)},
      {max_docs_limit, maxDocsLimit, ?DEFAULT_MAX_DOCS_LIMIT,
       get_number(?LOWEST_ALLOWED_MAX_DOCS_LIMIT,
-                 ?HIGHEST_ALLOWED_MAX_DOCS_LIMIT)}
-    ];
+                 ?HIGHEST_ALLOWED_MAX_DOCS_LIMIT)}] ++
+        case cgroups:supported() of
+            true ->
+                [{enable_cgroups, enableCgroups, false, fun get_bool/1}];
+            false ->
+                []
+        end;
+
 
 conf(developer_preview) ->
     [{developer_preview_enabled, enabled, false, fun only_true/1}];

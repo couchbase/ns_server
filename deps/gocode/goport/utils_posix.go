@@ -7,7 +7,7 @@
 // will be governed by the Apache License, Version 2.0, included in the file
 // licenses/APL2.txt.
 
-// +build linux darwin freebsd solaris netbsd openbsd
+// +build darwin freebsd solaris netbsd openbsd
 
 package main
 
@@ -18,6 +18,9 @@ import (
 
 func doSetPgid(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+}
+
+func doSetCgroup(_ *exec.Cmd, _ uintptr) {
 }
 
 func doKillPgroup(cmd *exec.Cmd) error {

@@ -286,13 +286,22 @@ service_to_store_method(n1ql) ->
             {manager, query_settings_manager};
         false ->
             {not_yet_supported, ?VERSION_76}
-    end.
+    end;
+%% To transition a service from unmanaged -> managed the easiest method is to
+%% just use a {key, *_memory_quota} function above this one for the service in
+%% question and to set/get that value for the service in the proper places.
+service_to_store_method(_) ->
+    unmanaged.
+
 
 get_quota(Service) ->
     get_quota(ns_config:latest(), Service).
 
 get_quota(Config, Service) ->
     case service_to_store_method(Service) of
+        unmanaged ->
+            %% always return 0 which is "max/max" for cgroups (no limits)
+            {ok, 0};
         {key, Key}->
             case ns_config:search(Config, Key) of
                 {value, Quota} ->
@@ -328,13 +337,15 @@ set_quotas(Config, Quotas) ->
 
     case RV of
         {commit, _} ->
-            ok;
+            ns_cgroups_manager:recheck_if_enabled();
         retry_needed ->
             retry_needed
     end.
 
 do_set_memory_quota(Service, Quota, Cfg, SetFn) ->
     case service_to_store_method(Service) of
+        unmanaged ->
+            Cfg;
         {key, Key}->
             SetFn(Key, Quota, Cfg);
         {manager, Manager} ->

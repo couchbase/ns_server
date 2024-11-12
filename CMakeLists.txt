@@ -414,6 +414,7 @@ IF (BUILD_COLUMNAR)
 ENDIF (BUILD_COLUMNAR)
 
 INSTALL (FILES etc/hosts.cfg DESTINATION "${_etcdir}/couchbase")
+INSTALL (PROGRAMS etc/create-provisioned-cgroups.sh DESTINATION bin)
 
 SET (CONFIG_PREFIX "${PREFIX}/var/lib/couchbase/config")
 CONFIGURE_FILE (etc/ssl_dist_opts.in "${_etcdir}/couchbase/ssl_dist_opts" @ONLY)

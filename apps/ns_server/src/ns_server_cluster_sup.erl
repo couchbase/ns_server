@@ -66,8 +66,16 @@ init([]) ->
            {remote_api, {remote_api, start_link, []},
             permanent, 1000, worker, [remote_api]},
            {ns_gc_runner, {ns_gc_runner, start_link, []},
-            permanent, 1000, worker, [ns_gc_runner]}
-          ]}}.
+            permanent, 1000, worker, [ns_gc_runner]}] ++
+              case cgroups:supported() of
+                  true ->
+                      [{ns_cgroups_manager,
+                        {ns_cgroups_manager, start_link, []},
+                        permanent, 1000, worker, []}];
+                  _ ->
+                      []
+              end
+         }}.
 
 %% @doc Start ns_server and couchdb
 start_ns_server() ->

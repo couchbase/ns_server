@@ -2089,7 +2089,8 @@ run_external_tool(Path, Args, Env, Opts) ->
                             {args, Args},
                             {env, Env},
                             {name, false},
-                            {graceful_shutdown, GracefulShutdown}],
+                            {graceful_shutdown, GracefulShutdown},
+                            {cgroup, ""}], %% defaults to root cgroup
               {ok, Port} = goport:start_link(Path, GoportOpts),
               goport:deliver(Port),
               case proplists:get_value(hidden_inputs, Opts) of
