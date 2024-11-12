@@ -555,7 +555,7 @@ attribute_default(Name) ->
         cross_cluster_versioning_enabled -> % boolean
             false;
         pitr_enabled -> false;              % boolean
-        access_scanner_enabled -> false;    % boolean
+        access_scanner_enabled -> true;     % boolean
         continuous_backup_enabled -> false; % boolean
         continuous_backup_interval -> 2;    % minutes
         continuous_backup_location -> "";   % path or URI
