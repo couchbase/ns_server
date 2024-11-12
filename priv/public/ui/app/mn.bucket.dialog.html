@@ -717,6 +717,37 @@ licenses/APL2.txt.
           </div>
         </div>
 
+        <div [hidden]="!(isEnterprise | async) || !bucket" *ngIf="compatVersion80 | async">
+          <label class="inline">Enable Cross Cluster Versioning</label>
+          <ng-template #crossClusterVersioningTooltip>
+            This option allows XDCR enabling cluster logging. It cannot be disabled after it is enabled.
+          </ng-template>
+          <span
+             [ngbTooltip]="crossClusterVersioningTooltip"
+             triggers="click"
+             class="fa-stack icon-info"
+             placement="right">
+            <span class="icon fa-circle-thin fa-stack-2x"></span>
+            <span class="icon fa-info fa-stack-1x"></span>
+          </span>
+          <div class="formrow checkbox-list">
+            <input
+               formControlName="enableCrossClusterVersioning"
+               type="checkbox"
+               id="for-enable-cross-cluster-versioning">
+            <label for="for-enable-cross-cluster-versioning">Enable</label>
+            <div
+               class="warning text-smaller">
+              Warning: You cannot disable after enabling.
+            </div>
+            <div
+               class="error margin-bottom-half"
+               [hidden]="!(httpError | async)?.errors?.enableCrossClusterVersioning">
+              {{(httpError | async)?.errors?.enableCrossClusterVersioning}}
+            </div>
+          </div>
+        </div>
+
         <label class="inline">Flush</label>
         <ng-template #flushTooltip>
           When flushed, ALL items in the bucket are removed as soon as possible.

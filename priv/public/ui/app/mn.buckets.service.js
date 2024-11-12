@@ -78,6 +78,12 @@ class MnBucketsService {
                                 propEq('bucketType', 'ephemeral')]))),
             shareReplay({refCount: true, bufferSize: 1}));
 
+    this.stream.bucketsCrossClusterVersioningEnabled = this.stream.getBuckets
+    .pipe(
+          map(filter(propEq('enableCrossClusterVersioning', true))),
+          map(buckets => buckets.map(bucket => bucket.name)),
+          shareReplay({refCount: true, bufferSize: 1}));
+
     this.stream.getBucketsPool =
       combineLatest(this.stream.bucketsUri,
                     timer(0, 4000),
@@ -396,7 +402,8 @@ class MnBucketsService {
       enableEncryptionAtRest: false,
       encryptionAtRestSecretId: null,
       encryptionAtRestDekRotationInterval: timeUnitToSeconds.month / timeUnitToSeconds.day,
-      encryptionAtRestDekLifetime: timeUnitToSeconds.year / timeUnitToSeconds.day
+      encryptionAtRestDekLifetime: timeUnitToSeconds.year / timeUnitToSeconds.day,
+      enableCrossClusterVersioning: false,
     };
   }
 
@@ -422,6 +429,7 @@ class MnBucketsService {
       // Magma Configuration needs numVBuckets as either '1024' or ''
       numVBuckets: (bucket.numVBuckets == 1024 ? bucket.numVBuckets + '' : ''),
       autoCompactionDefined: !!bucket.autoCompactionSettings,
+      enableCrossClusterVersioning: !!bucket.enableCrossClusterVersioning,
     };
 
     //secrets is null in case cluster compat mode is less than 8.0 or is not EE

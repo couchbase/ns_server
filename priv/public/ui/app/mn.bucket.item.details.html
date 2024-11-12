@@ -78,6 +78,12 @@ licenses/APL2.txt.
         <strong>Encryption At Rest:</strong>
         {{bucket.encryptionAtRestSecretId === -1 ? 'Disabled' : 'Enabled'}}
       </div>
+      <div
+         *ngIf="(compatVersion80 | async) && (isEnterprise | async)"
+         class="nowrap">
+        <strong>Cross Cluster Versioning:</strong>
+        {{bucket.enableCrossClusterVersioning ? 'Enabled' : 'Disabled'}}
+      </div>
     </div>
 
     <div class="cbui-table-meters buckets">
