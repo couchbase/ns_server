@@ -433,6 +433,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "rebalance"] ->
                     {{[settings], read},
                      fun menelaus_web_settings:handle_settings_rebalance/1};
+                ["settings", "cgroups"] ->
+                    {{[settings], read},
+                     fun menelaus_web_settings:handle_get_cgroup_overrides/1};
                 ["settings", "retryRebalance"] ->
                     {{[settings], read},
                      fun menelaus_web_auto_rebalance:handle_get_retry/1};
@@ -783,6 +786,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "rebalance"] ->
                     {{[settings], write},
                      fun menelaus_web_settings:handle_settings_rebalance_post/1};
+                ["settings", "cgroups"] ->
+                    {{[settings], write},
+                     fun menelaus_web_settings:handle_post_cgroup_overrides/1};
                 ["settings", "retryRebalance"] ->
                     {{[settings], write},
                      fun menelaus_web_auto_rebalance:handle_post_retry/1};
@@ -1205,6 +1211,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {when_morpheus({[admin, security], write},
                                    {[admin, security, external], write}),
                      fun menelaus_web_saml:handle_delete_settings/1};
+                ["settings", "cgroups", ServiceName] ->
+                    {{[settings], write},
+                     fun menelaus_web_settings:handle_delete_cgroup_override/2,
+                     [ServiceName]};
                 ["settings", "secrets", SecretId] ->
                     {no_check_disallow_anonymous,
                      fun menelaus_web_secrets:handle_delete_secret/2,

@@ -30,6 +30,10 @@
          handle_settings_web_post/1,
          handle_settings_web_post/2,
 
+         handle_get_cgroup_overrides/1,
+         handle_post_cgroup_overrides/1,
+         handle_delete_cgroup_override/2,
+
          handle_reset_alerts/1,
 
          handle_settings_stats/1,
@@ -1538,6 +1542,80 @@ validate_cred(Name, Type, State) ->
               Error -> {error, Error}
           end
       end, Name, State).
+
+cgroup_validators() ->
+    [validator:required(service, _),
+     validator:required(hard, _),
+     validator:required(soft, _),
+     validator:one_of(service, cgroups:all_services(), _),
+     validator:convert(service, fun list_to_existing_atom/1, _),
+     validator:convert(hard, fun to_integer_or_max/1, _),
+     validator:convert(soft, fun to_integer_or_max/1, _)].
+
+to_integer_or_max("max") ->
+    max;
+to_integer_or_max(Str) when is_list(Str) ->
+    list_to_integer(Str);
+to_integer_or_max(Int) when is_integer(Int) ->
+    Int.
+
+handle_delete_cgroup_override(ServiceName, Req) ->
+    case cgroups:supported() of
+        true ->
+            ServiceStrings = [atom_to_list(X) || X <- cgroups:all_services()],
+            case lists:member(ServiceName, ServiceStrings) of
+                true ->
+                    ServiceAtom = list_to_existing_atom(ServiceName),
+                    case ns_cgroups_manager:delete_override(ServiceAtom) of
+                        true ->
+                            reply(Req, 200);
+                        false ->
+                            %% it means it didn't exist
+                            reply(Req, 404)
+                    end;
+                false ->
+                    reply(Req, 404)
+            end;
+        false ->
+            reply(Req, 404)
+    end.
+
+handle_post_cgroup_overrides(Req) ->
+    case cgroups:supported() of
+        true ->
+            validator:handle(
+              fun (Props) ->
+                      case proplists:get_value(service, Props, none) of
+                          none ->
+                              reply(Req, 500);
+                          ActualService ->
+                              Hard = proplists:get_value(hard, Props, max),
+                              Soft = proplists:get_value(soft, Props, max),
+                              Limits = #limits{hard=Hard, soft=Soft},
+                              Overrides =
+                                  ns_cgroups_manager:override_profile(
+                                    ActualService, Limits),
+                              reply_json(Req, {prep_json_encoding(Overrides)})
+                      end
+              end, Req, form, cgroup_validators());
+        false ->
+            reply(Req, 404)
+    end.
+
+handle_get_cgroup_overrides(Req) ->
+    case cgroups:supported() of
+        true ->
+            reply_json(Req,
+                       {prep_json_encoding(
+                          ns_cgroups_manager:get_overrides())});
+        false ->
+            reply(Req, 404)
+    end.
+
+prep_json_encoding(List) ->
+    lists:map(fun ({Key, #limits{hard=H, soft=S}}) ->
+                      {Key, {[{hard, H}, {soft, S}]}}
+              end, List).
 
 handle_settings_web_post(Req, Args) ->
     Port = proplists:get_value(port, Args),
