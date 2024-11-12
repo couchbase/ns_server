@@ -523,6 +523,9 @@ init([]) ->
     State1 = init_pruning_timer(State),
     {ok, restart_intervals_calculation_timer(State1)}.
 
+
+handle_call(get_port, _From, #s{prometheus_port = Port} = State) ->
+    {reply, Port, State};
 handle_call(settings, _From, #s{cur_settings = Settings} = State) ->
     {reply, Settings, State};
 
