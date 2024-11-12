@@ -40,7 +40,7 @@ apply_to_file(TmpPath, Path) ->
 
 init([]) ->
     ToRestart =
-        case ns_ports_manager:find_port(ns_server:get_babysitter_node(), memcached) of
+        case ns_ports_manager:find_port(ns_server:get_babysitter_node(), kv) of
             Pid when is_pid(Pid) ->
                 ?log_debug("Starting during memcached lifetime. Try to refresh all files."),
                 self() ! refresh,

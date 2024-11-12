@@ -54,7 +54,7 @@ setup_body() ->
 
 restart_memcached() ->
     {ok, _} = ns_ports_manager:restart_port_by_name(
-                ns_server:get_babysitter_node(), memcached),
+                ns_server:get_babysitter_node(), kv),
     ok.
 
 set_children(Children, Sup) ->
@@ -706,8 +706,11 @@ memcached_environment_variables(Config) ->
             lists:append(CommonEnv, [{"JE_MALLOC_CONF", Value}])
     end.
 
+%% NOTE: Renamed from "memcached" -> "kv" since that's what we call it
+%% everywhere else when referring to it as a service. The binary will still
+%% be "memcached".
 memcached_spec(Config) ->
-    {memcached, path_config:component_path(bin, "memcached"),
+    {kv, path_config:component_path(bin, "memcached"),
      ["-C", {"~s", [{memcached, config_path}]}, "--stdin"],
      [{env, memcached_environment_variables(Config)},
       use_stdio,

@@ -16,11 +16,13 @@
 -compile(export_all).
 
 restart_memcached(Timeout) ->
-    {ok, _} = ns_ports_manager:restart_port_by_name(ns_server:get_babysitter_node(), memcached, Timeout).
+    {ok, _} = ns_ports_manager:restart_port_by_name(
+                ns_server:get_babysitter_node(), kv, Timeout).
 
 kill_memcached(Timeout) ->
     try
-        {ok, Pid} = ns_ports_manager:send_command(ns_server:get_babysitter_node(), memcached, <<"die!\n">>),
+        {ok, Pid} = ns_ports_manager:send_command(
+                      ns_server:get_babysitter_node(), kv, <<"die!\n">>),
         ok = misc:wait_for_process(Pid, Timeout)
     catch E:T:ST ->
             ?log_error("Got exception in kill_memcached: ~p~n~p", [{E,T}, ST]),

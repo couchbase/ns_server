@@ -102,11 +102,11 @@ restart_port(Id) ->
 
 current_ports() ->
     % Children will look like...
-    %   [{memcached,<0.77.0>,worker,[ns_port_server]},
+    %   [{kv,<0.77.0>,worker,[ns_port_server]},
     %    {ns_port_init,undefined,worker,[]}]
     %
     % Or possibly, if a child died, like...
-    %   [{memcached,undefined,worker,[ns_port_server]},
+    %   [{kv,undefined,worker,[ns_port_server]},
     %    {ns_port_init,undefined,worker,[]}]
     %
     Children = supervisor:which_children(?MODULE),

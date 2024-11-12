@@ -229,7 +229,7 @@ memcached_port_pid() ->
     find_port_pid_loop(100, 250).
 
 find_port_pid_loop(Tries, Delay) when Tries > 0 ->
-    RV = ns_ports_manager:find_port(ns_server:get_babysitter_node(), memcached),
+    RV = ns_ports_manager:find_port(ns_server:get_babysitter_node(), kv),
     case RV of
         Pid when is_pid(Pid) ->
             Pid1 = supervisor_cushion:child_pid(Pid),
