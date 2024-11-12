@@ -17,7 +17,7 @@
 
 -export([init/1,
          restart_port/1,
-         current_ports/0, find_port/1]).
+         current_ports/0, find_port/1, current_ports_pids/0]).
 
 -include("ns_common.hrl").
 
@@ -112,3 +112,10 @@ current_ports() ->
     Children = supervisor:which_children(?MODULE),
     [NCAO || {NCAO, Pid, _, _} <- Children,
              Pid /= undefined].
+
+%% NOTE: this is called from ns_server context, so need to specify babysitter
+%% node for the request.
+current_ports_pids() ->
+    Children = supervisor:which_children({?MODULE,
+                                          ns_server:get_babysitter_node()}),
+    [{Svc, Pid} || {{Svc, _, _, _}, Pid, _, _} <- Children].

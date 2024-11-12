@@ -161,6 +161,8 @@ handle_info({'EXIT', Port, Reason} = Exit, #state{port=Port} = State) ->
     ?log_error("Got unexpected exit signal from port: ~p. Exiting.", [Exit]),
     {stop, Reason, State}.
 
+handle_call(get_os_pid, _From, State) ->
+    {reply, State#state.os_pid, State};
 handle_call(is_active, _From, #state{port = Port} = State) ->
     {reply, Port =/= undefined, State};
 
