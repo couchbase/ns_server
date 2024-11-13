@@ -1023,7 +1023,8 @@ put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword) ->
      validate_user_groups(groups, GroupCheckFun, Req, _),
      validate_roles(roles, _),
      validator_verify_security_roles_access(roles, Req, ?SECURITY_WRITE,
-                                            ExtraRolesFun, _)] ++
+                                            ExtraRolesFun, _),
+     validator:valid_in_enterprise_only(locked, _)] ++
         [validate_locked(GetUserIdFun, _) || IsMorpheus] ++
         [validate_password(_) || ValidatePassword] ++
         [validator:boolean(temporaryPassword, _)
@@ -1205,7 +1206,8 @@ change_password_validators() ->
 
 patch_user_validators() ->
     IsMorpheus = cluster_compat_mode:is_cluster_morpheus(),
-    [validator:has_params(_)] ++
+    [validator:has_params(_),
+     validator:valid_in_enterprise_only(locked, _)] ++
         [validator:boolean(locked, _) || IsMorpheus] ++
         change_password_validators().
 
@@ -1350,6 +1352,7 @@ handle_reset_admin_password(Req) ->
     end.
 
 handle_lock_admin(Req) ->
+    menelaus_util:assert_is_enterprise(),
     assert_no_users_upgrade(),
     menelaus_util:ensure_local(Req),
 
@@ -1364,6 +1367,7 @@ handle_lock_admin(Req) ->
     end.
 
 handle_unlock_admin(Req) ->
+    menelaus_util:assert_is_enterprise(),
     assert_no_users_upgrade(),
     menelaus_util:ensure_local(Req),
 
