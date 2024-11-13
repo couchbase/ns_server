@@ -1024,7 +1024,8 @@ put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword) ->
      validate_roles(roles, _),
      validator_verify_security_roles_access(roles, Req, ?SECURITY_WRITE,
                                             ExtraRolesFun, _),
-     validator:valid_in_enterprise_only(locked, _)] ++
+     validator:valid_in_enterprise_only(locked, _),
+     validator:valid_in_enterprise_only(temporaryPassword, _)] ++
         [validate_locked(GetUserIdFun, _) || IsMorpheus] ++
         [validate_password(_) || ValidatePassword] ++
         [validator:boolean(temporaryPassword, _)
