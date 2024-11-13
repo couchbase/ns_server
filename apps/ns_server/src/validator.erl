@@ -1201,4 +1201,91 @@ token_list_test() ->
     ResultState5 = token_list(names, ",", State5),
     ?assertEqual([], get_value(names, ResultState5)).
 
+-define(assertResponse(ExpectedBody, ExpectedCode, BC),
+        (fun () ->
+                 {Body, Code} = BC,
+                 ?assertEqual(ExpectedCode, Code),
+                 ?assertEqual(ExpectedBody, Body)
+         end)()).
+
+handle_json_test_() ->
+    Respond = fun (Body, Code) ->
+                      erlang:put(json_test_response, {Body, Code})
+              end,
+    Handle = fun (Type, Data) ->
+                     validator:handle(Respond(_, 200), Data, Type,
+                                      [validator:string(key1, _),
+                                       validator:string(key2, _),
+                                       validator:unsupported(_)]),
+                     erlang:get(json_test_response)
+             end,
+    GlobalError = ?cut({[{errors, {[{<<"_">>, list_to_binary(_)}]}}]}),
+    GlobalErrorList = ?cut({[{errors, [{[{<<"_">>, list_to_binary(_)}]}]}]}),
+    JsonObject = <<"{\"key1\": \"v1\", \"key2\": \"v2\"}">>,
+    JsonList = <<"[{\"key1\": \"v1\", \"key2\": \"v2\"}]">>,
+    Rubbish = <<"fdfgjkhlkjl">>,
+    {foreach,
+     fun () ->
+             meck:new(mochiweb_request, [passthrough]),
+             meck:expect(mochiweb_request, recv_body, fun (Req) -> Req end),
+             meck:expect(mochiweb_request, parse_qs, fun (_Req) -> [] end),
+
+             meck:new(menelaus_util, [passthrough]),
+             meck:expect(menelaus_util, reply_json,
+                         fun (_Req, Body, Code) ->
+                                 Respond(Body, Code)
+                         end),
+             ok
+     end,
+     fun (_) ->
+             meck:unload(mochiweb_request),
+             meck:unload(menelaus_util),
+             ok
+     end,
+     [{"json",
+       fun () ->
+               ?assertResponse([{key1, "v1"}, {key2, "v2"}], 200,
+                               Handle(json, JsonObject)),
+               ?assertResponse(GlobalError("Unexpected Json"), 400,
+                               Handle(json, JsonList)),
+               ?assertResponse(GlobalError("Invalid Json"), 400,
+                               Handle(json, Rubbish))
+       end},
+      {"json_array",
+       fun () ->
+               ?assertResponse([[{key1, "v1"}, {key2, "v2"}]], 200,
+                               Handle(json_array, JsonList)),
+               ?assertResponse(
+                  GlobalErrorList("A Json list must be specified."),
+                  400, Handle(json_array, JsonObject)),
+               ?assertResponse(GlobalErrorList("Invalid Json"), 400,
+                               Handle(json_array, Rubbish))
+       end},
+      {"json_map",
+       fun () ->
+               Validators = [validator:string(key, _),
+                             validator:string(prop, _),
+                             validator:unsupported(_)],
+               HandleMap =
+                   fun (Data) ->
+                           validator:handle(Respond(_, 200), Data,
+                                            json_map, Validators),
+                           erlang:get(json_test_response)
+                   end,
+               ?assertResponse([[{key, "key1"}, {prop, "v1"}],
+                                [{key, "key2"}, {prop, "v2"}]], 200,
+                               HandleMap(
+                                 <<"{\"key1\": {\"prop\": \"v1\"}, "
+                                   " \"key2\": {\"prop\": \"v2\"}}">>)),
+               ?assertResponse(
+                  GlobalErrorList("Must be a map K -> JsonObject."),
+                  400, HandleMap(
+                         <<"{\"key1\": \"val1\", "
+                           " \"key2\": {\"prop\": \"v2\"}}">>)),
+               ?assertResponse(GlobalErrorList("A Json map must be specified."),
+                               400, HandleMap(JsonList)),
+               ?assertResponse(GlobalErrorList("Invalid Json"), 400,
+                               HandleMap(Rubbish))
+       end}]}.
+
 -endif.
