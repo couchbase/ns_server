@@ -22,7 +22,8 @@
          dek_kinds_list/0,
          dek_kinds_list/1,
          dek_config/1,
-         dek_chronicle_keys_filter/1]).
+         dek_chronicle_keys_filter/1,
+         kind2bin/1]).
 
 -export_type([dek_id/0, dek/0, dek_kind/0, encryption_method/0]).
 
@@ -506,3 +507,6 @@ drop_bucket_deks(Bucket, DekIds) ->
                        cb_cluster_secrets:dek_drop_complete({bucketDek, Bucket})
                    end,
     ns_memcached:drop_deks(Bucket, DekIds, cb_cluster_secrets, Continuation).
+
+kind2bin({bucketDek, B}) -> iolist_to_binary(["bucket_", B]);
+kind2bin(K) -> atom_to_binary(K).

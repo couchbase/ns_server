@@ -406,6 +406,8 @@ store_key(Kind, Name, Type, KeyData, EncryptionKeyId,
                                                  is_binary(KeyData),
                                                  is_binary(EncryptionKeyId) ->
     CreationDTISO = iso8601:format(CreationDT),
+    ns_server_stats:notify_counter({<<"key_manager_store_key">>,
+                                    [{kind, cb_deks:kind2bin(Kind)}]}),
     wrap_error_msg(
       cb_gosecrets_runner:store_key(?RUNNER, Kind, Name, Type, KeyData,
                                     EncryptionKeyId, CreationDTISO),
@@ -458,6 +460,9 @@ garbage_collect_keys(Kind, InUseKeyIds) ->
             FailedList =
                 lists:filtermap(
                   fun (Id) ->
+                      ns_server_stats:notify_counter(
+                        {<<"key_manager_retire_key">>,
+                         [{kind, cb_deks:kind2bin(Kind)}]}),
                       case retire_key(Kind, Id) of
                           ok -> false;
                           {error, Reason} -> {true, {Id, Reason}}

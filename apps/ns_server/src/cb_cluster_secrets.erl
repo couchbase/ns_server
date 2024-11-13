@@ -843,6 +843,8 @@ rotate_secret(#{type := ?KMIP_KEY_TYPE}) ->
 -spec generate_key(Creation :: calendar:datetime()) -> kek_props().
 generate_key(CreationDateTime) ->
     Key = generate_raw_key(?ENVELOP_CIPHER),
+    ns_server_stats:notify_counter({<<"key_manager_generate_key">>,
+                                    [{kind, kek}]}),
     #{id => new_key_id(),
       creation_time => CreationDateTime,
       key => #{type => sensitive, data => Key, encrypted_by => undefined}}.
@@ -1262,8 +1264,16 @@ garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
         %% "has_unencrypted_data" info anyway
         {ok, #{statuses := Statuses} = KindDeks} ->
             UpdateStatus = maps:get(maybe_update_deks, Statuses, undefined),
+            NotifyCounter = fun (L) ->
+                                ns_server_stats:notify_gauge(
+                                  {<<"key_manager_deks_in_use">>,
+                                   [{kind, cb_deks:kind2bin(Kind)}]},
+                                   length(L),
+                                   #{expiration_s => infinity})
+                            end,
             case call_dek_callback(get_ids_in_use_callback, Kind, []) of
                 {succ, {ok, IdList}} when (UpdateStatus == ok) orelse Force ->
+                    NotifyCounter(IdList),
                     UniqIdList = lists:uniq(IdList),
                     NewKindDeks = KindDeks#{has_unencrypted_data =>
                                             lists:member(?NULL_DEK, UniqIdList),
@@ -1274,6 +1284,7 @@ garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
                     CleanedIdList = lists:delete(?NULL_DEK, UniqIdList),
                     {ok, retire_unused_deks(Kind, CleanedIdList, NewState)};
                 {succ, {ok, IdList}} ->
+                    NotifyCounter(IdList),
                     %% UpdateStatus is not ok. This means update of deks
                     %% finished unsuccesfully, so we don't really know if
                     %% set_active_key_callback has actually finished.
@@ -1547,6 +1558,8 @@ generate_new_dek(Kind, CurrentDeks, EncryptionMethod, Snapshot) ->
         true ->
             ?log_debug("Generating new ~p dek, encryption is ~p...",
                        [Kind, EncryptionMethod]),
+            ns_server_stats:notify_counter({<<"key_manager_generate_key">>,
+                                            [{kind, cb_deks:kind2bin(Kind)}]}),
             cb_deks:generate_new(Kind, EncryptionMethod, Snapshot);
         false ->
             ?log_error("Skip ~p DEK creation/rotation: "
@@ -1946,14 +1959,20 @@ run_job(J, State) ->
     ?log_debug("Starting job: ~p", [J]),
     {Res, NewState} = normalize_job_res(do(J, State), State),
     NewState2 = update_job_status(J, Res, NewState),
+    NotifyCounter = ?cut(ns_server_stats:notify_counter(
+                         {<<"key_manager_job_results">>,
+                          [{job_name, job2bin(J)}, {res, _}]})),
     case Res of
         ok ->
             ?log_debug("Job complete: ~p", [J]),
+            NotifyCounter(ok),
             NewState2;
         retry ->
+            NotifyCounter(retry),
             ?log_debug("Job ~p returned 'retry'", [J]),
             add_jobs_to_state([J], NewState2);
         {error, Error} ->
+            NotifyCounter(error),
             ?log_error("Job ~p returned error: ~p", [J, Error]),
             add_jobs_to_state([J], NewState2)
     end.
@@ -2750,6 +2769,8 @@ initiate_deks_drop(Kind, IdsToDrop0, #state{deks = DeksInfo} = State0) ->
         end,
 
     ?log_debug("Trying to drop ~p DEKs: ~0p", [Kind, IdsToDrop]),
+    ns_server_stats:notify_counter({<<"key_manager_drop_deks">>,
+                                    [{kind, cb_deks:kind2bin(Kind)}]}),
     case call_dek_callback(drop_callback, Kind, [IdsToDrop]) of
         {succ, {ok, Res}} ->
             NewKindDeks = KindDeks#{deks_being_dropped => IdsToDrop,
@@ -2895,6 +2916,12 @@ chronicle_compat_txn(Fun) ->
             ?log_error("Chronicle transaction failed with reason timeout"),
             {error, no_quorum}
     end.
+
+-spec job2bin(node_job() | master_job()) -> binary().
+job2bin({J, K}) ->
+    iolist_to_binary([atom_to_binary(J), "_", cb_deks:kind2bin(K)]);
+job2bin(J) when is_atom(J) ->
+    atom_to_binary(J).
 
 -ifdef(TEST).
 replace_secret_in_list_test() ->
