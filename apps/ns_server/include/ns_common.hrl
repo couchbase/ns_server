@@ -493,4 +493,7 @@
           fun(FilePaths) ->
                   cb_crypto:get_in_use_deks(FilePaths)
           end}).
+
+-define(MAX_PHASH2_RANGE, 4294967296).
+
 -endif.

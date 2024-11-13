@@ -88,7 +88,8 @@
                            rotate_deks => undefined}
                          :: #{atom() := reference() | undefined},
                 deks = undefined :: #{cb_deks:dek_kind() := deks_info()} |
-                                    undefined}).
+                                    undefined,
+                kek_hashes_on_disk = #{} :: #{secret_id() := integer()}}).
 
 -export_type([secret_id/0, key_id/0, chronicle_snapshot/0, secret_usage/0]).
 
@@ -979,19 +980,39 @@ add_active_key(Id, #{id := KekId} = Kek,
           end
       end).
 
--spec ensure_all_keks_on_disk() -> ok | {error, list()}.
-ensure_all_keks_on_disk() ->
-    RV = lists:map(fun (#{id := Id,
-                          type := ?GENERATED_KEY_TYPE} = SecretProps)  ->
-                           {Id, ensure_generated_keks_on_disk(SecretProps)};
-                       (#{id := Id, type := ?AWSKMS_KEY_TYPE} = SecretProps) ->
-                           {Id, ensure_aws_kek_on_disk(SecretProps)};
-                       (#{id := Id, type := ?KMIP_KEY_TYPE} = SecretProps) ->
-                           {Id, ensure_kmip_kek_on_disk(SecretProps)};
-                       (#{id := Id}) ->
-                           {Id, ok}
-                   end, get_all()),
-    misc:many_to_one_result(RV).
+-spec ensure_all_keks_on_disk(#state{}) ->
+          {ok, #state{}} | {error, #state{}, list()}.
+ensure_all_keks_on_disk(#state{kek_hashes_on_disk = Vsns} = State) ->
+    Write = fun (#{type := ?GENERATED_KEY_TYPE} = SecretProps)  ->
+                    ensure_generated_keks_on_disk(SecretProps);
+                (#{type := ?AWSKMS_KEY_TYPE} = SecretProps) ->
+                    ensure_aws_kek_on_disk(SecretProps);
+                (#{type := ?KMIP_KEY_TYPE} = SecretProps) ->
+                    ensure_kmip_kek_on_disk(SecretProps);
+                (#{}) ->
+                    ok
+            end,
+
+    {RV, NewVsns} = lists:mapfoldl(
+                      fun (#{id := Id} = S, Acc) ->
+                          Old = maps:get(Id, Acc, undefined),
+                          case erlang:phash2(S, ?MAX_PHASH2_RANGE) of
+                              Old -> {{Id, ok}, Acc};
+                              New ->
+                                 case Write(S) of
+                                     ok -> {{Id, ok}, Acc#{Id => New}};
+                                     {error, _} = E -> {{Id, E}, Acc}
+                                 end
+                          end
+                      end, Vsns, get_all()),
+
+    IdsDoNotExist = maps:keys(NewVsns) -- proplists:get_keys(RV),
+    NewState = State#state{kek_hashes_on_disk = maps:without(IdsDoNotExist,
+                                                             NewVsns)},
+    case misc:many_to_one_result(RV) of
+        ok -> {ok, NewState};
+        {error, Reason} -> {error, NewState, Reason}
+    end.
 
 -spec ensure_generated_keks_on_disk(secret_props()) -> ok | {error, list()}.
 ensure_generated_keks_on_disk(#{type := ?GENERATED_KEY_TYPE, id := SecretId,
@@ -1448,14 +1469,14 @@ maybe_read_deks(#state{proc_type = ?NODE_PROC, deks = undefined} = State) ->
     #state{deks = Deks} = NewState = read_all_deks(State),
     Kinds = maps:keys(Deks),
 
-    ok = ensure_all_keks_on_disk(),
-    NewState2 = lists:foldl(
+    {ok, NewState2} = ensure_all_keks_on_disk(NewState),
+    NewState3 = lists:foldl(
                   fun (K, Acc) ->
                       {ok, NewAcc} = maybe_reencrypt_deks(K, Acc),
                       NewAcc
-                  end, NewState, Kinds),
+                  end, NewState2, Kinds),
     ok = garbage_collect_keks(),
-    add_jobs([{maybe_update_deks, K} || K <- Kinds], NewState2);
+    add_jobs([{maybe_update_deks, K} || K <- Kinds], NewState3);
 maybe_read_deks(#state{} = State) ->
     State.
 
@@ -1963,8 +1984,8 @@ update_job_status(_, _Res, #state{} = State) ->
           ok | {ok, #state{}} | retry | {error, _} | {error, #state{}, _}.
 do(garbage_collect_keks, _) ->
     garbage_collect_keks();
-do(ensure_all_keks_on_disk, _) ->
-    ensure_all_keks_on_disk();
+do(ensure_all_keks_on_disk, State) ->
+    ensure_all_keks_on_disk(State);
 do(maybe_reencrypt_secrets, _) ->
     maybe_reencrypt_secrets();
 do(maybe_reset_deks_counters, _) ->
