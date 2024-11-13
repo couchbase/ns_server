@@ -487,7 +487,13 @@ handle_just_diag(Req, Extra) ->
               ns_cluster:sanitize_node_info(
                 menelaus_web_node:build_nodes_info(Ctx))],
              ["buckets = ~p", ns_config_log:sanitize(Buckets)],
-             ["config_profile = ~p", config_profile:get()]],
+             ["config_profile = ~p", config_profile:get()]] ++
+        case cgroups:supported() andalso cgroups:has_feature_enabled() of
+            true ->
+                ["cgroup_overrides = ~p", ns_cgroups_manager:get_overrides()];
+            false ->
+                []
+        end,
     [begin
          Text = io_lib:format(Fmt ++ "~n~n", Args),
          mochiweb_response:write_chunk(list_to_binary(Text), Resp)
