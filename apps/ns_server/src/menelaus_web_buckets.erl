@@ -5708,10 +5708,11 @@ test_num_replicas_guardrail_validation(#{disk_usage := DiskUsage,
                                          old_num_replicas := OldNumReplicas,
                                          new_num_replicas := NewNumReplicas}) ->
     meck:expect(rpc, call,
-                fun (_Node, ns_disksup, get_disk_data, [], _Timeout) ->
+                fun (_Node, guardrail_monitor, get_disk_data_for_service, [kv],
+                     _Timeout) ->
                         case DiskUsage of
-                            error -> [];
-                            _ -> [{"/", 1, DiskUsage}]
+                            error -> {error, no_dbdir};
+                            _ -> {ok, {"/", 1, DiskUsage}}
                         end
                 end),
     Servers = [node1, node2],

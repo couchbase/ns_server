@@ -23,6 +23,9 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
+%% Exported for rpc
+-export([get_disk_data_for_service/1]).
+
 
 %% Amount of time to wait between state checks (ms)
 -define(CHECK_INTERVAL, ?get_param(check_interval, 20000)).
@@ -122,7 +125,7 @@ get_local_status(Resource, Config, Default) ->
       Disk :: string(),
       Value :: integer().
 check_alert(disk, Thresholds) ->
-    case get_disk_data(ns_disksup:get_disk_data()) of
+    case get_disk_data_for_service(kv) of
         {ok, DiskEntry} ->
             {Disk, _, Value} = DiskEntry,
             case check_disk_usage(Thresholds, DiskEntry) of
@@ -138,29 +141,47 @@ check_alert(disk, Thresholds) ->
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
--spec get_disk_stats_from_nodes([node()]) ->
+-spec get_disk_stats_from_nodes([node()], service()) ->
           [{ok,
             {node(),
              {ok, ns_disksup:disk_stat()}
             | {badrpc, term()}
             | {error, disk_stats_error()}}}].
-get_disk_stats_from_nodes(Nodes) ->
+get_disk_stats_from_nodes(Nodes, Service) ->
     misc:parallel_map(
       fun (Node) ->
-              case rpc:call(Node, ns_disksup, get_disk_data, [],
+              case rpc:call(Node, guardrail_monitor,
+                            get_disk_data_for_service, [Service],
                             ?RPC_TIMEOUT) of
                   {badrpc, _} = Error ->
                       {Node, Error};
-                  Mounts ->
-                      {Node, get_disk_data(Mounts)}
+                  DiskData ->
+                      {Node, DiskData}
               end
       end, Nodes, ?PARALLEL_RPC_TIMEOUT).
 
+-spec get_disk_data_for_service(service()) -> {ok, ns_disksup:disk_stat()}
+              | {error, disk_stats_error()}.
+get_disk_data_for_service(Service) ->
+    MaybeDbDir = case Service of
+                     kv -> ns_storage_conf:this_node_dbdir();
+                     index -> ns_storage_conf:this_node_ixdir()
+                 end,
+    case MaybeDbDir of
+        {ok, DbDir} ->
+            Mounts = ns_disksup:get_disk_data(),
+            get_disk_data_for_dir(Mounts, DbDir);
+        {error, not_found} ->
+            ?log_error("Couldn't check disk usage for ~s as node db dir is "
+                       "missing", [Service]),
+            {error, no_dbdir}
+    end.
+
 -spec get_high_disk_usage_from_nodes([{atom(), number()}],
-                                     [node()]) ->
+                                     [node()], service()) ->
           [{node(), disk_severity() | {error, any()} | any()}].
-get_high_disk_usage_from_nodes(Thresholds, Nodes) ->
-    NodeDiskStats = get_disk_stats_from_nodes(Nodes),
+get_high_disk_usage_from_nodes(Thresholds, Nodes, Service) ->
+    NodeDiskStats = get_disk_stats_from_nodes(Nodes, Service),
     get_high_disk_usage_from_stats(Thresholds, NodeDiskStats).
 
 -spec get_high_disk_usage_from_stats(
@@ -203,15 +224,9 @@ check_num_replicas_change(OldNumReplicas, NewNumReplicas, Nodes) ->
         {Thresholds, true} ->
             %% The number of replicas is being increased so we need to check
             %% the disk usage, to ensure the change is safe to perform
-            PossiblyBadNodes = get_high_disk_usage_from_nodes(Thresholds,
-                                                              Nodes),
-            %% Exclude nodes that only cross the serious/critical thresholds,
-            %% as these thresholds are ignored for num_replicas
-            BadNodes = lists:filter(
-                fun ({_Node, critical}) ->  false;
-                    ({_Node, serious}) ->  false;
-                    (_) -> true
-                end, PossiblyBadNodes),
+            BadNodes = get_high_disk_usage_from_nodes(Thresholds,
+                                                      Nodes,
+                                                      kv),
             %% Split the bad nodes into those with an error and those with
             %% critical disk usage
             {HighDiskNodes, ErrorDiskNodes} =
@@ -340,73 +355,8 @@ check({bucket, Config}, Stats) ->
                                      BucketStats)
                 end
         end, ns_bucket:get_buckets()));
-check({disk_usage = Resource, Config}, _Stats) ->
-    case get_thresholds(Config) of
-        undefined ->
-            [];
-        Thresholds ->
-            %% Get the live disk stats, which we do for consistency as we must
-            %% get live stats for node addition, to avoid waiting for stats to
-            %% be scraped on the new node
-            Node = node(),
-            {Severity, Statuses} =
-                case get_high_disk_usage_from_nodes(Thresholds, [Node]) of
-                    [{Node, {error, _Error}}] ->
-                        %% If we fail to get disk stats then we assume the disk
-                        %% usage is safe, rather than disabling data ingress.
-                        %% We do this because disabling data ingress is an
-                        %% extreme action that we do not want to take unless we
-                        %% are sure that we have to.
-                        {ok, []};
-                    [{Node, maximum = S}] ->
-                        %% For now if we see disk usage reach the limit on any
-                        %% node, we apply the guard for all buckets.
-                        %% It may seem odd that we don't restrict this check to
-                        %% only data-service nodes, since the impact (prior to
-                        %% the addition of other service guardrails) was
-                        %% restricted to only data-service nodes. However, by
-                        %% making the check on all nodes, we ensure that data
-                        %% doesn't indirectly get ingested into other nodes via
-                        %% KV, which would make a disk usage issue worse.
-                        %%
-                        %% In future we may wish to allow this to apply on a
-                        %% per-service and per-bucket level, when these are
-                        %% mapped to different disk partitions
-                        {S,
-                         [{{bucket, BucketName}, disk_usage}
-                          || BucketName <- ns_bucket:get_bucket_names()] ++
-                             [{{index, disk_usage}, S}]};
-                    [{Node, S}] when S =/= ok ->
-                        %% For now if we see disk usage reach the limit we apply
-                        %% the guard for all buckets. In future we should allow
-                        %% this to apply on a per-service and per-bucket level,
-                        %% when these are mapped to different disk partitions
-                        {S, [{{index, disk_usage}, S}]};
-                    [] ->
-                        {ok, []}
-                end,
-            lists:foreach(
-              fun (SeverityToReport) ->
-                      Gauge =
-                          case Severity of
-                              serious when SeverityToReport =:= serious ->
-                                  1;
-                              critical when SeverityToReport =/= maximum ->
-                                  1;
-                              maximum ->
-                                  1;
-                              _ ->
-                                  0
-                          end,
-                      ns_server_stats:notify_gauge(
-                        {<<"resource_limit_reached">>,
-                         [{resource, Resource},
-                          {severity, SeverityToReport}]},
-                        Gauge)
-              end,
-              [maximum, critical, serious]),
-            Statuses
-    end;
+check({disk_usage, Config}, _Stats) ->
+    check_disk_usage_for_service(kv, Config);
 check({index, IndexConfig}, Stats) ->
     case proplists:get_value(index, Stats) of
         undefined ->
@@ -418,7 +368,9 @@ check({index, IndexConfig}, Stats) ->
                   (_) ->
                       []
               end, IndexConfig)
-    end;
+    end ++
+        check_disk_usage_for_service(
+          index, proplists:get_value(disk_usage, IndexConfig, []));
 check({_Resource, _Config}, _Stats) ->
     %% Other resources do not need regular checks
     [].
@@ -561,41 +513,110 @@ get_severity_for_thresholds(Resource, Thresholds, Metric, Order) ->
               NotOk
       end, ok, ThresholdsSorted).
 
+check_disk_usage_for_service(Service, Config) ->
+    case get_thresholds(Config) of
+        undefined ->
+            [];
+        Thresholds ->
+            Node = node(),
+            {Severity, Statuses} =
+                case get_high_disk_usage_from_nodes(Thresholds, [Node],
+                                                    Service) of
+                    [{Node, {error, _Error}}] ->
+                        %% If we fail to get disk stats then we assume the disk
+                        %% usage is safe, rather than disabling data ingress.
+                        %% We do this because disabling data ingress is an
+                        %% extreme action that we do not want to take unless we
+                        %% are sure that we have to.
+                        {ok, []};
+                    [{Node, Sev}] ->
+                        {Sev,
+                         get_disk_usage_statuses_for_service(Service, Sev)};
+                    [] ->
+                        {ok, []}
+                end,
+            notify_disk_usage_severity_for_service(Service, Severity),
+            Statuses
+    end.
+
+get_disk_usage_statuses_for_service(kv, maximum) ->
+    %% For now if we see disk usage reach the limit on any
+    %% node, we apply the guard for all buckets.
+    %% It may seem odd that we don't restrict this check to
+    %% only data-service nodes, since the impact (prior to
+    %% the addition of other service guardrails) was
+    %% restricted to only data-service nodes. However, by
+    %% making the check on all nodes, we ensure that data
+    %% doesn't indirectly get ingested into other nodes via
+    %% KV, which would make a disk usage issue worse.
+    %%
+    %% In future we may wish to allow this to apply on a
+    %% per-service and per-bucket level, when these are
+    %% mapped to different disk partitions
+    [{{bucket, BucketName}, disk_usage}
+     || BucketName <- ns_bucket:get_bucket_names()];
+get_disk_usage_statuses_for_service(index, Severity) ->
+    [{{index, disk_usage}, Severity}].
+
+notify_disk_usage_severity_for_service(kv, Severity) ->
+    Gauge = case Severity of
+                maximum -> 1;
+                ok -> 0
+            end,
+    ns_server_stats:notify_gauge(
+      {<<"resource_limit_reached">>,
+       [{resource, kv_disk_usage},
+        {severity, maximum}]},
+      Gauge);
+notify_disk_usage_severity_for_service(index, Severity) ->
+    lists:foreach(
+      fun (SeverityToReport) ->
+              Gauge =
+                  case Severity of
+                      serious when SeverityToReport =:= serious ->
+                          1;
+                      critical ->
+                          1;
+                      _ ->
+                          0
+                  end,
+              ns_server_stats:notify_gauge(
+                {<<"resource_limit_reached">>,
+                 [{resource, index_disk_usage},
+                  {severity, SeverityToReport}]},
+                Gauge)
+      end,
+      [critical, serious]).
+
 -spec check_disk_usage([{disk_severity(), number()}], ns_disksup:disk_stat()) ->
-    ok | disk_severity().
+          ok | disk_severity().
 check_disk_usage(Thresholds, {_Disk, _Cap, Used}) ->
     get_severity_for_thresholds(disk, Thresholds, Used, descending).
 
--spec get_disk_data(ns_disksup:disk_stats()) ->
+-spec get_disk_data_for_dir(ns_disksup:disk_stats(), string()) ->
           {ok, ns_disksup:disk_stat()} | {error, disk_stats_error()}.
-get_disk_data(Mounts) ->
-    case ns_storage_conf:this_node_dbdir() of
-        {ok, DbDir} ->
-            case misc:realpath(DbDir, "/") of
-                {ok, RealFile} ->
-                    case ns_storage_conf:extract_disk_stats_for_path(
-                           Mounts, RealFile) of
-                        {ok, _} = DiskData ->
-                            DiskData;
-                        none ->
-                            ?log_error("Couldn't check disk space as ~p "
-                                       "wasn't found in ~p",
-                                       [RealFile, Mounts]),
-                            {error, no_disk_stats_found}
-                    end;
-                Error ->
-                    ?log_error("Couldn't check disk space as ~p doesn't "
-                               "appear to be a valid path. Error: ~p",
-                               [DbDir, Error]),
-                    {error, {dbdir_path_error, Error}}
+get_disk_data_for_dir(Mounts, DbDir) ->
+    case misc:realpath(DbDir, "/") of
+        {ok, RealFile} ->
+            case ns_storage_conf:extract_disk_stats_for_path(
+                   Mounts, RealFile) of
+                {ok, _} = DiskData ->
+                    DiskData;
+                none ->
+                    ?log_error("Couldn't check disk space as ~p "
+                               "wasn't found in ~p",
+                               [RealFile, Mounts]),
+                    {error, no_disk_stats_found}
             end;
-        {error, not_found} ->
-            ?log_error("Couldn't check disk usage as node db dir is missing"),
-            {error, no_dbdir}
+        Error ->
+            ?log_error("Couldn't check disk space as ~p doesn't "
+                       "appear to be a valid path. Error: ~p",
+                       [DbDir, Error]),
+            {error, {dbdir_path_error, Error}}
     end.
 
 get_thresholds(Config) ->
-    case proplists:get_value(enabled, Config) of
+    case proplists:get_bool(enabled, Config) of
         true ->
             %% Just return the rest of the config
             lists:keydelete(enabled, 1, Config);
@@ -985,6 +1006,7 @@ check_resources_t() ->
                           [{enabled, false},
                            {minimum, 10}]}]
                 end),
+    pretend_disk_data(#{}),
 
     meck:expect(stats_interface, for_resource_management,
                 fun () ->
@@ -1147,11 +1169,14 @@ check_resources_t() ->
                 fun (resource_management, _) ->
                         [{disk_usage,
                           [{enabled, true},
-                           {maximum, 96},
-                           {critical, 85},
-                           {serious, 80}]}]
+                           {maximum, 96}]},
+                         {index,
+                          [{disk_usage,
+                            [{enabled, true},
+                             {critical, 85},
+                             {serious, 80}]}]}]
                 end),
-    pretend_disk_data(#{node() => [{"/", 1, 50}]}),
+    pretend_disk_data(#{node() => #{kv => {"/", 1, 50}}}),
 
     meck:expect(ns_storage_conf, this_node_dbdir,
                 fun () -> {ok, "invalid_file"} end),
@@ -1164,11 +1189,11 @@ check_resources_t() ->
 
     ?assertEqual([], check_resources()),
     ?assertResourceMetrics(
-       #{[{resource, disk_usage},
+       #{[{resource, index_disk_usage},
           {severity, serious}] => 0,
-         [{resource, disk_usage},
+         [{resource, index_disk_usage},
           {severity, critical}] => 0,
-         [{resource, disk_usage},
+         [{resource, kv_disk_usage},
           {severity, maximum}] => 0}),
 
     meck:expect(ns_storage_conf, this_node_dbdir,
@@ -1176,11 +1201,11 @@ check_resources_t() ->
 
     ?assertEqual([], check_resources()),
     ?assertResourceMetrics(
-       #{[{resource, disk_usage},
+       #{[{resource, index_disk_usage},
           {severity, serious}] => 0,
-         [{resource, disk_usage},
+         [{resource, index_disk_usage},
           {severity, critical}] => 0,
-         [{resource, disk_usage},
+         [{resource, kv_disk_usage},
           {severity, maximum}] => 0}),
 
     meck:expect(ns_storage_conf, extract_disk_stats_for_path,
@@ -1188,50 +1213,81 @@ check_resources_t() ->
 
     ?assertEqual([], check_resources()),
     ?assertResourceMetrics(
-       #{[{resource, disk_usage},
+       #{[{resource, index_disk_usage},
           {severity, serious}] => 0,
-         [{resource, disk_usage},
+         [{resource, index_disk_usage},
           {severity, critical}] => 0,
-         [{resource, disk_usage},
+         [{resource, kv_disk_usage},
           {severity, maximum}] => 0}),
 
-    pretend_disk_data(#{node() => [{"/", 1, 97}]}),
+    pretend_disk_data(#{node() => #{kv => {"/", 1, 97}}}),
 
     ?assertEqual([{{bucket, "couchstore_bucket"}, disk_usage},
-                  {{bucket, "magma_bucket"}, disk_usage},
-                  {{index, disk_usage}, maximum}],
+                  {{bucket, "magma_bucket"}, disk_usage}],
                  check_resources()),
     ?assertResourceMetrics(
-       #{[{resource, disk_usage},
-          {severity, serious}] => 1,
-         [{resource, disk_usage},
-          {severity, critical}] => 1,
-         [{resource, disk_usage},
+       #{[{resource, index_disk_usage},
+          {severity, serious}] => 0,
+         [{resource, index_disk_usage},
+          {severity, critical}] => 0,
+         [{resource, kv_disk_usage},
           {severity, maximum}] => 1}),
 
-    pretend_disk_data(#{node() => [{"/", 1, 86}]}),
+    pretend_disk_data(#{node() => #{kv => {"/", 1, 86},
+                                    index => {"/", 1, 86}}}),
 
     ?assertEqual([{{index, disk_usage}, critical}],
                  check_resources()),
     ?assertResourceMetrics(
-       #{[{resource, disk_usage},
+       #{[{resource, index_disk_usage},
           {severity, serious}] => 1,
-         [{resource, disk_usage},
+         [{resource, index_disk_usage},
           {severity, critical}] => 1,
-         [{resource, disk_usage},
+         [{resource, kv_disk_usage},
           {severity, maximum}] => 0}),
 
-    pretend_disk_data(#{node() => [{"/", 1, 81}]}),
+    pretend_disk_data(#{node() => #{kv => {"/", 1, 81},
+                                    index => {"/", 1, 81}}}),
 
     ?assertEqual([{{index, disk_usage}, serious}],
                  check_resources()),
     ?assertResourceMetrics(
-       #{[{resource, disk_usage},
+       #{[{resource, index_disk_usage},
           {severity, serious}] => 1,
-         [{resource, disk_usage},
+         [{resource, index_disk_usage},
           {severity, critical}] => 0,
-         [{resource, disk_usage},
+         [{resource, kv_disk_usage},
           {severity, maximum}] => 0}),
+
+    pretend_disk_data(#{node() => #{kv => {"/", 1, 97},
+                                    index => {"/", 1, 81}}}),
+
+    ?assertEqual([{{bucket, "couchstore_bucket"}, disk_usage},
+                  {{bucket, "magma_bucket"}, disk_usage},
+                  {{index, disk_usage}, serious}],
+                 check_resources()),
+    ?assertResourceMetrics(
+       #{[{resource, index_disk_usage},
+          {severity, serious}] => 1,
+         [{resource, index_disk_usage},
+          {severity, critical}] => 0,
+         [{resource, kv_disk_usage},
+          {severity, maximum}] => 1}),
+
+    pretend_disk_data(#{node() => #{kv => {"/", 1, 97},
+                                    index => {"/", 1, 86}}}),
+
+    ?assertEqual([{{bucket, "couchstore_bucket"}, disk_usage},
+                  {{bucket, "magma_bucket"}, disk_usage},
+                  {{index, disk_usage}, critical}],
+                 check_resources()),
+    ?assertResourceMetrics(
+       #{[{resource, index_disk_usage},
+          {severity, serious}] => 1,
+         [{resource, index_disk_usage},
+          {severity, critical}] => 1,
+         [{resource, kv_disk_usage},
+          {severity, maximum}] => 1}),
 
     meck:expect(ns_config, read_key_fast,
                 fun (resource_management, _) ->
@@ -1303,8 +1359,17 @@ check_resources_t() ->
 
 pretend_disk_data(DiskDataMap) ->
     meck:expect(rpc, call,
-                fun (Node, ns_disksup, get_disk_data, [], _Timeout) ->
-                        maps:get(Node, DiskDataMap)
+                fun (Node, guardrail_monitor, get_disk_data_for_service,
+                     [Service], _Timeout) ->
+                        case maps:find(Node, DiskDataMap) of
+                            {ok, NodeMap} ->
+                                case maps:find(Service, NodeMap) of
+                                    error -> {error, no_dbdir};
+                                    DiskData -> DiskData
+                                end;
+                            error ->
+                                {badrpc, noproc}
+                        end
                 end).
 
 basic_test_() ->
@@ -1394,7 +1459,7 @@ regular_checks_t() ->
                 end),
     meck:expect(ns_config, get_timeout,
                 fun (_, Default) -> Default end),
-    pretend_disk_data(#{node() => [{"/", 1, 50}]}),
+    pretend_disk_data(#{node() => #{kv => {"/", 1, 50}}}),
 
     {ok, _Pid} = start_link(),
 
@@ -1536,7 +1601,7 @@ initial_check_t() ->
                 fun (_, Default) -> Default end),
 
     %% No disk usage issue at startup
-    pretend_disk_data(#{node() => [{"/", 1, 50}]}),
+    pretend_disk_data(#{node() => #{kv => {"/", 1, 50}}}),
 
     {ok, _Pid} = start_link(),
 
