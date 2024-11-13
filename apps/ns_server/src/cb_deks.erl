@@ -27,6 +27,8 @@
 
 -export_type([dek_id/0, dek/0, dek_kind/0, encryption_method/0]).
 
+-define(LOG_ENCR_RPC_TIMEOUT, ?get_timeout(log_encr_rpc_timeout, 60000)).
+
 -type encryption_method() :: {secret, cb_cluster_secrets:secret_id()} |
                              encryption_service |
                              disabled.
@@ -414,11 +416,18 @@ set_log_active_key(_ActiveKey) ->
 
         %% Push the dek update to babysitter node disk sinks
         ok ?= rpc:call(ns_server:get_babysitter_node(), cb_deks,
-                       handle_ale_log_dek_update, [CreateNewDS]),
+                       handle_ale_log_dek_update, [CreateNewDS],
+                       ?LOG_ENCR_RPC_TIMEOUT),
 
         %% Push the dek update to couchdb node disk sinks
         ok ?= rpc:call(ns_node_disco:couchdb_node(), cb_deks,
-                       handle_ale_log_dek_update, [CreateNewDS])
+                       handle_ale_log_dek_update, [CreateNewDS],
+                       ?LOG_ENCR_RPC_TIMEOUT)
+    else
+        {error, _} = Error ->
+            Error;
+        {badrpc, _} = Error ->
+            {error, Error}
     end.
 
 force_config_encryption_keys() ->
@@ -457,10 +466,12 @@ get_dek_ids_in_use(logDek) ->
         {ok, InUseLocal} ?= ale:get_all_used_deks(),
 
         {ok, InuseBabySitter} ?= rpc:call(ns_server:get_babysitter_node(),
-                                          ale, get_all_used_deks, []),
+                                          ale, get_all_used_deks, [],
+                                          ?LOG_ENCR_RPC_TIMEOUT),
 
         {ok, InuseCouchDb} ?= rpc:call(ns_server:get_babysitter_node(),
-                                       ale, get_all_used_deks, []),
+                                       ale, get_all_used_deks, [],
+                                       ?LOG_ENCR_RPC_TIMEOUT),
 
         AllInUse = lists:usort(InUseMemcached ++ InUseLocal ++
                                    InuseBabySitter ++ InuseCouchDb),
@@ -470,6 +481,11 @@ get_dek_ids_in_use(logDek) ->
                           (Elem) ->
                                Elem
                        end, AllInUse)}
+    else
+        {error, _} = Error ->
+            Error;
+        {badrpc, _} = Error ->
+            {error, Error}
     end;
 get_dek_ids_in_use(Type) ->
     {ok, Snapshot} = cb_crypto:fetch_deks_snapshot(Type),
