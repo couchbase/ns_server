@@ -127,8 +127,9 @@ handle_drop_keys(TypeName, Req) ->
       fun (Time) ->
           TypeKey =
               case TypeName of
-                  "config" -> config_encryption
-                  %% assuming other types will be added soon
+                  "config" -> config_encryption;
+                  "log" -> log_encryption;
+                  "audit" -> audit_encryption
               end,
           chronicle_kv:transaction(
             kv, [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
