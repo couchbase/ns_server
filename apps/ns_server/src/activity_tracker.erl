@@ -55,12 +55,14 @@ default() ->
      {tracked_groups, []}].
 
 handle_get(Req) ->
+    menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_morpheus(),
 
     menelaus_web_settings2:handle_get([], params(), fun type_spec/1,
                                       get_config(), Req).
 
 handle_post(Req) ->
+    menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_morpheus(),
 
     menelaus_web_settings2:handle_post(
