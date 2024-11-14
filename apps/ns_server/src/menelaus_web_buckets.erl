@@ -71,6 +71,8 @@
 -define(MAX_BUCKET_NAME_LEN, 100).
 -define(MIN_VERSION_PRUNING_WINDOW_HRS, 24).
 
+-define(FUSION_LOGSTORE_URI, "fusionLogstoreURI").
+
 get_info_level(Req) ->
     case proplists:get_value("basic_stats", mochiweb_request:parse_qs(Req)) of
         undefined ->
@@ -526,6 +528,13 @@ build_magma_bucket_info(BucketConfig) ->
                         proplists:get_value(magma_max_shards, BucketConfig,
                                             ?DEFAULT_MAGMA_SHARDS)};
                    false -> []
+               end,
+               case proplists:get_value(magma_fusion_logstore_uri,
+                                        BucketConfig) of
+                   undefined ->
+                       [];
+                   Value ->
+                       {?FUSION_LOGSTORE_URI, list_to_binary(Value)}
                end]);
         _ ->
             []
@@ -1630,7 +1639,9 @@ validate_membase_bucket_params(CommonParams, Params, Name,
                                                       IsEnterprise,
                                                       IsStorageModeMigration),
          parse_validate_dcp_connections_between_nodes(Params, IsNew, IsMorpheus,
-                                                      IsEnterprise)
+                                                      IsEnterprise),
+         parse_validate_fusion_logstore_uri(
+           Params, IsNew, IsMorpheus, IsEnterprise)
         | validate_bucket_auto_compaction_settings(Params)] ++
         parse_validate_limits(
           Params, BucketConfig, IsNew, AllowStorageLimit,
@@ -1775,9 +1786,12 @@ validate_path_or_uri(Value, Param, ConfigKey) ->
     end.
 
 is_valid_uri(URI) ->
+    is_valid_uri(URI, ["s3", "az", "gs"]).
+
+is_valid_uri(URI, Schemes) ->
     case string:tokens(URI, "://") of
         [Scheme | _] ->
-            lists:member(Scheme, ["s3", "az", "gs"]);
+            lists:member(Scheme, Schemes);
         _ ->
             false
     end.
@@ -2331,6 +2345,16 @@ parse_validate_param_not_enterprise(Key, Params) ->
               {error, Param,
                list_to_binary(io_lib:format("~p can only be set in Enterprise "
                                             "edition", [Param]))}
+      end).
+
+parse_validate_create_only(Key, Params) ->
+    parse_validate_param_not_supported(
+      Key, Params,
+      fun (Param) ->
+              {error, Param,
+               list_to_binary(
+                 io_lib:format(
+                   "~0p allowed only during bucket creation", [Param]))}
       end).
 
 parse_validate_cross_cluster_versioning_enabled(Params, _IsNew, _Allow,
@@ -3485,6 +3509,38 @@ parse_validate_conflict_resolution_type("custom") ->
 parse_validate_conflict_resolution_type(_Other) ->
     {error, conflictResolutionType,
      <<"Conflict resolution type must be 'seqno' or 'lww' or 'custom'">>}.
+
+parse_validate_fusion_logstore_uri(
+  Params, _IsNew, _IsMorpheus, _IsEnterprise = false) ->
+    parse_validate_param_not_enterprise(?FUSION_LOGSTORE_URI, Params);
+parse_validate_fusion_logstore_uri(
+  Params, _IsNew, _IsMorpheus = false, _IsEnterprise) ->
+    parse_validate_param_not_supported(
+      ?FUSION_LOGSTORE_URI, Params, fun not_supported_until_morpheus_error/1);
+parse_validate_fusion_logstore_uri(
+  Params, _IsNew = false, _IsMorpheus, _IsEnterprise) ->
+    parse_validate_create_only(?FUSION_LOGSTORE_URI, Params);
+parse_validate_fusion_logstore_uri(
+  Params, _IsNew = true, _IsMorpheus = true, _IsEnterprise = true) ->
+    IsMagma = is_magma(Params, undefined, true, false),
+    case IsMagma of
+        false ->
+            parse_validate_param_not_supported(
+              ?FUSION_LOGSTORE_URI, Params, fun only_supported_on_magma/1);
+        true ->
+            case proplists:get_value(?FUSION_LOGSTORE_URI, Params) of
+                undefined ->
+                    ignore;
+                Value ->
+                    case is_valid_uri(Value, ["s3", "local"]) of
+                        true ->
+                            {ok, magma_fusion_logstore_uri, Value};
+                        false ->
+                            {error, ?FUSION_LOGSTORE_URI,
+                             <<"Must be a valid uri">>}
+                    end
+            end
+    end.
 
 handle_compact_bucket(_PoolId, Bucket, Req) ->
     ok = compaction_api:force_compact_bucket(Bucket),
@@ -4666,6 +4722,63 @@ basic_parse_validate_bucket_auto_compaction_settings_test() ->
     meck:unload(config_profile),
     meck:unload(chronicle_kv),
     ok.
+
+combinations(N, Choices) ->
+    combinations(N, Choices, [[]]).
+
+combinations(0, _Choices, List) ->
+    List;
+combinations(N, Choices, List) ->
+    combinations(N - 1, Choices,
+                 lists:flatmap(fun (C) -> [[C | E] || E <- List] end, Choices)).
+
+parse_validate_fusion_logstore_uri_test_() ->
+    Combinations = combinations(5, [true, false]),
+    {foreach, fun () -> ok end, fun (_) -> ok end,
+     lists:map(
+       fun ([IsNew, IsMorpheus, IsEnterprise, IsMagma, IsValid]) ->
+               {lists:flatten(
+                  io_lib:format(
+                    "IsNew=~p, IsMorpheus=~p, IsEnterprise=~p, IsMagma=~p, "
+                    "IsValid=~p",
+                    [IsNew, IsMorpheus, IsEnterprise, IsMagma, IsValid])),
+                fun () ->
+                        Uri = case IsValid of
+                                  true -> "s3://something";
+                                  false  -> "something"
+                              end,
+                        BackendParam =
+                            case IsMagma of
+                                true -> [{"storageBackend", "magma"}];
+                                false  -> []
+                            end,
+                        Params = [{"bucketType", "membase"},
+                                  {?FUSION_LOGSTORE_URI, Uri}] ++ BackendParam,
+                        Resp = parse_validate_fusion_logstore_uri(
+                                 Params, IsNew, IsMorpheus, IsEnterprise),
+                        ExpectedErrors =
+                            lists:flatten(
+                              [[<<"Must be a valid uri">> || not IsValid],
+                               [<<"Argument is only supported for magma "
+                                  "buckets">> || not IsMagma],
+                               [<<"\"fusionLogstoreURI\" can only be set in "
+                                  "Enterprise edition">> || not IsEnterprise],
+                               [<<"Argument is not supported until cluster is "
+                                  "fully morpheus">> || not IsMorpheus],
+                               [<<"\"fusionLogstoreURI\" allowed only during "
+                                  "bucket creation">> || not IsNew]]),
+                        case ExpectedErrors of
+                            [] ->
+                                ?assertEqual(
+                                   {ok, magma_fusion_logstore_uri, Uri}, Resp);
+                            _ ->
+                                ?assertMatch({error, ?FUSION_LOGSTORE_URI, _},
+                                             Resp),
+                                {error, ?FUSION_LOGSTORE_URI, E} = Resp,
+                                ?assert(lists:member(E, ExpectedErrors))
+                        end
+                end}
+       end, Combinations)}.
 
 parse_validate_max_magma_shards_test() ->
     meck:new(config_profile, [passthrough]),

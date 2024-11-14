@@ -429,7 +429,9 @@ get_magma_bucket_config(BucketConfig) ->
              {"magma_key_tree_data_block_size", [{reload, flush}],
               ns_bucket:magma_key_tree_data_blocksize(BucketConfig)},
              {"magma_seq_tree_data_block_size", [{reload, flush}],
-              ns_bucket:magma_seq_tree_data_blocksize(BucketConfig)}];
+              ns_bucket:magma_seq_tree_data_blocksize(BucketConfig)},
+             {"magma_fusion_logstore_uri", [],
+              ns_bucket:magma_fusion_logstore_uri(BucketConfig)}];
         _ ->
             []
     end.

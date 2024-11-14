@@ -196,7 +196,8 @@
          get_dek_lifetime/2,
          get_dek_rotation_interval/2,
          get_drop_keys_timestamp/2,
-         validate_encryption_secret/3]).
+         validate_encryption_secret/3,
+         magma_fusion_logstore_uri/1]).
 
 -import(json_builder,
         [to_binary/1,
@@ -704,6 +705,10 @@ magma_key_tree_data_blocksize(BucketConfig) ->
 magma_seq_tree_data_blocksize(BucketConfig) ->
     proplists:get_value(magma_seq_tree_data_blocksize, BucketConfig,
                         ?MAGMA_SEQ_TREE_DATA_BLOCKSIZE).
+
+-spec magma_fusion_logstore_uri(proplists:proplist()) -> string() | undefined.
+magma_fusion_logstore_uri(BucketConfig) ->
+    proplists:get_value(magma_fusion_logstore_uri, BucketConfig).
 
 -define(FS_HARD_NODES_NEEDED, 4).
 -define(FS_FAILOVER_NEEDED, 3).
@@ -2453,7 +2458,8 @@ extract_bucket_props(Props) ->
                          continuous_backup_enabled,
                          continuous_backup_interval,
                          continuous_backup_location,
-                         dcp_connections_between_nodes]],
+                         dcp_connections_between_nodes,
+                         magma_fusion_logstore_uri]],
           X =/= false].
 
 build_threshold({Percentage, Size}) ->
