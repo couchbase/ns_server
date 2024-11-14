@@ -174,7 +174,7 @@ class MnXDCRService {
 
   }
 
-  prepareReplicationSettigns([, isEnterprise, compatVersion55, filterFormHelper]) {
+  prepareReplicationSettigns([, isEnterprise, compatVersion55, compatVersion80, filterFormHelper]) {
     //this points to the component view instance
     var settings = Object.assign({}, this.form.group.value, this.filterRegexpGroup.value);
     delete settings.docId;
@@ -222,6 +222,14 @@ class MnXDCRService {
       }
     }
     settings.replicationType = "continuous";
+
+    if (!isEnterprise || !compatVersion80) {
+      delete settings.mobile;
+    } else if (settings.mobile) {
+      settings.mobile = 'Active';
+    } else {
+      settings.mobile = 'Off';
+    }
 
     return settings;
   }

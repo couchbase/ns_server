@@ -42,6 +42,7 @@ class MnXDCRSettingsComponent extends MnLifeCycleHooksToStream {
 
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.compatVersion55 = mnAdminService.stream.compatVersion55;
+    this.compatVersion80 = mnAdminService.stream.compatVersion80;
     this.toggler = mnHelperService.createToggle();
   }
 

@@ -87,6 +87,7 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
                      optimisticReplicationThreshold: null,
                      statsInterval: null,
                      networkUsageLimit: null,
+                     mobile: false,
                      logLevel: null});
 
     this.isSaveButtonDisabled =
@@ -97,9 +98,10 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
     this.form
       .setPackPipe(pipe(withLatestFrom(this.isEnterprise,
                                        mnAdminService.stream.compatVersion55,
+                                       mnAdminService.stream.compatVersion80,
                                        this.filterFormHelper.group.valueChanges,
                                        this.isSaveButtonDisabled),
-                        filter(([, , , , isDisabled]) => !isDisabled),
+                        filter(([, , , , , isDisabled]) => !isDisabled),
                         map(mnXDCRService.prepareReplicationSettigns.bind(this))))
       .setSourceShared(this.getSettingsReplications)
       .setPostRequest(this.postCreateReplication)
@@ -116,6 +118,10 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
             hasWarnings ? 0 : 2500);
         });
       });
+
+    this.getSettingsReplications
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(this.unpackReplicationSettings.bind(this));
 
     this.filterRegexpGroup = formBuilder.group({
       docId: "",
@@ -146,4 +152,18 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
       .subscribe(resetMappingRules.bind(this));
 
   }
+
+  unpackReplicationSettings(v) {
+    switch (v.mobile) {
+      case "Active": {
+        this.form.group.get('mobile').patchValue(true);
+        break;
+      }
+      default: {
+        this.form.group.get('mobile').patchValue(false);
+        break;
+      }
+    }
+  }
+
 }

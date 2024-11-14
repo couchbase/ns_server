@@ -759,7 +759,8 @@ licenses/APL2.txt.
         <div [hidden]="!(isEnterprise | async) || !bucket" *ngIf="compatVersion80 | async">
           <label class="inline">Enable Cross Cluster Versioning</label>
           <ng-template #crossClusterVersioningTooltip>
-            This option allows XDCR enabling cluster logging. It cannot be disabled after it is enabled.
+            <p>The Cross Cluster Versioning setting cannot be disabled after it is enabled.</p>
+            <p>See the documentation for enableCrossClusterVersioning and the dependent features for important details on how to correctly enable this setting.</p>
           </ng-template>
           <span
              [ngbTooltip]="crossClusterVersioningTooltip"

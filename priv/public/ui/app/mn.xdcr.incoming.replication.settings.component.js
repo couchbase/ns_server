@@ -58,6 +58,17 @@ class MnXDCRIncomingReplicationSettingsComponent extends MnLifeCycleHooksToStrea
       }
     };
 
+    const mapMobile = mobileValue => {
+      switch (mobileValue) {
+        case 1:
+          return "Off";
+        case 2:
+          return "Active";
+        default:
+          return mobileValue;
+      }
+    };
+
     const mapCompressionType = compressionValue => {
       switch (compressionValue) {
         case 3:
@@ -87,6 +98,7 @@ class MnXDCRIncomingReplicationSettingsComponent extends MnLifeCycleHooksToStrea
     };
 
     this.priority = this.settings.pipe(map((settings => mapPriority(settings.values.priority))));
+    this.mobile = this.settings.pipe(map((settings => mapMobile(settings.values.mobile))));
     this.compressionType = this.settings.pipe(map((settings => mapCompressionType(settings.values.compression_type))));
     this.sourceNozzles = this.settings.pipe(map((settings => settings.values.source_nozzle_per_node)));
     this.targetNozzles = this.settings.pipe(map((settings => settings.values.target_nozzle_per_node)));

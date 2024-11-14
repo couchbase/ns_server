@@ -341,6 +341,9 @@ footer {
 .max-width-50-i {
   max-width: 50% !important;
 }
+.max-width-80 {
+  max-width: 80%;
+}
 
 /* percentage width ---------------------------------------------------- */
 .width-1 {

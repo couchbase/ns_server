@@ -23,6 +23,18 @@ licenses/APL2.txt.
           <span>{{priority | async}}</span>
         </div>
         <div class="flex flex-items-center flex-gap-5">
+          <h5>Mobile
+            <span
+               class="fa-stack icon-info"
+               ngbTooltip='To use Sync Gateway 4.0+ with bi-directional XDCR, each replication must have the "mobile" option set to "Active".'
+               placement="auto bottom"
+               container="body">
+              <span class="icon fa-circle-thin fa-stack-2x"></span>
+              <span class="icon fa-info fa-stack-1x"></span>
+            </span> :</h5>
+          <span>{{mobile | async}}</span>
+        </div>
+        <div class="flex flex-items-center flex-gap-5">
           <h5>Compression Type:</h5>
           <span>{{compressionType | async}}</span>
         </div>
