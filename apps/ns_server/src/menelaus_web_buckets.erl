@@ -517,36 +517,34 @@ build_continuous_backup_info(BucketConfig) ->
 build_magma_bucket_info(BucketConfig) ->
     case ns_bucket:storage_mode(BucketConfig) of
         magma ->
-            [{storageQuotaPercentage,
-              proplists:get_value(storage_quota_percentage,
-                                  BucketConfig,
-                                  ?MAGMA_STORAGE_QUOTA_PERCENTAGE)}]
-            ++
-            case cluster_compat_mode:is_cluster_72() of
-                false -> [];
-                true ->
-                    [{historyRetentionSeconds,
-                      ns_bucket:history_retention_seconds(BucketConfig)},
-                     {historyRetentionBytes,
-                      ns_bucket:history_retention_bytes(BucketConfig)},
-                     {historyRetentionCollectionDefault,
-                      ns_bucket:history_retention_collection_default(
-                        BucketConfig)},
-                     {magmaKeyTreeDataBlockSize,
-                      ns_bucket:magma_key_tree_data_blocksize(BucketConfig)},
-                     {magmaSeqTreeDataBlockSize,
-                      ns_bucket:magma_seq_tree_data_blocksize(BucketConfig)}]
-            end
-            ++
-            build_continuous_backup_info(BucketConfig)
-            ++
-            case config_profile:search({magma, can_set_max_shards}, false) of
-                true ->
-                    [{magmaMaxShards,
-                      proplists:get_value(magma_max_shards, BucketConfig,
-                                          ?DEFAULT_MAGMA_SHARDS)}];
-                false -> []
-            end;
+            lists:flatten(
+              [{storageQuotaPercentage,
+                proplists:get_value(storage_quota_percentage,
+                                    BucketConfig,
+                                    ?MAGMA_STORAGE_QUOTA_PERCENTAGE)},
+               case cluster_compat_mode:is_cluster_72() of
+                   false -> [];
+                   true ->
+                       [{historyRetentionSeconds,
+                         ns_bucket:history_retention_seconds(BucketConfig)},
+                        {historyRetentionBytes,
+                         ns_bucket:history_retention_bytes(BucketConfig)},
+                        {historyRetentionCollectionDefault,
+                         ns_bucket:history_retention_collection_default(
+                           BucketConfig)},
+                        {magmaKeyTreeDataBlockSize,
+                         ns_bucket:magma_key_tree_data_blocksize(BucketConfig)},
+                        {magmaSeqTreeDataBlockSize,
+                         ns_bucket:magma_seq_tree_data_blocksize(BucketConfig)}]
+               end,
+               build_continuous_backup_info(BucketConfig),
+               case config_profile:search({magma, can_set_max_shards}, false) of
+                   true ->
+                       {magmaMaxShards,
+                        proplists:get_value(magma_max_shards, BucketConfig,
+                                            ?DEFAULT_MAGMA_SHARDS)};
+                   false -> []
+               end]);
         _ ->
             []
     end.
