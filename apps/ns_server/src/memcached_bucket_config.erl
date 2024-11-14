@@ -284,12 +284,12 @@ ensure(Sock, #cfg{type = membase, name = BucketName, params = Params}) ->
     case query_stats(Sock) of
         {ok, Stats} ->
             Restart =
-            lists:any(
-              fun ({Name, Props, Value}) ->
-                      lists:member(restart, Props) andalso
-                      has_changed(BucketName, Name,
-                                  value_to_binary(Value), Stats)
-              end, Params),
+                lists:any(
+                  fun ({Name, Props, Value}) ->
+                          lists:member(restart, Props) andalso
+                              has_changed(BucketName, Name,
+                                          value_to_binary(Value), Stats)
+                  end, Params),
             case Restart of
                 true ->
                     restart;
