@@ -2289,14 +2289,13 @@ only_supported_on_magma(Param) ->
 
 %% Parameter parsing and validation when not in enterprise mode.
 parse_validate_param_not_enterprise(Key, Params) ->
-    case proplists:is_defined(Key, Params) of
-        true ->
-            {error, Key,
-             list_to_binary(io_lib:format("~p can only be set in Enterprise "
-                                          "edition", [Key]))};
-        false ->
-            ignore
-    end.
+    parse_validate_param_not_supported(
+      Key, Params,
+      fun (Param) ->
+              {error, Param,
+               list_to_binary(io_lib:format("~p can only be set in Enterprise "
+                                            "edition", [Param]))}
+      end).
 
 parse_validate_cross_cluster_versioning_enabled(Params, _IsNew, _Allow,
                                                 false = _IsEnterprise,
