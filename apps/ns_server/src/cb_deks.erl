@@ -469,7 +469,7 @@ get_dek_ids_in_use(logDek) ->
                                           ale, get_all_used_deks, [],
                                           ?LOG_ENCR_RPC_TIMEOUT),
 
-        {ok, InuseCouchDb} ?= rpc:call(ns_server:get_babysitter_node(),
+        {ok, InuseCouchDb} ?= rpc:call(ns_node_disco:couchdb_node(),
                                        ale, get_all_used_deks, [],
                                        ?LOG_ENCR_RPC_TIMEOUT),
 
