@@ -864,7 +864,7 @@ store_and_read_key_test() ->
                                creation_time := <<"2024-07-26T19:32:19Z">>},
                              DecodeKey(Key2Encoded)),
                 %% Unknown key
-                ?assertMatch({error, "Failed to read key from file" ++ _},
+                ?assertMatch({error, "No files found" ++ _},
                              read_key(Pid, chronicleDek, <<"key3">>))
             end)
       end).
