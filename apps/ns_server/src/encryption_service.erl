@@ -13,6 +13,10 @@
 
 -include("ns_common.hrl").
 -include("cb_cluster_secrets.hrl").
+-include_lib("ns_common/include/cut.hrl").
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([start_link/0,
          decrypt/1,
@@ -443,31 +447,26 @@ garbage_collect_keys(Kind, InUseKeyIds) ->
     %% Just making sure the list is in expected format (so we don't end up
     %% comparing string and binary)
     lists:foreach(fun (Id) -> {_, true} = {Id, is_binary(Id)} end, InUseKeyIds),
-    IdsInUseSet = maps:from_keys(InUseKeyIds, true),
-    AllKeys = get_all_keys_in_dir(KeyDir),
-    ToRemove = lists:filter(
-                 fun (Id) when is_binary(Id) ->
-                      not maps:get(Id, IdsInUseSet, false)
-                 end, AllKeys),
-    case ToRemove of
+    ListDirRes = file:list_dir(KeyDir),
+    ToRetire = select_files_to_retire(KeyDir, InUseKeyIds, ListDirRes),
+    case ToRetire of
         [] ->
-            ?log_debug("~p keys gc: no keys to retire (all keys: ~0p, "
-                       "in use: ~0p)", [Kind, AllKeys, InUseKeyIds]),
+            ?log_debug("~p keys gc: no keys to retire", [Kind]),
             ok;
         _ ->
-            ?log_info("~p keys gc: retiring ~p (all keys: ~0p, "
-                      "in use: ~0p)", [Kind, ToRemove, AllKeys, InUseKeyIds]),
+            ?log_info("~p keys gc: retiring ~0p (all keys: ~0p, in "
+                      "use: ~0p)", [Kind, ToRetire, ListDirRes, InUseKeyIds]),
             FailedList =
                 lists:filtermap(
-                  fun (Id) ->
+                  fun (Filename) ->
                       ns_server_stats:notify_counter(
                         {<<"key_manager_retire_key">>,
                          [{kind, cb_deks:kind2bin(Kind)}]}),
-                      case retire_key(Kind, Id) of
+                      case retire_key(Kind, Filename) of
                           ok -> false;
-                          {error, Reason} -> {true, {Id, Reason}}
+                          {error, Reason} -> {true, {Filename, Reason}}
                       end
-                  end, ToRemove),
+                  end, ToRetire),
             case FailedList of
                 [] -> ok;
                 _ ->
@@ -477,18 +476,92 @@ garbage_collect_keys(Kind, InUseKeyIds) ->
             end
     end.
 
-get_all_keys_in_dir(KeyDir) ->
-    case file:list_dir(KeyDir) of
-        {ok, Filenames} ->
-            AllFiles = [iolist_to_binary(F) || F <- Filenames],
-            [F || F <- AllFiles, cb_cluster_secrets:is_valid_key_id(F)];
-        {error, enoent} ->
-            [];
-        {error, Reason} ->
-            ?log_error("Failed to get list of files in ~p: ~p",
-                       [KeyDir, Reason]),
-            []
-    end.
+select_files_to_retire(Dir, KeyIdsInUse, {ok, FileList}) ->
+    KeyIdsInUseSet = maps:from_keys(KeyIdsInUse, true),
+
+    Parsed = lists:filtermap(
+               fun (F) ->
+                   maybe
+                       [Id, <<"key">>, VsnStr] ?=
+                           binary:split(iolist_to_binary(F), <<".">>, [global]),
+                       true ?= cb_cluster_secrets:is_valid_key_id(F),
+                       {vsn, Vsn} ?= catch {vsn, binary_to_integer(VsnStr)},
+                       {true, {Id, F, Vsn}}
+                   else
+                       _ ->
+                           ?log_error("invalid key name ~s in ~s", [F, Dir]),
+                           false
+                   end
+               end, FileList),
+    Grouped = maps:groups_from_list(fun ({Id, _, _}) -> Id end,
+                                    fun ({_, F, Vsn}) -> {Vsn, F} end,
+                                    Parsed),
+    lists:flatmap(
+      fun ({Id, L}) ->
+          case maps:get(Id, KeyIdsInUseSet, false) of
+              true ->
+                  %% The key is still in use, so we can remove older versions
+                  %% of this key only. Normally we should not have any though.
+                  [F || {_Vsn, F} <- lists:droplast(lists:usort(L))];
+              false ->
+                  %% This ID is not used at all, so it is ok to retire all files
+                  [F || {_Vsn, F} <- L]
+          end
+      end, maps:to_list(Grouped));
+select_files_to_retire(_Dir, _KeyIdsInUse, {error, enoent}) ->
+    [];
+select_files_to_retire(Dir, _KeyIdsInUse, {error, Reason}) ->
+    ?log_error("Failed to get list of files in ~p: ~p",
+               [Dir, Reason]),
+    [].
+
+-ifdef(TEST).
+
+-define(A, "a0000000-0000-0000-0000-000000000000").
+-define(B, "b0000000-0000-0000-0000-000000000000").
+-define(C, "c0000000-0000-0000-0000-000000000000").
+-define(D, "d0000000-0000-0000-0000-000000000000").
+-define(E, "e0000000-0000-0000-0000-000000000000").
+-define(F, "f0000000-0000-0000-0000-000000000000").
+
+
+select_files_to_retire_test() ->
+    C = ?cut(lists:sort(select_files_to_retire("dir", misc:shuffle(_1),
+                                               {ok, misc:shuffle(_2)}))),
+    Files = [?A".key.1",
+             ?B".key.55", ?B".key.56", ?B".key.57",
+             ?C".key.23",
+             ?D".key.2", ?D".key.34",
+             ?E".key.5",
+             %% Invalid files (should be ignored):
+             "garbage", "garbage.", "garbage.asd", "garbage.key",
+             "garbage.key.", "garbage.key.sdf", "garbage.key.435",
+             ?A".", ?A".dsf", ?A".key", ?A".key.", ?A".key.asd"],
+    ?assertEqual([], C([], [])),
+    ?assertEqual([], C([<<?A>>, <<?B>>], [])),
+    ?assertEqual([?A".key.1",  ?B".key.55", ?B".key.56",
+                  ?B".key.57", ?C".key.23", ?D".key.2",
+                  ?D".key.34", ?E".key.5"],
+                 C([], Files)),
+    ?assertEqual([?B".key.55", ?B".key.56", ?B".key.57",
+                  ?C".key.23", ?D".key.2",  ?D".key.34",
+                  ?E".key.5"],
+                 C([<<?A>>], Files)),
+    ?assertEqual([?A".key.1", ?B".key.55", ?B".key.56",
+                  ?C".key.23", ?D".key.2", ?D".key.34",
+                  ?E".key.5"],
+                 C([<<?B>>], Files)),
+    ?assertEqual([?A".key.1",  ?B".key.55", ?B".key.56",
+                  ?B".key.57", ?D".key.2", ?D".key.34",
+                  ?E".key.5"],
+                 C([<<?C>>], Files)),
+    ?assertEqual([?B".key.55", ?B".key.56", ?D".key.2",
+                  ?D".key.34", ?E".key.5"],
+                 C([<<?A>>, <<?B>>, <<?C>>], Files)),
+    ?assertEqual([?B".key.55", ?B".key.56", ?D".key.2"],
+                 C([<<?A>>, <<?B>>, <<?C>>, <<?D>>, <<?E>>, <<?F>>], Files)).
+
+-endif.
 
 key_path({bucketDek, Bucket}) ->
     case key_path(bucketDek) of
@@ -510,26 +583,26 @@ key_path(Kind) ->
 bucket_dek_id(Bucket, DekId) ->
     iolist_to_binary(filename:join([Bucket, "deks", DekId])).
 
-retire_key(Kind, Id) ->
+retire_key(Kind, Filename) ->
     Dir = key_path(Kind),
-    FromPath = filename:join(Dir, Id),
+    FromPath = filename:join(Dir, Filename),
     {{Y, M, _}, _} = calendar:universal_time(),
     MonthDir = lists:flatten(io_lib:format("~b-~b", [Y, M])),
     ToPath = filename:join([path_config:component_path(data),
                             "retired_keys",
                             MonthDir,
-                            Id]),
+                            Filename]),
     case filelib:ensure_dir(ToPath) of
         ok ->
             case misc:atomic_rename(FromPath, ToPath) of
                 ok -> ok;
                 {error, Reason} ->
                     ?log_error("Failed to retire ~p key ~p (~p): ~p",
-                                [Kind, Id, FromPath, Reason]),
+                                [Kind, Filename, FromPath, Reason]),
                     {error, Reason}
             end;
         {error, Reason} ->
             ?log_error("Failed to ensure dir ~p when retiring key ~p: ~p",
-                       [ToPath, Id, Reason]),
+                       [ToPath, Filename, Reason]),
             {error, Reason}
     end.
