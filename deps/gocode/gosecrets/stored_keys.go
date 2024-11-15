@@ -340,6 +340,7 @@ func storedKeyPath(keySettings *storedKeyConfig, keyName string) string {
 // Reencrypt keys that use secret management (SM) encryption key
 // Needed for SM data key rotation
 func reencryptStoredKeys(ctx *storedKeysCtx) error {
+	errorsCounter := 0
 	for _, cfg := range ctx.storedKeyConfigs {
 		// All keys but bucketDeks can be encrypted with
 		// encryption_service
@@ -350,10 +351,11 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 		log_dbg("Will check if the following keys need reencryption: %v", files)
 		if dirReadErr != nil {
 			if os.IsNotExist(dirReadErr) {
-				return nil
+				continue
 			}
+			log_dbg("Could not reencrypt keys because could not read dir \"%s\": %s", cfg.Path, dirReadErr.Error())
+			errorsCounter++
 		}
-		errorsCounter := 0
 		// Even in case of an error ReadDir can return files
 		// Reencrypt everything we can
 		if files != nil {
@@ -390,12 +392,9 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 				}
 			}
 		}
-		if dirReadErr != nil {
-			return errors.New(fmt.Sprintf("Could not reencrypt keys because could not read dir \"%s\": %s", cfg.Path, dirReadErr.Error()))
-		}
-		if errorsCounter > 0 {
-			return errors.New(fmt.Sprintf("Could not reencrypt some keys in \"%s\"", cfg.Path))
-		}
+	}
+	if errorsCounter > 0 {
+		return errors.New("Could not reencrypt some keys")
 	}
 	return nil
 }
