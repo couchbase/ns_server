@@ -182,7 +182,8 @@ keys_remap() ->
       encryption_approach => encryptionApproach,
       active_key => activeKey,
       hist_keys => historicalKeys,
-      kmip_id => kmipId}.
+      kmip_id => kmipId,
+      key => keyMaterial}.
 
 keys_to_json(Term) ->
     transform_keys(keys_remap(), Term).
@@ -304,8 +305,8 @@ format_key(Props, ActiveKeyId) ->
                           [{creation_time, format_datetime(DateTime)}];
                       ({active, Active}) ->
                           [{active, Active}];
-                      ({key, #{data := _Binary}}) ->
-                          [{key, <<"******">>}]
+                      ({key_material, #{data := _Binary}}) ->
+                          [{key_material, <<"******">>}]
                   end, maps:to_list(Props)).
 
 format_datetime(DateTime) ->
