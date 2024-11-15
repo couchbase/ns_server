@@ -31,7 +31,9 @@
 -record(fake_dcp_endpoint_state,
         {server :: pid(),
          socket :: gen_tcp:socket(),
-         debug_logging :: boolean()}).
+         debug_logging :: boolean(),
+         buf = <<>> :: binary(),
+         packet_len = undefined}).
 
 %%%===================================================================
 %%% Spawning and gen_server implementation
@@ -62,12 +64,12 @@ handle_continue({listen, ListenSocket},
 
 handle_info({tcp, Socket, Data},
             #fake_dcp_endpoint_state{socket = Socket} = State) ->
-    handle_packet(Data, State),
+    NewState = process_data(Data, State),
 
     %% Set up the socket to receive another message
     ok = network:socket_setopts(Socket, [{active, once}]),
 
-    {noreply, State};
+    {noreply, NewState};
 handle_info({tcp_closed, Socket},
             #fake_dcp_endpoint_state{socket = Socket} = State) ->
     {stop, socket_closed, State}.
@@ -140,3 +142,27 @@ handle_packet(<<?REQ_MAGIC:8, Opcode:8, _Bin/binary>>, State) ->
                                         status = ?SUCCESS},
                                 #mc_entry{}),
     send_response(Response, State).
+
+process_data(NewData,
+             #fake_dcp_endpoint_state{buf = PrevData,
+                                      packet_len = PacketLen} = State) ->
+    Data = <<PrevData/binary, NewData/binary>>,
+    process_data_loop(Data, PacketLen, State).
+
+process_data_loop(Data, undefined, State) ->
+    case Data of
+        <<_Magic:8, _Opcode:8, _KeyLen:16, _ExtLen:8, _DataType:8,
+            _VBucket:16, BodyLen:32, _Opaque:32, _CAS:64, _Rest/binary>> ->
+            process_data_loop(Data, ?HEADER_LEN + BodyLen, State);
+        _ ->
+            State#fake_dcp_endpoint_state{buf = Data, packet_len = undefined}
+    end;
+process_data_loop(Data, PacketLen, State) ->
+    case byte_size(Data) >= PacketLen of
+        false ->
+            {State#fake_dcp_endpoint_state{buf = Data, packet_len = PacketLen}};
+        true ->
+            {Packet, Rest} = split_binary(Data, PacketLen),
+            handle_packet(Packet, State),
+            process_data_loop(Rest, undefined, State)
+    end.
