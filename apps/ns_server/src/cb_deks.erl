@@ -33,7 +33,7 @@
                              encryption_service |
                              disabled.
 -type dek_id() :: cb_cluster_secrets:key_id().
--type dek_kind() :: kek | chronicleDek | configDek | logDek | auditDek |
+-type dek_kind() :: kek | configDek | logDek | auditDek |
                     {bucketDek, string()}.
 -type dek() :: #{id := dek_id(), type := 'raw-aes-gcm',
                  info := #{key := fun(() -> binary()),
@@ -231,7 +231,7 @@ increment_counter_in_chronicle(Kind, SecretId) ->
 %% Returns a dek kind that is affected by a given chronicle key.
 %% Returns false otherwise.
 dek_chronicle_keys_filter(?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY) ->
-    [chronicleDek, configDek, logDek, auditDek];
+    [configDek, logDek, auditDek];
 dek_chronicle_keys_filter(Key) ->
     case ns_bucket:sub_key_match(Key) of
         {true, Bucket, props} -> [{bucketDek, Bucket}];
@@ -278,20 +278,6 @@ dek_chronicle_keys_filter(Key) ->
      } when Ids :: [dek_id()],
             Snapshot :: cb_cluster_secrets:chronicle_snapshot(),
             IntOrUndefined :: undefined | pos_integer().
-dek_config(chronicleDek) ->
-    #{encryption_method_callback => cb_crypto:get_encryption_method(
-                                      config_encryption, _),
-      set_active_key_callback => fun chronicle_local:set_active_dek/1,
-      lifetime_callback => cb_crypto:get_dek_kind_lifetime(
-                             config_encryption, _),
-      rotation_int_callback => cb_crypto:get_dek_rotation_interval(
-                                 config_encryption, _),
-      drop_keys_timestamp_callback => cb_crypto:get_drop_keys_timestamp(
-                                        config_encryption, _),
-      get_ids_in_use_callback => fun chronicle_local:get_encryption_dek_ids/0,
-      drop_callback => fun chronicle_local:drop_deks/1,
-      chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
-      required_usage => config_encryption};
 dek_config(configDek) ->
     #{encryption_method_callback => cb_crypto:get_encryption_method(
                                       config_encryption, _),
@@ -361,7 +347,7 @@ dek_kinds_list() ->
     dek_kinds_list(direct).
 dek_kinds_list(Snapshot) ->
     Buckets = ns_bucket:get_bucket_names(Snapshot),
-    [chronicleDek, configDek, logDek, auditDek] ++
+    [configDek, logDek, auditDek] ++
     [{bucketDek, B} || B <- Buckets].
 
 set_config_active_key(_ActiveDek) ->
@@ -437,6 +423,7 @@ force_config_encryption_keys() ->
         ok ?= menelaus_users:apply_keys_and_resave(),
         ok ?= menelaus_local_auth:resave(),
         ok ?= simple_store:resave(?XDCR_CHECKPOINT_STORE),
+        ok ?= chronicle_local:maybe_apply_new_keys(),
         ok
     end.
 
@@ -449,10 +436,11 @@ get_config_dek_ids_in_use() ->
         {ok, Ids5} ?= menelaus_users:get_key_ids_in_use(),
         {ok, Ids6} ?= menelaus_local_auth:get_key_ids_in_use(),
         {ok, Ids7} ?= simple_store:get_key_ids_in_use(?XDCR_CHECKPOINT_STORE),
+        {ok, Ids8} ?= chronicle_local:get_encryption_dek_ids(),
         {ok, lists:map(fun (undefined) -> ?NULL_DEK;
                            (Id) -> Id
                        end, lists:uniq(Ids1 ++ Ids2 ++ Ids3 ++ Ids4 ++ Ids5 ++
-                                       Ids6 ++ Ids7))}
+                                       Ids6 ++ Ids7 ++ Ids8))}
     end.
 
 get_dek_ids_in_use(logDek) ->
