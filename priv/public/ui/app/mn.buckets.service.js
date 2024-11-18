@@ -408,6 +408,9 @@ class MnBucketsService {
   }
 
   getBucketFormData(defaultAutoCompaction, bucket, secrets) {
+    const defaultDEKLifetime = timeUnitToSeconds.year / timeUnitToSeconds.day;
+    const defaultDEKRotationInterval = timeUnitToSeconds.month / timeUnitToSeconds.day;
+
     let result = {
       name: bucket.name,
       ramQuotaMB: this.mnHelperService.transformBytesToMB(bucket.quota.rawRAM),
@@ -434,10 +437,12 @@ class MnBucketsService {
 
     //secrets is null in case cluster compat mode is less than 8.0 or is not EE
     if (secrets) {
-      result.enableEncryptionAtRest = bucket.encryptionAtRestSecretId !== -1,
-      result.encryptionAtRestSecretId = bucket.encryptionAtRestSecretId === -1 ? null : secrets.find(s => s.id === bucket.encryptionAtRestSecretId) ,
-      result.encryptionAtRestDekRotationInterval = bucket.encryptionAtRestDekRotationInterval / 86_400,
-      result.encryptionAtRestDekLifetime = bucket.encryptionAtRestDekLifetime / 86_400
+      result.enableEncryptionAtRest = bucket.encryptionAtRestSecretId !== -1;
+      result.encryptionAtRestSecretId = bucket.encryptionAtRestSecretId === -1 ? null : secrets.find(s => s.id === bucket.encryptionAtRestSecretId);
+      result.encryptionAtRestDekRotationEnabled = bucket.encryptionAtRestDekRotationInterval > 0;
+      result.encryptionAtRestDekLifetimeEnabled = bucket.encryptionAtRestDekLifetime > 0;
+      result.encryptionAtRestDekRotationInterval = bucket.encryptionAtRestDekRotationInterval / 86_400 || defaultDEKRotationInterval;
+      result.encryptionAtRestDekLifetime = bucket.encryptionAtRestDekLifetime / 86_400 || defaultDEKLifetime;
     }
 
     let autoCompaction = this.mnSettingsAutoCompactionService.getSettingsSource(

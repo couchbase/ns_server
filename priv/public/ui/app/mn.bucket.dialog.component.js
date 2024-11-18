@@ -151,8 +151,10 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
         }),
         enableEncryptionAtRest: false,
         encryptionAtRestSecretId: null,
-        encryptionAtRestDekRotationInterval: timeUnitToSeconds.month / timeUnitToSeconds.day,
-        encryptionAtRestDekLifetime: timeUnitToSeconds.year / timeUnitToSeconds.day,
+        encryptionAtRestDekRotationEnabled: false,
+        encryptionAtRestDekRotationInterval: null,
+        encryptionAtRestDekLifetimeEnabled: false,
+        encryptionAtRestDekLifetime: null,
         enableCrossClusterVersioning: false,
       }))
       .setSource(formData)
@@ -160,6 +162,8 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
                    map(this.packData.bind(this))))
       .setPostRequest(postRequest)
       .setValidation(postValidation, undefined, undefined, true)
+      .fieldToggler(['encryptionAtRestDekLifetimeEnabled', 'encryptionAtRestDekLifetime'])
+      .fieldToggler(['encryptionAtRestDekRotationEnabled', 'encryptionAtRestDekRotationInterval'])
       .successMessage('Bucket settings saved successfully!')
       .success(() => {
         this.activeModal.dismiss();
@@ -462,8 +466,8 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
     if (isEnterprise && compat80 && isMembase) {
       saveData.encryptionAtRestSecretId = formData.enableEncryptionAtRest ? formData.encryptionAtRestSecretId?.id ?? -1 : -1;
       if (saveData.encryptionAtRestSecretId !== -1) {
-        saveData.encryptionAtRestDekRotationInterval = Math.round(formData.encryptionAtRestDekRotationInterval * 86_400);
-        saveData.encryptionAtRestDekLifetime = Math.round(formData.encryptionAtRestDekLifetime * 86_400);
+        saveData.encryptionAtRestDekRotationInterval = formData.encryptionAtRestDekRotationEnabled ? Math.round(formData.encryptionAtRestDekRotationInterval * 86_400) : 0;
+        saveData.encryptionAtRestDekLifetime = formData.encryptionAtRestDekLifetimeEnabled ? Math.round(formData.encryptionAtRestDekLifetime * 86_400) : 0;
       }
     }
 

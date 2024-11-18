@@ -668,52 +668,91 @@ licenses/APL2.txt.
               >
               </mn-select>
             </div>
+
+
             <div class="formrow">
-              <label for="for-dek-rotation-interval"
-                >DEK Rotation Interval
-                <span
-                  class="fa-stack icon-info"
-                  [ngbTooltip]="
-                'The interval at which the Data Encryption Key (DEK) is rotated. The DEK is used to encrypt the data on disk.'"
-                  triggers="click"
-                  placement="right"
-                >
+               <label class="inline">DEK Rotation Interval</label>
+               <span
+                   class="fa-stack icon-info"
+                   [ngbTooltip]="'The interval at which the Data Encryption Key (DEK) is rotated. The DEK is used to encrypt the data on disk.'"
+                   triggers="click"
+                   placement="top"
+               >
                   <span class="icon fa-circle-thin fa-stack-2x"></span>
-                  <span class="icon fa-info fa-stack-1x"></span> </span
-              ></label>
-              <input
-                id="for-dek-rotation-interval"
-                type="number"
-                class="input-short-1"
-                autocorrect="off"
-                spellcheck="false"
-                autocapitalize="off"
-                formControlName="encryptionAtRestDekRotationInterval"
-              />
+                  <span class="icon fa-info fa-stack-1x"></span>
+               </span>
+               <div class="row flex-left">
+                  <span class="width-3">
+                     <input
+                         type="checkbox"
+                         id="enable_dekRotationInterval"
+                         formControlName="encryptionAtRestDekRotationEnabled"
+                     />
+                     <label for="enable_dekRotationInterval">Enable</label>
+                  </span>
+                  <span class="row flex-left width-9">
+                     <input
+                         type="number"
+                         min="1"
+                         autocorrect="off"
+                         spellcheck="false"
+                         autocapitalize="off"
+                         formControlName="encryptionAtRestDekRotationInterval"
+                         class="margin-right-half width-3"
+                     />
+                     <small> days</small>
+                  </span>
+               </div>
+               <div
+                   class="error error-form"
+                   [hidden]="!(httpError | async)?.errors['config.dekRotationInterval']"
+               >
+                  {{(httpError | async)?.errors['config.dekRotationInterval']}}
+               </div>
             </div>
+
             <div class="formrow">
-              <label for="for-dek-life-time"
-                >DEK Life Time
-                <span
-                  class="fa-stack icon-info"
-                  [ngbTooltip]="
-                'The lifetime of the Data Encryption Key (DEK). The DEK is used to encrypt the data on disk.'"
-                  triggers="click"
-                  placement="right"
-                >
+               <label class="inline">DEK Life Time</label>
+               <span
+                   class="fa-stack icon-info"
+                   [ngbTooltip]="'The lifetime of the Data Encryption Key (DEK). The DEK is used to encrypt the data on disk.'"
+                   triggers="click"
+                   placement="top"
+               >
                   <span class="icon fa-circle-thin fa-stack-2x"></span>
-                  <span class="icon fa-info fa-stack-1x"></span> </span
-              ></label>
-              <input
-                id="for-dek-life-time"
-                type="number"
-                class="input-short-1"
-                autocorrect="off"
-                spellcheck="false"
-                autocapitalize="off"
-                formControlName="encryptionAtRestDekLifetime"
-              />
+                  <span class="icon fa-info fa-stack-1x"></span>
+               </span>
+               <div class="row flex-left">
+                  <span class="width-3">
+                     <input
+                         type="checkbox"
+                         id="enable_dekLifetime"
+                         formControlName="encryptionAtRestDekLifetimeEnabled"
+                     />
+                     <label for="enable_dekLifetime">Enable</label>
+                  </span>
+                  <span class="row flex-left width-9">
+                     <input
+                         type="number"
+                         min="1"
+                         autocorrect="off"
+                         spellcheck="false"
+                         autocapitalize="off"
+                         formControlName="encryptionAtRestDekLifetime"
+                         class="margin-right-half width-3"
+                     />
+                     <small> days</small>
+                  </span>
+               </div>
+               <div
+                   class="error error-form"
+                   [hidden]="!(httpError | async)?.errors['config.dekLifetime']"
+               >
+                  {{(httpError | async)?.errors['config.dekLifetime']}}
+               </div>
             </div>
+
+
           </div>
         </div>
 
