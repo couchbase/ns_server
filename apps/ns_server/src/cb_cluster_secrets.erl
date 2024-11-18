@@ -1654,7 +1654,7 @@ maybe_reencrypt_data(#{type := sensitive, data := _Bin,
 -spec add_jobs([node_job()] | [master_job()], #state{}) -> #state{}.
 add_jobs(NewJobs, #state{jobs = Jobs} = State) ->
     ensure_timer_started(retry_jobs, ?RETRY_TIME,
-                         State#state{jobs = NewJobs ++ (Jobs -- NewJobs)}).
+                         State#state{jobs = Jobs ++ (NewJobs -- Jobs)}).
 
 -spec add_and_run_jobs([node_job()] | [master_job()], #state{}) -> #state{}.
 add_and_run_jobs(NewJobs, State) ->
