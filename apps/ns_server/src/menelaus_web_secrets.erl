@@ -49,62 +49,59 @@ handle_get_secret(IdStr, Req) when is_list(IdStr) ->
     end.
 
 handle_post_secret(Req) ->
+    with_validated_secret(
+      fun (ToAdd) ->
+          maybe
+              {ok, Res} ?= cb_cluster_secrets:add_new_secret(ToAdd),
+              Formatted = export_secret(Res),
+              menelaus_util:reply_json(Req, {Formatted}),
+              ok
+          end
+      end, #{}, Req).
+
+handle_put_secret(IdStr, Req) ->
+    Id = parse_id(IdStr),
+    case cb_cluster_secrets:get_secret(Id) of
+        {ok, CurProps} ->
+            with_validated_secret(
+              fun (Props) ->
+                  maybe
+                      %% replace_secret will check "old usages" inside txn
+                      {ok, Res} ?= cb_cluster_secrets:replace_secret(
+                                     Id, Props, is_writable(_, Req)),
+                      Formatted = export_secret(Res),
+                      menelaus_util:reply_json(Req, {Formatted}),
+                      ok
+                  end
+              end, CurProps, Req);
+        {error, not_found} ->
+            %% We don't want PUT to create secrets because we generate id's
+            menelaus_util:reply_not_found(Req)
+    end.
+
+with_validated_secret(Fun, CurProps, Req) ->
     validator:handle(
       fun (RawProps) ->
           maybe
-              ToAdd = import_secret(RawProps),
-              true ?= is_writable(ToAdd, Req),
-              {ok, Res} ?= cb_cluster_secrets:add_new_secret(ToAdd),
-              Formatted = export_secret(Res),
-              menelaus_util:reply_json(Req, {Formatted})
+              Props = import_secret(RawProps),
+              %% Note: All "usages" should be writable by current user.
+              %% This includes "new usages" (usages that are being set)
+              %% and "old usages" (usages that are being replaced)
+              %% Checking "new usages" here:
+              true ?= is_writable(Props, Req),
+              %% Fun is responsible for checking "old usages" inside txn
+              ok ?= Fun(Props)
           else
               false ->
+                  menelaus_util:web_exception(403, "Forbidden");
+              {error, forbidden} ->
                   menelaus_util:web_exception(403, "Forbidden");
               {error, no_quorum} ->
                   menelaus_util:web_exception(503, format_error(no_quorum));
               {error, Reason} ->
                   menelaus_util:reply_global_error(Req, format_error(Reason))
           end
-      end, Req, json, secret_validators(#{})).
-
-handle_put_secret(IdStr, Req) ->
-    Id = parse_id(IdStr),
-    case cb_cluster_secrets:get_secret(Id) of
-        {ok, CurProps} ->
-            validator:handle(
-              fun (RawProps) ->
-                  maybe
-                      Props = import_secret(RawProps),
-                      %% Note: All "usages" should be writable by current user.
-                      %% This includes "new usages" (usages that are being set)
-                      %% and "old usages" (usages that are being replaced)
-                      %% Checking "new usages" here:
-                      true ?= is_writable(Props, Req),
-                      %% replace_secret will check "old usages" inside txn
-                      {ok, Res} ?= cb_cluster_secrets:replace_secret(
-                                     Id, Props, is_writable(_, Req)),
-                      Formatted = export_secret(Res),
-                      menelaus_util:reply_json(Req, {Formatted})
-                  else
-                      false ->
-                          menelaus_util:web_exception(403, "Forbidden");
-                      {error, forbidden} ->
-                          menelaus_util:web_exception(403, "Forbidden");
-                      {error, no_quorum} ->
-                          menelaus_util:web_exception(503,
-                                                      format_error(no_quorum));
-                      {error, not_found} ->
-                          menelaus_util:reply_not_found(Req);
-                      {error, Reason} ->
-                          menelaus_util:reply_global_error(
-                            Req, format_error(Reason))
-                  end
-              end, Req, json,
-              secret_validators(CurProps));
-        {error, not_found} ->
-            %% We don't want PUT to create secrets because we generate id's
-            menelaus_util:reply_not_found(Req)
-    end.
+      end, Req, json, secret_validators(CurProps)).
 
 %% Note: CurProps can only be used for static fields validation here.
 %% Any field that can be modified and needs to use CurProps should be
