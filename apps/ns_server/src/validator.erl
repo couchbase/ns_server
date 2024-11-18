@@ -62,6 +62,7 @@
          return_error/3,
          default/3,
          token_list/3,
+         token_list/4,
          add_input_type/2,
          json/3,
          decoded_json/3,
@@ -754,23 +755,29 @@ string_array(Name, Fun, CanBeEmpty, State) ->
                       {error, "Must be an array of non-empty strings"};
                   true ->
                       List = [binary_to_list(B) || B <- Array],
-                      List2 = lists:map(fun (V) ->
-                                            case Fun(V) of
-                                                ok -> {value, V};
-                                                {value, V2} -> {value, V2};
-                                                {error, E} ->
-                                                    {error, V ++ " - " ++ E}
-                                            end
-                                         end, List),
-                      Errors = [E || {error, E} <- List2],
-                      case Errors of
-                          [] -> {value, [V || {value, V} <- List2]};
-                          _ -> {error, string:join(Errors, "; ")}
-                      end
+                      validate_fun_tokens(List, Fun)
               end;
           (_) ->
               {error, "Must be an array of non-empty strings"}
       end, Name, State).
+
+-spec validate_fun_tokens([string()], Fun) ->
+          {value, list()} | {error, string()} when
+      Fun :: fun((string()) -> ok | {value, term()} | {error, string()}).
+validate_fun_tokens(List, Fun) ->
+    List2 = lists:map(fun (V) ->
+                              case Fun(V) of
+                                  ok -> {value, V};
+                                  {value, V2} -> {value, V2};
+                                  {error, E} ->
+                                      {error, V ++ " - " ++ E}
+                              end
+                      end, List),
+    Errors = [E || {error, E} <- List2],
+    case Errors of
+        [] -> {value, [V || {value, V} <- List2]};
+        _ -> {error, string:join(Errors, "; ")}
+    end.
 
 default(Name, Default, State) ->
     case get_value(Name, touch(Name, State)) of
@@ -782,10 +789,16 @@ default(Name, Default, State) ->
             State
     end.
 
+-spec token_list(atom(), string(), #state{}) -> #state{}.
 token_list(Name, Separator, State) ->
+    token_list(Name, Separator, fun (_) -> ok end, State).
+
+-spec token_list(atom(), string(), Fun, #state{}) -> #state{} when
+      Fun :: fun((string()) -> ok | {value, term()} | {error, string()}).
+token_list(Name, Separator, Fun, State) ->
     validate(
       fun (String) ->
-          {value, string:lexemes(String, Separator)}
+              validate_fun_tokens(string:lexemes(String, Separator), Fun)
       end, Name, State).
 
 %% Get the internal value at {internal, InternalKey} and store it in NewKey
@@ -1086,4 +1099,83 @@ check_for_duplicates_test() ->
     ?assertEqual([{"apple","Key specified more than once"}], Errors9),
 
     ok.
+
+string_array_test() ->
+    %% Test with valid input and default fun
+    State1 = #state{kv = [{"names", [<<"Alice">>, <<"Bob">>, <<"Charlie">>]}]},
+    ResultState1 = string_array(names, State1),
+    ?assertEqual(["Alice", "Bob", "Charlie"], get_value(names, ResultState1)),
+
+    %% Test with valid input and custom fun
+    Fun = fun (Name) ->
+                  case re:run(Name, "^[A-Z]") of
+                      {match, _} -> {value, Name};
+                      nomatch -> {error, "Name must start with a capital "
+                                  "letter"}
+                  end
+          end,
+    State2 = #state{kv = [{"names", [<<"Alice">>, <<"Bob">>, <<"Charlie">>]}]},
+    ResultState2 = string_array(names, Fun, State2),
+    ?assertEqual(["Alice", "Bob", "Charlie"], get_value(names, ResultState2)),
+
+    %% Test with invalid input (name not starting with a capital letter)
+    State3 = #state{kv = [{"names", [<<"alice">>, <<"Bob">>, <<"Charlie">>]}]},
+    ResultState3 = string_array(names, Fun, State3),
+    #state{errors = Errors3} = ResultState3,
+    ?assertEqual([{"names", "alice - Name must start with a capital letter"}],
+                 Errors3),
+
+    %% Test with empty input and CanBeEmpty = false
+    State4 = #state{kv = [{"names", []}]},
+    ResultState4 = string_array(names, Fun, false, State4),
+    #state{errors = Errors4} = ResultState4,
+    ?assertEqual([{"names", "Must contain at least one element"}], Errors4),
+
+    %% Test with empty input and CanBeEmpty = true
+    State5 = #state{kv = [{"names", []}]},
+    ResultState5 = string_array(names, Fun, true, State5),
+    ?assertEqual([], get_value(names, ResultState5)),
+
+    %% Test with invalid input (non-list)
+    State6 = #state{kv = [{"names", <<"Not a list">>}]},
+    ResultState6 = string_array(names, Fun, State6),
+    #state{errors = Errors6} = ResultState6,
+    ?assertEqual([{"names", "Must be an array of non-empty strings"}], Errors6),
+
+    %% Test with invalid input (empty strings in list)
+    State7 = #state{kv = [{"names", [<<"Alice">>, <<"">>, <<"Charlie">>]}]},
+    ResultState7 = string_array(names, Fun, State7),
+    #state{errors = Errors7} = ResultState7,
+    ?assertEqual([{"names", "Must be an array of non-empty strings"}], Errors7).
+
+token_list_test() ->
+    %% Test with valid input and default fun
+    State1 = #state{kv = [{"names", "Alice,Bob,Charlie"}]},
+    ResultState1 = token_list(names, ",", State1),
+    ?assertEqual(["Alice", "Bob", "Charlie"], get_value(names, ResultState1)),
+
+    %% Test with valid input and custom fun
+    Fun = fun (Name) ->
+                  case re:run(Name, "^[a-z]") of
+                      {match, _} -> {value, Name};
+                      nomatch -> {error, "Name must start with a lower case "
+                                  "letter"}
+                  end
+          end,
+    State2 = #state{kv = [{"names", "alice,bob,charlie"}]},
+    ResultState2 = token_list(names, ",", Fun, State2),
+    ?assertEqual(["alice", "bob", "charlie"], get_value(names, ResultState2)),
+
+    %% Test with invalid input (name not starting with a lower case letter)
+    State4 = #state{kv = [{"names", "Alice,bob,charlie"}]},
+    ResultState4 = token_list(names, ",", Fun, State4),
+    #state{errors = Errors4} = ResultState4,
+    ?assertEqual([{"names", "Alice - Name must start with a lower case "
+                   "letter"}], Errors4),
+
+    %% Test with empty input
+    State5 = #state{kv = [{"names", ""}]},
+    ResultState5 = token_list(names, ",", State5),
+    ?assertEqual([], get_value(names, ResultState5)).
+
 -endif.
