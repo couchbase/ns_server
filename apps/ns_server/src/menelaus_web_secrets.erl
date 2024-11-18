@@ -419,6 +419,7 @@ validate_encrypt_secret_id(Name, CurSecretProps, State) ->
 %% checked in transaction in cb_cluster_secret:replace_secret_internal.
 awskms_key_validators(CurSecretProps) ->
     [validator:string(keyARN, _),
+     validate_awskm_arn(keyARN, _),
      validator:required(keyARN, _),
      validator:string(region, _),
      validator:default(region, "", _),
@@ -426,8 +427,10 @@ awskms_key_validators(CurSecretProps) ->
      validator:default(useIMDS, false, _),
      validator:string(credentialsFile, _),
      validator:default(credentialsFile, "", _),
+     validate_optional_file(credentialsFile, _),
      validator:string(configFile, _),
      validator:default(configFile, "", _),
+     validate_optional_file(configFile, _),
      validator:validate(fun (_) -> {error, "read only"} end, storedKeyIds, _),
      validator:string(profile, _),
      validator:default(profile, "", _)] ++
@@ -438,6 +441,37 @@ awskms_key_validators(CurSecretProps) ->
         #{} when map_size(CurSecretProps) == 0 ->
             []
     end.
+
+validate_awskm_arn(Name, State) ->
+    validator:validate(
+      fun ("TEST_AWS_KEY_ARN") ->
+              ok;
+          (Arn) ->
+              case string:split(Arn, ":", all) of
+                  ["arn", _Partition, "kms", _Region, _Acc, "key/" ++ _Id] ->
+                      ok;
+                  ["arn", _Partition, "kms", _Region, _Acc, "alias/" ++ _A] ->
+                      ok;
+                  _ ->
+                      {error, "Invalid AWS Key ARN"}
+              end
+      end, Name, State).
+
+validate_optional_file(Name, State) ->
+    validator:validate(
+      fun (Path) ->
+          case string:trim(Path, both) of
+              "" ->
+                  {value, ""};
+              F ->
+                  case filelib:is_regular(F) of
+                      true ->
+                          ok;
+                      false ->
+                          {error, "The value must be a valid file"}
+                  end
+          end
+      end, Name, State).
 
 kmip_key_validators(CurSecretProps) ->
     [validator:string(host, _),
