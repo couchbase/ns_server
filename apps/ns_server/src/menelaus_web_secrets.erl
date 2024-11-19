@@ -23,6 +23,8 @@
          handle_get_secret/2,
          handle_post_secret/1,
          handle_put_secret/2,
+         handle_test_post_secret/1,
+         handle_test_put_secret/2,
          handle_delete_secret/2,
          handle_rotate/2]).
 
@@ -76,6 +78,32 @@ handle_put_secret(IdStr, Req) ->
               end, CurProps, Req);
         {error, not_found} ->
             %% We don't want PUT to create secrets because we generate id's
+            menelaus_util:reply_not_found(Req)
+    end.
+
+handle_test_post_secret(Req) ->
+    with_validated_secret(
+      fun (Params) ->
+          maybe
+              ok ?= cb_cluster_secrets:test(Params),
+              menelaus_util:reply(Req, 200),
+              ok
+          end
+      end, #{}, Req).
+
+handle_test_put_secret(IdStr, Req) ->
+    Id = parse_id(IdStr),
+    case cb_cluster_secrets:get_secret(Id) of
+        {ok, CurProps} ->
+            with_validated_secret(
+              fun (Params) ->
+                  maybe
+                      ok ?= cb_cluster_secrets:test(Params),
+                      menelaus_util:reply(Req, 200),
+                      ok
+                  end
+              end, CurProps, Req);
+        {error, not_found} ->
             menelaus_util:reply_not_found(Req)
     end.
 
@@ -615,6 +643,9 @@ format_error({cycle, _}) ->
     "Circular dependency between secrets";
 format_error(no_quorum) ->
     "Operation temporarily cannot be performed possibly due to loss of quorum";
+format_error({store_key_error, Msg}) ->
+    %% This error is returned when secret params test fails
+    Msg;
 format_error(Reason) ->
     lists:flatten(io_lib:format("~p", [Reason])).
 

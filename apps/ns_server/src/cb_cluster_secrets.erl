@@ -53,6 +53,7 @@
          get_active_key_id/1,
          get_active_key_id/2,
          rotate/1,
+         test/1,
          get_secret_by_kek_id_map/1,
          ensure_can_encrypt_dek_kind/3,
          is_allowed_usage_for_secret/3,
@@ -76,6 +77,7 @@
 -export([add_new_secret_internal/1,
          replace_secret_internal/3,
          rotate_internal/1,
+         test_internal/1,
          sync_with_node_monitor/0,
          delete_secret_internal/2,
          get_node_deks_info/0]).
@@ -390,6 +392,24 @@ rotate_internal(Id) ->
             ok;
         {error, Reason} ->
             {error, Reason}
+    end.
+
+-spec test(secret_props()) -> ok | {error, _}.
+test(Params) ->
+    execute_on_master({?MODULE, test_internal, [Params]}).
+
+-spec test_internal(secret_props()) -> ok | {error, _}.
+test_internal(Props) ->
+    PropsWTime = Props#{creation_time => erlang:universaltime()},
+    PropsWId = PropsWTime#{id => 999999999},
+    Prepared = prepare_new_secret(PropsWId),
+    case Prepared of
+        #{type := ?AWSKMS_KEY_TYPE} ->
+            test_aws_kek(Prepared);
+        #{type := ?KMIP_KEY_TYPE} ->
+            test_kmip_kek(Prepared);
+        #{} ->
+            {error, not_supported}
     end.
 
 -spec get_active_key_id(secret_id()) -> {ok, key_id()} |
@@ -991,9 +1011,9 @@ ensure_all_keks_on_disk(#state{kek_hashes_on_disk = Vsns} = State) ->
     Write = fun (#{type := ?GENERATED_KEY_TYPE} = SecretProps)  ->
                     ensure_generated_keks_on_disk(SecretProps);
                 (#{type := ?AWSKMS_KEY_TYPE} = SecretProps) ->
-                    ensure_aws_kek_on_disk(SecretProps);
+                    ensure_aws_kek_on_disk(SecretProps, false);
                 (#{type := ?KMIP_KEY_TYPE} = SecretProps) ->
-                    ensure_kmip_kek_on_disk(SecretProps);
+                    ensure_kmip_kek_on_disk(SecretProps, false);
                 (#{}) ->
                     ok
             end,
@@ -1045,20 +1065,43 @@ ensure_kek_on_disk(#{id := Id,
         encryption_service:store_kek(Id, Key, EKekId, CreationTime)
     end.
 
--spec ensure_aws_kek_on_disk(secret_props()) -> ok | {error, _}.
-ensure_aws_kek_on_disk(#{data := #{stored_ids := StoredIds} = Data}) ->
+-spec test_aws_kek(secret_props()) -> ok | {error, _}.
+test_aws_kek(#{data := #{stored_ids := [StoredId | _]} = Data} = Secret) ->
+    %% We don't want to test all stored ids
+    SecretWithoutHistKeys = Secret#{data => Data#{stored_ids => [StoredId]}},
+    case ensure_aws_kek_on_disk(SecretWithoutHistKeys, true) of
+        ok -> ok;
+        {error, [{_, Reason}]} -> {error, Reason};
+        {error, _} = E -> E
+    end.
+
+-spec ensure_aws_kek_on_disk(secret_props(), boolean()) -> ok | {error, _}.
+ensure_aws_kek_on_disk(#{data := #{stored_ids := StoredIds} = Data},
+                       TestOnly) ->
     Params = maps:with([key_arn, region, profile, config_file,
                         credentials_file, use_imds], Data),
     Res = lists:map(
             fun (#{id := Id, creation_time := CreationTime}) ->
-                {Id, encryption_service:store_aws_key(Id, Params, CreationTime)}
+                {Id, encryption_service:store_aws_key(Id, Params, CreationTime,
+                                                      TestOnly)}
             end, StoredIds),
     misc:many_to_one_result(Res).
 
--spec ensure_kmip_kek_on_disk(secret_props()) -> ok | {error, _}.
+-spec test_kmip_kek(secret_props()) -> ok | {error, _}.
+test_kmip_kek(#{data := Data} = Secret) ->
+    %% Only testing active kmip id (the one that is being set basically)
+    SecretWithoutHistKeys = Secret#{data => Data#{hist_keys => []}},
+    case ensure_kmip_kek_on_disk(SecretWithoutHistKeys, true) of
+        ok -> ok;
+        {error, [{_, Reason}]} -> {error, Reason};
+        {error, _} = E -> E
+    end.
+
+-spec ensure_kmip_kek_on_disk(secret_props(), boolean()) -> ok | {error, _}.
 ensure_kmip_kek_on_disk(#{data := #{active_key := ActiveKey,
                                     hist_keys := OtherKeys,
-                                    key_passphrase := Pass} = Data} = Secret) ->
+                                    key_passphrase := Pass} = Data} = Secret,
+                        TestOnly) ->
     {DecryptRes, KekId} =
         case Pass of
             #{type := sensitive, data := D, encrypted_by := undefined} ->
@@ -1078,7 +1121,7 @@ ensure_kmip_kek_on_disk(#{data := #{active_key := ActiveKey,
                         Params = Common#{kmip_id => KmipId,
                                          key_passphrase => PassData},
                         {Id, encryption_service:store_kmip_key(
-                               Id, Params, KekId, CreationTime)}
+                               Id, Params, KekId, CreationTime, TestOnly)}
                     end, [ActiveKey | OtherKeys]),
             misc:many_to_one_result(Res);
         {error, _} = E ->

@@ -23,6 +23,9 @@ import (
 	"strings"
 )
 
+var testData = [8]byte{1, 2, 3, 4, 5, 6, 7, 8}
+var testAD = [4]byte{255, 254, 253, 252}
+
 // Stored keys structs and interfaces:
 
 // Configuration for stored keys, describes where to store keys, and what
@@ -134,7 +137,7 @@ type readKeyAesKeyResponse struct {
 
 // Stored keys managenement functions
 
-func store_key(name, kind, keyType string, encryptionKeyName, creationTime string, otherData []byte, ctx *storedKeysCtx) error {
+func store_key(name, kind, keyType string, encryptionKeyName, creationTime string, testOnly bool, otherData []byte, ctx *storedKeysCtx) error {
 	keySettings, err := getStoredKeyConfig(kind, ctx.storedKeyConfigs)
 	if err != nil {
 		return err
@@ -160,7 +163,8 @@ func store_key(name, kind, keyType string, encryptionKeyName, creationTime strin
 	if err != nil {
 		return err
 	}
-	if !shouldRewrite {
+
+	if !shouldRewrite && !testOnly {
 		// key is already on disk and encrypted with the correct key
 		log_dbg("Key %s is already on disk, will do nothing", name)
 		return nil
@@ -169,6 +173,22 @@ func store_key(name, kind, keyType string, encryptionKeyName, creationTime strin
 	err = encryptKey(keyInfo, ctx)
 	if err != nil {
 		return err
+	}
+
+	if testOnly {
+		encryptedTestData, err := keyInfo.encryptData(testData[:], testAD[:])
+		if err != nil {
+			return errors.New(fmt.Sprintf("encryption test failed: %s", err.Error()))
+		}
+		decryptedData, err := keyInfo.decryptData(encryptedTestData, testAD[:])
+		if err != nil {
+			return errors.New(fmt.Sprintf("decryption test failed: %s", err.Error()))
+		}
+		if !bytes.Equal(testData[:], decryptedData) {
+			return errors.New("encrypted and decrypted data doesn't match the original data")
+		}
+		log_dbg("Key %s test succeeded", name)
+		return nil
 	}
 
 	err = writeKeyToDisk(keyInfo, vsn, keySettings)

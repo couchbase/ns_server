@@ -32,7 +32,7 @@
          copy_secrets/2,
          cleanup_secrets/2,
          set_config/3,
-         store_key/7,
+         store_key/8,
          encrypt_with_key/5,
          decrypt_with_key/5,
          read_key/3,
@@ -114,11 +114,12 @@ set_config(Name, Cfg, ResetPassword) ->
             Error
     end.
 
-store_key(Name, Kind, KeyName, KeyType, KeyData, EncryptionKeyId, CreationDT) ->
+store_key(Name, Kind, KeyName, KeyType, KeyData, EncryptionKeyId, CreationDT,
+          TestOnly) ->
     gen_server:call(
       Name,
-      {store_key, Kind, KeyName, KeyType, KeyData, EncryptionKeyId, CreationDT},
-      infinity).
+      {store_key, Kind, KeyName, KeyType, KeyData, EncryptionKeyId, CreationDT,
+       TestOnly}, infinity).
 
 read_key(Name, Kind, KeyName) ->
     gen_server:call(Name, {read_key, Kind, KeyName}, infinity).
@@ -325,7 +326,7 @@ handle_call({cleanup_secrets, Cfg}, _From, State) ->
     CfgBin = ejson:encode(cfg_to_json(Cfg)),
     {reply, call_gosecrets({cleanup_secrets, CfgBin}, State), State};
 handle_call({store_key, _Kind, _Name, _KeyType, _KeyData, _EncryptionKeyId,
-             _CreationDT} = Cmd, _From, State) ->
+             _CreationDT, _TestOnly} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
 handle_call({read_key, _Kind, _Name} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
@@ -449,14 +450,15 @@ encode({copy_secrets, ConfigBin}) ->
 encode({cleanup_secrets, ConfigBin}) ->
     <<11, ConfigBin/binary>>;
 encode({store_key, Kind, Name, KeyType, KeyData, EncryptionKeyId,
-        CreationDT}) ->
+        CreationDT, TestOnly}) ->
     KindBin = atom_to_binary(Kind),
     <<12, (encode_param(KindBin))/binary,
           (encode_param(Name))/binary,
           (encode_param(KeyType))/binary,
           (encode_param(KeyData))/binary,
           (encode_param(EncryptionKeyId))/binary,
-          (encode_param(CreationDT))/binary>>;
+          (encode_param(CreationDT))/binary,
+          (encode_param(TestOnly))/binary>>;
 encode({encrypt_with_key, Data, AD, KeyKind, Name}) ->
     <<13, (encode_param(Data))/binary,
           (encode_param(AD))/binary,
@@ -845,10 +847,10 @@ store_and_read_key_test() ->
                 Type = 'raw-aes-gcm',
                 ?assertEqual(ok, store_key(Pid, kek, <<"key1">>, Type, Key1,
                                            <<"encryptionService">>,
-                                           <<"2024-07-26T19:32:19Z">>)),
+                                           <<"2024-07-26T19:32:19Z">>, false)),
                 ?assertEqual(ok, store_key(Pid, configDek, <<"key2">>, Type,
                                            Key2, <<"key1">>,
-                                           <<"2024-07-26T19:32:19Z">>)),
+                                           <<"2024-07-26T19:32:19Z">>, false)),
                 {ok, Key1Encoded} = read_key(Pid, kek, <<"key1">>),
                 {ok, Key2Encoded} = read_key(Pid, configDek, <<"key2">>),
                 ?assertMatch(#{type := Type,

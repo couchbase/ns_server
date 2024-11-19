@@ -841,6 +841,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "secrets"] ->
                     {no_check_disallow_anonymous,
                      fun menelaus_web_secrets:handle_post_secret/1};
+                ["settings", "secrets", "test"] ->
+                    {no_check_disallow_anonymous,
+                     fun menelaus_web_secrets:handle_test_post_secret/1};
                 ["internalSettings"] ->
                     {{[admin, settings], write},
                      fun menelaus_web_settings:handle_post/2, [internal]};
@@ -1239,6 +1242,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "secrets", SecretId] ->
                     {no_check_disallow_anonymous,
                      fun menelaus_web_secrets:handle_put_secret/2, [SecretId]};
+                ["settings", "secrets", SecretId, "test"] ->
+                    {no_check_disallow_anonymous,
+                     fun menelaus_web_secrets:handle_test_put_secret/2,
+                     [SecretId]};
                 ["pools", "default", "buckets", Id, "scopes"] ->
                     {{[{collection, [Id, any, any]}, collections], write},
                      fun menelaus_web_collections:handle_set_manifest/2, [Id]};
