@@ -1046,28 +1046,19 @@ ensure_kek_on_disk(#{id := Id,
     end.
 
 -spec ensure_aws_kek_on_disk(secret_props()) -> ok | {error, _}.
-ensure_aws_kek_on_disk(#{data := Data}) ->
-    #{stored_ids := StoredIds, key_arn := KeyArn, region := Region,
-      profile := Profile, config_file := ConfigFile,
-      credentials_file := CredsFile, use_imds := UseIMDS} = Data,
-
+ensure_aws_kek_on_disk(#{data := #{stored_ids := StoredIds} = Data}) ->
+    Params = maps:with([key_arn, region, profile, config_file,
+                        credentials_file, use_imds], Data),
     Res = lists:map(
             fun (#{id := Id, creation_time := CreationTime}) ->
-                {Id, encryption_service:store_awskey(Id, KeyArn, Region,
-                                                     Profile, CredsFile,
-                                                     ConfigFile, UseIMDS,
-                                                     CreationTime)}
+                {Id, encryption_service:store_aws_key(Id, Params, CreationTime)}
             end, StoredIds),
     misc:many_to_one_result(Res).
 
 -spec ensure_kmip_kek_on_disk(secret_props()) -> ok | {error, _}.
 ensure_kmip_kek_on_disk(#{data := #{active_key := ActiveKey,
                                     hist_keys := OtherKeys,
-                                    host := Host,
-                                    port := Port,
-                                    key_cert_path := KeyPath,
-                                    key_passphrase := Pass,
-                                    encryption_approach := Appr}} = Secret) ->
+                                    key_passphrase := Pass} = Data} = Secret) ->
     {DecryptRes, KekId} =
         case Pass of
             #{type := sensitive, data := D, encrypted_by := undefined} ->
@@ -1079,16 +1070,15 @@ ensure_kmip_kek_on_disk(#{data := #{active_key := ActiveKey,
         end,
     case DecryptRes of
         {ok, PassData} ->
-            Params = [{host, iolist_to_binary(Host)}, {port, Port},
-                      {keyCertPath, iolist_to_binary(KeyPath)},
-                      {keyPassphrase, base64:encode(PassData)},
-                      {encryptionApproach, Appr}],
+            Common = maps:with([host, port, key_cert_path, encryption_approach],
+                               Data),
             Res = lists:map(
                     fun (#{id := Id, kmip_id := KmipId,
                            creation_time := CreationTime}) ->
+                        Params = Common#{kmip_id => KmipId,
+                                         key_passphrase => PassData},
                         {Id, encryption_service:store_kmip_key(
-                               Id, [{kmipId, KmipId} | Params], KekId,
-                               CreationTime)}
+                               Id, Params, KekId, CreationTime)}
                     end, [ActiveKey | OtherKeys]),
             misc:many_to_one_result(Res);
         {error, _} = E ->

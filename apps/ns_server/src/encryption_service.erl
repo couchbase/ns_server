@@ -31,7 +31,7 @@
          os_pid/0,
          reconfigure/1,
          store_kek/4,
-         store_awskey/8,
+         store_aws_key/3,
          store_kmip_key/4,
          store_dek/5,
          read_dek/2,
@@ -86,8 +86,6 @@ reconfigure(NewCfg) ->
 garbage_collect_keks(InUseKeyIds) ->
     garbage_collect_keys(kek, InUseKeyIds).
 
-store_kek(Id, Key, undefined, CreationDT) ->
-    store_key(kek, Id, 'raw-aes-gcm', Key, <<"encryptionService">>, CreationDT);
 store_kek(Id, Key, KekIdToEncrypt, CreationDT) ->
     store_key(kek, Id, 'raw-aes-gcm', Key, KekIdToEncrypt, CreationDT).
 
@@ -97,22 +95,34 @@ store_dek({bucketDek, Bucket}, Id, Key, KekIdToEncrypt, CreationDT) ->
 store_dek(Kind, Id, Key, KekIdToEncrypt, CreationDT) ->
     store_key(Kind, Id, 'raw-aes-gcm', Key, KekIdToEncrypt, CreationDT).
 
-store_awskey(Id, KeyArn, Region, Profile, CredsFile, ConfigFile, UseIMDS,
-             CreationDT) ->
-    Data = ejson:encode({[{keyArn, iolist_to_binary(KeyArn)},
-                          {region, iolist_to_binary(Region)},
-                          {profile, iolist_to_binary(Profile)},
-                          {credsFile, iolist_to_binary(CredsFile)},
-                          {configFile, iolist_to_binary(ConfigFile)},
-                          {useIMDS, UseIMDS}]}),
-    store_key(kek, Id, awskm, Data, <<"encryptionService">>, CreationDT).
+store_aws_key(Id, Params, CreationDT) ->
+    store_key(kek, Id, awskm, ejson:encode(format_aws_key_params(Params)),
+              <<"encryptionService">>, CreationDT).
 
-store_kmip_key(Id, Params, undefined, CreationDT) ->
-    store_key(kek, Id, kmip, ejson:encode({Params}), <<"encryptionService">>,
-              CreationDT);
+format_aws_key_params(#{key_arn := KeyArn, region := Region,
+                        profile := Profile, config_file := ConfigFile,
+                        credentials_file := CredsFile, use_imds := UseIMDS}) ->
+    {[{keyArn, iolist_to_binary(KeyArn)},
+      {region, iolist_to_binary(Region)},
+      {profile, iolist_to_binary(Profile)},
+      {credsFile, iolist_to_binary(CredsFile)},
+      {configFile, iolist_to_binary(ConfigFile)},
+      {useIMDS, UseIMDS}]}.
+
 store_kmip_key(Id, Params, KekIdToEncrypt, CreationDT) ->
-    store_key(kek, Id, kmip, ejson:encode({Params}), KekIdToEncrypt,
-              CreationDT).
+    store_key(kek, Id, kmip, ejson:encode(format_kmip_key_params(Params)),
+              KekIdToEncrypt, CreationDT).
+
+format_kmip_key_params(#{host := Host,
+                         port := Port,
+                         key_cert_path := KeyPath,
+                         key_passphrase := PassData,
+                         encryption_approach := Appr}) ->
+    {[{host, iolist_to_binary(Host)},
+      {port, Port},
+      {keyCertPath, iolist_to_binary(KeyPath)},
+      {keyPassphrase, base64:encode(PassData)},
+      {encryptionApproach, Appr}]}.
 
 read_dek(Kind, DekId) ->
     {NewId, NewKind} = case Kind of
@@ -402,6 +412,8 @@ wait_for_server_start() ->
           end
       end, ?RESTART_WAIT_TIMEOUT, 100).
 
+store_key(Kind, Name, Type, KeyData, undefined, CreationDT) ->
+    store_key(Kind, Name, Type, KeyData, <<"encryptionService">>, CreationDT);
 store_key(Kind, Name, Type, KeyData, EncryptionKeyId,
           {{_, _, _}, {_, _, _}} = CreationDT)
                                             when is_atom(Kind),
