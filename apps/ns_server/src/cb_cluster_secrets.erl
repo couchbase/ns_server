@@ -1748,28 +1748,33 @@ maybe_reencrypt_secrets() ->
                            end
                        end, All)),
                GetActiveId = fun (SId) -> {ok, maps:get(SId, KeksMap)} end,
-               {Changed, Unchanged} =
-                   misc:partitionmap(
-                     fun (Secret) ->
+               {NewSecretsList, {IsChanged, AllErrors}} =
+                   lists:mapfoldl(
+                     fun (Secret, {ChangedAcc, ErrorsAcc}) ->
                          case maybe_reencrypt_secret_txn(Secret, GetActiveId) of
-                             {true, NewSecret} -> {left, NewSecret};
-                             false -> {right, Secret}
+                             {true, NewSecret} -> {NewSecret, {true, ErrorsAcc}};
+                             false -> {Secret, {ChangedAcc, ErrorsAcc}};
+                             {error, E} -> {Secret, {ChangedAcc, [E|ErrorsAcc]}}
                          end
-                     end, All),
-               case Changed of
-                   [] -> {abort, no_change};
-                   [_ | _] ->
-                       NewSecretsList = Changed ++ Unchanged,
+                     end, {false, []}, All),
+               case {IsChanged, AllErrors} of
+                   {false, [_ | _]} -> {abort, {error, AllErrors}};
+                   {false, []} -> {abort, no_change};
+                   {true, _} ->
                        %% In theory reencryption should never lead to any
                        %% cycles in graph, but we still should check it
                        ok = validate_secrets_consistency(NewSecretsList),
-                       {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewSecretsList}]}
+                       {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewSecretsList}],
+                        AllErrors}
                end
            end),
     case RV of
-        ok ->
+        {ok, []} ->
             sync_with_node_monitor(),
             ok;
+        {ok, Errors} ->
+            %% Some secrets were reencrypted, but some of them returned errors
+            {error, Errors};
         no_change -> ok;
         {error, _} = Error -> Error
     end.
