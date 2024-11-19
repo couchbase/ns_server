@@ -858,6 +858,10 @@ handle_info({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
                     chronicle_compat_events:subscribe(
                       fun (cluster_compat_version) ->
                               true;
+                          (rest) ->
+                              true;
+                          ({node, Node, rest}) when Node =:= node() ->
+                              true;
                           (Key) ->
                               case collections:key_match(Key) of
                                   {true, Bucket} ->

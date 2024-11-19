@@ -197,7 +197,8 @@
          get_dek_rotation_interval/2,
          get_drop_keys_timestamp/2,
          validate_encryption_secret/3,
-         magma_fusion_logstore_uri/1]).
+         magma_fusion_logstore_uri/1,
+         magma_fusion_metadatastore_uri/1]).
 
 -import(json_builder,
         [to_binary/1,
@@ -709,6 +710,22 @@ magma_seq_tree_data_blocksize(BucketConfig) ->
 -spec magma_fusion_logstore_uri(proplists:proplist()) -> string() | undefined.
 magma_fusion_logstore_uri(BucketConfig) ->
     proplists:get_value(magma_fusion_logstore_uri, BucketConfig).
+
+is_fusion(BucketConfig) ->
+    magma_fusion_logstore_uri(BucketConfig) =/= undefined.
+
+-spec magma_fusion_metadatastore_uri(proplists:proplist()) ->
+          string() | undefined.
+magma_fusion_metadatastore_uri(BucketConfig) ->
+    case is_fusion(BucketConfig) of
+        true ->
+            ns_config:read_key_fast(
+              magma_fusion_metadatastore_uri,
+              "chronicle://localhost:" ++
+                  integer_to_list(service_ports:get_port(rest_port)));
+        false ->
+            undefined
+    end.
 
 -define(FS_HARD_NODES_NEEDED, 4).
 -define(FS_FAILOVER_NEEDED, 3).
