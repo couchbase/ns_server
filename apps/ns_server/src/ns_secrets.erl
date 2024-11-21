@@ -15,7 +15,7 @@
          get_pkey_pass/1,
          load_passphrase/2,
          extract_pkey_pass/1,
-         call_external_script/3]).
+         call_external_script/4]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -133,7 +133,7 @@ extract_pkey_pass_with_script(PassSettings) ->
     Timeout = proplists:get_value(timeout, PassSettings),
     ?log_info("Calling external script to extract pkey passphrase: ~s~n"
               "Args: ~p~nTimeout: ~p", [Path, Args, Timeout]),
-    try call_external_script(Path, Args, Timeout) of
+    try call_external_script(Path, Args, undefined, Timeout) of
         {0, P} ->
             MaybeTrimmed = case Trim of
                                true -> string:trim(P);
@@ -160,7 +160,7 @@ extract_pkey_pass_with_script(PassSettings) ->
             {error, {script_execution_failed, exception}}
     end.
 
-call_external_script(Path, Args, Timeout) ->
+call_external_script(Path, Args, HiddenInput, Timeout) ->
     %% Execute on new process to contain the port exit after executable
     %% completes and exits
     misc:executing_on_new_process(
@@ -171,6 +171,10 @@ call_external_script(Path, Args, Timeout) ->
                                        {args, Args}]),
               StartTime = erlang:system_time(millisecond),
               Deadline = StartTime + Timeout,
+              case HiddenInput of
+                  undefined -> ok;
+                  _ -> port_command(Port, ?UNHIDE(HiddenInput))
+              end,
               wait_for_exit(Port, <<>>, Deadline)
       end).
 

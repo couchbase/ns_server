@@ -31,6 +31,9 @@ start(_, _) ->
     application:set_env(kernel, dist_auto_connect, never),
 
     setup_static_config(),
+
+    init_master_password(),
+
     init_logging(),
 
     %% To initialize logging static config must be setup thus this weird
@@ -105,8 +108,42 @@ setup_static_config() ->
                           end
                   end, Terms).
 
+init_master_password() ->
+    %% Running in a separate process in order to avoid having the EXIT message
+    %% in mailbox after stopping the cb_gosecrets_runner process (note that root
+    %% process traps exit)
+    Self = self(),
+    misc:executing_on_new_process(
+      fun () ->
+          %% Note that we don't have logger here, but we need the master
+          %% password in order to start the logger, so the idea is simple:
+          %% 1. We start tempory cb_gosecrets_runner with a dummy logger
+          %% 2. It waits for the master password to be passed
+          %% 3. If password is correct it puts it to the app's env
+          %% 4. The temporary cb_gosecrets_runner process stops
+          %% 5. Logger starts and uses that saved password to decrypt log
+          %%    encryption keys (logDek)
+          %% 6. ns_babysitter starts its main babysitter where
+          %%    cb_gosecrets_runner starts again (with normal logger this time)
+          %% Note that cb_gosecrets_runner that starts later never asks for
+          %% password, it uses the one that is set here.
+          cb_gosecrets_runner:start_link(dummy_logger(Self), true),
+          ok = cb_gosecrets_runner:stop()
+      end).
+
+dummy_logger(Proc) ->
+    fun (LogLevel, F, A) ->
+        case LogLevel of
+            debug -> ok;
+            _ -> io:format(F ++ "~n", A)
+        end,
+        Proc ! {LogLevel, F, A}
+    end.
+
 init_log_encryption() ->
-    {ok, DekSnapshot} = cb_deks_raw_utils:bootstrap_get_deks(logDek, #{}),
+    Log = dummy_logger(self()),
+    Opts = #{hidden_pass => cb_gosecrets_runner:extract_hidden_pass(Log)},
+    {ok, DekSnapshot} = cb_deks_raw_utils:bootstrap_get_deks(logDek, Opts),
     ale:init_log_encryption_ds(DekSnapshot).
 
 init_logging() ->

@@ -17,7 +17,8 @@
 -include_lib("kernel/include/file.hrl").
 -endif.
 
--export([start_link/0, start_link/1, extract_hidden_pass/0]).
+-export([start_link/2, start_link/3, extract_hidden_pass/0,
+         extract_hidden_pass/1, stop/0]).
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
@@ -40,7 +41,9 @@
          key_path/2]).
 
 -record(state, {config :: file:filename(),
-                loop :: pid()}).
+                loop :: pid() | undefined,
+                logger = default :: fun((atom(), string, [term()]) -> ok) |
+                                    default}).
 
 default_data_key_path(PType) ->
     Filename = case PType of
@@ -132,11 +135,15 @@ decrypt_with_key(Name, Data, AD, KeyKind, KeyName) ->
     gen_server:call(Name, {decrypt_with_key, Data, AD, KeyKind, KeyName},
                     infinity).
 
-start_link() ->
-    start_link(gosecrets_cfg_path()).
+start_link(Logger, PasswordPromptAllowed) ->
+    start_link(Logger, PasswordPromptAllowed, gosecrets_cfg_path()).
 
-start_link(ConfigPath) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [ConfigPath], []).
+start_link(Logger, PasswordPromptAllowed, ConfigPath) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE,
+                          [ConfigPath, Logger, PasswordPromptAllowed], []).
+
+stop() ->
+    gen_server:call(?MODULE, stop, infinity).
 
 prompt_the_password(State, Retries) ->
     StdIn =
@@ -158,7 +165,7 @@ prompt_the_password(State, Retries) ->
     end.
 
 prompt_the_password(State, MaxRetries, StdIn) ->
-    case open_udp_socket() of
+    case open_udp_socket(State) of
         {ok, Socket} ->
             try
                 save_port_file(Socket),
@@ -174,19 +181,21 @@ prompt_the_password(State, MaxRetries, StdIn) ->
 
 prompt_the_password(State, MaxRetries, StdIn, Socket, RetriesLeft) ->
     {ok, {Addr, Port}} = inet:sockname(Socket),
-    ?log_debug("Waiting for the master password to be supplied (UDP: ~p:~b). "
+    log(info, "Waiting for the master password to be supplied (UDP: ~p:~b). "
                "Attempt ~p (~p attempts left)",
-               [Addr, Port, MaxRetries - RetriesLeft + 1, RetriesLeft]),
+               [Addr, Port, MaxRetries - RetriesLeft + 1, RetriesLeft], State),
     receive
         {StdIn, M} ->
-            ?log_error("Password prompt interrupted: ~p", [M]),
+            log(error, "Password prompt interrupted: ~p", [M], State),
             {error, interrupted};
         {udp, Socket, FromAddr, FromPort, Password} ->
             case call_init(?HIDE(Password), State) of
                 ok ->
                     gen_udp:send(Socket, FromAddr, FromPort, <<"ok">>),
                     ok;
-                {wrong_password, _} when RetriesLeft > 1 ->
+                {wrong_password, Error} when RetriesLeft > 1 ->
+                    log(error, "Incorrect master password. Error: ~p", [Error],
+                        State),
                     gen_udp:send(Socket, FromAddr, FromPort, <<"retry">>),
                     timer:sleep(1000),
                     prompt_the_password(State, MaxRetries, StdIn,
@@ -198,60 +207,64 @@ prompt_the_password(State, MaxRetries, StdIn, Socket, RetriesLeft) ->
             end
     end.
 
-init([GosecretsCfgPath]) ->
+init([GosecretsCfgPath, Logger, PasswordPromptAllowed]) ->
+    State = #state{config = GosecretsCfgPath,
+                   logger = Logger},
+
     case filelib:is_file(GosecretsCfgPath) of
         true -> ok;
         false ->
             ok = filelib:ensure_dir(GosecretsCfgPath),
-            save_config(GosecretsCfgPath, default_cfg())
+            save_config(GosecretsCfgPath, default_cfg(), State)
     end,
 
-    State = #state{config = GosecretsCfgPath,
-                   loop = start_gosecrets(GosecretsCfgPath)},
+    NewState = State#state{loop = start_gosecrets(GosecretsCfgPath, State)},
 
     HiddenPass = extract_hidden_pass(),
 
-    init_gosecrets(HiddenPass, _MaxRetries = 3, State),
+    init_gosecrets(HiddenPass, _MaxRetries = 3, PasswordPromptAllowed,
+                   NewState),
 
-    {ok, State}.
+    {ok, NewState}.
 
-save_config(CfgPath, Cfg) ->
-    ?log_debug("Writing ~s:~n~p", [CfgPath, Cfg]),
+save_config(CfgPath, Cfg, State) ->
+    log(debug, "Writing ~s:~n~p", [CfgPath, Cfg], State),
     CfgJson = ejson:encode(Cfg),
     case misc:atomic_write_file(CfgPath, CfgJson) of
         ok -> ok;
         {error, Error} ->
-            ?log_error("Could not write file '~s': ~s (~p)",
-                       [CfgPath, file:format_error(Error),
-                        Error]),
+            log(error, "Could not write file '~s': ~s (~p)",
+                       [CfgPath, file:format_error(Error), Error], State),
             erlang:error({write_failed, CfgPath, Error})
     end.
 
-init_gosecrets(HiddenPass, MaxRetries, State) ->
+init_gosecrets(HiddenPass, MaxRetries, PasswordPromptAllowed, State) ->
     case call_init(HiddenPass, State) of
         ok -> ok;
-        {wrong_password, _} ->
-            case should_prompt_the_password(State) of
+        {wrong_password, ErrorMsg} ->
+            case PasswordPromptAllowed and should_prompt_the_password(State) of
                 true ->
                     try
                         case prompt_the_password(State, MaxRetries) of
                             ok ->
                                 ok;
                             {error, Error} ->
-                                ?log_error(
-                                  "Stopping babysitter because gosecrets "
-                                  "password prompting has failed: ~p",
-                                  [Error]),
+                                log(error,
+                                    "Stopping babysitter because gosecrets "
+                                    "password prompting has failed: ~p",
+                                    [Error], State),
                                 init:stop(),
                                 shutdown
                         end
                     catch
                         C:E:ST ->
-                            ?log_error("Unhandled exception: ~p~n~p", [E, ST]),
+                            log(error, "Unhandled exception: ~p~n~p", [E, ST],
+                                State),
                             erlang:raise(C, E, ST)
                     end;
                 false ->
-                    ?log_error("Stopping babysitter"),
+                    log(error, "Incorrect master password. Error: ~p~n"
+                               "Stopping babysitter", [ErrorMsg], State),
                     init:stop(),
                     shutdown
             end;
@@ -263,13 +276,14 @@ call_init(HiddenPass, State) ->
     case call_gosecrets({init, HiddenPass}, State) of
         ok ->
             memorize_hidden_pass(HiddenPass),
-            ?log_info("Init complete. Password (if used) accepted."),
+            log(info, "Init complete. Password (if used) accepted.", [], State),
             ok;
         {error, "key decrypt failed:" ++ _ = Error} ->
-            ?log_error("Incorrect master password. Error: ~p", [Error]),
+            %% error is logged later to avoid logging error when the default
+            %% password is being tried
             {wrong_password, Error};
         {error, Error} ->
-            ?log_error("Gosecrets initialization failed: ~s", [Error]),
+            log(error, "Gosecrets initialization failed: ~s", [Error], State),
             {error, Error}
     end.
 
@@ -303,11 +317,13 @@ handle_call(gosecrets_os_pid, _From, State) ->
     {reply, Res, State};
 handle_call({set_config, Cfg, ResetPassword}, _From,
             #state{config = CfgPath} = State) ->
-    try save_config(CfgPath, cfg_to_json(Cfg)) of
+    try save_config(CfgPath, cfg_to_json(Cfg), State) of
         ok ->
             Pass = case ResetPassword of
                        true -> ?HIDE(undefined);
-                       false -> extract_hidden_pass()
+                       false ->
+                           LogInfo = fun (L, F, A) -> log(L, F, A, State) end,
+                           extract_hidden_pass(LogInfo)
                    end,
             Res = call_gosecrets({reload_config, Pass}, State),
             case Res of
@@ -336,16 +352,18 @@ handle_call({encrypt_with_key, _Data, _AD, _KeyKind, _Name} = Cmd, _From,
 handle_call({decrypt_with_key, _Data, _AD, _KeyKind, _Name} = Cmd, _From,
             State) ->
     {reply, convert_empty_data(call_gosecrets(Cmd, State)), State};
+handle_call(stop, _From, State) ->
+    {stop, normal, call_gosecrets(stop, State), State};
 handle_call(Call, _From, State) ->
-    ?log_warning("Unhandled call: ~p", [Call]),
+    log(warn, "Unhandled call: ~p", [Call], State),
     {reply, {error, not_allowed}, State}.
 
 handle_cast(Msg, State) ->
-    ?log_warning("Unhandled cast: ~p", [Msg]),
+    log(warn, "Unhandled cast: ~p", [Msg], State),
     {noreply, State}.
 
 handle_info(Info, State) ->
-    ?log_warning("Unhandled info: ~p", [Info]),
+    log(warn, "Unhandled info: ~p", [Info], State),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -354,8 +372,9 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-start_gosecrets(CfgPath) ->
+start_gosecrets(CfgPath, State) ->
     Parent = self(),
+    LogDebug = fun (F, A) -> log(debug, F, A, State) end,
     {ok, Pid} =
         proc_lib:start_link(
           erlang, apply,
@@ -363,15 +382,15 @@ start_gosecrets(CfgPath) ->
                    process_flag(trap_exit, true),
                    Path = path_config:get_path(bin, "gosecrets"),
                    Args = ["--config", CfgPath],
-                   ?log_debug("Starting ~p with args: ~0p", [Path, Args]),
+                   LogDebug("Starting ~p with args: ~0p", [Path, Args]),
                    Port =
                        open_port(
                          {spawn_executable, Path},
                          [{packet, 4}, binary, hide, {args, Args}]),
                    proc_lib:init_ack({ok, self()}),
-                   gosecrets_loop(Port, Parent)
+                   gosecrets_loop(Port, Parent, LogDebug)
            end, []]),
-    ?log_debug("Gosecrets loop started with pid = ~p", [Pid]),
+    log(debug, "Gosecrets loop started with pid = ~p", [Pid], State),
     Pid.
 
 call_gosecrets(Msg, #state{loop = Pid}) ->
@@ -381,29 +400,33 @@ call_gosecrets(Msg, #state{loop = Pid}) ->
             Resp
     end.
 
-gosecrets_loop(Port, Parent) ->
+gosecrets_loop(Port, Parent, LogDebug) ->
     receive
         {call, {port_info, I}} ->
             Parent ! {reply, erlang:port_info(Port, I)},
-            gosecrets_loop(Port, Parent);
+            gosecrets_loop(Port, Parent, LogDebug);
+        {call, stop} ->
+            true = port_close(Port),
+            Parent ! {reply, ok},
+            exit(normal);
         {call, Msg} ->
             Port ! {self(), {command, encode(Msg)}},
-            wait_call_resp(Port, Parent),
-            gosecrets_loop(Port, Parent);
+            wait_call_resp(Port, Parent, LogDebug),
+            gosecrets_loop(Port, Parent, LogDebug);
         {Port, {data, <<"L", Data/binary>>}} ->
-            handle_gosecrets_log(Data),
-            gosecrets_loop(Port, Parent);
+            handle_gosecrets_log(Data, LogDebug),
+            gosecrets_loop(Port, Parent, LogDebug);
         Exit = {'EXIT', _, _} ->
-            gosecret_process_exit(Port, Exit)
+            gosecret_process_exit(Port, Exit, LogDebug)
     end.
 
-wait_call_resp(Port, Parent) ->
+wait_call_resp(Port, Parent, LogDebug) ->
     receive
         Exit = {'EXIT', _, _} ->
-            gosecret_process_exit(Port, Exit);
+            gosecret_process_exit(Port, Exit, LogDebug);
         {Port, {data, <<"L", Data/binary>>}} ->
-            handle_gosecrets_log(Data),
-            wait_call_resp(Port, Parent);
+            handle_gosecrets_log(Data, LogDebug),
+            wait_call_resp(Port, Parent, LogDebug);
         {Port, {data, <<"S">>}} ->
             Parent ! {reply, ok};
         {Port, {data, <<"S", Data/binary>>}} ->
@@ -412,11 +435,11 @@ wait_call_resp(Port, Parent) ->
             Parent ! {reply, {error, binary_to_list(Data)}}
     end.
 
-handle_gosecrets_log(Data) ->
-    ?log_debug("gosecrets: ~s", [Data]).
+handle_gosecrets_log(Data, LogDebug) ->
+    LogDebug("gosecrets: ~s", [Data]).
 
-gosecret_process_exit(Port, Exit) ->
-    ?log_debug("Received exit ~p for port ~p", [Exit, Port]),
+gosecret_process_exit(Port, Exit, LogDebug) ->
+    LogDebug("Received exit ~p for port ~p", [Exit, Port]),
     gosecret_do_process_exit(Port, Exit).
 
 gosecret_do_process_exit(Port, {'EXIT', Port, Reason}) ->
@@ -494,22 +517,23 @@ save_port_file(Socket) ->
     misc:atomic_write_file(port_file_path(),
                            <<AFBin/binary, " ", PortBin/binary>>).
 
-open_udp_socket() ->
-    case open_udp_socket(inet) of
+open_udp_socket(State) ->
+    case open_udp_socket_for_AF(inet) of
         {ok, S} ->
             {ok, S};
         {error, Reason1} ->
-            ?log_warning("Failed to open TCPv4 UDP port: ~p", [Reason1]),
-            case open_udp_socket(inet6) of
+            log(warn, "Failed to open TCPv4 UDP port: ~p", [Reason1], State),
+            case open_udp_socket_for_AF(inet6) of
                 {ok, S} ->
                     {ok, S};
                 {error, Reason2} ->
-                    ?log_error("Failed to open TCPv6 UDP port: ~p", [Reason2]),
+                    log(error, "Failed to open TCPv6 UDP port: ~p", [Reason2],
+                        State),
                     {error, {Reason1, Reason2}}
             end
     end.
 
-open_udp_socket(AFamily) ->
+open_udp_socket_for_AF(AFamily) ->
     gen_udp:open(0, [AFamily, {ip, loopback}, {active, true}]).
 
 default_cfg() -> cfg_to_json([]).
@@ -517,11 +541,15 @@ default_cfg() -> cfg_to_json([]).
 memorize_hidden_pass(HiddenPass) ->
     application:set_env(ns_babysitter, master_password, HiddenPass).
 
-extract_hidden_pass()->
+extract_hidden_pass() ->
+    extract_hidden_pass(fun (L, F, A) -> ?ALE_LOG(L, F, A) end).
+
+extract_hidden_pass(Log) ->
     case application:get_env(ns_babysitter, master_password) of
         {ok, P} ->
-            ?log_info("Trying to recover the password from application "
-                      "environment"),
+            Log(debug,
+                "Trying to recover the password from application environment",
+                []),
             P;
         _ ->
             ?HIDE(undefined)
@@ -672,23 +700,30 @@ should_prompt_the_password(#state{config = Path}) ->
 convert_empty_data(ok) -> {ok, <<>>};
 convert_empty_data(Res) -> Res.
 
+log(LogLevel, F, A, #state{logger = Fun}) when is_function(Fun) ->
+    Fun(LogLevel, F, A);
+log(LogLevel, F, A, #state{logger = default}) ->
+    ?ALE_LOG(LogLevel, F, A).
+
 -ifdef(TEST).
 
 should_prompt_the_password_test() ->
     CfgPath = path_config:tempfile("promt_pass_test_cfg", ".tmp"),
     try
         State = #state{config = CfgPath},
-        save_config(CfgPath, cfg_to_json([])),
+        save_config(CfgPath, cfg_to_json([]), State),
         ?assertEqual(true, should_prompt_the_password(State)),
         save_config(CfgPath, cfg_to_json([{es_key_storage_type, script},
                                           {es_read_cmd, <<"/path">>},
                                           {es_write_cmd, <<"/path">>},
-                                          {es_delete_cmd, <<"/path">>}])),
+                                          {es_delete_cmd, <<"/path">>}]),
+                    State),
         ?assertEqual(false, should_prompt_the_password(State)),
         save_config(CfgPath, cfg_to_json([{es_key_storage_type, file},
                                           {es_encrypt_key, true},
                                           {es_password_source, script},
-                                          {es_password_cmd, <<"/path">>}])),
+                                          {es_password_cmd, <<"/path">>}]),
+                    State),
         ?assertEqual(false, should_prompt_the_password(State))
     after
         file:delete(CfgPath)
@@ -1019,7 +1054,7 @@ upgrade_from_7_2_no_password_test() ->
       undefined,
       fun (CfgPath) ->
           ok = file:write_file(DKeyPath, base64:decode(DKeyNoPass)),
-          {ok, Pid} = start_link(CfgPath),
+          {ok, Pid} = start_link(default, true, CfgPath),
           try
               Data = rand:bytes(512),
               {ok, Encrypted} = encrypt(Pid, Data),
@@ -1048,7 +1083,7 @@ upgrade_from_7_2_with_password_test() ->
             undefined,
             fun (CfgPath) ->
                 ok = file:write_file(DKeyPath, base64:decode(DKeyNoPass)),
-                {ok, Pid} = start_link(CfgPath),
+                {ok, Pid} = start_link(default, true, CfgPath),
                 try
                     Data = rand:bytes(512),
                     {ok, Encrypted} = encrypt(Pid, Data),
@@ -1258,7 +1293,7 @@ with_gosecrets(Cfg, Fun, ResetMemorizePassword) ->
     with_tmp_cfg(
       Cfg,
       fun (CfgPath) ->
-          {ok, Pid} = start_link(CfgPath),
+          {ok, Pid} = start_link(default, true, CfgPath),
           try
               Fun(CfgPath, Pid)
           after
@@ -1275,7 +1310,7 @@ with_tmp_cfg(Cfg, Fun) ->
     try
         case Cfg of
             undefined -> ok;
-            _ -> save_config(CfgPath, cfg_to_json(Cfg))
+            _ -> save_config(CfgPath, cfg_to_json(Cfg), #state{})
         end,
         Fun(CfgPath)
     after

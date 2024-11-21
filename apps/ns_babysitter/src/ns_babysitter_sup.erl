@@ -27,7 +27,8 @@ child_specs() ->
       permanent, 1000, worker, []}] ++
         case ns_config_default:init_is_enterprise() of
             true ->
-                [{cb_gosecrets_runner, {cb_gosecrets_runner, start_link, []},
+                [{cb_gosecrets_runner,
+                  {cb_gosecrets_runner, start_link, [default, false]},
                   permanent, 1000, worker, []}];
             false ->
                 []

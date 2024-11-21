@@ -114,6 +114,11 @@ external_read_keys(DekKind, KeyIds, Opts) ->
         end,
     GosecretsCfg = filename:join(ConfigDir, "gosecrets.cfg"),
     GosecretsPath = path_config:component_path(bin, "gosecrets"),
+    HiddenPass = maps:get(hidden_pass, Opts, ?HIDE(undefined)),
+    Input = case ?UNHIDE(HiddenPass) of
+                undefined -> undefined;
+                Pass -> ?HIDE(Pass ++ "\n")
+            end,
     Path = path_config:component_path(bin, "dump-keys"),
     maybe
         {ok, DumpKeysPath} ?= case os:find_executable(Path) of
@@ -125,8 +130,10 @@ external_read_keys(DekKind, KeyIds, Opts) ->
                          DumpKeysPath,
                          ["--gosecrets", GosecretsPath,
                           "--config", GosecretsCfg,
-                          "--key-kind", atom_to_list(DekKind),
-                          "--key-ids"] ++ KeyIdsStr,
+                          "--key-kind", atom_to_list(DekKind)] ++
+                         ["--stdin-password" || Input /= undefined] ++
+                         ["--key-ids"] ++ KeyIdsStr,
+                         Input,
                          60000),
         {JsonKeys} = ejson:decode(Output),
         {Deks, Errors} =
