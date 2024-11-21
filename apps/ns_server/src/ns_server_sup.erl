@@ -213,9 +213,6 @@ child_specs() ->
        {memcached_config_mgr, {memcached_config_mgr, start_link, []},
         {permanent, 4, ?MAX_R, ?MAX_T}, 1000, worker, []}),
 
-     {ns_memcached_log_rotator, {ns_memcached_log_rotator, start_link, []},
-      permanent, 1000, worker, [ns_memcached_log_rotator]},
-
      {testconditions_store, {simple_store, start_link, [testconditions]},
       permanent, 1000, worker, []},
 

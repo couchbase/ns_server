@@ -143,8 +143,6 @@
                                     "Also handles dynamic memcached config reloads.")
                         (event-handler 'ns_port_memcached_killer :to ns_config_events
                                        "implements memcached die! signalling after failover")
-                        (gen-server 'ns_memcached_log_rotator
-                                    "periodically sweeps too old memcached.log.XXX-s")
                         (gen-server 'ns_bucket_worker
                                     "'work' of starting and shutting down ns_bucket_sup childs is done by this
                                     guy. I.e. because supervisor:xxx API is synchronous")
