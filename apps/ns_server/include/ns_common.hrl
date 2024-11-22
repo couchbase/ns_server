@@ -469,9 +469,9 @@
           fun(DS, EncrState) ->
                   cb_crypto:file_encrypt_state_match(DS, EncrState)
           end,
-      is_file_encr_by_ds =>
+      validate_encr_file_with_ds =>
           fun(Path, DS) ->
-                  cb_crypto:is_file_encr_by_ds(Path, DS)
+                  cb_crypto:validate_encr_file_with_ds(Path, DS)
           end,
       is_file_encrypted =>
           fun(Path) ->

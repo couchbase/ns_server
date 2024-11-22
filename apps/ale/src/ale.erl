@@ -30,7 +30,7 @@
          %% Callbacks for encryption
          create_no_deks_snapshot/0,
          file_encrypt_state_match/2,
-         is_file_encr_by_ds/2,
+         validate_encr_file_with_ds/2,
          is_file_encrypted/1,
          file_encrypt_init/2,
          file_encrypt_cont/3,
@@ -231,8 +231,8 @@ file_encrypt_state_match(DS, EncrState) ->
     Callback = get_encryption_cb(file_encrypt_state_match),
     Callback(DS, EncrState).
 
-is_file_encr_by_ds(Path, DS) ->
-    Callback = get_encryption_cb(is_file_encr_by_ds),
+validate_encr_file_with_ds(Path, DS) ->
+    Callback = get_encryption_cb(validate_encr_file_with_ds),
     Callback(Path, DS).
 
 is_file_encrypted(Path) ->
@@ -468,7 +468,7 @@ default_encr_disabled_cbs() ->
           fun(_DS, _EncrState) ->
                   true
           end,
-      is_file_encr_by_ds =>
+      validate_encr_file_with_ds =>
           fun(_Path, _DS) ->
                   true
           end,

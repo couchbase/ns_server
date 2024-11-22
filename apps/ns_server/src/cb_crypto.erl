@@ -18,6 +18,7 @@
 -define(ENCRYPTED_FILE_HEADER_LEN, 64).
 -define(IV_LEN, 12).
 -define(TAG_LEN, 16).
+-define(CHUNKSIZE_ATTR_SIZE, 4).
 -define(ENCRYPTED_FILE_MAGIC, 0, "Couchbase Encrypted", 0).
 -define(NO_COMPRESSION, 0).
 -define(SNAPPY_COMPRESSION, 1).
@@ -39,6 +40,7 @@
          read_file/2,
          read_file_chunks/5,
          file_encrypt_state_match/2,
+         validate_encr_file_with_ds/2,
          is_file_encr_by_ds/2,
          is_file_encrypted/1,
          get_file_dek_ids/1,
@@ -182,6 +184,12 @@ file_encrypt_chunk(Data, #file_encr_state{key = Dek,
 file_encrypt_state_match(#dek_snapshot{active_key = ActiveKey},
                          #file_encr_state{key = FileActiveKey}) ->
     get_key_id(ActiveKey) =:= get_key_id(FileActiveKey).
+
+-spec validate_encr_file_with_ds(string(), #dek_snapshot{}) -> true | false.
+validate_encr_file_with_ds(Path, #dek_snapshot{active_key = undefined}) ->
+    not is_file_encrypted(Path);
+validate_encr_file_with_ds(Path, DS) ->
+    is_file_encr_by_ds(Path, DS) andalso validate_encr_file(Path).
 
 -spec is_file_encr_by_ds(string(), #dek_snapshot{}) -> true | false.
 is_file_encr_by_ds(Path, #dek_snapshot{active_key = undefined}) ->
@@ -502,6 +510,42 @@ get_key_id(undefined) ->
 get_key_id(#{id := KeyId} = _Key) ->
     KeyId.
 
+check_next_chunk_exists(_File, {error, _}, _CurrentOffset) ->
+    false;
+check_next_chunk_exists(File, eof, CurrentExpectedOffset) ->
+    case file:position(File, eof) of
+        {ok, CurrentExpectedOffset} ->
+            true;
+        _ ->
+            false
+    end;
+check_next_chunk_exists(File,
+                        {ok, <<ChunkSize:32/big-unsigned-integer>>},
+                        CurrentOffset) ->
+    NewExpectedOffset = ChunkSize + CurrentOffset + ?CHUNKSIZE_ATTR_SIZE,
+    NextSizeRead = file:pread(File, NewExpectedOffset, ?CHUNKSIZE_ATTR_SIZE),
+    check_next_chunk_exists(File, NextSizeRead, NewExpectedOffset);
+check_next_chunk_exists(_File, {ok, _}, _CurrExpectedOffset) ->
+    false.
+
+validate_encr_file(FilePath) ->
+    {ok, File} = file:open(FilePath, [raw, binary, read]),
+    try
+        Header = file:read(File, ?ENCRYPTED_FILE_HEADER_LEN),
+        case is_valid_encr_header(Header) of
+            true ->
+                NextSizeRead =  file:pread(File, ?ENCRYPTED_FILE_HEADER_LEN,
+                                           ?CHUNKSIZE_ATTR_SIZE),
+                check_next_chunk_exists(File, NextSizeRead,
+                                        ?ENCRYPTED_FILE_HEADER_LEN);
+            false ->
+                false
+        end
+    after
+        file:close(File)
+    end.
+
+
 encrypt_internal(Data, AD, IVRandom, IVAtomic, #{type := 'raw-aes-gcm',
                                                  info := #{key := KeyFun}}) ->
     IV = new_aes_gcm_iv(IVRandom, IVAtomic),
@@ -651,7 +695,7 @@ bite_next_chunk(<<ChunkSize:32/big-unsigned-integer, Chunk:ChunkSize/binary,
                    Rest/binary>>) ->
     DataSize = ChunkSize - ?IV_LEN - ?TAG_LEN,
     case DataSize > 0 of
-        true -> {ok, {ChunkSize + 4, Chunk}, Rest};
+        true -> {ok, {ChunkSize + ?CHUNKSIZE_ATTR_SIZE, Chunk}, Rest};
         false -> {error, invalid_data_chunk}
     end;
 bite_next_chunk(<<>>) ->
@@ -735,6 +779,48 @@ read_write_file_test() ->
 
     %% If we concatenate all chunks, we should get the original data
     Bin = iolist_to_binary(lists:reverse(Chunks1)).
+
+validate_encr_file_test() ->
+    %% Generate valid header and chunk data and assemble and test for various
+    %% cases
+    Path = path_config:tempfile("cb_crypto_validate_encr_file_test", ".tmp"),
+    DS = generate_test_deks(),
+    {ValidHeader, State} = file_encrypt_init(Path, DS),
+
+    Bin1 = iolist_to_binary(lists:seq(0,255)),
+    {Data1, State1} = file_encrypt_chunk(Bin1, State),
+
+    Bin2 = iolist_to_binary(lists:seq(0,1)),
+    {Data2,State2} = file_encrypt_chunk(Bin2, State1),
+
+    Bin3 = iolist_to_binary(lists:seq(0,64)),
+    {Data3, _} = file_encrypt_chunk(Bin3, State2),
+
+    %% File with just header is valid encrypted file
+    ok = misc:atomic_write_file(Path, ValidHeader),
+    ?assert(validate_encr_file(Path)),
+
+    %% File with trash after header is invalid
+    ok = misc:atomic_write_file(Path, <<ValidHeader/binary, "t">>),
+    ?assertNot(validate_encr_file(Path)),
+
+    %% Full valid file
+    FullValid =
+        <<ValidHeader/binary, Data1/binary, Data2/binary, Data3/binary>>,
+    ok = misc:atomic_write_file(Path, FullValid),
+    ?assert(validate_encr_file(Path)),
+
+    %% Full valid file with trailing trash is invalid
+    ok = misc:atomic_write_file(Path, <<FullValid/binary, "t">>),
+    ?assertNot(validate_encr_file(Path)),
+
+    %% Partial first chunk with everything else in place is invalid
+    InvalidSize = byte_size(Data1) - 1,
+    InvalidFileData =
+        <<ValidHeader/binary, Data1:InvalidSize/binary, Data2/binary,
+          Data3/binary>>,
+    ok = misc:atomic_write_file(Path, InvalidFileData),
+    ?assertNot(validate_encr_file(Path)).
 
 generate_test_deks() ->
     KeyBin = cb_cluster_secrets:generate_raw_key(aes_256_gcm),

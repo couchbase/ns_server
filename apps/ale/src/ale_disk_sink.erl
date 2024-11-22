@@ -336,7 +336,7 @@ maybe_write_header(SinkName, File, Header) ->
                       ok = file:write(File, Header)
               end).
 
-update_file_encr_state(true = _ActiveKeyMatch,
+update_file_encr_state(true = _ShouldContinue,
                        #worker_state{path = Path} = State, DS) ->
     {ok, File, #file_info{size = Size, inode = Inode}} = open_file(Path),
     ContEncrState =
@@ -345,7 +345,7 @@ update_file_encr_state(true = _ActiveKeyMatch,
                        file_size = Size,
                        file_inode = Inode,
                        encr_state = ContEncrState};
-update_file_encr_state(false = _ActiveKeyMatch, State, _DS) ->
+update_file_encr_state(false = _ShouldContinue, State, _DS) ->
     do_rotate_files(State).
 
 open_with_encr_state(true = _IsNewFile,
@@ -361,8 +361,8 @@ open_with_encr_state(true = _IsNewFile,
                        encr_state = EncrState};
 open_with_encr_state(false = _IsNewFile,
                      #worker_state{path = Path} = State, DS) ->
-    ActiveKeyMatch = ale:is_file_encr_by_ds(Path, DS),
-    update_file_encr_state(ActiveKeyMatch, State, DS).
+    ShouldContinue = ale:validate_encr_file_with_ds(Path, DS),
+    update_file_encr_state(ShouldContinue, State, DS).
 
 open_log_file(#worker_state{path = Path,
                             file = OldFile,
