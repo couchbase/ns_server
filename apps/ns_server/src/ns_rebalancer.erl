@@ -154,7 +154,8 @@ local_buckets_shutdown_loop(Ref, CanWait) ->
                     receive
                         {Ref, timeout} ->
                             local_buckets_shutdown_loop(Ref, false);
-                        {Ref, _Msg} ->
+                        {'DOWN', _, process, _, _} ->
+                            %% If a process we monitor goes down, check again
                             local_buckets_shutdown_loop(Ref, true)
                     end
             end
@@ -174,18 +175,12 @@ do_wait_local_buckets_shutdown_complete(ExcessiveBuckets) ->
       fun () ->
               Ref = erlang:make_ref(),
               Parent = self(),
-              Subscription = ns_pubsub:subscribe_link(buckets_events,
-                                                      fun ({stopped, _} = StoppedMsg) ->
-                                                              Parent ! {Ref, StoppedMsg};
-                                                          (_) ->
-                                                              ok
-                                                      end),
+              lists:foreach(
+                  fun (Bucket) ->
+                      monitor(process, ns_memcached:server(Bucket))
+                  end, ExcessiveBuckets),
               erlang:send_after(Timeout, Parent, {Ref, timeout}),
-              try
-                  local_buckets_shutdown_loop(Ref, true)
-              after
-                  (catch ns_pubsub:unsubscribe(Subscription))
-              end
+              local_buckets_shutdown_loop(Ref, true)
       end).
 
 do_wait_buckets_shutdown(KeepNodes) ->

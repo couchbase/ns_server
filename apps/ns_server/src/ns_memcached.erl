@@ -82,6 +82,7 @@
 
 %% external API
 -export([active_buckets/0,
+         server/1,
          get_mark_warmed_timeout/0,
          bucket_statuses/0,
          bucket_statuses/1,
