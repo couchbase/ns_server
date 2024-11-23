@@ -24,6 +24,7 @@ import uuid
 from testsets.sample_buckets import SampleBucketTasksBase
 from testsets.users_tests import put_user
 
+encrypted_file_magic = b'\x00Couchbase Encrypted\x00'
 
 class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
@@ -78,6 +79,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
     def test_teardown(self):
         set_cfg_encryption(self.cluster, 'encryption_service', -1)
+        set_log_encryption(self.cluster, 'disabled', -1)
         self.cluster.delete_bucket(self.bucket_name)
         self.cluster.delete_bucket(self.sample_bucket)
         for s in get_secrets(self.cluster):
@@ -1073,6 +1075,65 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         assert dek_ids3 == dek_ids1, \
                f'deks have changed, old deks: {dek_ids1}, new deks: {dek_ids3}'
 
+    def encrypted_logs_test(self):
+        set_log_encryption(self.cluster, 'encryption_service', -1)
+        testlib.poll_for_condition(
+            lambda: assert_logs_encrypted(self.cluster),
+            sleep_time=0.2, attempts=50, retry_on_assert=True, verbose=True)
+        set_log_encryption(self.cluster, 'disabled', -1)
+        testlib.poll_for_condition(
+            lambda: assert_logs_unencrypted(self.cluster),
+            sleep_time=0.2, attempts=50, retry_on_assert=True, verbose=True)
+
+
+# Set master password and restart the cluster
+# Testing that we can decrypt deks when master password is set
+# (testing all combinations of master_password and encryption here)
+class NativeEncryptionNodeRestartTests(testlib.BaseTestSet):
+
+    @staticmethod
+    def requirements():
+        return testlib.ClusterRequirements(num_nodes = 1,
+                                           edition='Enterprise',
+                                           buckets=[],
+                                           balanced=True,
+                                           test_generated_cluster=True)
+
+    def setup(self):
+        pass
+
+    def teardown(self):
+        set_log_encryption(self.cluster, 'disabled', -1)
+        set_cfg_encryption(self.cluster, 'encryption_service', -1)
+        change_password(self.node(), password='')
+
+    def encryption_on_with_master_password_set_test(self):
+        set_log_encryption(self.cluster, 'encryption_service', -1)
+        set_cfg_encryption(self.cluster, 'encryption_service', -1)
+        password = change_password(self.node())
+        self.cluster.restart(master_passwords={0: password})
+
+    def encryption_on_master_password_is_not_set_test(self):
+        set_log_encryption(self.cluster, 'encryption_service', -1)
+        set_cfg_encryption(self.cluster, 'encryption_service', -1)
+        change_password(self.node(), password='')
+        self.cluster.restart()
+
+    def encryption_off_master_password_is_set_test(self):
+        set_log_encryption(self.cluster, 'disabled', -1)
+        set_cfg_encryption(self.cluster, 'disabled', -1)
+        password = change_password(self.node())
+        self.cluster.restart(master_passwords={0: password})
+
+    def encryption_off_master_password_is_not_set_test(self):
+        set_log_encryption(self.cluster, 'disabled', -1)
+        set_cfg_encryption(self.cluster, 'disabled', -1)
+        change_password(self.node(), password='')
+        self.cluster.restart()
+
+    def node(self):
+        return self.cluster.connected_nodes[0]
+
 
 class NativeEncryptionPermissionsTests(testlib.BaseTestSet):
 
@@ -1266,9 +1327,19 @@ def verify_key_presense_in_dump_key_response(response, good_ids, unknown_ids):
         testlib.assert_eq(response[k]['result'], 'error')
 
 
-def set_cfg_encryption(cluster, mode, secret, dek_lifetime=60*60*24*365,
-                       dek_rotation=60*60*24*30, expected_code=200):
-    testlib.post_succ(cluster, '/settings/security/encryptionAtRest/config',
+def set_cfg_encryption(cluster, *args, **kwargs):
+    return set_comp_encryption(cluster, 'config', *args, **kwargs)
+
+
+def set_log_encryption(cluster, *args, **kwargs):
+    return set_comp_encryption(cluster, 'log', *args, **kwargs)
+
+
+def set_comp_encryption(cluster, component, mode, secret,
+                        dek_lifetime=60*60*24*365, dek_rotation=60*60*24*30,
+                        expected_code=200):
+    testlib.post_succ(cluster,
+                      f'/settings/security/encryptionAtRest/{component}',
                       json={'encryptionMethod': mode,
                             'encryptionSecretId': secret,
                             'dekLifetime': dek_lifetime,
@@ -1277,8 +1348,8 @@ def set_cfg_encryption(cluster, mode, secret, dek_lifetime=60*60*24*365,
     if expected_code == 200:
         r = testlib.get_succ(cluster, '/settings/security/encryptionAtRest')
         r = r.json()
-        testlib.assert_eq(r['config']['encryptionMethod'], mode)
-        testlib.assert_eq(r['config']['encryptionSecretId'], secret)
+        testlib.assert_eq(r[component]['encryptionMethod'], mode)
+        testlib.assert_eq(r[component]['encryptionSecretId'], secret)
 
 
 def auto_generated_secret(name=None,
@@ -1677,3 +1748,40 @@ def assert_bucket_deks_have_changed(cluster, bucket, min_time=None,
                                   **kwargs)
 
     return dek_ids
+
+
+def assert_logs_encrypted(cluster):
+    for n in cluster.connected_nodes:
+        debug_log_path = Path(n.logs_path()) / 'debug.log'
+        assert_file_encrypted(debug_log_path)
+
+
+def assert_logs_unencrypted(cluster):
+    for n in cluster.connected_nodes:
+        debug_log_path = Path(n.logs_path()) / 'debug.log'
+        assert_file_unencrypted(debug_log_path)
+
+
+def assert_file_encrypted(path):
+    print(f'Checking file {path} is encrypted')
+    with open(path, 'rb') as f:
+        magic_len = len(encrypted_file_magic)
+        magic = f.read(magic_len)
+        print(f'magic: {magic}')
+        assert magic == encrypted_file_magic, \
+               f'file {path} doesn\'t seem to be encrypted, ' \
+               f'first {magic_len} bytes are {magic}'
+
+
+def assert_file_unencrypted(path):
+    print(f'Checking file {path} is unencrypted')
+    assert path.is_file(), f'file doesn\'t exist: {path}'
+    with open(path, 'rb') as f:
+        magic_len = len(encrypted_file_magic)
+        magic = f.read(magic_len)
+        print(f'magic: {magic}')
+        assert len(magic) == magic_len, \
+               f'file is too short ({len(magic)} bytes read)'
+        assert magic != encrypted_file_magic, \
+               f'file {path} seems to be encrypted, ' \
+               f'first {magic_len} bytes are {magic}'

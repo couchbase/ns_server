@@ -371,6 +371,7 @@ def start_cluster(num_nodes=1,
                   root_dir=ns_server_dir,
                   wait_for_start=False,
                   nooutput=False,
+                  master_passwords=None,
                   env={}):
 
     extra_args = []
@@ -502,13 +503,18 @@ def start_cluster(num_nodes=1,
 
     processes = [start_node(i + start_index) for i in range(num_nodes)]
 
+    if master_passwords is not None:
+        maybe_enter_master_passwords(master_passwords, start_index, root_dir)
+
     if wait_for_start:
-        wait_nodes_up(num_nodes, start_index, node_start_timeout_s)
+        wait_nodes_up(num_nodes, start_index, master_passwords, root_dir,
+                      node_start_timeout_s)
 
     return processes
 
 
-def wait_nodes_up(num_nodes=1, start_index=0, timeout_s=node_start_timeout_s,
+def wait_nodes_up(num_nodes=1, start_index=0, master_passwords=None,
+                  root_dir=None, timeout_s=node_start_timeout_s,
                   node_urls=None, verbose=True):
     def print_if_verbose(*args, **kwargs):
         if verbose:
@@ -539,6 +545,53 @@ def wait_nodes_up(num_nodes=1, start_index=0, timeout_s=node_start_timeout_s,
          for i in range(num_nodes)]
     else:
         [wait_node_up(node_url) for node_url in node_urls]
+
+
+def maybe_enter_master_passwords(master_passwords, start_index, root_dir,
+                                 timeout_s=node_start_timeout_s):
+    deadline = time.time() + node_start_timeout_s
+    for idx, password in master_passwords.items():
+        while True:
+            try:
+                try_to_pass_master_password(root_dir, start_index + idx,
+                                            password)
+                break
+            except Exception as e:
+                if time.time() < deadline:
+                    print(f"Failed to pass password to node {idx}: {e}")
+                    time.sleep(0.5)
+                else:
+                    raise RuntimeError(f"Failed to pass password to node {idx}: {e}")
+
+
+def try_to_pass_master_password(root_dir, node_idx, password):
+    portfile = abs_path_join(root_dir, "data", f"n_{node_idx}",
+                             "couchbase-server.babysitter.smport")
+
+    if not os.path.isfile(portfile):
+        raise RuntimeError(f"File {portfile} does not exist")
+
+    with open(portfile, 'r', encoding="utf-8") as f:
+        familyport = f.read().rstrip()
+
+    [afamilystr, portstr] = familyport.split()
+    port = int(portstr)
+    afamily = socket.AF_INET6 if afamilystr == "inet6" else socket.AF_INET
+
+    sock = socket.socket(afamily, socket.SOCK_DGRAM)
+    try:
+        sock.settimeout(5)
+        addr = "::1" if afamily == socket.AF_INET6 else "127.0.0.1"
+        sock.sendto(password.encode('utf-8'), (addr, port))
+        (result, _) = sock.recvfrom(128)
+    finally:
+        sock.close()
+
+    if result != b'ok':
+        print(f"Incorrect password: {result}")
+        raise RuntimeError(f"Incorrect password: {result}")
+
+    print("SUCCESS: Password accepted. Node started booting.")
 
 
 def kill_nodes(nodes, terminal_attrs=None, urls=None):

@@ -641,6 +641,8 @@ def poll_for_condition(fun, sleep_time, attempts=None, timeout=None,
             try:
                 value = fun()
             except AssertionError as e:
+                maybe_print(f"retrying because assertion failed: {e}",
+                            verbose=verbose)
                 exception_obj = e
                 value = retry_value
         else:

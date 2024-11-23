@@ -76,11 +76,11 @@ def build_cluster(auth, cluster_index, start_args, connect, connect_args):
             # kill the nodes, otherwise we end up with processes hanging around
             atexit.register(kill_nodes, processes, urls,
                             get_terminal_attrs())
-    return get_cluster(cluster_index, port, auth, processes, nodes)
+    return get_cluster(cluster_index, port, auth, processes, nodes, start_args)
 
 
 def get_cluster(cluster_index, start_port, auth, processes, nodes,
-                existing_cluster=False):
+                start_args, existing_cluster=False):
     connected_nodes = []
     for i, node in enumerate(nodes):
         pools_default = f"/pools/default"
@@ -124,6 +124,7 @@ def get_cluster(cluster_index, start_port, auth, processes, nodes,
                       processes=processes,
                       auth=auth,
                       index=cluster_index,
+                      start_args=start_args,
                       existing_cluster=existing_cluster)
     print(f"Successfully connected to cluster: {cluster}")
     return cluster
@@ -131,7 +132,7 @@ def get_cluster(cluster_index, start_port, auth, processes, nodes,
 
 class Cluster:
     def __init__(self, nodes, connected_nodes, first_node_index, processes,
-                 auth, index, existing_cluster=False):
+                 auth, index, start_args, existing_cluster=False):
         self._nodes = nodes
         self.connected_nodes = connected_nodes
         self.first_node_index = first_node_index
@@ -153,6 +154,7 @@ class Cluster:
         self.is_dev_preview = get_bool("cluster_compat_mode:"
                                        "is_developer_preview().")
         self.existing_cluster = existing_cluster
+        self.start_args = start_args
 
 
     def __str__(self):
@@ -172,6 +174,19 @@ class Cluster:
         kill_nodes(self.processes, get_node_urls(self._nodes),
                    get_terminal_attrs())
         atexit.unregister(kill_nodes)
+        self.processes = None
+
+    def restart(self, master_passwords=None):
+        if self.start_args is None:
+            assert False, "Can't restart pre-existing cluster"
+
+        if self.processes is not None:
+            self.teardown()
+
+        print(f"Starting cluster with start args:\n{self.start_args}")
+        self.processes = cluster_run_lib.start_cluster(
+                           master_passwords=master_passwords, **self.start_args)
+        self.wait_for_nodes_to_be_healthy()
 
     # Check every 0.5s until there is no rebalance running or 60s have passed
     def wait_for_rebalance(self, timeout_s=60, interval_s=0.5,
@@ -457,6 +472,7 @@ class Cluster:
             timeout=60)
 
     def are_nodes_healthy(self):
+        print("Checking if nodes are healthy")
         resp_json = testlib.get_succ(self, "/pools/default/").json()
         nodes_json = resp_json["nodes"]
         for node in nodes_json:
