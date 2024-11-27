@@ -101,6 +101,8 @@ interesting_doc_key(<<"filterExpiration">>) ->
     true;
 interesting_doc_key(<<"filterBinary">>) ->
     true;
+interesting_doc_key(<<"conflictLogging">>) ->
+    true;
 interesting_doc_key(_) ->
     false.
 

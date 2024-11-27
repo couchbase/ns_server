@@ -792,12 +792,18 @@ build_xdcr_tasks(TasksDict, AllRepDocs) ->
                  _ ->
                      [{status, notRunning}, {type, xdcr} | Doc2]
              end,
+         {ConflictLogging} =
+             proplists:get_value(conflictLogging, Doc3, {[]}),
+         ConflictLoggingDisabled = ConflictLogging =:= [] orelse
+             proplists:get_value(disabled, ConflictLogging, false),
+         Doc4 = [{conflictLoggingDisabled, ConflictLoggingDisabled} | Doc3],
+         Doc5 = lists:keydelete(conflictLogging, 1, Doc4),
 
          CancelURI = menelaus_util:bin_concat_path(["controller", "cancelXDCR", Id]),
          SettingsURI = menelaus_util:bin_concat_path(["settings", "replications", Id]),
 
          [{cancelURI, CancelURI},
-          {settingsURI, SettingsURI} | Doc3]
+          {settingsURI, SettingsURI} | Doc5]
      end || Doc0 <- AllRepDocs].
 
 build_sample_buckets_tasks(AllRawTasks) ->
