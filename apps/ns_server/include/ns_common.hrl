@@ -451,6 +451,9 @@
 -define(REPLICATED_DETS_HIGH_PRIORITY, 1).
 -define(QUERY_NODE_QUOTA_DEFAULT, 0).
 
+-define(APP_TELEMETRY_ENABLED, false).
+-define(APP_TELEMETRY_PATH, "_appTelemetry").
+
 
 -define(call_on_ns_server_node(Body, Args),
         case ns_node_disco:couchdb_node() == node() of

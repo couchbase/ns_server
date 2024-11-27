@@ -153,7 +153,9 @@ get_approot() ->
 webconfig() ->
     [{port, service_ports:get_port(rest_port)},
      {nodelay, true},
-     {approot, get_approot()}].
+     {approot, get_approot()},
+     %% 2048 (default) + 1024 for app telemetry websockets
+     {max, 3072}].
 
 webconfig(Prop) ->
     proplists:get_value(Prop, webconfig()).
@@ -631,6 +633,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     XdcrPath = mochiweb_request:get(raw_path, Req),
                     {{[admin, internal], all},
                      fun goxdcr_rest:proxy/2, [XdcrPath]};
+                [?APP_TELEMETRY_PATH] ->
+                    {{[app_telemetry], write},
+                     fun app_telemetry_scraper:handle_connect/1};
                 ["_cbauth", "checkPermission"] ->
                     {{[admin, internal], all},
                      fun menelaus_web_rbac:handle_check_permission_for_cbauth/1};

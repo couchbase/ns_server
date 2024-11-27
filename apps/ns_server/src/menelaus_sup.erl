@@ -108,6 +108,11 @@ init([]) ->
                        {activity_tracker, start_link, []},
                        permanent, 1000, worker, dynamic},
 
+    AppTelemetryScraper = {app_telemetry_scraper,
+                           {app_telemetry_scraper, start_link, []},
+                           permanent, 5000, worker, dynamic},
+
     Processes = [UIAuth, ScramSha, LocalAuth, Cache, StatsGatherer, RpcEvents,
-                 WebSup, Alerts, GuardrailMonitor, CBAuth, ActivityTracker],
+                 WebSup, Alerts, GuardrailMonitor, CBAuth, ActivityTracker,
+                 AppTelemetryScraper],
     {ok, {{one_for_one, 10, 10}, Processes}}.
