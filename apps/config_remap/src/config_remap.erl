@@ -62,8 +62,20 @@ rewrite_term(BeforeTerm, LogAs, Args) ->
         AfterTerm ->
             AfterTerm;
         _ ->
+            {SanitizedBefore, SanitizedAfter} =
+                case BeforeTerm of
+                    %% Chronicle snapshot case
+                    {Key, Val} ->
+                        {AfterKey, AfterVal} = AfterTerm,
+                        {chronicle_kv_log:sanitize(Key, Val),
+                         chronicle_kv_log:sanitize(AfterKey, AfterVal)};
+                    _ ->
+                        %% We don't have a common way to sanitize other stuff
+                        %% yet.
+                        {BeforeTerm, AfterTerm}
+                end,
             ?log_debug("Rewriting ~s term ~p as ~p",
-                       [LogAs, BeforeTerm, AfterTerm]),
+                       [LogAs, SanitizedBefore, SanitizedAfter]),
             AfterTerm
     end.
 
