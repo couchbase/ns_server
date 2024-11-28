@@ -296,13 +296,6 @@ rewrite_chronicle_log_header(Header, #{output_path := OutputPath,
     %% Return out log in the state to re-use it, rather than open the file again
     State#{log_file => Log}.
 
-sanitize_chronicle_log_command(root_cert_and_pkey, Value) ->
-    %% root_cert_and_pkey includes the OOTB CA cert and private key. We probably
-    %% don't want to log it
-    ?HIDE(Value);
-sanitize_chronicle_log_command(_Key, Value) ->
-    Value.
-
 rewrite_chronicle_log_command({command, Packed},
                               #{args := Args,
                                 output_path := OutputPath}) ->
@@ -317,14 +310,14 @@ rewrite_chronicle_log_command({command, Packed},
             %% Different, lets log, but we must sanitize the term to avoid
             %% printing private keys
             Before = chronicle_kv:sanitize_command(
-                fun sanitize_chronicle_log_command/2,
-                Unpacked),
+                       fun chronicle_kv_log:sanitize/2,
+                       Unpacked),
             After = chronicle_kv:sanitize_command(
-                fun sanitize_chronicle_log_command/2,
-                Rewritten),
+                      fun chronicle_kv_log:sanitize/2,
+                      Rewritten),
 
             ?log_debug("Rewriting chronicle log ~p command term ~p as ~p",
-                        [LogNum, Before, After])
+                       [LogNum, Before, After])
     end,
 
     Repacked = chronicle_rsm:pack_command(Rewritten),
