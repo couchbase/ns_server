@@ -44,10 +44,10 @@ rewrite_term(BeforeTerm, #{node_map := NodeMap}) ->
 rewrite_term(BeforeTerm, LogAs, Args) when is_map(BeforeTerm) ->
     %% We can't maps:map here because we might rewrite keys as well as values
     maps:fold(
-        fun(Key, Value, Acc) ->
-            {NewKey, NewValue} = rewrite_term({Key, Value}, LogAs, Args),
-            Acc#{NewKey => NewValue}
-        end, #{}, BeforeTerm);
+      fun(Key, Value, Acc) ->
+              {NewKey, NewValue} = rewrite_term({Key, Value}, LogAs, Args),
+              Acc#{NewKey => NewValue}
+      end, #{}, BeforeTerm);
 rewrite_term(BeforeTerm, LogAs, Args) when is_list(BeforeTerm) ->
     lists:map(
       fun(Term) ->
