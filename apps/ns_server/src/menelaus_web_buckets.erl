@@ -411,7 +411,6 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
       {basicStats, {build_bucket_stats(InfoLevel, Id, Ctx)}},
       {evictionPolicy, build_eviction_policy(BucketConfig)},
       {durabilityMinLevel, build_durability_min_level(BucketConfig)},
-      build_pitr_dynamic_bucket_info(BucketConfig),
       build_magma_bucket_info(BucketConfig),
       {conflictResolutionType,
        ns_bucket:conflict_resolution_type(BucketConfig)}],
@@ -479,25 +478,6 @@ build_encryption_at_rest_bucket_info(BucketConfig) ->
                                   ?DEFAULT_DEK_LIFETIME_S)}];
         false ->
             []
-    end.
-
-build_pitr_dynamic_bucket_info(BucketConfig) ->
-    case ns_bucket:bucket_type(BucketConfig) of
-        memcached ->
-            %% memcached buckets don't support pitr.
-            [];
-        _ ->
-            case cluster_compat_mode:is_cluster_76() of
-                true ->
-                    [{pitrEnabled,
-                      ns_bucket:pitr_enabled(BucketConfig)},
-                     {pitrGranularity,
-                      ns_bucket:pitr_granularity(BucketConfig)},
-                     {pitrMaxHistoryAge,
-                      ns_bucket:pitr_max_history_age(BucketConfig)}];
-                false ->
-                    []
-            end
     end.
 
 build_continuous_backup_info(BucketConfig) ->
@@ -1360,7 +1340,6 @@ validate_ram(#ram_summary{this_alloc = Alloc, this_used = Used}) ->
 additional_bucket_params_validation(Params, Ctx) ->
     lists:append([maybe_validate_replicas_and_durability(Params, Ctx),
                   validate_magma_ram_quota(Params, Ctx),
-                  validate_pitr_params(Params, Ctx),
                   validate_watermarks(Params, Ctx)]).
 
 maybe_validate_replicas_and_durability(Params, Ctx) ->
@@ -1451,23 +1430,6 @@ validate_magma_ram_quota(Params, Ctx) ->
             [{ramQuota,
               <<"Ram quota for magma must be at least ", RamQ/binary,
                 " MiB">>}];
-        {_, _} ->
-            []
-    end.
-
-validate_pitr_params(Params, Ctx) ->
-    PitrGranularity = get_value_from_parms_or_bucket(pitr_granularity,
-                                                     Params, Ctx),
-    PitrMaxHistoryAge = get_value_from_parms_or_bucket(pitr_max_history_age,
-                                                       Params, Ctx),
-    case {PitrGranularity, PitrMaxHistoryAge} of
-        {undefined, undefined} ->
-            %% memcached buckets don't support pitr
-            [];
-        {Granularity, MaxAge} when Granularity > MaxAge ->
-            [{pitrGranularity,
-              <<"PITR granularity must be less than or equal to max "
-                "history age">>}];
         {_, _} ->
             []
     end.
@@ -1587,7 +1549,6 @@ validate_bucket_type_specific_params(CommonParams, Params,
 
 validate_membase_bucket_params(CommonParams, Params, Name,
                                IsNew, BucketConfig, Version, IsEnterprise) ->
-    AllowPitr = cluster_compat_mode:is_version_76(Version),
     AllowStorageLimit = config_profile:get_bool(enable_storage_limits),
     AllowThrottleLimit = config_profile:get_bool(enable_throttle_limits),
     ReplicasNumResult = validate_replicas_number(Params, IsNew),
@@ -1616,12 +1577,6 @@ validate_membase_bucket_params(CommonParams, Params, Name,
          parse_validate_durability_impossible_fallback(Params, IsNew,
                                                        IsMorpheus),
          parse_validate_warmup_behavior(Params, IsNew, IsMorpheus),
-         parse_validate_pitr_enabled(Params, IsNew, AllowPitr,
-                                     IsEnterprise),
-         parse_validate_pitr_granularity(Params, IsNew, AllowPitr,
-                                         IsEnterprise),
-         parse_validate_pitr_max_history_age(Params, IsNew, AllowPitr,
-                                             IsEnterprise),
          parse_validate_access_scanner_enabled(Params, IsNew, IsMorpheus,
                                                IsPersistent),
          parse_validate_expiry_pager_sleep_time(Params, IsNew, IsMorpheus),
@@ -2303,13 +2258,6 @@ value_not_boolean_error(Param) ->
      list_to_binary(io_lib:format("~p must be true or false",
                                   [Param]))}.
 
-%% Point-in-time Recovery (PITR) parameter parsing and validation.
-
-pitr_not_supported_error(Param) ->
-    {error, Param,
-     <<"Point in time recovery is not supported until cluster is fully "
-        "7.6">>}.
-
 cross_cluster_versioning_not_supported_error(Param) ->
     {error, Param,
      <<"Cross Cluster Versioning is not supported until cluster is fully "
@@ -2435,43 +2383,6 @@ parse_validate_version_pruning_window(Params, IsNew, _Allow,
     Param = "versionPruningWindowHrs",
     Val = proplists:get_value(Param, Params),
     validate_vp_window_hrs(Param, Val, version_pruning_window_hrs, IsNew).
-
-parse_validate_pitr_enabled(Params, _IsNew, false = _AllowPitr,
-                            _IsEnterprise) ->
-    parse_validate_param_not_supported("pitrEnabled", Params,
-                                       fun pitr_not_supported_error/1);
-parse_validate_pitr_enabled(Params, _IsNew, true = _AllowPitr,
-                            false = _IsEnterprise) ->
-    parse_validate_param_not_enterprise("pitrEnabled", Params);
-parse_validate_pitr_enabled(Params, IsNew, true = _AllowPitr,
-                            true = _IsEnterprise) ->
-    Result = menelaus_util:parse_validate_boolean_field("pitrEnabled",
-                                                        '_', Params),
-    process_boolean_param_validation(pitrEnabled, pitr_enabled, Result, IsNew).
-
-parse_validate_pitr_granularity(Params, _IsNew, false = _AllowPitr,
-                                _IsEnterprise) ->
-    parse_validate_param_not_supported("pitrGranularity", Params,
-                                       fun pitr_not_supported_error/1);
-parse_validate_pitr_granularity(Params, _IsNew, true = _AllowPitr,
-                                false = _IsEnterprise) ->
-    parse_validate_param_not_enterprise("pitrGranularity", Params);
-parse_validate_pitr_granularity(Params, IsNew, true = _AllowPitr,
-                                true = _IsEnterprise) ->
-    parse_validate_numeric_param(Params, pitrGranularity,
-                                 pitr_granularity, IsNew).
-
-parse_validate_pitr_max_history_age(Params, _IsNew, false = _AllowPitr,
-                                    _IsEnterprise) ->
-    parse_validate_param_not_supported("pitrMaxHistoryAge", Params,
-                                       fun pitr_not_supported_error/1);
-parse_validate_pitr_max_history_age(Params, _IsNew, true = _AllowPitr,
-                                    false = _IsEnterprise) ->
-    parse_validate_param_not_enterprise("pitrMaxHistoryAge", Params);
-parse_validate_pitr_max_history_age(Params, IsNew, true = _AllowPitr,
-                                    true = _IsEnterprise) ->
-    parse_validate_numeric_param(Params, pitrMaxHistoryAge,
-                                 pitr_max_history_age, IsNew).
 
 parse_validate_numeric_param(Params, Param, ConfigKey, IsNew) ->
     Value = proplists:get_value(atom_to_list(Param), Params),
@@ -4672,128 +4583,6 @@ basic_parse_validate_bucket_auto_compaction_settings_test() ->
     meck:unload(config_profile),
     meck:unload(chronicle_kv),
     ok.
-
-parse_validate_pitr_max_history_age_test() ->
-    %% "Constants" used to make parse_validate_numeric_param() calls in
-    %% this test clearer.
-    IsNewTrue = true,
-    IsNewFalse = false,
-
-    LegitParams = [{"pitrMaxHistoryAge", "100"}],
-
-    %% For these legitimate params tests, the value of IsNew shouldn't matter.
-
-    %% sub-test: legitimate params, IsNew true
-    Result1 = parse_validate_numeric_param(
-                LegitParams,
-                pitrMaxHistoryAge,
-                pitr_max_history_age,
-                IsNewTrue),
-    Expected1 = {ok, pitr_max_history_age, 100},
-    ?assertEqual(Expected1, Result1),
-
-    %% sub-test: legitimate params, IsNew false
-    Result2 = parse_validate_numeric_param(
-                LegitParams,
-                pitrMaxHistoryAge,
-                pitr_max_history_age,
-                IsNewFalse),
-    Expected2 = {ok, pitr_max_history_age, 100},
-    ?assertEqual(Expected2, Result2),
-
-    NonNumericParams = [{"pitrMaxHistoryAge", "foo"}],
-
-    %% sub-test: non-numeric params, IsNew true
-    Result3 = parse_validate_numeric_param(
-                NonNumericParams,
-                pitrMaxHistoryAge,
-                pitr_max_history_age,
-                IsNewTrue),
-    Expected3 = value_not_numeric_error(pitrMaxHistoryAge, "foo"),
-    ?assertEqual(Expected3, Result3),
-
-    %% sub-test: non-numeric params, IsNew false
-    Result4 = parse_validate_numeric_param(
-                NonNumericParams,
-                pitrMaxHistoryAge,
-                pitr_max_history_age,
-                IsNewFalse),
-    Expected4 = value_not_numeric_error(pitrMaxHistoryAge, "foo"),
-    ?assertEqual(Expected4, Result4),
-
-    TooSmallParams = [{"pitrMaxHistoryAge", "0"}],
-
-    %% sub-test: too small params, IsNew true
-    Result5 = parse_validate_numeric_param(
-                TooSmallParams,
-                pitrMaxHistoryAge,
-                pitr_max_history_age,
-                IsNewTrue),
-    Expected5 = value_not_in_range_error(
-                  pitrMaxHistoryAge, "0",
-                  ns_bucket:attribute_min(pitr_max_history_age),
-                  ns_bucket:attribute_max(pitr_max_history_age)),
-    ?assertEqual(Expected5, Result5),
-
-    %% sub-test: too small params, IsNew false
-    Result6 = parse_validate_numeric_param(
-                TooSmallParams,
-                pitrMaxHistoryAge,
-                pitr_max_history_age,
-                IsNewFalse),
-    Expected6 = value_not_in_range_error(
-                  pitrMaxHistoryAge, "0",
-                  ns_bucket:attribute_min(pitr_max_history_age),
-                  ns_bucket:attribute_max(pitr_max_history_age)),
-    ?assertEqual(Expected6, Result6),
-
-    TooBigParams = [{"pitrMaxHistoryAge", "172801"}],
-
-    %% sub-test: too big params, IsNew true
-    Result7 = parse_validate_numeric_param(
-                TooBigParams,
-                pitrMaxHistoryAge,
-                pitr_max_history_age,
-                IsNewTrue),
-    Expected7 = value_not_in_range_error(
-                  pitrMaxHistoryAge, "172801",
-                  ns_bucket:attribute_min(pitr_max_history_age),
-                  ns_bucket:attribute_max(pitr_max_history_age)),
-    ?assertEqual(Expected7, Result7),
-
-    %% sub-test: too big params, IsNew false
-    Result8 = parse_validate_numeric_param(
-                TooBigParams,
-                pitrMaxHistoryAge,
-                pitr_max_history_age,
-                IsNewFalse),
-    Expected8 = value_not_in_range_error(
-                  pitrMaxHistoryAge, "172801",
-                  ns_bucket:attribute_min(pitr_max_history_age),
-                  ns_bucket:attribute_max(pitr_max_history_age)),
-    ?assertEqual(Expected8, Result8),
-
-    MissingParams = [],
-
-    %% sub-test: missing params, IsNew true
-    %% The result should be the default value.
-    Result9 = parse_validate_numeric_param(
-                MissingParams,
-                pitrMaxHistoryAge,
-                pitr_max_history_age,
-                IsNewTrue),
-    Expected9 = {ok, pitr_max_history_age, 86400},
-    ?assertEqual(Expected9, Result9),
-
-    %% sub-test: missing params, IsNew false.
-    %% The missing parameters should be ignored.
-    Result10 = parse_validate_numeric_param(
-                 MissingParams,
-                 pitrMaxHistoryAge,
-                 pitr_max_history_age,
-                 IsNewFalse),
-    Expected10 = ignore,
-    ?assertEqual(Expected10, Result10).
 
 parse_validate_max_magma_shards_test() ->
     meck:new(config_profile, [passthrough]),

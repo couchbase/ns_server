@@ -39,7 +39,7 @@ Note:
 - To test related parameters together, a combined parameter can be used, where
     the name is the related parameters separated by ',' and the test_params /
     bad_params values are given as a tuple specified for the combined parameter.
-    For an example, see allowedTimePeriod or pitr
+    For an example, see allowedTimePeriod
 - Both bucket level and global auto-compaction parameters should be handled here
     with the corresponding tests in auto_compaction_test.py - the reason for
     this is to ensure that combinations of auto-compaction and other parameters
@@ -53,7 +53,6 @@ BUCKET_ENDPOINT_DEFAULT = BUCKETS_ENDPOINT + "/default"
 SET_AUTO_COMPACTION_ENDPOINT = "/controller/setAutoCompaction"
 GET_AUTO_COMPACTION_ENDPOINT = "/settings/autoCompaction"
 
-PITR_PARAMS = "pitrGranularity,pitrMaxHistoryAge"
 ALLOWED_TIME_PERIOD_PARAMS = "allowedTimePeriod[fromHour]," \
                              "allowedTimePeriod[fromMinute]," \
                              "allowedTimePeriod[toHour]," \
@@ -395,16 +394,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
         self.limits['magmaMaxShards']['min'] = 1
         self.limits['magmaMaxShards']['max'] = 128
 
-        # Pitr Granularity
-        # ----------------------------------------------------------------------
-        self.limits['pitrGranularity']['min'] = 1
-        self.limits['pitrGranularity']['max'] = 18000
-
-        # Pitr Max History Age
-        # ----------------------------------------------------------------------
-        self.limits['pitrMaxHistoryAge']['min'] = 1
-        self.limits['pitrMaxHistoryAge']['max'] = 172800
-
         # Drift Ahead Threshold ms
         # ----------------------------------------------------------------------
         self.limits['driftAheadThresholdMs']['min'] = 100
@@ -654,29 +643,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
                 and storage_backend == "magma":
             self.add_limits('magmaMaxShards')
 
-        # Pitr Enabled
-        # ------------------------------------------------------------------
-
-        self.test_params['pitrEnabled'] = [None]
-        if self.is_enterprise and self.is_76:
-            self.test_params['pitrEnabled'] += ["true", "false"]
-
-        if self.is_76 and self.is_enterprise:
-            # Pitr Granularity and Pitr Max History Age
-            # --------------------------------------------------------------
-
-            self.test_params[PITR_PARAMS] = [None]
-            if param == PITR_PARAMS:
-                granu_min = self.limits['pitrGranularity']['min']
-                granu_max = self.limits['pitrGranularity']['max']
-                mha_min = self.limits['pitrMaxHistoryAge']['min']
-                mha_max = self.limits['pitrMaxHistoryAge']['max']
-                self.test_params[PITR_PARAMS] += [
-                    (granu_min, mha_min),
-                    (granu_max, mha_max),
-                    (granu_max, granu_max)
-                ]
-
         if conflict_resolution_type == "lww":
             # Drift Ahead Threshold ms
             # --------------------------------------------------------------
@@ -919,39 +885,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
             self.bad_params['magmaMaxShards'] = [1]
         else:
             self.add_limits_bad('magmaMaxShards')
-
-        if self.is_enterprise:
-            # Pitr Enabled
-            # ------------------------------------------------------------------
-            self.bad_params['pitrEnabled'] = ["bogus"]
-
-            # Pitr Granularity and Pitr Max History Age
-            # ------------------------------------------------------------------
-            granu_min = self.limits['pitrGranularity']['min']
-            granu_max = self.limits['pitrGranularity']['max']
-            mha_min = self.limits['pitrMaxHistoryAge']['min']
-            mha_max = self.limits['pitrMaxHistoryAge']['max']
-            self.bad_params['pitr'] = [
-                (granu_min - 1, mha_min),
-                (granu_min, mha_min - 1),
-                (granu_max + 1, mha_min),
-                (granu_min, mha_max + 1),
-                (granu_max, granu_max - 1),
-                ("bogus", mha_max),
-                (granu_min, "bogus")
-            ]
-        else:
-            # Pitr Enabled
-            # ------------------------------------------------------------------
-            self.bad_params['pitrEnabled'] = ["true"]
-
-            # Pitr Granularity
-            # ------------------------------------------------------------------
-            self.bad_params['pitrGranularity'] = [1]
-
-            # Pitr Max History Age
-            # ------------------------------------------------------------------
-            self.bad_params['pitrMaxHistoryAge'] = [2]
 
         if conflict_resolution_type == "lww":
             # Drift Ahead Threshold ms
@@ -1305,102 +1238,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
             if self.outside_limits(field, value):
                 return {field: "Must be an integer between 1 and 128"}
         return {}
-
-    def pitr_errors(self, test_data, original_data):
-        field_enabled = "pitrEnabled"
-        field_granu = "pitrGranularity"
-        field_max_history_age = "pitrMaxHistoryAge"
-        errors = {}
-        mha_max = self.limits[field_max_history_age]['max']
-        granu_default = 600
-        mha_default = 86400
-
-        if field_enabled in test_data:
-            if not self.is_76:
-                return {field_enabled:
-                            "Point in time recovery is not supported until "
-                            "cluster is fully Elixir"}
-            elif not self.is_enterprise:
-                return {field_enabled:
-                            "\"pitrEnabled\" can only be set in Enterprise "
-                            "edition"}
-            elif test_data[field_enabled] not in ["true", "false"]:
-                errors.update(
-                    {field_enabled: "pitrEnabled must be true or false"})
-
-        if field_granu in test_data:
-            if not self.is_76:
-                return {field_granu:
-                            "Point in time recovery is not supported until "
-                            "cluster is fully Elixir"}
-            elif not self.is_enterprise:
-                return {field_granu:
-                            "\"pitrGranularity\" can only be set in Enterprise "
-                            "edition"}
-            granu = test_data[field_granu]
-
-            if not isinstance(granu, int):
-                errors.update({field_granu:
-                                   f"The value of pitrGranularity "
-                                   f"({granu}) must be a non-negative integer"})
-                if original_data is None:
-                    granu = mha_max + 1
-                else:
-                    granu = granu_default
-
-            elif self.outside_limits('pitrGranularity', granu):
-                errors.update({field_granu:
-                                   f"The value of pitrGranularity ({granu}) "
-                                   f"must be in the range 1 to 18000 "
-                                   f"inclusive"})
-                if original_data is None:
-                    granu = mha_max + 1
-                else:
-                    granu = granu_default
-        else:
-            granu = granu_default
-
-        if field_max_history_age in test_data:
-            if not self.is_76:
-                return {field_max_history_age:
-                            "Point in time recovery is not supported until "
-                            "cluster is fully Elixir"}
-            elif not self.is_enterprise:
-                return {field_max_history_age:
-                            "\"pitrMaxHistoryAge\" can only be set in "
-                            "Enterprise edition"}
-            max_history_age = test_data[field_max_history_age]
-            if not isinstance(max_history_age, int):
-                errors.update({
-                    field_max_history_age:
-                        f"The value of pitrMaxHistoryAge ({max_history_age}) "
-                        f"must be a non-negative integer"})
-
-                if original_data is None:
-                    max_history_age = mha_max + 1
-                else:
-                    max_history_age = mha_default
-            elif self.outside_limits('pitrMaxHistoryAge', max_history_age):
-                errors.update({field_max_history_age:
-                                   f"The value of pitrMaxHistoryAge "
-                                   f"({max_history_age}) must be in the"
-                                   f" range 1 to 172800 inclusive"})
-                if original_data is None:
-                    max_history_age = mha_max + 1
-                else:
-                    max_history_age = mha_default
-        else:
-            max_history_age = mha_default
-
-        # ns_server actually responds with the following error as well as the
-        # outside bounds error with the same key when they both occur, but we
-        # rely on consistent discarding of the first error when converted to a
-        # python dictionary, rather than looking for both errors in the response
-        if granu > max_history_age:
-            errors.update({field_granu: "PITR granularity must be less "
-                                        "than or equal to max history age"})
-
-        return errors
 
     def drift_threshold_errors(self, test_data):
         field = "driftAheadThresholdMs"
@@ -1768,7 +1605,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
                 errors.update(self.max_ttl_error(test_data))
                 errors.update(self.flush_enabled_error(test_data))
                 errors.update(self.magma_max_shards_error(test_data, is_creation))
-                errors.update(self.pitr_errors(test_data, original_data))
                 errors.update(self.drift_threshold_errors(test_data))
                 errors.update(self.storage_quota_percentage_error(test_data))
                 errors.update(self.width_weight_error(test_data, original_data))
@@ -1875,10 +1711,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
                     # Since we are testing bucket creation then we will not
                     # reuse this bucket, so we need to delete it.
                     self.test_delete(f"{endpoint}/{name}")
-                elif self.is_enterprise and self.is_76:
-                    pitr_reset = {'pitrGranularity': 600,
-                                  'pitrMaxHistoryAge': 86400}
-                    self.test_request('POST', endpoint, pitr_reset)
 
     def main_params_valid(self, main_dict):
         ephemeral = main_dict['bucket_type'] == "ephemeral"
@@ -2151,21 +1983,6 @@ class BasicBucketTestSet(BucketTestSetBase):
                         allowed_time_period=[False],
                         just_validate=[True, False],
                         is_creation=[True, False])
-
-    def pitr_test(self):
-        main_params = {
-            "bucket_type": ["couchbase"],
-            "storage_backend": ["couchstore"],
-            "auto_compaction_defined": [None],
-            "conflict_resolution_type": ["seqno"],
-            "bucket_placer": [False],
-            "rank": [0],
-            "allowed_time_period": [False],
-            "just_validate": [True, False],
-            "is_creation": [True, False]
-        }
-        self.test_param("pitrEnabled", **main_params)
-        self.test_param("pitrGranularity,pitrMaxHistoryAge", **main_params)
 
     def drift_threshold_test(self):
         main_params = {

@@ -140,9 +140,6 @@ ep_num_writer_threads none kv_ep_num_writer_threads{} none
 ep_pager_active_vb_pcnt none kv_ep_pager_active_vb_pcnt{} none
 ep_pager_sleep_time_ms none kv_ep_pager_sleep_time_ms{} none
 ep_persistent_metadata_purge_age none kv_ep_persistent_metadata_purge_age{} none
-ep_pitr_enabled none kv_ep_pitr_enabled{} none
-ep_pitr_granularity none kv_ep_pitr_granularity{} none
-ep_pitr_max_history_age none kv_ep_pitr_max_history_age{} none
 ep_replication_throttle_cap_pcnt none kv_ep_replication_throttle_cap_pcnt{} none
 ep_replication_throttle_queue_cap none kv_ep_replication_throttle_queue_cap{} none
 ep_replication_throttle_threshold none kv_ep_replication_throttle_threshold{} none

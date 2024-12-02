@@ -89,9 +89,6 @@
          node_locator/1,
          num_replicas/1,
          num_replicas/2,
-         pitr_enabled/1,
-         pitr_granularity/1,
-         pitr_max_history_age/1,
          attribute_default/1,
          attribute_min/1,
          attribute_max/1,
@@ -546,15 +543,12 @@ warmup_behavior(BucketConfig) ->
 %% The default value of the attribute.
 attribute_default(Name) ->
     case Name of
-        pitr_granularity -> 600;          % 10 minutes
-        pitr_max_history_age -> 86400;    % 24 hours
         version_pruning_window_hrs -> 720;  % 30 days
         expiry_pager_sleep_time -> 600;     % 10 minutes
         memory_low_watermark -> 75;         % percentage
         memory_high_watermark -> 85;        % percentage
         cross_cluster_versioning_enabled -> % boolean
             false;
-        pitr_enabled -> false;              % boolean
         access_scanner_enabled -> true;     % boolean
         continuous_backup_enabled -> false; % boolean
         continuous_backup_interval -> 2;    % minutes
@@ -565,8 +559,6 @@ attribute_default(Name) ->
 %% The minimum value of the attribute.
 attribute_min(Name) ->
     case Name of
-        pitr_granularity -> 1;           % 1 second
-        pitr_max_history_age -> 1;       % 1 second
         version_pruning_window_hrs -> 24; % 24 hours
         expiry_pager_sleep_time -> 0;     % unit seconds
         memory_low_watermark -> 50;       % percentage
@@ -577,8 +569,6 @@ attribute_min(Name) ->
 %% The maximum value of the attribute.
 attribute_max(Name) ->
     case Name of
-        pitr_granularity -> 18000;                  % 5 hours
-        pitr_max_history_age -> 172800;             % 48 hours
         version_pruning_window_hrs ->
             ?MAX_32BIT_SIGNED_INT;                  % unit hours
         expiry_pager_sleep_time ->
@@ -589,16 +579,6 @@ attribute_max(Name) ->
             ?MAX_32BIT_SIGNED_INT                     % minutes
     end.
 
-%% Per-bucket-type point-in-time recovery attributes.  Point-in-time
-%% recovery is not supported on memcached buckets.
-pitr_enabled(BucketConfig) ->
-    case bucket_type(BucketConfig) of
-        memcached ->
-            false;
-        membase ->
-            proplists:get_bool(pitr_enabled, BucketConfig)
-    end.
-
 membase_bucket_config_value_getter(Key, BucketConfig) ->
     case bucket_type(BucketConfig) of
         memcached ->
@@ -606,12 +586,6 @@ membase_bucket_config_value_getter(Key, BucketConfig) ->
         membase ->
             proplists:get_value(Key, BucketConfig, attribute_default(Key))
     end.
-
-pitr_granularity(BucketConfig) ->
-    membase_bucket_config_value_getter(pitr_granularity, BucketConfig).
-
-pitr_max_history_age(BucketConfig) ->
-    membase_bucket_config_value_getter(pitr_max_history_age, BucketConfig).
 
 -spec get_expiry_pager_sleep_time(proplists:proplist()) -> integer() |
                                                            undefined.
@@ -2301,9 +2275,19 @@ chronicle_upgrade_bucket(Func, BucketNames, ChronicleTxn) ->
               Func(Name, Acc)
       end, ChronicleTxn, BucketNames).
 
+%% These bucket properties were never GA'd and so should be removed from
+%% any bucket configs that contain them.
+removed_bucket_settings() ->
+    [pitr_enabled, pitr_granularity, pitr_max_history_age].
+
 chronicle_upgrade_bucket_to_morpheus(BucketName, ChronicleTxn) ->
     PropsKey = sub_key(BucketName, props),
-    {ok, BucketConfig} = chronicle_upgrade:get_key(PropsKey, ChronicleTxn),
+    {ok, BucketConfig0} = chronicle_upgrade:get_key(PropsKey, ChronicleTxn),
+    BucketConfig =
+        lists:filter(
+          fun ({Key, _Value}) ->
+                  not lists:member(Key, removed_bucket_settings())
+          end, BucketConfig0),
     AddProps =
         case bucket_type(BucketConfig) of
             memcached ->
@@ -2352,11 +2336,7 @@ chronicle_upgrade_to_morpheus(ChronicleTxn) ->
                              BucketNames, ChronicleTxn).
 
 default_76_enterprise_props(true = _IsEnterprise) ->
-    [{pitr_enabled, false},
-     {pitr_granularity, attribute_default(pitr_granularity)},
-     {pitr_max_history_age,
-      attribute_default(pitr_max_history_age)},
-     {cross_cluster_versioning_enabled, false},
+    [{cross_cluster_versioning_enabled, false},
      {version_pruning_window_hrs,
       attribute_default(version_pruning_window_hrs)}];
 default_76_enterprise_props(false = _IsEnterprise) ->
@@ -2437,7 +2417,6 @@ extract_bucket_props(Props) ->
                          storage_quota_percentage, num_vbuckets,
                          cross_cluster_versioning_enabled, vbuckets_max_cas,
                          version_pruning_window_hrs,
-                         pitr_enabled, pitr_granularity, pitr_max_history_age,
                          access_scanner_enabled, expiry_pager_sleep_time,
                          memory_low_watermark, memory_high_watermark,
                          autocompaction, purge_interval, flush_enabled,
