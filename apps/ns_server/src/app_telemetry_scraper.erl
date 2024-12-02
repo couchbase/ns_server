@@ -114,6 +114,10 @@ start_fetch() ->
       fun () ->
               Pids = app_telemetry_pool:get_pids(),
               lists:foreach(fun get_telemetry/1, Pids),
+              %% Flush all the metrics. We do this at a regular interval anyway,
+              %% but we might as well do it now since we have scraped from all
+              %% connected clients
+              app_telemetry_aggregator:flush_remote_metrics(),
               Parent ! fetch_done
       end).
 
@@ -134,9 +138,8 @@ handle_data({binary, <<?SUCCESS:8, Data/binary>>}) ->
     lists:foreach(
       fun ({Node, Metric, Value}) when Node =:= node() ->
               ns_server_stats:notify_counter_raw(Metric, Value);
-          ({_Node, _Metric, _Value}) ->
-              %% TODO: Aggregate remote metrics
-              ok;
+          ({Node, Metric, Value}) ->
+              app_telemetry_aggregator:update_remote_cache(Node, Metric, Value);
           ({error, E}) ->
               ?log_warning("Failed to parse metric line. Error: ~p", [E]),
               ns_server_stats:notify_counter_raw(<<"sdk_invalid_metric_total">>)

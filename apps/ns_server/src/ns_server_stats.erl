@@ -37,8 +37,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -export([init_stats/0, notify_counter/1, notify_counter/2, notify_counter_raw/1,
-         notify_counter_raw/2, notify_gauge/2, notify_gauge/3,
-         notify_histogram/2, notify_histogram/4, notify_max/2]).
+         notify_gauge/2, notify_gauge/3, notify_histogram/2, notify_histogram/4,
+         notify_max/2]).
 
 -export([increment_counter/2,
          get_ns_server_stats/0,
@@ -48,6 +48,9 @@
          report_derived_stats/1,
          report_prom_stats/2,
          report_prom_stats/3]).
+
+%% Called from remote node via rpc
+-export([notify_counter_raw/2]).
 
 -type os_pid() :: integer().
 

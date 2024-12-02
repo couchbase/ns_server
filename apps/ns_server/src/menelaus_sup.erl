@@ -112,7 +112,11 @@ init([]) ->
                            {app_telemetry_scraper, start_link, []},
                            permanent, 5000, worker, dynamic},
 
+    AppTelemetryAggregator = {app_telemetry_aggregator,
+                              {app_telemetry_aggregator, start_link, []},
+                              permanent, 5000, worker, dynamic},
+
     Processes = [UIAuth, ScramSha, LocalAuth, Cache, StatsGatherer, RpcEvents,
                  WebSup, Alerts, GuardrailMonitor, CBAuth, ActivityTracker,
-                 AppTelemetryScraper],
+                 AppTelemetryScraper, AppTelemetryAggregator],
     {ok, {{one_for_one, 10, 10}, Processes}}.
