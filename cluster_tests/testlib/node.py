@@ -98,7 +98,11 @@ class Node:
             port = self.port
         else:
             port = self.service_port(service)
-        return f"http://{self.host_with_brackets}:{port}"
+        if service == Service.KV:
+            prefix = "couchbase"
+        else:
+            prefix = "http"
+        return f"{prefix}://{self.host_with_brackets}:{port}"
 
     def https_service_url(self, service: Service = None):
         port = self.tls_service_port(service)

@@ -144,7 +144,7 @@ jsonify_auth(Users, AdminPasswords, RestCreds, PromAuth) ->
 
            pipes:foreach(
              ?producer(),
-             fun ({{auth, {UserName, _Type}}, Auth}) ->
+             fun ({{auth, {UserName, _Type} = Identity}, Auth}) ->
                      case UserName of
                          ClusterAdmin ->
                              TagCA = ns_config_log:tag_user_name(ClusterAdmin),
@@ -153,7 +153,13 @@ jsonify_auth(Users, AdminPasswords, RestCreds, PromAuth) ->
                                           [TagCA]),
                              ok;
                          _ ->
-                             ?yield({kv, memcached_user_info(UserName, Auth)})
+                             case menelaus_users:is_user_locked(Identity) of
+                                 false ->
+                                     ?yield({kv, memcached_user_info(UserName,
+                                                                     Auth)});
+                                 true ->
+                                     ok
+                             end
                      end
              end),
            ?yield(object_end)

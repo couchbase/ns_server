@@ -11,6 +11,11 @@ import requests
 import testlib
 from testlib import Service
 
+from couchbase.auth import PasswordAuthenticator
+from couchbase.cluster import Cluster
+from couchbase.options import ClusterOptions
+from couchbase.exceptions import AuthenticationException
+
 
 class UsersTestSet(testlib.BaseTestSet):
 
@@ -107,6 +112,11 @@ class UsersTestSet(testlib.BaseTestSet):
         testlib.get_succ(self.cluster, '/test', service=Service.VIEWS,
                          expected_code=404, auth=(user, password))
 
+        # Test SDK/KV
+        kv_url = self.cluster.connected_nodes[0].service_url(Service.KV)
+        auth = PasswordAuthenticator(user, password)
+        assert_sdk_pass(kv_url, auth)
+
         # Lock user via PATCH
         lock_user(self.cluster, user)
         assert_locked(self.cluster, user, password)
@@ -129,19 +139,31 @@ class UsersTestSet(testlib.BaseTestSet):
         testlib.get_fail(self.cluster, '/test', service=Service.VIEWS,
                          expected_code=401, auth=(user, password))
 
+        # SDK/KV error
+        assert_sdk_fail(kv_url, auth)
+
         # Unlock user via PATCH
         unlock_user(self.cluster, user)
         assert_not_locked(self.cluster, user, password)
+
+        # SDK/KV passes
+        assert_sdk_pass(kv_url, auth)
 
         # Lock via PUT
         put_user(self.cluster, 'local', user, password=password,
                  roles='admin', full_name=name, groups='', locked="true")
         assert_locked(self.cluster, user, password)
 
+        # SDK/KV error
+        assert_sdk_fail(kv_url, auth)
+
         # Unlock via PUT
         put_user(self.cluster, 'local', user, password=password,
                  roles='admin', full_name=name, groups='', locked="false")
         assert_not_locked(self.cluster, user, password)
+
+        # SDK/KV passes
+        assert_sdk_pass(kv_url, auth)
 
     def expired_user_test(self):
         user = self.user
@@ -666,3 +688,23 @@ def start_ui_session(cluster, user, password):
                       session=session, auth=None, expected_code=200,
                       data={'user': user, 'password': password})
     return session, headers, node
+
+
+def assert_sdk_pass(kv_url, sdk_auth):
+    testlib.poll_for_condition(
+        lambda: test_sdk(kv_url, sdk_auth),
+        sleep_time=0.1, attempts=10, msg="Auth expected to pass")
+
+
+def assert_sdk_fail(kv_url, sdk_auth):
+    testlib.poll_for_condition(
+        lambda: not test_sdk(kv_url, sdk_auth),
+        sleep_time=0.1, attempts=10, msg="Auth expected to fail")
+
+
+def test_sdk(url, auth):
+    try:
+        Cluster(url, ClusterOptions(auth))
+    except AuthenticationException:
+        return False
+    return True
