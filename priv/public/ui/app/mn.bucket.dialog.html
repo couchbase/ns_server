@@ -116,21 +116,21 @@ licenses/APL2.txt.
           [hidden]="(storageBackend | async) === 'couchstore'"
         >
           <label
-            >Magma Configuration
+            >Number of vBuckets
             <ng-template #numVBucketTooltip>
-              Magma configuration affects performance and memory usage.
+              The number of Magma vBuckets affects performance and memory usage.
               <ul>
                 <li>
-                  The minimum bucket memory quota allowed for Configuration 1 is
+                  The minimum bucket memory quota allowed for 128 vBuckets is
                   100 MiB.
                 </li>
                 <li>
-                  The minimum bucket memory quota allowed for Configuration 2 is
+                  The minimum bucket memory quota allowed for 1024 vBuckets is
                   1 GiB.
                 </li>
                 <li>
                   To create an XDCR replication to or from a bucket in Server
-                  version lower than 8.0, you must choose Configuration 2.
+                  version lower than 8.0, you must choose 1024 vBuckets.
                 </li>
               </ul>
             </ng-template>
@@ -138,7 +138,7 @@ licenses/APL2.txt.
               class="fa-stack icon-info"
               [ngbTooltip]="numVBucketTooltip"
               triggers="click"
-              placement="top"
+              placement="right"
             >
               <span class="icon fa-circle-thin fa-stack-2x"></span>
               <span class="icon fa-info fa-stack-1x"></span>
@@ -150,14 +150,14 @@ licenses/APL2.txt.
             value=""
             id="for-magma-128"
           />
-          <label for="for-magma-128">Configuration 1</label>
+          <label for="for-magma-128">128</label>
           <input
             type="radio"
             formControlName="numVBuckets"
             value="1024"
             id="for-magma-1024"
           />
-          <label for="for-magma-1024">Configuration 2</label>
+          <label for="for-magma-1024">1024</label>
         </div>
       </div>
       <div class="formrow">
