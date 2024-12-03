@@ -224,6 +224,25 @@ handle_engage_cluster2(Req) ->
             %% 127.0.0.1 and thus join attempt in CBSE-385 would be
             %% prevented at completeJoin step which would be sent to
             %% 127.0.0.1 (joiner) and bounced.
+
+            %% Trying to resolve a race condition between chronicle config
+            %% upgrade and node join.
+            %%
+            %% Basically making sure that this node has upgraded its
+            %% chronicle config before proceeding. Otherwise, it is
+            %% possible that this node still doesn't have
+            %% cluster_compat_version set and thus
+            %% clusterCompatibility will be reported as
+            %% min_supported_compat_version() which might prevent joining
+            %% the cluster.
+            %%
+            %% wait_statuses() is needed to make sure that ns_doctor has
+            %% actual information about this node (because
+            %% consider_switching_compat_mode() uses this information to decide
+            %% if it should trigger compat mode switch or not).
+            ns_doctor:wait_statuses([node()], 30000),
+            compat_mode_manager:consider_switching_compat_mode(),
+
             {Result} = menelaus_web_node:build_full_node_info(node()),
             {_, _} = CompatTuple =
                 lists:keyfind(<<"clusterCompatibility">>, 1, NodeKVList),
