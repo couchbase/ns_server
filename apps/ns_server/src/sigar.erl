@@ -437,11 +437,14 @@ compute_cpu_stats(#{<<"supported">> := true} = Counters) ->
             RawCpuIrq = get_raw_counter_msec_to_sec(<<"cpu_irq_ms">>, Counters),
             RawCpuStolen = get_raw_counter_msec_to_sec(<<"cpu_stolen_ms">>,
                                                        Counters),
+            RawCpuIowait = get_raw_counter_msec_to_sec(<<"cpu_iowait_ms">>,
+                                                       Counters),
             Other = RawCpuTotal - (RawCpuUser + RawCpuSys + RawCpuIdle +
-                                   RawCpuIrq + RawCpuStolen),
+                                   RawCpuIrq + RawCpuStolen + RawCpuIowait),
             %% Raw counters so users can do their own computations using
             %% promql.
             [{cpu_host_seconds_total_irq, RawCpuIrq},
+             {cpu_host_seconds_total_iowait, RawCpuIowait},
              {cpu_host_seconds_total_stolen, RawCpuStolen},
              {cpu_host_seconds_total_other, Other}]
     end;

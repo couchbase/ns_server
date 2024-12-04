@@ -785,7 +785,7 @@
         "labels": [
             {
                 "name": "mode",
-                "help": "type of usage (busy, idle, user, sys, irq, stolen, other)"
+                "help": "type of usage (idle, iowait, user, sys, irq, stolen, other)"
             }
         ]
     },
