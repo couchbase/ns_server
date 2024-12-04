@@ -81,13 +81,11 @@ class NodeAdditionTests(testlib.BaseTestSet):
     def n2n_on_addnode_test(self):
         self.n2n_test_base(self.cluster.add_node, True)
 
-    # TODO: MB-64350 - re-enable/fix issues in CI
-    # def n2n_off_joinself_test(self):
-    #     self.n2n_test_base(self.cluster.do_join_cluster, False)
+    def n2n_off_joinself_test(self):
+        self.n2n_test_base(self.cluster.do_join_cluster, False)
 
-    # TODO: MB-64350 - re-enable/fix issues in CI
-    # def n2n_on_joinself_test(self):
-    #     self.n2n_test_base(self.cluster.do_join_cluster, True)
+    def n2n_on_joinself_test(self):
+        self.n2n_test_base(self.cluster.do_join_cluster, True)
 
 
 class NodeAdditionWithCertsTests(testlib.BaseTestSet):
