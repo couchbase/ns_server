@@ -38,6 +38,7 @@ handle_get_secrets(Req) ->
     menelaus_util:reply_json(Req, Res).
 
 handle_get_secret(IdStr, Req) when is_list(IdStr) ->
+    menelaus_util:assert_is_enterprise(),
     case cb_cluster_secrets:get_secret(parse_id(IdStr)) of
         {ok, Props} ->
             case read_filter_secrets_by_permission([Props], Req) of
@@ -51,6 +52,7 @@ handle_get_secret(IdStr, Req) when is_list(IdStr) ->
     end.
 
 handle_post_secret(Req) ->
+    menelaus_util:assert_is_enterprise(),
     with_validated_secret(
       fun (ToAdd) ->
           maybe
@@ -62,6 +64,7 @@ handle_post_secret(Req) ->
       end, #{}, Req).
 
 handle_put_secret(IdStr, Req) ->
+    menelaus_util:assert_is_enterprise(),
     Id = parse_id(IdStr),
     case cb_cluster_secrets:get_secret(Id) of
         {ok, CurProps} ->
@@ -82,6 +85,7 @@ handle_put_secret(IdStr, Req) ->
     end.
 
 handle_test_post_secret(Req) ->
+    menelaus_util:assert_is_enterprise(),
     with_validated_secret(
       fun (Params) ->
           maybe
@@ -92,6 +96,7 @@ handle_test_post_secret(Req) ->
       end, #{}, Req).
 
 handle_test_put_secret(IdStr, Req) ->
+    menelaus_util:assert_is_enterprise(),
     Id = parse_id(IdStr),
     case cb_cluster_secrets:get_secret(Id) of
         {ok, CurProps} ->
@@ -163,6 +168,7 @@ enforce_static_field_validator(Name, CurValue, State) ->
                        end, Name, State).
 
 handle_delete_secret(IdStr, Req) ->
+    menelaus_util:assert_is_enterprise(),
     case cb_cluster_secrets:delete_secret(parse_id(IdStr),
                                           is_writable(_, Req)) of
         ok ->
@@ -178,6 +184,7 @@ handle_delete_secret(IdStr, Req) ->
     end.
 
 handle_rotate(IdStr, Req) ->
+    menelaus_util:assert_is_enterprise(),
     case cb_cluster_secrets:rotate(parse_id(IdStr)) of
         ok -> menelaus_util:reply(Req, 200);
         {error, not_found} ->

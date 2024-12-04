@@ -496,13 +496,24 @@ get_node_deks_info() ->
                         ?DEK_COUNTERS_UPDATE_TIMEOUT)
     catch
         _:E ->
-            ?log_error("Failed to get node deks_info: ~p", [E]),
-            Kinds = cb_deks:dek_kinds_list(),
-            maps:from_list(
-              lists:map(
-                fun (K) ->
-                    {K, #{issues => [{proc_communication, failed}]}}
-                end, Kinds))
+            case cluster_compat_mode:is_enterprise() of
+                true ->
+                    ?log_error("Failed to get node deks_info: ~p", [E]),
+                    Kinds = cb_deks:dek_kinds_list(),
+                    maps:from_list(
+                      lists:map(
+                        fun (K) ->
+                            {K, #{data_status => unknown,
+                                  issues => [{proc_communication, failed}]}}
+                        end, Kinds));
+                false ->
+                    Kinds = cb_deks:dek_kinds_list(),
+                    maps:from_list(
+                      lists:map(
+                        fun (K) ->
+                            {K, #{data_status => unencrypted, issues => []}}
+                        end, Kinds))
+            end
     end.
 
 -spec new_key_id() -> key_id().

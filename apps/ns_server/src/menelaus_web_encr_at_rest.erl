@@ -91,6 +91,7 @@ handle_get(Path, Req) ->
                                       Req).
 
 handle_post(Path, Req) ->
+    menelaus_util:assert_is_enterprise(),
     menelaus_web_settings2:handle_post(
       fun (Params, Req2) ->
           NewSettings = maps:map(fun (_, V) -> maps:from_list(V) end,
@@ -125,6 +126,7 @@ handle_post(Path, Req) ->
       end, Path, params(), fun type_spec/1, Req).
 
 handle_bucket_drop_keys(Bucket, Req) ->
+    menelaus_util:assert_is_enterprise(),
     handle_set_drop_time(
       fun (Time) ->
           Key = ns_bucket:sub_key(Bucket, encr_at_rest),
@@ -165,6 +167,7 @@ format_encr_at_rest_info(Info) ->
                 end, Info)}.
 
 handle_drop_keys(TypeName, Req) ->
+    menelaus_util:assert_is_enterprise(),
     handle_set_drop_time(
       fun (Time) ->
           TypeKey =
@@ -221,7 +224,11 @@ get_settings(Snapshot, ExtraSettings) ->
     Merge(Merge(defaults(), Settings), ExtraSettings).
 
 defaults() ->
-    #{config_encryption => #{encryption => encryption_service,
+    IsEnterprise = cluster_compat_mode:is_enterprise(),
+    #{config_encryption => #{encryption => case IsEnterprise of
+                                               true -> encryption_service;
+                                               false -> disabled
+                                           end,
                              secret_id => ?SECRET_ID_NOT_SET,
                              dek_lifetime_in_sec => 365*60*60*24,
                              dek_rotation_interval_in_sec => 30*60*60*24,

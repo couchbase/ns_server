@@ -160,7 +160,8 @@ start_link(Bucket) ->
     %% when ns_memcached is started. Note that ns_memcached can't call
     %% cb_cluster_secrets, because cb_cluster_secrets calls ns_memcached, so
     %% deadlock is possible.
-    cb_cluster_secrets:sync_with_node_monitor(),
+    cluster_compat_mode:is_enterprise() andalso
+        cb_cluster_secrets:sync_with_node_monitor(),
     gen_server:start_link({local, server(Bucket)}, ?MODULE, Bucket, []).
 
 

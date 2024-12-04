@@ -1621,7 +1621,8 @@ validate_membase_bucket_params(CommonParams, Params, Name,
         parse_validate_limits(
           Params, BucketConfig, IsNew, AllowThrottleLimit,
           fun menelaus_web_settings:get_throttle_limit_attributes/0) ++
-        validate_bucket_encryption_at_rest_settings(Params, Version),
+        validate_bucket_encryption_at_rest_settings(Params, Version,
+                                                    IsEnterprise),
 
     validate_bucket_purge_interval(Params, BucketConfig, IsNew) ++
         get_conflict_resolution_type_and_thresholds(
@@ -2005,9 +2006,13 @@ parse_validate_bucket_auto_compaction_settings(Params) ->
             end
     end.
 
-validate_bucket_encryption_at_rest_settings(Params, Version) ->
+validate_bucket_encryption_at_rest_settings(Params, Version, IsEnterprise) ->
     Allowed = cluster_compat_mode:is_version_morpheus(Version),
     case parse_validate_encryption_secret_id(Params) of
+        [{ok, encryption_secret_id, Id}] when not IsEnterprise,
+                                              Id /= ?SECRET_ID_NOT_SET ->
+            [{error, encryptionAtRestSecretId,
+              <<"Encryption At-Rest is not allowed in community edition">>}];
         [{ok, encryption_secret_id, Id}] when not Allowed,
                                               Id /= ?SECRET_ID_NOT_SET ->
             [{error, encryptionAtRestSecretId,

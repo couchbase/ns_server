@@ -53,8 +53,8 @@ child_specs() ->
      {guardrail_enforcer, {guardrail_enforcer, start_link, []},
       permanent, 1000, worker, []},
      {activity_aggregator, {activity_aggregator, start_link, []},
-      permanent, 1000, worker, []},
-     {cb_cluster_secrets, {cb_cluster_secrets, start_link_master_monitor, []},
       permanent, 1000, worker, []}] ++
-        [{license_reporting, {license_reporting, start_link, []},
-          permanent, 1000, worker, []} || cluster_compat_mode:is_enterprise()].
+    [{cb_cluster_secrets, {cb_cluster_secrets, start_link_master_monitor, []},
+      permanent, 1000, worker, []} || cluster_compat_mode:is_enterprise()] ++
+    [{license_reporting, {license_reporting, start_link, []},
+      permanent, 1000, worker, []} || cluster_compat_mode:is_enterprise()].

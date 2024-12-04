@@ -170,21 +170,22 @@ child_specs() ->
 
      {audit_events,
       {gen_event, start_link, [{local, audit_events}]},
-      permanent, brutal_kill, worker, dynamic},
+      permanent, brutal_kill, worker, dynamic}] ++
 
-     suppress_max_restart_intensity:spec(
+    [suppress_max_restart_intensity:spec(
        {encryption_service,
         {encryption_service,
          start_link, []},
-        {permanent, 1, ?MAX_R, ?MAX_T}, 5000, worker, [encryption_service]}),
+        {permanent, 1, ?MAX_R, ?MAX_T}, 5000, worker, [encryption_service]})
+     || cluster_compat_mode:is_enterprise()] ++
 
-     {ns_memcached_sockets_pool, {ns_memcached_sockets_pool, start_link, []},
-      permanent, 1000, worker, []},
+    [{ns_memcached_sockets_pool, {ns_memcached_sockets_pool, start_link, []},
+      permanent, 1000, worker, []}] ++
 
-     {cb_cluster_secrets, {cb_cluster_secrets, start_link_node_monitor, []},
-      permanent, 1000, worker, []},
+    [{cb_cluster_secrets, {cb_cluster_secrets, start_link_node_monitor, []},
+      permanent, 1000, worker, []} || cluster_compat_mode:is_enterprise()] ++
 
-     {menelaus, {menelaus_sup, start_link, []},
+    [{menelaus, {menelaus_sup, start_link, []},
       permanent, infinity, supervisor,
       [menelaus_sup]},
 
