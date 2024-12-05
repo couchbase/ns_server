@@ -270,6 +270,27 @@ class UsersBackupTests(testlib.BaseTestSet):
                          ['security_admin', 'user_admin_external'])
             verify_roles(self.cluster, 'localsecurityandbackupadmin76',
                          ['data_backup', 'security_admin', 'user_admin_local'])
+
+            # We now have a mixture of security and non-security roles. Do
+            # a backup from a non-security role and ensure none of the security
+            # roles get backed up.
+            user2 = 'UserAdminLocal'
+            name2 = testlib.random_str(10)
+            password2 = testlib.random_str(10)
+            put_user(self.cluster, 'local', user2, password2,
+                     roles='user_admin_local', full_name=name2, groups='',
+                     validate_user_props=True)
+
+            kwargs = {"auth": (user2, password2)}
+            backup2 = testlib.get_succ(self.cluster, '/settings/rbac/backup',
+                                   **kwargs).json()
+            users2 = [user["id"] for user in backup2.get("users", [])]
+
+            assert 'localsecurityadmin76' not in users2
+            assert 'externalsecurityadmin76' not in users2
+            assert 'localsecurityandbackupadmin76' not in users2
+            assert len(users2) == 8
+
         finally:
             # Cleanup the users created by the restore
             users = [user["id"] for user in backup.get("users", [])]
@@ -277,9 +298,11 @@ class UsersBackupTests(testlib.BaseTestSet):
                 testlib.ensure_deleted(
                     self.cluster, f'/settings/rbac/users/local/{u}')
 
-            # Cleanup the backup admin created by this test
+            # Cleanup the users created by this test
             testlib.ensure_deleted(
                     self.cluster, f'/settings/rbac/users/local/{user}')
+            testlib.ensure_deleted(
+                    self.cluster, f'/settings/rbac/users/local/{user2}')
 
     # Restore a backup taken on a 7.6.x system containing roles that
     # are security roles. This is done by a user without a security role
