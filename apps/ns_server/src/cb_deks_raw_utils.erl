@@ -112,14 +112,21 @@ external_read_keys(DekKind, KeyIds, Opts) ->
             P ->
                 P
         end,
+    BinDir =
+        case maps:get(bin_path_override, Opts, undefined) of
+            undefined ->
+                path_config:component_path(bin);
+            BPath ->
+                BPath
+        end,
     GosecretsCfg = filename:join(ConfigDir, "gosecrets.cfg"),
-    GosecretsPath = path_config:component_path(bin, "gosecrets"),
+    GosecretsPath = filename:join(BinDir, "gosecrets"),
     HiddenPass = maps:get(hidden_pass, Opts, ?HIDE(undefined)),
     Input = case ?UNHIDE(HiddenPass) of
                 undefined -> undefined;
                 Pass -> ?HIDE(Pass ++ "\n")
             end,
-    Path = path_config:component_path(bin, "dump-keys"),
+    Path = filename:join(BinDir, "dump-keys"),
     maybe
         {ok, DumpKeysPath} ?= case os:find_executable(Path) of
                                   false -> {error, {no_dump_keys, Path}};
