@@ -20,6 +20,7 @@ from testsets.secret_management_tests import post_es_config, reset_es_config, \
 from testsets.native_encryption_tests import set_cfg_encryption
 import datetime
 import subprocess
+import pyzipper
 
 FAKE_LOG_FILE = "analytics_debug.log"
 regex_unredacted = re.compile("<ud>(?![a-f0-9]{40}</ud>)")
@@ -70,6 +71,48 @@ class CbcollectTest(testlib.BaseTestSet):
         with zipfile.ZipFile(f'{zip_filename}-redacted.zip', mode="r") as z:
             file_to_check = cbcollect_filename(z, f'ns_server.{FAKE_LOG_FILE}')
             assert_file_is_redacted(z, file_to_check)
+
+    def encrypted_cbcollect_test(self):
+        node = self.cluster.connected_nodes[0]
+        password = testlib.random_str(8)
+        filename = 'debug.log'
+        zip_filename = Path(self.zip_dir) / 'encrypted_cbcollect_test_dump'
+        run_cbcollect(node, zip_filename, redaction_level="partial",
+                      task_regexp=f'couchbase logs \\({filename}\\)',
+                      encrypt_redacted_zip=True, encrypt_unredacted_zip=True,
+                      stdin_zip_password=password)
+
+        for zf in [f'{zip_filename}.zip', f'{zip_filename}-redacted.zip']:
+            # trying to open zip using regular zipfile module, without password
+            with zipfile.ZipFile(zf, mode="r") as z:
+                print(f'files in {zf} archive: {z.namelist()}')
+                file_to_check = cbcollect_filename(z, f'ns_server.{filename}')
+                try:
+                    z.open(file_to_check)
+                    assert False, 'expected exception is not raised'
+                except RuntimeError as e:
+                    err = str(e)
+                    assert 'password required for extraction' in err, \
+                           f'unexpected exception: {err}'
+
+            # trying to open zip using pyzipper that supports AES encryption,
+            # so it should be able to open the zip even if the password is
+            # correct
+            with pyzipper.AESZipFile(zf, mode="r") as z:
+                print(f'files in {zf} archive (using pyzipper): {z.namelist()}')
+                file_to_check = cbcollect_filename(z, f'ns_server.{filename}')
+
+                z.setpassword(b'wrong_password')
+                try:
+                    z.open(file_to_check)
+                    assert False, 'expected exception is not raised'
+                except RuntimeError as e:
+                    err = str(e)
+                    assert 'Bad password for file' in err, \
+                           f'unexpected exception: {err}'
+
+                z.setpassword(password.encode())
+                z.open(file_to_check)
 
     def encrypted_cfg_master_password_via_script_test(self):
         node = self.cluster.connected_nodes[0]
@@ -163,7 +206,8 @@ class CbcollectTest(testlib.BaseTestSet):
 
 def run_cbcollect(node, path_to_zip, redaction_level=None, task_regexp=None,
                   env_master_password=None, stdin_master_password=None,
-                  expected_exit_code=0):
+                  encrypt_redacted_zip=False, encrypt_unredacted_zip=False,
+                  stdin_zip_password=None, expected_exit_code=0):
     print(f'Starting cbcollect at node {node} to file: {path_to_zip}...')
     initargs = os.path.join(node.data_path(), "initargs")
     args = [testlib.get_utility_path('cbcollect_info'),
@@ -182,13 +226,27 @@ def run_cbcollect(node, path_to_zip, redaction_level=None, task_regexp=None,
 
     if stdin_master_password is not None:
         args.append("--master-password")
-        args.append("--use-stdin")
 
-    print(f'args: {args}\nenv: {env}')
+    if encrypt_redacted_zip:
+        args.append("--encrypt-redacted")
+
+    if encrypt_unredacted_zip:
+        args.append("--encrypt-unredacted")
+
+    proc_input = None
+    if stdin_master_password is not None or stdin_zip_password is not None:
+        args.append("--use-stdin")
+        proc_input = ""
+        if stdin_master_password is not None:
+            proc_input += stdin_master_password + '\n'
+        if stdin_zip_password is not None:
+            proc_input += stdin_zip_password + '\n'
+
+    print(f'args: {args}\nenv: {env}\nproc_input: {proc_input}')
     p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE, text=True, env=env)
 
-    out, err = p.communicate(input=stdin_master_password, timeout=120)
+    out, err = p.communicate(input=proc_input, timeout=120)
 
     print(f'cbcollect return {p.returncode}')
 
