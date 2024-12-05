@@ -795,7 +795,7 @@ build_xdcr_tasks(TasksDict, AllRepDocs) ->
          {ConflictLogging} =
              proplists:get_value(conflictLogging, Doc3, {[]}),
          ConflictLoggingDisabled = ConflictLogging =:= [] orelse
-             proplists:get_value(disabled, ConflictLogging, false),
+             proplists:get_value(<<"disabled">>, ConflictLogging, false),
          Doc4 = [{conflictLoggingDisabled, ConflictLoggingDisabled} | Doc3],
          Doc5 = lists:keydelete(conflictLogging, 1, Doc4),
 
