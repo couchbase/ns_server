@@ -66,7 +66,7 @@ class MnSecuritySecretsEncryptionDialogComponent extends MnLifeCycleHooksToStrea
       });
 
     this.httpError = this.mnSecuritySecretsService.stream.postEncryptionAtRestType.error;
-    this.filteredSecrets = this.secrets.filter(secret => secret.usage.find(u => u.includes(this.mapTypeToSecret(this.type) + '-encryption') ));
+    this.filteredSecrets = this.secrets.filter(secret => secret.usage.find(u => u.includes(this.type + '-encryption') ));
   }
 
   doUnpack({encryptionMethod, encryptionSecretId, dekLifetime, dekRotationInterval}) {
@@ -95,12 +95,5 @@ class MnSecuritySecretsEncryptionDialogComponent extends MnLifeCycleHooksToStrea
 
   valuesMapping(item) {
     return item ? item.name || '[empty name]' : item;
-  }
-
-  mapTypeToSecret(type) {
-    switch (type) {
-      case "config": return "configuration";
-      default: return type;
-    }
   }
 }
