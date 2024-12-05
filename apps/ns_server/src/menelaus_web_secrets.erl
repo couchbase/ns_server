@@ -26,6 +26,7 @@
          handle_test_post_secret/1,
          handle_test_put_secret/2,
          handle_delete_secret/2,
+         handle_delete_historical_key/3,
          handle_rotate/2]).
 
 handle_get_secrets(Req) ->
@@ -181,6 +182,22 @@ handle_delete_secret(IdStr, Req) ->
             menelaus_util:web_exception(503, format_error(no_quorum));
         {error, Reason} ->
             menelaus_util:reply_global_error(Req, format_error(Reason))
+    end.
+
+handle_delete_historical_key(IdStr, HistKeyIdStr, Req) ->
+    menelaus_util:assert_is_enterprise(),
+    case cb_cluster_secrets:delete_historical_key(parse_id(IdStr),
+                                                  list_to_binary(HistKeyIdStr),
+                                                  is_writable(_, Req)) of
+        ok ->
+            menelaus_util:reply(Req, 200);
+        {error, forbidden} ->
+            menelaus_util:web_exception(403, "Forbidden");
+        {error, not_found} ->
+            menelaus_util:reply_not_found(Req);
+        {error, no_quorum} ->
+            menelaus_util:web_exception(503, format_error(no_quorum));
+        {error, Reason} -> menelaus_util:reply_global_error(Req, format_error(Reason))
     end.
 
 handle_rotate(IdStr, Req) ->
@@ -653,6 +670,8 @@ format_error(no_quorum) ->
 format_error({store_key_error, Msg}) ->
     %% This error is returned when secret params test fails
     Msg;
+format_error(active_key) ->
+    "Can't delete active key";
 format_error(Reason) ->
     lists:flatten(io_lib:format("~p", [Reason])).
 

@@ -1176,6 +1176,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {no_check_disallow_anonymous,
                      fun menelaus_web_secrets:handle_delete_secret/2,
                      [SecretId]};
+                ["settings", "secrets", SecretId, "historicalKeys", Id] ->
+                    {no_check_disallow_anonymous,
+                     fun menelaus_web_secrets:handle_delete_historical_key/3,
+                     [SecretId, Id]};
                 ["couchBase" | _] -> {no_check_disallow_anonymous,
                                       fun menelaus_pluggable_ui:proxy_req/4,
                                       ["couchBase",

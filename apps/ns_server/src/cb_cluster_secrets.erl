@@ -46,6 +46,7 @@
          add_new_secret/1,
          replace_secret/3,
          delete_secret/2,
+         delete_historical_key/3,
          get_all/0,
          get_all/1,
          get_secret/1,
@@ -80,6 +81,7 @@
          test_internal/1,
          sync_with_node_monitor/0,
          delete_secret_internal/2,
+         delete_historical_key_internal/3,
          get_node_deks_info/0]).
 
 -record(state, {proc_type :: ?NODE_PROC | ?MASTER_PROC,
@@ -363,6 +365,53 @@ delete_secret_internal(Id, IsSecretWritableFun) ->
             ok;
         {error, Reason} ->
             {error, Reason}
+    end.
+
+-spec delete_historical_key(secret_id(), key_id(), fun((secret_props()) -> boolean())) ->
+          ok | {error, not_found | secret_in_use() | forbidden |
+                       inconsistent_graph() | no_quorum}.
+delete_historical_key(SecretId, HistKeyId, IsSecretWritableFun) ->
+    execute_on_master({?MODULE, delete_historical_key_internal,
+                       [SecretId, HistKeyId, IsSecretWritableFun]}).
+
+-spec delete_historical_key_internal(secret_id(), key_id(), fun((secret_props()) -> boolean())) ->
+          ok | {error, not_found | secret_in_use() | forbidden |
+                       inconsistent_graph() | no_quorum | active_key}.
+delete_historical_key_internal(SecretId, HistKeyId, IsSecretWritableFun) ->
+    %% It is important to get the counters before we start dek info aggregation
+    OldCountersMap = get_dek_counters(direct),
+    case get_all_node_deks_info() of
+        {ok, AllNodesDekInfo} ->
+            case check_key_id_usage(HistKeyId, AllNodesDekInfo) of
+                {in_use, DekKinds} ->
+                    {error, {used_by, #{by_deks => DekKinds}}};
+                not_in_use ->
+                    RV = chronicle_transaction(
+                           [?CHRONICLE_SECRETS_KEY,
+                            ?CHRONICLE_DEK_COUNTERS_KEY],
+                           fun (Snapshot) ->
+                               CountersMap = get_dek_counters(Snapshot),
+                               case CountersMap == OldCountersMap of
+                                   true ->
+                                       delete_historical_key_txn(
+                                         SecretId,
+                                         HistKeyId,
+                                         IsSecretWritableFun,
+                                         Snapshot);
+                                   false ->
+                                       {abort, {error, retry}}
+                               end
+                           end),
+                    case RV of
+                        ok ->
+                            sync_with_all_node_monitors(),
+                            ok;
+                        {error, Reason} ->
+                            {error, Reason}
+                    end
+            end;
+        Error ->
+            Error
     end.
 
 %% Cipher should have type crypto:cipher() but it is not exported
@@ -1724,6 +1773,34 @@ can_delete_secret(#{id := Id}, Snapshot) ->
             {error, {used_by, M}}
     end.
 
+-spec get_secrets_encrypted_by_key_id(key_id(), chronicle_snapshot()) ->
+          [secret_id()].
+get_secrets_encrypted_by_key_id(KeyId, Snapshot) ->
+    lists:filtermap(
+      fun (#{id := Id} = Props) ->
+          case lists:member(KeyId, get_kek_ids_that_encrypt_props(Props)) of
+              true -> {true, Id};
+              false -> false
+          end
+      end, get_all(Snapshot)).
+
+-spec get_kek_ids_that_encrypt_props(secret_props()) -> [key_id()].
+get_kek_ids_that_encrypt_props(#{type := ?GENERATED_KEY_TYPE,
+                                 data := #{keys := Keys}}) ->
+    lists:filtermap(fun (#{key_material := #{encrypted_by := {_, KekId}}}) ->
+                            {true, KekId};
+                        (#{key_material := #{encrypted_by := undefined}}) ->
+                            false
+                    end, Keys);
+get_kek_ids_that_encrypt_props(#{type := ?AWSKMS_KEY_TYPE}) ->
+    [];
+get_kek_ids_that_encrypt_props(#{type := ?KMIP_KEY_TYPE,
+                                 data := #{key_passphrase := KP}}) ->
+    case KP of
+        #{encrypted_by := {_, KekId}} -> [KekId];
+        #{encrypted_by := undefined} -> []
+    end.
+
 -spec get_secrets_used_by_secret_id(secret_id(), chronicle_snapshot()) ->
                                                                 [secret_id()].
 get_secrets_used_by_secret_id(SecretId, Snapshot) ->
@@ -1764,9 +1841,7 @@ get_secrets_that_encrypt_props(#{type := ?KMIP_KEY_TYPE,
 -spec get_dek_kinds_used_by_secret_id(secret_id(), chronicle_snapshot()) ->
                                                         [cb_deks:dek_kind()].
 get_dek_kinds_used_by_secret_id(Id, Snapshot) ->
-    Map = chronicle_compat:get(Snapshot,
-                               ?CHRONICLE_DEK_COUNTERS_KEY,
-                               #{default => #{}}),
+    Map = get_dek_counters(Snapshot),
     maps:keys(maps:get({secret, Id}, Map, #{})).
 
 -spec get_active_key_id_from_secret(secret_props()) -> {ok, key_id()} |
@@ -2570,63 +2645,78 @@ sync_with_all_node_monitors() ->
 -spec maybe_reset_deks_counters() ->
           ok | {error, retry | node_errors | missing_nodes | no_quorum}.
 maybe_reset_deks_counters() ->
+    case get_dek_counters(direct) of
+        CounterMap when CounterMap == #{} ->
+            ok;
+        CounterMap ->
+            case get_all_node_deks_info() of
+                {ok, AllNodesDekInfo} ->
+                    reset_dek_counters(CounterMap, AllNodesDekInfo);
+                {error, _} = Error ->
+                    Error
+            end
+    end.
+
+-spec get_dek_counters(chronicle_snapshot()) ->
+          #{EncryptionMethod := Counters}
+          when EncryptionMethod :: {secret, secret_id()} | encryption_service,
+               Counters :: #{cb_deks:dek_kind() := non_neg_integer()}.
+get_dek_counters(Snapshot) ->
+    chronicle_compat:get(Snapshot, ?CHRONICLE_DEK_COUNTERS_KEY,
+                         #{default => #{}}).
+
+-spec get_all_node_deks_info() ->
+          {ok, #{cb_deks:dek_kind() => [cb_deks:dek()]}} |
+          {error, _}.
+get_all_node_deks_info() ->
     AllNodes = ns_node_disco:nodes_wanted(),
     MissingNodes = AllNodes -- ns_node_disco:nodes_actual(),
     case MissingNodes of
         [] ->
-            case chronicle_kv:get(kv, ?CHRONICLE_DEK_COUNTERS_KEY) of
-                {ok, {OldMap, _}} when OldMap == #{} ->
-                    ok;
-                {ok, {OldMap, _}} ->
-                    %% Each node returns information about its deks
-                    %% So we can calculate which secrets are actually in use
-                    %% and update that information in chronicle
-                    Res = erpc:multicall(AllNodes, ?MODULE, get_node_deks_info,
-                                         [], ?DEK_COUNTERS_UPDATE_TIMEOUT),
-                    {NonErrors, Errors} =
-                        misc:partitionmap(fun ({_N, {ok, R}}) -> {left, R};
-                                              ({N, E}) -> {right, {N, E}}
-                                          end, lists:zip(AllNodes, Res)),
+            %% Each node returns information about its deks
+            %% So we can calculate which secrets are actually in use
+            %% and update that information in chronicle
+            Res = erpc:multicall(AllNodes, ?MODULE, get_node_deks_info,
+                                    [], ?DEK_COUNTERS_UPDATE_TIMEOUT),
+            {NonErrors, Errors} =
+                misc:partitionmap(fun ({_N, {ok, R}}) -> {left, R};
+                                        ({N, E}) -> {right, {N, E}}
+                                    end, lists:zip(AllNodes, Res)),
 
-                    %% If some deks have issues we should not remove anything
-                    %% until those issues are resolved
-                    ShouldRetry =
-                        lists:any(
-                          fun (L) ->
-                              lists:any(fun (#{issues := I}) -> I /= [] end,
-                                        maps:values(L))
-                          end, NonErrors),
-                    OnlyKeys =
-                        lists:map(
-                          fun (FullInfo) ->
-                              maps:filtermap(fun (_, #{deks := K}) -> {true, K};
-                                                 (_, #{}) -> false
-                                             end, FullInfo)
-                          end, NonErrors),
+            %% If some deks have issues we should not remove anything
+            %% until those issues are resolved
+            ShouldRetry =
+                lists:any(
+                    fun (L) ->
+                        lists:any(fun (#{issues := I}) -> I /= [] end,
+                                  maps:values(L))
+                    end, NonErrors),
+            OnlyKeys =
+                lists:map(
+                    fun (FullInfo) ->
+                        maps:filtermap(fun (_, #{deks := K}) -> {true, K};
+                                            (_, #{}) -> false
+                                        end, FullInfo)
+                    end, NonErrors),
 
-                    case {Errors, ShouldRetry} of
-                        {[], false} ->
-                            %% Merge deks from all nodes into one map
-                            DekInfo = lists:foldl(
-                                        fun (M, Acc) ->
-                                            maps:merge_with(fun (_, V1, V2) ->
-                                                                V1 ++ V2
-                                                            end, M, Acc)
-                                        end, #{}, OnlyKeys),
-                            reset_dek_counters(OldMap, DekInfo);
-                        {[], true} ->
-                            ?log_debug("Some deks have issues. "
-                                       "All responses: ~p", [Res]),
-                            {error, retry};
-                        {Errors, _} ->
-                            ?log_error("Failed to update deks counters because "
-                                       "some nodes returned errors: ~p~n"
-                                       "All responses: ~p", [Errors, Res]),
-                            {error, node_errors}
-                    end;
-                {error, not_found} ->
-                    %% Nothing to update yet
-                    ok
+            case {Errors, ShouldRetry} of
+                {[], false} ->
+                    %% Merge deks from all nodes into one map
+                    {ok, lists:foldl(
+                                fun (M, Acc) ->
+                                    maps:merge_with(fun (_, V1, V2) ->
+                                                        V1 ++ V2
+                                                    end, M, Acc)
+                                end, #{}, OnlyKeys)};
+                {[], true} ->
+                    ?log_debug("Some deks have issues. "
+                                "All responses: ~p", [Res]),
+                    {error, retry};
+                {Errors, _} ->
+                    ?log_error("Failed to update deks counters because "
+                                "some nodes returned errors: ~p~n"
+                                "All responses: ~p", [Errors, Res]),
+                    {error, node_errors}
             end;
         _ ->
             ?log_debug("Skipping deks counters update because some nodes "
@@ -2717,9 +2807,7 @@ reset_dek_counters_txn(OldCountersMap, ActualDeksUsageInfo, Snapshot) ->
             end
         end,
 
-    Old = chronicle_compat:get(Snapshot,
-                               ?CHRONICLE_DEK_COUNTERS_KEY,
-                               #{default => #{}}),
+    Old = get_dek_counters(Snapshot),
     New = maps:filtermap(FilterCountersForSecret, Old),
     case New == Old of
         true -> {abort, nothing_changed};
@@ -2978,6 +3066,89 @@ job2bin({J, K}) ->
     iolist_to_binary([atom_to_binary(J), "_", cb_deks:kind2bin(K)]);
 job2bin(J) when is_atom(J) ->
     atom_to_binary(J).
+
+-spec delete_historical_key_txn(secret_id(), key_id(),
+                                fun((secret_props()) -> boolean()),
+                                chronicle_snapshot()) ->
+          {commit, [{set, ?CHRONICLE_SECRETS_KEY, secret_props()}]} |
+          {abort, {error, not_found | secret_in_use() | forbidden |
+                          inconsistent_graph() | no_quorum | active_key}}.
+delete_historical_key_txn(SecretId, HistKeyId, IsSecretWritableFun, Snapshot) ->
+    maybe
+        {ok, Props} ?= get_secret(SecretId, Snapshot),
+        {_, true} ?= {writable, IsSecretWritableFun(Props)},
+        SecretIds = get_secrets_encrypted_by_key_id(HistKeyId, Snapshot),
+        {_, []} ?= {in_use, SecretIds},
+        {ok, NewProps} ?= remove_historical_key_from_props(Props, HistKeyId),
+        %% Update secret list
+        CurSecrets = get_all(Snapshot),
+        NewSecrets = replace_secret_in_list(NewProps, CurSecrets),
+        ok ?= validate_secrets_consistency(NewSecrets),
+        {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewSecrets}]}
+    else
+        {error, _} = Error -> {abort, Error};
+        {writable, false} -> {abort, {error, forbidden}};
+        {in_use, Ids} -> {abort, {error, {used_by, #{by_secret => Ids}}}}
+    end.
+
+-spec check_key_id_usage(key_id(),
+                         #{cb_deks:dek_kind() := [cb_deks:dek()]}) ->
+          not_in_use | {in_use, [cb_deks:dek_kind()]}.
+check_key_id_usage(KeyId, AllNodesDekInfo) ->
+    UsedBy = maps:fold(
+        fun(Kind, Deks, Acc) ->
+            case lists:any(
+                fun(#{info := #{encryption_key_id := K}}) -> K =:= KeyId;
+                   (_) -> false
+                end, Deks) of
+                true -> [Kind | Acc];
+                false -> Acc
+            end
+        end, [], AllNodesDekInfo),
+    case UsedBy of
+        [] -> not_in_use;
+        KindList -> {in_use, KindList}
+    end.
+
+-spec remove_historical_key_from_props(secret_props(), key_id()) ->
+          {ok, secret_props()} | {error, not_found | active_key}.
+remove_historical_key_from_props(#{type := ?GENERATED_KEY_TYPE,
+                                   data := Data} = Props, KeyId) ->
+    #{keys := Keys, active_key_id := ActiveId} = Data,
+    case ActiveId of
+        KeyId -> {error, active_key};
+        _ ->
+            NewKeys = lists:filter(fun(#{id := Id}) -> Id =/= KeyId end, Keys),
+            case length(NewKeys) =:= length(Keys) of
+                true -> {error, not_found};
+                false -> {ok, Props#{data => Data#{keys => NewKeys}}}
+            end
+    end;
+remove_historical_key_from_props(#{type := ?KMIP_KEY_TYPE,
+                                   data := Data} = Props, KeyId) ->
+    #{active_key := #{id := ActiveId}, hist_keys := HistKeys} = Data,
+    case ActiveId of
+        KeyId -> {error, active_key};
+        _ ->
+            NewHistKeys = lists:filter(fun(#{id := Id}) -> Id =/= KeyId end,
+                                       HistKeys),
+            case length(NewHistKeys) =:= length(HistKeys) of
+                true -> {error, not_found};
+                false -> {ok, Props#{data => Data#{hist_keys => NewHistKeys}}}
+            end
+    end;
+remove_historical_key_from_props(#{type := ?AWSKMS_KEY_TYPE,
+                                   data := Data} = Props, KeyId) ->
+    #{stored_ids := [#{id := ActiveId} | _] = StoredIds} = Data,
+    case ActiveId of
+        KeyId -> {error, active_key};
+        _ ->
+            NewStoredIds = lists:filter(fun(#{id := Id}) -> Id =/= KeyId end, StoredIds),
+            case length(NewStoredIds) =:= length(StoredIds) of
+                true -> {error, not_found};
+                false -> {ok, Props#{data => Data#{stored_ids => NewStoredIds}}}
+            end
+    end.
 
 -ifdef(TEST).
 replace_secret_in_list_test() ->
