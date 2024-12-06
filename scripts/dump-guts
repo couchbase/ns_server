@@ -553,6 +553,7 @@ main_with_everything(StaticTerms, NSConfig, Node) ->
     Nodes = [node_host(N) || N <- confget(#config.nodes_wanted)],
 
     {_, DataDir} = lists:keyfind(path_config_datadir, 1, StaticTerms),
+    {_, BinDir} = lists:keyfind(path_config_bindir, 1, StaticTerms),
     {_, LibDir} = lists:keyfind(path_config_libdir, 1, StaticTerms),
 
     PromStatsSettings = search_config(NSConfig, stats_settings, []),
@@ -589,6 +590,7 @@ main_with_everything(StaticTerms, NSConfig, Node) ->
          {static_config, iolist_to_binary(io_lib:format("~p", [StaticTerms]))},
          {couch_inis, confget(#config.couch_inis)},
          {path_config_datadir, DataDir},
+         {path_config_bindir, BinDir},
          {path_config_libdir, LibDir},
          {node, Node},
          {ns_log_path, NSLogPath},

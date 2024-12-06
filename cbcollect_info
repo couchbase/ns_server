@@ -1808,6 +1808,12 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
         read_guts(guts, "log_path"), "rebalance"))
     cbasdirs = correct_split(read_guts(guts, "cbas_data_paths"), ",")
     cbasdirs = [os.path.realpath(cbasdir) for cbasdir in cbasdirs]
+    configdir = os.path.join(read_guts(guts, "path_config_datadir"), "config")
+    bindir = read_guts(guts, "path_config_bindir")
+    cbbrowse_static_args = f"-config_dir {configdir} -bin_dir {bindir}"
+    if master_password is not None:
+        cbbrowse_static_args = f"{cbbrowse_static_args} -password_prompt"
+
     if dbdir in cbasdirs:
         cbasdirs.remove(dbdir)
     nodes = correct_split(read_guts(guts, "nodes"), ",")
@@ -2162,7 +2168,9 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
                            local_url_addr, read_guts(guts, "rest_port")),
                        log_file=DEFAULT_LOG),
 
-        [AllOsTask("couchbase logs (%s)" % name, "cbbrowse_logs %s" % name,
+        [AllOsTask("couchbase logs (%s)" % name,
+                   "cbbrowse_logs %s %s" % (name, cbbrowse_static_args),
+                   to_stdin=master_password,
                    addenv=[("REPORT_DIR", read_guts(guts, "log_path"))],
                    log_file="ns_server.%s" % name)
          for name in ["debug.log", "info.log", "error.log", "couchdb.log",

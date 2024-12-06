@@ -10,9 +10,11 @@
 
 -export([start/0]).
 -export([log_exists/1, log_exists/2]).
--export([stream_logs/2, stream_logs/3, stream_logs/4]).
+-export([stream_logs/2]).
 
 -include("ns_common.hrl").
+
+-define(CHUNK_SZ, 65536).
 
 -spec usage([1..255, ...], list()) -> no_return().
 usage(Fmt, Args) ->
@@ -21,12 +23,31 @@ usage(Fmt, Args) ->
 
 -spec usage() -> no_return().
 usage() ->
-    io:format("Usage: <progname> -report_dir <dir> [-log <name>]~n"),
+    io:format("Usage: <progname> -report_dir <dir> [-log <name>"
+              " -config_dir <dir> -bin_dir <dir> -password_prompt(for"
+              " prompt to provide the node master password via stdin)]~n"),
     halt(1).
+
+validate_encr_args(#{config_path := CPath,
+                     bin_path := BPath}) ->
+    AllUndefined = (undefined =:= CPath) andalso (undefined =:= BPath),
+    AllDefined = (undefined =/= CPath) andalso (undefined =/= BPath),
+
+    case AllUndefined orelse AllDefined of
+        true ->
+            ok;
+        false ->
+            io:format("-config_dir, -bin_dir params must all be specified "
+                      "if any is specified~n"),
+            usage()
+    end.
 
 start() ->
     Options = case parse_arguments([{h, 0, undefined, false},
                                     {report_dir, 1, undefined},
+                                    {config_dir, 1, undefined, undefined},
+                                    {bin_dir, 1, undefined, undefined},
+                                    {password_prompt, 0, undefined, undefined},
                                     {log, 1, undefined, ?DEBUG_LOG_FILENAME}],
                                    init:get_arguments()) of
                   {ok, O} ->
@@ -42,12 +63,61 @@ start() ->
         true -> usage();
         false -> ok
     end,
-    Dir = proplists:get_value(report_dir, Options),
-    Log = proplists:get_value(log, Options),
 
-    case log_exists(Dir, Log) of
+    HiddenPassword =
+        case proplists:get_value(password_prompt, Options, undefined) of
+            true ->
+                P = io:get_line(""),
+                ?HIDE(string:trim(P));
+            undefined ->
+                undefined
+        end,
+
+    LogDir = proplists:get_value(report_dir, Options),
+    EncrArgs = #{config_path => proplists:get_value(config_dir, Options),
+                 bin_path => proplists:get_value(bin_dir, Options),
+                 hidden_password => HiddenPassword},
+
+    validate_encr_args(EncrArgs),
+
+    BuildDsOptsFn =
+        fun (#{config_path := CPath,
+               bin_path := BPath}) when CPath =:= undefined;
+                                        BPath =:= undefined ->
+                {error, missing_encr_browser_opts};
+            (#{config_path := CPath,
+               bin_path := BPath,
+               hidden_password := HiddenPass}) ->
+                Opts = #{config_path_override => CPath,
+                         bin_path_override => BPath},
+                case HiddenPass of
+                    undefined ->
+                        {ok, Opts};
+                    _ ->
+                        {ok, Opts#{hidden_pass => HiddenPass}}
+                end
+        end,
+
+    GetDSFn =
+        fun() ->
+                case BuildDsOptsFn(EncrArgs) of
+                    {ok, BootOpts} ->
+                        cb_deks_raw_utils:bootstrap_get_deks(logDek, BootOpts);
+                    {error, _} = E ->
+                        E
+                end
+        end,
+
+    LoggerFn =
+        fun(Fmt, Args) ->
+            io:format(Fmt ++ "\n", Args)
+        end,
+
+    LogF = proplists:get_value(log, Options),
+    case log_exists(LogDir, LogF) of
         true ->
-            stream_logs(Dir, Log,
+            stream_logs(LogF,
+                        LogDir,
                         fun (Data) ->
                                 %% originally standard_io was used here
                                 %% instead of group_leader(); though this is
@@ -55,9 +125,9 @@ start() ->
                                 %% otp/lib/kernel/tests/file_SUITE.erl) it makes
                                 %% dialyzer unhappy
                                 file:write(group_leader(), Data)
-                        end);
+                        end, GetDSFn, LoggerFn);
         false ->
-            usage("Requested log file ~p does not exist.~n", [Log])
+            usage("Requested log file ~p does not exist.~n", [LogF])
     end.
 
 %% Option parser
@@ -113,39 +183,96 @@ log_exists(Dir, Log) ->
     Path = filename:join(Dir, Log),
     filelib:is_regular(Path).
 
-stream_logs(Log, Fn) ->
-    {ok, Dir} = application:get_env(error_logger_mf_dir),
-    stream_logs(Dir, Log, Fn).
+stream_logs(LogF, ConsumeFn) ->
+    {ok, LogPath} = application:get_env(error_logger_mf_dir),
 
-stream_logs(Dir, Log, Fn) ->
-    stream_logs(Dir, Log, Fn, 65536).
+    LoggerFn =
+        fun(Fmt, Args) ->
+            ?log_error(Fmt, Args)
+         end,
 
-stream_logs(Dir, Log, Fn, ChunkSz) ->
-    CurrentLog = filename:join(Dir, Log),
-    PastLogs = find_past_logs(Dir, Log),
+    GetDSFn =
+        fun() ->
+            cb_crypto:fetch_deks_snapshot(logDek)
+        end,
 
-    lists:foreach(
-      fun (P) ->
-              case file:open(P, [raw, binary, compressed]) of
-                  {ok, IO} ->
-                      try
-                          stream_logs_loop(IO, ChunkSz, Fn)
-                      after
-                          ok = file:close(IO)
-                      end;
-                 Error ->
-                      (catch ?log_error("Failed to open file ~s: ~p", [P, Error])),
-                      ok
+    stream_logs(LogF, LogPath, ConsumeFn, GetDSFn, LoggerFn).
+
+stream_logs(LogF, LogPath, ConsumeFn, GetDSFn, LoggerFn) ->
+    CurrentLog = filename:join(LogPath, LogF),
+    PastLogs = find_past_logs(LogPath, LogF),
+
+    StdFileStreamFn =
+        fun (FPath) ->
+                case file:open(FPath, [raw, binary, compressed]) of
+                    {ok, IO} ->
+                        try
+                            stream_logs_loop(IO, ?CHUNK_SZ, ConsumeFn)
+                        after
+                            ok = file:close(IO)
+                        end;
+                    Error ->
+                        LoggerFn("Failed to open file ~s: ~p", [FPath, Error]),
+                        ok
+                end
+        end,
+
+    EncrFileStreamFn =
+        fun (FPath, {ok, DS}) ->
+                Fn = fun(Chunk, {AccList, AccSize}) ->
+                             case AccSize >= ?CHUNK_SZ of
+                                 true ->
+                                     ConsumeFn(AccList),
+                                     {ok, {[Chunk], iolist_size(Chunk)}};
+                                 false ->
+                                     NewSize = iolist_size(Chunk) + AccSize,
+                                     {ok, {[AccList, Chunk], NewSize}}
+                             end
+                     end,
+                Opts = #{read_chunk_size => ?CHUNK_SZ},
+                case cb_crypto:read_file_chunks(FPath, Fn, {[], 0}, DS, Opts) of
+                    {ok, {Rest, _Size}} ->
+                        ConsumeFn(Rest);
+                    {error, _} = Error ->
+                        LoggerFn("Read file chunks failure for file: ~s: error:"
+                                 " ~p",
+                                 [FPath, Error]),
+                        ok
+                end;
+            (FPath,  {error, missing_encr_browser_opts}) ->
+                LoggerFn("Params -config_dir, -bin_dir are all required "
+                         "because log ~p is encrypted", [FPath]),
+                ok;
+            (FPath, {error, _} = Error) ->
+                LoggerFn("Failed to get keys to decrypt file ~p: error: ~p",
+                         [FPath, Error]),
+                ok
+        end,
+
+    lists:foldl(
+      fun (FileName, Acc) ->
+              case cb_crypto:is_file_encrypted(FileName) of
+                  true when Acc =:= undefined ->
+                      DSRes = GetDSFn(),
+                      EncrFileStreamFn(FileName, DSRes),
+                      DSRes;
+                  true ->
+                      EncrFileStreamFn(FileName, Acc),
+                      Acc;
+                  false ->
+                      StdFileStreamFn(FileName),
+                      Acc
               end
-      end, PastLogs ++ [CurrentLog]).
+      end, undefined, PastLogs ++ [CurrentLog]),
+    ok.
 
-stream_logs_loop(IO, ChunkSz, Fn) ->
+stream_logs_loop(IO, ChunkSz, ConsumeFn) ->
     case file:read(IO, ChunkSz) of
         eof ->
             ok;
         {ok, Data} ->
-            Fn(Data),
-            stream_logs_loop(IO, ChunkSz, Fn)
+            ConsumeFn(Data),
+            stream_logs_loop(IO, ChunkSz, ConsumeFn)
     end.
 
 find_past_logs(Dir, Log) ->
