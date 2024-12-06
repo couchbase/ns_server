@@ -364,6 +364,8 @@ INSTALL (DIRECTORY _build/default/lib/ns_common/ebin DESTINATION
          "${INST_LIBDIR}/ns_common")
 INSTALL (DIRECTORY _build/default/lib/ns_server/ebin DESTINATION
          "${INST_LIBDIR}/ns_server")
+INSTALL (DIRECTORY _build/default/lib/cb_dets/ebin DESTINATION
+         "${INST_LIBDIR}/cb_dets")
 
 INSTALL (DIRECTORY _build/default/lib/config_remap/ebin DESTINATION
          "${INST_LIBDIR}/config_remap")
