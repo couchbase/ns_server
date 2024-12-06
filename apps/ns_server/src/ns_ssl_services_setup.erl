@@ -48,6 +48,8 @@
          get_supported_tls_versions/2,
          remove_node_certs/0,
          update_certs_epoch/0,
+         get_key_ids_in_use/0,
+         resave_encrypted_files/0,
          config_upgrade_to_76/1]).
 
 %% gen_server callbacks
@@ -645,6 +647,23 @@ set_certs(Host, CA, NodeCert, NodeKey, ClientCert, ClientKey) ->
                     {set_certs, Host, CA, NodeCert, ?cut(NodeKey), ClientCert,
                      ?cut(ClientKey)}, ?TIMEOUT).
 
+get_key_ids_in_use() ->
+    try
+        gen_server:call(?MODULE, get_key_ids_in_use, ?TIMEOUT)
+    catch
+        exit:{noproc, {gen_server, call, [?MODULE, get_key_ids_in_use, _]}} ->
+            {error, retry}
+    end.
+
+resave_encrypted_files() ->
+    try
+        gen_server:call(?MODULE, resave_encrypted_files, ?TIMEOUT)
+    catch
+        exit:{noproc, {gen_server, call,
+                       [?MODULE, resave_encrypted_files, _]}} ->
+            {error, retry}
+    end.
+
 init([]) ->
     Self = self(),
     chronicle_compat_events:subscribe(handle_config_change(_, Self)),
@@ -784,6 +803,23 @@ handle_call({set_certs, Host, CA, NodeCert, NodeKeyFun, ClientCert,
     {reply, ok, read_marker_and_reload_ssl(State)};
 handle_call(ping, _From, State) ->
     {reply, ok, State};
+handle_call(resave_encrypted_files, _From, State) ->
+    lists:foreach(
+        fun (Type) ->
+            resave_cert_info(Type)
+        end, [node_cert, client_cert]),
+    {reply, ok, State};
+handle_call(get_key_ids_in_use, _From, State) ->
+    %% normally tmp_certs_and_key_file will never exist here because
+    %% if it exists this process will be crashing and restarting, so we will
+    %% never get here. Anyway, I think it makes sense to mention this file here
+    %% to make fewer assumptions in the code.
+    {reply,
+     {ok, cb_crypto:get_in_use_deks([tmp_certs_and_key_file(node_cert),
+                                     tmp_certs_and_key_file(client_cert),
+                                     cert_info_file(node_cert),
+                                     cert_info_file(client_cert)])},
+     State};
 handle_call(_, _From, State) ->
     {reply, unknown_call, State}.
 
@@ -913,20 +949,20 @@ generated_cert_version(ClusterCA, Hostname) ->
 maybe_generate_client_certs() ->
     maybe_generate_certs(client_cert, ?INTERNAL_CERT_USER).
 
-should_regenerate_certs(CertInfoFile, CertType, Name) ->
+should_regenerate_certs(CertType, Name) ->
     %% We can't keep info for certs regeneration in node_cert key because during
     %% rename it may extract wrong info by wrong nodename from ns_config.
     %% Based on this wrong info it might decide to regenerate certs when it
     %% should not.
     CurCertsEpoch = certs_epoch(),
-    case file:consult(CertInfoFile) of
-        {ok, [{uploaded, CertsEpoch}]} when CertsEpoch < CurCertsEpoch ->
+    case read_cert_info(CertType) of
+        {ok, {uploaded, CertsEpoch}} when CertsEpoch < CurCertsEpoch ->
             ?log_info("Should regenerate ~p because epoch has changed "
                       "(~p -> ~p)", [CertType, CertsEpoch, CurCertsEpoch]),
             true;
-        {ok, [{uploaded, _CertsEpoch}]} ->
+        {ok, {uploaded, _CertsEpoch}} ->
             false;
-        {ok, [{generated, OldVsn}]} ->
+        {ok, {generated, OldVsn}} ->
             ClusterCA = ns_server_cert:self_generated_ca(),
             case generated_cert_version(ClusterCA, Name) of
                 OldVsn when CertType == client_cert ->
@@ -957,7 +993,7 @@ maybe_generate_node_certs() ->
     maybe_generate_certs(node_cert, misc:extract_node_address(node())).
 
 maybe_generate_certs(Type, Name) ->
-    ShouldGenerate = should_regenerate_certs(cert_info_file(Type), Type, Name),
+    ShouldGenerate = should_regenerate_certs(Type, Name),
     case ShouldGenerate of
         true ->
             case ns_server_cert:generate_certs(Type, Name) of
@@ -1027,15 +1063,17 @@ save_certs(Type, CA, Chain, PKey, PassphraseSettings, Extra)
 
     Data = term_to_binary({Type, Props, Chain, EncryptedPKey}),
 
-    ok = misc:atomic_write_file(tmp_certs_and_key_file(Type), Data),
+    {ok, CfgDeksSnapshot} = cb_crypto:fetch_deks_snapshot(configDek),
+    ok = cb_crypto:atomic_write_file(tmp_certs_and_key_file(Type), Data,
+                                     CfgDeksSnapshot),
     ?log_info("New ~p and pkey are written to tmp file", [Type]),
     ok = save_certs_phase2(Type),
     Props.
 
 save_certs_phase2(Type) ->
     TmpFile = tmp_certs_and_key_file(Type),
-    case file:read_file(TmpFile) of
-        {ok, Bin} ->
+    case cb_crypto:read_file(TmpFile, configDek) of
+        {Res, Bin} when Res == decrypted; Res == raw ->
             {_, Props, Chain, PKey} = binary_to_term(Bin),
             CertsEpoch = proplists:get_value(certs_epoch, Props),
             ok = atomic_write_file_with_retry(chain_file_path(Type), Chain,
@@ -1067,8 +1105,34 @@ save_certs_phase2(Type) ->
     end.
 
 save_cert_info(Type, CertsInfo) ->
-    CertsInfoBin = iolist_to_binary(io_lib:format("~p.", [CertsInfo])),
-    ok = misc:atomic_write_file(cert_info_file(Type), CertsInfoBin).
+    CertsInfoBin = term_to_binary(CertsInfo),
+    {ok, CfgDeksSnapshot} = cb_crypto:fetch_deks_snapshot(configDek),
+    ok = cb_crypto:atomic_write_file(cert_info_file(Type), CertsInfoBin,
+                                     CfgDeksSnapshot).
+
+read_cert_info(Type) ->
+    CertInfoFile = cert_info_file(Type),
+    case cb_crypto:read_file(CertInfoFile, configDek) of
+        {Res, Bin} when Res == decrypted; Res == raw ->
+            try
+                {ok, binary_to_term(Bin)}
+            catch
+                _:_ ->
+                    %% It is possible that the file is in pre-morpheus format:
+                    case file:consult(CertInfoFile) of
+                        {ok, [CertsInfo]} -> {ok, CertsInfo};
+                        {error, _} = Error -> Error
+                    end
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+resave_cert_info(Type) ->
+    case read_cert_info(Type) of
+        {ok, Info} -> save_cert_info(Type, Info);
+        {error, enoent} -> ok
+    end.
 
 reload_pkey_passphrase(Type) ->
     CertProps = ns_config:read_key_fast({node, node(), Type}, []),
@@ -1764,4 +1828,44 @@ config_upgrade_test() ->
     after
         meck:unload(cluster_compat_mode)
     end.
+
+resave_encrypted_files_test_() ->
+    {setup,
+     fun () ->
+         %% Create temp dir using path_config
+         TmpDir = path_config:tempfile(".", "resave_encrypted_files_test"),
+
+         meck:new(path_config, [passthrough]),
+         meck:expect(path_config, component_path,
+                     fun(data, Dir) -> filename:join(TmpDir, Dir) end),
+
+         #{tmp_dir => TmpDir}
+     end,
+     fun (#{tmp_dir := TmpDir}) ->
+         meck:unload(path_config),
+         file:del_dir_r(TmpDir)
+     end,
+     fun (#{}) ->
+         [
+          %% Making sure read_cert_info() is backward compatible with
+          %% pre-morpheus format
+          ?_test(
+            begin
+                NodeCertInfo = {generated, <<"node-version-1">>},
+                OldFormatPath = cert_info_file(node_cert),
+                ok = filelib:ensure_dir(OldFormatPath),
+                ok = file:write_file(OldFormatPath,
+                                     io_lib:format("~p.", [NodeCertInfo])),
+                ?assertEqual({ok, NodeCertInfo}, read_cert_info(node_cert))
+            end),
+
+          ?_test(
+            begin
+                ok = file:delete(cert_info_file(node_cert)),
+                ?assertEqual(ok, resave_cert_info(node_cert)),
+                ?assertEqual({error, enoent}, read_cert_info(node_cert))
+            end)
+         ]
+     end}.
+
 -endif.

@@ -424,6 +424,7 @@ force_config_encryption_keys() ->
         ok ?= menelaus_local_auth:resave(),
         ok ?= simple_store:resave(?XDCR_CHECKPOINT_STORE),
         ok ?= chronicle_local:maybe_apply_new_keys(),
+        ok ?= ns_ssl_services_setup:resave_encrypted_files(),
         ok
     end.
 
@@ -437,10 +438,11 @@ get_config_dek_ids_in_use() ->
         {ok, Ids6} ?= menelaus_local_auth:get_key_ids_in_use(),
         {ok, Ids7} ?= simple_store:get_key_ids_in_use(?XDCR_CHECKPOINT_STORE),
         {ok, Ids8} ?= chronicle_local:get_encryption_dek_ids(),
+        {ok, Ids9} ?= ns_ssl_services_setup:get_key_ids_in_use(),
         {ok, lists:map(fun (undefined) -> ?NULL_DEK;
                            (Id) -> Id
                        end, lists:uniq(Ids1 ++ Ids2 ++ Ids3 ++ Ids4 ++ Ids5 ++
-                                       Ids6 ++ Ids7 ++ Ids8))}
+                                       Ids6 ++ Ids7 ++ Ids8 ++ Ids9))}
     end.
 
 get_dek_ids_in_use(logDek) ->
