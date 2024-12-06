@@ -1210,13 +1210,6 @@ setup_test_ns_rebalance_observer() ->
                            {servers, ['n_0', 'n_1']},
                            {map, [['n_0','n_1'], ['n_1','n_0']]}]}]
                 end),
-    meck:new(ale, [passthrough]),
-    meck:expect(ale, debug,
-                fun (_, _) -> ok end),
-    meck:expect(ale, debug,
-                fun (_, _, _) -> ok end),
-    meck:expect(ale, debug,
-                fun (_, _, _, _) -> ok end),
     {ok, Pid} = gen_server:start_link(?MODULE,
                                       {[], [{active_nodes, [n1, n0]}],
                                        rebalance, ?REBALANCE_ID},
@@ -1243,16 +1236,24 @@ ns_rebalance_observer_test_() ->
       {"index progress", fun get_index_progress_t/0}]}.
 
 rebalance() ->
+    Pid = whereis(ns_rebalance_observer),
     try
         rebalance_inner()
     catch
         exit:{timeout,_} ->
-            %% This test occasionally times out when running code validation
-            %% on jenkins servers. It's suspected to be related to extensive
-            %% logging done by upstream tests. As the failures on jenkins are
-            %% intermittent and don't occur locally we'll allow the timeout
-            %% rather than comment out the test.
-            ok
+            %% This test used to occasionally time out when running code
+            %% validation on jenkins servers. It's suspected to be related
+            %% to extensive logging done by upstream tests...most/all of
+            %% which has been addressed. We'll keep this try/catch of the
+            %% time out as a "canary in the coalmine" should the issue
+            %% arise again.
+            %% Because log_debug was wedging we use io:format to get output.
+            io:format("Test timeout for pid: ~p~nProcess info: ~p",
+                       [Pid, erlang:process_info(Pid)]),
+            io:format("Message queue: ~p~nBacktrace: ~p",
+                      [erlang:process_info(Pid, messages),
+                       erlang:process_info(Pid, backtrace)]),
+            throw(fail)
     end.
 
 rebalance_inner() ->
