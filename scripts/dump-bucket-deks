@@ -30,11 +30,17 @@ def main():
         elif args.stdin_password:
             password = input()
 
-        ids_map = {os.path.join(args.bucket, "deks", key_id): key_id \
+        if args.bucket is not None:
+            ids_map = {os.path.join(args.bucket, "deks", key_id): key_id \
                                                     for key_id in args.key_ids}
-        key_specs = [{'type': 'keyId',
-                      'kind': 'bucketDek',
-                      'id': key} for key in ids_map]
+            key_specs = [{'type': 'keyId',
+                          'kind': 'bucketDek',
+                          'id': key} for key in ids_map]
+        else:
+            ids_map = {key_id: key_id for key_id in args.key_ids}
+            key_specs = [{'type': 'keyPath',
+                          'path': os.path.join(args.key_dir, key_id),
+                          'id': key_id} for key_id in args.key_ids]
 
         res = gosecrets_client_lib.read_keys(
                 key_specs,
@@ -52,9 +58,13 @@ def parse_args():
     arg_parser.add_argument('--config', '-c', type=str,
                             metavar='<gosecrets_config_path>',
                             help='path to gosecrets config', required=True)
-    arg_parser.add_argument('--bucket', '-b', type=str,
-                            metavar='<bucket_name>',
-                            help='bucket name', required=True)
+    group = arg_parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--key-dir', '-w', type=str,
+                       metavar='<directory_with_keys>',
+                       help='directory to search for bucket keys')
+    group.add_argument('--bucket', '-b', type=str,
+                       metavar='<bucket_name>',
+                       help='bucket name')
     pass_group = arg_parser.add_mutually_exclusive_group(required=False)
     pass_group.add_argument('--password', '-p', nargs='?',
                             action=PasswordAction,

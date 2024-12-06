@@ -697,6 +697,12 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         verify_key_presense_in_dump_key_response(res, ids, [unknown_id])
 
+        keys_path = Path(node.data_path()) / 'config' / 'keks'
+        res = run_dump_keys(node, ['--key-dir', keys_path,
+                                   '--key-ids', unknown_id] + ids)
+
+        verify_key_presense_in_dump_key_response(res, ids, [unknown_id])
+
         # Make sure that we return correct code and error in case
         # of wrong password (other utilities can rely on that)
         wrong_password = testlib.random_str(8)
@@ -725,6 +731,12 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         print(ids)
         unknown_id = 'unknown'
         res = run_dump_bucket_deks(node, ['--bucket', self.bucket_name,
+                                          '--key-ids', unknown_id] + ids)
+
+        verify_key_presense_in_dump_key_response(res, ids, [unknown_id])
+
+        keys_path = Path(node.data_path()) / 'data' / self.bucket_name / 'deks'
+        res = run_dump_bucket_deks(node, ['--key-dir', keys_path,
                                           '--key-ids', unknown_id] + ids)
 
         verify_key_presense_in_dump_key_response(res, ids, [unknown_id])
