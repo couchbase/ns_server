@@ -280,7 +280,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         testlib.poll_for_condition(
             lambda: testlib.post_succ(self.sm_node,
                                       '/node/controller/rotateDataKey'),
-            sleep_time=0.2, attempts=50, retry_on_assert=True, verbose=True)
+            sleep_time=0.3, attempts=50, retry_on_assert=True, verbose=True)
         check_decrypt(self.sm_node, kek_id, encrypted, data)
 
         # Testing that config deks are also reencrypted
@@ -1079,11 +1079,11 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         set_log_encryption(self.cluster, 'encryption_service', -1)
         testlib.poll_for_condition(
             lambda: assert_logs_encrypted(self.cluster),
-            sleep_time=0.2, attempts=50, retry_on_assert=True, verbose=True)
+            sleep_time=0.3, attempts=50, retry_on_assert=True, verbose=True)
         set_log_encryption(self.cluster, 'disabled', -1)
         testlib.poll_for_condition(
             lambda: assert_logs_unencrypted(self.cluster),
-            sleep_time=0.2, attempts=50, retry_on_assert=True, verbose=True)
+            sleep_time=0.3, attempts=50, retry_on_assert=True, verbose=True)
 
 
 # Set master password and restart the cluster
@@ -1462,7 +1462,7 @@ def verify_kek_files(cluster, secret, verify_key_count=1, **kwargs):
 def poll_verify_kek_files(*args, **kwargs):
     testlib.poll_for_condition(
       lambda: verify_kek_files(*args, **kwargs),
-      sleep_time=0.2, attempts=50, retry_on_assert=True, verbose=True)
+      sleep_time=0.3, attempts=50, retry_on_assert=True, verbose=True)
 
 
 def verify_bucket_deks_files(cluster, bucket, **kwargs):
@@ -1539,7 +1539,7 @@ def is_valid_key_id(name):
 def poll_verify_bucket_deks_files(*args, **kwargs):
     testlib.poll_for_condition(
       lambda: verify_bucket_deks_files(*args, **kwargs),
-      sleep_time=0.2, attempts=50, retry_on_assert=True, verbose=True)
+      sleep_time=0.3, attempts=50, retry_on_assert=True, verbose=True)
 
 
 def poll_verify_bucket_deks_and_collect_ids(*args, **kwargs):
@@ -1554,7 +1554,7 @@ def poll_verify_bucket_deks_and_collect_ids(*args, **kwargs):
         verify_bucket_deks_files(verify_id=collect_ids, *args, **kwargs)
 
     testlib.poll_for_condition(
-      verify, sleep_time=0.2, attempts=50, retry_on_assert=True, verbose=True)
+      verify, sleep_time=0.3, attempts=50, retry_on_assert=True, verbose=True)
 
     return current_dek_ids
 
@@ -1562,7 +1562,7 @@ def poll_verify_bucket_deks_and_collect_ids(*args, **kwargs):
 def poll_verify_dek_files(*args, **kwargs):
     testlib.poll_for_condition(
       lambda: verify_dek_files(*args, **kwargs),
-      sleep_time=0.2, attempts=50, retry_on_assert=True, verbose=True)
+      sleep_time=0.3, attempts=50, retry_on_assert=True, verbose=True)
 
 
 def verify_key_file_by_id(dir_path, key_id, verify_missing=False, **kwargs):
@@ -1661,7 +1661,7 @@ def poll_verify_deks_and_collect_ids(*args, **kwargs):
         verify_dek_files(verify_id=collect_ids, *args, **kwargs)
 
     testlib.poll_for_condition(
-      verify, sleep_time=0.2, attempts=50, retry_on_assert=True, verbose=True)
+      verify, sleep_time=0.3, attempts=50, retry_on_assert=True, verbose=True)
 
     print(f'key list extracted: {current_dek_ids}')
 
@@ -1697,7 +1697,7 @@ def drop_bucket_keys(cluster, bucket):
 def poll_verify_and_get_mcd_deks_in_use(*args, **kwargs):
     return testlib.poll_for_condition(
              lambda: verify_and_get_mcd_deks_in_use(*args, **kwargs),
-             sleep_time=0.2, attempts=50, retry_on_assert=True, verbose=True)
+             sleep_time=0.3, attempts=50, retry_on_assert=True, verbose=True)
 
 def verify_and_get_mcd_deks_in_use(cluster, bucket, verify_key_count=None):
     res = []
