@@ -12,15 +12,15 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"github.com/couchbase/ns_server/deps/gocode/awsutils"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/couchbase/ns_server/deps/gocode/awsutils"
 )
 
 var testData = [8]byte{1, 2, 3, 4, 5, 6, 7, 8}
@@ -144,19 +144,19 @@ func store_key(name, kind, keyType string, encryptionKeyName, creationTime strin
 	}
 	var keyInfo storedKeyIface
 	if keyType == string(rawAESGCMKey) {
-		keyInfo = newAesGcmKey(name, kind, creationTime, encryptionKeyName, otherData, keySettings)
+		keyInfo = newAesGcmKey(name, kind, creationTime, encryptionKeyName, otherData)
 	} else if keyType == string(awskmKey) {
 		keyInfo, err = newAwsKey(name, kind, creationTime, otherData)
 		if err != nil {
 			return err
 		}
 	} else if keyType == string(kmipKey) {
-		keyInfo, err = newKmipKey(name, kind, creationTime, encryptionKeyName, otherData, keySettings)
+		keyInfo, err = newKmipKey(name, kind, creationTime, encryptionKeyName, otherData)
 		if err != nil {
 			return err
 		}
 	} else {
-		return errors.New(fmt.Sprintf("unknown type: %s", keyType))
+		return fmt.Errorf("unknown type: %s", keyType)
 	}
 
 	shouldRewrite, vsn, err := keyInfo.needRewrite(keySettings, ctx)
@@ -178,14 +178,14 @@ func store_key(name, kind, keyType string, encryptionKeyName, creationTime strin
 	if testOnly {
 		encryptedTestData, err := keyInfo.encryptData(testData[:], testAD[:])
 		if err != nil {
-			return errors.New(fmt.Sprintf("encryption test failed: %s", err.Error()))
+			return fmt.Errorf("encryption test failed: %s", err.Error())
 		}
 		decryptedData, err := keyInfo.decryptData(encryptedTestData, testAD[:])
 		if err != nil {
-			return errors.New(fmt.Sprintf("decryption test failed: %s", err.Error()))
+			return fmt.Errorf("decryption test failed: %s", err.Error())
 		}
 		if !bytes.Equal(testData[:], decryptedData) {
-			return errors.New("encrypted and decrypted data doesn't match the original data")
+			return fmt.Errorf("encrypted and decrypted data doesn't match the original data")
 		}
 		log_dbg("Key %s test succeeded", name)
 		return nil
@@ -253,7 +253,7 @@ func writeKeyToDisk(keyIface storedKeyIface, curVsn int, keySettings *storedKeyC
 	}
 	finalData, err := json.Marshal(storedKeyJson{Type: keytype, Raw: data})
 	if err != nil {
-		return errors.New(fmt.Sprintf("Failed to marshal key %s: %s", keyIface.name(), err.Error()))
+		return fmt.Errorf("failed to marshal key %s: %s", keyIface.name(), err.Error())
 	}
 
 	keyPath := storedKeyPath(keySettings, keyIface.name(), nextVsn)
@@ -261,11 +261,11 @@ func writeKeyToDisk(keyIface storedKeyIface, curVsn int, keySettings *storedKeyC
 	keyDir := filepath.Dir(keyPath)
 	err = os.MkdirAll(keyDir, 0755)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Failed to create dir for file %s: %s", keyPath, err.Error()))
+		return fmt.Errorf("failed to create dir for file %s: %s", keyPath, err.Error())
 	}
 	err = atomicWriteFile(keyPath, finalData, 0640)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Failed to write key %s to file %s: %s", keyIface.name(), keyPath, err.Error()))
+		return fmt.Errorf("failed to write key %s to file %s: %s", keyIface.name(), keyPath, err.Error())
 	}
 	if curVsn >= 0 {
 		prevKeyPath := storedKeyPath(keySettings, keyIface.name(), curVsn)
@@ -282,7 +282,7 @@ func writeKeyToDisk(keyIface storedKeyIface, curVsn int, keySettings *storedKeyC
 
 func encryptWithKey(keyKind, keyName string, data, AD []byte, ctx *storedKeysCtx) ([]byte, error) {
 	if _, ok := ctx.keysTouched[keyName]; ok {
-		return nil, errors.New("Key encryption cycle")
+		return nil, fmt.Errorf("key encryption cycle")
 	}
 	keySettings, err := getStoredKeyConfig(keyKind, ctx.storedKeyConfigs)
 	if err != nil {
@@ -301,7 +301,7 @@ func encryptWithKey(keyKind, keyName string, data, AD []byte, ctx *storedKeysCtx
 
 func decryptWithKey(keyKind, keyName string, data, AD []byte, ctx *storedKeysCtx) ([]byte, error) {
 	if _, ok := ctx.keysTouched[keyName]; ok {
-		return nil, errors.New("Key encryption loop")
+		return nil, fmt.Errorf("key encryption loop")
 	}
 
 	keySettings, err := getStoredKeyConfig(keyKind, ctx.storedKeyConfigs)
@@ -322,7 +322,7 @@ func decryptWithKey(keyKind, keyName string, data, AD []byte, ctx *storedKeysCtx
 func getStoredKeyConfig(keyKind string, configs []storedKeyConfig) (*storedKeyConfig, error) {
 	index := slices.IndexFunc(configs, func(c storedKeyConfig) bool { return c.KeyKind == keyKind })
 	if index == -1 {
-		return nil, errors.New(fmt.Sprintf("Failed to find key kind \"%s\" in config", keyKind))
+		return nil, fmt.Errorf("failed to find key kind \"%s\" in config", keyKind)
 	}
 	return &configs[index], nil
 }
@@ -359,12 +359,12 @@ func scanDir(dirPath string) ([]string, error) {
 func parseKeyFilename(base_filename string) (string, int, error) {
 	tokens := strings.Split(base_filename, ".key.")
 	if len(tokens) != 2 {
-		return "", -1, errors.New(fmt.Sprintf("Invalid key filename: %s", base_filename))
+		return "", -1, fmt.Errorf("invalid key filename: %s", base_filename)
 	}
 	keyName := tokens[0]
 	vsn, err := strconv.Atoi(tokens[1])
 	if err != nil {
-		return "", -1, errors.New(fmt.Sprintf("Invalid key filename: %s", base_filename))
+		return "", -1, fmt.Errorf("invalid key filename: %s", base_filename)
 	}
 	return keyName, vsn, nil
 }
@@ -373,10 +373,10 @@ func findKeyFile(path string) (string, int, error) {
 	wildcard := path + ".*"
 	candidates, err := filepath.Glob(wildcard)
 	if err != nil {
-		return "", -1, errors.New(fmt.Sprintf("Failed to read file list: %s", wildcard, err.Error()))
+		return "", -1, fmt.Errorf("failed to read file list using wildcard %s: %s", wildcard, err.Error())
 	}
 	if len(candidates) == 0 {
-		return "", -1, errors.New(fmt.Sprintf("No files found matching: %s", wildcard))
+		return "", -1, fmt.Errorf("no files found matching: %s", wildcard)
 	}
 	// looking for a file with max vsn (we increment it on every write)
 	maxVsn := -1
@@ -393,7 +393,7 @@ func findKeyFile(path string) (string, int, error) {
 		}
 	}
 	if maxVsn == -1 {
-		return "", -1, errors.New(fmt.Sprintf("Failed to find any key files among %v", candidates))
+		return "", -1, fmt.Errorf("failed to find any key files among %v", candidates)
 	}
 	return res, maxVsn, nil
 }
@@ -406,12 +406,12 @@ func readKeyFromFileRaw(pathWithoutVersion string) (storedKeyIface, int, error) 
 	log_dbg("Reading key from file %s", path)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, vsn, errors.New(fmt.Sprintf("Failed to read key from file %s: %s", path, err.Error()))
+		return nil, vsn, fmt.Errorf("failed to read key from file %s: %s", path, err.Error())
 	}
 	var keyJson storedKeyJson
 	err = json.Unmarshal(data, &keyJson)
 	if err != nil {
-		return nil, vsn, errors.New(fmt.Sprintf("Failed to unmarshal key from file %s: %s", path, err.Error()))
+		return nil, vsn, fmt.Errorf("failed to unmarshal key from file %s: %s", path, err.Error())
 	}
 
 	if keyJson.Type == rawAESGCMKey {
@@ -432,7 +432,7 @@ func readKeyFromFileRaw(pathWithoutVersion string) (storedKeyIface, int, error) 
 		return &k, vsn, nil
 	}
 
-	return nil, vsn, errors.New(fmt.Sprintf("Unknown key type: %s", keyJson.Type))
+	return nil, vsn, fmt.Errorf("unknown key type: %s", keyJson.Type)
 }
 
 func storedKeyPath(keySettings *storedKeyConfig, keyName string, vsn int) string {
@@ -464,42 +464,40 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 		}
 		// Even in case of an error ReadDir can return files
 		// Reencrypt everything we can
-		if keyNames != nil {
-			for _, keyName := range keyNames {
-				log_dbg("Maybe reencrypting key \"%s\"...", keyName)
-				keyIface, vsn, err := readKeyRaw(&cfg, keyName)
-				if err != nil {
-					log_dbg(err.Error())
-					errorsCounter++
-					continue
-				}
-				if !keyIface.usesSecretManagementKey() {
-					log_dbg("Skipping \"%s\", because it is not using secret management service", keyName)
-					continue
-				}
-				err = decryptKey(keyIface, ctx)
-				if err != nil {
-					log_dbg(err.Error())
-					errorsCounter++
-					continue
-				}
-				err = encryptKey(keyIface, ctx)
-				if err != nil {
-					log_dbg(err.Error())
-					errorsCounter++
-					continue
-				}
-				err = writeKeyToDisk(keyIface, vsn, &cfg)
-				if err != nil {
-					log_dbg(err.Error())
-					errorsCounter++
-					continue
-				}
+		for _, keyName := range keyNames {
+			log_dbg("Maybe reencrypting key \"%s\"...", keyName)
+			keyIface, vsn, err := readKeyRaw(&cfg, keyName)
+			if err != nil {
+				log_dbg(err.Error())
+				errorsCounter++
+				continue
+			}
+			if !keyIface.usesSecretManagementKey() {
+				log_dbg("Skipping \"%s\", because it is not using secret management service", keyName)
+				continue
+			}
+			err = decryptKey(keyIface, ctx)
+			if err != nil {
+				log_dbg(err.Error())
+				errorsCounter++
+				continue
+			}
+			err = encryptKey(keyIface, ctx)
+			if err != nil {
+				log_dbg(err.Error())
+				errorsCounter++
+				continue
+			}
+			err = writeKeyToDisk(keyIface, vsn, &cfg)
+			if err != nil {
+				log_dbg(err.Error())
+				errorsCounter++
+				continue
 			}
 		}
 	}
 	if errorsCounter > 0 {
-		return errors.New("Could not reencrypt some keys")
+		return fmt.Errorf("could not reencrypt some keys")
 	}
 	return nil
 }
@@ -512,7 +510,7 @@ func encryptKeyData(k storedKeyIface, data []byte, encryptionKeyName string, ctx
 		return nil, "", err
 	}
 	if data == nil {
-		return nil, "", errors.New("encrypt data nil")
+		return nil, "", fmt.Errorf("encrypt data nil")
 	}
 	AD := k.ad()
 	if k.usesSecretManagementKey() {
@@ -541,7 +539,7 @@ func encryptKeyData(k storedKeyIface, data []byte, encryptionKeyName string, ctx
 // Returns decrypted data and if it needs to be reencrypted
 func decryptKeyData(k storedKeyIface, data []byte, encryptedByKind, encryptionKeyName string, ctx *storedKeysCtx) ([]byte, bool, error) {
 	if data == nil {
-		return nil, false, errors.New("decrypt data is nil")
+		return nil, false, fmt.Errorf("decrypt data is nil")
 	}
 	AD := k.ad()
 	if k.usesSecretManagementKey() {
@@ -553,11 +551,11 @@ func decryptKeyData(k storedKeyIface, data []byte, encryptedByKind, encryptionKe
 				decryptedData, err = decryptWithAD(ctx.backupEncryptionServiceKey, data, AD)
 				if err != nil {
 					log_dbg("Failed to decrypt key using backup data key: %s", err.Error())
-					return nil, false, errors.New(fmt.Sprintf("Failed to decrypt key %s: %s", k.name(), err.Error()))
+					return nil, false, fmt.Errorf("failed to decrypt key %s: %s", k.name(), err.Error())
 				}
 			} else {
 				log_dbg("Failed to decrypt key using main data key, and there is no backup key: %s (ad: %s)", err.Error(), base64.StdEncoding.EncodeToString(AD))
-				return nil, false, errors.New(fmt.Sprintf("Failed to decrypt key %s: %s", k.name(), err.Error()))
+				return nil, false, fmt.Errorf("failed to decrypt key %s: %s", k.name(), err.Error())
 			}
 			log_dbg("Decrypted using backup data key")
 			return decryptedData, true, nil
@@ -573,7 +571,7 @@ func decryptKeyData(k storedKeyIface, data []byte, encryptedByKind, encryptionKe
 
 // Implementation of storedKeyIface for raw keys
 
-func newAesGcmKey(name, kind, creationTime, encryptionKeyName string, data []byte, keySettings *storedKeyConfig) *rawAesGcmStoredKey {
+func newAesGcmKey(name, kind, creationTime, encryptionKeyName string, data []byte) *rawAesGcmStoredKey {
 	rawKeyInfo := &rawAesGcmStoredKey{
 		Name:              name,
 		Kind:              kind,
@@ -644,14 +642,14 @@ func (k *rawAesGcmStoredKey) decryptMe(ctx *storedKeysCtx) error {
 
 func (k *rawAesGcmStoredKey) encryptData(data, AD []byte) ([]byte, error) {
 	if k.DecryptedKey == nil {
-		return nil, errors.New("Can't encrypt because the key is encrypted")
+		return nil, fmt.Errorf("can't encrypt because the key is encrypted")
 	}
 	return aesgcmEncrypt(k.DecryptedKey, data, AD), nil
 }
 
 func (k *rawAesGcmStoredKey) decryptData(data, AD []byte) ([]byte, error) {
 	if k.DecryptedKey == nil {
-		return nil, errors.New("Can't decrypt because the key is encrypted")
+		return nil, fmt.Errorf("can't decrypt because the key is encrypted")
 	}
 	return aesgcmDecrypt(k.DecryptedKey, data, AD)
 }
@@ -660,7 +658,7 @@ func (k *rawAesGcmStoredKey) unmarshal(data json.RawMessage) error {
 	var decoded rawAesGcmStoredKeyJson
 	err := json.Unmarshal(data, &decoded)
 	if err != nil {
-		return errors.New(fmt.Sprintf("invalid raw key json: %s", err.Error()))
+		return fmt.Errorf("invalid raw key json: %s", err.Error())
 	}
 	k.Name = decoded.Name
 	k.Kind = decoded.KeyKind
@@ -678,7 +676,7 @@ func (k *rawAesGcmStoredKey) usesSecretManagementKey() bool {
 
 func (k *rawAesGcmStoredKey) marshal() (storedKeyType, []byte, error) {
 	if k.EncryptedKey == nil {
-		return "", nil, errors.New(fmt.Sprintf("Cant' store key \"%s\" to disk because the key is not encrypted", k.Name))
+		return "", nil, fmt.Errorf("can't store key \"%s\" to disk because the key is not encrypted", k.Name)
 	}
 	data, err := json.Marshal(rawAesGcmStoredKeyJson{
 		Name:              k.Name,
@@ -689,7 +687,7 @@ func (k *rawAesGcmStoredKey) marshal() (storedKeyType, []byte, error) {
 		CreationTime:      k.CreationTime})
 
 	if err != nil {
-		return "", nil, errors.New(fmt.Sprintf("Failed to marshal key %s: %s", k.Name, err.Error()))
+		return "", nil, fmt.Errorf("failed to marshal key %s: %s", k.Name, err.Error())
 	}
 	return rawAESGCMKey, data, nil
 }
@@ -700,7 +698,7 @@ func newAwsKey(name, kind, creationTime string, data []byte) (*awsStoredKey, err
 	var awsk awsStoredKey
 	err := json.Unmarshal(data, &awsk)
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("invalid json: %v", data))
+		return nil, fmt.Errorf("invalid json: %v", data)
 	}
 	awsk.Name = name
 	awsk.Kind = kind
@@ -784,7 +782,7 @@ func (k *awsStoredKey) decryptData(data, AD []byte) ([]byte, error) {
 func (k *awsStoredKey) unmarshal(data json.RawMessage) error {
 	err := json.Unmarshal(data, k)
 	if err != nil {
-		return errors.New(fmt.Sprintf("invalid raw key json: %s", err.Error()))
+		return fmt.Errorf("invalid raw key json: %s", err.Error())
 	}
 	return nil
 }
@@ -792,7 +790,7 @@ func (k *awsStoredKey) unmarshal(data json.RawMessage) error {
 func (k *awsStoredKey) marshal() (storedKeyType, []byte, error) {
 	data, err := json.Marshal(k)
 	if err != nil {
-		return "", nil, errors.New(fmt.Sprintf("Failed to marshal key %s: %s", k.Name, err.Error()))
+		return "", nil, fmt.Errorf("failed to marshal key %s: %s", k.Name, err.Error())
 	}
 	return awskmKey, data, nil
 }
@@ -803,7 +801,7 @@ func (k *awsStoredKey) usesSecretManagementKey() bool {
 
 // Implementation of storedKeyIface for kmip keys
 
-func newKmipKey(name, kind, creationTime, encryptionKeyName string, data []byte, keySettings *storedKeyConfig) (*kmipStoredKey, error) {
+func newKmipKey(name, kind, creationTime, encryptionKeyName string, data []byte) (*kmipStoredKey, error) {
 	type kmipKeyTmp struct {
 		KmipId             string `json:"kmipId"`
 		Host               string `json:"host"`
@@ -815,7 +813,7 @@ func newKmipKey(name, kind, creationTime, encryptionKeyName string, data []byte,
 	var decoded kmipKeyTmp
 	err := json.Unmarshal(data, &decoded)
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("invalid raw key json: %s", err.Error()))
+		return nil, fmt.Errorf("invalid raw key json: %s", err.Error())
 	}
 	rawKeyInfo := &kmipStoredKey{
 		Name:                name,
@@ -925,17 +923,17 @@ func (k *kmipStoredKey) decryptMe(ctx *storedKeysCtx) error {
 }
 
 func (k *kmipStoredKey) encryptData(data, AD []byte) ([]byte, error) {
-	return nil, errors.New("not implemented")
+	return nil, fmt.Errorf("not implemented")
 }
 
 func (k *kmipStoredKey) decryptData(data, AD []byte) ([]byte, error) {
-	return nil, errors.New("not implemented")
+	return nil, fmt.Errorf("not implemented")
 }
 
 func (k *kmipStoredKey) unmarshal(data json.RawMessage) error {
 	err := json.Unmarshal(data, k)
 	if err != nil {
-		return errors.New(fmt.Sprintf("invalid raw key json: %s", err.Error()))
+		return fmt.Errorf("invalid raw key json: %s", err.Error())
 	}
 	return nil
 }
@@ -946,12 +944,12 @@ func (k *kmipStoredKey) usesSecretManagementKey() bool {
 
 func (k *kmipStoredKey) marshal() (storedKeyType, []byte, error) {
 	if k.EncryptedPassphrase == nil {
-		return "", nil, errors.New(fmt.Sprintf("Cant' store key \"%s\" to disk because the key is not encrypted", k.Name))
+		return "", nil, fmt.Errorf("can't store key \"%s\" to disk because the key is not encrypted", k.Name)
 	}
 	data, err := json.Marshal(k)
 
 	if err != nil {
-		return "", nil, errors.New(fmt.Sprintf("Failed to marshal key %s: %s", k.Name, err.Error()))
+		return "", nil, fmt.Errorf("failed to marshal key %s: %s", k.Name, err.Error())
 	}
 	return kmipKey, data, nil
 }

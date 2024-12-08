@@ -273,9 +273,9 @@ func initEncryptionKeys(config *Config, password []byte) (secretIface, error) {
 		return initKeysViaScript(settings)
 	}
 
-	return nil, errors.New(fmt.Sprintf(
+	return nil, fmt.Errorf(
 		"unknown encryption service key storage type: %s",
-		config.EncryptionSettings.KeyStorageType))
+		config.EncryptionSettings.KeyStorageType)
 }
 
 func initKeysViaScript(settings map[string]interface{}) (*keysViaScript, error) {
@@ -383,10 +383,9 @@ func initFilePassword(
 		}
 		passwordToUse = []byte(output)
 	} else {
-		return passwordSource, nil, errors.New(
-			fmt.Sprintf(
-				"unknown password source: %s",
-				passwordSource))
+		return passwordSource, nil, fmt.Errorf(
+			"unknown password source: %s",
+			passwordSource)
 	}
 	return passwordSource, passwordToUse, nil
 }
@@ -396,15 +395,13 @@ func saveDatakey(datakeyFile string, dataKey, backupDataKey []byte) error {
 	datakeyDir := filepath.Dir(datakeyFile)
 	err := os.MkdirAll(datakeyDir, 0755)
 	if err != nil {
-		msg := fmt.Sprintf("failed to create dir for data key \"%s\": %s",
-			datakeyDir, err.Error)
-		return errors.New(msg)
+		return fmt.Errorf("failed to create dir for data key \"%s\": %s",
+			datakeyDir, err.Error())
 	}
 	err = atomicWriteFile(datakeyFile, data, 0640)
 	if err != nil {
-		msg := fmt.Sprintf("failed to write datakey file \"%s\": %s",
-			datakeyFile, err.Error)
-		return errors.New(msg)
+		return fmt.Errorf("failed to write datakey file \"%s\": %s",
+			datakeyFile, err.Error())
 	}
 	return nil
 }
@@ -606,9 +603,9 @@ func (s *encryptionService) cmdCleanupSecrets(oldCfgBytes []byte) {
 	}
 	// We absolutelly must not remove secrets that are currently in use
 	if oldKeys.getStorageId() == s.encryptionKeys.getStorageId() {
-		replyError(fmt.Sprintf(
-			"Can't remove secret '%s' because it is being used",
-			oldKeys.getStorageId()))
+		replyError(fmt.Errorf(
+			"can't remove secret '%s' because it is being used",
+			oldKeys.getStorageId()).Error())
 		return
 	}
 	log_dbg("trying to remove secret: %s", oldKeys.getStorageId())
@@ -653,7 +650,7 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 }
 
 func (s *encryptionService) cmdReadKeyFile(data []byte) {
-	keyPath, data := readBigField(data)
+	keyPath, _ := readBigField(data)
 	keyPathStr := string(keyPath)
 	keyIface, err := readKeyFromFile(keyPathStr, s.newStoredKeyCtx())
 	if err != nil {
@@ -665,7 +662,7 @@ func (s *encryptionService) cmdReadKeyFile(data []byte) {
 
 func (s *encryptionService) cmdReadKey(data []byte) {
 	keyKind, data := readBigField(data)
-	keyName, data := readBigField(data)
+	keyName, _ := readBigField(data)
 	keyKindStr := string(keyKind)
 	keyNameStr := string(keyName)
 	keyIface, err := readKey(keyNameStr, keyKindStr, s.newStoredKeyCtx())
@@ -709,7 +706,7 @@ func (s *encryptionService) cmdEncryptWithKey(data []byte) {
 	toEncrypt, data := readBigField(data)
 	AD, data := readBigField(data)
 	keyKindBin, data := readBigField(data)
-	keyNameBin, data := readBigField(data)
+	keyNameBin, _ := readBigField(data)
 	keyKind := string(keyKindBin)
 	keyName := string(keyNameBin)
 
@@ -725,7 +722,7 @@ func (s *encryptionService) cmdDecryptWithKey(data []byte) {
 	toDecrypt, data := readBigField(data)
 	AD, data := readBigField(data)
 	keyKindBin, data := readBigField(data)
-	keyNameBin, data := readBigField(data)
+	keyNameBin, _ := readBigField(data)
 	keyKind := string(keyKindBin)
 	keyName := string(keyNameBin)
 
@@ -849,16 +846,14 @@ func (keys *keysInEncryptedFile) read() error {
 
 	key, err := decrypt(keys.lockkey, encryptedKey)
 	if err != nil {
-		return errors.New(fmt.Sprintf("key decrypt failed: %s",
-			err.Error()))
+		return fmt.Errorf("key decrypt failed: %s", err.Error())
 	}
 	keys.secret.key = key
 
 	if len(encryptedBackup) > 0 {
 		backup, err := decrypt(keys.lockkey, encryptedBackup)
 		if err != nil {
-			return errors.New(fmt.Sprintf("backup key decrypt failed: %s",
-				err.Error()))
+			return fmt.Errorf("backup key decrypt failed: %s", err.Error())
 		}
 		keys.secret.backupKey = backup
 	} else {
@@ -939,28 +934,23 @@ func (keys *keysViaScript) read() error {
 	if len(keysTokens) == 2 {
 		backup, err = base64.StdEncoding.DecodeString(keysTokens[1])
 		if err != nil {
-			return errors.New(
-				fmt.Sprintf(
-					"Failed to decode backup key "+
-						"(expected to be base64 encoded): %s",
-					err.Error()))
+			return fmt.Errorf("failed to decode backup key "+
+				"(expected to be base64 encoded): %s", err.Error())
 		}
 	} else if len(keysTokens) == 1 {
 		backup = nil
 	} else if len(keysTokens) == 0 {
 		return ErrKeysDoNotExist
 	} else {
-		return errors.New(
-			fmt.Sprintf(
-				"Unexpected number of keys (%v) returned by %s",
-				len(keysTokens), keys.readCmd))
+		return fmt.Errorf(
+			"unexpected number of keys (%v) returned by %s",
+			len(keysTokens), keys.readCmd)
 	}
 	key, err := base64.StdEncoding.DecodeString(keysTokens[0])
 	if err != nil {
-		return errors.New(
-			fmt.Sprintf(
-				"Failed to decode key (expected to be base64 encoded): %s",
-				err.Error()))
+		return fmt.Errorf(
+			"failed to decode key (expected to be base64 encoded): %s",
+			err.Error())
 	}
 	keys.secret.key = key
 	keys.secret.backupKey = backup
@@ -1025,10 +1015,9 @@ func copySecret(from, to secretIface) (string, error) {
 			// We can't continue even if it is caused by a different password
 			// because the copy will basically change the password for
 			// the secret then, and rollback will not work in case of a problem
-			return "", errors.New(
-				fmt.Sprintf(
-					"Secret already exists but it can't be read (%s)",
-					err.Error()))
+			return "", fmt.Errorf(
+				"secret already exists but it can't be read (%s)",
+				err.Error())
 		}
 		log_dbg("New secret doesn't exist")
 	} else {
@@ -1046,11 +1035,10 @@ func copySecret(from, to secretIface) (string, error) {
 			oldStorage := from.getStorageId()
 			newStorage := to.getStorageId()
 			if oldStorage == newStorage {
-				return "", errors.New(
-					fmt.Sprintf(
-						"Can't use exactly same storage for secret "+
-							"(old storage: %s, new storage: %s)",
-						oldStorage, newStorage))
+				return "", fmt.Errorf(
+					"can't use exactly same storage for secret "+
+						"(old storage: %s, new storage: %s)",
+					oldStorage, newStorage)
 			}
 			// that's ok, new and old configs use different storages
 			// for secrets, so we will not overwrite existing secret
@@ -1093,9 +1081,9 @@ func readCfg(configPath string) (*Config, error) {
 	configBytes, err := os.ReadFile(configPath)
 
 	if err != nil {
-		return nil, errors.New(
-			fmt.Sprintf("failed to read config file (\"%s\"): %s",
-				configPath, err))
+		return nil, fmt.Errorf(
+			"failed to read config file (\"%s\"): %s",
+			configPath, err.Error())
 	}
 	return readCfgBytes(configBytes)
 }
@@ -1105,10 +1093,9 @@ func readCfgBytes(configBytes []byte) (*Config, error) {
 	var config Config
 	err := json.Unmarshal(configBytes, &config)
 	if err != nil {
-		return nil, errors.New(
-			fmt.Sprintf(
-				"failed to parse config file: %s\n%s",
-				err, configBytes))
+		return nil, fmt.Errorf(
+			"failed to parse config file: %s\n%s",
+			err.Error(), configBytes)
 	}
 
 	return &config, nil

@@ -47,7 +47,7 @@ func decryptWithAD(key, data, AD []byte) ([]byte, error) {
 	if data[0] != 0 {
 		return nil, errors.New("unsupported cipher")
 	}
-	return aesgcmDecrypt(key, data[1:len(data)], AD)
+	return aesgcmDecrypt(key, data[1:], AD)
 }
 
 func aesgcmEncrypt(key, data, AD []byte) []byte {
@@ -132,9 +132,9 @@ func callExternalScript(cmdStr string, timeoutMs int) (string, error) {
 	err := cmd.Run()
 	res := stdoutbuf.String()
 	if err != nil {
-		return res, errors.New(fmt.Sprintf(
-			"Command '%s' finished with error(error: '%v', stderr: '%s')",
-			cmdStr, err.Error(), stderrbuf.String()))
+		return res, fmt.Errorf(
+			"command '%s' finished with error (error: '%v', stderr: '%s')",
+			cmdStr, err.Error(), stderrbuf.String())
 	}
 	return res, nil
 }

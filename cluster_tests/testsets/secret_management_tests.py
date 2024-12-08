@@ -86,7 +86,7 @@ class SecretManagementTests(testlib.BaseTestSet):
                     'customKeyPath': datakey_path,
                     'passwordSource': 'script',
                     'passwordCmd': script_path}).json()
-        assert r['errors']['_'].startswith('Secret already exists')
+        assert r['errors']['_'].startswith('secret already exists')
 
     def not_existing_password_cmd_test(self):
         try_wrong_password_cmd(self.cluster, "getpass_does_not_exist.sh")
@@ -321,7 +321,7 @@ def try_wrong_password_cmd(cluster, script):
                 'passwordSource': 'script',
                 'passwordCmd': cmd}).json()
     assert r['errors']['_'].startswith(
-                                f'Command \'{cmd}\' finished with error')
+                                f'command \'{cmd}\' finished with error')
 
 
 def change_password(cluster, password=None):
