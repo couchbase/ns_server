@@ -137,7 +137,7 @@ type readKeyAesKeyResponse struct {
 
 // Stored keys managenement functions
 
-func store_key(name, kind, keyType string, encryptionKeyName, creationTime string, testOnly bool, otherData []byte, ctx *storedKeysCtx) error {
+func storeKey(name, kind, keyType string, encryptionKeyName, creationTime string, testOnly bool, otherData []byte, ctx *storedKeysCtx) error {
 	keySettings, err := getStoredKeyConfig(kind, ctx.storedKeyConfigs)
 	if err != nil {
 		return err
@@ -166,7 +166,7 @@ func store_key(name, kind, keyType string, encryptionKeyName, creationTime strin
 
 	if !shouldRewrite && !testOnly {
 		// key is already on disk and encrypted with the correct key
-		log_dbg("Key %s is already on disk, will do nothing", name)
+		logDbg("Key %s is already on disk, will do nothing", name)
 		return nil
 	}
 
@@ -187,7 +187,7 @@ func store_key(name, kind, keyType string, encryptionKeyName, creationTime strin
 		if !bytes.Equal(testData[:], decryptedData) {
 			return fmt.Errorf("encrypted and decrypted data doesn't match the original data")
 		}
-		log_dbg("Key %s test succeeded", name)
+		logDbg("Key %s test succeeded", name)
 		return nil
 	}
 
@@ -257,7 +257,7 @@ func writeKeyToDisk(keyIface storedKeyIface, curVsn int, keySettings *storedKeyC
 	}
 
 	keyPath := storedKeyPath(keySettings, keyIface.name(), nextVsn)
-	log_dbg("Writing %s (%s) to file %s", keyIface.name(), keySettings.KeyKind, keyPath)
+	logDbg("Writing %s (%s) to file %s", keyIface.name(), keySettings.KeyKind, keyPath)
 	keyDir := filepath.Dir(keyPath)
 	err = os.MkdirAll(keyDir, 0755)
 	if err != nil {
@@ -273,7 +273,7 @@ func writeKeyToDisk(keyIface storedKeyIface, curVsn int, keySettings *storedKeyC
 		if err != nil {
 			// Seems like we should not return error in this case, because
 			// it would lead to retry
-			log_dbg("failed to remove file %s: %s", prevKeyPath, err.Error())
+			logDbg("failed to remove file %s: %s", prevKeyPath, err.Error())
 		}
 	}
 
@@ -342,7 +342,7 @@ func scanDir(dirPath string) ([]string, error) {
 	for _, f := range files {
 		keyName, _, err := parseKeyFilename(f.Name())
 		if err != nil {
-			log_dbg("Skipping file %s as it doesn't seem to be a key file", f)
+			logDbg("Skipping file %s as it doesn't seem to be a key file", f)
 			continue
 		}
 		s[keyName] = true
@@ -384,7 +384,7 @@ func findKeyFile(path string) (string, int, error) {
 	for _, p := range candidates {
 		_, vsn, err := parseKeyFilename(filepath.Base(p))
 		if err != nil {
-			log_dbg("Unexpected key filename %s", err.Error())
+			logDbg("Unexpected key filename %s", err.Error())
 			continue
 		}
 		if vsn > maxVsn {
@@ -403,7 +403,7 @@ func readKeyFromFileRaw(pathWithoutVersion string) (storedKeyIface, int, error) 
 	if err != nil {
 		return nil, vsn, err
 	}
-	log_dbg("Reading key from file %s", path)
+	logDbg("Reading key from file %s", path)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, vsn, fmt.Errorf("failed to read key from file %s: %s", path, err.Error())
@@ -454,43 +454,43 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 			continue
 		}
 		keyNames, dirReadErr := scanDir(cfg.Path)
-		log_dbg("Will check if the following keys in %s need reencryption: %v", cfg.Path, keyNames)
+		logDbg("Will check if the following keys in %s need reencryption: %v", cfg.Path, keyNames)
 		if dirReadErr != nil {
 			if os.IsNotExist(dirReadErr) {
 				continue
 			}
-			log_dbg("Could not reencrypt keys because could not read dir \"%s\": %s", cfg.Path, dirReadErr.Error())
+			logDbg("Could not reencrypt keys because could not read dir \"%s\": %s", cfg.Path, dirReadErr.Error())
 			errorsCounter++
 		}
 		// Even in case of an error ReadDir can return files
 		// Reencrypt everything we can
 		for _, keyName := range keyNames {
-			log_dbg("Maybe reencrypting key \"%s\"...", keyName)
+			logDbg("Maybe reencrypting key \"%s\"...", keyName)
 			keyIface, vsn, err := readKeyRaw(&cfg, keyName)
 			if err != nil {
-				log_dbg(err.Error())
+				logDbg(err.Error())
 				errorsCounter++
 				continue
 			}
 			if !keyIface.usesSecretManagementKey() {
-				log_dbg("Skipping \"%s\", because it is not using secret management service", keyName)
+				logDbg("Skipping \"%s\", because it is not using secret management service", keyName)
 				continue
 			}
 			err = decryptKey(keyIface, ctx)
 			if err != nil {
-				log_dbg(err.Error())
+				logDbg(err.Error())
 				errorsCounter++
 				continue
 			}
 			err = encryptKey(keyIface, ctx)
 			if err != nil {
-				log_dbg(err.Error())
+				logDbg(err.Error())
 				errorsCounter++
 				continue
 			}
 			err = writeKeyToDisk(keyIface, vsn, &cfg)
 			if err != nil {
-				log_dbg(err.Error())
+				logDbg(err.Error())
 				errorsCounter++
 				continue
 			}
@@ -515,7 +515,7 @@ func encryptKeyData(k storedKeyIface, data []byte, encryptionKeyName string, ctx
 	AD := k.ad()
 	if k.usesSecretManagementKey() {
 		// Encrypting with encryption service's data key
-		log_dbg("Will use encryption service to encrypt key %s (ad: %s)", k.name(), base64.StdEncoding.EncodeToString(AD))
+		logDbg("Will use encryption service to encrypt key %s (ad: %s)", k.name(), base64.StdEncoding.EncodeToString(AD))
 		// Using encrypt instead of aesgcmEncrypt here
 		// because we want to include encryption cipher (version
 		// basically) information in the encrypted data for the case if
@@ -526,7 +526,7 @@ func encryptKeyData(k storedKeyIface, data []byte, encryptionKeyName string, ctx
 		return encryptWithAD(ctx.encryptionServiceKey, data, AD), settings.EncryptByKind, nil
 	}
 	// Encrypting with another stored key (kek) that we will read from disk
-	log_dbg("Will use key %s to encrypt key %s (ad: %s)", encryptionKeyName, k.name(), base64.StdEncoding.EncodeToString(AD))
+	logDbg("Will use key %s to encrypt key %s (ad: %s)", encryptionKeyName, k.name(), base64.StdEncoding.EncodeToString(AD))
 	encryptedData, err := encryptWithKey(settings.EncryptByKind, encryptionKeyName, data, AD, ctx)
 	if err != nil {
 		return nil, "", err
@@ -543,21 +543,21 @@ func decryptKeyData(k storedKeyIface, data []byte, encryptedByKind, encryptionKe
 	}
 	AD := k.ad()
 	if k.usesSecretManagementKey() {
-		log_dbg("Will use encryption service to decrypt key %s", k.name())
+		logDbg("Will use encryption service to decrypt key %s", k.name())
 		decryptedData, err := decryptWithAD(ctx.encryptionServiceKey, data, AD)
 		if err != nil {
 			if ctx.backupEncryptionServiceKey != nil {
-				log_dbg("Failed to decrypt key using main data key, will try backup key: %s (ad: %s)", err.Error(), base64.StdEncoding.EncodeToString(AD))
+				logDbg("Failed to decrypt key using main data key, will try backup key: %s (ad: %s)", err.Error(), base64.StdEncoding.EncodeToString(AD))
 				decryptedData, err = decryptWithAD(ctx.backupEncryptionServiceKey, data, AD)
 				if err != nil {
-					log_dbg("Failed to decrypt key using backup data key: %s", err.Error())
+					logDbg("Failed to decrypt key using backup data key: %s", err.Error())
 					return nil, false, fmt.Errorf("failed to decrypt key %s: %s", k.name(), err.Error())
 				}
 			} else {
-				log_dbg("Failed to decrypt key using main data key, and there is no backup key: %s (ad: %s)", err.Error(), base64.StdEncoding.EncodeToString(AD))
+				logDbg("Failed to decrypt key using main data key, and there is no backup key: %s (ad: %s)", err.Error(), base64.StdEncoding.EncodeToString(AD))
 				return nil, false, fmt.Errorf("failed to decrypt key %s: %s", k.name(), err.Error())
 			}
-			log_dbg("Decrypted using backup data key")
+			logDbg("Decrypted using backup data key")
 			return decryptedData, true, nil
 		}
 		return decryptedData, false, nil
@@ -593,12 +593,12 @@ func (k *rawAesGcmStoredKey) kind() string {
 func (k *rawAesGcmStoredKey) needRewrite(settings *storedKeyConfig, ctx *storedKeysCtx) (bool, int, error) {
 	keyIface, vsn, err := readKeyRaw(settings, k.Name)
 	if err != nil {
-		log_dbg("key %s read error: %s", k.Name, err.Error())
+		logDbg("key %s read error: %s", k.Name, err.Error())
 		return true, vsn, nil
 	}
 	onDiskKey, ok := keyIface.(*rawAesGcmStoredKey)
 	if !ok {
-		log_dbg("key %s changed type, rewriting", k.Name)
+		logDbg("key %s changed type, rewriting", k.Name)
 		return true, vsn, nil
 	}
 	return onDiskKey.EncryptedByKind != settings.EncryptByKind || onDiskKey.EncryptionKeyName != k.EncryptionKeyName, vsn, nil
@@ -612,7 +612,7 @@ func (k *rawAesGcmStoredKey) encryptMe(ctx *storedKeysCtx) error {
 	if k.EncryptedKey != nil {
 		// Seems like it is already encrypted
 		// Checking that we can decrypt it just in case
-		log_dbg("Verifying encryption for key \"%s\"", k.Name)
+		logDbg("Verifying encryption for key \"%s\"", k.Name)
 		decryptedKey, reencryptNeeded, err := decryptKeyData(k, k.EncryptedKey, k.EncryptedByKind, k.EncryptionKeyName, ctx)
 		if err != nil {
 			return err
@@ -717,12 +717,12 @@ func (k *awsStoredKey) kind() string {
 func (k *awsStoredKey) needRewrite(settings *storedKeyConfig, ctx *storedKeysCtx) (bool, int, error) {
 	keyIface, vsn, err := readKeyRaw(settings, k.Name)
 	if err != nil {
-		log_dbg("key %s read error: %s", k.Name, err.Error())
+		logDbg("key %s read error: %s", k.Name, err.Error())
 		return true, vsn, nil
 	}
 	onDiskKey, ok := keyIface.(*awsStoredKey)
 	if !ok {
-		log_dbg("key %s changed type, rewriting", k.Name)
+		logDbg("key %s changed type, rewriting", k.Name)
 		return true, vsn, nil
 	}
 	return !reflect.DeepEqual(k, onDiskKey), vsn, nil
@@ -744,7 +744,7 @@ func (k *awsStoredKey) decryptMe(ctx *storedKeysCtx) error {
 func (k *awsStoredKey) encryptData(data, AD []byte) ([]byte, error) {
 	if k.KeyArn == "TEST_AWS_KEY_ARN" {
 		// This code should be used for test purposes only
-		log_dbg("Encrypting data using test key")
+		logDbg("Encrypting data using test key")
 		zero_key := make([]byte, 32)
 		return aesgcmEncrypt(zero_key, data, AD), nil
 	}
@@ -763,7 +763,7 @@ func (k *awsStoredKey) encryptData(data, AD []byte) ([]byte, error) {
 func (k *awsStoredKey) decryptData(data, AD []byte) ([]byte, error) {
 	if k.KeyArn == "TEST_AWS_KEY_ARN" {
 		// This code should be used for test purposes only
-		log_dbg("Decrypting data using test key")
+		logDbg("Decrypting data using test key")
 		zero_key := make([]byte, 32)
 		return aesgcmDecrypt(zero_key, data, AD)
 	}
@@ -841,12 +841,12 @@ func (k *kmipStoredKey) kind() string {
 func (k *kmipStoredKey) needRewrite(settings *storedKeyConfig, ctx *storedKeysCtx) (bool, int, error) {
 	keyIface, vsn, err := readKeyRaw(settings, k.Name)
 	if err != nil {
-		log_dbg("key %s read error: %s", k.Name, err.Error())
+		logDbg("key %s read error: %s", k.Name, err.Error())
 		return true, vsn, nil
 	}
 	onDiskKey, ok := keyIface.(*kmipStoredKey)
 	if !ok {
-		log_dbg("key %s changed type, rewriting", k.Name)
+		logDbg("key %s changed type, rewriting", k.Name)
 		return true, vsn, nil
 	}
 
@@ -894,7 +894,7 @@ func (k *kmipStoredKey) encryptMe(ctx *storedKeysCtx) error {
 	if k.EncryptedPassphrase != nil {
 		// Seems like it is already encrypted
 		// Checking that we can decrypt it just in case
-		log_dbg("Verifying encryption for key \"%s\"", k.Name)
+		logDbg("Verifying encryption for key \"%s\"", k.Name)
 		decryptedPass, reencryptNeeded, err := decryptKeyData(k, k.EncryptedPassphrase, k.EncryptedByKind, k.EncryptionKeyName, ctx)
 		if err != nil {
 			return err

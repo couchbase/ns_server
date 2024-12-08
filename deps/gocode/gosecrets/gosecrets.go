@@ -100,7 +100,7 @@ type Config struct {
 func main() {
 	defer func() {
 		if err := recover(); err != nil {
-			log_dbg("panic occurred: %v\n%s", err, string(debug.Stack()))
+			logDbg("panic occurred: %v\n%s", err, string(debug.Stack()))
 			panic(err)
 		}
 	}()
@@ -409,7 +409,7 @@ func saveDatakey(datakeyFile string, dataKey, backupDataKey []byte) error {
 func readDatakey(datakeyFile string) ([]byte, []byte, error) {
 	data, err := os.ReadFile(datakeyFile)
 	if os.IsNotExist(err) {
-		log_dbg("file %s does not exist", datakeyFile)
+		logDbg("file %s does not exist", datakeyFile)
 		return nil, nil, ErrKeysDoNotExist
 	} else if err != nil {
 		msg := fmt.Sprintf("failed to read datakey file \"%s\": %s",
@@ -608,7 +608,7 @@ func (s *encryptionService) cmdCleanupSecrets(oldCfgBytes []byte) {
 			oldKeys.getStorageId()).Error())
 		return
 	}
-	log_dbg("trying to remove secret: %s", oldKeys.getStorageId())
+	logDbg("trying to remove secret: %s", oldKeys.getStorageId())
 	err = oldKeys.remove()
 	if err != nil {
 		replyError(err.Error())
@@ -633,15 +633,15 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 	testOnlyBool := (string(testOnly) == "true")
 
 	if testOnlyBool {
-		log_dbg("Received request to test key %s (kind: %s, type: %s, encryptionKey: %s) on disk",
+		logDbg("Received request to test key %s (kind: %s, type: %s, encryptionKey: %s) on disk",
 			keyNameStr, keyKindStr, keyTypeStr, encryptionKeyName)
 	} else {
-		log_dbg("Received request to store key %s (kind: %s, type: %s, encryptionKey: %s) on disk",
+		logDbg("Received request to store key %s (kind: %s, type: %s, encryptionKey: %s) on disk",
 			keyNameStr, keyKindStr, keyTypeStr, encryptionKeyName)
 	}
 
 	ctx := s.newStoredKeyCtx()
-	err := store_key(keyNameStr, keyKindStr, keyTypeStr, encryptionKeyName, creationTimeStr, testOnlyBool, otherData, ctx)
+	err := storeKey(keyNameStr, keyKindStr, keyTypeStr, encryptionKeyName, creationTimeStr, testOnlyBool, otherData, ctx)
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -747,7 +747,7 @@ func generateLockKey(password []byte) []byte {
 	return pbkdf2.Key(password, salt[:], nIterations, keySize, hmacFun)
 }
 
-func log_dbg(str string, args ...interface{}) {
+func logDbg(str string, args ...interface{}) {
 	doReply([]byte("L" + fmt.Sprintf(str, args...)))
 }
 
@@ -773,7 +773,7 @@ func (keys *keysInFile) read() error {
 		keys.secret.backupKey = nil
 	}
 	keys.secret.key = key
-	log_dbg("read encryption keys from '%s' (%d byte main key, "+
+	logDbg("read encryption keys from '%s' (%d byte main key, "+
 		"and %d byte backup key)", keys.filePath, len(key), len(backupKey))
 	return nil
 }
@@ -860,7 +860,7 @@ func (keys *keysInEncryptedFile) read() error {
 		keys.secret.backupKey = nil
 	}
 
-	log_dbg("read encryption keys from '%s' (%d byte main key, "+
+	logDbg("read encryption keys from '%s' (%d byte main key, "+
 		"and %d byte backup key)",
 		keys.filePath, len(encryptedKey), len(encryptedBackup))
 	return nil
@@ -954,7 +954,7 @@ func (keys *keysViaScript) read() error {
 	}
 	keys.secret.key = key
 	keys.secret.backupKey = backup
-	log_dbg("read keys via script '%s'", keys.readCmd)
+	logDbg("read keys via script '%s'", keys.readCmd)
 	return nil
 }
 
@@ -996,11 +996,11 @@ func (keys *keysViaScript) sameSettings(param interface{}) bool {
 // Other functions:
 
 func copySecret(from, to secretIface) (string, error) {
-	log_dbg("Trying to copy a secret\nOld cfg type: %v\nNew cfg type: %v",
+	logDbg("Trying to copy a secret\nOld cfg type: %v\nNew cfg type: %v",
 		reflect.TypeOf(from), reflect.TypeOf(to))
 
 	if from.sameSettings(to) {
-		log_dbg("same secret configs, nothing to do")
+		logDbg("same secret configs, nothing to do")
 		return "same", nil
 	}
 
@@ -1019,7 +1019,7 @@ func copySecret(from, to secretIface) (string, error) {
 				"secret already exists but it can't be read (%s)",
 				err.Error())
 		}
-		log_dbg("New secret doesn't exist")
+		logDbg("New secret doesn't exist")
 	} else {
 		// Even if new config uses the same storage for this secret,
 		// it should be safe to overwrite it using new config
@@ -1029,7 +1029,7 @@ func copySecret(from, to secretIface) (string, error) {
 		secretsMatch := bytes.Equal(from.getSecret().key, to.getSecret().key) &&
 			bytes.Equal(from.getSecret().backupKey, to.getSecret().backupKey)
 		if !secretsMatch {
-			log_dbg(
+			logDbg(
 				"New secret already exists and it doesn't " +
 					"match the secret that is in use")
 			oldStorage := from.getStorageId()
@@ -1044,7 +1044,7 @@ func copySecret(from, to secretIface) (string, error) {
 			// for secrets, so we will not overwrite existing secret
 			// if we save new secret here
 		} else {
-			log_dbg("New secret already exists and it matches" +
+			logDbg("New secret already exists and it matches" +
 				"the secret that is in use")
 		}
 	}
@@ -1055,7 +1055,7 @@ func copySecret(from, to secretIface) (string, error) {
 	// just making sure it is readable
 	err = to.read()
 	if err != nil {
-		log_dbg("Failed to read the secret after writing: %s", err.Error())
+		logDbg("Failed to read the secret after writing: %s", err.Error())
 		return "", err
 	}
 	return "copied", nil
@@ -1070,7 +1070,7 @@ func saveKeys(keys secretIface, key, backup []byte) error {
 func readOrCreateKeys(keys secretIface) error {
 	err := keys.read()
 	if errors.Is(err, ErrKeysDoNotExist) {
-		log_dbg("Generating secret")
+		logDbg("Generating secret")
 		key := createRandomKey()
 		return saveKeys(keys, key, nil)
 	}
@@ -1089,7 +1089,7 @@ func readCfg(configPath string) (*Config, error) {
 }
 
 func readCfgBytes(configBytes []byte) (*Config, error) {
-	log_dbg("parsing config: \n%s", string(configBytes))
+	logDbg("parsing config: \n%s", string(configBytes))
 	var config Config
 	err := json.Unmarshal(configBytes, &config)
 	if err != nil {

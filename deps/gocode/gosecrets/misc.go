@@ -92,7 +92,7 @@ func atomicWriteFile(path string, binary []byte, perm fs.FileMode) (err error) {
 	if err != nil {
 		return err
 	}
-	log_dbg("using tmp file %s when writing to %s", tmpfile.Name(), path)
+	logDbg("using tmp file %s when writing to %s", tmpfile.Name(), path)
 
 	defer func() {
 		if err != nil {
@@ -120,7 +120,7 @@ func atomicWriteFile(path string, binary []byte, perm fs.FileMode) (err error) {
 }
 
 func callExternalScript(cmdStr string, timeoutMs int) (string, error) {
-	log_dbg("Calling cmd '%s'... ", cmdStr)
+	logDbg("Calling cmd '%s'... ", cmdStr)
 	cmdSlice := strings.Fields(cmdStr)
 	timeoutDuration := time.Duration(timeoutMs * 1000000)
 	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
