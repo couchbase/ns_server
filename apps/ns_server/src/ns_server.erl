@@ -227,7 +227,7 @@ do_init_logging() ->
     ok = ale:start_logger(?ACCESS_LOGGER, debug, menelaus_access_log_formatter),
     ok = ale:start_logger(?CHRONICLE_ALE_LOGGER, debug, chronicle_local),
     ok = ale:start_logger(?TLS_KEY_LOGGER, debug, ale_noop_formatter),
-    ok = ale:start_logger(?NS_SERVER_TRACE_LOGGER, debug, ale_noop_formatter),
+    ok = ale:start_logger(?NS_SERVER_TRACE_LOGGER, debug),
 
 
     OverrideLoglevels = [{?STATS_LOGGER, warn},
