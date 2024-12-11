@@ -38,7 +38,10 @@
          key_path/1,
          decode_key_info/1,
          garbage_collect_keks/1,
-         garbage_collect_keys/2]).
+         garbage_collect_keys/2,
+         maybe_rotate_integrity_tokens/1,
+         remove_old_integrity_tokens/1,
+         get_key_ids_in_use/0]).
 
 
 -export_type([stored_key_error/0]).
@@ -172,6 +175,32 @@ decrypt_key(Data, AD, KekId) when is_binary(Data), is_binary(AD),
     wrap_error_msg(
       cb_gosecrets_runner:decrypt_with_key(?RUNNER, Data, FinalAD, kek, KekId),
       decrypt_key_error).
+
+maybe_rotate_integrity_tokens(undefined) ->
+    maybe_rotate_integrity_tokens(<<>>);
+maybe_rotate_integrity_tokens(KeyName) ->
+    wrap_error_msg(
+      cb_gosecrets_runner:rotate_integrity_tokens(?RUNNER, KeyName),
+      rotate_integrity_tokens_error).
+
+remove_old_integrity_tokens(Kinds) ->
+    Paths = lists:filtermap(
+              fun(Kind) ->
+                  case key_path(Kind) of
+                      undefined -> false;
+                      Path -> {true, Path}
+                  end
+              end, Kinds),
+    wrap_error_msg(
+      cb_gosecrets_runner:remove_old_integrity_tokens(?RUNNER, Paths),
+      remove_old_integrity_tokens_error).
+
+get_key_ids_in_use() ->
+    case cb_gosecrets_runner:get_key_id_in_use(?RUNNER) of
+        {ok, <<>>} -> {ok, [undefined]};
+        {ok, KeyId} -> {ok, [KeyId]};
+        {error, Error} -> {error, Error}
+    end.
 
 %%%===================================================================
 %%% callbacks

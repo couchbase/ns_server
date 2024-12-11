@@ -1263,6 +1263,7 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                 %% On disk it is enabled but in config it is disabled:
                 true when EncrMethod == disabled ->
                     NewState = set_active(Kind, ActiveId, false, State),
+                    ok = maybe_rotate_integrity_tokens(Kind, undefined),
                     call_set_active_cb(Kind, NewState);
 
                 %% It is enabled on disk and in config:
@@ -1283,6 +1284,7 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                 %% and we already have a dek
                 false when is_binary(ActiveId) and not ShouldRotate ->
                     NewState = set_active(Kind, ActiveId, true, State),
+                    ok = maybe_rotate_integrity_tokens(Kind, ActiveId),
                     call_set_active_cb(Kind, NewState);
 
                 %% On disk it is disabled but in config it is enabled
@@ -1293,6 +1295,7 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                     case generate_new_dek(Kind, Deks, EncrMethod, Snapshot) of
                         {ok, DekId} ->
                             NewState = set_active(Kind, DekId, true, State),
+                            ok = maybe_rotate_integrity_tokens(Kind, DekId),
                             call_set_active_cb(Kind, NewState);
                         %% Too many DEKs and encryption is being enabled
                         %% We could not create new DEK, but should still
@@ -1496,6 +1499,13 @@ call_set_active_cb(Kind, #state{deks = AllDeks} = State) ->
             {error, State, Reason}
     end.
 
+-spec maybe_rotate_integrity_tokens(cb_deks:dek_kind(),
+                                    cb_deks:dek_id() | undefined) -> ok.
+maybe_rotate_integrity_tokens(configDek, DekId) ->
+    ok = encryption_service:maybe_rotate_integrity_tokens(DekId);
+maybe_rotate_integrity_tokens(_Kind, _DekId) ->
+    ok.
+
 call_dek_callback(CallbackName, Kind, Args) ->
     #{CallbackName := CB} = cb_deks:dek_config(Kind),
     try erlang:apply(CB, Args) of
@@ -1597,6 +1607,19 @@ maybe_read_deks(#state{proc_type = ?NODE_PROC, deks = undefined} = State) ->
                       NewAcc
                   end, NewState2, Kinds),
     ok = garbage_collect_keks(),
+
+    %% We should rotate here (when process is starting) because we can
+    %% hypothetically crash after calling set_active() but before calling
+    %% maybe_rotate_integrity_tokens() below
+    case NewState3 of
+        #state{deks = #{configDek := #{is_enabled := true,
+                                        active_id := ActiveId}}} ->
+            ok = maybe_rotate_integrity_tokens(configDek, ActiveId);
+        #state{deks = #{configDek := #{is_enabled := false}}} ->
+            ok = maybe_rotate_integrity_tokens(configDek, undefined);
+        #state{} ->
+            ok
+    end,
     add_jobs([{maybe_update_deks, K} || K <- Kinds], NewState3);
 maybe_read_deks(#state{} = State) ->
     State.

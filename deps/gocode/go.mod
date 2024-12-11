@@ -6,6 +6,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.27.18
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.5
 	github.com/evanw/esbuild v0.13.13
+	github.com/google/uuid v1.6.0
 	gocloud.dev v0.37.0
 	golang.org/x/crypto v0.24.0
 )

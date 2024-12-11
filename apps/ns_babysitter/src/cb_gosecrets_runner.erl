@@ -38,7 +38,10 @@
          decrypt_with_key/5,
          read_key/3,
          defaults/0,
-         key_path/2]).
+         key_path/2,
+         rotate_integrity_tokens/2,
+         remove_old_integrity_tokens/2,
+         get_key_id_in_use/1]).
 
 -record(state, {config :: file:filename(),
                 loop :: pid() | undefined,
@@ -134,6 +137,15 @@ encrypt_with_key(Name, Data, AD, KeyKind, KeyName) ->
 decrypt_with_key(Name, Data, AD, KeyKind, KeyName) ->
     gen_server:call(Name, {decrypt_with_key, Data, AD, KeyKind, KeyName},
                     infinity).
+
+rotate_integrity_tokens(Name, KeyName) ->
+    gen_server:call(Name, {rotate_integrity_tokens, KeyName}, infinity).
+
+remove_old_integrity_tokens(Name, Paths) ->
+    gen_server:call(Name, {remove_old_integrity_tokens, Paths}, infinity).
+
+get_key_id_in_use(Name) ->
+    gen_server:call(Name, get_key_id_in_use, infinity).
 
 start_link(Logger, PasswordPromptAllowed) ->
     start_link(Logger, PasswordPromptAllowed, gosecrets_cfg_path()).
@@ -352,6 +364,12 @@ handle_call({encrypt_with_key, _Data, _AD, _KeyKind, _Name} = Cmd, _From,
 handle_call({decrypt_with_key, _Data, _AD, _KeyKind, _Name} = Cmd, _From,
             State) ->
     {reply, convert_empty_data(call_gosecrets(Cmd, State)), State};
+handle_call({rotate_integrity_tokens, _KeyName} = Cmd, _From, State) ->
+    {reply, call_gosecrets(Cmd, State), State};
+handle_call({remove_old_integrity_tokens, _Paths} = Cmd, _From, State) ->
+    {reply, call_gosecrets(Cmd, State), State};
+handle_call(get_key_id_in_use, _From, State) ->
+    {reply, convert_empty_data(call_gosecrets(get_key_id_in_use, State)), State};
 handle_call(stop, _From, State) ->
     {stop, normal, call_gosecrets(stop, State), State};
 handle_call(Call, _From, State) ->
@@ -493,7 +511,14 @@ encode({decrypt_with_key, Data, AD, KeyKind, Name}) ->
           (encode_param(KeyKind))/binary,
           (encode_param(Name))/binary>>;
 encode({read_key, Kind, Name}) ->
-    <<15, (encode_param(Kind))/binary, (encode_param(Name))/binary>>.
+    <<15, (encode_param(Kind))/binary, (encode_param(Name))/binary>>;
+encode({rotate_integrity_tokens, KeyName}) ->
+    <<17, (encode_param(KeyName))/binary>>;
+encode({remove_old_integrity_tokens, Paths}) ->
+    PathsBin = list_to_binary([encode_param(P) || P <- Paths]),
+    <<18, PathsBin/binary>>;
+encode(get_key_id_in_use) ->
+    <<19>>.
 
 encode_param(B) when is_atom(B) ->
     encode_param(atom_to_binary(B));
@@ -851,6 +876,86 @@ config_reload_test() ->
           ok = cleanup_secrets(Pid, Cfg3),
           ?assertEqual({ok, Data}, decrypt(Pid, Encrypted)),
           ?assertEqual({ok, <<"default">>}, get_state(Pid))
+      end).
+
+-define(key1, <<"key10000-0000-0000-0000-000000000000">>).
+-define(key2, <<"key20000-0000-0000-0000-000000000000">>).
+-define(key3, <<"key30000-0000-0000-0000-000000000000">>).
+-define(key4, <<"key40000-0000-0000-0000-000000000000">>).
+-define(key5, <<"key50000-0000-0000-0000-000000000000">>).
+-define(key6, <<"key60000-0000-0000-0000-000000000000">>).
+-define(key7, <<"key70000-0000-0000-0000-000000000000">>).
+
+integrity_check_for_stored_keys_test() ->
+    DKFile = path_config:tempfile("bucket_dek_test", ".tmp"),
+    ok = filelib:ensure_dir(DKFile),
+    Cfg = [{bucket_dek_path, iolist_to_binary(DKFile)}],
+    BucketPath = fun (Bucket) ->
+                     iolist_to_binary(filename:join([DKFile, Bucket, "deks"]))
+                 end,
+    KeyDirs = [key_path(configDek, Cfg),
+               key_path(logDek, Cfg),
+               key_path(auditDek, Cfg),
+               key_path(kek, Cfg),
+               BucketPath("bucket1"),
+               BucketPath("bucket2")],
+    with_all_stored_keys_cleaned(
+      Cfg,
+      fun () ->
+          with_gosecrets(
+            Cfg,
+            fun (CfgPath, Pid) ->
+                TokensPath = filename:join(filename:dirname(CfgPath),
+                                           "stored_keys_tokens"),
+                StoreKey = fun (Kind, KeyId, EncryptWithKey) ->
+                               store_key(Pid, Kind, KeyId, 'raw-aes-gcm',
+                                         rand:bytes(32),
+                                         EncryptWithKey,
+                                         <<"2024-07-26T19:32:19Z">>, false)
+                           end,
+
+                ok = StoreKey(configDek, ?key1, <<"encryptionService">>),
+
+                {ok, [undefined]} = cb_crypto:get_file_dek_ids(TokensPath),
+
+                %% First rotation with key1
+                ok = rotate_integrity_tokens(Pid, ?key1),
+                {ok, [?key1]} = cb_crypto:get_file_dek_ids(TokensPath),
+                ok = remove_old_integrity_tokens(Pid, KeyDirs),
+                {ok, [?key1]} = cb_crypto:get_file_dek_ids(TokensPath),
+
+                %% Store more keys of different kinds
+                ok = StoreKey(kek, ?key2, <<"encryptionService">>),
+                ok = StoreKey(configDek, ?key3, ?key2),
+                ok = StoreKey(logDek, ?key4, ?key2),
+                ok = StoreKey(auditDek, ?key5, ?key2),
+                Bucket1Key = <<"bucket1/deks/", ?key6/binary>>,
+                ok = StoreKey(bucketDek, Bucket1Key, ?key2),
+                Bucket2Key = <<"bucket2/deks/", ?key7/binary>>,
+                ok = StoreKey(bucketDek, Bucket2Key, ?key2),
+
+                %% Second rotation with key1
+                ok = rotate_integrity_tokens(Pid, ?key3),
+                {ok, [?key3]} = cb_crypto:get_file_dek_ids(TokensPath),
+
+                ok = remove_old_integrity_tokens(Pid, KeyDirs),
+                {ok, [?key3]} = cb_crypto:get_file_dek_ids(TokensPath),
+
+                %% Final rotation with empty key
+                ok = rotate_integrity_tokens(Pid, <<>>),
+                {ok, [undefined]} = cb_crypto:get_file_dek_ids(TokensPath),
+                ok = remove_old_integrity_tokens(Pid, KeyDirs),
+                {ok, [undefined]} = cb_crypto:get_file_dek_ids(TokensPath),
+
+                %% Verify all keys are still readable
+                {ok, _} = read_key(Pid, configDek, ?key1),
+                {ok, _} = read_key(Pid, kek, ?key2),
+                {ok, _} = read_key(Pid, configDek, ?key3),
+                {ok, _} = read_key(Pid, logDek, ?key4),
+                {ok, _} = read_key(Pid, auditDek, ?key5),
+                {ok, _} = read_key(Pid, bucketDek, Bucket1Key),
+                {ok, _} = read_key(Pid, bucketDek, Bucket2Key)
+            end)
       end).
 
 store_and_read_key_test() ->
@@ -1216,15 +1321,15 @@ with_tmp_datakey_cfg(Fun) ->
     end.
 
 with_all_stored_keys_cleaned(Cfg, Fun) ->
-    KeksPath = binary_to_list(key_path(kek, Cfg)),
-    DeksPath = binary_to_list(key_path(configDek, Cfg)),
-    ok = misc:rm_rf(KeksPath), %% In case if there are leftovers
-    ok = misc:rm_rf(DeksPath),
+    Keys = [configDek, logDek, auditDek, kek, bucketDek],
+    Paths = [binary_to_list(P) || Key <- Keys,
+                                  P <- [key_path(Key, Cfg)],
+                                  P =/= undefined],
+    [ok = misc:rm_rf(Path) || Path <- Paths],
     try
         Fun()
     after
-        ok = misc:rm_rf(KeksPath),
-        ok = misc:rm_rf(DeksPath)
+        [ok = misc:rm_rf(Path) || Path <- Paths]
     end.
 
 with_password_sent(WrongPassword, CorrectPassword, Fun) ->
@@ -1313,6 +1418,8 @@ with_tmp_cfg(Cfg, Fun) ->
         Fun(CfgPath)
     after
         delete_all_default_files(),
+        file:delete(filename:join(filename:dirname(CfgPath),
+                                  "stored_keys_tokens")),
         file:delete(CfgPath)
     end.
 

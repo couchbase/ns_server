@@ -425,6 +425,8 @@ force_config_encryption_keys() ->
         ok ?= simple_store:resave(?XDCR_CHECKPOINT_STORE),
         ok ?= chronicle_local:maybe_apply_new_keys(),
         ok ?= ns_ssl_services_setup:resave_encrypted_files(),
+        ok ?= encryption_service:remove_old_integrity_tokens(
+                [kek | dek_kinds_list()]),
         ok
     end.
 
@@ -439,10 +441,11 @@ get_config_dek_ids_in_use() ->
         {ok, Ids7} ?= simple_store:get_key_ids_in_use(?XDCR_CHECKPOINT_STORE),
         {ok, Ids8} ?= chronicle_local:get_encryption_dek_ids(),
         {ok, Ids9} ?= ns_ssl_services_setup:get_key_ids_in_use(),
+        {ok, Ids10} ?= encryption_service:get_key_ids_in_use(),
         {ok, lists:map(fun (undefined) -> ?NULL_DEK;
                            (Id) -> Id
                        end, lists:uniq(Ids1 ++ Ids2 ++ Ids3 ++ Ids4 ++ Ids5 ++
-                                       Ids6 ++ Ids7 ++ Ids8 ++ Ids9))}
+                                       Ids6 ++ Ids7 ++ Ids8 ++ Ids9 ++ Ids10))}
     end.
 
 get_dek_ids_in_use(logDek) ->

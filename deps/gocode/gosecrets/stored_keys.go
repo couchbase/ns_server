@@ -10,7 +10,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha512"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -21,10 +23,12 @@ import (
 	"strings"
 
 	"github.com/couchbase/ns_server/deps/gocode/awsutils"
+	"github.com/google/uuid"
 )
 
 var testData = [8]byte{1, 2, 3, 4, 5, 6, 7, 8}
 var testAD = [4]byte{255, 254, 253, 252}
+var intTokenEncryptionKeyKind = "configDek"
 
 // Stored keys structs and interfaces:
 
@@ -44,10 +48,10 @@ type storedKeyConfig struct {
 type storedKeyIface interface {
 	name() string
 	kind() string
-	needRewrite(*storedKeyConfig, *storedKeysCtx) (bool, int, error)
+	needRewrite(*storedKeyConfig, *StoredKeysState, *storedKeysCtx) (bool, int, error)
 	ad() []byte
-	encryptMe(*storedKeysCtx) error
-	decryptMe(*storedKeysCtx) error
+	encryptMe(*StoredKeysState, *storedKeysCtx) error
+	decryptMe(bool, *StoredKeysState, *storedKeysCtx) error
 	encryptData([]byte, []byte) ([]byte, error)
 	decryptData([]byte, []byte) ([]byte, error)
 	marshal() (storedKeyType, []byte, error)
@@ -57,8 +61,9 @@ type storedKeyIface interface {
 
 // Struct for marshalling/unmarshalling of a generic stored key
 type storedKeyJson struct {
-	Type storedKeyType   `json:"type"`
-	Raw  json.RawMessage `json:"keyData"`
+	Type  storedKeyType   `json:"type"`
+	Proof string          `json:"proof"`
+	Raw   json.RawMessage `json:"keyData"`
 }
 
 type storedKeyType string
@@ -67,6 +72,11 @@ const (
 	rawAESGCMKey storedKeyType = "raw-aes-gcm"
 	awskmKey     storedKeyType = "awskm"
 	kmipKey      storedKeyType = "kmip"
+
+	// Magic string used for encrypted file headers
+	encryptedFileMagicString    = "\x00Couchbase Encrypted\x00"
+	encryptionFileHeaderSize    = 64
+	encryptionFileKeyNameLength = byte(36)
 )
 
 // Struct for marshalling/unmarshalling of a raw aes-gcm stored key
@@ -117,11 +127,25 @@ type kmipStoredKey struct {
 	CreationTime        string `json:"creationTime"`
 }
 
+// Note: main difference between ctx and state is that the ctx can change
+// independently from stored keys functionality (in go secrets),
+// while the state is created and managed by this file only
 type storedKeysCtx struct {
 	storedKeyConfigs           []storedKeyConfig
 	encryptionServiceKey       []byte
 	backupEncryptionServiceKey []byte
 	keysTouched                map[string]bool
+}
+
+type StoredKeysState struct {
+	intTokensFile     string
+	intTokens         []intToken
+	encryptionKeyName string // Name of the encryption key that is used to encrypt the integrity tokens file
+}
+
+type intToken struct {
+	uuid  string
+	token []byte
 }
 
 type readKeyReply struct {
@@ -137,7 +161,399 @@ type readKeyAesKeyResponse struct {
 
 // Stored keys managenement functions
 
-func storeKey(name, kind, keyType string, encryptionKeyName, creationTime string, testOnly bool, otherData []byte, ctx *storedKeysCtx) error {
+func initStoredKeys(configDir string, ctx *storedKeysCtx) (*StoredKeysState, error) {
+	// Construct the path to the stored_keys_tokens file
+	tokensPath := filepath.Join(configDir, "stored_keys_tokens")
+
+	// Initialize empty state
+	state := &StoredKeysState{
+		intTokensFile: tokensPath,
+	}
+
+	err := state.readIntTokensFromFile(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(state.intTokens) == 0 {
+		logDbg("No integrity tokens found, generating new one")
+		err = state.generateIntToken(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return state, nil
+}
+
+func (state *StoredKeysState) rotateIntegrityTokens(keyName string, ctx *storedKeysCtx) error {
+	// It is important to use new key to encrypt the integrity tokens file
+	// because otherwise we can store newly generated token unencrypted
+	logDbg("Rotating integrity tokens, and encrypting file with key %s (old key: %s)", keyName, state.encryptionKeyName)
+	oldKeyName := state.encryptionKeyName
+	state.encryptionKeyName = keyName
+	err := state.generateIntToken(ctx)
+	if err != nil {
+		state.encryptionKeyName = oldKeyName
+		return err
+	}
+
+	return nil
+}
+
+func (state *StoredKeysState) removeOldIntegrityTokens(paths []string, ctx *storedKeysCtx) error {
+	// Before removing old integrity tokens we should regenerate proofs for
+	// every key on disk. The point is to make sure all keys have proofs that
+	// are generated with the most recent token, so we can remove old tokens
+	for _, path := range paths {
+		Names, err := scanDir(path)
+
+		logDbg("Regenerating proofs for all keys in %s (found %d keys)", path, len(Names))
+		if err != nil {
+			return err
+		}
+		for _, name := range Names {
+			ctx.keysTouched = make(map[string]bool)
+			err := state.maybeRegenerateProof(path, name, ctx)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	logDbg("Successfully regenerated proofs for all keys. Removing old tokens now")
+	prevTokens := state.intTokens
+	state.intTokens = state.intTokens[:1]
+	err := state.writeIntTokensToFile(ctx)
+	if err != nil {
+		state.intTokens = prevTokens
+		return err
+	}
+	for _, token := range prevTokens {
+		logDbg("Removing old token with uuid %s", token.uuid)
+	}
+	return nil
+}
+
+func (state *StoredKeysState) maybeRegenerateProof(path, name string, ctx *storedKeysCtx) error {
+	filePathPrefix := storedKeyPathPrefix(path, name)
+	keyIface, vsn, proof, err := readKeyFromFileRaw(filePathPrefix)
+	if err != nil {
+		logDbg("Failed to read key %s from file %s: %s", name, filePathPrefix, err.Error())
+		return err
+	}
+	parts := strings.Split(proof, ":")
+	if len(parts) != 2 {
+		return fmt.Errorf("file %s has invalid proof format", filePathPrefix)
+	}
+	uuid := parts[0]
+	if uuid == state.intTokens[0].uuid {
+		// Proof is still valid, no need to regenerate proof
+		logDbg("Proof for key %s from file %s is still valid (token uuid: %s)", name, filePathPrefix, uuid)
+		return nil
+	}
+	logDbg("Regenerating proof for key %s from file %s (token uuid in file: %s, expected: %s)", name, filePathPrefix, uuid, state.intTokens[0].uuid)
+	// decrypting key because (1) we need to validate proof
+	//                        (2) write key expects key to be unencrypted
+	err = state.decryptKey(keyIface, true, proof, ctx)
+	if err != nil {
+		logDbg("Failed to decrypt key %s: %s", name, err.Error())
+		return err
+	}
+	err = state.writeKeyToFile(keyIface, vsn, filePathPrefix)
+	if err != nil {
+		logDbg("Failed to write key with regenerated proof %s to file %s: %s", name, filePathPrefix, err.Error())
+		return err
+	}
+	return nil
+}
+
+func (state *StoredKeysState) generateIntToken(ctx *storedKeysCtx) error {
+	newToken := intToken{
+		uuid:  uuid.New().String(),
+		token: createRandomKey(),
+	}
+	prevTokens := state.intTokens
+	state.intTokens = append([]intToken{newToken}, state.intTokens...)
+	logDbg("Generated new token with uuid %s", newToken.uuid)
+	err := state.writeIntTokensToFile(ctx)
+	if err != nil {
+		state.intTokens = prevTokens
+		return err
+	}
+	return nil
+}
+
+func (state *StoredKeysState) readIntTokensFromFile(ctx *storedKeysCtx) error {
+	logDbg("Reading integrity tokens from file %s", state.intTokensFile)
+	state.intTokens = make([]intToken, 0)
+	state.encryptionKeyName = ""
+	// Read the file
+	data, err := os.ReadFile(state.intTokensFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			logDbg("Stored keys tokens file %s doesn't exist, it must be the first run", state.intTokensFile)
+			return nil
+		}
+		return fmt.Errorf("failed to read stored keys tokens file: %s", err.Error())
+	}
+
+	baseFilename := filepath.Base(state.intTokensFile)
+	data, encryptionKeyName, err := state.maybeDecryptFileData(baseFilename, data, ctx)
+	if err != nil {
+		return fmt.Errorf("failed to decrypt stored keys tokens file: %s", err.Error())
+	}
+
+	state.encryptionKeyName = encryptionKeyName
+
+	// Split the file content into lines
+	lines := strings.Split(string(data), "\n")
+
+	// Process each line
+	for i, line := range lines {
+		// Skip empty lines
+		if len(strings.TrimSpace(line)) == 0 {
+			continue
+		}
+
+		parts := strings.Split(line, ",")
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid token on line %d: %s", i+1, line)
+		}
+
+		uuid := strings.TrimSpace(parts[0])
+		token, err := base64.StdEncoding.DecodeString(parts[1])
+		if err != nil {
+			return fmt.Errorf("invalid base64 token on line %d: %s", i+1, err.Error())
+		}
+		logDbg("Read token with uuid %s", uuid)
+		state.intTokens = append(state.intTokens, intToken{
+			uuid:  uuid,
+			token: token,
+		})
+	}
+	return nil
+}
+
+func (state *StoredKeysState) writeIntTokensToFile(ctx *storedKeysCtx) error {
+	logDbg("Writing integrity tokens to file %s (encrypting with key %s)", state.intTokensFile, state.encryptionKeyName)
+	// Create a buffer to store the encoded tokens
+	var buffer bytes.Buffer
+
+	// Encode each token in base64 and write to buffer with newline
+	for _, token := range state.intTokens {
+		buffer.WriteString(token.uuid)
+		buffer.WriteString(",")
+		buffer.WriteString(base64.StdEncoding.EncodeToString(token.token))
+		buffer.WriteString("\n")
+	}
+
+	baseFilename := filepath.Base(state.intTokensFile)
+	encryptedData, err := state.encryptFileData(
+		baseFilename,
+		buffer.Bytes(),
+		state.encryptionKeyName,
+		ctx,
+	)
+	if err != nil {
+		logDbg("Failed to encrypt stored keys tokens file: %s", err.Error())
+		return err
+	}
+	err = atomicWriteFile(state.intTokensFile, encryptedData, 0640)
+	if err != nil {
+		logDbg("Failed to write stored keys tokens file: %s", err.Error())
+		return err
+	}
+	return nil
+}
+
+func getEncryptedFileAD(filename string, offset int) []byte {
+	return []byte(fmt.Sprintf("%s:%d", filename, offset))
+}
+
+// Note: function encrypts everything as a single chunk
+func (state *StoredKeysState) encryptFileData(filename string, data []byte, encryptionKeyName string, ctx *storedKeysCtx) ([]byte, error) {
+	if encryptionKeyName == "" {
+		// If no encryption key name provided, the data doesn't need to be encrypted
+		return data, nil
+	}
+
+	const (
+		version         = byte(0)
+		compressionType = byte(0)
+	)
+
+	// Create header
+	header := make([]byte, encryptionFileHeaderSize)
+	copy(header, encryptedFileMagicString)
+	header[len(encryptedFileMagicString)] = version
+	header[len(encryptedFileMagicString)+1] = compressionType
+	// 4 bytes reserved (zeros)
+	header[len(encryptedFileMagicString)+6] = encryptionFileKeyNameLength
+
+	// Pad or truncate encryptionKeyName to exactly 36 bytes
+	keyNameBytes := make([]byte, 36)
+	copy(keyNameBytes, encryptionKeyName)
+	copy(header[len(encryptedFileMagicString)+7:], keyNameBytes)
+
+	ad := getEncryptedFileAD(filename, encryptionFileHeaderSize)
+
+	// Read the encryption key and use it to encrypt the data
+	key, err := state.readKey(encryptionKeyName, intTokenEncryptionKeyKind, true, ctx)
+	if err != nil {
+		logDbg("Failed to read config dek: %s", err.Error())
+		return nil, err
+	}
+
+	encryptedData, err := key.encryptData(data, ad)
+	if err != nil {
+		logDbg("Failed to encrypt data: %s", err.Error())
+		return nil, err
+	}
+
+	// Create chunk (4 bytes size + encrypted data)
+	chunkSize := uint32(len(encryptedData))
+	chunk := make([]byte, 4+len(encryptedData))
+	binary.BigEndian.PutUint32(chunk[:4], chunkSize)
+	copy(chunk[4:], encryptedData)
+
+	// Combine header and chunk
+	result := make([]byte, len(header)+len(chunk))
+	copy(result, header)
+	copy(result[len(header):], chunk)
+
+	return result, nil
+}
+
+// Decrypts arbitraty "Couchbase Encrypted" file data with two caveats:
+// 1. It doesn't validate the proof of the key
+// 2. It assumes that file contains only one chunk
+func (state *StoredKeysState) maybeDecryptFileData(filename string, data []byte, ctx *storedKeysCtx) ([]byte, string, error) {
+	// Check if data is long enough to contain magic string
+	if len(data) < len(encryptedFileMagicString) {
+		// Too short for magic string, must be unencrypted
+		logDbg("Data is too short to contain magic string, must be unencrypted")
+		return data, "", nil
+	}
+
+	logDbg("Decrypting file %s, data length: %d", filename, len(data))
+
+	// Check for magic string
+	if !bytes.Equal(data[:len(encryptedFileMagicString)], []byte(encryptedFileMagicString)) {
+		// No magic string found, must be unencrypted
+		logDbg("No magic string found, must be unencrypted")
+		return data, "", nil
+	}
+
+	// Validate header format
+	header := data[:encryptionFileHeaderSize]
+	keyName, err := validateEncryptedFileHeader(header)
+	if err != nil {
+		return nil, "", err
+	}
+
+	logDbg("File is encrypted with key %s", keyName)
+
+	// Chunk format is 4 bytes size + encrypted data
+	chunk := data[encryptionFileHeaderSize:]
+	// Read chunk size
+	if len(chunk) < 4 {
+		return nil, "", fmt.Errorf("encrypted file too short to contain chunk size")
+	}
+	chunkSize := binary.BigEndian.Uint32(chunk[:4])
+	if len(chunk) < 4+int(chunkSize) {
+		return nil, "", fmt.Errorf("encrypted file shorter than specified chunk size")
+	}
+
+	// Read the encryption key and use it to decrypt the data
+	key, err := state.readKey(keyName, intTokenEncryptionKeyKind, false, ctx)
+	if err != nil {
+		logDbg("Failed to read config dek: %s", err.Error())
+		return nil, "", err
+	}
+
+	ad := getEncryptedFileAD(filename, encryptionFileHeaderSize)
+	decryptedData, err := key.decryptData(chunk[4:], ad)
+	if err != nil {
+		logDbg("Failed to decrypt data: %s", err.Error())
+		return nil, "", err
+	}
+
+	return decryptedData, keyName, nil
+}
+
+func validateEncryptedFileHeader(header []byte) (string, error) {
+	const (
+		version         = byte(0)
+		compressionType = byte(0)
+	)
+
+	if len(header) < encryptionFileHeaderSize {
+		return "", fmt.Errorf("encrypted file header too short")
+	}
+
+	if header[len(encryptedFileMagicString)] != version {
+		return "", fmt.Errorf("unsupported version: %d", header[len(encryptedFileMagicString)])
+	}
+
+	if header[len(encryptedFileMagicString)+1] != compressionType {
+		return "", fmt.Errorf("unsupported compression type: %d", header[len(encryptedFileMagicString)+1])
+	}
+
+	if header[len(encryptedFileMagicString)+6] != encryptionFileKeyNameLength {
+		return "", fmt.Errorf("invalid key name length: %d", header[len(encryptedFileMagicString)+6])
+	}
+
+	// Extract key name (trimming any trailing zeros)
+	keyName := string(header[len(encryptedFileMagicString)+7:])
+	return keyName, nil
+}
+
+func (state *StoredKeysState) getKeyIdInUse() (string, error) {
+	// We assume that file exists here, because we always create it in init
+
+	// Read first encryptionFileHeaderSize bytes from the file
+	data := make([]byte, encryptionFileHeaderSize)
+	file, err := os.Open(state.intTokensFile)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	_, err = file.Read(data)
+	if err != nil {
+		return "", err
+	}
+
+	if len(data) < len(encryptedFileMagicString) {
+		// Too short for magic string, must be unencrypted
+		return "", nil
+	}
+
+	// Check for magic string
+	if !bytes.Equal(data[:len(encryptedFileMagicString)], []byte(encryptedFileMagicString)) {
+		// No magic string found, must be unencrypted
+		return "", nil
+	}
+
+	// Try parsing as encrypted file header
+	keyName, err := validateEncryptedFileHeader(data)
+	if err != nil {
+		return "", err
+	}
+
+	return keyName, nil
+}
+
+func (state *StoredKeysState) storeKey(
+	name,
+	kind,
+	keyType string,
+	encryptionKeyName,
+	creationTime string,
+	testOnly bool,
+	otherData []byte,
+	ctx *storedKeysCtx,
+) error {
 	keySettings, err := getStoredKeyConfig(kind, ctx.storedKeyConfigs)
 	if err != nil {
 		return err
@@ -159,7 +575,7 @@ func storeKey(name, kind, keyType string, encryptionKeyName, creationTime string
 		return fmt.Errorf("unknown type: %s", keyType)
 	}
 
-	shouldRewrite, vsn, err := keyInfo.needRewrite(keySettings, ctx)
+	shouldRewrite, vsn, err := keyInfo.needRewrite(keySettings, state, ctx)
 	if err != nil {
 		return err
 	}
@@ -170,7 +586,7 @@ func storeKey(name, kind, keyType string, encryptionKeyName, creationTime string
 		return nil
 	}
 
-	err = encryptKey(keyInfo, ctx)
+	err = state.encryptKey(keyInfo, ctx)
 	if err != nil {
 		return err
 	}
@@ -191,7 +607,7 @@ func storeKey(name, kind, keyType string, encryptionKeyName, creationTime string
 		return nil
 	}
 
-	err = writeKeyToDisk(keyInfo, vsn, keySettings)
+	err = state.writeKeyToDisk(keyInfo, vsn, keySettings)
 	if err != nil {
 		return err
 	}
@@ -199,65 +615,88 @@ func storeKey(name, kind, keyType string, encryptionKeyName, creationTime string
 	return nil
 }
 
-func readKeyFromFile(path string, ctx *storedKeysCtx) (storedKeyIface, error) {
-	keyIface, _, err := readKeyFromFileRaw(path)
+func (state *StoredKeysState) readKeyFromFile(pathWithoutVersion string, ctx *storedKeysCtx) (storedKeyIface, int, error) {
+	keyIface, vsn, proof, err := readKeyFromFileRaw(pathWithoutVersion)
 	if err != nil {
-		return nil, err
+		return nil, vsn, err
 	}
-	err = decryptKey(keyIface, ctx)
+	err = state.decryptKey(keyIface, true, proof, ctx)
 	if err != nil {
-		return nil, err
+		return nil, vsn, err
 	}
-	return keyIface, nil
+	return keyIface, vsn, nil
 }
 
-func readKey(name, kind string, ctx *storedKeysCtx) (storedKeyIface, error) {
+func (state *StoredKeysState) readKey(name, kind string, validateProof bool, ctx *storedKeysCtx) (storedKeyIface, error) {
 	keySettings, err := getStoredKeyConfig(kind, ctx.storedKeyConfigs)
 	if err != nil {
 		return nil, err
 	}
-	keyIface, _, err := readKeyRaw(keySettings, name)
+	keyIface, _, proof, err := readKeyRaw(keySettings, name)
 	if err != nil {
 		return nil, err
 	}
-	err = decryptKey(keyIface, ctx)
+	err = state.decryptKey(keyIface, validateProof, proof, ctx)
 	if err != nil {
 		return nil, err
 	}
 	return keyIface, nil
 }
 
-func encryptKey(keyIface storedKeyIface, ctx *storedKeysCtx) error {
+func (state *StoredKeysState) encryptKey(keyIface storedKeyIface, ctx *storedKeysCtx) error {
 	// Mark it as in use, to make sure we don't try to use it for encryption
 	// or decryption while we are encrypting or decrypting this key
 	name := keyIface.name()
 	ctx.keysTouched[name] = true
 	defer delete(ctx.keysTouched, name)
-	return keyIface.encryptMe(ctx)
+	return keyIface.encryptMe(state, ctx)
 }
 
-func decryptKey(keyIface storedKeyIface, ctx *storedKeysCtx) error {
+func (state *StoredKeysState) decryptKey(keyIface storedKeyIface, validateProof bool, proof string, ctx *storedKeysCtx) error {
 	// Mark it as in use, to make sure we don't try to use it for encryption
 	// or decryption while we are encrypting or decrypting this key
 	name := keyIface.name()
 	ctx.keysTouched[name] = true
 	defer delete(ctx.keysTouched, name)
-	return keyIface.decryptMe(ctx)
+	err := keyIface.decryptMe(validateProof, state, ctx)
+	if err != nil {
+		return err
+	}
+	if validateProof {
+		err = validateKeyProof(keyIface, proof, state.intTokens)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func writeKeyToDisk(keyIface storedKeyIface, curVsn int, keySettings *storedKeyConfig) error {
+func (state *StoredKeysState) writeKeyToDisk(keyIface storedKeyIface, curVsn int, keySettings *storedKeyConfig) error {
+	keyPathWithoutVersion := storedKeyPathPrefix(keySettings.Path, keyIface.name())
+	return state.writeKeyToFile(keyIface, curVsn, keyPathWithoutVersion)
+}
+
+func (state *StoredKeysState) writeKeyToFile(keyIface storedKeyIface, curVsn int, pathWithoutVersion string) error {
 	nextVsn := curVsn + 1
 	keytype, data, err := keyIface.marshal()
 	if err != nil {
 		return err
 	}
-	finalData, err := json.Marshal(storedKeyJson{Type: keytype, Raw: data})
+	proof, err := generateKeyProof(keyIface, state.intTokens)
+	if err != nil {
+		return fmt.Errorf("failed to generate key proof: %s", err.Error())
+	}
+	finalData, err := json.Marshal(storedKeyJson{
+		Type:  keytype,
+		Raw:   data,
+		Proof: proof,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to marshal key %s: %s", keyIface.name(), err.Error())
 	}
 
-	keyPath := storedKeyPath(keySettings, keyIface.name(), nextVsn)
-	logDbg("Writing %s (%s) to file %s", keyIface.name(), keySettings.KeyKind, keyPath)
+	keyPath := storedKeyPath(pathWithoutVersion, nextVsn)
+	logDbg("Writing %s to file %s", keyIface.name(), keyPath)
 	keyDir := filepath.Dir(keyPath)
 	err = os.MkdirAll(keyDir, 0755)
 	if err != nil {
@@ -268,7 +707,7 @@ func writeKeyToDisk(keyIface storedKeyIface, curVsn int, keySettings *storedKeyC
 		return fmt.Errorf("failed to write key %s to file %s: %s", keyIface.name(), keyPath, err.Error())
 	}
 	if curVsn >= 0 {
-		prevKeyPath := storedKeyPath(keySettings, keyIface.name(), curVsn)
+		prevKeyPath := storedKeyPath(pathWithoutVersion, curVsn)
 		err = os.Remove(prevKeyPath)
 		if err != nil {
 			// Seems like we should not return error in this case, because
@@ -280,7 +719,51 @@ func writeKeyToDisk(keyIface storedKeyIface, curVsn int, keySettings *storedKeyC
 	return nil
 }
 
-func encryptWithKey(keyKind, keyName string, data, AD []byte, ctx *storedKeysCtx) ([]byte, error) {
+func generateKeyProof(keyIface storedKeyIface, intTokens []intToken) (string, error) {
+	if len(intTokens) == 0 {
+		return "", fmt.Errorf("empty integrity tokens")
+	}
+	tokenHash := tokenHash(intTokens[0], keyIface)
+	encryptedTokenHash, err := keyIface.encryptData(tokenHash[:], []byte(keyIface.name()))
+	if err != nil {
+		return "", fmt.Errorf("failed to generate key proof: %s", err.Error())
+	}
+	proof := fmt.Sprintf("%s:%s", intTokens[0].uuid, base64.StdEncoding.EncodeToString(encryptedTokenHash))
+	return proof, nil
+}
+
+func validateKeyProof(keyIface storedKeyIface, proof string, intTokens []intToken) error {
+	parts := strings.Split(proof, ":")
+	if len(parts) != 2 {
+		return fmt.Errorf("key integrity check failed: invalid proof format")
+	}
+	uuid := parts[0]
+	encryptedTokenHashBase64 := parts[1]
+	for _, token := range intTokens {
+		if token.uuid == uuid {
+			encryptedTokenHash, err := base64.StdEncoding.DecodeString(encryptedTokenHashBase64)
+			if err != nil {
+				return fmt.Errorf("key integrity check failed: failed to decode encrypted token hash: %s", err.Error())
+			}
+			decryptedTokenHash, err := keyIface.decryptData(encryptedTokenHash, []byte(keyIface.name()))
+			if err != nil {
+				return fmt.Errorf("key integrity check failed: failed to decrypt proof: %s", err.Error())
+			}
+			tokenHash := tokenHash(token, keyIface)
+			if bytes.Equal(tokenHash[:], decryptedTokenHash) {
+				return nil
+			}
+			return fmt.Errorf("key integrity check failed: invalid integrity token (token uuid: %s, key name: %s)", uuid, keyIface.name())
+		}
+	}
+	return fmt.Errorf("key integrity check failed: unknown token: %s (key name: %s)", uuid, keyIface.name())
+}
+
+func tokenHash(token intToken, keyIface storedKeyIface) [64]byte {
+	return sha512.Sum512(append(token.token, []byte(keyIface.name())...))
+}
+
+func (state *StoredKeysState) encryptWithKey(keyKind, keyName string, data, AD []byte, ctx *storedKeysCtx) ([]byte, error) {
 	if _, ok := ctx.keysTouched[keyName]; ok {
 		return nil, fmt.Errorf("key encryption cycle")
 	}
@@ -288,18 +771,18 @@ func encryptWithKey(keyKind, keyName string, data, AD []byte, ctx *storedKeysCtx
 	if err != nil {
 		return nil, err
 	}
-	keyIface, _, err := readKeyRaw(keySettings, keyName)
+	keyIface, _, proof, err := readKeyRaw(keySettings, keyName)
 	if err != nil {
 		return nil, err
 	}
-	err = decryptKey(keyIface, ctx)
+	err = state.decryptKey(keyIface, true, proof, ctx)
 	if err != nil {
 		return nil, err
 	}
 	return keyIface.encryptData(data, AD)
 }
 
-func decryptWithKey(keyKind, keyName string, data, AD []byte, ctx *storedKeysCtx) ([]byte, error) {
+func (state *StoredKeysState) decryptWithKey(keyKind, keyName string, data, AD []byte, validateKeysProof bool, ctx *storedKeysCtx) ([]byte, error) {
 	if _, ok := ctx.keysTouched[keyName]; ok {
 		return nil, fmt.Errorf("key encryption loop")
 	}
@@ -308,11 +791,11 @@ func decryptWithKey(keyKind, keyName string, data, AD []byte, ctx *storedKeysCtx
 	if err != nil {
 		return nil, err
 	}
-	keyIface, _, err := readKeyRaw(keySettings, keyName)
+	keyIface, _, proof, err := readKeyRaw(keySettings, keyName)
 	if err != nil {
 		return nil, err
 	}
-	err = decryptKey(keyIface, ctx)
+	err = state.decryptKey(keyIface, validateKeysProof, proof, ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -327,8 +810,8 @@ func getStoredKeyConfig(keyKind string, configs []storedKeyConfig) (*storedKeyCo
 	return &configs[index], nil
 }
 
-func readKeyRaw(keySettings *storedKeyConfig, keyName string) (storedKeyIface, int, error) {
-	path := storedKeyPathPrefix(keySettings, keyName)
+func readKeyRaw(keySettings *storedKeyConfig, keyName string) (storedKeyIface, int, string, error) {
+	path := storedKeyPathPrefix(keySettings.Path, keyName)
 	return readKeyFromFileRaw(path)
 }
 
@@ -402,54 +885,55 @@ func findKeyFile(path string) (string, int, error) {
 	return res, maxVsn, nil
 }
 
-func readKeyFromFileRaw(pathWithoutVersion string) (storedKeyIface, int, error) {
+func readKeyFromFileRaw(pathWithoutVersion string) (storedKeyIface, int, string, error) {
 	path, vsn, err := findKeyFile(pathWithoutVersion)
 	if err != nil {
-		return nil, vsn, err
+		return nil, vsn, "", err
 	}
 	logDbg("Reading key from file %s", path)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, vsn, fmt.Errorf("failed to read key from file %s: %s", path, err.Error())
+		return nil, vsn, "", fmt.Errorf("failed to read key from file %s: %s", path, err.Error())
 	}
 	var keyJson storedKeyJson
 	err = json.Unmarshal(data, &keyJson)
 	if err != nil {
-		return nil, vsn, fmt.Errorf("failed to unmarshal key from file %s: %s", path, err.Error())
+		return nil, vsn, "", fmt.Errorf("failed to unmarshal key from file %s: %s", path, err.Error())
 	}
 
 	if keyJson.Type == rawAESGCMKey {
 		var k rawAesGcmStoredKey
 		k.unmarshal(keyJson.Raw)
-		return &k, vsn, nil
+		return &k, vsn, keyJson.Proof, nil
 	}
 
 	if keyJson.Type == awskmKey {
 		var k awsStoredKey
 		k.unmarshal(keyJson.Raw)
-		return &k, vsn, nil
+		return &k, vsn, keyJson.Proof, nil
 	}
 
 	if keyJson.Type == kmipKey {
 		var k kmipStoredKey
 		k.unmarshal(keyJson.Raw)
-		return &k, vsn, nil
+		return &k, vsn, keyJson.Proof, nil
 	}
 
-	return nil, vsn, fmt.Errorf("unknown key type: %s", keyJson.Type)
+	return nil, vsn, "", fmt.Errorf("unknown key type: %s", keyJson.Type)
 }
 
-func storedKeyPath(keySettings *storedKeyConfig, keyName string, vsn int) string {
-	return storedKeyPathPrefix(keySettings, keyName) + "." + strconv.Itoa(vsn)
+// returns a key path without version, like /path/to/key.key
+func storedKeyPathPrefix(path string, keyName string) string {
+	return filepath.Join(path, keyName+".key")
 }
 
-func storedKeyPathPrefix(keySettings *storedKeyConfig, keyName string) string {
-	return filepath.Join(keySettings.Path, keyName+".key")
+func storedKeyPath(pathWithoutVersion string, vsn int) string {
+	return pathWithoutVersion + "." + strconv.Itoa(vsn)
 }
 
 // Reencrypt keys that use secret management (SM) encryption key
 // Needed for SM data key rotation
-func reencryptStoredKeys(ctx *storedKeysCtx) error {
+func reencryptStoredKeys(state *StoredKeysState, ctx *storedKeysCtx) error {
 	errorsCounter := 0
 	for _, cfg := range ctx.storedKeyConfigs {
 		// All keys but bucketDeks can be encrypted with
@@ -473,7 +957,7 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 			// Reseting keysTouched to make sure we check for cycles each key
 			// individually
 			ctx.keysTouched = make(map[string]bool)
-			keyIface, vsn, err := readKeyRaw(&cfg, keyName)
+			keyIface, vsn, proof, err := readKeyRaw(&cfg, keyName)
 			if err != nil {
 				logDbg("Failed to read key %s: %s", keyName, err.Error())
 				errorsCounter++
@@ -483,19 +967,19 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 				logDbg("Skipping \"%s\", because it is not using secret management service", keyName)
 				continue
 			}
-			err = decryptKey(keyIface, ctx)
+			err = state.decryptKey(keyIface, true, proof, ctx)
 			if err != nil {
 				logDbg("Failed to decrypt key %s: %s", keyName, err.Error())
 				errorsCounter++
 				continue
 			}
-			err = encryptKey(keyIface, ctx)
+			err = state.encryptKey(keyIface, ctx)
 			if err != nil {
 				logDbg("Failed to encrypt key %s: %s", keyName, err.Error())
 				errorsCounter++
 				continue
 			}
-			err = writeKeyToDisk(keyIface, vsn, &cfg)
+			err = state.writeKeyToDisk(keyIface, vsn, &cfg)
 			if err != nil {
 				logDbg("Failed to write key %s to disk: %s", keyName, err.Error())
 				errorsCounter++
@@ -511,7 +995,7 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 
 // Helper function that is supposed to be used to encrypt data to be
 // stored in the key json
-func encryptKeyData(k storedKeyIface, data []byte, encryptionKeyName string, ctx *storedKeysCtx) ([]byte, string, error) {
+func encryptKeyData(k storedKeyIface, data []byte, encryptionKeyName string, state *StoredKeysState, ctx *storedKeysCtx) ([]byte, string, error) {
 	settings, err := getStoredKeyConfig(k.kind(), ctx.storedKeyConfigs)
 	if err != nil {
 		return nil, "", err
@@ -534,7 +1018,7 @@ func encryptKeyData(k storedKeyIface, data []byte, encryptionKeyName string, ctx
 	}
 	// Encrypting with another stored key (kek) that we will read from disk
 	logDbg("Will use key %s to encrypt key %s (ad: %s)", encryptionKeyName, k.name(), base64.StdEncoding.EncodeToString(AD))
-	encryptedData, err := encryptWithKey(settings.EncryptByKind, encryptionKeyName, data, AD, ctx)
+	encryptedData, err := state.encryptWithKey(settings.EncryptByKind, encryptionKeyName, data, AD, ctx)
 	if err != nil {
 		return nil, "", err
 	}
@@ -544,7 +1028,7 @@ func encryptKeyData(k storedKeyIface, data []byte, encryptionKeyName string, ctx
 // Helper function that is supposed to be used to decrypt data that is
 // stored in the key json
 // Returns decrypted data and if it needs to be reencrypted
-func decryptKeyData(k storedKeyIface, data []byte, encryptedByKind, encryptionKeyName string, ctx *storedKeysCtx) ([]byte, bool, error) {
+func decryptKeyData(k storedKeyIface, data []byte, encryptedByKind, encryptionKeyName string, validateKeysProof bool, state *StoredKeysState, ctx *storedKeysCtx) ([]byte, bool, error) {
 	if data == nil {
 		return nil, false, fmt.Errorf("decrypt data is nil")
 	}
@@ -569,7 +1053,7 @@ func decryptKeyData(k storedKeyIface, data []byte, encryptedByKind, encryptionKe
 		}
 		return decryptedData, false, nil
 	}
-	decryptedData, err := decryptWithKey(encryptedByKind, encryptionKeyName, data, AD, ctx)
+	decryptedData, err := state.decryptWithKey(encryptedByKind, encryptionKeyName, data, AD, validateKeysProof, ctx)
 	if err != nil {
 		return nil, false, err
 	}
@@ -597,8 +1081,8 @@ func (k *rawAesGcmStoredKey) kind() string {
 	return k.Kind
 }
 
-func (k *rawAesGcmStoredKey) needRewrite(settings *storedKeyConfig, ctx *storedKeysCtx) (bool, int, error) {
-	keyIface, vsn, err := readKeyRaw(settings, k.Name)
+func (k *rawAesGcmStoredKey) needRewrite(settings *storedKeyConfig, state *StoredKeysState, ctx *storedKeysCtx) (bool, int, error) {
+	keyIface, vsn, _, err := readKeyRaw(settings, k.Name)
 	if err != nil {
 		logDbg("key %s read error: %s", k.Name, err.Error())
 		return true, vsn, nil
@@ -615,12 +1099,12 @@ func (k *rawAesGcmStoredKey) ad() []byte {
 	return []byte(string(rawAESGCMKey) + k.Name + k.Kind + k.CreationTime + k.EncryptionKeyName)
 }
 
-func (k *rawAesGcmStoredKey) encryptMe(ctx *storedKeysCtx) error {
+func (k *rawAesGcmStoredKey) encryptMe(state *StoredKeysState, ctx *storedKeysCtx) error {
 	if k.EncryptedKey != nil {
 		// Seems like it is already encrypted
 		// Checking that we can decrypt it just in case
 		logDbg("Verifying encryption for key \"%s\"", k.Name)
-		decryptedKey, reencryptNeeded, err := decryptKeyData(k, k.EncryptedKey, k.EncryptedByKind, k.EncryptionKeyName, ctx)
+		decryptedKey, reencryptNeeded, err := decryptKeyData(k, k.EncryptedKey, k.EncryptedByKind, k.EncryptionKeyName, true, state, ctx)
 		if err != nil {
 			return err
 		}
@@ -629,7 +1113,7 @@ func (k *rawAesGcmStoredKey) encryptMe(ctx *storedKeysCtx) error {
 			return nil
 		}
 	}
-	encryptedKey, encryptedByKind, err := encryptKeyData(k, k.DecryptedKey, k.EncryptionKeyName, ctx)
+	encryptedKey, encryptedByKind, err := encryptKeyData(k, k.DecryptedKey, k.EncryptionKeyName, state, ctx)
 	if err != nil {
 		return err
 	}
@@ -638,8 +1122,8 @@ func (k *rawAesGcmStoredKey) encryptMe(ctx *storedKeysCtx) error {
 	return nil
 }
 
-func (k *rawAesGcmStoredKey) decryptMe(ctx *storedKeysCtx) error {
-	decryptedKey, _, err := decryptKeyData(k, k.EncryptedKey, k.EncryptedByKind, k.EncryptionKeyName, ctx)
+func (k *rawAesGcmStoredKey) decryptMe(validateKeysProof bool, state *StoredKeysState, ctx *storedKeysCtx) error {
+	decryptedKey, _, err := decryptKeyData(k, k.EncryptedKey, k.EncryptedByKind, k.EncryptionKeyName, validateKeysProof, state, ctx)
 	if err != nil {
 		return err
 	}
@@ -721,8 +1205,8 @@ func (k *awsStoredKey) kind() string {
 	return k.Kind
 }
 
-func (k *awsStoredKey) needRewrite(settings *storedKeyConfig, ctx *storedKeysCtx) (bool, int, error) {
-	keyIface, vsn, err := readKeyRaw(settings, k.Name)
+func (k *awsStoredKey) needRewrite(settings *storedKeyConfig, state *StoredKeysState, ctx *storedKeysCtx) (bool, int, error) {
+	keyIface, vsn, _, err := readKeyRaw(settings, k.Name)
 	if err != nil {
 		logDbg("key %s read error: %s", k.Name, err.Error())
 		return true, vsn, nil
@@ -739,12 +1223,12 @@ func (k *awsStoredKey) ad() []byte {
 	return []byte("")
 }
 
-func (k *awsStoredKey) encryptMe(ctx *storedKeysCtx) error {
+func (k *awsStoredKey) encryptMe(state *StoredKeysState, ctx *storedKeysCtx) error {
 	// Nothing to encrypt here, configuration should contain no secrets
 	return nil
 }
 
-func (k *awsStoredKey) decryptMe(ctx *storedKeysCtx) error {
+func (k *awsStoredKey) decryptMe(validateKeysProof bool, state *StoredKeysState, ctx *storedKeysCtx) error {
 	return nil
 }
 
@@ -845,8 +1329,11 @@ func (k *kmipStoredKey) kind() string {
 	return k.Kind
 }
 
-func (k *kmipStoredKey) needRewrite(settings *storedKeyConfig, ctx *storedKeysCtx) (bool, int, error) {
-	keyIface, vsn, err := readKeyRaw(settings, k.Name)
+func (k *kmipStoredKey) needRewrite(settings *storedKeyConfig, state *StoredKeysState, ctx *storedKeysCtx) (bool, int, error) {
+	if k.decryptedPassphrase == nil {
+		return false, 0, fmt.Errorf("key %s should be decrypted first", k.Name)
+	}
+	keyIface, vsn, proof, err := readKeyRaw(settings, k.Name)
 	if err != nil {
 		logDbg("key %s read error: %s", k.Name, err.Error())
 		return true, vsn, nil
@@ -857,22 +1344,8 @@ func (k *kmipStoredKey) needRewrite(settings *storedKeyConfig, ctx *storedKeysCt
 		return true, vsn, nil
 	}
 
-	if k.EncryptedPassphrase != nil && bytes.Equal(k.EncryptedPassphrase, onDiskKey.EncryptedPassphrase) {
-		// Both keys are encrypted and encrypted data matches,
-		// there is no need to decrypt anything.
-		// Copy encrypted pass because we don't want to compare them
-		onDiskKey.decryptedPassphrase = k.decryptedPassphrase
-		return !reflect.DeepEqual(k, onDiskKey), vsn, nil
-	}
-
-	if k.decryptedPassphrase == nil {
-		err = decryptKey(k, ctx)
-		if err != nil {
-			return false, vsn, err
-		}
-	}
 	if onDiskKey.decryptedPassphrase == nil {
-		err = decryptKey(onDiskKey, ctx)
+		err = state.decryptKey(onDiskKey, true, proof, ctx)
 		if err != nil {
 			return false, vsn, err
 		}
@@ -897,12 +1370,12 @@ func (k *kmipStoredKey) ad() []byte {
 			k.CreationTime)
 }
 
-func (k *kmipStoredKey) encryptMe(ctx *storedKeysCtx) error {
+func (k *kmipStoredKey) encryptMe(state *StoredKeysState, ctx *storedKeysCtx) error {
 	if k.EncryptedPassphrase != nil {
 		// Seems like it is already encrypted
 		// Checking that we can decrypt it just in case
 		logDbg("Verifying encryption for key \"%s\"", k.Name)
-		decryptedPass, reencryptNeeded, err := decryptKeyData(k, k.EncryptedPassphrase, k.EncryptedByKind, k.EncryptionKeyName, ctx)
+		decryptedPass, reencryptNeeded, err := decryptKeyData(k, k.EncryptedPassphrase, k.EncryptedByKind, k.EncryptionKeyName, true, state, ctx)
 		if err != nil {
 			return err
 		}
@@ -911,7 +1384,7 @@ func (k *kmipStoredKey) encryptMe(ctx *storedKeysCtx) error {
 			return nil
 		}
 	}
-	encryptedPass, encryptedByKind, err := encryptKeyData(k, k.decryptedPassphrase, k.EncryptionKeyName, ctx)
+	encryptedPass, encryptedByKind, err := encryptKeyData(k, k.decryptedPassphrase, k.EncryptionKeyName, state, ctx)
 	if err != nil {
 		return err
 	}
@@ -920,8 +1393,8 @@ func (k *kmipStoredKey) encryptMe(ctx *storedKeysCtx) error {
 	return nil
 }
 
-func (k *kmipStoredKey) decryptMe(ctx *storedKeysCtx) error {
-	decryptedPass, _, err := decryptKeyData(k, k.EncryptedPassphrase, k.EncryptedByKind, k.EncryptionKeyName, ctx)
+func (k *kmipStoredKey) decryptMe(validateKeysProof bool, state *StoredKeysState, ctx *storedKeysCtx) error {
+	decryptedPass, _, err := decryptKeyData(k, k.EncryptedPassphrase, k.EncryptedByKind, k.EncryptionKeyName, validateKeysProof, state, ctx)
 	if err != nil {
 		return err
 	}
