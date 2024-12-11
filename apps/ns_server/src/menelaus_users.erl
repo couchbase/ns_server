@@ -730,7 +730,9 @@ delete_user({_, Domain} = Identity) ->
 
             _ = delete_profile(Identity),
 
-            _ = replicated_dets:delete(storage_name(), {locked, Identity});
+            _ = replicated_dets:delete(storage_name(), {locked, Identity}),
+
+            _ = replicated_dets:delete(storage_name(), {activity, Identity});
         external ->
             ok
     end,
