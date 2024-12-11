@@ -12,7 +12,8 @@
 
 %% API
 -export([handle_get/1, handle_post/1, get_config/0, is_enabled/1,
-         get_max_clients_per_node/1, get_scrape_interval/1]).
+         get_max_clients_per_node/1, get_scrape_interval/1,
+         is_accepting_connections/0]).
 
 -define(CONFIG_KEY, app_telemetry).
 
@@ -79,3 +80,8 @@ get_max_clients_per_node(Config) ->
 get_scrape_interval(Config) ->
     proplists:get_value(scrape_interval_seconds, Config,
                         ?APP_TELEMETRY_SCRAPE_INTERVAL).
+
+-spec is_accepting_connections() -> boolean().
+is_accepting_connections() ->
+    Config = get_config(),
+    is_enabled(Config).

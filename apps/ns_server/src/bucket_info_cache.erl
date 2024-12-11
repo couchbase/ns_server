@@ -79,6 +79,7 @@ is_interesting({node, _, services}) -> true;
 is_interesting(server_groups) -> true;
 is_interesting({service_map, _}) -> true;
 is_interesting(counters) -> true;
+is_interesting(app_telemetry) -> true;
 is_interesting(Key) ->
     case ns_bucket:sub_key_match(Key) of
         {true, _, _} ->
@@ -157,10 +158,19 @@ build_nodes_ext([Node | RestNodes], Config, Snapshot, NodesExtAcc) ->
                      cluster_compat_mode:is_enterprise()],
     NI5 = [{services, {PortInfo}} | NI4],
     UUID = ns_config:search_node_with_default(Node, Config, uuid, undefined),
-    NodeInfo = case UUID of
-                   undefined -> {NI5};
-                   _ -> {[{nodeUUID, UUID} | NI5]}
-               end,
+    NI6 = case UUID of
+              undefined -> NI5;
+              _ -> [{nodeUUID, UUID} | NI5]
+          end,
+    NodeInfo =
+        case menelaus_web_app_telemetry:is_accepting_connections() of
+            false ->
+                {NI6};
+            true ->
+                {[{appTelemetryPath,
+                   list_to_binary("/" ++ ?APP_TELEMETRY_PATH)}
+                 | NI6]}
+        end,
     build_nodes_ext(RestNodes, Config, Snapshot, [NodeInfo | NodesExtAcc]).
 
 do_compute_bucket_info(Bucket, Config) ->
@@ -635,6 +645,7 @@ verify_compatibility_test() ->
     meck:expect(ns_bucket, uuid, fun (_,_) -> 456 end),
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, compute_global_rev, fun (_) -> 111 end),
+    meck:expect(ns_config, read_key_fast, fun(_, Default) -> Default end),
     meck:new(service_ports, [passthrough]),
     meck:expect(service_ports, get_port, fun (_,_,_) -> 12000 end),
     meck:new(capi_utils, [passthrough]),
