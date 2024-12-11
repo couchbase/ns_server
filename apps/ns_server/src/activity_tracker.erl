@@ -128,11 +128,11 @@ get_roles(RolesStr) ->
 get_groups(Str) ->
     Groups = string:lexemes(Str, ","),
     UnexpectedGroups = [Group || Group <- Groups,
-                                 menelaus_users:group_exists(Group)],
+                                 not menelaus_users:group_exists(Group)],
     case UnexpectedGroups of
         [] -> {value, Groups};
         _ -> {error, io_lib:format("The following groups do not exist: ~s",
-                                   string:join(UnexpectedGroups, ","))}
+                                   [string:join(UnexpectedGroups, ",")])}
     end.
 
 -spec get_config() -> proplists:proplist().

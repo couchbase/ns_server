@@ -236,6 +236,10 @@ class UsersTestSet(testlib.BaseTestSet):
         name1 = testlib.random_str(10)
         password1 = testlib.random_str(10)
 
+        # Clear any existing activity, since this isn't done on user deletion
+        # yet (MB-64598)
+        clear_activity(self.cluster)
+
         # User creation
         put_user(self.cluster, 'local', user, password=password1,
                  roles='admin', full_name=name1, groups='',
@@ -244,7 +248,8 @@ class UsersTestSet(testlib.BaseTestSet):
         # Enable activity tracking without yet covering this user
         testlib.post_succ(self.cluster, '/settings/security/userActivity',
                           data={'enabled': 'true',
-                                'trackedRoles': ''})
+                                'trackedRoles': '',
+                                'trackedGroups': ''})
 
         testlib.get_succ(self.cluster, '/pools/default',
                          auth=(user, password1))
@@ -259,7 +264,7 @@ class UsersTestSet(testlib.BaseTestSet):
         r = testlib.get_succ(self.cluster, '/settings/rbac/users/local/' + user)
         assert r.json().get('last_activity_time') is None
 
-        # Enable activity tracking
+        # Enable activity tracking directly with trackedRoles
         testlib.post_succ(self.cluster, '/settings/security/userActivity',
                           data={'enabled': 'true',
                                 'trackedRoles': 'admin'})
@@ -280,6 +285,143 @@ class UsersTestSet(testlib.BaseTestSet):
         r = testlib.get_succ(self.cluster, '/settings/rbac/users/local/' + user)
         assert r.json().get('last_activity_time') is not None, \
             "'last_activity_time' missing"
+
+    def activity_tracking_with_group_role_test(self):
+        user = self.user
+        name1 = testlib.random_str(10)
+        password1 = testlib.random_str(10)
+        roles = 'data_reader[*]'  # Basic role for /pools/default
+        group = "test_group"
+
+        testlib.put_succ(self.cluster, f'/settings/rbac/groups/{group}',
+                         data={'roles': ''})
+        try:
+            # Clear any existing activity, since this isn't done on user
+            # deletion yet (MB-64598)
+            clear_activity(self.cluster)
+
+            # User creation
+            put_user(self.cluster, 'local', user, password=password1,
+                     roles=roles, full_name=name1, groups=group,
+                     validate_user_props=True)
+
+            # Enable activity tracking without yet covering this user
+            testlib.post_succ(self.cluster, '/settings/security/userActivity',
+                              data={'enabled': 'true',
+                                    'trackedRoles': 'admin',
+                                    'trackedGroups': ''})
+
+            testlib.get_succ(self.cluster, '/pools/default',
+                             auth=(user, password1))
+
+            sync_activity(self.cluster)
+
+            # No activity
+            for node in self.cluster.connected_nodes:
+                activity = testlib.diag_eval(
+                    node,
+                    "gen_server:call(activity_tracker, last_activity)").text
+                assert "[]" == activity, \
+                    f'Found unexpected activity: {activity}'
+            user_info = testlib.get_succ(
+                self.cluster, f'/settings/rbac/users/local/{user}').json()
+            assert user_info.get('last_activity_time') is None, \
+                f'Unexpected activity: {user_info}'
+
+            # Enable activity tracking by adding a tracked role to the group
+            testlib.put_succ(self.cluster, f'/settings/rbac/groups/{group}',
+                             data={'roles': 'admin'})
+
+            testlib.get_succ(self.cluster, '/pools/default',
+                             auth=(user, password1))
+
+            sync_activity(self.cluster)
+
+            # New activity
+            found_activity = False
+            for node in self.cluster.connected_nodes:
+                activity = testlib.diag_eval(
+                    node,
+                    "gen_server:call(activity_tracker, last_activity)").text
+                if "[]" != activity:
+                    found_activity = True
+            assert found_activity
+            user_info = testlib.get_succ(
+                self.cluster, f'/settings/rbac/users/local/{user}').json()
+            assert user_info.get('last_activity_time') is not None, \
+                "'last_activity_time' missing"
+        finally:
+            testlib.ensure_deleted(self.cluster,
+                                   f'/settings/rbac/groups/{group}')
+
+    def activity_tracking_with_group_test(self):
+        user = self.user
+        name1 = testlib.random_str(10)
+        password1 = testlib.random_str(10)
+        roles = 'data_reader[*]'  # Basic role for /pools/default
+        group = "test_group"
+
+        testlib.put_succ(self.cluster, f'/settings/rbac/groups/{group}',
+                         data={'roles': ''})
+        try:
+            # Clear any existing activity, since this isn't done on user
+            # deletion yet (MB-64598)
+            clear_activity(self.cluster)
+
+            # User creation
+            put_user(self.cluster, 'local', user, password=password1,
+                     roles=roles, full_name=name1, groups='',
+                     validate_user_props=True)
+
+            # Enable activity tracking without yet covering this user
+            testlib.post_succ(self.cluster, '/settings/security/userActivity',
+                              data={'enabled': 'true',
+                                    'trackedRoles': '',
+                                    'trackedGroups': group})
+
+            testlib.get_succ(self.cluster, '/pools/default',
+                             auth=(user, password1))
+
+            sync_activity(self.cluster)
+
+            # No activity
+            for node in self.cluster.connected_nodes:
+                activity = testlib.diag_eval(
+                    node,
+                    "gen_server:call(activity_tracker, last_activity)").text
+                assert "[]" == activity, \
+                    f'Found unexpected activity: {activity}'
+            user_info = testlib.get_succ(
+                self.cluster, f'/settings/rbac/users/local/{user}').json()
+            assert user_info.get('last_activity_time') is None, \
+                f'Unexpected activity: {user_info}'
+
+            # Enable activity tracking by adding a tracked group to the user
+            put_user(self.cluster, 'local', user, password=password1,
+                     roles=roles, full_name=name1, groups=group,
+                     validate_user_props=True)
+
+            testlib.get_succ(self.cluster, '/pools/default',
+                             auth=(user, password1))
+
+            sync_activity(self.cluster)
+
+            # New activity
+            found_activity = False
+            for node in self.cluster.connected_nodes:
+                activity = testlib.diag_eval(
+                    node,
+                    "gen_server:call(activity_tracker, last_activity)").text
+                if "[]" != activity:
+                    found_activity = True
+            assert found_activity
+            user_info = testlib.get_succ(
+                self.cluster, f'/settings/rbac/users/local/{user}').json()
+            assert user_info.get('last_activity_time') is not None, \
+                "'last_activity_time' missing"
+        finally:
+            testlib.ensure_deleted(self.cluster,
+                                   f'/settings/rbac/groups/{group}')
 
     def admin_user_lock_unlock_test(self):
         admin_auth = self.cluster.auth
@@ -616,6 +758,13 @@ def unlock_admin(cluster):
     token = node.get_localtoken()
     testlib.post_succ(node, '/controller/unlockAdmin',
                       auth=("@localtoken", token))
+
+
+def clear_activity(cluster):
+    for node in cluster.connected_nodes:
+        testlib.diag_eval(
+            node,
+            "ets:delete_all_objects(activity_tracker)")
 
 
 def sync_activity(cluster):
