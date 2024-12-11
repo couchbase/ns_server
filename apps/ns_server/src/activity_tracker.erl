@@ -87,16 +87,22 @@ params() ->
       #{type => bool,
         cfg_key => enabled}},
      {"trackedRoles",
-      #{type => tracked_roles, cfg_key => tracked_roles, default => false}},
+      #{type => tracked_roles,
+        cfg_key => tracked_roles,
+        default => false}},
      {"trackedGroups",
-      #{type => tracked_groups, cfg_key => tracked_groups, default => false}}].
+      #{type => tracked_groups,
+        cfg_key => tracked_groups,
+        default => false}}].
 
 type_spec(tracked_roles) ->
-    #{validators => [string,
-        validator:validate(fun get_roles/1, _, _)]};
+    #{validators => [{string_list, ","},
+                     validator:validate(fun get_roles/1, _, _)],
+      formatter => fun (L) -> {value, [atom_to_binary(M) || M <- L]} end};
 type_spec(tracked_groups) ->
-    #{validators => [string,
-        validator:validate(fun get_groups/1, _, _)]}.
+    #{validators => [{string_list, ","},
+                     validator:validate(fun get_groups/1, _, _)],
+      formatter => fun (L) -> {value, [list_to_binary(M) || M <- L]} end}.
 
 parse_role(RoleStr, Definitions) ->
     try
@@ -110,9 +116,8 @@ parse_role(RoleStr, Definitions) ->
         error:badarg -> {error, RoleStr}
     end.
 
-get_roles(RolesStr) ->
+get_roles(RolesRaw) ->
     Definitions = menelaus_roles:get_definitions(public),
-    RolesRaw = string:tokens(RolesStr, ","),
     Roles = [parse_role(string:trim(RoleRaw), Definitions)
              || RoleRaw <- RolesRaw],
 
@@ -121,19 +126,57 @@ get_roles(RolesStr) ->
     case BadRoles of
         [] -> {value, Roles};
         _ -> {error,
-              io_lib:format("The following roles are invalid: ~s",
-                            [string:join(BadRoles, ",")])}
+              lists:flatten(io_lib:format("The following roles are invalid: ~s",
+                                          [string:join(BadRoles, ",")]))}
     end.
 
-get_groups(Str) ->
-    Groups = string:lexemes(Str, ","),
+-ifdef(TEST).
+bad_roles_test() ->
+    meck:expect(cluster_compat_mode, get_compat_version, ?cut([8, 0])),
+    meck:expect(cluster_compat_mode, is_developer_preview, ?cut(false)),
+    ?assertEqual({value, []}, get_roles([])),
+    ?assertEqual({value, [cluster_admin]}, get_roles(["cluster_admin"])),
+    ?assertEqual({value, [cluster_admin, data_reader]},
+                 get_roles(["cluster_admin", "data_reader"])),
+    ?assertEqual({error, "The following roles are invalid: nonsense_role"},
+                 get_roles(["nonsense_role"])),
+    %% We only expect role names, without any parameterisation
+    ?assertEqual({error, "The following roles are invalid: cluster_admin[*]"},
+                 get_roles(["cluster_admin[*]"])),
+    ?assertEqual({error,
+                  "The following roles are invalid: "
+                  "nonsense_role,another_nonsense_role"},
+                 get_roles(["nonsense_role", "another_nonsense_role"])).
+-endif.
+
+get_groups(Groups) ->
     UnexpectedGroups = [Group || Group <- Groups,
                                  not menelaus_users:group_exists(Group)],
     case UnexpectedGroups of
         [] -> {value, Groups};
-        _ -> {error, io_lib:format("The following groups do not exist: ~s",
-                                   [string:join(UnexpectedGroups, ",")])}
+        _ -> {error,
+              lists:flatten(
+                  io_lib:format("The following groups do not exist: ~s",
+                                [string:join(UnexpectedGroups, ",")]))}
     end.
+
+-ifdef(TEST).
+bad_groups_test() ->
+    meck:expect(menelaus_users, group_exists,
+                fun ("real_group1") -> true;
+                    ("real_group2") -> true;
+                    (_) -> false
+                end),
+    ?assertEqual({value, []}, get_groups([])),
+    ?assertEqual({value, ["real_group1"]}, get_groups(["real_group1"])),
+    ?assertEqual({value, ["real_group1", "real_group2"]},
+                 get_groups(["real_group1", "real_group2"])),
+    ?assertEqual({error, "The following groups do not exist: fake_group"},
+                 get_groups(["fake_group"])),
+    ?assertEqual({error,
+                  "The following groups do not exist: fake_group1,fake_group2"},
+                 get_groups(["fake_group1", "fake_group2"])).
+-endif.
 
 -spec get_config() -> proplists:proplist().
 get_config() ->

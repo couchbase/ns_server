@@ -35,8 +35,10 @@ class UsersTestSet(testlib.BaseTestSet):
         self.user = testlib.random_str(10)
 
     def teardown(self):
-        testlib.post_succ(self.cluster, '/settings/security/userActivity',
-                          data={'enabled': 'false'})
+        post_activity(self.cluster,
+                      {'enabled': False,
+                       'trackedRoles': [],
+                       'trackedGroups': []})
 
     def test_teardown(self):
         testlib.ensure_deleted(
@@ -246,10 +248,9 @@ class UsersTestSet(testlib.BaseTestSet):
                  validate_user_props=True)
 
         # Enable activity tracking without yet covering this user
-        testlib.post_succ(self.cluster, '/settings/security/userActivity',
-                          data={'enabled': 'true',
-                                'trackedRoles': '',
-                                'trackedGroups': ''})
+        post_activity(self.cluster, {'enabled': True,
+                                     'trackedRoles': [],
+                                     'trackedGroups': []})
 
         testlib.get_succ(self.cluster, '/pools/default',
                          auth=(user, password1))
@@ -265,9 +266,10 @@ class UsersTestSet(testlib.BaseTestSet):
         assert r.json().get('last_activity_time') is None
 
         # Enable activity tracking directly with trackedRoles
-        testlib.post_succ(self.cluster, '/settings/security/userActivity',
-                          data={'enabled': 'true',
-                                'trackedRoles': 'admin'})
+        post_activity(self.cluster,
+                      {'enabled': True,
+                       'trackedRoles': ['admin'],
+                       'trackedGroups': []})
 
         testlib.get_succ(self.cluster, '/pools/default',
                          auth=(user, password1))
@@ -306,10 +308,10 @@ class UsersTestSet(testlib.BaseTestSet):
                      validate_user_props=True)
 
             # Enable activity tracking without yet covering this user
-            testlib.post_succ(self.cluster, '/settings/security/userActivity',
-                              data={'enabled': 'true',
-                                    'trackedRoles': 'admin',
-                                    'trackedGroups': ''})
+            post_activity(self.cluster,
+                          {'enabled': True,
+                           'trackedRoles': ['admin'],
+                           'trackedGroups': []})
 
             testlib.get_succ(self.cluster, '/pools/default',
                              auth=(user, password1))
@@ -374,10 +376,10 @@ class UsersTestSet(testlib.BaseTestSet):
                      validate_user_props=True)
 
             # Enable activity tracking without yet covering this user
-            testlib.post_succ(self.cluster, '/settings/security/userActivity',
-                              data={'enabled': 'true',
-                                    'trackedRoles': '',
-                                    'trackedGroups': group})
+            post_activity(self.cluster,
+                          {'enabled': True,
+                           'trackedRoles': [],
+                           'trackedGroups': [group]})
 
             testlib.get_succ(self.cluster, '/pools/default',
                              auth=(user, password1))
@@ -772,6 +774,12 @@ def sync_activity(cluster):
         cluster.get_node_from_hostname(cluster.get_orchestrator_node()[0]),
         "activity_aggregator ! refresh,"
         "gen_server:call(activity_aggregator, sync)")
+
+
+def post_activity(cluster, json):
+    r = testlib.post_succ(cluster, '/settings/security/userActivity',
+                          json=json)
+    testlib.assert_eq(r.json(), json)
 
 
 def assert_authn_and_roles(cluster_or_node, user, password, expected_roles):
