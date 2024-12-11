@@ -1,5 +1,5 @@
 /*
-Copyright 2020-Present Couchbase, Inc.
+Copyright 2024-Present Couchbase, Inc.
 
 Use of this software is governed by the Business Source License included in
 the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
@@ -16,18 +16,18 @@ import {not, pipe, includes, all, equals} from 'ramda';
 import {FormControl, FormGroup} from '@angular/forms';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
-import template from "./mn.security.audit.item.html";
+import template from "./mn.security.audit.user.activity.role.html";
 
-export {MnSecurityAuditItemComponent};
+export {MnSecurityAuditUserActivityRoleComponent};
 
-class MnSecurityAuditItemComponent extends MnLifeCycleHooksToStream {
+class MnSecurityAuditUserActivityRoleComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      selector: "mn-security-audit-item",
+      selector: "mn-security-audit-user-activity-role",
       template,
       inputs: [
         "group",
-        "descriptors",
+        "roleDescriptors",
         "moduleName"
       ],
       changeDetection: ChangeDetectionStrategy.OnPush
@@ -45,38 +45,37 @@ class MnSecurityAuditItemComponent extends MnLifeCycleHooksToStream {
     this.formHelper = new FormGroup({
       toggleAll: new FormControl()
     });
-    this.thisDescriptors = this.descriptors.pipe(pluck(this.moduleName));
+    this.thisDescriptors = this.roleDescriptors.pipe(pluck(this.moduleName));
     var thisDescriptorsByID = this.thisDescriptors
         .pipe(map(desc => desc.reduce((acc, item) => {
-          acc[item.id] = item;
+          acc[item.role] = item;
           return acc;
         }, {})));
 
-    combineLatest(this.thisDescriptors, thisDescriptorsByID)
+    this.thisDescriptors
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(this.generateForm.bind(this));
 
-    var thisModuleGroup = this.group.get("descriptors").get(this.moduleName);
-
+    var thisModuleGroup = this.group.get("roleDescriptors").get(this.moduleName);
 
     this.thisModuleChanges =
       thisModuleGroup.valueChanges.pipe(startWith(thisModuleGroup.getRawValue()),
                                         map(() => thisModuleGroup.getRawValue()));
 
-    this.isAuditEnabled =
+    this.isUserActivityEnabled =
       this.group.valueChanges.pipe(startWith(this.group.value),
-                                        pluck("auditdEnabled"),
+                                        pluck("enabled"),
                                         distinctUntilChanged());
 
-    this.isAuditEnabled
+    this.isUserActivityEnabled
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableToggleAll.bind(this));
 
-    combineLatest(this.isAuditEnabled, thisDescriptorsByID)
+    combineLatest(this.isUserActivityEnabled, thisDescriptorsByID)
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableFields.bind(this));
 
-    this.isThereEnabledField =
+    this.isFieldEnabled =
       this.thisModuleChanges.pipe(map(pipe(Object.values, includes(true))),
                                   shareReplay({refCount: true, bufferSize: 1}));
 
@@ -97,7 +96,7 @@ class MnSecurityAuditItemComponent extends MnLifeCycleHooksToStream {
   }
 
   maybeDisableFields(value) {
-    var controls = this.group.get("descriptors").get(this.moduleName).controls;
+    var controls = this.group.get("roleDescriptors").get(this.moduleName).controls;
     Object.keys(controls).forEach(controlID => {
       var method = !value[1][controlID].nonFilterable && value[0]  ? "enable" : "disable";
       controls[controlID][method]({emitEvent: false});
@@ -109,7 +108,7 @@ class MnSecurityAuditItemComponent extends MnLifeCycleHooksToStream {
   }
 
   doToggleAll(value) {
-    var thisModule = this.group.get("descriptors").get(this.moduleName);
+    var thisModule = this.group.get("roleDescriptors").get(this.moduleName);
     var ids = Object.keys(thisModule.value);
     thisModule.patchValue(ids.reduce((acc, key) => {
       acc[key] = value[1][key].nonFilterable || value[0];
@@ -118,38 +117,12 @@ class MnSecurityAuditItemComponent extends MnLifeCycleHooksToStream {
   }
 
   generateForm(descriptors) {
-    this.group.get("descriptors")
+    this.group.get("roleDescriptors")
       .addControl(this.moduleName, new FormGroup(
-        descriptors[0].reduce(function (acc, item) {
-          acc[item.id] = new FormControl({
-            value: item.value,
-            disabled: descriptors[1][item.id].nonFilterable
-          });
+        descriptors.reduce(function (acc, item) {
+          acc[item.role] = new FormControl(item.value);
           return acc;
         }.bind(this), {})
       ));
-  }
-
-  mapNames(name) {
-    switch (name) {
-    case "auditd":
-      return "Audit";
-    case "ns_server":
-      return "REST API";
-    case "n1ql":
-      return "Query and Index Service";
-    case "eventing":
-      return "Eventing Service";
-    case "memcached":
-      return "Data Service";
-    case "xdcr":
-      return name.toUpperCase();
-    case "fts":
-      return "Search Service";
-    case "view_engine":
-      return "Views";
-    default:
-      return name.charAt(0).toUpperCase() + name.substr(1).toLowerCase();
-    }
   }
 }

@@ -84,6 +84,20 @@ class MnSecurityService {
         switchMap(this.getAudit.bind(this)),
         shareReplay({refCount: true, bufferSize: 1}));
 
+    this.stream.getUserActivity =
+      (new BehaviorSubject()).pipe(
+        switchMap(this.getUserActivity.bind(this)),
+        shareReplay({refCount: true, bufferSize: 1}));
+
+    this.stream.getUIUserRoles =
+      (new BehaviorSubject()).pipe(
+        switchMap(this.getUIUserRoles.bind(this)),
+        shareReplay({refCount: true, bufferSize: 1}));
+    this.stream.getUIUserGroups =
+      (new BehaviorSubject()).pipe(
+        switchMap(this.getUIUserGroups.bind(this)),
+        shareReplay({refCount: true, bufferSize: 1}));
+
     this.stream.getSaml =
       (new BehaviorSubject()).pipe(
         switchMap(this.getSaml.bind(this)),
@@ -124,6 +138,16 @@ class MnSecurityService {
       .addSuccess()
       .addError();
 
+    this.stream.postUserActivityValidation =
+      new MnHttpRequest(this.postUserActivity(true).bind(this))
+      .addSuccess()
+      .addError();
+
+    this.stream.postUserActivity =
+      new MnHttpRequest(this.postUserActivity(false).bind(this))
+      .addSuccess()
+      .addError();
+
     this.stream.postSaml =
       new MnHttpRequest(this.postSaml(false).bind(this))
       .addSuccess()
@@ -148,6 +172,16 @@ class MnSecurityService {
   postAudit(validate) {
     return (data) => {
       return this.http.post("/settings/audit", data, {
+        params: new HttpParams().set("just_validate", validate ? 1 : 0)
+      });
+    }
+  }
+
+  postUserActivity(validate) {
+    return (data) => {
+      data.trackedRoles = data.trackedRoles.join(',');
+      data.trackedGroups = data.trackedGroups.join(',');
+      return this.http.post("/settings/security/userActivity", data, {
         params: new HttpParams().set("just_validate", validate ? 1 : 0)
       });
     }
@@ -184,6 +218,18 @@ class MnSecurityService {
 
   getAudit() {
     return this.http.get("/settings/audit");
+  }
+
+  getUserActivity() {
+    return this.http.get("/settings/security/userActivity");
+  }
+
+  getUIUserRoles() {
+    return this.http.get("/_uiroles");
+  }
+
+  getUIUserGroups() {
+    return this.http.get("/settings/rbac/groups");
   }
 
   getSaml() {

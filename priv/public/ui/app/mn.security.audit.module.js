@@ -18,6 +18,8 @@ import {MnPipesModule} from './mn.pipes.module.js';
 import {MnSelectModule} from './mn.select.module.js';
 import {MnSecurityAuditComponent} from './mn.security.audit.component.js';
 import {MnSecurityAuditItemComponent} from './mn.security.audit.item.component.js';
+import {MnSecurityAuditUserActivityRoleComponent} from './mn.security.audit.user.activity.role.component.js';
+import {MnSecurityAuditUserActivityGroupsComponent} from './mn.security.audit.user.activity.groups.component.js';
 
 let auditState = {
   url: '/audit',
@@ -37,7 +39,9 @@ class MnSecurityAuditModule {
       ],
       declarations: [
         MnSecurityAuditComponent,
-        MnSecurityAuditItemComponent
+        MnSecurityAuditItemComponent,
+        MnSecurityAuditUserActivityRoleComponent,
+        MnSecurityAuditUserActivityGroupsComponent
       ],
       imports: [
         MnPipesModule,
