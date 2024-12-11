@@ -153,6 +153,15 @@ jsonify_auth(Users, AdminPasswords, RestCreds, PromAuth) ->
                                           [TagCA]),
                              ok;
                          _ ->
+                             %% We exclude locked users from isasl.pw, so that
+                             %% memcached doesn't allow them to authenticate.
+                             %% This gets updated whether the user is locked
+                             %% with a PATCH or a PUT, since while only the PUT
+                             %% updates the user_version, both of them update
+                             %% the auth_version. As such, there's no need to
+                             %% delete the entry from memcached.json on
+                             %% user_version changes, since the user will
+                             %% always be deleted from isasl.pw anyway.
                              case menelaus_users:is_user_locked(Identity) of
                                  false ->
                                      ?yield({kv, memcached_user_info(UserName,
