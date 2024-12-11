@@ -554,17 +554,19 @@ attribute_default(Name) ->
         continuous_backup_enabled -> false; % boolean
         continuous_backup_interval -> 2;    % minutes
         continuous_backup_location -> "";   % path or URI
-        invalid_hlc_strategy -> error       % atom
+        invalid_hlc_strategy -> error;      % atom
+        dcp_connections_between_nodes -> 1  % pos_integer
     end.
 
 %% The minimum value of the attribute.
 attribute_min(Name) ->
     case Name of
-        version_pruning_window_hrs -> 24; % 24 hours
-        expiry_pager_sleep_time -> 0;     % unit seconds
-        memory_low_watermark -> 50;       % percentage
-        memory_high_watermark -> 51;      % percentage
-        continuous_backup_interval -> 2   % minutes
+        version_pruning_window_hrs -> 24;   % 24 hours
+        expiry_pager_sleep_time -> 0;       % unit seconds
+        memory_low_watermark -> 50;         % percentage
+        memory_high_watermark -> 51;        % percentage
+        continuous_backup_interval -> 2;    % minutes
+        dcp_connections_between_nodes -> 1  % pos_integer
     end.
 
 %% The maximum value of the attribute.
@@ -577,7 +579,8 @@ attribute_max(Name) ->
         memory_low_watermark -> 89;                   % percentage
         memory_high_watermark -> 90;                  % percentage
         continuous_backup_interval ->
-            ?MAX_32BIT_SIGNED_INT                     % minutes
+            ?MAX_32BIT_SIGNED_INT;                    % minutes
+        dcp_connections_between_nodes -> 64           % pos_integer
     end.
 
 membase_bucket_config_value_getter(Key, BucketConfig) ->
@@ -2309,29 +2312,31 @@ chronicle_upgrade_bucket_to_morpheus(BucketName, ChronicleTxn) ->
                   attribute_default(memory_high_watermark)},
                  %% The default value isn't used for existing buckets as it
                  %% may lead to XDCR setups stopping.
-                 {invalid_hlc_strategy, ignore}] ++
-                case is_persistent(BucketConfig) of
-                    true ->
-                        [{access_scanner_enabled, true}];
-                    false ->
-                        []
-                end ++
-                case ns_bucket:is_magma(BucketConfig) of
-                    true ->
-                        [{continuous_backup_enabled,
-                          attribute_default(continuous_backup_enabled)},
-                         {continuous_backup_interval,
-                          attribute_default(continuous_backup_interval)},
-                         {continuous_backup_location,
-                          attribute_default(continuous_backup_location)}];
-                    false ->
-                        []
-                end
+                 {invalid_hlc_strategy, ignore},
+                 {dcp_connections_between_nodes,
+                  attribute_default(dcp_connections_between_nodes)}] ++
+                    case is_persistent(BucketConfig) of
+                        true ->
+                            [{access_scanner_enabled, true}];
+                        false ->
+                            []
+                    end ++
+                    case ns_bucket:is_magma(BucketConfig) of
+                        true ->
+                            [{continuous_backup_enabled,
+                              attribute_default(continuous_backup_enabled)},
+                             {continuous_backup_interval,
+                              attribute_default(continuous_backup_interval)},
+                             {continuous_backup_location,
+                              attribute_default(continuous_backup_location)}];
+                        false ->
+                            []
+                    end
         end,
     case AddProps of
-       [] ->
-           ChronicleTxn;
-       _ ->
+        [] ->
+            ChronicleTxn;
+        _ ->
             NewBucketConfig = misc:merge_proplists(fun(_, L, _) -> L end,
                                                    AddProps, BucketConfig),
             chronicle_upgrade:set_key(PropsKey, NewBucketConfig,
@@ -2449,7 +2454,8 @@ extract_bucket_props(Props) ->
                          encryption_dek_lifetime,
                          continuous_backup_enabled,
                          continuous_backup_interval,
-                         continuous_backup_location]],
+                         continuous_backup_location,
+                         dcp_connections_between_nodes]],
           X =/= false].
 
 build_threshold({Percentage, Size}) ->

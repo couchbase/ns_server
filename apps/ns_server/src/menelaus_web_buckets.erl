@@ -435,7 +435,9 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
                build_durability_impossible_fallback(BucketConfig)},
               {warmupBehavior, ns_bucket:warmup_behavior(BucketConfig)},
               {invalidHlcStrategy,
-               ns_bucket:get_invalid_hlc_strategy(BucketConfig)}] ++
+               ns_bucket:get_invalid_hlc_strategy(BucketConfig)},
+              {dcpConnectionsBetweenNodes,
+               ns_bucket:get_num_dcp_connections(BucketConfig)}] ++
              case ns_bucket:is_persistent(BucketConfig) of
                  true ->
                      [{accessScannerEnabled,
@@ -1613,7 +1615,9 @@ validate_membase_bucket_params(CommonParams, Params, Name,
          parse_validate_magma_seq_tree_data_blocksize(Params, BucketConfig,
                                                       Version, IsNew,
                                                       IsEnterprise,
-                                                      IsStorageModeMigration)
+                                                      IsStorageModeMigration),
+         parse_validate_dcp_connections_between_nodes(Params, IsNew, IsMorpheus,
+                                                      IsEnterprise)
         | validate_bucket_auto_compaction_settings(Params)] ++
         parse_validate_limits(
           Params, BucketConfig, IsNew, AllowStorageLimit,
@@ -3241,6 +3245,20 @@ parse_validate_magma_data_blocksize_inner(_Key, Value, true = _IsEnterprise,
                                           true = _IsMagma, ValidatorFn) ->
     ValidatorFn(Value, IsNew).
 
+parse_validate_dcp_connections_between_nodes(Params, _IsNew, _IsMorpheus,
+                                             false = _IsEnterprise) ->
+    parse_validate_param_not_enterprise("dcpConnectionsBetweenNodes", Params);
+parse_validate_dcp_connections_between_nodes(Params, _IsNew,
+                                             false = _IsMorpheus,
+                                             _IsEnterprise) ->
+    parse_validate_param_not_supported(
+      "dcpConnectionsBetweenNodes", Params,
+      fun not_supported_until_morpheus_error/1);
+parse_validate_dcp_connections_between_nodes(Params, IsNew, _IsMorpheus,
+                                             _IsEnterprise) ->
+    parse_validate_numeric_param(Params, dcpConnectionsBetweenNodes,
+                                 dcp_connections_between_nodes, IsNew).
+
 parse_validate_threads_number(Params, IsNew) ->
     validate_with_missing(proplists:get_value("threadsNumber", Params),
                           "3", IsNew, fun parse_validate_threads_number/1).
@@ -4514,7 +4532,38 @@ basic_bucket_params_screening_t() ->
                               AllBuckets),
               ?assertEqual(list_to_atom(InvalidHlcArg),
                            proplists:get_value(invalid_hlc_strategy, OK50))
-      end, ["error", "ignore", "replace"]).
+      end, ["error", "ignore", "replace"]),
+
+    {_OK51, []} = basic_bucket_params_screening(
+                    true, "bucket51",
+                    [{"bucketType", "membase"},
+                     {"ramQuota", "100"},
+                     {"dcpConnectionsBetweenNodes", "1"}],
+                    AllBuckets),
+
+    {_OK52, E52} = basic_bucket_params_screening(
+                     true, "bucket52",
+                     [{"bucketType", "membase"},
+                      {"ramQuota", "100"},
+                      {"dcpConnectionsBetweenNodes", "0"}],
+                     AllBuckets),
+
+    ?assertEqual(
+       [{dcpConnectionsBetweenNodes,
+         <<"The value of dcpConnectionsBetweenNodes (0) must be in the range 1 "
+           "to 64 inclusive">>}], E52),
+
+    {_OK53, E53} = basic_bucket_params_screening(
+                     true, "bucket53",
+                     [{"bucketType", "membase"},
+                      {"ramQuota", "100"},
+                      {"dcpConnectionsBetweenNodes", "not_an_int"}],
+                     AllBuckets),
+
+    ?assertEqual(
+       [{dcpConnectionsBetweenNodes,
+         <<"The value of dcpConnectionsBetweenNodes (not_an_int) must be a "
+           "non-negative integer">>}], E53).
 
 basic_bucket_params_screening_test_() ->
     {setup,
