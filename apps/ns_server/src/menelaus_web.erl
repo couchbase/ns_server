@@ -415,6 +415,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, settings, metrics], read},
                      fun menelaus_web_stats:handle_get_internal_settings/2,
                      [PathRest]};
+                ["settings", "appTelemetry"] ->
+                    {{[settings, metrics], read},
+                     fun menelaus_web_app_telemetry:handle_get/1, []};
                 ["settings", "metrics" | PathRest] ->
                     {{[settings, metrics], read},
                      fun menelaus_web_stats:handle_get_settings/2, [PathRest]};
@@ -768,6 +771,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, settings, metrics], write},
                      fun menelaus_web_stats:handle_post_internal_settings/2,
                      [PathRest]};
+                ["settings", "appTelemetry"] ->
+                    {{[settings, metrics], write},
+                     fun menelaus_web_app_telemetry:handle_post/1, []};
                 ["settings", "metrics" | PathRest] ->
                     {{[settings, metrics], write},
                      fun menelaus_web_stats:handle_post_settings/2, [PathRest]};

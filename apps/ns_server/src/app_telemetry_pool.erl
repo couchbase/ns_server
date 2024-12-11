@@ -20,7 +20,8 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, get_pids/0, handle_connect/1, call/3, drop/1]).
+-export([start_link/1, get_pids/0, handle_connect/1, call/3, drop/1,
+         update_max/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -49,6 +50,8 @@
 -record(receive_data,
         {pid :: pid(),
          data :: binary()}).
+
+-record(update_max, {max :: integer()}).
 
 %%%===================================================================
 %%% API
@@ -88,6 +91,10 @@ call(Pid, Body, Timeout) ->
 drop(Pid) ->
     gen_server:call(?SERVER, #drop{pid = Pid}).
 
+-spec update_max(integer()) -> ok.
+update_max(NewMax) ->
+    gen_server:call(?SERVER, #update_max{max = NewMax}).
+
 start_link(ArgsMap) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [ArgsMap], []).
 
@@ -124,6 +131,10 @@ handle_call(#call{pid = Pid, body = Body}, From,
     end;
 handle_call(#drop{pid = Pid}, _From, State = #state{}) ->
     {reply, ok, do_drop_client(State, Pid)};
+handle_call(#update_max{max = Max}, _From, State0 = #state{}) ->
+    %% Note, if the number of connections is larger than the new max, we are not
+    %% disconnecting any automatically
+    {reply, ok, State0#state{max = Max}};
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 

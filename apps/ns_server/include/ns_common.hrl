@@ -453,6 +453,8 @@
 
 -define(APP_TELEMETRY_ENABLED, false).
 -define(APP_TELEMETRY_PATH, "_appTelemetry").
+-define(APP_TELEMETRY_MAX_CLIENTS_PER_NODE, 1024).
+-define(APP_TELEMETRY_SCRAPE_INTERVAL, 60).
 
 
 -define(call_on_ns_server_node(Body, Args),

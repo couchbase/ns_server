@@ -82,7 +82,8 @@
          access_forbidden/1,
          rbac_info_retrieved/2,
          admin_password_reset/1,
-         password_rotated/1
+         password_rotated/1,
+         app_telemetry_settings/2
         ]).
 
 -export([start_link/0, stats/0]).
@@ -484,7 +485,9 @@ code(internal_password_rotated) ->
 code(access_forbidden) ->
     8275;
 code(locked_change) ->
-    8276.
+    8276;
+code(app_telemetry_settings) ->
+    8277.
 
 send_to_memcached(ParentPID, {Code, EncodedBody, IsSync}) ->
     case (catch ns_memcached_sockets_pool:executing_on_socket(
@@ -1081,6 +1084,9 @@ admin_password_reset(Req) ->
 
 password_rotated(Req) ->
     put(internal_password_rotated, Req, []).
+
+app_telemetry_settings(Req, Values) ->
+    put(app_telemetry_settings, Req, [{settings, {json, {Values}}}]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

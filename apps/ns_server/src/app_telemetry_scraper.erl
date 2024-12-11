@@ -28,7 +28,6 @@
 -define(SERVER, ?MODULE).
 -define(CONFIG_KEY, app_telemetry).
 
--define(FETCH_INTERVAL, ?get_param(fetch_interval, 60000)).
 -define(FETCH_TIMEOUT, ?get_param(fetch_timeout, 1000)).
 
 %% Statuses
@@ -39,8 +38,10 @@
 
 -define(METRIC_LABELS, [<<"le">>, <<"alt_node">>]).
 
--record(state, {timer_ref = undefined,
-                fetch_pid = undefined}).
+-record(state, {timer_ref :: undefined | reference(),
+                fetch_pid :: undefined | pid(),
+                enabled :: boolean(),
+                scrape_interval_seconds :: integer()}).
 
 %%%===================================================================
 %%% API
@@ -52,16 +53,20 @@ start_link() ->
 handle_connect(Req) ->
     app_telemetry_pool:handle_connect(Req).
 
--spec get_config() -> proplists:proplist().
-get_config() ->
-    ns_config:read_key_fast(?CONFIG_KEY, []).
-
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 init([]) ->
-    app_telemetry_pool:start_link(#{}),
-    {ok, restart_timer(#state{})}.
+    ns_pubsub:subscribe_link(ns_config_events, fun handle_config_event/1),
+
+    Config = menelaus_web_app_telemetry:get_config(),
+    Enabled = menelaus_web_app_telemetry:is_enabled(Config),
+    MaxClients = menelaus_web_app_telemetry:get_max_clients_per_node(Config),
+    ScrapeInterval = menelaus_web_app_telemetry:get_scrape_interval(Config),
+    app_telemetry_pool:start_link(#{max => MaxClients}),
+    State = #state{enabled = Enabled,
+                   scrape_interval_seconds = ScrapeInterval},
+    {ok, restart_timer(State)}.
 
 handle_call(_Call, _From, State) ->
     {reply, ok, State}.
@@ -69,11 +74,10 @@ handle_call(_Call, _From, State) ->
 handle_cast(_Info, State) ->
     {noreply, State}.
 
-handle_info(fetch, #state{fetch_pid = FetchPid} = State0) ->
+handle_info(fetch, #state{enabled = Enabled, fetch_pid = FetchPid} = State0) ->
     %% Start the timer again so that we'll flush the metrics in 60s
     State1 = restart_timer(State0),
-    Config = get_config(),
-    case proplists:get_value(enabled, Config, ?APP_TELEMETRY_ENABLED) of
+    case Enabled of
         true ->
             %% Only start a new fetch if one isn't already in progress
             NewFetchPid =
@@ -87,6 +91,8 @@ handle_info(fetch, #state{fetch_pid = FetchPid} = State0) ->
     end;
 handle_info(fetch_done, State) ->
     {noreply, State#state{fetch_pid = undefined}};
+handle_info(config_change, State) ->
+    {noreply, update_config(State)};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -100,13 +106,36 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+handle_config_event({app_telemetry, _}) ->
+    ?SERVER ! config_change;
+handle_config_event(_) ->
+    ok.
+
+update_config(State0) ->
+    Config = menelaus_web_app_telemetry:get_config(),
+
+    %% Update the websocket pool
+    MaxClients = menelaus_web_app_telemetry:get_max_clients_per_node(Config),
+    app_telemetry_pool:update_max(MaxClients),
+
+    %% Update the scraper state
+    Enabled = menelaus_web_app_telemetry:is_enabled(Config),
+    ScrapeInterval = menelaus_web_app_telemetry:get_scrape_interval(Config),
+    State1 = State0#state{enabled = Enabled,
+                          scrape_interval_seconds = ScrapeInterval},
+
+    %% Ensure that any change in the scrape interval immediately takes effect
+    restart_timer(State1).
+
+
 %% We need to make sure there is only one timer at any given moment, otherwise
 %% the system would be fragile to future changes or diag/evals
 restart_timer(#state{timer_ref = Ref} = State) when is_reference(Ref) ->
     erlang:cancel_timer(Ref),
     restart_timer(State#state{timer_ref = undefined});
-restart_timer(#state{timer_ref = undefined} = State) ->
-    State#state{timer_ref = erlang:send_after(?FETCH_INTERVAL, self(), fetch)}.
+restart_timer(#state{timer_ref = undefined,
+                     scrape_interval_seconds = ScrapeInterval} = State) ->
+    State#state{timer_ref = erlang:send_after(ScrapeInterval, self(), fetch)}.
 
 start_fetch() ->
     Parent = self(),
