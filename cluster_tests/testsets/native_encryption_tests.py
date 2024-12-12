@@ -1384,8 +1384,8 @@ def verify_kek_files(cluster, secret, verify_key_count=1, **kwargs):
                        f'kek count is unexpected: {count} ' \
                        f'(expected: {verify_key_count})'
             for key in secret['data']['keys']:
-                path = Path(node.data_path()) / 'config' / 'keks'
-                verify_key_file_by_id(path, key['id'], **kwargs)
+                path = Path(node.data_path()) / 'config' / 'keks' / key['id']
+                verify_key_file(path, **kwargs)
 
 
 def poll_verify_kek_files(*args, **kwargs):
@@ -1425,7 +1425,7 @@ def verify_dek_files(cluster, relative_path, verify_key_count=1,
                 assert False, f'directory {deks_path} doesn\'t exist'
         c = 0
         for path in deks_path.iterdir():
-            if parse_key_file_name(path.name) is not None:
+            if is_valid_key_id(path.name):
                 c += 1
                 print(f'Verifying dek {path.name}')
                 verify_key_file(path, **kwargs)
@@ -1439,21 +1439,6 @@ def verify_dek_files(cluster, relative_path, verify_key_count=1,
             else:
                 assert c == verify_key_count, f'dek count is unexpected: {c} ' \
                                               f'(expected: {verify_key_count})'
-
-
-def parse_key_file_name(base_name):
-    tokens = base_name.split(".key.")
-    if len(tokens) != 2:
-        return None
-    try:
-        vsn = int(tokens[1])
-    except:
-        return None
-
-    key_id = tokens[0]
-    if not is_valid_key_id(key_id):
-        return None
-    return key_id
 
 
 def is_valid_key_id(name):
@@ -1494,34 +1479,26 @@ def poll_verify_dek_files(*args, **kwargs):
       sleep_time=0.2, attempts=50, retry_on_assert=True, verbose=True)
 
 
-def verify_key_file_by_id(dir_path, key_id, verify_missing=False, **kwargs):
-    files = list(dir_path.glob("./" + key_id + '.key.*'))
-    if verify_missing:
-        assert len(files) == 0, f'key files exists: {files}'
-    else:
-        assert len(files) == 1, f'more than one version found: {files}'
-        verify_key_file(files[0])
-
-
-def verify_key_file(path, verify_encryption_kek=None,
+def verify_key_file(path, verify_missing=False, verify_encryption_kek=None,
                     verify_creation_time=None, verify_id=None):
-    assert path.is_file(), f'key file doesn\'t exist: {path}'
-    content = json.loads(path.read_bytes())
-    if verify_encryption_kek is not None:
-        has_kek = content['keyData']['encryptionKeyName']
-        assert has_kek == verify_encryption_kek, \
-               f'key is encrypted by wrong kek {has_kek} ' \
-               f'(expected: {verify_encryption_kek})'
-    if verify_creation_time is not None:
-        ct = content['keyData']['creationTime']
-        assert verify_creation_time(parse_iso8601(ct)), \
-               f'Unexpected key creation time: {ct} ' \
-               f'(cur time: {datetime.now(timezone.utc)})'
-    if verify_id is not None:
-        key_id = parse_key_file_name(path.name)
-        assert key_id is not None, f"invalid key filename: path.name"
-        assert verify_id(key_id), f'unexpected key id: {key_id}'
-    assert content['type'] == 'raw-aes-gcm'
+    if verify_missing:
+        assert not path.is_file(), f'key file exists: {path}'
+    else:
+        assert path.is_file(), f'key file doesn\'t exist: {path}'
+        content = json.loads(path.read_bytes())
+        if verify_encryption_kek is not None:
+            has_kek = content['keyData']['encryptionKeyName']
+            assert has_kek == verify_encryption_kek, \
+                   f'key is encrypted by wrong kek {has_kek} ' \
+                   f'(expected: {verify_encryption_kek})'
+        if verify_creation_time is not None:
+            ct = content['keyData']['creationTime']
+            assert verify_creation_time(parse_iso8601(ct)), \
+                   f'Unexpected key creation time: {ct} ' \
+                   f'(cur time: {datetime.now(timezone.utc)})'
+        if verify_id is not None:
+            assert verify_id(path.name), f'unexpected key id: {path.name}'
+        assert content['type'] == 'raw-aes-gcm'
 
 
 def get_kek_id(cluster, secret_id):

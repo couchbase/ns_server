@@ -20,7 +20,6 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
-	"strings"
 )
 
 // Stored keys structs and interfaces:
@@ -41,7 +40,7 @@ type storedKeyConfig struct {
 type storedKeyIface interface {
 	name() string
 	kind() string
-	needRewrite(*storedKeyConfig, *storedKeysCtx) (bool, int, error)
+	needRewrite(*storedKeyConfig, *storedKeysCtx) (bool, error)
 	ad() []byte
 	encryptMe(*storedKeysCtx) error
 	decryptMe(*storedKeysCtx) error
@@ -156,7 +155,7 @@ func store_key(name, kind, keyType string, encryptionKeyName, creationTime strin
 		return errors.New(fmt.Sprintf("unknown type: %s", keyType))
 	}
 
-	shouldRewrite, vsn, err := keyInfo.needRewrite(keySettings, ctx)
+	shouldRewrite, err := keyInfo.needRewrite(keySettings, ctx)
 	if err != nil {
 		return err
 	}
@@ -171,7 +170,7 @@ func store_key(name, kind, keyType string, encryptionKeyName, creationTime strin
 		return err
 	}
 
-	err = writeKeyToDisk(keyInfo, vsn, keySettings)
+	err = writeKeyToDisk(keyInfo, keySettings)
 	if err != nil {
 		return err
 	}
@@ -180,7 +179,7 @@ func store_key(name, kind, keyType string, encryptionKeyName, creationTime strin
 }
 
 func readKeyFromFile(path string, ctx *storedKeysCtx) (storedKeyIface, error) {
-	keyIface, _, err := readKeyFromFileRaw(path)
+	keyIface, err := readKeyFromFileRaw(path)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +195,7 @@ func readKey(name, kind string, ctx *storedKeysCtx) (storedKeyIface, error) {
 	if err != nil {
 		return nil, err
 	}
-	keyIface, _, err := readKeyRaw(keySettings, name)
+	keyIface, err := readKeyRaw(keySettings, name)
 	if err != nil {
 		return nil, err
 	}
@@ -225,8 +224,7 @@ func decryptKey(keyIface storedKeyIface, ctx *storedKeysCtx) error {
 	return keyIface.decryptMe(ctx)
 }
 
-func writeKeyToDisk(keyIface storedKeyIface, curVsn int, keySettings *storedKeyConfig) error {
-	nextVsn := curVsn + 1
+func writeKeyToDisk(keyIface storedKeyIface, keySettings *storedKeyConfig) error {
 	keytype, data, err := keyIface.marshal()
 	if err != nil {
 		return err
@@ -236,7 +234,7 @@ func writeKeyToDisk(keyIface storedKeyIface, curVsn int, keySettings *storedKeyC
 		return errors.New(fmt.Sprintf("Failed to marshal key %s: %s", keyIface.name(), err.Error()))
 	}
 
-	keyPath := storedKeyPath(keySettings, keyIface.name(), nextVsn)
+	keyPath := storedKeyPath(keySettings, keyIface.name())
 	log_dbg("Writing %s (%s) to file %s", keyIface.name(), keySettings.KeyKind, keyPath)
 	keyDir := filepath.Dir(keyPath)
 	err = os.MkdirAll(keyDir, 0755)
@@ -247,16 +245,6 @@ func writeKeyToDisk(keyIface storedKeyIface, curVsn int, keySettings *storedKeyC
 	if err != nil {
 		return errors.New(fmt.Sprintf("Failed to write key %s to file %s: %s", keyIface.name(), keyPath, err.Error()))
 	}
-	if curVsn >= 0 {
-		prevKeyPath := storedKeyPath(keySettings, keyIface.name(), curVsn)
-		err = os.Remove(prevKeyPath)
-		if err != nil {
-			// Seems like we should not return error in this case, because
-			// it would lead to retry
-			log_dbg("failed to remove file %s: %s", prevKeyPath, err.Error())
-		}
-	}
-
 	return nil
 }
 
@@ -268,7 +256,7 @@ func encryptWithKey(keyKind, keyName string, data, AD []byte, ctx *storedKeysCtx
 	if err != nil {
 		return nil, err
 	}
-	keyIface, _, err := readKeyRaw(keySettings, keyName)
+	keyIface, err := readKeyRaw(keySettings, keyName)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +276,7 @@ func decryptWithKey(keyKind, keyName string, data, AD []byte, ctx *storedKeysCtx
 	if err != nil {
 		return nil, err
 	}
-	keyIface, _, err := readKeyRaw(keySettings, keyName)
+	keyIface, err := readKeyRaw(keySettings, keyName)
 	if err != nil {
 		return nil, err
 	}
@@ -307,120 +295,46 @@ func getStoredKeyConfig(keyKind string, configs []storedKeyConfig) (*storedKeyCo
 	return &configs[index], nil
 }
 
-func readKeyRaw(keySettings *storedKeyConfig, keyName string) (storedKeyIface, int, error) {
-	path := storedKeyPathPrefix(keySettings, keyName)
+func readKeyRaw(keySettings *storedKeyConfig, keyName string) (storedKeyIface, error) {
+	path := storedKeyPath(keySettings, keyName)
 	return readKeyFromFileRaw(path)
 }
 
-func scanDir(dirPath string) ([]string, error) {
-	files, dirReadErr := os.ReadDir(dirPath)
-	if files == nil {
-		return nil, dirReadErr
-	}
-	// Even in case of an error ReadDir can return files
-	s := make(map[string]bool)
-	for _, f := range files {
-		keyName, _, err := parseKeyFilename(f.Name())
-		if err != nil {
-			log_dbg("Skipping file %s as it doesn't seem to be a key file", f)
-			continue
-		}
-		s[keyName] = true
-	}
-	res := make([]string, len(s))
-	i := 0
-	for keyName := range s {
-		res[i] = keyName
-		i++
-	}
-	return res, dirReadErr
-}
-
-func parseKeyFilename(base_filename string) (string, int, error) {
-	tokens := strings.Split(base_filename, ".key.")
-	if len(tokens) != 2 {
-		return "", -1, errors.New(fmt.Sprintf("Invalid key filename: %s", base_filename))
-	}
-	keyName := tokens[0]
-	vsn, err := strconv.Atoi(tokens[1])
-	if err != nil {
-		return "", -1, errors.New(fmt.Sprintf("Invalid key filename: %s", base_filename))
-	}
-	return keyName, vsn, nil
-}
-
-func findKeyFile(path string) (string, int, error) {
-	wildcard := path + ".*"
-	candidates, err := filepath.Glob(wildcard)
-	if err != nil {
-		return "", -1, errors.New(fmt.Sprintf("Failed to read file list: %s", wildcard, err.Error()))
-	}
-	if len(candidates) == 0 {
-		return "", -1, errors.New(fmt.Sprintf("No files found matching: %s", wildcard))
-	}
-	// looking for a file with max vsn (we increment it on every write)
-	maxVsn := -1
-	var res string
-	for _, p := range candidates {
-		_, vsn, err := parseKeyFilename(filepath.Base(p))
-		if err != nil {
-			log_dbg("Unexpected key filename %s", err.Error())
-			continue
-		}
-		if vsn > maxVsn {
-			maxVsn = vsn
-			res = p
-		}
-	}
-	if maxVsn == -1 {
-		return "", -1, errors.New(fmt.Sprintf("Failed to find any key files among %v", candidates))
-	}
-	return res, maxVsn, nil
-}
-
-func readKeyFromFileRaw(pathWithoutVersion string) (storedKeyIface, int, error) {
-	path, vsn, err := findKeyFile(pathWithoutVersion)
-	if err != nil {
-		return nil, vsn, err
-	}
+func readKeyFromFileRaw(path string) (storedKeyIface, error) {
 	log_dbg("Reading key from file %s", path)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, vsn, errors.New(fmt.Sprintf("Failed to read key from file %s: %s", path, err.Error()))
+		return nil, errors.New(fmt.Sprintf("Failed to read key from file %s: %s", path, err.Error()))
 	}
 	var keyJson storedKeyJson
 	err = json.Unmarshal(data, &keyJson)
 	if err != nil {
-		return nil, vsn, errors.New(fmt.Sprintf("Failed to unmarshal key from file %s: %s", path, err.Error()))
+		return nil, errors.New(fmt.Sprintf("Failed to unmarshal key from file %s: %s", path, err.Error()))
 	}
 
 	if keyJson.Type == rawAESGCMKey {
 		var k rawAesGcmStoredKey
 		k.unmarshal(keyJson.Raw)
-		return &k, vsn, nil
+		return &k, nil
 	}
 
 	if keyJson.Type == awskmKey {
 		var k awsStoredKey
 		k.unmarshal(keyJson.Raw)
-		return &k, vsn, nil
+		return &k, nil
 	}
 
 	if keyJson.Type == kmipKey {
 		var k kmipStoredKey
 		k.unmarshal(keyJson.Raw)
-		return &k, vsn, nil
+		return &k, nil
 	}
 
-	return nil, vsn, errors.New(fmt.Sprintf("Unknown key type: %s", keyJson.Type))
+	return nil, errors.New(fmt.Sprintf("Unknown key type: %s", keyJson.Type))
 }
 
-func storedKeyPath(keySettings *storedKeyConfig, keyName string, vsn int) string {
-	return storedKeyPathPrefix(keySettings, keyName) + "." + strconv.Itoa(vsn)
-}
-
-func storedKeyPathPrefix(keySettings *storedKeyConfig, keyName string) string {
-	return filepath.Join(keySettings.Path, keyName+".key")
+func storedKeyPath(keySettings *storedKeyConfig, keyName string) string {
+	return filepath.Join(keySettings.Path, keyName)
 }
 
 // Reencrypt keys that use secret management (SM) encryption key
@@ -433,8 +347,8 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 		if cfg.KeyKind == "bucketDek" {
 			continue
 		}
-		keyNames, dirReadErr := scanDir(cfg.Path)
-		log_dbg("Will check if the following keys in %s need reencryption: %v", cfg.Path, keyNames)
+		files, dirReadErr := os.ReadDir(cfg.Path)
+		log_dbg("Will check if the following keys need reencryption: %v", files)
 		if dirReadErr != nil {
 			if os.IsNotExist(dirReadErr) {
 				continue
@@ -444,10 +358,11 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 		}
 		// Even in case of an error ReadDir can return files
 		// Reencrypt everything we can
-		if keyNames != nil {
-			for _, keyName := range keyNames {
+		if files != nil {
+			for _, file := range files {
+				keyName := file.Name()
 				log_dbg("Maybe reencrypting key \"%s\"...", keyName)
-				keyIface, vsn, err := readKeyRaw(&cfg, keyName)
+				keyIface, err := readKeyRaw(&cfg, keyName)
 				if err != nil {
 					log_dbg(err.Error())
 					errorsCounter++
@@ -469,7 +384,7 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 					errorsCounter++
 					continue
 				}
-				err = writeKeyToDisk(keyIface, vsn, &cfg)
+				err = writeKeyToDisk(keyIface, &cfg)
 				if err != nil {
 					log_dbg(err.Error())
 					errorsCounter++
@@ -572,18 +487,18 @@ func (k *rawAesGcmStoredKey) kind() string {
 	return k.Kind
 }
 
-func (k *rawAesGcmStoredKey) needRewrite(settings *storedKeyConfig, ctx *storedKeysCtx) (bool, int, error) {
-	keyIface, vsn, err := readKeyRaw(settings, k.Name)
+func (k *rawAesGcmStoredKey) needRewrite(settings *storedKeyConfig, ctx *storedKeysCtx) (bool, error) {
+	keyIface, err := readKeyRaw(settings, k.Name)
 	if err != nil {
 		log_dbg("key %s read error: %s", k.Name, err.Error())
-		return true, vsn, nil
+		return true, nil
 	}
 	onDiskKey, ok := keyIface.(*rawAesGcmStoredKey)
 	if !ok {
 		log_dbg("key %s changed type, rewriting", k.Name)
-		return true, vsn, nil
+		return true, nil
 	}
-	return onDiskKey.EncryptedByKind != settings.EncryptByKind || onDiskKey.EncryptionKeyName != k.EncryptionKeyName, vsn, nil
+	return onDiskKey.EncryptedByKind != settings.EncryptByKind || onDiskKey.EncryptionKeyName != k.EncryptionKeyName, nil
 }
 
 func (k *rawAesGcmStoredKey) ad() []byte {
@@ -696,18 +611,10 @@ func (k *awsStoredKey) kind() string {
 	return k.Kind
 }
 
-func (k *awsStoredKey) needRewrite(settings *storedKeyConfig, ctx *storedKeysCtx) (bool, int, error) {
-	keyIface, vsn, err := readKeyRaw(settings, k.Name)
-	if err != nil {
-		log_dbg("key %s read error: %s", k.Name, err.Error())
-		return true, vsn, nil
-	}
-	onDiskKey, ok := keyIface.(*awsStoredKey)
-	if !ok {
-		log_dbg("key %s changed type, rewriting", k.Name)
-		return true, vsn, nil
-	}
-	return !reflect.DeepEqual(k, onDiskKey), vsn, nil
+func (k *awsStoredKey) needRewrite(settings *storedKeyConfig, ctx *storedKeysCtx) (bool, error) {
+	// since we don't need to encrypt anything in this case, it seems like
+	// it would be simpler to always rewrite it on disk
+	return true, nil
 }
 
 func (k *awsStoredKey) ad() []byte {
@@ -820,16 +727,16 @@ func (k *kmipStoredKey) kind() string {
 	return k.Kind
 }
 
-func (k *kmipStoredKey) needRewrite(settings *storedKeyConfig, ctx *storedKeysCtx) (bool, int, error) {
-	keyIface, vsn, err := readKeyRaw(settings, k.Name)
+func (k *kmipStoredKey) needRewrite(settings *storedKeyConfig, ctx *storedKeysCtx) (bool, error) {
+	keyIface, err := readKeyRaw(settings, k.Name)
 	if err != nil {
 		log_dbg("key %s read error: %s", k.Name, err.Error())
-		return true, vsn, nil
+		return true, nil
 	}
 	onDiskKey, ok := keyIface.(*kmipStoredKey)
 	if !ok {
 		log_dbg("key %s changed type, rewriting", k.Name)
-		return true, vsn, nil
+		return true, nil
 	}
 
 	if k.EncryptedPassphrase != nil && bytes.Equal(k.EncryptedPassphrase, onDiskKey.EncryptedPassphrase) {
@@ -837,25 +744,25 @@ func (k *kmipStoredKey) needRewrite(settings *storedKeyConfig, ctx *storedKeysCt
 		// there is no need to decrypt anything.
 		// Copy encrypted pass because we don't want to compare them
 		onDiskKey.decryptedPassphrase = k.decryptedPassphrase
-		return !reflect.DeepEqual(k, onDiskKey), vsn, nil
+		return !reflect.DeepEqual(k, onDiskKey), nil
 	}
 
 	if k.decryptedPassphrase == nil {
 		err = decryptKey(k, ctx)
 		if err != nil {
-			return false, vsn, err
+			return false, err
 		}
 	}
 	if onDiskKey.decryptedPassphrase == nil {
 		err = decryptKey(onDiskKey, ctx)
 		if err != nil {
-			return false, vsn, err
+			return false, err
 		}
 	}
 
 	// copy encrypted pass because we don't want to compare them
 	onDiskKey.EncryptedPassphrase = k.EncryptedPassphrase
-	return !reflect.DeepEqual(k, onDiskKey), vsn, nil
+	return !reflect.DeepEqual(k, onDiskKey), nil
 }
 
 func (k *kmipStoredKey) ad() []byte {
