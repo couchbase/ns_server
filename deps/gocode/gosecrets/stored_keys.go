@@ -470,6 +470,9 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 		// Reencrypt everything we can
 		for _, keyName := range keyNames {
 			logDbg("Maybe reencrypting key \"%s\"...", keyName)
+			// Reseting keysTouched to make sure we check for cycles each key
+			// individually
+			ctx.keysTouched = make(map[string]bool)
 			keyIface, vsn, err := readKeyRaw(&cfg, keyName)
 			if err != nil {
 				logDbg(err.Error())
