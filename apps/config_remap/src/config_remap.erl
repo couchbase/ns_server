@@ -197,7 +197,7 @@ rewrite_cookie(Cfg, #{node_map := NodeMap}) ->
 rewrite_chronicle(#{?INITARGS_DATA_DIR := InputDir,
                     output_path := OutputDir} = Args) ->
     ?log_info("Rewriting chronicle"),
-    Deks = get_dek_snapshot(configDek),
+    Deks = get_dek_snapshot(chronicleDek),
 
     %% Required to re-use chronicle snapshot storage write fun
     ChronicleEnvDataDir = filename:join([OutputDir, ?CONFIG_DIR]),

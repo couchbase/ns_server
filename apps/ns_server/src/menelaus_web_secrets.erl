@@ -671,13 +671,13 @@ format_secrets_used_by_list_test() ->
                  "bucket \"b2\", secrets \"s1\", \"s2\"; "
                  "it also still encrypts some data in bucket \"b1\"",
                  F(#{by_deks => [configDek, {bucketDek, "b1"}],
-                     by_config => [{bucketDek, "b2"}, configDek],
+                     by_config => [{bucketDek, "b2"}, chronicleDek],
                      by_secrets => Secrets})),
     ?assertEqual("this secret is configured to encrypt configuration, "
                  "bucket \"b2\", secret \"s1\"; "
                  "it also still encrypts some data in bucket \"b1\"",
                  F(#{by_deks => [configDek, {bucketDek, "b1"}],
-                     by_config => [{bucketDek, "b2"}, configDek],
+                     by_config => [{bucketDek, "b2"}, chronicleDek],
                      by_secrets => ["s1"]})).
 
 -endif.

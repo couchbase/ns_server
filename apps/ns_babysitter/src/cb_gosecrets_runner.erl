@@ -549,7 +549,7 @@ cfg_to_json(Props) ->
                    {path, key_path(Kind, Props)},
                    {encryptByKind, kek}]}
              end,
-    Kinds = [kek, configDek, logDek, auditDek],
+    Kinds = [kek, chronicleDek, configDek, logDek, auditDek],
     DeksStoreConfig = case key_path(bucketDek, Props) of
                           undefined -> [];
                           DeksPath -> [{[{kind, bucketDek},
@@ -611,6 +611,8 @@ cfg_to_json(Props) ->
 %% is the fact that we need those path before ns_config has started)
 key_path(kek, _Cfg) ->
     proplists:get_value(kek_path, defaults(), undefined);
+key_path(chronicleDek, _Cfg) ->
+    proplists:get_value(chronicle_dek_path, defaults(), undefined);
 key_path(configDek, _Cfg) ->
     proplists:get_value(config_dek_path, defaults(), undefined);
 key_path(logDek, _Cfg) ->
@@ -846,11 +848,11 @@ store_and_read_key_test() ->
                 ?assertEqual(ok, store_key(Pid, kek, <<"key1">>, Type, Key1,
                                            <<"encryptionService">>,
                                            <<"2024-07-26T19:32:19Z">>)),
-                ?assertEqual(ok, store_key(Pid, configDek, <<"key2">>, Type,
+                ?assertEqual(ok, store_key(Pid, chronicleDek, <<"key2">>, Type,
                                            Key2, <<"key1">>,
                                            <<"2024-07-26T19:32:19Z">>)),
                 {ok, Key1Encoded} = read_key(Pid, kek, <<"key1">>),
-                {ok, Key2Encoded} = read_key(Pid, configDek, <<"key2">>),
+                {ok, Key2Encoded} = read_key(Pid, chronicleDek, <<"key2">>),
                 ?assertMatch(#{type := Type,
                                key := Key1,
                                encr_key := <<"encryptionService">>,
@@ -863,7 +865,7 @@ store_and_read_key_test() ->
                              DecodeKey(Key2Encoded)),
                 %% Unknown key
                 ?assertMatch({error, "No files found" ++ _},
-                             read_key(Pid, configDek, <<"key3">>))
+                             read_key(Pid, chronicleDek, <<"key3">>))
             end)
       end).
 
@@ -1182,7 +1184,7 @@ with_tmp_datakey_cfg(Fun) ->
 
 with_all_stored_keys_cleaned(Cfg, Fun) ->
     KeksPath = binary_to_list(key_path(kek, Cfg)),
-    DeksPath = binary_to_list(key_path(configDek, Cfg)),
+    DeksPath = binary_to_list(key_path(chronicleDek, Cfg)),
     ok = misc:rm_rf(KeksPath), %% In case if there are leftovers
     ok = misc:rm_rf(DeksPath),
     try

@@ -2509,7 +2509,7 @@ sync_with_all_node_monitors() ->
 %% to remove KEKs safely).
 %%
 %% Current those counter look like the following:
-%% #{ {secret, 23} => #{ configDek => 14,
+%% #{ {secret, 23} => #{ chronicleDek => 14,
 %%                       {bucketDek, "beer-sample"} => 2 },
 %%    {secret, 26} => #{ {bucketDek, "travel-sample"} => 6 } }
 %%

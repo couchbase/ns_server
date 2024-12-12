@@ -57,7 +57,7 @@ def parse_args():
     group = arg_parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--key-kind', '-u', type=str,
                        metavar='<key_kind>',
-                       help='bucketDek, configDek, kek, etc...')
+                       help='bucketDek, chronicleDek, kek, etc...')
     group.add_argument('--key-dir', '-w', type=str,
                        metavar='<directory_with_keys>',
                        help='directory to search for keys')

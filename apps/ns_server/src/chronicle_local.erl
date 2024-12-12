@@ -27,7 +27,8 @@
          rename/1,
          get_snapshot/1,
          sync/0,
-         maybe_apply_new_keys/0,
+         set_active_dek/1,
+         drop_deks/1,
          get_encryption_dek_ids/0]).
 
 %% exported callbacks used by chronicle
@@ -132,13 +133,13 @@ handle_call(maybe_apply_new_keys, _From, State) ->
 handle_call(get_encryption_dek_ids, _From,
             #state{keys_applied = Applied} = State) ->
     %% If we haven't rewritten chronicle data with the most recent key yet,
-    %% we can still have some data unencrypted, so add 'undefined' just in case
+    %% we can still have some data unencrypted, so add ?NULL_DEK just in case
     %% in this case.
     {Active, AllDeks} = cb_crypto:get_all_deks(get_chronicle_deks_snapshot()),
     AllIds = [cb_crypto:get_dek_id(D) || D <- AllDeks],
     Res = case Active of
-              undefined -> [undefined | AllIds];
-              _ when not Applied -> [undefined | AllIds];
+              undefined -> [?NULL_DEK | AllIds];
+              _ when not Applied -> [?NULL_DEK | AllIds];
               _ -> AllIds
           end,
     {reply, {ok, Res}, State};
@@ -171,8 +172,17 @@ get_snapshot(Node) ->
 sync() ->
     gen_server2:call(?MODULE, sync, ?CALL_TIMEOUT).
 
-maybe_apply_new_keys() ->
-    gen_server2:call(?MODULE, maybe_apply_new_keys, ?CALL_TIMEOUT).
+set_active_dek(_ActiveDek) ->
+    _ = gen_server2:call(?MODULE, maybe_apply_new_keys, ?CALL_TIMEOUT),
+    ok.
+
+drop_deks(IdsToDrop) ->
+    InUse = gen_server2:call(?MODULE, maybe_apply_new_keys, ?CALL_TIMEOUT),
+    StillInUse = [Id || Id <- InUse, lists:member(Id, IdsToDrop)],
+    case StillInUse of
+        [] -> {ok, done};
+        [_ | _] -> {error, {still_in_use, StillInUse}}
+    end.
 
 get_encryption_dek_ids() ->
     gen_server2:call(?MODULE, get_encryption_dek_ids, ?CALL_TIMEOUT).
@@ -306,7 +316,7 @@ external_setup_keys() ->
                Path ->
                    #{config_path_override => Path}
            end,
-    case cb_deks_raw_utils:bootstrap_get_deks(configDek, Opts) of
+    case cb_deks_raw_utils:bootstrap_get_deks(chronicleDek, Opts) of
         {ok, DS} ->
             set_chronicle_deks_snapshot(DS);
         Error ->
@@ -315,7 +325,7 @@ external_setup_keys() ->
 
 read_and_set_data_keys() ->
     maybe
-        {ok, DeksSnapshot} ?= cb_crypto:fetch_deks_snapshot(configDek),
+        {ok, DeksSnapshot} ?= cb_crypto:fetch_deks_snapshot(chronicleDek),
         set_chronicle_deks_snapshot(DeksSnapshot)
     else
         {error, Reason} ->
@@ -351,8 +361,12 @@ rewrite_chronicle_data() ->
 
 maybe_apply_new_keys(Force) ->
     Old = get_chronicle_deks_snapshot(),
-    {ok, New} = cb_crypto:fetch_deks_snapshot(configDek),
+    {ok, New} = cb_crypto:fetch_deks_snapshot(chronicleDek),
     NewWithoutHistDeks = cb_crypto:without_historical_deks(New),
+    IdsInUse = fun (S) ->
+                   {_, Deks} = cb_crypto:get_all_deks(S),
+                   [cb_crypto:get_dek_id(D) || D <- Deks]
+               end,
     case (cb_crypto:get_dek_id(Old) /= cb_crypto:get_dek_id(New)) orelse
          (NewWithoutHistDeks /= New) orelse Force of
         true ->
@@ -361,7 +375,7 @@ maybe_apply_new_keys(Force) ->
             %% crashes if it can't reencrypt everything here
             ok = rewrite_chronicle_data(),
             set_chronicle_deks_snapshot(NewWithoutHistDeks),
-            ok;
+            IdsInUse(NewWithoutHistDeks);
         false ->
-            ok
+            IdsInUse(Old)
     end.

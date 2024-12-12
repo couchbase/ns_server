@@ -572,7 +572,7 @@ key_path({bucketDek, Bucket}) ->
     end;
 %% Only bucketDek can change in config, other paths are static.
 %% Moreover we don't have ns_config started yet when we already need other
-%% paths (like logDek path), so we can't call ns_config:read_key_fast for
+%% paths (like chronicleDek path), so we can't call ns_config:read_key_fast for
 %% those paths.
 key_path(bucketDek) ->
     Cfg = ns_config:read_key_fast(ns_config_sm_key(), []),
