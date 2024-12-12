@@ -29,6 +29,7 @@
         ?get_param({dek_removal_min_interval, Kind}, 60*60*3)).
 -define(MAX_DEK_NUM(Kind), ?get_param({max_dek_num, Kind}, 50)).
 -define(MIN_DEK_GC_INTERVAL_S, ?get_param(min_dek_gc_interval, 60)).
+-define(DEK_INFO_UPDATE_INVERVAL_S, ?get_param(dek_info_update_interval, 60)).
 
 -ifndef(TEST).
 -define(MIN_RECHECK_ROTATION_INTERVAL, ?get_param(min_rotation_recheck_interval,
@@ -68,7 +69,8 @@
          sanitize_chronicle_cfg/1,
          merge_dek_infos/2,
          format_dek_issues/1,
-         chronicle_transaction/2]).
+         chronicle_transaction/2,
+         get_node_deks_info_quickly/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -89,7 +91,8 @@
                 timers = #{retry_jobs => undefined,
                            rotate_keks => undefined,
                            dek_cleanup => undefined,
-                           rotate_deks => undefined}
+                           rotate_deks => undefined,
+                           dek_info_update => undefined}
                          :: #{atom() := reference() | undefined},
                 deks = undefined :: #{cb_deks:dek_kind() := deks_info()} |
                                     undefined,
@@ -178,15 +181,17 @@
                        last_drop_timestamp := undefined | non_neg_integer(),
                        statuses := #{node_job() := ok | retry | {error, _}}}.
 
--type external_dek_info() :: #{data_status := encrypted |
-                                              partially_encrypted |
-                                              unencrypted | unknown,
-                               issues := [{dek_issue(), pending | failed}],
-                               deks := [cb_deks:dek()],
-                               dek_num := non_neg_integer(),
-                               oldest_dek_datetime := calendar:datetime()}.
+-type external_dek_info() :: #{data_status := dek_info_data_status(),
+                               issues := [dek_issue()],
+                               deks => [cb_deks:dek()],
+                               dek_num => non_neg_integer(),
+                               oldest_dek_datetime => calendar:datetime()}.
 
--type dek_issue() :: dek_job() | proc_communication | node_info.
+-type dek_info_data_status() :: encrypted | partially_encrypted |
+                                unencrypted | unknown.
+
+-type dek_issue() :: {dek_job() | proc_communication | node_info,
+                      pending | failed}.
 
 %%%===================================================================
 %%% API
@@ -538,6 +543,27 @@ get_secret_by_kek_id_map(Snapshot) ->
                          [{KeyId, Id} ||  KeyId <- get_all_keys_from_props(S)]
                      end, get_all(Snapshot))).
 
+-spec get_node_deks_info_quickly() ->
+          #{cb_deks:dek_kind() := external_dek_info()}.
+get_node_deks_info_quickly() ->
+    %% Using ets here to avoid calling gen_server:call() and make sure
+    %% ns_heart can get the latest status as quick as possible.
+    %% This gen_server can be busy with other stuff, especially in situations
+    %% like quorum loss (chronicle transactions time out in this case).
+    %% We don't want ns_heart to wait multiple seconds in such cases
+    case ets:lookup(?MODULE, deks_info) of
+        [] ->
+            dummy_deks_info(unknown, [{proc_communication, pending}]);
+        [{_, {Timestamp, Info}}] ->
+            Now = erlang:monotonic_time(second),
+            case Timestamp + ?DEK_INFO_UPDATE_INVERVAL_S >= Now of
+                true ->
+                    Info;
+                false ->
+                    dummy_deks_info(unknown, [{proc_communication, pending}])
+            end
+    end.
+
 -spec get_node_deks_info() -> #{cb_deks:dek_kind() := external_dek_info()}.
 get_node_deks_info() ->
     try
@@ -548,20 +574,9 @@ get_node_deks_info() ->
             case cluster_compat_mode:is_enterprise() of
                 true ->
                     ?log_error("Failed to get node deks_info: ~p", [E]),
-                    Kinds = cb_deks:dek_kinds_list(),
-                    maps:from_list(
-                      lists:map(
-                        fun (K) ->
-                            {K, #{data_status => unknown,
-                                  issues => [{proc_communication, failed}]}}
-                        end, Kinds));
+                    dummy_deks_info(unknown, [{proc_communication, failed}]);
                 false ->
-                    Kinds = cb_deks:dek_kinds_list(),
-                    maps:from_list(
-                      lists:map(
-                        fun (K) ->
-                            {K, #{data_status => unencrypted, issues => []}}
-                        end, Kinds))
+                    dummy_deks_info(unencrypted, [])
             end
     end.
 
@@ -613,7 +628,7 @@ merge_dek_infos(M1, M2) ->
           (oldest_dek_datetime, A, B) -> min(A, B)
       end, M1, M2).
 
--spec format_dek_issues([{dek_issue(), pending | failed}]) -> [binary()].
+-spec format_dek_issues([dek_issue()]) -> [binary()].
 format_dek_issues(List) ->
     lists:map(fun ({maybe_update_deks, pending}) ->
                       <<"keys update pending">>;
@@ -629,6 +644,8 @@ format_dek_issues(List) ->
                       <<"keys reencryption failed">>;
                   ({node_info, pending}) ->
                       <<"information missing for some nodes">>;
+                  ({proc_communication, pending}) ->
+                      <<"encryption information not available yet">>;
                   ({proc_communication, failed}) ->
                       <<"encryption manager does not respond">>
               end, List).
@@ -660,6 +677,8 @@ init([Type]) ->
                    [maybe_reencrypt_secrets,
                     maybe_reset_deks_counters];
                ?NODE_PROC ->
+                    ets:new(?MODULE, [named_table, protected, set,
+                                      {keypos, 1}]),
                     Kinds = cb_deks:dek_kinds_list(),
                     lists:flatmap(fun (K) ->
                                       [{maybe_update_deks, K},
@@ -687,7 +706,8 @@ init([Type]) ->
                          [maybe_read_deks(_),
                           run_jobs(_),
                           restart_dek_cleanup_timer(_),
-                          restart_rotation_timer(_)])}.
+                          restart_rotation_timer(_),
+                          restart_dek_info_update_timer(true, _)])}.
 
 handle_call({call, {M, F, A} = MFA}, _From,
             #state{proc_type = ?MASTER_PROC} = State) ->
@@ -705,21 +725,8 @@ handle_call(sync, _From, #state{proc_type = ?NODE_PROC} = State) ->
 
 handle_call(get_node_deks_info, _From,
             #state{proc_type = ?NODE_PROC} = State) ->
-    #state{deks = Deks} = State,
-    Kinds = maps:keys(Deks),
-    {Res, NewState} =
-        lists:foldl(
-          fun (Kind, {ResAcc, StateAcc}) ->
-               %% Run gc for deks; it is usefull in case if a compaction
-               %% has been run recently
-               NewStateAcc = maybe_garbage_collect_deks(Kind, false, StateAcc),
-               case extract_dek_info(Kind, NewStateAcc) of
-                   {ok, I} -> {ResAcc#{Kind => I}, NewStateAcc};
-                   {error, not_found} -> {ResAcc, NewStateAcc}
-               end
-          end, {#{}, State}, Kinds),
-
-    {reply, Res, NewState};
+    {Res, NewState} = calculate_dek_info(State),
+    {reply, Res, restart_dek_info_update_timer(false, NewState)};
 
 handle_call(Request, _From, State) ->
     ?log_warning("Unhandled call: ~p", [Request]),
@@ -846,6 +853,13 @@ handle_info({timer, rotate_deks} = Msg, #state{proc_type = ?NODE_PROC,
                             end
                         end, [], Deks),
     {noreply, restart_dek_rotation_timer(add_and_run_jobs(NewJobs, State))};
+
+handle_info({timer, dek_info_update} = Msg,
+            #state{proc_type = ?NODE_PROC} = State) ->
+    ?log_debug("DEK info update timer"),
+    misc:flush(Msg),
+    {_Res, NewState} = calculate_dek_info(State),
+    {noreply, restart_dek_info_update_timer(false, NewState)};
 
 handle_info(Info, State) ->
     ?log_warning("Unhandled info: ~p", [Info]),
@@ -2173,6 +2187,16 @@ ensure_timer_started(Name, Time, #state{timers = Timers} = State) ->
         Ref when is_reference(Ref) -> State
     end.
 
+restart_dek_info_update_timer(IsFirstCall,
+                              #state{proc_type = ?NODE_PROC} = State) ->
+    Time = case IsFirstCall of
+               true -> 0;
+               false -> ?DEK_INFO_UPDATE_INVERVAL_S * 1000
+           end,
+    restart_timer(dek_info_update, Time, State);
+restart_dek_info_update_timer(_, #state{proc_type = ?MASTER_PROC} = State) ->
+    State.
+
 -spec restart_rotation_timer(#state{}) -> #state{}.
 restart_rotation_timer(#state{proc_type = ?NODE_PROC} = State) ->
     State;
@@ -3149,6 +3173,36 @@ remove_historical_key_from_props(#{type := ?AWSKMS_KEY_TYPE,
                 false -> {ok, Props#{data => Data#{stored_ids => NewStoredIds}}}
             end
     end.
+
+-spec calculate_dek_info(#state{}) ->
+          {#{cb_deks:dek_kind() => external_dek_info()}, #state{}}.
+calculate_dek_info(State) ->
+    #state{deks = Deks} = State,
+    Kinds = maps:keys(Deks),
+    {Res, NewState} =
+        lists:foldl(
+          fun (Kind, {ResAcc, StateAcc}) ->
+              %% Run gc for deks; it is usefull in case if a compaction
+              %% has been run recently
+              NewStateAcc = maybe_garbage_collect_deks(Kind, false, StateAcc),
+              case extract_dek_info(Kind, NewStateAcc) of
+                  {ok, I} -> {ResAcc#{Kind => I}, NewStateAcc};
+                  {error, not_found} -> {ResAcc, NewStateAcc}
+              end
+          end, {#{}, State}, Kinds),
+    ets:insert(?MODULE, {deks_info, {erlang:monotonic_time(second), Res}}),
+    {Res, NewState}.
+
+-spec dummy_deks_info(dek_info_data_status(), [dek_issue()]) ->
+          #{cb_deks:dek_kind() := external_dek_info()}.
+dummy_deks_info(DataStatus, Issues) ->
+    Kinds = cb_deks:dek_kinds_list(),
+    maps:from_list(
+      lists:map(
+        fun (K) ->
+            {K, #{data_status => DataStatus,
+                  issues => Issues}}
+        end, Kinds)).
 
 -ifdef(TEST).
 replace_secret_in_list_test() ->

@@ -319,7 +319,7 @@ current_status_slow_inner() ->
          | element(2, ns_info:basic_info())].
 
 get_encryption_at_rest_info() ->
-    DekInfos = cb_cluster_secrets:get_node_deks_info(),
+    DekInfos = cb_cluster_secrets:get_node_deks_info_quickly(),
     GroupedInfos =
         maps:fold(
           fun (K, I, Acc) ->
