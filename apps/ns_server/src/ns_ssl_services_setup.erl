@@ -748,9 +748,13 @@ handle_call({set_certificate_chain, Type, CAEntry, Chain, PKeyFun,
             false -> PassphraseSettings
         end,
 
+    %% If current cert is OOTB, we should not short circuit the reload
+    IsUploaded = (proplists:get_value(type, SavedProps) =:= uploaded),
+
     Reload =
         case Chain =:= Pem andalso CAEntry =:= CA andalso
-             NewPassphraseSettings =:= OriginalPassphraseSettings of
+             NewPassphraseSettings =:= OriginalPassphraseSettings andalso
+             IsUploaded of
             true ->
                 case ForceReload of
                     false ->
