@@ -223,7 +223,8 @@ compute_recovery_map_test__(NumServers, NumCopies) ->
     Servers = lists:seq(1, NumServers),
     EmptyMap = lists:duplicate(1024,
                                lists:duplicate(NumCopies, undefined)),
-    Map = mb_map:generate_map(EmptyMap, NumCopies - 1, Servers, []),
+    Map = mb_map:generate_map(EmptyMap, NumCopies - 1, Servers,
+                              [{terse_output, true}]),
 
     FailoverServers = misc:shuffle(tl(Servers)),
     lists:foldl(

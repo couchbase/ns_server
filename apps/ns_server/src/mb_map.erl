@@ -335,30 +335,33 @@ generate_map_new(Map, NumReplicas, Nodes, Options) ->
     NumSlaves = proplists:get_value(max_slaves, Options, 10),
     Tags = proplists:get_value(tags, Options),
     UseGreedy = proplists:get_bool(use_vbmap_greedy_optimization, Options),
+    Verbose = not proplists:get_bool(terse_output, Options),
 
     MapsFromPast0 = find_matching_past_maps(Nodes, Map, Options, MapsHistory),
     MapsFromPast = score_maps(Map, MapsFromPast0),
-    ?log_debug("Scores for past maps:~n~p", [[S || {_, S} <- MapsFromPast]]),
+    Verbose andalso ?log_debug("Scores for past maps:~n~p",
+                               [[S || {_, S} <- MapsFromPast]]),
 
     GeneratedMaps0 =
         lists:append(
           [[invoke_vbmap(Map, ShuffledNodes, NumVBuckets,
-                         NumSlaves, NumReplicas, Tags, UseGreedy) ||
+                         NumSlaves, NumReplicas, Tags, UseGreedy, Verbose) ||
                _ <- lists:seq(1, 3)] ||
               ShuffledNodes <- [misc:shuffle(KeepNodes) || _ <- lists:seq(1, 3)]]),
 
     GeneratedMaps = score_maps(Map, GeneratedMaps0),
-    ?log_debug("Scores for generated maps:~n~p", [[S || {_, S} <- GeneratedMaps]]),
+    Verbose andalso ?log_debug("Scores for generated maps:~n~p",
+                               [[S || {_, S} <- GeneratedMaps]]),
 
     AllMaps = sets:to_list(sets:from_list(GeneratedMaps ++ MapsFromPast)),
 
-    ?log_debug("Considering ~p maps:~n~p",
-               [length(AllMaps), [S || {_, S} <- AllMaps]]),
+    Verbose andalso ?log_debug("Considering ~p maps:~n~p",
+                               [length(AllMaps), [S || {_, S} <- AllMaps]]),
     BestMapScore = best_map(Options, AllMaps),
     BestMap = element(1, BestMapScore),
-    ?log_debug("Best map score: ~p (~p)",
-               [element(2, BestMapScore),
-                lists:keymember(BestMap, 1, GeneratedMaps)]),
+    Verbose andalso ?log_debug("Best map score: ~p (~p)",
+                               [element(2, BestMapScore),
+                                lists:keymember(BestMap, 1, GeneratedMaps)]),
     BestMap.
 
 generate_map_old(Map, NumReplicas, Nodes, Options) ->
@@ -709,7 +712,8 @@ slaves([], _, _, Set) ->
 testnodes(NumNodes) ->
     [list_to_atom([$n | tl(integer_to_list(1000+N))]) || N <- lists:seq(1, NumNodes)].
 
-invoke_vbmap(CurrentMap, Nodes, NumVBuckets, NumSlaves, NumReplicas, Tags, UseGreedy) ->
+invoke_vbmap(CurrentMap, Nodes, NumVBuckets, NumSlaves, NumReplicas, Tags,
+             UseGreedy, Verbose) ->
     VbmapName =
         case misc:is_windows() of
             true ->
@@ -725,7 +729,7 @@ invoke_vbmap(CurrentMap, Nodes, NumVBuckets, NumSlaves, NumReplicas, Tags, UseGr
     try
         {ok, Map} = do_invoke_vbmap(VbmapPath, DiagPath, PrevMapFile,
                                     CurrentMap, Nodes, NumVBuckets, NumSlaves,
-                                    NumReplicas, Tags, UseGreedy),
+                                    NumReplicas, Tags, UseGreedy, Verbose),
         Map
     after
         file:delete(DiagPath),
@@ -734,17 +738,17 @@ invoke_vbmap(CurrentMap, Nodes, NumVBuckets, NumSlaves, NumReplicas, Tags, UseGr
 
 do_invoke_vbmap(VbmapPath, DiagPath, PrevMapFile,
                 CurrentMap, Nodes, NumVBuckets, NumSlaves, NumReplicas, Tags,
-                UseGreedy) ->
+                UseGreedy, Verbose) ->
     misc:executing_on_new_process(
       fun () ->
               do_invoke_vbmap_body(VbmapPath, DiagPath, PrevMapFile, CurrentMap,
                                    Nodes, NumVBuckets, NumSlaves, NumReplicas,
-                                   Tags, UseGreedy)
+                                   Tags, UseGreedy, Verbose)
       end).
 
 do_invoke_vbmap_body(VbmapPath, DiagPath, PrevMapFile, CurrentMap, Nodes,
                      NumVBuckets, NumSlaves, NumReplicas, Tags,
-                     UseGreedy) ->
+                     UseGreedy, Verbose) ->
     NumNodes = length(Nodes),
 
     Args0 = ["--diag", DiagPath,
@@ -763,7 +767,7 @@ do_invoke_vbmap_body(VbmapPath, DiagPath, PrevMapFile, CurrentMap, Nodes,
 
     MaxNodeId = length(Nodes) - 1,
     NodeIdList = lists:zip(Nodes, lists:seq(0, MaxNodeId)),
-    ?log_debug("Node Id Map: ~p", [NodeIdList]),
+    Verbose andalso ?log_debug("Node Id Map: ~p", [NodeIdList]),
 
     NodeIdMap = dict:from_list(NodeIdList),
 
@@ -796,7 +800,7 @@ do_invoke_vbmap_body(VbmapPath, DiagPath, PrevMapFile, CurrentMap, Nodes,
 
     case file:read_file(DiagPath) of
         {ok, Diag} ->
-            ?log_debug("vbmap diag output:~n~s", [Diag]);
+            Verbose andalso ?log_debug("vbmap diag output:~n~s", [Diag]);
         Error ->
             ?log_warning("Couldn't read vbmap diag output: ~p", [Error])
     end,
