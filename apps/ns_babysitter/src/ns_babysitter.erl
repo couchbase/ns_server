@@ -133,8 +133,9 @@ init_master_password() ->
 
 dummy_logger(Proc) ->
     fun (LogLevel, F, A) ->
-        case LogLevel of
-            debug -> ok;
+        case (LogLevel == debug) andalso
+             (os:getenv("CB_DEBUG_GOSECRETS") == false) of
+            true -> ok;
             _ -> io:format(F ++ "~n", A)
         end,
         Proc ! {LogLevel, F, A}
