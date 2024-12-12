@@ -334,6 +334,10 @@ func readKeyRaw(keySettings *storedKeyConfig, keyName string) (storedKeyIface, i
 
 func scanDir(dirPath string) ([]string, error) {
 	files, dirReadErr := os.ReadDir(dirPath)
+	if os.IsNotExist(dirReadErr) {
+		logDbg("Dir %s does not exist, skipping", dirPath)
+		return nil, nil
+	}
 	if files == nil {
 		return nil, dirReadErr
 	}
