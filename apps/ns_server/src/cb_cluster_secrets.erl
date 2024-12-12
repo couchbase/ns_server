@@ -115,7 +115,7 @@
                                                          ?SECRET_ID_NOT_SET}.
 -type kek_props() :: #{id := key_id(),
                        creation_time := calendar:datetime(),
-                       key_material := sensitive_data()}.
+                       key := sensitive_data()}.
 -type sensitive_data() :: #{type := sensitive | encrypted,
                             data := binary(),
                             encrypted_by := undefined | {secret_id(), key_id()}}.
@@ -452,9 +452,8 @@ is_encrypted_by_secret_manager(#{type := ?GENERATED_KEY_TYPE,
     true;
 is_encrypted_by_secret_manager(#{type := ?GENERATED_KEY_TYPE,
                                  data := #{keys := Keys}}) ->
-    lists:any(fun (#{key_material := #{encrypted_by := EB}}) ->
-                  EB == undefined
-              end, Keys);
+    lists:any(fun (#{key := #{encrypted_by := EB}}) -> EB == undefined end,
+              Keys);
 is_encrypted_by_secret_manager(#{type := ?KMIP_KEY_TYPE,
                                  data := #{encrypt_by := nodeSecretManager}}) ->
     true;
@@ -848,9 +847,7 @@ generate_key(CreationDateTime) ->
                                     [{kind, kek}]}),
     #{id => new_key_id(),
       creation_time => CreationDateTime,
-      key_material => #{type => sensitive,
-                        data => Key,
-                        encrypted_by => undefined}}.
+      key => #{type => sensitive, data => Key, encrypted_by => undefined}}.
 
 -spec set_active_key_in_props(secret_props(), key_id()) -> secret_props().
 set_active_key_in_props(#{type := ?GENERATED_KEY_TYPE,
@@ -1031,13 +1028,13 @@ ensure_generated_keks_on_disk(#{type := ?GENERATED_KEY_TYPE, id := SecretId,
 
 -spec ensure_kek_on_disk(kek_props(), binary()) -> ok | {error, _}.
 ensure_kek_on_disk(#{id := Id,
-                     key_material := #{type := sensitive, data := Key,
-                                       encrypted_by := undefined},
+                     key := #{type := sensitive, data := Key,
+                              encrypted_by := undefined},
                      creation_time := CreationTime}, _) ->
     encryption_service:store_kek(Id, Key, undefined, CreationTime);
 ensure_kek_on_disk(#{id := Id,
-                     key_material := #{type := encrypted, data := EncryptedKey,
-                                       encrypted_by := {_ESecretId, EKekId}},
+                     key := #{type := encrypted, data := EncryptedKey,
+                              encrypted_by := {_ESecretId, EKekId}},
                      creation_time := CreationTime} = KeyProps, SecretAD) ->
     AD = auto_generated_key_ad(SecretAD, KeyProps),
     maybe
@@ -1699,8 +1696,8 @@ get_secrets_that_encrypt_props(#{type := ?GENERATED_KEY_TYPE,
             #{} -> []
         end ++
         lists:filtermap(
-          fun (#{key_material := #{encrypted_by := {Id, _}}}) -> {true, Id};
-              (#{key_material := #{encrypted_by := undefined}}) -> false
+          fun (#{key := #{encrypted_by := {Id, _}}}) -> {true, Id};
+              (#{key := #{encrypted_by := undefined}}) -> false
           end, Keys),
     lists:uniq(L);
 get_secrets_that_encrypt_props(#{type := ?AWSKMS_KEY_TYPE}) ->
@@ -1757,11 +1754,11 @@ maybe_reencrypt_secrets() ->
                                    false
                            end
                        end, All)),
-               GetActiveId = fun (SId) -> {ok, maps:get(SId, KeksMap)} end,
+               GetKekId = fun (SId) -> {ok, maps:get(SId, KeksMap)} end,
                {Changed, Unchanged} =
                    misc:partitionmap(
                      fun (Secret) ->
-                         case maybe_reencrypt_secret_txn(Secret, GetActiveId) of
+                         case maybe_reencrypt_secret_txn(Secret, GetKekId) of
                              {true, NewSecret} -> {left, NewSecret};
                              false -> {right, Secret}
                          end
@@ -1788,8 +1785,8 @@ maybe_reencrypt_secrets() ->
           {ok, secret_props()} |
           {error, encryption_service:stored_key_error() | bad_encrypt_id()}.
 ensure_secret_encrypted_txn(Props, Snapshot) ->
-    GetActiveId = get_active_key_id(_, Snapshot),
-    case maybe_reencrypt_secret_txn(Props, GetActiveId) of
+    GetKekId = get_active_key_id(_, Snapshot),
+    case maybe_reencrypt_secret_txn(Props, GetKekId) of
         {true, NewProps} -> {ok, NewProps};
         false -> {ok, Props};
         {error, _} = Error -> Error
@@ -1799,22 +1796,21 @@ ensure_secret_encrypted_txn(Props, Snapshot) ->
                                  fun ((secret_id()) -> key_id())) ->
           false | {true, secret_props()} |
           {error, encryption_service:stored_key_error() | bad_encrypt_id()}.
-maybe_reencrypt_secret_txn(#{type := ?GENERATED_KEY_TYPE} = Secret,
-                           GetActiveId) ->
+maybe_reencrypt_secret_txn(#{type := ?GENERATED_KEY_TYPE} = Secret, GetKekId) ->
     #{data := #{keys := Keys} = Data} = Secret,
-    case maybe_reencrypt_keks(Keys, Secret, GetActiveId) of
+    case maybe_reencrypt_keks(Keys, Secret, GetKekId) of
         {ok, NewKeks} -> {true, Secret#{data => Data#{keys => NewKeks}}};
         no_change -> false;
         {error, _} = Error -> Error
     end;
-maybe_reencrypt_secret_txn(#{type := ?KMIP_KEY_TYPE} = Secret, GetActiveId) ->
+maybe_reencrypt_secret_txn(#{type := ?KMIP_KEY_TYPE} = Secret, GetKekId) ->
     #{data := Data} = Secret,
     Pass = maps:get(key_passphrase, Data),
     EncryptBy = maps:get(encrypt_by, Data, undefined),
     SecretId = maps:get(encrypt_secret_id, Data, undefined),
     AD = secret_ad(Secret),
 
-    case maybe_reencrypt_data(Pass, AD, EncryptBy, SecretId, GetActiveId) of
+    case maybe_reencrypt_data(Pass, AD, EncryptBy, SecretId, GetKekId) of
         {ok, NewPass} ->
             {true, Secret#{data => Data#{key_passphrase => NewPass}}};
         no_change ->
@@ -1829,23 +1825,20 @@ maybe_reencrypt_secret_txn(#{}, _) ->
                            fun ((secret_id()) -> key_id())) ->
           {ok, [kek_props()]} | no_change |
           {error, encryption_service:stored_key_error() | bad_encrypt_id()}.
-maybe_reencrypt_keks(Keys, #{data := SecretData} = Secret, GetActiveId) ->
+maybe_reencrypt_keks(Keys, #{data := SecretData} = Secret, GetKekId) ->
     try
         EncryptBy = maps:get(encrypt_by, SecretData, undefined),
         SecretId = maps:get(encrypt_secret_id, SecretData, undefined),
 
         RV = lists:mapfoldl(
-               fun (#{key_material := KeyData} = Key,Acc) ->
+               fun (#{key := KeyData} = Key,Acc) ->
                    SecretAD = secret_ad(Secret),
                    AD = auto_generated_key_ad(SecretAD, Key),
                    case maybe_reencrypt_data(KeyData, AD, EncryptBy, SecretId,
-                                             GetActiveId) of
-                       no_change ->
-                           {Key, Acc};
-                       {ok, NewKeyData} ->
-                           {Key#{key_material => NewKeyData}, changed};
-                       {error, _} = E ->
-                           throw(E)
+                                             GetKekId) of
+                       no_change -> {Key, Acc};
+                       {ok, NewKeyData} -> {Key#{key => NewKeyData}, changed};
+                       {error, _} = E -> throw(E)
                    end
                end, no_change, Keys),
         case RV of
@@ -1874,11 +1867,11 @@ auto_generated_key_ad(SecretAD, #{id := Id, creation_time := CT}) ->
           {ok, sensitive_data()} |
           no_change |
           {error, encryption_service:stored_key_error() | bad_encrypt_id()}.
-maybe_reencrypt_data(Data, AD, EncryptBy, SecretId, GetActiveId) ->
+maybe_reencrypt_data(Data, AD, EncryptBy, SecretId, GetKekId) ->
     case EncryptBy of
         nodeSecretManager -> maybe_reencrypt_data(Data, AD, undefined);
         clusterSecret ->
-            case GetActiveId(SecretId) of
+            case GetKekId(SecretId) of
                 {ok, KekId} ->
                     maybe_reencrypt_data(Data, AD, {SecretId, KekId});
                 {error, not_found} ->
@@ -2844,8 +2837,8 @@ validate_secrets_consistency(Secrets) ->
 -spec sanitize_secret(secret_props()) -> term().
 sanitize_secret(#{type := ?GENERATED_KEY_TYPE, data := Data} = S) ->
     #{keys := Keys} = Data,
-    NewKeys = lists:map(fun (#{key_material := K} = Key) ->
-                                Key#{key_material => sanitize_sensitive_data(K)}
+    NewKeys = lists:map(fun (#{key := K} = Key) ->
+                                Key#{key => sanitize_sensitive_data(K)}
                         end, Keys),
     S#{data => Data#{keys => NewKeys}};
 sanitize_secret(#{type := ?KMIP_KEY_TYPE, data := Data} = S) ->
