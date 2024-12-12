@@ -147,6 +147,8 @@ init_encrypted(StoreName, FilePath) ->
         {error, Error} ->
             ?metakv_debug("Failed to read ~p content from ~s: ~p",
                           [StoreName, FilePath, Error]),
+            %% Removing the table so fresh init can recreate it
+            ets:delete(StoreName),
             false
     end.
 
