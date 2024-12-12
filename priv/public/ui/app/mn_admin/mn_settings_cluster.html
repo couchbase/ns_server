@@ -171,7 +171,54 @@
              ng-show="settingsClusterCtl.showDataService"
              class="indent-1-5">
 
-            <label class="inline">Reader Thread Settings</label>
+             <div class="row flex-left text-medium flex-wrap margin-bottom-half">
+                <input
+                    type="checkbox"
+                    id="for-max-storage-percent"
+                    ng-disabled="!rbac.cluster.settings.write"
+                    ng-model="settingsClusterCtl.settingsResource.diskUsage.enabled">
+                <label
+                    for="for-max-storage-percent"
+                    class="line-height-1-5">
+                   Prevent writes to buckets when storage becomes
+                </label>
+                <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    autocorrect="off"
+                    spellcheck="false"
+                    autocapitalize="off"
+                    id="max-storage-percent"
+                    ng-model="settingsClusterCtl.settingsResource.diskUsage.maximum"
+                    ng-disabled="!rbac.cluster.settings.write || !settingsClusterCtl.settingsResource.diskUsage.enabled"
+                    class="input-small input-short-1">
+                % full.
+                <div class="padding-left-half">
+                   <span
+                       class="fa-stack icon-info"
+                       uib-tooltip-html="'When the data disk has reached the percent full value, all writes to the buckets will fail, and the EBucketDiskspace error will be returned.
+Enabling this option reserves disk space for recovery operations like performing rebalances to add a new node.'"
+                       tooltip-placement="auto top"
+                       tooltip-trigger="mouseenter">
+                      <span class="icon fa-circle-thin fa-stack-2x"></span>
+                      <span class="icon fa-info fa-stack-1x"></span>
+                </span>
+                </div>
+                <div
+                    class="error"
+                    ng-show="settingsClusterCtl.settingsResourceErrors['diskUsage.enabled']">
+                   {{settingsClusterCtl.settingsResourceErrors['diskUsage.enabled']}}
+                </div>
+                <div
+                    class="error"
+                    ng-show="settingsClusterCtl.settingsResourceErrors['diskUsage.maximum']">
+                   {{settingsClusterCtl.settingsResourceErrors['diskUsage.maximum']}}
+                </div>
+             </div>
+
+
+             <label class="inline">Reader Thread Settings</label>
             <span
                class="fa-stack icon-info"
                uib-tooltip-html="'<strong>Default</strong> The number of threads allocated is set to a balanced value which is reasonable for most workloads.<br>
@@ -234,7 +281,7 @@
               {{settingsClusterCtl.dataServiceSettingsErrors.num_reader_threads}}
             </div>
 
-            <label class="inline">Writer Thread Settings</label>
+            <label class="inline margin-top-half">Writer Thread Settings</label>
             <span
                class="fa-stack icon-info"
                uib-tooltip-html="'<strong>Default</strong> The number of threads allocated is set to a balanced value which is reasonable for most workloads.<br>

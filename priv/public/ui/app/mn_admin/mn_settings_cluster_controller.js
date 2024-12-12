@@ -136,6 +136,15 @@ function mnSettingsClusterController($scope, $q, $uibModal, $ocLazyLoad, mnPoolD
       queries.push(promise9);
     }
 
+    if (mnPoolDefault.export.compat.atLeast80 &&
+        $scope.rbac.cluster.settings.write) {
+      promise9 = mnPromiseHelper(vm, mnSettingsClusterService
+          .postSettingsResource(vm.settingsResource))
+          .catchErrors("settingsResourceErrors")
+          .getPromise();
+      queries.push(promise9);
+    }
+
     if (mnPoolDefault.export.compat.atLeast71 &&
         mnPoolDefault.export.isEnterprise &&
         $scope.rbac.cluster.settings.write) {
@@ -290,6 +299,13 @@ function mnSettingsClusterController($scope, $q, $uibModal, $ocLazyLoad, mnPoolD
         $scope.rbac.cluster.settings.read) {
       mnSettingsClusterService.getSettingsRebalance().then(settings => {
         vm.settingsRebalance = settings.data;
+      });
+    }
+
+    if (mnPoolDefault.export.compat.atLeast80 &&
+        $scope.rbac.cluster.settings.read) {
+      mnSettingsClusterService.getSettingsResource().then(settings => {
+        vm.settingsResource = settings.data;
       });
     }
 

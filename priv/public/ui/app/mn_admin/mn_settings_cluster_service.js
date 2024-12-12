@@ -36,6 +36,8 @@ function mnSettingsClusterServiceFactory($http, $q, IEC, mnPools, mnPoolDefault)
     postSettingsRetryRebalance: postSettingsRetryRebalance,
     getSettingsRebalance: getSettingsRebalance,
     postSettingsRebalance: postSettingsRebalance,
+    getSettingsResource: getSettingsResource,
+    postSettingsResource: postSettingsResource,
     getPendingRetryRebalance: getPendingRetryRebalance,
     postCancelRebalanceRetry: postCancelRebalanceRetry,
     getMemcachedSettings: getMemcachedSettings,
@@ -59,6 +61,14 @@ function mnSettingsClusterServiceFactory($http, $q, IEC, mnPools, mnPoolDefault)
 
   function postSettingsRebalance(data) {
     return $http.post("/settings/rebalance", data);
+  }
+
+  function getSettingsResource() {
+    return $http.get("/settings/resourceManagement");
+  }
+
+  function postSettingsResource(data) {
+    return $http.post("/settings/resourceManagement", {"diskUsage.enabled": data.diskUsage.enabled, "diskUsage.maximum": data.diskUsage.maximum});
   }
 
   function getMemcachedSettings() {
