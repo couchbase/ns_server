@@ -101,7 +101,7 @@
 
 -include("ns_common.hrl").
 
--export([prepare/6,
+-export([prepare/7,
          is_done/1,
          choose_action/1,
          get_moves/1,
@@ -147,7 +147,9 @@
 
 %% @doc prepares state (list of moves etc) based on current and target map
 prepare(CurrentMap, TargetMap, Quirks,
-        BackfillsLimit, MovesBeforeCompaction, MaxInflightMoves) ->
+        BackfillsLimit, MovesBeforeCompaction, MaxInflightMoves, Options) ->
+    Verbose = not proplists:get_bool(terse_output, Options),
+
     %% Dictionary mapping old node to vbucket and new node
     MapTriples = lists:zip3(lists:seq(0, length(CurrentMap) - 1),
                             CurrentMap,
@@ -217,10 +219,11 @@ prepare(CurrentMap, TargetMap, Quirks,
                    initial_move_counts = InitialMoveCounts,
                    left_move_counts = InitialMoveCounts},
 
-    ?log_debug("The following count of vbuckets do not need to be moved "
-               "at all: ~p", [TrivialMoves]),
-    ?log_debug("The following moves are planned:~n~p",
-               [UndefinedMoves ++ Moves]),
+    Verbose andalso
+        ?log_debug("The following count of vbuckets do not need to be moved "
+                   "at all: ~p", [TrivialMoves]),
+    Verbose andalso ?log_debug("The following moves are planned:~n~p",
+                               [UndefinedMoves ++ Moves]),
     State.
 
 get_moves(#state{moves_left = Moves,

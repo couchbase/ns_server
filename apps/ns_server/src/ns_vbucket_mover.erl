@@ -140,7 +140,7 @@ init({Bucket, Nodes, OldMap, NewMap, ProgressCallback}) ->
                        OldMap, NewMap, Quirks,
                        menelaus_web_settings:get_rebalance_moves_per_node(),
                        ?MOVES_BEFORE_COMPACTION,
-                       ?MAX_INFLIGHT_MOVES_PER_NODE),
+                       ?MAX_INFLIGHT_MOVES_PER_NODE, []),
 
     ns_rebalance_observer:submit_master_event(
       {planned_moves, Bucket,
