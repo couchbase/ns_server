@@ -307,15 +307,18 @@ ensure(Sock, #cfg{type = memcached}) ->
     ok.
 
 format_mcd_keys(ActiveDek, Deks) ->
-    DeksJsonMcd = lists:map(fun format_mcd_key/1, Deks),
+    format_mcd_keys(ActiveDek, Deks, fun (K) -> K end).
+format_mcd_keys(ActiveDek, Deks, Sanitizer) ->
+    DeksJsonMcd = lists:map(fun (D) -> format_mcd_key(D, Sanitizer) end, Deks),
     ActiveKeyMcd = case ActiveDek of
                        undefined -> ?MCD_DISABLED_ENCRYPTION_KEY_ID;
                        #{id := ActiveId} -> ActiveId
                    end,
     {[{keys, DeksJsonMcd}, {active, ActiveKeyMcd}]}.
 
-format_mcd_key(#{id := Id, type := 'raw-aes-gcm', info := #{key := KeyFun}}) ->
-    Encoded = base64:encode(KeyFun()),
+format_mcd_key(#{id := Id, type := 'raw-aes-gcm', info := #{key := KeyFun}},
+               Sanitizer) ->
+    Encoded = Sanitizer(base64:encode(KeyFun())),
     {[{id, Id}, {cipher, <<"AES-256-GCM">>}, {key, Encoded}]}.
 
 get_current_collections_uid(Sock) ->
@@ -385,14 +388,23 @@ start_params(#cfg{config = BucketConfig,
                   end
           end, Params),
 
-    EncodedDeks = binary_to_list(ejson:encode(format_mcd_keys(ActiveDek,
-                                                              Deks))),
 
-    DeksConfigString = "encryption=" ++ EncodedDeks,
+    PrepareCfgString =
+        fun (Sanitizer) ->
+            EncodedDeks = ejson:encode(format_mcd_keys(ActiveDek,
+                                                       Deks, Sanitizer)),
 
-    ExtraParams = [P || P <- [StaticConfigString, ExtraConfigString,
-                              DeksConfigString], P =/= ""],
-    {Engine, string:join(DynamicParams ++ ExtraParams, ";")}.
+            DeksConfigString = "encryption=" ++ binary_to_list(EncodedDeks),
+
+            ExtraParams = [P || P <- [StaticConfigString, ExtraConfigString,
+                                      DeksConfigString], P =/= ""],
+            string:join(DynamicParams ++ ExtraParams, ";")
+        end,
+
+    NoSanitizer = fun (S) -> S end,
+    Sanitizer = fun (_) -> <<"<sanitized>">> end,
+
+    {Engine, PrepareCfgString(NoSanitizer), PrepareCfgString(Sanitizer)}.
 
 get_bucket_config(#cfg{config = BucketConfig}) ->
     BucketConfig.
