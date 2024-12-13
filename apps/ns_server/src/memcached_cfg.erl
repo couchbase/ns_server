@@ -173,7 +173,6 @@ write_cfg(#state{path = Path,
             ok = filelib:ensure_dir(TmpPath),
             ?log_debug("Writing config file for: ~p", [Path]),
             WriteConsumer = pipes:write_encrypted_file(_,
-                                                       filename:basename(Path),
                                                        extract_deks_snapshot()),
             WriteFun = ?cut(pipes:run(Producer, WriteConsumer(_))),
             case misc:write_file(TmpPath, WriteFun) of

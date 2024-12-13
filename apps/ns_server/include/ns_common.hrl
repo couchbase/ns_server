@@ -478,12 +478,12 @@
                   cb_crypto:is_file_encrypted(Path)
           end,
       file_encrypt_init =>
-          fun(FileName, DS) ->
-                  cb_crypto:file_encrypt_init(FileName, DS)
+          fun(DS) ->
+                  cb_crypto:file_encrypt_init(DS)
           end,
       file_encrypt_cont =>
-          fun(FileName, Offset, DS) ->
-                  cb_crypto:file_encrypt_cont(FileName, Offset, DS)
+          fun(Path, Offset, DS) ->
+                  cb_crypto:file_encrypt_cont(Path, Offset, DS)
           end,
       file_encrypt_chunk =>
           fun(Data, EncrState) ->

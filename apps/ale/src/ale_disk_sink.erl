@@ -339,8 +339,7 @@ maybe_write_header(SinkName, File, Header) ->
 update_file_encr_state(true = _ShouldContinue,
                        #worker_state{path = Path} = State, DS) ->
     {ok, File, #file_info{size = Size, inode = Inode}} = open_file(Path),
-    ContEncrState =
-        ale:file_encrypt_cont(filename:basename(Path), Size, DS),
+    {ok, ContEncrState} = ale:file_encrypt_cont(Path, Size, DS),
     State#worker_state{file = File,
                        file_size = Size,
                        file_inode = Inode,
@@ -352,8 +351,7 @@ open_with_encr_state(true = _IsNewFile,
                      #worker_state{sink_name = SinkName,
                                    path = Path} = State, DS) ->
     {ok, File, #file_info{size = 0, inode = Inode}} = open_file(Path),
-    {Header, EncrState} =
-        ale:file_encrypt_init(filename:basename(Path), DS),
+    {Header, EncrState} = ale:file_encrypt_init(DS),
     maybe_write_header(SinkName, File, Header),
     State#worker_state{file = File,
                        file_size = byte_size(Header),

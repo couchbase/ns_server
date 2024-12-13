@@ -15,7 +15,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--define(ENCRYPTED_FILE_HEADER_LEN, 64).
+-define(ENCRYPTED_FILE_HEADER_LEN, 80).
 -define(IV_LEN, 12).
 -define(TAG_LEN, 16).
 -define(CHUNKSIZE_ATTR_SIZE, 4).
@@ -33,7 +33,7 @@
 
          atomic_write_file/3,
          atomic_write_file/4,
-         file_encrypt_init/2,
+         file_encrypt_init/1,
          file_encrypt_cont/3,
          file_encrypt_chunk/2,
 
@@ -45,7 +45,7 @@
          is_file_encrypted/1,
          get_file_dek_ids/1,
          get_in_use_deks/1,
-         file_decrypt_init/3,
+         file_decrypt_init/2,
          file_decrypt_next_chunk/2,
 
          new_aes_gcm_iv/1,
@@ -74,14 +74,14 @@
                        active_key :: cb_deks:dek() | undefined,
                        all_keys :: [cb_deks:dek()]}).
 
--record(file_encr_state, {filename = <<>> :: binary(),
+-record(file_encr_state, {ad_prefix = <<>> :: binary(),
                           key :: cb_deks:dek() | undefined,
                           iv_random :: binary(),
                           iv_atomic_counter :: atomics:atomics_ref() ,
                           offset :: non_neg_integer()}).
 
 -record(file_decr_state, {vsn :: non_neg_integer(),
-                          filename = <<>> :: binary(),
+                          ad_prefix = <<>> :: binary(),
                           key :: cb_deks:dek(),
                           offset = 0 :: non_neg_integer()}).
 
@@ -123,16 +123,16 @@ atomic_write_file(Path, Bytes, DekSnapshot, Opts) when is_binary(Bytes) ->
     misc:atomic_write_file(
       Path,
       fun (IODevice) ->
-          Filename = filename:basename(Path),
-          encrypt_to_file(IODevice, Filename, Bytes, MaxChunkSize, DekSnapshot)
+          encrypt_to_file(IODevice, Bytes, MaxChunkSize, DekSnapshot)
       end).
 
--spec file_encrypt_init(string(), #dek_snapshot{}) ->
+-spec file_encrypt_init(#dek_snapshot{}) ->
           {binary(), #file_encr_state{}}.
-file_encrypt_init(Filename,
-                  #dek_snapshot{active_key = ActiveKey,
+file_encrypt_init(#dek_snapshot{active_key = ActiveKey,
                                 iv_random = IVRandom,
                                 iv_atomic_counter = IVCounter}) ->
+
+    Salt = crypto:strong_rand_bytes(16),
     Header =
         case ActiveKey of
             undefined -> <<>>;
@@ -140,27 +140,46 @@ file_encrypt_init(Filename,
                 Len = size(Id),
                 Vsn = 0,
                 H = <<?ENCRYPTED_FILE_MAGIC, Vsn, ?NO_COMPRESSION, 0, 0, 0, 0,
-                      Len, Id/binary>>,
+                      Len, Id/binary, Salt/binary>>,
                 ?ENCRYPTED_FILE_HEADER_LEN = size(H),
                 H
         end,
-    {Header, #file_encr_state{filename = iolist_to_binary(Filename),
+    {Header, #file_encr_state{ad_prefix = Header,
                               key = ActiveKey,
                               iv_random = IVRandom,
                               iv_atomic_counter = IVCounter,
                               offset = size(Header)}}.
 
 -spec file_encrypt_cont(string(), non_neg_integer(), #dek_snapshot{}) ->
-          #file_encr_state{}.
-file_encrypt_cont(Filename, Offset,
+          {ok, #file_encr_state{}} | {error, _}.
+file_encrypt_cont(Path, FileSize,
                   #dek_snapshot{active_key = ActiveKey,
                                 iv_random = IVRandom,
                                 iv_atomic_counter = IVCounter}) ->
-    #file_encr_state{filename = iolist_to_binary(Filename),
-                     key = ActiveKey,
-                     iv_random = IVRandom,
-                     iv_atomic_counter = IVCounter,
-                     offset = Offset}.
+    maybe
+        {ok, Header} ?= read_file_header(Path),
+        {ok, {_Vsn, KeyId, ADPrefix, _, <<>>}} ?= parse_header(Header),
+        case ActiveKey of
+            #{id := KeyId} ->
+                {ok, #file_encr_state{ad_prefix = ADPrefix,
+                                      key = ActiveKey,
+                                      iv_random = IVRandom,
+                                      iv_atomic_counter = IVCounter,
+                                      offset = FileSize}};
+            _ ->
+                {error, key_mismatch}
+        end
+    else
+        {error, unknown_magic} when ActiveKey == undefined ->
+            %% File is not encrypted
+            {ok, #file_encr_state{ad_prefix = <<>>,
+                                  key = undefined,
+                                  iv_random = IVRandom,
+                                  iv_atomic_counter = IVCounter,
+                                  offset = FileSize}};
+        {error, _} = Error ->
+            Error
+    end.
 
 -spec file_encrypt_chunk(binary(), #file_encr_state{}) ->
           {binary(), #file_encr_state{}}.
@@ -207,7 +226,7 @@ get_file_dek_ids(Path) ->
     case read_file_header(Path) of
         {ok, Bin} ->
             case parse_header(Bin) of
-                {ok, {0, KeyId, _Offset, _Rest}} -> {ok, [KeyId]};
+                {ok, {_Vsn, KeyId, _ADPrefix, _Offset, _Rest}} -> {ok, [KeyId]};
                 incomplete_magic -> {ok, [undefined]};
                 need_more_data -> {ok, [undefined]};
                 {error, unknown_magic} -> {ok, [undefined]};
@@ -237,8 +256,7 @@ get_in_use_deks(FilePaths) ->
 read_file(Path, GetDekSnapshotFun) when is_function(GetDekSnapshotFun) ->
     maybe
         {ok, Data} ?= file:read_file(Path),
-        Filename = filename:basename(Path),
-        case decrypt_file_data(Data, Filename, GetDekSnapshotFun) of
+        case decrypt_file_data(Data, GetDekSnapshotFun) of
             {ok, Decrypted} ->
                 {decrypted, Decrypted};
             {error, unknown_magic} ->
@@ -261,10 +279,9 @@ read_file(Path, DekKind) ->
                Deks :: #dek_snapshot{},
                Opts :: #{read_chunk_size => pos_integer()}.
 read_file_chunks(Path, Fun, AccInit, Deks, Opts) ->
-    Filename = filename:basename(Path),
     ReadChunkSize = maps:get(read_chunk_size, Opts, 65536),
     F = fun (Data, {init, Acc}) ->
-                case file_decrypt_init(Data, Filename, Deks) of
+                case file_decrypt_init(Data, Deks) of
                     {ok, {EncrState, Rest}} ->
                         {ok, {process, EncrState, Acc}, Rest};
                     incomplete_magic -> need_more_data;
@@ -287,7 +304,7 @@ read_file_chunks(Path, Fun, AccInit, Deks, Opts) ->
         {error, _} = E -> E
     end.
 
--spec file_decrypt_init(binary(), string(),
+-spec file_decrypt_init(binary(),
                         #dek_snapshot{} |
                         fun(() -> fetch_deks_res()) |
                         fun((cb_deks:dek_id()) -> cb_deks:dek())) ->
@@ -295,9 +312,9 @@ read_file_chunks(Path, Fun, AccInit, Deks, Opts) ->
           need_more_data |
           incomplete_magic |
           {error, term()}.
-file_decrypt_init(Data, Filename, #dek_snapshot{} = DekSnapshot) ->
-    file_decrypt_init(Data, Filename, fun () -> {ok, DekSnapshot} end);
-file_decrypt_init(Data, Filename, GetDekSnapshotFun)
+file_decrypt_init(Data, #dek_snapshot{} = DekSnapshot) ->
+    file_decrypt_init(Data, fun () -> {ok, DekSnapshot} end);
+file_decrypt_init(Data, GetDekSnapshotFun)
                                     when is_function(GetDekSnapshotFun, 0) ->
     GetKey = fun (Id) ->
                  maybe
@@ -305,13 +322,13 @@ file_decrypt_init(Data, Filename, GetDekSnapshotFun)
                      find_key(Id, DekSnapshot)
                  end
              end,
-    file_decrypt_init(Data, Filename, GetKey);
-file_decrypt_init(Data, Filename, GetKeyFun) when is_function(GetKeyFun, 1) ->
+    file_decrypt_init(Data, GetKey);
+file_decrypt_init(Data, GetKeyFun) when is_function(GetKeyFun, 1) ->
     maybe
-        {ok, {Vsn, Id, Offset, Chunks}} ?= parse_header(Data),
+        {ok, {Vsn, Id, ADPrefix, Offset, Chunks}} ?= parse_header(Data),
         {ok, Dek} ?= GetKeyFun(Id),
         State = #file_decr_state{vsn = Vsn,
-                                 filename = iolist_to_binary(Filename),
+                                 ad_prefix = ADPrefix,
                                  key = Dek,
                                  offset = Offset},
         {ok, {State, Chunks}}
@@ -495,7 +512,7 @@ is_valid_encr_header(eof) ->
 
 header_key_match({ok, HeaderData}, KeyId) ->
     case parse_header(HeaderData) of
-        {ok, {0, KeyId, ?ENCRYPTED_FILE_HEADER_LEN, _Rest}} ->
+        {ok, {_Vsn, KeyId, _ADPrefix, _Offset, _Rest}} ->
             true;
         _ ->
             false
@@ -601,7 +618,7 @@ read_deks(DekKind, PrevDekSnapshot) ->
             {error, Reason}
     end.
 
-encrypt_to_file(IODevice, Filename, Bytes, MaxChunkSize, DekSnapshot) ->
+encrypt_to_file(IODevice, Bytes, MaxChunkSize, DekSnapshot) ->
     WriteChunks =
         fun EncryptAndWrite(<<>>, _StateAcc) ->
                 ok;
@@ -618,7 +635,7 @@ encrypt_to_file(IODevice, Filename, Bytes, MaxChunkSize, DekSnapshot) ->
                     {error, _} = Error -> Error
                 end
         end,
-    {Header, State} = file_encrypt_init(Filename, DekSnapshot),
+    {Header, State} = file_encrypt_init(DekSnapshot),
     maybe
         ok ?= file:write(IODevice, Header),
         ok ?= WriteChunks(Bytes, State)
@@ -632,15 +649,15 @@ new_aes_gcm_iv(IVRandom, IVAtomic) ->
     IV.
 
 file_assoc_data(State) ->
-    {Filename, Offset} =
+    {Prefix, Offset} =
         case State of
-            #file_encr_state{filename = F, offset = O} -> {F, O};
-            #file_decr_state{filename = F, offset = O} -> {F, O}
+            #file_encr_state{ad_prefix = P, offset = O} -> {P, O};
+            #file_decr_state{ad_prefix = P, offset = O} -> {P, O}
         end,
-    <<Filename/binary, ":", (integer_to_binary(Offset))/binary>>.
+    <<Prefix/binary, Offset:64/big-unsigned-integer>>.
 
-decrypt_file_data(Data, Filename, GetDekSnapshotFun) ->
-    case file_decrypt_init(Data, Filename, GetDekSnapshotFun) of
+decrypt_file_data(Data, GetDekSnapshotFun) ->
+    case file_decrypt_init(Data, GetDekSnapshotFun) of
         {ok, {State, Chunks}} -> decrypt_all_chunks(State, Chunks, <<>>);
         incomplete_magic -> {error, unknown_magic};
         %% Header is incomplete, but we know there is no more data, so we treat
@@ -659,24 +676,33 @@ decrypt_all_chunks(State, Data, Acc) ->
             {error, invalid_file_encryption}
     end.
 
-parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, ?NO_COMPRESSION, _, _, _, _,
-               KeyLen, HeaderTail:36/binary, Rest/binary>>) ->
-    case KeyLen =< 36 of
-        true ->
-            <<Key:KeyLen/binary, _/binary>> = HeaderTail,
-            {ok, {0, Key, ?ENCRYPTED_FILE_HEADER_LEN, Rest}};
-        false ->
-            {error, invalid_encryption_header}
+-spec parse_header(binary()) ->
+    {ok, {Vsn, KeyId, ADPrefix, Offset, Rest}} |
+    incomplete_magic |
+    need_more_data |
+    {error, unknown_magic |
+            {unsupported_compression_type, _} |
+            {unsupported_encryption_version, _}} when
+    Vsn :: non_neg_integer(),
+    KeyId :: binary(),
+    ADPrefix :: binary(),
+    Offset :: non_neg_integer(),
+    Rest :: binary().
+parse_header(<<Header:?ENCRYPTED_FILE_HEADER_LEN/binary, Rest/binary>>) ->
+    %% Full header is present
+    case Header of
+        <<?ENCRYPTED_FILE_MAGIC, 0, ?NO_COMPRESSION, _, _, _, _,
+          36, Key:36/binary, _Salt:16/binary>> ->
+            {ok, {0, Key, Header, ?ENCRYPTED_FILE_HEADER_LEN, Rest}};
+        <<?ENCRYPTED_FILE_MAGIC, 0, C, _/binary>> ->
+            {error, {unsupported_compression_type, C}};
+        <<?ENCRYPTED_FILE_MAGIC, V, _/binary>> ->
+            {error, {unsupported_encryption_version, V}};
+        _ ->
+            {error, unknown_magic}
     end;
-parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, ?NO_COMPRESSION, _/binary>>) ->
-    need_more_data;
-parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, C, _/binary>>) ->
-    {error, {unsupported_compression_type, C}};
-parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, _/binary>>) ->
-    need_more_data;
-parse_header(<<?ENCRYPTED_FILE_MAGIC, V, _/binary>>) ->
-    {error, {unsupported_encryption_version, V}};
-parse_header(<<?ENCRYPTED_FILE_MAGIC>>) ->
+parse_header(<<?ENCRYPTED_FILE_MAGIC, _/binary>>) ->
+    %% File is encrypted but header is incomplete
     need_more_data;
 parse_header(Data) ->
     DataSize = byte_size(Data),
@@ -690,6 +716,60 @@ parse_header(Data) ->
                 false -> {error, unknown_magic}
             end
     end.
+
+-ifdef(TEST).
+
+parse_header_test() ->
+    Salt = crypto:strong_rand_bytes(16),
+    Key = "7c8b0d58-2977-429c-8c0c-f9adaaac0919",
+    KeyBin = list_to_binary(Key),
+    Header = <<?ENCRYPTED_FILE_MAGIC, 0, ?NO_COMPRESSION, 0, 0, 0, 0,
+               36, KeyBin/binary, Salt/binary>>,
+    HeaderSize = byte_size(Header),
+    ?assertEqual(?ENCRYPTED_FILE_HEADER_LEN, HeaderSize),
+    LongData = crypto:strong_rand_bytes(HeaderSize * 2),
+    ?assertEqual({ok, {0, KeyBin, Header, HeaderSize, <<>>}},
+                 parse_header(Header)),
+    ?assertEqual({ok, {0, KeyBin, Header, HeaderSize, <<"Rest">>}},
+                 parse_header(<<Header/binary, "Rest">>)),
+
+    ?assertEqual(incomplete_magic, parse_header(<<>>)),
+    ?assertEqual(incomplete_magic, parse_header(<<0>>)),
+    ?assertEqual(incomplete_magic, parse_header(<<0, "Couchbase">>)),
+    ?assertEqual({error, unknown_magic}, parse_header(<<1>>)),
+    ?assertEqual({error, unknown_magic}, parse_header(<<1, LongData/binary>>)),
+
+    ?assertEqual(need_more_data,
+                 parse_header(<<?ENCRYPTED_FILE_MAGIC>>)),
+    ?assertEqual(need_more_data,
+                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 0>>)),
+    ?assertEqual(need_more_data,
+                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 0>>)),
+    ?assertEqual(need_more_data,
+                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 0, 0, 0>>)),
+    ?assertEqual(need_more_data,
+                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 0, 0, 0, 0, 0, 36>>)),
+    ?assertEqual(need_more_data,
+                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 0, 0, 0, 0, 0, 36,
+                                1>>)),
+    ?assertEqual(need_more_data,
+                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 0, 0, 0, 0, 0, 36,
+                                KeyBin/binary>>)),
+    ?assertEqual(need_more_data,
+                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 0, 0, 0, 0, 0, 36,
+                                KeyBin/binary, 1,2,3>>)),
+
+    ?assertEqual(need_more_data,
+                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 2>>)),
+    ?assertEqual({error, {unsupported_encryption_version, 2}},
+                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 2, LongData/binary>>)),
+    ?assertEqual(need_more_data,
+                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 2>>)),
+    ?assertEqual({error, {unsupported_compression_type, 2}},
+                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 2,
+                                LongData/binary>>)).
+
+-endif.
 
 bite_next_chunk(<<ChunkSize:32/big-unsigned-integer, Chunk:ChunkSize/binary,
                    Rest/binary>>) ->
@@ -723,33 +803,29 @@ read_file_header(Path) ->
 
 decrypt_file_data_test() ->
     DS = generate_test_deks(),
-    Filename = "test",
     Data1 = <<"123">>,
     Data2 = <<"456">>,
-    {Header, State0} = file_encrypt_init(Filename, DS),
+    {Header, State0} = file_encrypt_init(DS),
     {Chunk1, State1} = file_encrypt_chunk(Data1, State0),
     {Chunk2, _State2} = file_encrypt_chunk(Data2, State1),
-    {ok, <<>>} = decrypt_file_data(Header, Filename, DS),
-    {ok, Data1} =
-        decrypt_file_data(<<Header/binary, Chunk1/binary>>, Filename, DS),
+    {ok, <<>>} = decrypt_file_data(Header, DS),
+    {ok, Data1} = decrypt_file_data(<<Header/binary, Chunk1/binary>>, DS),
     Data1Data2 = <<Data1/binary, Data2/binary>>,
     {ok, Data1Data2} =
-        decrypt_file_data(<<Header/binary, Chunk1/binary, Chunk2/binary>>,
-                          Filename, DS),
+        decrypt_file_data(<<Header/binary, Chunk1/binary, Chunk2/binary>>, DS),
 
-    {error, unknown_magic} = decrypt_file_data(<<>>, Filename, DS),
-    {error, unknown_magic} = decrypt_file_data(<<0>>, Filename, DS),
-    {error, unknown_magic} = decrypt_file_data(<<0, "Couch">>, Filename, DS),
-    {error, unknown_magic} = decrypt_file_data(<<1, 2, 3>>, Filename, DS),
+    {error, unknown_magic} = decrypt_file_data(<<>>, DS),
+    {error, unknown_magic} = decrypt_file_data(<<0>>, DS),
+    {error, unknown_magic} = decrypt_file_data(<<0, "Couch">>, DS),
+    {error, unknown_magic} = decrypt_file_data(<<1, 2, 3>>, DS),
     {error, invalid_file_encryption} =
-        decrypt_file_data(<<?ENCRYPTED_FILE_MAGIC>>, Filename, DS),
-    {error, {unsupported_encryption_version, 123}} =
-        decrypt_file_data(<<?ENCRYPTED_FILE_MAGIC, 123>>, Filename, DS),
-    {error, {unsupported_compression_type, 123}} =
-        decrypt_file_data(<<?ENCRYPTED_FILE_MAGIC, 0, 123>>, Filename, DS),
+        decrypt_file_data(<<?ENCRYPTED_FILE_MAGIC>>, DS),
     {error, invalid_file_encryption} =
-        decrypt_file_data(<<?ENCRYPTED_FILE_MAGIC, 0, ?NO_COMPRESSION>>,
-                          Filename, DS).
+        decrypt_file_data(<<?ENCRYPTED_FILE_MAGIC, 123>>, DS),
+    {error, invalid_file_encryption} =
+        decrypt_file_data(<<?ENCRYPTED_FILE_MAGIC, 0, 123>>, DS),
+    {error, invalid_file_encryption} =
+        decrypt_file_data(<<?ENCRYPTED_FILE_MAGIC, 0, ?NO_COMPRESSION>>, DS).
 
 read_write_file_test() ->
     Path = path_config:tempfile("cb_crypto_test", ".tmp"),
@@ -785,7 +861,7 @@ validate_encr_file_test() ->
     %% cases
     Path = path_config:tempfile("cb_crypto_validate_encr_file_test", ".tmp"),
     DS = generate_test_deks(),
-    {ValidHeader, State} = file_encrypt_init(Path, DS),
+    {ValidHeader, State} = file_encrypt_init(DS),
 
     Bin1 = iolist_to_binary(lists:seq(0,255)),
     {Data1, State1} = file_encrypt_chunk(Bin1, State),

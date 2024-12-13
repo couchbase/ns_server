@@ -303,8 +303,7 @@ file2tab_encrypted(StoreName, FilePath, DS) ->
     end.
 
 tab2file_encrypted(StoreName, FilePath, DS) ->
-    FileName = filename:basename(FilePath),
-    WriteFun = write_terms(_, init, {FileName, StoreName, DS}),
+    WriteFun = write_terms(_, init, {StoreName, DS}),
     try
         ets:safe_fixtable(StoreName, true),
         misc:atomic_write_file(FilePath, WriteFun)
@@ -312,8 +311,8 @@ tab2file_encrypted(StoreName, FilePath, DS) ->
         ets:safe_fixtable(StoreName, false)
     end.
 
-write_terms(FileHandle, init, {FileName, StoreName, DS}) ->
-    {Header, EncrState} = cb_crypto:file_encrypt_init(FileName, DS),
+write_terms(FileHandle, init, {StoreName, DS}) ->
+    {Header, EncrState} = cb_crypto:file_encrypt_init(DS),
     case file:write(FileHandle, Header) of
         ok ->
             write_terms(FileHandle,
