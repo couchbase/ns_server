@@ -126,6 +126,9 @@
 
 -define(CMD_SET_ENCRYPTION_KEY, 16#2d).
 
+%% fusion commands
+-define(CMD_GET_FUSION_STORAGE_SNAPSHOT, 16#98).
+
 -define(RGET,        16#30).
 -define(RSET,        16#31).
 -define(RSETQ,       16#32).

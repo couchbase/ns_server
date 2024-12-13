@@ -14,6 +14,7 @@
 -include_lib("ns_common/include/cut.hrl").
 -include("pipes.hrl").
 -include("ns_common.hrl").
+-include("rbac.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -71,7 +72,8 @@
          url/3,
          regex/2,
          mutually_exclusive/3,
-         non_empty_string/2]).
+         non_empty_string/2,
+         report_errors_for_one/3]).
 
 %% Used for testing validators.
 -ifdef(TEST).
@@ -185,6 +187,8 @@ report_errors_for_multiple(Req, Errors, Code) ->
                             Code)
     end.
 
+-spec report_errors_for_one(mochiweb_request(), list(), non_neg_integer()) ->
+          ok | mochiweb_response().
 report_errors_for_one(Req, Errors, Code) ->
     case process_fatal_errors(Req, Errors) of
         true ->

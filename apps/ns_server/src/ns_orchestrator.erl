@@ -83,7 +83,8 @@
          rebalance_type2text/1,
          start_graceful_failover/1,
          request_janitor_run/1,
-         get_state/1]).
+         get_state/1,
+         prepare_fusion_rebalance/2]).
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
 
@@ -100,6 +101,8 @@
         ?get_param(default_retries_if_ejecting, 2)).
 -define(EJECTING_ORCHESTRATOR_WAIT_TIMEOUT,
         ?get_timeout(retry_if_ejecting, 5000)).
+
+-define(FUSION_REBALANCE_PLAN, fusion_rebalance_plan).
 
 %% gen_statem callbacks
 -export([code_change/4,
@@ -338,6 +341,13 @@ try_autofailover(Nodes, Options) ->
         Other ->
             Other
     end.
+
+-spec prepare_fusion_rebalance([node()], [{local_addr, _}]) ->
+          {ok, term()} |
+          {unknown_nodes, [node()]} |
+          {remote_call_failed, node()}.
+prepare_fusion_rebalance(KeepNodes, Options) ->
+    call({prepare_fusion_rebalance, KeepNodes, Options}, infinity).
 
 -spec needs_rebalance() -> boolean().
 needs_rebalance() ->
@@ -1070,6 +1080,23 @@ idle({ensure_janitor_run, Item}, From, State) ->
       fun (Reason) ->
               gen_statem:reply(From, Reason)
       end, idle, State);
+
+idle({prepare_fusion_rebalance, KeepNodes, Options}, From, _State) ->
+    RV =
+        case KeepNodes -- ns_cluster_membership:nodes_wanted() of
+            [] ->
+                case ns_rebalancer:prepare_fusion_rebalance(
+                       KeepNodes, Options) of
+                    {ok, {RebalancePlan, AccelerationPlan}} ->
+                        erlang:put(?FUSION_REBALANCE_PLAN, RebalancePlan),
+                        {ok, AccelerationPlan};
+                    {error, Error} ->
+                        Error
+                end;
+            UnknownNodes ->
+                {unknown_nodes, UnknownNodes}
+        end,
+    {keep_state_and_data, [{reply, From, RV}]};
 
 %% Start Pause/Resume bucket operations.
 idle({{bucket_hibernation_op, {start, Op}},

@@ -139,7 +139,8 @@
          set_active_dek_for_bucket/2,
          set_active_dek/2,
          get_dek_ids_in_use/1,
-         drop_deks/4
+         drop_deks/4,
+         get_fusion_storage_snapshot/4
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -2127,3 +2128,13 @@ drop_deks(BucketName, IdsToDrop, ContinuationId, Continuation) ->
         ok -> {ok, started};
         {error, Reason} -> {error, Reason}
     end.
+
+-spec get_fusion_storage_snapshot(bucket_name(), vbucket_id(), string(),
+                                  non_neg_integer()) ->
+          {ok, binary()} | mc_error().
+get_fusion_storage_snapshot(Bucket, VBucket, SnapshotUUID, Validity) ->
+    perform_very_long_call(
+      fun (Sock) ->
+              {reply, mc_client_binary:get_fusion_storage_snapshot(
+                        Sock, VBucket, SnapshotUUID, Validity)}
+      end, Bucket, [json]).

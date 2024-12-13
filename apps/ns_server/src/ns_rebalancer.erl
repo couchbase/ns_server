@@ -36,10 +36,11 @@
          check_test_condition/2,
          rebalance_topology_aware_services/3,
          needs_rebalance_with_reason/3,
-         get_desired_services_nodes/1]).
+         get_desired_services_nodes/1,
+         prepare_fusion_rebalance/2]).
 
 -export([wait_local_buckets_shutdown_complete/0]). % used via rpc:multicall
-
+-export([get_fusion_storage_snapshot/4]). %% used via rpc:call
 
 -define(BAD_REPLICATORS, 2).
 -define(MAX_REPLICA_COUNT_RANGE, 5).
@@ -49,6 +50,9 @@
 -define(REBALANCER_READINESS_WAIT_TIMEOUT, ?get_timeout(readiness, 60000)).
 -define(REBALANCER_QUERY_STATES_TIMEOUT,   ?get_timeout(query_states, 10000)).
 -define(REBALANCER_APPLY_CONFIG_TIMEOUT,   ?get_timeout(apply_config, 300000)).
+
+-define(GET_FUSION_STORAGE_SNAPSHOT_TIMEOUT,
+        ?get_timeout(get_fusion_storage_snapshot, 30000)).
 %%
 %% API
 %%
@@ -740,6 +744,11 @@ run_janitor_pre_rebalance(BucketName) ->
             exit({pre_rebalance_janitor_run_failed, BucketName, Error})
     end.
 
+generate_fast_forward_map(Map, Servers, Bucket, Config) ->
+    NumReplicas = ns_bucket:num_replicas(Config),
+    AdjustedMap = mb_map:align_replicas(Map, NumReplicas),
+    generate_vbucket_map(AdjustedMap, Servers, Bucket, Config).
+
 %% @doc Rebalance the cluster. Operates on a single bucket. Will
 %% either return ok or exit with reason 'stopped' or whatever reason
 %% was given by whatever failed.
@@ -749,9 +758,7 @@ do_rebalance_membase_bucket(Bucket, Config,
     {FastForwardMap, MapOptions} =
         case ForcedMap of
             undefined ->
-                NumReplicas = ns_bucket:num_replicas(Config),
-                AdjustedMap = mb_map:align_replicas(Map, NumReplicas),
-                generate_vbucket_map(AdjustedMap, Servers, Bucket, Config);
+                generate_fast_forward_map(Map, Servers, Bucket, Config);
             _ ->
                 ForcedMap
         end,
@@ -1883,3 +1890,258 @@ deactivate_bucket_data_on_unknown_nodes(BucketName, Nodes) ->
         {error, Error} ->
             exit({error, deactivate_bucket_data_failed, Error})
     end.
+
+-spec prepare_fusion_rebalance([node()], list()) ->
+          {ok, {list(), {list()}}} | {error, term()}.
+prepare_fusion_rebalance(KeepNodes, Options) ->
+    Snapshot = chronicle_compat:get_snapshot(
+                 [ns_bucket:fetch_snapshot(all, _, [uuid, props]),
+                  ns_cluster_membership:fetch_snapshot(_)],
+                 #{read_consistency => quorum}),
+
+    LocalAddr = proplists:get_value(local_addr, Options),
+    Config = ns_config:get(),
+
+    KeepKVNodes = ns_cluster_membership:service_nodes(Snapshot, KeepNodes, kv),
+    prepare_fusion_rebalance(KeepKVNodes, LocalAddr, Snapshot, Config,
+                             fun generate_fast_forward_map/4).
+
+prepare_fusion_rebalance(KeepKVNodes, LocalAddr, Snapshot, Config,
+                         GenerateMapFun) ->
+    BucketNames = ns_bucket:get_bucket_names(Snapshot),
+    try
+        {ok, prepare_fusion_rebalance_massage_result(
+               lists:filtermap(
+                 prepare_bucket_fusion_rebalance(Snapshot, _, KeepKVNodes,
+                                                 GenerateMapFun),
+                 BucketNames), LocalAddr, Config)}
+    catch
+        throw:Err ->
+            {error, Err}
+    end.
+
+prepare_fusion_rebalance_massage_result(Result, LocalAddr, Config) ->
+    PlanUUID = couch_uuids:random(),
+    Nodes = lists:usort(
+              lists:flatten([maps:keys(NodesMap) ||
+                                {_, _, {_, _, _, NodesMap}} <- Result])),
+    RebalancePlan =
+        [{planUUID, PlanUUID},
+         {nodes, Nodes},
+         {buckets,
+          [{Bucket, [{revision, Rev},
+                     {nodes, NodesMap},
+                     {map, TargetMap},
+                     {options, MapOptions}]} ||
+              {Bucket, Rev, {TargetMap, MapOptions, _, NodesMap}} <- Result]}],
+    NodesMap = lists:foldl(
+                 fun({_, _, {_, _, NodesVolumesMap, _}}, Acc) ->
+                         maps:fold(fun (K, V, A) ->
+                                           maps:update_with(K, _ ++ V, V, A)
+                                   end, Acc, NodesVolumesMap)
+                 end, #{}, Result),
+    AccelerationPlan =
+        {[{planUUID, PlanUUID},
+          {nodes,
+           {[{menelaus_web_node:build_node_hostname(Config, Node, LocalAddr),
+              Volumes} || {Node, Volumes} <- maps:to_list(NodesMap)]}}]},
+    {RebalancePlan, AccelerationPlan}.
+
+prepare_bucket_fusion_rebalance(Snapshot, Bucket, KeepKVNodes,
+                                GenerateMapFun) ->
+    {ok, {BucketConfig, Rev}} =
+        ns_bucket:get_bucket_with_revision(Bucket, Snapshot),
+    case ns_bucket:is_fusion(BucketConfig) of
+        false ->
+            false;
+        true ->
+            case do_prepare_bucket_fusion_rebalance(
+                   Bucket, BucketConfig, KeepKVNodes, GenerateMapFun) of
+                {error, _} = Error ->
+                    throw(Error);
+                {ok, Res} ->
+                    {true, {Bucket, Rev, Res}}
+            end
+    end.
+
+do_prepare_bucket_fusion_rebalance(Bucket, BucketConfig, KeepKVNodes,
+                                   GenerateMapFun) ->
+    CurrentMap = proplists:get_value(map, BucketConfig),
+
+    %% what to do with bucket_placer?
+    {TargetMap, MapOptions} =
+        GenerateMapFun(CurrentMap, KeepKVNodes, Bucket, BucketConfig),
+
+    %% Dictionary mapping old node to vbucket and new node
+    MapTriples = lists:zip3(lists:seq(0, length(CurrentMap) - 1), CurrentMap,
+                            TargetMap),
+
+    {DestinationNodes, VBucketsToQuery} =
+        lists:foldl(
+          fun ({VB, CurrentChain, TargetChain}, {AccMap, AccList}) ->
+                  case TargetChain -- CurrentChain of
+                      [] ->
+                          {AccMap, AccList};
+                      NodesToFill ->
+                          {lists:foldl(
+                             fun (Node, A) ->
+                                     maps:update_with(Node, [VB | _], [VB], A)
+                             end, AccMap, NodesToFill), [VB | AccList]}
+                  end
+          end, {#{}, []}, MapTriples),
+
+    UUID = couch_uuids:random(),
+
+    %% temporarily hardcoded
+    Validity = os:system_time(second) + 60 * 60,
+
+    CurrentServers = ns_bucket:get_servers(BucketConfig),
+    NodeToQuery =
+        case lists:member(node(), CurrentServers) of
+            true ->
+                node();
+            false ->
+                %% if our node is not serving the bucket, pick a node
+                %% that does, so we can request a snapshot from it
+                case CurrentServers -- (CurrentServers -- KeepKVNodes) of
+                    [] ->
+                        %% TODO account for failover nodes???
+                        [N | _] = CurrentServers,
+                        N;
+                    [N | _] ->
+                        N
+                end
+        end,
+
+    case (catch rpc:call(NodeToQuery, ?MODULE, get_fusion_storage_snapshot,
+                         [Bucket, VBucketsToQuery, UUID, Validity],
+                         ?GET_FUSION_STORAGE_SNAPSHOT_TIMEOUT)) of
+        {badrpc, Error} ->
+            ?log_error("Getting fusion storage snapshot failed with ~p",
+                       [Error]),
+            {error, {remote_call_failed, NodeToQuery}};
+        Volumes ->
+            VolumesMap = maps:from_list(Volumes),
+            NodesVolumesMap =
+                maps:map(
+                  fun (_Node, VBuckets) ->
+                          lists:map(maps:get(_, VolumesMap),
+                                    %% reversing back to accending order after
+                                    %% foldl
+                                    lists:reverse(VBuckets))
+                  end, DestinationNodes),
+            {ok, {TargetMap, MapOptions, NodesVolumesMap, DestinationNodes}}
+    end.
+
+get_fusion_storage_snapshot(Bucket, VBuckets, UUID, Validity) ->
+    lists:map(
+      fun (VBucket) ->
+              SnapshotUUID = lists:flatten(
+                               io_lib:format("~s:~p", [UUID, VBucket])),
+
+              {ok, Bin} = ns_memcached:get_fusion_storage_snapshot(
+                            Bucket, VBucket, SnapshotUUID, Validity),
+              {VBucket, ejson:decode(Bin)}
+      end, VBuckets).
+
+-ifdef(TEST).
+prepare_rebalance_test_() ->
+    Servers = [n1, n2, n3],
+    Map = [[n1, n2, n3], [n1, n2, undefined],
+           [n1, undefined, undefined],
+           [undefined, undefined, undefined]],
+    TargetMap1 = [[n1, n2, n3], [n1, n2, n3], [n1, n2, n3], [n1, n2, n3]],
+    TargetMap2 = [[n3, n2, n1], [n2, n3, n1], [n2, n1, n3], [n3, n1, n2]],
+    FusionBucketProps =
+        [{servers, Servers},
+         {magma_fusion_logstore_uri, something},
+         {map, Map}],
+    Snapshot =
+        #{bucket_names => {[fusion1, fusion2, other], rev},
+          {bucket, fusion1, props} => {FusionBucketProps, rev},
+          {bucket, fusion2, props} => {FusionBucketProps, rev},
+          {bucket, other, props} => {[], rev}},
+    {foreach,
+     fun () ->
+             ok = meck:new(rpc, [unstick]),
+             ok = meck:new(menelaus_web_node, [passthrough]),
+             ok = meck:new(ns_config, [passthrough]),
+             ok = meck:expect(
+                    rpc, call,
+                    fun (_, ?MODULE, get_fusion_storage_snapshot,
+                         [Bucket, VBuckets, UUID, _], _) ->
+                            [{VBucket, {[{id, {Bucket, VBucket, UUID}}]}} ||
+                                VBucket <- VBuckets]
+                    end),
+             ok = meck:expect(menelaus_web_node, build_node_hostname,
+                              fun (_, Node, _) -> Node end),
+             ok = meck:expect(ns_config, get_timeout,
+                              fun (_, Default) -> Default end)
+     end,
+     fun (_) ->
+             ok = meck:unload(rpc),
+             ok = meck:unload(menelaus_web_node),
+             ok = meck:unload(ns_config)
+     end,
+     [{"basic happy path",
+       fun () ->
+               GenerateMapFun =
+                   fun (_, _, fusion1, _) -> {TargetMap1, options1};
+                       (_, _, fusion2, _) -> {TargetMap2, options2}
+                   end,
+               RV = prepare_fusion_rebalance(Servers, whatever, Snapshot,
+                                             whatever, GenerateMapFun),
+               ?assertMatch({ok, {_, {_}}}, RV),
+               {ok, {RebalancePlan, {AccelerationPlan}}} = RV,
+               UUID = proplists:get_value(planUUID, RebalancePlan),
+               ?assertNotEqual(undefined, UUID),
+               ?assertEqual(
+                  Servers,
+                  lists:sort(proplists:get_value(nodes, RebalancePlan))),
+               Buckets = proplists:get_value(buckets, RebalancePlan),
+               ?assert(is_list(Buckets)),
+               ?assertEqual([fusion1, fusion2],
+                            lists:sort(proplists:get_keys(Buckets))),
+               Bucket1 = proplists:get_value(fusion1, Buckets),
+               Bucket2 = proplists:get_value(fusion2, Buckets),
+               %% nodes are validated later
+               ?assertEqual(
+                  lists:sort([{revision, rev},
+                              {map, TargetMap1},
+                              {options, options1}]),
+                  lists:sort(proplists:delete(nodes, Bucket1))),
+               ?assertEqual(
+                  lists:sort([{revision, rev},
+                              {map, TargetMap2},
+                              {options, options2}]),
+                  lists:sort(proplists:delete(nodes, Bucket2))),
+
+               ExpectedNodesMap = #{n1 => [3], n2 => [2, 3], n3 => [1, 2, 3]},
+               [?assertEqual(ExpectedNodesMap,
+                             maps:map(fun (_, V) -> lists:sort(V) end,
+                                      proplists:get_value(nodes, B))) ||
+                   B <- [Bucket1, Bucket2]],
+               ?assertEqual(UUID,
+                            proplists:get_value(planUUID, AccelerationPlan)),
+               ?assertMatch({_}, proplists:get_value(nodes, AccelerationPlan)),
+               {Nodes} = proplists:get_value(nodes, AccelerationPlan),
+
+               ?assertEqual(Servers, lists:sort(proplists:get_keys(Nodes))),
+               ValidateNode =
+                   fun (N, VBuckets) ->
+                           Volumes = proplists:get_value(N, Nodes),
+                           ?assertNotEqual(undefined, Volumes),
+                           Expected =
+                               [{B, VB} ||
+                                   B <- [fusion1, fusion2], VB <- VBuckets],
+                           ?assertEqual(
+                              lists:sort(Expected),
+                              lists:sort([{B, VB} ||
+                                             {[{id, {B, VB, _}}]} <- Volumes]))
+                   end,
+               ValidateNode(n1, [3]),
+               ValidateNode(n2, [2, 3]),
+               ValidateNode(n3, [1, 2, 3])
+       end}]}.
+
+-endif.

@@ -66,6 +66,7 @@
          bucket_exists/2,
          get_bucket/1,
          get_bucket/2,
+         get_bucket_with_revision/2,
          ensure_bucket/1,
          get_bucket_names/0,
          get_bucket_names/1,
@@ -198,7 +199,8 @@
          get_drop_keys_timestamp/2,
          validate_encryption_secret/3,
          magma_fusion_logstore_uri/1,
-         magma_fusion_metadatastore_uri/1]).
+         magma_fusion_metadatastore_uri/1,
+         is_fusion/1]).
 
 -import(json_builder,
         [to_binary/1,
@@ -310,6 +312,16 @@ get_bucket(Bucket, Snapshot) ->
         {ok, Props} ->
             {ok, Props};
         {error, not_found} ->
+            not_present
+    end.
+
+-spec get_bucket_with_revision(bucket_name(), map()) ->
+          {ok, {proplists:proplist(), chronicle:revision()}} | not_present.
+get_bucket_with_revision(Bucket, Snapshot) when is_map(Snapshot) ->
+    case maps:find(sub_key(Bucket, props), Snapshot) of
+        {ok, {_V, _R}} = Ok ->
+            Ok;
+        error ->
             not_present
     end.
 
@@ -711,6 +723,7 @@ magma_seq_tree_data_blocksize(BucketConfig) ->
 magma_fusion_logstore_uri(BucketConfig) ->
     proplists:get_value(magma_fusion_logstore_uri, BucketConfig).
 
+-spec is_fusion(proplists:proplist()) -> boolean().
 is_fusion(BucketConfig) ->
     magma_fusion_logstore_uri(BucketConfig) =/= undefined.
 
