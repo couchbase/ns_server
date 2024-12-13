@@ -463,14 +463,14 @@ get_dek_ids_in_use(logDek) ->
                                        ale, get_all_used_deks, [],
                                        ?LOG_ENCR_RPC_TIMEOUT),
 
-        AllInUse = lists:usort(InUseMemcached ++ InUseLocal ++
-                                   InuseBabySitter ++ InuseCouchDb),
-
-        {ok, lists:map(fun(undefined) ->
-                               ?NULL_DEK;
-                          (Elem) ->
-                               Elem
-                       end, AllInUse)}
+        AllInUse = lists:map(
+                      fun(undefined) ->
+                              ?NULL_DEK;
+                         (Elem) ->
+                              Elem
+                      end, InUseMemcached ++ InUseLocal ++ InuseBabySitter ++
+                           InuseCouchDb),
+        {ok, lists:usort(AllInUse)}
     else
         {error, _} = Error ->
             Error;

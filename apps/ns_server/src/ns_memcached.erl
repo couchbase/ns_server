@@ -1907,29 +1907,24 @@ set_active_dek(TypeOrBucket, DeksSnapshot) ->
             {error, E}
     end.
 
-get_dek_ids_in_use("@logs") ->
-    %% Stubbed out for now, but needs to get this info from memcached
-    {ok, []};
-get_dek_ids_in_use(BucketName) ->
+sanitize_in_use_keys(InUseKeys) ->
+    lists:map(fun (<<"unencrypted">>) -> ?NULL_DEK;
+                  (K) -> K
+              end, InUseKeys).
+
+get_dek_ids_in_use(BucketOrType, StatsFn) ->
     RV = perform_very_long_call(
            fun (Sock) ->
-               StatName = <<"encryption-key-ids">>,
-               case mc_binary:quick_stats(
-                      Sock, StatName,
-                      fun (Name, V, _Acc) when Name == StatName ->
-                          %% Format: ["key1", "key2", ...],
-                          lists:map(fun (<<"unencrypted">>) -> ?NULL_DEK;
-                                        (K) -> K
-                                    end, ejson:decode(V))
-                      end, []) of
-                   {ok, Ids} ->
-                       {reply, {ok, Ids}};
-                   {memcached_error, Error, Msg} ->
-                       ?log_error("Failed to get dek ids in use for "
-                                  "bucket ~p: ~p", [BucketName, {Error, Msg}]),
-                       {reply, {error, Error}}
-               end
-           end, BucketName),
+                   case mc_binary:quick_stats(Sock, <<"encryption-key-ids">>,
+                                              StatsFn, []) of
+                       {ok, Ids} ->
+                           {reply, {ok, Ids}};
+                       {memcached_error, Error, Msg} ->
+                           ?log_error("Failed to get dek ids in use for "
+                                      "~p: ~p", [BucketOrType, {Error, Msg}]),
+                           {reply, {error, Error}}
+                   end
+           end, BucketOrType),
 
     case RV of
         {ok, _} -> RV;
@@ -1939,6 +1934,28 @@ get_dek_ids_in_use(BucketName) ->
                  {memcached_error, key_enoent, undefined}}} -> {error, retry};
         {error, E} -> {error, E}
     end.
+
+get_dek_ids_in_use(Type) when Type =:= "@audit"; Type =:= "@logs" ->
+    TypeBin = list_to_binary(Type),
+    get_dek_ids_in_use(undefined,
+                       fun (<<"encryption-key-ids">>, V, _Acc) ->
+                               %% Decoded Format:
+                               %%   {[{"<<@audit>>", ["<<key1>>", ...]},
+                               %%     {<<"@logs">>,  ["<<key1>>", ...]}]},
+                               {TypeAndKeys} = ejson:decode(V),
+                               lists:flatmap(
+                                 fun ({T, Keys}) when T =:= TypeBin ->
+                                         sanitize_in_use_keys(Keys);
+                                     ({_, _}) ->
+                                         []
+                                 end, TypeAndKeys)
+                       end);
+get_dek_ids_in_use(BucketName) ->
+    get_dek_ids_in_use(BucketName,
+                       fun (<<"encryption-key-ids">>, V, _Acc) ->
+                               %% Format: ["key1", "key2", ...],
+                               sanitize_in_use_keys(ejson:decode(V))
+                       end).
 
 get_bucket_stats(RootKey, StatKey, SubKey) ->
     perform_very_long_call(
