@@ -83,7 +83,7 @@ licenses/APL2.txt.
       <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
         {{mnGsiTableCtl.isFinite(row.data_size) ? (row.data_size | mnFormatQuantity) : "-"}}
       </span>
-      <span class="cbui-table-cell">
+      <span class="cbui-table-cell" ng-attr-title="{{mnGsiTableCtl.getRowKeyspace(row)}}">
         {{mnGsiTableCtl.getRowKeyspace(row)}}
       </span>
       <span class="cbui-table-cell flex-wrap text-smaller">
