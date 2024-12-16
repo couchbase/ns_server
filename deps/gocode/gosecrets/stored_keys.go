@@ -138,6 +138,7 @@ type storedKeysCtx struct {
 }
 
 type StoredKeysState struct {
+	readOnly          bool
 	intTokensFile     string
 	intTokens         []intToken
 	encryptionKeyName string // Name of the encryption key that is used to encrypt the integrity tokens file
@@ -161,12 +162,13 @@ type readKeyAesKeyResponse struct {
 
 // Stored keys managenement functions
 
-func initStoredKeys(configDir string, ctx *storedKeysCtx) (*StoredKeysState, error) {
+func initStoredKeys(configDir string, readOnly bool, ctx *storedKeysCtx) (*StoredKeysState, error) {
 	// Construct the path to the stored_keys_tokens file
 	tokensPath := filepath.Join(configDir, "stored_keys_tokens")
 
 	// Initialize empty state
 	state := &StoredKeysState{
+		readOnly:      readOnly,
 		intTokensFile: tokensPath,
 	}
 
@@ -176,10 +178,14 @@ func initStoredKeys(configDir string, ctx *storedKeysCtx) (*StoredKeysState, err
 	}
 
 	if len(state.intTokens) == 0 {
-		logDbg("No integrity tokens found, generating new one")
-		err = state.generateIntToken(ctx)
-		if err != nil {
-			return nil, err
+		if !state.readOnly {
+			logDbg("No integrity tokens found, generating new one")
+			err = state.generateIntToken(ctx)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			logDbg("No integrity tokens found, but read-only mode is enabled, not generating integrity token")
 		}
 	}
 
@@ -187,6 +193,10 @@ func initStoredKeys(configDir string, ctx *storedKeysCtx) (*StoredKeysState, err
 }
 
 func (state *StoredKeysState) rotateIntegrityTokens(keyName string, ctx *storedKeysCtx) error {
+	if state.readOnly {
+		return fmt.Errorf("read-only mode is enabled")
+	}
+
 	// It is important to use new key to encrypt the integrity tokens file
 	// because otherwise we can store newly generated token unencrypted
 	logDbg("Rotating integrity tokens, and encrypting file with key %s (old key: %s)", keyName, state.encryptionKeyName)
@@ -202,6 +212,10 @@ func (state *StoredKeysState) rotateIntegrityTokens(keyName string, ctx *storedK
 }
 
 func (state *StoredKeysState) removeOldIntegrityTokens(paths []string, ctx *storedKeysCtx) error {
+	if state.readOnly {
+		return fmt.Errorf("read-only mode is enabled")
+	}
+
 	// Before removing old integrity tokens we should regenerate proofs for
 	// every key on disk. The point is to make sure all keys have proofs that
 	// are generated with the most recent token, so we can remove old tokens
@@ -554,6 +568,9 @@ func (state *StoredKeysState) storeKey(
 	otherData []byte,
 	ctx *storedKeysCtx,
 ) error {
+	if state.readOnly {
+		return fmt.Errorf("read-only mode is enabled")
+	}
 	keySettings, err := getStoredKeyConfig(kind, ctx.storedKeyConfigs)
 	if err != nil {
 		return err

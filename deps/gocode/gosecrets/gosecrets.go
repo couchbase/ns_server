@@ -33,6 +33,7 @@ import (
 )
 
 const keySize = 32
+const refSaltSize = 16
 const nIterations = 4096
 
 var hmacFun = sha1.New
@@ -41,6 +42,7 @@ var salt = [8]byte{20, 183, 239, 38, 44, 214, 22, 141}
 
 type encryptionService struct {
 	initialized     bool
+	readOnly        bool
 	reader          *bufio.Reader
 	configPath      string
 	config          *Config
@@ -120,6 +122,7 @@ func main() {
 
 	s := &encryptionService{
 		reader:          bufio.NewReader(os.Stdin),
+		readOnly:        true,
 		configPath:      configPath,
 		config:          config,
 		storedKeysState: nil,
@@ -199,7 +202,7 @@ func (s *encryptionService) processCommand() {
 
 	switch command {
 	case 1:
-		s.cmdInit(data)
+		s.cmdInitReadOnly(data)
 	case 2:
 		s.cmdGetKeyRef()
 	case 3:
@@ -236,6 +239,8 @@ func (s *encryptionService) processCommand() {
 		s.cmdRemoveOldIntegrityTokens(data)
 	case 19:
 		s.cmdGetKeyIdInUse()
+	case 20:
+		s.cmdInit(data)
 	default:
 		panic(fmt.Sprintf("Unknown command %v", command))
 	}
@@ -246,27 +251,51 @@ func (s *encryptionService) cmdGetState() {
 }
 
 func (s *encryptionService) cmdInit(data []byte) {
+	readOnlyBytes, data := readBigField(data)
+	readOnly := (readOnlyBytes[0] != 0)
+	passwordBytes, _ := readBigField(data)
+	password := decodePass(passwordBytes)
+	err := s.mainInit(readOnly, password)
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
+	replySuccess()
+}
+
+func (s *encryptionService) cmdInitReadOnly(data []byte) {
 	password := decodePass(data)
+	err := s.mainInit(true, password)
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
+	replySuccess()
+}
+
+func (s *encryptionService) mainInit(readOnly bool, password []byte) error {
 	var err error
 	s.encryptionKeys, err = initEncryptionKeys(s.config, password)
 	if err != nil {
-		replyError(err.Error())
-		return
+		return err
 	}
 
-	err = readOrCreateKeys(s.encryptionKeys)
+	err = readOrCreateKeys(s.encryptionKeys, readOnly)
 	if err != nil {
-		replyError(err.Error())
-		return
+		if errors.Is(err, ErrKeysDoNotExist) && readOnly {
+			logDbg("keys do not exist and read-only mode is enabled, will not create data keys")
+		} else {
+			return err
+		}
 	}
 
-	s.storedKeysState, err = initStoredKeys(filepath.Dir(s.configPath), s.newStoredKeyCtx())
+	s.storedKeysState, err = initStoredKeys(filepath.Dir(s.configPath), readOnly, s.newStoredKeyCtx())
 	if err != nil {
-		replyError(fmt.Sprintf("Failed to initialize stored keys: %s", err.Error()))
-		return
+		return fmt.Errorf("failed to initialize stored keys: %s", err.Error())
 	}
 	s.initialized = true
-	replySuccess()
+	s.readOnly = readOnly
+	return nil
 }
 
 func decodePass(data []byte) []byte {
@@ -454,13 +483,28 @@ func (s *encryptionService) cmdEncrypt(data []byte) {
 	if !s.initialized {
 		panic("Password was not set")
 	}
+	if err := s.enforceReadOnly(); err != nil {
+		replyError(err.Error())
+		return
+	}
 	dataKey := s.encryptionKeys.getSecret().key
 	replySuccessWithData(encrypt(dataKey, data))
+}
+
+func (s *encryptionService) enforceReadOnly() error {
+	if s.readOnly && s.encryptionKeys.getSecret().key == nil {
+		return fmt.Errorf("no data key found (read-only mode)")
+	}
+	return nil
 }
 
 func (s *encryptionService) cmdDecrypt(data []byte) {
 	if !s.initialized {
 		panic("Password was not set")
+	}
+	if err := s.enforceReadOnly(); err != nil {
+		replyError(err.Error())
+		return
 	}
 
 	key := s.encryptionKeys.getSecret().key
@@ -495,6 +539,10 @@ func (s *encryptionService) cmdDecrypt(data []byte) {
 }
 
 func (s *encryptionService) cmdChangePassword(data []byte) {
+	if s.readOnly {
+		replyError("read-only mode is enabled")
+		return
+	}
 	password := decodePass(data)
 	if !s.initialized {
 		panic("Password was not set")
@@ -513,6 +561,10 @@ func (s *encryptionService) cmdRotateDataKey() {
 	if !s.initialized {
 		panic("Password was not set")
 	}
+	if s.readOnly {
+		replyError("read-only mode is enabled")
+		return
+	}
 	backupKey := s.encryptionKeys.getSecret().backupKey
 	if backupKey != nil {
 		replyError("Data key rotation is in progress")
@@ -529,13 +581,18 @@ func (s *encryptionService) cmdRotateDataKey() {
 }
 
 func (s *encryptionService) cmdClearBackupKey(ref []byte) {
+	if s.readOnly {
+		replyError("read-only mode is enabled")
+		return
+	}
 	backupKey := s.encryptionKeys.getSecret().backupKey
 	if backupKey == nil {
 		replySuccess()
 		return
 	}
 
-	if !bytes.Equal(s.encryptionKeys.getSecret().getRef(), ref) {
+	salt := ref[:refSaltSize]
+	if !bytes.Equal(s.encryptionKeys.getSecret().getRefWithSalt(salt), ref) {
 		replyError("Key ref mismatch")
 		return
 	}
@@ -554,6 +611,10 @@ func (s *encryptionService) cmdClearBackupKey(ref []byte) {
 }
 
 func (s *encryptionService) cmdReloadConfig(data []byte) {
+	if s.readOnly {
+		replyError("read-only mode is enabled")
+		return
+	}
 	password := decodePass(data)
 	newConfig, err := readCfg(s.configPath)
 	if err != nil {
@@ -566,7 +627,7 @@ func (s *encryptionService) cmdReloadConfig(data []byte) {
 		return
 	}
 
-	err = readOrCreateKeys(newEncryptionKeys)
+	err = readOrCreateKeys(newEncryptionKeys, s.readOnly)
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -577,6 +638,10 @@ func (s *encryptionService) cmdReloadConfig(data []byte) {
 }
 
 func (s *encryptionService) cmdCopySecrets(newCfgBytes []byte) {
+	if s.readOnly {
+		replyError("read-only mode is enabled")
+		return
+	}
 	newConfig, err := readCfgBytes(newCfgBytes)
 	if err != nil {
 		replyError(err.Error())
@@ -596,6 +661,10 @@ func (s *encryptionService) cmdCopySecrets(newCfgBytes []byte) {
 }
 
 func (s *encryptionService) cmdCleanupSecrets(oldCfgBytes []byte) {
+	if s.readOnly {
+		replyError("read-only mode is enabled")
+		return
+	}
 	oldConfig, err := readCfgBytes(oldCfgBytes)
 	if err != nil {
 		replyError(err.Error())
@@ -623,6 +692,10 @@ func (s *encryptionService) cmdCleanupSecrets(oldCfgBytes []byte) {
 }
 
 func (s *encryptionService) cmdStoreKey(data []byte) {
+	if s.readOnly {
+		replyError("read-only mode is enabled")
+		return
+	}
 	keyKind, data := readBigField(data)
 	keyName, data := readBigField(data)
 	keyType, data := readBigField(data)
@@ -687,6 +760,10 @@ func (s *encryptionService) cmdReadKey(data []byte) {
 }
 
 func (s *encryptionService) cmdRotateIntegrityTokens(data []byte) {
+	if s.readOnly {
+		replyError("read-only mode is enabled")
+		return
+	}
 	keyName, _ := readBigField(data)
 	keyNameStr := string(keyName)
 	err := s.storedKeysState.rotateIntegrityTokens(keyNameStr, s.newStoredKeyCtx())
@@ -698,6 +775,10 @@ func (s *encryptionService) cmdRotateIntegrityTokens(data []byte) {
 }
 
 func (s *encryptionService) cmdRemoveOldIntegrityTokens(data []byte) {
+	if s.readOnly {
+		replyError("read-only mode is enabled")
+		return
+	}
 	var paths []string
 	for len(data) > 0 {
 		path, dataLeft := readBigField(data)
@@ -851,9 +932,14 @@ func (keys *keysInFile) getPasswordState() string {
 	return "password_not_used"
 }
 
+func (secret *secret) getRefWithSalt(salt []byte) []byte {
+	res := sha512.Sum512(append(salt, combineDataKeys(secret.key, secret.backupKey)...))
+	return append(salt, res[:]...)
+}
+
 func (secret *secret) getRef() []byte {
-	res := sha512.Sum512(combineDataKeys(secret.key, secret.backupKey))
-	return res[:]
+	salt := generateRandomBytes(refSaltSize)
+	return secret.getRefWithSalt(salt)
 }
 
 func (sec *secret) getSecret() *secret {
@@ -1126,9 +1212,12 @@ func saveKeys(keys secretIface, key, backup []byte) error {
 }
 
 // Note: keys must be a pointer to a struct
-func readOrCreateKeys(keys secretIface) error {
+func readOrCreateKeys(keys secretIface, readOnly bool) error {
 	err := keys.read()
 	if errors.Is(err, ErrKeysDoNotExist) {
+		if readOnly {
+			return err
+		}
 		logDbg("Generating secret")
 		key := createRandomKey()
 		return saveKeys(keys, key, nil)

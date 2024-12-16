@@ -140,7 +140,11 @@ func callExternalScript(cmdStr string, timeoutMs int) (string, error) {
 }
 
 func createRandomKey() []byte {
-	dataKey := make([]byte, keySize)
+	return generateRandomBytes(keySize)
+}
+
+func generateRandomBytes(size int) []byte {
+	dataKey := make([]byte, size)
 	if _, err := io.ReadFull(rand.Reader, dataKey); err != nil {
 		panic(err.Error())
 	}

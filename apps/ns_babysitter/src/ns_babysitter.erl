@@ -127,7 +127,7 @@ init_master_password() ->
           %%    cb_gosecrets_runner starts again (with normal logger this time)
           %% Note that cb_gosecrets_runner that starts later never asks for
           %% password, it uses the one that is set here.
-          cb_gosecrets_runner:start_link(dummy_logger(Self), true),
+          cb_gosecrets_runner:start_link(dummy_logger(Self), true, true),
           ok = cb_gosecrets_runner:stop()
       end).
 

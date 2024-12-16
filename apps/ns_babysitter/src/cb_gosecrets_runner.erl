@@ -17,7 +17,7 @@
 -include_lib("kernel/include/file.hrl").
 -endif.
 
--export([start_link/2, start_link/3, extract_hidden_pass/0,
+-export([start_link/3, start_link/4, extract_hidden_pass/0,
          extract_hidden_pass/1, stop/0]).
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
@@ -147,17 +147,17 @@ remove_old_integrity_tokens(Name, Paths) ->
 get_key_id_in_use(Name) ->
     gen_server:call(Name, get_key_id_in_use, infinity).
 
-start_link(Logger, PasswordPromptAllowed) ->
-    start_link(Logger, PasswordPromptAllowed, gosecrets_cfg_path()).
+start_link(Logger, PasswordPromptAllowed, ReadOnly) ->
+    start_link(Logger, PasswordPromptAllowed, ReadOnly, gosecrets_cfg_path()).
 
-start_link(Logger, PasswordPromptAllowed, ConfigPath) ->
+start_link(Logger, PasswordPromptAllowed, ReadOnly, ConfigPath) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE,
-                          [ConfigPath, Logger, PasswordPromptAllowed], []).
+                          [ConfigPath, Logger, PasswordPromptAllowed, ReadOnly], []).
 
 stop() ->
     gen_server:call(?MODULE, stop, infinity).
 
-prompt_the_password(State, Retries) ->
+prompt_the_password(State, Retries, ReadOnly) ->
     StdIn =
         case application:get_env(handle_ctrl_c) of
             {ok, true} ->
@@ -166,7 +166,7 @@ prompt_the_password(State, Retries) ->
                 undefined
         end,
     try
-        prompt_the_password(State, Retries, StdIn)
+        prompt_the_password(State, Retries, ReadOnly, StdIn)
     after
         case StdIn of
             undefined ->
@@ -176,12 +176,12 @@ prompt_the_password(State, Retries) ->
         end
     end.
 
-prompt_the_password(State, MaxRetries, StdIn) ->
+prompt_the_password(State, MaxRetries, ReadOnly, StdIn) ->
     case open_udp_socket(State) of
         {ok, Socket} ->
             try
                 save_port_file(Socket),
-                prompt_the_password(State, MaxRetries, StdIn,
+                prompt_the_password(State, MaxRetries, ReadOnly, StdIn,
                                     Socket, _RetriesLeft = MaxRetries)
             after
                 file:delete(port_file_path()),
@@ -191,7 +191,7 @@ prompt_the_password(State, MaxRetries, StdIn) ->
             {error, {udp_socket_open_failed, Error}}
     end.
 
-prompt_the_password(State, MaxRetries, StdIn, Socket, RetriesLeft) ->
+prompt_the_password(State, MaxRetries, ReadOnly, StdIn, Socket, RetriesLeft) ->
     {ok, {Addr, Port}} = inet:sockname(Socket),
     log(info, "Waiting for the master password to be supplied (UDP: ~p:~b). "
                "Attempt ~p (~p attempts left)",
@@ -201,7 +201,7 @@ prompt_the_password(State, MaxRetries, StdIn, Socket, RetriesLeft) ->
             log(error, "Password prompt interrupted: ~p", [M], State),
             {error, interrupted};
         {udp, Socket, FromAddr, FromPort, Password} ->
-            case call_init(?HIDE(Password), State) of
+            case call_init(?HIDE(Password), ReadOnly, State) of
                 ok ->
                     gen_udp:send(Socket, FromAddr, FromPort, <<"ok">>),
                     ok;
@@ -210,7 +210,7 @@ prompt_the_password(State, MaxRetries, StdIn, Socket, RetriesLeft) ->
                         State),
                     gen_udp:send(Socket, FromAddr, FromPort, <<"retry">>),
                     timer:sleep(1000),
-                    prompt_the_password(State, MaxRetries, StdIn,
+                    prompt_the_password(State, MaxRetries, ReadOnly, StdIn,
                                         Socket, RetriesLeft - 1);
                 {Reply, _Reason} when Reply == error;
                                       Reply == wrong_password  ->
@@ -219,7 +219,7 @@ prompt_the_password(State, MaxRetries, StdIn, Socket, RetriesLeft) ->
             end
     end.
 
-init([GosecretsCfgPath, Logger, PasswordPromptAllowed]) ->
+init([GosecretsCfgPath, Logger, PasswordPromptAllowed, ReadOnly]) ->
     State = #state{config = GosecretsCfgPath,
                    logger = Logger},
 
@@ -235,7 +235,7 @@ init([GosecretsCfgPath, Logger, PasswordPromptAllowed]) ->
     HiddenPass = extract_hidden_pass(),
 
     init_gosecrets(HiddenPass, _MaxRetries = 3, PasswordPromptAllowed,
-                   NewState),
+                   ReadOnly, NewState),
 
     {ok, NewState}.
 
@@ -250,14 +250,15 @@ save_config(CfgPath, Cfg, State) ->
             erlang:error({write_failed, CfgPath, Error})
     end.
 
-init_gosecrets(HiddenPass, MaxRetries, PasswordPromptAllowed, State) ->
-    case call_init(HiddenPass, State) of
+init_gosecrets(HiddenPass, MaxRetries, PasswordPromptAllowed, ReadOnly,
+               State) ->
+    case call_init(HiddenPass, ReadOnly, State) of
         ok -> ok;
         {wrong_password, ErrorMsg} ->
             case PasswordPromptAllowed and should_prompt_the_password(State) of
                 true ->
                     try
-                        case prompt_the_password(State, MaxRetries) of
+                        case prompt_the_password(State, MaxRetries, ReadOnly) of
                             ok ->
                                 ok;
                             {error, Error} ->
@@ -284,8 +285,8 @@ init_gosecrets(HiddenPass, MaxRetries, PasswordPromptAllowed, State) ->
             erlang:error({gosecrets_init_failed, Error})
     end.
 
-call_init(HiddenPass, State) ->
-    case call_gosecrets({init, HiddenPass}, State) of
+call_init(HiddenPass, ReadOnly, State) ->
+    case call_gosecrets({init, ReadOnly, HiddenPass}, State) of
         ok ->
             memorize_hidden_pass(HiddenPass),
             log(info, "Init complete. Password (if used) accepted.", [], State),
@@ -465,7 +466,7 @@ gosecret_do_process_exit(Port, {'EXIT', Port, Reason}) ->
 gosecret_do_process_exit(_Port, {'EXIT', _, Reason}) ->
     exit(Reason).
 
-encode({init, HiddenPass}) ->
+encode({init_read_only, HiddenPass}) ->
     BinaryPassword = encode_password(HiddenPass),
     <<1, BinaryPassword/binary>>;
 encode(get_keys_ref) ->
@@ -518,7 +519,15 @@ encode({remove_old_integrity_tokens, Paths}) ->
     PathsBin = list_to_binary([encode_param(P) || P <- Paths]),
     <<18, PathsBin/binary>>;
 encode(get_key_id_in_use) ->
-    <<19>>.
+    <<19>>;
+encode({init, IsReadOnly, HiddenPass}) ->
+    BinaryPassword = encode_password(HiddenPass),
+    ReadOnlyBin = case IsReadOnly of
+                      true -> <<1>>;
+                      false -> <<0>>
+                  end,
+    <<20, (encode_param(ReadOnlyBin))/binary,
+          (encode_param(BinaryPassword))/binary>>.
 
 encode_param(B) when is_atom(B) ->
     encode_param(atom_to_binary(B));
@@ -1157,7 +1166,7 @@ upgrade_from_7_2_no_password_test() ->
       undefined,
       fun (CfgPath) ->
           ok = file:write_file(DKeyPath, base64:decode(DKeyNoPass)),
-          {ok, Pid} = start_link(default, true, CfgPath),
+          {ok, Pid} = start_link(default, true, true, CfgPath),
           try
               Data = rand:bytes(512),
               {ok, Encrypted} = encrypt(Pid, Data),
@@ -1186,7 +1195,7 @@ upgrade_from_7_2_with_password_test() ->
             undefined,
             fun (CfgPath) ->
                 ok = file:write_file(DKeyPath, base64:decode(DKeyNoPass)),
-                {ok, Pid} = start_link(default, true, CfgPath),
+                {ok, Pid} = start_link(default, true, true, CfgPath),
                 try
                     Data = rand:bytes(512),
                     {ok, Encrypted} = encrypt(Pid, Data),
@@ -1396,7 +1405,7 @@ with_gosecrets(Cfg, Fun, ResetMemorizePassword) ->
     with_tmp_cfg(
       Cfg,
       fun (CfgPath) ->
-          {ok, Pid} = start_link(default, true, CfgPath),
+          {ok, Pid} = start_link(default, true, false, CfgPath),
           try
               Fun(CfgPath, Pid)
           after
