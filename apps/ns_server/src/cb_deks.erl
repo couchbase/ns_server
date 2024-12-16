@@ -477,10 +477,8 @@ get_dek_ids_in_use(logDek) ->
         {badrpc, _} = Error ->
             {error, Error}
     end;
-get_dek_ids_in_use(Type) ->
-    {ok, Snapshot} = cb_crypto:fetch_deks_snapshot(Type),
-    {_, AllDeks} = cb_crypto:get_all_deks(Snapshot),
-    {ok, [Id || #{id := Id} <- AllDeks]}.
+get_dek_ids_in_use(auditDek) ->
+    ns_memcached:get_dek_ids_in_use("@audit").
 
 drop_config_deks(DekIdsToDrop) ->
     maybe
