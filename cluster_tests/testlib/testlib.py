@@ -586,12 +586,12 @@ def assert_gt(got, lower_bound, name='value'):
         f'unexpected {name}: {got}, expected: > {lower_bound}'
 
 
-def assert_in(what, where):
-    assert what in where, f'"{what}" is missing in "{where}"'
+def assert_in(what, where, resp=None):
+    assert what in where, \
+        format_error(resp, f'"{what}" is missing in "{where}"')
 
-
-def assert_not_in(what, where):
-    assert what not in where, f'"{what}" is in "{where}"'
+def assert_not_in(what, where, resp=None):
+    assert what not in where, format_error(resp, f'"{what}" is in "{where}"')
 
 
 def random_str(n):

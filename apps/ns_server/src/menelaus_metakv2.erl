@@ -112,6 +112,10 @@ reply_set_result(Req, Type, {error, duplicate_keys}) ->
     menelaus_util:reply_json(
       Req, encode_reply_info("Duplicate Keys", undefined, undefined, Type),
       400);
+reply_set_result(Req, leaf, {error, {top_level_leaf, Path}}) ->
+    menelaus_util:reply_json(
+      Req, encode_reply_info("Creating top level leaves is not allowed",
+                             Path, undefined, leaf), 400);
 reply_set_result(Req, Type, {error, not_changed}) ->
     menelaus_util:reply_json(
       Req, encode_reply_info("Not Changed", undefined, undefined, Type), 200);

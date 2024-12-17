@@ -69,11 +69,13 @@
 -type set_result() :: base_mutation_result() |
                       {error,
                        {not_changed, key(), revision()} |
+                       {top_level_leaf, key()} |
                        {cas, key(), revision}}.
 
 -type set_multiple_result() :: base_mutation_result() |
                                {error,
                                 not_changed |
+                                {top_level_leaf, key()} |
                                 {cas, key(), revision()} |
                                 duplicate_keys}.
 
@@ -187,6 +189,8 @@ process_result(CreateOrUpdate, {ok, Snapshot}) ->
 
 %% sets the value of the key. checks revision if it is provided
 -spec set(key(), value(), revision(), boolean()) -> set_result().
+set([_] = Key, _Value, _Rev, _Recursive) ->
+    {error, {top_level_leaf, Key}};
 set(Key, Value, Rev, Recursive) ->
     chronicle_kv:txn(
       metakv,
@@ -211,17 +215,30 @@ set(Key, Value, Rev, Recursive) ->
 %% are provided
 -spec set_multiple([kvr()], boolean()) -> set_multiple_result().
 set_multiple(KVR, Recursive) ->
-    Keys = [K || {K, _} <- KVR],
-    case length(Keys) =:= length(lists:usort(Keys)) of
-        true ->
+    case validate_kvr(KVR) of
+        ok ->
             chronicle_kv:txn(
               metakv,
               fun (Txn) ->
                       process_result(update,
                                      set_multiple(Txn, KVR, #{}, Recursive))
               end);
+        Error ->
+            {error, Error}
+    end.
+
+validate_kvr(KVR) ->
+    Keys = [K || {K, _} <- KVR],
+    case length(Keys) =:= length(lists:usort(Keys)) of
         false ->
-            {error, duplicate_keys}
+            duplicate_keys;
+        true ->
+            case lists:dropwhile(fun ([_]) -> false; (_) -> true end, Keys) of
+                [] ->
+                    ok;
+                [K | _] ->
+                    {top_level_leaf, K}
+            end
     end.
 
 set_multiple(_, [], Snapshot, _) ->
@@ -557,7 +574,11 @@ basic_test_() ->
                   get_dir_content([root])),
                ?assertMatch({error, {wrong_type, [subkey1, root]}},
                             test_set([subkey1, root], v2,
-                                     new, true))
+                                     new, true)),
+               ?assertEqual({error, {top_level_leaf, [topLevelLeaf]}},
+                            test_set([topLevelLeaf], v1, undefined, false)),
+               ?assertEqual({error, {top_level_leaf, [topLevelLeaf]}},
+                            test_set([topLevelLeaf], v1, undefined, true))
        end},
       {"get_dir",
        fun () ->
@@ -613,7 +634,10 @@ basic_test_() ->
                   test_mkdir([key1, subdir2, subdir2, root], true)),
                ?assertEqual(
                   {error, {wrong_type, [key1, subdir2, subdir2, root]}},
-                  test_mkdir([key1, subdir2, subdir2, root], false))
+                  test_mkdir([key1, subdir2, subdir2, root], false)),
+               %% creating top level dirs
+               ?assertMatch({ok, _, create}, test_mkdir([root1], false)),
+               ?assertMatch({ok, _, create}, test_mkdir([root2], true))
        end},
       {"set, revision handling",
        fun () ->
@@ -638,13 +662,29 @@ basic_test_() ->
                            Recursive)
                  end, update)
        end},
-      {"set_multiple, duplicate keys",
+      {"set_multiple, other errors",
        fun () ->
                ?assertEqual(
                   {error, duplicate_keys},
-                  test_set_multiple([{[key1, subkey1, root], {v1, new}},
-                                     {[key2, subkey2, root], {v2, new}},
-                                     {[key1, subkey1, root], {v3, new}}], true))
+                  test_set_multiple(
+                    [{[key1, subkey1, root], {v1, new}},
+                     {[key2, subkey2, root], {v2, new}},
+                     {[key1, subkey1, root], {v3, new}}], true)),
+               ?assertEqual({error, {top_level_leaf, [topLevelLeaf]}},
+                            test_set_multiple(
+                              [{[topLevelLeaf], {v1, undefined}},
+                               {[key1, subkey1, root], {v1, new}}], true)),
+               ?assertEqual({error, {top_level_leaf, [topLevelLeaf]}},
+                            test_set_multiple(
+                              [{[topLevelLeaf], {v1, undefined}},
+                               {[key1, subkey1, root], {v1, new}}], false)),
+               RV = test_set_multiple(
+                      [{[topLevelLeaf1], {v1, undefined}},
+                       {[topLevelLeaf2], {v2, undefined}},
+                       {[key1, subkey1, root], {v1, new}}], false),
+               ?assertMatch({error, {top_level_leaf, [_]}}, RV),
+               {error, {top_level_leaf, [Key]}} = RV,
+               ?assert(lists:member(Key, [topLevelLeaf1, topLevelLeaf2]))
        end},
       {"not changed",
        fun () ->

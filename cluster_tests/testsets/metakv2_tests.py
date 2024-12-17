@@ -37,6 +37,10 @@ def assert_json_value(resp, key, expected, json):
     v = assert_json_key(resp, key, json)
     testlib.assert_eq(v, expected, key, resp)
 
+def assert_json_value_in(resp, key, expected, json):
+    v = assert_json_key(resp, key, json)
+    testlib.assert_in(v, expected, resp)
+
 def extract_val_rev(resp, json):
     return (assert_json_key(resp, "value", json),
             assert_json_key(resp, "revision", json))
@@ -93,6 +97,13 @@ def assert_exists(resp):
     json = decode_json(resp)
     assert_json_key(resp, "revision", json)
     assert_json_value(resp, "message", "Exists", json)
+
+def assert_top_level_leaf(resp, keys):
+    testlib.assert_http_code(400, resp)
+    json = decode_json(resp)
+    assert_json_value(resp, "message",
+                      "Creating top level leaves is not allowed", json)
+    assert_json_value_in(resp, "path", keys, json)
 
 def assert_val_rev(resp):
     testlib.assert_http_code(200, resp)
@@ -227,6 +238,9 @@ class Metakv2Tests(testlib.BaseTestSet):
         resp = self.metakv2_put(key, value="v4", rev = rev)
         assert_updated(resp)
         self.assert_dir_content("/root/", {key: 'v4'})
+
+        resp = self.metakv2_put("/top", value="v4")
+        assert_top_level_leaf(resp, ["/top"])
 
     def get_put_dir_test(self):
         subdir = "/root/subdir/"
@@ -372,6 +386,12 @@ class Metakv2Tests(testlib.BaseTestSet):
         self.assert_dir_content("/root/", {k1: "v1", k2: "v2", k3: "v30",
                                            k4: "v40"})
 
+        resp = self.metakv2_set_multiple({"/top": {"value": "v1"}})
+        assert_top_level_leaf(resp, ["/top"])
+
+        resp = self.metakv2_set_multiple({"/top1": {"value": "v1"},
+                                          "/top2": {"value": "v2"}})
+        assert_top_level_leaf(resp, ["/top1", "/top2"])
 
     def delete_test(self):
         k1 = "/root/subdir/key1"
