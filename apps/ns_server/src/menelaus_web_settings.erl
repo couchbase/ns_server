@@ -435,7 +435,7 @@ get_cluster_encryption(Level) ->
     end.
 
 services_with_security_settings() ->
-    [kv, fts, index, eventing, n1ql, cbas, backup, ns_server].
+    [kv, fts, index, eventing, n1ql, cbas, backup, ns_server, xdcr].
 
 is_allowed_on_cluster([password_hash_alg]) ->
     cluster_compat_mode:is_cluster_76();

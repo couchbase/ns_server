@@ -65,6 +65,7 @@ supported(index) -> golang_ciphers({1, 21, 3});
 supported(n1ql) -> golang_ciphers({1, 21, 3});
 supported(eventing) -> golang_ciphers({1, 21, 3});
 supported(backup) -> golang_ciphers({1, 21, 3});
+supported(xdcr) -> golang_ciphers({1, 21, 3});
 supported(kv) ->
 %% This list is constructed using the following command
 %%  $ ./install/bin/openssl ciphers -stdname "ALL" | awk '{print "<<\x22"$1"\x22>>,"}'
