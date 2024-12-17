@@ -20,18 +20,22 @@ def decode_json(resp):
 def assert_json_key(resp, key, json):
     return testlib.assert_json_key(key, json, testlib.format_res_info(resp))
 
-def assert_not_changed(resp):
+def assert_not_changed(resp, expected_path = None):
     testlib.assert_http_code(200, resp)
-    testlib.assert_http_body_string("Not changed", resp)
+    json = decode_json(resp)
+    assert_json_value(resp, "message", "Not Changed", json)
+    if expected_path is not None:
+        assert_json_key(resp, "revision", json)
+        assert_json_value(resp, "path", expected_path, json)
 
 def assert_json_error(resp, expected):
     json = decode_json(resp)
     error = assert_json_key(resp, "error", json)
     testlib.assert_eq(error, expected, "error", resp)
 
-def assert_already_exists(resp, key):
-    testlib.assert_http_code(400, resp)
-    assert_json_error(resp, f"{key} already exists.")
+def assert_json_value(resp, key, expected, json):
+    v = assert_json_key(resp, key, json)
+    testlib.assert_eq(v, expected, key, resp)
 
 def extract_val_rev(resp, json):
     return (assert_json_key(resp, "value", json),
@@ -49,10 +53,46 @@ def extract_snapshot(resp):
     (val, rev) = assert_val_rev(resp)
     return {k: extract_val_rev(resp, v)[0] for (k, v) in val.items()}
 
-def assert_ok(resp):
+def assert_created(resp):
+    testlib.assert_http_code(201, resp)
+    json = decode_json(resp)
+    assert_json_key(resp, "revision", json)
+    assert_json_value(resp, "message", "Created", json)
+
+def assert_updated(resp):
     testlib.assert_http_code(200, resp)
     json = decode_json(resp)
     assert_json_key(resp, "revision", json)
+    assert_json_value(resp, "message", "Updated", json)
+
+def assert_deleted(resp):
+    testlib.assert_http_code(200, resp)
+    json = decode_json(resp)
+    assert_json_key(resp, "revision", json)
+    assert_json_value(resp, "message", "Deleted", json)
+
+def assert_not_found(resp):
+    testlib.assert_http_code(404, resp)
+    json = decode_json(resp)
+    assert_json_value(resp, "message", "Not Found", json)
+
+def assert_not_empty(resp):
+    testlib.assert_http_code(400, resp)
+    json = decode_json(resp)
+    assert_json_value(resp, "message", "Not Empty", json)
+
+def assert_conflict(resp, key):
+    testlib.assert_http_code(409, resp)
+    json = decode_json(resp)
+    assert_json_key(resp, "revision", json)
+    assert_json_value(resp, "message", "Conflict", json)
+    assert_json_value(resp, "path", key, json)
+
+def assert_exists(resp):
+    testlib.assert_http_code(200, resp)
+    json = decode_json(resp)
+    assert_json_key(resp, "revision", json)
+    assert_json_value(resp, "message", "Exists", json)
 
 def assert_val_rev(resp):
     testlib.assert_http_code(200, resp)
@@ -91,7 +131,7 @@ class Metakv2Tests(testlib.BaseTestSet):
         testlib.ensure_deleted(self.cluster, METAKV2_ENDPOINT + "/root/",
                                params={'recursive': 'true'})
         resp = self.metakv2_get("/root/")
-        testlib.assert_http_code(404, resp)
+        assert_not_found(resp)
 
     def metakv2_get(self, key, recursive=False):
         params = {}
@@ -144,34 +184,34 @@ class Metakv2Tests(testlib.BaseTestSet):
     def get_put_leaf_test(self):
         key = "/root/subdir/key1"
         resp = self.metakv2_get(key)
-        testlib.assert_http_code(404, resp)
+        assert_not_found(resp)
 
         resp = self.metakv2_put(key, value="v1")
-        testlib.assert_http_code(404, resp)
+        assert_not_found(resp)
 
         resp = self.metakv2_put(key, value="v1", create=True)
-        testlib.assert_http_code(404, resp)
+        assert_not_found(resp)
 
         resp = self.metakv2_put(key, value="v1", create=True, recursive=True)
-        assert_ok(resp)
+        assert_created(resp)
 
         resp = self.metakv2_get(key)
         assert_value(resp, "v1")
 
         resp = self.metakv2_put(key, value="v2", create=True, recursive=True)
-        assert_already_exists(resp, key)
+        assert_conflict(resp, key)
 
         resp = self.metakv2_put(key, value="v2", recursive=True)
-        assert_ok(resp)
+        assert_updated(resp)
 
         resp = self.metakv2_put(key, value="v3")
-        assert_ok(resp)
+        assert_updated(resp)
 
         resp = self.metakv2_put(key, value="v3", create=True)
-        assert_already_exists(resp, key)
+        assert_conflict(resp, key)
 
         resp = self.metakv2_put(key, value="v3")
-        assert_not_changed(resp)
+        assert_not_changed(resp, key)
 
         self.assert_dir_content("/root/", {key: 'v3'})
 
@@ -182,35 +222,55 @@ class Metakv2Tests(testlib.BaseTestSet):
         testlib.assert_http_code(400, resp)
 
         resp = self.metakv2_put(key, value="v4", rev = "fake:67")
-        testlib.assert_http_code(409, resp)
-        assert_json_error(resp, f"Conflict at \"{key}\"")
+        assert_conflict(resp, key)
 
         resp = self.metakv2_put(key, value="v4", rev = rev)
-        assert_ok(resp)
+        assert_updated(resp)
         self.assert_dir_content("/root/", {key: 'v4'})
+
+    def get_put_dir_test(self):
+        subdir = "/root/subdir/"
+        dir = "/root/subdir/dir/"
+        resp = self.metakv2_get(subdir)
+        assert_not_found(resp)
+
+        resp = self.metakv2_put(dir)
+        assert_not_found(resp)
+
+        resp = self.metakv2_put(subdir, recursive=True)
+        assert_created(resp)
+
+        resp = self.metakv2_put(dir)
+        assert_created(resp)
+
+        resp = self.metakv2_put(dir)
+        assert_exists(resp)
+
+        self.assert_dir_content(subdir, {})
+        self.assert_dir_content(dir, {})
 
     def get_directory_test(self):
         resp = self.metakv2_put("/root/subdir/key1", value="v1",
                                 create=True, recursive=True)
-        assert_ok(resp)
+        assert_created(resp)
 
         resp = self.metakv2_put("/root/subdir/subdir1/key2", value="v2",
                                 create=True, recursive=True)
-        assert_ok(resp)
+        assert_created(resp)
 
         resp = self.metakv2_put("/root/subdir/key3", value="v3",
                                 create=True, recursive=True)
-        assert_ok(resp)
+        assert_created(resp)
 
         resp = self.metakv2_put("/root/subdir1/key4", value="v4",
                                 create=True, recursive=True)
-        assert_ok(resp)
+        assert_created(resp)
 
         resp = self.metakv2_get("/root/subdir2/")
-        testlib.assert_http_code(404, resp)
+        assert_not_found(resp)
 
         resp = self.metakv2_get("/root/subdir2/", recursive=True)
-        testlib.assert_http_code(404, resp)
+        assert_not_found(resp)
 
         self.assert_dir_content("/root/subdir/",
                                 {'/root/subdir/key1': 'v1',
@@ -227,11 +287,11 @@ class Metakv2Tests(testlib.BaseTestSet):
     def get_snapshot_test(self):
         resp = self.metakv2_put("/root/subdir/key1", value="v1",
                                 create=True, recursive=True)
-        assert_ok(resp)
+        assert_created(resp)
 
         resp = self.metakv2_put("/root/subdir/subdir1/key2", value="v2",
                                 create=True, recursive=True)
-        assert_ok(resp)
+        assert_created(resp)
 
         resp = self.metakv2_get_snapshot(["/root/subdir/key1",
                                           "/root/subdir/subdir1/key2",
@@ -251,12 +311,12 @@ class Metakv2Tests(testlib.BaseTestSet):
         resp = self.metakv2_set_multiple({k1: {"value": "v1"},
                                           k2: {"value": "v2"},
                                           k3: {"value": "v3"}})
-        testlib.assert_http_code(404, resp)
+        assert_not_found(resp)
 
         resp = self.metakv2_set_multiple({k1: {"value": "v1", "create": True},
                                           k2: {"value": "v2", "create": True},
                                           k3: {"value": "v3", "create": True}})
-        testlib.assert_http_code(404, resp)
+        assert_not_found(resp)
 
         # corrupted revision
         resp = self.metakv2_set_multiple(
@@ -275,26 +335,26 @@ class Metakv2Tests(testlib.BaseTestSet):
                                           k2: {"value": "v2", "create": True},
                                           k3: {"value": "v3", "create": True}},
                                          recursive=True)
-        assert_ok(resp)
+        assert_updated(resp)
 
         # already exists
         resp = self.metakv2_set_multiple({k1: {"value": "v10"},
                                           k2: {"value": "v20"},
                                           k3: {"value": "v30", "create": True}},
                                          recursive=True)
-        testlib.assert_http_code(400, resp)
+        assert_conflict(resp, k3)
 
         self.assert_dir_content("/root/", {k1: "v1", k2: "v2", k3: "v3"})
 
         resp = self.metakv2_set_multiple({k1: {"value": "v10"},
                                           k2: {"value": "v20"}}, recursive=True)
-        assert_ok(resp)
+        assert_updated(resp)
 
         self.assert_dir_content("/root/", {k1: "v10", k2: "v20", k3: "v3"})
 
         resp = self.metakv2_set_multiple(
             {k3: {"value": "v30"}, k4: {"value": "v40"}})
-        assert_ok(resp)
+        assert_updated(resp)
 
         self.assert_dir_content("/root/", {k1: "v10", k2: "v20", k3: "v30",
                                            k4: "v40"})
@@ -304,12 +364,11 @@ class Metakv2Tests(testlib.BaseTestSet):
 
         resp = self.metakv2_set_multiple(
             {k1: {"value": "v1", "revision": "fake:70"}})
-        testlib.assert_http_code(409, resp)
-        assert_json_error(resp, f"Conflict at \"{k1}\"")
+        assert_conflict(resp, k1)
 
         resp = self.metakv2_set_multiple({k1: {"value": "v1", "revision": rev},
                                           k2: {"value": "v2"}})
-        assert_ok(resp)
+        assert_updated(resp)
         self.assert_dir_content("/root/", {k1: "v1", k2: "v2", k3: "v30",
                                            k4: "v40"})
 
@@ -323,41 +382,41 @@ class Metakv2Tests(testlib.BaseTestSet):
                                           k2: {"value": "v2", "create": True},
                                           k3: {"value": "v3", "create": True}},
                                          recursive=True)
-        assert_ok(resp)
+        assert_updated(resp)
 
         self.assert_dir_content("/root/", {k1: "v1", k2: "v2", k3: "v3"})
 
         resp = self.metakv2_delete("/root/subdir/")
-        testlib.assert_http_code(400, resp)
+        assert_not_empty(resp)
 
         resp = self.metakv2_delete("/root/subdir/key2")
-        testlib.assert_http_code(404, resp)
+        assert_not_found(resp)
 
         resp = self.metakv2_delete("/root/subdir/key1")
-        assert_ok(resp)
+        assert_deleted(resp)
 
         self.assert_dir_content("/root/", {k2: "v2", k3: "v3"})
 
         resp = self.metakv2_delete("/root/subdir/subdir1", recursive=True)
-        testlib.assert_http_code(404, resp)
+        assert_not_found(resp)
 
         resp = self.metakv2_delete("/root/subdir/subdir1/", recursive=True)
-        assert_ok(resp)
+        assert_deleted(resp)
 
         self.assert_dir_content("/root/", {k3: "v3"})
 
         resp = self.metakv2_delete("/root/subdir/")
-        assert_ok(resp)
+        assert_deleted(resp)
 
         self.assert_dir_content("/root/", {k3: "v3"})
 
         resp = self.metakv2_set_multiple({k1: {"value": "v1", "create": True},
                                           k2: {"value": "v2", "create": True}},
                                          recursive=True)
-        assert_ok(resp)
+        assert_updated(resp)
 
         self.assert_dir_content("/root/", {k1: "v1", k2: "v2", k3: "v3"})
 
         resp = self.metakv2_delete("/root/subdir/", recursive=True)
-        assert_ok(resp)
+        assert_deleted(resp)
         self.assert_dir_content("/root/", {k3: "v3"})
