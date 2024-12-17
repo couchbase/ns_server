@@ -48,7 +48,7 @@ class MnSecuritySecretsComponent extends MnLifeCycleHooksToStream {
     this.datePipe = datePipe;
 
     this.getEncryptionAtRest = mnSecuritySecretsService.stream.getEncryptionAtRest;
-    this.getEncryptionAtRestKeys = mnSecuritySecretsService.stream.getEncryptionAtRestKeys;
+    this.getEncryptionAtRestKeys = mnSecuritySecretsService.stream.getEncryptionAtRestKeys.pipe(map(this.displayOrder));
     this.mapTypeToNames = mnSecuritySecretsService.mapTypeToNames;
     this.mapMethodToNames = mnSecuritySecretsService.mapMethodToNames;
     this.secretsByIds = mnSecuritySecretsService.stream.secretsByIds;
@@ -122,6 +122,14 @@ class MnSecuritySecretsComponent extends MnLifeCycleHooksToStream {
       secret._uiMediumTime = this.datePipe.transform(secret.creationDateTime, 'mediumTime', 'UTC', 'en-US')
       secret._uiCreationDateTime = this.datePipe.transform(secret.creationDateTime, 'd MMM, y', 'UTC', 'en-US');
       return secret;
+    });
+  }
+
+  displayOrder(keys) {
+    return keys.sort((key) => {
+      if (key === 'config') {
+        return -1;
+      } else return 1;
     });
   }
 }
