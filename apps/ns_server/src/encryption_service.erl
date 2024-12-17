@@ -39,6 +39,7 @@
          decode_key_info/1,
          garbage_collect_keks/1,
          garbage_collect_keys/2,
+         cleanup_retired_keys/0,
          maybe_rotate_integrity_tokens/1,
          remove_old_integrity_tokens/1,
          get_key_ids_in_use/0]).
@@ -55,6 +56,8 @@
 
 -define(RUNNER, {cb_gosecrets_runner, ns_server:get_babysitter_node()}).
 -define(RESTART_WAIT_TIMEOUT, 120000).
+-define(RETIRED_KEYS_RETENTION_MONTHS,
+        ?get_param(retired_keys_retention_months, 3)).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -562,7 +565,143 @@ select_files_to_retire(Dir, _KeyIdsInUse, {error, Reason}) ->
                [Dir, Reason]),
     [].
 
+cleanup_retired_keys() ->
+    cleanup_retired_keys(calendar:universal_time(),
+                         ?RETIRED_KEYS_RETENTION_MONTHS).
+
+cleanup_retired_keys({{CurrentYear, CurrentMonth, _}, _}, RetentionMonths) ->
+    ?log_debug("Cleanup retired keys"),
+    RetiredDir = retired_keys_dir(),
+    maybe
+        {ok, Dirs} ?= file:list_dir(RetiredDir),
+        CurrentMonths = CurrentYear * 12 + CurrentMonth,
+        lists:foreach(
+          fun (DirName) ->
+              FullPath = filename:join(RetiredDir, DirName),
+              maybe
+                  {dir, true} ?= {dir, filelib:is_dir(FullPath)},
+                  {ok, {Year, Month}} ?= parse_retired_dir_name(DirName),
+                  DirMonths = Year * 12 + Month,
+                  {old, true} ?=
+                      {old, CurrentMonths - DirMonths > RetentionMonths},
+                  AllFiles = file:list_dir(FullPath),
+                  ?log_info("Permanently removing retired keys directory ~s as "
+                            "it is older than ~b months. Keys to be "
+                            "removed: ~.0p",
+                            [FullPath, RetentionMonths, AllFiles]),
+                  ok ?= misc:rm_rf(FullPath)
+              else
+                  {dir, false} ->
+                      ?log_warning("Invalid retired keys directory name "
+                                   "(not a directory): ~s, will be "
+                                   "ignored", [FullPath]);
+                  error ->
+                      ?log_warning("Invalid retired keys directory name: ~s, "
+                                   "will be ignored", [DirName]);
+                  {old, false} ->
+                      ok;
+                  {error, Reason} ->
+                      ?log_error("Failed to remove retired keys directory ~s: "
+                                 "~p", [FullPath, Reason])
+              end
+          end, Dirs),
+        ok
+    else
+        {error, enoent} ->
+            ok;
+        {error, Reason} ->
+            ?log_error("Failed to list retired keys directory ~s: ~p",
+                       [RetiredDir, Reason]),
+            ok
+    end.
+
+parse_retired_dir_name(DirName) ->
+    try
+        [YearStr, MonthStr] = string:tokens(DirName, "-"),
+        Year = list_to_integer(YearStr),
+        Month = list_to_integer(MonthStr),
+        case calendar:valid_date(Year, Month, 1) of
+            true -> {ok, {Year, Month}};
+            false -> error
+        end
+    catch
+        _:_ -> error
+    end.
+
 -ifdef(TEST).
+
+cleanup_retired_keys_test() ->
+    %% Create temp directory for test
+    RetiredDir = retired_keys_dir(),
+    ok = filelib:ensure_dir(RetiredDir ++ "/"),
+
+    %% Helper to create test directories and files
+    CreateTestDir =
+        fun (YearMonth) ->
+            Dir = filename:join(RetiredDir, YearMonth),
+            ok = filelib:ensure_dir(Dir ++ "/"),
+            ok = file:write_file(filename:join(Dir, "test.key.1"), <<"test">>)
+        end,
+
+    try
+        %% Create test directories for different months
+        lists:foreach(CreateTestDir, [
+            "2023-10",  %% Should be removed (>3 months old)
+            "2023-11",  %% Should be removed (>3 months old) 
+            "2023-12",  %% Should stay (3 months old)
+            "2024-01",  %% Should stay (2 months old)
+            "2025-02"   %% Should stay (in future)
+        ]),
+
+        %% Also create some invalid directory names that should be ignored
+        lists:foreach(CreateTestDir, [
+            "not-a-date",
+            "2023-13",
+            "2023-0",
+            "2023"
+        ]),
+        %% Create a file in retiredKeysDir, should be ignored
+        ok = file:write_file(filename:join(RetiredDir, "test.key.1"),
+                             <<"test">>),
+
+        %% Run cleanup with reference date of 2024-03-01 and 3 month retention
+        ok = cleanup_retired_keys({{2024, 3, 1}, {0,0,0}}, 3),
+
+        %% Verify correct directories were removed/kept
+        ?assertNot(filelib:is_dir(filename:join(RetiredDir, "2023-10"))),
+        ?assertNot(filelib:is_dir(filename:join(RetiredDir, "2023-11"))),
+        ?assert(filelib:is_dir(filename:join(RetiredDir, "2023-12"))),
+        ?assert(filelib:is_dir(filename:join(RetiredDir, "2024-01"))),
+        ?assert(filelib:is_dir(filename:join(RetiredDir, "2025-02"))),
+
+        %% Invalid directories and files should still exist since they were
+        %% ignored
+        ?assert(filelib:is_dir(filename:join(RetiredDir, "not-a-date"))),
+        ?assert(filelib:is_dir(filename:join(RetiredDir, "2023-13"))),
+        ?assert(filelib:is_dir(filename:join(RetiredDir, "2023-0"))),
+        ?assert(filelib:is_dir(filename:join(RetiredDir, "2023"))),
+        ?assert(filelib:is_file(filename:join(RetiredDir, "test.key.1")))
+
+    after
+        %% Cleanup test directory
+        ok = misc:rm_rf(RetiredDir)
+    end.
+
+parse_retired_dir_name_test() ->
+    ?assertEqual({ok, {2023, 12}}, parse_retired_dir_name("2023-12")),
+    ?assertEqual({ok, {2024, 1}}, parse_retired_dir_name("2024-1")),
+    ?assertEqual({ok, {2024, 1}}, parse_retired_dir_name("2024-01")),
+    ?assertEqual(error, parse_retired_dir_name("2024-13")),
+    ?assertEqual(error, parse_retired_dir_name("2024-0")),
+    ?assertEqual(error, parse_retired_dir_name("2024")),
+    ?assertEqual(error, parse_retired_dir_name("2024-")),
+    ?assertEqual(error, parse_retired_dir_name("2024-")),
+    ?assertEqual(error, parse_retired_dir_name("-12")),
+    ?assertEqual(error, parse_retired_dir_name("abc-12")),
+    ?assertEqual(error, parse_retired_dir_name("2024-abc")),
+    ?assertEqual(error, parse_retired_dir_name("")),
+    ?assertEqual(error, parse_retired_dir_name("2024-12-25")).
+
 
 -define(A, "a0000000-0000-0000-0000-000000000000").
 -define(B, "b0000000-0000-0000-0000-000000000000").
@@ -630,15 +769,15 @@ key_path(Kind) ->
 bucket_dek_id(Bucket, DekId) ->
     iolist_to_binary(filename:join([Bucket, "deks", DekId])).
 
+retired_keys_dir() ->
+    filename:join(path_config:component_path(data), "retired_keys").
+
 retire_key(Kind, Filename) ->
     Dir = key_path(Kind),
     FromPath = filename:join(Dir, Filename),
     {{Y, M, _}, _} = calendar:universal_time(),
     MonthDir = lists:flatten(io_lib:format("~b-~b", [Y, M])),
-    ToPath = filename:join([path_config:component_path(data),
-                            "retired_keys",
-                            MonthDir,
-                            Filename]),
+    ToPath = filename:join([retired_keys_dir(), MonthDir, Filename]),
     case filelib:ensure_dir(ToPath) of
         ok ->
             case misc:atomic_rename(FromPath, ToPath) of

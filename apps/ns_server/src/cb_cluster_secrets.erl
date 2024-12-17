@@ -92,7 +92,8 @@
                            rotate_keks => undefined,
                            dek_cleanup => undefined,
                            rotate_deks => undefined,
-                           dek_info_update => undefined}
+                           dek_info_update => undefined,
+                           remove_retired_keys => undefined}
                          :: #{atom() := reference() | undefined},
                 deks = undefined :: #{cb_deks:dek_kind() := deks_info()} |
                                     undefined,
@@ -707,7 +708,8 @@ init([Type]) ->
                           run_jobs(_),
                           restart_dek_cleanup_timer(_),
                           restart_rotation_timer(_),
-                          restart_dek_info_update_timer(true, _)])}.
+                          restart_dek_info_update_timer(true, _),
+                          restart_remove_retired_timer(_)])}.
 
 handle_call({call, {M, F, A} = MFA}, _From,
             #state{proc_type = ?MASTER_PROC} = State) ->
@@ -860,6 +862,13 @@ handle_info({timer, dek_info_update} = Msg,
     misc:flush(Msg),
     {_Res, NewState} = calculate_dek_info(State),
     {noreply, restart_dek_info_update_timer(false, NewState)};
+
+handle_info({timer, remove_retired_keys} = Msg,
+            #state{proc_type = ?NODE_PROC} = State) ->
+    ?log_debug("Remove retired keys timer"),
+    misc:flush(Msg),
+    encryption_service:cleanup_retired_keys(),
+    {noreply, restart_remove_retired_timer(State)};
 
 handle_info(Info, State) ->
     ?log_warning("Unhandled info: ~p", [Info]),
@@ -1607,6 +1616,7 @@ maybe_read_deks(#state{proc_type = ?NODE_PROC, deks = undefined} = State) ->
                       NewAcc
                   end, NewState2, Kinds),
     ok = garbage_collect_keks(),
+    encryption_service:cleanup_retired_keys(),
 
     %% We should rotate here (when process is starting) because we can
     %% hypothetically crash after calling set_active() but before calling
@@ -2444,6 +2454,29 @@ dek_rotation_time(Kind, #{is_enabled := true, active_id := ActiveId,
                        [Kind, E]),
             {error, E}
     end.
+
+-spec calculate_next_remove_retired_time(calendar:datetime()) ->
+          non_neg_integer().
+calculate_next_remove_retired_time({{Year, Month, _Day},
+                                    {_Hour, _Min, _Sec}} = Now) ->
+    %% We want to remove retired keys at 12:00:00 of the first day of next month
+    %% Calculate first day of next month
+    {NextYear, NextMonth} =
+        case Month of
+            12 -> {Year + 1, 1};
+            _ -> {Year, Month + 1}
+        end,
+    NextTime = {{NextYear, NextMonth, 1}, {12, 0, 0}},
+    CurrentSecs = calendar:datetime_to_gregorian_seconds(Now),
+    NextSecs = calendar:datetime_to_gregorian_seconds(NextTime),
+    (NextSecs - CurrentSecs) * 1000.
+
+-spec restart_remove_retired_timer(#state{}) -> #state{}.
+restart_remove_retired_timer(#state{proc_type = ?MASTER_PROC} = State) ->
+    State;
+restart_remove_retired_timer(#state{proc_type = ?NODE_PROC} = State) ->
+    Time = calculate_next_remove_retired_time(calendar:universal_time()),
+    restart_timer(remove_retired_keys, Time, State).
 
 validate_for_config_encryption(#{type := T,
                                  data := #{encrypt_by := nodeSecretManager}},
@@ -3304,5 +3337,40 @@ update_next_rotation_time_test() ->
     ?assertEqual(Future(1),         Calc(Past(3 * D - 1), 3, true)),
     ?assertEqual(Future(3 * D - 1), Calc(Past(12 * D + 1), 3, true)),
     ?assertEqual(Future(1),         Calc(Past(12 * D - 1), 3, true)).
+
+calculate_next_remove_retired_time_test() ->
+    TimeDiff = fun (A, B) ->
+                    (calendar:datetime_to_gregorian_seconds(A) -
+                     calendar:datetime_to_gregorian_seconds(B)) * 1000
+               end,
+    %% Test mid-month case
+    MidMonth = {{2023, 6, 15}, {14, 30, 45}},
+    ExpectedMidMonth = TimeDiff({{2023, 7, 1}, {12, 0, 0}}, MidMonth),
+    ?assertEqual(ExpectedMidMonth,
+                 calculate_next_remove_retired_time(MidMonth)),
+
+    %% Test end of month case
+    EndMonth = {{2023, 6, 30}, {23, 59, 59}},
+    ExpectedEndMonth = TimeDiff({{2023, 7, 1}, {12, 0, 0}}, EndMonth),
+    ?assertEqual(ExpectedEndMonth,
+                 calculate_next_remove_retired_time(EndMonth)),
+
+    %% Test start of month case
+    StartMonth = {{2023, 6, 1}, {0, 0, 0}},
+    ExpectedStartMonth = TimeDiff({{2023, 7, 1}, {12, 0, 0}}, StartMonth),
+    ?assertEqual(ExpectedStartMonth,
+                 calculate_next_remove_retired_time(StartMonth)),
+
+    %% Test December case (year rollover)
+    December = {{2023, 12, 15}, {12, 0, 0}},
+    ExpectedDecember = TimeDiff({{2024, 1, 1}, {12, 0, 0}}, December),
+    ?assertEqual(ExpectedDecember,
+                 calculate_next_remove_retired_time(December)),
+
+    %% Test exactly at noon on first of month
+    AtNoon = {{2023, 6, 1}, {12, 0, 0}},
+    ExpectedAtNoon = TimeDiff({{2023, 7, 1}, {12, 0, 0}}, AtNoon),
+    ?assertEqual(ExpectedAtNoon,
+                 calculate_next_remove_retired_time(AtNoon)).
 
 -endif.
