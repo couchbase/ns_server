@@ -18,6 +18,7 @@
          fetch_settings_json/2,
          decode_settings_json/1,
          id_lens/1,
+         config_upgrade_settings/5,
          allow_missing_lens/1,
          props_lens/1,
          update/2,
@@ -213,3 +214,7 @@ props_lens(Props) ->
                   lens_set_many(Props, Values, Map)
           end,
     {Get, Set}.
+
+config_upgrade_settings(M, Config, DefaultsOld, DefaultsNew, Known) ->
+    NewSettings = DefaultsNew -- DefaultsOld,
+    upgrade_existing_key(M, Config, [{generalSettings, NewSettings}], Known).

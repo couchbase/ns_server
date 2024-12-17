@@ -24,7 +24,8 @@
          update/2,
          update_txn/1,
          config_default/0,
-         config_upgrade_to_76/1]).
+         config_upgrade_to_76/1,
+         config_upgrade_to_morpheus/1]).
 
 -export([cfg_key/0,
          is_enabled/0,
@@ -32,7 +33,8 @@
          on_update/2]).
 
 -import(json_settings_manager,
-        [id_lens/1]).
+        [id_lens/1,
+         config_upgrade_settings/5]).
 
 -define(QUERY_CONFIG_KEY, {metakv, <<"/query/settings/config">>}).
 
@@ -77,12 +79,18 @@ config_default() ->
                           maps:new(),
                           known_settings(?MIN_SUPPORTED_VERSION))}.
 
+
+config_upgrade_to_morpheus(Config) ->
+    config_upgrade_settings(?MODULE, Config,
+                            general_settings_defaults(?VERSION_76),
+                            general_settings_defaults(?VERSION_MORPHEUS),
+                            known_settings(?VERSION_MORPHEUS)).
+
 config_upgrade_to_76(Config) ->
-    NewSettings = general_settings_defaults(?VERSION_76) --
-        general_settings_defaults(?MIN_SUPPORTED_VERSION),
-    json_settings_manager:upgrade_existing_key(
-      ?MODULE, Config, [{generalSettings, NewSettings}],
-      known_settings(?VERSION_76), fun functools:id/1).
+    config_upgrade_settings(?MODULE, Config,
+                            general_settings_defaults(?VERSION_72),
+                            general_settings_defaults(?VERSION_76),
+                            known_settings(?VERSION_76)).
 
 known_settings() ->
     known_settings(cluster_compat_mode:get_ns_config_compat_version()).
@@ -147,19 +155,27 @@ general_settings(Ver) ->
      {queryCleanupClientAttempts, "cleanupclientattempts", true},
      {queryCleanupLostAttempts, "cleanuplostattempts", true},
      {queryCleanupWindow,      "cleanupwindow",       <<"60s">>},
-     {queryNumAtrs,            "numatrs",             1024}] ++
-    case cluster_compat_mode:is_version_76(Ver) of
-        true ->
-            [{queryNodeQuota, "node-quota", ?QUERY_NODE_QUOTA_DEFAULT},
-             {queryUseReplica, "use-replica", <<"unset">>},
-             {queryNodeQuotaValPercent,
-              "node-quota-val-percent", 67},
-             {queryNumCpus, "num-cpus", 0},
-             {queryCompletedMaxPlanSize,
-              "completed-max-plan-size", 262144}];
-        false ->
-            []
-    end ++ n1ql_feature_ctrl_setting(Ver).
+     {queryNumAtrs,            "numatrs",             1024}]
+        ++ case cluster_compat_mode:is_version_76(Ver) of
+               true ->
+                   [{queryNodeQuota, "node-quota", ?QUERY_NODE_QUOTA_DEFAULT},
+                    {queryUseReplica, "use-replica", <<"unset">>},
+                    {queryNodeQuotaValPercent,
+                     "node-quota-val-percent", 67},
+                    {queryNumCpus, "num-cpus", 0},
+                    {queryCompletedMaxPlanSize,
+                     "completed-max-plan-size", 262144}];
+               false ->
+                   []
+           end
+        ++ case cluster_compat_mode:is_version_morpheus(Ver) of
+               true ->
+                   [{queryCompletedStreamSize,
+                     "completed-stream-size", 0}];
+               false ->
+                   []
+           end
+        ++ n1ql_feature_ctrl_setting(Ver).
 
 curl_whitelist_settings_len_props() ->
     [{queryCurlWhitelist, id_lens(<<"query.settings.curl_whitelist">>)}].
@@ -211,7 +227,13 @@ config_upgrade_test() ->
                    "\"use-replica\":\"unset\"}">>,
                  Data1),
 
-    meck:unload(config_profile).
+    meck:unload(config_profile),
+
+    CmdList2 = config_upgrade_to_morpheus([]),
+    [{set, {metakv, Meta2}, Data2}] = CmdList2,
+    ?assertEqual(<<"/query/settings/config">>, Meta2),
+    ?assertEqual(<<"{\"completed-stream-size\":0}">>,
+                 Data2).
 
 create_test_config_n1ql_quotas(NodeQuotaValue) when is_number(NodeQuotaValue) ->
     WOutNodeQuota = proplists:delete(queryNodeQuota,

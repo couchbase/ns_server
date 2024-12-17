@@ -67,6 +67,14 @@ settings_post_validators() ->
             false ->
                 []
         end ++
+        case cluster_compat_mode:is_cluster_morpheus() of
+            true ->
+                [validator:integer(queryCompletedStreamSize, _),
+                 validator:range(queryCompletedStreamSize, 0,
+                                 ?MAX_64BIT_UNSIGNED_INT, _)];
+            false ->
+                []
+        end ++
         [validator:unsupported(_)].
 
 validate_tmp_space_size(Name, State) ->

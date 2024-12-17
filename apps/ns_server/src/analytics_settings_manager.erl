@@ -30,7 +30,8 @@
          config_upgrade_to_76/1]).
 
 -import(json_settings_manager,
-        [id_lens/1]).
+        [id_lens/1,
+         config_upgrade_settings/5]).
 
 -define(ANALYTICS_CONFIG_KEY, {metakv, <<"/analytics/settings/config">>}).
 
@@ -121,15 +122,11 @@ general_settings_lens_props(ClusterVersion) ->
                 []
         end.
 
-config_upgrade_settings(Config, OldVersion, NewVersion) ->
-    NewSettings = general_settings_defaults(NewVersion) --
-        general_settings_defaults(OldVersion),
-    json_settings_manager:upgrade_existing_key(
-      ?MODULE, Config, [{generalSettings, NewSettings}],
-      known_settings(NewVersion)).
-
 config_upgrade_to_76(Config) ->
-    config_upgrade_settings(Config, ?VERSION_72, ?VERSION_76).
+    config_upgrade_settings(?MODULE, Config,
+                            general_settings_defaults(?VERSION_72),
+                            general_settings_defaults(?VERSION_76),
+                            known_settings(?VERSION_76)).
 
 -ifdef(TEST).
 defaults_test() ->
