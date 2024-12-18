@@ -2046,7 +2046,7 @@ handle_put_profile(RawIdentity, Req) ->
     end.
 
 handle_get_uiroles(Req) ->
-    menelaus_util:require_permission(Req, {[admin, security], read}),
+    menelaus_util:require_permission(Req, {[admin, users], read}),
 
     Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),
     Roles =
