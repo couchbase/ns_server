@@ -1642,25 +1642,21 @@ read_all_deks(#state{} = State) ->
              fun (Kind, #{is_enabled := IsEnabled,
                           active_id := ActiveId,
                           dek_ids := DekIds}) ->
-                 {Keys, Errors} = cb_deks:read(Kind, DekIds),
-                 case Errors of
-                    #{ActiveId := Reason} when IsEnabled ->
-                        ?log_warning("Failed to read active ~p DEK: ~p",
-                                     [Kind, Reason]),
-                        %% Not creating that DEK in configuration
-                        %% We can't start using undefined as an active key
-                        %% because this can lead to data being decrypted
-                        %% which is probably not what we want here. We should
-                        %% rather show an error or crash instead of silently
-                        %% decrypting the data.
-                        %% It is also possible that all deks were removed
-                        %% intentinally (with the data). In this case we should
-                        %% not crash but rather ignore these deks at all.
-                        false;
-                    #{} ->
-                        %% Ignoring other key errors and hoping that those keys
-                        %% will not be needed for data decryption.
-                        {true, new_dek_info(ActiveId, Keys, IsEnabled)}
+                 Snapshot = deks_config_snapshot(Kind),
+                 case call_dek_callback(encryption_method_callback, Kind,
+                                        [Snapshot]) of
+                     {succ, {ok, _}} ->
+                         {Keys, Errors} = cb_deks:read(Kind, DekIds),
+                         case maps:size(Errors) > 0 of
+                             true ->
+                                 ?log_error("Failed to read ~p keys: ~p",
+                                            [Kind, Errors]),
+                                 exit({failed_to_read_keys, Errors});
+                             false ->
+                                 {true, new_dek_info(ActiveId, Keys, IsEnabled)}
+                         end;
+                     {succ, {error, not_found}} ->
+                         false
                  end
              end, Term),
     State#state{deks = Deks}.
