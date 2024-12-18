@@ -667,9 +667,7 @@ defaults() ->
      {config_dek_path, iolist_to_binary(filename:join(ConfigDir, "deks"))},
      {audit_dek_path, iolist_to_binary(filename:join(LogDir, "audit_deks"))},
      {log_dek_path,
-      iolist_to_binary(filename:join([LogDir, "deks"]))},
-     {chronicle_dek_path,
-      iolist_to_binary(filename:join([ConfigDir, "chronicle_deks"]))}].
+      iolist_to_binary(filename:join([LogDir, "deks"]))}].
 
 format_error({write_failed, CfgPath, Error}) ->
     io_lib:format("Could not write file '~s': ~s (~p)",
