@@ -690,8 +690,6 @@ key_path(bucketDek, Cfg) ->
 
 defaults() ->
     ConfigDir = path_config:component_path(data, "config"),
-    %% Note: when it is invoked from dump-guts, error_logger_mf_dir is not set
-    LogDir = application:get_env(ns_server, error_logger_mf_dir, undefined),
     [{es_password_env, "CB_MASTER_PASSWORD"},
      {es_password_source, env},
      {es_encrypt_key, true},
@@ -699,9 +697,8 @@ defaults() ->
      {es_key_storage_type, 'file'},
      {kek_path, iolist_to_binary(filename:join(ConfigDir, "keks"))},
      {config_dek_path, iolist_to_binary(filename:join(ConfigDir, "deks"))},
-     {audit_dek_path, iolist_to_binary(filename:join(LogDir, "audit_deks"))},
-     {log_dek_path,
-      iolist_to_binary(filename:join([LogDir, "deks"]))}].
+     {audit_dek_path, iolist_to_binary(filename:join(ConfigDir, "audit_deks"))},
+     {log_dek_path, iolist_to_binary(filename:join(ConfigDir, "logs_deks"))}].
 
 format_error({write_failed, CfgPath, Error}) ->
     io_lib:format("Could not write file '~s': ~s (~p)",
