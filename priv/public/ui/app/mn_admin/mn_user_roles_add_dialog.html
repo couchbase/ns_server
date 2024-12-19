@@ -38,8 +38,7 @@ licenses/APL2.txt.
           {{error}}
         </div>
         <div
-          ng-if="rbac.cluster.admin.security.local.write &&
-                    rbac.cluster.admin.security.external.write &&
+          ng-if="(rbac.cluster.admin.users.external.write || rbac.cluster.admin.security.external.write) &&
                     (userRolesAddDialogCtl.isLdapEnabled ||
                     userRolesAddDialogCtl.isSaslauthdAuthEnabled ||
                     userRolesAddDialogCtl.isSamlEnabled)"
@@ -52,7 +51,7 @@ licenses/APL2.txt.
               name="domain"
               value="local"
               ng-change="userRolesAddDialogCtl.onDomainChanged()"
-              ng-disabled="userRolesAddDialogCtl.isEditingMode"
+              ng-disabled="userRolesAddDialogCtl.isEditingMode || !rbac.cluster.admin.users.local.write"
               id="user-domain-local"
               ng-model="userRolesAddDialogCtl.user.domain"
             />
@@ -62,7 +61,7 @@ licenses/APL2.txt.
               name="domain"
               value="external"
               ng-change="userRolesAddDialogCtl.onDomainChanged()"
-              ng-disabled="userRolesAddDialogCtl.isEditingMode"
+              ng-disabled="userRolesAddDialogCtl.isEditingMode || !rbac.cluster.admin.users.external.write"
               id="user-domain-external"
               ng-model="userRolesAddDialogCtl.user.domain"
             />

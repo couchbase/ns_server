@@ -16,7 +16,7 @@ mnUserRolesAddDialogController.$inject = ["mnUserRolesService", "$uibModalInstan
 function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, mnPromiseHelper, user, isLdapEnabled, mnPoolDefault, mnHelper, $q, isSaslauthdAuthEnabled, isSamlEnabled, $state, permissions) {
   var vm = this;
   vm.user = _.clone(user) || {
-    domain: permissions.cluster.admin.security.local.write ? "local" : "external"
+    domain: (permissions.cluster.admin.security.write || permissions.cluster.admin.users.local.write) ? "local" : "external"
   };
   vm.userID = vm.user.id || 'New';
   vm.save = save;
@@ -116,7 +116,7 @@ function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, m
       if (!permissions.cluster.admin.security.admin.write) {
         let administ = resp.folders.find(f => f.name == "Administrative");
         if (administ) {
-          administ.roles = administ.roles.filter(r => !r.role.includes("security_admin_") &&
+          administ.roles = administ.roles.filter(r => !r.role.includes("security_admin") &&
                                                  r.role !== "admin" && r.role !== "ro_admin");
         }
       }

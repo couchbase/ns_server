@@ -15,12 +15,14 @@ import mnCertificates from "./mn_certificates_controller.js";
 import mnRolesGroups from "./mn_roles_groups_controller.js";
 import mnElementCrane from "../components/directives/mn_element_crane/mn_element_crane.js";
 import mnPluggableUiRegistry from "../components/mn_pluggable_ui_registry.js";
+import mnLDAP from "./mn_ldap_controller.js";
 
 import mnSecurityTemplate from "./mn_security.html";
 import mnRolesTemplate from "./mn_roles.html";
 import mnUserRolesTemplate from "./mn_user_roles.html";
 import mnRolesGroupsTemplate from "./mn_roles_groups.html";
 import mnCertificatesTemplate from "./mn_certificates.html";
+import mnLDAPTemplate from "./mn_ldap.html";
 
 export default 'mnSecurity';
 
@@ -29,9 +31,10 @@ angular
     mnUserRoles,
     mnRedaction,
     mnCertificates,
+    mnLDAP,
     mnRolesGroups,
     mnElementCrane,
-    mnPluggableUiRegistry
+    mnPluggableUiRegistry,
   ])
   .config(["$stateProvider", mnSecurityConfig])
   .controller("mnSecurityController", ["poolDefault", mnSecurityController]);
@@ -53,7 +56,7 @@ function mnSecurityConfig($stateProvider) {
         }
       },
       data: {
-        permissions: "cluster.admin.security.read",
+        permissions: "cluster.admin.security.read || cluster.admin.users.read",
         title: "Security"
       }
     })
@@ -125,6 +128,11 @@ function mnSecurityConfig($stateProvider) {
       data: {
         enterprise: true
       }
+    })
+    .state('app.admin.security.ldap', {
+      url: '/ldap',
+      template: mnLDAPTemplate,
+      controller: "mnLDAPController as mnLDAPCtl"
     })
     .state('app.admin.security.certificate', {
       url: '/certificate',

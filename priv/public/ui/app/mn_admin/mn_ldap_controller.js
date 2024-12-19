@@ -7,11 +7,21 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
+import angular from 'angular';
+import uiBootstrap from 'angular-ui-bootstrap';
+import uiRouter from '@uirouter/angularjs';
 
-export default mnAddLDAPDialogController;
+import mnUserRolesService from "./mn_user_roles_service.js";
+import mnPromiseHelper from "../components/mn_promise_helper.js";
+import mnPoolDefault from "../components/mn_pool_default.js";
 
-mnAddLDAPDialogController.$inject = ["$scope", "mnUserRolesService", "mnPromiseHelper", "$uibModalInstance", "mnPoolDefault"];
-function mnAddLDAPDialogController($scope, mnUserRolesService, mnPromiseHelper, $uibModalInstance, mnPoolDefault) {
+export default "mnLDAP";
+
+angular
+  .module("mnLDAP", [mnUserRolesService, mnPromiseHelper, mnPoolDefault])
+  .controller("mnLDAPController", ["$scope", "mnUserRolesService", "mnPromiseHelper", "mnPoolDefault", mnLDAPController]);
+
+function mnLDAPController($scope, mnUserRolesService, mnPromiseHelper, mnPoolDefault) {
   var vm = this;
 
   vm.config = {
@@ -131,7 +141,7 @@ function mnAddLDAPDialogController($scope, mnUserRolesService, mnPromiseHelper, 
 
   function clearLdapCache() {
     delete vm.cacheCleared;
-    return mnPromiseHelper(vm, mnUserRolesService.clearLdapCache(), $uibModalInstance)
+    return mnPromiseHelper(vm, mnUserRolesService.clearLdapCache())
       .broadcast("reloadRolesPoller")
       .applyToScope("cacheCleared");
   }
@@ -366,14 +376,10 @@ function mnAddLDAPDialogController($scope, mnUserRolesService, mnPromiseHelper, 
                                getQueryForGroupsSettings(),
                                vm.config.advanced);
 
-    mnPromiseHelper(vm,
-                    mnUserRolesService.postLdapSettings(config, vm.config),
-                    $uibModalInstance)
+    mnPromiseHelper(vm,mnUserRolesService.postLdapSettings(config, vm.config))
       .showGlobalSpinner()
-      .removeErrors()
       .catchErrors()
       .broadcast("reloadLdapSettings")
-      .closeOnSuccess()
       .showGlobalSuccess("LDAP connected successfully!");
   }
 }

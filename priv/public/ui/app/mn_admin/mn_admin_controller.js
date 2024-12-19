@@ -175,7 +175,8 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
   function activate() {
     mnSessionService.activate(mnOnDestroy);
 
-    if (pools.isEnterprise && mnPermissions.export.cluster.admin.security.external.read && poolDefault.compat.atLeast76) {
+    if (pools.isEnterprise && poolDefault.compat.atLeast76 &&
+      (mnPermissions.export.cluster.admin.security.external.read || mnPermissions.export.cluster.admin.users.external.read)) {
       mnPromiseHelper(vm, mnUserRolesService.getSamlSettings())
         .applyToScope("samlSettings");
     }

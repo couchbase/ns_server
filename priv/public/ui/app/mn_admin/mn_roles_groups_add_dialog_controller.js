@@ -12,8 +12,8 @@ import _ from "lodash";
 
 export default mnRolesGroupsAddDialogController;
 
-mnRolesGroupsAddDialogController.$inject = ["mnUserRolesService", "$uibModalInstance", "mnPromiseHelper", "rolesGroup", "$state"];
-function mnRolesGroupsAddDialogController(mnUserRolesService, $uibModalInstance, mnPromiseHelper, rolesGroup, $state) {
+mnRolesGroupsAddDialogController.$inject = ["mnUserRolesService", "$uibModalInstance", "mnPromiseHelper", "rolesGroup", "$state", "permissions"];
+function mnRolesGroupsAddDialogController(mnUserRolesService, $uibModalInstance, mnPromiseHelper, rolesGroup, $state, permissions) {
   var vm = this;
   vm.rolesGroup = _.clone(rolesGroup) || {};
   vm.rolesGroupID = vm.rolesGroup.id || 'New';
@@ -47,6 +47,14 @@ function mnRolesGroupsAddDialogController(mnUserRolesService, $uibModalInstance,
       resp.selectedRolesConfigs = {};
       resp.openedWrappers = {};
       resp.selectedRoles = {};
+
+       if (!permissions?.cluster.admin.security.admin.write) {
+         let administ = resp.folders.find(f => f.name == "Administrative");
+         if (administ) {
+           administ.roles = administ.roles.filter(r => !r.role.includes("security_admin") &&
+             r.role !== "admin" && r.role !== "ro_admin");
+         }
+      }
       vm.state = resp;
       if (vm.rolesGroup) {
         applyRoles(vm.rolesGroup.roles);

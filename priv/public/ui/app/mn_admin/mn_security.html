@@ -15,30 +15,37 @@ licenses/APL2.txt.
      mn-tab-bar-name="securityTab">
     <a
        ui-sref="app.admin.security.roles.user"
+       ng-show="rbac.cluster.admin.users.write || !poolDefault.compat.atLeast80"
        ng-class="{selected: ('app.admin.security.roles.user' | includedByState) ||
                 ('app.admin.security.roles.groups' | includedByState)}">
       Users <span ng-show="pools.isEnterprise">&amp; Groups</span>
     </a>
     <a
-       ng-show="pools.isEnterprise"
+       ng-show="pools.isEnterprise && rbac.cluster.admin.security.read"
+       ui-sref="app.admin.security.ldap"
+       ui-sref-active="selected"
+       class="resp-hide-sml">LDAP</a>
+     <a
+         ng-show="pools.isEnterprise && rbac.cluster.admin.security.read && poolDefault.compat.atLeast76"
+         ui-sref="app.admin.security.saml"
+         ui-sref-active="selected"
+         class="resp-hide-sml">SAML</a>
+    <a
+       ng-show="pools.isEnterprise && rbac.cluster.admin.security.read"
        ui-sref="app.admin.security.certificate"
        ui-sref-active="selected"
        class="resp-hide-sml">Certificates</a>
     <a
-       ng-show="pools.isEnterprise && poolDefault.compat.atLeast80"
+       ng-show="pools.isEnterprise && poolDefault.compat.atLeast80 && rbac.cluster.admin.security.read"
        ui-sref="app.admin.security.secrets"
        ui-sref-active="selected"
        class="resp-hide-sml">Encryption at Rest</a>
     <a
-       ng-show="pools.isEnterprise"
+       ng-show="pools.isEnterprise && rbac.cluster.admin.security.read"
        ui-sref="app.admin.security.audit"
        ui-sref-active="selected">Audit</a>
     <a
-       ng-show="pools.isEnterprise && rbac.cluster.admin.security.external.read && poolDefault.compat.atLeast76"
-       ui-sref="app.admin.security.saml"
-       ui-sref-active="selected"
-       class="resp-hide-sml">SAML</a>
-    <a
+       ng-show="rbac.cluster.admin.security.read"
        ui-sref="app.admin.security.other"
        ui-sref-active="selected"
        class="resp-hide-sml">Other Settings</a>

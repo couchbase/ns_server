@@ -8,7 +8,6 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 import mnUserRolesAddDialogTemplate from "./mn_user_roles_add_dialog.html";
-import mnAddLdapDialogTemplate from "./mn_add_ldap_dialog.html";
 import mnRolesGroupsAddDialogTemplate from "./mn_roles_groups_add_dialog.html";
 
 export default mnRolesController;
@@ -18,7 +17,6 @@ function mnRolesController($scope, poolDefault, mnHelper, $uibModal, permissions
   var vm = this;
   vm.addUser = addUser;
   vm.addRolesGroup = addRolesGroup;
-  vm.addLDAP = addLDAP;
 
   activate();
 
@@ -28,13 +26,14 @@ function mnRolesController($scope, poolDefault, mnHelper, $uibModal, permissions
         .applyToScope(v => vm.isSaslauthdAuthEnabled = v.enabled);
     }
 
-    if (poolDefault.isEnterprise && permissions.cluster.admin.security.external.read && poolDefault.compat.atLeast76) {
+    if (poolDefault.isEnterprise && poolDefault.compat.atLeast76 &&
+      (permissions.cluster.admin.security.external.read ||permissions.cluster.admin.users.external.read)) {
       mnPromiseHelper(vm, mnUserRolesService.getSamlSettings())
         .applyToScope(v => vm.isSamlEnabled = v.data.enabled);
     }
 
-    if (permissions.cluster.admin.security.external.read &&
-        poolDefault.compat.atLeast65 && poolDefault.isEnterprise) {
+    if (poolDefault.isEnterprise && poolDefault.compat.atLeast65 &&
+      (permissions.cluster.admin.security.external.read || permissions.cluster.admin.users.external.read)) {
       new mnPoller($scope, function () {
         return mnUserRolesService.getLdapSettings();
       })
@@ -59,19 +58,13 @@ function mnRolesController($scope, poolDefault, mnHelper, $uibModal, permissions
     });
   }
 
-  function addLDAP() {
-    $uibModal.open({
-      template: mnAddLdapDialogTemplate,
-      controller: 'mnAddLDAPDialogController as addLdapDialogCtl'
-    });
-  }
-
   function addRolesGroup() {
     $uibModal.open({
       template: mnRolesGroupsAddDialogTemplate,
       controller: 'mnRolesGroupsAddDialogController as rolesGroupsAddDialogCtl',
       resolve: {
-        rolesGroup: mnHelper.wrapInFunction(undefined)
+        rolesGroup: mnHelper.wrapInFunction(undefined),
+        permissions: mnHelper.wrapInFunction(permissions)
       }
     });
   }

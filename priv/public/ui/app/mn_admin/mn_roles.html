@@ -8,19 +8,15 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 -->
 
+<div ng-if="rbac.cluster.admin.users.write || !poolDefault.compat.atLeast80">
 <mn-element-cargo depot="actions">
   <div class="header-controls">
-    <a ng-show="rbac.cluster.admin.security.external.write && poolDefault.isEnterprise &&
-                poolDefault.compat.atLeast65"
-       ng-click="rolesCtl.addLDAP()">
-      LDAP
-    </a>
-    <a ng-show="rbac.cluster.admin.security.write && poolDefault.isEnterprise &&
+    <a ng-show="(rbac.cluster.admin.users.write || rbac.cluster.admin.security.write) && poolDefault.isEnterprise &&
                 poolDefault.compat.atLeast65"
        ng-click="rolesCtl.addRolesGroup()">
       ADD GROUP
     </a>
-    <a ng-show="rbac.cluster.admin.security.local.write || (rbac.cluster.admin.security.external.write && (rolesCtl.isSaslauthdAuthEnabled || rolesCtl.isLdapEnabled))"
+    <a ng-show="rbac.cluster.admin.security.local.write || rbac.cluster.admin.users.local.write || ((rbac.cluster.admin.security.external.write || rbac.cluster.admin.users.external.write) && (rolesCtl.isSaslauthdAuthEnabled || rolesCtl.isLdapEnabled))"
        ng-click="rolesCtl.addUser()">
       ADD USER
     </a>
@@ -28,3 +24,4 @@ licenses/APL2.txt.
 </mn-element-cargo>
 
 <ui-view></ui-view>
+</div>

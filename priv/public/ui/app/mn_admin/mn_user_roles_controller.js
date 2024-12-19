@@ -27,7 +27,6 @@ import mnFileReader from "../components/mn_file_reader.js";
 import mnSearch from "../components/directives/mn_search/mn_search_directive.js";
 
 import mnUserRolesService from "./mn_user_roles_service.js";
-import mnAddLDAPDialogController from "./mn_add_ldap_dialog_controller.js";
 import mnUserRolesAddDialogController from "./mn_user_roles_add_dialog_controller.js";
 import mnUserRolesDeleteDialogController from "./mn_user_roles_delete_dialog_controller.js";
 import mnUserRolesLockDialogController from "./mn_user_roles_lock_dialog_controller.js";
@@ -62,7 +61,6 @@ angular
     mnSearch
   ])
   .controller("mnUserRolesController", ["$scope", "$uibModal", "mnPromiseHelper", "mnUserRolesService", "mnPoller", "mnHelper", "$state", "poolDefault", "permissions", mnUserRolesController])
-  .controller("mnAddLDAPDialogController", mnAddLDAPDialogController)
   .controller("mnUserRolesDeleteDialogController", mnUserRolesDeleteDialogController)
   .controller("mnUserRolesLockDialogController", mnUserRolesLockDialogController)
   .controller("mnUserRolesUnlockDialogController", mnUserRolesUnlockDialogController)

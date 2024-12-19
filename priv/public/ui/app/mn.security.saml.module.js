@@ -25,7 +25,7 @@ let samlState = {
   url: '/saml',
   name: "app.admin.security.saml",
   data: {
-    permissions: "cluster.admin.security.external.read",
+    permissions: "cluster.admin.security.external.read || cluster.admin.users.external.read",
     enterprise: true,
     compat: "atLeast76"
   },

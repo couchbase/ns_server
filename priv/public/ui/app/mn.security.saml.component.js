@@ -59,7 +59,7 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
     this.postSamlValidation = mnSecurityService.stream.postSamlValidation;
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.permissionsAdminSecurityWrite = mnPermissions.stream
-      .pipe(map(permissions => permissions.cluster.admin.security.external.write));
+      .pipe(map(permissions => permissions.cluster.admin.security.external.write || permissions.cluster.admin.users.external.write));
 
     clipboardService.copyResponse$
       .pipe(filter(response => response.isSuccess),

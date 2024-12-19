@@ -45,7 +45,7 @@
       </div>
       <div
         class="users-auth-check"
-        ng-show="poolDefault.isEnterprise && poolDefault.compat.atLeast65 && rbac.cluster.admin.security.external.read"
+        ng-show="poolDefault.isEnterprise && poolDefault.compat.atLeast65 && (rbac.cluster.admin.security.external.read || rbac.cluster.admin.users.external.read)"
       >
         <span
           class="icon margin-right"
