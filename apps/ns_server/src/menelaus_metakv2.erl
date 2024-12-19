@@ -131,7 +131,11 @@ reply_set_result(Req, Type, {error, {cas, Path, Rev}}) ->
 reply_set_result(Req, _Type, {error, {not_found, Path}}) ->
     %% Path here is always a directory, so we ignore the _Type
     %% that is passed in
-    reply_not_found(Req, Path, dir).
+    reply_not_found(Req, Path, dir);
+reply_set_result(Req, Type, {error, exceeded_retries}) ->
+    menelaus_util:reply_json(
+      Req, encode_reply_info("Exceeded retries due to conflicting updates",
+                             undefined, undefined, Type), 503).
 
 is_directory(Path) ->
     case lists:reverse(Path) of

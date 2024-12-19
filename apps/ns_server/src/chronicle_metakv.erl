@@ -61,7 +61,8 @@
 -type base_mutation_result() ::  {ok, revision(), create|update} |
                                  {error,
                                   {wrong_type, key()} |
-                                  {not_found, key()}}.
+                                  {not_found, key()} |
+                                  exceeded_retries}.
 
 -type mkdir_result() :: base_mutation_result() |
                         {error, {exists, key(), revision()}}.
