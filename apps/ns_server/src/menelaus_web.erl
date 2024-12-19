@@ -935,6 +935,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["controller", "fusion", "prepareRebalance"] ->
                     {{[pools], write},
                      fun menelaus_web_fusion:handle_prepare_rebalance/1};
+                ["controller", "fusion", "uploadMountedVolumes"] ->
+                    {{[pools], write},
+                     fun menelaus_web_fusion:handle_upload_mounted_volumes/1};
                 ["controller", "rebalance"] ->
                     {{[pools], write}, fun menelaus_web_cluster:handle_rebalance/1};
                 ["controller", "reAddNode"] ->

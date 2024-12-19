@@ -84,7 +84,8 @@
          start_graceful_failover/1,
          request_janitor_run/1,
          get_state/1,
-         prepare_fusion_rebalance/2]).
+         prepare_fusion_rebalance/2,
+         fusion_upload_mounted_volumes/2]).
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
 
@@ -348,6 +349,13 @@ try_autofailover(Nodes, Options) ->
           {remote_call_failed, node()}.
 prepare_fusion_rebalance(KeepNodes, Options) ->
     call({prepare_fusion_rebalance, KeepNodes, Options}, infinity).
+
+-type rebalance_plan_uuid() :: string().
+-spec fusion_upload_mounted_volumes(rebalance_plan_uuid(),
+                                    list()) -> ok | not_found |
+          id_mismatch | {need_nodes, [node()]} | {extra_nodes, [node()]}.
+fusion_upload_mounted_volumes(PlanUUID, Volumes) ->
+    call({fusion_upload_mounted_volumes, PlanUUID, Volumes}, infinity).
 
 -spec needs_rebalance() -> boolean().
 needs_rebalance() ->
@@ -1095,6 +1103,44 @@ idle({prepare_fusion_rebalance, KeepNodes, Options}, From, _State) ->
                 end;
             UnknownNodes ->
                 {unknown_nodes, UnknownNodes}
+        end,
+    {keep_state_and_data, [{reply, From, RV}]};
+
+idle({fusion_upload_mounted_volumes, PlanUUID, Volumes}, From, _State) ->
+    PlanUUIDBin = list_to_binary(PlanUUID),
+    RV =
+        try
+            RebalancePlan =
+                case erlang:get(?FUSION_REBALANCE_PLAN) of
+                    undefined ->
+                        throw(not_found);
+                    RP ->
+                        RP
+                end,
+            Nodes = proplists:get_value(nodes, RebalancePlan),
+            PlanNodeNames = [atom_to_list(N) || N <- Nodes],
+            PassedNodeNames = [N || {N, _} <- Volumes],
+            case PlanNodeNames -- PassedNodeNames of
+                Missing when Missing =/= [] ->
+                    throw({need_nodes, Missing});
+                [] -> ok
+            end,
+            case PassedNodeNames -- PlanNodeNames of
+                Extra when Extra =/= [] ->
+                    throw({extra_nodes, Extra});
+                [] -> ok
+            end,
+            proplists:get_value(planUUID, RebalancePlan) =:= PlanUUIDBin
+                orelse throw(id_mismatch),
+            PreparedVolumes = [{list_to_atom(N), V} || {N, V} <- Volumes],
+            ?rebalance_info(
+               "Uploading mounted volumes ~p to rebalance plan ~p",
+               [PreparedVolumes, PlanUUID]),
+            NewPlan = lists:keystore(mountedVolumes, 1, RebalancePlan,
+                                     {mountedVolumes, PreparedVolumes}),
+            erlang:put(?FUSION_REBALANCE_PLAN, NewPlan),
+            ok
+        catch throw:E -> E
         end,
     {keep_state_and_data, [{reply, From, RV}]};
 
