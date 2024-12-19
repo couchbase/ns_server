@@ -11,7 +11,7 @@
 import sys
 import os
 import traceback
-from subprocess import Popen, PIPE
+import subprocess
 import base64
 from installed_script_helpers import basedir, find_binary
 import json
@@ -33,8 +33,9 @@ def read_keys(key_specs, config_path, gosecrets_path=None,
 
     debug(f'Using {gosecrets_path} with config {config_path}')
 
-    proc = Popen([gosecrets_path, '--config', config_path],
-                 stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    proc = subprocess.Popen([gosecrets_path, '--config', config_path],
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE)
 
     try:
         send_command(proc, 'init', password)
