@@ -38,7 +38,7 @@
 -define(RPC_TIMEOUT, ?get_timeout(rpc_timeout, 60000)).
 
 -define(DEFAULT_TRACKED_ROLES,
-        [admin, ro_admin, security_admin_local, security_admin_external,
+        [admin, ro_admin, security_admin, user_admin_local, user_admin_external,
          cluster_admin, eventing_admin, backup_admin, views_admin,
          replication_admin, fts_admin, analytics_admin]).
 
