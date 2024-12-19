@@ -75,8 +75,9 @@ const (
 
 	// Magic string used for encrypted file headers
 	encryptedFileMagicString    = "\x00Couchbase Encrypted\x00"
-	encryptionFileHeaderSize    = 64
-	encryptionFileKeyNameLength = byte(36)
+	encryptedFileMagicStringLen = len(encryptedFileMagicString)
+	encryptedFileHeaderSize     = 64
+	encryptedFileKeyNameLength  = byte(36)
 )
 
 // Struct for marshalling/unmarshalling of a raw aes-gcm stored key
@@ -397,19 +398,19 @@ func (state *StoredKeysState) encryptFileData(filename string, data []byte, encr
 	)
 
 	// Create header
-	header := make([]byte, encryptionFileHeaderSize)
+	header := make([]byte, encryptedFileHeaderSize)
 	copy(header, encryptedFileMagicString)
-	header[len(encryptedFileMagicString)] = version
-	header[len(encryptedFileMagicString)+1] = compressionType
+	header[encryptedFileMagicStringLen] = version
+	header[encryptedFileMagicStringLen+1] = compressionType
 	// 4 bytes reserved (zeros)
-	header[len(encryptedFileMagicString)+6] = encryptionFileKeyNameLength
+	header[encryptedFileMagicStringLen+6] = encryptedFileKeyNameLength
 
 	// Pad or truncate encryptionKeyName to exactly 36 bytes
-	keyNameBytes := make([]byte, 36)
+	keyNameBytes := make([]byte, encryptedFileKeyNameLength)
 	copy(keyNameBytes, encryptionKeyName)
-	copy(header[len(encryptedFileMagicString)+7:], keyNameBytes)
+	copy(header[encryptedFileMagicStringLen+7:], keyNameBytes)
 
-	ad := getEncryptedFileAD(filename, encryptionFileHeaderSize)
+	ad := getEncryptedFileAD(filename, encryptedFileHeaderSize)
 
 	// Read the encryption key and use it to encrypt the data
 	key, err := state.readKey(encryptionKeyName, intTokenEncryptionKeyKind, true, ctx)
@@ -443,7 +444,7 @@ func (state *StoredKeysState) encryptFileData(filename string, data []byte, encr
 // 2. It assumes that file contains only one chunk
 func (state *StoredKeysState) maybeDecryptFileData(filename string, data []byte, ctx *storedKeysCtx) ([]byte, string, error) {
 	// Check if data is long enough to contain magic string
-	if len(data) < len(encryptedFileMagicString) {
+	if len(data) < encryptedFileMagicStringLen {
 		// Too short for magic string, must be unencrypted
 		logDbg("Data is too short to contain magic string, must be unencrypted")
 		return data, "", nil
@@ -452,14 +453,14 @@ func (state *StoredKeysState) maybeDecryptFileData(filename string, data []byte,
 	logDbg("Decrypting file %s, data length: %d", filename, len(data))
 
 	// Check for magic string
-	if !bytes.Equal(data[:len(encryptedFileMagicString)], []byte(encryptedFileMagicString)) {
+	if !bytes.Equal(data[:encryptedFileMagicStringLen], []byte(encryptedFileMagicString)) {
 		// No magic string found, must be unencrypted
 		logDbg("No magic string found, must be unencrypted")
 		return data, "", nil
 	}
 
 	// Validate header format
-	header := data[:encryptionFileHeaderSize]
+	header := data[:encryptedFileHeaderSize]
 	keyName, err := validateEncryptedFileHeader(header)
 	if err != nil {
 		return nil, "", err
@@ -468,7 +469,7 @@ func (state *StoredKeysState) maybeDecryptFileData(filename string, data []byte,
 	logDbg("File is encrypted with key %s", keyName)
 
 	// Chunk format is 4 bytes size + encrypted data
-	chunk := data[encryptionFileHeaderSize:]
+	chunk := data[encryptedFileHeaderSize:]
 	// Read chunk size
 	if len(chunk) < 4 {
 		return nil, "", fmt.Errorf("encrypted file too short to contain chunk size")
@@ -485,7 +486,7 @@ func (state *StoredKeysState) maybeDecryptFileData(filename string, data []byte,
 		return nil, "", err
 	}
 
-	ad := getEncryptedFileAD(filename, encryptionFileHeaderSize)
+	ad := getEncryptedFileAD(filename, encryptedFileHeaderSize)
 	decryptedData, err := key.decryptData(chunk[4:], ad)
 	if err != nil {
 		logDbg("Failed to decrypt data: %s", err.Error())
@@ -501,24 +502,23 @@ func validateEncryptedFileHeader(header []byte) (string, error) {
 		compressionType = byte(0)
 	)
 
-	if len(header) < encryptionFileHeaderSize {
+	if len(header) < encryptedFileHeaderSize {
 		return "", fmt.Errorf("encrypted file header too short")
 	}
 
-	if header[len(encryptedFileMagicString)] != version {
-		return "", fmt.Errorf("unsupported version: %d", header[len(encryptedFileMagicString)])
+	if header[encryptedFileMagicStringLen] != version {
+		return "", fmt.Errorf("unsupported version: %d", header[encryptedFileMagicStringLen])
 	}
 
-	if header[len(encryptedFileMagicString)+1] != compressionType {
-		return "", fmt.Errorf("unsupported compression type: %d", header[len(encryptedFileMagicString)+1])
+	if header[encryptedFileMagicStringLen+1] != compressionType {
+		return "", fmt.Errorf("unsupported compression type: %d", header[encryptedFileMagicStringLen+1])
 	}
 
-	if header[len(encryptedFileMagicString)+6] != encryptionFileKeyNameLength {
-		return "", fmt.Errorf("invalid key name length: %d", header[len(encryptedFileMagicString)+6])
+	if header[encryptedFileMagicStringLen+6] != encryptedFileKeyNameLength {
+		return "", fmt.Errorf("invalid key name length: %d", header[encryptedFileMagicStringLen+6])
 	}
 
-	// Extract key name (trimming any trailing zeros)
-	keyName := string(header[len(encryptedFileMagicString)+7:])
+	keyName := string(header[encryptedFileMagicStringLen+7:])
 	return keyName, nil
 }
 
@@ -526,7 +526,7 @@ func (state *StoredKeysState) getKeyIdInUse() (string, error) {
 	// We assume that file exists here, because we always create it in init
 
 	// Read first encryptionFileHeaderSize bytes from the file
-	data := make([]byte, encryptionFileHeaderSize)
+	data := make([]byte, encryptedFileHeaderSize)
 	file, err := os.Open(state.intTokensFile)
 	if err != nil {
 		return "", err
@@ -538,13 +538,13 @@ func (state *StoredKeysState) getKeyIdInUse() (string, error) {
 		return "", err
 	}
 
-	if len(data) < len(encryptedFileMagicString) {
+	if len(data) < encryptedFileMagicStringLen {
 		// Too short for magic string, must be unencrypted
 		return "", nil
 	}
 
 	// Check for magic string
-	if !bytes.Equal(data[:len(encryptedFileMagicString)], []byte(encryptedFileMagicString)) {
+	if !bytes.Equal(data[:encryptedFileMagicStringLen], []byte(encryptedFileMagicString)) {
 		// No magic string found, must be unencrypted
 		return "", nil
 	}
