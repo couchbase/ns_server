@@ -110,7 +110,8 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         # Checking secrets GET
         secret = get_secret(self.random_node(), secret_id)
-        assert len(get_secrets(self.random_node())) == start_len + 1, \
+        secret_list = get_secrets(self.random_node())
+        assert len(secret_list) == start_len + 1, \
                f'unexpected length of secrets ({secret_list})'
         assert secret['name'] == 'Test Secret 1', 'unexpected name'
         assert secret['type'] == 'auto-generated-aes-key-256', 'unexpected type'
