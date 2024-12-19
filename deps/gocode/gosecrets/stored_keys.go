@@ -76,7 +76,7 @@ const (
 	// Magic string used for encrypted file headers
 	encryptedFileMagicString    = "\x00Couchbase Encrypted\x00"
 	encryptedFileMagicStringLen = len(encryptedFileMagicString)
-	encryptedFileHeaderSize     = 64
+	encryptedFileHeaderSize     = 80
 	encryptedFileKeyNameLength  = byte(36)
 )
 
@@ -362,9 +362,7 @@ func (state *StoredKeysState) writeIntTokensToFile(ctx *storedKeysCtx) error {
 		buffer.WriteString("\n")
 	}
 
-	baseFilename := filepath.Base(state.intTokensFile)
 	encryptedData, err := state.encryptFileData(
-		baseFilename,
 		buffer.Bytes(),
 		state.encryptionKeyName,
 		ctx,
@@ -381,12 +379,15 @@ func (state *StoredKeysState) writeIntTokensToFile(ctx *storedKeysCtx) error {
 	return nil
 }
 
-func getEncryptedFileAD(filename string, offset int) []byte {
-	return []byte(fmt.Sprintf("%s:%d", filename, offset))
+func getEncryptedFileAD(header []byte, offset int) []byte {
+	ad := make([]byte, len(header)+8)
+	copy(ad, header)
+	binary.BigEndian.PutUint64(ad[len(header):], uint64(offset))
+	return ad
 }
 
 // Note: function encrypts everything as a single chunk
-func (state *StoredKeysState) encryptFileData(filename string, data []byte, encryptionKeyName string, ctx *storedKeysCtx) ([]byte, error) {
+func (state *StoredKeysState) encryptFileData(data []byte, encryptionKeyName string, ctx *storedKeysCtx) ([]byte, error) {
 	if encryptionKeyName == "" {
 		// If no encryption key name provided, the data doesn't need to be encrypted
 		return data, nil
@@ -410,7 +411,10 @@ func (state *StoredKeysState) encryptFileData(filename string, data []byte, encr
 	copy(keyNameBytes, encryptionKeyName)
 	copy(header[encryptedFileMagicStringLen+7:], keyNameBytes)
 
-	ad := getEncryptedFileAD(filename, encryptedFileHeaderSize)
+	salt := generateRandomBytes(16)
+	copy(header[encryptedFileMagicStringLen+7+int(encryptedFileKeyNameLength):], salt)
+
+	ad := getEncryptedFileAD(header, encryptedFileHeaderSize)
 
 	// Read the encryption key and use it to encrypt the data
 	key, err := state.readKey(encryptionKeyName, intTokenEncryptionKeyKind, true, ctx)
@@ -486,7 +490,7 @@ func (state *StoredKeysState) maybeDecryptFileData(filename string, data []byte,
 		return nil, "", err
 	}
 
-	ad := getEncryptedFileAD(filename, encryptedFileHeaderSize)
+	ad := getEncryptedFileAD(header, encryptedFileHeaderSize)
 	decryptedData, err := key.decryptData(chunk[4:], ad)
 	if err != nil {
 		logDbg("Failed to decrypt data: %s", err.Error())
@@ -518,7 +522,7 @@ func validateEncryptedFileHeader(header []byte) (string, error) {
 		return "", fmt.Errorf("invalid key name length: %d", header[encryptedFileMagicStringLen+6])
 	}
 
-	keyName := string(header[encryptedFileMagicStringLen+7:])
+	keyName := string(header[encryptedFileMagicStringLen+7 : encryptedFileMagicStringLen+7+int(encryptedFileKeyNameLength)])
 	return keyName, nil
 }
 
