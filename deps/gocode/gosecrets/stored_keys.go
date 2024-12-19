@@ -475,7 +475,7 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 			ctx.keysTouched = make(map[string]bool)
 			keyIface, vsn, err := readKeyRaw(&cfg, keyName)
 			if err != nil {
-				logDbg(err.Error())
+				logDbg("Failed to read key %s: %s", keyName, err.Error())
 				errorsCounter++
 				continue
 			}
@@ -485,19 +485,19 @@ func reencryptStoredKeys(ctx *storedKeysCtx) error {
 			}
 			err = decryptKey(keyIface, ctx)
 			if err != nil {
-				logDbg(err.Error())
+				logDbg("Failed to decrypt key %s: %s", keyName, err.Error())
 				errorsCounter++
 				continue
 			}
 			err = encryptKey(keyIface, ctx)
 			if err != nil {
-				logDbg(err.Error())
+				logDbg("Failed to encrypt key %s: %s", keyName, err.Error())
 				errorsCounter++
 				continue
 			}
 			err = writeKeyToDisk(keyIface, vsn, &cfg)
 			if err != nil {
-				logDbg(err.Error())
+				logDbg("Failed to write key %s to disk: %s", keyName, err.Error())
 				errorsCounter++
 				continue
 			}
