@@ -21,6 +21,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/couchbase/ns_server/deps/gocode/awsutils"
 	"github.com/google/uuid"
@@ -318,6 +319,10 @@ func (state *StoredKeysState) readIntTokensFromFile(ctx *storedKeysCtx) error {
 		return fmt.Errorf("failed to decrypt stored keys tokens file: %s", err.Error())
 	}
 
+	if !utf8.Valid(data) {
+		return fmt.Errorf("invalid utf-8 in stored keys tokens file")
+	}
+
 	state.encryptionKeyName = encryptionKeyName
 
 	// Split the file content into lines
@@ -522,7 +527,13 @@ func validateEncryptedFileHeader(header []byte) (string, error) {
 		return "", fmt.Errorf("invalid key name length: %d", header[encryptedFileMagicStringLen+6])
 	}
 
-	keyName := string(header[encryptedFileMagicStringLen+7 : encryptedFileMagicStringLen+7+int(encryptedFileKeyNameLength)])
+	keyNameBytes := header[encryptedFileMagicStringLen+7 : encryptedFileMagicStringLen+7+int(encryptedFileKeyNameLength)]
+	if !utf8.Valid(keyNameBytes) {
+		return "", fmt.Errorf("invalid utf-8 in key name: %q", keyNameBytes)
+	}
+
+	keyName := string(keyNameBytes)
+
 	return keyName, nil
 }
 
