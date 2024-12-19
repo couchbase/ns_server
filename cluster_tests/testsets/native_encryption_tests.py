@@ -1086,6 +1086,24 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
             lambda: assert_logs_unencrypted(self.cluster),
             sleep_time=0.3, attempts=50, retry_on_assert=True, verbose=True)
 
+    def stored_keys_file_encrypted_test(self):
+        # verify that tokens file is encrypted and that it can be decrypted
+        # using standard tool (cbcat), which basically verifies that
+        # "couchbase-file-encryption" is implemented correctly in gosecrets
+        node = self.random_node()
+        data_dir = node.data_path()
+        tokens_file = Path(data_dir) / 'config' / 'stored_keys_tokens'
+        assert_file_is_decryptable(node, tokens_file)
+
+    def config_dat_is_encrypted_test(self):
+        # verify that config data is encrypted and that it can be decrypted
+        # using standard tool (cbcat), which basically verifies that
+        # "couchbase-file-encryption" is implemented correctly in cbcrypto
+        node = self.random_node()
+        data_dir = node.data_path()
+        config_data_file = Path(data_dir) / 'config' / 'config.dat'
+        assert_file_is_decryptable(node, config_data_file)
+
 
 # Set master password and restart the cluster
 # Testing that we can decrypt deks when master password is set
@@ -1786,3 +1804,14 @@ def assert_file_unencrypted(path):
         assert magic != encrypted_file_magic, \
                f'file {path} seems to be encrypted, ' \
                f'first {magic_len} bytes are {magic}'
+
+def assert_file_is_decryptable(node, file_path):
+    data_dir = node.data_path()
+    assert_file_encrypted(file_path)
+    gosecrets_cfg_path = Path(data_dir) / 'config' / 'gosecrets.cfg'
+    cbcat_path = testlib.get_utility_path('cbcat')
+    cbcat_args = ['--with-gosecrets', gosecrets_cfg_path, file_path]
+    r = subprocess.run([cbcat_path] + cbcat_args, capture_output=True)
+    assert r.returncode == 0, f'cbcat returned {r.returncode}\n' \
+                                f'stdout: {r.stdout.decode()}\n' \
+                                f'stderr: {r.stderr.decode()}'
