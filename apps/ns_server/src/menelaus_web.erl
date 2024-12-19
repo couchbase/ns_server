@@ -455,10 +455,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "replications", _XID] ->
                     {no_check, fun goxdcr_rest:proxy/1};
                 ["settings", "saslauthdAuth"] ->
-                    {{[admin, security_info, external], read},
+                    {{[admin, security_info], read},
                      fun menelaus_web_rbac:handle_saslauthd_auth_settings/1};
                 ["settings", "ldap"] ->
-                    {{[admin, security_info, external], read},
+                    {{[admin, security_info], read},
                      fun menelaus_web_ldap:handle_ldap_settings/1};
                 ["settings", "clientCertAuth"] ->
                     {{[admin, security], read},
@@ -501,7 +501,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_rbac:handle_get_profile/2,
                      [{UserId, Domain}]};
                 ["settings", "rbac", "lookupLDAPUser", Name] ->
-                    {{[admin, security_info, external], read},
+                    {{[admin, security_info], read},
                      fun menelaus_web_rbac:handle_lookup_ldap_user/2, [Name]};
                 ["settings", "rbac", "backup"] ->
                     {{[admin, users], read},
@@ -522,7 +522,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, license], read},
                      fun menelaus_web_license:handle_settings_get/1};
                 ["settings", "saml" | PathRest] ->
-                    {{[admin, security_info, external], read},
+                    {{[admin, security_info], read},
                      fun menelaus_web_saml:handle_get_settings/2, [PathRest]};
                 ["settings", "dataService"] ->
                     {{[admin, settings], read},
@@ -790,17 +790,17 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "replications", _XID] ->
                     {no_check, fun goxdcr_rest:proxy/1};
                 ["settings", "saslauthdAuth"] ->
-                    {{[admin, security, external], write},
+                    {{[admin, security], write},
                      fun menelaus_web_rbac:handle_saslauthd_auth_settings_post/1};
                 ["settings", "ldap"] ->
-                    {{[admin, security, external], write},
+                    {{[admin, security], write},
                      fun menelaus_web_ldap:handle_ldap_settings_post/1};
                 ["settings", "ldap", "validate", Type] ->
-                    {{[admin, security, external], write},
+                    {{[admin, security], write},
                      fun menelaus_web_ldap:handle_ldap_settings_validate_post/2,
                      [Type]};
                 ["settings", "invalidateLDAPCache"] ->
-                    {{[admin, security_info, external], write},
+                    {{[admin, security_info], write},
                      fun menelaus_web_ldap:handle_invalidate_ldap_cache/1};
                 ["settings", "clientCertAuth"] ->
                     {{[admin, security], write},
@@ -830,7 +830,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, license], write},
                      fun menelaus_web_license:handle_settings_validate_post/1};
                 ["settings", "saml"] ->
-                    {{[admin, security, external], write},
+                    {{[admin, security], write},
                      fun menelaus_web_saml:handle_post_settings/1};
                 ["settings", "dataService"] ->
                     {{[admin, settings], write},
@@ -1170,7 +1170,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_settings:handle_delete/3,
                      [security, Keys]};
                 ["settings", "saml"] ->
-                    {{[admin, security, external], write},
+                    {{[admin, security], write},
                      fun menelaus_web_saml:handle_delete_settings/1};
                 ["settings", "secrets", SecretId] ->
                     {no_check_disallow_anonymous,
