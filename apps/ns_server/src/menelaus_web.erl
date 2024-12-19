@@ -455,10 +455,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "replications", _XID] ->
                     {no_check, fun goxdcr_rest:proxy/1};
                 ["settings", "saslauthdAuth"] ->
-                    {{[admin, security, external], read},
+                    {{[admin, security_info, external], read},
                      fun menelaus_web_rbac:handle_saslauthd_auth_settings/1};
                 ["settings", "ldap"] ->
-                    {{[admin, security, external], read},
+                    {{[admin, security_info, external], read},
                      fun menelaus_web_ldap:handle_ldap_settings/1};
                 ["settings", "clientCertAuth"] ->
                     {{[admin, security], read},
@@ -501,7 +501,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_rbac:handle_get_profile/2,
                      [{UserId, Domain}]};
                 ["settings", "rbac", "lookupLDAPUser", Name] ->
-                    {{[admin, security, external], read},
+                    {{[admin, security_info, external], read},
                      fun menelaus_web_rbac:handle_lookup_ldap_user/2, [Name]};
                 ["settings", "rbac", "backup"] ->
                     {{[admin, users], read},
@@ -522,7 +522,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, license], read},
                      fun menelaus_web_license:handle_settings_get/1};
                 ["settings", "saml" | PathRest] ->
-                    {{[admin, security, external], read},
+                    {{[admin, security_info, external], read},
                      fun menelaus_web_saml:handle_get_settings/2, [PathRest]};
                 ["settings", "dataService"] ->
                     {{[admin, settings], read},

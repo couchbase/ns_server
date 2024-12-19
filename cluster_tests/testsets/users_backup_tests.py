@@ -289,6 +289,8 @@ class UsersBackupTests(testlib.BaseTestSet):
             assert 'localsecurityadmin76' not in users2
             assert 'externalsecurityadmin76' not in users2
             assert 'localsecurityandbackupadmin76' not in users2
+            assert 'roadmin76' not in users2
+
             assert len(users2) == 8
 
         finally:
