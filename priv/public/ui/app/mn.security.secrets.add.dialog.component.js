@@ -95,6 +95,16 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
           configFile: "",
           profile: ""
         }),
+        'kmip-secret': this.formBuilder.group({
+          encryptionApproach: 'useGet',
+          encryptBy: 'nodeSecretManager',
+          encryptSecretId: null,
+          activeKey: "",
+          keyCertPath: "",
+          keyPassphrase: "",
+          host: "",
+          port: null
+        }),
         usageBuckets: this.formBuilder.group(this.bucketNames.reduce((acc, bucket) => {
           //set false by default for editing mode and true for adding mode
           acc['bucket-encryption-' + bucket] = !this.item;
@@ -198,57 +208,80 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
       }, {})
     };
 
-    if (rv.type === "auto-generated-aes-key-256") {
-      if (item.data.autoRotation) {
-        const localTime = new Date(item.data.nextRotationTime);
-        rv['generated-secret'] = {
-          autoRotation: item.data.autoRotation,
-          rotationIntervalInDays: item.data.rotationIntervalInDays,
-          nextRotationTime: {
-            date: localTime,
-            hour: localTime.getHours(),
-            minute: localTime.getMinutes(),
-          }
-        };
-      } else {
-        rv['generated-secret'] = {
-          autoRotation: item.data.autoRotation
-        };
-      }
-      const {encryptSecretId, encryptBy} = item.data;
-      rv['generated-secret'].encryptBy = encryptBy;
-      if (encryptBy === 'clusterSecret') {
-        rv['generated-secret']['encryptSecretId'] = (encryptSecretId === null || encryptSecretId === undefined || encryptSecretId < 0) ? null : this.secrets.find(i => i.id === encryptSecretId);
-      }
-    } else {
-      rv['aws-secret'] = item.data
+    switch (rv.type) {
+      case 'awskms-aes-key-256':
+        rv['aws-secret'] = item.data;
+        break;
+      case 'auto-generated-aes-key-256':
+        if (item.data.autoRotation) {
+          const localTime = new Date(item.data.nextRotationTime);
+          rv['generated-secret'] = {
+            autoRotation: item.data.autoRotation,
+            rotationIntervalInDays: item.data.rotationIntervalInDays,
+            nextRotationTime: {
+              date: localTime,
+              hour: localTime.getHours(),
+              minute: localTime.getMinutes(),
+            }
+          };
+        } else {
+          rv['generated-secret'] = {
+            autoRotation: item.data.autoRotation
+          };
+        }
+        const {encryptSecretId, encryptBy} = item.data;
+        rv['generated-secret'].encryptBy = encryptBy;
+        if (encryptBy === 'clusterSecret') {
+          rv['generated-secret']['encryptSecretId'] = (encryptSecretId === null || encryptSecretId === undefined || encryptSecretId < 0) ? null : this.secrets.find(i => i.id === encryptSecretId);
+        }
+        break;
+      case 'kmip-aes-key-256':
+        rv['kmip-secret'] = item.data;
+        rv['kmip-secret'].encryptBy = item.data.encryptBy;
+        rv['kmip-secret'].encryptSecretId = item.data.encryptSecretId;
+        if (item.data.encryptBy === 'clusterSecret') {
+          rv['kmip-secret'].encryptSecretId = (item.data.encryptSecretId === null || item.data.encryptSecretId === undefined || item.data.encryptSecretId < 0) ? null : this.secrets.find(i => i.id === item.data.encryptSecretId);
+        }
+        rv['kmip-secret'].activeKey = item.data.activeKey?.kmipId;
+        break;
     }
     return rv;
   }
 
   packData() {
     let value = this.form.group.getRawValue();
-    let {usage, usageBuckets, name, type, 'generated-secret': generatedSecret, 'aws-secret': awsSecret} = value;
+    let {usage, usageBuckets, name, type, 'generated-secret': generatedSecret, 'aws-secret': awsSecret, 'kmip-secret': kmipSecret} = value;
 
     let data = {};
-    if (type === 'auto-generated-aes-key-256') {
-      const {rotationIntervalInDays, nextRotationTime, autoRotation, encryptBy, encryptSecretId} = generatedSecret;
-      data = {autoRotation, encryptBy};
-      if (encryptBy === 'clusterSecret') {
-        data.encryptSecretId = encryptSecretId?.id ?? -1;
-      }
-      if (autoRotation) {
-        data.rotationIntervalInDays = rotationIntervalInDays;
-        const {date, hour, minute} = nextRotationTime;
-        var copiedDate = new Date(date.getTime());
-        copiedDate.setHours(hour || 0);
-        copiedDate.setMinutes(minute || 0);
-        copiedDate.setSeconds(0);
-        copiedDate.setMilliseconds(0);
-        data.nextRotationTime = copiedDate.toISOString();
-      }
-    } else {
-      data = awsSecret;
+    switch (type) {
+      case 'awskms-aes-key-256':
+        data = awsSecret;
+        break;
+      case 'auto-generated-aes-key-256':
+        const {rotationIntervalInDays, nextRotationTime, autoRotation, encryptBy, encryptSecretId} = generatedSecret;
+        data = {autoRotation, encryptBy};
+        if (encryptBy === 'clusterSecret') {
+          data.encryptSecretId = encryptSecretId?.id ?? -1;
+        }
+        if (autoRotation) {
+          data.rotationIntervalInDays = rotationIntervalInDays;
+          const {date, hour, minute} = nextRotationTime;
+          var copiedDate = new Date(date.getTime());
+          copiedDate.setHours(hour || 0);
+          copiedDate.setMinutes(minute || 0);
+          copiedDate.setSeconds(0);
+          copiedDate.setMilliseconds(0);
+          data.nextRotationTime = copiedDate.toISOString();
+        }
+        break;
+      case 'kmip-aes-key-256':
+        data = kmipSecret;
+        data.encryptSecretId = data.encryptBy === 'nodeSecretManager' ? -1 : data.encryptSecretId;
+        data.activeKey = {kmipId: data.activeKey};
+          if (data.encryptBy === 'clusterSecret') {
+            data.encryptSecretId = data.encryptSecretId?.id ?? -1;
+          }
+          break;
     }
 
     let usageToSend = Object.keys(usage).filter(v => usage[v]);
@@ -260,6 +293,9 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
   }
 
   valuesMapping(item) {
+    if (item === -1) {
+      return null;
+    }
     return item ? item.name || '[empty name]' : item;
   }
 }

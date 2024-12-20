@@ -20,6 +20,7 @@ import {MnSelectModule} from './mn.select.module.js';
 import {MnSecuritySecretsComponent} from './mn.security.secrets.component.js';
 import {MnSecuritySecretsAddDialogComponent} from './mn.security.secrets.add.dialog.component.js';
 import {MnSecuritySecretsDeleteDialogComponent} from './mn.security.secrets.delete.dialog.component.js';
+import {MnSecuritySecretsDeleteKeyDialogComponent} from './mn.security.secrets.delete.key.dialog.component.js';
 import {MnSecuritySecretsEncryptionDialogComponent} from './mn.security.secrets.encryption.dialog.component.js';
 
 import {MnSecuritySecretsItemComponent} from './mn.security.secrets.item.component.js';
@@ -57,11 +58,13 @@ class MnSecuritySecretsModule {
         entryComponents: [
           MnSecuritySecretsAddDialogComponent,
           MnSecuritySecretsDeleteDialogComponent,
+          MnSecuritySecretsDeleteKeyDialogComponent,
           MnSecuritySecretsEncryptionDialogComponent,
         ],
         declarations: [
           MnSecuritySecretsAddDialogComponent,
           MnSecuritySecretsDeleteDialogComponent,
+          MnSecuritySecretsDeleteKeyDialogComponent,
           MnSecuritySecretsEncryptionDialogComponent,
           MnSecuritySecretsComponent,
           MnSecuritySecretsItemDetailsComponent,

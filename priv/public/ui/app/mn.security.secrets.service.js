@@ -71,6 +71,11 @@ class MnSecuritySecretsService {
       .addSuccess()
       .addError();
 
+    this.stream.deleteKey =
+      new MnHttpRequest(this.deleteKey.bind(this))
+      .addSuccess()
+      .addError();
+
     this.stream.postRotateSecret =
       new MnHttpRequest(this.postRotateSecret.bind(this))
       .addSuccess()
@@ -111,6 +116,10 @@ class MnSecuritySecretsService {
 
   putSecret([params, id]) {
     return this.http.put('/settings/secrets/' + encodeURIComponent(id), params, { headers: new HttpHeaders().set("isNotForm", true) });
+  }
+
+  deleteKey([secretId, keyId]) {
+    return this.http.delete('/settings/secrets/' + encodeURIComponent(secretId) + '/historicalKeys/' + encodeURIComponent(keyId));
   }
 
   getEncryptionAtRest() {

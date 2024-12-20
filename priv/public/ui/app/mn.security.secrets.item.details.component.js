@@ -19,6 +19,7 @@ import {MnFormService} from "./mn.form.service.js";
 import {MnHelperService} from "./mn.helper.service.js";
 import {MnSecuritySecretsDeleteDialogComponent} from "./mn.security.secrets.delete.dialog.component.js";
 import {MnSecuritySecretsAddDialogComponent} from "./mn.security.secrets.add.dialog.component.js";
+import {MnSecuritySecretsDeleteKeyDialogComponent} from "./mn.security.secrets.delete.key.dialog.component.js";
 import template from "./mn.security.secrets.item.details.html";
 import {MnSecuritySecretsService} from "./mn.security.secrets.service.js";
 
@@ -48,13 +49,22 @@ class MnSecuritySecretsItemDetailsComponent extends MnLifeCycleHooksToStream {
   constructor(mnPermissions, mnFormService, modalService, mnHelperService, mnSecuritySecretsService) {
     super();
 
-    var onDeleteKey = new Subject();
-    onDeleteKey
+    var onDeleteSecret = new Subject();
+    onDeleteSecret
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(item => {
         var ref = modalService.open(MnSecuritySecretsDeleteDialogComponent);
         ref.componentInstance.item = item;
       });
+
+    let onDeleteKey = new Subject();
+    onDeleteKey
+    .pipe(takeUntil(this.mnOnDestroy))
+    .subscribe(data => {
+      let ref = modalService.open(MnSecuritySecretsDeleteKeyDialogComponent);
+      ref.componentInstance.secret = data.item;
+      ref.componentInstance.key = data.key;
+    });
 
     var onEditKey = new Subject();
     onEditKey
@@ -65,7 +75,7 @@ class MnSecuritySecretsItemDetailsComponent extends MnLifeCycleHooksToStream {
         ref.componentInstance.item = item;
         ref.componentInstance.secrets = secrets;
       });
-    
+
     this.rotateKey = mnFormService.create(this)
       .setFormGroup({})
       .setPackPipe(map(() => this.item.id))
@@ -76,6 +86,7 @@ class MnSecuritySecretsItemDetailsComponent extends MnLifeCycleHooksToStream {
       .success(() => mnSecuritySecretsService.stream.updateSecretsList.next())
 
     this.permissions = mnPermissions.stream;
+    this.onDeleteSecret = onDeleteSecret;
     this.onDeleteKey = onDeleteKey;
     this.onEditKey = onEditKey;
     this.toggler = mnHelperService.createToggle();
