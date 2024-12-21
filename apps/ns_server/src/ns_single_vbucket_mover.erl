@@ -125,7 +125,7 @@ mover_inner(Parent, Bucket, VBucket,
             [undefined|_] = _OldChain,
             [NewMaster|_] = _NewChain, _Quirks) ->
     set_vbucket_state(Bucket, NewMaster, Parent, VBucket,
-                      active, undefined, undefined, undefined);
+                      active, undefined, undefined, []);
 mover_inner(Parent, Bucket, VBucket,
             [OldMaster|OldReplicas] = OldChain,
             [NewMaster|_] = NewChain, Quirks) ->
@@ -185,7 +185,7 @@ mover_inner(Parent, Bucket, VBucket,
                             ns_server_stats:notify_counter(<<"index_pausing_runs">>),
                             set_vbucket_state(Bucket, OldMaster, Parent, VBucket,
                                               active, paused, undefined,
-                                              [OldChain]),
+                                              [{topology, [OldChain]}]),
                             wait_master_seqno_persisted_on_replicas(Bucket, VBucket, Parent, OldMaster,
                                                                     AllBuiltNodes);
                         false ->
@@ -214,7 +214,7 @@ mover_inner(Parent, Bucket, VBucket,
             master_activity_events:note_takeover_ended(Bucket, VBucket, OldMaster, NewMaster),
 
             set_vbucket_state(Bucket, NewMaster, Parent, VBucket,
-                              active, undefined, undefined, undefined),
+                              active, undefined, undefined, []),
 
             %% Vbucket on the old master is dead.
             %% Cleanup replication streams from the old master to the
@@ -285,7 +285,7 @@ set_dual_topology(Bucket, ActiveNode,
     DualTopology = [OldTopology, NewTopology],
     set_vbucket_state(Bucket, ActiveNode, RebalancerPid,
                       VBucket, active, VBucketRebalanceState,
-                      undefined, DualTopology),
+                      undefined, [{topology, DualTopology}]),
     %% We wait for seqno because we may not have sync write on NewChain
     %% but have been committed on the OldChain.
     wait_master_seqno_persisted_on_replicas(Bucket, VBucket, RebalancerPid,
@@ -293,13 +293,13 @@ set_dual_topology(Bucket, ActiveNode,
 
 set_vbucket_state(Bucket, Node, RebalancerPid, VBucket,
                   VBucketState, VBucketRebalanceState, ReplicateFrom,
-                  Topology) ->
+                  Options) ->
     spawn_and_wait(
       fun () ->
               ok = janitor_agent:set_vbucket_state(
                      Bucket, Node, RebalancerPid, VBucket,
                      VBucketState, VBucketRebalanceState, ReplicateFrom,
-                     Topology)
+                     Options)
       end).
 
 %% This ensures that all streams into new set of replicas (either replica
@@ -314,10 +314,11 @@ set_vbucket_state(Bucket, Node, RebalancerPid, VBucket,
 %% replications, because we also create rebalance-specific streams that can
 %% lead to the same problems.
 cleanup_old_streams(Bucket, Nodes, RebalancerPid, VBucket) ->
-    Changes = [{Node, replica, undefined, undefined} || Node <- Nodes],
+    Changes = [{Node, replica, undefined, undefined, []} || Node <- Nodes],
     spawn_and_wait(
       fun () ->
-              ok = janitor_agent:bulk_set_vbucket_state(Bucket, RebalancerPid, VBucket, Changes)
+              ok = janitor_agent:bulk_set_vbucket_state(Bucket, RebalancerPid,
+                                                        VBucket, Changes)
       end).
 
 dcp_takeover(Bucket, Parent,
@@ -343,7 +344,7 @@ dcp_takeover_via_orchestrator(Bucket, Parent,
               "vbucket ~p (bucket ~p) from ~p to ~p",
               [VBucket, Bucket, OldMaster, NewMaster]),
     set_vbucket_state(Bucket, NewMaster, Parent,
-                      VBucket, pending, passive, undefined, undefined),
+                      VBucket, pending, passive, undefined, []),
 
     DisableOldMaster = rebalance_quirks:is_enabled(disable_old_master, Quirks),
     case DisableOldMaster of
@@ -364,7 +365,7 @@ dcp_takeover_via_orchestrator(Bucket, Parent,
             ?log_info("Disabling vbucket ~p (bucket ~p) on ~p",
                       [VBucket, Bucket, OldMaster]),
             set_vbucket_state(Bucket, OldMaster, Parent,
-                              VBucket, replica, passive, undefined, undefined);
+                              VBucket, replica, passive, undefined, []);
         false ->
             ok
     end,
@@ -501,13 +502,14 @@ get_replica_and_backfill_nodes(MasterNode, [NewMasterNode|_] = NewChain) ->
     {ReplicaNodes, JustBackfillNodes}.
 
 set_initial_vbucket_state(Bucket, Parent, VBucket, SrcNode, ReplicaNodes, JustBackfillNodes) ->
-    Changes = [{Replica, replica, undefined, SrcNode}
+    Changes = [{Replica, replica, undefined, SrcNode, []}
                || Replica <- ReplicaNodes]
-        ++ [{FutureMaster, replica, passive, SrcNode}
+        ++ [{FutureMaster, replica, passive, SrcNode, []}
             || FutureMaster <- JustBackfillNodes],
     spawn_and_wait(
       fun () ->
-              janitor_agent:bulk_set_vbucket_state(Bucket, Parent, VBucket, Changes)
+              janitor_agent:bulk_set_vbucket_state(
+                Bucket, Parent, VBucket, Changes)
       end).
 
 %% @private
@@ -521,15 +523,16 @@ pairs([Master | Replicas]) ->
 %% @doc Perform post-move replication fixup.
 update_replication_post_move(RebalancerPid, BucketName, VBucket, OldChain, NewChain) ->
     ChangeReplica = fun (Dst, Src) ->
-                            {Dst, replica, undefined, Src}
+                            {Dst, replica, undefined, Src, []}
                     end,
     %% destroy remnants of old replication chain
     DelChanges = [ChangeReplica(D, undefined) || {_, D} <- pairs(OldChain),
                                                  not lists:member(D, NewChain)],
     %% just start new chain of replications. Old chain is dead now
     AddChanges = [ChangeReplica(D, S) || {S, D} <- pairs(NewChain)],
-    ok = janitor_agent:bulk_set_vbucket_state(BucketName, RebalancerPid,
-                                              VBucket, AddChanges ++ DelChanges).
+    ok = janitor_agent:bulk_set_vbucket_state(
+           BucketName, RebalancerPid,
+           VBucket, AddChanges ++ DelChanges).
 
 on_move_done(RebalancerPid, Bucket, VBucket, OldChain, NewChain) ->
     WorkerPid = self(),
@@ -546,7 +549,8 @@ on_move_done_body(RebalancerPid, WorkerPid, Bucket, VBucket, OldChain,
 
     %% Set topology on the NewMaster.
     janitor_agent:set_vbucket_state(Bucket, NewMaster, RebalancerPid, VBucket,
-                                    active, undefined, undefined, [NewChain]),
+                                    active, undefined, undefined,
+                                    [{topology, [NewChain]}]),
 
     update_replication_post_move(RebalancerPid, Bucket, VBucket, OldChain, NewChain),
 

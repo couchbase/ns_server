@@ -54,7 +54,6 @@
          finish_rebalance/3,
          this_node_replicator_triples/1,
          bulk_set_vbucket_state/4,
-         set_vbucket_state/7,
          set_vbucket_state/8,
          get_src_dst_vbucket_replications/2,
          get_src_dst_vbucket_replications/3,
@@ -388,21 +387,21 @@ this_node_replicator_triples(Bucket) ->
         pid(),
         vbucket_id(),
         [{Node::node(), vbucket_state(), rebalance_vbucket_state(),
-          Src::(node()|undefined)}])
+          Src::(node()|undefined), [ns_memcached:set_vbucket_option()]}])
                             -> ok.
-bulk_set_vbucket_state(Bucket, RebalancerPid, VBucket,
-                       NodeVBucketStateRebalanceStateReplicateFromS) ->
+bulk_set_vbucket_state(Bucket, RebalancerPid, VBucket, StateMutation) ->
     ?rebalance_info("Doing bulk vbucket ~p state change~n~p",
-                    [VBucket, NodeVBucketStateRebalanceStateReplicateFromS]),
+                    [VBucket, StateMutation]),
     RVs = misc:parallel_map(
-            fun ({Node, active, _, _}) ->
+            fun ({Node, active, _, _, _}) ->
                     {Node, unexpected_state_active};
-                ({Node, VBucketState, VBucketRebalanceState, ReplicateFrom}) ->
+                ({Node, VBucketState, VBucketRebalanceState, ReplicateFrom,
+                  Options}) ->
                     {Node, (catch set_vbucket_state(
                                     Bucket, Node, RebalancerPid, VBucket,
                                     VBucketState, VBucketRebalanceState,
-                                    ReplicateFrom))}
-            end, NodeVBucketStateRebalanceStateReplicateFromS, infinity),
+                                    ReplicateFrom, Options))}
+            end, StateMutation, infinity),
     NonOks = [Pair || {_Node, R} = Pair <- RVs,
                       R =/= ok],
     case NonOks of
@@ -414,15 +413,16 @@ bulk_set_vbucket_state(Bucket, RebalancerPid, VBucket,
     end.
 
 set_vbucket_state(Bucket, Node, RebalancerPid, VBucket, VBucketState,
-                  VBucketRebalanceState, ReplicateFrom) ->
-    SubCall = {update_vbucket_state, VBucket, VBucketState,
-               VBucketRebalanceState, ReplicateFrom},
-    set_vbucket_state_inner(Bucket, Node, RebalancerPid, VBucket, SubCall).
-
-set_vbucket_state(Bucket, Node, RebalancerPid, VBucket, VBucketState,
-                  VBucketRebalanceState, ReplicateFrom, Topology) ->
-    SubCall = {update_vbucket_state, VBucket, VBucketState,
-               VBucketRebalanceState, ReplicateFrom, Topology},
+                  VBucketRebalanceState, ReplicateFrom, Options) ->
+    SubCall = case cluster_compat_mode:is_cluster_morpheus() of
+                  true ->
+                      {update_vbucket_state, VBucket, VBucketState,
+                       VBucketRebalanceState, ReplicateFrom, Options};
+                  false ->
+                      {update_vbucket_state, VBucket, VBucketState,
+                       VBucketRebalanceState, ReplicateFrom,
+                       proplists:get_value(topology, Options)}
+              end,
     set_vbucket_state_inner(Bucket, Node, RebalancerPid, VBucket, SubCall).
 
 set_vbucket_state_inner(Bucket, Node, RebalancerPid, VBucket, SubCall) ->
@@ -685,11 +685,7 @@ do_handle_call(finish_rebalance, _From, State) ->
     {reply, ok, State#state{rebalance_status = finished}};
 
 do_handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
-                ReplicateFrom}, From, State) ->
-    do_handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
-                    ReplicateFrom, undefined}, From, State);
-do_handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
-                _ReplicateFrom, _Topology} = Call, From, State) ->
+                _ReplicateFrom, _Options} = Call, From, State) ->
     NewState = apply_new_vbucket_state(VBucket, NormalState, RebalanceState,
                                        State),
     delegate_apply_vbucket_state(Call, From, NewState);
@@ -1084,10 +1080,23 @@ apply_vbucket_states_worker_loop() ->
     end.
 
 handle_apply_vbucket_state({update_vbucket_state, VBucket, NormalState,
-                            _RebalanceState, ReplicateFrom, Topology},
+                            _RebalanceState, ReplicateFrom, OptionsOrTopology},
                            #state{bucket_name = BucketName} = AgentState) ->
+    Options =
+        case OptionsOrTopology of
+            [] ->
+                OptionsOrTopology;
+            [El | _] when is_tuple(El) ->
+                OptionsOrTopology;
+            undefined ->
+                %% pre-Morpheus cluster
+                [];
+            _ ->
+                %% pre-Morpheus cluster
+                [{topology, OptionsOrTopology}]
+        end,
     %% TODO: consider infinite timeout. It's local memcached after all
-    ok = ns_memcached:set_vbucket(BucketName, VBucket, NormalState, Topology),
+    ok = ns_memcached:set_vbucket(BucketName, VBucket, NormalState, Options),
     ok = replication_manager:change_vbucket_replication(BucketName,
                                                         VBucket, ReplicateFrom),
     pass_vbucket_states_to_set_view_manager(AgentState),
@@ -1242,12 +1251,12 @@ handle_apply_new_config(Node, NewBucketConfig,
                                      NewWanted};
                                 active ->
                                     {VBucket + 1,
-                                     [{VBucket, WantedState, [Chain]} | ToSet],
+                                     [{VBucket, WantedState,
+                                       [{topology, [Chain]}]} | ToSet],
                                      ToDelete, NewWanted};
                                 _ ->
                                     {VBucket + 1,
-                                     [{VBucket, WantedState,
-                                       undefined} | ToSet],
+                                     [{VBucket, WantedState, []} | ToSet],
                                      ToDelete, NewWanted}
                             end
                     end

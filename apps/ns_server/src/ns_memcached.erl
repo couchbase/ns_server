@@ -56,6 +56,9 @@
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
+-type set_vbucket_option() :: {topology, list()}.
+-export_type([set_vbucket_option/0]).
+
 -type status() :: connecting | init | connected | warmed | paused.
 
 -record(state, {
@@ -708,8 +711,8 @@ do_handle_call({get_from_replica, KeyFun, CollectionsUid, VBucket}, _From,
     handle_data_call(?CMD_GET_REPLICA, KeyFun, CollectionsUid, VBucket, State);
 
 do_handle_call({set_vbuckets, VBsToSet}, _From, #state{sock = Sock} = State) ->
-    ToSet = [{VB, VBState, construct_vbucket_info_json(Topology)}
-             || {VB, VBState, Topology} <- VBsToSet],
+    ToSet = [{VB, VBState, construct_vbucket_info_json(Options)}
+             || {VB, VBState, Options} <- VBsToSet],
     try
         Reply = mc_client_binary:set_vbuckets(Sock, ToSet),
         Good = case Reply of
@@ -733,9 +736,9 @@ do_handle_call({set_vbuckets, VBsToSet}, _From, #state{sock = Sock} = State) ->
                        [Err, ToSet]),
             {compromised_reply, Err, State}
     end;
-do_handle_call({set_vbucket, VBucket, VBState, Topology}, _From,
+do_handle_call({set_vbucket, VBucket, VBState, Options}, _From,
                #state{sock=Sock, bucket=BucketName} = State) ->
-    VBInfoJson = construct_vbucket_info_json(Topology),
+    VBInfoJson = construct_vbucket_info_json(Options),
     (catch master_activity_events:note_vbucket_state_change(
              BucketName, dist_manager:this_node(), VBucket, VBState,
              VBInfoJson)),
@@ -1338,20 +1341,20 @@ local_connected_and_list_vbucket_details(Bucket, Keys) ->
 
 
 set_vbucket(Bucket, VBucket, VBState) ->
-    set_vbucket(Bucket, VBucket, VBState, undefined).
+    set_vbucket(Bucket, VBucket, VBState, []).
 
 -spec set_vbucket(bucket_name(), vbucket_id(), vbucket_state(),
-                  [[node()]] | undefined) -> ok | mc_error().
-set_vbucket(Bucket, VBucket, VBState, Topology) ->
-    do_call(server(Bucket), Bucket, {set_vbucket, VBucket, VBState, Topology},
+                  [set_vbucket_option()]) -> ok | mc_error().
+set_vbucket(Bucket, VBucket, VBState, Options) ->
+    do_call(server(Bucket), Bucket, {set_vbucket, VBucket, VBState, Options},
             ?TIMEOUT_HEAVY).
 
 -spec set_vbuckets(bucket_name(),
-                   [{vbucket_id(), vbucket_state(), [[node()]] | undefined}]) ->
-    ok |
-    {errors, [{{vbucket_id(), vbucket_state(), [[node()]] | undefined},
-               mc_error()}]} |
-    {error, any()}.
+                   [{vbucket_id(), vbucket_state(), [set_vbucket_option()]}]) ->
+          ok | {errors, [{{vbucket_id(), vbucket_state(),
+                           [set_vbucket_option()]},
+                          mc_error()}]} |
+          {error, any()}.
 set_vbuckets(Bucket, ToSet) ->
     case ToSet of
         [] ->
@@ -2039,20 +2042,19 @@ handle_connected_call(Call, From, #state{status = Status} = State) ->
             handle_call(Call, From, State)
     end.
 
-construct_topology(Topology) ->
+construct_value(topology, Topology) ->
     [lists:map(fun (undefined) ->
                        null;
                    (Node) ->
                        Node
-               end, Chain) || Chain <- Topology].
+               end, Chain) || Chain <- Topology];
+construct_value(_, V) ->
+    V.
 
-construct_topology_json(Topology) ->
-    {[{topology, construct_topology(Topology)}]}.
-
-construct_vbucket_info_json(undefined) ->
+construct_vbucket_info_json([]) ->
     undefined;
-construct_vbucket_info_json(Topology) ->
-    construct_topology_json(Topology).
+construct_vbucket_info_json(Options) ->
+    {[{Key, construct_value(Key, Value)} || {Key, Value} <- Options]}.
 
 durability_keys() ->
     ["state", "topology", "high_seqno", "high_prepared_seqno"].
