@@ -140,7 +140,8 @@
          set_active_dek/2,
          get_dek_ids_in_use/1,
          drop_deks/4,
-         get_fusion_storage_snapshot/4
+         get_fusion_storage_snapshot/4,
+         mount_fusion_vbucket/3
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -2137,4 +2138,13 @@ get_fusion_storage_snapshot(Bucket, VBucket, SnapshotUUID, Validity) ->
       fun (Sock) ->
               {reply, mc_client_binary:get_fusion_storage_snapshot(
                         Sock, VBucket, SnapshotUUID, Validity)}
+      end, Bucket, [json]).
+
+-spec mount_fusion_vbucket(bucket_name(), vbucket_id(), [list()]) ->
+          {ok, binary()} | mc_error().
+mount_fusion_vbucket(Bucket, VBucket, Volumes) ->
+    perform_very_long_call(
+      fun (Sock) ->
+              {reply, mc_client_binary:mount_fusion_vbucket(
+                        Sock, VBucket, Volumes)}
       end, Bucket, [json]).

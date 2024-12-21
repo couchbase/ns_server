@@ -128,6 +128,7 @@
 
 %% fusion commands
 -define(CMD_GET_FUSION_STORAGE_SNAPSHOT, 16#98).
+-define(CMD_MOUNT_FUSION_VBUCKET, 16#9a).
 
 -define(RGET,        16#30).
 -define(RSET,        16#31).
