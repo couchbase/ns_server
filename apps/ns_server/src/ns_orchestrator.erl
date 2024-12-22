@@ -69,7 +69,7 @@
          needs_rebalance/0,
          needs_rebalance_with_detail/0,
          start_link/0,
-         start_rebalance/6,
+         start_rebalance/7,
          retry_rebalance/4,
          stop_rebalance/0,
          start_recovery/1,
@@ -456,7 +456,8 @@ ensure_janitor_run(Item, Timeout) ->
       end, Timeout, 1000).
 
 -spec start_rebalance([node()], [node()], all | [bucket_name()],
-                      [list()], all | [atom()], map() | undefined) ->
+                      [list()], all | [atom()], map() | undefined,
+                      rebalance_plan_uuid() | undefined) ->
                              {ok, binary()} | ok | in_progress |
                              nodes_mismatch |
                              no_active_nodes_left | in_recovery |
@@ -468,9 +469,10 @@ ensure_janitor_run(Item, Timeout) ->
                              {unhosted_services, list()} |
                              {total_quota_too_high, list()} |
                              {rebalance_not_allowed, list()} |
-                             {params_mismatch, list()}.
+                             {params_mismatch, list()} |
+                             {invalid_rebalance_plan, string()}.
 start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets,
-                DefragmentZones, Services, DesiredServicesNodes) ->
+                DefragmentZones, Services, DesiredServicesNodes, PlanUUID) ->
     case get_services_nodes_memory_data(DesiredServicesNodes, KnownNodes) of
         {error, E} ->
             E;
@@ -482,7 +484,8 @@ start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets,
                     defragment_zones => DefragmentZones,
                     services => Services,
                     desired_services_nodes => DesiredServicesNodes,
-                    memory_data => MemoryData}})
+                    memory_data => MemoryData,
+                    plan_uuid => PlanUUID}})
     end.
 
 retry_rebalance(rebalance, Params, Id, Chk) ->
@@ -675,13 +678,15 @@ handle_event({call, From}, {maybe_start_rebalance,
 
         validate_quotas(ServiceNodesMap, Params, Snapshot),
 
-        NewParams1 = NewParams#{keep_nodes => KeepNodes,
-                                eject_nodes => EjectedLiveNodes,
-                                failed_nodes => FailedNodes,
-                                delta_nodes => DeltaNodes,
-                                chk => NewChk},
+        NewParams1 = validate_rebalance_plan(NewParams, KeepNodes, Snapshot),
+
+        NewParams2 = NewParams1#{keep_nodes => KeepNodes,
+                                 eject_nodes => EjectedLiveNodes,
+                                 failed_nodes => FailedNodes,
+                                 delta_nodes => DeltaNodes,
+                                 chk => NewChk},
         {keep_state_and_data,
-         [{next_event, {call, From}, {start_rebalance, NewParams1}}]}
+         [{next_event, {call, From}, {start_rebalance, NewParams2}}]}
     catch
         throw:Error -> {keep_state_and_data, [{reply, From, Error}]}
     end;
@@ -1974,6 +1979,57 @@ validate_services(Services, NodesToEject, [], Snapshot, ServiceNodesMap) ->
             ok;
         NeededServices ->
             throw({must_rebalance_services, lists:usort(NeededServices)})
+    end.
+
+validate_rebalance_plan(Params, KeepNodes, Snapshot) ->
+    RebalancePlan = erlang:get(?FUSION_REBALANCE_PLAN),
+    Err =
+        fun (Message) ->
+                ?rebalance_info(
+                   "Rebalance plan validation failed. ~s.~nStored plan: ~p",
+                   [Message, RebalancePlan]),
+                throw({invalid_rebalance_plan, Message})
+        end,
+    case maps:get(plan_uuid, Params, undefined) of
+        undefined ->
+            RebalancePlan =:= undefined orelse
+                ?rebalance_info(
+                   "Rebalance was called with no planUUID provided"
+                   ", though the stored rebalance plan is found: ~p",
+                   [RebalancePlan]),
+            Params;
+        PlanUUID ->
+            RebalancePlan =/= undefined orelse Err("No rebalance plan stored"),
+
+            list_to_binary(PlanUUID) =:=
+                proplists:get_value(planUUID, RebalancePlan) orelse
+                Err("Plan UUID's don't match"),
+
+            Nodes = proplists:get_value(nodes, RebalancePlan),
+            case Nodes -- KeepNodes of
+                [] -> ok;
+                Extra ->
+                    Err(lists:flatten(
+                          io_lib:format("Unknown nodes in rebalance plan: ~p",
+                                        [Extra])))
+            end,
+
+            proplists:get_value(mountedVolumes, RebalancePlan) =/= undefined
+                orelse Err("Volumes not uploaded"),
+
+            Buckets = proplists:get_value(buckets, RebalancePlan),
+            lists:foreach(
+              fun ({Bucket, Props}) ->
+                      case ns_bucket:get_bucket_with_revision(Bucket,
+                                                              Snapshot) of
+                          {ok, {_, Rev}} ->
+                              proplists:get_value(revision, Props) =:= Rev
+                                  orelse Err(Bucket ++ " has changed");
+                          not_present ->
+                              Err(Bucket ++ " is not found")
+                      end
+              end, Buckets),
+            Params#{rebalance_plan => RebalancePlan}
     end.
 
 get_nodes_to_change(ServiceNodesMap, KnownNodes, Snapshot) ->

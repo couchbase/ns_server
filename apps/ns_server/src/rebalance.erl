@@ -16,7 +16,7 @@
          status/0,
          reset_status/1,
          set_status/3,
-         start/6,
+         start/7,
          stop/1,
          progress/0,
          progress/1]).
@@ -72,10 +72,11 @@ set_status(Type, Status, Pid) ->
             {rebalance_type, Type}]).
 
 start(KnownNodes, EjectedNodes, DeltaRecoveryBuckets, DefragmentZones,
-      Services, DesiredSevicesTopology) ->
+      Services, DesiredSevicesTopology, PlanUUID) ->
     ns_orchestrator:start_rebalance(
       KnownNodes, EjectedNodes,
-      DeltaRecoveryBuckets, DefragmentZones, Services, DesiredSevicesTopology).
+      DeltaRecoveryBuckets, DefragmentZones, Services, DesiredSevicesTopology,
+      PlanUUID).
 
 stop(AllowUnsafe) ->
     %% NOTE: this is inherently raceful. But race is tiny and largely

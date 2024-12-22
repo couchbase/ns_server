@@ -1138,9 +1138,19 @@ parse_rebalance_params(Params) ->
                 undefined
         end,
 
+    PlanUUID = proplists:get_value("planUUID", Params),
+    case PlanUUID of
+        undefined ->
+            ok;
+        _ ->
+            menelaus_util:assert_is_enterprise("planUUID"),
+            menelaus_util:assert_is_morpheus()
+    end,
+
     [[list_to_existing_atom(N) || N <- KnownNodesS],
      [list_to_existing_atom(N) || N <- EjectedNodesS],
-     DeltaRecoveryBuckets, DefragmentZones, Services, ServiceNodesMap].
+     DeltaRecoveryBuckets, DefragmentZones, Services, ServiceNodesMap,
+     PlanUUID].
 
 parse_topology_params(Params, Services, KeepNodes) ->
     {ok, MP} = re:compile("^topology\\[(\\w+)\\]$"),
@@ -1195,11 +1205,13 @@ parse_topology_params(Params, Services, KeepNodes) ->
     end.
 
 do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
-                          DefragmentZones, Services, DesiredSevicesTopology]
+                          DefragmentZones, Services, DesiredSevicesTopology,
+                          PlanUUID]
                     = Params) ->
     ?log_info("Starting rebalance with params ~p", [Params]),
     case rebalance:start(KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
-                         DefragmentZones, Services, DesiredSevicesTopology) of
+                         DefragmentZones, Services, DesiredSevicesTopology,
+                         PlanUUID) of
         in_progress ->
             reply(Req, 200);
         nodes_mismatch ->
@@ -1223,6 +1235,13 @@ do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
                                      [Nodes]), 503);
         {params_mismatch, Error} ->
             reply_text(Req, Error, 400);
+        {invalid_rebalance_plan, Error} ->
+            reply_json(
+              Req,
+              {[{invalidRebalancePlan,
+                 io_lib:format(
+                   "Incompatibility with stored rebalance plan: ~s.",
+                   [Error])}]}, 400);
         %% pre-7.6 responses
         ok ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes,
