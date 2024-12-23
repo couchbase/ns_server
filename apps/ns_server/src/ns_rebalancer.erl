@@ -554,9 +554,11 @@ rebalance_body(#{keep_nodes := KeepNodes,
 
     ok = check_test_condition(rebalance_cluster_nodes_active),
 
+    RebalancePlan = maps:get(rebalance_plan, Params, undefined),
+
     not should_rebalance_service(kv, Services) orelse
         rebalance_kv(KeepNodes, EjectNodesAll, DeltaRecoveryBuckets,
-                     DesiredServers),
+                     DesiredServers, RebalancePlan),
     master_activity_events:note_rebalance_stage_completed(kv),
     rebalance_services(Params),
 
@@ -616,7 +618,8 @@ update_kv_progress(Progress) ->
 update_kv_progress(Nodes, Progress) ->
     update_kv_progress(dict:from_list([{N, Progress} || N <- Nodes])).
 
-rebalance_kv(KeepNodes, EjectNodes, DeltaRecoveryBuckets, DesiredServers) ->
+rebalance_kv(KeepNodes, EjectNodes, DeltaRecoveryBuckets, DesiredServers,
+             RebalancePlan) ->
     ok = ns_bucket:multi_prop_update(desired_servers, DesiredServers),
     BucketConfigs = ns_bucket:get_buckets_by_rank(),
 
@@ -642,8 +645,14 @@ rebalance_kv(KeepNodes, EjectNodes, DeltaRecoveryBuckets, DesiredServers) ->
               update_kv_progress(LiveKVNodes, BucketCompletion),
 
               ProgressFun = make_progress_fun(BucketCompletion, NumBuckets),
-              ForcedMap = get_target_map_and_opts(BucketName,
-                                                  DeltaRecoveryBuckets),
+              ForcedMap =
+                  case get_target_map_and_opts_from_plan(BucketName,
+                                                         RebalancePlan) of
+                      undefined ->
+                          get_target_map_and_opts(BucketName,
+                                                  DeltaRecoveryBuckets);
+                      FM -> FM
+                  end,
               rebalance_bucket(BucketName, BucketConfig, ProgressFun,
                                KeepKVNodes, EjectNodes, ForcedMap)
       end, misc:enumerate(BucketConfigs, 0)),
@@ -1695,6 +1704,21 @@ prepare_one_delta_recovery_bucket(Bucket, BucketConfig, FailoverVBuckets) ->
             ?log_error("Failed to prepare bucket ~p for delta recovery "
                        "on some nodes:~n~p", [Bucket, Errors]),
             exit({prepare_delta_recovery_failed, Bucket, Errors})
+    end.
+
+get_target_map_and_opts_from_plan(Bucket, RebalancePlan) ->
+    case RebalancePlan of
+        undefined ->
+            undefined;
+        _ ->
+            Buckets = proplists:get_value(buckets, RebalancePlan),
+            case proplists:get_value(Bucket, Buckets) of
+                undefined ->
+                    undefined;
+                Props ->
+                    {proplists:get_value(map, Props),
+                     proplists:get_value(options, Props)}
+            end
     end.
 
 get_target_map_and_opts(Bucket, DeltaRecoveryBuckets) ->
