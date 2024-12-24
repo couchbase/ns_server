@@ -296,7 +296,7 @@ move_vbuckets(Bucket, Moves) ->
     NewMap = tuple_to_list(TMap),
     ProgressFun = make_progress_fun(0, 1),
     run_mover(Bucket, Config, ns_bucket:get_servers(Config),
-              ProgressFun, Map, NewMap).
+              ProgressFun, Map, NewMap, undefined).
 
 rebalance_services(#{services := all} = Params) ->
     rebalance_services(
@@ -645,16 +645,19 @@ rebalance_kv(KeepNodes, EjectNodes, DeltaRecoveryBuckets, DesiredServers,
               update_kv_progress(LiveKVNodes, BucketCompletion),
 
               ProgressFun = make_progress_fun(BucketCompletion, NumBuckets),
-              ForcedMap =
+              {ForcedMap, RebalancePlanToPass} =
                   case get_target_map_and_opts_from_plan(BucketName,
                                                          RebalancePlan) of
                       undefined ->
-                          get_target_map_and_opts(BucketName,
-                                                  DeltaRecoveryBuckets);
-                      FM -> FM
+                          {get_target_map_and_opts(BucketName,
+                                                   DeltaRecoveryBuckets),
+                           undefined};
+                      TMap ->
+                          {TMap, RebalancePlan}
                   end,
               rebalance_bucket(BucketName, BucketConfig, ProgressFun,
-                               KeepKVNodes, EjectNodes, ForcedMap)
+                               KeepKVNodes, EjectNodes, ForcedMap,
+                               RebalancePlanToPass)
       end, misc:enumerate(BucketConfigs, 0)),
 
     not bucket_placer:is_enabled() orelse
@@ -669,7 +672,7 @@ rebalance_kv(KeepNodes, EjectNodes, DeltaRecoveryBuckets, DesiredServers,
     update_kv_progress(LiveKVNodes, 1.0).
 
 rebalance_bucket(BucketName, BucketConfig, ProgressFun,
-                 KeepKVNodes, EjectNodes, ForcedMap) ->
+                 KeepKVNodes, EjectNodes, ForcedMap, RebalancePlan) ->
     ale:info(?USER_LOGGER, "Started rebalancing bucket ~s", [BucketName]),
     ?rebalance_info("Rebalancing bucket ~p with config ~p",
                     [BucketName, BucketConfig]),
@@ -678,7 +681,8 @@ rebalance_bucket(BucketName, BucketConfig, ProgressFun,
             rebalance_memcached_bucket(BucketName, KeepKVNodes);
         membase ->
             rebalance_membase_bucket(BucketName, BucketConfig, ProgressFun,
-                                     KeepKVNodes, EjectNodes, ForcedMap)
+                                     KeepKVNodes, EjectNodes, ForcedMap,
+                                     RebalancePlan)
     end.
 
 rebalance_memcached_bucket(BucketName, KeepKVNodes) ->
@@ -698,7 +702,7 @@ calculate_servers(BucketConfig, KeepKVNodes, EjectNodes) ->
     end.
 
 rebalance_membase_bucket(BucketName, BucketConfig, ProgressFun,
-                         KeepKVNodes, EjectNodes, ForcedMap) ->
+                         KeepKVNodes, EjectNodes, ForcedMap, RebalancePlan) ->
     {Servers, ServersToRemove} =
         calculate_servers(BucketConfig, KeepKVNodes, EjectNodes),
 
@@ -736,7 +740,8 @@ rebalance_membase_bucket(BucketName, BucketConfig, ProgressFun,
     master_activity_events:note_bucket_rebalance_started(BucketName),
     {NewMap, MapOptions} =
         do_rebalance_membase_bucket(BucketName, NewConf,
-                                    Servers, ProgressFun, ForcedMap),
+                                    Servers, ProgressFun, ForcedMap,
+                                    RebalancePlan),
     ns_bucket:set_map_opts(BucketName, MapOptions),
     ns_bucket:update_bucket_props(BucketName,
                                   [{deltaRecoveryMap, undefined}]),
@@ -762,7 +767,7 @@ generate_fast_forward_map(Map, Servers, Bucket, Config) ->
 %% either return ok or exit with reason 'stopped' or whatever reason
 %% was given by whatever failed.
 do_rebalance_membase_bucket(Bucket, Config,
-                            Servers, ProgressFun, ForcedMap) ->
+                            Servers, ProgressFun, ForcedMap, RebalancePlan) ->
     Map = proplists:get_value(map, Config),
     {FastForwardMap, MapOptions} =
         case ForcedMap of
@@ -775,7 +780,8 @@ do_rebalance_membase_bucket(Bucket, Config,
     ns_bucket:store_last_balanced_vbmap(Bucket, FastForwardMap, MapOptions),
     ?rebalance_debug("Target map options: ~p (hash: ~p)",
                      [MapOptions, erlang:phash2(MapOptions)]),
-    {run_mover(Bucket, Config, Servers, ProgressFun, Map, FastForwardMap),
+    {run_mover(Bucket, Config, Servers, ProgressFun, Map, FastForwardMap,
+               RebalancePlan),
      MapOptions}.
 
 sleep_for_sdk_clients(Type) ->
@@ -786,7 +792,8 @@ sleep_for_sdk_clients(Type) ->
                     [SecondsToWait, Type]),
     timer:sleep(SecondsToWait * 1000).
 
-run_mover(Bucket, Config, KeepNodes, ProgressFun, Map, FastForwardMap) ->
+run_mover(Bucket, Config, KeepNodes, ProgressFun, Map, FastForwardMap,
+          RebalancePlan) ->
     Servers = ns_bucket:get_servers(Config),
 
     %% At this point the server list must have already been updated to include
@@ -803,7 +810,8 @@ run_mover(Bucket, Config, KeepNodes, ProgressFun, Map, FastForwardMap) ->
       fun () ->
               {ok, Pid} = ns_vbucket_mover:start_link(Bucket, Servers,
                                                       Map, FastForwardMap,
-                                                      ProgressFun),
+                                                      ProgressFun,
+                                                      RebalancePlan),
               wait_for_mover(Pid)
       end),
 
@@ -1359,7 +1367,7 @@ do_run_graceful_failover_moves(Nodes, BucketName, BucketConfig, I, N) ->
     ProgressFun = make_progress_fun(I, N),
     RV = run_mover(BucketName, BucketConfig,
                    ns_bucket:get_servers(BucketConfig),
-                   ProgressFun, Map, Map1),
+                   ProgressFun, Map, Map1, undefined),
     master_activity_events:note_bucket_rebalance_ended(BucketName),
     RV.
 

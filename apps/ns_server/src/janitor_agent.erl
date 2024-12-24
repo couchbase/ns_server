@@ -27,6 +27,7 @@
 -define(GET_SRC_DST_REPLICATIONS_TIMEOUT,
         ?get_timeout(get_src_dst_replications, 30000)).
 -define(QUERY_VBUCKETS_SLEEP, ?get_param(query_vbuckets_sleep, 1000)).
+-define(MOUNT_VOLUMES_TIMEOUT,  ?get_timeout(mount_volumes, 30000)).
 
 -record(state, {bucket_name :: bucket_name(),
                 rebalance_pid :: undefined | pid(),
@@ -70,7 +71,8 @@
          dcp_takeover/5,
          inhibit_view_compaction/3,
          uninhibit_view_compaction/4,
-         get_failover_logs/2]).
+         get_failover_logs/2,
+         mount_volumes/4]).
 
 -export([start_link/1]).
 
@@ -320,20 +322,38 @@ maybe_set_data_ingress(Bucket, Status, Servers) ->
             {errors, BadReplies}
     end.
 
-call_on_servers(Bucket, Servers, BucketConfig, Call, Timeout) ->
-    CompleteCall = {Call, BucketConfig},
-    Replies = misc:parallel_map(
-                ?cut({_1, catch call(Bucket, _1, CompleteCall, Timeout)}),
-                Servers, infinity),
-    BadReplies = [R || {_, RV} = R <- Replies, RV =/= ok],
+-spec mount_volumes(bucket_name(), [{node(), list()}], map(), pid()) ->
+          ok | {errors, [{node(), term()}]}.
+mount_volumes(Bucket, VolumesToMount, NodesMap, RebalancerPid) ->
+    NodesCalls =
+        lists:map(
+          fun ({N, VBuckets}) ->
+                  Volumes = proplists:get_value(N, VolumesToMount),
+                  {N, {mount_volumes, VBuckets, Volumes}}
+          end, maps:to_list(NodesMap)),
+    call_on_nodes(Bucket, NodesCalls, RebalancerPid, ?MOUNT_VOLUMES_TIMEOUT).
+
+call_on_nodes(Bucket, NodesCalls, Rebalancer, Timeout) ->
+    Replies =
+        misc:parallel_map(
+          fun ({Node, Call}) ->
+                  {Node, Call,
+                   catch rebalance_call(
+                           Rebalancer, Bucket, Node, Call, Timeout)}
+          end, NodesCalls, infinity),
+    BadReplies = [R || {_, _, RV} = R <- Replies, RV =/= ok],
     case BadReplies of
         [] ->
             ok;
         _ ->
-            ?log_info("~s:Some janitor state change requests (~p) have failed"
-                      ":~n~p", [Bucket, Call, BadReplies]),
-            {error, {failed_nodes, [N || {N, _} <- BadReplies]}}
+            ?log_info("~s:Some janitor requests have failed"
+                      ":~n~p", [Bucket, BadReplies]),
+            {error, {failed_nodes, [N || {N, _, _} <- BadReplies]}}
     end.
+
+call_on_servers(Bucket, Servers, BucketConfig, Call, Timeout) ->
+    NodesCalls = [{N, {Call, BucketConfig}} || N <- Servers],
+    call_on_nodes(Bucket, NodesCalls, undefined, Timeout).
 
 process_multicall_rv({Replies, BadNodes}) ->
     BadReplies = [R || {_, RV} = R <- Replies, RV =/= ok],
@@ -801,7 +821,27 @@ do_handle_call({mark_warmed, DataIngress}, _From,
                #state{bucket_name = Bucket} = State) ->
     RV = ns_memcached:mark_warmed(Bucket, DataIngress),
     ok = ns_bucket:activate_bucket_data_on_this_node(Bucket),
-    {reply, RV, State}.
+    {reply, RV, State};
+do_handle_call({mount_volumes, VBuckets, Volumes}, _From,
+               #state{bucket_name = Bucket} = State) ->
+    RV =
+        [{VB, ns_memcached:mount_fusion_vbucket(Bucket, VB, Volumes)} ||
+            VB <- VBuckets],
+    Bad = lists:filter(fun ({_, {ok, _}}) ->
+                               false;
+                           ({VB, Error}) ->
+                               ?log_error("Mounting volumes ~p for vbucket ~p, "
+                                          "bucket ~p failed with ~p",
+                                          [Volumes, VB, Bucket, Error]),
+                               true
+                       end, RV),
+    RV1 = case Bad of
+              [] ->
+                  ok;
+              _ ->
+                  {error, mount_volumes_failed}
+          end,
+    {reply, RV1, State}.
 
 -dialyzer({no_opaque, [handle_call_via_servant/4]}).
 

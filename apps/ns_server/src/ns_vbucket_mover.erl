@@ -24,7 +24,7 @@
         ns_config:read_key_fast(rebalance_inflight_moves_per_node, 64)).
 
 %% API
--export([start_link/5]).
+-export([start_link/6]).
 
 %% gen_server callbacks
 -export([code_change/3, init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -49,11 +49,13 @@
 
 %% @doc Start the mover.
 -spec start_link(bucket_name(), [node()],
-                 vbucket_map(), vbucket_map(), progress_callback()) ->
+                 vbucket_map(), vbucket_map(), progress_callback(),
+                 list() | undefined) ->
                         {ok, pid()} | {error, any()}.
-start_link(Bucket, Nodes, OldMap, NewMap, ProgressCallback) ->
+start_link(Bucket, Nodes, OldMap, NewMap, ProgressCallback, RebalancePlan) ->
     gen_server:start_link(?MODULE,
-                          {Bucket, Nodes, OldMap, NewMap, ProgressCallback},
+                          {Bucket, Nodes, OldMap, NewMap, ProgressCallback,
+                           RebalancePlan},
                           []).
 
 note_move_done(Pid, Worker) ->
@@ -113,7 +115,7 @@ is_swap_rebalance(OldMap, NewMap) ->
             false
     end.
 
-init({Bucket, Nodes, OldMap, NewMap, ProgressCallback}) ->
+init({Bucket, Nodes, OldMap, NewMap, ProgressCallback, RebalancePlan}) ->
     case is_swap_rebalance(OldMap, NewMap) of
         true ->
             ale:info(?USER_LOGGER, "Bucket ~p rebalance appears to be swap rebalance", [Bucket]);
@@ -145,6 +147,19 @@ init({Bucket, Nodes, OldMap, NewMap, ProgressCallback}) ->
     ns_rebalance_observer:submit_master_event(
       {planned_moves, Bucket,
        vbucket_move_scheduler:get_moves(SchedulerState), true}),
+
+    case RebalancePlan of
+        undefined ->
+            ok;
+        _ ->
+            VolumesToMount = proplists:get_value(mountedVolumes, RebalancePlan),
+            BucketPlan = proplists:get_value(
+                           Bucket, proplists:get_value(buckets, RebalancePlan)),
+            NodesMap = proplists:get_value(nodes, BucketPlan),
+            ?rebalance_info("Mount volumes ~p", [VolumesToMount]),
+            ok = janitor_agent:mount_volumes(Bucket, VolumesToMount, NodesMap,
+                                             self())
+    end,
 
     {ok, #state{bucket = Bucket,
                 disco_events_subscription = Subscription,
