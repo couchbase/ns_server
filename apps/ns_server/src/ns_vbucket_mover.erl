@@ -138,11 +138,17 @@ init({Bucket, Nodes, OldMap, NewMap, ProgressCallback, RebalancePlan}) ->
     ets:new(workers, [named_table, private, set]),
 
     Quirks = rebalance_quirks:get_quirks(Nodes, project_intact),
+    Options = case RebalancePlan of
+                  undefined ->
+                      [];
+                  _ ->
+                      [{fusion_use_snapshot, true}]
+              end,
     SchedulerState = vbucket_move_scheduler:prepare(
                        OldMap, NewMap, Quirks,
                        menelaus_web_settings:get_rebalance_moves_per_node(),
                        ?MOVES_BEFORE_COMPACTION,
-                       ?MAX_INFLIGHT_MOVES_PER_NODE, []),
+                       ?MAX_INFLIGHT_MOVES_PER_NODE, Options),
 
     ns_rebalance_observer:submit_master_event(
       {planned_moves, Bucket,
@@ -272,7 +278,7 @@ on_move_done(Worker, #state{bucket = Bucket,
                             map = Map,
                             moves_scheduler_state = SubState} = State) ->
     {ok, Move} = find_worker(Worker),
-    {move, {VBucket, _, NewChain, _}} = Move,
+    {move, {VBucket, _, NewChain, _, _}} = Move,
 
     %% Make sure the worker switched the chains as expected.
     true = (array:get(VBucket, Map) =:= NewChain),
@@ -287,7 +293,7 @@ on_move_done(Worker, #state{bucket = Bucket,
 
 handle_update_vbucket_map(Worker, From, #state{map = Map} = State) ->
     {ok, {move, Move}} = find_worker(Worker),
-    {VBucket, OldChain, NewChain, _} = Move,
+    {VBucket, OldChain, NewChain, _, _} = Move,
 
     true = (array:get(VBucket, Map) =:= OldChain),
     NewMap = array:set(VBucket, NewChain, Map),
@@ -385,10 +391,10 @@ spawn_workers(#state{bucket = Bucket,
             {noreply, NextState}
     end.
 
-spawn_worker({move, {VBucket, OldChain, NewChain, Quirks}},
+spawn_worker({move, {VBucket, OldChain, NewChain, Quirks, Options}},
              #state{bucket = Bucket}) ->
-    Pid = ns_single_vbucket_mover:spawn_mover(Bucket, VBucket,
-                                              OldChain, NewChain, Quirks),
+    Pid = ns_single_vbucket_mover:spawn_mover(
+            Bucket, VBucket, OldChain, NewChain, Quirks, Options),
     {ok, Pid};
 spawn_worker({compact, Node}, #state{bucket = Bucket}) ->
     case ets:take(compaction_inhibitions, Node) of

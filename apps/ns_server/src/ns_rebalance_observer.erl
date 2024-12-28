@@ -405,9 +405,11 @@ initiate_bucket_rebalance(BucketName, _, _Verbose, OldState)
 initiate_bucket_rebalance(BucketName, {Moves, UndefinedMoves}, Verbose,
                           OldState) ->
     BuildDestinations0 = [{MasterNode, VB}
-                          || {VB, [MasterNode|_], _ChainAfter, _} <- Moves],
-    BuildDestinations1 = [{N, VB} || {VB, [MasterNode|_], ChainAfter, _} <- Moves,
-                                     N <- ChainAfter, N =/= undefined, N =/= MasterNode],
+                          || {VB, [MasterNode|_], _ChainAfter, _, _} <- Moves],
+    BuildDestinations1 = [{N, VB} || {VB, [MasterNode|_], ChainAfter, _, _}
+                                         <- Moves,
+                                     N <- ChainAfter, N =/= undefined,
+                                     N =/= MasterNode],
 
     BuildDestinations =
         %% the following groups vbuckets to per node. [{a, 1}, {a, 2}, {b, 3}] => [{a, [1,2]}, {b, [3]}]
@@ -451,12 +453,13 @@ initiate_bucket_rebalance(BucketName, {Moves, UndefinedMoves}, Verbose,
              {VB, #vbucket_info{before_chain = ChainBefore,
                                 after_chain = ChainAfter,
                                 stats = RBStats}}
-         end || {VB, [MasterNode|_] = ChainBefore, ChainAfter, _} <- Moves],
+         end || {VB, [MasterNode|_] = ChainBefore, ChainAfter, _, _} <- Moves],
 
     BuiltUndefinedMoves = [{VB, #vbucket_info{before_chain = ChainBefore,
                                               after_chain = ChainAfter,
                                               stats = []}}
-                           || {VB, ChainBefore, ChainAfter, _} <- UndefinedMoves],
+                           || {VB, ChainBefore, ChainAfter, _, _}
+                                  <- UndefinedMoves],
 
     AllMoves = BuiltMoves ++ BuiltUndefinedMoves,
     Verbose andalso ?log_debug("Moves:~n~p", [AllMoves], [{chars_limit, -1}]),
@@ -1262,7 +1265,7 @@ rebalance_inner() ->
     submit_master_event({rebalance_stage_completed, [kv, kv_delta_recovery]}),
     submit_master_event({bucket_rebalance_started, "Bucket1", unused}),
     submit_master_event({planned_moves, "Bucket1",
-                         {[{0, [n_0, n_1], [n_1, n_0], []}], []}, false}),
+                         {[{0, [n_0, n_1], [n_1, n_0], [], []}], []}, false}),
     submit_master_event({vbucket_move_start, unused, "Bucket1",
                          unused, 0, unused, unused}),
     submit_master_event({backfill_phase_started, "Bucket1", 0}),
@@ -1413,9 +1416,9 @@ get_all_vb_seqnos() ->
     %% VB 1: Active only move
     %% VB 2: Replica -> active + new replica
     submit_master_event({planned_moves, "Bucket1",
-                         {[{0, [n_0, n_1], [n_0, n_2], []},
-                           {1, [n_0, n_1], [n_2, n_1], []},
-                           {2, [n_0, n_1], [n_1, n_2], []}], []}, false}),
+                         {[{0, [n_0, n_1], [n_0, n_2], [], []},
+                           {1, [n_0, n_1], [n_2, n_1], [], []},
+                           {2, [n_0, n_1], [n_1, n_2], [], []}], []}, false}),
     submit_master_event({vbucket_move_start, unused, "Bucket1",
                          unused, 0, unused, unused}),
 

@@ -110,10 +110,13 @@
          note_move_completed/2,
          note_compaction_done/2]).
 
+-type move_option() :: [{fusion_use_snapshot, boolean()}].
+
 -type move() :: {VBucket :: vbucket_id(),
                  ChainBefore :: [node() | undefined],
                  ChainAfter :: [node() | undefined],
-                 Quirks :: [rebalance_quirks:quirk()]}.
+                 Quirks :: [rebalance_quirks:quirk()],
+                 Options :: [move_option()]}.
 
 %% all possible types of actions are moves and compactions
 -type action() :: {move, move()} |
@@ -155,13 +158,15 @@ prepare(CurrentMap, TargetMap, Quirks,
                             CurrentMap,
                             TargetMap),
 
+    FilteredOptions = [KV || {K, _} = KV <- Options, K =/= terse_output],
+
     {Moves, UndefinedMoves, TrivialMoves} =
         lists:foldl(
           fun ({V, C1, C2}, {MovesAcc, UndefinedMovesAcc, TrivialMovesAcc}) ->
                   OldMaster = hd(C1),
                   case OldMaster of
                       undefined ->
-                          Move = {V, C1, C2, []},
+                          Move = {V, C1, C2, [], FilteredOptions},
                           {MovesAcc, [Move | UndefinedMovesAcc], TrivialMovesAcc};
                       _ ->
                           MoveQuirks   = rebalance_quirks:get_node_quirks(OldMaster, Quirks),
@@ -171,7 +176,8 @@ prepare(CurrentMap, TargetMap, Quirks,
                               true ->
                                   {MovesAcc, UndefinedMovesAcc, TrivialMovesAcc + 1};
                               false ->
-                                  Move = {V, C1, C2, MoveQuirks},
+                                  Move = {V, C1, C2, MoveQuirks,
+                                          FilteredOptions},
                                   {[Move | MovesAcc], UndefinedMovesAcc, TrivialMovesAcc}
                           end
                   end
@@ -179,7 +185,7 @@ prepare(CurrentMap, TargetMap, Quirks,
 
     MovesPerNode =
         lists:foldl(
-          fun ({_V, [Src|_], [Dst|_], _}, Acc) ->
+          fun ({_V, [Src|_], [Dst|_], _, _}, Acc) ->
                   case Src =:= Dst of
                       true ->
                           %% no index changes will be done here
@@ -192,7 +198,7 @@ prepare(CurrentMap, TargetMap, Quirks,
 
     InitialMoveCounts =
         lists:foldl(
-          fun ({_V, [Src|_], [Dst|_], _}, Acc) ->
+          fun ({_V, [Src|_], [Dst|_], _, _}, Acc) ->
                   D = dict:update_counter(Src, 1, Acc),
                   dict:update_counter(Dst, 1, D)
           end, dict:new(), Moves),
@@ -374,7 +380,7 @@ choose_action_not_compaction(#state{
     %% Number backfills per node.
     NowBackfills =
         lists:foldl(
-          fun ({_V, OldChain, NewChain, _Quirks}, NBAcc) ->
+          fun ({_V, OldChain, NewChain, _Quirks, _}, NBAcc) ->
                   BackfillNodes = backfill_nodes(OldChain, NewChain),
                   increment_counter_keys(BackfillNodes, NBAcc)
           end, dict:new(), CurrentBackfills),
@@ -382,7 +388,7 @@ choose_action_not_compaction(#state{
     %% Identify all the connections(i.e, {Src, Dst}) have currently active
     %% backfills.
     ConnectionDict = lists:foldl(
-                       fun ({_, [Src | _] = OldChain, NewChain, _}, Acc) ->
+                       fun ({_, [Src | _] = OldChain, NewChain, _, _}, Acc) ->
                                Connections = [{Src, Dst} ||
                                               Dst <- new_replicas(OldChain,
                                                                   NewChain)],
@@ -394,7 +400,7 @@ choose_action_not_compaction(#state{
     %% see ns_single_vbucket_mover:wait_index_updated.
     %% ViewHeaviness account for this heaviness caused by views building.
     ViewHeaviness = lists:foldl(
-                      fun ({_, [Src | _], [Dst | _], _}, Dict)
+                      fun ({_, [Src | _], [Dst | _], _, _}, Dict)
                             when Src =/= Dst ->
                               dict:update_counter(Dst, 1, Dict);
                           (_, Dict) ->
@@ -406,13 +412,14 @@ choose_action_not_compaction(#state{
     %% NodeWeights determines the bottleneck nodes, and we want to keep them
     %% busy at all times.
     NodeWeights = lists:foldl(
-                    fun ({_V, OldChain, NewChain, _}, Acc) ->
+                    fun ({_V, OldChain, NewChain, _, _}, Acc) ->
                             Nodes = backfill_nodes(OldChain, NewChain),
                             increment_counter_keys(Nodes, Acc)
                     end, dict:new(), MovesLeft),
 
     GoodnessFn =
-        fun ({Vb, [OldMaster | _] = OldChain, [NewMaster | _] = NewChain, _}) ->
+        fun ({Vb, [OldMaster | _] = OldChain, [NewMaster | _] = NewChain, _,
+              _}) ->
                 %% 1. OldMaster from KV perspective since it needs to perform
                 %% backfills.
                 %% 2. NewReplicas from KV perspective since they need to process
@@ -513,7 +520,7 @@ choose_action_not_compaction(#state{
         end,
 
     ScoredMoves = lists:filtermap(
-                    fun ({_V, OldChain, NewChain, _} = Move) ->
+                    fun ({_V, OldChain, NewChain, _, _} = Move) ->
                             case move_is_possible(OldChain, NewChain,
                                                   NowBackfills,
                                                   CompactionCountdown,
@@ -532,8 +539,8 @@ choose_action_not_compaction(#state{
         [] ->
             {[], State};
         _ ->
-            {_, {VB, [Src | _], [Dst | _], _} = BestMove} = lists:max(
-                                                              ScoredMoves),
+            {_, {VB, [Src | _], [Dst | _], _, _} = BestMove} = lists:max(
+                                                                 ScoredMoves),
             NewState = State#state{
                          in_flight_per_node =
                              increment_counter(Src, Dst, NowInFlight),
@@ -560,9 +567,9 @@ extract_progress(#state{initial_move_counts = InitialCounts,
 %% @doc marks backfill phase of previously started move as done. Users
 %% of this code will call it when backfill is done to update state so
 %% that next moves can be started.
-note_backfill_done(State, {move, {_, [undefined | _], _, _}}) ->
+note_backfill_done(State, {move, {_, [undefined | _], _, _, _}}) ->
     State;
-note_backfill_done(State, {move, {VB, _, _, _}}) ->
+note_backfill_done(State, {move, {VB, _, _, _, _}}) ->
     updatef(State, #state.in_flight_backfills,
             fun (CurrentBackfills) ->
                     lists:keydelete(VB, 1, CurrentBackfills)
@@ -572,12 +579,12 @@ note_backfill_done(State, {move, {VB, _, _, _}}) ->
 %% assumes that backfill phase of this move was previously marked as
 %% done. Users of this code will call it when move is done to update
 %% state so that next moves and/or compactions can be started.
-note_move_completed(State, {move, {VB, [undefined|_], [_Dst|_], _}}) ->
+note_move_completed(State, {move, {VB, [undefined|_], [_Dst|_], _, _}}) ->
     updatef(State, #state.in_flight_moves,
             fun (CurrentMoves) ->
                     lists:keydelete(VB, 1, CurrentMoves)
             end);
-note_move_completed(State, {move, {VB, [Src|_], [Dst|_], _}}) ->
+note_move_completed(State, {move, {VB, [Src|_], [Dst|_], _, _}}) ->
     State0 = updatef(State, #state.in_flight_moves,
                      fun (CurrentMoves) ->
                              lists:keydelete(VB, 1, CurrentMoves)

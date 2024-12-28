@@ -123,7 +123,7 @@ is_done(#vs{sched_state = S,
 all_performed_moves(#vs{all_performed_moves = M}) ->
     M.
 
-extract_move({_Vb, [Src|_], [Dst|_], []}) -> {Src, Dst}.
+extract_move({_Vb, [Src|_], [Dst|_], [], []}) -> {Src, Dst}.
 
 check_concurrent_moves(-1 = _ConcurrentMoves, _Node, _RunningB, Acc) ->
     Acc;
@@ -285,7 +285,7 @@ do_test_rebalance(VBuckets, BackfillsLimit, MovesBeforeCompaction, MaxInflightMo
         InitialIndexed = lists:zip(lists:seq(0, VBuckets-1), InitialMap),
         FinalIndexed =
             lists:foldl(
-              fun ({Vb, ChainBefore, ChainAfter, []}, CurrentIndexed) ->
+              fun ({Vb, ChainBefore, ChainAfter, [], []}, CurrentIndexed) ->
                       miniassert(ChainBefore =/= ChainAfter, "non empty moves"),
                       {_, CurrentChain} = lists:keyfind(Vb, 1, CurrentIndexed),
                       miniassert(ChainBefore =:= CurrentChain, "before matches current"),
@@ -296,7 +296,8 @@ do_test_rebalance(VBuckets, BackfillsLimit, MovesBeforeCompaction, MaxInflightMo
         AllCompactions = S#vs.all_compactions,
         AffectedNodes = lists:usort(
                           lists:flatten([[Src, Dst]
-                                         || {_V, [Src|_], [Dst|_], []} <- AllMoves,
+                                         || {_V, [Src|_], [Dst|_], [], []}
+                                                <- AllMoves,
                                             Src =/= undefined,
                                             Src =/= Dst])),
         CompactedNodes = lists:usort(AllCompactions),
@@ -411,7 +412,7 @@ simulate_that_rebalance() ->
                                {subtype, Type},
                                {type, compact},
                                {node, N}]};
-                 {move, {Vb, ChainBefore, ChainAfter, _}} ->
+                 {move, {Vb, ChainBefore, ChainAfter, _, _}} ->
                      {struct, [{ts, TS},
                                {subtype, Type},
                                {type, move},

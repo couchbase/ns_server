@@ -10,22 +10,22 @@
 
 -module(ns_single_vbucket_mover).
 
--export([spawn_mover/5, mover/6]).
+-export([spawn_mover/6, mover/7]).
 
 -include("ns_common.hrl").
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
-spawn_mover(Bucket, VBucket, OldChain, NewChain, Quirks) ->
+spawn_mover(Bucket, VBucket, OldChain, NewChain, Quirks, Options) ->
     Parent = self(),
     Pid = proc_lib:spawn_link(ns_single_vbucket_mover, mover,
                               [Parent, Bucket,
-                               VBucket, OldChain, NewChain, Quirks]),
+                               VBucket, OldChain, NewChain, Quirks, Options]),
     ?rebalance_debug("Spawned single vbucket mover for Bucket ~s, vbucket ~p,"
-                     "Old chain ~p, NewChain ~p, Quirks ~p with Pid ~p and "
-                     "Parent ~p",
-                     [Bucket, VBucket, OldChain, NewChain, Quirks, Pid,
+                     "Old chain ~p, NewChain ~p, Quirks ~p Options ~p with Pid"
+                     " ~p and Parent ~p",
+                     [Bucket, VBucket, OldChain, NewChain, Quirks, Options, Pid,
                       Parent]),
     Pid.
 
@@ -45,13 +45,14 @@ cleanup_list_del(Pid) ->
     List2 = ordsets:del_element(Pid, List),
     erlang:put(cleanup_list, List2).
 
-mover(Parent, Bucket, VBucket, OldChain, NewChain, Quirks) ->
+mover(Parent, Bucket, VBucket, OldChain, NewChain, Quirks, Options) ->
     master_activity_events:note_vbucket_mover(self(), Bucket, hd(OldChain),
                                               VBucket, OldChain, NewChain),
     misc:try_with_maybe_ignorant_after(
       fun () ->
               process_flag(trap_exit, true),
-              mover_inner(Parent, Bucket, VBucket, OldChain, NewChain, Quirks),
+              mover_inner(Parent, Bucket, VBucket, OldChain, NewChain, Quirks,
+                          Options),
               on_move_done(Parent, Bucket, VBucket, OldChain, NewChain)
       end,
       fun () ->
@@ -123,12 +124,12 @@ maybe_initiate_indexing(Bucket, Parent, JustBackfillNodes, ReplicaNodes, VBucket
 
 mover_inner(Parent, Bucket, VBucket,
             [undefined|_] = _OldChain,
-            [NewMaster|_] = _NewChain, _Quirks) ->
+            [NewMaster|_] = _NewChain, _Quirks, _Options) ->
     set_vbucket_state(Bucket, NewMaster, Parent, VBucket,
                       active, undefined, undefined, []);
 mover_inner(Parent, Bucket, VBucket,
             [OldMaster|OldReplicas] = OldChain,
-            [NewMaster|_] = NewChain, Quirks) ->
+            [NewMaster|_] = NewChain, Quirks, Options) ->
     IndexAware = cluster_compat_mode:is_index_aware_rebalance_on(),
 
     maybe_inhibit_view_compaction(Parent, OldMaster, Bucket, NewMaster, IndexAware),
@@ -141,7 +142,9 @@ mover_inner(Parent, Bucket, VBucket,
                          ReplicaNodes ++ JustBackfillNodes, Quirks),
 
     %% setup replication streams to replicas from the existing master
-    set_initial_vbucket_state(Bucket, Parent, VBucket, OldMaster, ReplicaNodes, JustBackfillNodes),
+    set_initial_vbucket_state(Bucket, Parent, VBucket, OldChain, ReplicaNodes,
+                              JustBackfillNodes,
+                              proplists:get_bool(fusion_use_snapshot, Options)),
 
     %% initiate indexing on new master (replicas are ignored for now)
     %% at this moment since the stream to new master is created (if there is a new master)
@@ -501,10 +504,23 @@ get_replica_and_backfill_nodes(MasterNode, [NewMasterNode|_] = NewChain) ->
     true = (JustBackfillNodes =/= [undefined]),
     {ReplicaNodes, JustBackfillNodes}.
 
-set_initial_vbucket_state(Bucket, Parent, VBucket, SrcNode, ReplicaNodes, JustBackfillNodes) ->
-    Changes = [{Replica, replica, undefined, SrcNode, []}
+get_move_options(false, _DstNode, _OldChain) ->
+    [];
+get_move_options(true, DstNode, OldChain) ->
+    case lists:member(DstNode, OldChain) of
+        false ->
+            [{use_snapshot, <<"fusion">>}];
+        true ->
+            []
+    end.
+
+set_initial_vbucket_state(Bucket, Parent, VBucket, [SrcNode | _] = OldChain,
+                          ReplicaNodes, JustBackfillNodes, UseSnapshot) ->
+    Changes = [{Replica, replica, undefined, SrcNode,
+                get_move_options(UseSnapshot, Replica, OldChain)}
                || Replica <- ReplicaNodes]
-        ++ [{FutureMaster, replica, passive, SrcNode, []}
+        ++ [{FutureMaster, replica, passive, SrcNode,
+             get_move_options(UseSnapshot, FutureMaster, OldChain)}
             || FutureMaster <- JustBackfillNodes],
     spawn_and_wait(
       fun () ->
