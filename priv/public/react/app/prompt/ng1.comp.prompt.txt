@@ -1,0 +1,137 @@
+Follow these instructions to convert Angular components to React
+
+## 1. Your Role
+You are expert in converting AngularJS components to React Functional Components.
+You will be provided with examples specific to this project on how conversion
+must be done in addition to your knowledge.
+
+## 2. Convert $uibModal to our uibModal analogue using useModal context.
+For example:
+// Instead of
+```javascript
+...
+  var scope = $rootScope.$new();
+  scope.partitioned = row.partitioned;
+  $uibModal.open({
+    windowClass: "z-index-10001",
+    backdrop: 'static',
+    template: mnGsiDropConfirmDialogTemplate,
+    scope: scope,
+    resolve: {
+      indexSettings: async () => {
+        return await settingsClusterService.getIndexSettings();
+      },
+      firstTimeAddedServices: () => {
+        return firstTimeAddedServices; // Synchronous resolver
+      }
+    },
+  }).result.then(function () {
+    //on success
+  }, function () {
+    //on error
+  });
+...
+```
+// Do
+```jsx
+  import { useModal } from 'uib/template/modal/window.and.backdrop'
+  ...
+  const { openModal } = useModal();
+
+  ...
+  // Using a promise wrapper
+  openModal({
+    windowClass: "z-index-10001",
+    backdrop: 'static',
+    component: MnGsiDropConfirmDialogComponent,
+    props: scope, // or props: {partitioned: row.partitioned},
+    resolve: {
+      indexSettings: async () => {
+        return await settingsClusterService.getIndexSettings();
+      },
+      firstTimeAddedServices: () => {
+        return firstTimeAddedServices; // Synchronous resolver
+      }
+    }
+  }).then(function () {
+    //on success
+  }, function () {
+    //on error
+  });
+...
+```
+
+## 3. Convert AngularJS vm (scope) value to React state but keep functions or methods out of state defenition
+For example:
+// Instead of
+```javascript
+...
+var vm = this;
+vm.isEditMode = !!group;
+vm.groupName = group ? group.name : "";
+vm.onSubmit = onSubmit;
+...
+```
+// Do
+```jsx
+...
+  const vm = useState({
+    isEditMode: !!group,
+    groupName: group ? group.name : ""
+  });
+
+  // keep function out of state defenition
+  function onSubmit() {...
+...
+```
+
+## 4. Convert angulatJS filters to simple function 
+For example:
+// Instead of
+```AngularJS html
+...
+  {{row.storageMode | mnFormatStorageMode:pools.isEnterprise}}
+...
+```
+// Do
+```jsx
+...
+  {mnFormatStorageMode(row.storageMode, pools.isEnterprise)}
+...
+```
+
+## 5. Convert AngularJS UI router ui-sref
+For example:
+// Instead of
+```AngularJS html
+...
+  ui-sref="app.admin.query.workbench({query: row.definition})">
+...
+```
+// Do
+```jsx
+...
+  const appAdminQueryWorkbenchSref = useSref("app.admin.query.workbench", {query: row.definition});
+...
+ <button {...appAdminQueryWorkbenchSref} ...
+```
+
+## 6. Convert AngularJS $event.stopPropagation();
+// Instead of
+```AngularJS html
+...
+  ng-click="$event.stopPropagation();"
+...
+```
+// Do
+```jsx
+...
+  onClick={(event) => event.stopPropagation()}
+...
+```
+
+## 7. Convert AngularJS $event.stopPropagation();
+
+
+
+You are expert in converting AngularJS to React Class components. There are two attached files. Your task to take mn_select.html and convert it to React place the result into mn_select.jsx render function and do not change anything in componentWillMount. Use react-bootstrap dropdown to in place of AngularJS uib-dropdown. Try to stay as much as possible to the origina AngularJS code

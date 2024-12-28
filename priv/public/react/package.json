@@ -1,0 +1,63 @@
+{
+  "name": "ns_server-ui",
+  "type": "module",
+  "exports": "./app/main.js",
+  "version": "0.0.0",
+  "scripts": {
+    "checks": "eslint 'app/**/*.js'",
+    "dev": "vite build --mode development --watch"
+  },
+  "dependencies": {
+    "@angular/common": "8.2.14",
+    "@uirouter/core": "6.0.4",
+    "@uirouter/react": "1.0.7",
+    "@uirouter/rx": "0.6.4",
+    "axios": "^1.7.9",
+    "clipboard": "1.5.16",
+    "codemirror": "5.56.0",
+    "d3-array": "2.4.0",
+    "d3-axis": "1.0.12",
+    "d3-brush": "1.1.5",
+    "d3-collection": "1.0.7",
+    "d3-dsv": "^2.0.0",
+    "d3-format": "1.4.3",
+    "d3-hierarchy": "1.1.9",
+    "d3-interpolate": "1.4.0",
+    "d3-scale": "3.2.1",
+    "d3-scale-chromatic": "1.5.0",
+    "d3-selection": "1.4.1",
+    "d3-shape": "1.3.7",
+    "d3-time": "1.1.0",
+    "d3-time-format": "2.2.3",
+    "d3-transition": "1.3.2",
+    "d3-zoom": "1.8.3",
+    "dayjs": "^1.11.7",
+    "file-saver": "2.0.2",
+    "ipaddr.js": "2.0.1",
+    "js-beautify": "1.14.3",
+    "lodash": "3.7.0",
+    "mitt": "^3.0.1",
+    "oclazyload": "1.1.0",
+    "ramda": "0.28.0",
+    "react": "^18.2.0",
+    "react-bootstrap": "^2.10.6",
+    "react-dom": "^18.2.0",
+    "react-reactive-form": "^2.0.1",
+    "rxjs": "6.6.7",
+    "sortablejs": "1.10.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^7.32.0",
+    "vite": "^6.0.3"
+  },
+  "engines": {
+    "node": "^14.13.1 || >=16.0.0"
+  },
+  "browserslist": [
+    "Chrome >= 67",
+    "Firefox >= 67",
+    "Safari >= 11.1",
+    "Edge >= 80"
+  ]
+}

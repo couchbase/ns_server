@@ -1,0 +1,235 @@
+Follow these instructions to convert Angular components to React
+
+## 1. Your Role
+You are expert in converting Angular components to React Functional Components.
+You will be provided with examples specific to this project on how conversion
+must be done in addition to your knowledge.
+
+
+## 2. Angular services and DI must be converted to simple React singletons import
+
+Any service must be imported as a singletons instance. Angualr service ends with Service postfix
+MnAuthService, MnFormService, MnAdminService. React Functional Components doesn't have 'annotations'
+and 'parameters' properties and 'constructor'. therefor we import them directly
+
+Example of conversion
+```javascript
+// Instead of
+  import {MnFormService} from './mn.form.service.js';
+  ...
+  static get parameters() { return [
+    MnFormService,
+  ...
+  ...
+  constructor(mnFormService, ....
+  ...
+  mnFormService.create(this)
+  ...
+// Do
+  import {MnFormService} from './mn.form.service.js';
+  ...
+  MnFormService.create(this)
+  ...
+```
+
+## 3. Replacment of @uirouter/angular with @uirouter/react
+
+You must familiarise yourself with
+- useObservable @uirouter/angular implementation.
+- MnHttpRequest @uirouter/react implementation.
+- UIRouter defenition ns_server/priv/public/ui/app/mn.react.router.js
+
+You will see imports of UIRouter in Angualr. They must replaced like
+
+Example of convertsion
+```javascript
+// Instead of
+  import {UIRouter} from '@uirouter/angular';
+// Do
+  import {UIRouter}  from "mn.react.router";
+```
+
+And then use t directly
+```javascript
+// Instead of
+  uiRouter.stateService.go('app.authCh.....
+// Do
+  UIRouter.stateService.go('app.authCh.....
+```
+
+## 4. RxJs observables must be converted to React States using useObservable hooks
+
+You must familiarise yourself with
+- useObservable ns_server/priv/public/ui/app/hooks/useObservable.js implementation.
+- MnHttpRequest ns_server/priv/public/ui/app/mn.http.request.js implementation.
+
+When you see patterns like '...Service.stream.get...' it means that 'get...' is
+observable and hence you must convert it like this:
+
+Example of convertsion
+```javascript
+// Instead of
+  this.getAuthMethods = mnAuthService.stream.getAuthMethods;
+// Do
+  const getAuthMethods = useObservable(mnAuthService.stream.getAuthMethods, null);
+```
+
+When you see '...Service.stream.post...', the property starts with 'post' prefix
+it means that this is 'post...' property is an instance of MnHttpRequest.
+The MnHttpRequest instance consist of three streams 'error' and 'success', 'loading'.
+You must convert them to React states like this:
+
+Here is example of convertsion
+```javascript
+// Instead of
+  this.postUISAMLLogin = mnAuthService.stream.postUILogin;
+// Do
+  const successPostUILogin = useObservable(mnAuthService.stream.postUILogin.success, null);
+  const errorPostUILogin = useObservable(mnAuthService.stream.postUILogin.error, null);
+```
+
+and then you can use them in React jsx template as usually. However you should still use observable
+in controller and hooks part 
+
+## 5. Conversion of Angular reactive forms to their analogue in React.
+
+You must familiarise yourself with
+- react-reactive-form. https://github.com/bietkul/react-reactive-form
+- ns_server/priv/public/ui/app/mn.form.service.js
+
+When you see pattern like 'this.form = mnFormService.create(this)...' follwed by medthods like
+setFormGroup, setPackPipe, setPostRequest, error, success. This means you have faced our custom
+form helper. you must familiarise yourself with its implementation, see #mn.form.service.js based
+on Angualr reactive forms. React has similar library called react-reactive-form.
+You must convert them to React analogue like this:
+
+Here is example of convertsion
+```javascript
+// Instead of
+  this.certAuth = mnFormService.create(this)
+    .setFormGroup({})
+    .setPackPipe(map(() => ([null, true])))
+    .setPostRequest(this.postUILogin)
+    .hasNoHandler()
+// Do
+  const certAuth = useMemo(() => mnFormService.create(this)
+    .setFormGroup({})
+    .setPackPipe(map(() => ([null, true])))
+    .setPostRequest(this.postUILogin)
+    .hasNoHandler())
+```
+
+## 5.1 the elements with ngSubmit and formGroup must be converted like this:
+
+Here is example of convertsion
+
+// Instead of
+```html
+  <form
+    (ngSubmit)="form.submit.next()"
+    [formGroup]="form.group"
+    class="forms"
+    novalidate>
+
+    ...
+```
+//Do
+```jsx
+<FieldGroup
+    control={form.group}
+    render={({ get, invalid }) => (
+      <form onSubmit={form.submit.next()} novalidate className="forms">
+        .....
+```
+
+## 5.2 the form elements with formControlName attributes must be converted like this:
+
+Here is example of convertsion
+
+// Instead of
+```html
+  <div class="formrow">
+    <input
+      autocorrect="off"
+      spellcheck="false"
+      autocapitalize="off"
+      type="text"
+      id="auth-username-input"
+      name="username"
+      placeholder="Username"
+      formControlName="user"
+      [mnFocus]="focusFieldSubject">
+    <div
+      [hidden]="!form.group.get('user').dirty"
+      class="error error-field">
+      <div [hidden]="!form.group.get('user').errors?.required">Username is required.</div>
+    </div>
+  </div>
+```
+//Do
+```jsx
+ <FieldControl
+    name="user"
+    render={({ handler, touched, hasError, meta }) => (
+      <div  className="formrow">
+        <input
+          autocorrect="off"
+          spellcheck="false"
+          autocapitalize="off"
+          type="text"
+          id="auth-username-input"
+          name="username"
+          placeholder="Username"
+          autoFocus {...handler()}/>
+        <div hidden={!touched}
+             class="error error-field">
+          <div [hidden]="!hasError("required")">Username is required.</div>
+        </div>
+      </div>  
+    )}
+    meta={{ label: "Username" }}
+  />
+```
+## 5.3 the submit button must rely on rendere arguments when necessary
+
+Example:
+in this case we take invalid from FieldGroup.
+eg.
+<FieldGroup
+    control={form.group}
+    render={({ get, invalid }) => (
+
+// Instead of
+```html
+<div class="panel-footer flex-end">
+  <button
+    [disabled]="form.group.invalid"
+    type="submit">Sign In</button>
+</div>
+//Do
+```jsx
+<div className="panel-footer flex-end">
+  <button
+    disabled={invalid}
+    type="submit">Sign In</button>
+</div>
+
+## 6. Export result component as a list
+
+Example:
+export { name1, /* …, */ nameN };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

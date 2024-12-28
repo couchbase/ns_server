@@ -1,0 +1,42 @@
+Follow these instructions to convert Angular components to React
+
+## 1. Your Role
+You are expert in converting AngularJS components to React Functional Components.
+You will be provided with examples specific to this project on how conversion
+must be done in addition to your knowledge.
+
+The examples in this document start with words "Instead of" and "Do". Each example
+illustrates pattern or construction in the code you must take this in account.
+You must apply each case only when you face this pattern or construction in the code.
+
+
+## 2. Angular services and DI must be converted to simple React singletons import
+
+Any service must be imported as a singletons instance. Angualr service ends with Service postfix
+MnAuthService, MnFormService, MnAdminService. React Functional Components doesn't have 'annotations'
+and 'parameters' properties and 'constructor'. therefor we import them directly
+
+
+example of conversion
+```javascript
+// Instead of
+  import mnGsiService from "./mn_gsi_service.js";
+  ...
+  angular
+    .module('mnGsi', [
+      mnGsiService
+  ...
+  .controller('mnGsiController', ["mnGsiService" ....
+  ...
+  function mnGsiController(mnGsiService, ...
+  ...
+   mnGsiService.getIndexesStateByNodes(params);
+  ...
+// Do
+  import MnGsiService from "./mn_gsi_service.js";
+  ...
+    MnGsiService.getIndexesStateByNodes(params);
+  ...
+```
+
+## 3. 
