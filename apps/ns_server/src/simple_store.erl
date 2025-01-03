@@ -293,7 +293,7 @@ get_file_name(StoreName) ->
 
 file2tab_encrypted(StoreName, FilePath, DS) ->
     F = fun (Chunk, Acc) ->
-            Records = binary_to_term(Chunk),
+            Records = binary_to_term(iolist_to_binary(Chunk)),
             ets:insert(StoreName, Records),
             {ok, Acc}
         end,
@@ -326,7 +326,13 @@ write_terms(FileHandle, {Records, Continuation}, State) ->
     {EncryptedData, NewState} = cb_crypto:file_encrypt_chunk(Data, State),
     case file:write(FileHandle, EncryptedData) of
         ok -> write_terms(FileHandle, ets:select(Continuation), NewState);
-        {error, _} = E -> E
+        {error, _} = E ->
+            _ = cb_crypto:file_encrypt_finish(NewState),
+            E
     end;
-write_terms(_FileHandle, '$end_of_table', _State) ->
-    ok.
+write_terms(FileHandle, '$end_of_table', State) ->
+    FinalData = cb_crypto:file_encrypt_finish(State),
+    case file:write(FileHandle, FinalData) of
+        ok -> ok;
+        {error, _} = E -> E
+    end.

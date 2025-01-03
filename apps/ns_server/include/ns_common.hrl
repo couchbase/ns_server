@@ -487,6 +487,10 @@
           fun(DS) ->
                   cb_crypto:file_encrypt_init(DS)
           end,
+      file_encrypt_finish =>
+          fun(EncrState) ->
+                  cb_crypto:file_encrypt_finish(EncrState)
+          end,
       file_encrypt_cont =>
           fun(Path, Offset, DS) ->
                   cb_crypto:file_encrypt_cont(Path, Offset, DS)

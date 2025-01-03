@@ -187,13 +187,16 @@ write_encrypted_file(File, DeksSnapshot, Options) ->
                cb_crypto:file_encrypt_init(DeksSnapshot),
            ok = file:write(File, FileEncrptionHeader),
            Producer = run(?producer(), simple_buffer(BufSize)),
-           fold(Producer,
-                fun (Data, EncrStateAcc) ->
-                        {EncryptedData, NewEncrStateAcc} =
-                            cb_crypto:file_encrypt_chunk(Data, EncrStateAcc),
-                        ok = file:write(File, EncryptedData),
-                        NewEncrStateAcc
-                end, EncrState),
+           FinalState =
+               fold(Producer,
+                 fun (Data, EncrStateAcc) ->
+                         {EncryptedData, NewEncrStateAcc} =
+                             cb_crypto:file_encrypt_chunk(Data, EncrStateAcc),
+                         ok = file:write(File, EncryptedData),
+                         NewEncrStateAcc
+                 end, EncrState),
+           FinalData = cb_crypto:file_encrypt_finish(FinalState),
+           ok = file:write(File, FinalData),
            ok
        end).
 

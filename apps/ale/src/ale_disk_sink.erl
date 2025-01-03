@@ -362,6 +362,12 @@ open_with_encr_state(false = _IsNewFile,
     ShouldContinue = ale:validate_encr_file_with_ds(Path, DS),
     update_file_encr_state(ShouldContinue, State, DS).
 
+maybe_close_encr_state(#worker_state{encr_state = undefined} = State) ->
+    State;
+maybe_close_encr_state(#worker_state{encr_state = EncrState} = State) ->
+    catch ale:file_encrypt_finish(EncrState),
+    State#worker_state{encr_state = undefined}.
+
 open_log_file(#worker_state{path = Path,
                             file = OldFile,
                             sink_name = SinkName} = State) ->
@@ -376,7 +382,8 @@ open_log_file(#worker_state{path = Path,
                 filelib:file_size(Path) =:= 0,
 
     DS = ale:get_sink_ds(SinkName),
-    open_with_encr_state(IsNewFile, State#worker_state{file = undefined}, DS).
+    NewState = maybe_close_encr_state(State#worker_state{file = undefined}),
+    open_with_encr_state(IsNewFile, NewState, DS).
 
 check_log_file(#worker_state{path = Path,
                              file_inode = FileInode} = State) ->
@@ -560,7 +567,7 @@ write_data(InputData, InputDataSize,
                          parent = Parent,
                          encr_state = EncrState} = State) ->
     {WriteData, NewEncrState} = maybe_encrypt_data(InputData, EncrState),
-    WriteDataSize = byte_size(WriteData),
+    WriteDataSize = iolist_size(WriteData),
     broadcast_stat(Name, write_size, WriteDataSize),
     time_stat(Name, write_time,
               fun () ->

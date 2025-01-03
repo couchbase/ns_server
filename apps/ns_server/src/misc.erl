@@ -1091,9 +1091,9 @@ raw_read_loop(File, Acc) ->
 %% Returns:
 %%   {ok, FinalAcc}                     - Success
 %%   {unhandled_data, Rest, FinalAcc}   - EOF with unprocessed data
-%%   {error, Reason}                    - Error occurred
+%%   {error, Reason, FinalAcc}          - Error occurred
 -spec fold_file(Path, Fun, Acc, ChunkSize) ->
-          {ok, Acc} | {unhandled_data, binary(), Acc} | {error, _}
+          {ok, Acc} | {unhandled_data, binary(), Acc} | {error, _, Acc}
           when Path :: string(),
                Fun :: fun( (binary(), Acc) -> need_more_data |
                                               {ok, Acc} |
@@ -1106,7 +1106,7 @@ fold_file(Path, Fun, AccInit, ChunkSize) ->
                     need_more_data -> Read(Handle, Acc, read, Data);
                     {ok, NewAcc, <<>>} -> Read(Handle, NewAcc, read, <<>>);
                     {ok, NewAcc, Rest} -> Read(Handle, NewAcc, feed, Rest);
-                    {error, _} = E -> E
+                    {error, Reason} -> {error, Reason, Acc}
                 end;
             Read(Handle, Acc, read, PrevData) ->
                 case file:read(Handle, ChunkSize) of
@@ -1117,11 +1117,14 @@ fold_file(Path, Fun, AccInit, ChunkSize) ->
                         {ok, Acc};
                     eof ->
                         {unhandled_data, PrevData, Acc};
-                    {error, _} = Error ->
-                        Error
+                    {error, Reason} ->
+                        {error, Reason, Acc}
                 end
         end,
-    with_file(Path, [read, binary], F(_, AccInit, read, <<>>)).
+    case with_file(Path, [read, binary], F(_, AccInit, read, <<>>)) of
+        {error, OpenFileError} -> {error, OpenFileError, AccInit};
+        Other -> Other
+    end.
 
 -ifdef(TEST).
 fold_file_test_() ->
@@ -1157,7 +1160,7 @@ fold_file_test_() ->
                          end,
              [
               %% Non-existent file
-              ?_assertMatch({error, enoent},
+              ?_assertMatch({error, enoent, _},
                             fold_file(NonExistentFile, Collector, <<>>,
                                       ChunkSize)),
 
