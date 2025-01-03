@@ -121,6 +121,10 @@ aggregate_activity(Activity) ->
 setup() ->
     fake_ns_config:setup(),
 
+    %% Needed for activity_tracker
+    meck:expect(ns_pubsub, subscribe_link,
+                fun (user_storage_events, _) -> ok end),
+
     activity_tracker:start_link(),
 
     %% Only have one node, to avoid unneeded complexity

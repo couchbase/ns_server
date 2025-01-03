@@ -237,6 +237,7 @@ start_link() ->
 
 init([]) ->
     ets:new(?TABLE, [named_table, set, public]),
+    ns_pubsub:subscribe_link(user_storage_events, fun user_storage_event/1),
     {ok, #state{}}.
 
 %% This will be used by the activity_aggregator to fetch each node's latest
@@ -260,7 +261,28 @@ handle_call(_Request, _From, State) ->
 
 handle_cast(_Request, State) ->
     {noreply, State}.
-
+handle_info(clear_activity_for_deleted_users, State) ->
+    misc:flush(clear_activity_for_deleted_users),
+    %% Get non-existent users which we have activity for
+    DeletedUsers =
+        ets:foldl(
+          fun ({User, _}, Users) ->
+                  case menelaus_users:user_exists(User) of
+                      false -> [User | Users];
+                      true -> Users
+                  end
+          end, [], ?TABLE),
+    case DeletedUsers of
+        [] ->
+            ok;
+        _ ->
+            ?log_debug("Deleting activity timestamp for deleted users: ~p",
+                       [ns_config_log:tag_user_data(DeletedUsers)]),
+            %% Delete any activity for those users
+            ets:select_delete(?TABLE, [{{User, '_'}, [], [true]}
+                                       || User <- DeletedUsers])
+    end,
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -280,6 +302,11 @@ note_identity(Identity) ->
              calendar:universal_time()),
     ets:insert(?TABLE, {Identity, Time}).
 
+user_storage_event({user_version, _}) ->
+    ?SERVER ! clear_activity_for_deleted_users;
+user_storage_event(_) ->
+    ok.
+
 
 %%%===================================================================
 %%% Tests
@@ -296,6 +323,7 @@ note_identity(Identity) ->
 -define(local_user_in_a, {"user_in_a", local}).
 -define(local_user_in_b, {"user_in_b", local}).
 -define(local_user_with_x, {"user_with_x", local}).
+-define(local_user_with_x_1, {"user_with_x_1", local}).
 -define(local_user_with_y, {"user_with_y", local}).
 -define(external_user_in_a, {"user_in_a", external}).
 -define(external_user_with_x, {"user_with_x", external}).
@@ -317,6 +345,9 @@ setup() ->
                     (?local_user_with_x, [groups, roles]) ->
                         [{groups, []},
                          {roles, [?ROLE_X]}];
+                    (?local_user_with_x_1, [groups, roles]) ->
+                        [{groups, []},
+                         {roles, [?ROLE_X]}];
                     (?local_user_in_b, [groups, roles]) ->
                         [{groups, [?GROUP_B]},
                          {roles, []}];
@@ -330,6 +361,9 @@ setup() ->
                         [{groups, []},
                          {roles, [?ROLE_X]}]
                 end),
+
+    meck:expect(ns_pubsub, subscribe_link,
+                fun (user_storage_events, _) -> ok end),
 
     ns_config:set(?CONFIG_KEY, default()),
     start_link().
@@ -374,7 +408,9 @@ track_covered_user_test__() ->
 dont_track_uncovered_user_test__() ->
     CoveredGroups = [?GROUP_A],
     CoveredRoles = [?ROLE_X],
-    configure([{tracked_groups, CoveredGroups}, {tracked_roles, CoveredRoles}]),
+    configure([{enabled, true},
+               {tracked_groups, CoveredGroups},
+               {tracked_roles, CoveredRoles}]),
     lists:foreach(
       fun (Identity) ->
               ?assertNot(is_tracked(Identity)),
@@ -390,9 +426,34 @@ dont_track_uncovered_user_test__() ->
             ?external_user_in_a,
             ?external_user_with_x]).
 
+clear_deleted_users_test__() ->
+    ExistingUser = ?local_user_with_x,
+    DeletedUser = ?local_user_with_x_1,
+    CoveredRoles = [?ROLE_X],
+    configure([{enabled, true},
+               {tracked_roles, CoveredRoles},
+               {tracked_groups, []}]),
+    lists:foreach(
+      fun (Identity) ->
+              ?assert(is_tracked(Identity)),
+              handle_activity(?auth(Identity)),
+              Time = get_last_activity(Identity),
+              ?assertNotEqual(undefined, Time)
+      end, [ExistingUser,
+            DeletedUser]),
+
+    meck:expect(menelaus_users, user_exists,
+                fun (U) when U =:= ExistingUser -> true;
+                    (_) -> false
+                end),
+    ?SERVER ! clear_activity_for_deleted_users,
+    ?assertNotEqual(undefined, get_last_activity(ExistingUser)),
+    ?assertEqual(undefined, get_last_activity(DeletedUser)).
+
 all_test_() ->
     {setup, fun setup/0, fun teardown/1,
      [fun track_covered_user_test__/0,
-      fun dont_track_uncovered_user_test__/0]}.
+      fun dont_track_uncovered_user_test__/0,
+      fun clear_deleted_users_test__/0]}.
 
 -endif.

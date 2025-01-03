@@ -238,10 +238,6 @@ class UsersTestSet(testlib.BaseTestSet):
         name1 = testlib.random_str(10)
         password1 = testlib.random_str(10)
 
-        # Clear any existing activity, since this isn't done on user deletion
-        # yet (MB-64598)
-        clear_activity(self.cluster)
-
         # User creation
         put_user(self.cluster, 'local', user, password=password1,
                  roles='admin', full_name=name1, groups='',
@@ -298,10 +294,6 @@ class UsersTestSet(testlib.BaseTestSet):
         testlib.put_succ(self.cluster, f'/settings/rbac/groups/{group}',
                          data={'roles': ''})
         try:
-            # Clear any existing activity, since this isn't done on user
-            # deletion yet (MB-64598)
-            clear_activity(self.cluster)
-
             # User creation
             put_user(self.cluster, 'local', user, password=password1,
                      roles=roles, full_name=name1, groups=group,
@@ -366,10 +358,6 @@ class UsersTestSet(testlib.BaseTestSet):
         testlib.put_succ(self.cluster, f'/settings/rbac/groups/{group}',
                          data={'roles': ''})
         try:
-            # Clear any existing activity, since this isn't done on user
-            # deletion yet (MB-64598)
-            clear_activity(self.cluster)
-
             # User creation
             put_user(self.cluster, 'local', user, password=password1,
                      roles=roles, full_name=name1, groups='',
@@ -760,13 +748,6 @@ def unlock_admin(cluster):
     token = node.get_localtoken()
     testlib.post_succ(node, '/controller/unlockAdmin',
                       auth=("@localtoken", token))
-
-
-def clear_activity(cluster):
-    for node in cluster.connected_nodes:
-        testlib.diag_eval(
-            node,
-            "ets:delete_all_objects(activity_tracker)")
 
 
 def sync_activity(cluster):
