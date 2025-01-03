@@ -88,12 +88,10 @@ params() ->
         cfg_key => enabled}},
      {"trackedRoles",
       #{type => tracked_roles,
-        cfg_key => tracked_roles,
-        default => false}},
+        cfg_key => tracked_roles}},
      {"trackedGroups",
       #{type => tracked_groups,
-        cfg_key => tracked_groups,
-        default => false}}].
+        cfg_key => tracked_groups}}].
 
 type_spec(tracked_roles) ->
     #{validators => [{string_list, ","},
