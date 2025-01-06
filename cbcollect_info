@@ -476,7 +476,7 @@ class ZipStream:
                                     date_time=self.get_time_tuple_now())
             zinfo.compress_type = zipfile.ZIP_DEFLATED
 
-        zfile: IO[bytes] = self._zipfile.open(zinfo, mode="w")
+        zfile: IO[bytes] = self._zipfile.open(zinfo, mode="w", force_zip64=True)
         return ZippedFileStream(path, zfile)
 
     def close(self):
