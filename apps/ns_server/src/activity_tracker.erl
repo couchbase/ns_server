@@ -320,13 +320,13 @@ user_storage_event(_) ->
 -define(ROLE_X, x).
 -define(ROLE_Y, y).
 
--define(local_user_in_a, {"user_in_a", local}).
--define(local_user_in_b, {"user_in_b", local}).
--define(local_user_with_x, {"user_with_x", local}).
--define(local_user_with_x_1, {"user_with_x_1", local}).
--define(local_user_with_y, {"user_with_y", local}).
--define(external_user_in_a, {"user_in_a", external}).
--define(external_user_with_x, {"user_with_x", external}).
+-define(LOCAL_USER_IN_A, {"user_in_a", local}).
+-define(LOCAL_USER_IN_B, {"user_in_b", local}).
+-define(LOCAL_USER_WITH_X, {"user_with_x", local}).
+-define(LOCAL_USER_WITH_X_1, {"user_with_x_1", local}).
+-define(LOCAL_USER_WITH_Y, {"user_with_y", local}).
+-define(EXTERNAL_USER_IN_A, {"user_in_a", external}).
+-define(EXTERNAL_USER_WITH_X, {"user_with_x", external}).
 
 
 setup() ->
@@ -339,25 +339,25 @@ setup() ->
     meck:expect(ns_node_disco, couchdb_node, fun () -> other_node end),
 
     meck:expect(menelaus_users, get_user_props,
-                fun (?local_user_in_a, [groups, roles]) ->
+                fun (?LOCAL_USER_IN_A, [groups, roles]) ->
                         [{groups, [?GROUP_A]},
                          {roles, []}];
-                    (?local_user_with_x, [groups, roles]) ->
+                    (?LOCAL_USER_WITH_X, [groups, roles]) ->
                         [{groups, []},
                          {roles, [?ROLE_X]}];
-                    (?local_user_with_x_1, [groups, roles]) ->
+                    (?LOCAL_USER_WITH_X_1, [groups, roles]) ->
                         [{groups, []},
                          {roles, [?ROLE_X]}];
-                    (?local_user_in_b, [groups, roles]) ->
+                    (?LOCAL_USER_IN_B, [groups, roles]) ->
                         [{groups, [?GROUP_B]},
                          {roles, []}];
-                    (?local_user_with_y, [groups, roles]) ->
+                    (?LOCAL_USER_WITH_Y, [groups, roles]) ->
                         [{groups, []},
                          {roles, [?ROLE_Y]}];
-                    (?external_user_in_a, [groups, roles]) ->
+                    (?EXTERNAL_USER_IN_A, [groups, roles]) ->
                         [{groups, [?GROUP_A]},
                          {roles, []}];
-                    (?external_user_with_x, [groups, roles]) ->
+                    (?EXTERNAL_USER_WITH_X, [groups, roles]) ->
                         [{groups, []},
                          {roles, [?ROLE_X]}]
                 end),
@@ -403,7 +403,7 @@ track_covered_user_test__() ->
               handle_activity(?auth(Identity)),
               Time2 = get_last_activity(Identity),
               ?assert(Time1 < Time2)
-      end, [?local_user_with_x, ?local_user_in_a]).
+      end, [?LOCAL_USER_WITH_X, ?LOCAL_USER_IN_A]).
 
 dont_track_uncovered_user_test__() ->
     CoveredGroups = [?GROUP_A],
@@ -421,14 +421,14 @@ dont_track_uncovered_user_test__() ->
               handle_activity(?auth(Identity)),
               Time1 = get_last_activity(Identity),
               ?assertEqual(undefined, Time1)
-      end, [?local_user_in_b,
-            ?local_user_with_y,
-            ?external_user_in_a,
-            ?external_user_with_x]).
+      end, [?LOCAL_USER_IN_B,
+            ?LOCAL_USER_WITH_Y,
+            ?EXTERNAL_USER_IN_A,
+            ?EXTERNAL_USER_WITH_X]).
 
 clear_deleted_users_test__() ->
-    ExistingUser = ?local_user_with_x,
-    DeletedUser = ?local_user_with_x_1,
+    ExistingUser = ?LOCAL_USER_WITH_X,
+    DeletedUser = ?LOCAL_USER_WITH_X_1,
     CoveredRoles = [?ROLE_X],
     configure([{enabled, true},
                {tracked_roles, CoveredRoles},
