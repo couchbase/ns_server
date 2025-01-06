@@ -552,7 +552,7 @@ get_node_deks_info_quickly() ->
     %% This gen_server can be busy with other stuff, especially in situations
     %% like quorum loss (chronicle transactions time out in this case).
     %% We don't want ns_heart to wait multiple seconds in such cases
-    case ets:lookup(?MODULE, deks_info) of
+    try ets:lookup(?MODULE, deks_info) of
         [] ->
             dummy_deks_info(unknown, [{proc_communication, pending}]);
         [{_, {Timestamp, Info}}] ->
@@ -563,6 +563,10 @@ get_node_deks_info_quickly() ->
                 false ->
                     dummy_deks_info(unknown, [{proc_communication, pending}])
             end
+    catch
+        error:badarg ->
+            %% ets table is not created yet, or the process is restarting
+            dummy_deks_info(unknown, [{proc_communication, pending}])
     end.
 
 -spec get_node_deks_info() -> #{cb_deks:dek_kind() := external_dek_info()}.
