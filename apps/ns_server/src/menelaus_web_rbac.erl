@@ -1173,16 +1173,21 @@ do_store_user({User, Domain} = Identity, Props, Req) ->
                      A ->
                          {auth, A}
                  end,
-    TemporaryPassword = proplists:get_value(temporaryPassword, Props),
+    TemporaryPassword = proplists:get_value(temporaryPassword, Props, false),
     Roles = proplists:get_value(roles, Props, []),
     Groups = proplists:get_value(groups, Props),
     UniqueRoles = lists:usort(Roles),
     Locked = proplists:get_value(locked, Props, false),
 
     Reason = case menelaus_users:user_exists(Identity) of
-                 true -> updated;
-                 false -> added
+                 true ->
+                     maybe_change_password(Req, Identity, Props),
+                     maybe_change_lock(Req, Identity, Props),
+                     updated;
+                 false ->
+                     added
              end,
+
     case menelaus_users:store_user(Identity, Name, PassOrAuth,
                                    UniqueRoles, Groups, Locked,
                                    TemporaryPassword) of
@@ -1193,7 +1198,6 @@ do_store_user({User, Domain} = Identity, Props, Req) ->
             ?log_debug("User added - ~p:~p, ~p.",
                        [ns_config_log:tag_user_name(User), Domain,
                         SanitizedUser]),
-            ns_audit:password_change(Req, Identity),
             event_log:add_log(user_added, [{user, SanitizedUser},
                                            {domain, Domain}]),
             ok;
@@ -1275,7 +1279,7 @@ handle_patch_user_with_identity(Req, Identity, Validators) ->
       fun (Values) ->
               case maybe_change_password(Req, Identity, Values) of
                   ok ->
-                      change_lock(Req, Identity, Values),
+                      maybe_change_lock(Req, Identity, Values),
                       menelaus_util:reply(Req, 200);
                   user_not_found ->
                       menelaus_util:reply_json(
@@ -1300,12 +1304,17 @@ maybe_change_password(Req, Identity, Values) ->
             end
     end.
 
-change_lock(Req, Identity, Values) ->
+maybe_change_lock(Req, Identity, Values) ->
     case proplists:get_value(locked, Values) of
         undefined -> ok;
         Locked ->
-            menelaus_users:store_lock(Identity, Locked),
-            ns_audit:locked_change(Req, Identity, Locked)
+            case menelaus_users:is_user_locked(Identity) =/= Locked of
+                true ->
+                    menelaus_users:store_lock(Identity, Locked),
+                    ns_audit:locked_change(Req, Identity, Locked);
+                false ->
+                    ok
+            end
     end.
 
 do_change_password({_, local} = Identity, Password) ->
@@ -1401,7 +1410,7 @@ handle_lock_admin(Req) ->
                 "not initialized.",
             menelaus_util:reply_global_error(Req, Error);
         UserId ->
-            change_lock(Req, UserId, [{locked, true}]),
+            maybe_change_lock(Req, UserId, [{locked, true}]),
             menelaus_util:reply(Req, 200)
     end.
 
@@ -1416,7 +1425,7 @@ handle_unlock_admin(Req) ->
                 "not initialized.",
             menelaus_util:reply_global_error(Req, Error);
         UserId ->
-            change_lock(Req, UserId, [{locked, false}]),
+            maybe_change_lock(Req, UserId, [{locked, false}]),
             menelaus_util:reply(Req, 200)
     end.
 
