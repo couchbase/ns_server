@@ -161,7 +161,8 @@ secret_validators(CurProps) ->
      validate_key_usage(usage, _),
      validator:required(usage, _),
      validate_secrets_data(data, CurProps, _),
-     validator:required(data, _)].
+     validator:required(data, _),
+     validator:unsupported(_)].
 
 enforce_static_field_validator(Name, CurValue, State) ->
     validator:validate(fun (NewValue) when NewValue == CurValue -> ok;
