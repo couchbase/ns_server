@@ -21,6 +21,8 @@ import {MnPoolsService} from "./mn.pools.service.js";
 import {MnFormService} from "./mn.form.service.js";
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 import {MnTasksService} from './mn.tasks.service.js';
+import {MnHelperService} from './mn.helper.service.js';
+import {MnSecuritySecretsService} from './mn.security.secrets.service.js';
 import {MnClusterSummaryDialogComponent} from './mn.cluster.summary.dialog.component.js';
 import {MnLogsCollectInfoStopCollectionComponent} from './mn.logs.collectInfo.stop.collection.component.js';
 import template from "./mn.logs.collectInfo.form.html";
@@ -44,10 +46,12 @@ class MnLogsCollectInfoFormComponent extends MnLifeCycleHooksToStream {
     MnPoolsService,
     UIRouter,
     NgbModal,
-    MnTasksService
+    MnTasksService,
+    MnHelperService,
+    MnSecuritySecretsService
   ]}
 
-  constructor(mnLogsCollectInfoService, mnAdminService, mnFormService, formBuilder, mnPoolsService, uiRouter, modalService, mnTasksService) {
+  constructor(mnLogsCollectInfoService, mnAdminService, mnFormService, formBuilder, mnPoolsService, uiRouter, modalService, mnTasksService, mnHelperService, mnSecuritySecretsService) {
     super();
 
     this.taskCollectInfo = mnTasksService.stream.taskCollectInfo;
@@ -68,7 +72,10 @@ class MnLogsCollectInfoFormComponent extends MnLifeCycleHooksToStream {
           enableTmpDir: null,
           tmpDir: [null, [Validators.required]],
           enableLogDir: null,
-          logDir: [null, [Validators.required]]
+          logDir: [null, [Validators.required]],
+          enableLogEncryption: null,
+          encryptionPassword: [null, [Validators.required]],
+          confirmEncryptionPassword: [null, [Validators.required]],
         }),
         upload: formBuilder.group({
           upload: null,
@@ -77,16 +84,19 @@ class MnLogsCollectInfoFormComponent extends MnLifeCycleHooksToStream {
           uploadProxy: null,
           bypassReachabilityChecks: null,
           ticket: null
-        })
+        }),
       }))
       .setPackPipe(map(this.packData.bind(this)))
       .setPostRequest(this.postRequest)
       .success(() => uiRouter.stateService.go('app.admin.logs.collectInfo.result'));
 
+    this.maybeDisableField('logs.encryptionPassword', this.form.group.get('logs.enableLogEncryption').value);
+    this.maybeDisableField('logs.confirmEncryptionPassword', this.form.group.get('logs.enableLogEncryption').value);
 
     this.groups = mnLogsCollectInfoService.stream.groups;
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.compatVersion55 = mnAdminService.stream.compatVersion55;
+    this.compatVersion80 = mnAdminService.stream.compatVersion80;
     this.clickGetClusterInfo = new Subject();
     this.clickGetClusterInfo
       .pipe(takeUntil(this.mnOnDestroy))
@@ -99,6 +109,9 @@ class MnLogsCollectInfoFormComponent extends MnLifeCycleHooksToStream {
             takeUntil(this.mnOnDestroy))
       .subscribe(this.addNodes.bind(this));
 
+    this.isLogEncryptionAtRestEnabled = mnSecuritySecretsService.stream.getEncryptionAtRest
+      .pipe(map(encryption => encryption.log.encryptionMethod !== 'disabled'));
+
     this.disableStopCollection = this.postCancelLogsCollection.success
       .pipe(switchMap(() => this.taskCollectInfo),
             filter(taskCollectInfo => taskCollectInfo.status === 'running'));
@@ -108,6 +121,17 @@ class MnLogsCollectInfoFormComponent extends MnLifeCycleHooksToStream {
       .subscribe(this.maybeDisableField.bind(this, 'logs.tmpDir'));
 
     this.form.group.get('logs.enableLogDir').valueChanges.pipe(takeUntil(this.mnOnDestroy)).subscribe(this.maybeDisableField.bind(this, 'logs.logDir'));
+
+    this.form.group.get('logs.enableLogEncryption').valueChanges
+      .pipe(takeUntil(this.mnOnDestroy)).subscribe((enable) => {
+        this.maybeDisableField('logs.encryptionPassword', enable);
+        this.maybeDisableField('logs.confirmEncryptionPassword', enable);
+        if (enable) {
+          this.form.group.get('logs').setValidators([mnHelperService.validateEqual("encryptionPassword", "confirmEncryptionPassword", "passwordMismatch")]);
+        } else {
+          this.form.group.get('logs').clearValidators();
+        }
+      });
 
     this.form.group.get('upload.upload').valueChanges.pipe(takeUntil(this.mnOnDestroy)).subscribe(this.maybeDisableField.bind(this, 'upload.customer'));
 
@@ -136,6 +160,9 @@ class MnLogsCollectInfoFormComponent extends MnLifeCycleHooksToStream {
     }
     if (logs.enableLogDir) {
       packedData.logDir = logs.logDir;
+    }
+    if (logs.enableLogEncryption) {
+      packedData.encryptionPassword = logs.encryptionPassword;
     }
 
     if (upload.upload) {

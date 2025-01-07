@@ -268,6 +268,54 @@
         </div>
       </div>
 
+      <div class="formrow fix-width-5" formGroupName="logs" *ngIf="(compatVersion80 | async) && (isEnterprise | async)">
+        <input
+           type="checkbox"
+           id="enableLogEncryption"
+           name="enableLogEncryption"
+           formControlName="enableLogEncryption">
+        <label for="enableLogEncryption" class="margin-right-zero">Encrypt the Logs</label>
+        <span *ngIf="!(form.group.get('logs.enableLogEncryption').valueChanges | async) && (isLogEncryptionAtRestEnabled | async)" class="warning text-smaller block">
+          Warning: Generated logs are not encrypted yet, even though Encryption at REST is enabled for logs.<br/> Check this option and set a password to encrypt the logs.
+        </span>
+      </div>
+      <div *ngIf="form.group.get('logs.enableLogEncryption').valueChanges | async" formGroupName="logs">
+        <div class="formrow fix-width-5">
+          <label>Encryption Password</label>
+          <input
+             type="password"
+             autocomplete="new-password"
+             autocorrect="off"
+             spellcheck="false"
+             autocapitalize="off"
+             formControlName="encryptionPassword">
+          <div
+             class="error error-field"
+             *ngIf="(postRequest.error | async)?.encryptionPassword">
+            {{(postRequest.error | async)?.encryptionPassword}}
+          </div>
+          <div
+             class="error error-field"
+             *ngIf="form.group.get('logs')?.errors?.encryptionPassword">
+            {{form.group.get('logs')?.errors?.encryptionPassword}}
+          </div>
+        </div>
+        <div class="formrow fix-width-5">
+          <label>Confirm Encryption Password</label>
+          <input
+             type="password"
+             autocorrect="off"
+             spellcheck="false"
+             autocapitalize="off"
+             formControlName="confirmEncryptionPassword">
+          <div
+             class="error error-field"
+             *ngIf="form.group.get('logs')?.errors?.passwordMismatch">
+            Passwords must match
+          </div>
+        </div>
+      </div>
+
       <footer class="footer-save">
         <button
            [disabled]="form.group.invalid"
