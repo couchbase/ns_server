@@ -189,6 +189,13 @@ loop(Req0, Config) ->
                 end)
       end).
 
+%% Use the old permission until the cluster compat mode is bumped.
+when_morpheus(NewPermission, OldPermission) ->
+    case cluster_compat_mode:is_cluster_morpheus() of
+        true -> NewPermission;
+        false -> OldPermission
+    end.
+
 -type action() :: {done, term()} |
                   {ui, boolean(), fun()} |
                   {ui, boolean(), fun(), [term()]} |
@@ -455,10 +462,12 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "replications", _XID] ->
                     {no_check, fun goxdcr_rest:proxy/1};
                 ["settings", "saslauthdAuth"] ->
-                    {{[admin, security_info], read},
+                    {when_morpheus({[admin, security_info], read},
+                                   {[admin, security, external], read}),
                      fun menelaus_web_rbac:handle_saslauthd_auth_settings/1};
                 ["settings", "ldap"] ->
-                    {{[admin, security_info], read},
+                    {when_morpheus({[admin, security_info], read},
+                                   {[admin, security, external], read}),
                      fun menelaus_web_ldap:handle_ldap_settings/1};
                 ["settings", "clientCertAuth"] ->
                     {{[admin, security], read},
@@ -473,38 +482,48 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, security], read},
                      fun menelaus_web_audit:handle_get_non_filterable_descriptors/1};
                 ["settings", "rbac", "roles"] ->
-                    {{[admin, users], read},
+                    {when_morpheus({[admin, users], read},
+                                   {[admin, security], read}),
                      fun menelaus_web_rbac:handle_get_roles/1};
                 ["settings", "rbac", "users"] ->
-                    {{[admin, users], read},
+                    {when_morpheus({[admin, users], read},
+                                   {[admin, security], read}),
                      fun menelaus_web_rbac:handle_get_users/2, [Path]};
                 ["settings", "rbac", "users", Domain] ->
-                    {{[admin, users], read},
+                    {when_morpheus({[admin, users], read},
+                                   {[admin, security], read}),
                      fun menelaus_web_rbac:handle_get_users/3, [Path, Domain]};
                 ["settings", "rbac", "users", Domain, UserId] ->
-                    {{[admin, users], read},
+                    {when_morpheus({[admin, users], read},
+                                   {[admin, security], read}),
                      fun menelaus_web_rbac:handle_get_user/3, [Domain, UserId]};
                 ["settings", "rbac", "groups"] ->
-                    {{[admin, users], read},
+                    {when_morpheus({[admin, users], read},
+                                   {[admin, security], read}),
                      fun menelaus_web_rbac:handle_get_groups/2, [Path]};
                 ["settings", "rbac", "groups", GroupId] ->
-                    {{[admin, users], read},
+                    {when_morpheus({[admin, users], read},
+                                   {[admin, security], read}),
                      fun menelaus_web_rbac:handle_get_group/2, [GroupId]};
                 ["settings", "rbac", "profiles"] ->
-                    {{[admin, users], read},
+                    {when_morpheus({[admin, users], read},
+                                   {[admin, security], read}),
                      fun menelaus_web_rbac:handle_get_profiles/1};
                 ["settings", "rbac", "profiles", "@self"] ->
                     {no_check,
                      fun menelaus_web_rbac:handle_get_profile/2, [self]};
                 ["settings", "rbac", "profiles", Domain, UserId] ->
-                    {{[admin, users], read},
+                    {when_morpheus({[admin, users], read},
+                                   {[admin, security], read}),
                      fun menelaus_web_rbac:handle_get_profile/2,
                      [{UserId, Domain}]};
                 ["settings", "rbac", "lookupLDAPUser", Name] ->
-                    {{[admin, security_info], read},
+                    {when_morpheus({[admin, security_info], read},
+                                   {[admin, security, external], read}),
                      fun menelaus_web_rbac:handle_lookup_ldap_user/2, [Name]};
                 ["settings", "rbac", "backup"] ->
-                    {{[admin, users], read},
+                    {when_morpheus({[admin, users], read},
+                                   {[admin, security], read}),
                      fun menelaus_web_rbac:handle_backup/1};
                 ["settings", "passwordPolicy"] ->
                     {{[admin, security], read},
@@ -522,7 +541,8 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, license], read},
                      fun menelaus_web_license:handle_settings_get/1};
                 ["settings", "saml" | PathRest] ->
-                    {{[admin, security_info], read},
+                    {when_morpheus({[admin, security_info], read},
+                                   {[admin, security, external], read}),
                      fun menelaus_web_saml:handle_get_settings/2, [PathRest]};
                 ["settings", "dataService"] ->
                     {{[admin, settings], read},
@@ -790,17 +810,21 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "replications", _XID] ->
                     {no_check, fun goxdcr_rest:proxy/1};
                 ["settings", "saslauthdAuth"] ->
-                    {{[admin, security], write},
+                    {when_morpheus({[admin, security], write},
+                                   {[admin, security, external], write}),
                      fun menelaus_web_rbac:handle_saslauthd_auth_settings_post/1};
                 ["settings", "ldap"] ->
-                    {{[admin, security], write},
+                    {when_morpheus({[admin, security], write},
+                                   {[admin, security, external], write}),
                      fun menelaus_web_ldap:handle_ldap_settings_post/1};
                 ["settings", "ldap", "validate", Type] ->
-                    {{[admin, security], write},
+                    {when_morpheus({[admin, security], write},
+                                   {[admin, security, external], write}),
                      fun menelaus_web_ldap:handle_ldap_settings_validate_post/2,
                      [Type]};
                 ["settings", "invalidateLDAPCache"] ->
-                    {{[admin, security_info], write},
+                    {when_morpheus({[admin, security], write},
+                                   {[admin, security, external], write}),
                      fun menelaus_web_ldap:handle_invalidate_ldap_cache/1};
                 ["settings", "clientCertAuth"] ->
                     {{[admin, security], write},
@@ -830,7 +854,8 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, license], write},
                      fun menelaus_web_license:handle_settings_validate_post/1};
                 ["settings", "saml"] ->
-                    {{[admin, security], write},
+                    {when_morpheus({[admin, security], write},
+                                   {[admin, security, external], write}),
                      fun menelaus_web_saml:handle_post_settings/1};
                 ["settings", "dataService"] ->
                     {{[admin, settings], write},
@@ -1150,19 +1175,23 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, memcached], write},
                      fun menelaus_web_mcd_settings:handle_node_setting_delete/3, [Node, Name]};
                 ["settings", "rbac", "users", UserId] ->
-                    {{[admin, users], write},
+                    {when_morpheus({[admin, users], write},
+                                   {[admin, security], write}),
                      fun menelaus_web_rbac:handle_delete_user/3, ["external", UserId]};
                 ["settings", "rbac", "users", Domain, UserId] ->
-                    {{[admin, users], write},
+                    {when_morpheus({[admin, users], write},
+                                   {[admin, security], write}),
                      fun menelaus_web_rbac:handle_delete_user/3, [Domain, UserId]};
                 ["settings", "rbac", "groups", GroupId] ->
-                    {{[admin, users], write},
+                    {when_morpheus({[admin, users], write},
+                                   {[admin, security], write}),
                      fun menelaus_web_rbac:handle_delete_group/2, [GroupId]};
                 ["settings", "rbac", "profiles", "@self"] ->
                     {no_check,
                      fun menelaus_web_rbac:handle_delete_profile/2, [self]};
                 ["settings", "rbac", "profiles", Domain, UserId] ->
-                    {{[admin, users], write},
+                    {when_morpheus({[admin, users], write},
+                                   {[admin, security], write}),
                      fun menelaus_web_rbac:handle_delete_profile/2,
                      [{UserId, Domain}]};
                 ["settings", "security" | Keys] ->
@@ -1170,7 +1199,8 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_settings:handle_delete/3,
                      [security, Keys]};
                 ["settings", "saml"] ->
-                    {{[admin, security], write},
+                    {when_morpheus({[admin, security], write},
+                                   {[admin, security, external], write}),
                      fun menelaus_web_saml:handle_delete_settings/1};
                 ["settings", "secrets", SecretId] ->
                     {no_check_disallow_anonymous,
@@ -1225,23 +1255,28 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[server_groups], write},
                      fun menelaus_web_groups:handle_server_group_update/2, [GroupUUID]};
                 ["settings", "rbac", "users", UserId] ->
-                    {{[admin, users], write},
+                    {when_morpheus({[admin, users], write},
+                                   {[admin, security], write}),
                      fun menelaus_web_rbac:handle_put_user/3, ["external", UserId]};
                 ["settings", "rbac", "users", Domain, UserId] ->
-                    {{[admin, users], write},
+                    {when_morpheus({[admin, users], write},
+                                   {[admin, security], write}),
                      fun menelaus_web_rbac:handle_put_user/3, [Domain, UserId]};
                 ["settings", "rbac", "groups", GroupId] ->
-                    {{[admin, users], write},
+                    {when_morpheus({[admin, users], write},
+                                   {[admin, security], write}),
                      fun menelaus_web_rbac:handle_put_group/2, [GroupId]};
                 ["settings", "rbac", "profiles", "@self"] ->
                     {no_check,
                      fun menelaus_web_rbac:handle_put_profile/2, [self]};
                 ["settings", "rbac", "profiles", Domain, UserId] ->
-                    {{[admin, users], write},
+                    {when_morpheus({[admin, users], write},
+                                   {[admin, security], write}),
                      fun menelaus_web_rbac:handle_put_profile/2,
                      [{UserId, Domain}]};
                 ["settings", "rbac", "backup"] ->
-                    {{[admin, users], write},
+                    {when_morpheus({[admin, users], write},
+                                   {[admin, security], write}),
                      fun menelaus_web_rbac:handle_backup_restore/1};
                 ["settings", "secrets", SecretId] ->
                     {no_check_disallow_anonymous,
@@ -1288,7 +1323,8 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
         "PATCH" ->
             case PathTokens of
                 ["settings", "rbac", "users", "local", UserId] ->
-                    {{[admin, users], write},
+                    {when_morpheus({[admin, users], write},
+                                   {[admin, security], write}),
                      fun menelaus_web_rbac:handle_patch_user/2,
                      [UserId]};
                 ["pools", "default", "buckets", Id, "scopes", Scope,
