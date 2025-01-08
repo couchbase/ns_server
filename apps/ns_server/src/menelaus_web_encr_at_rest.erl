@@ -28,10 +28,15 @@ encr_secret_id(Param, EncrType) ->
      #{cfg_key => [EncrType, secret_id],
        type => {int, -1, infinity}}}.
 
-encr_dek_lifetime(Param, EncrType) ->
+encr_dek_lifetime(Param, EncrType, Enabled) ->
     {Param,
      #{cfg_key => [EncrType, dek_lifetime_in_sec],
-       type => {int, 0, infinity}}}.
+       type => case Enabled of
+                   true ->
+                       {int, 0, infinity};
+                   false ->
+                       {int, ?DEK_INFINITY_LIFETIME, ?DEK_INFINITY_LIFETIME}
+               end}}.
 
 encr_dek_rotate_intrvl(Param, EncrType) ->
     {Param,
@@ -56,9 +61,9 @@ params() ->
      encr_secret_id("log.encryptionSecretId", log_encryption),
      encr_secret_id("audit.encryptionSecretId", audit_encryption),
 
-     encr_dek_lifetime("config.dekLifetime", config_encryption),
-     encr_dek_lifetime("log.dekLifetime", log_encryption),
-     encr_dek_lifetime("audit.dekLifetime", audit_encryption),
+     encr_dek_lifetime("config.dekLifetime", config_encryption, true),
+     encr_dek_lifetime("log.dekLifetime", log_encryption, false),
+     encr_dek_lifetime("audit.dekLifetime", audit_encryption, false),
 
      encr_dek_rotate_intrvl("config.dekRotationInterval", config_encryption),
      encr_dek_rotate_intrvl("log.dekRotationInterval", log_encryption),
@@ -235,12 +240,12 @@ defaults() ->
                              dek_drop_datetime => {not_set, ""}},
       log_encryption => #{encryption => disabled,
                           secret_id => ?SECRET_ID_NOT_SET,
-                          dek_lifetime_in_sec => 365*60*60*24,
+                          dek_lifetime_in_sec => ?DEK_INFINITY_LIFETIME,
                           dek_rotation_interval_in_sec => 30*60*60*24,
                           dek_drop_datetime => {not_set, ""}},
       audit_encryption => #{encryption => disabled,
                             secret_id => ?SECRET_ID_NOT_SET,
-                            dek_lifetime_in_sec => 365*60*60*24,
+                            dek_lifetime_in_sec => ?DEK_INFINITY_LIFETIME,
                             dek_rotation_interval_in_sec => 30*60*60*24,
                             dek_drop_datetime => {not_set, ""}}}.
 

@@ -12,5 +12,6 @@
 -define(SECRET_ID_NOT_SET, -1).
 -define(DEK_CFG_FILENAME, "deks.cfg").
 -define(NULL_DEK, null_dek_id).
+-define(DEK_INFINITY_LIFETIME, 0).
 
 -endif.

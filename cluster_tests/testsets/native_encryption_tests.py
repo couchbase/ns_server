@@ -1351,7 +1351,7 @@ def set_cfg_encryption(cluster, *args, **kwargs):
 
 
 def set_log_encryption(cluster, *args, **kwargs):
-    return set_comp_encryption(cluster, 'log', *args, **kwargs)
+    return set_comp_encryption(cluster, 'log', *args, dek_lifetime=0, **kwargs)
 
 
 def set_comp_encryption(cluster, component, mode, secret,

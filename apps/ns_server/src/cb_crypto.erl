@@ -10,6 +10,7 @@
 -module(cb_crypto).
 
 -include("ns_common.hrl").
+-include("cb_cluster_secrets.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -463,9 +464,12 @@ get_encryption_method(Type, Snapshot) ->
           {ok, pos_integer()} | {error, not_found}.
 get_dek_kind_lifetime(Type, Snapshot) ->
     case menelaus_web_encr_at_rest:get_settings(Snapshot) of
-        #{Type := #{dek_lifetime_in_sec := 0}} -> {ok, undefined};
-        #{Type := #{dek_lifetime_in_sec := Lifetime}} -> {ok, Lifetime};
-        #{} -> {error, not_found}
+        #{Type := #{dek_lifetime_in_sec := ?DEK_INFINITY_LIFETIME}} ->
+            {ok, undefined};
+        #{Type := #{dek_lifetime_in_sec := Lifetime}} ->
+            {ok, Lifetime};
+        #{} ->
+            {error, not_found}
     end.
 
 -spec get_dek_rotation_interval(encryption_type(),
