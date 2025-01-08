@@ -70,6 +70,7 @@
          handle_streaming/3,
          assert_is_enterprise/0,
          assert_is_enterprise/1,
+         assert_is_dev_preview/0,
          assert_profile_flag/2,
          assert_is_76/0,
          assert_is_morpheus/0,
@@ -749,6 +750,10 @@ assert_is_enterprise(ParamName) ->
     assert(fun cluster_compat_mode:is_enterprise/0,
            [param_error_prefix(ParamName), "enterprise edition"],
            [{"X-enterprise-edition-needed", 1}]).
+
+assert_is_dev_preview() ->
+    assert(fun cluster_compat_mode:is_developer_preview/0,
+           "This http API endpoint requires developer preview to be enabled").
 
 assert_profile_flag(Flag, ParamName) ->
     assert(?cut(config_profile:get_bool(Flag)),
