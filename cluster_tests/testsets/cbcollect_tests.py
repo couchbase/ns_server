@@ -17,7 +17,10 @@ from testlib.util import Service
 from testlib import ClusterRequirements
 from testsets.secret_management_tests import post_es_config, reset_es_config, \
                                              change_password
-from testsets.native_encryption_tests import set_cfg_encryption
+from testsets.native_encryption_tests import set_cfg_encryption, \
+                                             set_log_encryption, \
+                                             assert_file_encrypted, \
+                                             assert_file_unencrypted
 import datetime
 import subprocess
 import pyzipper
@@ -44,6 +47,7 @@ class CbcollectTest(testlib.BaseTestSet):
 
     def test_teardown(self):
         set_cfg_encryption(self.cluster, 'disabled', -1)
+        set_log_encryption(self.cluster, 'disabled', -1)
         for n in self.cluster.connected_nodes:
             reset_es_config(n)
             change_password(n, password='')
@@ -202,6 +206,57 @@ class CbcollectTest(testlib.BaseTestSet):
         # Passing incorrect password:
         assert_cbcollect_returns_incorrect_password(
             node, self.zip_dir, stdin_master_password=password + '_wrong')
+
+    def collection_of_encrypted_logs_test(self):
+        node = self.cluster.connected_nodes[0]
+        log_name = 'debug.log'
+        log_path = Path(node.logs_path()) / log_name
+
+        def toggle_log_encryption(enabled):
+            if enabled:
+                set_log_encryption(node, 'encryption_service', -1)
+                poll_func = lambda: assert_file_encrypted(log_path)
+            else:
+                set_log_encryption(node, 'disabled', -1)
+                poll_func = lambda: assert_file_unencrypted(log_path)
+
+            testlib.poll_for_condition(poll_func,
+                                       sleep_time=1, attempts=60,
+                                       retry_on_assert=True, verbose=True)
+
+            s = f'Test string {testlib.random_str(8)}'
+            testlib.diag_eval(node, f'"{s}".')
+            testlib.diag_eval(node, 'ale:sync_all_sinks().')
+            return s
+
+        s1 = toggle_log_encryption(True)
+        s2 = toggle_log_encryption(False)
+        s3 = toggle_log_encryption(True)
+
+        # We rotate logs on every encryption toggle, so here we should have
+        # at least three files: debug.log   (encrypted)
+        #                       debug.log.1 (unencrypted)
+        #                       debug.log.2 (encrypted)
+        # Now we collect logs and make sure that resulting ns_server.debug.log
+        # contains s1, s2 and s3 (strings from debug.log.2, debug.log.1,
+        # and debug.log respectively).
+
+        zip_filename = Path(self.zip_dir) / 'encrypted_logs_test_dump'
+        password = testlib.random_str(8)
+        run_cbcollect(node, zip_filename,
+                      task_regexp=f'couchbase logs \\({log_name}\\)',
+                      encrypt_redacted_zip=True,
+                      stdin_zip_password=password)
+
+        with pyzipper.AESZipFile(f'{zip_filename}.zip', mode="r") as z:
+            print(f'files in archive (using pyzipper): {z.namelist()}')
+            file_to_check = cbcollect_filename(z, f'ns_server.{log_name}')
+            z.setpassword(password.encode())
+            with z.open(file_to_check) as f:
+                text = f.read().decode()
+                assert s1 in text
+                assert s2 in text
+                assert s3 in text
 
 
 def run_cbcollect(node, path_to_zip, redaction_level=None, task_regexp=None,
