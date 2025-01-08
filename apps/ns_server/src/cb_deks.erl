@@ -272,7 +272,8 @@ dek_chronicle_keys_filter(Key) ->
       get_ids_in_use_callback :=
         fun ( () -> {ok, Ids} | {error, not_found | _}),
       drop_callback :=
-        fun ( (Ids) -> {ok, done | started} | {error, not_found | retry | _} ),
+        fun ( (Ids) -> {ok, done | started} | {error, not_found | retry | _} ) |
+        not_supported,
       chronicle_txn_keys := [term()],
       required_usage := cb_cluster_secrets:secret_usage()
      } when Ids :: [dek_id()],
@@ -303,7 +304,7 @@ dek_config(logDek) ->
       drop_keys_timestamp_callback => cb_crypto:get_drop_keys_timestamp(
                                         log_encryption, _),
       get_ids_in_use_callback => ?cut(get_dek_ids_in_use(logDek)),
-      drop_callback => fun drop_log_deks/1,
+      drop_callback => not_supported,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
       required_usage => log_encryption};
 dek_config(auditDek) ->
@@ -319,7 +320,7 @@ dek_config(auditDek) ->
       drop_keys_timestamp_callback => cb_crypto:get_drop_keys_timestamp(
                                         audit_encryption, _),
       get_ids_in_use_callback => ?cut(get_dek_ids_in_use(auditDek)),
-      drop_callback => fun (_) -> {ok, done} end,
+      drop_callback => not_supported,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
       required_usage => audit_encryption};
 dek_config({bucketDek, Bucket}) ->
@@ -491,9 +492,6 @@ drop_config_deks(DekIdsToDrop) ->
             [_ | _] -> {error, {still_in_use, StillInUse}}
         end
     end.
-
-drop_log_deks(_DekIdsToDrop) ->
-    {ok, done}.
 
 drop_bucket_deks(Bucket, DekIds) ->
     Continuation = fun (_) ->

@@ -1519,6 +1519,12 @@ maybe_rotate_integrity_tokens(configDek, DekId) ->
 maybe_rotate_integrity_tokens(_Kind, _DekId) ->
     ok.
 
+dek_kind_supports_drop(Kind) ->
+    case cb_deks:dek_config(Kind) of
+        #{drop_callback := not_supported} -> false;
+        #{drop_callback := F} when is_function(F) -> true
+    end.
+
 call_dek_callback(CallbackName, Kind, Args) ->
     #{CallbackName := CB} = cb_deks:dek_config(Kind),
     try erlang:apply(CB, Args) of
@@ -2304,6 +2310,8 @@ calculate_next_dek_cleanup(CurDateTime, DeksInfo) ->
                       %% Assume there is not such entity anymore, we just
                       %% haven't removed deks yet, ignoring them
                       Acc;
+                  {error, not_supported} ->
+                      Acc;
                   {error, _} ->
                       [misc:datetime_add(CurDateTime,
                                          ?DEK_TIMER_RETRY_TIME_S) | Acc]
@@ -2333,6 +2341,7 @@ dek_expiration_times(Kind, #{deks := Deks, is_enabled := IsEnabled,
                              has_unencrypted_data := HasUnencryptedData}) ->
     Snapshot = deks_config_snapshot(Kind),
     maybe
+        {_, true} ?= {drop_supported, dek_kind_supports_drop(Kind)},
         {succ, {ok, LifeTimeInSec}} ?=
             call_dek_callback(lifetime_callback, Kind, [Snapshot]),
         {succ, {ok, DropKeysTS}} ?=
@@ -2356,6 +2365,8 @@ dek_expiration_times(Kind, #{deks := Deks, is_enabled := IsEnabled,
             end,
         {ok, RegularKeyTimes ++ EmptyKeyTimes}
     else
+        {drop_supported, false} ->
+            {error, not_supported};
         {succ, {error, not_found}} ->
             {error, not_found};
         {except, Err} ->
