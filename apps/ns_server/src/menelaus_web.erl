@@ -823,7 +823,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_ldap:handle_ldap_settings_validate_post/2,
                      [Type]};
                 ["settings", "invalidateLDAPCache"] ->
-                    {when_morpheus({[admin, security], write},
+                    {when_morpheus({[admin, security_info], write},
                                    {[admin, security, external], write}),
                      fun menelaus_web_ldap:handle_invalidate_ldap_cache/1};
                 ["settings", "clientCertAuth"] ->
