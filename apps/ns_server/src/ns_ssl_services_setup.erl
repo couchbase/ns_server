@@ -1041,7 +1041,8 @@ save_certs(Type, CA, Chain, PKey, PassphraseSettings, Extra)
                                                              is_binary(Chain),
                                                              is_binary(PKey) ->
     {EncryptedPKey, NonEmptyPassphraseSettings} =
-        case ns_secrets:is_pkey_pass_set(PassphraseSettings) of
+        case ns_secrets:is_pkey_pass_set(PassphraseSettings) orelse
+             (not ns_config:read_key_fast(automatically_encrypt_pkeys, true)) of
             true ->
                 {PKey, PassphraseSettings};
             false ->
