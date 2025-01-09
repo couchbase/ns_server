@@ -23,6 +23,7 @@
 
 -export([handle_saslauthd_auth_settings/1,
          handle_saslauthd_auth_settings_post/1,
+         handle_get/1,
          handle_get_roles/1,
          handle_get_users/2,
          handle_get_users/3,
@@ -211,6 +212,18 @@ maybe_remove_security_roles(Req, Snapshot, Roles) ->
             false ->
                 menelaus_roles:get_security_roles(Snapshot)
         end.
+
+handle_get(Req) ->
+    LdapSettings = ldap_util:build_settings(),
+    LdapEnabled = proplists:get_bool(authentication_enabled, LdapSettings),
+    SaslauthdSettings = saslauthd_auth:build_settings(),
+    SaslauthdAuthEnabled = proplists:get_bool(enabled, SaslauthdSettings),
+
+    RV = [{ldapEnabled, LdapEnabled},
+          {samlEnabled, menelaus_web_saml:is_enabled()},
+          {saslauthdAuthEnabled, SaslauthdAuthEnabled}],
+
+    menelaus_util:reply_json(Req, {RV}).
 
 handle_get_roles(Req) ->
     Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),

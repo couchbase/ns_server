@@ -481,6 +481,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "audit", "nonFilterableDescriptors"] ->
                     {{[admin, security], read},
                      fun menelaus_web_audit:handle_get_non_filterable_descriptors/1};
+                ["settings", "rbac"] ->
+                    {{[admin, users], read},
+                     fun menelaus_web_rbac:handle_get/1};
                 ["settings", "rbac", "roles"] ->
                     {when_morpheus({[admin, users], read},
                                    {[admin, security], read}),
