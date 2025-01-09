@@ -462,11 +462,11 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "replications", _XID] ->
                     {no_check, fun goxdcr_rest:proxy/1};
                 ["settings", "saslauthdAuth"] ->
-                    {when_morpheus({[admin, security_info], read},
+                    {when_morpheus({[admin, security], read},
                                    {[admin, security, external], read}),
                      fun menelaus_web_rbac:handle_saslauthd_auth_settings/1};
                 ["settings", "ldap"] ->
-                    {when_morpheus({[admin, security_info], read},
+                    {when_morpheus({[admin, security], read},
                                    {[admin, security, external], read}),
                      fun menelaus_web_ldap:handle_ldap_settings/1};
                 ["settings", "clientCertAuth"] ->
@@ -544,7 +544,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, license], read},
                      fun menelaus_web_license:handle_settings_get/1};
                 ["settings", "saml" | PathRest] ->
-                    {when_morpheus({[admin, security_info], read},
+                    {when_morpheus({[admin, security], read},
                                    {[admin, security, external], read}),
                      fun menelaus_web_saml:handle_get_settings/2, [PathRest]};
                 ["settings", "dataService"] ->
