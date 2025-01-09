@@ -11,7 +11,7 @@ licenses/APL2.txt.
 import {ChangeDetectionStrategy, Component} from '@angular/core';
 import {Subject} from 'rxjs';
 import {FormBuilder, FormControl, Validators} from '@angular/forms';
-import {map, takeUntil, switchMap, filter, pairwise, startWith} from 'rxjs/operators';
+import {map, takeUntil, switchMap, filter, pairwise, startWith, first} from 'rxjs/operators';
 import {UIRouter} from '@uirouter/angular';
 import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
 
@@ -110,7 +110,11 @@ class MnLogsCollectInfoFormComponent extends MnLifeCycleHooksToStream {
       .subscribe(this.addNodes.bind(this));
 
     this.isLogEncryptionAtRestEnabled = mnSecuritySecretsService.stream.getEncryptionAtRest
-      .pipe(map(encryption => encryption.log.encryptionMethod !== 'disabled'));
+      .pipe(first(), map(encryption => encryption.log.encryptionMethod !== 'disabled' || encryption.config.encryptionMethod !== 'disabled'));
+
+    this.isLogEncryptionAtRestEnabled
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe((isLogEncryptionAtRestEnabled) => this.form.group.get('logs.enableLogEncryption').patchValue(isLogEncryptionAtRestEnabled));
 
     this.disableStopCollection = this.postCancelLogsCollection.success
       .pipe(switchMap(() => this.taskCollectInfo),

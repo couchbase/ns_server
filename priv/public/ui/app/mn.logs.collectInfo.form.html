@@ -274,9 +274,10 @@
            id="enableLogEncryption"
            name="enableLogEncryption"
            formControlName="enableLogEncryption">
-        <label for="enableLogEncryption" class="margin-right-zero">Encrypt the Logs</label>
+        <label for="enableLogEncryption" class="margin-right-zero">Encrypt collected information by AES</label>
+        <p class="text-smaller margin-left-1-2-5">(only unredacted zip will be encrypted)</p>
         <span *ngIf="!(form.group.get('logs.enableLogEncryption').valueChanges | async) && (isLogEncryptionAtRestEnabled | async)" class="warning text-smaller block">
-          Warning: Generated logs are not encrypted yet, even though Encryption at REST is enabled for logs.<br/> Check this option and set a password to encrypt the logs.
+          Warning: Generated logs are not encrypted yet, even though encryption at rest is enabled for logs.<br/> Check this option and set a password to encrypt the logs.
         </span>
       </div>
       <div *ngIf="form.group.get('logs.enableLogEncryption').valueChanges | async" formGroupName="logs">

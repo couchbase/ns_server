@@ -647,6 +647,9 @@ footer {
 .margin-left-1-5, .indent-1-5 {
   margin-left: 1.5rem !important;
 }
+.margin-left-1-2-5, .indent-1-2-5 {
+  margin-left: 1.25rem !important;
+}
 .margin-left-2, .indent-2 {
   margin-left: 2rem !important;
 }
