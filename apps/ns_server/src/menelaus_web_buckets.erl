@@ -1622,7 +1622,7 @@ validate_membase_bucket_params(CommonParams, Params, Name,
           Params, BucketConfig, IsNew, AllowThrottleLimit,
           fun menelaus_web_settings:get_throttle_limit_attributes/0) ++
         validate_bucket_encryption_at_rest_settings(Params, Version,
-                                                    IsEnterprise),
+                                                    IsEnterprise, IsPersistent),
 
     validate_bucket_purge_interval(Params, BucketConfig, IsNew) ++
         get_conflict_resolution_type_and_thresholds(
@@ -2006,7 +2006,8 @@ parse_validate_bucket_auto_compaction_settings(Params) ->
             end
     end.
 
-validate_bucket_encryption_at_rest_settings(Params, Version, IsEnterprise) ->
+validate_bucket_encryption_at_rest_settings(Params, Version, IsEnterprise,
+                                            IsPersistent) ->
     Allowed = cluster_compat_mode:is_version_morpheus(Version),
     case parse_validate_encryption_secret_id(Params) of
         [{ok, encryption_secret_id, Id}] when not IsEnterprise,
@@ -2018,6 +2019,10 @@ validate_bucket_encryption_at_rest_settings(Params, Version, IsEnterprise) ->
             [{error, encryptionAtRestSecretId,
               <<"Encryption At-Rest is not allowed until the entire cluster "
                 "is upgraded to Morpheus">>}];
+        [{ok, encryption_secret_id, Id}] when not IsPersistent,
+                                              Id /= ?SECRET_ID_NOT_SET ->
+            [{error, encryptionAtRestSecretId,
+              <<"Encryption At-Rest is not supported for ephemeral buckets">>}];
         RV -> RV
     end ++
     parse_validate_encryption_rotation_interval(Params) ++
