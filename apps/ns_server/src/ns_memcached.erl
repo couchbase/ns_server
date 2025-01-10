@@ -169,6 +169,8 @@
          get_fusion_uploaders_state/1,
          get_fusion_namespaces/1,
          delete_fusion_namespace/3,
+         download_snapshot/3,
+         get_download_snapshot_status/2,
          release_snapshot/2,
          get_snapshot_statuses/1
         ]).
@@ -793,6 +795,37 @@ do_handle_call({set_vbucket, VBucket, VBState, Options}, _From,
                        [BucketName, VBucket, VBState, Reply])
     end,
     {reply, Reply, State};
+do_handle_call({download_snapshot, MasterNode, VBucket}, _From, State) ->
+    Cfg = ns_config:latest(),
+
+    {Host, TcpPort, _SslPort} = ns_memcached:host_ports(MasterNode, Cfg),
+    Username = ns_config:search_node_prop(MasterNode, Cfg, memcached,
+                                          admin_user),
+    Password = ns_config_auth:get_password(MasterNode, Cfg, special),
+
+    SnapshotCfg =
+        {[{host, iolist_to_binary(Host)},
+          {port, TcpPort},
+          {bucket, iolist_to_binary(State#state.bucket)},
+          {sasl, {[{mechanism, iolist_to_binary("PLAIN")},
+                   {username, iolist_to_binary(Username)},
+                   {password, iolist_to_binary(Password)}]}}
+          %% TODO MB-64812: TLS options
+         ]},
+
+    Reply = mc_client_binary:download_snapshot(State#state.sock, VBucket,
+                                               SnapshotCfg),
+    {reply, Reply, State};
+do_handle_call({get_download_snapshot_status, VBucket}, _From, State) ->
+    Key = iolist_to_binary([<<"snapshot-status ">>, integer_to_list(VBucket)]),
+    Status =
+        mc_binary:quick_stats(
+          State#state.sock, Key,
+          fun (_K, V, _Acc) ->
+                  %% We really only expect one entry in the status list
+                  V
+          end, undefined),
+    {reply, Status, State};
 do_handle_call({release_snapshot, VBucket}, _From, State) ->
     Reply = mc_client_binary:release_snapshot(State#state.sock, VBucket),
     {reply, Reply, State};
@@ -1933,6 +1966,15 @@ compact_vbucket(Bucket, VBucket, {PurgeBeforeTS, PurgeBeforeSeqNo, DropDeletes,
                                                        DropDeletes,
                                                        ObsoleteKeyIds)}
       end, Bucket, [json]).
+
+-spec download_snapshot(bucket_name(), node(), vbucket_id()) -> {ok, term()}.
+download_snapshot(Bucket, MasterNode, VBucket) ->
+    do_call(server(Bucket), Bucket, {download_snapshot, MasterNode, VBucket},
+            ?TIMEOUT).
+-spec get_download_snapshot_status(bucket_name(), vbucket_id()) -> {ok, term()}.
+get_download_snapshot_status(Bucket, VBucket) ->
+    do_call(server(Bucket), Bucket, {get_download_snapshot_status, VBucket},
+            ?TIMEOUT).
 
 -spec release_snapshot(bucket_name(), vbucket_id()) -> ok | {error, term()}.
 release_snapshot(Bucket, VBucket) ->

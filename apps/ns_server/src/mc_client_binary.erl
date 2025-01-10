@@ -83,6 +83,7 @@
          sync_fusion_log_store/2,
          delete_fusion_namespace/5,
          get_fusion_namespaces/3,
+         download_snapshot/3,
          release_snapshot/2
         ]).
 
@@ -119,6 +120,7 @@
                      ?CMD_STOP_FUSION_UPLOADER |
                      ?CMD_SYNC_FUSION_LOGSTORE |
                      ?CMD_GET_FUSION_NAMESPACES |
+                     ?DOWNLOAD_SNAPSHOT |
                      ?RELEASE_SNAPSHOT.
 
 report_counter(Function) ->
@@ -448,6 +450,17 @@ construct_set_vbucket_packet({VBucket, VBucketState, VBInfo}) ->
 set_vbuckets(Sock, ToSet) ->
     pipeline_send_recv(Sock, ?CMD_SET_VBUCKET,
                        fun construct_set_vbucket_packet/1, ToSet).
+
+download_snapshot(Sock, VBucket, SnapshotCfg) ->
+    report_counter(?FUNCTION_NAME),
+    case cmd(?DOWNLOAD_SNAPSHOT, Sock, undefined, undefined,
+             {#mc_header{vbucket = VBucket},
+              #mc_entry{data = ejson:encode(SnapshotCfg),
+                        datatype = ?MC_DATATYPE_JSON}}) of
+        {ok, #mc_header{status=?SUCCESS}, _ME, _NCB} ->
+            ok;
+        Response -> process_error_response(Response)
+    end.
 
 release_snapshot(Sock, VBucket) ->
     report_counter(?FUNCTION_NAME),
