@@ -1276,7 +1276,8 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                 %% On disk it is enabled but in config it is disabled:
                 true when EncrMethod == disabled ->
                     NewState = set_active(Kind, ActiveId, false, State),
-                    ok = maybe_rotate_integrity_tokens(Kind, undefined),
+                    ok = maybe_rotate_integrity_tokens(Kind, undefined,
+                                                       NewState),
                     call_set_active_cb(Kind, NewState);
 
                 %% It is enabled on disk and in config:
@@ -1297,7 +1298,8 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                 %% and we already have a dek
                 false when is_binary(ActiveId) and not ShouldRotate ->
                     NewState = set_active(Kind, ActiveId, true, State),
-                    ok = maybe_rotate_integrity_tokens(Kind, ActiveId),
+                    ok = maybe_rotate_integrity_tokens(Kind, ActiveId,
+                                                       NewState),
                     call_set_active_cb(Kind, NewState);
 
                 %% On disk it is disabled but in config it is enabled
@@ -1308,7 +1310,8 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                     case generate_new_dek(Kind, Deks, EncrMethod, Snapshot) of
                         {ok, DekId} ->
                             NewState = set_active(Kind, DekId, true, State),
-                            ok = maybe_rotate_integrity_tokens(Kind, DekId),
+                            ok = maybe_rotate_integrity_tokens(Kind, DekId,
+                                                               NewState),
                             call_set_active_cb(Kind, NewState);
                         %% Too many DEKs and encryption is being enabled
                         %% We could not create new DEK, but should still
@@ -1513,10 +1516,13 @@ call_set_active_cb(Kind, #state{deks = AllDeks} = State) ->
     end.
 
 -spec maybe_rotate_integrity_tokens(cb_deks:dek_kind(),
-                                    cb_deks:dek_id() | undefined) -> ok.
-maybe_rotate_integrity_tokens(configDek, DekId) ->
-    ok = encryption_service:maybe_rotate_integrity_tokens(DekId);
-maybe_rotate_integrity_tokens(_Kind, _DekId) ->
+                                    cb_deks:dek_id() | undefined,
+                                    #state{}) -> ok.
+maybe_rotate_integrity_tokens(configDek, DekId, State) ->
+    ok = encryption_service:maybe_rotate_integrity_tokens(DekId),
+    %% Resaving deks cfg because we need to update MAC for this file
+    ok = write_deks_cfg_file(State);
+maybe_rotate_integrity_tokens(_Kind, _DekId, _State) ->
     ok.
 
 dek_kind_supports_drop(Kind) ->
@@ -1596,16 +1602,19 @@ write_deks_cfg_file(#state{deks = DeksInfo}) ->
                               deks => []}
                     end,
 
+    {ok, MAC} = encryption_service:mac(Bin),
+    MACSize = byte_size(MAC),
+    ToWrite = <<MACSize:32/unsigned-integer, MAC/binary, Bin/binary>>,
     case ConfigDekInfo of
         #{is_enabled := false} ->
-            ok = file:write_file(Path, Bin);
+            ok = file:write_file(Path, ToWrite);
         #{is_enabled := true, active_id := CfgActiveId, deks := CfgDeks} ->
             {value, CfgActiveKey} = lists:search(fun (#{id := Id}) ->
                                                          Id == CfgActiveId
                                                  end, CfgDeks),
             DS = cb_crypto:create_deks_snapshot(CfgActiveKey, [CfgActiveKey],
                                                 undefined),
-            ok = cb_crypto:atomic_write_file(Path, Bin, DS)
+            ok = cb_crypto:atomic_write_file(Path, ToWrite, DS)
     end,
     ok.
 
@@ -1634,9 +1643,9 @@ maybe_read_deks(#state{proc_type = ?NODE_PROC, deks = undefined} = State) ->
     case NewState3 of
         #state{deks = #{configDek := #{is_enabled := true,
                                         active_id := ActiveId}}} ->
-            ok = maybe_rotate_integrity_tokens(configDek, ActiveId);
+            ok = maybe_rotate_integrity_tokens(configDek, ActiveId, NewState3);
         #state{deks = #{configDek := #{is_enabled := false}}} ->
-            ok = maybe_rotate_integrity_tokens(configDek, undefined);
+            ok = maybe_rotate_integrity_tokens(configDek, undefined, NewState3);
         #state{} ->
             ok
     end,
@@ -1647,7 +1656,10 @@ maybe_read_deks(#state{} = State) ->
 -spec read_all_deks(#state{}) -> #state{}.
 read_all_deks(#state{} = State) ->
     GetCfgDek = encryption_service:read_dek(configDek, _),
-    {ok, Term} = cb_deks_raw_utils:read_deks_file(deks_file_path(), GetCfgDek),
+    VerifyMac = fun encryption_service:verify_mac/2,
+    {ok, Term} = cb_deks_raw_utils:read_deks_file(deks_file_path(), GetCfgDek,
+                                                  VerifyMac),
+
     Deks = maps:filtermap(
              fun (Kind, #{is_enabled := IsEnabled,
                           active_id := ActiveId,

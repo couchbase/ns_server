@@ -10,6 +10,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/hmac"
 	"crypto/sha512"
 	"encoding/base64"
 	"encoding/binary"
@@ -79,6 +80,7 @@ const (
 	encryptedFileMagicStringLen = len(encryptedFileMagicString)
 	encryptedFileHeaderSize     = 80
 	encryptedFileKeyNameLength  = byte(36)
+	macLen                      = 101 // Vsn: 1B, UUID: 36B, MAC: 64B
 )
 
 // Struct for marshalling/unmarshalling of a raw aes-gcm stored key
@@ -382,6 +384,54 @@ func (state *StoredKeysState) writeIntTokensToFile(ctx *storedKeysCtx) error {
 		return err
 	}
 	return nil
+}
+
+func (state *StoredKeysState) mac(data []byte) ([]byte, error) {
+	if len(state.intTokens) == 0 {
+		return nil, fmt.Errorf("no keys")
+	}
+	token := state.intTokens[0]
+	h := hmac.New(sha512.New, token.token)
+	h.Write(data)
+	mac := h.Sum(nil)
+	// Format: Version: 1 byte, TokenUUID, MAC
+	res := append([]byte{0}, token.uuid...)
+	res = append(res, mac...)
+	if len(res) != macLen {
+		return nil, fmt.Errorf("unexpected mac length: %d", len(res))
+	}
+	return res, nil
+}
+
+func (state *StoredKeysState) verifyMac(mac, data []byte) error {
+	if len(mac) == 0 {
+		return fmt.Errorf("mac is empty")
+	}
+	if mac[0] != 0 {
+		return fmt.Errorf("unknown mac version: %v", mac[0])
+	}
+
+	if len(mac) != macLen {
+		return fmt.Errorf("unexpected mac length: %d", len(mac))
+	}
+	uuidBytes := mac[1:37]
+	if !utf8.Valid(uuidBytes) {
+		return fmt.Errorf("invalid utf-8 in uuid: %q", uuidBytes)
+	}
+	uuid := string(uuidBytes)
+	mac = mac[37:]
+	for _, token := range state.intTokens {
+		if token.uuid == uuid {
+			h := hmac.New(sha512.New, token.token)
+			h.Write(data)
+			expectedMac := h.Sum(nil)
+			if hmac.Equal(mac, expectedMac) {
+				return nil
+			}
+			return fmt.Errorf("invalid mac")
+		}
+	}
+	return fmt.Errorf("unknown token: %s", uuid)
 }
 
 func getEncryptedFileAD(header []byte, offset int) []byte {

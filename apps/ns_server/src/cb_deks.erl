@@ -44,8 +44,9 @@
     {ok, {undefined | dek_id(), [dek_id()], boolean()}} | {error, _}.
 list(Kind) ->
     GetCfgDekFun = encryption_service:read_dek(configDek, _),
+    VerifyMac = fun encryption_service:verify_mac/2,
     ?log_debug("Reading list of ~p deks...", [Kind]),
-    case cb_deks_raw_utils:external_list(Kind, GetCfgDekFun, #{}) of
+    case cb_deks_raw_utils:external_list(Kind, GetCfgDekFun, VerifyMac, #{}) of
         {ok, {ActiveKeyId, AllIds, IsEnabled}} ->
             ?log_debug("~p DEK read res: Active: ~0p, AllIds: ~0p, "
                        "IsEnabled: ~0p",

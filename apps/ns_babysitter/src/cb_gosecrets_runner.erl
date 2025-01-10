@@ -41,7 +41,9 @@
          key_path/2,
          rotate_integrity_tokens/2,
          remove_old_integrity_tokens/2,
-         get_key_id_in_use/1]).
+         get_key_id_in_use/1,
+         mac/2,
+         verify_mac/3]).
 
 -record(state, {config :: file:filename(),
                 loop :: pid() | undefined,
@@ -146,6 +148,12 @@ remove_old_integrity_tokens(Name, Paths) ->
 
 get_key_id_in_use(Name) ->
     gen_server:call(Name, get_key_id_in_use, infinity).
+
+mac(Name, Data) ->
+    gen_server:call(Name, {mac, Data}, infinity).
+
+verify_mac(Name, Mac, Data) ->
+    gen_server:call(Name, {verify_mac, Mac, Data}, infinity).
 
 start_link(Logger, PasswordPromptAllowed, ReadOnly) ->
     start_link(Logger, PasswordPromptAllowed, ReadOnly, gosecrets_cfg_path()).
@@ -371,6 +379,10 @@ handle_call({remove_old_integrity_tokens, _Paths} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
 handle_call(get_key_id_in_use, _From, State) ->
     {reply, convert_empty_data(call_gosecrets(get_key_id_in_use, State)), State};
+handle_call({mac, _Data} = Cmd, _From, State) ->
+    {reply, call_gosecrets(Cmd, State), State};
+handle_call({verify_mac, _Mac, _Data} = Cmd, _From, State) ->
+    {reply, call_gosecrets(Cmd, State), State};
 handle_call(stop, _From, State) ->
     {stop, normal, call_gosecrets(stop, State), State};
 handle_call(Call, _From, State) ->
@@ -527,7 +539,11 @@ encode({init, IsReadOnly, HiddenPass}) ->
                       false -> <<0>>
                   end,
     <<20, (encode_param(ReadOnlyBin))/binary,
-          (encode_param(BinaryPassword))/binary>>.
+          (encode_param(BinaryPassword))/binary>>;
+encode({mac, Data}) ->
+    <<21, Data/binary>>;
+encode({verify_mac, Mac, Data}) ->
+    <<22, (encode_param(Mac))/binary, (encode_param(Data))/binary>>.
 
 encode_param(B) when is_atom(B) ->
     encode_param(atom_to_binary(B));
@@ -1314,6 +1330,68 @@ default_password_from_env_memorization_test() ->
                     decrypt(Pid, Encrypted)
                 end,
                 false)
+      end).
+
+mac_test() ->
+    Data = rand:bytes(512),
+    Cfg = [],
+    KeyDirs = [key_path(configDek, Cfg),
+               key_path(logDek, Cfg),
+               key_path(auditDek, Cfg),
+               key_path(kek, Cfg)],
+    with_all_stored_keys_cleaned(
+      Cfg,
+      fun () ->
+          with_gosecrets(
+            undefined,
+            fun (_CfgPath, Pid) ->
+                {ok, Mac1} = mac(Pid, Data),
+                {ok, WrongMac} = mac(Pid, <<>>),
+                MacLen = byte_size(Mac1),
+                RandomUUIDMac = <<0, (rand:bytes(MacLen-1))/binary>>,
+                ?assertEqual(ok, verify_mac(Pid, Mac1, Data)),
+                ?assertEqual({error, "mac is empty"},
+                             verify_mac(Pid, <<>>, Data)),
+                ?assertEqual({error, "unknown mac version: 3"},
+                             verify_mac(Pid, <<3, 4, 5, 6>>, Data)),
+                ?assertEqual({error, "unexpected mac length: 4"},
+                             verify_mac(Pid, <<0, 1, 2, 3>>, Data)),
+                ?assertMatch({error, "invalid utf-8 in uuid: " ++ _},
+                             verify_mac(Pid, RandomUUIDMac, Data)),
+                ?assertEqual({error, "invalid mac"},
+                             verify_mac(Pid, WrongMac, Data)),
+
+                %% Rotate tokens and make sure that old mac is still valid
+                ok = store_key(Pid, configDek, ?key1, 'raw-aes-gcm',
+                               rand:bytes(32), <<"encryptionService">>,
+                               <<"2024-07-26T19:32:19Z">>, false),
+                ok = rotate_integrity_tokens(Pid, ?key1),
+
+                {ok, Mac2} = mac(Pid, Data),
+                ?assertEqual(ok, verify_mac(Pid, Mac1, Data)),
+                ?assertEqual(ok, verify_mac(Pid, Mac2, Data)),
+
+                %% Remove old tokens, which should mac Mac1 invalid
+                ok = remove_old_integrity_tokens(Pid, KeyDirs),
+
+                ?assertMatch({error, "unknown token: " ++ _},
+                             verify_mac(Pid, Mac1, Data)),
+                ?assertEqual(ok, verify_mac(Pid, Mac2, Data)),
+
+                %% Rotate tokens multiple times and make sure that Mac2 is still
+                %% valid
+                ok = rotate_integrity_tokens(Pid, ?key1),
+                ok = rotate_integrity_tokens(Pid, ?key1),
+                ok = rotate_integrity_tokens(Pid, ?key1),
+                ok = rotate_integrity_tokens(Pid, ?key1),
+
+                ?assertEqual(ok, verify_mac(Pid, Mac2, Data)),
+
+                %% Remove old tokens, which should mac Mac2 invalid
+                ok = remove_old_integrity_tokens(Pid, KeyDirs),
+                ?assertMatch({error, "unknown token: " ++ _},
+                             verify_mac(Pid, Mac2, Data))
+            end)
       end).
 
 with_tmp_datakey_cfg(Fun) ->

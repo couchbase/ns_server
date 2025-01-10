@@ -42,7 +42,9 @@
          cleanup_retired_keys/0,
          maybe_rotate_integrity_tokens/1,
          remove_old_integrity_tokens/1,
-         get_key_ids_in_use/0]).
+         get_key_ids_in_use/0,
+         mac/1,
+         verify_mac/2]).
 
 
 -export_type([stored_key_error/0]).
@@ -204,6 +206,14 @@ get_key_ids_in_use() ->
         {ok, KeyId} -> {ok, [KeyId]};
         {error, Error} -> {error, Error}
     end.
+
+mac(Data) when is_binary(Data) ->
+    wrap_error_msg(cb_gosecrets_runner:mac(?RUNNER, Data),
+                   mac_calculation_error).
+
+verify_mac(Mac, Data) when is_binary(Data), is_binary(Mac) ->
+    wrap_error_msg(cb_gosecrets_runner:verify_mac(?RUNNER, Mac, Data),
+                   mac_verification_error).
 
 %%%===================================================================
 %%% callbacks

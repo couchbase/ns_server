@@ -241,6 +241,10 @@ func (s *encryptionService) processCommand() {
 		s.cmdGetKeyIdInUse()
 	case 20:
 		s.cmdInit(data)
+	case 21:
+		s.cmdMac(data)
+	case 22:
+		s.cmdVerifyMac(data)
 	default:
 		panic(fmt.Sprintf("Unknown command %v", command))
 	}
@@ -800,6 +804,28 @@ func (s *encryptionService) cmdGetKeyIdInUse() {
 		return
 	}
 	replySuccessWithData([]byte(keyId))
+}
+
+func (s *encryptionService) cmdMac(data []byte) {
+	mac, err := s.storedKeysState.mac(data)
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
+	replySuccessWithData(mac)
+}
+
+func (s *encryptionService) cmdVerifyMac(data []byte) {
+	mac, data := readBigField(data)
+	data, _ = readBigField(data)
+
+	err := s.storedKeysState.verifyMac(mac, data)
+
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
+	replySuccess()
 }
 
 func replyReadKey(keyIface storedKeyIface) {

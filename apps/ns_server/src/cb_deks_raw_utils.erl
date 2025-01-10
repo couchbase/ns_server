@@ -15,8 +15,8 @@
 -include_lib("ns_common/include/cut.hrl").
 
 -export([bootstrap_get_deks/2,
-         external_list/3,
-         read_deks_file/2,
+         external_list/4,
+         read_deks_file/3,
          new_deks_file_record/3]).
 
 -type deks_file_record() :: #{is_enabled := boolean(),
@@ -24,10 +24,11 @@
                               dek_ids := [cb_deks:dek_id()]}.
 
 -spec external_list(cb_deks:dek_kind(),
-                    fun((cb_deks:dek_id()) -> cb_deks:dek()), #{}) ->
+                    fun((cb_deks:dek_id()) -> cb_deks:dek()),
+                    fun((binary(), binary()) -> ok | {error, _}), #{}) ->
           {ok, {undefined | cb_deks:dek_id(), [cb_deks:dek_id()], boolean()}} |
           {error, {read_dek_cfg_file_error, {string, term()}}}.
-external_list(DekKind, GetCfgDekFun, Opts) ->
+external_list(DekKind, GetCfgDekFun, VerifyMacFun, Opts) ->
     ConfigDir =
         case maps:get(config_path_override, Opts, undefined) of
             undefined ->
@@ -37,7 +38,7 @@ external_list(DekKind, GetCfgDekFun, Opts) ->
         end,
     DeksFilePath = filename:join(ConfigDir, ?DEK_CFG_FILENAME),
     maybe
-        {ok, Term} ?= read_deks_file(DeksFilePath, GetCfgDekFun),
+        {ok, Term} ?= read_deks_file(DeksFilePath, GetCfgDekFun, VerifyMacFun),
         case maps:find(DekKind, Term) of
             {ok, #{is_enabled := Enabled,
                    active_id := ActiveKeyId,
@@ -61,7 +62,7 @@ bootstrap_get_deks(DekKind, Opts) ->
                 end
             end,
         {ok, {ActiveDekId, DekIds, Enabled}} ?=
-            external_list(DekKind, GetCfgDekFun, Opts),
+            external_list(DekKind, GetCfgDekFun, fun (_, _) -> ok end, Opts),
         {empty, [_ | _]} ?= {empty, DekIds},
         {ok, {Deks, Errors}} ?= external_read_keys(DekKind, DekIds, Opts),
         LogFun = maps:get(error_log_fun, Opts, fun (_S, _F, _A) -> ok end),
@@ -167,19 +168,33 @@ external_read_keys(DekKind, KeyIds, Opts) ->
             {error, {dump_keys_returned, Status, ErrorsBin}}
     end.
 
--spec read_deks_file(string(), fun((cb_deks:dek_id()) -> cb_deks:dek())) ->
+-spec read_deks_file(string(), fun((cb_deks:dek_id()) -> cb_deks:dek()),
+                     fun((binary(), binary()) -> ok | {error, _})) ->
           {ok, #{cb_deks:dek_kind() := deks_file_record()}} |
           {error, {read_dek_cfg_file_error, {string, term()}}}.
-read_deks_file(Path, GetCfgDekFun) ->
+read_deks_file(Path, GetCfgDekFun, VerifyMacFun) ->
     case cb_crypto:read_file(Path, GetCfgDekFun) of
-        {T, Data} when T == decrypted; T == raw ->
-            try
-                {ok, binary_to_term(Data)}
-            catch
-                _:_ ->
-                    {error, {read_dek_cfg_file_error,
-                             {Path, invalid_file_format}}}
+        {T, <<MacSize:32/unsigned-integer, Rest/binary>>} when T == decrypted;
+                                                               T == raw ->
+            case Rest of
+                <<Mac:MacSize/binary, Data/binary>> ->
+                    case VerifyMacFun(Mac, Data) of
+                        ok ->
+                            try
+                                {ok, binary_to_term(Data)}
+                            catch
+                                _:_ ->
+                                    {error, {read_dek_cfg_file_error,
+                                             {Path, invalid_file_format}}}
+                            end;
+                        {error, R} ->
+                            {error, {read_dek_cfg_file_error, {Path, R}}}
+                    end;
+                _ ->
+                    {error, {read_dek_cfg_file_error, {Path, missing_mac}}}
             end;
+        {T, _} when T == decrypted; T == raw ->
+            {error, {read_dek_cfg_file_error, {Path, missing_mac}}};
         {error, enoent} ->
             {ok, #{}};
         {error, Reason} ->
