@@ -242,6 +242,12 @@
 -define(DCP_SEQNO_ADVANCED,        16#64).
 -define(DCP_OSO_SNAPSHOT,          16#65).
 
+%% Snapshot commands (For file based rebalance)
+-define(PREPARE_SNAPSHOT, 16#e0).
+-define(RELEASE_SNAPSHOT, 16#e1).
+-define(DOWNLOAD_SNAPSHOT, 16#e2).
+-define(GET_FILE_FRAGMENT, 16#e3).
+
 %% RBAC commands
 -define(MC_AUTH_PROVIDER,             16#F8).
 -define(MC_UPDATE_USER_PERMISSIONS,   16#F6).
