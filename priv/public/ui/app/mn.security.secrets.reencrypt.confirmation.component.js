@@ -43,6 +43,10 @@ class MnSecuritySecretsReencryptConfirmationComponent extends MnLifeCycleHooksTo
     this.mnFormService = mnFormService;
     this.mnSecuritySecretsService = mnSecuritySecretsService;
     this.mapTypeToNames = mnSecuritySecretsService.mapTypeToNames;
+    this.mapTypeToReEncryptNames = mnSecuritySecretsService.mapTypeToReEncryptNames;
+    this.mapTypeToReEncryptDetailsNames = mnSecuritySecretsService.mapTypeToReEncryptDetailsNames;
+    this.mapTypeToReEncryptActionNames = mnSecuritySecretsService.mapTypeToReEncryptActionNames;
+    this.mapTypeToReEncryptActionNouns = mnSecuritySecretsService.mapTypeToReEncryptActionNouns;
   }
 
   ngOnInit() {
@@ -51,8 +55,8 @@ class MnSecuritySecretsReencryptConfirmationComponent extends MnLifeCycleHooksTo
       .setPackPipe(map(() => [this.type, this.bucketName]))
       .setPostRequest(this.mnSecuritySecretsService.stream.postDropAtRestKeys)
       .showGlobalSpinner()
-      .successMessage("Re-encryption was successfully initiated!")
-      .errorMessage("An error occurred during re-encryption initialization.")
+      .successMessage(`${this.mapTypeToReEncryptActionNouns(this.type)} was successfully initiated!`)
+      .errorMessage(`An error occurred during ${this.mapTypeToReEncryptActionNouns(this.type)} initialization.`)
       .success(() => {
         this.activeModal.close();
         this.mnSecuritySecretsService.stream.updateSecretsList.next();

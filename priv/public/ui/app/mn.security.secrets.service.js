@@ -153,6 +153,42 @@ class MnSecuritySecretsService {
     }
   }
 
+  mapTypeToReEncryptNames(type) {
+    switch (type) {
+      case "config": return "rotate & re-encrypt now";
+      case "log": return "rotate now";
+      case "audit": return "rotate now";
+      default: return type;
+    }
+  }
+
+  mapTypeToReEncryptDetailsNames(type) {
+    switch (type) {
+      case "config": return "Rotate DEKs & Re-encrypt";
+      case "log": return "Rotate DEKs";
+      case "audit": return "Rotate DEKs";
+      default: return type;
+    }
+  }
+
+  mapTypeToReEncryptActionNames(type) {
+    switch (type) {
+      case "config": return "Rotate DEKs & Re-encrypt";
+      case "log": return "Rotate DEKs for";
+      case "audit": return "Rotate DEKs for";
+      default: return type;
+    }
+  }
+
+  mapTypeToReEncryptActionNouns(type) {
+    switch (type) {
+      case "config": return "DEKs rotation & Re-encryption";
+      case "log": return "DEKs Rotation";
+      case "audit": return "DEKs Rotation";
+      default: return type;
+    }
+  }
+
   mapMethodToNames(type) {
     switch (type) {
       case "disabled": return "Disabled";

@@ -50,6 +50,7 @@ class MnSecuritySecretsComponent extends MnLifeCycleHooksToStream {
     this.getEncryptionAtRest = mnSecuritySecretsService.stream.getEncryptionAtRest;
     this.getEncryptionAtRestKeys = mnSecuritySecretsService.stream.getEncryptionAtRestKeys.pipe(map(this.displayOrder));
     this.mapTypeToNames = mnSecuritySecretsService.mapTypeToNames;
+    this.mapTypeToReEncryptNames = mnSecuritySecretsService.mapTypeToReEncryptNames;
     this.mapMethodToNames = mnSecuritySecretsService.mapMethodToNames;
     this.secretsByIds = mnSecuritySecretsService.stream.secretsByIds;
 
