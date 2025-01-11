@@ -835,72 +835,85 @@ read_write_file_test() ->
     Path = path_config:tempfile("cb_crypto_test", ".tmp"),
     Bin = iolist_to_binary(lists:seq(0,255)),
     DS = generate_test_deks(),
-    ok = misc:atomic_write_file(Path, Bin),
-    {raw, Bin} = read_file(Path, DS),
-    ok = atomic_write_file(Path, Bin, DS, #{max_chunk_size => 7}),
-    {decrypted, Bin} = read_file(Path, DS),
-    %% Note that chunks are actually reversed here:
-    {ok, Chunks1} = read_file_chunks(Path, fun (C, Acc) -> {ok, [C | Acc]} end,
-                                     [], DS, #{read_chunk_size => 11}),
-    {ok, Chunks2} = read_file_chunks(Path, fun (C, Acc) -> {ok, [C | Acc]} end,
-                                     [], DS, #{read_chunk_size => 7}),
-    {ok, Chunks3} = read_file_chunks(Path, fun (C, Acc) -> {ok, [C | Acc]} end,
-                                     [], DS, #{read_chunk_size => 3}),
-    {ok, Chunks4} = read_file_chunks(Path, fun (C, Acc) -> {ok, [C | Acc]} end,
-                                     [], DS, #{read_chunk_size => 1000000000}),
-    %% All chunks should be the same. It should not matter how we read them
-    Chunks1 = Chunks2,
-    Chunks1 = Chunks3,
-    Chunks1 = Chunks4,
-    %% Last chunk should be 4 byte chunk, other chunks should be 7 bytes.
-    [LastChunk | OtherChunks] = Chunks1,
-    4 = byte_size(LastChunk),
-    [7] = lists:uniq([byte_size(C) || C <- OtherChunks]),
+    try
+        ok = misc:atomic_write_file(Path, Bin),
+        {raw, Bin} = read_file(Path, DS),
+        ok = atomic_write_file(Path, Bin, DS, #{max_chunk_size => 7}),
+        {decrypted, Bin} = read_file(Path, DS),
+        %% Note that chunks are actually reversed here:
+        {ok, Chunks1} = read_file_chunks(Path,
+                                         fun (C, Acc) -> {ok, [C | Acc]} end,
+                                         [], DS, #{read_chunk_size => 11}),
+        {ok, Chunks2} = read_file_chunks(Path,
+                                         fun (C, Acc) -> {ok, [C | Acc]} end,
+                                         [], DS, #{read_chunk_size => 7}),
+        {ok, Chunks3} = read_file_chunks(Path,
+                                         fun (C, Acc) -> {ok, [C | Acc]} end,
+                                         [], DS, #{read_chunk_size => 3}),
+        {ok, Chunks4} = read_file_chunks(Path,
+                                         fun (C, Acc) -> {ok, [C | Acc]} end,
+                                         [], DS,
+                                         #{read_chunk_size => 1000000000}),
+        %% All chunks should be the same. It should not matter how we read them
+        Chunks1 = Chunks2,
+        Chunks1 = Chunks3,
+        Chunks1 = Chunks4,
+        %% Last chunk should be 4 byte chunk, other chunks should be 7 bytes.
+        [LastChunk | OtherChunks] = Chunks1,
+        4 = byte_size(LastChunk),
+        [7] = lists:uniq([byte_size(C) || C <- OtherChunks]),
 
-    %% If we concatenate all chunks, we should get the original data
-    Bin = iolist_to_binary(lists:reverse(Chunks1)).
+        %% If we concatenate all chunks, we should get the original data
+        Bin = iolist_to_binary(lists:reverse(Chunks1))
+    after
+        file:delete(Path)
+    end.
 
 validate_encr_file_test() ->
     %% Generate valid header and chunk data and assemble and test for various
     %% cases
     Path = path_config:tempfile("cb_crypto_validate_encr_file_test", ".tmp"),
-    DS = generate_test_deks(),
-    {ValidHeader, State} = file_encrypt_init(DS),
+    try
+        DS = generate_test_deks(),
+        {ValidHeader, State} = file_encrypt_init(DS),
 
-    Bin1 = iolist_to_binary(lists:seq(0,255)),
-    {Data1, State1} = file_encrypt_chunk(Bin1, State),
+        Bin1 = iolist_to_binary(lists:seq(0,255)),
+        {Data1, State1} = file_encrypt_chunk(Bin1, State),
 
-    Bin2 = iolist_to_binary(lists:seq(0,1)),
-    {Data2,State2} = file_encrypt_chunk(Bin2, State1),
+        Bin2 = iolist_to_binary(lists:seq(0,1)),
+        {Data2,State2} = file_encrypt_chunk(Bin2, State1),
 
-    Bin3 = iolist_to_binary(lists:seq(0,64)),
-    {Data3, _} = file_encrypt_chunk(Bin3, State2),
+        Bin3 = iolist_to_binary(lists:seq(0,64)),
+        {Data3, _} = file_encrypt_chunk(Bin3, State2),
 
-    %% File with just header is valid encrypted file
-    ok = misc:atomic_write_file(Path, ValidHeader),
-    ?assert(validate_encr_file(Path)),
+        %% File with just header is valid encrypted file
+        ok = misc:atomic_write_file(Path, ValidHeader),
+        ?assert(validate_encr_file(Path)),
 
-    %% File with trash after header is invalid
-    ok = misc:atomic_write_file(Path, <<ValidHeader/binary, "t">>),
-    ?assertNot(validate_encr_file(Path)),
+        %% File with trash after header is invalid
+        ok = misc:atomic_write_file(Path, <<ValidHeader/binary, "t">>),
+        ?assertNot(validate_encr_file(Path)),
 
-    %% Full valid file
-    FullValid =
-        <<ValidHeader/binary, Data1/binary, Data2/binary, Data3/binary>>,
-    ok = misc:atomic_write_file(Path, FullValid),
-    ?assert(validate_encr_file(Path)),
+        %% Full valid file
+        FullValid =
+            <<ValidHeader/binary, Data1/binary, Data2/binary, Data3/binary>>,
+        ok = misc:atomic_write_file(Path, FullValid),
+        ?assert(validate_encr_file(Path)),
 
-    %% Full valid file with trailing trash is invalid
-    ok = misc:atomic_write_file(Path, <<FullValid/binary, "t">>),
-    ?assertNot(validate_encr_file(Path)),
+        %% Full valid file with trailing trash is invalid
+        ok = misc:atomic_write_file(Path, <<FullValid/binary, "t">>),
+        ?assertNot(validate_encr_file(Path)),
 
-    %% Partial first chunk with everything else in place is invalid
-    InvalidSize = byte_size(Data1) - 1,
-    InvalidFileData =
-        <<ValidHeader/binary, Data1:InvalidSize/binary, Data2/binary,
-          Data3/binary>>,
-    ok = misc:atomic_write_file(Path, InvalidFileData),
-    ?assertNot(validate_encr_file(Path)).
+        %% Partial first chunk with everything else in place is invalid
+        InvalidSize = byte_size(Data1) - 1,
+        InvalidFileData =
+            <<ValidHeader/binary, Data1:InvalidSize/binary, Data2/binary,
+              Data3/binary>>,
+        ok = misc:atomic_write_file(Path, InvalidFileData),
+        ?assertNot(validate_encr_file(Path))
+    after
+        file:delete(Path)
+    end.
 
 generate_test_deks() ->
     KeyBin = cb_cluster_secrets:generate_raw_key(aes_256_gcm),
