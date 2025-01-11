@@ -47,6 +47,7 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     postLdapSettings: postLdapSettings,
     getLdapSettings: getLdapSettings,
     getSamlSettings: getSamlSettings,
+    getRbacStatus: getRbacStatus,
     clearLdapCache: clearLdapCache,
 
     getUserProfile: getUserProfile,
@@ -95,6 +96,13 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     return $http({
       method: "GET",
       url: "/settings/saml"
+    });
+  }
+
+  function getRbacStatus() {
+    return $http({
+      method: "GET",
+      url: "/settings/rbac"
     });
   }
 

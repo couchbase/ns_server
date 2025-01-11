@@ -21,23 +21,16 @@ function mnRolesController($scope, poolDefault, mnHelper, $uibModal, permissions
   activate();
 
   function activate() {
-    if (poolDefault.saslauthdEnabled) {
-      mnPromiseHelper(vm, mnUserRolesService.getSaslauthdAuth())
-        .applyToScope(v => vm.isSaslauthdAuthEnabled = v.enabled);
-    }
-
-    if (poolDefault.isEnterprise && poolDefault.compat.atLeast76 &&
-      (permissions.cluster.admin.security.external.read ||permissions.cluster.admin.users.external.read)) {
-      mnPromiseHelper(vm, mnUserRolesService.getSamlSettings())
-        .applyToScope(v => vm.isSamlEnabled = v.data.enabled);
-    }
-
     if (poolDefault.isEnterprise && poolDefault.compat.atLeast65 &&
       (permissions.cluster.admin.security.external.read || permissions.cluster.admin.users.external.read)) {
       new mnPoller($scope, function () {
-        return mnUserRolesService.getLdapSettings();
+        return mnUserRolesService.getRbacStatus();
       })
-        .subscribe(v => vm.isLdapEnabled = v.data.authenticationEnabled, vm)
+        .subscribe(v => {
+          vm.isLdapEnabled = v.data.ldapEnabled;
+          vm.isSamlEnabled = v.data.samlEnabled;
+          vm.isSaslauthdAuthEnabled = v.data.saslauthdEnabled;
+        }, vm)
         .setInterval(10000)
         .reloadOnScopeEvent("reloadLdapSettings")
         .cycle();

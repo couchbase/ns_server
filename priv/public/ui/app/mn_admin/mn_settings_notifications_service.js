@@ -464,7 +464,7 @@ angular.module('mnSettingsNotificationsService', [
       }
 
       if (poolDefault.isEnterprise && poolDefault.compat.atLeast65 &&
-        (mnPermissions.export.cluster.admin.security.external.read ||mnPermissions.export.cluster.admin.users.external.read)) {
+        (mnPermissions.export.cluster.admin.security.external.read ||mnPermissions.export.cluster.admin.security.read)) {
         queries[13] = mnUserRolesService.getLdapSettings();
       }
       return $q.all(queries).then(buildPhoneHomeThingy);
