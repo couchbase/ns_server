@@ -72,7 +72,8 @@ from testsets import \
     cbcollect_tests, \
     config_remap_tests, \
     cli_integration_tests, \
-    metakv2_tests
+    metakv2_tests, \
+    app_telemetry_tests
 
 tmp_cluster_dir = os.path.join(testlib.get_cluster_test_dir(),
                                "test_cluster_data")

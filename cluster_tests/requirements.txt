@@ -10,3 +10,4 @@ jsondiff~=2.0.0
 python-dateutil~=2.9.0
 couchbase
 pyzipper~=0.3.6
+websockets~=14.1
