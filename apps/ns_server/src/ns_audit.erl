@@ -505,7 +505,9 @@ code(rotate_encryption_secret) ->
 code(delete_historical_encryption_key) ->
     8282;
 code(encryption_at_rest_drop_deks) ->
-    8283.
+    8283;
+code(modify_jwt_settings) ->
+    8284.
 
 send_to_memcached(ParentPID, {Code, EncodedBody, IsSync}) ->
     case (catch ns_memcached_sockets_pool:executing_on_socket(
