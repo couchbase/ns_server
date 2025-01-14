@@ -70,7 +70,8 @@
          extract_internal/3,
          url/3,
          regex/2,
-         mutually_exclusive/3]).
+         mutually_exclusive/3,
+         non_empty_string/2]).
 
 %% Used for testing validators.
 -ifdef(TEST).
@@ -871,6 +872,14 @@ mutually_exclusive(Name1, Name2, State) ->
                                [Name1, Name2]),
            {error, lists:flatten(Err)}
        end, Name1, Name2, State).
+
+non_empty_string(Name, State) ->
+    functools:chain(State,
+                    [string(Name, _),
+                     validate(
+                       fun("") -> {error, "Value must not be empty"};
+                          (Value) -> {value, Value}
+                       end, Name, _)]).
 
 -ifdef(TEST).
 %% Apply the validators to the arguments, returning the validated
