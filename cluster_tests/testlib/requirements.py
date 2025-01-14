@@ -29,7 +29,7 @@ class ClusterRequirements:
                  min_num_connected=None, afamily=None, services=None,
                  master_password_state=None, num_vbuckets=None,
                  encryption=None, balanced=None, buckets=None,
-                 test_generated_cluster=None):
+                 test_generated_cluster=None, dev_preview=None):
 
         def maybe(ReqClass, *args):
             if all(x is None for x in args):
@@ -52,7 +52,8 @@ class ClusterRequirements:
                 'balanced': maybe(Balanced, balanced),
                 'buckets': maybe(Buckets, buckets),
                 'test_generated_cluster': maybe(TestGeneratedCluster,
-                                                test_generated_cluster)
+                                                test_generated_cluster),
+                'dev_preview': maybe(DevPreview, dev_preview)
             }
 
     def __str__(self):
@@ -205,7 +206,8 @@ class ClusterRequirements:
                             ('num_vbuckets', NumVbuckets),
                             ('encryption', N2nEncryption),
                             ('balanced', Balanced),
-                            ('buckets', Buckets)]
+                            ('buckets', Buckets),
+                            ('dev_preview', DevPreview)]
         for req_name, req_class in generation_order:
             if self.requirements[req_name] is None:
                 new_req = req_class.random(req_dict)
@@ -795,3 +797,24 @@ def intersect_limits(min_val1, exact_val1, min_val2, exact_val2):
             return True, None, exact_val2
         else: # min_val2 is set
             return True, max(min_val1, min_val2), None
+
+
+class DevPreview(Requirement):
+    def __init__(self, enabled):
+        super().__init__(dev_preview=enabled)
+        self.enabled = enabled
+        self.start_args = {'dev_preview_default': enabled}
+
+    def is_met(self, cluster):
+        # Check developer preview status through pools endpoint
+        r = testlib.get(cluster, "/pools")
+        if r.status_code == 200:
+            return r.json().get("isDeveloperPreview", False) == self.enabled
+        return False
+
+    def can_be_met(self):
+        return False
+
+    @staticmethod
+    def random(req_dict):
+        return DevPreview(False)
