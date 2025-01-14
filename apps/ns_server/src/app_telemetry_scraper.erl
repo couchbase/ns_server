@@ -119,12 +119,18 @@ handle_config_event(_) ->
 update_config(State0) ->
     Config = menelaus_web_app_telemetry:get_config(),
 
-    %% Update the websocket pool
-    MaxClients = menelaus_web_app_telemetry:get_max_clients_per_node(Config),
-    app_telemetry_pool:update_max(MaxClients),
+    Enabled = menelaus_web_app_telemetry:is_enabled(Config),
+    case Enabled of
+        false ->
+            %% Disconnect existing clients by setting the max to 0
+            app_telemetry_pool:update_max(0);
+        true ->
+            %% Update the max clients
+            Max = menelaus_web_app_telemetry:get_max_clients_per_node(Config),
+            app_telemetry_pool:update_max(Max)
+    end,
 
     %% Update the scraper state
-    Enabled = menelaus_web_app_telemetry:is_enabled(Config),
     ScrapeInterval = menelaus_web_app_telemetry:get_scrape_interval(Config),
     State1 = State0#state{enabled = Enabled,
                           scrape_interval_seconds = ScrapeInterval},

@@ -9,7 +9,7 @@
 import random
 import string
 
-from websockets import InvalidHandshake
+from websockets import InvalidHandshake, ConnectionClosedOK
 from websockets.sync.client import connect
 
 import testlib
@@ -124,6 +124,46 @@ class AppTelemetryTests(testlib.BaseTestSet):
             # Re-enable app telemetry
             testlib.post_succ(self.cluster, "/settings/appTelemetry",
                               json={"enabled": "true"})
+
+    def disconnect_on_disable_test(self):
+        # 127.0.0.1 or [::1]
+        hostname = self.cluster.connected_nodes[0].host_with_brackets
+
+        info = testlib.get_succ(self.cluster,
+                                "/pools/default/nodeServices").json()
+        nodes_ext = info.get('nodesExt')
+        node0_ext = nodes_ext[0]
+        node0_services = node0_ext['services']
+        node0_port = node0_services['mgmt']
+        node0_path = node0_ext.get('appTelemetryPath')
+        testlib.assert_eq('/_appTelemetry', node0_path)
+
+        (username, password) = self.cluster.auth
+        app_telemetry_url = (f"ws://{username}:{password}@"
+                             f"{hostname}:{node0_port}/_appTelemetry")
+
+        try:
+            with connect(app_telemetry_url) as websocket:
+                # Wait for first scrape
+                websocket.recv(timeout=10)
+                # Disable app telemetry
+                testlib.post_succ(self.cluster, "/settings/appTelemetry",
+                                  json={"enabled": "false"})
+                # Since the first scrape just happened, the next scrape will be
+                # after the telemetry was disabled, so it won't occur.
+                # We should see the connection drop before the 10s timeout
+                websocket.recv(timeout=10)
+            assert False, 'expected exception is not raised'
+        except AssertionError as e:
+            raise e
+        except Exception as e:
+            assert isinstance(e, ConnectionClosedOK), \
+                f'unexpected exception: {e}'
+        finally:
+            # Re-enable app telemetry
+            testlib.post_succ(self.cluster, "/settings/appTelemetry",
+                              json={"enabled": "true"})
+
 
 
 def make_metric(metric, uuid, value):
