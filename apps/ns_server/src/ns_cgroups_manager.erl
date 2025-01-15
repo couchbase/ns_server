@@ -26,7 +26,8 @@
          get_overrides/0,
          recheck_cgroups/0,
          recheck_if_enabled/0,
-         delete_override/1]).
+         delete_override/1,
+         collect_cgroup_data/1]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -178,6 +179,9 @@ get_ns_config_overrides() ->
     ns_config:search_node_with_default(cgroup_overrides, []).
 
 collect_cgroup_data() ->
+    collect_cgroup_data(get_all_os_pids()).
+
+collect_cgroup_data(ServicePids) ->
     lists:map(
       fun ({Svc, MainOsPid, CgroupPath}) ->
               case CgroupPath of
@@ -190,7 +194,7 @@ collect_cgroup_data() ->
                                     cgroups:read_cgroup_procs(Path)),
                        Path, zero_to_max(Quota)}
               end
-      end, get_all_os_pids()).
+      end, ServicePids).
 
 move_and_fixup_memory(CgroupData, CurrentSettings) ->
     lists:map(
@@ -275,6 +279,7 @@ lookup_overrides(Svc) ->
 get_all_os_pids() ->
     babysitter_os_pids() ++ additional_os_pids().
 
+-spec(get_child_pid(gen_server:server_ref()) -> pid()).
 get_child_pid(Pid) ->
     gen_server:call(Pid, child_pid, ?DEFAULT_TIMEOUT).
 

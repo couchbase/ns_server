@@ -30,6 +30,8 @@
          read_memory_max/1,
          parse_mtab_file/1,
          get_cgroup_base_path/0,
+         read_cgroup2_config_from_mtab/1,
+         os_type/0,
          service_to_limits_type/1]).
 
 -ifdef(TEST).
@@ -54,11 +56,10 @@
 %% All controllers: cpu, cpuset, memory, io, pid, rdma, hugetlb, misc
 -define(ENABLED_CONTROLLERS, ["memory"]).
 
--record(system, {v2 = false :: boolean(), controllers = false :: boolean()}).
-
 -type limit_val() :: cgroup_val() | string().
 -type write_return() ::
         ok | {error, file:posix() | badarg | terminated | system_limit}.
+-type mtab_response() :: unsupported | supported.
 
 %%%===================================================================
 %%% API
@@ -73,7 +74,7 @@
 %% NOTE: Called from babysitter context
 -spec(supported() -> boolean()).
 supported() ->
-    os:type() =:= {unix, linux} andalso
+    cgroups:os_type() =:= {unix, linux} andalso
         config_profile:is_provisioned() andalso system_checks().
 
 %% NOTE: Since this feature is meant to be disabled by default, this should only
@@ -114,9 +115,13 @@ has_required_controllers() ->
                       end, ?ENABLED_CONTROLLERS)
     end.
 
--spec(read_cgroup2_config_from_mtab() -> unsupported | supported).
+-spec(read_cgroup2_config_from_mtab() -> mtab_response()).
 read_cgroup2_config_from_mtab() ->
-    case file:read_file(?MTAB_PATH) of
+    read_cgroup2_config_from_mtab(?MTAB_PATH).
+
+-spec(read_cgroup2_config_from_mtab(file:name_all()) -> mtab_response()).
+read_cgroup2_config_from_mtab(Path) ->
+    case file:read_file(Path) of
         {ok, Bin} ->
             case parse_mtab_file(Bin) of
                 [] ->
@@ -125,7 +130,8 @@ read_cgroup2_config_from_mtab() ->
                     supported
             end;
         {error, Reason} ->
-            ?log_error("Error reading mtab file '~s': ~p", [?MTAB_PATH, Reason]),
+            ?log_error("Error reading mtab file '~s': ~p", [?MTAB_PATH,
+                                                            Reason]),
             unsupported
     end.
 
@@ -239,6 +245,11 @@ mb_to_bytes(max) ->
 mb_to_bytes(Number) when is_number(Number) ->
     Number * 1024 * 1024.
 
+%% We use this to be able to mock the os:type in tests. You normally cannot mock
+%% those types of builtin modules with meck.
+os_type() ->
+    os:type().
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -248,11 +259,13 @@ mb_to_bytes(Number) when is_number(Number) ->
 system_checks() ->
     case persistent_term:get({?MODULE, system_info}, none) of
         none ->
-            Entry = #system{v2 = has_cgroups_v2(),
-                            controllers = has_required_controllers()},
+            Entry =
+                #cgroup_system_info{v2 = has_cgroups_v2(),
+                                    controllers = has_required_controllers()},
             ok = persistent_term:put({?MODULE, system_info}, Entry),
-            Entry#system.v2 andalso Entry#system.controllers;
-        #system{v2 = HasV2, controllers = HasControllers} ->
+            Entry#cgroup_system_info.v2 andalso
+                Entry#cgroup_system_info.controllers;
+        #cgroup_system_info{v2 = HasV2, controllers = HasControllers} ->
             HasV2 andalso HasControllers
     end.
 

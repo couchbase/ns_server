@@ -524,4 +524,7 @@
                         backup | index | cbas | goxdcr | eventing |
                         cont_backup | evaluator | saslauthd_port | ns_couchdb.
 
+-record(cgroup_system_info,
+        {v2 = false :: boolean(), controllers = false :: boolean()}).
+
 -endif.
