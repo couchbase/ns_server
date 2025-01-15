@@ -66,6 +66,9 @@
 .tooltip.large .tooltip-inner {
   max-width: 600px;
 }
+.tooltip.med .tooltip-inner {
+  width: 400px;
+}
 .tooltip-maxheight .tooltip-inner {
   max-height: 320px;
   overflow-y: scroll;

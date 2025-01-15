@@ -29,6 +29,7 @@ import {MnInputFilterModule} from './mn.input.filter.module.js';
 import {MnPipesModule} from './mn.pipes.module.js';
 import {MnElementCraneModule} from './mn.element.crane.js';
 import {MnSecuritySecretsReencryptConfirmationComponent} from './mn.security.secrets.reencrypt.confirmation.component.js';
+import {MnEncryptionStatusModule} from "./mn.encryption.status.module.js";
 
 let secretsState = {
   url: "/secrets?openedSecrets",
@@ -78,6 +79,7 @@ class MnSecuritySecretsModule {
           MnSelectModule,
           MnElementCraneModule,
           ReactiveFormsModule,
+          MnEncryptionStatusModule,
           UIRouterModule.forChild({states: [secretsState]})
         ],
         providers: [

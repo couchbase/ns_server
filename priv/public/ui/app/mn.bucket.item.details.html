@@ -76,7 +76,10 @@ licenses/APL2.txt.
         *ngIf="(compatVersion80 | async) && (isEnterprise | async)"
       >
         <strong>Encryption At Rest:</strong>
-        {{bucket.encryptionAtRestKeyId === -1 ? 'Disabled' : 'Enabled'}}
+        <mn-encryption-status
+           [isEncryptionEnabled]="bucket.encryptionAtRestKeyId !== -1"
+           [encryptionInfo]="bucket.encryptionAtRestInfo">
+        </mn-encryption-status>
       </div>
       <div
          *ngIf="(compatVersion80 | async) && (isEnterprise | async)"

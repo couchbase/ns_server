@@ -197,4 +197,13 @@ class MnSecuritySecretsService {
       default: return type;
     }
   }
+
+  mapEncryptionStatusToLabels(status) {
+    switch (status) {
+      case "encrypted": return "Fully Encrypted";
+      case "partiallyEncrypted": return "Partially Encrypted";
+      case "unencrypted": return "Not Encrypted";
+      default: return status;
+    }
+  }
 }

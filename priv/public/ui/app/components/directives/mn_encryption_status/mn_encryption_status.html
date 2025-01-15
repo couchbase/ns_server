@@ -1,0 +1,36 @@
+<!--
+Copyright 2025-Present Couchbase, Inc.
+
+Use of this software is governed by the Business Source License included in
+the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+file, in accordance with the Business Source License, use of this software will
+be governed by the Apache License, Version 2.0, included in the file
+licenses/APL2.txt.
+-->
+
+<div>
+  {{vm.getStatusLabel(vm.encryptionInfo.dataStatus)}}
+
+  <span
+     class="icon cursor-pointer margin-left-quarter"
+     ng-class="{
+       'fa-eye green-3': !vm.hasIssues() && vm.encryptionInfo.dataStatus === 'encrypted',
+       'fa-low-vision orange-3': !vm.hasIssues() && vm.encryptionInfo.dataStatus === 'partiallyEncrypted',
+       'fa-eye-slash red-3': !vm.hasIssues() && vm.encryptionInfo.dataStatus === 'unencrypted',
+       'fa-warning red-3': vm.hasIssues()}"
+     tooltip-trigger="mouseenter"
+     tooltip-append-to-body="true"
+     uib-tooltip-html="'
+       <ul>
+         <li>Encryption Status: {{vm.getStatusLabel(vm.encryptionInfo.dataStatus)}}</li>
+         <li>DEK Number: {{vm.encryptionInfo.dekNumber}}</li>
+         <li>Oldest DEK Creation Time:
+           <span class=\'semi-bold nowrap\'>{{vm.encryptionInfo.oldestDekCreationDatetime | date: 'mediumTime'}}</span>
+           <span>{{vm.encryptionInfo.oldestDekCreationDatetime | date: 'd MMM, y': 'UTC': 'en-US'}}</span>
+         </li>
+         <li>Encryption Issues: {{vm.hasIssues() ? vm.encryptionInfo.issues.join(', ') : 'no issues'}}</li>
+       </ul>
+     '"
+     tooltip-class="med">
+  </span>
+</div>

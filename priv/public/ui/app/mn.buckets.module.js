@@ -30,6 +30,7 @@ import {MnBucketDialogComponent} from './mn.bucket.dialog.component.js';
 import {MnBucketDeleteDialogComponent} from './mn.bucket.delete.dialog.component.js';
 import {MnBucketFlushDialogComponent} from './mn.bucket.flush.dialog.component.js';
 import {MnBucketFullDialogComponent} from './mn.bucket.full.dialog.component.js';
+import {MnEncryptionStatusModule} from "./mn.encryption.status.module.js";
 
 let bucketsState = {
   url: "/buckets?openedBuckets",
@@ -84,6 +85,7 @@ class MnBucketsModule {
           MnElementCraneModule,
           MnSettingsAutoCompactionFormModule,
           ReactiveFormsModule,
+          MnEncryptionStatusModule,
           UIRouterModule.forChild({states: [bucketsState]})
         ]
       })

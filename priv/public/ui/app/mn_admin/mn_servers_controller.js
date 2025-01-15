@@ -34,6 +34,7 @@ import mnBarUsage from "../components/directives/mn_bar_usage/mn_bar_usage.js";
 import mnSortableTable from "../components/directives/mn_sortable_table.js";
 import mnSelectableNodesList from "../components/directives/mn_selectable_nodes_list.js";
 import mnServicesDiskPaths from "../components/directives/mn_services_disk_paths.js";
+import mnEncryptionStatus from "../components/directives/mn_encryption_status/mn_encryption_status.js";
 
 import mnServersService from "./mn_servers_service.js";
 import mnServersListItemDetailsService from "./mn_servers_list_item_details_service.js";
@@ -91,7 +92,8 @@ angular
     mnGroupsService,
     mnCertificatesService,
     mnStatisticsNewService,
-    mnClusterConfigurationService
+    mnClusterConfigurationService,
+    mnEncryptionStatus,
   ])
   .config(["$stateProvider", configure])
   .controller('mnServersController', ["$scope", "$state", "$uibModal", "mnPoolDefault", "mnPoller", "mnServersService", "mnHelper", "mnGroupsService", "mnPromiseHelper", "permissions", "mnStatisticsNewService", "mnCertificatesService", "pools", "poolDefault", mnServersController])
