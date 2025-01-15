@@ -42,7 +42,7 @@ let secretsState = {
   },
   data: {
     permissions: "cluster.admin.security.read",
-    title: "Secrets",
+    title: "Encryption at Rest",
     enterprise: true,
     compat: "atLeast80" //TODO
   },
