@@ -866,6 +866,19 @@ update_via_orchestrator(Req, BucketId, StorageMode, BucketType, UpdatedProps,
             ale:info(?USER_LOGGER,
                      "Updated bucket \"~s\" (of type ~s) properties:~n~p",
                      [BucketId, DisplayBucketType, UpdatedProps]),
+
+            PropsRequiringJanitorRun = [dcp_connections_between_nodes],
+            ShouldWaitForJanitor =
+                lists:any(
+                  fun(Prop) ->
+                          proplists:is_defined(Prop, UpdatedProps)
+                  end, PropsRequiringJanitorRun),
+            case ShouldWaitForJanitor of
+                false -> ok;
+                true ->
+                    ns_orchestrator:ensure_janitor_run({bucket, BucketId},
+                                                       5000)
+            end,
             reply(Req, 200);
         rebalance_running ->
             reply_text(Req,
