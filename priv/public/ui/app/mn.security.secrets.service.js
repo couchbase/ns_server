@@ -103,23 +103,23 @@ class MnSecuritySecretsService {
   }
 
   getSecrets() {
-    return this.http.get('/settings/secrets');
+    return this.http.get('/settings/encryptionKeys');
   }
 
   postSecret([params]) {
-    return this.http.post('/settings/secrets', params, { headers: new HttpHeaders().set("isNotForm", true) });
+    return this.http.post('/settings/encryptionKeys', params, { headers: new HttpHeaders().set("isNotForm", true) });
   }
 
   deleteSecret(id) {
-    return this.http.delete('/settings/secrets/' + encodeURIComponent(id));
+    return this.http.delete('/settings/encryptionKeys/' + encodeURIComponent(id));
   }
 
   putSecret([params, id]) {
-    return this.http.put('/settings/secrets/' + encodeURIComponent(id), params, { headers: new HttpHeaders().set("isNotForm", true) });
+    return this.http.put('/settings/encryptionKeys/' + encodeURIComponent(id), params, { headers: new HttpHeaders().set("isNotForm", true) });
   }
 
   deleteKey([secretId, keyId]) {
-    return this.http.delete('/settings/secrets/' + encodeURIComponent(secretId) + '/historicalKeys/' + encodeURIComponent(keyId));
+    return this.http.delete('/settings/encryptionKeys/' + encodeURIComponent(secretId) + '/historicalKeys/' + encodeURIComponent(keyId));
   }
 
   getEncryptionAtRest() {
@@ -135,7 +135,7 @@ class MnSecuritySecretsService {
   }
 
   postRotateSecret(id) {
-    return this.http.post('/controller/rotateSecret/' + encodeURIComponent(id));
+    return this.http.post('/controller/rotateEncryptionKey/' + encodeURIComponent(id));
   }
 
   postDropAtRestKeys([type, bucketName]) {

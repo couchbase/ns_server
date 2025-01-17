@@ -1411,7 +1411,7 @@ def aws_test_secret(name=None, usage=None):
 def get_secret(cluster, secret_id, expected_code=200, auth=None):
     if auth is None:
         auth = cluster.auth
-    r = testlib.get_succ(cluster, f'/settings/secrets/{secret_id}',
+    r = testlib.get_succ(cluster, f'/settings/encryptionKeys/{secret_id}',
                          expected_code=expected_code, auth=auth)
     if expected_code == 200:
         return r.json()
@@ -1421,13 +1421,14 @@ def get_secret(cluster, secret_id, expected_code=200, auth=None):
 def get_secrets(cluster, auth=None):
     if auth is None:
         auth = cluster.auth
-    return testlib.get_succ(cluster, '/settings/secrets', auth=auth).json()
+    return testlib.get_succ(cluster, '/settings/encryptionKeys',
+                            auth=auth).json()
 
 
 def create_secret(cluster, json, expected_code=200, auth=None):
     if auth is None:
         auth = cluster.auth
-    r = testlib.post_succ(cluster, '/settings/secrets', json=json,
+    r = testlib.post_succ(cluster, '/settings/encryptionKeys', json=json,
                           expected_code=expected_code, auth=auth)
 
 
@@ -1444,7 +1445,8 @@ def create_secret(cluster, json, expected_code=200, auth=None):
 def update_secret(cluster, secret_id, json, expected_code=200, auth=None):
     if auth is None:
         auth = cluster.auth
-    r = testlib.put_succ(cluster, f'/settings/secrets/{secret_id}', json=json,
+    r = testlib.put_succ(cluster, f'/settings/encryptionKeys/{secret_id}',
+                         json=json,
                          expected_code=expected_code, auth=auth)
     if expected_code == 200:
         r = r.json()
@@ -1461,7 +1463,7 @@ def update_secret(cluster, secret_id, json, expected_code=200, auth=None):
 def delete_secret(cluster, secret_id, expected_code=200, auth=None):
     if auth is None:
         auth = cluster.auth
-    testlib.delete(cluster, f'/settings/secrets/{secret_id}',
+    testlib.delete(cluster, f'/settings/encryptionKeys/{secret_id}',
                    expected_code=expected_code, auth=auth)
 
 
@@ -1665,7 +1667,7 @@ def decrypt_with_key(cluster, kek_id, b64data):
 
 
 def rotate_secret(cluster, secret_id):
-    testlib.post_succ(cluster, f'/controller/rotateSecret/{secret_id}')
+    testlib.post_succ(cluster, f'/controller/rotateEncryptionKey/{secret_id}')
 
 
 def poll_verify_deks_and_collect_ids(*args, **kwargs):

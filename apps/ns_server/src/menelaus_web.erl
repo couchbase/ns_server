@@ -556,10 +556,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "resourceManagement" | PathRest] ->
                     {{[admin, settings], read},
                      fun menelaus_web_guardrails:handle_get/2, [PathRest]};
-                ["settings", "secrets"] ->
+                ["settings", "encryptionKeys"] ->
                     {no_check_disallow_anonymous,
                      fun menelaus_web_secrets:handle_get_secrets/1};
-                ["settings", "secrets", SecretId] ->
+                ["settings", "encryptionKeys", SecretId] ->
                     {no_check_disallow_anonymous,
                      fun menelaus_web_secrets:handle_get_secret/2, [SecretId]};
                 ["internalSettings"] ->
@@ -872,10 +872,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "resourceManagement" | PathRest] ->
                     {{[admin, settings], write},
                      fun menelaus_web_guardrails:handle_post/2, [PathRest]};
-                ["settings", "secrets"] ->
+                ["settings", "encryptionKeys"] ->
                     {no_check_disallow_anonymous,
                      fun menelaus_web_secrets:handle_post_secret/1};
-                ["settings", "secrets", "test"] ->
+                ["settings", "encryptionKeys", "test"] ->
                     {no_check_disallow_anonymous,
                      fun menelaus_web_secrets:handle_test_post_secret/1};
                 ["internalSettings"] ->
@@ -966,7 +966,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {local, fun menelaus_web_settings:handle_reset_ciphers_suites/1};
                 ["controller", "changePassword"] ->
                     {no_check, fun menelaus_web_rbac:handle_change_password/1};
-                ["controller", "rotateSecret", SecretId] ->
+                ["controller", "rotateEncryptionKey", SecretId] ->
                     {{[admin, security], write},
                      fun menelaus_web_secrets:handle_rotate/2, [SecretId]};
                 ["controller", "dropEncryptionAtRestDeks", "bucket", Id] ->
@@ -1215,11 +1215,11 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[settings], write},
                      fun menelaus_web_settings:handle_delete_cgroup_override/2,
                      [ServiceName]};
-                ["settings", "secrets", SecretId] ->
+                ["settings", "encryptionKeys", SecretId] ->
                     {no_check_disallow_anonymous,
                      fun menelaus_web_secrets:handle_delete_secret/2,
                      [SecretId]};
-                ["settings", "secrets", SecretId, "historicalKeys", Id] ->
+                ["settings", "encryptionKeys", SecretId, "historicalKeys", Id] ->
                     {no_check_disallow_anonymous,
                      fun menelaus_web_secrets:handle_delete_historical_key/3,
                      [SecretId, Id]};
@@ -1291,10 +1291,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {when_morpheus({[admin, users], write},
                                    {[admin, security], write}),
                      fun menelaus_web_rbac:handle_backup_restore/1};
-                ["settings", "secrets", SecretId] ->
+                ["settings", "encryptionKeys", SecretId] ->
                     {no_check_disallow_anonymous,
                      fun menelaus_web_secrets:handle_put_secret/2, [SecretId]};
-                ["settings", "secrets", SecretId, "test"] ->
+                ["settings", "encryptionKeys", SecretId, "test"] ->
                     {no_check_disallow_anonymous,
                      fun menelaus_web_secrets:handle_test_put_secret/2,
                      [SecretId]};
