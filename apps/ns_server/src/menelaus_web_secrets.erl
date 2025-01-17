@@ -277,7 +277,7 @@ export_secret(#{type := DataType} = Props) ->
                         (config_encryption) ->
                             <<"config-encryption">>;
                         (secrets_encryption) ->
-                            <<"secrets-encryption">>;
+                            <<"KEK-encryption">>;
                         (audit_encryption) ->
                             <<"audit-encryption">>;
                         (log_encryption) ->
@@ -371,7 +371,7 @@ validate_key_usage(Name, State) ->
                   {value, {bucket_encryption, "*"}};
               <<"bucket-encryption-", N/binary>> when size(N) > 0 ->
                   {value, {bucket_encryption, binary_to_list(N)}};
-              <<"secrets-encryption">> ->
+              <<"KEK-encryption">> ->
                   {value, secrets_encryption};
               <<"config-encryption">> ->
                   {value, config_encryption};

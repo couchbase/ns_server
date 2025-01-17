@@ -410,7 +410,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                            self.random_node(),
                            auto_generated_secret(name='Good Secret',
                                                  usage=['bucket-encryption',
-                                                        'secrets-encryption']))
+                                                        'KEK-encryption']))
         bad_secret_id = create_secret(
                           self.random_node(),
                           auto_generated_secret(name='Bad Secret',
@@ -479,14 +479,14 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                       expected_code=400)
 
     def change_secret_usage_test(self):
-        secret1 = auto_generated_secret(usage=['secrets-encryption'])
+        secret1 = auto_generated_secret(usage=['KEK-encryption'])
         secret1_id = create_secret(self.random_node(), secret1)
 
         secret2 = auto_generated_secret(encrypt_by='encryptionKey',
                                         encrypt_secret_id=secret1_id)
         secret2_id = create_secret(self.random_node(), secret2)
 
-        # Can't remove 'secrets-encryption' usage because this secret is
+        # Can't remove 'KEK-encryption' usage because this secret is
         # currently encrypting another secret
         secret1['usage'] = ['bucket-encryption']
         errors = update_secret(self.random_node(), secret1_id, secret1,
@@ -665,7 +665,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Now try encrypt that secret by another secret. It should become
         # posible to store it in unencrypted chronicle then
         aws_secret = aws_test_secret(name='AWS Key',
-                                     usage=['secrets-encryption'])
+                                     usage=['KEK-encryption'])
         aws_secret_id = create_secret(node, aws_secret)
         secret['data']['encryptBy'] = 'encryptionKey'
         secret['data']['encryptWithKeyId'] = aws_secret_id
@@ -867,7 +867,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret_json = aws_test_secret(name='AWS Key',
                                       usage=['bucket-encryption',
                                              'config-encryption',
-                                             'secrets-encryption'])
+                                             'KEK-encryption'])
         aws_secret_id = create_secret(self.random_node(), secret_json)
         kek_id = get_kek_id(self.random_node(), aws_secret_id)
 
@@ -1193,7 +1193,7 @@ class NativeEncryptionPermissionsTests(testlib.BaseTestSet):
 
         # Usages:
         cfg = 'config-encryption'
-        sec = 'secrets-encryption'
+        sec = 'KEK-encryption'
         all_b = 'bucket-encryption'
         b = f'bucket-encryption-{self.bucket_name}'
 
@@ -1378,7 +1378,7 @@ def auto_generated_secret(name=None,
                           encrypt_by='nodeSecretManager',
                           encrypt_secret_id=None):
     if usage is None:
-        usage = ['bucket-encryption', 'secrets-encryption']
+        usage = ['bucket-encryption', 'KEK-encryption']
     if name is None:
         name = f'Test secret {testlib.random_str(5)}'
     optional = {}
@@ -1398,7 +1398,7 @@ def auto_generated_secret(name=None,
 # dummy key.
 def aws_test_secret(name=None, usage=None):
     if usage is None:
-        usage = ['bucket-encryption', 'secrets-encryption']
+        usage = ['bucket-encryption', 'KEK-encryption']
     if name is None:
         name = f'Test secret {testlib.random_str(5)}'
 

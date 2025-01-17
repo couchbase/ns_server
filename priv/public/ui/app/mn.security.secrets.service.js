@@ -148,7 +148,7 @@ class MnSecuritySecretsService {
       case "log": return "Logs";
       case "audit": return "Audit";
       case "bucket": return "Data";
-      case "secrets": return "Secrets";
+      case "KEK": return "Key Encryption Key (KEK)";
       default: return type;
     }
   }

@@ -69,7 +69,7 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
 
   doInit(buckets) {
     this.bucketNames = buckets || [];
-    this.options = ['secrets', 'bucket', ...this.mnSecuritySecretsService.types];
+    this.options = ['KEK', 'bucket', ...this.mnSecuritySecretsService.types];
     this.mapTypeToNames = this.mnSecuritySecretsService.mapTypeToNames;
 
     this.form = this.mnFormService.create(this)
@@ -125,7 +125,7 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         this.activeModal.dismiss();
       });
 
-      this.filteredSecrets = this.secrets.filter(secret => secret.usage.find(u => u.includes('secrets-encryption')));
+      this.filteredSecrets = this.secrets.filter(secret => secret.usage.find(u => u.includes('KEK-encryption')));
 
       this.httpError = this.item ?
         this.mnSecuritySecretsService.stream.putSecret.error : this.mnSecuritySecretsService.stream.postSecret.error;
