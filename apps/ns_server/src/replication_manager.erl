@@ -13,8 +13,7 @@
 
 -include("ns_common.hrl").
 
--record(state, {bucket_name :: bucket_name(),
-                desired_replications :: [{node(), [vbucket_id()]}]}).
+-record(state, {bucket_name :: bucket_name()}).
 
 -export([start_link/1,
          get_incoming_replication_map/1,
@@ -35,9 +34,7 @@ start_link(Bucket) ->
     gen_server:start_link({local, server_name(Bucket)}, ?MODULE, Bucket, []).
 
 init(Bucket) ->
-    {ok, #state{
-            bucket_name = Bucket,
-            desired_replications = []}}.
+    {ok, #state{bucket_name = Bucket}}.
 
 get_incoming_replication_map(Bucket) ->
     dcp_replication_manager:get_actual_replications(Bucket).
@@ -104,7 +101,7 @@ handle_call({remove_undesired_replications, FutureReps}, From, State) ->
 handle_call({set_desired_replications, DesiredReps}, _From,
             #state{bucket_name = Bucket} = State) ->
     RV = dcp_replication_manager:set_desired_replications(Bucket, DesiredReps),
-    {reply, RV, State#state{desired_replications = DesiredReps}};
+    {reply, RV, State};
 handle_call({change_vbucket_replication, VBucket, NewSrc}, _From, State) ->
     CurrentReps = get_actual_replications_as_list(State),
     CurrentReps0 = [{Node, ordsets:del_element(VBucket, VBuckets)}
@@ -121,18 +118,8 @@ handle_call({change_vbucket_replication, VBucket, NewSrc}, _From, State) ->
                   end,
     handle_call({set_desired_replications, DesiredReps}, [], State);
 handle_call({dcp_takeover, OldMasterNode, VBucket}, _From,
-            #state{bucket_name = Bucket,
-                   desired_replications = CurrentReps} = State) ->
-    DesiredReps = lists:map(fun ({Node, VBuckets}) ->
-                                    case Node of
-                                        OldMasterNode ->
-                                            {Node, ordsets:del_element(VBucket, VBuckets)};
-                                        _ ->
-                                            {Node, VBuckets}
-                                    end
-                            end, CurrentReps),
-    {reply, dcp_replicator:takeover(OldMasterNode, Bucket, VBucket),
-     State#state{desired_replications = DesiredReps}};
+            #state{bucket_name = Bucket} = State) ->
+    {reply, dcp_replicator:takeover(OldMasterNode, Bucket, VBucket), State};
 handle_call({update_replication_count, DesiredCount}, _From,
             #state{bucket_name = Bucket} = State) ->
     %% We will call into here on every janitor run, check if the
@@ -140,26 +127,25 @@ handle_call({update_replication_count, DesiredCount}, _From,
     %% is not necessary.
     CurrentCount = dcp_replication_manager:get_connection_count(Bucket),
 
-    NewState1 = case CurrentCount =/= DesiredCount of
-                    false -> State;
-                    true ->
-                        ?log_info("Changing number of DCP connections from ~p "
-                                  "to ~p for bucket ~p",
-                                  [CurrentCount, DesiredCount, Bucket]),
-                        %% Changed the number of DCP connections between nodes.
-                        %% We're going to nuke everything and start over... We
-                        %% do this here because we have access to the
-                        %% replication map to fix it up afterwards.
-                        dcp_sup:nuke(Bucket),
-                        dcp_replication_manager:set_connection_count(
-                          Bucket, DesiredCount),
-                        %% Not re-creating connections here, this should only be
-                        %% called from the janitor which will recreate them
-                        %% soon after this call.
-                        State#state{desired_replications = []}
-                end,
+    case CurrentCount =/= DesiredCount of
+        false -> ok;
+        true ->
+            ?log_info("Changing number of DCP connections from ~p "
+                      "to ~p for bucket ~p",
+                      [CurrentCount, DesiredCount, Bucket]),
+            %% Changed the number of DCP connections between nodes.
+            %% We're going to nuke everything and start over... We
+            %% do this here because we have access to the
+            %% replication map to fix it up afterwards.
+            dcp_sup:nuke(Bucket),
+            dcp_replication_manager:set_connection_count(
+              Bucket, DesiredCount)
+            %% Not re-creating connections here, this should only be
+            %% called from the janitor which will recreate them
+            %% soon after this call.
+    end,
 
-    {reply, ok, NewState1}.
+    {reply, ok, State}.
 
 merge_replications(RepsA, RepsB) ->
     L = [{N, VBs, []} || {N, VBs} <- RepsA],

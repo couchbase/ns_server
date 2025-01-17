@@ -457,15 +457,13 @@ settings.
 DCP takeover (circa 7.6.0)
 ---------------------------------
 
-DCP takeover is handled by the replication_manager module which primarily
-maintains a list of desired_replications and controls the starting and killing
-of these replications.
+DCP takeover is handled by the replication_manager module which controls the
+starting and killing of these replications.
 
-When the replication_manager receives a dcp_takeover call, it updates its
-list of desired_replications and calls dcp_replicator:takeover/3. This tells
-dcp_consumer_conn to close the vBucket's existing stream and creates a new
-takeover stream. The stream is proxied through ns_server by dcp_proxy, allowing
-us to detect when the vbucket is set to active.
+When the replication_manager receives a dcp_takeover call, it calls
+dcp_replicator:takeover/3. This tells dcp_consumer_conn to close the vBucket's
+existing stream and creates a new takeover stream. The stream is proxied through
+ns_server by dcp_proxy, allowing us to detect when the vbucket is set to active.
 
 Once takeover is complete, kv_engine will send a DCP_SET_VBUCKET_STATE request
 to set the vbucket to active. This will be passed to dcp_consumer_conn by
