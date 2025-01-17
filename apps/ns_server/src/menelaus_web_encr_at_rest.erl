@@ -57,9 +57,9 @@ params() ->
      encr_method("log.encryptionMethod", log_encryption),
      encr_method("audit.encryptionMethod", audit_encryption),
 
-     encr_secret_id("config.encryptionSecretId", config_encryption),
-     encr_secret_id("log.encryptionSecretId", log_encryption),
-     encr_secret_id("audit.encryptionSecretId", audit_encryption),
+     encr_secret_id("config.encryptionKeyId", config_encryption),
+     encr_secret_id("log.encryptionKeyId", log_encryption),
+     encr_secret_id("audit.encryptionKeyId", audit_encryption),
 
      encr_dek_lifetime("config.dekLifetime", config_encryption, true),
      encr_dek_lifetime("log.dekLifetime", log_encryption, false),

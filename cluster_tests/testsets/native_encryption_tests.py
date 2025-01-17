@@ -1360,7 +1360,7 @@ def set_comp_encryption(cluster, component, mode, secret,
     testlib.post_succ(cluster,
                       f'/settings/security/encryptionAtRest/{component}',
                       json={'encryptionMethod': mode,
-                            'encryptionSecretId': secret,
+                            'encryptionKeyId': secret,
                             'dekLifetime': dek_lifetime,
                             'dekRotationInterval': dek_rotation},
                       expected_code=expected_code)
@@ -1368,7 +1368,7 @@ def set_comp_encryption(cluster, component, mode, secret,
         r = testlib.get_succ(cluster, '/settings/security/encryptionAtRest')
         r = r.json()
         testlib.assert_eq(r[component]['encryptionMethod'], mode)
-        testlib.assert_eq(r[component]['encryptionSecretId'], secret)
+        testlib.assert_eq(r[component]['encryptionKeyId'], secret)
 
 
 def auto_generated_secret(name=None,

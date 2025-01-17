@@ -69,10 +69,10 @@ class MnSecuritySecretsEncryptionDialogComponent extends MnLifeCycleHooksToStrea
     this.filteredSecrets = this.secrets.filter(secret => secret.usage.find(u => u.includes(this.type + '-encryption') ));
   }
 
-  doUnpack({encryptionMethod, encryptionSecretId, dekLifetime, dekRotationInterval}) {
+  doUnpack({encryptionMethod, encryptionKeyId, dekLifetime, dekRotationInterval}) {
     return {
       encryptionMethod: encryptionMethod || 'disabled',
-      encryptionSecretId: (encryptionSecretId === null || encryptionSecretId === undefined || encryptionSecretId < 0) ? null : this.secrets.find(i => i.id === encryptionSecretId),
+      encryptionKeyId: (encryptionKeyId === null || encryptionKeyId === undefined || encryptionKeyId < 0) ? null : this.secrets.find(i => i.id === encryptionKeyId),
       dekLifetime: (dekLifetime ? dekLifetime : timeUnitToSeconds.year) / timeUnitToSeconds.day,
       dekLifetimeEnabled: dekLifetime !== 0,
       dekRotationInterval: (dekRotationInterval ? dekRotationInterval : timeUnitToSeconds.month) / timeUnitToSeconds.day,
@@ -80,10 +80,10 @@ class MnSecuritySecretsEncryptionDialogComponent extends MnLifeCycleHooksToStrea
     };
   }
 
-  doPack({encryptionMethod, encryptionSecretId, dekLifetime, dekRotationInterval, dekLifetimeEnabled, dekRotationIntervalEnabled}) {
+  doPack({encryptionMethod, encryptionKeyId, dekLifetime, dekRotationInterval, dekLifetimeEnabled, dekRotationIntervalEnabled}) {
     return {
       encryptionMethod,
-      encryptionSecretId: encryptionMethod === 'secret' ? encryptionSecretId?.id ?? -1 : -1,
+      encryptionKeyId: encryptionMethod === 'secret' ? encryptionKeyId?.id ?? -1 : -1,
       dekLifetime: dekLifetimeEnabled ? Math.round(dekLifetime * timeUnitToSeconds.day) : 0,
       dekRotationInterval: dekRotationIntervalEnabled ? Math.round(dekRotationInterval * timeUnitToSeconds.day) : 0
     };
