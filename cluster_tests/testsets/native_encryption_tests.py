@@ -424,10 +424,10 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         assert errors['_'] == 'Encryption secret not allowed', \
                f'unexpected error: {errors}'
 
-        secret['data']['encryptSecretId'] = good_secret_id
+        secret['data']['encryptWithKeyId'] = good_secret_id
         secret_id = create_secret(self.random_node(), secret)
 
-        secret['data']['encryptSecretId'] = bad_secret_id
+        secret['data']['encryptWithKeyId'] = bad_secret_id
         errors = update_secret(self.random_node(), secret_id, secret,
                                expected_code=400)
         assert errors['_'] == 'Encryption secret not allowed', \
@@ -449,7 +449,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                          verify_encryption_kek=kek1_id)
 
         # Try encrypting secret3 with another secret
-        secret3['data']['encryptSecretId'] = secret2_id
+        secret3['data']['encryptWithKeyId'] = secret2_id
         update_secret(self.random_node(), secret3_id, secret3)
         kek2_id = get_kek_id(self.random_node(), secret2_id)
         poll_verify_kek_files(self.cluster,
@@ -457,7 +457,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                               verify_encryption_kek=kek2_id)
 
         # Try encrypt secret3 with node secret manager
-        del secret3['data']['encryptSecretId']
+        del secret3['data']['encryptWithKeyId']
         secret3['data']['encryptBy'] = 'nodeSecretManager'
         update_secret(self.random_node(), secret3_id, secret3)
         poll_verify_kek_files(self.cluster,
@@ -465,7 +465,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                               verify_encryption_kek='encryptionService')
 
         # Try encrypting secret3 with secret1 again
-        secret3['data']['encryptSecretId'] = secret1_id
+        secret3['data']['encryptWithKeyId'] = secret1_id
         secret3['data']['encryptBy'] = 'clusterSecret'
         update_secret(self.random_node(), secret3_id, secret3)
         kek1_id = get_kek_id(self.random_node(), secret1_id)
@@ -474,7 +474,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                               verify_encryption_kek=kek1_id)
 
         # Try encrypting secret with itself (must fail)
-        secret3['data']['encryptSecretId'] = secret3_id
+        secret3['data']['encryptWithKeyId'] = secret3_id
         update_secret(self.random_node(), secret3_id, secret3,
                       expected_code=400)
 
@@ -495,7 +495,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                f'unexpected error: {errors}'
 
         # Stop using secret1 for encryption
-        del secret2['data']['encryptSecretId']
+        del secret2['data']['encryptWithKeyId']
         secret2['data']['encryptBy'] = 'nodeSecretManager'
         update_secret(self.random_node(), secret2_id, secret2)
 
@@ -668,7 +668,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                      usage=['secrets-encryption'])
         aws_secret_id = create_secret(node, aws_secret)
         secret['data']['encryptBy'] = 'clusterSecret'
-        secret['data']['encryptSecretId'] = aws_secret_id
+        secret['data']['encryptWithKeyId'] = aws_secret_id
         update_secret(node, secret_id, secret)
 
         # Now we can disable config encryption:
@@ -676,7 +676,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         # ... but can't update the secret to use "master password" again
         secret['data']['encryptBy'] = 'nodeSecretManager'
-        secret['data']['encryptSecretId'] = -1
+        secret['data']['encryptWithKeyId'] = -1
         update_secret(node, secret_id, secret, expected_code=400)
 
         # Switching secret back to nodeSecretManager so it can be removed
@@ -1383,7 +1383,7 @@ def auto_generated_secret(name=None,
         name = f'Test secret {testlib.random_str(5)}'
     optional = {}
     if encrypt_secret_id is not None:
-        optional['encryptSecretId'] = encrypt_secret_id
+        optional['encryptWithKeyId'] = encrypt_secret_id
     if next_rotation_time is not None:
         optional['nextRotationTime'] = next_rotation_time
     return {'name': name,

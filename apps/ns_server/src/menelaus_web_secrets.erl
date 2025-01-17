@@ -225,7 +225,7 @@ keys_remap() ->
       config_file => configFile,
       use_imds => useIMDS,
       encrypt_by => encryptBy,
-      encrypt_secret_id => encryptSecretId,
+      encrypt_secret_id => encryptWithKeyId,
       stored_ids => storedKeyIds,
       key_cert_path => keyCertPath,
       key_passphrase => keyPassphrase,
@@ -427,15 +427,15 @@ generated_key_validators(CurSecretProps) ->
      validator:convert(encryptBy, binary_to_atom(_, latin1), _),
      validate_encrypt_by(encryptBy, _),
      validator:default(encryptBy, nodeSecretManager, _),
-     validator:integer(encryptSecretId, -1, infinity, _),
-     validate_encrypt_secret_id(encryptSecretId, CurSecretProps, _)].
+     validator:integer(encryptWithKeyId, -1, infinity, _),
+     validate_encrypt_secret_id(encryptWithKeyId, CurSecretProps, _)].
 
 validate_encrypt_by(Name, State) ->
     validator:validate(
       fun (clusterSecret) ->
-              case validator:get_value(encryptSecretId, State) of
+              case validator:get_value(encryptWithKeyId, State) of
                   undefined ->
-                      {error, "encryptSecretId must be set when "
+                      {error, "encryptWithKeyId must be set when "
                               "'clusterSecret' is used"};
                   _ -> ok
               end;
@@ -554,8 +554,8 @@ kmip_key_validators(CurSecretProps) ->
      validator:convert(encryptBy, binary_to_atom(_, latin1), _),
      validate_encrypt_by(encryptBy, _),
      validator:default(encryptBy, nodeSecretManager, _),
-     validator:integer(encryptSecretId, -1, infinity, _),
-     validate_encrypt_secret_id(encryptSecretId, CurSecretProps, _)].
+     validator:integer(encryptWithKeyId, -1, infinity, _),
+     validate_encrypt_secret_id(encryptWithKeyId, CurSecretProps, _)].
 
 mandatory_rotation_fields(State) ->
     case validator:get_value(autoRotation, State) of
