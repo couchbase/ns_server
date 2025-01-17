@@ -400,7 +400,7 @@ class MnBucketsService {
       autoCompactionDefined: false,
       autoCompactionSettings,
       enableEncryptionAtRest: false,
-      encryptionAtRestSecretId: null,
+      encryptionAtRestKeyId: null,
       encryptionAtRestDekRotationInterval: timeUnitToSeconds.month / timeUnitToSeconds.day,
       encryptionAtRestDekLifetime: timeUnitToSeconds.year / timeUnitToSeconds.day,
       enableCrossClusterVersioning: false,
@@ -437,8 +437,8 @@ class MnBucketsService {
 
     //secrets is null in case cluster compat mode is less than 8.0 or is not EE
     if (secrets) {
-      result.enableEncryptionAtRest = bucket.encryptionAtRestSecretId !== -1;
-      result.encryptionAtRestSecretId = bucket.encryptionAtRestSecretId === -1 ? null : secrets.find(s => s.id === bucket.encryptionAtRestSecretId);
+      result.enableEncryptionAtRest = bucket.encryptionAtRestKeyId !== -1;
+      result.encryptionAtRestKeyId = bucket.encryptionAtRestKeyId === -1 ? null : secrets.find(s => s.id === bucket.encryptionAtRestKeyId);
       result.encryptionAtRestDekRotationEnabled = bucket.encryptionAtRestDekRotationInterval > 0;
       result.encryptionAtRestDekLifetimeEnabled = bucket.encryptionAtRestDekLifetime > 0;
       result.encryptionAtRestDekRotationInterval = bucket.encryptionAtRestDekRotationInterval / 86_400 || defaultDEKRotationInterval;

@@ -150,7 +150,7 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
           timePeriodFlag: null
         }),
         enableEncryptionAtRest: false,
-        encryptionAtRestSecretId: null,
+        encryptionAtRestKeyId: null,
         encryptionAtRestDekRotationEnabled: false,
         encryptionAtRestDekRotationInterval: null,
         encryptionAtRestDekLifetimeEnabled: false,
@@ -464,8 +464,8 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
     }
 
     if (isEnterprise && compat80 && isMembase) {
-      saveData.encryptionAtRestSecretId = formData.enableEncryptionAtRest ? formData.encryptionAtRestSecretId?.id ?? -1 : -1;
-      if (saveData.encryptionAtRestSecretId !== -1) {
+      saveData.encryptionAtRestKeyId = formData.enableEncryptionAtRest ? formData.encryptionAtRestKeyId?.id ?? -1 : -1;
+      if (saveData.encryptionAtRestKeyId !== -1) {
         saveData.encryptionAtRestDekRotationInterval = formData.encryptionAtRestDekRotationEnabled ? Math.round(formData.encryptionAtRestDekRotationInterval * 86_400) : 0;
         saveData.encryptionAtRestDekLifetime = formData.encryptionAtRestDekLifetimeEnabled ? Math.round(formData.encryptionAtRestDekLifetime * 86_400) : 0;
       }

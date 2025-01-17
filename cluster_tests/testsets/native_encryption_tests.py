@@ -152,14 +152,14 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Can't create because the secret does not exist
         bucket_props = {'name': self.bucket_name,
                         'ramQuota': 100,
-                        'encryptionAtRestSecretId': secret1_id + 1}
+                        'encryptionAtRestKeyId': secret1_id + 1}
         resp = self.cluster.create_bucket(bucket_props, expected_code=400)
         errors = resp.json()
-        e = errors['errors']['encryptionAtRestSecretId']
+        e = errors['errors']['encryptionAtRestKeyId']
         assert e == 'Encryption key does not exist', \
                f'unexpected error: {errors}'
 
-        bucket_props['encryptionAtRestSecretId'] = secret1_id
+        bucket_props['encryptionAtRestKeyId'] = secret1_id
         self.cluster.create_bucket(bucket_props, sync=True)
 
         kek1_id = get_kek_id(self.random_node(), secret1_id)
@@ -172,12 +172,12 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         # Can't modify because the secret doesn't exist
         self.cluster.update_bucket({'name': self.bucket_name,
-                                    'encryptionAtRestSecretId': secret1_id + 1},
+                                    'encryptionAtRestKeyId': secret1_id + 1},
                                    expected_code=400)
 
         secret2_id = create_secret(self.random_node(), secret2_json)
         self.cluster.update_bucket({'name': self.bucket_name,
-                                    'encryptionAtRestSecretId': secret2_id})
+                                    'encryptionAtRestKeyId': secret2_id})
 
         kek2_id = get_kek_id(self.random_node(), secret2_id)
         # update is asynchronous, so we can't assume the dek gets reencrypted
@@ -195,16 +195,16 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret1_json = auto_generated_secret(name='Test Secret 1')
         secret1_id = create_secret(self.random_node(), secret1_json)
         self.cluster.create_bucket({'name': self.bucket_name, 'ramQuota': 100,
-                                    'encryptionAtRestSecretId': -1},
+                                    'encryptionAtRestKeyId': -1},
                                    sync=True)
         poll_verify_bucket_deks_files(self.cluster, self.bucket_name,
                                       verify_key_count=0)
         # Can't modify because the secret doesn't exist
         self.cluster.update_bucket({'name': self.bucket_name,
-                                    'encryptionAtRestSecretId': secret1_id + 1},
+                                    'encryptionAtRestKeyId': secret1_id + 1},
                                    expected_code=400)
         self.cluster.update_bucket({'name': self.bucket_name,
-                                    'encryptionAtRestSecretId': secret1_id})
+                                    'encryptionAtRestKeyId': secret1_id})
         kek1_id = get_kek_id(self.random_node(), secret1_id)
         # update is asynchronous, so we can't assume the dek gets reencrypted
         # immediately
@@ -214,7 +214,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Can't delete because it is in use
         delete_secret(self.random_node(), secret1_id, expected_code=400)
         self.cluster.update_bucket({'name': self.bucket_name,
-                                    'encryptionAtRestSecretId': -1})
+                                    'encryptionAtRestKeyId': -1})
 
     def secret_not_allowed_to_encrypt_bucket_test(self):
         secret1_json = auto_generated_secret(usage=['bucket-encryption-wrong'])
@@ -222,12 +222,12 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         bucket_props = {'name': self.bucket_name,
                         'ramQuota': 100,
-                        'encryptionAtRestSecretId': secret1_id}
+                        'encryptionAtRestKeyId': secret1_id}
 
         # Trying to use a secret that is not allowed to encrypt this bucket
         resp = self.cluster.create_bucket(bucket_props, expected_code=400)
         errors = resp.json()
-        e = errors['errors']['encryptionAtRestSecretId']
+        e = errors['errors']['encryptionAtRestKeyId']
         assert e == 'Encryption key can\'t encrypt this bucket', \
                f'unexpected error: {errors}'
 
@@ -242,7 +242,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         # Trying to change encryption secret to the one that can't encrypt
         # this bucket
-        bucket_props['encryptionAtRestSecretId'] = secret2_id
+        bucket_props['encryptionAtRestKeyId'] = secret2_id
         resp = self.cluster.update_bucket(bucket_props, expected_code=400)
         assert resp.text == 'Encryption key can\'t encrypt this bucket', \
                f'unexpected error: {errors}'
@@ -317,7 +317,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Make sure we can create encrypted bucket, and its deks are actually
         # saved on disk
         self.cluster.create_bucket({'name': self.bucket_name, 'ramQuota': 100,
-                                    'encryptionAtRestSecretId': secret2_id},
+                                    'encryptionAtRestKeyId': secret2_id},
                                    sync=True)
 
         kek_id = get_kek_id(self.random_node(), secret2_id)
@@ -543,7 +543,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                        auto_generated_secret(name='Root'))
 
         self.cluster.create_bucket({'name': self.bucket_name, 'ramQuota': 100,
-                                    'encryptionAtRestSecretId': secret1_id},
+                                    'encryptionAtRestKeyId': secret1_id},
                                    sync=True)
 
         old_kek_id = get_kek_id(self.random_node(), secret1_id)
@@ -727,7 +727,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret_id = create_secret(self.random_node(), secret)
         bucket_props = {'name': self.bucket_name,
                         'ramQuota': 100,
-                        'encryptionAtRestSecretId': secret_id}
+                        'encryptionAtRestKeyId': secret_id}
         self.cluster.create_bucket(bucket_props, sync=True)
         node = self.random_node()
         ids = get_key_list(node, '{bucketDek, \'' + self.bucket_name + '\'}')
@@ -809,7 +809,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         kek_id = get_kek_id(self.random_node(), secret_id)
 
         self.cluster.create_bucket({'name': self.bucket_name, 'ramQuota': 100,
-                                    'encryptionAtRestSecretId': secret_id},
+                                    'encryptionAtRestKeyId': secret_id},
                                    sync=True)
         poll_verify_bucket_deks_files(self.cluster, self.bucket_name,
                                       verify_key_count=1)
@@ -874,7 +874,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Create a bucket and encrypt it using AWS key:
         bucket_props = {'name': self.bucket_name,
                         'ramQuota': 100,
-                        'encryptionAtRestSecretId': aws_secret_id}
+                        'encryptionAtRestKeyId': aws_secret_id}
         self.cluster.create_bucket(bucket_props)
 
         poll_verify_bucket_deks_files(self.cluster, self.bucket_name,
@@ -916,7 +916,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         set_cfg_encryption(self.random_node(), 'secret', secret_id,
                            dek_rotation=1)
         self.cluster.create_bucket({'name': self.bucket_name, 'ramQuota': 100,
-                                    'encryptionAtRestSecretId': secret_id,
+                                    'encryptionAtRestKeyId': secret_id,
                                     'encryptionAtRestDekRotationInterval': 1},
                                    sync=True)
 
@@ -936,7 +936,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret_json = aws_test_secret(usage=['bucket-encryption'])
         aws_secret_id = create_secret(self.random_node(), secret_json)
         self.cluster.update_bucket({'name': self.sample_bucket,
-                                    'encryptionAtRestSecretId': aws_secret_id})
+                                    'encryptionAtRestKeyId': aws_secret_id})
 
         # Compaction is needed to make sure the dek is actually used
         # If first key is not actually used, the drop key procedure will have
@@ -986,7 +986,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         create_time = datetime.now(timezone.utc).replace(microsecond=0)
         self.cluster.create_bucket({'name': self.bucket_name, 'ramQuota': 100,
-                                    'encryptionAtRestSecretId': secret_id},
+                                    'encryptionAtRestKeyId': secret_id},
                                    sync=True)
         # Memorize deks in use (there should one on each kv node)
         dek_ids = assert_bucket_deks_have_changed(self.cluster,
@@ -1034,7 +1034,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         create_time = datetime.now(timezone.utc).replace(microsecond=0)
         self.cluster.create_bucket({'name': self.bucket_name, 'ramQuota': 100,
-                                    'encryptionAtRestSecretId': secret_id1},
+                                    'encryptionAtRestKeyId': secret_id1},
                                    sync=True)
         # Memorize deks in use (there should one on each kv node)
         dek_ids1 = poll_verify_bucket_deks_and_collect_ids(
@@ -1045,7 +1045,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         # Disable encryption for bucket
         self.cluster.update_bucket({'name': self.bucket_name,
-                                    'encryptionAtRestSecretId': -1})
+                                    'encryptionAtRestKeyId': -1})
 
         # Now, while encryption is disabled, dek should still exist (because
         # there were no compaction). Rotate kek and verify that dek gets
@@ -1065,7 +1065,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Enabled encryption again, but use another secret this time and
         # verify that dek gets rotated
         self.cluster.update_bucket({'name': self.bucket_name,
-                                    'encryptionAtRestSecretId': secret_id2})
+                                    'encryptionAtRestKeyId': secret_id2})
 
         dek_ids3 = poll_verify_bucket_deks_and_collect_ids(
                      self.cluster,
@@ -1166,7 +1166,7 @@ class NativeEncryptionPermissionsTests(testlib.BaseTestSet):
         self.password = testlib.random_str(8)
         bucket_props = {'name': self.bucket_name,
                         'ramQuota': 100,
-                        'encryptionAtRestSecretId': -1}
+                        'encryptionAtRestKeyId': -1}
         self.cluster.create_bucket(bucket_props, sync=True)
         self.pre_existing_ids = [s['id'] for s in get_secrets(self.cluster)]
 

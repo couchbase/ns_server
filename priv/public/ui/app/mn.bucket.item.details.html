@@ -76,7 +76,7 @@ licenses/APL2.txt.
         *ngIf="(compatVersion80 | async) && (isEnterprise | async)"
       >
         <strong>Encryption At Rest:</strong>
-        {{bucket.encryptionAtRestSecretId === -1 ? 'Disabled' : 'Enabled'}}
+        {{bucket.encryptionAtRestKeyId === -1 ? 'Disabled' : 'Enabled'}}
       </div>
       <div
          *ngIf="(compatVersion80 | async) && (isEnterprise | async)"
@@ -122,7 +122,7 @@ licenses/APL2.txt.
   <div class="row flex-right">
     <span>
       <button
-        *ngIf="bucket.encryptionAtRestSecretId !== -1"
+        *ngIf="bucket.encryptionAtRestKeyId !== -1"
         class="outline"
         [disabled]="isRebalancing | async"
         [hidden]="!(permissions | async)?.cluster.bucket[bucket.name].settings.write"

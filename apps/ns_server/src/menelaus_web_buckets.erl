@@ -467,7 +467,7 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
 build_encryption_at_rest_bucket_info(BucketConfig) ->
     case cluster_compat_mode:is_cluster_morpheus() of
         true ->
-            [{encryptionAtRestSecretId,
+            [{encryptionAtRestKeyId,
               proplists:get_value(encryption_secret_id, BucketConfig,
                                   ?SECRET_ID_NOT_SET)},
              {encryptionAtRestDekRotationInterval,
@@ -968,13 +968,13 @@ do_bucket_create(Req, Name, ParsedProps) ->
         {error, {incorrect_parameters, Error}} ->
             {errors, [{'_', list_to_binary(Error)}]};
         {error, {kek_not_found, _}} ->
-            {errors, [{encryptionAtRestSecretId,
+            {errors, [{encryptionAtRestKeyId,
                        <<"Encryption key does not exist">>}]};
         {error, secret_not_found} ->
-            {errors, [{encryptionAtRestSecretId,
+            {errors, [{encryptionAtRestKeyId,
                        <<"Encryption key does not exist">>}]};
         {error, secret_not_allowed} ->
-            {errors, [{encryptionAtRestSecretId,
+            {errors, [{encryptionAtRestKeyId,
                        <<"Encryption key can't encrypt this bucket">>}]};
         rebalance_running ->
             {errors_500, [{'_', <<"Cannot create buckets during rebalance">>}]};
@@ -2029,16 +2029,16 @@ validate_bucket_encryption_at_rest_settings(Params, Version, IsEnterprise,
     case parse_validate_encryption_secret_id(Params) of
         [{ok, encryption_secret_id, Id}] when not IsEnterprise,
                                               Id /= ?SECRET_ID_NOT_SET ->
-            [{error, encryptionAtRestSecretId,
+            [{error, encryptionAtRestKeyId,
               <<"Encryption At-Rest is not allowed in community edition">>}];
         [{ok, encryption_secret_id, Id}] when not Allowed,
                                               Id /= ?SECRET_ID_NOT_SET ->
-            [{error, encryptionAtRestSecretId,
+            [{error, encryptionAtRestKeyId,
               <<"Encryption At-Rest is not allowed until the entire cluster "
                 "is upgraded to Morpheus">>}];
         [{ok, encryption_secret_id, Id}] when not IsPersistent,
                                               Id /= ?SECRET_ID_NOT_SET ->
-            [{error, encryptionAtRestSecretId,
+            [{error, encryptionAtRestKeyId,
               <<"Encryption At-Rest is not supported for ephemeral buckets">>}];
         RV -> RV
     end ++
@@ -2047,7 +2047,7 @@ validate_bucket_encryption_at_rest_settings(Params, Version, IsEnterprise,
 
 parse_validate_encryption_secret_id(Params) ->
     maybe
-        [IdStr] ?= proplists:get_all_values("encryptionAtRestSecretId", Params),
+        [IdStr] ?= proplists:get_all_values("encryptionAtRestKeyId", Params),
         {ok, Id} ?= menelaus_util:parse_validate_number(IdStr, -1, undefined),
         %% Secret existance is checked in bucket create/update transaction
         [{ok, encryption_secret_id, Id}]
@@ -2055,9 +2055,9 @@ parse_validate_encryption_secret_id(Params) ->
         [] ->
             [];
         [_ | _] ->
-            [{error, encryptionAtRestSecretId, <<"too many values">>}];
+            [{error, encryptionAtRestKeyId, <<"too many values">>}];
         E when E == too_small; E == too_large; E == invalid ->
-            [{error, encryptionAtRestSecretId, <<"invalid secret id">>}]
+            [{error, encryptionAtRestKeyId, <<"invalid secret id">>}]
     end.
 
 parse_validate_encryption_rotation_interval(Params) ->
@@ -4387,7 +4387,7 @@ basic_bucket_params_screening_t() ->
                      "bucket38",
                      [{"bucketType", "membase"},
                       {"ramQuota", "1024"},
-                      {"encryptionAtRestSecretId", "1"},
+                      {"encryptionAtRestKeyId", "1"},
                       {"encryptionAtRestDekRotationInterval", "1000"},
                       {"encryptionAtRestDekLifetime", "2000"}],
                      AllBuckets),
@@ -4405,13 +4405,13 @@ basic_bucket_params_screening_t() ->
                      "bucket39",
                      [{"bucketType", "membase"},
                       {"ramQuota", "1024"},
-                      {"encryptionAtRestSecretId", "-3"},
+                      {"encryptionAtRestKeyId", "-3"},
                       {"encryptionAtRestDekRotationInterval", "bad"},
                       {"encryptionAtRestDekLifetime", "bad"}],
                      AllBuckets),
 
     ?assertEqual(<<"invalid secret id">>,
-                 proplists:get_value(encryptionAtRestSecretId, E39)),
+                 proplists:get_value(encryptionAtRestKeyId, E39)),
     ?assertEqual(<<"invalid interval">>,
                  proplists:get_value(encryptionAtRestDekRotationInterval, E39)),
     ?assertEqual(<<"invalid interval">>,
