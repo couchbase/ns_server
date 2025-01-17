@@ -155,7 +155,12 @@ build_nodes_ext([Node | RestNodes], Config, Snapshot, NodesExtAcc) ->
         ns_cluster_membership:get_node_server_group(Node, Snapshot),
     NI4 = NI3 ++ [{serverGroup, ServerGroup} ||
                      cluster_compat_mode:is_enterprise()],
-    NodeInfo = {[{services, {PortInfo}} | NI4]},
+    NI5 = [{services, {PortInfo}} | NI4],
+    UUID = ns_config:search_node_with_default(Node, Config, uuid, undefined),
+    NodeInfo = case UUID of
+                   undefined -> {NI5};
+                   _ -> {[{nodeUUID, UUID} | NI5]}
+               end,
     build_nodes_ext(RestNodes, Config, Snapshot, [NodeInfo | NodesExtAcc]).
 
 do_compute_bucket_info(Bucket, Config) ->
