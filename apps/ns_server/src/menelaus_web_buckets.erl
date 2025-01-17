@@ -905,9 +905,9 @@ update_via_orchestrator(Req, BucketId, StorageMode, BucketType, UpdatedProps,
         {error, {storage_mode_migration, Error}} ->
             reply_storage_mode_migration_error(Req, Error);
         {error, secret_not_found} ->
-            reply_text(Req, "Encryption secret does not exist", 400);
+            reply_text(Req, "Encryption key does not exist", 400);
         {error, secret_not_allowed} ->
-            reply_text(Req, "Encryption secret can't encrypt this bucket", 400);
+            reply_text(Req, "Encryption key can't encrypt this bucket", 400);
         {exit, {not_found, _}, _} ->
             %% if this happens then our validation raced, so repeat everything
             retry
@@ -969,13 +969,13 @@ do_bucket_create(Req, Name, ParsedProps) ->
             {errors, [{'_', list_to_binary(Error)}]};
         {error, {kek_not_found, _}} ->
             {errors, [{encryptionAtRestSecretId,
-                       <<"encryption secret does not exist">>}]};
+                       <<"Encryption key does not exist">>}]};
         {error, secret_not_found} ->
             {errors, [{encryptionAtRestSecretId,
-                       <<"encryption secret does not exist">>}]};
+                       <<"Encryption key does not exist">>}]};
         {error, secret_not_allowed} ->
             {errors, [{encryptionAtRestSecretId,
-                       <<"Encryption secret can't encrypt this bucket">>}]};
+                       <<"Encryption key can't encrypt this bucket">>}]};
         rebalance_running ->
             {errors_500, [{'_', <<"Cannot create buckets during rebalance">>}]};
         in_recovery ->

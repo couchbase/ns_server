@@ -156,7 +156,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         resp = self.cluster.create_bucket(bucket_props, expected_code=400)
         errors = resp.json()
         e = errors['errors']['encryptionAtRestSecretId']
-        assert e == 'encryption secret does not exist', \
+        assert e == 'Encryption key does not exist', \
                f'unexpected error: {errors}'
 
         bucket_props['encryptionAtRestSecretId'] = secret1_id
@@ -228,7 +228,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         resp = self.cluster.create_bucket(bucket_props, expected_code=400)
         errors = resp.json()
         e = errors['errors']['encryptionAtRestSecretId']
-        assert e == 'Encryption secret can\'t encrypt this bucket', \
+        assert e == 'Encryption key can\'t encrypt this bucket', \
                f'unexpected error: {errors}'
 
         secret1_json['usage'].append(f'bucket-encryption-{self.bucket_name}')
@@ -244,14 +244,14 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # this bucket
         bucket_props['encryptionAtRestSecretId'] = secret2_id
         resp = self.cluster.update_bucket(bucket_props, expected_code=400)
-        assert resp.text == 'Encryption secret can\'t encrypt this bucket', \
+        assert resp.text == 'Encryption key can\'t encrypt this bucket', \
                f'unexpected error: {errors}'
 
         # Trying to forbid using this secret for our bucket encryption
         del secret1_json['usage'][1]
         errors = update_secret(self.random_node(), secret1_id, secret1_json,
                                expected_code=400)
-        assert errors['_'] == 'Can\'t modify usage as this secret is in use', \
+        assert errors['_'] == 'Can\'t modify usage as this key is in use', \
                f'unexpected error: {errors}'
 
         # Trying again, but now we add permission to encrypt all buckets
@@ -421,7 +421,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                        encrypt_secret_id=bad_secret_id)
 
         errors = create_secret(self.random_node(), secret, expected_code=400)
-        assert errors['_'] == 'Encryption secret not allowed', \
+        assert errors['_'] == 'Encryption key not allowed', \
                f'unexpected error: {errors}'
 
         secret['data']['encryptWithKeyId'] = good_secret_id
@@ -430,7 +430,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret['data']['encryptWithKeyId'] = bad_secret_id
         errors = update_secret(self.random_node(), secret_id, secret,
                                expected_code=400)
-        assert errors['_'] == 'Encryption secret not allowed', \
+        assert errors['_'] == 'Encryption key not allowed', \
                f'unexpected error: {errors}'
 
     def change_encrypt_id_for_kek_test(self):
@@ -491,7 +491,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret1['usage'] = ['bucket-encryption']
         errors = update_secret(self.random_node(), secret1_id, secret1,
                                expected_code=400)
-        assert errors['_'] == 'Can\'t modify usage as this secret is in use', \
+        assert errors['_'] == 'Can\'t modify usage as this key is in use', \
                f'unexpected error: {errors}'
 
         # Stop using secret1 for encryption
@@ -639,7 +639,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         secret['usage'] = ['bucket-encryption']
         errors = update_secret(node, good_id, secret, expected_code=400)
-        assert errors['_'] == 'Can\'t modify usage as this secret is in use', \
+        assert errors['_'] == 'Can\'t modify usage as this key is in use', \
                f'unexpected error: {errors}'
 
         set_cfg_encryption(node, 'encryption_service', -1)

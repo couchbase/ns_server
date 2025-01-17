@@ -271,22 +271,22 @@ validate_sec_settings(_, #{encryption := disabled,
     ok;
 validate_sec_settings(_, #{encryption := disabled,
                            secret_id := _}, _) ->
-    {error, "Secret id must not be set when encryption is disabled"};
+    {error, "Key id must not be set when encryption is disabled"};
 validate_sec_settings(_, #{encryption := encryption_service,
                            secret_id := ?SECRET_ID_NOT_SET}, _) ->
     ok;
 validate_sec_settings(_, #{encryption := encryption_service,
                            secret_id := _}, _) ->
-    {error, "Secret id must not be set when encryption_service is used"};
+    {error, "Key id must not be set when encryption_service is used"};
 validate_sec_settings(_, #{encryption := secret,
                         secret_id := ?SECRET_ID_NOT_SET}, _) ->
-    {error, "Secret id must be set"};
+    {error, "Key id must be set"};
 validate_sec_settings(Name, #{encryption := secret,
                               secret_id := Id}, Snapshot) ->
     case cb_cluster_secrets:is_allowed_usage_for_secret(Id, Name, Snapshot) of
         ok -> ok;
-        {error, not_found} -> {error, "Secret not found"};
-        {error, not_allowed} -> {error, "Secret not allowed"}
+        {error, not_found} -> {error, "Key not found"};
+        {error, not_allowed} -> {error, "Key not allowed"}
     end.
 
 apply_auto_fields(Snapshot, NewSettings) ->
