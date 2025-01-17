@@ -63,7 +63,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # are running. It increases code coverage.
         id1 = create_secret(self.random_node(), aws_test_secret())
         id2 = create_secret(self.random_node(),
-                            auto_generated_secret(encrypt_by='clusterSecret',
+                            auto_generated_secret(encrypt_by='encryptionKey',
                                                   encrypt_secret_id=id1))
         self.pre_created_ids = [id2, id1] # so we can remove them later
         # Memorize all existing ids so we don't remove them in test_teardown
@@ -339,28 +339,28 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret2_id = create_secret(
                        self.random_node(),
                        auto_generated_secret(name='Level 2 (key2)',
-                                             encrypt_by='clusterSecret',
+                                             encrypt_by='encryptionKey',
                                              encrypt_secret_id=secret1_id))
         secret3_id = create_secret(
                        self.random_node(),
                        auto_generated_secret(name='Level 2 (key3)',
-                                             encrypt_by='clusterSecret',
+                                             encrypt_by='encryptionKey',
                                              encrypt_secret_id=secret1_id))
         secret4_id = create_secret(
                        self.random_node(),
                        auto_generated_secret(name='Level 3 (key4)',
-                                             encrypt_by='clusterSecret',
+                                             encrypt_by='encryptionKey',
                                              encrypt_secret_id=secret2_id))
         secret5_id = create_secret(
                        self.random_node(),
                        auto_generated_secret(name='Level 3 (key5)',
-                                             encrypt_by='clusterSecret',
+                                             encrypt_by='encryptionKey',
                                              encrypt_secret_id=secret3_id))
 
         # Can't create secret because encryption key with such id doesn't exist
         create_secret(self.random_node(),
                       auto_generated_secret(name='key6',
-                                            encrypt_by='clusterSecret',
+                                            encrypt_by='encryptionKey',
                                             encrypt_secret_id=secret5_id + 1),
                       expected_code=400)
 
@@ -417,7 +417,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                                 usage=['bucket-encryption']))
 
         secret = auto_generated_secret(name='Lever 2 (key1)',
-                                       encrypt_by='clusterSecret',
+                                       encrypt_by='encryptionKey',
                                        encrypt_secret_id=bad_secret_id)
 
         errors = create_secret(self.random_node(), secret, expected_code=400)
@@ -439,7 +439,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret2_id = create_secret(self.random_node(),
                                    auto_generated_secret(name='Root 2'))
         secret3 = auto_generated_secret(name='Lever 2 (key1)',
-                                        encrypt_by='clusterSecret',
+                                        encrypt_by='encryptionKey',
                                         encrypt_secret_id=secret1_id)
         secret3_id = create_secret(self.random_node(), secret3)
 
@@ -466,7 +466,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         # Try encrypting secret3 with secret1 again
         secret3['data']['encryptWithKeyId'] = secret1_id
-        secret3['data']['encryptBy'] = 'clusterSecret'
+        secret3['data']['encryptBy'] = 'encryptionKey'
         update_secret(self.random_node(), secret3_id, secret3)
         kek1_id = get_kek_id(self.random_node(), secret1_id)
         poll_verify_kek_files(self.cluster,
@@ -482,7 +482,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret1 = auto_generated_secret(usage=['secrets-encryption'])
         secret1_id = create_secret(self.random_node(), secret1)
 
-        secret2 = auto_generated_secret(encrypt_by='clusterSecret',
+        secret2 = auto_generated_secret(encrypt_by='encryptionKey',
                                         encrypt_secret_id=secret1_id)
         secret2_id = create_secret(self.random_node(), secret2)
 
@@ -509,7 +509,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret2_id = create_secret(
                        self.random_node(),
                        auto_generated_secret(name='Lever 2 (key1)',
-                                             encrypt_by='clusterSecret',
+                                             encrypt_by='encryptionKey',
                                              encrypt_secret_id=secret1_id))
         verify_kek_files(self.cluster,
                          get_secret(self.random_node(), secret1_id),
@@ -667,7 +667,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         aws_secret = aws_test_secret(name='AWS Key',
                                      usage=['secrets-encryption'])
         aws_secret_id = create_secret(node, aws_secret)
-        secret['data']['encryptBy'] = 'clusterSecret'
+        secret['data']['encryptBy'] = 'encryptionKey'
         secret['data']['encryptWithKeyId'] = aws_secret_id
         update_secret(node, secret_id, secret)
 
@@ -892,7 +892,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Create an generated secret and encrypt it with AWS secret
         generated_secret = auto_generated_secret(
                              name='test',
-                             encrypt_by='clusterSecret',
+                             encrypt_by='encryptionKey',
                              encrypt_secret_id=aws_secret_id)
         generated_secret_id = create_secret(self.random_node(),
                                             generated_secret)

@@ -423,7 +423,7 @@ generated_key_validators(CurSecretProps) ->
      validate_datetime_in_the_future(nextRotationTime, _),
      mandatory_rotation_fields(_),
      validator:validate(fun (_) -> {error, "read only"} end, keys, _),
-     validator:one_of(encryptBy, ["nodeSecretManager", "clusterSecret"], _),
+     validator:one_of(encryptBy, ["nodeSecretManager", "encryptionKey"], _),
      validator:convert(encryptBy, binary_to_atom(_, latin1), _),
      validate_encrypt_by(encryptBy, _),
      validator:default(encryptBy, nodeSecretManager, _),
@@ -432,11 +432,11 @@ generated_key_validators(CurSecretProps) ->
 
 validate_encrypt_by(Name, State) ->
     validator:validate(
-      fun (clusterSecret) ->
+      fun (encryptionKey) ->
               case validator:get_value(encryptWithKeyId, State) of
                   undefined ->
                       {error, "encryptWithKeyId must be set when "
-                              "'clusterSecret' is used"};
+                              "'encryptionKey' is used"};
                   _ -> ok
               end;
           (nodeSecretManager) ->
@@ -458,9 +458,9 @@ validate_encrypt_secret_id(Name, CurSecretProps, State) ->
               ok;
           (_, nodeSecretManager) ->
               {error, "can't be set when encryptBy is nodeSecretManager"};
-          (EId, clusterSecret) when EId == CurId, CurId =/= undefined ->
+          (EId, encryptionKey) when EId == CurId, CurId =/= undefined ->
               {error, "key can't encrypt itself"};
-          (_EId, clusterSecret) ->
+          (_EId, encryptionKey) ->
               ok
       end, Name, encryptBy, State).
 
@@ -550,7 +550,7 @@ kmip_key_validators(CurSecretProps) ->
      validator:validate(fun (P) -> {value, maps:from_list(P)} end,
                         activeKey, _),
      validator:validate(fun (_) -> {error, "read only"} end, historicalKeys, _),
-     validator:one_of(encryptBy, ["nodeSecretManager", "clusterSecret"], _),
+     validator:one_of(encryptBy, ["nodeSecretManager", "encryptionKey"], _),
      validator:convert(encryptBy, binary_to_atom(_, latin1), _),
      validate_encrypt_by(encryptBy, _),
      validator:default(encryptBy, nodeSecretManager, _),

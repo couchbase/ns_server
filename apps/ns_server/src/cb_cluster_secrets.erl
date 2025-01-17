@@ -118,7 +118,7 @@
                                     active_key_id := key_id(),
                                     keys := [kek_props()],
                                     encrypt_by := nodeSecretManager |
-                                                  clusterSecret,
+                                                  encryptionKey,
                                     encrypt_secret_id := secret_id() |
                                                          ?SECRET_ID_NOT_SET}.
 -type kek_props() :: #{id := key_id(),
@@ -145,7 +145,7 @@
                            active_key := kmip_key(),
                            hist_keys := [kmip_key()],
                            encrypt_by := nodeSecretManager |
-                                         clusterSecret,
+                                         encryptionKey,
                            encrypt_secret_id := secret_id() |
                                                 ?SECRET_ID_NOT_SET}.
 -type kmip_key() :: #{id := key_id(),
@@ -1881,7 +1881,7 @@ get_secrets_used_by_secret_id(SecretId, Snapshot) ->
 get_secrets_that_encrypt_props(#{type := ?GENERATED_KEY_TYPE,
                                  data := #{keys := Keys} = Data}) ->
     L = case Data of
-            #{encrypt_by := clusterSecret, encrypt_secret_id := Id} -> [Id];
+            #{encrypt_by := encryptionKey, encrypt_secret_id := Id} -> [Id];
             #{} -> []
         end ++
         lists:filtermap(
@@ -1894,7 +1894,7 @@ get_secrets_that_encrypt_props(#{type := ?AWSKMS_KEY_TYPE}) ->
 get_secrets_that_encrypt_props(#{type := ?KMIP_KEY_TYPE,
                                  data := #{key_passphrase := KP} = Data}) ->
     L = case Data of
-            #{encrypt_by := clusterSecret, encrypt_secret_id := Id} -> [Id];
+            #{encrypt_by := encryptionKey, encrypt_secret_id := Id} -> [Id];
             #{} -> []
         end ++
         case KP of
@@ -2057,7 +2057,7 @@ auto_generated_key_ad(SecretAD, #{id := Id, creation_time := CT}) ->
 
 -spec maybe_reencrypt_data(sensitive_data(),
                            binary(),
-                           nodeSecretManager | clusterSecret,
+                           nodeSecretManager | encryptionKey,
                            undefined | secret_id(),
                            fun ((secret_id()) -> key_id())) ->
           {ok, sensitive_data()} |
@@ -2066,7 +2066,7 @@ auto_generated_key_ad(SecretAD, #{id := Id, creation_time := CT}) ->
 maybe_reencrypt_data(Data, AD, EncryptBy, SecretId, GetActiveId) ->
     case EncryptBy of
         nodeSecretManager -> maybe_reencrypt_data(Data, AD, undefined);
-        clusterSecret ->
+        encryptionKey ->
             case GetActiveId(SecretId) of
                 {ok, KekId} ->
                     maybe_reencrypt_data(Data, AD, {SecretId, KekId});
@@ -2515,7 +2515,7 @@ validate_for_config_encryption(#{}, _Snapshot) ->
 -spec validate_encryption_secret_id(secret_props(), chronicle_snapshot()) ->
                     ok | {error, bad_encrypt_id()}.
 validate_encryption_secret_id(#{type := T,
-                                data := #{encrypt_by := clusterSecret,
+                                data := #{encrypt_by := encryptionKey,
                                           encrypt_secret_id := Id}},
                               Snapshot) when T == ?GENERATED_KEY_TYPE;
                                              T == ?KMIP_KEY_TYPE ->
@@ -2628,7 +2628,7 @@ validate_if_usage_removed(Usage, NewProps, PrevProps, Fun) ->
                                                                     boolean().
 secret_encrypts_other_secrets(Id, Snapshot) ->
     lists:any(fun (#{type := T,
-                     data := #{encrypt_by := clusterSecret,
+                     data := #{encrypt_by := encryptionKey,
                                encrypt_secret_id := EncId}})
                                                 when T == ?GENERATED_KEY_TYPE;
                                                      T == ?KMIP_KEY_TYPE ->

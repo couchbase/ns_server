@@ -231,7 +231,7 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         }
         const {encryptWithKeyId, encryptBy} = item.data;
         rv['generated-secret'].encryptBy = encryptBy;
-        if (encryptBy === 'clusterSecret') {
+        if (encryptBy === 'encryptionKey') {
           rv['generated-secret']['encryptWithKeyId'] = (encryptWithKeyId === null || encryptWithKeyId === undefined || encryptWithKeyId < 0) ? null : this.secrets.find(i => i.id === encryptWithKeyId);
         }
         break;
@@ -239,7 +239,7 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         rv['kmip-secret'] = item.data;
         rv['kmip-secret'].encryptBy = item.data.encryptBy;
         rv['kmip-secret'].encryptWithKeyId = item.data.encryptWithKeyId;
-        if (item.data.encryptBy === 'clusterSecret') {
+        if (item.data.encryptBy === 'encryptionKey') {
           rv['kmip-secret'].encryptWithKeyId = (item.data.encryptWithKeyId === null || item.data.encryptWithKeyId === undefined || item.data.encryptWithKeyId < 0) ? null : this.secrets.find(i => i.id === item.data.encryptWithKeyId);
         }
         rv['kmip-secret'].activeKey = item.data.activeKey?.kmipId;
@@ -260,7 +260,7 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
       case 'auto-generated-aes-key-256':
         const {rotationIntervalInDays, nextRotationTime, autoRotation, encryptBy, encryptWithKeyId} = generatedSecret;
         data = {autoRotation, encryptBy};
-        if (encryptBy === 'clusterSecret') {
+        if (encryptBy === 'encryptionKey') {
           data.encryptWithKeyId = encryptWithKeyId?.id ?? -1;
         }
         if (autoRotation) {
@@ -278,7 +278,7 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         data = kmipSecret;
         data.encryptWithKeyId = data.encryptBy === 'nodeSecretManager' ? -1 : data.encryptWithKeyId;
         data.activeKey = {kmipId: data.activeKey};
-          if (data.encryptBy === 'clusterSecret') {
+          if (data.encryptBy === 'encryptionKey') {
             data.encryptWithKeyId = data.encryptWithKeyId?.id ?? -1;
           }
           break;
