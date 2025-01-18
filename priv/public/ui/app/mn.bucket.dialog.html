@@ -657,12 +657,12 @@ licenses/APL2.txt.
             *ngIf="(form.group.get('enableEncryptionAtRest').valueChanges | async)"
           >
             <div class="formrow">
-              <label>Available Secrets</label>
+              <label>Available Encryption Keys</label>
               <mn-select
                 class="inline fix-width-3"
                 [group]="form.group"
                 [values]="filteredSecrets"
-                mnPlaceholder="select secret..."
+                mnPlaceholder="select key..."
                 [valuesMapping]="secretsMapping"
                 mnFormControlName="encryptionAtRestKeyId"
               >
