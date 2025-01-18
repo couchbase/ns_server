@@ -77,7 +77,7 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         name: '',
         type: 'awskms-aes-key-256',
         'generated-secret': this.formBuilder.group({
-          encryptBy: 'nodeSecretManager',
+          encryptWith: 'nodeSecretManager',
           encryptWithKeyId: null,
           autoRotation: false,
           rotationIntervalInDays: null,
@@ -97,7 +97,7 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         }),
         'kmip-secret': this.formBuilder.group({
           encryptionApproach: 'useGet',
-          encryptBy: 'nodeSecretManager',
+          encryptWith: 'nodeSecretManager',
           encryptWithKeyId: null,
           activeKey: "",
           keyCertPath: "",
@@ -229,17 +229,17 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
             autoRotation: item.data.autoRotation
           };
         }
-        const {encryptWithKeyId, encryptBy} = item.data;
-        rv['generated-secret'].encryptBy = encryptBy;
-        if (encryptBy === 'encryptionKey') {
+        const {encryptWithKeyId, encryptWith} = item.data;
+        rv['generated-secret'].encryptWith = encryptWith;
+        if (encryptWith === 'encryptionKey') {
           rv['generated-secret']['encryptWithKeyId'] = (encryptWithKeyId === null || encryptWithKeyId === undefined || encryptWithKeyId < 0) ? null : this.secrets.find(i => i.id === encryptWithKeyId);
         }
         break;
       case 'kmip-aes-key-256':
         rv['kmip-secret'] = item.data;
-        rv['kmip-secret'].encryptBy = item.data.encryptBy;
+        rv['kmip-secret'].encryptWith = item.data.encryptWith;
         rv['kmip-secret'].encryptWithKeyId = item.data.encryptWithKeyId;
-        if (item.data.encryptBy === 'encryptionKey') {
+        if (item.data.encryptWith === 'encryptionKey') {
           rv['kmip-secret'].encryptWithKeyId = (item.data.encryptWithKeyId === null || item.data.encryptWithKeyId === undefined || item.data.encryptWithKeyId < 0) ? null : this.secrets.find(i => i.id === item.data.encryptWithKeyId);
         }
         rv['kmip-secret'].activeKey = item.data.activeKey?.kmipId;
@@ -258,9 +258,9 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         data = awsSecret;
         break;
       case 'auto-generated-aes-key-256':
-        const {rotationIntervalInDays, nextRotationTime, autoRotation, encryptBy, encryptWithKeyId} = generatedSecret;
-        data = {autoRotation, encryptBy};
-        if (encryptBy === 'encryptionKey') {
+        const {rotationIntervalInDays, nextRotationTime, autoRotation, encryptWith, encryptWithKeyId} = generatedSecret;
+        data = {autoRotation, encryptWith};
+        if (encryptWith === 'encryptionKey') {
           data.encryptWithKeyId = encryptWithKeyId?.id ?? -1;
         }
         if (autoRotation) {
@@ -276,9 +276,9 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         break;
       case 'kmip-aes-key-256':
         data = kmipSecret;
-        data.encryptWithKeyId = data.encryptBy === 'nodeSecretManager' ? -1 : data.encryptWithKeyId;
+        data.encryptWithKeyId = data.encryptWith === 'nodeSecretManager' ? -1 : data.encryptWithKeyId;
         data.activeKey = {kmipId: data.activeKey};
-          if (data.encryptBy === 'encryptionKey') {
+          if (data.encryptWith === 'encryptionKey') {
             data.encryptWithKeyId = data.encryptWithKeyId?.id ?? -1;
           }
           break;

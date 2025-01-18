@@ -63,7 +63,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # are running. It increases code coverage.
         id1 = create_secret(self.random_node(), aws_test_secret())
         id2 = create_secret(self.random_node(),
-                            auto_generated_secret(encrypt_by='encryptionKey',
+                            auto_generated_secret(encrypt_with='encryptionKey',
                                                   encrypt_secret_id=id1))
         self.pre_created_ids = [id2, id1] # so we can remove them later
         # Memorize all existing ids so we don't remove them in test_teardown
@@ -339,28 +339,28 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret2_id = create_secret(
                        self.random_node(),
                        auto_generated_secret(name='Level 2 (key2)',
-                                             encrypt_by='encryptionKey',
+                                             encrypt_with='encryptionKey',
                                              encrypt_secret_id=secret1_id))
         secret3_id = create_secret(
                        self.random_node(),
                        auto_generated_secret(name='Level 2 (key3)',
-                                             encrypt_by='encryptionKey',
+                                             encrypt_with='encryptionKey',
                                              encrypt_secret_id=secret1_id))
         secret4_id = create_secret(
                        self.random_node(),
                        auto_generated_secret(name='Level 3 (key4)',
-                                             encrypt_by='encryptionKey',
+                                             encrypt_with='encryptionKey',
                                              encrypt_secret_id=secret2_id))
         secret5_id = create_secret(
                        self.random_node(),
                        auto_generated_secret(name='Level 3 (key5)',
-                                             encrypt_by='encryptionKey',
+                                             encrypt_with='encryptionKey',
                                              encrypt_secret_id=secret3_id))
 
         # Can't create secret because encryption key with such id doesn't exist
         create_secret(self.random_node(),
                       auto_generated_secret(name='key6',
-                                            encrypt_by='encryptionKey',
+                                            encrypt_with='encryptionKey',
                                             encrypt_secret_id=secret5_id + 1),
                       expected_code=400)
 
@@ -417,7 +417,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                                 usage=['bucket-encryption']))
 
         secret = auto_generated_secret(name='Lever 2 (key1)',
-                                       encrypt_by='encryptionKey',
+                                       encrypt_with='encryptionKey',
                                        encrypt_secret_id=bad_secret_id)
 
         errors = create_secret(self.random_node(), secret, expected_code=400)
@@ -439,7 +439,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret2_id = create_secret(self.random_node(),
                                    auto_generated_secret(name='Root 2'))
         secret3 = auto_generated_secret(name='Lever 2 (key1)',
-                                        encrypt_by='encryptionKey',
+                                        encrypt_with='encryptionKey',
                                         encrypt_secret_id=secret1_id)
         secret3_id = create_secret(self.random_node(), secret3)
 
@@ -458,7 +458,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         # Try encrypt secret3 with node secret manager
         del secret3['data']['encryptWithKeyId']
-        secret3['data']['encryptBy'] = 'nodeSecretManager'
+        secret3['data']['encryptWith'] = 'nodeSecretManager'
         update_secret(self.random_node(), secret3_id, secret3)
         poll_verify_kek_files(self.cluster,
                               get_secret(self.random_node(), secret3_id),
@@ -466,7 +466,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         # Try encrypting secret3 with secret1 again
         secret3['data']['encryptWithKeyId'] = secret1_id
-        secret3['data']['encryptBy'] = 'encryptionKey'
+        secret3['data']['encryptWith'] = 'encryptionKey'
         update_secret(self.random_node(), secret3_id, secret3)
         kek1_id = get_kek_id(self.random_node(), secret1_id)
         poll_verify_kek_files(self.cluster,
@@ -482,7 +482,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret1 = auto_generated_secret(usage=['KEK-encryption'])
         secret1_id = create_secret(self.random_node(), secret1)
 
-        secret2 = auto_generated_secret(encrypt_by='encryptionKey',
+        secret2 = auto_generated_secret(encrypt_with='encryptionKey',
                                         encrypt_secret_id=secret1_id)
         secret2_id = create_secret(self.random_node(), secret2)
 
@@ -496,7 +496,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         # Stop using secret1 for encryption
         del secret2['data']['encryptWithKeyId']
-        secret2['data']['encryptBy'] = 'nodeSecretManager'
+        secret2['data']['encryptWith'] = 'nodeSecretManager'
         update_secret(self.random_node(), secret2_id, secret2)
 
         # Now this secret doesn't encrypt anything and usage can be changed
@@ -509,7 +509,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret2_id = create_secret(
                        self.random_node(),
                        auto_generated_secret(name='Lever 2 (key1)',
-                                             encrypt_by='encryptionKey',
+                                             encrypt_with='encryptionKey',
                                              encrypt_secret_id=secret1_id))
         verify_kek_files(self.cluster,
                          get_secret(self.random_node(), secret1_id),
@@ -667,7 +667,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         aws_secret = aws_test_secret(name='AWS Key',
                                      usage=['KEK-encryption'])
         aws_secret_id = create_secret(node, aws_secret)
-        secret['data']['encryptBy'] = 'encryptionKey'
+        secret['data']['encryptWith'] = 'encryptionKey'
         secret['data']['encryptWithKeyId'] = aws_secret_id
         update_secret(node, secret_id, secret)
 
@@ -675,7 +675,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         set_cfg_encryption(node, 'disabled', -1)
 
         # ... but can't update the secret to use "master password" again
-        secret['data']['encryptBy'] = 'nodeSecretManager'
+        secret['data']['encryptWith'] = 'nodeSecretManager'
         secret['data']['encryptWithKeyId'] = -1
         update_secret(node, secret_id, secret, expected_code=400)
 
@@ -892,7 +892,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Create an generated secret and encrypt it with AWS secret
         generated_secret = auto_generated_secret(
                              name='test',
-                             encrypt_by='encryptionKey',
+                             encrypt_with='encryptionKey',
                              encrypt_secret_id=aws_secret_id)
         generated_secret_id = create_secret(self.random_node(),
                                             generated_secret)
@@ -1375,7 +1375,7 @@ def auto_generated_secret(name=None,
                           usage=None,
                           auto_rotation=False, rotation_interval=7,
                           next_rotation_time=None,
-                          encrypt_by='nodeSecretManager',
+                          encrypt_with='nodeSecretManager',
                           encrypt_secret_id=None):
     if usage is None:
         usage = ['bucket-encryption', 'KEK-encryption']
@@ -1391,7 +1391,7 @@ def auto_generated_secret(name=None,
             'usage': usage,
             'data': {'autoRotation': auto_rotation,
                      'rotationIntervalInDays': rotation_interval,
-                     'encryptBy': encrypt_by, **optional}}
+                     'encryptWith': encrypt_with, **optional}}
 
 # This secret does not actually go to aws when asked encrypt or decrypt data.
 # All AWS secrets with special ARN=TEST_AWS_KEY_ARN simply encrypt data using

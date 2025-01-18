@@ -117,8 +117,8 @@
                                     last_rotation_time := calendar:datetime(),
                                     active_key_id := key_id(),
                                     keys := [kek_props()],
-                                    encrypt_by := nodeSecretManager |
-                                                  encryptionKey,
+                                    encrypt_with := nodeSecretManager |
+                                                    encryptionKey,
                                     encrypt_secret_id := secret_id() |
                                                          ?SECRET_ID_NOT_SET}.
 -type kek_props() :: #{id := key_id(),
@@ -144,8 +144,8 @@
                            encryption_approach := use_get | use_encrypt_decrypt,
                            active_key := kmip_key(),
                            hist_keys := [kmip_key()],
-                           encrypt_by := nodeSecretManager |
-                                         encryptionKey,
+                           encrypt_with := nodeSecretManager |
+                                           encryptionKey,
                            encrypt_secret_id := secret_id() |
                                                 ?SECRET_ID_NOT_SET}.
 -type kmip_key() :: #{id := key_id(),
@@ -523,7 +523,8 @@ is_allowed_usage_for_secret(SecretId, Usage, Snapshot) ->
 
 -spec is_encrypted_by_secret_manager(secret_props()) -> boolean().
 is_encrypted_by_secret_manager(#{type := ?GENERATED_KEY_TYPE,
-                                 data := #{encrypt_by := nodeSecretManager}}) ->
+                                 data := #{encrypt_with :=
+                                               nodeSecretManager}}) ->
     true;
 is_encrypted_by_secret_manager(#{type := ?GENERATED_KEY_TYPE,
                                  data := #{keys := Keys}}) ->
@@ -531,7 +532,8 @@ is_encrypted_by_secret_manager(#{type := ?GENERATED_KEY_TYPE,
                   EB == undefined
               end, Keys);
 is_encrypted_by_secret_manager(#{type := ?KMIP_KEY_TYPE,
-                                 data := #{encrypt_by := nodeSecretManager}}) ->
+                                 data := #{encrypt_with :=
+                                               nodeSecretManager}}) ->
     true;
 is_encrypted_by_secret_manager(#{}) ->
     false.
@@ -756,7 +758,7 @@ handle_info({config_change, ?CHRONICLE_SECRETS_KEY} = Msg,
             #state{proc_type = ?MASTER_PROC} = State) ->
     ?log_debug("Secrets in chronicle have changed..."),
     misc:flush(Msg),
-    NewJobs = [maybe_reencrypt_secrets], %% Modififcation of encryptBy or
+    NewJobs = [maybe_reencrypt_secrets], %% Modififcation of encryptWith or
                                          %% rotation of secret that encrypts
                                          %% other secrets
     {noreply, add_and_run_jobs(NewJobs, State)};
@@ -1881,7 +1883,7 @@ get_secrets_used_by_secret_id(SecretId, Snapshot) ->
 get_secrets_that_encrypt_props(#{type := ?GENERATED_KEY_TYPE,
                                  data := #{keys := Keys} = Data}) ->
     L = case Data of
-            #{encrypt_by := encryptionKey, encrypt_secret_id := Id} -> [Id];
+            #{encrypt_with := encryptionKey, encrypt_secret_id := Id} -> [Id];
             #{} -> []
         end ++
         lists:filtermap(
@@ -1894,7 +1896,7 @@ get_secrets_that_encrypt_props(#{type := ?AWSKMS_KEY_TYPE}) ->
 get_secrets_that_encrypt_props(#{type := ?KMIP_KEY_TYPE,
                                  data := #{key_passphrase := KP} = Data}) ->
     L = case Data of
-            #{encrypt_by := encryptionKey, encrypt_secret_id := Id} -> [Id];
+            #{encrypt_with := encryptionKey, encrypt_secret_id := Id} -> [Id];
             #{} -> []
         end ++
         case KP of
@@ -1999,7 +2001,7 @@ maybe_reencrypt_secret_txn(#{type := ?GENERATED_KEY_TYPE} = Secret,
 maybe_reencrypt_secret_txn(#{type := ?KMIP_KEY_TYPE} = Secret, GetActiveId) ->
     #{data := Data} = Secret,
     Pass = maps:get(key_passphrase, Data),
-    EncryptBy = maps:get(encrypt_by, Data, undefined),
+    EncryptBy = maps:get(encrypt_with, Data, undefined),
     SecretId = maps:get(encrypt_secret_id, Data, undefined),
     AD = secret_ad(Secret),
 
@@ -2020,7 +2022,7 @@ maybe_reencrypt_secret_txn(#{}, _) ->
           {error, encryption_service:stored_key_error() | bad_encrypt_id()}.
 maybe_reencrypt_keks(Keys, #{data := SecretData} = Secret, GetActiveId) ->
     try
-        EncryptBy = maps:get(encrypt_by, SecretData, undefined),
+        EncryptBy = maps:get(encrypt_with, SecretData, undefined),
         SecretId = maps:get(encrypt_secret_id, SecretData, undefined),
 
         RV = lists:mapfoldl(
@@ -2502,7 +2504,7 @@ restart_remove_retired_timer(#state{proc_type = ?NODE_PROC} = State) ->
     restart_timer(remove_retired_keys, Time, State).
 
 validate_for_config_encryption(#{type := T,
-                                 data := #{encrypt_by := nodeSecretManager}},
+                                 data := #{encrypt_with := nodeSecretManager}},
                                Snapshot) when T == ?GENERATED_KEY_TYPE;
                                               T == ?KMIP_KEY_TYPE ->
     case cb_crypto:get_encryption_method(config_encryption, Snapshot) of
@@ -2515,7 +2517,7 @@ validate_for_config_encryption(#{}, _Snapshot) ->
 -spec validate_encryption_secret_id(secret_props(), chronicle_snapshot()) ->
                     ok | {error, bad_encrypt_id()}.
 validate_encryption_secret_id(#{type := T,
-                                data := #{encrypt_by := encryptionKey,
+                                data := #{encrypt_with := encryptionKey,
                                           encrypt_secret_id := Id}},
                               Snapshot) when T == ?GENERATED_KEY_TYPE;
                                              T == ?KMIP_KEY_TYPE ->
@@ -2628,7 +2630,7 @@ validate_if_usage_removed(Usage, NewProps, PrevProps, Fun) ->
                                                                     boolean().
 secret_encrypts_other_secrets(Id, Snapshot) ->
     lists:any(fun (#{type := T,
-                     data := #{encrypt_by := encryptionKey,
+                     data := #{encrypt_with := encryptionKey,
                                encrypt_secret_id := EncId}})
                                                 when T == ?GENERATED_KEY_TYPE;
                                                      T == ?KMIP_KEY_TYPE ->

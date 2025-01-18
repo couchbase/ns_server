@@ -224,7 +224,7 @@ keys_remap() ->
       credentials_file => credentialsFile,
       config_file => configFile,
       use_imds => useIMDS,
-      encrypt_by => encryptBy,
+      encrypt_with => encryptWith,
       encrypt_secret_id => encryptWithKeyId,
       stored_ids => storedKeyIds,
       key_cert_path => keyCertPath,
@@ -303,7 +303,7 @@ format_auto_generated_key_data(Props) ->
                 format_datetime(DateTime);
             (last_rotation_time, DateTime) ->
                 format_datetime(DateTime);
-            (encrypt_by, E) ->
+            (encrypt_with, E) ->
                 E;
             (encrypt_secret_id, SId) ->
                 SId;
@@ -338,7 +338,7 @@ format_kmip_key_data(Props) ->
             (key_passphrase, _) -> <<"******">>;
             (active_key, K) -> format_kmip_key(K);
             (hist_keys, L) -> [format_kmip_key(K) || K <- L];
-            (encrypt_by, E) -> E;
+            (encrypt_with, E) -> E;
             (encrypt_secret_id, SId) -> SId;
             (encryption_approach, use_get) -> <<"useGet">>;
             (encryption_approach, use_encrypt_decrypt) ->
@@ -423,14 +423,14 @@ generated_key_validators(CurSecretProps) ->
      validate_datetime_in_the_future(nextRotationTime, _),
      mandatory_rotation_fields(_),
      validator:validate(fun (_) -> {error, "read only"} end, keys, _),
-     validator:one_of(encryptBy, ["nodeSecretManager", "encryptionKey"], _),
-     validator:convert(encryptBy, binary_to_atom(_, latin1), _),
-     validate_encrypt_by(encryptBy, _),
-     validator:default(encryptBy, nodeSecretManager, _),
+     validator:one_of(encryptWith, ["nodeSecretManager", "encryptionKey"], _),
+     validator:convert(encryptWith, binary_to_atom(_, latin1), _),
+     validate_encrypt_with(encryptWith, _),
+     validator:default(encryptWith, nodeSecretManager, _),
      validator:integer(encryptWithKeyId, -1, infinity, _),
      validate_encrypt_secret_id(encryptWithKeyId, CurSecretProps, _)].
 
-validate_encrypt_by(Name, State) ->
+validate_encrypt_with(Name, State) ->
     validator:validate(
       fun (encryptionKey) ->
               case validator:get_value(encryptWithKeyId, State) of
@@ -457,12 +457,12 @@ validate_encrypt_secret_id(Name, CurSecretProps, State) ->
       fun (?SECRET_ID_NOT_SET, nodeSecretManager) ->
               ok;
           (_, nodeSecretManager) ->
-              {error, "can't be set when encryptBy is nodeSecretManager"};
+              {error, "can't be set when encryptWith is nodeSecretManager"};
           (EId, encryptionKey) when EId == CurId, CurId =/= undefined ->
               {error, "key can't encrypt itself"};
           (_EId, encryptionKey) ->
               ok
-      end, Name, encryptBy, State).
+      end, Name, encryptWith, State).
 
 %% Note: CurSecretProps can only be used for static fields validation here.
 %% Any field that can be modified and needs to use CurProps should be
@@ -550,10 +550,10 @@ kmip_key_validators(CurSecretProps) ->
      validator:validate(fun (P) -> {value, maps:from_list(P)} end,
                         activeKey, _),
      validator:validate(fun (_) -> {error, "read only"} end, historicalKeys, _),
-     validator:one_of(encryptBy, ["nodeSecretManager", "encryptionKey"], _),
-     validator:convert(encryptBy, binary_to_atom(_, latin1), _),
-     validate_encrypt_by(encryptBy, _),
-     validator:default(encryptBy, nodeSecretManager, _),
+     validator:one_of(encryptWith, ["nodeSecretManager", "encryptionKey"], _),
+     validator:convert(encryptWith, binary_to_atom(_, latin1), _),
+     validate_encrypt_with(encryptWith, _),
+     validator:default(encryptWith, nodeSecretManager, _),
      validator:integer(encryptWithKeyId, -1, infinity, _),
      validate_encrypt_secret_id(encryptWithKeyId, CurSecretProps, _)].
 
