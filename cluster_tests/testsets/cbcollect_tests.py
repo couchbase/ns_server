@@ -128,7 +128,7 @@ class CbcollectTest(testlib.BaseTestSet):
                               'passwordSource': 'script',
                               'passwordCmd': script_path})
 
-        set_cfg_encryption(node, 'encryption_service', -1)
+        set_cfg_encryption(node, 'nodeSecretManager', -1)
 
         zip_filename = Path(self.zip_dir) / 'encrypted_config_test_dump'
         collect_config_and_chronicle(node, zip_filename)
@@ -136,7 +136,7 @@ class CbcollectTest(testlib.BaseTestSet):
     def encrypted_cfg_master_password_via_env_test(self):
         node = self.cluster.connected_nodes[0]
         password = change_password(node)
-        set_cfg_encryption(node, 'encryption_service', -1)
+        set_cfg_encryption(node, 'nodeSecretManager', -1)
 
         zip_filename = Path(self.zip_dir) / 'encrypted_config_test_dump1'
         collect_config_and_chronicle(node, zip_filename,
@@ -145,7 +145,7 @@ class CbcollectTest(testlib.BaseTestSet):
     def encrypted_cfg_master_password_via_stdin_test(self):
         node = self.cluster.connected_nodes[0]
         password = change_password(node)
-        set_cfg_encryption(node, 'encryption_service', -1)
+        set_cfg_encryption(node, 'nodeSecretManager', -1)
 
         zip_filename = Path(self.zip_dir) / 'encrypted_config_test_dump2'
         collect_config_and_chronicle(node, zip_filename,
@@ -154,7 +154,7 @@ class CbcollectTest(testlib.BaseTestSet):
     def cbcollect_api_test(self):
         node = self.cluster.connected_nodes[0]
         password = change_password(node)
-        set_cfg_encryption(node, 'encryption_service', -1)
+        set_cfg_encryption(node, 'nodeSecretManager', -1)
         tasks = ['Couchbase config', 'Chronicle dump', 'Chronicle logs']
         task_regexp = '|'.join(tasks) + '|cbcollect_info'
 
@@ -191,7 +191,7 @@ class CbcollectTest(testlib.BaseTestSet):
 
     def incorrect_password_test(self):
         node = self.cluster.connected_nodes[0]
-        set_cfg_encryption(node, 'encryption_service', -1)
+        set_cfg_encryption(node, 'nodeSecretManager', -1)
         password = testlib.random_str(8)
 
         # Passing incorrect password while the master password is not set:
@@ -214,7 +214,7 @@ class CbcollectTest(testlib.BaseTestSet):
 
         def toggle_log_encryption(enabled):
             if enabled:
-                set_log_encryption(node, 'encryption_service', -1)
+                set_log_encryption(node, 'nodeSecretManager', -1)
                 poll_func = lambda: assert_file_encrypted(log_path)
             else:
                 set_log_encryption(node, 'disabled', -1)

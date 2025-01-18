@@ -20,8 +20,7 @@
 encr_method(Param, EncrType) ->
     {Param,
      #{cfg_key => [EncrType, encryption],
-       type => {one_of, existing_atom,
-                [disabled, encryption_service, secret]}}}.
+       type => encryption_method}}.
 
 encr_secret_id(Param, EncrType) ->
     {Param,
@@ -77,6 +76,20 @@ params() ->
      encr_info("log.info", log_encryption),
      encr_info("audit.info", audit_encryption)].
 
+type_spec(encryption_method) ->
+    #{validators => [{one_of, string,
+                      ["disabled", "nodeSecretManager", "encryptionKey"]},
+                     ?cut(validator:convert(_1, fun ("disabled") ->
+                                                        disabled;
+                                                    ("nodeSecretManager") ->
+                                                        encryption_service;
+                                                    ("encryptionKey") ->
+                                                        secret
+                                                end, _2))],
+      formatter => fun (encryption_service) -> {value, <<"nodeSecretManager">>};
+                       (disabled) -> {value, <<"disabled">>};
+                       (secret) -> {value, <<"encryptionKey">>}
+                   end};
 type_spec(encr_info) ->
     #{validators => [not_supported],
       formatter => fun (undefined) -> ignore;

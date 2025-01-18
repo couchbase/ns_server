@@ -57,7 +57,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # all HTTP requests in all tests that use node secret management (SM)
         self.sm_node = random.choice(self.cluster.connected_nodes)
         self.bucket_name = testlib.random_str(8)
-        set_cfg_encryption(self.cluster, 'encryption_service', -1)
+        set_cfg_encryption(self.cluster, 'nodeSecretManager', -1)
         self.sample_bucket = "beer-sample"
         # Creating a few keys whose role is to just exist while other tests
         # are running. It increases code coverage.
@@ -78,7 +78,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
             delete_secret(self.cluster, s_id)
 
     def test_teardown(self):
-        set_cfg_encryption(self.cluster, 'encryption_service', -1)
+        set_cfg_encryption(self.cluster, 'nodeSecretManager', -1)
         set_log_encryption(self.cluster, 'disabled', -1)
         self.cluster.delete_bucket(self.bucket_name)
         self.cluster.delete_bucket(self.sample_bucket)
@@ -632,17 +632,17 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # There is a secret that is encrypted by master password; if we disable
         # config encryption that secret we be stored unencrypted in chronicle
         set_cfg_encryption(node, 'disabled', -1, expected_code=400)
-        set_cfg_encryption(node, 'encryption_service', -1)
-        set_cfg_encryption(node, 'secret', -1, expected_code=400)
-        set_cfg_encryption(node, 'secret', bad_id, expected_code=400)
-        set_cfg_encryption(node, 'secret', good_id)
+        set_cfg_encryption(node, 'nodeSecretManager', -1)
+        set_cfg_encryption(node, 'encryptionKey', -1, expected_code=400)
+        set_cfg_encryption(node, 'encryptionKey', bad_id, expected_code=400)
+        set_cfg_encryption(node, 'encryptionKey', good_id)
 
         secret['usage'] = ['bucket-encryption']
         errors = update_secret(node, good_id, secret, expected_code=400)
         assert errors['_'] == 'Can\'t modify usage as this key is in use', \
                f'unexpected error: {errors}'
 
-        set_cfg_encryption(node, 'encryption_service', -1)
+        set_cfg_encryption(node, 'nodeSecretManager', -1)
 
         update_secret(node, good_id, secret)
 
@@ -656,7 +656,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         create_secret(node, secret, expected_code=400)
 
         # Enabled config encryption and try again. Now creation works:
-        set_cfg_encryption(node, 'encryption_service', -1)
+        set_cfg_encryption(node, 'nodeSecretManager', -1)
         secret_id = create_secret(node, secret)
 
         # ... and can't disable config encryption anymore:
@@ -681,7 +681,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         # Switching secret back to nodeSecretManager so it can be removed
         # in teardown
-        set_cfg_encryption(node, 'encryption_service', -1)
+        set_cfg_encryption(node, 'nodeSecretManager', -1)
         update_secret(node, secret_id, secret)
 
     def dump_keks_test(self):
@@ -768,7 +768,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret = auto_generated_secret(usage=['config-encryption'])
         secret_id = create_secret(self.random_node(), secret)
         kek_id = get_kek_id(self.random_node(), secret_id)
-        set_cfg_encryption(self.random_node(), 'secret', secret_id,
+        set_cfg_encryption(self.random_node(), 'encryptionKey', secret_id,
                            dek_rotation=60*60*24*30)
 
         dek_path = Path() / 'config' / 'deks'
@@ -780,12 +780,12 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         rotation_enabling_time = datetime.now(timezone.utc)
         print(f'Rotation enabling time: {rotation_enabling_time}')
 
-        set_cfg_encryption(self.random_node(), 'secret', secret_id,
+        set_cfg_encryption(self.random_node(), 'encryptionKey', secret_id,
                            dek_rotation=1)
 
         time.sleep(2) # let it rotate deks
 
-        set_cfg_encryption(self.random_node(), 'secret', secret_id,
+        set_cfg_encryption(self.random_node(), 'encryptionKey', secret_id,
                            dek_rotation=60*60*24*30)
 
         # Verify that current dek was created after we've enabled the rotation
@@ -832,7 +832,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret = auto_generated_secret(usage=['config-encryption'])
         secret_id = create_secret(self.random_node(), secret)
         kek_id = get_kek_id(self.random_node(), secret_id)
-        set_cfg_encryption(self.random_node(), 'secret', secret_id,
+        set_cfg_encryption(self.random_node(), 'encryptionKey', secret_id,
                            dek_rotation=60*60*24*30,
                            dek_lifetime=1)
 
@@ -851,7 +851,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         assert sorted(dek_ids1) == sorted(dek_ids2), \
                f'deks have changed: {dek_ids1} {dek_ids2}'
 
-        set_cfg_encryption(self.random_node(), 'secret', secret_id,
+        set_cfg_encryption(self.random_node(), 'encryptionKey', secret_id,
                            dek_rotation=1,
                            dek_lifetime=3)
 
@@ -882,7 +882,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                       verify_encryption_kek=kek_id)
 
         # Use AWS key to encrypt configuration
-        set_cfg_encryption(self.random_node(), 'secret', aws_secret_id)
+        set_cfg_encryption(self.random_node(), 'encryptionKey', aws_secret_id)
         dek_path = Path() / 'config' / 'deks'
         poll_verify_dek_files(self.cluster,
                               dek_path,
@@ -913,7 +913,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                             'config-encryption'])
         secret_id = create_secret(self.random_node(), secret)
 
-        set_cfg_encryption(self.random_node(), 'secret', secret_id,
+        set_cfg_encryption(self.random_node(), 'encryptionKey', secret_id,
                            dek_rotation=1)
         self.cluster.create_bucket({'name': self.bucket_name, 'ramQuota': 100,
                                     'encryptionAtRestKeyId': secret_id,
@@ -1077,7 +1077,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                f'deks have changed, old deks: {dek_ids1}, new deks: {dek_ids3}'
 
     def encrypted_logs_test(self):
-        set_log_encryption(self.cluster, 'encryption_service', -1)
+        set_log_encryption(self.cluster, 'nodeSecretManager', -1)
         testlib.poll_for_condition(
             lambda: assert_logs_encrypted(self.cluster),
             sleep_time=0.3, attempts=50, retry_on_assert=True, verbose=True)
@@ -1123,18 +1123,18 @@ class NativeEncryptionNodeRestartTests(testlib.BaseTestSet):
 
     def teardown(self):
         set_log_encryption(self.cluster, 'disabled', -1)
-        set_cfg_encryption(self.cluster, 'encryption_service', -1)
+        set_cfg_encryption(self.cluster, 'nodeSecretManager', -1)
         change_password(self.node(), password='')
 
     def encryption_on_with_master_password_set_test(self):
-        set_log_encryption(self.cluster, 'encryption_service', -1)
-        set_cfg_encryption(self.cluster, 'encryption_service', -1)
+        set_log_encryption(self.cluster, 'nodeSecretManager', -1)
+        set_cfg_encryption(self.cluster, 'nodeSecretManager', -1)
         password = change_password(self.node())
         self.cluster.restart(master_passwords={0: password})
 
     def encryption_on_master_password_is_not_set_test(self):
-        set_log_encryption(self.cluster, 'encryption_service', -1)
-        set_cfg_encryption(self.cluster, 'encryption_service', -1)
+        set_log_encryption(self.cluster, 'nodeSecretManager', -1)
+        set_cfg_encryption(self.cluster, 'nodeSecretManager', -1)
         change_password(self.node(), password='')
         self.cluster.restart()
 
@@ -1161,7 +1161,7 @@ class NativeEncryptionPermissionsTests(testlib.BaseTestSet):
         return testlib.ClusterRequirements(edition='Enterprise')
 
     def setup(self):
-        set_cfg_encryption(self.cluster, 'encryption_service', -1)
+        set_cfg_encryption(self.cluster, 'nodeSecretManager', -1)
         self.bucket_name = testlib.random_str(8)
         self.password = testlib.random_str(8)
         bucket_props = {'name': self.bucket_name,

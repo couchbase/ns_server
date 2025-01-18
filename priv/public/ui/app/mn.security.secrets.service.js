@@ -192,8 +192,8 @@ class MnSecuritySecretsService {
   mapMethodToNames(type) {
     switch (type) {
       case "disabled": return "Disabled";
-      case "encryption_service": return "Master Password";
-      case "secret": return "Secret";
+      case "nodeSecretManager": return "Master Password";
+      case "encryptionKey": return "Encryption Key";
       default: return type;
     }
   }
