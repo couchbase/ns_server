@@ -201,14 +201,14 @@
             Delete
           </button>
           <button
-            ng-if="!user.locked && poolDefault.isEnterprise && poolDefault.compat.atLeast80"
+            ng-if="user.domain === 'local' && !user.locked && poolDefault.isEnterprise && poolDefault.compat.atLeast80"
             class="outline"
             ng-click="userRolesCtl.lockUser(user)"
           >
             Lock
           </button>
           <button
-            ng-if="user.locked && poolDefault.isEnterprise && poolDefault.compat.atLeast80"
+            ng-if="user.domain === 'local' && user.locked && poolDefault.isEnterprise && poolDefault.compat.atLeast80"
             class="outline"
             ng-click="userRolesCtl.unlockUser(user)"
           >
