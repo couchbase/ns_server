@@ -67,13 +67,22 @@ class MnSecuritySecretsEncryptionDialogComponent extends MnLifeCycleHooksToStrea
 
     this.httpError = this.mnSecuritySecretsService.stream.postEncryptionAtRestType.error;
     this.filteredSecrets = this.secrets.filter(secret => secret.usage.find(u => u.includes(this.type + '-encryption') ));
+
+    this.form.group.get('dekLifetimeEnabled')[(this.form.group.get('dekLifetime').value === 0) ? 'disable': 'enable']();
   }
 
   doUnpack({encryptionMethod, encryptionKeyId, dekLifetime, dekRotationInterval}) {
+    let dekLifetimeUnpacked;
+    if (dekLifetime === 0) {
+      dekLifetimeUnpacked = 0;
+    } else {
+      dekLifetimeUnpacked = (dekLifetime ? dekLifetime : timeUnitToSeconds.year) / timeUnitToSeconds.day;
+    }
+
     return {
       encryptionMethod: encryptionMethod || 'disabled',
       encryptionKeyId: (encryptionKeyId === null || encryptionKeyId === undefined || encryptionKeyId < 0) ? null : this.secrets.find(i => i.id === encryptionKeyId),
-      dekLifetime: (dekLifetime ? dekLifetime : timeUnitToSeconds.year) / timeUnitToSeconds.day,
+      dekLifetime: dekLifetimeUnpacked,
       dekLifetimeEnabled: dekLifetime !== 0,
       dekRotationInterval: (dekRotationInterval ? dekRotationInterval : timeUnitToSeconds.month) / timeUnitToSeconds.day,
       dekRotationIntervalEnabled: dekRotationInterval !== 0
