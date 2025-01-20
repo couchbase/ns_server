@@ -126,7 +126,7 @@ class MnSecurityAuditComponent extends MnLifeCycleHooksToStream {
 
     this.securityWrite
       .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(this.disableEnableFiled.bind(this));
+      .subscribe(this.maybeDisableToggles.bind(this));
 
     var disabledByID =
         this.getAudit.pipe(pluck("disabled"),
@@ -236,9 +236,10 @@ class MnSecurityAuditComponent extends MnLifeCycleHooksToStream {
     }, {});
   }
 
-  disableEnableFiled(value) {
+  maybeDisableToggles(value) {
     var method = value ? "enable" : "disable";
     this.form.group.get('auditEvents.auditdEnabled')[method]({emitEvent: false});
+    this.form.group.get('userActivity.enabled')[method]({emitEvent: false});
   }
 
   maybeDisableAuditFields(values) {
