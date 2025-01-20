@@ -123,11 +123,13 @@ store_kmip_key(Id, Params, KekIdToEncrypt, CreationDT, TestOnly) ->
 
 format_kmip_key_params(#{host := Host,
                          port := Port,
+                         kmip_id := KmipId,
                          key_cert_path := KeyPath,
                          key_passphrase := PassData,
                          encryption_approach := Appr}) ->
     {[{host, iolist_to_binary(Host)},
       {port, Port},
+      {kmipId, KmipId},
       {keyCertPath, iolist_to_binary(KeyPath)},
       {keyPassphrase, base64:encode(PassData)},
       {encryptionApproach, Appr}]}.
