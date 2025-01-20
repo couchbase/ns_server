@@ -25,12 +25,19 @@ import (
 	"unicode/utf8"
 
 	"github.com/couchbase/ns_server/deps/gocode/awsutils"
+	"github.com/couchbase/ns_server/deps/gocode/kmiputils"
 	"github.com/google/uuid"
 )
 
 var testData = [8]byte{1, 2, 3, 4, 5, 6, 7, 8}
 var testAD = [4]byte{255, 254, 253, 252}
 var intTokenEncryptionKeyKind = "configDek"
+
+// Tags for enconding Kmip encrypted data usage
+const KMIP_USE_GET = uint8(0x00)
+const KMIP_USE_ENCR_DECR = uint8(0x01)
+
+const KMIP_MAX_IV_SIZE = 128
 
 // Stored keys structs and interfaces:
 
@@ -1496,12 +1503,89 @@ func (k *kmipStoredKey) decryptMe(validateKeysProof bool, state *StoredKeysState
 	return nil
 }
 
+func getKmipClientCfg(k *kmipStoredKey) kmiputils.KmipClientConfig {
+	return kmiputils.KmipClientConfig{
+		Host:                k.Host,
+		Port:                k.Port,
+		KeyPath:             k.KeyPath,
+		CertPath:            k.CertPath,
+		CbCaPath:            k.CbCaPath,
+		SelectCaOpt:         k.CaSelection,
+		DecryptedPassphrase: k.decryptedPassphrase,
+	}
+}
+
 func (k *kmipStoredKey) encryptData(data, AD []byte) ([]byte, error) {
-	return nil, fmt.Errorf("not implemented")
+	clientCfg := getKmipClientCfg(k)
+	if k.EncryptionApproach == "use_encrypt_decrypt" {
+		encrAttrs, err := kmiputils.KmipEncryptData(clientCfg, k.KmipId, data, AD)
+		if err != nil {
+			return nil, err
+		}
+
+		ivNonceLenSize := make([]byte, 4)
+		ivCounterNonceLen := len(encrAttrs.IVCounterNonce)
+		if ivCounterNonceLen > KMIP_MAX_IV_SIZE {
+			return nil, fmt.Errorf("ivCounterNonceLen too large ivCounterNonceLen=%d, maxAllowed=%d", ivCounterNonceLen, KMIP_MAX_IV_SIZE)
+		}
+
+		binary.BigEndian.PutUint32(ivNonceLenSize, uint32(len(encrAttrs.IVCounterNonce)))
+		dataSlice := append(ivNonceLenSize, encrAttrs.IVCounterNonce...)
+		dataSlice = append(dataSlice, encrAttrs.AuthTag...)
+		dataSlice = append(dataSlice, encrAttrs.EncrData...)
+		return append([]byte{KMIP_USE_ENCR_DECR}, dataSlice...), nil
+	} else if k.EncryptionApproach == "use_get" {
+		aes256Key, err := kmiputils.KmipGetAes256Key(clientCfg, k.KmipId)
+		if err != nil {
+			return nil, err
+		}
+
+		encrData := aesgcmEncrypt(aes256Key, data, AD)
+		return append([]byte{KMIP_USE_GET}, encrData...), nil
+	} else {
+		return nil, fmt.Errorf("invalid encrypton approach %s", k.EncryptionApproach)
+	}
 }
 
 func (k *kmipStoredKey) decryptData(data, AD []byte) ([]byte, error) {
-	return nil, fmt.Errorf("not implemented")
+	if len(data) < 1 {
+		return nil, fmt.Errorf("invalid data length: %d", len(data))
+	}
+
+	clientCfg := getKmipClientCfg(k)
+	if uint8(data[0]) == KMIP_USE_ENCR_DECR {
+		dataSlice := data[1:]
+		if len(dataSlice) < 4 {
+			return nil, fmt.Errorf("invalid dataSlice length: %d", len(dataSlice))
+		}
+
+		authTagLen := uint32(kmiputils.KMIP_AUTH_TAG_LENGTH)
+		ivNonceLen := binary.BigEndian.Uint32(dataSlice[0:4])
+		if len(dataSlice) < int(ivNonceLen+authTagLen+4) {
+			return nil, fmt.Errorf("invalid dataSlice length: %d", len(dataSlice))
+		}
+
+		ivNonce := dataSlice[4 : ivNonceLen+4]
+		authTag := dataSlice[ivNonceLen+4 : ivNonceLen+authTagLen+4]
+		encrData := dataSlice[ivNonceLen+authTagLen+4:]
+
+		encrAttrs := kmiputils.KmipEncrAttrs{
+			EncrData:       encrData,
+			IVCounterNonce: ivNonce,
+			AuthTag:        authTag,
+			AD:             AD,
+		}
+		return kmiputils.KmipDecryptData(clientCfg, k.KmipId, encrAttrs)
+	} else if uint8(data[0]) == KMIP_USE_GET {
+		aes256Key, err := kmiputils.KmipGetAes256Key(clientCfg, k.KmipId)
+		if err != nil {
+			return nil, err
+		}
+
+		return aesgcmDecrypt(aes256Key, data[1:], AD)
+	} else {
+		return nil, fmt.Errorf("invalid usage tag for kmip encrypted data %d", uint8(data[0]))
+	}
 }
 
 func (k *kmipStoredKey) unmarshal(data json.RawMessage) error {
