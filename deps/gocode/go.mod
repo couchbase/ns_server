@@ -3,8 +3,10 @@ module github.com/couchbase/ns_server/deps/gocode
 go 1.21
 
 require (
+	github.com/akeylesslabs/go-kmip v0.2.14
 	github.com/aws/aws-sdk-go-v2/config v1.27.18
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.5
+	github.com/couchbase/goutils v0.1.2
 	github.com/evanw/esbuild v0.13.13
 	github.com/google/uuid v1.6.0
 	gocloud.dev v0.37.0
@@ -30,6 +32,8 @@ require (
 	github.com/google/wire v0.6.0 // indirect
 	github.com/googleapis/gax-go/v2 v2.12.2 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
+	github.com/pkg/errors v0.8.1 // indirect
+	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/net v0.22.0 // indirect
 	golang.org/x/sys v0.21.0 // indirect
