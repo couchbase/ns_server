@@ -983,6 +983,7 @@ handle_patch_user(UserId, Req) ->
     assert_no_users_upgrade(),
     case validate_cred(UserId, username) of
         true ->
+            verify_domain_access(Req, {UserId, local}),
             handle_patch_user_with_identity(Req, {UserId, local},
                                             patch_user_validators());
         Error ->
