@@ -417,6 +417,21 @@ build_log_structs(LogEntriesIn, MinTStamp, Limit) ->
                       S when is_list(S) ->
                           CodeString = ns_log:code_string(Module, Code),
                           S1 = ns_log:prepare_message(Module, Code, S),
+
+                          %% This check is for consistent reporting of time
+                          %% across the cluster
+                          ST =
+                              case cluster_compat_mode:is_cluster_morpheus() of
+                                  true ->
+                                      misc:local_and_utc_to_iso8601(
+                                        ServerTime,
+                                        calendar:now_to_datetime(TStamp),
+                                        MicroSecs div 1000,
+                                        local);
+                                  false ->
+                                      menelaus_util:format_server_time(
+                                        ServerTime, MicroSecs)
+                              end,
                           [{[{node, Node},
                              {type, category_bin(Cat)},
                              {code, Code},
@@ -425,8 +440,7 @@ build_log_structs(LogEntriesIn, MinTStamp, Limit) ->
                                                              millisecond)},
                              {shortText, list_to_binary(CodeString)},
                              {text, list_to_binary(S1)},
-                             {serverTime, menelaus_util:format_server_time(
-                                            ServerTime, MicroSecs)}
+                             {serverTime, ST}
                             ]} | Acc];
                       _ -> Acc
                   end
