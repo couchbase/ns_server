@@ -428,8 +428,16 @@ build_alerts(UUID) ->
                         AlertsSilenceToken])}].
 
 build_one_alert({_Key, Msg, Time, DisablePopUp}) ->
-    LocalTime = calendar:now_to_local_time(misc:time_to_timestamp(Time)),
-    StrTime = format_server_time(LocalTime),
+    Timestamp = misc:time_to_timestamp(Time),
+    %% This check is for consistent reporting of time across the cluster
+    StrTime = case cluster_compat_mode:is_cluster_morpheus() of
+                  true ->
+                      Datetime = calendar:now_to_universal_time(Timestamp),
+                      misc:utc_to_iso8601(Datetime, local);
+                  false ->
+                      LocalTime = calendar:now_to_local_time(Timestamp),
+                      format_server_time(LocalTime)
+              end,
     {[{msg, Msg}, {serverTime, StrTime},
       {disableUIPopUp, DisablePopUp}]}.
 
