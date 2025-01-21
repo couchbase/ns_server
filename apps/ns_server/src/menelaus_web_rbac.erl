@@ -296,15 +296,29 @@ user_roles_to_json(Props) ->
        end, [], Map).
 
 format_password_change_time(undefined) -> undefined;
-format_password_change_time(TS) ->
-    Local = calendar:now_to_local_time(misc:time_to_timestamp(TS, millisecond)),
-    menelaus_util:format_server_time(Local).
+format_password_change_time(Time) ->
+    Timestamp = misc:time_to_timestamp(Time, millisecond),
+    %% This check is for consistent reporting of time across the cluster
+    case cluster_compat_mode:is_cluster_morpheus() of
+        true ->
+            Datetime = calendar:now_to_universal_time(Timestamp),
+            misc:utc_to_iso8601(Datetime, local);
+        false ->
+            Local = calendar:now_to_local_time(Timestamp),
+            menelaus_util:format_server_time(Local)
+    end.
 
 format_activity_time(undefined) -> undefined;
 format_activity_time(TS) ->
-    Local = erlang:universaltime_to_localtime(
-              calendar:gregorian_seconds_to_datetime(TS)),
-    menelaus_util:format_server_time(Local).
+    Datetime = calendar:gregorian_seconds_to_datetime(TS),
+    %% This check is for consistent reporting of time across the cluster
+    case cluster_compat_mode:is_cluster_morpheus() of
+        true ->
+            misc:utc_to_iso8601(Datetime, local);
+        false ->
+            Local = erlang:universaltime_to_localtime(Datetime),
+            menelaus_util:format_server_time(Local)
+    end.
 
 handle_get_users(Path, Req) ->
     handle_get_users_with_domain(Req, '_', Path).
