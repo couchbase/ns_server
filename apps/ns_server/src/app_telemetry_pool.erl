@@ -34,8 +34,7 @@
 
 -record(state,
         {clients = #{} :: #{pid() => #client{}},
-         max = 1024 :: integer(),
-         active_websockets = 0 :: integer()}).
+         max = 1024 :: non_neg_integer()}).
 
 -record(add_client,
         {pid :: pid(),
@@ -51,7 +50,7 @@
         {pid :: pid(),
          data :: binary()}).
 
--record(update_max, {max :: integer()}).
+-record(update_max, {max :: non_neg_integer()}).
 
 %%%===================================================================
 %%% API
@@ -91,7 +90,7 @@ call(Pid, Body, Timeout) ->
 drop(Pid) ->
     gen_server:call(?SERVER, #drop{pid = Pid}).
 
--spec update_max(integer()) -> ok.
+-spec update_max(non_neg_integer()) -> ok.
 update_max(NewMax) ->
     gen_server:call(?SERVER, #update_max{max = NewMax}).
 
@@ -107,8 +106,8 @@ init([ArgsMap]) ->
     {ok, build_state(ArgsMap)}.
 
 handle_call(#add_client{pid = Pid, client = Client}, _From,
-            State0 = #state{active_websockets = Active,
-                            max = Max}) when Active < Max ->
+            State0 = #state{clients = Clients,
+                            max = Max}) when map_size(Clients) < Max ->
     {reply, ok, do_add_client(State0, Pid, Client)};
 handle_call(#add_client{}, _From, State0 = #state{}) ->
     {reply, {error, too_many_clients}, State0};
@@ -132,9 +131,8 @@ handle_call(#call{pid = Pid, body = Body}, From,
 handle_call(#drop{pid = Pid}, _From, State = #state{}) ->
     {reply, ok, do_drop_client(State, Pid)};
 handle_call(#update_max{max = Max}, _From, State0 = #state{}) ->
-    %% Note, if the number of connections is larger than the new max, we are not
-    %% disconnecting any automatically
-    {reply, ok, State0#state{max = Max}};
+    State1 = State0#state{max = Max},
+    {reply, ok, enforce_max(State1)};
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
@@ -211,16 +209,13 @@ build_state(ArgsMap) ->
               State#state{max=Max}
       end, State0, ArgsMap).
 
-do_add_client(#state{clients = Clients,
-                     active_websockets = Active} = State,
+do_add_client(#state{clients = Clients} = State,
               Pid, Client) ->
     %% We need to close the socket if the client terminates
     erlang:monitor(process, Pid),
-    State#state{clients = maps:put(Pid, Client, Clients),
-                active_websockets = Active + 1}.
+    State#state{clients = maps:put(Pid, Client, Clients)}.
 
-do_drop_client(#state{clients = Clients,
-                      active_websockets = Active} = State, Pid) ->
+do_drop_client(#state{clients = Clients} = State, Pid) ->
     case maps:take(Pid, Clients) of
         {#client{reply_channel = ReplyChannel,
                  handler = Handler}, NewClients} ->
@@ -233,13 +228,24 @@ do_drop_client(#state{clients = Clients,
                 _ ->
                     gen_server:reply(Handler, {error, dropped})
             end,
-            State#state{clients = NewClients,
-                        active_websockets = Active - 1};
+            State#state{clients = NewClients};
         error ->
             ?log_warning("Failed to drop connection ~p, because the pid is "
                          "not recognised", [Pid]),
             State
     end.
+
+enforce_max(#state{clients = Clients, max = Max} = State)
+  when map_size(Clients) =< Max ->
+    State;
+enforce_max(#state{clients = Clients, max = Max} = State)
+  when map_size(Clients) > Max ->
+    Pid = hd(maps:keys(Clients)),
+    ?log_debug("Dropping connection ~p, because the connection limit was "
+               "decreased (~p active connections > ~p max connections)",
+               [Pid, map_size(Clients), Max]),
+    enforce_max(do_drop_client(State, Pid)).
+
 
 is_ping(ping) -> true;
 is_ping(_) -> false.
