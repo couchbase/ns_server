@@ -236,7 +236,7 @@ do_drop_client(#state{clients = Clients,
             State#state{clients = NewClients,
                         active_websockets = Active - 1};
         error ->
-            ?log_warning("Failed to drop connection ~p, but because the pid is "
+            ?log_warning("Failed to drop connection ~p, because the pid is "
                          "not recognised", [Pid]),
             State
     end.
