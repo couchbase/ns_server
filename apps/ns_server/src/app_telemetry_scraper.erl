@@ -140,7 +140,8 @@ restart_timer(#state{timer_ref = Ref} = State) when is_reference(Ref) ->
     restart_timer(State#state{timer_ref = undefined});
 restart_timer(#state{timer_ref = undefined,
                      scrape_interval_seconds = ScrapeInterval} = State) ->
-    State#state{timer_ref = erlang:send_after(ScrapeInterval, self(), fetch)}.
+    State#state{timer_ref = erlang:send_after(ScrapeInterval * 1000, self(),
+                                              fetch)}.
 
 start_fetch() ->
     Parent = self(),
