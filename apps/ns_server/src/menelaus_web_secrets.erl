@@ -227,8 +227,10 @@ keys_remap() ->
       encrypt_with => encryptWith,
       encrypt_secret_id => encryptWithKeyId,
       stored_ids => storedKeyIds,
-      key_cert_path => keyCertPath,
+      key_path => keyPath,
+      cert_path => certPath,
       key_passphrase => keyPassphrase,
+      ca_selection => caSelection,
       encryption_approach => encryptionApproach,
       active_key => activeKey,
       hist_keys => historicalKeys,
@@ -334,12 +336,18 @@ format_kmip_key_data(Props) ->
       maps:map(
         fun (host, U) -> iolist_to_binary(U);
             (port, R) -> R;
-            (key_cert_path, F) -> iolist_to_binary(F);
+            (key_path, F) -> iolist_to_binary(F);
+            (cert_path, F) -> iolist_to_binary(F);
             (key_passphrase, _) -> <<"******">>;
             (active_key, K) -> format_kmip_key(K);
             (hist_keys, L) -> [format_kmip_key(K) || K <- L];
             (encrypt_with, E) -> E;
             (encrypt_secret_id, SId) -> SId;
+            (ca_selection, use_sys_ca) -> <<"useSysCa">>;
+            (ca_selection, use_cb_ca) -> <<"useCbCa">>;
+            (ca_selection, use_sys_and_cb_ca) -> <<"useSysAndCbCa">>;
+            (ca_selection, skip_server_cert_verification) ->
+                <<"skipServerCertVerification">>;
             (encryption_approach, use_get) -> <<"useGet">>;
             (encryption_approach, use_encrypt_decrypt) ->
                 <<"useEncryptDecrypt">>
@@ -528,12 +536,23 @@ kmip_key_validators(CurSecretProps) ->
      validator:required(host, _),
      validator:integer(port, 1, 65535, _),
      validator:required(port, _),
-     validator:string(keyCertPath, _),
-     validator:required(keyCertPath, _),
+     validator:string(keyPath, _),
+     validator:required(keyPath, _),
+     validator:string(certPath, _),
+     validator:required(certPath, _),
      validator:string(keyPassphrase, _),
      validator:default(keyPassphrase, "", _),
      validator:convert(keyPassphrase, iolist_to_binary(_), _),
      validator:validate(fun (P) -> {value, ?HIDE(P)} end, keyPassphrase, _),
+     validator:one_of(caSelection,["useSysCa",
+                                   "useCbCa",
+                                   "useSysAndCbCa"], _),
+     validator:convert(caSelection,
+                      fun (<<"useSysCa">>) -> use_sys_ca;
+                          (<<"useCbCa">>) -> use_cb_ca;
+                          (<<"useSysAndCbCa">>) -> use_sys_and_cb_ca
+                      end, _),
+     validator:default(caSelection, use_cb_ca, _),
      validator:one_of(encryptionApproach, ["useGet",
                                            "useEncryptDecrypt"], _),
      validator:convert(encryptionApproach,

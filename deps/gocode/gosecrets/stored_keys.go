@@ -122,8 +122,10 @@ type kmipStoredKey struct {
 	KmipId              string `json:"kmipId"`
 	Host                string `json:"host"`
 	Port                int    `json:"port"`
+	CaSelection         string `json:"caSelection"`
 	EncryptionApproach  string `json:"encryptionApproach"`
-	KeyCertPath         string `json:"keyCertPath"`
+	KeyPath             string `json:"keyPath"`
+	CertPath            string `json:"certPath"`
 	EncryptedPassphrase []byte `json:"sealedPassphrase"`
 	decryptedPassphrase []byte `json:"-"`
 	EncryptionKeyName   string `json:"encryptionKeyName"`
@@ -1379,8 +1381,10 @@ func newKmipKey(name, kind, creationTime, encryptionKeyName string, data []byte)
 		KmipId             string `json:"kmipId"`
 		Host               string `json:"host"`
 		Port               int    `json:"port"`
-		KeyCertPath        string `json:"keyCertPath"`
+		KeyPath            string `json:"keyPath"`
+		CertPath           string `json:"certPath"`
 		Passphrase         []byte `json:"keyPassphrase"`
+		CaSelection        string `json:"caSelection"`
 		EncryptionApproach string `json:"encryptionApproach"`
 	}
 	var decoded kmipKeyTmp
@@ -1388,13 +1392,16 @@ func newKmipKey(name, kind, creationTime, encryptionKeyName string, data []byte)
 	if err != nil {
 		return nil, fmt.Errorf("invalid raw key json: %s", err.Error())
 	}
+
 	rawKeyInfo := &kmipStoredKey{
 		Name:                name,
 		Kind:                kind,
 		KmipId:              decoded.KmipId,
 		Host:                decoded.Host,
 		Port:                decoded.Port,
-		KeyCertPath:         decoded.KeyCertPath,
+		KeyPath:             decoded.KeyPath,
+		CertPath:            decoded.CertPath,
+		CaSelection:         decoded.CaSelection,
 		EncryptionApproach:  decoded.EncryptionApproach,
 		EncryptionKeyName:   encryptionKeyName,
 		CreationTime:        creationTime,
@@ -1447,7 +1454,9 @@ func (k *kmipStoredKey) ad() []byte {
 			k.Host +
 			strconv.Itoa(k.Port) +
 			k.EncryptionApproach +
-			k.KeyCertPath +
+			k.KeyPath +
+			k.CertPath +
+			k.CaSelection +
 			k.EncryptionKeyName +
 			k.CreationTime)
 }
