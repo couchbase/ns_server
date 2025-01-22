@@ -189,11 +189,13 @@ roles() ->
      {cluster_admin, [],
       [{name, <<"Cluster Admin">>},
        {folder, admin},
-       {desc, <<"Can manage all cluster features except security. This user "
-                "can access the web console. This user cannot read data.">>}],
+       {desc, <<"Can manage all cluster features except security and users. "
+                "This user can access the web console. This user cannot read "
+                "data.">>}],
       [{[admin, internal], none},
        {[admin, security], none},
        {[admin, security_info], none},
+       {[admin, users], none},
        {[admin, diag], [read]},
        {[admin, event], none},
        {[admin, metakv], none},
@@ -2216,7 +2218,7 @@ produce_roles_by_permission_test_() ->
             {[admin, security, admin], write})},
       {"users permission",
        Test([admin, user_admin_local, user_admin_external,
-             ro_admin, cluster_admin, security_admin],
+             ro_admin, security_admin],
             {[admin, users], any})},
       {"security_info permission",
        Test([user_admin_local, user_admin_external, admin, ro_admin,

@@ -698,6 +698,30 @@ class UsersTestSet(testlib.BaseTestSet):
             delete_user(self.cluster, 'local', user2)
 
 
+    def cluster_admin_role_test(self):
+        try:
+            # Create a cluster admin
+            user = 'clusterAdmin'
+            name = testlib.random_str(10)
+            password = testlib.random_str(10)
+            put_user(self.cluster, 'local', user, password,
+                     roles='cluster_admin', full_name=name,
+                     validate_user_props=True)
+
+            # The cluster admin cannot create a user. And as the permission
+            # is the same for other user CRUD operations we don't have to
+            # individually test them.
+            data = build_payload(roles='eventing_admin',
+                                 password=testlib.random_str(10),
+                                 full_name=testlib.random_str(10))
+            testlib.put_fail(self.cluster,
+                             '/settings/rbac/users/local/wontgetcreated',
+                             403, data=data, auth=(user, password))
+        finally:
+            # Delete the created user
+            delete_user(self.cluster, 'local', user)
+
+
 def build_payload(password=None, roles=None, full_name=None, groups=None,
                   locked=None, temporary_password=None):
     data = {}
