@@ -9,6 +9,7 @@
 import random
 import string
 
+from websockets import InvalidHandshake
 from websockets.sync.client import connect
 
 import testlib
@@ -104,6 +105,25 @@ class AppTelemetryTests(testlib.BaseTestSet):
                                                 'nodes': [node1_host]},
                                  value),
                 sleep_time=1, timeout=60)
+
+    def disabled_test(self):
+        # Disable app telemetry
+        testlib.post_succ(self.cluster, "/settings/appTelemetry",
+                          json={"enabled": "false"})
+        try:
+            info = testlib.get_succ(self.cluster,
+                                    "/pools/default/nodeServices").json()
+            nodes_ext = info.get('nodesExt')
+            node0_ext = nodes_ext[0]
+            node0_path = node0_ext.get('appTelemetryPath')
+            # /_appTelemetry should not be advertised
+            testlib.assert_eq(None, node0_path)
+
+            testlib.get_fail(self.cluster, "/_appTelemetry", 404)
+        finally:
+            # Re-enable app telemetry
+            testlib.post_succ(self.cluster, "/settings/appTelemetry",
+                              json={"enabled": "true"})
 
 
 def make_metric(metric, uuid, value):

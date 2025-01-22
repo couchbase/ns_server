@@ -51,7 +51,12 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 handle_connect(Req) ->
-    app_telemetry_pool:handle_connect(Req).
+    case menelaus_web_app_telemetry:is_accepting_connections() of
+        true ->
+            app_telemetry_pool:handle_connect(Req);
+        false ->
+            menelaus_util:reply_not_found(Req)
+    end.
 
 %%%===================================================================
 %%% gen_server callbacks
