@@ -673,6 +673,12 @@ tls_config(Params) ->
     AuthBinMcd = case AuthBin of
                      <<"disable">> -> <<"disabled">>;
                      <<"enable">> -> <<"enabled">>;
+                     %% kv is only a server so hybrid is the same as enabled.
+                     %% Some day when kv is a client (e.g. file-to-file
+                     %% rebalance) ns_server will explicitly tell kv if TLS
+                     %% is to be used or not, the cert to use, and any optional
+                     %% username/passwords to use.
+                     <<"hybrid">> -> <<"enabled">>;
                      <<"mandatory">> -> <<"mandatory">>
                  end,
     PKeyPassFun = ns_secrets:get_pkey_pass(node_cert),

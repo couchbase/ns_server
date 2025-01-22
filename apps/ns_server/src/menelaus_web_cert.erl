@@ -609,7 +609,7 @@ prepare_cert_info(CertType, Node, AllWarnings)
     end.
 
 allowed_values(Key) ->
-    Values = [{"state", ["enable", "disable", "mandatory"]},
+    Values = [{"state", ["enable", "disable", "mandatory", "hybrid"]},
               {"path", ["subject.cn", "san.uri", "san.dnsname", "san.email"]},
               {"prefix", any},
               {"delimiter", any}],
@@ -644,21 +644,33 @@ validate_client_cert_auth_state(StateVal, Prefixes, Cfg, Errors) ->
                                               "'state' is '~s'", [StateVal])},
                     {Cfg, [E | Errors]};
                 false ->
-                    case StateVal =:= "mandatory" andalso
-                        misc:should_cluster_data_be_encrypted() andalso
-                        not cluster_compat_mode:is_cluster_76() of
-                        false -> {[CfgPair | Cfg], Errors};
-                        true ->
-                            M = "Cannot set 'state' to 'mandatory' when "
-                                "cluster encryption level has been set to "
-                                "'all'",
-                            E = {error, M},
-                            {Cfg, [E | Errors]}
-                    end
+                    validate_state(StateVal, CfgPair, Cfg, Errors)
             end;
         Err ->
             {Cfg, [Err | Errors]}
     end.
+
+validate_state("mandatory", CfgPair, Cfg, Errors) ->
+    case misc:should_cluster_data_be_encrypted() andalso
+         not cluster_compat_mode:is_cluster_76() of
+        false ->
+            {[CfgPair | Cfg], Errors};
+        true ->
+            M = "Cannot set 'state' to 'mandatory' when cluster encryption "
+                "level has been set to 'all'",
+                {Cfg, [{error, M} | Errors]}
+    end;
+validate_state("hybrid", CfgPair, Cfg, Errors) ->
+    case cluster_compat_mode:is_cluster_morpheus() of
+        true ->
+            {[CfgPair | Cfg], Errors};
+        false ->
+            M = "Cannot set 'state' to 'hybrid' until the cluster is fully "
+                "morpheus",
+            {Cfg, [{error, M}, Errors]}
+    end;
+validate_state(_, CfgPair, Cfg, Errors) ->
+    {[CfgPair | Cfg], Errors}.
 
 validate_triple(Triple) ->
     Triple1 = lists:sort(Triple),

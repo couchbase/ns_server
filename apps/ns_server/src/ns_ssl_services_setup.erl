@@ -442,6 +442,9 @@ ssl_auth_options() ->
         enable ->
             [{fail_if_no_peer_cert, false},
              {verify, verify_peer}, {depth, ?ALLOWED_CERT_CHAIN_LENGTH}];
+        hybrid ->
+            [{fail_if_no_peer_cert, false},
+             {verify, verify_peer}, {depth, ?ALLOWED_CERT_CHAIN_LENGTH}];
         mandatory ->
             [{fail_if_no_peer_cert, true},
              {verify, verify_peer}, {depth, ?ALLOWED_CERT_CHAIN_LENGTH}]
@@ -550,6 +553,7 @@ tls_client_opts(Config, PresetOpts) ->
         tls_peer_verification_client_opts() ++
         case client_cert_auth_state(Config) of
             "mandatory" -> tls_client_certs_opts();
+            "hybrid" -> tls_client_certs_opts();
             _ -> []
         end,
     RawTLSOptions2 =

@@ -1061,7 +1061,11 @@ cluster_uses_client_certs(Config) ->
 
 cluster_uses_client_certs(strict, "mandatory",
                           _N2NClientVerification) -> true;
+cluster_uses_client_certs(strict, "hybrid",
+                          _N2NClientVerification) -> true;
 cluster_uses_client_certs(all, "mandatory",
+                          _N2NClientVerification) -> true;
+cluster_uses_client_certs(all, "hybrid",
                           _N2NClientVerification) -> true;
 cluster_uses_client_certs(_DataEncryption, _ClientCertAuth,
                           true) -> true;
