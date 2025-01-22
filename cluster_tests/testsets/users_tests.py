@@ -667,6 +667,37 @@ class UsersTestSet(testlib.BaseTestSet):
             delete_user(self.cluster, 'local', admin_user)
 
 
+    def external_user_admin_test(self):
+        try:
+            # Create an external user admin
+            user = 'externalUserAdmin'
+            name = testlib.random_str(10)
+            password = testlib.random_str(10)
+            put_user(self.cluster, 'local', user, password,
+                     roles='user_admin_external', full_name=name,
+                     validate_user_props=True)
+
+            # Create a local user
+            user2 = 'eventingAdmin'
+            name2 = testlib.random_str(10)
+            password2 = testlib.random_str(10)
+            put_user(self.cluster, 'local', user2, password2,
+                     roles='eventing_admin', full_name=name2,
+                     validate_user_props=True)
+
+            # The external user admin cannot patch a local user
+            testlib.patch_fail(self.cluster,
+                               f'/settings/rbac/users/local/{user2}',
+                               403,
+                               data={"locked": "true"},
+                               auth=(user, password))
+
+        finally:
+            # Delete the created users
+            delete_user(self.cluster, 'local', user)
+            delete_user(self.cluster, 'local', user2)
+
+
 def build_payload(password=None, roles=None, full_name=None, groups=None,
                   locked=None, temporary_password=None):
     data = {}
