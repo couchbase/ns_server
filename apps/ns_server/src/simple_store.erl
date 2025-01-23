@@ -299,7 +299,7 @@ file2tab_encrypted(StoreName, FilePath, DS) ->
         end,
     case cb_crypto:read_file_chunks(FilePath, F, ok, DS, #{}) of
         {ok, _} -> ok;
-        {error, _} = E -> E
+        {error, R, _} -> {error, R}
     end.
 
 tab2file_encrypted(StoreName, FilePath, DS) ->

@@ -334,7 +334,8 @@ read_file(Path, DekKind) ->
     GetSnapshotFun = fun () -> fetch_deks_snapshot(DekKind) end,
     read_file(Path, GetSnapshotFun).
 
--spec read_file_chunks(Path, Fun, Acc, Deks, Opts) -> {ok, Acc} | {error, _}
+-spec read_file_chunks(Path, Fun, Acc, Deks, Opts) -> {ok, Acc} |
+                                                      {error, _, Acc}
           when Path :: string(),
                Fun :: fun ( (erlang:iodata(), Acc) -> {ok, Acc} | {error, _} ),
                Acc :: term(),
@@ -360,20 +361,23 @@ read_file_chunks(Path, Fun, AccInit, Deks, Opts) ->
         end,
     Finalize = fun ({init, Acc}) -> {ok, Acc};
                    ({process, DecrState, Acc}) ->
-                       maybe
-                            ok ?= file_decrypt_finish(DecrState),
-                            {ok, Acc}
+                       case file_decrypt_finish(DecrState) of
+                           ok -> {ok, Acc};
+                           {error, R} -> {error, R, Acc}
                        end
+               end,
+    FinalAcc = fun ({init, Acc}) -> Acc;
+                   ({process, _, Acc}) -> Acc
                end,
     case misc:fold_file(Path, F, {init, AccInit}, ReadChunkSize) of
         {ok, ResAcc} ->
             Finalize(ResAcc);
         {unhandled_data, _Data, ResAcc} ->
-            Finalize(ResAcc),
-            {error, invalid_file_encryption};
+            _ = Finalize(ResAcc),
+            {error, invalid_file_encryption, FinalAcc(ResAcc)};
         {error, Reason, ResAcc} ->
-            Finalize(ResAcc),
-            {error, Reason}
+            _ = Finalize(ResAcc),
+            {error, Reason, FinalAcc(ResAcc)}
     end.
 
 -spec file_decrypt_init(binary(),

@@ -232,7 +232,8 @@ stream_logs(LogF, LogPath, ConsumeFn, GetDSFn, LoggerFn) ->
                 case cb_crypto:read_file_chunks(FPath, Fn, {[], 0}, DS, Opts) of
                     {ok, {Rest, _Size}} ->
                         ConsumeFn(Rest);
-                    {error, _} = Error ->
+                    {error, _, {Rest, _Size}} = Error ->
+                        ConsumeFn(Rest),
                         LoggerFn("Read file chunks failure for file: ~s: error:"
                                  " ~p",
                                  [FPath, Error]),
