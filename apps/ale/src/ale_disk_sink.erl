@@ -432,13 +432,36 @@ do_open_file(Path, #file_info{inode = Inode}) ->
             Error
     end.
 
-compress_unencrypted(false = _IsEncrypted, Name, UncompressPth, CompressPth) ->
-    time_stat(Name, compression_time,
-              fun () ->
-                      compress_file(UncompressPth, CompressPth)
-              end);
-compress_unencrypted(true = _IsEncrypted, _, _, _) ->
-    ok.
+compress(false, _Name, UncompressPth) ->
+    CompressPth = UncompressPth ++ ".gz",
+    compress_file(UncompressPth, CompressPth);
+compress(true, Name, UncompressPth) ->
+    CompressPth = UncompressPth ++ ".tmp",
+    try
+        maybe
+            %% Note that it is possible that DS is not the same DS that was used
+            %% to encrypt this file. If active key has changed, reencrypt_file
+            %% will use the new key to reencrypt the file. If encryption has
+            %% been disabled, reencrypt_file will continue using old key
+            %% to reencrypt the file (we should not decrypt this file in this
+            %% case).
+            DS = ale:get_sink_ds(Name),
+            Opts = #{compression => {zlib, 5, none},
+                     ignore_incomplete_last_chunk => true},
+            ok ?= cb_crypto:reencrypt_file(UncompressPth, CompressPth, DS,
+                                           Opts),
+            ok ?= file:rename(CompressPth, UncompressPth)
+        else
+            {error, key_not_found} ->
+                %% We don't have a key for this file anymore, so we can't
+                %% decrypt it. We should not remove it either, so we do nothing.
+                ok;
+            {error, Reason} ->
+                {error, Reason}
+        end
+    after
+        (catch file:delete(CompressPth))
+    end.
 
 maybe_compress_post_rotate(#worker_state{sink_name = Name,
                                          path = Path,
@@ -446,10 +469,12 @@ maybe_compress_post_rotate(#worker_state{sink_name = Name,
                                          rotation_compress = true})
   when NumFiles > 1 ->
     UncompressedPath = Path ++ ".1",
-    CompressedPath = Path ++ ".1.gz",
 
     IsEncrypted = ale:is_file_encrypted(UncompressedPath),
-    compress_unencrypted(IsEncrypted, Name, UncompressedPath, CompressedPath);
+    time_stat(Name, compression_time,
+              fun () ->
+                      compress(IsEncrypted, Name, UncompressedPath)
+              end);
 maybe_compress_post_rotate(_) ->
     ok.
 

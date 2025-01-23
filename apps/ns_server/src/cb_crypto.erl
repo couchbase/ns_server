@@ -68,7 +68,8 @@
          get_encryption_method/2,
          get_dek_kind_lifetime/2,
          get_dek_rotation_interval/2,
-         get_drop_keys_timestamp/2
+         get_drop_keys_timestamp/2,
+         reencrypt_file/4
         ]).
 
 -export_type([dek_snapshot/0, encryption_type/0]).
@@ -140,6 +141,86 @@ atomic_write_file(Path, Bytes, DekSnapshot, Opts) when is_binary(Bytes) ->
           encrypt_to_file(IODevice, Bytes, MaxChunkSize, Compression, DekSnapshot)
       end).
 
+-spec reencrypt_file(string(), string(), #dek_snapshot{},
+                     #{compression => compression_cfg(),
+                       ignore_incomplete_last_chunk => boolean()}) ->
+          ok | {error, term()}.
+%% Note1: This function does not support reencryption with different chunk size,
+%% because it is not really needed at this point.
+%% When compression is used, it is possible to achieve bigger chunks by using
+%% Flush == none. In this case zlib will accumulate data in its internal buffer.
+%% Note2: This function assumes that the file is encrypted
+%% Note3: If the file is encrypted with historic key, current active key will be
+%% used for reencryption.
+%% Note4: If DS does not have active key, the file will be reencrypted with the
+%% same key as before.
+reencrypt_file(FromPath, ToPath, DS, ToOpts) ->
+    DSRes =
+        case get_dek_id(DS) of
+            undefined -> %% Encryption is disabled, but we should continue using
+                         %% the same key for reencryption.
+                case get_file_dek_ids(FromPath) of
+                    {ok, [undefined]} -> %% File is not encrypted
+                        {error, unknown_magic};
+                    {ok, []} ->
+                        {error, enoent};
+                    {ok, [KeyId]} ->
+                        case find_key(KeyId, DS) of
+                            {ok, Dek} ->
+                                %% We don't need other keys actually
+                                {ok, create_deks_snapshot(Dek, [Dek], DS)};
+                            {error, _} ->
+                                {error, key_not_found}
+                        end
+                end;
+            _ -> %% There is an active key, we can use it for reencryption
+                {ok, DS}
+        end,
+    case DSRes of
+        {ok, DSToUse} ->
+            misc:atomic_write_file(
+              ToPath,
+              fun (IO) ->
+                  reencrypt_file_to_iodevice(IO, FromPath, DSToUse, ToOpts)
+              end);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+reencrypt_file_to_iodevice(IODevice, FromPath, DS, Opts) ->
+    IgnoreIncomplete = maps:get(ignore_incomplete_last_chunk, Opts, false),
+    {Header, State} = file_encrypt_init(DS, Opts),
+    case file:write(IODevice, Header) of
+        ok ->
+            Res = read_file_chunks(
+                    FromPath,
+                    fun (Data, StateAcc) ->
+                        {Chunk, StateAcc1} = file_encrypt_chunk(Data,
+                                                                StateAcc),
+                        case misc:iolist_is_empty(Chunk) of
+                            true ->
+                                {ok, StateAcc1};
+                            false ->
+                                maybe
+                                    ok ?= file:write(IODevice, Chunk),
+                                    {ok, StateAcc1}
+                                end
+                        end
+                    end, State, DS,
+                    #{read_chunk_size => 65536,
+                      ignore_incomplete_last_chunk => IgnoreIncomplete}),
+            case Res of
+                {ok, FinalState} ->
+                    FinalData = file_encrypt_finish(FinalState),
+                    file:write(IODevice, FinalData);
+                {error, Reason, FinalState} ->
+                    _ = file_encrypt_finish(FinalState),
+                    {error, Reason}
+            end;
+        {error, Reason} ->
+            _ = file_encrypt_finish(State),
+            {error, Reason}
+    end.
 
 -spec file_encrypt_init(#dek_snapshot{}) ->
           {binary(), #file_encr_state{}}.
@@ -340,9 +421,11 @@ read_file(Path, DekKind) ->
                Fun :: fun ( (erlang:iodata(), Acc) -> {ok, Acc} | {error, _} ),
                Acc :: term(),
                Deks :: #dek_snapshot{},
-               Opts :: #{read_chunk_size => pos_integer()}.
+               Opts :: #{read_chunk_size => pos_integer(),
+                         ignore_incomplete_last_chunk => boolean()}.
 read_file_chunks(Path, Fun, AccInit, Deks, Opts) ->
     ReadChunkSize = maps:get(read_chunk_size, Opts, 65536),
+    IgnoreIncomplete = maps:get(ignore_incomplete_last_chunk, Opts, false),
     F = fun (Data, {init, Acc}) ->
                 case file_decrypt_init(Data, Deks) of
                     {ok, {EncrState, Rest}} ->
@@ -372,6 +455,11 @@ read_file_chunks(Path, Fun, AccInit, Deks, Opts) ->
     case misc:fold_file(Path, F, {init, AccInit}, ReadChunkSize) of
         {ok, ResAcc} ->
             Finalize(ResAcc);
+        {unhandled_data, _Data, ResAcc} when IgnoreIncomplete ->
+            case Finalize(ResAcc) of
+                {ok, Acc} -> {ok, Acc};
+                {error, incomplete_data, Acc} -> {ok, Acc}
+            end;
         {unhandled_data, _Data, ResAcc} ->
             _ = Finalize(ResAcc),
             {error, invalid_file_encryption, FinalAcc(ResAcc)};
@@ -1071,6 +1159,76 @@ validate_encr_file_test() ->
         ?assertNot(validate_encr_file(Path))
     after
         file:delete(Path)
+    end.
+
+reencrypt_file_test_() ->
+    Bin = rand:bytes(10 * 1024 * 1024),
+    DS = generate_test_deks(),
+    {_, AllDeks} = get_all_deks(DS),
+    DSEmptyActive = create_deks_snapshot(undefined, AllDeks, undefined),
+    FromOpts = [#{max_chunk_size => N} || N <- [293, 1031, 7829, 1024 * 1024,
+                                                1024 * 1024 * 100]],
+    ToOpts = [#{compression => undefined},
+              #{compression => {zlib, 1, full}},
+              #{compression => {zlib, 5, none}}],
+    [?_test(reencrypt_file_test_parametrized(Bin, From, To, DS, ReencryptDS))
+     || From <- FromOpts, To <- ToOpts, ReencryptDS <- [DS, DSEmptyActive]].
+
+reencrypt_file_test_parametrized(Bin, FromOpts, ToOpts, DS1, DS2) ->
+    Path1 = path_config:tempfile("cb_crypto_reencrypt_file_test1", ".tmp"),
+    Path2 = path_config:tempfile("cb_crypto_reencrypt_file_test2", ".tmp"),
+    try
+        ok = atomic_write_file(Path1, Bin, DS1, FromOpts),
+        ok = reencrypt_file(Path1, Path2, DS2, ToOpts),
+        {decrypted, Bin} = read_file(Path2, DS2)
+    after
+        file:delete(Path1),
+        file:delete(Path2)
+    end.
+
+reencrypt_file_negative_cases_test() ->
+    DS = generate_test_deks(),
+    {_, AllDeks1} = get_all_deks(DS),
+    DSNoActive = create_deks_snapshot(undefined, AllDeks1, DS),
+    WrongDS = generate_test_deks(),
+    {_, AllDeks2} = get_all_deks(WrongDS),
+    WrongDSNoActive = create_deks_snapshot(undefined, AllDeks2, WrongDS),
+    Path1 = path_config:tempfile("cb_crypto_reencrypt_file_test1", ".tmp"),
+    Path2 = path_config:tempfile("cb_crypto_reencrypt_file_test2", ".tmp"),
+    Opts = #{compression => undefined},
+
+    try
+        {error, enoent} = reencrypt_file(Path1, Path2, DS, Opts),
+        {error, enoent} = reencrypt_file(Path1, Path2, DSNoActive, Opts),
+
+        Bin = rand:bytes(1024 * 1024),
+        ok = atomic_write_file(Path1, Bin, DS),
+        {error, key_not_found} = reencrypt_file(Path1, Path2, WrongDS, Opts),
+        {error, key_not_found} = reencrypt_file(Path1, Path2, WrongDSNoActive,
+                                                Opts),
+
+        %% incomplete last chunk
+        {ok, H} = file:open(Path1, [append, raw, binary]),
+        L = ?IV_LEN + ?TAG_LEN + 100,
+        ok = file:write(H, <<L:32/big-integer, (rand:bytes(L - 1))/binary>>),
+        ok = file:close(H),
+        {error, invalid_file_encryption} = reencrypt_file(Path1, Path2, DS,
+                                                          Opts),
+        ok = reencrypt_file(Path1, Path2, DS,
+                            Opts#{ignore_incomplete_last_chunk => true}),
+
+        ok = misc:atomic_write_file(Path1, Bin), %% unencrypted
+        {error, unknown_magic} = reencrypt_file(Path1, Path2, WrongDS, Opts),
+        {error, unknown_magic} = reencrypt_file(Path1, Path2, WrongDSNoActive,
+                                                Opts),
+
+        ok = misc:atomic_write_file(Path1, <<0,1>>), %% data shorter than magic
+        {error, unknown_magic} = reencrypt_file(Path1, Path2, WrongDS, Opts),
+        {error, unknown_magic} = reencrypt_file(Path1, Path2, WrongDSNoActive,
+                                                Opts)
+    after
+        file:delete(Path1),
+        file:delete(Path2)
     end.
 
 generate_test_deks() ->
