@@ -78,15 +78,17 @@ close(ReplyChannel) ->
 %%%===================================================================
 
 validate_header_connection(Req) ->
-    case mochiweb_request:get_header_value("Connection", Req) of
-        "Upgrade" -> ok;
-        C -> {error, {bad_connection, C}}
+    Connection = mochiweb_request:get_header_value("Connection", Req),
+    case string:equal(Connection, "upgrade", true) of
+        true -> ok;
+        false -> {error, {bad_connection, Connection}}
     end.
 
 validate_header_upgrade(Req) ->
-    case mochiweb_request:get_header_value("Upgrade", Req) of
-        "websocket" -> ok;
-        U -> {error, {bad_upgrade, U}}
+    Upgrade = mochiweb_request:get_header_value("Upgrade", Req),
+    case string:equal(Upgrade, "websocket", true) of
+        true -> ok;
+        false -> {error, {bad_upgrade, Upgrade}}
     end.
 
 validate_websocket_version(Req) ->
