@@ -100,7 +100,8 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
           encryptWith: 'nodeSecretManager',
           encryptWithKeyId: null,
           activeKey: "",
-          keyCertPath: "",
+          keyPath: "",
+          certPath: "",
           keyPassphrase: "",
           host: "",
           port: null
