@@ -250,7 +250,6 @@ class MnHelperServiceClass {
 
     var valueChanges =  new Subject();
     group.valueChanges.subscribe(v => valueChanges.next(v));
-    // group.valueChanges.subscribe(console.log)
 
     valueChanges
       .pipe(withLatestFrom(rawUrlParam),

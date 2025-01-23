@@ -82,8 +82,8 @@ const ModalProvider = ({ children }) => {
       });
 
       // Handle resolvers
-      if (config.resolvers) {
-        const resolverPromises = Object.entries(config.resolvers).map(
+      if (config.resolve) {
+        const resolverPromises = Object.entries(config.resolve).map(
           async ([key, resolver]) => {
             try {
               const result = await resolver();

@@ -11,7 +11,7 @@ licenses/APL2.txt.
 import _ from 'lodash';
 import mnPendingQueryKeeper from './mn_pending_query_keeper.js';
 import { UIRouter } from '../mn.react.router.js';
-
+import { BehaviorSubject } from 'rxjs';
 const mnHelper = {
   wrapInFunction,
   calculateMaxMemorySize,
@@ -31,11 +31,11 @@ function getEndings(length) {
 }
 
 function counterSpinner() {
-  let counter = 0;
+  const counter = new BehaviorSubject(0);
   return {
-    increase: () => (counter++),
-    decrease: () => (counter > 0 && counter--),
-    value: () => !!counter
+    increase: () => counter.next(counter.getValue() + 1),
+    decrease: () => counter.next(counter.getValue() - 1),
+    value: () => counter
   };
 }
 

@@ -3468,8 +3468,17 @@ rect.selection {
 .mn-dropdown .dropdown-menu {
   display: none;
 }
-.mn-dropdown.open .dropdown-menu {
+.mn-dropdown.open .dropdown-menu,
+.mn-dropdown.show .dropdown-menu {
   display: block;
+}
+
+/*
+ * The dropdown menu is positioned 3px above the toggle button
+ * when the dropdown is open via react-bootstrap.
+ */
+.mn-dropdown.show .dropdown-menu {
+  margin-top: -3px;
 }
 
 .mn-dropdown inner-header,
@@ -3491,6 +3500,12 @@ rect.selection {
   height: 32px;
   min-width: 248px;
   font-size: 0.875rem;
+  background-color: #fff;
+  color: #000;
+  box-shadow: none;
+}
+.mn-dropdown .select:focus {
+  box-shadow: none !important;
 }
 .mn-dropdown .select:after {
   font-family: FontAwesome;
@@ -3531,7 +3546,8 @@ mn-dropdown-item {
   border-bottom: 1px solid #d1d1d1;
   line-height: 1.3;
 }
-mn-dropdown-item:hover {
+mn-dropdown-item:hover,
+.dropdown-item:hover {
   background-color: #f6fafd;
 }
 
@@ -3545,7 +3561,8 @@ mn-dropdown-item:hover {
 .scenario-dropdown inner-body.body-shorter {
   max-height: calc(100vh - 344px);
 }
-.scenario-dropdown mn-dropdown-item {
+.scenario-dropdown mn-dropdown-item,
+.scenario-dropdown .dropdown-item {
   background-color: white;
   padding: 0.5rem 1rem;
   cursor: pointer;
@@ -3555,20 +3572,24 @@ mn-dropdown-item:hover {
   border-width: 0;
   line-height: 1;
 }
-.scenario-dropdown mn-dropdown-item:last-child {
+.scenario-dropdown mn-dropdown-item:last-child,
+.scenario-dropdown .dropdown-item:last-child {
   margin-bottom: 0.5rem;
 }
-.scenario-dropdown mn-dropdown-item:hover {
+.scenario-dropdown mn-dropdown-item:hover,
+.scenario-dropdown .dropdown-item:hover {
   background-color: #f6fafd;
 }
-.scenario-dropdown mn-dropdown-item p:nth-child(1) {
+.scenario-dropdown mn-dropdown-item p:nth-child(1),
+.scenario-dropdown .dropdown-item p:nth-child(1) {
   font-size: 0.875rem;
   font-weight: 600;
   color: #000;
   margin: 0 0 0.125rem 0;
   line-height: 1.2;
 }
-.scenario-dropdown mn-dropdown-item p:nth-child(2) {
+.scenario-dropdown mn-dropdown-item p:nth-child(2),
+.scenario-dropdown .dropdown-item p:nth-child(2) {
   font-size: 0.688rem;
   font-weight: 400;
   color: #333;
@@ -3586,11 +3607,13 @@ mn-dropdown-item:hover {
   background-color: #f6fafd;
   padding: 0.5rem 0.5rem;
 }
-mn-dropdown-item:hover .scenario-controls {
+mn-dropdown-item:hover .scenario-controls,
+.dropdown-item:hover .scenario-controls {
   display: block;
   opacity: 0.7;
 }
-mn-dropdown-item .scenario-controls:hover {
+mn-dropdown-item .scenario-controls:hover,
+.dropdown-item .scenario-controls:hover {
   opacity: 0.9;
 }
 .scenario-controls .icon {

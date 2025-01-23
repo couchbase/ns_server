@@ -13,6 +13,7 @@ import { MnSelect } from '../components/directives/mn_select/mn_select.jsx';
 import { MnSearch } from '../components/directives/mn_search/mn_search.jsx';
 import { MnGsiTable } from './mn_gsi_table_directive.jsx';
 import mnPermissions from '../components/mn_permissions.js';
+import { MnHelperReactService } from "../mn.helper.react.service.js";
 
 class MnGsiComponent extends MnLifeCycleHooksToStream {
   constructor(props) {
@@ -33,11 +34,8 @@ class MnGsiComponent extends MnLifeCycleHooksToStream {
     vm.setIndexesView = setIndexesView;
     vm.onFilterChange = onFilterChange;
 
-    mnPermissions.export
-      .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe((rbac) => {
-        this.setState({rbac});
-      });
+    vm.rbac = mnPermissions.export;
+    MnHelperReactService.async(vm, "rbac");
 
     activate();
 

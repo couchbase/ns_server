@@ -34,7 +34,7 @@ class MnSelect extends MnLifeCycleHooksToStream {
      * @returns {string}
      */
     function defaultValuesMapping(option) {
-      if (vm.props.capitalize && angular.isString(option) && option) {
+      if (vm.props.capitalize && typeof option === 'string' && option) {
         return option.charAt(0).toUpperCase() + option.slice(1);
       }
 

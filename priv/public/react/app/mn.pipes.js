@@ -9,8 +9,8 @@ licenses/APL2.txt.
 */
 
 // import {Pipe} from '@angular/core';
-// import {DecimalPipe} from '@angular/common';
-// import {is} from 'ramda';
+import {DecimalPipe} from '@angular/common';
+import {is} from 'ramda';
 // import {map} from 'rxjs/operators';
 
 // import {MnHelperService} from './mn.helper.service.js';
@@ -23,17 +23,17 @@ export {
   // MnBytesToMB,
   // MnObjectKeys,
   MnPrettyVersion,
-  // MnFormatProgressMessage,
+  MnFormatProgressMessage,
   // MnFormatStorageModeError,
-  // MnPrepareQuantity,
+  MnPrepareQuantity,
   // MnFormatUptime,
-  // MnFormatQuantity,
+  MnFormatQuantity,
   // MnFormatWarmupMessage,
   // MnBucketsType,
   // MnConflictResolutionType,
   // MnTruncate,
-  // MnTruncateTo3Digits,
-  // MnFormatServices,
+  MnTruncateTo3Digits,
+  MnFormatServices,
   // MnOrderServices,
   // MnStripPortHTML
 }
@@ -58,24 +58,22 @@ export {
 //   }
 // }
 
-// class MnTruncateTo3Digits {
-//   static get annotations() { return [
-//     new Pipe({name: "mnTruncateTo3Digits"})
-//   ]}
+class MnTruncateTo3DigitsClass {
+  transform(value, minScale, roundMethod) {
+    if (!value) {
+      return 0;
+    }
 
-//   transform(value, minScale, roundMethod) {
-//     if (!value) {
-//       return 0;
-//     }
+    let scale = [100, 10, 1, 0.1, 0.01, 0.001].find(v => value >= v) || 0.0001;
+    if (minScale != undefined && minScale > scale) {
+      scale = minScale;
+    }
+    scale = 100 / scale;
+    return Math[roundMethod || "round"](value * scale)/scale;
+  }
+}
 
-//     let scale = [100, 10, 1, 0.1, 0.01, 0.001].find(v => value >= v) || 0.0001;
-//     if (minScale != undefined && minScale > scale) {
-//       scale = minScale;
-//     }
-//     scale = 100 / scale;
-//     return Math[roundMethod || "round"](value * scale)/scale;
-//   }
-// }
+const MnTruncateTo3Digits = new MnTruncateTo3DigitsClass();
 
 class MnParseVersionClass {
   transform(str) {
@@ -181,39 +179,35 @@ class MnPrettyVersionClass {
 const MnPrettyVersion = new MnPrettyVersionClass(MnParseVersion);
 
 
-// class MnFormatProgressMessage {
-//   static get annotations() { return [
-//     new Pipe({name: "mnFormatProgressMessage"})
-//   ]}
+class MnFormatProgressMessageClass {
+  addNodeCount(perNode) {
+    var serversCount = Object.keys(perNode || {}).length;
+    return serversCount + " " + (serversCount === 1 ? 'node' : 'nodes');
+  }
 
-//   addNodeCount(perNode) {
-//     var serversCount = Object.keys(perNode || {}).length;
-//     return serversCount + " " + (serversCount === 1 ? 'node' : 'nodes');
-//   }
+  transform(task, includeRebalance) {
+    switch (task.type) {
+    case "indexer":
+      return "building view index " + task.bucket + "/" + task.designDocument;
+    case "global_indexes":
+      return "building index " + task.index  + " on bucket " + task.bucket;
+    case "view_compaction":
+      return "compacting view index " + task.bucket + "/" + task.designDocument;
+    case "bucket_compaction":
+      return "compacting bucket " + task.bucket;
+    case "loadingSampleBucket":
+      return "loading sample: " + task.bucket;
+    case "orphanBucket":
+      return "orphan bucket: " + task.bucket;
+    case "clusterLogsCollection":
+      return "collecting logs from " + this.addNodeCount(task.perNode);
+    case "rebalance":
+      return !!includeRebalance;
+    }
+  }
+}
 
-//   transform(task) {
-//     switch (task.type) {
-//     case "indexer":
-//       return "building view index " + task.bucket + "/" + task.designDocument;
-//     case "global_indexes":
-//       return "building index " + task.index  + " on bucket " + task.bucket;
-//     case "view_compaction":
-//       return "compacting view index " + task.bucket + "/" + task.designDocument;
-//     case "bucket_compaction":
-//       return "compacting bucket " + task.bucket;
-//     case "loadingSampleBucket":
-//       return "loading sample: " + task.bucket;
-//     case "orphanBucket":
-//       return "orphan bucket: " + task.bucket;
-//     case "clusterLogsCollection":
-//       return "collecting logs from " + this.addNodeCount(task.perNode);
-//     case "rebalance":
-//       return (task.subtype == 'gracefulFailover') ?
-//         "failing over 1 node" :
-//         ("rebalancing " + this.addNodeCount(task.perNode));
-//     }
-//   }
-// }
+const MnFormatProgressMessage = new MnFormatProgressMessageClass();
 
 
 // class MnFormatStorageModeError {
@@ -242,35 +236,31 @@ const MnPrettyVersion = new MnPrettyVersionClass(MnParseVersion);
 
 
 
-// class MnPrepareQuantity {
-//   static get annotations() { return [
-//     new Pipe({name: "mnPrepareQuantity"})
-//   ]}
+class MnPrepareQuantityClass {
+  transform(value, K) {
+    K = K || 1024;
 
-//   transform(value, K) {
-//     K = K || 1024;
+    var M = K*K;
+    var G = M*K;
+    var T = G*K;
 
-//     var M = K*K;
-//     var G = M*K;
-//     var T = G*K;
+    if (K !== 1024 && K !== 1000) {
+      throw new Error("Unknown number system");
+    }
 
-//     if (K !== 1024 && K !== 1000) {
-//       throw new Error("Unknown number system");
-//     }
+    var t = ([[T,'T'],[G,'G'],[M,'M'],[K,'K']]).find(function (t) {
+      return value >= t[0];
+    }) || [1, ''];
 
-//     var t = ([[T,'T'],[G,'G'],[M,'M'],[K,'K']]).find(function (t) {
-//       return value >= t[0];
-//     }) || [1, ''];
+    if (K === 1024) {
+      t[1] += t[1] ? 'iB' : 'B';
+    }
 
-//     if (K === 1024) {
-//       t[1] += t[1] ? 'iB' : 'B';
-//     }
+    return t;
+  }
+}
 
-//     return t;
-//   }
-// }
-
-
+const MnPrepareQuantity = new MnPrepareQuantityClass();
 
 // class MnFormatUptime {
 //   static get annotations() { return [
@@ -302,38 +292,30 @@ const MnPrettyVersion = new MnPrettyVersionClass(MnParseVersion);
 
 
 
-// class MnFormatQuantity {
-//   static get annotations() { return [
-//     new Pipe({name: "mnFormatQuantity"})
-//   ]}
+class MnFormatQuantityClass {
+  constructor(mnPrepareQuantity, decimalPipe, mnTruncateTo3Digits) {
+    this.mnPrepareQuantity = mnPrepareQuantity;
+    this.decimalPipe = decimalPipe;
+    this.mnTruncateTo3Digits = mnTruncateTo3Digits;
+  }
 
-//   static get parameters() { return [
-//     MnPrepareQuantity,
-//     DecimalPipe,
-//     MnTruncateTo3Digits
-//   ]}
+  transform(value, numberSystem, spacing) {
+    if (!value && !is(Number, value)) {
+      return value;
+    }
+    if (!spacing) {
+      spacing = '';
+    }
+    if (numberSystem === 1000 && value <= 1100 && value % 1 === 0) { // MB-11784
+      return value;
+    }
 
-//   constructor(mnPrepareQuantity, decimalPipe, mnTruncateTo3Digits) {
-//     this.mnPrepareQuantity = mnPrepareQuantity;
-//     this.decimalPipe = decimalPipe;
-//     this.mnTruncateTo3Digits = mnTruncateTo3Digits;
-//   }
+    var t = this.mnPrepareQuantity.transform(value, numberSystem);
+    return [this.mnTruncateTo3Digits.transform(value/t[0], undefined, 'floor'), spacing, t[1]].join('');
+  }
+}
 
-//   transform(value, numberSystem, spacing) {
-//     if (!value && !is(Number, value)) {
-//       return value;
-//     }
-//     if (!spacing) {
-//       spacing = '';
-//     }
-//     if (numberSystem === 1000 && value <= 1100 && value % 1 === 0) { // MB-11784
-//       return value;
-//     }
-
-//     var t = this.mnPrepareQuantity.transform(value, numberSystem);
-//     return [this.mnTruncateTo3Digits.transform(value/t[0], undefined, 'floor'), spacing, t[1]].join('');
-//   }
-// }
+const MnFormatQuantity = new MnFormatQuantityClass(MnPrepareQuantity, DecimalPipe, MnTruncateTo3Digits);
 
 // class MnFormatWarmupMessage {
 //   static get annotations() { return [
@@ -389,25 +371,23 @@ const MnPrettyVersion = new MnPrettyVersionClass(MnParseVersion);
 // }
 
 
-// class MnFormatServices {
-//   static get annotations() { return [
-//     new Pipe({name: "mnFormatServices"})
-//   ]}
+class MnFormatServicesClass {
+  transform(service) {
+    switch (service) {
+      case 'kv': return 'Data';
+      case 'query':
+      case 'n1ql': return 'Query';
+      case 'index': return 'Index';
+      case 'fts': return 'Search';
+      case 'eventing': return 'Eventing';
+      case 'cbas': return 'Analytics';
+      case 'backup': return 'Backup';
+      default: return service;
+    }
+  }
+}
 
-//   transform(service) {
-//     switch (service) {
-//       case 'kv': return 'Data';
-//       case 'query':
-//       case 'n1ql': return 'Query';
-//       case 'index': return 'Index';
-//       case 'fts': return 'Search';
-//       case 'eventing': return 'Eventing';
-//       case 'cbas': return 'Analytics';
-//       case 'backup': return 'Backup';
-//       default: return service;
-//     }
-//   }
-// }
+const MnFormatServices = new MnFormatServicesClass();
 
 // class MnOrderServices {
 //   static get annotations() { return [

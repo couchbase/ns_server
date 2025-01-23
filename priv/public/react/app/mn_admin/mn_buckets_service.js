@@ -16,7 +16,7 @@ const mnBucketsService = {
   getBucketsByType,
   clearCache,
   findMoxiBucket,
-  export: new BehaviorSubject({})
+  export: new BehaviorSubject({details: {}})
 };
 let cache;
 

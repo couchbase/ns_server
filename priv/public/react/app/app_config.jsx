@@ -3,10 +3,8 @@ import { UIView } from "@uirouter/react";
 import { MnElementCraneProvider } from "./mn.element.crane";
 import { MnLifeCycleHooksToStream }  from "./mn.core";
 import { MnHelperReactService } from "./mn.helper.react.service";
-import { takeUntil } from "rxjs/operators";
 import { UIRouter } from "./mn.react.router";
 import mnPools from "components/mn_pools";
-import mnHelper from "components/mn_helper";
 import mnPoolDefault from "components/mn_pool_default";
 import mnPermissions from "components/mn_permissions";
 import mnPendingQueryKeeper from "components/mn_pending_query_keeper";
@@ -26,21 +24,21 @@ class AppComponent extends MnLifeCycleHooksToStream {
   }
 
   componentDidMount() {
-    MnHelperReactService.mnGlobalSpinnerFlag
-      .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(mnGlobalSpinnerFlag => {
-        this.setState({ mnGlobalSpinnerFlag });
-      });
+    this.mnGlobalSpinnerFlag = MnHelperReactService.mnGlobalSpinnerFlag;
+    MnHelperReactService.async(this, "mnGlobalSpinnerFlag");
   }
 
   render() {
+    const vm = this;
+    const { mnGlobalSpinnerFlag } = vm.state;
+
     return <>
       <div className="root-container">
           <MnElementCraneProvider>
               <UIView />
           </MnElementCraneProvider>
       </div>
-      {this.state.mnGlobalSpinnerFlag && <div className="global-spinner"></div>}
+      {mnGlobalSpinnerFlag && <div className="global-spinner"></div>}
     </>;
   }
 }
@@ -103,42 +101,42 @@ function isThisTransitionBetweenTabs(trans) {
   return toName.indexOf(fromName) === -1 && fromName.indexOf(toName) === -1;
 }
 
-UIRouter.transitionService.onFinish({
-  from: "app.admin.**",
-  to: "app.admin.**"
-}, function (trans) {
-  if (isThisTransitionBetweenTabs(trans)) {
-    mnHelper.mainSpinnerCounter.decrease();
-  }
-});
-
-UIRouter.transitionService.onError({
-  from: "app.admin.**",
-  to: "app.admin.**"
-}, function (trans) {
-  if (isThisTransitionBetweenTabs(trans)) {
-    mnHelper.mainSpinnerCounter.decrease();
-  }
-});
-
-// TODO: fix this
-// UIRouter.transitionService.onBefore({
+// UIRouter.transitionService.onFinish({
 //   from: "app.admin.**",
 //   to: "app.admin.**"
 // }, function (trans) {
-//   var $uibModalStack = trans.injector().get('$uibModalStack');
-//   var isModalOpen = !!$uibModalStack.getTop();
-
-//   if (MnHelperReactService.mnGlobalSpinnerFlag.getValue()) {
-//     return false;
+//   if (isThisTransitionBetweenTabs(trans)) {
+//     mnHelper.mainSpinnerCounter.decrease();
 //   }
-//   if (!isModalOpen && isThisTransitionBetweenTabs(trans)) {
-//     //cancel tabs specific queries in case toName is not child of fromName and vise versa
-//     mnPendingQueryKeeper.cancelTabsSpecificQueries();
-//     mnHelper.mainSpinnerCounter.increase();
-//   }
-//   return !isModalOpen;
 // });
+
+// TODO: review this errors happens during transaction to app.admin.gsi from overview
+// UIRouter.transitionService.onError({
+//   from: "app.admin.**",
+//   to: "app.admin.**"
+// }, function (trans) {
+//   if (isThisTransitionBetweenTabs(trans)) {
+//     mnHelper.mainSpinnerCounter.decrease();
+//   }
+// });
+
+UIRouter.transitionService.onBefore({
+  from: "app.admin.**",
+  to: "app.admin.**"
+}, function (trans) {
+  const dialogElement = document.querySelector('[role="dialog"]');
+  const isModalOpen = !!dialogElement;
+
+  if (MnHelperReactService.mnGlobalSpinnerFlag.getValue()) {
+    return false;
+  }
+  if (!isModalOpen && isThisTransitionBetweenTabs(trans)) {
+    //cancel tabs specific queries in case toName is not child of fromName and vise versa
+    mnPendingQueryKeeper.cancelTabsSpecificQueries();
+    // mnHelper.mainSpinnerCounter.increase();
+  }
+  return !isModalOpen;
+});
 
 UIRouter.transitionService.onBefore({
   from: "app.auth",

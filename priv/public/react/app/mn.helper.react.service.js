@@ -16,6 +16,7 @@ import mitt from 'mitt';
 
 class MnHelperReactServiceClass {
   mnGlobalSpinnerFlag = new BehaviorSubject(false);
+  tasks = new BehaviorSubject(null);
   rootScopeEmitter = mitt();
   id() {
     return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
@@ -38,9 +39,9 @@ class MnHelperReactServiceClass {
         setTimeout(() => component.input.focus(), 0);
       });
   }
-  valueChanges(ReactReactiveFormValueChanges) {
+  valueChanges(reactReactiveFormValueChanges) {
     const valueChanges = new Subject();
-    ReactReactiveFormValueChanges.subscribe(value => {
+    reactReactiveFormValueChanges.subscribe(value => {
       valueChanges.next(value);
     });
     return valueChanges;
