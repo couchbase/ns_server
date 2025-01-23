@@ -71,7 +71,13 @@ handle_post(Req) ->
                   [] -> ok;
                   _ ->
                       Props = lists:map(fun ({[K], V}) -> {K, V} end, Params),
-                      set_config(Props)
+                      Values = set_config(Props),
+
+                      %% Convert to json, to avoid groups getting formatted as
+                      %% lists of integers
+                      {AuditJson} = menelaus_web_settings2:prepare_json(
+                                      [], params(), fun type_spec/1, Values),
+                      ns_audit:user_activity_settings(Req, AuditJson)
               end,
               handle_get(Req2)
       end, [], params(), fun type_spec/1, get_config(), [], Req).
@@ -80,7 +86,8 @@ set_config(Changes) ->
     OldConfig = get_config(),
 
     NewConfig = misc:update_proplist(OldConfig, Changes),
-    ns_config:set(?CONFIG_KEY, NewConfig).
+    ns_config:set(?CONFIG_KEY, NewConfig),
+    NewConfig.
 
 params() ->
     [{"enabled",

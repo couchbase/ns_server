@@ -89,7 +89,8 @@
          delete_encryption_secret/2,
          rotate_encryption_secret/2,
          delete_historical_encryption_key/3,
-         encryption_at_rest_drop_deks/2
+         encryption_at_rest_drop_deks/2,
+         user_activity_settings/2
         ]).
 
 -export([start_link/0, stats/0]).
@@ -507,7 +508,9 @@ code(delete_historical_encryption_key) ->
 code(encryption_at_rest_drop_deks) ->
     8283;
 code(modify_jwt_settings) ->
-    8284.
+    8284;
+code(user_activity_settings) ->
+    8285.
 
 send_to_memcached(ParentPID, {Code, EncodedBody, IsSync}) ->
     case (catch ns_memcached_sockets_pool:executing_on_socket(
@@ -1133,6 +1136,9 @@ password_rotated(Req) ->
 
 app_telemetry_settings(Req, Values) ->
     put(app_telemetry_settings, Req, [{settings, {json, {Values}}}]).
+
+user_activity_settings(Req, Values) ->
+    put(user_activity_settings, Req, [{settings, {json, {Values}}}]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

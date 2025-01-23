@@ -1770,6 +1770,37 @@
               "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid": ""
           }
+      },
+      {
+          "id": 8285,
+          "name": "modify user activity settings",
+          "description": "User activity settings were modified",
+          "sync": false,
+          "enabled": true,
+          "filtering_permitted": false,
+          "mandatory_fields": {
+              "timestamp": "",
+              "real_userid": {
+                  "domain": "",
+                  "user": ""
+              },
+              "remote": {
+                  "ip": "",
+                  "port": 1
+              },
+              "local": {
+                  "ip": "",
+                  "port": 1
+              },
+              "settings": ""
+          },
+          "optional_fields": {
+              "authenticated_userid": {
+                  "domain": "",
+                  "user": ""
+              },
+              "sessionid": ""
+          }
       }
     ]
 }
