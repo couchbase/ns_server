@@ -136,6 +136,7 @@ format_kmip_key_params(#{host := Host,
       {certPath, iolist_to_binary(CertPath)},
       {keyPassphrase, base64:encode(PassData)},
       {caSelection, CaSel},
+      {cbCaPath, iolist_to_binary(ns_ssl_services_setup:ca_file_path())},
       {encryptionApproach, Appr}]}.
 
 read_dek(Kind, DekId) ->

@@ -123,6 +123,7 @@ type kmipStoredKey struct {
 	Host                string `json:"host"`
 	Port                int    `json:"port"`
 	CaSelection         string `json:"caSelection"`
+	CbCaPath            string `json:"CbCaPath"`
 	EncryptionApproach  string `json:"encryptionApproach"`
 	KeyPath             string `json:"keyPath"`
 	CertPath            string `json:"certPath"`
@@ -1385,6 +1386,7 @@ func newKmipKey(name, kind, creationTime, encryptionKeyName string, data []byte)
 		CertPath           string `json:"certPath"`
 		Passphrase         []byte `json:"keyPassphrase"`
 		CaSelection        string `json:"caSelection"`
+		CbCaPath           string `json:"CbCaPath"`
 		EncryptionApproach string `json:"encryptionApproach"`
 	}
 	var decoded kmipKeyTmp
@@ -1402,6 +1404,7 @@ func newKmipKey(name, kind, creationTime, encryptionKeyName string, data []byte)
 		KeyPath:             decoded.KeyPath,
 		CertPath:            decoded.CertPath,
 		CaSelection:         decoded.CaSelection,
+		CbCaPath:            decoded.CbCaPath,
 		EncryptionApproach:  decoded.EncryptionApproach,
 		EncryptionKeyName:   encryptionKeyName,
 		CreationTime:        creationTime,
