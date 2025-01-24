@@ -42,6 +42,7 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 init([]) ->
+    ns_pubsub:subscribe_link(ns_config_events, fun config_event/1),
     {ok, restart_refresh_timer(#state{})}.
 
 handle_call(_Request, _From, State = #state{}) ->
@@ -58,6 +59,15 @@ handle_info(refresh, State = #state{}) ->
     end,
     %% Reminder to refresh again after the check interval
     {noreply, restart_refresh_timer(State)};
+handle_info(maybe_clear_activity, State = #state{}) ->
+    Config = menelaus_web_activity:get_config(),
+    case menelaus_web_activity:is_enabled(Config) of
+        false ->
+            menelaus_users:delete_all_activity();
+        true ->
+            ok
+    end,
+    {noreply, State};
 handle_info(_Info, State = #state{}) ->
     {noreply, State}.
 
@@ -70,7 +80,7 @@ code_change(_OldVsn, State = #state{}, _Extra) ->
 %% We need to make sure there is only one timer at any given moment, otherwise
 %% the system would be fragile to future changes or diag/evals
 restart_refresh_timer(#state{refresh_timer_ref = Ref} = State)
-    when is_reference(Ref) ->
+  when is_reference(Ref) ->
     erlang:cancel_timer(Ref),
     restart_refresh_timer(State#state{refresh_timer_ref = undefined});
 restart_refresh_timer(#state{refresh_timer_ref = undefined} = State) ->
@@ -81,6 +91,14 @@ restart_refresh_timer(#state{refresh_timer_ref = undefined} = State) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+config_event({Key, _}) ->
+    case menelaus_web_activity:is_config_key(Key) of
+        true -> ?SERVER ! maybe_clear_activity;
+        false -> ok
+    end;
+config_event(_) ->
+    ok.
 
 update_activity() ->
     AllActivity =
@@ -121,9 +139,8 @@ aggregate_activity(Activity) ->
 setup() ->
     fake_ns_config:setup(),
 
-    %% Needed for activity_tracker
-    meck:expect(ns_pubsub, subscribe_link,
-                fun (_, _) -> ok end),
+    %% Used by activity_tracker
+    gen_event:start_link({local, user_storage_events}),
 
     activity_tracker:start_link(),
 

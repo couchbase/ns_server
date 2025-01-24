@@ -82,7 +82,8 @@
 
          %% Misc:
          allow_hash_migration_during_auth_default/0,
-         store_activity/1
+         store_activity/1,
+         delete_all_activity/0
         ]).
 
 %% callbacks for replicated_dets
@@ -645,6 +646,19 @@ store_activity(ActivityMap) ->
                              [{set, {activity, Identity}, Timestamp}]
                      end, maps:to_list(ActivityMap)),
     replicated_dets:change_multiple(storage_name(), PreparedDocs).
+
+delete_all_activity() ->
+    UpdateFun =
+        fun ({activity, User}, _Props) ->
+                ?log_debug("Deleting last activity time for user ~p",
+                           [ns_config_log:tag_user_data(User)]),
+                delete
+        end,
+    case replicated_dets:select_with_update(storage_name(), {activity, '_'},
+                                            100, UpdateFun) of
+        [] -> ok;
+        Error -> ?log_warning("Failed to delete activity: ~p", [Error])
+    end.
 
 store_auth(_Identity, same, _Priority) ->
     unchanged;

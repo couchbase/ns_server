@@ -284,6 +284,38 @@ class UsersTestSet(testlib.BaseTestSet):
         assert r.json().get('last_activity_time') is not None, \
             "'last_activity_time' missing"
 
+        # Disable activity tracking to test clearing of activity
+        post_activity(self.cluster,
+                      {'enabled': False,
+                       'trackedRoles': [],
+                       'trackedGroups': []})
+
+        sync_activity(self.cluster)
+
+        # No activity
+        for node in self.cluster.connected_nodes:
+            activity = testlib.diag_eval(
+                node, "gen_server:call(activity_tracker, last_activity)").text
+            assert "[]" == activity, activity
+        r = testlib.get_succ(self.cluster, '/settings/rbac/users/local/' + user)
+        assert r.json().get('last_activity_time') is None
+
+        # Re-enable activity to test that old activity doesn't return
+        post_activity(self.cluster,
+                      {'enabled': True,
+                       'trackedRoles': ['admin'],
+                       'trackedGroups': []})
+
+        sync_activity(self.cluster)
+
+        # No activity
+        for node in self.cluster.connected_nodes:
+            activity = testlib.diag_eval(
+                node, "gen_server:call(activity_tracker, last_activity)").text
+            assert "[]" == activity, activity
+        r = testlib.get_succ(self.cluster, '/settings/rbac/users/local/' + user)
+        assert r.json().get('last_activity_time') is None
+
     def activity_tracking_with_group_role_test(self):
         user = self.user
         name1 = testlib.random_str(10)
