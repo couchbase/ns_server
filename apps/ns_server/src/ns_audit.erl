@@ -83,7 +83,13 @@
          rbac_info_retrieved/2,
          admin_password_reset/1,
          password_rotated/1,
-         app_telemetry_settings/2
+         app_telemetry_settings/2,
+         encryption_at_rest_settings/2,
+         set_encryption_secret/2,
+         delete_encryption_secret/2,
+         rotate_encryption_secret/2,
+         delete_historical_encryption_key/3,
+         encryption_at_rest_drop_deks/2
         ]).
 
 -export([start_link/0, stats/0]).
@@ -487,7 +493,19 @@ code(access_forbidden) ->
 code(locked_change) ->
     8276;
 code(app_telemetry_settings) ->
-    8277.
+    8277;
+code(encryption_at_rest_settings) ->
+    8278;
+code(set_encryption_secret) ->
+    8279;
+code(delete_encryption_secret) ->
+    8280;
+code(rotate_encryption_secret) ->
+    8281;
+code(delete_historical_encryption_key) ->
+    8282;
+code(encryption_at_rest_drop_deks) ->
+    8283.
 
 send_to_memcached(ParentPID, {Code, EncodedBody, IsSync}) ->
     case (catch ns_memcached_sockets_pool:executing_on_socket(
@@ -1002,6 +1020,32 @@ ldap_settings(Req, Settings) ->
 prepare_ldap_setting({hosts, List}) -> {hosts, {list, List}};
 prepare_ldap_setting({userDNMapping = K, JSON}) -> {K, ejson:encode(JSON)};
 prepare_ldap_setting(Default) -> Default.
+
+encryption_at_rest_settings(Req, Settings) ->
+    put(encryption_at_rest_settings, Req, Settings).
+
+encryption_at_rest_drop_deks(Req, Props) ->
+    put(encryption_at_rest_drop_deks, Req, Props).
+
+set_encryption_secret(Req, SecretProps) ->
+    put(set_encryption_secret, Req, prepare_encryption_secret(SecretProps)).
+
+delete_encryption_secret(Req, Id) ->
+    put(delete_encryption_secret, Req, [{encryptionKeyId, Id}]).
+
+prepare_encryption_secret(Settings) ->
+    lists:map(fun ({usage, List}) -> {usage, {list, List}};
+                  ({id, Id}) -> {encryptionKeyId, Id};
+                  ({name, Name}) -> {encryptionKeyName, Name};
+                  ({K, V}) -> {K, V}
+              end, Settings).
+
+rotate_encryption_secret(Req, Id) ->
+    put(rotate_encryption_secret, Req, [{encryptionKeyId, Id}]).
+
+delete_historical_encryption_key(Req, Id, KeyId) ->
+    put(delete_historical_encryption_key, Req, [{encryptionKeyId, Id},
+                                                {keyMaterialUUID, KeyId}]).
 
 set_user_profile(Req, Identity, Json) ->
     put(set_user_profile, Req,

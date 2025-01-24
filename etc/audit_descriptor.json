@@ -1609,6 +1609,139 @@
               "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid": ""
           }
+      },
+      {
+        "id" : 8278,
+        "name" : "modify encryption-at-rest settings",
+        "description" : "Encryption-at-Rest settings were modified",
+        "sync" : false,
+        "enabled" : true,
+        "filtering_permitted": false,
+          "mandatory_fields" : {
+              "timestamp": "",
+              "real_userid": {"domain": "", "user": ""},
+              "remote": {"ip": "", "port": 1},
+              "local": {"ip": "", "port": 1}
+          },
+          "optional_fields" : {
+              "config": {"dekLifetime": "",
+                         "dekRotationInterval": 0,
+                         "encryptionKeyId": 0,
+                         "encryptionMethod": ""},
+              "audit":  {"dekLifetime": "",
+                         "dekRotationInterval": 0,
+                         "encryptionKeyId": 0,
+                         "encryptionMethod": ""},
+              "log":    {"dekLifetime": "",
+                         "dekRotationInterval": 0,
+                         "encryptionKeyId": 0,
+                         "encryptionMethod": ""},
+              "authenticated_userid" : {"domain" : "", "user" : ""},
+              "sessionid": ""
+          }
+      },
+      {
+        "id" : 8279,
+        "name" : "set encryption key",
+        "description" : "Encryption key was created or modified",
+        "sync" : false,
+        "enabled" : true,
+        "filtering_permitted": false,
+          "mandatory_fields" : {
+              "timestamp": "",
+              "real_userid": {"domain": "", "user": ""},
+              "remote": {"ip": "", "port": 1},
+              "local": {"ip": "", "port": 1},
+              "encryptionKeyId": "",
+              "encryptionKeyName": ""
+          },
+          "optional_fields" : {
+              "creationDateTime": "",
+              "usage": [],
+              "type": "",
+              "data": "",
+              "authenticated_userid" : {"domain" : "", "user" : ""},
+              "sessionid": ""
+          }
+      },
+      {
+        "id" : 8280,
+        "name" : "remove encryption key",
+        "description" : "Encryption key was removed",
+        "sync" : false,
+        "enabled" : true,
+        "filtering_permitted": false,
+          "mandatory_fields" : {
+              "timestamp": "",
+              "real_userid": {"domain": "", "user": ""},
+              "remote": {"ip": "", "port": 1},
+              "local": {"ip": "", "port": 1},
+              "encryptionKeyId": ""
+          },
+          "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
+              "sessionid": ""
+          }
+      },
+      {
+        "id" : 8281,
+        "name" : "rotate encryption key",
+        "description" : "Encryption key was rotated",
+        "sync" : false,
+        "enabled" : true,
+        "filtering_permitted": false,
+          "mandatory_fields" : {
+              "timestamp": "",
+              "real_userid": {"domain": "", "user": ""},
+              "remote": {"ip": "", "port": 1},
+              "local": {"ip": "", "port": 1},
+              "encryptionKeyId": ""
+          },
+          "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
+              "sessionid": ""
+          }
+      },
+      {
+        "id" : 8282,
+        "name" : "delete historical key material",
+        "description" : "Historical key material was removed",
+        "sync" : false,
+        "enabled" : true,
+        "filtering_permitted": false,
+          "mandatory_fields" : {
+              "timestamp": "",
+              "real_userid": {"domain": "", "user": ""},
+              "remote": {"ip": "", "port": 1},
+              "local": {"ip": "", "port": 1},
+              "encryptionKeyId": "",
+              "keyMaterialUUID": ""
+          },
+          "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
+              "sessionid": ""
+          }
+      },
+      {
+        "id" : 8283,
+        "name" : "request DEKs rotation",
+        "description" : "Received request for DEKs rotation",
+        "sync" : false,
+        "enabled" : true,
+        "filtering_permitted": false,
+          "mandatory_fields" : {
+              "timestamp": "",
+              "real_userid": {"domain": "", "user": ""},
+              "remote": {"ip": "", "port": 1},
+              "local": {"ip": "", "port": 1}
+          },
+          "optional_fields" : {
+              "dekType": "",
+              "bucketName": "",
+              "dropKeysDate": "",
+              "authenticated_userid" : {"domain" : "", "user" : ""},
+              "sessionid": ""
+          }
       }
     ]
 }

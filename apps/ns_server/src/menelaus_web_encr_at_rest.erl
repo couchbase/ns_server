@@ -136,6 +136,7 @@ handle_post(Path, Req) ->
                  end),
          case RV of
              {ok, _} ->
+                 audit_settings(Req2, NewSettings),
                  cb_cluster_secrets:sync_with_all_node_monitors(),
                  handle_get(Path, Req2);
              {error, Msg} ->
@@ -148,20 +149,31 @@ handle_bucket_drop_keys(Bucket, Req) ->
     handle_set_drop_time(
       fun (Time) ->
           Key = ns_bucket:sub_key(Bucket, encr_at_rest),
-          chronicle_kv:transaction(
-            kv, [ns_bucket:root(), ns_bucket:sub_key(Bucket, props), Key],
-            fun (Snapshot) ->
-                case ns_bucket:bucket_exists(Bucket, Snapshot) of
-                    true ->
-                        CurVal = chronicle_compat:get(Snapshot, Key,
-                                                      #{default => #{}}),
-                        NewVal = CurVal#{dek_drop_datetime => Time},
-                        {commit, [{set, Key, NewVal}]};
-                    false ->
-                        menelaus_util:web_exception(
-                          404, "Requested resource not found.\r\n")
-                end
-            end)
+          Res = cb_cluster_secrets:chronicle_transaction(
+                  [ns_bucket:root(), ns_bucket:sub_key(Bucket, props), Key],
+                  fun (Snapshot) ->
+                      case ns_bucket:bucket_exists(Bucket, Snapshot) of
+                          true ->
+                              CurVal = chronicle_compat:get(Snapshot, Key,
+                                                            #{default => #{}}),
+                              NewVal = CurVal#{dek_drop_datetime => Time},
+                              {commit, [{set, Key, NewVal}]};
+                          false ->
+                              menelaus_util:web_exception(
+                                404, "Requested resource not found.\r\n")
+                      end
+                  end),
+          case Res of
+              ok ->
+                  AuditProps = [{dekType, "bucket"},
+                                {bucketName, Bucket},
+                                {dropKeysDate, iso8601:format(Time)}],
+                  ns_audit:encryption_at_rest_drop_deks(Req, AuditProps),
+                  ok;
+              {error, no_quorum = R} ->
+                  menelaus_util:web_exception(
+                    503, menelaus_web_secrets:format_error(R))
+          end
       end, Req).
 
 build_bucket_encr_at_rest_info(BucketName, BucketConfig) ->
@@ -192,21 +204,34 @@ handle_drop_keys(TypeName, Req) ->
               case TypeName of
                   "config" -> config_encryption;
                   "log" -> log_encryption;
-                  "audit" -> audit_encryption
+                  "audit" -> audit_encryption;
+                  _ -> menelaus_util:web_exception(404, "not found")
               end,
-          chronicle_kv:transaction(
-            kv, [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
-            fun (Snapshot) ->
-                AllSettings = chronicle_compat:get(
-                                Snapshot,
-                                ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY,
-                                #{default => #{}}),
-                SubSettings = maps:get(TypeKey, AllSettings, #{}),
-                NewSubSetting = SubSettings#{dek_drop_datetime => {set, Time}},
-                NewSettings = AllSettings#{TypeKey => NewSubSetting},
-                {commit,
-                 [{set, ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY, NewSettings}]}
-            end)
+          Res = cb_cluster_secrets:chronicle_transaction(
+                  [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
+                  fun (Snapshot) ->
+                      AllSettings = chronicle_compat:get(
+                                      Snapshot,
+                                      ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY,
+                                      #{default => #{}}),
+                      SubSettings = maps:get(TypeKey, AllSettings, #{}),
+                      NewSubSetting = SubSettings#{dek_drop_datetime =>
+                                                   {set, Time}},
+                      NewSettings = AllSettings#{TypeKey => NewSubSetting},
+                      {commit,
+                       [{set, ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY,
+                        NewSettings}]}
+                  end),
+          case Res of
+              ok ->
+                  AuditProps = [{dekType, TypeName},
+                                {dropKeysDate, iso8601:format(Time)}],
+                  ns_audit:encryption_at_rest_drop_deks(Req, AuditProps),
+                  ok;
+              {error, no_quorum = R} ->
+                  menelaus_util:web_exception(
+                    503, menelaus_web_secrets:format_error(R))
+          end
       end, Req).
 
 handle_set_drop_time(SetTimeFun, Req) ->
@@ -216,7 +241,7 @@ handle_set_drop_time(SetTimeFun, Req) ->
                      undefined -> calendar:universal_time();
                      DT -> DT
                  end,
-          SetTimeFun(Time),
+          ok = SetTimeFun(Time),
           Reply = {[{dropKeysDate, iso8601:format(Time)}]},
           menelaus_util:reply_json(Req, Reply)
       end, Req, form, [validator:iso_8601_parsed(datetime, _),
@@ -337,3 +362,9 @@ aggregated_EAR_info(Type, NodesInfo, Nodes) ->
                 _ -> cb_cluster_secrets:merge_dek_infos(Acc, InfoMap)
             end
         end, undefined, Nodes)).
+
+audit_settings(Req, Settings) ->
+    List = maps:to_list(maps:map(fun (_, V) -> maps:to_list(V) end, Settings)),
+    {Props} = menelaus_web_settings2:prepare_json([], params(),
+                                                  fun type_spec/1, List),
+    ns_audit:encryption_at_rest_settings(Req, Props).
