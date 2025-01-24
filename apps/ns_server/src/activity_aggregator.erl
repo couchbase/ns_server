@@ -51,7 +51,7 @@ handle_cast(_Request, State = #state{}) ->
     {noreply, State}.
 
 handle_info(refresh, State = #state{}) ->
-    Config = activity_tracker:get_config(),
+    Config = menelaus_web_activity:get_config(),
     case proplists:get_bool(enabled, Config) of
         false -> ok;
         true -> update_activity()

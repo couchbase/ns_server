@@ -544,7 +544,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_encr_at_rest:handle_get/2, [PathRest]};
                 ["settings", "security", "userActivity"] ->
                     {{[admin, security], read},
-                     fun activity_tracker:handle_get/1, []};
+                     fun menelaus_web_activity:handle_get/1, []};
                 ["settings", "security" | Keys] ->
                     {{[admin, security], read},
                      fun menelaus_web_settings:handle_get/3, [security, Keys]};
@@ -863,7 +863,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_encr_at_rest:handle_post/2, [PathRest]};
                 ["settings", "security", "userActivity"] ->
                     {{[admin, security], write},
-                     fun activity_tracker:handle_post/1, []};
+                     fun menelaus_web_activity:handle_post/1, []};
                 ["settings", "security" | Keys] ->
                     {{[admin, security], write},
                      fun menelaus_web_settings:handle_post/3, [security, Keys]};

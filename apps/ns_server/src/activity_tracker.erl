@@ -13,17 +13,12 @@
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
--include_lib("ns_common/include/cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
 -export([start_link/0,
-         default/0,
-         handle_get/1,
-         handle_post/1,
-         get_config/0,
          handle_activity/1,
          is_tracked/1,
          get_activity_from_node/1]).
@@ -32,15 +27,9 @@
 
 -define(SERVER, ?MODULE).
 -define(TABLE, ?MODULE).
--define(CONFIG_KEY, user_activity).
 
 %% 60s should be sufficient time that we don't timeout when a node is busy
 -define(RPC_TIMEOUT, ?get_timeout(rpc_timeout, 60000)).
-
--define(DEFAULT_TRACKED_ROLES,
-        [admin, ro_admin, security_admin, user_admin_local, user_admin_external,
-         cluster_admin, eventing_admin, backup_admin, views_admin,
-         replication_admin, fts_admin, analytics_admin]).
 
 -record(state, {}).
 
@@ -48,150 +37,11 @@
 %%% External interface
 %%%===================================================================
 
--spec default() -> [{atom(), any()}].
-default() ->
-    [{enabled, false},
-     {tracked_roles, ?DEFAULT_TRACKED_ROLES},
-     {tracked_groups, []}].
-
-handle_get(Req) ->
-    menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_morpheus(),
-
-    menelaus_web_settings2:handle_get([], params(), fun type_spec/1,
-                                      get_config(), Req).
-
-handle_post(Req) ->
-    menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_morpheus(),
-
-    menelaus_web_settings2:handle_post(
-      fun (Params, Req2) ->
-              case Params of
-                  [] -> ok;
-                  _ ->
-                      Props = lists:map(fun ({[K], V}) -> {K, V} end, Params),
-                      Values = set_config(Props),
-
-                      %% Convert to json, to avoid groups getting formatted as
-                      %% lists of integers
-                      {AuditJson} = menelaus_web_settings2:prepare_json(
-                                      [], params(), fun type_spec/1, Values),
-                      ns_audit:user_activity_settings(Req, AuditJson)
-              end,
-              handle_get(Req2)
-      end, [], params(), fun type_spec/1, get_config(), [], Req).
-
-set_config(Changes) ->
-    OldConfig = get_config(),
-
-    NewConfig = misc:update_proplist(OldConfig, Changes),
-    ns_config:set(?CONFIG_KEY, NewConfig),
-    NewConfig.
-
-params() ->
-    [{"enabled",
-      #{type => bool,
-        cfg_key => enabled}},
-     {"trackedRoles",
-      #{type => tracked_roles,
-        cfg_key => tracked_roles}},
-     {"trackedGroups",
-      #{type => tracked_groups,
-        cfg_key => tracked_groups}}].
-
-type_spec(tracked_roles) ->
-    #{validators => [{string_list, ","},
-                     validator:validate(fun get_roles/1, _, _)],
-      formatter => fun (L) -> {value, [atom_to_binary(M) || M <- L]} end};
-type_spec(tracked_groups) ->
-    #{validators => [{string_list, ","},
-                     validator:validate(fun get_groups/1, _, _)],
-      formatter => fun (L) -> {value, [list_to_binary(M) || M <- L]} end}.
-
-parse_role(RoleStr, Definitions) ->
-    try
-        RoleName = menelaus_web_rbac:role_to_atom(RoleStr),
-        case lists:keyfind(RoleName, 1, Definitions) of
-            false ->
-                {error, RoleStr};
-            _ -> RoleName
-        end
-    catch
-        error:badarg -> {error, RoleStr}
-    end.
-
-get_roles(RolesRaw) ->
-    Definitions = menelaus_roles:get_definitions(public),
-    Roles = [parse_role(string:trim(RoleRaw), Definitions)
-             || RoleRaw <- RolesRaw],
-
-    %% Gather erroneous roles
-    BadRoles = [BadRole || {error, BadRole} <- Roles],
-    case BadRoles of
-        [] -> {value, Roles};
-        _ -> {error,
-              lists:flatten(io_lib:format("The following roles are invalid: ~s",
-                                          [string:join(BadRoles, ",")]))}
-    end.
-
--ifdef(TEST).
-bad_roles_test() ->
-    meck:expect(cluster_compat_mode, get_compat_version, ?cut([8, 0])),
-    meck:expect(cluster_compat_mode, is_developer_preview, ?cut(false)),
-    ?assertEqual({value, []}, get_roles([])),
-    ?assertEqual({value, [cluster_admin]}, get_roles(["cluster_admin"])),
-    ?assertEqual({value, [cluster_admin, data_reader]},
-                 get_roles(["cluster_admin", "data_reader"])),
-    ?assertEqual({error, "The following roles are invalid: nonsense_role"},
-                 get_roles(["nonsense_role"])),
-    %% We only expect role names, without any parameterisation
-    ?assertEqual({error, "The following roles are invalid: cluster_admin[*]"},
-                 get_roles(["cluster_admin[*]"])),
-    ?assertEqual({error,
-                  "The following roles are invalid: "
-                  "nonsense_role,another_nonsense_role"},
-                 get_roles(["nonsense_role", "another_nonsense_role"])).
--endif.
-
-get_groups(Groups) ->
-    UnexpectedGroups = [Group || Group <- Groups,
-                                 not menelaus_users:group_exists(Group)],
-    case UnexpectedGroups of
-        [] -> {value, Groups};
-        _ -> {error,
-              lists:flatten(
-                  io_lib:format("The following groups do not exist: ~s",
-                                [string:join(UnexpectedGroups, ",")]))}
-    end.
-
--ifdef(TEST).
-bad_groups_test() ->
-    meck:expect(menelaus_users, group_exists,
-                fun ("real_group1") -> true;
-                    ("real_group2") -> true;
-                    (_) -> false
-                end),
-    ?assertEqual({value, []}, get_groups([])),
-    ?assertEqual({value, ["real_group1"]}, get_groups(["real_group1"])),
-    ?assertEqual({value, ["real_group1", "real_group2"]},
-                 get_groups(["real_group1", "real_group2"])),
-    ?assertEqual({error, "The following groups do not exist: fake_group"},
-                 get_groups(["fake_group"])),
-    ?assertEqual({error,
-                  "The following groups do not exist: fake_group1,fake_group2"},
-                 get_groups(["fake_group1", "fake_group2"])).
--endif.
-
--spec get_config() -> proplists:proplist().
-get_config() ->
-    ns_config:read_key_fast(?CONFIG_KEY, []).
-
 -spec handle_activity(#authn_res{}) -> ok.
 handle_activity(#authn_res{identity = Identity}) ->
     case ns_node_disco:couchdb_node() =/= node() andalso is_tracked(Identity) of
         true ->
-            Config = ns_config:read_key_fast(?CONFIG_KEY, []),
+            Config = menelaus_web_activity:get_config(),
             case proplists:get_value(enabled, Config, false) of
                 true ->
                     note_identity(Identity);
@@ -204,7 +54,7 @@ handle_activity(#authn_res{identity = Identity}) ->
 
 -spec is_tracked(rbac_identity()) -> boolean().
 is_tracked({_, local} = Identity) ->
-    Config = get_config(),
+    Config = menelaus_web_activity:get_config(),
     IsEnabled = proplists:get_value(enabled, Config, false),
     case IsEnabled of
         false ->
@@ -256,7 +106,7 @@ init([]) ->
 %% (every 15 mins when it fetches the latest information), this isn't really a
 %% serious risk.
 handle_call(last_activity, _From, State) ->
-    Config = ns_config:read_key_fast(?CONFIG_KEY, []),
+    Config = menelaus_web_activity:get_config(),
     case proplists:get_value(enabled, Config, false) of
         true ->
             {reply, ets:tab2list(?TABLE), State};
@@ -372,7 +222,7 @@ setup() ->
     meck:expect(ns_pubsub, subscribe_link,
                 fun (user_storage_events, _) -> ok end),
 
-    ns_config:set(?CONFIG_KEY, default()),
+    configure(menelaus_web_activity:default()),
     start_link().
 
 teardown(_) ->
@@ -381,7 +231,7 @@ teardown(_) ->
     meck:unload().
 
 configure(Settings) ->
-    ns_config:set(?CONFIG_KEY, Settings).
+    fake_ns_config:update_snapshot(user_activity, Settings).
 
 -define(auth(Identity), #authn_res{identity = Identity}).
 
