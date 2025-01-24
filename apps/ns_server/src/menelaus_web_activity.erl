@@ -19,6 +19,7 @@
          handle_get/1,
          handle_post/1,
          get_config/0,
+         is_config_key/1,
          is_enabled/1]).
 
 -define(CONFIG_KEY, user_activity).
@@ -168,6 +169,10 @@ bad_groups_test() ->
 -spec get_config() -> proplists:proplist().
 get_config() ->
     ns_config:read_key_fast(?CONFIG_KEY, []).
+
+-spec is_config_key(term()) -> boolean().
+is_config_key(?CONFIG_KEY) -> true;
+is_config_key(_) -> false.
 
 -spec is_enabled(proplists:proplist()) -> boolean().
 is_enabled(Config) ->

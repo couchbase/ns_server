@@ -123,7 +123,7 @@ setup() ->
 
     %% Needed for activity_tracker
     meck:expect(ns_pubsub, subscribe_link,
-                fun (user_storage_events, _) -> ok end),
+                fun (_, _) -> ok end),
 
     activity_tracker:start_link(),
 

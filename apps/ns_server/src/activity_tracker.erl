@@ -94,6 +94,7 @@ start_link() ->
 init([]) ->
     ets:new(?TABLE, [named_table, set, public]),
     ns_pubsub:subscribe_link(user_storage_events, fun user_storage_event/1),
+    ns_pubsub:subscribe_link(ns_config_events, fun config_event/1),
     {ok, #state{}}.
 
 %% This will be used by the activity_aggregator to fetch each node's latest
@@ -139,6 +140,15 @@ handle_info(clear_activity_for_deleted_users, State) ->
                                        || User <- DeletedUsers])
     end,
     {noreply, State};
+
+handle_info(maybe_clear_activity, State) ->
+    misc:flush(maybe_clear_activity),
+    Config = menelaus_web_activity:get_config(),
+    case menelaus_web_activity:is_enabled(Config) of
+        true -> ok;
+        false -> ets:delete_all_objects(?TABLE)
+    end,
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -161,6 +171,14 @@ note_identity(Identity) ->
 user_storage_event({user_version, _}) ->
     ?SERVER ! clear_activity_for_deleted_users;
 user_storage_event(_) ->
+    ok.
+
+config_event({Key, _}) ->
+    case menelaus_web_activity:is_config_key(Key) of
+        true -> ?SERVER ! maybe_clear_activity;
+        false -> ok
+    end;
+config_event(_) ->
     ok.
 
 
@@ -217,9 +235,7 @@ setup() ->
                         [{groups, []},
                          {roles, [?ROLE_X]}]
                 end),
-
-    meck:expect(ns_pubsub, subscribe_link,
-                fun (user_storage_events, _) -> ok end),
+    gen_event:start_link({local, user_storage_events}),
 
     configure(menelaus_web_activity:default()),
     start_link().
@@ -302,7 +318,10 @@ clear_deleted_users_test__() ->
                 fun (U) when U =:= ExistingUser -> true;
                     (_) -> false
                 end),
-    ?SERVER ! clear_activity_for_deleted_users,
+
+    gen_event:notify(user_storage_events, {user_version, {0, 1}}),
+    meck:wait(menelaus_users, user_exists, ['_'], 5000),
+
     ?assertNotEqual(undefined, get_last_activity(ExistingUser)),
     ?assertEqual(undefined, get_last_activity(DeletedUser)).
 
