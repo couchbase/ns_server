@@ -22,6 +22,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/couchbase/ns_server/deps/gocode/awsutils"
@@ -129,6 +130,7 @@ type kmipStoredKey struct {
 	KmipId              string `json:"kmipId"`
 	Host                string `json:"host"`
 	Port                int    `json:"port"`
+	ReqTimeoutMs        int    `json:"reqTimeoutMs"`
 	CaSelection         string `json:"caSelection"`
 	CbCaPath            string `json:"CbCaPath"`
 	EncryptionApproach  string `json:"encryptionApproach"`
@@ -1389,6 +1391,7 @@ func newKmipKey(name, kind, creationTime, encryptionKeyName string, data []byte)
 		KmipId             string `json:"kmipId"`
 		Host               string `json:"host"`
 		Port               int    `json:"port"`
+		ReqTimeoutMs       int    `json:"reqTimeoutMs"`
 		KeyPath            string `json:"keyPath"`
 		CertPath           string `json:"certPath"`
 		Passphrase         []byte `json:"keyPassphrase"`
@@ -1408,6 +1411,7 @@ func newKmipKey(name, kind, creationTime, encryptionKeyName string, data []byte)
 		KmipId:              decoded.KmipId,
 		Host:                decoded.Host,
 		Port:                decoded.Port,
+		ReqTimeoutMs:        decoded.ReqTimeoutMs,
 		KeyPath:             decoded.KeyPath,
 		CertPath:            decoded.CertPath,
 		CaSelection:         decoded.CaSelection,
@@ -1463,6 +1467,7 @@ func (k *kmipStoredKey) ad() []byte {
 			k.KmipId +
 			k.Host +
 			strconv.Itoa(k.Port) +
+			strconv.Itoa(k.ReqTimeoutMs) +
 			k.EncryptionApproach +
 			k.KeyPath +
 			k.CertPath +
@@ -1507,6 +1512,7 @@ func getKmipClientCfg(k *kmipStoredKey) kmiputils.KmipClientConfig {
 	return kmiputils.KmipClientConfig{
 		Host:                k.Host,
 		Port:                k.Port,
+		TimeoutMs:           time.Duration(k.ReqTimeoutMs) * time.Millisecond,
 		KeyPath:             k.KeyPath,
 		CertPath:            k.CertPath,
 		CbCaPath:            k.CbCaPath,

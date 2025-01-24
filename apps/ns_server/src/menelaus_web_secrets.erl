@@ -235,7 +235,8 @@ keys_remap() ->
       active_key => activeKey,
       hist_keys => historicalKeys,
       kmip_id => kmipId,
-      key => keyMaterial}.
+      key => keyMaterial,
+      req_timeout_ms => reqTimeoutMs}.
 
 keys_to_json(Term) ->
     transform_keys(keys_remap(), Term).
@@ -336,6 +337,7 @@ format_kmip_key_data(Props) ->
       maps:map(
         fun (host, U) -> iolist_to_binary(U);
             (port, R) -> R;
+            (req_timeout_ms, R) -> R;
             (key_path, F) -> iolist_to_binary(F);
             (cert_path, F) -> iolist_to_binary(F);
             (key_passphrase, _) -> <<"******">>;
@@ -536,6 +538,8 @@ kmip_key_validators(CurSecretProps) ->
      validator:required(host, _),
      validator:integer(port, 1, 65535, _),
      validator:required(port, _),
+     validator:integer(reqTimeoutMs, 1000, infinity, _),
+     validator:default(reqTimeoutMs, 30000, _),
      validator:string(keyPath, _),
      validator:required(keyPath, _),
      validator:string(certPath, _),

@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/akeylesslabs/go-kmip"
 	tlsutils "github.com/couchbase/goutils/tls"
@@ -15,6 +16,7 @@ const KMIP_AUTH_TAG_LENGTH = 16
 type KmipClientConfig struct {
 	Host                string
 	Port                int
+	TimeoutMs           time.Duration
 	KeyPath             string
 	CertPath            string
 	CbCaPath            string
@@ -98,7 +100,7 @@ func getKmipClient(config KmipClientConfig) (*kmip.Client, error) {
 	}
 
 	endPoint := fmt.Sprintf("%s:%d", config.Host, config.Port)
-	client := kmip.Client{Endpoint: endPoint, TLSConfig: tlsConfig}
+	client := kmip.Client{Endpoint: endPoint, ReadTimeout: config.TimeoutMs, WriteTimeout: config.TimeoutMs, TLSConfig: tlsConfig}
 	err = client.Connect()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect client: %w", err)

@@ -139,6 +139,7 @@
                           last_rotation_time := calendar:datetime()}.
 -type kmip_key_data() :: #{host := string(),
                            port := 1..65535,
+                           req_timeout_ms := integer(),
                            key_path := string(),
                            cert_path := string(),
                            key_passphrase := sensitive_data(),
@@ -1206,7 +1207,8 @@ ensure_kmip_kek_on_disk(#{data := #{active_key := ActiveKey,
         end,
     case DecryptRes of
         {ok, PassData} ->
-            Common = maps:with([host, port, key_path, cert_path, ca_selection,
+            Common = maps:with([host, port, req_timeout_ms, key_path,
+                                cert_path, ca_selection,
                                 encryption_approach], Data),
             Res = lists:map(
                     fun (#{id := Id, kmip_id := KmipId,

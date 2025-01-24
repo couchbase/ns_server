@@ -123,6 +123,7 @@ store_kmip_key(Id, Params, KekIdToEncrypt, CreationDT, TestOnly) ->
 
 format_kmip_key_params(#{host := Host,
                          port := Port,
+                         req_timeout_ms := ReqTimeoutMs,
                          kmip_id := KmipId,
                          key_path := KeyPath,
                          cert_path := CertPath,
@@ -131,6 +132,7 @@ format_kmip_key_params(#{host := Host,
                          encryption_approach := Appr}) ->
     {[{host, iolist_to_binary(Host)},
       {port, Port},
+      {reqTimeoutMs, ReqTimeoutMs},
       {kmipId, KmipId},
       {keyPath, iolist_to_binary(KeyPath)},
       {certPath, iolist_to_binary(CertPath)},
