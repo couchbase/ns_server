@@ -52,7 +52,7 @@ handle_cast(_Request, State = #state{}) ->
 
 handle_info(refresh, State = #state{}) ->
     Config = menelaus_web_activity:get_config(),
-    case proplists:get_bool(enabled, Config) of
+    case menelaus_web_activity:is_enabled(Config) of
         false -> ok;
         true -> update_activity()
     end,

@@ -18,7 +18,8 @@
 -export([default/0,
          handle_get/1,
          handle_post/1,
-         get_config/0]).
+         get_config/0,
+         is_enabled/1]).
 
 -define(CONFIG_KEY, user_activity).
 
@@ -167,3 +168,7 @@ bad_groups_test() ->
 -spec get_config() -> proplists:proplist().
 get_config() ->
     ns_config:read_key_fast(?CONFIG_KEY, []).
+
+-spec is_enabled(proplists:proplist()) -> boolean().
+is_enabled(Config) ->
+    proplists:get_bool(enabled, Config).

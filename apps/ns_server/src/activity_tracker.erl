@@ -42,7 +42,7 @@ handle_activity(#authn_res{identity = Identity}) ->
     case ns_node_disco:couchdb_node() =/= node() andalso is_tracked(Identity) of
         true ->
             Config = menelaus_web_activity:get_config(),
-            case proplists:get_value(enabled, Config, false) of
+            case menelaus_web_activity:is_enabled(Config) of
                 true ->
                     note_identity(Identity);
                 false ->
@@ -55,8 +55,7 @@ handle_activity(#authn_res{identity = Identity}) ->
 -spec is_tracked(rbac_identity()) -> boolean().
 is_tracked({_, local} = Identity) ->
     Config = menelaus_web_activity:get_config(),
-    IsEnabled = proplists:get_value(enabled, Config, false),
-    case IsEnabled of
+    case menelaus_web_activity:is_enabled(Config) of
         false ->
             false;
         true ->
@@ -107,7 +106,7 @@ init([]) ->
 %% serious risk.
 handle_call(last_activity, _From, State) ->
     Config = menelaus_web_activity:get_config(),
-    case proplists:get_value(enabled, Config, false) of
+    case menelaus_web_activity:is_enabled(Config) of
         true ->
             {reply, ets:tab2list(?TABLE), State};
         false ->
