@@ -151,12 +151,21 @@ maybe_reencrypt_deks(Kind, Deks, EncryptionMethod, Snapshot) ->
                       true ->
                           false;
                       error ->
-                          ?log_error("Orphaned key: ~p", [CurKekId]),
-                          false;
+                          %% When node is leaving the cluster, configuration
+                          %% gets wiped out, so all KEKs disappear.
+                          %% We should simply reencrypt all DEKs with the
+                          %% encryption service in this case, as this is the
+                          %% only key that is available no matter what.
+                          ?log_warning(
+                            "Orphaned key: ~p, key ~p is missing "
+                            "(will reencrypt with encryptionService) - this is "
+                            "expected when node is leaving the cluster",
+                            [Dek, CurKekId]),
+                          {true, {encryption_service, <<"encryptionService">>}};
                       {error, Reason2} ->
                           ?log_error("Encryption secret is missing for dek: "
                                      "~p: ~p", [Dek, Reason2]),
-                          false
+                          {true, {encryption_service, <<"encryptionService">>}}
                   end
               end);
         {ok, TargetKekId} ->
