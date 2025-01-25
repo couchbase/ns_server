@@ -167,6 +167,7 @@ class MnSecuritySecretsService {
       case "config": return "Rotate DEKs & Re-encrypt";
       case "log": return "Rotate DEKs";
       case "audit": return "Rotate DEKs";
+      case "bucket": return "Rotate DEKs & Re-encrypt";
       default: return type;
     }
   }
@@ -176,6 +177,7 @@ class MnSecuritySecretsService {
       case "config": return "Rotate DEKs & Re-encrypt";
       case "log": return "Rotate DEKs for";
       case "audit": return "Rotate DEKs for";
+      case "bucket": return "Rotate DEKs & Re-encrypt";
       default: return type;
     }
   }
