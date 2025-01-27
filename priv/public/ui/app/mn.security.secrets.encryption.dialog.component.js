@@ -50,6 +50,7 @@ class MnSecuritySecretsEncryptionDialogComponent extends MnLifeCycleHooksToStrea
     this.mnSecuritySecretsService = mnSecuritySecretsService;
     this.mnFormService = mnFormService;
     this.mapTypeToNames = this.mnSecuritySecretsService.mapTypeToNames;
+    this.preventMinus = this.mnSecuritySecretsService.preventMinus;
   }
 
   ngOnInit() {

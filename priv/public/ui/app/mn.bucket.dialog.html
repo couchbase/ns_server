@@ -694,6 +694,7 @@ licenses/APL2.txt.
                      <input
                          type="number"
                          min="1"
+                         (keydown)="preventMinus($event)"
                          autocorrect="off"
                          spellcheck="false"
                          autocapitalize="off"
@@ -705,9 +706,9 @@ licenses/APL2.txt.
                </div>
                <div
                    class="error error-form"
-                   [hidden]="!(httpError | async)?.errors['config.dekRotationInterval']"
+                   [hidden]="!(httpError | async)?.errors['encryptionAtRestDekRotationInterval']"
                >
-                  {{(httpError | async)?.errors['config.dekRotationInterval']}}
+                  {{(httpError | async)?.errors['encryptionAtRestDekRotationInterval']}}
                </div>
             </div>
 
@@ -735,6 +736,7 @@ licenses/APL2.txt.
                      <input
                          type="number"
                          min="1"
+                         (keydown)="preventMinus($event)"
                          autocorrect="off"
                          spellcheck="false"
                          autocapitalize="off"
@@ -746,9 +748,9 @@ licenses/APL2.txt.
                </div>
                <div
                    class="error error-form"
-                   [hidden]="!(httpError | async)?.errors['config.dekLifetime']"
+                   [hidden]="!(httpError | async)?.errors['encryptionAtRestDekLifetime']"
                >
-                  {{(httpError | async)?.errors['config.dekLifetime']}}
+                  {{(httpError | async)?.errors['encryptionAtRestDekLifetime']}}
                </div>
             </div>
 

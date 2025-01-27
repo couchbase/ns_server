@@ -206,4 +206,10 @@ class MnSecuritySecretsService {
       default: return status;
     }
   }
+
+  preventMinus(event) {
+    if (event.key === '-') {
+      event.preventDefault();
+    }
+  }
 }

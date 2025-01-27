@@ -88,6 +88,7 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
     this.isEnterprise = this.mnPoolsService.stream.isEnterprise;
     this.compatVersion55 = this.mnAdminService.stream.compatVersion55;
     this.compatVersion80 = this.mnAdminService.stream.compatVersion80;
+    this.preventMinus = mnSecuritySecretsService.preventMinus;
   }
 
   ngOnInit() {
