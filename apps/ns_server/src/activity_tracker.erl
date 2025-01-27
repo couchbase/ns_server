@@ -21,6 +21,7 @@
 -export([start_link/0,
          handle_activity/1,
          is_tracked/1,
+         is_user_covered/2,
          get_activity_from_node/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
@@ -41,13 +42,7 @@
 handle_activity(#authn_res{identity = Identity}) ->
     case ns_node_disco:couchdb_node() =/= node() andalso is_tracked(Identity) of
         true ->
-            Config = menelaus_web_activity:get_config(),
-            case menelaus_web_activity:is_enabled(Config) of
-                true ->
-                    note_identity(Identity);
-                false ->
-                    ok
-            end;
+            note_identity(Identity);
         false ->
             ok
     end.
@@ -56,26 +51,14 @@ handle_activity(#authn_res{identity = Identity}) ->
 is_tracked({_, local} = Identity) ->
     Config = menelaus_web_activity:get_config(),
     case menelaus_web_activity:is_enabled(Config) of
-        false ->
-            false;
         true ->
-            Props = menelaus_users:get_user_props(Identity, [groups, roles]),
-
-            is_user_covered(Props, Config, tracked_roles, roles) orelse
-                is_user_covered(Props, Config, tracked_groups, groups)
-
+            is_user_covered(Identity, Config);
+        false ->
+            false
     end;
-is_tracked(_Identity) ->
+is_tracked(_) ->
     %% Non-local users aren't tracked
     false.
-
-%% Check if a user is covered by the list of groups/roles respectively
-is_user_covered(UserProps, Config, TrackedCategory, Category) ->
-    TrackedList = proplists:get_value(TrackedCategory, Config, []),
-    List = proplists:get_value(Category, UserProps, []),
-    TrackedSet = sets:from_list(TrackedList),
-    Set = sets:from_list(List),
-    not sets:is_disjoint(TrackedSet, Set).
 
 -spec get_activity_from_node(node()) -> [{rbac_identity(), non_neg_integer()}].
 get_activity_from_node(Node) ->
@@ -118,35 +101,34 @@ handle_call(_Request, _From, State) ->
 
 handle_cast(_Request, State) ->
     {noreply, State}.
-handle_info(clear_activity_for_deleted_users, State) ->
-    misc:flush(clear_activity_for_deleted_users),
-    %% Get non-existent users which we have activity for
-    DeletedUsers =
-        ets:foldl(
-          fun ({User, _}, Users) ->
-                  case menelaus_users:user_exists(User) of
-                      false -> [User | Users];
-                      true -> Users
-                  end
-          end, [], ?TABLE),
-    case DeletedUsers of
-        [] ->
-            ok;
-        _ ->
-            ?log_debug("Deleting activity timestamp for deleted users: ~p",
-                       [ns_config_log:tag_user_data(DeletedUsers)]),
-            %% Delete any activity for those users
-            ets:select_delete(?TABLE, [{{User, '_'}, [], [true]}
-                                       || User <- DeletedUsers])
-    end,
-    {noreply, State};
-
-handle_info(maybe_clear_activity, State) ->
-    misc:flush(maybe_clear_activity),
+handle_info(clear_activity_for_untracked_users, State) ->
+    misc:flush(clear_activity_for_untracked_users),
     Config = menelaus_web_activity:get_config(),
     case menelaus_web_activity:is_enabled(Config) of
-        true -> ok;
-        false -> ets:delete_all_objects(?TABLE)
+        true ->
+            %% Get non-existent/untracked users which we have activity for
+            DeletedUsers =
+                ets:foldl(
+                  fun ({User, _}, Users) ->
+                          Exists = menelaus_users:user_exists(User),
+                          case Exists andalso is_user_covered(User, Config) of
+                              true -> Users;
+                              false -> [User | Users]
+                          end
+                  end, [], ?TABLE),
+            case DeletedUsers of
+                [] ->
+                    ok;
+                _ ->
+                    ?log_debug("Clearing activity timestamp for "
+                               "deleted/untracked users: ~p",
+                               [ns_config_log:tag_user_data(DeletedUsers)]),
+                    %% Delete any activity for those users
+                    ets:select_delete(?TABLE, [{{User, '_'}, [], [true]}
+                                               || User <- DeletedUsers])
+            end;
+        false ->
+            ets:delete_all_objects(?TABLE)
     end,
     {noreply, State};
 handle_info(_Info, State) ->
@@ -169,18 +151,34 @@ note_identity(Identity) ->
     ets:insert(?TABLE, {Identity, Time}).
 
 user_storage_event({user_version, _}) ->
-    ?SERVER ! clear_activity_for_deleted_users;
+    ?SERVER ! clear_activity_for_untracked_users;
 user_storage_event(_) ->
     ok.
 
 config_event({Key, _}) ->
     case menelaus_web_activity:is_config_key(Key) of
-        true -> ?SERVER ! maybe_clear_activity;
+        true -> ?SERVER ! clear_activity_for_untracked_users;
         false -> ok
     end;
 config_event(_) ->
     ok.
 
+is_user_covered({_, local} = Identity, Config) ->
+    Props = menelaus_users:get_user_props(Identity, [groups, roles]),
+    UserGroups = proplists:get_value(groups, Props, []),
+    UserRoles = proplists:get_value(roles, Props, []),
+
+    TrackedGroups = proplists:get_value(tracked_groups, Config, []),
+    TrackedRoles = proplists:get_value(tracked_roles, Config, []),
+
+    do_lists_intersect(TrackedGroups, UserGroups) orelse
+        do_lists_intersect(TrackedRoles, UserRoles);
+is_user_covered(_Identity, _) ->
+    %% Non-local users aren't tracked
+    false.
+
+do_lists_intersect(List1, List2) ->
+    lists:any(fun (X) -> lists:member(X, List2) end, List1).
 
 %%%===================================================================
 %%% Tests
@@ -202,6 +200,34 @@ config_event(_) ->
 -define(EXTERNAL_USER_IN_A, {"user_in_a", external}).
 -define(EXTERNAL_USER_WITH_X, {"user_with_x", external}).
 
+groups_map() ->
+    #{?LOCAL_USER_IN_A => [?GROUP_A],
+        ?LOCAL_USER_WITH_X => [],
+        ?LOCAL_USER_WITH_X_1 => [],
+        ?LOCAL_USER_IN_B => [?GROUP_B],
+        ?LOCAL_USER_WITH_Y => [],
+        ?EXTERNAL_USER_IN_A => [?GROUP_A],
+        ?EXTERNAL_USER_WITH_X => []}.
+
+roles_map() ->
+    #{?LOCAL_USER_IN_A => [],
+        ?LOCAL_USER_WITH_X => [?ROLE_X],
+        ?LOCAL_USER_WITH_X_1 => [?ROLE_X],
+        ?LOCAL_USER_IN_B => [],
+        ?LOCAL_USER_WITH_Y => [?ROLE_Y],
+        ?EXTERNAL_USER_IN_A => [],
+        ?EXTERNAL_USER_WITH_X => [?ROLE_X]}.
+
+setup_user_props_meck(RolesMap, GroupsMap) ->
+    meck:expect(menelaus_users, user_exists,
+                fun (U) ->
+                    lists:member(U, maps:keys(RolesMap))
+                end),
+    meck:expect(menelaus_users, get_user_props,
+                fun (User, [groups, roles]) ->
+                        [{groups, maps:get(User, GroupsMap)},
+                         {roles, maps:get(User, RolesMap)}]
+                end).
 
 setup() ->
     fake_ns_config:setup(),
@@ -212,29 +238,8 @@ setup() ->
     %% SampleBucketTestSet.post_with_couchdb_sample_test
     meck:expect(ns_node_disco, couchdb_node, fun () -> other_node end),
 
-    meck:expect(menelaus_users, get_user_props,
-                fun (?LOCAL_USER_IN_A, [groups, roles]) ->
-                        [{groups, [?GROUP_A]},
-                         {roles, []}];
-                    (?LOCAL_USER_WITH_X, [groups, roles]) ->
-                        [{groups, []},
-                         {roles, [?ROLE_X]}];
-                    (?LOCAL_USER_WITH_X_1, [groups, roles]) ->
-                        [{groups, []},
-                         {roles, [?ROLE_X]}];
-                    (?LOCAL_USER_IN_B, [groups, roles]) ->
-                        [{groups, [?GROUP_B]},
-                         {roles, []}];
-                    (?LOCAL_USER_WITH_Y, [groups, roles]) ->
-                        [{groups, []},
-                         {roles, [?ROLE_Y]}];
-                    (?EXTERNAL_USER_IN_A, [groups, roles]) ->
-                        [{groups, [?GROUP_A]},
-                         {roles, []}];
-                    (?EXTERNAL_USER_WITH_X, [groups, roles]) ->
-                        [{groups, []},
-                         {roles, [?ROLE_X]}]
-                end),
+    setup_user_props_meck(roles_map(), groups_map()),
+
     gen_event:start_link({local, user_storage_events}),
 
     configure(menelaus_web_activity:default()),
@@ -305,6 +310,7 @@ clear_deleted_users_test__() ->
     configure([{enabled, true},
                {tracked_roles, CoveredRoles},
                {tracked_groups, []}]),
+
     lists:foreach(
       fun (Identity) ->
               ?assert(is_tracked(Identity)),
@@ -314,21 +320,86 @@ clear_deleted_users_test__() ->
       end, [ExistingUser,
             DeletedUser]),
 
-    meck:expect(menelaus_users, user_exists,
-                fun (U) when U =:= ExistingUser -> true;
-                    (_) -> false
-                end),
+    try
+        meck:expect(menelaus_users, user_exists,
+                    fun (U) when U =:= ExistingUser -> true;
+                        (_) -> false
+                    end),
 
-    gen_event:notify(user_storage_events, {user_version, {0, 1}}),
-    meck:wait(menelaus_users, user_exists, ['_'], 5000),
+        %% Clear call history from prior tests
+        meck:reset(menelaus_users),
+        %% Notify with event and wait for activity to be cleared
+        gen_event:notify(user_storage_events, {user_version, {0, 1}}),
+        meck:wait(menelaus_users, user_exists, ['_'], 5000),
 
-    ?assertNotEqual(undefined, get_last_activity(ExistingUser)),
-    ?assertEqual(undefined, get_last_activity(DeletedUser)).
+        ?assertNotEqual(undefined, get_last_activity(ExistingUser)),
+        ?assertEqual(undefined, get_last_activity(DeletedUser))
+    after
+        setup_user_props_meck(roles_map(), groups_map())
+    end.
+
+clear_when_user_switched_role_test__() ->
+    try
+        User = ?LOCAL_USER_WITH_X,
+        CoveredRoles = [?ROLE_X],
+        configure([{enabled, true},
+                   {tracked_roles, CoveredRoles},
+                   {tracked_groups, []}]),
+        ?assert(is_tracked(User)),
+        handle_activity(?auth(User)),
+        Time = get_last_activity(User),
+        ?assertNotEqual(undefined, Time),
+
+        RolesMap0 = roles_map(),
+        RolesMap1 = RolesMap0#{User => [?ROLE_Y]},
+        setup_user_props_meck(RolesMap1, groups_map()),
+
+        %% Clear call history from prior tests
+        meck:reset(menelaus_users),
+        %% Notify with event and wait for activity to be cleared
+        gen_event:notify(user_storage_events, {user_version, {0, 1}}),
+        meck:wait(menelaus_users, user_exists, ['_'], 5000),
+
+        ?assertEqual(undefined, get_last_activity(User))
+    after
+        %% Put roles and groups back to their original values, for other tests
+        setup_user_props_meck(roles_map(), groups_map())
+    end.
+
+clear_when_user_switched_group_test__() ->
+    try
+        User = ?LOCAL_USER_IN_A,
+        CoveredGroups = [?GROUP_A],
+        configure([{enabled, true},
+                   {tracked_roles, []},
+                   {tracked_groups, CoveredGroups}]),
+        ?assert(is_tracked(User)),
+        handle_activity(?auth(User)),
+        Time = get_last_activity(User),
+        ?assertNotEqual(undefined, Time),
+
+        GroupsMap0 = groups_map(),
+        GroupsMap1 = GroupsMap0#{User => [?GROUP_B]},
+        setup_user_props_meck(roles_map(), GroupsMap1),
+
+        %% Clear call history from prior tests
+        meck:reset(menelaus_users),
+        %% Notify with event and wait for activity to be cleared
+        gen_event:notify(user_storage_events, {user_version, {0, 1}}),
+        meck:wait(menelaus_users, user_exists, ['_'], 5000),
+
+        ?assertEqual(undefined, get_last_activity(User))
+    after
+        %% Put roles and groups back to their original values, for other tests
+        setup_user_props_meck(roles_map(), groups_map())
+    end.
 
 all_test_() ->
     {setup, fun setup/0, fun teardown/1,
      [fun track_covered_user_test__/0,
       fun dont_track_uncovered_user_test__/0,
-      fun clear_deleted_users_test__/0]}.
+      fun clear_deleted_users_test__/0,
+      fun clear_when_user_switched_role_test__/0,
+      fun clear_when_user_switched_group_test__/0]}.
 
 -endif.

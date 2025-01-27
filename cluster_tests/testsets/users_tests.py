@@ -238,9 +238,11 @@ class UsersTestSet(testlib.BaseTestSet):
         name1 = testlib.random_str(10)
         password1 = testlib.random_str(10)
 
+        roles = 'admin'
+
         # User creation
         put_user(self.cluster, 'local', user, password=password1,
-                 roles='admin', full_name=name1, groups='',
+                 roles=roles, full_name=name1, groups='',
                  validate_user_props=True)
 
         # Enable activity tracking without yet covering this user
@@ -254,12 +256,8 @@ class UsersTestSet(testlib.BaseTestSet):
         sync_activity(self.cluster)
 
         # No activity
-        for node in self.cluster.connected_nodes:
-            activity = testlib.diag_eval(
-                node, "gen_server:call(activity_tracker, last_activity)").text
-            assert "[]" == activity, activity
-        r = testlib.get_succ(self.cluster, '/settings/rbac/users/local/' + user)
-        assert r.json().get('last_activity_time') is None
+        testlib.assert_eq(is_activity_in_ets(self.cluster), False)
+        testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
 
         # Enable activity tracking directly with trackedRoles
         post_activity(self.cluster,
@@ -273,16 +271,9 @@ class UsersTestSet(testlib.BaseTestSet):
         sync_activity(self.cluster)
 
         # New activity
-        found_activity = False
-        for node in self.cluster.connected_nodes:
-            activity = testlib.diag_eval(
-                node, "gen_server:call(activity_tracker, last_activity)").text
-            if "[]" != activity:
-                found_activity = True
-        assert found_activity
-        r = testlib.get_succ(self.cluster, '/settings/rbac/users/local/' + user)
-        assert r.json().get('last_activity_time') is not None, \
-            "'last_activity_time' missing"
+        testlib.assert_eq(is_activity_in_ets(self.cluster), True)
+        testlib.assert_eq(get_activity_for_user(self.cluster, user) is not None,
+                          True)
 
         # Disable activity tracking to test clearing of activity
         post_activity(self.cluster,
@@ -293,12 +284,8 @@ class UsersTestSet(testlib.BaseTestSet):
         sync_activity(self.cluster)
 
         # No activity
-        for node in self.cluster.connected_nodes:
-            activity = testlib.diag_eval(
-                node, "gen_server:call(activity_tracker, last_activity)").text
-            assert "[]" == activity, activity
-        r = testlib.get_succ(self.cluster, '/settings/rbac/users/local/' + user)
-        assert r.json().get('last_activity_time') is None
+        testlib.assert_eq(is_activity_in_ets(self.cluster), False)
+        testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
 
         # Re-enable activity to test that old activity doesn't return
         post_activity(self.cluster,
@@ -309,12 +296,31 @@ class UsersTestSet(testlib.BaseTestSet):
         sync_activity(self.cluster)
 
         # No activity
-        for node in self.cluster.connected_nodes:
-            activity = testlib.diag_eval(
-                node, "gen_server:call(activity_tracker, last_activity)").text
-            assert "[]" == activity, activity
-        r = testlib.get_succ(self.cluster, '/settings/rbac/users/local/' + user)
-        assert r.json().get('last_activity_time') is None
+        testlib.assert_eq(is_activity_in_ets(self.cluster), False)
+        testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
+
+        # Remove the tracked role from the user to test activity clearing
+        put_user(self.cluster, 'local', user, password=password1,
+                 roles=None, full_name=name1, groups='',
+                 validate_user_props=True)
+
+        sync_activity(self.cluster)
+
+        # No activity
+        testlib.assert_eq(is_activity_in_ets(self.cluster), False)
+        testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
+
+        # Add the tracked role back to the user to test that old activity
+        # doesn't return
+        put_user(self.cluster, 'local', user, password=password1,
+                 roles=roles, full_name=name1, groups='',
+                 validate_user_props=True)
+
+        sync_activity(self.cluster)
+
+        # No activity
+        testlib.assert_eq(is_activity_in_ets(self.cluster), False)
+        testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
 
     def activity_tracking_with_group_role_test(self):
         user = self.user
@@ -343,16 +349,8 @@ class UsersTestSet(testlib.BaseTestSet):
             sync_activity(self.cluster)
 
             # No activity
-            for node in self.cluster.connected_nodes:
-                activity = testlib.diag_eval(
-                    node,
-                    "gen_server:call(activity_tracker, last_activity)").text
-                assert "[]" == activity, \
-                    f'Found unexpected activity: {activity}'
-            user_info = testlib.get_succ(
-                self.cluster, f'/settings/rbac/users/local/{user}').json()
-            assert user_info.get('last_activity_time') is None, \
-                f'Unexpected activity: {user_info}'
+            testlib.assert_eq(is_activity_in_ets(self.cluster), False)
+            testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
 
             # Enable activity tracking by adding a tracked role to the group
             testlib.put_succ(self.cluster, f'/settings/rbac/groups/{group}',
@@ -364,18 +362,54 @@ class UsersTestSet(testlib.BaseTestSet):
             sync_activity(self.cluster)
 
             # New activity
-            found_activity = False
-            for node in self.cluster.connected_nodes:
-                activity = testlib.diag_eval(
-                    node,
-                    "gen_server:call(activity_tracker, last_activity)").text
-                if "[]" != activity:
-                    found_activity = True
-            assert found_activity
-            user_info = testlib.get_succ(
-                self.cluster, f'/settings/rbac/users/local/{user}').json()
-            assert user_info.get('last_activity_time') is not None, \
-                "'last_activity_time' missing"
+            testlib.assert_eq(is_activity_in_ets(self.cluster), True)
+            testlib.assert_eq(get_activity_for_user(self.cluster, user)
+                              is not None, True)
+
+            # Disable activity tracking for that role to test activity clearing
+            post_activity(self.cluster,
+                          {'enabled': True,
+                           'trackedRoles': [],
+                           'trackedGroups': []})
+
+            sync_activity(self.cluster)
+
+            # No activity
+            testlib.assert_eq(is_activity_in_ets(self.cluster), False)
+            testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
+
+            # Re-enable tracking role to test that old activity doesn't return
+            post_activity(self.cluster,
+                          {'enabled': True,
+                           'trackedRoles': ['admin'],
+                           'trackedGroups': []})
+
+            sync_activity(self.cluster)
+
+            # No activity
+            testlib.assert_eq(is_activity_in_ets(self.cluster), False)
+            testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
+
+            # Remove the tracked role from the group to test activity clearing
+            testlib.put_succ(self.cluster, f'/settings/rbac/groups/{group}',
+                             data={'roles': ''})
+
+            sync_activity(self.cluster)
+
+            # No activity
+            testlib.assert_eq(is_activity_in_ets(self.cluster), False)
+            testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
+
+            # Add the tracked role back to the group to test that old activity
+            # doesn't return
+            testlib.put_succ(self.cluster, f'/settings/rbac/groups/{group}',
+                             data={'roles': 'admin'})
+
+            sync_activity(self.cluster)
+
+            # No activity
+            testlib.assert_eq(is_activity_in_ets(self.cluster), False)
+            testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
         finally:
             testlib.ensure_deleted(self.cluster,
                                    f'/settings/rbac/groups/{group}')
@@ -407,16 +441,8 @@ class UsersTestSet(testlib.BaseTestSet):
             sync_activity(self.cluster)
 
             # No activity
-            for node in self.cluster.connected_nodes:
-                activity = testlib.diag_eval(
-                    node,
-                    "gen_server:call(activity_tracker, last_activity)").text
-                assert "[]" == activity, \
-                    f'Found unexpected activity: {activity}'
-            user_info = testlib.get_succ(
-                self.cluster, f'/settings/rbac/users/local/{user}').json()
-            assert user_info.get('last_activity_time') is None, \
-                f'Unexpected activity: {user_info}'
+            testlib.assert_eq(is_activity_in_ets(self.cluster), False)
+            testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
 
             # Enable activity tracking by adding a tracked group to the user
             put_user(self.cluster, 'local', user, password=password1,
@@ -429,18 +455,56 @@ class UsersTestSet(testlib.BaseTestSet):
             sync_activity(self.cluster)
 
             # New activity
-            found_activity = False
-            for node in self.cluster.connected_nodes:
-                activity = testlib.diag_eval(
-                    node,
-                    "gen_server:call(activity_tracker, last_activity)").text
-                if "[]" != activity:
-                    found_activity = True
-            assert found_activity
-            user_info = testlib.get_succ(
-                self.cluster, f'/settings/rbac/users/local/{user}').json()
-            assert user_info.get('last_activity_time') is not None, \
-                "'last_activity_time' missing"
+            testlib.assert_eq(is_activity_in_ets(self.cluster), True)
+            testlib.assert_eq(get_activity_for_user(self.cluster, user)
+                              is not None, True)
+
+            # Disable activity tracking for that group to test activity clearing
+            post_activity(self.cluster,
+                          {'enabled': True,
+                           'trackedRoles': [],
+                           'trackedGroups': []})
+
+            sync_activity(self.cluster)
+
+            # No activity
+            testlib.assert_eq(is_activity_in_ets(self.cluster), False)
+            testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
+
+            # Re-enable tracking group to test that old activity doesn't return
+            post_activity(self.cluster,
+                          {'enabled': True,
+                           'trackedRoles': [],
+                           'trackedGroups': [group]})
+
+            sync_activity(self.cluster)
+
+            # No activity
+            testlib.assert_eq(is_activity_in_ets(self.cluster), False)
+            testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
+
+            # Remove the tracked group from the user to test activity clearing
+            put_user(self.cluster, 'local', user, password=password1,
+                     roles=roles, full_name=name1, groups='',
+                     validate_user_props=True)
+
+            sync_activity(self.cluster)
+
+            # No activity
+            testlib.assert_eq(is_activity_in_ets(self.cluster), False)
+            testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
+
+            # Add the tracked group back to the user to test that old activity
+            # doesn't return
+            put_user(self.cluster, 'local', user, password=password1,
+                     roles=roles, full_name=name1, groups=group,
+                     validate_user_props=True)
+
+            sync_activity(self.cluster)
+
+            # No activity
+            testlib.assert_eq(is_activity_in_ets(self.cluster), False)
+            testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
         finally:
             testlib.ensure_deleted(self.cluster,
                                    f'/settings/rbac/groups/{group}')
@@ -848,6 +912,21 @@ def post_activity(cluster, json):
     r = testlib.post_succ(cluster, '/settings/security/userActivity',
                           json=json)
     testlib.assert_eq(r.json(), json)
+
+
+def is_activity_in_ets(cluster):
+    found_activity = False
+    for node in cluster.connected_nodes:
+        activity = testlib.diag_eval(
+            node, "gen_server:call(activity_tracker, last_activity)").text
+        if "[]" != activity:
+            found_activity = True
+    return found_activity
+
+
+def get_activity_for_user(cluster, user):
+    r = testlib.get_succ(cluster, '/settings/rbac/users/local/' + user)
+    return r.json().get('last_activity_time')
 
 
 def assert_authn_and_roles(cluster_or_node, user, password, expected_roles):

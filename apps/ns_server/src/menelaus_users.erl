@@ -83,7 +83,8 @@
          %% Misc:
          allow_hash_migration_during_auth_default/0,
          store_activity/1,
-         delete_all_activity/0
+         delete_all_activity/0,
+         clear_activity_for_untracked_users/1
         ]).
 
 %% callbacks for replicated_dets
@@ -653,6 +654,24 @@ delete_all_activity() ->
                 ?log_debug("Deleting last activity time for user ~p",
                            [ns_config_log:tag_user_data(User)]),
                 delete
+        end,
+    case replicated_dets:select_with_update(storage_name(), {activity, '_'},
+                                            100, UpdateFun) of
+        [] -> ok;
+        Error -> ?log_warning("Failed to delete activity: ~p", [Error])
+    end.
+
+clear_activity_for_untracked_users(IsTracked) ->
+    UpdateFun =
+        fun ({activity, User}, _Props) ->
+                case IsTracked(User) of
+                    false ->
+                        ?log_debug("Deleting last activity time for untracked user"
+                                   "~p", [ns_config_log:tag_user_data(User)]),
+                        delete;
+                    true ->
+                        skip
+                end
         end,
     case replicated_dets:select_with_update(storage_name(), {activity, '_'},
                                             100, UpdateFun) of

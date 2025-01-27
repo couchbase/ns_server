@@ -12,6 +12,7 @@
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
+-include_lib("ns_common/include/cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -42,6 +43,7 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 init([]) ->
+    ns_pubsub:subscribe_link(user_storage_events, fun user_storage_event/1),
     ns_pubsub:subscribe_link(ns_config_events, fun config_event/1),
     {ok, restart_refresh_timer(#state{})}.
 
@@ -59,13 +61,15 @@ handle_info(refresh, State = #state{}) ->
     end,
     %% Reminder to refresh again after the check interval
     {noreply, restart_refresh_timer(State)};
-handle_info(maybe_clear_activity, State = #state{}) ->
+handle_info(clear_activity_for_untracked_users, State = #state{}) ->
+    misc:flush(clear_activity_for_untracked_users),
     Config = menelaus_web_activity:get_config(),
     case menelaus_web_activity:is_enabled(Config) of
         false ->
             menelaus_users:delete_all_activity();
         true ->
-            ok
+            IsTracked = activity_tracker:is_user_covered(_, Config),
+            menelaus_users:clear_activity_for_untracked_users(IsTracked)
     end,
     {noreply, State};
 handle_info(_Info, State = #state{}) ->
@@ -92,9 +96,14 @@ restart_refresh_timer(#state{refresh_timer_ref = undefined} = State) ->
 %%% Internal functions
 %%%===================================================================
 
+user_storage_event({user_version, _}) ->
+    ?SERVER ! clear_activity_for_untracked_users;
+user_storage_event(_) ->
+    ok.
+
 config_event({Key, _}) ->
     case menelaus_web_activity:is_config_key(Key) of
-        true -> ?SERVER ! maybe_clear_activity;
+        true -> ?SERVER ! clear_activity_for_untracked_users;
         false -> ok
     end;
 config_event(_) ->
