@@ -696,6 +696,8 @@ format_error({store_key_error, Msg}) ->
     Msg;
 format_error(active_key) ->
     "Can't delete active key";
+format_error(not_supported) ->
+    "Operation not supported";
 format_error(Reason) ->
     lists:flatten(io_lib:format("~p", [Reason])).
 
