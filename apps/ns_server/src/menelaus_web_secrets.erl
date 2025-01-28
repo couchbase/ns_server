@@ -560,11 +560,14 @@ kmip_key_validators(CurSecretProps) ->
      validator:validate(fun (P) -> {value, ?HIDE(P)} end, keyPassphrase, _),
      validator:one_of(caSelection,["useSysCa",
                                    "useCbCa",
-                                   "useSysAndCbCa"], _),
+                                   "useSysAndCbCa",
+                                   "skipServerCertVerification"], _),
      validator:convert(caSelection,
                       fun (<<"useSysCa">>) -> use_sys_ca;
                           (<<"useCbCa">>) -> use_cb_ca;
-                          (<<"useSysAndCbCa">>) -> use_sys_and_cb_ca
+                          (<<"useSysAndCbCa">>) -> use_sys_and_cb_ca;
+                          (<<"skipServerCertVerification">>) ->
+                              skip_server_cert_verification
                       end, _),
      validator:default(caSelection, use_cb_ca, _),
      validator:one_of(encryptionApproach, ["useGet",
