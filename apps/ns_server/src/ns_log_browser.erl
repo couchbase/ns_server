@@ -114,8 +114,10 @@ start() ->
         end,
 
     LogF = proplists:get_value(log, Options),
-    case log_exists(LogDir, LogF) of
-        true ->
+    case {"memcached.log" =:= LogF, log_exists(LogDir, LogF)} of
+        {false, false} ->
+            usage("Requested log file ~p does not exist.~n", [LogF]);
+        {_, _} ->
             stream_logs(LogF,
                         LogDir,
                         fun (Data) ->
@@ -125,9 +127,7 @@ start() ->
                                 %% otp/lib/kernel/tests/file_SUITE.erl) it makes
                                 %% dialyzer unhappy
                                 file:write(group_leader(), Data)
-                        end, GetDSFn, LoggerFn);
-        false ->
-            usage("Requested log file ~p does not exist.~n", [LogF])
+                        end, GetDSFn, LoggerFn)
     end.
 
 %% Option parser
@@ -199,8 +199,7 @@ stream_logs(LogF, ConsumeFn) ->
     stream_logs(LogF, LogPath, ConsumeFn, GetDSFn, LoggerFn).
 
 stream_logs(LogF, LogPath, ConsumeFn, GetDSFn, LoggerFn) ->
-    CurrentLog = filename:join(LogPath, LogF),
-    PastLogs = find_past_logs(LogPath, LogF),
+    AllLogs = find_all_logs(LogPath, LogF),
 
     StdFileStreamFn =
         fun (FPath) ->
@@ -263,7 +262,7 @@ stream_logs(LogF, LogPath, ConsumeFn, GetDSFn, LoggerFn) ->
                       StdFileStreamFn(FileName),
                       Acc
               end
-      end, undefined, PastLogs ++ [CurrentLog]),
+      end, undefined, AllLogs),
     ok.
 
 stream_logs_loop(IO, ChunkSz, ConsumeFn) ->
@@ -275,11 +274,23 @@ stream_logs_loop(IO, ChunkSz, ConsumeFn) ->
             stream_logs_loop(IO, ChunkSz, ConsumeFn)
     end.
 
-find_past_logs(Dir, Log) ->
-    {ok, RegExp} = re:compile("^" ++ Log ++ "\.([1-9][0-9]*)(\.gz)?$"),
+find_all_logs(LogPath, LogF) ->
+    case LogF of
+        "memcached.log" ->
+            {ok, RegExp} =
+                re:compile("^" ++ LogF ++ "\.([0-9][0-9]*)(\.txt|\.cef)?$"),
+            find_logs(LogPath, RegExp, fun(X, Y) -> X < Y end);
+        _ ->
+            {ok, RegExp} =
+                re:compile("^" ++ LogF ++ "\.([1-9][0-9]*)(\.gz)?$"),
+            BaseLog = filename:join(LogPath, LogF),
+            find_logs(LogPath, RegExp, fun(X, Y) -> X > Y end) ++ [BaseLog]
+    end.
+
+find_logs(Dir, RegExp, SortFn) ->
     {ok, AllFiles} = file:list_dir(Dir),
 
-    PastLogs0 =
+    Logs0 =
         lists:foldl(
           fun (FileName, Acc) ->
                   FullPath = filename:join(Dir, FileName),
@@ -297,9 +308,9 @@ find_past_logs(Dir, Log) ->
                   end
           end, [], AllFiles),
 
-    PastLogs1 = lists:sort(
-                  fun ({_, X}, {_, Y}) ->
-                          X > Y
-                  end, PastLogs0),
+    Logs1 = lists:sort(
+              fun ({_, X}, {_, Y}) ->
+                  SortFn(X, Y)
+              end, Logs0),
 
-    [P || {P, _} <- PastLogs1].
+    [P || {P, _} <- Logs1].
