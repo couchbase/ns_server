@@ -103,6 +103,7 @@ start_link(ArgsMap) ->
 %%%===================================================================
 
 init([ArgsMap]) ->
+    notify_curr_connections(#{}),
     {ok, build_state(ArgsMap)}.
 
 handle_call(#add_client{pid = Pid, client = Client}, _From,
@@ -213,7 +214,9 @@ do_add_client(#state{clients = Clients} = State,
               Pid, Client) ->
     %% We need to close the socket if the client terminates
     erlang:monitor(process, Pid),
-    State#state{clients = maps:put(Pid, Client, Clients)}.
+    NewClients = maps:put(Pid, Client, Clients),
+    notify_curr_connections(NewClients),
+    State#state{clients = NewClients}.
 
 do_drop_client(#state{clients = Clients} = State, Pid) ->
     case maps:take(Pid, Clients) of
@@ -228,6 +231,8 @@ do_drop_client(#state{clients = Clients} = State, Pid) ->
                 _ ->
                     gen_server:reply(Handler, {error, dropped})
             end,
+
+            notify_curr_connections(NewClients),
             State#state{clients = NewClients};
         error ->
             ?log_warning("Failed to drop connection ~p, because the pid is "
@@ -245,6 +250,11 @@ enforce_max(#state{clients = Clients, max = Max} = State)
                "decreased (~p active connections > ~p max connections)",
                [Pid, map_size(Clients), Max]),
     enforce_max(do_drop_client(State, Pid)).
+
+notify_curr_connections(Clients) ->
+    ns_server_stats:notify_gauge(app_telemetry_curr_connections,
+                                 map_size(Clients),
+                                 #{expiration_s => infinity}).
 
 
 is_ping(ping) -> true;
