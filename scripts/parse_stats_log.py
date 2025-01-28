@@ -296,6 +296,36 @@ class StatsAnalyzer:
                         current_entry["memory_worst_used"] = int(
                             mem_match.group(4))
 
+                elif current_entry and "{disk_data," in line:
+                    assert mode is None, (
+                        f"Expected mode None or disk_data, but was {mode} when "
+                        "parsing disk_data"
+                    )
+                    mode = "disk_data"
+                elif mode == "disk_data":
+                    # We're looking for this format for disk_data, we'll match
+                    # a group for the name, the capacity, and the usage
+                    #   [{"/dev",4096,0},
+                    #    {"/dev/shm",524288,1},
+                    #    {"/run",52655624,1},
+                    #    {"/sys/fs/cgroup",4096,0},
+                    #    {"/",20466256,27},
+                    #    {"/export",853726716,5},
+                    #    {"/tmp",524288,1},
+                    #    {"/var",16337788,18}]}]},
+                    disk_match = re.search(r"(\"\/[a-z]*\"),([0-9]*),([0-9]*)",
+                                           line)
+                    if disk_match:
+                        disk = disk_match.group(1)
+                        capacity = int(disk_match.group(2))
+                        usage = int(disk_match.group(3))
+
+                        current_entry[f"disk_{disk}_usage"] = usage
+                        current_entry[f"disk_{disk}_capacity"] = capacity
+
+                    if "}]}]}" in line:
+                        mode = None
+
                 # Parse system memory data (memsup:get_system_memory_data())
                 elif current_entry and "{system_memory_data," in line:
                     assert (
@@ -519,15 +549,11 @@ class StatsAnalyzer:
 
             cluster_cpu_dir = cluster_dir / "cpu"
             cluster_memory_dir = cluster_dir / "memory"
+            cluster_io_dir = cluster_dir / "io"
             cluster_cpu_dir.mkdir(exist_ok=True)
             cluster_memory_dir.mkdir(exist_ok=True)
 
-            # Only create io directory if we have pressure metrics
             cluster_data = self.df[self.df["node"].isin(self.nodes)]
-            if "system_io_pressure_full_avg60" in cluster_data.columns:
-                cluster_io_dir = cluster_dir / "io"
-                cluster_io_dir.mkdir(exist_ok=True)
-
             self._plot_cluster_top_erlang_process(cluster_data,
                                                   cluster_memory_dir,
                                                   node_count)
@@ -560,13 +586,12 @@ class StatsAnalyzer:
             cpu_processes_dir = cpu_dir / "processes"
             cpu_processes_dir.mkdir(exist_ok=True)
 
+            io_dir = node_dir / "io"
+            io_dir.mkdir(exist_ok=True)
+
             node_data = self.df[self.df["node"] == node]
-            if "system_io_pressure_full_avg60" in node_data.columns:
-                io_dir = node_dir / "io"
-                io_dir.mkdir(exist_ok=True)
 
             print(f"Data points: {len(node_data)}")
-
             self._write_summary(node_data, node_dir / "summary.txt")
 
             # Generate node-specific plots
@@ -577,6 +602,7 @@ class StatsAnalyzer:
             self._plot_os_memory_stats(node_data, memory_dir)
             self._plot_os_cpu_stats(node_data, cpu_dir)
             self._plot_pressure_stats(node_data, node_dir, 1)
+            self._plot_disk_stats(node_data, io_dir)
 
     def _format_bytes(self, bytes_value):
         """Format bytes to appropriate unit."""
@@ -1139,6 +1165,78 @@ class StatsAnalyzer:
                 bbox_inches="tight",
             )
             plt.close()
+
+    def _plot_disk_stats(self, data, output_dir):
+        """Plot both disk capacity and usage %."""
+        disk_usages = [
+            col
+            for col in data.columns
+            if col.startswith("disk_") and col.endswith("_usage")
+        ]
+
+        if not disk_usages:
+            print("Warning: No disk usage data found to plot")
+            return
+
+        plt.title("Disk Usage")
+        plt.xlabel("Time")
+        plt.ylabel("% space used")
+
+        for disk in disk_usages:
+            style = self._get_process_style(len(plt.gca().lines))
+            plt.plot(
+                data["timestamp"],
+                data[disk],
+                label=disk.replace('disk_', '').replace('_usage', ''),
+                **style,
+            )
+
+        self._adjust_x_axis(plt.gca())
+        plt.tight_layout()
+        plt.legend(bbox_to_anchor=(1.05, 1))
+
+        plt.savefig(output_dir / f"disk_usage.png",
+                    bbox_inches="tight",
+                    )
+        plt.close()
+
+        disk_capacities = [
+            col
+            for col in data.columns
+            if col.startswith("disk_") and col.endswith("_capacity")
+        ]
+
+        if not disk_capacities:
+            print("Warning: No disk capacity data found to plot")
+            return
+
+        plt.title("Disk Capacity")
+        plt.xlabel("Time")
+
+        # Find appropriate unit based on max value
+        max_bytes = max(data[metric].max() for metric in disk_capacities)
+        _, unit = self._format_bytes(max_bytes)
+        divisor = 1024 ** self.STORAGE_UNITS.index(unit)
+
+        plt.ylabel(f"Capacity ({unit})")
+
+        for disk in disk_capacities:
+            style = self._get_process_style(len(plt.gca().lines))
+            plt.plot(
+                data["timestamp"],
+                data[disk] / divisor,
+                label=disk.replace('disk_', '').replace('_capacity', ''),
+                **style,
+            )
+
+        self._adjust_x_axis(plt.gca())
+        plt.tight_layout()
+        plt.legend(bbox_to_anchor=(1.05, 1))
+        plt.savefig(output_dir / f"disk_capacity.png",
+                    bbox_inches="tight",
+                    )
+        plt.close()
+
 
     def _plot_cluster_top_erlang_process(self, data, output_dir, node_count):
         """Plot highest memory consuming Erlang process across cluster over
