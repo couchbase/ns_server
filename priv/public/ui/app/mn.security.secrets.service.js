@@ -71,6 +71,11 @@ class MnSecuritySecretsService {
       .addSuccess()
       .addError();
 
+    this.stream.testPostSecret =
+      new MnHttpRequest(this.testPostSecret.bind(this))
+      .addSuccess()
+      .addError();
+
     this.stream.deleteKey =
       new MnHttpRequest(this.deleteKey.bind(this))
       .addSuccess()
@@ -83,6 +88,11 @@ class MnSecuritySecretsService {
 
     this.stream.putSecret =
       new MnHttpRequest(this.putSecret.bind(this))
+      .addSuccess()
+      .addError();
+
+    this.stream.testPutSecret =
+      new MnHttpRequest(this.testPutSecret.bind(this))
       .addSuccess()
       .addError();
 
@@ -110,12 +120,20 @@ class MnSecuritySecretsService {
     return this.http.post('/settings/encryptionKeys', params, { headers: new HttpHeaders().set("isNotForm", true) });
   }
 
+  testPostSecret([params]) {
+    return this.http.post('/settings/encryptionKeys/test', params, { headers: new HttpHeaders().set("isNotForm", true) });
+  }
+
   deleteSecret(id) {
     return this.http.delete('/settings/encryptionKeys/' + encodeURIComponent(id));
   }
 
   putSecret([params, id]) {
     return this.http.put('/settings/encryptionKeys/' + encodeURIComponent(id), params, { headers: new HttpHeaders().set("isNotForm", true) });
+  }
+
+  testPutSecret([params, id]) {
+    return this.http.put('/settings/encryptionKeys/' + encodeURIComponent(id) + '/test', params, { headers: new HttpHeaders().set("isNotForm", true) });
   }
 
   deleteKey([secretId, keyId]) {

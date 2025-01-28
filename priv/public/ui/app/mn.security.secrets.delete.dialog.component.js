@@ -42,13 +42,13 @@ class MnSecuritySecretsDeleteDialogComponent extends MnLifeCycleHooksToStream {
     this.form = mnFormService.create(this)
       .setPackPipe(map(() => this.item.id))
       .setPostRequest(mnSecuritySecretsService.stream.deleteSecrets)
-      .successMessage("Secret deleted successfully!")
+      .successMessage("Encryption Key deleted successfully!")
       .showGlobalSpinner()
       .success(() => {
         activeModal.close();
         mnSecuritySecretsService.stream.updateSecretsList.next();
       });
-    
+
     this.activeModal = activeModal;
     this.deleteSecrets = mnSecuritySecretsService.stream.deleteSecrets;
   }

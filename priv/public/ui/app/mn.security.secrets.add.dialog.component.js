@@ -9,6 +9,7 @@ licenses/APL2.txt.
 */
 
 import {ChangeDetectionStrategy, Component} from '@angular/core';
+import {HttpErrorResponse } from '@angular/common/http';
 
 import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
 
@@ -120,36 +121,50 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
       .setPackPipe(map(this.packData.bind(this)))
       .setPostRequest(this.item ? this.mnSecuritySecretsService.stream.putSecret : this.mnSecuritySecretsService.stream.postSecret)
       .setReset(this.uiRouter.stateService.reload)
-      .successMessage(this.item ? "Secret updated successfully!" : "Secret created successfully!")
+      .successMessage(this.item ? "Encryption key updated successfully!" : "Encryption key created successfully!")
       .success(() => {
         this.mnSecuritySecretsService.stream.updateSecretsList.next();
         this.activeModal.dismiss();
       });
 
-      this.filteredSecrets = this.secrets.filter(secret => secret.usage.find(u => u.includes('KEK-encryption')));
+    this.filteredSecrets = this.secrets.filter(secret => secret.usage.find(u => u.includes('KEK-encryption')));
 
-      this.httpError = this.item ?
-        this.mnSecuritySecretsService.stream.putSecret.error : this.mnSecuritySecretsService.stream.postSecret.error;
+    this.httpError = this.item ?
+      this.mnSecuritySecretsService.stream.putSecret.error : this.mnSecuritySecretsService.stream.postSecret.error;
+    this.testHttpError = this.item ?
+      this.mnSecuritySecretsService.stream.testPutSecret.error : this.mnSecuritySecretsService.stream.testPostSecret.error;
 
-      this.formType =
-        this.form.group.get('type').valueChanges
+    let testAddResponse = this.mnSecuritySecretsService.stream.testPostSecret.response;
+    let testEditResponse = this.mnSecuritySecretsService.stream.testPutSecret.response;
+
+    this.isTestResultValid = this.item ?
+      testEditResponse.pipe(map(resp => !(resp instanceof HttpErrorResponse))) :
+      testAddResponse.pipe(map(resp => !(resp instanceof HttpErrorResponse)));
+
+    this.formType =
+      this.form.group.get('type').valueChanges
         .pipe(startWith(this.form.group.get('type').value));
 
-      const isAutoRotationEnabled =
-        this.form.group.get('generated-secret.autoRotation').valueChanges
+    const isAutoRotationEnabled =
+      this.form.group.get('generated-secret.autoRotation').valueChanges
         .pipe(startWith(this.form.group.get('generated-secret.autoRotation').value));
 
-      const isDataEnabled =
-        this.form.group.get('usage.bucket-encryption').valueChanges
+    const isDataEnabled =
+      this.form.group.get('usage.bucket-encryption').valueChanges
         .pipe(startWith(this.form.group.get('usage.bucket-encryption').value));
 
-      isDataEnabled
-        .pipe(takeUntil(this.mnOnDestroy))
-        .subscribe(this.maybeToggleAllBuckets.bind(this));
+    isDataEnabled
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(this.maybeToggleAllBuckets.bind(this));
 
-      isAutoRotationEnabled
-        .pipe(takeUntil(this.mnOnDestroy))
-        .subscribe(this.maybeEnableRotation.bind(this));
+    isAutoRotationEnabled
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(this.maybeEnableRotation.bind(this));
+
+    this.testSettings = this.mnFormService.create(this)
+      .setFormGroup({})
+      .setPackPipe(map(this.packData.bind(this)))
+      .setPostRequest(this.item ? this.mnSecuritySecretsService.stream.testPutSecret : this.mnSecuritySecretsService.stream.testPostSecret)
 
     if (this.item) {
       setTimeout(() => {
