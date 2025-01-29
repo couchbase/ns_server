@@ -87,10 +87,16 @@ class AppTelemetryTests(testlib.BaseTestSet):
             testlib.assert_eq(message, b'\x00')
             metric_0 = ''.join(random.choices(string.ascii_lowercase, k=10))
             metric_1 = ''.join(random.choices(string.ascii_lowercase, k=10))
+            metric_2 = ''.join(random.choices(string.ascii_lowercase, k=10))
             value = random.randrange(0, 1000000000)
-            metrics = (make_metric(metric_0, node0_uuid, value) + '\n' +
-                       make_metric(metric_1, node1_uuid, value))
-            websocket.send(b'\x00' + metrics.encode('utf-8'))
+            # Test multiple lines, multiple metrics, multiple nodes, and
+            # a line fragmented over multiple frames
+            metrics = [b'\x00' + make_metric(metric_0, node0_uuid, value)
+                       + b'\n' +
+                       make_metric(metric_1, node1_uuid, value) +
+                       f"\n{metric_2}{{node_uuid=".encode('utf-8'),
+                       f"\"{node0_uuid}\"}} {value} 1695747260".encode('utf-8')]
+            websocket.send(metrics)
 
             testlib.poll_for_condition(
                 lambda:
@@ -103,6 +109,10 @@ class AppTelemetryTests(testlib.BaseTestSet):
                                                 'le': '0.001',
                                                 'name': metric_1,
                                                 'nodes': [node1_host]},
+                                 value) and
+                metric_has_value(self.cluster, {'instance': 'ns_server',
+                                                'name': metric_2,
+                                                'nodes': [node0_host]},
                                  value),
                 sleep_time=1, timeout=60)
 
@@ -170,7 +180,7 @@ def make_metric(metric, uuid, value):
             f"agent=\"agent\","
             f"bucket=\"anything\","
             f"node_uuid=\"{uuid}\"}}"
-            f" {value} 1695747260")
+            f" {value} 1695747260").encode('utf-8')
 
 
 def metric_has_value(cluster, expected_metric, expected_value):
