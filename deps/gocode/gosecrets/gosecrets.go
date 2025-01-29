@@ -51,12 +51,17 @@ type encryptionService struct {
 }
 
 var ErrKeysDoNotExist = errors.New("keys do not exist")
-var ErrWrongPassword = errors.New("wrong password")
+
+type ErrReadKeysError struct {
+	e error
+}
+
+func (s ErrReadKeysError) Error() string { return s.e.Error() }
 
 type secretIface interface {
-	read() error
+	read([]byte) error
 	remove() error
-	changePassword([]byte, map[string]interface{}) error
+	changePassword([]byte) error
 	getPasswordState() string
 	getSecret() *secret
 	setSecret(*secret) error
@@ -75,7 +80,7 @@ type keysInFile struct {
 }
 
 type keysInEncryptedFile struct {
-	passwordSource    string // implicitly used by sameSettings (deepEqual)
+	settings          map[string]interface{}
 	lockkey           []byte // derived from password
 	isDefaultPassword bool   // true if the password is default (empty)
 	keysInFile
@@ -279,12 +284,12 @@ func (s *encryptionService) cmdInitReadOnly(data []byte) {
 
 func (s *encryptionService) mainInit(readOnly bool, password []byte) error {
 	var err error
-	s.encryptionKeys, err = initEncryptionKeys(s.config, password)
+	s.encryptionKeys, err = initEncryptionKeys(s.config)
 	if err != nil {
 		return err
 	}
 
-	err = readOrCreateKeys(s.encryptionKeys, readOnly)
+	err = readOrCreateKeys(s.encryptionKeys, password, readOnly)
 	if err != nil {
 		if errors.Is(err, ErrKeysDoNotExist) && readOnly {
 			logDbg("keys do not exist and read-only mode is enabled, will not create data keys")
@@ -310,10 +315,10 @@ func decodePass(data []byte) []byte {
 	return password
 }
 
-func initEncryptionKeys(config *Config, password []byte) (secretIface, error) {
+func initEncryptionKeys(config *Config) (secretIface, error) {
 	if config.EncryptionSettings.KeyStorageType == "file" {
 		settings := config.EncryptionSettings.KeyStorageSettings
-		return initKeysFromFile(settings, password)
+		return initKeysFromFile(settings)
 	} else if config.EncryptionSettings.KeyStorageType == "script" {
 		settings := config.EncryptionSettings.KeyStorageSettings
 		return initKeysViaScript(settings)
@@ -355,8 +360,7 @@ func initKeysViaScript(settings map[string]interface{}) (*keysViaScript, error) 
 	}, nil
 }
 
-func initKeysFromFile(settings map[string]interface{},
-	password []byte) (secretIface, error) {
+func initKeysFromFile(settings map[string]interface{}) (secretIface, error) {
 	datakeyFile := settings["path"].(string)
 
 	encryptDatakey := (settings["encryptWithPassword"] == true)
@@ -365,38 +369,27 @@ func initKeysFromFile(settings map[string]interface{},
 		return &keysInFile{filePath: datakeyFile, secret: secret{}}, nil
 	}
 
-	passwordSource, passwordToUse, err := initFilePassword(settings, password)
-	if err != nil {
-		return nil, err
-	}
-
-	lockkey := generateLockKey(passwordToUse)
-	emptyPass := (len(passwordToUse) == 0)
 	return &keysInEncryptedFile{
-		passwordSource:    passwordSource,
-		lockkey:           lockkey,
-		isDefaultPassword: emptyPass,
+		settings: settings,
 		keysInFile: keysInFile{
 			filePath: datakeyFile,
 			secret:   secret{}},
 	}, nil
 }
 
-func initFilePassword(
-	settings map[string]interface{},
-	password []byte) (string, []byte, error) {
+func initFilePassword(settings map[string]interface{}, password []byte) ([]byte, error) {
 	passwordSource := settings["passwordSource"].(string)
 	var passwordToUse []byte
 	if passwordSource == "env" {
 		pwdSettings, ok := settings["passwordSettings"].(map[string]interface{})
 		if !ok {
-			return passwordSource, nil, errors.New(
+			return nil, errors.New(
 				"passwordSettings are missing in config")
 		}
 
 		envName, found := pwdSettings["envName"].(string)
 		if !found {
-			return passwordSource, nil, errors.New(
+			return nil, errors.New(
 				"envName is missing in config")
 		}
 		if password != nil {
@@ -406,17 +399,17 @@ func initFilePassword(
 		}
 	} else if passwordSource == "script" {
 		if password != nil {
-			return passwordSource, nil, errors.New(
+			return nil, errors.New(
 				"password is not nil")
 		}
 		pwdSettings, ok := settings["passwordSettings"].(map[string]interface{})
 		if !ok {
-			return passwordSource, nil, errors.New(
+			return nil, errors.New(
 				"passwordSettings are missing in config")
 		}
 		passwordCmd, found := pwdSettings["passwordCmd"].(string)
 		if !found {
-			return passwordSource, nil, errors.New(
+			return nil, errors.New(
 				"passwordCmd is missing in config")
 		}
 		cmdTimeoutMs, found := pwdSettings["cmdTimeoutMs"].(int)
@@ -425,15 +418,13 @@ func initFilePassword(
 		}
 		output, err := callExternalScript(passwordCmd, cmdTimeoutMs)
 		if err != nil {
-			return passwordSource, nil, err
+			return nil, err
 		}
 		passwordToUse = []byte(output)
 	} else {
-		return passwordSource, nil, fmt.Errorf(
-			"unknown password source: %s",
-			passwordSource)
+		return nil, fmt.Errorf("unknown password source: %s", passwordSource)
 	}
-	return passwordSource, passwordToUse, nil
+	return passwordToUse, nil
 }
 
 func saveDatakey(datakeyFile string, dataKey, backupDataKey []byte) error {
@@ -460,8 +451,9 @@ func readDatakey(datakeyFile string) ([]byte, []byte, error) {
 	} else if err != nil {
 		msg := fmt.Sprintf("failed to read datakey file \"%s\": %s",
 			datakeyFile, err)
-		return nil, nil, errors.New(msg)
+		return nil, nil, ErrReadKeysError{e: errors.New(msg)}
 	}
+
 	key, data := readField(data)
 	backup, _ := readField(data)
 	return key, backup, nil
@@ -551,9 +543,7 @@ func (s *encryptionService) cmdChangePassword(data []byte) {
 	if !s.initialized {
 		panic("Password was not set")
 	}
-	err := s.encryptionKeys.changePassword(
-		password,
-		s.config.EncryptionSettings.KeyStorageSettings)
+	err := s.encryptionKeys.changePassword(password)
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -625,13 +615,13 @@ func (s *encryptionService) cmdReloadConfig(data []byte) {
 		replyError(err.Error())
 		return
 	}
-	newEncryptionKeys, err := initEncryptionKeys(newConfig, password)
+	newEncryptionKeys, err := initEncryptionKeys(newConfig)
 	if err != nil {
 		replyError(err.Error())
 		return
 	}
 
-	err = readOrCreateKeys(newEncryptionKeys, s.readOnly)
+	err = readOrCreateKeys(newEncryptionKeys, password, s.readOnly)
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -651,12 +641,12 @@ func (s *encryptionService) cmdCopySecrets(newCfgBytes []byte) {
 		replyError(err.Error())
 		return
 	}
-	newEncryptionKeys, err := initEncryptionKeys(newConfig, nil)
+	newEncryptionKeys, err := initEncryptionKeys(newConfig)
 	if err != nil {
 		replyError(err.Error())
 		return
 	}
-	res, err := copySecret(s.encryptionKeys, newEncryptionKeys)
+	res, err := copySecret(s.encryptionKeys, newEncryptionKeys, nil)
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -674,7 +664,7 @@ func (s *encryptionService) cmdCleanupSecrets(oldCfgBytes []byte) {
 		replyError(err.Error())
 		return
 	}
-	oldKeys, err := initEncryptionKeys(oldConfig, nil)
+	oldKeys, err := initEncryptionKeys(oldConfig)
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -928,7 +918,7 @@ func (keys *keysInFile) setSecret(s *secret) error {
 	return nil
 }
 
-func (keys *keysInFile) read() error {
+func (keys *keysInFile) read(password []byte) error {
 	key, backupKey, err := readDatakey(keys.filePath)
 	if err != nil {
 		return err
@@ -948,9 +938,7 @@ func (keys *keysInFile) remove() error {
 	return os.Remove(keys.filePath)
 }
 
-func (keys *keysInFile) changePassword(
-	password []byte,
-	settings map[string]interface{}) error {
+func (keys *keysInFile) changePassword(password []byte) error {
 	return errors.New("not supported")
 }
 
@@ -1009,7 +997,18 @@ func (keys *keysInEncryptedFile) setSecret(s *secret) error {
 	return nil
 }
 
-func (keys *keysInEncryptedFile) read() error {
+func (keys *keysInEncryptedFile) read(password []byte) error {
+	passwordToUse, err := initFilePassword(keys.settings, password)
+	if err != nil {
+		return err
+	}
+
+	// Note: Must be set even if readDatakey returns ErrKeysDoNotExist
+	// beucase later if the data key doesn't exist we will need the lock key
+	// in order to encrypt newly generated data key
+	keys.lockkey = generateLockKey(passwordToUse)
+	keys.isDefaultPassword = (len(passwordToUse) == 0)
+
 	encryptedKey, encryptedBackup, err := readDatakey(keys.filePath)
 	if err != nil {
 		return err
@@ -1017,7 +1016,7 @@ func (keys *keysInEncryptedFile) read() error {
 
 	key, err := decrypt(keys.lockkey, encryptedKey)
 	if err != nil {
-		return fmt.Errorf("key decrypt failed: %s", err.Error())
+		return ErrReadKeysError{e: fmt.Errorf("key decrypt failed: %s", err.Error())}
 	}
 	keys.secret.key = key
 
@@ -1037,10 +1036,8 @@ func (keys *keysInEncryptedFile) read() error {
 	return nil
 }
 
-func (keys *keysInEncryptedFile) changePassword(
-	password []byte,
-	settings map[string]interface{}) error {
-	_, passwordToUse, err := initFilePassword(settings, password)
+func (keys *keysInEncryptedFile) changePassword(password []byte) error {
+	passwordToUse, err := initFilePassword(keys.settings, password)
 	if err != nil {
 		return err
 	}
@@ -1095,7 +1092,7 @@ func (keys *keysViaScript) setSecret(s *secret) error {
 	return nil
 }
 
-func (keys *keysViaScript) read() error {
+func (keys *keysViaScript) read(password []byte) error {
 	res, err := callExternalScript(keys.readCmd, keys.cmdTimeoutMs)
 	if err != nil {
 		return err
@@ -1137,9 +1134,7 @@ func (keys *keysViaScript) remove() error {
 	return nil
 }
 
-func (keys *keysViaScript) changePassword(
-	password []byte,
-	settings map[string]interface{}) error {
+func (keys *keysViaScript) changePassword(password []byte) error {
 	return errors.New("not supported")
 }
 
@@ -1166,7 +1161,7 @@ func (keys *keysViaScript) sameSettings(param interface{}) bool {
 
 // Other functions:
 
-func copySecret(from, to secretIface) (string, error) {
+func copySecret(from, to secretIface, password []byte) (string, error) {
 	logDbg("Trying to copy a secret\nOld cfg type: %v\nNew cfg type: %v",
 		reflect.TypeOf(from), reflect.TypeOf(to))
 
@@ -1179,16 +1174,24 @@ func copySecret(from, to secretIface) (string, error) {
 	// by creating secrets copy for new config.
 	// For example, if new and old config use the same file on disk, we might
 	// corrupt old secret file by writing to the same file using new config.
-	err := to.read()
+	err := to.read(password)
 
 	if err != nil {
 		if !errors.Is(err, ErrKeysDoNotExist) {
 			// We can't continue even if it is caused by a different password
 			// because the copy will basically change the password for
 			// the secret then, and rollback will not work in case of a problem
-			return "", fmt.Errorf(
-				"secret already exists but it can't be read (%s)",
-				err.Error())
+			var readErr ErrReadKeysError
+			if errors.As(err, &readErr) {
+				return "", fmt.Errorf(
+					"secret already exists but it can't be read (%s)",
+					err.Error())
+			} else {
+				// Should not modify the error in this case,
+				// because it can be something unrelated to
+				// keys read (e.g. password extraction error)
+				return "", err
+			}
 		}
 		logDbg("New secret doesn't exist")
 	} else {
@@ -1224,7 +1227,7 @@ func copySecret(from, to secretIface) (string, error) {
 		return "", err
 	}
 	// just making sure it is readable
-	err = to.read()
+	err = to.read(password)
 	if err != nil {
 		logDbg("Failed to read the secret after writing: %s", err.Error())
 		return "", err
@@ -1238,8 +1241,8 @@ func saveKeys(keys secretIface, key, backup []byte) error {
 }
 
 // Note: keys must be a pointer to a struct
-func readOrCreateKeys(keys secretIface, readOnly bool) error {
-	err := keys.read()
+func readOrCreateKeys(keys secretIface, password []byte, readOnly bool) error {
+	err := keys.read(password)
 	if errors.Is(err, ErrKeysDoNotExist) {
 		if readOnly {
 			return err
