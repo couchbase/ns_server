@@ -9,7 +9,7 @@
 import random
 import string
 
-from websockets import InvalidHandshake, ConnectionClosedOK
+from websockets import ConnectionClosedOK
 from websockets.sync.client import connect
 
 import testlib
@@ -71,7 +71,7 @@ class AppTelemetryTests(testlib.BaseTestSet):
         node0_port = node0_services['mgmt']
         node0_host = f"{hostname}:{node0_port}"
         node0_path = node0_ext.get('appTelemetryPath')
-        testlib.assert_eq('/_appTelemetry', node0_path)
+        testlib.assert_eq(node0_path, '/_appTelemetry')
 
         node1_ext = nodes_ext[1]
         node1_uuid = node1_ext['nodeUUID']
@@ -117,7 +117,7 @@ class AppTelemetryTests(testlib.BaseTestSet):
             node0_ext = nodes_ext[0]
             node0_path = node0_ext.get('appTelemetryPath')
             # /_appTelemetry should not be advertised
-            testlib.assert_eq(None, node0_path)
+            testlib.assert_eq(node0_path, None)
 
             testlib.get_fail(self.cluster, "/_appTelemetry", 404)
         finally:
@@ -136,7 +136,7 @@ class AppTelemetryTests(testlib.BaseTestSet):
         node0_services = node0_ext['services']
         node0_port = node0_services['mgmt']
         node0_path = node0_ext.get('appTelemetryPath')
-        testlib.assert_eq('/_appTelemetry', node0_path)
+        testlib.assert_eq(node0_path, '/_appTelemetry')
 
         (username, password) = self.cluster.auth
         app_telemetry_url = (f"ws://{username}:{password}@"
@@ -163,7 +163,6 @@ class AppTelemetryTests(testlib.BaseTestSet):
             # Re-enable app telemetry
             testlib.post_succ(self.cluster, "/settings/appTelemetry",
                               json={"enabled": "true"})
-
 
 
 def make_metric(metric, uuid, value):
