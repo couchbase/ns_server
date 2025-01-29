@@ -87,55 +87,64 @@ massage_directory_content({Key, {Value, Rev}}) ->
      {[{revision, encode_revision(Rev)},
        {value, Value}]}}.
 
-reply_not_found(Req, Path, Type) ->
-    menelaus_util:reply_json(
-      Req, encode_reply_info("Not Found", Path, undefined, Type), 404).
+not_found_reply(Path, Type) ->
+    encode_reply_info("Not Found", Path, undefined, Type).
+
+reply_mutation(Req, Start, Json, Code) ->
+    Method = mochiweb_request:get(method, Req),
+    Path = mochiweb_request:get(path, Req),
+    ElapsedTime = timer:now_diff(os:timestamp(), Start) div 1000,
+    ?metakv_debug("Request ~p ~p returned code ~p in ~p ms~nPayload: ~p",
+                  [Method, Path, Code, ElapsedTime, Json]),
+    menelaus_util:reply_json(Req, Json, Code).
 
 encode_reply_info(Msg, Path, Rev, Type) ->
     {[{message,  iolist_to_binary(Msg)}] ++
          [{revision, encode_revision(Rev)} || Rev =/= undefined] ++
          [{path, encode_path(Path, Type)} || Path =/= undefined]}.
 
-reply_set_result(Req, _, {ok, Rev, create}) ->
-    menelaus_util:reply_json(
-      Req, encode_reply_info("Created", undefined, Rev, undefined),
+reply_set_result(Req, _, Start, {ok, Rev, create}) ->
+    reply_mutation(
+      Req, Start, encode_reply_info("Created", undefined, Rev, undefined),
       201);
-reply_set_result(Req, _, {ok, Rev, update}) ->
-    menelaus_util:reply_json(
-      Req, encode_reply_info("Updated", undefined, Rev, undefined),
+reply_set_result(Req, _, Start, {ok, Rev, update}) ->
+    reply_mutation(
+      Req, Start, encode_reply_info("Updated", undefined, Rev, undefined),
       200);
-reply_set_result(Req, Type, {error, {wrong_type, Path}}) ->
-    menelaus_util:reply_json(
-      Req, encode_reply_info("Wrong Type", Path, undefined,
-                             chronicle_metakv:invert_type(Type)), 400);
-reply_set_result(Req, Type, {error, duplicate_keys}) ->
-    menelaus_util:reply_json(
-      Req, encode_reply_info("Duplicate Keys", undefined, undefined, Type),
-      400);
-reply_set_result(Req, leaf, {error, {top_level_leaf, Path}}) ->
-    menelaus_util:reply_json(
-      Req, encode_reply_info("Creating top level leaves is not allowed",
-                             Path, undefined, leaf), 400);
-reply_set_result(Req, Type, {error, not_changed}) ->
-    menelaus_util:reply_json(
-      Req, encode_reply_info("Not Changed", undefined, undefined, Type), 200);
-reply_set_result(Req, Type, {error, {not_changed, Path, Rev}}) ->
-    menelaus_util:reply_json(
-      Req, encode_reply_info("Not Changed", Path, Rev, Type), 200);
-reply_set_result(Req, Type, {error, {exists, Path, Rev}}) ->
-    menelaus_util:reply_json(
-      Req, encode_reply_info("Exists", Path, Rev, Type), 200);
-reply_set_result(Req, Type, {error, {cas, Path, Rev}}) ->
-    menelaus_util:reply_json(
-      Req, encode_reply_info("Conflict", Path, Rev, Type), 409);
-reply_set_result(Req, _Type, {error, {not_found, Path}}) ->
+reply_set_result(Req, Type, Start, {error, {wrong_type, Path}}) ->
+    reply_mutation(
+      Req, Start, encode_reply_info("Wrong Type", Path, undefined,
+                                    chronicle_metakv:invert_type(Type)), 400);
+reply_set_result(Req, Type, Start, {error, duplicate_keys}) ->
+    reply_mutation(
+      Req, Start,
+      encode_reply_info("Duplicate Keys", undefined, undefined, Type), 400);
+reply_set_result(Req, leaf, Start, {error, {top_level_leaf, Path}}) ->
+    reply_mutation(
+      Req, Start, encode_reply_info("Creating top level leaves is not allowed",
+                                    Path, undefined, leaf), 400);
+reply_set_result(Req, Type, Start, {error, not_changed}) ->
+    reply_mutation(
+      Req, Start,
+      encode_reply_info("Not Changed", undefined, undefined, Type), 200);
+reply_set_result(Req, Type, Start, {error, {not_changed, Path, Rev}}) ->
+    reply_mutation(
+      Req, Start, encode_reply_info("Not Changed", Path, Rev, Type), 200);
+reply_set_result(Req, Type, Start, {error, {exists, Path, Rev}}) ->
+    reply_mutation(
+      Req, Start, encode_reply_info("Exists", Path, Rev, Type), 200);
+reply_set_result(Req, Type, Start, {error, {cas, Path, Rev}}) ->
+    reply_mutation(
+      Req, Start, encode_reply_info("Conflict", Path, Rev, Type), 409);
+reply_set_result(Req, _Type, Start, {error, {not_found, Path}}) ->
     %% Path here is always a directory, so we ignore the _Type
     %% that is passed in
-    reply_not_found(Req, Path, dir);
-reply_set_result(Req, Type, {error, exceeded_retries}) ->
-    menelaus_util:reply_json(
-      Req, encode_reply_info("Exceeded retries due to conflicting updates",
-                             undefined, undefined, Type), 503).
+    reply_mutation(Req, Start, not_found_reply(Path, dir), 404);
+reply_set_result(Req, Type, Start, {error, exceeded_retries}) ->
+    reply_mutation(
+      Req, Start,
+      encode_reply_info("Exceeded retries due to conflicting updates",
+                        undefined, undefined, Type), 503).
 
 is_directory(Path) ->
     case lists:reverse(Path) of
@@ -167,7 +176,8 @@ handle_get(Path, Req) ->
                                   {value, {[massage_directory_content(
                                               Content)]}}]});
                           {error, not_found} ->
-                              reply_not_found(Req, Key, dir)
+                              menelaus_util:reply_json(
+                                Req, not_found_reply(Key, dir), 404)
                       end
               end, Req);
         false ->
@@ -177,7 +187,8 @@ handle_get(Path, Req) ->
                       Req, {[{value, Value},
                              {revision, encode_revision(Revision)}]});
                 {error, not_found} ->
-                    reply_not_found(Req, Key, leaf)
+                    menelaus_util:reply_json(
+                      Req, not_found_reply(Key, leaf), 404)
             end
     end.
 
@@ -227,11 +238,12 @@ handle_put(Path, Req) ->
     IsDirectory = is_directory(Path),
     validator:handle(
       fun (Params) ->
+              Start = os:timestamp(),
               Key = get_key(Path),
               Recursive = proplists:get_value(recursive, Params, false),
               case IsDirectory of
                   true ->
-                      reply_set_result(Req, dir,
+                      reply_set_result(Req, dir, Start,
                                        chronicle_metakv:mkdir(Key, Recursive));
                   false ->
                       Rev =
@@ -241,7 +253,7 @@ handle_put(Path, Req) ->
                               false ->
                                   proplists:get_value(rev, Params)
                           end,
-                      reply_set_result(Req, leaf,
+                      reply_set_result(Req, leaf, Start,
                                        chronicle_metakv:set(
                                          Key, mochiweb_request:recv_body(Req),
                                          Rev, Recursive))
@@ -271,6 +283,7 @@ handle_post_set_multiple(Req) ->
 handle_post_set_multiple(Req, Recursive) ->
     validator:handle(
       fun (List) ->
+              Start = os:timestamp(),
               KVR =
                   lists:map(
                     fun (Props) ->
@@ -285,7 +298,7 @@ handle_post_set_multiple(Req, Recursive) ->
                                   end,
                             {Key, {Value, Rev}}
                     end, List),
-              reply_set_result(Req, leaf,
+              reply_set_result(Req, leaf, Start,
                                chronicle_metakv:set_multiple(KVR, Recursive)),
               menelaus_util:reply(Req, 200)
       end, Req, json_map,
@@ -300,38 +313,43 @@ handle_post_set_multiple(Req, Recursive) ->
        validator:boolean(create, _),
        validator:unsupported(_)]).
 
-reply_delete_result(Req, {ok, Rev}, _Path, _Type) ->
-    menelaus_util:reply_json(
-      Req, encode_reply_info("Deleted", undefined, Rev, undefined),
+reply_delete_result(Req, {ok, Rev}, _Path, Start, _Type) ->
+    reply_mutation(
+      Req, Start, encode_reply_info("Deleted", undefined, Rev, undefined),
       200);
-reply_delete_result(Req, {error, not_found}, Path, Type) ->
-    reply_not_found(Req, Path, Type);
-reply_delete_result(Req, {error, not_empty}, Path, dir) ->
-    menelaus_util:reply_json(
-      Req, encode_reply_info("Not Empty", Path, undefined, dir), 400).
+reply_delete_result(Req, {error, not_found}, Path, Start, Type) ->
+    reply_mutation(Req, Start, not_found_reply(Path, Type), 404);
+reply_delete_result(Req, {error, not_empty}, Path, Start, dir) ->
+    reply_mutation(
+      Req, Start, encode_reply_info("Not Empty", Path, undefined, dir), 400).
 
 handle_delete(Path, Req) ->
+    Start = os:timestamp(),
     Key = get_key(Path),
     case is_directory(Path) of
         true ->
             with_recursive(
               ?cut(reply_delete_result(
-                     Req, chronicle_metakv:delete_dir(Key, _), Key, dir)), Req);
+                     Req, chronicle_metakv:delete_dir(Key, _),
+                     Key, Start, dir)), Req);
         false ->
-            reply_delete_result(Req, chronicle_metakv:delete(Key), Key, leaf)
+            reply_delete_result(Req, chronicle_metakv:delete(Key),
+                                Key, Start, leaf)
     end.
 
 handle_post_sync_quorum(Req) ->
     validator:handle(
       fun (Props) ->
+              Start = os:timestamp(),
               case chronicle_metakv:sync_quorum(
                      proplists:get_value(key, Props)) of
                   ok ->
-                      menelaus_util:reply(Req, 200);
+                      reply_mutation(Req, Start, {[]}, 200);
                   {error, timeout} ->
-                      menelaus_util:reply_json(
-                        Req, encode_reply_info("Timeout", undefined, undefined,
-                                               undefined), 504)
+                      reply_mutation(
+                        Req, Start,
+                        encode_reply_info("Timeout", undefined, undefined,
+                                          undefined), 504)
               end
       end, Req, qs,
       [validator:integer(timeout, 1000, 360000, _),
