@@ -207,6 +207,7 @@ class ClusterRequirements:
                             ('encryption', N2nEncryption),
                             ('balanced', Balanced),
                             ('buckets', Buckets),
+                            ('test_generated_cluster', TestGeneratedCluster),
                             ('dev_preview', DevPreview)]
         for req_name, req_class in generation_order:
             if self.requirements[req_name] is None:
@@ -774,7 +775,7 @@ class TestGeneratedCluster(Requirement):
         # run on both, but the user may have supplied a cluster so we should use
         # that if possible, i.e. leave the value as the implicit False.
         req = req_dict.get("test_generated_cluster")
-        return req is True
+        return TestGeneratedCluster(req is True)
 
 
 # Intersects two limits where each limit is defined either by exact match,
