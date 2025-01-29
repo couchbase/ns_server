@@ -219,7 +219,7 @@ parse_metric_updates(Data) ->
 parse_metric_line(Line, NameRe) ->
     maybe
         {ok, {RawName, RawLabels, RawValue}} ?= decompose_line(Line),
-        {ok, Name} ?= validate(string:trim(RawName), NameRe),
+        {ok, Name} ?= validate(RawName, NameRe),
         {ok, Labels} ?= parse_labels(RawLabels, NameRe),
         {ok, Value} ?= parse_value(RawValue),
         {Name, Labels, Value}
@@ -253,10 +253,9 @@ parse_labels(RawLabels, NameRe) ->
     Pairs = lists:foldl(
               fun (<<>>, Acc) ->
                       Acc;
-                  (LabelNameAndValue, Acc) when is_list(Acc) ->
+                  (Label, Acc) when is_list(Acc) ->
                       maybe
-                          Stripped = string:trim(LabelNameAndValue, trailing),
-                          [RawName, RawValue] ?= split_by_substr(Stripped, "="),
+                          [RawName, RawValue] ?= split_by_substr(Label, "="),
                           {ok, Name} ?= validate(RawName, NameRe),
                           {ok, Value} ?= validate_label_value(RawValue),
                           [{Name, Value} | Acc]
@@ -282,17 +281,23 @@ split_by_substr(Str, Substr, Direction) ->
         _ -> {error, {split_by_substr, [{substr, Substr}, {str, Str}]}}
     end.
 
-validate_label_value(<<"\"", RawValue/binary>>) ->
-    case string:find(RawValue, "\"") of
-        <<"\"">> ->
-            {ok, string:trim(RawValue, trailing, "\"")};
-        nomatch -> {error, {missing_right_quote, RawValue}};
-        Rest -> {error, {unexpected_after_quote, Rest}}
-    end;
 validate_label_value(RawValue) ->
-    {error, {missing_left_quote, RawValue}}.
+    case string:trim(RawValue) of
+        <<"\"", Value/binary>> ->
+            case string:split(Value, "\"", trailing) of
+                [Trimmed, <<>>] ->
+                    Unescaped = re:replace(Trimmed, <<"\\\\\"">>, <<"\"">>,
+                                           [global, {return, binary}]),
+                    {ok, Unescaped};
+                [_] -> {error, {missing_right_quote, RawValue}};
+                [_, Rest] -> {error, {unexpected_after_quote, Rest}}
+            end;
+        Value ->
+            {error, {missing_left_quote, Value}}
+    end.
 
-validate(Text, Re) ->
+validate(RawText, Re) ->
+    Text = string:trim(RawText),
     case re:run(Text, Re) of
         nomatch ->
             {error, {bad_format, Text}};
@@ -366,7 +371,7 @@ parse_metric_updates_test__(Node, UUID) ->
                  parse_metric_updates(<<"sdk_test{a 1">>)),
     ?assertEqual([{error, {missing_left_quote, <<"y">>}}],
                  parse_metric_updates(<<"sdk_test{label=y} 1">>)),
-    ?assertEqual([{error, {missing_right_quote, <<"z">>}}],
+    ?assertEqual([{error, {missing_right_quote, <<"\"z">>}}],
                  parse_metric_updates(<<"sdk_test{label=\"z} 1">>)),
     ?assertEqual([{error, node_not_found}],
                  parse_metric_updates(
@@ -378,10 +383,11 @@ parse_metric_updates_test__(Node, UUID) ->
                    <<"sdk_test{"
                      "node_uuid=\"", UUID/binary, "\"} "
                      "1">>)),
+    %% Whitespace is ignored
     ?assertEqual([{Node, {<<"sdk_test">>, []}, 1}],
                  parse_metric_updates(
-                   <<"sdk_test {"
-                     "node_uuid=\"", UUID/binary, "\"} "
+                   <<" sdk_test {"
+                     " node_uuid = \"", UUID/binary, "\" } "
                      "1">>)),
     ?assertEqual([{Node, {<<"sdk_test">>, []}, 100}],
                  parse_metric_updates(
@@ -409,7 +415,13 @@ parse_metric_updates_test__(Node, UUID) ->
                    <<"sdk_test{"
                      "node_uuid=\"", UUID/binary, "\","
                      "le=\"0.1\","
-                     "label=\"value\"} 1">>)).
+                     "label=\"value\"} 1">>)),
+    ?assertEqual([{Node, {<<"sdk_test">>,
+                          [{<<"le">>, <<"escaped \"quotes\"">>}]}, 1}],
+                 parse_metric_updates(
+                   <<"sdk_test{"
+                     "node_uuid=\"", UUID/binary, "\","
+                     "le=\"escaped \\\"quotes\\\"\"} 1">>)).
 
 parse_test_() ->
     Node = node(),
