@@ -166,7 +166,9 @@ config_event(_) ->
 is_user_covered({_, local} = Identity, Config) ->
     Props = menelaus_users:get_user_props(Identity, [groups, roles]),
     UserGroups = proplists:get_value(groups, Props, []),
-    UserRoles = proplists:get_value(roles, Props, []),
+    UserRolesRaw = proplists:get_value(roles, Props, []),
+    UserRoles = lists:map(fun strip_role_parameterisation/1,
+                          UserRolesRaw),
 
     TrackedGroups = proplists:get_value(tracked_groups, Config, []),
     TrackedRoles = proplists:get_value(tracked_roles, Config, []),
@@ -176,6 +178,11 @@ is_user_covered({_, local} = Identity, Config) ->
 is_user_covered(_Identity, _) ->
     %% Non-local users aren't tracked
     false.
+
+strip_role_parameterisation({Role, _}) when is_atom(Role) ->
+    Role;
+strip_role_parameterisation(Role) when is_atom(Role) ->
+    Role.
 
 do_lists_intersect(List1, List2) ->
     lists:any(fun (X) -> lists:member(X, List2) end, List1).
@@ -191,12 +198,15 @@ do_lists_intersect(List1, List2) ->
 -define(GROUP_B, b).
 -define(ROLE_X, x).
 -define(ROLE_Y, y).
+-define(ROLE_Z, z).
 
 -define(LOCAL_USER_IN_A, {"user_in_a", local}).
 -define(LOCAL_USER_IN_B, {"user_in_b", local}).
 -define(LOCAL_USER_WITH_X, {"user_with_x", local}).
 -define(LOCAL_USER_WITH_X_1, {"user_with_x_1", local}).
 -define(LOCAL_USER_WITH_Y, {"user_with_y", local}).
+-define(LOCAL_USER_WITH_PARAMETERISED_ROLE,
+        {"user_with_parameterised_role`", local}).
 -define(EXTERNAL_USER_IN_A, {"user_in_a", external}).
 -define(EXTERNAL_USER_WITH_X, {"user_with_x", external}).
 
@@ -206,6 +216,7 @@ groups_map() ->
         ?LOCAL_USER_WITH_X_1 => [],
         ?LOCAL_USER_IN_B => [?GROUP_B],
         ?LOCAL_USER_WITH_Y => [],
+        ?LOCAL_USER_WITH_PARAMETERISED_ROLE => [],
         ?EXTERNAL_USER_IN_A => [?GROUP_A],
         ?EXTERNAL_USER_WITH_X => []}.
 
@@ -215,6 +226,7 @@ roles_map() ->
         ?LOCAL_USER_WITH_X_1 => [?ROLE_X],
         ?LOCAL_USER_IN_B => [],
         ?LOCAL_USER_WITH_Y => [?ROLE_Y],
+        ?LOCAL_USER_WITH_PARAMETERISED_ROLE => [{?ROLE_Z, [any]}],
         ?EXTERNAL_USER_IN_A => [],
         ?EXTERNAL_USER_WITH_X => [?ROLE_X]}.
 
@@ -261,7 +273,7 @@ get_last_activity(Identity) ->
 
 track_covered_user_test__() ->
     CoveredGroups = [?GROUP_A],
-    CoveredRoles = [?ROLE_X],
+    CoveredRoles = [?ROLE_X, ?ROLE_Z],
     configure([{enabled, true},
                {tracked_groups, CoveredGroups},
                {tracked_roles, CoveredRoles}]),
@@ -280,7 +292,8 @@ track_covered_user_test__() ->
               handle_activity(?auth(Identity)),
               Time2 = get_last_activity(Identity),
               ?assert(Time1 < Time2)
-      end, [?LOCAL_USER_WITH_X, ?LOCAL_USER_IN_A]).
+      end, [?LOCAL_USER_WITH_X, ?LOCAL_USER_IN_A,
+            ?LOCAL_USER_WITH_PARAMETERISED_ROLE]).
 
 dont_track_uncovered_user_test__() ->
     CoveredGroups = [?GROUP_A],
