@@ -72,6 +72,7 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
     this.bucketNames = buckets || [];
     this.options = ['KEK', 'bucket', ...this.mnSecuritySecretsService.types];
     this.mapTypeToNames = this.mnSecuritySecretsService.mapTypeToNames;
+    this.preventMinus = this.mnSecuritySecretsService.preventMinus;
 
     this.form = this.mnFormService.create(this)
       .setFormGroup({
@@ -97,6 +98,8 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
           profile: ""
         }),
         'kmip-secret': this.formBuilder.group({
+          caSelection: 'useSysAndCbCa',
+          reqTimeoutMs: null,
           encryptionApproach: 'useGet',
           encryptWith: 'nodeSecretManager',
           encryptWithKeyId: null,
