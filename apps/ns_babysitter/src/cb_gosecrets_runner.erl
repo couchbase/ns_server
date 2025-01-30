@@ -1425,24 +1425,27 @@ with_password_sent(WrongPassword, CorrectPassword, Fun) ->
         ok -> ok;
         {error, enoent} -> ok
     end,
-    spawn_link(
-      fun () ->
-          Parent ! {Ref, try_send_password(WrongPassword, PortFile, 300),
-                         try_send_password(CorrectPassword, PortFile, 300)}
-      end),
+    Pid =
+        spawn_link(
+          fun () ->
+              Parent ! {Ref, try_send_password(WrongPassword, PortFile, 300),
+                             try_send_password(CorrectPassword, PortFile, 300)}
+          end),
+    try
+        Res = Fun(),
 
-    Res = Fun(),
-
-    receive
-        {Ref, Res1, Res2} ->
-            ?assertEqual({error,{recv_response_failed, "retry"}}, Res1),
-            ?assertEqual(ok, Res2)
+        receive
+            {Ref, Res1, Res2} ->
+                ?assertEqual({error,{recv_response_failed, "retry"}}, Res1),
+                ?assertEqual(ok, Res2)
+        after
+            120000 ->
+                erlang:error(password_confirmation_wait_timed_out)
+        end,
+        Res
     after
-        120000 ->
-            erlang:error(password_confirmation_wait_timed_out)
-    end,
-
-    Res.
+        misc:unlink_terminate_and_wait(Pid, shutdown)
+    end.
 
 try_send_password(_Pass, _PortFile, Retries) when Retries =< 0 ->
     {error, password_transfer_failed};
