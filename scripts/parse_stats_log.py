@@ -344,8 +344,34 @@ class StatsAnalyzer:
                         mode is None
                     ), f"Expected mode None, but was {mode} when parsing "
                     "processes_stats"
-                    mode = "processes_stats"
-                elif mode == "processes_stats":
+                    # Peek at next line to determine format
+                    next_line = lines[i + 1].strip()
+                    if "<<" in next_line:
+                        mode = "processes_stats_before_7_2_4"
+                    else:
+                        mode = "processes_stats_7_2_4_onwards"
+
+                elif mode == "processes_stats_before_7_2_4":
+                    # Format: {<<"process/stat">>, value}
+                    binary_match = re.search(
+                        r"{<<\"([\S]+)/([\S]+)\">>,(\d*\.*\d+)}", line
+                    )
+                    if binary_match:
+                        process = binary_match.group(1)
+                        stat = binary_match.group(2)
+                        value = binary_match.group(3)
+                        try:
+                            value = int(value)
+                        except ValueError:
+                            value = float(value)
+                        key = f"{process}_{stat}"
+                        current_entry[key] = value
+
+                    if "}]}," in line:
+                        mode = None
+
+                elif mode == "processes_stats_7_2_4_onwards":
+                    # Format: {process_name, [{stat, value}, ...]}
                     process_match = re.search(r"\{([^,]+),$", line)
                     if process_match:
                         current_process = process_match.group(1).strip("'")
