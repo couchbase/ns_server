@@ -1612,7 +1612,7 @@
       },
       {
         "id" : 8278,
-        "name" : "modify encryption-at-rest settings",
+        "name" : "modify encryption at rest settings",
         "description" : "Encryption-at-Rest settings were modified",
         "sync" : false,
         "enabled" : true,
