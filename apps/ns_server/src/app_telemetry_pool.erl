@@ -48,7 +48,7 @@
 
 -record(receive_data,
         {pid :: pid(),
-         data :: binary()}).
+         data :: pong | {binary, binary()} | {text, binary()}}).
 
 -record(update_max, {max :: non_neg_integer()}).
 
@@ -74,7 +74,7 @@ get_pids() ->
     gen_server:call(?SERVER, get_pids).
 
 -spec call(pid(), binary(), integer()) ->
-    {error, term()} | {ok, pong | {binary, binary() | {text, binary()}}}.
+    {error, term()} | {ok, pong | {binary, binary()} | {text, binary()}}.
 call(Pid, Body, Timeout) ->
     try gen_server:call(?SERVER, #call{pid = Pid, body = Body}, Timeout) of
         {error, _} = Error -> Error;
