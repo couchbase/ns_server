@@ -195,7 +195,8 @@
          get_encryption/2,
          get_dek_lifetime/2,
          get_dek_rotation_interval/2,
-         get_drop_keys_timestamp/2]).
+         get_drop_keys_timestamp/2,
+         validate_encryption_secret/3]).
 
 -import(json_builder,
         [to_binary/1,
@@ -1189,14 +1190,11 @@ do_create_bucket(BucketName, Config, BucketUUID, Manifest) ->
 
                   ShutdownBucketNames =
                       get_bucket_names_marked_for_shutdown(Snapshot),
-                  EncryptionSecretOk =
-                      case proplists:get_value(encryption_secret_id,
-                                               Config, ?SECRET_ID_NOT_SET) of
-                          ?SECRET_ID_NOT_SET -> ok;
-                          SecretId ->
-                              validate_encryption_secret(SecretId, BucketName,
-                                                         Snapshot)
-                      end,
+                  SecretId = proplists:get_value(encryption_secret_id,
+                                                 Config, ?SECRET_ID_NOT_SET),
+                  EncryptionSecretOk = validate_encryption_secret(SecretId,
+                                                                  BucketName,
+                                                                  Snapshot),
                   case {name_conflict(BucketName, BucketNames),
                         name_conflict(BucketName, ShutdownBucketNames),
                         EncryptionSecretOk} of
@@ -1535,7 +1533,7 @@ update_bucket_props_inner(Type, OldStorageMode, BucketName, Props) ->
 
     SecretIdCheckPredicate =
         case IsSecretIdChanging of
-            true when NewSecretId =/= ?SECRET_ID_NOT_SET ->
+            true ->
                 validate_encryption_secret(NewSecretId, BucketName, _);
             _ ->
                 fun (_) -> ok end
@@ -2545,6 +2543,8 @@ remove_bucket(BucketName) ->
             Other
     end.
 
+validate_encryption_secret(?SECRET_ID_NOT_SET, _Bucket, _Snapshot) ->
+    ok;
 validate_encryption_secret(SecretId, Bucket, Snapshot) ->
     case cb_cluster_secrets:ensure_can_encrypt_dek_kind(SecretId,
                                                         {bucketDek, Bucket},

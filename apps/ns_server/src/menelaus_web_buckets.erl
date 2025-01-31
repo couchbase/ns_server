@@ -1638,7 +1638,7 @@ validate_membase_bucket_params(CommonParams, Params, Name,
         parse_validate_limits(
           Params, BucketConfig, IsNew, AllowThrottleLimit,
           fun menelaus_web_settings:get_throttle_limit_attributes/0) ++
-        validate_bucket_encryption_at_rest_settings(Params, Version,
+        validate_bucket_encryption_at_rest_settings(Name, Params, Version,
                                                     IsEnterprise, IsPersistent),
 
     validate_bucket_purge_interval(Params, BucketConfig, IsNew) ++
@@ -2023,10 +2023,10 @@ parse_validate_bucket_auto_compaction_settings(Params) ->
             end
     end.
 
-validate_bucket_encryption_at_rest_settings(Params, Version, IsEnterprise,
+validate_bucket_encryption_at_rest_settings(Name, Params, Version, IsEnterprise,
                                             IsPersistent) ->
     Allowed = cluster_compat_mode:is_version_morpheus(Version),
-    case parse_validate_encryption_secret_id(Params) of
+    case parse_validate_encryption_secret_id(Name, Params) of
         [{ok, encryption_secret_id, Id}] when not IsEnterprise,
                                               Id /= ?SECRET_ID_NOT_SET ->
             [{error, encryptionAtRestKeyId,
@@ -2045,13 +2045,22 @@ validate_bucket_encryption_at_rest_settings(Params, Version, IsEnterprise,
     parse_validate_encryption_rotation_interval(Params) ++
     parse_validate_encryption_dek_lifetime(Params).
 
-parse_validate_encryption_secret_id(Params) ->
+parse_validate_encryption_secret_id(BucketName, Params) ->
     maybe
         [IdStr] ?= proplists:get_all_values("encryptionAtRestKeyId", Params),
         {ok, Id} ?= menelaus_util:parse_validate_number(IdStr, -1, undefined),
+        %% It is validated later in transaction, but we have to validate it
+        %% here as well to see this error when '?validate=1' is used
+        ok ?= ns_bucket:validate_encryption_secret(Id, BucketName, direct),
         %% Secret existance is checked in bucket create/update transaction
         [{ok, encryption_secret_id, Id}]
     else
+        {error, secret_not_found} ->
+            [{error, encryptionAtRestKeyId,
+              <<"Encryption key does not exist">>}];
+        {error, secret_not_allowed} ->
+            [{error, encryptionAtRestKeyId,
+              <<"Encryption key can't encrypt this bucket">>}];
         [] ->
             [];
         [_ | _] ->
@@ -3697,7 +3706,8 @@ basic_bucket_params_screening(IsNew, Name, Params, AllBuckets,
     basic_bucket_params_screening(Ctx, Params).
 
 basic_bucket_params_screening_setup() ->
-    Modules = [config_profile, ns_config, cluster_compat_mode, collections],
+    Modules = [config_profile, ns_config, cluster_compat_mode, collections,
+               ns_bucket],
     meck:new(Modules, [passthrough]),
     meck:expect(config_profile, search,
                 fun (_, Default) ->
@@ -3726,6 +3736,8 @@ basic_bucket_params_screening_setup() ->
                 end),
     meck:expect(collections, num_collections,
                 fun(_Name, direct) -> 0 end),
+    meck:expect(ns_bucket, validate_encryption_secret,
+                fun(_Id, _BucketName, direct) -> ok end),
 
     %% Return mecked modules for teardown to unload
     Modules.

@@ -244,7 +244,9 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # this bucket
         bucket_props['encryptionAtRestKeyId'] = secret2_id
         resp = self.cluster.update_bucket(bucket_props, expected_code=400)
-        assert resp.text == 'Encryption key can\'t encrypt this bucket', \
+        errors = resp.json()
+        e = errors['errors']['encryptionAtRestKeyId']
+        assert e == 'Encryption key can\'t encrypt this bucket', \
                f'unexpected error: {errors}'
 
         # Trying to forbid using this secret for our bucket encryption
