@@ -667,6 +667,12 @@ licenses/APL2.txt.
                 mnFormControlName="encryptionAtRestKeyId"
               >
               </mn-select>
+              <div
+                 class="error error-form"
+                 [hidden]="!(httpError | async)?.errors['encryptionAtRestKeyId']"
+              >
+                {{(httpError | async)?.errors['encryptionAtRestKeyId']}}
+              </div>
             </div>
 
 
