@@ -15,25 +15,31 @@ import subprocess
 import os
 import sys
 
+from copy import copy
+
 import get_diffs_to_format as git_diff
 import format_erlang_diff_with_emacs as emacs_formatter
 
-erlang_file_pattern = re.compile(br'.*(\.erl|\.hrl)')
+erlang_file_pattern =(
+    re.compile(br'.*(\.erl|\.hrl|rebar.config.script|.app.src.script)'))
+region_only_file_pattern =(
+    re.compile(r'.*(rebar.config.script|.app.src.script)'))
 
-
-def format_one_diff(args, start: int, end: int, file: str, output_file: str):
+def format_one_diff(args, start: int, end, file: str, output_file: str):
     """
     Format the given diff.
 
     :param args: for formatting
     :param start: start of the diff to format
-    :param end: end of the diff to format
+    :param end: end of the diff to format (None if we should run to the end of
+                the file
     :param file: file to format
     :param output_file: file to write to
     """
     if args.format_mode == 'region':
         start -= args.context_lines
-        end += args.context_lines
+        if end is not None:
+            end += args.context_lines
 
     if not args.hook:
         print(f'Formatting {file} between {start} and {end}')
@@ -59,8 +65,15 @@ def format_one_file(args, diffs, input_file: str, output_file=None):
     if output_file is None:
         output_file = input_file
 
-    for (start, end) in diffs:
-        format_one_diff(args, start, end, input_file, output_file)
+    format_args = copy(args)
+    if region_only_file_pattern.search(input_file):
+        # We can only format this file in region mode, so we must modify
+        # our args
+        format_args.format_mode = 'region'
+        format_one_diff(format_args, 0, None, input_file, output_file)
+    else:
+        for (start, end) in diffs:
+            format_one_diff(args, start, end, input_file, output_file)
 
 
 def check_mode(args, diffs):
