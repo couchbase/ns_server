@@ -19,7 +19,7 @@
 %% Ex: 'kv'   -> ./services/kv
 %%     'cbas' -> ./services/cbas
 {cgroup_base_path,
-    "/sys/fs/cgroup/system.slice/couchbase-server.service/services"}.
+    "/sys/fs/cgroup/system.slice/couchbase-server.service"}.
 
 %% NOTE: Only services with an existing concept of a memoryQuota will
 %% actually have their limits set. Otherwise the defaults for any cgroup are

@@ -29,6 +29,7 @@
          read_memory_high/1,
          read_memory_max/1,
          parse_mtab_file/1,
+         get_cgroup_base_path/0,
          service_to_limits_type/1]).
 
 -ifdef(TEST).
@@ -100,7 +101,7 @@ has_cgroups_v2() ->
 
 -spec(has_required_controllers() -> boolean()).
 has_required_controllers() ->
-    case read_enabled_controllers(?DEFAULT_SYSTEMD_CGROUP_ROOT) of
+    case read_enabled_controllers(get_cgroup_base_path()) of
         [] ->
             false;
         {error, Reason} ->
@@ -267,9 +268,9 @@ maybe_strip_trailing_slash(Path) ->
 %% the same cgroup as n1ql because it (n1ql) forks the child itself and
 %% ns_server doesn't start it.
 format_service_path(n1ql) ->
-    format_and_flatten("~s/n1ql/n1ql", [get_cgroup_base_path()]);
+    format_and_flatten("~s/services/n1ql/n1ql", [get_cgroup_base_path()]);
 format_service_path(Svc) ->
-    format_and_flatten("~s/~s", [get_cgroup_base_path(), Svc]).
+    format_and_flatten("~s/services/~s", [get_cgroup_base_path(), Svc]).
 
 parse_mtab_file(Bin) ->
     lists:filtermap(
@@ -396,9 +397,7 @@ maybe_as_megabytes(Value) when is_list(Value) ->
     format_and_flatten("~sM", [Value]).
 
 get_cgroup_base_path() ->
-    DefaultDir = format_and_flatten("~s/services",
-                                    [?DEFAULT_SYSTEMD_CGROUP_ROOT]),
-    config_profile:get_value(cgroup_base_path, DefaultDir).
+    config_profile:get_value(cgroup_base_path, ?DEFAULT_SYSTEMD_CGROUP_ROOT).
 
 format_and_flatten(Template, Params) ->
     lists:flatten(io_lib:format(Template, Params)).

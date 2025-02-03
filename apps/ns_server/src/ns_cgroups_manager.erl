@@ -154,7 +154,7 @@ maybe_move_process(_OsPid, _IsCorrect, _Path) ->
     ok.
 
 default_systemd_cgroups_data() ->
-    cgroups:read_system_cgroups(?DEFAULT_SYSTEMD_CGROUP_ROOT).
+    cgroups:read_system_cgroups(cgroups:get_cgroup_base_path()).
 
 check_cgroups_reset_timer(#state{timer = TrefOld} = State) ->
     ?flush(check_cgroups),
