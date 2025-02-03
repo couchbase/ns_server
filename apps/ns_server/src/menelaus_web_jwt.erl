@@ -67,7 +67,8 @@
 -endif.
 
 -export([handle_settings/2,
-         sync_with_node/0]).
+         sync_with_node/0,
+         is_enabled/0]).
 
 -define(JWKS_URI_MIN_TIMEOUT_MS, 5000). % 5 seconds
 -define(JWKS_URI_DEFAULT_TIMEOUT_MS, 5000). % 5 seconds
@@ -229,7 +230,7 @@ handle_settings(Method, Req) ->
     end.
 
 handle_settings_get(Req) ->
-    case chronicle_kv:get(kv, jwt_settings, #{}) of
+    case chronicle_kv:get(kv, jwt_settings) of
         {ok, {Settings, _Rev}} ->
             RestFormat = storage_to_rest_format(Settings),
             JsonBin = encode_response(RestFormat),
@@ -273,6 +274,12 @@ handle_settings_delete(Req) ->
                                      {[{error,
                                         <<"Failed to delete settings">>}]},
                                      500)
+    end.
+
+is_enabled() ->
+    case chronicle_kv:get(kv, jwt_settings) of
+        {ok, {#{enabled := true}, _Rev}} -> true;
+        _ -> false
     end.
 
 main_validators() ->
