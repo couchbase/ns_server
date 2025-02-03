@@ -245,7 +245,7 @@ keys_remap() ->
       active_key => activeKey,
       hist_keys => historicalKeys,
       kmip_id => kmipId,
-      key => keyMaterial,
+      key_material => keyMaterial,
       req_timeout_ms => reqTimeoutMs}.
 
 keys_to_json(Term) ->
