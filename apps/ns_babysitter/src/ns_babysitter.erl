@@ -182,12 +182,19 @@ init_master_password() ->
           ok = cb_gosecrets_runner:stop()
       end).
 
+-define(GOSECRETS_DBG_VAR, "CB_DEBUG_GOSECRETS").
+
 dummy_logger(Proc) ->
     fun (LogLevel, F, A) ->
-        case (LogLevel == debug) andalso
-             (os:getenv("CB_DEBUG_GOSECRETS") == false) of
-            true -> ok;
-            _ -> io:format(F ++ "~n", A)
+        SkipDebug = (os:getenv(?GOSECRETS_DBG_VAR) == false),
+        case LogLevel of
+            debug when SkipDebug -> ok;
+            error when SkipDebug ->
+                io:format(F ++
+                          " (set "?GOSECRETS_DBG_VAR"=1 to see debug output)~n",
+                          A);
+            _ ->
+                io:format(F ++ "~n", A)
         end,
         Proc ! {LogLevel, F, A}
     end.
