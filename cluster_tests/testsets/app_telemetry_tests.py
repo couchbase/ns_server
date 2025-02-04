@@ -9,8 +9,13 @@
 import random
 import string
 
-from websockets import ConnectionClosedOK
+import socket
 from websockets.sync.client import connect
+from websockets.exceptions import ConnectionClosedOK
+from websockets.uri import parse_uri
+from websockets.client import ClientProtocol
+from websockets.http11 import Response
+from websockets.frames import Frame, Opcode
 
 import testlib
 from testsets.stats_tests import range_api_get
@@ -82,39 +87,102 @@ class AppTelemetryTests(testlib.BaseTestSet):
         (username, password) = self.cluster.auth
         app_telemetry_url = (f"ws://{username}:{password}@"
                              f"{hostname}:{node0_port}{node0_path}")
-        with connect(app_telemetry_url) as websocket:
-            message = websocket.recv(timeout=10)
-            testlib.assert_eq(message, b'\x00')
+
+        hostname_without_brackets = self.cluster.connected_nodes[0].host
+        with socket.create_connection((hostname_without_brackets, node0_port),
+                                      timeout=5) as s:
+            s.settimeout(5)
+            protocol = ClientProtocol(parse_uri(app_telemetry_url))
+            # Perform handshake
+            handshake = protocol.connect()
+            protocol.send_request(handshake)
+            for data in protocol.data_to_send():
+                s.send(data)
+            # Handle handshake response
+            data = s.recv(1024)
+            protocol.receive_data(data)
+            for data in protocol.data_to_send():
+                s.send(data)
+            events = protocol.events_received()
+            testlib.assert_gt(len(events), 0)
+            assert isinstance(events[0], Response)
+            testlib.assert_eq(events[0].status_code, 101)
+
+            # Receive initial message, if we haven't already
+            if len(events) == 1:
+                data = s.recv(1024)
+                protocol.receive_data(data)
+                for data in protocol.data_to_send():
+                    s.send(data)
+                events += protocol.events_received()
+
+            # Receive GET_TELEMETRY command
+            assert isinstance(events[1], Frame)
+            testlib.assert_eq(events[1].opcode, Opcode.BINARY)
+            testlib.assert_eq(events[1].data, b'\x00')
+
+            # Generate metric values
             metric_0 = ''.join(random.choices(string.ascii_lowercase, k=10))
             metric_1 = ''.join(random.choices(string.ascii_lowercase, k=10))
             metric_2 = ''.join(random.choices(string.ascii_lowercase, k=10))
             value = random.randrange(0, 1000000000)
             # Test multiple lines, multiple metrics, multiple nodes, and
-            # a line fragmented over multiple frames
-            metrics = [b'\x00' + make_metric(metric_0, node0_uuid, value)
-                       + b'\n' +
-                       make_metric(metric_1, node1_uuid, value) +
-                       f"\n{metric_2}{{node_uuid=".encode('utf-8'),
-                       f"\"{node0_uuid}\"}} {value} 1695747260".encode('utf-8')]
-            websocket.send(metrics)
+            # a line fragmented over multiple frames, with an interleaved ping
+            frame_1 = (b'\x00' + make_metric(metric_0, node0_uuid, value) +
+                       b'\n' + make_metric(metric_1, node1_uuid, value) +
+                       f"\n{metric_2}{{node_uuid=".encode('utf-8'))
+            frame_2 = f"\"{node0_uuid}\"}} {value} 1695747260".encode('utf-8')
+            # Send the lines of metrics as a fragmented message over multiple
+            # frames, with a ping interleaved
+            protocol.send_binary(frame_1, fin=False)
+            protocol.send_ping(b'')
+            for data in protocol.data_to_send():
+                s.send(data)
 
-            testlib.poll_for_condition(
-                lambda:
-                metric_has_value(self.cluster, {'instance': 'ns_server',
-                                                'le': '0.001',
-                                                'name': metric_0,
-                                                'nodes': [node0_host]},
-                                 value) and
-                metric_has_value(self.cluster, {'instance': 'ns_server',
-                                                'le': '0.001',
-                                                'name': metric_1,
-                                                'nodes': [node1_host]},
-                                 value) and
-                metric_has_value(self.cluster, {'instance': 'ns_server',
-                                                'name': metric_2,
-                                                'nodes': [node0_host]},
-                                 value),
-                sleep_time=1, timeout=60)
+            # Wait for ping response
+            data = s.recv(1024)
+            protocol.receive_data(data)
+            for data in protocol.data_to_send():
+                s.send(data)
+            events = protocol.events_received()
+            testlib.assert_eq(len(events), 1)
+            assert isinstance(events[0], Frame)
+            testlib.assert_eq(events[0].opcode, Opcode.PONG)
+
+            protocol.send_continuation(frame_2, fin=True)
+            for data in protocol.data_to_send():
+                s.send(data)
+
+            # Receive second GET_TELEMETRY message, to confirm nothing crashed
+            data = s.recv(1024)
+            protocol.receive_data(data)
+            for data in protocol.data_to_send():
+                s.send(data)
+            events = protocol.events_received()
+            testlib.assert_eq(len(events), 1)
+
+            # Receive GET_TELEMETRY command
+            assert isinstance(events[0], Frame)
+            testlib.assert_eq(events[0].opcode, Opcode.BINARY)
+            testlib.assert_eq(events[0].data, b'\x00')
+
+        testlib.poll_for_condition(
+            lambda:
+            metric_has_value(self.cluster, {'instance': 'ns_server',
+                                            'le': '0.001',
+                                            'name': metric_0,
+                                            'nodes': [node0_host]},
+                             value) and
+            metric_has_value(self.cluster, {'instance': 'ns_server',
+                                            'le': '0.001',
+                                            'name': metric_1,
+                                            'nodes': [node1_host]},
+                             value) and
+            metric_has_value(self.cluster, {'instance': 'ns_server',
+                                            'name': metric_2,
+                                            'nodes': [node0_host]},
+                             value),
+            sleep_time=1, timeout=60)
 
     def disabled_test(self):
         # Disable app telemetry
