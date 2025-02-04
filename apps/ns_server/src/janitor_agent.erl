@@ -79,6 +79,8 @@
          get_fusion_sync_info/2,
          sync_fusion_log_store/1,
          get_fusion_uploaders_state/2,
+         download_snapshot/5,
+         wait_download_snapshot/4,
          release_file_based_rebalance_snapshots/2]).
 
 -export([start_link/1]).
@@ -592,6 +594,13 @@ wait_index_updated(Bucket, Rebalancer, NewMasterNode, _ReplicaNodes, VBucket) ->
     ok = rebalance_call(Rebalancer, Bucket, NewMasterNode,
                         {wait_index_updated, VBucket}, infinity).
 
+download_snapshot(Bucket, Rebalancer, MasterNode, ReplicaNode, VBucket) ->
+    ok = rebalance_call(Rebalancer, Bucket, ReplicaNode,
+                        {download_snapshot, MasterNode, VBucket}, infinity).
+
+wait_download_snapshot(Bucket, Rebalancer, ReplicaNode, VBucket) ->
+    ok = rebalance_call(Rebalancer, Bucket, ReplicaNode,
+                        {wait_download_snapshot, VBucket}, infinity).
 release_file_based_rebalance_snapshots(Bucket, Servers) ->
     call_on_servers(Bucket, Servers,
                     {release_file_based_rebalance_snapshots, Bucket},
@@ -865,6 +874,16 @@ do_handle_call({wait_index_updated, VBucket}, From,
                #state{bucket_name = Bucket} = State) ->
     spawn_rebalance_subprocess(
       State, From, ?cut(ns_couchdb_api:wait_index_updated(Bucket, VBucket)));
+do_handle_call({download_snapshot, MasterNode, VBucket}, From,
+               #state{bucket_name = Bucket} = State) ->
+    spawn_rebalance_subprocess(State, From,
+                               ?cut(ns_memcached:download_snapshot(Bucket,
+                                                                   MasterNode,
+                                                                   VBucket)));
+do_handle_call({wait_download_snapshot, VBucket}, From,
+               #state{bucket_name = Bucket} = State) ->
+    spawn_rebalance_subprocess(State, From,
+                               ?cut(wait_download_snapshot(Bucket, VBucket)));
 do_handle_call({wait_dcp_data_move, ReplicaNodes, VBucket}, From,
                #state{bucket_name = Bucket} = State) ->
     spawn_rebalance_subprocess(
@@ -1543,6 +1562,34 @@ check_for_node_rename(Call, BucketConfig, State, Body) ->
                       [Call, Node, Servers]),
             {reply, {node_rename_detected, Node, Servers}, State}
     end.
+
+wait_download_snapshot(Bucket, VBucket) ->
+    wait_download_snapshot(Bucket, VBucket, 0).
+
+wait_download_snapshot(Bucket, VBucket, Iterations) ->
+    {ok, Status} = ns_memcached:get_download_snapshot_status(Bucket, VBucket),
+    case check_download_snapshot_done(Status) of
+        true -> ok;
+        false ->
+            Itr = case Iterations of
+                      300 ->
+                          ?rebalance_debug(
+                             "Still waiting for backfill for bucket ~p "
+                             "partition ~p",
+                             [Bucket, VBucket]),
+                          0;
+                      I -> I + 1
+                  end,
+            timer:sleep(100),
+            wait_download_snapshot(Bucket, VBucket, Itr)
+    end.
+
+check_download_snapshot_done(<<"running">>) ->
+    false;
+check_download_snapshot_done(<<"available">>) ->
+    true;
+check_download_snapshot_done(Other) ->
+    erlang:error({bad_download_snapshot_status, Other}).
 
 -ifdef(TEST).
 

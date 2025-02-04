@@ -124,10 +124,17 @@ maybe_initiate_indexing(Bucket, Parent, JustBackfillNodes, ReplicaNodes, VBucket
 
 dcp_backfill(Bucket, Parent, VBucket, [OldMaster | _] = OldChain, ReplicaNodes,
              JustBackfillNodes, IndexAware, AllBuiltNodes, Options) ->
+    SnapshotType = case proplists:get_bool(fusion_use_snapshot, Options) of
+                       true ->
+                           fusion;
+                       false ->
+                           undefined
+                   end,
+
     %% setup replication streams to replicas from the existing master
     set_initial_vbucket_state(Bucket, Parent, VBucket, OldChain, ReplicaNodes,
                               JustBackfillNodes,
-                              proplists:get_bool(fusion_use_snapshot, Options)),
+                              SnapshotType),
 
     %% initiate indexing on new master (replicas are ignored for now)
     %% at this moment since the stream to new master is created (if there is a
@@ -141,6 +148,20 @@ dcp_backfill(Bucket, Parent, VBucket, [OldMaster | _] = OldChain, ReplicaNodes,
     %% persisted on all the replicas
     wait_master_seqno_persisted_on_replicas(Bucket, VBucket, Parent,
                                             OldMaster, AllBuiltNodes).
+
+file_based_backfill(Bucket, Parent, VBucket, [OldMaster | _ ] = OldChain,
+                    ReplicaNodes, JustBackfillNodes, AllBuiltNodes) ->
+
+    %% 1) DownloadSnapshot & wait for data movement
+    download_snapshot(Bucket, Parent, OldMaster, AllBuiltNodes,
+                      VBucket),
+
+    %% 2) Flip  vBucket to replica.
+    %% We are going to create streams here, we don't really need to, but
+    %% takeover can't handle the connection not existing yet.
+    set_initial_vbucket_state(Bucket, Parent, VBucket, OldChain, ReplicaNodes,
+                              JustBackfillNodes,
+                              fbr).
 
 mover_inner(Parent, Bucket, VBucket,
             [undefined|_] = _OldChain,
@@ -166,8 +187,52 @@ mover_inner(Parent, Bucket, VBucket,
 
     master_activity_events:note_backfill_phase_started(Bucket, VBucket),
 
-    dcp_backfill(Bucket, Parent, VBucket, OldChain, ReplicaNodes,
-                 JustBackfillNodes, IndexAware, AllBuiltNodes, Options),
+    %% We need to choose our backfill based on whether or not a vBucket already
+    %% exists. If it does, we can only use `dcp` backfill, otherwise we can use
+    %% use file_based backfill. We can look at OldChain vs NewChain to determine
+    %% if the vBucket already exists. Lets build a list of vBuckets that we can
+    %% build via DCP, and a list of vBuckets that we can build via file_based.
+    {FileBasedBackfillNodes, DCPBackfillNodes} =
+        case proplists:get_bool(file_based_backfill_enabled, Options) of
+            true ->
+                FileBasedNodes = NewChain -- OldChain,
+                %% Remove undefined nodes from the file based backfill nodes
+                %% list. We may see this if we have fewer replicas than
+                %% configured in the NewChain.
+                {lists:filter(fun(N) -> N =/= undefined end, FileBasedNodes),
+                 NewChain -- FileBasedNodes};
+            false ->
+                {[], NewChain}
+        end,
+
+    ?rebalance_debug("Beginning backfill for vbucket ~p. "
+                     "File based backfill nodes: ~0p, DCP backfill nodes: ~p",
+                     [VBucket, FileBasedBackfillNodes, DCPBackfillNodes]),
+
+    %% @TODO: We should spawn one process for each, and wait for both to
+    %% complete.
+    case DCPBackfillNodes of
+        [] -> ok;
+        _ ->
+            %% DCP backfill takes a few different parameters, so we'll remove
+            %% the FileBasedBackfillNodes from them all.
+            DCPJBN = JustBackfillNodes -- FileBasedBackfillNodes,
+            DCPABN = AllBuiltNodes -- FileBasedBackfillNodes,
+            DCPRN = ReplicaNodes -- FileBasedBackfillNodes,
+            dcp_backfill(Bucket, Parent, VBucket, OldChain, DCPRN,
+                         DCPJBN, IndexAware, DCPABN, Options)
+    end,
+
+    case FileBasedBackfillNodes of
+        [] -> ok;
+        _ ->
+            FBJBN = JustBackfillNodes -- DCPBackfillNodes,
+            FBABN = AllBuiltNodes -- DCPBackfillNodes,
+            FBRN = ReplicaNodes -- DCPBackfillNodes,
+            file_based_backfill(Bucket, Parent, VBucket, OldChain,
+                                FBRN, FBJBN,
+                                FBABN)
+    end,
 
     ?rebalance_debug("Backfill of vBucket ~p completed.", [VBucket]),
     master_activity_events:note_backfill_phase_ended(Bucket, VBucket),
@@ -447,6 +512,61 @@ dcp_takeover_regular(Bucket, Parent, OldMaster, NewMaster, VBucket) ->
               ok = janitor_agent:dcp_takeover(Bucket, Parent, OldMaster, NewMaster, VBucket)
       end).
 
+download_snapshot(Bucket, Parent, SrcNode, DstNodes, VBucket) ->
+    spawn_and_wait(
+      fun() ->
+              %% Taking care here to log "download snapshot" where appropriate
+              %% for debugability.
+
+              %% First we have to initiate the command, we don't have a DCP
+              %% stream set up and running already like we do for DCP backfill.
+              ?rebalance_debug("Initiating download snapshot for bucket = ~p "
+                               "partition = ~p src node = ~p dest nodes = ~p",
+                               [Bucket, VBucket, SrcNode, DstNodes]),
+              DownloadResult =
+                  misc:parallel_map(
+                    fun(DestNode) ->
+                            janitor_agent:download_snapshot(Bucket, Parent,
+                                                            SrcNode, DestNode,
+                                                            VBucket)
+                    end, DstNodes, infinity),
+              NonOks = [P || {_N, V} = P <- DownloadResult, V =/= ok],
+              case NonOks of
+                  [] -> ok;
+                  Error ->
+                      erlang:error({download_snapshot_failed,
+                                    Bucket, VBucket, SrcNode, DstNodes,
+                                    Error})
+              end,
+
+              %% Now this is a little more like the backfill case below, we
+              %% just wait for the completion.
+              ?rebalance_debug("Will wait for download snapshot to complete "
+                               "for bucket = ~p partition = ~p src node = ~p "
+                               "dest nodes = ~p",
+                               [Bucket, VBucket, SrcNode, DstNodes]),
+              WaitResult =
+                  misc:parallel_map(
+                    fun(DestNode) ->
+                            janitor_agent:wait_download_snapshot(Bucket, Parent,
+                                                                 DestNode,
+                                                                 VBucket)
+                    end, DstNodes, infinity),
+              NonOks2 = [P || {_N, V} = P <- WaitResult, V =/= ok],
+              case NonOks2 of
+                  [] ->
+                      ?rebalance_debug("Finished download snapshot for "
+                                       "bucket = ~p partition = ~p "
+                                       "src node = ~p dest nodes = ~p",
+                                       [Bucket, VBucket, SrcNode, DstNodes]),
+                      ok;
+                  WaitErr ->
+                      erlang:error({wait_download_snapshot_failed,
+                                    Bucket, VBucket, SrcNode, DstNodes,
+                                    WaitErr})
+              end
+      end).
+
 wait_dcp_data_move(Bucket, Parent, SrcNode, DstNodes, VBucket) ->
     spawn_and_wait(
       fun () ->
@@ -510,23 +630,25 @@ get_replica_and_backfill_nodes(MasterNode, [NewMasterNode|_] = NewChain) ->
     true = (JustBackfillNodes =/= [undefined]),
     {ReplicaNodes, JustBackfillNodes}.
 
-get_move_options(false, _DstNode, _OldChain) ->
+-spec get_move_options(undefined | fusion | fbr, node(), [node()]) ->
+          [] | [{use_snapshot, binary()}].
+get_move_options(undefined, _DstNode, _OldChain) ->
     [];
-get_move_options(true, DstNode, OldChain) ->
+get_move_options(SnapshotType, DstNode, OldChain) ->
     case lists:member(DstNode, OldChain) of
         false ->
-            [{use_snapshot, <<"fusion">>}];
+            [{use_snapshot, atom_to_binary(SnapshotType)}];
         true ->
             []
     end.
 
 set_initial_vbucket_state(Bucket, Parent, VBucket, [SrcNode | _] = OldChain,
-                          ReplicaNodes, JustBackfillNodes, UseSnapshot) ->
+                          ReplicaNodes, JustBackfillNodes, SnapshotType) ->
     Changes = [{Replica, replica, undefined, SrcNode,
-                get_move_options(UseSnapshot, Replica, OldChain)}
+                get_move_options(SnapshotType, Replica, OldChain)}
                || Replica <- ReplicaNodes]
         ++ [{FutureMaster, replica, passive, SrcNode,
-             get_move_options(UseSnapshot, FutureMaster, OldChain)}
+             get_move_options(SnapshotType, FutureMaster, OldChain)}
             || FutureMaster <- JustBackfillNodes],
     spawn_and_wait(
       fun () ->

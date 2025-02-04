@@ -148,7 +148,15 @@ init({Bucket, Nodes, OldMap, NewMap, ProgressCallback, RebalancePlan,
                       [];
                   _ ->
                       [{fusion_use_snapshot, true}]
-              end,
+              end ++
+        case ns_config:read_key_fast(
+               file_based_backfill_enabled,
+               ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT) of
+            true ->
+                [{file_based_backfill_enabled, true}];
+            false ->
+                []
+        end,
     SchedulerState = vbucket_move_scheduler:prepare(
                        OldMap, NewMap, Quirks,
                        menelaus_web_settings:get_rebalance_moves_per_node(),
