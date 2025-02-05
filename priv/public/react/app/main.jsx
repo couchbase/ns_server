@@ -46,6 +46,24 @@ let auditState = {
   lazyLoad: () => import('./mn.security.audit.states.js'),
 };
 
+const logsState = {
+  name: 'app.admin.logs.**',
+  url: '/logs',
+  lazyLoad: () => import('./mn.logs.states'),
+};
+
+const logsListState = {
+  name: 'app.admin.logs.list.**',
+  url: '',
+  lazyLoad: () => import('./mn.logs.list.states'),
+};
+
+const logsCollectInfoState = {
+  name: 'app.admin.logs.collectInfo.**',
+  url: '/collectInfo',
+  lazyLoad: () => import('./mn.logs.collectInfo.states'),
+};
+
 router.stateRegistry.register(appState);
 router.stateRegistry.register(adminState);
 router.stateRegistry.register(authState);
@@ -55,7 +73,9 @@ router.stateRegistry.register(overviewState);
 router.stateRegistry.register(securityState);
 router.stateRegistry.register(otherSecuritySettingsState);
 router.stateRegistry.register(auditState);
-
+router.stateRegistry.register(logsState);
+router.stateRegistry.register(logsListState);
+router.stateRegistry.register(logsCollectInfoState);
 // TODO: Add auth state
 // router.urlService.rules.initial({ state: 'app.auth' });
 

@@ -14,8 +14,8 @@ import { is } from 'ramda';
 // import {map} from 'rxjs/operators';
 
 // import {MnHelperService} from './mn.helper.service.js';
-// import {MnAdminService} from './mn.admin.service.js';
-// import {servicesEnterprise} from './constants/constants.js';
+// import { MnAdminService } from './mn.admin.service.js';
+import { servicesEnterprise } from './constants/constants.js';
 
 export {
   MnParseVersion,
@@ -31,32 +31,30 @@ export {
   // MnFormatWarmupMessage,
   // MnBucketsType,
   // MnConflictResolutionType,
-  // MnTruncate,
+  MnTruncate,
   MnTruncateTo3Digits,
   MnFormatServices,
-  // MnOrderServices,
-  // MnStripPortHTML
+  MnOrderServices,
+  MnStripPortHTML,
 };
 
-// class MnTruncate {
-//   static get annotations() { return [
-//     new Pipe({name: "mnTruncate"})
-//   ]}
+class MnTruncateClass {
+  transform(value, limit, trail, isLeft) {
+    trail = trail != undefined ? trail : '...';
+    limit = limit || 15;
+    if (value.length > limit) {
+      if (isLeft) {
+        return trail + value.substring(value.length - limit, value.length);
+      } else {
+        return value.substring(0, limit) + trail;
+      }
+    } else {
+      return value;
+    }
+  }
+}
 
-//   transform(value, limit, trail, isLeft) {
-//     trail = trail != undefined ? trail : "...";
-//     limit = limit || 15;
-//     if (value.length > limit) {
-//       if (isLeft) {
-//         return trail + value.substring(value.length - limit, value.length);
-//       } else {
-//         return value.substring(0, limit) + trail;
-//       }
-//     } else {
-//       return value;
-//     }
-//   }
-// }
+const MnTruncate = new MnTruncateClass();
 
 class MnTruncateTo3DigitsClass {
   transform(value, minScale, roundMethod) {
@@ -401,26 +399,20 @@ class MnFormatServicesClass {
 
 const MnFormatServices = new MnFormatServicesClass();
 
-// class MnOrderServices {
-//   static get annotations() { return [
-//     new Pipe({name: "mnOrderServices"})
-//   ]}
+class MnOrderServicesClass {
+  transform(services) {
+    return services
+      .slice()
+      .sort(
+        (a, b) => servicesEnterprise.indexOf(a) - servicesEnterprise.indexOf(b)
+      );
+  }
+}
 
-//   transform(services) {
-//     return services.slice().sort((a, b) =>
-//       servicesEnterprise.indexOf(a) - servicesEnterprise.indexOf(b));
-//   }
-// }
+const MnOrderServices = new MnOrderServicesClass();
 
-// class MnStripPortHTML {
-//   static get annotations() { return [
-//     new Pipe({name: "mnStripPortHTML"})
-//   ]}
-
-//   static get parameters() { return [
-//     MnAdminService
-//   ]}
-
+// this pipe is moved to mn.admin.service.js because of the circular dependency with MnAdminService
+// class MnStripPortHTMLClass {
 //   constructor(mnAdminService) {
 //     this.mnAdminService = mnAdminService;
 //   }
@@ -430,3 +422,4 @@ const MnFormatServices = new MnFormatServicesClass();
 //       .pipe(map((v) => v ? hostname.replace(/:8091$/, '') : hostname));
 //   }
 // }
+// const MnStripPortHTML = new MnStripPortHTMLClass(MnAdminService);

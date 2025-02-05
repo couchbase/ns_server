@@ -366,6 +366,48 @@ in render:
 />
 ```
 
-## 11. don't change anything else. The component logic and code should stay as much as possible to original.
+## 11. Replace ngxClipboard with CopyToClipboard from react-copy-to-clipboard by wrapping the element with ngxClipboard into a <CopyToClipboard> component
 
-## 12. save the result into separate file
+For example:
+
+// Instead of
+
+```html
+<button
+  class="outline"
+  [disabled]="!(clusterInfo | async)"
+  ngxClipboard
+  [cbContent]="clusterInfo | async">
+   Copy to Clipboard
+</button>
+```
+
+// Do
+
+```jsx
+<CopyToClipboard
+  text={clusterInfo || ''}
+  onCopy={(text, result) => {
+    if (result) {
+      MnAlertsService.formatAndSetAlerts(
+        'Text copied successfully!',
+        'success',
+        2500
+      );
+    } else {
+      MnAlertsService.formatAndSetAlerts(
+        'Unable to copy text!',
+        'error',
+        2500
+      );
+    }
+  }}>
+    <button className="outline" disabled={!clusterInfo}>
+      Copy to Clipboard
+    </button>
+</CopyToClipboard>
+```
+
+## 12. don't change anything else. The component logic and code should stay as much as possible to original.
+
+## 13. save the result into separate file

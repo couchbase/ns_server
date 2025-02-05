@@ -45,6 +45,7 @@
     "ramda": "0.28.0",
     "react": "^18.2.0",
     "react-bootstrap": "^2.10.6",
+    "react-copy-to-clipboard": "^5.1.0",
     "react-dom": "^18.2.0",
     "react-reactive-form": "^2.0.1",
     "rxjs": "6.6.7",

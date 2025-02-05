@@ -267,3 +267,17 @@ const MnAdminService = new MnAdminServiceClass(
   MnPoolsService
 );
 export { MnAdminService };
+
+class MnStripPortHTMLClass {
+  constructor(mnAdminService) {
+    this.mnAdminService = mnAdminService;
+  }
+
+  transform(hostname) {
+    return this.mnAdminService.stream.isStrippingPort.pipe(
+      map((v) => (v ? hostname.replace(/:8091$/, '') : hostname))
+    );
+  }
+}
+const MnStripPortHTML = new MnStripPortHTMLClass(MnAdminService);
+export { MnStripPortHTML };

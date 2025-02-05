@@ -1,0 +1,35 @@
+/*
+Copyright 2020-Present Couchbase, Inc.
+
+Use of this software is governed by the Business Source License included in
+the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+file, in accordance with the Business Source License, use of this software will
+be governed by the Apache License, Version 2.0, included in the file
+licenses/APL2.txt.
+*/
+
+import { MnLogsCollectInfoComponent } from './mn.logs.collectInfo.component.jsx';
+import { MnLogsCollectInfoFormComponent } from './mn.logs.collectInfo.form.component.jsx';
+import { MnLogsCollectInfoResultComponent } from './mn.logs.collectInfo.result.component.jsx';
+
+export const states = [
+  {
+    name: 'app.admin.logs.collectInfo',
+    url: '/collectInfo',
+    abstract: true,
+    component: MnLogsCollectInfoComponent,
+    data: {
+      title: 'Collect Information',
+    },
+  },
+  {
+    name: 'app.admin.logs.collectInfo.form',
+    url: '/form',
+    component: MnLogsCollectInfoFormComponent,
+  },
+  {
+    name: 'app.admin.logs.collectInfo.result',
+    url: '/result',
+    component: MnLogsCollectInfoResultComponent,
+  },
+];
