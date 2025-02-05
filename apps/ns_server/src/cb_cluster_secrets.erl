@@ -1404,7 +1404,8 @@ garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
         %% Note: we can't skip this phase even when we don't have deks
         %% (or have only one dek), because we need to update
         %% "has_unencrypted_data" info anyway
-        {ok, #{statuses := Statuses} = KindDeks} ->
+        {ok, #{statuses := Statuses,
+               deks_being_dropped := IdsBeingDropped} = KindDeks} ->
             UpdateStatus = maps:get(maybe_update_deks, Statuses, undefined),
             NotifyCounter = fun (L) ->
                                 ns_server_stats:notify_gauge(
@@ -1413,6 +1414,14 @@ garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
                                    length(L),
                                    #{expiration_s => infinity})
                             end,
+            UpdateIdsBeingDropped =
+                fun (IdsInUse) ->
+                    %% To prevent dropping ?NULL_DEK again and again
+                    %% Otherwise if we don't retire any real deks, we will never
+                    %% remove ?NULL_DEK from deks_being_dropped
+                    IdsBeingDropped --
+                        [?NULL_DEK || not lists:member(?NULL_DEK, IdsInUse)]
+                end,
             case call_dek_callback(get_ids_in_use_callback, Kind, []) of
                 {succ, {ok, IdList}} when (UpdateStatus == ok) orelse Force ->
                     NotifyCounter(IdList),
@@ -1420,7 +1429,9 @@ garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
                     NewKindDeks = KindDeks#{has_unencrypted_data =>
                                             lists:member(?NULL_DEK, UniqIdList),
                                             last_deks_gc_datetime =>
-                                            calendar:universal_time()},
+                                            calendar:universal_time(),
+                                            deks_being_dropped =>
+                                            UpdateIdsBeingDropped(IdList)},
                     NewState = State#state{deks = DeksInfo#{
                                                     Kind => NewKindDeks}},
                     CleanedIdList = lists:delete(?NULL_DEK, UniqIdList),
@@ -1435,7 +1446,9 @@ garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
                     %% memcached). In this case it is possible that we remove
                     %% the keys that are being pushed.
                     NewKindDeks = KindDeks#{has_unencrypted_data =>
-                                            lists:member(?NULL_DEK, IdList)},
+                                            lists:member(?NULL_DEK, IdList),
+                                            deks_being_dropped =>
+                                            UpdateIdsBeingDropped(IdList)},
                     NewState = State#state{deks = DeksInfo#{
                                                     Kind => NewKindDeks}},
                     ?log_debug("Skipping ~p deks retiring because update "
