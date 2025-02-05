@@ -181,7 +181,8 @@
 -type deks_info() :: #{active_id := cb_deks:dek_id() | undefined,
                        deks := [cb_deks:dek()],
                        is_enabled := boolean(),
-                       deks_being_dropped := [cb_deks:dek_id() | ?NULL_DEK],
+                       deks_being_dropped := sets:set(cb_deks:dek_id() |
+                                                      ?NULL_DEK),
                        has_unencrypted_data := undefined | boolean(),
                        last_deks_gc_datetime := undefined | calendar:datetime(),
                        last_drop_timestamp := undefined | non_neg_integer(),
@@ -1405,7 +1406,7 @@ garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
         %% (or have only one dek), because we need to update
         %% "has_unencrypted_data" info anyway
         {ok, #{statuses := Statuses,
-               deks_being_dropped := IdsBeingDropped} = KindDeks} ->
+               deks_being_dropped := IdsBeingDroppedSet} = KindDeks} ->
             UpdateStatus = maps:get(maybe_update_deks, Statuses, undefined),
             NotifyCounter = fun (L) ->
                                 ns_server_stats:notify_gauge(
@@ -1419,8 +1420,10 @@ garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
                     %% To prevent dropping ?NULL_DEK again and again
                     %% Otherwise if we don't retire any real deks, we will never
                     %% remove ?NULL_DEK from deks_being_dropped
-                    IdsBeingDropped --
-                        [?NULL_DEK || not lists:member(?NULL_DEK, IdsInUse)]
+                    case lists:member(?NULL_DEK, IdsInUse) of
+                        true -> IdsBeingDroppedSet;
+                        false -> sets:del_element(?NULL_DEK, IdsBeingDroppedSet)
+                    end
                 end,
             case call_dek_callback(get_ids_in_use_callback, Kind, []) of
                 {succ, {ok, IdList}} when (UpdateStatus == ok) orelse Force ->
@@ -1573,13 +1576,19 @@ call_dek_callback(CallbackName, Kind, Args) ->
 -spec on_deks_update(cb_deks:dek_kind(), #state{}) -> #state{}.
 on_deks_update(Kind, #state{deks = AllDeks} = State) ->
     case maps:find(Kind, AllDeks) of
-        {ok, #{deks_being_dropped := CurDeksDropped,
+        {ok, #{deks_being_dropped := CurDeksDroppedSet,
                deks := CurDeks,
                is_enabled := IsEnabled} = CurKindDeks} ->
             DekIds = lists:map(fun (#{id := Id}) -> Id end, CurDeks),
-            NewDeksDropped = (CurDeksDropped -- (CurDeksDropped -- DekIds))
-                             -- [?NULL_DEK || not IsEnabled],
-            NewKindDeks = CurKindDeks#{deks_being_dropped => NewDeksDropped},
+            DeksDroppedSet = sets:intersection(CurDeksDroppedSet,
+                                               sets:from_list(DekIds,
+                                                              [{version, 2}])),
+            DeksDroppedSet2 = case IsEnabled of
+                                  true -> DeksDroppedSet;
+                                  false -> sets:del_element(?NULL_DEK,
+                                                            DeksDroppedSet)
+                              end,
+            NewKindDeks = CurKindDeks#{deks_being_dropped => DeksDroppedSet2},
             functools:chain(State#state{deks = AllDeks#{Kind => NewKindDeks}},
                             [restart_dek_cleanup_timer(_),
                              restart_dek_rotation_timer(_)]);
@@ -1726,7 +1735,7 @@ new_dek_info(ActiveId, Keys, IsEnabled) ->
     #{active_id => ActiveId,
       deks => Keys,
       is_enabled => IsEnabled,
-      deks_being_dropped => [],
+      deks_being_dropped => sets:new([{version, 2}]),
       last_drop_timestamp => undefined,
       has_unencrypted_data => undefined,
       last_deks_gc_datetime => undefined,
@@ -2322,18 +2331,18 @@ calculate_next_dek_cleanup(CurDateTime, DeksInfo) ->
     Times =
         maps:fold(
           fun (Kind, KindDeks, Acc) ->
-              #{deks_being_dropped := IdsBeingDropped,
+              #{deks_being_dropped := IdsBeingDroppedSet,
                 last_drop_timestamp := LastDropTS} = KindDeks,
               DropRetryInterval = ?DEK_DROP_RETRY_TIME_S(Kind),
               case dek_expiration_times(Kind, KindDeks) of
                   {ok, ExpirationTimes} ->
                       ?log_debug("~p DEKs expiration times: ~0p, deks already "
                                  "being dropped: ~0p (last drop time: ~0p)",
-                                 [Kind, ExpirationTimes, IdsBeingDropped,
+                                 [Kind, ExpirationTimes, IdsBeingDroppedSet,
                                   LastDropTS]),
                       lists:map(
                         fun ({DT, Id}) ->
-                            case lists:member(Id, IdsBeingDropped) of
+                            case sets:is_element(Id, IdsBeingDroppedSet) of
                                 true ->
                                     LastDropDT =
                                         calendar:gregorian_seconds_to_datetime(
@@ -2975,22 +2984,23 @@ deks_to_drop(Kind, KindDeks) ->
     CurTime = calendar:universal_time(),
     NowS = calendar:datetime_to_gregorian_seconds(CurTime),
     ExpiredIds = get_expired_deks(Kind, KindDeks),
-    #{deks_being_dropped := AlreadyBeingDropped,
+    #{deks_being_dropped := AlreadyBeingDroppedSet,
       last_drop_timestamp := LastDropS} = KindDeks,
     DropRetryInterval = ?DEK_DROP_RETRY_TIME_S(Kind),
     LastDropTime = case LastDropS of
                        undefined -> undefined;
                        _ -> calendar:gregorian_seconds_to_datetime(LastDropS)
                    end,
+    AlreadyBeingDroppedList = sets:to_list(AlreadyBeingDroppedSet),
     ?log_debug("The following ~p DEKs has expired: ~p~n"
                "Among them DEKs that are already being dropped: ~p~n"
                "Last drop attempt time: ~p",
-               [Kind, ExpiredIds, AlreadyBeingDropped, LastDropTime]),
+               [Kind, ExpiredIds, AlreadyBeingDroppedList, LastDropTime]),
     %% If we have already started dropping something, we should continue
     %% even if it is not "expired" anymore.
-    AllExpired = lists:usort(ExpiredIds ++ AlreadyBeingDropped),
+    AllExpired = lists:usort(ExpiredIds ++ AlreadyBeingDroppedList),
     ShouldAttemptDrop =
-        case AllExpired -- AlreadyBeingDropped of
+        case AllExpired -- AlreadyBeingDroppedList of
             [_|_] ->
                 true; %% there are new deks in the list
             [] when AllExpired == [] ->
@@ -3009,47 +3019,49 @@ deks_to_drop(Kind, KindDeks) ->
 -spec initiate_deks_drop(cb_deks:dek_kind(), [cb_deks:dek_id() | ?NULL_DEK],
                          #state{}) -> #state{}.
 initiate_deks_drop(_Kind, [], #state{} = State) -> State;
-initiate_deks_drop(Kind, IdsToDrop0, #state{deks = DeksInfo} = State0) ->
+initiate_deks_drop(Kind, IdsToDropList0, #state{deks = DeksInfo} = State0) ->
     CurTime = calendar:universal_time(),
+    IdsToDropSet0 = sets:from_list(IdsToDropList0, [{version, 2}]),
     NowS = calendar:datetime_to_gregorian_seconds(CurTime),
     #{Kind := KindDeks} = DeksInfo,
-    IdsToDrop1 = %% Don't let active dek to be dropped
+    IdsToDropSet1 = %% Don't let active dek to be dropped
         case DeksInfo of
             #{Kind := #{is_enabled := true, active_id := ActiveId}} ->
-                case lists:member(ActiveId, IdsToDrop0) of
+                case sets:is_element(ActiveId, IdsToDropSet0) of
                     true ->
                         ?log_debug("Active DEK (~p) has expired for "
                                    "~p (ignoring attempt to drop it)",
                                    [ActiveId, Kind]),
-                        IdsToDrop0 -- [ActiveId];
-                    false -> IdsToDrop0
+                        sets:del_element(ActiveId, IdsToDropSet0);
+                    false -> IdsToDropSet0
                 end;
             #{Kind := #{is_enabled := false}} ->
-                IdsToDrop0
+                IdsToDropSet0
         end,
-    IdsToDrop =
+    IdsToDropFinalSet =
         case DeksInfo of
             #{Kind := #{is_enabled := true}} ->
                 %% We have at least one expired dek, and encryption is enabled,
                 %% it is probably time to encrypt data that is not encrypted yet
                 %% (if there is such data)
-                case length(IdsToDrop1) > 0 of
-                    true -> lists:uniq([?NULL_DEK | IdsToDrop1]);
-                    false -> IdsToDrop1
+                case sets:size(IdsToDropSet1) > 0 of
+                    true -> sets:add_element(?NULL_DEK, IdsToDropSet1);
+                    false -> IdsToDropSet1
                 end;
             #{Kind := #{is_enabled := false}} ->
                 %% If encryption is disabled we should never try dropping empty
                 %% dek because it beasically means "encrypt everything", which
                 %% doesn't make sense in this case
-                lists:uniq(IdsToDrop1) -- [?NULL_DEK]
+                sets:del_element(?NULL_DEK, IdsToDropSet1)
         end,
+    IdsToDropFinalList = sets:to_list(IdsToDropFinalSet),
 
-    ?log_debug("Trying to drop ~p DEKs: ~0p", [Kind, IdsToDrop]),
+    ?log_debug("Trying to drop ~p DEKs: ~0p", [Kind, IdsToDropFinalList]),
     ns_server_stats:notify_counter({<<"key_manager_drop_deks">>,
                                     [{kind, cb_deks:kind2bin(Kind)}]}),
 
-    case (length(IdsToDrop) > 0) andalso
-         call_dek_callback(drop_callback, Kind, [IdsToDrop]) of
+    case (length(IdsToDropFinalList) > 0) andalso
+         call_dek_callback(drop_callback, Kind, [IdsToDropFinalList]) of
         false ->
             %% IdsToDrop0 was not empty, but the final list is empty (we
             %% probably removed NULL_DEK or ActiveId), so we should not attempt
@@ -3063,7 +3075,7 @@ initiate_deks_drop(Kind, IdsToDrop0, #state{deks = DeksInfo} = State0) ->
             NewKindDeks = KindDeks#{last_drop_timestamp => NowS},
             State0#state{deks = DeksInfo#{Kind => NewKindDeks}};
         {succ, {ok, Res}} ->
-            NewKindDeks = KindDeks#{deks_being_dropped => IdsToDrop,
+            NewKindDeks = KindDeks#{deks_being_dropped => IdsToDropFinalSet,
                                     last_drop_timestamp => NowS},
             State = State0#state{deks = DeksInfo#{Kind => NewKindDeks}},
             case Res of
@@ -3071,7 +3083,7 @@ initiate_deks_drop(Kind, IdsToDrop0, #state{deks = DeksInfo} = State0) ->
                     %% 'done' means that all all ids have been dropped and it is
                     %% safe to remove them
                     AllIds = [Id || #{id := Id} <- maps:get(deks, KindDeks)],
-                    IdsInUse = AllIds -- IdsToDrop,
+                    IdsInUse = AllIds -- IdsToDropFinalList,
                     retire_unused_deks(Kind, IdsInUse, State);
                 started ->
                     State
