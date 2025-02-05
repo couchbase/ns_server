@@ -2989,25 +2989,11 @@ deks_to_drop(Kind, KindDeks) ->
     %% If we have already started dropping something, we should continue
     %% even if it is not "expired" anymore.
     AllExpired = lists:usort(ExpiredIds ++ AlreadyBeingDropped),
-    ToDrop =
-        maybe
-            #{is_enabled := true, active_id := ActiveId} ?= KindDeks,
-            true ?= lists:member(ActiveId, AllExpired),
-            ?log_debug("Active DEK (~p) has expired for "
-                       "~p (ignoring attempt to drop it)",
-                       [ActiveId, Kind]),
-            AllExpired -- [ActiveId]
-        else
-            #{is_enabled := false} ->
-                AllExpired;
-            false ->
-                AllExpired
-        end,
     ShouldAttemptDrop =
-        case ToDrop -- AlreadyBeingDropped of
+        case AllExpired -- AlreadyBeingDropped of
             [_|_] ->
                 true; %% there are new deks in the list
-            [] when ToDrop == [] ->
+            [] when AllExpired == [] ->
                 false; %% no deks to drop
             [] when NowS > LastDropS + DropRetryInterval ->
                 true; %% no new deks to drop, but it's been a while
@@ -3016,7 +3002,7 @@ deks_to_drop(Kind, KindDeks) ->
                 false %% no new deks to drop
         end,
     case ShouldAttemptDrop of
-        true -> ToDrop;
+        true -> AllExpired;
         false -> []
     end.
 
@@ -3027,24 +3013,55 @@ initiate_deks_drop(Kind, IdsToDrop0, #state{deks = DeksInfo} = State0) ->
     CurTime = calendar:universal_time(),
     NowS = calendar:datetime_to_gregorian_seconds(CurTime),
     #{Kind := KindDeks} = DeksInfo,
+    IdsToDrop1 = %% Don't let active dek to be dropped
+        case DeksInfo of
+            #{Kind := #{is_enabled := true, active_id := ActiveId}} ->
+                case lists:member(ActiveId, IdsToDrop0) of
+                    true ->
+                        ?log_debug("Active DEK (~p) has expired for "
+                                   "~p (ignoring attempt to drop it)",
+                                   [ActiveId, Kind]),
+                        IdsToDrop0 -- [ActiveId];
+                    false -> IdsToDrop0
+                end;
+            #{Kind := #{is_enabled := false}} ->
+                IdsToDrop0
+        end,
     IdsToDrop =
         case DeksInfo of
             #{Kind := #{is_enabled := true}} ->
                 %% We have at least one expired dek, and encryption is enabled,
                 %% it is probably time to encrypt data that is not encrypted yet
                 %% (if there is such data)
-                lists:uniq(IdsToDrop0 ++ [?NULL_DEK]);
+                case length(IdsToDrop1) > 0 of
+                    true -> lists:uniq([?NULL_DEK | IdsToDrop1]);
+                    false -> IdsToDrop1
+                end;
             #{Kind := #{is_enabled := false}} ->
                 %% If encryption is disabled we should never try dropping empty
                 %% dek because it beasically means "encrypt everything", which
                 %% doesn't make sense in this case
-                lists:uniq(IdsToDrop0) -- [?NULL_DEK]
+                lists:uniq(IdsToDrop1) -- [?NULL_DEK]
         end,
 
     ?log_debug("Trying to drop ~p DEKs: ~0p", [Kind, IdsToDrop]),
     ns_server_stats:notify_counter({<<"key_manager_drop_deks">>,
                                     [{kind, cb_deks:kind2bin(Kind)}]}),
-    case call_dek_callback(drop_callback, Kind, [IdsToDrop]) of
+
+    case (length(IdsToDrop) > 0) andalso
+         call_dek_callback(drop_callback, Kind, [IdsToDrop]) of
+        false ->
+            %% IdsToDrop0 was not empty, but the final list is empty (we
+            %% probably removed NULL_DEK or ActiveId), so we should not attempt
+            %% to drop anything.
+            %% We should update last_drop_timestamp to indicate that we checked
+            %% it and drop is not needed (so we don't not try to drop it again
+            %% immediately). Example: when we have active dek expired, we can't
+            %% drop it, but we should not re-try dropping it again and again.
+            %% By updating last_drop_timestamp we are making sure that
+            %% ActiveId will not be treated as expired immediately.
+            NewKindDeks = KindDeks#{last_drop_timestamp => NowS},
+            State0#state{deks = DeksInfo#{Kind => NewKindDeks}};
         {succ, {ok, Res}} ->
             NewKindDeks = KindDeks#{deks_being_dropped => IdsToDrop,
                                     last_drop_timestamp => NowS},
