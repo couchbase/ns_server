@@ -555,7 +555,6 @@ kmip_key_validators(CurSecretProps) ->
      validator:string(certPath, _),
      validator:required(certPath, _),
      validator:string(keyPassphrase, _),
-     validator:default(keyPassphrase, "", _),
      validator:convert(keyPassphrase, iolist_to_binary(_), _),
      validator:validate(fun (P) -> {value, ?HIDE(P)} end, keyPassphrase, _),
      validator:one_of(caSelection,["useSysCa",
@@ -591,7 +590,9 @@ kmip_key_validators(CurSecretProps) ->
      validate_encrypt_with(encryptWith, _),
      validator:default(encryptWith, nodeSecretManager, _),
      validator:integer(encryptWithKeyId, -1, infinity, _),
-     validate_encrypt_secret_id(encryptWithKeyId, CurSecretProps, _)].
+     validate_encrypt_secret_id(encryptWithKeyId, CurSecretProps, _)] ++
+        [validator:required(keyPassphrase, _) ||
+            map_size(CurSecretProps) == 0].
 
 mandatory_rotation_fields(State) ->
     case validator:get_value(autoRotation, State) of

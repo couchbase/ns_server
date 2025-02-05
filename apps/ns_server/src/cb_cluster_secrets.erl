@@ -1001,8 +1001,8 @@ copy_static_props(#{type := Type, id := Id,
               NewSecretProps2#{data => NewData#{stored_ids => StoredIds}},
               LastRotationTime);
         #{type := ?KMIP_KEY_TYPE} ->
-            #{data := #{active_key := OldActive, hist_keys := HistKeys}} =
-                OldSecretProps,
+            #{data := #{active_key := OldActive, hist_keys := HistKeys,
+              key_passphrase := OldPassphrase}} = OldSecretProps,
             #{data := #{active_key := Active} = NewData} = NewSecretProps2,
             #{id := OldActiveId,
               kmip_id := OldKmipId,
@@ -1042,10 +1042,15 @@ copy_static_props(#{type := Type, id := Id,
                                  creation_time => ExistingKeyCT},
                          [OldActive | HistKeysCleaned]}
                 end,
-            #{key_passphrase := HiddenKP} = NewData,
-            KP = #{type => sensitive,
-                   data => ?UNHIDE(HiddenKP),
-                   encrypted_by => undefined},
+            KP =
+                case maps:find(key_passphrase, NewData) of
+                    error ->
+                        OldPassphrase;
+                    {ok, NewHiddenPass} ->
+                        #{type => sensitive,
+                          data => ?UNHIDE(NewHiddenPass),
+                          encrypted_by => undefined}
+                end,
             NewSecretProps2#{data => NewData#{active_key => NewActive,
                                               hist_keys => NewHistKeys,
                                               key_passphrase => KP}};
