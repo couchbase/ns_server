@@ -91,11 +91,8 @@ notify_counter(Metric, Val) when Val > 0, is_integer(Val) ->
 notify_counter_raw(Metric) ->
     notify_counter_raw(Metric, 1).
 
--spec notify_counter_raw(metric(), pos_integer()) -> ok.
-notify_counter_raw(_Metric, 0) ->
-    %% No change, no need to do anything
-    ok;
-notify_counter_raw(Metric, Val) when Val > 0, is_integer(Val) ->
+-spec notify_counter_raw(metric(), non_neg_integer()) -> ok.
+notify_counter_raw(Metric, Val) when is_integer(Val) ->
     Key = {c_raw, normalized_metric(Metric)},
     catch ets:update_counter(?MODULE, Key, Val, {Key, 0}),
     ok.

@@ -128,7 +128,7 @@ class AppTelemetryTests(testlib.BaseTestSet):
             value = random.randrange(0, 1000000000)
             # Test multiple lines, multiple metrics, multiple nodes, and
             # a line fragmented over multiple frames, with an interleaved ping
-            frame_1 = (b'\x00' + make_metric(metric_0, node0_uuid, value) +
+            frame_1 = (b'\x00' + make_metric(metric_0, node0_uuid, 0) +
                        b'\n' + make_metric(metric_1, node1_uuid, value) +
                        f"\n{metric_2}{{node_uuid=".encode('utf-8'))
             frame_2 = f"\"{node0_uuid}\"}} {value} 1695747260".encode('utf-8')
@@ -168,16 +168,19 @@ class AppTelemetryTests(testlib.BaseTestSet):
 
         testlib.poll_for_condition(
             lambda:
+            # Test case for local node with zero value not ignored
             metric_has_value(self.cluster, {'instance': 'ns_server',
                                             'le': '0.001',
                                             'name': metric_0,
                                             'nodes': [node0_host]},
-                             value) and
+                             0) and
+            # Test case for remote node
             metric_has_value(self.cluster, {'instance': 'ns_server',
                                             'le': '0.001',
                                             'name': metric_1,
                                             'nodes': [node1_host]},
                              value) and
+            # Test case for metric reported across multiple fragment frames
             metric_has_value(self.cluster, {'instance': 'ns_server',
                                             'name': metric_2,
                                             'nodes': [node0_host]},
