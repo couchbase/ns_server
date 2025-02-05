@@ -741,6 +741,12 @@ roles() ->
                 "Can read all stats for all services. This user cannot "
                 "access the web console">>}],
       [{[admin, stats_export], [read]}]},
+     {application_telemetry_writer, [],
+      [{name, <<"Application Telemetry Writer">>},
+       {folder, admin},
+       {desc, <<"Can report application telemetry through the SDK. "
+                "This user cannot access the web console">>}],
+      [{[app_telemetry], [write]}]},
      {eventing_manage_functions, ?RBAC_SCOPE_PARAMS,
       [{name, <<"Manage Scope Functions">>},
        {folder, eventing},
