@@ -28,7 +28,7 @@
         ?get_timeout(get_src_dst_replications, 30000)).
 -define(QUERY_VBUCKETS_SLEEP, ?get_param(query_vbuckets_sleep, 1000)).
 -define(MOUNT_VOLUMES_TIMEOUT,  ?get_timeout(mount_volumes, 30000)).
-
+-define(RELEASE_SNAPSHOTS_TIMEOUT, ?get_timeout(release_snapshots, 30000)).
 -record(state, {bucket_name :: ns_bucket:name(),
                 rebalance_pid :: undefined | pid(),
                 rebalance_mref :: undefined | reference(),
@@ -78,7 +78,8 @@
          get_active_guest_volumes/2,
          get_fusion_sync_info/2,
          sync_fusion_log_store/1,
-         get_fusion_uploaders_state/2]).
+         get_fusion_uploaders_state/2,
+         release_file_based_rebalance_snapshots/2]).
 
 -export([start_link/1]).
 
@@ -380,10 +381,12 @@ do_call_on_nodes(Bucket, NodesCalls, Caller) ->
             {error, {failed_nodes, [N || {N, _, _} <- BadReplies]}}
     end.
 
--spec call_on_servers(ns_bucket:name(), [node()],
-                      {apply_new_config, ns_bucket:config()} |
-                      {apply_new_config_replicas_phase, ns_bucket:config()},
-                      timeout()) ->
+-spec call_on_servers(
+        ns_bucket:name(), [node()],
+        {apply_new_config, ns_bucket:config()} |
+        {apply_new_config_replicas_phase, ns_bucket:config()} |
+        {release_file_based_rebalance_snapshots, ns_bucket:name()},
+        timeout()) ->
           ok | {error, {failed_nodes, [node()]}}.
 call_on_servers(Bucket, Servers, Call, Timeout) ->
     NodesCalls = [{N, Call} || N <- Servers],
@@ -588,6 +591,11 @@ wait_index_updated(Bucket, Rebalancer, NewMasterNode, _ReplicaNodes, VBucket) ->
                     [Bucket, NewMasterNode, VBucket]),
     ok = rebalance_call(Rebalancer, Bucket, NewMasterNode,
                         {wait_index_updated, VBucket}, infinity).
+
+release_file_based_rebalance_snapshots(Bucket, Servers) ->
+    call_on_servers(Bucket, Servers,
+                    {release_file_based_rebalance_snapshots, Bucket},
+                    ?RELEASE_SNAPSHOTS_TIMEOUT).
 
 wait_dcp_data_move(Bucket, Rebalancer, MasterNode, ReplicaNodes, VBucket) ->
     rebalance_call(Rebalancer, Bucket, MasterNode,
@@ -843,6 +851,16 @@ do_handle_call({apply_new_config, NewBucketConfig}, _From, State) ->
 do_handle_call({apply_new_config_replicas_phase, NewBucketConfig},
                _From, State) ->
     handle_apply_new_config_replicas_phase(NewBucketConfig, State);
+do_handle_call({release_file_based_rebalance_snapshots, Bucket}, _From,
+               State) ->
+    {ok, Statuses} = ns_memcached:get_snapshot_statuses(Bucket),
+    lists:foreach(
+      fun ({_VBucket, <<"none">>}) ->
+              ok;
+          ({VBucket, _}) ->
+              ok = ns_memcached:release_snapshot(Bucket, VBucket)
+      end, Statuses),
+    {reply, ok, State};
 do_handle_call({wait_index_updated, VBucket}, From,
                #state{bucket_name = Bucket} = State) ->
     spawn_rebalance_subprocess(

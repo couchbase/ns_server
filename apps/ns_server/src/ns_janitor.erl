@@ -463,6 +463,17 @@ cleanup_apply_config_body(Bucket, Servers, BucketConfig, Options) ->
            proplists:get_value(apply_config_timeout, Options,
                                undefined_timeout)),
 
+    case ns_config:read_key_fast(file_based_backfill_enabled,
+                                 ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT) of
+        true ->
+            %% Past or failed rebalances may leave snapshots behind, clean them
+            %% up
+            ok = janitor_agent:release_file_based_rebalance_snapshots(Bucket,
+                                                                      Servers);
+        false ->
+            ok
+    end,
+
     cleanup_mark_bucket_warmed(Bucket, Servers),
     cleanup_fusion_uploaders(Bucket, BucketConfig, Servers).
 
