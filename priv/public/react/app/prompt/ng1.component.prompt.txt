@@ -1,0 +1,209 @@
+Follow these instructions to convert Angular components to React
+
+## 1. Your Role
+You are expert in converting AngularJS components to React Class Components.
+You will be provided with examples specific to this project on how conversion
+must be done in addition to your knowledge.
+
+You will be provided with examples right after "For example:" words. Consider them
+as example patterns, the actual code can be different and it depends on particular file.
+
+Important! Apply them only when you actually encounter similar pattern in the code.
+
+
+## 1. Place code from constructor to componentDidMount function almost as is. Only change what is required in further instructions.
+
+For example:
+```javascript
+// Instead of
+  ...
+  function mnStatisticsChartsController(...props) {
+    var vm = this;
+    //code to copy over
+  }
+  ...
+// Do
+  ...
+  constructor(props) {
+    super(props);
+    this.state = {
+      ...
+    };
+  }
+  componentDidMount() {
+    super.componentDidMount();
+    //code to paste
+  }
+  ...
+```
+
+## 2. convert AngularJS $scope props to React state but only when the prop is absolutely essential for the component rendering.
+
+For example:
+// Instead of
+```javascript
+...
+var vm = this;
+vm.showBlocks = {
+  "Server Resources": true
+};
+...
+// Do
+```javascript
+...
+this.setState({
+  showBlocks: {
+    ...this.state.showBlocks,
+    "Server Resources": true
+  }
+});
+...
+```
+
+## 3. Replase $stateParams with UIRouter.globals.params
+For example:
+// Instead of
+```javascript
+...
+vm.bucket = $stateParams.scenarioBucket;
+...
+// Do
+```javascript
+...
+vm.bucket = UIRouter.globals.params.scenarioBucket;
+...
+```
+
+## 4. Read export value as BehaviorSubject value
+For example:
+// Instead of
+```javascript
+...
+mnPoolDefault.export.compat.atLeast70 ? ...
+...
+```
+// Do
+```javascript
+...
+mnPoolDefault.export.getValue().compat.atLeast70 ? ...
+...
+```
+
+## 5. Convert $uibModal to our uibModal analogue using useModal context.
+For example:
+// Instead of
+```javascript
+...
+  var scope = $rootScope.$new();
+  scope.partitioned = row.partitioned;
+  $uibModal.open({
+    windowClass: "z-index-10001",
+    backdrop: 'static',
+    template: mnGsiDropConfirmDialogTemplate,
+    scope: scope,
+    resolve: {
+      indexSettings: async () => {
+        return await settingsClusterService.getIndexSettings();
+      },
+      firstTimeAddedServices: () => {
+        return firstTimeAddedServices; // Synchronous resolver
+      }
+    },
+  }).result.then(function () {
+    //on success
+  }, function () {
+    //on error
+  });
+...
+```
+// Do
+```jsx
+  import { useModal } from 'uib/template/modal/window.and.backdrop'
+  ...
+  const { openModal } = useModal();
+
+  ...
+  // Using a promise wrapper
+  openModal({
+    windowClass: "z-index-10001",
+    backdrop: 'static',
+    component: MnGsiDropConfirmDialogComponent,
+    props: scope, // or props: {partitioned: row.partitioned},
+    resolve: {
+      indexSettings: async () => {
+        return await settingsClusterService.getIndexSettings();
+      },
+      firstTimeAddedServices: () => {
+        return firstTimeAddedServices; // Synchronous resolver
+      }
+    }
+  }).then(function () {
+    //on success
+  }, function () {
+    //on error
+  });
+...
+```
+
+## 6. Convert angulatJS filters to simple function 
+For example:
+// Instead of
+```AngularJS html
+...
+  {{row.storageMode | mnFormatStorageMode:pools.isEnterprise}}
+...
+```
+// Do
+```jsx
+...
+  {mnFormatStorageMode(row.storageMode, pools.isEnterprise)}
+...
+```
+
+## 7. Convert AngularJS UI router ui-sref
+For example:
+// Instead of
+```AngularJS html
+...
+  ui-sref="app.admin.query.workbench({query: row.definition})">
+...
+```
+// Do
+```jsx
+...
+<UISref to="app.admin.query.workbench" options={{query: row.definition}}>
+ <button ...
+</UISref>
+...
+```
+
+## 7. Convert AngularJS $event.stopPropagation();
+// Instead of
+```AngularJS html
+...
+  ng-click="$event.stopPropagation();"
+...
+```
+// Do
+```jsx
+...
+  onClick={(event) => event.stopPropagation()}
+...
+```
+
+## 8. Introduce updateState method in case mnHelper.initializeDetailsHashObserver is used.
+For example:
+// Instead of
+```javascript
+...
+mnHelper.initializeDetailsHashObserver(vm, 'openedGroups', '.');
+```
+// Do
+```javascript
+...
+updateState = () => {
+  this.setState({updateState: this.state.updateState + 1});
+}
+...
+mnHelper.initializeDetailsHashObserver(vm, 'openedGroups', '.');
+```

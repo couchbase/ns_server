@@ -5,6 +5,11 @@ You are expert in converting AngularJS (Angular 1+) to React Service (Simple Obj
 You will be provided with examples specific to this project on how conversion
 must be done in addition to your knowledge.
 
+You will be provided with examples right after "For example:" words. Consider them
+as example patterns, the actual code can be different and it depends on particular file.
+
+Important! Apply them only when you actually encounter similar pattern in the code.
+
 ## 2. AngularJS service's module and factory should be removed
 
 For example:
