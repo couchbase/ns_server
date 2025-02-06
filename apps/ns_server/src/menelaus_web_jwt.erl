@@ -14,14 +14,13 @@
 %%
 %% Storage Format:
 %% Settings are stored in chronicle_kv as an Erlang map with snake_case atom
-%% keys.
+%% keys. Issuers are stored as a map keyed by issuer name for efficient lookup.
 %% Example:
 %% #{
 %%   enabled => true,
 %%   jwks_uri_refresh_interval_s => 14400,
-%%   issuers => [
-%%     #{
-%%       name => "issuer1",
+%%   issuers => #{
+%%     "issuer1" => #{
 %%       signing_algorithm => "RS256",
 %%       aud_claim => "aud",
 %%       audience_handling => "any",
@@ -32,8 +31,12 @@
 %%       public_key => "-----BEGIN PUBLIC KEY-----\nMIIB...AQAB\n-----END
 %%                       PUBLIC KEY-----",
 %%       jit_provisioning => false
+%%     },
+%%     "issuer2" => #{
+%%       signing_algorithm => "ES256",
+%%       ...
 %%     }
-%%   ]
+%%   }
 %% }
 %%
 %% Sample REST request:
@@ -90,7 +93,7 @@
 -define(MAIN_PARAMS_WITH_FORMATTERS,
         [
          {enabled, undefined},
-         {issuers, fun format_issuers/1},
+         {issuers, fun storage_to_rest_format_issuers/1},
          {jwks_uri_refresh_interval_s, undefined}
         ]).
 
@@ -504,31 +507,34 @@ validate_and_store_settings(Props, Req) ->
     end.
 
 %% @doc Converts storage format (map with snake_case atom keys) to REST format
-%% (map with camelCase binary keys). Special handling for issuers list and
+%% (map with camelCase binary keys). Special handling for issuers maps and
 %% formatted values like jwks, certificates, and secrets.
 %% Note that the parameter names are not binary, they were converted to strings
 %% by the validator:string/2 calls.
 storage_to_rest_format(Settings) ->
     maps:fold(
-      fun(K, V, Acc) ->
-              case K of
-                  issuers ->
-                      Acc#{issuers => storage_to_rest_format_issuers(V)};
-                  StorageKey ->
-                      storage_to_rest_format_key(StorageKey, V, Acc,
-                                                 ?MAIN_STORAGE_TO_REST)
-              end
+      fun(issuers, IssuersMap, Acc) ->
+              Acc#{issuers => storage_to_rest_format_issuers(IssuersMap)};
+         (OtherKey, Value, Acc) ->
+              storage_to_rest_format_key(OtherKey, Value, Acc,
+                                         ?MAIN_STORAGE_TO_REST)
       end, #{}, Settings).
 
-storage_to_rest_format_issuers(Issuers) when is_list(Issuers) ->
-    lists:map(fun storage_to_rest_format_issuer/1, Issuers).
-
-storage_to_rest_format_issuer(Props) when is_map(Props) ->
+%% @doc Converts map of issuers to list for REST API
+storage_to_rest_format_issuers(IssuersMap) ->
     maps:fold(
-      fun(StorageKey, V, Acc) ->
-              storage_to_rest_format_key(StorageKey, V, Acc,
+      fun(Name, IssuerProps, AccList) ->
+              [storage_to_rest_format_issuer(Name, IssuerProps) | AccList]
+      end, [], IssuersMap).
+
+%% @doc Formats a single issuer's properties for REST
+storage_to_rest_format_issuer(Name, IssuerProps) ->
+    PropsWithName = IssuerProps#{name => Name},
+    maps:fold(
+      fun(StorageKey, Value, Acc) ->
+              storage_to_rest_format_key(StorageKey, Value, Acc,
                                          ?ISSUER_STORAGE_TO_REST)
-      end, #{}, Props).
+      end, #{}, PropsWithName).
 
 storage_to_rest_format_key(StorageKey, Value, Acc, Table) ->
     case maps:find(StorageKey, Table) of
@@ -562,36 +568,32 @@ proplist_to_map(Value) -> Value.
 %% format. Input is a proplist with atom keys (from validator) and values in
 %% their validated format. Output is a map with snake_case atom keys suitable
 %% for storage.
--spec validated_to_storage_format([{atom(), term()}]) -> #{atom() => term()}.
 validated_to_storage_format(Props) ->
     lists:foldl(
-      fun({K, V}, Acc) ->
-              case K of
-                  issuers ->
-                      Acc#{issuers => validated_to_storage_format_issuers(V)};
-                  _ ->
-                      {ok, StorageKey} = maps:find(K, ?MAIN_REST_TO_STORAGE),
-                      Acc#{StorageKey => V}
-              end
+      fun({issuers, IssuersList}, Acc) ->
+              Acc#{issuers => validated_to_storage_format_issuers(IssuersList)};
+         ({OtherKey, Value}, Acc) ->
+              {ok, StorageKey} = maps:find(OtherKey, ?MAIN_REST_TO_STORAGE),
+              Acc#{StorageKey => Value}
       end, #{}, Props).
 
--spec validated_to_storage_format_issuers([{[{atom(), term()}]}]) ->
-          [#{atom() => term()}].
-validated_to_storage_format_issuers(Issuers) ->
-    lists:map(fun validated_to_storage_format_issuer/1, Issuers).
-
--spec validated_to_storage_format_issuer({[{atom(), term()}]}) ->
-          #{atom() => term()}.
-validated_to_storage_format_issuer({IssuerProps}) ->
+%% @doc Converts list of issuer proplists to storage map
+validated_to_storage_format_issuers(IssuersList) ->
     lists:foldl(
-      fun({K, V}, Acc) ->
-              {ok, StorageKey} = maps:find(K, ?ISSUER_REST_TO_STORAGE),
-              Acc#{StorageKey => V}
+      fun({IssuerProps}, AccMap) ->
+              Name = proplists:get_value(name, IssuerProps),
+              AccMap#{Name => validated_to_storage_format_issuer(IssuerProps)}
+      end, #{}, IssuersList).
+
+%% @doc Formats a single issuer's properties for storage
+validated_to_storage_format_issuer(IssuerProps) ->
+    lists:foldl(
+      fun({name, _}, Acc) ->
+              Acc;
+         ({PropK, PropV}, Acc) ->
+              {ok, StorageKey} = maps:find(PropK, ?ISSUER_REST_TO_STORAGE),
+              Acc#{StorageKey => PropV}
       end, #{}, IssuerProps).
-
-
-format_issuers(Issuers) when is_list(Issuers) ->
-    [storage_to_rest_format_issuer(I) || I <- Issuers].
 
 format_jwks({EncodedValue, _JsonMap}) -> EncodedValue;
 format_jwks(Value) -> Value.
@@ -679,49 +681,36 @@ format_conversion_test() ->
      ?_assertEqual(
         #{enabled => true,
           jwks_uri_refresh_interval_s => 14400,
-          issuers => [
-                      #{aud_claim => "aud",
-                        audiences => ["aud1", "aud2"],
-                        expiry_leeway_s => 15,
-                        jit_provisioning => false,
-                        jwks_uri_tls_extra_opts =>
-                            [{verify, verify_peer}]}
-                     ]},
+          issuers => #{
+                       "issuer1" => #{
+                                        aud_claim => "aud",
+                                        audiences => ["aud1", "aud2"],
+                                        expiry_leeway_s => 15,
+                                        jit_provisioning => false,
+                                        jwks_uri_tls_extra_opts =>
+                                            [{verify, verify_peer}]
+                                     },
+                       "issuer2" => #{
+                                      signing_algorithm => "ES256",
+                                      audiences => ["aud3"]
+                                     }
+                      }},
         validated_to_storage_format([
                                      {enabled, true},
                                      {jwksUriRefreshIntervalS, 14400},
                                      {issuers, [
-                                                [{audClaim, "aud"},
-                                                 {audiences, ["aud1", "aud2"]},
-                                                 {expiryLeewayS, 15},
-                                                 {jitProvisioning, false},
-                                                 {jwksUriTlsExtraOpts,
-                                                  [{verify, verify_peer}]}]
+                                                {[{name, "issuer1"},
+                                                  {audClaim, "aud"},
+                                                  {audiences, ["aud1", "aud2"]},
+                                                  {expiryLeewayS, 15},
+                                                  {jitProvisioning, false},
+                                                  {jwksUriTlsExtraOpts,
+                                                   [{verify, verify_peer}]}]},
+                                                {[{name, "issuer2"},
+                                                  {signingAlgorithm, "ES256"},
+                                                  {audiences, ["aud3"]}]}
                                                ]}
-                                    ])),
-
-     ?_assertEqual(
-        #{enabled => true,
-          jwksUriRefreshIntervalS => 14400,
-          issuers => [
-                      #{audClaim => <<"aud">>,
-                        audiences => [<<"aud1">>, <<"aud2">>],
-                        expiryLeewayS => 15,
-                        jitProvisioning => false,
-                        jwksUriTls_extra_opts =>
-                            <<"[{verify,verify_peer}]">>}
-                     ]},
-        storage_to_rest_format(
-          #{enabled => true,
-            jwks_uri_refresh_interval_s => 14400,
-            issuers => [
-                        #{aud_claim => "aud",
-                          audiences => ["aud1", "aud2"],
-                          expiry_leeway_s => 15,
-                          jit_provisioning => false,
-                          jwks_uri_tls_extra_opts =>
-                              [{verify, verify_peer}]}
-                       ]}))
+                                    ]))
     ].
 
 validator_test() ->
