@@ -63,15 +63,18 @@ class WebServerTests(testlib.BaseTestSet):
         response = testlib.get_fail(self.cluster, "/", 301,
                                     headers={"Host": "example"},
                                     allow_redirects=False)
-        testlib.assert_eq(response.headers["Location"],
-                          "http://example/ui/index.html")
+        testlib.assert_eq(response.text.strip(), REDIRECT_RESPONSE)
+        testlib.assert_eq(response.headers["Location"], "/ui/index.html")
+
+
         testlib.post_succ(self.cluster, "/internalSettings",
-                          data={"useRelativeWebRedirects": "true"})
+                          data={"useRelativeWebRedirects": "false"})
         response = testlib.get_fail(self.cluster, "/", 301,
                                     headers={"Host": "example"},
                                     allow_redirects=False)
-        testlib.assert_eq(response.text.strip(), REDIRECT_RESPONSE)
-        testlib.assert_eq(response.headers["Location"], "/ui/index.html")
+        testlib.assert_eq(response.headers["Location"],
+                          "http://example/ui/index.html")
+
 
         # But even with the flag set, if we use sane headers, it will always
         # succeed.
@@ -79,7 +82,7 @@ class WebServerTests(testlib.BaseTestSet):
 
         # disable it again, to bring us back to default state
         testlib.post_succ(self.cluster, "/internalSettings",
-                          data={"useRelativeWebRedirects": "false"})
+                          data={"useRelativeWebRedirects": "true"})
 
     # make sure we aren't vulnerable to web cache poisoning attacks
     def ensure_correct_cache_control_redirect_test(self):

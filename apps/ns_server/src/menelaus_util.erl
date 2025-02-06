@@ -176,7 +176,9 @@ redirect_permanently(Path, Req) ->
             X -> Scheme ++ X ++ Path
         end,
 
-    case ns_config:read_key_fast(use_relative_web_redirects, false) of
+    %% fallback default set to true from morpheus -> onward.
+    case ns_config:read_key_fast(use_relative_web_redirects,
+                                 cluster_compat_mode:is_cluster_morpheus()) of
         true ->
             reply_redirect(Path, Req); %% uses relative redirect
         false ->
