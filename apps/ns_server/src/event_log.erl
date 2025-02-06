@@ -117,6 +117,11 @@ event_details(encr_at_rest_dek_rotation_failed) ->
     {9235, security, error, <<"Encryption at rest DEK rotation failed">>};
 event_details(encryption_service_failure) ->
     {9236, security, error, <<"Encryption service failure">>};
+event_details(encr_at_rest_deks_expired) ->
+    {9237, security, info, <<"Encryption at rest DEK expired">>};
+event_details(encr_at_rest_expired_deks_drop_failed) ->
+    {9238, security, error,
+     <<"Encryption at rest failed to stop using expired DEKs">>};
 
 %% event_ids block for Data related events: [8192, ... 9215]
 event_details(bucket_created) ->

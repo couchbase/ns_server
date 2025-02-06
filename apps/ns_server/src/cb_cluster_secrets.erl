@@ -3065,7 +3065,7 @@ initiate_deks_drop(Kind, IdsToDropList0, #state{deks = DeksInfo} = State0) ->
     CurTime = calendar:universal_time(),
     IdsToDropSet0 = sets:from_list(IdsToDropList0, [{version, 2}]),
     NowS = calendar:datetime_to_gregorian_seconds(CurTime),
-    #{Kind := KindDeks} = DeksInfo,
+    #{Kind := #{deks_being_dropped := BeingDroppedSet} = KindDeks} = DeksInfo,
     IdsToDropSet1 = %% Don't let active dek to be dropped
         case DeksInfo of
             #{Kind := #{is_enabled := true, active_id := ActiveId}} ->
@@ -3102,6 +3102,10 @@ initiate_deks_drop(Kind, IdsToDropList0, #state{deks = DeksInfo} = State0) ->
     ns_server_stats:notify_counter({<<"key_manager_drop_deks">>,
                                     [{kind, cb_deks:kind2bin(Kind)}]}),
 
+    log_expired_deks(encr_at_rest_deks_expired, Kind,
+                     sets:subtract(IdsToDropSet0, BeingDroppedSet)),
+    log_expired_deks(encr_at_rest_expired_deks_drop_failed, Kind,
+                     BeingDroppedSet),
     case (length(IdsToDropFinalList) > 0) andalso
          call_dek_callback(drop_callback, Kind, [IdsToDropFinalList]) of
         false ->
@@ -3137,10 +3141,14 @@ initiate_deks_drop(Kind, IdsToDropList0, #state{deks = DeksInfo} = State0) ->
         {succ, {error, not_found}} -> State0;
         {succ, {error, retry}} -> State0; %% compaction daemon not started yet
         {succ, {error, Reason}} ->
+            log_expired_deks(encr_at_rest_expired_deks_drop_failed, Kind,
+                             sets:subtract(IdsToDropFinalSet, BeingDroppedSet)),
             ?log_error("drop_callback for ~p returned error: ~p",
                        [Kind, Reason]),
             State0;
         {except, _} ->
+            log_expired_deks(encr_at_rest_expired_deks_drop_failed, Kind,
+                             sets:subtract(IdsToDropFinalSet, BeingDroppedSet)),
             State0
     end.
 
@@ -3406,6 +3414,14 @@ log_unsucc_dek_rotation(Kind, Reason) ->
     event_log:add_log(encr_at_rest_dek_rotation_failed,
                       [{kind, cb_deks:kind2bin(Kind)},
                        {reason, format_failure_reason(Reason)}]).
+
+log_expired_deks(Type, Kind, IdsSet) ->
+    Ids = sets:to_list(sets:del_element(?NULL_DEK, IdsSet)),
+    case Ids of
+        [] -> ok;
+        _ -> event_log:add_log(Type, [{'DEK_UUIDs', Ids},
+                                      {kind, cb_deks:kind2bin(Kind)}])
+    end.
 
 format_failure_reason(Reason) ->
     iolist_to_binary(io_lib:format("~p", [Reason], [{chars_limit, 200}])).
