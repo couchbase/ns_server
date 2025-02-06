@@ -300,10 +300,11 @@ apply_new_bucket_config(Bucket, Servers, NewBucketConfig, undefined_timeout) ->
                             ?APPLY_NEW_CONFIG_TIMEOUT);
 apply_new_bucket_config(Bucket, Servers, NewBucketConfig, Timeout) ->
     functools:sequence_(
-      [?cut(call_on_servers(Bucket, Servers, NewBucketConfig,
-                            apply_new_config, Timeout)),
-       ?cut(call_on_servers(Bucket, Servers, NewBucketConfig,
-                            apply_new_config_replicas_phase, Timeout))]).
+      [?cut(call_on_servers(Bucket, Servers,
+                            {apply_new_config, NewBucketConfig}, Timeout)),
+       ?cut(call_on_servers(Bucket, Servers,
+                            {apply_new_config_replicas_phase, NewBucketConfig},
+                            Timeout))]).
 
 -spec maybe_set_data_ingress(ns_bucket:name(), Status, [node()]) ->
           ok | {errors, [{node(), mc_error()}]}
@@ -379,8 +380,13 @@ do_call_on_nodes(Bucket, NodesCalls, Caller) ->
             {error, {failed_nodes, [N || {N, _, _} <- BadReplies]}}
     end.
 
-call_on_servers(Bucket, Servers, BucketConfig, Call, Timeout) ->
-    NodesCalls = [{N, {Call, BucketConfig}} || N <- Servers],
+-spec call_on_servers(ns_bucket:name(), [node()],
+                      {apply_new_config, ns_bucket:config()} |
+                      {apply_new_config_replicas_phase, ns_bucket:config()},
+                      timeout()) ->
+          ok | {error, {failed_nodes, [node()]}}.
+call_on_servers(Bucket, Servers, Call, Timeout) ->
+    NodesCalls = [{N, Call} || N <- Servers],
     call_on_nodes(Bucket, NodesCalls, call(_, _, _, Timeout)).
 
 process_multicall_rv({Replies, BadNodes}) ->
