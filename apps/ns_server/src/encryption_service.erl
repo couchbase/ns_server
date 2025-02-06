@@ -488,8 +488,6 @@ store_key(Kind, Name, Type, KeyData, EncryptionKeyId,
                                                  is_atom(TestOnly) ->
     CreationDTISO = iso8601:format(CreationDT),
     KindBin = cb_deks:kind2bin(Kind),
-    TestOnly orelse ns_server_stats:notify_counter(
-                      {<<"key_manager_store_key">>, [{kind, KindBin}]}),
     ?wrap_error_msg(
       cb_gosecrets_runner:store_key(?RUNNER, Kind, Name, Type, KeyData,
                                     EncryptionKeyId, CreationDTISO, TestOnly),
@@ -523,6 +521,8 @@ wrap_error_msg({error, Msg}, A, ExtraArgs) when is_list(Msg), is_atom(A),
     event_log:add_log(encryption_service_failure,
                       [{error, A}, {error_msg, iolist_to_binary(Msg)}] ++
                       ExtraArgs),
+    ns_server_stats:notify_counter({<<"encryption_service_failures">>,
+                                    [{failure_type, A}]}),
     {error, {A, Msg}}.
 
 garbage_collect_keys(Kind, InUseKeyIds) ->
@@ -542,9 +542,6 @@ garbage_collect_keys(Kind, InUseKeyIds) ->
             FailedList =
                 lists:filtermap(
                   fun (Filename) ->
-                      ns_server_stats:notify_counter(
-                        {<<"key_manager_retire_key">>,
-                         [{kind, cb_deks:kind2bin(Kind)}]}),
                       case retire_key(Kind, Filename) of
                           ok -> false;
                           {error, Reason} -> {true, {Filename, Reason}}

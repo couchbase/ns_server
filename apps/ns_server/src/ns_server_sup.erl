@@ -180,17 +180,16 @@ child_specs() ->
      || cluster_compat_mode:is_enterprise()] ++
 
     [{ns_memcached_sockets_pool, {ns_memcached_sockets_pool, start_link, []},
-      permanent, 1000, worker, []}] ++
+      permanent, 1000, worker, []},
+     %% Started before menelaus_sup, so that children such as app_telemetry_pool
+     %% can notify metrics immediately
+     {ns_server_stats, {ns_server_stats, start_link, []},
+      permanent, 1000, worker, [ns_server_stats]}] ++
 
     [{cb_cluster_secrets, {cb_cluster_secrets, start_link_node_monitor, []},
       permanent, 1000, worker, []} || cluster_compat_mode:is_enterprise()] ++
 
-    %% Started before menelaus_sup, so that children such as app_telemetry_pool
-    %% can notify metrics immediately
-    [{ns_server_stats, {ns_server_stats, start_link, []},
-      permanent, 1000, worker, [ns_server_stats]},
-
-     {menelaus, {menelaus_sup, start_link, []},
+    [{menelaus, {menelaus_sup, start_link, []},
       permanent, infinity, supervisor,
       [menelaus_sup]},
 

@@ -930,13 +930,21 @@ rotate_secret_by_id(Id, IsAutomatic) ->
             try rotate_secret(SecretProps) of
                 ok ->
                     log_succ_kek_rotation(Id, Name, IsAutomatic),
+                    ns_server_stats:notify_counter(
+                      {<<"encryption_key_rotations">>, [{key_name, Name}]}),
                     {ok, Name};
                 {error, Reason} ->
                     log_unsucc_kek_rotation(Id, Name, Reason, IsAutomatic),
+                    ns_server_stats:notify_counter(
+                      {<<"encryption_key_rotation_failures">>,
+                       [{key_name, Name}]}),
                     {error, Reason}
             catch
                 C:E:ST ->
                     log_unsucc_kek_rotation(Id, Name, exception, IsAutomatic),
+                    ns_server_stats:notify_counter(
+                      {<<"encryption_key_rotation_failures">>,
+                       [{key_name, Name}]}),
                     erlang:raise(C, E, ST)
             end;
         {error, Reason} ->
@@ -995,8 +1003,6 @@ rotate_secret(#{type := ?KMIP_KEY_TYPE}) ->
 -spec generate_key(Creation :: calendar:datetime()) -> kek_props().
 generate_key(CreationDateTime) ->
     Key = generate_raw_key(?ENVELOP_CIPHER),
-    ns_server_stats:notify_counter({<<"key_manager_generate_key">>,
-                                    [{kind, kek}]}),
     #{id => new_key_id(),
       creation_time => CreationDateTime,
       key_material => #{type => sensitive,
@@ -1308,6 +1314,7 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                 case maps:find(Kind, CurDeks) of
                     {ok, _} -> OldState;
                     error ->
+                        create_kind_stats(Kind),
                         EmptyDeks = new_dek_info(undefined, [], false),
                         OldState#state{deks = CurDeks#{Kind => EmptyDeks}}
                 end,
@@ -1395,6 +1402,7 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
             ?log_debug("DEK ~p doesn't seem to exist. Forgetting about it"),
             State = OldState#state{deks = maps:remove(Kind, CurDeks)},
             write_deks_cfg_file(State),
+            delete_kind_stats(Kind),
             {ok, on_deks_update(Kind, State)}
     end.
 
@@ -1445,11 +1453,11 @@ garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
                deks_being_dropped := IdsBeingDroppedSet} = KindDeks} ->
             UpdateStatus = maps:get(maybe_update_deks, Statuses, undefined),
             NotifyCounter = fun (L) ->
+                                N = length(lists:delete(?NULL_DEK,
+                                                        lists:uniq(L))),
                                 ns_server_stats:notify_gauge(
-                                  {<<"key_manager_deks_in_use">>,
-                                   [{kind, cb_deks:kind2bin(Kind)}]},
-                                   length(L),
-                                   #{expiration_s => infinity})
+                                  {<<"encr_at_rest_deks_in_use">>,
+                                   [{type, cb_deks:kind2bin(Kind)}]}, N)
                             end,
             UpdateIdsBeingDropped =
                 fun (IdsInUse) ->
@@ -1760,6 +1768,7 @@ read_all_deks(#state{} = State) ->
                                             [Kind, Errors]),
                                  exit({failed_to_read_keys, Errors});
                              false ->
+                                 create_kind_stats(Kind),
                                  {true, new_dek_info(ActiveId, Keys, IsEnabled)}
                          end;
                      {succ, {error, not_found}} ->
@@ -1804,13 +1813,17 @@ generate_new_dek(Kind, CurrentDeks, EncryptionMethod, Snapshot) ->
         true ->
             ?log_debug("Generating new ~p dek, encryption is ~p...",
                        [Kind, EncryptionMethod]),
-            ns_server_stats:notify_counter({<<"key_manager_generate_key">>,
-                                            [{kind, cb_deks:kind2bin(Kind)}]}),
             case cb_deks:generate_new(Kind, EncryptionMethod, Snapshot) of
                 {ok, DekId} ->
+                    ns_server_stats:notify_counter(
+                      {<<"encr_at_rest_generate_dek">>,
+                       [{type, cb_deks:kind2bin(Kind)}]}),
                     log_succ_dek_rotation(Kind, DekId),
                     {ok, DekId};
                 {error, Reason} ->
+                    ns_server_stats:notify_counter(
+                      {<<"encr_at_rest_generate_dek_failures">>,
+                       [{type, cb_deks:kind2bin(Kind)}]}),
                     log_unsucc_dek_rotation(Kind, Reason),
                     {error, Reason}
             end;
@@ -2248,20 +2261,14 @@ run_job(J, State) ->
     ?log_debug("Starting job: ~p", [J]),
     {Res, NewState} = normalize_job_res(do(J, State), State),
     NewState2 = update_job_status(J, Res, NewState),
-    NotifyCounter = ?cut(ns_server_stats:notify_counter(
-                         {<<"key_manager_job_results">>,
-                          [{job_name, job2bin(J)}, {res, _}]})),
     case Res of
         ok ->
             ?log_debug("Job complete: ~p", [J]),
-            NotifyCounter(ok),
             NewState2;
         retry ->
-            NotifyCounter(retry),
             ?log_debug("Job ~p returned 'retry'", [J]),
             add_jobs_to_state([J], NewState2);
         {error, Error} ->
-            NotifyCounter(error),
             ?log_error("Job ~p returned error: ~p", [J, Error]),
             add_jobs_to_state([J], NewState2)
     end.
@@ -3115,8 +3122,8 @@ initiate_deks_drop(Kind, IdsToDropList0, #state{deks = DeksInfo} = State0) ->
     IdsToDropFinalList = sets:to_list(IdsToDropFinalSet),
 
     ?log_debug("Trying to drop ~p DEKs: ~0p", [Kind, IdsToDropFinalList]),
-    ns_server_stats:notify_counter({<<"key_manager_drop_deks">>,
-                                    [{kind, cb_deks:kind2bin(Kind)}]}),
+    ns_server_stats:notify_counter({<<"encr_at_rest_drop_deks_events">>,
+                                    [{type, cb_deks:kind2bin(Kind)}]}),
 
     log_expired_deks(encr_at_rest_deks_expired, Kind,
                      sets:subtract(IdsToDropSet0, BeingDroppedSet)),
@@ -3289,12 +3296,6 @@ chronicle_compat_txn(Fun) ->
             {error, no_quorum}
     end.
 
--spec job2bin(node_job() | master_job()) -> binary().
-job2bin({J, K}) ->
-    iolist_to_binary([atom_to_binary(J), "_", cb_deks:kind2bin(K)]);
-job2bin(J) when is_atom(J) ->
-    atom_to_binary(J).
-
 -spec delete_historical_key_txn(secret_id(), key_id(),
                                 fun((secret_props()) -> boolean()),
                                 chronicle_snapshot()) ->
@@ -3390,7 +3391,9 @@ calculate_dek_info(State) ->
               %% has been run recently
               NewStateAcc = maybe_garbage_collect_deks(Kind, false, StateAcc),
               case extract_dek_info(Kind, NewStateAcc) of
-                  {ok, I} -> {ResAcc#{Kind => I}, NewStateAcc};
+                  {ok, I} ->
+                      report_data_status_stats(Kind, I),
+                      {ResAcc#{Kind => I}, NewStateAcc};
                   {error, not_found} -> {ResAcc, NewStateAcc}
               end
           end, {#{}, State}, Kinds),
@@ -3441,6 +3444,36 @@ log_expired_deks(Type, Kind, IdsSet) ->
 
 format_failure_reason(Reason) ->
     iolist_to_binary(io_lib:format("~p", [Reason], [{chars_limit, 200}])).
+
+-spec report_data_status_stats(cb_deks:dek_kind(), external_dek_info()) -> ok.
+report_data_status_stats(Kind, #{data_status := DataStatus}) ->
+    N = case DataStatus of
+            unknown -> -1;
+            unencrypted -> 0;
+            partially_encrypted -> 0.5;
+            encrypted -> 1
+        end,
+    ns_server_stats:notify_gauge(
+      {<<"encr_at_rest_data_status">>,
+       [{data_type, cb_deks:kind2datatype(Kind)}]}, N).
+
+create_kind_stats(Kind) ->
+    KindBin = cb_deks:kind2bin(Kind),
+    lists:foreach(
+      fun (M) -> ns_server_stats:create_counter({M, [{type, KindBin}]}) end,
+      all_kind_stat_names()).
+
+delete_kind_stats(Kind) ->
+    KindBin = cb_deks:kind2bin(Kind),
+    lists:foreach(
+      fun (M) -> ns_server_stats:delete_counter({M, [{type, KindBin}]}) end,
+      all_kind_stat_names()).
+
+all_kind_stat_names() ->
+    [<<"encr_at_rest_generate_dek">>,
+     <<"encr_at_rest_generate_dek_failures">>,
+     <<"encr_at_rest_drop_deks_events">>].
+
 
 -ifdef(TEST).
 replace_secret_in_list_test() ->

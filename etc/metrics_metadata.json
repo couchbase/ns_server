@@ -98,6 +98,102 @@
         "help": "Total number of cbauth client_cert cache misses",
         "added": "7.6.0"
     },
+    "cm_encr_at_rest_data_status": {
+        "type": "gauge",
+        "help": "Encryption at rest status per data type (1 - encrypted, 0.5 - partially encrypted, 0 - unencrypted, -1 - unknown)",
+        "added": "8.0.0",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "data_type",
+                "help": "Encrypted data type (config, logs, audit, bucket_<bucket_name>)"
+            }
+        ]
+    },
+    "cm_encr_at_rest_deks_in_use": {
+        "type": "gauge",
+        "help": "Number of data keys in use per data type",
+        "added": "8.0.0",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "type",
+                "help": "Data encryption key (DEK) type (configDek, logDek, auditDek, bucketDek_<bucket_name>)"
+            }
+        ]
+    },
+    "cm_encr_at_rest_drop_deks_events_total": {
+        "type": "counter",
+        "help": "Total number drop DEKs events (when some DEK expires and the system tries to stop using that DEK by re-encrypting data)",
+        "added": "8.0.0",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "type",
+                "help": "Data encryption key (DEK) type (configDek, logDek, auditDek, bucketDek_<bucket_name>)"
+            }
+        ]
+    },
+    "cm_encr_at_rest_generate_dek_failures_total": {
+        "type": "counter",
+        "help": "Total number of data key generation failures",
+        "added": "8.0.0",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "type",
+                "help": "Data encryption key (DEK) type (configDek, logDek, auditDek, bucketDek_<bucket_name>)"
+            }
+        ]
+    },
+    "cm_encr_at_rest_generate_dek_total": {
+        "type": "counter",
+        "help": "Total number of successful data key generation events",
+        "added": "8.0.0",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "type",
+                "help": "Data encryption key (DEK) type (configDek, logDek, auditDek, bucketDek_<bucket_name>)"
+            }
+        ]
+    },
+    "cm_encryption_key_rotation_failures_total": {
+        "type": "counter",
+        "help": "Total number of encryption key rotation failures",
+        "added": "8.0.0",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "key_name",
+                "help": "Name of the encryption key"
+            }
+        ]
+    },
+    "cm_encryption_key_rotations_total": {
+        "type": "counter",
+        "help": "Total number of encryption key rotations",
+        "added": "8.0.0",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "key_name",
+                "help": "Name of the encryption key"
+            }
+        ]
+    },
+    "cm_encryption_service_failures_total": {
+        "type": "counter",
+        "help": "Total number of encryption service failures",
+        "added": "8.0.0",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "failure_type",
+                "help": "Type of failure (e.g. read_key_error, encrypt_key_error, store_key_error, etc...)"
+            }
+        ]
+    },
     "cm_erlang_port_count": {
         "type": "gauge",
         "help": "The number of ports in use by the erlang VM",
