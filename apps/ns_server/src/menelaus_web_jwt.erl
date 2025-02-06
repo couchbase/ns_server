@@ -110,7 +110,7 @@
 %% groups_claim - Name of the claim containing group memberships
 %% groups_maps - Rules for mapping groups from tokens to local groups
 %% groups_maps_stop_first_match - Whether to stop after first matching rule
-%% identity_maps - Rules for mapping identity claims to local identities
+%% sub_maps - Rules for mapping sub claims to local identities
 %% jit_provisioning - Whether to allow authentication without a pre-existing
 %% user in Couchbase - by dynamically mapping permissions from groups/roles
 %% jwks - JSON Web Key Set containing public keys
@@ -140,7 +140,7 @@
          {groups_claim, fun format_string/1},
          {groups_maps, fun format_string_list/1},
          {groups_maps_stop_first_match, undefined},
-         {identity_maps, fun format_string_list/1},
+         {sub_maps, fun format_string_list/1},
          {jit_provisioning, undefined},
          {jwks, fun format_jwks/1},
          {jwks_uri, fun format_string/1},
@@ -327,11 +327,11 @@ basic_validators() ->
      validator:non_empty_string(subClaim, _)].
 
 mapping_validators() ->
-    [validator:string(groupsClaim, _),
+    [validator:string_array(subMaps, validate_mapping_rule(_), _),
+     validator:string(groupsClaim, _),
      validator:string_array(groupsMaps, validate_mapping_rule(_), _),
      validator:boolean(groupsMapsStopFirstMatch, _),
      validator:default(groupsMapsStopFirstMatch, false, _),
-     validator:string_array(identityMaps, validate_mapping_rule(_), _),
      validator:string(rolesClaim, _),
      validator:string_array(rolesMaps, validate_mapping_rule(_), _),
      validator:boolean(rolesMapsStopFirstMatch, _),
