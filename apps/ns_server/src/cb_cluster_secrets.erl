@@ -1790,10 +1790,18 @@ generate_new_dek(Kind, CurrentDeks, EncryptionMethod, Snapshot) ->
                        [Kind, EncryptionMethod]),
             ns_server_stats:notify_counter({<<"key_manager_generate_key">>,
                                             [{kind, cb_deks:kind2bin(Kind)}]}),
-            cb_deks:generate_new(Kind, EncryptionMethod, Snapshot);
+            case cb_deks:generate_new(Kind, EncryptionMethod, Snapshot) of
+                {ok, DekId} ->
+                    log_succ_dek_rotation(Kind, DekId),
+                    {ok, DekId};
+                {error, Reason} ->
+                    log_unsucc_dek_rotation(Kind, Reason),
+                    {error, Reason}
+            end;
         false ->
             ?log_error("Skip ~p DEK creation/rotation: "
                        "too many DEKs (~p)", [Kind, CurrentDekNum]),
+            log_unsucc_dek_rotation(Kind, too_many_deks),
             {error, too_many_deks}
     end.
 
@@ -3387,6 +3395,16 @@ log_unsucc_kek_rotation(Id, Name, Reason, IsAutomatic) ->
                       [{encryption_key_id, Id},
                        {encryption_key_name, iolist_to_binary(Name)},
                        {is_automatic, IsAutomatic},
+                       {reason, format_failure_reason(Reason)}]).
+
+log_succ_dek_rotation(Kind, NewDekId) ->
+    event_log:add_log(encr_at_rest_dek_rotated,
+                      [{kind, cb_deks:kind2bin(Kind)},
+                       {new_DEK_UUID, NewDekId}]).
+
+log_unsucc_dek_rotation(Kind, Reason) ->
+    event_log:add_log(encr_at_rest_dek_rotation_failed,
+                      [{kind, cb_deks:kind2bin(Kind)},
                        {reason, format_failure_reason(Reason)}]).
 
 format_failure_reason(Reason) ->

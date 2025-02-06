@@ -111,6 +111,10 @@ event_details(historical_encryption_key_deleted) ->
     {9232, security, info, <<"Historical encryption key deleted">>};
 event_details(encr_at_rest_cfg_changed) ->
     {9233, security, info, <<"Encryption at rest settings changed">>};
+event_details(encr_at_rest_dek_rotated) ->
+    {9234, security, info, <<"Encryption at rest DEK rotated">>};
+event_details(encr_at_rest_dek_rotation_failed) ->
+    {9235, security, error, <<"Encryption at rest DEK rotation failed">>};
 
 %% event_ids block for Data related events: [8192, ... 9215]
 event_details(bucket_created) ->
