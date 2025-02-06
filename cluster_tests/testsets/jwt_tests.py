@@ -116,7 +116,7 @@ class JWTTests(testlib.BaseTestSet):
         )
         assert (
             r.json()["errors"]["issuers"][1]["jwks"]
-            == 'No suitable keys in JWKS for signing algorithm: "EdDSA"'
+            == f"No suitable keys in JWKS for signing algorithm: 'EdDSA'"
         )
 
     def pem_api_test(self):
@@ -224,15 +224,14 @@ class JWTTests(testlib.BaseTestSet):
                 if algorithm.startswith("ES") and bad_algo.startswith("ES"):
                     assert (
                         r.json()["errors"]["issuers"][0]["publicKey"]
-                        == 'Mismatch between algorithm in key:"'
-                        f"{algorithm.upper()}"
-                        f'" and signing algorithm:"{bad_algo}"'
+                        == f"Mismatch between algorithm in key:'{algorithm}' "
+                        f"and signing algorithm:'{bad_algo}'"
                     )
                 else:
                     # For all other cases, we get an invalid key error
                     assert (
                         r.json()["errors"]["issuers"][0]["publicKey"]
-                        == f'Invalid key for "{bad_algo}" signing algorithm'
+                        == f"Invalid key for '{bad_algo}' signing algorithm"
                     )
 
     def invalid_pem_test(self):

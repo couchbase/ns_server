@@ -134,7 +134,7 @@
 -define(ISSUER_PARAMS_WITH_FORMATTERS,
         [
          {aud_claim, fun format_string/1},
-         {audience_handling, fun format_string/1},
+         {audience_handling, undefined},
          {audiences, fun format_string_list/1},
          {expiry_leeway_s, undefined},
          {groups_claim, fun format_string/1},
@@ -144,7 +144,7 @@
          {jit_provisioning, undefined},
          {jwks, fun format_jwks/1},
          {jwks_uri, fun format_string/1},
-         {jwks_uri_address_family, fun format_string/1},
+         {jwks_uri_address_family, undefined},
          {jwks_uri_http_timeout_ms, undefined},
          {jwks_uri_tls_ca, fun format_tls_ca/1},
          {jwks_uri_tls_extra_opts, fun format_tls_extra_opts/1},
@@ -152,12 +152,12 @@
          {jwks_uri_tls_verify_peer, undefined},
          {name, fun format_string/1},
          {public_key, fun format_public_key/1},
-         {public_key_source, fun format_string/1},
+         {public_key_source, undefined},
          {roles_claim, fun format_string/1},
          {roles_maps, fun format_string_list/1},
          {roles_maps_stop_first_match, undefined},
          {shared_secret, fun format_secret/1},
-         {signing_algorithm, fun format_string/1},
+         {signing_algorithm, undefined},
          {sub_claim, fun format_string/1}
         ]).
 
@@ -307,13 +307,14 @@ basic_validators() ->
     [validator:required(name, _),
      validator:non_empty_string(name, _),
      validator:required(signingAlgorithm, _),
-     validator:string(signingAlgorithm, _),
-     validator:one_of(signingAlgorithm, signing_algorithms(), _),
+     validator:one_of(signingAlgorithm,
+                      menelaus_web_jwt_key:signing_algorithms(), _),
+     validator:convert(signingAlgorithm, fun binary_to_existing_atom/1, _),
      validator:required(audClaim, _),
      validator:non_empty_string(audClaim, _),
      validator:required(audienceHandling, _),
-     validator:string(audienceHandling, _),
-     validator:one_of(audienceHandling, ["any", "all"], _),
+     validator:one_of(audienceHandling, [any, all], _),
+     validator:convert(audienceHandling, fun binary_to_existing_atom/1, _),
      validator:required(audiences, _),
      validator:string_array(audiences, _),
      validator:integer(expiryLeewayS,
@@ -341,14 +342,16 @@ key_validators() ->
         shared_secret_validators().
 
 public_key_validators() ->
-    [validator:string(publicKeySource, _),
-     validator:one_of(publicKeySource,
-                      ["pem", "jwks", "jwks_uri"], _),
+    [validator:one_of(publicKeySource, [jwks, jwks_uri, pem], _),
+     validator:convert(publicKeySource, fun binary_to_existing_atom/1, _),
      validator:validate_relative(
-       fun(_, "HS" ++ _) -> continue;
-          (Source, _) when Source =:= undefined ->
-               {error, "publicKeySource required for algorithm"};
-          (_, _) -> ok
+       fun(Source, Algorithm) ->
+               case menelaus_web_jwt_key:is_symmetric_algorithm(Algorithm) of
+                   true -> continue;
+                   false when Source =:= undefined ->
+                       {error, "publicKeySource required for algorithm"};
+                   false -> ok
+               end
        end, publicKeySource, signingAlgorithm, _)] ++
         pem_validators() ++
         jwks_validators() ++
@@ -356,11 +359,14 @@ public_key_validators() ->
 
 shared_secret_validators() ->
     [validator:validate_relative(
-       fun(Secret, "HS" ++ _) when Secret =:= undefined;
-                                   Secret =:= "";
-                                   Secret =:= null ->
-               {error, "sharedSecret required for HMAC algorithm"};
-          (_, _) -> ok
+       fun(Secret, Algorithm) ->
+               case menelaus_web_jwt_key:is_symmetric_algorithm(Algorithm) of
+                   true when Secret =:= undefined;
+                             Secret =:= "";
+                             Secret =:= null ->
+                       {error, "sharedSecret required for HMAC algorithm"};
+                   false -> ok
+               end
        end, sharedSecret, signingAlgorithm, _),
      validator:validate_relative(
        fun(Secret, Algorithm) ->
@@ -373,51 +379,59 @@ shared_secret_validators() ->
 
 pem_validators() ->
     [validator:validate_relative(
-       fun(_, "HS" ++ _) -> ok;
-          (Value, Algorithm) ->
-               case menelaus_web_jwt_key:get_key_from_pem_contents(Value) of
-                   {error, Reason} -> {error, Reason};
-                   Key ->
-                       case menelaus_web_jwt_key:validate_key_algorithm(
-                              Key, Algorithm) of
-                           ok -> {value, {Value, Key}};
-                           {error, Reason} -> {error, Reason}
+       fun(Value, Algorithm) ->
+               case menelaus_web_jwt_key:is_symmetric_algorithm(Algorithm) of
+                   true -> ok;
+                   false ->
+                       case menelaus_web_jwt_key:get_key_from_pem_contents(
+                              Value) of
+                           {error, Reason} -> {error, Reason};
+                           Key ->
+                               case menelaus_web_jwt_key:validate_key_algorithm(
+                                      Key, Algorithm) of
+                                   ok -> {value, {Value, Key}};
+                                   {error, Reason} -> {error, Reason}
+                               end
                        end
                end
        end, publicKey, signingAlgorithm, _)].
 
 jwks_validators() ->
     [validator:validate_relative(
-       fun(_, "HS" ++ _) -> ok;
-          (Value, Algorithm) ->
-               try proplist_to_map(Value) of
-                   Map ->
-                       case menelaus_web_jwt_key:validate_jwks_algorithm(
-                              Map, Algorithm) of
-                           {error, Reason} -> {error, Reason};
-                           ok -> {value, {iolist_to_binary(jose:encode(Map)),
-                                          Map}}
+       fun(Value, Algorithm) ->
+               case menelaus_web_jwt_key:is_symmetric_algorithm(Algorithm) of
+                   true -> ok;
+                   false ->
+                       try
+                           Map = proplist_to_map(Value),
+                           case menelaus_web_jwt_key:validate_jwks_algorithm(
+                                  Map, Algorithm) of
+                               {error, Reason} -> {error, Reason};
+                               ok -> {value,
+                                      {iolist_to_binary(jose:encode(Map)),
+                                       Map}}
+                           end
+                       catch T:E:S ->
+                               ?log_error("Error converting JWKS to map:~n~p",
+                                          [{T, E, S}]),
+                               {error, "Invalid JWKS"}
                        end
-               catch T:E:S ->
-                       ?log_error("Error converting JWKS to map:~n~p",
-                                  [{T, E, S}]),
-                       {error, "Invalid JWKS"}
                end
        end, jwks, signingAlgorithm, _)].
 
 jwks_uri_validators() ->
     [validator:string(jwksUri, _),
      validator:validate_relative(
-       fun(V, "jwks_uri") when V =:= undefined; V =:= "" ->
+       fun(V, jwks_uri) when V =:= undefined; V =:= "" ->
                {error, "jwksUri is required"};
-          (_, "jwks_uri") ->
+          (_, jwks_uri) ->
                ok;
           (_, _) ->
                ok
        end, jwksUri, publicKeySource, _),
      validator:url(jwksUri, [<<"http">>, <<"https">>], _),
-     validator:string(jwksUriAddressFamily, _),
-     validator:one_of(jwksUriAddressFamily, ["inet", "inet6"], _),
+     validator:one_of(jwksUriAddressFamily, [inet, inet6], _),
+     validator:convert(jwksUriAddressFamily, fun binary_to_existing_atom/1, _),
      validator:integer(jwksUriHttpTimeoutMs,
                        ?JWKS_URI_MIN_TIMEOUT_MS,
                        ?JWKS_URI_MAX_TIMEOUT_MS, _),
@@ -454,14 +468,6 @@ validate_mapping_rule(MappingRule) ->
             Err = io_lib:format("~s (at character #~b)", [Error, At]),
             {error, lists:flatten(Err)}
     end.
-
-signing_algorithms() ->
-    %% PS* are supported if public_key supports rsa_pkcs1_pss_padding.
-    {alg, Supported} = proplists:get_value(jws, jose_jwa:supports()),
-
-    Subset = ["ES256","ES256K","ES384","ES512","EdDSA","HS256","HS384",
-              "HS512","PS256","PS384","PS512","RS256","RS384","RS512"],
-    [Y || X <- Supported, Y <- Subset, list_to_binary(Y) =:= X].
 
 validate_and_store_settings(Props, Req) ->
     Settings = validated_to_storage_format(Props),

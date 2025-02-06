@@ -14,6 +14,7 @@
 -include("ns_common.hrl").
 -include_lib("public_key/include/public_key.hrl").
 -include_lib("jose/include/jose_jwk.hrl").
+-include("jwt.hrl").
 
 -export([validate_jwks_algorithm/2,
          validate_jwks_keys/2,
@@ -21,7 +22,9 @@
          algorithm_type/1,
          ec_params_to_algorithm/1,
          get_key_from_pem_contents/1,
-         validate_shared_secret/2]).
+         validate_shared_secret/2,
+         is_symmetric_algorithm/1,
+         signing_algorithms/0]).
 
 %% Types for key validation
 -type pubkey() ::
@@ -31,34 +34,54 @@
            algorithm :: #'AlgorithmIdentifier'{
                            algorithm :: ?'id-Ed25519' | ?'id-Ed448'}}.
 
--export_type([pubkey/0]).
-
+-spec algorithm_type(Algo :: jwt_algorithm()) -> rsa | ecdsa | eddsa | hmac.
 algorithm_type(Algo) ->
     case Algo of
-        "RS" ++ _ -> "RSA";
-        "PS" ++ _ -> "RSA";
-        "ES" ++ _ -> "ECDSA";
-        "EdDSA" -> "EdDSA"
+        'RS256' -> rsa;
+        'RS384' -> rsa;
+        'RS512' -> rsa;
+        'PS256' -> rsa;
+        'PS384' -> rsa;
+        'PS512' -> rsa;
+        'ES256' -> ecdsa;
+        'ES256K' -> ecdsa;
+        'ES384' -> ecdsa;
+        'ES512' -> ecdsa;
+        'EdDSA' -> eddsa;
+        'HS256' -> hmac;
+        'HS384' -> hmac;
+        'HS512' -> hmac
     end.
 
-ec_params_to_algorithm(secp256k1) ->
-    "ES256K";
-ec_params_to_algorithm(secp256r1) ->
-    "ES256";
-ec_params_to_algorithm(secp384r1) ->
-    "ES384";
-ec_params_to_algorithm(secp521r1) ->
-    "ES512";
+-spec signing_algorithms() -> [jwt_algorithm()].
+signing_algorithms() ->
+    %% PS* are supported if public_key supports rsa_pkcs1_pss_padding.
+    {alg, JoseSupported} = proplists:get_value(jws, jose_jwa:supports()),
+    [Y || X <- JoseSupported, Y <- ?JWT_ALGORITHMS,
+          list_to_atom(binary_to_list(X)) =:= Y].
+
+-spec is_symmetric_algorithm(jwt_algorithm()) -> boolean().
+is_symmetric_algorithm(Algorithm) ->
+    algorithm_type(Algorithm) =:= hmac.
+
+ec_params_to_algorithm('secp256k1') ->
+    'ES256K';
+ec_params_to_algorithm('secp256r1') ->
+    'ES256';
+ec_params_to_algorithm('secp384r1') ->
+    'ES384';
+ec_params_to_algorithm('secp521r1') ->
+    'ES512';
 ec_params_to_algorithm(Parameters) when is_tuple(Parameters) ->
     ec_params_to_algorithm(pubkey_cert_records:namedCurves(Parameters)).
 
 -spec validate_key_algorithm(Key :: pubkey() | {error, string()},
-                             Algorithm :: string()) -> ok | {error, string()}.
+                             Algorithm :: jwt_algorithm()) -> ok |
+          {error, string()}.
 validate_key_algorithm(Key, Algorithm) ->
-    Algo = algorithm_type(Algorithm),
-    case {Algo, Key} of
+    case {algorithm_type(Algorithm), Key} of
         {_, {error, Y}} -> {error, Y};
-        {"RSA", #'RSAPublicKey'{modulus = N}} ->
+        {rsa, #'RSAPublicKey'{modulus = N}} ->
             Bits = bit_size(binary:encode_unsigned(N)),
             %% NIST has mandated a minimum length of 2048 bits since 2015.
             %% OpenSSL doesn't recommend lengths longer than 16384 bits.
@@ -73,11 +96,11 @@ validate_key_algorithm(Key, Algorithm) ->
                                        "length should be between ~p and ~p",
                                        [Y, MinBits, MaxBits]))}
             end;
-        {"RSA", _} ->
+        {rsa, _} ->
             {error, lists:flatten(
                       io_lib:format("Invalid key for ~p signing algorithm",
                                     [Algorithm]))};
-        {"ECDSA", {#'ECPoint'{}, {namedCurve, Params}}} ->
+        {ecdsa, {#'ECPoint'{}, {namedCurve, Params}}} ->
             case ec_params_to_algorithm(Params) of
                 X when X =:= Algorithm -> ok;
                 Y -> {error,
@@ -86,27 +109,27 @@ validate_key_algorithm(Key, Algorithm) ->
                                       "and signing algorithm:~p",
                                       [Y, Algorithm]))}
             end;
-        {"ECDSA", _} ->
+        {ecdsa, _} ->
             {error, lists:flatten(
                       io_lib:format("Invalid key for ~p signing algorithm",
                                     [Algorithm]))};
-        {"EdDSA", #'SubjectPublicKeyInfo'{
-                     algorithm =
-                         #'AlgorithmIdentifier'{
-                            algorithm = ?'id-Ed25519'
-                           }}} -> ok;
-        {"EdDSA", #'SubjectPublicKeyInfo'{
-                     algorithm =
-                         #'AlgorithmIdentifier'{
-                            algorithm = ?'id-Ed448'
-                           }}} -> ok;
-        {"EdDSA", _} ->
+        {eddsa, #'SubjectPublicKeyInfo'{
+                   algorithm =
+                       #'AlgorithmIdentifier'{
+                          algorithm = ?'id-Ed25519'
+                         }}} -> ok;
+        {eddsa, #'SubjectPublicKeyInfo'{
+                   algorithm =
+                       #'AlgorithmIdentifier'{
+                          algorithm = ?'id-Ed448'
+                         }}} -> ok;
+        {eddsa, _} ->
             {error, lists:flatten(
                       io_lib:format("Invalid key for ~p signing algorithm",
                                     [Algorithm]))}
     end.
 
--spec validate_jwks_keys([pubkey()], string()) -> ok | {error, string()}.
+-spec validate_jwks_keys([pubkey()], jwt_algorithm()) -> ok | {error, string()}.
 validate_jwks_keys([], _Algorithm) -> ok;
 validate_jwks_keys([Key | Rest], Algorithm) ->
     case validate_key_algorithm(Key, Algorithm) of
@@ -114,11 +137,11 @@ validate_jwks_keys([Key | Rest], Algorithm) ->
         {error, Reason} -> {error, Reason}
     end.
 
--spec validate_jwks_algorithm(map(), string()) -> ok | {error, string()}.
-validate_jwks_algorithm(JSONMap, Algo) ->
+-spec validate_jwks_algorithm(map(), jwt_algorithm()) -> ok | {error, string()}.
+validate_jwks_algorithm(JSONMap, Algorithm) ->
     case parse_jwks(JSONMap) of
         {error, Reason} -> {error, Reason};
-        {ok, JWKSet} -> validate_jwks_keys_for_algorithm(JWKSet, Algo)
+        {ok, JWKSet} -> validate_jwks_keys_for_algorithm(JWKSet, Algorithm)
     end.
 
 -spec parse_jwks(map()) -> {ok, [jose_jwk:key()]} | {error, string()}.
@@ -154,12 +177,12 @@ validate_jwks_set(Items, JSONMap) ->
         _ -> {error, "Invalid 'keys' array"}
     end.
 
--spec validate_jwks_keys_for_algorithm([jose_jwk:key()], string()) ->
+-spec validate_jwks_keys_for_algorithm([jose_jwk:key()], jwt_algorithm()) ->
           ok | {error, string()}.
-validate_jwks_keys_for_algorithm(JWKSet, Algo) ->
+validate_jwks_keys_for_algorithm(JWKSet, Algorithm) ->
     case lists:filtermap(
            fun(JWK) ->
-                   case lists:member(list_to_binary(Algo),
+                   case lists:member(atom_to_binary(Algorithm),
                                      jose_jwk:verifier(JWK)) of
                        true ->
                            {_, Key} = jose_jwk:to_key(JWK),
@@ -167,49 +190,61 @@ validate_jwks_keys_for_algorithm(JWKSet, Algo) ->
                        false -> false
                    end
            end, JWKSet) of
-        [] -> {error,
-               lists:flatten(io_lib:format("No suitable keys in JWKS "
-                                           "for signing algorithm: ~p",
-                                           [Algo]))};
-        ValidKeys -> validate_jwks_keys(ValidKeys, Algo)
+        [] ->
+            {error,
+             lists:flatten(io_lib:format("No suitable keys in JWKS "
+                                         "for signing algorithm: ~p",
+                                         [Algorithm]))};
+        ValidKeys -> validate_jwks_keys(ValidKeys, Algorithm)
     end.
 
 %% @doc Validates a shared secret for HMAC algorithms (HS256, HS384, HS512).
 %% The secret must be valid UTF-8 and meet minimum length requirements based on
 %% the algorithm's bit size.
--spec validate_shared_secret(string(), string()) ->
+-spec validate_shared_secret(string(), jwt_algorithm()) ->
           {ok, {value, jose_jwk:key()}} | {error, string()}.
-validate_shared_secret(Secret, "HS" ++ Length) ->
-    %% See JWA RFC7518 Section 3.2. A key of the same size as the hash output
-    %% (for instance, 256 bits for "HS256") or larger MUST be used.
-    MinLength = list_to_integer(Length) / 8,
-    %% See RFC4868 Section 2.1.2.
-    %% Providing keys longer than the block size doesn't increase security. The
-    %% key will be hashed to fit the block length before use.
-    MaxLength = case Length of
-                    "256" -> 512;
-                    "384" -> 1024;
-                    "512" -> 1024
-                end,
-
-    %% Mochiweb converts the utf8 string to a list, which isn't
-    %% correct, so we need to undo that conversion here.
-    case unicode:characters_to_binary(Secret) of
-        {incomplete, _, _} ->
-            {error, "Incomplete utf8 shared secret"};
-        {error, _, _} ->
-            {error, "Ill-formed utf8 shared secret"};
-        BinaryChars ->
-            SecretLength = string:length(BinaryChars),
-            case SecretLength < MinLength orelse SecretLength > MaxLength of
-                true ->
-                    Msg = "Shared secret length must be in the range from ~p to"
-                        "~p inclusive",
-                    {error, lists:flatten(io_lib:format(
-                                            Msg,
-                                            [MinLength, MaxLength]))};
-                false ->
-                    {ok, {value, jose_jwk:from_oct(list_to_binary(Secret))}}
+validate_shared_secret(Secret, Algorithm) ->
+    case is_symmetric_algorithm(Algorithm) of
+        false ->
+            {error, "Shared secret only valid for HMAC algorithms"};
+        true ->
+            %% See JWA RFC7518 Section 3.2. A key of the same size as the hash
+            %% output (for instance, 256 bits for "HS256") or larger MUST be
+            %% used.
+            MinLength = case Algorithm of
+                            'HS256' -> 32;  % 256/8
+                            'HS384' -> 48;  % 384/8
+                            'HS512' -> 64   % 512/8
+                        end,
+            %% See RFC4868 Section 2.1.2. Providing keys longer than the block
+            %% size doesn't increase security. The key will be hashed to fit the
+            %% block length before use.
+            MaxLength = case Algorithm of
+                            'HS256' -> 512;
+                            'HS384' -> 1024;
+                            'HS512' -> 1024
+                        end,
+            %% Mochiweb converts the utf8 string to a list, which isn't
+            %% correct, so we need to undo that conversion here.
+            case unicode:characters_to_binary(Secret) of
+                {incomplete, _, _} ->
+                    {error, "Incomplete utf8 shared secret"};
+                {error, _, _} ->
+                    {error, "Ill-formed utf8 shared secret"};
+                BinaryChars ->
+                    SecretLength = string:length(BinaryChars),
+                    case SecretLength < MinLength orelse
+                        SecretLength > MaxLength of
+                        true ->
+                            Msg = "Shared secret length must be in the range "
+                                "from ~p to ~p inclusive",
+                            {error, lists:flatten(io_lib:format(
+                                                    Msg,
+                                                    [MinLength, MaxLength]))};
+                        false ->
+                            {ok, {value,
+                                  jose_jwk:from_oct(list_to_binary(Secret))}}
+                    end
             end
     end.
 
