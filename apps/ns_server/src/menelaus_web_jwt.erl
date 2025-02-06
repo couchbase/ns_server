@@ -295,6 +295,15 @@ main_validators() ->
        fun ([]) -> {error, "Must contain at least one issuer"};
            (_) -> ok
        end, issuers, _),
+     validator:validate(
+       fun(Issuers) ->
+               Names = [proplists:get_value("name", I) || {I} <- Issuers],
+               ValidNames = [N || N <- Names, N =/= undefined],
+               case length(ValidNames) =:= length(lists:usort(ValidNames)) of
+                   true -> ok;
+                   false -> {error, "Duplicate issuer names not allowed"}
+               end
+       end, issuers, _),
      validator:unsupported(_)].
 
 issuer_validators() ->
@@ -714,4 +723,67 @@ format_conversion_test() ->
                               [{verify, verify_peer}]}
                        ]}))
     ].
+
+validator_test() ->
+    [
+     {"test main validators",
+      fun() ->
+              Props = {[
+                        {<<"enabled">>, true},
+                        {<<"jwksUriRefreshIntervalS">>, 14400},
+                        {<<"issuers">>, [
+                                         {[
+                                           {<<"name">>, <<"issuer1">>},
+                                           {<<"signingAlgorithm">>,
+                                            <<"RS256">>},
+                                           {<<"audClaim">>, <<"aud">>},
+                                           {<<"audienceHandling">>, <<"any">>},
+                                           {<<"audiences">>, [<<"aud1">>]},
+                                           {<<"subClaim">>, <<"sub">>},
+                                           {<<"publicKeySource">>, <<"pem">>},
+                                           {<<"publicKey">>, <<"key1">>}
+                                          ]}
+                                        ]}
+                       ]},
+              ?assertEqual(ok, (validator:validate(main_validators(), Props)))
+      end},
+
+     {"test duplicate issuer names",
+      fun() ->
+              Props = {[
+                        {<<"enabled">>, true},
+                        {<<"jwksUriRefreshIntervalS">>, 14400},
+                        {<<"issuers">>, [
+                                         {[
+                                           {<<"name">>, <<"issuer1">>},
+                                           {<<"signingAlgorithm">>,
+                                            <<"RS256">>},
+                                           {<<"audClaim">>, <<"aud">>},
+                                           {<<"audienceHandling">>, <<"any">>},
+                                           {<<"audiences">>, [<<"aud1">>]},
+                                           {<<"subClaim">>, <<"sub">>},
+                                           {<<"publicKeySource">>, <<"pem">>},
+                                           {<<"publicKey">>, <<"key1">>}
+                                          ]},
+                                         {[
+                                           {<<"name">>, <<"issuer1">>},
+                                           {<<"signingAlgorithm">>,
+                                            <<"ES256">>},
+                                           {<<"audClaim">>, <<"aud">>},
+                                           {<<"audienceHandling">>, <<"any">>},
+                                           {<<"audiences">>, [<<"aud2">>]},
+                                           {<<"subClaim">>, <<"sub">>},
+                                           {<<"publicKeySource">>, <<"pem">>},
+                                           {<<"publicKey">>, <<"key2">>}
+                                          ]}
+                                        ]}
+                       ]},
+              ?assertMatch({error,
+                            {[{<<"issuers">>,
+                               <<"Duplicate issuer names not allowed">>}|_]},
+                            _},
+                           validator:validate(main_validators(), Props))
+      end}
+    ].
+
 -endif.
