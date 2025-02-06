@@ -302,6 +302,10 @@ get_ets_table_sanitizer(menelaus_web_cache, _Info) ->
     {ok, fun ns_cluster:sanitize_node_info/1};
 get_ets_table_sanitizer(ns_couchdb_chronicle_dup, _Info) ->
     {ok, fun ({K, V}) ->  {K, chronicle_kv_log:sanitize(K, V)} end};
+get_ets_table_sanitizer(ldap_auth_cache, _Info) ->
+    skip;
+get_ets_table_sanitizer(ldap_groups_cache, _Info) ->
+    skip;
 get_ets_table_sanitizer(_, Info) ->
     case proplists:get_value(name, Info) of
         ssl_otp_pem_cache ->
@@ -361,7 +365,19 @@ do_stream_ets_table(Table, Info, Fun, State) ->
     end.
 
 grab_all_ets_tables() ->
-    lists:flatmap(fun grab_ets_table/1, ets:all()).
+    All = ets:all(),
+    FilteredLdapCaches =
+        case (catch ets:lookup(ldap_groups_cache, tables)) of
+            [{tables, {GroupCacheA, GroupCacheB}} | _] ->
+                %% ldap_groups_cache should also be skipped but that is done in
+                %% the normal spot at:
+                %% diag_handler:get_ets_table_sanitizer/2
+                lists:filter(
+                  ?cut(not lists:member(_, [GroupCacheA, GroupCacheB])), All);
+            _ ->
+                All
+        end,
+    lists:flatmap(fun grab_ets_table/1, FilteredLdapCaches).
 
 grab_ets_table(Table) ->
     case get_ets_table_info(Table) of
