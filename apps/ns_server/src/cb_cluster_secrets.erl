@@ -3072,10 +3072,14 @@ initiate_deks_drop(Kind, IdsToDropList0, #state{deks = DeksInfo} = State0) ->
             %% drop it, but we should not re-try dropping it again and again.
             %% By updating last_drop_timestamp we are making sure that
             %% ActiveId will not be treated as expired immediately.
-            NewKindDeks = KindDeks#{last_drop_timestamp => NowS},
+            NewKindDeks = KindDeks#{deks_being_dropped => IdsToDropSet0,
+                                    last_drop_timestamp => NowS},
             State0#state{deks = DeksInfo#{Kind => NewKindDeks}};
         {succ, {ok, Res}} ->
-            NewKindDeks = KindDeks#{deks_being_dropped => IdsToDropFinalSet,
+            %% Setting deks_being_dropped => IdsToDropSet0 on purpose
+            %% because we want to memorize information that we tried to drop
+            %% active dek, so we don't retry too often.
+            NewKindDeks = KindDeks#{deks_being_dropped => IdsToDropSet0,
                                     last_drop_timestamp => NowS},
             State = State0#state{deks = DeksInfo#{Kind => NewKindDeks}},
             case Res of
