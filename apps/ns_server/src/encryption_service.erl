@@ -18,6 +18,14 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-define(wrap_error_msg(C, A, P),
+        try C of
+            __RES -> wrap_error_msg(__RES, A, P)
+        catch _:__ERR ->
+            __M = io_lib:format("exception: ~p", [__ERR], [{chars_limit, 200}]),
+            wrap_error_msg({error, lists:flatten(__M)}, A, P)
+        end).
+
 -export([start_link/0,
          decrypt/1,
          encrypt/1,
@@ -148,9 +156,10 @@ read_dek(Kind, DekId) ->
                            _ ->
                                {DekId, Kind}
                        end,
-    case wrap_error_msg(
+    case ?wrap_error_msg(
            cb_gosecrets_runner:read_key(?RUNNER, NewKind, NewId),
-           read_key_error) of
+           read_key_error, [{kind, cb_deks:kind2bin(NewKind)},
+                            {key_UUID, NewId}]) of
         {ok, Json} ->
             {Props} = ejson:decode(Json),
             Res = maps:from_list(
@@ -179,23 +188,23 @@ decode_key_info({InfoProps}) ->
 encrypt_key(Data, AD, KekId) when is_binary(Data), is_binary(AD),
                                   is_binary(KekId) ->
     FinalAD = <<AD/binary, KekId/binary>>,
-    wrap_error_msg(
+    ?wrap_error_msg(
       cb_gosecrets_runner:encrypt_with_key(?RUNNER, Data, FinalAD, kek, KekId),
-      encrypt_key_error).
+      encrypt_key_error, [{key_UUID, KekId}]).
 
 decrypt_key(Data, AD, KekId) when is_binary(Data), is_binary(AD),
                                   is_binary(KekId) ->
     FinalAD = <<AD/binary, KekId/binary>>,
-    wrap_error_msg(
+    ?wrap_error_msg(
       cb_gosecrets_runner:decrypt_with_key(?RUNNER, Data, FinalAD, kek, KekId),
-      decrypt_key_error).
+      decrypt_key_error, [{key_UUID, KekId}]).
 
 maybe_rotate_integrity_tokens(undefined) ->
     maybe_rotate_integrity_tokens(<<>>);
-maybe_rotate_integrity_tokens(KeyName) ->
-    wrap_error_msg(
+maybe_rotate_integrity_tokens(KeyName) when is_binary(KeyName) ->
+    ?wrap_error_msg(
       cb_gosecrets_runner:rotate_integrity_tokens(?RUNNER, KeyName),
-      rotate_integrity_tokens_error).
+      rotate_integrity_tokens_error, [{key_UUID, KeyName}]).
 
 remove_old_integrity_tokens(Kinds) ->
     Paths = lists:filtermap(
@@ -205,9 +214,9 @@ remove_old_integrity_tokens(Kinds) ->
                       Path -> {true, Path}
                   end
               end, Kinds),
-    wrap_error_msg(
+    ?wrap_error_msg(
       cb_gosecrets_runner:remove_old_integrity_tokens(?RUNNER, Paths),
-      remove_old_integrity_tokens_error).
+      remove_old_integrity_tokens_error, []).
 
 get_key_ids_in_use() ->
     case cb_gosecrets_runner:get_key_id_in_use(?RUNNER) of
@@ -217,12 +226,12 @@ get_key_ids_in_use() ->
     end.
 
 mac(Data) when is_binary(Data) ->
-    wrap_error_msg(cb_gosecrets_runner:mac(?RUNNER, Data),
-                   mac_calculation_error).
+    ?wrap_error_msg(cb_gosecrets_runner:mac(?RUNNER, Data),
+                    mac_calculation_error, []).
 
 verify_mac(Mac, Data) when is_binary(Data), is_binary(Mac) ->
-    wrap_error_msg(cb_gosecrets_runner:verify_mac(?RUNNER, Mac, Data),
-                   mac_verification_error).
+    ?wrap_error_msg(cb_gosecrets_runner:verify_mac(?RUNNER, Mac, Data),
+                    mac_verification_error, []).
 
 %%%===================================================================
 %%% callbacks
@@ -478,13 +487,13 @@ store_key(Kind, Name, Type, KeyData, EncryptionKeyId,
                                                  is_binary(EncryptionKeyId),
                                                  is_atom(TestOnly) ->
     CreationDTISO = iso8601:format(CreationDT),
+    KindBin = cb_deks:kind2bin(Kind),
     TestOnly orelse ns_server_stats:notify_counter(
-                      {<<"key_manager_store_key">>,
-                       [{kind, cb_deks:kind2bin(Kind)}]}),
-    wrap_error_msg(
+                      {<<"key_manager_store_key">>, [{kind, KindBin}]}),
+    ?wrap_error_msg(
       cb_gosecrets_runner:store_key(?RUNNER, Kind, Name, Type, KeyData,
                                     EncryptionKeyId, CreationDTISO, TestOnly),
-      store_key_error).
+      store_key_error, [{kind, KindBin}, {key_UUID, Name}]).
 
 maybe_update_dek_path_in_config() ->
     case ns_storage_conf:this_node_dbdir() of
@@ -507,9 +516,14 @@ maybe_update_dek_path_in_config() ->
         {error, not_found} -> ok
     end.
 
-wrap_error_msg(ok, _A) -> ok;
-wrap_error_msg({ok, _} = R, _A) -> R;
-wrap_error_msg({error, Msg}, A) when is_list(Msg) -> {error, {A, Msg}}.
+wrap_error_msg(ok, _A, _) -> ok;
+wrap_error_msg({ok, _} = R, _A, _) -> R;
+wrap_error_msg({error, Msg}, A, ExtraArgs) when is_list(Msg), is_atom(A),
+                                                is_list(ExtraArgs) ->
+    event_log:add_log(encryption_service_failure,
+                      [{error, A}, {error_msg, iolist_to_binary(Msg)}] ++
+                      ExtraArgs),
+    {error, {A, Msg}}.
 
 garbage_collect_keys(Kind, InUseKeyIds) ->
     KeyDir = key_path(Kind),
