@@ -177,8 +177,8 @@ handle_delete_secret(IdStr, Req) ->
     menelaus_util:assert_is_enterprise(),
     Id = parse_id(IdStr),
     case cb_cluster_secrets:delete_secret(Id, is_writable(_, Req)) of
-        ok ->
-            ns_audit:delete_encryption_secret(Req, Id),
+        {ok, Name} ->
+            ns_audit:delete_encryption_secret(Req, Id, Name),
             menelaus_util:reply(Req, 200);
         {error, forbidden} ->
             menelaus_util:web_exception(403, "Forbidden");
@@ -197,8 +197,8 @@ handle_delete_historical_key(IdStr, HistKeyIdStr, Req) ->
     case cb_cluster_secrets:delete_historical_key(Id,
                                                   HistKeyId,
                                                   is_writable(_, Req)) of
-        ok ->
-            ns_audit:delete_historical_encryption_key(Req, Id, HistKeyId),
+        {ok, Name} ->
+            ns_audit:delete_historical_encryption_key(Req, Id, Name, HistKeyId),
             menelaus_util:reply(Req, 200);
         {error, forbidden} ->
             menelaus_util:web_exception(403, "Forbidden");
@@ -213,8 +213,8 @@ handle_rotate(IdStr, Req) ->
     menelaus_util:assert_is_enterprise(),
     Id = parse_id(IdStr),
     case cb_cluster_secrets:rotate(Id) of
-        ok ->
-            ns_audit:rotate_encryption_secret(Req, Id),
+        {ok, Name} ->
+            ns_audit:rotate_encryption_secret(Req, Id, Name),
             menelaus_util:reply(Req, 200);
         {error, not_found} ->
             menelaus_util:reply_not_found(Req);

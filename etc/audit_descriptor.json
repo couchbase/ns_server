@@ -1676,7 +1676,8 @@
               "real_userid": {"domain": "", "user": ""},
               "remote": {"ip": "", "port": 1},
               "local": {"ip": "", "port": 1},
-              "encryptionKeyId": ""
+              "encryptionKeyId": "",
+              "encryptionKeyName": ""
           },
           "optional_fields" : {
               "authenticated_userid" : {"domain" : "", "user" : ""},
@@ -1695,7 +1696,8 @@
               "real_userid": {"domain": "", "user": ""},
               "remote": {"ip": "", "port": 1},
               "local": {"ip": "", "port": 1},
-              "encryptionKeyId": ""
+              "encryptionKeyId": "",
+              "encryptionKeyName": ""
           },
           "optional_fields" : {
               "authenticated_userid" : {"domain" : "", "user" : ""},
@@ -1715,6 +1717,7 @@
               "remote": {"ip": "", "port": 1},
               "local": {"ip": "", "port": 1},
               "encryptionKeyId": "",
+              "encryptionKeyName": "",
               "keyMaterialUUID": ""
           },
           "optional_fields" : {

@@ -86,9 +86,9 @@
          app_telemetry_settings/2,
          encryption_at_rest_settings/2,
          set_encryption_secret/2,
-         delete_encryption_secret/2,
-         rotate_encryption_secret/2,
-         delete_historical_encryption_key/3,
+         delete_encryption_secret/3,
+         rotate_encryption_secret/3,
+         delete_historical_encryption_key/4,
          encryption_at_rest_drop_deks/2,
          user_activity_settings/2
         ]).
@@ -1035,8 +1035,9 @@ encryption_at_rest_drop_deks(Req, Props) ->
 set_encryption_secret(Req, SecretProps) ->
     put(set_encryption_secret, Req, prepare_encryption_secret(SecretProps)).
 
-delete_encryption_secret(Req, Id) ->
-    put(delete_encryption_secret, Req, [{encryptionKeyId, Id}]).
+delete_encryption_secret(Req, Id, Name) ->
+    put(delete_encryption_secret, Req,
+        [{encryptionKeyId, Id}, {encryptionKeyName, iolist_to_binary(Name)}]).
 
 prepare_encryption_secret(Settings) ->
     lists:map(fun ({usage, List}) -> {usage, {list, List}};
@@ -1045,11 +1046,13 @@ prepare_encryption_secret(Settings) ->
                   ({K, V}) -> {K, V}
               end, Settings).
 
-rotate_encryption_secret(Req, Id) ->
-    put(rotate_encryption_secret, Req, [{encryptionKeyId, Id}]).
+rotate_encryption_secret(Req, Id, Name) ->
+    put(rotate_encryption_secret, Req, [{encryptionKeyId, Id},
+                                        {encryptionKeyName, Name}]).
 
-delete_historical_encryption_key(Req, Id, KeyId) ->
+delete_historical_encryption_key(Req, Id, SecretName, KeyId) ->
     put(delete_historical_encryption_key, Req, [{encryptionKeyId, Id},
+                                                {encryptionKeyName, SecretName},
                                                 {keyMaterialUUID, KeyId}]).
 
 set_user_profile(Req, Identity, Json) ->

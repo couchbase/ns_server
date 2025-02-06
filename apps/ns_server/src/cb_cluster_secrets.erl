@@ -353,15 +353,15 @@ replace_secret_internal(Id, NewProps, IsSecretWritableFun) ->
     end.
 
 -spec delete_secret(secret_id(), fun((secret_props()) -> boolean())) ->
-          ok | {error, not_found | secret_in_use() | forbidden |
-                       inconsistent_graph() | no_quorum}.
+          {ok, string()} | {error, not_found | secret_in_use() | forbidden |
+                                   inconsistent_graph() | no_quorum}.
 delete_secret(Id, IsSecretWritableFun) ->
     execute_on_master({?MODULE, delete_secret_internal,
                        [Id, IsSecretWritableFun]}).
 
 -spec delete_secret_internal(secret_id(), fun((secret_props()) -> boolean())) ->
-          ok | {error, not_found | secret_in_use() | forbidden |
-                       inconsistent_graph() | no_quorum}.
+          {ok, string()} | {error, not_found | secret_in_use() | forbidden |
+                                   inconsistent_graph() | no_quorum}.
 delete_secret_internal(Id, IsSecretWritableFun) ->
     %% Make sure we have most recent information about which secrets are in use
     maybe_reset_deks_counters(),
@@ -391,21 +391,23 @@ delete_secret_internal(Id, IsSecretWritableFun) ->
                               [{encryption_key_id, Id},
                                {encryption_key_name, iolist_to_binary(Name)}]),
             sync_with_all_node_monitors(),
-            ok;
+            {ok, Name};
         {error, Reason} ->
             {error, Reason}
     end.
 
 -spec delete_historical_key(secret_id(), key_id(), fun((secret_props()) -> boolean())) ->
-          ok | {error, not_found | secret_in_use() | forbidden |
-                       inconsistent_graph() | no_quorum}.
+          {ok, string()} | {error, not_found | secret_in_use() | forbidden |
+                                   inconsistent_graph() | no_quorum}.
 delete_historical_key(SecretId, HistKeyId, IsSecretWritableFun) ->
     execute_on_master({?MODULE, delete_historical_key_internal,
                        [SecretId, HistKeyId, IsSecretWritableFun]}).
 
--spec delete_historical_key_internal(secret_id(), key_id(), fun((secret_props()) -> boolean())) ->
-          ok | {error, not_found | secret_in_use() | forbidden |
-                       inconsistent_graph() | no_quorum | active_key}.
+-spec delete_historical_key_internal(secret_id(), key_id(),
+                                     fun((secret_props()) -> boolean())) ->
+          {ok, string()} | {error, not_found | secret_in_use() | forbidden |
+                                   inconsistent_graph() | no_quorum |
+                                   active_key}.
 delete_historical_key_internal(SecretId, HistKeyId, IsSecretWritableFun) ->
     %% It is important to get the counters before we start dek info aggregation
     OldCountersMap = get_dek_counters(direct),
@@ -439,7 +441,7 @@ delete_historical_key_internal(SecretId, HistKeyId, IsSecretWritableFun) ->
                                {encryption_key_name, iolist_to_binary(Name)},
                                {historical_key_UUID, HistKeyId}]),
                             sync_with_all_node_monitors(),
-                            ok;
+                            {ok, Name};
                         {error, Reason} ->
                             {error, Reason}
                     end
@@ -454,25 +456,27 @@ generate_raw_key(Cipher) ->
     #{key_length := Length} = crypto:cipher_info(Cipher),
     crypto:strong_rand_bytes(Length).
 
--spec rotate(secret_id()) -> ok | {error, not_found | bad_encrypt_id() |
-                                          inconsistent_graph() | not_supported |
-                                          no_quorum}.
+-spec rotate(secret_id()) -> {ok, string()} |
+                             {error, not_found | bad_encrypt_id() |
+                                     inconsistent_graph() | not_supported |
+                                     no_quorum}.
 rotate(Id) ->
     execute_on_master({?MODULE, rotate_internal, [Id]}).
 
--spec rotate_internal(secret_id()) -> ok | {error, not_found |
-                                                   bad_encrypt_id() |
-                                                   inconsistent_graph() |
-                                                   not_supported |
-                                                   no_quorum}.
+-spec rotate_internal(secret_id()) -> {ok, string()} |
+                                      {error, not_found |
+                                              bad_encrypt_id() |
+                                              inconsistent_graph() |
+                                              not_supported |
+                                              no_quorum}.
 rotate_internal(Id) ->
     case rotate_secret_by_id(Id, false) of
-        ok ->
+        {ok, Name} ->
             %% In order to make sure all keys are reencrypted by
             %% the time when the call is finished
             sync_with_all_node_monitors(),
             maybe_reencrypt_secrets(),
-            ok;
+            {ok, Name};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -826,7 +830,7 @@ handle_info({timer, rotate_keks}, #state{proc_type = ?MASTER_PROC} = State) ->
             lists:foreach(
               fun (Id) ->
                   try
-                      ok = rotate_secret_by_id(Id, true)
+                      {ok, _Name} = rotate_secret_by_id(Id, true)
                   catch
                       C:E:ST ->
                           ?log_error("Secret #~p rotation crashed: ~p:~p~n~p",
@@ -916,8 +920,9 @@ terminate(_Reason, _State) ->
 %%%===================================================================
 
 -spec rotate_secret_by_id(secret_id(), boolean()) ->
-          ok | {error, not_found | bad_encrypt_id() | inconsistent_graph() |
-                       not_supported | no_quorum}.
+          {ok, string()} |
+          {error, not_found | bad_encrypt_id() |
+                  inconsistent_graph() | not_supported | no_quorum}.
 rotate_secret_by_id(Id, IsAutomatic) ->
     ?log_info("Rotating secret #~b", [Id]),
     case get_secret(Id) of
@@ -925,7 +930,7 @@ rotate_secret_by_id(Id, IsAutomatic) ->
             try rotate_secret(SecretProps) of
                 ok ->
                     log_succ_kek_rotation(Id, Name, IsAutomatic),
-                    ok;
+                    {ok, Name};
                 {error, Reason} ->
                     log_unsucc_kek_rotation(Id, Name, Reason, IsAutomatic),
                     {error, Reason}
