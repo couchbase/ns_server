@@ -416,8 +416,8 @@ jwks_uri_validators() ->
                ok
        end, jwksUri, publicKeySource, _),
      validator:url(jwksUri, [<<"http">>, <<"https">>], _),
-     validator:string(jwksUriConnectAddressFamily, _),
-     validator:one_of(jwksUriConnectAddressFamily, ["inet", "inet6"], _),
+     validator:string(jwksUriAddressFamily, _),
+     validator:one_of(jwksUriAddressFamily, ["inet", "inet6"], _),
      validator:integer(jwksUriHttpTimeoutMs,
                        ?JWKS_URI_MIN_TIMEOUT_MS,
                        ?JWKS_URI_MAX_TIMEOUT_MS, _),
