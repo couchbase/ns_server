@@ -18,13 +18,11 @@ from websockets.http11 import Response
 from websockets.frames import Frame, Opcode
 
 import testlib
-from testsets.stats_tests import range_api_get
 
 
 class AppTelemetryTests(testlib.BaseTestSet):
     def __init__(self, cluster):
         super().__init__(cluster)
-        self.initial_prometheus_config = None
         self.initial_app_telemetry_config = None
 
     @staticmethod
@@ -43,25 +41,16 @@ class AppTelemetryTests(testlib.BaseTestSet):
             self.cluster, "/settings/appTelemetry").json()
         testlib.post_succ(self.cluster, "/settings/appTelemetry",
                           data={"enabled": "true"})
-        self.initial_prometheus_config = (testlib.get_succ(
-            self.cluster, "/internal/settings/metrics/services/clusterManager")
-                                          .json())
 
-        # Decrease scrape intervals to avoid having to wait long for scrape
-        testlib.post_succ(self.cluster,
-                          "/internal/settings/metrics/services/clusterManager",
-                          data={"highCardScrapeInterval": 1})
+        # Decrease scrape interval to avoid having to wait long for scrape
         testlib.diag_eval(self.cluster,
                           "ns_config:set(app_telemetry,"
                           "              [{enabled, true},"
-                          "               {scrape_interval_seconds, 1}]).")
+                          "               {scrape_interval_seconds, 0}]).")
 
     def teardown(self):
         testlib.post_succ(self.cluster, "/settings/appTelemetry",
                           json=self.initial_app_telemetry_config)
-        testlib.post_succ(self.cluster,
-                          "/internal/settings/metrics/services/clusterManager",
-                          json=self.initial_prometheus_config)
 
     def simple_test(self):
         # 127.0.0.1 or [::1]
@@ -75,6 +64,7 @@ class AppTelemetryTests(testlib.BaseTestSet):
         node0_services = node0_ext['services']
         node0_port = node0_services['mgmt']
         node0_host = f"{hostname}:{node0_port}"
+        node0 = self.cluster.get_node_from_hostname(node0_host)
         node0_path = node0_ext.get('appTelemetryPath')
         testlib.assert_eq(node0_path, '/_appTelemetry')
 
@@ -83,6 +73,7 @@ class AppTelemetryTests(testlib.BaseTestSet):
         node1_services = node1_ext['services']
         node1_port = node1_services['mgmt']
         node1_host = f"{hostname}:{node1_port}"
+        node1 = self.cluster.get_node_from_hostname(node1_host)
 
         (username, password) = self.cluster.auth
         app_telemetry_url = (f"ws://{username}:{password}@"
@@ -168,24 +159,21 @@ class AppTelemetryTests(testlib.BaseTestSet):
 
         testlib.poll_for_condition(
             lambda:
-            # Test case for local node with zero value not ignored
-            metric_has_value(self.cluster, {'instance': 'ns_server',
-                                            'le': '0.001',
-                                            'name': metric_0,
-                                            'nodes': [node0_host]},
-                             0) and
-            # Test case for remote node
-            metric_has_value(self.cluster, {'instance': 'ns_server',
-                                            'le': '0.001',
-                                            'name': metric_1,
-                                            'nodes': [node1_host]},
-                             value) and
-            # Test case for metric reported across multiple fragment frames
-            metric_has_value(self.cluster, {'instance': 'ns_server',
-                                            'name': metric_2,
-                                            'nodes': [node0_host]},
-                             value),
-            sleep_time=1, timeout=60)
+            metrics_have_values(
+                node0,
+                {
+                    # Test case for local node with zero value not ignored
+                    f"{metric_0}{{le=\"0.001\"}}": "0",
+                    # Test case for metric reported across fragment frames
+                    f"{metric_2}{{}}": f"{value}"
+                 }) and
+            metrics_have_values(
+                node1,
+                {
+                    # Test case for remote node
+                    f"{metric_1}{{le=\"0.001\"}}": f"{value}"
+                }),
+            sleep_time=1, timeout=5)
 
     def disabled_test(self):
         # Disable app telemetry
@@ -254,14 +242,13 @@ def make_metric(metric, uuid, value):
             f" {value} 1695747260").encode('utf-8')
 
 
-def metric_has_value(cluster, expected_metric, expected_value):
-    resp = range_api_get(cluster, expected_metric['name'])
-    if len(resp) > 0:
-        labels = resp[0].get('metric')
-        assert sorted(labels.keys()) == sorted(expected_metric.keys())
-        for label in expected_metric:
-            testlib.assert_eq(labels[label], expected_metric[label])
-        values = resp[0].get('values')
-        if len(values) > 0:
-            return int(values[-1][1]) == expected_value
+def metrics_have_values(node, expected_metrics):
+    resp = testlib.get_succ(node, "/metrics")
+    for line in resp.text.splitlines():
+        parts = line.split(' ')
+        if len(parts) == 2:
+            metric, value = parts
+            if metric in expected_metrics:
+                expected_value = expected_metrics.get(metric)
+                return value == expected_value
     return False
