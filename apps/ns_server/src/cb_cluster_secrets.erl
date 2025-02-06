@@ -1496,20 +1496,23 @@ retire_unused_deks(Kind, DekIdsInUse, #state{deks = DeksInfo} = State) ->
     case length(NewDeks) == length(Deks) of
         true -> State;
         false ->
-            NewKindDeks =
+            {NewKindDeks, NewDekIdsInUse} =
                 case lists:member(ActiveId, DekIdsInUse) of
+                    false when not IsEnabled ->
+                        {KindDeks#{deks => NewDeks, active_id => undefined},
+                         DekIdsInUse};
                     false ->
-                        false = IsEnabled,
-                        KindDeks#{deks => NewDeks, active_id => undefined};
+                        %% Don't let encryption service remove active dek
+                        {KindDeks#{deks => NewDeks}, [ActiveId | DekIdsInUse]};
                     true ->
-                        KindDeks#{deks => NewDeks}
+                        {KindDeks#{deks => NewDeks}, DekIdsInUse}
                 end,
             NewState = State#state{deks = DeksInfo#{Kind => NewKindDeks}},
             write_deks_cfg_file(NewState),
             %% It doesn't make sense to fail this job if file removal fails
             %% because when retried the job will do nothing anyway (because
             %% state doesn't have those deks)
-            encryption_service:garbage_collect_keys(Kind, DekIdsInUse),
+            encryption_service:garbage_collect_keys(Kind, NewDekIdsInUse),
             {ok, _} = cb_crypto:reset_dek_cache(Kind, cleanup),
             on_deks_update(Kind, NewState)
     end.
