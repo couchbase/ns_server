@@ -444,7 +444,7 @@ rotate(Id) ->
                                                    not_supported |
                                                    no_quorum}.
 rotate_internal(Id) ->
-    case rotate_secret_by_id(Id) of
+    case rotate_secret_by_id(Id, false) of
         ok ->
             %% In order to make sure all keys are reencrypted by
             %% the time when the call is finished
@@ -804,7 +804,7 @@ handle_info({timer, rotate_keks}, #state{proc_type = ?MASTER_PROC} = State) ->
             lists:foreach(
               fun (Id) ->
                   try
-                      ok = rotate_secret_by_id(Id)
+                      ok = rotate_secret_by_id(Id, true)
                   catch
                       C:E:ST ->
                           ?log_error("Secret #~p rotation crashed: ~p:~p~n~p",
@@ -893,16 +893,25 @@ terminate(_Reason, _State) ->
 %%% Internal functions
 %%%===================================================================
 
--spec rotate_secret_by_id(secret_id()) -> ok | {error, not_found |
-                                                       bad_encrypt_id() |
-                                                       inconsistent_graph() |
-                                                       not_supported |
-                                                       no_quorum}.
-rotate_secret_by_id(Id) ->
+-spec rotate_secret_by_id(secret_id(), boolean()) ->
+          ok | {error, not_found | bad_encrypt_id() | inconsistent_graph() |
+                       not_supported | no_quorum}.
+rotate_secret_by_id(Id, IsAutomatic) ->
     ?log_info("Rotating secret #~b", [Id]),
     case get_secret(Id) of
-        {ok, SecretProps} ->
-            rotate_secret(SecretProps);
+        {ok, #{name := Name} = SecretProps} ->
+            try rotate_secret(SecretProps) of
+                ok ->
+                    log_succ_kek_rotation(Id, Name, IsAutomatic),
+                    ok;
+                {error, Reason} ->
+                    log_unsucc_kek_rotation(Id, Name, Reason, IsAutomatic),
+                    {error, Reason}
+            catch
+                C:E:ST ->
+                    log_unsucc_kek_rotation(Id, Name, exception, IsAutomatic),
+                    erlang:raise(C, E, ST)
+            end;
         {error, Reason} ->
             ?log_error("Secret #~p rotation failed: ~p", [Id, Reason]),
             {error, Reason}
@@ -3344,6 +3353,22 @@ dummy_deks_info(DataStatus, Issues) ->
             {K, #{data_status => DataStatus,
                   issues => Issues}}
         end, Kinds)).
+
+log_succ_kek_rotation(Id, Name, IsAutomatic) ->
+    event_log:add_log(encryption_key_rotated,
+                      [{encryption_key_id, Id},
+                       {encryption_key_name, iolist_to_binary(Name)},
+                       {is_automatic, IsAutomatic}]).
+
+log_unsucc_kek_rotation(Id, Name, Reason, IsAutomatic) ->
+    event_log:add_log(encryption_key_rotation_failed,
+                      [{encryption_key_id, Id},
+                       {encryption_key_name, iolist_to_binary(Name)},
+                       {is_automatic, IsAutomatic},
+                       {reason, format_failure_reason(Reason)}]).
+
+format_failure_reason(Reason) ->
+    iolist_to_binary(io_lib:format("~p", [Reason], [{chars_limit, 200}])).
 
 -ifdef(TEST).
 replace_secret_in_list_test() ->

@@ -97,6 +97,10 @@ event_details(group_added) ->
     {9225, security, info, <<"Group added">>};
 event_details(group_deleted) ->
     {9226, security, info, <<"Group deleted">>};
+event_details(encryption_key_rotated) ->
+    {9227, security, info, <<"Encryption key rotated">>};
+event_details(encryption_key_rotation_failed) ->
+    {9228, security, error, <<"Encryption key rotation failed">>};
 
 %% event_ids block for Data related events: [8192, ... 9215]
 event_details(bucket_created) ->
