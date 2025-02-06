@@ -8,10 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {HttpParams} from '@angular/common/http';
-import {is} from 'ramda';
-import {throwError, of} from 'rxjs';
-import {tap, catchError} from 'rxjs/operators';
+import { HttpParams } from '@angular/common/http';
+import { is } from 'ramda';
+import { throwError, of } from 'rxjs';
+import { tap, catchError } from 'rxjs/operators';
 
 // import { MnAppService } from './mn.app.service.js';
 
@@ -25,8 +25,8 @@ class MnHttpInterceptorClass {
       setHeaders: {
         'invalid-auth-response': 'on',
         'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-      }
+        Pragma: 'no-cache',
+      },
     });
 
     if (!mnReq.headers?.get('ns-server-ui')) {
@@ -36,12 +36,12 @@ class MnHttpInterceptorClass {
     var params;
     var headers;
 
-    if ((req.method === 'POST' || req.method === 'PUT')) {
+    if (req.method === 'POST' || req.method === 'PUT') {
       if (!req.headers.get('isNotForm')) {
         if (is(Object, mnReq.body) && !Array.isArray(mnReq.body)) {
           params = new HttpParams({
             encoder: new CustomEncoder(),
-            fromObject: mnReq.body
+            fromObject: mnReq.body,
           });
         } else {
           params = mnReq.body;
@@ -50,16 +50,18 @@ class MnHttpInterceptorClass {
           body: params,
           responseType: 'text',
           headers: mnReq.headers.set(
-            'Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8')});
+            'Content-Type',
+            'application/x-www-form-urlencoded; charset=UTF-8'
+          ),
+        });
       }
       if (req.headers.has('isNotForm')) {
         headers = mnReq.headers.delete('isNotForm');
-        mnReq = mnReq.clone({headers: headers, responseType: 'text'});
+        mnReq = mnReq.clone({ headers: headers, responseType: 'text' });
       }
     }
 
-    return next
-    .handle(mnReq).pipe(
+    return next.handle(mnReq).pipe(
       tap((event) => {
         // this.httpResponse.next(event);
       }),

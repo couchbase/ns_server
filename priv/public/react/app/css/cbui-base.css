@@ -45,11 +45,11 @@ button {
   width: auto;
   overflow: visible;
 }
-input[type="reset"],
-input[type="submit"],
-input[type="file"],
-input[type="radio"],
-input[type="checkbox"],
+input[type='reset'],
+input[type='submit'],
+input[type='file'],
+input[type='radio'],
+input[type='checkbox'],
 select,
 button {
   cursor: pointer;
@@ -66,7 +66,7 @@ button::-moz-focus-inner {
 button:focus,
 button.outline:focus,
 button.append:focus {
-  box-shadow: 0 0 4px 2px rgba(0,0,0,0.20)!important; /* button focused by TAB */
+  box-shadow: 0 0 4px 2px rgba(0, 0, 0, 0.2) !important; /* button focused by TAB */
 }
 hr {
   display: block;
@@ -85,7 +85,7 @@ a img {
 /* Regular */
 @font-face {
   font-family: 'OpenSans';
-  src: url("fonts/OpenSans-Regular.woff") format('woff');
+  src: url('fonts/OpenSans-Regular.woff') format('woff');
   font-weight: 400;
   font-weight: normal;
   font-style: normal;
@@ -93,21 +93,21 @@ a img {
 /* Italic */
 @font-face {
   font-family: 'OpenSans';
-  src: url("fonts/OpenSans-Italic.woff") format('woff');
+  src: url('fonts/OpenSans-Italic.woff') format('woff');
   font-weight: 400;
   font-style: italic;
 }
 /* Semibold */
 @font-face {
   font-family: 'OpenSans';
-  src: url("fonts/OpenSans-Semibold.woff") format('woff');
+  src: url('fonts/OpenSans-Semibold.woff') format('woff');
   font-weight: 600;
   font-style: normal;
 }
 /* Bold */
 @font-face {
   font-family: 'OpenSans';
-  src: url("fonts/OpenSans-Bold.woff") format('woff');
+  src: url('fonts/OpenSans-Bold.woff') format('woff');
   font-weight: 700;
   font-style: normal;
 }
@@ -151,10 +151,10 @@ h1 {
   font-weight: 400;
   line-height: 1.1;
   color: #fff;
-  letter-spacing: .025rem;
-  display:-webkit-box;
-  display:-ms-flexbox;
-  display:flex;
+  letter-spacing: 0.025rem;
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
 }
 /* modal dialog white title ------------------------------------------------- */
 h2 {
@@ -181,14 +181,14 @@ h4 label {
 }
 /* subtitle3 - smaller section/component titles ----------------------------- */
 h5 {
-  font-size: .875rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: #000;
   line-height: 2;
 }
 /* very small title --------------------------------------------------------- */
 h6 {
-  font-size: .8125rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: #000;
   line-height: 1.5 !important;
@@ -261,42 +261,42 @@ ol ol ol li {
 }
 ul.nobullet li {
   list-style-type: none;
-  padding: .25rem 0;
+  padding: 0.25rem 0;
 }
 
 /* BASIC TEXT STYLES ---------------------------------------------------------*/
 /* 16px base = 15px --------------------------------------------------------- */
 .text-medium {
-  font-size: .961rem;
+  font-size: 0.961rem;
   font-weight: 400;
 }
 /* 16px base = 14px --------------------------------------------------------- */
 small {
-  font-size: .875rem;
+  font-size: 0.875rem;
   font-weight: 400;
-  white-space:nowrap;
+  white-space: nowrap;
 }
 /* 16px base = 14px --------------------------------------------------------- */
 .text-small {
-  font-size: .875rem;
+  font-size: 0.875rem;
   font-weight: 400;
 }
 /* 16px base = 13px --------------------------------------------------------- */
 .text-smallish {
-  font-size: .8125rem;
+  font-size: 0.8125rem;
 }
 /* 16px base = 12px --------------------------------------------------------- */
 .text-smaller {
-  font-size: .75rem !important;
+  font-size: 0.75rem !important;
   font-weight: 400;
 }
 /* 16px base = 11px --------------------------------------------------------- */
 .text-fine {
-  font-size: .688rem !important;
+  font-size: 0.688rem !important;
   font-weight: 400 !important;
 }
 .text-finer {
-  font-size: .625rem;
+  font-size: 0.625rem;
   font-weight: 400;
 }
 .text-larger {
@@ -311,10 +311,11 @@ small {
   font-weight: 400 !important;
   color: #333;
 }
-.text, text {
+.text,
+text {
   font-family: 'OpenSans' !important;
   font-weight: 400 !important;
-  font-size: .875rem;
+  font-size: 0.875rem;
   color: #000;
 }
 .font-weight-400 {
@@ -324,7 +325,8 @@ strong,
 b {
   font-weight: 600;
 }
-.semi-bold, .bold {
+.semi-bold,
+.bold {
   font-weight: 600 !important;
 }
 em,
@@ -332,11 +334,11 @@ i {
   font-style: italic;
 }
 .disabled {
-  opacity: .55;
+  opacity: 0.55;
   filter: alpha(opacity=55);
 }
 .disabled-more {
-  opacity: .4 !important;
+  opacity: 0.4 !important;
   filter: alpha(opacity=44) !important;
 }
 /* capitalization ----------------------------------------------------------- */
@@ -366,7 +368,7 @@ sup {
   font-size: 74%;
   line-height: 0;
   position: relative;
-  margin-left: .2rem;
+  margin-left: 0.2rem;
 }
 sup {
   top: -0.4rem;
@@ -382,9 +384,10 @@ sub {
 }
 
 .monospaced {
-  font-size: .75rem;
+  font-size: 0.75rem;
   font-style: normal;
-  font-family: Monaco, Consolas, "Andale Mono", "Lucida Console", "Lucida Sans Typewriter", "Courier New", monospace;
+  font-family: Monaco, Consolas, 'Andale Mono', 'Lucida Console',
+    'Lucida Sans Typewriter', 'Courier New', monospace;
 }
 
 /* code ----------------------------------------------------------------------*/
@@ -394,12 +397,13 @@ kbd,
 samp,
 var,
 output {
-  font-size: .875rem;
+  font-size: 0.875rem;
   font-style: normal;
-  font-family: Monaco, Consolas, "Andale Mono", "Lucida Console", "Lucida Sans Typewriter", "Courier New", monospace;
+  font-family: Monaco, Consolas, 'Andale Mono', 'Lucida Console',
+    'Lucida Sans Typewriter', 'Courier New', monospace;
 }
 pre {
-  font-size: .875rem;
+  font-size: 0.875rem;
   line-height: 1.5;
   color: #333;
   overflow: auto;
@@ -416,7 +420,7 @@ mark,
 code,
 samp,
 kbd {
-  padding: .2rem .4rem;
+  padding: 0.2rem 0.4rem;
   display: inline-block;
   line-height: 1;
   border-radius: 2px;
@@ -465,9 +469,9 @@ a:active {
   color: #689fde;
 }
 a[disabled] {
-    pointer-events: none;
-    color: #afafaf;
-    cursor: default;
+  pointer-events: none;
+  color: #afafaf;
+  cursor: default;
 }
 .disabled-link {
   color: #a1a1a1 !important;
@@ -486,7 +490,7 @@ button {
   display: inline-block;
   vertical-align: top;
   font-family: OpenSans, sans-serif;
-  font-size: .961rem;
+  font-size: 0.961rem;
   font-weight: normal;
   white-space: nowrap;
   padding: 0 1.5rem;
@@ -562,31 +566,31 @@ button.light:hover > .icon {
 }
 button.light {
   min-width: 0;
-  padding: 0 .75rem;
+  padding: 0 0.75rem;
   background-color: #fff;
   border: 1px solid #f6f7f9;
   color: #333;
   line-height: 1.9rem;
   box-shadow: 0 1px 1px 0 rgba(66, 66, 66, 0.2);
-  font-size: .875rem;
+  font-size: 0.875rem;
 }
 button.light:hover {
   color: #000;
   box-shadow: 0 2px 2px 0 rgba(0, 0, 0, 0.2);
 }
 button.light:focus {
-  box-shadow: 0px 1px 1px 0 rgba(0,0,0,0.20)!important;
+  box-shadow: 0px 1px 1px 0 rgba(0, 0, 0, 0.2) !important;
 }
 /* min padding outline button when there're lots of them, as in views ------- */
 button.tight {
   min-width: 0;
-  padding: 0 .75rem;
+  padding: 0 0.75rem;
   line-height: normal;
 }
 
 /* when there are button siblings, make 2-x have a left margin -------------- */
 button + button {
-  margin-left: .25rem!important;
+  margin-left: 0.25rem !important;
 }
 /* special case buttons for day picker in Backup ----------------- */
 .btn.outline.tight {
@@ -652,7 +656,7 @@ button.append {
   box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
   margin-left: -1px;
 }
-input[type="text"].prepend {
+input[type='text'].prepend {
   border-radius: 2px 0 0 2px;
 }
 
@@ -668,7 +672,7 @@ table {
 
 table th,
 table td {
-  font-size: .875rem;
+  font-size: 0.875rem;
   padding: 1rem;
   vertical-align: middle;
 }
@@ -677,8 +681,8 @@ table td {
 }
 table th {
   color: #555;
-  font-size: .75rem;
-  padding: .5rem 1rem;
+  font-size: 0.75rem;
+  padding: 0.5rem 1rem;
 }
 table tr.has-hover:hover {
   background-color: #ecf3fa;
@@ -691,15 +695,15 @@ table tr.row-locked {
 }
 table th.no-padding,
 table td.no-padding {
-  padding:0;
+  padding: 0;
 }
 table th.no-padding-top,
 table td.no-padding-top {
-  padding-top:0;
+  padding-top: 0;
 }
 table th:last-child,
 table td:last-child {
-  padding-right: .75rem;
+  padding-right: 0.75rem;
 }
 table tfoot th,
 table tfoot td {
@@ -768,7 +772,7 @@ label {
   line-height: 1.6;
 }
 .forms p {
-  margin-bottom: .5rem;
+  margin-bottom: 0.5rem;
 }
 /* small text under form fields --------------------------------------------- */
 .desc {
@@ -783,48 +787,48 @@ label {
 .forms label + .desc,
 .forms .desc,
 .desc {
-  margin: 0 0 .5rem 0;
+  margin: 0 0 0.5rem 0;
 }
 .formrow {
-  margin-bottom: .85rem;
+  margin-bottom: 0.85rem;
 }
 .formrow p {
   margin: 0;
-  font-size: .75rem;
+  font-size: 0.75rem;
 }
 .formrow small,
 label small,
 h4 small,
 h5 small,
 h6 small {
-  font-size: .75rem;
+  font-size: 0.75rem;
   color: #555;
 }
 
-.checkbox input[type=text] {
-  margin-bottom: .5rem;
+.checkbox input[type='text'] {
+  margin-bottom: 0.5rem;
 }
 .checkbox-inline {
   margin-left: 1rem !important;
 }
-select[multiple="multiple"],
+select[multiple='multiple'],
 textarea {
   width: 100%;
 }
 .input,
-input[type="email"],
-input[type="number"],
-input[type="search"],
-input[type="date"],
-input[type="text"],
-input[type="tel"],
-input[type="url"],
-input[type="password"],
+input[type='email'],
+input[type='number'],
+input[type='search'],
+input[type='date'],
+input[type='text'],
+input[type='tel'],
+input[type='url'],
+input[type='password'],
 textarea,
 select {
   font-family: OpenSans, sans-serif;
-  font-size: .875rem;
-  padding: 0 .5rem;
+  font-size: 0.875rem;
+  padding: 0 0.5rem;
   line-height: 2rem;
   height: 2rem;
   outline: none;
@@ -835,25 +839,26 @@ select {
   color: #333;
 }
 textarea {
-  padding-top: .25rem;
+  padding-top: 0.25rem;
 }
 select {
-  padding: 0 .5rem 0 .25rem;
+  padding: 0 0.5rem 0 0.25rem;
 }
-input[type=number]::-webkit-inner-spin-button,
-input[type=number]::-webkit-outer-spin-button {
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
-input[type="radio"],
-input[type="checkbox"] {
-  font-size: .938rem;
+input[type='radio'],
+input[type='checkbox'] {
+  font-size: 0.938rem;
   position: relative;
   top: -1px;
-  margin-right: .25rem;
+  margin-right: 0.25rem;
   padding: 0;
 }
-.simple-select { /* container around select to strip styling for Firefox ---- */
+.simple-select {
+  /* container around select to strip styling for Firefox ---- */
   position: relative;
   display: inline-block;
 }
@@ -864,26 +869,25 @@ input[type="checkbox"] {
   padding-right: 2rem;
   min-width: 4rem;
   line-height: 1.8rem;
-
 }
 .simple-select:after {
   font-family: FontAwesome;
-  content: "\f0d7";
+  content: '\f0d7';
   font-size: 1rem;
   text-align: center;
   color: #999;
   position: absolute;
-  top: .25rem;
-  right: .75rem;
+  top: 0.25rem;
+  right: 0.75rem;
   pointer-events: none;
 }
 /* this is for select menu with a static label inside it on the left */
 .simple-select-inside-label {
   position: absolute;
-  left: .75rem;
+  left: 0.75rem;
   top: 5px;
   z-index: 10;
-  font-size: .875rem;
+  font-size: 0.875rem;
   color: #333;
 }
 .simple-select-inside-label + .simple-select select {
@@ -892,10 +896,10 @@ input[type="checkbox"] {
 /* this is for an input text field with a static label inside it on the right */
 .inside-label {
   position: absolute;
-  right: .5rem;
+  right: 0.5rem;
   top: 7px;
   z-index: 1;
-  font-size: .75rem;
+  font-size: 0.75rem;
   color: #999;
 }
 .inside-label + .input-inside-label input {
@@ -911,23 +915,23 @@ input:-webkit-autofill:active {
   font-family: OpenSans;
 }
 input:-ms-input-placeholder {
-  font-size: .875rem;
-  padding: .25rem 0 0 0;
+  font-size: 0.875rem;
+  padding: 0.25rem 0 0 0;
   line-height: normal;
 }
-input[type="text"]::placeholder,
+input[type='text']::placeholder,
 textarea::placeholder {
   color: #555;
 }
 
-input[type="email"][disabled],
-input[type="number"][disabled],
-input[type="search"][disabled],
-input[type="date"][disabled],
-input[type="text"][disabled],
-input[type="tel"][disabled],
-input[type="url"][disabled],
-input[type="password"][disabled],
+input[type='email'][disabled],
+input[type='number'][disabled],
+input[type='search'][disabled],
+input[type='date'][disabled],
+input[type='text'][disabled],
+input[type='tel'][disabled],
+input[type='url'][disabled],
+input[type='password'][disabled],
 textarea[disabled],
 select[disabled] {
   resize: none;
@@ -940,13 +944,13 @@ label[disabled] {
   filter: alpha(opacity=55);
   pointer-events: none;
 }
-input[type="email"],
-input[type="number"],
-input[type="search"],
-input[type="text"],
-input[type="tel"],
-input[type="url"],
-input[type="password"] {
+input[type='email'],
+input[type='number'],
+input[type='search'],
+input[type='text'],
+input[type='tel'],
+input[type='url'],
+input[type='password'] {
   -webkit-appearance: none;
 }
 select[multiple],
@@ -958,7 +962,7 @@ select[multiple] {
   padding: 0;
 }
 select[multiple] option {
-  padding: .25rem .5rem;
+  padding: 0.25rem 0.5rem;
 }
 textarea:focus,
 select:focus,
@@ -972,7 +976,7 @@ select:-moz-focusring {
   text-shadow: 0 0 0 #000;
 }
 fieldset {
-  padding: .5rem 1rem 1rem 1.5rem;
+  padding: 0.5rem 1rem 1rem 1.5rem;
   border: 1px solid #d1d1d1;
   border-radius: 2px;
 }
@@ -988,14 +992,14 @@ legend {
 
 .forms textarea,
 .forms select,
-.forms input[type="email"],
-.forms input[type="number"],
-.forms input[type="search"],
-.forms input[type="date"],
-.forms input[type="text"],
-.forms input[type="tel"],
-.forms input[type="url"],
-.forms input[type="password"] {
+.forms input[type='email'],
+.forms input[type='number'],
+.forms input[type='search'],
+.forms input[type='date'],
+.forms input[type='text'],
+.forms input[type='tel'],
+.forms input[type='url'],
+.forms input[type='password'] {
   width: 100%;
   display: block;
 }
@@ -1008,14 +1012,14 @@ legend {
   flex: 1;
   margin-bottom: 0 !important;
 }
-.input-append input[type="number"],
-.input-append input[type="text"],
+.input-append input[type='number'],
+.input-append input[type='text'],
 .input-append textarea,
 .input-append select {
   display: inline-block;
 }
 .forms .label-top {
-  padding-top: .5rem;
+  padding-top: 0.5rem;
 }
 .forms .checkbox-list {
   display: block;
@@ -1028,10 +1032,10 @@ legend {
   font-weight: 400;
   cursor: pointer;
   color: #000;
-  font-size: .961rem;
+  font-size: 0.961rem;
 }
 .forms .checkbox-list .desc {
-    display: inline-block;
+  display: inline-block;
 }
 .forms .checkbox-list-vertical .checkbox {
   margin-bottom: 8px;
@@ -1105,32 +1109,32 @@ legend {
 .forms .form-inline textarea,
 .forms.form-inline select,
 .forms .form-inline select,
-.forms.form-inline input[type="email"],
-.forms .form-inline input[type="email"],
-.forms.form-inline input[type="number"],
-.forms .form-inline input[type="number"],
-.forms.form-inline input[type="search"],
-.forms .form-inline input[type="search"],
-.forms.form-inline input[type="date"],
-.forms .form-inline input[type="date"],
-.forms.form-inline input[type="text"],
-.forms .form-inline input[type="text"],
-.forms.form-inline input[type="tel"],
-.forms .form-inline input[type="tel"],
-.forms.form-inline input[type="url"],
-.forms .form-inline input[type="url"],
-.forms.form-inline input[type="password"],
-.forms .form-inline input[type="password"],
+.forms.form-inline input[type='email'],
+.forms .form-inline input[type='email'],
+.forms.form-inline input[type='number'],
+.forms .form-inline input[type='number'],
+.forms.form-inline input[type='search'],
+.forms .form-inline input[type='search'],
+.forms.form-inline input[type='date'],
+.forms .form-inline input[type='date'],
+.forms.form-inline input[type='text'],
+.forms .form-inline input[type='text'],
+.forms.form-inline input[type='tel'],
+.forms .form-inline input[type='tel'],
+.forms.form-inline input[type='url'],
+.forms .form-inline input[type='url'],
+.forms.form-inline input[type='password'],
+.forms .form-inline input[type='password'],
 .forms.form-inline .tools-select,
 .forms .form-inline .tools-select,
- .forms .form-inline label {
+.forms .form-inline label {
   width: auto;
   display: inline-block;
 }
 
 input .input-small {
-  font-size: .875rem;
-  padding: 0 .5rem;
+  font-size: 0.875rem;
+  padding: 0 0.5rem;
   height: 28px;
   line-height: normal;
 }
@@ -1142,7 +1146,7 @@ input .input-short-1,
   width: 2.5rem !important;
 }
 select .select-small {
-  font-size: .75rem;
+  font-size: 0.75rem;
   height: 28px;
   padding: 0;
   border-radius: 2px;
@@ -1153,37 +1157,37 @@ select .select-small {
 .forms .success,
 form .error,
 form .success {
-  font-size: .75rem;
+  font-size: 0.75rem;
   display: block;
 }
 
 /* error text after form validation - appears at the top of the form -------- */
 .forms .error-form,
 form .error-form {
-  margin-bottom: .5rem;
+  margin-bottom: 0.5rem;
 }
 
 /* when there is some result status beneath a button ------------------------ */
 .result-status {
-  font-size: .8125rem;
-  margin: .75rem 0 0 0;
+  font-size: 0.8125rem;
+  margin: 0.75rem 0 0 0;
 }
 .result-status.success:before {
   font-family: FontAwesome;
-  content: "\f00c";
-  font-size: .825rem;
+  content: '\f00c';
+  font-size: 0.825rem;
   color: #56b349;
 }
 .result-status.error:before {
   font-family: FontAwesome;
-  content: "\f06a";
-  font-size: .825rem;
+  content: '\f06a';
+  font-size: 0.825rem;
   color: #e07f82;
 }
 .result-status.warning:before {
   font-family: FontAwesome;
-  content: "\f071";
-  font-size: .825rem;
+  content: '\f071';
+  font-size: 0.825rem;
   color: #f5a623;
 }
 
@@ -1200,18 +1204,21 @@ form .error-form {
   user-select: none;
 }
 .opacity {
-  opacity: .6;
+  opacity: 0.6;
   filter: alpha(opacity=60);
 }
 
 /* COLORS -> TEXT ----------------------------------------------------------- */
-.success { /* green-2 */
+.success {
+  /* green-2 */
   color: #56b349;
 }
-.warning { /* orange-1 */
+.warning {
+  /* orange-1 */
   color: #f5a623 !important;
 }
-.error { /* red-1 */
+.error {
+  /* red-1 */
   color: #cc2a2e;
 }
 
@@ -1441,7 +1448,7 @@ form .error-form {
   background-color: #d9e7f7;
 }
 .blue-bg-7 {
-  background-color: #ecf3fa!important;
+  background-color: #ecf3fa !important;
 }
 .blue-bg-8 {
   background-color: #f6fafd;
@@ -1523,7 +1530,7 @@ form .error-form {
 
 /* CURSOR STYLES ------------------------------------------------------------ */
 .cursor-default {
-  cursor: default!important;
+  cursor: default !important;
 }
 .cursor-auto {
   cursor: auto;
@@ -1532,7 +1539,7 @@ form .error-form {
   cursor: pointer;
 }
 .cursor-none {
-  cursor: none!important;
+  cursor: none !important;
 }
 .cursor-move {
   cursor: move;

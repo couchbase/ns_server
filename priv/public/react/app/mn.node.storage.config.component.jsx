@@ -24,7 +24,7 @@ export class MnNodeStorageConfigComponent extends MnLifeCycleHooksToStream {
     this.state = {
       isEnterprise: false,
       postNodeInitHttpError: null,
-      postClusterInitHttpError: null
+      postClusterInitHttpError: null,
     };
   }
 
@@ -35,112 +35,143 @@ export class MnNodeStorageConfigComponent extends MnLifeCycleHooksToStream {
 
     this.isEnterprise
       .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(isEnterprise => this.setState({isEnterprise}));
+      .subscribe((isEnterprise) => this.setState({ isEnterprise }));
 
     this.postNodeInitHttp.error
       .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(error => this.setState({postNodeInitHttpError: error}));
+      .subscribe((error) => this.setState({ postNodeInitHttpError: error }));
 
     this.postClusterInitHttp.error
       .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(error => this.setState({postClusterInitHttpError: error}));
+      .subscribe((error) => this.setState({ postClusterInitHttpError: error }));
   }
 
   addCbasPathField = () => {
     const last = this.props.group.get('storage.cbas_path').length - 1;
     this.props.group
       .get('storage.cbas_path')
-      .push(new FormControl(this.props.group.get('storage.cbas_path').value[last]));
-  }
+      .push(
+        new FormControl(this.props.group.get('storage.cbas_path').value[last])
+      );
+  };
 
   removeCbasPathField = () => {
     const last = this.props.group.get('storage.cbas_path').length - 1;
     this.props.group.get('storage.cbas_path').removeAt(last);
-  }
+  };
 
   render() {
     const { group } = this.props;
-    const { isEnterprise, postNodeInitHttpError, postClusterInitHttpError } = this.state;
+    const { isEnterprise, postNodeInitHttpError, postClusterInitHttpError } =
+      this.state;
 
     return (
-      <FieldGroup control={group} strict={false} render={() => (
-        <div>
-          <div 
-            className="error error-form"
-            hidden={!postNodeInitHttpError?.errors?._}>
-            {postNodeInitHttpError?.errors?._}
-          </div>
-
+      <FieldGroup
+        control={group}
+        strict={false}
+        render={() => (
           <div>
+            <div
+              className="error error-form"
+              hidden={!postNodeInitHttpError?.errors?._}
+            >
+              {postNodeInitHttpError?.errors?._}
+            </div>
+
             <div>
-              <div className="formrow">
-                <div className="row">
-                  <label htmlFor="setup_db_path_input">Data Disk Path</label>
-                  <small className="text-smaller">Path cannot be changed after setup</small>
-                </div>
-                <MnPathFieldComponent
-                  control={group.get('storage.path')}
-                  controlName="setup_db_path_input" />
-              </div>
-              <div
-                className="error"
-                hidden={!postClusterInitHttpError?.errors?.path}>
-                {postClusterInitHttpError?.errors?.path}
-              </div>
-
-              <div className="formrow">
-                <div className="row">
-                  <label htmlFor="setup_index_path_input">Indexes Disk Path</label>
-                  <small className="text-smaller">Used by GSI, FTS, and Views</small>
-                </div>
-                <MnPathFieldComponent
-                  control={group.get('storage.index_path')}
-                  controlName="setup_index_path_input" />
-              </div>
-              <div
-                className="error"
-                hidden={!postClusterInitHttpError?.errors?.index_path}>
-                {postClusterInitHttpError?.errors?.index_path}
-              </div>
-
-              {isEnterprise && (
+              <div>
                 <div className="formrow">
                   <div className="row">
-                    <label htmlFor="setup_eventing_path_input">Eventing Disk Path</label>
-                    <small className="text-smaller">Path cannot be changed after setup</small>
+                    <label htmlFor="setup_db_path_input">Data Disk Path</label>
+                    <small className="text-smaller">
+                      Path cannot be changed after setup
+                    </small>
                   </div>
                   <MnPathFieldComponent
-                    control={group.get('storage.eventing_path')}
-                    controlName="setup_eventing_path_input" />
+                    control={group.get('storage.path')}
+                    controlName="setup_db_path_input"
+                  />
                 </div>
-              )}
-              <div
-                className="error"
-                hidden={!postClusterInitHttpError?.errors?.eventing_path}>
-                {postClusterInitHttpError?.errors?.eventing_path}
-              </div>
+                <div
+                  className="error"
+                  hidden={!postClusterInitHttpError?.errors?.path}
+                >
+                  {postClusterInitHttpError?.errors?.path}
+                </div>
 
-              {isEnterprise && (
                 <div className="formrow">
                   <div className="row">
-                    <label htmlFor="setup_cbas_path_input0">Analytics Disk Paths</label>
-                    <small className="text-smaller">Paths cannot be changed after setup</small>
+                    <label htmlFor="setup_index_path_input">
+                      Indexes Disk Path
+                    </label>
+                    <small className="text-smaller">
+                      Used by GSI, FTS, and Views
+                    </small>
                   </div>
-                  <div>
-                    <FieldArray
-                      control={group.get('storage.cbas_path')}
-                      strict={false}
-                      render={(data) => {
-                        return data.controls.map((control, i) => {
-                          return (<div className="formrow" key={i}>
-                            <MnPathFieldComponent
-                              control={control}
-                              controlName={`setup_cbas_path_input${i}`} />
-                          </div>
-                        )})}
-                      }/>
+                  <MnPathFieldComponent
+                    control={group.get('storage.index_path')}
+                    controlName="setup_index_path_input"
+                  />
+                </div>
+                <div
+                  className="error"
+                  hidden={!postClusterInitHttpError?.errors?.index_path}
+                >
+                  {postClusterInitHttpError?.errors?.index_path}
+                </div>
+
+                {isEnterprise && (
+                  <div className="formrow">
+                    <div className="row">
+                      <label htmlFor="setup_eventing_path_input">
+                        Eventing Disk Path
+                      </label>
+                      <small className="text-smaller">
+                        Path cannot be changed after setup
+                      </small>
+                    </div>
+                    <MnPathFieldComponent
+                      control={group.get('storage.eventing_path')}
+                      controlName="setup_eventing_path_input"
+                    />
                   </div>
-                  {/* <div>
+                )}
+                <div
+                  className="error"
+                  hidden={!postClusterInitHttpError?.errors?.eventing_path}
+                >
+                  {postClusterInitHttpError?.errors?.eventing_path}
+                </div>
+
+                {isEnterprise && (
+                  <div className="formrow">
+                    <div className="row">
+                      <label htmlFor="setup_cbas_path_input0">
+                        Analytics Disk Paths
+                      </label>
+                      <small className="text-smaller">
+                        Paths cannot be changed after setup
+                      </small>
+                    </div>
+                    <div>
+                      <FieldArray
+                        control={group.get('storage.cbas_path')}
+                        strict={false}
+                        render={(data) => {
+                          return data.controls.map((control, i) => {
+                            return (
+                              <div className="formrow" key={i}>
+                                <MnPathFieldComponent
+                                  control={control}
+                                  controlName={`setup_cbas_path_input${i}`}
+                                />
+                              </div>
+                            );
+                          });
+                        }}
+                      />
+                    </div>
+                    {/* <div>
                     {group.get('storage.cbas_path').controls.map((control, i) => {
                       console.log(control);
                       return (<div className="formrow" key={i}>
@@ -150,33 +181,41 @@ export class MnNodeStorageConfigComponent extends MnLifeCycleHooksToStream {
                       </div>
                     )})}
                   </div> */}
-                </div>
-              )}
+                  </div>
+                )}
 
-              {isEnterprise && (
-                <div className="row formrow flex-right margin-top-neg-2">
-                  <button
-                    className="outline btn-small"
-                    title="Add field"
-                    onClick={this.addCbasPathField}
-                    type="button">+</button>
-                  <button
-                    className="outline btn-small"
-                    title="Remove field"
-                    disabled={group.get('storage.cbas_path').length === 1}
-                    onClick={this.removeCbasPathField}
-                    type="button">-</button>
+                {isEnterprise && (
+                  <div className="row formrow flex-right margin-top-neg-2">
+                    <button
+                      className="outline btn-small"
+                      title="Add field"
+                      onClick={this.addCbasPathField}
+                      type="button"
+                    >
+                      +
+                    </button>
+                    <button
+                      className="outline btn-small"
+                      title="Remove field"
+                      disabled={group.get('storage.cbas_path').length === 1}
+                      onClick={this.removeCbasPathField}
+                      type="button"
+                    >
+                      -
+                    </button>
+                  </div>
+                )}
+                <div
+                  className="error"
+                  hidden={!postClusterInitHttpError?.errors?.cbas_path}
+                >
+                  {postClusterInitHttpError?.errors?.cbas_path}
                 </div>
-              )}
-              <div
-                className="error"
-                hidden={!postClusterInitHttpError?.errors?.cbas_path}>
-                {postClusterInitHttpError?.errors?.cbas_path}
               </div>
             </div>
           </div>
-        </div>
-      )} />
+        )}
+      />
     );
   }
-} 
+}

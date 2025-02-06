@@ -9,34 +9,38 @@ licenses/APL2.txt.
 */
 
 import axios from 'axios';
-import {BehaviorSubject} from 'rxjs';
+import { BehaviorSubject } from 'rxjs';
 
 const mnPools = {
   get,
   clearCache,
   getFresh,
-  export: new BehaviorSubject({})
+  export: new BehaviorSubject({}),
 };
 
 var cache;
-const launchID = (new Date()).valueOf() + '-' + ((Math.random() * 65536) >> 0);
+const launchID = new Date().valueOf() + '-' + ((Math.random() * 65536) >> 0);
 
 function get(mnHttpParams) {
   if (cache) {
     return Promise.resolve(cache);
   }
 
-  return axios.get('/pools', {
-    responseType: 'json',
-    mnHttp: mnHttpParams
-  }).then(resp => {
-    const pools = resp.data;
-    pools.isInitialized = !!pools.pools.length;
-    pools.launchID = pools.uuid + '-' + launchID;
-    mnPools.export.next(Object.assign(structuredClone(mnPools.export.getValue()), pools));
-    cache = pools;
-    return pools;
-  });
+  return axios
+    .get('/pools', {
+      responseType: 'json',
+      mnHttp: mnHttpParams,
+    })
+    .then((resp) => {
+      const pools = resp.data;
+      pools.isInitialized = !!pools.pools.length;
+      pools.launchID = pools.uuid + '-' + launchID;
+      mnPools.export.next(
+        Object.assign(structuredClone(mnPools.export.getValue()), pools)
+      );
+      cache = pools;
+      return pools;
+    });
 }
 
 function clearCache() {
@@ -48,4 +52,4 @@ function getFresh() {
   return this.clearCache().get();
 }
 
-export default mnPools
+export default mnPools;

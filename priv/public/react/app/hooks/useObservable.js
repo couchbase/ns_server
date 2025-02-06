@@ -17,4 +17,4 @@ function useObservable(observable, initialValue) {
   return value;
 }
 
-export {useObservable};
+export { useObservable };

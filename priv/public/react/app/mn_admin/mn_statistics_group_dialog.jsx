@@ -9,9 +9,9 @@ class MnStatisticsGroupDialog extends MnLifeCycleHooksToStream {
   constructor(props) {
     super(props);
     this.state = {
-      name: "",
-      desc: "",
-      charts: []
+      name: '',
+      desc: '',
+      charts: [],
     };
   }
 
@@ -19,25 +19,26 @@ class MnStatisticsGroupDialog extends MnLifeCycleHooksToStream {
     const vm = this;
     vm.submit = submit;
     function submit() {
-      var group = mnStoreService.store("groups").add(vm.state);
-      mnStoreService.store("scenarios")
+      var group = mnStoreService.store('groups').add(vm.state);
+      mnStoreService
+        .store('scenarios')
         .share()
-        .find(scenario => scenario.id === vm.props.scenarioId)
+        .find((scenario) => scenario.id === vm.props.scenarioId)
         .groups.push(group.id);
-  
+
       mnPromiseHelper(vm, mnUserRolesService.saveDashboard())
         .showGlobalSpinner()
-        .showGlobalSuccess("Group added successfully!")
+        .showGlobalSuccess('Group added successfully!')
         .onSuccess(function () {
-          MnHelperReactService.rootScopeEmitter.emit("scenariosChanged");
+          MnHelperReactService.rootScopeEmitter.emit('scenariosChanged');
           vm.props.onClose(group);
         });
     }
   }
 
   handleNameChange = (event) => {
-    this.setState({name: event.target.value});
-  }
+    this.setState({ name: event.target.value });
+  };
 
   render() {
     const vm = this;
@@ -49,15 +50,16 @@ class MnStatisticsGroupDialog extends MnLifeCycleHooksToStream {
         <div className="panel-header">
           <h2>New Group</h2>
         </div>
-        <form onSubmit={(e) => {
-          e.preventDefault();
-          vm.submit();
-        }} className="forms">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            vm.submit();
+          }}
+          className="forms"
+        >
           <div className="panel-content">
             <div className="formrow">
-              <label htmlFor="for-group-name">
-                Group Name
-              </label>
+              <label htmlFor="for-group-name">Group Name</label>
               <input
                 type="text"
                 id="for-group-name"
@@ -72,9 +74,7 @@ class MnStatisticsGroupDialog extends MnLifeCycleHooksToStream {
           </div>
           <div className="panel-footer">
             <a onClick={onDismiss}>Cancel</a>
-            <button type="submit">
-              Save
-            </button>
+            <button type="submit">Save</button>
           </div>
         </form>
       </div>
@@ -82,4 +82,4 @@ class MnStatisticsGroupDialog extends MnLifeCycleHooksToStream {
   }
 }
 
-export { MnStatisticsGroupDialog }; 
+export { MnStatisticsGroupDialog };

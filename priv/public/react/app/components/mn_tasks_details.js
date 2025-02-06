@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 import _ from 'lodash';
-import {MnTasksService} from '../mn.tasks.service.js';
+import { MnTasksService } from '../mn.tasks.service.js';
 import axios from 'axios';
 
 // Add cache variable at the top level
@@ -20,31 +20,34 @@ function mnTasksDetailsFactory(mnTasksService) {
     clearCache: clearCache,
     getFresh: getFresh,
     getRebalanceReport: getRebalanceReport,
-    clearRebalanceReportCache: clearRebalanceReportCache
+    clearRebalanceReportCache: clearRebalanceReportCache,
   };
 
   return mnTasksDetails;
 
   function getRebalanceReport(url) {
-    const reportUrl = url || "/logs/rebalanceReport";
+    const reportUrl = url || '/logs/rebalanceReport';
     // Check cache first
     if (httpCache.has(reportUrl)) {
       return Promise.resolve(httpCache.get(reportUrl));
     }
-    
+
     return axios({
       url: reportUrl,
-      method: 'GET'
-    }).then(function(response) {
-      httpCache.set(reportUrl, response);
-      return response;
-    }, function () {
-      return {data: {stageInfo: {}}};
-    });
+      method: 'GET',
+    }).then(
+      function (response) {
+        httpCache.set(reportUrl, response);
+        return response;
+      },
+      function () {
+        return { data: { stageInfo: {} } };
+      }
+    );
   }
 
   function clearRebalanceReportCache(url) {
-    httpCache.delete(url || "/logs/rebalanceReport");
+    httpCache.delete(url || '/logs/rebalanceReport');
     return this;
   }
 
@@ -58,9 +61,8 @@ function mnTasksDetailsFactory(mnTasksService) {
     return axios({
       url: tasksUrl,
       method: 'GET',
-      mnHttp: mnHttpParams
+      mnHttp: mnHttpParams,
     }).then(function (resp) {
-      
       var rv = {};
       var tasks = resp.data;
 
@@ -72,32 +74,41 @@ function mnTasksDetailsFactory(mnTasksService) {
       rv.tasksWarmingUp = _.filter(tasks, detectWarmupTask);
       rv.tasksBucketCompaction = _.filter(tasks, detectBucketCompactionTask);
       rv.tasksViewCompaction = _.filter(tasks, detectViewCompactionTask);
-      rv.inRebalance = !!(rv.tasksRebalance && rv.tasksRebalance.status === "running");
+      rv.inRebalance = !!(
+        rv.tasksRebalance && rv.tasksRebalance.status === 'running'
+      );
       rv.inRecoveryMode = !!rv.tasksRecovery;
       rv.loadingSamples = _.filter(tasks, detectLoadingSamples);
       rv.isLoadingSamples = !!_.detect(tasks, detectLoadingSamples);
       rv.stopRecoveryURI = rv.tasksRecovery && rv.tasksRecovery.stopURI;
-      rv.isSubtypeFailover =
-        !!(rv.tasksRebalance &&
-          ['gracefulFailover', 'failover'].includes(rv.tasksRebalance.subtype));
+      rv.isSubtypeFailover = !!(
+        rv.tasksRebalance &&
+        ['gracefulFailover', 'failover'].includes(rv.tasksRebalance.subtype)
+      );
       rv.running = _.filter(tasks, function (task) {
-        return task.status === "running";
+        return task.status === 'running';
       });
       rv.isOrphanBucketTask = !!_.detect(tasks, detectOrphanBucketTask);
 
       mnTasksService.stream.tasksXDCRPlug.next(rv.tasksXDCR);
       mnTasksService.stream.tasksWarmingUpPlug.next(rv.tasksWarmingUp);
-      mnTasksService.stream.tasksBucketCompactionPlug.next(rv.tasksBucketCompaction);
-      mnTasksService.stream.tasksViewCompactionPlug.next(rv.tasksViewCompaction);
+      mnTasksService.stream.tasksBucketCompactionPlug.next(
+        rv.tasksBucketCompaction
+      );
+      mnTasksService.stream.tasksViewCompactionPlug.next(
+        rv.tasksViewCompaction
+      );
       mnTasksService.stream.tasksLoadingSamples.next(rv.loadingSamples);
 
       let noCollectInfoTask = {
         nodesByStatus: {},
         nodeErrors: [],
         status: 'idle',
-        perNode: {}
+        perNode: {},
       };
-      mnTasksService.stream.taskCollectInfoPlug.next(rv.tasksCollectInfo[0] || noCollectInfoTask);
+      mnTasksService.stream.taskCollectInfoPlug.next(
+        rv.tasksCollectInfo[0] || noCollectInfoTask
+      );
       // Cache the response
       httpCache.set(tasksUrl, rv);
       return rv;
@@ -113,19 +124,21 @@ function mnTasksDetailsFactory(mnTasksService) {
   }
 
   function detectOrphanBucketTask(taskInfo) {
-    return taskInfo.type === "orphanBucket";
+    return taskInfo.type === 'orphanBucket';
   }
 
   function detectRecoveryTasks(taskInfo) {
-    return taskInfo.type === "recovery";
+    return taskInfo.type === 'recovery';
   }
 
   function detectRebalanceTasks(taskInfo) {
-    return taskInfo.type === "rebalance";
+    return taskInfo.type === 'rebalance';
   }
 
   function detectLoadingSamples(taskInfo) {
-    return taskInfo.type === "loadingSampleBucket" && taskInfo.status === "running";
+    return (
+      taskInfo.type === 'loadingSampleBucket' && taskInfo.status === 'running'
+    );
   }
 
   function detectWarmupTask(taskInfo) {

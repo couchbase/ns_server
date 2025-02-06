@@ -6,7 +6,7 @@ class MnSearch extends Component {
     this.state = {
       mnSearch: '',
       showFilterFlag: false,
-      focusFilterField: false
+      focusFilterField: false,
     };
   }
 
@@ -16,17 +16,24 @@ class MnSearch extends Component {
     vm.showFilter = showFilter;
 
     function hideFilter() {
-      vm.setState({mnSearch: "", showFilterFlag: false});
+      vm.setState({ mnSearch: '', showFilterFlag: false });
     }
 
     function showFilter() {
-      vm.setState({showFilterFlag: true, focusFilterField: true});
+      vm.setState({ showFilterFlag: true, focusFilterField: true });
     }
   }
 
   render() {
     const vm = this;
-    const { mnPlaceholder, mnHideButton, mnDisabled, className, onChange, mnSearch} = this.props;
+    const {
+      mnPlaceholder,
+      mnHideButton,
+      mnDisabled,
+      className,
+      onChange,
+      mnSearch,
+    } = this.props;
     const { showFilterFlag, focusFilterField } = this.state;
 
     return (
@@ -43,19 +50,30 @@ class MnSearch extends Component {
               placeholder={mnPlaceholder}
               autoFocus={focusFilterField}
             />
-            <span className="icon fa-search-minus" style={{ display: !mnSearch ? '' : 'none' }}></span>
-            <span className="icon fa-times-circle" style={{ display: mnSearch ? '' : 'none' }} onClick={() => onChange('')}></span>
+            <span
+              className="icon fa-search-minus"
+              style={{ display: !mnSearch ? '' : 'none' }}
+            ></span>
+            <span
+              className="icon fa-times-circle"
+              style={{ display: mnSearch ? '' : 'none' }}
+              onClick={() => onChange('')}
+            ></span>
           </div>
         )}
         <a
           onClick={vm.showFilter}
           style={{ display: !showFilterFlag && !mnHideButton ? '' : 'none' }}
-          className="allcaps">filter
+          className="allcaps"
+        >
+          filter
         </a>
         <a
           onClick={vm.hideFilter}
           style={{ display: showFilterFlag && !mnHideButton ? '' : 'none' }}
-          className="allcaps">done
+          className="allcaps"
+        >
+          done
         </a>
       </div>
     );

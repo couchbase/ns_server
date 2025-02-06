@@ -7,34 +7,34 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-import mnStatsDescription from "./mn_statistics_description.js";
-import mnPoolDefault from "../components/mn_pool_default.js";
-import axios from "axios";
+import mnStatsDescription from './mn_statistics_description.js';
+import mnPoolDefault from '../components/mn_pool_default.js';
+import axios from 'axios';
 
 function mnStatisticsDescriptionFactory(mnPoolDefault) {
   return {
     getStats: getStats,
     getKvGroups: getKvGroups,
     getStatsDescriptions: getStatsDescriptions,
-    getStatsDump : getStatsDump
+    getStatsDump: getStatsDump,
   };
 
   function getStats() {
-    return mnPoolDefault.export.getValue().compat.atLeast764 ? 
-        mnStatsDescription["7.6.4"].stats :
-        mnPoolDefault.export.getValue().compat.atLeast76 ?
-        mnStatsDescription["7.6"].stats :
-        mnPoolDefault.export.getValue().compat.atLeast72 ?
-        mnStatsDescription["7.2"].stats :
-        mnPoolDefault.export.getValue().compat.atLeast70 ?
-            mnStatsDescription["7.0"].stats :
-            mnStatsDescription["6.5"].stats;
+    return mnPoolDefault.export.getValue().compat.atLeast764
+      ? mnStatsDescription['7.6.4'].stats
+      : mnPoolDefault.export.getValue().compat.atLeast76
+        ? mnStatsDescription['7.6'].stats
+        : mnPoolDefault.export.getValue().compat.atLeast72
+          ? mnStatsDescription['7.2'].stats
+          : mnPoolDefault.export.getValue().compat.atLeast70
+            ? mnStatsDescription['7.0'].stats
+            : mnStatsDescription['6.5'].stats;
   }
 
   function getKvGroups() {
-    return mnPoolDefault.export.getValue().compat.atLeast70 ?
-      mnStatsDescription["7.0"].kvGroups :
-      mnStatsDescription["6.5"].kvGroups;
+    return mnPoolDefault.export.getValue().compat.atLeast70
+      ? mnStatsDescription['7.0'].kvGroups
+      : mnStatsDescription['6.5'].kvGroups;
   }
 
   function getStatsDescriptions(version) {
@@ -44,7 +44,7 @@ function mnStatisticsDescriptionFactory(mnPoolDefault) {
   function doGetStatMapping(section, stat) {
     return axios({
       url: '/_statsMapping/' + section + '/' + stat,
-      method: 'GET'
+      method: 'GET',
     }).then(function (resp) {
       return resp.data;
     });
@@ -53,7 +53,7 @@ function mnStatisticsDescriptionFactory(mnPoolDefault) {
   function doGetMetricsJSON() {
     return axios({
       url: '/ui/metrics/metrics.json',
-      method: 'GET'
+      method: 'GET',
     }).then(function (resp) {
       var metrics = resp.data;
       var result = {};
@@ -70,22 +70,22 @@ function mnStatisticsDescriptionFactory(mnPoolDefault) {
   function getStatMapping(section, statName) {
     if (section == '@xdcr-') {
       section += 'sourcebucketname';
-      if (statName != 'replication_changes_left' && statName != 'percent_completeness') {
-        statName = 'replications/*/sourcebucketname/targetbucketname/' + statName;
+      if (
+        statName != 'replication_changes_left' &&
+        statName != 'percent_completeness'
+      ) {
+        statName =
+          'replications/*/sourcebucketname/targetbucketname/' + statName;
       }
-    }
-    else if (section == '@fts-') {
+    } else if (section == '@fts-') {
       section += 'bucketname';
       statName = '/fts/' + statName;
-    }
-    else if (section == '@index-') {
+    } else if (section == '@index-') {
       section += 'bucketname';
       statName = '/index/' + statName;
-    }
-    else if (section == '@kv-') {
+    } else if (section == '@kv-') {
       section = 'bucketname';
-    }
-    else if (section.endsWith('-')) {
+    } else if (section.endsWith('-')) {
       section += 'bucketname';
     }
     return doGetStatMapping(section, statName);
@@ -96,18 +96,19 @@ function mnStatisticsDescriptionFactory(mnPoolDefault) {
 
     var makeStat = function (sectionName, statName, perItem, statDetails) {
       var stat = {};
-      stat["ui-name"] = statName;
-      stat["group"] = sectionName;
-      stat["per-item"] = perItem;
+      stat['ui-name'] = statName;
+      stat['group'] = sectionName;
+      stat['per-item'] = perItem;
       for (var k in statDetails) {
         stat[k] = statDetails[k];
       }
-      if (version == "6.5") {
+      if (version == '6.5') {
         let localStat = stat;
         promises.push(
           getStatMapping(sectionName, statName).then(function (resp) {
-            localStat["mapping"] = resp;
-          }));
+            localStat['mapping'] = resp;
+          })
+        );
       }
       return stat;
     };
@@ -116,12 +117,13 @@ function mnStatisticsDescriptionFactory(mnPoolDefault) {
     for (var group in statsDesc) {
       var statsGroup = statsDesc[group];
       for (var key in statsGroup) {
-        if (key == "@items") {
+        if (key == '@items') {
           for (var statName in statsGroup[key]) {
-            result.push(makeStat(group, statName, true, statsGroup[key][statName]));
+            result.push(
+              makeStat(group, statName, true, statsGroup[key][statName])
+            );
           }
-        }
-        else {
+        } else {
           result.push(makeStat(group, key, false, statsGroup[key]));
         }
       }
@@ -146,26 +148,29 @@ function mnStatisticsDescriptionFactory(mnPoolDefault) {
   }
 
   function getStatsDump(version) {
-    return Promise.all([getUiStats(version), doGetMetricsJSON()]).then(function (resp) {
-      var uiStats = resp[0];
-      var metrics = resp[1];
-      if (version == "6.5") {
-        return uiStats;
-      }
-      var statsByName = getByMetricName(resp[0]);
-      var result = [];
-      for (var metricName in metrics) {
-        var metric = metrics[metricName];
-        var uiStat = statsByName[metricName];
-        if (uiStat) {
-          metric['ui'] = uiStat;
+    return Promise.all([getUiStats(version), doGetMetricsJSON()]).then(
+      function (resp) {
+        var uiStats = resp[0];
+        var metrics = resp[1];
+        if (version == '6.5') {
+          return uiStats;
         }
-        result.push(metric);
+        var statsByName = getByMetricName(resp[0]);
+        var result = [];
+        for (var metricName in metrics) {
+          var metric = metrics[metricName];
+          var uiStat = statsByName[metricName];
+          if (uiStat) {
+            metric['ui'] = uiStat;
+          }
+          result.push(metric);
+        }
+        return result;
       }
-      return result;
-    });
+    );
   }
 }
 
-const mnStatisticsDescriptionService = mnStatisticsDescriptionFactory(mnPoolDefault);
+const mnStatisticsDescriptionService =
+  mnStatisticsDescriptionFactory(mnPoolDefault);
 export default mnStatisticsDescriptionService;

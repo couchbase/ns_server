@@ -8,10 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {FormBuilder} from 'react-reactive-form';
-import {UIRouter}  from "mn.react.router";
-import {BehaviorSubject, Subject} from 'rxjs';
-import {takeUntil, filter} from 'rxjs/operators';
+import { FormBuilder } from 'react-reactive-form';
+import { UIRouter } from 'mn.react.router';
+import { BehaviorSubject, Subject } from 'rxjs';
+import { takeUntil, filter } from 'rxjs/operators';
 import mitt from 'mitt';
 
 class MnHelperReactServiceClass {
@@ -19,7 +19,7 @@ class MnHelperReactServiceClass {
   tasks = new BehaviorSubject(null);
   rootScopeEmitter = mitt();
   id() {
-    return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
   async(component, field) {
     component[field]
@@ -32,21 +32,25 @@ class MnHelperReactServiceClass {
     component.focusFieldSubject
       .pipe(
         filter((value) => {
-          return (typeof value === "string") ? value === component.mnName : value
+          return typeof value === 'string' ? value === component.mnName : value;
         }),
-        takeUntil(component.mnOnDestroy))
+        takeUntil(component.mnOnDestroy)
+      )
       .subscribe(() => {
         setTimeout(() => component.input.focus(), 0);
       });
   }
   valueChanges(reactReactiveFormValueChanges) {
     const valueChanges = new Subject();
-    reactReactiveFormValueChanges.subscribe(value => {
+    reactReactiveFormValueChanges.subscribe((value) => {
       valueChanges.next(value);
     });
     return valueChanges;
   }
 }
 
-const MnHelperReactService = new MnHelperReactServiceClass(FormBuilder, UIRouter);
-export {MnHelperReactService};
+const MnHelperReactService = new MnHelperReactServiceClass(
+  FormBuilder,
+  UIRouter
+);
+export { MnHelperReactService };

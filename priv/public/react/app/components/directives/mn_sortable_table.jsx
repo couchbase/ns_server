@@ -11,7 +11,7 @@ class MnSortableTableClass extends Component {
 
   setOrderOrToggleInvert = (orderBy, name) => {
     if (this.isOrderBy(name)) {
-      this.props.setState(prevState => ({ invert: !prevState.invert }));
+      this.props.setState((prevState) => ({ invert: !prevState.invert }));
     } else {
       this.props.setState({ invert: false });
     }
@@ -39,12 +39,10 @@ class MnSortableTableClass extends Component {
           setOrderOrToggleInvert: this.setOrderOrToggleInvert,
           isOrderBy: this.isOrderBy,
           orderBy: this.orderBy,
-          invert: this.props.state.invert
+          invert: this.props.state.invert,
         }}
       >
-        <div className={this.props.className}>
-          {this.props.children}
-        </div>
+        <div className={this.props.className}>{this.props.children}</div>
       </MnSortableTableContext.Provider>
     );
   }
@@ -53,10 +51,10 @@ class MnSortableTableClass extends Component {
 const MnSortableTable = forwardRef((props, ref) => (
   <MnSortableTableClass
     {...props}
-    ref={instance => {
+    ref={(instance) => {
       if (instance) {
         ref.current = {
-          orderBy: instance.orderBy
+          orderBy: instance.orderBy,
         };
       }
     }}

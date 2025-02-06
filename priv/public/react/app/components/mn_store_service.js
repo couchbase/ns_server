@@ -8,14 +8,14 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 import mnHelper from './mn_helper.js';
-import {BehaviorSubject} from 'rxjs';
+import { BehaviorSubject } from 'rxjs';
 
 function mnStoreServiceFactory(mnHelper) {
   var db = {};
   var stores = {};
   var storeService = {
     createStore: createStore,
-    store: store
+    store: store,
   };
 
   Store.prototype.get = get;
@@ -80,12 +80,14 @@ function mnStoreServiceFactory(mnHelper) {
     var copyTo = this.get(item[this.keyPath]);
     var updatedItem = Object.assign({}, copyTo, item); // Create a new object with updated values
     var currentItems = db[this.name].getValue();
-    var index = currentItems.findIndex(i => i[this.keyPath] === item[this.keyPath]);
-    
+    var index = currentItems.findIndex(
+      (i) => i[this.keyPath] === item[this.keyPath]
+    );
+
     if (index !== -1) {
       currentItems[index] = updatedItem; // Update the copied item in the array
     }
-    
+
     db[this.name].next(currentItems); // Emit the updated array
   }
 
@@ -97,23 +99,33 @@ function mnStoreServiceFactory(mnHelper) {
   }
 
   function _delete(value) {
-    db[this.name].next(db[this.name].getValue().filter(item => item[this.keyPath] !== value));
+    db[this.name].next(
+      db[this.name].getValue().filter((item) => item[this.keyPath] !== value)
+    );
   }
 
   function deleteItem(item) {
-    db[this.name].next(db[this.name].getValue().filter(item1 => item1[this.keyPath] !== item[this.keyPath]));
+    db[this.name].next(
+      db[this.name]
+        .getValue()
+        .filter((item1) => item1[this.keyPath] !== item[this.keyPath])
+    );
   }
 
   function get(value) {
-    return db[this.name].getValue().find(function (item) {
-      return item[this.keyPath] == value;
-    }.bind(this));
+    return db[this.name].getValue().find(
+      function (item) {
+        return item[this.keyPath] == value;
+      }.bind(this)
+    );
   }
 
   function getByIncludes(value, row) {
-    return db[this.name].getValue().find(function (item) {
-      return item[row].includes(value);
-    }.bind(this));
+    return db[this.name].getValue().find(
+      function (item) {
+        return item[row].includes(value);
+      }.bind(this)
+    );
   }
 }
 

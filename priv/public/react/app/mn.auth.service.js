@@ -8,37 +8,39 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {HttpParams, HttpHeaders} from '@angular/common/http';
-import {map} from 'rxjs/operators';
-import {BehaviorSubject} from 'rxjs';
-import {shareReplay, switchMap} from 'rxjs/operators';
-import {MnHttpRequest} from './mn.http.request.js';
-import {HttpClient} from './mn.http.client.js';
+import { HttpParams, HttpHeaders } from '@angular/common/http';
+import { map } from 'rxjs/operators';
+import { BehaviorSubject } from 'rxjs';
+import { shareReplay, switchMap } from 'rxjs/operators';
+import { MnHttpRequest } from './mn.http.request.js';
+import { HttpClient } from './mn.http.client.js';
 
 class MnAuthServiceClass {
   constructor(http) {
     this.http = http;
     this.stream = {};
 
-    this.stream.postChangePassword =
-      new MnHttpRequest(this.postChangePassword.bind(this))
+    this.stream.postChangePassword = new MnHttpRequest(
+      this.postChangePassword.bind(this)
+    )
       .addSuccess()
       .addError();
 
-    this.stream.postUILogin =
-      new MnHttpRequest(this.postUILogin.bind(this))
+    this.stream.postUILogin = new MnHttpRequest(this.postUILogin.bind(this))
       .addSuccess()
-      .addError(map(rv => {
-        if (rv.status === 403 && rv.passwordExpired) {
-          return 'passwordExpired';
-        }
-        return rv.status;
-      }));
+      .addError(
+        map((rv) => {
+          if (rv.status === 403 && rv.passwordExpired) {
+            return 'passwordExpired';
+          }
+          return rv.status;
+        })
+      );
 
-    this.stream.getAuthMethods =
-      (new BehaviorSubject()).pipe(
-        switchMap(this.getAuthMethods.bind(this)),
-        shareReplay({refCount: true, bufferSize: 1}));
+    this.stream.getAuthMethods = new BehaviorSubject().pipe(
+      switchMap(this.getAuthMethods.bind(this)),
+      shareReplay({ refCount: true, bufferSize: 1 })
+    );
 
     // this.stream.postUILogout =
     //   new mn.core.MnPostHttp(this.postUILogout.bind(this));
@@ -48,16 +50,23 @@ class MnAuthServiceClass {
     return this.http.get('/whoami');
   }
 
-  postChangePassword([{password}, auth]) {
+  postChangePassword([{ password }, auth]) {
     let headers = new HttpHeaders();
     headers = headers.set('ns-server-ui', 'no');
     headers = headers.set('Authorization', 'Basic ' + auth);
-    return this.http.post("/controller/changePassword", {password}, {headers});
+    return this.http.post(
+      '/controller/changePassword',
+      { password },
+      { headers }
+    );
   }
 
   postUILogin([user, useCertForAuth]) {
-    const params = new HttpParams().set('use_cert_for_auth', useCertForAuth ? '1': '0');
-    return this.http.post('/uilogin', user || {}, {params});
+    const params = new HttpParams().set(
+      'use_cert_for_auth',
+      useCertForAuth ? '1' : '0'
+    );
+    return this.http.post('/uilogin', user || {}, { params });
     // should be moved into app.admin alerts
     // we should say something like you are using cached vesrion, reload the tab
     // return that.mnPoolsService
@@ -73,7 +82,7 @@ class MnAuthServiceClass {
   }
 
   postUILogout() {
-    return this.http.post("/uilogout");
+    return this.http.post('/uilogout');
     // .then(function () {
     //   $window.location.reload();
     // }, function (response) {
@@ -87,7 +96,7 @@ class MnAuthServiceClass {
   }
 
   getAuthMethods() {
-    return this.http.get("/_ui/authMethods");
+    return this.http.get('/_ui/authMethods');
   }
 }
 

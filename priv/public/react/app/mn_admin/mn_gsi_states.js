@@ -12,67 +12,75 @@ import { MnGsiComponent } from './mn_gsi_controller.jsx';
 import { UIRouter } from '../mn.react.router.js';
 import mnPermissions from '../components/mn_permissions.js';
 
-UIRouter.transitionService.onBefore({
-  from: state => (state.name !== "app.admin.gsi"),
-  to: "app.admin.gsi"
-}, trans => {
-  var original = Object.assign({}, trans.params());
+UIRouter.transitionService.onBefore(
+  {
+    from: (state) => state.name !== 'app.admin.gsi',
+    to: 'app.admin.gsi',
+  },
+  (trans) => {
+    var original = Object.assign({}, trans.params());
 
-  return mnPermissions.check().then(function (permissions) {
-    let params = Object.assign({}, original);
-    var indexesRead = permissions.bucketCollectionsNames['.n1ql.index!read'];
+    return mnPermissions.check().then(function (permissions) {
+      let params = Object.assign({}, original);
+      var indexesRead = permissions.bucketCollectionsNames['.n1ql.index!read'];
 
-    if (!params.commonBucket && indexesRead && indexesRead[0]) {
-      params.commonBucket = indexesRead[0];
-    } else if (params.commonBucket &&
-               indexesRead && indexesRead.indexOf(params.commonBucket) < 0) {
-      params.commonBucket = indexesRead[0];
-    } else if (params.commonBucket && (!indexesRead || !indexesRead[0])) {
-      params.commonBucket = null;
-    }
+      if (!params.commonBucket && indexesRead && indexesRead[0]) {
+        params.commonBucket = indexesRead[0];
+      } else if (
+        params.commonBucket &&
+        indexesRead &&
+        indexesRead.indexOf(params.commonBucket) < 0
+      ) {
+        params.commonBucket = indexesRead[0];
+      } else if (params.commonBucket && (!indexesRead || !indexesRead[0])) {
+        params.commonBucket = null;
+      }
 
-    if (params.commonBucket && !params.commonScope) {
-      params.commonScope = "_default";
-    }
-    if (!params.commonBucket) {
-      params.commonScope = null;
-    }
+      if (params.commonBucket && !params.commonScope) {
+        params.commonScope = '_default';
+      }
+      if (!params.commonBucket) {
+        params.commonScope = null;
+      }
 
-    if (original.commonBucket !== params.commonBucket ||
-        original.commonScope !== params.commonScope) {
-      return trans.router.stateService.target("app.admin.gsi", params);
-    }
-  });
-});
+      if (
+        original.commonBucket !== params.commonBucket ||
+        original.commonScope !== params.commonScope
+      ) {
+        return trans.router.stateService.target('app.admin.gsi', params);
+      }
+    });
+  }
+);
 
 let gsiState = {
-  name: "app.admin.gsi",
+  name: 'app.admin.gsi',
   url: '/index?openedIndex&perIndexPage&perNodePage&indexesView',
   params: {
     openedIndex: {
       array: true,
-      dynamic: true
+      dynamic: true,
     },
     indexesView: {
       value: 'viewByIndex',
-      dynamic: true
+      dynamic: true,
     },
     footerBucket: {
       value: null,
-      dynamic: true
+      dynamic: true,
     },
     perNodePage: {
       value: {},
-      type: "json",
-      dynamic: true
+      type: 'json',
+      dynamic: true,
     },
     perIndexPage: {
-      value: {page:1, size:15},
-      type: "json",
-      dynamic: true
+      value: { page: 1, size: 15 },
+      type: 'json',
+      dynamic: true,
     },
   },
-  component: MnGsiComponent
+  component: MnGsiComponent,
 };
 
 // let authChangePasswordState = {

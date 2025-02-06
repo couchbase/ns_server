@@ -1,6 +1,8 @@
 /* MAIN LAYOUT COMPONENTS ----------------------------------------------- */
 /* expands height of the page regardless of content - for footer position */
-html, body, .root-container {
+html,
+body,
+.root-container {
   height: 100vh;
 }
 /* utility links at page top -------------------------------------------- */
@@ -48,12 +50,14 @@ nav.nav-sidebar {
   flex: 0 0 auto;
   white-space: nowrap;
   border-right: 1px solid #ececec;
-  padding: .25rem 0 2rem 0;
+  padding: 0.25rem 0 2rem 0;
   margin: 0 2rem 120px 0;
   text-align: right;
   width: 104px;
   transform: translateX(0px);
-  transition: width .6s, transform .9s;
+  transition:
+    width 0.6s,
+    transform 0.9s;
   position: relative;
 }
 
@@ -70,14 +74,14 @@ footer {
   justify-content: center;
   align-items: center;
   color: #555;
-  font-size: .688rem!important;
-  padding: .5rem 1rem;
+  font-size: 0.688rem !important;
+  padding: 0.5rem 1rem;
   width: 100%;
   background-color: #fff;
   position: fixed;
   bottom: 0;
   left: 0;
-  box-shadow: 0px -1px 5px 1px rgba(0,0,0,0.12);
+  box-shadow: 0px -1px 5px 1px rgba(0, 0, 0, 0.12);
   z-index: 1;
 }
 .vertical-page-splitter {
@@ -157,18 +161,18 @@ footer {
   overflow: visible;
 }
 .line-height-1 {
-  line-height:1!important;
+  line-height: 1 !important;
 }
 .line-height-1-5 {
-  line-height:1.5!important;
+  line-height: 1.5 !important;
 }
 .line-height-2 {
-  line-height:2 !important;
+  line-height: 2 !important;
 }
 .fix-position-br {
   position: fixed;
-  bottom: .5rem;
-  right: .5rem;
+  bottom: 0.5rem;
+  right: 0.5rem;
 }
 .fix-position-bl {
   position: fixed;
@@ -201,7 +205,8 @@ footer {
 .items-bottom {
   align-items: flex-end !important;
 }
-.items-center, .flex-items-center {
+.items-center,
+.flex-items-center {
   align-items: center !important;
 }
 .items-end {
@@ -252,7 +257,7 @@ footer {
   flex-grow: 0;
 }
 .flex-grow-half {
-  flex-grow: .5;
+  flex-grow: 0.5;
 }
 .flex-grow-1 {
   flex-grow: 1;
@@ -383,7 +388,7 @@ footer {
   width: 91.66666667%;
 }
 .width-12 {
-  width: 100%!important;
+  width: 100% !important;
 }
 
 /* fixed rem width ----------------------------------------------------- */
@@ -521,19 +526,19 @@ footer {
   margin: 0 !important;
 }
 .margin-quarter {
-  margin: .25rem !important;
+  margin: 0.25rem !important;
 }
 .margin-half {
-  margin: .5rem !important;
+  margin: 0.5rem !important;
 }
 .margin-1 {
   margin: 1rem !important;
 }
 .margin-quarter:last-child {
-  margin: .25rem 0 !important;
+  margin: 0.25rem 0 !important;
 }
 .margin-top-neg-half {
-  margin-top: -.5rem !important;
+  margin-top: -0.5rem !important;
 }
 .margin-top-neg-1 {
   margin-top: -1rem !important;
@@ -545,10 +550,10 @@ footer {
   margin-top: 0 !important;
 }
 .margin-top-quarter {
-  margin-top: .25rem !important;
+  margin-top: 0.25rem !important;
 }
 .margin-top-half {
-  margin-top: .5rem !important;
+  margin-top: 0.5rem !important;
 }
 /* REMOVE */
 .margin-top1 {
@@ -574,10 +579,10 @@ footer {
   margin-right: 0 !important;
 }
 .margin-right-quarter {
-  margin-right: .25rem !important;
+  margin-right: 0.25rem !important;
 }
 .margin-right-half {
-  margin-right: .5rem !important;
+  margin-right: 0.5rem !important;
 }
 .margin-right-1 {
   margin-right: 1rem !important;
@@ -605,10 +610,10 @@ footer {
   margin-bottom: 0 !important;
 }
 .margin-bottom-quarter {
-  margin-bottom: .25rem !important;
+  margin-bottom: 0.25rem !important;
 }
 .margin-bottom-half {
-  margin-bottom: .5rem !important;
+  margin-bottom: 0.5rem !important;
 }
 .margin-bottom-1 {
   margin-bottom: 1rem !important;
@@ -636,24 +641,29 @@ footer {
   margin-left: 0 !important;
 }
 .margin-left-quarter {
-  margin-left: .25rem !important;
+  margin-left: 0.25rem !important;
 }
 .margin-left-half {
-  margin-left: .5rem !important;
+  margin-left: 0.5rem !important;
 }
-.margin-left-1, .indent-1 {
+.margin-left-1,
+.indent-1 {
   margin-left: 1rem !important;
 }
-.margin-left-1-5, .indent-1-5 {
+.margin-left-1-5,
+.indent-1-5 {
   margin-left: 1.5rem !important;
 }
-.margin-left-2, .indent-2 {
+.margin-left-2,
+.indent-2 {
   margin-left: 2rem !important;
 }
-.margin-left-2-5, .indent-2-5 {
+.margin-left-2-5,
+.indent-2-5 {
   margin-left: 2.5rem !important;
 }
-.margin-left-3, .indent-3 {
+.margin-left-3,
+.indent-3 {
   margin-left: 3rem !important;
 }
 .margin-left-neg-1 {
@@ -669,10 +679,10 @@ footer {
   padding: 0 !important;
 }
 .padding-quarter {
-  padding: .25rem !important;
+  padding: 0.25rem !important;
 }
 .padding-half {
-  padding: .5rem !important;
+  padding: 0.5rem !important;
 }
 .padding-1 {
   padding: 1rem !important;
@@ -681,7 +691,7 @@ footer {
   padding-left: 0 !important;
 }
 .padding-left-half {
-  padding-left: .5rem !important;
+  padding-left: 0.5rem !important;
 }
 .padding-left-1 {
   padding-left: 1rem !important;
@@ -703,10 +713,10 @@ footer {
   padding-right: 0 !important;
 }
 .padding-right-min {
-  padding-right: .25rem !important;
+  padding-right: 0.25rem !important;
 }
 .padding-right-half {
-  padding-right: .5rem !important;
+  padding-right: 0.5rem !important;
 }
 .padding-right-1 {
   padding-right: 1rem !important;
@@ -719,10 +729,10 @@ footer {
   padding-top: 1rem !important;
 }
 .padding-top-half {
-  padding-top: .5rem !important;
+  padding-top: 0.5rem !important;
 }
 .padding-bottom-half {
-  padding-bottom: .5rem !important;
+  padding-bottom: 0.5rem !important;
 }
 /* extras -------------------------------------------------------------- */
 .pre-line {
@@ -732,13 +742,13 @@ footer {
   word-break: break-all;
 }
 .overflow-wrap {
-  overflow-wrap: anywhere
+  overflow-wrap: anywhere;
 }
 .debug-outline {
   border: 1px dashed red !important;
 }
 .border-0 {
-  border-width: 0!important;
+  border-width: 0 !important;
 }
 .border-1 {
   border-left: 1px solid #d1d1d1;
@@ -759,5 +769,5 @@ footer {
   if it follows another .comma-list element // "empty" for CSS is this:
   <div class="comma-list"></div> */
 .comma-list:not(:empty) ~ .comma-list:not(:empty):before {
-  content: ", ";
+  content: ', ';
 }

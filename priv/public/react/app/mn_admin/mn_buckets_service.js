@@ -8,15 +8,15 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import _ from "lodash";
-import mnBucketsStats from "../components/mn_buckets_stats.js";
-import { BehaviorSubject } from "rxjs";
+import _ from 'lodash';
+import mnBucketsStats from '../components/mn_buckets_stats.js';
+import { BehaviorSubject } from 'rxjs';
 
 const mnBucketsService = {
   getBucketsByType,
   clearCache,
   findMoxiBucket,
-  export: new BehaviorSubject({details: {}})
+  export: new BehaviorSubject({ details: {} }),
 };
 let cache;
 
@@ -42,7 +42,7 @@ function getBucketsByType(mnHttpParams) {
   return mnBucketsStats.get(mnHttpParams).then(function (resp) {
     var bucketsDetails = resp.data;
     // TODO: remove memcached type once backend no longer supports them
-    bucketsDetails.byType = {membase: [], memcached: [], ephemeral: []};
+    bucketsDetails.byType = { membase: [], memcached: [], ephemeral: [] };
     bucketsDetails.byName = {};
     bucketsDetails.byType.membase.isMembase = true;
     bucketsDetails.byType.ephemeral.isEphemeral = true;
@@ -55,7 +55,7 @@ function getBucketsByType(mnHttpParams) {
     bucketsDetails.byType.names = _.pluck(bucketsDetails, 'name');
 
     cache = bucketsDetails;
-    mnBucketsService.export.next({details: bucketsDetails});
+    mnBucketsService.export.next({ details: bucketsDetails });
     return bucketsDetails;
   });
 }

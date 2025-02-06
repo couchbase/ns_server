@@ -11,7 +11,6 @@ licenses/APL2.txt.
 import { HttpHeaders } from '@angular/common/http';
 import { HttpClient } from '../../../../mn.http.client.js';
 class QwQueryServiceClass {
-
   constructor(http) {
     this.http = http;
 
@@ -25,18 +24,36 @@ class QwQueryServiceClass {
       var self = {};
       var lut = [];
       for (var i = 0; i < 256; i++) {
-        lut[i] = (i < 16 ? '0' : '') + (i).toString(16);
+        lut[i] = (i < 16 ? '0' : '') + i.toString(16);
       }
       self.generate = function () {
-        var d0 = Math.random() * 0xffffffff | 0;
-        var d1 = Math.random() * 0xffffffff | 0;
-        var d2 = Math.random() * 0xffffffff | 0;
-        var d3 = Math.random() * 0xffffffff | 0;
-        return lut[d0 & 0xff] + lut[d0 >> 8 & 0xff] + lut[d0 >> 16 & 0xff] + lut[d0 >> 24 & 0xff] + '-' +
-            lut[d1 & 0xff] + lut[d1 >> 8 & 0xff] + '-' + lut[d1 >> 16 & 0x0f | 0x40] + lut[d1 >> 24 & 0xff] + '-' +
-            lut[d2 & 0x3f | 0x80] + lut[d2 >> 8 & 0xff] + '-' + lut[d2 >> 16 & 0xff] + lut[d2 >> 24 & 0xff] +
-            lut[d3 & 0xff] + lut[d3 >> 8 & 0xff] + lut[d3 >> 16 & 0xff] + lut[d3 >> 24 & 0xff];
-      }
+        var d0 = (Math.random() * 0xffffffff) | 0;
+        var d1 = (Math.random() * 0xffffffff) | 0;
+        var d2 = (Math.random() * 0xffffffff) | 0;
+        var d3 = (Math.random() * 0xffffffff) | 0;
+        return (
+          lut[d0 & 0xff] +
+          lut[(d0 >> 8) & 0xff] +
+          lut[(d0 >> 16) & 0xff] +
+          lut[(d0 >> 24) & 0xff] +
+          '-' +
+          lut[d1 & 0xff] +
+          lut[(d1 >> 8) & 0xff] +
+          '-' +
+          lut[((d1 >> 16) & 0x0f) | 0x40] +
+          lut[(d1 >> 24) & 0xff] +
+          '-' +
+          lut[(d2 & 0x3f) | 0x80] +
+          lut[(d2 >> 8) & 0xff] +
+          '-' +
+          lut[(d2 >> 16) & 0xff] +
+          lut[(d2 >> 24) & 0xff] +
+          lut[d3 & 0xff] +
+          lut[(d3 >> 8) & 0xff] +
+          lut[(d3 >> 16) & 0xff] +
+          lut[(d3 >> 24) & 0xff]
+        );
+      };
       return self;
     })();
   }
@@ -44,25 +61,24 @@ class QwQueryServiceClass {
   // create a query request object for internal queries (no user options)
   // timeout should be an integer number of seconds
   buildQueryRequest(queryText, timeout, is_user_query) {
-
     var queryRequest = {
       url: '/_p/query/query/service',
-      method: "POST",
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'ignore-401': 'true',
         'CB-User-Agent': 'Couchbase Query Workbench',
-        'isNotForm': 'true'
+        isNotForm: 'true',
       },
       data: {
         statement: queryText,
         pretty: false,
         timeout: (timeout || 0) + 's',
-        client_context_id: "INTERNAL-" + this.UUID.generate(),
+        client_context_id: 'INTERNAL-' + this.UUID.generate(),
       },
       mnHttp: {
         isNotForm: true,
-        group: "global"
+        group: 'global',
       },
       reportProgress: is_user_query,
     };
@@ -72,7 +88,7 @@ class QwQueryServiceClass {
     if (timeout)
       queryRequest.headers['ns-server-proxy-timeout'] = (timeout + 1) * 1000;
 
-    return(queryRequest);
+    return queryRequest;
   }
 
   //
@@ -86,9 +102,10 @@ class QwQueryServiceClass {
   //
 
   executeQueryUtil(queryText) {
-    return(this.executeQueryUtilNew(queryText))
-        .toPromise().then(this.handleSuccess,this.handleFailure);
-   }
+    return this.executeQueryUtilNew(queryText)
+      .toPromise()
+      .then(this.handleSuccess, this.handleFailure);
+  }
 
   //
   // query utility for new HttpClient with observables
@@ -96,7 +113,11 @@ class QwQueryServiceClass {
 
   executeQueryUtilNew(queryText) {
     var request = this.buildQueryRequest(queryText);
-    return this.http.post(request.url,request.data,this.configToOptions(request));
+    return this.http.post(
+      request.url,
+      request.data,
+      this.configToOptions(request)
+    );
   }
 
   // convenience functions for interacting with HttpClient
@@ -104,37 +125,39 @@ class QwQueryServiceClass {
   // convert the $http config to an HttpClient options object
 
   configToOptions(config) {
-    var options = {observe: 'response'};
+    var options = { observe: 'response' };
     if (config.headers) {
       // can't pass options to HttpHeaders constructor, because it can't
       // handle headers with numeric values
       options.headers = new HttpHeaders();
-      Object.keys(config.headers).forEach(key =>
-          options.headers = options.headers.set(key,config.headers[key]));
+      Object.keys(config.headers).forEach(
+        (key) =>
+          (options.headers = options.headers.set(key, config.headers[key]))
+      );
     }
 
-    if (config.params)
-      options.params = config.params;
-    return(options);
+    if (config.params) options.params = config.params;
+    return options;
   }
 
   handleSuccess(resp) {
     if (resp && resp.status == 200 && resp.body) {
-      if (typeof resp.body == 'string') try {
-        resp.data = JSON.parse(resp.body);
-      } catch (e) {}
-      else
-        resp.data = resp.body;
+      if (typeof resp.body == 'string')
+        try {
+          resp.data = JSON.parse(resp.body);
+        } catch (e) {}
+      else resp.data = resp.body;
     }
-    return(resp);
+    return resp;
   }
 
   handleFailure(resp) {
-    if (typeof resp.error == 'string') try {
-      resp.data = JSON.parse(resp.error);
-    } catch (e) {}
+    if (typeof resp.error == 'string')
+      try {
+        resp.data = JSON.parse(resp.error);
+      } catch (e) {}
 
-    return(Promise.reject(resp));
+    return Promise.reject(resp);
   }
 }
 

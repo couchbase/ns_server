@@ -16,11 +16,11 @@ const MnStatisticsResetDialog = ({ onClose, onDismiss }) => (
     </div>
     <div className="panel-footer">
       <a onClick={onDismiss}>Cancel</a>
-      <button
-        type="submit"
-        onClick={onClose}>Reset Dashboard</button>
+      <button type="submit" onClick={onClose}>
+        Reset Dashboard
+      </button>
     </div>
   </div>
 );
 
-export { MnStatisticsResetDialog }; 
+export { MnStatisticsResetDialog };

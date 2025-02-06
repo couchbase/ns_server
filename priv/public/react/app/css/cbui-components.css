@@ -147,7 +147,7 @@ h1 a:active {
 }
 .sub-nav a:hover:after {
   font-family: FontAwesome;
-  content: "\f107";
+  content: '\f107';
   position: absolute;
   right: 1rem;
 }
@@ -156,13 +156,13 @@ h1 a:active {
 }
 .sub-nav a.selected:after {
   font-family: FontAwesome;
-  content: "\f107";
+  content: '\f107';
   position: absolute;
   right: 1rem;
 }
 .sub-nav a.toggle-subnav:hover:after,
 .sub-nav a.toggle-subnav.selected:after {
-  content: " " !important;
+  content: ' ' !important;
 }
 .dropdown-menu-select-like a:hover,
 .dropdown-menu-select-like a.selected {
@@ -170,7 +170,7 @@ h1 a:active {
 }
 .dropdown-menu-select-like a:hover:after,
 .dropdown-menu-select-like a.selected:after {
-  content: " " !important;
+  content: ' ' !important;
 }
 /* nav sidebar links ---------------------------------------------------- */
 .nav-sidebar a {
@@ -227,7 +227,7 @@ h1 a:active {
 /* COMPONENTS W/ ICONS ------------------------------------------------------ */
 .inprogress:after {
   font-family: FontAwesome;
-  content: "\f110";
+  content: '\f110';
   font-size: 0.925rem;
   color: #999;
   position: absolute;
@@ -240,14 +240,14 @@ h1 a:active {
 /* inserts down-caret triangle before items with .has-menu ------------------ */
 .has-menu:after {
   font-family: FontAwesome;
-  content: "\f0d7";
+  content: '\f0d7';
   color: #333;
   position: absolute;
   right: 0.5rem;
 }
 .nav-header .has-menu:after {
   font-family: FontAwesome;
-  content: "\f0d7";
+  content: '\f0d7';
   color: #999;
 }
 .menu-sortable-link.has-menu:after {
@@ -269,7 +269,7 @@ h1 a:active {
 }
 .disclosure:before {
   font-family: FontAwesome;
-  content: "\f0da";
+  content: '\f0da';
   font-size: 1.125rem;
   width: 1rem;
   text-align: center;
@@ -292,7 +292,7 @@ h1 a:active {
 }
 .disclosed:before {
   font-family: FontAwesome;
-  content: "\f0d7";
+  content: '\f0d7';
   font-size: 1.125rem;
   width: 1rem;
   text-align: center;
@@ -304,7 +304,7 @@ h1 a:active {
 }
 .reverse.disclosure:before {
   font-family: FontAwesome;
-  content: "\f0da";
+  content: '\f0da';
   font-size: 1.125rem;
   width: 1rem;
   text-align: center;
@@ -351,7 +351,7 @@ h1 a:active {
 /* alert success icon --------------------------------------------------- */
 .alert.alert-success p:before {
   font-family: FontAwesome;
-  content: "\f00c";
+  content: '\f00c';
   font-size: 1.125rem;
   color: #2ca01c;
   position: absolute;
@@ -360,7 +360,7 @@ h1 a:active {
 /* alert warning icon --------------------------------------------------- */
 .alert.alert-warning p:before {
   font-family: FontAwesome;
-  content: "\f06a";
+  content: '\f06a';
   font-size: 1.125rem;
   color: #f5a623;
   position: absolute;
@@ -369,7 +369,7 @@ h1 a:active {
 /* alert error icon ----------------------------------------------------- */
 .alert.alert-error p:before {
   font-family: FontAwesome;
-  content: "\f071";
+  content: '\f071';
   font-size: 1rem;
   color: #d65558;
   position: absolute;
@@ -387,7 +387,7 @@ h1 a:active {
 
 .check:before {
   font-family: FontAwesome;
-  content: "\f00c";
+  content: '\f00c';
   font-size: 0.925rem;
   color: #80c677;
   position: absolute;
@@ -396,7 +396,7 @@ h1 a:active {
 }
 .filter:before {
   font-family: FontAwesome;
-  content: "\f0b0";
+  content: '\f0b0';
   font-size: 0.925rem;
   color: #f9ca7b;
   position: absolute;
@@ -416,22 +416,22 @@ h1 a:active {
   color: #333;
 }
 .angle-icon.left:before {
-  content: "\f104";
+  content: '\f104';
 }
 .angle-icon.right:before {
-  content: "\f105";
+  content: '\f105';
 }
 .angle-icon.up:before {
-  content: "\f106";
+  content: '\f106';
 }
 .angle-icon.down:before {
-  content: "\f107";
+  content: '\f107';
 }
 
 /* rebalance success icon ----------------------------------------------- */
 .rebalance-stage-success:after {
   font-family: FontAwesome;
-  content: "\f00c";
+  content: '\f00c';
   font-size: 0.925rem;
   color: #80c677;
   position: absolute;
@@ -441,7 +441,7 @@ h1 a:active {
 /* rebalance progress icon ----------------------------------------------- */
 .rebalance-stage-inprogress:after {
   font-family: FontAwesome;
-  content: "\f110";
+  content: '\f110';
   font-size: 1rem;
   color: #f7b84f;
   position: absolute;
@@ -458,7 +458,7 @@ h1 a:active {
 /* rebalance status in progress icon --------------------------------------- */
 .rebalance-status-inprogress:after {
   font-family: FontAwesome;
-  content: "\f110";
+  content: '\f110';
   font-size: 0.925rem;
   color: #f7b84f;
   position: relative;
@@ -471,7 +471,7 @@ h1 a:active {
 /* rebalance error icon ----------------------------------------------- */
 .rebalance-stage-error:after {
   font-family: FontAwesome;
-  content: "\f071";
+  content: '\f071';
   font-size: 0.925rem;
   color: #e07f82;
   position: absolute;
@@ -481,7 +481,7 @@ h1 a:active {
 /* search filter icons for focus charts  -------------------------------- */
 .search-filter:before {
   font-family: FontAwesome;
-  content: "\f010";
+  content: '\f010';
   font-size: 0.875rem;
   color: #a6b2bf;
   position: absolute;
@@ -490,7 +490,7 @@ h1 a:active {
 }
 .search-filter-focus:before {
   font-family: FontAwesome;
-  content: "\f010";
+  content: '\f010';
   font-size: 1.5rem;
   color: #a6b2bf;
   position: relative;
@@ -617,14 +617,14 @@ h1 a:active {
 }
 .cbui-table-header .dynamic-active:after {
   font-family: FontAwesome;
-  content: "\f0d8";
+  content: '\f0d8';
   color: #555;
   position: absolute;
   right: 0;
 }
 .cbui-table-header .dynamic-inverted:after {
   font-family: FontAwesome;
-  content: "\f0d7";
+  content: '\f0d7';
   color: #555;
   position: absolute;
   right: 0;
@@ -1223,7 +1223,7 @@ section.error {
   padding: 4px;
   max-height: 4px;
   position: absolute;
-  content: "";
+  content: '';
   left: 0;
   top: 4px;
   border: 1px solid #a1a1a1;
@@ -1350,7 +1350,7 @@ section.error {
   display: none;
 }
 .global-spinner {
-  background: url("../spinner_3.gif") center 43% no-repeat
+  background: url('../spinner_3.gif') center 43% no-repeat
     rgba(255, 255, 255, 0.6);
   z-index: 10000;
   position: fixed;
@@ -1385,14 +1385,14 @@ section.error {
 }
 .spinner:after {
   position: absolute;
-  content: "";
+  content: '';
   display: block;
   height: 2rem;
   width: 2rem;
   left: 50%;
   top: 43%;
   margin: -1rem 0 0 -1rem;
-  background: url("../spinner_3.gif") center no-repeat #fff;
+  background: url('../spinner_3.gif') center no-repeat #fff;
 }
 .fixed-spinner > .spinner:after {
   position: fixed;
@@ -1729,7 +1729,7 @@ section.error {
 }
 .xdcrfilter-match:before {
   font-family: FontAwesome;
-  content: "\f00c";
+  content: '\f00c';
   font-size: 1rem;
   color: #2ca01c;
   position: relative;
@@ -1737,7 +1737,7 @@ section.error {
 }
 .xdcrfilter-nomatch:before {
   font-family: FontAwesome;
-  content: "\f071";
+  content: '\f071';
   font-size: 0.8rem;
   color: #f5a623;
   position: relative;
@@ -1800,8 +1800,8 @@ h5 + .fa-stack {
 }
 
 /* icon radio buttons and checkboxes using Font Awesome ----------------- */
-input[type="radio"],
-input[type="checkbox"] {
+input[type='radio'],
+input[type='checkbox'] {
   opacity: 0 !important; /* MB-43540: 'display:none' removes focus behaviour
                            must not be inline element
                            must not have absolute position ------- */
@@ -1817,8 +1817,8 @@ input[type="checkbox"] {
   top: auto !important;
   bottom: auto !important;
 }
-input[type="radio"] + label,
-input[type="checkbox"] + label {
+input[type='radio'] + label,
+input[type='checkbox'] + label {
   display: inline-block;
   font-weight: normal;
   cursor: pointer;
@@ -1826,12 +1826,12 @@ input[type="checkbox"] + label {
   padding-left: 3px;
   margin-right: 0.75rem;
 }
-input[type="radio"] + label:last-child,
-input[type="checkbox"] + label:last-child {
+input[type='radio'] + label:last-child,
+input[type='checkbox'] + label:last-child {
   margin-right: 0;
 }
-input[type="checkbox"] + label:before,
-input[type="radio"] + label:before {
+input[type='checkbox'] + label:before,
+input[type='radio'] + label:before {
   position: relative;
   display: inline-block;
   font: normal normal normal 16px/1 FontAwesome;
@@ -1841,37 +1841,37 @@ input[type="radio"] + label:before {
   width: 1rem;
   left: -3px;
 }
-input[type="checkbox"][disabled="disabled"] + label:before,
-input[type="radio"][disabled="disabled"] + label:before {
+input[type='checkbox'][disabled='disabled'] + label:before,
+input[type='radio'][disabled='disabled'] + label:before {
   opacity: 0.5;
 }
-input[type="checkbox"][disabled="disabled"] + label {
+input[type='checkbox'][disabled='disabled'] + label {
   cursor: default !important;
 }
-input[type="checkbox"] + label:before {
+input[type='checkbox'] + label:before {
   top: 1px;
 }
-input[type="radio"] + label:before {
-  content: "\f1db"; /* radio unchecked */
+input[type='radio'] + label:before {
+  content: '\f1db'; /* radio unchecked */
 }
-input[type="radio"]:focus + label:before,
-input[type="radio"]:checked:focus + label:before {
+input[type='radio']:focus + label:before,
+input[type='radio']:checked:focus + label:before {
   color: #000; /* radio focused by TAB */
 }
-input[type="radio"]:checked + label:before {
-  content: "\f192"; /* radio checked */
+input[type='radio']:checked + label:before {
+  content: '\f192'; /* radio checked */
   color: #555;
 }
-input[type="checkbox"] + label:before {
-  content: "\f096"; /* checkbox unchecked */
+input[type='checkbox'] + label:before {
+  content: '\f096'; /* checkbox unchecked */
 }
-input[type="checkbox"]:focus + label:before,
-input[type="checkbox"]:checked:focus + label:before {
+input[type='checkbox']:focus + label:before,
+input[type='checkbox']:checked:focus + label:before {
   color: #000; /* checkbox focused by TAB */
 }
-input[type="checkbox"]:checked + label:before,
-input[type="checkbox"].fake-select + label:before {
-  content: "\f046"; /* checkbox checked */
+input[type='checkbox']:checked + label:before,
+input[type='checkbox'].fake-select + label:before {
+  content: '\f046'; /* checkbox checked */
   color: #555;
 }
 
@@ -1913,7 +1913,7 @@ mn-select {
 }
 .mn-select .dropdown-btn:after {
   font-family: FontAwesome;
-  content: "\f0d7";
+  content: '\f0d7';
   position: absolute;
   top: 0;
   right: 0.5rem;
@@ -1922,7 +1922,7 @@ mn-select {
   font-size: 0.875rem;
 }
 .mn-select .dropdown-btn.active:after {
-  content: "\f0d8";
+  content: '\f0d8';
 }
 .mn-select button.dropdown-btn:hover {
   box-shadow: none;
@@ -1975,13 +1975,13 @@ mn-select[disabled] .mn-select,
   margin-top: 0.5rem;
 }
 
-.mn-select div[uib-dropdown-menu] .option input[type="radio"],
-.mn-select div[ngbDropdownMenu] .option input[type="radio"] {
+.mn-select div[uib-dropdown-menu] .option input[type='radio'],
+.mn-select div[ngbDropdownMenu] .option input[type='radio'] {
   display: none !important;
 }
 
-.mn-select div[uib-dropdown-menu] .option input[type="radio"] + label:before,
-.mn-select div[ngbDropdownMenu] .option input[type="radio"] + label:before {
+.mn-select div[uib-dropdown-menu] .option input[type='radio'] + label:before,
+.mn-select div[ngbDropdownMenu] .option input[type='radio'] + label:before {
   display: none;
 }
 
@@ -1989,8 +1989,8 @@ mn-select[disabled] .mn-select,
 .mn-select div[ngbDropdownMenu] .option:hover,
 .mn-select div[uib-dropdown-menu] .option label:focus,
 .mn-select div[ngbDropdownMenu] .option label:focus,
-.mn-select div[uib-dropdown-menu] .option input[type="radio"]:checked + label,
-.mn-select div[ngbDropdownMenu] .option input[type="radio"]:checked + label {
+.mn-select div[uib-dropdown-menu] .option input[type='radio']:checked + label,
+.mn-select div[ngbDropdownMenu] .option input[type='radio']:checked + label {
   background-color: #f5f5f5;
 }
 .mn-select button.outline:focus {
@@ -2298,7 +2298,7 @@ span.adder:hover {
 }
 .select-user-roles .user-role-row,
 .select-user-roles label,
-.select-user-roles input[type="checkbox"] + label {
+.select-user-roles input[type='checkbox'] + label {
   position: relative;
   margin-top: 1px;
   font-size: 0.962rem;
@@ -2308,7 +2308,7 @@ span.adder:hover {
   padding-left: 8px;
 }
 .select-user-roles label,
-.select-user-roles input[type="checkbox"] + label {
+.select-user-roles input[type='checkbox'] + label {
   cursor: pointer;
 }
 .select-user-roles .disclosure {
@@ -2327,7 +2327,7 @@ span.adder:hover {
 .has-selection:after {
   color: #56b349;
   font-family: FontAwesome;
-  content: "\f00c";
+  content: '\f00c';
   font-size: 1rem;
   position: absolute;
   top: -1px;
@@ -2342,7 +2342,7 @@ span.adder:hover {
 .role-from-group:after {
   color: #56b349;
   font-family: FontAwesome;
-  content: "\f0c0";
+  content: '\f0c0';
   font-size: 1rem;
   position: absolute;
   right: 0;
@@ -2431,7 +2431,7 @@ ul.pagination li span {
   display: inline-block;
   vertical-align: bottom;
   animation: ellipsis steps(4, end) 1.2s infinite;
-  content: "\2026"; /* ascii code for the ellipsis character */
+  content: '\2026'; /* ascii code for the ellipsis character */
   width: 0;
 }
 @keyframes ellipsis {
@@ -2565,7 +2565,7 @@ ul.pagination li span {
   background-image: none !important;
 }
 .ace_gutter-cell.ace_warning:before {
-  content: "\f071";
+  content: '\f071';
   font-family: FontAwesome;
   font-size: 0.75rem;
   color: #f7b84f;
@@ -2654,19 +2654,19 @@ ul.pagination li span {
 }
 .wb-result-status.success:before {
   font-family: FontAwesome;
-  content: "\f00c";
+  content: '\f00c';
   font-size: 0.825rem;
   color: #56b349;
 }
 .wb-result-status.error:before {
   font-family: FontAwesome;
-  content: "\f06a";
+  content: '\f06a';
   font-size: 0.825rem;
   color: #e07f82;
 }
 .wb-result-status.warning:before {
   font-family: FontAwesome;
-  content: "\f071";
+  content: '\f071';
   font-size: 0.825rem;
   color: #f5a623;
 }
@@ -2771,7 +2771,7 @@ ul.pagination li span {
   box-shadow: 0px 1px 1px 1px rgba(0, 0, 0, 0.25);
   z-index: 99;
   white-space: normal;
-  font: 12px / normal "OpenSans" !important;
+  font: 12px / normal 'OpenSans' !important;
   font-size: 12px !important;
 }
 .ace-search-icon {
@@ -3059,7 +3059,7 @@ button.ace-search-options-buttons.checked {
 }
 .toggle-control-body:before {
   position: absolute;
-  content: "";
+  content: '';
   height: 1rem;
   width: 1rem;
   left: 0.25rem;
@@ -3138,11 +3138,11 @@ nav.nav-sidebar-hidden {
 
 /*  pipe delimiter style  --------------------------------------------------- */
 .pipe:before {
-  content: "\007C";
+  content: '\007C';
   color: #a1a1a1;
 }
 .piped:not(:first-of-type):before {
-  content: "\00a0\007C";
+  content: '\00a0\007C';
 }
 
 .nvd3.nv-scatter.nv-single-point .nv-groups .nv-group .nv-point:not(.hover) {
@@ -3165,7 +3165,7 @@ nav.nav-sidebar-hidden {
 .checkbox-filter:last-child {
   margin: 0 0 0 0.25rem;
 }
-.checkbox-filter input[type="checkbox"] + label:before {
+.checkbox-filter input[type='checkbox'] + label:before {
   display: none;
 }
 .checkbox-filter.selected {
@@ -3340,13 +3340,13 @@ mn-statistics-chart {
   align-items: center;
 }
 
-input[type="text"].charts-group-name {
+input[type='text'].charts-group-name {
   border-color: #fff;
   font-size: 0.961rem;
   font-weight: 600;
   margin: 0 0 0 0.5rem;
 }
-input[type="text"]:focus.charts-group-name {
+input[type='text']:focus.charts-group-name {
   border-color: #d1d1d1;
 }
 .charts-preset-group-name {
@@ -3440,7 +3440,7 @@ rect.selection {
 }
 .charts-filter-icon:before {
   font-family: FontAwesome;
-  content: "\f010";
+  content: '\f010';
   font-size: 1.5rem;
   color: #a6b2bf;
   position: absolute;
@@ -3509,13 +3509,13 @@ rect.selection {
 }
 .mn-dropdown .select:after {
   font-family: FontAwesome;
-  content: "\f0d7";
+  content: '\f0d7';
   color: #555;
   position: relative;
   right: -0.5rem;
 }
 .mn-dropdown.open .select:after {
-  content: "\f0d8";
+  content: '\f0d8';
 }
 .mn-dropdown .menu {
   position: absolute;
@@ -3634,7 +3634,7 @@ mn-dropdown-item .scenario-controls:hover,
   position: relative;
   margin: -0.5rem 0;
 }
-.scenario-add input[type="text"] {
+.scenario-add input[type='text'] {
   position: relative;
   width: 100%;
   height: 32px;
@@ -3657,7 +3657,7 @@ mn-dropdown-item .scenario-controls:hover,
   font-size: 1.5rem;
   color: #689fde;
 }
-input[type="text"].scenario-desc {
+input[type='text'].scenario-desc {
   border: 1px solid #d1d1d1;
   border-radius: 2px;
   position: relative;
@@ -3667,8 +3667,8 @@ input[type="text"].scenario-desc {
   color: #333;
   margin: 0.5rem 0;
 }
-.scenario-add input[type="text"]:hover,
-input[type="text"].scenario-desc:hover {
+.scenario-add input[type='text']:hover,
+input[type='text'].scenario-desc:hover {
   border: 1px solid #999;
 }
 .scenario-dropdown .footer label {
@@ -3910,7 +3910,7 @@ button.replication .fa-spinner {
   display: none;
 }
 .cb-breadcrumb:before {
-  content: "";
+  content: '';
   font-family: FontAwesome;
   font-size: 1rem;
   color: #56b349;
@@ -3919,7 +3919,7 @@ button.replication .fa-spinner {
   top: -3px;
 }
 .cb-breadcrumb:first-of-type:before {
-  content: "\f00c";
+  content: '\f00c';
 }
 
 .supported-browsers,

@@ -6,14 +6,13 @@ window.esmsInitOptions = {
       return doFetch;
     }
     return doFetch
-      .then(res => res.text())
-      .then(result => {
-        let blob = new Blob(
-          ['export default ' + JSON.stringify(result)],
-          {type: 'application/javascript'}
-        );
+      .then((res) => res.text())
+      .then((result) => {
+        let blob = new Blob(['export default ' + JSON.stringify(result)], {
+          type: 'application/javascript',
+        });
 
         return new Response(blob);
       });
-  }
+  },
 };

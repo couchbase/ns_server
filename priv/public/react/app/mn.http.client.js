@@ -1,4 +1,8 @@
-import { HttpClient as AngularHttpClient, HttpXhrBackend, HttpHandler } from '@angular/common/http';
+import {
+  HttpClient as AngularHttpClient,
+  HttpXhrBackend,
+  HttpHandler,
+} from '@angular/common/http';
 import { MnHttpInterceptor } from 'mn.http.interceptor';
 
 // Create the backend handler

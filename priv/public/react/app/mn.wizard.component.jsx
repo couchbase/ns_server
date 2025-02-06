@@ -15,7 +15,7 @@ import { FormGroup, FormControl } from 'react-reactive-form';
 import { MnWizardService } from './mn.wizard.service.js';
 import { MnLifeCycleHooksToStream } from './mn.core.js';
 import { MnPoolsService } from './mn.pools.service.js';
-import { MnAdminService } from "./mn.admin.service.js";
+import { MnAdminService } from './mn.admin.service.js';
 
 export class MnWizardComponent extends MnLifeCycleHooksToStream {
   constructor(props) {
@@ -29,50 +29,63 @@ export class MnWizardComponent extends MnLifeCycleHooksToStream {
     MnAdminService.stream.implementationVersion
       .pipe(first())
       .subscribe(function (implementationVersion) {
-        MnWizardService.initialValues.implementationVersion = implementationVersion;
+        MnWizardService.initialValues.implementationVersion =
+          implementationVersion;
       });
 
     MnWizardService.stream.getSelfConfig
       .pipe(first())
-      .subscribe(v => MnWizardService.setSelfConfig(v));
+      .subscribe((v) => MnWizardService.setSelfConfig(v));
 
     function servicesToGroup(services, value) {
-      return new FormGroup(services.reduce(function (acc, name) {
-        acc[name] = new FormControl(value);
-        return acc;
-      }, {}));
+      return new FormGroup(
+        services.reduce(function (acc, name) {
+          acc[name] = new FormControl(value);
+          return acc;
+        }, {})
+      );
     }
 
-    MnPoolsService.stream.mnServices.pipe(first())
+    MnPoolsService.stream.mnServices
+      .pipe(first())
       .subscribe(function (services) {
-        newClusterConfig.get("services").addControl("flag", servicesToGroup(services, true));
-        joinCluster.get("services").addControl("flag", servicesToGroup(services, true));
-        newClusterConfig.get("services.flag.kv").disable({onlySelf: true});
+        newClusterConfig
+          .get('services')
+          .addControl('flag', servicesToGroup(services, true));
+        joinCluster
+          .get('services')
+          .addControl('flag', servicesToGroup(services, true));
+        newClusterConfig.get('services.flag.kv').disable({ onlySelf: true });
       });
 
-    MnPoolsService.stream.quotaServices.pipe(first())
+    MnPoolsService.stream.quotaServices
+      .pipe(first())
       .subscribe(function (services) {
-        newClusterConfig.get("services").addControl("field", servicesToGroup(services, ''));
+        newClusterConfig
+          .get('services')
+          .addControl('field', servicesToGroup(services, ''));
       });
 
     let isEnterpriseStream = MnPoolsService.stream.isEnterprise.pipe(first());
 
-    isEnterpriseStream
-      .subscribe(function (isEnterprise) {
-        var storageMode = isEnterprise ? "plasma" : "forestdb";
-        newClusterConfig.get("storageMode").setValue(storageMode);
+    isEnterpriseStream.subscribe(function (isEnterprise) {
+      var storageMode = isEnterprise ? 'plasma' : 'forestdb';
+      newClusterConfig.get('storageMode').setValue(storageMode);
 
-        if (!isEnterprise) {
-          joinCluster.get("clusterStorage.storage.cbas_path").disable({onlySelf: true});
-          newClusterConfig.get("clusterStorage.storage.cbas_path").disable({onlySelf: true});
-        }
+      if (!isEnterprise) {
+        joinCluster
+          .get('clusterStorage.storage.cbas_path')
+          .disable({ onlySelf: true });
+        newClusterConfig
+          .get('clusterStorage.storage.cbas_path')
+          .disable({ onlySelf: true });
+      }
 
-        MnWizardService.initialValues.storageMode = storageMode;
-      });
+      MnWizardService.initialValues.storageMode = storageMode;
+    });
 
     MnWizardService.stream.initHddStorage
-      .pipe(first(),
-            combineLatest(isEnterpriseStream))
+      .pipe(first(), combineLatest(isEnterpriseStream))
       .subscribe(function ([initHdd, isEnterprise]) {
         setStorageConfigValues(newClusterConfig, initHdd, isEnterprise);
         setStorageConfigValues(joinCluster, initHdd, isEnterprise);
@@ -83,16 +96,17 @@ export class MnWizardComponent extends MnLifeCycleHooksToStream {
     function setStorageConfigValues(config, initHdd, isEnterprise) {
       if (isEnterprise) {
         initHdd.cbas_path.forEach((dir, index) => {
-          config.get('clusterStorage.storage.cbas_path')
+          config
+            .get('clusterStorage.storage.cbas_path')
             .setControl(index, new FormControl(null), {
-              emitEvent: false
+              emitEvent: false,
             });
         });
       }
-      if ((config === newClusterConfig) && isEnterprise) {
-        newClusterConfig.get('javaPath').setValue(initHdd.java_home)
+      if (config === newClusterConfig && isEnterprise) {
+        newClusterConfig.get('javaPath').setValue(initHdd.java_home);
       }
-      config.get("clusterStorage.storage").patchValue(initHdd);
+      config.get('clusterStorage.storage').patchValue(initHdd);
     }
   }
 
@@ -107,7 +121,11 @@ export class MnWizardComponent extends MnLifeCycleHooksToStream {
         </div>
         <footer className="footer-wizard">
           Copyright © 2024
-          <a href="https://www.couchbase.com/" target="_blank" rel="noopener noreferrer">
+          <a
+            href="https://www.couchbase.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             Couchbase, Inc.
           </a>
           All rights reserved.

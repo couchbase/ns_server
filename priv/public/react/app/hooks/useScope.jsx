@@ -14,37 +14,48 @@ const useScope = (initialValues = {}, parentScope = null) => {
   const eventHandlers = [];
 
   const set = useCallback((property, value) => {
-    setState(prevState => ({ ...prevState, [property]: value }));
+    setState((prevState) => ({ ...prevState, [property]: value }));
   }, []);
 
   const del = useCallback((property) => {
-    setState(prevState => {
+    setState((prevState) => {
       const newState = { ...prevState };
       delete newState[property];
       return newState;
     });
   }, []);
 
-  const on = useCallback((type, handler) => {
-    emitter.on(type, handler);
-    eventHandlers.push({ type, handler });
-    return () => {
-      emitter.off(type, handler);
-      const index = eventHandlers.findIndex(h => h.type === type && h.handler === handler);
-      if (index !== -1) {
-        eventHandlers.splice(index, 1);
-      }
-    };
-  }, [emitter, eventHandlers]);
+  const on = useCallback(
+    (type, handler) => {
+      emitter.on(type, handler);
+      eventHandlers.push({ type, handler });
+      return () => {
+        emitter.off(type, handler);
+        const index = eventHandlers.findIndex(
+          (h) => h.type === type && h.handler === handler
+        );
+        if (index !== -1) {
+          eventHandlers.splice(index, 1);
+        }
+      };
+    },
+    [emitter, eventHandlers]
+  );
 
-  const broadcast = useCallback((type, event) => {
-    emitter.emit(type, event);
-    childScopes.forEach(childScope => childScope.$broadcast(type, event));
-  }, [emitter, childScopes]);
+  const broadcast = useCallback(
+    (type, event) => {
+      emitter.emit(type, event);
+      childScopes.forEach((childScope) => childScope.$broadcast(type, event));
+    },
+    [emitter, childScopes]
+  );
 
-  const registerChildScope = useCallback((childScope) => {
-    childScopes.push(childScope);
-  }, [childScopes]);
+  const registerChildScope = useCallback(
+    (childScope) => {
+      childScopes.push(childScope);
+    },
+    [childScopes]
+  );
 
   if (parentScope) {
     parentScope.registerChildScope({ $broadcast: broadcast });

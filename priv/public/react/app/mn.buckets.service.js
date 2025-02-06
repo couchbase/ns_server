@@ -8,90 +8,126 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {HttpParams} from '@angular/common/http';
-import {HttpClient} from './mn.http.client.js';
-import {pluck, switchMap, concatMap, shareReplay,
-  distinctUntilChanged, map, withLatestFrom} from 'rxjs/operators';
-import {BehaviorSubject, timer, combineLatest} from 'rxjs';
-import {filter, anyPass, allPass, propEq} from 'ramda';
+import { HttpParams } from '@angular/common/http';
+import { HttpClient } from './mn.http.client.js';
+import {
+  pluck,
+  switchMap,
+  concatMap,
+  shareReplay,
+  distinctUntilChanged,
+  map,
+  withLatestFrom,
+} from 'rxjs/operators';
+import { BehaviorSubject, timer, combineLatest } from 'rxjs';
+import { filter, anyPass, allPass, propEq } from 'ramda';
 
-import {MnAdminService} from './mn.admin.service.js';
-import {MnHttpRequest} from './mn.http.request.js';
-import {MnHelperService} from './mn.helper.service.js';
-import {MnSettingsAutoCompactionService} from './mn.settings.auto.compaction.service.js';
-import {timeUnitToSeconds} from './constants/constants.js';
+import { MnAdminService } from './mn.admin.service.js';
+import { MnHttpRequest } from './mn.http.request.js';
+import { MnHelperService } from './mn.helper.service.js';
+import { MnSettingsAutoCompactionService } from './mn.settings.auto.compaction.service.js';
+import { timeUnitToSeconds } from './constants/constants.js';
 
 class MnBucketsServiceClass {
-  constructor(http, mnAdminService, mnHelperService, mnSettingsAutoCompactionService) {
+  constructor(
+    http,
+    mnAdminService,
+    mnHelperService,
+    mnSettingsAutoCompactionService
+  ) {
     this.stream = {};
     this.http = http;
     this.mnHelperService = mnHelperService;
     this.mnAdminService = mnAdminService;
     this.mnSettingsAutoCompactionService = mnSettingsAutoCompactionService;
 
-    this.stream.bucketsUri = mnAdminService.stream.getPoolsDefault
-      .pipe(pluck("buckets", "uri"),
-            distinctUntilChanged());
+    this.stream.bucketsUri = mnAdminService.stream.getPoolsDefault.pipe(
+      pluck('buckets', 'uri'),
+      distinctUntilChanged()
+    );
 
-    this.stream.getBuckets = this.stream.bucketsUri
-      .pipe(switchMap(this.get.bind(this)),
-            shareReplay({refCount: true, bufferSize: 1}));
+    this.stream.getBuckets = this.stream.bucketsUri.pipe(
+      switchMap(this.get.bind(this)),
+      shareReplay({ refCount: true, bufferSize: 1 })
+    );
 
     this.stream.updateBucketsPoller = new BehaviorSubject();
 
-    this.stream.getBucketsByName = this.stream.getBuckets
-      .pipe(map(buckets =>
-                   buckets.reduce((acc, bucket) => {
-                     acc[bucket.name] = bucket;
-                     return acc;
-                   }, {})),
-            shareReplay({refCount: true, bufferSize: 1}));
+    this.stream.getBucketsByName = this.stream.getBuckets.pipe(
+      map((buckets) =>
+        buckets.reduce((acc, bucket) => {
+          acc[bucket.name] = bucket;
+          return acc;
+        }, {})
+      ),
+      shareReplay({ refCount: true, bufferSize: 1 })
+    );
 
-    this.stream.bucketsMembaseCouchstore = this.stream.getBuckets
-      .pipe(map(filter(allPass([propEq('bucketType', 'membase'),
-                                propEq('storageBackend', 'couchstore')]))),
-            shareReplay({refCount: true, bufferSize: 1}));
+    this.stream.bucketsMembaseCouchstore = this.stream.getBuckets.pipe(
+      map(
+        filter(
+          allPass([
+            propEq('bucketType', 'membase'),
+            propEq('storageBackend', 'couchstore'),
+          ])
+        )
+      ),
+      shareReplay({ refCount: true, bufferSize: 1 })
+    );
 
-    this.stream.bucketsMembaseEphemeral = this.stream.getBuckets
-      .pipe(map(filter(anyPass([propEq('bucketType', 'membase'),
-                                propEq('bucketType', 'ephemeral')]))),
-            shareReplay({refCount: true, bufferSize: 1}));
+    this.stream.bucketsMembaseEphemeral = this.stream.getBuckets.pipe(
+      map(
+        filter(
+          anyPass([
+            propEq('bucketType', 'membase'),
+            propEq('bucketType', 'ephemeral'),
+          ])
+        )
+      ),
+      shareReplay({ refCount: true, bufferSize: 1 })
+    );
 
-    this.stream.bucketsCrossClusterVersioningEnabled = this.stream.getBuckets
-    .pipe(
-          map(filter(propEq('enableCrossClusterVersioning', true))),
-          map(buckets => buckets.map(bucket => bucket.name)),
-          shareReplay({refCount: true, bufferSize: 1}));
+    this.stream.bucketsCrossClusterVersioningEnabled =
+      this.stream.getBuckets.pipe(
+        map(filter(propEq('enableCrossClusterVersioning', true))),
+        map((buckets) => buckets.map((bucket) => bucket.name)),
+        shareReplay({ refCount: true, bufferSize: 1 })
+      );
 
-    this.stream.getBucketsPool =
-      combineLatest(this.stream.bucketsUri,
-                    timer(0, 4000),
-                    this.stream.updateBucketsPoller)
-      .pipe(map(([url,]) => url),
-            concatMap(this.get.bind(this)),
-            shareReplay({refCount: true, bufferSize: 1}));
+    this.stream.getBucketsPool = combineLatest(
+      this.stream.bucketsUri,
+      timer(0, 4000),
+      this.stream.updateBucketsPoller
+    ).pipe(
+      map(([url]) => url),
+      concatMap(this.get.bind(this)),
+      shareReplay({ refCount: true, bufferSize: 1 })
+    );
 
-    this.stream.defaultAutoCompactionData = mnSettingsAutoCompactionService.stream.settingsSource;
+    this.stream.defaultAutoCompactionData =
+      mnSettingsAutoCompactionService.stream.settingsSource;
 
-    this.stream.deleteBucket =
-      new MnHttpRequest(this.deleteBucket.bind(this))
-        .addSuccess()
-        .addError();
+    this.stream.deleteBucket = new MnHttpRequest(this.deleteBucket.bind(this))
+      .addSuccess()
+      .addError();
 
-    this.stream.flushBucket =
-      new MnHttpRequest(this.flushBucket.bind(this))
-        .addSuccess()
-        .addError();
+    this.stream.flushBucket = new MnHttpRequest(this.flushBucket.bind(this))
+      .addSuccess()
+      .addError();
   }
 
   isNewBucketAllowed([permissions, maxBucketsCountReached, isRebalancing]) {
-    return permissions.cluster.buckets.create && !isRebalancing && !maxBucketsCountReached;
+    return (
+      permissions.cluster.buckets.create &&
+      !isRebalancing &&
+      !maxBucketsCountReached
+    );
   }
 
   getNodesCountByStatus(nodes) {
     let nodesByStatuses = {};
 
-    nodes.forEach(node => {
+    nodes.forEach((node) => {
       let status = this.getMessage(node.status, node.clusterMembership);
 
       if (status) {
@@ -103,7 +139,8 @@ class MnBucketsServiceClass {
   }
 
   getMessage(status, clusterMembership) {
-    let rvStatus = clusterMembership === 'inactiveFailed' ? 'failed over, ' : '';
+    let rvStatus =
+      clusterMembership === 'inactiveFailed' ? 'failed over, ' : '';
 
     switch (status) {
       case 'unhealthy':
@@ -116,8 +153,14 @@ class MnBucketsServiceClass {
   }
 
   getNodesCountByStatusMessage(statusCount) {
-    return Object.keys(statusCount).map(status => {
-      return statusCount[status] + ' node' + (statusCount[status] !== 1 ? "s" : "") + ' ' + status;
+    return Object.keys(statusCount).map((status) => {
+      return (
+        statusCount[status] +
+        ' node' +
+        (statusCount[status] !== 1 ? 's' : '') +
+        ' ' +
+        status
+      );
     });
   }
 
@@ -126,22 +169,30 @@ class MnBucketsServiceClass {
       return false;
     }
 
-    let task = tasks.find(task => task.bucket === bucket.name);
+    let task = tasks.find((task) => task.bucket === bucket.name);
     if (task) {
-      if (!(Number(task.stats.ep_warmup_estimated_key_count) ||
-        Number(task.stats.ep_warmup_estimated_value_count))) {
+      if (
+        !(
+          Number(task.stats.ep_warmup_estimated_key_count) ||
+          Number(task.stats.ep_warmup_estimated_value_count)
+        )
+      ) {
         return 0;
       }
 
       let totalPercent = 0;
       switch (task.stats.ep_warmup_state) {
-        case "loading keys":
-          totalPercent += (Number(task.stats.ep_warmup_key_count) /
-            Number(task.stats.ep_warmup_estimated_key_count) * 100);
+        case 'loading keys':
+          totalPercent +=
+            (Number(task.stats.ep_warmup_key_count) /
+              Number(task.stats.ep_warmup_estimated_key_count)) *
+            100;
           break;
-        case "loading data":
-          totalPercent += (Number(task.stats.ep_warmup_value_count) /
-            Number(task.stats.ep_warmup_estimated_value_count) * 100);
+        case 'loading data':
+          totalPercent +=
+            (Number(task.stats.ep_warmup_value_count) /
+              Number(task.stats.ep_warmup_estimated_value_count)) *
+            100;
           break;
         default:
           break;
@@ -170,7 +221,7 @@ class MnBucketsServiceClass {
       }
     }
 
-    return ('dynamic_' + statusClass);
+    return 'dynamic_' + statusClass;
   }
 
   getResidentRatio(bucket) {
@@ -183,7 +234,7 @@ class MnBucketsServiceClass {
       return 0;
     }
 
-    return (items - activeResident) * 100 / items;
+    return ((items - activeResident) * 100) / items;
   }
 
   getRamConfigParams(bucket) {
@@ -195,7 +246,8 @@ class MnBucketsServiceClass {
     return {
       total: totals.quotaTotalPerNode * bucket.nodes.length,
       thisAlloc: bucket.quota.ram,
-      otherBuckets: totals.quotaUsedPerNode * bucket.nodes.length - bucket.quota.ram
+      otherBuckets:
+        totals.quotaUsedPerNode * bucket.nodes.length - bucket.quota.ram,
     };
   }
 
@@ -209,7 +261,7 @@ class MnBucketsServiceClass {
       total: totals.total,
       thisBucket: bucket.basicStats.diskUsed,
       otherBuckets: totals.usedByData - bucket.basicStats.diskUsed,
-      otherData: totals.used - totals.usedByData
+      otherData: totals.used - totals.usedByData,
     };
   }
 
@@ -221,30 +273,36 @@ class MnBucketsServiceClass {
     let config = {};
     config.topRight = {
       name: 'cluster quota',
-      value: ramSummary.total
+      value: ramSummary.total,
     };
 
-    let available = ramSummary.total - ramSummary.otherBuckets - ramSummary.thisAlloc;
-    config.items = [{
-      name: 'other buckets',
-      value: ramSummary.otherBuckets
-    }, {
-      name: 'this bucket',
-      value: ramSummary.thisAlloc
-    }, {
-      name: 'available',
-      value: available
-    }];
+    let available =
+      ramSummary.total - ramSummary.otherBuckets - ramSummary.thisAlloc;
+    config.items = [
+      {
+        name: 'other buckets',
+        value: ramSummary.otherBuckets,
+      },
+      {
+        name: 'this bucket',
+        value: ramSummary.thisAlloc,
+      },
+      {
+        name: 'available',
+        value: available,
+      },
+    ];
 
     if (available < 0) {
       config.items[1].value = ramSummary.total - ramSummary.otherBuckets;
       config.items[2] = {
         name: 'overcommitted',
-        value: ramSummary.otherBuckets + ramSummary.thisAlloc - ramSummary.total
+        value:
+          ramSummary.otherBuckets + ramSummary.thisAlloc - ramSummary.total,
       };
       config.topLeft = {
         name: 'total allocated',
-        value: ramSummary.otherBuckets + ramSummary.thisAlloc
+        value: ramSummary.otherBuckets + ramSummary.thisAlloc,
       };
     }
 
@@ -254,30 +312,40 @@ class MnBucketsServiceClass {
   getDiskConfig(diskSummary) {
     var config = {};
 
-    let available = diskSummary.total - diskSummary.otherData - diskSummary.thisBucket - diskSummary.otherBuckets;
+    let available =
+      diskSummary.total -
+      diskSummary.otherData -
+      diskSummary.thisBucket -
+      diskSummary.otherBuckets;
     config.topRight = {
       name: 'total cluster storage',
-      value: diskSummary.total
+      value: diskSummary.total,
     };
-    config.items = [{
-      name: 'other buckets',
-      value: diskSummary.otherBuckets
-    }, {
-      name: 'this bucket',
-      value: diskSummary.thisBucket
-    }, {
-      name: 'available',
-      value: available
-    }];
+    config.items = [
+      {
+        name: 'other buckets',
+        value: diskSummary.otherBuckets,
+      },
+      {
+        name: 'this bucket',
+        value: diskSummary.thisBucket,
+      },
+      {
+        name: 'available',
+        value: available,
+      },
+    ];
 
     return config;
   }
 
   getWarmUpTasks([tasks, bucket]) {
-    return tasks.filter(task => {
+    return tasks.filter((task) => {
       let isNeeded = task.bucket === bucket.name;
       if (isNeeded) {
-        task.hostname = bucket.nodes.find(node => node.otpNode === task.node).hostname;
+        task.hostname = bucket.nodes.find(
+          (node) => node.otpNode === task.node
+        ).hostname;
       }
       return isNeeded;
     });
@@ -312,11 +380,13 @@ class MnBucketsServiceClass {
   }
 
   getNumVBuckets(bucket) {
-    return bucket.numVBuckets
+    return bucket.numVBuckets;
   }
 
   prepareCompactionProgressText(compactionTask) {
-    return compactionTask ? (compactionTask.progress + '% complete') : 'Not active';
+    return compactionTask
+      ? compactionTask.progress + '% complete'
+      : 'Not active';
   }
 
   getCompactionTask([compactionTasks, bucketName]) {
@@ -332,21 +402,29 @@ class MnBucketsServiceClass {
   }
 
   showCompactBtn([compactionTask, bucketName, bucketType, permissions]) {
-    return (!compactionTask || !compactionTask.cancelURI) &&
-            bucketType === 'membase' &&
-            permissions.cluster.tasks.read &&
-            permissions.cluster.bucket[bucketName].compact;
+    return (
+      (!compactionTask || !compactionTask.cancelURI) &&
+      bucketType === 'membase' &&
+      permissions.cluster.tasks.read &&
+      permissions.cluster.bucket[bucketName].compact
+    );
   }
 
   showCancelCompactBtn([compactionTask, bucketName, permissions]) {
-    return (compactionTask && compactionTask.cancelURI) &&
-            permissions.cluster.tasks.read &&
-            permissions.cluster.bucket[bucketName].compact;
+    return (
+      compactionTask &&
+      compactionTask.cancelURI &&
+      permissions.cluster.tasks.read &&
+      permissions.cluster.bucket[bucketName].compact
+    );
   }
 
   showFlushBtn([controllers, bucketName, permissions]) {
-    return controllers && controllers.flush &&
-      permissions.cluster.bucket[bucketName].flush;
+    return (
+      controllers &&
+      controllers.flush &&
+      permissions.cluster.bucket[bucketName].flush
+    );
   }
 
   unpackData([autoCompactionSettings, reallyActiveKVNodes], storageTotals) {
@@ -354,7 +432,8 @@ class MnBucketsServiceClass {
     let ram = storageTotals.ram;
     if (ram) {
       ramQuota = Math.floor(
-        (ram.quotaTotal - ram.quotaUsed) / reallyActiveKVNodes.length);
+        (ram.quotaTotal - ram.quotaUsed) / reallyActiveKVNodes.length
+      );
     }
 
     return {
@@ -380,15 +459,18 @@ class MnBucketsServiceClass {
       autoCompactionSettings,
       enableEncryptionAtRest: false,
       encryptionAtRestSecretId: null,
-      encryptionAtRestDekRotationInterval: timeUnitToSeconds.month / timeUnitToSeconds.day,
-      encryptionAtRestDekLifetime: timeUnitToSeconds.year / timeUnitToSeconds.day,
+      encryptionAtRestDekRotationInterval:
+        timeUnitToSeconds.month / timeUnitToSeconds.day,
+      encryptionAtRestDekLifetime:
+        timeUnitToSeconds.year / timeUnitToSeconds.day,
       enableCrossClusterVersioning: false,
     };
   }
 
   getBucketFormData(defaultAutoCompaction, bucket, secrets) {
     const defaultDEKLifetime = timeUnitToSeconds.year / timeUnitToSeconds.day;
-    const defaultDEKRotationInterval = timeUnitToSeconds.month / timeUnitToSeconds.day;
+    const defaultDEKRotationInterval =
+      timeUnitToSeconds.month / timeUnitToSeconds.day;
 
     let result = {
       name: bucket.name,
@@ -403,13 +485,13 @@ class MnBucketsServiceClass {
       maxTTL: bucket.maxTTL,
       compressionMode: bucket.compressionMode,
       conflictResolutionType: bucket.conflictResolutionType,
-      flushEnabled: (bucket.controllers && bucket.controllers.flush) ? 1 : 0,
+      flushEnabled: bucket.controllers && bucket.controllers.flush ? 1 : 0,
       threadsNumber: bucket.threadsNumber + '',
       purgeInterval: bucket.purgeInterval,
       durabilityMinLevel: bucket.durabilityMinLevel,
       storageBackend: bucket.storageBackend,
       // Magma Configuration needs numVBuckets as either '1024' or ''
-      numVBuckets: (bucket.numVBuckets == 1024 ? bucket.numVBuckets + '' : ''),
+      numVBuckets: bucket.numVBuckets == 1024 ? bucket.numVBuckets + '' : '',
       autoCompactionDefined: !!bucket.autoCompactionSettings,
       enableCrossClusterVersioning: !!bucket.enableCrossClusterVersioning,
     };
@@ -417,53 +499,68 @@ class MnBucketsServiceClass {
     //secrets is null in case cluster compat mode is less than 8.0 or is not EE
     if (secrets) {
       result.enableEncryptionAtRest = bucket.encryptionAtRestSecretId !== -1;
-      result.encryptionAtRestSecretId = bucket.encryptionAtRestSecretId === -1 ? null : secrets.find(s => s.id === bucket.encryptionAtRestSecretId);
-      result.encryptionAtRestDekRotationEnabled = bucket.encryptionAtRestDekRotationInterval > 0;
-      result.encryptionAtRestDekLifetimeEnabled = bucket.encryptionAtRestDekLifetime > 0;
-      result.encryptionAtRestDekRotationInterval = bucket.encryptionAtRestDekRotationInterval / 86_400 || defaultDEKRotationInterval;
-      result.encryptionAtRestDekLifetime = bucket.encryptionAtRestDekLifetime / 86_400 || defaultDEKLifetime;
+      result.encryptionAtRestSecretId =
+        bucket.encryptionAtRestSecretId === -1
+          ? null
+          : secrets.find((s) => s.id === bucket.encryptionAtRestSecretId);
+      result.encryptionAtRestDekRotationEnabled =
+        bucket.encryptionAtRestDekRotationInterval > 0;
+      result.encryptionAtRestDekLifetimeEnabled =
+        bucket.encryptionAtRestDekLifetime > 0;
+      result.encryptionAtRestDekRotationInterval =
+        bucket.encryptionAtRestDekRotationInterval / 86_400 ||
+        defaultDEKRotationInterval;
+      result.encryptionAtRestDekLifetime =
+        bucket.encryptionAtRestDekLifetime / 86_400 || defaultDEKLifetime;
     }
 
     let autoCompaction = this.mnSettingsAutoCompactionService.getSettingsSource(
-      bucket.autoCompactionSettings ? bucket : {autoCompactionSettings: defaultAutoCompaction});
-    autoCompaction.purgeInterval = bucket.autoCompactionSettings ?
-      bucket.purgeInterval : defaultAutoCompaction.purgeInterval;
-    result = Object.assign(result, {autoCompactionSettings: autoCompaction});
+      bucket.autoCompactionSettings
+        ? bucket
+        : { autoCompactionSettings: defaultAutoCompaction }
+    );
+    autoCompaction.purgeInterval = bucket.autoCompactionSettings
+      ? bucket.purgeInterval
+      : defaultAutoCompaction.purgeInterval;
+    result = Object.assign(result, { autoCompactionSettings: autoCompaction });
 
     return result;
   }
 
   createBucketFormData(bucket, secrets) {
-    return this.stream.defaultAutoCompactionData
-      .pipe(map(v => this.getBucketFormData(v, bucket, secrets)));
-  }
-
-  createInitialFormData(storageTotals) {
-    return this.stream.defaultAutoCompactionData
-      .pipe(withLatestFrom(this.mnAdminService.stream.reallyActiveKVNodes),
-            map(v => this.unpackData(v, storageTotals)));
-  }
-
-  get(url) {
-    return this.http.get(
-      url,
-      {params: new HttpParams().set('skipMap', true).set('basic_stats', true)}
+    return this.stream.defaultAutoCompactionData.pipe(
+      map((v) => this.getBucketFormData(v, bucket, secrets))
     );
   }
 
+  createInitialFormData(storageTotals) {
+    return this.stream.defaultAutoCompactionData.pipe(
+      withLatestFrom(this.mnAdminService.stream.reallyActiveKVNodes),
+      map((v) => this.unpackData(v, storageTotals))
+    );
+  }
+
+  get(url) {
+    return this.http.get(url, {
+      params: new HttpParams().set('skipMap', true).set('basic_stats', true),
+    });
+  }
+
   createPostBucketPipe(id) {
-    this.stream.postBucket =
-      new MnHttpRequest(this.postBucket.bind(this, false, id))
-        .addSuccess()
-        .addError();
+    this.stream.postBucket = new MnHttpRequest(
+      this.postBucket.bind(this, false, id)
+    )
+      .addSuccess()
+      .addError();
     return this.stream.postBucket;
   }
 
   createPostValidationPipe(id) {
-    this.stream.postBucketValidation =
-      new MnHttpRequest(this.postBucket.bind(this, true, id))
-        .addSuccess()
-        .addError();
+    this.stream.postBucketValidation = new MnHttpRequest(
+      this.postBucket.bind(this, true, id)
+    )
+      .addSuccess()
+      .addError();
     return this.stream.postBucketValidation;
   }
 
@@ -479,7 +576,7 @@ class MnBucketsServiceClass {
       params = params.set('bucket_uuid', bucketId);
     }
 
-    return this.http.post(url, payload, {params});
+    return this.http.post(url, payload, { params });
   }
 
   deleteBucket(bucket) {
@@ -495,5 +592,10 @@ class MnBucketsServiceClass {
   }
 }
 
-const MnBucketsService = new MnBucketsServiceClass(HttpClient, MnAdminService, MnHelperService, MnSettingsAutoCompactionService);
+const MnBucketsService = new MnBucketsServiceClass(
+  HttpClient,
+  MnAdminService,
+  MnHelperService,
+  MnSettingsAutoCompactionService
+);
 export { MnBucketsService };

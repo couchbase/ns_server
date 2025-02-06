@@ -447,7 +447,7 @@ div.CodeMirror-dragcursors {
 
 /* See issue #2901 */
 .cm-tab-wrap-hack:after {
-  content: "";
+  content: '';
 }
 
 /* Help users use markselection to safely style text background */

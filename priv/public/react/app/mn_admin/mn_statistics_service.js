@@ -7,41 +7,44 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-import _ from "lodash";
-import {timeFormat} from "d3-time-format";
-import {timeMinute,
-        timeHour,
-        timeDay,
-        timeMonth,
-        timeYear} from "d3-time";
-import axios from "axios";
-import { BehaviorSubject } from "rxjs";
-import { groupBy } from "ramda";
+import _ from 'lodash';
+import { timeFormat } from 'd3-time-format';
+import { timeMinute, timeHour, timeDay, timeMonth, timeYear } from 'd3-time';
+import axios from 'axios';
+import { BehaviorSubject } from 'rxjs';
+import { groupBy } from 'ramda';
 
-import {mnPoller} from "../components/mn_poll.js";
-import mnStoreService from "../components/mn_store_service.js";
-import mnPoolDefault from "../components/mn_pool_default.js";
-import mnPermissions from "../components/mn_permissions.js";
+import { mnPoller } from '../components/mn_poll.js';
+import mnStoreService from '../components/mn_store_service.js';
+import mnPoolDefault from '../components/mn_pool_default.js';
+import mnPermissions from '../components/mn_permissions.js';
 
-import mnServersService from "./mn_servers_service.js"
-import mnStatisticsDescriptionService from "./mn_statistics_description_service.js";
-import mnStatisticsDescription from "./mn_statistics_description.js";
+import mnServersService from './mn_servers_service.js';
+import mnStatisticsDescriptionService from './mn_statistics_description_service.js';
+import mnStatisticsDescription from './mn_statistics_description.js';
 
-function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsDescriptionService, mnStoreService, mnPoolDefault, mnPermissions) {
+function mnStatisticsNewServiceFactory(
+  mnServersService,
+  mnPoller,
+  mnStatisticsDescriptionService,
+  mnStoreService,
+  mnPoolDefault,
+  mnPermissions
+) {
   var rootScope = {
-    mnOnDestroy: new BehaviorSubject(null)
+    mnOnDestroy: new BehaviorSubject(null),
   };
 
-  var formatSecond = timeFormat("%-I:%M:%S%p");
-  var formatMinute = timeFormat("%-I:%M%p");
-  var formatHour = timeFormat("%-I%p");
-  var formatDayMonth = timeFormat("%b %-d");
-  var formatYear = timeFormat("%Y");
+  var formatSecond = timeFormat('%-I:%M:%S%p');
+  var formatMinute = timeFormat('%-I:%M%p');
+  var formatHour = timeFormat('%-I%p');
+  var formatDayMonth = timeFormat('%b %-d');
+  var formatYear = timeFormat('%Y');
 
   var mnStatisticsNewService = {
     prepareNodesList: prepareNodesList,
     export: new BehaviorSubject({
-      scenario: {}
+      scenario: {},
     }),
     descriptionPathsToStatNames: descriptionPathsToStatNames,
     descriptionPathToStatName: descriptionPathToStatName,
@@ -78,7 +81,7 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
       } else {
         return zoomToMS(zoom);
       }
-    }
+    },
   };
 
   return mnStatisticsNewService;
@@ -87,7 +90,7 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
     config.step = rangeZoomToStep(originConfig.zoom);
     config.timeWindow = Math.max(config.step * 2, 360);
     config.start = 0 - rangeZoomToSec(originConfig.zoom);
-    if (originConfig.zoom == "minute") {
+    if (originConfig.zoom == 'minute') {
       //in order to make sure that we recieve 12 samples UI
       //should send a bit less seconds
       //e.g. start = - N * step + 1 (- 12 * 10  + 1 = -119)
@@ -109,81 +112,90 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
     var perChartOriginConfig = [];
     var currentPerChartScopes = [];
     var counter = 0;
-    let heartbeat =
-        new mnPoller(scope, function () {
-          counter++;
-          currentPerChartScopes = [...perChartScopes];
-          return postStatsRange([...perChartConfig]);
-        })
-        .setInterval(function (resp) {
-          return (resp && resp.interval) || 10000;
-        })
-        .subscribe(function (value) {
-          if (!value.data) {
-            return;
-          }
-          if (mnPoolDefault.export.getValue().compat.atLeast70) {
-            // Initialize a grouped object to accumulate stats per group
-            const scopeAndStats = currentPerChartScopes.map((scope, i) => {
-              const mnUIStats = unpack70Stats(value)(scope, i);
-              return {scope, mnUIStats};
-            });
+    let heartbeat = new mnPoller(scope, function () {
+      counter++;
+      currentPerChartScopes = [...perChartScopes];
+      return postStatsRange([...perChartConfig]);
+    })
+      .setInterval(function (resp) {
+        return (resp && resp.interval) || 10000;
+      })
+      .subscribe(function (value) {
+        if (!value.data) {
+          return;
+        }
+        if (mnPoolDefault.export.getValue().compat.atLeast70) {
+          // Initialize a grouped object to accumulate stats per group
+          const scopeAndStats = currentPerChartScopes.map((scope, i) => {
+            const mnUIStats = unpack70Stats(value)(scope, i);
+            return { scope, mnUIStats };
+          });
 
-            const grouped = groupBy(scopeAndStat => scopeAndStat.scope.props.config.id, scopeAndStats);
-            
-            // Initialize an object to hold merged stats per group
-            const mergedStatsPerGroup = {};
-            // Iterate over each group
-            for (const [chartId, scopeAndStats] of Object.entries(grouped)) {
-                // Initialize merged stats for the group
-              mergedStatsPerGroup[chartId] = {
-                stats: {},
-                endTimestamp: 0,
-                startTimestamp: 0
-              };
+          const grouped = groupBy(
+            (scopeAndStat) => scopeAndStat.scope.props.config.id,
+            scopeAndStats
+          );
 
-              // Iterate over each scope in the group
-              scopeAndStats.forEach((scopeAndStat) => {
-                // Merge stats into the group's mergedStatsPerGroup
-                mergedStatsPerGroup[chartId].endTimestamp = scopeAndStat.mnUIStats.endTimestamp;
-                mergedStatsPerGroup[chartId].startTimestamp = scopeAndStat.mnUIStats.startTimestamp;
-                if (scopeAndStat.mnUIStats) {
-                  Object.keys(scopeAndStat.mnUIStats.stats).forEach(statPath => {
-                    mergedStatsPerGroup[chartId].stats[statPath] = Object.assign({}, scopeAndStat.mnUIStats.stats[statPath])
-                  });
-                }
-              });
-            }
+          // Initialize an object to hold merged stats per group
+          const mergedStatsPerGroup = {};
+          // Iterate over each group
+          for (const [chartId, scopeAndStats] of Object.entries(grouped)) {
+            // Initialize merged stats for the group
+            mergedStatsPerGroup[chartId] = {
+              stats: {},
+              endTimestamp: 0,
+              startTimestamp: 0,
+            };
 
-            for (const [chartId, scopeAndStats] of Object.entries(grouped)) {
-              scopeAndStats[0].scope.setState({
-                mnUIStats: mergedStatsPerGroup[chartId]
-              });
-            }
-          } else {
-            //TOD0: merge stats 
-            // currentPerChartScopes.forEach(function (scope, i) {
-            //   scope.setState({"mnUIStats": value.data[i]});
-            // });
-          }
-        })
-        .onResum(function () {
-          counter = 0;
-          if (mnPoolDefault.export.getValue().compat.atLeast70) {
-            perChartConfig.forEach(function (config, i) {
-              switchToFullStatInfo(config, perChartOriginConfig[i]);
+            // Iterate over each scope in the group
+            scopeAndStats.forEach((scopeAndStat) => {
+              // Merge stats into the group's mergedStatsPerGroup
+              mergedStatsPerGroup[chartId].endTimestamp =
+                scopeAndStat.mnUIStats.endTimestamp;
+              mergedStatsPerGroup[chartId].startTimestamp =
+                scopeAndStat.mnUIStats.startTimestamp;
+              if (scopeAndStat.mnUIStats) {
+                Object.keys(scopeAndStat.mnUIStats.stats).forEach(
+                  (statPath) => {
+                    mergedStatsPerGroup[chartId].stats[statPath] =
+                      Object.assign({}, scopeAndStat.mnUIStats.stats[statPath]);
+                  }
+                );
+              }
             });
           }
-        });
+
+          for (const [chartId, scopeAndStats] of Object.entries(grouped)) {
+            scopeAndStats[0].scope.setState({
+              mnUIStats: mergedStatsPerGroup[chartId],
+            });
+          }
+        } else {
+          //TOD0: merge stats
+          // currentPerChartScopes.forEach(function (scope, i) {
+          //   scope.setState({"mnUIStats": value.data[i]});
+          // });
+        }
+      })
+      .onResum(function () {
+        counter = 0;
+        if (mnPoolDefault.export.getValue().compat.atLeast70) {
+          perChartConfig.forEach(function (config, i) {
+            switchToFullStatInfo(config, perChartOriginConfig[i]);
+          });
+        }
+      });
 
     return {
       subscribeUIStatsPoller: subscribeUIStatsPoller,
       heartbeat: heartbeat,
-      isThisInitCall: () => counter == 1
+      isThisInitCall: () => counter == 1,
     };
 
     function subscribeUIStatsPoller(config, scope) {
-      if (!mnPermissions.export.getValue().cluster.collection['.:.:.'].stats.read) {
+      if (
+        !mnPermissions.export.getValue().cluster.collection['.:.:.'].stats.read
+      ) {
         return;
       }
       let config1 = packStatsConfig(config);
@@ -239,7 +251,7 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
         let mnUIStats = {
           stats: {},
           endTimestamp: resp.data[i].endTimestamp * 1000,
-          startTimestamp: resp.data[i].startTimestamp * 1000
+          startTimestamp: resp.data[i].startTimestamp * 1000,
         };
 
         let maybeScopeHasStat = mnUIStats.stats[statPath] || {};
@@ -250,17 +262,31 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
             return acc;
           }, maybeScopeHasStat);
         } else {
-          maybeScopeHasStat[config.nodesAggregation ? "aggregate" : data.nodes[0]] = data;
+          maybeScopeHasStat[
+            config.nodesAggregation ? 'aggregate' : data.nodes[0]
+          ] = data;
         }
         mnUIStats.stats[statPath] = maybeScopeHasStat;
         return mnUIStats;
-      }
+      };
     }
   }
 
-  function buildChartConfig(stats, statName, currentNode, title, unit, axis, previousData, isThisInitCall, start, step) {
-    currentNode = currentNode == "all" ? "aggregate" : currentNode;
-    var perNodeStats = stats.stats[statName] && stats.stats[statName][currentNode];
+  function buildChartConfig(
+    stats,
+    statName,
+    currentNode,
+    title,
+    unit,
+    axis,
+    previousData,
+    isThisInitCall,
+    start,
+    step
+  ) {
+    currentNode = currentNode == 'all' ? 'aggregate' : currentNode;
+    var perNodeStats =
+      stats.stats[statName] && stats.stats[statName][currentNode];
     var values = [];
 
     if (perNodeStats) {
@@ -274,8 +300,8 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
           values.push([ts * 1000, Number(v)]);
         });
 
-        if (!isThisInitCall && (values.length > start/step)) {
-          values = values.slice(values.length - start/step);
+        if (!isThisInitCall && values.length > start / step) {
+          values = values.slice(values.length - start / step);
           previousData && (previousData.values = values);
         }
       } else {
@@ -289,45 +315,62 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
 
     let yMin = 0;
     let yMax = 1;
-    values.forEach(v => {
+    values.forEach((v) => {
       yMin = yMin > v[1] ? v[1] : yMin;
       yMax = yMax < v[1] ? v[1] : yMax;
     });
 
     return {
       endTimestamp: stats.endTimestamp,
-      startTimestamp: previousData && !isThisInitCall ? previousData.startTimestamp + step : stats.startTimestamp,
+      startTimestamp:
+        previousData && !isThisInitCall
+          ? previousData.startTimestamp + step
+          : stats.startTimestamp,
       type: 'line',
       unit: unit,
       yAxis: axis,
       yMin: yMin,
       yMax: yMax,
       key: title,
-      values: values
+      values: values,
     };
   }
 
   function defaultZoomInterval(zoom) {
-    return mnPoolDefault.export.getValue().compat.atLeast70 ? function () {
-      return rangeZoomToStep(zoom) * 1000;
-    } : function (resp) {
-      return resp.interval || (function () {
-        switch (zoom) {
-        case "minute": return 1000;
-        default: return 15000;
+    return mnPoolDefault.export.getValue().compat.atLeast70
+      ? function () {
+          return rangeZoomToStep(zoom) * 1000;
         }
-      })();
-    }
+      : function (resp) {
+          return (
+            resp.interval ||
+            (function () {
+              switch (zoom) {
+                case 'minute':
+                  return 1000;
+                default:
+                  return 15000;
+              }
+            })()
+          );
+        };
   }
 
   // Define filter conditions
   function multiFormat(date) {
-    return (timeMinute(date) < date ? formatSecond
-            : timeHour(date) < date ? formatMinute
-            : timeDay(date) < date ? formatHour
-            : timeMonth(date) < date ? formatDayMonth
-            : timeYear(date) < date ? formatDayMonth
-            : formatYear)(date);
+    return (
+      timeMinute(date) < date
+        ? formatSecond
+        : timeHour(date) < date
+          ? formatMinute
+          : timeDay(date) < date
+            ? formatHour
+            : timeMonth(date) < date
+              ? formatDayMonth
+              : timeYear(date) < date
+                ? formatDayMonth
+                : formatYear
+    )(date);
   }
 
   function getStatsDirectory(bucket, params) {
@@ -338,52 +381,54 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
       adda: '"all"',
       addi: '"all"',
       addf: '"all"',
-      addq: "1"
+      addq: '1',
     };
     return axios({
-      url: "/pools/default/buckets/" + bucket + "/statsDirectory",
+      url: '/pools/default/buckets/' + bucket + '/statsDirectory',
       method: 'GET',
-      params: params
+      params: params,
     });
   }
 
   function deleteChart(chartID) {
-    var group = mnStoreService.store("groups").getByIncludes(chartID, "charts");
+    var group = mnStoreService.store('groups').getByIncludes(chartID, 'charts');
     group.charts.splice(group.charts.indexOf(chartID), 1);
-    mnStoreService.store("charts").delete(chartID);
+    mnStoreService.store('charts').delete(chartID);
   }
 
   function deleteGroup(groupID) {
-    var scenario = mnStoreService.store("scenarios").getByIncludes(groupID, "groups");
+    var scenario = mnStoreService
+      .store('scenarios')
+      .getByIncludes(groupID, 'groups');
     scenario.groups.splice(scenario.groups.indexOf(groupID), 1);
-    var group = mnStoreService.store("groups").get(groupID);
+    var group = mnStoreService.store('groups').get(groupID);
     group.charts.forEach(function (chartID) {
-      mnStoreService.store("charts").delete(chartID);
+      mnStoreService.store('charts').delete(chartID);
     });
-    mnStoreService.store("groups").delete(groupID);
+    mnStoreService.store('groups').delete(groupID);
   }
 
   function deleteScenario(scenarioID) {
-    var scenario = mnStoreService.store("scenarios").get(scenarioID);
-    mnStoreService.store("scenarios").deleteItem(scenario);
+    var scenario = mnStoreService.store('scenarios').get(scenarioID);
+    mnStoreService.store('scenarios').deleteItem(scenario);
     scenario.groups.forEach(function (groupID) {
-      var group = mnStoreService.store("groups").get(groupID);
-      mnStoreService.store("groups").deleteItem(group);
+      var group = mnStoreService.store('groups').get(groupID);
+      mnStoreService.store('groups').deleteItem(group);
       group.charts.forEach(function (chartID) {
-        mnStoreService.store("charts").delete(chartID);
+        mnStoreService.store('charts').delete(chartID);
       });
     });
   }
 
   function copyScenario(scenario, copyFrom) {
-    scenario = mnStoreService.store("scenarios").add(scenario);
+    scenario = mnStoreService.store('scenarios').add(scenario);
     scenario.groups = (copyFrom.groups || []).map(function (groupID) {
-      var groupToCopy = mnStoreService.store("groups").get(groupID);
-      var copiedGroup = mnStoreService.store("groups").add(groupToCopy);
+      var groupToCopy = mnStoreService.store('groups').get(groupID);
+      var copiedGroup = mnStoreService.store('groups').add(groupToCopy);
       copiedGroup.preset = false;
       copiedGroup.charts = (copiedGroup.charts || []).map(function (chartID) {
-        var chartToCopy = mnStoreService.store("charts").get(chartID);
-        var copiedChart = mnStoreService.store("charts").add(chartToCopy);
+        var chartToCopy = mnStoreService.store('charts').get(chartID);
+        var copiedChart = mnStoreService.store('charts').add(chartToCopy);
         copiedChart.preset = false;
         return copiedChart.id;
       });
@@ -392,22 +437,30 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
   }
 
   function getStatsTitle(stats) {
-    return Object.keys(stats).map(function (descPath) {
-      var desc = mnStatisticsNewService.readByPath(descPath);
-      return desc ? desc.title : descPath.split(".").pop();
-    }).join(", ");
+    return Object.keys(stats)
+      .map(function (descPath) {
+        var desc = mnStatisticsNewService.readByPath(descPath);
+        return desc ? desc.title : descPath.split('.').pop();
+      })
+      .join(', ');
   }
 
   function getStatsDesc(stats) {
-    return Object.keys(stats).map(function (descPath) {
-      var desc = mnStatisticsNewService.readByPath(descPath);
-      if (desc) {
-        return "<b>" + desc.title + "</b><p>" + desc.desc + "</p>";
-      } else {
-        return "<b>" + descPath.split(".").pop() + "</b>" +
-          "<p>There is no such stat name anymore. Edit the chart in order to remove it.</p>";
-      }
-    }).join("");
+    return Object.keys(stats)
+      .map(function (descPath) {
+        var desc = mnStatisticsNewService.readByPath(descPath);
+        if (desc) {
+          return '<b>' + desc.title + '</b><p>' + desc.desc + '</p>';
+        } else {
+          return (
+            '<b>' +
+            descPath.split('.').pop() +
+            '</b>' +
+            '<p>There is no such stat name anymore. Edit the chart in order to remove it.</p>'
+          );
+        }
+      })
+      .join('');
   }
 
   function getStatsUnits(stats) {
@@ -440,7 +493,7 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
   }
 
   function isPerBucketStat(path) {
-    return path.split(".")[0].includes("-");
+    return path.split('.')[0].includes('-');
   }
 
   function postStatsRange(perChartConfig) {
@@ -448,26 +501,26 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
       url: '/pools/default/stats/range/',
       method: 'POST',
       mnHttp: {
-        group: "global",
-        isNotForm: true
+        group: 'global',
+        isNotForm: true,
       },
-      data: perChartConfig
+      data: perChartConfig,
     });
   }
 
   function getServiceNameFromDescriptionPath(descPath) {
-    var splitted = descPath.split(".");
-    return splitted[0].substring(1, splitted[0].length-1);
+    var splitted = descPath.split('.');
+    return splitted[0].substring(1, splitted[0].length - 1);
   }
 
   function descriptionPathToStatName(descPath, items) {
     if (mnPoolDefault.export.getValue().compat.atLeast70) {
       return descPath;
     } else {
-      let splitted = descPath.split(".");
+      let splitted = descPath.split('.');
       let service = getServiceNameFromDescriptionPath(descPath);
-      let maybeItem = descPath.includes("@items") && ((items || {})[service])
-      return (maybeItem || "") + splitted[splitted.length - 1];
+      let maybeItem = descPath.includes('@items') && (items || {})[service];
+      return (maybeItem || '') + splitted[splitted.length - 1];
     }
   }
 
@@ -481,15 +534,20 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
     });
   }
 
-
   function zoomToMS(zoom) {
     switch (zoom) {
-    case "minute": return 60000;
-    case "hour": return 3600000;
-    case "day": return 86400000;
-    case "week": return 604800000;
-    case "month": return 2628000000;
-    default: return zoom ? zoom : 60000;
+      case 'minute':
+        return 60000;
+      case 'hour':
+        return 3600000;
+      case 'day':
+        return 86400000;
+      case 'week':
+        return 604800000;
+      case 'month':
+        return 2628000000;
+      default:
+        return zoom ? zoom : 60000;
     }
   }
 
@@ -501,31 +559,39 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
   }
 
   function rangeZoomToSec(zoom) {
-    switch(zoom){
-    case "minute": return zoomToMS(zoom) / 1000 * 2;
-    default: return zoomToMS(zoom) / 1000;
+    switch (zoom) {
+      case 'minute':
+        return (zoomToMS(zoom) / 1000) * 2;
+      default:
+        return zoomToMS(zoom) / 1000;
     }
   }
 
   function rangeZoomToStep(zoom) {
     switch (zoom) {
-    case "minute": return 10;
-    case "hour":
-    case "day":
-    case "week":
-    case "month": return zoomToMS(zoom) / 1000 / 100; //100 - how many steps we have
-    default: return zoom ? (zoom / 1000) : 10;
+      case 'minute':
+        return 10;
+      case 'hour':
+      case 'day':
+      case 'week':
+      case 'month':
+        return zoomToMS(zoom) / 1000 / 100; //100 - how many steps we have
+      default:
+        return zoom ? zoom / 1000 : 10;
     }
   }
 
   function get70StatUniqueName(cfg) {
-    return cfg.metric.name + (cfg.applyFunctions ? ("_" + cfg.applyFunctions.join("")) : "");
+    return (
+      cfg.metric.name +
+      (cfg.applyFunctions ? '_' + cfg.applyFunctions.join('') : '')
+    );
   }
 
   function packStatsConfig(config, doNotAssignStatPath) {
     let cfg = {};
 
-    if (config.node !== "all") {
+    if (config.node !== 'all') {
       cfg.nodes = [config.node];
     }
 
@@ -534,19 +600,22 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
 
       switchToFullStatInfo(cfg, config);
 
-      getStatsProp(config.stats).forEach(statPath => {
+      getStatsProp(config.stats).forEach((statPath) => {
         let statDesc = readByPath(statPath);
         if (!statDesc) {
           return;
         }
-        let cfg1 = Object.assign(doNotAssignStatPath ? {} : {statPath: statPath}, cfg);
+        let cfg1 = Object.assign(
+          doNotAssignStatPath ? {} : { statPath: statPath },
+          cfg
+        );
         let service = getServiceNameFromDescriptionPath(statPath);
         cfg1.metric = Object.assign({}, statDesc.metric);
         if (isPerBucketStat(statPath)) {
           if (statDesc.bucket === null || config.bucket === '') {
             delete cfg1.metric.bucket;
           } else {
-            cfg1.metric[statDesc.bucketLabel || "bucket"] = config.bucket;
+            cfg1.metric[statDesc.bucketLabel || 'bucket'] = config.bucket;
           }
         }
         if (config.scope) {
@@ -561,27 +630,31 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
         if (config.collection_id) {
           cfg1.metric.collection_id = config.collection_id;
         }
-        if (config.node == "all" && !config.specificStat) {
+        if (config.node == 'all' && !config.specificStat) {
           cfg1.nodesAggregation = statDesc.nodesAggregation;
         }
         if (statDesc.applyFunctions || config.applyFunctions) {
-          cfg1.applyFunctions = statDesc.applyFunctions || config.applyFunctions;
+          cfg1.applyFunctions =
+            statDesc.applyFunctions || config.applyFunctions;
         }
-        if (statPath.includes("@items")) {
+        if (statPath.includes('@items')) {
           cfg1.metric[service] = config.items[service];
         }
-        let httpParamsModifier = mnStatisticsDescription.maybeGetLabelsModifier(service);
+        let httpParamsModifier =
+          mnStatisticsDescription.maybeGetLabelsModifier(service);
         if (httpParamsModifier) {
           cfg1 = httpParamsModifier(cfg1);
         }
-        cfg1.metric = Object.keys(cfg1.metric).map(labelName => {
+        cfg1.metric = Object.keys(cfg1.metric).map((labelName) => {
           let rv = {};
           let labelValue = cfg1.metric[labelName];
           if (labelValue) {
             rv.label = labelName;
             rv.value = labelValue;
           }
-          let operator = mnStatisticsDescription.maybeGetLabelOperator(statPath+"."+labelName);
+          let operator = mnStatisticsDescription.maybeGetLabelOperator(
+            statPath + '.' + labelName
+          );
           if (operator) {
             rv.operator = operator;
           }
@@ -598,7 +671,7 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
       cfg.startTS = 0 - zoomToMS(config.zoom);
       cfg.stats = descriptionPathsToStatNames(config.stats, config.items);
       cfg.bucket = config.bucket;
-      if (config.node == "all" && !config.specificStat) {
+      if (config.node == 'all' && !config.specificStat) {
         cfg.aggregate = true;
       }
       return [cfg];
@@ -608,12 +681,21 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
   function prepareNodesList(params) {
     return mnServersService.getNodes().then(function (nodes) {
       var rv = {};
-      rv.nodesNames = _(nodes.active).filter(function (node) {
-        return !(node.clusterMembership === 'inactiveFailed') && !(node.status === 'unhealthy');
-      }).pluck("hostname").value();
+      rv.nodesNames = _(nodes.active)
+        .filter(function (node) {
+          return (
+            !(node.clusterMembership === 'inactiveFailed') &&
+            !(node.status === 'unhealthy')
+          );
+        })
+        .pluck('hostname')
+        .value();
 
-      rv.nodesNames.unshift("All Server Nodes (" + rv.nodesNames.length + ")");
-      rv.nodesNames.selected = params.statsHostname === "all" ? rv.nodesNames[0] : params.statsHostname;
+      rv.nodesNames.unshift('All Server Nodes (' + rv.nodesNames.length + ')');
+      rv.nodesNames.selected =
+        params.statsHostname === 'all'
+          ? rv.nodesNames[0]
+          : params.statsHostname;
 
       return rv;
     });
@@ -626,540 +708,731 @@ function mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsD
         group.preset = true;
         group.charts = group.charts.map(function (chart) {
           chart.preset = true;
-          chart = mnStoreService.store("charts").add(chart);
+          chart = mnStoreService.store('charts').add(chart);
           return chart.id;
         });
-        group = mnStoreService.store("groups").add(group);
+        group = mnStoreService.store('groups').add(group);
         return group.id;
       });
-      mnStoreService.store("scenarios").add(scenario);
+      mnStoreService.store('scenarios').add(scenario);
     });
   }
 
   function presetScenario() {
-    return [{
-      name: "Cluster Overview",
-      uiid: "mn-cluster-overview",
-      desc: "Stats showing the general health of your cluster. Customize and/or make your own dashboard with \"new dashboard... \" below.",
-      groups: [{
-        name: "Cluster Overview",
-        uiid: "mn-cluster-overview-group",
-        charts: [{
-          stats: {"@kv-.ops": true,
-                  "@query.query_requests": true,
-                  "@fts-.@items.total_queries": true,
-                  "@kv-.ep_tmp_oom_errors": true,
-                  "@kv-.ep_cache_miss_rate": true,
-                  "@kv-.cmd_get": true,
-                  "@kv-.cmd_set": true,
-                  "@kv-.delete_hits": true
-                 },
-          size: "medium",
-          specificStat: false // false for multi-stat chart
-        }, {
-          stats: {"@kv-.mem_used": true,
-                  "@kv-.ep_mem_low_wat": true,
-                  "@kv-.ep_mem_high_wat": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.curr_items": true,
-                  "@kv-.vb_replica_curr_items": true,
-                  "@kv-.vb_active_resident_items_ratio": true,
-                  "@kv-.vb_replica_resident_items_ratio": true,
-                "@kv-.couch_docs_fragmentation": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.disk_write_queue": true,
-                  "@kv-.couch_docs_actual_disk_size": true},
-          size: "small",
-          specificStat: false
-        }, {
-          stats: {"@kv-.ep_dcp_replica_items_remaining": true},
-          size: "small",
-          specificStat: false
-        }, {
-          stats: {"@kv-.ep_data_read_failed": true,
-                  "@kv-.ep_data_write_failed": true,
-                  "@query.query_errors": true,
-                  "@fts-.@items.total_queries_error": true,
-                  "@eventing.eventing/failed_count": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@query.query_requests_250ms": true,
-                  "@query.query_requests_500ms": true,
-                  "@query.query_requests_1000ms": true,
-                  "@query.query_requests_5000ms": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@xdcr-.replication_changes_left": true,
-                  "@index-.@items.num_docs_pending+queued": true,
-                  "@fts-.@items.num_mutations_to_index": true},
-          size: "medium",
-          specificStat: false
-        }]
-      }, {
-        name: "Node Resources",
-        charts: [{
-          stats: {"@system.cpu_utilization_rate": true},
-          size: "medium",
-          specificStat: true // for single-stat chart
-        }, {
-          stats: {"@system.rest_requests": true},
-          size: "medium",
-          specificStat: true
-        }, {
-          stats: {"@system.mem_actual_free": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@system.swap_used": true},
-          size: "medium",
-          specificStat: true
-        }]
-      }]
-    },{  // 2nd scenario starts here with the comma ///////////////////////
+    return [
+      {
+        name: 'Cluster Overview',
+        uiid: 'mn-cluster-overview',
+        desc: 'Stats showing the general health of your cluster. Customize and/or make your own dashboard with "new dashboard... " below.',
+        groups: [
+          {
+            name: 'Cluster Overview',
+            uiid: 'mn-cluster-overview-group',
+            charts: [
+              {
+                stats: {
+                  '@kv-.ops': true,
+                  '@query.query_requests': true,
+                  '@fts-.@items.total_queries': true,
+                  '@kv-.ep_tmp_oom_errors': true,
+                  '@kv-.ep_cache_miss_rate': true,
+                  '@kv-.cmd_get': true,
+                  '@kv-.cmd_set': true,
+                  '@kv-.delete_hits': true,
+                },
+                size: 'medium',
+                specificStat: false, // false for multi-stat chart
+              },
+              {
+                stats: {
+                  '@kv-.mem_used': true,
+                  '@kv-.ep_mem_low_wat': true,
+                  '@kv-.ep_mem_high_wat': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.curr_items': true,
+                  '@kv-.vb_replica_curr_items': true,
+                  '@kv-.vb_active_resident_items_ratio': true,
+                  '@kv-.vb_replica_resident_items_ratio': true,
+                  '@kv-.couch_docs_fragmentation': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.disk_write_queue': true,
+                  '@kv-.couch_docs_actual_disk_size': true,
+                },
+                size: 'small',
+                specificStat: false,
+              },
+              {
+                stats: { '@kv-.ep_dcp_replica_items_remaining': true },
+                size: 'small',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.ep_data_read_failed': true,
+                  '@kv-.ep_data_write_failed': true,
+                  '@query.query_errors': true,
+                  '@fts-.@items.total_queries_error': true,
+                  '@eventing.eventing/failed_count': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@query.query_requests_250ms': true,
+                  '@query.query_requests_500ms': true,
+                  '@query.query_requests_1000ms': true,
+                  '@query.query_requests_5000ms': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@xdcr-.replication_changes_left': true,
+                  '@index-.@items.num_docs_pending+queued': true,
+                  '@fts-.@items.num_mutations_to_index': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+            ],
+          },
+          {
+            name: 'Node Resources',
+            charts: [
+              {
+                stats: { '@system.cpu_utilization_rate': true },
+                size: 'medium',
+                specificStat: true, // for single-stat chart
+              },
+              {
+                stats: { '@system.rest_requests': true },
+                size: 'medium',
+                specificStat: true,
+              },
+              {
+                stats: { '@system.mem_actual_free': true },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: { '@system.swap_used': true },
+                size: 'medium',
+                specificStat: true,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        // 2nd scenario starts here with the comma ///////////////////////
 
-      name: "All Services",
-      uiid: "mn-all-services",
-      desc: "Most common stats, arranged per service. Customize and/or make your own dashboard with \"new dashboard... \" below.",
-      groups: [{
-        name: "Data (Docs/Views/XDCR)",
-        uiid: "mn-all-services-data-group",
-        charts: [{
-          stats: {"@kv-.mem_used": true,
-                  "@kv-.ep_mem_low_wat": true,
-                  "@kv-.ep_mem_high_wat": true,
-                  "@kv-.ep_kv_size": true,
-                  "@kv-.ep_meta_data_memory": true,
-                  "@kv-.vb_active_resident_items_ratio": true},
-          size: "medium",
-          specificStat: false // false for multi-stat chart
-        }, {
-          stats: {"@kv-.ops": true,
-                  "@kv-.ep_cache_miss_rate": true,
-                  "@kv-.cmd_get": true,
-                  "@kv-.cmd_set": true,
-                  "@kv-.delete_hits": true,
-                  "@kv-.ep_num_ops_set_meta": true
-                 },
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.ep_dcp_views+indexes_items_remaining": true,
-                  "@kv-.ep_dcp_cbas_items_remaining": true,
-                  "@kv-.ep_dcp_replica_items_remaining": true,
-                  "@kv-.ep_dcp_xdcr_items_remaining": true,
-                  "@kv-.ep_dcp_eventing_items_remaining": true,
-                  "@kv-.ep_dcp_other_items_remaining": true,
-                  "@xdcr-.replication_changes_left": true
-                 },
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.ep_bg_fetched": true,
-                  "@kv-.ep_data_read_failed": true,
-                  "@kv-.ep_data_write_failed": true,
-                  "@kv-.ep_ops_create": true,
-                  "@kv-.ep_ops_update": true
-                 },
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.ep_diskqueue_items": true},
-          size: "small",
-          specificStat: true
-        }]
-      }, {
-        name: "Query",
-        charts: [{
-          stats: {"@query.query_requests_1000ms": true,
-                  "@query.query_requests_500ms": true,
-                  "@query.query_requests_5000ms": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@query.query_selects": true,
-                  "@query.query_requests": true,
-                  "@query.query_warnings": true,
-                  "@query.query_invalid_requests": true,
-                  "@query.query_errors": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@query.query_avg_req_time": true,
-                  "@query.query_avg_svc_time": true},
-          size: "small",
-          specificStat: false
-        }, {
-          stats: {"@query.query_avg_result_count": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@query.query_avg_response_size": true},
-          size: "small",
-          specificStat: false
-        }]
-      }, {
-        name: "Index",
-        charts: [{
-          stats: {"@index-.index_num_rows_scanned": true},
-          size: "small",
-          specificStat: true
-        },{
-          stats: {"@index-.index/num_rows_returned": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@index-.@items.num_docs_pending+queued": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@index-.index/data_size": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@index-.index/disk_size": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@index.index_ram_percent": true,
-                  "@index.index_remaining_ram": true,
-                  "@index-.index/data_size": true,
-                  "@index-.index/disk_size": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@index-.index/num_requests": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@index.index_num_indexes": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@index.index_memory_total_storage": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@index.index_storage_current_quota": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@index.index_storage_lss_fragmentation": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@index.index_avg_resident_percent": true},
-          size: "small",
-          specificStat: true
-        },
-        {
-          stats: {"@index.index_storage_reclaim_pending_global": true},
-          size: "small",
-          specificStat: true
-        },
-        {
-          stats: {"@index-.index_disk_bytes": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@index-.index_num_items_flushed": true},
-          size: "small",
-          specificStat: true
-        }]
-      }, {
-        name: "Search",
-        charts: [{
-          stats: {"@fts-.fts/num_bytes_used_disk": true,
-                  "@fts.fts_num_bytes_used_ram": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@fts-.@items.total_queries": true,
-                  "@fts-.@items.total_queries_error": true,
-                  "@fts-.@items.total_queries_slow": true,
-                  "@fts-.@items.total_queries_timeout": true,
-                  "@fts.fts_total_queries_rejected_by_herder": true},
-          size: "medium",
-          specificStat: false
-        }]
-      }, {
-        name: "Analytics",
-        enterprise: true,
-        charts: [{
-          stats: (mnPoolDefault.export.getValue().compat.atLeast76 ?
-              {"@cbas-.cbas_incoming_records_total": true} :
-              {"@cbas-.cbas/incoming_records_count": true}),
-          size: "small",
-          specificStat: true
-        }, {
-          stats: (mnPoolDefault.export.getValue().compat.atLeast76 ?
-              {"@cbas-.cbas_failed_to_parse_records_total": true} :
-              {"@cbas-.cbas_failed_to_parse_records_count": true}),
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@cbas-.cbas/failed_at_parser_records_count_total": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@cbas.cbas_heap_used": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@cbas.cbas_heap_memory_committed_bytes": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@cbas.cbas_thread_count": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: (mnPoolDefault.export.getValue().compat.atLeast76 ?
-              {"@cbas.cbas_disk_used_bytes": true} :
-              {"@cbas.cbas_disk_used": true}),
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@cbas.cbas_io_reads": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@cbas.cbas_io_writes": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@cbas.cbas_system_load_average": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@cbas.cbas_pending_merge_ops": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@cbas.cbas_pending_flush_ops": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@system.sysproc_mem_resident_java_cbas": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@cbas.cbas_pending_requests": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@cbas.cbas_queued_jobs": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@cbas.cbas_running_jobs": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@cbas.cbas_active_links": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@cbas.cbas_requests_total": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@cbas.cbas_http_requests_total": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@cbas.cbas_queued_http_requests_size": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@cbas.cbas_http_requests_failed_400_total": true,
-                  "@cbas.cbas_http_requests_failed_401_total": true,
-                  "@cbas.cbas_http_requests_failed_403_total": true,
-                  "@cbas.cbas_http_requests_failed_404_total": true,
-                  "@cbas.cbas_http_requests_failed_405_total": true,
-                  "@cbas.cbas_http_requests_failed_409_total": true,
-                  "@cbas.cbas_http_requests_failed_413_total": true,
-                  "@cbas.cbas_http_requests_failed_500_total": true,
-                  "@cbas.cbas_http_requests_failed_503_total": true},
-          size: "small",
-          specificStat: false
-        }]
-      }, {
-        name: "Eventing",
-        enterprise: true,
-        charts: [{
-          stats: {"@eventing.eventing/failed_count": true,
-                  "@eventing.eventing/timeout_count": true},
-          size: "small",
-          specificStat: false
-        }]
-      },  {
-        name: "XDCR",
-        charts: [{
-          stats: {"@xdcr-.replication_changes_left": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@xdcr-.@items.changes_left": true},
-          size: "small",
-          specificStat: true
-        }, {
-          stats: {"@xdcr-.@items.wtavg_docs_latency": true,
-                  "@xdcr-.@items.wtavg_meta_latency": true},
-          size: "small",
-          specificStat: false
-        }, {
-          stats: {"@xdcr-.@items.docs_failed_cr_source": true,
-                  "@xdcr-.@items.xdcr_docs_failed_cr_target_total": true,
-                  "@xdcr-.@items.docs_filtered": true},
-          size: "small",
-          specificStat: false
-        }]
-      }, {
-        name: "vBucket Resources",
-        charts: [{
-          stats: {"@kv-.vb_active_num": true,
-                  "@kv-.vb_replica_num": true,
-                  "@kv-.vb_pending_num": true,
-                  "@kv-.ep_vb_total": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.curr_items": true,
-                  "@kv-.vb_replica_curr_items": true,
-                  "@kv-.vb_pending_curr_items": true,
-                  "@kv-.curr_items_tot": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.vb_active_resident_items_ratio": true,
-                  "@kv-.vb_replica_resident_items_ratio": true,
-                  "@kv-.vb_pending_resident_items_ratio": true,
-                  "@kv-.ep_resident_items_rate": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.vb_active_ops_create": true,
-                  "@kv-.vb_replica_ops_create": true,
-                  "@kv-.vb_pending_ops_create": true,
-                  "@kv-.ep_ops_create": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.vb_active_eject": true,
-                  "@kv-.vb_replica_eject": true,
-                  "@kv-.vb_pending_eject": true,
-                  "@kv-.ep_num_value_ejects": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.vb_active_itm_memory": true,
-                  "@kv-.vb_replica_itm_memory": true,
-                  "@kv-.vb_pending_itm_memory": true,
-                  "@kv-.ep_kv_size": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.vb_active_meta_data_memory": true,
-                  "@kv-.vb_replica_meta_data_memory": true,
-                  "@kv-.vb_pending_meta_data_memory": true,
-                  "@kv-.ep_meta_data_memory": true},
-          size: "medium",
-          specificStat: false
-        }]
-      }, {
-        name: "DCP Queues",
-        charts: [{
-          stats: {"@kv-.ep_dcp_views+indexes_count": true,
-                  "@kv-.ep_dcp_cbas_count": true,
-                  "@kv-.ep_dcp_replica_count": true,
-                  "@kv-.ep_dcp_xdcr_count": true,
-                  "@kv-.ep_dcp_eventing_count": true,
-                  "@kv-.ep_dcp_other_count": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.ep_dcp_views+indexes_producer_count": true,
-                  "@kv-.ep_dcp_cbas_producer_count": true,
-                  "@kv-.ep_dcp_replica_producer_count": true,
-                  "@kv-.ep_dcp_xdcr_producer_count": true,
-                  "@kv-.ep_dcp_eventing_producer_count": true,
-                  "@kv-.ep_dcp_other_producer_count": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.ep_dcp_views+indexes_items_remaining": true,
-                  "@kv-.ep_dcp_cbas_items_remaining": true,
-                  "@kv-.ep_dcp_replica_items_remaining": true,
-                  "@kv-.ep_dcp_xdcr_items_remaining": true,
-                  "@kv-.ep_dcp_eventing_items_remaining": true,
-                  "@kv-.ep_dcp_other_items_remaining": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.ep_dcp_views+indexes_items_sent": true,
-                  "@kv-.ep_dcp_cbas_items_sent": true,
-                  "@kv-.ep_dcp_replica_items_sent": true,
-                  "@kv-.ep_dcp_xdcr_items_sent": true,
-                  "@kv-.ep_dcp_eventing_items_sent": true,
-                  "@kv-.ep_dcp_other_items_sent": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.ep_dcp_views+indexes_total_bytes": true,
-                  "@kv-.ep_dcp_cbas_total_bytes": true,
-                  "@kv-.ep_dcp_replica_total_bytes": true,
-                  "@kv-.ep_dcp_xdcr_total_bytes": true,
-                  "@kv-.ep_dcp_eventing_total_bytes": true,
-                  "@kv-.ep_dcp_other_total_bytes": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.ep_dcp_views+indexes_backoff": true,
-                  "@kv-.ep_dcp_cbas_backoff": true,
-                  "@kv-.ep_dcp_replica_backoff": true,
-                  "@kv-.ep_dcp_xdcr_backoff": true,
-                  "@kv-.ep_dcp_eventing_backoff": true,
-                  "@kv-.ep_dcp_other_backoff": true},
-          size: "medium",
-          specificStat: false
-        }]
-      }, {
-        name: "Disk Queues",
-        charts: [{
-          stats: {"@kv-.ep_diskqueue_fill": true,
-                  "@kv-.ep_diskqueue_drain": true,
-                  "@kv-.ep_diskqueue_items": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.vb_active_queue_fill": true,
-                  "@kv-.vb_active_queue_drain": true,
-                  "@kv-.vb_active_queue_size": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.vb_replica_queue_fill": true,
-                  "@kv-.vb_replica_queue_drain": true,
-                  "@kv-.vb_replica_queue_size": true},
-          size: "medium",
-          specificStat: false
-        }, {
-          stats: {"@kv-.vb_pending_queue_fill": true,
-                  "@kv-.vb_pending_queue_drain": true,
-                  "@kv-.vb_pending_queue_size": true},
-          size: "medium",
-          specificStat: false
-        }]
-      }]
-    }]
+        name: 'All Services',
+        uiid: 'mn-all-services',
+        desc: 'Most common stats, arranged per service. Customize and/or make your own dashboard with "new dashboard... " below.',
+        groups: [
+          {
+            name: 'Data (Docs/Views/XDCR)',
+            uiid: 'mn-all-services-data-group',
+            charts: [
+              {
+                stats: {
+                  '@kv-.mem_used': true,
+                  '@kv-.ep_mem_low_wat': true,
+                  '@kv-.ep_mem_high_wat': true,
+                  '@kv-.ep_kv_size': true,
+                  '@kv-.ep_meta_data_memory': true,
+                  '@kv-.vb_active_resident_items_ratio': true,
+                },
+                size: 'medium',
+                specificStat: false, // false for multi-stat chart
+              },
+              {
+                stats: {
+                  '@kv-.ops': true,
+                  '@kv-.ep_cache_miss_rate': true,
+                  '@kv-.cmd_get': true,
+                  '@kv-.cmd_set': true,
+                  '@kv-.delete_hits': true,
+                  '@kv-.ep_num_ops_set_meta': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.ep_dcp_views+indexes_items_remaining': true,
+                  '@kv-.ep_dcp_cbas_items_remaining': true,
+                  '@kv-.ep_dcp_replica_items_remaining': true,
+                  '@kv-.ep_dcp_xdcr_items_remaining': true,
+                  '@kv-.ep_dcp_eventing_items_remaining': true,
+                  '@kv-.ep_dcp_other_items_remaining': true,
+                  '@xdcr-.replication_changes_left': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.ep_bg_fetched': true,
+                  '@kv-.ep_data_read_failed': true,
+                  '@kv-.ep_data_write_failed': true,
+                  '@kv-.ep_ops_create': true,
+                  '@kv-.ep_ops_update': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: { '@kv-.ep_diskqueue_items': true },
+                size: 'small',
+                specificStat: true,
+              },
+            ],
+          },
+          {
+            name: 'Query',
+            charts: [
+              {
+                stats: {
+                  '@query.query_requests_1000ms': true,
+                  '@query.query_requests_500ms': true,
+                  '@query.query_requests_5000ms': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@query.query_selects': true,
+                  '@query.query_requests': true,
+                  '@query.query_warnings': true,
+                  '@query.query_invalid_requests': true,
+                  '@query.query_errors': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@query.query_avg_req_time': true,
+                  '@query.query_avg_svc_time': true,
+                },
+                size: 'small',
+                specificStat: false,
+              },
+              {
+                stats: { '@query.query_avg_result_count': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@query.query_avg_response_size': true },
+                size: 'small',
+                specificStat: false,
+              },
+            ],
+          },
+          {
+            name: 'Index',
+            charts: [
+              {
+                stats: { '@index-.index_num_rows_scanned': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@index-.index/num_rows_returned': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@index-.@items.num_docs_pending+queued': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@index-.index/data_size': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@index-.index/disk_size': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: {
+                  '@index.index_ram_percent': true,
+                  '@index.index_remaining_ram': true,
+                  '@index-.index/data_size': true,
+                  '@index-.index/disk_size': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: { '@index-.index/num_requests': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@index.index_num_indexes': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@index.index_memory_total_storage': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@index.index_storage_current_quota': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@index.index_storage_lss_fragmentation': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@index.index_avg_resident_percent': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@index.index_storage_reclaim_pending_global': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@index-.index_disk_bytes': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@index-.index_num_items_flushed': true },
+                size: 'small',
+                specificStat: true,
+              },
+            ],
+          },
+          {
+            name: 'Search',
+            charts: [
+              {
+                stats: {
+                  '@fts-.fts/num_bytes_used_disk': true,
+                  '@fts.fts_num_bytes_used_ram': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@fts-.@items.total_queries': true,
+                  '@fts-.@items.total_queries_error': true,
+                  '@fts-.@items.total_queries_slow': true,
+                  '@fts-.@items.total_queries_timeout': true,
+                  '@fts.fts_total_queries_rejected_by_herder': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+            ],
+          },
+          {
+            name: 'Analytics',
+            enterprise: true,
+            charts: [
+              {
+                stats: mnPoolDefault.export.getValue().compat.atLeast76
+                  ? { '@cbas-.cbas_incoming_records_total': true }
+                  : { '@cbas-.cbas/incoming_records_count': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: mnPoolDefault.export.getValue().compat.atLeast76
+                  ? { '@cbas-.cbas_failed_to_parse_records_total': true }
+                  : { '@cbas-.cbas_failed_to_parse_records_count': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: {
+                  '@cbas-.cbas/failed_at_parser_records_count_total': true,
+                },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@cbas.cbas_heap_used': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@cbas.cbas_heap_memory_committed_bytes': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@cbas.cbas_thread_count': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: mnPoolDefault.export.getValue().compat.atLeast76
+                  ? { '@cbas.cbas_disk_used_bytes': true }
+                  : { '@cbas.cbas_disk_used': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@cbas.cbas_io_reads': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@cbas.cbas_io_writes': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@cbas.cbas_system_load_average': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@cbas.cbas_pending_merge_ops': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@cbas.cbas_pending_flush_ops': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@system.sysproc_mem_resident_java_cbas': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@cbas.cbas_pending_requests': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@cbas.cbas_queued_jobs': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@cbas.cbas_running_jobs': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@cbas.cbas_active_links': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@cbas.cbas_requests_total': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@cbas.cbas_http_requests_total': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@cbas.cbas_queued_http_requests_size': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: {
+                  '@cbas.cbas_http_requests_failed_400_total': true,
+                  '@cbas.cbas_http_requests_failed_401_total': true,
+                  '@cbas.cbas_http_requests_failed_403_total': true,
+                  '@cbas.cbas_http_requests_failed_404_total': true,
+                  '@cbas.cbas_http_requests_failed_405_total': true,
+                  '@cbas.cbas_http_requests_failed_409_total': true,
+                  '@cbas.cbas_http_requests_failed_413_total': true,
+                  '@cbas.cbas_http_requests_failed_500_total': true,
+                  '@cbas.cbas_http_requests_failed_503_total': true,
+                },
+                size: 'small',
+                specificStat: false,
+              },
+            ],
+          },
+          {
+            name: 'Eventing',
+            enterprise: true,
+            charts: [
+              {
+                stats: {
+                  '@eventing.eventing/failed_count': true,
+                  '@eventing.eventing/timeout_count': true,
+                },
+                size: 'small',
+                specificStat: false,
+              },
+            ],
+          },
+          {
+            name: 'XDCR',
+            charts: [
+              {
+                stats: { '@xdcr-.replication_changes_left': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: { '@xdcr-.@items.changes_left': true },
+                size: 'small',
+                specificStat: true,
+              },
+              {
+                stats: {
+                  '@xdcr-.@items.wtavg_docs_latency': true,
+                  '@xdcr-.@items.wtavg_meta_latency': true,
+                },
+                size: 'small',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@xdcr-.@items.docs_failed_cr_source': true,
+                  '@xdcr-.@items.xdcr_docs_failed_cr_target_total': true,
+                  '@xdcr-.@items.docs_filtered': true,
+                },
+                size: 'small',
+                specificStat: false,
+              },
+            ],
+          },
+          {
+            name: 'vBucket Resources',
+            charts: [
+              {
+                stats: {
+                  '@kv-.vb_active_num': true,
+                  '@kv-.vb_replica_num': true,
+                  '@kv-.vb_pending_num': true,
+                  '@kv-.ep_vb_total': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.curr_items': true,
+                  '@kv-.vb_replica_curr_items': true,
+                  '@kv-.vb_pending_curr_items': true,
+                  '@kv-.curr_items_tot': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.vb_active_resident_items_ratio': true,
+                  '@kv-.vb_replica_resident_items_ratio': true,
+                  '@kv-.vb_pending_resident_items_ratio': true,
+                  '@kv-.ep_resident_items_rate': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.vb_active_ops_create': true,
+                  '@kv-.vb_replica_ops_create': true,
+                  '@kv-.vb_pending_ops_create': true,
+                  '@kv-.ep_ops_create': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.vb_active_eject': true,
+                  '@kv-.vb_replica_eject': true,
+                  '@kv-.vb_pending_eject': true,
+                  '@kv-.ep_num_value_ejects': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.vb_active_itm_memory': true,
+                  '@kv-.vb_replica_itm_memory': true,
+                  '@kv-.vb_pending_itm_memory': true,
+                  '@kv-.ep_kv_size': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.vb_active_meta_data_memory': true,
+                  '@kv-.vb_replica_meta_data_memory': true,
+                  '@kv-.vb_pending_meta_data_memory': true,
+                  '@kv-.ep_meta_data_memory': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+            ],
+          },
+          {
+            name: 'DCP Queues',
+            charts: [
+              {
+                stats: {
+                  '@kv-.ep_dcp_views+indexes_count': true,
+                  '@kv-.ep_dcp_cbas_count': true,
+                  '@kv-.ep_dcp_replica_count': true,
+                  '@kv-.ep_dcp_xdcr_count': true,
+                  '@kv-.ep_dcp_eventing_count': true,
+                  '@kv-.ep_dcp_other_count': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.ep_dcp_views+indexes_producer_count': true,
+                  '@kv-.ep_dcp_cbas_producer_count': true,
+                  '@kv-.ep_dcp_replica_producer_count': true,
+                  '@kv-.ep_dcp_xdcr_producer_count': true,
+                  '@kv-.ep_dcp_eventing_producer_count': true,
+                  '@kv-.ep_dcp_other_producer_count': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.ep_dcp_views+indexes_items_remaining': true,
+                  '@kv-.ep_dcp_cbas_items_remaining': true,
+                  '@kv-.ep_dcp_replica_items_remaining': true,
+                  '@kv-.ep_dcp_xdcr_items_remaining': true,
+                  '@kv-.ep_dcp_eventing_items_remaining': true,
+                  '@kv-.ep_dcp_other_items_remaining': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.ep_dcp_views+indexes_items_sent': true,
+                  '@kv-.ep_dcp_cbas_items_sent': true,
+                  '@kv-.ep_dcp_replica_items_sent': true,
+                  '@kv-.ep_dcp_xdcr_items_sent': true,
+                  '@kv-.ep_dcp_eventing_items_sent': true,
+                  '@kv-.ep_dcp_other_items_sent': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.ep_dcp_views+indexes_total_bytes': true,
+                  '@kv-.ep_dcp_cbas_total_bytes': true,
+                  '@kv-.ep_dcp_replica_total_bytes': true,
+                  '@kv-.ep_dcp_xdcr_total_bytes': true,
+                  '@kv-.ep_dcp_eventing_total_bytes': true,
+                  '@kv-.ep_dcp_other_total_bytes': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.ep_dcp_views+indexes_backoff': true,
+                  '@kv-.ep_dcp_cbas_backoff': true,
+                  '@kv-.ep_dcp_replica_backoff': true,
+                  '@kv-.ep_dcp_xdcr_backoff': true,
+                  '@kv-.ep_dcp_eventing_backoff': true,
+                  '@kv-.ep_dcp_other_backoff': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+            ],
+          },
+          {
+            name: 'Disk Queues',
+            charts: [
+              {
+                stats: {
+                  '@kv-.ep_diskqueue_fill': true,
+                  '@kv-.ep_diskqueue_drain': true,
+                  '@kv-.ep_diskqueue_items': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.vb_active_queue_fill': true,
+                  '@kv-.vb_active_queue_drain': true,
+                  '@kv-.vb_active_queue_size': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.vb_replica_queue_fill': true,
+                  '@kv-.vb_replica_queue_drain': true,
+                  '@kv-.vb_replica_queue_size': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+              {
+                stats: {
+                  '@kv-.vb_pending_queue_fill': true,
+                  '@kv-.vb_pending_queue_drain': true,
+                  '@kv-.vb_pending_queue_size': true,
+                },
+                size: 'medium',
+                specificStat: false,
+              },
+            ],
+          },
+        ],
+      },
+    ];
   }
 }
 
-const mnStatisticsNewService = mnStatisticsNewServiceFactory(mnServersService, mnPoller, mnStatisticsDescriptionService, mnStoreService, mnPoolDefault, mnPermissions)
+const mnStatisticsNewService = mnStatisticsNewServiceFactory(
+  mnServersService,
+  mnPoller,
+  mnStatisticsDescriptionService,
+  mnStoreService,
+  mnPoolDefault,
+  mnPermissions
+);
 export default mnStatisticsNewService;

@@ -9,7 +9,7 @@ const NgbPagination = ({
   onPageChange,
   prevLabel = '',
   nextLabel = '',
-  onClick
+  onClick,
 }) => {
   const [currentPage, setCurrentPage] = useState(page);
   const totalPages = Math.ceil(collectionSize / pageSize);
@@ -29,11 +29,11 @@ const NgbPagination = ({
     let pages = [];
     let startPage = Math.max(1, currentPage - Math.floor(maxSize / 2));
     let endPage = Math.min(totalPages, startPage + maxSize - 1);
-    
+
     if (endPage - startPage + 1 < maxSize) {
       startPage = Math.max(1, endPage - maxSize + 1);
     }
-    
+
     for (let i = startPage; i <= endPage; i++) {
       pages.push(i);
     }
@@ -45,7 +45,7 @@ const NgbPagination = ({
       event.stopPropagation();
       onClick(event);
     }
-    
+
     if (newPage >= 1 && newPage <= totalPages) {
       setCurrentPage(newPage);
       onPageChange?.(newPage);
@@ -60,8 +60,8 @@ const NgbPagination = ({
       >
         {prevLabel}
       </Pagination.Prev>
-      
-      {getPageNumbers().map(pageNum => (
+
+      {getPageNumbers().map((pageNum) => (
         <Pagination.Item
           key={pageNum}
           active={pageNum === currentPage}
@@ -70,7 +70,7 @@ const NgbPagination = ({
           {pageNum}
         </Pagination.Item>
       ))}
-      
+
       <Pagination.Next
         onClick={(e) => handlePageClick(currentPage + 1, e)}
         disabled={currentPage === totalPages}

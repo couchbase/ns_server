@@ -1,6 +1,6 @@
 import React from 'react';
-import {startWith} from 'rxjs/operators';
-import { FieldGroup, FieldControl } from "react-reactive-form";
+import { startWith } from 'rxjs/operators';
+import { FieldGroup, FieldControl } from 'react-reactive-form';
 
 import { MnLifeCycleHooksToStream } from './mn.core.js';
 import { MnHelperReactService } from './mn.helper.react.service.js';
@@ -19,7 +19,7 @@ class MnInputFilter extends MnLifeCycleHooksToStream {
       focusFieldSubject: this.props.mnFocus,
       mnName: this.props.mnName,
       input: this.input,
-      mnOnDestroy: this.mnOnDestroy
+      mnOnDestroy: this.mnOnDestroy,
     });
 
     let value = this.props.group.get('value');
@@ -43,7 +43,8 @@ class MnInputFilter extends MnLifeCycleHooksToStream {
   };
 
   render() {
-    const { group, mnClearDisabled, mnPlaceholder, mnName, className } = this.props;
+    const { group, mnClearDisabled, mnPlaceholder, mnName, className } =
+      this.props;
     const { currentValue, valueChanges } = this.state;
 
     return (
@@ -57,7 +58,9 @@ class MnInputFilter extends MnLifeCycleHooksToStream {
                 <>
                   <input
                     {...handler()}
-                    ref={(input) => { this.input = input; }} 
+                    ref={(input) => {
+                      this.input = input;
+                    }}
                     type="text"
                     name={mnName}
                     maxLength="256"
@@ -69,7 +72,9 @@ class MnInputFilter extends MnLifeCycleHooksToStream {
                   />
                   <span
                     className="icon fa-search-minus"
-                    hidden={valueChanges || this.props.group.get('value').disabled}
+                    hidden={
+                      valueChanges || this.props.group.get('value').disabled
+                    }
                   ></span>
                   {!mnClearDisabled && (
                     <span
@@ -77,16 +82,16 @@ class MnInputFilter extends MnLifeCycleHooksToStream {
                       hidden={!valueChanges}
                       onClick={(e) => {
                         e.stopPropagation();
-                        group.patchValue({value: ''});
+                        group.patchValue({ value: '' });
                       }}
                     ></span>
                   )}
                 </>
               )}
             />
-        </div>
-      )}
-    />
+          </div>
+        )}
+      />
     );
   }
 }

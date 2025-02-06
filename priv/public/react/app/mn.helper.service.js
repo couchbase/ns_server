@@ -8,13 +8,30 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Subject, BehaviorSubject, combineLatest, zip, fromEvent, from} from 'rxjs';
-import {scan, map, shareReplay, distinctUntilChanged,
-        debounceTime, pluck, takeUntil, tap,
-        withLatestFrom, startWith, pairwise} from 'rxjs/operators';
-import {not, sort, prop, descend, ascend, equals} from 'ramda';
-import {FormBuilder} from 'react-reactive-form';
-import {UIRouter}  from "mn.react.router";
+import {
+  Subject,
+  BehaviorSubject,
+  combineLatest,
+  zip,
+  fromEvent,
+  from,
+} from 'rxjs';
+import {
+  scan,
+  map,
+  shareReplay,
+  distinctUntilChanged,
+  debounceTime,
+  pluck,
+  takeUntil,
+  tap,
+  withLatestFrom,
+  startWith,
+  pairwise,
+} from 'rxjs/operators';
+import { not, sort, prop, descend, ascend, equals } from 'ramda';
+import { FormBuilder } from 'react-reactive-form';
+import { UIRouter } from 'mn.react.router';
 import ipaddr from 'ipaddr.js';
 import CodeMirror from 'codemirror';
 
@@ -23,28 +40,34 @@ class MnHelperServiceClass {
     this.formBuilder = formBuilder;
     this.uiRouter = uiRouter;
   }
-  
+
   mnLocation() {
     let mnLocation = Object.assign({}, window.location);
     let justHostname = mnLocation.hostname;
-    if (justHostname.startsWith("[") &&
-        justHostname.endsWith("]")) {
+    if (justHostname.startsWith('[') && justHostname.endsWith(']')) {
       justHostname = justHostname.slice(1, -1);
     }
     try {
       let ipAddr = ipaddr.parse(justHostname);
       mnLocation.kind = ipAddr.kind();
-    } catch (e) {
-    }
+    } catch (e) {}
     return mnLocation;
   }
 
   get daysOfWeek() {
-    return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    return [
+      'Sunday',
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+    ];
   }
 
   get IEC() {
-    return {Ki: 1024, Mi: 1024 * 1024, Gi: 1024 * 1024 * 1024};
+    return { Ki: 1024, Mi: 1024 * 1024, Gi: 1024 * 1024 * 1024 };
   }
 
   transformMBToBytes(mb) {
@@ -65,17 +88,20 @@ class MnHelperServiceClass {
     return Math.random().toString(36).substr(2, 9);
   }
 
-  invert(v) { //TODO: sould be replaced with Ramda.not
+  invert(v) {
+    //TODO: sould be replaced with Ramda.not
     return !v;
   }
 
-  stringifyValues(obj)  {
-    return Object.keys(obj).filter(v => obj[v]).join(',');
+  stringifyValues(obj) {
+    return Object.keys(obj)
+      .filter((v) => obj[v])
+      .join(',');
   }
 
   stringToObject(string) {
-    if (typeof string === "string" && string.length) {
-      return string.split(",").reduce((acc, key) => {
+    if (typeof string === 'string' && string.length) {
+      return string.split(',').reduce((acc, key) => {
         acc[key] = true;
         return acc;
       }, {});
@@ -104,15 +130,17 @@ class MnHelperServiceClass {
         rv[erroName] = true;
         return rv;
       }
-    }
+    };
   }
 
   createToggle(isDesc) {
     var click = new Subject();
     return {
       click: click,
-      state: click.pipe(scan(not, isDesc || false),
-        shareReplay({refCount: true, bufferSize: 1}))
+      state: click.pipe(
+        scan(not, isDesc || false),
+        shareReplay({ refCount: true, bufferSize: 1 })
+      ),
     };
   }
 
@@ -120,76 +148,91 @@ class MnHelperServiceClass {
     var click = new BehaviorSubject(defaultValue);
     return {
       click: click,
-      state: click.pipe(startWith(null),
-                        pairwise(),
-                        scan((toggle, [prevCol, currCol]) => {
-                          return (prevCol === currCol) ? !toggle : isDesc;
-                        }, isDesc))
+      state: click.pipe(
+        startWith(null),
+        pairwise(),
+        scan((toggle, [prevCol, currCol]) => {
+          return prevCol === currCol ? !toggle : isDesc;
+        }, isDesc)
+      ),
     };
   }
 
   createSorter(defaultValue, isDesc) {
     var toggler = this.createToggleForSorter(defaultValue, isDesc);
-    var state = zip(toggler.click, toggler.state).pipe(shareReplay({refCount: true, bufferSize: 1}));
+    var state = zip(toggler.click, toggler.state).pipe(
+      shareReplay({ refCount: true, bufferSize: 1 })
+    );
 
     return {
       click: toggler.click,
       state: state,
       pipe: (arrayStream) => {
-        return combineLatest(arrayStream, state)
-          .pipe(map(([array, [sortByValue, isDesc]]) => {
+        return combineLatest(arrayStream, state).pipe(
+          map(([array, [sortByValue, isDesc]]) => {
             var ascOrDesc = isDesc ? descend : ascend;
             return sort(ascOrDesc(prop(sortByValue)), array);
-          }), shareReplay({refCount: true, bufferSize: 1}));
-      }
+          }),
+          shareReplay({ refCount: true, bufferSize: 1 })
+        );
+      },
     };
   }
 
   createFilter(component, filterKey, splitValueBySpace, customValueGetter) {
-    filterKey = filterKey || "name";
-    var group = this.formBuilder.group({value: ""});
-    var hotGroup = new BehaviorSubject("");
-    var valueChanges =  new Subject();
+    filterKey = filterKey || 'name';
+    var group = this.formBuilder.group({ value: '' });
+    var hotGroup = new BehaviorSubject('');
+    var valueChanges = new Subject();
 
-    group.get("value").valueChanges.subscribe(v => valueChanges.next(v));
-    valueChanges
-      .pipe(takeUntil(component.mnOnDestroy))
-      .subscribe(hotGroup);
+    group.get('value').valueChanges.subscribe((v) => valueChanges.next(v));
+    valueChanges.pipe(takeUntil(component.mnOnDestroy)).subscribe(hotGroup);
 
-    var toLowerString = value =>
-        value.toString().toLowerCase();
+    var toLowerString = (value) => value.toString().toLowerCase();
     var isSubstring = (substring, completeString) =>
-        toLowerString(completeString).includes(toLowerString(substring));
+      toLowerString(completeString).includes(toLowerString(substring));
     var filterFunction = ([list, filterValue]) =>
-        list ? list.filter(listItem => {
-          switch (typeof listItem) {
-            case 'string':
-            case 'number':
-              return isSubstring(filterValue, listItem);
-            case 'object':
-              if (filterKey instanceof Array) {
-                let valueGetter = customValueGetter || ((key, value) => value);
-                let filterKeys = filterKey.reduce((acc, key) =>
-                                                   acc + " " + valueGetter(key, listItem[key]), "");
-                let filterValues = splitValueBySpace ? filterValue.split(" ") : [filterValue];
-                return filterValues.every(value =>
-                                          isSubstring(value, filterKeys));
-              } else {
-                return isSubstring(filterValue, listItem[filterKey]);
-              }
-          }
-          return false;
-        }) : [];
+      list
+        ? list.filter((listItem) => {
+            switch (typeof listItem) {
+              case 'string':
+              case 'number':
+                return isSubstring(filterValue, listItem);
+              case 'object':
+                if (filterKey instanceof Array) {
+                  let valueGetter =
+                    customValueGetter || ((key, value) => value);
+                  let filterKeys = filterKey.reduce(
+                    (acc, key) => acc + ' ' + valueGetter(key, listItem[key]),
+                    ''
+                  );
+                  let filterValues = splitValueBySpace
+                    ? filterValue.split(' ')
+                    : [filterValue];
+                  return filterValues.every((value) =>
+                    isSubstring(value, filterKeys)
+                  );
+                } else {
+                  return isSubstring(filterValue, listItem[filterKey]);
+                }
+            }
+            return false;
+          })
+        : [];
 
     // R.filter(R.compose(R.any(R.contains(val)), R.values))
 
     return {
       group: group,
       pipe: (arrayStream) => {
-        return combineLatest(arrayStream, hotGroup.pipe(debounceTime(200)))
-          .pipe(map(filterFunction),
-                shareReplay({refCount: true, bufferSize: 1}));
-      }
+        return combineLatest(
+          arrayStream,
+          hotGroup.pipe(debounceTime(200))
+        ).pipe(
+          map(filterFunction),
+          shareReplay({ refCount: true, bufferSize: 1 })
+        );
+      },
     };
   }
 
@@ -200,87 +243,92 @@ class MnHelperServiceClass {
     return { instance, onChange };
   }
 
-  createPagenator(component, arrayStream, stateParam, perItem, ajsScope, defaultPageSize) {
+  createPagenator(
+    component,
+    arrayStream,
+    stateParam,
+    perItem,
+    ajsScope,
+    defaultPageSize
+  ) {
     var paramsToExport = new BehaviorSubject();
 
-    var group = this.formBuilder.group({size: null, page: null});
+    var group = this.formBuilder.group({ size: null, page: null });
 
-    var setParamToGroup = (page) =>
-        group.patchValue(page);
+    var setParamToGroup = (page) => group.patchValue(page);
 
-    var setParamToExport = (page) =>
-        paramsToExport.next(page);
+    var setParamToExport = (page) => paramsToExport.next(page);
 
     var setParamsToUrl = (params) => {
-      this.uiRouter.stateService.go('.', params, {notify: false});
+      this.uiRouter.stateService.go('.', params, { notify: false });
     };
 
-    var cloneStateParams = (params) =>
-        Object.assign({}, params);
+    var cloneStateParams = (params) => Object.assign({}, params);
 
-    var getPage = ([array, {size, page}]) =>
-        array.slice((page-1) * size, (page-1) * size + size);
+    var getPage = ([array, { size, page }]) =>
+      array.slice((page - 1) * size, (page - 1) * size + size);
 
     var packPerItemPaginationUrlParams = ([page, currentParams]) => {
       var rv = {};
       currentParams = cloneStateParams(currentParams);
-      currentParams[perItem + "s"] = page ? page.size : null;
-      currentParams[perItem + "p"] = page ? page.page : null;
+      currentParams[perItem + 's'] = page ? page.size : null;
+      currentParams[perItem + 'p'] = page ? page.page : null;
       rv[stateParam] = currentParams;
       return rv;
     };
 
     var unpackPerItemPaginationParams = (page) => ({
-      size: page[perItem + "s"] || defaultPageSize || 10,
-      page: page[perItem + "p"] || 1
+      size: page[perItem + 's'] || defaultPageSize || 10,
+      page: page[perItem + 'p'] || 1,
     });
 
     var packPerPageUrlParams = ([page, currentParams]) => {
       var rv = {};
-      rv[stateParam] = page ? Object.assign(cloneStateParams(currentParams), page) : null;
+      rv[stateParam] = page
+        ? Object.assign(cloneStateParams(currentParams), page)
+        : null;
       return rv;
     };
 
-    var rawUrlParam =
-        this.uiRouter.globals.params$.pipe(pluck(stateParam));
+    var rawUrlParam = this.uiRouter.globals.params$.pipe(pluck(stateParam));
 
-    var urlParam = rawUrlParam.pipe(perItem ? map(unpackPerItemPaginationParams) : tap(),
-                                    distinctUntilChanged(equals),
-                                    shareReplay({refCount: true, bufferSize: 1}));
+    var urlParam = rawUrlParam.pipe(
+      perItem ? map(unpackPerItemPaginationParams) : tap(),
+      distinctUntilChanged(equals),
+      shareReplay({ refCount: true, bufferSize: 1 })
+    );
 
-    var valueChanges =  new Subject();
-    group.valueChanges.subscribe(v => valueChanges.next(v));
+    var valueChanges = new Subject();
+    group.valueChanges.subscribe((v) => valueChanges.next(v));
 
     valueChanges
-      .pipe(withLatestFrom(rawUrlParam),
-            map(perItem ? packPerItemPaginationUrlParams : packPerPageUrlParams),
-            takeUntil(component.mnOnDestroy))
+      .pipe(
+        withLatestFrom(rawUrlParam),
+        map(perItem ? packPerItemPaginationUrlParams : packPerPageUrlParams),
+        takeUntil(component.mnOnDestroy)
+      )
       .subscribe(setParamsToUrl);
 
-    urlParam
-      .pipe(takeUntil(component.mnOnDestroy))
-      .subscribe(setParamToGroup);
+    urlParam.pipe(takeUntil(component.mnOnDestroy)).subscribe(setParamToGroup);
 
-    urlParam
-      .pipe(takeUntil(component.mnOnDestroy))
-      .subscribe(setParamToExport);
+    urlParam.pipe(takeUntil(component.mnOnDestroy)).subscribe(setParamToExport);
 
-    var page = combineLatest(arrayStream, urlParam)
-        .pipe(map(getPage), shareReplay({refCount: true, bufferSize: 1}));
+    var page = combineLatest(arrayStream, urlParam).pipe(
+      map(getPage),
+      shareReplay({ refCount: true, bufferSize: 1 })
+    );
 
     if (ajsScope) {
-      page
-        .pipe(takeUntil(component.mnOnDestroy))
-        .subscribe(page => {
-          ajsScope.setState({
-            paginatorPage: page
-          });
+      page.pipe(takeUntil(component.mnOnDestroy)).subscribe((page) => {
+        ajsScope.setState({
+          paginatorPage: page,
         });
+      });
       paramsToExport
         .pipe(takeUntil(component.mnOnDestroy))
-        .subscribe(values => {
+        .subscribe((values) => {
           ajsScope.setState({
-            paginatorValues: Object.assign({}, values)
+            paginatorValues: Object.assign({}, values),
           });
         });
     }
@@ -290,13 +338,13 @@ class MnHelperServiceClass {
       //unfortunly angular valueChanges is a cold observer, BehaviorSubject makes them hot
       //https://github.com/angular/angular/issues/15282
       values: paramsToExport,
-      page: page
+      page: page,
     };
   }
 }
 
 const MnHelperService = new MnHelperServiceClass(FormBuilder, UIRouter);
-export {MnHelperService};
+export { MnHelperService };
 
 // var mn = mn || {};
 // mn.helper = mn.helper || {};
@@ -330,6 +378,6 @@ export {MnHelperService};
 //     }
 
 //   }
-  // })();
-  // mn.pipes.MnIsMembase = mn.helper.createBucketTypePipe("membase")
+// })();
+// mn.pipes.MnIsMembase = mn.helper.createBucketTypePipe("membase")
 // mn.pipes.MnIsEphemeral = mn.helper.createBucketTypePipe("ephemeral");

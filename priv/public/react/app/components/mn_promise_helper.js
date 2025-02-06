@@ -24,7 +24,7 @@ const mnPromiseHelper = (scope, promise, modalInstance) => {
     showGlobalSuccess,
     broadcast,
     removeErrors,
-    closeModal
+    closeModal,
   };
 
   return promiseHelper;
@@ -87,27 +87,40 @@ const mnPromiseHelper = (scope, promise, modalInstance) => {
   function catchGlobalErrors(errorMessage, timeout) {
     promise.then(null, (resp) => {
       if (resp.status !== -1) {
-        mnAlertsService.formatAndSetAlerts(errorMessage || extractErrors(resp.data), 'error', timeout);
+        mnAlertsService.formatAndSetAlerts(
+          errorMessage || extractErrors(resp.data),
+          'error',
+          timeout
+        );
       }
     });
     return this;
   }
   function showGlobalSuccess(successMessage, timeout = 2500) {
     promise.then((resp) => {
-      mnAlertsService.formatAndSetAlerts(successMessage || resp.data, 'success', timeout);
+      mnAlertsService.formatAndSetAlerts(
+        successMessage || resp.data,
+        'success',
+        timeout
+      );
     });
     return this;
   }
   function applyToScope(keyOrFunction) {
-    promise.then(_.isFunction(keyOrFunction) ? keyOrFunction : (value) => {
-      scope.setState({[keyOrFunction]: value});
-    }, () => {
-      if (_.isFunction(keyOrFunction)) {
-        keyOrFunction(null);
-      } else {
-        scope.setState({[keyOrFunction]: null});
+    promise.then(
+      _.isFunction(keyOrFunction)
+        ? keyOrFunction
+        : (value) => {
+            scope.setState({ [keyOrFunction]: value });
+          },
+      () => {
+        if (_.isFunction(keyOrFunction)) {
+          keyOrFunction(null);
+        } else {
+          scope.setState({ [keyOrFunction]: null });
+        }
       }
-    });
+    );
     return this;
   }
   function broadcast($rootScope, event, data) {
@@ -120,21 +133,21 @@ const mnPromiseHelper = (scope, promise, modalInstance) => {
     if (_.isFunction(spinnerNameOrFunction)) {
       spinnerNameOrFunction(isLoaded);
     } else {
-      scope.setState({[spinnerNameOrFunction]: isLoaded});
+      scope.setState({ [spinnerNameOrFunction]: isLoaded });
     }
   }
   function errorsCtrl(errors) {
     if (_.isFunction(errorsNameOrCallback)) {
       errorsNameOrCallback(errors);
     } else {
-      scope.setState({[errorsNameOrCallback]: errors});
+      scope.setState({ [errorsNameOrCallback]: errors });
     }
   }
   function doShowGlobalSpinner() {
     const timer = setTimeout(() => {
       MnHelperReactService.mnGlobalSpinnerFlag.next(true);
     }, 100);
-    const id = "id" + Math.random().toString(36).substr(2, 9);
+    const id = 'id' + Math.random().toString(36).substr(2, 9);
     pendingGlobalSpinnerQueries[id] = timer;
     return id;
   }
@@ -170,7 +183,12 @@ const mnPromiseHelper = (scope, promise, modalInstance) => {
     if (resp.status === 0) {
       return false;
     }
-    const errors = resp.data && resp.data.errors !== undefined && _.keys(resp.data).length === 1 ? resp.data.errors : resp.data || resp;
+    const errors =
+      resp.data &&
+      resp.data.errors !== undefined &&
+      _.keys(resp.data).length === 1
+        ? resp.data.errors
+        : resp.data || resp;
     return _.isEmpty(errors) ? false : errors;
   }
   function clearSpinnerTimeout() {

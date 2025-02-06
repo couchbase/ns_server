@@ -1,9 +1,9 @@
-import { MnLifeCycleHooksToStream } from "../mn.core.js";
-import mnStatisticsNewService from "./mn_statistics_service.js";
+import { MnLifeCycleHooksToStream } from '../mn.core.js';
+import mnStatisticsNewService from './mn_statistics_service.js';
 import mnPoolDefault from '../components/mn_pool_default.js';
-import {min as d3Min, max as d3Max} from 'd3-array';
+import { min as d3Min, max as d3Max } from 'd3-array';
 import _ from 'lodash';
-import {MnTruncateTo3Digits, MnFormatQuantity} from '../mn.pipes.js';
+import { MnTruncateTo3Digits, MnFormatQuantity } from '../mn.pipes.js';
 import { OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { MnMultiChart } from './mn_multi_chart_directive.jsx';
 
@@ -15,7 +15,7 @@ class MnStatisticsChartDirective extends MnLifeCycleHooksToStream {
       options: null,
       mnUIStats: null,
       chartData: null,
-      reloadChartDirective: false
+      reloadChartDirective: false,
     };
   }
 
@@ -27,8 +27,10 @@ class MnStatisticsChartDirective extends MnLifeCycleHooksToStream {
   }
 
   componentDidMount() {
-    const mnTruncateTo3DigitsFilter = MnTruncateTo3Digits.transform.bind(MnTruncateTo3Digits);
-    const mnFormatQuantityFilter = MnFormatQuantity.transform.bind(MnFormatQuantity);
+    const mnTruncateTo3DigitsFilter =
+      MnTruncateTo3Digits.transform.bind(MnTruncateTo3Digits);
+    const mnFormatQuantityFilter =
+      MnFormatQuantity.transform.bind(MnFormatQuantity);
 
     const vm = this;
     if (!vm.props.config) {
@@ -36,7 +38,8 @@ class MnStatisticsChartDirective extends MnLifeCycleHooksToStream {
     }
 
     var units;
-    let poller = vm.props.statsPoller || mnStatisticsNewService.mnAdminStatsPoller;
+    let poller =
+      vm.props.statsPoller || mnStatisticsNewService.mnAdminStatsPoller;
     let step = mnStatisticsNewService.getChartStep(vm.props.zoom);
     let start = mnStatisticsNewService.getChartStart(vm.props.zoom);
 
@@ -54,25 +57,34 @@ class MnStatisticsChartDirective extends MnLifeCycleHooksToStream {
     }
 
     function subscribeToMultiChartData() {
-      poller.subscribeUIStatsPoller({
-        bucket: vm.props.bucket || "",
-        node: vm.props.node || "all",
-        stats: vm.props.config.stats,
-        items: vm.props.items,
-        zoom: vm.props.zoom,
-        specificStat: vm.props.config.specificStat,
-        alignTimestamps: true
-      }, vm);
+      poller.subscribeUIStatsPoller(
+        {
+          bucket: vm.props.bucket || '',
+          node: vm.props.node || 'all',
+          stats: vm.props.config.stats,
+          items: vm.props.items,
+          zoom: vm.props.zoom,
+          specificStat: vm.props.config.specificStat,
+          alignTimestamps: true,
+        },
+        vm
+      );
     }
 
     function getChartSize(size) {
       switch (size) {
-      case "tiny": return 62;
-      case "small": return 102;
-      case "medium": return 122;
-      case "large": return 312;
-      case "extra": return 432;
-      default: return 122;
+        case 'tiny':
+          return 62;
+        case 'small':
+          return 102;
+        case 'medium':
+          return 122;
+        case 'large':
+          return 312;
+        case 'extra':
+          return 432;
+        default:
+          return 122;
       }
     }
 
@@ -81,21 +93,28 @@ class MnStatisticsChartDirective extends MnLifeCycleHooksToStream {
         step: step,
         start: start,
         isPauseEnabled: true,
-        enableAnimation: mnPoolDefault.export.getValue().compat.atLeast70 && vm.props.zoom == "minute",
+        enableAnimation:
+          mnPoolDefault.export.getValue().compat.atLeast70 &&
+          vm.props.zoom == 'minute',
         is70Cluster: mnPoolDefault.export.getValue().compat.atLeast70,
         chart: {
-          margin: vm.props.config.margin || {top: 10, right: 36, bottom: 18, left: 44},
+          margin: vm.props.config.margin || {
+            top: 10,
+            right: 36,
+            bottom: 18,
+            left: 44,
+          },
           height: getChartSize(vm.props.config.size),
-          tooltip: {valueFormatter: formatValue},
+          tooltip: { valueFormatter: formatValue },
           useInteractiveGuideline: true,
           yAxis: [],
           xAxis: {
             tickFormat: function (d) {
               return mnStatisticsNewService.tickMultiFormat(new Date(d));
-            }
+            },
           },
-          noData: "Stats are not found or not ready yet"
-        }
+          noData: 'Stats are not found or not ready yet',
+        },
       };
 
       Object.keys(units).forEach(function (unit, index) {
@@ -112,30 +131,48 @@ class MnStatisticsChartDirective extends MnLifeCycleHooksToStream {
         Object.assign(options.chart, vm.props.mnD3);
       }
 
-      vm.setState({options});
+      vm.setState({ options });
     }
 
     function formatValue(d, unit) {
       switch (unit) {
-      case "percent": return mnTruncateTo3DigitsFilter(d) + "%";
-      case "bytes": return mnFormatQuantityFilter(d, 1024);
-      case "bytes/sec": return mnFormatQuantityFilter(d, 1024) + "/s";
-      case "second": return mnFormatQuantityFilter(d, 1000);
-      case "millisecond": return mnFormatQuantityFilter(d / 1000, 1000) + "s"
-      case "millisecond/sec": return mnFormatQuantityFilter(d / 1000, 1000) + "/s";
-      case "microsecond": return mnFormatQuantityFilter(d / 1000000, 1000) + "s"
-      case "nanoseconds": return mnFormatQuantityFilter(d / 1000000000, 1000) + "s";
-      case "number": return mnFormatQuantityFilter(d, 1000);
-      case "number/sec": return mnFormatQuantityFilter(d, 1000) + "/s";
-      default: return mnFormatQuantityFilter(d, 1000);
+        case 'percent':
+          return mnTruncateTo3DigitsFilter(d) + '%';
+        case 'bytes':
+          return mnFormatQuantityFilter(d, 1024);
+        case 'bytes/sec':
+          return mnFormatQuantityFilter(d, 1024) + '/s';
+        case 'second':
+          return mnFormatQuantityFilter(d, 1000);
+        case 'millisecond':
+          return mnFormatQuantityFilter(d / 1000, 1000) + 's';
+        case 'millisecond/sec':
+          return mnFormatQuantityFilter(d / 1000, 1000) + '/s';
+        case 'microsecond':
+          return mnFormatQuantityFilter(d / 1000000, 1000) + 's';
+        case 'nanoseconds':
+          return mnFormatQuantityFilter(d / 1000000000, 1000) + 's';
+        case 'number':
+          return mnFormatQuantityFilter(d, 1000);
+        case 'number/sec':
+          return mnFormatQuantityFilter(d, 1000) + '/s';
+        default:
+          return mnFormatQuantityFilter(d, 1000);
       }
     }
 
     function getScaledMinMax(chartData) {
-      var min = d3Min(chartData, function (line) {return line.yMin/1.005;});
-      var max = d3Max(chartData, function (line) {return line.yMax;});
-      if (chartData[0] && chartData[0].unit == "bytes") {
-        return [min <= 0 ? 0 : roundDownBytes(min), max == 0 ? 1 : roundUpBytes(max)];
+      var min = d3Min(chartData, function (line) {
+        return line.yMin / 1.005;
+      });
+      var max = d3Max(chartData, function (line) {
+        return line.yMax;
+      });
+      if (chartData[0] && chartData[0].unit == 'bytes') {
+        return [
+          min <= 0 ? 0 : roundDownBytes(min),
+          max == 0 ? 1 : roundUpBytes(max),
+        ];
       } else {
         return [min <= 0 ? 0 : roundDown(min), max == 0 ? 1 : roundUp(max)];
       }
@@ -143,27 +180,28 @@ class MnStatisticsChartDirective extends MnLifeCycleHooksToStream {
 
     // make 2nd digit either 0 or 5
     function roundUp(num) {
-      var mag = Math.pow(10,Math.floor(Math.log10(num)));
-      return(mag*Math.ceil(2*num/mag)/2);
+      var mag = Math.pow(10, Math.floor(Math.log10(num)));
+      return (mag * Math.ceil((2 * num) / mag)) / 2;
     }
 
     function roundDown(num) {
-      var mag = Math.pow(10,Math.floor(Math.log10(num)));
-      return(mag*Math.floor(2*num/mag)/2);
+      var mag = Math.pow(10, Math.floor(Math.log10(num)));
+      return (mag * Math.floor((2 * num) / mag)) / 2;
     }
 
-    function roundUpBytes(num) { // round up 3rd digit to 0
-      var mag = Math.trunc(Math.log2(num)/10);
-      var base_num = num/Math.pow(2,mag*10); // how many KB, MB, GB, TB, whatever
-      var mag10 = Math.pow(10,Math.floor(Math.log10(base_num))-1);
-      return Math.ceil(base_num/mag10) * mag10 * Math.pow(2,mag*10);
+    function roundUpBytes(num) {
+      // round up 3rd digit to 0
+      var mag = Math.trunc(Math.log2(num) / 10);
+      var base_num = num / Math.pow(2, mag * 10); // how many KB, MB, GB, TB, whatever
+      var mag10 = Math.pow(10, Math.floor(Math.log10(base_num)) - 1);
+      return Math.ceil(base_num / mag10) * mag10 * Math.pow(2, mag * 10);
     }
 
     function roundDownBytes(num) {
-      var mag = Math.trunc(Math.log2(num)/10);
-      var base_num = num/Math.pow(2,mag*10);
-      var mag10 = Math.pow(10,Math.floor(Math.log10(base_num))-1);
-      return Math.floor(base_num/mag10) * mag10 * Math.pow(2,mag*10);
+      var mag = Math.trunc(Math.log2(num) / 10);
+      var base_num = num / Math.pow(2, mag * 10);
+      var mag10 = Math.pow(10, Math.floor(Math.log10(base_num)) - 1);
+      return Math.floor(base_num / mag10) * mag10 * Math.pow(2, mag * 10);
     }
 
     function onMultiChartDataUpdate(stats) {
@@ -177,12 +215,12 @@ class MnStatisticsChartDirective extends MnLifeCycleHooksToStream {
             chart: {
               notFound: true,
               height: getChartSize(vm.props.config.size),
-              margin : {top: 0, right: 0, bottom: 0, left: 0},
+              margin: { top: 0, right: 0, bottom: 0, left: 0 },
               type: 'multiChart',
-              noData: "Stats are not found or not ready yet"
-            }
+              noData: 'Stats are not found or not ready yet',
+            },
           },
-          chartData: []
+          chartData: [],
         });
         return;
       }
@@ -197,10 +235,12 @@ class MnStatisticsChartDirective extends MnLifeCycleHooksToStream {
         }
         var statName = Object.keys(stats.stats)[0];
         var nodes;
-        if (vm.props.node == "all") {
+        if (vm.props.node == 'all') {
           nodes = Object.keys(stats.stats[statName] || {});
           if (!nodes.length) {
-            nodes = mnPoolDefault.export.getValue().nodes.map(n => n.hostname);
+            nodes = mnPoolDefault.export
+              .getValue()
+              .nodes.map((n) => n.hostname);
           }
         } else {
           nodes = [vm.props.node];
@@ -209,10 +249,19 @@ class MnStatisticsChartDirective extends MnLifeCycleHooksToStream {
         nodes.forEach((nodeName, i) => {
           var previousData = vm.state.chartData && vm.state.chartData[i];
           chartData.push(
-            mnStatisticsNewService.buildChartConfig(stats, statName, nodeName,
-                                                    nodeName, desc.unit, units[desc.unit],
-                                                    previousData, poller.isThisInitCall(),
-                                                    start, step))
+            mnStatisticsNewService.buildChartConfig(
+              stats,
+              statName,
+              nodeName,
+              nodeName,
+              desc.unit,
+              units[desc.unit],
+              previousData,
+              poller.isThisInitCall(),
+              start,
+              step
+            )
+          );
         });
       } else {
         Object.keys(vm.props.config.stats).forEach((descPath, i) => {
@@ -221,16 +270,26 @@ class MnStatisticsChartDirective extends MnLifeCycleHooksToStream {
             return;
           }
 
-          var statName =
-              mnStatisticsNewService.descriptionPathToStatName(descPath, vm.props.items);
+          var statName = mnStatisticsNewService.descriptionPathToStatName(
+            descPath,
+            vm.props.items
+          );
           var previousData = vm.state.chartData && vm.state.chartData[i];
 
           chartData.push(
-            mnStatisticsNewService.buildChartConfig(stats, statName, vm.props.node,
-                                                    desc.title, desc.unit, units[desc.unit],
-                                                    previousData, poller.isThisInitCall(),
-                                                    start, step));
-
+            mnStatisticsNewService.buildChartConfig(
+              stats,
+              statName,
+              vm.props.node,
+              desc.title,
+              desc.unit,
+              units[desc.unit],
+              previousData,
+              poller.isThisInitCall(),
+              start,
+              step
+            )
+          );
         });
       }
 
@@ -242,7 +301,7 @@ class MnStatisticsChartDirective extends MnLifeCycleHooksToStream {
           chartData[i].disabled = v.disabled;
         });
       }
-      vm.setState({chartData});
+      vm.setState({ chartData });
     }
   }
 
@@ -267,7 +326,7 @@ class MnStatisticsChartDirective extends MnLifeCycleHooksToStream {
               </Tooltip>
             }
           >
-            <span 
+            <span
               className="chart-title cursor-pointer"
               style={{ pointerEvents: 'auto' }}
             >
@@ -276,7 +335,7 @@ class MnStatisticsChartDirective extends MnLifeCycleHooksToStream {
           </OverlayTrigger>
           <span>&nbsp;</span>
         </div>
-        
+
         {options && (
           <MnMultiChart
             syncScope={true}
@@ -292,4 +351,4 @@ class MnStatisticsChartDirective extends MnLifeCycleHooksToStream {
   }
 }
 
-export {MnStatisticsChartDirective}
+export { MnStatisticsChartDirective };

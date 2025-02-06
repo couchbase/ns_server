@@ -8,28 +8,34 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-
-import {FormGroup, FormControl, Validators, FormArray} from 'react-reactive-form';
-import {HttpParams} from '@angular/common/http';
-import {HttpClient} from './mn.http.client.js';
+import {
+  FormGroup,
+  FormControl,
+  Validators,
+  FormArray,
+} from 'react-reactive-form';
+import { HttpParams } from '@angular/common/http';
+import { HttpClient } from './mn.http.client.js';
 import _ from 'lodash';
-import {BehaviorSubject, combineLatest} from 'rxjs';
-import {switchMap, shareReplay, map, pluck} from 'rxjs/operators';
+import { BehaviorSubject, combineLatest } from 'rxjs';
+import { switchMap, shareReplay, map, pluck } from 'rxjs/operators';
 
-import {MnHelperService} from './mn.helper.service.js';
-import {MnHttpRequest} from './mn.http.request.js';
-import {MnPoolsService} from './mn.pools.service.js';
+import { MnHelperService } from './mn.helper.service.js';
+import { MnHttpRequest } from './mn.http.request.js';
+import { MnPoolsService } from './mn.pools.service.js';
 
 function ipvOnlyValidator() {
   return (control) => {
     let value = control.value;
     delete control.warnings;
-    if (value && value.includes("Only")) {
+    if (value && value.includes('Only')) {
       let mnLocation = MnHelperService.mnLocation();
-      let isValueV6 = value.includes("inet6");
+      let isValueV6 = value.includes('inet6');
       if (mnLocation.kind) {
-        let isKindV6 = mnLocation.kind.includes("ipv6");
-        return (isKindV6 && isValueV6) || (!isKindV6 && !isValueV6) ? null : getIpvOnlyError(isKindV6, isValueV6);
+        let isKindV6 = mnLocation.kind.includes('ipv6');
+        return (isKindV6 && isValueV6) || (!isKindV6 && !isValueV6)
+          ? null
+          : getIpvOnlyError(isKindV6, isValueV6);
       } else {
         control.warnings = getIpvOnlyError(null, isValueV6);
         return null;
@@ -44,51 +50,52 @@ function getIpvOnlyError(isKindV6, isValueV6) {
   return {
     ipvOnly: {
       kind: isKindV6 ? 6 : 4,
-      value: isValueV6 ? 6 : 4
-    }
+      value: isValueV6 ? 6 : 4,
+    },
   };
 }
-
-
 
 var clusterStorage = new FormGroup({
   hostname: new FormControl(null, [Validators.required]),
   hostConfig: new FormGroup({
     addressFamilyUI: new FormControl(null, [ipvOnlyValidator()]),
-    nodeEncryption: new FormControl()
+    nodeEncryption: new FormControl(),
   }),
   storage: new FormGroup({
     path: new FormControl(null),
     index_path: new FormControl(null),
     eventing_path: new FormControl(null),
     java_home: new FormControl(null),
-    cbas_path: new FormArray([])
-  })
+    cbas_path: new FormArray([]),
+  }),
 });
 
 var joinClusterStorage = new FormGroup({
   hostname: new FormControl(null, [Validators.required]),
   hostConfig: new FormGroup({
     addressFamilyUI: new FormControl(null, [ipvOnlyValidator()]),
-    nodeEncryption: new FormControl()
+    nodeEncryption: new FormControl(),
   }),
   storage: new FormGroup({
     path: new FormControl(null),
     index_path: new FormControl(null),
     eventing_path: new FormControl(null),
     java_home: new FormControl(null),
-    cbas_path: new FormArray([])
-  })
-})
+    cbas_path: new FormArray([]),
+  }),
+});
 
 var wizardForm = {
   newCluster: new FormGroup({
     clusterName: new FormControl(null, [Validators.required]),
     user: new FormGroup({
-      username: new FormControl("Administrator", [Validators.required]),
-      password: new FormControl(null, [Validators.required, Validators.minLength(6)]),
-      passwordVerify: new FormControl(null)
-    })
+      username: new FormControl('Administrator', [Validators.required]),
+      password: new FormControl(null, [
+        Validators.required,
+        Validators.minLength(6),
+      ]),
+      passwordVerify: new FormControl(null),
+    }),
   }),
   newClusterConfig: new FormGroup({
     clusterStorage: clusterStorage,
@@ -97,23 +104,23 @@ var wizardForm = {
       // field
     }),
     javaPath: new FormControl(),
-    storageMode: new FormControl(null)
+    storageMode: new FormControl(null),
   }),
   termsAndConditions: new FormGroup({
     agree: new FormControl(false, [Validators.required]),
-    enableStats: new FormControl(true)
+    enableStats: new FormControl(true),
   }),
   joinCluster: new FormGroup({
     clusterAdmin: new FormGroup({
       hostname: new FormControl(null, [Validators.required]),
-      user: new FormControl("Administrator", [Validators.required]),
-      password: new FormControl('', [Validators.required])
+      user: new FormControl('Administrator', [Validators.required]),
+      password: new FormControl('', [Validators.required]),
     }),
     services: new FormGroup({
       // flag
     }),
-    clusterStorage: joinClusterStorage
-  })
+    clusterStorage: joinClusterStorage,
+  }),
 };
 
 class MnWizardServiceClass {
@@ -127,121 +134,128 @@ class MnWizardServiceClass {
       hostname: null,
       storageMode: null,
       clusterStorage: null,
-      implementationVersion: null
+      implementationVersion: null,
     };
 
-    this.stream.joinClusterHttp =
-      new MnHttpRequest(this.postJoinCluster.bind(this))
+    this.stream.joinClusterHttp = new MnHttpRequest(
+      this.postJoinCluster.bind(this)
+    )
       .addSuccess()
       .addLoading()
       .addError();
 
-    this.stream.postNodeInitHttp =
-      new MnHttpRequest(this.postNodeInit.bind(this))
+    this.stream.postNodeInitHttp = new MnHttpRequest(
+      this.postNodeInit.bind(this)
+    )
       .addSuccess()
       .addError();
 
-    this.stream.postClusterInitHttp =
-      new MnHttpRequest(this.postClusterInit.bind(this))
+    this.stream.postClusterInitHttp = new MnHttpRequest(
+      this.postClusterInit.bind(this)
+    )
       .addSuccess()
       .addError();
 
-    this.stream.diskStorageHttp =
-      new MnHttpRequest(this.postDiskStorage.bind(this))
+    this.stream.diskStorageHttp = new MnHttpRequest(
+      this.postDiskStorage.bind(this)
+    )
       .addSuccess()
       .addError();
 
-    this.stream.enableExternalListenerHttp =
-      new MnHttpRequest(this.postEnableExternalListener.bind(this))
+    this.stream.enableExternalListenerHttp = new MnHttpRequest(
+      this.postEnableExternalListener.bind(this)
+    )
       .addSuccess()
       .addError();
 
-    this.stream.setupNetConfigHttp =
-      new MnHttpRequest(this.postSetupNetConfig.bind(this))
+    this.stream.setupNetConfigHttp = new MnHttpRequest(
+      this.postSetupNetConfig.bind(this)
+    )
       .addSuccess()
       .addError();
 
-    this.stream.disableUnusedExternalListenersHttp =
-      new MnHttpRequest(this.postDisableUnusedExternalListeners.bind(this))
+    this.stream.disableUnusedExternalListenersHttp = new MnHttpRequest(
+      this.postDisableUnusedExternalListeners.bind(this)
+    )
       .addSuccess()
       .addError();
 
-    this.stream.hostnameHttp =
-      new MnHttpRequest(this.postHostname.bind(this))
+    this.stream.hostnameHttp = new MnHttpRequest(this.postHostname.bind(this))
       .addSuccess()
       .addError();
 
-    this.stream.postSettingsWebHttp =
-      new MnHttpRequest(this.postSettingsWeb.bind(this))
+    this.stream.postSettingsWebHttp = new MnHttpRequest(
+      this.postSettingsWeb.bind(this)
+    )
       .addSuccess()
       .addError();
 
-    this.stream.querySettingsHttp =
-      new MnHttpRequest(this.postQuerySettings.bind(this))
+    this.stream.querySettingsHttp = new MnHttpRequest(
+      this.postQuerySettings.bind(this)
+    )
       .addSuccess()
       .addError();
 
-    this.stream.indexesHttp =
-      new MnHttpRequest(this.postIndexes.bind(this))
+    this.stream.indexesHttp = new MnHttpRequest(this.postIndexes.bind(this))
       .addSuccess()
       .addError();
 
-    this.stream.servicesHttp =
-      new MnHttpRequest(this.postServices.bind(this))
+    this.stream.servicesHttp = new MnHttpRequest(this.postServices.bind(this))
       .addSuccess()
       .addError();
 
-    this.stream.statsHttp =
-      new MnHttpRequest(this.postStats.bind(this))
+    this.stream.statsHttp = new MnHttpRequest(this.postStats.bind(this))
       .addSuccess()
       .addError();
 
-    this.stream.getSelfConfig =
-      (new BehaviorSubject()).pipe(switchMap(this.getSelfConfig.bind(this)),
-                                   shareReplay({refCount: true, bufferSize: 1}));
+    this.stream.getSelfConfig = new BehaviorSubject().pipe(
+      switchMap(this.getSelfConfig.bind(this)),
+      shareReplay({ refCount: true, bufferSize: 1 })
+    );
 
+    this.stream.memoryQuotasFirst = combineLatest(
+      this.stream.getSelfConfig,
+      mnPoolsService.stream.quotaServices
+    ).pipe(map(mnPoolsService.pluckMemoryQuotas.bind(mnPoolsService)));
 
-    this.stream.memoryQuotasFirst =
-      combineLatest(
-        this.stream.getSelfConfig,
-        mnPoolsService.stream.quotaServices
+    this.stream.getIndexes = new BehaviorSubject().pipe(
+      switchMap(this.getIndexes.bind(this)),
+      shareReplay({ refCount: true, bufferSize: 1 })
+    );
+
+    this.stream.preprocessPath = this.stream.getSelfConfig.pipe(
+      map(this.chooseOSPathPreprocessor.bind(this))
+    );
+
+    this.stream.availableHddStorage = this.stream.getSelfConfig.pipe(
+      pluck('availableStorage', 'hdd'),
+      map((hdd) => hdd.sort((a, b) => b.path.length - a.path.length))
+    );
+
+    this.stream.initHddStorage = this.stream.getSelfConfig.pipe(
+      pluck('storage', 'hdd', 0),
+      map(function (rv) {
+        rv.cbas_path = rv.cbas_dirs;
+        delete rv.cbas_dirs;
+        return rv;
+      })
+    );
+
+    this.stream.totalRAMMegs = this.stream.getSelfConfig.pipe(
+      map((nodeConfig) =>
+        Math.floor(nodeConfig.storageTotals.ram.total / this.IEC.Mi)
       )
-      .pipe(map(mnPoolsService.pluckMemoryQuotas.bind(mnPoolsService)));
+    );
 
-    this.stream.getIndexes =
-      (new BehaviorSubject()).pipe(switchMap(this.getIndexes.bind(this)),
-                                   shareReplay({refCount: true, bufferSize: 1}));
-
-    this.stream.preprocessPath =
-      this.stream.getSelfConfig.pipe(map(this.chooseOSPathPreprocessor.bind(this)));
-
-    this.stream.availableHddStorage =
-      this.stream.getSelfConfig.pipe(
-        pluck("availableStorage", "hdd"),
-        map((hdd) => hdd.sort((a, b) => b.path.length - a.path.length)));
-
-    this.stream.initHddStorage =
-      this.stream.getSelfConfig.pipe(
-        pluck("storage", "hdd", 0),
-        map(function (rv) {
-          rv.cbas_path = rv.cbas_dirs;
-          delete rv.cbas_dirs;
-          return rv;
-        })
-      );
-
-    this.stream.totalRAMMegs =
-      this.stream.getSelfConfig.pipe(
-        map((nodeConfig) => Math.floor(nodeConfig.storageTotals.ram.total / this.IEC.Mi)));
-
-    this.stream.maxRAMMegs =
-      this.stream.totalRAMMegs.pipe(map(mnHelperService.calculateMaxMemorySize));
+    this.stream.maxRAMMegs = this.stream.totalRAMMegs.pipe(
+      map(mnHelperService.calculateMaxMemorySize)
+    );
   }
 
   getServicesValues(servicesGroup) {
-    return Object
-      .keys(servicesGroup.controls)
-      .filter((serviceName) => Boolean(servicesGroup.get(serviceName).value));
+    return Object.keys(servicesGroup.controls).filter((serviceName) =>
+      Boolean(servicesGroup.get(serviceName).value)
+    );
     //   reduce(function (result, serviceName) {
     //   var service = servicesGroup.get(serviceName);
     //   if (service && service.value) {
@@ -252,7 +266,7 @@ class MnWizardServiceClass {
   }
 
   getAddressFamilyUI(config) {
-    return config.addressFamily + (config.addressFamilyOnly ? "Only" : "");
+    return config.addressFamily + (config.addressFamilyOnly ? 'Only' : '');
   }
 
   setSelfConfig(selfConfig) {
@@ -260,30 +274,32 @@ class MnWizardServiceClass {
 
     if (!hostname) {
       let maybeCbLocal = selfConfig['otpNode'].split('@')[1];
-      if (!maybeCbLocal || (maybeCbLocal == "cb.local")) {
-        hostname = selfConfig.addressFamily == "inet6" ? "::1" : "127.0.0.1";
+      if (!maybeCbLocal || maybeCbLocal == 'cb.local') {
+        hostname = selfConfig.addressFamily == 'inet6' ? '::1' : '127.0.0.1';
       } else {
         hostname = maybeCbLocal;
       }
     } else {
       //remove port from host
-      let parsed = new URL("http://" + selfConfig.configuredHostname);
+      let parsed = new URL('http://' + selfConfig.configuredHostname);
       //remove ipv6 brackets
       hostname = parsed.hostname.replace(/[[\]']+/g, '');
     }
 
-    wizardForm.newClusterConfig.get("clusterStorage.hostname").setValue(hostname);
-    wizardForm.joinCluster.get("clusterStorage.hostname").setValue(hostname);
-    wizardForm.newClusterConfig.get("clusterStorage.hostConfig").patchValue({
+    wizardForm.newClusterConfig
+      .get('clusterStorage.hostname')
+      .setValue(hostname);
+    wizardForm.joinCluster.get('clusterStorage.hostname').setValue(hostname);
+    wizardForm.newClusterConfig.get('clusterStorage.hostConfig').patchValue({
       addressFamilyUI: this.getAddressFamilyUI(selfConfig),
-      nodeEncryption: selfConfig.nodeEncryption
+      nodeEncryption: selfConfig.nodeEncryption,
     });
     this.initialValues.hostname = hostname;
   }
 
   getUserCreds() {
     var data = _.clone(this.wizardForm.newCluster.value.user);
-    data.user = data.username
+    data.user = data.username;
     delete data.passwordVerify;
     delete data.username;
     return [data, false];
@@ -296,37 +312,44 @@ class MnWizardServiceClass {
       subject
     ).pipe(
       map(this.lookupPathResource.bind(this)),
-      map(this.updateTotal.bind(this)));
+      map(this.updateTotal.bind(this))
+    );
   }
 
   updateTotal(pathResource) {
-    return Math.floor(
-      pathResource.sizeKBytes * (100 - pathResource.usagePercent) / 100 / this.IEC.Mi
-    ) + ' GiB';
+    return (
+      Math.floor(
+        (pathResource.sizeKBytes * (100 - pathResource.usagePercent)) /
+          100 /
+          this.IEC.Mi
+      ) + ' GiB'
+    );
   }
 
   lookupPathResource(rv) {
-    var notFound = {path: "/", sizeKBytes: 0, usagePercent: 0};
+    var notFound = { path: '/', sizeKBytes: 0, usagePercent: 0 };
     if (!rv[2]) {
       return notFound;
     } else {
-      return _.detect(rv[0], function (info) {
-        var preproc = rv[1](info.path);
-        return rv[1](rv[2]).substring(0, preproc.length) == preproc;
-      }) || notFound;
+      return (
+        _.detect(rv[0], function (info) {
+          var preproc = rv[1](info.path);
+          return rv[1](rv[2]).substring(0, preproc.length) == preproc;
+        }) || notFound
+      );
     }
   }
 
   chooseOSPathPreprocessor(config) {
-    return (
-      (config.os === 'windows') ||
-        (config.os === 'win64') ||
-        (config.os === 'win32')
-    ) ? this.preprocessPathForWindows.bind(this) : this.preprocessPathStandard.bind(this);
+    return config.os === 'windows' ||
+      config.os === 'win64' ||
+      config.os === 'win32'
+      ? this.preprocessPathForWindows.bind(this)
+      : this.preprocessPathStandard.bind(this);
   }
 
   preprocessPathStandard(p) {
-    if (p.charAt(p.length-1) != '/') {
+    if (p.charAt(p.length - 1) != '/') {
       p += '/';
     }
     return p;
@@ -334,22 +357,25 @@ class MnWizardServiceClass {
 
   preprocessPathForWindows(p) {
     p = p.replace(/\\/g, '/');
-    if ((/^[A-Z]:\//).exec(p)) { // if we're using uppercase drive letter downcase it
+    if (/^[A-Z]:\//.exec(p)) {
+      // if we're using uppercase drive letter downcase it
       p = String.fromCharCode(p.charCodeAt(0) + 0x20) + p.slice(1);
     }
     return this.preprocessPathStandard(p);
   }
 
   getQuerySettings() {
-    return this.http.get("/settings/querySettings");
+    return this.http.get('/settings/querySettings');
   }
 
   getCELicense() {
-    return this.http.get("CE_license_agreement.txt", {responseType: 'text'});
+    return this.http.get('CE_license_agreement.txt', { responseType: 'text' });
   }
 
   getEELicense() {
-    return this.http.get("EE_subscription_license_agreement.txt", {responseType: 'text'});
+    return this.http.get('EE_subscription_license_agreement.txt', {
+      responseType: 'text',
+    });
   }
 
   getSelfConfig() {
@@ -357,14 +383,12 @@ class MnWizardServiceClass {
   }
 
   postStats(sendStats) {
-    return this.http.post('/settings/stats', {sendStats: sendStats});
+    return this.http.post('/settings/stats', { sendStats: sendStats });
   }
 
   postServices(data) {
     return this.http.post('/node/controller/setupServices', data);
   }
-
-
 
   postNodeInit(data) {
     return this.http.post('/nodeInit', data);
@@ -379,7 +403,7 @@ class MnWizardServiceClass {
   }
 
   postEnableExternalListener(data) {
-    return this.http.post('/node/controller/enableExternalListener',  data);
+    return this.http.post('/node/controller/enableExternalListener', data);
   }
 
   postSetupNetConfig(data) {
@@ -387,17 +411,15 @@ class MnWizardServiceClass {
   }
 
   postDisableUnusedExternalListeners() {
-    return this.http.post("/node/controller/disableUnusedExternalListeners");
+    return this.http.post('/node/controller/disableUnusedExternalListeners');
   }
 
   postHostname(hostname) {
-    return this.http.post('/node/controller/rename', {hostname: hostname});
+    return this.http.post('/node/controller/rename', { hostname: hostname });
   }
 
-
-
   postQuerySettings(data) {
-    return this.http.post("/settings/querySettings", data);
+    return this.http.post('/settings/querySettings', data);
   }
 
   postIndexes(data) {
@@ -411,16 +433,20 @@ class MnWizardServiceClass {
   postSettingsWeb(user) {
     var data = _.clone(user[0]);
     delete data.passwordVerify;
-    data.port = "SAME";
+    data.port = 'SAME';
     return this.http.post('/settings/web', data, {
-      params: new HttpParams().set("just_validate", user[1] ? 1 : 0)
+      params: new HttpParams().set('just_validate', user[1] ? 1 : 0),
     });
   }
 
   postJoinCluster(clusterMember) {
-    return this.http.post('/node/controller/doJoinCluster', clusterMember)
+    return this.http.post('/node/controller/doJoinCluster', clusterMember);
   }
 }
 
-const MnWizardService = new MnWizardServiceClass(HttpClient, MnHelperService, MnPoolsService);
+const MnWizardService = new MnWizardServiceClass(
+  HttpClient,
+  MnHelperService,
+  MnPoolsService
+);
 export { MnWizardService };

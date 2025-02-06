@@ -5,7 +5,11 @@
   "version": "0.0.0",
   "scripts": {
     "checks": "eslint 'app/**/*.js'",
-    "dev": "vite build --mode development --watch"
+    "dev": "vite build --mode development --watch",
+    "lint": "prettier --check --plugin-search-dir=. . && eslint --ignore-path .gitignore .",
+    "lint:ci": "prettier --check --plugin-search-dir=. . && eslint --max-warnings=0 --ignore-path .gitignore .",
+    "format": "prettier --write --plugin-search-dir=. .",
+    "fformat": "prettier --write --plugin-search-dir=. --"
   },
   "dependencies": {
     "@angular/common": "8.2.14",
@@ -49,6 +53,7 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^7.32.0",
+    "prettier": "^3.4.2",
     "vite": "^6.0.3"
   },
   "engines": {

@@ -7,18 +7,18 @@ const MnServersStopRebalanceDialog = ({ onClose, onDismiss }) => (
     </div>
     <div className="panel-content">
       <p className="error">
-        Warning: Stopping rebalance is unsafe at this
-        moment since cluster may be in a partitioned state. Continue only if
-        you're perfectly sure that this is not the case.
+        Warning: Stopping rebalance is unsafe at this moment since cluster may
+        be in a partitioned state. Continue only if you're perfectly sure that
+        this is not the case.
       </p>
     </div>
     <div className="panel-footer">
       <a onClick={onDismiss}>Cancel</a>
-      <button
-        type="submit"
-        onClick={onClose}>Stop Rebalance</button>
+      <button type="submit" onClick={onClose}>
+        Stop Rebalance
+      </button>
     </div>
   </div>
 );
 
-export { MnServersStopRebalanceDialog }; 
+export { MnServersStopRebalanceDialog };

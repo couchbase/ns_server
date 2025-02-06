@@ -28,12 +28,13 @@ function mnPollerFactory() {
       }
     }
 
-    scope.mnOnDestroy && scope.mnOnDestroy.subscribe(function () {
-      if (!doNotListenVisibilitychange) {
-        document.removeEventListener('visibilitychange', onVisibilitychange);
-      }
-      self.onDestroy();
-    });
+    scope.mnOnDestroy &&
+      scope.mnOnDestroy.subscribe(function () {
+        if (!doNotListenVisibilitychange) {
+          document.removeEventListener('visibilitychange', onVisibilitychange);
+        }
+        self.onDestroy();
+      });
 
     if (!doNotListenVisibilitychange) {
       document.addEventListener('visibilitychange', onVisibilitychange);
@@ -63,7 +64,6 @@ function mnPollerFactory() {
   Poller.prototype.getLatestResult = getLatestResult;
   Poller.prototype.onResum = onResum;
 
-
   function onDestroy() {
     this.stop();
   }
@@ -73,7 +73,9 @@ function mnPollerFactory() {
   }
 
   function isStopped(startTimestamp) {
-    return !(this.stopTimestamp === undefined || startTimestamp >= this.stopTimestamp);
+    return !(
+      this.stopTimestamp === undefined || startTimestamp >= this.stopTimestamp
+    );
   }
   function reloadOnScopeEvent(eventName, vm, spinnerName) {
     var self = this;
@@ -111,20 +113,24 @@ function mnPollerFactory() {
   }
   function doCall(timestamp) {
     var self = this;
-    var query = _.isFunction(self.request) ? self.request(self.latestResult) : self.request;
-    query.then(function (result) {
-      if ((query !== this) || self.isStopped(timestamp)) {
-        return;
-      }
-      self.deferred.notify(result);
-    }.bind(query));
+    var query = _.isFunction(self.request)
+      ? self.request(self.latestResult)
+      : self.request;
+    query.then(
+      function (result) {
+        if (query !== this || self.isStopped(timestamp)) {
+          return;
+        }
+        self.deferred.notify(result);
+      }.bind(query)
+    );
     return query;
   }
   function cycle() {
     if (this.isLaunched) {
       return this;
     }
-    delete this.stopTimestamp
+    delete this.stopTimestamp;
     this.isLaunched = true;
     this.doCycle();
     return this;
@@ -135,15 +141,17 @@ function mnPollerFactory() {
     self.doCallPromise = self.doCall(timestamp);
 
     if (self.extractInterval) {
-      self.doCallPromise.then(function (result) {
-        if ((self.doCallPromise !== this) || self.isStopped(timestamp)) {
-          return;
-        }
-        var interval = _.isFunction(self.extractInterval) ?
-            self.extractInterval(result) :
-            self.extractInterval;
-        self.timeout = setTimeout(self.doCycle.bind(self), interval);
-      }.bind(self.doCallPromise));
+      self.doCallPromise.then(
+        function (result) {
+          if (self.doCallPromise !== this || self.isStopped(timestamp)) {
+            return;
+          }
+          var interval = _.isFunction(self.extractInterval)
+            ? self.extractInterval(result)
+            : self.extractInterval;
+          self.timeout = setTimeout(self.doCycle.bind(self), interval);
+        }.bind(self.doCallPromise)
+      );
     }
     self.doCallPromise.then(null, function () {
       self.stop(); //stop cycle on any http error;
@@ -177,13 +185,19 @@ function mnPollerFactory() {
   }
   function subscribe(subscriber, keeper) {
     var self = this;
-    self.deferred.then(null, null, _.isFunction(subscriber) ? function (value) {
-      subscriber(value, self.latestResult);
-      self.latestResult = value;
-    } : function (value) {
-      (keeper || self.scope).setState({[subscriber]: value});
-      self.latestResult = value;
-    });
+    self.deferred.then(
+      null,
+      null,
+      _.isFunction(subscriber)
+        ? function (value) {
+            subscriber(value, self.latestResult);
+            self.latestResult = value;
+          }
+        : function (value) {
+            (keeper || self.scope).setState({ [subscriber]: value });
+            self.latestResult = value;
+          }
+    );
     return self;
   }
 
@@ -203,12 +217,14 @@ function mnEtagPollerFactory(mnPoller) {
     var self = this;
     var timestamp = new Date();
     self.doCallPromise = self.doCall(timestamp);
-    self.doCallPromise.then(function () {
-      if ((self.doCallPromise !== this) || self.isStopped(timestamp)) {
-        return;
-      }
-      self.cycle();
-    }.bind(self.doCallPromise));
+    self.doCallPromise.then(
+      function () {
+        if (self.doCallPromise !== this || self.isStopped(timestamp)) {
+          return;
+        }
+        self.cycle();
+      }.bind(self.doCallPromise)
+    );
     return self;
   }
 
@@ -218,4 +234,4 @@ function mnEtagPollerFactory(mnPoller) {
 const mnPoller = mnPollerFactory();
 const mnEtagPoller = mnEtagPollerFactory(mnPoller);
 
-export {mnEtagPoller, mnPoller};
+export { mnEtagPoller, mnPoller };

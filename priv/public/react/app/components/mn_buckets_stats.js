@@ -23,12 +23,14 @@ function get(mnHttpParams) {
   if (cache) {
     return Promise.resolve(cache);
   }
-  return axios.get('/pools/default/buckets?basic_stats=true&skipMap=true', {
-    mnHttp: mnHttpParams
-  }).then(response => {
-    cache = response;
-    return response;
-  });
+  return axios
+    .get('/pools/default/buckets?basic_stats=true&skipMap=true', {
+      mnHttp: mnHttpParams,
+    })
+    .then((response) => {
+      cache = response;
+      return response;
+    });
 }
 
 function clearCache() {

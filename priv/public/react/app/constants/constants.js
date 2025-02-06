@@ -15,7 +15,7 @@ let daysOfWeek = [
   'Thursday',
   'Friday',
   'Saturday',
-  'Sunday'
+  'Sunday',
 ];
 
 let knownAlerts = [
@@ -42,7 +42,7 @@ let knownAlerts = [
   'indexer_low_resident_percentage',
   'memcached_connections',
   'stuck_rebalance',
-  'disk_guardrail'
+  'disk_guardrail',
 ];
 
 let timeUnitToSeconds = {
@@ -51,7 +51,7 @@ let timeUnitToSeconds = {
   day: 86400,
   week: 691200,
   month: 2592000,
-  year: 31536000
+  year: 31536000,
 };
 
 let docsLimit = 1000;
@@ -63,11 +63,19 @@ let viewsPerPageLimit = 6;
 let IEC = {
   Ki: 1024,
   Mi: 1048576,
-  Gi: 1073741824
+  Gi: 1073741824,
 };
 
-let servicesEnterprise = ["kv", "n1ql", "index", "fts", "cbas", "eventing", "backup"];
-let servicesCE = ["kv", "index", "fts", "n1ql"];
+let servicesEnterprise = [
+  'kv',
+  'n1ql',
+  'index',
+  'fts',
+  'cbas',
+  'eventing',
+  'backup',
+];
+let servicesCE = ['kv', 'index', 'fts', 'n1ql'];
 
 export {
   daysOfWeek,
@@ -78,5 +86,5 @@ export {
   viewsPerPageLimit,
   IEC,
   servicesEnterprise,
-  servicesCE
+  servicesCE,
 };

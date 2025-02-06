@@ -12,7 +12,7 @@ class MnKeyspaceSelectorStep extends MnLifeCycleHooksToStream {
 
     this.state = {
       step: null,
-      list: null
+      list: null,
     };
   }
 
@@ -27,19 +27,26 @@ class MnKeyspaceSelectorStep extends MnLifeCycleHooksToStream {
   render() {
     const { step, form, service } = this.props;
 
-    return this.state.step === step && <div className="selector-scroll">
-      <div style={{ minHeight: this.state.list ? null : '2.1rem' }}>
-        {this.state.list ? (
-          this.state.list.map(item => (
-            <a key={item[service.filterKey]} onClick={() => form.submit.next(item)}>
-              {item[service.filterKey]}
-            </a>
-          ))
-        ) : (
-          <MnSpinner mnSpinner={true} minHeight={'2.1rem'} />
-        )}
-      </div>
-    </div>
+    return (
+      this.state.step === step && (
+        <div className="selector-scroll">
+          <div style={{ minHeight: this.state.list ? null : '2.1rem' }}>
+            {this.state.list ? (
+              this.state.list.map((item) => (
+                <a
+                  key={item[service.filterKey]}
+                  onClick={() => form.submit.next(item)}
+                >
+                  {item[service.filterKey]}
+                </a>
+              ))
+            ) : (
+              <MnSpinner mnSpinner={true} minHeight={'2.1rem'} />
+            )}
+          </div>
+        </div>
+      )
+    );
   }
 }
 
@@ -68,16 +75,16 @@ class MnKeyspaceSelector extends MnLifeCycleHooksToStream {
 
     service.stream.showHideDropdown
       .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(showHideDropdown => this.setState({ showHideDropdown }));
+      .subscribe((showHideDropdown) => this.setState({ showHideDropdown }));
   }
 
   render() {
     const { service, className } = this.props;
     return (
       <div className={className} onClick={(e) => e.stopPropagation()}>
-        <form onSubmit={() => this.form.submit.next()} >
+        <form onSubmit={() => this.form.submit.next()}>
           <div className="ks-control-wrapper">
-            {service.options.steps.map(step => (
+            {service.options.steps.map((step) => (
               <MnInputFilter
                 key={step}
                 group={service.filters[step].group}
@@ -89,13 +96,15 @@ class MnKeyspaceSelector extends MnLifeCycleHooksToStream {
               />
             ))}
           </div>
-          {this.state.showHideDropdown && service.options.steps.map(step => 
-            <MnKeyspaceSelectorStep
-              key={step}
-              step={step}
-              service={service}
-              form={this.form} />
-          )}
+          {this.state.showHideDropdown &&
+            service.options.steps.map((step) => (
+              <MnKeyspaceSelectorStep
+                key={step}
+                step={step}
+                service={service}
+                form={this.form}
+              />
+            ))}
         </form>
       </div>
     );

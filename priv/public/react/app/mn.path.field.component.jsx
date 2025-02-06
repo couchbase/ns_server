@@ -19,12 +19,14 @@ class MnPathFieldComponent extends MnLifeCycleHooksToStream {
     super(props);
     this.focusFieldSubject = new BehaviorSubject(true);
     this.state = {
-      lookUpPath: null
+      lookUpPath: null,
     };
   }
 
   componentWillMount() {
-    this.lookUpPath = MnWizardService.createLookUpStream(MnHelperReactService.valueChanges(this.props.control.valueChanges));
+    this.lookUpPath = MnWizardService.createLookUpStream(
+      MnHelperReactService.valueChanges(this.props.control.valueChanges)
+    );
     MnHelperReactService.async(this, 'lookUpPath');
 
     setTimeout(() => {
@@ -47,19 +49,19 @@ class MnPathFieldComponent extends MnLifeCycleHooksToStream {
         <FieldControl
           control={control}
           render={({ handler }) => {
-            return (<input
-              type="text"
-              autoCorrect="off"
-              spellCheck="false"
-              autoCapitalize="off"
-              id={controlName}
-              {...handler()}
-            />
-          )}}
+            return (
+              <input
+                type="text"
+                autoCorrect="off"
+                spellCheck="false"
+                autoCapitalize="off"
+                id={controlName}
+                {...handler()}
+              />
+            );
+          }}
         />
-        <p>
-          Free: {lookUpPath}
-        </p>
+        <p>Free: {lookUpPath}</p>
       </>
     );
   }

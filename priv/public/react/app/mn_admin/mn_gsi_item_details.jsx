@@ -10,20 +10,23 @@ import mnPermissions from '../components/mn_permissions';
 import { mnFormatStorageMode } from '../components/mn_filters';
 import { UISref } from '@uirouter/react';
 
-
 class MnGsiItemController extends MnLifeCycleHooksToStream {
   componentDidMount() {
     var row = this.props.row;
 
     //check permissions
-    let interestingPermissions = row.collection ?
-        mnPermissions.getPerCollectionPermissions(row.bucket, row.scope, row.collection) :
-        mnPermissions.getPerScopePermissions(row.bucket, row.scope);
+    let interestingPermissions = row.collection
+      ? mnPermissions.getPerCollectionPermissions(
+          row.bucket,
+          row.scope,
+          row.collection
+        )
+      : mnPermissions.getPerScopePermissions(row.bucket, row.scope);
     interestingPermissions.forEach(mnPermissions.set);
     mnPermissions.throttledCheck();
   }
   render() {
-    return <>{this.props.children}</>
+    return <>{this.props.children}</>;
   }
 }
 
@@ -40,42 +43,56 @@ class MnGsiItemDetails extends MnLifeCycleHooksToStream {
     var row = this.props.row;
     const $uibModal = this.context;
 
-    vm.keyspace = row.bucket + ":" + row.scope + (row.collection ? (":" + row.collection) : "");
+    vm.keyspace =
+      row.bucket +
+      ':' +
+      row.scope +
+      (row.collection ? ':' + row.collection : '');
 
     function getFormattedScanTime(row) {
       if (row && row.lastScanTime != 'NA')
         return dayjs(row.lastScanTime).format('hh:mm:ss A, D MMM, YYYY');
-      else
-        return 'NA';
+      else return 'NA';
     }
 
     function dropIndex(row, dropReplicaOnly) {
-      $uibModal.openModal({
-        component: MnGsiDropConfirmDialog,
-        props: {
-          partitioned: row.partitioned
-        }
-      }).then(function () {
-        row.awaitingRemoval = true;
-        vm.props.updateState();
-
-        mnPromiseHelper(vm, mnGsiService.postDropIndex(row, dropReplicaOnly))
-          .showGlobalSpinner()
-          .catchErrors(function (resp) {
-            if (!resp) {
-              return;
-            } else if (_.isString(resp)) {
-              mnAlertsService.formatAndSetAlerts(resp.data, "error", 4000);
-            } else if (resp.errors && resp.errors.length) {
-              mnAlertsService.formatAndSetAlerts(_.map(resp.errors, "msg"), "error", 4000);
-            }
-            row.awaitingRemoval = false;
+      $uibModal
+        .openModal({
+          component: MnGsiDropConfirmDialog,
+          props: {
+            partitioned: row.partitioned,
+          },
+        })
+        .then(
+          function () {
+            row.awaitingRemoval = true;
             vm.props.updateState();
 
-          })
-          .showGlobalSuccess("Index dropped successfully!")
-          .catchGlobalErrors("Error dropping index.");
-        }, () => {});
+            mnPromiseHelper(
+              vm,
+              mnGsiService.postDropIndex(row, dropReplicaOnly)
+            )
+              .showGlobalSpinner()
+              .catchErrors(function (resp) {
+                if (!resp) {
+                  return;
+                } else if (_.isString(resp)) {
+                  mnAlertsService.formatAndSetAlerts(resp.data, 'error', 4000);
+                } else if (resp.errors && resp.errors.length) {
+                  mnAlertsService.formatAndSetAlerts(
+                    _.map(resp.errors, 'msg'),
+                    'error',
+                    4000
+                  );
+                }
+                row.awaitingRemoval = false;
+                vm.props.updateState();
+              })
+              .showGlobalSuccess('Index dropped successfully!')
+              .catchGlobalErrors('Error dropping index.');
+          },
+          () => {}
+        );
     }
   }
   render() {
@@ -86,11 +103,16 @@ class MnGsiItemDetails extends MnLifeCycleHooksToStream {
         <div className="indent-1 cursor-auto">
           <div className="row items-bottom margin-bottom-1">
             <div className="margin-right-4">
-              <div onClick={(e) => e.stopPropagation()} className="break-word margin-bottom-half">
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="break-word margin-bottom-half"
+              >
                 <strong>Definition</strong> {row.definition}
               </div>
               <div>
-                <strong>Storage Mode</strong> {mnFormatStorageMode(row.storageMode, pools.isEnterprise)} &nbsp;&nbsp;
+                <strong>Storage Mode</strong>{' '}
+                {mnFormatStorageMode(row.storageMode, pools.isEnterprise)}{' '}
+                &nbsp;&nbsp;
                 {!row.partitioned && row.hosts.length > 1 && (
                   <span className="margin-bottom-0">
                     <strong>Nodes</strong> {row.hosts.join(', ')}
@@ -99,12 +121,15 @@ class MnGsiItemDetails extends MnLifeCycleHooksToStream {
                 {row.partitioned && (
                   <span className="margin-bottom-0">
                     <strong>Nodes</strong>
-                    {Object.entries(row.partitionMap).map(([node, partitions], index, array) => (
-                      <span key={node}>
-                        {node} ({partitions.length} partition{partitions.length !== 1 ? 's' : ''})
-                        {index !== array.length - 1 ? ',' : ''}
-                      </span>
-                    ))}
+                    {Object.entries(row.partitionMap).map(
+                      ([node, partitions], index, array) => (
+                        <span key={node}>
+                          {node} ({partitions.length} partition
+                          {partitions.length !== 1 ? 's' : ''})
+                          {index !== array.length - 1 ? ',' : ''}
+                        </span>
+                      )
+                    )}
                   </span>
                 )}
               </div>
@@ -115,16 +140,25 @@ class MnGsiItemDetails extends MnLifeCycleHooksToStream {
               )}
             </div>
             <div className="nowrap margin-right-1">
-              <UISref to="app.admin.query.workbench" params={{ query: row.definition }}>
+              <UISref
+                to="app.admin.query.workbench"
+                params={{ query: row.definition }}
+              >
                 <button className="outline tight">Open in Workbench</button>
               </UISref>
               {rbac.cluster.collection[vm.keyspace]?.n1ql.select.execute && (
                 <>
-                  <button className="outline tight" onClick={() => vm.dropIndex(row)}>
+                  <button
+                    className="outline tight"
+                    onClick={() => vm.dropIndex(row)}
+                  >
                     Drop {row.numReplica > 0 && 'All Replicas'}
                   </button>
                   {row.numReplica > 0 && (
-                    <button className="outline tight" onClick={() => vm.dropIndex(row, true)}>
+                    <button
+                      className="outline tight"
+                      onClick={() => vm.dropIndex(row, true)}
+                    >
                       Drop This Replica
                     </button>
                   )}

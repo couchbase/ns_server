@@ -7,13 +7,17 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-import axios from "axios";
-import mnPoolDefault from "../components/mn_pool_default.js";
-import mnStoreService from "../components/mn_store_service.js";
-import mnStatisticsNewService from "./mn_statistics_service.js";
-import mnStatsDesc from "./mn_statistics_description.js";
+import axios from 'axios';
+import mnPoolDefault from '../components/mn_pool_default.js';
+import mnStoreService from '../components/mn_store_service.js';
+import mnStatisticsNewService from './mn_statistics_service.js';
+import mnStatsDesc from './mn_statistics_description.js';
 
-function mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewService) {
+function mnUserRolesFactory(
+  mnPoolDefault,
+  mnStoreService,
+  mnStatisticsNewService
+) {
   var mnUserRolesService = {
     getState: getState,
     addUser: addUser,
@@ -49,65 +53,73 @@ function mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewServic
     getSaslauthdAuth: getSaslauthdAuth,
     packRolesToSend: packRolesToSend,
     getRoleParams: getRoleParams,
-    packRoleParams: packRoleParams
+    packRoleParams: packRoleParams,
   };
 
-  var clientTLSCert = "Client Cert should be supplied";
-  var queryDnError = "LDAP DN should be supplied";
+  var clientTLSCert = 'Client Cert should be supplied';
+  var queryDnError = 'LDAP DN should be supplied';
   var usersAttrsError = "The field can't be empty";
 
   return mnUserRolesService;
 
   function getSaslauthdAuth() {
     return axios({
-      method: "GET",
-      url: "/settings/saslauthdAuth"
-    }).then(function (resp) {
-      return resp.data;
-    }).catch(function () {
-      return;
-    });
+      method: 'GET',
+      url: '/settings/saslauthdAuth',
+    })
+      .then(function (resp) {
+        return resp.data;
+      })
+      .catch(function () {
+        return;
+      });
   }
 
   function clearLdapCache() {
     return axios({
-      method: "POST",
-      url: "/settings/invalidateLDAPCache"
+      method: 'POST',
+      url: '/settings/invalidateLDAPCache',
     });
   }
 
   function getLdapSettings() {
     return axios({
-      method: "GET",
-      url: "/settings/ldap"
+      method: 'GET',
+      url: '/settings/ldap',
     });
   }
 
   function getSamlSettings() {
     return axios({
-      method: "GET",
-      url: "/settings/saml"
+      method: 'GET',
+      url: '/settings/saml',
     });
   }
 
   function validateLDAPQuery(data) {
-    return !!(data.userDNMapping && typeof data.userDNMapping === 'string' && data.userDNMapping.includes("query"));
+    return !!(
+      data.userDNMapping &&
+      typeof data.userDNMapping === 'string' &&
+      data.userDNMapping.includes('query')
+    );
   }
 
   function validateGroupQuery(data) {
-    return !!(data.groupsQuery);
+    return !!data.groupsQuery;
   }
 
   function validateGroupUserAttrs(formData) {
-    return formData.queryForGroups === "users_attrs" &&
-      !formData.group.groupsQuery.attributes;
+    return (
+      formData.queryForGroups === 'users_attrs' &&
+      !formData.group.groupsQuery.attributes
+    );
   }
 
   function validateAuthType(errors, data, formData) {
-    if ((formData.authType == "creds") && !data.bindDN) {
+    if (formData.authType == 'creds' && !data.bindDN) {
       errors.bindDN = queryDnError;
     }
-    if ((formData.authType == "cert") && !data.clientTLSCert) {
+    if (formData.authType == 'cert' && !data.clientTLSCert) {
       errors.clientTLSCert = clientTLSCert;
     }
   }
@@ -118,7 +130,7 @@ function mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewServic
     if (Object.keys(errors).length) {
       return Promise.reject(errors);
     } else {
-      return axios.post("/settings/ldap/validate/connectivity", data);
+      return axios.post('/settings/ldap/validate/connectivity', data);
     }
   }
 
@@ -130,7 +142,7 @@ function mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewServic
     if (Object.keys(errors).length) {
       return Promise.reject(errors);
     } else {
-      return axios.post("/settings/ldap/validate/authentication", data);
+      return axios.post('/settings/ldap/validate/authentication', data);
     }
   }
 
@@ -143,12 +155,12 @@ function mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewServic
       errors.groupsQuery = usersAttrsError;
     }
     if (!data.groupsQueryUser) {
-      errors.groupsQueryUser = "The filed is mandatory";
+      errors.groupsQueryUser = 'The filed is mandatory';
     }
     if (Object.keys(errors).length) {
       return Promise.reject(errors);
     } else {
-      return axios.post("/settings/ldap/validate/groupsQuery", data);
+      return axios.post('/settings/ldap/validate/groupsQuery', data);
     }
   }
 
@@ -156,7 +168,9 @@ function mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewServic
     if (!rolesByRole || !rolesByRole[role.role]) {
       return;
     }
-    return rolesByRole[role.role].params.map(param => role[param] || "*").join(":");
+    return rolesByRole[role.role].params
+      .map((param) => role[param] || '*')
+      .join(':');
   }
 
   function packRoleParams(params) {
@@ -164,54 +178,62 @@ function mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewServic
     let rv = [];
     for (i = 0; i < params.length; i++) {
       let val = params[i];
-      if (val == "*") {
+      if (val == '*') {
         if (i == 0) {
-          rv.push("*");
+          rv.push('*');
         }
         break;
       } else {
         rv.push(val);
       }
     }
-    return rv.join(":");
+    return rv.join(':');
   }
 
   function packRolesToSend(selectedRoles, selectedRolesConfigs) {
-    return Object
-      .keys(selectedRoles)
-      .filter(role => selectedRoles[role])
-      .concat(Object
-              .keys(selectedRolesConfigs)
-              .reduce((acc, role) =>
-                      acc.concat((selectedRolesConfigs[role] || [])
-                                 .map(config =>
-                                      (role + "[" + packRoleParams(config.split(":")) + "]"))), []));
+    return Object.keys(selectedRoles)
+      .filter((role) => selectedRoles[role])
+      .concat(
+        Object.keys(selectedRolesConfigs).reduce(
+          (acc, role) =>
+            acc.concat(
+              (selectedRolesConfigs[role] || []).map(
+                (config) => role + '[' + packRoleParams(config.split(':')) + ']'
+              )
+            ),
+          []
+        )
+      );
   }
-
 
   function postLdapSettings(data, formData) {
     var errors = {};
     var isGroups = data.authorizationEnabled;
     var isUser = data.authenticationEnabled;
-    if ((!isUser && !isGroups) || (validateLDAPQuery(data) && isUser) ||
-        (validateGroupQuery(data) && isGroups)) {
+    if (
+      (!isUser && !isGroups) ||
+      (validateLDAPQuery(data) && isUser) ||
+      (validateGroupQuery(data) && isGroups)
+    ) {
       validateAuthType(errors, data, formData);
     }
     if (isGroups && validateGroupUserAttrs(formData)) {
       errors.groupsQuery = usersAttrsError;
     }
-    if (formData.connect.encryption !== "None" &&
-        formData.connect.serverCertValidation == "pasteCert" &&
-        !formData.connect.cacert) {
-      errors.cacert = "The certificate should be provided"
+    if (
+      formData.connect.encryption !== 'None' &&
+      formData.connect.serverCertValidation == 'pasteCert' &&
+      !formData.connect.cacert
+    ) {
+      errors.cacert = 'The certificate should be provided';
     }
     if (Object.keys(errors).length) {
       return Promise.reject(errors);
     } else {
       return axios({
-        method: "POST",
-        url: "/settings/ldap",
-        data: data
+        method: 'POST',
+        url: '/settings/ldap',
+        data: data,
       });
     }
   }
@@ -219,9 +241,9 @@ function mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewServic
   function saveDashboard() {
     return getProfile().then(function (resp) {
       var profile = resp.data;
-      profile.scenarios = mnStoreService.store("scenarios").share();
-      profile.groups = mnStoreService.store("groups").share();
-      profile.charts = mnStoreService.store("charts").share();
+      profile.scenarios = mnStoreService.store('scenarios').share();
+      profile.groups = mnStoreService.store('groups').share();
+      profile.charts = mnStoreService.store('charts').share();
       return putUserProfile(profile);
     });
   }
@@ -229,16 +251,15 @@ function mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewServic
   function resetDashboard() {
     return getProfile().then(function (resp) {
       var profile = resp.data;
-      mnStoreService.store("charts").clear();
-      mnStoreService.store("groups").clear();
-      mnStoreService.store("scenarios").clear();
+      mnStoreService.store('charts').clear();
+      mnStoreService.store('groups').clear();
+      mnStoreService.store('scenarios').clear();
 
       mnStatisticsNewService.doAddPresetScenario();
 
-      profile.scenarios = mnStoreService.store("scenarios").share();
-      profile.groups = mnStoreService.store("groups").share();
-      profile.charts = mnStoreService.store("charts").share();
-
+      profile.scenarios = mnStoreService.store('scenarios').share();
+      profile.groups = mnStoreService.store('groups').share();
+      profile.charts = mnStoreService.store('charts').share();
 
       if (mnPoolDefault.export.getValue().compat.atLeast70) {
         upgradeChartsNamesTo70(profile);
@@ -249,142 +270,161 @@ function mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewServic
   }
 
   function putUserProfile(data) {
-    return axios.put("/settings/rbac/profiles/@self", JSON.stringify(data));
+    return axios.put('/settings/rbac/profiles/@self', JSON.stringify(data));
   }
 
   function getProfile() {
-    return axios.get("/settings/rbac/profiles/@self").catch(function (resp) {
+    return axios.get('/settings/rbac/profiles/@self').catch(function (resp) {
       switch (resp.status) {
-      case 404:
-        resp.data = {};
-        return resp;
-      default:
-        return Promise.reject();
+        case 404:
+          resp.data = {};
+          return resp;
+        default:
+          return Promise.reject();
       }
     });
   }
 
   function upgradeChartsNamesTo76(profile) {
-    profile.charts = profile.charts.map(chart => {
-      chart.stats = Object.keys(chart.stats)
-          .reduce((acc, stat71) => {
-            acc[mnStatsDesc.upgrade71to76(stat71)] = true;
-            return acc;
-          }, {});
+    profile.charts = profile.charts.map((chart) => {
+      chart.stats = Object.keys(chart.stats).reduce((acc, stat71) => {
+        acc[mnStatsDesc.upgrade71to76(stat71)] = true;
+        return acc;
+      }, {});
       return chart;
     });
   }
 
   function upgradeChartsNamesTo71(profile) {
-    profile.charts = profile.charts.map(chart => {
-      chart.stats = Object.keys(chart.stats)
-        .reduce((acc, stat70) => {
-          acc[mnStatsDesc.upgrade70to71(stat70)] = true;
-          return acc;
-        }, {});
+    profile.charts = profile.charts.map((chart) => {
+      chart.stats = Object.keys(chart.stats).reduce((acc, stat70) => {
+        acc[mnStatsDesc.upgrade70to71(stat70)] = true;
+        return acc;
+      }, {});
       return chart;
     });
   }
 
   function upgradeChartsNamesTo70(profile) {
-    profile.charts = profile.charts.map(chart => {
-      chart.stats = Object.keys(chart.stats)
-        .reduce((acc, stat65) => {
-          acc[mnStatsDesc.mapping65(stat65)] = true;
-          return acc;
-        }, {});
+    profile.charts = profile.charts.map((chart) => {
+      chart.stats = Object.keys(chart.stats).reduce((acc, stat65) => {
+        acc[mnStatsDesc.mapping65(stat65)] = true;
+        return acc;
+      }, {});
       return chart;
     });
   }
 
   function remove65PresetScenarios(profile) {
-    profile.scenarios = profile.scenarios.filter(v => !v.preset);
-    profile.groups = profile.groups.filter(v => !v.preset);
-    profile.charts = profile.charts.filter(v => !v.preset);
+    profile.scenarios = profile.scenarios.filter((v) => !v.preset);
+    profile.groups = profile.groups.filter((v) => !v.preset);
+    profile.charts = profile.charts.filter((v) => !v.preset);
   }
 
   function concatPresetAndUsersScenarios(profile) {
-    profile.scenarios = profile.scenarios.concat(mnStoreService.store("scenarios").share());
-    profile.groups = profile.groups.concat(mnStoreService.store("groups").share());
-    profile.charts = profile.charts.concat(mnStoreService.store("charts").share());
+    profile.scenarios = profile.scenarios.concat(
+      mnStoreService.store('scenarios').share()
+    );
+    profile.groups = profile.groups.concat(
+      mnStoreService.store('groups').share()
+    );
+    profile.charts = profile.charts.concat(
+      mnStoreService.store('charts').share()
+    );
   }
 
   function createPresetScenarios() {
-    mnStoreService.createStore("scenarios", {keyPath: "id"});
-    mnStoreService.createStore("groups", {keyPath: "id"});
-    mnStoreService.createStore("charts", {keyPath: "id"});
+    mnStoreService.createStore('scenarios', { keyPath: 'id' });
+    mnStoreService.createStore('groups', { keyPath: 'id' });
+    mnStoreService.createStore('charts', { keyPath: 'id' });
     mnStatisticsNewService.doAddPresetScenario();
   }
 
   function getUserProfile() {
-    return Promise.all([
-      getProfile(),
-      mnPoolDefault.get()
-    ]).then(function (resp) {
-      var profile = resp[0].data;
-      var poolDefault = resp[1];
-      if (profile.version) {
-        if (poolDefault.compat.atLeast70 && (profile.version < poolDefault.versions["70"])) {
-          //remove old preset scenarios
-          remove65PresetScenarios(profile);
-          //generate new preset scenarios
+    return Promise.all([getProfile(), mnPoolDefault.get()]).then(
+      function (resp) {
+        var profile = resp[0].data;
+        var poolDefault = resp[1];
+        if (profile.version) {
+          if (
+            poolDefault.compat.atLeast70 &&
+            profile.version < poolDefault.versions['70']
+          ) {
+            //remove old preset scenarios
+            remove65PresetScenarios(profile);
+            //generate new preset scenarios
+            createPresetScenarios();
+            //concat new preset scenarios and users custom scenarios
+            concatPresetAndUsersScenarios(profile);
+            //upgrade user/preset stat names to 70
+            upgradeChartsNamesTo70(profile);
+            return putUserProfile({
+              version: poolDefault.versions['70'],
+              scenarios: profile.scenarios,
+              groups: profile.groups,
+              charts: profile.charts,
+            }).then(getUserProfile);
+          }
+          if (
+            poolDefault.compat.atLeast71 &&
+            profile.version < poolDefault.versions['71']
+          ) {
+            upgradeChartsNamesTo71(profile);
+            return putUserProfile({
+              version: poolDefault.versions['71'],
+              scenarios: profile.scenarios,
+              groups: profile.groups,
+              charts: profile.charts,
+            }).then(getUserProfile);
+          }
+          if (
+            poolDefault.compat.atLeast76 &&
+            profile.version < poolDefault.versions['76']
+          ) {
+            upgradeChartsNamesTo76(profile);
+            return putUserProfile({
+              version: poolDefault.versions['76'],
+              scenarios: profile.scenarios,
+              groups: profile.groups,
+              charts: profile.charts,
+            }).then(getUserProfile);
+          }
+          mnStoreService.createStore('scenarios', {
+            keyPath: 'id',
+            fill: profile.scenarios,
+          });
+          mnStoreService.createStore('groups', {
+            keyPath: 'id',
+            fill: profile.groups,
+          });
+          mnStoreService.createStore('charts', {
+            keyPath: 'id',
+            fill: profile.charts,
+          });
+          return profile;
+        } else {
+          //inititlize user profile
           createPresetScenarios();
-          //concat new preset scenarios and users custom scenarios
-          concatPresetAndUsersScenarios(profile);
-          //upgrade user/preset stat names to 70
-          upgradeChartsNamesTo70(profile);
-          return putUserProfile({
-            version: poolDefault.versions["70"],
-            scenarios: profile.scenarios,
-            groups: profile.groups,
-            charts: profile.charts
-          }).then(getUserProfile);
-        }
-        if (poolDefault.compat.atLeast71 && (profile.version < poolDefault.versions["71"])) {
-          upgradeChartsNamesTo71(profile);
-          return putUserProfile({
-            version: poolDefault.versions["71"],
-            scenarios: profile.scenarios,
-            groups: profile.groups,
-            charts: profile.charts
-          }).then(getUserProfile);
-        }
-        if (poolDefault.compat.atLeast76 && (profile.version < poolDefault.versions["76"])) {
-          upgradeChartsNamesTo76(profile);
-          return putUserProfile({
-            version: poolDefault.versions["76"],
-            scenarios: profile.scenarios,
-            groups: profile.groups,
-            charts: profile.charts
-          }).then(getUserProfile);
-        }
-        mnStoreService.createStore("scenarios", {keyPath: "id", fill: profile.scenarios});
-        mnStoreService.createStore("groups", {keyPath: "id", fill: profile.groups});
-        mnStoreService.createStore("charts", {keyPath: "id", fill: profile.charts});
-        return profile;
-      } else {
-        //inititlize user profile
-        createPresetScenarios();
 
-        return putUserProfile({
-          version: poolDefault.versions["65"],
-          scenarios: mnStoreService.store("scenarios").share(),
-          groups: mnStoreService.store("groups").share(),
-          charts: mnStoreService.store("charts").share()
-        }).then(getUserProfile);
+          return putUserProfile({
+            version: poolDefault.versions['65'],
+            scenarios: mnStoreService.store('scenarios').share(),
+            groups: mnStoreService.store('groups').share(),
+            charts: mnStoreService.store('charts').share(),
+          }).then(getUserProfile);
+        }
       }
-    });
+    );
   }
-
 
   function getRoles() {
     return axios({
-      method: "GET",
-      url: "/_uiroles"
+      method: 'GET',
+      url: '/_uiroles',
     }).then(function (resp) {
       let rv = resp.data;
       rv.rolesByRole = rv.folders.reduce((acc, group) => {
-        group.roles.forEach(role => acc[role.role] = role);
+        group.roles.forEach((role) => (acc[role.role] = role));
         return acc;
       }, {});
       return rv;
@@ -393,23 +433,23 @@ function mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewServic
 
   function getUser(user, params) {
     return axios({
-      method: "GET",
+      method: 'GET',
       url: getUserUrl(user),
-      params: params
+      params: params,
     });
   }
 
   function lookupLDAPUser(user) {
     return axios({
-      method: "GET",
-      url: getLookupLDAPUserUrl(user)
-    })
+      method: 'GET',
+      url: getLookupLDAPUserUrl(user),
+    });
   }
 
   function getUsers(params) {
     var config = {
-      method: "GET",
-      url: "/settings/rbac/users"
+      method: 'GET',
+      url: '/settings/rbac/users',
     };
 
     config.params = {};
@@ -432,58 +472,68 @@ function mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewServic
 
   function deleteUser(user) {
     return axios({
-      method: "DELETE",
-      url: getUserUrl(user)
+      method: 'DELETE',
+      url: getUserUrl(user),
     });
   }
 
   function unlockUser(user) {
     return axios({
-      method: "PATCH",
+      method: 'PATCH',
       data: {
-        locked: false
+        locked: false,
       },
-      url: getUserUrl(user)
+      url: getUserUrl(user),
     });
   }
 
   function lockUser(user) {
     return axios({
-      method: "PATCH",
+      method: 'PATCH',
       data: {
-        locked: true
+        locked: true,
       },
-      url: getUserUrl(user)
+      url: getUserUrl(user),
     });
   }
 
   function deleteRolesGroup(group) {
     return axios({
-      method: "DELETE",
-      url: "/settings/rbac/groups/" + encodeURIComponent(group.id),
+      method: 'DELETE',
+      url: '/settings/rbac/groups/' + encodeURIComponent(group.id),
     });
   }
 
   function getUserUrl(user) {
-    var base = "/settings/rbac/users/";
-    return base + encodeURIComponent(user.domain) + "/"  + encodeURIComponent(user.id);
+    var base = '/settings/rbac/users/';
+    return (
+      base + encodeURIComponent(user.domain) + '/' + encodeURIComponent(user.id)
+    );
   }
 
   function getLookupLDAPUserUrl(user) {
-    return "/settings/rbac/lookupLDAPUser/" + encodeURIComponent(user.id);
+    return '/settings/rbac/lookupLDAPUser/' + encodeURIComponent(user.id);
   }
 
-  function packData(user, roles, groups, isEditingMode, resetPassword, isEnterprise, atLeast80) {
+  function packData(
+    user,
+    roles,
+    groups,
+    isEditingMode,
+    resetPassword,
+    isEnterprise,
+    atLeast80
+  ) {
     var data = {
-      roles: roles.indexOf("admin") > -1 ? "admin" : roles.join(','),
-      name: user.name
+      roles: roles.indexOf('admin') > -1 ? 'admin' : roles.join(','),
+      name: user.name,
     };
 
     if (mnPoolDefault.export.getValue().isEnterprise) {
       data.groups = groups.join(',');
     }
 
-    if ((!isEditingMode && user.domain == "local") || resetPassword) {
+    if ((!isEditingMode && user.domain == 'local') || resetPassword) {
       data.password = user.password;
     }
 
@@ -496,32 +546,35 @@ function mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewServic
 
   function doAddUser(data, user) {
     return axios({
-      method: "PUT",
+      method: 'PUT',
       data: data,
-      url: getUserUrl(user)
+      url: getUserUrl(user),
     });
   }
 
   function addGroup(group, roles, isEditingMode) {
     if (!group || !group.id) {
-      return Promise.reject({name: "name is required"});
+      return Promise.reject({ name: 'name is required' });
     }
     if (isEditingMode) {
       return putRolesGroup(group, roles);
     } else {
-      return getRolesGroup(group).then(function () {
-        return Promise.reject({name: "group already exists"});
-      }, function () {
-        return putRolesGroup(group, roles);
-      });
+      return getRolesGroup(group).then(
+        function () {
+          return Promise.reject({ name: 'group already exists' });
+        },
+        function () {
+          return putRolesGroup(group, roles);
+        }
+      );
     }
   }
 
   function getRolesGroups(params) {
     var config = {
-      method: "GET",
-      url: "/settings/rbac/groups",
-      params: {}
+      method: 'GET',
+      url: '/settings/rbac/groups',
+      params: {},
     };
 
     if (params && params.pageSize) {
@@ -539,23 +592,23 @@ function mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewServic
 
   function getRolesGroup(group) {
     return axios({
-      method: "GET",
-      url: "/settings/rbac/groups/" + encodeURIComponent(group.id)
+      method: 'GET',
+      url: '/settings/rbac/groups/' + encodeURIComponent(group.id),
     });
   }
 
   function putRolesGroup(group, roles) {
     let data = {
-      roles: roles.indexOf("admin") > -1 ? "admin" : roles.join(','),
-      description: group.description
+      roles: roles.indexOf('admin') > -1 ? 'admin' : roles.join(','),
+      description: group.description,
     };
     if (group.ldap_group_ref) {
       data.ldap_group_ref = group.ldap_group_ref;
     }
     var config = {
-      method: "PUT",
-      url: "/settings/rbac/groups/" + encodeURIComponent(group.id),
-      data: data
+      method: 'PUT',
+      url: '/settings/rbac/groups/' + encodeURIComponent(group.id),
+      data: data,
     };
 
     return axios(config);
@@ -565,31 +618,64 @@ function mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewServic
     return getRolesGroups(params).then(function (resp) {
       var i;
       for (i in resp.data.links) {
-        resp.data.links[i] = resp.data.links[i].split("?")[1]
-          .split("&")
-          .reduce(function(prev, curr) {
-            var p = curr.split("=");
+        resp.data.links[i] = resp.data.links[i]
+          .split('?')[1]
+          .split('&')
+          .reduce(function (prev, curr) {
+            var p = curr.split('=');
             prev[decodeURIComponent(p[0])] = decodeURIComponent(p[1]);
             return prev;
           }, {});
       }
       return resp.data;
-
     });
   }
 
-  function addUser(user, roles, groups, isEditingMode, resetPassword, isEnterprise, atLeast80) {
+  function addUser(
+    user,
+    roles,
+    groups,
+    isEditingMode,
+    resetPassword,
+    isEnterprise,
+    atLeast80
+  ) {
     if (!user || !user.id) {
-      return Promise.reject({username: "username is required"});
+      return Promise.reject({ username: 'username is required' });
     }
     if (isEditingMode) {
-      return doAddUser(packData(user, roles, groups, isEditingMode, resetPassword, isEnterprise, atLeast80), user);
+      return doAddUser(
+        packData(
+          user,
+          roles,
+          groups,
+          isEditingMode,
+          resetPassword,
+          isEnterprise,
+          atLeast80
+        ),
+        user
+      );
     } else {
-      return getUser(user).then(function () {
-        return Promise.reject({username: "username already exists"});
-      }, function () {
-        return doAddUser(packData(user, roles, groups, isEditingMode, false, isEnterprise, atLeast80), user);
-      });
+      return getUser(user).then(
+        function () {
+          return Promise.reject({ username: 'username already exists' });
+        },
+        function () {
+          return doAddUser(
+            packData(
+              user,
+              roles,
+              groups,
+              isEditingMode,
+              false,
+              isEnterprise,
+              atLeast80
+            ),
+            user
+          );
+        }
+      );
     }
   }
 
@@ -597,17 +683,19 @@ function mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewServic
     return getUsers(params).then(function (resp) {
       var i;
       for (i in resp.data.links) {
-        resp.data.links[i] = resp.data.links[i].split("?")[1]
-          .split("&")
-          .reduce(function(prev, curr) {
-            var p = curr.split("=");
+        resp.data.links[i] = resp.data.links[i]
+          .split('?')[1]
+          .split('&')
+          .reduce(function (prev, curr) {
+            var p = curr.split('=');
             prev[decodeURIComponent(p[0])] = decodeURIComponent(p[1]);
             return prev;
           }, {});
       }
-      if (!resp.data.users) {//in oreder to support compatibility mode
+      if (!resp.data.users) {
+        //in oreder to support compatibility mode
         return {
-          users: resp.data
+          users: resp.data,
         };
       } else {
         return resp.data;
@@ -616,5 +704,9 @@ function mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewServic
   }
 }
 
-const mnUserRolesService = mnUserRolesFactory(mnPoolDefault, mnStoreService, mnStatisticsNewService);
+const mnUserRolesService = mnUserRolesFactory(
+  mnPoolDefault,
+  mnStoreService,
+  mnStatisticsNewService
+);
 export default mnUserRolesService;

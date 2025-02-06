@@ -17,7 +17,7 @@ axios.interceptors.request.use(request);
 axios.interceptors.response.use(response, responseError);
 
 function request(config) {
-  if (config.url.indexOf(".html") !== -1 || config.doNotIntercept) {
+  if (config.url.indexOf('.html') !== -1 || config.doNotIntercept) {
     return config;
   } else {
     return intercept(config);
@@ -26,12 +26,12 @@ function request(config) {
 
 function intercept(config) {
   const pendingQuery = {
-    config: _.clone(config)
+    config: _.clone(config),
   };
   const mnHttpConfig = config.mnHttp || {};
   delete config.mnHttp;
 
-  if (config.method.toLowerCase() === "post" && mnHttpConfig.cancelPrevious) {
+  if (config.method.toLowerCase() === 'post' && mnHttpConfig.cancelPrevious) {
     const queryInFly = mnPendingQueryKeeper.getQueryInFly(config);
     queryInFly && queryInFly.canceler();
   }
@@ -63,7 +63,8 @@ function intercept(config) {
     case 'patch':
       config.headers = config.headers || {};
       if (!mnHttpConfig.isNotForm) {
-        config.headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+        config.headers['Content-Type'] =
+          'application/x-www-form-urlencoded; charset=UTF-8';
         if (!_.isString(config.data)) {
           config.data = jQueryLikeParamSerializerFilter(config.data);
         }
@@ -74,18 +75,22 @@ function intercept(config) {
   config.cancelToken = canceler.token;
   config.clear = clear;
 
-  pendingQuery.canceler = cancel("cancelled");
+  pendingQuery.canceler = cancel('cancelled');
   pendingQuery.group = mnHttpConfig.group;
   mnPendingQueryKeeper.push(pendingQuery);
 
   if (timeout) {
-    timeoutID = setTimeout(cancel("timeout"), timeout);
+    timeoutID = setTimeout(cancel('timeout'), timeout);
   }
   return config;
 }
 
 function clearOnResponse(response) {
-  if (response.config && response.config.clear && _.isFunction(response.config.clear)) {
+  if (
+    response.config &&
+    response.config.clear &&
+    _.isFunction(response.config.clear)
+  ) {
     response.config.clear();
     delete response.config.clear;
   }

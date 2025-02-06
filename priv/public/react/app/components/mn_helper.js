@@ -23,11 +23,11 @@ const mnHelper = {
   getEndings,
   generateID,
   counterSpinner,
-  mainSpinnerCounter: counterSpinner()
+  mainSpinnerCounter: counterSpinner(),
 };
 
 function getEndings(length) {
-  return length !== 1 ? "s" : "";
+  return length !== 1 ? 's' : '';
 }
 
 function counterSpinner() {
@@ -35,7 +35,7 @@ function counterSpinner() {
   return {
     increase: () => counter.next(counter.getValue() + 1),
     decrease: () => counter.next(counter.getValue() - 1),
-    value: () => counter
+    value: () => counter,
   };
 }
 
@@ -75,7 +75,10 @@ function checkboxesToList(object) {
 }
 
 function listToCheckboxes(list) {
-  return _.zipObject(list, _.fill(new Array(list.length), true, 0, list.length));
+  return _.zipObject(
+    list,
+    _.fill(new Array(list.length), true, 0, list.length)
+  );
 }
 
 function reloadApp() {

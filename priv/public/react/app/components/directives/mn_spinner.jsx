@@ -10,19 +10,14 @@ licenses/APL2.txt.
 
 import React from 'react';
 
-const MnSpinner = ({ 
-  children, 
-  mnSpinner, 
-  minHeight, 
-  opacity 
-}) => {
+const MnSpinner = ({ children, mnSpinner, minHeight, opacity }) => {
   const spinnerStyle = minHeight ? { minHeight } : {};
-  
+
   return (
     <div className="relative">
       {children}
-      <div 
-        className={`spinner${opacity ? " opacity" : ""}`}
+      <div
+        className={`spinner${opacity ? ' opacity' : ''}`}
         style={spinnerStyle}
         hidden={!mnSpinner}
       />

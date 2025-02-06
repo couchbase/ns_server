@@ -9,8 +9,8 @@ licenses/APL2.txt.
 */
 
 // import {Pipe} from '@angular/core';
-import {DecimalPipe} from '@angular/common';
-import {is} from 'ramda';
+import { DecimalPipe } from '@angular/common';
+import { is } from 'ramda';
 // import {map} from 'rxjs/operators';
 
 // import {MnHelperService} from './mn.helper.service.js';
@@ -36,7 +36,7 @@ export {
   MnFormatServices,
   // MnOrderServices,
   // MnStripPortHTML
-}
+};
 
 // class MnTruncate {
 //   static get annotations() { return [
@@ -64,12 +64,13 @@ class MnTruncateTo3DigitsClass {
       return 0;
     }
 
-    let scale = [100, 10, 1, 0.1, 0.01, 0.001].find(v => value >= v) || 0.0001;
+    let scale =
+      [100, 10, 1, 0.1, 0.01, 0.001].find((v) => value >= v) || 0.0001;
     if (minScale != undefined && minScale > scale) {
       scale = minScale;
     }
     scale = 100 / scale;
-    return Math[roundMethod || "round"](value * scale)/scale;
+    return Math[roundMethod || 'round'](value * scale) / scale;
   }
 }
 
@@ -89,19 +90,18 @@ class MnParseVersionClass {
       //   {release version}-{build #}-{enterprise / community}
       a.splice(2, 0, undefined);
     }
-    a[0] = (a[0].match(/[0-9]+\.[0-9]+\.[0-9]+/) || ["0.0.0"])[0];
-    a[1] = a[1] || "0";
+    a[0] = (a[0].match(/[0-9]+\.[0-9]+\.[0-9]+/) || ['0.0.0'])[0];
+    a[1] = a[1] || '0';
     // a[2] = a[2] || "unknown";
     // We append the build # to the release version when we display in the UI so that
     // customers think of the build # as a descriptive piece of the version they're
     // running (which in the case of maintenance packs and one-off's, it is.)
-    a[3] = (a[3] && (a[3].substr(0, 1).toUpperCase() + a[3].substr(1))) || "DEV";
+    a[3] = (a[3] && a[3].substr(0, 1).toUpperCase() + a[3].substr(1)) || 'DEV';
     return a; // Example result: ["1.8.0-9", "9", "ga083a1e", "Enterprise"]
   }
 }
 
 const MnParseVersion = new MnParseVersionClass();
-
 
 // class MnMBtoBytes {
 //   static get annotations() { return [
@@ -121,7 +121,6 @@ const MnParseVersion = new MnParseVersionClass();
 //   }
 // }
 
-
 // class MnBytesToMB {
 //   static get annotations() { return [
 //     new Pipe({name: "mnBytesToMB"})
@@ -140,7 +139,6 @@ const MnParseVersion = new MnParseVersionClass();
 //   }
 // }
 
-
 // class MnObjectKeys {
 //   static get annotations() { return [
 //     new Pipe({name: "mnObjectKeys"})
@@ -155,7 +153,6 @@ const MnParseVersion = new MnParseVersionClass();
 //   }
 // }
 
-
 class MnPrettyVersionClass {
   constructor(mnParseVersion) {
     this.mnParseVersion = mnParseVersion;
@@ -168,47 +165,47 @@ class MnPrettyVersionClass {
     var a = this.mnParseVersion.transform(str);
     // Example default result: "Enterprise Edition 1.8.0-7  build 7"
     // Example full result: "Enterprise Edition 1.8.0-7  build 7-g35c9cdd"
-    var suffix = "";
+    var suffix = '';
     if (full && a[2]) {
       suffix = '-' + a[2];
     }
-    return [a[3], "Edition", a[0], "build",  a[1] + suffix].join(' ');
+    return [a[3], 'Edition', a[0], 'build', a[1] + suffix].join(' ');
   }
 }
 
 const MnPrettyVersion = new MnPrettyVersionClass(MnParseVersion);
 
-
 class MnFormatProgressMessageClass {
   addNodeCount(perNode) {
     var serversCount = Object.keys(perNode || {}).length;
-    return serversCount + " " + (serversCount === 1 ? 'node' : 'nodes');
+    return serversCount + ' ' + (serversCount === 1 ? 'node' : 'nodes');
   }
 
   transform(task, includeRebalance) {
     switch (task.type) {
-    case "indexer":
-      return "building view index " + task.bucket + "/" + task.designDocument;
-    case "global_indexes":
-      return "building index " + task.index  + " on bucket " + task.bucket;
-    case "view_compaction":
-      return "compacting view index " + task.bucket + "/" + task.designDocument;
-    case "bucket_compaction":
-      return "compacting bucket " + task.bucket;
-    case "loadingSampleBucket":
-      return "loading sample: " + task.bucket;
-    case "orphanBucket":
-      return "orphan bucket: " + task.bucket;
-    case "clusterLogsCollection":
-      return "collecting logs from " + this.addNodeCount(task.perNode);
-    case "rebalance":
-      return !!includeRebalance;
+      case 'indexer':
+        return 'building view index ' + task.bucket + '/' + task.designDocument;
+      case 'global_indexes':
+        return 'building index ' + task.index + ' on bucket ' + task.bucket;
+      case 'view_compaction':
+        return (
+          'compacting view index ' + task.bucket + '/' + task.designDocument
+        );
+      case 'bucket_compaction':
+        return 'compacting bucket ' + task.bucket;
+      case 'loadingSampleBucket':
+        return 'loading sample: ' + task.bucket;
+      case 'orphanBucket':
+        return 'orphan bucket: ' + task.bucket;
+      case 'clusterLogsCollection':
+        return 'collecting logs from ' + this.addNodeCount(task.perNode);
+      case 'rebalance':
+        return !!includeRebalance;
     }
   }
 }
 
 const MnFormatProgressMessage = new MnFormatProgressMessageClass();
-
 
 // class MnFormatStorageModeError {
 //   static get annotations() { return [
@@ -234,21 +231,24 @@ const MnFormatProgressMessage = new MnFormatProgressMessageClass();
 //   }
 // }
 
-
-
 class MnPrepareQuantityClass {
   transform(value, K) {
     K = K || 1024;
 
-    var M = K*K;
-    var G = M*K;
-    var T = G*K;
+    var M = K * K;
+    var G = M * K;
+    var T = G * K;
 
     if (K !== 1024 && K !== 1000) {
-      throw new Error("Unknown number system");
+      throw new Error('Unknown number system');
     }
 
-    var t = ([[T,'T'],[G,'G'],[M,'M'],[K,'K']]).find(function (t) {
+    var t = [
+      [T, 'T'],
+      [G, 'G'],
+      [M, 'M'],
+      [K, 'K'],
+    ].find(function (t) {
       return value >= t[0];
     }) || [1, ''];
 
@@ -290,8 +290,6 @@ const MnPrepareQuantity = new MnPrepareQuantityClass();
 //   }
 // }
 
-
-
 class MnFormatQuantityClass {
   constructor(mnPrepareQuantity, decimalPipe, mnTruncateTo3Digits) {
     this.mnPrepareQuantity = mnPrepareQuantity;
@@ -306,16 +304,25 @@ class MnFormatQuantityClass {
     if (!spacing) {
       spacing = '';
     }
-    if (numberSystem === 1000 && value <= 1100 && value % 1 === 0) { // MB-11784
+    if (numberSystem === 1000 && value <= 1100 && value % 1 === 0) {
+      // MB-11784
       return value;
     }
 
     var t = this.mnPrepareQuantity.transform(value, numberSystem);
-    return [this.mnTruncateTo3Digits.transform(value/t[0], undefined, 'floor'), spacing, t[1]].join('');
+    return [
+      this.mnTruncateTo3Digits.transform(value / t[0], undefined, 'floor'),
+      spacing,
+      t[1],
+    ].join('');
   }
 }
 
-const MnFormatQuantity = new MnFormatQuantityClass(MnPrepareQuantity, DecimalPipe, MnTruncateTo3Digits);
+const MnFormatQuantity = new MnFormatQuantityClass(
+  MnPrepareQuantity,
+  DecimalPipe,
+  MnTruncateTo3Digits
+);
 
 // class MnFormatWarmupMessage {
 //   static get annotations() { return [
@@ -334,8 +341,6 @@ const MnFormatQuantity = new MnFormatQuantityClass(MnPrepareQuantity, DecimalPip
 //     }
 //   }
 // }
-
-
 
 // class MnBucketsType {
 //   static get annotations() { return [
@@ -370,19 +375,26 @@ const MnFormatQuantity = new MnFormatQuantityClass(MnPrepareQuantity, DecimalPip
 //   }
 // }
 
-
 class MnFormatServicesClass {
   transform(service) {
     switch (service) {
-      case 'kv': return 'Data';
+      case 'kv':
+        return 'Data';
       case 'query':
-      case 'n1ql': return 'Query';
-      case 'index': return 'Index';
-      case 'fts': return 'Search';
-      case 'eventing': return 'Eventing';
-      case 'cbas': return 'Analytics';
-      case 'backup': return 'Backup';
-      default: return service;
+      case 'n1ql':
+        return 'Query';
+      case 'index':
+        return 'Index';
+      case 'fts':
+        return 'Search';
+      case 'eventing':
+        return 'Eventing';
+      case 'cbas':
+        return 'Analytics';
+      case 'backup':
+        return 'Backup';
+      default:
+        return service;
     }
   }
 }

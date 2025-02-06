@@ -18,7 +18,7 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
       preparedValues: [],
       preparedLabels: [],
       hasSearchInput: false,
-      id: MnHelperService.generateID()
+      id: MnHelperService.generateID(),
     };
 
     this.selectOptionClickStream = new Subject();
@@ -40,12 +40,15 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
 
     if (this.dropdownFormControl) {
       this.setState({ disabled: this.dropdownFormControl.disabled });
-      this.dropdownFormControl.registerOnDisabledChange(disabled => this.setState({ disabled }));
+      this.dropdownFormControl.registerOnDisabledChange((disabled) =>
+        this.setState({ disabled })
+      );
 
-      this.valueChanges = this.dropdownFormControl.valueChanges.pipe(startWith(this.dropdownFormControl.value));
+      this.valueChanges = this.dropdownFormControl.valueChanges.pipe(
+        startWith(this.dropdownFormControl.value)
+      );
       this.valueChanges
-        .pipe(distinctUntilChanged(),
-              takeUntil(this.mnOnDestroy))
+        .pipe(distinctUntilChanged(), takeUntil(this.mnOnDestroy))
         .subscribe(this.setHiddenRadioValue.bind(this));
     }
   }
@@ -54,37 +57,41 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
     const searchMinimumOptionsNumber = 10;
     this.searchFilter = MnHelperService.createFilter(this);
 
-    const valuesStream = this.mnOnChanges
-      .pipe(pluck("values", "currentValue"));
+    const valuesStream = this.mnOnChanges.pipe(pluck('values', 'currentValue'));
 
     valuesStream
-      .pipe(this.searchFilter.pipe,
-            takeUntil(this.mnOnDestroy))
+      .pipe(this.searchFilter.pipe, takeUntil(this.mnOnDestroy))
       .subscribe((preparedValues) => {
         this.setState({ preparedValues });
       });
 
     valuesStream
-      .pipe(map(values => (this.hasSearch && (values || []).length >= searchMinimumOptionsNumber) || false),
-            takeUntil(this.mnOnDestroy))
+      .pipe(
+        map(
+          (values) =>
+            (this.hasSearch &&
+              (values || []).length >= searchMinimumOptionsNumber) ||
+            false
+        ),
+        takeUntil(this.mnOnDestroy)
+      )
       .subscribe((hasSearchInput) => {
         this.setState({ hasSearchInput });
       });
 
-    const labelsStream = this.mnOnChanges
-      .pipe(pluck("labels", "currentValue"));
+    const labelsStream = this.mnOnChanges.pipe(pluck('labels', 'currentValue'));
 
     labelsStream
-      .pipe(this.searchFilter.pipe,
-            takeUntil(this.mnOnDestroy))
+      .pipe(this.searchFilter.pipe, takeUntil(this.mnOnDestroy))
       .subscribe((preparedLabels) => {
         this.setState({ preparedLabels });
       });
-  
 
     this.selectLabelClickStream
-      .pipe(withLatestFrom(labelsStream, valuesStream),
-            takeUntil(this.mnOnDestroy))
+      .pipe(
+        withLatestFrom(labelsStream, valuesStream),
+        takeUntil(this.mnOnDestroy)
+      )
       .subscribe(([selectedLabel, labels, values]) => {
         this.optionSelected(values[labels.indexOf(selectedLabel)]);
       });
@@ -92,7 +99,8 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
 
   setHiddenRadioValue(value) {
     const { hasSearch, labels, values } = this.props;
-    const patchedValue = (hasSearch && labels) ? labels[values.indexOf(value)] : value;
+    const patchedValue =
+      hasSearch && labels ? labels[values.indexOf(value)] : value;
     this.hiddenRadioGroup.patchValue({ hiddenRadio: patchedValue });
   }
 
@@ -113,14 +121,26 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
   }
 
   render() {
-    const { values, labels, valuesMapping = this.defaultValuesMapping.bind(this), mnPlaceholder, placement = 'bottom', hasSearch } = this.props;
-    const { id, disabled, preparedValues, preparedLabels, hasSearchInput } = this.state;
+    const {
+      values,
+      labels,
+      valuesMapping = this.defaultValuesMapping.bind(this),
+      mnPlaceholder,
+      placement = 'bottom',
+      hasSearch,
+    } = this.props;
+    const { id, disabled, preparedValues, preparedLabels, hasSearchInput } =
+      this.state;
 
     return (
       <div class="mn-select relative">
         <DropdownButton
           id={`mn-select-${id}`}
-          title={labels ? labels[values.indexOf(this.state.value)] : valuesMapping(this.state.value) || mnPlaceholder}
+          title={
+            labels
+              ? labels[values.indexOf(this.state.value)]
+              : valuesMapping(this.state.value) || mnPlaceholder
+          }
           disabled={disabled}
           drop={placement}
         >
@@ -131,43 +151,45 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
               className="row flex-left sticky position-top-0"
             />
           )}
-          <FieldGroup control={this.hiddenRadioGroup} render={() => (
-            <div className="scrollable">
-              {!hasSearchInput && (
-                values.map((value, i) => (
-                  <Dropdown.Item
-                    key={i}
-                    as="button"
-                    onClick={() => this.selectOptionClickStream.next(value)}
-                  >
-                    {labels ? labels[i] : valuesMapping(value)}
-                  </Dropdown.Item>
-                ))
-              )}
-              {hasSearchInput && !labels && (
-                preparedValues.map((value, i) => (
-                  <Dropdown.Item
-                    key={i}
-                    as="button"
-                    onClick={() => this.selectOptionClickStream.next(value)}
-                  >
-                    {valuesMapping(value)}
-                  </Dropdown.Item>
-                ))
-              )}
-              {hasSearchInput && labels && (
-                preparedLabels.map((label, i) => (
-                  <Dropdown.Item
-                    key={i}
-                    as="button"
-                    onClick={() => this.selectLabelClickStream.next(label)}
-                  >
-                    {label}
-                  </Dropdown.Item>
-                ))
-              )}
-            </div>
-          )} />
+          <FieldGroup
+            control={this.hiddenRadioGroup}
+            render={() => (
+              <div className="scrollable">
+                {!hasSearchInput &&
+                  values.map((value, i) => (
+                    <Dropdown.Item
+                      key={i}
+                      as="button"
+                      onClick={() => this.selectOptionClickStream.next(value)}
+                    >
+                      {labels ? labels[i] : valuesMapping(value)}
+                    </Dropdown.Item>
+                  ))}
+                {hasSearchInput &&
+                  !labels &&
+                  preparedValues.map((value, i) => (
+                    <Dropdown.Item
+                      key={i}
+                      as="button"
+                      onClick={() => this.selectOptionClickStream.next(value)}
+                    >
+                      {valuesMapping(value)}
+                    </Dropdown.Item>
+                  ))}
+                {hasSearchInput &&
+                  labels &&
+                  preparedLabels.map((label, i) => (
+                    <Dropdown.Item
+                      key={i}
+                      as="button"
+                      onClick={() => this.selectLabelClickStream.next(label)}
+                    >
+                      {label}
+                    </Dropdown.Item>
+                  ))}
+              </div>
+            )}
+          />
         </DropdownButton>
       </div>
     );

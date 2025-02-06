@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 
-
 // Modal Context
 const ModalContext = React.createContext({
   openModal: () => Promise.resolve(),
@@ -20,7 +19,9 @@ const ModalBackdrop = ({ children, index, onDismiss, animate, backdrop }) => {
       onClick={backdrop ? handleBackdropClick : undefined}
       className={`modal-backdrop ${animate ? 'in' : ''}`}
       style={{ zIndex }}
-    >{children}</div>
+    >
+      {children}
+    </div>
   );
 };
 
@@ -34,7 +35,7 @@ const ModalWindow = ({ children, index, onDismiss, windowClass, backdrop }) => {
       style={{ zIndex }}
     >
       <div className="panel dialog">
-      {/* {backdrop !== 'static' && ( */}
+        {/* {backdrop !== 'static' && ( */}
         <a
           className="ui-dialog-titlebar-close modal-close"
           onClick={() => onDismiss('X')}
@@ -53,9 +54,19 @@ const Modal = ({ children, onDismiss, animate, index, windowClass }) => {
   const backdrop = 'static';
   return createPortal(
     <>
-      <ModalBackdrop index={index} onDismiss={onDismiss} backdrop={backdrop} animate={animate}>
-      </ModalBackdrop>,
-      <ModalWindow index={index} onDismiss={onDismiss} backdrop={backdrop} windowClass={windowClass}>
+      <ModalBackdrop
+        index={index}
+        onDismiss={onDismiss}
+        backdrop={backdrop}
+        animate={animate}
+      ></ModalBackdrop>
+      ,
+      <ModalWindow
+        index={index}
+        onDismiss={onDismiss}
+        backdrop={backdrop}
+        windowClass={windowClass}
+      >
         {children}
       </ModalWindow>
     </>,
@@ -114,7 +125,7 @@ const ModalProvider = ({ children }) => {
           isLoading: false,
         }));
       }
-    })
+    });
   };
 
   const dismissModal = (result) => {
@@ -156,7 +167,6 @@ const ModalProvider = ({ children }) => {
               {...modalState.resolvedProps}
               onDismiss={dismissModal}
               onClose={closeModal}
-
             />
           )}
         </Modal>
@@ -164,6 +174,5 @@ const ModalProvider = ({ children }) => {
     </ModalContext.Provider>
   );
 };
-
 
 export { ModalProvider, ModalContext };

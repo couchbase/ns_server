@@ -9,7 +9,7 @@ licenses/APL2.txt.
 */
 
 import React from 'react';
-import mnHelper from "../mn_helper.js";
+import mnHelper from '../mn_helper.js';
 
 export class MnMainSpinner extends React.Component {
   constructor(props) {
@@ -19,11 +19,11 @@ export class MnMainSpinner extends React.Component {
 
   componentDidUpdate(prevProps) {
     const { value } = this.props;
-    
+
     if (!this.initialized && value) {
       this.initialized = true;
     }
-    
+
     if (!this.initialized) {
       return;
     }
@@ -47,5 +47,5 @@ export class MnMainSpinner extends React.Component {
 }
 
 MnMainSpinner.defaultProps = {
-  value: false
-}; 
+  value: false,
+};

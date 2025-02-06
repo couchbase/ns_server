@@ -21,7 +21,7 @@ class MnWizardWelcomeComponent extends MnLifeCycleHooksToStream {
     super(props);
     this.state = {
       prettyVersion: null,
-      isEnterprise: null
+      isEnterprise: null,
     };
   }
 
@@ -36,7 +36,7 @@ class MnWizardWelcomeComponent extends MnLifeCycleHooksToStream {
   }
 
   render() {
-    const {prettyVersion, isEnterprise} = this.state;
+    const { prettyVersion, isEnterprise } = this.state;
     return (
       <div>
         <div className="panel dialog width-520 text-center">
@@ -47,12 +47,15 @@ class MnWizardWelcomeComponent extends MnLifeCycleHooksToStream {
               width="373"
               alt="Couchbase Logo"
             />
-            <div className="text-normal margin-top-1">
-              {prettyVersion}
-            </div>
-            <UISref to="app.wizard.setupNewCluster" options={{ location: false }}>
+            <div className="text-normal margin-top-1">{prettyVersion}</div>
+            <UISref
+              to="app.wizard.setupNewCluster"
+              options={{ location: false }}
+            >
               <button
-                ref={(input) => { this.input = input; }} 
+                ref={(input) => {
+                  this.input = input;
+                }}
                 className="btn-lg margin-top-2"
               >
                 Setup New Cluster
@@ -75,10 +78,8 @@ class MnWizardWelcomeComponent extends MnLifeCycleHooksToStream {
         >
           Chrome, Firefox, Edge, Safari
         </div>
-        {!isEnterprise &&
-          (<div
-            className="panel width-520 text-center margin-top-half"
-          >
+        {!isEnterprise && (
+          <div className="panel width-520 text-center margin-top-half">
             <div className="panel-content">
               <div className="text-normal">
                 <a
@@ -88,13 +89,15 @@ class MnWizardWelcomeComponent extends MnLifeCycleHooksToStream {
                 >
                   Learn More
                 </a>
-                about why teams are moving from Community Edition to Couchbase Capella, Database-as-a-Service
+                about why teams are moving from Community Edition to Couchbase
+                Capella, Database-as-a-Service
               </div>
             </div>
-          </div>)}
+          </div>
+        )}
       </div>
     );
   }
 }
 
-export { MnWizardWelcomeComponent }; 
+export { MnWizardWelcomeComponent };

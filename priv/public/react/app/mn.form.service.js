@@ -8,11 +8,21 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {FormBuilder, FormGroup} from 'react-reactive-form';
-import {MnHelperReactService} from './mn.helper.react.service.js';
-import {BehaviorSubject, Subject, NEVER, merge} from 'rxjs';
-import {map, tap, first, takeUntil, switchMap, mapTo,
-        shareReplay, filter, debounceTime, startWith} from 'rxjs/operators';
+import { FormBuilder, FormGroup } from 'react-reactive-form';
+import { MnHelperReactService } from './mn.helper.react.service.js';
+import { BehaviorSubject, Subject, NEVER, merge } from 'rxjs';
+import {
+  map,
+  tap,
+  first,
+  takeUntil,
+  switchMap,
+  mapTo,
+  shareReplay,
+  filter,
+  debounceTime,
+  startWith,
+} from 'rxjs/operators';
 
 // import {MnAlerts, $rootScope} from './ajs.upgraded.providers.js';
 
@@ -25,7 +35,12 @@ class MnFormServiceClass {
   }
 
   create(component) {
-    return new MnForm(this.formBuilder, component, this.mnAlerts, this.$rootScope);
+    return new MnForm(
+      this.formBuilder,
+      component,
+      this.mnAlerts,
+      this.$rootScope
+    );
   }
 }
 
@@ -37,7 +52,6 @@ class MnForm {
     this.defaultPackPipe = map(this.getFormValue.bind(this));
     this.requestsChain = [];
     this.$rootScope = $rootScope;
-
   }
 
   getFormValue() {
@@ -45,28 +59,30 @@ class MnForm {
   }
 
   setFormGroup(formDescription, options) {
-    this.group = (formDescription instanceof FormGroup) ?
-      formDescription : this.builder.group(formDescription, options);
+    this.group =
+      formDescription instanceof FormGroup
+        ? formDescription
+        : this.builder.group(formDescription, options);
     return this;
   }
 
   setSource(source) {
     var sourcePipe = source.pipe(this.unpackPipe || tap(), first());
 
-    this.loadingPipe = sourcePipe
-      .pipe(mapTo(false),
-            startWith(true));
+    this.loadingPipe = sourcePipe.pipe(mapTo(false), startWith(true));
 
-    sourcePipe.subscribe(v => this.group.patchValue(v));
+    sourcePipe.subscribe((v) => this.group.patchValue(v));
 
     return this;
   }
 
   setSourceShared(source) {
-    var sourcePipe = source.pipe(this.unpackPipe || tap(),
-                                 takeUntil(this.component.mnOnDestroy));
+    var sourcePipe = source.pipe(
+      this.unpackPipe || tap(),
+      takeUntil(this.component.mnOnDestroy)
+    );
 
-    sourcePipe.subscribe(v => this.group.patchValue(v));
+    sourcePipe.subscribe((v) => this.group.patchValue(v));
 
     return this;
   }
@@ -80,16 +96,21 @@ class MnForm {
   }
 
   success(fn) {
-    (this.requestsChain.length ? this.getLastRequest().success : this.submitPipe)
+    (this.requestsChain.length
+      ? this.getLastRequest().success
+      : this.submitPipe
+    )
       .pipe(takeUntil(this.component.mnOnDestroy))
       .subscribe(fn);
     return this;
   }
 
   error(fn) {
-    this.getLastRequest().error
-      .pipe(this.unpackErrorPipe || tap(),
-            takeUntil(this.component.mnOnDestroy))
+    this.getLastRequest()
+      .error.pipe(
+        this.unpackErrorPipe || tap(),
+        takeUntil(this.component.mnOnDestroy)
+      )
       .subscribe(fn);
     return this;
   }
@@ -107,26 +128,31 @@ class MnForm {
   }
 
   fieldToggler([togglerPath, fieldPath]) {
-    this.group.get(togglerPath).valueChanges
-      .pipe(startWith(this.group.get(togglerPath).value),
-            takeUntil(this.component.mnOnDestroy))
+    this.group
+      .get(togglerPath)
+      .valueChanges.pipe(
+        startWith(this.group.get(togglerPath).value),
+        takeUntil(this.component.mnOnDestroy)
+      )
       .subscribe((value) => {
-        this.group.get(fieldPath)[value ? "enable": "disable"]({emitEvent: false});
+        this.group
+          .get(fieldPath)
+          [value ? 'enable' : 'disable']({ emitEvent: false });
       });
     return this;
   }
 
   disableFields(path) {
     return (value) => {
-      this.group.get(path)[value ? "disable" : "enable"]({emitEvent: false});
-    }
+      this.group.get(path)[value ? 'disable' : 'enable']({ emitEvent: false });
+    };
   }
 
   showGlobalSpinner() {
     this.trackSubmit();
     this.processing
       .pipe(takeUntil(this.component.mnOnDestroy))
-      .subscribe(v => {
+      .subscribe((v) => {
         MnHelperReactService.mnGlobalSpinnerFlag.next(v);
       });
     return this;
@@ -135,13 +161,15 @@ class MnForm {
   trackSubmit() {
     var success = this.getLastRequest().success.pipe(mapTo(false));
     var request = this.getFirstRequest().request.pipe(mapTo(true));
-    var errors = merge.apply(merge,
-                             this.requestsChain.map(req =>
-                                                    req.error
-                                                    .pipe(filter(v => !!v)))).pipe(mapTo(false));
-    this.processing =
-      merge(request, success, errors)
-      .pipe(shareReplay({refCount: true, bufferSize: 1}));
+    var errors = merge
+      .apply(
+        merge,
+        this.requestsChain.map((req) => req.error.pipe(filter((v) => !!v)))
+      )
+      .pipe(mapTo(false));
+    this.processing = merge(request, success, errors).pipe(
+      shareReplay({ refCount: true, bufferSize: 1 })
+    );
 
     return this;
   }
@@ -155,11 +183,12 @@ class MnForm {
       this.submitPipe.subscribe((v) => this.getFirstRequest().post(v));
     } else {
       lastRequest.success
-        .pipe(this.getPackPipe(),
-              takeUntil(this.component.mnOnDestroy))
-        .subscribe((function (postRequestIndex) {
-          return (v) => this.requestsChain[postRequestIndex - 1].post(v);
-        }.bind(this))(this.requestsChain.length));
+        .pipe(this.getPackPipe(), takeUntil(this.component.mnOnDestroy))
+        .subscribe(
+          function (postRequestIndex) {
+            return (v) => this.requestsChain[postRequestIndex - 1].post(v);
+          }.bind(this)(this.requestsChain.length)
+        );
     }
     return this;
   }
@@ -170,28 +199,27 @@ class MnForm {
   }
 
   getPackPipe() {
-    return this.packPipe || (this.group ? this.defaultPackPipe : tap())
+    return this.packPipe || (this.group ? this.defaultPackPipe : tap());
   }
 
   createSubmitPipe() {
     this.submit = new Subject();
-    this.submitPipe =
-      this.submit.pipe(this.getPackPipe(),
-                       takeUntil(this.component.mnOnDestroy))
+    this.submitPipe = this.submit.pipe(
+      this.getPackPipe(),
+      takeUntil(this.component.mnOnDestroy)
+    );
   }
 
   setReset(reset) {
     this.reset = new Subject();
-    this.reset
-      .pipe(takeUntil(this.component.mnOnDestroy))
-      .subscribe(reset);
+    this.reset.pipe(takeUntil(this.component.mnOnDestroy)).subscribe(reset);
 
     return this;
   }
 
   hasNoHandler() {
-    this.getLastRequest().success
-      .pipe(takeUntil(this.component.mnOnDestroy))
+    this.getLastRequest()
+      .success.pipe(takeUntil(this.component.mnOnDestroy))
       .subscribe();
     return this;
   }
@@ -209,7 +237,7 @@ class MnForm {
 
   setUnpackErrorPipe(unpackErrorPipe) {
     this.unpackErrorPipe = unpackErrorPipe;
-    return this
+    return this;
   }
 
   setUnpackPipe(unpackPipe) {
@@ -223,22 +251,27 @@ class MnForm {
   }
 
   confirmation504(dialog) {
-    this.getLastRequest().error
-      .pipe(takeUntil(this.component.mnOnDestroy))
+    this.getLastRequest()
+      .error.pipe(takeUntil(this.component.mnOnDestroy))
       .subscribe((resp) => {
         if (resp && resp.status === 504) {
-          this.modalService
-            .open(dialog)
-            .result
-            .then(() => {
+          this.modalService.open(dialog).result.then(
+            () => {
               this.submit.next(true);
-            }, function () {});
+            },
+            function () {}
+          );
         }
       });
     return this;
   }
 
-  setValidation(validationPostRequest, permissionStream, validateOnStream, keepErrors) {
+  setValidation(
+    validationPostRequest,
+    permissionStream,
+    validateOnStream,
+    keepErrors
+  ) {
     validationPostRequest.response
       .pipe(takeUntil(this.component.mnOnDestroy))
       .subscribe(function () {
@@ -247,11 +280,15 @@ class MnForm {
         }
       });
     //skip initialization of the form
-    (permissionStream || new BehaviorSubject(true)).pipe(
-      switchMap((v) => v ? (validateOnStream || this.group.valueChanges) : NEVER),
-      debounceTime(500),
-      this.getPackPipe(),
-      takeUntil(this.component.mnOnDestroy))
+    (permissionStream || new BehaviorSubject(true))
+      .pipe(
+        switchMap((v) =>
+          v ? validateOnStream || this.group.valueChanges : NEVER
+        ),
+        debounceTime(500),
+        this.getPackPipe(),
+        takeUntil(this.component.mnOnDestroy)
+      )
       .subscribe((v) => {
         validationPostRequest.post(v);
       });
@@ -260,4 +297,4 @@ class MnForm {
 }
 
 const MnFormService = new MnFormServiceClass();
-export {MnFormService};
+export { MnFormService };

@@ -8,19 +8,19 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {MnAuthComponent} from './mn.auth.component';
+import { MnAuthComponent } from './mn.auth.component';
 
 let authState = {
-  name: "app.auth",
+  name: 'app.auth',
   url: '/auth',
   params: {
     samlErrorMsgId: {
       value: null,
       squash: true,
-      dynamic: true
-    }
+      dynamic: true,
+    },
   },
-  component: MnAuthComponent
+  component: MnAuthComponent,
 };
 
 // let authChangePasswordState = {

@@ -4,26 +4,22 @@ import { Dropdown } from 'react-bootstrap';
 // Create context for sharing state between components
 const DropdownContext = createContext();
 
-export const MnDropdown = ({
-  onSelect,
-  className,
-  children,
-  onClick
-}) => {
+export const MnDropdown = ({ onSelect, className, children, onClick }) => {
   // Handle dropdown selection
   const handleSelect = (item) => {
     onSelect && onSelect({ scenarioId: item });
   };
 
   const contextValue = {
-    onSelect: handleSelect
+    onSelect: handleSelect,
   };
 
   return (
     <DropdownContext.Provider value={contextValue}>
-      <Dropdown 
+      <Dropdown
         className={`mn-dropdown ${className || ''}`}
-        onClick={e => onClick && onClick(e)}>
+        onClick={(e) => onClick && onClick(e)}
+      >
         {children}
       </Dropdown>
     </DropdownContext.Provider>
@@ -41,39 +37,27 @@ export const MnDropdownToggle = ({ children, iconClass }) => {
 
 export const MnDropdownMenu = ({ children }) => {
   return (
-    <Dropdown.Menu className="menu" style={{top: '-3px'}}>
+    <Dropdown.Menu className="menu" style={{ top: '-3px' }}>
       {children}
     </Dropdown.Menu>
   );
 };
 
 export const MnDropdownHeader = ({ children }) => {
-  return children ? (
-    <div className="header">
-      {children}
-    </div>
-  ) : null;
+  return children ? <div className="header">{children}</div> : null;
 };
 
 export const MnDropdownBody = ({ children, className }) => {
-  return (
-    <div className={`body ${className || ''}`}>
-      {children}
-    </div>
-  );
+  return <div className={`body ${className || ''}`}>{children}</div>;
 };
 
 export const MnDropdownFooter = ({ children }) => {
-  return children ? (
-    <div className="footer">
-      {children}
-    </div>
-  ) : null;
+  return children ? <div className="footer">{children}</div> : null;
 };
 
 export const MnDropdownItem = ({ mnItem, children, onClick }) => {
   const context = useContext(DropdownContext);
-  
+
   const handleClick = (e) => {
     if (onClick) {
       onClick(e);
@@ -88,7 +72,8 @@ export const MnDropdownItem = ({ mnItem, children, onClick }) => {
       className={isMouseDown ? 'mousedown' : ''}
       onClick={handleClick}
       onMouseDown={() => setIsMouseDown(true)}
-      onMouseUp={() => setIsMouseDown(false)}>
+      onMouseUp={() => setIsMouseDown(false)}
+    >
       {children}
     </Dropdown.Item>
   );
@@ -139,4 +124,4 @@ export const MnDropdownItem = ({ mnItem, children, onClick }) => {
     </MnDropdownFooter>
   </MnDropdownMenu>
 </MnDropdown>
-*/ 
+*/

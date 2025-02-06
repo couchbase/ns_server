@@ -15,7 +15,7 @@ const mnPendingQueryKeeper = {
   removeQueryInFly,
   push,
   cancelTabsSpecificQueries,
-  cancelAllQueries
+  cancelAllQueries,
 };
 
 const pendingQueryKeeper = [];
@@ -30,7 +30,7 @@ function cancelAllQueries() {
 function cancelTabsSpecificQueries() {
   let i = pendingQueryKeeper.length;
   while (i--) {
-    if (pendingQueryKeeper[i].group !== "global") {
+    if (pendingQueryKeeper[i].group !== 'global') {
       pendingQueryKeeper[i].canceler();
     }
   }
@@ -47,8 +47,9 @@ function removeQueryInFly(findMe) {
 
 function getQueryInFly(config) {
   return _.find(pendingQueryKeeper, function (inFly) {
-    return inFly.config.method === config.method &&
-      inFly.config.url === config.url;
+    return (
+      inFly.config.method === config.method && inFly.config.url === config.url
+    );
   });
 }
 

@@ -8,25 +8,26 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {BehaviorSubject, Subject} from 'rxjs';
-import {distinctUntilChanged, withLatestFrom, takeUntil,
-        map, pluck} from 'rxjs/operators';
+import { BehaviorSubject, Subject } from 'rxjs';
+import {
+  distinctUntilChanged,
+  withLatestFrom,
+  takeUntil,
+  map,
+  pluck,
+} from 'rxjs/operators';
 import { Component } from 'react';
 import mitt from 'mitt';
 
-export {MnLifeCycleHooksToStream, DetailsHashObserver, singletonGuard};
+export { MnLifeCycleHooksToStream, DetailsHashObserver, singletonGuard };
 
 const reactComponentLifecycleHooks = {
   OnInit: 'componentDidMount',
   OnChanges: 'componentDidUpdate',
-  OnDestroy: 'componentWillUnmount'
+  OnDestroy: 'componentWillUnmount',
 };
 
-const angularComponentLifecycleHooks = [
-  "OnChanges",
-  "OnInit",
-  "OnDestroy"
-];
+const angularComponentLifecycleHooks = ['OnChanges', 'OnInit', 'OnDestroy'];
 
 class MnLifeCycleHooksToStream extends Component {
   constructor() {
@@ -34,7 +35,8 @@ class MnLifeCycleHooksToStream extends Component {
     this.emitter = mitt();
     angularComponentLifecycleHooks.forEach((name) => {
       //OnChanges triggers before OnInit, so we should keep current value
-      this["mn" + name] = (name === "OnChanges") ? new BehaviorSubject() : new Subject();
+      this['mn' + name] =
+        name === 'OnChanges' ? new BehaviorSubject() : new Subject();
     });
   }
   $on(event, handler) {
@@ -46,16 +48,18 @@ class MnLifeCycleHooksToStream extends Component {
 }
 
 angularComponentLifecycleHooks.forEach(function (name) {
-  if (name === "OnDestroy") {
-    MnLifeCycleHooksToStream.prototype[reactComponentLifecycleHooks[name]] = function (value) {
-      this["mn" + name].next();
-      this["mn" + name].complete(value);
-      this.emitter.emit("$destroy", value);
-    }
+  if (name === 'OnDestroy') {
+    MnLifeCycleHooksToStream.prototype[reactComponentLifecycleHooks[name]] =
+      function (value) {
+        this['mn' + name].next();
+        this['mn' + name].complete(value);
+        this.emitter.emit('$destroy', value);
+      };
   } else {
-    MnLifeCycleHooksToStream.prototype[reactComponentLifecycleHooks[name]] = function (value) {
-      this["mn" + name].next({currentValue: this.props});
-    }
+    MnLifeCycleHooksToStream.prototype[reactComponentLifecycleHooks[name]] =
+      function (value) {
+        this['mn' + name].next({ currentValue: this.props });
+      };
   }
 });
 
@@ -69,16 +73,19 @@ class DetailsHashObserver {
     this.stream = {};
     this.stream.toggleDetails = new Subject();
 
-    this.stream.openedDetailsHash = this.uiRouter.globals.params$
-      .pipe(pluck(this.paramKey),
-            distinctUntilChanged());
+    this.stream.openedDetailsHash = this.uiRouter.globals.params$.pipe(
+      pluck(this.paramKey),
+      distinctUntilChanged()
+    );
 
-    this.stream.isOpened = this.stream.openedDetailsHash
-      .pipe(map(this.isOpened.bind(this)));
+    this.stream.isOpened = this.stream.openedDetailsHash.pipe(
+      map(this.isOpened.bind(this))
+    );
 
-    this.stream.newHashValue = this.stream.toggleDetails
-      .pipe(withLatestFrom(this.stream.openedDetailsHash),
-            map(this.getNewHashValue.bind(this)));
+    this.stream.newHashValue = this.stream.toggleDetails.pipe(
+      withLatestFrom(this.stream.openedDetailsHash),
+      map(this.getNewHashValue.bind(this))
+    );
 
     this.stream.newHashValue
       .pipe(takeUntil(this.component.mnOnDestroy))
@@ -88,7 +95,7 @@ class DetailsHashObserver {
   setNewHashValue(newHashValue) {
     var stateParams = {};
     stateParams[this.paramKey] = newHashValue;
-    this.uiRouter.stateService.go('.', stateParams, {notify: false});
+    this.uiRouter.stateService.go('.', stateParams, { notify: false });
   }
 
   getNewHashValue([toggleValue, values = []]) {
