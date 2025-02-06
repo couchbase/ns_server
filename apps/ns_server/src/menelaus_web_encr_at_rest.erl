@@ -121,22 +121,25 @@ handle_post(Path, Req) ->
                  kv, [?CHRONICLE_SECRETS_KEY,
                       ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
                  fun (Snapshot) ->
+                     CurrentSettings = get_settings(Snapshot),
                      MergedNewSettings = get_settings(Snapshot, NewSettings),
                      ToApply = apply_auto_fields(
                                  Snapshot, MergedNewSettings),
                      case validate_all_settings_txn(maps:to_list(ToApply),
                                                     Snapshot) of
                          ok ->
-                             {commit, [{set,
-                                        ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY,
-                                        ToApply}]};
+                             {commit,
+                              [{set,
+                                ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY,
+                                ToApply}],
+                              {ToApply, CurrentSettings}};
                          {error, _} = Error ->
                              {abort, Error}
                      end
                  end),
          case RV of
-             {ok, _} ->
-                 audit_settings(Req2, NewSettings),
+             {ok, _, {SettingsApplied, PrevSettings}} ->
+                 log_and_audit_settings(Req2, SettingsApplied, PrevSettings),
                  cb_cluster_secrets:sync_with_all_node_monitors(),
                  handle_get(Path, Req2);
              {error, Msg} ->
@@ -363,8 +366,15 @@ aggregated_EAR_info(Type, NodesInfo, Nodes) ->
             end
         end, undefined, Nodes)).
 
-audit_settings(Req, Settings) ->
-    List = maps:to_list(maps:map(fun (_, V) -> maps:to_list(V) end, Settings)),
-    {Props} = menelaus_web_settings2:prepare_json([], params(),
-                                                  fun type_spec/1, List),
-    ns_audit:encryption_at_rest_settings(Req, Props).
+log_and_audit_settings(Req, NewSettings, OldSettings) ->
+    Prepare =
+        fun (S) ->
+            L = maps:to_list(maps:map(fun (_, V) -> maps:to_list(V) end, S)),
+            menelaus_web_settings2:prepare_json([], params(),
+                                                fun type_spec/1, L)
+        end,
+    {NewProps} = Prepare(NewSettings),
+    {OldProps} = Prepare(OldSettings),
+    event_log:add_log(encr_at_rest_cfg_changed, [{new_settings, {NewProps}},
+                                                 {old_settings, {OldProps}}]),
+    ns_audit:encryption_at_rest_settings(Req, NewProps).
