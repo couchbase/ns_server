@@ -702,7 +702,7 @@ handle_info(Info, State) ->
 %% Gather stats (which could be time consuming) and populate the ets
 %% table
 do_populate_stats(Count) ->
-    case mb_master:master_node() =:= node() of
+    try mb_master:master_node() =:= node() of
         true ->
             %% Stats populated only on orchestrator.
             case Count rem ?HEAVYWEIGHT_STATS_SKIP_COUNT =:= 0 of
@@ -723,6 +723,15 @@ do_populate_stats(Count) ->
                                          rebalance:running());
         false ->
             %% Shouldn't be any stats reported here.
+            ok
+    catch
+        exit:{noproc, {gen_statem, call, [mb_master, master_node, _]}} ->
+            ?log_debug("Skipping population of orchestrator stats, "
+                       "as mb_master not up"),
+            ok;
+        C:E:ST ->
+            ?log_warning("Got error checking if node is master ~p:~w~n~p",
+                         [C, E, ST]),
             ok
     end,
 
