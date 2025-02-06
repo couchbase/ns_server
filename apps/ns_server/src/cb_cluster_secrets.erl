@@ -280,7 +280,12 @@ add_new_secret_internal(Props) ->
                end
             end),
     case RV of
-        {ok, Res} ->
+        {ok, #{id := Id, name := Name} = Res} ->
+            ResJson = menelaus_web_secrets:format_secret_props(Res),
+            event_log:add_log(encryption_key_created,
+                              [{encryption_key_id, Id},
+                               {encryption_key_name, iolist_to_binary(Name)},
+                               {settings, {ResJson}}]),
             sync_with_all_node_monitors(),
             {ok, Res};
         {error, _} = Error -> Error
@@ -321,7 +326,8 @@ replace_secret_internal(Id, NewProps, IsSecretWritableFun) ->
                   NewList = replace_secret_in_list(FinalProps, CurList),
                   ok ?= validate_secret_in_txn(FinalProps, OldProps, Snapshot),
                   ok ?= validate_secrets_consistency(NewList),
-                  {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewList}], FinalProps}
+                  {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewList}],
+                   {FinalProps, OldProps}}
               else
                   false ->
                       {abort, {error, forbidden}};
@@ -330,7 +336,14 @@ replace_secret_internal(Id, NewProps, IsSecretWritableFun) ->
               end
            end),
     case Res of
-        {ok, ResProps} ->
+        {ok, {#{name := Name} = ResProps, PrevProps}} ->
+            ResPropsJson = menelaus_web_secrets:format_secret_props(ResProps),
+            PrevPropsJson = menelaus_web_secrets:format_secret_props(PrevProps),
+            event_log:add_log(encryption_key_changed,
+                              [{encryption_key_id, Id},
+                               {encryption_key_name, iolist_to_binary(Name)},
+                               {old_settings, {PrevPropsJson}},
+                               {new_settings, {ResPropsJson}}]),
             %% In order to make sure all keys are reencrypted by the time when
             %% the call is finished
             sync_with_all_node_monitors(),
@@ -356,7 +369,8 @@ delete_secret_internal(Id, IsSecretWritableFun) ->
            fun (Txn) ->
                maybe
                    Snapshot = fetch_snapshot_in_txn(Txn),
-                   {ok, #{id := Id} = Props} ?= get_secret(Id, Snapshot),
+                   {ok, #{id := Id,
+                          name := Name} = Props} ?= get_secret(Id, Snapshot),
                    true ?= IsSecretWritableFun(Props),
                    ok ?= can_delete_secret(Props, Snapshot),
                    CurSecrets = get_all(Snapshot),
@@ -365,14 +379,17 @@ delete_secret_internal(Id, IsSecretWritableFun) ->
                                   CurSecrets),
                    true = (length(NewSecrets) + 1 == length(CurSecrets)),
                    ok ?= validate_secrets_consistency(NewSecrets),
-                   {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewSecrets}]}
+                   {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewSecrets}], Name}
                else
                    false -> {abort, {error, forbidden}};
                    {error, _} = Error -> {abort, Error}
                end
            end),
     case RV of
-        ok ->
+        {ok, Name} ->
+            event_log:add_log(encryption_key_deleted,
+                              [{encryption_key_id, Id},
+                               {encryption_key_name, iolist_to_binary(Name)}]),
             sync_with_all_node_monitors(),
             ok;
         {error, Reason} ->
@@ -415,7 +432,12 @@ delete_historical_key_internal(SecretId, HistKeyId, IsSecretWritableFun) ->
                                end
                            end),
                     case RV of
-                        ok ->
+                        {ok, Name} ->
+                            event_log:add_log(
+                              historical_encryption_key_deleted,
+                              [{encryption_key_id, SecretId},
+                               {encryption_key_name, iolist_to_binary(Name)},
+                               {historical_key_UUID, HistKeyId}]),
                             sync_with_all_node_monitors(),
                             ok;
                         {error, Reason} ->
@@ -3249,7 +3271,7 @@ job2bin(J) when is_atom(J) ->
                           inconsistent_graph() | no_quorum | active_key}}.
 delete_historical_key_txn(SecretId, HistKeyId, IsSecretWritableFun, Snapshot) ->
     maybe
-        {ok, Props} ?= get_secret(SecretId, Snapshot),
+        {ok, #{name := Name} = Props} ?= get_secret(SecretId, Snapshot),
         {_, true} ?= {writable, IsSecretWritableFun(Props)},
         SecretIds = get_secrets_encrypted_by_key_id(HistKeyId, Snapshot),
         {_, []} ?= {in_use, SecretIds},
@@ -3258,7 +3280,7 @@ delete_historical_key_txn(SecretId, HistKeyId, IsSecretWritableFun, Snapshot) ->
         CurSecrets = get_all(Snapshot),
         NewSecrets = replace_secret_in_list(NewProps, CurSecrets),
         ok ?= validate_secrets_consistency(NewSecrets),
-        {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewSecrets}]}
+        {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewSecrets}], Name}
     else
         {error, _} = Error -> {abort, Error};
         {writable, false} -> {abort, {error, forbidden}};

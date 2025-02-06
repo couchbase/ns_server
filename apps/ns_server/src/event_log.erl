@@ -101,6 +101,14 @@ event_details(encryption_key_rotated) ->
     {9227, security, info, <<"Encryption key rotated">>};
 event_details(encryption_key_rotation_failed) ->
     {9228, security, error, <<"Encryption key rotation failed">>};
+event_details(encryption_key_created) ->
+    {9229, security, info, <<"Encryption key created">>};
+event_details(encryption_key_changed) ->
+    {9230, security, info, <<"Encryption key changed">>};
+event_details(encryption_key_deleted) ->
+    {9231, security, info, <<"Encryption key deleted">>};
+event_details(historical_encryption_key_deleted) ->
+    {9232, security, info, <<"Historical encryption key deleted">>};
 
 %% event_ids block for Data related events: [8192, ... 9215]
 event_details(bucket_created) ->

@@ -28,7 +28,8 @@
          handle_delete_secret/2,
          handle_delete_historical_key/3,
          handle_rotate/2,
-         format_error/1]).
+         format_error/1,
+         format_secret_props/1]).
 
 handle_get_secrets(Req) ->
     All = cb_cluster_secrets:get_all(),
@@ -766,6 +767,9 @@ format_secrets_used_by_list(UsedByMap) ->
             "; it also still encrypts some data in " ++
             lists:join(", ", Strings2)
     end.
+
+format_secret_props(Props) ->
+    export_secret(Props).
 
 -ifdef(TEST).
 
