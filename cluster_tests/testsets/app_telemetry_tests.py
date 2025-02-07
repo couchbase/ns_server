@@ -10,6 +10,8 @@ import random
 import string
 
 import socket
+from contextlib import AbstractContextManager
+
 from websockets.sync.client import connect
 from websockets.exceptions import ConnectionClosedOK
 from websockets.uri import parse_uri
@@ -70,44 +72,18 @@ class AppTelemetryTests(testlib.BaseTestSet):
         node1 = self.cluster.get_node_from_hostname(node1_host)
 
         (username, password) = self.cluster.auth
-        app_telemetry_url = (f"ws://{username}:{password}@"
-                             f"{hostname}:{node0_port}{node0_path}")
-        with socket.create_connection((hostname, node0_port),
-                                      timeout=5) as s:
-            s.settimeout(5)
-            protocol = ClientProtocol(parse_uri(app_telemetry_url))
-            # Perform handshake
-            handshake = protocol.connect()
-            protocol.send_request(handshake)
-            for data in protocol.data_to_send():
-                s.send(data)
-            # Handle handshake response
-            data = s.recv(1024)
-            protocol.receive_data(data)
-            for data in protocol.data_to_send():
-                s.send(data)
-            events = protocol.events_received()
-            testlib.assert_gt(len(events), 0)
-            assert isinstance(events[0], Response)
-            testlib.assert_eq(events[0].status_code, 101)
-
-            # Receive initial message, if we haven't already
-            if len(events) == 1:
-                data = s.recv(1024)
-                protocol.receive_data(data)
-                for data in protocol.data_to_send():
-                    s.send(data)
-                events += protocol.events_received()
-
+        with WebsocketConnection(hostname, node0_port,
+                                 username, password, node0_path) as conn:
+            resp = conn.connect()
+            testlib.assert_eq(resp.status_code, 101)
             # Receive GET_TELEMETRY command
-            assert isinstance(events[1], Frame)
-            testlib.assert_eq(events[1].opcode, Opcode.BINARY)
-            testlib.assert_eq(events[1].data, b'\x00')
-
+            frame = conn.get_next_frame()
+            testlib.assert_eq(frame.opcode, Opcode.BINARY)
+            testlib.assert_eq(frame.data, b'\x00')
             # Generate metric values
-            metric_0 = ''.join(random.choices(string.ascii_lowercase, k=10))
-            metric_1 = ''.join(random.choices(string.ascii_lowercase, k=10))
-            metric_2 = ''.join(random.choices(string.ascii_lowercase, k=10))
+            metric_0, metric_1, metric_2 = [
+                ''.join(random.choices(string.ascii_lowercase, k=10))
+                for _ in range(3)]
             value = random.randrange(0, 1000000000)
             # Test multiple lines, multiple metrics, multiple nodes, and
             # a line fragmented over multiple frames, with an interleaved ping
@@ -117,37 +93,17 @@ class AppTelemetryTests(testlib.BaseTestSet):
             frame_2 = f"\"{node0_uuid}\"}} {value} 1695747260".encode('utf-8')
             # Send the lines of metrics as a fragmented message over multiple
             # frames, with a ping interleaved
-            protocol.send_binary(frame_1, fin=False)
-            protocol.send_ping(b'')
-            for data in protocol.data_to_send():
-                s.send(data)
-
+            conn.send_binary(frame_1, fin=False)
+            conn.send_ping(b'')
             # Wait for ping response
-            data = s.recv(1024)
-            protocol.receive_data(data)
-            for data in protocol.data_to_send():
-                s.send(data)
-            events = protocol.events_received()
-            testlib.assert_eq(len(events), 1)
-            assert isinstance(events[0], Frame)
-            testlib.assert_eq(events[0].opcode, Opcode.PONG)
-
-            protocol.send_continuation(frame_2, fin=True)
-            for data in protocol.data_to_send():
-                s.send(data)
-
+            frame = conn.get_next_frame()
+            testlib.assert_eq(frame.opcode, Opcode.PONG)
+            # Send rest of fragmented message
+            conn.send_continuation(frame_2, fin=True)
             # Receive second GET_TELEMETRY message, to confirm nothing crashed
-            data = s.recv(1024)
-            protocol.receive_data(data)
-            for data in protocol.data_to_send():
-                s.send(data)
-            events = protocol.events_received()
-            testlib.assert_eq(len(events), 1)
-
-            # Receive GET_TELEMETRY command
-            assert isinstance(events[0], Frame)
-            testlib.assert_eq(events[0].opcode, Opcode.BINARY)
-            testlib.assert_eq(events[0].data, b'\x00')
+            frame = conn.get_next_frame()
+            testlib.assert_eq(frame.opcode, Opcode.BINARY)
+            testlib.assert_eq(frame.data, b'\x00')
 
         testlib.poll_for_condition(
             lambda:
@@ -242,3 +198,70 @@ def metrics_have_values(node, expected_metrics):
                 expected_value = expected_metrics.get(metric)
                 return value == expected_value
     return False
+
+
+class WebsocketConnection(AbstractContextManager):
+
+    def __init__(self, host, port, username, password, path):
+        self.host = host
+        self.port = port
+        self.sock = None
+        url = f"ws://{username}:{password}@{host}:{port}{path}"
+        self.protocol = ClientProtocol(parse_uri(url))
+        self.events = []
+
+    def __enter__(self):
+        self.sock = socket.create_connection((self.host, self.port), timeout=5)
+        self.sock.settimeout(5)
+        return self
+
+    def connect(self) -> Response:
+        # Perform handshake
+        handshake = self.protocol.connect()
+        self.protocol.send_request(handshake)
+        self._get_and_send_data()
+        event = self._get_next_event()
+        assert isinstance(event, Response)
+        return event
+
+    def get_next_frame(self) -> Frame:
+        event = self._get_next_event()
+        assert isinstance(event, Frame)
+        return event
+
+    def send_binary(self, binary, fin=True):
+        self.protocol.send_binary(binary, fin)
+        self._get_and_send_data()
+
+    def send_ping(self, binary):
+        self.protocol.send_ping(binary)
+        self._get_and_send_data()
+
+    def send_continuation(self, binary, fin=True):
+        self.protocol.send_continuation(binary, fin)
+        self._get_and_send_data()
+
+    def _get_next_event(self):
+        # Only expect to receive an event if we haven't already
+        if len(self.events) == 0:
+            # Receive from network
+            self._receive_to_buffer()
+            # Update list of events
+            events = self.protocol.events_received()
+            self.events += events
+        # Get next event
+        return self.events.pop(0)
+
+    def _receive_to_buffer(self, buffer_size=1024):
+        data = self.sock.recv(buffer_size)
+        self.protocol.receive_data(data)
+        self._get_and_send_data()
+
+    def _get_and_send_data(self):
+        for data in self.protocol.data_to_send():
+            self.sock.send(data)
+
+    def __exit__(self, *exc_details):
+        self.sock.close()
+
+
