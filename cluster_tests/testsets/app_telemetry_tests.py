@@ -12,8 +12,6 @@ import string
 import socket
 from contextlib import AbstractContextManager
 
-from websockets.sync.client import connect
-from websockets.exceptions import ConnectionClosedOK
 from websockets.uri import parse_uri
 from websockets.client import ClientProtocol
 from websockets.http11 import Response
@@ -154,26 +152,22 @@ class AppTelemetryTests(testlib.BaseTestSet):
 
         (username, password) = self.cluster.auth
         hostname = self.cluster.connected_nodes[0].host
-        app_telemetry_url = (f"ws://{username}:{password}@"
-                             f"{hostname}:{node0_port}/_appTelemetry")
 
         try:
-            with connect(app_telemetry_url) as websocket:
-                # Wait for first scrape
-                websocket.recv(timeout=10)
+            with WebsocketConnection(hostname, node0_port, username, password,
+                                     node0_path) as conn:
+                resp = conn.connect()
+                testlib.assert_eq(resp.status_code, 101)
+                # Get first scrape
+                frame = conn.get_next_frame()
+                testlib.assert_eq(frame.opcode, Opcode.BINARY)
+                testlib.assert_eq(frame.data, b'\x00')
                 # Disable app telemetry
                 testlib.post_succ(self.cluster, "/settings/appTelemetry",
                                   json={"enabled": "false"})
-                # Since the first scrape just happened, the next scrape will be
-                # after the telemetry was disabled, so it won't occur.
-                # We should see the connection drop before the 10s timeout
-                websocket.recv(timeout=10)
-            assert False, 'expected exception is not raised'
-        except AssertionError as e:
-            raise e
-        except Exception as e:
-            assert isinstance(e, ConnectionClosedOK), \
-                f'unexpected exception: {e}'
+                # Receive CLOSE frame
+                frame = conn.get_next_frame()
+                testlib.assert_eq(frame.opcode, Opcode.CLOSE)
         finally:
             # Re-enable app telemetry
             testlib.post_succ(self.cluster, "/settings/appTelemetry",
