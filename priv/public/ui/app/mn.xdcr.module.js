@@ -31,7 +31,6 @@ import { MnXDCRIncomingReplicationDetailsComponent } from "./mn.xdcr.incoming.re
 import { MnXDCRIncomingReplicationSettingsComponent } from "./mn.xdcr.incoming.replication.settings.component.js";
 import { MnXDCRMobileSettingComponent } from "./mn.xdcr.mobile.setting.component.js";
 
-
 import { MnXDCRAddRefComponent } from "./mn.xdcr.add.ref.component.js";
 import { MnXDCRAddRepComponent } from "./mn.xdcr.add.rep.component.js";
 import { MnXDCRAddRepScopeComponent } from "./mn.xdcr.add.rep.scope.component.js";

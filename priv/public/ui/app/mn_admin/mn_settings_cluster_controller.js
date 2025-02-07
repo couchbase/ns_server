@@ -242,6 +242,25 @@ function mnSettingsClusterController($scope, $q, $uibModal, $ocLazyLoad, mnPoolD
       }
     });
   }
+  function onSelectAllXDCRLogLevels(selectedOption) {
+    vm.XDCRServices.map(XDCRService => vm.replicationSettings.genericServicesLogLevel[XDCRService] = selectedOption);
+  }
+  async function showAllXDCRLogLevels() {
+    await import("./mn_settings_cluster_all_xdcr_log_levels_dialog_controller.js");
+    await $ocLazyLoad.load({name: 'mnSettingsClusterAllXDCRLogLevelsDialogController'});
+    $uibModal.open({
+      template: allXDCRLogLevelsTemplate,
+      controller: 'mnSettingsClusterAllXDCRLogLevelsDialogController as allXDCRLogLevelsDialogCtl',
+      resolve: {
+        logLevels: function() {
+          return vm.replicationSettings.genericServicesLogLevel;
+        },
+        initialLogLevels: function() {
+          return vm.initialServicesLogLevels;
+        }
+      }
+    });
+  }
   function activate() {
     mnSettingsClusterService.clearSubmitCallbacks();
     mnSettingsClusterService.clearInitChecker();
