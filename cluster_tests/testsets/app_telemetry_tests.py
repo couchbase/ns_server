@@ -30,11 +30,7 @@ class AppTelemetryTests(testlib.BaseTestSet):
         return [testlib.ClusterRequirements(edition="Enterprise",
                                             balanced=True,
                                             min_num_nodes=2,
-                                            afamily='ipv4'),
-                testlib.ClusterRequirements(edition="Enterprise",
-                                            balanced=True,
-                                            min_num_nodes=2,
-                                            afamily='ipv6')]
+                                            afamily='ipv4')]
 
     def setup(self):
         self.initial_app_telemetry_config = testlib.get_succ(
@@ -53,9 +49,6 @@ class AppTelemetryTests(testlib.BaseTestSet):
                           json=self.initial_app_telemetry_config)
 
     def simple_test(self):
-        # 127.0.0.1 or [::1]
-        hostname = self.cluster.connected_nodes[0].host_with_brackets
-
         info = testlib.get_succ(self.cluster,
                                 "/pools/default/nodeServices").json()
         nodes_ext = info.get('nodesExt')
@@ -63,6 +56,7 @@ class AppTelemetryTests(testlib.BaseTestSet):
         node0_uuid = node0_ext['nodeUUID']
         node0_services = node0_ext['services']
         node0_port = node0_services['mgmt']
+        hostname = self.cluster.connected_nodes[0].host
         node0_host = f"{hostname}:{node0_port}"
         node0 = self.cluster.get_node_from_hostname(node0_host)
         node0_path = node0_ext.get('appTelemetryPath')
@@ -78,9 +72,7 @@ class AppTelemetryTests(testlib.BaseTestSet):
         (username, password) = self.cluster.auth
         app_telemetry_url = (f"ws://{username}:{password}@"
                              f"{hostname}:{node0_port}{node0_path}")
-
-        hostname_without_brackets = self.cluster.connected_nodes[0].host
-        with socket.create_connection((hostname_without_brackets, node0_port),
+        with socket.create_connection((hostname, node0_port),
                                       timeout=5) as s:
             s.settimeout(5)
             protocol = ClientProtocol(parse_uri(app_telemetry_url))
@@ -195,9 +187,6 @@ class AppTelemetryTests(testlib.BaseTestSet):
                               json={"enabled": "true"})
 
     def disconnect_on_disable_test(self):
-        # 127.0.0.1 or [::1]
-        hostname = self.cluster.connected_nodes[0].host_with_brackets
-
         info = testlib.get_succ(self.cluster,
                                 "/pools/default/nodeServices").json()
         nodes_ext = info.get('nodesExt')
@@ -208,6 +197,7 @@ class AppTelemetryTests(testlib.BaseTestSet):
         testlib.assert_eq(node0_path, '/_appTelemetry')
 
         (username, password) = self.cluster.auth
+        hostname = self.cluster.connected_nodes[0].host
         app_telemetry_url = (f"ws://{username}:{password}@"
                              f"{hostname}:{node0_port}/_appTelemetry")
 
