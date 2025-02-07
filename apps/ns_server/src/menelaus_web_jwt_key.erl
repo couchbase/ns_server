@@ -17,7 +17,6 @@
 -include("jwt.hrl").
 
 -export([validate_jwks_algorithm/2,
-         validate_jwks_keys/2,
          validate_key_algorithm/2,
          algorithm_type/1,
          ec_params_to_algorithm/1,
@@ -129,73 +128,84 @@ validate_key_algorithm(Key, Algorithm) ->
                                     [Algorithm]))}
     end.
 
--spec validate_jwks_keys([pubkey()], jwt_algorithm()) -> ok | {error, string()}.
-validate_jwks_keys([], _Algorithm) -> ok;
-validate_jwks_keys([Key | Rest], Algorithm) ->
-    case validate_key_algorithm(Key, Algorithm) of
-        ok -> validate_jwks_keys(Rest, Algorithm);
-        {error, Reason} -> {error, Reason}
-    end.
-
--spec validate_jwks_algorithm(map(), jwt_algorithm()) -> ok | {error, string()}.
+-spec validate_jwks_algorithm(map(), jwt_algorithm()) ->
+          {ok, jwt_kid_to_jwk()} | {error, string()}.
 validate_jwks_algorithm(JSONMap, Algorithm) ->
-    case parse_jwks(JSONMap) of
-        {error, Reason} -> {error, Reason};
-        {ok, JWKSet} -> validate_jwks_keys_for_algorithm(JWKSet, Algorithm)
-    end.
-
--spec parse_jwks(map()) -> {ok, [jose_jwk:key()]} | {error, string()}.
-parse_jwks(JSONMap) ->
     try jose_jwk:from(JSONMap) of
-        {error, _} -> {error, "Invalid JWKS"};
-        %% Multiple keys require a 'kid' to identify which one to use
-        #jose_jwk{keys = {jose_jwk_set, [_, _|_] = Items}} ->
-            validate_jwks_set(Items, JSONMap);
-        %% Single key in a key set
-        #jose_jwk{keys = {jose_jwk_set, [Item]}} ->
-            {ok, [Item]};
-        %% Single key JWK (as opposed to a single key JWKS)
+        {error, _} ->
+            {error, "Invalid JWKS"};
+        %% JWKS (JWK Set) which contains a "keys" array
+        #jose_jwk{keys = {jose_jwk_set, Items}} when is_list(Items) ->
+            validate_jwk_list(Items, Algorithm);
+        %% Single JWK (does not contain a "keys" array)
         JWK ->
-            {ok, [JWK]}
+            validate_jwk_list([JWK], Algorithm)
     catch T:E:S ->
             ?log_error("exception in jose_jwk:from JWKS:~n~p", [{T, E, S}]),
             {error, "Invalid JWKS"}
     end.
 
--spec validate_jwks_set([jose_jwk:key()], map()) -> {ok, [jose_jwk:key()]} |
-          {error, string()}.
-validate_jwks_set(Items, JSONMap) ->
-    case maps:get(<<"keys">>, JSONMap) of
-        Keys when is_list(Keys) ->
-            case lists:all(fun(Key) ->
-                                   is_map(Key) andalso
-                                       maps:is_key(<<"kid">>, Key)
-                           end, Keys) of
-                true -> {ok, Items};
-                false -> {error, "Missing 'kid' in JWKS key"}
-            end;
-        _ -> {error, "Invalid 'keys' array"}
+%% @doc Validates a list of JWKs and returns a map of kid->jwk for all the
+%% keys that match the signing algorithm.
+-spec validate_jwk_list([jose_jwk:key()], Algorithm :: jwt_algorithm()) ->
+          {ok, jwt_kid_to_jwk()} | {error, string()}.
+validate_jwk_list(Items, Algorithm) ->
+    {ValidKeys, Errors} =
+        lists:foldl(
+          fun(JWK, {Keys, Errs}) ->
+                  case lists:member(atom_to_binary(Algorithm),
+                                    jose_jwk:verifier(JWK)) of
+                      true ->
+                          {_, PubKey} = jose_jwk:to_key(JWK),
+                          case validate_key_algorithm(PubKey, Algorithm) of
+                              ok ->
+                                  {[JWK|Keys], Errs};
+                              {error, Reason} ->
+                                  {Keys, [Reason|Errs]}
+                          end;
+                      false ->
+                          {Keys, Errs}
+                  end
+          end, {[], []}, Items),
+
+    case {ValidKeys, Errors} of
+        {[], []} ->
+            {error, io_lib:format("No suitable keys in JWKS for signing "
+                                  "algorithm: ~p", [Algorithm])};
+        {[], Errs} ->
+            {error, string:join(lists:reverse(Errs), "; ")};
+        {[SingleKey], _} ->
+            %% Allow a kid of undefined only if there is a single key.
+            {_, Fields} = jose_jwk:to_map(SingleKey),
+            {ok, #{maps:get(<<"kid">>, Fields, undefined) => SingleKey}};
+        {[_|_] = MultipleKeys, _} ->
+            %% Each key must have a unique kid.
+            build_kid_map(MultipleKeys)
     end.
 
--spec validate_jwks_keys_for_algorithm([jose_jwk:key()], jwt_algorithm()) ->
-          ok | {error, string()}.
-validate_jwks_keys_for_algorithm(JWKSet, Algorithm) ->
-    case lists:filtermap(
-           fun(JWK) ->
-                   case lists:member(atom_to_binary(Algorithm),
-                                     jose_jwk:verifier(JWK)) of
-                       true ->
-                           {_, Key} = jose_jwk:to_key(JWK),
-                           {true, Key};
-                       false -> false
-                   end
-           end, JWKSet) of
-        [] ->
-            {error,
-             lists:flatten(io_lib:format("No suitable keys in JWKS "
-                                         "for signing algorithm: ~p",
-                                         [Algorithm]))};
-        ValidKeys -> validate_jwks_keys(ValidKeys, Algorithm)
+%% Build a map of kid->jwk from a list of JWKs. Each JWT validation requires
+%% fetching the key (JWK) by kid.
+-spec build_kid_map([jose_jwk:key()]) -> {ok, jwt_kid_to_jwk()} |
+          {error, string()}.
+build_kid_map(Keys) ->
+    try
+        KeyMap =
+            lists:foldl(
+              fun(JWK, Acc) ->
+                      {_, Fields} = jose_jwk:to_map(JWK),
+                      case maps:get(<<"kid">>, Fields, undefined) of
+                          undefined ->
+                              throw("Missing 'kid' in JWKS key when multiple "
+                                    "keys present");
+                          Kid when is_map_key(Kid, Acc) ->
+                              throw("Duplicate 'kid' found in JWKS");
+                          Kid ->
+                              Acc#{Kid => JWK}
+                      end
+              end, #{}, Keys),
+        {ok, KeyMap}
+    catch
+        throw:Reason -> {error, Reason}
     end.
 
 %% @doc Validates a shared secret for HMAC algorithms (HS256, HS384, HS512).

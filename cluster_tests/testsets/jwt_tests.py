@@ -270,3 +270,73 @@ class JWTTests(testlib.BaseTestSet):
                 == "The specified key has 1024 bits. Key length should be "
                 "between 2048 and 16384"
             )
+
+    def invalid_jwks_test(self):
+        jwks_path = os.path.join(testlib.get_resources_dir(), "jwt",
+                                "mock_invalid_jwks1.json")
+        if not os.path.exists(jwks_path):
+            raise RuntimeError(f"Required test file not found: "
+                                f"{invalid_jwks}. ")
+        with open(jwks_path, "r") as f:
+            jwks = json.load(f)
+
+        issuer_config = {
+            "name": "ES256_issuer",
+            "audienceHandling": "all",
+            "subClaim": "sub",
+            "audClaim": "aud",
+            "audiences": ["test_ES256"],
+            "signingAlgorithm": "ES256",
+            "publicKeySource": "jwks",
+            "jwks": jwks,
+        }
+
+        payload = {
+            "enabled": True,
+            "jwksUriRefreshIntervalS": 14400,
+            "issuers": [issuer_config],
+        }
+
+        r = testlib.put_fail(
+            self.cluster, self.endpoint, expected_code=400, json=payload
+        )
+        assert (
+            r.json()["errors"]["issuers"][0]["jwks"]
+            == "Duplicate 'kid' found in JWKS"
+            )
+
+        jwks_path = os.path.join(testlib.get_resources_dir(), "jwt",
+                                "mock_invalid_jwks2.json")
+        if not os.path.exists(jwks_path):
+            raise RuntimeError(f"Required test file not found: "
+                                f"{invalid_jwks}. ")
+        with open(jwks_path, "r") as f:
+            jwks = json.load(f)
+
+        issuer_config = {
+            "name": "RS256_issuer",
+            "audienceHandling": "all",
+            "subClaim": "sub",
+            "audClaim": "aud",
+            "audiences": ["test_RS256"],
+            "signingAlgorithm": "RS256",
+            "publicKeySource": "jwks",
+            "jwks": jwks,
+        }
+
+        payload = {
+            "enabled": True,
+            "jwksUriRefreshIntervalS": 14400,
+            "issuers": [issuer_config],
+        }
+
+        r = testlib.put_fail(
+            self.cluster, self.endpoint, expected_code=400, json=payload
+        )
+        assert (
+            r.json()["errors"]["issuers"][0]["jwks"]
+            == "The specified key has 504 bits. Key length should be "
+            "between 2048 and 16384; The specified key has 488 bits. Key "
+            "length should be between 2048 and 16384"
+        )
+

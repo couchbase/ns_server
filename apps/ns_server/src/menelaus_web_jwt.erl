@@ -419,9 +419,10 @@ jwks_validators() ->
                            case menelaus_web_jwt_key:validate_jwks_algorithm(
                                   Map, Algorithm) of
                                {error, Reason} -> {error, Reason};
-                               ok -> {value,
-                                      {iolist_to_binary(jose:encode(Map)),
-                                       Map}}
+                               {ok, KidToJWKMap} ->
+                                   {value,
+                                    {iolist_to_binary(ejson:encode(Value)),
+                                     KidToJWKMap}}
                            end
                        catch T:E:S ->
                                ?log_error("Error converting JWKS to map:~n~p",
@@ -683,12 +684,12 @@ format_conversion_test() ->
           jwks_uri_refresh_interval_s => 14400,
           issuers => #{
                        "issuer1" => #{
-                                        aud_claim => "aud",
-                                        audiences => ["aud1", "aud2"],
-                                        expiry_leeway_s => 15,
-                                        jit_provisioning => false,
-                                        jwks_uri_tls_extra_opts =>
-                                            [{verify, verify_peer}]
+                                      aud_claim => "aud",
+                                      audiences => ["aud1", "aud2"],
+                                      expiry_leeway_s => 15,
+                                      jit_provisioning => false,
+                                      jwks_uri_tls_extra_opts =>
+                                          [{verify, verify_peer}]
                                      },
                        "issuer2" => #{
                                       signing_algorithm => "ES256",
