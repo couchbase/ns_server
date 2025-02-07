@@ -165,9 +165,17 @@ class AppTelemetryTests(testlib.BaseTestSet):
                 # Disable app telemetry
                 testlib.post_succ(self.cluster, "/settings/appTelemetry",
                                   json={"enabled": "false"})
+                # Send response to first scrape (to avoid getting timed out)
+                conn.send_binary(b'\x00')
                 # Receive CLOSE frame
-                frame = conn.get_next_frame()
-                testlib.assert_eq(frame.opcode, Opcode.CLOSE)
+                try:
+                    frame = conn.get_next_frame()
+                    testlib.assert_eq(frame.opcode, Opcode.CLOSE)
+                except BrokenPipeError:
+                    # See MB-65238. The websocket may be closed before receiving
+                    # the response to the CLOSE message, which is sent in
+                    # WebsocketConnection._get_and_send_data
+                    pass
         finally:
             # Re-enable app telemetry
             testlib.post_succ(self.cluster, "/settings/appTelemetry",
