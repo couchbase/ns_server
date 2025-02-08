@@ -77,6 +77,9 @@
 -define(LOCAL_READ, {[admin, users, local], read}).
 -define(LOCAL_WRITE, {[admin, users, local], write}).
 
+-define(USER_ADMIN_READ, {[admin, users, admin], read}).
+-define(USER_ADMIN_WRITE, {[admin, users, admin], write}).
+
 assert_is_saslauthd_enabled() ->
     case cluster_compat_mode:is_saslauthd_enabled() of
         true ->
@@ -417,6 +420,19 @@ security_filter(Req) ->
               end, #{})
     end.
 
+user_admin_filter(Req) ->
+    case menelaus_auth:has_permission(?USER_ADMIN_READ, Req) of
+        true ->
+            pipes:filter(fun (_) -> true end);
+        false ->
+            UserAdminRoles = get_user_admin_roles(),
+            pipes:filterfold(
+              fun (User, Cache) ->
+                      {Res, NewCache} = has_role(User, UserAdminRoles, Cache),
+                      {not Res, NewCache}
+              end, #{})
+    end.
+
 get_domain_access_permission(read, Domain) ->
     case Domain of
         admin -> ?SECURITY_READ;
@@ -475,6 +491,7 @@ handle_get_all_users(Req, Pattern, Params) ->
     pipes:run(menelaus_users:select_users(Pattern),
               [filter_by_roles(Roles),
                security_filter(Req),
+               user_admin_filter(Req),
                domain_filter(local, Req),
                domain_filter(external, Req),
                jsonify_users(),
@@ -513,12 +530,12 @@ handle_get_user(Domain, UserId, Req) ->
                     menelaus_util:reply_json(Req, <<"Unknown user.">>, 404);
                 true ->
                     verify_domain_access(Req, Identity, read),
-                    verify_security_roles_access(
-                      Req, ?SECURITY_READ, menelaus_users:get_roles(Identity)),
+                    Roles = menelaus_users:get_roles(Identity),
+                    verify_security_roles_access(Req, ?SECURITY_READ, Roles),
                     Permission = get_domain_access_permission(read,
                                                               DomainAtom),
-                    verify_security_roles_access(
-                      Req, Permission, menelaus_users:get_roles(Identity)),
+                    verify_security_roles_access(Req, Permission, Roles),
+                    verify_user_admin_roles_access(Req, read, Roles),
                     ns_audit:rbac_info_retrieved(Req, users),
                     menelaus_util:reply_json(Req, get_user_json(Identity))
             end
@@ -763,6 +780,7 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
                                               SortAndFilteringProps),
                   [filter_by_roles(Roles),
                    security_filter(Req),
+                   user_admin_filter(Req),
                    domain_filter(local, Req),
                    domain_filter(external, Req),
                    substr_filter(Substr, [name])],
@@ -998,8 +1016,11 @@ handle_patch_user(UserId, Req) ->
     assert_no_users_upgrade(),
     case validate_cred(UserId, username) of
         true ->
-            verify_domain_access(Req, {UserId, local}, write),
-            handle_patch_user_with_identity(Req, {UserId, local},
+            Identity = {UserId, local},
+            verify_domain_access(Req, Identity, write),
+            Roles = menelaus_users:get_roles(Identity),
+            verify_user_admin_roles_access(Req, write, Roles),
+            handle_patch_user_with_identity(Req, Identity,
                                             patch_user_validators());
         Error ->
             menelaus_util:reply_global_error(Req, Error)
@@ -1058,10 +1079,10 @@ put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword,
     [validator:touch(name, _),
      validate_user_groups(groups, GroupCheckFun, Req, _),
      validator:default(roles, [], _),
-     validate_roles(roles, _),
-     validator_verify_security_roles_access(roles, Req, ?LOCAL_WRITE,
-                                            ExtraRolesFun, _),
-     validator:valid_in_enterprise_only(locked, _),
+     validate_roles(roles, _)] ++
+    [validator_verify_security_roles_access(
+       roles, Req, ?LOCAL_WRITE, ExtraRolesFun, _) || not DoingRestore] ++
+    [validator:valid_in_enterprise_only(locked, _),
      validator:valid_in_enterprise_only(temporaryPassword, _)] ++
         %% If there's a security role and a restore isn't being done then
         %% adequate permission is required. If a restore is being done then
@@ -1156,7 +1177,8 @@ validator_verify_security_roles_access(RolesName, Req, Permission,
       %% not get called. As a result "ExtraRoles" will not be verified.
       fun (Roles) ->
           AllRoles = lists:usort(Roles ++ ExtraRoles),
-          verify_security_roles_access(Req, Permission, AllRoles)
+          verify_security_roles_access(Req, Permission, AllRoles),
+          verify_user_admin_roles_access(Req, write, AllRoles)
       end, RolesName, State).
 
 %% If any of the roles are "security roles" ensure the request has the
@@ -1169,11 +1191,27 @@ verify_security_roles_access(Req, Permission, Roles) ->
             ok
     end.
 
+verify_user_admin_roles_access(Req, Access, Roles) ->
+    case overlap(Roles, get_user_admin_roles()) of
+        true ->
+            Permission = case Access of
+                             read -> ?USER_ADMIN_READ;
+                             write -> ?USER_ADMIN_WRITE
+                         end,
+            menelaus_util:require_permission(Req, Permission);
+        false ->
+            ok
+    end.
+
 overlap(List1, List2) ->
     lists:any(fun (V) -> lists:member(V, List1) end, List2).
 
 get_security_roles() ->
     [R || {R, _} <- menelaus_roles:get_security_roles(
+                      ns_bucket:get_snapshot(all, [collections, uuid]))].
+
+get_user_admin_roles() ->
+    [R || {R, _} <- menelaus_roles:get_user_admin_roles(
                       ns_bucket:get_snapshot(all, [collections, uuid]))].
 
 verify_domain_access(Req, {_UserId, Domain}, Access)
@@ -1228,14 +1266,13 @@ handle_delete_user(Domain, UserId, Req) ->
             menelaus_util:reply_json(Req, <<"Unknown user domain.">>, 404);
         T ->
             Identity = {UserId, T},
-            verify_security_roles_access(
-              Req, ?SECURITY_WRITE, menelaus_users:get_roles(Identity)),
+            Roles =  menelaus_users:get_roles(Identity),
+            verify_security_roles_access(Req, ?SECURITY_WRITE, Roles),
             Permission = get_domain_access_permission(write,
                                                       domain_to_atom(Domain)),
-            verify_security_roles_access(
-              Req, Permission, menelaus_users:get_roles(Identity)),
-
+            verify_security_roles_access(Req, Permission, Roles),
             verify_domain_access(Req, Identity, write),
+            verify_user_admin_roles_access(Req, write, Roles),
 
             case menelaus_users:delete_user(Identity) of
                 {commit, _} ->
@@ -1901,6 +1938,7 @@ handle_get_groups_page(Req, Path, Values) ->
     {PageSkews, Total} =
         pipes:run(menelaus_users:select_groups('_'),
                   [security_filter(Req),
+                   user_admin_filter(Req),
                    ldap_ref_filter(Req),
                    substr_filter(Substr, [description])],
                   ?make_consumer(
@@ -1929,6 +1967,7 @@ handle_get_all_groups(Req) ->
     ns_audit:rbac_info_retrieved(Req, groups),
     pipes:run(menelaus_users:select_groups('_'),
               [security_filter(Req),
+               user_admin_filter(Req),
                ldap_ref_filter(Req),
                jsonify_groups(),
                sjson:encode_extended_json([{compact, true},
@@ -2220,6 +2259,7 @@ handle_backup(Req, Params) ->
         pipes:compose([menelaus_users:select_users('_',
                                                    [name, user_roles, groups]),
                        security_filter(Req),
+                       user_admin_filter(Req),
                        domain_filter(local, Req),
                        domain_filter(external, Req),
                        backup_filter(ExcludeFilters, IncludeFilters),
@@ -2228,6 +2268,7 @@ handle_backup(Req, Params) ->
     GroupsProducer =
         pipes:compose([menelaus_users:select_groups('_'),
                        security_filter(Req),
+                       user_admin_filter(Req),
                        ldap_ref_filter(Req),
                        backup_filter(ExcludeFilters, IncludeFilters),
                        jsonify_backup_groups()]),
@@ -2240,6 +2281,7 @@ handle_backup(Req, Params) ->
                 AdminObj = {{user, AdminId}, AdminRoles},
                 pipes:compose([?make_producer(?yield(AdminObj)),
                                security_filter(Req),
+                               user_admin_filter(Req),
                                backup_filter(ExcludeFilters, IncludeFilters),
                                pipes:map(fun ({U, P}) -> {U, P, AdminAuth} end),
                                jsonify_backup_users(true),
@@ -2474,7 +2516,23 @@ handle_backup_restore_validated(Req, Params) ->
                           end;
                       false ->
                           %% Not a security-role being restored.
-                          {[User | Keep], Remove}
+                          case overlap(Roles, get_user_admin_roles()) of
+                              true ->
+                                  %% A user admin role is being restored...
+                                  case menelaus_auth:has_permission(
+                                         ?USER_ADMIN_WRITE, Req) of
+                                      true ->
+                                          %% ...but we have the perms to do so
+                                          {[User | Keep], Remove};
+                                      false ->
+                                          ?log_debug("Not restoring '~p' as it "
+                                                     "has a user admin role.",
+                                                     [Identity]),
+                                           {Keep, [Identity | Remove]}
+                                  end;
+                              false ->
+                                  {[User | Keep], Remove}
+                          end
                   end
           end, {[], []}, Users),
 

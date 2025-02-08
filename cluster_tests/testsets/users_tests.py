@@ -821,6 +821,116 @@ class UsersTestSet(testlib.BaseTestSet):
             delete_user(self.cluster, 'local', user2)
 
 
+    # This tests ensures the 'user_admin_local' and 'user_admin_external'
+    # roles cannot manage (CRUD) each other.
+    def user_admin_conflicting_test(self):
+        try:
+            # Create local user admin
+            local_user_admin = 'localUserAdmin'
+            local_user_admin_password = testlib.random_str(10)
+            put_user(self.cluster, 'local', local_user_admin,
+                     password=local_user_admin_password,
+                     roles='user_admin_local',
+                     full_name=testlib.random_str(10),
+                     validate_user_props=True)
+
+            # Create external user admin
+            external_user_admin = 'externalUserAdmin'
+            put_user(self.cluster, 'local', external_user_admin,
+                     password=testlib.random_str(10),
+                     roles='user_admin_external',
+                     full_name=testlib.random_str(10),
+                     validate_user_props=True)
+
+            # Create group with an external user admin role
+            external_user_admin_group = 'externalUserAdminGroup'
+            testlib.put_succ(
+                    self.cluster,
+                    f'/settings/rbac/groups/{external_user_admin_group}',
+                    data={'roles': 'user_admin_external'})
+
+            # Create user in group containing an external user admin role
+            user_in_group = 'userInGroup'
+            put_user(self.cluster, 'local', user_in_group,
+                     password=testlib.random_str(10),
+                     roles='eventing_admin',
+                     groups=f'{external_user_admin_group}',
+                     full_name=testlib.random_str(10),
+                     # 'False' specified until MB-65223 fixed
+                     validate_user_props=False)
+
+            # Run tests on the above users/group...
+
+            # "local user admin" cannot get an existing "external user admin"
+            testlib.get_fail(
+                    self.cluster,
+                    f'/settings/rbac/users/local/{external_user_admin}',
+                    403, auth=(local_user_admin, local_user_admin_password))
+
+            # "local user admin" cannot delete an existing "external user admin"
+            testlib.delete_fail(
+                    self.cluster,
+                    f'/settings/rbac/users/local/{external_user_admin}',
+                    403, auth=(local_user_admin, local_user_admin_password))
+
+            # "local user admin" cannot patch an existing "external user admin"
+            testlib.patch_fail(
+                    self.cluster,
+                    f'/settings/rbac/users/local/{external_user_admin}',
+                    403, data={"locked": "true"},
+                    auth=(local_user_admin, local_user_admin_password))
+
+            # "local user admin" cannot get a user in a group containing an
+            # "external user admin" role
+            testlib.get_fail(
+                    self.cluster,
+                    f'/settings/rbac/users/local/{user_in_group}', 403,
+                    auth=(local_user_admin, local_user_admin_password))
+
+            # "local user admin" cannot delete a user in a group containing an
+            # "external user admin" role
+            testlib.delete_fail(
+                    self.cluster,
+                    f'/settings/rbac/users/local/{user_in_group}', 403,
+                    auth=(local_user_admin, local_user_admin_password))
+
+            # "local user admin" cannot patch a user in a group containing an
+            # "external user admin" role
+            testlib.patch_fail(
+                    self.cluster,
+                    f'/settings/rbac/users/local/{user_in_group}', 403,
+                    auth=(local_user_admin, local_user_admin_password))
+
+            # "local user admin" cannot create a new "external user admin"
+            data = build_payload(roles='user_admin_external',
+                                 password=testlib.random_str(10),
+                                 full_name=testlib.random_str(10))
+            testlib.put_fail(self.cluster,
+                             '/settings/rbac/users/local/wontgetcreated',
+                             403, data=data,
+                             auth=(local_user_admin, local_user_admin_password))
+
+            # "local user admin" cannot create a new user in group containing
+            # an "external user admin" role
+            data = build_payload(roles='eventing_admin',
+                                 groups=f'{external_user_admin_group}',
+                                 password=testlib.random_str(10),
+                                 full_name=testlib.random_str(10))
+            testlib.put_fail(self.cluster,
+                             '/settings/rbac/users/local/wontgetcreated',
+                             403, data=data,
+                             auth=(local_user_admin, local_user_admin_password))
+
+        finally:
+            # Clean up users/group created by this test
+            delete_user(self.cluster, 'local', local_user_admin)
+            delete_user(self.cluster, 'local', external_user_admin)
+            delete_user(self.cluster, 'local', user_in_group)
+            testlib.ensure_deleted(
+                    self.cluster,
+                    f'/settings/rbac/groups/{external_user_admin_group}')
+
+
     def cluster_admin_role_test(self):
         try:
             # Create a cluster admin

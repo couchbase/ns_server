@@ -290,8 +290,10 @@ class UsersBackupTests(testlib.BaseTestSet):
             assert 'externalsecurityadmin76' not in users2
             assert 'localsecurityandbackupadmin76' not in users2
             assert 'roadmin76' not in users2
+            # User admins cannot CRUD user admins
+            assert user2 not in users2
 
-            assert len(users2) == 8
+            assert len(users2) == 7
 
         finally:
             # Cleanup the users created by the restore

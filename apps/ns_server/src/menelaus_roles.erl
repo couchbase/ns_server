@@ -62,6 +62,7 @@
          filter_out_invalid_roles/3,
          produce_roles_by_permission/2,
          get_security_roles/1,
+         get_user_admin_roles/1,
          external_auth_polling_interval/0,
          get_param_defs/2,
          ui_folders/0,
@@ -138,6 +139,7 @@ roles() ->
       [{[admin, security, admin], none},
        {[admin, security], none},
        {[admin, security_info], [read, write]},
+       {[admin, users, admin], none},
        {[admin, users, external], none},
        {[admin, users], all},
        {[admin, logs], none},
@@ -167,6 +169,7 @@ roles() ->
       [{[admin, security, admin], none},
        {[admin, security], none},
        {[admin, security_info], [read, write]},
+       {[admin, users, admin], none},
        {[admin, users, local], none},
        {[admin, users], all},
        {[admin, logs], none},
@@ -1462,6 +1465,11 @@ validate_roles(Roles, Snapshot) ->
 -spec get_security_roles(map()) -> [rbac_role()].
 get_security_roles(Snapshot) ->
     pipes:run(produce_roles_by_permission({[admin, security], any}, Snapshot),
+              pipes:collect()).
+
+-spec get_user_admin_roles(map()) -> [rbac_role()].
+get_user_admin_roles(Snapshot) ->
+    pipes:run(produce_roles_by_permission({[admin, users], any}, Snapshot),
               pipes:collect()).
 
 external_auth_polling_interval() ->
