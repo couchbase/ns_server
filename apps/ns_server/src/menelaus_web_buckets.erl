@@ -1777,7 +1777,7 @@ parse_validate_path_or_uri(Params, Param, ConfigKey, IsNew) ->
     end.
 
 validate_path_or_uri(Value, Param, ConfigKey) ->
-    case is_valid_uri(Value) orelse is_writable_dir(Value) of
+    case is_valid_cloud_uri(Value) orelse is_writable_dir(Value) of
         true ->
             {ok, ConfigKey, Value};
         false ->
@@ -1785,7 +1785,7 @@ validate_path_or_uri(Value, Param, ConfigKey) ->
                              "by 'couchbase' user">>}
     end.
 
-is_valid_uri(URI) ->
+is_valid_cloud_uri(URI) ->
     is_valid_uri(URI, ["s3", "az", "gs"]).
 
 is_valid_uri(URI, Schemes) ->
@@ -1798,11 +1798,11 @@ is_valid_uri(URI, Schemes) ->
 
 -ifdef(TEST).
     is_valid_uri_test() ->
-        ?assert(is_valid_uri("s3://bucket/object")),
-        ?assert(is_valid_uri("az://container/blob")),
-        ?assert(is_valid_uri("gs://bucket/object")),
-        ?assertNot(is_valid_uri("http://couchbase.com")),
-        ?assertNot(is_valid_uri("/tmp/dir/")).
+        ?assert(is_valid_cloud_uri("s3://bucket/object")),
+        ?assert(is_valid_cloud_uri("az://container/blob")),
+        ?assert(is_valid_cloud_uri("gs://bucket/object")),
+        ?assertNot(is_valid_cloud_uri("http://couchbase.com")),
+        ?assertNot(is_valid_cloud_uri("/tmp/dir/")).
 -endif.
 
 is_writable_dir(Dir) ->
