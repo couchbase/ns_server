@@ -85,6 +85,8 @@
 -define(DEFAULT_N1QL_THROTTLE_CAPACITY, 6000000).
 -define(DISABLE_UI_OVER_HTTP_DEFAULT, false).
 -define(DISABLE_UI_OVER_HTTPS_DEFAULT, false).
+-define(NONNEGATIVE_INT_OR_MAX_ERR,
+        "Value '~0p' must be equal to or above 0 or the string 'max'.").
 
 get_bool("true") ->
     {ok, true};
@@ -1550,7 +1552,9 @@ cgroup_validators() ->
      validator:required(soft, _),
      validator:one_of(service, cgroups:all_services(), _),
      validator:convert(service, fun list_to_existing_atom/1, _),
+     validator:validate(fun non_negative_integer_or_max/1, hard, _),
      validator:convert(hard, fun to_integer_or_max/1, _),
+     validator:validate(fun non_negative_integer_or_max/1, soft, _),
      validator:convert(soft, fun to_integer_or_max/1, _)].
 
 to_integer_or_max("max") ->
@@ -1559,6 +1563,20 @@ to_integer_or_max(Str) when is_list(Str) ->
     list_to_integer(Str);
 to_integer_or_max(Int) when is_integer(Int) ->
     Int.
+
+non_negative_integer_or_max("max") ->
+    ok;
+non_negative_integer_or_max(String) when is_list(String) ->
+    case (catch list_to_integer(String)) of
+        Int when is_integer(Int) andalso Int >= 0 ->
+            ok;
+        _ ->
+            {error,
+             lists:flatten(io_lib:format(?NONNEGATIVE_INT_OR_MAX_ERR,
+                                         [String]))}
+    end;
+non_negative_integer_or_max(Value) ->
+    {error, lists:flatten(io_lib:format(?NONNEGATIVE_INT_OR_MAX_ERR, [Value]))}.
 
 handle_delete_cgroup_override(ServiceName, Req) ->
     case cgroups:supported() of
@@ -1918,4 +1936,18 @@ find_key_to_delete_test() ->
     ?assertEqual({error, not_found},
                  find_key_to_delete(Conf, ["data", "unknown"])),
     ok.
+
+non_negative_integer_or_max_test() ->
+    ?assertEqual(ok, non_negative_integer_or_max("max")),
+    ?assertEqual(ok, non_negative_integer_or_max("10")),
+    ?assertEqual(ok, non_negative_integer_or_max("0")),
+    ?assertEqual(
+       {error,
+        "Value '\"-1\"' must be equal to or above 0 or the string 'max'."},
+       non_negative_integer_or_max("-1")),
+    ?assertEqual(
+       {error,
+        "Value '\"abcd\"' must be equal to or above 0 or the string 'max'."},
+       non_negative_integer_or_max("abcd")).
+
 -endif.
