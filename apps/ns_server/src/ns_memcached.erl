@@ -168,7 +168,9 @@
          get_fusion_sync_info/2,
          get_fusion_uploaders_state/1,
          get_fusion_namespaces/1,
-         delete_fusion_namespace/3
+         delete_fusion_namespace/3,
+         release_snapshot/2,
+         get_snapshot_statuses/1
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -791,6 +793,19 @@ do_handle_call({set_vbucket, VBucket, VBState, Options}, _From,
                        [BucketName, VBucket, VBState, Reply])
     end,
     {reply, Reply, State};
+do_handle_call({release_snapshot, VBucket}, _From, State) ->
+    Reply = mc_client_binary:release_snapshot(State#state.sock, VBucket),
+    {reply, Reply, State};
+do_handle_call({get_snapshot_statuses}, _From, State) ->
+    Key = iolist_to_binary([<<"snapshot-status">>]),
+    Status =
+        mc_binary:quick_stats(
+          State#state.sock, Key,
+          fun (<<"vb_", Rest/binary>>, Status, Acc) ->
+                  [VBucket, <<"status">>] = binary:split(Rest, <<":">>),
+                  [{binary_to_integer(VBucket), Status} | Acc]
+          end, []),
+    {reply, Status, State};
 do_handle_call({get_dcp_docs_estimate, VBucketId, ConnName}, _From, State) ->
     {reply, mc_client_binary:get_dcp_docs_estimate(State#state.sock, VBucketId, ConnName), State};
 do_handle_call({get_mass_dcp_docs_estimate, VBuckets}, _From, State) ->
@@ -1919,6 +1934,13 @@ compact_vbucket(Bucket, VBucket, {PurgeBeforeTS, PurgeBeforeSeqNo, DropDeletes,
                                                        ObsoleteKeyIds)}
       end, Bucket, [json]).
 
+-spec release_snapshot(bucket_name(), vbucket_id()) -> ok | {error, term()}.
+release_snapshot(Bucket, VBucket) ->
+    do_call(server(Bucket), Bucket, {release_snapshot, VBucket},
+            ?TIMEOUT).
+-spec get_snapshot_statuses(bucket_name()) -> {ok, term()}.
+get_snapshot_statuses(Bucket) ->
+    do_call(server(Bucket), Bucket, {get_snapshot_statuses}, ?TIMEOUT).
 
 -spec get_dcp_docs_estimate(ns_bucket:name(), vbucket_id(), string()) ->
           {ok, {non_neg_integer(), non_neg_integer(), binary()}}.

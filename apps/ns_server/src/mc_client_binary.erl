@@ -82,7 +82,9 @@
          stop_fusion_uploader/2,
          sync_fusion_log_store/2,
          delete_fusion_namespace/5,
-         get_fusion_namespaces/3]).
+         get_fusion_namespaces/3,
+         release_snapshot/2
+        ]).
 
 -type recv_callback() :: fun((_, _, _) -> any()) | undefined.
 -type mc_timeout() :: undefined | infinity | non_neg_integer().
@@ -116,8 +118,8 @@
                      ?CMD_START_FUSION_UPLOADER |
                      ?CMD_STOP_FUSION_UPLOADER |
                      ?CMD_SYNC_FUSION_LOGSTORE |
-                     ?CMD_GET_FUSION_NAMESPACES.
-
+                     ?CMD_GET_FUSION_NAMESPACES |
+                     ?RELEASE_SNAPSHOT.
 
 report_counter(Function) ->
     ns_server_stats:notify_counter({<<"memcached_cmd">>,
@@ -446,6 +448,21 @@ construct_set_vbucket_packet({VBucket, VBucketState, VBInfo}) ->
 set_vbuckets(Sock, ToSet) ->
     pipeline_send_recv(Sock, ?CMD_SET_VBUCKET,
                        fun construct_set_vbucket_packet/1, ToSet).
+
+release_snapshot(Sock, VBucket) ->
+    report_counter(?FUNCTION_NAME),
+    case cmd(?RELEASE_SNAPSHOT, Sock, undefined, undefined,
+             {#mc_header{vbucket = VBucket},
+              #mc_entry{}}) of
+        {ok, #mc_header{status=?SUCCESS}, _, _} ->
+            ok;
+        %% ENOENT isn't really an error here, for whatever reason the snapshot
+        %% has gone away (KV has a few triggers that might cause that), we just
+        %% care that it's gone now.
+        {ok, #mc_header{status=?KEY_ENOENT}, _, _} ->
+            ok;
+        Response -> process_error_response(Response)
+    end.
 
 pipeline_send_recv(Sock, Opcode, EncodeFun, Requests) ->
     pipeline_send_recv(Sock, Opcode, EncodeFun, Requests, ?MAX_MC_TIMEOUT).
