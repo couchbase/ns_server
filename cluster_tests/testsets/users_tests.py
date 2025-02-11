@@ -842,22 +842,24 @@ class UsersTestSet(testlib.BaseTestSet):
                      full_name=testlib.random_str(10),
                      validate_user_props=True)
 
-            # Create group with an external user admin role
+            # Create a group with an external user admin role and a backup
+            # admin role.
             external_user_admin_group = 'externalUserAdminGroup'
             testlib.put_succ(
                     self.cluster,
                     f'/settings/rbac/groups/{external_user_admin_group}',
-                    data={'roles': 'user_admin_external'})
+                    data={'roles': 'user_admin_external, backup_admin'})
 
-            # Create user in group containing an external user admin role
+            # Create user in group containing an external user admin role.
+            # The backup_admin is specified as a role but is also a role
+            # contained in the group. This is to show dedup'ing works.
             user_in_group = 'userInGroup'
             put_user(self.cluster, 'local', user_in_group,
                      password=testlib.random_str(10),
-                     roles='eventing_admin',
+                     roles='eventing_admin, backup_admin',
                      groups=f'{external_user_admin_group}',
                      full_name=testlib.random_str(10),
-                     # 'False' specified until MB-65223 fixed
-                     validate_user_props=False)
+                     validate_user_props=True)
 
             # Run tests on the above users/group...
 
@@ -989,15 +991,25 @@ def put_user(cluster_or_node, domain, userid, password=None, roles=None,
         testlib.assert_eq(r['id'], userid)
         testlib.assert_eq(r['domain'], domain)
         testlib.assert_eq(r['name'], full_name)
+        if groups is None or groups == '':
+            expected_groups = []
+            group_roles = []
+        else:
+            expected_groups = [g.strip() for g in groups.split(',')]
+            group_roles = get_roles_for_groups(cluster_or_node, groups)
+            if roles is None:
+                roles = group_roles
+            else:
+                roles = [r.strip() for r in roles.split(',')]
+                # Dedup the roles if needed
+                roles = list(set(roles) | set(group_roles))
+            roles = ",".join(map(str, roles))
+
         if roles is None:
             roles_num = 0
         else:
             roles_num = len(roles.split(','))
         testlib.assert_eq(len(r['roles']), roles_num)
-        if groups is None or groups == '':
-            expected_groups = []
-        else:
-            expected_groups = [g.strip() for g in groups.split(',')]
         testlib.assert_eq(sorted(r['groups']), sorted(expected_groups))
         assert 'password_change_date' in r, \
                f'password_change_date is missing in user props: {r}'
@@ -1066,6 +1078,19 @@ def get_activity_for_user(cluster, user):
     r = testlib.get_succ(cluster, '/settings/rbac/users/local/' + user)
     return r.json().get('last_activity_time')
 
+
+# For the specified list of groups, return a unique list of roles contained
+# in the groups.
+def get_roles_for_groups(cluster, groups):
+    roles = []
+    for group in groups.split(','):
+        r = testlib.get_succ(cluster, f'/settings/rbac/groups/{group}')
+        r = r.json()
+        newroles =  [role_item["role"] for role_item in r.get("roles", [])
+                     if "role" in role_item]
+        roles = list(set(roles) | set(newroles))
+
+    return roles
 
 def assert_authn_and_roles(cluster_or_node, user, password, expected_roles):
     r = testlib.get_succ(cluster_or_node, '/whoami', auth=(user, password))
