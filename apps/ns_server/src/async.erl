@@ -18,6 +18,7 @@
 
 -export([start/1, start/2,
          start_many/2, start_many/3,
+         start_multiple/1, start_multiple/2,
          abort/1, abort/2,
          abort_many/1, abort_many/2,
          send/2,
@@ -57,6 +58,11 @@ start_many(Fun, Args, Opts) ->
     [start(fun () ->
                    Fun(A)
            end, Opts) || A <- Args].
+
+start_multiple(Funs) ->
+    start_multiple(Funs, []).
+start_multiple(Funs, Opts) ->
+    [start(fun() -> Fun() end, Opts) || Fun <- Funs].
 
 abort(Pid) ->
     abort_many([Pid]).

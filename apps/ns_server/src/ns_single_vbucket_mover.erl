@@ -219,30 +219,40 @@ mover_inner(Parent, Bucket, VBucket,
                      "File based backfill nodes: ~0p, DCP backfill nodes: ~p",
                      [VBucket, FileBasedBackfillNodes, DCPBackfillNodes]),
 
-    %% @TODO: We should spawn one process for each, and wait for both to
-    %% complete.
-    case DCPBackfillNodes of
-        [] -> ok;
-        _ ->
-            %% DCP backfill takes a few different parameters, so we'll remove
-            %% the FileBasedBackfillNodes from them all.
-            DCPJBN = JustBackfillNodes -- FileBasedBackfillNodes,
-            DCPABN = AllBuiltNodes -- FileBasedBackfillNodes,
-            DCPRN = ReplicaNodes -- FileBasedBackfillNodes,
-            dcp_backfill(Bucket, Parent, VBucket, OldChain, DCPRN,
-                         DCPJBN, IndexAware, DCPABN, Options)
-    end,
+    DCPFuns =
+        case DCPBackfillNodes of
+            [] -> [];
+            _ ->
+                DCPJBN = JustBackfillNodes -- FileBasedBackfillNodes,
+                DCPABN = AllBuiltNodes -- FileBasedBackfillNodes,
+                DCPRN = ReplicaNodes -- FileBasedBackfillNodes,
+                [fun() ->
+                         %% We need to trap exits here because spawn_and_wait
+                         %% watches for exit signals.
+                         process_flag(trap_exit, true),
+                         dcp_backfill(Bucket, Parent, VBucket, OldChain, DCPRN,
+                                      DCPJBN, IndexAware, DCPABN, Options)
+                 end]
+        end,
 
-    case FileBasedBackfillNodes of
-        [] -> ok;
-        _ ->
-            FBJBN = JustBackfillNodes -- DCPBackfillNodes,
-            FBABN = AllBuiltNodes -- DCPBackfillNodes,
-            FBRN = ReplicaNodes -- DCPBackfillNodes,
-            file_based_backfill(Bucket, Parent, VBucket, OldChain,
-                                FBRN, FBJBN,
-                                FBABN)
-    end,
+    FBFuns =
+        case FileBasedBackfillNodes of
+            [] -> [];
+            _ ->
+                FBJBN = JustBackfillNodes -- DCPBackfillNodes,
+                FBABN = AllBuiltNodes -- DCPBackfillNodes,
+                FBRN = ReplicaNodes -- DCPBackfillNodes,
+                [fun () ->
+                         %% We need to trap exits here because spawn_and_wait
+                         %% watches for exit signals.
+                         process_flag(trap_exit, true),
+                         file_based_backfill(Bucket, Parent, VBucket, OldChain,
+                                             FBRN, FBJBN, FBABN)
+                 end]
+        end,
+
+    Asyncs = async:start_multiple(DCPFuns ++ FBFuns),
+    async:wait_many(Asyncs),
 
     ?rebalance_debug("Backfill of vBucket ~p completed.", [VBucket]),
     master_activity_events:note_backfill_phase_ended(Bucket, VBucket),
