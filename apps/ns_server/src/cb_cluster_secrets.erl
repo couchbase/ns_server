@@ -2970,17 +2970,16 @@ get_all_node_deks_info() ->
                                                     end, M, Acc)
                                 end, #{}, OnlyKeys)};
                 {[], true} ->
-                    ?log_debug("Some deks have issues. "
-                                "All responses: ~p", [Res]),
+                    ?log_debug("Some deks have issues.~n"
+                               "All responses: ~p", [Res]),
                     {error, retry};
                 {Errors, _} ->
-                    ?log_error("Failed to update deks counters because "
-                                "some nodes returned errors: ~p~n"
-                                "All responses: ~p", [Errors, Res]),
+                    ?log_error("Failed to get deks info from some nodes: ~p~n"
+                               "All responses: ~p", [Errors, Res]),
                     {error, node_errors}
             end;
         _ ->
-            ?log_debug("Skipping deks counters update because some nodes "
+            ?log_debug("Skipping deks info collection because some nodes "
                        "are missing: ~p", [MissingNodes]),
             {error, missing_nodes}
     end.
