@@ -713,6 +713,14 @@ conf(internal) ->
                 [{enable_cgroups, enableCgroups, false, fun get_bool/1}];
             false ->
                 []
+        end ++
+        case cluster_compat_mode:is_cluster_totoro() of
+            true ->
+                [{file_based_backfill_enabled, fileBasedBackfillEnabled,
+                  ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT,
+                  fun get_bool/1}];
+            false ->
+                []
         end;
 
 
