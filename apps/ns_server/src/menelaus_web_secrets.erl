@@ -774,7 +774,7 @@ format_secret_props(Props) ->
 -ifdef(TEST).
 
 format_secrets_used_by_list_test() ->
-    All = cb_deks:dek_kinds_list(#{bucket_names => {["b1", "b2"], 1}}),
+    All = cb_deks:dek_cluster_kinds_list(#{bucket_names => {["b1", "b2"], 1}}),
     Secrets = ["s1", "s2"],
     F = ?cut(lists:flatten(format_secrets_used_by_list(_))),
     ?assertEqual("this key is configured to encrypt configuration, logs, "

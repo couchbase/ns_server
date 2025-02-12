@@ -19,8 +19,9 @@
          generate_new/3,
          handle_ale_log_dek_update/1,
          maybe_reencrypt_deks/4,
-         dek_kinds_list/0,
-         dek_kinds_list/1,
+         dek_cluster_kinds_list/0,
+         dek_cluster_kinds_list/1,
+         dek_kinds_list_existing_on_node/1,
          dek_config/1,
          dek_chronicle_keys_filter/1,
          kind2bin/1,
@@ -362,16 +363,28 @@ dek_config({bucketDek, Bucket}) ->
            ns_cluster_membership:node_membership_keys(node())],
       required_usage => {bucket_encryption, Bucket}}.
 
-%% Returns all possible deks kinds on the node.
+%% Returns all possible deks kinds for this cluster.
 %% The list was supposed to be static if not buckets. Buckets can be created and
 %% removed in real time, so the list is dynamic because of that. Note that the
 %% list doesn't depend if encryption is on or off.
-dek_kinds_list() ->
-    dek_kinds_list(direct).
-dek_kinds_list(Snapshot) ->
+dek_cluster_kinds_list() ->
+    dek_cluster_kinds_list(direct).
+dek_cluster_kinds_list(Snapshot) ->
     Buckets = ns_bucket:get_bucket_names(Snapshot),
     [configDek, logDek, auditDek] ++
     [{bucketDek, B} || B <- Buckets].
+
+dek_kinds_list_existing_on_node(Snapshot) ->
+    AllKinds = dek_cluster_kinds_list(Snapshot),
+    lists:filter(
+        fun(Kind) ->
+            #{encryption_method_callback := GetMethod} = dek_config(Kind),
+            case GetMethod(Snapshot) of
+                {ok, _} -> true;
+                {error, not_found} -> false
+            end
+        end,
+        AllKinds).
 
 set_config_active_key(_ActiveDek) ->
     force_config_encryption_keys().
@@ -449,7 +462,7 @@ force_config_encryption_keys() ->
         ok ?= chronicle_local:maybe_apply_new_keys(),
         ok ?= ns_ssl_services_setup:resave_encrypted_files(),
         ok ?= encryption_service:remove_old_integrity_tokens(
-                [kek | dek_kinds_list()]),
+                [kek | dek_kinds_list_existing_on_node(direct)]),
         ok
     end.
 

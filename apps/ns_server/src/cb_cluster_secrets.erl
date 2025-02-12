@@ -729,7 +729,7 @@ init([Type]) ->
                ?NODE_PROC ->
                     ets:new(?MODULE, [named_table, protected, set,
                                       {keypos, 1}]),
-                    Kinds = cb_deks:dek_kinds_list(),
+                    Kinds = cb_deks:dek_cluster_kinds_list(),
                     lists:flatmap(fun (K) ->
                                       [{maybe_update_deks, K},
                                        {garbage_collect_deks, K}]
@@ -1976,7 +1976,7 @@ can_delete_secret(#{id := Id}, Snapshot) ->
                   {succ, {error, not_found}} ->
                       false
               end
-          end, cb_deks:dek_kinds_list(Snapshot)),
+          end, cb_deks:dek_cluster_kinds_list(Snapshot)),
     %% Places where this secret is used for encryption of another secrets
     Secrets = get_secrets_used_by_secret_id(Id, Snapshot),
     %% Places where this secret is used to encrypt deks (such deks can exist
@@ -2745,7 +2745,7 @@ validate_dek_related_usage_change(NewProps, PrevProps, Snapshot) ->
             end
         end,
     InUseList = lists:filtermap(DekKindRequirements,
-                                cb_deks:dek_kinds_list(Snapshot)),
+                                cb_deks:dek_cluster_kinds_list(Snapshot)),
     NewUsageList = maps:get(usage, NewProps, []),
     case is_allowed(InUseList, NewUsageList) of
         true -> ok;
@@ -3088,7 +3088,7 @@ fetch_snapshot_in_txn(Txn) ->
               maps:merge(Acc, New)
           end,
           BucketListSnapshot,
-          cb_deks:dek_kinds_list(BucketListSnapshot)),
+          cb_deks:dek_cluster_kinds_list(BucketListSnapshot)),
     SecretsSnapshot = chronicle_compat:txn_get_many(
                         [?CHRONICLE_SECRETS_KEY,
                          ?CHRONICLE_DEK_COUNTERS_KEY,
@@ -3461,7 +3461,7 @@ calculate_dek_info(State) ->
 -spec dummy_deks_info(dek_info_data_status(), [dek_issue()]) ->
           #{cb_deks:dek_kind() := external_dek_info()}.
 dummy_deks_info(DataStatus, Issues) ->
-    Kinds = cb_deks:dek_kinds_list(),
+    Kinds = cb_deks:dek_kinds_list_existing_on_node(direct),
     maps:from_list(
       lists:map(
         fun (K) ->
