@@ -122,6 +122,26 @@ maybe_initiate_indexing(Bucket, Parent, JustBackfillNodes, ReplicaNodes, VBucket
     ok = janitor_agent:initiate_indexing(Bucket, Parent, JustBackfillNodes, ReplicaNodes, VBucket),
     master_activity_events:note_indexing_initiated(Bucket, JustBackfillNodes, VBucket).
 
+dcp_backfill(Bucket, Parent, VBucket, [OldMaster | _] = OldChain, ReplicaNodes,
+             JustBackfillNodes, IndexAware, AllBuiltNodes, Options) ->
+    %% setup replication streams to replicas from the existing master
+    set_initial_vbucket_state(Bucket, Parent, VBucket, OldChain, ReplicaNodes,
+                              JustBackfillNodes,
+                              proplists:get_bool(fusion_use_snapshot, Options)),
+
+    %% initiate indexing on new master (replicas are ignored for now)
+    %% at this moment since the stream to new master is created (if there is a
+    %% new master) ep-engine guarantees that it can support indexing
+    maybe_initiate_indexing(Bucket, Parent, JustBackfillNodes, ReplicaNodes,
+                            VBucket, IndexAware),
+
+    wait_dcp_data_move(Bucket, Parent, OldMaster, AllBuiltNodes, VBucket),
+
+    %% grab the seqno from the old master and wait till this seqno is
+    %% persisted on all the replicas
+    wait_master_seqno_persisted_on_replicas(Bucket, VBucket, Parent,
+                                            OldMaster, AllBuiltNodes).
+
 mover_inner(Parent, Bucket, VBucket,
             [undefined|_] = _OldChain,
             [NewMaster|_] = _NewChain, _Quirks, _Options) ->
@@ -141,29 +161,15 @@ mover_inner(Parent, Bucket, VBucket,
     maybe_reset_replicas(Bucket, Parent, VBucket,
                          ReplicaNodes ++ JustBackfillNodes, Quirks),
 
-    %% setup replication streams to replicas from the existing master
-    set_initial_vbucket_state(Bucket, Parent, VBucket, OldChain, ReplicaNodes,
-                              JustBackfillNodes,
-                              proplists:get_bool(fusion_use_snapshot, Options)),
-
-    %% initiate indexing on new master (replicas are ignored for now)
-    %% at this moment since the stream to new master is created (if there is a new master)
-    %% ep-engine guarantees that it can support indexing
-    maybe_initiate_indexing(Bucket, Parent, JustBackfillNodes, ReplicaNodes, VBucket, IndexAware),
-
-    master_activity_events:note_backfill_phase_started(Bucket, VBucket),
     %% wait for backfill on all the opened streams
     AllBuiltNodes = JustBackfillNodes ++ ReplicaNodes,
-    wait_dcp_data_move(Bucket, Parent, OldMaster, AllBuiltNodes, VBucket),
 
-    %% grab the seqno from the old master and wait till this seqno is
-    %% persisted on all the replicas
-    wait_master_seqno_persisted_on_replicas(Bucket, VBucket, Parent,
-                                            OldMaster, AllBuiltNodes),
+    master_activity_events:note_backfill_phase_started(Bucket, VBucket),
 
-    ?rebalance_debug("Backfill of vBucket ~p completed after waiting for "
-                     "persistence of high sequence number.", [VBucket]),
+    dcp_backfill(Bucket, Parent, VBucket, OldChain, ReplicaNodes,
+                 JustBackfillNodes, IndexAware, AllBuiltNodes, Options),
 
+    ?rebalance_debug("Backfill of vBucket ~p completed.", [VBucket]),
     master_activity_events:note_backfill_phase_ended(Bucket, VBucket),
 
     %% notify parent that the backfill is done, so it can start rebalancing
