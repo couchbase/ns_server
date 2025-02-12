@@ -711,6 +711,7 @@ init([Type]) ->
                 case Type == ?NODE_PROC andalso
                      cb_deks:dek_chronicle_keys_filter(Key) of
                     false -> false;
+                    [] -> false;
                     List -> {true, {dek_settings_updated, List}}
                 end
         end,

@@ -55,7 +55,8 @@
          attach_node_uuids/2,
          fetch_snapshot/1,
          get_snapshot/1,
-         get_snapshot/0
+         get_snapshot/0,
+         node_membership_keys/1
         ]).
 
 -export([supported_services/0,

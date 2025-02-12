@@ -2580,7 +2580,12 @@ validate_encryption_secret(SecretId, Bucket, Snapshot) ->
 get_encryption(BucketName, Snapshot) ->
     case get_bucket(BucketName, Snapshot) of
         {ok, BucketConfig} ->
-            case lists:member(node(), get_servers(BucketConfig)) of
+            IsNodeInServers = lists:member(node(), get_servers(BucketConfig)),
+            {ok, Dir} = ns_storage_conf:this_node_bucket_dbdir(BucketName),
+            ExistsOnDisk = filelib:is_dir(Dir),
+            Services = ns_cluster_membership:node_services(Snapshot, node()),
+            IsKVNode = lists:member(kv, Services),
+            case IsNodeInServers orelse (IsKVNode andalso ExistsOnDisk) of
                 true ->
                     case proplists:get_value(encryption_secret_id, BucketConfig,
                                              ?SECRET_ID_NOT_SET) of

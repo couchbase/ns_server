@@ -244,12 +244,21 @@ increment_counter_in_chronicle(Kind, SecretId) ->
 dek_chronicle_keys_filter(?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY) ->
     [configDek, logDek, auditDek];
 dek_chronicle_keys_filter(Key) ->
-    case ns_bucket:sub_key_match(Key) of
-        {true, Bucket, props} -> [{bucketDek, Bucket}];
-        {true, Bucket, encr_at_rest} -> [{bucketDek, Bucket}];
-        {true, _Bucket, _} -> false;
-        false -> false
-    end.
+    MembershipKeys = ns_cluster_membership:node_membership_keys(node()),
+    lists:uniq(
+        case ns_bucket:sub_key_match(Key) of
+            {true, Bucket, props} -> [{bucketDek, Bucket}];
+            {true, Bucket, encr_at_rest} -> [{bucketDek, Bucket}];
+            {true, _Bucket, _} -> [];
+            false -> []
+        end ++
+        case lists:member(Key, MembershipKeys) of
+            true ->
+                Buckets = ns_bucket:get_bucket_names(direct),
+                [{bucketDek, B} || B <- Buckets];
+            false ->
+                []
+        end).
 
 %% encryption_method_callback - called to determine if encryption is enabled
 %% or not for that type of entity.
@@ -346,9 +355,11 @@ dek_config({bucketDek, Bucket}) ->
                                      ns_memcached:get_dek_ids_in_use(Bucket)
                                  end,
       drop_callback => drop_bucket_deks(Bucket, _),
-      chronicle_txn_keys => [ns_bucket:root(),
-                             ns_bucket:sub_key(Bucket, props),
-                             ns_bucket:sub_key(Bucket, encr_at_rest)],
+      chronicle_txn_keys =>
+          [ns_bucket:root(),
+           ns_bucket:sub_key(Bucket, props),
+           ns_bucket:sub_key(Bucket, encr_at_rest) |
+           ns_cluster_membership:node_membership_keys(node())],
       required_usage => {bucket_encryption, Bucket}}.
 
 %% Returns all possible deks kinds on the node.
