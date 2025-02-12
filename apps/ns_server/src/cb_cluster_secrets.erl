@@ -1702,7 +1702,18 @@ maybe_read_deks(#state{proc_type = ?NODE_PROC, deks = undefined} = State) ->
     #state{deks = Deks} = NewState = read_all_deks(State),
     Kinds = maps:keys(Deks),
 
-    {ok, NewState2} = ensure_all_keks_on_disk(NewState),
+    {ok, NewState2} =
+        case ensure_all_keks_on_disk(NewState) of
+            {ok, _State} = Value ->
+                Value;
+            {error, UpdatedState, Reason} ->
+                %% Some Keks may have been written so we use the updated state
+                %% Some Keks that can't be written may be unused so we continue
+                %% to try to rencrypt deks even on a failure here
+                ?log_error("Failed to write all keks to disk: ~p", [Reason]),
+                {ok, UpdatedState}
+        end,
+
     NewState3 = lists:foldl(
                   fun (K, Acc) ->
                       {ok, NewAcc} = maybe_reencrypt_deks(K, Acc),
