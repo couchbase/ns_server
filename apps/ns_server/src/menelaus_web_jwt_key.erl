@@ -293,7 +293,8 @@ validate_shared_secret(Secret, Algorithm) ->
 get_key_from_pem_contents(PemBin) ->
     try public_key:pem_decode(PemBin) of
         [PemEntry] -> decode_key(PemEntry);
-        [_|_] -> {error, "Too many PEM entries"}
+        [_|_] -> {error, "Too many PEM entries"};
+        _ -> {error, "Invalid PEM"}
     catch T:E:S ->
             ?log_error("Unknown error while parsing PEM contents:~n~p",
                        [{T, E, S}]),

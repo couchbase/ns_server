@@ -119,6 +119,154 @@ class JWTTests(testlib.BaseTestSet):
             == f"No suitable keys in JWKS for signing algorithm: 'EdDSA'"
         )
 
+        payload = {
+            "enabled": True,
+            "jwksUriRefreshIntervalS": 14400,
+            "issuers": [
+                {
+                    "name": "iss1",
+                    "audienceHandling": "any",
+                    "subClaim": "sub",
+                    "audClaim": "aud",
+                    "audiences": ["abc"],
+                    "signingAlgorithm": "RS256",
+                    "publicKeySource": "jwks",
+                    "jwks": jwks,
+                },
+                {
+                    "name": "iss2",
+                    "audienceHandling": "all",
+                    "subClaim": "identity",
+                    "audClaim": "audience",
+                    "audiences": ["test_audience"],
+                    "signingAlgorithm": "ES256",
+                    "publicKeySource": "jwks",
+                    "jwks": jwks,
+                },
+                {
+                    "name": "iss1",
+                    "audienceHandling": "all",
+                    "subClaim": "identity",
+                    "audClaim": "audience",
+                    "audiences": ["test_audience"],
+                    "signingAlgorithm": "ES256",
+                    "publicKeySource": "jwks",
+                    "jwks": jwks,
+                },
+            ],
+        }
+
+        r = testlib.put_fail(
+            self.cluster, self.endpoint, expected_code=400, json=payload
+        )
+        assert (r.json()["errors"]["issuers"] ==
+                "Duplicate issuer names not allowed")
+
+        # Test adding issuer with publicKeySource as jwks but without jwks
+        payload["issuers"] = [
+            {
+                "name": "iss2",
+                "audienceHandling": "any",
+                "subClaim": "sub",
+                "audClaim": "aud",
+                "audiences": ["abc"],
+                "signingAlgorithm": "RS256",
+                "publicKeySource": "jwks",
+            }
+        ]
+
+        r = testlib.put_fail(
+            self.cluster, self.endpoint, expected_code=400, json=payload
+        )
+        assert r.json()["errors"]["issuers"][0]["_"] == "jwks is required"
+        payload = {
+            "enabled": True,
+            "jwksUriRefreshIntervalS": 14400,
+            "issuers": [
+                {
+                    "name": "issuer2",
+                    "audienceHandling": "any",
+                    "subClaim": "sub",
+                    "audClaim": "aud",
+                    "audiences": ["abc"],
+                    "signingAlgorithm": "RS256",
+                    "publicKeySource": "pem",
+                }
+            ],
+        }
+
+        r = testlib.put_fail(
+            self.cluster, self.endpoint, expected_code=400, json=payload
+        )
+        assert r.json()["errors"]["issuers"][0]["_"] == "publicKey is required"
+
+        payload = {
+            "enabled": True,
+            "jwksUriRefreshIntervalS": 14400,
+            "issuers": [
+                {
+                    "name": "issuer3",
+                    "audienceHandling": "any",
+                    "subClaim": "sub",
+                    "audClaim": "aud",
+                    "audiences": ["abc"],
+                    "signingAlgorithm": "RS256",
+                    "publicKeySource": "jwks_uri",
+                }
+            ],
+        }
+
+        r = testlib.put_fail(
+            self.cluster, self.endpoint, expected_code=400, json=payload
+        )
+        assert r.json()["errors"]["issuers"][0]["_"] == "jwksUri is required"
+
+        payload = {
+            "enabled": True,
+            "jwksUriRefreshIntervalS": 14400,
+            "issuers": [
+                {
+                    "name": "issuer4",
+                    "audienceHandling": "any",
+                    "subClaim": "sub",
+                    "audClaim": "aud",
+                    "audiences": ["abc"],
+                    "signingAlgorithm": "RS256",
+                }
+            ],
+        }
+
+        r = testlib.put_fail(
+            self.cluster, self.endpoint, expected_code=400, json=payload
+        )
+        assert (
+            r.json()["errors"]["issuers"][0]["_"]
+            == "publicKeySource required for algorithm"
+        )
+
+        payload = {
+            "enabled": True,
+            "jwksUriRefreshIntervalS": 14400,
+            "issuers": [
+                {
+                    "name": "issuer5",
+                    "audienceHandling": "any",
+                    "subClaim": "sub",
+                    "audClaim": "aud",
+                    "audiences": ["abc"],
+                    "signingAlgorithm": "HS256",
+                }
+            ],
+        }
+
+        r = testlib.put_fail(
+            self.cluster, self.endpoint, expected_code=400, json=payload
+        )
+        assert (
+            r.json()["errors"]["issuers"][0]["_"]
+            == "sharedSecret required for HMAC algorithm"
+        )
+
     def pem_api_test(self):
         available_algorithms = [
             "RS256",
@@ -339,4 +487,3 @@ class JWTTests(testlib.BaseTestSet):
             "between 2048 and 16384; The specified key has 488 bits. Key "
             "length should be between 2048 and 16384"
         )
-

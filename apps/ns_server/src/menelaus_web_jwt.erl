@@ -300,7 +300,7 @@ main_validators() ->
        end, issuers, _),
      validator:validate(
        fun(Issuers) ->
-               Names = [proplists:get_value("name", I) || {I} <- Issuers],
+               Names = [proplists:get_value(name, I) || {I} <- Issuers],
                ValidNames = [N || N <- Names, N =/= undefined],
                case length(ValidNames) =:= length(lists:usort(ValidNames)) of
                    true -> ok;
@@ -354,32 +354,29 @@ key_validators() ->
         shared_secret_validators().
 
 public_key_validators() ->
-    [validator:one_of(publicKeySource, [jwks, jwks_uri, pem], _),
-     validator:convert(publicKeySource, fun binary_to_existing_atom/1, _),
-     validator:validate_relative(
-       fun(Source, Algorithm) ->
+    [validator:validate_multiple(
+       fun([undefined, Algorithm]) ->
                case menelaus_web_jwt_key:is_symmetric_algorithm(Algorithm) of
-                   true -> continue;
-                   false when Source =:= undefined ->
-                       {error, "publicKeySource required for algorithm"};
-                   false -> ok
-               end
-       end, publicKeySource, signingAlgorithm, _)] ++
+                   true -> ok;
+                   false -> {error, "publicKeySource required for algorithm"}
+               end;
+          (_) -> ok
+       end, [publicKeySource, signingAlgorithm], _),
+     validator:one_of(publicKeySource, [jwks, jwks_uri, pem], _),
+     validator:convert(publicKeySource, fun binary_to_existing_atom/1, _)] ++
         pem_validators() ++
         jwks_validators() ++
         jwks_uri_validators().
 
 shared_secret_validators() ->
-    [validator:validate_relative(
-       fun(Secret, Algorithm) ->
+    [validator:validate_multiple(
+       fun([undefined, Algorithm]) ->
                case menelaus_web_jwt_key:is_symmetric_algorithm(Algorithm) of
-                   true when Secret =:= undefined;
-                             Secret =:= "";
-                             Secret =:= null ->
-                       {error, "sharedSecret required for HMAC algorithm"};
+                   true -> {error, "sharedSecret required for HMAC algorithm"};
                    false -> ok
-               end
-       end, sharedSecret, signingAlgorithm, _),
+               end;
+          (_) -> ok
+       end, [sharedSecret, signingAlgorithm], _),
      validator:validate_relative(
        fun(Secret, Algorithm) ->
                case menelaus_web_jwt_key:validate_shared_secret(
@@ -390,7 +387,11 @@ shared_secret_validators() ->
        end, sharedSecret, signingAlgorithm, _)].
 
 pem_validators() ->
-    [validator:validate_relative(
+    [validator:validate_multiple(
+       fun([undefined, pem]) -> {error, "publicKey is required"};
+          (_) -> ok
+       end, [publicKey, publicKeySource], _),
+     validator:validate_relative(
        fun(Value, Algorithm) ->
                case menelaus_web_jwt_key:is_symmetric_algorithm(Algorithm) of
                    true -> ok;
@@ -409,7 +410,11 @@ pem_validators() ->
        end, publicKey, signingAlgorithm, _)].
 
 jwks_validators() ->
-    [validator:validate_relative(
+    [validator:validate_multiple(
+       fun([undefined, jwks]) -> {error, "jwks is required"};
+          (_) -> ok
+       end, [jwks, publicKeySource], _),
+     validator:validate_relative(
        fun(Value, Algorithm) ->
                case menelaus_web_jwt_key:is_symmetric_algorithm(Algorithm) of
                    true -> ok;
@@ -433,15 +438,11 @@ jwks_validators() ->
        end, jwks, signingAlgorithm, _)].
 
 jwks_uri_validators() ->
-    [validator:string(jwksUri, _),
-     validator:validate_relative(
-       fun(V, jwks_uri) when V =:= undefined; V =:= "" ->
-               {error, "jwksUri is required"};
-          (_, jwks_uri) ->
-               ok;
-          (_, _) ->
-               ok
-       end, jwksUri, publicKeySource, _),
+    [validator:validate_multiple(
+       fun([undefined, jwks_uri]) -> {error, "jwksUri is required"};
+          (_) -> ok
+       end, [jwksUri, publicKeySource], _),
+     validator:string(jwksUri, _),
      validator:url(jwksUri, [<<"http">>, <<"https">>], _),
      validator:one_of(jwksUriAddressFamily, [inet, inet6], _),
      validator:convert(jwksUriAddressFamily, fun binary_to_existing_atom/1, _),
@@ -713,67 +714,4 @@ format_conversion_test() ->
                                                ]}
                                     ]))
     ].
-
-validator_test() ->
-    [
-     {"test main validators",
-      fun() ->
-              Props = {[
-                        {<<"enabled">>, true},
-                        {<<"jwksUriRefreshIntervalS">>, 14400},
-                        {<<"issuers">>, [
-                                         {[
-                                           {<<"name">>, <<"issuer1">>},
-                                           {<<"signingAlgorithm">>,
-                                            <<"RS256">>},
-                                           {<<"audClaim">>, <<"aud">>},
-                                           {<<"audienceHandling">>, <<"any">>},
-                                           {<<"audiences">>, [<<"aud1">>]},
-                                           {<<"subClaim">>, <<"sub">>},
-                                           {<<"publicKeySource">>, <<"pem">>},
-                                           {<<"publicKey">>, <<"key1">>}
-                                          ]}
-                                        ]}
-                       ]},
-              ?assertEqual(ok, (validator:validate(main_validators(), Props)))
-      end},
-
-     {"test duplicate issuer names",
-      fun() ->
-              Props = {[
-                        {<<"enabled">>, true},
-                        {<<"jwksUriRefreshIntervalS">>, 14400},
-                        {<<"issuers">>, [
-                                         {[
-                                           {<<"name">>, <<"issuer1">>},
-                                           {<<"signingAlgorithm">>,
-                                            <<"RS256">>},
-                                           {<<"audClaim">>, <<"aud">>},
-                                           {<<"audienceHandling">>, <<"any">>},
-                                           {<<"audiences">>, [<<"aud1">>]},
-                                           {<<"subClaim">>, <<"sub">>},
-                                           {<<"publicKeySource">>, <<"pem">>},
-                                           {<<"publicKey">>, <<"key1">>}
-                                          ]},
-                                         {[
-                                           {<<"name">>, <<"issuer1">>},
-                                           {<<"signingAlgorithm">>,
-                                            <<"ES256">>},
-                                           {<<"audClaim">>, <<"aud">>},
-                                           {<<"audienceHandling">>, <<"any">>},
-                                           {<<"audiences">>, [<<"aud2">>]},
-                                           {<<"subClaim">>, <<"sub">>},
-                                           {<<"publicKeySource">>, <<"pem">>},
-                                           {<<"publicKey">>, <<"key2">>}
-                                          ]}
-                                        ]}
-                       ]},
-              ?assertMatch({error,
-                            {[{<<"issuers">>,
-                               <<"Duplicate issuer names not allowed">>}|_]},
-                            _},
-                           validator:validate(main_validators(), Props))
-      end}
-    ].
-
 -endif.
