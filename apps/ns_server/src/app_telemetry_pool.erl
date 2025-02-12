@@ -30,7 +30,8 @@
 -define(SERVER, ?MODULE).
 
 -record(client, {reply_channel :: reply_channel(),
-                 handler :: undefined | gen_server:from()}).
+                 handler :: undefined | gen_server:from(),
+                 user :: #authn_res{}}).
 
 -record(state,
         {clients = #{} :: #{pid() => #client{}},
@@ -65,7 +66,9 @@ handle_connect(Req) ->
                               Payload)
         end,
     case menelaus_websocket:handle_upgrade(Req, Body) of
-        {ok, Connection} -> connection_handler(Pid, Connection);
+        {ok, Connection} ->
+            AuthnRes = menelaus_auth:get_authn_res(Req),
+            connection_handler(Pid, Connection, AuthnRes);
         _ -> ok
     end.
 
@@ -120,12 +123,20 @@ handle_call(#call{pid = Pid, body = Body}, From,
         error ->
             {reply, {error, unknown_pid}, State0};
         {ok, #client{reply_channel = ReplyChannel,
-                     handler = undefined} = Client} ->
-            menelaus_websocket:send_bytes(ReplyChannel, Body),
-            NewClient = Client#client{handler = From},
-            NewClients = maps:update(Pid, NewClient, Clients),
-            State1 = State0#state{clients = NewClients},
-            {noreply, State1};
+                     handler = undefined,
+                     user = AuthnRes} = Client} ->
+            case menelaus_roles:is_allowed({[app_telemetry], write},
+                                           AuthnRes) of
+                false ->
+                    State1 = do_drop_client(State0, Pid),
+                    {reply, {error, privilege_lost}, State1};
+                true ->
+                    menelaus_websocket:send_bytes(ReplyChannel, Body),
+                    NewClient = Client#client{handler = From},
+                    NewClients = maps:update(Pid, NewClient, Clients),
+                    State1 = State0#state{clients = NewClients},
+                    {noreply, State1}
+            end;
         {ok, _Client} ->
             {reply, {error, call_handler_remaining}, State0}
     end;
@@ -180,9 +191,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-connection_handler(Pid, {ReEntry, ReplyChannel}) ->
+connection_handler(Pid, {ReEntry, ReplyChannel}, AuthnRes) ->
+    Client = #client{reply_channel = ReplyChannel,
+                     user = AuthnRes},
     Call = #add_client{pid = Pid,
-                       client = #client{reply_channel = ReplyChannel}},
+                       client = Client},
     %% If the pool crashes, we need to be notified, so that the socket
     %% is cleaned up correctly
     erlang:monitor(process, ?SERVER),
@@ -295,7 +308,9 @@ setup() ->
                 fun(_Socket, [_Prefix, _Opcode, _Payload, _Version]) ->
                         ok
                 end),
-    meck:expect(menelaus_util, reply, fun (_, _) -> ok end).
+    meck:expect(menelaus_util, reply, fun (_, _) -> ok end),
+    meck:expect(menelaus_auth, get_authn_res, fun(_) -> #authn_res{} end),
+    meck:expect(menelaus_roles, is_allowed, fun(_, _) -> true end).
 
 teardown(_) ->
     meck:unload().
@@ -308,7 +323,9 @@ simple_test__() ->
                         ReplyChannel = fun ({?OPCODE_BINARY, ?TEST_FRAME}) ->
                                                Receiver ! [<<"test">>];
                                            ({?OPCODE_PONG, <<>>}) ->
-                                               Parent ! pong_received
+                                               Parent ! pong_received;
+                                           ({?OPCODE_CLOSE, <<>>}) ->
+                                               ok
                                        end,
                         ReEntry =
                             fun (State) ->
@@ -332,7 +349,13 @@ simple_test__() ->
 
     %% Send ping as if it was from the client, and expect pong sent back
     Pid ! [ping],
-    ?expect_message(pong_received, ?TIMEOUT).
+    ?expect_message(pong_received, ?TIMEOUT),
+
+    %% Remove privilege, to test that connection is lost
+    meck:expect(menelaus_roles, is_allowed, fun(_, _) -> false end),
+    ?assertEqual({error, privilege_lost},
+                 app_telemetry_pool:call(Pid, ?TEST_FRAME, ?TIMEOUT)),
+    ?assertEqual(undefined, process_info(Pid)).
 
 simple_test_() ->
     {setup,
