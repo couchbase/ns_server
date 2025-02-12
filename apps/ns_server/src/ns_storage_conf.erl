@@ -646,14 +646,26 @@ delete_unused_db_files(Bucket) ->
         ok ->
             ale:info(?USER_LOGGER, "Deleting old data files of bucket ~p",
                      [Bucket]),
-            case ns_couchdb_api:delete_databases_and_files(Bucket) of
-                ok ->
-                    ok;
-                Other ->
-                    ?log_error("Failed to delete old data files for bucket ~p. "
-                               "Error = ~p", [Bucket, Other]),
-                    Other
-            end;
+            %% We need to destroy the DEKs before deleting the bucket files
+            %% otherwise the dek files will be deleted while we will continue
+            %% using them (they will stay in cb_cluster_secrets state).
+            %% Note that it is important to remove the bucket directory from
+            %% within the cb_cluster_secrets process because otherwise
+            %% cb_cluster_secrets can create new DEK files while we are
+            %% deleting the directory (which will lead to rm_rf failure or
+            %% removal of newly created DEK files).
+            cb_cluster_secrets:destroy_deks(
+              {bucketDek, Bucket},
+              fun () ->
+                  case ns_couchdb_api:delete_databases_and_files(Bucket) of
+                      ok ->
+                          ok;
+                      Other ->
+                          ?log_error("Failed to delete old data files for "
+                                     "bucket ~p. Error = ~p", [Bucket, Other]),
+                          Other
+                  end
+              end);
         Error ->
             Error
     end.

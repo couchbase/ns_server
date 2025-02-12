@@ -70,7 +70,8 @@
          merge_dek_infos/2,
          format_dek_issues/1,
          chronicle_transaction/2,
-         get_node_deks_info_quickly/0]).
+         get_node_deks_info_quickly/0,
+         destroy_deks/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -689,6 +690,15 @@ format_dek_issues(List) ->
                       <<"encryption manager does not respond">>
               end, List).
 
+-spec destroy_deks(cb_deks:dek_kind(), fun()) -> ok.
+destroy_deks(DekKind, ContFun) ->
+    case gen_server:call(?MODULE, {destroy_deks, DekKind, ContFun}, 300000) of
+        {res, Res} ->
+            Res;
+        {exception, {C, E, ST}} ->
+            erlang:raise(C, E, ST)
+    end.
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -768,6 +778,37 @@ handle_call(get_node_deks_info, _From,
     {Res, NewState} = calculate_dek_info(State),
     {reply, Res, restart_dek_info_update_timer(false, NewState)};
 
+handle_call({destroy_deks, DekKind, ContFun}, _From,
+            #state{proc_type = ?NODE_PROC, deks = Deks} = State) ->
+    Continuation = fun () ->
+                      try
+                          {res, ContFun()}
+                      catch
+                          C:E:ST ->
+                              ?log_error("Continuation failed: ~p:~p~n~p",
+                                         [C, E, ST]),
+                              {exception, {C, E, ST}}
+                      end
+                   end,
+    case maps:find(DekKind, Deks) of
+        {ok, _} ->
+            Res = Continuation(),
+            case Res of
+                {res, ok} ->
+                    ?log_info("DEK ~p destroy requested", [DekKind]),
+                    {reply, Res,
+                     add_and_run_jobs_async([{maybe_update_deks, DekKind}],
+                                            destroy_dek_info(DekKind, State))};
+                {R, _} when R == res; R == exception ->
+                    ?log_error("DEK ~p destroy ignored: continuation error",
+                               [DekKind]),
+                    {reply, Res, State}
+            end;
+        error ->
+            ?log_debug("DEK ~p destroy ignored (does not exist)", [DekKind]),
+            {reply, Continuation(), State}
+    end;
+
 handle_call(Request, _From, State) ->
     ?log_warning("Unhandled call: ~p", [Request]),
     {noreply, State}.
@@ -813,8 +854,13 @@ handle_info({dek_settings_updated, KindList},
                   restart_dek_cleanup_timer(_)]),
     {noreply, NewState};
 
+handle_info(run_jobs, #state{proc_type = ProcType} = State) ->
+    ?log_debug("[~p] Running jobs", [ProcType]),
+    misc:flush(run_jobs),
+    {noreply, run_jobs(State)};
+
 handle_info({timer, retry_jobs}, #state{proc_type = ProcType} = State) ->
-    ?log_debug("[~p] Retrying jobs", [ProcType]),
+    ?log_debug("[~p] Retrying jobs timer", [ProcType]),
     {noreply, run_jobs(State)};
 
 handle_info({timer, rotate_keks}, #state{proc_type = ?MASTER_PROC} = State) ->
@@ -1393,17 +1439,11 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                     end
             end;
         {succ, {error, not_found}} ->
-            %% This entity doesn't exist anymore, nothing to do here
-            %% We assume that DEKs are removed before that (for example, for
-            %% buckets they are removed when the bucket dir is removed)
-            %% Just make sure we don't monitor those DEKs anymore.
+            %% This entity doesn't exist anymore
             %% Note that bucket can exist globally, but can be missing at this
             %% specific node.
             ?log_debug("DEK ~p doesn't seem to exist. Forgetting about it"),
-            State = OldState#state{deks = maps:remove(Kind, CurDeks)},
-            write_deks_cfg_file(State),
-            delete_kind_stats(Kind),
-            {ok, on_deks_update(Kind, State)}
+            {ok, destroy_dek_info(Kind, OldState)}
     end.
 
 -spec maybe_garbage_collect_deks(cb_deks:dek_kind(), boolean(), #state{}) ->
@@ -1799,6 +1839,16 @@ new_dek_info(ActiveId, Keys, IsEnabled) ->
       has_unencrypted_data => undefined,
       last_deks_gc_datetime => undefined,
       statuses => #{}}.
+
+-spec destroy_dek_info(cb_deks:dek_kind(), #state{}) -> #state{}.
+destroy_dek_info(Kind, #state{deks = DeksInfo} = State) ->
+    NewState = State#state{deks = maps:remove(Kind, DeksInfo)},
+    write_deks_cfg_file(NewState),
+    delete_kind_stats(Kind),
+    encryption_service:garbage_collect_keys(Kind, []),
+    functools:chain(NewState,
+                    [restart_dek_cleanup_timer(_),
+                     restart_dek_rotation_timer(_)]).
 
 -spec generate_new_dek(cb_deks:dek_kind(),
                        [cb_deks:dek()],
@@ -2242,6 +2292,11 @@ add_jobs_to_state(NewJobs, #state{jobs = Jobs} = State) ->
 -spec add_and_run_jobs([node_job()] | [master_job()], #state{}) -> #state{}.
 add_and_run_jobs(NewJobs, State) ->
     run_jobs(add_jobs_to_state(NewJobs, State)).
+
+-spec add_and_run_jobs_async([node_job()] | [master_job()], #state{}) -> #state{}.
+add_and_run_jobs_async(NewJobs, State) ->
+    self() ! run_jobs,
+    add_jobs_to_state(NewJobs, State).
 
 -spec run_jobs(#state{}) -> #state{}.
 run_jobs(#state{jobs = Jobs, proc_type = ProcType} = State) ->
