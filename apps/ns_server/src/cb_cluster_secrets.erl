@@ -1360,8 +1360,7 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                 case maps:find(Kind, CurDeks) of
                     {ok, _} -> OldState;
                     error ->
-                        create_kind_stats(Kind),
-                        EmptyDeks = new_dek_info(undefined, [], false),
+                        EmptyDeks = new_dek_info(Kind, undefined, [], false),
                         OldState#state{deks = CurDeks#{Kind => EmptyDeks}}
                 end,
 
@@ -1808,8 +1807,8 @@ read_all_deks(#state{} = State) ->
                                             [Kind, Errors]),
                                  exit({failed_to_read_keys, Errors});
                              false ->
-                                 create_kind_stats(Kind),
-                                 {true, new_dek_info(ActiveId, Keys, IsEnabled)}
+                                 {true, new_dek_info(Kind, ActiveId, Keys,
+                                                     IsEnabled)}
                          end;
                      {succ, {error, not_found}} ->
                          false
@@ -1828,9 +1827,12 @@ reread_deks(Kind, #state{deks = DeksInfo} = State) ->
           end, CurDeks),
     State#state{deks = DeksInfo#{Kind => KindDeks#{deks => NewDeks}}}.
 
--spec new_dek_info(undefined | cb_deks:dek_id(), [cb_deks:dek()],
-                     boolean()) -> deks_info().
-new_dek_info(ActiveId, Keys, IsEnabled) ->
+-spec new_dek_info(cb_deks:dek_kind(), undefined | cb_deks:dek_id(),
+                   [cb_deks:dek()], boolean()) -> deks_info().
+new_dek_info(Kind, ActiveId, Keys, IsEnabled) ->
+    create_kind_stats(Kind),
+    InUse = lists:map(fun (#{id := Id}) -> Id end, Keys),
+    encryption_service:garbage_collect_keys(Kind, InUse),
     #{active_id => ActiveId,
       deks => Keys,
       is_enabled => IsEnabled,
