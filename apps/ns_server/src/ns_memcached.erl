@@ -43,7 +43,7 @@
 -define(GET_KEYS_TIMEOUT,       ?get_timeout(get_keys, 60000)).
 -define(GET_KEYS_OUTER_TIMEOUT, ?get_timeout(get_keys_outer, 70000)).
 -define(MAGMA_CREATION_TIMEOUT, ?get_timeout(magma_creation, 300000)).
--define(DEKS_TIMEOUT,           ?get_timeout(deks, 60000)).
+-define(SET_KEYS_TIMEOUT,       ?get_timeout(set_keys, 30000)).
 
 -define(RECBUF, ?get_param(recbuf, 64 * 1024)).
 -define(SNDBUF, ?get_param(sndbuf, 64 * 1024)).
@@ -1888,9 +1888,8 @@ set_active_dek(TypeOrBucket, DeksSnapshot) ->
                [TypeOrBucket, cb_crypto:get_dek_id(DeksSnapshot)]),
     RV = perform_very_long_call(
            fun (Sock) ->
-               case mc_client_binary:set_active_encryption_key(Sock,
-                                                               TypeOrBucket,
-                                                               DeksSnapshot) of
+               case mc_client_binary:set_active_encryption_key(
+                      Sock, TypeOrBucket, DeksSnapshot, ?SET_KEYS_TIMEOUT) of
                    ok -> {reply, ok};
                    {memcached_error, S, Msg} -> {reply, {error, {S, Msg}}}
                end

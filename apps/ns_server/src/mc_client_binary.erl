@@ -72,7 +72,7 @@
          set_collections_manifest/2,
          get_collections_manifest/1,
          set_tls_config/2,
-         set_active_encryption_key/3
+         set_active_encryption_key/4
         ]).
 
 -type recv_callback() :: fun((_, _, _) -> any()) | undefined.
@@ -1040,14 +1040,14 @@ set_tls_config(Sock, TLSConfigJSON) ->
             process_error_response(Response)
     end.
 
-set_active_encryption_key(Sock, Bucket, DeksSnapshot) ->
+set_active_encryption_key(Sock, Bucket, DeksSnapshot, Timeout) ->
     report_counter(?FUNCTION_NAME),
     {ActiveDek, AllDeks} = cb_crypto:get_all_deks(DeksSnapshot),
     DeksJson = memcached_bucket_config:format_mcd_keys(ActiveDek, AllDeks),
     Entry = #mc_entry{key = iolist_to_binary(Bucket),
                       data = ejson:encode(DeksJson)},
     case cmd(?CMD_SET_ENCRYPTION_KEY, Sock, undefined, undefined,
-             {#mc_header{}, Entry}) of
+             {#mc_header{}, Entry}, Timeout) of
         {ok, #mc_header{status=?SUCCESS}, _, _} ->
             ok;
         Response ->
