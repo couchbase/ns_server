@@ -522,7 +522,7 @@ class Services(Requirement):
         self.connect_args = {"deploy": self.deploy}
 
     def is_met(self, cluster):
-        for i, node in enumerate(cluster.connected_nodes):
+        for i, node in enumerate(sorted(cluster.connected_nodes)):
             # We can't take information for all nodes from a single /pools/nodes
             # because we don't know which node is which
             res = get_succ(node, "/pools/nodes").json()
