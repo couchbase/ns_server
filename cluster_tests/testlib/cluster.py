@@ -404,8 +404,7 @@ class Cluster:
         testlib.wait_for_ejected_node(toEjectNode)
         self.connected_nodes.remove(toEjectNode)
 
-    def recover_node(self, node, recovery_type="full", do_rebalance=False,
-                     verbose=False):
+    def set_recovery_type(self, node, recovery_type="full", verbose=False):
         assert recovery_type in ["full", "delta"]
         otp_nodes = testlib.get_otp_nodes(self)
         if node.hostname() in otp_nodes:
@@ -421,7 +420,12 @@ class Cluster:
             print(f"Recoverying {node.hostname()} with type {recovery_type}")
         r = testlib.post_succ(self, f"/controller/setRecoveryType",
                               data=data)
+        return r
 
+    def recover_node(self, node, recovery_type="full", do_rebalance=False,
+                     verbose=False):
+        r = self.set_recovery_type(node, recovery_type=recovery_type,
+                                   verbose=verbose)
         if do_rebalance:
             self.rebalance(wait=True, verbose=verbose)
         return r

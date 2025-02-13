@@ -184,3 +184,7 @@ class Node:
                f'stdout: {r.stdout}'
 
         return r.stdout.rstrip()
+
+    def get_cluster_membership(self):
+        r = testlib.get_succ(self, '/nodes/self')
+        return r.json().get('clusterMembership')

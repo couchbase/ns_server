@@ -930,6 +930,132 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         verify_dek_files(self.cluster, Path() / 'config' / 'deks',
                          verify_key_count=lambda n: n <= 2)
 
+    def prepare_cluster_for_node_readd_testing(self):
+        # Create auto-generated secret for bucket encryption
+        secret = auto_generated_secret(
+            usage=['bucket-encryption', 'config-encryption']
+        )
+        secret_id = create_secret(self.random_node(), secret)
+        # Enable log and config encryption
+        # Not using encryption key for log encryption because we want
+        # be able to remove that key after the test in this case then
+        # (logs don't support re-encryption currently)
+        set_log_encryption(self.cluster, 'nodeSecretManager', -1)
+        set_cfg_encryption(self.cluster, 'encryptionKey', secret_id)
+
+        # Load sample bucket with encryption enabled
+        self.load_and_assert_sample_bucket(self.cluster, self.sample_bucket)
+        self.cluster.update_bucket({
+            'name': self.sample_bucket,
+            'encryptionAtRestKeyId': secret_id
+        })
+
+        # Get a KV node to remove
+        kv_nodes = [n for n in self.cluster.connected_nodes
+                    if Service.KV in n.get_services()]
+        candidate_for_removal = kv_nodes[0]
+        return (candidate_for_removal, secret_id)
+
+    def modify_encryption_for_node_readd_testing(self, node, prev_secret_id):
+        secret = auto_generated_secret(
+            usage=['bucket-encryption', 'config-encryption']
+        )
+        node = self.cluster.connected_nodes[0]
+        new_secret_id = create_secret(node, secret)
+        set_cfg_encryption(node, 'encryptionKey', new_secret_id)
+        self.cluster.update_bucket({
+            'name': self.sample_bucket,
+            'encryptionAtRestKeyId': new_secret_id
+        })
+        # Deleting old secret, so all keys that not maintained properly should
+        # become not decryptable
+        # Need polling because bucket reencryption takes some time and should
+        # happen on all nodes, and delete_secret will only work when there is no
+        # bucket DEKs encrypted with that secret
+        testlib.poll_for_condition(
+            lambda: delete_secret(self.random_node(), prev_secret_id),
+            sleep_time=1, attempts=50, retry_on_assert=True, verbose=True)
+
+    def node_readd_test(self):
+        node_to_remove, secret_id = \
+            self.prepare_cluster_for_node_readd_testing()
+        original_services = node_to_remove.get_services()
+
+        # Remove the node
+        self.cluster.rebalance(ejected_nodes=[node_to_remove], wait=True,
+                               verbose=True)
+        self.cluster.wait_nodes_up(verbose=True)
+
+        # Node has left the cluster, but it still contains the bucket data directory
+        # which will be removed only during rebalance
+        # Make sure DEKs in that bucket dirrectory doesn't obstruct encryption
+        # at rest reconfiguration
+        drop_config_deks_for_node(node_to_remove)
+        drop_bucket_deks_and_verify_dek_info(self.cluster, self.sample_bucket)
+        # node_to_remove should continue having 1 dek, drop deks should
+        # not affect it
+        poll_verify_bucket_deks_files(
+            [node_to_remove],
+            self.sample_bucket,
+            verify_key_count=1)
+
+        # Add the node back
+        self.cluster.add_node(node_to_remove, services=original_services,
+                              verbose=True)
+
+        self.modify_encryption_for_node_readd_testing(node_to_remove, secret_id)
+        # Node is added back, and it still contains the bucket data directory
+        # (it will be removed only during rebalance)
+        # Try rotating config encryption DEK here to make sure those bucket
+        # DEKs do not obstruct config DEK rotation
+        drop_config_deks_for_node(node_to_remove)
+        poll_verify_node_bucket_dek_info(node_to_remove, self.sample_bucket,
+                                         missing=True)
+        drop_bucket_deks_and_verify_dek_info(self.cluster, self.sample_bucket)
+
+        # Rebalance to complete node addition
+        self.cluster.rebalance(wait=True, verbose=True)
+
+    def node_failover_and_add_back_delta_test(self):
+        self.node_failover_and_add_back_base(recovery_type="delta")
+
+    def node_failover_and_add_back_full_test(self):
+        self.node_failover_and_add_back_base(recovery_type="full")
+
+    def node_failover_and_add_back_base(self, recovery_type=None):
+        node_to_failover, secret_id = \
+            self.prepare_cluster_for_node_readd_testing()
+
+        self.cluster.failover_node(node_to_failover,
+                                   graceful=False,
+                                   allow_unsafe=False,
+                                   verbose=True)
+        self.modify_encryption_for_node_readd_testing(node_to_failover,
+                                                      secret_id)
+        drop_config_deks_for_node(node_to_failover)
+        drop_bucket_deks_and_verify_dek_info(self.cluster, self.sample_bucket)
+        # node_to_failover should have 2 deks now, because it can't drop
+        # old dek, bucket is not created in memcached so it can't reencrypt
+        # the data
+        poll_verify_bucket_deks_files(
+            [node_to_failover],
+            self.sample_bucket,
+            verify_key_count=2)
+
+        self.cluster.set_recovery_type(node_to_failover,
+                                       recovery_type=recovery_type,
+                                       verbose=True)
+        drop_config_deks_for_node(node_to_failover)
+        drop_bucket_deks_and_verify_dek_info(self.cluster, self.sample_bucket)
+        # for the same reason as above node should have 3 deks now
+        poll_verify_bucket_deks_files(
+            [node_to_failover],
+            self.sample_bucket,
+            verify_key_count=3)
+
+        self.cluster.rebalance(wait=True, verbose=True)
+
+
     def drop_dek_test(self):
         self.load_and_assert_sample_bucket(self.cluster, self.sample_bucket)
         poll_verify_bucket_deks_files(self.cluster,
@@ -1504,7 +1630,11 @@ def verify_bucket_deks_files(cluster, bucket, **kwargs):
 
 def verify_dek_files(cluster, relative_path, verify_key_count=1,
                      node_filter=None, **kwargs):
-    for node in cluster.connected_nodes:
+    if isinstance(cluster, list):
+        nodes = cluster
+    else:
+        nodes = cluster.connected_nodes
+    for node in nodes:
         deks_path = Path(node.data_path()) / relative_path
         print(f'Checking deks in {deks_path} (cheking ' \
               f'verify_key_count={verify_key_count} and also {kwargs})... ')
@@ -1533,6 +1663,67 @@ def verify_dek_files(cluster, relative_path, verify_key_count=1,
             else:
                 assert c == verify_key_count, f'dek count is unexpected: {c} ' \
                                               f'(expected: {verify_key_count})'
+
+def verify_bucket_dek_info(node, bucket, missing=False, **kwargs):
+    r = testlib.get(node, f'/pools/default/buckets/{bucket}')
+    r = r.json()
+    nodes = r['nodes']
+    info = None
+    for node in nodes:
+        if 'thisNode' in node and node['thisNode']:
+            info = node['bucketEncryptionAtRestInfo']
+            break
+    if missing:
+        assert info is None, \
+               f'bucketEncryptionAtRestInfo for bucket {bucket} ' \
+               f'is present on node {node}'
+    else:
+        assert info is not None, \
+               f'bucketEncryptionAtRestInfo for bucket {bucket} ' \
+               f'is not present on node {node}'
+    print(f'bucketEncryptionAtRestInfo for {bucket}: {info}')
+    verify_dek_info(info, **kwargs)
+
+
+def verify_node_dek_info(node, data_type, **kwargs):
+    r = testlib.get_succ(node, '/nodes/self')
+    r = r.json()
+    info = r['encryptionAtRestInfo'][data_type]
+    print(f'encryptionAtRestInfo for {data_type}: {info}')
+    verify_dek_info(info, **kwargs)
+
+
+def verify_dek_info(info, data_status=None, dek_number=None,
+                    oldest_dek_time=None):
+    if data_status is not None:
+        assert 'dataStatus' in info, 'data status is not present in ' \
+                                     'encryptionAtRestInfo'
+        assert info['dataStatus'] == data_status, \
+               f'data status is unexpected: {info["dataStatus"]}'
+    if dek_number is not None:
+        assert 'dekNumber' in info, 'dek number is not present in ' \
+                                    'encryptionAtRestInfo'
+        assert info['dekNumber'] == dek_number, \
+               f'dek number is unexpected: {info["dekNumber"]}'
+    if oldest_dek_time is not None:
+        assert 'oldestDekCreationDatetime' in info, \
+               'oldestDekCreationDatetime is not present in ' \
+               'encryptionAtRestInfo'
+        t = parse_iso8601(info['oldestDekCreationDatetime'])
+        assert t >= oldest_dek_time, \
+               f'dek time is unexpected: {t} (expected: {oldest_dek_time})'
+
+
+def poll_verify_node_dek_info(*args, **kwargs):
+    testlib.poll_for_condition(
+      lambda: verify_node_dek_info(*args, **kwargs),
+      sleep_time=1, attempts=120, retry_on_assert=True, verbose=True)
+
+
+def poll_verify_node_bucket_dek_info(*args, **kwargs):
+    testlib.poll_for_condition(
+      lambda: verify_bucket_dek_info(*args, **kwargs),
+      sleep_time=1, attempts=120, retry_on_assert=True, verbose=True)
 
 
 def parse_key_file_name(base_name):
@@ -1712,6 +1903,9 @@ def parse_iso8601(s):
     # before version 3.11
     return dateutil.parser.parse(s)
 
+def drop_deks(cluster, data_type):
+    testlib.post_succ(cluster,
+                      f'/controller/dropEncryptionAtRestDeks/{data_type}')
 
 def drop_bucket_keys(cluster, bucket):
     testlib.post_succ(cluster,
@@ -1809,6 +2003,7 @@ def assert_file_unencrypted(path):
                f'file {path} seems to be encrypted, ' \
                f'first {magic_len} bytes are {magic}'
 
+
 def assert_file_is_decryptable(node, file_path):
     data_dir = node.data_path()
     assert_file_encrypted(file_path)
@@ -1819,3 +2014,28 @@ def assert_file_is_decryptable(node, file_path):
     assert r.returncode == 0, f'cbcat returned {r.returncode}\n' \
                                 f'stdout: {r.stdout.decode()}\n' \
                                 f'stderr: {r.stderr.decode()}'
+
+
+def drop_config_deks_for_node(node):
+    drop_time = datetime.now(timezone.utc).replace(microsecond=0)
+    drop_deks(node, 'config')
+    poll_verify_node_dek_info(node, 'configuration',
+                              data_status='encrypted',
+                              dek_number=1,
+                              oldest_dek_time=drop_time)
+
+def drop_bucket_deks_and_verify_dek_info(cluster, bucket):
+    drop_time = datetime.now(timezone.utc).replace(microsecond=0)
+    for node in cluster.connected_nodes:
+        drop_bucket_keys(node, bucket)
+
+    for node in cluster.connected_nodes:
+        if node.get_cluster_membership() == 'active' and \
+           Service.KV in node.get_services():
+            poll_verify_node_bucket_dek_info(node, bucket,
+                                             data_status='encrypted',
+                                             dek_number=1,
+                                             oldest_dek_time=drop_time)
+        else:
+            poll_verify_node_bucket_dek_info(node, bucket,
+                                             missing=True)
