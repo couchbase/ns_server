@@ -1267,8 +1267,11 @@ test_aws_kek(#{data := #{stored_ids := [StoredId | _]} = Data} = Secret) ->
     end.
 
 -spec ensure_aws_kek_on_disk(secret_props(), boolean()) -> ok | {error, _}.
-ensure_aws_kek_on_disk(#{data := #{stored_ids := StoredIds} = Data},
+ensure_aws_kek_on_disk(#{id := SecretId,
+                         data := #{stored_ids := StoredIds} = Data},
                        TestOnly) ->
+    ?log_debug("Ensure all keys are on disk for secret ~p "
+               "(number of keys to check: ~b)", [SecretId, length(StoredIds)]),
     Params = maps:with([key_arn, region, profile, config_file,
                         credentials_file, use_imds], Data),
     Res = lists:map(
@@ -1289,10 +1292,14 @@ test_kmip_kek(#{data := Data} = Secret) ->
     end.
 
 -spec ensure_kmip_kek_on_disk(secret_props(), boolean()) -> ok | {error, _}.
-ensure_kmip_kek_on_disk(#{data := #{active_key := ActiveKey,
+ensure_kmip_kek_on_disk(#{id := SecretId,
+                          data := #{active_key := ActiveKey,
                                     hist_keys := OtherKeys,
                                     key_passphrase := Pass} = Data} = Secret,
                         TestOnly) ->
+    ?log_debug("Ensure all keys are on disk for secret ~p "
+               "(number of keys to check: ~b)",
+               [SecretId, length(OtherKeys) + 1]),
     {DecryptRes, KekId} =
         case Pass of
             #{type := sensitive, data := D, encrypted_by := undefined} ->
