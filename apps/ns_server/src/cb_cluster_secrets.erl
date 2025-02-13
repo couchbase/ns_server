@@ -1207,6 +1207,8 @@ ensure_all_keks_on_disk(#state{kek_hashes_on_disk = Vsns} = State) ->
                     ok
             end,
 
+    {ok, AllSecrets} = topologically_sorted_secrets(get_all()),
+
     {RV, NewVsns} = lists:mapfoldl(
                       fun (#{id := Id} = S, Acc) ->
                           Old = maps:get(Id, Acc, undefined),
@@ -1218,7 +1220,7 @@ ensure_all_keks_on_disk(#state{kek_hashes_on_disk = Vsns} = State) ->
                                      {error, _} = E -> {{Id, E}, Acc}
                                  end
                           end
-                      end, Vsns, get_all()),
+                      end, Vsns, AllSecrets),
 
     IdsDoNotExist = maps:keys(NewVsns) -- proplists:get_keys(RV),
     NewState = State#state{kek_hashes_on_disk = maps:without(IdsDoNotExist,
@@ -3245,6 +3247,26 @@ validate_name_uniqueness(#{id := Id, name := Name}, Snapshot) ->
 validate_secrets_consistency(Secrets) ->
     %% Make sure secrets graph has no cycles and all ids that are
     %% mentioned in props are actually present
+    with_secrets_in_digraph(Secrets, fun (_) -> ok end).
+
+topologically_sorted_secrets(Secrets) ->
+    with_secrets_in_digraph(Secrets, fun (G) ->
+        case digraph_utils:topsort(G) of
+            false -> {error, no_topological_sort};
+            SortedIds ->
+                SecretLookup =
+                    fun (Id) ->
+                            {value, Secret} = lists:search(
+                                                fun (#{id := Id2}) ->
+                                                    Id =:= Id2
+                                                end, Secrets),
+                            Secret
+                    end,
+                {ok, lists:map(SecretLookup, SortedIds)}
+        end
+    end).
+
+with_secrets_in_digraph(Secrets, Fun) ->
     G = digraph:new([acyclic]),
     try
         lists:foreach(fun (#{id := Id}) -> digraph:add_vertex(G, Id) end,
@@ -3262,7 +3284,7 @@ validate_secrets_consistency(Secrets) ->
                         end, ok, get_secrets_that_encrypt_props(P))
                 end, ok, Secrets),
         case Res of
-            ok -> ok;
+            ok -> Fun(G);
             {error, {bad_edge, Ids}} -> {error, {cycle, Ids}};
             {error, {bad_vertex, Id}} -> {error, {unknown_id, Id}}
         end
@@ -3644,5 +3666,71 @@ calculate_next_remove_retired_time_test() ->
     ExpectedAtNoon = TimeDiff({{2023, 7, 1}, {12, 0, 0}}, AtNoon),
     ?assertEqual(ExpectedAtNoon,
                  calculate_next_remove_retired_time(AtNoon)).
+
+topologically_sorted_secrets_test() ->
+    TopS = fun (Id) ->
+               #{id => Id, type => ?GENERATED_KEY_TYPE,
+                 data => #{encrypt_with => nodeSecretManager, keys => []}}
+           end,
+
+    SubS = fun (Id, EncryptedById) ->
+               #{id => Id, type => ?GENERATED_KEY_TYPE,
+                 data => #{encrypt_with => encryptionKey,
+                           encrypt_secret_id => EncryptedById,
+                           keys => []}}
+           end,
+
+    ?assertEqual({ok, []},
+                 topologically_sorted_secrets([])),
+    ?assertEqual({ok, [TopS(1)]},
+                 topologically_sorted_secrets([TopS(1)])),
+    {ok, Res0} = topologically_sorted_secrets([TopS(1), TopS(2)]),
+    io:format("Res0: ~p~n", [Res0]),
+    ?assert(lists:member(Res0,
+                         [[TopS(1), TopS(2)],
+                          [TopS(2), TopS(1)]])),
+
+    %%
+    %%   1
+    %%  / \
+    %% 2   3
+    %%    /
+    %%   4
+    %%
+    G1 = [TopS(1), SubS(2, 1), SubS(3, 1), SubS(4, 3)],
+    {ok, Res1} = topologically_sorted_secrets(G1),
+    io:format("Res1: ~p~n", [Res1]),
+    ?assert(lists:member(Res1,
+                         [[TopS(1), SubS(2, 1), SubS(3, 1), SubS(4, 3)],
+                          [TopS(1), SubS(3, 1), SubS(4, 3), SubS(2, 1)],
+                          [TopS(1), SubS(3, 1), SubS(2, 1), SubS(4, 3)]])),
+
+    %%
+    %%   3         4
+    %%    \       / \
+    %%     7     2   6
+    %%    /
+    %%   5
+    %%
+    G2 = [TopS(3), SubS(7, 3), SubS(5, 7)],
+    G3 = [TopS(4), SubS(2, 4), SubS(6, 4)],
+    {ok, Res2} = topologically_sorted_secrets(misc:shuffle(G2 ++ G3)),
+    {Res2Even, Res2Odd} = misc:partitionmap(
+        fun (#{id := Id} = E) ->
+            case Id rem 2 of
+                0 -> {left, E};
+                1 -> {right, E}
+            end
+        end, Res2),
+    io:format("Res2even: ~p~n", [Res2Even]),
+    io:format("Res2odd: ~p~n", [Res2Odd]),
+    ?assert(lists:member(Res2Even,
+                         [[TopS(4), SubS(6, 4), SubS(2, 4)],
+                          [TopS(4), SubS(2, 4), SubS(6, 4)]])),
+    ?assertEqual([TopS(3), SubS(7, 3), SubS(5, 7)], Res2Odd),
+
+    Cycle = [SubS(1, 2), SubS(2, 3), SubS(3, 1)],
+    ?assertMatch({error, {cycle, _}},
+                 topologically_sorted_secrets(Cycle)).
 
 -endif.
