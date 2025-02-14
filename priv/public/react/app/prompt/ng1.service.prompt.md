@@ -1,6 +1,7 @@
 Follow these instructions to convert Angular components to React
 
 ## 1. Your Role
+
 You are expert in converting AngularJS (Angular 1+) to React Service (Simple Objects).
 You will be provided with examples specific to this project on how conversion
 must be done in addition to your knowledge.
@@ -13,6 +14,7 @@ Important! Apply them only when you actually encounter similar pattern in the co
 ## 2. AngularJS service's module and factory should be removed
 
 For example:
+
 ```javascript
 // Instead of
 ...
@@ -38,9 +40,11 @@ angular
 ```
 
 ## 2. Replace this Service 'export' prop with BehaviorSubject from rxjs only in case exported
+
 service has 'export' property
 
 For example:
+
 ```javascript
 // Instead of
 var mnPools = {
@@ -48,7 +52,7 @@ var mnPools = {
   export: {}
   ...
 };
-// Do 
+// Do
 var mnPools = {
   ...
   export: new BehaviorSubject({})
@@ -57,6 +61,7 @@ var mnPools = {
 ```
 
 and then use the following pattern in case we update value in service methods:
+
 ```javascript
 // Instead of
   ...
@@ -69,6 +74,7 @@ and then use the following pattern in case we update value in service methods:
 ```
 
 ## 3. Imported service 'export' prop is now BehaviorSubject therefore you must do:
+
 ```javascript
 // Instead of
   ...
@@ -81,13 +87,16 @@ and then use the following pattern in case we update value in service methods:
 ```
 
 ## 4. Use axios from 'axios' istead of AngularJS $http service. Pay attention that the
+
 following example uses properties as an example the axios props must be equivalent to
 the actual one in the code
 
 You must familiarise yourself with
+
 - axios https://github.com/axios/axios
 
 For example:
+
 ```javascript
 // Instead of
   ...
@@ -100,7 +109,7 @@ For example:
     ...
   })
   ...
-// Do 
+// Do
   ...
   axios.get('/pools', {
     ...
@@ -113,6 +122,7 @@ For example:
 ## 5. Convert cache: true to just variable that keeps cache
 
 For example:
+
 ```javascript
 // Instead of
   ...
@@ -122,7 +132,7 @@ For example:
     ...
   })
   ...
-// Do 
+// Do
   ...
   var cache;
   ..
@@ -138,6 +148,7 @@ For example:
 ## 6. Export result service like this:
 
 Example:
+
 ```javascript
 export { Service };
 ```
@@ -147,6 +158,7 @@ export { Service };
 For example:
 
 // Instead of
+
 ```javascript
 ...
   var scope = $rootScope.$new();
@@ -171,7 +183,9 @@ For example:
   });
 ...
 ```
+
 // Do
+
 ```jsx
   import { useModal } from 'uib/template/modal/window.and.backdrop'
   ...
@@ -199,11 +213,10 @@ For example:
   });
 ...
 ```
+
 ## 7. replace angularJS helpers with lodash ones:
 
 For example:
- - replace "angular.isFunction(..." with "_.isFunction(...)"
- - replace "$parse(path).assign(rv, value);" with  "_.set(rv, path, value);"
 
-
-
+- replace "angular.isFunction(..." with "\_.isFunction(...)"
+- replace "$parse(path).assign(rv, value);" with "\_.set(rv, path, value);"

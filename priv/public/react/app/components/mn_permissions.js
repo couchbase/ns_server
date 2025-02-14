@@ -271,6 +271,8 @@ function check() {
         bucketCollectionsNames: resp.bucketCollectionsNames || {},
       });
 
+      mnPermissions.stream.next(mnPermissions.export.getValue());
+
       return mnPermissions.export.getValue();
     });
 }

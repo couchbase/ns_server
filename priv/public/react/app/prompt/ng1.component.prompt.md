@@ -1,6 +1,7 @@
 Follow these instructions to convert Angular components to React
 
 ## 1. Your Role
+
 You are expert in converting AngularJS components to React Class Components.
 You will be provided with examples specific to this project on how conversion
 must be done in addition to your knowledge.
@@ -10,10 +11,10 @@ as example patterns, the actual code can be different and it depends on particul
 
 Important! Apply them only when you actually encounter similar pattern in the code.
 
-
 ## 1. Place code from constructor to componentDidMount function almost as is. Only change what is required in further instructions.
 
 For example:
+
 ```javascript
 // Instead of
   ...
@@ -41,7 +42,8 @@ For example:
 
 For example:
 // Instead of
-```javascript
+
+````javascript
 ...
 var vm = this;
 vm.showBlocks = {
@@ -58,12 +60,14 @@ this.setState({
   }
 });
 ...
-```
+````
 
 ## 3. Replase $stateParams with UIRouter.globals.params
+
 For example:
 // Instead of
-```javascript
+
+````javascript
 ...
 vm.bucket = $stateParams.scenarioBucket;
 ...
@@ -72,17 +76,21 @@ vm.bucket = $stateParams.scenarioBucket;
 ...
 vm.bucket = UIRouter.globals.params.scenarioBucket;
 ...
-```
+````
 
 ## 4. Read export value as BehaviorSubject value
+
 For example:
 // Instead of
+
 ```javascript
 ...
 mnPoolDefault.export.compat.atLeast70 ? ...
 ...
 ```
+
 // Do
+
 ```javascript
 ...
 mnPoolDefault.export.getValue().compat.atLeast70 ? ...
@@ -90,8 +98,10 @@ mnPoolDefault.export.getValue().compat.atLeast70 ? ...
 ```
 
 ## 5. Convert $uibModal to our uibModal analogue using useModal context.
+
 For example:
 // Instead of
+
 ```javascript
 ...
   var scope = $rootScope.$new();
@@ -116,7 +126,9 @@ For example:
   });
 ...
 ```
+
 // Do
+
 ```jsx
   import { useModal } from 'uib/template/modal/window.and.backdrop'
   ...
@@ -145,15 +157,19 @@ For example:
 ...
 ```
 
-## 6. Convert angulatJS filters to simple function 
+## 6. Convert angularJS filters to simple function
+
 For example:
 // Instead of
+
 ```AngularJS html
 ...
   {{row.storageMode | mnFormatStorageMode:pools.isEnterprise}}
 ...
 ```
+
 // Do
+
 ```jsx
 ...
   {mnFormatStorageMode(row.storageMode, pools.isEnterprise)}
@@ -161,14 +177,18 @@ For example:
 ```
 
 ## 7. Convert AngularJS UI router ui-sref
+
 For example:
 // Instead of
+
 ```AngularJS html
 ...
   ui-sref="app.admin.query.workbench({query: row.definition})">
 ...
 ```
+
 // Do
+
 ```jsx
 ...
 <UISref to="app.admin.query.workbench" options={{query: row.definition}}>
@@ -178,13 +198,17 @@ For example:
 ```
 
 ## 7. Convert AngularJS $event.stopPropagation();
+
 // Instead of
+
 ```AngularJS html
 ...
   ng-click="$event.stopPropagation();"
 ...
 ```
+
 // Do
+
 ```jsx
 ...
   onClick={(event) => event.stopPropagation()}
@@ -192,13 +216,17 @@ For example:
 ```
 
 ## 8. Introduce updateState method in case mnHelper.initializeDetailsHashObserver is used.
+
 For example:
 // Instead of
+
 ```javascript
 ...
 mnHelper.initializeDetailsHashObserver(vm, 'openedGroups', '.');
 ```
+
 // Do
+
 ```javascript
 ...
 updateState = () => {

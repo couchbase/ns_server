@@ -1,6 +1,7 @@
 Follow these instructions to convert Angular components to React Class Components.
 
 ## 1. Your Role
+
 You are expert in converting Angular components to React Class Components.
 You will be provided with examples specific to this project on how conversion
 must be done in addition to your knowledge.
@@ -13,6 +14,7 @@ Important! Apply them only when you actually encounter similar pattern in the co
 ## 1. Leave Class extension in place Do not change anything here React Class should extend MnLifeCycleHooksToStream.
 
 For example:
+
 ```javascript
 // Instead of
   ...
@@ -27,6 +29,7 @@ For example:
 ## 2. Remove Angular annotations and parameters props
 
 For example:
+
 ```javascript
 // Instead of
   ...
@@ -44,6 +47,7 @@ For example:
 ## 3. Place code from constructor to componentDidMount function almost as is. Only change what is required in further instructions.
 
 For example:
+
 ```javascript
 // Instead of
   ...
@@ -74,6 +78,7 @@ MnAuthService, MnFormService, MnAdminService. React Functional Components doesn'
 and 'parameters' properties and 'constructor'. therefor we import them directly
 
 Example of conversion
+
 ```javascript
 // Instead of
   import {MnFormService} from './mn.form.service.js';
@@ -93,9 +98,10 @@ Example of conversion
   ...
 ```
 
-## 5. Replacment of @uirouter/angular with @uirouter/react
+## 5. Replacement of @uirouter/angular with @uirouter/react
 
 You must familiarise yourself with
+
 - useObservable @uirouter/angular implementation.
 - MnHttpRequest @uirouter/react implementation.
 - UIRouter defenition ns_server/priv/public/ui/app/mn.react.router.js
@@ -103,14 +109,16 @@ You must familiarise yourself with
 You will see imports of UIRouter in Angualr. They must replaced like
 
 Example of convertsion
+
 ```javascript
 // Instead of
-  import {UIRouter} from '@uirouter/angular';
+import { UIRouter } from '@uirouter/angular';
 // Do
-  import {UIRouter}  from "mn.react.router";
+import { UIRouter } from 'mn.react.router';
 ```
 
 And then use it directly
+
 ```javascript
 // Instead of
   uiRouter.stateService.go('app.authCh.....
@@ -121,6 +129,7 @@ And then use it directly
 ## 6. Convert Angular inputs to React props
 
 For example:
+
 ```javascript
 // Instead of
   ...
@@ -140,11 +149,13 @@ For example:
 ```
 
 ## 7. If there is code in ngOnInit method in Angular combine it with Insturction ## 3.
+
 Place the code to componentDidMount from ngOnInit
 
-
 ## 8. Convert all values read by async pipe to react states
+
 For example:
+
 ```
 // Instead of
 ...
@@ -177,6 +188,7 @@ MnHelperReactService.async(this, 'totalRAMMegs');
 ```
 
 ## 9. Convert react-reactive-form valueChanges to streams
+
 ```javascript
 // Instead of
 ...
@@ -188,24 +200,17 @@ this.indexFlag.statusChanges.pipe(takeUntil(this.mnOnDestroy))...
 ...
 //Do
 ...
-MnHelperReactService.valueChanges(this.props.indexFlag.valueChanges).pipe(takeUntil(this.mnOnDestroy))...
+MnHelperReactService.valueChanges(this, this.props.indexFlag.valueChanges).pipe(takeUntil(this.mnOnDestroy))...
 ...
 // and if you see statusChanges
 ...
-MnHelperReactService.valueChanges(this.props.indexFlag.statusChanges).pipe(takeUntil(this.mnOnDestroy))...
-...
-componentWillUnmount() {
-  super.componentWillUnmount();
-  this.props.indexFlag.valueChanges.unsubscribe();
-  // and if you see statusChanges
-  this.props.indexFlag.statusChanges.unsubscribe();
-}
-...
+MnHelperReactService.valueChanges(this, this.props.indexFlag.statusChanges).pipe(takeUntil(this.mnOnDestroy))...
 ```
 
 ## 10. Conversion of Angular reactive forms to their analogue in React.
 
 You must familiarise yourself with
+
 - react-reactive-form. https://github.com/bietkul/react-reactive-form
 - ns_server/priv/public/ui/app/mn.form.service.js
 
@@ -216,6 +221,7 @@ on Angualr reactive forms. React has similar library called react-reactive-form.
 You must convert them to React analogue like this:
 
 Here is example of convertsion
+
 ```javascript
 // Instead of
   this.certAuth = mnFormService.create(this)
@@ -231,17 +237,21 @@ Here is example of convertsion
 Here is example of convertsion
 
 // Instead of
+
 ```html
 ....
-  <form
-    (ngSubmit)="form.submit.next()"
-    [formGroup]="form.group"
-    class="forms"
-    novalidate>
-
-    ...
+<form
+  (ngSubmit)="form.submit.next()"
+  [formGroup]="form.group"
+  class="forms"
+  novalidate
+>
+  ...
+</form>
 ```
+
 // Do
+
 ```jsx
 <FieldGroup
     control={form.group}
@@ -255,29 +265,34 @@ Here is example of convertsion
 Here is example of convertsion
 
 // Instead of
+
 ```html
-  <div class="formrow">
-    <input
-      autocorrect="off"
-      spellcheck="false"
-      autocapitalize="off"
-      type="text"
-      id="auth-username-input"
-      name="username"
-      placeholder="Username"
-      formControlName="user"
-      [mnFocus]="focusFieldSubject">
-    <div
-      [hidden]="!form.group.get('user').dirty"
-      class="error error-field">
-      <div [hidden]="!form.group.get('user').errors?.required">Username is required.</div>
+<div class="formrow">
+  <input
+    autocorrect="off"
+    spellcheck="false"
+    autocapitalize="off"
+    type="text"
+    id="auth-username-input"
+    name="username"
+    placeholder="Username"
+    formControlName="user"
+    [mnFocus]="focusFieldSubject"
+  />
+  <div [hidden]="!form.group.get('user').dirty" class="error error-field">
+    <div [hidden]="!form.group.get('user').errors?.required">
+      Username is required.
     </div>
   </div>
+</div>
 ```
+
 // Do
+
 ```jsx
  <FieldControl
     name="user"
+    strict={false}
     render={({ handler, touched, hasError, meta }) => (
       <div  className="formrow">
         <input
@@ -288,45 +303,69 @@ Here is example of convertsion
           id="auth-username-input"
           name="username"
           placeholder="Username"
-          autoFocus {...handler()}/>
+          // fieldType: '' | 'checkbox' | 'radio' | 'switch'
+          // for normal text/number inputs use ''
+          autoFocus {...handler(fieldType)}/>
         <div hidden={!touched}
              class="error error-field">
           <div [hidden]="!hasError("required")">Username is required.</div>
         </div>
-      </div>  
+      </div>
     )}
     meta={{ label: "Username" }}
   />
 ```
+
 ## 10.3 the submit button must rely on render arguments when necessary
 
 Example:
-in this case we take invalid from FieldGroup.
-eg.
+
+in this case we take invalid from FieldGroup, eg.
+
 <FieldGroup
-    control={form.group}
-    render={({ get, invalid }) => (
+control={form.group}
+strict={false}
+render={({ get, invalid }) => (
 
 // Instead of
-```html
-<div class="panel-footer flex-end">
-  <button
-    [disabled]="form.group.invalid"
-    type="submit">Sign In</button>
-</div>
-//Do
-```jsx
-<div className="panel-footer flex-end">
-  <button
-    disabled={invalid}
-    type="submit">Sign In</button>
-</div>
 
+````html
+<div class="panel-footer flex-end">
+  <button [disabled]="form.group.invalid" type="submit">Sign In</button>
+</div>
+//Do ```jsx
+<div className="panel-footer flex-end">
+  <button disabled="{invalid}" type="submit">Sign In</button>
+</div>
+````
+
+## 10.4 when using MnInputFilter add the focus functionality by adding mnFocus and mnName props; mnFocus should be a Subject
+
+initially emitting the value of mnName prop.Example:
+in constructor:
+
+```jsx
+this.doFocusFilter = new Subject();
 ```
 
-## 11. don't chagne anything else. The component logic and code should stay as much as possible to original.
+in componentDidMount:
 
+```jsx
+this.doFocusFilter.next('filter');
+```
+
+in render:
+
+```jsx
+<MnInputFilter
+  group={this.filter.group}
+  mnFocus={this.doFocusFilter}
+  mnName="filter"
+  mnPlaceholder="filter logs..."
+  mnClearDisabled={false}
+/>
+```
+
+## 11. don't change anything else. The component logic and code should stay as much as possible to original.
 
 ## 12. save the result into separate file
-
-

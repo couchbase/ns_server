@@ -25,7 +25,7 @@ class MnPathFieldComponent extends MnLifeCycleHooksToStream {
 
   componentWillMount() {
     this.lookUpPath = MnWizardService.createLookUpStream(
-      MnHelperReactService.valueChanges(this.props.control.valueChanges)
+      MnHelperReactService.valueChanges(this, this.props.control.valueChanges)
     );
     MnHelperReactService.async(this, 'lookUpPath');
 
@@ -33,11 +33,6 @@ class MnPathFieldComponent extends MnLifeCycleHooksToStream {
       //trigger storageGroup.valueChanges for lookUpIndexPath,lookUpDBPath
       this.props.control.setValue(this.props.control.value);
     }, 0);
-  }
-
-  componentWillUnmount() {
-    super.componentWillUnmount();
-    this.props.control.valueChanges.unsubscribe();
   }
 
   render() {

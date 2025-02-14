@@ -38,12 +38,6 @@ class MnServicesConfigComponent extends MnLifeCycleHooksToStream {
     };
   }
 
-  componentWillUnmount() {
-    super.componentWillUnmount();
-    this.props.group.valueChanges.unsubscribe();
-    this.props.group.get('flag').valueChanges.unsubscribe();
-  }
-
   componentWillMount() {
     this.focusFieldSubject = new BehaviorSubject(true);
     this.postPoolsDefaultValidation =
@@ -81,7 +75,7 @@ class MnServicesConfigComponent extends MnLifeCycleHooksToStream {
 
     if (this.props.isFlagEnabled && this.props.isFieldEnabled) {
       this.total = merge(
-        MnHelperReactService.valueChanges(this.props.group.valueChanges),
+        MnHelperReactService.valueChanges(this, this.props.group.valueChanges),
         this.props.initDataStream
       ).pipe(
         withLatestFrom(this.quotaServices),
@@ -97,7 +91,7 @@ class MnServicesConfigComponent extends MnLifeCycleHooksToStream {
       );
     }
 
-    MnHelperReactService.valueChanges(this.props.group.valueChanges)
+    MnHelperReactService.valueChanges(this, this.props.group.valueChanges)
       .pipe(
         throttleTime(500, undefined, { leading: true, trailing: true }),
         withLatestFrom(this.quotaServices),
@@ -150,7 +144,7 @@ class MnServicesConfigComponent extends MnLifeCycleHooksToStream {
   createToggleFieldStream(serviceGroupName) {
     var group = this.getFlag(serviceGroupName);
     if (group) {
-      MnHelperReactService.valueChanges(group.valueChanges)
+      MnHelperReactService.valueChanges(this, group.valueChanges)
         .pipe(takeUntil(this.mnOnDestroy))
         .subscribe(this.toggleFields(serviceGroupName).bind(this));
     }
@@ -188,6 +182,7 @@ class MnServicesConfigComponent extends MnLifeCycleHooksToStream {
       .pipe(
         switchMap(() =>
           MnHelperReactService.valueChanges(
+            this,
             this.props.group.get('flag').valueChanges
           ).pipe(takeUntil(isNotPressed))
         ),

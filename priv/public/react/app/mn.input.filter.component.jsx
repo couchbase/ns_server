@@ -23,15 +23,13 @@ class MnInputFilter extends MnLifeCycleHooksToStream {
     });
 
     let value = this.props.group.get('value');
-    this.valueChanges = MnHelperReactService.valueChanges(value.valueChanges);
+    this.valueChanges = MnHelperReactService.valueChanges(
+      this,
+      value.valueChanges
+    );
     this.currentValue = this.valueChanges.pipe(startWith(value.value));
     MnHelperReactService.async(this, 'currentValue');
     MnHelperReactService.async(this, 'valueChanges');
-  }
-
-  componentWillUnmount() {
-    super.componentWillUnmount();
-    this.props.group.get('value').valueChanges.unsubscribe();
   }
 
   handleBlur = () => {

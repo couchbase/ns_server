@@ -40,10 +40,14 @@ class MnHelperReactServiceClass {
         setTimeout(() => component.input.focus(), 0);
       });
   }
-  valueChanges(reactReactiveFormValueChanges) {
+  valueChanges(component, reactReactiveFormValueChanges) {
     const valueChanges = new Subject();
     reactReactiveFormValueChanges.subscribe((value) => {
       valueChanges.next(value);
+    });
+    component.mnOnDestroy.subscribe(() => {
+      reactReactiveFormValueChanges.unsubscribe();
+      valueChanges.unsubscribe();
     });
     return valueChanges;
   }

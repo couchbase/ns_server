@@ -36,6 +36,7 @@ class MnStorageModeComponent extends MnLifeCycleHooksToStream {
 
     var isNotEnterprise = this.isEnterprise.pipe(map(not));
     var isFirstValueForestDB = MnHelperReactService.valueChanges(
+      this,
       this.props.control.valueChanges
     ).pipe(
       startWith(this.props.control.value),
@@ -46,6 +47,7 @@ class MnStorageModeComponent extends MnLifeCycleHooksToStream {
 
     var indexFlag = this.props.indexFlag
       ? MnHelperReactService.valueChanges(
+          this,
           this.props.indexFlag.valueChanges
         ).pipe(startWith(this.props.indexFlag.value))
       : of(true);
@@ -68,13 +70,6 @@ class MnStorageModeComponent extends MnLifeCycleHooksToStream {
     MnHelperReactService.async(this, 'showForestDB');
     MnHelperReactService.async(this, 'indexesHttpError');
     MnHelperReactService.async(this, 'isEnterprise');
-  }
-
-  componentWillUnmount() {
-    super.componentWillUnmount();
-    if (this.props.indexFlag) {
-      this.props.indexFlag.valueChanges.unsubscribe();
-    }
   }
 
   doDisableControl(value) {

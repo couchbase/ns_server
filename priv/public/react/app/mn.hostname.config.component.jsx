@@ -32,11 +32,6 @@ class MnHostnameConfigComponent extends MnLifeCycleHooksToStream {
     return this.props.group.get('hostConfig.addressFamilyUI');
   }
 
-  componentWillUnmount() {
-    super.componentWillUnmount();
-    this.props.group.valueChanges.unsubscribe();
-  }
-
   componentDidMount() {
     this.focusFieldSubject = new BehaviorSubject(true);
     this.postNodeInitHttp = MnWizardService.stream.postNodeInitHttp;
@@ -58,7 +53,7 @@ class MnHostnameConfigComponent extends MnLifeCycleHooksToStream {
       return;
     }
 
-    MnHelperReactService.valueChanges(this.props.group.valueChanges)
+    MnHelperReactService.valueChanges(this, this.props.group.valueChanges)
       .pipe(
         pluck('hostConfig', 'addressFamilyUI'),
         distinctUntilChanged(),
@@ -259,9 +254,13 @@ class MnHostnameConfigComponent extends MnLifeCycleHooksToStream {
                             Can't set IPv
                             {this.getAddressFamilyUI().errors?.ipvOnly.value}
                             -only from an IPv
-                            {this.getAddressFamilyUI().errors?.ipvOnly.kind}{' '}
+                            {
+                              this.getAddressFamilyUI().errors?.ipvOnly.kind
+                            }{' '}
                             address; please access this server via an IPv
-                            {this.getAddressFamilyUI().errors?.ipvOnly.value}{' '}
+                            {
+                              this.getAddressFamilyUI().errors?.ipvOnly.value
+                            }{' '}
                             address
                           </div>
                         )}
@@ -271,7 +270,9 @@ class MnHostnameConfigComponent extends MnLifeCycleHooksToStream {
                             {this.getAddressFamilyUI().warnings?.ipvOnly.value}
                             -only. If the domain name with which you have
                             accessed this server is only available under IPv
-                            {this.getAddressFamilyUI().warnings?.ipvOnly.value}{' '}
+                            {
+                              this.getAddressFamilyUI().warnings?.ipvOnly.value
+                            }{' '}
                             you will not be able to complete initialization
                           </div>
                         )}

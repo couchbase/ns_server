@@ -2,7 +2,7 @@ import React from 'react';
 import { Subject } from 'rxjs';
 import { FormBuilder, FieldGroup } from 'react-reactive-form';
 import { Dropdown, DropdownButton } from 'react-bootstrap';
-import { MnInputFilterComponent } from './mn.input.filter.component.jsx';
+import { MnInputFilter } from './mn.input.filter.component.jsx';
 import { MnHelperService } from './mn.helper.service.js';
 import { MnLifeCycleHooksToStream } from './mn.core.js';
 
@@ -145,7 +145,7 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
           drop={placement}
         >
           {hasSearchInput && (
-            <MnInputFilterComponent
+            <MnInputFilter
               group={this.searchFilter.group}
               mnPlaceholder="filter options"
               className="row flex-left sticky position-top-0"

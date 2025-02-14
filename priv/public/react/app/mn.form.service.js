@@ -63,6 +63,16 @@ class MnForm {
       formDescription instanceof FormGroup
         ? formDescription
         : this.builder.group(formDescription, options);
+
+    this.group.valueChanges = MnHelperReactService.valueChanges(
+      this.component,
+      this.group.valueChanges
+    );
+    this.group.statusChanges = MnHelperReactService.valueChanges(
+      this.component,
+      this.group.statusChanges
+    );
+
     return this;
   }
 
