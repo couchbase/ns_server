@@ -77,7 +77,7 @@
 -define(JWKS_URI_DEFAULT_TIMEOUT_MS, 5000). % 5 seconds
 -define(JWKS_URI_MAX_TIMEOUT_MS, 60000). % 1 minute
 -define(JWKS_URI_REFRESH_MIN_S, 5*60). % 5 minutes
--define(JWKS_URI_REFRESH_DEFAULT_S, 4*60*60). % 4 hours
+-define(JWKS_URI_REFRESH_DEFAULT_S, 60*60). % 1 hour
 -define(JWKS_URI_REFRESH_MAX_S, 86400). % 1 day
 -define(EXPIRY_LEEWAY_MIN_S, 0).
 -define(EXPIRY_LEEWAY_DEFAULT_S, 15). % 15 seconds
@@ -202,8 +202,13 @@ sync_with_all_nodes() ->
     end.
 
 sync_with_node() ->
+    %% Make sure we have the latest chronicle data
     ok = chronicle_kv:sync(kv, ?SYNC_TIMEOUT),
-    chronicle_compat_events:sync().
+    %% Make sure all notifications have been sent
+    chronicle_compat_events:sync(),
+    %% Ensures the cache has been invalidated. This sync is processed only after
+    %% all prior messages including the settings update.
+    gen_server:call(jwt_cache, sync, ?SYNC_TIMEOUT).
 
 %% We store the JWT settings in Erlang map format in chronicle_kv. This is done
 %% so we can query them efficiently. We use jiffy to encode directly from

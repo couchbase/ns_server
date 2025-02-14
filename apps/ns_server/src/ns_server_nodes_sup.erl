@@ -71,28 +71,32 @@ child_specs() ->
       permanent, 1000, worker, []},
 
      {cb_saml, {cb_saml, start_link, []},
-      permanent, 1000, worker, []},
+      permanent, 1000, worker, []}] ++
 
-     {users_sup,
-      {users_sup, start_link, []},
-      permanent, infinity, supervisor, []},
+        [{jwt_cache, {jwt_cache, start_link, []},
+          permanent, 1000, worker, []} ||
+            cluster_compat_mode:is_enterprise()] ++
 
-     {setup_dirs,
-      {ns_storage_conf, setup_storage_paths, []},
-      transient, brutal_kill, worker, []},
+        [{users_sup,
+          {users_sup, start_link, []},
+          permanent, infinity, supervisor, []},
 
-     %% we cannot "kill" this guy anyways. Thus hefty shutdown timeout.
-     suppress_max_restart_intensity:spec(
-       {start_couchdb_node, {?MODULE, start_couchdb_node, []},
-        {permanent, 5, ?MAX_R, ?MAX_T}, 86400000, worker, []}),
+         {setup_dirs,
+          {ns_storage_conf, setup_storage_paths, []},
+          transient, brutal_kill, worker, []},
 
-     {wait_for_couchdb_node, {erlang, apply, [fun wait_link_to_couchdb_node/0, []]},
-      permanent, 1000, worker, []},
+         %% we cannot "kill" this guy anyways. Thus hefty shutdown timeout.
+         suppress_max_restart_intensity:spec(
+           {start_couchdb_node, {?MODULE, start_couchdb_node, []},
+            {permanent, 5, ?MAX_R, ?MAX_T}, 86400000, worker, []}),
 
-     {ns_server_sup, {ns_server_sup, start_link, []},
-      permanent, infinity, supervisor, [ns_server_sup]},
+         {wait_for_couchdb_node, {erlang, apply, [fun wait_link_to_couchdb_node/0, []]},
+          permanent, 1000, worker, []},
 
-     menelaus_sup:barrier_notify_spec(menelaus_barrier_notify)].
+         {ns_server_sup, {ns_server_sup, start_link, []},
+          permanent, infinity, supervisor, [ns_server_sup]},
+
+         menelaus_sup:barrier_notify_spec(menelaus_barrier_notify)].
 
 create_ns_couchdb_spec() ->
     CouchIni = case ns_storage_conf:get_ini_files() of
