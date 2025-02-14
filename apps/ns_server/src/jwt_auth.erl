@@ -68,13 +68,15 @@
 -spec authenticate(Token :: string()) ->
           {ok, #authn_res{}} | {error, binary()}.
 authenticate(Token) ->
-    %% Use this settings snapshot for the duration of the token validation.
-    case chronicle_kv:get(kv, jwt_settings) of
-        {ok, {#{enabled := true} = Settings, _Rev}} ->
-            validate_token(Token, Settings);
-        _ ->
-            {error, <<"JWT is disabled">>}
-    end.
+    Persisted =
+        case chronicle_kv:get(kv, jwt_settings) of
+            {ok, {#{enabled := true, issuers := Issuers}, _Rev}} ->
+                Issuers;
+            _ ->
+                #{}
+        end,
+    validate_token(Token, maps:merge(jwt_issuer:settings(), Persisted)).
+
 %%%===================================================================
 %%% JWT validation
 %%%===================================================================
@@ -175,11 +177,11 @@ get_claim_value(_, _) ->
 %% of strings, string). Type validation is done and only valid claims are
 %% included in the parsed claims.
 -spec extract_claims(TokenBin :: binary(),
-                     Settings :: map()) ->
+                     Issuers :: map()) ->
           {ok,
            ParsedClaims :: #{claims() => string() | [string()] | integer()}} |
           {error, Msg :: binary()}.
-extract_claims(TokenBin, #{issuers := Issuers}) ->
+extract_claims(TokenBin, Issuers) ->
     try
         {_, HeaderMap} = jose_jws:to_map(jose_jwt:peek_protected(TokenBin)),
         {_, PayloadMap} = jose_jwt:peek_payload(TokenBin),
@@ -281,11 +283,11 @@ audit_failure(Claims, Reason) ->
     ?log_error("JWT auth failure: ~p", [AuditList]),
     AuditList.
 
--spec validate_token(Token :: string(), Settings :: map()) ->
+-spec validate_token(Token :: string(), Issuers :: map()) ->
           {ok, #authn_res{}} | {error, binary()}.
-validate_token(Token, #{issuers := Issuers} = Settings) ->
+validate_token(Token, Issuers) ->
     TokenBin = list_to_binary(Token),
-    case extract_claims(TokenBin, Settings) of
+    case extract_claims(TokenBin, Issuers) of
         {ok, Claims} ->
             IssuerName = maps:get(iss, Claims),
             RawProps = maps:get(IssuerName, Issuers),
@@ -411,27 +413,33 @@ validate(aud, Claims, #{audience_handling := Handling,
             end
     end.
 
--spec map_claim(sub | groups | roles, Claims :: map(), IssProps :: map()) ->
-          [string()] | {error, binary()}.
-map_claim(Type, Claims, IssProps) ->
-    Values = case maps:get(Type, Claims, undefined) of
-                 undefined when Type =:= groups; Type =:= roles ->
-                     [];
-                 Value when Type =:= sub ->
-                     [Value];
-                 TokenValues ->
-                     TokenValues
-             end,
+validate_map_claim_values(Type, MappingType, IssProps, Values) ->
     Key = list_to_atom(atom_to_list(Type) ++ "_maps"),
     Rules = maps:get(Key, IssProps, []),
     StopFirstMatch = maps:get(list_to_atom(atom_to_list(Key) ++
                                                "_stop_first_match"),
                               IssProps, true),
-    MappingType = case Type of
-                      sub -> user;
-                      _ -> Type
-                  end,
     auth_mapping:map_identities(MappingType, Values, Rules, StopFirstMatch).
+
+-spec map_claim(sub | groups | roles, Claims :: map(), IssProps :: map()) ->
+          [string()] | {error, binary()}.
+map_claim(sub, Claims, IssProps) ->
+    Value = maps:get(sub, Claims),
+    case maps:get(name, IssProps) =:= jwt_issuer:name() of
+        true ->
+            %% we can trust our own token to have the correct user name
+            [Value];
+        false ->
+            validate_map_claim_values(sub, user, IssProps, [Value])
+    end;
+map_claim(Type, Claims, IssProps) when Type =:= groups; Type =:= roles ->
+    Values = case maps:get(Type, Claims, undefined) of
+                 undefined ->
+                     [];
+                 TokenValues ->
+                     TokenValues
+             end,
+    validate_map_claim_values(Type, Type, IssProps, Values).
 
 get_auth_info(Claims, IssProps, Username) ->
     AuthnRes0 = menelaus_auth:init_auth({Username, external}),
@@ -479,7 +487,7 @@ validate_sub_test_() ->
      fun() -> meck:new(auth_mapping) end,
      fun(_) -> meck:unload(auth_mapping) end,
      fun(_) ->
-             IssProps = #{},
+             IssProps = #{name => "test-issuer"},
              [
               {"mapped username",
                fun() ->
@@ -507,6 +515,7 @@ validate_sub_test_() ->
 validate_claims_test() ->
     Now = erlang:system_time(second),
     IssProps = #{
+                 name => "test-issuer",
                  expiry_leeway_s => 300,
                  audience_handling => any,
                  audiences => ["aud1", "aud2"]
@@ -536,15 +545,14 @@ extract_claims_test_() ->
      fun() -> meck:new(jose_jwt) end,
      fun(_) -> meck:unload(jose_jwt) end,
      fun(_) ->
-             Settings = #{issuers =>
-                              #{
-                                "test-issuer" =>
-                                    #{
-                                      signing_algorithm => hs256,
-                                      aud_claim => "aud",
-                                      sub_claim => "sub"
-                                     }
-                               }},
+             Issuers = #{
+                         "test-issuer" =>
+                             #{
+                               signing_algorithm => hs256,
+                               aud_claim => "aud",
+                               sub_claim => "sub"
+                              }
+                        },
              [
               {"valid claims",
                fun() ->
@@ -566,7 +574,7 @@ extract_claims_test_() ->
                        meck:expect(jose_jwt, peek_payload,
                                    fun(_) -> {ok, PayloadMap} end),
 
-                       {ok, Claims} = extract_claims(<<"token">>, Settings),
+                       {ok, Claims} = extract_claims(<<"token">>, Issuers),
                        ?assertEqual("test-issuer", maps:get(iss, Claims)),
                        ?assertEqual("test-user", maps:get(sub, Claims)),
                        ?assertEqual(["test-aud"], maps:get(aud, Claims)),
@@ -577,16 +585,15 @@ extract_claims_test_() ->
 
               {"custom claim names",
                fun() ->
-                       Settings2 = #{issuers =>
-                                         #{
-                                           "test-issuer" =>
-                                               #{
-                                                 signing_algorithm => hs256,
-                                                 sub_claim => "username",
-                                                 aud_claim => "scope",
-                                                 groups_claim => "roles"
-                                                }
-                                          }},
+                       Issuers2 = #{
+                                    "test-issuer" =>
+                                        #{
+                                          signing_algorithm => hs256,
+                                          sub_claim => "username",
+                                          aud_claim => "scope",
+                                          groups_claim => "roles"
+                                         }
+                                   },
                        HeaderMap = #{
                                      <<"alg">> => <<"HS256">>,
                                      <<"kid">> => <<"key-1">>
@@ -606,7 +613,7 @@ extract_claims_test_() ->
                        meck:expect(jose_jwt, peek_payload,
                                    fun(_) -> {ok, PayloadMap} end),
 
-                       {ok, Claims} = extract_claims(<<"token">>, Settings2),
+                       {ok, Claims} = extract_claims(<<"token">>, Issuers2),
                        ?assertEqual("test-issuer", maps:get(iss, Claims)),
                        ?assertEqual("custom-user", maps:get(sub, Claims)),
                        ?assertEqual(["custom-aud"], maps:get(aud, Claims)),
@@ -626,7 +633,7 @@ extract_claims_test_() ->
                                    fun(_) -> {ok, PayloadMap} end),
 
                        ?assertEqual({error, <<"Missing/invalid iss claim">>},
-                                    extract_claims(<<"token">>, Settings))
+                                    extract_claims(<<"token">>, Issuers))
                end},
 
               {"unknown issuer",
@@ -642,7 +649,7 @@ extract_claims_test_() ->
                                    fun(_) -> {ok, PayloadMap} end),
 
                        ?assertEqual({error, <<"Unknown issuer: unknown">>},
-                                    extract_claims(<<"token">>, Settings))
+                                    extract_claims(<<"token">>, Issuers))
                end},
 
               {"missing required claims",
@@ -661,7 +668,7 @@ extract_claims_test_() ->
 
                        ?assertMatch({error,
                                      <<"Missing/invalid claim: ",_/binary>>},
-                                    extract_claims(<<"token">>, Settings))
+                                    extract_claims(<<"token">>, Issuers))
                end},
 
               {"invalid token format",
@@ -671,7 +678,7 @@ extract_claims_test_() ->
                        meck:expect(jose_jws, to_map,
                                    fun(_) -> {error, invalid} end),
                        ?assertEqual({error, <<"Invalid token format">>},
-                                    extract_claims(<<"token">>, Settings))
+                                    extract_claims(<<"token">>, Issuers))
                end}
              ]
      end}.
