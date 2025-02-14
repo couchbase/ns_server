@@ -176,8 +176,8 @@ validate_jwk_list(Items, Algorithm) ->
             {error, string:join(lists:reverse(Errs), "; ")};
         {[SingleKey], _} ->
             %% Allow a kid of undefined only if there is a single key.
-            {_, Fields} = jose_jwk:to_map(SingleKey),
-            {ok, #{maps:get(<<"kid">>, Fields, undefined) => SingleKey}};
+            {_, JWKMap} = jose_jwk:to_map(SingleKey),
+            {ok, #{maps:get(<<"kid">>, JWKMap, undefined) => JWKMap}};
         {[_|_] = MultipleKeys, _} ->
             %% Each key must have a unique kid.
             build_kid_map(MultipleKeys)
@@ -192,15 +192,15 @@ build_kid_map(Keys) ->
         KeyMap =
             lists:foldl(
               fun(JWK, Acc) ->
-                      {_, Fields} = jose_jwk:to_map(JWK),
-                      case maps:get(<<"kid">>, Fields, undefined) of
+                      {_, JWKMap} = jose_jwk:to_map(JWK),
+                      case maps:get(<<"kid">>, JWKMap, undefined) of
                           undefined ->
                               throw("Missing 'kid' in JWKS key when multiple "
                                     "keys present");
                           Kid when is_map_key(Kid, Acc) ->
                               throw("Duplicate 'kid' found in JWKS");
                           Kid ->
-                              Acc#{Kid => JWK}
+                              Acc#{Kid => JWKMap}
                       end
               end, #{}, Keys),
         {ok, KeyMap}
@@ -212,7 +212,7 @@ build_kid_map(Keys) ->
 %% The secret must be valid UTF-8 and meet minimum length requirements based on
 %% the algorithm's bit size.
 -spec validate_shared_secret(string(), jwt_algorithm()) ->
-          {ok, {value, jose_jwk:key()}} | {error, string()}.
+          {ok, {value, binary()}} | {error, string()}.
 validate_shared_secret(Secret, Algorithm) ->
     case is_symmetric_algorithm(Algorithm) of
         false ->
@@ -252,8 +252,7 @@ validate_shared_secret(Secret, Algorithm) ->
                                                     Msg,
                                                     [MinLength, MaxLength]))};
                         false ->
-                            {ok, {value,
-                                  jose_jwk:from_oct(list_to_binary(Secret))}}
+                            {ok, {value, BinaryChars}}
                     end
             end
     end.
