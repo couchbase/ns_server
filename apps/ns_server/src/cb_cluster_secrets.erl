@@ -921,6 +921,7 @@ handle_info({dek_drop_complete, Kind} = Msg,
             #state{proc_type = ?NODE_PROC} = State) ->
     ?log_debug("Dek drop complete: ~p", [Kind]),
     misc:flush(Msg),
+    self() ! calculate_dek_info,
     {noreply, add_and_run_jobs([{garbage_collect_deks, Kind}], State)};
 
 handle_info({timer, rotate_deks} = Msg, #state{proc_type = ?NODE_PROC,
@@ -954,6 +955,12 @@ handle_info({timer, remove_retired_keys} = Msg,
     misc:flush(Msg),
     encryption_service:cleanup_retired_keys(),
     {noreply, restart_remove_retired_timer(State)};
+
+handle_info(calculate_dek_info, #state{proc_type = ?NODE_PROC} = State) ->
+    ?log_debug("DEK info update"),
+    misc:flush(calculate_dek_info),
+    {_Res, NewState} = calculate_dek_info(State),
+    {noreply, NewState};
 
 handle_info(Info, State) ->
     ?log_warning("Unhandled info: ~p", [Info]),
@@ -1424,6 +1431,7 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
                             NewState = set_active(Kind, DekId, true, State),
                             ok = maybe_rotate_integrity_tokens(Kind, DekId,
                                                                NewState),
+                            self() ! calculate_dek_info,
                             call_set_active_cb(Kind, NewState);
                         %% Too many DEKs and encryption is being enabled
                         %% We could not create new DEK, but should still
@@ -1605,6 +1613,7 @@ retire_unused_deks(Kind, DekIdsInUse, #state{deks = DeksInfo} = State) ->
             %% It doesn't make sense to fail this job if file removal fails
             %% because when retried the job will do nothing anyway (because
             %% state doesn't have those deks)
+            self() ! calculate_dek_info,
             encryption_service:garbage_collect_keys(Kind, NewDekIdsInUse),
             {ok, _} = cb_crypto:reset_dek_cache(Kind, cleanup),
             on_deks_update(Kind, NewState)
@@ -1856,6 +1865,7 @@ new_dek_info(Kind, ActiveId, Keys, IsEnabled) ->
 destroy_dek_info(Kind, #state{deks = DeksInfo} = State) ->
     NewState = State#state{deks = maps:remove(Kind, DeksInfo)},
     write_deks_cfg_file(NewState),
+    self() ! calculate_dek_info,
     delete_kind_stats(Kind),
     encryption_service:garbage_collect_keys(Kind, []),
     functools:chain(NewState,
