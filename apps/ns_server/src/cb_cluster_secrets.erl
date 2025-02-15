@@ -1562,6 +1562,9 @@ garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
                     %% The entity that uses deks does not exist.
                     %% Ignoring it here because we assume that deks will
                     %% be removed by maybe_update_deks
+                    %% It is possible that bucket exists on disk, but not in
+                    %% memcached. In this case it is important to not remove
+                    %% any deks here. It is not an error either.
                     {ok, State};
                 {succ, {error, Reason}} ->
                     {error, State, Reason};

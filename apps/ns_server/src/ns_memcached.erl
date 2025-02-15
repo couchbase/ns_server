@@ -1886,7 +1886,39 @@ set_tls_config(Config) ->
 
 set_active_dek_for_bucket(Bucket, _ActiveDek) ->
     {ok, DeksSnapshot} = cb_crypto:fetch_deks_snapshot({bucketDek, Bucket}),
-    set_active_dek(Bucket, DeksSnapshot).
+    NsMemcachedExists = (whereis(server(Bucket)) =/= undefined),
+    case set_active_dek(Bucket, DeksSnapshot) of
+        ok -> ok;
+        {error, not_found} -> %% bucket does not exist
+            case NsMemcachedExists of
+                true ->
+                    %% ns_memcached is running, we should retry when bucket
+                    %% is created
+                    {error, retry};
+                false ->
+                    %% ns_memcached was not running before the call, so it is
+                    %% safe to return ok
+                    %% If bucket needs to be created, ns_memcached will create
+                    %% it and use newest keys. If bucket doesn't need to be
+                    %% created (e.g. it is failed over), there is no need to
+                    %% notify memcached at all.
+                    %% Note that it is important that we check if ns_memcached
+                    %% is running before calling set_active_dek, otherwise it is
+                    %% possible that ns_memcached creates the bucket with old
+                    %% keys:
+                    %% 1. ns_memcached fetches old keys
+                    %% 2. this process calls set_active_dek (and gets not_found)
+                    %% 3. ns_memcached creates the bucket with old keys
+                    %% 4. ns_memcached crashes
+                    %% 5. we check if ns_memcached is running and returning ok
+                    ?log_debug("Ignoring not_found when setting encryption "
+                               "keys for bucket ~p (bucket doesn't seem to "
+                               "exist in memcached)", [Bucket]),
+                    ok
+            end;
+        {error, E} ->
+            {error, E}
+    end.
 
 set_active_dek(TypeOrBucket, DeksSnapshot) ->
     ?log_debug("Setting active encryption key id for ~p: ~p...",
@@ -1905,10 +1937,24 @@ set_active_dek(TypeOrBucket, DeksSnapshot) ->
             ?log_debug("Setting encryption key for ~p succeeded",
                        [TypeOrBucket]),
             ok;
-        {error, couldnt_connect_to_memcached} -> {error, retry};
+        {error, couldnt_connect_to_memcached} ->
+            ?log_debug("Setting encryption key for ~p failed: "
+                       "couldnt_connect_to_memcached", [TypeOrBucket]),
+            {error, retry};
         %% It can happen during start, when bucket is not created yet
-        {error, {key_enoent, undefined}} -> {error, retry};
-        {error, {not_supported, undefined}} -> {error, retry};
+        {error, {key_enoent, undefined}} ->
+            ?log_debug("Setting encryption key for ~p failed: "
+                       "key_enoent", [TypeOrBucket]),
+            {error, not_found};
+        {error, {not_supported, undefined}} ->
+            ?log_debug("Setting encryption key for ~p failed: "
+                       "not_supported", [TypeOrBucket]),
+            %% memcached returns not supported for buckets
+            %% that exist on other nodes, but not on this node
+            %% (ns_server uploads terse bucket info for such
+            %% buckets), so from encryption perspective
+            %% it is the same as when bucket does not exist
+            {error, not_found};
         {error, E} ->
             ?log_error("Setting encryption key for ~p failed: ~p",
                        [TypeOrBucket, E]),
@@ -1920,27 +1966,39 @@ sanitize_in_use_keys(InUseKeys) ->
                   (K) -> K
               end, InUseKeys).
 
-get_dek_ids_in_use(BucketOrType, StatsFn) ->
+get_dek_ids_in_use(Bucket, StatsFn) ->
     RV = perform_very_long_call(
            fun (Sock) ->
                    case mc_binary:quick_stats(Sock, <<"encryption-key-ids">>,
                                               StatsFn, []) of
                        {ok, Ids} ->
                            {reply, {ok, Ids}};
+                       {memcached_error, not_supported, _} ->
+                           %% memcached returns not supported for buckets
+                           %% that exist on other nodes, but not on this node
+                           %% (ns_server uploads terse bucket info for such
+                           %% buckets), so from encryption perspective
+                           %% it is the same as when bucket does not exist
+                           ?log_debug("Get deks in use for ~p returned "
+                                      "not_supported", [Bucket]),
+                           {reply, {error, not_found}};
                        {memcached_error, Error, Msg} ->
                            ?log_error("Failed to get dek ids in use for "
-                                      "~p: ~p", [BucketOrType, {Error, Msg}]),
+                                      "~p: ~p", [Bucket, {Error, Msg}]),
                            {reply, {error, Error}}
                    end
-           end, BucketOrType),
+           end, Bucket),
 
     case RV of
         {ok, _} -> RV;
-        {error, couldnt_connect_to_memcached} -> {error, retry};
+        {error, couldnt_connect_to_memcached} ->
+            {error, retry};
         %% It can happen during start, when bucket is not created yet
         {error, {select_bucket_failed,
-                 {memcached_error, key_enoent, undefined}}} -> {error, retry};
-        {error, E} -> {error, E}
+                 {memcached_error, key_enoent, undefined}}} ->
+            {error, not_found};
+        {error, E} ->
+            {error, E}
     end.
 
 get_dek_ids_in_use(Type) when Type =:= "@audit"; Type =:= "@logs" ->
