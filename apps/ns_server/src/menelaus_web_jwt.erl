@@ -141,9 +141,9 @@
          {audiences, fun format_string_list/1},
          {expiry_leeway_s, undefined},
          {groups_claim, fun format_string/1},
-         {groups_maps, fun format_string_list/1},
+         {groups_maps, fun auth_mapping:format_mapping_rules/1},
          {groups_maps_stop_first_match, undefined},
-         {sub_maps, fun format_string_list/1},
+         {sub_maps, fun auth_mapping:format_mapping_rules/1},
          {jit_provisioning, undefined},
          {jwks, fun format_jwks/1},
          {jwks_uri, fun format_string/1},
@@ -157,7 +157,7 @@
          {public_key, fun format_public_key/1},
          {public_key_source, undefined},
          {roles_claim, fun format_string/1},
-         {roles_maps, fun format_string_list/1},
+         {roles_maps, fun auth_mapping:format_mapping_rules/1},
          {roles_maps_stop_first_match, undefined},
          {shared_secret, fun format_secret/1},
          {signing_algorithm, undefined},
@@ -344,15 +344,17 @@ basic_validators() ->
      validator:non_empty_string(subClaim, _)].
 
 mapping_validators() ->
-    [validator:string_array(subMaps, validate_mapping_rule(_), _),
+    [validator:string_array(subMaps, auth_mapping:validate_mapping_rule(_), _),
      validator:string(groupsClaim, _),
-     validator:string_array(groupsMaps, validate_mapping_rule(_), _),
+     validator:string_array(groupsMaps,
+                            auth_mapping:validate_mapping_rule(_), _),
      validator:boolean(groupsMapsStopFirstMatch, _),
-     validator:default(groupsMapsStopFirstMatch, false, _),
+     validator:default(groupsMapsStopFirstMatch, true, _),
      validator:string(rolesClaim, _),
-     validator:string_array(rolesMaps, validate_mapping_rule(_), _),
+     validator:string_array(rolesMaps,
+                            auth_mapping:validate_mapping_rule(_), _),
      validator:boolean(rolesMapsStopFirstMatch, _),
-     validator:default(rolesMapsStopFirstMatch, false, _)].
+     validator:default(rolesMapsStopFirstMatch, true, _)].
 
 key_validators() ->
     public_key_validators() ++
@@ -471,22 +473,6 @@ jwks_uri_validators() ->
      validator:validate(
        fun (_) -> {error, "modification not supported"} end,
        jwksUriTlsExtraOpts, _)].
-
-%% Validate a mapping rule that transforms a claim's value. A mapping rule is
-%% a space-separated pair of a regular expression and a substitution pattern.
-validate_mapping_rule(MappingRule) ->
-    case re:compile(MappingRule) of
-        {ok, _} ->
-            Trimmed = string:trim(MappingRule),
-            Tokens = string:lexemes(Trimmed, " "),
-            case Tokens of
-                [_, _] -> ok;
-                _ -> {error, "Invalid mapping rule"}
-            end;
-        {error, {Error, At}} ->
-            Err = io_lib:format("~s (at character #~b)", [Error, At]),
-            {error, lists:flatten(Err)}
-    end.
 
 validate_and_store_settings(Props, Req) ->
     Settings = validated_to_storage_format(Props),

@@ -46,7 +46,8 @@
          acting_on_behalf/1,
          init_auth/1,
          on_behalf_extras/1,
-         get_authn_res_from_on_behalf_of/3]).
+         get_authn_res_from_on_behalf_of/3,
+         is_external_auth_allowed/1]).
 
 %% rpc from ns_couchdb node
 -export([do_authenticate/1,
