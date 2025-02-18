@@ -200,10 +200,10 @@ def metrics_have_values(node, expected_metrics):
         parts = line.split(' ')
         if len(parts) == 2:
             metric, value = parts
-            if metric in expected_metrics:
-                expected_value = expected_metrics.get(metric)
-                return value == expected_value
-    return False
+            expected_value = expected_metrics.pop(metric, None)
+            if expected_value is not None and value != expected_value:
+                return False
+    return len(expected_metrics) == 0
 
 
 class WebsocketConnection(AbstractContextManager):
