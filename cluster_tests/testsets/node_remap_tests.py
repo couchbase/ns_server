@@ -141,10 +141,13 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
             shutil.copytree(cluster_path/'logs'/f'n_{old_node_index}',
                             cluster_path/'logs'/f'n_{new_node_index}')
 
+            initargs_path = f'{cluster_path}/data/n_{new_node_index}/initargs'
+            assert os.path.isfile(initargs_path)
+
             # And now we remap the config in the new (remapped) node directory
             node_remap.run_config_remap_via_escript_wrapper(
                 root_dir=testlib.get_install_dir(),
-                initargs=[f'{cluster_path}/data/n_{new_node_index}/initargs'],
+                initargs=[initargs_path],
                 output_path=f'{cluster_path}/data/n_{new_node_index}',
                 remap=remap_args,
                 capture_output=testlib.config['intercept_output']
