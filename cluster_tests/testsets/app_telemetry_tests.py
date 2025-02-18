@@ -88,7 +88,11 @@ class AppTelemetryTests(testlib.BaseTestSet):
             frame_1 = (b'\x00' + make_metric(metric_0, node0_uuid, 0) +
                        b'\n' + make_metric(metric_1, node1_uuid, value) +
                        f"\n{metric_2}{{node_uuid=".encode('utf-8'))
-            frame_2 = f"\"{node0_uuid}\"}} {value} 1695747260".encode('utf-8')
+
+            # Add a long label to test a larger frame
+            long_label = ''.join("x" for _ in range(100000))
+            frame_2 = (f"\"{node0_uuid}\",x=\"{long_label}\"}} {value} "
+                       "1695747260").encode('utf-8')
             # Send the lines of metrics as a fragmented message over multiple
             # frames, with a ping interleaved
             conn.send_binary(frame_1, fin=False)
