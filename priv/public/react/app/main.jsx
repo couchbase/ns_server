@@ -34,6 +34,12 @@ const securityState = {
   lazyLoad: () => import('./mn_admin/mn_security_config.js'),
 };
 
+let otherSecuritySettingsState = {
+  name: 'app.admin.security.other.**',
+  url: '/other',
+  lazyLoad: () => import('./mn.security.other.states.js'),
+};
+
 let auditState = {
   name: 'app.admin.security.audit.**',
   url: '/audit',
@@ -47,6 +53,7 @@ router.stateRegistry.register(gsiState);
 router.stateRegistry.register(wizardState);
 router.stateRegistry.register(overviewState);
 router.stateRegistry.register(securityState);
+router.stateRegistry.register(otherSecuritySettingsState);
 router.stateRegistry.register(auditState);
 
 // TODO: Add auth state
