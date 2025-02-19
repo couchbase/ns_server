@@ -17,7 +17,8 @@
 -export([bootstrap_get_deks/2,
          external_list/4,
          read_deks_file/3,
-         new_deks_file_record/3]).
+         new_deks_file_record/3,
+         format_error/1]).
 
 -type deks_file_record() :: #{is_enabled := boolean(),
                               active_id := cb_deks:dek_id() | undefined,
@@ -65,9 +66,11 @@ bootstrap_get_deks(DekKind, Opts) ->
             external_list(DekKind, GetCfgDekFun, fun (_, _) -> ok end, Opts),
         {empty, [_ | _]} ?= {empty, DekIds},
         {ok, {Deks, Errors}} ?= external_read_keys(DekKind, DekIds, Opts),
-        LogFun = maps:get(error_log_fun, Opts, fun (_S, _F, _A) -> ok end),
+        LogFun = maps:get(log_fun, Opts, fun (_S, _F, _A) -> ok end),
         lists:foreach(fun ({Id, E}) ->
-                          LogFun(error, "Error reading ~s: ~s~n", [Id, E])
+                          %% Using info because some keys errors can be
+                          %% ignored
+                          LogFun(info, "Error reading key ~s: ~s", [Id, E])
                       end, Errors),
         case Enabled of
             true ->
@@ -106,6 +109,7 @@ bootstrap_get_deks(DekKind, Opts) ->
 %% Reads keys via dump-guts utility
 %% This function is supposed to be used by external utilities
 external_read_keys(DekKind, KeyIds, Opts) ->
+    LogFun = maps:get(log_fun, Opts, fun (_S, _F, _A) -> ok end),
     ConfigDir =
         case maps:get(config_path_override, Opts, undefined) of
             undefined ->
@@ -134,15 +138,17 @@ external_read_keys(DekKind, KeyIds, Opts) ->
                                   DKPath -> {ok, DKPath}
                               end,
         KeyIdsStr = [binary_to_list(K) || K <- KeyIds],
-        {0, Output} ?= ns_secrets:call_external_script(
-                         DumpKeysPath,
-                         ["--gosecrets", GosecretsPath,
-                          "--config", GosecretsCfg,
-                          "--key-kind", atom_to_list(DekKind)] ++
-                         ["--stdin-password" || Input /= undefined] ++
-                         ["--key-ids"] ++ KeyIdsStr,
-                         Input,
-                         60000),
+        DumpKeysArgs = ["--gosecrets", GosecretsPath,
+                        "--config", GosecretsCfg,
+                        "--key-kind", atom_to_list(DekKind)] ++
+                       ["--stdin-password" || Input /= undefined] ++
+                       ["--key-ids"] ++ KeyIdsStr,
+        LogFun(debug, "Calling dump-keys (~s) with args: ~p",
+               [DumpKeysPath, DumpKeysArgs]),
+        {0, Output} ?= ns_secrets:call_external_script(DumpKeysPath,
+                                                       DumpKeysArgs,
+                                                       Input,
+                                                       60000),
         {JsonKeys} = ejson:decode(Output),
         {Deks, Errors} =
             misc:partitionmap(
@@ -207,3 +213,83 @@ new_deks_file_record(ActiveId, IsEnabled, Ids) ->
     #{is_enabled => IsEnabled,
       active_id => ActiveId,
       dek_ids => Ids}.
+
+format_error({read_dek_cfg_file_error, {Path, Reason}})
+                                                    when is_binary(Reason) ->
+    io_lib:format("Failed to read deks file ~s: ~s",
+                  [Path, Reason]);
+format_error({read_dek_cfg_file_error, {Path, Reason}}) ->
+    io_lib:format("Failed to read deks file ~s: ~s",
+                  [Path, format_error(Reason)]);
+format_error({active_key_read_failure, Reason}) when is_binary(Reason) ->
+    io_lib:format("Failed to read active key: ~s", [Reason]);
+format_error(invalid_file_format) ->
+    "Invalid file format";
+format_error(invalid_file_encryption) ->
+    "Invalid file encryption";
+format_error(missing_mac) ->
+    "Missing MAC";
+format_error(bad_header) ->
+    "Bad encrypted file header";
+format_error({unsupported_encryption_version, Version}) ->
+    io_lib:format("Unsupported encrypted file version: ~p", [Version]);
+format_error({no_dump_keys, Path}) ->
+    io_lib:format("dump-keys utility not found at ~s", [Path]);
+format_error({dump_keys_returned, Status, OutputBin}) ->
+    io_lib:format("dump-keys utility returned error ~p: ~s",
+                  [Status, OutputBin]);
+format_error(decrypt_error) ->
+    "Failed to decrypt data";
+format_error(invalid_data_chunk) ->
+    "Invalid encrypted data chunk";
+format_error(unknown_magic) ->
+    "Unknown encrypted file magic";
+format_error(enoent) ->
+    "File not found";
+format_error({read_active_key_error, Error}) ->
+    io_lib:format("Failed to read active key: ~s", [format_error(Error)]);
+format_error(key_not_found) ->
+    "Key not found";
+format_error(need_more_data) ->
+    "Incomplete data";
+format_error(incomplete_data) ->
+    "Incomplete data";
+format_error(incomplete_magic) ->
+    "Incomplete encrypted file magic";
+format_error(no_active_key) ->
+    "No active key available";
+format_error({still_in_use, StillInUse}) ->
+    io_lib:format("Keys still in use: ~s", [format_key_list(StillInUse)]);
+format_error({invalid_secret_id, SecretId, Reason}) ->
+    io_lib:format("Invalid secret ID ~p: ~p", [SecretId, Reason]);
+format_error(not_found) ->
+    "Not found";
+format_error(retry) ->
+    "Operation needs to be retried";
+format_error({unsupported_compression_type, Type}) ->
+    io_lib:format("Unsupported compression type: ~p", [Type]);
+format_error({encrypt_key_error, Msg}) ->
+    io_lib:format("Failed to encrypt key: ~s", [Msg]);
+format_error({decrypt_key_error, Msg}) ->
+    io_lib:format("Failed to decrypt key: ~s", [Msg]);
+format_error({store_key_error, Msg}) ->
+    io_lib:format("Failed to store key: ~s", [Msg]);
+format_error({read_key_error, Msg}) ->
+    io_lib:format("Failed to read key: ~s", [Msg]);
+format_error({mac_calculation_error, Msg}) ->
+    io_lib:format("Failed to calculate MAC: ~s", [Msg]);
+format_error({mac_verification_error, Msg}) ->
+    io_lib:format("Failed to verify MAC: ~s", [Msg]);
+format_error({rotate_integrity_tokens_error, Msg}) ->
+    io_lib:format("Failed to rotate integrity tokens: ~s", [Msg]);
+format_error({remove_old_integrity_tokens_error, Msg}) ->
+    io_lib:format("Failed to remove old integrity tokens: ~s", [Msg]);
+format_error(Reason) ->
+    io_lib:format("~p", [Reason]).
+
+format_key_list([]) ->
+    "(none)";
+format_key_list(KeyList) ->
+    lists:join(", ", lists:map(fun (?NULL_DEK) -> "null";
+                                   (B) when is_binary(B) -> B
+                            end, KeyList)).

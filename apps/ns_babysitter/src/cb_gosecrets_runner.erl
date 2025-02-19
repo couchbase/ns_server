@@ -242,10 +242,15 @@ init([GosecretsCfgPath, Logger, PasswordPromptAllowed, ReadOnly]) ->
 
     HiddenPass = extract_hidden_pass(),
 
-    init_gosecrets(HiddenPass, _MaxRetries = 3, PasswordPromptAllowed,
-                   ReadOnly, NewState),
-
-    {ok, NewState}.
+    case init_gosecrets(HiddenPass, _MaxRetries = 3, PasswordPromptAllowed,
+                        ReadOnly, NewState) of
+        ok ->
+            {ok, NewState};
+        shutdown ->
+            {error, shutdown};
+        {error, Error} ->
+            {error, Error}
+    end.
 
 save_config(CfgPath, Cfg, State) ->
     log(debug, "Writing ~s:~n~p", [CfgPath, Cfg], State),
@@ -274,7 +279,6 @@ init_gosecrets(HiddenPass, MaxRetries, PasswordPromptAllowed, ReadOnly,
                                     "Stopping babysitter because gosecrets "
                                     "password prompting has failed: ~p",
                                     [Error], State),
-                                init:stop(),
                                 shutdown
                         end
                     catch
@@ -286,11 +290,11 @@ init_gosecrets(HiddenPass, MaxRetries, PasswordPromptAllowed, ReadOnly,
                 false ->
                     log(error, "Incorrect master password. Error: ~p~n"
                                "Stopping babysitter", [ErrorMsg], State),
-                    init:stop(),
                     shutdown
             end;
         {error, Error} ->
-            erlang:error({gosecrets_init_failed, Error})
+            %% Note: Error is logged in call_init
+            {error, Error}
     end.
 
 call_init(HiddenPass, ReadOnly, State) ->
@@ -597,9 +601,7 @@ extract_hidden_pass() ->
 extract_hidden_pass(Log) ->
     case application:get_env(ns_babysitter, master_password) of
         {ok, P} ->
-            Log(debug,
-                "Trying to recover the password from application environment",
-                []),
+            Log(debug, "Using password from application environment", []),
             P;
         _ ->
             ?HIDE(undefined)
@@ -1024,7 +1026,8 @@ store_and_read_key_test() ->
                                creation_time := <<"2024-07-26T19:32:19Z">>},
                              DecodeKey(Key2Encoded)),
                 %% Unknown key
-                ?assertMatch({error, "no files found" ++ _},
+                ?assertMatch({error, "failed to read key key3: no files found"
+                                     ++ _},
                              read_key(Pid, configDek, <<"key3">>))
             end)
       end).
@@ -1291,21 +1294,15 @@ invalid_datakey_test_base(Cfg, DKeyPath, DKeyData, ExpectedError) ->
       fun (CfgPath) ->
           ok = file:write_file(CfgPath, ejson:encode(Cfg)),
           ok = file:write_file(DKeyPath, DKeyData),
-          P = spawn(fun () ->
-                        {ok, P} = start_link(default, true, true, CfgPath),
-                        unlink(P),
-                        exit(P, shutdown)
-                    end),
-          MRef = erlang:monitor(process, P),
-          receive
-              {'DOWN', MRef, process, _, Reason} ->
-                  ?assertMatch({{gosecrets_init_failed, ExpectedError}, _},
-                               Reason)
-          after 30000 ->
-                  erlang:demonitor(MRef, [flush]),
-                  misc:terminate_and_wait(P, shutdown),
-                  ?assert(false)
-          end
+          Res = start_link(default, true, true, CfgPath),
+          case Res of
+              {ok, P} ->
+                  unlink(P),
+                  exit(P, shutdown);
+              _ ->
+                  ok
+          end,
+          ?assertEqual({error, ExpectedError}, Res)
       end).
 
 upgrade_from_7_6_test_() ->

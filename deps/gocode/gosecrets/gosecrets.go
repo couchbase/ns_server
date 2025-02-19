@@ -495,7 +495,7 @@ func readDatakey(datakeyFile string) ([]byte, bool, []byte, error) {
 	}
 
 	if dataKeyFileJson.Version != 0 {
-		return nil, false, nil, ErrReadKeysError{e: fmt.Errorf("Not supported version of datakey file: %d", dataKeyFileJson.Version)}
+		return nil, false, nil, ErrReadKeysError{e: fmt.Errorf("not supported version of datakey file: %d", dataKeyFileJson.Version)}
 	}
 
 	return dataKeyFileJson.Data, dataKeyFileJson.Encrypted, dataKeyFileJson.LockkeySalt, nil

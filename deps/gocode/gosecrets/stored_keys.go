@@ -712,7 +712,7 @@ func (state *StoredKeysState) storeKey(
 func (state *StoredKeysState) readKeyFromFile(pathWithoutVersion string, ctx *storedKeysCtx) (storedKeyIface, int, error) {
 	keyIface, vsn, proof, err := readKeyFromFileRaw(pathWithoutVersion)
 	if err != nil {
-		return nil, vsn, err
+		return nil, vsn, fmt.Errorf("failed to read key from file %s: %s", pathWithoutVersion, err.Error())
 	}
 	err = state.decryptKey(keyIface, true, proof, ctx)
 	if err != nil {
@@ -728,7 +728,7 @@ func (state *StoredKeysState) readKey(name, kind string, validateProof bool, ctx
 	}
 	keyIface, _, proof, err := readKeyRaw(keySettings, name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read key %s: %s", name, err.Error())
 	}
 	err = state.decryptKey(keyIface, validateProof, proof, ctx)
 	if err != nil {

@@ -178,8 +178,17 @@ init_master_password() ->
           %%    cb_gosecrets_runner starts again (with normal logger this time)
           %% Note that cb_gosecrets_runner that starts later never asks for
           %% password, it uses the one that is set here.
-          cb_gosecrets_runner:start_link(dummy_logger(Self), true, true),
-          ok = cb_gosecrets_runner:stop()
+          Log = dummy_logger(Self),
+          case cb_gosecrets_runner:start_link(Log, true, true) of
+              {ok, _} ->
+                  ok = cb_gosecrets_runner:stop();
+              {error, shutdown} ->
+                  misc:halt(1);
+              {error, Reason} ->
+                  Log(error, "Failed to start cb_gosecrets_runner: ~p",
+                      [Reason]),
+                  misc:halt(1)
+          end
       end).
 
 -define(GOSECRETS_DBG_VAR, "CB_DEBUG_GOSECRETS").
@@ -201,9 +210,18 @@ dummy_logger(Proc) ->
 
 init_log_encryption() ->
     Log = dummy_logger(self()),
-    Opts = #{hidden_pass => cb_gosecrets_runner:extract_hidden_pass(Log)},
-    {ok, DekSnapshot} = cb_deks_raw_utils:bootstrap_get_deks(logDek, Opts),
-    ale:init_log_encryption_ds(DekSnapshot).
+    Opts = #{hidden_pass => cb_gosecrets_runner:extract_hidden_pass(Log),
+             log_fun => Log},
+    case cb_deks_raw_utils:bootstrap_get_deks(logDek, Opts) of
+        {ok, DekSnapshot} ->
+            Log(debug, "Initializing log encryption (dek_id: ~p)",
+                [cb_crypto:get_dek_id(DekSnapshot)]),
+            ale:init_log_encryption_ds(DekSnapshot);
+        {error, Reason} ->
+            Log(error, "Failed to initialize log encryption: ~s",
+                [cb_deks_raw_utils:format_error(Reason)]),
+            misc:halt(1)
+    end.
 
 init_logging() ->
     ale:with_configuration_batching(
