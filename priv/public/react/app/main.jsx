@@ -46,6 +46,12 @@ let auditState = {
   lazyLoad: () => import('./mn.security.audit.states.js'),
 };
 
+const samlState = {
+  name: 'app.admin.security.saml.**',
+  url: '/saml',
+  lazyLoad: () => import('./mn.security.saml.states.js'),
+};
+
 const logsState = {
   name: 'app.admin.logs.**',
   url: '/logs',
@@ -73,6 +79,7 @@ router.stateRegistry.register(overviewState);
 router.stateRegistry.register(securityState);
 router.stateRegistry.register(otherSecuritySettingsState);
 router.stateRegistry.register(auditState);
+router.stateRegistry.register(samlState);
 router.stateRegistry.register(logsState);
 router.stateRegistry.register(logsListState);
 router.stateRegistry.register(logsCollectInfoState);

@@ -1,6 +1,12 @@
-# Component Conversion Prompt Usage
+# ng2.component.prompt-recipe
 
-Documenting trying out different prompts for asking for the conversion.
+## Recipe
+
+Recipe for [ng2.component.prompt](../../ng2.component.prompt.md):
+
+```text
+Using @ng2.component.prompt.md, convert @mn.security.saml.component.js with it's template @mn.security.saml.html, into @mn.security.saml.component.jsx.
+```
 
 ## Antipatterns
 

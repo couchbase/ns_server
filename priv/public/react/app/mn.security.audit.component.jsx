@@ -401,6 +401,7 @@ export class MnSecurityAuditComponent extends MnLifeCycleHooksToStream {
                         </label>
                         <OverlayTrigger
                           placement="right"
+                          rootClose={true}
                           trigger="click"
                           overlay={ignoreEventsTooltip}
                         >

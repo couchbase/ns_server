@@ -1,4 +1,4 @@
-# Subcomponent Conversion Guide
+# subcomponent-conversion
 
 ## 1. Replace Angular subcomponent rendering with React subcomponent
 
@@ -51,10 +51,7 @@ The end goal is meant to be a fully working converted component that integrates 
 
 ## 4. Cleanup
 
-See:
-
-- [Conversion Errors Guide](./conversion-errors-guide.md)
-- [Conversion Errors Cleanup](./conversion-errors-cleanup.md)
+See [conversion errors guide](../conversion-errors-guide.md).
 
 ## Tips
 
