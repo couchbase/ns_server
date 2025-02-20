@@ -54,11 +54,13 @@ handle_pools(Req) ->
     %% later there will be an API to test the permissions
 
     Enterprise = cluster_compat_mode:is_enterprise(),
+    Columnar = cluster_compat_mode:is_columnar(),
     AllowedServices =
         ns_cluster_membership:supported_services(Enterprise),
     RV1 = [{isAdminCreds, true},
            {isROAdminCreds, false},
            {isEnterprise, Enterprise},
+           {isColumnar, Columnar},
            {configProfile, list_to_binary(config_profile:name())},
            {allowedServices, AllowedServices},
            {isDeveloperPreview, cluster_compat_mode:is_developer_preview()},
