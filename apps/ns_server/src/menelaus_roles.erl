@@ -494,6 +494,21 @@ roles() ->
        {[settings, indexes], [read]},
        {[ui], [read]},
        {[pools], [read]}]},
+     {query_list_index, ?RBAC_COLLECTION_PARAMS,
+      [{name, <<"Query List Index">>},
+       {folder, 'query'},
+       {desc, <<"Can list indexes for a given bucket, scope or collection. "
+                "This user can access the web console, can read statistics "
+                "for a given bucket, scope or collection. This user cannot "
+                "read data.">>
+       }],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, index], [list]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, collections], [read]},
+       {[{bucket, bucket_name}, settings], [read]},
+       {[{bucket, bucket_name}, stats], [read]},
+       {[settings, indexes], [read]},
+       {[ui], [read]},
+       {[pools], [read]}]},
      {query_system_catalog, [],
       [{name, <<"Query System Catalog">>},
        {folder, 'query'},
@@ -2254,7 +2269,8 @@ produce_roles_by_permission_test_() ->
                             data_backup, data_dcp_reader,
                             data_monitoring, data_writer, data_reader,
                             fts_admin, fts_searcher, query_delete,
-                            query_insert, query_manage_index, query_select,
+                            query_insert, query_manage_index,
+                            query_list_index, query_select,
                             query_update, replication_target,
                             mobile_sync_gateway],
                            [[any], [TestBucket]]),
