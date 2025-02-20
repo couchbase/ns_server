@@ -635,6 +635,7 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
     RotSize = proplists:get_value(size, RotationConf),
     RotNumFiles = proplists:get_value(num_files, RotationConf),
     LogLevel = ns_server:get_loglevel(cbas),
+    Columnar = config_profile:search({cbas, columnar}, false),
 
     build_port_args([{"-serverPort",           rest_port},
                      {"-serverSslPort",        ssl_rest_port},
@@ -668,7 +669,8 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
          "-logRotationSize=" ++ integer_to_list(RotSize),
          "-logRotationNumFiles=" ++ integer_to_list(RotNumFiles),
          "-logLevel=" ++ atom_to_list(LogLevel),
-         "-deploymentModel=" ++ config_profile:name()
+         "-deploymentModel=" ++ config_profile:name(),
+         "-columnar=" ++ atom_to_list(Columnar)
         ] ++
         ["-dataDir=" ++ Dir || Dir <- CBASDirs] ++
         build_afamily_requirement("-") ++

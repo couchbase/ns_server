@@ -1,6 +1,7 @@
 {name, "columnar"}.
 {{couchdb, disabled}, true}.
 {failover_disable_max_count, true}.
+{{cbas, columnar}, true}.
 {{cbas, enable_blob_storage}, true}.
 {{indexer, projector_disabled}, true}.
 {{cbas, max_storage_partitions}, 1024}.
