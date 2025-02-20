@@ -249,18 +249,29 @@ stream_logs(LogF, LogPath, ConsumeFn, GetDSFn, LoggerFn) ->
                 ok
         end,
 
+    GetAndCacheDSResFn =
+        fun(undefined, _FilePath) ->
+                GetDSFn();
+           ({ok, DS} = CurrentDsRes, FilePath) ->
+                case cb_crypto:can_ds_decrypt_file(FilePath, DS) of
+                    true ->
+                        CurrentDsRes;
+                    false ->
+                        GetDSFn()
+                end;
+           ({error, _} = Error, _FilePath) ->
+                Error
+        end,
+
     lists:foldl(
-      fun (FileName, Acc) ->
-              case cb_crypto:is_file_encrypted(FileName) of
-                  true when Acc =:= undefined ->
-                      DSRes = GetDSFn(),
-                      EncrFileStreamFn(FileName, DSRes),
-                      DSRes;
+      fun (FilePath, Acc) ->
+              case cb_crypto:is_file_encrypted(FilePath) of
                   true ->
-                      EncrFileStreamFn(FileName, Acc),
-                      Acc;
+                      DsRes = GetAndCacheDSResFn(Acc, FilePath),
+                      EncrFileStreamFn(FilePath, DsRes),
+                      DsRes;
                   false ->
-                      StdFileStreamFn(FileName),
+                      StdFileStreamFn(FilePath),
                       Acc
               end
       end, undefined, AllLogs),

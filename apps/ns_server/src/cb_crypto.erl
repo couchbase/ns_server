@@ -44,7 +44,7 @@
          read_file_chunks/5,
          file_encrypt_state_match/2,
          validate_encr_file_with_ds/2,
-         is_file_encr_by_ds/2,
+         can_ds_decrypt_file/2,
          is_file_encrypted/1,
          get_file_dek_ids/1,
          get_in_use_deks/1,
@@ -349,13 +349,24 @@ file_encrypt_state_match(#dek_snapshot{active_key = ActiveKey},
 validate_encr_file_with_ds(Path, #dek_snapshot{active_key = undefined}) ->
     not is_file_encrypted(Path);
 validate_encr_file_with_ds(Path, DS) ->
-    is_file_encr_by_ds(Path, DS) andalso validate_encr_file(Path).
+    is_file_encr_by_active_key(Path, DS) andalso validate_encr_file(Path).
 
--spec is_file_encr_by_ds(string(), #dek_snapshot{}) -> true | false.
-is_file_encr_by_ds(Path, #dek_snapshot{active_key = undefined}) ->
+-spec is_file_encr_by_active_key(string(), #dek_snapshot{}) -> true | false.
+is_file_encr_by_active_key(Path, #dek_snapshot{active_key = undefined}) ->
     not is_file_encrypted(Path);
-is_file_encr_by_ds(Path, #dek_snapshot{active_key = #{id := KeyId}}) ->
+is_file_encr_by_active_key(Path, #dek_snapshot{active_key = #{id := KeyId}}) ->
     header_key_match(read_file_header(Path), KeyId).
+
+-spec can_ds_decrypt_file(string(), #dek_snapshot{}) -> true | false.
+can_ds_decrypt_file(Path, DS) ->
+    {ok, FileDekIds} = get_file_dek_ids(Path),
+    {ActiveKey, OtherKeys} = get_all_deks(DS),
+    AllKeyIds = [get_dek_id(Key) || Key <- OtherKeys] ++
+        [get_dek_id(ActiveKey) || ActiveKey =/= undefined],
+    lists:all(
+      fun(DekId) ->
+              lists:member(DekId, AllKeyIds)
+      end, FileDekIds).
 
 -spec is_file_encrypted(string()) -> true | false.
 is_file_encrypted(Path) ->
