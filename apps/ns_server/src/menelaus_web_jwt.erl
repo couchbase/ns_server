@@ -83,7 +83,6 @@
 -define(EXPIRY_LEEWAY_DEFAULT_S, 15). % 15 seconds
 -define(EXPIRY_LEEWAY_MAX_S, 5*60). % 5 minutes
 -define(SYNC_TIMEOUT, 60000). % 1 minute
--define(DEFAULT_MAPPING_RULE, "(.*) \\\\&"). % No-op mapping rule
 
 %% @doc Main parameters and their descriptions:
 %% enabled - Indicates whether JWT support is enabled.

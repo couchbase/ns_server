@@ -30,6 +30,7 @@
 %%   - `true`  → Stop after the first valid match.
 %%   - `false` → Continue matching in priority order, collecting all valid
 %%    matches.
+%% By default, if no rules are specified, the identity is mapped to itself.
 -module(auth_mapping).
 
 -include("ns_common.hrl").
@@ -178,6 +179,9 @@ extract_mapped_result(roles, Value) ->
                      Rules :: [mapping_rule()],
                      StopFirstMatch :: boolean()) ->
           mapped_result().
+%% Apply the identity mapping if mapping rules aren't supplied.
+map_identities(Type, Values, [], StopFirstMatch) ->
+    map_identities(Type, Values, [{"^(.*)$", "\\1"}], StopFirstMatch);
 map_identities(Type, Values, Rules, StopFirstMatch) ->
     lists:usort(
       lists:flatmap(fun(Value) ->
@@ -345,7 +349,15 @@ mapping_test_() ->
                     map_identities(roles,
                                    ["GoogleRole:invalid1",
                                     "GoogleRole:invalid2"],
-                                   [{"^GoogleRole:(.*)", "\\1"}], true))
+                                   [{"^GoogleRole:(.*)", "\\1"}], true)),
+
+      %% Empty values/rules tests
+      ?_assertEqual([],
+                    map_identities(groups, [],
+                                   [{"^GoogleGroup:(.*)", "cb-\\1"}], true)),
+      ?_assertEqual(["cb-admins", "users@cb"],
+                    map_identities(groups, ["group1", "cb-admins", "users@cb"],
+                                   [], true))
      ]}.
 
 -endif.
