@@ -199,6 +199,13 @@ maybe_reencrypt_deks(Kind, Deks, NewEncryptionKeyFun) ->
     case ToReencrypt of
         [] -> no_change;
         _ ->
+            %% Sleep to avoid coordinated writes to chronicle
+            %% When KEK is rotated, all nodes start reencryption
+            %% simultaneously, which causes N chronicle transactions
+            %% to be started in parallel, causing a lot of retries, and
+            %% possible exceeded_retries errors
+            timer:sleep(rand:uniform(1000)),
+
             %% Group by EncMethod to increment counter only once per method
             ByEncMethod = maps:groups_from_list(
                             fun({_Dek, {EncMethod, _}}) -> EncMethod end,
