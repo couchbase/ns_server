@@ -427,8 +427,11 @@ goport_args(n1ql, Config, _Cmd, NodeUUID) ->
                                  "--certfile", "--keyfile",
                                  "--clientCertFile", "--clientKeyFile",
                                  "--cafile", Config),
+    {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
+    LogDirArg = "-logDir=" ++ LogDir,
     [DataStoreArg, HttpArg, CnfgStoreArg, EntArg, "-uuid=" ++ NodeUUID,
-     DeploymentModelArg] ++ build_afamily_requirement("--") ++ HttpsArgs;
+     DeploymentModelArg, LogDirArg] ++ build_afamily_requirement("--") ++
+    HttpsArgs;
 
 goport_args(projector, Config, _Cmd, _NodeUUID) ->
     %% Projector is a component that is required by 2i
