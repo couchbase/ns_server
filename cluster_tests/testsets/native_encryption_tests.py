@@ -1764,7 +1764,7 @@ def poll_verify_bucket_deks_and_collect_ids(*args, **kwargs):
         return True
 
     def verify():
-        current_dek_ids = []
+        current_dek_ids.clear()
         verify_bucket_deks_files(verify_id=collect_ids, *args, **kwargs)
 
     testlib.poll_for_condition(
