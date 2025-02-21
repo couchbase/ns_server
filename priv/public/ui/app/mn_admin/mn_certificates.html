@@ -143,6 +143,26 @@
           Enable
         </label>
         <br>
+        <div ng-if="adminCtl.poolDefault.compat.atLeast80">
+          <input
+             type="radio"
+             value="hybrid"
+             ng-disabled="!rbac.cluster.admin.security.write"
+             name="client_cert_state"
+             id="client_cert_hybrid"
+             ng-model="certCtl.clientCertSettings.state">
+          <label for="client_cert_hybrid" class="checkbox margin-right-zero">
+            Hybrid
+          </label>
+          <span
+             class="fa-stack icon-info"
+             uib-tooltip="TLS is used for internal communication only when node to node encryption is 'all'/'strict'"
+             tooltip-trigger="mouseenter">
+          <span class="icon fa-circle-thin fa-stack-2x"></span>
+          <span class="icon fa-info fa-stack-1x"></span>
+          </span>
+          <br>
+        </div>
         <input
            type="radio"
            value="mandatory"
