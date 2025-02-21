@@ -164,6 +164,8 @@ setup() ->
     meck:expect(ns_node_disco, nodes_actual,
                 fun () -> [node()] end),
     meck:expect(replicated_dets, change_multiple, fun (_, _) -> ok end),
+    meck:expect(replicated_dets, get,
+                fun(users_storage, {activity, _Id}) -> false end),
     fake_ns_config:update_snapshot(user_activity, [{enabled, true}]),
     start_link().
 
@@ -179,22 +181,26 @@ aggregate_activity_test__() ->
     %% Add activity in activity_tracker
     ets:insert(activity_tracker, {user, time}),
     Pid = self(),
+    ReportDone =
+        fun() ->
+                fake_ns_config:update_snapshot({?MODULE, check_interval},
+                                               1_000_000),
+                Pid ! done
+        end,
     meck:expect(
       replicated_dets, change_multiple,
-      ['_', '_'],
-      meck:seq(
-        [fun (users_storage, Changes) ->
-                 ?assertEqual([{set, {activity, user}, time}], Changes),
-                 ok
-         end,
-         %% Reset check interval after second check, to make sure
-         %% that the scheduled refresh message is sent/received
-         fun (users_storage, Changes) ->
-                 ?assertEqual([{set, {activity, user}, time}], Changes),
-                 fake_ns_config:update_snapshot({?MODULE, check_interval},
-                                                1_000_000),
-                 Pid ! done
-         end])),
+      fun (users_storage, Changes) ->
+              ?assertEqual([{set, {activity, user}, time}], Changes),
+              %% Update the meck so that we detect the second refresh, and
+              %% ensure that the next refresh can detect that the activity
+              %% time is the same
+              meck:expect(replicated_dets, get,
+                          fun(users_storage, {activity, user}) ->
+                                  ReportDone(),
+                                  {{activity, user}, time}
+                          end),
+              ok
+      end),
     %% Set 0 timeout so next refresh is made immediately
     fake_ns_config:update_snapshot({?MODULE, check_interval}, 0),
     ?SERVER ! refresh,
@@ -205,30 +211,25 @@ aggregate_activity_test__() ->
             error(fail)
     end,
 
-    ?assertEqual(2, meck:num_calls(replicated_dets, change_multiple,
+    %% Only the first refresh should cause an update to the activity entries
+    ?assertEqual(1, meck:num_calls(replicated_dets, change_multiple,
                                    ['_', '_'])).
 
 error_fetching_activity_test__() ->
     %% Reset meck module so that only calls from now on are counted
     meck:reset(replicated_dets),
-    meck:expect(activity_tracker, get_activity_from_node,
-                fun (_Node) -> error(err) end),
     Pid = self(),
     meck:expect(
-      replicated_dets, change_multiple,
-      ['_', '_'],
+      activity_tracker, get_activity_from_node, ['_'],
       meck:seq(
-        [fun (users_storage, Changes) ->
-                 ?assertEqual([], Changes),
-                 ok
-         end,
+        [fun (_Node) -> error(err) end,
          %% Reset check interval after second check, to make sure
          %% that the scheduled refresh message is sent/received
-         fun (users_storage, Changes) ->
-                 ?assertEqual([], Changes),
+         fun (_Node) ->
                  fake_ns_config:update_snapshot({?MODULE, check_interval},
                                                 1_000_000),
-                 Pid ! done
+                 Pid ! done,
+                 []
          end])),
     %% Set 0 timeout so next refresh is made immediately
     fake_ns_config:update_snapshot({?MODULE, check_interval}, 0),
@@ -240,7 +241,11 @@ error_fetching_activity_test__() ->
             error(fail)
     end,
 
-    ?assertEqual(2, meck:num_calls(replicated_dets, change_multiple,
+    ?assertEqual(2, meck:num_calls(activity_tracker, get_activity_from_node,
+                                   ['_'])),
+
+    %% Neither refresh should require updating any activity entries
+    ?assertEqual(0, meck:num_calls(replicated_dets, change_multiple,
                                    ['_', '_'])).
 
 all_test_() ->

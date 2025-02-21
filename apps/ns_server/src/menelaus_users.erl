@@ -425,10 +425,7 @@ make_props(Id, Props, ItemList, {Passwordless, TemporaryPassword, Definitions,
             (temporary_password, Cache) ->
                 {lists:member(Id, TemporaryPassword), Cache};
             (last_activity_time, Cache) ->
-                {case replicated_dets:get(storage_name(), {activity, Id}) of
-                     {{activity, Id}, Time} -> Time;
-                     false -> undefined
-                 end, Cache};
+                {get_last_activity_time(Id), Cache};
             (Name, Cache) ->
                 {proplists:get_value(Name, Props), Cache}
         end,
@@ -642,13 +639,31 @@ store_user_changes(Identity, Props, Auth, Locked, Exists) ->
     [{set, {locked, Identity}, Locked} || Locked =:= true] ++
     [{delete, {locked, Identity}} || Locked =:= false].
 
+-spec get_last_activity_time(rbac_identity()) -> undefined | non_neg_integer().
+get_last_activity_time(Id) ->
+    case replicated_dets:get(storage_name(), {activity, Id}) of
+        {{activity, Id}, Time} -> Time;
+        false -> undefined
+    end.
+
 -spec store_activity(#{rbac_identity() => non_neg_integer()}) -> ok.
 store_activity(ActivityMap) ->
-    PreparedDocs = lists:flatmap(
-                     fun ({Identity, Timestamp}) ->
-                             [{set, {activity, Identity}, Timestamp}]
+    PreparedDocs = lists:filtermap(
+                     fun ({Identity, NewTimestamp}) ->
+                             case get_last_activity_time(Identity) of
+                                 OldTimestamp
+                                   when OldTimestamp =:= undefined;
+                                        OldTimestamp < NewTimestamp ->
+                                     {true, {set, {activity, Identity},
+                                             NewTimestamp}};
+                                 _ ->
+                                     false
+                             end
                      end, maps:to_list(ActivityMap)),
-    replicated_dets:change_multiple(storage_name(), PreparedDocs).
+    case PreparedDocs of
+        [] -> ok;
+        _ -> replicated_dets:change_multiple(storage_name(), PreparedDocs)
+    end.
 
 delete_all_activity() ->
     UpdateFun =
