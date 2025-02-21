@@ -455,6 +455,8 @@ make_props_state(ItemList) ->
                      ns_bucket:get_snapshot(all, [collections, uuid])};
             false -> {undefined, undefined}
         end,
+    lists:member(last_activity_time, ItemList) andalso
+        activity_aggregator:sync_refresh(),
     {Passwordless, TemporaryPassword, Definitions, Snapshot}.
 
 select_auth_infos(KeySpec) ->

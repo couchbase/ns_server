@@ -20,6 +20,8 @@
 
 -behaviour(gen_server).
 
+-export([sync_refresh/0]).
+
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
     code_change/3]).
@@ -34,6 +36,11 @@
 -define(CONFIG_KEY, user_activity).
 
 -record(state, {refresh_timer_ref = undefined :: undefined | reference()}).
+
+%% Synchronously refresh activity times
+sync_refresh() ->
+    ?SERVER ! refresh,
+    gen_server:call(?SERVER, sync).
 
 %%%===================================================================
 %%% Spawning and gen_server implementation
