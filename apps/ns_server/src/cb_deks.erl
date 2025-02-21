@@ -195,33 +195,63 @@ maybe_reencrypt_deks(Kind, Deks, NewEncryptionKeyFun) ->
                       false -> false
                   end
           end, Deks),
+
     case ToReencrypt of
         [] -> no_change;
         _ ->
-            Errors =
-                lists:filtermap(
-                  fun ({#{type := 'raw-aes-gcm',
-                          id := DekId,
-                          info := #{encryption_key_id := CurKekId,
-                                    key := DekKey,
-                                    creation_time := CT}},
-                        {EncMethod, NewKekId}}) ->
-                      ?log_debug("Dek ~p is encrypted with ~p, "
-                                 "while correct kek is ~p (~p), will reencrypt",
-                                 [DekId, CurKekId, NewKekId, EncMethod]),
-                      maybe
-                          ok ?= increment_counter_in_chronicle(Kind, EncMethod),
-                          ok ?= encryption_service:store_dek(
-                                  Kind, DekId, DekKey(), NewKekId, CT),
-                          false
-                      else
-                          {error, Reason} ->
-                              ?log_error("Failed to reencrypt dek ~p: ~p",
-                                         [DekId, Reason]),
-                              {true, {DekId, Reason}}
-                      end
-                  end, ToReencrypt),
+            %% Group by EncMethod to increment counter only once per method
+            ByEncMethod = maps:groups_from_list(
+                            fun({_Dek, {EncMethod, _}}) -> EncMethod end,
+                            fun({Dek, {_, NewKekId}}) -> {Dek, NewKekId} end,
+                            ToReencrypt),
+
+            Errors = lists:flatmap(
+                       fun ({EncMethod, DeksAndKekIds}) ->
+                           store_deks_reencrypted(Kind, EncMethod,
+                                                  DeksAndKekIds)
+                       end, maps:to_list(ByEncMethod)),
             {changed, Errors}
+    end.
+
+-spec store_deks_reencrypted(dek_kind(), encryption_method(),
+                             [{dek(), cb_cluster_secrets:key_id()}]) ->
+    [{dek_id(), term()}].
+store_deks_reencrypted(Kind, EncMethod, DeksAndKekIds) ->
+    %% Increment counter once per encryption method
+    case increment_counter_in_chronicle(Kind, EncMethod) of
+        ok ->
+            %% Process all DEKs for this method
+            lists:filtermap(
+                fun ({#{type := 'raw-aes-gcm',
+                    id := DekId,
+                    info := #{encryption_key_id := CurKekId,
+                            key := DekKey,
+                            creation_time := CT}},
+                    NewKekId}) ->
+                    ?log_debug("Dek ~p is encrypted with ~p, "
+                                "while correct kek is ~p (~p), "
+                                "will reencrypt",
+                                [DekId, CurKekId, NewKekId,
+                                EncMethod]),
+                    maybe
+                        ok ?= encryption_service:store_dek(
+                                Kind, DekId, DekKey(), NewKekId,
+                                CT),
+                        false
+                    else
+                        {error, Reason} ->
+                            ?log_error("Failed to reencrypt "
+                                        "dek ~p: ~p",
+                                        [DekId, Reason]),
+                            {true, {DekId, Reason}}
+                    end
+                end, DeksAndKekIds);
+        {error, R} ->
+            ?log_error("Failed to increment dek encryption "
+                        "counter for ~p deks: ~p", [Kind, R]),
+            lists:map(fun ({#{id := DekId}, _}) ->
+                            {DekId, R}
+                        end, DeksAndKekIds)
     end.
 
 increment_counter_in_chronicle(Kind, SecretId) ->
