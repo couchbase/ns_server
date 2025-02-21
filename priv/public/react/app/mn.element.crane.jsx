@@ -9,6 +9,7 @@ licenses/APL2.txt.
 */
 
 import React, { createContext, useContext, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 export { MnElementCraneProvider, MnElementCargo, MnElementDepot };
 
@@ -38,21 +39,10 @@ const MnElementCraneProvider = ({ children }) => {
 
 const MnElementCargo = ({ depot, children }) => {
   const { get } = useContext(MnElementCraneContext);
-  const cargoRef = useRef(null);
+  const depotElement = get(depot);
 
-  useEffect(() => {
-    const depotElement = get(depot);
-    if (depotElement && cargoRef.current) {
-      depotElement.appendChild(cargoRef.current);
-    }
-    return () => {
-      if (depotElement && cargoRef.current) {
-        depotElement.removeChild(cargoRef.current);
-      }
-    };
-  }, [depot, get]);
-
-  return <div ref={cargoRef}>{children}</div>;
+  // Only render the portal if we have a valid depot element
+  return depotElement ? createPortal(children, depotElement) : null;
 };
 
 const MnElementDepot = ({ name, children }) => {

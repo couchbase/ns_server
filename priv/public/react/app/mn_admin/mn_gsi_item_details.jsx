@@ -1,6 +1,5 @@
-import { MnLifeCycleHooksToStream } from '../mn.core.js';
+import { MnLifeCycleHooksToStream, dayjs } from '../mn.core.js';
 import _ from 'lodash';
-import dayjs from 'dayjs';
 import { ModalContext } from '../uib/template/modal/window.and.backdrop';
 import { MnGsiDropConfirmDialog } from './mn_gsi_drop_confirm_dialog';
 import mnGsiService from './mn_gsi_service';
@@ -51,7 +50,7 @@ class MnGsiItemDetails extends MnLifeCycleHooksToStream {
 
     function getFormattedScanTime(row) {
       if (row && row.lastScanTime != 'NA')
-        return dayjs(row.lastScanTime).format('hh:mm:ss A, D MMM, YYYY');
+        return dayjs.utc(row.lastScanTime).format('hh:mm:ss A, D MMM, YYYY');
       else return 'NA';
     }
 

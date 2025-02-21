@@ -94,8 +94,3 @@ ReactDOM.render(
   </UIRouter>,
   document.getElementById('root')
 );
-
-// ReactDOM.render(
-//   <MnAuthComponent />,
-//   document.getElementById("root")
-// );

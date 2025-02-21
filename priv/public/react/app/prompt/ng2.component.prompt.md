@@ -11,6 +11,8 @@ as example patterns, the actual code can be different and it depends on particul
 
 Important! Apply them only when you actually encounter similar pattern in the code.
 
+Important! Do not miss a single line of the input code during conversion.
+
 ## 1. Leave Class extension in place Do not change anything here React Class should extend MnLifeCycleHooksToStream.
 
 For example:
@@ -377,8 +379,9 @@ For example:
   class="outline"
   [disabled]="!(clusterInfo | async)"
   ngxClipboard
-  [cbContent]="clusterInfo | async">
-   Copy to Clipboard
+  [cbContent]="clusterInfo | async"
+>
+  Copy to Clipboard
 </button>
 ```
 
@@ -395,16 +398,13 @@ For example:
         2500
       );
     } else {
-      MnAlertsService.formatAndSetAlerts(
-        'Unable to copy text!',
-        'error',
-        2500
-      );
+      MnAlertsService.formatAndSetAlerts('Unable to copy text!', 'error', 2500);
     }
-  }}>
-    <button className="outline" disabled={!clusterInfo}>
-      Copy to Clipboard
-    </button>
+  }}
+>
+  <button className="outline" disabled={!clusterInfo}>
+    Copy to Clipboard
+  </button>
 </CopyToClipboard>
 ```
 

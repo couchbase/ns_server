@@ -55,14 +55,14 @@ class MnLogsCollectInfoResultComponent extends MnLifeCycleHooksToStream {
 
   startNewCollection() {
     UIRouter.stateService.go('app.admin.logs.collectInfo.form');
-  };
+  }
 
   stopCollection() {
     const { openModal } = this.context;
     openModal({
       component: MnLogsCollectInfoStopCollectionComponent,
     });
-  };
+  }
 
   identifyNode(index, node) {
     return node.nodeName;

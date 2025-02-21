@@ -11,6 +11,8 @@ as example patterns, the actual code can be different and it depends on particul
 
 Important! Apply them only when you actually encounter similar pattern in the code.
 
+Important! Do not miss a single line of the input code during conversion.
+
 ## 1. Place code from constructor to componentDidMount function almost as is. Only change what is required in further instructions.
 
 For example:
@@ -234,4 +236,47 @@ updateState = () => {
 }
 ...
 mnHelper.initializeDetailsHashObserver(vm, 'openedGroups', '.');
+```
+
+## 9. Use Dropdown from react-bootstrap instead of uib-dropdown
+
+For example:
+// Instead of
+
+```html
+...
+<span uib-dropdown class="mn-dropdown-menu">
+  <a uib-dropdown-toggle> help <span class="has-menu">&nbsp;</span> </a>
+  <div uib-dropdown-menu class="dropdown-menu-select-like">
+    <a
+      ng-href="https://docs.couchbase.com/server/{{adminCtl.implementationVersion | mnMajorMinorVersion}}/introduction/intro.html"
+      rel="noopener noreferrer"
+      target="_blank"
+    >
+      Documentation<br />
+    </a>
+    ...
+  </div>
+</span>
+```
+
+// Do
+
+```jsx
+...
+<Dropdown className="mn-dropdown-menu">
+  <Dropdown.Toggle variant="link" id="dropdown-basic" as="a"> help <span class="has-menu">&nbsp;</span> </Dropdown.Toggle>
+  <Dropdown.Menu className="dropdown-menu-select-like">
+    <Dropdown.Item
+      as="a"
+      href={`https://docs.couchbase.com/server/${vm.implementationVersion}/introduction/intro.html`}
+      rel="noopener noreferrer"
+      target="_blank"
+    >
+      Documentation
+      <br />
+    </Dropdown.Item>
+    ...
+  </Dropdown.Menu>
+</Dropdown>
 ```

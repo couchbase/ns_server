@@ -11,6 +11,8 @@ as example patterns, the actual code can be different and it depends on particul
 
 Important! Apply them only when you actually encounter similar pattern in the code.
 
+Important! Do not miss a single line of the input code during conversion.
+
 ## 2. AngularJS service's module and factory should be removed
 
 For example:

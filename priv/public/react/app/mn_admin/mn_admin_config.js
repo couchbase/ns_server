@@ -1,20 +1,9 @@
 import mnPoolDefault from '../components/mn_pool_default.js';
 import mnPools from '../components/mn_pools.js';
 import mnPermissions from '../components/mn_permissions.js';
-import axios from 'axios';
 import { MnAdminComponent } from './mn_admin_controller.jsx';
-
-let cache;
-function whoami() {
-  if (cache) {
-    return Promise.resolve(cache);
-  }
-
-  return axios.get('/whoami').then((response) => {
-    cache = response.data;
-    return cache;
-  });
-}
+import mnAuthService from '../mn_auth/mn_auth_service.js';
+import { MnLostConnectionComponent } from './mn_lost_connection_config.jsx';
 
 const adminState = {
   name: 'app.admin',
@@ -72,19 +61,17 @@ const adminState = {
     {
       token: 'whoami',
       deps: [],
-      resolveFn: () => whoami(),
+      resolveFn: () => mnAuthService.whoami(),
     },
   ],
-  component: MnAdminComponent,
-
-  // views: {
-  //   $default: {
-  //     component: AdminComponent
-  //   },
-  //   'lostConnection@app.admin': {
-  //     component: LostConnectionComponent
-  //   }
-  // }
+  views: {
+    $default: {
+      component: MnAdminComponent,
+    },
+    'lostConnection@app.admin': {
+      component: MnLostConnectionComponent,
+    },
+  },
 };
 
 export default adminState;

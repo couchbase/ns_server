@@ -77,17 +77,14 @@ let overviewState = {
   name: 'app.admin.overview',
   url: '/overview',
   abstract: true,
-  component: MnOverviewComponent,
-  // views: {
-  //     "main@app.admin": {
-  //       controller: 'mnOverviewController as overviewCtl',
-  //       template: mnOverviewTemplate
-  //     }
-  //   },
-  //   data: {
-  //     title: "Dashboard"
-  //   }
-  // }
+  views: {
+    'main@app.admin': {
+      component: MnOverviewComponent,
+    },
+  },
+  data: {
+    title: 'Dashboard',
+  },
 };
 
 let statisticsState = {

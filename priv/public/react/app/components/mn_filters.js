@@ -148,6 +148,27 @@ const angularJSLikeFilter = (collection, searchTerm) => {
   );
 };
 
+function mnMsToTime(ms) {
+  var h, m, s;
+  s = Math.floor(ms / 1000);
+  m = Math.floor(s / 60);
+  s = s % 60;
+  h = Math.floor(m / 60);
+  m = m % 60;
+
+  return (
+    (h ? h + ':' : '') + (m > 9 ? m : '0' + m) + ':' + (s > 9 ? s : '0' + s)
+  );
+}
+
+function decodeCompatVersion() {
+  return function (version) {
+    var major = Math.floor(version / 0x10000);
+    var minor = version - major * 0x10000;
+    return major.toString() + '.' + minor.toString();
+  };
+}
+
 export {
   jQueryLikeParamSerializerFilter,
   angularJSLikeFilter,
@@ -155,4 +176,6 @@ export {
   mnFormatQuantity,
   mnPrepareQuantity,
   mnTruncateTo3Digits,
+  mnMsToTime,
+  decodeCompatVersion,
 };

@@ -14,19 +14,17 @@ let securityState = {
   name: 'app.admin.security',
   abstract: true,
   url: '/security',
-  // views: {
-  //   'main@app.admin': {
-  //     controller: 'mnSecurityController as securityCtl',
-  //     template: mnSecurityTemplate,
-  //   },
-  // },
+  views: {
+    'main@app.admin': {
+      component: MnSecurityComponent,
+    },
+  },
   data: {
     permissions: ({ cluster }) => {
       return cluster.admin.security.read || cluster.admin.users.read;
     },
     title: 'Security',
   },
-  component: MnSecurityComponent,
 };
 
 export const states = [securityState];

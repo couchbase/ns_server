@@ -64,6 +64,7 @@ const appState = {
     },
   },
   abstract: true,
+  // TODO: get back to this
   // resolve: {
   //   env: ['mnEnv', '$rootScope', function (mnEnv, $rootScope) {
   //     return mnEnv.loadEnv().then(function(env) {
@@ -112,6 +113,7 @@ function isThisTransitionBetweenTabs(trans) {
   return toName.indexOf(fromName) === -1 && fromName.indexOf(toName) === -1;
 }
 
+// TODO: get back to this
 // UIRouter.transitionService.onFinish({
 //   from: "app.admin.**",
 //   to: "app.admin.**"
@@ -146,6 +148,7 @@ UIRouter.transitionService.onBefore(
     if (!isModalOpen && isThisTransitionBetweenTabs(trans)) {
       //cancel tabs specific queries in case toName is not child of fromName and vise versa
       mnPendingQueryKeeper.cancelTabsSpecificQueries();
+      // TODO: get back to this
       // mnHelper.mainSpinnerCounter.increase();
     }
     return !isModalOpen;

@@ -80,18 +80,11 @@ let gsiState = {
       dynamic: true,
     },
   },
-  component: MnGsiComponent,
+  views: {
+    'main@app.admin': {
+      component: MnGsiComponent,
+    },
+  },
 };
-
-// let authChangePasswordState = {
-//   name: "app.authChangePassword",
-//   component: MnAuthChangePasswordComponent,
-//   params: {
-//     auth: {
-//       value: null,
-//       dynamic: true
-//     }
-//   },
-// };
 
 export const states = [gsiState];
