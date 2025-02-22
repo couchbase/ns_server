@@ -80,12 +80,12 @@ read(Kind, DekIds) ->
         {ok, dek_id()} | {error, _} when Id :: cb_cluster_secrets:secret_id().
 generate_new(Kind, encryption_service, _Snapshot) ->
     maybe
-        ok ?= increment_counter_in_chronicle(Kind, encryption_service),
+        ok ?= increment_dek_encryption_counter(Kind, encryption_service),
         new(Kind, <<"encryptionService">>)
     end;
 generate_new(Kind, {secret, Id}, Snapshot) ->
     maybe
-        ok ?= increment_counter_in_chronicle(Kind, {secret, Id}),
+        ok ?= increment_dek_encryption_counter(Kind, {secret, Id}),
         {ok, KekId} ?= cb_cluster_secrets:get_active_key_id(Id, Snapshot),
         new(Kind, KekId)
     end.
@@ -225,7 +225,7 @@ maybe_reencrypt_deks(Kind, Deks, NewEncryptionKeyFun) ->
     [{dek_id(), term()}].
 store_deks_reencrypted(Kind, EncMethod, DeksAndKekIds) ->
     %% Increment counter once per encryption method
-    case increment_counter_in_chronicle(Kind, EncMethod) of
+    case increment_dek_encryption_counter(Kind, EncMethod) of
         ok ->
             %% Process all DEKs for this method
             lists:filtermap(
@@ -261,19 +261,29 @@ store_deks_reencrypted(Kind, EncMethod, DeksAndKekIds) ->
                         end, DeksAndKekIds)
     end.
 
-increment_counter_in_chronicle(Kind, SecretId) ->
+increment_dek_encryption_counter(Kind, SecretId) ->
     cb_cluster_secrets:chronicle_transaction(
       [?CHRONICLE_DEK_COUNTERS_KEY],
       fun (Snapshot) ->
            All = chronicle_compat:get(Snapshot,
                                       ?CHRONICLE_DEK_COUNTERS_KEY,
                                       #{default => #{}}),
-           SecretCounters = maps:get(SecretId, All, #{}),
-           Counter = maps:get(Kind, SecretCounters, 0),
-           NewSecretCounters = SecretCounters#{Kind => Counter + 1},
-           NewDEKCounters = All#{SecretId => NewSecretCounters},
+           NewDEKCounters = increment_dek_encryption_counter(Kind, SecretId,
+                                                             All),
            {commit, [{set, ?CHRONICLE_DEK_COUNTERS_KEY, NewDEKCounters}]}
       end).
+
+-spec increment_dek_encryption_counter(
+        dek_kind(),
+        cb_cluster_secrets:secret_id(),
+        cb_cluster_secrets:dek_encryption_counters()) ->
+          cb_cluster_secrets:dek_encryption_counters().
+increment_dek_encryption_counter(Kind, SecretId, AllCounters) ->
+    SecretCounters = maps:get(SecretId, AllCounters, #{}),
+    {Counter, _Rev} = maps:get(Kind, SecretCounters, {0, undefined}),
+    NewRev = rand:uniform(16#FFFFFFFF),
+    NewSecretCounters = SecretCounters#{Kind => {Counter + 1, NewRev}},
+    AllCounters#{SecretId => NewSecretCounters}.
 
 %% Chronicle keys that can trigger dek reencryption, enablement/disablement
 %% of encryption, etc...

@@ -100,7 +100,8 @@
                                     undefined,
                 kek_hashes_on_disk = #{} :: #{secret_id() := integer()}}).
 
--export_type([secret_id/0, key_id/0, chronicle_snapshot/0, secret_usage/0]).
+-export_type([secret_id/0, key_id/0, chronicle_snapshot/0, secret_usage/0,
+              dek_encryption_counters/0]).
 
 -type secret_props() ::
     #{id := secret_id(),
@@ -200,6 +201,10 @@
 
 -type dek_issue() :: {dek_job() | proc_communication | node_info,
                       pending | failed}.
+
+-type dek_encryption_counters() ::
+          #{{secret, secret_id()} | encryption_service :=
+            #{cb_deks:dek_kind() := {non_neg_integer(), Rev :: integer()}}}.
 
 %%%===================================================================
 %%% API
@@ -411,7 +416,7 @@ delete_historical_key(SecretId, HistKeyId, IsSecretWritableFun) ->
                                    active_key}.
 delete_historical_key_internal(SecretId, HistKeyId, IsSecretWritableFun) ->
     %% It is important to get the counters before we start dek info aggregation
-    OldCountersMap = get_dek_counters(direct),
+    {_, CountersRev} = get_dek_counters(direct),
     case get_all_node_deks_info() of
         {ok, AllNodesDekInfo} ->
             case check_key_id_usage(HistKeyId, AllNodesDekInfo) of
@@ -422,8 +427,8 @@ delete_historical_key_internal(SecretId, HistKeyId, IsSecretWritableFun) ->
                            [?CHRONICLE_SECRETS_KEY,
                             ?CHRONICLE_DEK_COUNTERS_KEY],
                            fun (Snapshot) ->
-                               CountersMap = get_dek_counters(Snapshot),
-                               case CountersMap == OldCountersMap of
+                               {_, NewCountersRev} = get_dek_counters(Snapshot),
+                               case NewCountersRev == CountersRev of
                                    true ->
                                        delete_historical_key_txn(
                                          SecretId,
@@ -2087,7 +2092,7 @@ get_secrets_that_encrypt_props(#{type := ?KMIP_KEY_TYPE,
 -spec get_dek_kinds_used_by_secret_id(secret_id(), chronicle_snapshot()) ->
                                                         [cb_deks:dek_kind()].
 get_dek_kinds_used_by_secret_id(Id, Snapshot) ->
-    Map = get_dek_counters(Snapshot),
+    {Map, _} = get_dek_counters(Snapshot),
     maps:keys(maps:get({secret, Id}, Map, #{})).
 
 -spec get_active_key_id_from_secret(secret_props()) -> {ok, key_id()} |
@@ -2915,10 +2920,10 @@ sync_with_all_node_monitors() ->
 %% are used for what (for example we need this information in order to be able
 %% to remove KEKs safely).
 %%
-%% Current those counter look like the following:
+%% Currently those counters look like the following:
 %% #{ {secret, 23} => #{ configDek => 14,
-%%                       {bucketDek, "beer-sample"} => 2 },
-%%    {secret, 26} => #{ {bucketDek, "travel-sample"} => 6 } }
+%%                       {bucketDek, "beer-sample"} => {2, 2345334}},
+%%    {secret, 26} => #{ {bucketDek, "travel-sample"} => {6, 835335} } }
 %%
 %% This function is supposed to cleanup these counters by basically removing
 %% those dek types that don't use the secret anymore.
@@ -2929,9 +2934,9 @@ sync_with_all_node_monitors() ->
           ok | {error, retry | node_errors | missing_nodes | no_quorum}.
 maybe_reset_deks_counters() ->
     case get_dek_counters(direct) of
-        CounterMap when CounterMap == #{} ->
+        {CounterMap, _} when CounterMap == #{} ->
             ok;
-        CounterMap ->
+        {CounterMap, _} ->
             case get_all_node_deks_info() of
                 {ok, AllNodesDekInfo} ->
                     reset_dek_counters(CounterMap, AllNodesDekInfo);
@@ -2941,12 +2946,21 @@ maybe_reset_deks_counters() ->
     end.
 
 -spec get_dek_counters(chronicle_snapshot()) ->
-          #{EncryptionMethod := Counters}
-          when EncryptionMethod :: {secret, secret_id()} | encryption_service,
-               Counters :: #{cb_deks:dek_kind() := non_neg_integer()}.
+          {dek_encryption_counters(), undefined | chronicle:revision()}.
+get_dek_counters(direct) ->
+    case chronicle_kv:get(kv, ?CHRONICLE_DEK_COUNTERS_KEY) of
+        {ok, Value} ->
+            Value;
+        {error, not_found} ->
+            {#{}, undefined}
+    end;
 get_dek_counters(Snapshot) ->
-    chronicle_compat:get(Snapshot, ?CHRONICLE_DEK_COUNTERS_KEY,
-                         #{default => #{}}).
+    case maps:find(?CHRONICLE_DEK_COUNTERS_KEY, Snapshot) of
+        {ok, Value} ->
+            Value;
+        error ->
+            {#{}, undefined}
+    end.
 
 -spec get_all_node_deks_info() ->
           {ok, #{cb_deks:dek_kind() => [cb_deks:dek()]}} |
@@ -3006,12 +3020,9 @@ get_all_node_deks_info() ->
             {error, missing_nodes}
     end.
 
--spec reset_dek_counters(
-        #{EncryptionMethod := Counters},
-        #{cb_deks:dek_kind() => [cb_deks:dek()]}) ->
-        ok | {error, no_quorum}
-        when EncryptionMethod :: {secret, secret_id()} | encryption_service,
-             Counters :: #{cb_deks:dek_kind() := non_neg_integer()}.
+-spec reset_dek_counters(dek_encryption_counters(),
+                         #{cb_deks:dek_kind() => [cb_deks:dek()]}) ->
+          ok | {error, no_quorum}.
 reset_dek_counters(OldCountersMap, ActualDeksUsageInfo) ->
     Res =
         chronicle_transaction(
@@ -3069,14 +3080,15 @@ reset_dek_counters_txn(OldCountersMap, ActualDeksUsageInfo, Snapshot) ->
             maybe
                 {ok, OldMap} ?= maps:find(SecretId, OldCountersMap),
                 NewMap = maps:filter(
-                           fun (DekKind, Counter) ->
+                           fun (DekKind, CounterWithRev) ->
                                DekStillUsesSecretId(DekKind, SecretId) orelse
                                %% Checking if counter has changed since before
                                %% we started deks info aggregation;
                                %% If so, that means that something started just
                                %% started using it and we should not remove it
                                %% from the map
-                               (Counter /= maps:get(DekKind, OldMap, 0))
+                               (CounterWithRev /= maps:get(DekKind, OldMap,
+                                                           {0, undefined}))
                            end, Map),
                 case maps:size(NewMap) of
                     0 -> false;
@@ -3089,7 +3101,7 @@ reset_dek_counters_txn(OldCountersMap, ActualDeksUsageInfo, Snapshot) ->
             end
         end,
 
-    Old = get_dek_counters(Snapshot),
+    {Old, _} = get_dek_counters(Snapshot),
     New = maps:filtermap(FilterCountersForSecret, Old),
     case New == Old of
         true -> {abort, nothing_changed};
