@@ -15,6 +15,7 @@
 -include("ns_common.hrl").
 
 -export([supported/0,
+         supported_and_morpheus/0,
          all_services/0,
          write_memory_high/2,
          write_memory_max/2,
@@ -76,6 +77,11 @@
 supported() ->
     cgroups:os_type() =:= {unix, linux} andalso
         config_profile:is_provisioned() andalso system_checks().
+
+-spec(supported_and_morpheus() -> boolean()).
+supported_and_morpheus() ->
+    supported() andalso cluster_compat_mode:is_cluster_morpheus() andalso
+        cluster_compat_mode:is_enterprise().
 
 %% NOTE: Since this feature is meant to be disabled by default, this should only
 %% be used in ns_cgroups_manager to determine if limits should be set or just
