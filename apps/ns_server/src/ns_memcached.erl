@@ -798,20 +798,46 @@ do_handle_call({set_vbucket, VBucket, VBState, Options}, _From,
 do_handle_call({download_snapshot, MasterNode, VBucket}, _From, State) ->
     Cfg = ns_config:latest(),
 
-    {Host, TcpPort, _SslPort} = ns_memcached:host_ports(MasterNode, Cfg),
+    UseTLS = misc:should_cluster_data_be_encrypted(),
+
+    {Host, TcpPort, SslPort} = ns_memcached:host_ports(MasterNode, Cfg),
+    Port = case UseTLS of
+               true ->
+                   SslPort;
+               false ->
+                   TcpPort
+           end,
+
     Username = ns_config:search_node_prop(MasterNode, Cfg, memcached,
                                           admin_user),
     Password = ns_config_auth:get_password(MasterNode, Cfg, special),
 
+    CAFilePath =
+        ns_ssl_services_setup:ca_file_path(),
+
+    [{certfile, CertFile},
+     {keyfile, KeyFile},
+     {password, PassphraseFun}] =
+        ns_ssl_services_setup:tls_client_certs_opts(),
+
     SnapshotCfg =
         {[{host, iolist_to_binary(Host)},
-          {port, TcpPort},
+          {port, Port},
           {bucket, iolist_to_binary(State#state.bucket)},
           {sasl, {[{mechanism, iolist_to_binary("PLAIN")},
                    {username, iolist_to_binary(Username)},
                    {password, iolist_to_binary(Password)}]}}
-          %% TODO MB-64812: TLS options
-         ]},
+         ] ++ case UseTLS of
+                  true ->
+                      [{tls, {[{cert, iolist_to_binary(CertFile)},
+                               {key, iolist_to_binary(KeyFile)},
+                               {ca_store, iolist_to_binary(CAFilePath)},
+                               {passphrase,
+                                iolist_to_binary(
+                                  base64:encode(PassphraseFun()))}]}}];
+                  false ->
+                      []
+              end},
 
     Reply = mc_client_binary:download_snapshot(State#state.sock, VBucket,
                                                SnapshotCfg),
