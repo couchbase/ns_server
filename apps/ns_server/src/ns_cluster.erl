@@ -554,12 +554,28 @@ init([]) ->
         false ->
             case misc:marker_exists(start_marker_path()) of
                 true ->
+                    IsNodeRemoved = chronicle:get_system_state() =:= removed,
                     case misc:marker_exists(join_marker_path()) of
                         true ->
                             ?log_info("Found marker ~p. "
                                       "Looks like we failed in process of "
                                       "joining cluster. Will restore config "
                                       "to clean state. ", [join_marker_path()]),
+                            gen_server:cast(Self, repair_join);
+                        false when IsNodeRemoved ->
+                            ?log_info("Node is removed from cluster. "),
+                            %% This can happen if ns_server start fails during
+                            %% join process. The other node (that sends
+                            %% /completeJoin) will remove this
+                            %% node from cluster as soon as it receives the
+                            %% completeJoin response (error).
+                            %% It is possible that if we don't repair_join here
+                            %% ns_cluster will try starting ns_server
+                            %% again and again until it succeeds (only after
+                            %% that it will leave the cluster). The problem is
+                            %% that it may be unable to start ns_server
+                            %% (because chronicle is dead already), so it will
+                            %% be stuck in the loop forever.
                             gen_server:cast(Self, repair_join);
                         false ->
                             ok
