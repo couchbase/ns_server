@@ -1021,11 +1021,16 @@ handle_patch_user(UserId, Req) ->
     case validate_cred(UserId, username) of
         true ->
             Identity = {UserId, local},
-            verify_domain_access(Req, Identity, write),
-            Roles = menelaus_users:get_roles(Identity),
-            verify_user_admin_roles_access(Req, write, Roles),
-            handle_patch_user_with_identity(Req, Identity,
-                                            patch_user_validators());
+            case menelaus_users:user_exists(Identity) of
+                false ->
+                    reply_unknown_user_error(Req);
+                true ->
+                    verify_domain_access(Req, Identity, write),
+                    Roles = menelaus_users:get_roles(Identity),
+                    verify_user_admin_roles_access(Req, write, Roles),
+                    handle_patch_user_with_identity(Req, Identity,
+                                                    patch_user_validators())
+            end;
         Error ->
             menelaus_util:reply_global_error(Req, Error)
     end.

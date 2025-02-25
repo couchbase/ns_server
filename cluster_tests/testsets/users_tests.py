@@ -167,6 +167,23 @@ class UsersTestSet(testlib.BaseTestSet):
         # SDK/KV passes
         assert_sdk_pass(kv_url, auth)
 
+    def patch_user_errors_test(self):
+        # Can't lock an invalid user
+        testlib.patch_fail(self.cluster,
+                           '/settings/rbac/users/local/@invalid_user',
+                           data={"locked": "true"},
+                           expected_code=400)
+        # Can't lock an unknown user
+        testlib.patch_fail(self.cluster,
+                           '/settings/rbac/users/local/unknown_user',
+                           data={"locked": "true"},
+                           expected_code=404)
+        # Can't change the password
+        testlib.patch_fail(self.cluster,
+                           '/settings/rbac/users/local/unknown_user',
+                           data={"password": "password"},
+                           expected_code=404)
+
     def expired_user_test(self):
         user = self.user
         name1 = testlib.random_str(10)
