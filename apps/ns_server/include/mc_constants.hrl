@@ -127,8 +127,13 @@
 -define(CMD_SET_ENCRYPTION_KEY, 16#2d).
 
 %% fusion commands
--define(CMD_GET_FUSION_STORAGE_SNAPSHOT, 16#98).
--define(CMD_MOUNT_FUSION_VBUCKET, 16#9a).
+-define(CMD_GET_FUSION_STORAGE_SNAPSHOT,     16#70).
+-define(CMD_RELEASE_FUSION_STORAGE_SNAPSHOT, 16#71).
+-define(CMD_MOUNT_FUSION_VBUCKET,            16#72).
+-define(CMD_UNMOUNT_FUSION_VBUCKET,          16#73).
+-define(CMD_SYNC_FUSION_LOGSTORE,            16#74).
+-define(CMD_START_FUSION_UPLOADER,           16#75).
+-define(CMD_STOP_FUSION_UPLOADER,            16#76).
 
 -define(RGET,        16#30).
 -define(RSET,        16#31).
