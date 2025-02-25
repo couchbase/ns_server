@@ -527,7 +527,7 @@ handle_get_user(Domain, UserId, Req) ->
             Identity = {UserId, DomainAtom},
             case menelaus_users:user_exists(Identity) of
                 false ->
-                    menelaus_util:reply_json(Req, <<"Unknown user.">>, 404);
+                    reply_unknown_user_error(Req);
                 true ->
                     verify_domain_access(Req, Identity, read),
                     Roles = menelaus_users:get_roles(Identity),
@@ -540,6 +540,10 @@ handle_get_user(Domain, UserId, Req) ->
                     menelaus_util:reply_json(Req, get_user_json(Identity))
             end
     end.
+
+reply_unknown_user_error(Req) ->
+    menelaus_util:reply_json(
+      Req, <<"Unknown user.">>, 404).
 
 filter_by_roles(all) ->
     pipes:filter(fun (_) -> true end);
@@ -1287,8 +1291,7 @@ handle_delete_user(Domain, UserId, Req) ->
                                                      {domain, T}]),
                     reply_put_delete_users(Req);
                 {abort, {error, not_found}} ->
-                    menelaus_util:reply_json(Req, <<"User was not found.">>,
-                                             404)
+                    reply_unknown_user_error(Req)
             end
     end.
 
@@ -1335,8 +1338,7 @@ handle_patch_user_with_identity(Req, Identity, Validators) ->
                       maybe_change_lock(Req, Identity, Values),
                       menelaus_util:reply(Req, 200);
                   user_not_found ->
-                      menelaus_util:reply_json(
-                        Req, <<"User was not found.">>, 404);
+                      reply_unknown_user_error(Req);
                   unchanged ->
                       Error = <<"Password has already been used.">>,
                       menelaus_util:reply_json(
