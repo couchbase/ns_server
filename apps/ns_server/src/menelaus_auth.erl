@@ -216,10 +216,11 @@ is_password_expired(Req) ->
     end.
 
 -spec extract_auth(mochiweb_request()) -> {User :: string(), Passwd :: string()}
-                                              | {scram_sha, string()}
-                                              | {token, string() | undefined}
-                                              | {client_cert_auth, string()}
-                                              | undefined.
+              | {scram_sha, string()}
+              | {token, string() | undefined}
+              | {client_cert_auth, string()}
+              | {jwt, string()}
+              | undefined.
 extract_auth(Req) ->
     case extract_ui_auth_token(Req) of
         {token, Token} ->
@@ -233,6 +234,8 @@ extract_auth(Req) ->
                             parse_basic_auth_header(Value);
                         "SCRAM-" ++ Value ->
                             {scram_sha, Value};
+                        "Bearer " ++ Value ->
+                            {jwt, Value};
                         undefined ->
                             undefined;
                         _ ->
@@ -298,6 +301,7 @@ init_auth_password_expired(Identity) ->
                    {token, auth_token()} |
                    {scram_sha, string()} |
                    {client_cert_auth, string()} |
+                   {jwt, string()} |
                    {rbac_user_id(), rbac_password()}) ->
           {ok, #authn_res{}, [RespHeader]} |
           {error, auth_failure | temporary_failure} |
@@ -330,6 +334,7 @@ authenticate(Auth) ->
                       {token, auth_token()} |
                       {scram_sha, string()} |
                       {client_cert_auth, string()} |
+                      {jwt, string()} |
                       {rbac_user_id(), rbac_password()}) ->
           {ok, #authn_res{}, [RespHeader]} |
           {error, auth_failure | temporary_failure} |
@@ -392,6 +397,17 @@ do_authenticate({scram_sha, AuthHeader}) ->
             ?count_auth("scram_sha", "failure"),
             {error, auth_failure}
     end;
+do_authenticate({jwt, Token} = Param) ->
+    ?call_on_ns_server_node(
+       case jwt_auth:authenticate(Token) of
+           {error, _Reason} ->
+               ?count_auth("jwt", "failure"),
+               {error, auth_failure};
+           {ok, AuthnRes} ->
+               ?count_auth("jwt", "succ"),
+               {ok, AuthnRes, []}
+       end,
+       [Param]);
 do_authenticate({Username, Password}) ->
     case ns_config_auth:authenticate(Username, Password) of
         {ok, Id} ->
