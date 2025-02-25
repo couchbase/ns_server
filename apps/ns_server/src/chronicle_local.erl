@@ -40,7 +40,7 @@
 %% exported for log formatting
 -export([format_msg/2, format_time/1]).
 
--define(CALL_TIMEOUT, ?get_timeout(call, 180000)).
+-define(CALL_TIMEOUT, 180000).
 
 % External term format always starts with 131, so
 % it is important to not use 131 here, otherwise any
