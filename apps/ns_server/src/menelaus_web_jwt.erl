@@ -76,7 +76,8 @@
 -define(JWKS_URI_MIN_TIMEOUT_MS, 5000). % 5 seconds
 -define(JWKS_URI_DEFAULT_TIMEOUT_MS, 5000). % 5 seconds
 -define(JWKS_URI_MAX_TIMEOUT_MS, 60000). % 1 minute
--define(JWKS_URI_REFRESH_MIN_S, 5*60). % 5 minutes
+-define(JWKS_URI_REFRESH_MIN_S,
+        ?get_param(jwks_uri_refresh_min_s, 5*60)). % 5 minutes
 -define(JWKS_URI_REFRESH_DEFAULT_S, 60*60). % 1 hour
 -define(JWKS_URI_REFRESH_MAX_S, 86400). % 1 day
 -define(EXPIRY_LEEWAY_MIN_S, 0).

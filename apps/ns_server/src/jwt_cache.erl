@@ -59,7 +59,8 @@
 
 -define(JWKS_DEFAULT_EXPIRY_S, 6 * 60 * 60). %% 6 hours
 -define(JWKS_SYNC_TIMEOUT_MS, 10000). %% 10 seconds
--define(JWKS_COOLDOWN_INTERVAL_MS, 60000). %% 1 minute
+-define(JWKS_COOLDOWN_INTERVAL_MS,
+        ?get_param(jwks_cooldown_interval_ms, 60000)). %% 1 minute
 -define(JWKS_FETCH_RETRY_COUNT, 1).
 -define(JWKS_REFRESH_JITTER_MS, 30000). %% 30 seconds of maximum jitter
 -define(JWKS_REFRESH_TIMEOUT_MS, 90000).
@@ -233,10 +234,15 @@ fetch_and_parse_jwks(IssuerProps = #{public_key_source := jwks_uri}) ->
 check_cooldown(Issuer) ->
     Now = erlang:monotonic_time(millisecond),
     case ets:lookup(?MODULE, Issuer) of
-        [{_, #jwks_cache_entry{fetch_time = LastTime}}]
-          when Now - LastTime < ?JWKS_COOLDOWN_INTERVAL_MS ->
-            ?log_debug("JWT issuer ~p cooldown period not yet met", [Issuer]),
-            {error, cooldown};
+        [{_, #jwks_cache_entry{fetch_time = LastTime}}] ->
+            case Now - LastTime < ?JWKS_COOLDOWN_INTERVAL_MS of
+                true ->
+                    ?log_debug("JWT issuer ~p cooldown period not yet met",
+                               [Issuer]),
+                    {error, cooldown};
+                false ->
+                    ok
+            end;
         _ ->
             ok
     end.
@@ -380,6 +386,15 @@ code_change(_OldVsn, State, _Extra) ->
 cache_lookup_test() ->
     meck:new(chronicle_compat_events, [passthrough]),
     meck:new(chronicle_kv, [passthrough]),
+    meck:new(ns_config, [passthrough]),
+
+    meck:expect(ns_config, search_node_with_default,
+                fun({jwt_cache, jwks_cooldown_interval_ms}, _Default) ->
+                        60000;
+                   (_Key, Default) ->
+                        Default
+                end),
+
     meck:expect(chronicle_compat_events, subscribe, fun(_) -> ok end),
     meck:expect(chronicle_kv, get,
                 fun(kv, jwt_settings) ->
@@ -477,6 +492,141 @@ cache_lookup_test() ->
     meck:unload(chronicle_kv),
     meck:unload(chronicle_compat_events),
     meck:unload(rest_utils),
+    meck:unload(ns_config),
+    gen_server:stop(jwt_cache).
+
+cache_refresh_failure_test() ->
+    meck:new(chronicle_compat_events, [passthrough]),
+    meck:new(chronicle_kv, [passthrough]),
+    meck:new(ns_config, [passthrough]),
+    meck:new(rest_utils, [passthrough]),
+    meck:new(menelaus_web_jwt_key, [passthrough]),
+
+    meck:expect(ns_config, search_node_with_default,
+                fun({jwt_cache, jwks_cooldown_interval_ms}, _Default) ->
+                        60000;
+                   (_Key, Default) ->
+                        Default
+                end),
+
+    meck:expect(chronicle_compat_events, subscribe, fun(_) -> ok end),
+
+    TestJWKS =
+        <<
+          "{",
+          "    \"keys\": [",
+          "        {",
+          "            \"kty\": \"EC\",",
+          "            \"crv\": \"P-256\",",
+          "            \"x\": \"wS5Whg7la7uUcmgyDn2UrA4ZpUF7tBsCidd90AkYn00\",",
+          "            \"y\": \"_XPJU549tLUCFgaKUD9IbBQDSweeT4t7EEXsC3sJHwM\",",
+          "            \"alg\": \"ES256\",",
+          "            \"use\": \"sig\",",
+          "            \"kid\": \"key1\"",
+          "        }",
+          "    ]",
+          "}"
+        >>,
+
+    %% Invalid JWKS data for testing parse failure
+    InvalidJWKS = <<"{\"not_keys\": [{}]}">>,
+
+    meck:expect(menelaus_web_jwt_key, validate_jwks_algorithm,
+                fun(JsonMap, Algorithm) ->
+                        case maps:get(<<"keys">>, JsonMap, undefined) of
+                            undefined ->
+                                {error, <<"Invalid JWKS format">>};
+                            _ ->
+                                meck:passthrough([JsonMap, Algorithm])
+                        end
+                end),
+
+    %% Set up JWT settings with two issuers
+    Issuer1 = "test-issuer1",
+    Issuer2 = "test-issuer2",
+    Issuer1Props = #{
+                     public_key_source => jwks_uri,
+                     jwks_uri => "https://example.com/jwks1",
+                     signing_algorithm => 'ES256',
+                     jwks_uri_http_timeout_ms => 5000,
+                     jwks_uri_tls_verify_peer => false
+                    },
+    Issuer2Props = #{
+                     public_key_source => jwks_uri,
+                     jwks_uri => "https://example.com/jwks2",
+                     signing_algorithm => 'ES256',
+                     jwks_uri_http_timeout_ms => 5000,
+                     jwks_uri_tls_verify_peer => false
+                    },
+
+    IssuersMap = #{
+                   Issuer1 => Issuer1Props,
+                   Issuer2 => Issuer2Props
+                  },
+
+    meck:expect(chronicle_kv, get,
+                fun(kv, jwt_settings) ->
+                        {ok, {#{enabled => true,
+                                jwks_uri_refresh_interval_s => 3600,
+                                issuers => IssuersMap}, '_'}}
+                end),
+
+    %% First request succeeds for both issuers
+    meck:expect(rest_utils, request,
+                fun(<<"jwks">>, "https://example.com/jwks1", "GET", [], <<>>,
+                    5000, _) ->
+                        {ok, {{200, []}, [{"cache-control", "max-age=21600"}],
+                              TestJWKS}};
+                   (<<"jwks">>, "https://example.com/jwks2", "GET", [], <<>>,
+                    5000, _) ->
+                        {ok, {{200, []}, [{"cache-control", "max-age=21600"}],
+                              TestJWKS}}
+                end),
+
+    {ok, Pid} = jwt_cache:start_link(),
+
+    {ok, JWK1} = get_jwk(Issuer1Props#{name => Issuer1}, <<"key1">>),
+    {ok, JWK2} = get_jwk(Issuer2Props#{name => Issuer2}, <<"key1">>),
+    ?assert(is_tuple(JWK1)),
+    ?assert(is_tuple(JWK2)),
+
+    [{_, Issuer1Entry}] = ets:lookup(?MODULE, Issuer1),
+    [{_, Issuer2Entry}] = ets:lookup(?MODULE, Issuer2),
+
+    %% Simulate failures during refresh
+    meck:expect(rest_utils, request,
+                fun(<<"jwks">>, "https://example.com/jwks1", "GET", [], <<>>,
+                    5000, _) ->
+                        {error, econnrefused};
+                   (<<"jwks">>, "https://example.com/jwks2", "GET", [], <<>>,
+                    5000, _) ->
+                        {ok, {{200, []}, [{"cache-control", "max-age=21600"}],
+                              InvalidJWKS}}
+                end),
+
+    Pid ! periodic_refresh,
+    timer:sleep(100),
+
+    %% Verify the cache entries are unchanged
+    [{_, Issuer1EntryAfter}] = ets:lookup(?MODULE, Issuer1),
+    [{_, Issuer2EntryAfter}] = ets:lookup(?MODULE, Issuer2),
+
+    ?assertEqual(Issuer1Entry#jwks_cache_entry.kid_to_jwk,
+                 Issuer1EntryAfter#jwks_cache_entry.kid_to_jwk),
+    ?assertEqual(Issuer2Entry#jwks_cache_entry.kid_to_jwk,
+                 Issuer2EntryAfter#jwks_cache_entry.kid_to_jwk),
+
+    %% Verify we can still use the cached keys
+    {ok, JWK1After} = get_jwk(Issuer1Props#{name => Issuer1}, <<"key1">>),
+    {ok, JWK2After} = get_jwk(Issuer2Props#{name => Issuer2}, <<"key1">>),
+    ?assertEqual(JWK1, JWK1After),
+    ?assertEqual(JWK2, JWK2After),
+
+    meck:unload(chronicle_kv),
+    meck:unload(chronicle_compat_events),
+    meck:unload(rest_utils),
+    meck:unload(ns_config),
+    meck:unload(menelaus_web_jwt_key),
     gen_server:stop(jwt_cache).
 
 -endif.
