@@ -629,4 +629,4 @@ detect_columnar_version_test() ->
     false = detect_columnar_version(<<"1.8.0r-9-ga083a1e-enterprise">>),
     true = not detect_columnar_version(<<"1.8.0r-9-ga083a1e-comm">>),
     true = detect_columnar_version(<<"1.8.0r-9-ga083a1e-columnar">>).
--endif.-endif.
+-endif.
