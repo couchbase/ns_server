@@ -387,7 +387,7 @@ shared_secret_validators() ->
        fun(Secret, Algorithm) ->
                case menelaus_web_jwt_key:validate_shared_secret(
                       Secret, Algorithm) of
-                   {ok, {SecretBin, JWK}} -> {value, {SecretBin, JWK}};
+                   {ok, {value, SecretBin}} -> {value, SecretBin};
                    {error, Reason} -> {error, Reason}
                end
        end, sharedSecret, signingAlgorithm, _)].
