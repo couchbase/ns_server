@@ -619,7 +619,14 @@ goport_args(eventing, Config, _Cmd, NodeUUID) ->
          "-diagdir=" ++ path_config:minidump_dir()];
 
 goport_args(cbas, Config, Cmd, NodeUUID) ->
-    CBASDirs = [filename:join([Token], "@analytics") ||
+    Columnar = config_profile:search({cbas, columnar}, false),
+    CBASDir = case Columnar of
+        true ->
+            "@columnar";
+        false ->
+            "@analytics"
+    end,
+    CBASDirs = [filename:join([Token], CBASDir) ||
                    Token <- ns_storage_conf:this_node_cbas_dirs()],
     case misc:ensure_writable_dirs(CBASDirs) of
         ok ->
@@ -638,7 +645,6 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
     RotSize = proplists:get_value(size, RotationConf),
     RotNumFiles = proplists:get_value(num_files, RotationConf),
     LogLevel = ns_server:get_loglevel(cbas),
-    Columnar = config_profile:search({cbas, columnar}, false),
 
     build_port_args([{"-serverPort",           rest_port},
                      {"-serverSslPort",        ssl_rest_port},
