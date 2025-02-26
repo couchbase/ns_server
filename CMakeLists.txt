@@ -66,7 +66,11 @@ FILE (WRITE "${PROJECT_BINARY_DIR}/config.mk"
   "COUCHDB_BIN_DIR = ${_couchdb_bin}\n")
 
 #build UI
-SET (NS_UI_SRC "${PROJECT_SOURCE_DIR}/priv/public/ui")
+IF (BUILD_COLUMNAR)
+  SET (NS_UI_SRC "${PROJECT_SOURCE_DIR}/../columnar-ui-v1/src/ui")
+ELSE (BUILD_COLUMNAR)
+  SET (NS_UI_SRC "${PROJECT_SOURCE_DIR}/priv/public/ui")
+ENDIF (BUILD_COLUMNAR)
 SET (NS_UI_STAMP "${NS_UI_BUILD_DIR}/ns")
 SET (NS_UI_BIN "${NS_UI_PUB_DIR}/ui")
 
