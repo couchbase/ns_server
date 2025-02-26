@@ -63,6 +63,7 @@
          get_dek/1,
          without_historical_deks/1,
          same_snapshots/2,
+         get_deks_snapshot_hash/1,
 
          %% Other:
          get_encryption_method/2,
@@ -653,6 +654,12 @@ without_historical_deks(#dek_snapshot{active_key = Dek} = Snapshot) ->
 same_snapshots(#dek_snapshot{active_key = AK1, all_keys = All1},
                #dek_snapshot{active_key = AK2, all_keys = All2}) ->
     (AK1 == AK2) andalso (lists:usort(All1) == lists:usort(All2)).
+
+-spec get_deks_snapshot_hash(#dek_snapshot{}) -> non_neg_integer().
+get_deks_snapshot_hash(#dek_snapshot{active_key = AK, all_keys = All}) ->
+    AllIds = {cb_crypto:get_dek_id(AK),
+              lists:usort([cb_crypto:get_dek_id(D) || D <- All])},
+    erlang:phash2(AllIds).
 
 -spec get_encryption_method(encryption_type(),
                             cb_cluster_secrets:chronicle_snapshot()) ->

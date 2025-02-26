@@ -47,7 +47,7 @@
 % number should work
 -define(ENCRYPTION_MAGIC, 45).
 
--record(state, {keys_applied = false}).
+-record(state, {last_applied_keys_hash = undefined}).
 
 start_link() ->
     gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -91,7 +91,7 @@ init([]) ->
             ok
     end,
 
-    {ok, #state{keys_applied = false}}.
+    {ok, #state{last_applied_keys_hash = undefined}}.
 
 handle_call({prepare_join, Info}, _From, State) ->
     ?log_debug("Wiping chronicle before prepare join."),
@@ -127,10 +127,10 @@ handle_call(get_snapshot, _From, Pid) ->
         end,
     {reply, RV, Pid};
 handle_call(maybe_apply_new_keys, _From, State) ->
-    Force = not State#state.keys_applied,
-    {reply, maybe_apply_new_keys(Force), State#state{keys_applied = true}};
+    {Res, NewState} = maybe_apply_new_keys(State),
+    {reply, Res, NewState};
 handle_call(get_encryption_dek_ids, _From,
-            #state{keys_applied = Applied} = State) ->
+            #state{last_applied_keys_hash = KeysHash} = State) ->
     %% If we haven't rewritten chronicle data with the most recent key yet,
     %% we can still have some data unencrypted, so add 'undefined' just in case
     %% in this case.
@@ -138,7 +138,7 @@ handle_call(get_encryption_dek_ids, _From,
     AllIds = [cb_crypto:get_dek_id(D) || D <- AllDeks],
     Res = case Active of
               undefined -> [undefined | AllIds];
-              _ when not Applied -> [undefined | AllIds];
+              _ when KeysHash == undefined -> [undefined | AllIds];
               _ -> AllIds
           end,
     {reply, {ok, Res}, State};
@@ -325,43 +325,73 @@ read_and_set_data_keys() ->
     end.
 
 rewrite_chronicle_data() ->
-    maybe
-        %% The purpose of this function is to force chronicle to rewrite
-        %% all files that contain sensitive data on disk.
-        %% By doing so we can guarantee that all the chronicle data on disk
-        %% is encrypted by the actual encryption key.
-        %% The idea is to force snapshot creation two times. Since chronicle
-        %% currently keeps last two logs on disk, creation of two snapshots
-        %% should rewrite both of them.
-        %% Modification of chronicle_key_snapshot_enforcer is needed just to
-        %% make sure snapshot has changed since the last snapshot. Otherwise
-        %% chronicle:force_snapshot() will do nothing.
-        {ok, _} ?= chronicle_kv:set(kv, chronicle_key_snapshot_enforcer,
-                                    crypto:strong_rand_bytes(8)),
-        {ok, _} ?= chronicle:force_snapshot(),
-        {ok, _} ?= chronicle_kv:set(kv, chronicle_key_snapshot_enforcer,
-                                    crypto:strong_rand_bytes(8)),
-        {ok, _} ?= chronicle:force_snapshot(),
-        ok
-    else
-        {error, Reason} ->
-            ?log_error("Failed to rewrite chronicle data: ~p", [Reason]),
-            {error, Reason}
+    try
+        maybe
+            %% The purpose of this function is to force chronicle to rewrite
+            %% all files that contain sensitive data on disk.
+            %% By doing so we can guarantee that all the chronicle data on disk
+            %% is encrypted by the actual encryption key.
+            %% The idea is to force snapshot creation two times. Since chronicle
+            %% currently keeps last two logs on disk, creation of two snapshots
+            %% should rewrite both of them.
+            %% Modification of chronicle_key_snapshot_enforcer is needed just to
+            %% make sure snapshot has changed since the last snapshot. Otherwise
+            %% chronicle:force_snapshot() will do nothing.
+            Timeout = get_snapshot_enforcer_timeout(),
+            {ok, _} ?= chronicle_kv:set(kv, chronicle_key_snapshot_enforcer,
+                                        crypto:strong_rand_bytes(8),
+                                        any,
+                                        #{timeout => Timeout}),
+            {ok, _} ?= chronicle:force_snapshot(),
+            {ok, _} ?= chronicle_kv:set(kv, chronicle_key_snapshot_enforcer,
+                                        crypto:strong_rand_bytes(8),
+                                        any,
+                                        #{timeout => Timeout}),
+            {ok, _} ?= chronicle:force_snapshot(),
+            ok
+        else
+            {error, Reason} ->
+                ?log_error("Failed to rewrite chronicle data: ~p", [Reason]),
+                {error, Reason}
+        end
+    catch
+        exit:timeout ->
+            ?log_error("Failed to rewrite chronicle data: timeout"),
+            {error, timeout}
     end.
 
-maybe_apply_new_keys(Force) ->
-    Old = get_chronicle_deks_snapshot(),
+get_snapshot_enforcer_timeout() ->
+    Default = 1000,
+    try
+        ?get_timeout(snapshot_enforcer_timeout, Default)
+    catch
+        _:_ ->
+            %% Don't want to introduce a strong dependency on ns_config here
+            %% (ns_config starts after chronicle_local, so there is a chance
+            %% that ns_config is not started yet). At the same time, if
+            %% ns_config is not available, it is not a big deal, we can simply
+            %% use a default value here. Key enforcement will retry in case
+            %% of timeout anyway, and if ns_config gets available later, the
+            %% new timeout value will be used next time.
+            Default
+    end.
+
+maybe_apply_new_keys(State = #state{last_applied_keys_hash = Hash}) ->
     {ok, New} = cb_crypto:fetch_deks_snapshot(configDek),
     NewWithoutHistDeks = cb_crypto:without_historical_deks(New),
-    case (cb_crypto:get_dek_id(Old) /= cb_crypto:get_dek_id(New)) orelse
-         (NewWithoutHistDeks /= New) orelse Force of
+    NewHash = cb_crypto:get_deks_snapshot_hash(NewWithoutHistDeks),
+    % If what we want to apply is different from what we have applied before,
+    % we need to rewrite the chronicle data and apply new keys.
+    case (Hash /= NewHash) of
         true ->
             set_chronicle_deks_snapshot(New),
-            %% Note that get_encryption_dek_ids assumes that this process
-            %% crashes if it can't reencrypt everything here
-            ok = rewrite_chronicle_data(),
-            set_chronicle_deks_snapshot(NewWithoutHistDeks),
-            ok;
+            case rewrite_chronicle_data() of
+                ok ->
+                    set_chronicle_deks_snapshot(NewWithoutHistDeks),
+                    {ok, State#state{last_applied_keys_hash = NewHash}};
+                {error, Reason} ->
+                    {{error, Reason}, State}
+            end;
         false ->
-            ok
+            {ok, State}
     end.
