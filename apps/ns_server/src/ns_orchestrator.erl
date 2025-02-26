@@ -680,6 +680,17 @@ handle_event({call, From}, {maybe_start_rebalance,
 
         NewParams1 = validate_rebalance_plan(NewParams, KeepNodes, Snapshot),
 
+        %% with both possible outcomes (success or failure)
+        %% the plan becomes invalid so we just delete it here after it is
+        %% validated and stored in parameters
+        case erlang:get(?FUSION_REBALANCE_PLAN) of
+            undefined ->
+                ok;
+            _ ->
+                ?rebalance_info("Delete stored rebalance plan"),
+                erlang:erase(?FUSION_REBALANCE_PLAN)
+        end,
+
         NewParams2 = NewParams1#{keep_nodes => KeepNodes,
                                  eject_nodes => EjectedLiveNodes,
                                  failed_nodes => FailedNodes,
