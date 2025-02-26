@@ -71,7 +71,8 @@
          format_dek_issues/1,
          chronicle_transaction/2,
          get_node_deks_info_quickly/0,
-         destroy_deks/2]).
+         destroy_deks/2,
+         diag_info/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -704,6 +705,21 @@ destroy_deks(DekKind, ContFun) ->
             erlang:raise(C, E, ST)
     end.
 
+-spec diag_info() -> iolist().
+diag_info() ->
+    [diag_info_helper("cb_cluster_secrets node", whereis(cb_cluster_secrets)),
+     <<"\n\n">>,
+     case leader_registry:whereis_name(cb_cluster_secrets_master) of
+         undefined ->
+             "cb_cluster_secrets master process is not running";
+         Pid when node() == node(Pid) ->
+             diag_info_helper("cb_cluster_secrets master", Pid);
+         Pid ->
+             io_lib:format("cb_cluster_secrets master process is running on ~p",
+                           [node(Pid)])
+     end,
+     <<"\n">>].
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -821,6 +837,9 @@ handle_call({destroy_deks, DekKind, ContFun}, _From,
             ?log_debug("DEK ~p destroy ignored (does not exist)", [DekKind]),
             {reply, Continuation(), State}
     end;
+
+handle_call(diag, _From, State) ->
+    {reply, diag(State), State};
 
 handle_call(Request, _From, State) ->
     ?log_warning("Unhandled call: ~p", [Request]),
@@ -3592,6 +3611,100 @@ all_kind_stat_names() ->
      <<"encr_at_rest_generate_dek_failures">>,
      <<"encr_at_rest_drop_deks_events">>].
 
+diag_info_helper(Name, undefined) ->
+    io_lib:format("~s process is not running", [Name]);
+diag_info_helper(Name, Pid) ->
+     try
+         gen_server:call(Pid, diag, 5000)
+     catch
+         exit:{noproc, _} ->
+             io_lib:format("~s process is not running", [Name]);
+         exit:{timeout, _} ->
+             case erlang:process_info(Pid, [backtrace]) of
+                 undefined ->
+                     io_lib:format("~s process diag info timed out. "
+                                   "Process backtrace: undefined", [Name]);
+                 [{backtrace, Backtrace}] ->
+                     io_lib:format("~s process diag info timed out. "
+                                   "Process backtrace:~n~s",
+                                   [Name, Backtrace])
+             end;
+        _:E ->
+             io_lib:format("Failed to get diag info from ~s: ~0p", [Name, E])
+     end.
+
+diag(#state{proc_type = ?NODE_PROC} = State) ->
+    [<<"Process type: node ">>, io_lib:format("(~p)", [self()]), $\n,
+     diag_deks(State#state.deks), $\n,
+     diag_timers(State#state.timers), $\n,
+     diag_jobs(State#state.jobs)];
+diag(#state{proc_type = ?MASTER_PROC} = State) ->
+    [<<"Process type: master ">>, io_lib:format("(~p)", [self()]), $\n,
+     diag_timers(State#state.timers), $\n,
+     diag_jobs(State#state.jobs)].
+
+%% Helper functions for diag
+diag_deks(DeksMap) ->
+    [<<"DEKs Info:">>, $\n,
+     lists:join(
+       $\n,
+       lists:map(
+         fun ({Kind, Info}) ->
+             io_lib:format(
+               "  ~p:\n"
+               "    Enabled: ~p\n"
+               "    Active DEK id: ~s\n"
+               "    Has unencrypted data: ~p\n"
+               "    Last on-demand DEKs drop time: ~p\n"
+               "    DEKs currently being dropped: ~s\n"
+               "    Jobs statuses: ~p\n"
+               "    All DEKs: ~s",
+               [Kind,
+                maps:get(is_enabled, Info, undefined),
+                format_dek_id_for_diag(maps:get(active_id, Info, undefined)),
+                maps:get(has_unencrypted_data, Info, undefined),
+                maps:get(last_drop_timestamp, Info, undefined),
+                sets:fold(
+                  fun(DekId, FAcc) ->
+                      [format_dek_id_for_diag(DekId),
+                       " " | FAcc]
+                  end, [], maps:get(deks_being_dropped, Info, sets:new())),
+                maps:get(statuses, Info, #{}),
+                [["\n      ", diag_dek(Dek)]
+                 || Dek <- maps:get(deks, Info, [])]])
+         end, maps:to_list(DeksMap)))].
+
+diag_dek(#{type := Type, id := Id, info := Info}) ->
+    io_lib:format("~s (~p)~n          ~s",
+                  [format_dek_id_for_diag(Id), Type,
+                   io_lib:print(maps:remove(key, Info), 11, 80, -1)]).
+
+diag_timers(Timers) ->
+    [<<"Timers:">>, $\n,
+     lists:join(
+       $\n,
+       lists:map(
+         fun ({Name, Timer}) ->
+             io_lib:format(
+               "  ~p: ~s",
+               [Name,
+                case Timer of
+                    Timer when is_reference(Timer) ->
+                        case erlang:read_timer(Timer) of
+                            false -> "active (expired)";
+                            Ms -> io_lib:format("active (~bms remaining)", [Ms])
+                        end;
+                    T -> io_lib:format("~p", [T])
+                end])
+         end, maps:to_list(Timers)))].
+
+diag_jobs(Jobs) ->
+    [<<"Jobs:">>, $\n, io_lib:format("~0p", [Jobs])].
+
+format_dek_id_for_diag(Id) when is_binary(Id) ->
+    Id;
+format_dek_id_for_diag(Id) ->
+    io_lib:format("~p", [Id]).
 
 -ifdef(TEST).
 replace_secret_in_list_test() ->

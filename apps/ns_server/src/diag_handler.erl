@@ -27,6 +27,7 @@
          handle_diag_master_events/1,
          handle_diag_vbuckets/1,
          handle_diag_get_password/1,
+         handle_diag_encryption_at_rest/1,
          arm_timeout/2, arm_timeout/1, disarm_timeout/1,
          grab_process_info/1, manifest/0,
          diagnosing_timeouts/1,
@@ -515,6 +516,10 @@ handle_just_diag(Req, Extra) ->
          mochiweb_response:write_chunk(list_to_binary(Text), Resp)
      end || [Fmt | Args] <- Infos],
 
+    mochiweb_response:write_chunk(
+      <<"Encryption-at-rest:\n-------------------------------\n">>, Resp),
+    mochiweb_response:write_chunk(cb_cluster_secrets:diag_info(), Resp),
+
     Resp.
 
 write_chunk_format(Resp, Fmt, Args) ->
@@ -930,6 +935,9 @@ handle_diag_vbuckets(Req) ->
 handle_diag_get_password(Req) ->
     menelaus_util:ensure_local(Req),
     menelaus_util:reply_text(Req, ns_config_auth:get_password(special), 200).
+
+handle_diag_encryption_at_rest(Req) ->
+    menelaus_util:reply_text(Req, cb_cluster_secrets:diag_info(), 200).
 
 trace_memory(Format) ->
     trace_memory(Format, []).

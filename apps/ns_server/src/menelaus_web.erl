@@ -600,6 +600,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, diag], read}, fun diag_handler:handle_diag_master_events/1};
                 ["diag", "password"] ->
                     {local, fun diag_handler:handle_diag_get_password/1};
+                ["diag", "encryptionAtRest"] ->
+                    {{[admin, diag], read},
+                     fun diag_handler:handle_diag_encryption_at_rest/1};
                 ["pools", "default", "rebalanceProgress"] ->
                     {{[tasks], read}, fun menelaus_web_cluster:handle_rebalance_progress/2, ["default"]};
                 ["pools", "default", "pendingRetryRebalance"] ->
