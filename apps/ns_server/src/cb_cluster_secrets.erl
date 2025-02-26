@@ -760,6 +760,7 @@ init([Type]) ->
     {ok, functools:chain(#state{proc_type = Type, jobs = Jobs},
                          [maybe_read_deks(_),
                           run_jobs(_),
+                          restart_dek_rotation_timer(_),
                           restart_dek_cleanup_timer(_),
                           restart_rotation_timer(_),
                           restart_dek_info_update_timer(true, _),
