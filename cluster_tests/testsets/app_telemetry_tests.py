@@ -175,7 +175,7 @@ class AppTelemetryTests(testlib.BaseTestSet):
                 try:
                     frame = conn.get_next_frame()
                     testlib.assert_eq(frame.opcode, Opcode.CLOSE)
-                except BrokenPipeError:
+                except ConnectionError:
                     # See MB-65238. The websocket may be closed before receiving
                     # the response to the CLOSE message, which is sent in
                     # WebsocketConnection._get_and_send_data
