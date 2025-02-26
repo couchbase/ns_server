@@ -369,7 +369,7 @@ validate_permission(Name, State) ->
 handle_get_users(Path, Domain, Req) ->
     case domain_to_atom(Domain) of
         unknown ->
-            menelaus_util:reply_json(Req, <<"Unknown user domain.">>, 404);
+            reply_unknown_domain_error(Req);
         DomainAtom ->
             handle_get_users_with_domain(Req, DomainAtom, Path)
     end.
@@ -522,7 +522,7 @@ handle_lookup_ldap_user(Name, Req) ->
 handle_get_user(Domain, UserId, Req) ->
     case domain_to_atom(Domain) of
         unknown ->
-            menelaus_util:reply_json(Req, <<"Unknown user domain.">>, 404);
+            reply_unknown_domain_error(Req);
         DomainAtom ->
             Identity = {UserId, DomainAtom},
             case menelaus_users:user_exists(Identity) of
@@ -544,6 +544,10 @@ handle_get_user(Domain, UserId, Req) ->
 reply_unknown_user_error(Req) ->
     menelaus_util:reply_json(
       Req, <<"Unknown user.">>, 404).
+
+reply_unknown_domain_error(Req) ->
+    menelaus_util:reply_json(
+      Req, <<"Unknown user domain.">>, 404).
 
 filter_by_roles(all) ->
     pipes:filter(fun (_) -> true end);
@@ -1042,8 +1046,7 @@ handle_put_user(Domain, UserId, Req) ->
         true ->
             case domain_to_atom(Domain) of
                 unknown ->
-                    menelaus_util:reply_json(Req, <<"Unknown user domain.">>,
-                                             404);
+                    reply_unknown_domain_error(Req);
                 external = T ->
                     menelaus_util:assert_is_enterprise(),
                     handle_put_user_with_identity({UserId, T}, Req);
@@ -1272,7 +1275,7 @@ handle_delete_user(Domain, UserId, Req) ->
 
     case domain_to_atom(Domain) of
         unknown ->
-            menelaus_util:reply_json(Req, <<"Unknown user domain.">>, 404);
+            reply_unknown_domain_error(Req);
         T ->
             Identity = {UserId, T},
             Roles =  menelaus_users:get_roles(Identity),
