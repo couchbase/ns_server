@@ -41,6 +41,7 @@ function mnEncryptionStatusDirective() {
         case "encrypted": return "Fully Encrypted";
         case "partiallyEncrypted": return "Partially Encrypted";
         case "unencrypted": return "Not Encrypted";
+        case "unknown": return "-";
         default: return status;
       }
     }
