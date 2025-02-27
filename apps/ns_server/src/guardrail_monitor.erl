@@ -339,8 +339,89 @@ restart_timer(#state{timer_ref = undefined} = State) ->
 -spec check_resources() -> [{resource(), status()}].
 check_resources() ->
     Config = get_config(),
-    Stats = stats_interface:for_resource_management(),
+    Keys = stats_keys_from_config(Config),
+    Stats = stats_interface:for_resource_management(Keys),
     lists:flatmap(check(_, Stats), Config).
+
+stats_keys_from_config(Config) ->
+    KeyIfEnabled =
+        fun (Key, GRConfig) ->
+                case proplists:get_bool(enabled, GRConfig) of
+                    false -> false;
+                    true -> {true, Key}
+                end
+        end,
+    lists:flatmap(
+      fun ({bucket, BucketConfig}) ->
+              lists:filtermap(
+                fun ({resident_ratio, GRConfig}) ->
+                        KeyIfEnabled(<<"kv_resident_ratio">>, GRConfig);
+                    ({data_size, GRConfig}) ->
+                        KeyIfEnabled(<<"kv_data_size">>, GRConfig);
+                    (_) ->
+                        false
+                end, BucketConfig);
+          ({index, IndexConfig}) ->
+              lists:filtermap(
+                fun ({index_growth_rr, GRConfig}) ->
+                        KeyIfEnabled(<<"index_resident_ratio">>, GRConfig);
+                    (_) ->
+                        false
+                end, IndexConfig);
+          (_) ->
+              []
+      end, Config).
+
+-ifdef(TEST).
+stats_keys_from_config_test() ->
+    ?assertEqual([],
+                 stats_keys_from_config([{bucket,
+                                          [{other,
+                                            [{enabled, true}]}]}])),
+    ?assertEqual([],
+                 stats_keys_from_config([{other,
+                                          [{resident_ratio,
+                                            [{enabled, true}]}]}])),
+    ?assertEqual([],
+                 stats_keys_from_config([{bucket,
+                                          [{resident_ratio, []}]}])),
+    ?assertEqual([],
+                 stats_keys_from_config([{index,
+                                          [{other,
+                                            [{enabled, true}]}]}])),
+    ?assertEqual([<<"kv_resident_ratio">>],
+                 stats_keys_from_config([{bucket,
+                                          [{resident_ratio,
+                                            [{enabled, true}]}]}])),
+    ?assertEqual([<<"kv_data_size">>],
+                 stats_keys_from_config([{bucket,
+                                          [{data_size,
+                                            [{enabled, true}]}]}])),
+    ?assertEqual([<<"index_resident_ratio">>],
+                 stats_keys_from_config([{index,
+                                          [{index_growth_rr,
+                                            [{enabled, true}]}]}])),
+    ?assertEqual([<<"kv_resident_ratio">>,
+                  <<"kv_data_size">>,
+                  <<"index_resident_ratio">>],
+                 stats_keys_from_config([{bucket,
+                                          [{resident_ratio,
+                                            [{enabled, true}]},
+                                           {data_size,
+                                            [{enabled, true}]}]},
+                                         {index,
+                                          [{index_growth_rr,
+                                            [{enabled, true}]}]}])),
+    ?assertEqual([<<"kv_resident_ratio">>],
+                 stats_keys_from_config([{bucket,
+                                          [{resident_ratio,
+                                            [{enabled, true}]},
+                                           {data_size,
+                                            []}]},
+                                         {index,
+                                          [{index_growth_rr,
+                                            [{enabled, false}]}]}])).
+-endif.
 
 %% Checks if a resource threshold has been met, returning all the statuses for
 %% that resource (for instance the status for each bucket)
@@ -1018,21 +1099,21 @@ check_resources_t() ->
     pretend_disk_data(#{}),
 
     meck:expect(stats_interface, for_resource_management,
-                fun () ->
+                fun ([]) ->
                         []
                 end),
     ?assertEqual([],
                  check_resources()),
 
     meck:expect(stats_interface, for_resource_management,
-                fun () ->
+                fun ([]) ->
                         [{{bucket, "couchstore_bucket"}, []}]
                 end),
     ?assertEqual([],
                  check_resources()),
 
     meck:expect(stats_interface, for_resource_management,
-                fun () ->
+                fun ([]) ->
                         [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 11}]},
                          {{bucket, "magma_bucket"},
@@ -1047,7 +1128,7 @@ check_resources_t() ->
          [{resource, resident_ratio}, {bucket, "magma_bucket"}] => 0}),
 
     meck:expect(stats_interface, for_resource_management,
-                fun () ->
+                fun ([]) ->
                         [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 9},
                            {data_size, 2}]},
@@ -1075,7 +1156,7 @@ check_resources_t() ->
                 end),
 
     meck:expect(stats_interface, for_resource_management,
-                fun () ->
+                fun ([<<"kv_resident_ratio">>, <<"kv_data_size">>]) ->
                         [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 9}]},
                          {{bucket, "magma_bucket"},
@@ -1090,7 +1171,7 @@ check_resources_t() ->
          [{resource, data_size}, {bucket, "magma_bucket"}] => 0}),
 
     meck:expect(stats_interface, for_resource_management,
-                fun () ->
+                fun ([<<"kv_resident_ratio">>, <<"kv_data_size">>]) ->
                         [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 11}]},
                          {{bucket, "magma_bucket"},
@@ -1105,7 +1186,7 @@ check_resources_t() ->
          [{resource, data_size}, {bucket, "magma_bucket"}] => 0}),
 
     meck:expect(stats_interface, for_resource_management,
-                fun () ->
+                fun ([<<"kv_resident_ratio">>, <<"kv_data_size">>]) ->
                         [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 9}]},
                          {{bucket, "magma_bucket"},
@@ -1121,7 +1202,7 @@ check_resources_t() ->
          [{resource, data_size}, {bucket, "magma_bucket"}] => 0}),
 
     meck:expect(stats_interface, for_resource_management,
-                fun () ->
+                fun ([<<"kv_resident_ratio">>, <<"kv_data_size">>]) ->
                         [{{bucket, "couchstore_bucket"},
                           [{data_size, 2}]},
                          {{bucket, "magma_bucket"},
@@ -1137,7 +1218,7 @@ check_resources_t() ->
          [{resource, data_size}, {bucket, "magma_bucket"}] => 1}),
 
     meck:expect(stats_interface, for_resource_management,
-                fun () ->
+                fun ([<<"kv_resident_ratio">>, <<"kv_data_size">>]) ->
                         [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 11},
                            {data_size, 2}]},
@@ -1155,7 +1236,7 @@ check_resources_t() ->
          [{resource, data_size}, {bucket, "magma_bucket"}] => 1}),
 
     meck:expect(stats_interface, for_resource_management,
-                fun () ->
+                fun ([<<"kv_resident_ratio">>, <<"kv_data_size">>]) ->
                         [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 9},
                            {data_size, 2}]},
@@ -1196,6 +1277,9 @@ check_resources_t() ->
     meck:expect(ns_bucket, get_bucket_names,
                 fun () -> ["couchstore_bucket", "magma_bucket"] end),
 
+
+    meck:expect(stats_interface, for_resource_management,
+                fun ([]) -> [] end),
     ?assertEqual([], check_resources()),
     ?assertResourceMetrics(
        #{[{resource, kv_disk_usage},
@@ -1296,7 +1380,7 @@ check_resources_t() ->
     PretendIndexRR =
         fun (RR) ->
                 meck:expect(stats_interface, for_resource_management,
-                            fun () ->
+                            fun ([<<"index_resident_ratio">>]) ->
                                     [{index,
                                       [{resident_ratio, RR}]}]
                             end)
@@ -1438,7 +1522,7 @@ regular_checks_t() ->
                            {minimum, 0.5}]}]
                 end),
     meck:expect(stats_interface, for_resource_management,
-                fun () ->
+                fun ([<<"kv_resident_ratio">>, <<"kv_data_size">>]) ->
                         [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 10}]},
                          {{bucket, "magma_bucket"},
@@ -1473,7 +1557,7 @@ regular_checks_t() ->
               ?MECK_WAIT_TIMEOUT),
 
     meck:expect(stats_interface, for_resource_management,
-                fun () ->
+                fun ([<<"kv_resident_ratio">>, <<"kv_data_size">>]) ->
                         [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 9}]},
                          {{bucket, "magma_bucket"},
@@ -1485,7 +1569,7 @@ regular_checks_t() ->
               ?MECK_WAIT_TIMEOUT),
 
     meck:expect(stats_interface, for_resource_management,
-                fun () ->
+                fun ([<<"kv_resident_ratio">>, <<"kv_data_size">>]) ->
                         [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 10}]},
                          {{bucket, "magma_bucket"},
@@ -1498,7 +1582,7 @@ regular_checks_t() ->
 
     %% Test bucket missing and stat missing
     meck:expect(stats_interface, for_resource_management,
-                fun () ->
+                fun ([<<"kv_resident_ratio">>, <<"kv_data_size">>]) ->
                         [{{bucket, "couchstore_bucket"}, []}]
                 end),
     meck:wait(1, ns_config, set, [{node, node(), resource_statuses}, []],
@@ -1506,7 +1590,7 @@ regular_checks_t() ->
 
     %% Test that we don't crash when we get no stats
     meck:expect(stats_interface, for_resource_management,
-                fun () ->
+                fun ([<<"kv_resident_ratio">>, <<"kv_data_size">>]) ->
                         []
                 end),
     Checks0 = meck_history:num_calls('_', ns_config, read_key_fast,
@@ -1578,7 +1662,7 @@ initial_check_t() ->
                            {minimum, 0.5}]}]
                 end),
     meck:expect(stats_interface, for_resource_management,
-                fun () ->
+                fun ([<<"kv_resident_ratio">>, <<"kv_data_size">>]) ->
                         [{{bucket, "couchstore_bucket"},
                           [{resident_ratio, 10}]},
                          {{bucket, "magma_bucket"},
