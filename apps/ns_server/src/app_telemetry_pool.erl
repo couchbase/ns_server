@@ -355,7 +355,7 @@ simple_test__() ->
     meck:expect(menelaus_roles, is_allowed, fun(_, _) -> false end),
     ?assertEqual({error, privilege_lost},
                  app_telemetry_pool:call(Pid, ?TEST_FRAME, ?TIMEOUT)),
-    ?assertEqual(undefined, process_info(Pid)).
+    ?assertEqual(ok, misc:wait_for_process(Pid, ?TIMEOUT)).
 
 simple_test_() ->
     {setup,
