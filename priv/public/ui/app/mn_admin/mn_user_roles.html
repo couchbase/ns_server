@@ -158,7 +158,7 @@
         >
           <span
             class="icon margin-right"
-            ng-class="user.locked ? 'fa-lock' : 'fa-unlock'"
+            ng-class="user.domain === 'external' ? '' : (user.locked ? 'fa-lock' : 'fa-unlock')"
           >
           </span>
         </span>
