@@ -97,8 +97,8 @@
                            dek_info_update => undefined,
                            remove_retired_keys => undefined}
                          :: #{atom() := reference() | undefined},
-                deks = undefined :: #{cb_deks:dek_kind() := deks_info()} |
-                                    undefined,
+                deks_info = undefined :: #{cb_deks:dek_kind() := deks_info()} |
+                                         undefined,
                 kek_hashes_on_disk = #{} :: #{secret_id() := integer()}}).
 
 -export_type([secret_id/0, key_id/0, chronicle_snapshot/0, secret_usage/0,
@@ -808,7 +808,7 @@ handle_call(get_node_deks_info, _From,
     {reply, Res, restart_dek_info_update_timer(false, NewState)};
 
 handle_call({destroy_deks, DekKind, ContFun}, _From,
-            #state{proc_type = ?NODE_PROC, deks = Deks} = State) ->
+            #state{proc_type = ?NODE_PROC, deks_info = Deks} = State) ->
     Continuation = fun () ->
                       try
                           {res, ContFun()}
@@ -850,7 +850,7 @@ handle_cast(Msg, State) ->
     {noreply, State}.
 
 handle_info({config_change, ?CHRONICLE_SECRETS_KEY} = Msg,
-            #state{proc_type = ?NODE_PROC, deks = Deks} = State) ->
+            #state{proc_type = ?NODE_PROC, deks_info = Deks} = State) ->
     ?log_debug("Secrets in chronicle have changed..."),
     misc:flush(Msg),
     Kinds = maps:keys(Deks),
@@ -922,7 +922,7 @@ handle_info({timer, rotate_keks}, #state{proc_type = ?MASTER_PROC} = State) ->
     {noreply, restart_rotation_timer(State)};
 
 handle_info({timer, dek_cleanup} = Msg, #state{proc_type = ?NODE_PROC,
-                                               deks = DeksInfo} = State) ->
+                                               deks_info = DeksInfo} = State) ->
     ?log_debug("DEK cleanup timer"),
     misc:flush(Msg),
     DeksToDropFun =
@@ -956,7 +956,7 @@ handle_info({dek_drop_complete, Kind} = Msg,
     {noreply, add_and_run_jobs([{garbage_collect_deks, Kind}], State)};
 
 handle_info({timer, rotate_deks} = Msg, #state{proc_type = ?NODE_PROC,
-                                               deks = Deks} = State) ->
+                                               deks_info = Deks} = State) ->
     ?log_debug("Rotate DEKs timer"),
     misc:flush(Msg),
     CurDT = calendar:universal_time(),
@@ -1399,17 +1399,17 @@ prepare_new_secret(#{type := ?KMIP_KEY_TYPE, data := Data,
 
 -spec maybe_update_deks(cb_deks:dek_kind(), #state{}) ->
           {ok, #state{}} | {error, #state{}, term()}.
-maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
+maybe_update_deks(Kind, #state{deks_info = CurDeks} = OldState) ->
     Snapshot = deks_config_snapshot(Kind),
     case call_dek_callback(encryption_method_callback, Kind, [Snapshot]) of
         {succ, {ok, EncrMethod}} ->
             %% Read DEKs if we don't have them yet
-            State = #state{deks = AllDeks} =
+            State = #state{deks_info = AllDeks} =
                 case maps:find(Kind, CurDeks) of
                     {ok, _} -> OldState;
                     error ->
                         EmptyDeks = new_dek_info(Kind, undefined, [], false),
-                        OldState#state{deks = CurDeks#{Kind => EmptyDeks}}
+                        OldState#state{deks_info = CurDeks#{Kind => EmptyDeks}}
                 end,
 
             #{Kind := #{active_id := ActiveId,
@@ -1496,7 +1496,7 @@ maybe_update_deks(Kind, #state{deks = CurDeks} = OldState) ->
 
 -spec maybe_garbage_collect_deks(cb_deks:dek_kind(), boolean(), #state{}) ->
           #state{}.
-maybe_garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
+maybe_garbage_collect_deks(Kind, Force, #state{deks_info = DeksInfo} = State) ->
     ShouldRun =
         case maps:find(Kind, DeksInfo) of
             {ok, #{last_deks_gc_datetime := undefined}} ->
@@ -1531,7 +1531,7 @@ maybe_garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
 %% Also update has_unencrypted_data in state
 -spec garbage_collect_deks(cb_deks:dek_kind(), boolean(), #state{}) ->
           {ok, #state{}} | {error, #state{}, term()}.
-garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
+garbage_collect_deks(Kind, Force, #state{deks_info = DeksInfo} = State) ->
     ?log_debug("Garbage collecting ~p DEKs", [Kind]),
     case maps:find(Kind, DeksInfo) of
         %% Note: we can't skip this phase even when we don't have deks
@@ -1567,8 +1567,8 @@ garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
                                             calendar:universal_time(),
                                             deks_being_dropped =>
                                             UpdateIdsBeingDropped(IdList)},
-                    NewState = State#state{deks = DeksInfo#{
-                                                    Kind => NewKindDeks}},
+                    NewState = State#state{deks_info = DeksInfo#{
+                                                         Kind => NewKindDeks}},
                     CleanedIdList = lists:delete(?NULL_DEK, UniqIdList),
                     {ok, retire_unused_deks(Kind, CleanedIdList, NewState)};
                 {succ, {ok, IdList}} ->
@@ -1584,8 +1584,8 @@ garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
                                             lists:member(?NULL_DEK, IdList),
                                             deks_being_dropped =>
                                             UpdateIdsBeingDropped(IdList)},
-                    NewState = State#state{deks = DeksInfo#{
-                                                    Kind => NewKindDeks}},
+                    NewState = State#state{deks_info = DeksInfo#{
+                                                         Kind => NewKindDeks}},
                     ?log_debug("Skipping ~p deks retiring because update "
                                "status is ~p", [Kind, UpdateStatus]),
                     {error, NewState, retry};
@@ -1608,7 +1608,7 @@ garbage_collect_deks(Kind, Force, #state{deks = DeksInfo} = State) ->
 
 -spec retire_unused_deks(cb_deks:dek_kind(), [cb_deks:dek_id()], #state{}) ->
           #state{}.
-retire_unused_deks(Kind, DekIdsInUse, #state{deks = DeksInfo} = State) ->
+retire_unused_deks(Kind, DekIdsInUse, #state{deks_info = DeksInfo} = State) ->
     #{Kind := #{active_id := ActiveId,
                 is_enabled := IsEnabled,
                 deks := Deks} = KindDeks} = DeksInfo,
@@ -1642,7 +1642,7 @@ retire_unused_deks(Kind, DekIdsInUse, #state{deks = DeksInfo} = State) ->
                     true ->
                         {KindDeks#{deks => NewDeks}, DekIdsInUse}
                 end,
-            NewState = State#state{deks = DeksInfo#{Kind => NewKindDeks}},
+            NewState = State#state{deks_info = DeksInfo#{Kind => NewKindDeks}},
             write_deks_cfg_file(NewState),
             %% It doesn't make sense to fail this job if file removal fails
             %% because when retried the job will do nothing anyway (because
@@ -1655,7 +1655,7 @@ retire_unused_deks(Kind, DekIdsInUse, #state{deks = DeksInfo} = State) ->
 
 -spec call_set_active_cb(cb_deks:dek_kind(), #state{}) ->
           {ok, #state{}} | {error, #state{}, term()}.
-call_set_active_cb(Kind, #state{deks = AllDeks} = State) ->
+call_set_active_cb(Kind, #state{deks_info = AllDeks} = State) ->
     #{Kind := #{active_id := ActiveId,
                 deks := Keys,
                 is_enabled := IsEnabled}} = AllDeks,
@@ -1713,7 +1713,7 @@ call_dek_callback(CallbackName, Kind, Args) ->
     end.
 
 -spec on_deks_update(cb_deks:dek_kind(), #state{}) -> #state{}.
-on_deks_update(Kind, #state{deks = AllDeks} = State) ->
+on_deks_update(Kind, #state{deks_info = AllDeks} = State) ->
     case maps:find(Kind, AllDeks) of
         {ok, #{deks_being_dropped := CurDeksDroppedSet,
                deks := CurDeks,
@@ -1728,7 +1728,8 @@ on_deks_update(Kind, #state{deks = AllDeks} = State) ->
                                                             DeksDroppedSet)
                               end,
             NewKindDeks = CurKindDeks#{deks_being_dropped => DeksDroppedSet2},
-            functools:chain(State#state{deks = AllDeks#{Kind => NewKindDeks}},
+            NewAllDeks = AllDeks#{Kind => NewKindDeks},
+            functools:chain(State#state{deks_info = NewAllDeks},
                             [restart_dek_cleanup_timer(_),
                              restart_dek_rotation_timer(_)]);
         error ->
@@ -1737,7 +1738,7 @@ on_deks_update(Kind, #state{deks = AllDeks} = State) ->
 
 -spec set_active(cb_deks:dek_kind(), undefined | cb_deks:dek_id(), boolean(),
                  #state{}) -> #state{}.
-set_active(Kind, ActiveId, IsEnabled, #state{deks = DeksInfo} = State) ->
+set_active(Kind, ActiveId, IsEnabled, #state{deks_info = DeksInfo} = State) ->
     #{Kind := #{active_id := CurActiveId, deks := CurDeks} = D} = DeksInfo,
     NewDeks =
         case ActiveId of
@@ -1752,12 +1753,12 @@ set_active(Kind, ActiveId, IsEnabled, #state{deks = DeksInfo} = State) ->
                 [NewDek | CurDeks]
         end,
     NewD = D#{active_id => ActiveId, is_enabled => IsEnabled, deks => NewDeks},
-    NewState = State#state{deks = DeksInfo#{Kind => NewD}},
+    NewState = State#state{deks_info = DeksInfo#{Kind => NewD}},
     write_deks_cfg_file(NewState),
     on_deks_update(Kind, NewState).
 
 -spec write_deks_cfg_file(#state{}) -> ok.
-write_deks_cfg_file(#state{deks = DeksInfo}) ->
+write_deks_cfg_file(#state{deks_info = DeksInfo}) ->
     Path = deks_file_path(),
     Term = maps:map(
              fun (_Kind, #{is_enabled := IsEnabled,
@@ -1798,8 +1799,9 @@ deks_file_path() ->
                   ?DEK_CFG_FILENAME).
 
 -spec maybe_read_deks(#state{}) -> #state{}.
-maybe_read_deks(#state{proc_type = ?NODE_PROC, deks = undefined} = State) ->
-    #state{deks = Deks} = NewState = read_all_deks(State),
+maybe_read_deks(#state{proc_type = ?NODE_PROC,
+                       deks_info = undefined} = State) ->
+    #state{deks_info = Deks} = NewState = read_all_deks(State),
     Kinds = maps:keys(Deks),
 
     {ok, NewState2} =
@@ -1826,10 +1828,10 @@ maybe_read_deks(#state{proc_type = ?NODE_PROC, deks = undefined} = State) ->
     %% hypothetically crash after calling set_active() but before calling
     %% maybe_rotate_integrity_tokens() below
     case NewState3 of
-        #state{deks = #{configDek := #{is_enabled := true,
+        #state{deks_info = #{configDek := #{is_enabled := true,
                                         active_id := ActiveId}}} ->
             ok = maybe_rotate_integrity_tokens(configDek, ActiveId, NewState3);
-        #state{deks = #{configDek := #{is_enabled := false}}} ->
+        #state{deks_info = #{configDek := #{is_enabled := false}}} ->
             ok = maybe_rotate_integrity_tokens(configDek, undefined, NewState3);
         #state{} ->
             ok
@@ -1867,10 +1869,10 @@ read_all_deks(#state{} = State) ->
                          false
                  end
              end, Term),
-    State#state{deks = Deks}.
+    State#state{deks_info = Deks}.
 
 -spec reread_deks(cb_deks:dek_kind(), #state{}) -> #state{}.
-reread_deks(Kind, #state{deks = DeksInfo} = State) ->
+reread_deks(Kind, #state{deks_info = DeksInfo} = State) ->
     #{Kind := #{deks := CurDeks} = KindDeks} = DeksInfo,
     NewDeks =
         lists:map(
@@ -1878,7 +1880,7 @@ reread_deks(Kind, #state{deks = DeksInfo} = State) ->
               {ok, K} = encryption_service:read_dek(Kind, DekId),
               K
           end, CurDeks),
-    State#state{deks = DeksInfo#{Kind => KindDeks#{deks => NewDeks}}}.
+    State#state{deks_info = DeksInfo#{Kind => KindDeks#{deks => NewDeks}}}.
 
 -spec new_dek_info(cb_deks:dek_kind(), undefined | cb_deks:dek_id(),
                    [cb_deks:dek()], boolean()) -> deks_info().
@@ -1896,8 +1898,8 @@ new_dek_info(Kind, ActiveId, Keys, IsEnabled) ->
       statuses => #{}}.
 
 -spec destroy_dek_info(cb_deks:dek_kind(), #state{}) -> #state{}.
-destroy_dek_info(Kind, #state{deks = DeksInfo} = State) ->
-    NewState = State#state{deks = maps:remove(Kind, DeksInfo)},
+destroy_dek_info(Kind, #state{deks_info = DeksInfo} = State) ->
+    NewState = State#state{deks_info = maps:remove(Kind, DeksInfo)},
     write_deks_cfg_file(NewState),
     self() ! calculate_dek_info,
     delete_kind_stats(Kind),
@@ -1942,7 +1944,7 @@ generate_new_dek(Kind, CurrentDeks, EncryptionMethod, Snapshot) ->
 
 -spec maybe_reencrypt_deks(cb_deks:dek_kind(), #state{}) ->
           {ok, #state{}} | {error, #state{}, term()}.
-maybe_reencrypt_deks(Kind, #state{deks = Deks} = State) ->
+maybe_reencrypt_deks(Kind, #state{deks_info = Deks} = State) ->
     maybe
         {ok, #{deks := Keys}} ?= maps:find(Kind, Deks),
         Snapshot = deks_config_snapshot(Kind),
@@ -2395,11 +2397,11 @@ normalize_job_res({error, Reason}, State) -> {{error, Reason}, State}.
 -spec update_job_status(node_job() | master_job(),
                         ok | retry |{error, _},
                         #state{}) -> #state{}.
-update_job_status({Name, Kind}, Res, #state{deks = DeksInfo} = State) ->
+update_job_status({Name, Kind}, Res, #state{deks_info = DeksInfo} = State) ->
     case maps:find(Kind, DeksInfo) of
         {ok, #{statuses := S} = D} ->
             NewDeksInfo = DeksInfo#{Kind => D#{statuses => S#{Name => Res}}},
-            State#state{deks = NewDeksInfo};
+            State#state{deks_info = NewDeksInfo};
         error ->
             State
     end;
@@ -2496,7 +2498,7 @@ time_to_first_event(CurDateTime, EventTimes) ->
 restart_dek_cleanup_timer(#state{proc_type = ?MASTER_PROC} = State) ->
     State;
 restart_dek_cleanup_timer(#state{proc_type = ?NODE_PROC,
-                                 deks = DeksInfo} = State) ->
+                                 deks_info = DeksInfo} = State) ->
     CurDateTime = calendar:universal_time(),
     Time = calculate_next_dek_cleanup(CurDateTime, DeksInfo),
     restart_timer(dek_cleanup, Time, State).
@@ -2625,7 +2627,7 @@ dek_expiration_time(LifetimeInSec, DropKeysTS,
 restart_dek_rotation_timer(#state{proc_type = ?MASTER_PROC} = State) ->
     State;
 restart_dek_rotation_timer(#state{proc_type = ?NODE_PROC,
-                                  deks = Deks} = State) ->
+                                  deks_info = Deks} = State) ->
     CurDT = calendar:universal_time(),
     Times =
         maps:fold(fun (Kind, KindDeks, Acc) ->
@@ -3157,7 +3159,7 @@ fetch_snapshot_in_txn(Txn) ->
 
 -spec deks_to_drop(cb_deks:dek_kind(), deks_info() | #state{}) ->
           [cb_deks:dek_id() | ?NULL_DEK].
-deks_to_drop(Kind, #state{deks = DeksInfo}) ->
+deks_to_drop(Kind, #state{deks_info = DeksInfo}) ->
     case maps:find(Kind, DeksInfo) of
         {ok, KindDeks} -> deks_to_drop(Kind, KindDeks);
         error -> []
@@ -3201,7 +3203,8 @@ deks_to_drop(Kind, KindDeks) ->
 -spec initiate_deks_drop(cb_deks:dek_kind(), [cb_deks:dek_id() | ?NULL_DEK],
                          #state{}) -> #state{}.
 initiate_deks_drop(_Kind, [], #state{} = State) -> State;
-initiate_deks_drop(Kind, IdsToDropList0, #state{deks = DeksInfo} = State0) ->
+initiate_deks_drop(Kind, IdsToDropList0,
+                   #state{deks_info = DeksInfo} = State0) ->
     CurTime = calendar:universal_time(),
     IdsToDropSet0 = sets:from_list(IdsToDropList0, [{version, 2}]),
     NowS = calendar:datetime_to_gregorian_seconds(CurTime),
@@ -3260,14 +3263,14 @@ initiate_deks_drop(Kind, IdsToDropList0, #state{deks = DeksInfo} = State0) ->
             %% ActiveId will not be treated as expired immediately.
             NewKindDeks = KindDeks#{deks_being_dropped => IdsToDropSet0,
                                     last_drop_timestamp => NowS},
-            State0#state{deks = DeksInfo#{Kind => NewKindDeks}};
+            State0#state{deks_info = DeksInfo#{Kind => NewKindDeks}};
         {succ, {ok, Res}} ->
             %% Setting deks_being_dropped => IdsToDropSet0 on purpose
             %% because we want to memorize information that we tried to drop
             %% active dek, so we don't retry too often.
             NewKindDeks = KindDeks#{deks_being_dropped => IdsToDropSet0,
                                     last_drop_timestamp => NowS},
-            State = State0#state{deks = DeksInfo#{Kind => NewKindDeks}},
+            State = State0#state{deks_info = DeksInfo#{Kind => NewKindDeks}},
             case Res of
                 done ->
                     %% 'done' means that all all ids have been dropped and it is
@@ -3370,7 +3373,7 @@ sanitize_sensitive_data(#{type := encrypted} = Data) ->
 
 -spec extract_dek_info(cb_deks:dek_kind(), #state{}) ->
           {ok, external_dek_info()} | {error, not_found}.
-extract_dek_info(Kind, #state{deks = DeksInfo}) ->
+extract_dek_info(Kind, #state{deks_info = DeksInfo}) ->
     StripKeyMaterial =
         fun (Keys) ->
             lists:map(fun (#{type := 'raw-aes-gcm', info := Info} = K) ->
@@ -3519,7 +3522,7 @@ remove_historical_key_from_props(#{type := ?AWSKMS_KEY_TYPE,
 -spec calculate_dek_info(#state{}) ->
           {#{cb_deks:dek_kind() => external_dek_info()}, #state{}}.
 calculate_dek_info(State) ->
-    #state{deks = Deks} = State,
+    #state{deks_info = Deks} = State,
     Kinds = maps:keys(Deks),
     {Res, NewState} =
         lists:foldl(
@@ -3635,7 +3638,7 @@ diag_info_helper(Name, Pid) ->
 
 diag(#state{proc_type = ?NODE_PROC} = State) ->
     [<<"Process type: node ">>, io_lib:format("(~p)", [self()]), $\n,
-     diag_deks(State#state.deks), $\n,
+     diag_deks(State#state.deks_info), $\n,
      diag_timers(State#state.timers), $\n,
      diag_jobs(State#state.jobs)];
 diag(#state{proc_type = ?MASTER_PROC} = State) ->
