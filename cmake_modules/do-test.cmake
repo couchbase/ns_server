@@ -39,10 +39,10 @@ ENDFOREACH(DEP ${MAIN_CACHE_NS_TEST_BINARY_DEPS})
 
 SET(TEST_COMMAND "${ERL_EXECUTABLE}"
         -pa ${ebindirs}
-        -pa "${COUCHDB_BIN_DIR}/src/couchdb"
-        -pa "${COUCHDB_BIN_DIR}/src/mochiweb"
-        -pa "${COUCHDB_BIN_DIR}/src/ejson"
-        -pa "${COUCHDB_BIN_DIR}/src/couch_index_merger/ebin"
+        -pa "${COUCHDB_BIN_DIR}/couch/ebin"
+        -pa "${COUCHDB_BIN_DIR}/mochiweb/ebin"
+        -pa "${COUCHDB_BIN_DIR}/ejson/ebin"
+        -pa "${COUCHDB_BIN_DIR}/couch_index_merger/ebin"
         -env OVERRIDE_EXECUTABLE_PATHS ${OVERRIDE_EXECUTABLE_PATHS}
         -noshell
         -kernel logger "[{handler, default, undefined}]"

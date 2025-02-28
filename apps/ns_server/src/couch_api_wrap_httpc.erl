@@ -10,7 +10,7 @@
 
 -include("couch_db.hrl").
 -include("couch_api_wrap.hrl").
--include("../lhttpc/lhttpc.hrl").
+-include_lib("lhttpc/include/lhttpc.hrl").
 
 -include("ns_common.hrl").
 

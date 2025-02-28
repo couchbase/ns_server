@@ -60,7 +60,7 @@ ConfigureWrapper(
 )
 
 GET_FILENAME_COMPONENT (_couchdb_src "${COUCHDB_SRC_DIR}" REALPATH)
-GET_FILENAME_COMPONENT (_couchdb_bin "${COUCHDB_BIN_DIR}" REALPATH)
+GET_FILENAME_COMPONENT (_couchdb_bin "${COUCHDB_DEFAULT_LIB_DIR}" REALPATH)
 FILE (WRITE "${PROJECT_BINARY_DIR}/config.mk"
   "COUCHDB_SRC_DIR = ${_couchdb_src}\n"
   "COUCHDB_BIN_DIR = ${_couchdb_bin}\n")
@@ -205,11 +205,7 @@ ADD_SUBDIRECTORY (deps)
 REBAR(TARGET ns_server
       DEPENDS
         couchdb
-        couch_index_merger
-        ejson
-        ejson_build
         kv_mappings
-        mochiweb
         ns_cfg
         ns_goport
         ns_gosecrets
@@ -252,7 +248,7 @@ MACRO (NS_SERVER_TEST)
   SET (_test_target ${NS_SERVER_TEST_TEST_TARGET})
 
   SET (_cmd "${CMAKE_COMMAND}" -D "ERL_EXECUTABLE=${ERL_EXECUTABLE}"
-    -D "COUCHDB_BIN_DIR=${COUCHDB_BIN_DIR}"
+    -D "COUCHDB_BIN_DIR=${COUCHDB_DEFAULT_LIB_DIR}"
     -D "TEST_TARGET=${_test_target}"
     -D "TEST_FILTER=${TEST_FILTER}"
     # We pass the CCACHE DIR to be able to load anything we need from the
@@ -329,7 +325,7 @@ MESSAGE (STATUS "COUCHBASE_PLT set to ${COUCHBASE_PLT}")
 
 SET (dialyzer_args -Wno_return -Wno_improper_lists -Wunknown)
 ADD_CUSTOM_TARGET (ns_dialyzer
-  COMMAND "${CMAKE_COMMAND}" -D "COUCHDB_BIN_DIR=${COUCHDB_BIN_DIR}"
+  COMMAND "${CMAKE_COMMAND}" -D "COUCHDB_BIN_DIR=${COUCHDB_DEFAULT_LIB_DIR}"
   -D "DIALYZER_EXECUTABLE=${DIALYZER_EXECUTABLE}"
   -D "DIALYZER_FLAGS=${dialyzer_args}"
   -D "COUCHBASE_PLT=${COUCHBASE_PLT}"

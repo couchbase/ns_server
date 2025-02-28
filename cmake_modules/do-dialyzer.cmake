@@ -8,17 +8,16 @@ IF (NOT EXISTS "${COUCHBASE_PLT}")
     COMMAND "${DIALYZER_EXECUTABLE}" --output_plt "${COUCHBASE_PLT}" --build_plt
     --apps compiler crypto erts inets kernel os_mon sasl ssl stdlib xmerl eldap
            public_key
-    ${_couchdb_bin_dir}/src/couchdb
-    ${_couchdb_bin_dir}/src/couch_set_view
-    ${_couchdb_bin_dir}/src/couch_view_parser
-    ${_couchdb_bin_dir}/src/couch_index_merger
-    ${_couchdb_bin_dir}/src/mapreduce
-    ${_couchdb_bin_dir}/src/mochiweb
-    ${_couchdb_bin_dir}/src/snappy
-    ${_couchdb_bin_dir}/src/etap
-    ${_couchdb_bin_dir}/src/lhttpc
-    ${_couchdb_bin_dir}/src/erlang-oauth
-    ${_couchdb_bin_dir}/src/ejson
+    ${_couchdb_bin_dir}/couch
+    ${_couchdb_bin_dir}/couch_set_view
+    ${_couchdb_bin_dir}/couch_view_parser
+    ${_couchdb_bin_dir}/couch_index_merger
+    ${_couchdb_bin_dir}/mapreduce
+    ${_couchdb_bin_dir}/mochiweb
+    ${_couchdb_bin_dir}/snappy
+    ${_couchdb_bin_dir}/lhttpc
+    ${_couchdb_bin_dir}/oauth
+    ${_couchdb_bin_dir}/ejson
     # Deps that we must include to pick up functions, but do not want to analyse
     _build/default/lib/gen_smtp
     _build/default/lib/chronicle
