@@ -44,6 +44,7 @@
          get_cluster_capabilities/0,
          tls_supported/0,
          tls_supported/1,
+         is_goxdcr_enabled/0,
          preserve_durable_mutations/0]).
 
 %% NOTE: this is rpc:call-ed by mb_master
@@ -362,6 +363,9 @@ tls_supported(Config) ->
 
 tls_supported() ->
     is_enterprise().
+
+is_goxdcr_enabled() ->
+    not is_columnar().
 
 -ifdef(TEST).
 mb_master_advertised_version_test() ->

@@ -281,7 +281,12 @@ current_status_slow_inner() ->
         fun (Task) ->
                 is_view_task(Task) orelse is_bucket_compaction_task(Task)
         end, ns_couchdb_api:get_tasks(2000, []) ++ local_tasks:all())
-        ++ grab_local_xdcr_replications()
+        ++ case cluster_compat_mode:is_goxdcr_enabled() of
+               true ->
+                   grab_local_xdcr_replications();
+               false ->
+                   []
+           end
         ++ case cluster_compat_mode:is_cluster_76() of
                true ->
                    [];

@@ -855,7 +855,8 @@ check(certs, Opaque, _History, _Stats) ->
     Opaque;
 
 check(xdcr_certs, Opaque, _History, _Stats) ->
-    case mb_master:master_node() == node() of
+    case mb_master:master_node() == node() andalso
+        cluster_compat_mode:is_goxdcr_enabled() of
         true -> check_xdcr_certs(Opaque);
         false -> Opaque
     end;

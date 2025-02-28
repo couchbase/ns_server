@@ -238,12 +238,13 @@ child_specs() ->
       permanent, 1000, worker, [stats_reader]},
 
      {{stats_reader, "@global"}, {stats_reader, start_link, ["@global"]},
-      permanent, 1000, worker, [stats_reader]},
+      permanent, 1000, worker, [stats_reader]}] ++
 
-     {goxdcr_status_keeper, {goxdcr_status_keeper, start_link, []},
-      permanent, 1000, worker, [goxdcr_status_keeper]},
+     [{goxdcr_status_keeper, {goxdcr_status_keeper, start_link, []},
+       permanent, 1000, worker, [goxdcr_status_keeper]}
+      || cluster_compat_mode:is_goxdcr_enabled()] ++
 
-     {services_stats_sup, {services_stats_sup, start_link, []},
+     [{services_stats_sup, {services_stats_sup, start_link, []},
       permanent, infinity, supervisor, []},
 
      suppress_max_restart_intensity:spec(

@@ -373,7 +373,7 @@ get_rpc_prefix(Service) ->
     RPCService.
 
 should_run(goxdcr, _Snapshot) ->
-    true;
+    cluster_compat_mode:is_goxdcr_enabled();
 should_run(projector, Snapshot) ->
     ns_cluster_membership:should_run_service(Snapshot, kv, node()) andalso
         not config_profile:search({indexer, projector_disabled}, false);
