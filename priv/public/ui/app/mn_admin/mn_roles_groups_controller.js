@@ -49,14 +49,13 @@ angular
     mnUserRolesService,
     mnSearch
   ])
-  .controller("mnRolesGroupsController", ["$scope", "$uibModal", "mnPromiseHelper", "mnUserRolesService", "mnPoller", "mnHelper", "$state", mnRolesGroupsController])
+  .controller("mnRolesGroupsController", ["$scope", "$uibModal", "mnPromiseHelper", "mnUserRolesService", "mnPoller", "mnHelper", "permissions", "$state", mnRolesGroupsController])
   .controller("mnRolesGroupsDeleteDialogController", mnRolesGroupsDeleteDialogController)
   .controller("mnRolesGroupsAddDialogController", mnRolesGroupsAddDialogController);
 
-function mnRolesGroupsController($scope, $uibModal, mnPromiseHelper, mnUserRolesService, mnPoller, mnHelper, $state) {
+function mnRolesGroupsController($scope, $uibModal, mnPromiseHelper, mnUserRolesService, mnPoller, mnHelper, permissions, $state) {
   var vm = this;
 
-  vm.addRolesGroup = addRolesGroup;
   vm.deleteRolesGroup = deleteRolesGroup;
   vm.editRolesGroup = editRolesGroup;
 
@@ -132,16 +131,8 @@ function mnRolesGroupsController($scope, $uibModal, mnPromiseHelper, mnUserRoles
       template: mnRolesGroupsAddDialogTemplate,
       controller: 'mnRolesGroupsAddDialogController as rolesGroupsAddDialogCtl',
       resolve: {
-        rolesGroup: mnHelper.wrapInFunction(rolesGroup)
-      }
-    });
-  }
-  function addRolesGroup() {
-    $uibModal.open({
-      template: mnRolesGroupsAddDialogTemplate,
-      controller: 'mnRolesGroupsAddDialogController as rolesGroupsAddDialogCtl',
-      resolve: {
-        rolesGroup: mnHelper.wrapInFunction(undefined)
+        rolesGroup: mnHelper.wrapInFunction(rolesGroup),
+        permissions: mnHelper.wrapInFunction(permissions)
       }
     });
   }
