@@ -51,6 +51,9 @@
 -define(CONNECTION_ATTEMPTS, 5).
 -define(DEFAULT_TIMEOUT, infinity).
 
+-define(JWT_LIFETIME_MS, ?get_param(jwt_lifetime, 600000)).
+-define(JWT_RENEWAL_WINDOW_MS, ?CHECK_INTERVAL * 2).
+
 %% gen_server API
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2,
@@ -80,7 +83,8 @@
                 warmup_stats = [] :: [{binary(), binary()}],
                 control_queue :: pid() | undefined,
                 check_in_progress = false :: boolean(),
-                next_check_after = ?CHECK_INTERVAL :: integer()
+                next_check_after = ?CHECK_INTERVAL :: integer(),
+                jwt_expires :: undefined | integer()
                }).
 
 %% external API
@@ -834,6 +838,14 @@ handle_cast(start_completed, #state{start_time=Start,
                 end,
     {noreply, State#state{status=NewStatus, warmup_stats=[]}}.
 
+issue_jwt() ->
+    {ok, JWT} =
+        jwt_issuer:issue("@fusion", [metakv2_access],
+                         ?JWT_LIFETIME_MS div 1000),
+    {_, Payload = #{<<"exp">> := Expires}} = jose_jwt:peek_payload(JWT),
+    ?log_debug("Issue JWT ~p", [Payload]),
+    {ok, JWT, Expires}.
+
 handle_info({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
                                                      status = OldStatus} = State) ->
     gen_event:notify(buckets_events, {started, Bucket}),
@@ -841,7 +853,15 @@ handle_info({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
     Self = self(),
     case RV of
         {ok, Sock} ->
-            try ensure_bucket(Sock, Bucket, false) of
+            {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
+            {ok, JWT, Expires} =
+                case ns_bucket:is_fusion(BucketConfig) of
+                    true ->
+                        issue_jwt();
+                    false ->
+                        {ok, undefined, undefined}
+                end,
+            try ensure_bucket(Sock, Bucket, false, JWT) of
                 ok ->
                     connecting = OldStatus,
 
@@ -853,7 +873,8 @@ handle_info({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
                     InitialState = State#state{
                                      start_time = os:timestamp(),
                                      sock = Sock,
-                                     status = init
+                                     status = init,
+                                     jwt_expires = Expires
                                     },
                     WorkerPids = [proc_lib:spawn_link(erlang,
                                                       apply, [fun worker_init/2,
@@ -958,7 +979,8 @@ handle_info(Message, #state{control_queue = undefined, status = Status,
                [Bucket, Status]),
     {noreply, State};
 handle_info(Message, #state{worker_features = WF, control_queue = Q,
-                            bucket = Bucket, check_in_progress = false} = State)
+                            bucket = Bucket, check_in_progress = false,
+                            jwt_expires = JWTExpires} = State)
   when Message =:= check_config_soon orelse Message =:= check_config ->
     misc:flush(check_config_soon),
     misc:flush(check_config),
@@ -966,15 +988,33 @@ handle_info(Message, #state{worker_features = WF, control_queue = Q,
     case get_worker_features() of
         WF ->
             Self = self(),
+            Now = erlang:system_time(second),
+
+            {ok, JWT, NewExpires} =
+                case JWTExpires of
+                    undefined ->
+                        {ok, undefined, undefined};
+                    _ ->
+                        case (JWTExpires - Now) * 1000 =<
+                            ?JWT_RENEWAL_WINDOW_MS of
+                            true ->
+                                issue_jwt();
+                            false ->
+                                {ok, undefined, JWTExpires}
+                        end
+                end,
+
             work_queue:submit_work(
               Q,
               fun () ->
                       perform_very_long_call_with_timing(
-                        Bucket, ensure_bucket, ensure_bucket(_, Bucket, true)),
+                        Bucket, ensure_bucket,
+                        ensure_bucket(_, Bucket, true, JWT)),
                       Self ! complete_check
               end),
             {noreply, State#state{check_in_progress = true,
-                                  next_check_after = ?CHECK_INTERVAL}};
+                                  next_check_after = ?CHECK_INTERVAL,
+                                  jwt_expires = NewExpires}};
         OldWF ->
             ?log_info("Restarting due to features change from ~p to ~p",
                       [OldWF, WF]),
@@ -1531,7 +1571,7 @@ do_connect(AgentName, Options) ->
             throw({T, E})
     end.
 
-ensure_bucket(Sock, Bucket, BucketSelected) ->
+ensure_bucket(Sock, Bucket, BucketSelected, JWT) ->
     %% This testpoint simulates the case where the bucket is not selectable
     %% (returns enoent) but does exist so cannot be created.
     case simulate_slow_bucket_operation(Bucket, slow_bucket_creation,
@@ -1544,11 +1584,11 @@ ensure_bucket(Sock, Bucket, BucketSelected) ->
                 <<"paused">> ->
                     {error, bucket_paused};
                 _ ->
-                    ensure_bucket_inner(Sock, Bucket, BucketSelected)
+                    ensure_bucket_inner(Sock, Bucket, BucketSelected, JWT)
             end
     end.
 
-ensure_bucket_inner(Sock, Bucket, BucketSelected) ->
+ensure_bucket_inner(Sock, Bucket, BucketSelected, JWT) ->
     %% Only catch exceptions when getting the bucket config. Once we're
     %% past that point and into the guts of this function there is code
     %% that may exit with reason {shutdown, reconfig} and that exit should
@@ -1569,7 +1609,7 @@ ensure_bucket_inner(Sock, Bucket, BucketSelected) ->
                     not_present
             end;
         BConf ->
-            case do_ensure_bucket(Sock, Bucket, BConf, BucketSelected) of
+            case do_ensure_bucket(Sock, Bucket, BConf, BucketSelected, JWT) of
                 ok ->
                     memcached_bucket_config:ensure_collections(Sock, BConf);
                 Error ->
@@ -1582,10 +1622,10 @@ ensure_bucket_inner(Sock, Bucket, BucketSelected) ->
             {E, R}
     end.
 
-do_ensure_bucket(Sock, Bucket, BConf, true) ->
-    ensure_selected_bucket(Sock, Bucket, BConf);
-do_ensure_bucket(Sock, Bucket, BConf, false) ->
-    case select_and_ensure_bucket(Sock, Bucket, BConf) of
+do_ensure_bucket(Sock, Bucket, BConf, true, JWT) ->
+    ensure_selected_bucket(Sock, Bucket, BConf, JWT);
+do_ensure_bucket(Sock, Bucket, BConf, false, JWT) ->
+    case select_and_ensure_bucket(Sock, Bucket, BConf, JWT) of
         ok ->
             ok;
         {memcached_error, key_enoent, _} ->
@@ -1629,10 +1669,10 @@ do_ensure_bucket(Sock, Bucket, BConf, false) ->
             Other
     end.
 
-select_and_ensure_bucket(Sock, Bucket, BConf) ->
+select_and_ensure_bucket(Sock, Bucket, BConf, JWT) ->
     case mc_client_binary:select_bucket(Sock, Bucket) of
         ok ->
-            case ensure_selected_bucket(Sock, Bucket, BConf) of
+            case ensure_selected_bucket(Sock, Bucket, BConf, JWT) of
                 ok ->
                     ok;
                 {error, config_only_bucket} ->
@@ -1647,8 +1687,8 @@ select_and_ensure_bucket(Sock, Bucket, BConf) ->
             {error, {bucket_select_error, Error}}
     end.
 
-ensure_selected_bucket(Sock, Bucket, BConf) ->
-    case memcached_bucket_config:ensure(Sock, BConf) of
+ensure_selected_bucket(Sock, Bucket, BConf, JWT) ->
+    case memcached_bucket_config:ensure(Sock, BConf, JWT) of
         restart ->
             ale:info(
               ?USER_LOGGER,

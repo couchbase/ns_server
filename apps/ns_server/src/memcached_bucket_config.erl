@@ -18,12 +18,13 @@
 -include("cb_cluster_secrets.hrl").
 
 -define(MCD_DISABLED_ENCRYPTION_KEY_ID, <<"">>).
+-define(MAGMA_FUSION_AUTH_TOKEN, "magma_fusion_metadata_auth_token").
 
 -record(cfg, {type, name, config, snapshot, engine_config, params}).
 
 -export([get/1,
          get_bucket_config/1,
-         ensure/2,
+         ensure/3,
          start_params/3,
          ensure_collections/2,
          get_current_collections_uid/1,
@@ -257,7 +258,16 @@ has_changed(BucketName, Name, Value, Dict) ->
             true
     end.
 
-maybe_update_param(Sock, Stats, BucketName, {Name, Props, Value}) ->
+maybe_update_param(_Sock, _Stats, _BucketName,
+                   {?MAGMA_FUSION_AUTH_TOKEN, _Props, custom}, undefined) ->
+    ok;
+maybe_update_param(Sock, _Stats, BucketName,
+                   {?MAGMA_FUSION_AUTH_TOKEN = Name, Props, custom}, JWT) ->
+    {_, Payload} = jose_jwt:peek_payload(JWT),
+    ?log_info("Push JWT ~p to bucket ~s", [Payload, BucketName]),
+    ok = mc_client_binary:set_engine_param(Sock, list_to_binary(Name), JWT,
+                                           proplists:get_value(reload, Props));
+maybe_update_param(Sock, Stats, BucketName, {Name, Props, Value}, _JWT) ->
     case proplists:get_value(reload, Props) of
         undefined ->
             ok;
@@ -274,7 +284,7 @@ maybe_update_param(Sock, Stats, BucketName, {Name, Props, Value}) ->
             end
     end.
 
-ensure(Sock, #cfg{type = membase, name = BucketName, params = Params}) ->
+ensure(Sock, #cfg{type = membase, name = BucketName, params = Params}, JWT) ->
     case query_stats(Sock) of
         {ok, Stats} ->
             Restart =
@@ -289,12 +299,13 @@ ensure(Sock, #cfg{type = membase, name = BucketName, params = Params}) ->
                     restart;
                 false ->
                     lists:foreach(
-                      maybe_update_param(Sock, Stats, BucketName, _), Params)
+                      maybe_update_param(Sock, Stats, BucketName, _, JWT),
+                      Params)
             end;
         Error ->
             Error
     end;
-ensure(Sock, #cfg{type = memcached}) ->
+ensure(Sock, #cfg{type = memcached}, undefined) ->
     %% TODO: change max size of memcached bucket also
     %% Make sure it's a memcached bucket
     {ok, present} = mc_binary:quick_stats(
@@ -429,11 +440,20 @@ get_magma_bucket_config(BucketConfig) ->
              {"magma_key_tree_data_block_size", [{reload, flush}],
               ns_bucket:magma_key_tree_data_blocksize(BucketConfig)},
              {"magma_seq_tree_data_block_size", [{reload, flush}],
-              ns_bucket:magma_seq_tree_data_blocksize(BucketConfig)},
-             {"magma_fusion_logstore_uri", [],
+              ns_bucket:magma_seq_tree_data_blocksize(BucketConfig)}] ++
+                get_fusion_bucket_config(BucketConfig);
+        _ ->
+            []
+    end.
+
+get_fusion_bucket_config(BucketConfig) ->
+    case ns_bucket:is_fusion(BucketConfig) of
+        true ->
+            [{"magma_fusion_logstore_uri", [],
               ns_bucket:magma_fusion_logstore_uri(BucketConfig)},
              {"magma_fusion_metadatastore_uri", [{reload, flush}],
-              ns_bucket:magma_fusion_metadatastore_uri(BucketConfig)}];
-        _ ->
+              ns_bucket:magma_fusion_metadatastore_uri(BucketConfig)},
+             {?MAGMA_FUSION_AUTH_TOKEN, [{reload, flush}, no_param], custom}];
+        false ->
             []
     end.
