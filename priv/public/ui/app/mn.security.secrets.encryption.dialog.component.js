@@ -69,7 +69,10 @@ class MnSecuritySecretsEncryptionDialogComponent extends MnLifeCycleHooksToStrea
     this.httpError = this.mnSecuritySecretsService.stream.postEncryptionAtRestType.error;
     this.filteredSecrets = this.secrets.filter(secret => secret.usage.find(u => u.includes(this.type + '-encryption') ));
 
-    this.form.group.get('dekLifetimeEnabled')[(this.form.group.get('dekLifetime').value === 0) ? 'disable': 'enable']();
+    /**
+     * DEK Lifetime should be disabled only for Audit and Log types
+     */
+    this.form.group.get('dekLifetimeEnabled')[(this.form.group.get('dekLifetime').value === 0 && (this.type === 'audit' || this.type === 'log')) ? 'disable': 'enable']();
   }
 
   doUnpack({encryptionMethod, encryptionKeyId, dekLifetime, dekRotationInterval}) {
