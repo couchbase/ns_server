@@ -262,6 +262,9 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
           rv['kmip-secret'].encryptWithKeyId = (item.data.encryptWithKeyId === null || item.data.encryptWithKeyId === undefined || item.data.encryptWithKeyId < 0) ? null : this.secrets.find(i => i.id === item.data.encryptWithKeyId);
         }
         rv['kmip-secret'].activeKey = item.data.activeKey?.kmipId;
+        if (item.data.keyPassphrase === '******') {
+          rv['kmip-secret'].keyPassphrase = undefined;
+        }
         break;
     }
     return rv;
@@ -297,10 +300,13 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         data = kmipSecret;
         data.encryptWithKeyId = data.encryptWith === 'nodeSecretManager' ? -1 : data.encryptWithKeyId;
         data.activeKey = {kmipId: data.activeKey};
-          if (data.encryptWith === 'encryptionKey') {
-            data.encryptWithKeyId = data.encryptWithKeyId?.id ?? -1;
-          }
-          break;
+        if (data.encryptWith === 'encryptionKey') {
+          data.encryptWithKeyId = data.encryptWithKeyId?.id ?? -1;
+        }
+        if (!data.keyPassphrase || data.keyPassphrase === '******') {
+          data.keyPassphrase = undefined;
+        }
+        break;
     }
 
     let usageToSend = Object.keys(usage).filter(v => usage[v]);
