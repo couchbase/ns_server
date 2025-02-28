@@ -58,6 +58,7 @@
          compile_roles/3,
          validate_roles/1,
          validate_roles/2,
+         validate_roles/3,
          params_version/1,
          filter_out_invalid_roles/3,
          produce_roles_by_permission/2,
@@ -791,8 +792,8 @@ ui_folders() ->
      {mobile, "Mobile"}].
 
 internal_roles() ->
-    [{stats_reader, [], [],
-      [{[admin, internal, stats], [read]}]}].
+    [{stats_reader, [], [], [{[admin, internal, stats], [read]}]},
+     {metakv2_access, [], [], [{[admin, internal, metakv2], all}]}].
 
 maybe_add_developer_preview_roles() ->
     DP = cluster_compat_mode:is_developer_preview(),
@@ -1460,14 +1461,27 @@ get_visible_role_definitions() ->
               visible_roles_filter(),
               pipes:collect()).
 
+-spec validate_roles([rbac_role()]) ->
+          {GoodRoles :: [rbac_role()], BadRoles :: [rbac_role()]}.
 validate_roles(Roles) ->
-    validate_roles(Roles, ns_bucket:get_snapshot(all, [collections, uuid])).
+    validate_roles(Roles, public).
 
--spec validate_roles([rbac_role()], map()) ->
-                            {GoodRoles :: [rbac_role()],
-                             BadRoles :: [rbac_role()]}.
-validate_roles(Roles, Snapshot) ->
-    Definitions = get_visible_role_definitions(),
+-spec validate_roles([rbac_role()], public | all) ->
+          {GoodRoles :: [rbac_role()], BadRoles :: [rbac_role()]}.
+validate_roles(Roles, Scope) ->
+    validate_roles(Roles, Scope,
+                   ns_bucket:get_snapshot(all, [collections, uuid])).
+
+-spec validate_roles([rbac_role()], public | all, map()) ->
+          {GoodRoles :: [rbac_role()], BadRoles :: [rbac_role()]}.
+validate_roles(Roles, Scope, Snapshot) ->
+    Definitions =
+        case Scope of
+            public ->
+                get_visible_role_definitions();
+            all ->
+                get_definitions(all)
+        end,
     lists:foldl(fun (Role, {Validated, Unknown}) ->
                         case validate_role(Role, Definitions, Snapshot) of
                             false ->

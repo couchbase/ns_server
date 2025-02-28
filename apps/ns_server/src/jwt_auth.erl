@@ -439,7 +439,19 @@ map_claim(Type, Claims, IssProps) when Type =:= groups; Type =:= roles ->
                  TokenValues ->
                      TokenValues
              end,
-    validate_map_claim_values(Type, Type, IssProps, Values).
+    MappingType =
+        case Type of
+            roles ->
+                {roles, case maps:get(name, IssProps) =:= jwt_issuer:name() of
+                            true ->
+                                all;
+                            false ->
+                                public
+                        end};
+            _ ->
+                Type
+        end,
+    validate_map_claim_values(Type, MappingType, IssProps, Values).
 
 get_auth_info(Claims, IssProps, Username) ->
     AuthnRes0 = menelaus_auth:init_auth({Username, external}),

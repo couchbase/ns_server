@@ -571,7 +571,7 @@ prepare_store_user(Snapshot, CanOverwrite, {{_, Domain} = Identity, Props}) ->
                 [{groups, Groups} || Groups =/= undefined],
 
             UserProps2 =
-                case menelaus_roles:validate_roles(Roles, Snapshot) of
+                case menelaus_roles:validate_roles(Roles, public, Snapshot) of
                     {NewRoles, []} -> [{roles, NewRoles} | UserProps];
                     {_, BadRoles} ->
                         throw({error, {roles_validation, BadRoles}})
@@ -979,7 +979,7 @@ get_roles(Identity) ->
 
 store_group(Identity, Description, Roles, LDAPGroup) ->
     Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),
-    case menelaus_roles:validate_roles(Roles, Snapshot) of
+    case menelaus_roles:validate_roles(Roles, public, Snapshot) of
         {NewRoles, []} ->
             Props = [{description, Description} || Description =/= undefined] ++
                     [{ldap_group_ref, LDAPGroup} || LDAPGroup =/= undefined] ++

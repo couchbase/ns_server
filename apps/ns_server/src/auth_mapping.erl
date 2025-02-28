@@ -45,7 +45,7 @@
 -endif.
 
 %% Types that can be mapped from external auth systems to Couchbase
--type mapped_type() :: user | groups | roles.
+-type mapped_type() :: user | groups | {roles, public | all}.
 -type mapping_rule_str() :: string().
 -type mapping_rule() :: {string(), string()}.
 -type input_value() :: string().
@@ -153,13 +153,13 @@ extract_mapped_result(groups, Value) ->
             ?log_warning("Ignoring invalid group: ~s", [Value]),
             {error, <<"Invalid group">>}
     end;
-extract_mapped_result(roles, Value) ->
+extract_mapped_result({roles, RolesScope}, Value) ->
     case menelaus_web_rbac:parse_roles(Value) of
         [{error, _}] ->
             ?log_warning("Ignoring invalid roles ~s", [Value]),
             {error, <<"Invalid role format">>};
         [ParsedRole] ->
-            case menelaus_roles:validate_roles([ParsedRole]) of
+            case menelaus_roles:validate_roles([ParsedRole], RolesScope) of
                 {[ValidRole], []} ->
                     {ok, ValidRole};
                 {[], [InvalidRole]} ->
@@ -262,16 +262,20 @@ mapping_test_() ->
 
              meck:expect(menelaus_web_rbac, parse_roles,
                          fun("admin") -> ["admin"];
+                            ("internal") -> ["internal"];
                             ("data_writer[b1:s1:c1]") ->
                                  ["data_writer[b1:s1:c1]"];
                             (_) -> [{error, "Invalid role"}]
                          end),
 
              meck:expect(menelaus_roles, validate_roles,
-                         fun(["admin"]) -> {["admin"], []};
-                            (["data_writer[b1:s1:c1]"]) ->
+                         fun(["admin"], _) ->
+                                 {["admin"], []};
+                            (["data_writer[b1:s1:c1]"], _) ->
                                  {["data_writer[b1:s1:c1]"], []};
-                            (_) -> {[], ["invalid"]}
+                            (["internal"], all) ->
+                                 {["internal"], []};
+                            (_, _) -> {[], ["invalid"]}
                          end)
      end,
      fun(_) ->
@@ -295,10 +299,20 @@ mapping_test_() ->
                     map_identities(groups, ["GoogleGroup:users"],
                                    [{"^GoogleGroup:(.*)", "cb-\\1"}], true)),
       ?_assertEqual(["admin"],
-                    map_identities(roles, ["GoogleRole:admin"],
+                    map_identities({roles, public}, ["GoogleRole:admin"],
+                                   [{"^GoogleRole:(.*)", "\\1"}], true)),
+      ?_assertEqual(["admin"],
+                    map_identities({roles, all}, ["GoogleRole:admin"],
                                    [{"^GoogleRole:(.*)", "\\1"}], true)),
       ?_assertEqual([],
-                    map_identities(roles, ["GoogleRole:data_reader[b2:s2:c2]"],
+                    map_identities({roles, public}, ["GoogleRole:internal"],
+                                   [{"^GoogleRole:(.*)", "\\1"}], true)),
+      ?_assertEqual(["internal"],
+                    map_identities({roles, all}, ["GoogleRole:internal"],
+                                   [{"^GoogleRole:(.*)", "\\1"}], true)),
+      ?_assertEqual([],
+                    map_identities({roles, public},
+                                   ["GoogleRole:data_reader[b2:s2:c2]"],
                                    [{"^GoogleRole:(.*)", "\\1"}], true)),
 
       %% Single value, multiple rules tests
@@ -315,13 +329,13 @@ mapping_test_() ->
                                    [{"^GoogleGroup:(.*)", "cb-\\1"},
                                     {"^GoogleGroup:(.*)", "users@cb"}], true)),
       ?_assertEqual(["admin", "data_writer[b1:s1:c1]"],
-                    map_identities(roles, ["GoogleRole:admin"],
+                    map_identities({roles, public}, ["GoogleRole:admin"],
                                    [{"^GoogleRole:(.*)", "\\1"},
                                     {"^GoogleRole:admin",
                                      "data_writer[b1:s1:c1]"}],
                                    false)),
       ?_assertEqual(["admin"],
-                    map_identities(roles, ["GoogleRole:admin"],
+                    map_identities({roles, public}, ["GoogleRole:admin"],
                                    [{"^GoogleRole:(.*)", "\\1"},
                                     {"^GoogleRole:admin",
                                      "data_writer[b1:s1:c1]"}],
@@ -334,19 +348,19 @@ mapping_test_() ->
                                     "GoogleGroup:users@cb"],
                                    [{"^GoogleGroup:(.*)", "\\1"}], true)),
       ?_assertEqual(["admin", "data_writer[b1:s1:c1]"],
-                    map_identities(roles,
+                    map_identities({roles, public},
                                    ["GoogleRole:admin",
                                     "GoogleRole:data_writer[b1:s1:c1]"],
                                    [{"^GoogleRole:(.*)", "\\1"}], true)),
 
       %% Validates that invalid roles are ignored
       ?_assertEqual(["admin"],
-                    map_identities(roles,
+                    map_identities({roles, public},
                                    ["GoogleRole:admin",
                                     "GoogleRole:invalid_role"],
                                    [{"^GoogleRole:(.*)", "\\1"}], true)),
       ?_assertEqual([],
-                    map_identities(roles,
+                    map_identities({roles, public},
                                    ["GoogleRole:invalid1",
                                     "GoogleRole:invalid2"],
                                    [{"^GoogleRole:(.*)", "\\1"}], true)),

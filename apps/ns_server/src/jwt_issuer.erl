@@ -98,7 +98,7 @@ basic_test() ->
 
     fake_chronicle_kv:new(),
     fake_chronicle_kv:update_snapshot(?JWT_SIGNING_KEYS_KEY, generate_keys()),
-    RV = issue("@test", [admin, ro_admin], 1000),
+    RV = issue("@test", [admin, metakv2_access], 1000),
     ?assertMatch({ok, _}, RV),
     {ok, TokenBin} = RV,
     RV1 = jwt_auth:authenticate(binary_to_list(TokenBin)),
@@ -107,7 +107,7 @@ basic_test() ->
                                  authenticated_identity = {"@test", external},
                                  identity = {"@test", external},
                                  extra_groups = [],
-                                 extra_roles = [admin, ro_admin],
+                                 extra_roles = [admin, metakv2_access],
                                  expiration_datetime_utc = _,
                                  password_expired = false}}, RV1),
     fake_chronicle_kv:unload(),
