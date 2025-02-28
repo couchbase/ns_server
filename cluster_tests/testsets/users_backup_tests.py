@@ -347,7 +347,7 @@ class UsersBackupTests(testlib.BaseTestSet):
 
 
     def local_and_external_user_admin_restore_test(self):
-        # The backup fiel contains the 'Administrator' user, one local
+        # The backup file contains the 'Administrator' user, one local
         # user 'eventingAdmin' and one external user 'gauss'.
         backup_file_path = os.path.join(testlib.get_resources_dir(), "fixtures",
                                         "backup_with_users.json")
@@ -420,6 +420,68 @@ class UsersBackupTests(testlib.BaseTestSet):
             testlib.ensure_deleted(
                     self.cluster,
                     f'/settings/rbac/users/local/{external_admin}')
+
+
+    # Operations involving a backup containing a group with an ldap reference.
+    def restore_group_with_ldap_ref_test(self):
+        # The backup file contains the 'Adminstrator' user, one group with
+        # a ldap reference and one group without a ldap reference.
+        backup_file_path = os.path.join(testlib.get_resources_dir(), "fixtures",
+                                        "backup_with_ldap_group.json")
+        with open(backup_file_path) as f:
+            backup = json.load(f)
+
+        try:
+            # Create a local user admin
+            local_admin = 'LocalUserAdmin'
+            local_admin_password = testlib.random_str(10)
+            put_user(self.cluster, 'local', local_admin, local_admin_password,
+                     roles='user_admin_local',
+                     full_name=testlib.random_str(10), groups='',
+                     validate_user_props=True)
+
+            # Create an external user admin
+            external_admin = 'ExternalUserAdmin'
+            external_admin_password = testlib.random_str(10)
+            put_user(self.cluster, 'local', external_admin,
+                     external_admin_password, roles='user_admin_external',
+                     full_name=testlib.random_str(10),
+                     groups='', validate_user_props=True)
+
+            # The local user admin cannot restore the group with the ldap
+            # reference.
+            restore(self.cluster, backup, can_overwrite=False,
+                    expected_counters={'usersCreated': 0,
+                                       'usersSkipped': 1,
+                                       'groupsCreated': 1,
+                                       'groupsSkipped': 1},
+                    auth_user=(local_admin, local_admin_password))
+
+            # Delete the restored group
+            testlib.ensure_deleted(self.cluster,
+                                   '/settings/rbac/groups/testgroup')
+
+            # The external user admin is able to restore the group with the
+            # ldap reference as well as the one without
+            restore(self.cluster, backup, can_overwrite=False,
+                    expected_counters={'usersCreated': 0,
+                                       'usersSkipped': 1,
+                                       'groupsCreated': 2,
+                                       'groupsSkipped': 0},
+                    auth_user=(external_admin, external_admin_password))
+
+        finally:
+            # Cleanup the users created by this test
+            testlib.ensure_deleted(
+                    self.cluster, f'/settings/rbac/users/local/{local_admin}')
+            testlib.ensure_deleted(
+                    self.cluster,
+                    f'/settings/rbac/users/local/{external_admin}')
+            # Delete the groups that were created
+            testlib.ensure_deleted(self.cluster,
+                                   '/settings/rbac/groups/testgroup')
+            testlib.ensure_deleted(self.cluster,
+                                   '/settings/rbac/groups/externalGroup')
 
 
 def verify_roles(cluster, username, expected_roles):

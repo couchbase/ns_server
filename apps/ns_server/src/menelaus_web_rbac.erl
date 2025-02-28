@@ -1818,13 +1818,16 @@ handle_put_group(GroupId, Req) ->
         true ->
             validator:handle(
               fun (Values) ->
-                      reply(do_store_group(GroupId, Values, true, Req), Req)
-              end, Req, form, put_group_validators(Req, fun (_) -> GroupId end));
+                      reply(do_store_group(GroupId, Values, true, false, Req),
+                            Req)
+              end, Req, form, put_group_validators(Req,
+                                                   fun (_) -> GroupId end,
+                                                   false));
         Error ->
             menelaus_util:reply_global_error(Req, Error)
     end.
 
-put_group_validators(Req, GetGroupNameFun) ->
+put_group_validators(Req, GetGroupNameFun, DoingRestore) ->
     ExtraRolesFun = fun (State) ->
                         menelaus_users:get_group_roles(GetGroupNameFun(State))
                     end,
@@ -1835,10 +1838,12 @@ put_group_validators(Req, GetGroupNameFun) ->
                                             ExtraRolesFun, _),
      validator_verify_security_roles_access(roles, Req, ?LOCAL_WRITE,
                                             ExtraRolesFun, _),
-     validate_ldap_ref(ldap_group_ref, _),
-     validator_verify_group_ldap_access(ldap_group_ref,
-                                        GetGroupNameFun, Req, _),
-     validator:unsupported(_)].
+     validate_ldap_ref(ldap_group_ref, _)] ++
+    %% Don't validate ldap access when doing a restore. If the user doesn't
+    %% have permissions the restore will skip the group.
+    [validator_verify_group_ldap_access(
+       ldap_group_ref, GetGroupNameFun, Req, _) || not DoingRestore] ++
+     [validator:unsupported(_)].
 
 validate_ldap_ref(Name, State) ->
     validator:validate(
@@ -1853,7 +1858,18 @@ validate_ldap_ref(Name, State) ->
               end
       end, Name, State).
 
-do_store_group(GroupId, Props, CanOverwrite, Req) ->
+do_store_group(GroupId, Props, CanOverwrite, DoingRestore, Req) ->
+    ContainsLdapGroup =
+        proplists:get_value(ldap_group_ref, Props) =/= undefined,
+    HasWritePerms = menelaus_auth:has_permission(?EXTERNAL_WRITE, Req),
+    case DoingRestore andalso ContainsLdapGroup andalso not HasWritePerms of
+        true ->
+            {error, insufficient_perms};
+        false ->
+            do_store_group_inner(GroupId, Props, CanOverwrite, Req)
+    end.
+
+do_store_group_inner(GroupId, Props, CanOverwrite, Req) ->
     Description = proplists:get_value(description, Props),
     Roles = proplists:get_value(roles, Props),
     UniqueRoles = lists:usort(Roles),
@@ -2492,9 +2508,10 @@ handle_backup_restore_validated(Req, Params) ->
                   GroupId = proplists:get_value(name, GroupProps),
                   case do_store_group(GroupId,
                                       proplists:delete(name, GroupProps),
-                                      CanOverwrite, Req) of
+                                      CanOverwrite, true, Req) of
                       added -> {SAcc, OAcc};
                       updated -> {SAcc, [GroupId | OAcc]};
+                      {error, insufficient_perms} -> {[GroupId | SAcc], OAcc};
                       {error, already_exists} -> {[GroupId | SAcc], OAcc}
                   end
           end, {[], []}, Groups),
@@ -2807,7 +2824,8 @@ validate_backup_groups(Name, Req, State) ->
        %% need this step because validate_roles expects it to be a comma
        %% separated list of roles
        validator_join(roles, ",", _) |
-       put_group_validators(Req, validator:get_value(name, _))], State).
+       put_group_validators(Req, validator:get_value(name, _), true)],
+      State).
 
 validator_validate_id(Name, State) ->
    validator:validate(fun (Group) ->
