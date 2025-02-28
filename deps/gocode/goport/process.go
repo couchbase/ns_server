@@ -206,7 +206,14 @@ func (p *Process) GetStderr() io.Reader {
 
 // Kill kills the process brutally.
 func (p *Process) Kill() error {
-	return KillPgroup(p.cmd)
+	maybe_err := KillPgroup(p.cmd)
+
+	// If we get any errors from killing the process group, we should
+	// try killing the process itself.
+	if maybe_err != nil {
+		return p.cmd.Process.Kill()
+	}
+	return maybe_err
 }
 
 // Wait waits for the process to terminate.
