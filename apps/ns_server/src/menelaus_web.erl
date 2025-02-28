@@ -934,8 +934,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[pools], write}, fun menelaus_web_cluster:handle_start_graceful_failover/1};
                 ["controller", "fusion", "prepareRebalance"] ->
                     {{[pools], write},
-                     fun menelaus_web_cluster:handle_prepare_fusion_rebalance/1
-                    };
+                     fun menelaus_web_fusion:handle_prepare_rebalance/1};
                 ["controller", "rebalance"] ->
                     {{[pools], write}, fun menelaus_web_cluster:handle_rebalance/1};
                 ["controller", "reAddNode"] ->

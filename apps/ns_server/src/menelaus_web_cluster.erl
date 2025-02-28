@@ -40,8 +40,7 @@
          handle_stop_rebalance/1,
          handle_set_recovery_type/1,
          get_rebalance_error/0,
-         handle_current_rebalance_report/1,
-         handle_prepare_fusion_rebalance/1]).
+         handle_current_rebalance_report/1]).
 
 -import(menelaus_util,
         [reply_json/2,
@@ -1073,36 +1072,6 @@ parse_list_param(Param, Params, Default) ->
         Str ->
             string:tokens(Str, ",")
     end.
-
-handle_prepare_fusion_rebalance(Req) ->
-    menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_morpheus(),
-    NodeValidator =
-        fun (String) ->
-                try {value, list_to_existing_atom(String)}
-                catch error:badarg -> {error, "Unknown node"} end
-        end,
-    validator:handle(
-      fun (Params) ->
-              KeepNodes = proplists:get_value(keepNodes, Params),
-              Options = [{local_addr, menelaus_util:local_addr(Req)}],
-              case ns_orchestrator:prepare_fusion_rebalance(
-                     KeepNodes, Options) of
-                  {ok, AccelerationPlan} ->
-                      reply_json(Req, AccelerationPlan, 200);
-                  {unknown_nodes, Nodes} ->
-                      validator:report_errors_for_one(
-                        Req,
-                        [{keepNodes,
-                          io_lib:format("Unknown nodes ~p", [Nodes])}], 400);
-                  Other ->
-                      reply_text(
-                        Req, io_lib:format("Unknown error ~p", [Other]), 500)
-              end
-      end, Req, form,
-      [validator:required(keepNodes, _),
-       validator:token_list(keepNodes, ",", NodeValidator, _),
-       validator:unsupported(_)]).
 
 handle_rebalance(Req) ->
     Params = mochiweb_request:parse_post(Req),
