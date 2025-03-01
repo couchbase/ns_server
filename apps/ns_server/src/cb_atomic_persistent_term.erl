@@ -10,7 +10,7 @@
 -module(cb_atomic_persistent_term).
 
 %% API
--export([start_link/0, stop/1, set/2, get_or_set_if_undefined/2]).
+-export([start_link/0, stop/1, set/2, get_or_set_if_undefined/3]).
 
 %%%===================================================================
 %%% API
@@ -22,27 +22,37 @@ start_link() ->
 stop(Reason) ->
     misc:terminate_and_wait(whereis(?MODULE), Reason).
 
-get_or_set_if_undefined(Name, ValueFun) ->
+get_or_set_if_undefined(Name, IsValidChecker, ValueFun) ->
+    GetValue = fun () ->
+                   case persistent_term:get(Name, undefined) of
+                       undefined -> undefined;
+                       {value, Value} ->
+                           case IsValidChecker(Value) of
+                               true -> {value, Value};
+                               false -> undefined
+                           end
+                   end
+               end,
     maybe
-        undefined ?= persistent_term:get(Name, undefined),
+        undefined ?= GetValue(),
         work_queue:submit_sync_work(
           ?MODULE,
           fun () ->
-              case persistent_term:get(Name, undefined) of
+              case GetValue() of
                   undefined ->
                       case ValueFun() of
                           {ok, Value} ->
-                              persistent_term:put(Name, Value),
+                              persistent_term:put(Name, {value, Value}),
                               {ok, Value};
                           {error, _} = Error ->
                               Error
                       end;
-                  Value ->
+                  {value, Value} ->
                       {ok, Value}
               end
           end)
     else
-        V -> {ok, V}
+        {value, Value} -> {ok, Value}
     end.
 
 set(Name, SetFun) ->
@@ -52,7 +62,7 @@ set(Name, SetFun) ->
           PrevValue = persistent_term:get(Name, undefined),
           case SetFun(PrevValue) of
               {set, Value, Return} ->
-                  persistent_term:put(Name, Value),
+                  persistent_term:put(Name, {value, Value}),
                   Return;
               {ignore, Return} ->
                   Return

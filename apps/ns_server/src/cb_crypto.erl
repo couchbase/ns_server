@@ -78,7 +78,8 @@
 -record(dek_snapshot, {iv_random :: binary(),
                        iv_atomic_counter :: atomics:atomics_ref(),
                        active_key :: cb_deks:dek() | undefined,
-                       all_keys :: [cb_deks:dek()]}).
+                       all_keys :: [cb_deks:dek()],
+                       created_at :: calendar:datetime()}).
 
 -record(file_encr_state, {ad_prefix = <<>> :: binary(),
                           key :: cb_deks:dek() | undefined,
@@ -585,6 +586,13 @@ new_aes_gcm_iv(#dek_snapshot{iv_random = IVRandom,
 fetch_deks_snapshot(DekKind) ->
     cb_atomic_persistent_term:get_or_set_if_undefined(
       {encryption_keys, DekKind},
+      fun (#dek_snapshot{all_keys = AllKeys, created_at = CreatedAt}) ->
+          AllKeysAreValid = lists:all(fun (#{type := error}) -> false;
+                                          (#{type := _}) -> true
+                                      end, AllKeys),
+          AllKeysAreValid orelse
+              (calendar:universal_time() < misc:datetime_add(CreatedAt, 60))
+      end,
       fun () ->
           read_deks(DekKind, undefined)
       end).
@@ -603,7 +611,8 @@ create_deks_snapshot(ActiveDek, AllDeks, PrevDekSnapshot) ->
     #dek_snapshot{iv_random = IVBase,
                   iv_atomic_counter = IVAtomic,
                   active_key = ActiveDek,
-                  all_keys = AllDeks}.
+                  all_keys = AllDeks,
+                  created_at = calendar:universal_time()}.
 
 -spec reset_dek_cache(cb_deks:dek_kind(),
                       Reason :: {new_active, cb_deks:dek()} | cleanup) ->
@@ -614,7 +623,11 @@ reset_dek_cache(DekKind, Reason) ->
     %% instead, which gives us only one global GC.
     cb_atomic_persistent_term:set(
       {encryption_keys, DekKind},
-      fun (PrevSnapshot) ->
+      fun (Prev) ->
+          PrevSnapshot = case Prev of
+                             undefined -> undefined;
+                             {value, S} -> S
+                         end,
           Changed =
               case Reason of
                   {new_active, NewActiveDek} ->
