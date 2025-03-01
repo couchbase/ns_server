@@ -312,14 +312,12 @@ tab2file_encrypted(StoreName, FilePath, DS) ->
     end.
 
 write_terms(FileHandle, init, {StoreName, DS}) ->
-    {Header, EncrState} = cb_crypto:file_encrypt_init(DS),
-    case file:write(FileHandle, Header) of
-        ok ->
-            write_terms(FileHandle,
-                        ets:select(StoreName, [{'_', [], ['$_']}], 100),
-                        EncrState);
-        {error, _} = E ->
-            E
+    maybe
+        {ok, {Header, EncrState}} ?= cb_crypto:file_encrypt_init(DS),
+        ok ?= file:write(FileHandle, Header),
+        write_terms(FileHandle,
+                    ets:select(StoreName, [{'_', [], ['$_']}], 100),
+                    EncrState)
     end;
 write_terms(FileHandle, {Records, Continuation}, State) ->
     Data = term_to_binary(Records),

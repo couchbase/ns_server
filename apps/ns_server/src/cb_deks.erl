@@ -37,10 +37,12 @@
 -type dek_id() :: cb_cluster_secrets:key_id().
 -type dek_kind() :: kek | configDek | logDek | auditDek |
                     {bucketDek, string()}.
--type dek() :: #{id := dek_id(), type := 'raw-aes-gcm',
-                 info := #{key := fun(() -> binary()),
-                           encryption_key_id := cb_cluster_secrets:key_id(),
-                           creation_time := calendar:datetime()}}.
+-type good_dek() :: #{id := dek_id(), type := 'raw-aes-gcm',
+                      info := #{key := fun(() -> binary()),
+                               encryption_key_id := cb_cluster_secrets:key_id(),
+                               creation_time := calendar:datetime()}}.
+-type bad_dek() :: #{id := dek_id(), type := error, reason := term()}.
+-type dek() :: good_dek() | bad_dek().
 
 -spec list(dek_kind()) ->
     {ok, {undefined | dek_id(), [dek_id()], boolean()}} | {error, _}.
@@ -60,20 +62,18 @@ list(Kind) ->
             Error
     end.
 
--spec read(dek_kind(), [dek_id()]) -> {[dek()], #{dek_id() := Error :: term()}}.
+-spec read(dek_kind(), [dek_id()]) -> [dek()].
 read(Kind, DekIds) ->
     ?log_debug("Reading the following keys (~p) from disk: ~p", [Kind, DekIds]),
-    {Keys, Errors} =
-        misc:partitionmap(
-            fun (DekId) when is_binary(DekId) ->
-                case encryption_service:read_dek(Kind, DekId) of
-                    {ok, B} -> {left, B};
-                    {error, R} ->
-                        ?log_error("Failed to read key ~s: ~p", [DekId, R]),
-                        {right, {DekId, R}}
-                end
-            end, DekIds),
-    {Keys, maps:from_list(Errors)}.
+    lists:map(
+        fun (DekId) when is_binary(DekId) ->
+            case encryption_service:read_dek(Kind, DekId) of
+                {ok, B} -> B;
+                {error, R} ->
+                    ?log_error("Failed to read key ~s: ~p", [DekId, R]),
+                    #{id => DekId, type => error, reason => R}
+            end
+        end, DekIds).
 
 -spec generate_new(dek_kind(), {secret, Id} | encryption_service,
                    cb_cluster_secrets:chronicle_snapshot()) ->
@@ -108,10 +108,10 @@ new(Kind, KekIdToEncrypt) ->
 -spec maybe_reencrypt_deks(dek_kind(), [dek()], encryption_method(),
                            cb_cluster_secrets:chronicle_snapshot()) ->
           no_change | %% nothing changed
-          {changed, [Error :: term()]} |
+          {changed, [dek_id()], [Error :: term()]} |
           {error, term()}.
 maybe_reencrypt_deks(_Kind, [], disabled, _Snapshot) -> no_change;
-maybe_reencrypt_deks(_Kind, [], _, _Snapshot) -> {changed, []};
+maybe_reencrypt_deks(_Kind, [], _, _Snapshot) -> {changed, [], []};
 maybe_reencrypt_deks(Kind, Deks, EncryptionMethod, Snapshot) ->
     TargetKekIdRes =
         case EncryptionMethod of
@@ -189,7 +189,8 @@ maybe_reencrypt_deks(Kind, Deks, NewEncryptionKeyFun) ->
                "must be encrypted with current active key", [Kind]),
     ToReencrypt =
         lists:filtermap(
-          fun (Dek) ->
+          fun (#{type := error}) -> false;
+              (Dek) ->
                   case NewEncryptionKeyFun(Dek) of
                       {true, V} -> {true, {Dek, V}};
                       false -> false
@@ -212,23 +213,27 @@ maybe_reencrypt_deks(Kind, Deks, NewEncryptionKeyFun) ->
                             fun({Dek, {_, NewKekId}}) -> {Dek, NewKekId} end,
                             ToReencrypt),
 
-            Errors = lists:flatmap(
-                       fun ({EncMethod, DeksAndKekIds}) ->
-                           store_deks_reencrypted(Kind, EncMethod,
-                                                  DeksAndKekIds)
-                       end, maps:to_list(ByEncMethod)),
-            {changed, Errors}
+            {Changed, Errors} =
+                lists:foldl(
+                  fun ({EncMethod, DeksAndKekIds},
+                          {ChangedAcc, ErrorsAcc}) ->
+                      {NewChanged, NewErrors} =
+                          store_deks_reencrypted(Kind, EncMethod,
+                                                 DeksAndKekIds),
+                      {ChangedAcc ++ NewChanged, ErrorsAcc ++ NewErrors}
+                  end, {[], []}, maps:to_list(ByEncMethod)),
+            {changed, Changed, Errors}
     end.
 
 -spec store_deks_reencrypted(dek_kind(), encryption_method(),
                              [{dek(), cb_cluster_secrets:key_id()}]) ->
-    [{dek_id(), term()}].
+    {[dek_id()], [{dek_id(), term()}]}.
 store_deks_reencrypted(Kind, EncMethod, DeksAndKekIds) ->
     %% Increment counter once per encryption method
     case increment_dek_encryption_counter(Kind, EncMethod) of
         ok ->
             %% Process all DEKs for this method
-            lists:filtermap(
+            misc:partitionmap(
                 fun ({#{type := 'raw-aes-gcm',
                     id := DekId,
                     info := #{encryption_key_id := CurKekId,
@@ -244,21 +249,21 @@ store_deks_reencrypted(Kind, EncMethod, DeksAndKekIds) ->
                         ok ?= encryption_service:store_dek(
                                 Kind, DekId, DekKey(), NewKekId,
                                 CT),
-                        false
+                        {left, DekId}
                     else
                         {error, Reason} ->
                             ?log_error("Failed to reencrypt "
                                         "dek ~p: ~p",
                                         [DekId, Reason]),
-                            {true, {DekId, Reason}}
+                            {right, {DekId, Reason}}
                     end
                 end, DeksAndKekIds);
         {error, R} ->
             ?log_error("Failed to increment dek encryption "
                         "counter for ~p deks: ~p", [Kind, R]),
-            lists:map(fun ({#{id := DekId}, _}) ->
-                            {DekId, R}
-                        end, DeksAndKekIds)
+            {[], lists:map(fun ({#{id := DekId}, _}) ->
+                               {DekId, R}
+                           end, DeksAndKekIds)}
     end.
 
 increment_dek_encryption_counter(Kind, SecretId) ->

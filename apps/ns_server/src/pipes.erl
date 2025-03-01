@@ -183,7 +183,7 @@ write_encrypted_file(File, DeksSnapshot, Options) ->
 
     ?make_consumer(
        begin
-           {FileEncrptionHeader, EncrState} =
+           {ok, {FileEncrptionHeader, EncrState}} =
                cb_crypto:file_encrypt_init(DeksSnapshot),
            ok = file:write(File, FileEncrptionHeader),
            Producer = run(?producer(), simple_buffer(BufSize)),

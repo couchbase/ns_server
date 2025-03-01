@@ -168,7 +168,7 @@
                     {dek_job(), cb_deks:dek_kind()}.
 
 -type dek_job() :: maybe_update_deks | garbage_collect_deks |
-                   maybe_reencrypt_deks.
+                   maybe_reencrypt_deks | reread_bad_deks.
 
 -type master_job() :: maybe_reencrypt_secrets | maybe_reset_deks_counters.
 
@@ -680,6 +680,10 @@ format_dek_issues(List) ->
                       <<"keys update pending">>;
                   ({maybe_update_deks, failed}) ->
                       <<"keys update failed">>;
+                  ({reread_bad_deks, pending}) ->
+                      <<"keys read pending">>;
+                  ({reread_bad_deks, failed}) ->
+                      <<"keys read failed">>;
                   ({garbage_collect_deks, pending}) ->
                       <<"keys garbage collection pending">>;
                   ({garbage_collect_deks, failed}) ->
@@ -753,7 +757,8 @@ init([Type]) ->
                                       {keypos, 1}]),
                     Kinds = cb_deks:dek_cluster_kinds_list(),
                     lists:flatmap(fun (K) ->
-                                      [{maybe_update_deks, K},
+                                      [{reread_bad_deks, K},
+                                       {maybe_update_deks, K},
                                        {garbage_collect_deks, K}]
                                   end, Kinds) ++
                    [garbage_collect_keks,
@@ -1400,6 +1405,45 @@ prepare_new_secret(#{type := ?KMIP_KEY_TYPE, data := Data,
                          key_passphrase => KP,
                          hist_keys => []}}.
 
+-spec reread_bad_deks(cb_deks:dek_kind(), #state{}) ->
+          {ok, #state{}} | {error, #state{}, term()}.
+reread_bad_deks(Kind, #state{deks_info = DeksInfo} = State) ->
+    case maps:find(Kind, DeksInfo) of
+        {ok, #{deks := DekIds} = KindDeksInfo} ->
+            {UpdatedDeks, AnyNewDeks} =
+                lists:mapfoldl(
+                  fun (#{id := _, type := 'raw-aes-gcm'} = K, Acc) -> {K, Acc};
+                      (#{id := Id, type := error}, Acc) ->
+                          case cb_deks:read(Kind, [Id]) of
+                              [#{type := error} = K] -> {K, Acc};
+                              [K] -> {K, true}
+                          end
+                  end, false, DekIds),
+            NewDeksInfo = DeksInfo#{Kind => KindDeksInfo#{deks => UpdatedDeks}},
+            State2 = State#state{deks_info = NewDeksInfo},
+            State3 = case AnyNewDeks of
+                         true ->
+                             {ok, _} = cb_crypto:reset_dek_cache(Kind, cleanup),
+                             functools:chain(
+                               State2,
+                               [on_deks_update(Kind, _),
+                                add_jobs([{maybe_update_deks, Kind},
+                                          {maybe_reencrypt_deks, Kind}], _)]);
+                         false ->
+                             State2
+                     end,
+            case lists:any(fun (#{type := error}) -> true;
+                               (_) -> false
+                           end, UpdatedDeks) of
+                true ->
+                    {error, State3, read_failed};
+                false ->
+                    {ok, State3}
+            end;
+        error ->
+            {ok, State}
+    end.
+
 -spec maybe_update_deks(cb_deks:dek_kind(), #state{}) ->
           {ok, #state{}} | {error, #state{}, term()}.
 maybe_update_deks(Kind, #state{deks_info = CurDeks} = OldState) ->
@@ -1671,19 +1715,24 @@ call_set_active_cb(Kind, #state{deks_info = AllDeks} = State) ->
                 ActiveKey;
             false -> undefined
         end,
-    case cb_crypto:reset_dek_cache(Kind, {new_active, NewActiveKey}) of
-        {ok, _} ->
-            case call_dek_callback(set_active_key_callback, Kind,
-                                   [NewActiveKey]) of
-                {succ, ok} ->
-                    {ok, maybe_garbage_collect_deks(Kind, true, State)};
-                {succ, {error, Reason}} ->
-                    {error, State, Reason};
-                {except, {_, E, _}} ->
-                    {error, State, E}
-            end;
-        {error, Reason} ->
-            {error, State, Reason}
+    case NewActiveKey of
+        #{type := error} ->
+            {error, State, active_key_not_available};
+        _ ->
+            case cb_crypto:reset_dek_cache(Kind, {new_active, NewActiveKey}) of
+                {ok, _} ->
+                    case call_dek_callback(set_active_key_callback, Kind,
+                                           [NewActiveKey]) of
+                        {succ, ok} ->
+                            {ok, maybe_garbage_collect_deks(Kind, true, State)};
+                        {succ, {error, Reason}} ->
+                            {error, State, Reason};
+                        {except, {_, E, _}} ->
+                            {error, State, E}
+                    end;
+                {error, Reason} ->
+                    {error, State, Reason}
+            end
     end.
 
 -spec maybe_rotate_integrity_tokens(cb_deks:dek_kind(),
@@ -1790,6 +1839,7 @@ write_deks_cfg_file(#state{deks_info = DeksInfo}) ->
             {value, CfgActiveKey} = lists:search(fun (#{id := Id}) ->
                                                          Id == CfgActiveId
                                                  end, CfgDeks),
+            #{type := 'raw-aes-gcm'} = CfgActiveKey,
             DS = cb_crypto:create_deks_snapshot(CfgActiveKey, [CfgActiveKey],
                                                 undefined),
             ok = cb_crypto:atomic_write_file(Path, ToWrite, DS)
@@ -1858,30 +1908,29 @@ read_all_deks(#state{} = State) ->
                  case call_dek_callback(encryption_method_callback, Kind,
                                         [Snapshot]) of
                      {succ, {ok, _}} ->
-                         {Keys, Errors} = cb_deks:read(Kind, DekIds),
-                         case maps:size(Errors) > 0 of
-                             true ->
-                                 ?log_error("Failed to read ~p keys: ~p",
-                                            [Kind, Errors]),
-                                 exit({failed_to_read_keys, Errors});
-                             false ->
-                                 {true, new_dek_info(Kind, ActiveId, Keys,
-                                                     IsEnabled)}
-                         end;
+                         Keys = cb_deks:read(Kind, DekIds),
+                         {true, new_dek_info(Kind, ActiveId, Keys,
+                                             IsEnabled)};
                      {succ, {error, not_found}} ->
                          false
                  end
              end, Term),
     State#state{deks_info = Deks}.
 
--spec reread_deks(cb_deks:dek_kind(), #state{}) -> #state{}.
-reread_deks(Kind, #state{deks_info = DeksInfo} = State) ->
+
+-spec reread_deks(cb_deks:dek_kind(), [cb_deks:dek_id()], #state{}) -> #state{}.
+reread_deks(Kind, ChangedIds, #state{deks_info = DeksInfo} = State) ->
     #{Kind := #{deks := CurDeks} = KindDeks} = DeksInfo,
     NewDeks =
         lists:map(
-          fun (#{id := DekId}) ->
-              {ok, K} = encryption_service:read_dek(Kind, DekId),
-              K
+          fun (#{id := DekId} = OldK) ->
+              case lists:member(DekId, ChangedIds) of
+                  true ->
+                      {ok, NewK} = encryption_service:read_dek(Kind, DekId),
+                      NewK;
+                  false ->
+                      OldK
+              end
           end, CurDeks),
     State#state{deks_info = DeksInfo#{Kind => KindDeks#{deks => NewDeks}}}.
 
@@ -1961,8 +2010,9 @@ maybe_reencrypt_deks(Kind, #state{deks_info = Deks} = State) ->
         case RV of
             no_change ->
                 {ok, State};
-            {changed, Errors} ->
-                NewState = on_deks_update(Kind, reread_deks(Kind, State)),
+            {changed, ChangedIds, Errors} ->
+                NewState = on_deks_update(Kind,
+                                          reread_deks(Kind, ChangedIds, State)),
                 case Errors of
                     [] -> {ok, NewState};
                     _ -> {error, NewState, Errors}
@@ -2423,6 +2473,8 @@ do(maybe_reset_deks_counters, _) ->
     maybe_reset_deks_counters();
 do({maybe_update_deks, Kind}, State) ->
     maybe_update_deks(Kind, State);
+do({reread_bad_deks, Kind}, State) ->
+    reread_bad_deks(Kind, State);
 do({garbage_collect_deks, Kind}, State) ->
     garbage_collect_deks(Kind, false, State);
 do({maybe_reencrypt_deks, K}, State) ->
@@ -2615,6 +2667,7 @@ dek_expiration_times(Kind, #{deks := Deks, is_enabled := IsEnabled,
             {error, Err}
     end.
 
+dek_expiration_time(_, _, #{type := error}) -> false;
 dek_expiration_time(undefined, undefined, _) -> false;
 dek_expiration_time(undefined, DropKeysTS,
                     #{type := 'raw-aes-gcm',
@@ -2650,6 +2703,7 @@ restart_dek_rotation_timer(#state{proc_type = ?NODE_PROC,
         maps:fold(fun (Kind, KindDeks, Acc) ->
                       Snapshot = deks_config_snapshot(Kind),
                       case dek_rotation_time(Kind, KindDeks, Snapshot) of
+                          {value, now} -> [CurDT | Acc];
                           {value, ExpDT} -> [ExpDT | Acc];
                           false -> Acc;
                           {error, _} ->
@@ -2664,6 +2718,7 @@ restart_dek_rotation_timer(#state{proc_type = ?NODE_PROC,
                           chronicle_snapshot()) -> boolean().
 dek_rotation_needed(Kind, KindDeks, CurDT, Snapshot) ->
     case dek_rotation_time(Kind, KindDeks, Snapshot) of
+        {value, now} -> true;
         {value, ExpDT} -> ExpDT =< CurDT;
         false -> false;
         {error, _} -> false
@@ -2671,15 +2726,15 @@ dek_rotation_needed(Kind, KindDeks, CurDT, Snapshot) ->
 
 -spec dek_rotation_time(cb_deks:dek_kind(), deks_info(),
                         chronicle_snapshot()) ->
-          {value, calendar:datetime()} | false | {error, _}.
+          {value, calendar:datetime() | now} | false | {error, _}.
 dek_rotation_time(_Kind, #{is_enabled := false}, _Snapshot) ->
     false;
 dek_rotation_time(Kind, #{is_enabled := true, active_id := ActiveId,
                           deks := Keys}, Snapshot) ->
-    {value, #{type := 'raw-aes-gcm',
-              info := #{creation_time := CDT}}} =
-        lists:search(fun (#{id := Id}) -> Id == ActiveId end, Keys),
     maybe
+        {value, #{type := 'raw-aes-gcm',
+                  info := #{creation_time := CDT}}} ?=
+            lists:search(fun (#{id := Id}) -> Id == ActiveId end, Keys),
         %% We should remove all keys that were created before this date:
         {succ, {ok, DKTS}} ?=
             call_dek_callback(drop_keys_timestamp_callback, Kind, [Snapshot]),
@@ -2697,6 +2752,10 @@ dek_rotation_time(Kind, #{is_enabled := true, active_id := ActiveId,
             [_ | _] -> {value, lists:min(Candidates)}
         end
     else
+        {value, #{type := error}} ->
+            ?log_error("Active ~p dek ~p is not available (read error?), "
+                       "will try to generate a new one", [Kind, ActiveId]),
+            {value, now};
         {succ, {error, not_found}} -> false;
         {succ, {error, R}} ->
             ?log_error("Failed to calculate next rotation time for dek ~p: ~p",
@@ -3391,11 +3450,15 @@ sanitize_sensitive_data(#{type := encrypted} = Data) ->
 -spec extract_dek_info(cb_deks:dek_kind(), #state{}) ->
           {ok, external_dek_info()} | {error, not_found}.
 extract_dek_info(Kind, #state{deks_info = DeksInfo}) ->
-    StripKeyMaterial =
-        fun (Keys) ->
-            lists:map(fun (#{type := 'raw-aes-gcm', info := Info} = K) ->
-                          K#{info => maps:remove(key, Info)}
-                      end, Keys)
+    PreprocessKeys =
+        fun (Keys) -> %% Filter out keys that we couldn't read and remove key
+                      %% material for security reasons
+            lists:filtermap(
+              fun (#{type := 'raw-aes-gcm', info := Info} = K) ->
+                      {true, K#{info => maps:remove(key, Info)}};
+                  (#{type := error}) ->
+                      false
+              end, Keys)
         end,
 
     maybe
@@ -3417,14 +3480,16 @@ extract_dek_info(Kind, #state{deks_info = DeksInfo}) ->
                      {true, true} -> partially_encrypted;
                      {false, false} -> unknown
                  end,
+        PreprocessedKeys = PreprocessKeys(Keys),
         Res = #{data_status => Status,
                 issues => Issues,
-                deks => StripKeyMaterial(Keys),
+                deks => PreprocessedKeys,
                 dek_num => length(Keys)},
-        case Keys of
+        case PreprocessedKeys of
             [] -> {ok, Res};
             _ ->
-                MinCreationTime = lists:min([CreationTime(D) || D <- Keys]),
+                MinCreationTime = lists:min([CreationTime(D) ||
+                                             D <- PreprocessedKeys]),
                 {ok, Res#{oldest_dek_datetime => MinCreationTime}}
         end
     else

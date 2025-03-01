@@ -319,17 +319,20 @@ ensure(Sock, #cfg{type = memcached}, undefined) ->
 format_mcd_keys(ActiveDek, Deks) ->
     format_mcd_keys(ActiveDek, Deks, fun (K) -> K end).
 format_mcd_keys(ActiveDek, Deks, Sanitizer) ->
-    DeksJsonMcd = lists:map(fun (D) -> format_mcd_key(D, Sanitizer) end, Deks),
+    DeksJsonMcd = lists:filtermap(fun (D) -> format_mcd_key(D, Sanitizer) end,
+                                  Deks),
     ActiveKeyMcd = case ActiveDek of
                        undefined -> ?MCD_DISABLED_ENCRYPTION_KEY_ID;
                        #{id := ActiveId} -> ActiveId
                    end,
     {[{keys, DeksJsonMcd}, {active, ActiveKeyMcd}]}.
 
+format_mcd_key(#{id := _Id, type := error}, _) ->
+    false;
 format_mcd_key(#{id := Id, type := 'raw-aes-gcm', info := #{key := KeyFun}},
                Sanitizer) ->
     Encoded = Sanitizer(base64:encode(KeyFun())),
-    {[{id, Id}, {cipher, <<"AES-256-GCM">>}, {key, Encoded}]}.
+    {true, {[{id, Id}, {cipher, <<"AES-256-GCM">>}, {key, Encoded}]}}.
 
 get_current_collections_uid(Sock) ->
     case mc_client_binary:get_collections_manifest(Sock) of

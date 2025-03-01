@@ -483,7 +483,7 @@ default_encr_disabled_cbs() ->
           end,
       file_encrypt_init =>
           fun(_DS) ->
-                  {<<>>, #{}}
+                  {ok, {<<>>, #{}}}
           end,
       file_encrypt_finish =>
           fun(_EncrState) ->

@@ -115,7 +115,7 @@ encrypt(_Data, _AD, #dek_snapshot{active_key = undefined}) ->
 encrypt(Data, AD, #dek_snapshot{active_key = ActiveDek,
                                 iv_random = IVRandom,
                                 iv_atomic_counter = IVAtomic}) ->
-    {ok, encrypt_internal(Data, AD, IVRandom, IVAtomic, ActiveDek)}.
+    encrypt_internal(Data, AD, IVRandom, IVAtomic, ActiveDek).
 
 -spec decrypt(binary(), binary(), #dek_snapshot{}) ->
           {ok, binary()} | {error, term()}.
@@ -170,8 +170,8 @@ reencrypt_file(FromPath, ToPath, DS, ToOpts) ->
                             {ok, Dek} ->
                                 %% We don't need other keys actually
                                 {ok, create_deks_snapshot(Dek, [Dek], DS)};
-                            {error, _} ->
-                                {error, key_not_found}
+                            {error, E} ->
+                                {error, E}
                         end
                 end;
             _ -> %% There is an active key, we can use it for reencryption
@@ -190,46 +190,50 @@ reencrypt_file(FromPath, ToPath, DS, ToOpts) ->
 
 reencrypt_file_to_iodevice(IODevice, FromPath, DS, Opts) ->
     IgnoreIncomplete = maps:get(ignore_incomplete_last_chunk, Opts, false),
-    {Header, State} = file_encrypt_init(DS, Opts),
-    case file:write(IODevice, Header) of
-        ok ->
-            Res = read_file_chunks(
-                    FromPath,
-                    fun (Data, StateAcc) ->
-                        {Chunk, StateAcc1} = file_encrypt_chunk(Data,
-                                                                StateAcc),
-                        case misc:iolist_is_empty(Chunk) of
-                            true ->
-                                {ok, StateAcc1};
-                            false ->
-                                maybe
-                                    ok ?= file:write(IODevice, Chunk),
-                                    {ok, StateAcc1}
-                                end
-                        end
-                    end, State, DS,
-                    #{read_chunk_size => 65536,
-                      ignore_incomplete_last_chunk => IgnoreIncomplete}),
-            case Res of
-                {ok, FinalState} ->
-                    FinalData = file_encrypt_finish(FinalState),
-                    file:write(IODevice, FinalData);
-                {error, Reason, FinalState} ->
-                    _ = file_encrypt_finish(FinalState),
-                    {error, Reason}
-            end;
-        {error, Reason} ->
-            _ = file_encrypt_finish(State),
-            {error, Reason}
+    maybe
+        {ok, {Header, State}} ?= file_encrypt_init(DS, Opts),
+        case file:write(IODevice, Header) of
+            ok ->
+                Res = read_file_chunks(
+                        FromPath,
+                        fun (Data, StateAcc) ->
+                            {Chunk, StateAcc1} = file_encrypt_chunk(Data,
+                                                                    StateAcc),
+                            case misc:iolist_is_empty(Chunk) of
+                                true ->
+                                    {ok, StateAcc1};
+                                false ->
+                                    maybe
+                                        ok ?= file:write(IODevice, Chunk),
+                                        {ok, StateAcc1}
+                                    end
+                            end
+                        end, State, DS,
+                        #{read_chunk_size => 65536,
+                        ignore_incomplete_last_chunk => IgnoreIncomplete}),
+                case Res of
+                    {ok, FinalState} ->
+                        FinalData = file_encrypt_finish(FinalState),
+                        file:write(IODevice, FinalData);
+                    {error, Reason, FinalState} ->
+                        _ = file_encrypt_finish(FinalState),
+                        {error, Reason}
+                end;
+            {error, Reason} ->
+                _ = file_encrypt_finish(State),
+                {error, Reason}
+        end
     end.
 
 -spec file_encrypt_init(#dek_snapshot{}) ->
-          {binary(), #file_encr_state{}}.
+          {ok, {binary(), #file_encr_state{}}} | {error, term()}.
 file_encrypt_init(DekSnapshot) ->
     file_encrypt_init(DekSnapshot, #{}).
 
 -spec file_encrypt_init(#dek_snapshot{}, #{compression => compression_cfg()}) ->
-          {binary(), #file_encr_state{}}.
+          {ok, {binary(), #file_encr_state{}}} | {error, term()}.
+file_encrypt_init(#dek_snapshot{active_key = #{type := error}}, _) ->
+    {error, key_not_available};
 file_encrypt_init(#dek_snapshot{active_key = ActiveKey,
                                 iv_random = IVRandom,
                                 iv_atomic_counter = IVCounter}, Opts) ->
@@ -254,12 +258,12 @@ file_encrypt_init(#dek_snapshot{active_key = ActiveKey,
                 ?ENCRYPTED_FILE_HEADER_LEN = size(H),
                 H
         end,
-    {Header, #file_encr_state{ad_prefix = Header,
-                              key = ActiveKey,
-                              iv_random = IVRandom,
-                              iv_atomic_counter = IVCounter,
-                              offset = size(Header),
-                              compression_state = CompressionState}}.
+    {ok, {Header, #file_encr_state{ad_prefix = Header,
+                                   key = ActiveKey,
+                                   iv_random = IVRandom,
+                                   iv_atomic_counter = IVCounter,
+                                   offset = size(Header),
+                                   compression_state = CompressionState}}}.
 
 -spec file_encrypt_cont(string(), non_neg_integer(), #dek_snapshot{}) ->
           {ok, #file_encr_state{}} | {error, _}.
@@ -278,6 +282,8 @@ file_encrypt_cont(Path, FileSize,
                   _ -> {error, {unsupported_compression_type, CompressionType}}
               end,
         case ActiveKey of
+            #{id := KeyId, type := error} ->
+                {error, key_not_available};
             #{id := KeyId} ->
                 {ok, #file_encr_state{ad_prefix = ADPrefix,
                                       key = ActiveKey,
@@ -317,8 +323,8 @@ file_encrypt_chunk(Data, State) ->
                              {zlib, Flush, Z} -> zlib:deflate(Z, Data, Flush)
                          end,
         {empty, false} ?= {empty, misc:iolist_is_empty(CompressedData)},
-        Chunk = encrypt_internal(CompressedData, AD, IVRandom, IVAtomic,
-                                 Dek),
+        {ok, Chunk} = encrypt_internal(CompressedData, AD, IVRandom, IVAtomic,
+                                       Dek),
         ChunkSize = size(Chunk),
         ChunkWithSize = <<ChunkSize:32/big-unsigned-integer, Chunk/binary>>,
         NewOffset = Offset + size(ChunkWithSize),
@@ -657,8 +663,8 @@ same_snapshots(#dek_snapshot{active_key = AK1, all_keys = All1},
 
 -spec get_deks_snapshot_hash(#dek_snapshot{}) -> non_neg_integer().
 get_deks_snapshot_hash(#dek_snapshot{active_key = AK, all_keys = All}) ->
-    AllIds = {cb_crypto:get_dek_id(AK),
-              lists:usort([cb_crypto:get_dek_id(D) || D <- All])},
+    AllIds = {get_dek_id(AK),
+              lists:usort([{Id, Type} || #{id := Id, type := Type} <- All])},
     erlang:phash2(AllIds).
 
 -spec get_encryption_method(encryption_type(),
@@ -784,6 +790,8 @@ validate_encr_file(FilePath) ->
     end.
 
 
+encrypt_internal(_Data, _AD, _IVRandom, _IVAtomic, #{type := error}) ->
+    {error, key_not_available};
 encrypt_internal(Data, AD, IVRandom, IVAtomic, #{type := 'raw-aes-gcm',
                                                  info := #{key := KeyFun}}) ->
     IV = new_aes_gcm_iv(IVRandom, IVAtomic),
@@ -792,7 +800,7 @@ encrypt_internal(Data, AD, IVRandom, IVAtomic, #{type := 'raw-aes-gcm',
         crypto:crypto_one_time_aead(
           aes_256_gcm, KeyFun(), IV, Data, AD, ?TAG_LEN, true),
     ?TAG_LEN = size(Tag),
-    <<IV/binary, EncryptedData/binary, Tag/binary>>.
+    {ok, <<IV/binary, EncryptedData/binary, Tag/binary>>}.
 
 decrypt_internal(_Data, _AD, []) ->
     {error, decrypt_error};
@@ -809,6 +817,8 @@ decrypt_internal(Data, AD, DekList) ->
     end.
 
 try_decrypt(_IV, _Data, _Tag, _AD, []) -> {error, decrypt_error};
+try_decrypt(IV, Data, Tag, AD, [#{type := error} | T]) ->
+    try_decrypt(IV, Data, Tag, AD, T);
 try_decrypt(IV, Data, Tag, AD, [#{type := 'raw-aes-gcm', info := #{key := K}} | T]) ->
     case crypto:crypto_one_time_aead(aes_256_gcm, K(), IV, Data, AD,
                                      Tag, false) of
@@ -821,15 +831,20 @@ try_decrypt(IV, Data, Tag, AD, [#{type := 'raw-aes-gcm', info := #{key := K}} | 
 read_deks(DekKind, PrevDekSnapshot) ->
     maybe
         {ok, {ActiveId, Ids, IsEnabled}} ?= cb_deks:list(DekKind),
-        {Keys, Errors} = cb_deks:read(DekKind, Ids),
-        {value, ActiveKey} ?=
-            case Errors of
-                #{ActiveId := Error} when IsEnabled ->
-                    {error, {read_active_key_error, Error}};
-                #{} when IsEnabled ->
-                    lists:search(fun (#{id := Id}) -> Id == ActiveId end, Keys);
-                #{} ->
-                    {value, undefined}
+        Keys = cb_deks:read(DekKind, Ids),
+        {ok, ActiveKey} =
+            case IsEnabled of
+                true ->
+                    case lists:search(fun (#{id := Id}) ->
+                                          Id == ActiveId
+                                      end, Keys) of
+                        {value, AK} ->
+                            {ok, AK};
+                        false ->
+                            {error, {missing_active_key, ActiveId}}
+                    end;
+                false ->
+                    {ok, undefined}
             end,
         {ok, create_deks_snapshot(ActiveKey, Keys, PrevDekSnapshot)}
     else
@@ -863,9 +878,9 @@ encrypt_to_file(IODevice, Bytes, MaxChunkSize, Compression, DekSnapshot) ->
                         Error
                 end
         end,
-    {Header, State} = file_encrypt_init(DekSnapshot,
-                                        #{compression => Compression}),
     maybe
+        {ok, {Header, State}} ?= file_encrypt_init(
+                                   DekSnapshot, #{compression => Compression}),
         ok ?= file:write(IODevice, Header),
         ok ?= WriteChunks(Bytes, State)
     end.
@@ -1021,6 +1036,7 @@ bite_next_chunk(<<_/binary>>) ->
 
 find_key(WantedId, #dek_snapshot{all_keys = AllDeks}) ->
     case lists:search(fun (#{id := Id}) -> Id == WantedId end, AllDeks) of
+        {value, #{type := error}} -> {error, key_not_available};
         {value, Key} -> {ok, Key};
         false -> {error, key_not_found}
     end.
@@ -1042,7 +1058,7 @@ decrypt_file_data_test() ->
     Data1 = <<"123">>,
     Data2 = <<"456">>,
     LongData = crypto:strong_rand_bytes(?ENCRYPTED_FILE_HEADER_LEN * 2),
-    {Header, State0} = file_encrypt_init(DS),
+    {ok, {Header, State0}} = file_encrypt_init(DS),
     {Chunk1, State1} = file_encrypt_chunk(Data1, State0),
     {Chunk2, _State2} = file_encrypt_chunk(Data2, State1),
     {ok, <<>>} = decrypt_file_data(Header, DS),
@@ -1139,7 +1155,7 @@ validate_encr_file_test() ->
     Path = path_config:tempfile("cb_crypto_validate_encr_file_test", ".tmp"),
     try
         DS = generate_test_deks(),
-        {ValidHeader, State} = file_encrypt_init(DS),
+        {ok, {ValidHeader, State}} = file_encrypt_init(DS),
 
         Bin1 = iolist_to_binary(lists:seq(0,255)),
         {Data1, State1} = file_encrypt_chunk(Bin1, State),
