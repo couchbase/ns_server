@@ -31,13 +31,12 @@
 -define(MIN_DEK_GC_INTERVAL_S, ?get_param(min_dek_gc_interval, 60)).
 -define(DEK_INFO_UPDATE_INVERVAL_S, ?get_param(dek_info_update_interval, 60)).
 
+-define(MIN_TIMER_INTERVAL, ?get_param(min_timer_interval, 30000)).
+
 -ifndef(TEST).
--define(MIN_RECHECK_ROTATION_INTERVAL, ?get_param(min_rotation_recheck_interval,
-                                                  1000)).
 -define(MAX_RECHECK_ROTATION_INTERVAL, ?get_param(rotation_recheck_interval,
                                                   ?SECS_IN_DAY*1000)).
 -else.
--define(MIN_RECHECK_ROTATION_INTERVAL, 1000).
 -define(MAX_RECHECK_ROTATION_INTERVAL, ?SECS_IN_DAY*1000).
 -endif.
 
@@ -90,6 +89,7 @@
 
 -record(state, {proc_type :: ?NODE_PROC | ?MASTER_PROC,
                 jobs :: [node_job()] | [master_job()],
+                timers_timestamps = #{} :: #{atom() := integer()},
                 timers = #{retry_jobs => undefined,
                            rotate_keks => undefined,
                            dek_cleanup => undefined,
@@ -891,13 +891,35 @@ handle_info(run_jobs, #state{proc_type = ProcType} = State) ->
     misc:flush(run_jobs),
     {noreply, run_jobs(State)};
 
-handle_info({timer, retry_jobs}, #state{proc_type = ProcType} = State) ->
-    ?log_debug("[~p] Retrying jobs timer", [ProcType]),
-    {noreply, run_jobs(State)};
+handle_info({timer, Name}, #state{timers_timestamps = Timestamps} = State) ->
+    misc:flush({timer, Name}),
+    CurTs = erlang:monotonic_time(millisecond),
+    NewState = State#state{timers_timestamps = Timestamps#{Name => CurTs}},
+    {noreply, handle_timer(Name, NewState)};
 
-handle_info({timer, rotate_keks}, #state{proc_type = ?MASTER_PROC} = State) ->
+handle_info({dek_drop_complete, Kind} = Msg,
+            #state{proc_type = ?NODE_PROC} = State) ->
+    ?log_debug("Dek drop complete: ~p", [Kind]),
+    misc:flush(Msg),
+    self() ! calculate_dek_info,
+    {noreply, add_and_run_jobs([{garbage_collect_deks, Kind}], State)};
+
+handle_info(calculate_dek_info, #state{proc_type = ?NODE_PROC} = State) ->
+    ?log_debug("DEK info update"),
+    misc:flush(calculate_dek_info),
+    {_Res, NewState} = calculate_dek_info(State),
+    {noreply, NewState};
+
+handle_info(Info, State) ->
+    ?log_warning("Unhandled info: ~p", [Info]),
+    {noreply, State}.
+
+handle_timer(retry_jobs, #state{proc_type = ProcType} = State) ->
+    ?log_debug("[~p] Retrying jobs timer", [ProcType]),
+    run_jobs(State);
+
+handle_timer(rotate_keks, #state{proc_type = ?MASTER_PROC} = State) ->
     ?log_debug("Rotate keks timer"),
-    misc:flush({timer, rotate_keks}),
     CurTime = calendar:universal_time(),
     %% Intentionally update next_rotation time first, and run rotations after.
     %% Reason: in case of a crash during rotation we don't want to retry.
@@ -919,12 +941,11 @@ handle_info({timer, rotate_keks}, #state{proc_type = ?MASTER_PROC} = State) ->
             %% we will retry
             ok
     end,
-    {noreply, restart_rotation_timer(State)};
+    restart_rotation_timer(State);
 
-handle_info({timer, dek_cleanup} = Msg, #state{proc_type = ?NODE_PROC,
-                                               deks_info = DeksInfo} = State) ->
+handle_timer(dek_cleanup, #state{proc_type = ?NODE_PROC,
+                                 deks_info = DeksInfo} = State) ->
     ?log_debug("DEK cleanup timer"),
-    misc:flush(Msg),
     DeksToDropFun =
         fun (Kind, StateAcc) ->
             case deks_to_drop(Kind, StateAcc) of
@@ -946,19 +967,11 @@ handle_info({timer, dek_cleanup} = Msg, #state{proc_type = ?NODE_PROC,
               {ToDrop, NewStateAcc} = DeksToDropFun(Kind, StateAcc),
               initiate_deks_drop(Kind, ToDrop, NewStateAcc)
           end, State, DeksInfo),
-    {noreply, restart_dek_cleanup_timer(NewState)};
+    restart_dek_cleanup_timer(NewState);
 
-handle_info({dek_drop_complete, Kind} = Msg,
-            #state{proc_type = ?NODE_PROC} = State) ->
-    ?log_debug("Dek drop complete: ~p", [Kind]),
-    misc:flush(Msg),
-    self() ! calculate_dek_info,
-    {noreply, add_and_run_jobs([{garbage_collect_deks, Kind}], State)};
-
-handle_info({timer, rotate_deks} = Msg, #state{proc_type = ?NODE_PROC,
-                                               deks_info = Deks} = State) ->
+handle_timer(rotate_deks, #state{proc_type = ?NODE_PROC,
+                                 deks_info = Deks} = State) ->
     ?log_debug("Rotate DEKs timer"),
-    misc:flush(Msg),
     CurDT = calendar:universal_time(),
     NewJobs = maps:fold(fun (Kind, KindDeks, Acc) ->
                             Snapshot = deks_config_snapshot(Kind),
@@ -971,31 +984,21 @@ handle_info({timer, rotate_deks} = Msg, #state{proc_type = ?NODE_PROC,
                                 false -> Acc
                             end
                         end, [], Deks),
-    {noreply, restart_dek_rotation_timer(add_and_run_jobs(NewJobs, State))};
+    restart_dek_rotation_timer(add_and_run_jobs(NewJobs, State));
 
-handle_info({timer, dek_info_update} = Msg,
-            #state{proc_type = ?NODE_PROC} = State) ->
+handle_timer(dek_info_update, #state{proc_type = ?NODE_PROC} = State) ->
     ?log_debug("DEK info update timer"),
-    misc:flush(Msg),
     {_Res, NewState} = calculate_dek_info(State),
-    {noreply, restart_dek_info_update_timer(false, NewState)};
+    restart_dek_info_update_timer(false, NewState);
 
-handle_info({timer, remove_retired_keys} = Msg,
-            #state{proc_type = ?NODE_PROC} = State) ->
+handle_timer(remove_retired_keys, #state{proc_type = ?NODE_PROC} = State) ->
     ?log_debug("Remove retired keys timer"),
-    misc:flush(Msg),
     encryption_service:cleanup_retired_keys(),
-    {noreply, restart_remove_retired_timer(State)};
+    restart_remove_retired_timer(State);
 
-handle_info(calculate_dek_info, #state{proc_type = ?NODE_PROC} = State) ->
-    ?log_debug("DEK info update"),
-    misc:flush(calculate_dek_info),
-    {_Res, NewState} = calculate_dek_info(State),
-    {noreply, NewState};
-
-handle_info(Info, State) ->
-    ?log_warning("Unhandled info: ~p", [Info]),
-    {noreply, State}.
+handle_timer(Name, State) ->
+    ?log_warning("Unhandled timer: ~p", [Name]),
+    State.
 
 terminate(_Reason, _State) ->
     ok.
@@ -2436,11 +2439,25 @@ stop_timer(Name, #state{timers = Timers} = State) ->
 
 -spec restart_timer(Name :: atom(), Time :: non_neg_integer(), #state{}) ->
           #state{}.
-restart_timer(Name, Time, #state{timers = Timers} = State) ->
+restart_timer(Name, Time, #state{timers = Timers,
+                                 timers_timestamps = TimerTimes} = State) ->
     NewState = stop_timer(Name, State),
-    ?log_debug("Starting ~p timer for ~b...", [Name, Time]),
-    Ref = erlang:send_after(Time, self(), {timer, Name}),
+    NewTime =
+        case maps:find(Name, TimerTimes) of
+            {ok, LastTS} ->
+                %% Making sure that timer doesn't fire too often
+                CurTS = erlang:monotonic_time(millisecond),
+                MinPossibleTime = min_timer_interval(Name) - (CurTS - LastTS),
+                max(MinPossibleTime, Time);
+            error -> Time
+        end,
+    ?log_debug("Starting ~p timer for ~b...", [Name, NewTime]),
+    Ref = erlang:send_after(NewTime, self(), {timer, Name}),
     NewState#state{timers = Timers#{Name => Ref}}.
+
+-spec min_timer_interval(atom()) -> non_neg_integer().
+min_timer_interval(retry_jobs) -> ?RETRY_TIME;
+min_timer_interval(_Name) -> ?MIN_TIMER_INTERVAL.
 
 -spec ensure_timer_started(Name :: atom(), Time :: non_neg_integer(),
                            #state{}) ->
@@ -2491,7 +2508,7 @@ time_to_first_event(CurDateTime, EventTimes) ->
     MinDateTime = lists:min(EventTimes),
     CurSec = calendar:datetime_to_gregorian_seconds(CurDateTime),
     MinSec = calendar:datetime_to_gregorian_seconds(MinDateTime),
-    TimeRemains = max(?MIN_RECHECK_ROTATION_INTERVAL, (MinSec - CurSec) * 1000),
+    TimeRemains = max(0, (MinSec - CurSec) * 1000),
     min(?MAX_RECHECK_ROTATION_INTERVAL, TimeRemains).
 
 -spec restart_dek_cleanup_timer(#state{}) -> #state{}.
@@ -3639,11 +3656,11 @@ diag_info_helper(Name, Pid) ->
 diag(#state{proc_type = ?NODE_PROC} = State) ->
     [<<"Process type: node ">>, io_lib:format("(~p)", [self()]), $\n,
      diag_deks(State#state.deks_info), $\n,
-     diag_timers(State#state.timers), $\n,
+     diag_timers(State#state.timers, State#state.timers_timestamps), $\n,
      diag_jobs(State#state.jobs)];
 diag(#state{proc_type = ?MASTER_PROC} = State) ->
     [<<"Process type: master ">>, io_lib:format("(~p)", [self()]), $\n,
-     diag_timers(State#state.timers), $\n,
+     diag_timers(State#state.timers, State#state.timers_timestamps), $\n,
      diag_jobs(State#state.jobs)].
 
 %% Helper functions for diag
@@ -3677,17 +3694,30 @@ diag_deks(DeksMap) ->
                  || Dek <- maps:get(deks, Info, [])]])
          end, maps:to_list(DeksMap)))].
 
+diag_dek(#{type := error, id := Id, reason := Reason}) ->
+    io_lib:format("~s (ERROR)~n          ~p",
+                  [format_dek_id_for_diag(Id), Reason]);
 diag_dek(#{type := Type, id := Id, info := Info}) ->
     io_lib:format("~s (~p)~n          ~s",
                   [format_dek_id_for_diag(Id), Type,
                    io_lib:print(maps:remove(key, Info), 11, 80, -1)]).
 
-diag_timers(Timers) ->
+diag_timers(Timers, TimersTimestamps) ->
     [<<"Timers:">>, $\n,
      lists:join(
        $\n,
        lists:map(
          fun ({Name, Timer}) ->
+             LastTimeFiredStr =
+                case maps:find(Name, TimersTimestamps) of
+                    {ok, LastTS} ->
+                        CurTS = erlang:monotonic_time(millisecond),
+                        LT = CurTS - LastTS,
+                        io_lib:format("last fired: ~s ago",
+                                      [misc:ms_to_str(LT)]);
+                    error ->
+                        "never fired before"
+                end,
              io_lib:format(
                "  ~p: ~s",
                [Name,
@@ -3695,9 +3725,11 @@ diag_timers(Timers) ->
                     Timer when is_reference(Timer) ->
                         case erlang:read_timer(Timer) of
                             false -> "active (expired)";
-                            Ms -> io_lib:format("active (~bms remaining)", [Ms])
+                            Ms -> io_lib:format("active (~s remaining, ~s)",
+                                                [misc:ms_to_str(Ms),
+                                                 LastTimeFiredStr])
                         end;
-                    T -> io_lib:format("~p", [T])
+                    T -> io_lib:format("~p (~s)", [T, LastTimeFiredStr])
                 end])
          end, maps:to_list(Timers)))].
 
@@ -3729,8 +3761,8 @@ calculate_next_rotation_time_test() ->
     CurTime = {{2016, 09, 30}, {16, 00, 00}},
     Secret = ?cut(test_secret(_1, 1, _2)),
     Calc = fun (List) -> calculate_next_rotation_time(CurTime, List) end,
-    Min = ?MIN_RECHECK_ROTATION_INTERVAL,
-    MinSec = Min div 1000,
+    Min = 0,
+    MinSec = 0,
     Max = ?MAX_RECHECK_ROTATION_INTERVAL,
     MaxSec = Max div 1000,
     Future = ?cut(misc:datetime_add(CurTime, _)),

@@ -85,6 +85,17 @@ datetime_add(DateTime, Seconds) ->
     calendar:gregorian_seconds_to_datetime(
       calendar:datetime_to_gregorian_seconds(DateTime) + Seconds).
 
+ms_to_str(Ms) when Ms < 1000 ->
+    io_lib:format("~bms", [Ms]);
+ms_to_str(Ms) when Ms < 60000 ->
+    io_lib:format("~bs ~s", [Ms div 1000, ms_to_str(Ms rem 1000)]);
+ms_to_str(Ms) when Ms < 3600000 ->
+    io_lib:format("~bm ~s", [Ms div 60000, ms_to_str(Ms rem 60000)]);
+ms_to_str(Ms) when Ms < 86400000 ->
+    io_lib:format("~bh ~s", [Ms div 3600000, ms_to_str(Ms rem 3600000)]);
+ms_to_str(Ms) ->
+    io_lib:format("~bd ~s", [Ms div 86400000, ms_to_str(Ms rem 86400000)]).
+
 utc_to_iso8601(UTCDatetime, Offset) ->
     utc_to_iso8601(UTCDatetime, undefined, Offset).
 

@@ -25,6 +25,7 @@ from testsets.sample_buckets import SampleBucketTasksBase
 from testsets.users_tests import put_user
 
 encrypted_file_magic = b'\x00Couchbase Encrypted\x00'
+min_timer_interval = 1 # seconds
 
 class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
@@ -45,6 +46,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
     def setup(self):
         # Wait for orchestrator to move to non kv node.
         # Here we assume that there is only one non kv node:
+        set_min_timer_interval(self.cluster, min_timer_interval)
         non_kv_node = None
         for n in self.cluster.connected_nodes:
             if Service.KV not in n.get_services():
@@ -76,6 +78,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                    f'Secret {s_id} disappeared during tests'
         for s_id in self.pre_created_ids:
             delete_secret(self.cluster, s_id)
+        set_min_timer_interval(self.cluster, None)
 
     def test_teardown(self):
         set_cfg_encryption(self.cluster, 'nodeSecretManager', -1)
@@ -595,8 +598,11 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
             expected_time = parse_iso8601(expected_rotation_time_iso)
             assert rotation_time >= expected_time, \
                    f'rotation happened too early'
-            assert (rotation_time - expected_time).seconds <= 10, \
-                   f'rotation happend too late'
+            # rotation can happen later ns_server does not allow timers
+            # to fire more often than once per min_timer_interval
+            delta = (rotation_time - expected_time).seconds
+            assert delta <= min_timer_interval + 10, \
+                   f'rotation happend too late, delta: {delta} seconds'
             next_rotation_time_iso = s['data']['nextRotationTime']
             next_rotation_time = parse_iso8601(next_rotation_time_iso)
             expected_next_rotation_time = expected_time + \
@@ -608,7 +614,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         testlib.poll_for_condition(
             lambda: rotation_happened(2, next_rotation),
-            sleep_time=0.3, timeout=30)
+            sleep_time=1, timeout=min_timer_interval + 30)
 
         # Trying to update secret with new rotation date and check that rotation
         # happens again. Timezone is random. It should not change anything.
@@ -785,7 +791,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         set_cfg_encryption(self.random_node(), 'encryptionKey', secret_id,
                            dek_rotation=1)
 
-        time.sleep(2) # let it rotate deks
+        time.sleep(2 + min_timer_interval) # let it rotate deks
 
         set_cfg_encryption(self.random_node(), 'encryptionKey', secret_id,
                            dek_rotation=60*60*24*30)
@@ -986,9 +992,12 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                verbose=True)
         self.cluster.wait_nodes_up(verbose=True)
 
-        # Node has left the cluster, but it still contains the bucket data directory
-        # which will be removed only during rebalance
-        # Make sure DEKs in that bucket dirrectory doesn't obstruct encryption
+        # When node is removed, it's config gets wiped out
+        set_min_timer_interval(node_to_remove, min_timer_interval)
+
+        # Node has left the cluster, but it still contains the bucket data
+        # directory which will be removed only during rebalance
+        # Make sure DEKs in that bucket directory doesn't obstruct encryption
         # at rest reconfiguration
         drop_config_deks_for_node(node_to_remove)
         drop_bucket_deks_and_verify_dek_info(self.cluster, self.sample_bucket)
@@ -1753,7 +1762,8 @@ def is_valid_key_id(name):
 def poll_verify_bucket_deks_files(*args, **kwargs):
     testlib.poll_for_condition(
       lambda: verify_bucket_deks_files(*args, **kwargs),
-      sleep_time=0.3, attempts=50, retry_on_assert=True, verbose=True)
+      sleep_time=1, attempts=15 + min_timer_interval,
+      retry_on_assert=True, verbose=True)
 
 
 def poll_verify_bucket_deks_and_collect_ids(*args, **kwargs):
@@ -1884,18 +1894,23 @@ def poll_verify_deks_and_collect_ids(*args, **kwargs):
 
 def set_cfg_dek_limit(cluster, n):
     key = '{cb_cluster_secrets, {max_dek_num, configDek}}'
-    if n is None:
-        testlib.diag_eval(cluster, f'ns_config:delete({key}).')
-    else:
-        testlib.diag_eval(cluster, f'ns_config:set({key}, {n}).')
+    set_ns_config_value(cluster, key, n)
 
 
 def set_bucket_dek_limit(cluster, bucket, n):
     key = '{cb_cluster_secrets, {max_dek_num, {bucketDek, "' + bucket + '"}}}'
-    if n is None:
-        testlib.diag_eval(cluster, f'ns_config:delete({key}).')
+    set_ns_config_value(cluster, key, n)
+
+
+def set_min_timer_interval(cluster, n):
+    set_ns_config_value(cluster, '{cb_cluster_secrets, min_timer_interval}', n)
+
+
+def set_ns_config_value(cluster, key_str, value):
+    if value is None:
+        testlib.diag_eval(cluster, f'ns_config:delete({key_str}).')
     else:
-        testlib.diag_eval(cluster, f'ns_config:set({key}, {n}).')
+        testlib.diag_eval(cluster, f'ns_config:set({key_str}, {value}).')
 
 
 def parse_iso8601(s):
