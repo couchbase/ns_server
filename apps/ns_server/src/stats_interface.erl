@@ -185,6 +185,9 @@ for_alerts() ->
                    fun({{_, Name}, Value}) -> {Name, Value} end,
                    Res)).
 
+for_resource_management([]) ->
+    %% Empty request to prometheus causes an error, so we should short-circuit
+    [];
 for_resource_management(Keys) ->
     List = lists:map(
              fun (Key) ->
