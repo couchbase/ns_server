@@ -556,7 +556,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                                    {[admin, security, external], read}),
                      fun menelaus_web_saml:handle_get_settings/2, [PathRest]};
                 ["settings", "jwt"] ->
-                    {{[admin, security, external], read},
+                    {{[admin, security], read},
                      fun menelaus_web_jwt:handle_settings/2, ['GET']};
                 ["settings", "dataService"] ->
                     {{[admin, settings], read},
@@ -1244,7 +1244,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_secrets:handle_delete_historical_key/3,
                      [SecretId, Id]};
                 ["settings", "jwt"] ->
-                    {{[admin, security, external], write},
+                    {{[admin, security], write},
                      fun menelaus_web_jwt:handle_settings/2, ['DELETE']};
                 ["couchBase" | _] -> {no_check_disallow_anonymous,
                                       fun menelaus_pluggable_ui:proxy_req/4,
@@ -1354,7 +1354,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, setup], write},
                      fun menelaus_web_node:handle_node_altaddr_external/1};
                 ["settings", "jwt"] ->
-                    {{[admin, security, external], write},
+                    {{[admin, security], write},
                      fun menelaus_web_jwt:handle_settings/2, ['PUT']};
                 _ ->
                     {done, reply_text(Req, "Object Not Found", 404)}
