@@ -110,7 +110,8 @@ start() ->
 
     LoggerFn =
         fun(Fmt, Args) ->
-            io:format(Fmt ++ "\n", Args)
+            io:format("---->Log Browser Output Start<----\n" ++ Fmt ++ "\n"
+                      "<----Log Browser Output End---->\n", Args)
         end,
 
     LogF = proplists:get_value(log, Options),
