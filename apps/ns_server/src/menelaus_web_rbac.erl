@@ -2541,7 +2541,20 @@ handle_backup_restore_validated(Req, Params) ->
                                            {Keep, [Identity | Remove]}
                                   end;
                               false ->
-                                  {[User | Keep], Remove}
+                                  {_, UserDomain} = Identity,
+                                  Permission =
+                                    get_domain_access_permission(write,
+                                                                 UserDomain),
+                                  case menelaus_auth:has_permission(Permission,
+                                                                    Req) of
+                                      true ->
+                                          {[User | Keep], Remove};
+                                      false ->
+                                          ?log_debug("Not restoring '~p' with "
+                                                     "domain ~p",
+                                                     [Identity, UserDomain]),
+                                          {Keep, [Identity | Remove]}
+                                  end
                           end
                   end
           end, {[], []}, Users),
@@ -2649,8 +2662,10 @@ validate_backup_users(Name, GroupsName, Req, State) ->
              case domain_to_atom(D) of
                  unknown -> {error, io_lib:format("invalid domain: ~s", [D])};
                  DAtom ->
-                    verify_domain_access(Req, {"", DAtom}, write),
-                    {value, DAtom}
+                     %% No need to verify domain access as this code path is
+                     %% only called for a restore. If the 'restorer' doesn't
+                     %% have domain access then the user will be skipped.
+                     {value, DAtom}
              end
          end, domain, _),
        validator:string(name, _),

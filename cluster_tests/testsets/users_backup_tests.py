@@ -346,6 +346,82 @@ class UsersBackupTests(testlib.BaseTestSet):
                     self.cluster, f'/settings/rbac/users/local/{user}')
 
 
+    def local_and_external_user_admin_restore_test(self):
+        # The backup fiel contains the 'Administrator' user, one local
+        # user 'eventingAdmin' and one external user 'gauss'.
+        backup_file_path = os.path.join(testlib.get_resources_dir(), "fixtures",
+                                        "backup_with_users.json")
+        with open(backup_file_path) as f:
+            backup = json.load(f)
+
+        try:
+            # Create a local user admin
+            local_admin = 'LocalUserAdmin'
+            local_admin_password = testlib.random_str(10)
+            put_user(self.cluster, 'local', local_admin, local_admin_password,
+                     roles='user_admin_local',
+                     full_name=testlib.random_str(10),
+                     groups='', validate_user_props=True)
+
+            # Create an external user admin
+            external_admin = 'ExternalUserAdmin'
+            external_admin_password = testlib.random_str(10)
+            put_user(self.cluster, 'local', external_admin,
+                     external_admin_password, roles='user_admin_external',
+                     full_name=testlib.random_str(10),
+                     groups='', validate_user_props=True)
+
+            # The local user admin can only restore the local user
+            restore(self.cluster, backup, can_overwrite=False,
+                    expected_counters={'usersCreated': 1,
+                                       'usersSkipped': 2,
+                                       'groupsCreated': 0,
+                                       'groupsSkipped': 0},
+                    auth_user=(local_admin, local_admin_password))
+
+            # Use 'Administrator' to get list of users and verify the
+            # expected users are present/not present
+            backup_results = testlib.get_succ(self.cluster,
+                                              '/settings/rbac/backup').json()
+            users = [user["id"] for user in backup_results.get("users", [])]
+            assert 'eventingAdmin' in users
+            assert 'gauss' not in users
+
+            # Remove the restored 'eventingAdmin'
+            testlib.ensure_deleted(
+                    self.cluster, '/settings/rbac/users/local/eventingAdmin')
+
+            # The external user admin can only restore the external user
+            restore(self.cluster, backup, can_overwrite=False,
+                    expected_counters={'usersCreated': 1,
+                                       'usersSkipped': 2,
+                                       'groupsCreated': 0,
+                                       'groupsSkipped': 0},
+                    auth_user=(external_admin, external_admin_password))
+
+            # Use 'Administrator' to get list of users and verify the
+            # expected users are present/not present
+            backup_results = testlib.get_succ(self.cluster,
+                                              '/settings/rbac/backup').json()
+            users = [user["id"] for user in backup_results.get("users", [])]
+            assert 'eventingAdmin' not in users
+            assert 'gauss' in users
+
+        finally:
+            # Clean up the users restored by the test
+            testlib.ensure_deleted(
+                    self.cluster, '/settings/rbac/users/local/eventingAdmin')
+            testlib.ensure_deleted(
+                    self.cluster, '/settings/rbac/users/external/gauss')
+
+            # Clean up the user created by the test
+            testlib.ensure_deleted(
+                    self.cluster, f'/settings/rbac/users/local/{local_admin}')
+            testlib.ensure_deleted(
+                    self.cluster,
+                    f'/settings/rbac/users/local/{external_admin}')
+
+
 def verify_roles(cluster, username, expected_roles):
     path = f'/settings/rbac/users/local/{username}'
     user_info = testlib.get_succ(cluster, path).json()
