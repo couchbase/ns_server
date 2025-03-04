@@ -158,6 +158,10 @@ setup() ->
     %% Used by activity_tracker
     gen_event:start_link({local, user_storage_events}),
 
+    %% Configure activity before starting activity_tracker, to immediately
+    %% triggering
+    fake_ns_config:update_snapshot(user_activity, [{enabled, true}]),
+
     activity_tracker:start_link(),
 
     %% Only have one node, to avoid unneeded complexity
@@ -166,7 +170,7 @@ setup() ->
     meck:expect(replicated_dets, change_multiple, fun (_, _) -> ok end),
     meck:expect(replicated_dets, get,
                 fun(users_storage, {activity, _Id}) -> false end),
-    fake_ns_config:update_snapshot(user_activity, [{enabled, true}]),
+
     start_link().
 
 teardown(_) ->
