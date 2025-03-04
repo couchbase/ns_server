@@ -345,7 +345,9 @@ build_bucket_capabilities(BucketConfig) ->
                      {mobileSystemCollection,
                       cluster_compat_mode:is_cluster_76()},
                      {'subdoc.ReplicaRead',
-                      cluster_compat_mode:is_cluster_76()}] ++
+                      cluster_compat_mode:is_cluster_76()},
+                     {'subdoc.BinaryXattr',
+                      cluster_compat_mode:is_cluster_morpheus()}] ++
                      maybe_range_scan_capability(BucketConfig),
 
                 [C || {C, true} <- Conditional] ++
@@ -571,22 +573,27 @@ get_bucket_capabilities(?VERSION_72,
                         _IsEnterprise,
                         _IsMagma) ->
     [couchapi, 'dcp.IgnorePurgedTombstones' ];
-get_bucket_capabilities(Version,
+get_bucket_capabilities(?VERSION_76,
                         true = _IsEnterprise,
-                        true = _IsMagma) when Version >= ?VERSION_76 ->
+                        true = _IsMagma) ->
     ['dcp.IgnorePurgedTombstones', nonDedupedHistory, rangeScan,
      preserveExpiry, 'subdoc.ReplicaRead', querySystemCollection,
      mobileSystemCollection];
-get_bucket_capabilities(Version,
+get_bucket_capabilities(?VERSION_76,
                         false = _IsEnterprise,
-                        true = _IsMagma) when Version >= ?VERSION_76 ->
+                        true = _IsMagma) ->
     ['dcp.IgnorePurgedTombstones', rangeScan, preserveExpiry,
      'subdoc.ReplicaRead', querySystemCollection, mobileSystemCollection];
-get_bucket_capabilities(Version,
+get_bucket_capabilities(?VERSION_76,
                         _IsEnterprise,
-                        _IsMagma) when Version >= ?VERSION_76 ->
+                        _IsMagma) ->
     [couchapi, 'dcp.IgnorePurgedTombstones', rangeScan, preserveExpiry,
      'subdoc.ReplicaRead', querySystemCollection, mobileSystemCollection];
+get_bucket_capabilities(?VERSION_MORPHEUS,
+                        IsEnterprise,
+                        IsMagma) ->
+    get_bucket_capabilities(?VERSION_76, IsEnterprise, IsMagma) ++
+    ['subdoc.BinaryXattr'];
 get_bucket_capabilities(_Version, _IsEnterprise, false = _IsMagma) ->
     [couchapi];
 get_bucket_capabilities(_Version, _IsEnterprise, _IsMagma) ->
@@ -601,6 +608,10 @@ membase_bucket_capabilities_test_() ->
              {?VERSION_72, true, false},
              {?VERSION_72, false, true},
              {?VERSION_72, true, true},
+             {?VERSION_76, false, false},
+             {?VERSION_76, true, false},
+             {?VERSION_76, false, true},
+             {?VERSION_76, true, true},
              {?LATEST_VERSION_NUM, false, false},
              {?LATEST_VERSION_NUM, true, false},
              {?LATEST_VERSION_NUM, false, true},
