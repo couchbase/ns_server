@@ -941,7 +941,12 @@ verify_digits(P) ->
       end, P).
 
 password_special_characters() ->
-    "@%+\\/'\"!#$^?:,(){}[]~`-_".
+    case cluster_compat_mode:is_cluster_morpheus() of
+        false ->
+            "@%+\\/'\"!#$^?:,(){}[]~`-_";
+        true ->
+            "@%+\\/'\"!#$^?:,(){}[]~`-_*=&.;<>|"
+    end.
 
 verify_special(P) ->
     lists:any(
@@ -3132,6 +3137,10 @@ validate_cred_username_test() ->
     ok.
 
 gen_password_test() ->
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode, is_cluster_morpheus,
+                fun () -> true end),
+
     Pass1 = gen_password({20, [uppercase]}),
     Pass2 = gen_password({0,  [digits]}),
     Pass3 = gen_password({5,  [uppercase, lowercase, digits, special]}),
@@ -3145,6 +3154,8 @@ gen_password_test() ->
     ?assertEqual(true, verify_uppercase(Pass3)),
     ?assertEqual(true, verify_special(Pass3)),
     ?assertEqual(true, verify_digits(Pass3)),
+
+    meck:unload(cluster_compat_mode),
     ok.
 
 gen_password_monkey_test_() ->
@@ -3157,7 +3168,12 @@ gen_password_monkey_test_() ->
             {rand:uniform(30), MustPresent}
         end,
     Test = fun () ->
-                   [gen_password(GetRandomPolicy()) || _ <- lists:seq(1,100000)]
+                   meck:new(cluster_compat_mode, [passthrough]),
+                   meck:expect(cluster_compat_mode, is_cluster_morpheus,
+                               fun () -> true end),
+                   [gen_password(
+                      GetRandomPolicy()) || _ <- lists:seq(1,100000)],
+                   meck:unload(cluster_compat_mode)
            end,
     {timeout, 100, Test}.
 -endif.
