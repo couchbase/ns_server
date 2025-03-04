@@ -102,7 +102,8 @@
                      ?CMD_GET_FAILOVER_LOG |
                      ?CMD_COLLECTIONS_SET_MANIFEST |
                      ?CMD_COLLECTIONS_GET_MANIFEST |
-                     ?CMD_GET_FUSION_STORAGE_SNAPSHOT.
+                     ?CMD_GET_FUSION_STORAGE_SNAPSHOT |
+                     ?CMD_MOUNT_FUSION_VBUCKET.
 
 
 report_counter(Function) ->
