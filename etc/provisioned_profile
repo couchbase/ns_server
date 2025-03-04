@@ -14,6 +14,7 @@
   {[collections_per_quota, enabled], true}]}.
 {{n1ql, sequential_scan_disabled}, true}.
 {allow_hash_migration_during_auth, true}.
+{{memcached, mirror_ssl_port}, 11300}.
 
 %% The base path where services will be placed (by their name).
 %% Ex: 'kv'   -> ./services/kv
