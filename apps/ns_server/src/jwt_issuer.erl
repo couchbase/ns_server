@@ -109,7 +109,7 @@ basic_test() ->
                                  extra_groups = [],
                                  extra_roles = [admin, metakv2_access],
                                  expiration_datetime_utc = _,
-                                 password_expired = false}}, RV1),
+                                 password_expired = false}, _}, RV1),
     fake_chronicle_kv:unload(),
     fake_ns_config:teardown().
 

@@ -14,6 +14,7 @@
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
+-include("jwt.hrl").
 -include_lib("ns_common/include/cut.hrl").
 
 -define(count_auth(Type, Res),
@@ -303,14 +304,16 @@ init_auth_password_expired(Identity) ->
                    {client_cert_auth, string()} |
                    {jwt, string()} |
                    {rbac_user_id(), rbac_password()}) ->
-          {ok, #authn_res{}, [RespHeader]} |
-          {error, auth_failure | temporary_failure} |
+          {ok, #authn_res{}, RespHeaders :: [RespHeader],
+           AuditProps :: audit_props()} |
+          {error, auth_failure | temporary_failure,
+           AuditProps :: audit_props()} |
           {unfinished, RespHeaders :: [RespHeader]}
               when RespHeader :: {string(), string()}.
 authenticate(Auth) ->
     case do_authenticate(Auth) of
         {ok, #authn_res{authenticated_identity = Identity,
-                        session_id = SessionId} = AuthnRes, _} = Result ->
+                        session_id = SessionId} = AuthnRes, _, _} = Result ->
             case menelaus_users:is_user_locked(Identity) of
                 false ->
                     activity_tracker:handle_activity(AuthnRes),
@@ -324,7 +327,7 @@ authenticate(Auth) ->
                             menelaus_ui_auth:logout(SessionId)
                     end,
                     ?count_auth("error", "locked"),
-                    {error, auth_failure}
+                    {error, auth_failure, []}
             end;
         Other ->
             Other
@@ -336,16 +339,18 @@ authenticate(Auth) ->
                       {client_cert_auth, string()} |
                       {jwt, string()} |
                       {rbac_user_id(), rbac_password()}) ->
-          {ok, #authn_res{}, [RespHeader]} |
-          {error, auth_failure | temporary_failure} |
+          {ok, #authn_res{}, RespHeaders :: [RespHeader],
+           AuditProps :: audit_props()} |
+          {error, auth_failure | temporary_failure,
+           AuditProps :: audit_props()} |
           {unfinished, RespHeaders :: [RespHeader]}
               when RespHeader :: {string(), string()}.
 do_authenticate(error) ->
     ?count_auth("error", "failure"),
-    {error, auth_failure};
+    {error, auth_failure, []};
 do_authenticate(undefined) ->
     ?count_auth("anon", "succ"),
-    {ok, init_auth({"", anonymous}), []};
+    {ok, init_auth({"", anonymous}), [], []};
 do_authenticate({token, Token} = Param) ->
     ?call_on_ns_server_node(
        case menelaus_ui_auth:check(Token) of
@@ -355,17 +360,17 @@ do_authenticate({token, Token} = Param) ->
                %% system with leftover cookie
                case ns_config_auth:is_system_provisioned() of
                    false ->
-                       {ok, init_auth({"", wrong_token}), []};
+                       {ok, init_auth({"", wrong_token}), [], []};
                    true ->
-                       {error, auth_failure}
+                       {error, auth_failure, []}
                end;
            {ok, AuthnRes} ->
                ?count_auth("token", "succ"),
-               {ok, AuthnRes, []}
+               {ok, AuthnRes, [], []}
        end, [Param]);
 do_authenticate({client_cert_auth, "@" ++ _ = Username}) ->
     ?count_auth("client_cert_int", "succ"),
-    {ok, init_auth({Username, admin}), []};
+    {ok, init_auth({Username, admin}), [], []};
 do_authenticate({client_cert_auth, Username} = Param) ->
     %% Just returning the username as the request is already authenticated based
     %% on the client certificate.
@@ -373,46 +378,46 @@ do_authenticate({client_cert_auth, Username} = Param) ->
        case ns_config_auth:get_user(admin) of
            Username ->
                ?count_auth("client_cert", "succ"),
-               {ok, init_auth({Username, admin}), []};
+               {ok, init_auth({Username, admin}), [], []};
            _ ->
                Identity = {Username, local},
                case menelaus_users:user_exists(Identity) of
                    true ->
                        ?count_auth("client_cert", "succ"),
-                       {ok, init_auth(Identity), []};
+                       {ok, init_auth(Identity), [], []};
                    false ->
                        ?count_auth("client_cert", "failure"),
-                       {error, auth_failure}
+                       {error, auth_failure, []}
                end
        end, [Param]);
 do_authenticate({scram_sha, AuthHeader}) ->
     case scram_sha:authenticate(AuthHeader) of
         {ok, Identity, RespHeaders} ->
             ?count_auth("scram_sha", "succ"),
-            {ok, init_auth(Identity), RespHeaders};
+            {ok, init_auth(Identity), RespHeaders, []};
         {first_step, RespHeaders} ->
             ?count_auth("scram_sha", "succ"),
             {unfinished, RespHeaders};
         auth_failure ->
             ?count_auth("scram_sha", "failure"),
-            {error, auth_failure}
+            {error, auth_failure, []}
     end;
 do_authenticate({jwt, Token} = Param) ->
     ?call_on_ns_server_node(
        case jwt_auth:authenticate(Token) of
-           {error, _Reason} ->
+           {error, AuditProps} ->
                ?count_auth("jwt", "failure"),
-               {error, auth_failure};
-           {ok, AuthnRes} ->
+               {error, auth_failure, AuditProps};
+           {ok, AuthnRes, AuditProps} ->
                ?count_auth("jwt", "succ"),
-               {ok, AuthnRes, []}
+               {ok, AuthnRes, [], AuditProps}
        end,
        [Param]);
 do_authenticate({Username, Password}) ->
     case ns_config_auth:authenticate(Username, Password) of
         {ok, Id} ->
             ?count_auth("local", "succ"),
-            {ok, init_auth(Id), []};
+            {ok, init_auth(Id), [], []};
         {expired, Id} ->
             %% Note, we also count the auth failure if we determine that the
             %% request can't be performed with an expired password
@@ -421,16 +426,18 @@ do_authenticate({Username, Password}) ->
             %% worth the complexity to make sure we only count the successful
             %% auth when the request can be performed
             ?count_auth("local", "succ"),
-            {ok, init_auth_password_expired(Id), []};
+            {ok, init_auth_password_expired(Id), [], []};
         {error, auth_failure} ->
             authenticate_external(Username, Password);
         {error, Reason} ->
             ?count_auth("local", "failure"),
-            {error, Reason}
+            {error, Reason, []}
     end.
 
 -spec authenticate_external(rbac_user_id(), rbac_password()) ->
-          {error, auth_failure} | {ok, #authn_res{}}.
+          {error, auth_failure, audit_props()} |
+          {ok, #authn_res{}, [RespHeader], audit_props()} when
+      RespHeader :: {string(), string()}.
 authenticate_external(Username, Password) ->
     case ns_node_disco:couchdb_node() == node() of
         false ->
@@ -439,10 +446,10 @@ authenticate_external(Username, Password) ->
                   ldap_auth_cache:authenticate(Username, Password)) of
                 true ->
                     ?count_auth("external", "succ"),
-                    {ok, init_auth({Username, external}), []};
+                    {ok, init_auth({Username, external}), [], []};
                 false ->
                     ?count_auth("external", "failure"),
-                    {error, auth_failure}
+                    {error, auth_failure, []}
             end;
         true ->
             rpc:call(ns_node_disco:ns_server_node(), ?MODULE,
@@ -463,7 +470,7 @@ uilogin(Req, Params) ->
                 S = mochiweb_request:get(socket, Req),
                 case ns_ssl_services_setup:get_user_name_from_client_cert(S) of
                     X when X =:= undefined; X =:= failed ->
-                        {invalid_client_cert, {error, auth_failure}};
+                        {invalid_client_cert, {error, auth_failure, []}};
                     UName ->
                         {UName, authenticate({client_cert_auth, UName})}
                 end;
@@ -473,7 +480,7 @@ uilogin(Req, Params) ->
                     must_use ->
                         %% client cert is mandatory, but user is trying
                         %% to use a password to login
-                        {Usr, {error, auth_failure}};
+                        {Usr, {error, auth_failure, []}};
                     _ ->
                         Password = proplists:get_value("password", Params),
                         {Usr, authenticate({Usr, Password})}
@@ -482,7 +489,7 @@ uilogin(Req, Params) ->
 
     case AuthnStatus of
         {ok, #authn_res{type = tmp, identity = Identity} = AuthnRes,
-         RespHeaders} ->
+         RespHeaders, _AuditProps} ->
             AuthnRes2 = AuthnRes#authn_res{type = ui,
                                            session_id = new_session_id(),
                                            identity = Identity},
@@ -510,11 +517,11 @@ uilogin(Req, Params) ->
                     menelaus_util:reply_password_expired(Req)
 
             end;
-        {error, auth_failure} ->
+        {error, auth_failure, _} ->
             ns_audit:login_failure(
               maybe_store_rejected_user(User, Req)),
             menelaus_util:reply(Req, 400);
-        {error, temporary_failure} ->
+        {error, temporary_failure, _} ->
             ns_audit:login_failure(
               maybe_store_rejected_user(User, Req)),
             Msg = <<"Temporary error occurred. Please try again later.">>,
@@ -563,6 +570,12 @@ can_use_cert_for_auth(Req) ->
             cannot_use
     end.
 
+-spec maybe_set_audit_props(mochiweb_request(), audit_props()) -> mochiweb_request().
+maybe_set_audit_props(Req, []) ->
+    Req;
+maybe_set_audit_props(Req, AuditProps) ->
+    mochiweb_request:set_meta(audit_props, AuditProps, Req).
+
 -spec verify_rest_auth(mochiweb_request(),
                        rbac_permission() | no_check | local) ->
           {auth_failure | forbidden | allowed
@@ -570,9 +583,10 @@ can_use_cert_for_auth(Req) ->
 verify_rest_auth(Req, Permission) ->
     Auth = extract_auth(Req),
     case authenticate(Auth) of
-        {ok, #authn_res{} = AuthnRes,
-         RespHeaders} ->
-            Req2 = append_resp_headers(RespHeaders, Req),
+        {ok, #authn_res{} = AuthnRes, RespHeaders, AuditProps} ->
+            Req1 = append_resp_headers(RespHeaders, Req),
+            Req2 = maybe_set_audit_props(Req1, AuditProps),
+
             case apply_on_behalf_of_authn_res(AuthnRes, Req2) of
                 error ->
                     Req3 = maybe_store_rejected_user(
@@ -598,11 +612,13 @@ verify_rest_auth(Req, Permission) ->
                             {auth_failure, Req3}
                     end
             end;
-        {error, auth_failure} ->
+        {error, auth_failure, AuditProps} ->
             Req2 = maybe_store_rejected_user(get_rejected_user(Auth), Req),
-            {auth_failure, Req2};
-        {error, temporary_failure} ->
-            {temporary_failure, Req};
+            Req3 = maybe_set_audit_props(Req2, AuditProps),
+            {auth_failure, Req3};
+        {error, temporary_failure, AuditProps} ->
+            Req2 = maybe_set_audit_props(Req, AuditProps),
+            {temporary_failure, Req2};
         {unfinished, RespHeaders} ->
             %% When mochiweb decides if it needs to close the connection
             %% it checks if body is "received" (and many other things)
@@ -828,9 +844,9 @@ extract_identity_from_cert(CertDer) ->
             auth_failure;
         UName ->
             case authenticate({client_cert_auth, UName}) of
-                {ok, #authn_res{identity = Identity}, _} ->
+                {ok, #authn_res{identity = Identity}, _, _} ->
                     Identity;
-                {error, Type} ->
+                {error, Type, _} ->
                     Type
             end
     end.

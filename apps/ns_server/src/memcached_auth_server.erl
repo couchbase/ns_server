@@ -200,11 +200,11 @@ authenticate(<<"PLAIN">>, AuthReq) ->
         {ok, {Authzid, Username, Password}} when Authzid == "";
                                                  Authzid == Username ->
             case menelaus_auth:authenticate({Username, Password}) of
-                {ok, AuthnRes, _} ->
+                {ok, AuthnRes, _, _} ->
                     ?log_debug("Successful ext authentication for ~p",
                                [ns_config_log:tag_user_name(Username)]),
                     {ok, AuthnRes};
-                {error, _} ->
+                {error, _, _} ->
                     {error, "Invalid username or password"}
             end;
         {ok, {_Authzid, _, _}} ->
@@ -418,8 +418,8 @@ with_mocked_users(Users, Fun) ->
                                                 N == Name, P == Pass] of
                                 [{N, D, ER}] ->
                                     {ok, #authn_res{identity = {N, D},
-                                                    extra_roles = ER}, []};
-                                [] -> {error, auth_failure}
+                                                    extra_roles = ER}, [], []};
+                                [] -> {error, [], {auth_failure, []}}
                             end
                     end),
 

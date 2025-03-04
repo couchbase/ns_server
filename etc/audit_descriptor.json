@@ -1351,7 +1351,20 @@
             "raw_url" : ""
         },
         "optional_fields" : {
-            "real_userid" : {"domain" : "", "user" : ""}
+            "real_userid" : {"domain" : "", "user" : ""},
+            "type": "",
+            "reason": "",
+            "iss": "",
+            "alg": "",
+            "sub": "",
+            "aud": "",
+            "exp": 0,
+            "kid": "",
+            "nbf": 0,
+            "iat": 0,
+            "jti": "",
+            "groups": "",
+            "roles": ""
         }
       },
       {
@@ -1559,7 +1572,22 @@
             "raw_url" : ""
         },
         "optional_fields" : {
-            "real_userid" : {"domain" : "", "user" : ""}
+            "real_userid" : {"domain" : "", "user" : ""},
+            "type": "",
+            "iss": "",
+            "alg": "",
+            "sub": "",
+            "aud": "",
+            "exp": 0,
+            "kid": "",
+            "nbf": 0,
+            "iat": 0,
+            "jti": "",
+            "groups": "",
+            "roles": "",
+            "mapped_groups": "",
+            "mapped_roles": "",
+            "expiry_with_leeway": ""
         }
       },
       {

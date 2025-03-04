@@ -906,3 +906,56 @@ class JWTTests(testlib.BaseTestSet):
                 headers=headers
             )
             assert r.status_code == 401
+
+    def access_forbidden_test(self):
+        """Test that access_forbidden audit events are properly triggered with
+        JWT auth.
+        """
+        self.auth_setup()
+
+        read_only_group = "jwt_readonly_users"
+        group_data = {
+            "roles": "data_reader[*]",  # Only read permissions, no write
+            "description": "JWT test group for read-only users"
+        }
+        testlib.put_succ(
+            self.cluster, f"/settings/rbac/groups/{read_only_group}",
+             data=group_data
+        )
+
+        # Configure JWT with our read-only group mapping
+        self.configure_jwt(
+            {
+                "jitProvisioning": True,
+                "groupsMaps": [
+                    "^readonly$ jwt_readonly_users"
+                ]
+            }
+        )
+
+        # Create a token for a user with only read permissions
+        claims = self.base_claims.copy()
+        claims["groups"] = ["readonly"]
+        token = self.create_token(claims)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # First verify the user can read buckets (should succeed)
+        r = testlib.get_succ(
+            self.cluster, "/pools/default/buckets", auth=None, headers=headers
+        )
+
+        # Try to create a bucket (should fail with 403 Forbidden)
+        # This should trigger an access_forbidden audit event
+        bucket_data = {
+            "name": "test_bucket",
+            "ramQuotaMB": 100,
+            "bucketType": "membase"
+        }
+        r = testlib.post_fail(
+            self.cluster,
+            "/pools/default/buckets",
+            auth=None,
+            headers=headers,
+            data=bucket_data,
+            expected_code=403  # Expect forbidden
+        )

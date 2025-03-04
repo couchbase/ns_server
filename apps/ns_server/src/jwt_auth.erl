@@ -66,7 +66,7 @@
 %%%===================================================================
 
 -spec authenticate(Token :: string()) ->
-          {ok, #authn_res{}} | {error, binary()}.
+          {ok, #authn_res{}, audit_props()} | {error, audit_props()}.
 authenticate(Token) ->
     Persisted =
         case chronicle_kv:get(kv, jwt_settings) of
@@ -248,7 +248,7 @@ audit_map_to_proplist(AuditMap) ->
                          [{Key, Converted} | Acc]
                  end, [], AuditMap)).
 
--spec audit_success(map(), #authn_res{}) -> [{atom(), binary()}].
+-spec audit_success(Claims :: map(), AuthnRes :: #authn_res{}) -> audit_props().
 audit_success(Claims, AuthnRes) ->
     AuditMap = Claims,
     AuditMap1 =
@@ -271,20 +271,22 @@ audit_success(Claims, AuthnRes) ->
 
     Expiration = AuthnRes#authn_res.expiration_datetime_utc,
     ExpiryWithLeeway = misc:iso_8601_fmt_datetime(Expiration, "-", ":"),
-    AuditMap3 = AuditMap2#{expiry_with_leeway => ExpiryWithLeeway},
+    AuditMap3 = AuditMap2#{expiry_with_leeway => ExpiryWithLeeway,
+                           type => <<"jwt">>},
 
     AuditList = audit_map_to_proplist(AuditMap3),
     ?log_debug("JWT auth success: ~p", [AuditList]),
     AuditList.
 
--spec audit_failure(map(), binary()) -> [{atom(), binary()}].
+-spec audit_failure(map(), binary()) -> audit_props().
 audit_failure(Claims, Reason) ->
-    AuditList = audit_map_to_proplist(Claims#{reason => Reason}),
+    AuditList = audit_map_to_proplist(Claims#{reason => Reason,
+                                              type => <<"jwt">>}),
     ?log_error("JWT auth failure: ~p", [AuditList]),
     AuditList.
 
 -spec validate_token(Token :: string(), Issuers :: map()) ->
-          {ok, #authn_res{}} | {error, binary()}.
+          {ok, #authn_res{}, audit_props()} | {error, audit_props()}.
 validate_token(Token, Issuers) ->
     TokenBin = list_to_binary(Token),
     case extract_claims(TokenBin, Issuers) of
@@ -296,19 +298,19 @@ validate_token(Token, Issuers) ->
                 ok ->
                     case validate_payload(Claims, IssuerProps) of
                         {ok, AuthnRes} ->
-                            audit_success(Claims, AuthnRes),
-                            {ok, AuthnRes};
+                            AuditProps = audit_success(Claims, AuthnRes),
+                            {ok, AuthnRes, AuditProps};
                         {error, Reason} ->
-                            audit_failure(Claims, Reason),
-                            {error, Reason}
+                            AuditProps = audit_failure(Claims, Reason),
+                            {error, AuditProps}
                     end;
                 {error, Reason} ->
-                    audit_failure(Claims, Reason),
-                    {error, Reason}
+                    AuditProps = audit_failure(Claims, Reason),
+                    {error, AuditProps}
             end;
         {error, Reason} ->
-            audit_failure(#{}, Reason),
-            {error, Reason}
+            AuditProps = audit_failure(#{}, Reason),
+            {error, AuditProps}
     end.
 
 -spec validate_signature(TokenBin :: binary(), Claims :: map(),
