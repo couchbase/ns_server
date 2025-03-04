@@ -1645,7 +1645,8 @@ do_ensure_bucket(Sock, Bucket, BConf, false, JWT) ->
             {ok, DS} = cb_crypto:fetch_deks_snapshot({bucketDek, Bucket}),
             {ActiveDek, Deks} = cb_crypto:get_all_deks(DS),
             {Engine, ConfigString, ConfigStringSanitized} =
-                memcached_bucket_config:start_params(BConf, ActiveDek, Deks),
+                memcached_bucket_config:start_params(BConf, ActiveDek, Deks,
+                                                     JWT),
 
             BucketConfig = memcached_bucket_config:get_bucket_config(BConf),
             Timeout = case ns_bucket:node_kv_backend_type(BucketConfig) of

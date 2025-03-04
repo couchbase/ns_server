@@ -25,7 +25,7 @@
 -export([get/1,
          get_bucket_config/1,
          ensure/3,
-         start_params/3,
+         start_params/4,
          ensure_collections/2,
          get_current_collections_uid/1,
          format_mcd_keys/2]).
@@ -374,7 +374,7 @@ ensure_collections(Sock, #cfg{name = BucketName, snapshot = Snapshot}) ->
 
 start_params(#cfg{config = BucketConfig,
                   params = Params,
-                  engine_config = EngineConfig}, ActiveDek, Deks) ->
+                  engine_config = EngineConfig}, ActiveDek, Deks, JWT) ->
     Engine = proplists:get_value(engine, EngineConfig),
 
     StaticConfigString =
@@ -399,23 +399,44 @@ start_params(#cfg{config = BucketConfig,
                   end
           end, Params),
 
-
     PrepareCfgString =
-        fun (Sanitizer) ->
-            EncodedDeks = ejson:encode(format_mcd_keys(ActiveDek,
-                                                       Deks, Sanitizer)),
+        fun (Sanitize) ->
+                Sanitizer =
+                    case Sanitize of
+                        true ->
+                            fun (_) -> <<"<sanitized>">> end;
+                        false ->
+                            fun (S) -> S end
+                    end,
+                EncodedDeks = ejson:encode(format_mcd_keys(ActiveDek,
+                                                           Deks, Sanitizer)),
+                DeksConfigString = "encryption=" ++ binary_to_list(EncodedDeks),
 
-            DeksConfigString = "encryption=" ++ binary_to_list(EncodedDeks),
+                JWTConfigString =
+                    case JWT of
+                        undefined ->
+                            "";
+                        _ ->
+                            JWTParam =
+                                case Sanitize of
+                                    true ->
+                                        {_, Payload} =
+                                            jose_jwt:peek_payload(JWT),
+                                        lists:flatten(
+                                          io_lib:format("~p", [Payload]));
+                                    false ->
+                                        binary_to_list(JWT)
+                                end,
+                            ?MAGMA_FUSION_AUTH_TOKEN ++ "=" ++ JWTParam
+                    end,
 
-            ExtraParams = [P || P <- [StaticConfigString, ExtraConfigString,
-                                      DeksConfigString], P =/= ""],
-            string:join(DynamicParams ++ ExtraParams, ";")
+                ExtraParams = [P || P <- [StaticConfigString, ExtraConfigString,
+                                          DeksConfigString, JWTConfigString],
+                                    P =/= ""],
+                string:join(DynamicParams ++ ExtraParams, ";")
         end,
 
-    NoSanitizer = fun (S) -> S end,
-    Sanitizer = fun (_) -> <<"<sanitized>">> end,
-
-    {Engine, PrepareCfgString(NoSanitizer), PrepareCfgString(Sanitizer)}.
+    {Engine, PrepareCfgString(false), PrepareCfgString(true)}.
 
 get_bucket_config(#cfg{config = BucketConfig}) ->
     BucketConfig.
