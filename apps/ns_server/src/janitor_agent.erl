@@ -719,84 +719,53 @@ do_handle_call({apply_new_config_replicas_phase, NewBucketConfig},
     handle_apply_new_config_replicas_phase(NewBucketConfig, State);
 do_handle_call({wait_index_updated, VBucket}, From,
                #state{bucket_name = Bucket} = State) ->
-    State2 = spawn_rebalance_subprocess(
-               State,
-               From,
-               fun () ->
-                       ns_couchdb_api:wait_index_updated(Bucket, VBucket)
-               end),
-    {noreply, State2};
+    spawn_rebalance_subprocess(
+      State, From, ?cut(ns_couchdb_api:wait_index_updated(Bucket, VBucket)));
 do_handle_call({wait_dcp_data_move, ReplicaNodes, VBucket}, From,
                #state{bucket_name = Bucket} = State) ->
-    State2 = spawn_rebalance_subprocess(
-               State,
-               From,
-               fun () ->
-                       dcp_replicator:wait_for_data_move(ReplicaNodes, Bucket,
-                                                         VBucket)
-               end),
-    {noreply, State2};
+    spawn_rebalance_subprocess(
+      State, From, ?cut(dcp_replicator:wait_for_data_move(ReplicaNodes, Bucket,
+                                                          VBucket)));
 do_handle_call({dcp_takeover, OldMasterNode, VBucket}, From,
                #state{bucket_name = Bucket} = State) ->
-    State2 = spawn_rebalance_subprocess(
-               State,
-               From,
-               fun () ->
-                       replication_manager:dcp_takeover(Bucket, OldMasterNode,
-                                                        VBucket)
-               end),
-    {noreply, State2};
+    spawn_rebalance_subprocess(
+      State, From, ?cut(replication_manager:dcp_takeover(Bucket, OldMasterNode,
+                                                         VBucket)));
 do_handle_call(initiate_indexing, From, #state{bucket_name = Bucket} = State) ->
-    State2 = spawn_rebalance_subprocess(
-               State,
-               From,
-               fun () ->
-                       ok = ns_couchdb_api:initiate_indexing(Bucket)
-               end),
-    {noreply, State2};
+    spawn_rebalance_subprocess(
+      State, From, ?cut(ok = ns_couchdb_api:initiate_indexing(Bucket)));
 do_handle_call({wait_seqno_persisted, VBucket, SeqNo},
                From,
                #state{bucket_name = Bucket} = State) ->
-    State2 =
-        spawn_rebalance_subprocess(
-          State,
-          From,
-          fun () ->
-                  ?rebalance_debug(
-                     "Going to wait for persistence of seqno ~B in vbucket ~B",
-                     [SeqNo, VBucket]),
-                  Replicator =
-                      dcp_replication_manager:get_replicator_pid(Bucket,
-                                                                 VBucket),
-                  erlang:link(Replicator),
-                  ok = do_wait_seqno_persisted(Bucket, VBucket, SeqNo),
-                  erlang:unlink(Replicator),
-                  ?rebalance_debug(
-                     "Done waiting for persistence of seqno ~B in vbucket ~B",
-                     [SeqNo, VBucket]),
-                  ok
-          end),
-    {noreply, State2};
+    spawn_rebalance_subprocess(
+      State, From,
+      fun () ->
+              ?rebalance_debug(
+                 "Going to wait for persistence of seqno ~B in vbucket ~B",
+                 [SeqNo, VBucket]),
+              Replicator =
+                  dcp_replication_manager:get_replicator_pid(Bucket,
+                                                             VBucket),
+              erlang:link(Replicator),
+              ok = do_wait_seqno_persisted(Bucket, VBucket, SeqNo),
+              erlang:unlink(Replicator),
+              ?rebalance_debug(
+                 "Done waiting for persistence of seqno ~B in vbucket ~B",
+                 [SeqNo, VBucket]),
+              ok
+      end);
 do_handle_call({inhibit_view_compaction, Pid},
                From,
                #state{bucket_name = Bucket} = State) ->
-    State2 = spawn_rebalance_subprocess(
-               State,
-               From,
-               fun () ->
-                       compaction_daemon:inhibit_view_compaction(Bucket, Pid)
-               end),
-    {noreply, State2};
+    spawn_rebalance_subprocess(
+      State, From,
+      ?cut(compaction_daemon:inhibit_view_compaction(Bucket, Pid)));
 do_handle_call({uninhibit_view_compaction, Ref},
                From,
                #state{bucket_name = Bucket} = State) ->
-    State2 = spawn_rebalance_subprocess(
-               State,
-               From,
-               fun () ->
-                       compaction_daemon:uninhibit_view_compaction(Bucket, Ref)
-               end),
-    {noreply, State2};
+    spawn_rebalance_subprocess(
+      State, From,
+      ?cut(compaction_daemon:uninhibit_view_compaction(Bucket, Ref)));
 do_handle_call({get_vbucket_high_seqno, VBucket},
                _From,
                #state{bucket_name = Bucket} = State) ->
@@ -991,7 +960,8 @@ spawn_rebalance_subprocess(
                     RV = Fun(),
                     Parent ! {subprocess_done, self(), RV}
             end),
-    State#state{rebalance_subprocesses = [{From, Pid} | Subprocesses]}.
+    {noreply,
+     State#state{rebalance_subprocesses = [{From, Pid} | Subprocesses]}}.
 
 flushseq_file_path(BucketName) ->
     {ok, DBSubDir} = ns_storage_conf:this_node_bucket_dbdir(BucketName),
