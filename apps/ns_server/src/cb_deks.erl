@@ -480,7 +480,10 @@ set_log_active_key(_ActiveKey) ->
         %% Push the dek update to couchdb node disk sinks
         ok ?= rpc:call(ns_node_disco:couchdb_node(), cb_deks,
                        handle_ale_log_dek_update, [CreateNewDS],
-                       ?LOG_ENCR_RPC_TIMEOUT)
+                       ?LOG_ENCR_RPC_TIMEOUT),
+
+        %% Reencrypt all rebalance reports local to this node based on CurrentDS
+        ok ?= ns_rebalance_report_manager:reencrypt_local_reports(CurrDS)
     else
         {error, _} = Error ->
             Error;
@@ -550,13 +553,15 @@ get_dek_ids_in_use(logDek) ->
                                        ale, get_all_used_deks, [],
                                        ?LOG_ENCR_RPC_TIMEOUT),
 
+        {ok, InUseRebReports} ?= ns_rebalance_report_manager:get_in_use_deks(),
+
         AllInUse = lists:map(
                       fun(undefined) ->
                               ?NULL_DEK;
                          (Elem) ->
                               Elem
                       end, InUseMemcached ++ InUseLocal ++ InuseBabySitter ++
-                           InuseCouchDb),
+                           InuseCouchDb ++ InUseRebReports),
         {ok, lists:usort(AllInUse)}
     else
         {error, _} = Error ->

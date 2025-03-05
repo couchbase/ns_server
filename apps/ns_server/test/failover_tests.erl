@@ -475,6 +475,12 @@ auto_failover_test_setup(SetupConfig) ->
     %% see that this has happened).
     meck:new(ns_email_alert, [passthrough]),
 
+    meck:new(cb_atomic_persistent_term, [passthrough]),
+    meck:expect(cb_atomic_persistent_term, get_or_set_if_undefined,
+                fun(_, _, F) ->
+                        F()
+                end),
+
     %% Need to start the orchestrator so that auto_failover can follow the full
     %% code path.
     {ok, OrchestratorPid} = ns_orchestrator:start_link(),
@@ -493,6 +499,7 @@ auto_failover_test_teardown(Config, PidMap) ->
     meck:unload(node_status_analyzer),
     meck:unload(ns_doctor),
     meck:unload(ns_email_alert),
+    meck:unload(cb_atomic_persistent_term),
 
     manual_failover_test_teardown(Config, PidMap).
 

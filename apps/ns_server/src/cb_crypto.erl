@@ -45,6 +45,7 @@
          file_encrypt_state_match/2,
          validate_encr_file_with_ds/2,
          can_ds_decrypt_file/2,
+         is_file_encr_by_active_key/2,
          is_file_encrypted/1,
          get_file_dek_ids/1,
          get_in_use_deks/1,

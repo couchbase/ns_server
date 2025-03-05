@@ -18,12 +18,17 @@
 
 -define(NUM_REBALANCE_REPORTS, 5).
 -define(FETCH_TIMEOUT, 10000).
+-define(ENCR_OP_TIMEOUT, ?get_timeout(reb_report_encr_op, 2000)).
 -define(MAX_DELAY, 10000).
+-define(REPORT_NAME_PREFIX, "rebalance_report_").
+-define(REPORT_PATTERN, ?REPORT_NAME_PREFIX ++ "[0-9]*.json").
 
 %% APIs.
 -export([start_link/0,
          get_rebalance_report/1,
          get_last_report_uuid/0,
+         reencrypt_local_reports/1,
+         get_in_use_deks/0,
          record_rebalance_report/2]).
 
 %% gen_server2 callbacks.
@@ -79,6 +84,12 @@ record_rebalance_report(Report, KeepNodes) ->
                              ?FETCH_TIMEOUT)
     end.
 
+reencrypt_local_reports(LogDS) ->
+    gen_server2:call(?MODULE, {reencrypt_reports, LogDS}, ?ENCR_OP_TIMEOUT).
+
+get_in_use_deks() ->
+    gen_server2:call(?MODULE, get_in_use_deks, ?ENCR_OP_TIMEOUT).
+
 %% -------------------------------------------------------------
 %% gen_server2 callbacks.
 %% -------------------------------------------------------------
@@ -113,12 +124,69 @@ handle_call({get_rebalance_report, Reqd, Options}, From,
               end),
             {noreply, State}
     end;
+handle_call({reencrypt_reports, LogDS},
+            _From, #state{report_dir = Dir} = State) ->
+    DirFiles = filelib:wildcard(?REPORT_PATTERN, Dir),
+    EncrReportFn =
+        fun(Path) ->
+                Basename = filename:basename(Path),
+                case fetch_rebalance_report_local(Basename, Dir) of
+                    {ok, Report} ->
+                        {Basename,
+                         cb_crypto:atomic_write_file(Path, Report, LogDS)};
+                    {error, _} = Error ->
+                        {Basename, Error}
+                end
+        end,
+    ReEncrReportFn =
+        fun(Path) ->
+                Basename = filename:basename(Path),
+                case cb_crypto:is_file_encrypted(Path) of
+                    true ->
+                        {Basename,
+                         cb_crypto:reencrypt_file(
+                           Path, Path, LogDS,
+                           #{allow_decrypt_on_disabled_encr => true})};
+                    false ->
+                        EncrReportFn(Path)
+                end
+        end,
+    Rvs =
+        lists:map(
+          fun(FileName) ->
+                  Path = filename:join(Dir, FileName),
+                  case cb_crypto:is_file_encr_by_active_key(Path, LogDS) of
+                      true ->
+                          {FileName, ok};
+                      false ->
+                          ReEncrReportFn(Path)
+                  end
+          end, DirFiles),
+
+
+    Errors =
+        lists:filtermap(
+          fun({_FileName, ok}) ->
+                  false;
+             ({FileName, {error, E}}) ->
+                 {true, {FileName, E}}
+          end, Rvs),
+    case Errors of
+        [] ->
+            {reply, ok, State};
+        _ ->
+            {reply, {error, Errors}, State}
+    end;
+handle_call(get_in_use_deks, _From, #state{report_dir = Dir} = State) ->
+    DirFiles = filelib:wildcard(?REPORT_PATTERN, Dir),
+    FilePaths = [filename:join(Dir, F)|| F <- DirFiles],
+    {reply, {ok, cb_crypto:get_in_use_deks(FilePaths)}, State};
 handle_call({record_compressed_rebalance_report, R}, From, State) ->
     Report = zlib:uncompress(R),
     handle_call({record_rebalance_report, Report}, From, State);
 handle_call({record_rebalance_report, Report}, _From,
             #state{report_dir = Dir} = State) ->
-    FileName = "rebalance_report_" ++ misc:timestamp_utc_iso8601_basic()
+    FileName = ?REPORT_NAME_PREFIX ++ misc:timestamp_utc_iso8601_basic()
         ++ ".json",
     NewReport = {couch_uuids:random(), [{node, node()}, {filename, FileName}]},
     AllReports = [NewReport | ns_config:read_key_fast(rebalance_reports, [])],
@@ -127,7 +195,8 @@ handle_call({record_rebalance_report, Report}, _From,
     %% Rebalance reports are consumed by couchbase-fluent-bit, and
     %% adding a newline at the end of the report easies the parsing
     %% for them.
-    ok = misc:atomic_write_file(Path, [Report, $\n]),
+    {ok, DS} = cb_crypto:fetch_deks_snapshot(logDek),
+    ok = cb_crypto:atomic_write_file(Path, [Report, $\n], DS),
     ns_config:set(rebalance_reports, Keep),
     {reply, ok, State};
 handle_call(_, _, State) ->
@@ -234,7 +303,8 @@ maybe_write_report(Report, Path) ->
             %% Do nothing, someone already fetched it.
             ok;
         false ->
-            ok = misc:atomic_write_file(Path, Report)
+            {ok, DS} = cb_crypto:fetch_deks_snapshot(logDek),
+            ok = cb_crypto:atomic_write_file(Path, Report, DS)
     end.
 
 fetch_rebalance_report({_, Info} = ReqdReport, Options, Dir) ->
@@ -253,7 +323,14 @@ fetch_rebalance_report({_, Info} = ReqdReport, Options, Dir) ->
 fetch_rebalance_report_local(FileName, Dir) ->
     try
         Path = filename:join(Dir, FileName),
-        misc:raw_read_file(Path)
+        case cb_crypto:is_file_encrypted(Path) of
+            true ->
+                {ok, LogDS} = cb_crypto:fetch_deks_snapshot(logDek),
+                {decrypted, Decrypted} = cb_crypto:read_file(Path, LogDS),
+                {ok, Decrypted};
+            false ->
+                misc:raw_read_file(Path)
+        end
     catch
         T:E ->
             ?log_debug("Unexpected exception ~p", [{T, E}]),
