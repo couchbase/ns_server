@@ -191,7 +191,9 @@ loop(Req0, Config) ->
                 end)
       end).
 
-%% Use the old permission until the cluster compat mode is bumped.
+%% Use the old permission until the cluster compat mode is bumped. This is
+%% needed for REST APIs existing prior to morpheus but whose permissions
+%% changed in morpheus.
 when_morpheus(NewPermission, OldPermission) ->
     case cluster_compat_mode:is_cluster_morpheus() of
         true -> NewPermission;
