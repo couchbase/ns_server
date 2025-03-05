@@ -331,15 +331,15 @@ mount_volumes(Bucket, VolumesToMount, NodesMap, RebalancerPid) ->
                   Volumes = proplists:get_value(N, VolumesToMount),
                   {N, {mount_volumes, VBuckets, Volumes}}
           end, maps:to_list(NodesMap)),
-    call_on_nodes(Bucket, NodesCalls, RebalancerPid, ?MOUNT_VOLUMES_TIMEOUT).
+    call_on_nodes(Bucket, NodesCalls,
+                  rebalance_call(RebalancerPid, _, _, _,
+                                 ?MOUNT_VOLUMES_TIMEOUT)).
 
-call_on_nodes(Bucket, NodesCalls, Rebalancer, Timeout) ->
+call_on_nodes(Bucket, NodesCalls, Caller) ->
     Replies =
         misc:parallel_map(
           fun ({Node, Call}) ->
-                  {Node, Call,
-                   catch rebalance_call(
-                           Rebalancer, Bucket, Node, Call, Timeout)}
+                  {Node, Call, catch Caller(Bucket, Node, Call)}
           end, NodesCalls, infinity),
     BadReplies = [R || {_, _, RV} = R <- Replies, RV =/= ok],
     case BadReplies of
@@ -353,7 +353,7 @@ call_on_nodes(Bucket, NodesCalls, Rebalancer, Timeout) ->
 
 call_on_servers(Bucket, Servers, BucketConfig, Call, Timeout) ->
     NodesCalls = [{N, {Call, BucketConfig}} || N <- Servers],
-    call_on_nodes(Bucket, NodesCalls, undefined, Timeout).
+    call_on_nodes(Bucket, NodesCalls, call(_, _, _, Timeout)).
 
 process_multicall_rv({Replies, BadNodes}) ->
     BadReplies = [R || {_, RV} = R <- Replies, RV =/= ok],
