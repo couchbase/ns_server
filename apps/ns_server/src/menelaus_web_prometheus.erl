@@ -29,7 +29,7 @@
 %%%===================================================================
 
 handle_get_metrics(Req) ->
-    Resp = menelaus_util:respond(Req, {200, [], chunked}),
+    Resp = start_chunked_response(Req),
     ns_server_stats:report_prom_stats(fun (M) -> report_metric(M, Resp) end,
                                       false),
     Settings = prometheus_cfg:settings(),
@@ -261,7 +261,7 @@ handle_get_local_metrics(IsHighCard, Req) ->
                 ceil(erlang:list_to_integer(Str)*0.95)
         end,
 
-    Resp = menelaus_util:respond(Req, {200, [], chunked}),
+    Resp = start_chunked_response(Req),
     ns_server_stats:report_prom_stats(
       fun (M) -> report_metric(M, Resp) end, IsHighCard, Timeout),
     mochiweb_response:write_chunk(<<>>, Resp).
@@ -300,6 +300,12 @@ proxy_prometheus_api(RawPath, Req) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+start_chunked_response(Req) ->
+    menelaus_util:respond(Req,
+                          {200,
+                           [{"Content-Type", "text/plain; version=0.0.4"}],
+                           chunked}).
 
 ensure_allowed_prom_req("/api/v1/query_range" ++ _) -> ok;
 ensure_allowed_prom_req("/api/v1/query" ++ _) -> ok;
