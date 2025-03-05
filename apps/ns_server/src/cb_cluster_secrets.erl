@@ -71,7 +71,8 @@
          chronicle_transaction/2,
          get_node_deks_info_quickly/0,
          destroy_deks/2,
-         diag_info/0]).
+         diag_info/0,
+         reencrypt_deks/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -724,6 +725,15 @@ diag_info() ->
      end,
      <<"\n">>].
 
+%% Can be called only when cb_cluster_secrets is not running!
+-spec reencrypt_deks() -> ok | {error, [term()]}.
+reencrypt_deks() ->
+    {_KekPushHashes, _Deks, Errors} = init_deks(),
+    case Errors of
+        [] -> ok;
+        _ -> {error, Errors}
+    end.
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -1243,6 +1253,17 @@ add_active_key(Id, #{id := KekId} = Kek,
 -spec ensure_all_keks_on_disk(#state{}) ->
           {ok, #state{}} | {error, #state{}, list()}.
 ensure_all_keks_on_disk(#state{kek_hashes_on_disk = Vsns} = State) ->
+    {RV, NewVsns} = persist_keks(Vsns),
+    NewState = State#state{kek_hashes_on_disk = NewVsns},
+    case RV of
+        ok -> {ok, NewState};
+        {error, Reason} -> {error, NewState, Reason}
+    end.
+
+-spec persist_keks(Hashes) ->
+          {ok, Hashes} |
+          {{error, term()}, Hashes} when Hashes :: #{secret_id() => integer()}.
+persist_keks(Hashes) ->
     Write = fun (#{type := ?GENERATED_KEY_TYPE} = SecretProps)  ->
                     ensure_generated_keks_on_disk(SecretProps);
                 (#{type := ?AWSKMS_KEY_TYPE} = SecretProps) ->
@@ -1255,26 +1276,21 @@ ensure_all_keks_on_disk(#state{kek_hashes_on_disk = Vsns} = State) ->
 
     {ok, AllSecrets} = topologically_sorted_secrets(get_all()),
 
-    {RV, NewVsns} = lists:mapfoldl(
-                      fun (#{id := Id} = S, Acc) ->
-                          Old = maps:get(Id, Acc, undefined),
-                          case erlang:phash2(S, ?MAX_PHASH2_RANGE) of
-                              Old -> {{Id, ok}, Acc};
-                              New ->
-                                 case Write(S) of
-                                     ok -> {{Id, ok}, Acc#{Id => New}};
-                                     {error, _} = E -> {{Id, E}, Acc}
-                                 end
-                          end
-                      end, Vsns, AllSecrets),
+    {RV, NewHashes} = lists:mapfoldl(
+                        fun (#{id := Id} = S, Acc) ->
+                            Old = maps:get(Id, Acc, undefined),
+                            case erlang:phash2(S, ?MAX_PHASH2_RANGE) of
+                                Old -> {{Id, ok}, Acc};
+                                New ->
+                                   case Write(S) of
+                                       ok -> {{Id, ok}, Acc#{Id => New}};
+                                       {error, _} = E -> {{Id, E}, Acc}
+                                   end
+                            end
+                        end, Hashes, AllSecrets),
 
-    IdsDoNotExist = maps:keys(NewVsns) -- proplists:get_keys(RV),
-    NewState = State#state{kek_hashes_on_disk = maps:without(IdsDoNotExist,
-                                                             NewVsns)},
-    case misc:many_to_one_result(RV) of
-        ok -> {ok, NewState};
-        {error, Reason} -> {error, NewState, Reason}
-    end.
+    IdsDoNotExist = maps:keys(NewHashes) -- proplists:get_keys(RV),
+    {misc:many_to_one_result(RV), maps:without(IdsDoNotExist, NewHashes)}.
 
 -spec ensure_generated_keks_on_disk(secret_props()) -> ok | {error, list()}.
 ensure_generated_keks_on_disk(#{type := ?GENERATED_KEY_TYPE, id := SecretId,
@@ -1854,85 +1870,106 @@ deks_file_path() ->
 -spec maybe_read_deks(#state{}) -> #state{}.
 maybe_read_deks(#state{proc_type = ?NODE_PROC,
                        deks_info = undefined} = State) ->
-    #state{deks_info = Deks} = NewState = read_all_deks(State),
-    Kinds = maps:keys(Deks),
+    {KekPushHashes, Deks, Errors} = init_deks(),
 
-    {ok, NewState2} =
-        case ensure_all_keks_on_disk(NewState) of
-            {ok, _State} = Value ->
-                Value;
-            {error, UpdatedState, Reason} ->
-                %% Some Keks may have been written so we use the updated state
-                %% Some Keks that can't be written may be unused so we continue
-                %% to try to rencrypt deks even on a failure here
-                ?log_error("Failed to write all keks to disk: ~p", [Reason]),
-                {ok, UpdatedState}
-        end,
+    case Errors of
+        [] -> ok;
+        _ -> ?log_error("Init deks errors:~n~p", [Errors])
+    end,
 
-    NewState3 = lists:foldl(
-                  fun (K, Acc) ->
-                      {ok, NewAcc} = maybe_reencrypt_deks(K, Acc),
-                      NewAcc
-                  end, NewState2, Kinds),
+    NewState = State#state{deks_info = Deks,
+                           kek_hashes_on_disk = KekPushHashes},
+
     ok = garbage_collect_keks(),
     encryption_service:cleanup_retired_keys(),
 
     %% We should rotate here (when process is starting) because we can
     %% hypothetically crash after calling set_active() but before calling
     %% maybe_rotate_integrity_tokens() below
-    case NewState3 of
+    case NewState of
         #state{deks_info = #{configDek := #{is_enabled := true,
                                         active_id := ActiveId}}} ->
-            ok = maybe_rotate_integrity_tokens(configDek, ActiveId, NewState3);
+            ok = maybe_rotate_integrity_tokens(configDek, ActiveId, NewState);
         #state{deks_info = #{configDek := #{is_enabled := false}}} ->
-            ok = maybe_rotate_integrity_tokens(configDek, undefined, NewState3);
+            ok = maybe_rotate_integrity_tokens(configDek, undefined, NewState);
         #state{} ->
             ok
     end,
-    add_jobs([{maybe_update_deks, K} || K <- Kinds], NewState3);
+    Kinds = maps:keys(Deks),
+    add_jobs([{maybe_update_deks, K} || K <- Kinds], NewState);
 maybe_read_deks(#state{} = State) ->
     State.
 
--spec read_all_deks(#state{}) -> #state{}.
-read_all_deks(#state{} = State) ->
+-spec init_deks() -> {#{secret_id() => integer()},
+                      #{cb_deks:dek_kind() => deks_info()},
+                      [term()]}.
+init_deks() ->
+    Deks = read_all_deks(),
+    KekPushHashes =
+        case persist_keks(#{}) of
+            {ok, H} -> H;
+            {{error, Reason}, H} ->
+                %% Some Keks may have been written so we use the updated state
+                %% Some Keks that can't be written may be unused so we continue
+                %% to try to rencrypt deks even on a failure here
+                ?log_error("Failed to write all keks to disk: ~p", [Reason]),
+                H
+        end,
+
+    {ReencryptedDeksList, Errors} =
+        lists:mapfoldl(
+          fun ({Kind, KindDeks}, Acc) ->
+              case reencrypt_deks(Kind, KindDeks) of
+                  no_change ->
+                      {{Kind, KindDeks}, Acc};
+                  {changed, NewKindDeks, Errors} ->
+                      {{Kind, NewKindDeks}, Errors ++ Acc};
+                  {error, Error} ->
+                      {{Kind, KindDeks}, [Error | Acc]}
+              end
+          end, [], maps:to_list(Deks)),
+
+    ReencryptedDeks = maps:from_list(ReencryptedDeksList),
+    {KekPushHashes, ReencryptedDeks, Errors}.
+
+-spec read_all_deks() -> #{cb_deks:dek_kind() => deks_info()}.
+read_all_deks() ->
     GetCfgDek = encryption_service:read_dek(configDek, _),
     VerifyMac = fun encryption_service:verify_mac/2,
     {ok, Term} = cb_deks_raw_utils:read_deks_file(deks_file_path(), GetCfgDek,
                                                   VerifyMac),
 
-    Deks = maps:filtermap(
-             fun (Kind, #{is_enabled := IsEnabled,
-                          active_id := ActiveId,
-                          dek_ids := DekIds}) ->
-                 Snapshot = deks_config_snapshot(Kind),
-                 case call_dek_callback(encryption_method_callback, Kind,
-                                        [Snapshot]) of
-                     {succ, {ok, _}} ->
-                         Keys = cb_deks:read(Kind, DekIds),
-                         {true, new_dek_info(Kind, ActiveId, Keys,
-                                             IsEnabled)};
-                     {succ, {error, not_found}} ->
-                         false
-                 end
-             end, Term),
-    State#state{deks_info = Deks}.
+    maps:filtermap(
+      fun (Kind, #{is_enabled := IsEnabled,
+                  active_id := ActiveId,
+                  dek_ids := DekIds}) ->
+          Snapshot = deks_config_snapshot(Kind),
+          case call_dek_callback(encryption_method_callback, Kind,
+                              [Snapshot]) of
+              {succ, {ok, _}} ->
+                  Keys = cb_deks:read(Kind, DekIds),
+                  {true, new_dek_info(Kind, ActiveId, Keys,
+                                      IsEnabled)};
+              {succ, {error, not_found}} ->
+                  false
+          end
+      end, Term).
 
-
--spec reread_deks(cb_deks:dek_kind(), [cb_deks:dek_id()], #state{}) -> #state{}.
-reread_deks(Kind, ChangedIds, #state{deks_info = DeksInfo} = State) ->
-    #{Kind := #{deks := CurDeks} = KindDeks} = DeksInfo,
+-spec reread_deks(cb_deks:dek_kind(), [cb_deks:dek_id()], deks_info()) ->
+          deks_info().
+reread_deks(Kind, ChangedIds, #{deks := CurDeks} = KindDeks) ->
     NewDeks =
         lists:map(
-          fun (#{id := DekId} = OldK) ->
-              case lists:member(DekId, ChangedIds) of
-                  true ->
-                      {ok, NewK} = encryption_service:read_dek(Kind, DekId),
-                      NewK;
-                  false ->
-                      OldK
-              end
-          end, CurDeks),
-    State#state{deks_info = DeksInfo#{Kind => KindDeks#{deks => NewDeks}}}.
+            fun (#{id := DekId} = OldK) ->
+                case lists:member(DekId, ChangedIds) of
+                    true ->
+                        {ok, NewK} = encryption_service:read_dek(Kind, DekId),
+                        NewK;
+                    false ->
+                        OldK
+                end
+            end, CurDeks),
+    KindDeks#{deks => NewDeks}.
 
 -spec new_dek_info(cb_deks:dek_kind(), undefined | cb_deks:dek_id(),
                    [cb_deks:dek()], boolean()) -> deks_info().
@@ -1997,8 +2034,27 @@ generate_new_dek(Kind, CurrentDeks, EncryptionMethod, Snapshot) ->
 -spec maybe_reencrypt_deks(cb_deks:dek_kind(), #state{}) ->
           {ok, #state{}} | {error, #state{}, term()}.
 maybe_reencrypt_deks(Kind, #state{deks_info = Deks} = State) ->
+    case maps:find(Kind, Deks) of
+        {ok, KindDeks} ->
+            case reencrypt_deks(Kind, KindDeks) of
+                no_change -> {ok, State};
+                {changed, NewKindDeks, Errors} ->
+                    NewState =
+                        State#state{deks_info = Deks#{Kind => NewKindDeks}},
+                    NewState2 = on_deks_update(Kind, NewState),
+                    case Errors of
+                        [] -> {ok, NewState2};
+                        _ -> {error, NewState2, Errors}
+                    end;
+                {error, Errors} ->
+                    {error, State, Errors}
+            end;
+        error ->
+            {ok, State}
+    end.
+
+reencrypt_deks(Kind, #{deks := Keys} = DeksInfo) ->
     maybe
-        {ok, #{deks := Keys}} ?= maps:find(Kind, Deks),
         Snapshot = deks_config_snapshot(Kind),
         {succ, {ok, EncrMethod}} ?= call_dek_callback(
                                       encryption_method_callback,
@@ -2009,22 +2065,15 @@ maybe_reencrypt_deks(Kind, #state{deks_info = Deks} = State) ->
                    [Kind, Keys, EncrMethod, RV]),
         case RV of
             no_change ->
-                {ok, State};
+                no_change;
             {changed, ChangedIds, Errors} ->
-                NewState = on_deks_update(Kind,
-                                          reread_deks(Kind, ChangedIds, State)),
-                case Errors of
-                    [] -> {ok, NewState};
-                    _ -> {error, NewState, Errors}
-                end;
+                {changed, reread_deks(Kind, ChangedIds, DeksInfo), Errors};
             {error, Error} ->
-                {error, State, Error}
+                {error, Error}
         end
     else
-        error ->
-            {ok, State};
         {succ, {error, not_found}} ->
-            {ok, State}
+            no_change
     end.
 
 -spec deks_config_snapshot(cb_deks:dek_kind()) -> chronicle_snapshot().
