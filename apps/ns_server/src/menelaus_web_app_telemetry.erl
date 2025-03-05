@@ -59,9 +59,10 @@ params() ->
         cfg_key => max_scrape_clients_per_node,
         default => ?APP_TELEMETRY_MAX_CLIENTS_PER_NODE}},
      {"scrapeIntervalSeconds",
-      #{type => {num, 60, 600},
+      #{type => {num, ?APP_TELEMETRY_MIN_SCRAPE_INTERVAL_SECONDS,
+                 ?APP_TELEMETRY_MAX_SCRAPE_INTERVAL_SECONDS},
         cfg_key => scrape_interval_seconds,
-        default => ?APP_TELEMETRY_SCRAPE_INTERVAL}}].
+        default => ?APP_TELEMETRY_DEFAULT_SCRAPE_INTERVAL_SECONDS}}].
 
 -spec get_config() -> proplists:proplist().
 get_config() ->
@@ -79,7 +80,7 @@ get_max_clients_per_node(Config) ->
 -spec get_scrape_interval(proplists:proplist()) -> integer().
 get_scrape_interval(Config) ->
     proplists:get_value(scrape_interval_seconds, Config,
-                        ?APP_TELEMETRY_SCRAPE_INTERVAL).
+                        ?APP_TELEMETRY_DEFAULT_SCRAPE_INTERVAL_SECONDS).
 
 -spec is_accepting_connections() -> boolean().
 is_accepting_connections() ->

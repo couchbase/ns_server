@@ -666,6 +666,14 @@ conf(internal) ->
         fun get_string/1}
       ]
      },
+     {app_telemetry_min_scrape_interval_seconds,
+      appTelemetryMinScrapeIntervalSeconds,
+      ?APP_TELEMETRY_MIN_SCRAPE_INTERVAL_SECONDS,
+      get_number(1, infinity)},
+     {app_telemetry_max_scrape_interval_seconds,
+      appTelemetryMaxScrapeIntervalSeconds,
+      ?APP_TELEMETRY_MAX_SCRAPE_INTERVAL_SECONDS,
+      get_number(1, infinity)},
      {argon2id_time_internal, argon2idTime, ?DEFAULT_ARG2ID_TIME,
       get_number(?ARGON_TIME_MIN, ?ARGON_TIME_MAX)},
      {argon2id_mem_internal, argon2idMem, ?DEFAULT_ARG2ID_MEM,

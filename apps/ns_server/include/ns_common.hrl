@@ -454,7 +454,15 @@
 -define(APP_TELEMETRY_ENABLED, false).
 -define(APP_TELEMETRY_PATH, "_appTelemetry").
 -define(APP_TELEMETRY_MAX_CLIENTS_PER_NODE, 1024).
--define(APP_TELEMETRY_SCRAPE_INTERVAL, 60).
+-define(APP_TELEMETRY_MIN_SCRAPE_INTERVAL_SECONDS,
+        ns_config:search_node_with_default(
+          app_telemetry_min_scrape_interval_seconds,
+          60)).
+-define(APP_TELEMETRY_MAX_SCRAPE_INTERVAL_SECONDS,
+        ns_config:search_node_with_default(
+          app_telemetry_max_scrape_interval_seconds,
+          600)).
+-define(APP_TELEMETRY_DEFAULT_SCRAPE_INTERVAL_SECONDS, 60).
 
 
 -define(call_on_ns_server_node(Body, Args),
