@@ -791,26 +791,31 @@ do_handle_call({mark_warmed, DataIngress}, _From,
     RV = ns_memcached:mark_warmed(Bucket, DataIngress),
     ok = ns_bucket:activate_bucket_data_on_this_node(Bucket),
     {reply, RV, State};
-do_handle_call({mount_volumes, VBuckets, Volumes}, _From,
+do_handle_call({mount_volumes, VBuckets, Volumes}, From,
                #state{bucket_name = Bucket} = State) ->
-    RV =
-        [{VB, ns_memcached:mount_fusion_vbucket(Bucket, VB, Volumes)} ||
-            VB <- VBuckets],
-    Bad = lists:filter(fun ({_, {ok, _}}) ->
-                               false;
-                           ({VB, Error}) ->
-                               ?log_error("Mounting volumes ~p for vbucket ~p, "
-                                          "bucket ~p failed with ~p",
-                                          [Volumes, VB, Bucket, Error]),
-                               true
-                       end, RV),
-    RV1 = case Bad of
-              [] ->
-                  ok;
-              _ ->
-                  {error, mount_volumes_failed}
-          end,
-    {reply, RV1, State}.
+    spawn_rebalance_subprocess(
+      State, From,
+      fun () ->
+              RV =
+                  [{VB,
+                    ns_memcached:mount_fusion_vbucket(Bucket, VB, Volumes)} ||
+                      VB <- VBuckets],
+              Bad = lists:filter(
+                      fun ({_, {ok, _}}) ->
+                              false;
+                          ({VB, Error}) ->
+                              ?log_error("Mounting volumes ~p for vbucket ~p, "
+                                         "bucket ~p failed with ~p",
+                                         [Volumes, VB, Bucket, Error]),
+                              true
+                      end, RV),
+              case Bad of
+                  [] ->
+                      ok;
+                  _ ->
+                      {error, mount_volumes_failed}
+              end
+      end).
 
 -dialyzer({no_opaque, [handle_call_via_servant/4]}).
 
