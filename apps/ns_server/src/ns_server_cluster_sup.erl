@@ -60,11 +60,6 @@ init([]) ->
             {json_rpc_connection_sup, start_link, []},
             permanent, infinity, supervisor,
             [json_rpc_connection_sup]},
-           restartable:spec(
-             {ns_server_nodes_sup, {ns_server_nodes_sup, start_link, []},
-              permanent, infinity, supervisor, [ns_server_nodes_sup]}),
-           {remote_api, {remote_api, start_link, []},
-            permanent, 1000, worker, [remote_api]},
            {ns_gc_runner, {ns_gc_runner, start_link, []},
             permanent, 1000, worker, [ns_gc_runner]}] ++
               case cgroups:supported() of
@@ -79,7 +74,62 @@ init([]) ->
 
 %% @doc Start ns_server and couchdb
 start_ns_server() ->
-    supervisor:restart_child(?MODULE, ns_server_nodes_sup).
+    %% We don't want to start ns_server automatically because ns_cluster can
+    %% have unfinished cluster join or leave. For this reason, the ns_server
+    %% spec is not added to list of specs above. Ns_cluster adds it to the
+    %% supervisor when it's ready.
+    %% At the same time, during normal startup, remote_api should be started
+    %% after ns_server. For this reason, its spec is added here as well.
+    %% Note that for historical reasons, remote_api doesn't get stopped
+    %% when stop_ns_server is called, so normally after stop & start,
+    %% remote_api will already be running, so we should ignore {error, running}
+    %% for that process.
+    NsServer = {ns_server_nodes_sup, {ns_server_nodes_sup, start_link, []},
+                permanent, infinity, supervisor, [ns_server_nodes_sup]},
+    RemoteAPI = {remote_api, {remote_api, start_link, []},
+                 permanent, 1000, worker, [remote_api]},
+
+    NsServerStartRes = start_child(restartable:spec(NsServer)),
+
+    IsNsServerRunning = case NsServerStartRes of
+                            ok -> true;
+                            {error, running} -> true;
+                            {error, _} -> false
+                        end,
+
+    case IsNsServerRunning of
+        true ->
+            case start_child(RemoteAPI) of
+                ok -> NsServerStartRes;
+                {error, running} -> NsServerStartRes;
+                {error, Error} -> {error, Error}
+            end;
+        false ->
+            NsServerStartRes
+    end.
+
+start_child(Spec) ->
+    case supervisor:start_child(?MODULE, Spec) of
+        {ok, _Child} ->
+            ok;
+        {ok, _Child, _} ->
+            ok;
+        {error, {already_started, _Child}} ->
+            %% to match the behavior of restart_child below
+            {error, running};
+        {error, already_present} ->
+            Name = element(1, Spec),
+            case supervisor:restart_child(?MODULE, Name) of
+                {ok, _Child} ->
+                    ok;
+                {ok, _Child, _} ->
+                    ok;
+                {error, Error} ->
+                    {error, Error}
+            end;
+        {error, Error} ->
+            {error, Error}
+    end.
 
 %% @doc Stop ns_server and couchdb
 stop_ns_server() ->
@@ -98,7 +148,14 @@ stop_ns_server() ->
                          "This is usually normal.", [{T,E}])
     end,
 
-    supervisor:terminate_child(?MODULE, ns_server_nodes_sup).
+    case supervisor:terminate_child(?MODULE, ns_server_nodes_sup) of
+        ok ->
+            ok;
+        {error, not_found} ->
+            ok;
+        {error, Error} ->
+            {error, Error}
+    end.
 
 restart_ns_server() ->
     restartable:restart(?MODULE, ns_server_nodes_sup).

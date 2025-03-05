@@ -477,7 +477,7 @@ leave_body() ->
     misc:create_marker(start_marker_path()),
     misc:remove_marker(leave_marker_path()),
 
-    {ok, _} = ns_server_cluster_sup:start_ns_server(),
+    ok = ns_server_cluster_sup:start_ns_server(),
     ns_ports_setup:restart_memcached(),
 
     misc:remove_marker(start_marker_path()).
@@ -494,7 +494,7 @@ handle_cast(repair_join, State) ->
 
 handle_cast(retry_start_ns_server, State) ->
     case ns_server_cluster_sup:start_ns_server() of
-        {ok, _} ->
+        ok ->
             ok;
         {error, running} ->
             ?log_warning("ns_server is already running. Ignoring."),
@@ -503,9 +503,22 @@ handle_cast(retry_start_ns_server, State) ->
             exit({failed_to_start_ns_server, Other})
     end,
 
-    ns_ports_setup:restart_memcached(),
-
-    misc:remove_marker(start_marker_path()),
+    %% We have unfinished cluster join or cluster leave.
+    %% We should always restart memcached in those cases, so that
+    %% it can pick up new credentials.
+    case misc:marker_exists(start_marker_path()) of
+        true ->
+            ?log_info("Found marker ~p. "
+                      "Looks like we failed to restart ns_server and memcached"
+                      "after leaving or joining a cluster. "
+                      "Ns_server is running now, but memcached still needs to "
+                      "be restarted. "
+                      "Will restart memcached now.", [start_marker_path()]),
+            ns_ports_setup:restart_memcached(),
+            misc:remove_marker(start_marker_path());
+        false ->
+            ok
+    end,
 
     {noreply, State}.
 
@@ -552,42 +565,33 @@ init([]) ->
             gen_server:cast(Self, leave),
             Subscribe();
         false ->
-            case misc:marker_exists(start_marker_path()) of
+            IsNodeRemoved = chronicle:get_system_state() =:= removed,
+            case misc:marker_exists(join_marker_path()) of
                 true ->
-                    IsNodeRemoved = chronicle:get_system_state() =:= removed,
-                    case misc:marker_exists(join_marker_path()) of
-                        true ->
-                            ?log_info("Found marker ~p. "
-                                      "Looks like we failed in process of "
-                                      "joining cluster. Will restore config "
-                                      "to clean state. ", [join_marker_path()]),
-                            gen_server:cast(Self, repair_join);
-                        false when IsNodeRemoved ->
-                            ?log_info("Node is removed from cluster. "),
-                            %% This can happen if ns_server start fails during
-                            %% join process. The other node (that sends
-                            %% /completeJoin) will remove this
-                            %% node from cluster as soon as it receives the
-                            %% completeJoin response (error).
-                            %% It is possible that if we don't repair_join here
-                            %% ns_cluster will try starting ns_server
-                            %% again and again until it succeeds (only after
-                            %% that it will leave the cluster). The problem is
-                            %% that it may be unable to start ns_server
-                            %% (because chronicle is dead already), so it will
-                            %% be stuck in the loop forever.
-                            gen_server:cast(Self, repair_join);
-                        false ->
-                            ok
-                    end,
                     ?log_info("Found marker ~p. "
-                              "Looks like we failed to restart ns_server "
-                              "after leaving or joining a cluster. "
-                              "Will try again.", [start_marker_path()]),
-                    gen_server:cast(Self, retry_start_ns_server);
+                                "Looks like we failed in process of "
+                                "joining cluster. Will restore config "
+                                "to clean state. ", [join_marker_path()]),
+                    gen_server:cast(Self, repair_join);
+                false when IsNodeRemoved ->
+                    ?log_info("Node is removed from cluster. "),
+                    %% This can happen if ns_server start fails during
+                    %% join process. The other node (that sends
+                    %% /completeJoin) will remove this
+                    %% node from cluster as soon as it receives the
+                    %% completeJoin response (error).
+                    %% It is possible that if we don't repair_join here
+                    %% ns_cluster will try starting ns_server
+                    %% again and again until it succeeds (only after
+                    %% that it will leave the cluster). The problem is
+                    %% that it may be unable to start ns_server
+                    %% (because chronicle is dead already), so it will
+                    %% be stuck in the loop forever.
+                    gen_server:cast(Self, repair_join);
                 false ->
                     ok
             end,
+            gen_server:cast(Self, retry_start_ns_server),
             Subscribe(),
             Self ! check_chronicle_state
     end,
@@ -1673,7 +1677,7 @@ perform_actual_join(RemoteNode, NewCookie, ChronicleInfo) ->
             {error, start_cluster_failed,
              <<"Failed to start ns_server cluster processes back. "
                "Logs might have more details.">>};
-        {ok, _} ->
+        ok ->
             misc:remove_marker(start_marker_path()),
             ?cluster_log(?NODE_JOINED, "Node ~s joined cluster", [node()]),
             {ok, ok}
