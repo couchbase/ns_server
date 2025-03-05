@@ -144,6 +144,16 @@ init([]) ->
                 WantedMcdConfig;
             _ ->
                 ?log_debug("found memcached port to be already active"),
+                %% If ns_server vm gets restarted it can be the case that
+                %% memcached is already running, so global memcached deks
+                %% will not be set. In this case we need to push deks to
+                %% memcached and then set global memcached deks.
+                %% Note that we can't just call set_global_memcached_deks here
+                %% because we don't know what deks are currently in memcached,
+                %% while code assumes that global_memcached_deks is exactly
+                %% what is in memcached.
+                {ok, DS} = cb_crypto:fetch_deks_snapshot(configDek),
+                {ok, _} = maybe_push_config_encryption_key(DS),
                 McdConfig
         end,
 
