@@ -657,6 +657,10 @@ auto_failover_post_network_partition_stale_config(SetupConfig, PidMap) ->
                         setup_node_config(NewNodes),
                         setup_bucket_config(
                           maps:get(buckets, SetupConfig)),
+                        %% TODO, remove this when we work out why we sometimes
+                        %% fail over in this test.
+                        ?log_debug("Continuing test with config ~p",
+                                   [fake_chronicle_kv:get_ets_snapshot()]),
                         ok
                 end),
 
