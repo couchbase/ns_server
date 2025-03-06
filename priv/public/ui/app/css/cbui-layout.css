@@ -156,6 +156,9 @@ footer {
   white-space: normal;
   overflow: visible;
 }
+.line-height-0-7 {
+  line-height: 70% !important;
+}
 .line-height-1 {
   line-height:1!important;
 }

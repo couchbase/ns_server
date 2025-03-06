@@ -26,7 +26,7 @@ licenses/APL2.txt.
          <li>DEK Number: {{vm.encryptionInfo.dekNumber}}</li>
          <li>Oldest DEK Creation Time:
            <span class=\'semi-bold nowrap\'>{{vm.encryptionInfo.oldestDekCreationDatetime | date: 'mediumTime'}}</span>
-           <span>{{vm.encryptionInfo.oldestDekCreationDatetime | date: 'd MMM, y': 'UTC': 'en-US'}}</span>
+           <span>{{vm.encryptionInfo.oldestDekCreationDatetime | date: 'd MMM, y'}}</span>
          </li>
          <li>Encryption Issues: {{vm.hasIssues() ? vm.encryptionInfo.issues.join(', ') : 'no issues'}}</li>
        </ul>

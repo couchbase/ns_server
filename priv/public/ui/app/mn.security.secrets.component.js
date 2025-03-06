@@ -120,8 +120,8 @@ class MnSecuritySecretsComponent extends MnLifeCycleHooksToStream {
   addUiFields(secrets) {
     return secrets.map(secret => {
       secret._uiUsage = this.usageToReadableWords(secret.usage);
-      secret._uiMediumTime = this.datePipe.transform(secret.creationDateTime, 'mediumTime', 'UTC', 'en-US')
-      secret._uiCreationDateTime = this.datePipe.transform(secret.creationDateTime, 'd MMM, y', 'UTC', 'en-US');
+      secret._uiMediumTime = this.datePipe.transform(secret.creationDateTime, 'mediumTime');
+      secret._uiCreationDateTime = this.datePipe.transform(secret.creationDateTime, 'd MMM, y');
       return secret;
     });
   }

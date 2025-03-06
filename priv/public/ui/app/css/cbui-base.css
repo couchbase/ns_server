@@ -1138,6 +1138,9 @@ input .input-short-1,
 .forms input.input-short-1 {
   width: 4rem !important;
 }
+.input-short-0-8 {
+  width: 3rem !important;
+}
 .input-short-half {
   width: 2.5rem !important;
 }
