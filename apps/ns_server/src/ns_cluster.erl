@@ -438,8 +438,8 @@ handle_call({complete_join, NodeKVListThunk}, _From, State) ->
         %% that somebody needs to attempt to start ns_server back; usually
         %% this somebody is ns_cluster:init; so to let it do its job we need
         %% to restart ns_cluster; note that we still reply to the caller
-        {error, start_cluster_failed, _} ->
-            {stop, start_cluster_failed, RV, State};
+        {error, {actual_join_failed, Reason}, _} ->
+            {stop, Reason, RV, State};
         _ ->
             {reply, RV, State}
     end;
@@ -1579,8 +1579,8 @@ get_chronicle_info(KVList) ->
     binary_to_term(base64:decode(
                      proplists:get_value(<<"chronicleInfo">>, KVList))).
 
--spec do_complete_join([{binary(), term()}]) -> {ok, ok} | {error, atom(),
-                                                            binary()}.
+-spec do_complete_join([{binary(), term()}]) ->
+          {ok, ok} | {error, atom() | {actual_join_failed, atom()}, binary()}.
 do_complete_join(NodeKVList) ->
     try
         OtpNode = expect_json_property_atom(<<"otpNode">>, NodeKVList),
@@ -1607,81 +1607,90 @@ do_complete_join(NodeKVList) ->
 
 
 perform_actual_join(RemoteNode, NewCookie, ChronicleInfo) ->
-    ?cluster_log(0002, "Node ~p is joining cluster via node ~p.",
-                 [node(), RemoteNode]),
-    %% let ns_memcached know that we don't need to preserve data at all
-    ns_config:set(i_am_a_dead_man, true),
+    maybe
+        ?cluster_log(0002, "Node ~p is joining cluster via node ~p.",
+                    [node(), RemoteNode]),
+        %% let ns_memcached know that we don't need to preserve data at all
+        ns_config:set(i_am_a_dead_man, true),
 
-    %% Pull the rug out from under the app
-    misc:create_marker(start_marker_path()),
-    ok = ns_server_cluster_sup:stop_ns_server(),
-    ns_log:delete_log(),
+        %% Pull the rug out from under the app
+        misc:create_marker(start_marker_path()),
+        ok = ns_server_cluster_sup:stop_ns_server(),
+        ns_log:delete_log(),
 
-    ?cluster_debug("ns_cluster: joining cluster. Child has exited.", []),
-    misc:create_marker(join_marker_path()),
+        ?cluster_debug("ns_cluster: joining cluster. Child has exited.", []),
+        misc:create_marker(join_marker_path()),
 
-    menelaus_users:delete_storage_offline(),
-    ns_cluster_membership:prepare_to_join(RemoteNode, NewCookie),
+        menelaus_users:delete_storage_offline(),
+        ns_cluster_membership:prepare_to_join(RemoteNode, NewCookie),
 
-    ok = chronicle_local:prepare_join(ChronicleInfo),
+        ok = chronicle_local:prepare_join(ChronicleInfo),
 
-    %% reload is needed to reinitialize ns_config's cache after
-    %% config cleanup ('erase' causes the problem, but it looks like
-    %% it's not worth it to add proper 'erase' support to ns_config)
-    ns_config:reload(),
-    ns_config:merge_dynamic_and_static(),
-    ?cluster_debug("pre-join cleaned config is:~n~p",
-                   [ns_config_log:sanitize(ns_config:get())]),
+        %% reload is needed to reinitialize ns_config's cache after
+        %% config cleanup ('erase' causes the problem, but it looks like
+        %% it's not worth it to add proper 'erase' support to ns_config)
+        ns_config:reload(),
+        ns_config:merge_dynamic_and_static(),
+        ?cluster_debug("pre-join cleaned config is:~n~p",
+                    [ns_config_log:sanitize(ns_config:get())]),
 
-    {ok, _Cookie} = ns_cookie_manager:cookie_sync(),
-    %% Let's verify connectivity.
+        {ok, _Cookie} = ns_cookie_manager:cookie_sync(),
+        %% Let's verify connectivity.
 
-    Connected =
-        misc:poll_for_condition(
-          fun () ->
-                  ?log_debug("Trying to connect to node ~p...", [RemoteNode]),
-                  case catch net_kernel:connect_node(RemoteNode) of
-                      true -> true;
-                      Res ->
-                          ?log_error("Connect to node ~p failed: ~p",
-                                     [RemoteNode, Res]),
-                          false
-                  end
-          end, 10000, 500),
+        Connected =
+            misc:poll_for_condition(
+            fun () ->
+                    ?log_debug("Trying to connect to node ~p...", [RemoteNode]),
+                    case catch net_kernel:connect_node(RemoteNode) of
+                        true -> true;
+                        Res ->
+                            ?log_error("Connect to node ~p failed: ~p",
+                                        [RemoteNode, Res]),
+                            false
+                    end
+            end, 10000, 500),
 
-    ?cluster_debug("Connection from ~p to ~p:  ~p",
-                   [node(), RemoteNode, Connected]),
+        ?cluster_debug("Connection from ~p to ~p:  ~p",
+                    [node(), RemoteNode, Connected]),
 
-    ok = chronicle_local:join_cluster(ChronicleInfo),
+        ok = chronicle_local:join_cluster(ChronicleInfo),
 
-    ok = cb_cluster_secrets:reencrypt_deks(),
+        {_, ok} ?= {reencrypt_deks, cb_cluster_secrets:reencrypt_deks()},
 
-    %% Make sure that latest timestamps are published synchronously.
-    tombstone_agent:refresh(),
+        %% Make sure that latest timestamps are published synchronously.
+        tombstone_agent:refresh(),
 
-    ok = ns_config_rep:pull_from_one_node_directly(RemoteNode),
-    ?cluster_debug("pre-join merged config is:~n~p",
-                   [ns_config_log:sanitize(ns_config:get())]),
+        ok = ns_config_rep:pull_from_one_node_directly(RemoteNode),
+        ?cluster_debug("pre-join merged config is:~n~p",
+                    [ns_config_log:sanitize(ns_config:get())]),
 
-    %% New cluster's epoch overwrites "old" cluster's epoch,
-    %% but this node cert still contains epoch from the "old" cluster,
-    %% which is wrong. Reset it to the value from new cluster.
-    ns_ssl_services_setup:update_certs_epoch(),
+        %% New cluster's epoch overwrites "old" cluster's epoch,
+        %% but this node cert still contains epoch from the "old" cluster,
+        %% which is wrong. Reset it to the value from new cluster.
+        ns_ssl_services_setup:update_certs_epoch(),
 
-    misc:remove_marker(join_marker_path()),
+        misc:remove_marker(join_marker_path()),
 
-    ?cluster_debug("Join succeded, starting ns_server_cluster back", []),
-    case ns_server_cluster_sup:start_ns_server() of
-        {error, _} = Error ->
+        ?cluster_debug("Join succeded, starting ns_server_cluster back", []),
+        {_, ok} ?= {start_server, ns_server_cluster_sup:start_ns_server()},
+        misc:remove_marker(start_marker_path()),
+        ?cluster_log(?NODE_JOINED, "Node ~s joined cluster", [node()]),
+        {ok, ok}
+    else
+        {Type, {error, Error}} ->
             ?cluster_error("Failed to join cluster because of: ~p", [Error]),
-            {error, start_cluster_failed,
-             <<"Failed to start ns_server cluster processes back. "
-               "Logs might have more details.">>};
-        ok ->
-            misc:remove_marker(start_marker_path()),
-            ?cluster_log(?NODE_JOINED, "Node ~s joined cluster", [node()]),
-            {ok, ok}
+            {ErrorTerm, ErrorMsg} = format_actual_join_error(Type, Error),
+            {error, {actual_join_failed, ErrorTerm}, ErrorMsg}
     end.
+
+format_actual_join_error(start_server, _Error) ->
+    {start_cluster_failed,
+     <<"Failed to start ns_server cluster processes back. "
+       "Logs might have more details.">>};
+format_actual_join_error(reencrypt_deks, _Error) ->
+    {reencrypt_deks_failed,
+     <<"Failed to reencrypt some encryption-at-rest keys. "
+       "Logs might have more details.">>}.
 
 perform_leave() ->
     chronicle_local:leave_cluster(),
