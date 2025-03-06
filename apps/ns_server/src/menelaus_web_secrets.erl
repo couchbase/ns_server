@@ -517,6 +517,8 @@ validate_awskm_arn(Name, State) ->
     validator:validate(
       fun ("TEST_AWS_KEY_ARN") ->
               ok;
+          ("TEST_AWS_BAD_KEY_ARN") ->
+              ok;
           (Arn) ->
               case string:split(Arn, ":", all) of
                   ["arn", _Partition, "kms", _Region, _Acc, "key/" ++ _Id] ->

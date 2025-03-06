@@ -1333,6 +1333,10 @@ func (k *awsStoredKey) encryptData(data, AD []byte) ([]byte, error) {
 		zero_key := make([]byte, 32)
 		return aesgcmEncrypt(zero_key, data, AD), nil
 	}
+	if k.KeyArn == "TEST_AWS_BAD_KEY_ARN" {
+		return nil, fmt.Errorf("test encryption error")
+	}
+
 	opts := awsutils.AwsConfigOpts{
 		Region:     k.Region,
 		ConfigFile: k.ConfigFile,
@@ -1351,6 +1355,9 @@ func (k *awsStoredKey) decryptData(data, AD []byte) ([]byte, error) {
 		logDbg("Decrypting data using test key")
 		zero_key := make([]byte, 32)
 		return aesgcmDecrypt(zero_key, data, AD)
+	}
+	if k.KeyArn == "TEST_AWS_BAD_KEY_ARN" {
+		return nil, fmt.Errorf("test decryption error")
 	}
 	opts := awsutils.AwsConfigOpts{
 		Region:     k.Region,

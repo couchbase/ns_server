@@ -1025,6 +1025,47 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Rebalance to complete node addition
         self.cluster.rebalance(wait=True, verbose=True)
 
+    def add_node_when_kek_is_unavailable_test(self):
+        bad_secret = aws_test_secret(usage=['config-encryption'],
+                                     should_work=False)
+        bad_aws_secret_id = create_secret(self.random_node(), bad_secret)
+
+        # Trying to use bad AWS secret for encryption
+        # This node will keep trying to reencrypt DEKs, which is ok
+        set_cfg_encryption(self.cluster, 'encryptionKey', bad_aws_secret_id)
+
+        node_to_remove = self.cluster.connected_nodes[-1]
+        original_services = node_to_remove.get_services()
+
+        # Remove the node
+        self.cluster.rebalance(ejected_nodes=[node_to_remove], wait=True,
+                               verbose=True)
+        # Cluster is using bad secret for encryption, and its DEKs can't be
+        # reencrypted. However, when this node leaves the cluster, it stops
+        # using cluster secrets, switches to encryption service (default), and
+        # reencrypts its DEKs.
+        self.cluster.wait_nodes_up(verbose=True)
+
+        # When node is removed, it's config gets wiped out
+        set_min_timer_interval(node_to_remove, min_timer_interval)
+
+        # Add the node back
+        # During addition, the new node should encrypt its DEKs using cluster
+        # secrets, but it will fail because current secret for cfg is bad.
+        r = self.cluster.add_node(node_to_remove, services=original_services,
+                                  expected_code=400, verbose=True)
+        self.cluster.wait_nodes_up(verbose=True)
+        testlib.assert_in('Failed to reencrypt some encryption-at-rest keys',
+                          r.text)
+
+        # Don't use bad secret for cfg encryption anymore...
+        set_cfg_encryption(self.cluster, 'nodeSecretManager', -1)
+        # ... and try again, this time addition should succeed
+        self.cluster.add_node(node_to_remove, services=original_services,
+                              verbose=True)
+        # Rebalance to complete node addition
+        self.cluster.rebalance(wait=True, verbose=True)
+
     def node_failover_and_add_back_delta_test(self):
         self.node_failover_and_add_back_base(recovery_type="delta")
 
@@ -1533,16 +1574,21 @@ def auto_generated_secret(name=None,
 # This secret does not actually go to aws when asked encrypt or decrypt data.
 # All AWS secrets with special ARN=TEST_AWS_KEY_ARN simply encrypt data using
 # dummy key.
-def aws_test_secret(name=None, usage=None):
+def aws_test_secret(name=None, usage=None, should_work=True):
     if usage is None:
         usage = ['bucket-encryption', 'KEK-encryption']
     if name is None:
         name = f'Test secret {testlib.random_str(5)}'
 
+    if should_work:
+        key_arn = 'TEST_AWS_KEY_ARN'
+    else:
+        key_arn = 'TEST_AWS_BAD_KEY_ARN'
+
     return {'name': name,
             'type': 'awskms-aes-key-256',
             'usage': usage,
-            'data': {'keyARN': 'TEST_AWS_KEY_ARN'}}
+            'data': {'keyARN': key_arn}}
 
 
 def get_secret(cluster, secret_id, expected_code=200, auth=None):
