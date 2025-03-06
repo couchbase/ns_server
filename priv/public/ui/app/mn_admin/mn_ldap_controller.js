@@ -114,7 +114,7 @@ function mnLDAPController($scope, mnUserRolesService, mnPromiseHelper, mnPoolDef
       vm.config.connect.clientTLSKey = config.clientTLSKey || "";
       vm.isCertLoaded = !!config.clientTLSCert;
     });
-    $scope.$watch("addLdapDialogCtl.config.authentication.userDNMapping.advanced", validateUserDNMappingAdvanced)
+    $scope.$watch("mnLDAPCtl.config.authentication.userDNMapping.advanced", validateUserDNMappingAdvanced)
   }
 
   function maybeSetUserDNMappingError(error) {
