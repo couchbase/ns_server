@@ -2189,6 +2189,15 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
                       "sigar_port.log", "sigar_port.1.log", "sigar_port.2.log",
                       "sigar_port.3.log"]],
 
+        [AllOsTask("Rebalance Report (%s)" % os.path.basename(path),
+                   "cbbrowse_logs %s %s" % (os.path.basename(path),
+                                            cbbrowse_static_args),
+                   to_stdin=master_password,
+                   addenv=[("REPORT_DIR", rebdir)],
+                   log_file="%s" % os.path.basename(path),
+                   no_header=True)
+         for path in glob.glob(os.path.join(rebdir, "rebalance_report*"))],
+
         [AllOsTask("couchbase logs (memcached.log)",
                    "cbbrowse_logs memcached.log %s" % cbbrowse_static_args,
                    to_stdin=master_password,
@@ -2290,9 +2299,6 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
         CollectFileTask(
             "Dist configuration (dist_cfg)", read_guts(
                 guts, "dist_cfg_path")),
-
-        [CollectFileTask("Rebalance Report: %s" % path, path)
-         for path in glob.glob(os.path.join(rebdir, "rebalance_report*"))],
 
         CollectFileTask("NS Log", read_guts(guts, "ns_log_path")),
         CollectFileTask("Event Logs", read_guts(guts, "event_log_path")),
