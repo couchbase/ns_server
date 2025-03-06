@@ -159,7 +159,7 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
       errors.groupsQuery = usersAttrsError;
     }
     if (!data.groupsQueryUser) {
-      errors.groupsQueryUser = "The filed is mandatory";
+      errors.groupsQueryUser = "The field is mandatory";
     }
     if (Object.keys(errors).length) {
       return $q.reject(errors);

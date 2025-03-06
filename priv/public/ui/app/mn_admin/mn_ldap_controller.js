@@ -19,9 +19,9 @@ export default "mnLDAP";
 
 angular
   .module("mnLDAP", [mnUserRolesService, mnPromiseHelper, mnPoolDefault])
-  .controller("mnLDAPController", ["$scope", "mnUserRolesService", "mnPromiseHelper", "mnPoolDefault", mnLDAPController]);
+  .controller("mnLDAPController", ["$scope", "mnUserRolesService", "mnPromiseHelper", "mnPoolDefault", "mnHelper", mnLDAPController]);
 
-function mnLDAPController($scope, mnUserRolesService, mnPromiseHelper, mnPoolDefault) {
+function mnLDAPController($scope, mnUserRolesService, mnPromiseHelper, mnPoolDefault, mnHelper) {
   var vm = this;
 
   vm.config = {
@@ -85,7 +85,9 @@ function mnLDAPController($scope, mnUserRolesService, mnPromiseHelper, mnPoolDef
   vm.removeGroupsQueryErrors = removeGroupsQueryErrors;
   vm.maybeDisableClientCert = maybeDisableClientCert;
   vm.mnPoolDefault = mnPoolDefault;
+  vm.reloadState = mnHelper.reloadState;
   activate();
+
 
   function activate() {
     mnUserRolesService.getLdapSettings().then(function (resp) {

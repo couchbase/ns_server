@@ -20,7 +20,7 @@ licenses/APL2.txt.
     <div class="margin-top-1 forms margin-bottom-1">
 
       <div class="row items-top relative">
-        <div style="width: 476px;">
+        <div style="width: 476px; margin-bottom: 3rem;">
           <div ng-click="sectFocus = 'LDAP';" class="margin-bottom-2">
             <h3>LDAP Host Configuration</h3>
 
@@ -372,7 +372,7 @@ licenses/APL2.txt.
                     <label class="inline">Filter</label>
                     <span
                       class="fa-stack icon-info"
-                      uib-tooltip-html="'Filter as defined in <a href=\'https://tools.ietf.org/search/rfc4515#section-3\' target=\'_blank\' rel=\'noopener noreferrer\'>RFC 4515</a>'"
+                      uib-tooltip-html="'Filter as defined in <a href=\'https://datatracker.ietf.org/doc/rfc4515\' target=\'_blank\' rel=\'noopener noreferrer\'>RFC 4515</a>'"
                       tooltip-placement="auto top"
                       tooltip-append-to-body="true">
                      <span class="icon fa-circle-thin fa-stack-2x"></span>
@@ -569,7 +569,7 @@ licenses/APL2.txt.
                   <label class="inline">Filter</label>
                   <span
                     class="fa-stack icon-info"
-                    uib-tooltip-html="'Filter as defined in <a href=\'https://tools.ietf.org/search/rfc4515#section-3\' target=\'_blank\' rel=\'noopener noreferrer\'>RFC 4515</a>'"
+                    uib-tooltip-html="'Filter as defined in <a href=\'https://datatracker.ietf.org/doc/rfc4515\' target=\'_blank\' rel=\'noopener noreferrer\'>RFC 4515</a>'"
                     tooltip-placement="auto top"
                     tooltip-append-to-body="true">
                    <span class="icon fa-circle-thin fa-stack-2x"></span>
@@ -862,7 +862,7 @@ licenses/APL2.txt.
         </span>
       </span>
       <span class="row margin-left-3">
-        <a class="margin-right-2 text-medium" ng-click="$dismiss()">Cancel</a>
+        <a class="margin-right-2 text-medium" ng-click="mnLDAPCtl.reloadState()">Cancel</a>
         <button type="submit">Save LDAP Configuration</button>
       </span>
     </footer>
