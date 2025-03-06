@@ -2026,8 +2026,7 @@ def drop_config_deks_for_node(node):
 
 def drop_bucket_deks_and_verify_dek_info(cluster, bucket):
     drop_time = datetime.now(timezone.utc).replace(microsecond=0)
-    for node in cluster.connected_nodes:
-        drop_bucket_keys(node, bucket)
+    drop_bucket_keys(cluster, bucket)
 
     for node in cluster.connected_nodes:
         if node.get_cluster_membership() == 'active' and \
