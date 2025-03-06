@@ -1025,6 +1025,19 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Rebalance to complete node addition
         self.cluster.rebalance(wait=True, verbose=True)
 
+    def restart_cluster_with_bad_secret_test(self):
+        # When unavailable KEK is used for cfg encryption, cluster will
+        # fail to start, but if that KEK hasn't been used yet, the cluster
+        # should start successfully.
+        # Basically this test verifies that problems with DEK reencryption
+        # don't prevent cluster from starting. Config DEKs should be readable
+        # and decryptable, this goes without saying.
+        bad_secret = aws_test_secret(usage=['config-encryption'],
+                                     should_work=False)
+        bad_aws_secret_id = create_secret(self.random_node(), bad_secret)
+        set_cfg_encryption(self.cluster, 'encryptionKey', bad_aws_secret_id)
+        self.cluster.restart()
+
     def add_node_when_kek_is_unavailable_test(self):
         bad_secret = aws_test_secret(usage=['config-encryption'],
                                      should_work=False)
