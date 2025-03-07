@@ -3353,24 +3353,10 @@ do_parse_validate_eviction_policy(Params, _BCfg, false = _IsEphemeral, IsNew,
                           Default, IsNew,
                           fun parse_validate_membase_eviction_policy/1);
 do_parse_validate_eviction_policy(Params, _BCfg, true = _IsEphemeral,
-                                  true = IsNew, _IsMagma) ->
+                                  IsNew, _IsMagma) ->
     validate_with_missing(proplists:get_value("evictionPolicy", Params),
                           "noEviction", IsNew,
-                          fun parse_validate_ephemeral_eviction_policy/1);
-do_parse_validate_eviction_policy(Params, BCfg, true = _IsEphemeral,
-                                  false = _IsNew, _IsMagma) ->
-    case proplists:get_value("evictionPolicy", Params) of
-        undefined ->
-            ignore;
-        Val ->
-            case build_eviction_policy(BCfg) =:= list_to_binary(Val) of
-                true ->
-                    ignore;
-                false ->
-                    {error, evictionPolicy,
-                     <<"Eviction policy cannot be updated for ephemeral buckets">>}
-            end
-    end.
+                          fun parse_validate_ephemeral_eviction_policy/1).
 
 parse_validate_membase_eviction_policy("valueOnly") ->
     {ok, eviction_policy, value_only};
@@ -5800,4 +5786,41 @@ num_replicas_guardrail_validation_test_() ->
                          old_num_replicas => 1,
                          new_num_replicas => 1}))}]}.
 
+parse_validate_ephemeral_eviction_policy_test() ->
+    ParamsEphemeral = [{"bucketType", "ephemeral"}],
+    ParamsNoEviction = ParamsEphemeral ++ [{"evictionPolicy", "noEviction"}],
+    ParamsNruEviction = ParamsEphemeral ++ [{"evictionPolicy", "nruEviction"}],
+    %% valueOnly is not valid for Ephemeral.
+    ParamsInvalid = ParamsEphemeral ++ [{"evictionPolicy", "valueOnly"}],
+    NewBucket = true,
+    IsEphemeral = true,
+    IsMagma = false,
+    ?assertEqual({ok, eviction_policy, no_eviction},
+                 do_parse_validate_eviction_policy(
+                    ParamsNoEviction, [], IsEphemeral,
+                    NewBucket, IsMagma)),
+    ?assertEqual({ok, eviction_policy, nru_eviction},
+                 do_parse_validate_eviction_policy(
+                   ParamsNruEviction, [], IsEphemeral,
+                   NewBucket, IsMagma)),
+    ?assertEqual({ok, eviction_policy, no_eviction},
+                 do_parse_validate_eviction_policy(
+                   ParamsNoEviction, [], IsEphemeral,
+                   not NewBucket, IsMagma)),
+    ?assertEqual({ok, eviction_policy, nru_eviction},
+                 do_parse_validate_eviction_policy(
+                   ParamsNruEviction, [], IsEphemeral,
+                   not NewBucket, IsMagma)),
+    %% Check invalid eviction policy.
+    ?assertEqual(
+        {error, evictionPolicy,
+         <<"Eviction policy must be either 'noEviction' or 'nruEviction' "
+           "for ephemeral buckets">>},
+        do_parse_validate_eviction_policy(
+            ParamsInvalid, [], IsEphemeral, not NewBucket, IsMagma)),
+    %% Check default eviction policy for new buckets.
+    ?assertEqual({ok, eviction_policy, no_eviction},
+                 do_parse_validate_eviction_policy(
+                   ParamsEphemeral, [], IsEphemeral,
+                   NewBucket, IsMagma)).
 -endif.
