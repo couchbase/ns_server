@@ -19,6 +19,13 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-type busy() :: rebalance_running |
+                in_recovery |
+                in_bucket_hibernation |
+                in_buckets_shutdown.
+
+-export_type([busy/0]).
+
 %% Constants and definitions
 
 -record(idle_state, {}).
@@ -163,11 +170,6 @@ call(Msg, Timeout, RetriesLeftIfLeavingCluster) ->
 -spec get_state(integer()) -> atom().
 get_state(Timeout) ->
     gen_statem:call(?SERVER, get_state, Timeout).
-
--type busy() :: rebalance_running |
-                in_recovery |
-                in_bucket_hibernation |
-                in_buckets_shutdown.
 
 -spec create_bucket(memcached|membase, nonempty_string(), list()) ->
           ok | {error, {already_exists, nonempty_string()}} |

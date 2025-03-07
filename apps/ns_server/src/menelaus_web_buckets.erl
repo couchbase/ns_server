@@ -624,18 +624,6 @@ handle_bucket_delete(_PoolId, BucketId, Req) ->
         Err ->
             {Body, Code} =
                 case Err of
-                    rebalance_running ->
-                        {{[{'_',
-                           <<"Cannot delete buckets during rebalance.\r\n">>
-                          }]}, 503};
-                    in_recovery ->
-                        {{[{'_',
-                           <<"Cannot delete buckets when cluster is in "
-                             "recovery mode.\r\n">>}]}, 503};
-                    in_bucket_hibernation ->
-                        {{[{'_',
-                           <<"Cannot delete bucket when pausing/resuming "
-                             "another bucket">>}]}, 503};
                     {shutdown_failed, _} ->
                         {{[{'_',
                            <<"Bucket deletion not yet complete, but will "
@@ -643,7 +631,15 @@ handle_bucket_delete(_PoolId, BucketId, Req) ->
                     shutdown_incomplete ->
                         {{[{'_',
                            <<"Bucket shutdown interrupted by "
-                             "auto-failover">>}]}, 500}
+                             "auto-failover">>}]}, 500};
+                    Other ->
+                        case menelaus_web_cluster:busy_reply(
+                               "delete bucket", Other) of
+                            {ErrCode, Msg} ->
+                                {{[{'_', iolist_to_binary(Msg)}]}, ErrCode};
+                            undefined ->
+                                exit(Other)
+                        end
                 end,
             ns_server_stats:notify_counter({<<"rest_request_failure">>,
                                             [{type, bucket_delete},
@@ -889,20 +885,6 @@ update_via_orchestrator(Req, BucketId, StorageMode, BucketType, UpdatedProps,
                                                        5000)
             end,
             reply(Req, 200);
-        rebalance_running ->
-            reply_text(Req,
-                       "Cannot update bucket "
-                       "while rebalance is running.", 503);
-        in_recovery ->
-            reply_text(Req,
-                       "Cannot update bucket "
-                       "while recovery is in progress.", 503);
-        in_bucket_hibernation ->
-            reply_text(Req, "Cannot update bucket while another bucket "
-                       "is pausing/resuming.", 503);
-        in_buckets_shutdown ->
-            reply_text(Req, "Cannot update bucket while another bucket "
-                       "is being deleted", 503);
         {error, {need_more_space, Zones}} ->
             reply_text(Req, need_more_space_error(Zones), 400);
         {error, cc_versioning_already_enabled} ->
@@ -919,7 +901,14 @@ update_via_orchestrator(Req, BucketId, StorageMode, BucketType, UpdatedProps,
             reply_text(Req, "Encryption key can't encrypt this bucket", 400);
         {exit, {not_found, _}, _} ->
             %% if this happens then our validation raced, so repeat everything
-            retry
+            retry;
+        Other ->
+            case menelaus_web_cluster:busy_reply("update bucket", Other) of
+                {Code, Msg} ->
+                    reply_text(Req, Msg, Code);
+                undefined ->
+                    exit(Other)
+            end
     end.
 
 update_bucket(Ctx, BucketId, BucketType, UpdatedProps, Req) ->
@@ -985,20 +974,13 @@ do_bucket_create(Req, Name, ParsedProps) ->
         {error, secret_not_allowed} ->
             {errors, [{encryptionAtRestKeyId,
                        <<"Encryption key can't encrypt this bucket">>}]};
-        rebalance_running ->
-            {errors_500, [{'_', <<"Cannot create buckets during rebalance">>}]};
-        in_recovery ->
-            {errors_500,
-             [{'_',
-               <<"Cannot create buckets when cluster is in recovery mode">>}]};
-        in_bucket_hibernation ->
-            {errors_500,
-             [{'_', <<"Cannot create bucket when pausing/resuming another
-                      bucket">>}]};
-        in_buckets_shutdown ->
-            {errors_500,
-             [{'_', <<"Cannot create bucket when another bucket is "
-                      "being deleted">>}]}
+        Other ->
+            case menelaus_web_cluster:busy_reply("create bucket", Other) of
+                {Code, Msg} ->
+                    {errors, Code, [{"_", iolist_to_binary(Msg)}]};
+                undefined ->
+                    exit(Other)
+            end
     end.
 
 do_bucket_create(Req, Name, Params, Ctx) ->
@@ -1030,14 +1012,12 @@ do_bucket_create(Req, Name, Params, Ctx) ->
                 {false, _, {ok, ParsedProps, JSONSummaries}} ->
                     case do_bucket_create(Req, Name, ParsedProps) of
                         ok -> ok;
-                        {errors, Errors} ->
-                            ?log_debug("Failed to create bucket '~s' with 40X error(s): ~p",
-                                       [Name, Errors]),
-                            {format_error_response(Errors, JSONSummaries), 400};
-                        {errors_500, Errors} ->
-                            ?log_debug("Failed to create bucket '~s' with 50X error(s): ~p",
-                                       [Name, Errors]),
-                            {format_error_response(Errors, JSONSummaries), 503}
+                        {errors, Code, Errors} ->
+                            ?log_debug("Failed to create bucket '~s' with "
+                                       "code: ~p error(s): ~p",
+                                       [Name, Code, Errors]),
+                            {format_error_response(Errors, JSONSummaries),
+                             Code}
                     end;
                 {true, true, {ok, _, JSONSummaries}} ->
                     {format_error_response([], JSONSummaries), 200};
@@ -1220,22 +1200,6 @@ do_handle_bucket_flush(BucketName, Req) ->
         ok ->
             ns_audit:flush_bucket(Req, BucketName),
             reply(Req, 200);
-        rebalance_running ->
-            reply_json(Req, {[{'_',
-                               <<"Cannot flush buckets during rebalance">>}]},
-                       503);
-        in_recovery ->
-            reply_json(Req, {[{'_',
-                               <<"Cannot flush buckets when cluster is in "
-                                 "recovery mode">>}]}, 503);
-        in_bucket_hibernation ->
-            reply_json(Req, {[{'_',
-                               <<"Cannot flush buckets while another bucket "
-                                 "is pausing/resuming.">>}]}, 503);
-        in_buckets_shutdown ->
-            reply_json(Req, {[{'_',
-                               <<"Cannot flush buckets while another bucket "
-                                 "is being deleted">>}]}, 503);
         bucket_not_found ->
             reply(Req, 404);
         flush_disabled ->
@@ -1244,10 +1208,13 @@ do_handle_bucket_flush(BucketName, Req) ->
         {flush_wait_failed, _, _} ->
             reply_json(Req, {[{'_',
                                <<"Flush failed or timed out">>}]}, 504);
-        _ ->
-            reply_json(Req, {[{'_',
-                               <<"Flush failed with unexpected error. "
-                                 "Check server logs for details.">>}]}, 500)
+        Other ->
+            case menelaus_web_cluster:busy_reply("flush bucket", Other) of
+                {Code, Msg} ->
+                    reply_json(Req, {[{'_', Msg}]}, Code);
+                undefined ->
+                    exit(Other)
+            end
     end.
 
 

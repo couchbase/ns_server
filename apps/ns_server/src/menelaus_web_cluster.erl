@@ -40,7 +40,8 @@
          handle_stop_rebalance/1,
          handle_set_recovery_type/1,
          get_rebalance_error/0,
-         handle_current_rebalance_report/1]).
+         handle_current_rebalance_report/1,
+         busy_reply/2]).
 
 -import(menelaus_util,
         [reply_json/2,
@@ -966,6 +967,27 @@ parse_hard_failover_args(Req) ->
             Error
     end.
 
+-spec busy_reply(string(), ns_orchestrator:busy() | term()) ->
+          {integer(), iolist()} | undefined.
+busy_reply(What, Error) ->
+    case busy_reply_str(Error) of
+        undefined ->
+            undefined;
+        Str ->
+            {503, io_lib:format(Str, [What])}
+    end.
+
+busy_reply_str(rebalance_running) ->
+    "Cannot ~s during rebalance";
+busy_reply_str(in_recovery) ->
+    "Cannot ~s when cluster is in recovery mode";
+busy_reply_str(in_bucket_hibernation) ->
+    "Cannot ~s when pausing/resuming bucket";
+busy_reply_str(in_buckets_shutdown) ->
+    "Cannot ~s during the bucket deletion";
+busy_reply_str(_) ->
+    undefined.
+
 failover_reply({incompatible_with_previous, Nodes}, Req) ->
     Hostnames = [binary_to_list(H) ||
                     {_, H} <- menelaus_web_node:get_hostnames(Req, Nodes)],
@@ -978,10 +1000,6 @@ failover_reply(ok) ->
     200;
 failover_reply(in_progress) ->
     failover_reply(rebalance_running);
-failover_reply(rebalance_running) ->
-    {503, "Rebalance running."};
-failover_reply(in_recovery) ->
-    {503, "Cluster is in recovery mode."};
 failover_reply(orchestration_unsafe) ->
     %% 504 is a stretch here of course, but we do
     %% need to convey the information to the client somehow.
@@ -1026,7 +1044,12 @@ failover_reply({aborted, Map}) ->
              end, [], Map),
     {503, lists:flatten(Errs)};
 failover_reply(Other) ->
-    {500, io_lib:format("Unexpected server error: ~p", [Other])}.
+    case busy_reply("failover", Other) of
+        undefined ->
+            exit(Other);
+        Reply ->
+            Reply
+    end.
 
 failover_audit_and_reply(RV, Req, Nodes, Type) ->
     case failover_reply(RV, Req) of
@@ -1220,11 +1243,6 @@ do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
             reply_json(Req, {[{deltaRecoveryNotPossible, 1}]}, 400);
         no_active_nodes_left ->
             reply_text(Req, "No active nodes left", 400);
-        in_recovery ->
-            reply_text(Req, "Cluster is in recovery mode.", 503);
-        in_bucket_hibernation ->
-            reply_text(Req, "Cannot rebalance when another bucket is "
-                            "pausing/resuming.", 503);
         {rebalance_not_allowed, Reason} ->
             reply_text(Req, Reason, 503);
         no_kv_nodes_left ->
@@ -1255,7 +1273,12 @@ do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
                                          DesiredSevicesTopology),
             reply_json(Req, {[{rebalance_id, RebalanceId}]}, 200);
         OtherError ->
-            reply_json(Req, {[OtherError]}, 400)
+            case busy_reply("rebalance", OtherError) of
+                {Code, Msg} ->
+                    reply_json(Req, {[{error, Msg}]}, Code);
+                undefined ->
+                    reply_json(Req, {[OtherError]}, 400)
+            end
     end.
 
 handle_rebalance_progress(_PoolId, Req) ->
