@@ -164,37 +164,36 @@ call(Msg, Timeout, RetriesLeftIfLeavingCluster) ->
 get_state(Timeout) ->
     gen_statem:call(?SERVER, get_state, Timeout).
 
+-type busy() :: rebalance_running |
+                in_recovery |
+                in_bucket_hibernation |
+                in_buckets_shutdown.
+
 -spec create_bucket(memcached|membase, nonempty_string(), list()) ->
-                           ok | {error, {already_exists, nonempty_string()}} |
-                           {error, {still_exists, nonempty_string()}} |
-                           {error, {port_conflict, integer()}} |
-                           {error, {need_more_space, list()}} |
-                           {error, {incorrect_parameters, nonempty_string()}} |
-                           rebalance_running | in_recovery |
-                           in_bucket_hibernation |
-                           in_buckets_shutdown |
-                           {error, {kek_not_found, nonempty_string()}} |
-                           {error, secret_not_found} |
-                           {error, secret_not_allowed}.
+          ok | {error, {already_exists, nonempty_string()}} |
+          {error, {still_exists, nonempty_string()}} |
+          {error, {port_conflict, integer()}} |
+          {error, {need_more_space, list()}} |
+          {error, {incorrect_parameters, nonempty_string()}} |
+          {error, {kek_not_found, nonempty_string()}} |
+          {error, secret_not_found} |
+          {error, secret_not_allowed} | busy().
 create_bucket(BucketType, BucketName, NewConfig) ->
     call({create_bucket, BucketType, BucketName, NewConfig}, infinity).
 
 -spec update_bucket(memcached|membase, undefined|couchstore|magma|ephemeral,
                     nonempty_string(), list()) ->
-                           ok | {exit, {not_found, nonempty_string()}, []} |
-                           {error, {need_more_space, list()}} |
-                           {error, {storage_mode_migration, in_progress}} |
-                           {error, cc_versioning_already_enabled} |
-                           {error, {storage_mode_migration, janitor_not_run}} |
-                           {error, {storage_mode_migration,
-                                    history_retention_enabled_on_bucket}} |
-                           {error, {storage_mode_migration,
-                                    history_retention_enabled_on_collections}} |
-                           {error, secret_not_found} |
-                           {error, secret_not_allowed} |
-                           rebalance_running | in_recovery |
-                           in_bucket_hibernation |
-                           in_buckets_shutdown.
+          ok | {exit, {not_found, nonempty_string()}, []} |
+          {error, {need_more_space, list()}} |
+          {error, {storage_mode_migration, in_progress}} |
+          {error, cc_versioning_already_enabled} |
+          {error, {storage_mode_migration, janitor_not_run}} |
+          {error, {storage_mode_migration,
+                   history_retention_enabled_on_bucket}} |
+          {error, {storage_mode_migration,
+                   history_retention_enabled_on_collections}} |
+          {error, secret_not_found} |
+          {error, secret_not_allowed} | busy().
 update_bucket(BucketType, StorageMode, BucketName, UpdatedProps) ->
     call({update_bucket, BucketType, StorageMode, BucketName, UpdatedProps},
          infinity).
@@ -218,33 +217,25 @@ delete_bucket(BucketName) ->
     call({delete_bucket, BucketName}, infinity).
 
 -spec flush_bucket(bucket_name()) ->
-                          ok |
-                          rebalance_running |
-                          in_recovery |
-                          in_bucket_hibernation |
-                          in_buckets_shutdown |
-                          bucket_not_found |
-                          flush_disabled |
-                          {prepare_flush_failed, _, _} |
-                          {flush_wait_failed, _, _} |
-                          {old_style_flush_failed, _, _}.
+          ok | busy() |
+          bucket_not_found |
+          flush_disabled |
+          {prepare_flush_failed, _, _} |
+          {flush_wait_failed, _, _} |
+          {old_style_flush_failed, _, _}.
 flush_bucket(BucketName) ->
     call({flush_bucket, BucketName}, infinity).
 
 -spec start_pause_bucket(Args :: #bucket_hibernation_op_args{}) ->
-    ok |
-    bucket_not_found |
-    not_supported |
-    rebalance_running |
-    in_recovery |
-    in_bucket_hibernation |
-    in_buckets_shutdown |
-    bucket_type_not_supported |
-    no_width_parameter |
-    requires_rebalance |
-    full_servers_unavailable |
-    failed_service_nodes |
-    map_servers_mismatch.
+          ok | busy() |
+          bucket_not_found |
+          not_supported |
+          bucket_type_not_supported |
+          no_width_parameter |
+          requires_rebalance |
+          full_servers_unavailable |
+          failed_service_nodes |
+          map_servers_mismatch.
 start_pause_bucket(Args) ->
     call({{bucket_hibernation_op, {start, pause_bucket}},
           {Args, []}}).
@@ -261,13 +252,9 @@ stop_pause_bucket(Bucket) ->
     call({{bucket_hibernation_op, {stop, pause_bucket}}, [Bucket]}).
 
 -spec start_resume_bucket(#bucket_hibernation_op_args{}, list()) ->
-    ok |
-    {need_more_space, term()} |
-    bucket_exists |
-    rebalance_running |
-    in_recovery |
-    in_bucket_hibernation |
-    in_buckets_shutdown.
+          ok | busy() |
+          {need_more_space, term()} |
+          bucket_exists.
 start_resume_bucket(Args, Metadata) ->
     call({{bucket_hibernation_op, {start, resume_bucket}},
           {Args, [Metadata]}}).
