@@ -733,13 +733,13 @@ class JWTTests(testlib.BaseTestSet):
 
     @staticmethod
     def create_token(claims, key_id="2011-04-29", alg="RS256"):
-        """Create a signed JWT token for testing.
+        """Create a signed JWT for testing.
         Args:
             claims: Dictionary of JWT claims
             key_id: Key ID to use in JWT header
             alg: Signing algorithm (RS256, ES256, etc)
         Returns:
-            Signed JWT token string
+            Signed JWT string
         """
         # Handle rotated key
         if key_id == "rotated-key":
