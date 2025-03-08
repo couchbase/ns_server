@@ -333,7 +333,7 @@ try_autofailover(Nodes, Options) ->
     end.
 
 -spec prepare_fusion_rebalance([node()], [{local_addr, _}]) ->
-          {ok, term()} |
+          {ok, term()} | busy() |
           {unknown_nodes, [node()]} |
           {remote_call_failed, node()}.
 prepare_fusion_rebalance(KeepNodes, Options) ->
@@ -341,7 +341,7 @@ prepare_fusion_rebalance(KeepNodes, Options) ->
 
 -type rebalance_plan_uuid() :: string().
 -spec fusion_upload_mounted_volumes(rebalance_plan_uuid(),
-                                    list()) -> ok | not_found |
+                                    list()) -> ok | busy() | not_found |
           id_mismatch | {need_nodes, [node()]} | {extra_nodes, [node()]}.
 fusion_upload_mounted_volumes(PlanUUID, Volumes) ->
     call({fusion_upload_mounted_volumes, PlanUUID, Volumes}, infinity).

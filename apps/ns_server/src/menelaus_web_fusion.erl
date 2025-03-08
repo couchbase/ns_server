@@ -17,6 +17,14 @@
 -export([handle_prepare_rebalance/1,
          handle_upload_mounted_volumes/1]).
 
+reply_other(Req, What, Other) ->
+    case menelaus_web_cluster:busy_reply(What, Other) of
+        {Code, Msg} ->
+            menelaus_util:reply_text(Req, Msg, Code);
+        undefined ->
+            exit(Other)
+    end.
+
 handle_prepare_rebalance(Req) ->
     menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_morpheus(),
@@ -39,8 +47,7 @@ handle_prepare_rebalance(Req) ->
                         [{keepNodes,
                           io_lib:format("Unknown nodes ~p", [Nodes])}], 400);
                   Other ->
-                      menelaus_util:reply_text(
-                        Req, io_lib:format("Unknown error ~p", [Other]), 500)
+                      reply_other(Req, "prepare fusion rebalance", Other)
               end
       end, Req, form,
       [validator:required(keepNodes, _),
@@ -91,7 +98,9 @@ handle_upload_mounted_volumes(Req) ->
                                     io_lib:format("Unneeded nodes ~p", [N])}],
                                   400);
                             ok ->
-                                menelaus_util:reply_json(Req, [], 200)
+                                menelaus_util:reply_json(Req, [], 200);
+                            Other ->
+                                reply_other(Req, "upload mounted volumes", Other)
                         end
                 end, Req, json,
                 [validator:required(nodes, _),
