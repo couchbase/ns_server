@@ -56,6 +56,8 @@ init([]) ->
     chronicle_compat_events:subscribe(
       fun (cluster_compat_version) ->
               gen_server:cast(Self, update_snapshot);
+          (jwt_settings) ->
+              gen_server:cast(Self, check_enabled);
           (ldap_settings) ->
               gen_server:cast(Self, check_enabled);
           (saslauthd_auth_settings) ->
@@ -142,9 +144,24 @@ process_req(#mc_header{opcode = ?MC_AUTH_REQUEST} = Header,
     Mechanism = proplists:get_value(<<"mechanism">>, AuthReq),
     NeedRBAC = not proplists:get_bool(<<"authentication-only">>, AuthReq),
     case authenticate(Mechanism, AuthReq) of
-        {ok, AuthnRes} ->
-            Resp = [{rbac, get_user_rbac_record_json(AuthnRes, Snapshot)} ||
-                       NeedRBAC],
+        {ok, #authn_res{expiration_datetime_utc = ExpirationTime} = AuthnRes} ->
+            {User, Record} = memcached_permissions:jsonify_user_with_cache(
+                               AuthnRes, Snapshot),
+            Expiry =
+                case ExpirationTime of
+                    undefined ->
+                        undefined;
+                    DateTime ->
+                        misc:datetime_to_unix_timestamp(DateTime)
+                end,
+            Resp =
+                case Mechanism of
+                    <<"PLAIN">> -> [{rbac, {[{User, Record}]}} || NeedRBAC];
+                    <<"OAUTHBEARER">> ->
+                        [{token,
+                          {[{rbac, {[{User, Record}]}} || NeedRBAC] ++
+                               [{exp, Expiry}]}}]
+                end,
             {Header#mc_header{status = ?SUCCESS},
              #mc_entry{data = ejson:encode({Resp})},
              State};
@@ -152,7 +169,8 @@ process_req(#mc_header{opcode = ?MC_AUTH_REQUEST} = Header,
             UUID = misc:hexify(crypto:strong_rand_bytes(16)),
             ?log_info("Auth failed with reason: '~s' (UUID: ~s)",
                       [ReasonStr, UUID]),
-            Json = {[{error, {[{context, <<"Authentication failed">>},
+            ReasonBin = list_to_binary("Authentication failed: " ++ ReasonStr),
+            Json = {[{error, {[{context, ReasonBin},
                                {ref, UUID}]}}]},
             {Header#mc_header{status = ?KEY_ENOENT},
              #mc_entry{data = ejson:encode(Json)},
@@ -211,6 +229,36 @@ authenticate(<<"PLAIN">>, AuthReq) ->
             {error, "Authzid is not supported"};
         error ->
             {error, "Invalid challenge"}
+    end;
+authenticate(<<"OAUTHBEARER">>, AuthReq) ->
+    case ns_config:read_key_fast(oauthbearer_enabled, false) of
+        true ->
+            Challenge = proplists:get_value(<<"challenge">>, AuthReq),
+            case sasl_decode_oauthbearer_challenge(Challenge) of
+                {ok, {Id, Token}} ->
+                    case menelaus_auth:authenticate({jwt, Token}) of
+                        {ok, #authn_res{identity={Id, external}}=AuthnRes, _,
+                         _AuditProps} ->
+                            ?log_debug("JWT Successful authentication for ~p",
+                                       [ns_config_log:tag_user_name(Id)]),
+                            {ok, AuthnRes};
+                        {ok, #authn_res{identity={User, external}}, _, _} ->
+                            {error, "JWT Invalid user " ++ User ++ " in token"};
+                        {error, _RespHeaders, AuditProps} ->
+                            Reason =
+                                case proplists:get_value(reason, AuditProps,
+                                                         undefined) of
+                                    ReasonBin when is_binary(ReasonBin) ->
+                                        binary_to_list(ReasonBin);
+                                    _ ->
+                                        "JWT rejected"
+                                end,
+                            {error, Reason}
+                    end;
+                error ->
+                    {error, "Invalid oauthbearer challenge"}
+            end;
+        false -> {error, "Oauthbearer mechanism disabled"}
     end;
 authenticate(Unknown, _) ->
     {error, io_lib:format("Unknown mechanism: ~p", [Unknown])}.
@@ -285,6 +333,28 @@ sasl_decode_plain_challenge(Challenge) ->
         _:_ -> error
     end.
 
+%% RFC7628
+sasl_decode_oauthbearer_challenge(undefined) -> error;
+sasl_decode_oauthbearer_challenge(Challenge) ->
+    try base64:decode(Challenge, #{mode => urlsafe}) of
+        <<"n,a=", Rest0/binary>> ->
+            case binary:split(Rest0, <<",">>) of
+                [User, Rest1] ->
+                    case binary:split(Rest1, <<1>>, [global, trim_all]) of
+                        [<<"auth=Bearer ", Token/binary>>] ->
+                            {ok, {binary_to_list(User), binary_to_list(Token)}};
+                        _ ->
+                            error
+                    end;
+                _ ->
+                    error
+            end;
+        _ ->
+            error
+    catch
+        _:_ -> error
+    end.
+
 update_mcd_rbac([], _) -> ok;
 update_mcd_rbac([Id|Tail], Snapshot) ->
     RBACJson = get_user_rbac_record_json(#authn_res{identity=Id}, Snapshot),
@@ -318,13 +388,30 @@ process_data_test() ->
              {{"User2", "bar"}, external, Roles, []},
              {{"User3", "jwt"}, external, Roles, ExtraRoles}],
 
+    %% PLAIN challenges
+    User1Challenge = <<"AFVzZXIxAGZvbw==">>, % User1/foo
+    User2Challenge = <<"AFVzZXIyAGJhcg==">>, % User2/bar
+    InvalidUserChallenge = <<"AGpvaG4AYmFy">>, % john/bar (not in users)
+    User3Challenge = <<"AFVzZXIzAGp3dA==">>, % User3/jwt
+
+    %% OAUTHBEARER challenges
+    ValidJWTChallenge =
+        <<"bixhPVVzZXIzLGF1dGg9QmVhcmVyIGp3dF90b2tlbgEB">>,
+    UserMismatchChallenge =
+        <<"bixhPVdyb25nVXNlcixhdXRoPUJlYXJlciBqd3RfdG9rZW4BAQ==">>,
+    InvalidTokenChallenge =
+        <<"bixhPVVzZXIzLGF1dGg9QmVhcmVyIGludmFsaWRfdG9rZW4BAQ==">>,
+    InvalidFormatChallenge =
+        <<"invalid_challenge">>,
+
     with_mocked_users(
       Users,
       fun () ->
+              %% PLAIN auth tests
               test_process_data(
                 {?MC_AUTH_REQUEST, undefined,
                  {[{mechanism, <<"PLAIN">>},
-                   {challenge, <<"AFVzZXIxAGZvbw==">>}]}},
+                   {challenge, User1Challenge}]}},
                 fun (?MC_AUTH_REQUEST, ?SUCCESS, undefined,
                      {[{<<"rbac">>, {[{<<"User1">>,
                                        {[{<<"buckets">>, {[]}},
@@ -335,7 +422,7 @@ process_data_test() ->
               test_process_data(
                 {?MC_AUTH_REQUEST, undefined,
                  {[{mechanism, <<"PLAIN">>},
-                   {challenge, <<"AFVzZXIyAGJhcg==">>}]}},
+                   {challenge, User2Challenge}]}},
                 fun (?MC_AUTH_REQUEST, ?SUCCESS, undefined,
                      {[{<<"rbac">>,
                         {[{<<"User2">>,
@@ -348,16 +435,17 @@ process_data_test() ->
               test_process_data(
                 {?MC_AUTH_REQUEST, undefined,
                  {[{mechanism, <<"PLAIN">>},
-                   {challenge, <<"AGpvaG4AYmFy">>}]}},
+                   {challenge, InvalidUserChallenge}]}},
                 fun (?MC_AUTH_REQUEST, ?KEY_ENOENT, undefined,
                      {[{<<"error">>,
-                        {[{<<"context">>, <<"Authentication failed">>},
+                        {[{<<"context">>, <<"Authentication failed: ",
+                                            _/binary>>},
                           {<<"ref">>, _}]}}]}) -> ok
                 end),
               test_process_data(
                 {?MC_AUTH_REQUEST, undefined,
                  {[{mechanism, <<"PLAIN">>},
-                   {challenge, <<"AFVzZXIzAGp3dA==">>}]}},
+                   {challenge, User3Challenge}]}},
                 fun (?MC_AUTH_REQUEST, ?SUCCESS, undefined,
                      {[{<<"rbac">>,
                         {[{<<"User3">>,
@@ -371,6 +459,71 @@ process_data_test() ->
                              {[{<<"privileges">>, [_|_]}]}} -> ok;
                             _ -> error
                         end
+                end),
+
+              %% OAUTHBEARER tests - successful authentication
+              test_process_data(
+                {?MC_AUTH_REQUEST, undefined,
+                 {[{mechanism, <<"OAUTHBEARER">>},
+                   {challenge, ValidJWTChallenge}]}},
+                fun (?MC_AUTH_REQUEST, ?SUCCESS, undefined,
+                     {[{<<"token">>,
+                        {TokenProps}}]}) ->
+
+                        Rbac = proplists:get_value(<<"rbac">>, TokenProps),
+                        Exp = proplists:get_value(<<"exp">>, TokenProps),
+                        true = is_number(Exp),
+                        {[{<<"User3">>, UserProps}]} = Rbac,
+                        {UserData} = UserProps,
+
+                        <<"external">> =
+                            proplists:get_value(<<"domain">>, UserData),
+
+                        {Buckets} = proplists:get_value(<<"buckets">>,
+                                                        UserData),
+                        B1 = proplists:get_value(<<"b1">>, Buckets),
+                        B2 = proplists:get_value(<<"b2">>, Buckets),
+                        {[{<<"privileges">>, _}]} = B1,
+                        {[{<<"privileges">>, _}]} = B2,
+                        ok
+                end),
+              %% OAUTHBEARER tests - user mismatch
+              test_process_data(
+                {?MC_AUTH_REQUEST, undefined,
+                 {[{mechanism, <<"OAUTHBEARER">>},
+                   {challenge, UserMismatchChallenge}]}},
+                fun (?MC_AUTH_REQUEST, ?KEY_ENOENT, undefined,
+                     {[{<<"error">>,
+                        {[{<<"context">>, <<"Authentication failed: ",
+                                            _/binary>>},
+                          {<<"ref">>, _}]}}]}) ->
+                        ok
+                end),
+
+              %% OAUTHBEARER tests - invalid token
+              test_process_data(
+                {?MC_AUTH_REQUEST, undefined,
+                 {[{mechanism, <<"OAUTHBEARER">>},
+                   {challenge, InvalidTokenChallenge}]}},
+                fun (?MC_AUTH_REQUEST, ?KEY_ENOENT, undefined,
+                     {[{<<"error">>,
+                        {[{<<"context">>, <<"Authentication failed: ",
+                                            _/binary>>},
+                          {<<"ref">>, _}]}}]}) ->
+                        ok
+                end),
+
+              %% OAUTHBEARER tests - invalid challenge format
+              test_process_data(
+                {?MC_AUTH_REQUEST, undefined,
+                 {[{mechanism, <<"OAUTHBEARER">>},
+                   {challenge, InvalidFormatChallenge}]}},
+                fun (?MC_AUTH_REQUEST, ?KEY_ENOENT, undefined,
+                     {[{<<"error">>,
+                        {[{<<"context">>, <<"Authentication failed: ",
+                                            _/binary>>},
+                          {<<"ref">>, _}]}}]}) ->
+                        ok
                 end)
       end),
     ok.
@@ -411,9 +564,58 @@ with_mocked_users(Users, Fun) ->
     meck:new(menelaus_roles, [passthrough]),
     meck:new(menelaus_auth, [passthrough]),
     meck:new(menelaus_users, [passthrough]),
+    meck:new(ns_config, [passthrough]),
+
     try
+        meck:expect(ns_config, read_key_fast,
+                    fun(oauthbearer_enabled, _Default) ->
+                            true;
+                       (Key, Default) ->
+                            meck:passthrough([Key, Default])
+                    end),
+
         meck:expect(menelaus_auth, authenticate,
-                    fun ({Name, Pass}) ->
+                    fun ({jwt, Token}) ->
+                            %% Mock JWT authentication
+                            case Token of
+                                "jwt_token" ->
+                                    %% Look up User3 from test data
+                                    case [U || {{N, _}, _, _, _} = U <- Users,
+                                               N == "User3"] of
+                                        [] ->
+                                            {error, [{reason,
+                                                      <<"User not found">>}],
+                                             {user_not_found, []}};
+                                        [{{_, _}, Domain, _, ExtraRoles}|_] ->
+                                            ExpTime = {{2099,1,1},{0,0,0}},
+
+                                            AuditProps =
+                                                [
+                                                 {type, <<"jwt">>},
+                                                 {iss, <<"test-issuer">>},
+                                                 {sub, <<"User3">>},
+                                                 {expiry_with_leeway,
+                                                  <<"2099-01-01T00:00:00Z">>}
+                                                ],
+
+                                            {ok,
+                                             #authn_res{
+                                                identity = {"User3", Domain},
+                                                extra_roles = ExtraRoles,
+                                                expiration_datetime_utc =
+                                                    ExpTime
+                                               }, AuditProps, []}
+                                    end;
+
+                                "invalid_token" ->
+                                    AuditProps =
+                                        [
+                                         {type, <<"jwt">>},
+                                         {reason, <<"Token has expired">>}
+                                        ],
+                                    {error, [], AuditProps}
+                            end;
+                        ({Name, Pass}) ->
                             case [{N, D, ER} || {{N, P}, D, _, ER} <- Users,
                                                 N == Name, P == Pass] of
                                 [{N, D, ER}] ->
@@ -444,12 +646,14 @@ with_mocked_users(Users, Fun) ->
         true = meck:validate(menelaus_users),
         true = meck:validate(menelaus_auth),
         true = meck:validate(menelaus_roles),
-        true = meck:validate(mc_binary)
+        true = meck:validate(mc_binary),
+        true = meck:validate(ns_config)
     after
         meck:unload(menelaus_users),
         meck:unload(menelaus_auth),
         meck:unload(menelaus_roles),
-        meck:unload(mc_binary)
+        meck:unload(mc_binary),
+        meck:unload(ns_config)
     end,
     ok.
 -endif.

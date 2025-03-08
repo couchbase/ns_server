@@ -453,6 +453,9 @@ is_allowed_on_cluster([scram_sha256_enabled]) ->
     cluster_compat_mode:is_cluster_76();
 is_allowed_on_cluster([scram_sha512_enabled]) ->
     cluster_compat_mode:is_cluster_76();
+is_allowed_on_cluster([oauthbearer_enabled]) ->
+    cluster_compat_mode:is_cluster_morpheus() andalso
+        cluster_compat_mode:is_developer_preview();
 is_allowed_on_cluster([argon2id_time]) ->
     cluster_compat_mode:is_cluster_76();
 is_allowed_on_cluster([argon2id_mem]) ->
@@ -594,6 +597,7 @@ conf(security) ->
      {scram_sha1_enabled, scramSha1Enabled, true, fun get_bool/1},
      {scram_sha256_enabled, scramSha256Enabled, true, fun get_bool/1},
      {scram_sha512_enabled, scramSha512Enabled, true, fun get_bool/1},
+     {oauthbearer_enabled, oauthBearerEnabled, false, fun get_bool/1},
      {argon2id_time, argon2idTime, ?DEFAULT_ARG2ID_TIME,
       get_number(?ARGON_TIME_MIN, ?ARGON_TIME_MAX)},
      {argon2id_mem, argon2idMem, ?DEFAULT_ARG2ID_MEM,

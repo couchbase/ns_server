@@ -119,6 +119,11 @@ init([]) ->
                                  (_Other) ->
                                      []
                              end),
+    chronicle_compat_events:subscribe(
+      fun (jwt_settings) -> Self ! do_check;
+          (_) -> ok
+      end),
+
     Self ! do_check,
     Self ! upload_tls_config,
     ActualMcdConfig =
@@ -213,6 +218,7 @@ is_notable_config_key(saml_settings) -> true;
 is_notable_config_key(scram_sha1_enabled) -> true;
 is_notable_config_key(scram_sha256_enabled) -> true;
 is_notable_config_key(scram_sha512_enabled) -> true;
+is_notable_config_key(oauthbearer_enabled) -> true;
 is_notable_config_key(_) ->
     false.
 
@@ -634,7 +640,9 @@ is_external_auth_service_enabled() ->
         proplists:get_value(enabled, saslauthd_auth:build_settings(), false),
     LDAPEnabled = ldap_util:get_setting(authentication_enabled),
     SamlEnabled = menelaus_web_saml:is_enabled(),
-    SaslauthdEnabled or LDAPEnabled or SamlEnabled.
+    JwtEnabled = menelaus_web_jwt:is_enabled(),
+
+    SaslauthdEnabled or LDAPEnabled or SamlEnabled or JwtEnabled.
 
 get_ssl_cipher_list([], Params) ->
     Cfg = ns_config:latest(),
@@ -709,6 +717,7 @@ sasl_mechanisms([], _Params) ->
     list_to_binary(lists:join(" ", auth_mechs())).
 
 auth_mechs() ->
+    ["OAUTHBEARER"  || ns_config:read_key_fast(oauthbearer_enabled, false)] ++
     ["SCRAM-SHA512" || ns_config:read_key_fast(scram_sha512_enabled, true)] ++
     ["SCRAM-SHA256" || ns_config:read_key_fast(scram_sha256_enabled, true)] ++
     ["SCRAM-SHA1"   || ns_config:read_key_fast(scram_sha1_enabled,   true)] ++

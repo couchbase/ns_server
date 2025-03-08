@@ -24,6 +24,8 @@
 -compile(export_all).
 -export_type([timer/0, timer/1]).
 
+-define(GREGORIAN_SECONDS_TO_UNIX_EPOCH, 62167219200).
+
 decode_unsigned_leb128(Binary) ->
     {Size, BinValue, Tail} = take_leb128_chunks(Binary),
     <<Value:Size/unsigned-integer>> = BinValue,
@@ -3749,6 +3751,11 @@ parse_url(URL, Options) ->
     catch
         throw:{error, _} = Error -> Error
     end.
+
+-spec datetime_to_unix_timestamp(calendar:datetime()) -> integer().
+datetime_to_unix_timestamp(DateTime) ->
+    calendar:datetime_to_gregorian_seconds(DateTime) -
+        ?GREGORIAN_SECONDS_TO_UNIX_EPOCH.
 
 -ifdef(TEST).
 
