@@ -207,7 +207,7 @@ class Cluster:
     # the TestSet was executed on the cluster.
     def rebalance(self, ejected_nodes=None, wait=True, timeout_s=60,
                   verbose=False, expected_error=None, initial_code=200,
-                  initial_expected_error=None):
+                  initial_expected_error=None, plan_uuid=None):
         # We have to use the otpNode names instead of the node ips.
         otp_nodes = testlib.get_otp_nodes(self)
 
@@ -234,6 +234,9 @@ class Cluster:
 
         data = {'knownNodes': known_nodes_string,
                 'ejectedNodes': ejected_nodes_string}
+
+        if plan_uuid is not None:
+            data["planUUID"] = plan_uuid
 
         if verbose:
             print(f"Starting rebalance with {data}")
