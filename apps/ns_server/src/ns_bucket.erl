@@ -221,6 +221,17 @@ sub_key_match({bucket, Bucket, SubKey}) ->
 sub_key_match(_) ->
     false.
 
+get_sub_key_value(BucketName, SubKey) ->
+    case chronicle_kv:get(kv, sub_key(BucketName, SubKey)) of
+        {error, not_found} ->
+            not_found;
+        {ok, {Value, _Rev}} ->
+            Value
+    end.
+
+store_sub_key(BucketName, SubKey, Value) ->
+    chronicle_kv:set(kv, sub_key(BucketName, SubKey), Value).
+
 %% do not detect changes bucket_names because it is always in the same
 %% transaction with props key
 buckets_change(buckets) ->
@@ -2179,8 +2190,7 @@ store_last_balanced_vbmap(BucketName, Map, Options) ->
     case cluster_compat_mode:is_cluster_76() of
         true ->
             {ok, _} =
-                chronicle_kv:set(
-                  kv, last_balanced_vbmap_key(BucketName), {Map, Options});
+                store_sub_key(BucketName, last_balanced_vbmap, {Map, Options});
         false ->
             update_vbucket_map_history(Map, Options)
     end.
@@ -2217,12 +2227,7 @@ past_vbucket_maps(BucketName, Config) ->
     end.
 
 get_last_balanced_map(BucketName) ->
-    case chronicle_kv:get(kv, last_balanced_vbmap_key(BucketName)) of
-        {error, not_found} ->
-            not_found;
-        {ok, {MapAndOptions, _Rev}} ->
-            MapAndOptions
-    end.
+    get_sub_key_value(BucketName, last_balanced_vbmap).
 
 get_vbucket_map_history(Config) ->
     case ns_config:search(Config, vbucket_map_history) of
