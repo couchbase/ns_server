@@ -200,6 +200,8 @@ cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig) ->
                 ns_rebalancer:generate_initial_map(Bucket, BucketConfig),
             set_initial_map(Map, Servers, MapOpts, Bucket, BucketConfig),
 
+            maybe_generate_initial_fusion_uploaders(Bucket, BucketConfig, Map),
+
             repeat_bucket_config_cleanup(Bucket, Options);
         _ ->
             {ok, BucketConfig}
@@ -214,6 +216,17 @@ set_initial_map(Map, Servers, MapOpts, Bucket, BucketConfig) ->
     end,
 
     ok = ns_bucket:set_initial_map(Bucket, Map, Servers, MapOpts).
+
+maybe_generate_initial_fusion_uploaders(BucketName, BucketConfig, Map) ->
+    case ns_bucket:is_fusion(BucketConfig) of
+        true ->
+            Uploaders = [{N, 1} || [N | _] <- Map],
+            ?log_debug("Set initial uploaders for bucket ~p to ~p",
+                       [BucketName, Uploaders]),
+            ns_bucket:store_fusion_uploaders(BucketName, Uploaders);
+        false ->
+            ok
+    end.
 
 partition_param_results(Res) ->
     lists:partition(
