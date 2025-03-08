@@ -401,7 +401,9 @@ def delete_config_key(cluster, key):
 
 
 def set_config_key(cluster, key, value):
-    if type(value) == str:
+    if isinstance(value, bool):
+        value_str = "true" if value else "false"
+    elif isinstance(value, str):
         value_str = f'"{value}"'
     else:
         value_str = str(value)
