@@ -198,10 +198,23 @@
          get_dek_lifetime/2,
          get_dek_rotation_interval/2,
          get_drop_keys_timestamp/2,
-         validate_encryption_secret/3,
+         validate_encryption_secret/3]).
+
+%% fusion
+-export([is_fusion/1,
+         fusion_uploaders_key/1,
+         get_fusion_uploaders/1,
+         store_fusion_uploaders/2,
          magma_fusion_logstore_uri/1,
-         magma_fusion_metadatastore_uri/1,
-         is_fusion/1]).
+         magma_fusion_metadatastore_uri/1]).
+
+%% incremented starting from 1 with each uploader change
+%% The purpose of Term is to help
+%% s3 to recognize rogue uploaders and ignore them.
+-type fusion_uploader_term() :: pos_integer().
+%% fusion uploaders map, one item per vbucket
+-type fusion_uploaders() :: [{node(), fusion_uploader_term()}].
+-export_type([fusion_uploaders/0]).
 
 -import(json_builder,
         [to_binary/1,
@@ -739,27 +752,6 @@ magma_key_tree_data_blocksize(BucketConfig) ->
 magma_seq_tree_data_blocksize(BucketConfig) ->
     proplists:get_value(magma_seq_tree_data_blocksize, BucketConfig,
                         ?MAGMA_SEQ_TREE_DATA_BLOCKSIZE).
-
--spec magma_fusion_logstore_uri(proplists:proplist()) -> string() | undefined.
-magma_fusion_logstore_uri(BucketConfig) ->
-    proplists:get_value(magma_fusion_logstore_uri, BucketConfig).
-
--spec is_fusion(proplists:proplist()) -> boolean().
-is_fusion(BucketConfig) ->
-    magma_fusion_logstore_uri(BucketConfig) =/= undefined.
-
--spec magma_fusion_metadatastore_uri(proplists:proplist()) ->
-          string() | undefined.
-magma_fusion_metadatastore_uri(BucketConfig) ->
-    case is_fusion(BucketConfig) of
-        true ->
-            ns_config:read_key_fast(
-              magma_fusion_metadatastore_uri,
-              "chronicle://localhost:" ++
-                  integer_to_list(service_ports:get_port(rest_port)));
-        false ->
-            undefined
-    end.
 
 -define(FS_HARD_NODES_NEEDED, 4).
 -define(FS_FAILOVER_NEEDED, 3).
@@ -1370,6 +1362,7 @@ delete_bucket(BucketName) ->
                            KeysToDelete =
                                [collections:key(BucketName),
                                 last_balanced_vbmap_key(BucketName),
+                                fusion_uploaders_key(BucketName),
                                 sub_key(BucketName, encr_at_rest),
                                 uuid_key(BucketName), PropsKey |
                                 [collections:last_seen_ids_key(N, BucketName) ||
@@ -2705,6 +2698,46 @@ get_drop_keys_timestamp(Bucket, Snapshot) ->
         not_present -> {error, not_found};
         {ok, #{}} -> {ok, undefined};
         {error, not_found} -> {ok, undefined}
+    end.
+
+%% fusion
+
+-spec is_fusion(proplists:proplist()) -> boolean().
+is_fusion(BucketConfig) ->
+    magma_fusion_logstore_uri(BucketConfig) =/= undefined.
+
+-spec fusion_uploaders_sub_key() -> atom().
+fusion_uploaders_sub_key() ->
+    fusion_uploaders.
+
+-spec fusion_uploaders_key(string()) -> tuple().
+fusion_uploaders_key(BucketName) ->
+    sub_key(BucketName, fusion_uploaders_sub_key()).
+
+-spec store_fusion_uploaders(string(), fusion_uploaders()) ->
+          {ok, chronicle:revision()}.
+store_fusion_uploaders(BucketName, Map) ->
+    {ok, _} = store_sub_key(BucketName, fusion_uploaders_sub_key(), Map).
+
+-spec get_fusion_uploaders(string()) -> fusion_uploaders() | not_found.
+get_fusion_uploaders(BucketName) ->
+    get_sub_key_value(BucketName, fusion_uploaders_sub_key()).
+
+-spec magma_fusion_logstore_uri(proplists:proplist()) -> string() | undefined.
+magma_fusion_logstore_uri(BucketConfig) ->
+    proplists:get_value(magma_fusion_logstore_uri, BucketConfig).
+
+-spec magma_fusion_metadatastore_uri(proplists:proplist()) ->
+          string() | undefined.
+magma_fusion_metadatastore_uri(BucketConfig) ->
+    case is_fusion(BucketConfig) of
+        true ->
+            ns_config:read_key_fast(
+              magma_fusion_metadatastore_uri,
+              "chronicle://localhost:" ++
+                  integer_to_list(service_ports:get_port(rest_port)));
+        false ->
+            undefined
     end.
 
 -ifdef(TEST).
