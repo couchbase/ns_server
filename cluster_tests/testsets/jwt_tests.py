@@ -9,12 +9,14 @@
 
 import os
 import testlib
+from testlib.util import Service
 import json
 import jwt
 import time
 import http.server
 import threading
 import socketserver
+import subprocess
 
 
 class MockJWKSServer:
@@ -97,7 +99,10 @@ class JWTTests(testlib.BaseTestSet):
     @staticmethod
     def requirements():
         return testlib.ClusterRequirements(edition="Enterprise",
-                                           dev_preview=True)
+                                           dev_preview=True,
+                                           buckets=[{'name': "test-jwt-bucket",
+                                                     'ramQuota': 100}],
+                                           services=[Service.KV])
 
     def setup(self):
         # Set shorter intervals for testing
@@ -114,6 +119,7 @@ class JWTTests(testlib.BaseTestSet):
                                   "{menelaus_web_jwt, jwks_uri_refresh_min_s}")
         testlib.delete_config_key(self.cluster,
                                   "{jwt_cache, jwks_cooldown_interval_ms}")
+        testlib.delete_config_key(self.cluster, "oauthbearer_enabled")
         testlib.delete_succ(self.cluster, self.endpoint)
         testlib.get_fail(self.cluster, self.endpoint, expected_code=404)
 
@@ -959,3 +965,93 @@ class JWTTests(testlib.BaseTestSet):
             data=bucket_data,
             expected_code=403  # Expect forbidden
         )
+
+    def oauthbearer_memcached_test(self):
+        """Test OAUTHBEARER authentication with memcached using mcstat"""
+        testlib.set_config_key(self.cluster, "oauthbearer_enabled", True)
+
+        # Create a test bucket for mcstat
+        test_bucket = "test-jwt-bucket"
+        node = self.cluster.connected_nodes[0]
+
+        self.auth_setup()
+        self.create_test_groups()
+        self.jwks = self.load_jwks()
+        self.configure_jwt()
+
+        # Use a consistent username
+        username = "testuser"
+
+        # Create a JWT with appropriate claims
+        payload = {
+            "sub": username,
+            "groups": ["jwt_bucket_admins"],
+            "exp": int(time.time()) + 3600,
+            "aud": "test-audience",
+            "iss": "test-issuer"
+        }
+
+        token = self.create_token(payload)
+
+        # Create an invalid token (expired)
+        invalid_payload = dict(payload)
+        invalid_payload["exp"] = int(time.time()) - 3600  # Expired token
+        invalid_token = self.create_token(invalid_payload)
+
+        memcached_port = node.service_port(Service.KV)
+
+        mcstat_path = testlib.get_utility_path("mcstat")
+        if not os.path.exists(mcstat_path):
+            assert False, f"mcstat utility not found at {mcstat_path}"
+
+        cmd = [
+            mcstat_path,
+            "-h", node.host,
+            "-p", str(memcached_port),
+            "--sasl_mechanism", "OAUTHBEARER",
+            "--user", username,
+            "--password", token,
+            "--bucket", test_bucket
+        ]
+
+        # Wait for OAUTHBEARER authentication to succeed, we need to poll to
+        # wait for external_auth to be enabled in memcached once JWT is enabled.
+        testlib.poll_for_condition(
+            lambda: subprocess.run(
+                cmd, capture_output=True, text=True).returncode == 0,
+            sleep_time=0.5,
+            timeout=30
+        )
+
+        bad_test_cases = [
+            {
+                "desc": "Invalid token (expired) authentication",
+                "token": invalid_token,
+                "username": username,
+                "expected_success": False,
+            },
+            {
+                "desc": "Mismatched username authentication",
+                "token": token,
+                "username": "wronguser",
+                "expected_success": False,
+            }
+        ]
+
+        for tc in bad_test_cases:
+            test_cmd = [
+                mcstat_path,
+                "-h", node.host,
+                "-p", str(memcached_port),
+                "--sasl_mechanism", "OAUTHBEARER",
+                "--user", tc["username"],
+                "--password", tc["token"],
+                "--bucket", test_bucket
+            ]
+
+            result = subprocess.run(test_cmd, capture_output=True, text=True)
+
+            assert result.returncode != 0, \
+                "OAUTHBEARER authentication should fail but succeeded"
+            assert "Authentication failed" in result.stderr, \
+                "Expected error message not found"
