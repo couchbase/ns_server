@@ -70,7 +70,6 @@
 -endif.
 
 -export([handle_settings/2,
-         sync_with_node/0,
          is_enabled/0]).
 
 -define(JWKS_URI_MIN_TIMEOUT_MS, 5000). % 5 seconds
@@ -180,27 +179,8 @@ snake_to_camel_atom(Atom) when is_atom(Atom) ->
     Camel = [First | [string:titlecase(Part) || Part <- Rest]],
     list_to_atom(lists:concat(Camel)).
 
-%% @doc Ensures all nodes in the cluster have synchronized their JWT settings.
-%% After this function returns successfully, any subsequent JWT validation
-%% request on any node will use the new settings.
-sync_with_all_nodes() ->
-    Nodes = ns_node_disco:nodes_actual(),
-    Res = erpc:multicall(Nodes, ?MODULE, sync_with_node, [], ?SYNC_TIMEOUT),
-    BadNodes = lists:filtermap(
-                 fun ({_Node, {ok, _}}) ->
-                         false;
-                     ({Node, {Class, Exception}}) ->
-                         ?log_error("Node ~p sync failed: ~p ~p",
-                                    [Node, Class, Exception]),
-                         {true, Node}
-                 end, lists:zip(Nodes, Res)),
-    case BadNodes of
-        [] -> ok;
-        _ ->
-            ?log_error("Sync failed, bad nodes: ~p", [BadNodes]),
-            {error, BadNodes}
-    end.
-
+%% Best effort local sync to ensure subsequent JWT validation requests use the
+%% new settings.
 sync_with_node() ->
     %% Make sure we have the latest chronicle data
     ok = chronicle_kv:sync(kv, ?SYNC_TIMEOUT),
@@ -263,19 +243,8 @@ handle_settings_delete(Req) ->
     case chronicle_kv:transaction(kv, [], Fun, #{}) of
         {ok, _} ->
             ns_audit:settings(Req, modify_jwt, [{jwt_settings, deleted}]),
-            case sync_with_all_nodes() of
-                ok ->
-                    menelaus_util:reply_json(Req, {[]}, 200);
-                {error, BadNodes} ->
-                    ?log_error("Failed to sync JWT settings deletion with "
-                               "nodes: ~p",
-                               [BadNodes]),
-                    Msg = <<"Settings were deleted but failed to sync with some"
-                            " nodes">>,
-                    menelaus_util:reply_json(Req,
-                                             {[{error, Msg},
-                                               {failedNodes, BadNodes}]}, 500)
-            end;
+            _ = sync_with_node(),
+            menelaus_util:reply_json(Req, {[]}, 200);
         {error, Error} ->
             ?log_error("Failed to delete JWT settings: ~p", [Error]),
             menelaus_util:reply_json(Req,
@@ -482,15 +451,9 @@ validate_and_store_settings(Props, Req) ->
             RestFormat = storage_to_rest_format(Settings),
             EncodedSettings = encode_response(RestFormat),
             ns_audit:settings(Req, modify_jwt, [{jwt_settings, RestFormat}]),
-            case sync_with_all_nodes() of
-                ok ->
-                    menelaus_util:reply(Req, EncodedSettings, 200,
-                                        [{"Content-Type", "application/json"}]);
-                {error, FailedNodes} ->
-                    menelaus_util:reply_json(Req,
-                                             {[{failedNodes, FailedNodes}]},
-                                             202)
-            end;
+            _ = sync_with_node(),
+            menelaus_util:reply(Req, EncodedSettings, 200,
+                                [{"Content-Type", "application/json"}]);
         {error, Error} ->
             ?log_error("Failed to store JWT settings: ~p", [Error]),
             menelaus_util:reply_json(Req,
