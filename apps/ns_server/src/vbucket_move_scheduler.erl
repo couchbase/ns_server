@@ -167,18 +167,23 @@ prepare(CurrentMap, TargetMap, Quirks,
                   case OldMaster of
                       undefined ->
                           Move = {V, C1, C2, [], FilteredOptions},
-                          {MovesAcc, [Move | UndefinedMovesAcc], TrivialMovesAcc};
+                          {MovesAcc, [Move | UndefinedMovesAcc],
+                           TrivialMovesAcc};
                       _ ->
-                          MoveQuirks   = rebalance_quirks:get_node_quirks(OldMaster, Quirks),
-                          TrivialMoves = rebalance_quirks:is_enabled(trivial_moves, MoveQuirks),
+                          MoveQuirks   = rebalance_quirks:get_node_quirks(
+                                           OldMaster, Quirks),
+                          TrivialMoves = rebalance_quirks:is_enabled(
+                                           trivial_moves, MoveQuirks),
 
                           case C1 =:= C2 andalso not TrivialMoves of
                               true ->
-                                  {MovesAcc, UndefinedMovesAcc, TrivialMovesAcc + 1};
+                                  {MovesAcc, UndefinedMovesAcc,
+                                   TrivialMovesAcc + 1};
                               false ->
                                   Move = {V, C1, C2, MoveQuirks,
                                           FilteredOptions},
-                                  {[Move | MovesAcc], UndefinedMovesAcc, TrivialMovesAcc}
+                                  {[Move | MovesAcc], UndefinedMovesAcc,
+                                   TrivialMovesAcc}
                           end
                   end
           end, {[], [], 0}, MapTriples),
