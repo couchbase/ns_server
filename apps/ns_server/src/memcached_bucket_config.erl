@@ -18,7 +18,7 @@
 -include("cb_cluster_secrets.hrl").
 
 -define(MCD_DISABLED_ENCRYPTION_KEY_ID, <<"">>).
--define(MAGMA_FUSION_AUTH_TOKEN, "magma_fusion_metadata_auth_token").
+-define(MAGMA_FUSION_AUTH_TOKEN, "chronicle_auth_token").
 
 -record(cfg, {type, name, config, snapshot, engine_config, params}).
 
