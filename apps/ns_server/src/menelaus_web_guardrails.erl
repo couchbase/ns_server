@@ -208,7 +208,7 @@ raw_default_for_ns_config() ->
      %% Minimum cores required per bucket
      {cores_per_bucket,
       [{enabled, false},
-       {minimum, 0.4}]},
+       {minimum, 0.2}]},
      %% Max disk usage % per node
      {disk_usage,
       [{enabled, false},
@@ -289,7 +289,8 @@ config_upgrade_to_76(_Config) ->
 config_upgrade_to_morpheus(Config) ->
     Current = ns_config:search(Config, resource_management, []),
     Default = default_for_ns_config(),
-    Changes = update_disk_usage_maximum_to_new_default(Default, Current),
+    Changes = update_disk_usage_maximum_to_new_default(Default, Current) ++
+        update_cpu_cores_per_bucket_to_new_default(Default, Current),
     New = misc:update_proplist(Current, Changes),
     [{set, resource_management, New}].
 
@@ -310,6 +311,31 @@ update_disk_usage_maximum_to_new_default(DefaultConfig, CurrentConfig) ->
                 _ ->
                     %% If the maximum has changed from the default and it's not
                     %% a self-managed cluster, then we don't want to override it
+                    []
+            end
+    end.
+
+update_cpu_cores_per_bucket_to_new_default(DefaultConfig, CurrentConfig) ->
+    Default = proplists:get_value(cores_per_bucket, DefaultConfig),
+    Current = proplists:get_value(cores_per_bucket, CurrentConfig),
+    case Current of
+        undefined ->
+            %% Need to populate the value
+            [{cores_per_bucket, Default}];
+        _ ->
+            case proplists:get_value(minimum, Current) of
+                0.4 ->
+                    %% Old default, needs updating
+                    case proplists:get_value(minimum, Default) of
+                        undefined ->
+                            %% Default is blank, so don't change it
+                            [];
+                        New ->
+                            Updated = lists:keystore(minimum, 1, Current,
+                                                     {minimum, New}),
+                            [{cores_per_bucket, Updated}]
+                    end;
+                _ ->
                     []
             end
     end.
@@ -396,7 +422,7 @@ default_config_t() ->
             {critical, 85}]}]},
         {cores_per_bucket,
          [{enabled, true},
-          {minimum, 0.4}]},
+          {minimum, 0.2}]},
         {disk_usage,
          [{enabled, true},
           {maximum, 85},
