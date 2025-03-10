@@ -10,6 +10,11 @@
 
 -include("ns_common.hrl").
 -include("mc_entry.hrl").
+-include("rbac.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([handle_list/2, handle_list/4,
          handle_get/3, handle_get/5,
@@ -272,6 +277,12 @@ construct_etmpfail_error_reply() ->
     {[{error, <<"retry_needed">>},
       {reason, <<"etmpfail returned from memcached">>}]}.
 
+construct_badrpc_error_reply(Reason) ->
+    {[{error, <<"badrpc">>},
+      {reason, iolist_to_binary(
+                 io_lib:format("Remote procedure call failed: ~p",
+                               [Reason]))}]}.
+
 handle_get(BucketId, DocId, Req) ->
     CollectionUid = assert_default_collection_uid(BucketId),
     XAttrPerm = get_xattrs_permissions(BucketId, "_default", "_default", Req),
@@ -286,6 +297,9 @@ do_handle_get(BucketId, DocId, CollectionUid, XAttrPermissions, Req) ->
             menelaus_util:reply_json(Req, construct_error_reply(Msg), 400);
         {retry_needed, etmpfail} ->
             menelaus_util:reply_json(Req,construct_etmpfail_error_reply(), 503);
+        {badrpc, Reason} ->
+            menelaus_util:reply_json(Req, construct_badrpc_error_reply(Reason),
+                                     503);
         {ok, EJSON, {XAttrs}} ->
             {Json} = capi_utils:couch_doc_to_json(EJSON, unparsed),
             ns_audit:read_doc(Req, BucketId, DocId),
@@ -380,6 +394,9 @@ handle_post(BucketId, DocId, CollectionUid, Req) ->
         {retry_needed, etmpfail} ->
             menelaus_util:reply_json(Req, construct_etmpfail_error_reply(),
                                      503);
+        {badrpc, Reason} ->
+            menelaus_util:reply_json(Req, construct_badrpc_error_reply(Reason),
+                                     503);
         {error, Msg} ->
             menelaus_util:reply_json(Req, construct_error_reply(Msg), 400)
     end.
@@ -395,6 +412,9 @@ handle_delete(BucketId, DocId, CollectionUid, Req) ->
             menelaus_util:reply_json(Req, []);
         {retry_needed, etmpfail} ->
             menelaus_util:reply_json(Req, construct_etmpfail_error_reply(),
+                                     503);
+        {badrpc, Reason} ->
+            menelaus_util:reply_json(Req, construct_badrpc_error_reply(Reason),
                                      503);
         {error, Msg} ->
             menelaus_util:reply_json(Req, construct_error_reply(Msg), 400)
@@ -455,3 +475,67 @@ attempt(DbName, DocId, Mod, Fun, Args, fast_forward) ->
         {ok, R1} ->
             R1
     end.
+
+-ifdef(TEST).
+
+-define(FAKE_REQUEST, {mochiweb_request,
+                       ['Socket', 'Opts', 'Method', 'RawPath', 'Version',
+                        mochiweb_headers:empty(),
+                        #{authn_res =>
+                          #authn_res{identity = {"Administrator", local}}}]}).
+
+%% Setup fake RPC and mock the reply to be just JSON-encoded body.
+setup() ->
+    meck:new(rpc, [passthrough, unstick]),
+    meck:new(cb_util, [passthrough]),
+    meck:expect(cb_util, vbucket_from_id, fun (_, _) -> {0, 'Node'} end),
+    meck:new(menelaus_util, []),
+    meck:expect(menelaus_util, reply_json,
+                fun (_, Body, _) ->
+                        ejson:encode(Body)
+                end),
+    fake_chronicle_kv:new().
+
+teardown(_) ->
+    fake_chronicle_kv:unload(),
+    meck:unload(menelaus_util),
+    meck:unload(cb_util),
+    meck:unload(rpc).
+
+get_badrpc_test__() ->
+    meck:expect(rpc, call,
+                fun (_Node, _Module, _Function, _Args) ->
+                        {badrpc, {'EXIT', {reason}}}
+                end),
+    ?assertEqual(<<"{\"error\":\"badrpc\",\"reason\":\"Remote "
+                   "procedure call failed: {'EXIT',{reason}}\"}">>,
+                 do_handle_get("bucket", "docid", 'CollectionUid',
+                               'XAttrPermissions', ?FAKE_REQUEST)).
+
+post_badrpc_test__() ->
+    meck:expect(rpc, call,
+                fun (_Node, _Module, _Function, _Args) ->
+                        {badrpc, {'EXIT', {reason}}}
+                end),
+    ?assertEqual(<<"{\"error\":\"badrpc\",\"reason\":\"Remote "
+                   "procedure call failed: {'EXIT',{reason}}\"}">>,
+                 handle_post("bucket", "docid", 'CollectionUid',
+                             ?FAKE_REQUEST)).
+
+delete_badrpc_test__() ->
+    meck:expect(rpc, call,
+                fun (_Node, _Module, _Function, _Args) ->
+                        {badrpc, {'EXIT', {reason}}}
+                end),
+    ?assertEqual(<<"{\"error\":\"badrpc\",\"reason\":\"Remote "
+                   "procedure call failed: {'EXIT',{reason}}\"}">>,
+                 handle_delete("bucket", "docid", 'CollectionUid',
+                               ?FAKE_REQUEST)).
+
+all_test_() ->
+    {setup, fun setup/0, fun teardown/1,
+     [fun get_badrpc_test__/0,
+      fun post_badrpc_test__/0,
+      fun delete_badrpc_test__/0]}.
+
+-endif.
