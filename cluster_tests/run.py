@@ -661,7 +661,7 @@ def run_testsets(cluster, testsets, total_num, log_collection_regex, seed=None,
         # cluster, so we should keep running more tests
         except Exception as e:
             testlib.print_traceback()
-            testset_errors.append((testset["name"], e))
+            testset_errors.append(('Testset execution', e))
             cluster_is_unusable = True
 
         try:
@@ -677,10 +677,10 @@ def run_testsets(cluster, testsets, total_num, log_collection_regex, seed=None,
                 test_error = UnmetRequirementsError(new_unmet,
                                                     message=error_msg)
                 print(testlib.red(str(test_error)))
-                testset_errors.append((testset["name"], test_error))
+                testset_errors.append(('Requirements check', test_error))
         except InconsistentClusterError as e:
             print(testlib.red(str(e)))
-            testset_errors.append((testset["name"], e))
+            testset_errors.append(("Cluster smog check", e))
             cluster_is_unusable = True
 
         if len(testset_errors) > 0:

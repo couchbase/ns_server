@@ -99,7 +99,7 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
 
     testset_instance = testset['class'](cluster)
 
-    log_at_all_nodes(cluster, f'starting testset {testset["name"]}')
+    errors += log_at_all_nodes(cluster, f'starting testset {testset["name"]}')
 
     testset_seed = apply_with_seed(random, 'randbytes', [16],
                                    seed + str(testset['iter']))
@@ -146,8 +146,9 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
             test_teardown_seed = apply_with_seed(random, 'randbytes', [16],
                                                  test_seed(testiter))
             executed += 1
-            log_at_all_nodes(cluster,
-                             f'starting test {test} from {testset["name"]}')
+            errors += log_at_all_nodes(
+                        cluster,
+                        f'starting test {test} from {testset["name"]}')
 
             if 'fun' in test_dict: # this test is generated
                 if hasattr(testset_instance, test):
@@ -783,9 +784,15 @@ def maybe_print(s, verbose=None, print_fun=None):
     if verbose:
         print_fun(s)
 
+
 def log_at_all_nodes(cluster, msg):
+    errors = []
     for n in cluster._nodes:
-        diag_eval(n, f'\"{msg}\".', verbose=config['verbose'])
+        try:
+            diag_eval(n, f'\"{msg}\".', verbose=config['verbose'])
+        except Exception as e:
+            errors.append((f'Log at {n}', e))
+    return errors
 
 
 def maybe_add_brackets(addr):
