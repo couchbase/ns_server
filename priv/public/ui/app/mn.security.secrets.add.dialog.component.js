@@ -18,8 +18,10 @@ import {MnFormService} from './mn.form.service.js';
 import template from "./mn.security.secrets.add.dialog.html";
 import {FormBuilder} from '@angular/forms';
 import {UIRouter} from '@uirouter/angular';
+import {BehaviorSubject} from 'rxjs';
 import {map, startWith, takeUntil, first} from 'rxjs/operators';
 import {MnSecuritySecretsService} from './mn.security.secrets.service.js';
+import {MnTimezoneDetailsService} from './mn.timezone.details.service.js';
 import {MnHelperService} from "./mn.helper.service.js";
 
 import {MnPermissions} from './ajs.upgraded.providers.js';
@@ -46,16 +48,18 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
     UIRouter,
     FormBuilder,
     MnPermissions,
-    MnHelperService
+    MnHelperService,
+    MnTimezoneDetailsService
   ]}
 
-  constructor(mnSecuritySecretsService, activeModal, mnFormService, uiRouter, formBuilder, mnPermissions, mnHelperService) {
+  constructor(mnSecuritySecretsService, activeModal, mnFormService, uiRouter, formBuilder, mnPermissions, mnHelperService, mnTimezoneDetailsService) {
     super();
 
     this.formBuilder = formBuilder;
     this.activeModal = activeModal;
     this.permissions = mnPermissions.stream;
     this.mnSecuritySecretsService = mnSecuritySecretsService;
+    this.mnTimezoneDetailsService = mnTimezoneDetailsService;
     this.mnFormService = mnFormService;
     this.uiRouter = uiRouter;
     this.toggler = mnHelperService.createToggle();
@@ -177,6 +181,8 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         this.form.group.get('aws-secret.keyARN').disable();
       });
     }
+
+    this.serverTimeExample = this.item ? (new BehaviorSubject(this.item.creationDateTime)) : '';
   }
 
   isAllUsesSelected() {

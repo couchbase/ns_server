@@ -9,10 +9,12 @@ licenses/APL2.txt.
 */
 
 import angular from "angular";
+import {BehaviorSubject} from 'rxjs';
 
 import mnSpinner from "../components/directives/mn_spinner.js";
 import mnPromiseHelper from "../components/mn_promise_helper.js";
 import mnPoorMansAlertsService from "./mn_poor_mans_alerts_service.js";
+import mnTimezoneDetailsDowngradeModule from "../mn.timezone.details.downgrade.module.js";
 
 export default "mnPoorMansAlerts";
 
@@ -20,15 +22,21 @@ angular
   .module("mnPoorMansAlerts", [
     mnSpinner,
     mnPromiseHelper,
-    mnPoorMansAlertsService
+    mnPoorMansAlertsService,
+    mnTimezoneDetailsDowngradeModule
   ])
-  .controller("mnPoorMansAlertsController", ["mnPromiseHelper", "mnPoorMansAlertsService", "alertsSilenceURL", "alerts", "$uibModalInstance", mnPoorMansAlertsController]);
+  .controller("mnPoorMansAlertsController", ["mnPromiseHelper", "mnPoorMansAlertsService", "mnTimezoneDetailsServiceDowngrade", "alertsSilenceURL", "alerts", "poolDefault", "$uibModalInstance", mnPoorMansAlertsController]);
 
-function mnPoorMansAlertsController(mnPromiseHelper, mnPoorMansAlertsService, alertsSilenceURL, alerts, $uibModalInstance) {
+function mnPoorMansAlertsController(mnPromiseHelper, mnPoorMansAlertsService, mnTimezoneDetailsServiceDowngrade, alertsSilenceURL, alerts, poolDefault, $uibModalInstance) {
   var vm = this;
 
-  vm.alerts = alerts;
+  vm.alerts = alerts.map(alert => {
+    alert.serverTimeSubject = new BehaviorSubject(alert.serverTime);
+    alert.localGMTOffset = mnTimezoneDetailsServiceDowngrade.getLocalGMTString();
+    return alert;
+  });
   vm.onClose = onClose;
+  vm.atLeast80 = poolDefault.compat.atLeast80;
 
   function onClose() {
     mnPromiseHelper(vm, mnPoorMansAlertsService.postAlertsSilenceURL(alertsSilenceURL), $uibModalInstance)

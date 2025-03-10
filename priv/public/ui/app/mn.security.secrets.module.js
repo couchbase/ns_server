@@ -30,6 +30,7 @@ import {MnPipesModule} from './mn.pipes.module.js';
 import {MnElementCraneModule} from './mn.element.crane.js';
 import {MnSecuritySecretsReencryptConfirmationComponent} from './mn.security.secrets.reencrypt.confirmation.component.js';
 import {MnEncryptionStatusModule} from "./mn.encryption.status.module.js";
+import {MnTimezoneDetailsModule} from './mn.timezone.details.module.js';
 
 let secretsState = {
   url: "/secrets?openedSecrets",
@@ -79,6 +80,7 @@ class MnSecuritySecretsModule {
           MnElementCraneModule,
           ReactiveFormsModule,
           MnEncryptionStatusModule,
+          MnTimezoneDetailsModule,
           UIRouterModule.forChild({states: [secretsState]})
         ],
         providers: [

@@ -25,16 +25,16 @@
             <strong>ID:</strong> {{cert.id}}
           </div>
           <div ng-show="cert.loadTimestamp">
-            <strong>Time Loaded:</strong> {{cert.loadTimestamp | date:'d MMM, y':'UTC'}}
+            <strong>Time Loaded:</strong> {{cert.loadTimestamp | date:'d MMM, y':'UTC'}} (UTC)
           </div>
           <div ng-show="cert.subject">
             <strong>Subject:</strong> {{cert.subject}}
           </div>
           <div ng-show="cert.notBefore">
-            <strong>Not Before:</strong> {{cert.notBefore | date:'d MMM, y':'UTC'}}
+            <strong>Not Before:</strong> {{cert.notBefore | date:'d MMM, y':'UTC'}} (UTC)
           </div>
           <div ng-show="cert.notAfter">
-            <strong>Not After:</strong> {{cert.notAfter | date:'d MMM, y':'UTC'}}
+            <strong>Not After:</strong> {{cert.notAfter | date:'d MMM, y':'UTC'}} (UTC)
           </div>
           <div ng-show="cert.type">
             <strong>Type:</strong> {{cert.type}}

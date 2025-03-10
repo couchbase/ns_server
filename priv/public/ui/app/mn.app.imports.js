@@ -20,6 +20,7 @@ import {MnSharedModule} from './mn.shared.module.js';
 import {MnElementCraneModule} from './mn.element.crane.js';
 import * as pluggableUIsModules from '../../pluggable-uis.js';
 import {MnKeyspaceSelectorModule} from './mn.keyspace.selector.module.js';
+import {MnTimezoneDetailsModule} from './mn.timezone.details.module.js';
 import {MnHelper} from './ajs.upgraded.providers.js';
 
 let wizardState = {
@@ -243,7 +244,8 @@ let mnAppImports = [
   }),
 
   //downgradedModules
-  MnKeyspaceSelectorModule
+  MnKeyspaceSelectorModule,
+  MnTimezoneDetailsModule
 ];
 
 export {mnAppImports, mnLoadNgModule, mnLazyload};

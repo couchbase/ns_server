@@ -10,7 +10,7 @@ licenses/APL2.txt.
 
 import {Component, ChangeDetectionStrategy} from '@angular/core'
 import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
-import {Subject} from 'rxjs';
+import {Subject, BehaviorSubject} from 'rxjs';
 import {takeUntil, map, withLatestFrom} from 'rxjs/operators';
 
 import {MnPermissions} from './ajs.upgraded.providers.js';
@@ -22,6 +22,7 @@ import {MnSecuritySecretsAddDialogComponent} from "./mn.security.secrets.add.dia
 import {MnSecuritySecretsDeleteKeyDialogComponent} from "./mn.security.secrets.delete.key.dialog.component.js";
 import template from "./mn.security.secrets.item.details.html";
 import {MnSecuritySecretsService} from "./mn.security.secrets.service.js";
+import {MnTimezoneDetailsService} from './mn.timezone.details.service.js';
 
 
 export {MnSecuritySecretsItemDetailsComponent};
@@ -43,10 +44,11 @@ class MnSecuritySecretsItemDetailsComponent extends MnLifeCycleHooksToStream {
     MnFormService,
     NgbModal,
     MnHelperService,
-    MnSecuritySecretsService
+    MnSecuritySecretsService,
+    MnTimezoneDetailsService
   ]}
 
-  constructor(mnPermissions, mnFormService, modalService, mnHelperService, mnSecuritySecretsService) {
+  constructor(mnPermissions, mnFormService, modalService, mnHelperService, mnSecuritySecretsService, mnTimezoneDetailsService) {
     super();
 
     var onDeleteSecret = new Subject();
@@ -85,10 +87,14 @@ class MnSecuritySecretsItemDetailsComponent extends MnLifeCycleHooksToStream {
       .errorMessage("An error occurred rotating the key.")
       .success(() => mnSecuritySecretsService.stream.updateSecretsList.next())
 
+    let serverTime = this.item?.keys.length ? this.item.keys[0].creationDateTime : '';
+    this.serverTimeExample = new BehaviorSubject(serverTime);
+
     this.permissions = mnPermissions.stream;
     this.onDeleteSecret = onDeleteSecret;
     this.onDeleteKey = onDeleteKey;
     this.onEditKey = onEditKey;
     this.toggler = mnHelperService.createToggle();
+    this.mnTimezoneDetailsService = mnTimezoneDetailsService;
   }
 }

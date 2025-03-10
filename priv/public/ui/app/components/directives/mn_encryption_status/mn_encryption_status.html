@@ -20,17 +20,7 @@ licenses/APL2.txt.
        'fa-warning red-3': vm.hasIssues()}"
      tooltip-trigger="mouseenter"
      tooltip-append-to-body="true"
-     uib-tooltip-html="'
-       <ul>
-         <li>Encryption Status: {{vm.getStatusLabel(vm.encryptionInfo.dataStatus)}}</li>
-         <li>DEK Number: {{vm.encryptionInfo.dekNumber}}</li>
-         <li>Oldest DEK Creation Time:
-           <span class=\'semi-bold nowrap\'>{{vm.encryptionInfo.oldestDekCreationDatetime | date: 'mediumTime'}}</span>
-           <span>{{vm.encryptionInfo.oldestDekCreationDatetime | date: 'd MMM, y'}}</span>
-         </li>
-         <li>Encryption Issues: {{vm.hasIssues() ? vm.encryptionInfo.issues.join(', ') : 'no issues'}}</li>
-       </ul>
-     '"
+     uib-tooltip-template="'app/components/directives/mn_encryption_status/mn_encryption_status_template.html'"
      tooltip-class="med">
   </span>
 </div>

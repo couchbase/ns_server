@@ -17,6 +17,7 @@ import {MnSharedModule} from './mn.shared.module.js';
 import {MnInputFilterModule} from './mn.input.filter.module.js';
 import {MnTextExpanderModule} from './mn.text.expander.module.js';
 import {MnLogsListComponent} from './mn.logs.list.component.js';
+import {MnTimezoneDetailsModule} from './mn.timezone.details.module.js';
 
 let states = [{
   url: '',
@@ -40,7 +41,8 @@ class MnLogsListModule {
         MnInputFilterModule,
         MnTextExpanderModule,
         MnSharedModule,
-        NgbModule
+        NgbModule,
+        MnTimezoneDetailsModule
       ],
       providers: [
         DatePipe

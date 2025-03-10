@@ -12,6 +12,7 @@ import {ChangeDetectionStrategy, Component} from '@angular/core';
 import {pluck, map} from 'rxjs/operators';
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 import {MnSecuritySecretsService} from './mn.security.secrets.service.js';
+import {MnTimezoneDetailsService} from './mn.timezone.details.service.js';
 
 import template from "./mn.encryption.status.html";
 
@@ -32,14 +33,16 @@ class MnEncryptionStatusComponent extends MnLifeCycleHooksToStream {
   ]}
 
   static get parameters() { return [
-    MnSecuritySecretsService
+    MnSecuritySecretsService,
+    MnTimezoneDetailsService
   ]}
 
-  constructor(mnSecuritySecretsService) {
+  constructor(mnSecuritySecretsService, mnTimezoneDetailsService) {
     super();
 
-    this.mapEncryptionStatusToLabels = mnSecuritySecretsService.mapEncryptionStatusToLabels;
+    this.mnTimezoneDetailsService = mnTimezoneDetailsService;
 
+    this.mapEncryptionStatusToLabels = mnSecuritySecretsService.mapEncryptionStatusToLabels;
     this.currentEncryptionInfo = this.mnOnChanges.pipe(pluck('encryptionInfo', 'currentValue'));
   }
 

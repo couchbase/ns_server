@@ -9,7 +9,7 @@ licenses/APL2.txt.
 */
 
 import angular from 'angular';
-import {fromEvent, Subject, timer} from 'rxjs';
+import {fromEvent, Subject, BehaviorSubject, timer} from 'rxjs';
 import {tap, switchMap, takeUntil} from 'rxjs/operators';
 import _ from 'lodash';
 import saveAs from 'file-saver';
@@ -18,8 +18,8 @@ import mnInternalSettingsTemplate from "./mn_internal_settings.html";
 
 export default mnAdminController;
 
-mnAdminController.$inject = ["$scope", "$rootScope", "$state", "$window", "$uibModal", "mnAlertsService", "poolDefault", "mnPromiseHelper", "pools", "mnPoller", "mnEtagPoller", "mnAuthService", "mnTasksDetails", "mnPoolDefault", "mnSettingsAutoFailoverService","mnUserRolesService", "formatProgressMessageFilter", "mnPrettyVersionFilter", "mnLostConnectionService", "mnPermissions", "mnPools", "whoami", "mnBucketsService", "$q", "mnSettingsClusterService", "$ocLazyLoad", "$injector", "mnAdminService", "mnHelper", "mnSessionService"];
-function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, mnUserRolesService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnSettingsClusterService, $ocLazyLoad, $injector, mnAdminService, mnHelper, mnSessionService) {
+mnAdminController.$inject = ["$scope", "$rootScope", "$state", "$window", "$uibModal", "mnAlertsService", "poolDefault", "mnPromiseHelper", "pools", "mnPoller", "mnEtagPoller", "mnAuthService", "mnTasksDetails", "mnPoolDefault", "mnSettingsAutoFailoverService","mnUserRolesService", "formatProgressMessageFilter", "mnPrettyVersionFilter", "mnLostConnectionService", "mnPermissions", "mnPools", "whoami", "mnBucketsService", "$q", "mnSettingsClusterService", "$ocLazyLoad", "$injector", "mnAdminService", "mnHelper", "mnSessionService", "mnTimezoneDetailsServiceDowngrade"];
+function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, mnUserRolesService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnSettingsClusterService, $ocLazyLoad, $injector, mnAdminService, mnHelper, mnSessionService, mnTimezoneDetailsServiceDowngrade) {
   var vm = this;
 
   vm.poolDefault = poolDefault;
@@ -36,6 +36,7 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
   vm.isDeveloperPreview = pools.isDeveloperPreview;
   vm.mainSpinnerCounter = mnHelper.mainSpinnerCounter;
   vm.majorMinorVersion = pools.implementationVersion.split('.').splice(0,2).join('.');
+  vm.localGMTOffset = mnTimezoneDetailsServiceDowngrade.getLocalGMTString();
 
   $rootScope.mnGlobalSpinnerFlag = false;
 
@@ -328,6 +329,7 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
             var stageInfo = {
               services: {},
               startTime: null,
+              startTimeSubject: null,
               completedTime: {
                 status: true
               }
@@ -374,6 +376,7 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
                     if (!stageInfo.startTime ||
                         stageInfo.startTime > new Date(value.startTime)) {
                       stageInfo.startTime = new Date(value.startTime);
+                      stageInfo.startTimeSubject = new BehaviorSubject(value.startTime);
                     }
                   }
                   if (value.completedTime) {

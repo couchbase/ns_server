@@ -135,7 +135,9 @@
            ng-class="{'dynamic-active': userRolesCtl.isOrderBy('last_activity_time'),
                      'dynamic-inverted': userRolesCtl.isOrderBy('last_activity_time')
                      && userRolesCtl.isDesc()}"
-          >last activity</span
+          >last activity {{userRolesCtl.localGMTOffset}}
+            <mn-timezone-details-downgrade [server-time]="userRolesCtl.state.users.length ? userRolesCtl.state.users[0].password_change_date_subject : ''"></mn-timezone-details-downgrade>
+        </span
         >
       </span>
     </div>
@@ -191,17 +193,25 @@
           {{user.domain === "local" ? "Couchbase" : "External"}}
         </span>
         <span
+          ng-if="!poolDefault.compat.atLeast80"
           class="cbui-table-cell flex-grow-half resp-hide-sml"
           title="{{:: user.password_change_date}}"
         >
           {{user.password_change_date | date:"d MMM, y":'UTC'}}
         </span>
         <span
+           ng-if="poolDefault.compat.atLeast80"
+           class="cbui-table-cell flex-grow-half resp-hide-sml"
+           title="{{:: user.password_change_date}}"
+        >
+          {{user.password_change_date | date:"d MMM, y"}}
+        </span>
+        <span
            class="cbui-table-cell flex-grow-1 resp-hide-sml"
            ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast80"
            title="{{:: user.last_activity_time}}"
         >
-          {{user.last_activity_time | date:'d MMM, y':'UTC'}} {{user.last_activity_time | date:'mediumTime'}}
+          {{user.last_activity_time | date:'d MMM, y'}} {{user.last_activity_time | date:'mediumTime'}}
         </span>
       </div>
       <div

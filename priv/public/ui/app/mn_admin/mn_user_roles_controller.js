@@ -40,6 +40,8 @@ import mnUserRolesDeleteDialogTemplate from "./mn_user_roles_delete_dialog.html"
 import mnUserRolesLockDialogTemplate from "./mn_user_roles_lock_dialog.html";
 import mnUserRolesUnlockDialogTemplate from "./mn_user_roles_unlock_dialog.html";
 
+import mnTimezoneDetailsDowngradeModule from "../mn.timezone.details.downgrade.module.js";
+
 export default "mnUserRoles";
 
 angular
@@ -58,9 +60,10 @@ angular
     mnUserRolesService,
     mnUserRolesSelect,
     mnFileReader,
-    mnSearch
+    mnSearch,
+    mnTimezoneDetailsDowngradeModule
   ])
-  .controller("mnUserRolesController", ["$scope", "$uibModal", "mnPromiseHelper", "mnUserRolesService", "mnPoller", "mnHelper", "$state", "poolDefault", "permissions", mnUserRolesController])
+  .controller("mnUserRolesController", ["$scope", "$uibModal", "mnPromiseHelper", "mnUserRolesService", "mnPoller", "mnHelper", "$state", "poolDefault", "permissions", "mnTimezoneDetailsServiceDowngrade", mnUserRolesController])
   .controller("mnUserRolesDeleteDialogController", mnUserRolesDeleteDialogController)
   .controller("mnUserRolesLockDialogController", mnUserRolesLockDialogController)
   .controller("mnUserRolesUnlockDialogController", mnUserRolesUnlockDialogController)
@@ -68,7 +71,7 @@ angular
   .controller("mnUserRolesAddDialogController", mnUserRolesAddDialogController)
   .controller("mnRolesController", mnRolesController);
 
-function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesService, mnPoller, mnHelper, $state, poolDefault, permissions) {
+function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesService, mnPoller, mnHelper, $state, poolDefault, permissions, mnTimezoneDetailsServiceDowngrade) {
   var vm = this;
 
   vm.deleteUser = deleteUser;
@@ -88,6 +91,7 @@ function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesSe
   vm.isOrderBy = isOrderBy;
   vm.isDesc = isDesc;
   vm.getRoleParams = getRoleParams;
+  vm.localGMTOffset = mnTimezoneDetailsServiceDowngrade.getLocalGMTString();
 
   activate();
 

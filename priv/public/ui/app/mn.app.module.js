@@ -55,6 +55,7 @@ import {MnViewsEditingService} from './mn.views.editing.service.js';
 import {MnRouterService} from './mn.router.service.js';
 import {MnDocumentsService} from './mn.documents.service.js';
 import {MnSecuritySecretsService} from './mn.security.secrets.service.js';
+import {MnTimezoneDetailsService} from './mn.timezone.details.service.js';
 
 
 export {MnAppModule};
@@ -106,6 +107,7 @@ class MnAppModule {
         MnRouterService,
         MnDocumentsService,
         MnSecuritySecretsService,
+        MnTimezoneDetailsService,
         {
           provide: HTTP_INTERCEPTORS,
           useClass: MnHttpInterceptor,

@@ -9,6 +9,7 @@ licenses/APL2.txt.
 */
 
 import angular from "angular";
+import {BehaviorSubject} from 'rxjs';
 
 import mnPoolDefault from "../components/mn_pool_default.js";
 import mnStoreService from "../components/mn_store_service.js";
@@ -612,6 +613,12 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
   function getState(params) {
     return getUsers(params).then(function (resp) {
       var i;
+      for (let key in resp.data.users) {
+        if (resp.data.users[key].password_change_date) {
+          resp.data.users[key].password_change_date_subject = new BehaviorSubject(resp.data.users[key].password_change_date);
+        }
+      }
+
       for (i in resp.data.links) {
         resp.data.links[i] = resp.data.links[i].split("?")[1]
           .split("&")

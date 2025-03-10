@@ -42,6 +42,7 @@ import {MnSessionService} from "../mn.session.service.js";
 import {MnStatsService} from "../mn.stats.service.js";
 
 import mnDetailStatsModule from "../components/directives/mn_detail_stats_controller.js";
+import mnTimezoneDetailsDowngradeModule from "../mn.timezone.details.downgrade.module.js";
 
 import mnSelect from "../components/directives/mn_select/mn_select.js";
 import memoryQuotaDialogTemplate from "./memory_quota_dialog.html";
@@ -77,7 +78,8 @@ angular.module('mnAdmin', [
   mnUserRolesService,
   mnSettingsClusterService,
   mnDetailStatsModule,
-  mnSelect
+  mnSelect,
+  mnTimezoneDetailsDowngradeModule
 ]).config(["$stateProvider", "$urlMatcherFactoryProvider", "mnPluggableUiRegistryProvider", "$httpProvider", mnAdminConfig])
   .controller('mnAdminController', mnAdminController)
   .factory('mnAdminService', downgradeInjectable(MnAdminService))

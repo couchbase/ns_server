@@ -8,12 +8,14 @@
   licenses/APL2.txt.
 */
 import {Component, ChangeDetectionStrategy} from '@angular/core';
-import {pluck, filter, shareReplay, map} from 'rxjs/operators';
+import {pluck, filter, shareReplay, map, withLatestFrom} from 'rxjs/operators';
 import {DatePipe} from '@angular/common';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnLogsListService} from './mn.logs.list.service.js';
 import {MnHelperService} from './mn.helper.service.js';
+import {MnTimezoneDetailsService} from './mn.timezone.details.service.js';
+import {MnAdminService} from './mn.admin.service.js';
 import template from "./mn.logs.list.html";
 
 export {MnLogsListComponent};
@@ -31,12 +33,16 @@ class MnLogsListComponent extends MnLifeCycleHooksToStream {
   static get parameters() { return [
     MnLogsListService,
     MnHelperService,
-    DatePipe
+    MnTimezoneDetailsService,
+    DatePipe,
+    MnAdminService
   ]}
 
-  constructor(mnLogsService, mnHelperService, datePipe) {
+  constructor(mnLogsService, mnHelperService, mnTimezoneDetailsService, datePipe, mnAdminService) {
     super();
 
+    this.compatVersion80 = mnAdminService.stream.compatVersion80;
+    this.mnTimezoneDetailsService = mnTimezoneDetailsService;
     this.datePipe = datePipe;
     this.textLimit = 1000;
     this.sorter = mnHelperService.createSorter('tstamp', true);
@@ -47,10 +53,13 @@ class MnLogsListComponent extends MnLifeCycleHooksToStream {
     this.logs = mnLogsService.stream.logs
       .pipe(pluck('list'),
             filter(logs => !!logs),
+            withLatestFrom(this.compatVersion80),
             map(this.addPrettyTime.bind(this)),
             this.filter.pipe,
             this.sorter.pipe,
             shareReplay({refCount: true, bufferSize: 1}));
+
+    this.serverTimeExample = this.logs.pipe(map(logs => logs.length ? logs[0].serverTime : ''));
   }
 
   trackByMethod(index, log) {
@@ -63,11 +72,19 @@ class MnLogsListComponent extends MnLifeCycleHooksToStream {
            log.type;
   }
 
-  addPrettyTime(logs) {
-    logs.forEach(log =>
-                 (log.prettyTime =
-                  this.datePipe.transform(log.serverTime, 'mediumTime', 'UTC', 'en-US') + " " +
-                  this.datePipe.transform(log.serverTime, 'd MMM, y', 'UTC', 'en-US')));
+  addPrettyTime([logs, isCompat80]) {
+    logs.forEach(log => {
+      if (isCompat80) {
+        log.prettyTime =
+          this.datePipe.transform(log.serverTime, 'mediumTime') + " " +
+          this.datePipe.transform(log.serverTime, 'd MMM, y');
+      } else {
+        log.prettyTime =
+          this.datePipe.transform(log.serverTime, 'mediumTime', 'UTC', 'en-US') + " " +
+          this.datePipe.transform(log.serverTime, 'd MMM, y', 'UTC', 'en-US');
+      }
+    });
+
     return logs;
   }
 }

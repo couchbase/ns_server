@@ -13,6 +13,7 @@ import {MnHelperService} from './mn.helper.service.js';
 import {takeUntil, withLatestFrom, map, shareReplay} from 'rxjs/operators';
 import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
 import {MnSecuritySecretsService} from './mn.security.secrets.service.js';
+import {MnTimezoneDetailsService} from './mn.timezone.details.service.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnPermissions} from './ajs.upgraded.providers.js';
 import template from "./mn.security.secrets.html";
@@ -36,16 +37,18 @@ class MnSecuritySecretsComponent extends MnLifeCycleHooksToStream {
   static get parameters() { return [
     MnPermissions,
     MnSecuritySecretsService,
+    MnTimezoneDetailsService,
     MnHelperService,
     NgbModal,
     DatePipe
   ]}
 
-  constructor(mnPermissions, mnSecuritySecretsService, mnHelperService, modalService, datePipe) {
+  constructor(mnPermissions, mnSecuritySecretsService, mnTimezoneDetailsService, mnHelperService, modalService, datePipe) {
     super();
 
     this.secondsInDay = timeUnitToSeconds.day;
     this.datePipe = datePipe;
+    this.mnTimezoneDetailsService = mnTimezoneDetailsService;
 
     this.getEncryptionAtRest = mnSecuritySecretsService.stream.getEncryptionAtRest;
     this.getEncryptionAtRestKeys = mnSecuritySecretsService.stream.getEncryptionAtRestKeys.pipe(map(this.displayOrder));
@@ -101,6 +104,8 @@ class MnSecuritySecretsComponent extends MnLifeCycleHooksToStream {
         this.filter.pipe,
         this.sorter.pipe,
         shareReplay({refCount: true, bufferSize: 1}));
+
+    this.serverTimeExample = this.secrets.pipe(map(secrets => secrets.length ? secrets[0].creationDateTime : ''));
   }
 
   trackByMethod(i, item) {
