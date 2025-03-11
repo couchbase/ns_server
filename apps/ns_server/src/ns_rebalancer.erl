@@ -296,7 +296,7 @@ move_vbuckets(Bucket, Moves) ->
     NewMap = tuple_to_list(TMap),
     ProgressFun = make_progress_fun(0, 1),
     run_mover(Bucket, Config, ns_bucket:get_servers(Config),
-              ProgressFun, Map, NewMap, undefined).
+              ProgressFun, Map, NewMap, undefined, undefined).
 
 rebalance_services(#{services := all} = Params) ->
     rebalance_services(
@@ -781,8 +781,12 @@ do_rebalance_membase_bucket(Bucket, Config,
     ns_bucket:store_last_balanced_vbmap(Bucket, FastForwardMap, MapOptions),
     ?rebalance_debug("Target map options: ~p (hash: ~p)",
                      [MapOptions, erlang:phash2(MapOptions)]),
+
+    FusionUploaders = fusion_uploaders:build_fast_forward_info(
+                        Bucket, Config, Map, FastForwardMap),
+
     {run_mover(Bucket, Config, Servers, ProgressFun, Map, FastForwardMap,
-               RebalancePlan),
+               RebalancePlan, FusionUploaders),
      MapOptions}.
 
 sleep_for_sdk_clients(Type) ->
@@ -794,7 +798,7 @@ sleep_for_sdk_clients(Type) ->
     timer:sleep(SecondsToWait * 1000).
 
 run_mover(Bucket, Config, KeepNodes, ProgressFun, Map, FastForwardMap,
-          RebalancePlan) ->
+          RebalancePlan, FusionUploaders) ->
     Servers = ns_bucket:get_servers(Config),
 
     %% At this point the server list must have already been updated to include
@@ -812,7 +816,8 @@ run_mover(Bucket, Config, KeepNodes, ProgressFun, Map, FastForwardMap,
               {ok, Pid} = ns_vbucket_mover:start_link(Bucket, Servers,
                                                       Map, FastForwardMap,
                                                       ProgressFun,
-                                                      RebalancePlan),
+                                                      RebalancePlan,
+                                                      FusionUploaders),
               wait_for_mover(Pid)
       end),
 
@@ -1368,7 +1373,7 @@ do_run_graceful_failover_moves(Nodes, BucketName, BucketConfig, I, N) ->
     ProgressFun = make_progress_fun(I, N),
     RV = run_mover(BucketName, BucketConfig,
                    ns_bucket:get_servers(BucketConfig),
-                   ProgressFun, Map, Map1, undefined),
+                   ProgressFun, Map, Map1, undefined, undefined),
     master_activity_events:note_bucket_rebalance_ended(BucketName),
     RV.
 

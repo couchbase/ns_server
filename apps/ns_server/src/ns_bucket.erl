@@ -115,7 +115,7 @@
          update_servers_and_map/4,
          validate_map/1,
          set_fast_forward_map/2,
-         set_map/2,
+         set_map_and_uploaders/3,
          set_initial_map/4,
          set_map_opts/2,
          set_servers/2,
@@ -207,14 +207,6 @@
          store_fusion_uploaders/2,
          magma_fusion_logstore_uri/1,
          magma_fusion_metadatastore_uri/1]).
-
-%% incremented starting from 1 with each uploader change
-%% The purpose of Term is to help
-%% s3 to recognize rogue uploaders and ignore them.
--type fusion_uploader_term() :: pos_integer().
-%% fusion uploaders map, one item per vbucket
--type fusion_uploaders() :: [{node(), fusion_uploader_term()}].
--export_type([fusion_uploaders/0]).
 
 -import(json_builder,
         [to_binary/1,
@@ -1843,13 +1835,15 @@ set_auto_fields(CurBucketConfig, UpdatedBucketConfig) ->
             UpdatedBucketConfig
     end.
 
+set_property_fun(Key, Value, Default, Fun) ->
+    fun (OldConfig) ->
+            Fun(proplists:get_value(Key, OldConfig, Default)),
+            lists:keystore(Key, 1, OldConfig, {Key, Value})
+    end.
+
 set_property(Bucket, Key, Value, Default, Fun) ->
     ok = update_bucket_config(
-           Bucket,
-           fun (OldConfig) ->
-                   Fun(proplists:get_value(Key, OldConfig, Default)),
-                   lists:keystore(Key, 1, OldConfig, {Key, Value})
-           end).
+           Bucket, set_property_fun(Key, Value, Default, Fun)).
 
 set_property(Bucket, Key, Value) ->
     ok = update_bucket_config(Bucket, lists:keystore(Key, 1, _, {Key, Value})).
@@ -1866,10 +1860,30 @@ validate_map(Map) ->
             ok
     end.
 
-set_map(Bucket, Map) ->
+-spec set_map_and_uploaders(bucket_name(), vbucket_map(),
+                            fusion_uploaders:uploaders() | undefined) ->
+          {ok, chronicle:revision()} | not_found.
+set_map_and_uploaders(Bucket, Map, Uploaders) ->
     validate_map(Map),
-    set_property(Bucket, map, Map, [],
-                 master_activity_events:note_set_map(Bucket, Map, _)).
+    NoteSetMap = master_activity_events:note_set_map(Bucket, Map, _),
+    MapSetter = set_property_fun(map, Map, [], NoteSetMap),
+    chronicle_kv:transaction(
+      kv, [sub_key(Bucket, props)],
+      fun (Snapshot) ->
+              case get_commits_from_snapshot([{Bucket, MapSetter}],
+                                             Snapshot) of
+                  [{abort, not_found}] ->
+                      {abort, not_found};
+                  Commits ->
+                      case Uploaders of
+                          undefined ->
+                              {commit, Commits};
+                          _ ->
+                              {commit, [{set, fusion_uploaders_key(Bucket),
+                                         Uploaders} | Commits]}
+                      end
+              end
+      end).
 
 validate_map_with_node_names(Snapshot, Servers) ->
     Nodes = chronicle_compat:get(Snapshot, nodes_wanted, #{default => []}),
@@ -2714,12 +2728,13 @@ fusion_uploaders_sub_key() ->
 fusion_uploaders_key(BucketName) ->
     sub_key(BucketName, fusion_uploaders_sub_key()).
 
--spec store_fusion_uploaders(string(), fusion_uploaders()) ->
+-spec store_fusion_uploaders(string(), fusion_uploaders:uploaders()) ->
           {ok, chronicle:revision()}.
 store_fusion_uploaders(BucketName, Map) ->
     {ok, _} = store_sub_key(BucketName, fusion_uploaders_sub_key(), Map).
 
--spec get_fusion_uploaders(string()) -> fusion_uploaders() | not_found.
+-spec get_fusion_uploaders(string()) ->
+          fusion_uploaders:uploaders() | not_found.
 get_fusion_uploaders(BucketName) ->
     get_sub_key_value(BucketName, fusion_uploaders_sub_key()).
 

@@ -130,7 +130,7 @@ handle_commit_vbucket(VBucket,
 handle_commit_vbucket_post_apply(Bucket, VBucket, RecoveryState, State) ->
     {ok, Map, NewRecoveryState} =
         recovery:note_commit_vbucket_done(VBucket, RecoveryState),
-    ns_bucket:set_map(Bucket, Map),
+    ns_bucket:set_map_and_uploaders(Bucket, Map, undefined),
 
     NewState = State#state{recovery_state = NewRecoveryState},
     case recovery:is_recovery_complete(NewRecoveryState) of

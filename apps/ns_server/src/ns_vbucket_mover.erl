@@ -24,7 +24,7 @@
         ns_config:read_key_fast(rebalance_inflight_moves_per_node, 64)).
 
 %% API
--export([start_link/6]).
+-export([start_link/7]).
 
 %% gen_server callbacks
 -export([code_change/3, init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -38,6 +38,8 @@
 -record(state, {bucket :: bucket_name(),
                 disco_events_subscription :: pid(),
                 map :: array:array(),
+                uploaders :: array:array() | undefined,
+                uploader_moves :: array:array() | undefined,
                 pending_map_sync :: undefined | [{pid(), any()}],
                 moves_scheduler_state,
                 progress_callback :: progress_callback(),
@@ -50,12 +52,14 @@
 %% @doc Start the mover.
 -spec start_link(bucket_name(), [node()],
                  vbucket_map(), vbucket_map(), progress_callback(),
-                 list() | undefined) ->
-                        {ok, pid()} | {error, any()}.
-start_link(Bucket, Nodes, OldMap, NewMap, ProgressCallback, RebalancePlan) ->
+                 list() | undefined,
+                 fusion_uploaders:fast_forward_info() | undefined) ->
+          {ok, pid()} | {error, any()}.
+start_link(Bucket, Nodes, OldMap, NewMap, ProgressCallback, RebalancePlan,
+           FusionUploadersInfo) ->
     gen_server:start_link(?MODULE,
                           {Bucket, Nodes, OldMap, NewMap, ProgressCallback,
-                           RebalancePlan},
+                           RebalancePlan, FusionUploadersInfo},
                           []).
 
 note_move_done(Pid, Worker) ->
@@ -115,7 +119,8 @@ is_swap_rebalance(OldMap, NewMap) ->
             false
     end.
 
-init({Bucket, Nodes, OldMap, NewMap, ProgressCallback, RebalancePlan}) ->
+init({Bucket, Nodes, OldMap, NewMap, ProgressCallback, RebalancePlan,
+      FusionUploadersInfo}) ->
     case is_swap_rebalance(OldMap, NewMap) of
         true ->
             ale:info(?USER_LOGGER, "Bucket ~p rebalance appears to be swap rebalance", [Bucket]);
@@ -167,9 +172,21 @@ init({Bucket, Nodes, OldMap, NewMap, ProgressCallback, RebalancePlan}) ->
                                              self())
     end,
 
+    {FusionUploaders, FusionUploaderMoves} =
+        case FusionUploadersInfo of
+            undefined ->
+                {undefined, undefined};
+            _ ->
+                {list_to_array(fusion_uploaders:get_current(
+                                 FusionUploadersInfo)),
+                 list_to_array(fusion_uploaders:get_moves(FusionUploadersInfo))}
+        end,
+
     {ok, #state{bucket = Bucket,
                 disco_events_subscription = Subscription,
-                map = map_to_array(OldMap),
+                map = list_to_array(OldMap),
+                uploaders = FusionUploaders,
+                uploader_moves = FusionUploaderMoves,
                 moves_scheduler_state = SchedulerState,
                 progress_callback = ProgressCallback,
                 all_nodes_set = sets:from_list(Nodes)}}.
@@ -246,19 +263,9 @@ terminate(Reason, _State) ->
 %% Internal functions
 %%
 
-%% @private
-%% @doc Convert a map array back to a map list.
--spec array_to_map(array:array()) -> vbucket_map().
-array_to_map(Array) ->
-    array:to_list(Array).
-
-%% @private
-%% @doc Convert a map, which is normally a list, into an array so that
-%% we can randomly access the replication chains.
--spec map_to_array(vbucket_map()) -> array:array().
-map_to_array(Map) ->
-    array:fix(array:from_list(Map)).
-
+-spec list_to_array(list()) -> array:array().
+list_to_array(List) ->
+    array:fix(array:from_list(List)).
 
 %% @private
 %% @doc Report progress using the supplied progress callback.
@@ -291,13 +298,32 @@ on_move_done(Worker, #state{bucket = Bucket,
     report_progress(NextState),
     spawn_workers(NextState).
 
-handle_update_vbucket_map(Worker, From, #state{map = Map} = State) ->
+handle_update_vbucket_map(
+  Worker, From,
+  #state{map = Map, uploaders = FusionUploaders,
+         uploader_moves = FusionUploaderMoves} = State) ->
     {ok, {move, Move}} = find_worker(Worker),
     {VBucket, OldChain, NewChain, _, _} = Move,
 
     true = (array:get(VBucket, Map) =:= OldChain),
     NewMap = array:set(VBucket, NewChain, Map),
-    NewState = State#state{map = NewMap},
+
+    NewFusionUploaders =
+        case FusionUploaders of
+            undefined ->
+                undefined;
+            _ ->
+                true = FusionUploaderMoves =/= undefined,
+                case array:get(VBucket, FusionUploaderMoves) of
+                    same ->
+                        FusionUploaders;
+                    Uploader ->
+                        array:set(VBucket, Uploader, FusionUploaders)
+                end
+        end,
+
+    NewState = State#state{map = NewMap,
+                           uploaders = NewFusionUploaders},
 
     {noreply, maybe_schedule_map_sync(From, NewState)}.
 
@@ -310,9 +336,16 @@ maybe_schedule_map_sync(From, #state{pending_map_sync = Waiters} = State) ->
     State#state{pending_map_sync = [From | Waiters]}.
 
 map_sync(#state{map = Map,
+                uploaders = Uploaders,
                 bucket = Bucket,
                 pending_map_sync = Waiters} = State) ->
-    ns_bucket:set_map(Bucket, array_to_map(Map)),
+    ns_bucket:set_map_and_uploaders(Bucket, array:to_list(Map),
+                                    case Uploaders of
+                                        undefined ->
+                                            undefined;
+                                        _ ->
+                                            array:to_list(Uploaders)
+                                    end),
     lists:foreach(gen_server:reply(_, ok), Waiters),
     ?log_debug("Batched ~b vbucket map syncs together.", [length(Waiters)]),
 
