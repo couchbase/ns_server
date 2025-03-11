@@ -579,4 +579,128 @@ build_json_test() ->
 
     ok.
 
+config_upgrade_to_morpheus_test__() ->
+    %% Self-managed profile
+    meck:expect(config_profile, get_value,
+                fun (resource_management, []) ->
+                        []
+                end),
+    %% Empty config gets populated
+    [{set, resource_management, Cfg0}] = config_upgrade_to_morpheus([]),
+    ?assertProplistsEqualRecursively(
+       [{disk_usage,
+         [{enabled, false},
+          {maximum, 85}]},
+        {cores_per_bucket,
+         [{enabled,false},
+          {minimum, 0.2}]}],
+       Cfg0),
+    %% Old max disk_usage gets updated
+    [{set, resource_management, Cfg1}] =
+        config_upgrade_to_morpheus(
+          [[{resource_management,
+             [{disk_usage,
+               [{maximum, 96}]}]}]]),
+    ?assertProplistsEqualRecursively(
+       [{disk_usage,
+         [{enabled, false},
+          {maximum, 85}]},
+        {cores_per_bucket,
+         [{enabled,false},
+          {minimum, 0.2}]}],
+       Cfg1),
+    %% Custom max disk_usage retained
+    [{set, resource_management, Cfg3}] =
+        config_upgrade_to_morpheus(
+          [[{resource_management,
+             [{disk_usage,
+               [{maximum, 90}]}]}]]),
+    ?assertProplistsEqualRecursively(
+       [{disk_usage,
+         [{maximum, 90}]},
+        {cores_per_bucket,
+         [{enabled, false},
+          {minimum, 0.2}]}],
+       Cfg3),
+    %% Old min cores_per_bucket updated
+    [{set, resource_management, Cfg4}] =
+        config_upgrade_to_morpheus(
+          [[{resource_management,
+             [{cores_per_bucket,
+               [{minimum, 0.4}]}]}]]),
+    ?assertProplistsEqualRecursively(
+       [{disk_usage,
+         [{enabled, false},
+          {maximum, 85}]},
+        {cores_per_bucket,
+         [{minimum, 0.2}]}],
+       Cfg4),
+    %% Custom min cores_per_bucket retained
+    [{set, resource_management, Cfg5}] =
+        config_upgrade_to_morpheus(
+          [[{resource_management,
+             [{cores_per_bucket,
+               [{minimum, 0.3}]}]}]]),
+    ?assertProplistsEqualRecursively(
+       [{disk_usage,
+         [{enabled, false},
+          {maximum, 85}]},
+        {cores_per_bucket,
+         [{minimum, 0.3}]}],
+       Cfg5),
+    %% New min cores_per_bucket not modified
+    [{set, resource_management, Cfg6}] =
+        config_upgrade_to_morpheus(
+          [[{resource_management,
+             [{cores_per_bucket,
+               [{minimum, 0.2}]}]}]]),
+    ?assertProplistsEqualRecursively(
+       [{disk_usage,
+         [{enabled, false},
+          {maximum, 85}]},
+        {cores_per_bucket,
+         [{minimum, 0.2}]}],
+       Cfg6),
+
+    %% Provisioned profile
+    meck:expect(config_profile, get_value,
+                fun (resource_management, []) ->
+                        [{[disk_usage, maximum], 96}]
+                end),
+    %% Old max disk_usage gets retained, as the default isn't changed for
+    %% provisioned profile
+    [{set, resource_management, Cfg7}] =
+        config_upgrade_to_morpheus(
+          [[{resource_management,
+             [{disk_usage,
+               [{maximum, 96}]}]}]]),
+    ?assertProplistsEqualRecursively(
+       [{disk_usage,
+         [{enabled, false},
+          {maximum, 96}]},
+        {cores_per_bucket,
+         [{enabled,false},
+          {minimum, 0.2}]}],
+       Cfg7),
+    %% Custom max disk_usage also gets retained for provisioned profile
+    [{set, resource_management, Cfg8}] =
+        config_upgrade_to_morpheus(
+          [[{resource_management,
+             [{disk_usage,
+               [{maximum, 90}]}]}]]),
+    ?assertProplistsEqualRecursively(
+       [{disk_usage,
+         [{maximum, 90}]},
+        {cores_per_bucket,
+         [{enabled, false},
+          {minimum, 0.2}]}],
+       Cfg8).
+
+config_upgrade_test_() ->
+    {setup,
+     fun () -> ok end,
+     fun (_) -> meck:unload() end,
+     {"config_upgrade_to_morpheus",
+      fun config_upgrade_to_morpheus_test__/0}}.
+
 -endif.
