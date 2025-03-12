@@ -17,15 +17,43 @@
          handle_bucket_drop_keys/2, build_bucket_encr_at_rest_info/2,
          format_encr_at_rest_info/1]).
 
-encr_method(Param, EncrType) ->
+encr_method(Param, SecretIdName, EncrType) ->
     {Param,
      #{cfg_key => [EncrType, encryption],
-       type => encryption_method}}.
+       type => encryption_method,
+       depends_on =>
+           #{SecretIdName => fun (secret, ?SECRET_ID_NOT_SET) ->
+                                     {error, "encryptionKeyId must be set "
+                                             "when encryptionMethod is set "
+                                             "to encryptionKey"};
+                                 (_, _) ->
+                                     %% Intentionally not checking the case
+                                     %% where encryptionMethod is set to
+                                     %% nodeSecretManager or disabled because
+                                     %% secretId can be just automatically
+                                     %% set to ?SECRET_ID_NOT_SET in that case
+                                     ok
+                             end}}}.
 
-encr_secret_id(Param, EncrType) ->
+encr_secret_id(Param, EncrMethodName, EncrType) ->
     {Param,
      #{cfg_key => [EncrType, secret_id],
-       type => {int, -1, infinity}}}.
+       type => secret_id,
+       depends_on =>
+           #{EncrMethodName => fun (?SECRET_ID_NOT_SET, secret) ->
+                                       {error, "encryptionKeyId must be set "
+                                               "when encryptionMethod is set "
+                                               "to encryptionKey"};
+                                   (_Id, secret) ->
+                                       ok;
+                                   (Id, _) when Id /= ?SECRET_ID_NOT_SET ->
+                                       {error, "encryptionKeyId must not be "
+                                               "set when encryptionMethod is "
+                                               "set to nodeSecretManager or "
+                                               "disabled"};
+                                   (_, _) ->
+                                       ok
+                               end}}}.
 
 encr_dek_lifetime(Param, EncrType, Enabled) ->
     {Param,
@@ -52,13 +80,19 @@ encr_info(Param, EncrType) ->
               type => {read_only, encr_info}}}.
 
 params() ->
-    [encr_method("config.encryptionMethod", config_encryption),
-     encr_method("log.encryptionMethod", log_encryption),
-     encr_method("audit.encryptionMethod", audit_encryption),
+    [encr_method("config.encryptionMethod", "config.encryptionKeyId",
+                 config_encryption),
+     encr_method("log.encryptionMethod", "log.encryptionKeyId",
+                 log_encryption),
+     encr_method("audit.encryptionMethod", "audit.encryptionKeyId",
+                 audit_encryption),
 
-     encr_secret_id("config.encryptionKeyId", config_encryption),
-     encr_secret_id("log.encryptionKeyId", log_encryption),
-     encr_secret_id("audit.encryptionKeyId", audit_encryption),
+     encr_secret_id("config.encryptionKeyId", "config.encryptionMethod",
+                    config_encryption),
+     encr_secret_id("log.encryptionKeyId", "log.encryptionMethod",
+                    log_encryption),
+     encr_secret_id("audit.encryptionKeyId", "audit.encryptionMethod",
+                    audit_encryption),
 
      encr_dek_lifetime("config.dekLifetime", config_encryption, true),
      encr_dek_lifetime("log.dekLifetime", log_encryption, false),
@@ -76,6 +110,16 @@ params() ->
      encr_info("log.info", log_encryption),
      encr_info("audit.info", audit_encryption)].
 
+type_spec(secret_id) ->
+    ValidatorFun = fun (?SECRET_ID_NOT_SET) -> ok;
+                       (Id) ->
+                           case cb_cluster_secrets:get_secret(Id) of
+                               {ok, _} -> ok;
+                               {error, _} -> {error, "Key does not exist"}
+                           end
+                   end,
+    #{validators => [int, ?cut(validator:validate(ValidatorFun, _1, _2))],
+      formatter => int};
 type_spec(encryption_method) ->
     #{validators => [{one_of, string,
                       ["disabled", "nodeSecretManager", "encryptionKey"]},
@@ -100,16 +144,21 @@ handle_get(Path, Req) ->
     Settings = get_settings(direct),
     NodesInfo = ns_doctor:get_nodes(),
     Nodes = ns_cluster_membership:nodes_wanted(),
-    List = maps:to_list(maps:map(fun (K, V) ->
-                                     maps:to_list(V) ++
-                                     [{info, aggregated_EAR_info(K, NodesInfo,
-                                                                 Nodes)}]
-                                 end, Settings)),
+    List = lists:map(
+             fun ({K, V}) ->
+                 {K, [{info, aggregated_EAR_info(K, NodesInfo, Nodes)} | V]}
+             end, settings_to_list(Settings)),
     menelaus_web_settings2:handle_get(Path, params(), fun type_spec/1, List,
                                       Req).
 
+settings_to_list(Settings) ->
+    maps:to_list(maps:map(fun (_K, V) -> maps:to_list(V) end, Settings)).
+
 handle_post(Path, Req) ->
     menelaus_util:assert_is_enterprise(),
+    AlreadyDefined = chronicle_compat:get(direct,
+                                          ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY,
+                                          #{default => #{}}),
     menelaus_web_settings2:handle_post(
       fun (Params, Req2) ->
           NewSettings = maps:map(fun (_, V) -> maps:from_list(V) end,
@@ -117,12 +166,19 @@ handle_post(Path, Req) ->
                                    fun ({[K1, _K2], _V}) -> K1 end,
                                    fun ({[_K1, K2], V}) -> {K2, V} end,
                                    Params)),
+          NewSettings2 =
+              maps:map(fun (_, #{encryption := disabled} = P) ->
+                               P#{secret_id => ?SECRET_ID_NOT_SET};
+                           (_, #{encryption := encryption_service} = P) ->
+                               P#{secret_id => ?SECRET_ID_NOT_SET};
+                           (_, P) -> P
+                       end, NewSettings),
           RV = chronicle_kv:transaction(
                  kv, [?CHRONICLE_SECRETS_KEY,
                       ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
                  fun (Snapshot) ->
                      CurrentSettings = get_settings(Snapshot),
-                     MergedNewSettings = get_settings(Snapshot, NewSettings),
+                     MergedNewSettings = get_settings(Snapshot, NewSettings2),
                      ToApply = apply_auto_fields(
                                  Snapshot, MergedNewSettings),
                      case validate_all_settings_txn(maps:to_list(ToApply),
@@ -145,7 +201,8 @@ handle_post(Path, Req) ->
              {error, Msg} ->
                  menelaus_util:reply_global_error(Req2, Msg)
          end
-      end, Path, params(), fun type_spec/1, Req).
+      end, Path, params(), fun type_spec/1,
+      settings_to_list(AlreadyDefined), settings_to_list(defaults()), Req).
 
 handle_bucket_drop_keys(Bucket, Req) ->
     menelaus_util:assert_is_enterprise(),
