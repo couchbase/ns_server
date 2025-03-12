@@ -1186,7 +1186,7 @@ get_roles_for_identity({"", wrong_token}) ->
         true ->
             []
     end;
-get_roles_for_identity({"", anonymous}) ->
+get_roles_for_identity(?ANONYMOUS_IDENTITY) ->
     case ns_config_auth:is_system_provisioned() of
         false ->
             [admin];

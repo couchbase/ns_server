@@ -1097,8 +1097,8 @@ set_manifest(Req, BucketName, InputManifest, ValidOnUid, Uid) ->
 
 auth_failure(Req0) ->
     Req =
-        case menelaus_auth:get_identity(Req0) of
-            {[], anonymous} ->
+        case menelaus_auth:is_anonymous(menelaus_auth:get_authn_res(Req0)) of
+            true ->
                 %% This handles the case where an authentication failure has
                 %% occurred because the request didn't have authorization
                 %% information. This  leads to ns_server adding arbitrary
@@ -1115,7 +1115,7 @@ auth_failure(Req0) ->
                         %% ns_server's handing of errors from memcached.
                         Req0
                 end;
-            _ ->
+            false ->
                 Req0
         end,
 

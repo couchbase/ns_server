@@ -92,4 +92,6 @@
          session_name :: binary() | '_',
          authn_res :: #authn_res{} | '_'}).
 
+-define(ANONYMOUS_IDENTITY, {"", anonymous}).
+
 -endif.

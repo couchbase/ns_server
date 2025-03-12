@@ -351,7 +351,7 @@ do_authenticate(error) ->
     {error, auth_failure, []};
 do_authenticate(undefined) ->
     ?count_auth("anon", "succ"),
-    {ok, init_auth({"", anonymous}), [], []};
+    {ok, init_auth(?ANONYMOUS_IDENTITY), [], []};
 do_authenticate({token, Token} = Param) ->
     ?call_on_ns_server_node(
        case menelaus_ui_auth:check(Token) of
@@ -853,8 +853,11 @@ extract_identity_from_cert(CertDer) ->
     end.
 
 -spec is_anonymous(#authn_res{}) -> boolean().
-is_anonymous(#authn_res{identity = {"", anonymous}}) -> true;
-is_anonymous(#authn_res{}) -> false.
+is_anonymous(#authn_res{identity = ?ANONYMOUS_IDENTITY}) -> true;
+is_anonymous(#authn_res{}) -> false;
+%% For cases when authn_res is not in Req
+%% (when called as is_anonymous(get_authn_res(Req)))
+is_anonymous(undefined) -> true.
 
 -spec check_permission(#authn_res{}, rbac_permission() | no_check | local) ->
           auth_failure | forbidden | allowed | password_expired.
@@ -864,12 +867,11 @@ check_permission(#authn_res{identity = {"@" ++ _, local_token}}, local) ->
     allowed;
 check_permission(_, local) ->
     forbidden;
-check_permission(#authn_res{identity = Identity},
-                 no_check_disallow_anonymous) ->
-    case Identity of
-        {"", anonymous} ->
+check_permission(#authn_res{} = AuthnRes, no_check_disallow_anonymous) ->
+    case is_anonymous(AuthnRes) of
+        true ->
             auth_failure;
-        _ ->
+        false ->
             allowed
     end;
 check_permission(#authn_res{password_expired=true}, _) ->
@@ -892,13 +894,13 @@ check_permission(#authn_res{identity = Identity} = AuthnRes,
                                "Permission: ~p~n",
                                [ns_config_log:tag_user_data(Identity),
                                 Roles, Permission]),
-                    case Identity of
-                        {"", anonymous} ->
+                    case is_anonymous(AuthnRes) of
+                        true ->
                             %% we do allow some api's for anonymous
                             %% under some circumstances, but we want to return 401 in case
                             %% if autorization for requests with no auth fails
                             auth_failure;
-                        _ ->
+                        false ->
                             forbidden
                     end
             end
