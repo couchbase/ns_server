@@ -252,33 +252,39 @@ handle_post(ApplyFun, Path, ParamSpecs, UserTypesFun, Predefined, Defaults,
                     || {Keys, Funs} <- ValidatorsProplist, F <- Funs],
     Params = parse_params(AllPossibleKeys, Req),
 
-    validator:handle(
-      fun (Props) ->
-          Props2 =
+    %% Final touches before returning the props to the caller
+    PrepareProps =
+        fun (Props) ->
               lists:map(
                 fun ({Key, Value}) ->
                     FullKey = join_key(Path ++ split_key(atom_to_list(Key))),
                     Spec = proplists:get_value(FullKey, ParamSpecs),
                     InternalKey = cfg_key(FullKey, Spec),
                     {InternalKey, Value}
-                end, Props),
-          ExtraValidators = mandatory_validators(Path, Props2, ParamSpecs,
-                                                 Predefined, Defaults),
-          validator:handle(
-            fun (_) ->
-                ApplyFun(Props2, Req)
-            end, Req,
-            [{atom_to_list(K), V} || {K, V} <- Props],
-            ExtraValidators)
-      end, Req, Params, Validators ++ [validator:unsupported(_)]).
+                end, Props)
+        end,
 
-%% Returns list of validators that check that all mandatory values are present
-mandatory_validators(Path, Props2, ParamSpecs, Predefined, Defaults) ->
+    %% Is is called "Post" because it is called after all values are parsed
+    %% by Validators
+    PostValidator =
+        validator:post_validate_all(
+          fun (Props, State) ->
+              Props2 = PrepareProps(Props),
+              PostValidators = post_validators(Path, Props2, ParamSpecs,
+                                               Predefined, Defaults),
+              {ok, functools:chain(State, PostValidators)}
+          end, _),
+
+    validator:handle(
+      fun (Props) -> ApplyFun(PrepareProps(Props), Req) end, Req, Params,
+      Validators ++ [validator:unsupported(_), PostValidator]).
+
+post_validators(Path, Props, ParamSpecs, Predefined, Defaults) ->
     AllPropsIncludingPredefined =
         lists:foldl(
           fun ({Name, #{} = Spec}, Acc) ->
               InternalKey = cfg_key(Name, Spec),
-              case proplists:get_all_values(InternalKey, Props2) of
+              case proplists:get_all_values(InternalKey, Props) of
                   [] ->
                       case extract_value(InternalKey, Predefined) of
                           not_found ->
@@ -294,7 +300,61 @@ mandatory_validators(Path, Props2, ParamSpecs, Predefined, Defaults) ->
                   [V] ->
                       Acc#{cfg_key_as_is(Name, Spec) => V}
               end
-          end, maps:from_list(Props2), ParamSpecs),
+          end, maps:from_list(Props), ParamSpecs),
+    GetParamName =
+        fun (N) -> join_key(extract_relative_key(Path, split_key(N))) end,
+    mandatory_validators(ParamSpecs, Predefined, AllPropsIncludingPredefined,
+                         GetParamName) ++
+    depends_on_validators(Props, ParamSpecs, AllPropsIncludingPredefined,
+                          GetParamName).
+
+%% Handles depends_on field in specs
+%% Format: {Name0, #{depends_on => #{Name1 => Fun1, Name2 => Fun2}}}
+%% which means that Name0 depends on Name1 and Name2
+%% Fun1 and Fun2 are functions that take two arguments. The first argument is
+%% the value of Name0, the second argument is the value of Name1 or Name2
+%% depending on which one is being checked. The dependency is only checked if
+%% Name0 is being set by this POST request.
+depends_on_validators(Props, ParamSpecs, AllPropsIncludingPredefined,
+                      GetParamName) ->
+    lists:flatmap(
+      fun ({Name1, #{depends_on := DependsOnMap} = Spec}) ->
+              ParamName1 = GetParamName(Name1),
+              InternalKey1 = cfg_key(Name1, Spec),
+              Value1 = maps:get(InternalKey1, AllPropsIncludingPredefined,
+                                undefined),
+              case proplists:is_defined(InternalKey1, Props) of
+                  true -> %% only call the validator function if Name1 is
+                          %% being set by this POST request
+                      lists:flatmap(
+                          fun ({Name2, DependsOn}) ->
+                              Spec2 = proplists:get_value(Name2, ParamSpecs),
+                              InternalKey2 = cfg_key(Name2, Spec2),
+                              Value2 = maps:get(InternalKey2,
+                                                AllPropsIncludingPredefined,
+                                                undefined),
+                              case DependsOn(Value1, Value2) of
+                                  ok -> [];
+                                  {error, Reason} ->
+                                      [validator:validate(
+                                         fun (_) -> {error, Reason} end,
+                                         ParamName1, _)]
+                              end
+                          end, maps:to_list(DependsOnMap));
+                  false ->
+                      []
+              end;
+          ({_Name, _Spec}) ->
+              []
+      end, ParamSpecs).
+
+%% Handles mandatory field in specs
+%% Format: {Name, #{mandatory => true}}
+%% or {Name, #{mandatory => Fun}}
+%% where Fun is a function that takes a map of all properties and returns true
+%% if the property is mandatory, otherwise false
+mandatory_validators(ParamSpecs, Predefined, AllPropsIncludingPredefined,
+                     GetParamName) ->
     lists:filtermap(
       fun ({Name, #{mandatory := F} = Spec}) ->
               case (F == true) orelse
@@ -303,10 +363,7 @@ mandatory_validators(Path, Props2, ParamSpecs, Predefined, Defaults) ->
                       InternalKey = cfg_key(Name, Spec),
                       case extract_value(InternalKey, Predefined) of
                           not_found ->
-                              NameTokens = split_key(Name),
-                              Keys = extract_relative_key(Path, NameTokens),
-                              ParamName = join_key(Keys),
-                              {true, validator:required(ParamName, _)};
+                              {true, validator:required(GetParamName(Name), _)};
                           {value, _} ->
                               false
                       end;
@@ -705,6 +762,132 @@ handle_post_test() ->
                      "application/json",
                      <<"42">>,
                      [{[ckey3], 42}])
+      end).
+
+depends_on_test() ->
+    GreaterThan = fun (undefined, _) -> {error, "undefined"};
+                      (_, undefined) -> {error, "undefined"};
+                      (V1, V2) when V1 > V2 -> ok;
+                      (_, _) -> {error, "test error"}
+                  end,
+    LessThan = fun (undefined, _) -> {error, "undefined"};
+                   (_, undefined) -> {error, "undefined"};
+                   (V1, V2) when V1 < V2 -> ok;
+                   (_, _) -> {error, "test error"}
+               end,
+    Params = [{"K1.K2.SMALL", #{cfg_key => [s1, small], type => int}},
+              {"BIGGER", #{cfg_key => [super_big], type => int}},
+              {"K1.BIG", #{cfg_key => [b1, b2, big], type => int,
+                          %% K1.BIG must be greater than K1.K2.SMALL
+                          depends_on => #{"K1.K2.SMALL" => GreaterThan,
+                                          "BIGGER" => LessThan}}},
+              {"K2.UNRELATED1", #{cfg_key => unrelated1, type => int}},
+              {"K2.UNRELATED2", #{cfg_key => unrelated2, type => int}}],
+
+    with_request(
+      fun (SetContType, SetBody, Req) ->
+          SetContType("application/x-www-form-urlencoded"),
+          Succ =
+              fun (#{path := Path, body := Body,
+                     expected_result := ExpectedResult} = P) ->
+                  SetBody(Body),
+                  Predefined = maps:get(predefined, P, []),
+                  Defaults = maps:get(defaults, P, []),
+                  handle_post(fun (Parsed, Req2) when Req == Req2 ->
+                                  ?assertEqual(ExpectedResult, Parsed)
+                              end, Path, Params,
+                              fun test_type_spec/1, Predefined, Defaults, Req)
+              end,
+          Fail =
+              fun (#{path := Path, body := Body,
+                     expected_error := ExpectedError} = P) ->
+                  SetBody(Body),
+                  Predefined = maps:get(predefined, P, []),
+                  Defaults = maps:get(defaults, P, []),
+                  ?assertError(
+                    {validation_failed, ExpectedError},
+                    handle_post(fun (_Parsed, Req2) when Req == Req2 ->
+                                    ?assert(false)
+                                end, Path, Params,
+                                fun test_type_spec/1,
+                                Predefined, Defaults, Req))
+              end,
+
+          Succ(#{path => [],
+                 body => <<"K2.UNRELATED1=1&K2.UNRELATED2=2">>,
+                 expected_result => [{[unrelated1], 1}, {[unrelated2], 2}]}),
+          Succ(#{path => [],
+                 body => <<"K2.UNRELATED1=1&K2.UNRELATED2=2">>,
+                 %% If we already have inconsistent values set, we should
+                 %% not return error, as we are not validating these values
+                 predefined => [{b1, [{b2, [{big, 1}]}]}, {s1, [{small, 2}]}],
+                 expected_result => [{[unrelated1], 1}, {[unrelated2], 2}]}),
+          Succ(#{path => [],
+                 body => <<"K2.UNRELATED1=1&K2.UNRELATED2=2">>,
+                 %% If we already have inconsistent values set, we should
+                 %% not return error, as we are not validating these values
+                 predefined => [{b1, [{b2, [{big, 1}]}]}],
+                 defaults => [{s1, [{small, 2}]}, {super_big, 0}],
+                 expected_result => [{[unrelated1], 1}, {[unrelated2], 2}]}),
+          Succ(#{path => ["K2"],
+                 body => <<"UNRELATED1=1&UNRELATED2=2">>,
+                 expected_result => [{[unrelated1], 1}, {[unrelated2], 2}]}),
+          Succ(#{path => [],
+                 body => <<"BIGGER=3&K1.BIG=2&K1.K2.SMALL=1&K2.UNRELATED1=3">>,
+                 expected_result => [{[super_big], 3}, {[b1, b2, big], 2},
+                                     {[s1, small], 1}, {[unrelated1], 3}]}),
+          Succ(#{path => ["K1"],
+                 body => <<"BIG=2&K2.SMALL=1">>,
+                 defaults => [{super_big, 5}],
+                 expected_result => [{[b1, b2, big], 2}, {[s1, small], 1}]}),
+          Succ(#{path => ["K1"],
+                 body => <<"K2.SMALL=3">>,
+                 predefined => [{b1, [{b2, [{big, 5}]}]}],
+                 defaults => [{s1, [{small, 6}]}, {super_big, 4}],
+                 expected_result => [{[s1, small], 3}]}),
+          Succ(#{path => ["K1"],
+                 body => <<"BIG=3">>,
+                 predefined => [{b1, [{b2, [{big, 1}]}]}],
+                 defaults => [{s1, [{small, 2}]}, {super_big, 4}],
+                 expected_result => [{[b1, b2, big], 3}]}),
+          Fail(#{path => [],
+                 body => <<"K1.BIG=1&K1.K2.SMALL=2&BIGGER=3&K2.UNRELATED1=3">>,
+                 expected_error => {[{"K1.BIG", <<"test error">>}]}}),
+          Fail(#{path => [],
+                 body => <<"K1.BIG=3&K1.K2.SMALL=1&BIGGER=2&K2.UNRELATED1=3">>,
+                 expected_error => {[{"K1.BIG", <<"test error">>}]}}),
+          Fail(#{path => [],
+                 body => <<"K1.BIG=3&K1.K2.SMALL=2&BIGGER=1&K2.UNRELATED1=3">>,
+                 expected_error => {[{"K1.BIG", <<"test error">>}]}}),
+          Succ(#{path => [], %% Successfull because K1.BIG is not being set
+                 body => <<"K1.K2.SMALL=3&K2.UNRELATED1=3">>,
+                 predefined => [{b1, [{b2, [{big, 2}]}]}],
+                 defaults => [{s1, [{small, 1}]}, {super_big, 4}],
+                 expected_result => [{[s1, small], 3}, {[unrelated1], 3}]}),
+          Fail(#{path => [],
+                 body => <<"K1.BIG=1&K2.UNRELATED1=3">>,
+                 predefined => [{b1, [{b2, [{big, 3}]}]}],
+                 defaults => [{s1, [{small, 2}]}, {super_big, 4}],
+                 expected_error => {[{"K1.BIG", <<"test error">>}]}}),
+          Fail(#{path => ["K1"],
+                 body => <<"BIG=1&K2.SMALL=2">>,
+                 predefined => [{super_big, 3}],
+                 expected_error => {[{"BIG", <<"test error">>}]}}),
+          Fail(#{path => [], %% Dependency fun not called
+                 body => <<"K1.BIG=1&K1.K2.SMALL=S&BIGGER=3&K2.UNRELATED1=3">>,
+                 expected_error => {[{"K1.K2.SMALL",
+                                      <<"The value must be an integer">>}]}}),
+          Fail(#{path => [], %% Dependency fun not called
+                 body => <<"K1.BIG=S&K1.K2.SMALL=2&BIGGER=3&K2.UNRELATED1=3">>,
+                 expected_error => {[{"K1.BIG",
+                                      <<"The value must be an integer">>}]}}),
+          Fail(#{path => [], %% Dependency fun not called
+                 body => <<"K1.BIG=1&K1.K2.SMALL=2&BIGGER=3&K2.UNRELATED1=S">>,
+                 expected_error => {[{"K2.UNRELATED1",
+                                      <<"The value must be an integer">>}]}}),
+          Fail(#{path => [], %% Dependency fun not called
+                 body => <<"K1.BIG=1&K1.K2.SMALL=2&BIGGER=3&K2.UNKNOWN1=STR">>,
+                 expected_error => {[{"K2.UNKNOWN1", <<"Unsupported key">>}]}})
       end).
 
 mandatory_test() ->

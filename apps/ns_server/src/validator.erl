@@ -26,6 +26,7 @@
          validate_relative/4,
          validate_multiple/3,
          validate_multi_params/3,
+         post_validate_all/2,
          json_array/3,
          get_value/2,
          convert/3,
@@ -145,13 +146,18 @@ handle_one(Fun, Req, #state{errors = Errors} = State) ->
             report_errors_for_one(Req, Errors, 400)
     end.
 
-prepare_params(#state{kv = Props, touched = Touched}) ->
+prepare_params(State) ->
+    prepare_params(State, false).
+
+prepare_params(#state{kv = Props, touched = Touched}, OnlyTouched) ->
     lists:filtermap(fun ({{internal, _}, _}) ->
                             false;
                         ({K, V}) ->
                             case lists:member(K, Touched) of
                                 true ->
                                     {true, {list_to_atom(K), V}};
+                                false when OnlyTouched ->
+                                    false;
                                 false ->
                                     {true, {K, V}}
                             end
@@ -351,6 +357,31 @@ validate(Fun, Name, State0) ->
                 {error, Error, NewState} ->
                     return_error(Name, Error, NewState)
             end
+    end.
+
+%% This function is intended to be used to validate dependencies between
+%% already parsed params. For this reason it is not called if any errors
+%% happens before it. And also params that have not been touched (validated) yet
+%% are not passed to the dependency checking function.
+post_validate_all(Fun, State) ->
+    AllValuesSoFar = prepare_params(State, true),
+    case State#state.errors of
+        [] ->
+            if
+                is_function(Fun, 1) ->
+                    case Fun(AllValuesSoFar) of
+                        ok -> State;
+                        {error, Error} -> return_error("_", Error, State)
+                    end;
+                is_function(Fun, 2) ->
+                    case Fun(AllValuesSoFar, State) of
+                        {ok, NewState} -> NewState;
+                        {error, Error, NewState} ->
+                            return_error("_", Error, NewState)
+                    end
+            end;
+        _ ->
+            State
     end.
 
 validate_relative(Fun, Name, NameRel, State) ->
