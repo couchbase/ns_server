@@ -393,6 +393,13 @@ extract_node_address(Node, AFamily) ->
         {_, Host} -> Host
     end.
 
+is_cb_local_nodename(Node) ->
+    LocalhostAlias = localhost_alias(),
+    case node_name_host(Node) of
+        {_, LocalhostAlias} -> true;
+        {_, _} -> false
+    end.
+
 % Get an environment variable value or return a default value
 getenv_int(VariableName, DefaultValue) ->
     case (catch list_to_integer(os:getenv(VariableName))) of
