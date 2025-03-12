@@ -40,7 +40,6 @@ CB_DATA_DIR="@PREFIX@/var/lib/couchbase"
 SSL_DIST_OPTFILE="@PREFIX@/etc/couchbase/ssl_dist_opts"
 CB_DIST_CFG_FILE="$CB_DATA_DIR/config/dist_cfg"
 HOSTS_CFG_FILE="@PREFIX@/etc/couchbase/hosts.cfg"
-CONFIG_PROFILE_PATH="@PREFIX@/etc/couchbase/${CB_CONFIG_PROFILE:-default}_profile"
 
 # For Sanitizer-enabled builds; configure so warnings are logged to a
 # separate, per exe name file in the couchbase logs directory (if

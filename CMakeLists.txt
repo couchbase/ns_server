@@ -162,8 +162,14 @@ ADD_CUSTOM_TARGET (ns_dataclean
   WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
   VERBATIM)
 
+IF (BUILD_COLUMNAR)
+  SET (DEFAULT_PROFILE "columnar")
+ELSE (BUILD_COLUMNAR)
+  SET (DEFAULT_PROFILE "default")
+ENDIF (BUILD_COLUMNAR)
+
 SET (ns_server_app_src "${PROJECT_SOURCE_DIR}/apps/ns_server/src/ns_server.app.src")
-SET (rebar_config "${PROJECT_SOURCE_DIR}/apps/ns_server/rebar.config")
+
 ADD_CUSTOM_TARGET (ns_cfg DEPENDS "${ns_server_app_src}" "${rebar_config}")
 ADD_CUSTOM_COMMAND(OUTPUT "${ns_server_app_src}"
   COMMAND "${CMAKE_COMMAND}" -D "INPUT_FILE=${ns_server_app_src}.in"
@@ -172,14 +178,11 @@ ADD_CUSTOM_COMMAND(OUTPUT "${ns_server_app_src}"
   -D "REPLACE=${NS_SERVER_VERSION}"
   -P "${PROJECT_SOURCE_DIR}/cmake_modules/string-replace.cmake"
   VERBATIM)
-ADD_CUSTOM_COMMAND(OUTPUT "${rebar_config}"
-  COMMAND "${CMAKE_COMMAND}" -D "INPUT_FILE=${rebar_config}.in"
-  -D "OUTPUT_FILE=${rebar_config}"
-  -D "SEARCH=COUCHDB_SRC_DIR"
-  -D "REPLACE=${COUCHDB_SRC_DIR}"
-  -D "NS_SERVER_SRC_DIR=${PROJECT_SOURCE_DIR}"
-  -P "${PROJECT_SOURCE_DIR}/cmake_modules/string-replace.cmake"
-  VERBATIM)
+
+SET (rebar_config "${PROJECT_SOURCE_DIR}/apps/ns_server/rebar.config")
+CONFIGURE_FILE ("${rebar_config}.in" "${rebar_config}" @ONLY)
+SET (babysitter_rebar_config "${PROJECT_SOURCE_DIR}/apps/ns_babysitter/rebar.config")
+CONFIGURE_FILE ("${babysitter_rebar_config}.in" "${babysitter_rebar_config}" @ONLY)
 
 IF (NOT ESCRIPT_EXECUTABLE)
   MESSAGE (FATAL_ERROR "escript not found")
@@ -410,11 +413,13 @@ SET (BIN_PREFIX "${PREFIX}")
 CONFIGURE_FILE (etc/static_config.in "${_etcdir}/couchbase/static_config" @ONLY)
 
 # Config profiles
-CONFIGURE_FILE (etc/default_profile "${_etcdir}/couchbase/default_profile" @ONLY)
-CONFIGURE_FILE (etc/serverless_profile "${_etcdir}/couchbase/serverless_profile" @ONLY)
-CONFIGURE_FILE (etc/provisioned_profile "${_etcdir}/couchbase/provisioned_profile" @ONLY)
 IF (BUILD_COLUMNAR)
+  # The columnar profile is the default profile for columnar builds
   CONFIGURE_FILE (etc/columnar_profile "${_etcdir}/couchbase/columnar_profile" @ONLY)
+ELSE (BUILD_COLUMNAR)
+  CONFIGURE_FILE (etc/default_profile "${_etcdir}/couchbase/default_profile" @ONLY)
+  CONFIGURE_FILE (etc/serverless_profile "${_etcdir}/couchbase/serverless_profile" @ONLY)
+  CONFIGURE_FILE (etc/provisioned_profile "${_etcdir}/couchbase/provisioned_profile" @ONLY)
 ENDIF (BUILD_COLUMNAR)
 
 INSTALL (FILES etc/hosts.cfg DESTINATION "${_etcdir}/couchbase")

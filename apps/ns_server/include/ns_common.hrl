@@ -351,7 +351,7 @@
 -define(COLUMNAR_PROFILE_STR, "columnar").
 
 %% Default profile macros/constants
--define(DEFAULT_PROFILE_STR, "default").
+%% DEFAULT_PROFILE_STR is provided by rebar.config at build time
 -define(DEFAULT_PROFILE_BIN, <<?DEFAULT_PROFILE_STR>>).
 -define(DEFAULT_PROFILE_DATA, [{name, ?DEFAULT_PROFILE_STR}]).
 
