@@ -406,22 +406,30 @@ aggregated_EAR_info(Type, NodesInfo, Nodes) ->
     maps:to_list(
       lists:foldl(
         fun (N, Acc) ->
-            Info =
-                case dict:find(N, NodesInfo) of
-                    {ok, NodeInfo} ->
-                        EARInfo = proplists:get_value(encryption_at_rest_info,
-                                                      NodeInfo, []),
-                        proplists:get_value(Type, EARInfo,
-                                            [{issues, [{node_info, pending}]}]);
-                    error ->
-                        [{issues, [{node_info, pending}]}]
-                end,
+            Info = extract_node_EAR_info(Type, NodesInfo, N),
             InfoMap = maps:from_list(Info),
             case Acc of
                 undefined -> InfoMap;
                 _ -> cb_cluster_secrets:merge_dek_infos(Acc, InfoMap)
             end
         end, undefined, Nodes)).
+
+extract_node_EAR_info(Type, NodesInfo, Node) ->
+    maybe
+        {ok, NodeInfo} ?= dict:find(Node, NodesInfo),
+        case cb_cluster_secrets:node_supports_encryption_at_rest(NodeInfo) of
+            false ->
+                [{issues, []}];
+            _ ->
+                EARInfo = proplists:get_value(encryption_at_rest_info,
+                                              NodeInfo, []),
+                proplists:get_value(Type, EARInfo,
+                                    [{issues, [{node_info, pending}]}])
+        end
+    else
+        error ->
+            [{issues, [{node_info, pending}]}]
+    end.
 
 log_and_audit_settings(Req, NewSettings, OldSettings) ->
     Prepare =

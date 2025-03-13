@@ -72,7 +72,8 @@
          get_node_deks_info_quickly/0,
          destroy_deks/2,
          diag_info/0,
-         reencrypt_deks/0]).
+         reencrypt_deks/0,
+         node_supports_encryption_at_rest/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -733,6 +734,16 @@ reencrypt_deks() ->
     case Errors of
         [] -> ok;
         _ -> {error, Errors}
+    end.
+
+-spec node_supports_encryption_at_rest([{atom(), term()}]) ->
+          boolean() | no_info.
+node_supports_encryption_at_rest(NodeInfo) ->
+    case proplists:get_value(supported_compat_version, NodeInfo) of
+        undefined ->
+            no_info;
+        SupportedVersion ->
+            cluster_compat_mode:is_version_morpheus(SupportedVersion)
     end.
 
 %%%===================================================================
@@ -3143,10 +3154,29 @@ get_all_node_deks_info() ->
             %% and update that information in chronicle
             Res = erpc:multicall(AllNodes, ?MODULE, get_node_deks_info,
                                     [], ?DEK_COUNTERS_UPDATE_TIMEOUT),
-            {NonErrors, Errors} =
+            {NonErrors, AllErrors} =
                 misc:partitionmap(fun ({_N, {ok, R}}) -> {left, R};
                                         ({N, E}) -> {right, {N, E}}
                                     end, lists:zip(AllNodes, Res)),
+
+            Errors =
+                lists:filter(
+                  fun ({Node, {error, {exception, undef,
+                                        [{cb_cluster_secrets,
+                                          get_node_deks_info, _, _}]}}}) ->
+                          NodeInfo = ns_doctor:get_node(Node),
+                          case node_supports_encryption_at_rest(NodeInfo) of
+                              no_info -> true;
+                              true -> true;
+                              false ->
+                                  %% We can ignore the error because that node
+                                  %% doesn't support encryption-at-rest
+                                  %% so it doesn't have any DEKs
+                                  false
+                          end;
+                      ({_N, _}) ->
+                          true
+                  end, AllErrors),
 
             %% If some deks have issues we should not remove anything
             %% until those issues are resolved
