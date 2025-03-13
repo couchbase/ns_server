@@ -699,8 +699,14 @@ conf(internal) ->
      {max_docs_limit, maxDocsLimit, ?DEFAULT_MAX_DOCS_LIMIT,
       get_number(?LOWEST_ALLOWED_MAX_DOCS_LIMIT,
                  ?HIGHEST_ALLOWED_MAX_DOCS_LIMIT)}] ++
-        %% This key is available in mixed-compat-mode
-        case cgroups:supported() andalso cluster_compat_mode:is_enterprise() of
+        %% This key is available in mixed-compat-mode. We don't need to worry
+        %% about guarding the cross-node call with a compat-check because the
+        %% erpc library will convert any of these failures to a standardized
+        %% {error|throw|exit, _} return. Only 'throws' when an argument isn't
+        %% correctly formatted and any other exceptions (regardless of where
+        %% they take place) will be converted to a particular return type.
+        case cluster_compat_mode:is_enterprise()
+            andalso cgroups:supported_on_all_nodes() of
             true ->
                 [{enable_cgroups, enableCgroups, false, fun get_bool/1}];
             false ->

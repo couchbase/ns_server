@@ -33,6 +33,7 @@
          get_cgroup_base_path/0,
          read_cgroup2_config_from_mtab/1,
          os_type/0,
+         supported_on_all_nodes/0,
          service_to_limits_type/1]).
 
 -ifdef(TEST).
@@ -82,6 +83,18 @@ supported() ->
 supported_and_morpheus() ->
     supported() andalso cluster_compat_mode:is_cluster_morpheus() andalso
         cluster_compat_mode:is_enterprise().
+
+-spec(supported_on_all_nodes() -> boolean()).
+supported_on_all_nodes() ->
+    supported_on_all_nodes([node() | nodes()]).
+
+-spec(supported_on_all_nodes([node()]) -> boolean()).
+supported_on_all_nodes(Nodes) ->
+    lists:all(fun ({ok, true}) ->
+                      true;
+                  (_) ->
+                      false
+              end, erpc:multicall(Nodes, fun cgroups:supported/0, 60000)).
 
 %% NOTE: Since this feature is meant to be disabled by default, this should only
 %% be used in ns_cgroups_manager to determine if limits should be set or just
