@@ -270,6 +270,8 @@ class UsersTestSet(testlib.BaseTestSet):
         testlib.get_succ(self.cluster, '/pools/default',
                          auth=(user, password1))
 
+        sync_activity(self.cluster)
+
         # No activity
         testlib.assert_eq(is_activity_in_ets(self.cluster), False)
         testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
@@ -283,6 +285,8 @@ class UsersTestSet(testlib.BaseTestSet):
         testlib.get_succ(self.cluster, '/pools/default',
                          auth=(user, password1))
 
+        sync_activity(self.cluster)
+
         # New activity
         testlib.assert_eq(is_activity_in_ets(self.cluster), True)
         testlib.assert_eq(get_activity_for_user(self.cluster, user) is not None,
@@ -294,6 +298,8 @@ class UsersTestSet(testlib.BaseTestSet):
                        'trackedRoles': [],
                        'trackedGroups': []})
 
+        sync_activity(self.cluster)
+
         # No activity
         testlib.assert_eq(is_activity_in_ets(self.cluster), False)
         testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
@@ -304,6 +310,8 @@ class UsersTestSet(testlib.BaseTestSet):
                        'trackedRoles': ['admin'],
                        'trackedGroups': []})
 
+        sync_activity(self.cluster)
+
         # No activity
         testlib.assert_eq(is_activity_in_ets(self.cluster), False)
         testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
@@ -312,6 +320,8 @@ class UsersTestSet(testlib.BaseTestSet):
         put_user(self.cluster, 'local', user, password=password1,
                  roles=None, full_name=name1, groups='',
                  validate_user_props=True)
+
+        sync_activity(self.cluster)
 
         # No activity
         testlib.assert_eq(is_activity_in_ets(self.cluster), False)
@@ -322,6 +332,8 @@ class UsersTestSet(testlib.BaseTestSet):
         put_user(self.cluster, 'local', user, password=password1,
                  roles=roles, full_name=name1, groups='',
                  validate_user_props=True)
+
+        sync_activity(self.cluster)
 
         # No activity
         testlib.assert_eq(is_activity_in_ets(self.cluster), False)
@@ -351,6 +363,8 @@ class UsersTestSet(testlib.BaseTestSet):
             testlib.get_succ(self.cluster, '/pools/default',
                              auth=(user, password1))
 
+            sync_activity(self.cluster)
+
             # No activity
             testlib.assert_eq(is_activity_in_ets(self.cluster), False)
             testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
@@ -361,6 +375,8 @@ class UsersTestSet(testlib.BaseTestSet):
 
             testlib.get_succ(self.cluster, '/pools/default',
                              auth=(user, password1))
+
+            sync_activity(self.cluster)
 
             # New activity
             testlib.assert_eq(is_activity_in_ets(self.cluster), True)
@@ -373,6 +389,8 @@ class UsersTestSet(testlib.BaseTestSet):
                            'trackedRoles': [],
                            'trackedGroups': []})
 
+            sync_activity(self.cluster)
+
             # No activity
             testlib.assert_eq(is_activity_in_ets(self.cluster), False)
             testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
@@ -383,6 +401,8 @@ class UsersTestSet(testlib.BaseTestSet):
                            'trackedRoles': ['admin'],
                            'trackedGroups': []})
 
+            sync_activity(self.cluster)
+
             # No activity
             testlib.assert_eq(is_activity_in_ets(self.cluster), False)
             testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
@@ -390,6 +410,8 @@ class UsersTestSet(testlib.BaseTestSet):
             # Remove the tracked role from the group to test activity clearing
             testlib.put_succ(self.cluster, f'/settings/rbac/groups/{group}',
                              data={'roles': ''})
+
+            sync_activity(self.cluster)
 
             # No activity
             testlib.assert_eq(is_activity_in_ets(self.cluster), False)
@@ -399,6 +421,8 @@ class UsersTestSet(testlib.BaseTestSet):
             # doesn't return
             testlib.put_succ(self.cluster, f'/settings/rbac/groups/{group}',
                              data={'roles': 'admin'})
+
+            sync_activity(self.cluster)
 
             # No activity
             testlib.assert_eq(is_activity_in_ets(self.cluster), False)
@@ -431,6 +455,8 @@ class UsersTestSet(testlib.BaseTestSet):
             testlib.get_succ(self.cluster, '/pools/default',
                              auth=(user, password1))
 
+            sync_activity(self.cluster)
+
             # No activity
             testlib.assert_eq(is_activity_in_ets(self.cluster), False)
             testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
@@ -443,6 +469,8 @@ class UsersTestSet(testlib.BaseTestSet):
             testlib.get_succ(self.cluster, '/pools/default',
                              auth=(user, password1))
 
+            sync_activity(self.cluster)
+
             # New activity
             testlib.assert_eq(is_activity_in_ets(self.cluster), True)
             testlib.assert_eq(get_activity_for_user(self.cluster, user)
@@ -454,6 +482,8 @@ class UsersTestSet(testlib.BaseTestSet):
                            'trackedRoles': [],
                            'trackedGroups': []})
 
+            sync_activity(self.cluster)
+
             # No activity
             testlib.assert_eq(is_activity_in_ets(self.cluster), False)
             testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
@@ -464,6 +494,8 @@ class UsersTestSet(testlib.BaseTestSet):
                            'trackedRoles': [],
                            'trackedGroups': [group]})
 
+            sync_activity(self.cluster)
+
             # No activity
             testlib.assert_eq(is_activity_in_ets(self.cluster), False)
             testlib.assert_eq(get_activity_for_user(self.cluster, user), None)
@@ -472,6 +504,8 @@ class UsersTestSet(testlib.BaseTestSet):
             put_user(self.cluster, 'local', user, password=password1,
                      roles=roles, full_name=name1, groups='',
                      validate_user_props=True)
+
+            sync_activity(self.cluster)
 
             # No activity
             testlib.assert_eq(is_activity_in_ets(self.cluster), False)
@@ -482,6 +516,8 @@ class UsersTestSet(testlib.BaseTestSet):
             put_user(self.cluster, 'local', user, password=password1,
                      roles=roles, full_name=name1, groups=group,
                      validate_user_props=True)
+
+            sync_activity(self.cluster)
 
             # No activity
             testlib.assert_eq(is_activity_in_ets(self.cluster), False)
@@ -1030,6 +1066,13 @@ def unlock_admin(cluster):
     token = node.get_localtoken()
     testlib.post_succ(node, '/controller/unlockAdmin',
                       auth=("@localtoken", token))
+
+
+def sync_activity(cluster):
+    testlib.diag_eval(
+        cluster.get_node_from_hostname(cluster.get_orchestrator_node()[0]),
+        "activity_aggregator ! refresh,"
+        "gen_server:call(activity_aggregator, sync)")
 
 
 def post_activity(cluster, json):
