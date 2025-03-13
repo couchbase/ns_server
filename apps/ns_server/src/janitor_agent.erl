@@ -81,6 +81,7 @@
          get_fusion_uploaders_state/2,
          download_snapshot/5,
          wait_download_snapshot/4,
+         release_file_based_rebalance_snapshot/4,
          release_file_based_rebalance_snapshots/2]).
 
 -export([start_link/1]).
@@ -605,6 +606,10 @@ release_file_based_rebalance_snapshots(Bucket, Servers) ->
     call_on_servers(Bucket, Servers,
                     {release_file_based_rebalance_snapshots, Bucket},
                     ?RELEASE_SNAPSHOTS_TIMEOUT).
+release_file_based_rebalance_snapshot(Bucket, Rebalancer, Node, VBucket) ->
+    ok = rebalance_call(Rebalancer, Bucket, Node,
+                        {release_file_based_rebalance_snapshot, VBucket},
+                        infinity).
 
 wait_dcp_data_move(Bucket, Rebalancer, MasterNode, ReplicaNodes, VBucket) ->
     rebalance_call(Rebalancer, Bucket, MasterNode,
@@ -870,6 +875,11 @@ do_handle_call({release_file_based_rebalance_snapshots, Bucket}, _From,
               ok = ns_memcached:release_snapshot(Bucket, VBucket)
       end, Statuses),
     {reply, ok, State};
+do_handle_call({release_file_based_rebalance_snapshot, VBucket}, From,
+               #state{bucket_name = Bucket} = State) ->
+    spawn_rebalance_subprocess(
+      State, From,
+      ?cut(ns_memcached:release_snapshot(Bucket, VBucket)));
 do_handle_call({wait_index_updated, VBucket}, From,
                #state{bucket_name = Bucket} = State) ->
     spawn_rebalance_subprocess(

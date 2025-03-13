@@ -161,7 +161,17 @@ file_based_backfill(Bucket, Parent, VBucket, [OldMaster | _ ] = OldChain,
     %% takeover can't handle the connection not existing yet.
     set_initial_vbucket_state(Bucket, Parent, VBucket, OldChain, ReplicaNodes,
                               JustBackfillNodes,
-                              fbr).
+                              fbr),
+
+    %% 3) The janitor will also clean up any snapshots, but we should release
+    %% the associated snapshots now to free up resources in memcached.
+    lists:foreach(
+      fun(Node) ->
+              janitor_agent:release_file_based_rebalance_snapshot(Bucket,
+                                                                  Parent,
+                                                                  Node,
+                                                                  VBucket)
+      end, AllBuiltNodes).
 
 mover_inner(Parent, Bucket, VBucket,
             [undefined|_] = _OldChain,
