@@ -190,7 +190,8 @@
                        has_unencrypted_data := undefined | boolean(),
                        last_deks_gc_datetime := undefined | calendar:datetime(),
                        last_drop_timestamp := undefined | non_neg_integer(),
-                       statuses := #{node_job() := ok | retry | {error, _}}}.
+                       statuses := #{node_job() := ok | retry | {error, _}},
+                       prev_deks_hash := integer() | undefined}.
 
 -type external_dek_info() :: #{data_status := dek_info_data_status(),
                                issues := [dek_issue()],
@@ -1718,10 +1719,11 @@ retire_unused_deks(Kind, DekIdsInUse, #state{deks_info = DeksInfo} = State) ->
 
 -spec call_set_active_cb(cb_deks:dek_kind(), #state{}) ->
           {ok, #state{}} | {error, #state{}, term()}.
-call_set_active_cb(Kind, #state{deks_info = AllDeks} = State) ->
+call_set_active_cb(Kind, #state{deks_info = DeksInfo} = State) ->
     #{Kind := #{active_id := ActiveId,
                 deks := Keys,
-                is_enabled := IsEnabled}} = AllDeks,
+                is_enabled := IsEnabled,
+                prev_deks_hash := PrevHash} = KindDeks} = DeksInfo,
     NewActiveKey =
         case IsEnabled of
             true ->
@@ -1731,16 +1733,28 @@ call_set_active_cb(Kind, #state{deks_info = AllDeks} = State) ->
                 ActiveKey;
             false -> undefined
         end,
+    NewHash = erlang:phash2(
+                {IsEnabled, ActiveId,
+                 lists:map(fun (#{id := Id, type := T}) -> {Id, T} end, Keys)},
+                ?MAX_PHASH2_RANGE),
     case NewActiveKey of
         #{type := error} ->
             {error, State, active_key_not_available};
+        _ when NewHash == PrevHash ->
+            ?log_debug("No changes in ~p deks, skipping calling "
+                       "set_active_key_callback", [Kind]),
+            {ok, State};
         _ ->
             case cb_crypto:reset_dek_cache(Kind, {new_active, NewActiveKey}) of
                 {ok, _} ->
                     case call_dek_callback(set_active_key_callback, Kind,
                                            [NewActiveKey]) of
                         {succ, ok} ->
-                            {ok, maybe_garbage_collect_deks(Kind, true, State)};
+                            NewKindDeks = KindDeks#{prev_deks_hash => NewHash},
+                            NewDeksInfo = DeksInfo#{Kind => NewKindDeks},
+                            NewState = State#state{deks_info = NewDeksInfo},
+                            {ok, maybe_garbage_collect_deks(Kind, true,
+                                                            NewState)};
                         {succ, {error, Reason}} ->
                             {error, State, Reason};
                         {except, {_, E, _}} ->
@@ -1984,7 +1998,8 @@ new_dek_info(Kind, ActiveId, Keys, IsEnabled) ->
       last_drop_timestamp => undefined,
       has_unencrypted_data => undefined,
       last_deks_gc_datetime => undefined,
-      statuses => #{}}.
+      statuses => #{},
+      prev_deks_hash => undefined}.
 
 -spec destroy_dek_info(cb_deks:dek_kind(), #state{}) -> #state{}.
 destroy_dek_info(Kind, #state{deks_info = DeksInfo} = State) ->
