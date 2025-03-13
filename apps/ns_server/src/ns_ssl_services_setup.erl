@@ -1195,6 +1195,8 @@ get_user_name_from_client_cert(Val) ->
                     get_user_name_from_client_cert(Cert, ClientAuth);
                 {{error, no_peercert}, "enable"} ->
                     undefined;
+                {{error, no_peercert}, "hybrid"} ->
+                    undefined;
                 {{error, R}, _} ->
                     ?log_debug("Error getting client certificate: ~p",
                                [R]),
