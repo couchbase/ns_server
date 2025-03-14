@@ -166,6 +166,90 @@ class JWTTests(testlib.BaseTestSet):
         }
         testlib.put_succ(self.cluster, self.endpoint, json=payload)
 
+    @staticmethod
+    def get_supported_algorithms():
+        """Return the list of all supported JWT signing algorithms."""
+        return [
+            "RS256", "RS384", "RS512", "PS256", "PS384", "PS512",
+            "ES256", "ES256K", "ES384", "ES512", "EdDSA"
+        ]
+
+    @staticmethod
+    def get_algorithms_for_key_prefix(key_prefix):
+        """Maps a PEM file prefix to compatible JWT algorithms.
+
+        Args:
+            key_prefix: The key prefix from filename (e.g., "rsa", "es256")
+
+        Returns:
+            List of compatible algorithms for this key type
+        """
+        mapping = {
+            "rsa": ["RS256", "RS384", "RS512", "PS256", "PS384", "PS512"],
+            "es256": ["ES256"],
+            "es256k": ["ES256K"],
+            "es384": ["ES384"],
+            "es512": ["ES512"],
+            "ed25519": ["EdDSA"],
+            "ed448": ["EdDSA"]
+        }
+
+        if key_prefix not in mapping:
+            raise ValueError(f"Unknown key prefix: {key_prefix}")
+
+        return mapping[key_prefix]
+
+    def verify_pem_resources(self):
+        """Verify that all required PEM files exist and cover all supported
+        algorithms.
+
+        This function:
+        1. Checks that all expected PEM files exist in the resources directory
+        2. Verifies that the PEM files cover all algorithms in
+           get_supported_algorithms()
+
+        Returns:
+            Tuple of (pem_files, resources_dir)
+
+        Raises:
+            RuntimeError: If prerequisites are not met
+        """
+        supported_algorithms = set(self.get_supported_algorithms())
+        resources_dir = os.path.join(testlib.get_resources_dir(), "jwt")
+
+        pem_files = [
+            f for f in os.listdir(resources_dir)
+            if f.endswith(".pem") and "invalid" not in f and "private" not in f
+        ]
+
+        # We should have test files for RSA, ES256, ES256K, ES384, ES512,
+        # ED25519, and ED448
+        expected_pem_count = 7
+        assert len(pem_files) == expected_pem_count, (
+            f"Expected {expected_pem_count} PEM files but found "
+            f"{len(pem_files)}: {pem_files}"
+        )
+
+        covered_algorithms = set()
+        for pem_file in pem_files:
+            key_prefix = pem_file.split("_")[1]
+
+            try:
+                # Add all algorithms compatible with this key type
+                algorithms = self.get_algorithms_for_key_prefix(key_prefix)
+                covered_algorithms.update(algorithms)
+            except ValueError as e:
+                raise RuntimeError(f"Error processing {pem_file}: {str(e)}")
+
+        missing_algorithms = supported_algorithms - covered_algorithms
+        if missing_algorithms:
+            raise RuntimeError(
+                f"The following algorithms are not covered by PEM files: "
+                f"{missing_algorithms}"
+            )
+
+        return pem_files, resources_dir
+
     # REST API Configuration Tests
     def basic_api_test(self):
         # Load a JWKS that contains valid ES256 and RSA keys.
@@ -403,131 +487,27 @@ class JWTTests(testlib.BaseTestSet):
             == "sharedSecret required for HMAC algorithm"
         )
 
-    def pem_api_test(self):
-        available_algorithms = [
-            "RS256",
-            "RS384",
-            "RS512",
-            "PS256",
-            "PS384",
-            "PS512",
-            "ES256",
-            "ES384",
-            "ES512",
-            "EdDSA",
-        ]
-        pem_files = [f
-            for f in os.listdir(os.path.join(testlib.get_resources_dir(),
-                                              "jwt"))
-            if f.endswith(".pem") and "invalid" not in f and "private" not in f
-        ]
-        # We should have test files for RSA, ES256, ES384, ES512, and EdDSA
-        expected_pem_count = 7
-        assert len(pem_files) == expected_pem_count, (
-            f"Expected {expected_pem_count} PEM files but found "
-            f"{len(pem_files)}: {pem_files}"
-        )
-
-        for pem_file in pem_files:
-            good_algos = []
-            pem_path = os.path.join(testlib.get_resources_dir(), "jwt",
-                                    pem_file)
-            with open(pem_path, "r") as f:
-                public_key = f.read()
-                algorithm = pem_file.split("_")[1]
-
-            if algorithm.startswith("rsa"):
-                # The RSA public key is valid for all RSA algorithms - these
-                # differ only in their hash computation or padding.
-                good_algos.extend(
-                    ["RS256", "RS384", "RS512", "PS256", "PS384", "PS512"]
-                )
-            elif algorithm.startswith("es"):
-                # The curve must match the specified algorithm. ES256 is
-                # compatible with P-256, ES384 with P-384, ES512 with P-521 and
-                # ES256K with secp256k1.
-                good_algos.extend([algorithm.upper()])
-            elif algorithm.startswith("ed"):
-                # EdDSA is compatible with Ed25519 and Ed448.
-                good_algos.extend(["EdDSA"])
-
-            for algorithm in good_algos:
-                issuer_config = {
-                    "name": f"issuer_{algorithm}",
-                    "audienceHandling": "all",
-                    "subClaim": "sub",
-                    "audClaim": "aud",
-                    "audiences": ["test_" + algorithm],
-                    "signingAlgorithm": algorithm,
-                    "publicKeySource": "pem",
-                    "publicKey": public_key,
-                }
-
-                payload = {
-                    "enabled": True,
-                    "jwksUriRefreshIntervalS": 14400,
-                    "issuers": [issuer_config],
-                }
-
-                testlib.put_succ(self.cluster, self.endpoint, json=payload)
-
-                r = testlib.get_succ(self.cluster, self.endpoint)
-                assert len(r.json()["issuers"]) == 1
-                returned_issuer = r.json()["issuers"][0]
-                for key in issuer_config:
-                    assert returned_issuer[key] == issuer_config[key], (
-                        f"Mismatch in {key}: expected {issuer_config[key]}, "
-                        f"got {returned_issuer[key]}"
-                    )
-
-            # Exercise the error handling code by attempting to use the key with
-            # algorithms it is not compatible with.
-            for bad_algo in set(available_algorithms) - set(good_algos):
-                issuer_config = {
-                    "name": f"issuer_{algorithm}",
-                    "audienceHandling": "all",
-                    "subClaim": "sub",
-                    "audClaim": "aud",
-                    "audiences": ["test_" + algorithm],
-                    "signingAlgorithm": bad_algo,
-                    "publicKeySource": "pem",
-                    "publicKey": public_key,
-                }
-
-                payload = {
-                    "enabled": True,
-                    "jwksUriRefreshIntervalS": 14400,
-                    "issuers": [issuer_config],
-                }
-
-                r = testlib.put_fail(
-                    self.cluster, self.endpoint, expected_code=400, json=payload
-                )
-                # Only get mismatch error when both the key algorithm and
-                # requested algorithm are ES*
-                if algorithm.startswith("ES") and bad_algo.startswith("ES"):
-                    assert (
-                        r.json()["errors"]["issuers"][0]["publicKey"]
-                        == f"Mismatch between algorithm in key:'{algorithm}' "
-                        f"and signing algorithm:'{bad_algo}'"
-                    )
-                else:
-                    # For all other cases, we get an invalid key error
-                    assert (
-                        r.json()["errors"]["issuers"][0]["publicKey"]
-                        == f"Invalid key for '{bad_algo}' signing algorithm"
-                    )
-
     def invalid_pem_test(self):
-        invalid_pem = "mock_rsa_invalid_public.pem"
-        pem_path = os.path.join(testlib.get_resources_dir(), "jwt", invalid_pem)
+        """Test JWT authentication with invalid or mismatched PEM keys.
+
+        Tests:
+        1. RSA key with insufficient bit length
+        2. ES256 key used with ES384 algorithm (curve mismatch)
+        3. RSA key used with ES256 algorithm (completely different key type)
+        4. ES384 key used with EdDSA algorithm
+        """
+        resources_dir = os.path.join(testlib.get_resources_dir(), "jwt")
+
+        # Test 1: RSA key with insufficient bit length
+        invalid_pem = "mock_rsa_public_invalid.pem"
+        pem_path = os.path.join(resources_dir, invalid_pem)
         if not os.path.exists(pem_path):
             raise RuntimeError(
                 f"Required test file not found: {invalid_pem}. "
             )
 
         with open(pem_path, "r") as f:
-            public_key = f.read()
+            invalid_rsa_key = f.read()
 
             issuer_config = {
                 "name": "issuer_short_RS256",
@@ -537,7 +517,7 @@ class JWTTests(testlib.BaseTestSet):
                 "audiences": ["test_short_RS256"],
                 "signingAlgorithm": "RS256",
                 "publicKeySource": "pem",
-                "publicKey": public_key,
+                "publicKey": invalid_rsa_key,
             }
 
             payload = {
@@ -553,6 +533,108 @@ class JWTTests(testlib.BaseTestSet):
                 r.json()["errors"]["issuers"][0]["publicKey"]
                 == "The specified key has 1024 bits. Key length should be "
                 "between 2048 and 16384"
+            )
+
+        # Test 2: ES256 key used with ES384 algorithm (curve mismatch)
+        es256_pem = "mock_es256_public.pem"
+        es256_path = os.path.join(resources_dir, es256_pem)
+        if not os.path.exists(es256_path):
+            raise RuntimeError(f"Required test file not found: {es256_pem}")
+
+        with open(es256_path, "r") as f:
+            es256_key = f.read()
+
+            issuer_config = {
+                "name": "issuer_es_mismatch",
+                "audienceHandling": "any",
+                "subClaim": "sub",
+                "audClaim": "aud",
+                "audiences": ["test-audience"],
+                "signingAlgorithm": "ES384",  # Mismatch with ES256 key
+                "publicKeySource": "pem",
+                "publicKey": es256_key,
+            }
+
+            payload = {
+                "enabled": True,
+                "jwksUriRefreshIntervalS": 14400,
+                "issuers": [issuer_config],
+            }
+
+            r = testlib.put_fail(
+                self.cluster, self.endpoint, expected_code=400, json=payload
+            )
+            err_msg = r.json()["errors"]["issuers"][0]["publicKey"]
+            assert "Mismatch between algorithm in key" in err_msg, (
+                f"Expected mismatch error for ES256 key with ES384 algorithm"
+            )
+
+        # Test 3: RSA key used with ES256 algorithm (different key type)
+        rsa_pem = "mock_rsa_public.pem"
+        rsa_path = os.path.join(resources_dir, rsa_pem)
+        if not os.path.exists(rsa_path):
+            raise RuntimeError(f"Required test file not found: {rsa_pem}")
+
+        with open(rsa_path, "r") as f:
+            rsa_key = f.read()
+
+            issuer_config = {
+                "name": "issuer_rsa_es_mismatch",
+                "audienceHandling": "any",
+                "subClaim": "sub",
+                "audClaim": "aud",
+                "audiences": ["test-audience"],
+                "signingAlgorithm": "ES256",
+                "publicKeySource": "pem",
+                "publicKey": rsa_key,
+            }
+
+            payload = {
+                "enabled": True,
+                "jwksUriRefreshIntervalS": 14400,
+                "issuers": [issuer_config],
+            }
+
+            r = testlib.put_fail(
+                self.cluster, self.endpoint, expected_code=400, json=payload
+            )
+            err_msg = r.json()["errors"]["issuers"][0]["publicKey"]
+            assert "Invalid key for 'ES256' signing algorithm" in err_msg, (
+                f"Expected invalid key error for RSA key with ES256 algorithm"
+            )
+
+        # Test 4: ES384 key used with EdDSA algorithm
+        es384_pem = "mock_es384_public.pem"
+        es384_path = os.path.join(resources_dir, es384_pem)
+        if not os.path.exists(es384_path):
+            raise RuntimeError(f"Required test file not found: {es384_pem}")
+
+        with open(es384_path, "r") as f:
+            es384_key = f.read()
+
+            issuer_config = {
+                "name": "issuer_es384_eddsa_mismatch",
+                "audienceHandling": "any",
+                "subClaim": "sub",
+                "audClaim": "aud",
+                "audiences": ["test-audience"],
+                "signingAlgorithm": "EdDSA",
+                "publicKeySource": "pem",
+                "publicKey": es384_key,
+            }
+
+            payload = {
+                "enabled": True,
+                "jwksUriRefreshIntervalS": 14400,
+                "issuers": [issuer_config],
+            }
+
+            r = testlib.put_fail(
+                self.cluster, self.endpoint, expected_code=400, json=payload
+            )
+            err_msg = r.json()["errors"]["issuers"][0]["publicKey"]
+            assert "Invalid key for 'EdDSA' signing algorithm" in err_msg, (
+                f"Expected invalid key error for ES384 key with EdDSA algorithm"
             )
 
     def invalid_jwks_test(self):
@@ -741,11 +823,17 @@ class JWTTests(testlib.BaseTestSet):
         Returns:
             Signed JWT string
         """
+        # For RSA algorithms (RS* and PS*), use the shared RSA key
+        if alg.startswith("RS") or alg.startswith("PS"):
+            key_prefix = "rsa"
+        else:
+            key_prefix = alg.lower()
+
         # Handle rotated key
         if key_id == "rotated-key":
-            key_file = f"mock_{alg.lower()}_rotated_private_key.pem"
+            key_file = f"mock_{key_prefix}_private_rotated.pem"
         else:
-            key_file = f"mock_{alg.lower()}_private_key.pem"
+            key_file = f"mock_{key_prefix}_private.pem"
 
         with open(os.path.join(testlib.get_resources_dir(), "jwt", key_file),
                   "r") as f:
@@ -1055,3 +1143,66 @@ class JWTTests(testlib.BaseTestSet):
                 "OAUTHBEARER authentication should fail but succeeded"
             assert "Authentication failed" in result.stderr, \
                 "Expected error message not found"
+
+    def pem_auth_test(self):
+        """Test JWT authentication with PEM public key configurations.
+
+        For each PEM file, test authentication with all compatible algorithms.
+        """
+        self.auth_setup()
+
+        all_pem_files, resources_dir = self.verify_pem_resources()
+
+        for pem_file in all_pem_files:
+            key_prefix = pem_file.split("_")[1]
+            pub_file = pem_file
+            priv_file = pub_file.replace("public", "private")
+
+            with open(os.path.join(resources_dir, pub_file), "r") as f:
+                public_key = f.read()
+
+            with open(os.path.join(resources_dir, priv_file), "r") as f:
+                private_key = f.read()
+
+            compatible_algorithms = self.get_algorithms_for_key_prefix(
+                key_prefix
+            )
+
+            for alg in compatible_algorithms:
+                issuer_config = {
+                    "name": f"pem-issuer-{alg}-{key_prefix}",
+                    "audienceHandling": "any",
+                    "subClaim": "sub",
+                    "audClaim": "aud",
+                    "audiences": ["test-audience"],
+                    "signingAlgorithm": alg,
+                    "publicKeySource": "pem",
+                    "publicKey": public_key,
+                    "jitProvisioning": True
+                }
+
+                payload = {
+                    "enabled": True,
+                    "jwksUriRefreshIntervalS": 14400,
+                    "issuers": [issuer_config]
+                }
+
+                testlib.put_succ(self.cluster, self.endpoint, json=payload)
+
+                claims = self.base_claims.copy()
+                claims["iss"] = f"pem-issuer-{alg}-{key_prefix}"
+                claims["groups"] = ["jwt_bucket_admins"]
+
+                token = jwt.encode(claims, private_key, algorithm=alg)
+
+                headers = {"Authorization": f"Bearer {token}"}
+                r = testlib.get(
+                    self.cluster,
+                    "/pools/default/buckets",
+                    auth=None,
+                    headers=headers
+                )
+                assert r.status_code == 200, (
+                    f"Authentication failed for key '{key_prefix}' "
+                    f"with algorithm '{alg}'"
+                )

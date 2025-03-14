@@ -378,7 +378,16 @@ pem_validators() ->
                            Key ->
                                case menelaus_web_jwt_key:validate_key_algorithm(
                                       Key, Algorithm) of
-                                   ok -> {value, {Value, Key}};
+                                   ok ->
+                                       try
+                                           _ = jose_jwk:from_pem(Value),
+                                           {value, Value}
+                                       catch T:E:S ->
+                                               ?log_error("jose_jwk parsing "
+                                                          "error:~n~p",
+                                                          [{T, E, S}]),
+                                               {error, "Invalid PEM"}
+                                       end;
                                    {error, Reason} -> {error, Reason}
                                end
                        end

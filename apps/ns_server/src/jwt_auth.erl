@@ -343,16 +343,16 @@ lookup_jwk(Claims, IssuerProps, Algorithm) ->
             JWK = jose_jwk:from_oct(maps:get(shared_secret, IssuerProps)),
             {ok, JWK};
         false ->
-            case maps:get(public_key_source, IssuerProps) of
-                pem ->
-                    {ok, jose_jwk:from_pem(maps:get(public_key, IssuerProps))};
-                Src when Src =:= jwks; Src =:= jwks_uri ->
-                    KidBin = case maps:get(kid, Claims, undefined) of
-                                 undefined -> undefined;
-                                 Kid -> list_to_binary(Kid)
-                             end,
-                    jwt_cache:get_jwk(IssuerProps, KidBin)
-            end
+            KidBin =
+                case maps:get(public_key_source, IssuerProps) of
+                    pem -> undefined;
+                    _ ->
+                        case maps:get(kid, Claims, undefined) of
+                            undefined -> undefined;
+                            Kid -> list_to_binary(Kid)
+                        end
+                end,
+            jwt_cache:get_jwk(IssuerProps, KidBin)
     end.
 
 -spec validate_payload(Claims :: map(), IssProps :: map()) ->

@@ -73,11 +73,22 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+%% TODO: Cache the static PEM and JWKS keys in the cache - to avoid parsing
+%% them every time.
 -spec get_jwk(IssuerProps :: map(), Kid :: binary() | undefined) ->
           {ok, jose_jwk:key()} | {error, binary()}.
 %% Static JWKS - direct lookup from settings
 get_jwk(#{public_key_source := jwks, jwks := {_, KidToJWKMap}}, Kid) ->
     get_key_from_map(KidToJWKMap, Kid);
+%% Static PEM - direct lookup from settings
+get_jwk(#{public_key_source := pem, public_key := PEM}, undefined) ->
+    try
+        JWK = jose_jwk:from_pem(PEM),
+        {ok, JWK}
+    catch _:Error ->
+            ?log_error("Failed to parse PEM: ~p", [Error]),
+            {error, <<"Invalid PEM key">>}
+    end;
 %% Dynamic JWKS URI - lookup from cache with retry if needed
 get_jwk(#{public_key_source := jwks_uri} = Props, Kid) ->
     get_jwk_with_retry(Props, Kid, ?JWKS_FETCH_RETRY_COUNT).
