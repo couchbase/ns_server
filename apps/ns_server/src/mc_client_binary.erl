@@ -75,7 +75,9 @@
          set_active_encryption_key/4,
          get_fusion_storage_snapshot/4,
          mount_fusion_vbucket/3,
-         set_chronicle_auth_token/2]).
+         set_chronicle_auth_token/2,
+         start_fusion_uploader/3,
+         stop_fusion_uploader/2]).
 
 -type recv_callback() :: fun((_, _, _) -> any()) | undefined.
 -type mc_timeout() :: undefined | infinity | non_neg_integer().
@@ -105,7 +107,9 @@
                      ?CMD_COLLECTIONS_GET_MANIFEST |
                      ?CMD_GET_FUSION_STORAGE_SNAPSHOT |
                      ?CMD_MOUNT_FUSION_VBUCKET |
-                     ?CMD_SET_CHRONICLE_AUTH_TOKEN.
+                     ?CMD_SET_CHRONICLE_AUTH_TOKEN |
+                     ?CMD_START_FUSION_UPLOADER |
+                     ?CMD_STOP_FUSION_UPLOADER.
 
 
 report_counter(Function) ->
@@ -1099,6 +1103,33 @@ set_chronicle_auth_token(Sock, Token) ->
              {#mc_header{},
               #mc_entry{data = Data,
                         datatype = ?MC_DATATYPE_JSON}}) of
+        {ok, #mc_header{status = ?SUCCESS}, _ME, _NCB} ->
+            ok;
+        Response ->
+            process_error_response(Response)
+    end.
+
+-spec start_fusion_uploader(port(), vbucket_id(), integer()) ->
+          ok | mc_error().
+start_fusion_uploader(Sock, VBucket, Term) ->
+    report_counter(?FUNCTION_NAME),
+    Data = ejson:encode({[{term, list_to_binary(integer_to_list(Term))}]}),
+    case cmd(?CMD_START_FUSION_UPLOADER, Sock, undefined, undefined,
+             {#mc_header{vbucket = VBucket},
+              #mc_entry{data = Data,
+                        datatype = ?MC_DATATYPE_JSON}}) of
+        {ok, #mc_header{status = ?SUCCESS}, _ME, _NCB} ->
+            ok;
+        Response ->
+            process_error_response(Response)
+    end.
+
+-spec stop_fusion_uploader(port(), vbucket_id()) ->
+          ok | mc_error().
+stop_fusion_uploader(Sock, VBucket) ->
+    report_counter(?FUNCTION_NAME),
+    case cmd(?CMD_STOP_FUSION_UPLOADER, Sock, undefined, undefined,
+             {#mc_header{vbucket = VBucket}, #mc_entry{}}) of
         {ok, #mc_header{status = ?SUCCESS}, _ME, _NCB} ->
             ok;
         Response ->

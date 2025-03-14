@@ -72,7 +72,9 @@
          inhibit_view_compaction/3,
          uninhibit_view_compaction/4,
          get_failover_logs/2,
-         mount_volumes/4]).
+         mount_volumes/4,
+         maybe_start_fusion_uploaders/3,
+         maybe_stop_fusion_uploaders/3]).
 
 -export([start_link/1]).
 
@@ -363,6 +365,17 @@ process_multicall_rv([], []) ->
     ok;
 process_multicall_rv(BadReplies, BadNodes) ->
     {errors, [{N, bad_node} || N <- BadNodes] ++ BadReplies}.
+
+-spec maybe_start_fusion_uploaders(
+        node(), bucket_name(), [{vbucket_id(), integer()}]) -> ok.
+maybe_start_fusion_uploaders(Node, Bucket, Uploaders) ->
+    gen_server:cast({server_name(Bucket), Node},
+                    {maybe_start_fusion_uploaders, Uploaders}).
+
+-spec maybe_stop_fusion_uploaders(node(), bucket_name(), [vbucket_id()]) -> ok.
+maybe_stop_fusion_uploaders(Node, Bucket, VBuckets) ->
+    gen_server:cast({server_name(Bucket), Node},
+                    {maybe_stop_fusion_uploaders, VBuckets}).
 
 -spec delete_vbucket_copies(bucket_name(), pid(), [node()], vbucket_id()) ->
                                    ok | {errors, [{node(), term()}]}.
@@ -845,6 +858,25 @@ handle_cast({apply_vbucket_state_reply, ReplyPid, Call, Reply},
                        [ReplyPid, WorkerPid, Reply]),
             {noreply, State}
     end;
+handle_cast({maybe_start_fusion_uploaders, Uploaders},
+            #state{bucket_name = Bucket} = State) ->
+    case ns_memcached:maybe_start_fusion_uploaders(Bucket, Uploaders) of
+        ok ->
+            ok;
+        Error ->
+            ?log_error("Error starting fusion uploaders: ~p", [Error])
+    end,
+    {noreply, State};
+handle_cast({maybe_stop_fusion_uploaders, VBuckets},
+            #state{bucket_name = Bucket} = State) ->
+    case ns_memcached:maybe_stop_fusion_uploaders(Bucket, VBuckets) of
+        ok ->
+            ok;
+        Error ->
+            ?log_error("Error stopping fusion uploaders: ~p", [Error])
+    end,
+    {noreply, State};
+
 handle_cast(_, _State) ->
     erlang:error(cannot_do).
 

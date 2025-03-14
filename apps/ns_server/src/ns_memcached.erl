@@ -148,7 +148,9 @@
          get_dek_ids_in_use/1,
          drop_deks/4,
          get_fusion_storage_snapshot/4,
-         mount_fusion_vbucket/3
+         mount_fusion_vbucket/3,
+         maybe_start_fusion_uploaders/2,
+         maybe_stop_fusion_uploaders/2
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -1428,15 +1430,13 @@ unpause_bucket(Bucket) ->
     gen_server:call(server(Bucket), {unpause_bucket, Bucket},
                     ?TIMEOUT_VERY_HEAVY).
 
+fetch_stats(Sock, Key) ->
+    mc_binary:quick_stats(Sock, Key, fun mc_binary:quick_stats_append/3, []).
+
 -spec stats(bucket_name(), binary() | string()) ->
                    {ok, [{binary(), binary()}]} | mc_error().
 stats(Bucket, Key) ->
-    perform_very_long_call(
-      fun (Sock) ->
-              Reply = mc_binary:quick_stats(
-                        Sock, Key, fun mc_binary:quick_stats_append/3, []),
-              {reply, Reply}
-      end, Bucket).
+    perform_very_long_call(?cut({reply, fetch_stats(_, Key)}), Bucket).
 
 -spec warmup_stats(bucket_name()) -> [{binary(), binary()}].
 warmup_stats(Bucket) ->
@@ -2165,13 +2165,14 @@ get_stats_key(ReqdKeys) ->
             <<"vbucket-details">>
     end.
 
+vbucket_stats_key(Key, VBucket) ->
+    iolist_to_binary([Key, " ", integer_to_list(VBucket)]).
+
 get_vbucket_details(Sock, all, ReqdKeys) ->
     get_vbucket_details_inner(Sock, get_stats_key(ReqdKeys), ReqdKeys);
 get_vbucket_details(Sock, VBucket, ReqdKeys) when is_integer(VBucket) ->
-    VBucketStr = integer_to_list(VBucket),
     get_vbucket_details_inner(
-      Sock, iolist_to_binary([get_stats_key(ReqdKeys), " ", VBucketStr]),
-      ReqdKeys).
+      Sock, vbucket_stats_key(get_stats_key(ReqdKeys), VBucket), ReqdKeys).
 
 get_vbucket_details_inner(Sock, DetailsKey, ReqdKeys) ->
     mc_binary:quick_stats(
@@ -2246,3 +2247,47 @@ mount_fusion_vbucket(Bucket, VBucket, Volumes) ->
               {reply, mc_client_binary:mount_fusion_vbucket(
                         Sock, VBucket, Volumes)}
       end, Bucket, [json]).
+
+%% this is a temporary crutch for magma issues. If uploader cannot be
+%% stopped/started we drop the error to the log file and rely on
+%% janitor eventually fixing things
+try_to_perform_very_long_call(Fun, Bucket, Opts) ->
+    try
+        perform_very_long_call(Fun, Bucket, Opts)
+    catch
+        T:E:Stack ->
+            ?log_error("Error calling memcached for bucket ~p: ~p",
+                       [Bucket, {T, E, Stack}]),
+            {memcached_error, internal,
+             iolist_to_binary(io_lib:format("Caught an exception ~p", [E]))}
+    end.
+
+reply_start_stop_uploaders(What, RVs) ->
+    case [T || {_, RV} = T <- misc:enumerate(RVs, 0), RV =/= ok] of
+        [] ->
+            {reply, ok};
+        Bad ->
+            ?log_error("Errors ~s fusion uploaders: ~p", [What, Bad]),
+            {reply, error}
+    end.
+
+-spec maybe_start_fusion_uploaders(
+        bucket_name(), [{vbucket_id(), integer()}]) -> ok | error | mc_error().
+maybe_start_fusion_uploaders(Bucket, Uploaders) ->
+    try_to_perform_very_long_call(
+      fun (Sock) ->
+              RVs =
+                  [mc_client_binary:start_fusion_uploader(Sock, VBucket, Term)
+                   || {VBucket, Term} <- Uploaders],
+              reply_start_stop_uploaders("starting", RVs)
+      end, Bucket, [json]).
+
+-spec maybe_stop_fusion_uploaders(bucket_name(), [vbucket_id()]) ->
+          ok | error | mc_error().
+maybe_stop_fusion_uploaders(Bucket, VBuckets) ->
+    try_to_perform_very_long_call(
+      fun (Sock) ->
+              RVs = [mc_client_binary:stop_fusion_uploader(Sock, VBucket) ||
+                        VBucket <- VBuckets],
+              reply_start_stop_uploaders("stopping", RVs)
+      end, Bucket, []).
