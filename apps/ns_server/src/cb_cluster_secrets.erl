@@ -75,7 +75,7 @@
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2]).
+         handle_continue/2, terminate/2]).
 
 %% Can be called by other nodes:
 -export([add_new_secret_internal/1,
@@ -709,6 +709,7 @@ destroy_deks(DekKind, ContFun) ->
 %%%===================================================================
 
 init([Type]) ->
+    ?log_debug("cb_cluster_secrets init ~p started", [Type]),
     Self = self(),
     EventFilter =
         fun (?CHRONICLE_SECRETS_KEY = K) -> {true, {config_change, K}};
@@ -757,14 +758,19 @@ init([Type]) ->
     %% Note that this means that this process can't start until the reecnryption
     %% is finished.
 
-    {ok, functools:chain(#state{proc_type = Type, jobs = Jobs},
-                         [maybe_read_deks(_),
-                          run_jobs(_),
-                          restart_dek_rotation_timer(_),
-                          restart_dek_cleanup_timer(_),
-                          restart_rotation_timer(_),
-                          restart_dek_info_update_timer(true, _),
-                          restart_remove_retired_timer(_)])}.
+    {ok, maybe_read_deks(#state{proc_type = Type, jobs = Jobs}),
+     {continue, init}}.
+
+handle_continue(init, State) ->
+    NewState = functools:chain(State,
+                               [run_jobs(_),
+                                restart_dek_rotation_timer(_),
+                                restart_dek_cleanup_timer(_),
+                                restart_rotation_timer(_),
+                                restart_dek_info_update_timer(true, _),
+                                restart_remove_retired_timer(_)]),
+    ?log_debug("cb_cluster_secrets init ~p finished", [State#state.proc_type]),
+    {noreply, NewState}.
 
 handle_call({call, {M, F, A} = MFA}, _From,
             #state{proc_type = ?MASTER_PROC} = State) ->
