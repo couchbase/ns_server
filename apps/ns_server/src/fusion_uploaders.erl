@@ -20,7 +20,8 @@
 
 -export([build_fast_forward_info/4,
          get_moves/1,
-         get_current/1]).
+         get_current/1,
+         fail_nodes/2]).
 
 %% incremented starting from 1 with each uploader change
 %% The purpose of Term is to help
@@ -149,3 +150,12 @@ process_moves_with_choice(AllZipped, UsageSoFar) ->
               %% already selected by pass 1
               {CurrentAndMove, Usage}
       end, UsageSoFar, AllZipped).
+
+-spec fail_nodes(uploaders(), [node()]) -> uploaders().
+fail_nodes(Uploaders, FailedNodes) ->
+    [case lists:member(N, FailedNodes) of
+         true ->
+             {undefined, C};
+         false ->
+             {N, C}
+     end || {N, C} <- Uploaders].

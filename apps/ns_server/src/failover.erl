@@ -292,7 +292,8 @@ check_transaction_safety(
        ?cut(is_possible(Nodes, TransSnapshot, Options)),
        ?cut(maybe_check_kv_safety(Nodes, TransSnapshot, Options))]).
 
-transaction_logic(ok, Nodes, BktPrepResults, SvcNodes, UnsafeNodes, Snapshot) ->
+transaction_logic(ok, Nodes, BktPrepResults, SvcNodes, UnsafeNodes, Snapshot,
+                  Txn) ->
     KVNodes =
         ns_cluster_membership:service_nodes(Snapshot, Nodes, kv),
 
@@ -306,10 +307,24 @@ transaction_logic(ok, Nodes, BktPrepResults, SvcNodes, UnsafeNodes, Snapshot) ->
     BucketsCommits =
         buckets_failover_commits(BktPrepResults, Nodes, Snapshot),
 
+    FusionCommits =
+        lists:filtermap(
+          fun (BucketName) ->
+                  UploadersKey = ns_bucket:fusion_uploaders_key(BucketName),
+                  case chronicle_kv:txn_get(UploadersKey, Txn) of
+                      {error, not_found} ->
+                          false;
+                      {ok, {Uploaders, _}} ->
+                          {true,
+                           {set, UploadersKey,
+                            fusion_uploaders:fail_nodes(Uploaders, KVNodes)}}
+                  end
+          end, ns_bucket:get_bucket_names(Snapshot)),
+
     case lists:keyfind(abort, 1, BucketsCommits) of
         false ->
             {commit,
-             BucketsCommits ++ ServicesCommits,
+             BucketsCommits ++ ServicesCommits ++ FusionCommits,
              #failover_transaction_result{
                 services = Services,
                 service_nodes = SvcNodes,
@@ -321,19 +336,20 @@ transaction_logic(ok, Nodes, BktPrepResults, SvcNodes, UnsafeNodes, Snapshot) ->
             Res
     end;
 transaction_logic(Error, _Nodes, _BktPrepResults, _SvcNodes,
-                  _UnsafeNodes, _Snapshot) ->
+                  _UnsafeNodes, _Snapshot, _Txn) ->
     {abort, {error, Error}}.
 
 failover_transaction(Nodes, BktPrepResults, SvcNodes, UnsafeNodes,
                      Snapshot, Options) ->
     Keys = maps:keys(Snapshot),
-    chronicle_kv:transaction(
-      kv, Keys,
-      fun(TransSnapshot) ->
+    chronicle_kv:txn(
+      kv,
+      fun (Txn) ->
+              TransSnapshot = chronicle_kv:txn_get_many(Keys, Txn),
               IsSafe = check_transaction_safety(Nodes, TransSnapshot,
                                                 Snapshot, Options),
               transaction_logic(IsSafe, Nodes, BktPrepResults, SvcNodes,
-                                UnsafeNodes, TransSnapshot)
+                                UnsafeNodes, TransSnapshot, Txn)
       end, #{retries => 0}).
 
 failover_transaction_with_retries(_Nodes, _Options, Rv, 0) ->
@@ -1355,6 +1371,25 @@ failover_buckets_group_failure_result_test_body() ->
     ?assertEqual(lists:sort(Results1), lists:sort(Results3)),
     ok.
 
+mock_txn(Snapshot) ->
+    mock_txn(Snapshot, fun () -> ok end).
+
+mock_txn(Snapshot, OnAbort) ->
+    meck:expect(chronicle_kv, txn_get, fun (_, _) -> {error, not_found} end),
+    meck:expect(chronicle_kv, txn_get_many, fun (_, _) -> Snapshot end),
+
+    meck:expect(chronicle_kv, txn,
+                fun (kv, TransLogic, Opts) ->
+                        ?assertEqual(0, maps:get(retries, Opts)),
+                        case TransLogic(txn) of
+                            {abort, Error} ->
+                                OnAbort(),
+                                Error;
+                            Rv ->
+                                Rv
+                        end
+                end).
+
 transaction_test_setup(FailedNodes) ->
     Snapshot = get_test_snapshot(),
     BConfig = ns_bucket:get_buckets(Snapshot),
@@ -1380,16 +1415,7 @@ transaction_test_setup(FailedNodes) ->
                 end),
     meck:delete(chronicle_compat, get, 3),
 
-    meck:expect(chronicle_kv, transaction,
-                fun (_, _, TransLogic, Opts) ->
-                        ?assertEqual(0, maps:get(retries, Opts)),
-                        case TransLogic(Snapshot) of
-                            {abort, Error} ->
-                                Error;
-                            Rv ->
-                                Rv
-                        end
-                end),
+    mock_txn(Snapshot),
 
     meck:expect(auto_failover, validate_services_safety,
                 fun (_, _, _, _) ->
@@ -1493,15 +1519,8 @@ failover_transaction_failure_test_body() ->
     %% Now force a mismatch between the keys of the external Snapshot
     %% and the Transaction one and check for appropriate error
     FailedNodes2 = [c,d],
-    meck:expect(chronicle_kv, transaction,
-                fun (_, _, TransLogic, _) ->
-                        case TransLogic(maps:remove({node, a, membership}, Snapshot)) of
-                            {abort, Error} ->
-                                Error;
-                            Rv ->
-                                Rv
-                        end
-                end),
+
+    mock_txn(maps:remove({node, a, membership}, Snapshot)),
     ?assertEqual({error, snapshot_rev_conflict},
                  failover_transaction_with_retries(
                    FailedNodes2, #{}, undefined,
@@ -1509,17 +1528,9 @@ failover_transaction_failure_test_body() ->
 
     %% Modify the version of a buckets prop key and ensure proper error
     %% after retries
-    meck:expect(chronicle_kv, transaction,
-                fun (_, _, TransLogic, _) ->
-                        {Val, Rev} = maps:get({bucket, "B4", props}, Snapshot),
-                        NewSnapShot = Snapshot#{{bucket, "B4", props} => {Val, Rev + 1}},
-                        case TransLogic(NewSnapShot) of
-                            {abort, Error} ->
-                                Error;
-                            Rv ->
-                                Rv
-                        end
-                end),
+    {Val, Rev} = maps:get({bucket, "B4", props}, Snapshot),
+    NewSnapShot = Snapshot#{{bucket, "B4", props} => {Val, Rev + 1}},
+    mock_txn(NewSnapShot),
     ?assertEqual({error, snapshot_rev_conflict},
                  failover_transaction_with_retries(
                    FailedNodes2, #{}, undefined,
@@ -1533,23 +1544,14 @@ failover_transaction_invoke_retries() ->
 
     %% Force a mismatch of the Snapshot on first try, and fix it on the second
     %% try, therefore the transaction should succeed after retry
-    meck:expect(chronicle_kv, transaction,
-                fun (_, _, TransLogic, _) ->
-                        {Val, Rev} = maps:get({bucket, "B4", props}, Snapshot),
-                        NewSnapshot =
-                            Snapshot#{{bucket, "B4", props} => {Val, Rev + 1}},
-                        case TransLogic(NewSnapshot) of
-                            {abort, Error} ->
-                                meck:expect(chronicle_compat, get_snapshot,
-                                            fun (_) ->
-                                                    NewSnapshot
-                                            end),
-                                Error;
-                            Rv ->
-                                Rv
-                        end
-                end),
-
+    {Val, Rev} = maps:get({bucket, "B4", props}, Snapshot),
+    NewSnapshot = Snapshot#{{bucket, "B4", props} => {Val, Rev + 1}},
+    mock_txn(NewSnapshot, fun () ->
+                                  meck:expect(chronicle_compat, get_snapshot,
+                                              fun (_) ->
+                                                      NewSnapshot
+                                              end)
+                          end),
 
     %% With just 1 retries, it should fail because we invoke mismatch on
     %% first try
