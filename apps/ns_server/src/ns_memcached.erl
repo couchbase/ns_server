@@ -208,7 +208,7 @@ init(Bucket) ->
 run_connect_phase(Parent, Bucket, WorkersCount) ->
     ?log_debug("Started 'connecting' phase of ns_memcached-~s. Parent is ~p",
                [Bucket, Parent]),
-    RV = case connect(?MODULE_STRING ++ "-" ++ Bucket) of
+    RV = case connect(?MODULE_STRING ++ "-" ++ Bucket, [json]) of
              {ok, Sock} ->
                  gen_tcp:controlling_process(Sock, Parent),
                  {ok, Sock};
@@ -1009,7 +1009,7 @@ handle_info(Message, #state{worker_features = WF, control_queue = Q,
               fun () ->
                       perform_very_long_call_with_timing(
                         Bucket, ensure_bucket,
-                        ensure_bucket(_, Bucket, true, JWT)),
+                        ensure_bucket(_, Bucket, true, JWT), [json]),
                       Self ! complete_check
               end),
             {noreply, State#state{check_in_progress = true,
@@ -1126,7 +1126,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 %% API
 %%
-perform_very_long_call_with_timing(Bucket, Name, Fun) ->
+perform_very_long_call_with_timing(Bucket, Name, Fun, Opts) ->
     perform_very_long_call(
       fun(Sock) ->
               StartTS = os:timestamp(),
@@ -1139,7 +1139,7 @@ perform_very_long_call_with_timing(Bucket, Name, Fun) ->
                       ok
               end,
               {reply, ok}
-      end, Bucket).
+      end, Bucket, Opts).
 
 -spec active_buckets() -> [bucket_name()].
 active_buckets() ->
@@ -1499,9 +1499,6 @@ get_seqno_stats(Bucket, VBucket) ->
 %%
 %% Internal functions
 %%
-connect(AgentName) ->
-    connect(AgentName, []).
-
 connect(AgentName, Options) ->
     Retries = proplists:get_value(retries, Options, ?CONNECTION_ATTEMPTS),
     connect(AgentName, Options, Retries).

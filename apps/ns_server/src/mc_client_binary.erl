@@ -74,7 +74,8 @@
          set_tls_config/2,
          set_active_encryption_key/4,
          get_fusion_storage_snapshot/4,
-         mount_fusion_vbucket/3]).
+         mount_fusion_vbucket/3,
+         set_chronicle_auth_token/2]).
 
 -type recv_callback() :: fun((_, _, _) -> any()) | undefined.
 -type mc_timeout() :: undefined | infinity | non_neg_integer().
@@ -103,7 +104,8 @@
                      ?CMD_COLLECTIONS_SET_MANIFEST |
                      ?CMD_COLLECTIONS_GET_MANIFEST |
                      ?CMD_GET_FUSION_STORAGE_SNAPSHOT |
-                     ?CMD_MOUNT_FUSION_VBUCKET.
+                     ?CMD_MOUNT_FUSION_VBUCKET |
+                     ?CMD_SET_CHRONICLE_AUTH_TOKEN.
 
 
 report_counter(Function) ->
@@ -1085,6 +1087,20 @@ mount_fusion_vbucket(Sock, VBucket, Volumes) ->
                         datatype = ?MC_DATATYPE_JSON}}) of
         {ok, #mc_header{status = ?SUCCESS}, ME, _NCB} ->
             {ok, ME#mc_entry.data};
+        Response ->
+            process_error_response(Response)
+    end.
+
+-spec set_chronicle_auth_token(port(), binary()) -> ok | mc_error().
+set_chronicle_auth_token(Sock, Token) ->
+    report_counter(?FUNCTION_NAME),
+    Data = ejson:encode({[{token, Token}]}),
+    case cmd(?CMD_SET_CHRONICLE_AUTH_TOKEN, Sock, undefined, undefined,
+             {#mc_header{},
+              #mc_entry{data = Data,
+                        datatype = ?MC_DATATYPE_JSON}}) of
+        {ok, #mc_header{status = ?SUCCESS}, _ME, _NCB} ->
+            ok;
         Response ->
             process_error_response(Response)
     end.

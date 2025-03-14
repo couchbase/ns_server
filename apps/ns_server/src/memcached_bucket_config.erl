@@ -262,11 +262,10 @@ maybe_update_param(_Sock, _Stats, _BucketName,
                    {?MAGMA_FUSION_AUTH_TOKEN, _Props, custom}, undefined) ->
     ok;
 maybe_update_param(Sock, _Stats, BucketName,
-                   {?MAGMA_FUSION_AUTH_TOKEN = Name, Props, custom}, JWT) ->
+                   {?MAGMA_FUSION_AUTH_TOKEN, _Props, custom}, JWT) ->
     {_, Payload} = jose_jwt:peek_payload(JWT),
     ?log_info("Push JWT ~p to bucket ~s", [Payload, BucketName]),
-    ok = mc_client_binary:set_engine_param(Sock, list_to_binary(Name), JWT,
-                                           proplists:get_value(reload, Props));
+    ok = mc_client_binary:set_chronicle_auth_token(Sock, JWT);
 maybe_update_param(Sock, Stats, BucketName, {Name, Props, Value}, _JWT) ->
     case proplists:get_value(reload, Props) of
         undefined ->
