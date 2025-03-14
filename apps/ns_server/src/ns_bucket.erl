@@ -1111,7 +1111,11 @@ get_min_replicas() ->
 get_default_num_vbuckets(couchstore) ->
     get_default_num_vbuckets_helper(?DEFAULT_VBUCKETS_COUCHSTORE);
 get_default_num_vbuckets(magma) ->
-    get_default_num_vbuckets_helper(?DEFAULT_VBUCKETS_MAGMA);
+    Default = case cluster_compat_mode:is_cluster_morpheus() of
+                  true -> ?DEFAULT_VBUCKETS_MAGMA;
+                  false -> ?DEFAULT_VBUCKETS_MAGMA_PRE_MORPHEUS
+              end,
+    get_default_num_vbuckets_helper(Default);
 get_default_num_vbuckets(ephemeral) ->
     get_default_num_vbuckets_helper(?DEFAULT_VBUCKETS_EPHEMERAL);
 get_default_num_vbuckets(undefined) ->
@@ -1119,6 +1123,12 @@ get_default_num_vbuckets(undefined) ->
     %% for a resultant bucket.
     -1.
 
+%% This function is needed as we provide different options for specifying
+%% the default number of vbuckets. In order:
+%%    * couchbase_num_vbuckets_default in the Config
+%%    * COUCHBASE_NUM_VBUCKETS environment varialbe
+%%    * default_num_vbuckets in the profile
+%%    * whatever the caller has specified
 get_default_num_vbuckets_helper(DefaultNumVBs) ->
     case ns_config:search(couchbase_num_vbuckets_default) of
         false ->
@@ -1182,9 +1192,10 @@ cleanup_bucket_props(Props) ->
     lists:keydelete(moxi_port, 1, Props).
 
 create_bucket(BucketType, BucketName, NewConfig) ->
-    MergedConfig =
+    MergedConfig0 =
         misc:update_proplist(new_bucket_default_params(BucketType),
                              NewConfig),
+    MergedConfig = maybe_set_num_vbuckets(MergedConfig0),
     BucketUUID = couch_uuids:random(),
     Manifest = collections:default_manifest(MergedConfig),
     case do_create_bucket(BucketName, MergedConfig, BucketUUID, Manifest) of
@@ -1193,6 +1204,20 @@ create_bucket(BucketType, BucketName, NewConfig) ->
             {ok, BucketUUID, MergedConfig};
         {error, _} = Error ->
             Error
+    end.
+
+%% A bucket create initiated on a 7.1.x or 7.2.x node will not have
+%% num_vbuckets specified as it wasn't a setable property in those releases.
+maybe_set_num_vbuckets(Config) ->
+    case proplists:get_value(num_vbuckets, Config) of
+        undefined ->
+            %% Validate invariant that this occurs only pre-7.6
+            false = cluster_compat_mode:is_cluster_76(),
+            StorageMode = proplists:get_value(storage_mode, Config),
+            lists:append(Config, [{num_vbuckets,
+                                   get_default_num_vbuckets(StorageMode)}]);
+        _ ->
+            Config
     end.
 
 restore_bucket(BucketName, NewConfig, BucketUUID, Manifest) ->
