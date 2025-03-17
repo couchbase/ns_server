@@ -47,7 +47,7 @@ function mnEncryptionStatusDirective() {
     }
 
     function hasIssues() {
-      return !!vm.encryptionInfo.issues.length;
+      return !!vm.encryptionInfo?.issues.length;
     }
   }
 }

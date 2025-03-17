@@ -33,7 +33,7 @@
         </span>
         <span ng-if="!node.nodeEncryption">off</span>
       </div>
-      <div ng-if="poolDefault.compat.atLeast80 && serversListItemDetailsCtl.isEnterprise">
+      <div ng-if="serversListItemDetailsCtl.isEnterprise && node.hasOwnProperty('encryptionAtRestInfo')">
         <div>
           <strong>Encryption at Rest Configuration:</strong>
           <mn-encryption-status class="inline" encryption-info="node.encryptionAtRestInfo.configuration"></mn-encryption-status>

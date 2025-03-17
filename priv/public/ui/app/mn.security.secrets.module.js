@@ -44,8 +44,7 @@ let secretsState = {
   data: {
     permissions: "cluster.admin.security.read",
     title: "Encryption at Rest",
-    enterprise: true,
-    compat: "atLeast80" //TODO
+    enterprise: true
   },
   component: MnSecuritySecretsComponent
 };
