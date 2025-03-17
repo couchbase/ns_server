@@ -8,25 +8,59 @@
 %% licenses/APL2.txt.
 
 %% @doc
-%% This module implements the JWT key cache responsible for managing JWKS (JSON
-%% Web Key Set) for jwks_uri issuers.
+%% This module implements the JWT key cache responsible for managing all types
+%% of JWT keys: PEM files, static JWKS objects, JWKS URIs, and internal keys.
+%%
+%% The cache stores parsed jose_jwk objects for all issuer types to avoid
+%% repeated parsing during authentication requests:
+%%   - PEM keys are parsed once and stored in the cache
+%%   - Static JWKS objects are converted to jose_jwk objects and cached
+%%   - JWKS URI responses are parsed and cached with expiry times
+%%
+%% Cache Consistency:
+%% The cache may not be immediately synchronized with the latest issuer
+%% properties. When issuer properties change (e.g., during settings updates),
+%% there may be a brief period where the cache contains stale keys. During
+%% this period:
+%%   - The cache will continue to serve the old keys if available
+%%   - If a key lookup fails, the client is expected to retry
+%%   - The cache will eventually be updated via the settings_update handler
+%%   - No guarantees are made about using the latest available keys
 %%
 %% The cache is refreshed in the following ways:
-%%    - On-demand refresh:
-%%      * If a key lookup fails or is expired, a refresh is attempted
-%%      * A cooldown period of 1 minute prevents excessive network requests
-%%    - Periodic refresh:
-%%      * Background timer refreshes all JWKS URIs periodically
-%%      * Random jitter prevents all nodes from refreshing at the same time
-%%      * Settings changes trigger a refresh
-%%   All updates are serialized via gen_server.
-%%   All updates are atomic. Old keys are removed and replaced with new keys for
-%%   a given issuer in a single operation.
+%%   - Settings Updates:
+%%     * All cache entries are invalidated when JWT settings change
+%%     * All static keys (PEM and JWKS) are parsed and cached immediately
+%%     * JWKS URI issuers are refreshed immediately after settings update
+%%
+%%   - Internal Key Updates:
+%%     * Internal keys are refreshed when they change via internal_key_update
+%%     * Internal keys are also refreshed during settings_update (as all entries
+%%       are invalidated)
+%%
+%%   - On-demand refresh (JWKS URI only):
+%%     * If a JWKS URI key lookup fails or is expired, a refresh is attempted
+%%     * A cooldown period of 1 minute prevents excessive network requests
+%%
+%%   - Periodic refresh (JWKS URI only):
+%%     * Background timer refreshes all JWKS URIs periodically
+%%     * Random jitter prevents all nodes from refreshing at the same time
+%%
+%% All updates are serialized via gen_server.
+%% All updates are atomic. Old keys are removed and replaced with new keys for
+%% a given issuer in a single operation.
 %%
 %% Consistency:
 %% - Each node maintains its own cache and caches are refreshed independently
 %%   The refresh times need not be consistent across nodes if a node restarts,
 %%   for instance.
+%%
+%% Upgrade Considerations:
+%% - The ETS cache is in-memory and rebuilt when a node starts up (after an
+%%   upgrade) or settings change.
+%% - The JWT settings stored in chronicle_kv are format-independent (not tied to
+%%   erlang-jose or Erlang pubkey() formats)
+
 -module(jwt_cache).
 -behaviour(gen_server).
 
@@ -54,7 +88,7 @@
 -record(jwks_cache_entry, {
                            kid_to_jwk :: jwt_kid_to_jwk(),
                            fetch_time :: integer(),
-                           expiry :: integer()
+                           expiry :: undefined | integer()
                           }).
 
 -define(JWKS_DEFAULT_EXPIRY_S, 6 * 60 * 60). %% 6 hours
@@ -73,15 +107,43 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-%% TODO: Cache the static PEM and JWKS keys in the cache - to avoid parsing
-%% them every time.
 -spec get_jwk(IssuerProps :: map(), Kid :: binary() | undefined) ->
           {ok, jose_jwk:key()} | {error, binary()}.
+get_jwk(#{name := Issuer} = Props, Kid) ->
+    case ets:lookup(?MODULE, Issuer) of
+        [{Issuer, #jwks_cache_entry{kid_to_jwk = KidToJWKMap,
+                                    expiry = Expiry}}] ->
+            IsExpired = Expiry /= undefined andalso
+                erlang:monotonic_time(millisecond) > Expiry,
+
+            case IsExpired of
+                true ->
+                    ?log_debug("JWT issuer ~p entries have expired", [Issuer]),
+                    direct_get_jwk(Props, Kid);
+                false ->
+                    case maps:find(Kid, KidToJWKMap) of
+                        {ok, JWK} -> {ok, JWK};
+                        error -> direct_get_jwk(Props, Kid)
+                    end
+            end;
+        [] ->
+            direct_get_jwk(Props, Kid)
+    end.
+
+%% Direct lookup fallbacks for each issuer type
+-spec direct_get_jwk(IssuerProps :: map(), Kid :: binary() | undefined) ->
+          {ok, jose_jwk:key()} | {error, binary()}.
 %% Static JWKS - direct lookup from settings
-get_jwk(#{public_key_source := jwks, jwks := {_, KidToJWKMap}}, Kid) ->
-    get_key_from_map(KidToJWKMap, Kid);
+direct_get_jwk(#{public_key_source := jwks, jwks := {_, KidToJWKMap}} = _Props,
+               Kid) ->
+    case maps:find(Kid, KidToJWKMap) of
+        {ok, JWKMap} ->
+            {ok, jose_jwk:from_map(JWKMap)};
+        error ->
+            format_kid_not_found_error(Kid)
+    end;
 %% Static PEM - direct lookup from settings
-get_jwk(#{public_key_source := pem, public_key := PEM}, undefined) ->
+direct_get_jwk(#{public_key_source := pem, public_key := PEM}, undefined) ->
     try
         JWK = jose_jwk:from_pem(PEM),
         {ok, JWK}
@@ -90,7 +152,7 @@ get_jwk(#{public_key_source := pem, public_key := PEM}, undefined) ->
             {error, <<"Invalid PEM key">>}
     end;
 %% Dynamic JWKS URI - lookup from cache with retry if needed
-get_jwk(#{public_key_source := jwks_uri} = Props, Kid) ->
+direct_get_jwk(#{public_key_source := jwks_uri} = Props, Kid) ->
     get_jwk_with_retry(Props, Kid, ?JWKS_FETCH_RETRY_COUNT).
 
 -spec get_jwk_with_retry(IssuerProps :: map(), Kid :: binary() | undefined,
@@ -110,31 +172,33 @@ get_jwk_with_retry(#{public_key_source := jwks_uri} = Props, Kid, RetryCount) ->
                   end;
               [] -> #{}
           end,
-    case get_key_from_map(Map, Kid) of
+    case maps:find(Kid, Map) of
         {ok, JWK} -> {ok, JWK};
-        {error, _} when RetryCount > 0 ->
+        error when RetryCount > 0 ->
             gen_server:call(?MODULE, {refresh_issuer, Props},
                             ?JWKS_REFRESH_TIMEOUT_MS),
             get_jwk_with_retry(Props, Kid, RetryCount - 1);
-        {error, Reason} ->
-            {error, Reason}
+        error ->
+            format_kid_not_found_error(Kid)
     end.
 
--spec get_key_from_map(jwt_kid_to_jwk(), binary() | undefined) ->
-          {ok, jose_jwk:key()} | {error, binary()}.
-get_key_from_map(KidToJWKMap, Kid) ->
-    case maps:find(Kid, KidToJWKMap) of
-        {ok, JWKMap} ->
-            {ok, jose_jwk:from_map(JWKMap)};
-        error when is_binary(Kid) ->
-            {error, <<"Key with kid: ", Kid/binary, " not found">>};
-        error ->
-            {error, <<"Key (no kid specified) not found">>}
-    end.
+-spec format_kid_not_found_error(Kid :: binary() | undefined) ->
+          {error, binary()}.
+format_kid_not_found_error(Kid) when is_binary(Kid) ->
+    {error, <<"Key with kid: ", Kid/binary, " not found">>};
+format_kid_not_found_error(_) ->
+    {error, <<"Key (no kid specified) not found">>}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+-spec update_internal_keys() -> ok.
+update_internal_keys() ->
+    maps:foreach(
+      fun(Issuer, Props) ->
+              cache_issuer_settings(Issuer, Props)
+      end, jwt_issuer:settings()).
 
 %% Extract the max-age from the Cache-Control header. This is used to set the
 %% expiry time for the JWKS in the cache.
@@ -216,9 +280,9 @@ fetch_jwks(IssuerProps) ->
             {error, Error}
     end.
 
--spec fetch_and_parse_jwks(IssuerProps :: map()) ->
-          {ok, #jwks_cache_entry{}} | {error, binary()}.
-fetch_and_parse_jwks(IssuerProps = #{public_key_source := jwks_uri}) ->
+-spec fetch_and_cache_jwks(IssuerProps :: map()) ->
+          ok | {error, binary()}.
+fetch_and_cache_jwks(IssuerProps = #{public_key_source := jwks_uri}) ->
     FetchTime = erlang:monotonic_time(millisecond),
     case fetch_jwks(IssuerProps) of
         {error, _} ->
@@ -231,11 +295,8 @@ fetch_and_parse_jwks(IssuerProps = #{public_key_source := jwks_uri}) ->
                              undefined -> ?JWKS_DEFAULT_EXPIRY_S;
                              Age -> Age
                          end) * 1000,
-                    {ok, #jwks_cache_entry{
-                            kid_to_jwk = KidToJWKMap,
-                            fetch_time = FetchTime,
-                            expiry = Expiry
-                           }};
+                    cache_jwks_entry(IssuerProps, KidToJWKMap, FetchTime,
+                                     Expiry);
                 {error, _} ->
                     {error, <<"Invalid JWKS">>}
             end
@@ -285,6 +346,60 @@ schedule_refresh(Interval) ->
 cancel_timer(undefined) -> ok;
 cancel_timer(Ref) -> erlang:cancel_timer(Ref).
 
+-spec cache_jwks_entry(#{name := string(),
+                         public_key_source := jwks | jwks_uri,
+                         _ => _},
+                       jwt_kid_to_jwk(),
+                       integer(),
+                       undefined | integer()) -> ok.
+cache_jwks_entry(#{name := Issuer, public_key_source := Source} = _IssuerProps,
+                 KidToJWKMap, FetchTime, Expiry) ->
+    try
+        JWKMap = maps:map(
+                   fun(_Kid, JWKMap) ->
+                           jose_jwk:from_map(JWKMap)
+                   end, KidToJWKMap),
+        CacheEntry = #jwks_cache_entry{
+                        kid_to_jwk = JWKMap,
+                        fetch_time = FetchTime,
+                        expiry = Expiry
+                       },
+        ets:insert(?MODULE, {Issuer, CacheEntry}),
+        Msg = case Source of
+                  jwks -> "Cached static JWKS for issuer ~p with ~p keys";
+                  jwks_uri -> "Cached dynamic JWKS for issuer ~p with ~p keys"
+              end,
+        ?log_debug(Msg, [Issuer, maps:size(JWKMap)])
+    catch _:Error ->
+            ?log_error("Failed to process JWKS for issuer ~p: ~p",
+                       [Issuer, Error])
+    end.
+
+-spec cache_issuer_settings(Issuer :: string(), Props :: map()) -> ok.
+cache_issuer_settings(Issuer, #{public_key_source := pem,
+                                public_key := PEM} = _Props) ->
+    try
+        JWK = jose_jwk:from_pem(PEM),
+        FetchTime = erlang:monotonic_time(millisecond),
+        CacheEntry = #jwks_cache_entry{
+                        kid_to_jwk = #{undefined => JWK},
+                        fetch_time = FetchTime,
+                        expiry = undefined
+                       },
+        ets:insert(?MODULE, {Issuer, CacheEntry}),
+        ?log_debug("Cached PEM key for issuer ~p", [Issuer])
+    catch _:Error ->
+            ?log_error("Failed to parse PEM for issuer ~p: ~p",
+                       [Issuer, Error])
+    end;
+cache_issuer_settings(Issuer, #{public_key_source := jwks,
+                                jwks := {_, KidToJWKMap}} = Props) ->
+    FetchTime = erlang:monotonic_time(millisecond),
+    cache_jwks_entry(Props#{name => Issuer}, KidToJWKMap, FetchTime, undefined);
+cache_issuer_settings(_Issuer, #{public_key_source := jwks_uri}) ->
+    %% For JWKS URI, we'll fetch in the refresh handler immediately
+    ok.
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -294,9 +409,11 @@ init([]) ->
     Self = self(),
     chronicle_compat_events:subscribe(
       fun (jwt_settings) -> Self ! settings_update;
+          (?JWT_SIGNING_KEYS_KEY) -> Self ! internal_key_update;
           (_) -> ok
       end),
     self() ! settings_update,
+    self() ! internal_key_update,
     {ok, #cache_state{}}.
 
 %% On demand node refresh. When a lookup fails, the node will refresh the JWKS.
@@ -305,9 +422,8 @@ handle_call({refresh_issuer, #{name := Issuer} = Props}, _From, State) ->
         {error, cooldown} ->
             {reply, {error, cooldown}, State};
         ok ->
-            case fetch_and_parse_jwks(Props) of
-                {ok, Entry} ->
-                    ets:insert(?MODULE, {Issuer, Entry}),
+            case fetch_and_cache_jwks(Props) of
+                ok ->
                     {reply, ok, State};
                 {error, Reason} ->
                     {reply, {error, Reason}, State}
@@ -323,16 +439,31 @@ handle_cast(Msg, State) ->
     ?log_warning("Unhandled cast: ~p", [Msg]),
     {noreply, State}.
 
+handle_info(internal_key_update, State) ->
+    ?log_debug("JWT internal key changed, updating cache", []),
+    update_internal_keys(),
+    {noreply, State};
 handle_info(settings_update,
             #cache_state{refresh_timer_ref = TimerRef} = State) ->
     ?log_debug("JWT settings init/change, invalidating cache.", []),
     ets:delete_all_objects(?MODULE),
     misc:flush(settings_update),
+    misc:flush(internal_key_update),
     misc:flush(periodic_refresh),
     cancel_timer(TimerRef),
 
+    update_internal_keys(),
     case chronicle_kv:get(kv, jwt_settings) of
         {ok, {#{enabled := true, issuers := IssuersMap} = Settings, _Rev}} ->
+            maps:foreach(
+              fun(Issuer, #{signing_algorithm := Algo} = Props) ->
+                      case menelaus_web_jwt_key:is_symmetric_algorithm(Algo) of
+                          true ->
+                              ok;
+                          false ->
+                              cache_issuer_settings(Issuer, Props)
+                      end
+              end, IssuersMap),
             HasJwksUri =
                 lists:any(fun(#{public_key_source := jwks_uri}) -> true;
                              (_) -> false
@@ -366,8 +497,8 @@ handle_info(periodic_refresh,
         {ok, {#{enabled := true, issuers := IssuersMap}, _}} ->
             maps:foreach(
               fun(Issuer, #{public_key_source := jwks_uri} = Props) ->
-                      case fetch_and_parse_jwks(Props#{name => Issuer}) of
-                          {ok, Entry} -> ets:insert(?MODULE, {Issuer, Entry});
+                      case fetch_and_cache_jwks(Props#{name => Issuer}) of
+                          ok -> ok;
                           {error, _} -> ok
                       end;
                  (_, _) -> ok
@@ -398,6 +529,7 @@ cache_lookup_test() ->
     meck:new(chronicle_compat_events, [passthrough]),
     meck:new(chronicle_kv, [passthrough]),
     meck:new(ns_config, [passthrough]),
+    meck:new(jwt_issuer, [passthrough]),
 
     meck:expect(ns_config, search_node_with_default,
                 fun({jwt_cache, jwks_cooldown_interval_ms}, _Default) ->
@@ -410,8 +542,13 @@ cache_lookup_test() ->
     meck:expect(chronicle_kv, get,
                 fun(kv, jwt_settings) ->
                         {ok, {#{enabled => true,
-                                issuers => #{}}, '_'}}
+                                issuers => #{}}, '_'}};
+                   (_, _) ->
+                        meck:passthrough()
                 end),
+
+    meck:expect(jwt_issuer, settings, fun() -> #{} end),
+
     TestJWKS =
         <<
           "{",
@@ -500,6 +637,7 @@ cache_lookup_test() ->
     ?assertEqual(meck:num_calls(rest_utils, request, ['_', '_', '_', '_', '_',
                                                       '_', '_']), 2),
 
+    meck:unload(jwt_issuer),
     meck:unload(chronicle_kv),
     meck:unload(chronicle_compat_events),
     meck:unload(rest_utils),
@@ -512,6 +650,7 @@ cache_refresh_failure_test() ->
     meck:new(ns_config, [passthrough]),
     meck:new(rest_utils, [passthrough]),
     meck:new(menelaus_web_jwt_key, [passthrough]),
+    meck:new(jwt_issuer, [passthrough]),
 
     meck:expect(ns_config, search_node_with_default,
                 fun({jwt_cache, jwks_cooldown_interval_ms}, _Default) ->
@@ -519,6 +658,7 @@ cache_refresh_failure_test() ->
                    (_Key, Default) ->
                         Default
                 end),
+    meck:expect(jwt_issuer, settings, fun() -> #{} end),
 
     meck:expect(chronicle_compat_events, subscribe, fun(_) -> ok end),
 
@@ -616,7 +756,9 @@ cache_refresh_failure_test() ->
                 end),
 
     Pid ! periodic_refresh,
-    timer:sleep(100),
+
+    %% Ensures that gen_server has processed all messages in its mailbox
+    gen_server:call(?MODULE, sync, 1000),
 
     %% Verify the cache entries are unchanged
     [{_, Issuer1EntryAfter}] = ets:lookup(?MODULE, Issuer1),
@@ -633,11 +775,179 @@ cache_refresh_failure_test() ->
     ?assertEqual(JWK1, JWK1After),
     ?assertEqual(JWK2, JWK2After),
 
+    meck:unload(jwt_issuer),
     meck:unload(chronicle_kv),
     meck:unload(chronicle_compat_events),
     meck:unload(rest_utils),
     meck:unload(ns_config),
     meck:unload(menelaus_web_jwt_key),
     gen_server:stop(jwt_cache).
+
+pem_cache_test() ->
+    meck:new(chronicle_compat_events, [passthrough]),
+    meck:new(chronicle_kv, [passthrough]),
+    meck:new(jwt_issuer, [passthrough]),
+
+    meck:expect(jwt_issuer, settings, fun() -> #{} end),
+    meck:expect(chronicle_compat_events, subscribe, fun(_) -> ok end),
+
+    JWK = jose_jwk:generate_key({rsa, 2048}),
+    PublicJWK = jose_jwk:to_public(JWK),
+    PEM = jose_jwk:to_pem(PublicJWK),
+
+    TestIssuer = "test-pem-issuer",
+    IssuerProps = #{
+                    public_key_source => pem,
+                    public_key => PEM,
+                    signing_algorithm => 'RS256'
+                   },
+
+    %% Set up with empty issuers for direct lookup tests
+    meck:expect(chronicle_kv, get,
+                fun(kv, jwt_settings) ->
+                        {ok, {#{enabled => true, issuers => #{}}, '_'}};
+                   (_, _) ->
+                        meck:passthrough()
+                end),
+
+    {ok, Pid} = jwt_cache:start_link(),
+
+    %% Verify ETS is empty (empty issuers shouldn't populate cache)
+    ?assertEqual(0, ets:info(?MODULE, size)),
+
+    %% Perform direct lookup (bypassing cache)
+    IssuerPropsWithName = maps:merge(IssuerProps, #{name => TestIssuer}),
+    {ok, DirectJWK} = get_jwk(IssuerPropsWithName, undefined),
+    ?assert(is_tuple(DirectJWK)),
+    ?assertEqual(jose_jwk, element(1, DirectJWK)),
+
+    %% Verify ETS is still empty (direct lookup doesn't populate cache)
+    ?assertEqual(0, ets:info(?MODULE, size)),
+
+    %% Now update mocks to return our test issuer
+    meck:expect(chronicle_kv, get,
+                fun(kv, jwt_settings) ->
+                        {ok, {#{
+                                enabled => true,
+                                issuers => #{TestIssuer => IssuerProps}
+                               }, '_'}};
+                   (_, _) ->
+                        meck:passthrough()
+                end),
+
+    %% Trigger settings update to populate cache
+    jwt_cache ! settings_update,
+
+    %% Ensures that gen_server has processed all messages in its mailbox
+    gen_server:call(?MODULE, sync, 1000),
+
+    %% Verify cache is now populated
+    ?assertEqual(1, ets:info(?MODULE, size)),
+
+    %% Verify key can be retrieved from cache
+    {ok, CachedJWK} = get_jwk(IssuerPropsWithName, undefined),
+    ?assert(is_tuple(CachedJWK)),
+    ?assertEqual(jose_jwk, element(1, CachedJWK)),
+
+    %% Verify the cache entry exists with expected content
+    [{_, #jwks_cache_entry{kid_to_jwk = KidToJWKMap}}] =
+        ets:lookup(?MODULE, TestIssuer),
+    ?assert(maps:is_key(undefined, KidToJWKMap)),
+    ?assert(is_tuple(maps:get(undefined, KidToJWKMap))),
+
+    gen_server:stop(Pid),
+    meck:unload(jwt_issuer),
+    meck:unload(chronicle_kv),
+    meck:unload(chronicle_compat_events).
+
+static_jwks_cache_test() ->
+    meck:new(chronicle_compat_events, [passthrough]),
+    meck:new(chronicle_kv, [passthrough]),
+    meck:new(jwt_issuer, [passthrough]),
+
+    meck:expect(jwt_issuer, settings, fun() -> #{} end),
+    meck:expect(chronicle_compat_events, subscribe, fun(_) -> ok end),
+
+    %% Generate two test keys with different key IDs
+    Key1 = jose_jwk:generate_key({ec, <<"P-256">>}),
+    Key2 = jose_jwk:generate_key({ec, <<"P-256">>}),
+    Key1Map = element(2, jose_jwk:to_map(Key1)),
+    Key2Map = element(2, jose_jwk:to_map(Key2)),
+
+    %% Create a static JWKS with both keys
+    Kid1 = <<"key1">>,
+    Kid2 = <<"key2">>,
+    KidToJWKMap = #{Kid1 => Key1Map, Kid2 => Key2Map},
+    TestIssuer = "test-jwks-issuer",
+    IssuerProps = #{
+                    public_key_source => jwks,
+                    jwks => {undefined, KidToJWKMap},
+                    signing_algorithm => 'ES256'
+                   },
+
+    %% Set up with empty issuers for direct lookup tests
+    meck:expect(chronicle_kv, get,
+                fun(kv, jwt_settings) ->
+                        {ok, {#{enabled => true, issuers => #{}}, '_'}};
+                   (_, _) ->
+                        meck:passthrough()
+                end),
+
+    {ok, Pid} = jwt_cache:start_link(),
+
+    %% Verify ETS is empty (empty issuers shouldn't populate cache)
+    ?assertEqual(0, ets:info(?MODULE, size)),
+
+    %% Perform direct lookups (bypassing cache)
+    IssuerPropsWithName = maps:merge(IssuerProps, #{name => TestIssuer}),
+    {ok, DirectJWK1} = get_jwk(IssuerPropsWithName, Kid1),
+    {ok, DirectJWK2} = get_jwk(IssuerPropsWithName, Kid2),
+    ?assert(is_tuple(DirectJWK1)),
+    ?assert(is_tuple(DirectJWK2)),
+    ?assertEqual(jose_jwk, element(1, DirectJWK1)),
+    ?assertEqual(jose_jwk, element(1, DirectJWK2)),
+
+    %% Verify ETS is still empty (direct lookup doesn't populate cache)
+    ?assertEqual(0, ets:info(?MODULE, size)),
+
+    %% Now update mocks to return our test issuer
+    meck:expect(chronicle_kv, get,
+                fun(kv, jwt_settings) ->
+                        {ok, {#{
+                                enabled => true,
+                                issuers => #{TestIssuer => IssuerProps}
+                               }, '_'}};
+                   (_, _) ->
+                        meck:passthrough()
+                end),
+
+    %% Trigger settings update to populate cache
+    jwt_cache ! settings_update,
+
+    %% Ensures that gen_server has processed all messages in its mailbox
+    gen_server:call(?MODULE, sync, 1000),
+
+    %% Verify cache is now populated
+    ?assertEqual(1, ets:info(?MODULE, size)),
+
+    %% Verify keys can be retrieved from cache
+    {ok, CachedJWK1} = get_jwk(IssuerPropsWithName, Kid1),
+    {ok, CachedJWK2} = get_jwk(IssuerPropsWithName, Kid2),
+    ?assert(is_tuple(CachedJWK1)),
+    ?assert(is_tuple(CachedJWK2)),
+    ?assertEqual(jose_jwk, element(1, CachedJWK1)),
+    ?assertEqual(jose_jwk, element(1, CachedJWK2)),
+
+    %% Verify the cache entry exists with expected content
+    [{_, #jwks_cache_entry{kid_to_jwk = CachedMap}}] =
+        ets:lookup(?MODULE, TestIssuer),
+    ?assertEqual(2, maps:size(CachedMap)),
+    ?assert(maps:is_key(Kid1, CachedMap)),
+    ?assert(maps:is_key(Kid2, CachedMap)),
+
+    gen_server:stop(Pid),
+    meck:unload(jwt_issuer),
+    meck:unload(chronicle_kv),
+    meck:unload(chronicle_compat_events).
 
 -endif.

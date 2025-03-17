@@ -16,23 +16,18 @@
 %%
 %% Authentication Flow:
 %% 1. Settings are read directly from chronicle_kv for each auth request
-%% 2. JWKS keys are read from an ETS cache with read_concurrency
+%% 2. All keys are read from an ETS cache with read_concurrency
 %% 3. For JWKS URIs, keys are periodically refreshed in the background
 %%
-%% Settings Changes:
-%% When JWT settings are updated:
-%% 1. New settings are written to chronicle_kv
-%% 2. A sync is triggered
-%% 3. The JWKS cache is cleared and rebuilt with new settings
-%%
-%% In-flight Authentication:
-%% During settings changes, concurrent authentication requests may see different
-%% results depending on timing:
-%% - Requests read settings directly from chronicle_kv, so they may see old or
-%%   new settings
-%% - JWKS cache lookups may temporarily fail while the cache is being rebuilt
-%% - Failed requests during settings changes are expected and should be retried
-%%   by clients
+%% Cache Consistency:
+%% The JWT key cache is designed for performance and simplicity:
+%% - Keys are always looked up in the cache first, regardless of settings age
+%% - If a key is not found in the cache, a direct lookup is performed
+%% - During settings changes, there is a brief window where:
+%%   * The settings in chronicle_kv have been updated
+%%   * But the cache update has not yet been processed
+%%   * During this window, auth requests will use the old cached keys
+%% - Applications are expected to retry failed authentication requests
 
 -module(jwt_auth).
 

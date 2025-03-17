@@ -13,12 +13,12 @@
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
+-include("jwt.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--define(JWT_SIGNING_KEYS_KEY, jwt_signing_keys).
 -define(JWT_EL_CURVE, 'Ed25519').
 -define(JWT_SIGNING_ALG, 'EdDSA').
 
@@ -96,8 +96,15 @@ basic_test() ->
     fake_ns_config:setup(),
     fake_ns_config:update_snapshot({node, node() ,is_enterprise}, true),
 
+    meck:new(chronicle_compat_events, [passthrough]),
+    meck:expect(chronicle_compat_events, subscribe, fun(_) -> ok end),
     fake_chronicle_kv:new(),
     fake_chronicle_kv:update_snapshot(?JWT_SIGNING_KEYS_KEY, generate_keys()),
+
+    {ok, CachePid} = jwt_cache:start_link(),
+    CachePid ! internal_key_update,
+    gen_server:call(jwt_cache, sync, 1000),
+
     RV = issue("@test", [admin, metakv2_access], 1000),
     ?assertMatch({ok, _}, RV),
     {ok, TokenBin} = RV,
@@ -110,7 +117,10 @@ basic_test() ->
                                  extra_roles = [admin, metakv2_access],
                                  expiration_datetime_utc = _,
                                  password_expired = false}, _}, RV1),
+
+    gen_server:stop(CachePid),
     fake_chronicle_kv:unload(),
-    fake_ns_config:teardown().
+    fake_ns_config:teardown(),
+    meck:unload(chronicle_compat_events).
 
 -endif.

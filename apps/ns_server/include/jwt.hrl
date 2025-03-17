@@ -7,6 +7,8 @@
 %% will be governed by the Apache License, Version 2.0, included in the file
 %% licenses/APL2.txt.
 
+-define(JWT_SIGNING_KEYS_KEY, jwt_signing_keys).
+
 -define(JWT_ALGORITHMS,
         ['RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512',
          'ES256', 'ES256K', 'ES384', 'ES512',
@@ -19,7 +21,7 @@
         'EdDSA' |
         'HS256' | 'HS384' | 'HS512'.
 
--type jwt_kid_to_jwk() :: #{binary() | undefined => map()}.
+-type jwt_kid_to_jwk() :: #{binary() | undefined => jose_jwk:key()}.
 
 -type audit_props() :: [{atom(), binary() | [binary()] | integer()}].
 
