@@ -117,6 +117,31 @@ run_buckets_cleanup_activity(BucketsAndCfg, SnapShot, Options) ->
 
     Rv.
 
+cleanup_fusion_uploaders(Bucket, BucketConfig, Servers) ->
+    case ns_bucket:get_fusion_uploaders(Bucket) of
+        not_found ->
+            ok;
+        Uploaders ->
+            {_, Map} = lists:keyfind(map, 1, BucketConfig),
+            cleanup_fusion_uploaders(Uploaders, Bucket, Servers, Map)
+    end.
+
+cleanup_fusion_uploaders(Uploaders, Bucket, Servers, Map) ->
+    EnumeratedUploaders = lists:zip3(lists:seq(0, length(Uploaders) - 1),
+                                     Uploaders, Map),
+
+    lists:foreach(
+      fun (Node) ->
+              ToStart = [{Vb, T} || {Vb, {N, T}, Chain} <- EnumeratedUploaders,
+                                    N =:= Node,
+                                    lists:member(N, Chain)],
+              ToStop = [Vb || {Vb, {N, _}, Chain} <- EnumeratedUploaders,
+                              N =/= Node,
+                              lists:member(Node, Chain)],
+              janitor_agent:maybe_stop_fusion_uploaders(Node, Bucket, ToStop),
+              janitor_agent:maybe_start_fusion_uploaders(Node, Bucket, ToStart)
+      end, Servers).
+
 repeat_bucket_config_cleanup(Bucket, Options) ->
     SnapShot =
         chronicle_compat:get_snapshot(
@@ -444,7 +469,8 @@ cleanup_apply_config_body(Bucket, Servers, BucketConfig, Options) ->
            proplists:get_value(apply_config_timeout, Options,
                                undefined_timeout)),
 
-    cleanup_mark_bucket_warmed(Bucket, Servers).
+    cleanup_mark_bucket_warmed(Bucket, Servers),
+    cleanup_fusion_uploaders(Bucket, BucketConfig, Servers).
 
 cleanup_mark_bucket_warmed(Bucket, Servers) ->
     case janitor_agent:mark_bucket_warmed(Bucket, Servers) of

@@ -368,11 +368,15 @@ process_multicall_rv(BadReplies, BadNodes) ->
 
 -spec maybe_start_fusion_uploaders(
         node(), bucket_name(), [{vbucket_id(), integer()}]) -> ok.
+maybe_start_fusion_uploaders(_Node, _Bucket, []) ->
+    ok;
 maybe_start_fusion_uploaders(Node, Bucket, Uploaders) ->
     gen_server:cast({server_name(Bucket), Node},
                     {maybe_start_fusion_uploaders, Uploaders}).
 
 -spec maybe_stop_fusion_uploaders(node(), bucket_name(), [vbucket_id()]) -> ok.
+maybe_stop_fusion_uploaders(_Node, _Bucket, []) ->
+    ok;
 maybe_stop_fusion_uploaders(Node, Bucket, VBuckets) ->
     gen_server:cast({server_name(Bucket), Node},
                     {maybe_stop_fusion_uploaders, VBuckets}).
