@@ -76,7 +76,7 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
       DriftAheadThreshold},
      {"hlc_drift_behind_threshold_us", [no_param, {reload, vbucket}],
       DriftBehindThreshold},
-     {"hlc_invalid_strategy", [no_param, {reload, vbucket}],
+     {"hlc_invalid_strategy", [{reload, vbucket}],
       get_invalid_hlc_strategy(BucketConfig)},
      {"item_eviction_policy", maybe_restart(),
       get_eviction_policy(true, BucketConfig)},
