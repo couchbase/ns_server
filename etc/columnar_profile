@@ -3,7 +3,7 @@
 {failover_disable_max_count, true}.
 {{cbas, columnar}, true}.
 {{cbas, enable_blob_storage}, true}.
-{{cbas, skip_blob_storage_validation}, true}.
+{{cbas, skip_blob_storage_validation}, false}.
 {{indexer, projector_disabled}, true}.
 {{cbas, max_storage_partitions}, 1024}.
 {{cbas, extra_settings_version_76},
