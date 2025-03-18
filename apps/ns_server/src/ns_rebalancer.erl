@@ -511,7 +511,8 @@ rebalance_body(#{keep_nodes := KeepNodes,
 
     prepare_rebalance(LiveNodes),
 
-    ok = drop_old_2i_indexes(KeepNodes),
+    ok = drop_old_2i_indexes(KeepNodes, Params),
+    clear_non_kv_recovery_types(KeepNodes),
 
     master_activity_events:note_rebalance_stage_started(kv, LiveKVNodes),
     %% wait till all bucket shutdowns are done on nodes we're keeping.
@@ -1401,9 +1402,21 @@ check_graceful_failover_possible_rec(Nodes, [{_BucketName, BucketConfig} | RestB
             check_graceful_failover_possible_rec(Nodes, RestBucketConfigs)
     end.
 
-drop_old_2i_indexes(KeepNodes) ->
+drop_old_2i_indexes(KeepNodes, Params) ->
     Snapshot = ns_cluster_membership:get_snapshot(),
-    NewNodes = KeepNodes -- ns_cluster_membership:active_nodes(Snapshot),
+
+    KeepIndexNodes =
+        case get_desired_service_nodes(index, Params) of
+            undefined ->
+                ns_cluster_membership:service_nodes(KeepNodes, index);
+            Nodes ->
+                Nodes
+        end,
+
+    ActiveIndexNodes = ns_cluster_membership:service_active_nodes(
+                         Snapshot, index),
+
+    NewIndexNodes = KeepIndexNodes -- ActiveIndexNodes,
     %% Only delta recovery is supported for index service.
     %% Note that if a node is running both KV and index service,
     %% and if user selects the full recovery option for such
@@ -1414,25 +1427,16 @@ drop_old_2i_indexes(KeepNodes) ->
     %% from that for the KV service. In case of index, it just
     %% means that we will not drop the indexes and their meta data.
     CleanupNodes =
-        [N || N <- NewNodes,
+        [N || N <- NewIndexNodes,
               ns_cluster_membership:get_recovery_type(Snapshot, N) =:= none],
     ?rebalance_info("Going to drop possible old 2i indexes on nodes ~p",
                     [CleanupNodes]),
     {Oks, RPCErrors, Downs} = misc:rpc_multicall_with_plist_result(
                                 CleanupNodes,
                                 ns_storage_conf, delete_old_2i_indexes, []),
-    RecoveryNodes = NewNodes -- CleanupNodes,
+    RecoveryIndexNodes = NewIndexNodes -- CleanupNodes,
     ?rebalance_info("Going to keep possible 2i indexes on nodes ~p",
-                    [RecoveryNodes]),
-    %% Clear recovery type for non-KV nodes here.
-    %% recovery_type for nodes running KV services gets cleared later.
-    NonKV = [N || N <- RecoveryNodes,
-                  not lists:member(
-                        kv, ns_cluster_membership:node_services(Snapshot, N))],
-
-    ok = chronicle_compat:set_multiple(
-           ns_cluster_membership:update_membership_sets(NonKV, active) ++
-               ns_cluster_membership:clear_recovery_type_sets(NonKV)),
+                    [RecoveryIndexNodes]),
 
     Errors = [{N, RV}
               || {N, RV} <- Oks,
@@ -1447,6 +1451,29 @@ drop_old_2i_indexes(KeepNodes) ->
             ?rebalance_error("Failed to cleanup indexes: ~p", [Errors]),
             {old_indexes_cleanup_failed, Errors}
     end.
+
+clear_non_kv_recovery_types(KeepNodes) ->
+    {ok, _} =
+        chronicle_compat:txn(
+          fun (Txn) ->
+                  Snapshot = ns_cluster_membership:fetch_snapshot(Txn),
+                  NewNodes =
+                      KeepNodes -- ns_cluster_membership:active_nodes(Snapshot),
+                  NonKVRecoveryNodes =
+                      [N || N <- NewNodes,
+                            ns_cluster_membership:get_recovery_type(
+                              Snapshot, N) =/= none,
+                            not lists:member(
+                                  kv, ns_cluster_membership:node_services(
+                                        Snapshot, N))],
+                  ?rebalance_info("Clearing recovery types on nodes ~p",
+                                  [NonKVRecoveryNodes]),
+                  Sets = ns_cluster_membership:update_membership_sets(
+                           NonKVRecoveryNodes, active) ++
+                      ns_cluster_membership:clear_recovery_type_sets(
+                        NonKVRecoveryNodes),
+                  {commit, [{set, K, V} || {K, V} <- Sets]}
+          end).
 
 %%
 %% Check whether user wants us to fail or delay the specified step
