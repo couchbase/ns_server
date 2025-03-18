@@ -65,6 +65,8 @@ sanitize(root_cert_and_pkey, V) ->
     sanitize_value(V);
 sanitize(?CHRONICLE_SECRETS_KEY, V) ->
     cb_cluster_secrets:sanitize_chronicle_cfg(V);
+sanitize(jwt_settings, V) ->
+    menelaus_web_jwt:sanitize_chronicle_cfg(V);
 sanitize(_, V) ->
     V.
 

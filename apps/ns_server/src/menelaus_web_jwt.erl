@@ -70,7 +70,8 @@
 -endif.
 
 -export([handle_settings/2,
-         is_enabled/0]).
+         is_enabled/0,
+         sanitize_chronicle_cfg/1]).
 
 -define(JWKS_URI_MIN_TIMEOUT_MS, 5000). % 5 seconds
 -define(JWKS_URI_DEFAULT_TIMEOUT_MS, 5000). % 5 seconds
@@ -588,6 +589,18 @@ format_tls_extra_opts(List) ->
                end,
     Sanitized = [{K, Sanitize(V)} || {K, V} <- List],
     iolist_to_binary(io_lib:format("~p", [Sanitized])).
+
+-spec sanitize_chronicle_cfg(map()) -> map().
+sanitize_chronicle_cfg(#{issuers := Issuers} = Settings) ->
+    SanitizedIssuers =
+        maps:map(fun(_Name, Props) ->
+                         case maps:get(shared_secret, Props, undefined) of
+                             undefined -> Props;
+                             _ -> Props#{shared_secret => <<"********">>}
+                         end
+                 end, Issuers),
+    Settings#{issuers => SanitizedIssuers};
+sanitize_chronicle_cfg(Settings) -> Settings.
 
 -ifdef(TEST).
 
