@@ -9,13 +9,14 @@ licenses/APL2.txt.
 */
 
 import {Component, ChangeDetectionStrategy} from '@angular/core'
-import {takeUntil, shareReplay} from 'rxjs/operators';
+import {takeUntil, shareReplay, startWith} from 'rxjs/operators';
 import {of} from 'rxjs';
 import {FormBuilder} from '@angular/forms';
 
 import {MnHelperService} from './mn.helper.service.js';
-import {MnXDCRService} from './mn.xdcr.service.js';
+import {MnXDCRService, collectionDelimiter} from './mn.xdcr.service.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
+import {MnKeyspaceSelectorService} from "./mn.keyspace.selector.service.js";
 import template from "./mn.xdcr.conflict.log.mapping.controls.html";
 
 export {MnXDCRConflictLogMappingControlsComponent};
@@ -31,30 +32,31 @@ class MnXDCRConflictLogMappingControlsComponent extends MnLifeCycleHooksToStream
         "keyspace",
         "parent",
         "mappingGroup",
-        "mappingRules",
+        "mappingRules"
       ]
     })
   ]}
 
-
   static get parameters() { return [
     MnHelperService,
     FormBuilder,
-    MnXDCRService
+    MnXDCRService,
+    MnKeyspaceSelectorService
   ]}
 
-  constructor(mnHelperService, formBuilder, mnXDCRService) {
+  constructor(mnHelperService, formBuilder, mnXDCRService, mnKeyspaceSelectorService) {
     super();
     this.toggler = mnHelperService.createToggle();
     this.filter = mnHelperService.createFilter(this);
     this.mnHelperService = mnHelperService;
     this.formBuilder = formBuilder;
     this.setMappingRule = mnXDCRService.setMappingRule;
-
+    this.mnKeyspaceSelectorService = mnKeyspaceSelectorService;
   }
 
   ngOnInit() {
     this.isCollection = this.keyspace == "collections";
+
     if (this.parent === 'root') {
       this.group = this.mappingGroup.rootControls;
       this.controls = this.mappingGroup.rootControls.controls;
@@ -71,10 +73,6 @@ class MnXDCRConflictLogMappingControlsComponent extends MnLifeCycleHooksToStream
                                        shareReplay({refCount: true, bufferSize: 1}));
 
     if (this.parent === 'root') {
-      this.group.get("root_scopes_checkAll").valueChanges
-      .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(this.doRootToggle.bind(this));
-
       this.group.get("root_bucket").valueChanges
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(this.setRootBucket.bind(this));
@@ -82,26 +80,27 @@ class MnXDCRConflictLogMappingControlsComponent extends MnLifeCycleHooksToStream
       this.group.get("root_collection").valueChanges
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(this.setRootCollection.bind(this));
+
+      this.mnKeyspaceSelector =
+        this.mnKeyspaceSelectorService.createCollectionSelector({
+          component: this,
+          steps: ["bucket", "scope", "collection"],
+        });
+      this.setDefaultRootValues();
+      this.mnKeyspaceSelector.stream.result
+        .pipe(takeUntil(this.mnOnDestroy))
+        .subscribe(this.setDefaultValuesToGroup.bind(this));
     }
 
     if (!this.isCollection) {
       this.scopesPaginator =
         this.mnHelperService.createPagenator(this, this.filteredItems, "scopesPage");
     }
-  }
 
-  doRootToggle(checkAll) {
-    let rules = this.mappingRules.getValue();
-    let rootBucketField = this.group.get('root_bucket');
-    let rootCollectionField = this.group.get('root_collection');
-    rules.bucket = checkAll ? rootBucketField.value : '';
-    rules.collection = checkAll ? rootCollectionField.value: '';
-    rootBucketField.patchValue(rules.bucket);
-    rootCollectionField.patchValue(rules.collection);
-    let action = checkAll ? 'enable' : 'disable';
-    rootBucketField[action]({emitEvent: false});
-    rootCollectionField[action]({emitEvent: false});
-    this.mappingRules.next(rules);
+
+    this.customiseChildrenFieldName = this.parent === 'root' ? 'conflict_log_custom_scopes' : `conflict_log_custom_collections_${this.item.name}`;
+    this.customiseChildren = this.group.get(this.customiseChildrenFieldName).valueChanges
+      .pipe(startWith(this.group.get(this.customiseChildrenFieldName).value));
   }
 
   setRootBucket(value) {
@@ -114,9 +113,34 @@ class MnXDCRConflictLogMappingControlsComponent extends MnLifeCycleHooksToStream
     let rules = this.mappingRules.getValue();
     rules.collection = value;
     this.mappingRules.next(rules);
+    if (value === '') {
+      // when the default conflict log collection is removed
+      this.setDefaultRootValues();
+    }
   }
 
   trackCollectionsBy(_, coll) {
     return coll.uid;
+  }
+
+  setDefaultRootValues() {
+    const defaultTarget = this.group.get("root_collection").value;
+    if (defaultTarget) {
+      const [defaultScope, defaultCollection] = defaultTarget.split(collectionDelimiter);
+      this.mnKeyspaceSelector.setKeyspace({bucket: this.group.get("root_bucket").value, scope: defaultScope, collection: defaultCollection});
+    } else {
+      this.mnKeyspaceSelector.reset();
+    }
+  }
+
+  setDefaultValuesToGroup(result) {
+    if (result.bucket) {
+      if (this.parent === 'root') {
+        this.group.get('root_bucket').patchValue(result.bucket.name);
+      }
+    }
+    if (this.parent === 'root' && result.scope && result.collection) {
+      this.group.get('root_collection').patchValue(`${result.scope.name}.${result.collection.name}`);
+    }
   }
 }

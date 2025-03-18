@@ -208,6 +208,11 @@ class MnKeyspaceSelectorService {
         next["scope"] = {name: setVals["scope"]};
       }
 
+      if (setVals.collection) {
+        next["collection"] = {name: setVals["collection"]};
+        filters["collection"].group.get("value").enable();
+      }
+
       result.next(next);
       setStepsValuesToFields();
     }

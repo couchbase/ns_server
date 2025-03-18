@@ -38,7 +38,8 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
         "capitalize",
         "mnPlaceholder",
         "placement",
-        "hasSearch"
+        "hasSearch",
+        "customDropdownClass"
       ],
       changeDetection: ChangeDetectionStrategy.OnPush,
       queries: {

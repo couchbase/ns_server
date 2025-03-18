@@ -13,6 +13,7 @@ import {Component, ChangeDetectionStrategy} from '@angular/core'
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnHelperService} from "./mn.helper.service.js";
 import template from "./mn.xdcr.conflict.log.scope.html";
+import {takeUntil} from 'rxjs/operators';
 
 export {MnXDCRConflictLogScopeComponent};
 
@@ -37,6 +38,17 @@ class MnXDCRConflictLogScopeComponent extends MnLifeCycleHooksToStream {
 
   constructor(mnHelperService) {
     super();
+
     this.toggler = mnHelperService.createToggle();
+    this.toggler.state.pipe(takeUntil(this.mnOnDestroy)).subscribe(() => {});
+  }
+
+  ngOnInit() {
+    this.group = this.mappingGroup.ruleControls.scopes[this.item.name];
+
+    let customiseChildrenFieldName = `conflict_log_custom_collections_${this.item.name}`;
+    if (this.group.get(customiseChildrenFieldName).value) {
+      this.toggler.click.next();
+    }
   }
 }

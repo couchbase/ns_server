@@ -88,14 +88,15 @@ class MnXDCRConflictLogComponent extends MnLifeCycleHooksToStream {
       if (scopes.length) {
         scopes[0].forEach(scope => {
           this.mappingGroup.ruleControls.scopes[scope.name] = this.formBuilder.group({});
-          this.mappingGroup.ruleControls.scopes[scope.name].addControl(`${scope.name}_scopes_checkAll`, this.formBuilder.control(false));
+          this.mappingGroup.ruleControls.scopes[scope.name].addControl(`scopes_${scope.name}_target`, this.formBuilder.control(this.getScopeTarget(scope.name, conflictLogging.loggingRules)));
           this.mappingGroup.ruleControls.scopes[scope.name].addControl('bucket', this.formBuilder.control({value: '', disabled: true}));
           this.mappingGroup.ruleControls.scopes[scope.name].addControl('collection', this.formBuilder.control({value: '', disabled: true}));
+          this.mappingGroup.ruleControls.scopes[scope.name].addControl(`conflict_log_custom_collections_${scope.name}`, this.formBuilder.control(this.hasCustomCollectionRule(scope.name, conflictLogging.loggingRules)));
           this.mappingGroup.ruleControls.scopes[scope.name].collections = {};
           if (scope.collections.length) {
             scope.collections.forEach(collection => {
               this.mappingGroup.ruleControls.scopes[scope.name].collections[collection.name] = this.formBuilder.group({});
-              this.mappingGroup.ruleControls.scopes[scope.name].collections[collection.name].addControl(`${collection.name}_collections_checkAll`, this.formBuilder.control(false));
+              this.mappingGroup.ruleControls.scopes[scope.name].collections[collection.name].addControl(`collections_${collection.name}_target`, this.formBuilder.control(this.getCollectionTarget(scope.name, collection.name, conflictLogging.loggingRules)));
               this.mappingGroup.ruleControls.scopes[scope.name].collections[collection.name].addControl('bucket', this.formBuilder.control({value: '', disabled: true}));
               this.mappingGroup.ruleControls.scopes[scope.name].collections[collection.name].addControl('collection', this.formBuilder.control({value: '', disabled: true}));
             });
@@ -107,7 +108,6 @@ class MnXDCRConflictLogComponent extends MnLifeCycleHooksToStream {
         if (conflictLogging.loggingRules[rule] && conflictLogging.loggingRules[rule].bucket && conflictLogging.loggingRules[rule].collection) {
           let ruleGroup = this.formBuilder.group({});
           ruleGroup.addControl(rule, this.formBuilder.control(rule));
-          ruleGroup.addControl('checkAll', this.formBuilder.control(!rule.includes(collectionDelimiter)));
           ruleGroup.addControl('bucket', this.formBuilder.control({value: conflictLogging.loggingRules[rule].bucket, disabled: false}));
           ruleGroup.addControl('collection', this.formBuilder.control({value: conflictLogging.loggingRules[rule].collection, disabled: false}));
           this.mappingGroup[rule] = ruleGroup;
@@ -116,14 +116,14 @@ class MnXDCRConflictLogComponent extends MnLifeCycleHooksToStream {
             if (rule.includes(collectionDelimiter)) {
               // scope.collection rule
               const [ruleScope, ruleColl] = rule.split(collectionDelimiter);
-              this.mappingGroup.ruleControls.scopes[ruleScope].collections[ruleColl].setControl(`${ruleColl}_checkAll`, this.formBuilder.control(true));
               this.mappingGroup.ruleControls.scopes[ruleScope].collections[ruleColl].setControl('bucket', this.formBuilder.control({value: conflictLogging.loggingRules[rule].bucket, disabled: false}));
               this.mappingGroup.ruleControls.scopes[ruleScope].collections[ruleColl].setControl('collection', this.formBuilder.control({value: conflictLogging.loggingRules[rule].collection, disabled: false}));
+              this.mappingGroup.ruleControls.scopes[ruleScope].collections[ruleColl].setControl(`collections_${ruleColl}_target`, this.formBuilder.control({value: 'custom', disabled: false}));
             } else {
               // scope rule
-              this.mappingGroup.ruleControls.scopes[rule].setControl(`${rule}_checkAll`, this.formBuilder.control(true));
               this.mappingGroup.ruleControls.scopes[rule].setControl('bucket', this.formBuilder.control({value: conflictLogging.loggingRules[rule].bucket, disabled: false}));
               this.mappingGroup.ruleControls.scopes[rule].setControl('collection', this.formBuilder.control({value: conflictLogging.loggingRules[rule].collection, disabled: false}));
+              this.mappingGroup.ruleControls.scopes[rule].setControl(`scopes_${rule}_target`, this.formBuilder.control({value: 'custom', disabled: false}));
             }
           }
         }
@@ -166,5 +166,45 @@ class MnXDCRConflictLogComponent extends MnLifeCycleHooksToStream {
     this.group.get("enableConflictLog").valueChanges
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe((v) => this.mappingGroup?.rootControls.get("enableConflictLog").patchValue(v, {onlySelf: true}));
+  }
+
+  getScopeTarget(scopeName, rules) {
+    const hasCustomTarget = rules && rules[scopeName]?.bucket && rules[scopeName]?.collection;
+    const hasNullTarget = rules && rules[scopeName] === null;
+
+    if (hasCustomTarget) {
+      return 'custom';
+    }
+
+    if (hasNullTarget) {
+      return 'null';
+    }
+
+    return 'default';
+  }
+
+  getCollectionTarget(scopeName, collectionName, rules) {
+    const ruleKey = `${scopeName}${collectionDelimiter}${collectionName}`;
+    const hasCustomTarget = rules && rules[ruleKey]?.bucket && rules[scopeName]?.collection;
+    const hasNullTarget = rules && rules[ruleKey] === null;
+    const hasDefaultTarget = rules && rules[ruleKey] && (typeof rules[ruleKey] === 'object' && Object.keys(rules[ruleKey]).length === 0);
+
+    if (hasCustomTarget) {
+      return 'custom';
+    }
+
+    if (hasNullTarget) {
+      return 'null';
+    }
+
+    if (hasDefaultTarget) {
+      return 'default';
+    }
+
+    return 'parent';
+  }
+
+  hasCustomCollectionRule(scopeName, rules) {
+    return !!(rules && Object.keys(rules).find(rule => rule.startsWith(`${scopeName}${collectionDelimiter}`)));
   }
 }

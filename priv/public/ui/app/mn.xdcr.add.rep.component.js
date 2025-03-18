@@ -141,9 +141,9 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
     function createEmptyConflictLogGroup(rulesGroup) {
       return { rootControls: formBuilder.group({
                  enableConflictLog: false,
-                 root_scopes_checkAll: false,
                  root_bucket: formBuilder.control({value: '', disabled: true}),
-                 root_collection: formBuilder.control({value: '', disabled: true})
+                 root_collection: formBuilder.control({value: '', disabled: true}),
+                 conflict_log_custom_scopes: false,
                 }),
                 ruleControls: rulesGroup,
       };

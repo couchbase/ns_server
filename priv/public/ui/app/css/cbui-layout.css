@@ -116,11 +116,17 @@ footer {
 }
 
 /* GENERAL HELPERS ------------------------------------------------------ */
+.static {
+  position: static !important;
+}
 .relative {
   position: relative !important;
 }
 .absolute {
   position: absolute;
+}
+.absolute-forced {
+  position: absolute !important;
 }
 .sticky {
   position: sticky;
@@ -316,6 +322,9 @@ footer {
 }
 .max-width-5 {
   max-width: 24rem; /* 384px */
+}
+.max-width-5-5 {
+  max-width: 31.5rem; /* 504px */
 }
 .max-width-6 {
   max-width: 32rem; /* 512px */
@@ -732,6 +741,9 @@ footer {
 }
 .padding-bottom-half {
   padding-bottom: .5rem !important;
+}
+.padding-bottom-1 {
+  padding-bottom: 1rem !important;
 }
 /* extras -------------------------------------------------------------- */
 .pre-line {

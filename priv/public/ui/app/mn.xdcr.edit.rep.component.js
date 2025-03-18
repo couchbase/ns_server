@@ -230,12 +230,13 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
     this.isConflictLogEnbled = !disabled;
 
     let hasRootConflictLog = !!(v.conflictLogging.bucket && v.conflictLogging.collection);
+    let hasCustomRules = Object.keys(v.conflictLogging?.loggingRules || {}).length > 0;
     this.conflictLogMappingGroup = {
       rootControls: this.formBuilder.group({
         enableConflictLog: this.formBuilder.control(this.isConflictLogEnbled),
-        root_scopes_checkAll: this.formBuilder.control(hasRootConflictLog),
         root_bucket: this.formBuilder.control({value: v.conflictLogging.bucket ? v.conflictLogging.bucket : '', disabled: !hasRootConflictLog}),
         root_collection: this.formBuilder.control({value: v.conflictLogging.collection ? v.conflictLogging.collection : '', disabled: !hasRootConflictLog}),
+        conflict_log_custom_scopes: this.formBuilder.control(hasCustomRules),
       }),
       ruleControls: conflictLogRulesGroup,
     };

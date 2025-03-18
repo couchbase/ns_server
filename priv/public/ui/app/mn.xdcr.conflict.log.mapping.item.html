@@ -8,68 +8,48 @@
      the file licenses/APL2.txt.
 -->
 
-
-<span class="nowrap flex flex-gap-10 flex-items-center">
-  <span
-     class="inline middle"
+<div class="nowrap flex flex-gap-5 flex-items-center">
+  <div
+     class="inline middle border-0"
      [formGroup]="group">
-    <input
-       type="checkbox"
-       [attr.id]="'conflict_log_dynamic_collection_' + parent + '_' + keyspace + '_' + item.name"
-       [formControlName]="item.name + '_' + keyspace + '_checkAll'"
-       (click)="$event.stopPropagation();">
     <label
        [attr.title]="item.name"
        [class.max-width-4]="'root' !== parent"
        [class.max-width-5]="'root' == parent"
-       class="checkbox bold ellipsis margin-top-quarter"
-       [attr.for]="'conflict_log_dynamic_collection_' + parent + '_' + keyspace + '_' + item.name" (click)="$event.stopPropagation();">
+       class="checkbox bold ellipsis margin-top-quarter margin-right-half"
+       [attr.for]="'conflict_log_dynamic_collection_' + parent + '_' + keyspace + '_' + item.name">
       {{item.name}}
     </label>
-  </span>
+  </div>
   &gt;&nbsp;
-  <span
-     class="text-medium flex flex-gap-10 flex-items-center"
+  <div
+     class="text-medium flex flex-gap-10 flex-items-center border-0"
      [formGroup]="group">
-    Conflict Log Collection:
-    <span
-       *ngIf="keyspace === 'scopes'"
-       class="fa-stack icon-info margin-right-half"
-       ngbTooltip="All conflict logs and documents from this scope are logged in this collection."
-       placement="auto right"
-       container="body">
-        <span class="icon fa-circle-thin fa-stack-2x"></span>
-        <span class="icon fa-info fa-stack-1x" style="left: 5px;"></span>
-    </span>
-    <span
-       *ngIf="keyspace === 'collections'"
-       style="margin-right: 10px;"
-       class="fa-stack icon-info"
-       ngbTooltip="All conflict logs and documents from this collection are logged in this collection."
-       placement="auto right"
-       container="body">
-        <span class="icon fa-circle-thin fa-stack-2x"></span>
-        <span class="icon fa-info fa-stack-1x" style="left: 5px;"></span>
-    </span>
-    <input
-       style="display: table; background-color: inherit;"
-       placeholder="bucket"
-       type="text"
-       autocorrect="off"
-       spellcheck="false"
-       autocapitalize="off"
-       formControlName="bucket"
-       [id]="item.name + '_bucket'"
-       (click)="$event.stopPropagation();">
-    <input
-       placeholder="scope.collection"
-       style="display: table; background-color: inherit;"
-       type="text"
-       autocorrect="off"
-       spellcheck="false"
-       autocapitalize="off"
-       formControlName="collection"
-       [id]="item.name + '_collection'"
-       (click)="$event.stopPropagation();">
-  </span>
-</span>
+    <div class="min-width-12" style="margin-top: -2rem;">
+      <mn-select
+         class="min-width-10"
+         [attr.id]="keyspace + '_' + item.name + '_target'"
+         [values]="targetValues"
+         [labels]="targetLabels"
+         [group]="group"
+         [mnFormControlName]="targetFieldName"
+         (click)="$event.stopPropagation();"
+         customDropdownClass="absolute-forced max-width-3">
+      </mn-select>
+    </div>
+
+    <div [hidden]="(targetFieldValue | async) !== 'custom'">
+      <mn-keyspace-selector
+         class="mn-keyspace-selector margin-right-half static"
+         [service]="mnKeyspaceSelector"
+         customDropdownClass="max-width-5-5">
+      </mn-keyspace-selector>
+    </div>
+    <div [hidden]="(targetFieldValue | async) !== 'default'" style="font-size: 14px;">
+      {{(rootBucket | async)}}{{(rootBucket | async) ? collectionDelimiter : ''}}{{(rootCollection | async)}}
+    </div>
+    <div [hidden]="(targetFieldValue | async) !== 'parent'" style="font-size: 14px;">
+      {{(parentBucket | async)}}{{(parentBucket | async) ? collectionDelimiter : ''}}{{(parentCollection | async)}}
+    </div>
+  </div>
+</div>

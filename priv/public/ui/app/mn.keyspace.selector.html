@@ -28,6 +28,7 @@ licenses/APL2.txt.
   <div *ngFor="let step of service.options.steps">
     <div
        class="selector-scroll"
+       [ngClass]="customDropdownClass"
        *ngIf="(service.stream.step | async) === step">
       <div
          [style.min-height.rem]="(service.stream.list | async) ? null : 2.1"

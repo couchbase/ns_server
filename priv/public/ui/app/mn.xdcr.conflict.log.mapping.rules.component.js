@@ -41,28 +41,19 @@ class MnXDCRConflictLogMappingRulesComponent extends MnLifeCycleHooksToStream {
       if (rules.bucket || rules.collection) {
         rulesToDisplay.push(['All Conflicts', `${rules['bucket'] || ''}${collectionDelimiter}${rules['collection'] || ''}`]);
       }
-
       Object.keys(rules?.loggingRules || {}).forEach(rule => {
         const target = rules.loggingRules[rule];
         if (target) {
           if (target.bucket || target.collection) {
             rulesToDisplay.push([rule, `${target.bucket || ''}${collectionDelimiter}${target.collection || ''}`]);
           } else {
-            // target defaults to parent target (scope or root)
-            if (rule.includes(collectionDelimiter)) {
-              const scope = rule.split(collectionDelimiter)[0];
-              const scopeTarget = rules.loggingRules[scope];
-              if (scopeTarget) {
-                if (scopeTarget.bucket || scopeTarget.collection) {
-                  rulesToDisplay.push([rule, `${scopeTarget.bucket || ''}${collectionDelimiter}${scopeTarget.collection || ''}`]);
-                } else {
-                  rulesToDisplay.push([rule, `${rules['bucket'] || ''}${collectionDelimiter}${rules['collection'] || ''}`]);
-                }
-              }
-            } else {
-              rulesToDisplay.push([rule, `${rules['bucket'] || ''}${collectionDelimiter}${rules['collection'] || ''}`]);
+            if (typeof target === 'object' && Object.keys(target).length === 0) {
+              rulesToDisplay.push([rule, '{}']);
             }
           }
+        } else {
+          // target is null
+          rulesToDisplay.push([rule, 'null']);
         }
       });
       return rulesToDisplay;
@@ -76,12 +67,16 @@ class MnXDCRConflictLogMappingRulesComponent extends MnLifeCycleHooksToStream {
     if (key === 'All Conflicts') {
       rules.bucket = "";
       rules.collection = "";
-      this.mappingGroup.rootControls.get("root_scopes_checkAll").patchValue(false);
+      this.mappingGroup.rootControls.get('root_bucket').patchValue('');
+      this.mappingGroup.rootControls.get('root_collection').patchValue('');
     } else {
-      if (this.mappingGroup.ruleControls[key]) {
-        this.mappingGroup.ruleControls[key].get("checkAll").patchValue(false);
-        this.mappingGroup.ruleControls[key].get("bucket").patchValue('');
-        this.mappingGroup.ruleControls[key].get("collection").patchValue('');
+      if (key.includes(collectionDelimiter)) {
+        const [scopeName, collectionName] = key.split(collectionDelimiter);
+        // set collection target as parent collection
+        this.mappingGroup.ruleControls.scopes[scopeName].collections[collectionName].get(`collections_${collectionName}_target`).patchValue('parent');
+      } else {
+        // set scope target as default collection
+        this.mappingGroup.ruleControls.scopes[key].get(`scopes_${key}_target`).patchValue('default');
       }
       delete rules.loggingRules[key];
     }

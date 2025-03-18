@@ -12,7 +12,8 @@ licenses/APL2.txt.
    ngbDropdown
    #ngbSelect="ngbDropdown"
    display="dynamic"
-   class="mn-select relative">
+   class="mn-select relative"
+   [ngClass]="customDropdownClass">
   <div ngbDropdownToggle>
     <button
        [attr.title]="labels ? labels[values.indexOf(value | async)] : valuesMapping(value | async) || mnPlaceholder"

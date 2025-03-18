@@ -50,7 +50,7 @@ licenses/APL2.txt.
 
       <mn-xdcr-conflict-log
          class="block"
-         *ngIf="(isEnterprise | async) && (compatVersion80 | async)"
+         *ngIf="(replicationSettings | async) && (isEnterprise | async) && (compatVersion80 | async)"
          [mappingRules]="conflictLogRules"
          [mappingGroup]="conflictLogMappingGroup"
          [conflictLogging]="conflictLogging"

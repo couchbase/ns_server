@@ -24,7 +24,8 @@ class MnKeyspaceSelectorComponent extends MnLifeCycleHooksToStream {
       template,
       inputs: [
         "service",
-        "defaults"
+        "defaults",
+        "customDropdownClass"
       ],
       changeDetection: ChangeDetectionStrategy.OnPush,
       host: {
