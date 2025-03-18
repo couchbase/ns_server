@@ -36,16 +36,23 @@
          is_saslauthd_enabled/0,
          is_cbas_enabled/0,
          supported_compat_version/0,
+         supported_prod_compat_version/0,
+         current_prod_compat_version/0,
          min_supported_compat_version/0,
+         min_supported_prod_compat_version/0,
          effective_cluster_compat_version/0,
          effective_cluster_compat_version_for/1,
+         prod_name/0,
+         is_compatible_product/1,
          is_developer_preview/0,
          is_developer_preview/1,
          get_cluster_capabilities/0,
          tls_supported/0,
          tls_supported/1,
          is_goxdcr_enabled/0,
-         preserve_durable_mutations/0]).
+         preserve_durable_mutations/0,
+         prod_spec_from_legacy_version/1,
+         compare_prod_compat_version/2]).
 
 %% NOTE: this is rpc:call-ed by mb_master
 -export([mb_master_advertised_version/0]).
@@ -208,7 +215,8 @@ consider_switching_compat_mode() ->
 upgrades() ->
     [{?VERSION_76, rbac, menelaus_users, upgrade},
      {?VERSION_MORPHEUS, rbac, menelaus_users, upgrade},
-     {?VERSION_MORPHEUS, metakv, chronicle_metakv, upgrade_to_morpheus}].
+     {?VERSION_MORPHEUS, metakv, chronicle_metakv, upgrade_to_morpheus}] ++
+    config_profile:get_value(upgrades, []).
 
 do_upgrades(undefined, _, _, _) ->
     %% this happens during the cluster initialization. no upgrade needed
@@ -339,6 +347,77 @@ effective_cluster_compat_version_for([VersionMaj, VersionMin] =
 effective_cluster_compat_version() ->
     effective_cluster_compat_version_for(get_compat_version()).
 
+prod_name() ->
+    config_profile:search(prod_name, ?DEFAULT_PROD_NAME).
+
+apply_prod_compat_module(Fun, Args, Default) ->
+    case prod_name() of
+        ?DEFAULT_PROD_NAME ->
+            Default;
+        Prod ->
+            Module = list_to_atom(string:lowercase(Prod) ++ "_prod_compat"),
+            apply(Module, Fun, Args)
+    end.
+
+%% For cases when non-couchbase-server is running, returns the product name and
+%% compatibility version indicated by the supplied version if applicable, or
+%% {undefined, undefined}. E.g. when running columnar, this will be the
+%% prodName and prodCompatVersion for the legacy Columnar, if the version is
+%% applicable.
+-spec prod_spec_from_legacy_version(Version :: binary()) ->
+    {string(), binary()} | {undefined, undefined}.
+prod_spec_from_legacy_version(Version) ->
+    apply_prod_compat_module(
+      prod_spec_from_legacy_version, [Version], {undefined, undefined}).
+
+%% For cases when non-couchbase-server is running, returns the desired product
+%% compatibility version for this server, otherwise undefined. E.g. when
+%% running Columnar, this will be the supported version for Columnar.
+-spec supported_prod_compat_version() -> (undefined | binary()).
+supported_prod_compat_version() ->
+    apply_prod_compat_module(
+      supported_prod_compat_version, [], undefined).
+
+%% For cases when non-couchbase-server is running, returns the earliest product
+%% compatibility version supported by this server, otherwise undefined. E.g.
+%% when running Columnar, this will be the minimum supported version by this
+%% for Columnar by this server.
+-spec min_supported_prod_compat_version() -> (undefined | binary()).
+min_supported_prod_compat_version() ->
+    apply_prod_compat_module(
+        min_supported_prod_compat_version, [], undefined).
+
+%% For cases when non-couchbase-server is running, returns the current product
+%% compatibility version for this cluster, otherwise undefined. E.g. when
+%% running Columnar, this will be the current Columnar product compatibility
+%% version of this cluster.
+-spec current_prod_compat_version() -> (undefined | binary()).
+current_prod_compat_version() ->
+    apply_prod_compat_module(
+      current_prod_compat_version, [], undefined).
+
+%% For cases when non-couchbase-server is running, compares two product
+%% compatibility versions, otherwise undefined. E.g. when running Columnar,
+%% this would expect two Columnar product compatibility versions of this
+%% cluster, returning less_than, equal, or greater_than, if the first parameter
+%% is less than, equal to, or greater than the second parameter, respectively.
+-spec compare_prod_compat_version(_A :: T, _B :: T)
+        -> (less_than | equal | greater_than | undefined)
+    when T :: binary() | undefined.
+compare_prod_compat_version(A, B) ->
+    apply_prod_compat_module(compare_prod_compat_version, [A, B], undefined).
+
+-spec is_compatible_product(ProdName :: binary() | string() | undefined)
+        -> boolean().
+is_compatible_product(undefined) ->
+    is_compatible_product(?DEFAULT_PROD_NAME);
+
+is_compatible_product(ProdName) when is_binary(ProdName) ->
+    is_compatible_product(binary_to_list(ProdName));
+
+is_compatible_product(ProdName) ->
+    prod_name() =:= ProdName.
+
 get_pretend_version(Key) ->
     case application:get_env(ns_server, Key) of
         undefined ->
@@ -370,6 +449,28 @@ is_goxdcr_enabled() ->
 -ifdef(TEST).
 mb_master_advertised_version_test() ->
     true = mb_master_advertised_version() >= ?LATEST_VERSION_NUM ++ [0].
+
+-define(WOMBAT_PROD_NAME, "Wombat").
+
+is_compatible_product_test() ->
+    meck:expect(config_profile, get,
+                fun () ->
+                        ?DEFAULT_EMPTY_PROFILE_FOR_TESTS
+                end),
+    true = is_compatible_product(undefined),
+    true = is_compatible_product(?DEFAULT_PROD_NAME),
+    true = is_compatible_product(<<?DEFAULT_PROD_NAME>>),
+    false = is_compatible_product(?WOMBAT_PROD_NAME),
+    meck:expect(config_profile, get,
+                fun () ->
+                        [
+                         {name, "wombat"},
+                         {prod_name, ?WOMBAT_PROD_NAME}
+                        ]
+                end),
+    false = is_compatible_product(undefined),
+    false = is_compatible_product(?DEFAULT_PROD_NAME),
+    true = is_compatible_product(?WOMBAT_PROD_NAME).
 -endif.
 
 preserve_durable_mutations() ->

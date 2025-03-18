@@ -669,11 +669,12 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
                 end,
     ServerGroup =
         ns_cluster_membership:get_node_server_group(WantENode, Snapshot),
-
+    ProdCompatVersion = cluster_compat_mode:current_prod_compat_version(),
     RV = [{hostname, build_node_hostname(Config, WantENode, LocalAddr)},
           {nodeUUID, NodeUUID},
           {clusterCompatibility,
            cluster_compat_mode:effective_cluster_compat_version()},
+          {prodName, list_to_binary(cluster_compat_mode:prod_name())},
           {version, list_to_binary(Version)},
           {os, list_to_binary(OS)},
           {cpuCount, CpuCount},
@@ -684,10 +685,12 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
           {addressFamilyOnly, AFamilyOnly},
           {configuredHostname, list_to_binary(ConfiguredHostname)}
          ] ++ [{addressFamily, AFamily} || AFamily =/= undefined]
-           ++ [{externalListeners, Listeners} || Listeners =/= undefined]
-           ++ alternate_addresses_json(WantENode, Config, Snapshot,
-                                       WantedPorts)
-           ++ server_groups_json(ServerGroup),
+        ++ [{externalListeners, Listeners} || Listeners =/= undefined]
+        ++ [{prodCompatVersion, ProdCompatVersion} ||
+               ProdCompatVersion =/= undefined]
+        ++ alternate_addresses_json(WantENode, Config, Snapshot,
+                                    WantedPorts)
+        ++ server_groups_json(ServerGroup),
 
     case WantENode =:= node() of
         true ->

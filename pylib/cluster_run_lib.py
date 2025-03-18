@@ -362,6 +362,7 @@ def start_cluster(num_nodes=1,
                   pluggable_config=[],
                   disable_autocomplete="{disable_autocomplete,false}",
                   pretend_version=None,
+                  product_pretend_version=None,
                   ipv6=False,
                   force_community=False,
                   run_serverless=False,
@@ -421,6 +422,11 @@ def start_cluster(num_nodes=1,
     if pretend_version is not None:
         extra_args += ["-ns_server",
                        "pretend_version", '"{}"'.format(pretend_version)]
+
+    if product_pretend_version is not None:
+        extra_args += ["-ns_server",
+                       "product_pretend_version", '"{}"'.format(
+                product_pretend_version)]
 
     if dev_preview_default is not None:
         extra_args += ["-ns_server", "developer_preview_enabled_default",

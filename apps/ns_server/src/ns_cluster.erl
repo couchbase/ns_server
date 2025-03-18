@@ -1274,7 +1274,15 @@ check_can_add_node(NodeKVList) ->
     MyCompatVersion = cluster_compat_mode:effective_cluster_compat_version(),
     case JoineeClusterCompatVersion =:= MyCompatVersion of
         true ->
-            ok;
+            ProdName = proplists:get_value(<<"prodName">>, NodeKVList),
+            case cluster_compat_mode:is_compatible_product(ProdName) of
+                true ->
+                    ok;
+                false ->
+                    {error, incompatible_cluster_version,
+                     ns_error_messages:incompatible_product_add_node_error(
+                       ProdName, cluster_compat_mode:prod_name())}
+            end;
         false ->
             {error, incompatible_cluster_version,
              ns_error_messages:incompatible_cluster_version_error(
@@ -1412,7 +1420,10 @@ do_engage_cluster_check_compat_version(Node, Version, NodeKVList) ->
             {error, incompatible_cluster_version,
              ns_error_messages:preview_cluster_join_error()};
         true ->
-            do_engage_cluster_check_services(NodeKVList)
+            case check_product_compatibility(Node, Version, NodeKVList) of
+                ok -> do_engage_cluster_check_services(NodeKVList);
+                Error -> Error
+            end
     end.
 
 get_requested_services(KVList) ->
@@ -1462,6 +1473,81 @@ enforce_topology_limitation(Services) ->
                 false ->
                     {error, ns_error_messages:topology_limitation_error(SupportedCombinations)}
             end
+    end.
+
+check_product_compatibility(Node, Version, NodeKVList) ->
+    {LegacyProdName, LegacyCompat} =
+        cluster_compat_mode:prod_spec_from_legacy_version(Version),
+
+    PName = case lists:keyfind(<<"prodName">>, 1, NodeKVList) of
+                {_, ProdNameBin} -> ProdNameBin;
+                false -> LegacyProdName
+            end,
+
+    MinSupportedCompat =
+        cluster_compat_mode:min_supported_prod_compat_version(),
+
+    WantedCompat = cluster_compat_mode:supported_prod_compat_version(),
+
+    IsPreviewCluster =
+        proplists:get_value(<<"isDeveloperPreview">>, NodeKVList, false),
+
+    ActualProdCompat =
+        case lists:keyfind(<<"prodCompatVersion">>, 1, NodeKVList) of
+            {_, ProdCompatVersion} -> ProdCompatVersion;
+            false -> LegacyCompat
+        end,
+
+    maybe
+        %% Check if cluster is running the same product
+        {_, true} ?=
+            {prod_name, cluster_compat_mode:is_compatible_product(PName)},
+
+        %% Check if local node has any prodCompatVersion value set
+        %% If not, we don't need to check it
+        {_, true} ?= {need_check, (MinSupportedCompat /= undefined)},
+
+        %% Check if remote node has any prodCompatVersion value set
+        %% If not, we don't need to check it
+        {_, true} ?= {need_check, (ActualProdCompat /= undefined)},
+
+        %% Check if prod compat version is still supported by this node
+        {_, false} ?= {old, cluster_compat_mode:compare_prod_compat_version(
+                              ActualProdCompat, MinSupportedCompat)
+                       =:= less_than},
+
+        %% Check that prod compat version is not greater than this node
+        {_, false} ?= {new, cluster_compat_mode:compare_prod_compat_version(
+                              ActualProdCompat, WantedCompat)
+                       =:= greater_than},
+
+        %% If cluster is in "preview" mode, check that we don't need to upgrade
+        {_, false} ?=
+            {preview,
+             IsPreviewCluster and
+                                (cluster_compat_mode:compare_prod_compat_version(
+                                   WantedCompat, ActualProdCompat)
+                                 =:= greater_than)},
+
+        ok
+    else
+        {need_check, false} ->
+            ok;
+        {prod_name, false} ->
+            {error, incompatible_product,
+             ns_error_messages:incompatible_product_add_node_error(
+               PName, cluster_compat_mode:prod_name())};
+        {old, true} ->
+            {error, incompatible_cluster_version,
+             ns_error_messages:too_old_prod_version_error(
+               Node, ActualProdCompat, MinSupportedCompat)};
+        {new, true} ->
+            {error, incompatible_cluster_version,
+             ns_error_messages:too_new_prod_version_error(
+               Node, ActualProdCompat, WantedCompat)};
+        {preview, true} ->
+            {error, incompatible_cluster_version,
+             ns_error_messages:preview_cluster_join_error()}
     end.
 
 do_engage_cluster_check_services(NodeKVList) ->
@@ -1988,4 +2074,64 @@ community_allowed_topologies_test() ->
     ?assertEqual(community_allowed_topologies(),
                  [[kv],[index,kv,n1ql],[fts,index,kv,n1ql]]),
     config_profile:unmock_default_profile(ok).
+
+-define(COLUMNAR_PROD_NAME, "Columnar").
+
+check_product_compatibility_test() ->
+    %% Test to help catch changes in product compatibility that don't
+    %% maintain backwards compatibility
+    meck:new(config_profile, [passthrough]),
+    try
+        meck:expect(config_profile, get,
+                    fun () ->
+                            [
+                             {name, ?COLUMNAR_PROFILE_STR},
+                             {prod_name, ?COLUMNAR_PROD_NAME},
+                             {prod_compat_version, "1.2.3"},
+                             {prod_min_supported_version, "1.0.0"}
+                            ]
+                    end),
+        ?assertEqual(
+           check_product_compatibility(
+             "node",
+             <<"1.5.9-1234-columnar">>,
+             [{<<"prodName">>, <<?COLUMNAR_PROD_NAME>>},
+              {<<"prodCompatVersion">>, <<"1.2.3">>}]),
+           ok),
+        ?assertEqual(
+           check_product_compatibility(
+             "node",
+             <<"1.2.3-1234-columnar">>,
+             [{<<"prodName">>, <<?COLUMNAR_PROD_NAME>>},
+              {<<"prodCompatVersion">>, <<"1.0.0">>}]),
+           ok),
+        ?assertEqual(
+           check_product_compatibility(
+             "cb_node",
+             <<"8.0.0-1234-enterprise">>,
+             [{<<"prodName">>, <<?DEFAULT_PROD_NAME>>}]),
+           {error,incompatible_product,
+            <<"Couchbase Server nodes are not compatible with Columnar"
+              " nodes">>}),
+        ?assertEqual(
+           check_product_compatibility(
+             "old_node",
+             <<"0.0.5-1234-columnar">>,
+             [{<<"prodName">>, <<?COLUMNAR_PROD_NAME>>},
+              {<<"prodCompatVersion">>, <<"0.0.5">>}]),
+           {error,incompatible_cluster_version,
+            <<"Joining 0.0.5 Columnar node old_node is not supported. Upgrade"
+              " node to version 1.0.0 or greater and retry.">>}),
+        ?assertEqual(
+           check_product_compatibility(
+             "new_node",
+             <<"9.9.9-1234-columnar">>,
+             [{<<"prodName">>, <<?COLUMNAR_PROD_NAME>>},
+              {<<"prodCompatVersion">>, <<"9.0.0">>}]),
+           {error,incompatible_cluster_version,
+            <<"Joining 9.0.0 Columnar node new_node is not supported. The"
+              " maximum supported version of this node is 1.2.3.">>})
+    after
+        meck:unload(config_profile)
+    end.
 -endif.

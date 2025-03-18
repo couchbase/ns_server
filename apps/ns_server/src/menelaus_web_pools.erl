@@ -61,6 +61,7 @@ handle_pools(Req) ->
            {isROAdminCreds, false},
            {isEnterprise, Enterprise},
            {isColumnar, Columnar},
+           {prodName, list_to_binary(cluster_compat_mode:prod_name())},
            {configProfile, list_to_binary(config_profile:name())},
            {allowedServices, AllowedServices},
            {isDeveloperPreview, cluster_compat_mode:is_developer_preview()},

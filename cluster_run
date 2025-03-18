@@ -123,6 +123,13 @@ def argument_parser():
         f"version",
         metavar="")
     arg_parser.add_argument(
+        '--product-pretend-version',
+        type=str,
+        help=
+        f"<version> Same as --pretend-version but for product version. "
+        f"E.g. if columnar is being run, this will spoof the columnar version.",
+        metavar="")
+    arg_parser.add_argument(
         '--community',
         action='store_true',
         default=None,
@@ -188,6 +195,7 @@ def argument_parser():
               "pluggable_config": args.pluggable_config,
               "disable_autocomplete": args.disable_autocomplete,
               "pretend_version": args.pretend_version,
+              "product_pretend_version": args.product_pretend_version,
               "dev_preview_default": args.dev_preview_default,
               "ipv6": args.afamily,
               "force_community": args.community,

@@ -29,7 +29,10 @@
          empty_param/1,
          preview_cluster_join_error/0,
          address_check_error/2,
-         load_CAs_from_inbox_error/1]).
+         load_CAs_from_inbox_error/1,
+         incompatible_product_add_node_error/2,
+         too_old_prod_version_error/3,
+         too_new_prod_version_error/3]).
 
 -spec connection_error_message(term(), string(), string() | integer()) -> binary() | undefined.
 connection_error_message({tls_alert, "bad record mac"}, Host, Port) ->
@@ -205,6 +208,22 @@ too_old_version_error(Node, Version) ->
                         "Upgrade node to Couchbase Server "
                         "version ~s or greater and retry.",
                         [Version, Node, MinSupported]),
+    iolist_to_binary(Msg).
+
+too_old_prod_version_error(Node, Version, MinVersion) ->
+    ProdName = cluster_compat_mode:prod_name(),
+    MinSupported = binary_to_list(MinVersion),
+    Msg = io_lib:format("Joining ~s ~s node ~s is not supported. "
+                        "Upgrade node to version ~s or greater and retry.",
+                        [Version, ProdName, Node, MinSupported]),
+    iolist_to_binary(Msg).
+
+too_new_prod_version_error(Node, Version, WantedVersion) ->
+    ProdName = cluster_compat_mode:prod_name(),
+    MaxSupported = binary_to_list(WantedVersion),
+    Msg = io_lib:format("Joining ~s ~s node ~s is not supported. "
+                        "The maximum supported version of this node is ~s.",
+                        [Version, ProdName, Node, MaxSupported]),
     iolist_to_binary(Msg).
 
 verify_otp_connectivity_port_error(_OtpNode, Host, {error, nxdomain}) ->
@@ -436,6 +455,12 @@ empty_param(Param) ->
 
 preview_cluster_join_error() ->
     <<"Can't join a developer preview cluster">>.
+
+incompatible_product_add_node_error(undefined, LocalProdName) ->
+    incompatible_product_add_node_error(?DEFAULT_PROD_NAME, LocalProdName);
+incompatible_product_add_node_error(RemoteProdName, LocalProdName) ->
+    iolist_to_binary(io_lib:format("~s nodes are not compatible with ~s nodes",
+                                   [RemoteProdName, LocalProdName])).
 
 %% The function returns error messages associated with calls to
 %% misc:is_good_address
