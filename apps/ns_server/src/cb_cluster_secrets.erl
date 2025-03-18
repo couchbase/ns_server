@@ -28,8 +28,11 @@
 -define(DEK_DROP_RETRY_TIME_S(Kind),
         ?get_param({dek_removal_min_interval, Kind}, 60*60*3)).
 -define(MAX_DEK_NUM(Kind), ?get_param({max_dek_num, Kind}, 50)).
--define(MIN_DEK_GC_INTERVAL_S, ?get_param(min_dek_gc_interval, 60)).
--define(DEK_INFO_UPDATE_INVERVAL_S, ?get_param(dek_info_update_interval, 60)).
+
+%% DEK GC interval is slightly less than DEK_INFO_UPDATE_INVERVAL_S to
+%% ensure that DEK GC can be triggered before DEK info update (on average).
+-define(MIN_DEK_GC_INTERVAL_S, ?get_param(min_dek_gc_interval, 590)).
+-define(DEK_INFO_UPDATE_INVERVAL_S, ?get_param(dek_info_update_interval, 600)).
 
 -define(MIN_TIMER_INTERVAL, ?get_param(min_timer_interval, 30000)).
 
@@ -933,9 +936,8 @@ handle_info({dek_drop_complete, Kind} = Msg,
 
 handle_info(calculate_dek_info, #state{proc_type = ?NODE_PROC} = State) ->
     ?log_debug("DEK info update"),
-    misc:flush(calculate_dek_info),
     {_Res, NewState} = calculate_dek_info(State),
-    {noreply, NewState};
+    {noreply, restart_dek_info_update_timer(false, NewState)};
 
 handle_info(Info, State) ->
     ?log_warning("Unhandled info: ~p", [Info]),
@@ -1484,6 +1486,7 @@ maybe_update_deks(Kind, #state{deks_info = CurDeks} = OldState) ->
                     {ok, _} -> OldState;
                     error ->
                         EmptyDeks = new_dek_info(Kind, undefined, [], false),
+                        self() ! calculate_dek_info,
                         OldState#state{deks_info = CurDeks#{Kind => EmptyDeks}}
                 end,
 
@@ -1537,7 +1540,6 @@ maybe_update_deks(Kind, #state{deks_info = CurDeks} = OldState) ->
                             NewState = set_active(Kind, DekId, true, State),
                             ok = maybe_rotate_integrity_tokens(Kind, DekId,
                                                                NewState),
-                            self() ! calculate_dek_info,
                             call_set_active_cb(Kind, NewState);
                         %% Too many DEKs and encryption is being enabled
                         %% We could not create new DEK, but should still
@@ -1722,7 +1724,6 @@ retire_unused_deks(Kind, DekIdsInUse, #state{deks_info = DeksInfo} = State) ->
             %% It doesn't make sense to fail this job if file removal fails
             %% because when retried the job will do nothing anyway (because
             %% state doesn't have those deks)
-            self() ! calculate_dek_info,
             encryption_service:garbage_collect_keys(Kind, NewDekIdsInUse),
             {ok, _} = cb_crypto:reset_dek_cache(Kind, cleanup),
             on_deks_update(Kind, NewState)
@@ -1822,6 +1823,7 @@ on_deks_update(Kind, #state{deks_info = AllDeks} = State) ->
                               end,
             NewKindDeks = CurKindDeks#{deks_being_dropped => DeksDroppedSet2},
             NewAllDeks = AllDeks#{Kind => NewKindDeks},
+            self() ! calculate_dek_info,
             functools:chain(State#state{deks_info = NewAllDeks},
                             [restart_dek_cleanup_timer(_),
                              restart_dek_rotation_timer(_)]);
@@ -3714,6 +3716,13 @@ calculate_dek_info(State) ->
               end
           end, {#{}, State}, Kinds),
     ets:insert(?MODULE, {deks_info, {erlang:monotonic_time(second), Res}}),
+    %% We can always flush calculate_dek_info message after
+    %% calculate_dek_info() has finished because we know we just updated the
+    %% info.
+    %% Note calculate_dek_info() can modify the state
+    %% (in garbage_collect_deks()), which means it can put another
+    %% calculate_dek_info message into this process's mailbox.
+    misc:flush(calculate_dek_info),
     {Res, NewState}.
 
 -spec dummy_deks_info(dek_info_data_status(), [dek_issue()]) ->
