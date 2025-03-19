@@ -17,7 +17,6 @@
          find_all_replication_docs/1,
          find_all_replication_docs/0,
          all_local_replication_infos/0,
-         stats/1,
          get_replications_with_remote_info/0,
          get_certificates/0]).
 
@@ -194,21 +193,6 @@ all_local_replication_infos() ->
     get_from_goxdcr(fun (Json) ->
                             lists:foldl(fun process_repl_info/2, [], Json)
                     end, "/pools/default/replicationInfos", 30000).
-
-grab_stats(Bucket) ->
-    get_from_goxdcr(fun ({Json}) ->
-                            [{Id, Stats} || {Id, {Stats}} <- Json]
-                    end, "/stats/buckets/" ++ mochiweb_util:quote_plus(Bucket), 30000).
-
-stats(Bucket) ->
-    try grab_stats(Bucket) of
-        Stats ->
-            Stats
-    catch T:E:S ->
-            ?log_debug("Unable to obtain stats for bucket ~p from goxdcr:~n~p",
-                       [Bucket, {T, E, S}]),
-            []
-    end.
 
 parse_remote_bucket_reference(Reference) ->
     case binary:split(Reference, <<"/">>, [global]) of
