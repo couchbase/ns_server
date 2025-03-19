@@ -922,8 +922,10 @@ handle_info(run_jobs, #state{proc_type = ProcType} = State) ->
     misc:flush(run_jobs),
     {noreply, run_jobs(State)};
 
-handle_info({timer, Name}, #state{timers_timestamps = Timestamps} = State) ->
+handle_info({timer, Name}, #state{proc_type = ProcType,
+                                  timers_timestamps = Timestamps} = State) ->
     misc:flush({timer, Name}),
+    ?log_debug("[~p] Handling timer ~p", [ProcType, Name]),
     CurTs = erlang:monotonic_time(millisecond),
     NewState = State#state{timers_timestamps = Timestamps#{Name => CurTs}},
     {noreply, handle_timer(Name, NewState)};
@@ -944,12 +946,10 @@ handle_info(Info, State) ->
     ?log_warning("Unhandled info: ~p", [Info]),
     {noreply, State}.
 
-handle_timer(retry_jobs, #state{proc_type = ProcType} = State) ->
-    ?log_debug("[~p] Retrying jobs timer", [ProcType]),
+handle_timer(retry_jobs, #state{} = State) ->
     run_jobs(State);
 
 handle_timer(rotate_keks, #state{proc_type = ?MASTER_PROC} = State) ->
-    ?log_debug("Rotate keks timer"),
     CurTime = calendar:universal_time(),
     %% Intentionally update next_rotation time first, and run rotations after.
     %% Reason: in case of a crash during rotation we don't want to retry.
@@ -975,7 +975,6 @@ handle_timer(rotate_keks, #state{proc_type = ?MASTER_PROC} = State) ->
 
 handle_timer(dek_cleanup, #state{proc_type = ?NODE_PROC,
                                  deks_info = DeksInfo} = State) ->
-    ?log_debug("DEK cleanup timer"),
     DeksToDropFun =
         fun (Kind, StateAcc) ->
             case deks_to_drop(Kind, StateAcc) of
@@ -1001,7 +1000,6 @@ handle_timer(dek_cleanup, #state{proc_type = ?NODE_PROC,
 
 handle_timer(rotate_deks, #state{proc_type = ?NODE_PROC,
                                  deks_info = Deks} = State) ->
-    ?log_debug("Rotate DEKs timer"),
     CurDT = calendar:universal_time(),
     NewJobs = maps:fold(fun (Kind, KindDeks, Acc) ->
                             Snapshot = deks_config_snapshot(Kind),
@@ -1017,12 +1015,10 @@ handle_timer(rotate_deks, #state{proc_type = ?NODE_PROC,
     restart_dek_rotation_timer(add_and_run_jobs(NewJobs, State));
 
 handle_timer(dek_info_update, #state{proc_type = ?NODE_PROC} = State) ->
-    ?log_debug("DEK info update timer"),
     {_Res, NewState} = calculate_dek_info(State),
     restart_dek_info_update_timer(false, NewState);
 
 handle_timer(remove_retired_keys, #state{proc_type = ?NODE_PROC} = State) ->
-    ?log_debug("Remove retired keys timer"),
     encryption_service:cleanup_retired_keys(),
     restart_remove_retired_timer(State);
 
