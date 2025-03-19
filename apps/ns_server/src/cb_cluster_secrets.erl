@@ -901,9 +901,10 @@ handle_info({config_change, ?CHRONICLE_SECRETS_KEY} = Msg,
 handle_info({config_change, _}, State) ->
     {noreply, State};
 
-handle_info({dek_settings_updated, KindList},
+handle_info({dek_settings_updated, KindList} = Msg,
             #state{proc_type = ?NODE_PROC} = State) ->
     ?log_debug("Dek settings updated for ~p", [KindList]),
+    misc:flush(Msg),
     NewState = functools:chain(
                  State,
                  [add_and_run_jobs(
