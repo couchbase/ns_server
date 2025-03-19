@@ -12,14 +12,14 @@
 -behaviour(gen_server2).
 
 -export([sanitize/2]).
--export([sanitize_snapshot/2, sanitize_log/2, sanitize_value/1]).
+-export([sanitize_snapshot/2, sanitize_log/2, masked/0, sanitize_value/1]).
 
 %% gen_server callbacks:
 -export([start_link/0, init/1, handle_info/2]).
 
 -include("ns_common.hrl").
 -include("cb_cluster_secrets.hrl").
-
+-include("jwt.hrl").
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
@@ -61,15 +61,27 @@ log(K, VFun, R, State) ->
     NewState.
 
 
-sanitize(root_cert_and_pkey, V) ->
-    sanitize_value(V);
+sanitize(root_cert_and_pkey, _V) ->
+    masked();
 sanitize(?CHRONICLE_SECRETS_KEY, V) ->
     cb_cluster_secrets:sanitize_chronicle_cfg(V);
 sanitize(jwt_settings, V) ->
     menelaus_web_jwt:sanitize_chronicle_cfg(V);
+sanitize(?JWT_SIGNING_KEYS_KEY, _V) ->
+    masked();
 sanitize(_, V) ->
     V.
 
+%% Credentials like passwords, keys, shared secrets, etc. are masked.
+masked() ->
+    <<"********">>.
+
+%% MB-65857: Personally identifiable information (PII), such as user and group
+%% identifiers, is obfuscated using hashing.
+%% TODO: Implement a unique, random salt for each log collection to hash and
+%% obfuscate values. This ensures that the same value remains trackable within
+%% a single log collection while preventing correlation across different log
+%% collections.
 sanitize_value(V) ->
     {sanitized, base64:encode(crypto:hash(sha256, term_to_binary(V)))}.
 

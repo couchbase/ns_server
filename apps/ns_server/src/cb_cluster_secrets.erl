@@ -3442,8 +3442,8 @@ sanitize_secret(#{type := ?KMIP_KEY_TYPE, data := Data} = S) ->
 sanitize_secret(#{type := ?AWSKMS_KEY_TYPE} = S) ->
     S.
 
-sanitize_sensitive_data(#{type := sensitive, data := D} = Data) ->
-    Data#{data => chronicle_kv_log:sanitize_value(D)};
+sanitize_sensitive_data(#{type := sensitive} = Data) ->
+    Data#{data => chronicle_kv_log:masked()};
 sanitize_sensitive_data(#{type := encrypted} = Data) ->
     Data.
 

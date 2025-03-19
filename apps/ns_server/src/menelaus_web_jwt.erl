@@ -596,7 +596,8 @@ sanitize_chronicle_cfg(#{issuers := Issuers} = Settings) ->
         maps:map(fun(_Name, Props) ->
                          case maps:get(shared_secret, Props, undefined) of
                              undefined -> Props;
-                             _ -> Props#{shared_secret => <<"********">>}
+                             _ -> Props#{shared_secret =>
+                                             chronicle_kv_log:masked()}
                          end
                  end, Issuers),
     Settings#{issuers => SanitizedIssuers};
