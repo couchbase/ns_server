@@ -1616,8 +1616,7 @@ time_left_to_client_cert_regen() ->
             case proplists:get_value(not_after, Props) of
                 undefined -> infinity;
                 NotAfterGregSec ->
-                    Window = ?get_timeout(client_cert_regen_window_sec,
-                                          60*60*24*7),
+                    Window = ?INTERNAL_CERT_REGEN_WINDOW_SEC,
                     RegenGregSec = NotAfterGregSec - Window,
                     GMTDateTime = calendar:universal_time(),
                     CurGregSec =

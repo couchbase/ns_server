@@ -187,11 +187,17 @@ generate_certs(node_cert, Host, CACerts) ->
         SanArg => [Host]});
 generate_certs(client_cert, "@" ++ Name, CACerts) ->
     N = integer_to_list(erlang:phash2(erlang:system_time())),
-    generate_certs(
-      #{client => true,
-        common_name => "Couchbase Internal Client (" ++ N ++ ")",
-        generate_leaf => CACerts,
-        san_emails => [Name ++ "@"?INTERNAL_CERT_EMAIL_DOMAIN]}).
+    Opts0 = #{client => true,
+              common_name => "Couchbase Internal Client (" ++ N ++ ")",
+              generate_leaf => CACerts,
+              san_emails => [Name ++ "@"?INTERNAL_CERT_EMAIL_DOMAIN]},
+    Opts1 =
+        case ns_config:read_key_fast({client_cert, not_after_duration_s},
+                                     undefined) of
+            undefined -> Opts0;
+            Duration -> Opts0#{not_after_duration => Duration}
+        end,
+    generate_certs(Opts1).
 
 generate_certs(Cert) when is_map(Cert) ->
     {Args, Env} =
@@ -218,7 +224,10 @@ generate_certs(Cert) when is_map(Cert) ->
               (use_sha1, true, {A, E}) ->
                   {["--use-sha1" | A], E};
               (use_sha1, false, {A, E}) ->
-                  {A, E}
+                  {A, E};
+              (not_after_duration, Duration, {A, E}) ->
+                  DurationStr = integer_to_list(Duration),
+                  {["--not-after-duration=" ++ DurationStr | A], E}
           end, {[], []}, Cert),
 
     do_generate_cert_and_pkey(Args, Env).

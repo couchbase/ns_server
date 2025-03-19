@@ -68,6 +68,10 @@ func derToPKey(octets []byte) (pkey *rsa.PrivateKey) {
 }
 
 var keyLength = 2048
+// testSSL.sh complains when certificate validity is longer than 824 days
+// This apparently comes from Apple's 825 day restriction
+// (https://support.apple.com/en-us/103769)
+const defaultNotAfterDuration = 824 * 24 * 60 * 60;
 
 func main() {
 	var genereateLeaf bool
@@ -78,6 +82,7 @@ func main() {
 	var sanEmailsArg string
 	var useSha1 bool
 	var pkeyType string
+	var notAfterDuration int
 
 	flag.StringVar(&commonName, "common-name", "*", "common name field of certificate (hostname)")
 	flag.StringVar(&sanIPAddrsArg, "san-ip-addrs", "", "Subject Alternative Name IP addresses (comma separated)")
@@ -88,6 +93,8 @@ func main() {
 	flag.BoolVar(&isClient, "client", false, "whether to add client auth extension")
 
 	flag.BoolVar(&useSha1, "use-sha1", false, "whether to use sha1 instead of default sha256 signature algorithm")
+
+	flag.IntVar(&notAfterDuration, "not-after-duration", defaultNotAfterDuration, "time in seconds until NotAfter")
 
 	flag.Parse()
 
@@ -118,8 +125,7 @@ func main() {
 		leafTemplate := x509.Certificate{
 			SerialNumber: big.NewInt(time.Now().UnixNano()),
 			NotBefore:    time.Now().UTC().AddDate(0, 0, -1),
-			// testSSL.sh complains when certificate validity is longer than 824 days
-			NotAfter:     time.Now().UTC().AddDate(0, 0, 824),
+			NotAfter:     time.Now().UTC().Add(time.Duration(notAfterDuration) * time.Second),
 			Subject: pkix.Name{
 				CommonName: commonName,
 			},
