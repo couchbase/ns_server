@@ -733,10 +733,19 @@ diag_info() ->
 %% Can be called only when cb_cluster_secrets is not running!
 -spec reencrypt_deks() -> ok | {error, [term()]}.
 reencrypt_deks() ->
-    {_KekPushHashes, _Deks, Errors} = init_deks(),
-    case Errors of
-        [] -> ok;
-        _ -> {error, Errors}
+    %% This check doesn't guarantee that cb_cluster_secrets is not running
+    %% during execution of init_deks(), but it should help catching the obvious
+    %% cases, when this function is called with cb_cluster_secrets running in
+    %% parallel.
+    case whereis(?MODULE) of
+        undefined ->
+            {_KekPushHashes, _Deks, Errors} = init_deks(),
+            case Errors of
+                [] -> ok;
+                _ -> {error, Errors}
+            end;
+        _ ->
+            {error, cb_cluster_secrets_is_running}
     end.
 
 -spec node_supports_encryption_at_rest([{atom(), term()}]) ->
