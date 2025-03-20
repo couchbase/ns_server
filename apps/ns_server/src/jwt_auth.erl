@@ -269,16 +269,11 @@ audit_success(Claims, AuthnRes) ->
     AuditMap3 = AuditMap2#{expiry_with_leeway => ExpiryWithLeeway,
                            type => <<"jwt">>},
 
-    AuditList = audit_map_to_proplist(AuditMap3),
-    ?log_debug("JWT auth success: ~p", [AuditList]),
-    AuditList.
+    audit_map_to_proplist(AuditMap3).
 
 -spec audit_failure(map(), binary()) -> audit_props().
 audit_failure(Claims, Reason) ->
-    AuditList = audit_map_to_proplist(Claims#{reason => Reason,
-                                              type => <<"jwt">>}),
-    ?log_error("JWT auth failure: ~p", [AuditList]),
-    AuditList.
+    audit_map_to_proplist(Claims#{reason => Reason, type => <<"jwt">>}).
 
 -spec validate_token(Token :: string(), Issuers :: map()) ->
           {ok, #authn_res{}, audit_props()} | {error, audit_props()}.
