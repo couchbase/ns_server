@@ -329,9 +329,13 @@
 
 -define(INTERNAL_CERT_USER, "@internal").
 -define(INTERNAL_CERT_EMAIL_DOMAIN, "internal.couchbase.com").
-%% 7 day window for internal client certs to be rotated prior to expiry
+%% Window for internal client certs to be rotated prior to expiry, 60 days by
+%% default. This is double the default cert_expiration_warning_days to ensure
+%% that expiration is performed prior to alerting.
+%% If the cert_expiration_warning_days gets re-configured to 60 days or longer,
+%% the alert will be triggered prior to rotation
 -define(INTERNAL_CERT_REGEN_WINDOW_SEC,
-        ?get_timeout(client_cert_regen_window_sec, 7 * 24 * 60 * 60)).
+        ?get_timeout(client_cert_regen_window_sec, 60 * 24 * 60 * 60)).
 %% testSSL.sh complains when certificate validity is longer than 824 days
 %% This apparently comes from Apple's 825 day restriction
 %% (https://support.apple.com/en-us/103769)
