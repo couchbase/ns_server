@@ -358,7 +358,8 @@ INSTALL (DIRECTORY _build/default/lib/iso8601/ebin DESTINATION
         "${INST_LIBDIR}/iso8601")
 INSTALL (DIRECTORY _build/default/lib/jose/ebin DESTINATION
         "${INST_LIBDIR}/jose")
-INSTALL (DIRECTORY _build/default/lib/jiffy/ebin DESTINATION
+INSTALL (DIRECTORY _build/default/lib/jiffy/ebin
+                   _build/default/lib/jiffy/priv DESTINATION
         "${INST_LIBDIR}/jiffy")
 
 INSTALL (DIRECTORY _build/default/lib/ale/ebin DESTINATION
