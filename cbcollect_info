@@ -2813,12 +2813,12 @@ def main():
              '--use-stdin is also specified')
 
     parser.add_option(
-        '--encrypt-redacted',
-        dest="encrypt_redacted",
+        '--encrypt-all',
+        dest="encrypt_all",
         action="store_true",
         default=False,
         help='Prompt the user for a password and AES encrypt ' \
-             'all collected redacted data. Password is read from stdin if ' \
+             'all collected data. Password is read from stdin if ' \
              '--use-stdin is also specified')
 
     options, args = parser.parse_args()
@@ -2839,7 +2839,7 @@ def main():
 
     zip_password = None
     redacted_zip_password = None
-    if options.encrypt_unredacted or options.encrypt_redacted:
+    if options.encrypt_unredacted or options.encrypt_all:
         if options.stdin_passwords:
             log("Reading zip password from stdin...")
             zip_p = input()
@@ -2858,7 +2858,8 @@ def main():
 
         if options.encrypt_unredacted:
             zip_password = zip_p
-        if options.encrypt_redacted:
+        if options.encrypt_all:
+            zip_password = zip_p
             redacted_zip_password = zip_p
 
     if options.watch_stdin:
