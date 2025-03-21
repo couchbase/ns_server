@@ -1,4 +1,4 @@
-{name, "columnar"}.
+{name, "columnar_provisioned"}.
 {{couchdb, disabled}, true}.
 {failover_disable_max_count, true}.
 {{cbas, columnar}, true}.

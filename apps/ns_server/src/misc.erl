@@ -2099,8 +2099,11 @@ run_external_tool(Path, Args, Env) ->
     run_external_tool(Path, Args, Env, []).
 
 -spec run_external_tool(string(), [string()],
-                        [{string(), string()}], [graceful_shutdown]) ->
-                               {non_neg_integer(), binary()}.
+                        [{string(), string()}],
+                        [graceful_shutdown | {write_data, any()} |
+                         {stderr_to_stdout, boolean()}]) ->
+          {non_neg_integer(), binary()} |
+          {non_neg_integer(), binary(), binary()}.
 run_external_tool(Path, Args, Env, Opts) ->
     executing_on_new_process(
       fun () ->
@@ -2113,15 +2116,26 @@ run_external_tool(Path, Args, Env, Opts) ->
               erlang:process_flag(trap_exit, true),
 
               GracefulShutdown = proplists:get_bool(graceful_shutdown, Opts),
-              GoportOpts = [stderr_to_stdout, binary,
-                            stream, exit_status,
-                            {args, Args},
-                            {env, Env},
-                            {name, false},
-                            {graceful_shutdown, GracefulShutdown},
-                            {cgroup, ""}], %% defaults to root cgroup
+              WriteDataArg = proplists:get_value(write_data, Opts),
+              StderrToStdout = proplists:get_value(stderr_to_stdout, Opts, true),
+              GoportOpts = (case StderrToStdout of
+                                false -> [];
+                                _ -> [stderr_to_stdout]
+                            end) ++ [binary,
+                                     stream, exit_status,
+                                     {args, Args},
+                                     {env, Env},
+                                     {name, false},
+                                     {graceful_shutdown, GracefulShutdown},
+                                     {cgroup, ""}], %% defaults to root cgroup
               {ok, Port} = goport:start_link(Path, GoportOpts),
               goport:deliver(Port),
+              case WriteDataArg of
+                  undefined ->
+                      ok;
+                  Data ->
+                      goport:write(Port, Data)
+              end,
               case proplists:get_value(hidden_inputs, Opts) of
                   undefined -> ok;
                   Inputs -> [goport:write(Port, ?UNHIDE(I)) || I <- Inputs]
@@ -2135,7 +2149,26 @@ collect_external_tool_output(Port, Acc) ->
             goport:deliver(Port),
             collect_external_tool_output(Port, [Data | Acc]);
         {Port, {exit_status, Status}} ->
-            {Status, iolist_to_binary(lists:reverse(Acc))};
+            case Acc of
+                [{_, _} | _]  ->
+                    %% If Acc is a list of tuples, aggregate the stderr and
+                    %% stdout data to binaries.
+                    StderrList = lists:foldl(fun
+                            ({stderr, Value}, AccInner) -> [Value | AccInner];
+                            (_, AccInner) -> AccInner
+                        end, [], Acc),
+                    StdoutList = lists:foldl(fun
+                             ({stdout, Value}, AccInner) -> [Value | AccInner];
+                             (_, AccInner) -> AccInner
+                         end, [], Acc),
+                    {Status, iolist_to_binary(StderrList),
+                        iolist_to_binary(StdoutList)};
+                _ ->
+                    %% If no stdout or stderr data is found (i.e.
+                    %% stderr_to_stdout was configured), reverse the
+                    %% accumulated list and convert it to a binary.
+                    {Status, iolist_to_binary(lists:reverse(Acc))}
+            end;
         {'EXIT', Port, normal} ->
             %% This isn't expected, and is likely an indication of an issue
             %% in goport, the program being run via goport, or mis-use of

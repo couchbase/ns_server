@@ -588,8 +588,17 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "indexes"] ->
                     {{[settings, indexes], read}, fun menelaus_web_indexes:handle_settings_get/1};
                 ["settings", "analytics"] ->
+                    case cluster_compat_mode:is_columnar() of
+                        true ->
+                            {{[settings, analytics], read},
+                             fun menelaus_web_columnar:handle_settings_get/1};
+                        false ->
+                            {{[settings, analytics], read},
+                             fun menelaus_web_analytics:handle_settings_get/1}
+                    end;
+                ["settings", "columnar"] ->
                     {{[settings, analytics], read},
-                     fun menelaus_web_analytics:handle_settings_get/1};
+                     fun menelaus_web_columnar:handle_settings_get/1};
                 ["diag"] ->
                     {{[admin, diag], read}, fun diag_handler:handle_diag/1, []};
                 ["diag", "vbuckets"] ->
@@ -1095,8 +1104,17 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "indexes"] ->
                     {{[settings, indexes], write}, fun menelaus_web_indexes:handle_settings_post/1};
                 ["settings", "analytics"] ->
+                    case cluster_compat_mode:is_columnar() of
+                        true ->
+                            {{[settings, analytics], write},
+                             fun menelaus_web_columnar:handle_settings_post/1};
+                        false ->
+                            {{[settings, analytics], write},
+                             fun menelaus_web_analytics:handle_settings_post/1}
+                    end;
+                ["settings", "columnar"] ->
                     {{[settings, analytics], write},
-                     fun menelaus_web_analytics:handle_settings_post/1};
+                     fun menelaus_web_columnar:handle_settings_post/1};
                 ["_cbauth"] ->
                     {no_check, fun menelaus_cbauth:handle_cbauth_post/1};
                 ["_cbauth", "extractUserFromCert"] ->

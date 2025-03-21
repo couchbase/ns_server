@@ -416,6 +416,7 @@ CONFIGURE_FILE (etc/static_config.in "${_etcdir}/couchbase/static_config" @ONLY)
 IF (BUILD_COLUMNAR)
   # The columnar profile is the default profile for columnar builds
   CONFIGURE_FILE (etc/columnar_profile "${_etcdir}/couchbase/columnar_profile" @ONLY)
+  CONFIGURE_FILE (etc/columnar_provisioned_profile "${_etcdir}/couchbase/columnar_provisioned_profile" @ONLY)
 ELSE (BUILD_COLUMNAR)
   CONFIGURE_FILE (etc/default_profile "${_etcdir}/couchbase/default_profile" @ONLY)
   CONFIGURE_FILE (etc/serverless_profile "${_etcdir}/couchbase/serverless_profile" @ONLY)

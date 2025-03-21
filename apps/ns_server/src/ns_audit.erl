@@ -90,7 +90,8 @@
          rotate_encryption_secret/3,
          delete_historical_encryption_key/4,
          encryption_at_rest_drop_deks/2,
-         user_activity_settings/2
+         user_activity_settings/2,
+         prepare_log_body/2
         ]).
 
 -export([start_link/0, stats/0]).
@@ -593,7 +594,7 @@ get_remote(Req) ->
 get_local(Req) ->
     get_socket_name(Req, fun network:sockname/1).
 
-prepare(Req, Params) ->
+prepare_log_body(Req, Params) ->
     IdentityProps =
         case Req of
             undefined ->
@@ -625,11 +626,11 @@ prepare(Req, Params) ->
     prepare_list(Body).
 
 put(Code, Req, Params) ->
-    Body = prepare(Req, Params),
+    Body = prepare_log_body(Req, Params),
     ok = gen_server:call(?MODULE, {log, Code, Body, false}).
 
 sync_put(Code, Req, Params) ->
-    Body = prepare(Req, Params),
+    Body = prepare_log_body(Req, Params),
     ok = gen_server:call(?MODULE, {log, Code, Body, true}).
 
 maybe_reply({true, From}, Response) ->
