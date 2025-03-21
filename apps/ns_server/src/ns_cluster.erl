@@ -738,6 +738,16 @@ do_change_address(NewAddr, UserSupplied, AddrValidationFun) ->
             not_renamed;
         renamed ->
             ?cluster_info("Renamed node. New name is ~p.", [node()]),
+            %% The node rename is a precursor to other actions which
+            %% need a lease. As we're done with the node rename we'll
+            %% terminate the leader lease acquirer which leads to the
+            %% abolishment of the current lease. In this way the next
+            %% action can request a lease without having to wait for this
+            %% one to expire.
+            LLAPid = erlang:whereis(leader_lease_acquirer),
+            ?log_debug("Terminating leader_lease_acquirer pid ~p after node "
+                       "rename.", [LLAPid]),
+            exit(LLAPid, node_rename),
             ok;
         Other ->
             Other

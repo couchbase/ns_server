@@ -127,7 +127,14 @@ handle_exit(Pid, Reason, State) ->
         not_found ->
             ?log_error("Received an EXIT message "
                        "from an unknown process: ~p", [{Pid, Reason}]),
-            exit({exit_from_unkown_process, Pid, Reason});
+            case Reason of
+                node_rename ->
+                    %% Exit normally as this is expected due to the node
+                    %% being renamed.
+                    exit(normal);
+                _ ->
+                    exit({exit_from_unknown_process, Pid, Reason})
+            end;
         {ok, {Node, Pid}, NewState} ->
             handle_worker_exit(Node, Pid, Reason, NewState)
     end.

@@ -269,17 +269,41 @@ handle_abolish_lease(Caller, #state{lease = Lease} = State) ->
 
 can_abolish_lease(_Caller, undefined) ->
     false;
-can_abolish_lease(Caller, #lease{state  = State,
-                                 holder = Holder}) ->
+can_abolish_lease(Caller, Lease) ->
+    can_abolish_lease_uuid_match(Caller, Lease) orelse
+    can_abolish_lease_node_rename(Caller, Lease).
+
+can_abolish_lease_uuid_match(Caller, #lease{state  = State,
+                                            holder = Holder}) ->
     %% This is not exactly clean, but we only compare the UUIDs here to deal
     %% with node renames. We restart leader related processes on rename, but
     %% only after node name has changed. So an attempt to abolish the lease
-    %% will fail.
+    %% used to fail until the change to add can_abolish_lease_node_rename.
     %%
     %% We could of course use node UUIDs instead of node names, but that would
     %% complicate debugging quite significantly.
     State =:= active andalso
         Holder#lease_holder.uuid =:= Caller#lease_holder.uuid.
+
+%% This is the one exception where a lease can be abolished even though
+%% the UUIDs don't match. Node rename from cb.local is done early in the
+%% boot. This allows other actions requiring a lease to not have to wait
+%% for an expiration.
+can_abolish_lease_node_rename(Caller, #lease{state = State,
+                                             holder = Holder}) ->
+    %% The node rename transitions the node from 'cb.local' to the
+    %% "real" node name.
+    {_, HolderNode} = misc:node_name_host(Holder#lease_holder.node),
+    {_, CallerNode} = misc:node_name_host(Caller#lease_holder.node),
+    case State =:= active andalso
+         HolderNode =:= misc:localhost_alias() andalso
+         CallerNode =/= misc:localhost_alias() of
+        true ->
+            ?log_debug("Abolishing lease due to node rename"),
+            true;
+        false ->
+            false
+    end.
 
 handle_lease_expired(Holder, State) ->
     ?log_debug("Lease held by ~p expired. Starting expirer.", [Holder]),
