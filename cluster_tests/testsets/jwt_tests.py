@@ -91,6 +91,8 @@ class MockJWKSServer:
 
 
 class JWTTests(testlib.BaseTestSet):
+    test_bucket = "test-jwt-bucket"
+
     def __init__(self, cluster):
         super().__init__(cluster)
         # Use single endpoint for all JWT operations
@@ -100,9 +102,10 @@ class JWTTests(testlib.BaseTestSet):
     def requirements():
         return testlib.ClusterRequirements(edition="Enterprise",
                                            dev_preview=True,
-                                           buckets=[{'name': "test-jwt-bucket",
+                                           buckets=[
+                                               {'name': JWTTests.test_bucket,
                                                      'ramQuota': 100}],
-                                           services=[Service.KV])
+                                           services=[Service.KV, Service.QUERY])
 
     def setup(self):
         # Set shorter intervals for testing
@@ -126,7 +129,8 @@ class JWTTests(testlib.BaseTestSet):
     def create_test_groups(self):
         """Create RBAC groups used by tests"""
         groups = [
-            ("jwt_bucket_admins", "bucket_admin[*]"),
+            ("jwt_bucket_admins", "bucket_admin[*],query_select[*]"
+             ",query_use_sequential_scans[*]"),
             ("jwt_data_admins", "data_reader[*],data_writer[*]"),
         ]
         for name, roles in groups:
@@ -1099,7 +1103,7 @@ class JWTTests(testlib.BaseTestSet):
             "--sasl_mechanism", "OAUTHBEARER",
             "--user", username,
             "--password", token,
-            "--bucket", test_bucket,
+            "--bucket", self.test_bucket,
             "--tls"
         ]
 
@@ -1135,7 +1139,7 @@ class JWTTests(testlib.BaseTestSet):
                 "--sasl_mechanism", "OAUTHBEARER",
                 "--user", tc["username"],
                 "--password", tc["token"],
-                "--bucket", test_bucket,
+                "--bucket", self.test_bucket,
                 "--tls"
             ]
 
@@ -1208,3 +1212,86 @@ class JWTTests(testlib.BaseTestSet):
                     f"Authentication failed for key '{key_prefix}' "
                     f"with algorithm '{alg}'"
                 )
+
+    def jwt_query_test(self):
+        """Test JWT authentication with Query service using direct HTTP
+        requests.
+        """
+        self.auth_setup()
+        self.create_test_groups()
+        self.jwks = self.load_jwks()
+        self.configure_jwt()
+
+        node = self.cluster.connected_nodes[0]
+
+        # Base test case that should succeed
+        valid_payload = {
+            "sub": "testuser",
+            "groups": ["jwt_bucket_admins"],
+            "exp": int(time.time()) + 3600,
+            "aud": "test-audience",
+            "iss": "test-issuer"
+        }
+
+        valid_token = self.create_token(valid_payload)
+        headers = {
+            "Authorization": f"Bearer {valid_token}",
+            "Content-Type": "application/json"
+        }
+
+        query_payload = {
+            "statement": f"SELECT * FROM `{self.test_bucket}`"
+        }
+
+        # Poll until Query service accepts the request with valid token
+        testlib.poll_for_condition(
+            lambda: testlib.request(
+                "POST",
+                node,
+                "/query/service",
+                https=True,
+                service=Service.QUERY,
+                headers=headers,
+                json=query_payload,
+                auth=None
+            ).status_code == 200,
+            sleep_time=1,
+            timeout=60
+        )
+
+        test_cases = [
+            {
+                "desc": "Expired token",
+                "payload_changes": {"exp": int(time.time()) - 3600},
+                "remove_fields": ["groups"]
+            },
+            {
+                "desc": "Valid token but no groups",
+                "payload_changes": {},
+                "remove_fields": ["groups"]
+            }
+        ]
+
+        for tc in test_cases:
+            payload = valid_payload.copy()
+            payload.update(tc["payload_changes"])
+            for field in tc["remove_fields"]:
+                payload.pop(field, None)
+
+            token = self.create_token(payload)
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+
+            r = testlib.request(
+                "POST",
+                node,
+                "/query/service",
+                https=True,
+                service=Service.QUERY,
+                headers=headers,
+                json=query_payload,
+                auth=None,
+                expected_code=401
+            )

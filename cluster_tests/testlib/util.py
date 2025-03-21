@@ -29,7 +29,10 @@ class Service(Enum):
                 Service.VIEWS: "capi_port"}[self]
 
     def tls_port_atom(self):
-        return {Service.KV: "memcached_ssl_port",}[self]
+        return {
+            Service.KV: "memcached_ssl_port",
+            Service.QUERY: "ssl_query_port"
+        }[self]
 
 
 def services_to_strings(services: Union[List[Service],
