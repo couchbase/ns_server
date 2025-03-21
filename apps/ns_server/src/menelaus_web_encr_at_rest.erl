@@ -18,9 +18,13 @@
          format_encr_at_rest_info/1]).
 
 encr_method(Param, SecretIdName, EncrType) ->
+    AllowedInMixedClusters = case EncrType of
+                                 config_encryption -> true;
+                                 _ -> cluster_compat_mode:is_cluster_morpheus()
+                             end,
     {Param,
      #{cfg_key => [EncrType, encryption],
-       type => encryption_method,
+       type => {encryption_method, AllowedInMixedClusters},
        depends_on =>
            #{SecretIdName => fun (secret, ?SECRET_ID_NOT_SET) ->
                                      {error, "encryptionKeyId must be set "
@@ -120,7 +124,7 @@ type_spec(secret_id) ->
                    end,
     #{validators => [int, ?cut(validator:validate(ValidatorFun, _1, _2))],
       formatter => int};
-type_spec(encryption_method) ->
+type_spec({encryption_method, AllowedInMixedClusters}) ->
     #{validators => [{one_of, string,
                       ["disabled", "nodeSecretManager", "encryptionKey"]},
                      ?cut(validator:convert(_1, fun ("disabled") ->
@@ -129,7 +133,13 @@ type_spec(encryption_method) ->
                                                         encryption_service;
                                                     ("encryptionKey") ->
                                                         secret
-                                                end, _2))],
+                                                end, _2)),
+                     ?cut(validator:validate(
+                            fun (disabled) -> ok;
+                                (_V) when AllowedInMixedClusters -> ok;
+                                (_V) -> {error, "Not supported until cluster "
+                                                "is fully Morpheus"}
+                            end, _1, _2))],
       formatter => fun (encryption_service) -> {value, <<"nodeSecretManager">>};
                        (disabled) -> {value, <<"disabled">>};
                        (secret) -> {value, <<"encryptionKey">>}
