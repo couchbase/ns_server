@@ -317,11 +317,23 @@ parse_validate_services_list(ServicesList) ->
             {error, io_lib:format("Unknown services: ~p", [UnknownServices])};
         [] ->
             RV = lists:usort([S || {_, {_, S}} <- FoundServices]),
-            case RV of
-                [] ->
+            FixedServices = config_profile:get_value(fixedServices, undefined),
+            case {RV, FixedServices} of
+                {[], undefined} ->
                     {error, "At least one service has to be selected"};
+                {[], _} ->
+                    {ok, FixedServices};
+                {_, undefined} ->
+                    {ok, RV};
                 _ ->
-                    {ok, RV}
+                    case lists:sort(FixedServices) =:= RV of
+                        true -> {ok, FixedServices};
+                        false ->
+                            {error,
+                                io_lib:format(
+                                  "Invalid services list. Expected ~p, got ~p",
+                                  [FixedServices, RV])}
+                    end
             end
     end.
 
@@ -673,33 +685,34 @@ do_handle_eject_post(Req, OtpNode) ->
     end.
 
 setup_services_validators() ->
+    FixedServices = config_profile:get_value(fixedServices, undefined),
     [validator:boolean(setDefaultMemQuotas, _),
-     validator:default(setDefaultMemQuotas, false, _),
-     validator:required(services, _),
-     validator:validate(
-      fun (ServicesString) ->
-          case ns_config_auth:is_system_provisioned() of
-              true ->
-                  {error, "cannot change node services after cluster is "
-                   "provisioned"};
-              false ->
-                  case parse_validate_services_list(ServicesString) of
-                      {ok, Svcs} ->
-                            case lists:member(kv, Svcs) of
-                                true ->
-                                    case ns_cluster:enforce_topology_limitation(
-                                           Svcs) of
-                                        ok -> {value, Svcs};
-                                        Error -> Error
-                                    end;
-                                false ->
-                                    {error, "cannot setup first cluster "
-                                     "node without kv service"}
-                            end;
-                      {error, Msg} -> {error, Msg}
-                  end
-          end
-      end, services, _)].
+     validator:default(setDefaultMemQuotas, false, _)] ++
+        [validator:required(services, _) || FixedServices =:= undefined] ++
+        [validator:validate(
+           fun (ServicesString) ->
+                   case ns_config_auth:is_system_provisioned() of
+                       true ->
+                           {error, "cannot change node services after cluster "
+                            "is provisioned"};
+                       false ->
+                           case parse_validate_services_list(ServicesString) of
+                               {ok, Svcs} -> ensure_initial_data_node(Svcs);
+                               {error, Msg} -> {error, Msg}
+                           end
+                   end
+           end, services, _)].
+
+ensure_initial_data_node(Svcs) ->
+    case lists:member(kv, Svcs) of
+        true ->
+            case ns_cluster:enforce_topology_limitation(Svcs) of
+                ok -> {value, Svcs};
+                Error -> Error
+            end;
+        false ->
+            {error, "cannot setup first cluster node without kv service"}
+    end.
 
 setup_services_check_quota(Services, SetDefaultMemQuotas) ->
     Quotas = case SetDefaultMemQuotas of
@@ -757,7 +770,8 @@ handle_setup_services_post(Req) ->
       end, Req, form, setup_services_validators()).
 
 do_setup_services_post(Req, Props) ->
-    Services = proplists:get_value(services, Props),
+    Services = config_profile:get_value(fixedServices,
+                                        proplists:get_value(services, Props)),
     SetDefaultMemQuotas = proplists:get_value(setDefaultMemQuotas, Props),
     case setup_services_check_quota(Services, SetDefaultMemQuotas) of
         ok ->
@@ -891,7 +905,8 @@ do_handle_add_node(Req, GroupUUID) ->
             Scheme = proplists:get_value(scheme, KV),
             Hostname = proplists:get_value(host, KV),
             Port = proplists:get_value(port, KV),
-            Services = proplists:get_value(services, KV),
+            Services = config_profile:get_value(
+                         fixedServices, proplists:get_value(services, KV)),
 
             menelaus_util:survive_web_server_restart(
               fun () ->
