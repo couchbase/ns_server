@@ -70,7 +70,8 @@ supported_extra_setting_names() ->
      {threads, {int, 0, ?MAX_32BIT_SIGNED_INT}},
      {dcp_disconnect_when_stuck_timeout_seconds,
         {int, 0, ?MAX_32BIT_SIGNED_INT}},
-     {dcp_disconnect_when_stuck_name_regex, string}].
+     {dcp_disconnect_when_stuck_name_regex, string},
+     {external_auth_request_timeout, {int, 0, ?MAX_32BIT_SIGNED_INT}}].
 
 parse_validate_node("self") ->
     parse_validate_node(atom_to_list(node()));
