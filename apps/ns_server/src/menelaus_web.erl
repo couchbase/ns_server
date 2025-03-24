@@ -1223,6 +1223,11 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["pools", "default", "serverGroups", GroupUUID] ->
                     {{[server_groups], write},
                      fun menelaus_web_groups:handle_server_group_delete/2, [GroupUUID]};
+                ["pools", "default", "settings", "memcached", "global",
+                 "setting", Name] ->
+                    {{[admin, memcached], write},
+                     fun menelaus_web_mcd_settings:handle_global_delete/2,
+                     [Name]};
                 ["pools", "default", "settings", "memcached", "node", Node, "setting", Name] ->
                     {{[admin, memcached], write},
                      fun menelaus_web_mcd_settings:handle_node_setting_delete/3, [Node, Name]};

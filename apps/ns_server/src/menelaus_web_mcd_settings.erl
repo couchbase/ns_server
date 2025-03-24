@@ -14,6 +14,7 @@
 -export([handle_global_get/1,
          handle_effective_get/2,
          handle_global_post/1,
+         handle_global_delete/2,
          handle_node_get/2,
          handle_node_post/2,
          handle_node_setting_get/3,
@@ -319,6 +320,26 @@ handle_node_setting_get(NodeName, SettingName, Req) ->
                       reply_json(Req, {[{value, Value}]})
               end
       end).
+
+handle_global_delete(Setting, Req) ->
+    %% global delete only supports the extra settings, these are settings that
+    %% we can add, so we should be able to delete them. The other settings are
+    %% always present in the global config, so we should not allow their
+    %% deletion.
+    MaybeExtra = [K || {K, _} <- supported_extra_setting_names(),
+                       atom_to_list(K) =:= Setting],
+    case MaybeExtra of
+        [] ->
+            Msg = io_lib:format("Unknown/unsupported setting: ~p", [Setting]),
+            reply_json(Req, {[{'_', iolist_to_binary(Msg)}]}, 404);
+        _ ->
+            case do_delete_txn(memcached_config_extra, hd(MaybeExtra)) of
+                ok ->
+                    reply_json(Req, [], 202);
+                missing ->
+                    reply_json(Req, [], 404)
+            end
+    end.
 
 handle_node_setting_delete(NodeName, SettingName, Req) ->
     with_parsed_node(
