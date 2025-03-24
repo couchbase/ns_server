@@ -144,7 +144,8 @@ process_req(#mc_header{opcode = ?MC_AUTH_REQUEST} = Header,
     Mechanism = proplists:get_value(<<"mechanism">>, AuthReq),
     NeedRBAC = not proplists:get_bool(<<"authentication-only">>, AuthReq),
     case authenticate(Mechanism, AuthReq) of
-        {ok, #authn_res{expiration_datetime_utc = ExpirationTime} = AuthnRes} ->
+        {ok, #authn_res{expiration_datetime_utc = ExpirationTime} = AuthnRes,
+         AuditProps} ->
             {User, Record} = memcached_permissions:jsonify_user_with_cache(
                                AuthnRes, Snapshot),
             Expiry =
@@ -154,7 +155,7 @@ process_req(#mc_header{opcode = ?MC_AUTH_REQUEST} = Header,
                     DateTime ->
                         misc:datetime_to_unix_timestamp(DateTime)
                 end,
-            Resp =
+            BaseResp =
                 case Mechanism of
                     <<"PLAIN">> -> [{rbac, {[{User, Record}]}} || NeedRBAC];
                     <<"OAUTHBEARER">> ->
@@ -162,18 +163,20 @@ process_req(#mc_header{opcode = ?MC_AUTH_REQUEST} = Header,
                           {[{rbac, {[{User, Record}]}} || NeedRBAC] ++
                                [{exp, Expiry}]}}]
                 end,
+            Resp = maybe_add_audit_props(BaseResp, AuditProps),
             {Header#mc_header{status = ?SUCCESS},
              #mc_entry{data = ejson:encode({Resp})},
              State};
-        {error, ReasonStr} ->
+        {error, ReasonStr, AuditProps} ->
             UUID = misc:hexify(crypto:strong_rand_bytes(16)),
             ?log_info("Auth failed with reason: '~s' (UUID: ~s)",
                       [ReasonStr, UUID]),
             ReasonBin = list_to_binary("Authentication failed: " ++ ReasonStr),
-            Json = {[{error, {[{context, ReasonBin},
-                               {ref, UUID}]}}]},
+            BaseJson = [{error, {[{context, ReasonBin},
+                                  {ref, UUID}]}}],
+            Json = maybe_add_audit_props(BaseJson, AuditProps),
             {Header#mc_header{status = ?KEY_ENOENT},
-             #mc_entry{data = ejson:encode(Json)},
+             #mc_entry{data = ejson:encode({Json})},
              State}
     end;
 
@@ -218,17 +221,17 @@ authenticate(<<"PLAIN">>, AuthReq) ->
         {ok, {Authzid, Username, Password}} when Authzid == "";
                                                  Authzid == Username ->
             case menelaus_auth:authenticate({Username, Password}) of
-                {ok, AuthnRes, _, _} ->
+                {ok, AuthnRes, _, AuditProps} ->
                     ?log_debug("Successful ext authentication for ~p",
                                [ns_config_log:tag_user_name(Username)]),
-                    {ok, AuthnRes};
-                {error, _, _} ->
-                    {error, "Invalid username or password"}
+                    {ok, AuthnRes, AuditProps};
+                {error, _, AuditProps} ->
+                    {error, "Invalid username or password", AuditProps}
             end;
         {ok, {_Authzid, _, _}} ->
-            {error, "Authzid is not supported"};
+            {error, "Authzid is not supported", []};
         error ->
-            {error, "Invalid challenge"}
+            {error, "Invalid challenge", []}
     end;
 authenticate(<<"OAUTHBEARER">>, AuthReq) ->
     case ns_config:read_key_fast(oauthbearer_enabled, false) of
@@ -238,12 +241,14 @@ authenticate(<<"OAUTHBEARER">>, AuthReq) ->
                 {ok, {Id, Token}} ->
                     case menelaus_auth:authenticate({jwt, Token}) of
                         {ok, #authn_res{identity={Id, external}}=AuthnRes, _,
-                         _AuditProps} ->
+                         AuditProps} ->
                             ?log_debug("JWT Successful authentication for ~p",
                                        [ns_config_log:tag_user_name(Id)]),
-                            {ok, AuthnRes};
-                        {ok, #authn_res{identity={User, external}}, _, _} ->
-                            {error, "JWT Invalid user " ++ User ++ " in token"};
+                            {ok, AuthnRes, AuditProps};
+                        {ok, #authn_res{identity={User, external}}, _,
+                         AuditProps} ->
+                            {error, "JWT Invalid user " ++ User ++ " in token",
+                             AuditProps};
                         {error, _RespHeaders, AuditProps} ->
                             Reason =
                                 case proplists:get_value(reason, AuditProps,
@@ -253,15 +258,15 @@ authenticate(<<"OAUTHBEARER">>, AuthReq) ->
                                     _ ->
                                         "JWT rejected"
                                 end,
-                            {error, Reason}
+                            {error, Reason, AuditProps}
                     end;
                 error ->
-                    {error, "Invalid oauthbearer challenge"}
+                    {error, "Invalid oauthbearer challenge", []}
             end;
-        false -> {error, "Oauthbearer mechanism disabled"}
+        false -> {error, "Oauthbearer mechanism disabled", []}
     end;
 authenticate(Unknown, _) ->
-    {error, io_lib:format("Unknown mechanism: ~p", [Unknown])}.
+    {error, io_lib:format("Unknown mechanism: ~p", [Unknown]), []}.
 
 get_user_rbac_record_json(AuthnRes, Snapshot) ->
     {[memcached_permissions:jsonify_user_with_cache(AuthnRes, Snapshot)]}.
@@ -377,6 +382,9 @@ mcd_update_user_permissions(RBACJson) ->
               end
       end).
 
+maybe_add_audit_props(Base, []) -> Base;
+maybe_add_audit_props(Base, AuditProps) ->
+    Base ++ [{audit_props, {AuditProps}}].
 
 -ifdef(TEST).
 process_data_test() ->
@@ -467,8 +475,9 @@ process_data_test() ->
                  {[{mechanism, <<"OAUTHBEARER">>},
                    {challenge, ValidJWTChallenge}]}},
                 fun (?MC_AUTH_REQUEST, ?SUCCESS, undefined,
-                     {[{<<"token">>,
-                        {TokenProps}}]}) ->
+                     {Props}) ->
+                        [{<<"token">>, {TokenProps}},
+                         {<<"audit_props">>, {AuditProps}}] = Props,
 
                         Rbac = proplists:get_value(<<"rbac">>, TokenProps),
                         Exp = proplists:get_value(<<"exp">>, TokenProps),
@@ -485,18 +494,15 @@ process_data_test() ->
                         B2 = proplists:get_value(<<"b2">>, Buckets),
                         {[{<<"privileges">>, _}]} = B1,
                         {[{<<"privileges">>, _}]} = B2,
-                        ok
-                end),
-              %% OAUTHBEARER tests - user mismatch
-              test_process_data(
-                {?MC_AUTH_REQUEST, undefined,
-                 {[{mechanism, <<"OAUTHBEARER">>},
-                   {challenge, UserMismatchChallenge}]}},
-                fun (?MC_AUTH_REQUEST, ?KEY_ENOENT, undefined,
-                     {[{<<"error">>,
-                        {[{<<"context">>, <<"Authentication failed: ",
-                                            _/binary>>},
-                          {<<"ref">>, _}]}}]}) ->
+
+                        <<"jwt">> = proplists:get_value(<<"type">>, AuditProps),
+                        <<"test-issuer">> =
+                            proplists:get_value(<<"iss">>, AuditProps),
+                        <<"User3">> = proplists:get_value(<<"sub">>,
+                                                          AuditProps),
+                        <<"2099-01-01T00:00:00Z">> =
+                            proplists:get_value(<<"expiry_with_leeway">>,
+                                                AuditProps),
                         ok
                 end),
 
@@ -506,10 +512,40 @@ process_data_test() ->
                  {[{mechanism, <<"OAUTHBEARER">>},
                    {challenge, InvalidTokenChallenge}]}},
                 fun (?MC_AUTH_REQUEST, ?KEY_ENOENT, undefined,
-                     {[{<<"error">>,
-                        {[{<<"context">>, <<"Authentication failed: ",
-                                            _/binary>>},
-                          {<<"ref">>, _}]}}]}) ->
+                     {Props}) ->
+                        [{<<"error">>,
+                          {[{<<"context">>,
+                             <<"Authentication failed: ", _/binary>>},
+                            {<<"ref">>, _}]}},
+                         {<<"audit_props">>, {AuditProps}}] = Props,
+
+                        <<"jwt">> = proplists:get_value(<<"type">>, AuditProps),
+                        <<"Token has expired">> =
+                            proplists:get_value(<<"reason">>, AuditProps),
+                        ok
+                end),
+
+              %% OAUTHBEARER tests - user mismatch
+              test_process_data(
+                {?MC_AUTH_REQUEST, undefined,
+                 {[{mechanism, <<"OAUTHBEARER">>},
+                   {challenge, UserMismatchChallenge}]}},
+                fun (?MC_AUTH_REQUEST, ?KEY_ENOENT, undefined,
+                     {Props}) ->
+                        [{<<"error">>,
+                          {[{<<"context">>,
+                             <<"Authentication failed: ", _/binary>>},
+                            {<<"ref">>, _}]}},
+                         {<<"audit_props">>, {AuditProps}}] = Props,
+
+                        <<"jwt">> = proplists:get_value(<<"type">>, AuditProps),
+                        <<"test-issuer">> =
+                            proplists:get_value(<<"iss">>, AuditProps),
+                        <<"User3">> = proplists:get_value(<<"sub">>,
+                                                          AuditProps),
+                        <<"2099-01-01T00:00:00Z">> =
+                            proplists:get_value(<<"expiry_with_leeway">>,
+                                                AuditProps),
                         ok
                 end),
 
@@ -604,7 +640,7 @@ with_mocked_users(Users, Fun) ->
                                                 extra_roles = ExtraRoles,
                                                 expiration_datetime_utc =
                                                     ExpTime
-                                               }, AuditProps, []}
+                                               }, [], AuditProps}
                                     end;
 
                                 "invalid_token" ->
@@ -621,7 +657,8 @@ with_mocked_users(Users, Fun) ->
                                 [{N, D, ER}] ->
                                     {ok, #authn_res{identity = {N, D},
                                                     extra_roles = ER}, [], []};
-                                [] -> {error, [], {auth_failure, []}}
+                                [] -> {error, "Invalid username or password",
+                                    []}
                             end
                     end),
 
