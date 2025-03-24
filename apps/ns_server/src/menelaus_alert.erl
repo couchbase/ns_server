@@ -98,7 +98,7 @@ filter_params(Params) ->
 
 handle_events_validators() ->
     [validator:iso_8601_utc(sinceTime, [], _),
-     validator:integer(limit, -1, infinity, _)] ++
+     validator:integer(limit, -1, max_uint64, _)] ++
     case cluster_compat_mode:is_cluster_morpheus() of
         true ->
             [validator:string(component, _),

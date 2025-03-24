@@ -93,17 +93,17 @@ params() ->
       #{type => bool,
         cfg_key => [bucket, data_size, enabled]}},
      {"bucket.dataSizePerNode.couchstoreMaximum",
-      #{type => {num, 0, infinity},
+      #{type => {num, 0, max_uint64},
         cfg_key => [bucket, data_size, couchstore_maximum]}},
      {"bucket.dataSizePerNode.magmaMaximum",
-      #{type => {num, 0, infinity},
+      #{type => {num, 0, max_uint64},
         cfg_key => [bucket, data_size, magma_maximum]}},
      %% Max number of collections per memory quota in MB
      {"bucket.collectionsPerQuota.enabled",
       #{type => bool,
         cfg_key => [collections_per_quota, enabled]}},
      {"bucket.collectionsPerQuota.maximum",
-      #{type => {num, 0, infinity},
+      #{type => {num, 0, max_uint64},
         cfg_key => [collections_per_quota, maximum]}},
      %% Index service resident ratio configuration
      {"index.indexCreationRR.enabled",
@@ -135,7 +135,7 @@ params() ->
       #{type => bool,
         cfg_key => [metakv, index, index_overhead_per_node, enabled]}},
      {"index.indexOverheadPerNode.maximum",
-      #{type => {num, 0, infinity},
+      #{type => {num, 0, max_uint64},
         cfg_key => [metakv, index, index_overhead_per_node, maximum]}},
      %% Disk usage % per node thresholds (for notifying index service)
      {"index.diskUsage.enabled",
@@ -159,7 +159,7 @@ params() ->
       #{type => bool,
         cfg_key => [cores_per_bucket, enabled]}},
      {"coresPerBucket.minimum",
-      #{type => {num, 0, infinity},
+      #{type => {num, 0, max_uint64},
         cfg_key => [cores_per_bucket, minimum]}}
     ].
 

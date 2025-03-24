@@ -547,28 +547,67 @@ number(Name, Min, Max, State) ->
                     [number(Name, _),
                      range(Name, Min, Max, _)]).
 
-range(Name, Min, Max, State) ->
-    ErrorFun =
-        ?cut(io_lib:format("The value must be in range from ~p to ~p",
-                           [Min, Max])),
-    range(Name, Min, Max, ErrorFun, State).
+range_error(Min, infinity) ->
+    io_lib:format("The value must be greater than or equal to ~p", [Min]);
+range_error(Min, max_uint64) ->
+    range_error(Min, ?MAX_64BIT_UNSIGNED_INT);
+range_error(Min, Max) ->
+    io_lib:format("The value must be in range from ~p to ~p (inclusive)",
+                  [Min, Max]).
 
-range(Name, Min, Max0, ErrorFun, State) ->
-    Max = case Max0 of
-              infinity ->
-                  1 bsl 64 - 1;
-              _ ->
-                  Max0
-          end,
+range(Name, Min, Max, State) ->
+    range(Name, Min, Max, ?cut(range_error(Min, Max)), State).
+
+range(Name, Min, max_uint64, ErrorFun, State) ->
+    range(Name, Min, ?MAX_64BIT_UNSIGNED_INT, ErrorFun, State);
+range(Name, Min, Max, ErrorFun, State) ->
     validate(
       fun (Value) ->
-              case Value >= Min andalso Value =< Max of
+              case Value >= Min andalso (Max == infinity orelse Value =< Max) of
                   true ->
                       ok;
                   false ->
-                      {error, ErrorFun()}
+                      {error, lists:flatten(ErrorFun())}
               end
       end, Name, State).
+
+-ifdef(TEST).
+
+range_test() ->
+    %% Test range validation with finite bounds
+    State1 = #state{kv=[{"test", 5}]},
+    ?assertEqual([], (range("test", 1, 10, State1))#state.errors),
+    ?assertEqual([], (range("test", 5, 10, State1))#state.errors),
+    ?assertEqual([], (range("test", 1, 5, State1))#state.errors),
+
+    %% Test range validation failures
+    State2 = #state{kv=[{"test", 0}]},
+    #state{errors=[{_, Err2}]} = range("test", 1, 10, State2),
+    ?assertEqual(Err2, "The value must be in range from 1 to 10 (inclusive)"),
+
+    State3 = #state{kv=[{"test", 11}]},
+    #state{errors=[{_, Err3}]} = range("test", 1, 10, State3), 
+    ?assertEqual(Err3, "The value must be in range from 1 to 10 (inclusive)"),
+
+    %% Test range validation with infinity upper bound
+    State4 = #state{kv=[{"test", 1000}]},
+    ?assertEqual([], (range("test", 1, infinity, State4))#state.errors),
+
+    State5 = #state{kv=[{"test", 0}]},
+    #state{errors=[{_, Err5}]} = range("test", 1, infinity, State5),
+    ?assertEqual(Err5, "The value must be greater than or equal to 1"),
+
+    %% Test range validation with max_uint64 upper bound
+    State6 = #state{kv=[{"test", ?MAX_64BIT_UNSIGNED_INT}]},
+    ?assertEqual([], (range("test", 1, max_uint64, State6))#state.errors),
+
+    State7 = #state{kv=[{"test", ?MAX_64BIT_UNSIGNED_INT + 1}]},
+    #state{errors=[{_, Err7}]} = range("test", 1, max_uint64, State7),
+    ?assertEqual(Err7, "The value must be in range from 1 to " ++
+                       integer_to_list(?MAX_64BIT_UNSIGNED_INT) ++
+                       " (inclusive)").
+
+-endif.
 
 greater_or_equal(Name1, Name2, State) ->
      validator:validate_relative(

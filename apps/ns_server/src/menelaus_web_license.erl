@@ -49,7 +49,7 @@ handle_settings_validate_post(Req) ->
 settings_validators() ->
     [
         validator:boolean(reporting_enabled, _),
-        validator:integer(reporting_interval, 60000, infinity, _),
+        validator:integer(reporting_interval, 60000, max_uint64, _),
         validator:touch(contract_id, _),
         validator:touch(customer_token, _),
         validator:convert(customer_token, ?cut({password, _}), _),

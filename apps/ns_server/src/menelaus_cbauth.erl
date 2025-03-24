@@ -52,7 +52,7 @@ handle_rpc_connect(?VERSION_1, Label, Req) ->
                                   Params,
                                   [{type, auth}, {version, ?VERSION_1}]), Req)
                       end, Req, qs,
-                      [validator:integer(heartbeat, 1, infinity, _),
+                      [validator:integer(heartbeat, 1, max_uint64, _),
                        validator:no_duplicates(_),
                        validator:unsupported(_)]);
                 Other ->

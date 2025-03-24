@@ -32,7 +32,7 @@ encr_dek_lifetime(Param, EncrType, Enabled) ->
      #{cfg_key => [EncrType, dek_lifetime_in_sec],
        type => case Enabled of
                    true ->
-                       {int, 0, infinity};
+                       {int, 0, max_uint64};
                    false ->
                        {int, ?DEK_INFINITY_LIFETIME, ?DEK_INFINITY_LIFETIME}
                end}}.
@@ -40,7 +40,7 @@ encr_dek_lifetime(Param, EncrType, Enabled) ->
 encr_dek_rotate_intrvl(Param, EncrType) ->
     {Param,
      #{cfg_key => [EncrType, dek_rotation_interval_in_sec],
-       type => {int, 0, infinity}}}.
+       type => {int, 0, max_uint64}}}.
 
 encr_deks_drop_date(Param, EncrType) ->
     {Param,

@@ -439,7 +439,7 @@ validate_secrets_data(Name, CurSecretProps, State) ->
 generated_key_validators(CurSecretProps) ->
     [validator:boolean(autoRotation, _),
      validator:default(autoRotation, true, _),
-     validator:range(rotationIntervalInDays, 1, infinity, _),
+     validator:range(rotationIntervalInDays, 1, max_uint64, _),
      validate_iso8601_datetime(nextRotationTime, _),
      validate_datetime_in_the_future(nextRotationTime, _),
      mandatory_rotation_fields(_),
@@ -448,7 +448,7 @@ generated_key_validators(CurSecretProps) ->
      validator:convert(encryptWith, binary_to_atom(_, latin1), _),
      validate_encrypt_with(encryptWith, _),
      validator:default(encryptWith, nodeSecretManager, _),
-     validator:integer(encryptWithKeyId, -1, infinity, _),
+     validator:integer(encryptWithKeyId, -1, max_uint64, _),
      validate_encrypt_secret_id(encryptWithKeyId, CurSecretProps, _)].
 
 validate_encrypt_with(Name, State) ->
@@ -551,7 +551,7 @@ kmip_key_validators(CurSecretProps) ->
      validator:required(host, _),
      validator:integer(port, 1, 65535, _),
      validator:required(port, _),
-     validator:integer(reqTimeoutMs, 1000, infinity, _),
+     validator:integer(reqTimeoutMs, 1000, max_uint64, _),
      validator:default(reqTimeoutMs, 30000, _),
      validator:string(keyPath, _),
      validator:required(keyPath, _),
@@ -592,7 +592,7 @@ kmip_key_validators(CurSecretProps) ->
      validator:convert(encryptWith, binary_to_atom(_, latin1), _),
      validate_encrypt_with(encryptWith, _),
      validator:default(encryptWith, nodeSecretManager, _),
-     validator:integer(encryptWithKeyId, -1, infinity, _),
+     validator:integer(encryptWithKeyId, -1, max_uint64, _),
      validate_encrypt_secret_id(encryptWithKeyId, CurSecretProps, _)] ++
         [validator:required(keyPassphrase, _) ||
             map_size(CurSecretProps) == 0].

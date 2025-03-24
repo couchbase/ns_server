@@ -187,7 +187,8 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
                         val > self.limits[field]['max']:
                     return { field: 'The value must be in range from ' +
                                     str(self.limits[field]['min']) + ' to ' +
-                                    str(self.limits[field]['max']) }
+                                    str(self.limits[field]['max']) +
+                                    ' (inclusive)' }
             except ValueError:
                 return { field: 'The value must be an integer' }
         return {}

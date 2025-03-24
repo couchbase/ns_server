@@ -83,9 +83,9 @@ rebalance_blob_storage_params_validator() ->
 
 settings_post_validators() ->
     [validator:integer(indexerThreads, 0, 1024, _),
-     validator:integer(memorySnapshotInterval, 1, infinity, _),
-     validator:integer(stableSnapshotInterval, 1, infinity, _),
-     validator:integer(maxRollbackPoints, 1, infinity, _),
+     validator:integer(memorySnapshotInterval, 1, max_uint64, _),
+     validator:integer(stableSnapshotInterval, 1, max_uint64, _),
+     validator:integer(maxRollbackPoints, 1, max_uint64, _),
      validator:integer(numReplica, 0, 16, _)] ++
         case cluster_compat_mode:is_enterprise() of
             true ->

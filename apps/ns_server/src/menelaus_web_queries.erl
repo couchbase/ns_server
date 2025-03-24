@@ -60,18 +60,17 @@ settings_post_validators() ->
                  validator:one_of(queryUseReplica,
                                   [<<"unset">>, <<"off">>, <<"on">>], _),
                  validator:integer(queryNumCpus, _),
-                 validator:range(queryNumCpus, 0, infinity, _),
+                 validator:range(queryNumCpus, 0, max_uint64, _),
                  validator:integer(queryCompletedMaxPlanSize, _),
-                 validator:range(queryCompletedMaxPlanSize, 0, infinity, _)] ++
-                    node_quota_validators();
+                 validator:range(queryCompletedMaxPlanSize, 0, max_uint64, _)]
+                    ++ node_quota_validators();
             false ->
                 []
         end ++
         case cluster_compat_mode:is_cluster_morpheus() of
             true ->
                 [validator:integer(queryCompletedStreamSize, _),
-                 validator:range(queryCompletedStreamSize, 0,
-                                 ?MAX_64BIT_UNSIGNED_INT, _)];
+                 validator:range(queryCompletedStreamSize, 0, max_uint64, _)];
             false ->
                 []
         end ++
@@ -79,7 +78,7 @@ settings_post_validators() ->
 
 validate_tmp_space_size(Name, State) ->
     %% zero disables the feature, and -1 implies unlimited quota
-    validator:range(Name, -1, infinity, State).
+    validator:range(Name, -1, max_uint64, State).
 
 update_settings(Key, Value) ->
     case query_settings_manager:update(Key, Value) of
@@ -132,4 +131,4 @@ cluster_init_validators() ->
 
 node_quota_validators() ->
     [validator:integer(queryNodeQuota, _),
-     validator:range(queryNodeQuota, 0, infinity, _)].
+     validator:range(queryNodeQuota, 0, max_uint64, _)].

@@ -668,7 +668,7 @@ handle_streaming(Req, DataBody, NotifyTag) ->
               handle_streaming(Req, DataBody, HTTPRes, undefined,
                                {NotifyTag, undefined}, Heartbeat, Timer)
       end, Req, qs,
-      [validator:integer(heartbeat, 1, infinity, _)]).
+      [validator:integer(heartbeat, 1, max_uint64, _)]).
 
 register_heartbeat(undefined, Timer) ->
     Timer;
