@@ -1636,10 +1636,20 @@ handle_post_cgroup_overrides(Req) ->
                               Hard = proplists:get_value(hard, Props, max),
                               Soft = proplists:get_value(soft, Props, max),
                               Limits = #limits{hard=Hard, soft=Soft},
-                              Overrides =
-                                  ns_cgroups_manager:override_profile(
-                                    ActualService, Limits),
-                              reply_json(Req, {prep_json_encoding(Overrides)})
+                              Overrides = ns_cgroups_manager:override_profile(
+                                            ActualService, Limits),
+                              case Soft > Hard of
+                                  true ->
+                                      reply_text(Req,
+                                                 "Warning: Soft limit set "
+                                                 "higher than hard limit. This "
+                                                 "is 'valid' in the kernel but "
+                                                 "doesn't provide any useful "
+                                                 "functionality.", 200);
+                                  false ->
+                                      reply_json(Req, {prep_json_encoding(
+                                                         Overrides)})
+                              end
                       end
               end, Req, form, cgroup_validators());
         false ->
