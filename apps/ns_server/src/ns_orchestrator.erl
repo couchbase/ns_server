@@ -91,7 +91,7 @@
          start_graceful_failover/1,
          request_janitor_run/1,
          get_state/1,
-         prepare_fusion_rebalance/2,
+         prepare_fusion_rebalance/1,
          fusion_upload_mounted_volumes/2]).
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
@@ -332,12 +332,12 @@ try_autofailover(Nodes, Options) ->
             Other
     end.
 
--spec prepare_fusion_rebalance([node()], [{local_addr, _}]) ->
+-spec prepare_fusion_rebalance([node()]) ->
           {ok, term()} | busy() |
           {unknown_nodes, [node()]} |
           {remote_call_failed, node()}.
-prepare_fusion_rebalance(KeepNodes, Options) ->
-    call({prepare_fusion_rebalance, KeepNodes, Options}, infinity).
+prepare_fusion_rebalance(KeepNodes) ->
+    call({prepare_fusion_rebalance, KeepNodes}, infinity).
 
 -type rebalance_plan_uuid() :: string().
 -spec fusion_upload_mounted_volumes(rebalance_plan_uuid(),
@@ -1094,12 +1094,11 @@ idle({ensure_janitor_run, Item}, From, State) ->
               gen_statem:reply(From, Reason)
       end, idle, State);
 
-idle({prepare_fusion_rebalance, KeepNodes, Options}, From, _State) ->
+idle({prepare_fusion_rebalance, KeepNodes}, From, _State) ->
     RV =
         case KeepNodes -- ns_cluster_membership:nodes_wanted() of
             [] ->
-                case ns_rebalancer:prepare_fusion_rebalance(
-                       KeepNodes, Options) of
+                case ns_rebalancer:prepare_fusion_rebalance(KeepNodes) of
                     {ok, {RebalancePlan, AccelerationPlan}} ->
                         erlang:put(?FUSION_REBALANCE_PLAN, RebalancePlan),
                         {ok, AccelerationPlan};

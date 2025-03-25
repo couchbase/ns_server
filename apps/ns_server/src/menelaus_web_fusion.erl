@@ -36,9 +36,7 @@ handle_prepare_rebalance(Req) ->
     validator:handle(
       fun (Params) ->
               KeepNodes = proplists:get_value(keepNodes, Params),
-              Options = [{local_addr, menelaus_util:local_addr(Req)}],
-              case ns_orchestrator:prepare_fusion_rebalance(
-                     KeepNodes, Options) of
+              case ns_orchestrator:prepare_fusion_rebalance(KeepNodes) of
                   {ok, AccelerationPlan} ->
                       menelaus_util:reply_json(Req, AccelerationPlan, 200);
                   {unknown_nodes, Nodes} ->

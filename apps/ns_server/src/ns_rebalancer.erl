@@ -37,7 +37,7 @@
          rebalance_topology_aware_services/3,
          needs_rebalance_with_reason/3,
          get_desired_services_nodes/1,
-         prepare_fusion_rebalance/2]).
+         prepare_fusion_rebalance/1]).
 
 -export([wait_local_buckets_shutdown_complete/0]). % used via rpc:multicall
 -export([get_fusion_storage_snapshot/4]). %% used via rpc:call
@@ -1955,36 +1955,32 @@ deactivate_bucket_data_on_unknown_nodes(BucketName, Nodes) ->
             exit({error, deactivate_bucket_data_failed, Error})
     end.
 
--spec prepare_fusion_rebalance([node()], list()) ->
+-spec prepare_fusion_rebalance([node()]) ->
           {ok, {list(), {list()}}} | {error, term()}.
-prepare_fusion_rebalance(KeepNodes, Options) ->
+prepare_fusion_rebalance(KeepNodes) ->
     Snapshot = chronicle_compat:get_snapshot(
                  [ns_bucket:fetch_snapshot(all, _, [uuid, props]),
                   ns_cluster_membership:fetch_snapshot(_)],
                  #{read_consistency => quorum}),
 
-    LocalAddr = proplists:get_value(local_addr, Options),
-    Config = ns_config:get(),
-
     KeepKVNodes = ns_cluster_membership:service_nodes(Snapshot, KeepNodes, kv),
-    prepare_fusion_rebalance(KeepKVNodes, LocalAddr, Snapshot, Config,
+    prepare_fusion_rebalance(KeepKVNodes, Snapshot,
                              fun generate_fast_forward_map/4).
 
-prepare_fusion_rebalance(KeepKVNodes, LocalAddr, Snapshot, Config,
-                         GenerateMapFun) ->
+prepare_fusion_rebalance(KeepKVNodes, Snapshot, GenerateMapFun) ->
     BucketNames = ns_bucket:get_bucket_names(Snapshot),
     try
         {ok, prepare_fusion_rebalance_massage_result(
                lists:filtermap(
                  prepare_bucket_fusion_rebalance(Snapshot, _, KeepKVNodes,
                                                  GenerateMapFun),
-                 BucketNames), LocalAddr, Config)}
+                 BucketNames))}
     catch
         throw:Err ->
             {error, Err}
     end.
 
-prepare_fusion_rebalance_massage_result(Result, LocalAddr, Config) ->
+prepare_fusion_rebalance_massage_result(Result) ->
     PlanUUID = couch_uuids:random(),
     Nodes = lists:usort(
               lists:flatten([maps:keys(NodesMap) ||
@@ -2005,10 +2001,7 @@ prepare_fusion_rebalance_massage_result(Result, LocalAddr, Config) ->
                                    end, Acc, NodesVolumesMap)
                  end, #{}, Result),
     AccelerationPlan =
-        {[{planUUID, PlanUUID},
-          {nodes,
-           {[{menelaus_web_node:build_node_hostname(Config, Node, LocalAddr),
-              Volumes} || {Node, Volumes} <- maps:to_list(NodesMap)]}}]},
+        {[{planUUID, PlanUUID}, {nodes, {maps:to_list(NodesMap)}}]},
     {RebalancePlan, AccelerationPlan}.
 
 prepare_bucket_fusion_rebalance(Snapshot, Bucket, KeepKVNodes,
@@ -2153,8 +2146,7 @@ prepare_rebalance_test_() ->
                    fun (_, _, fusion1, _) -> {TargetMap1, options1};
                        (_, _, fusion2, _) -> {TargetMap2, options2}
                    end,
-               RV = prepare_fusion_rebalance(Servers, whatever, Snapshot,
-                                             whatever, GenerateMapFun),
+               RV = prepare_fusion_rebalance(Servers, Snapshot, GenerateMapFun),
                ?assertMatch({ok, {_, {_}}}, RV),
                {ok, {RebalancePlan, {AccelerationPlan}}} = RV,
                UUID = proplists:get_value(planUUID, RebalancePlan),
