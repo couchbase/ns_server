@@ -78,6 +78,8 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
       DriftBehindThreshold},
      {"hlc_invalid_strategy", [{reload, vbucket}],
       get_invalid_hlc_strategy(BucketConfig)},
+     {"hlc_max_future_threshold_us", [{reload, vbucket}],
+      get_hlc_max_future_threshold(BucketConfig)},
      {"item_eviction_policy", maybe_restart(),
       get_eviction_policy(true, BucketConfig)},
      {"ephemeral_full_policy", [{reload, flush}],
@@ -166,6 +168,15 @@ get_invalid_hlc_strategy(BucketConfig) ->
             undefined;
         true ->
             ns_bucket:get_invalid_hlc_strategy(BucketConfig)
+    end.
+
+get_hlc_max_future_threshold(BucketConfig) ->
+    case cluster_compat_mode:is_cluster_morpheus() of
+        false ->
+            undefined;
+        true ->
+            Seconds = ns_bucket:get_hlc_max_future_threshold(BucketConfig),
+            misc:secs_to_usecs(Seconds)
     end.
 
 get_memory_watermark(Type, BucketConfig) ->

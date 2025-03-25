@@ -155,6 +155,7 @@
          get_continuous_backup_interval/1,
          get_continuous_backup_location/1,
          get_invalid_hlc_strategy/1,
+         get_hlc_max_future_threshold/1,
          get_num_dcp_connections/1,
          uuid_key/1,
          uuid/2,
@@ -581,6 +582,7 @@ attribute_default(Name) ->
         continuous_backup_interval -> 2;    % minutes
         continuous_backup_location -> "";   % path or URI
         invalid_hlc_strategy -> error;      % atom
+        hlc_max_future_threshold -> 10;     % seconds
         dcp_connections_between_nodes -> 1  % pos_integer
     end.
 
@@ -592,6 +594,7 @@ attribute_min(Name) ->
         memory_low_watermark -> 50;         % percentage
         memory_high_watermark -> 51;        % percentage
         continuous_backup_interval -> 2;    % minutes
+        hlc_max_future_threshold -> 10;     % seconds
         dcp_connections_between_nodes -> 1  % pos_integer
     end.
 
@@ -606,6 +609,8 @@ attribute_max(Name) ->
         memory_high_watermark -> 90;                  % percentage
         continuous_backup_interval ->
             ?MAX_32BIT_SIGNED_INT;                    % minutes
+        hlc_max_future_threshold ->
+            ?MAX_32BIT_SIGNED_INT;                    % seconds
         dcp_connections_between_nodes -> 64           % pos_integer
     end.
 
@@ -667,6 +672,11 @@ get_continuous_backup_location(BucketConfig) ->
     undefined | error | ignore | replace.
 get_invalid_hlc_strategy(BucketConfig) ->
     membase_bucket_config_value_getter(invalid_hlc_strategy, BucketConfig).
+
+-spec get_hlc_max_future_threshold(proplists:proplist()) -> integer() |
+                                                            undefined.
+get_hlc_max_future_threshold(BucketConfig) ->
+    membase_bucket_config_value_getter(hlc_max_future_threshold, BucketConfig).
 
 -spec get_num_dcp_connections(proplists:proplist()) -> pos_integer().
 get_num_dcp_connections(BucketConfig) ->
@@ -2383,6 +2393,8 @@ chronicle_upgrade_bucket_to_morpheus(BucketName, ChronicleTxn) ->
                  %% The default value isn't used for existing buckets as it
                  %% may lead to XDCR setups stopping.
                  {invalid_hlc_strategy, ignore},
+                 {hlc_max_future_threshold,
+                  attribute_default(hlc_max_future_threshold)},
                  {dcp_connections_between_nodes,
                   attribute_default(dcp_connections_between_nodes)}] ++
                     case is_persistent(BucketConfig) of
@@ -2519,6 +2531,7 @@ extract_bucket_props(Props) ->
                          magma_seq_tree_data_blocksize,
                          history_retention_collection_default, rank,
                          invalid_hlc_strategy,
+                         hlc_max_future_threshold,
                          encryption_secret_id,
                          encryption_dek_rotation_interval,
                          encryption_dek_lifetime,

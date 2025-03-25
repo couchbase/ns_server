@@ -438,6 +438,8 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
               {warmupBehavior, ns_bucket:warmup_behavior(BucketConfig)},
               {invalidHlcStrategy,
                ns_bucket:get_invalid_hlc_strategy(BucketConfig)},
+              {hlcMaxFutureThreshold,
+               ns_bucket:get_hlc_max_future_threshold(BucketConfig)},
               {dcpConnectionsBetweenNodes,
                ns_bucket:get_num_dcp_connections(BucketConfig)}] ++
              case ns_bucket:is_persistent(BucketConfig) of
@@ -1583,6 +1585,7 @@ validate_membase_bucket_params(CommonParams, Params, Name,
                                                    IsMorpheus,
                                                    IsStorageModeMigration),
          parse_validate_invalid_hlc_strategy(Params, IsNew, IsMorpheus),
+         parse_validate_hlc_max_future_threshold(Params, IsNew, IsMorpheus),
          parse_validate_storage_quota_percentage(
            Params, BucketConfig, IsNew, IsEnterprise,
            IsStorageModeMigration),
@@ -1624,6 +1627,14 @@ validate_membase_bucket_params(CommonParams, Params, Name,
           Params, HistRetSecs, BucketConfig, IsNew) ++
         validate_bucket_placer_params(Params, IsNew, BucketConfig) ++
         BucketParams.
+
+parse_validate_hlc_max_future_threshold(Params, _IsNew, false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "hlcMaxFutureThreshold", Params,
+      fun not_supported_until_morpheus_error/1);
+parse_validate_hlc_max_future_threshold(Params, IsNew, true = _IsMorpheus) ->
+    parse_validate_numeric_param(Params, hlcMaxFutureThreshold,
+                                 hlc_max_future_threshold, IsNew).
 
 parse_validate_invalid_hlc_strategy(Params, _IsNew, false = _IsMorpheus) ->
     parse_validate_param_not_supported(
@@ -4597,7 +4608,18 @@ basic_bucket_params_screening_t() ->
     ?assertEqual(
        [{dcpConnectionsBetweenNodes,
          <<"The value of dcpConnectionsBetweenNodes (not_an_int) must be a "
-           "non-negative integer">>}], E53).
+           "non-negative integer">>}], E53),
+
+    {_OK54, E54} = basic_bucket_params_screening(
+                     true, "bucket54",
+                     [{"bucketType", "membase"},
+                      {"ramQuota", "100"},
+                      {"hlcMaxFutureThreshold", "5"}],
+                     AllBuckets),
+    ?assertEqual(
+       [{hlcMaxFutureThreshold,
+         <<"The value of hlcMaxFutureThreshold (5) must be in the range "
+           "10 to 2147483647 inclusive">>}], E54).
 
 basic_bucket_params_screening_test_() ->
     {setup,

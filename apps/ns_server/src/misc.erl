@@ -372,6 +372,9 @@ position(E, [_|List], N) -> position(E, List, N+1).
 msecs_to_usecs(MilliSec) ->
     MilliSec * 1000.
 
+secs_to_usecs(Seconds) ->
+    Seconds * 1000 * 1000.
+
 %% just because we need to mock node() sometimes
 this_node() ->
     node().
