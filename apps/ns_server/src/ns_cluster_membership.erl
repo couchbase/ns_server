@@ -540,7 +540,7 @@ supported_services() ->
 supported_services(IsEnterprise) ->
     supported_services_for_version(
       cluster_compat_mode:supported_compat_version(),
-      IsEnterprise) -- config_profile:get_value(unsupportedServices, []).
+      IsEnterprise).
 
 enterprise_only_services() ->
     [cbas, eventing, backup].
@@ -571,8 +571,14 @@ supported_services_for_version(ClusterVersion, IsEnterprise) ->
             false ->
                 enterprise_only_services()
         end,
-    filter_services_by_version(ClusterVersion,
-                               services_by_version()) -- NotSupported.
+    FixedServices = config_profile:get_value(fixedServices, undefined),
+    case FixedServices of
+        undefined ->
+            filter_services_by_version(ClusterVersion,
+                                       services_by_version()) -- NotSupported;
+        _ ->
+            FixedServices
+    end.
 
 cluster_supported_services() ->
     supported_services_for_version(cluster_compat_mode:get_compat_version(),
