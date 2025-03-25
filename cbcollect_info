@@ -2847,6 +2847,9 @@ def main():
             log("Reading zip password using getpass...")
             prompt = 'Password to encrypt collected data: '
             zip_p = getpass.getpass(prompt)
+            if zip_p == '':
+                log('Password can\'t be empty, please retry')
+                sys.exit(1)
             prompt = 'Confirm password to encrypt collected data: '
             zip_c = getpass.getpass(prompt)
             if zip_p != zip_c:
