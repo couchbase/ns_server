@@ -464,25 +464,33 @@ do_build_nodes_info_fun(#ctx{ns_config = Config,
     end.
 
 build_encryption_at_rest_info(Bucket, NsDoctorInfo) ->
-    AllInfos = proplists:get_value(encryption_at_rest_info, NsDoctorInfo, []),
-    CfgInfo = proplists:get_value(config_encryption, AllInfos, []),
-    LogInfo = proplists:get_value(log_encryption, AllInfos, []),
-    AuditInfo = proplists:get_value(audit_encryption, AllInfos, []),
+    NodeSupportsEncryptionAtRest =
+        cb_cluster_secrets:node_supports_encryption_at_rest(NsDoctorInfo),
+    case NodeSupportsEncryptionAtRest of
+        no_info -> [];
+        false -> [];
+        true ->
+            AllInfos = proplists:get_value(encryption_at_rest_info,
+                                           NsDoctorInfo, []),
+            CfgInfo = proplists:get_value(config_encryption, AllInfos, []),
+            LogInfo = proplists:get_value(log_encryption, AllInfos, []),
+            AuditInfo = proplists:get_value(audit_encryption, AllInfos, []),
 
-    Format = fun menelaus_web_encr_at_rest:format_encr_at_rest_info/1,
+            Format = fun menelaus_web_encr_at_rest:format_encr_at_rest_info/1,
 
-    NodeInfo = {[{configuration, Format(CfgInfo)},
-                 {logs, Format(LogInfo)},
-                 {audits, Format(AuditInfo)}]},
+            NodeInfo = {[{configuration, Format(CfgInfo)},
+                         {logs, Format(LogInfo)},
+                         {audits, Format(AuditInfo)}]},
 
-    [{encryptionAtRestInfo, NodeInfo}]
-    ++
-    case Bucket of
-        undefined -> [];
-        _ ->
-            BucketInfo = proplists:get_value({bucket_encryption, Bucket},
-                                            AllInfos, []),
-            [{bucketEncryptionAtRestInfo, Format(BucketInfo)}]
+            [{encryptionAtRestInfo, NodeInfo}]
+            ++
+            case Bucket of
+                undefined -> [];
+                _ ->
+                    BucketInfo = proplists:get_value(
+                                   {bucket_encryption, Bucket}, AllInfos, []),
+                    [{bucketEncryptionAtRestInfo, Format(BucketInfo)}]
+            end
     end.
 
 build_storage_backend(Node, BucketConfig) ->
