@@ -34,7 +34,7 @@ settings_post_validators() ->
      validator:integer(queryPipelineCap, _),
      validator:integer(queryScanCap, _),
      validator:integer(queryTimeout, _),
-     validator:integer(queryPreparedLimit, 0, infinity, _),
+     validator:integer(queryPreparedLimit, 0, max_uint64, _),
      validator:integer(queryCompletedLimit, _),
      validator:integer(queryCompletedThreshold, _),
      validator:integer(queryMaxParallelism, _),
