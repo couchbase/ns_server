@@ -1086,7 +1086,7 @@ class JWTTests(testlib.BaseTestSet):
         invalid_payload["exp"] = int(time.time()) - 3600  # Expired token
         invalid_token = self.create_token(invalid_payload)
 
-        memcached_port = node.service_port(Service.KV)
+        memcached_port = node.tls_service_port(Service.KV)
 
         mcstat_path = testlib.get_utility_path("mcstat")
         if not os.path.exists(mcstat_path):
@@ -1099,7 +1099,8 @@ class JWTTests(testlib.BaseTestSet):
             "--sasl_mechanism", "OAUTHBEARER",
             "--user", username,
             "--password", token,
-            "--bucket", test_bucket
+            "--bucket", test_bucket,
+            "--tls"
         ]
 
         # Wait for OAUTHBEARER authentication to succeed, we need to poll to
@@ -1134,7 +1135,8 @@ class JWTTests(testlib.BaseTestSet):
                 "--sasl_mechanism", "OAUTHBEARER",
                 "--user", tc["username"],
                 "--password", tc["token"],
-                "--bucket", test_bucket
+                "--bucket", test_bucket,
+                "--tls"
             ]
 
             result = subprocess.run(test_cmd, capture_output=True, text=True)

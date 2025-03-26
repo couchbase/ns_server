@@ -344,7 +344,7 @@ default(Vsn) ->
          {memcached_config_mgr, get_external_users_push_interval, []}},
         {prometheus, {memcached_config_mgr, prometheus_cfg, []}},
         {sasl_mechanisms, {memcached_config_mgr, sasl_mechanisms, []}},
-        {ssl_sasl_mechanisms, {memcached_config_mgr, sasl_mechanisms, []}},
+        {ssl_sasl_mechanisms, {memcached_config_mgr, ssl_sasl_mechanisms, []}},
         {tcp_keepalive_idle, tcp_keepalive_idle},
         {tcp_keepalive_interval, tcp_keepalive_interval},
         {tcp_keepalive_probes, tcp_keepalive_probes},

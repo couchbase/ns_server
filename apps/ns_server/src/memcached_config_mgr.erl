@@ -31,6 +31,7 @@
          is_external_auth_service_enabled/0,
          prometheus_cfg/2,
          sasl_mechanisms/2,
+         ssl_sasl_mechanisms/2,
          get_config_profile/2]).
 
 %% gen_server callbacks
@@ -726,12 +727,18 @@ prometheus_cfg([], _Params) ->
 sasl_mechanisms([], _Params) ->
     list_to_binary(lists:join(" ", auth_mechs())).
 
+ssl_sasl_mechanisms([], _Params) ->
+    list_to_binary(lists:join(" ", ssl_auth_mechs())).
+
 auth_mechs() ->
-    ["OAUTHBEARER"  || ns_config:read_key_fast(oauthbearer_enabled, false)] ++
     ["SCRAM-SHA512" || ns_config:read_key_fast(scram_sha512_enabled, true)] ++
     ["SCRAM-SHA256" || ns_config:read_key_fast(scram_sha256_enabled, true)] ++
     ["SCRAM-SHA1"   || ns_config:read_key_fast(scram_sha1_enabled,   true)] ++
     ["PLAIN"].
+
+ssl_auth_mechs() ->
+    auth_mechs() ++
+        ["OAUTHBEARER" || ns_config:read_key_fast(oauthbearer_enabled, false)].
 
 generate_interfaces(MCDParams) ->
     GetPort = fun (Port) ->
