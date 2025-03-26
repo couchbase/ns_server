@@ -302,7 +302,7 @@ get_ets_table_sanitizer(kv, _Info) ->
 get_ets_table_sanitizer(menelaus_web_cache, _Info) ->
     {ok, fun ns_cluster:sanitize_node_info/1};
 get_ets_table_sanitizer(ns_couchdb_chronicle_dup, _Info) ->
-    {ok, fun ({K, V}) ->  {K, chronicle_kv_log:sanitize(K, V)} end};
+    {ok, fun ({K, {V, _Rev}}) ->  {K, chronicle_kv_log:sanitize(K, V)} end};
 get_ets_table_sanitizer(ldap_auth_cache, _Info) ->
     skip;
 get_ets_table_sanitizer(ldap_groups_cache, _Info) ->
