@@ -1648,7 +1648,8 @@ garbage_collect_deks(Kind, Force, #state{deks_info = DeksInfo} = State) ->
 handle_new_dek_ids_in_use(Kind, CurrInUseIDs, Force,
                           #state{deks_info = DeksInfo} = State) ->
     %% Note that we assume Kind exists
-    #{Kind := #{statuses := Statuses,
+    #{Kind := #{has_unencrypted_data := HasUnencryptedData,
+                statuses := Statuses,
                 deks_being_dropped := IdsBeingDroppedSet} = KindDeks} =
                     DeksInfo,
     UniqCurrInUseIDs = lists:uniq(CurrInUseIDs),
@@ -1664,10 +1665,11 @@ handle_new_dek_ids_in_use(Kind, CurrInUseIDs, Force,
             true -> IdsBeingDroppedSet;
             false -> sets:del_element(?NULL_DEK, IdsBeingDroppedSet)
         end,
-    NewKindDeks = KindDeks#{has_unencrypted_data =>
-                                lists:member(?NULL_DEK, UniqCurrInUseIDs),
-                            deks_being_dropped =>
-                                UpdatedIdsBeingDropped},
+    NewHasUnencryptedData = lists:member(?NULL_DEK, UniqCurrInUseIDs),
+    NewKindDeks = KindDeks#{has_unencrypted_data => NewHasUnencryptedData,
+                            deks_being_dropped => UpdatedIdsBeingDropped},
+    (NewHasUnencryptedData == HasUnencryptedData) orelse
+        (self() ! calculate_dek_info),
     case (UpdateStatus == ok) orelse Force of
         true ->
             NewKindDeks2 = NewKindDeks#{last_deks_gc_datetime =>
@@ -2538,7 +2540,9 @@ normalize_job_res({error, Reason}, State) -> {{error, Reason}, State}.
 update_job_status({Name, Kind}, Res, #state{deks_info = DeksInfo} = State) ->
     case maps:find(Kind, DeksInfo) of
         {ok, #{statuses := S} = D} ->
-            NewDeksInfo = DeksInfo#{Kind => D#{statuses => S#{Name => Res}}},
+            NewS = S#{Name => Res},
+            (NewS == S) orelse (self() ! calculate_dek_info),
+            NewDeksInfo = DeksInfo#{Kind => D#{statuses => NewS}},
             State#state{deks_info = NewDeksInfo};
         error ->
             State
