@@ -1620,58 +1620,10 @@ garbage_collect_deks(Kind, Force, #state{deks_info = DeksInfo} = State) ->
         %% Note: we can't skip this phase even when we don't have deks
         %% (or have only one dek), because we need to update
         %% "has_unencrypted_data" info anyway
-        {ok, #{statuses := Statuses,
-               deks_being_dropped := IdsBeingDroppedSet} = KindDeks} ->
-            UpdateStatus = maps:get(maybe_update_deks, Statuses, undefined),
-            NotifyCounter = fun (L) ->
-                                N = length(lists:delete(?NULL_DEK,
-                                                        lists:uniq(L))),
-                                ns_server_stats:notify_gauge(
-                                  {<<"encr_at_rest_deks_in_use">>,
-                                   [{type, cb_deks:kind2bin(Kind)}]}, N)
-                            end,
-            UpdateIdsBeingDropped =
-                fun (IdsInUse) ->
-                    %% To prevent dropping ?NULL_DEK again and again
-                    %% Otherwise if we don't retire any real deks, we will never
-                    %% remove ?NULL_DEK from deks_being_dropped
-                    case lists:member(?NULL_DEK, IdsInUse) of
-                        true -> IdsBeingDroppedSet;
-                        false -> sets:del_element(?NULL_DEK, IdsBeingDroppedSet)
-                    end
-                end,
+        {ok, _KindDeks} ->
             case call_dek_callback(get_ids_in_use_callback, Kind, []) of
-                {succ, {ok, IdList}} when (UpdateStatus == ok) orelse Force ->
-                    NotifyCounter(IdList),
-                    UniqIdList = lists:uniq(IdList),
-                    NewKindDeks = KindDeks#{has_unencrypted_data =>
-                                            lists:member(?NULL_DEK, UniqIdList),
-                                            last_deks_gc_datetime =>
-                                            calendar:universal_time(),
-                                            deks_being_dropped =>
-                                            UpdateIdsBeingDropped(IdList)},
-                    NewState = State#state{deks_info = DeksInfo#{
-                                                         Kind => NewKindDeks}},
-                    CleanedIdList = lists:delete(?NULL_DEK, UniqIdList),
-                    {ok, retire_unused_deks(Kind, CleanedIdList, NewState)};
                 {succ, {ok, IdList}} ->
-                    NotifyCounter(IdList),
-                    %% UpdateStatus is not ok. This means update of deks
-                    %% finished unsuccesfully, so we don't really know if
-                    %% set_active_key_callback has actually finished.
-                    %% It is hypothetically possible that we receive error,
-                    %% but set_active_key_callback is still working (e.g. in
-                    %% memcached). In this case it is possible that we remove
-                    %% the keys that are being pushed.
-                    NewKindDeks = KindDeks#{has_unencrypted_data =>
-                                            lists:member(?NULL_DEK, IdList),
-                                            deks_being_dropped =>
-                                            UpdateIdsBeingDropped(IdList)},
-                    NewState = State#state{deks_info = DeksInfo#{
-                                                         Kind => NewKindDeks}},
-                    ?log_debug("Skipping ~p deks retiring because update "
-                               "status is ~p", [Kind, UpdateStatus]),
-                    {error, NewState, retry};
+                    handle_new_dek_ids_in_use(Kind, IdList, Force, State);
                 {succ, {error, not_found}} ->
                     %% The entity that uses deks does not exist.
                     %% Ignoring it here because we assume that deks will
@@ -1687,6 +1639,56 @@ garbage_collect_deks(Kind, Force, #state{deks_info = DeksInfo} = State) ->
             end;
         error ->
             {ok, State}
+    end.
+
+-spec handle_new_dek_ids_in_use(cb_deks:dek_kind(),
+                                [cb_deks:dek_id() | ?NULL_DEK],
+                                boolean(), #state{}) ->
+          {ok, #state{}} | {error, #state{}, term()}.
+handle_new_dek_ids_in_use(Kind, CurrInUseIDs, Force,
+                          #state{deks_info = DeksInfo} = State) ->
+    %% Note that we assume Kind exists
+    #{Kind := #{statuses := Statuses,
+                deks_being_dropped := IdsBeingDroppedSet} = KindDeks} =
+                    DeksInfo,
+    UniqCurrInUseIDs = lists:uniq(CurrInUseIDs),
+    N = length(lists:delete(?NULL_DEK, UniqCurrInUseIDs)),
+    ns_server_stats:notify_gauge({<<"encr_at_rest_deks_in_use">>,
+                                  [{type, cb_deks:kind2bin(Kind)}]}, N),
+    UpdateStatus = maps:get(maybe_update_deks, Statuses, undefined),
+    UpdatedIdsBeingDropped =
+        %% To prevent dropping ?NULL_DEK again and again
+        %% Otherwise if we don't retire any real deks, we will never
+        %% remove ?NULL_DEK from deks_being_dropped
+        case lists:member(?NULL_DEK, UniqCurrInUseIDs) of
+            true -> IdsBeingDroppedSet;
+            false -> sets:del_element(?NULL_DEK, IdsBeingDroppedSet)
+        end,
+    NewKindDeks = KindDeks#{has_unencrypted_data =>
+                                lists:member(?NULL_DEK, UniqCurrInUseIDs),
+                            deks_being_dropped =>
+                                UpdatedIdsBeingDropped},
+    case (UpdateStatus == ok) orelse Force of
+        true ->
+            NewKindDeks2 = NewKindDeks#{last_deks_gc_datetime =>
+                                            calendar:universal_time()},
+            NewState = State#state{deks_info = DeksInfo#{
+                                                   Kind => NewKindDeks2}},
+            CleanedIdList = lists:delete(?NULL_DEK, UniqCurrInUseIDs),
+            {ok, retire_unused_deks(Kind, CleanedIdList, NewState)};
+        false ->
+            %% UpdateStatus is not ok. This means update of deks
+            %% finished unsuccesfully, so we don't really know if
+            %% set_active_key_callback has actually finished.
+            %% It is hypothetically possible that we receive error,
+            %% but set_active_key_callback is still working (e.g. in
+            %% memcached). In this case it is possible that we remove
+            %% the keys that are being pushed.
+            NewState = State#state{deks_info = DeksInfo#{
+                                                   Kind => NewKindDeks}},
+            ?log_debug("Skipping ~p deks retiring because update "
+                       "status is ~p", [Kind, UpdateStatus]),
+            {error, NewState, retry}
     end.
 
 -spec retire_unused_deks(cb_deks:dek_kind(), [cb_deks:dek_id()], #state{}) ->
