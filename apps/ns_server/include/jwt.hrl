@@ -22,6 +22,3 @@
         'HS256' | 'HS384' | 'HS512'.
 
 -type jwt_kid_to_jwk() :: #{binary() | undefined => jose_jwk:key()}.
-
--type audit_props() :: [{atom(), binary() | [binary()] | integer()}].
-

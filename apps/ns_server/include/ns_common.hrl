@@ -43,6 +43,8 @@
 -type service() :: kv | index | n1ql | fts | eventing | cbas | backup.
 -type tcp_port() :: 0..65535.
 
+-type auth_audit_props() :: [{atom(), binary() | [binary()] | integer()}].
+
 -define(MULTICALL_DEFAULT_TIMEOUT, 30000).
 
 -define(MIB, 1048576).

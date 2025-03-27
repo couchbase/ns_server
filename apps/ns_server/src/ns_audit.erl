@@ -1121,12 +1121,12 @@ auth_failure(Req0) ->
         end,
 
     RawPath = mochiweb_request:get(raw_path, Req),
-    JwtProps = mochiweb_request:get_meta(audit_props, [], Req),
+    JwtProps = mochiweb_request:get_meta(auth_audit_props, [], Req),
     put(auth_failure, Req, [{raw_url, RawPath}] ++ JwtProps).
 
 access_forbidden(Req) ->
     RawPath = mochiweb_request:get(raw_path, Req),
-    JwtProps = mochiweb_request:get_meta(audit_props, [], Req),
+    JwtProps = mochiweb_request:get_meta(auth_audit_props, [], Req),
     put(access_forbidden, Req, [{raw_url, RawPath}] ++ JwtProps).
 
 rbac_info_retrieved(Req, Type) ->

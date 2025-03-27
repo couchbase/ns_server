@@ -39,6 +39,7 @@
          get_authenticated_identity/1,
          get_user_id/1,
          get_session_id/1,
+         get_on_behalf_extras/1,
          is_UI_req/1,
          is_password_expired/1,
          verify_rest_auth/2,
@@ -49,7 +50,9 @@
          init_auth/1,
          on_behalf_extras/1,
          get_authn_res_from_on_behalf_of/3,
-         is_external_auth_allowed/1]).
+         is_external_auth_allowed/1,
+         get_authn_res_audit_props/1,
+         maybe_set_auth_audit_props/2]).
 
 %% rpc from ns_couchdb node
 -export([do_authenticate/1,
@@ -202,6 +205,13 @@ get_user_id(Req) ->
         undefined -> undefined
     end.
 
+-spec get_on_behalf_extras(mochiweb_request()) -> string().
+get_on_behalf_extras(Req) ->
+    case mochiweb_request:get_meta(authn_res, undefined, Req) of
+        undefined -> "";
+        AuthnRes -> on_behalf_extras(AuthnRes)
+    end.
+
 is_UI_req(Req) ->
     case get_authn_res(Req) of
         undefined -> false;
@@ -306,9 +316,9 @@ init_auth_password_expired(Identity) ->
                    {jwt, string()} |
                    {rbac_user_id(), rbac_password()}) ->
           {ok, #authn_res{}, RespHeaders :: [RespHeader],
-           AuditProps :: audit_props()} |
+           AuthAuditProps :: auth_audit_props()} |
           {error, auth_failure | temporary_failure,
-           AuditProps :: audit_props()} |
+           AuthAuditProps :: auth_audit_props()} |
           {unfinished, RespHeaders :: [RespHeader]}
               when RespHeader :: {string(), string()}.
 authenticate(Auth) ->
@@ -341,9 +351,9 @@ authenticate(Auth) ->
                       {jwt, string()} |
                       {rbac_user_id(), rbac_password()}) ->
           {ok, #authn_res{}, RespHeaders :: [RespHeader],
-           AuditProps :: audit_props()} |
+           AuthAuditProps :: auth_audit_props()} |
           {error, auth_failure | temporary_failure,
-           AuditProps :: audit_props()} |
+           AuthAuditProps :: auth_audit_props()} |
           {unfinished, RespHeaders :: [RespHeader]}
               when RespHeader :: {string(), string()}.
 do_authenticate(error) ->
@@ -406,12 +416,12 @@ do_authenticate({scram_sha, AuthHeader}) ->
 do_authenticate({jwt, Token} = Param) ->
     ?call_on_ns_server_node(
        case jwt_auth:authenticate(Token) of
-           {error, AuditProps} ->
+           {error, AuthAuditProps} ->
                ?count_auth("jwt", "failure"),
-               {error, auth_failure, AuditProps};
-           {ok, AuthnRes, AuditProps} ->
+               {error, auth_failure, AuthAuditProps};
+           {ok, AuthnRes, AuthAuditProps} ->
                ?count_auth("jwt", "succ"),
-               {ok, AuthnRes, [], AuditProps}
+               {ok, AuthnRes, [], AuthAuditProps}
        end,
        [Param]);
 do_authenticate({Username, Password}) ->
@@ -436,8 +446,8 @@ do_authenticate({Username, Password}) ->
     end.
 
 -spec authenticate_external(rbac_user_id(), rbac_password()) ->
-          {error, auth_failure, audit_props()} |
-          {ok, #authn_res{}, [RespHeader], audit_props()} when
+          {error, auth_failure, auth_audit_props()} |
+          {ok, #authn_res{}, [RespHeader], auth_audit_props()} when
       RespHeader :: {string(), string()}.
 authenticate_external(Username, Password) ->
     case ns_node_disco:couchdb_node() == node() of
@@ -490,7 +500,7 @@ uilogin(Req, Params) ->
 
     case AuthnStatus of
         {ok, #authn_res{type = tmp, identity = Identity} = AuthnRes,
-         RespHeaders, _AuditProps} ->
+         RespHeaders, _AuthAuditProps} ->
             AuthnRes2 = AuthnRes#authn_res{type = ui,
                                            session_id = new_session_id(),
                                            identity = Identity},
@@ -571,12 +581,6 @@ can_use_cert_for_auth(Req) ->
             cannot_use
     end.
 
--spec maybe_set_audit_props(mochiweb_request(), audit_props()) -> mochiweb_request().
-maybe_set_audit_props(Req, []) ->
-    Req;
-maybe_set_audit_props(Req, AuditProps) ->
-    mochiweb_request:set_meta(audit_props, AuditProps, Req).
-
 -spec verify_rest_auth(mochiweb_request(),
                        rbac_permission() | no_check | local) ->
           {auth_failure | forbidden | allowed
@@ -584,9 +588,9 @@ maybe_set_audit_props(Req, AuditProps) ->
 verify_rest_auth(Req, Permission) ->
     Auth = extract_auth(Req),
     case authenticate(Auth) of
-        {ok, #authn_res{} = AuthnRes, RespHeaders, AuditProps} ->
+        {ok, #authn_res{} = AuthnRes, RespHeaders, AuthAuditProps} ->
             Req1 = append_resp_headers(RespHeaders, Req),
-            Req2 = maybe_set_audit_props(Req1, AuditProps),
+            Req2 = maybe_set_auth_audit_props(Req1, AuthAuditProps),
 
             case apply_on_behalf_of_authn_res(AuthnRes, Req2) of
                 error ->
@@ -613,12 +617,12 @@ verify_rest_auth(Req, Permission) ->
                             {auth_failure, Req3}
                     end
             end;
-        {error, auth_failure, AuditProps} ->
+        {error, auth_failure, AuthAuditProps} ->
             Req2 = maybe_store_rejected_user(get_rejected_user(Auth), Req),
-            Req3 = maybe_set_audit_props(Req2, AuditProps),
+            Req3 = maybe_set_auth_audit_props(Req2, AuthAuditProps),
             {auth_failure, Req3};
-        {error, temporary_failure, AuditProps} ->
-            Req2 = maybe_set_audit_props(Req, AuditProps),
+        {error, temporary_failure, AuthAuditProps} ->
+            Req2 = maybe_set_auth_audit_props(Req, AuthAuditProps),
             {temporary_failure, Req2};
         {unfinished, RespHeaders} ->
             %% When mochiweb decides if it needs to close the connection
@@ -905,3 +909,38 @@ check_permission(#authn_res{identity = Identity} = AuthnRes,
                     end
             end
     end.
+
+-spec get_authn_res_audit_props(#authn_res{}) -> auth_audit_props().
+get_authn_res_audit_props(#authn_res{extra_groups = ExtraGroups,
+                                     extra_roles = ExtraRoles,
+                                     expiration_datetime_utc = Expiration}) ->
+    Props = [],
+    Props1 = case ExtraGroups of
+                 [] -> Props;
+                 Groups ->
+                     GroupsStr = lists:flatten(misc:intersperse(Groups, ",")),
+                     [{mapped_groups, list_to_binary(GroupsStr)} | Props]
+             end,
+    Props2 = case ExtraRoles of
+                 [] -> Props1;
+                 Roles ->
+                     RolesStr = lists:flatten(
+                                  misc:intersperse(
+                                    [menelaus_web_rbac:role_to_string(R) ||
+                                        R <- Roles], ",")),
+                     [{mapped_roles, list_to_binary(RolesStr)} | Props1]
+             end,
+    case Expiration of
+        undefined -> Props2;
+        Exp ->
+            ExpiryWithLeeway = misc:iso_8601_fmt_datetime(Exp, "-", ":"),
+            [{expiry_with_leeway, list_to_binary(ExpiryWithLeeway)} | Props2]
+    end.
+
+-spec maybe_set_auth_audit_props(mochiweb_request(),
+                                 auth_audit_props()) ->
+          mochiweb_request().
+maybe_set_auth_audit_props(Req, []) ->
+    Req;
+maybe_set_auth_audit_props(Req, AuthAuditProps) ->
+    mochiweb_request:set_meta(auth_audit_props, AuthAuditProps, Req).

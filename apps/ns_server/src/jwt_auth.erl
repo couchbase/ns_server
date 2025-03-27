@@ -61,7 +61,7 @@
 %%%===================================================================
 
 -spec authenticate(Token :: string()) ->
-          {ok, #authn_res{}, audit_props()} | {error, audit_props()}.
+          {ok, #authn_res{}, auth_audit_props()} | {error, auth_audit_props()}.
 authenticate(Token) ->
     Persisted =
         case chronicle_kv:get(kv, jwt_settings) of
@@ -243,40 +243,18 @@ audit_map_to_proplist(AuditMap) ->
                          [{Key, Converted} | Acc]
                  end, [], AuditMap)).
 
--spec audit_success(Claims :: map(), AuthnRes :: #authn_res{}) -> audit_props().
+-spec audit_success(Claims :: map(), AuthnRes :: #authn_res{}) ->
+          auth_audit_props().
 audit_success(Claims, AuthnRes) ->
-    AuditMap = Claims,
-    AuditMap1 =
-        case AuthnRes#authn_res.extra_groups of
-            [] -> AuditMap;
-            Groups ->
-                GroupsStr = lists:flatten(misc:intersperse(Groups, ",")),
-                AuditMap#{mapped_groups => GroupsStr}
-        end,
-    AuditMap2 =
-        case AuthnRes#authn_res.extra_roles of
-            [] -> AuditMap1;
-            Roles ->
-                RolesStr = lists:flatten(
-                             misc:intersperse(
-                               [menelaus_web_rbac:role_to_string(R) ||
-                                   R <- Roles], ",")),
-                AuditMap1#{mapped_roles => RolesStr}
-        end,
+    audit_map_to_proplist(Claims#{type => <<"jwt">>}) ++
+        menelaus_auth:get_authn_res_audit_props(AuthnRes).
 
-    Expiration = AuthnRes#authn_res.expiration_datetime_utc,
-    ExpiryWithLeeway = misc:iso_8601_fmt_datetime(Expiration, "-", ":"),
-    AuditMap3 = AuditMap2#{expiry_with_leeway => ExpiryWithLeeway,
-                           type => <<"jwt">>},
-
-    audit_map_to_proplist(AuditMap3).
-
--spec audit_failure(map(), binary()) -> audit_props().
+-spec audit_failure(map(), binary()) -> auth_audit_props().
 audit_failure(Claims, Reason) ->
     audit_map_to_proplist(Claims#{reason => Reason, type => <<"jwt">>}).
 
 -spec validate_token(Token :: string(), Issuers :: map()) ->
-          {ok, #authn_res{}, audit_props()} | {error, audit_props()}.
+          {ok, #authn_res{}, auth_audit_props()} | {error, auth_audit_props()}.
 validate_token(Token, Issuers) ->
     TokenBin = list_to_binary(Token),
     case extract_claims(TokenBin, Issuers) of
