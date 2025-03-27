@@ -528,6 +528,9 @@ handle_cbauth_post(Req) ->
         true ->
             {User, Domain} = menelaus_auth:get_identity(Req),
             UUID = menelaus_users:get_user_uuid({User, Domain}),
+            RawExtras =
+                erlang:list_to_binary(menelaus_auth:get_on_behalf_extras(Req)),
+
             %% Services don't know anything about localtoken
             %% Make it look like a regular admin for them
             DomainForServices = case Domain == local_token of
@@ -536,10 +539,12 @@ handle_cbauth_post(Req) ->
                                 end,
             case menelaus_auth:is_password_expired(Req) of
                 false ->
-                    menelaus_util:reply_json(
-                      Req, {[{user, erlang:list_to_binary(User)},
-                             {domain, DomainForServices}] ++
-                                [{uuid, UUID} || UUID =/= undefined]});
+                    Response = {[{user, erlang:list_to_binary(User)},
+                                 {domain, DomainForServices}] ++
+                                    [{extras, RawExtras} ||
+                                        RawExtras =/= ""] ++
+                                    [{uuid, UUID} || UUID =/= undefined]},
+                    menelaus_util:reply_json(Req, Response);
                 true ->
                     %% We just provide a generic authentication error, for
                     %% consistency of service behaviour with memcached

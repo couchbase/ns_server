@@ -52,7 +52,8 @@
          get_authn_res_from_on_behalf_of/3,
          is_external_auth_allowed/1,
          get_authn_res_audit_props/1,
-         maybe_set_auth_audit_props/2]).
+         maybe_set_auth_audit_props/2,
+         check_expiration/1]).
 
 %% rpc from ns_couchdb node
 -export([do_authenticate/1,
@@ -944,3 +945,11 @@ maybe_set_auth_audit_props(Req, []) ->
     Req;
 maybe_set_auth_audit_props(Req, AuthAuditProps) ->
     mochiweb_request:set_meta(auth_audit_props, AuthAuditProps, Req).
+
+-spec check_expiration(#authn_res{}) -> ok | {error, expired}.
+check_expiration(#authn_res{expiration_datetime_utc = Expiration}) ->
+    Now = calendar:universal_time(),
+    case Now > Expiration of
+        true -> {error, expired};
+        false -> ok
+    end.

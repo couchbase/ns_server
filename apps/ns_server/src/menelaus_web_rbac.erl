@@ -1643,8 +1643,15 @@ handle_get_user_buckets_for_cbauth(Req) ->
     Extras = proplists:get_value("extras", Params, undefined),
     AuthnRes = menelaus_auth:get_authn_res_from_on_behalf_of(User, Domain,
                                                              Extras),
-    Buckets = [list_to_binary(B) || B <- get_accessible_buckets(AuthnRes)],
-    menelaus_util:reply_json(Req, Buckets, 200).
+
+    case menelaus_auth:check_expiration(AuthnRes) of
+        ok ->
+            Buckets = [list_to_binary(B) ||
+                          B <- get_accessible_buckets(AuthnRes)],
+            menelaus_util:reply_json(Req, Buckets, 200);
+        {error, expired} ->
+            handle_access_forbidden(Req, AuthnRes, Params)
+    end.
 
 handle_get_user_uuid_for_cbauth(Req) ->
     Params = mochiweb_request:parse_qs(Req),
@@ -1669,12 +1676,17 @@ handle_check_permission_for_cbauth(Req) ->
         true ->
             menelaus_util:reply_text(Req, "", 200);
         false ->
-            maybe_audit_access_forbidden(Req, Params),
-            ns_server_stats:notify_counter(<<"rest_request_access_forbidden">>),
-            %% This should have been 403 as the caller is authenticated but
-            %% doesn't have necessary permissions.
-            menelaus_util:reply_text(Req, "", 401)
+            handle_access_forbidden(Req, AuthnRes, Params)
     end.
+
+handle_access_forbidden(Req, AuthnRes, Params) ->
+    AuditProps = menelaus_auth:get_authn_res_audit_props(AuthnRes),
+    Req1 = menelaus_auth:maybe_set_auth_audit_props(Req, AuditProps),
+    maybe_audit_access_forbidden(Req1, Params),
+    ns_server_stats:notify_counter(<<"rest_request_access_forbidden">>),
+    %% This should have been 403 as the caller is authenticated but
+    %% doesn't have necessary permissions.
+    menelaus_util:reply_text(Req, "", 401).
 
 
 maybe_audit_access_forbidden(Req, Params) ->

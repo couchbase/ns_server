@@ -965,9 +965,17 @@ operation_allowed(Operation, AllowedOperations) ->
                  #authn_res{} | [rbac_compiled_role()]) -> boolean().
 is_allowed(_Permission, #authn_res{password_expired = true}) ->
     false;
-is_allowed(Permission, #authn_res{} = AuthnRes) ->
+is_allowed(Permission,
+           #authn_res{expiration_datetime_utc = undefined} = AuthnRes) ->
     Roles = get_compiled_roles(AuthnRes),
     is_allowed(Permission, Roles);
+is_allowed(Permission,
+           #authn_res{expiration_datetime_utc = _Expiration} = AuthnRes) ->
+    case menelaus_auth:check_expiration(AuthnRes) of
+        {error, expired} -> false;
+        ok -> is_allowed(Permission, AuthnRes#authn_res{
+                                       expiration_datetime_utc = undefined})
+    end;
 is_allowed({Object, Operation}, Roles) ->
     lists:any(fun (Role) ->
                       Operations = get_allowed_operations(Object, Role),
