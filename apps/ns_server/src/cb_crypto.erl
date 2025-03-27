@@ -145,7 +145,8 @@ atomic_write_file(Path, Bytes, DekSnapshot, Opts) when is_binary(Bytes) ->
 
 -spec reencrypt_file(string(), string(), #dek_snapshot{},
                      #{compression => compression_cfg(),
-                       ignore_incomplete_last_chunk => boolean()}) ->
+                       ignore_incomplete_last_chunk => boolean(),
+                       allow_decrypt_on_disabled_encr => boolean()}) ->
           ok | {error, term()}.
 %% Note1: This function does not support reencryption with different chunk size,
 %% because it is not really needed at this point.
@@ -155,12 +156,17 @@ atomic_write_file(Path, Bytes, DekSnapshot, Opts) when is_binary(Bytes) ->
 %% Note3: If the file is encrypted with historic key, current active key will be
 %% used for reencryption.
 %% Note4: If DS does not have active key, the file will be reencrypted with the
-%% same key as before.
-reencrypt_file(FromPath, ToPath, DS, ToOpts) ->
+%% same key as before, if allow_decrypt_on_disabled_encr option is not true.
+%% Note5: If allow_decrypt_on_disabled_encr option is true and DS has no active
+%% key, the file will be decrypted
+reencrypt_file(FromPath, ToPath, DS, Opts) ->
+    AllowDecr = maps:get(allow_decrypt_on_disabled_encr, Opts, false),
+    EncrEnabled = get_dek_id(DS) =/= undefined,
     DSRes =
-        case get_dek_id(DS) of
-            undefined -> %% Encryption is disabled, but we should continue using
-                         %% the same key for reencryption.
+        case {EncrEnabled, AllowDecr} of
+            %% Encryption is disabled and decryption is not allowed, so we
+            %% should continue using the same key reencryption.
+            {false, false} ->
                 case get_file_dek_ids(FromPath) of
                     {ok, [undefined]} -> %% File is not encrypted
                         {error, unknown_magic};
@@ -175,7 +181,7 @@ reencrypt_file(FromPath, ToPath, DS, ToOpts) ->
                                 {error, E}
                         end
                 end;
-            _ -> %% There is an active key, we can use it for reencryption
+            _ ->
                 {ok, DS}
         end,
     case DSRes of
@@ -183,7 +189,7 @@ reencrypt_file(FromPath, ToPath, DS, ToOpts) ->
             misc:atomic_write_file(
               ToPath,
               fun (IO) ->
-                  reencrypt_file_to_iodevice(IO, FromPath, DSToUse, ToOpts)
+                  reencrypt_file_to_iodevice(IO, FromPath, DSToUse, Opts)
               end);
         {error, Reason} ->
             {error, Reason}
@@ -1204,6 +1210,25 @@ validate_encr_file_test() ->
               Data3/binary>>,
         ok = misc:atomic_write_file(Path, InvalidFileData),
         ?assertNot(validate_encr_file(Path))
+    after
+        file:delete(Path)
+    end.
+
+reencrypt_on_disabled_enrc_test() ->
+    Path = path_config:tempfile("cb_crypto_reencrypt_on_disabled_test", ".tmp"),
+    Data = rand:bytes(1024),
+    DS = generate_test_deks(),
+    {_, AllDeks} = get_all_deks(DS),
+    DSEmptyActive = create_deks_snapshot(undefined, AllDeks, undefined),
+    try
+        ok = atomic_write_file(Path, Data, DS, #{}),
+        ok = reencrypt_file(Path, Path, DSEmptyActive,#{}),
+        ?assert(is_file_encrypted(Path)),
+        ok = reencrypt_file(Path, Path, DSEmptyActive,
+                            #{allow_decrypt_on_disabled_encr => true}),
+        ?assertNot(is_file_encrypted(Path)),
+        {ok, Bin} = misc:raw_read_file(Path),
+        ?assert(Bin =:= Data)
     after
         file:delete(Path)
     end.
