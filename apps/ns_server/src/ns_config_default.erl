@@ -53,14 +53,6 @@ detect_enterprise_version(NsServerVersion) ->
             true
     end.
 
-detect_columnar_version(NsServerVersion) ->
-    case re:run(NsServerVersion, <<"-columnar$">>) of
-        nomatch ->
-            false;
-        _ ->
-            true
-    end.
-
 is_forced(EnvVar) ->
     case os:getenv(EnvVar) of
         false ->
@@ -79,16 +71,6 @@ init_is_enterprise() ->
             true;
         _ ->
             is_forced("FORCE_ENTERPRISE")
-    end.
-
-init_is_columnar() ->
-    MaybeNsServerVersion =
-        [V || {ns_server, _, V} <- application:loaded_applications()],
-    case lists:any(fun (V) -> detect_columnar_version(V) end, MaybeNsServerVersion) of
-        true ->
-            true;
-        _ ->
-            is_forced("FORCE_COLUMNAR")
     end.
 
 init_saslauthd_enabled() ->
@@ -153,7 +135,7 @@ default(Vsn) ->
     ok = misc:mkdir_p(BreakpadMinidumpDir),
 
     IsEnterprise = init_is_enterprise(),
-    IsColumnar = init_is_columnar(),
+    IsColumnar = config_profile:search({cbas, columnar}, false),
     SASLAuthdEnabled = init_saslauthd_enabled(),
     JeMallocConfDefault = je_malloc_conf_default(),
 
@@ -626,9 +608,4 @@ detect_enterprise_version_test() ->
     true = detect_enterprise_version(<<"1.8.0r-9-ga083a1e-enterprise">>),
     true = not detect_enterprise_version(<<"1.8.0r-9-ga083a1e-comm">>),
     true = detect_enterprise_version(<<"1.8.0r-9-ga083a1e-columnar">>).
-
-detect_columnar_version_test() ->
-    false = detect_columnar_version(<<"1.8.0r-9-ga083a1e-enterprise">>),
-    true = not detect_columnar_version(<<"1.8.0r-9-ga083a1e-comm">>),
-    true = detect_columnar_version(<<"1.8.0r-9-ga083a1e-columnar">>).
 -endif.
