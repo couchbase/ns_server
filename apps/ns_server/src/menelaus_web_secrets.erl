@@ -722,6 +722,34 @@ format_error(active_key) ->
     "Can't delete active key";
 format_error(not_supported) ->
     "Operation not supported";
+format_error(timeout) ->
+    "Operation timed out";
+format_error(no_connection_to_node) ->
+    "No connection to node";
+format_error({test_failed_for_some_nodes, Errors}) ->
+    %% Sorting just to show more relevant errors first
+    %% no_connection_to_node, timeout, exception are not relevant to
+    %% encryption, so we move them to the end
+    SortedErrors = lists:sort(fun ({_, no_connection_to_node}, {_, _}) -> false;
+                                  ({_, _}, {_, no_connection_to_node}) -> true;
+                                  ({_, timeout}, {_, _}) -> false;
+                                  ({_, _}, {_, timeout}) -> true;
+                                  ({_, exception}, {_, _}) -> false;
+                                  ({_, _}, {_, exception}) -> true;
+                                  ({_, R1}, {_, R2}) -> R1 =< R2
+                               end, Errors),
+    [{_, Reason} | _] = SortedErrors,
+    BuildHostname = menelaus_web_node:build_node_hostname(
+                      ns_config:latest(), _, misc:localhost()),
+    "Encryption key test failed on " ++
+    lists:join(", ", [BuildHostname(Node) || {Node, _} <- Errors]) ++
+    case length(lists:usort([R || {_, R} <- SortedErrors])) > 1 of
+        true ->
+            ". First error: " ++ format_error(Reason);
+        false ->
+            ": " ++ format_error(Reason)
+    end;
+
 format_error(Reason) ->
     lists:flatten(io_lib:format("~p", [Reason])).
 

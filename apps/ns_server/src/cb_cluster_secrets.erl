@@ -35,6 +35,7 @@
 -define(DEK_INFO_UPDATE_INVERVAL_S, ?get_param(dek_info_update_interval, 600)).
 
 -define(MIN_TIMER_INTERVAL, ?get_param(min_timer_interval, 30000)).
+-define(TEST_SECRET_TIMEOUT, ?get_param(secret_test_timeout, 30000)).
 
 -ifndef(TEST).
 -define(MAX_RECHECK_ROTATION_INTERVAL, ?get_param(rotation_recheck_interval,
@@ -58,6 +59,7 @@
          get_active_key_id/2,
          rotate/1,
          test/1,
+         test_secret_props/1,
          get_secret_by_kek_id_map/1,
          ensure_can_encrypt_dek_kind/3,
          is_allowed_usage_for_secret/3,
@@ -503,14 +505,50 @@ test_internal(Props) ->
     PropsWTime = Props#{creation_time => erlang:universaltime()},
     PropsWId = PropsWTime#{id => 999999999},
     Prepared = prepare_new_secret(PropsWId),
-    case Prepared of
-        #{type := ?AWSKMS_KEY_TYPE} ->
-            test_aws_kek(Prepared);
-        #{type := ?KMIP_KEY_TYPE} ->
-            test_kmip_kek(Prepared);
-        #{} ->
-            {error, not_supported}
+
+    AllNodes = ns_node_disco:nodes_wanted(),
+    NodesToTest =
+        lists:filter(fun (N) ->
+                         NodeInfo = ns_doctor:get_node(N),
+                         case node_supports_encryption_at_rest(NodeInfo) of
+                             no_info -> true;
+                             true -> true;
+                             false -> false
+                         end
+                     end, AllNodes),
+    Res = erpc:multicall(NodesToTest, ?MODULE, test_secret_props, [Prepared],
+                         ?TEST_SECRET_TIMEOUT),
+    Errors = lists:filtermap(
+               fun ({_Node, {ok, ok}}) ->
+                       false;
+                   ({Node, {ok, {error, R}}}) ->
+                       {true, {Node, R}};
+                   ({Node, {error, {erpc, timeout}}}) ->
+                       {true, {Node, timeout}};
+                   ({Node, {error, {erpc, noconnection}}}) ->
+                       {true, {Node, no_connection_to_node}};
+                   ({Node, {Class, ExceptionReason}}) ->
+                       ?log_error("Failed to test secret on ~p: ~p:~p",
+                                  [Node, Class, ExceptionReason]),
+                       {true, {Node, exception}}
+               end, lists:zip(NodesToTest, Res)),
+
+    case Errors of
+        [] ->
+            ok;
+        _ ->
+            {error, {test_failed_for_some_nodes, Errors}}
     end.
+
+%% This function can be called by other nodes. Those nodes can be older than
+%% this node so this function should be backward compatible.
+-spec test_secret_props(secret_props()) -> ok | {error, _}.
+test_secret_props(#{type := ?AWSKMS_KEY_TYPE} = Props) ->
+    test_aws_kek(Props);
+test_secret_props(#{type := ?KMIP_KEY_TYPE} = Props) ->
+    test_kmip_kek(Props);
+test_secret_props(#{}) ->
+    {error, not_supported}.
 
 -spec get_active_key_id(secret_id()) -> {ok, key_id()} |
                                         {error, not_found | not_supported}.
@@ -1352,8 +1390,14 @@ test_aws_kek(#{data := #{stored_ids := [StoredId | _]} = Data} = Secret) ->
 ensure_aws_kek_on_disk(#{id := SecretId,
                          data := #{stored_ids := StoredIds} = Data},
                        TestOnly) ->
-    ?log_debug("Ensure all keys are on disk for secret ~p "
-               "(number of keys to check: ~b)", [SecretId, length(StoredIds)]),
+    case TestOnly of
+        true ->
+            ?log_debug("Testing AWS KEK: ~p", [StoredIds]);
+        false ->
+            ?log_debug("Ensure all keys are on disk for secret ~p "
+                       "(number of keys to check: ~b)",
+                       [SecretId, length(StoredIds)])
+    end,
     Params = maps:with([key_arn, region, profile, config_file,
                         credentials_file, use_imds], Data),
     Res = lists:map(
@@ -1379,9 +1423,14 @@ ensure_kmip_kek_on_disk(#{id := SecretId,
                                     hist_keys := OtherKeys,
                                     key_passphrase := Pass} = Data} = Secret,
                         TestOnly) ->
-    ?log_debug("Ensure all keys are on disk for secret ~p "
-               "(number of keys to check: ~b)",
-               [SecretId, length(OtherKeys) + 1]),
+    case TestOnly of
+        true ->
+            ?log_debug("Testing KMIP KEK: ~p", [ActiveKey]);
+        false ->
+            ?log_debug("Ensure all keys are on disk for secret ~p "
+                       "(number of keys to check: ~b)",
+                       [SecretId, length(OtherKeys) + 1])
+    end,
     {DecryptRes, KekId} =
         case Pass of
             #{type := sensitive, data := D, encrypted_by := undefined} ->
