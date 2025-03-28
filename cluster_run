@@ -166,6 +166,11 @@ def argument_parser():
         nargs="*",
         help=argparse.SUPPRESS,
     )
+    arg_parser.add_argument(
+        '--code-watchdog', '-w',
+        action='store_true',
+        default=False,
+        help="Reload ns_server beam files automatically when they are modified")
 
     args = arg_parser.parse_args()
 
@@ -189,8 +194,8 @@ def argument_parser():
               "run_serverless": args.serverless,
               "run_provisioned": args.provisioned,
               "num_vbuckets": args.num_vbuckets,
-              "args": args.additional_args
-              }
+              "args": args.additional_args,
+              "code_watchdog": args.code_watchdog}
 
     # Removes the keys when value is None, therefore start_cluster uses
     # the default values.
@@ -204,6 +209,8 @@ def main():
     params = argument_parser()
     nodes = []
     terminal_attrs = None
+    code_watchdog = params.get("code_watchdog", False)
+    del params["code_watchdog"]
 
     def kill_nodes():
         cluster_run_lib.kill_nodes(nodes, terminal_attrs)
@@ -218,9 +225,17 @@ def main():
 
     nodes = cluster_run_lib.start_cluster(**params)
 
-    for node in nodes:
-        node.wait()
+    if code_watchdog:
+        observer = cluster_run_lib.start_code_watchdog(
+                       params.get("num_nodes", 1),
+                       params.get("start_index", 0))
 
+    try:
+        for node in nodes:
+            node.wait()
+    finally:
+        if code_watchdog:
+            cluster_run_lib.stop_code_watchdog(observer)
 
 if __name__ == '__main__':
     main()

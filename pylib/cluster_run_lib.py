@@ -513,6 +513,69 @@ def start_cluster(num_nodes=1,
     return processes
 
 
+def start_code_watchdog(num_nodes, start_index):
+    # This is a workaround to avoid importing watchdog if it's not installed.
+    # Otherwise, we will need to install watchdog on all test machines, where
+    # it will never be actually used.
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler
+
+    class BeamFileHandler(FileSystemEventHandler):
+        def __init__(self, num_nodes, start_index):
+            self.num_nodes = num_nodes
+            self.start_index = start_index
+
+        def on_modified(self, event):
+            self.handle_file_change(event.src_path)
+
+        def on_created(self, event):
+            self.handle_file_change(event.src_path)
+
+        def on_moved(self, event):
+            self.handle_file_change(event.dest_path)
+
+        def handle_file_change(self, file_path):
+            if file_path.endswith('.beam'):
+                module_name = os.path.splitext(os.path.basename(file_path))[0]
+                self.reload_module(module_name)
+
+        def reload_module(self, module_name):
+            for i in range(self.num_nodes):
+                port = base_api_port + self.start_index + i
+                node = f"http://127.0.0.1:{port}"
+                url = f"{node}/diag/eval"
+
+                # Erlang code to reload the module
+                erlang_code = f"{{module, _}} = c:l({module_name})."
+
+                try:
+                    response = requests.post(url,
+                                            auth=(default_username, default_pass),
+                                            data=erlang_code)
+                    if response.status_code == 200:
+                        print(f"*** reloaded {module_name} on {node}")
+                    else:
+                        print(f"*** reload failed for {module_name} on {node}:" \
+                            f" {response.text}")
+                except Exception as e:
+                    print(f"*** reload failed for {module_name} on {node}: {e}")
+
+    code_path = os.path.join(ns_server_dir, '_build', 'default', 'lib')
+    print(f"*** Starting code watchdog for {code_path}")
+    # Create a watchdog observer
+    observer = Observer()
+    handler = BeamFileHandler(num_nodes, start_index)
+    observer.schedule(handler, code_path, recursive=True)
+    observer.start()
+    return observer
+
+
+def stop_code_watchdog(observer):
+    observer.stop()
+    observer.join()
+    print("*** Code watchdog stopped")
+
+
 def wait_nodes_up(num_nodes=1, start_index=0, master_passwords=None,
                   root_dir=None, timeout_s=node_start_timeout_s,
                   node_urls=None, verbose=True):
