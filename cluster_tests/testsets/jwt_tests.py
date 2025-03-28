@@ -97,6 +97,7 @@ class JWTTests(testlib.BaseTestSet):
         super().__init__(cluster)
         # Use single endpoint for all JWT operations
         self.endpoint = "/settings/jwt"
+        self.external_users = []
 
     @staticmethod
     def requirements():
@@ -125,6 +126,20 @@ class JWTTests(testlib.BaseTestSet):
         testlib.delete_config_key(self.cluster, "oauthbearer_enabled")
         testlib.delete_succ(self.cluster, self.endpoint)
         testlib.get_fail(self.cluster, self.endpoint, expected_code=404)
+
+        # Clean up all test users
+        for username in self.external_users:
+            testlib.delete_succ(
+                self.cluster, f"/settings/rbac/users/external/{username}"
+            )
+
+        # Clean up all test groups
+        test_groups = [
+            "jwt_bucket_admins",
+            "jwt_data_admins",
+        ]
+        for group in test_groups:
+            testlib.delete_succ(self.cluster, f"/settings/rbac/groups/{group}")
 
     def create_test_groups(self):
         """Create RBAC groups used by tests"""
@@ -1295,3 +1310,189 @@ class JWTTests(testlib.BaseTestSet):
                 auth=None,
                 expected_code=401
             )
+
+    def external_user_test(self):
+        """Test authentication with external users having different permissions.
+
+        Tests:
+        1. External user with group only (jwt_data_admins)
+        2. External user with role only (security_admin)
+        3. External user with both group and role
+        """
+        self.auth_setup()
+        self.create_test_groups()
+
+        users = [
+            {
+                "name": "group_user",
+                "data": {"groups": ["jwt_data_admins"]},
+            },
+            {
+                "name": "role_user",
+                "data": {"roles": "security_admin"},
+            },
+            {
+                "name": "combined_user",
+                "data": {
+                    "roles": "security_admin",
+                    "groups": ["jwt_data_admins"],
+                },
+            },
+        ]
+
+        for user in users:
+            testlib.put_succ(
+                self.cluster,
+                f"/settings/rbac/users/external/{user['name']}",
+                data=user["data"],
+            )
+            self.external_users.append(user["name"])
+
+        self.configure_jwt({"jitProvisioning": False})
+
+        test_cases = [
+            {
+                "username": "group_user",
+                "expected_bucket_read": True,
+                "expected_jwt_read": False,
+            },
+            {
+                "username": "role_user",
+                "expected_bucket_read": False,
+                "expected_jwt_read": True,
+            },
+            {
+                "username": "combined_user",
+                "expected_bucket_read": True,
+                "expected_jwt_read": True,
+            },
+        ]
+
+        for tc in test_cases:
+            claims = self.base_claims.copy()
+            claims["sub"] = tc["username"]
+            token = self.create_token(claims)
+            headers = {"Authorization": f"Bearer {token}"}
+
+            # Test bucket data read access (requires data_reader role)
+            if tc["expected_bucket_read"]:
+                r = testlib.get_succ(
+                    self.cluster,
+                    f"/pools/default/buckets/{self.test_bucket}/docs",
+                    auth=None,
+                    headers=headers,
+                )
+            else:
+                r = testlib.get_fail(
+                    self.cluster,
+                    f"/pools/default/buckets/{self.test_bucket}/docs",
+                    auth=None,
+                    headers=headers,
+                    expected_code=403,
+                )
+
+            # Test JWT settings read access (requires security_admin role)
+            if tc["expected_jwt_read"]:
+                r = testlib.get_succ(
+                    self.cluster,
+                    self.endpoint,
+                    auth=None,
+                    headers=headers,
+                )
+            else:
+                r = testlib.get_fail(
+                    self.cluster,
+                    self.endpoint,
+                    auth=None,
+                    headers=headers,
+                    expected_code=403,
+                )
+
+        # Now test with JIT provisioning enabled
+        self.configure_jwt({"jitProvisioning": True})
+
+        jit_test_cases = [
+            {
+                "username": "jit_group_user",
+                "groups": ["jwt_data_admins"],
+                "expected_bucket_read": True,
+                "expected_jwt_read": False,
+            },
+            {
+                "username": "jit_role_user",
+                "roles": "security_admin",
+                "expected_bucket_read": False,
+                "expected_jwt_read": True,
+            },
+            {
+                "username": "jit_combined_user",
+                "groups": ["jwt_data_admins"],
+                "roles": "security_admin",
+                "expected_bucket_read": True,
+                "expected_jwt_read": True,
+            },
+            {
+                "username": "jit_missing_perms_user",
+                "groups": ["jwt_data_admins"],
+                "roles": "data_writer[*]",  # Different role from group
+                "expected_bucket_read": True,  # Still has read from group
+                "expected_jwt_read": False,
+            },
+        ]
+
+        for tc in jit_test_cases:
+            claims = self.base_claims.copy()
+            claims["sub"] = tc["username"]
+            if "groups" in tc:
+                claims["groups"] = tc["groups"]
+            if "roles" in tc:
+                claims["roles"] = tc["roles"]
+            token = self.create_token(claims)
+            headers = {"Authorization": f"Bearer {token}"}
+
+            # Test bucket data read access (requires data_reader role)
+            if tc["expected_bucket_read"]:
+                r = testlib.get_succ(
+                    self.cluster,
+                    f"/pools/default/buckets/{self.test_bucket}/docs",
+                    auth=None,
+                    headers=headers,
+                )
+            else:
+                r = testlib.get_fail(
+                    self.cluster,
+                    f"/pools/default/buckets/{self.test_bucket}/docs",
+                    auth=None,
+                    headers=headers,
+                    expected_code=403,
+                )
+
+            # Test JWT settings read access
+            if tc["expected_jwt_read"]:
+                r = testlib.get_succ(
+                    self.cluster,
+                    self.endpoint,
+                    auth=None,
+                    headers=headers,
+                )
+            else:
+                r = testlib.get_fail(
+                    self.cluster,
+                    self.endpoint,
+                    auth=None,
+                    headers=headers,
+                    expected_code=403,
+                )
+
+        # Test with invalid token (should fail)
+        invalid_claims = self.base_claims.copy()
+        invalid_claims["exp"] = int(time.time()) - 3600  # Expired token
+        invalid_token = self.create_token(invalid_claims)
+        headers = {"Authorization": f"Bearer {invalid_token}"}
+        r = testlib.get_fail(
+            self.cluster,
+            f"/pools/default/buckets/{self.test_bucket}/docs",
+            auth=None,
+            headers=headers,
+            expected_code=401,
+        )
