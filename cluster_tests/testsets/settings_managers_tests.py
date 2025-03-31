@@ -53,7 +53,8 @@ INDEX_SETTINGS = {
     "stableSnapshotInterval": create_inner(5000),
     "maxRollbackPoints": create_inner(2),
     "logLevel": create_inner("info"),
-    "storageMode": create_inner("plasma")
+    "storageMode": create_inner("plasma"),
+    "deferBuild": create_inner(False)
 }
 
 def shard_affinty_blob(true_false):

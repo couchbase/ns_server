@@ -31,7 +31,8 @@
          is_enabled/0,
          known_settings/0,
          on_update/2,
-         config_upgrade_to_76/1]).
+         config_upgrade_to_76/1,
+         config_upgrade_to_morpheus/1]).
 
 -import(json_settings_manager,
         [id_lens/1, allow_missing_lens/1]).
@@ -174,6 +175,13 @@ general_settings_lens_props(ClusterVersion) ->
         false ->
             []
     end ++
+    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_MORPHEUS) of
+        true ->
+            [{deferBuild,
+              id_lens(<<"indexer.settings.defer_build">>)}];
+        false ->
+            []
+    end ++
         [{indexerThreads,
           indexer_threads_lens()},
          {memorySnapshotInterval,
@@ -212,6 +220,12 @@ general_settings_defaults(ClusterVersion) ->
              {blobStoragePrefix, <<"">>},
              {blobStorageRegion, <<"">>},
              {enableShardAffinity, default_shard_affinity()}];
+        false ->
+            []
+    end ++
+    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_MORPHEUS) of
+        true ->
+            [{deferBuild, false}];
         false ->
             []
     end ++
@@ -315,6 +329,9 @@ config_upgrade_to_76(Config) ->
     config_upgrade_settings(Config, ?MIN_SUPPORTED_VERSION,
                             ?VERSION_76).
 
+config_upgrade_to_morpheus(Config) ->
+    config_upgrade_settings(Config, ?VERSION_76, ?VERSION_MORPHEUS).
+
 -spec(default_shard_affinity() -> boolean()).
 default_shard_affinity() ->
     not config_profile:get_bool({indexer, disable_shard_affinity}).
@@ -384,7 +401,7 @@ config_upgrade_settings(Config, OldVersion, NewVersion) ->
         io_lib:format("{\"indexer.default.enable_shard_affinity\": ~p}",
                       [__TRUE_FALSE])).
 default_test() ->
-    Versions = [?MIN_SUPPORTED_VERSION, ?VERSION_76],
+    Versions = [?MIN_SUPPORTED_VERSION, ?VERSION_76, ?VERSION_MORPHEUS],
     lists:foreach(fun(V) -> default_versioned(V) end, Versions).
 
 default_versioned(Version) ->
@@ -486,7 +503,13 @@ config_upgrade_test_generic(Config, ShardAffinityValue) ->
                       "\"indexer.settings.thresholds.units_high\":60,"
                       "\"indexer.settings.thresholds.units_low\":40}",
                       [ShardAffinityValue]),
-    ?assertEqual(list_to_binary(Result), Data).
+    ?assertEqual(list_to_binary(Result), Data),
+
+    CmdList2 = config_upgrade_to_morpheus(Config),
+    [{set, {metakv, Meta2}, Data2}] = CmdList2,
+    ?assertEqual(<<"/indexing/settings/config">>, Meta2),
+    ?assertEqual(<<"{\"indexer.settings.defer_build\":false}">>,
+                 Data2).
 
 enable_shard_affinity_76_test() ->
     evaluate_with_profile(
