@@ -1299,7 +1299,7 @@ def make_cbstats_all_buckets_task(kind, memcached_pass_fun, guts):
 
 
 def read_local_token(path, gosecrets_cfg_path, master_pass):
-    cbcat_path = find_script("cbcat")
+    cbcat_path = find_script(exec_name("cbcat"))
     args = [cbcat_path, '--with-gosecrets', gosecrets_cfg_path,
             '--password', '-', path]
     if master_pass is None:
