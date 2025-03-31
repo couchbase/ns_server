@@ -699,6 +699,8 @@ conf(internal) ->
      {max_docs_limit, maxDocsLimit, ?DEFAULT_MAX_DOCS_LIMIT,
       get_number(?LOWEST_ALLOWED_MAX_DOCS_LIMIT,
                  ?HIGHEST_ALLOWED_MAX_DOCS_LIMIT)}] ++
+        [{include_username_in_ui_cookie, includeUsernameInUICookie, false,
+          fun get_bool/1}] ++
         %% This key is available in mixed-compat-mode. We don't need to worry
         %% about guarding the cross-node call with a compat-check because the
         %% erpc library will convert any of these failures to a standardized
