@@ -89,13 +89,8 @@ settings_post_validators() ->
      validator:integer(numReplica, 0, 16, _)] ++
         case cluster_compat_mode:is_enterprise() of
             true ->
-                [validator:boolean(redistributeIndexes, _)];
-            false ->
-                []
-        end ++
-        case cluster_compat_mode:is_enterprise() of
-            true ->
-                [validator:boolean(enablePageBloomFilter, _)];
+                [validator:boolean(redistributeIndexes, _),
+                 validator:boolean(enablePageBloomFilter, _)];
             false ->
                 []
         end ++
