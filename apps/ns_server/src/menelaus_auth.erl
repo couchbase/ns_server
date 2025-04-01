@@ -971,6 +971,8 @@ maybe_set_auth_audit_props(Req, AuthAuditProps) ->
     mochiweb_request:set_meta(auth_audit_props, AuthAuditProps, Req).
 
 -spec check_expiration(#authn_res{}) -> ok | {error, expired}.
+check_expiration(#authn_res{expiration_datetime_utc = undefined}) ->
+    ok;
 check_expiration(#authn_res{expiration_datetime_utc = Expiration}) ->
     Now = calendar:universal_time(),
     case Now > Expiration of
