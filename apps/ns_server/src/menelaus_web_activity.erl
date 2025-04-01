@@ -118,6 +118,7 @@ get_roles(RolesRaw) ->
 
 -ifdef(TEST).
 bad_roles_test() ->
+    config_profile:mock_default_profile(),
     meck:expect(cluster_compat_mode, get_compat_version, ?cut([8, 0])),
     meck:expect(cluster_compat_mode, is_developer_preview, ?cut(false)),
     ?assertEqual({value, []}, get_roles([])),

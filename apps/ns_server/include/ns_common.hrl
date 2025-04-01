@@ -358,8 +358,7 @@
 
 %% Default profile macros/constants
 %% DEFAULT_PROFILE_STR is provided by rebar.config at build time
--define(DEFAULT_PROFILE_BIN, <<?DEFAULT_PROFILE_STR>>).
--define(DEFAULT_PROFILE_DATA, [{name, ?DEFAULT_PROFILE_STR}]).
+-define(DEFAULT_EMPTY_PROFILE_FOR_TESTS, [{name, "default"}]).
 
 -define(SYSTEM_SCOPE_NAME, "_system").
 

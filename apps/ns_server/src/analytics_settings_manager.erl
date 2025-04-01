@@ -130,8 +130,10 @@ config_upgrade_to_76(Config) ->
 
 -ifdef(TEST).
 defaults_test() ->
+    config_profile:mock_default_profile(),
     Versions = [?MIN_SUPPORTED_VERSION, ?VERSION_76],
-    lists:foreach(fun(V) -> default_versioned(V) end, Versions).
+    lists:foreach(fun(V) -> default_versioned(V) end, Versions),
+    config_profile:unmock_default_profile(ok).
 
 default_versioned(Version) ->
     Keys = fun (L) -> lists:sort([K || {K, _} <- L]) end,
@@ -144,6 +146,7 @@ default_versioned(Version) ->
                  Keys(general_settings_defaults(Version))).
 
 config_upgrade_test() ->
+    config_profile:mock_default_profile(),
     CmdList = config_upgrade_to_76([]),
     [{set, {metakv, Meta}, Data}] = CmdList,
     ?assertEqual(<<"/analytics/settings/config">>, Meta),
@@ -151,6 +154,7 @@ config_upgrade_test() ->
                    "\"analytics.settings.blob_storage_prefix\":\"\","
                    "\"analytics.settings.blob_storage_region\":\"\","
                    "\"analytics.settings.blob_storage_scheme\":\"\"}">>,
-                 Data).
+                 Data),
+    config_profile:unmock_default_profile(ok).
     %% TODO: add upgrade test w/ columnar profile
 -endif.

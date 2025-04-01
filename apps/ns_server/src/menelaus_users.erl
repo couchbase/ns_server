@@ -1613,6 +1613,7 @@ maybe_update_auth_test() ->
     ShouldChange = Check(_, _, _, true),
     ShouldNotChange = Check(_, _, _, false),
     meck:new([ns_config, cluster_compat_mode], [passthrough]),
+    config_profile:mock_default_profile(),
     try
         meck:expect(cluster_compat_mode, is_cluster_76,
                     fun () -> true end),
@@ -1648,6 +1649,6 @@ maybe_update_auth_test() ->
         ShouldChange(ScramSettings(10, 15), ScramSettings(10, 16), internal),
         ShouldNotChange(ScramSettings(10, 15), ScramSettings(11, 15), internal)
     after
-        meck:unload([ns_config, cluster_compat_mode])
+        meck:unload([ns_config, cluster_compat_mode, config_profile])
     end.
 -endif.

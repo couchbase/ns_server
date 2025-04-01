@@ -1974,7 +1974,8 @@ cidr_mask(IP, Bits) ->
 community_allowed_topologies_test() ->
     %% Test to help catch changes in community topologies that don't
     %% maintain backwards compatibility
+    config_profile:mock_default_profile(),
     ?assertEqual(community_allowed_topologies(),
-                 [[kv],[index,kv,n1ql],[fts,index,kv,n1ql]]).
-
+                 [[kv],[index,kv,n1ql],[fts,index,kv,n1ql]]),
+    config_profile:unmock_default_profile(ok).
 -endif.

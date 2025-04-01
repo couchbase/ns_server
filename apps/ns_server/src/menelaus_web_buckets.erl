@@ -1775,7 +1775,7 @@ is_valid_uri(URI, Schemes) ->
     end.
 
 -ifdef(TEST).
-    is_valid_uri_test() ->
+is_valid_uri_test() ->
         ?assert(is_valid_cloud_uri("s3://bucket/object")),
         ?assert(is_valid_cloud_uri("az://container/blob")),
         ?assert(is_valid_cloud_uri("gs://bucket/object")),
@@ -3733,6 +3733,10 @@ basic_bucket_params_screening_setup() ->
                 fun (_, Default) ->
                         Default
                 end),
+    meck:expect(config_profile, get,
+                fun () ->
+                        ?DEFAULT_EMPTY_PROFILE_FOR_TESTS
+                end),
     meck:expect(ns_config, read_key_fast,
                 fun (_, Default) ->
                         Default
@@ -3763,6 +3767,10 @@ basic_bucket_params_screening_setup() ->
     Modules.
 
 basic_bucket_params_screening_t() ->
+    meck:expect(config_profile, get,
+                fun () ->
+                        ?DEFAULT_EMPTY_PROFILE_FOR_TESTS
+                end),
     AllBuckets = [{"mcd",
                    [{type, membase},
                     {num_vbuckets, 16},
@@ -4640,6 +4648,10 @@ basic_parse_validate_bucket_auto_compaction_settings_test() ->
                         Default
                 end),
     meck:new(config_profile, [passthrough]),
+    meck:expect(config_profile, get,
+                fun () ->
+                        ?DEFAULT_EMPTY_PROFILE_FOR_TESTS
+                end),
     meck:expect(config_profile, search,
                 fun (_, Default) ->
                         Default
@@ -4760,6 +4772,10 @@ parse_validate_max_magma_shards_test() ->
     meck:expect(config_profile, search,
                 fun (_, Default) ->
                         Default
+                end),
+    meck:expect(config_profile, get,
+                fun () ->
+                        ?DEFAULT_EMPTY_PROFILE_FOR_TESTS
                 end),
     Params = [{"bucketType", "membase"},
               {"ramQuota", "400"},
@@ -4899,6 +4915,7 @@ validate_ram_quota_before_server_list_populated_test() ->
     meck:unload(menelaus_stats).
 
 validate_dura_min_level_before_server_list_populated_test() ->
+    config_profile:mock_default_profile(),
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config,
                 read_key_fast, fun(_, Default) -> Default end),
@@ -4921,9 +4938,11 @@ validate_dura_min_level_before_server_list_populated_test() ->
                    <<"You do not have enough data servers to support this "
                      "durability level">>}],
                  Errors),
+    config_profile:unmock_default_profile(ok),
     meck:unload(ns_config).
 
 validate_dura_min_level_change_when_only_one_kv_node_active_test() ->
+    config_profile:mock_default_profile(),
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config,
                 read_key_fast, fun(_, Default) -> Default end),
@@ -4986,9 +5005,11 @@ validate_dura_min_level_change_when_only_one_kv_node_active_test() ->
     Errors7 = additional_bucket_params_validation(Params7, Ctx),
     ?assertEqual([], Errors7),
 
-    meck:unload(ns_config).
+    meck:unload(ns_config),
+    config_profile:unmock_default_profile(ok).
 
 get_conflict_resolution_type_and_thresholds_test() ->
+    config_profile:mock_default_profile(),
     meck:new(cluster_compat_mode),
     meck:expect(cluster_compat_mode, is_enterprise,
                 fun () -> false end),
@@ -5139,7 +5160,8 @@ get_conflict_resolution_type_and_thresholds_test() ->
                                [], ignore, BucketConfigDontEnableDrift3, false),
     ?assertEqual([], ParsedDontEnableDrift3),
 
-    meck:unload(cluster_compat_mode).
+    meck:unload(cluster_compat_mode),
+    config_profile:unmock_default_profile(ok).
 
 maybe_update_cas_props_test() ->
     meck:new(misc, [passthrough]),
@@ -5189,6 +5211,7 @@ maybe_update_cas_props_test() ->
 
 build_dynamic_bucket_info_test_setup(Version, IsEnterprise) ->
     meck:new(ns_config, [passthrough]),
+    config_profile:mock_default_profile(),
     meck:expect(ns_config, search,
         fun(_, cluster_compat_version, _) ->
             Version
@@ -5217,12 +5240,7 @@ build_dynamic_bucket_info_test_setup(Version, IsEnterprise) ->
         end).
 
 build_dynamic_bucket_info_test_teardown() ->
-    meck:unload(ns_config),
-    meck:unload(cluster_compat_mode),
-    meck:unload(chronicle_compat),
-    meck:unload(ns_bucket),
-    meck:unload(menelaus_web_node),
-    meck:unload(menelaus_stats).
+    meck:unload().
 
 %% Test the output of build_dynamic_bucket_info. Aspirationally this would test
 %% the entire output of the function, but for now it just tests a subset of it.
@@ -5329,6 +5347,10 @@ storage_mode_migration_meck_setup(Version) ->
     meck:expect(ns_config, search,
                 fun (couchbase_num_vbuckets_default) ->
                         false
+                end),
+    meck:expect(config_profile, get,
+                fun () ->
+                        ?DEFAULT_EMPTY_PROFILE_FOR_TESTS
                 end),
     meck:expect(config_profile, get_value,
                 fun (_, Default) ->
@@ -5471,6 +5493,7 @@ storage_mode_migration_validate_attributes_test() ->
                 fun (_) ->
                         false
                 end),
+    config_profile:mock_default_profile(),
     BaseParams = [{"storageBackend", "magma"}],
     %% TestArg: {AttributeParseFun, UpdateParams, CurrentProp,
     %%           {Updated, NewValue}}
@@ -5494,6 +5517,7 @@ storage_mode_migration_validate_attributes_test() ->
               storage_mode_migration_validate_attributes(TestArg)
       end, TestArgs),
 
+    config_profile:unmock_default_profile(ok),
     meck:unload(ns_bucket).
 
 parse_validate_storage_mode_setup() ->
@@ -5501,7 +5525,8 @@ parse_validate_storage_mode_setup() ->
     meck:expect(cluster_compat_mode, is_enterprise,
                 fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_morpheus,
-                fun () -> true end).
+                fun () -> true end),
+    config_profile:mock_default_profile().
 
 parse_validate_storage_mode_test__(
   {{OldStorageMode, NewStorageMode, IsNewBucket, Version,
@@ -5540,7 +5565,8 @@ parse_validate_storage_mode_test__(
     end.
 
 parse_validate_storage_mode_teardown() ->
-    meck:unload(cluster_compat_mode).
+    meck:unload(cluster_compat_mode),
+    config_profile:unmock_default_profile(ok).
 
 parse_validate_storage_mode_test_() ->
     %% TestArgs: {{OldStorageMode, NewStorageMode,
@@ -5625,6 +5651,10 @@ rank_params_screening_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode, is_cluster_76,
                 fun () -> true end),
+    meck:expect(config_profile, get,
+                fun () ->
+                        ?DEFAULT_EMPTY_PROFILE_FOR_TESTS
+                end),
     Params = [{"bucketType", "couchbase"}, {"rank", "0"}],
     IsNew = true,
     ?assertEqual(parse_validate_bucket_rank(Params, IsNew), {ok, rank, 0}),
@@ -5668,6 +5698,7 @@ rank_params_screening_test() ->
 
     %% Is76=false, rank=undefined, IsNew=false
     ?assertEqual(parse_validate_bucket_rank(NoRankParams, NotNew), ignore),
+    config_profile:unmock_default_profile(ok),
     meck:unload(cluster_compat_mode).
 
 test_num_replicas_guardrail_validation(#{disk_usage := DiskUsage,
@@ -5711,6 +5742,7 @@ num_replicas_guardrail_validation_test_() ->
     {setup,
      fun () ->
              %% We need unstick, so that we can meck rpc
+             config_profile:mock_default_profile(),
              meck:new([rpc], [passthrough, unstick]),
              meck:expect(ns_config, read_key_fast,
                          fun(resource_management, _) ->

@@ -709,7 +709,8 @@ permissions_for_user_test_() ->
                          fun () -> false end),
              meck:new(ns_bucket, [passthrough]),
              meck:expect(ns_bucket, get_snapshot,
-                         fun (_, _) -> Snapshot end)
+                         fun (_, _) -> Snapshot end),
+             config_profile:mock_default_profile()
      end,
      fun (_) ->
              meck:unload()

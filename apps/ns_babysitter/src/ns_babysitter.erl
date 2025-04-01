@@ -99,24 +99,12 @@ setup_server_profile() ->
                                              string:join([ProfileName,
                                                           "_profile"],
                                                          "")),
-                        case (catch load_config(File)) of
-                            {'EXIT', Err} ->
-                                {config_profile:default(),
-                                 case ProfileName =/= ?DEFAULT_PROFILE_STR of
-                                     true ->
-                                         ?log_warning("Could not load config "
-                                                      "profile '~p', loading "
-                                                      "'default'.. Error: ~p",
-                                                      [ProfileName, Err]),
-                                         ?DEFAULT_PROFILE_STR;
-                                     false ->
-                                         ProfileName
-                                 end};
-                            Config ->
-                                {Config, ProfileName}
-                        end;
+
+                        %% Server will crash if profile file cannot be loaded.
+                        {load_config(File), ProfileName};
                     _ ->
-                        {config_profile:default(), ?DEFAULT_PROFILE_STR}
+                        exit("FATAL: ns_server application env does not "
+                             "contain config_path.")
                 end,
     ?log_debug("Using profile '~s': ~p", [N, Data]),
     config_profile:set_data(Data).

@@ -218,6 +218,10 @@ run_with_cgroups_supported(Fun) ->
     meck:new(config_profile, [passthrough]),
 
     meck:expect(cgroups, os_type, fun() -> {unix, linux} end),
+    meck:expect(config_profile, get,
+                fun () ->
+                        ?DEFAULT_EMPTY_PROFILE_FOR_TESTS
+                end),
     meck:expect(config_profile, is_provisioned, fun() -> true end),
 
     %% since we have trouble testing/mocking the same module, we can just place

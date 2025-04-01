@@ -1890,6 +1890,7 @@ generate_prometheus_test_config(ExtraConfig, Services) ->
     [{F, yaml:preprocess(Yaml)} || {F, Yaml} <- Configs].
 
 default_config_test() ->
+    config_profile:mock_default_profile(),
     [{_, DefaultMainCfg}, {RulesFile, DefaultRulesCfg}] =
         generate_prometheus_test_config([], [kv]),
     RulesFileBin = list_to_binary(RulesFile),
@@ -1922,9 +1923,11 @@ default_config_test() ->
     ?assertMatch(
       #{groups := [#{interval := <<"10s">>,
                      rules := [_|_]}]},
-      DefaultRulesCfg).
+      DefaultRulesCfg),
+    config_profile:unmock_default_profile(ok).
 
 prometheus_config_test() ->
+    config_profile:mock_default_profile(),
     MainConfig =
         fun (StatsSettings, NodeServices) ->
                 ExtraConfig = [{stats_settings, StatsSettings}],
@@ -1979,9 +1982,11 @@ prometheus_config_test() ->
       MainConfig([{prometheus_metrics_enabled, true},
                   {prometheus_metrics_scrape_interval, 42}], [kv])),
 
+    config_profile:unmock_default_profile(ok),
     ok.
 
 prometheus_derived_metrics_config_test() ->
+    config_profile:mock_default_profile(),
     RulesConfig =
         fun (StatsSettings, NodeServices) ->
                 ExtraConfig = [{stats_settings, StatsSettings}],
@@ -2054,9 +2059,11 @@ prometheus_derived_metrics_config_test() ->
       #{groups := [#{interval := <<"42s">>}]},
       RulesConfig([{derived_metrics_interval, 42}], [kv])),
 
+    config_profile:unmock_default_profile(ok),
     ok.
 
 prometheus_config_afamily_test() ->
+    config_profile:mock_default_profile(),
     ExtraConfig = [{{node, ?NODE, address_family}, inet6}],
     [{_, Cfg}, _] = generate_prometheus_test_config(ExtraConfig, [kv]),
     ?assert(is_binary(yaml:encode(Cfg))),
@@ -2074,7 +2081,8 @@ prometheus_config_afamily_test() ->
                            #{job_name := <<"kv_high_cardinality">>,
                              static_configs :=
                                [#{targets := [<<"[::1]:11280">>]}]}]},
-      Cfg).
+      Cfg),
+    config_profile:unmock_default_profile(ok).
 
 prometheus_basic_decimation_test() ->
     Now = floor(os:system_time(seconds) / 60) * 60,
