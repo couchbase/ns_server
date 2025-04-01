@@ -582,7 +582,7 @@ attribute_default(Name) ->
         continuous_backup_interval -> 2;    % minutes
         continuous_backup_location -> "";   % path or URI
         invalid_hlc_strategy -> error;      % atom
-        hlc_max_future_threshold -> 10;     % seconds
+        hlc_max_future_threshold -> 3900;   % seconds (65 minutes)
         dcp_connections_between_nodes -> 1  % pos_integer
     end.
 
