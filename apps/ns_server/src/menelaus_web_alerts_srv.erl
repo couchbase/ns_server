@@ -157,6 +157,8 @@ short_description(memcached_connections) ->
     "data service connections approaching limit";
 short_description(stuck_rebalance) ->
     "rebalance stage appears stuck";
+short_description(indexer_diverging_replicas) ->
+    "index has diverging replicas";
 short_description(Other) ->
     %% this case is needed for tests to work
     couch_util:to_list(Other).
@@ -242,7 +244,13 @@ errors(stuck_rebalance) ->
     "has been made for ~b seconds.";
 errors(memcached_connections) ->
     "Warning: On node ~s the number of ~s connections being used by the Data "
-    "Service (~p) is above the notice threshold of ~b%. The limit is ~p.".
+    "Service (~p) is above the notice threshold of ~b%. The limit is ~p.";
+errors(indexer_diverging_replicas) ->
+    "Divergence in item counts between index partition replicas is detected. "
+    "This can cause index scan to return inconsistent data. Please identify "
+    "the index with GET "
+    "/pools/default/stats/range/index_partn_is_diverging_replica and "
+    "consider dropping and re-creating it to resolve this".
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
@@ -422,7 +430,8 @@ alert_keys() ->
      ep_clock_cas_drift_threshold_exceeded,
      communication_issue, time_out_of_sync, disk_usage_analyzer_stuck,
      cert_expires_soon, cert_expired, memory_threshold, history_size_warning,
-     stuck_rebalance, memcached_connections, disk_guardrail].
+     stuck_rebalance, memcached_connections, disk_guardrail,
+     indexer_diverging_replicas].
 
 config_upgrade_to_72(Config) ->
     config_email_alerts_upgrade(
@@ -509,7 +518,8 @@ global_checks() ->
      indexer_ram_max_usage, cas_drift_threshold, communication_issue,
      time_out_of_sync, disk_usage_analyzer_stuck, certs, xdcr_certs,
      memory_threshold, history_size_warning, indexer_low_resident_percentage,
-     stuck_rebalance, memcached_connections, disk_guardrail].
+     stuck_rebalance, memcached_connections, disk_guardrail,
+     indexer_diverging_replicas].
 
 %% @doc fires off various checks
 check_alerts(Opaque, Hist, Stats) ->
@@ -1002,6 +1012,22 @@ check(disk_guardrail, Opaque, _History, _Stats) ->
             Msg = fmt_to_bin(errors(data_disk_guardrail_critical),
                              [BadDisk, Value, node(), Limit]),
             global_alert(disk_guardrail, Msg)
+    end,
+    Opaque;
+check(indexer_diverging_replicas, Opaque, _History, Stats) ->
+    case proplists:get_value("@index", Stats) of
+        undefined ->
+            ok;
+        IndexStats ->
+            NumDiverging = proplists:get_value(num_diverging_replica_indexes,
+                                               IndexStats),
+            case NumDiverging of
+                0 ->
+                    ok;
+                _ ->
+                    Msg = fmt_to_bin(errors(indexer_diverging_replicas), []),
+                    global_alert(indexer_diverging_replicas, Msg)
+            end
     end,
     Opaque.
 

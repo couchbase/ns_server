@@ -157,7 +157,8 @@ for_alerts() ->
           "{name=~`index_avg_resident_percent|"
                   "index_num_indexes|"
                   "index_memory_rss|"
-                  "index_memory_quota`} or "
+                  "index_memory_quota|"
+                  "index_num_diverging_replica_indexes`} or "
          "{name=~`sys_mem_actual_free|sys_mem_actual_used|"
                  "sys_mem_cgroup_limit|sys_mem_cgroup_actual_used`}">>,
 

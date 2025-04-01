@@ -252,7 +252,7 @@ alert_keys() ->
 
 -spec alert_keys_disabled_by_default() -> [atom()].
 alert_keys_disabled_by_default() ->
-    [stuck_rebalance].
+    [stuck_rebalance, indexer_diverging_replicas].
 
 %% @doc Returns the list of alerts which, if raised, should display
 %% a pop-up in the UI.

@@ -42,7 +42,8 @@ let knownAlerts = [
   'indexer_low_resident_percentage',
   'memcached_connections',
   'stuck_rebalance',
-  'disk_guardrail'
+  'disk_guardrail',
+  'indexer_diverging_replicas'
 ];
 
 let timeUnitToSeconds = {

@@ -203,7 +203,8 @@ class MnSettingsAlertsComponent extends MnLifeCycleHooksToStream {
       case knownAlerts[20]: return 'Approaching Indexer low resident percentage';
       case knownAlerts[21]: return 'Memcached connection threshold exceeded';
       case knownAlerts[22]: return 'Rebalance stage appears stuck';
-      case knownAlerts[23]: return 'Disk usage is within 10% of maximum for data service mutations'
+      case knownAlerts[23]: return 'Disk usage is within 10% of maximum for data service mutations';
+      case knownAlerts[24]: return 'Index has diverging replicas'
     }
   }
 }
