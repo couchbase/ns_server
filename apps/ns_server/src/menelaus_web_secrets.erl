@@ -149,7 +149,7 @@ with_validated_secret(Fun, CurProps, Req) ->
 %% Any field that can be modified and needs to use CurProps should be
 %% checked in transaction in cb_cluster_secret:replace_secret_internal.
 secret_validators(CurProps) ->
-    [validator:string(name, _),
+    [validator:trimmed_string(name, _),
      validator:required(name, _),
      validator:validate(
        fun ("") -> {error, "Must not not be empty"};
