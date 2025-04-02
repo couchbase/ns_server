@@ -448,8 +448,7 @@ compress(true, Name, UncompressPth) ->
             DS = ale:get_sink_ds(Name),
             Opts = #{compression => {zlib, 5, none},
                      ignore_incomplete_last_chunk => true},
-            ok ?= cb_crypto:reencrypt_file(UncompressPth, CompressPth, DS,
-                                           Opts),
+            ok ?= ale:reencrypt_file(UncompressPth, CompressPth, DS, Opts),
             ok ?= file:rename(CompressPth, UncompressPth)
         else
             {error, key_not_found} ->

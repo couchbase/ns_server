@@ -36,6 +36,7 @@
          file_encrypt_finish/1,
          file_encrypt_cont/3,
          file_encrypt_chunk/2,
+         reencrypt_file/4,
          get_in_use_deks/1,
 
          with_configuration_batching/1,
@@ -255,6 +256,10 @@ file_encrypt_cont(Path, Offset, DS) ->
 file_encrypt_chunk(Data, EncrState) ->
     Callback = get_encryption_cb(file_encrypt_chunk),
     Callback(Data, EncrState).
+
+reencrypt_file(FromPath, ToPath, DS, Opts) ->
+    Callback = get_encryption_cb(reencrypt_file),
+    Callback(FromPath, ToPath, DS, Opts).
 
 get_in_use_deks(FilePaths) ->
     Callback = get_encryption_cb(get_in_use_deks),
@@ -496,6 +501,10 @@ default_encr_disabled_cbs() ->
       file_encrypt_chunk =>
           fun(Data, EncrState) ->
                   {Data, EncrState}
+          end,
+      reencrypt_file =>
+          fun(_FromPath, _ToPath, _DS, _Opts) ->
+                  ok
           end,
       get_in_use_deks =>
           fun(_FilePaths) ->

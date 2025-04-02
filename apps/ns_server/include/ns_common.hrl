@@ -528,6 +528,10 @@
           fun(Data, EncrState) ->
                   cb_crypto:file_encrypt_chunk(Data, EncrState)
           end,
+      reencrypt_file =>
+          fun(FromPath, ToPath, DS, Opts) ->
+                  cb_crypto:reencrypt_file(FromPath, ToPath, DS, Opts)
+          end,
       get_in_use_deks =>
           fun(FilePaths) ->
                   cb_crypto:get_in_use_deks(FilePaths)
