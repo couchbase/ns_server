@@ -169,5 +169,6 @@ handle_rotate_internal_creds(Req) ->
             reply_json(Req, [ErrStr], 503);
         _ ->
             ns_audit:password_rotated(Req),
+            event_log:add_log(internal_password_rotated),
             reply_json(Req, [], 200)
     end.
