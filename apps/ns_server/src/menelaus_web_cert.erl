@@ -276,6 +276,7 @@ handle_regenerate_certificate(Req) ->
                 ?log_info("Completed handling of regenerate_certificate call "
                           "(~p)", [Params]),
                 ns_audit:regenerate_certificate(Req, Params),
+                event_log:add_log(regenerate_certificate, Params),
                 handle_cluster_certificate_simple(Req)
             end)
       end, Req, qs, [validator:boolean(dropUploadedCertificates, _),

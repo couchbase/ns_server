@@ -124,6 +124,9 @@ event_details(encr_at_rest_expired_deks_drop_failed) ->
      <<"Encryption at rest failed to stop using expired DEKs">>};
 event_details(internal_password_rotated) ->
     {9239, security, info, <<"Internal password has been rotated">>};
+event_details(regenerate_certificate) ->
+    {9240, security, info,
+     <<"Self-signed SSL certificate was regenerated">>};
 
 %% event_ids block for Data related events: [8192, ... 9215]
 event_details(bucket_created) ->
