@@ -125,6 +125,12 @@ class FusionTests(testlib.BaseTestSet):
 
         self.cluster.rebalance(plan_uuid = plan_uuid)
 
+        resp = testlib.get_succ(self.cluster, "/fusion/activeGuestVolumes")
+        volumes = resp.json()
+
+        for node in otp_nodes.values():
+            assert node in volumes
+
 def assert_json_error(json, field, prefix):
     assert isinstance(json, dict)
     assert len(json) == 1

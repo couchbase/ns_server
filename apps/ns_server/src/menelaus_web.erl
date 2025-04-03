@@ -599,6 +599,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "columnar"] ->
                     {{[settings, analytics], read},
                      fun menelaus_web_columnar:handle_settings_get/1};
+                ["fusion", "activeGuestVolumes"] ->
+                    {{[pools], read},
+                     fun menelaus_web_fusion:handle_get_active_guest_volumes/1};
                 ["diag"] ->
                     {{[admin, diag], read}, fun diag_handler:handle_diag/1, []};
                 ["diag", "vbuckets"] ->

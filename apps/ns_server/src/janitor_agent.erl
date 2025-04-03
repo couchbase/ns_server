@@ -74,7 +74,8 @@
          get_failover_logs/2,
          mount_volumes/4,
          maybe_start_fusion_uploaders/3,
-         maybe_stop_fusion_uploaders/3]).
+         maybe_stop_fusion_uploaders/3,
+         get_active_guest_volumes/2]).
 
 -export([start_link/1]).
 
@@ -338,15 +339,37 @@ mount_volumes(Bucket, VolumesToMount, NodesMap, RebalancerPid) ->
                                  ?MOUNT_VOLUMES_TIMEOUT)).
 
 call_on_nodes(Bucket, NodesCalls, Caller) ->
+    case do_call_on_nodes(Bucket, NodesCalls, Caller) of
+        {error, Error} ->
+            {error, Error};
+        _ ->
+            ok
+    end.
+
+call_on_nodes_with_returns(Bucket, NodesCalls, Caller) ->
+    case do_call_on_nodes(Bucket, NodesCalls, Caller) of
+        {error, Error} ->
+            {error, Error};
+        Returns ->
+            {ok, [{N, R} || {N, _, {ok, R}} <- Returns]}
+    end.
+
+do_call_on_nodes(Bucket, NodesCalls, Caller) ->
     Replies =
         misc:parallel_map(
           fun ({Node, Call}) ->
                   {Node, Call, catch Caller(Bucket, Node, Call)}
           end, NodesCalls, infinity),
-    BadReplies = [R || {_, _, RV} = R <- Replies, RV =/= ok],
+    {Returns, BadReplies} = lists:partition(fun ({_, _, {ok, _}}) ->
+                                                    true;
+                                                ({_, _, ok}) ->
+                                                    true;
+                                                (_) ->
+                                                    false
+                                            end, Replies),
     case BadReplies of
         [] ->
-            ok;
+            Returns;
         _ ->
             ?log_info("~s:Some janitor requests have failed"
                       ":~n~p", [Bucket, BadReplies]),
@@ -380,6 +403,13 @@ maybe_stop_fusion_uploaders(_Node, _Bucket, []) ->
 maybe_stop_fusion_uploaders(Node, Bucket, VBuckets) ->
     gen_server:cast({server_name(Bucket), Node},
                     {maybe_stop_fusion_uploaders, VBuckets}).
+
+-spec get_active_guest_volumes(bucket_name(), proplists:proplist()) ->
+          {error, {failed_nodes, [node()]}} | {ok, [{node(), [binary()]}]}.
+get_active_guest_volumes(Bucket, BucketConfig) ->
+    Servers = ns_bucket:get_servers(BucketConfig),
+    NodesCalls = [{Node, get_active_guest_volumes} || Node <- Servers],
+    call_on_nodes_with_returns(Bucket, NodesCalls, fun servant_call/3).
 
 -spec delete_vbucket_copies(bucket_name(), pid(), [node()], vbucket_id()) ->
                                    ok | {errors, [{node(), term()}]}.
@@ -681,6 +711,12 @@ handle_call({set_data_ingress, _Status} = Req, From, State) ->
       From, State, Req,
       fun ({set_data_ingress, Status}, #state{bucket_name = Bucket}) ->
               ns_memcached:set_data_ingress(Bucket, Status)
+      end);
+handle_call(get_active_guest_volumes, From, State) ->
+    handle_call_via_servant(
+      From, State, undefined,
+      fun (undefined, #state{bucket_name = Bucket}) ->
+              ns_memcached:get_active_guest_volumes(Bucket)
       end);
 handle_call(Call, From, State) ->
     do_handle_call(Call, From, cleanup_rebalance_artifacts(Call, State)).

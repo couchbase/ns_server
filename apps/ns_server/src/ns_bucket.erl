@@ -204,6 +204,7 @@
 
 %% fusion
 -export([is_fusion/1,
+         get_fusion_buckets/0,
          fusion_uploaders_key/1,
          get_fusion_uploaders/1,
          store_fusion_uploaders/2,
@@ -2744,6 +2745,10 @@ get_drop_keys_timestamp(Bucket, Snapshot) ->
 -spec is_fusion(proplists:proplist()) -> boolean().
 is_fusion(BucketConfig) ->
     magma_fusion_logstore_uri(BucketConfig) =/= undefined.
+
+-spec get_fusion_buckets() -> [{bucket_name(), proplists:proplist()}].
+get_fusion_buckets() ->
+    [{B, C} || {B, C} <- get_buckets(), is_fusion(C)].
 
 -spec fusion_uploaders_sub_key() -> atom().
 fusion_uploaders_sub_key() ->

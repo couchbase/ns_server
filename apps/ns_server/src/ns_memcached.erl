@@ -150,7 +150,8 @@
          get_fusion_storage_snapshot/4,
          mount_fusion_vbucket/3,
          maybe_start_fusion_uploaders/2,
-         maybe_stop_fusion_uploaders/2
+         maybe_stop_fusion_uploaders/2,
+         get_active_guest_volumes/1
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -2248,6 +2249,16 @@ mount_fusion_vbucket(Bucket, VBucket, Volumes) ->
                         Sock, VBucket, Volumes)}
       end, Bucket, [json]).
 
+fetch_fusion_stats(Sock, Bucket, Key) ->
+    case fetch_stats(Sock, iolist_to_binary(["fusion ", Key])) of
+        {ok, Stats} ->
+            {ok, ejson:decode(proplists:get_value(<<"fusion">>, Stats))};
+        Other ->
+            ?log_error("Error retrieving stat ~p for bucket ~p: ~p",
+                       [Key, Bucket, Other]),
+            Other
+    end.
+
 %% this is a temporary crutch for magma issues. If uploader cannot be
 %% stopped/started we drop the error to the log file and rely on
 %% janitor eventually fixing things
@@ -2291,3 +2302,10 @@ maybe_stop_fusion_uploaders(Bucket, VBuckets) ->
                         VBucket <- VBuckets],
               reply_start_stop_uploaders("stopping", RVs)
       end, Bucket, []).
+
+-spec get_active_guest_volumes(bucket_name()) -> {ok, [binary()]} | mc_error().
+get_active_guest_volumes(Bucket) ->
+    try_to_perform_very_long_call(
+      fun (Sock) ->
+              {reply, fetch_fusion_stats(Sock, Bucket, "active_guest_volumes")}
+      end, Bucket, [json]).

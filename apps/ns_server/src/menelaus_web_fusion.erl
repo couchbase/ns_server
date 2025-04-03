@@ -15,7 +15,8 @@
 -include_lib("ns_common/include/cut.hrl").
 
 -export([handle_prepare_rebalance/1,
-         handle_upload_mounted_volumes/1]).
+         handle_upload_mounted_volumes/1,
+         handle_get_active_guest_volumes/1]).
 
 reply_other(Req, What, Other) ->
     case menelaus_web_cluster:busy_reply(What, Other) of
@@ -108,3 +109,18 @@ handle_upload_mounted_volumes(Req) ->
       [validator:string(planUUID, _),
        validator:required(planUUID, _),
        validator:unsupported(_)]).
+
+handle_get_active_guest_volumes(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:assert_is_morpheus(),
+    {ok, List} =
+        functools:sequence(
+          [?cut(janitor_agent:get_active_guest_volumes(Bucket, BucketConfig))
+           || {Bucket, BucketConfig} <- ns_bucket:get_fusion_buckets()]),
+    ByNodes = lists:foldl(
+                fun({N, Res}, Map) ->
+                        maps:update_with(N, [Res | _], [Res], Map)
+                end, #{}, lists:flatten(List)),
+    ToReturn =
+        [{N, lists:usort(lists:flatten(L))} || {N, L} <- maps:to_list(ByNodes)],
+    menelaus_util:reply_json(Req, {ToReturn}, 200).
