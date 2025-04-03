@@ -3230,9 +3230,9 @@ get_all_node_deks_info() ->
             Res = erpc:multicall(AllNodes, ?MODULE, get_node_deks_info,
                                     [], ?DEK_COUNTERS_UPDATE_TIMEOUT),
             {NonErrors, AllErrors} =
-                misc:partitionmap(fun ({_N, {ok, R}}) -> {left, R};
-                                        ({N, E}) -> {right, {N, E}}
-                                    end, lists:zip(AllNodes, Res)),
+                misc:partitionmap(fun ({N, {ok, R}}) -> {left, {N, R}};
+                                      ({N, E}) -> {right, {N, E}}
+                                  end, lists:zip(AllNodes, Res)),
 
             Errors =
                 lists:filter(
@@ -3255,18 +3255,28 @@ get_all_node_deks_info() ->
 
             %% If some deks have issues we should not remove anything
             %% until those issues are resolved
-            ShouldRetry =
-                lists:any(
-                    fun (L) ->
-                        lists:any(fun (#{issues := I}) -> I /= [] end,
-                                  maps:values(L))
+            Issues =
+                lists:filtermap(
+                    fun ({N, L}) ->
+                        case maps:filtermap(
+                               fun (_, #{issues := I}) ->
+                                   case length(I) > 0 of
+                                       true -> {true, I};
+                                       false -> false
+                                   end
+                               end, L) of
+                            M when map_size(M) > 0 -> {true, {N, M}};
+                            _ -> false
+                        end
                     end, NonErrors),
+            ShouldRetry = length(Issues) > 0,
+
             OnlyKeys =
                 lists:map(
-                    fun (FullInfo) ->
+                    fun ({_Node, FullInfo}) ->
                         maps:filtermap(fun (_, #{deks := K}) -> {true, K};
-                                            (_, #{}) -> false
-                                        end, FullInfo)
+                                           (_, #{}) -> false
+                                       end, FullInfo)
                     end, NonErrors),
 
             case {Errors, ShouldRetry} of
@@ -3280,11 +3290,11 @@ get_all_node_deks_info() ->
                                 end, #{}, OnlyKeys)};
                 {[], true} ->
                     ?log_debug("Some deks have issues.~n"
-                               "All responses: ~p", [Res]),
+                               "Issues: ~p", [Issues]),
                     {error, deks_issues};
                 {Errors, _} ->
-                    ?log_error("Failed to get deks info from some nodes: ~p~n"
-                               "All responses: ~p", [Errors, Res]),
+                    ?log_error("Failed to get deks info from some nodes: ~p",
+                               [Errors]),
                     {error, node_errors}
             end;
         _ ->
