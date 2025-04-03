@@ -3816,6 +3816,8 @@ log_succ_kek_rotation(Id, Name, IsAutomatic) ->
                        {is_automatic, IsAutomatic}]).
 
 log_unsucc_kek_rotation(Id, Name, Reason, IsAutomatic) ->
+    ale:error(?USER_LOGGER, "KEK rotation failed for ~s (id ~p): ~p",
+              [Name, Id, Reason]),
     event_log:add_log(encryption_key_rotation_failed,
                       [{encryption_key_id, Id},
                        {encryption_key_name, iolist_to_binary(Name)},
@@ -3828,6 +3830,8 @@ log_succ_dek_rotation(Kind, NewDekId) ->
                        {new_DEK_UUID, NewDekId}]).
 
 log_unsucc_dek_rotation(Kind, Reason) ->
+    ale:error(?USER_LOGGER, "DEK rotation failed for ~s: ~p",
+              [cb_deks:kind2datatype(Kind), Reason]),
     event_log:add_log(encr_at_rest_dek_rotation_failed,
                       [{kind, cb_deks:kind2bin(Kind)},
                        {reason, format_failure_reason(Reason)}]).

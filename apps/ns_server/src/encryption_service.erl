@@ -518,12 +518,38 @@ wrap_error_msg(ok, _A, _) -> ok;
 wrap_error_msg({ok, _} = R, _A, _) -> R;
 wrap_error_msg({error, Msg}, A, ExtraArgs) when is_list(Msg), is_atom(A),
                                                 is_list(ExtraArgs) ->
+    maybe_log_error_to_user_log(A, Msg, ExtraArgs),
     event_log:add_log(encryption_service_failure,
                       [{error, A}, {error_msg, iolist_to_binary(Msg)}] ++
                       ExtraArgs),
     ns_server_stats:notify_counter({<<"encryption_service_failures">>,
                                     [{failure_type, A}]}),
     {error, {A, Msg}}.
+
+maybe_log_error_to_user_log(read_key_error, Msg, ExtraArgs) ->
+    ale:error(?USER_LOGGER, "Failed to read key ~s: ~s",
+              [extract_key_uuid(ExtraArgs), Msg]);
+maybe_log_error_to_user_log(encrypt_key_error, Msg, ExtraArgs) ->
+    ale:error(?USER_LOGGER, "Failed to encrypt key ~s: ~s",
+              [extract_key_uuid(ExtraArgs), Msg]);
+maybe_log_error_to_user_log(decrypt_key_error, Msg, ExtraArgs) ->
+    ale:error(?USER_LOGGER, "Failed to decrypt key ~s: ~s",
+              [extract_key_uuid(ExtraArgs), Msg]);
+maybe_log_error_to_user_log(store_key_error, Msg, ExtraArgs) ->
+    ale:error(?USER_LOGGER, "Failed to store key ~s: ~s",
+              [extract_key_uuid(ExtraArgs), Msg]);
+maybe_log_error_to_user_log(A, Msg, _)
+                                   when A == rotate_integrity_tokens_error;
+                                        A == remove_old_integrity_tokens_error;
+                                        A == mac_calculation_error;
+                                        A == mac_verification_error ->
+    ale:error(?USER_LOGGER, "Failed key integrity operation (~p): ~s",
+              [A, Msg]);
+maybe_log_error_to_user_log(_, _, _) ->
+    ok.
+
+extract_key_uuid(LogExtraArgs) ->
+    proplists:get_value(key_UUID, LogExtraArgs, <<"unknown">>).
 
 garbage_collect_keys(Kind, InUseKeyIds) ->
     KeyDir = key_path(Kind),
