@@ -3931,20 +3931,23 @@ diag_deks(DeksMap) ->
                "    Active DEK id: ~s\n"
                "    Has unencrypted data: ~p\n"
                "    Last on-demand DEKs drop time: ~p\n"
+               "    Last GC time: ~p\n"
                "    DEKs currently being dropped: ~s\n"
                "    Jobs statuses: ~p\n"
-               "    All DEKs: ~s",
+               "    All DEKs (total: ~p): ~s",
                [Kind,
                 maps:get(is_enabled, Info, undefined),
                 format_dek_id_for_diag(maps:get(active_id, Info, undefined)),
                 maps:get(has_unencrypted_data, Info, undefined),
                 maps:get(last_drop_timestamp, Info, undefined),
+                maps:get(last_deks_gc_datetime, Info, undefined),
                 sets:fold(
                   fun(DekId, FAcc) ->
                       [format_dek_id_for_diag(DekId),
                        " " | FAcc]
                   end, [], maps:get(deks_being_dropped, Info, sets:new())),
                 maps:get(statuses, Info, #{}),
+                length(maps:get(deks, Info, [])),
                 [["\n      ", diag_dek(Dek)]
                  || Dek <- maps:get(deks, Info, [])]])
          end, maps:to_list(DeksMap)))].
