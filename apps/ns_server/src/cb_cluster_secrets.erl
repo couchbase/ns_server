@@ -1601,19 +1601,23 @@ maybe_update_deks(Kind, #state{deks_info = CurDeks} = OldState) ->
                         %% enable the encryption
                         %% Note that ActiveId can't be undefined because
                         %% we know there are too many deks.
-                        %% It should be ok to return ok if set_active_cb
-                        %% succeeds.
                         {error, too_many_deks} when V == false ->
                             true = is_binary(ActiveId),
                             NewState = set_active(Kind, ActiveId, true, State),
-                            call_set_active_cb(Kind, NewState);
+                            case call_set_active_cb(Kind, NewState) of
+                                {ok, NewState2} ->
+                                    {error, NewState2, too_many_deks};
+                                {error, NewState2, Reason} ->
+                                    {error, NewState2, Reason}
+                            end;
                         %% This just a dek rotation attempt. No need to call
                         %% set_active because nothing changes.
                         {error, too_many_deks} ->
                             NewState = maybe_garbage_collect_deks(Kind, false,
                                                                   State),
-                            %% We will retry anyway because of rotate_deks timer
-                            {ok, NewState};
+                            %% Returning error to make sure we show error
+                            %% in UI
+                            {error, NewState, too_many_deks};
                         {error, Reason} ->
                             {error, State, Reason}
                     end
@@ -1705,7 +1709,15 @@ handle_new_dek_ids_in_use(Kind, CurrInUseIDs, Force,
     N = length(lists:delete(?NULL_DEK, UniqCurrInUseIDs)),
     ns_server_stats:notify_gauge({<<"encr_at_rest_deks_in_use">>,
                                   [{type, cb_deks:kind2bin(Kind)}]}, N),
-    UpdateStatus = maps:get(maybe_update_deks, Statuses, undefined),
+    UpdateStatus = case maps:get(maybe_update_deks, Statuses, undefined) of
+                       undefined -> ok;
+                       %% We can't generate new dek because there are too many
+                       %% deks. Obviously this error should not stop the
+                       %% garbage collection. Otherwise we will never get out
+                       %% of too_many_deks error.
+                       {error, too_many_deks} -> ok;
+                       S -> S
+                   end,
     UpdatedIdsBeingDropped =
         %% To prevent dropping ?NULL_DEK again and again
         %% Otherwise if we don't retire any real deks, we will never
