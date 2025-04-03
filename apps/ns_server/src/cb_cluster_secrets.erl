@@ -461,8 +461,8 @@ delete_historical_key_internal(SecretId, HistKeyId, IsSecretWritableFun) ->
                             {error, Reason}
                     end
             end;
-        Error ->
-            Error
+        {error, Reason} ->
+            {error, {unsafe, Reason}}
     end.
 
 %% Cipher should have type crypto:cipher() but it is not exported
@@ -3194,8 +3194,8 @@ maybe_reset_deks_counters() ->
             case get_all_node_deks_info() of
                 {ok, AllNodesDekInfo} ->
                     reset_dek_counters(CounterMap, AllNodesDekInfo);
-                {error, _} = Error ->
-                    Error
+                {error, _} ->
+                    {error, retry}
             end
     end.
 
@@ -3281,7 +3281,7 @@ get_all_node_deks_info() ->
                 {[], true} ->
                     ?log_debug("Some deks have issues.~n"
                                "All responses: ~p", [Res]),
-                    {error, retry};
+                    {error, deks_issues};
                 {Errors, _} ->
                     ?log_error("Failed to get deks info from some nodes: ~p~n"
                                "All responses: ~p", [Errors, Res]),

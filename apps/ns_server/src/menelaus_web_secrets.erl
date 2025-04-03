@@ -720,6 +720,14 @@ format_error({store_key_error, Msg}) ->
     Msg;
 format_error(active_key) ->
     "Can't delete active key";
+format_error({unsafe, Reason}) ->
+    "Operation is unsafe. " ++ format_error(Reason);
+format_error(deks_issues) ->
+    "Some data encryption keys are outdated or not available";
+format_error(missing_nodes) ->
+    "Some nodes are missing";
+format_error(node_errors) ->
+    "Failed to get data encryption keys (DEKs) information from some nodes";
 format_error(not_supported) ->
     "Operation not supported";
 format_error(timeout) ->
