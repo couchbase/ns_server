@@ -11,6 +11,10 @@
 
 -include("ns_common.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([handle_global_get/1,
          handle_effective_get/2,
          handle_global_post/1,
@@ -18,7 +22,8 @@
          handle_node_get/2,
          handle_node_post/2,
          handle_node_setting_get/3,
-         handle_node_setting_delete/3]).
+         handle_node_setting_delete/3,
+         config_upgrade_to_morpheus/1]).
 
 -import(menelaus_util,
         [reply_json/2,
@@ -55,9 +60,18 @@ supported_setting_names() ->
      {tcp_keepalive_interval, {int, 0, ?MAX_32BIT_SIGNED_INT}},
      {tcp_keepalive_probes, {int, 0, ?MAX_32BIT_SIGNED_INT}},
      {tcp_user_timeout, {int, 0, ?MAX_32BIT_SIGNED_INT}},
-     {connection_limit_mode, {one_of, ["disconnect", "recycle"]}},
      {free_connection_pool_size, {int, 0, ?MAX_32BIT_SIGNED_INT}},
-     {max_client_connection_details, {int, 0, ?MAX_32BIT_SIGNED_INT}}].
+     {max_client_connection_details, {int, 0, ?MAX_32BIT_SIGNED_INT}}]
+        ++
+        %% KV stopped supporting this is 7.6, they just ignore it, but we
+        %% should probably support it in mixed mode. Even though we "support" it
+        %% in the API, we will not actually set it in the memcached config on
+        %% this node, just the other older nodes.
+        case cluster_compat_mode:is_cluster_morpheus() of
+            true -> [];
+            false ->
+                [{connection_limit_mode, {one_of, ["disconnect", "recycle"]}}]
+        end.
 
 %% Updates to these settings go to the '{node, node(), memcached_config_extra}'
 %% or 'memcached_config_extra' keys depending on whether the write is per-node
@@ -74,10 +88,13 @@ supported_extra_setting_names() ->
      {dcp_disconnect_when_stuck_name_regex, string},
      {external_auth_request_timeout, {int, 0, ?MAX_32BIT_SIGNED_INT}}].
 
+supported_nodes() ->
+    ns_node_disco:nodes_wanted().
+
 parse_validate_node("self") ->
     parse_validate_node(atom_to_list(node()));
 parse_validate_node(Name) ->
-    NodesWantedS = [atom_to_list(N) || N <- ns_node_disco:nodes_wanted()],
+    NodesWantedS = [atom_to_list(N) || N <- supported_nodes()],
     case lists:member(Name, NodesWantedS) of
         false ->
             unknown;
@@ -386,3 +403,93 @@ do_delete_txn(Key, Setting) ->
         {commit, _} ->
             ok
     end.
+
+config_upgrade_to_morpheus(Config) ->
+    config_upgrade_to_morpheus_global_memcached_cfg(Config) ++
+    config_upgrade_to_morpheus_node_memcached_cfg(Config).
+
+config_upgrade_to_morpheus_global_memcached_cfg(Config) ->
+    case ns_config:search(Config, memcached) of
+        false -> [];
+        {value, Value} ->
+            case proplists:get_value(connection_limit_mode, Value) of
+                undefined -> [];
+                _ ->
+                    [{set, memcached,
+                         proplists:delete(connection_limit_mode, Value)}]
+            end
+
+    end.
+
+config_upgrade_to_morpheus_node_memcached_cfg(Config) ->
+    lists:foldl(
+        fun(Node, Acc) ->
+            NodeMcdCfg = ns_config:search(Config, {node, Node, memcached}, []),
+            case NodeMcdCfg of
+                [] -> Acc;
+                Value ->
+                    case proplists:get_value(connection_limit_mode, Value) of
+                        undefined -> Acc;
+                        _ ->
+                            [{set, {node, Node, memcached},
+                              proplists:delete(connection_limit_mode, Value)}
+                            | Acc]
+                    end
+            end
+        end, [], supported_nodes()).
+
+-ifdef(TEST).
+upgrade_config_from_76_to_morpheus_test_setup() ->
+    ns_config_default:ns_config_default_mock_setup(),
+
+    %% We upgrade node keys so we need to mock the method we use to get the
+    %% nodes list.
+    meck:new(ns_node_disco),
+    meck:expect(ns_node_disco, nodes_wanted,
+                fun () -> [node()] end).
+
+upgrade_config_from_76_to_morpheus_test_teardown(R) ->
+    ns_config_default:ns_config_default_mock_teardown(R),
+    meck:unload(ns_node_disco).
+
+upgrade_config_from_76_to_morpheus_t() ->
+    %% We'll use a default config to test, but add some of the older verrsion
+    %% values that are relevant to the upgrade.
+    Default = ns_config_default:default(?VERSION_MORPHEUS),
+
+    %% Firstly lets add the connection_limit_mode to the global memcached config
+    GlobalMcdCfgKey = memcached,
+    {GlobalMcdCfgKey, MemcachedCfg} =
+        lists:keyfind(GlobalMcdCfgKey, 1, Default),
+    NewMemcachedCfg = lists:keystore(connection_limit_mode, 1, MemcachedCfg,
+                                     {connection_limit_mode, "disconnect"}),
+    TestCfg0 = lists:keystore(GlobalMcdCfgKey, 1, Default,
+                              {GlobalMcdCfgKey, NewMemcachedCfg}),
+
+    %% Now, lets add connection_limit_mode to the node specific memcached
+    %% config.
+    NodeMcdCfgKey = {node, node(), memcached},
+    {NodeMcdCfgKey, NodeMcdCfg} = lists:keyfind(NodeMcdCfgKey, 1, TestCfg0),
+    NewNodeMcdCfg = lists:keystore(connection_limit_mode, 1, NodeMcdCfg,
+                                   {connection_limit_mode, "disconnect"}),
+    TestCfg1 = lists:keyreplace(NodeMcdCfgKey, 1, TestCfg0,
+                                {NodeMcdCfgKey, NewNodeMcdCfg}),
+
+    Txns = config_upgrade_to_morpheus([TestCfg1]),
+
+    {set, GlobalMcdCfgKey, UpgradedGlobalMcdCfg} =
+        lists:keyfind(GlobalMcdCfgKey, 2, Txns),
+    ?assertEqual(false,
+                 lists:keyfind(connection_limit_mode, 1,
+                               UpgradedGlobalMcdCfg)),
+
+    {set, NodeMcdCfgKey, UpgradedNodeMcdCfg} =
+        lists:keyfind(NodeMcdCfgKey, 2, Txns),
+    ?assertEqual(false,
+                 lists:keyfind(connection_limit_mode, 1, UpgradedNodeMcdCfg)).
+
+upgrade_config_from_76_to_morpheus_test_() ->
+    {setup, fun upgrade_config_from_76_to_morpheus_test_setup/0,
+            fun upgrade_config_from_76_to_morpheus_test_teardown/1,
+            fun upgrade_config_from_76_to_morpheus_t/0}.
+-endif.

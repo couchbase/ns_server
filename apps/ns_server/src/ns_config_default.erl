@@ -14,6 +14,8 @@
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-export([ns_config_default_mock_setup/0,
+         ns_config_default_mock_teardown/1]).
 -endif.
 
 -export([default/1, upgrade_config/1, get_current_version/0, encrypt_and_save/2,
@@ -244,7 +246,6 @@ default(Vsn) ->
        {tcp_keepalive_interval, 10},
        {tcp_keepalive_probes, 3},
        {tcp_user_timeout, 30},
-       {connection_limit_mode, <<"disconnect">>},
        {free_connection_pool_size, 0},
        {max_client_connection_details, 0}]},
 
@@ -331,7 +332,6 @@ default(Vsn) ->
         {tcp_keepalive_interval, tcp_keepalive_interval},
         {tcp_keepalive_probes, tcp_keepalive_probes},
         {tcp_user_timeout, tcp_user_timeout},
-        {connection_limit_mode, connection_limit_mode},
         {free_connection_pool_size, free_connection_pool_size},
         {max_client_connection_details, max_client_connection_details}
        ]}},
@@ -561,32 +561,34 @@ generate_internal_pass() ->
 no_upgrade_on_current_version_test() ->
     ?assertEqual([], upgrade_config([[{{node, node(), config_version}, get_current_version()}]])).
 
+ns_config_default_mock_setup() ->
+    ns_config:mock_tombstone_agent(),
+    config_profile:mock_default_profile(),
+    meck:new(sigar),
+    meck:expect(sigar, get_cgroups_info,
+                fun () ->  #{supported => false} end),
+    meck:new(ns_storage_conf),
+    meck:expect(ns_storage_conf, default_config,
+                fun () -> mock_ns_storage_conf_default_config() end),
+    meck:new(ns_bucket),
+    meck:expect(ns_bucket, memcached_buckets_in_use,
+                fun () -> false end).
+
 mock_ns_storage_conf_default_config() ->
     [{{node, node(), database_dir}, "DbTestDir"},
      {{node, node(), index_dir}, "IxTestDir"}].
 
+ns_config_default_mock_teardown(_) ->
+    meck:unload(sigar),
+    ns_config:unmock_tombstone_agent(),
+    meck:unload(ns_storage_conf),
+    config_profile:unmock_default_profile(ok),
+    meck:unload(ns_bucket).
+
 all_upgrades_test_() ->
     {setup,
-     fun () ->
-             ns_config:mock_tombstone_agent(),
-             config_profile:mock_default_profile(),
-             meck:new(sigar),
-             meck:expect(sigar, get_cgroups_info,
-                         fun () ->  #{supported => false} end),
-             meck:new(ns_storage_conf),
-             meck:expect(ns_storage_conf, default_config,
-                         fun () -> mock_ns_storage_conf_default_config() end),
-             meck:new(ns_bucket),
-             meck:expect(ns_bucket, memcached_buckets_in_use,
-                         fun () -> false end)
-     end,
-     fun (_) ->
-             meck:unload(sigar),
-             ns_config:unmock_tombstone_agent(),
-             meck:unload(ns_storage_conf),
-             config_profile:unmock_default_profile(ok),
-             meck:unload(ns_bucket)
-     end,
+     fun ns_config_default_mock_setup/0,
+     fun ns_config_default_mock_teardown/1,
      ?_test(test_all_upgrades())}.
 
 test_all_upgrades() ->
