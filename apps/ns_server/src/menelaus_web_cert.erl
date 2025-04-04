@@ -811,6 +811,7 @@ do_handle_client_cert_auth_settings_post(Req, JSON) ->
         _ ->
             ns_config:set(client_cert_auth, Cfg),
             ns_audit:client_cert_auth(Req, Cfg),
+            add_client_cert_auth_event_log(Cfg),
             %% Sync guarantees that https server has restarted on
             %% this node. It is not guaranteed that other servers on
             %% this node has restarted. It is also not guaranteed that https
@@ -821,6 +822,19 @@ do_handle_client_cert_auth_settings_post(Req, JSON) ->
             ns_ssl_services_setup:sync(),
             menelaus_util:reply(Req, 202)
     end.
+
+add_client_cert_auth_event_log(Cfg) ->
+    State = {state, list_to_binary(proplists:get_value(state, Cfg))},
+    %% 'prefixes' is a list of lists, each list contains a triplet of
+    %% key/value pairs.
+    Prefixes0 = proplists:get_value(prefixes, Cfg),
+    Prefixes =
+        lists:map(
+          fun (Triplet) ->
+                  {[{Key, list_to_binary(Val)} || {Key, Val} <- Triplet]}
+          end, Prefixes0),
+    EventDetails = [State, {prefixes, Prefixes}],
+    event_log:add_log(client_cert_auth, EventDetails).
 
 validate_client_cert_CAs(ClientCertAuth) ->
     validate_client_cert_CAs(

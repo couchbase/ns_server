@@ -127,6 +127,9 @@ event_details(internal_password_rotated) ->
 event_details(regenerate_certificate) ->
     {9240, security, info,
      <<"Self-signed SSL certificate was regenerated">>};
+event_details(client_cert_auth) ->
+    {9241, security, info,
+     <<"Client certificate authentication settings changed">>};
 
 %% event_ids block for Data related events: [8192, ... 9215]
 event_details(bucket_created) ->
