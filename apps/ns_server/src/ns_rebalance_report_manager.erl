@@ -163,13 +163,31 @@ handle_call({reencrypt_reports, LogDS},
                   end
           end, DirFiles),
 
+    ReqdReports = ns_config:read_key_fast(rebalance_reports, []),
+    FilesInConfig = [proplists:get_value(filename, Info) ||
+                     {_, Info} <- ReqdReports],
 
     Errors =
         lists:filtermap(
           fun({_FileName, ok}) ->
                   false;
              ({FileName, {error, E}}) ->
-                 {true, {FileName, E}}
+                 case lists:member(FileName, FilesInConfig) of
+                     true ->
+                         {true, {FileName, E}};
+                     false ->
+                         %% Since the file is not in ns_config, it is to be
+                         %% removed anyway.
+                         %% Typically this can happen if configuration is wiped
+                         %% out completely manually by user (DEKs are removed
+                         %% as well). In this case we will not be able to
+                         %% reencrypt the file (no keys available), so just
+                         %% ignore the error and wait until this file gets
+                         %% removed in refresh.
+                         ?log_warning("Ignoring reencryption error for ~p: ~p",
+                                      [FileName, E]),
+                         false
+                 end
           end, Rvs),
     case Errors of
         [] ->
