@@ -275,6 +275,8 @@ func (s *encryptionService) processCommand() {
 		s.cmdMac(data)
 	case 22:
 		s.cmdVerifyMac(data)
+	case 23:
+		s.cmdRevalidateKeyCache()
 	default:
 		panic(fmt.Sprintf("Unknown command %v", command))
 	}
@@ -764,20 +766,22 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 	otherData, data := readBigField(data)
 	encryptionKeyNameBin, data := readBigField(data)
 	creationTime, data := readBigField(data)
-	testOnly, _ := readBigField(data)
+	testOnly, data := readBigField(data)
+	canBeCachedBin, _ := readBigField(data)
 	keyKindStr := string(keyKind)
 	keyNameStr := string(keyName)
 	keyTypeStr := string(keyType)
 	encryptionKeyName := string(encryptionKeyNameBin)
 	creationTimeStr := string(creationTime)
 	testOnlyBool := (string(testOnly) == "true")
+	canBeCached := (string(canBeCachedBin) == "true")
 
 	if testOnlyBool {
 		logDbg("Received request to test key %s (kind: %s, type: %s, encryptionKey: %s) on disk",
 			keyNameStr, keyKindStr, keyTypeStr, encryptionKeyName)
 	} else {
-		logDbg("Received request to store key %s (kind: %s, type: %s, encryptionKey: %s) on disk",
-			keyNameStr, keyKindStr, keyTypeStr, encryptionKeyName)
+		logDbg("Received request to store key %s (kind: %s, type: %s, encryptionKey: %s, canBeCached: %t) on disk",
+			keyNameStr, keyKindStr, keyTypeStr, encryptionKeyName, canBeCached)
 	}
 
 	ctx := s.newStoredKeyCtx()
@@ -788,6 +792,7 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 		encryptionKeyName,
 		creationTimeStr,
 		testOnlyBool,
+		canBeCached,
 		otherData,
 		ctx)
 	if err != nil {
@@ -883,6 +888,11 @@ func (s *encryptionService) cmdVerifyMac(data []byte) {
 		replyError(err.Error())
 		return
 	}
+	replySuccess()
+}
+
+func (s *encryptionService) cmdRevalidateKeyCache() {
+	s.storedKeysState.revalidateKeyCache(s.newStoredKeyCtx())
 	replySuccess()
 }
 

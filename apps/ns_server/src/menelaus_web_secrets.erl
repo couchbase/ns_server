@@ -238,6 +238,7 @@ keys_remap() ->
       next_rotation_time => nextRotationTime,
       last_rotation_time => lastRotationTime,
       auto_rotation => autoRotation,
+      can_be_cached => canBeCached,
       key_arn => keyARN,
       credentials_file => credentialsFile,
       config_file => configFile,
@@ -317,6 +318,8 @@ format_auto_generated_key_data(Props) ->
     maps:to_list(
       maps:map(
         fun (auto_rotation, B) ->
+                B;
+            (can_be_cached, B) ->
                 B;
             (rotation_interval_in_days, Interval) ->
                 Interval;
@@ -444,7 +447,9 @@ validate_secrets_data(Name, CurSecretProps, State) ->
 %% Any field that can be modified and needs to use CurProps should be
 %% checked in transaction in cb_cluster_secret:replace_secret_internal.
 generated_key_validators(CurSecretProps) ->
-    [validator:boolean(autoRotation, _),
+    [validator:boolean(canBeCached, _),
+     validator:default(canBeCached, true, _),
+     validator:boolean(autoRotation, _),
      validator:default(autoRotation, true, _),
      validator:range(rotationIntervalInDays, 1, max_uint64, _),
      validate_iso8601_datetime(nextRotationTime, _),

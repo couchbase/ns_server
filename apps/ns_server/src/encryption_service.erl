@@ -38,7 +38,7 @@
          get_state/0,
          os_pid/0,
          reconfigure/1,
-         store_kek/4,
+         store_kek/5,
          store_aws_key/4,
          store_kmip_key/5,
          store_dek/5,
@@ -52,7 +52,8 @@
          remove_old_integrity_tokens/1,
          get_key_ids_in_use/0,
          mac/1,
-         verify_mac/2]).
+         verify_mac/2,
+         revalidate_key_cache/0]).
 
 
 -export_type([stored_key_error/0]).
@@ -102,18 +103,19 @@ reconfigure(NewCfg) ->
 garbage_collect_keks(InUseKeyIds) ->
     garbage_collect_keys(kek, InUseKeyIds).
 
-store_kek(Id, Key, KekIdToEncrypt, CreationDT) ->
-    store_key(kek, Id, 'raw-aes-gcm', Key, KekIdToEncrypt, CreationDT).
+store_kek(Id, Key, KekIdToEncrypt, CreationDT, CanBeCached) ->
+    store_key(kek, Id, 'raw-aes-gcm', Key, KekIdToEncrypt, CreationDT,
+              CanBeCached).
 
 store_dek({bucketDek, Bucket}, Id, Key, KekIdToEncrypt, CreationDT) ->
     store_dek(bucketDek, bucket_dek_id(Bucket, Id), Key, KekIdToEncrypt,
               CreationDT);
 store_dek(Kind, Id, Key, KekIdToEncrypt, CreationDT) ->
-    store_key(Kind, Id, 'raw-aes-gcm', Key, KekIdToEncrypt, CreationDT).
+    store_key(Kind, Id, 'raw-aes-gcm', Key, KekIdToEncrypt, CreationDT, false).
 
 store_aws_key(Id, Params, CreationDT, TestOnly) ->
     store_key(kek, Id, awskm, ejson:encode(format_aws_key_params(Params)),
-              <<"encryptionService">>, CreationDT, TestOnly).
+              <<"encryptionService">>, CreationDT, false, TestOnly).
 
 format_aws_key_params(#{key_arn := KeyArn, region := Region,
                         profile := Profile, config_file := ConfigFile,
@@ -127,7 +129,7 @@ format_aws_key_params(#{key_arn := KeyArn, region := Region,
 
 store_kmip_key(Id, Params, KekIdToEncrypt, CreationDT, TestOnly) ->
     store_key(kek, Id, kmip, ejson:encode(format_kmip_key_params(Params)),
-              KekIdToEncrypt, CreationDT, TestOnly).
+              KekIdToEncrypt, CreationDT, false, TestOnly).
 
 format_kmip_key_params(#{host := Host,
                          port := Port,
@@ -232,6 +234,13 @@ mac(Data) when is_binary(Data) ->
 verify_mac(Mac, Data) when is_binary(Data), is_binary(Mac) ->
     ?wrap_error_msg(cb_gosecrets_runner:verify_mac(?RUNNER, Mac, Data),
                     mac_verification_error, []).
+
+%% This function ensures that gosecrets doesn't hold any removed keys in its
+%% cache.
+revalidate_key_cache() ->
+    ?log_debug("Validating key cache"),
+    ?wrap_error_msg(cb_gosecrets_runner:revalidate_key_cache(?RUNNER),
+                    validate_key_cache_error, []).
 
 %%%===================================================================
 %%% callbacks
@@ -472,25 +481,30 @@ wait_for_server_start() ->
           end
       end, ?RESTART_WAIT_TIMEOUT, 100).
 
-store_key(Kind, Name, Type, KeyData, EncryptionKeyId, CreationDT) ->
-    store_key(Kind, Name, Type, KeyData, EncryptionKeyId, CreationDT, false).
+store_key(Kind, Name, Type, KeyData, EncryptionKeyId, CreationDT,
+          CanBeCached) ->
+    store_key(Kind, Name, Type, KeyData, EncryptionKeyId, CreationDT,
+              CanBeCached, false).
 
-store_key(Kind, Name, Type, KeyData, undefined, CreationDT, TestOnly) ->
+store_key(Kind, Name, Type, KeyData, undefined, CreationDT, CanBeCached,
+          TestOnly) ->
     store_key(Kind, Name, Type, KeyData, <<"encryptionService">>, CreationDT,
-              TestOnly);
+              CanBeCached, TestOnly);
 store_key(Kind, Name, Type, KeyData, EncryptionKeyId,
-          {{_, _, _}, {_, _, _}} = CreationDT, TestOnly)
+          {{_, _, _}, {_, _, _}} = CreationDT, CanBeCached, TestOnly)
                                             when is_atom(Kind),
                                                  is_binary(Name),
                                                  is_atom(Type),
                                                  is_binary(KeyData),
                                                  is_binary(EncryptionKeyId),
-                                                 is_atom(TestOnly) ->
+                                                 is_atom(TestOnly),
+                                                 is_boolean(CanBeCached) ->
     CreationDTISO = iso8601:format(CreationDT),
     KindBin = cb_deks:kind2bin(Kind),
     ?wrap_error_msg(
       cb_gosecrets_runner:store_key(?RUNNER, Kind, Name, Type, KeyData,
-                                    EncryptionKeyId, CreationDTISO, TestOnly),
+                                    EncryptionKeyId, CreationDTISO, CanBeCached,
+                                    TestOnly),
       store_key_error, [{kind, KindBin}, {key_UUID, Name}]).
 
 maybe_update_dek_path_in_config() ->
@@ -561,6 +575,11 @@ garbage_collect_keys(Kind, InUseKeyIds) ->
     case ToRetire of
         [] ->
             ?log_debug("~p keys gc: no keys to retire", [Kind]),
+            %% We need to validate keys cache here because sometimes
+            %% keys are removed from disk before this function is called
+            %% (bucket removal) and we need to make sure that the key cache
+            %% is cleared in this case.
+            revalidate_key_cache(),
             ok;
         _ ->
             ?log_info("~p keys gc: retiring ~0p (all keys: ~0p, in "
@@ -573,6 +592,7 @@ garbage_collect_keys(Kind, InUseKeyIds) ->
                           {error, Reason} -> {true, {Filename, Reason}}
                       end
                   end, ToRetire),
+            revalidate_key_cache(),
             case FailedList of
                 [] -> ok;
                 _ ->

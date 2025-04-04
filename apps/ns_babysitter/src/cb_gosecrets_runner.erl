@@ -33,7 +33,7 @@
          copy_secrets/2,
          cleanup_secrets/2,
          set_config/3,
-         store_key/8,
+         store_key/9,
          encrypt_with_key/5,
          decrypt_with_key/5,
          read_key/3,
@@ -43,7 +43,8 @@
          remove_old_integrity_tokens/2,
          get_key_id_in_use/1,
          mac/2,
-         verify_mac/3]).
+         verify_mac/3,
+         revalidate_key_cache/1]).
 
 -record(state, {config :: file:filename(),
                 loop :: pid() | undefined,
@@ -123,11 +124,11 @@ set_config(Name, Cfg, ResetPassword) ->
     end.
 
 store_key(Name, Kind, KeyName, KeyType, KeyData, EncryptionKeyId, CreationDT,
-          TestOnly) ->
+          CanBeCached, TestOnly) ->
     gen_server:call(
       Name,
       {store_key, Kind, KeyName, KeyType, KeyData, EncryptionKeyId, CreationDT,
-       TestOnly}, infinity).
+       CanBeCached, TestOnly}, infinity).
 
 read_key(Name, Kind, KeyName) ->
     gen_server:call(Name, {read_key, Kind, KeyName}, infinity).
@@ -154,6 +155,9 @@ mac(Name, Data) ->
 
 verify_mac(Name, Mac, Data) ->
     gen_server:call(Name, {verify_mac, Mac, Data}, infinity).
+
+revalidate_key_cache(Name) ->
+    gen_server:call(Name, revalidate_key_cache, infinity).
 
 start_link(Logger, PasswordPromptAllowed, ReadOnly) ->
     start_link(Logger, PasswordPromptAllowed, ReadOnly, gosecrets_cfg_path()).
@@ -367,7 +371,7 @@ handle_call({cleanup_secrets, Cfg}, _From, State) ->
     CfgBin = ejson:encode(cfg_to_json(Cfg)),
     {reply, call_gosecrets({cleanup_secrets, CfgBin}, State), State};
 handle_call({store_key, _Kind, _Name, _KeyType, _KeyData, _EncryptionKeyId,
-             _CreationDT, _TestOnly} = Cmd, _From, State) ->
+             _CreationDT, _CanBeCached, _TestOnly} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
 handle_call({read_key, _Kind, _Name} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
@@ -387,6 +391,8 @@ handle_call({mac, _Data} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
 handle_call({verify_mac, _Mac, _Data} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
+handle_call(revalidate_key_cache, _From, State) ->
+    {reply, call_gosecrets(revalidate_key_cache, State), State};
 handle_call(stop, _From, State) ->
     {stop, normal, call_gosecrets(stop, State), State};
 handle_call(Call, _From, State) ->
@@ -508,7 +514,7 @@ encode({copy_secrets, ConfigBin}) ->
 encode({cleanup_secrets, ConfigBin}) ->
     <<11, ConfigBin/binary>>;
 encode({store_key, Kind, Name, KeyType, KeyData, EncryptionKeyId,
-        CreationDT, TestOnly}) ->
+        CreationDT, CanBeCached, TestOnly}) ->
     KindBin = atom_to_binary(Kind),
     <<12, (encode_param(KindBin))/binary,
           (encode_param(Name))/binary,
@@ -516,7 +522,8 @@ encode({store_key, Kind, Name, KeyType, KeyData, EncryptionKeyId,
           (encode_param(KeyData))/binary,
           (encode_param(EncryptionKeyId))/binary,
           (encode_param(CreationDT))/binary,
-          (encode_param(TestOnly))/binary>>;
+          (encode_param(TestOnly))/binary,
+          (encode_param(CanBeCached))/binary>>;
 encode({encrypt_with_key, Data, AD, KeyKind, Name}) ->
     <<13, (encode_param(Data))/binary,
           (encode_param(AD))/binary,
@@ -547,7 +554,9 @@ encode({init, IsReadOnly, HiddenPass}) ->
 encode({mac, Data}) ->
     <<21, Data/binary>>;
 encode({verify_mac, Mac, Data}) ->
-    <<22, (encode_param(Mac))/binary, (encode_param(Data))/binary>>.
+    <<22, (encode_param(Mac))/binary, (encode_param(Data))/binary>>;
+encode(revalidate_key_cache) ->
+    <<23>>.
 
 encode_param(B) when is_atom(B) ->
     encode_param(atom_to_binary(B));
@@ -935,7 +944,8 @@ integrity_check_for_stored_keys_test() ->
                                store_key(Pid, Kind, KeyId, 'raw-aes-gcm',
                                          rand:bytes(32),
                                          EncryptWithKey,
-                                         <<"2024-07-26T19:32:19Z">>, false)
+                                         <<"2024-07-26T19:32:19Z">>,
+                                         false, false)
                            end,
 
                 ok = StoreKey(configDek, ?key1, <<"encryptionService">>),
@@ -1009,10 +1019,12 @@ store_and_read_key_test() ->
                 Type = 'raw-aes-gcm',
                 ?assertEqual(ok, store_key(Pid, kek, <<"key1">>, Type, Key1,
                                            <<"encryptionService">>,
-                                           <<"2024-07-26T19:32:19Z">>, false)),
+                                           <<"2024-07-26T19:32:19Z">>,
+                                           false, false)),
                 ?assertEqual(ok, store_key(Pid, configDek, <<"key2">>, Type,
                                            Key2, <<"key1">>,
-                                           <<"2024-07-26T19:32:19Z">>, false)),
+                                           <<"2024-07-26T19:32:19Z">>,
+                                           false, false)),
                 {ok, Key1Encoded} = read_key(Pid, kek, <<"key1">>),
                 {ok, Key2Encoded} = read_key(Pid, configDek, <<"key2">>),
                 ?assertMatch(#{type := Type,
@@ -1537,7 +1549,7 @@ mac_test() ->
                 %% Rotate tokens and make sure that old mac is still valid
                 ok = store_key(Pid, configDek, ?key1, 'raw-aes-gcm',
                                rand:bytes(32), <<"encryptionService">>,
-                               <<"2024-07-26T19:32:19Z">>, false),
+                               <<"2024-07-26T19:32:19Z">>, false, false),
                 ok = rotate_integrity_tokens(Pid, ?key1),
 
                 {ok, Mac2} = mac(Pid, Data),

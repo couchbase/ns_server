@@ -67,6 +67,7 @@ type storedKeyIface interface {
 	marshal() (storedKeyType, []byte, error)
 	unmarshal(json.RawMessage) error
 	usesSecretManagementKey() bool
+	canBeCached() bool
 }
 
 // Struct for marshalling/unmarshalling of a generic stored key
@@ -99,6 +100,7 @@ type rawAesGcmStoredKeyJson struct {
 	EncryptedByKind   string `json:"encryptedByKind"`
 	EncryptionKeyName string `json:"encryptionKeyName"`
 	CreationTime      string `json:"creationTime"`
+	CanBeCached       bool   `json:"canBeCached"`
 }
 
 // Struct represents raw aes-gcm stored key
@@ -110,6 +112,7 @@ type rawAesGcmStoredKey struct {
 	EncryptedByKind   string
 	EncryptionKeyName string
 	CreationTime      string
+	CanBeCached       bool
 }
 
 type awsStoredKey struct {
@@ -158,6 +161,7 @@ type StoredKeysState struct {
 	intTokensFile     string
 	intTokens         []intToken
 	encryptionKeyName string // Name of the encryption key that is used to encrypt the integrity tokens file
+	keysCache         map[string]storedKeyIface
 }
 
 type intToken struct {
@@ -186,6 +190,7 @@ func initStoredKeys(configDir string, readOnly bool, ctx *storedKeysCtx) (*Store
 	state := &StoredKeysState{
 		readOnly:      readOnly,
 		intTokensFile: tokensPath,
+		keysCache:     make(map[string]storedKeyIface),
 	}
 
 	err := state.readIntTokensFromFile(ctx)
@@ -446,6 +451,26 @@ func (state *StoredKeysState) verifyMac(mac, data []byte) error {
 	return fmt.Errorf("unknown token: %s", uuid)
 }
 
+func (state *StoredKeysState) revalidateKeyCache(ctx *storedKeysCtx) {
+	for _, cachedKeyIface := range state.keysCache {
+		keySettings, err := getStoredKeyConfig(cachedKeyIface.kind(), ctx.storedKeyConfigs)
+		shouldInvalidate := false
+		if err != nil {
+			logDbg("Failed to get stored key config for %s: %s", cachedKeyIface.kind(), err.Error())
+			shouldInvalidate = true
+		} else {
+			keyPathPrefix := storedKeyPathPrefix(keySettings.Path, cachedKeyIface.name())
+			if !isKeyFile(keyPathPrefix) {
+				logDbg("Key file %s not found, removing from cache", keyPathPrefix)
+				shouldInvalidate = true
+			}
+		}
+		if shouldInvalidate {
+			delete(state.keysCache, cachedKeyIface.name())
+		}
+	}
+}
+
 func getEncryptedFileAD(header []byte, offset int) []byte {
 	ad := make([]byte, len(header)+8)
 	copy(ad, header)
@@ -642,6 +667,7 @@ func (state *StoredKeysState) storeKey(
 	encryptionKeyName,
 	creationTime string,
 	testOnly bool,
+	canBeCached bool,
 	otherData []byte,
 	ctx *storedKeysCtx,
 ) error {
@@ -654,14 +680,14 @@ func (state *StoredKeysState) storeKey(
 	}
 	var keyInfo storedKeyIface
 	if keyType == string(rawAESGCMKey) {
-		keyInfo = newAesGcmKey(name, kind, creationTime, encryptionKeyName, otherData)
+		keyInfo = newAesGcmKey(name, kind, creationTime, encryptionKeyName, canBeCached, otherData)
 	} else if keyType == string(awskmKey) {
-		keyInfo, err = newAwsKey(name, kind, creationTime, otherData)
+		keyInfo, err = newAwsKey(name, kind, creationTime, canBeCached, otherData)
 		if err != nil {
 			return err
 		}
 	} else if keyType == string(kmipKey) {
-		keyInfo, err = newKmipKey(name, kind, creationTime, encryptionKeyName, otherData)
+		keyInfo, err = newKmipKey(name, kind, creationTime, encryptionKeyName, canBeCached, otherData)
 		if err != nil {
 			return err
 		}
@@ -706,6 +732,10 @@ func (state *StoredKeysState) storeKey(
 		return err
 	}
 
+	if keyInfo.canBeCached() {
+		state.keysCache[keyInfo.name()] = keyInfo
+	}
+
 	return nil
 }
 
@@ -725,6 +755,10 @@ func (state *StoredKeysState) readKey(name, kind string, validateProof bool, ctx
 	keySettings, err := getStoredKeyConfig(kind, ctx.storedKeyConfigs)
 	if err != nil {
 		return nil, err
+	}
+	if cachedKeyIface, ok := state.keysCache[name]; ok {
+		logDbg("readKey: using cached key %s", name)
+		return cachedKeyIface, nil
 	}
 	keyIface, _, proof, err := readKeyRaw(keySettings, name)
 	if err != nil {
@@ -761,6 +795,9 @@ func (state *StoredKeysState) decryptKey(keyIface storedKeyIface, validateProof 
 		if err != nil {
 			return err
 		}
+	}
+	if keyIface.canBeCached() {
+		state.keysCache[keyIface.name()] = keyIface
 	}
 	return nil
 }
@@ -865,6 +902,10 @@ func (state *StoredKeysState) encryptWithKey(keyKind, keyName string, data, AD [
 	if err != nil {
 		return nil, err
 	}
+	if cachedKeyIface, ok := state.keysCache[keyName]; ok {
+		logDbg("encryptWithKey: using cached key %s", keyName)
+		return cachedKeyIface.encryptData(data, AD)
+	}
 	keyIface, _, proof, err := readKeyRaw(keySettings, keyName)
 	if err != nil {
 		return nil, err
@@ -884,6 +925,10 @@ func (state *StoredKeysState) decryptWithKey(keyKind, keyName string, data, AD [
 	keySettings, err := getStoredKeyConfig(keyKind, ctx.storedKeyConfigs)
 	if err != nil {
 		return nil, err
+	}
+	if cachedKeyIface, ok := state.keysCache[keyName]; ok {
+		logDbg("decryptWithKey: using cached key %s", keyName)
+		return cachedKeyIface.decryptData(data, AD)
 	}
 	keyIface, _, proof, err := readKeyRaw(keySettings, keyName)
 	if err != nil {
@@ -977,6 +1022,16 @@ func findKeyFile(path string) (string, int, error) {
 		return "", -1, fmt.Errorf("failed to find any key files among %v", candidates)
 	}
 	return res, maxVsn, nil
+}
+
+func isKeyFile(pathPrefix string) bool {
+	wildcard := pathPrefix + ".*"
+	candidates, err := filepath.Glob(wildcard)
+	if err != nil {
+		logDbg("Failed to read file list using wildcard %s: %s", wildcard, err.Error())
+		return false
+	}
+	return len(candidates) > 0
 }
 
 func readKeyFromFileRaw(pathWithoutVersion string) (storedKeyIface, int, string, error) {
@@ -1156,13 +1211,14 @@ func decryptKeyData(k storedKeyIface, data []byte, encryptedByKind, encryptionKe
 
 // Implementation of storedKeyIface for raw keys
 
-func newAesGcmKey(name, kind, creationTime, encryptionKeyName string, data []byte) *rawAesGcmStoredKey {
+func newAesGcmKey(name, kind, creationTime, encryptionKeyName string, canBeCached bool, data []byte) *rawAesGcmStoredKey {
 	rawKeyInfo := &rawAesGcmStoredKey{
 		Name:              name,
 		Kind:              kind,
 		EncryptionKeyName: encryptionKeyName,
 		CreationTime:      creationTime,
 		DecryptedKey:      data,
+		CanBeCached:       canBeCached,
 	}
 	return rawKeyInfo
 }
@@ -1186,11 +1242,15 @@ func (k *rawAesGcmStoredKey) needRewrite(settings *storedKeyConfig, state *Store
 		logDbg("key %s changed type, rewriting", k.Name)
 		return true, vsn, nil
 	}
-	return onDiskKey.EncryptedByKind != settings.EncryptByKind || onDiskKey.EncryptionKeyName != k.EncryptionKeyName, vsn, nil
+	needsRewrite :=
+		onDiskKey.EncryptedByKind != settings.EncryptByKind ||
+			onDiskKey.EncryptionKeyName != k.EncryptionKeyName ||
+			onDiskKey.CanBeCached != k.CanBeCached
+	return needsRewrite, vsn, nil
 }
 
 func (k *rawAesGcmStoredKey) ad() []byte {
-	return []byte(string(rawAESGCMKey) + k.Name + k.Kind + k.CreationTime + k.EncryptionKeyName)
+	return []byte(string(rawAESGCMKey) + k.Name + k.Kind + k.CreationTime + k.EncryptionKeyName + strconv.FormatBool(k.CanBeCached))
 }
 
 func (k *rawAesGcmStoredKey) encryptMe(state *StoredKeysState, ctx *storedKeysCtx) error {
@@ -1252,11 +1312,16 @@ func (k *rawAesGcmStoredKey) unmarshal(data json.RawMessage) error {
 	k.EncryptedByKind = decoded.EncryptedByKind
 	k.EncryptionKeyName = decoded.EncryptionKeyName
 	k.CreationTime = decoded.CreationTime
+	k.CanBeCached = decoded.CanBeCached
 	return nil
 }
 
 func (k *rawAesGcmStoredKey) usesSecretManagementKey() bool {
 	return k.EncryptionKeyName == "encryptionService"
+}
+
+func (k *rawAesGcmStoredKey) canBeCached() bool {
+	return k.CanBeCached
 }
 
 func (k *rawAesGcmStoredKey) marshal() (storedKeyType, []byte, error) {
@@ -1269,7 +1334,9 @@ func (k *rawAesGcmStoredKey) marshal() (storedKeyType, []byte, error) {
 		SealedKeyData:     k.EncryptedKey,
 		EncryptedByKind:   k.EncryptedByKind,
 		EncryptionKeyName: k.EncryptionKeyName,
-		CreationTime:      k.CreationTime})
+		CreationTime:      k.CreationTime,
+		CanBeCached:       k.CanBeCached,
+	})
 
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to marshal key %s: %s", k.Name, err.Error())
@@ -1279,7 +1346,10 @@ func (k *rawAesGcmStoredKey) marshal() (storedKeyType, []byte, error) {
 
 // Implementation of storedKeyIface for aws keys
 
-func newAwsKey(name, kind, creationTime string, data []byte) (*awsStoredKey, error) {
+func newAwsKey(name, kind, creationTime string, canBeCached bool, data []byte) (*awsStoredKey, error) {
+	if canBeCached {
+		return nil, fmt.Errorf("aws keys can't be cached")
+	}
 	var awsk awsStoredKey
 	err := json.Unmarshal(data, &awsk)
 	if err != nil {
@@ -1391,9 +1461,16 @@ func (k *awsStoredKey) usesSecretManagementKey() bool {
 	return false
 }
 
+func (k *awsStoredKey) canBeCached() bool {
+	return false
+}
+
 // Implementation of storedKeyIface for kmip keys
 
-func newKmipKey(name, kind, creationTime, encryptionKeyName string, data []byte) (*kmipStoredKey, error) {
+func newKmipKey(name, kind, creationTime, encryptionKeyName string, canBeCached bool, data []byte) (*kmipStoredKey, error) {
+	if canBeCached {
+		return nil, fmt.Errorf("kmip keys can't be cached")
+	}
 	type kmipKeyTmp struct {
 		KmipId             string `json:"kmipId"`
 		Host               string `json:"host"`
@@ -1611,6 +1688,10 @@ func (k *kmipStoredKey) unmarshal(data json.RawMessage) error {
 
 func (k *kmipStoredKey) usesSecretManagementKey() bool {
 	return k.EncryptionKeyName == "encryptionService"
+}
+
+func (k *kmipStoredKey) canBeCached() bool {
+	return false
 }
 
 func (k *kmipStoredKey) marshal() (storedKeyType, []byte, error) {

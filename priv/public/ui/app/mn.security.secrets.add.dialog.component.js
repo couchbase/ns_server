@@ -85,6 +85,7 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         'generated-secret': this.formBuilder.group({
           encryptWith: 'nodeSecretManager',
           encryptWithKeyId: null,
+          canBeCached: true,
           autoRotation: false,
           rotationIntervalInDays: null,
           nextRotationTime: this.formBuilder.group({
@@ -247,11 +248,13 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
               date: localTime,
               hour: localTime.getHours(),
               minute: localTime.getMinutes(),
-            }
+            },
+            canBeCached: item.data.canBeCached
           };
         } else {
           rv['generated-secret'] = {
-            autoRotation: item.data.autoRotation
+            autoRotation: item.data.autoRotation,
+            canBeCached: item.data.canBeCached
           };
         }
         const {encryptWithKeyId, encryptWith} = item.data;
@@ -286,7 +289,7 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
         data = awsSecret;
         break;
       case 'auto-generated-aes-key-256':
-        const {rotationIntervalInDays, nextRotationTime, autoRotation, encryptWith, encryptWithKeyId} = generatedSecret;
+        const {rotationIntervalInDays, nextRotationTime, autoRotation, encryptWith, encryptWithKeyId, canBeCached} = generatedSecret;
         data = {autoRotation, encryptWith};
         if (encryptWith === 'encryptionKey') {
           data.encryptWithKeyId = encryptWithKeyId?.id ?? -1;
@@ -301,6 +304,7 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
           copiedDate.setMilliseconds(0);
           data.nextRotationTime = copiedDate.toISOString();
         }
+        data.canBeCached = canBeCached;
         break;
       case 'kmip-aes-key-256':
         data = kmipSecret;

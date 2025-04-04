@@ -1656,6 +1656,7 @@ perform_actual_join(RemoteNode, NewCookie, ChronicleInfo) ->
         ok = chronicle_local:join_cluster(ChronicleInfo),
 
         {_, ok} ?= {reencrypt_deks, cb_cluster_secrets:reencrypt_deks()},
+        encryption_service:revalidate_key_cache(),
 
         %% Make sure that latest timestamps are published synchronously.
         tombstone_agent:refresh(),
@@ -1740,7 +1741,8 @@ perform_leave() ->
     %% not conflict with this value.
     ns_config:set_initial(nodes_wanted, [node()]),
     {ok, _} = ns_cookie_manager:cookie_sync(),
-    ok = cb_cluster_secrets:reencrypt_deks().
+    ok = cb_cluster_secrets:reencrypt_deks(),
+    encryption_service:revalidate_key_cache().
 
 leave_marker_path() ->
     path_config:component_path(data, "leave_marker").
