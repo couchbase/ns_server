@@ -652,7 +652,7 @@ validate_client_cert_auth_state(StateVal, Prefixes, Cfg, Errors) ->
 
 validate_state("mandatory", CfgPair, Cfg, Errors) ->
     case misc:should_cluster_data_be_encrypted() andalso
-         not cluster_compat_mode:is_cluster_76() of
+         not cluster_compat_mode:is_cluster_morpheus() of
         false ->
             {[CfgPair | Cfg], Errors};
         true ->
