@@ -639,7 +639,7 @@ roles() ->
        {desc, <<"Can create XDCR streams into a given bucket. This user cannot "
                 "access the web console.">>}],
       [{[{bucket, bucket_name}, settings], [read]},
-       {[{bucket, bucket_name}, data, docs], [read, sread]},
+       {[{bucket, bucket_name}, data, docs], [read, sread, upsert]},
        {[{bucket, bucket_name}, data, meta], [write]},
        {[{bucket, bucket_name}, data, sxattr], [read, write]},
        {[{bucket, bucket_name}, stats], [read]},
