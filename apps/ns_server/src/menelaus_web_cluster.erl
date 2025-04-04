@@ -1191,17 +1191,18 @@ parse_rebalance_params(Params) ->
      PlanUUID].
 
 parse_topology_params(Params, Services, KeepNodes) ->
-    {ok, MP} = re:compile("^topology\\[(\\w+)\\]$"),
+    {ok, MP} = re:compile("^\\[(\\w+)\\]$"),
     SupportedServices =
         [atom_to_list(S) || S <- ns_cluster_membership:supported_services()],
     DesiredSevicesTopology =
         lists:filtermap(
-          fun ({Param, Val}) ->
+          fun ({"topology" ++ Param = WholeParam, Val}) ->
                   case re:run(Param, MP) of
                       {match, [_, {Start, Length}]} ->
                           Service = lists:sublist(Param, Start + 1, Length),
                           lists:member(Service, SupportedServices) orelse
-                              throw("Unknown service " ++ Service),
+                              throw(io_lib:format("Unknown service ~p",
+                                                  [Service])),
                           Service =/= "kv" orelse
                               throw("Cannot change topology for data service"),
                           Nodes = string:tokens(Val, ","),
@@ -1216,8 +1217,11 @@ parse_topology_params(Params, Services, KeepNodes) ->
                           {true,
                            {Service, [list_to_existing_atom(N) || N <- Nodes]}};
                       nomatch ->
-                          false
-                  end
+                          throw(io_lib:format("Malformed topology parameter ~p",
+                                              [WholeParam]))
+                  end;
+              (_) ->
+                  false
           end, Params),
     case DesiredSevicesTopology of
         [] ->

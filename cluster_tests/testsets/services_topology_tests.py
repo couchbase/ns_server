@@ -109,10 +109,7 @@ class ServicesTopologyTests(testlib.BaseTestSet):
         return self.rebalance(topology, services, expected_code)
 
     def rebalance(self, topology, services, expected_code):
-        known_nodes = [self.otp_node(n) for n in [0, 1, 2]]
-        data = {'knownNodes': ','.join(known_nodes),
-                'ejectedNodes': ""}
-
+        data = {}
         if services != None:
             data['services'] = ','.join([s.value for s in services]),
 
@@ -120,13 +117,23 @@ class ServicesTopologyTests(testlib.BaseTestSet):
             otp_nodes = [self.otp_node(n) for n in node_indexes]
             data[f"topology[{service.value}]"] = ','.join(otp_nodes)
 
+        res = self.rebalance_with_params(data, expected_code)
+
+        if res.status_code == 200:
+            self.assert_service_map(service, node_indexes)
+        return res
+
+    def rebalance_with_params(self, params, expected_code):
+        known_nodes = [self.otp_node(n) for n in [0, 1, 2]]
+        data = {'knownNodes': ','.join(known_nodes),
+                'ejectedNodes': ""}
+
         res = testlib.post_succ(self.cluster, "/controller/rebalance",
-            data=data, expected_code=expected_code)
+                                data=data | params, expected_code=expected_code)
 
         if res.status_code == 200:
             # The cluster should be balanced after the rebalance
             self.cluster.wait_for_rebalance(wait_balanced=True)
-            self.assert_service_map(service, node_indexes)
         return res
 
     def set_service_quota(self, service, quota, json):
@@ -216,8 +223,12 @@ class ServicesTopologyTests(testlib.BaseTestSet):
         # will not be exceeded on one of the nodes if the operation is
         # interrupted. So even if in the success case the quota is not
         # exceeded, we have to deny this
-        self.change_services_topology({Service.FTS: [0], Service.INDEX: [2]},
-                                      400)
+        res = self.change_services_topology(
+            {Service.FTS: [0], Service.INDEX: [2]}, 400)
+        json = testlib.json_response(res,
+                                     testlib.format_error(res, "Invalid json"))
+        testlib.assert_json_key("total_quota_too_high", json,
+                                testlib.format_res_info(res))
 
     def full_rebalance_test(self):
         self.assert_topology(ServicesTopologyTests.initial_topology)
@@ -227,7 +238,10 @@ class ServicesTopologyTests(testlib.BaseTestSet):
                               [Service.QUERY, Service.BACKUP]])
 
     def not_rebalancing_service_test(self):
-        self.rebalance({Service.BACKUP: [1, 2]}, [Service.INDEX], 400)
+        res = self.rebalance({Service.BACKUP: [1, 2]}, [Service.INDEX], 400)
+        testlib.assert_eq(res.text,
+                          'Not all services with new topology are included'
+                          ' in the rebalance')
         self.assert_topology(ServicesTopologyTests.initial_topology)
 
     def delta_recovery_test(self):
@@ -236,16 +250,39 @@ class ServicesTopologyTests(testlib.BaseTestSet):
         self.cluster.failover_node(failover_node, graceful=False)
         self.cluster.recover_node(
             failover_node, recovery_type="delta", do_rebalance=False)
-        self.change_services_topology({Service.BACKUP: [2]}, 400)
+        res = self.change_services_topology({Service.BACKUP: [2]}, 400)
+        testlib.assert_eq(res.text, 'Service topology change is incompatible '
+                          'with delta recovery')
 
     def failed_node_test(self):
         failover_node = self.cluster.connected_nodes[1]
         self.failed_node = failover_node
         self.cluster.failover_node(failover_node, graceful=False)
-        self.change_services_topology({Service.BACKUP: [2]}, 400)
+        res = self.change_services_topology({Service.BACKUP: [2]}, 400)
+        testlib.assert_eq(res.text, 'Service topology change is not possible if'
+                          ' some nodes are failed over')
 
     def kv_not_allowed_test(self):
-        self.change_services_topology({Service.KV: [1, 2]}, 400)
+        res = self.change_services_topology({Service.KV: [1, 2]}, 400)
+        testlib.assert_eq(res.text, 'Cannot change topology for data service')
+
+    def bad_parameters_test(self):
+        nodes_str = ','.join(self.otp_nodes)
+        res = self.rebalance_with_params({"topology": nodes_str}, 400)
+        testlib.assert_eq(res.text, 'Malformed topology parameter "topology"')
+
+        res = self.rebalance_with_params({"topology[aa,bb]": nodes_str}, 400)
+        testlib.assert_eq(
+            res.text, 'Malformed topology parameter "topology[aa,bb]"')
+
+        res = self.rebalance_with_params({"topology[wrong]": nodes_str}, 400)
+        testlib.assert_eq(res.text, 'Unknown service "wrong"')
+
+        res = self.rebalance_with_params({"topology[index]": "wrong"}, 400)
+        testlib.assert_eq(res.text, 'Unknown or ejected nodes ["wrong"]')
+
+        res = self.rebalance_with_params({"topology[index]": nodes_str,
+                                          "services": "backup"}, 400)
 
 def parse_nodes_list(text):
     sansbrackets = text.strip("[").strip("]")
