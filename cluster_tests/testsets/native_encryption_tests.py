@@ -1025,6 +1025,37 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Rebalance to complete node addition
         self.cluster.rebalance(wait=True, verbose=True)
 
+    def node_readd_node_after_failover_test(self):
+        node_to_failover, secret_id = \
+            self.prepare_cluster_for_node_readd_testing()
+
+        original_services = node_to_failover.get_services()
+
+        self.cluster.stop_node(node_to_failover)
+
+        # Must be safe failover, otherwise the node will not reset itself
+        self.cluster.failover_node(node_to_failover,
+                                   graceful=False,
+                                   allow_unsafe=False,
+                                   verbose=True)
+
+        # Rebalance to remove the node completely
+        self.cluster.rebalance(wait=True, wait_for_ejected_nodes=False,
+                               verbose=True)
+
+        self.cluster.restart_node(node_to_failover)
+
+        self.cluster.wait_nodes_up(verbose=True)
+
+        # Node will think it is still part of the cluster, but eventually
+        # it should figure out that it was removed and reset itself.
+        # Waiting for that to happen.
+        testlib.wait_for_ejected_node(node_to_failover)
+
+        self.cluster.add_node(node_to_failover, services=original_services,
+                              verbose=True)
+        self.cluster.rebalance(wait=True, verbose=True)
+
     def restart_cluster_with_bad_secret_test(self):
         # When unavailable KEK is used for cfg encryption, cluster will
         # fail to start, but if that KEK hasn't been used yet, the cluster

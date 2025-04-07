@@ -826,7 +826,7 @@ def wait_for_ejected_node(ejected_node):
 
     poll_for_condition(
         lambda: ejected_node_is_up(ejected_node),
-        sleep_time=1, timeout=60,
+        sleep_time=1, timeout=180,
         msg=f'wait for ejected node {ejected_node} to be up')
 
 
