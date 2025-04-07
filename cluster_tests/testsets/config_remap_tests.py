@@ -84,7 +84,7 @@ class ConfigRemapTest(testlib.BaseTestSet):
         print(f"Shutting down original cluster at node index "
               f"{self.cluster.first_node_index}")
 
-        self.cluster.teardown()
+        self.cluster.stop_all_nodes()
 
         print(f"Shut down original cluster at node index "
               f"{self.cluster.first_node_index}")
@@ -93,9 +93,8 @@ class ConfigRemapTest(testlib.BaseTestSet):
 
         print(f"Starting original cluster at node index "
               f"{self.cluster.first_node_index}")
-        self.cluster = self.cluster.requirements.create_cluster(
-            self.cluster.auth, self.cluster.index,
-            run.tmp_cluster_dir, self.cluster.first_node_index, False)
+
+        self.cluster.restart_all_nodes()
 
         for node in self.cluster._nodes:
             afo_settings = testlib.get_succ(self.cluster,

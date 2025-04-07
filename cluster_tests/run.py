@@ -434,7 +434,7 @@ def main():
     elif not (keep_tmp_dirs or check_for_core_files()):
         # Kill any created nodes and possibly delete directories as we don't
         # need to keep around data from successful tests
-        cluster.teardown()
+        cluster.destroy()
         remove_temp_cluster_directories()
 
 

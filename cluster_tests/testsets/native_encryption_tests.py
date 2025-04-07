@@ -1037,7 +1037,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         bad_aws_secret_id = create_secret(self.random_node(), bad_secret)
         set_cfg_encryption(self.cluster, 'encryptionKey', bad_aws_secret_id,
                            skip_encryption_key_test=True)
-        self.cluster.restart()
+        self.cluster.restart_all_nodes()
 
     def attempt_to_use_bad_secret_test(self):
         expected_error = 'Unable to perform encryption/decryption with ' \
@@ -1381,25 +1381,25 @@ class NativeEncryptionNodeRestartTests(testlib.BaseTestSet):
         set_log_encryption(self.cluster, 'nodeSecretManager', -1)
         set_cfg_encryption(self.cluster, 'nodeSecretManager', -1)
         password = change_password(self.node())
-        self.cluster.restart(master_passwords={0: password})
+        self.cluster.restart_all_nodes(master_passwords={0: password})
 
     def encryption_on_master_password_is_not_set_test(self):
         set_log_encryption(self.cluster, 'nodeSecretManager', -1)
         set_cfg_encryption(self.cluster, 'nodeSecretManager', -1)
         change_password(self.node(), password='')
-        self.cluster.restart()
+        self.cluster.restart_all_nodes()
 
     def encryption_off_master_password_is_set_test(self):
         set_log_encryption(self.cluster, 'disabled', -1)
         set_cfg_encryption(self.cluster, 'disabled', -1)
         password = change_password(self.node())
-        self.cluster.restart(master_passwords={0: password})
+        self.cluster.restart_all_nodes(master_passwords={0: password})
 
     def encryption_off_master_password_is_not_set_test(self):
         set_log_encryption(self.cluster, 'disabled', -1)
         set_cfg_encryption(self.cluster, 'disabled', -1)
         change_password(self.node(), password='')
-        self.cluster.restart()
+        self.cluster.restart_all_nodes()
 
     def node(self):
         return self.cluster.connected_nodes[0]

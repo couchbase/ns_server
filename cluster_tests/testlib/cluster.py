@@ -25,9 +25,35 @@ sys.path.append(testlib.get_pylib_dir())
 
 import cluster_run_lib
 
+clusters_to_kill = {}
+
 def kill_nodes(processes, urls, terminal_attrs):
+    # Here we assume that processes and urls are parallel lists
+    # Basically if p[i] is i's process, then urls[i] is the url for i's node
+    new_procs = []
+    new_urls = []
+    # Removing nodes that are stopped
+    for i, p in enumerate(processes):
+        if p is not None:
+            new_procs.append(p)
+            new_urls.append(urls[i])
+
     with testlib.no_output("kill nodes"):
-        cluster_run_lib.kill_nodes(processes, terminal_attrs, urls)
+        cluster_run_lib.kill_nodes(new_procs, terminal_attrs, new_urls)
+
+def auto_kill_clusters(clusters_to_kill, terminal_attrs):
+    for (processes, urls) in clusters_to_kill.values():
+        kill_nodes(processes, urls, terminal_attrs)
+
+def add_cluster_to_auto_kill(cluster_index, processes, urls):
+    if cluster_index in clusters_to_kill:
+        raise RuntimeError(f'Cluster {cluster_index} already in list of ' \
+                            'clusters to kill. Same index used twice?')
+    clusters_to_kill[cluster_index] = (processes, urls)
+
+def remove_cluster_from_auto_kill(cluster_index):
+    if cluster_index in clusters_to_kill:
+        del clusters_to_kill[cluster_index]
 
 # We attempt to fetch terminal_attrs when killing nodes, to override any changes
 # made by the nodes
@@ -38,6 +64,7 @@ def get_terminal_attrs():
     except Exception:
         return None
 
+atexit.register(auto_kill_clusters, clusters_to_kill, get_terminal_attrs())
 
 def get_node_urls(nodes):
     return [node.url for node in nodes]
@@ -74,8 +101,7 @@ def build_cluster(auth, cluster_index, start_args, connect, connect_args):
         finally:
             # If anything goes wrong after starting the clusters, we want to
             # kill the nodes, otherwise we end up with processes hanging around
-            atexit.register(kill_nodes, processes, urls,
-                            get_terminal_attrs())
+            add_cluster_to_auto_kill(cluster_index, processes, urls)
     return get_cluster(cluster_index, port, auth, processes, nodes, start_args)
 
 
@@ -168,31 +194,84 @@ class Cluster:
         return [node for node in self._nodes
                 if node not in self.connected_nodes]
 
-    # Kill all associated nodes to avoid competing for resources with the active
-    # cluster being tested against
-    def teardown(self):
+    def destroy(self):
+        assert self.start_args is not None, "Can't destroy pre-existing cluster"
+
         kill_nodes(self.processes, get_node_urls(self._nodes),
                    get_terminal_attrs())
-        atexit.unregister(kill_nodes)
+        remove_cluster_from_auto_kill(self.index)
         self.processes = None
 
-    def restart(self, master_passwords=None):
-        if self.start_args is None:
-            assert False, "Can't restart pre-existing cluster"
+    def stop_all_nodes(self):
+        assert self.start_args is not None, "Can't stop pre-existing cluster"
 
-        if self.processes is not None:
-            self.teardown()
+        for node in self._nodes:
+            self.stop_node(node)
 
-        print(f"Starting cluster with start args:\n{self.start_args}")
-        self.processes = cluster_run_lib.start_cluster(
-                           master_passwords=master_passwords, **self.start_args)
+    def restart_all_nodes(self, master_passwords=None):
+        assert self.start_args is not None, "Can't restart pre-existing cluster"
+
+        for node in self._nodes:
+            if self.is_node_started(node):
+                self.stop_node(node)
+
+        # Not using start_node() here, as we want to start nodes in parallel
+        new_processes = cluster_run_lib.start_cluster(
+                          master_passwords=master_passwords, **self.start_args)
+
+        # not replacing processes because atexit holds a reference to this
+        # list
+        for idx, node in enumerate(self._nodes):
+            self.processes[idx] = new_processes[idx]
+
         self.wait_for_nodes_to_be_healthy()
+
+    def stop_node(self, node):
+        assert self.start_args is not None, "Can't stop pre-existing cluster"
+
+        if not self.is_node_started(node):
+            assert False, f"Node {node} not started"
+
+        print(f"Teardown node {node}")
+        idx = self._nodes.index(node)
+        processes = [self.processes[idx]]
+        urls = [self._nodes[idx].url]
+        kill_nodes(processes, urls, get_terminal_attrs())
+        self.processes[idx] = None
+
+    def restart_node(self, node, master_passwords=None):
+        assert self.start_args is not None, \
+               "Can't restart a node on a pre-existing cluster"
+
+        if self.is_node_started(node):
+            self.stop_node(node)
+
+        print(f"Starting node {node}")
+        idx = self._nodes.index(node)
+        start_args = deepcopy(self.start_args)
+        start_args['start_index'] = self.first_node_index + idx
+        start_args['num_nodes'] = 1
+        processes = cluster_run_lib.start_cluster(
+            master_passwords=master_passwords, **start_args)
+        assert len(processes) == 1
+        self.processes[idx] = processes[0]
+
+    def is_node_started(self, node):
+        return self.processes[self._nodes.index(node)] is not None
+
+    def get_available_cluster_node(self):
+        for n in self.connected_nodes:
+            if self.is_node_started(n):
+                return n
+        raise Exception("No started node found")
 
     # Check every 0.5s until there is no rebalance running or 60s have passed
     def wait_for_rebalance(self, timeout_s=60, interval_s=0.5,
                            wait_balanced=False, balanced_timeout=10,
                            balanced_interval=0.5, verbose=False):
-        return cluster_run_lib.wait_for_rebalance(self.connected_nodes[0].url,
+        node = self.get_available_cluster_node()
+        print(f"Waiting for rebalance on {node.url}")
+        return cluster_run_lib.wait_for_rebalance(node.url,
                                                   timeout_s, interval_s,
                                                   wait_balanced,
                                                   balanced_timeout,
@@ -309,8 +388,9 @@ class Cluster:
     # Add new_node to the cluster, and optionally perform a rebalance
     def add_node(self, new_node, services=None, do_rebalance=False,
                  verbose=False, expected_code=200, expected_error=None):
+        cluster_node = self.get_available_cluster_node()
         if services is None:
-            services = self.connected_nodes[0].get_services()
+            services = cluster_node.get_services()
 
         # Can only add nodes with the https address, which requires the 1900X
         # port
@@ -321,7 +401,7 @@ class Cluster:
                 "services": get_services_string(services)}
         if verbose:
             print(f"Adding node {data}")
-        r = testlib.post_succ(self, f"/controller/addNode", data=data,
+        r = testlib.post_succ(cluster_node, f"/controller/addNode", data=data,
                               expected_code=expected_code,
                               timeout=240)
 
@@ -336,12 +416,13 @@ class Cluster:
     def do_join_cluster(self, new_node, services=None, do_rebalance=False,
                         verbose=False, expected_code=200,
                         use_client_cert_auth=False):
+        cluster_node = self.get_available_cluster_node()
         if services is None:
-            services = self.connected_nodes[0].get_services()
+            services = cluster_node.get_services()
 
-        data = {"hostname": self.connected_nodes[0].https_service_url()
+        data = {"hostname": cluster_node.https_service_url()
                             if self.is_enterprise else
-                            self.connected_nodes[0].url,
+                            cluster_node.url,
                 "services": get_services_string(services)}
 
         if use_client_cert_auth:

@@ -72,7 +72,7 @@ def get_appropriate_cluster(cluster, auth, requirements,
                 return cluster
 
         # Teardown the old cluster
-        cluster.teardown()
+        cluster.destroy()
 
         cluster_index = cluster.index + 1
         print()
@@ -417,7 +417,7 @@ def request(method, cluster_or_node, path, https=False, session=None,
     if isinstance(cluster_or_node, Node):
         node = cluster_or_node
     else:
-        node = cluster_or_node.connected_nodes[0]
+        node = cluster_or_node.get_available_cluster_node()
 
     if https:
         url = node.https_service_url(service) + path
