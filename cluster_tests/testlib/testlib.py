@@ -814,6 +814,7 @@ def maybe_add_brackets(addr):
 # Here we wait for one ejected node to leave the cluster and
 # start web server.
 def wait_for_ejected_node(ejected_node):
+    print(f"Waiting for ejected node {ejected_node} to reset itself...")
     def ejected_node_is_up(node):
         try:
             resp = get(node, '/pools/default')

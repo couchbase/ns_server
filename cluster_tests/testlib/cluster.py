@@ -288,7 +288,8 @@ class Cluster:
     # is responsible for ensuring that if there is an unexpected rebalance, the
     # cluster is still in an equivalent state after teardown to its state before
     # the TestSet was executed on the cluster.
-    def rebalance(self, ejected_nodes=None, wait=True, timeout_s=60,
+    def rebalance(self, ejected_nodes=None, wait=True,
+                  wait_for_ejected_nodes=None, timeout_s=60,
                   verbose=False, expected_error=None, initial_code=200,
                   initial_expected_error=None, plan_uuid=None):
         # We have to use the otpNode names instead of the node ips.
@@ -353,6 +354,9 @@ class Cluster:
                 for node in ejected_nodes:
                     self.connected_nodes.remove(node)
 
+            if wait_for_ejected_nodes is None:
+                wait_for_ejected_nodes = wait
+
             # Optionally wait for the rebalance to complete
             if wait:
                 # Note: We wait for the cluster to be balanced (unless there are
@@ -378,6 +382,7 @@ class Cluster:
                     nodes_are_expected, sleep_time=1, attempts=30,
                     msg=f"wait for nodes in /pools/default to be consistent")
 
+            if wait_for_ejected_nodes:
                 if ejected_nodes is not None:
                     for n in ejected_nodes:
                         testlib.wait_for_ejected_node(n)
