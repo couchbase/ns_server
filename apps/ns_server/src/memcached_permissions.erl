@@ -480,13 +480,25 @@ jsonify_users(Users, RoleDefinitions, ClusterAdmin, PromUser) ->
 
            EmitUser =
                fun (Identity, Roles) ->
-                       Permissions =
-                           permissions_for_user(Roles, Snapshot,
-                                                RoleDefinitions),
-                       ?yield({kv,
-                               jsonify_user(
-                                 #authn_res{identity=Identity},
-                                 Permissions)})
+                       %% We exclude locked users from memcached.rbac, so that
+                       %% existing connections by the user are disconnected.
+                       %% This gets updated whether the user is locked
+                       %% with a PATCH or a PUT, since both of them update
+                       %% the user_version.
+                       %% We also delete the entry from isasl.pw, since this is
+                       %% required to prevent authentication.
+                       case menelaus_users:is_user_locked(Identity) of
+                           false ->
+                               Permissions =
+                                   permissions_for_user(Roles, Snapshot,
+                                                        RoleDefinitions),
+                               ?yield({kv,
+                                       jsonify_user(
+                                         #authn_res{identity=Identity},
+                                         Permissions)});
+                           true ->
+                               ok
+                       end
                end,
 
            EmitLocalUser =

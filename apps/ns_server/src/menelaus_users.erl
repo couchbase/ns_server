@@ -241,36 +241,49 @@ init_versions() ->
 on_save(Docs, State) ->
     ProcessDoc =
         fun ({group, _}, _Doc, S) ->
-                {{change_version, group_version}, S};
+                {[{change_version, group_version}], S};
             ({limits, _}, _Doc, S) ->
-                {{change_version, limits_version}, S};
+                {[{change_version, limits_version}], S};
             ({user, _}, _Doc, S) ->
-                {{change_version, user_version}, S};
+                {[{change_version, user_version}], S};
             ({auth, Identity}, Doc, S) ->
-                {{change_version, auth_version},
+                {[{change_version, auth_version}],
                  maybe_update_user_lists(
                    Identity,
                    replicated_dets:get_value(Doc),
                    replicated_dets:is_deleted(Doc),
                    S)};
             ({locked, _}, _Doc, S) ->
-                {{change_version, auth_version}, S};
+                %% Both auth_version and user_version need updating when a user
+                %% gets locked/unlocked.
+                %% The auth_version needs to be updated, so that services
+                %% correctly fail connection attempts with an authentication
+                %% error, not an authorisation error.
+                %% The user_version also needs to be updated, so that existing
+                %% memcached connections are not permitted to continue being
+                %% used, as memcached does not re-check authentication on each
+                %% operation, only authorisation.
+                {[{change_version, auth_version},
+                  {change_version, user_version}], S};
             (_, _, S) ->
-                {undefined, S}
+                {[], S}
         end,
 
     {MessagesToSend, NewState} =
         lists:foldl(
           fun (Doc, {MessagesAcc, StateAcc}) ->
-                  {Message, NewState} =
+                  {Messages, NewState} =
                       ProcessDoc(replicated_dets:get_id(Doc), Doc, StateAcc),
-                  {sets:add_element(Message, MessagesAcc), NewState}
+                  {lists:foldl(fun (Message, Acc) ->
+                                       sets:add_element(Message, Acc)
+                               end, MessagesAcc, Messages),
+                   NewState}
           end, {sets:new(), State}, Docs),
     case sets:is_element({change_version, group_version}, MessagesToSend) of
         true -> mru_cache:flush(ldap_groups_cache);
         false -> ok
     end,
-    [self() ! Msg || Msg <- sets:to_list(MessagesToSend), Msg =/= undefined],
+    [self() ! Msg || Msg <- sets:to_list(MessagesToSend)],
     NewState.
 
 handle_info(maybe_reinit_cache, #state{cache_size = CurrentSize} = State) ->

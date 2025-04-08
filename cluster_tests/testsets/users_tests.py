@@ -114,10 +114,13 @@ class UsersTestSet(testlib.BaseTestSet):
         testlib.get_succ(self.cluster, '/test', service=Service.VIEWS,
                          expected_code=404, auth=(user, password))
 
-        # Test SDK/KV
+        # Start SDK/KV session
         kv_url = self.cluster.connected_nodes[0].service_url(Service.KV)
         auth = PasswordAuthenticator(user, password)
-        assert_sdk_pass(kv_url, auth)
+        sdk_cluster = assert_sdk_pass(kv_url, auth)
+
+        # SDK/KV session connected
+        assert_sdk_connected(sdk_cluster)
 
         # Lock user via PATCH
         lock_user(self.cluster, user)
@@ -141,7 +144,10 @@ class UsersTestSet(testlib.BaseTestSet):
         testlib.get_fail(self.cluster, '/test', service=Service.VIEWS,
                          expected_code=401, auth=(user, password))
 
-        # SDK/KV error
+        # SDK/KV session disconnected
+        assert_sdk_disconnected(sdk_cluster)
+
+        # SDK/KV new connection fails
         assert_sdk_fail(kv_url, auth)
 
         # Unlock user via PATCH
@@ -151,12 +157,18 @@ class UsersTestSet(testlib.BaseTestSet):
         # SDK/KV passes
         assert_sdk_pass(kv_url, auth)
 
+        # SDK/KV session connected
+        assert_sdk_connected(sdk_cluster)
+
         # Lock via PUT
         put_user(self.cluster, 'local', user, password=password,
                  roles='admin', full_name=name, groups='', locked="true")
         assert_locked(self.cluster, user, password)
 
         # SDK/KV error
+        assert_sdk_fail(kv_url, auth)
+
+        # SDK/KV new connection fails
         assert_sdk_fail(kv_url, auth)
 
         # Unlock via PUT
@@ -166,6 +178,9 @@ class UsersTestSet(testlib.BaseTestSet):
 
         # SDK/KV passes
         assert_sdk_pass(kv_url, auth)
+
+        # SDK/KV session connected
+        assert_sdk_connected(sdk_cluster)
 
     def patch_user_errors_test(self):
         # Can't lock an invalid user
@@ -1175,9 +1190,21 @@ def start_ui_session(cluster, user, password):
 
 
 def assert_sdk_pass(kv_url, sdk_auth):
-    testlib.poll_for_condition(
+    return testlib.poll_for_condition(
         lambda: test_sdk(kv_url, sdk_auth),
         sleep_time=0.1, attempts=10, msg="Auth expected to pass")
+
+
+def assert_sdk_connected(sdk_cluster):
+    testlib.poll_for_condition(
+        lambda: test_sdk_kv(sdk_cluster),
+        sleep_time=0.1, attempts=10, msg="Connection expected to work")
+
+
+def assert_sdk_disconnected(sdk_cluster):
+    testlib.poll_for_condition(
+        lambda: not test_sdk_kv(sdk_cluster),
+        sleep_time=0.1, attempts=10, msg="Connection expected to fail")
 
 
 def assert_sdk_fail(kv_url, sdk_auth):
@@ -1188,7 +1215,16 @@ def assert_sdk_fail(kv_url, sdk_auth):
 
 def test_sdk(url, auth):
     try:
-        Cluster(url, ClusterOptions(auth))
+        return Cluster(url, ClusterOptions(auth))
     except AuthenticationException:
         return False
-    return True
+
+
+def test_sdk_kv(sdk_cluster: Cluster):
+    try:
+        # Simple request just to confirm the connection is usable, we don't need
+        # document "x" to actually exist
+        sdk_cluster.bucket("test").default_collection().exists("x")
+        return True
+    except AuthenticationException:
+        return False
