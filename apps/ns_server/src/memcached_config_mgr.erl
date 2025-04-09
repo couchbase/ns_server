@@ -242,8 +242,23 @@ is_notable_tls_config_key(_) -> false.
 memcached_port_pid() ->
     ?log_debug("waiting for completion of initial ns_ports_setup round"),
     ns_ports_setup:sync(),
+    ?log_debug("waiting for ns_ports_manager"),
+    wait_for_ns_ports_manager(60, 1000),
     ?log_debug("ns_ports_setup seems to be ready"),
     find_port_pid_loop(100, 250).
+
+wait_for_ns_ports_manager(Tries, Delay) when Tries > 0 ->
+    case erpc:call(ns_server:get_babysitter_node(),
+                  erlang, whereis, [ns_ports_manager]) of
+        undefined ->
+            %% This most likely is due to ns_ports_manager having shut
+            %% down and our supervision tree is still running.
+            ?log_debug("ns_ports_manager is not running. Will retry."),
+            timer:sleep(Delay),
+            wait_for_ns_ports_manager(Tries - 1, Delay);
+        Pid when is_pid(Pid) ->
+            ok
+    end.
 
 find_port_pid_loop(Tries, Delay) when Tries > 0 ->
     RV = ns_ports_manager:find_port(ns_server:get_babysitter_node(), kv),
