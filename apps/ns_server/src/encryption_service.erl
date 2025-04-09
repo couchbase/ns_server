@@ -31,6 +31,7 @@
          encrypt/1,
          encrypt_key/3,
          decrypt_key/3,
+         test_existing_key/1,
          change_password/1,
          get_keys_ref/0,
          rotate_data_key/0,
@@ -200,6 +201,19 @@ decrypt_key(Data, AD, KekId) when is_binary(Data), is_binary(AD),
     ?wrap_error_msg(
       cb_gosecrets_runner:decrypt_with_key(?RUNNER, Data, FinalAD, kek, KekId),
       decrypt_key_error, [{key_UUID, KekId}]).
+
+%% This function can be called by other nodes
+test_existing_key(KekId) when is_binary(KekId) ->
+    RandomData = rand:bytes(16),
+    RandomAD = rand:bytes(16),
+    maybe
+        {ok, EncryptedData} ?= encrypt_key(RandomData, RandomAD, KekId),
+        {ok, DecryptedData} ?= decrypt_key(EncryptedData, RandomAD, KekId),
+        case RandomData =:= DecryptedData of
+            true -> ok;
+            false -> {error, decrypted_data_mismatch}
+        end
+    end.
 
 maybe_rotate_integrity_tokens(undefined) ->
     maybe_rotate_integrity_tokens(<<>>);

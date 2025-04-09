@@ -83,6 +83,11 @@ encr_info(Param, EncrType) ->
     {Param, #{cfg_key => [EncrType, info],
               type => {read_only, encr_info}}}.
 
+skip_test(Param, EncrType) ->
+    {Param,
+     #{cfg_key => [EncrType, skip_encryption_key_test],
+       type => bool}}.
+
 params() ->
     [encr_method("config.encryptionMethod", "config.encryptionKeyId",
                  config_encryption),
@@ -112,7 +117,11 @@ params() ->
 
      encr_info("config.info", config_encryption),
      encr_info("log.info", log_encryption),
-     encr_info("audit.info", audit_encryption)].
+     encr_info("audit.info", audit_encryption),
+
+     skip_test("config.skipEncryptionKeyTest", config_encryption),
+     skip_test("log.skipEncryptionKeyTest", log_encryption),
+     skip_test("audit.skipEncryptionKeyTest", audit_encryption)].
 
 type_spec(secret_id) ->
     ValidatorFun = fun (?SECRET_ID_NOT_SET) -> ok;
@@ -183,12 +192,19 @@ handle_post(Path, Req) ->
                                P#{secret_id => ?SECRET_ID_NOT_SET};
                            (_, P) -> P
                        end, NewSettings),
+
+          test_encryption_keys(NewSettings2),
+
+          NewSettings3 = maps:map(fun (_, S) ->
+                                      maps:remove(skip_encryption_key_test, S)
+                                  end, NewSettings2),
+
           RV = chronicle_kv:transaction(
                  kv, [?CHRONICLE_SECRETS_KEY,
                       ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
                  fun (Snapshot) ->
                      CurrentSettings = get_settings(Snapshot),
-                     MergedNewSettings = get_settings(Snapshot, NewSettings2),
+                     MergedNewSettings = get_settings(Snapshot, NewSettings3),
                      ToApply = apply_auto_fields(
                                  Snapshot, MergedNewSettings),
                      case validate_all_settings_txn(maps:to_list(ToApply),
@@ -453,3 +469,33 @@ log_and_audit_settings(Req, NewSettings, OldSettings) ->
     event_log:add_log(encr_at_rest_cfg_changed, [{new_settings, {NewProps}},
                                                  {old_settings, {OldProps}}]),
     ns_audit:encryption_at_rest_settings(Req, NewProps).
+
+test_encryption_keys(SettingsToTest) ->
+    %% Check if the encryption key being set is working.
+    %% It doesn't guarantee that the key will continue working (as the key can
+    %% be removed or changed on remote system such as KMIP), but it will catch
+    %% most of the issues.
+    CurSettings = get_settings(direct),
+    NewSettings = get_settings(direct, SettingsToTest),
+    maps:foreach(
+      fun (_Type, #{encryption := disabled}) -> ok;
+          (_Type, #{encryption := encryption_service}) -> ok;
+          (_Type, #{skip_encryption_key_test := true}) -> ok;
+          (Type, #{encryption := secret, secret_id := SecretId}) ->
+              case maps:get(Type, CurSettings) of
+                  #{encryption := secret, secret_id := SecretId} ->
+                      %% Nothing changes
+                      ok;
+                  _ ->
+                      %% Encryption key is being changed
+                      Nodes = ns_node_disco:nodes_actual(),
+                      case cb_cluster_secrets:test_existing_secret(SecretId,
+                                                                   Nodes) of
+                          ok -> ok;
+                          {error, Error} ->
+                              Msg = menelaus_web_secrets:format_error(Error),
+                              menelaus_util:global_error_exception(
+                                400, iolist_to_binary(Msg))
+                      end
+              end
+      end, NewSettings).

@@ -739,6 +739,8 @@ format_error(timeout) ->
     "Operation timed out";
 format_error(no_connection_to_node) ->
     "No connection to node";
+format_error(decrypted_data_mismatch) ->
+    "Decrypted data does not match original data that was encrypted";
 format_error({test_failed_for_some_nodes, Errors}) ->
     %% Sorting just to show more relevant errors first
     %% no_connection_to_node, timeout, exception are not relevant to

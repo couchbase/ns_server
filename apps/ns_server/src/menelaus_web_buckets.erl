@@ -1249,7 +1249,10 @@ parse_bucket_params(Ctx, Params) ->
             {errors, Errors, Summaries}
     end.
 
-parse_bucket_params_without_warnings(Ctx, Params) ->
+parse_bucket_params_without_warnings(Ctx, Params0) ->
+    SkipEncryptionKeyTest =
+        proplists:get_value("skipEncryptionKeyTest", Params0) =:= "1",
+    Params = proplists:delete("skipEncryptionKeyTest", Params0),
     {OKs, Errors} = basic_bucket_params_screening(Ctx ,Params),
     IsNew = Ctx#bv_ctx.new,
     CurrentBucket = proplists:get_value(currentBucket, OKs),
@@ -1257,12 +1260,45 @@ parse_bucket_params_without_warnings(Ctx, Params) ->
     {RAMErrors, JSONSummaries} =
         process_ram_and_storage(Ctx, CurrentBucket, OKs),
 
-    case RAMErrors ++ Errors ++
+    EKErrors = test_encryption_keys(Ctx, OKs, SkipEncryptionKeyTest),
+
+    case RAMErrors ++ Errors ++ EKErrors ++
         validate_bucket_type(CurrentBucket, IsNew, OKs) of
         [] ->
             {ok, OKs, JSONSummaries};
         TotalErrors ->
             {errors, TotalErrors, JSONSummaries, OKs}
+    end.
+
+test_encryption_keys(_, _, true) ->
+    [];
+test_encryption_keys(#bv_ctx{validate_only = true}, _OKs, _) ->
+    %% Testing of encryption keys can be slow, so we don't want to do it
+    %% unless we are actually saving the bucket.
+    [];
+test_encryption_keys(#bv_ctx{bucket_config = BucketConfig} = Ctx, OKs, _) ->
+    IdToTest = case proplists:get_value(encryption_secret_id, OKs) of
+                   undefined -> undefined;
+                   ?SECRET_ID_NOT_SET -> undefined;
+                   SecretId when BucketConfig =:= false -> SecretId;
+                   SecretId ->
+                       case proplists:get_value(encryption_secret_id,
+                                                BucketConfig) of
+                           % same secret id, no need to test
+                           SecretId -> undefined;
+                           _ -> SecretId
+                       end
+               end,
+    case IdToTest of
+        undefined -> [];
+        _ ->
+            Nodes = ns_node_disco:only_live_nodes(get_nodes(Ctx)),
+            case cb_cluster_secrets:test_existing_secret(IdToTest, Nodes) of
+                ok -> [];
+                {error, Error} ->
+                    ErrorMsg = menelaus_web_secrets:format_error(Error),
+                    [{encryptionAtRestKeyId, list_to_binary(ErrorMsg)}]
+            end
     end.
 
 validate_bucket_type(undefined, _IsNew, _Props) ->

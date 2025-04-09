@@ -1035,7 +1035,8 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         bad_secret = aws_test_secret(usage=['config-encryption'],
                                      should_work=False)
         bad_aws_secret_id = create_secret(self.random_node(), bad_secret)
-        set_cfg_encryption(self.cluster, 'encryptionKey', bad_aws_secret_id)
+        set_cfg_encryption(self.cluster, 'encryptionKey', bad_aws_secret_id,
+                           skip_encryption_key_test=True)
         self.cluster.restart()
 
     def add_node_when_kek_is_unavailable_test(self):
@@ -1045,7 +1046,8 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         # Trying to use bad AWS secret for encryption
         # This node will keep trying to reencrypt DEKs, which is ok
-        set_cfg_encryption(self.cluster, 'encryptionKey', bad_aws_secret_id)
+        set_cfg_encryption(self.cluster, 'encryptionKey', bad_aws_secret_id,
+                           skip_encryption_key_test=True)
 
         node_to_remove = self.cluster.connected_nodes[-1]
         original_services = node_to_remove.get_services()
@@ -1547,13 +1549,15 @@ def set_log_encryption(cluster, *args, **kwargs):
 
 def set_comp_encryption(cluster, component, mode, secret,
                         dek_lifetime=60*60*24*365, dek_rotation=60*60*24*30,
+                        skip_encryption_key_test=False,
                         expected_code=200):
     testlib.post_succ(cluster,
                       f'/settings/security/encryptionAtRest/{component}',
                       json={'encryptionMethod': mode,
                             'encryptionKeyId': secret,
                             'dekLifetime': dek_lifetime,
-                            'dekRotationInterval': dek_rotation},
+                            'dekRotationInterval': dek_rotation,
+                            'skipEncryptionKeyTest': skip_encryption_key_test},
                       expected_code=expected_code)
     if expected_code == 200:
         r = testlib.get_succ(cluster, '/settings/security/encryptionAtRest')

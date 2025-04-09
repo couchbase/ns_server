@@ -60,6 +60,7 @@
          rotate/1,
          test/1,
          test_secret_props/1,
+         test_existing_secret/2,
          get_secret_by_kek_id_map/1,
          ensure_can_encrypt_dek_kind/3,
          is_allowed_usage_for_secret/3,
@@ -519,27 +520,7 @@ test_internal(Props) ->
                      end, AllNodes),
     Res = erpc:multicall(NodesToTest, ?MODULE, test_secret_props, [Prepared],
                          ?TEST_SECRET_TIMEOUT),
-    Errors = lists:filtermap(
-               fun ({_Node, {ok, ok}}) ->
-                       false;
-                   ({Node, {ok, {error, R}}}) ->
-                       {true, {Node, R}};
-                   ({Node, {error, {erpc, timeout}}}) ->
-                       {true, {Node, timeout}};
-                   ({Node, {error, {erpc, noconnection}}}) ->
-                       {true, {Node, no_connection_to_node}};
-                   ({Node, {Class, ExceptionReason}}) ->
-                       ?log_error("Failed to test secret on ~p: ~p:~p",
-                                  [Node, Class, ExceptionReason]),
-                       {true, {Node, exception}}
-               end, lists:zip(NodesToTest, Res)),
-
-    case Errors of
-        [] ->
-            ok;
-        _ ->
-            {error, {test_failed_for_some_nodes, Errors}}
-    end.
+    handle_erpc_key_test_result(Res, NodesToTest).
 
 %% This function can be called by other nodes. Those nodes can be older than
 %% this node so this function should be backward compatible.
@@ -550,6 +531,16 @@ test_secret_props(#{type := ?KMIP_KEY_TYPE} = Props) ->
     test_kmip_kek(Props);
 test_secret_props(#{}) ->
     {error, not_supported}.
+
+test_existing_secret(SecretId, Nodes) ->
+    case get_active_key_id(SecretId) of
+        {ok, KeyId} ->
+            Res = erpc:multicall(Nodes, encryption_service, test_existing_key,
+                                 [KeyId], ?TEST_SECRET_TIMEOUT),
+            handle_erpc_key_test_result(Res, Nodes);
+        {error, Error} ->
+            {error, Error}
+    end.
 
 -spec get_active_key_id(secret_id()) -> {ok, key_id()} |
                                         {error, not_found | not_supported}.
@@ -4004,6 +3995,29 @@ format_dek_id_for_diag(Id) when is_binary(Id) ->
     Id;
 format_dek_id_for_diag(Id) ->
     io_lib:format("~p", [Id]).
+
+handle_erpc_key_test_result(Res, Nodes) ->
+    Errors = lists:filtermap(
+               fun ({_Node, {ok, ok}}) ->
+                       false;
+                   ({Node, {ok, {error, R}}}) ->
+                       {true, {Node, R}};
+                   ({Node, {error, {erpc, timeout}}}) ->
+                       {true, {Node, timeout}};
+                   ({Node, {error, {erpc, noconnection}}}) ->
+                       {true, {Node, no_connection_to_node}};
+                   ({Node, {Class, ExceptionReason}}) ->
+                       ?log_error("Failed to test secret on ~p: ~p:~p",
+                                  [Node, Class, ExceptionReason]),
+                       {true, {Node, exception}}
+               end, lists:zip(Nodes, Res)),
+
+    case Errors of
+        [] ->
+            ok;
+        _ ->
+            {error, {test_failed_for_some_nodes, Errors}}
+    end.
 
 -ifdef(TEST).
 replace_secret_in_list_test() ->
