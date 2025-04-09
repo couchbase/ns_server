@@ -1066,6 +1066,20 @@ apply_node_settings(Params) ->
     end.
 
 extract_settings_paths(Params) ->
+    case lists:foldl(
+           fun (Key, Acc) ->
+                   proplists:delete(Key, Acc)
+           end, Params, ["cbas_path", "path", "index_path", "eventing_path",
+                         "java_home"]) of
+        [] ->
+            ok;
+        Extras ->
+            Keys = [list_to_atom(Key) || {Key, _Value} <- Extras],
+            Msg = io_lib:format("Unknown keys were specified: ~p",
+                                [Keys]),
+            throw({error, [Msg]})
+    end,
+
     {ok, DefaultDbPath} = ns_storage_conf:this_node_dbdir(),
     {ok, DefaultIxPath} = ns_storage_conf:this_node_ixdir(),
     {ok, DefaultEvPath} = ns_storage_conf:this_node_evdir(),
