@@ -86,23 +86,27 @@ def build_cluster(auth, cluster_index, start_args, connect, connect_args):
     # Start the cluster
     print(f"Starting cluster with start args:\n{start_args}")
     processes = cluster_run_lib.start_cluster(**start_args)
-
-    if connect:
-        try:
-            # Connect the nodes
-            print(f"Connecting cluster with connect args:\n{connect_args}")
-            error = cluster_run_lib.connect(**connect_args)
-            if error:
-                sys.exit(f"Failed to connect node(s). Status: {error}")
-        except URLError as e:
-            sys.exit(f"Failed to connect node(s). {e}\n"
-                     f"Perhaps a node has already been started at "
-                     f"{address}:{port}?\n")
-        finally:
-            # If anything goes wrong after starting the clusters, we want to
-            # kill the nodes, otherwise we end up with processes hanging around
-            add_cluster_to_auto_kill(cluster_index, processes, urls)
-    return get_cluster(cluster_index, port, auth, processes, nodes, start_args)
+    try:
+        if connect:
+            try:
+                # Connect the nodes
+                print(f"Connecting cluster with connect args:\n{connect_args}")
+                error = cluster_run_lib.connect(**connect_args)
+                if error:
+                    sys.exit(f"Failed to connect node(s). Status: {error}")
+            except URLError as e:
+                sys.exit(f"Failed to connect node(s). {e}\n"
+                        f"Perhaps a node has already been started at "
+                        f"{address}:{port}?\n")
+        cluster = get_cluster(cluster_index, port, auth, processes, nodes,
+                              start_args)
+        add_cluster_to_auto_kill(cluster_index, processes, urls)
+        return cluster
+    except Exception as e:
+        # this exception can be caught later, so we should kill the nodes
+        # here to avoid leaving them running
+        kill_nodes(processes, urls, get_terminal_attrs())
+        raise e
 
 
 def get_cluster(cluster_index, start_port, auth, processes, nodes,
