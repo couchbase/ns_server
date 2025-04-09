@@ -28,7 +28,7 @@
 %% be called for handling data received from the client.
 %% Returns a connection, which have data sent
 -spec handle_upgrade(mochiweb_request(), Body) ->
-          {ok, {ReEntry, ReplyChannel}} | {error, any()} when
+          {ok, {RespTuple, ReEntry, ReplyChannel}} | {error, any()} when
       Body :: {M, F} | {M, F, A}
             | fun ((Payload, State, ReplyChannel) -> State),
       M :: module(),
@@ -37,6 +37,7 @@
       Payload :: any(),
       ReplyChannel :: reply_channel(),
       State :: any(),
+      RespTuple :: {integer(), [{string(), string()}], string()},
       ReEntry :: re_entry().
 handle_upgrade(Req, Body) ->
     maybe
@@ -103,7 +104,8 @@ validate_websocket_key(Req) ->
         _Key -> ok
     end.
 
--spec upgrade(mochiweb_request(), Body) -> {ReEntry, ReplyChannel} when
+-spec upgrade(mochiweb_request(), Body) ->
+          {RespTuple, ReEntry, ReplyChannel} when
       Body :: {M, F} | {M, F, A}
             | fun ((Payload, State, ReplyChannel) -> State),
       M :: module(),
@@ -112,6 +114,7 @@ validate_websocket_key(Req) ->
       Payload :: any(),
       ReplyChannel :: reply_channel(),
       State :: any(),
+      RespTuple :: {integer(), [{string(), string()}], string()},
       ReEntry :: re_entry().
 upgrade(Req, Body) ->
     mochiweb_websocket:upgrade_connection(Req, Body).

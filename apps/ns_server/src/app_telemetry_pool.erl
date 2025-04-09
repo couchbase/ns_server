@@ -66,9 +66,7 @@ handle_connect(Req) ->
                               Payload)
         end,
     case menelaus_websocket:handle_upgrade(Req, Body) of
-        {ok, Connection} ->
-            AuthnRes = menelaus_auth:get_authn_res(Req),
-            connection_handler(Pid, Connection, AuthnRes);
+        {ok, Connection} -> connection_handler(Pid, Connection, Req);
         _ -> ok
     end.
 
@@ -191,7 +189,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-connection_handler(Pid, {ReEntry, ReplyChannel}, AuthnRes) ->
+connection_handler(Pid, {RespTuple, ReEntry, ReplyChannel}, Req) ->
+    AuthnRes = menelaus_auth:get_authn_res(Req),
     Client = #client{reply_channel = ReplyChannel,
                      user = AuthnRes},
     Call = #add_client{pid = Pid,
@@ -201,6 +200,7 @@ connection_handler(Pid, {ReEntry, ReplyChannel}, AuthnRes) ->
     erlang:monitor(process, ?SERVER),
     case gen_server:call(?SERVER, Call) of
         ok ->
+            menelaus_util:respond(Req, RespTuple),
             menelaus_websocket:enter(ReEntry, ok);
         Error -> Error
     end.
@@ -308,7 +308,7 @@ setup() ->
                 fun(_Socket, [_Prefix, _Opcode, _Payload, _Version]) ->
                         ok
                 end),
-    meck:expect(menelaus_util, reply, fun (_, _) -> ok end),
+    meck:expect(menelaus_util, respond, fun (_, _) -> ok end),
     meck:expect(menelaus_auth, get_authn_res, fun(_) -> #authn_res{} end),
     meck:expect(menelaus_roles, is_allowed, fun(_, _) -> true end).
 
@@ -320,6 +320,7 @@ simple_test__() ->
     meck:expect(mochiweb_websocket, upgrade_connection,
                 fun ({_, _}, Body) ->
                         Receiver = self(),
+                        Response = {101, [], ""},
                         ReplyChannel = fun ({?OPCODE_BINARY, ?TEST_FRAME}) ->
                                                Receiver ! [<<"test">>];
                                            ({?OPCODE_PONG, <<>>}) ->
@@ -333,7 +334,7 @@ simple_test__() ->
                                     fake_websocket_loop(State, Body,
                                                         ReplyChannel)
                             end,
-                        {ReEntry, ReplyChannel}
+                        {Response, ReEntry, ReplyChannel}
                 end),
 
     start_link(#{}),
