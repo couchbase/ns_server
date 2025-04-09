@@ -57,7 +57,7 @@
 %%% API
 %%%===================================================================
 
--spec handle_connect(mochiweb_request()) -> ok | {error, any()}.
+-spec handle_connect(mochiweb_request()) -> ok.
 handle_connect(Req) ->
     Pid = self(),
     Body =
@@ -202,7 +202,13 @@ connection_handler(Pid, {RespTuple, ReEntry, ReplyChannel}, Req) ->
         ok ->
             menelaus_util:respond(Req, RespTuple),
             menelaus_websocket:enter(ReEntry, ok);
-        Error -> Error
+        {error, too_many_clients} ->
+            menelaus_util:reply(Req, 429);
+        Error ->
+            ?log_error("Failed to handle app telemetry connection: ~p",
+                       [Error]),
+            menelaus_util:reply_text(Req, <<"Unexpected server error">>,
+                                     500)
     end.
 
 process_frame(Pid, ReplyChannel, Frame) ->

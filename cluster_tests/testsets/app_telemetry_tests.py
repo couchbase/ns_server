@@ -144,6 +144,38 @@ class AppTelemetryTests(testlib.BaseTestSet):
             testlib.post_succ(self.cluster, "/settings/appTelemetry",
                               json={"enabled": "true"})
 
+    def max_clients_reached_test(self):
+        info = testlib.get_succ(self.cluster,
+                                "/pools/default/nodeServices").json()
+        nodes_ext = info.get('nodesExt')
+        node0_ext = nodes_ext[0]
+        node0_services = node0_ext['services']
+        node0_port = node0_services['mgmt']
+        node0_path = node0_ext.get('appTelemetryPath')
+        testlib.assert_eq(node0_path, '/_appTelemetry')
+
+        (username, password) = self.cluster.auth
+        hostname = self.cluster.connected_nodes[0].host
+        try:
+            testlib.post_succ(self.cluster, "/settings/appTelemetry",
+                              json={"maxScrapeClientsPerNode": 1})
+
+            with WebsocketConnection(hostname, node0_port, username, password,
+                                     node0_path) as conn1:
+                resp = conn1.connect()
+                testlib.assert_eq(resp.status_code, 101)
+
+                # Don't exit the first connection context, as that will close
+                # the connection
+                with WebsocketConnection(hostname, node0_port, username,
+                                         password, node0_path) as conn2:
+                    resp = conn2.connect()
+                    testlib.assert_eq(resp.status_code, 429)
+        finally:
+            # Increase max clients back to default
+            testlib.post_succ(self.cluster, "/settings/appTelemetry",
+                              json={"maxScrapeClientsPerNode": 1024})
+
     def disconnect_on_disable_test(self):
         info = testlib.get_succ(self.cluster,
                                 "/pools/default/nodeServices").json()
