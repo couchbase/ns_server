@@ -27,12 +27,14 @@ import subprocess
 import time
 import sys
 from pathlib import Path
+from copy import deepcopy
 
 sys.path.append(testlib.get_scripts_dir())
 
 import node_remap
 
 REMAP_OFFSET = 10
+CLUSTER_INDEX_OFFSET = 10000
 
 class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
 
@@ -105,8 +107,9 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
         old_start_index = old_cluster.first_node_index
         new_start_index = old_start_index + REMAP_OFFSET
 
-        cluster_path = (testlib.get_cluster_test_dir() /
-                        Path(f'test_cluster_data-{old_cluster.index}'))
+        old_cluster_path = cluster_path(old_cluster.index)
+        new_cluster_path = cluster_path(old_cluster.index +
+                                        CLUSTER_INDEX_OFFSET)
 
         # We must tell all nodes about all nodes being remapped, because all
         # nodes eventually contain all config. Build up that map (or set of
@@ -123,6 +126,13 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
             remap_args += [[f'n_{old_node_index}@{hostname}',
                             f'n_{new_node_index}@{hostname}']]
 
+        # Remove directory if it exists, so we are not affected by any
+        # left-over files from previous runs
+        shutil.rmtree(new_cluster_path, ignore_errors=True)
+        os.makedirs(new_cluster_path/'couch')
+        os.makedirs(new_cluster_path/'data')
+        os.makedirs(new_cluster_path/'logs')
+
         for i in range(len(old_cluster._nodes)):
             old_node_index = old_start_index + i
             new_node_index = new_start_index + i
@@ -132,23 +142,29 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
             # easier for ourselves if we run the remapped cluster from the
             # remapped index. To accomplish this we copy all files there and
             # let the remap script output to that directory
-            shutil.copyfile(cluster_path/'couch'/f'n_{old_node_index}_conf.ini',
-                            cluster_path/'couch'/f'n_{new_node_index}_conf.ini')
 
-            shutil.copytree(cluster_path/'data'/f'n_{old_node_index}',
-                            cluster_path/'data'/f'n_{new_node_index}')
+            shutil.copyfile(
+                old_cluster_path/'couch'/f'n_{old_node_index}_conf.ini',
+                new_cluster_path/'couch'/f'n_{new_node_index}_conf.ini'
+            )
 
-            shutil.copytree(cluster_path/'logs'/f'n_{old_node_index}',
-                            cluster_path/'logs'/f'n_{new_node_index}')
+            shutil.copytree(old_cluster_path/'data'/f'n_{old_node_index}',
+                            new_cluster_path/'data'/f'n_{new_node_index}')
 
-            initargs_path = f'{cluster_path}/data/n_{new_node_index}/initargs'
+            shutil.copytree(old_cluster_path/'logs'/f'n_{old_node_index}',
+                            new_cluster_path/'logs'/f'n_{new_node_index}')
+
+            initargs_path = (
+                new_cluster_path/'data'/f'n_{new_node_index}'/'initargs'
+            )
+
             assert os.path.isfile(initargs_path)
 
             # And now we remap the config in the new (remapped) node directory
             node_remap.run_config_remap_via_escript_wrapper(
                 root_dir=testlib.get_install_dir(),
                 initargs=[initargs_path],
-                output_path=f'{cluster_path}/data/n_{new_node_index}',
+                output_path=new_cluster_path/'data'/f'n_{new_node_index}',
                 remap=remap_args,
                 capture_output=testlib.config['intercept_output']
             )
@@ -160,8 +176,8 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
         old_start_index = old_cluster.first_node_index
         new_start_index = old_start_index + REMAP_OFFSET
 
-        cluster_path = (testlib.get_cluster_test_dir() /
-                        Path(f'test_cluster_data-{old_cluster.index}'))
+        new_cluster_path = cluster_path(old_cluster.index +
+                                        CLUSTER_INDEX_OFFSET)
 
         hostname = '127.0.0.1'
         if len(old_cluster._nodes) == 1:
@@ -170,7 +186,7 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
         for i in range(len(old_cluster._nodes)):
             old_node_index = old_start_index + i
             new_node_index = new_start_index + i
-            output_path=f'{cluster_path}/data/n_{new_node_index}'
+            output_path=f'{new_cluster_path}/data/n_{new_node_index}'
 
             nodefile_path = f'{output_path}/nodefile'
             nodefile = open(nodefile_path, 'r')
@@ -190,21 +206,24 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
         # used by the script remapping. We'll reset this later in a finally
         # statement to make sure that the next cluster connects to the correct
         # ports.
-        cluster_run_lib.base_api_port -= old_cluster.first_node_index
+        cluster_run_lib.base_api_port -= REMAP_OFFSET
 
         new_first_node_index = old_cluster.first_node_index + REMAP_OFFSET
+        c = None
         try:
             # Turn on new rempped cluster
             print(f"Starting remapped cluster at node index "
                   f"{new_first_node_index}")
 
             # Remove the buckets requirement, so that the bucket isn't deleted
-            old_cluster.requirements.requirements["buckets"] = None
-            c = old_cluster.requirements.create_cluster(
+            new_requirements = deepcopy(old_cluster.requirements)
+            new_requirements.requirements["buckets"] = None
+            c = new_requirements.create_cluster(
                     old_cluster.auth,
-                    old_cluster.index,
+                    # Don't clash with self.cluster
+                    old_cluster.index + CLUSTER_INDEX_OFFSET,
                     run.tmp_cluster_dir,
-                    old_cluster.first_node_index + REMAP_OFFSET,
+                    new_first_node_index,
                     connect=False)
 
             # Bucket should come back
@@ -225,20 +244,21 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
                 assert None == current_alt_address
 
             for node in c._nodes:
-                afo_settings = testlib.get_succ(self.cluster,
+                afo_settings = testlib.get_succ(node,
                                                 '/settings/autoFailover').json()
                 assert not afo_settings["enabled"]
 
             # Sanity check and shut down the remapped cluster
             c.smog_check()
         finally:
-            print(f"Shutting down remapped cluster at node index "
-                  f"{new_first_node_index}")
-            c.teardown()
-            print(f"Shut down remapped cluster at node index "
-                  f"{new_first_node_index}")
+            if c is not None:
+                print(f"Shutting down remapped cluster at node index "
+                      f"{new_first_node_index}")
+                c.teardown()
+                print(f"Shut down remapped cluster at node index "
+                      f"{new_first_node_index}")
 
-            cluster_run_lib.base_api_port += old_cluster.first_node_index
+            cluster_run_lib.base_api_port += REMAP_OFFSET
 
     def basic_remap_test(self):
         # Grab some old values from the cluster to compare before against the
@@ -267,3 +287,8 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
             self.cluster = self.cluster.requirements.create_cluster(
                 self.cluster.auth, self.cluster.index,
                 run.tmp_cluster_dir, self.cluster.first_node_index, False)
+
+
+def cluster_path(cluster_index):
+    return (testlib.get_cluster_test_dir() /
+            Path(f'test_cluster_data-{cluster_index}'))
