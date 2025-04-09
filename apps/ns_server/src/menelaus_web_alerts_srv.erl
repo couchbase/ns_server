@@ -1019,8 +1019,9 @@ check(indexer_diverging_replicas, Opaque, _History, Stats) ->
         undefined ->
             ok;
         IndexStats ->
-            NumDiverging = proplists:get_value(num_diverging_replica_indexes,
-                                               IndexStats),
+            NumDiverging =
+                proplists:get_value(index_num_diverging_replica_indexes,
+                                    IndexStats, 0),
             case NumDiverging of
                 0 ->
                     ok;
