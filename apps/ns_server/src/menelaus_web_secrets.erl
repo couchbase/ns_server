@@ -739,6 +739,9 @@ format_error(timeout) ->
     "Operation timed out";
 format_error(no_connection_to_node) ->
     "No connection to node";
+format_error({invalid_encryption_secret, Msg}) ->
+    "Unable to perform encryption/decryption with provided key, "
+    "check encryption key settings (" ++ Msg ++ ")";
 format_error(decrypted_data_mismatch) ->
     "Decrypted data does not match original data that was encrypted";
 format_error({test_failed_for_some_nodes, Errors}) ->

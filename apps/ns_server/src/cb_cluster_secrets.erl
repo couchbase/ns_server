@@ -2510,6 +2510,9 @@ maybe_reencrypt_data(#{type := encrypted, data := Bin,
         {ok, NewBin} ?= encryption_service:encrypt_key(RawBin, AD, NewKekId),
         {ok, #{type => encrypted, data => NewBin,
                encrypted_by => {NewSecretId, NewKekId}}}
+    else
+        {error, Error} ->
+            {error, encryption_service:maybe_map_not_found_key_error(Error)}
     end;
 %% Encrypted, but we want it to be unencrypted (encrypted by node SM actually)
 maybe_reencrypt_data(#{type := encrypted, data := Bin,
@@ -2529,6 +2532,9 @@ maybe_reencrypt_data(#{type := sensitive, data := Bin,
         {ok, NewBin} ?= encryption_service:encrypt_key(Bin, AD, NewKekId),
         {ok, #{type => encrypted, data => NewBin,
                encrypted_by => {NewSecretId, NewKekId}}}
+    else
+        {error, Error} ->
+            {error, encryption_service:maybe_map_not_found_key_error(Error)}
     end;
 %% Not encrypted, and that's right
 maybe_reencrypt_data(#{type := sensitive, data := _Bin,

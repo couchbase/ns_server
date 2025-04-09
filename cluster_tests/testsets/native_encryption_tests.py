@@ -1039,6 +1039,64 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                            skip_encryption_key_test=True)
         self.cluster.restart()
 
+    def attempt_to_use_bad_secret_test(self):
+        expected_error = 'Unable to perform encryption/decryption with ' \
+                         'provided key, check encryption key settings'
+        bad_secret = aws_test_secret(usage=['config-encryption',
+                                            'bucket-encryption',
+                                            'audit-encryption',
+                                            'log-encryption'],
+                                     should_work=False)
+        bad_aws_secret_id = create_secret(self.random_node(), bad_secret)
+
+        err = create_secret(self.random_node(),
+                            auto_generated_secret(
+                                encrypt_with='encryptionKey',
+                                encrypt_secret_id=bad_aws_secret_id),
+                            expected_code=400)
+        testlib.assert_in(expected_error, err['_'])
+
+        err = set_cfg_encryption(self.cluster, 'encryptionKey',
+                                 bad_aws_secret_id,
+                                 expected_code=400)
+        testlib.assert_in(expected_error,  err['_'])
+
+        err = set_audit_encryption(self.cluster, 'encryptionKey',
+                                   bad_aws_secret_id,
+                                   expected_code=400)
+        testlib.assert_in(expected_error,  err['_'])
+
+        err = set_log_encryption(self.cluster, 'encryptionKey',
+                                 bad_aws_secret_id,
+                                 expected_code=400)
+        testlib.assert_in(expected_error,  err['_'])
+
+        r = self.cluster.create_bucket(
+                {'name': self.bucket_name,
+                 'ramQuota': 100,
+                 'encryptionAtRestKeyId': bad_aws_secret_id},
+                sync=True,
+                expected_code=400)
+
+        errors = r.json()
+        e = errors['errors']['encryptionAtRestKeyId']
+        testlib.assert_in(expected_error, e)
+
+        self.cluster.create_bucket(
+                {'name': self.bucket_name,
+                 'ramQuota': 100,
+                 'encryptionAtRestKeyId': -1},
+                sync=True)
+
+        r = self.cluster.update_bucket(
+                {'name': self.bucket_name,
+                 'encryptionAtRestKeyId': bad_aws_secret_id},
+                expected_code=400)
+        errors = r.json()
+        e = errors['errors']['encryptionAtRestKeyId']
+        testlib.assert_in(expected_error, e)
+
+
     def add_node_when_kek_is_unavailable_test(self):
         bad_secret = aws_test_secret(usage=['config-encryption'],
                                      should_work=False)
@@ -1547,11 +1605,16 @@ def set_log_encryption(cluster, *args, **kwargs):
     return set_comp_encryption(cluster, 'log', *args, dek_lifetime=0, **kwargs)
 
 
+def set_audit_encryption(cluster, *args, **kwargs):
+    return set_comp_encryption(cluster, 'audit', *args, dek_lifetime=0,
+                               **kwargs)
+
+
 def set_comp_encryption(cluster, component, mode, secret,
                         dek_lifetime=60*60*24*365, dek_rotation=60*60*24*30,
                         skip_encryption_key_test=False,
                         expected_code=200):
-    testlib.post_succ(cluster,
+    res = testlib.post_succ(cluster,
                       f'/settings/security/encryptionAtRest/{component}',
                       json={'encryptionMethod': mode,
                             'encryptionKeyId': secret,
@@ -1564,6 +1627,9 @@ def set_comp_encryption(cluster, component, mode, secret,
         r = r.json()
         testlib.assert_eq(r[component]['encryptionMethod'], mode)
         testlib.assert_eq(r[component]['encryptionKeyId'], secret)
+        return None
+
+    return res.json()['errors']
 
 
 def auto_generated_secret(name=None,
