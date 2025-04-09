@@ -857,7 +857,7 @@ func generateKeyProof(keyIface storedKeyIface, intTokens []intToken) (string, er
 	tokenHash := tokenHash(intTokens[0], keyIface)
 	encryptedTokenHash, err := keyIface.encryptData(tokenHash[:], []byte(keyIface.name()))
 	if err != nil {
-		return "", fmt.Errorf("failed to generate key proof: %s", err.Error())
+		return "", err
 	}
 	proof := fmt.Sprintf("%s:%s", intTokens[0].uuid, base64.StdEncoding.EncodeToString(encryptedTokenHash))
 	return proof, nil
