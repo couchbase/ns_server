@@ -441,14 +441,17 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
               {hlcMaxFutureThreshold,
                ns_bucket:get_hlc_max_future_threshold(BucketConfig)},
               {dcpConnectionsBetweenNodes,
-               ns_bucket:get_num_dcp_connections(BucketConfig)}] ++
-             case ns_bucket:is_persistent(BucketConfig) of
-                 true ->
-                     [{accessScannerEnabled,
-                       ns_bucket:get_access_scanner_enabled(BucketConfig)}];
-                 false ->
-                     []
-             end;
+               ns_bucket:get_num_dcp_connections(BucketConfig)},
+              {dcpBackfillIdleProtectionEnabled,
+               ns_bucket:get_dcp_backfill_idle_protection_enabled(
+                 BucketConfig)}] ++
+                 case ns_bucket:is_persistent(BucketConfig) of
+                     true ->
+                         [{accessScannerEnabled,
+                           ns_bucket:get_access_scanner_enabled(BucketConfig)}];
+                     false ->
+                         []
+                 end;
          false ->
              []
      end,
@@ -1647,7 +1650,11 @@ validate_membase_bucket_params(CommonParams, Params, Name,
          parse_validate_dcp_connections_between_nodes(Params, IsNew, IsMorpheus,
                                                       IsEnterprise),
          parse_validate_fusion_logstore_uri(
-           Params, IsNew, IsMorpheus, IsEnterprise)
+           Params, IsNew, IsMorpheus, IsEnterprise),
+         parse_validate_dcp_backfill_idle_protection_enabled(Params,
+                                                             BucketConfig,
+                                                             IsNew,
+                                                             IsMorpheus)
         | validate_bucket_auto_compaction_settings(Params)] ++
         parse_validate_limits(
           Params, BucketConfig, IsNew, AllowStorageLimit,
@@ -2404,11 +2411,15 @@ parse_validate_cross_cluster_versioning_enabled(Params, IsNew, _Allow,
     end.
 
 process_boolean_param_validation(Param, Key, Result, IsNew) ->
+    process_boolean_param_validation(Param, Key, Result, IsNew,
+                                     fun ns_bucket:attribute_default/1).
+
+process_boolean_param_validation(Param, Key, Result, IsNew, DefaultFun) ->
     case {Result, IsNew} of
         {[], true} ->
             %% The value wasn't supplied and we're creating a bucket:
             %% use the default value.
-            {ok, Key, ns_bucket:attribute_default(Key)};
+            {ok, Key, DefaultFun(Key)};
         {[], false} ->
             %% The value wasn't supplied and we're modifying a bucket:
             %% don't complain since the value was either specified or a
@@ -3318,6 +3329,28 @@ parse_validate_dcp_connections_between_nodes(Params, IsNew, _IsMorpheus,
                                              _IsEnterprise) ->
     parse_validate_numeric_param(Params, dcpConnectionsBetweenNodes,
                                  dcp_connections_between_nodes, IsNew).
+
+parse_validate_dcp_backfill_idle_protection_enabled(Params, _BCfg, _IsNew,
+                                                    false = _IsMorpheus) ->
+    parse_validate_param_not_supported(
+      "dcpBackfillIdleProtectionEnabled",
+      Params,
+      fun not_supported_until_morpheus_error/1);
+parse_validate_dcp_backfill_idle_protection_enabled(Params, BCfg, IsNew,
+                                                    true = _IsMorpheus) ->
+    Key = "dcpBackfillIdleProtectionEnabled",
+    Result = menelaus_util:parse_validate_boolean_field(Key, '_', Params),
+
+    DefaultFun =
+        fun(_) ->
+                %% We can't use the ns_bucket function to get the default
+                %% because we might not have a bucket config yet.
+                not is_ephemeral(Params, BCfg, IsNew)
+        end,
+
+    process_boolean_param_validation(Key, dcp_backfill_idle_protection_enabled,
+                                     Result, IsNew,
+                                     DefaultFun).
 
 parse_validate_threads_number(Params, IsNew) ->
     validate_with_missing(proplists:get_value("threadsNumber", Params),
@@ -4663,7 +4696,45 @@ basic_bucket_params_screening_t() ->
     ?assertEqual(
        [{hlcMaxFutureThreshold,
          <<"The value of hlcMaxFutureThreshold (5) must be in the range "
-           "10 to 2147483647 inclusive">>}], E54).
+           "10 to 2147483647 inclusive">>}], E54),
+
+    {_OK55, []} = basic_bucket_params_screening(
+                    true, "bucket55",
+                    [{"bucketType", "membase"},
+                     {"ramQuota", "100"},
+                     {"dcpBackfillIdleProtectionEnabled", "true"}],
+                    AllBuckets),
+
+    {_OK56, E56} = basic_bucket_params_screening(
+                     true, "bucket56",
+                     [{"bucketType", "membase"},
+                      {"ramQuota", "100"},
+                      {"dcpBackfillIdleProtectionEnabled", "not_a_boolean"}],
+                     AllBuckets),
+
+    ?assertEqual(
+       [{"dcpBackfillIdleProtectionEnabled",
+         <<"\"dcpBackfillIdleProtectionEnabled\" must be true or false">>}],
+       E56),
+
+    {OK57, []} = basic_bucket_params_screening(
+                   true, "bucket57",
+                   [{"bucketType", "membase"},
+                    {"ramQuota", "100"},
+                    {"storageBackend", "couchstore"}],
+                   AllBuckets),
+    ?assertEqual(
+       true,
+       proplists:get_value(dcp_backfill_idle_protection_enabled, OK57)),
+
+    {OK58, []} = basic_bucket_params_screening(
+                   true, "bucket58",
+                   [{"bucketType", "ephemeral"},
+                    {"ramQuota", "100"}],
+                   AllBuckets),
+    ?assertEqual(
+       false,
+       proplists:get_value(dcp_backfill_idle_protection_enabled, OK58)).
 
 basic_bucket_params_screening_test_() ->
     {setup,

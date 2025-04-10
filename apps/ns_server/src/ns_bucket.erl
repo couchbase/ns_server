@@ -157,6 +157,8 @@
          get_invalid_hlc_strategy/1,
          get_hlc_max_future_threshold/1,
          get_num_dcp_connections/1,
+         get_dcp_backfill_idle_protection_enabled/1,
+         get_dcp_backfill_idle_protection_default/1,
          uuid_key/1,
          uuid/2,
          uuids/0,
@@ -620,11 +622,15 @@ attribute_max(Name) ->
     end.
 
 membase_bucket_config_value_getter(Key, BucketConfig) ->
+    membase_bucket_config_value_getter(Key, BucketConfig,
+                                       fun attribute_default/1).
+
+membase_bucket_config_value_getter(Key, BucketConfig, DefaultFun) ->
     case bucket_type(BucketConfig) of
         memcached ->
             undefined;
         membase ->
-            proplists:get_value(Key, BucketConfig, attribute_default(Key))
+            proplists:get_value(Key, BucketConfig, DefaultFun(Key))
     end.
 
 -spec get_expiry_pager_sleep_time(proplists:proplist()) -> integer() |
@@ -689,6 +695,22 @@ get_num_dcp_connections(BucketConfig) ->
         undefined -> ?DEFAULT_DCP_CONNECTIONS;
         Other -> Other
     end.
+
+-spec get_dcp_backfill_idle_protection_enabled(proplists:proplist()) ->
+          boolean().
+get_dcp_backfill_idle_protection_enabled(BucketConfig) ->
+    membase_bucket_config_value_getter(
+      dcp_backfill_idle_protection_enabled,
+      BucketConfig,
+      fun (_) -> get_dcp_backfill_idle_protection_default(BucketConfig) end).
+
+-spec get_dcp_backfill_idle_protection_default(proplists:proplist()) ->
+          boolean().
+get_dcp_backfill_idle_protection_default(BucketConfig) ->
+    %% This could read as is_persistent(BucketConfig) instead but it mirrors a
+    %% function in the REST API that is used to determine if the bucket is
+    %% ephemeral if we don't have a bucket config yet.
+    not is_ephemeral_bucket(BucketConfig).
 
 %% returns bucket ram quota multiplied by number of nodes this bucket
 %% will reside after initial cleanup. I.e. gives amount of ram quota that will
@@ -2403,7 +2425,9 @@ chronicle_upgrade_bucket_to_morpheus(BucketName, ChronicleTxn) ->
                  {hlc_max_future_threshold,
                   attribute_default(hlc_max_future_threshold)},
                  {dcp_connections_between_nodes,
-                  attribute_default(dcp_connections_between_nodes)}] ++
+                  attribute_default(dcp_connections_between_nodes)},
+                 {dcp_backfill_idle_protection_enabled,
+                  get_dcp_backfill_idle_protection_default(BucketConfig)}] ++
                     case is_persistent(BucketConfig) of
                         true ->
                             [{access_scanner_enabled, true}];
@@ -2546,7 +2570,8 @@ extract_bucket_props(Props) ->
                          continuous_backup_interval,
                          continuous_backup_location,
                          dcp_connections_between_nodes,
-                         magma_fusion_logstore_uri]],
+                         magma_fusion_logstore_uri,
+                         dcp_backfill_idle_protection_enabled]],
           X =/= false].
 
 build_threshold({Percentage, Size}) ->

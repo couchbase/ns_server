@@ -100,7 +100,14 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
       proplists:get_value(compression_mode, BucketConfig)},
      {"max_num_shards", [],
       ns_bucket:magma_max_shards(BucketConfig, ?DEFAULT_MAGMA_SHARDS)}] ++
-     get_magma_bucket_config(BucketConfig);
+        case cluster_compat_mode:is_cluster_morpheus() of
+            false -> [];
+            true ->
+                [{"dcp_backfill_idle_protection_enabled", [{reload, vbucket}],
+                  ns_bucket:get_dcp_backfill_idle_protection_enabled(
+                    BucketConfig)}]
+        end
+        ++ get_magma_bucket_config(BucketConfig);
 
 params(memcached, _BucketName, _BucketConfig, MemQuota, UUID) ->
     [{"cache_size", [], MemQuota},
