@@ -491,7 +491,7 @@ default_encr_disabled_cbs() ->
           end,
       file_encrypt_cont =>
           fun(_Path, _Offset, _DS) ->
-                  #{}
+                  {ok, #{}}
           end,
       file_encrypt_chunk =>
           fun(Data, EncrState) ->
