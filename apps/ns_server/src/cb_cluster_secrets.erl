@@ -58,7 +58,7 @@
          get_active_key_id/1,
          get_active_key_id/2,
          rotate/1,
-         test/1,
+         test/2,
          test_secret_props/1,
          test_existing_secret/2,
          get_secret_by_kek_id_map/1,
@@ -89,7 +89,7 @@
 -export([add_new_secret_internal/1,
          replace_secret_internal/3,
          rotate_internal/1,
-         test_internal/1,
+         test_internal/2,
          sync_with_node_monitor/0,
          delete_secret_internal/2,
          delete_historical_key_internal/3,
@@ -498,15 +498,22 @@ rotate_internal(Id) ->
             {error, Reason}
     end.
 
--spec test(secret_props()) -> ok | {error, _}.
-test(Params) ->
-    execute_on_master({?MODULE, test_internal, [Params]}).
+-spec test(secret_props(), secret_props() | undefined) -> ok | {error, _}.
+test(ParamsToTest, CurProps) ->
+    execute_on_master({?MODULE, test_internal, [ParamsToTest, CurProps]}).
 
--spec test_internal(secret_props()) -> ok | {error, _}.
-test_internal(Props) ->
+-spec test_internal(secret_props(), secret_props() | undefined) ->
+          ok | {error, _}.
+test_internal(Props, CurProps) ->
     PropsWTime = Props#{creation_time => erlang:universaltime()},
     PropsWId = PropsWTime#{id => 999999999},
-    Prepared = prepare_new_secret(PropsWId),
+    Prepared =
+        case CurProps of
+            undefined -> %% This is a test during key creation
+                prepare_new_secret(PropsWId);
+            _ -> %% This is a test during key editing
+                copy_static_props(CurProps, Props)
+        end,
 
     AllNodes = ns_node_disco:nodes_wanted(),
     NodesToTest =

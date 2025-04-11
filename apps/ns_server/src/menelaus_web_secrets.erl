@@ -97,7 +97,7 @@ handle_test_post_secret(Req) ->
     with_validated_secret(
       fun (Params) ->
           maybe
-              ok ?= cb_cluster_secrets:test(Params),
+              ok ?= cb_cluster_secrets:test(Params, undefined),
               menelaus_util:reply(Req, 200),
               ok
           end
@@ -112,7 +112,7 @@ handle_test_put_secret(IdStr, Req) ->
             with_validated_secret(
               fun (Params) ->
                   maybe
-                      ok ?= cb_cluster_secrets:test(Params),
+                      ok ?= cb_cluster_secrets:test(Params, CurProps),
                       menelaus_util:reply(Req, 200),
                       ok
                   end
