@@ -540,7 +540,15 @@ test_secret_props(#{}) ->
     {error, not_supported}.
 
 test_existing_secret(SecretId, Nodes) ->
-    case get_active_key_id(SecretId) of
+    case get_secret(SecretId, direct) of
+        {ok, SecretProps} ->
+            test_existing_secret_props(SecretProps, Nodes);
+        {error, Error} ->
+            {error, Error}
+    end.
+
+test_existing_secret_props(SecretProps, Nodes) ->
+    case get_active_key_id_from_secret(SecretProps) of
         {ok, KeyId} ->
             Res = erpc:multicall(Nodes, encryption_service, test_existing_key,
                                  [KeyId], ?TEST_SECRET_TIMEOUT),
@@ -1087,7 +1095,7 @@ rotate_secret_by_id(Id, IsAutomatic) ->
     ?log_info("Rotating secret #~b", [Id]),
     case get_secret(Id) of
         {ok, #{name := Name} = SecretProps} ->
-            try rotate_secret(SecretProps) of
+            try test_and_rotate_secret(SecretProps) of
                 ok ->
                     log_succ_kek_rotation(Id, Name, IsAutomatic),
                     ns_server_stats:notify_counter(
@@ -1110,6 +1118,21 @@ rotate_secret_by_id(Id, IsAutomatic) ->
         {error, Reason} ->
             ?log_error("Secret #~p rotation failed: ~p", [Id, Reason]),
             {error, Reason}
+    end.
+
+test_and_rotate_secret(SecretProps) ->
+    %% If the secret is broken, we should not start rotation.
+    %% Rotation is asynchronous: we create new key id and then let the system
+    %% apply that new key (re-encrypt corresponding keys with that new key).
+    %% If the secret is broken completely (say it uses AWS key that is removed),
+    %% the rotation will simply generate garbage in config and on disk.
+    %% Note that this check doesn't guarantee that there will be no issues
+    %% with re-encryption, but it helps to catch most of the issues (e.g. when
+    %% the reason of the problem is secret's settings).
+    Nodes = ns_node_disco:nodes_actual(),
+    maybe
+        ok ?= test_existing_secret_props(SecretProps, Nodes),
+        rotate_secret(SecretProps)
     end.
 
 -spec rotate_secret(secret_props()) -> ok | {error, not_found |
