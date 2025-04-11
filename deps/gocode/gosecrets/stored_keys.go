@@ -734,6 +734,11 @@ func (state *StoredKeysState) storeKey(
 
 	if keyInfo.canBeCached() {
 		state.keysCache[keyInfo.name()] = keyInfo
+	} else {
+		if _, exists := state.keysCache[keyInfo.name()]; exists {
+			logDbg("Key %s is not cacheable, removing from cache", keyInfo.name())
+			delete(state.keysCache, keyInfo.name())
+		}
 	}
 
 	return nil
