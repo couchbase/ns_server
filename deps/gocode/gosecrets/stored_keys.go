@@ -714,11 +714,11 @@ func (state *StoredKeysState) storeKey(
 	if testOnly {
 		encryptedTestData, err := keyInfo.encryptData(testData[:], testAD[:])
 		if err != nil {
-			return fmt.Errorf("encryption test failed: %s", err.Error())
+			return fmt.Errorf("encryption failed: %s", err.Error())
 		}
 		decryptedData, err := keyInfo.decryptData(encryptedTestData, testAD[:])
 		if err != nil {
-			return fmt.Errorf("decryption test failed: %s", err.Error())
+			return fmt.Errorf("decryption failed: %s", err.Error())
 		}
 		if !bytes.Equal(testData[:], decryptedData) {
 			return fmt.Errorf("encrypted and decrypted data doesn't match the original data")
