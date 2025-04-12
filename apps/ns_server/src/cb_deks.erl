@@ -585,7 +585,8 @@ drop_config_deks(DekIdsToDrop) ->
 
 drop_bucket_deks(Bucket, DekIds) ->
     Continuation = fun (_) ->
-                       cb_cluster_secrets:dek_drop_complete({bucketDek, Bucket})
+                       cb_cluster_secrets:dek_drop_complete(
+                           {bucketDek, Bucket}, ok)
                    end,
     ns_memcached:drop_deks(Bucket, DekIds, cb_cluster_secrets, Continuation).
 

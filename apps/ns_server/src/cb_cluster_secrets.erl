@@ -69,7 +69,7 @@
          sync_with_all_node_monitors/0,
          new_key_id/0,
          is_valid_key_id/1,
-         dek_drop_complete/1,
+         dek_drop_complete/2,
          is_name_unique/3,
          sanitize_chronicle_cfg/1,
          merge_dek_infos/2,
@@ -686,9 +686,9 @@ new_key_id() ->
 -spec is_valid_key_id(binary()) -> boolean().
 is_valid_key_id(Bin) -> misc:is_valid_v4uuid(Bin).
 
--spec dek_drop_complete(cb_deks:dek_kind()) -> ok.
-dek_drop_complete(DekKind) ->
-    ?MODULE ! {dek_drop_complete, DekKind},
+-spec dek_drop_complete(cb_deks:dek_kind(), ok | {error, any()}) -> ok.
+dek_drop_complete(DekKind, Rv) ->
+    ?MODULE ! {dek_drop_complete, DekKind, Rv},
     ok.
 
 -spec is_name_unique(secret_id(), string(), chronicle_snapshot()) -> boolean().
@@ -986,9 +986,18 @@ handle_info({timer, Name}, #state{proc_type = ProcType,
                            timers = Timers#{Name => undefined}},
     {noreply, handle_timer(Name, NewState)};
 
-handle_info({dek_drop_complete, Kind} = Msg,
+handle_info({dek_drop_complete, Kind, Rv} = Msg,
             #state{proc_type = ?NODE_PROC} = State) ->
-    ?log_debug("Dek drop complete: ~p", [Kind]),
+    case Rv of
+        ok ->
+            ?log_debug("Dek drop complete: ~p", [Kind]);
+        {error, E} ->
+            %% We log warning but still proceed with garbage collection because
+            %% it is possible some DEKs may have been freed even if there
+            %% were some errors
+            ?log_warning("Dek drop for kind (~p) complete with error: ~p",
+                         [Kind, E])
+    end,
     misc:flush(Msg),
     self() ! calculate_dek_info,
     {noreply, add_and_run_jobs([{garbage_collect_deks, Kind}], State)};
