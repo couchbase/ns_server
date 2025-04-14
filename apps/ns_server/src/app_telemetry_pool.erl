@@ -39,7 +39,8 @@
 
 -record(add_client,
         {pid :: pid(),
-         client :: #client{}}).
+         client :: #client{},
+         continuation :: fun(() -> ok)}).
 
 -record(call,
         {pid :: pid(),
@@ -107,10 +108,13 @@ init([ArgsMap]) ->
     notify_curr_connections(#{}),
     {ok, build_state(ArgsMap)}.
 
-handle_call(#add_client{pid = Pid, client = Client}, _From,
+handle_call(#add_client{pid = Pid,
+                        client = Client,
+                        continuation = Continuation},
+            _From,
             State0 = #state{clients = Clients,
                             max = Max}) when map_size(Clients) < Max ->
-    {reply, ok, do_add_client(State0, Pid, Client)};
+    {reply, ok, do_add_client(State0, Pid, Client, Continuation)};
 handle_call(#add_client{}, _From, State0 = #state{}) ->
     {reply, {error, too_many_clients}, State0};
 handle_call(get_pids, _From, State = #state{clients = Clients}) ->
@@ -193,14 +197,17 @@ connection_handler(Pid, {RespTuple, ReEntry, ReplyChannel}, Req) ->
     AuthnRes = menelaus_auth:get_authn_res(Req),
     Client = #client{reply_channel = ReplyChannel,
                      user = AuthnRes},
+    %% Response needs to be sent before the pool starts using the websocket
+    %% connection
+    RespFun = ?cut(menelaus_util:respond(Req, RespTuple)),
     Call = #add_client{pid = Pid,
-                       client = Client},
+                       client = Client,
+                       continuation = RespFun},
     %% If the pool crashes, we need to be notified, so that the socket
     %% is cleaned up correctly
     erlang:monitor(process, ?SERVER),
     case gen_server:call(?SERVER, Call) of
         ok ->
-            menelaus_util:respond(Req, RespTuple),
             menelaus_websocket:enter(ReEntry, ok);
         {error, too_many_clients} ->
             menelaus_util:reply(Req, 429);
@@ -230,11 +237,14 @@ build_state(ArgsMap) ->
       end, State0, ArgsMap).
 
 do_add_client(#state{clients = Clients} = State,
-              Pid, Client) ->
+              Pid, Client, Continuation) ->
     %% We need to close the socket if the client terminates
     erlang:monitor(process, Pid),
     NewClients = maps:put(Pid, Client, Clients),
     notify_curr_connections(NewClients),
+    %% Call continuation function before returning, to ensure it is called prior
+    %% to using the websocket connection
+    Continuation(),
     State#state{clients = NewClients}.
 
 do_drop_client(#state{clients = Clients} = State, Pid) ->
