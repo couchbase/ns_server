@@ -928,7 +928,11 @@ node_vbuckets(Map, Node) ->
     [V || {V, Chain} <- misc:enumerate(Map, 0),
           lists:member(Node, Chain)].
 
-check_is_possible(FailoverNodes, Snapshot, Options) ->
+is_possible(FailoverNodes, Options) ->
+    Snapshot = get_snapshot(),
+    is_possible(FailoverNodes, Snapshot, Options).
+
+is_possible(FailoverNodes, Snapshot, Options) ->
     try
         ActiveNodes = ns_cluster_membership:active_nodes(Snapshot),
         KVActiveNodes =
@@ -974,13 +978,6 @@ check_is_possible(FailoverNodes, Snapshot, Options) ->
         throw:Error ->
             Error
     end.
-
-is_possible(FailoverNodes, Snapshot, Options) ->
-    check_is_possible(FailoverNodes, Snapshot, Options).
-
-is_possible(FailoverNodes, Options) ->
-    Snapshot = get_snapshot(),
-    is_possible(FailoverNodes, Snapshot, Options).
 
 maybe_check_kv_safety(Nodes, Snapshot, Options) ->
     %% Whilst we also check this in ns_orchestrator in the auto_failover path,
