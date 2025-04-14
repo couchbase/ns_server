@@ -260,7 +260,7 @@ validators(Config) ->
                        {error, "Value must not be a fraction of minute"}
                end
        end, rotateInterval, _),
-     validator:integer(rotateSize, 0, 500*1024*1024, _),
+     validator:integer(rotateSize, 1024*1024, 500*1024*1024, _),
      validate_events(disabled, Descriptors, _),
      validate_users(disabledUsers, _),
      validator:integer(pruneAge, 0, ?MAX_32BIT_SIGNED_INT div 60, _),
