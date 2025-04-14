@@ -85,10 +85,25 @@ record_rebalance_report(Report, KeepNodes) ->
     end.
 
 reencrypt_local_reports(LogDS) ->
-    gen_server2:call(?MODULE, {reencrypt_reports, LogDS}, ?ENCR_OP_TIMEOUT).
+    try
+        gen_server2:call(?MODULE, {reencrypt_reports, LogDS}, ?ENCR_OP_TIMEOUT)
+    catch
+        exit:{noproc, {gen_server, call,
+                       [?MODULE, {reencrypt_reports, _}, _]}} ->
+            ?log_debug("Can't reencrypt reports: ~p is not "
+                       "started yet...", [?MODULE]),
+            {error, retry}
+    end.
 
 get_in_use_deks() ->
-    gen_server2:call(?MODULE, get_in_use_deks, ?ENCR_OP_TIMEOUT).
+    try
+        gen_server2:call(?MODULE, get_in_use_deks, ?ENCR_OP_TIMEOUT)
+    catch
+        exit:{noproc, {gen_server, call, [?MODULE, get_in_use_deks, _]}} ->
+            ?log_debug("Can't get in use deks: ~p is not "
+                       "started yet...", [?MODULE]),
+            {error, retry}
+    end.
 
 %% -------------------------------------------------------------
 %% gen_server2 callbacks.
