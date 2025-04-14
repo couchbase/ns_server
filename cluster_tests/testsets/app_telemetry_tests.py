@@ -16,6 +16,7 @@ from websockets.uri import parse_uri
 from websockets.client import ClientProtocol
 from websockets.http11 import Response
 from websockets.frames import Frame, Opcode
+from websockets.exceptions import InvalidStatus
 
 import testlib
 
@@ -169,7 +170,7 @@ class AppTelemetryTests(testlib.BaseTestSet):
                 # the connection
                 with WebsocketConnection(hostname, node0_port, username,
                                          password, node0_path) as conn2:
-                    resp = conn2.connect()
+                    resp = conn2.connect(expected_exception=InvalidStatus)
                     testlib.assert_eq(resp.status_code, 429)
         finally:
             # Increase max clients back to default
@@ -253,13 +254,16 @@ class WebsocketConnection(AbstractContextManager):
         self.sock.settimeout(5)
         return self
 
-    def connect(self) -> Response:
+    def connect(self, expected_exception=None) -> Response:
         # Perform handshake
         handshake = self.protocol.connect()
         self.protocol.send_request(handshake)
         self._get_and_send_data()
         event = self._get_next_event()
-        assert isinstance(event, Response)
+        if expected_exception is not None:
+            assert isinstance(self.protocol.handshake_exc, expected_exception)
+        elif self.protocol.handshake_exc is not None:
+            raise self.protocol.handshake_exc
         return event
 
     def get_next_frame(self) -> Frame:
@@ -287,8 +291,12 @@ class WebsocketConnection(AbstractContextManager):
             # Update list of events
             events = self.protocol.events_received()
             self.events += events
-        # Get next event
-        return self.events.pop(0)
+        # Check that an event was returned
+        if len(self.events) == 0:
+            return None
+        else:
+            # Return next event
+            return self.events.pop(0)
 
     def _receive_to_buffer(self, buffer_size=1024):
         data = self.sock.recv(buffer_size)
