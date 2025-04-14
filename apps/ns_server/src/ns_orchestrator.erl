@@ -272,43 +272,55 @@ start_resume_bucket(Args, Metadata) ->
 stop_resume_bucket(Bucket) ->
     call({{bucket_hibernation_op, {stop, resume_bucket}}, [Bucket]}).
 
--spec failover([node()], boolean()) ->
-                      ok |
-                      rebalance_running |
-                      in_recovery |
-                      last_node |
-                      {last_node_for_bucket, list()} |
-                      unknown_node |
-                      orchestration_unsafe |
-                      config_sync_failed |
-                      quorum_lost |
-                      stopped_by_user |
-                      in_buckets_shutdown |
-                      {incompatible_with_previous, [atom()]} |
-                      %% the following is needed just to trick the dialyzer;
-                      %% otherwise it wouldn't let the callers cover what it
-                      %% believes to be an impossible return value if all
-                      %% other options are also covered
-                      any().
-failover(Nodes, AllowUnsafe) ->
-    call({failover, Nodes, AllowUnsafe}, infinity).
+%% The second argument can be a boolean or a map. Pre-Morpheus compat this will
+%% be a boolean. Post-Morpheus compat this will be a map. This can be update
+%% once we move the minimum compat version beyond Morpheus.
+-spec failover([node()], boolean() | map()) ->
+          ok |
+          rebalance_running |
+          in_recovery |
+          last_node |
+          {last_node_for_bucket, list()} |
+          unknown_node |
+          orchestration_unsafe |
+          config_sync_failed |
+          quorum_lost |
+          stopped_by_user |
+          in_buckets_shutdown |
+          {incompatible_with_previous, [atom()]} |
+          %% the following is needed just to trick the dialyzer;
+          %% otherwise it wouldn't let the callers cover what it
+          %% believes to be an impossible return value if all
+          %% other options are also covered
+          any().
+failover(Nodes, AllowUnsafe) when is_boolean(AllowUnsafe) ->
+    %% Pre-Morpheus compat function clause.
+    failover(Nodes, #{allow_unsafe => AllowUnsafe});
+failover(Nodes, Options) when is_map(Options) ->
+    call({failover, Nodes, Options}, infinity).
 
--spec start_failover([node()], boolean()) ->
-                            ok |
-                            rebalance_running |
-                            in_recovery |
-                            last_node |
-                            {last_node_for_bucket, list()} |
-                            unknown_node |
-                            in_buckets_shutdown |
-                            {incompatible_with_previous, [atom()]} |
-                            %% the following is needed just to trick the dialyzer;
-                            %% otherwise it wouldn't let the callers cover what it
-                            %% believes to be an impossible return value if all
-                            %% other options are also covered
-                            any().
-start_failover(Nodes, AllowUnsafe) ->
-    call({start_failover, Nodes, AllowUnsafe}).
+%% The second argument can be a boolean or a map. Pre-Morpheus compat this will
+%% be a boolean. Post-Morpheus compat this will be a map. This can be update
+%% once we move the minimum compat version beyond Morpheus.
+-spec start_failover([node()], boolean() | map()) ->
+          ok |
+          rebalance_running |
+          in_recovery |
+          last_node |
+          {last_node_for_bucket, list()} |
+          unknown_node |
+          in_buckets_shutdown |
+          {incompatible_with_previous, [atom()]} |
+          %% the following is needed just to trick the dialyzer;
+          %% otherwise it wouldn't let the callers cover what it
+          %% believes to be an impossible return value if all
+          %% other options are also covered
+          any().
+start_failover(Nodes, AllowUnsafe) when is_boolean(AllowUnsafe) ->
+    %% Pre-Morpheus compat function clause.
+    start_failover(Nodes, #{allow_unsafe => AllowUnsafe});
+start_failover(Nodes, Options) when is_map(Options) ->
+    call({start_failover, Nodes, Options}).
 
 -spec try_autofailover(list(), map()) ->
                               {ok, list()} |
@@ -868,10 +880,10 @@ idle({failover, Node}, From, _State) ->
     %% calls from pre-5.5 nodes
     {keep_state_and_data,
      [{next_event, {call, From}, {failover, [Node], false}}]};
-idle({failover, Nodes, AllowUnsafe}, From, _State) ->
-    handle_start_failover(Nodes, AllowUnsafe, From, true, hard_failover, #{});
-idle({start_failover, Nodes, AllowUnsafe}, From, _State) ->
-    handle_start_failover(Nodes, AllowUnsafe, From, false, hard_failover, #{});
+idle({failover, Nodes, Options}, From, _State) ->
+    handle_start_failover(Nodes, From, true, hard_failover, Options);
+idle({start_failover, Nodes, Options}, From, _State) ->
+    handle_start_failover(Nodes, From, false, hard_failover, Options);
 idle({try_autofailover, Nodes, #{down_nodes := DownNodes} = Options},
      From, _State) ->
     Snapshot = failover:get_snapshot(),
@@ -886,8 +898,16 @@ idle({try_autofailover, Nodes, #{down_nodes := DownNodes} = Options},
             {keep_state_and_data,
              [{reply, From, {cannot_preserve_durability_majority, Buckets}}]};
         ok ->
-            handle_start_failover(Nodes, false, From, true, auto_failover,
-                                  Options)
+            %% Auto-failover should never be unsafe. We add the option here
+            %% rather than in the auto_failover module so that we don't have to
+            %% worry about which node auto-failover is running on. It /should/
+            %% almost always be this node, the node running the orchestrator,
+            %% but the requests are routed via the leader registry so we would
+            %% need to take particular care around process creation and deletion
+            %% to ensure that this is /always/ the case. Better to be safe than
+            %% sorry, and to keep setting the option here.
+            handle_start_failover(Nodes, From, true, auto_failover,
+                                  Options#{allow_unsafe => false})
     end;
 idle({start_graceful_failover, Nodes}, From, _State) ->
     auto_rebalance:cancel_any_pending_retry_async("graceful failover"),
@@ -2120,7 +2140,8 @@ rebalance_allowed(Snapshot) ->
             {error, lists:flatten(Msg)}
     end.
 
-handle_start_failover(Nodes, AllowUnsafe, From, Wait, FailoverType, Options) ->
+handle_start_failover(Nodes, From, Wait, FailoverType, Options) ->
+    #{allow_unsafe := AllowUnsafe} = Options,
     auto_rebalance:cancel_any_pending_retry_async("failover"),
 
     ActiveNodes = ns_cluster_membership:active_nodes(),
@@ -2131,8 +2152,7 @@ handle_start_failover(Nodes, AllowUnsafe, From, Wait, FailoverType, Options) ->
     {ok, ObserverPid} =
         ns_rebalance_observer:start_link([], NodesInfo, FailoverType, Id),
     case failover:start(Nodes,
-                        maps:merge(#{allow_unsafe => AllowUnsafe,
-                                     auto => FailoverType =:= auto_failover},
+                        maps:merge(#{auto => FailoverType =:= auto_failover},
                                    Options)) of
         {ok, Pid} ->
             ale:info(?USER_LOGGER, "Starting failover of nodes ~p AllowUnsafe = ~p "
