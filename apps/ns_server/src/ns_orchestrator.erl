@@ -282,6 +282,7 @@ stop_resume_bucket(Bucket) ->
           last_node |
           {last_node_for_bucket, list()} |
           unknown_node |
+          inactive_node |
           orchestration_unsafe |
           config_sync_failed |
           quorum_lost |
@@ -309,13 +310,9 @@ failover(Nodes, Options) when is_map(Options) ->
           last_node |
           {last_node_for_bucket, list()} |
           unknown_node |
+          inactive_node |
           in_buckets_shutdown |
-          {incompatible_with_previous, [atom()]} |
-          %% the following is needed just to trick the dialyzer;
-          %% otherwise it wouldn't let the callers cover what it
-          %% believes to be an impossible return value if all
-          %% other options are also covered
-          any().
+          {incompatible_with_previous, [atom()]}.
 start_failover(Nodes, AllowUnsafe) when is_boolean(AllowUnsafe) ->
     %% Pre-Morpheus compat function clause.
     start_failover(Nodes, #{allow_unsafe => AllowUnsafe});
@@ -499,17 +496,16 @@ retry_rebalance(graceful_failover, Params, Id, Chk) ->
           proplists:get_value(nodes, Params), Id, Chk}).
 
 -spec start_graceful_failover([node()]) ->
-                                     ok | in_progress | in_recovery |
-                                     non_kv_node | not_graceful | unknown_node |
-                                     last_node |
-                                     {last_node_for_bucket, list()} |
-                                     {config_sync_failed, any()} |
-                                     %% the following is needed just to trick
-                                     %% the dialyzer; otherwise it wouldn't
-                                     %% let the callers cover what it believes
-                                     %% to be an impossible return value if
-                                     %% all other options are also covered
-                                     any().
+          ok |
+          in_progress |
+          in_recovery |
+          non_kv_node |
+          not_graceful |
+          unknown_node |
+          inactive_node |
+          last_node |
+          {last_node_for_bucket, list()} |
+          {config_sync_failed, any()}.
 start_graceful_failover(Nodes) ->
     call({start_graceful_failover, Nodes}).
 
