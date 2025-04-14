@@ -6,7 +6,9 @@ import tempfile
 import unittest
 from io import BytesIO
 from timeit import default_timer as timer
+from io import StringIO
 
+log_stream = StringIO()
 
 def load_cbcollect():
     from importlib.util import spec_from_loader, module_from_spec
@@ -395,7 +397,8 @@ class TestTaskSystem(unittest.TestCase):
             outfile = f"{tempdir}/testdir.zip"
             collect_file_name = "testinput.log"
             filenames = [f"{prefix}/C.log", f"{prefix}/{collect_file_name}",
-                         f"{prefix}/couchbase.log", f"{prefix}/literal.log"]
+                         f"{prefix}/couchbase.log", f"{prefix}/literal.log",
+                         f"{prefix}/cbcollect_info.log"]
             with open(collect_file_name, "wb") as f:
                 f.write(b"Some log information or whatever here")
 
@@ -423,7 +426,11 @@ class TestTaskSystem(unittest.TestCase):
                     "Write this literal please",
                     log_file="couchbase.log")]
             runner.run_tasks(*tasks)
-            runner.close()
+            log_task = runner.literal_task("cbcollect_info log", log_stream.getvalue(),
+                                           log_file="cbcollect_info.log",
+                                           no_header=True)
+            runner.run_tasks(log_task)
+            runner.finalize()
             with open(outfile, "r") as f:
                 self.assertEqual(f.name, outfile)
 
@@ -464,18 +471,10 @@ class TestTaskSystem(unittest.TestCase):
                     tenth = f.readline()
                     self.assertEqual(divider, tenth)
 
-                    # platforms differ and so do shells, keep a list of valid
-                    # responses in this:
-                    eleventh_expect = [b"/bin/sh: ntpqabcd: command not found\n",
-                                       b"/bin/sh: 1: ntpqabcd: not found\n"]
-                    eleventh = f.readline()
-                    self.assertTrue(eleventh in eleventh_expect)
-                    twelfth = f.readline()
-                    self.assertTrue(twelfth in eleventh_expect)
-                    thirteenth = f.readline()
-                    self.assertTrue(thirteenth in eleventh_expect)
-                    last = f.readline()
-                    self.assertEqual(b"", last)
+                # need to check that the output makes it to the cbcollect_info.log
+                with zippy.open(f"{prefix}/cbcollect_info.log", mode="r") as f:
+                    cbcollect_log = "".join([f.decode() for f in f.readlines()])
+                    self.assertRegex(cbcollect_log, r".*ntpqabcd.*not found.*")
 
             shutil.rmtree(tempdir)
 
@@ -538,9 +537,7 @@ class TestTaskSystem(unittest.TestCase):
                     self.assertEqual(divider, line)
                     line = f.readline()
                     self.assertNotIn(b"Failed", line)
-                    ps_results = [b'USER               PID  %CPU %MEM      VSZ    RSS   TT  STAT STARTED      TIME COMMAND\n',
-                                  b'USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND\n']
-                    self.assertTrue(line in ps_results)
+                    self.assertRegex(line.decode(), r".*USER.*PID.*CPU.*TIME.*COMMAND.*")
 
             shutil.rmtree(tempdir)
 

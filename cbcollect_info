@@ -752,7 +752,7 @@ class Task:
             p = subprocess.Popen(self.command, bufsize=-1,
                                  stdin=subprocess.PIPE,
                                  stdout=subprocess.PIPE,
-                                 stderr=subprocess.STDOUT,
+                                 stderr=subprocess.PIPE,
                                  shell=self.use_shell,
                                  **extra_flags)
             if self.to_stdin and p.stdin:
@@ -779,6 +779,7 @@ class Task:
 
         if p:
             stdout = p.stdout
+            stderr = p.stderr
         else:
             raise Exception("No stdout attached to process")
 
@@ -807,6 +808,7 @@ class Task:
                     break
                 outstream.write(data)
                 last_char_written = data[-1:]
+
             self.maybe_append_newline(outstream, last_char_written)
         finally:
             if timer is not None:
@@ -827,8 +829,19 @@ class Task:
         if p:
             code = p.wait()
 
+        # Handle writing stderr to cbcollect_info.log: we used to write the
+        # errors to the output file we were currently writing to but instead
+        # we want to redirect them to the cbcollect_info.log file. See MB-61931
+        while True:
+            data_stderr: Optional[bytes] = stderr.read(READ_SIZE)
+            if not data_stderr:
+                break
+            log(data_stderr.decode(LATIN1))
+
         if stdout:
             stdout.close()
+        if stderr:
+            stderr.close()
 
         outstream.flush()
 
