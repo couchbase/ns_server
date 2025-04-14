@@ -14322,25 +14322,6 @@
     "name": "kv_ep_chk_persistence_timeout_seconds"
   },
   {
-    "__name__": "kv_ep_chk_remover_stime",
-    "bucket": "$bucket",
-    "bucket_examples": [
-      "ITEM",
-      "NEW_ORDER",
-      "WAREHOUSE",
-      "bucket4",
-      "bucket5",
-      "bucket6",
-      "bucket7",
-      "bucket8",
-      "bucket9",
-      "default"
-    ],
-    "instance": "kv",
-    "job": "general",
-    "name": "kv_ep_chk_remover_stime"
-  },
-  {
     "__name__": "kv_ep_clock_cas_drift_threshold_exceeded",
     "bucket": "$bucket",
     "bucket_examples": [

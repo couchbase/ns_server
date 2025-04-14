@@ -20,7 +20,6 @@ ep_bucket_type none kv_ep_bucket_type{} none
 ep_chk_expel_enabled none kv_ep_chk_expel_enabled{} none
 ep_chk_max_items none kv_ep_chk_max_items{} none
 ep_chk_period none kv_ep_chk_period{} none
-ep_chk_remover_stime none kv_ep_chk_remover_stime{} none
 ep_collections_drop_compaction_delay none kv_ep_collections_drop_compaction_delay{} none
 ep_collections_enabled none kv_ep_collections_enabled{} none
 ep_compaction_exp_mem_threshold none kv_ep_compaction_exp_mem_threshold{} none
