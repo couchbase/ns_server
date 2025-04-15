@@ -24,7 +24,7 @@ from ipaddress import ip_address, IPv6Address
 import os
 import signal
 from types import MethodType
-
+from dataclasses import dataclass, field
 from testlib.node import Node
 
 THIS_FILE_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -41,6 +41,16 @@ config={'colors': support_colors(),
         'report_time': True,
         'test_timeout': 600}
 
+@dataclass
+class TestError:
+    name: str
+    error: Exception
+    cluster_name: str
+    timestamp: datetime = field(default_factory=datetime.now)
+
+    def __str__(self):
+        return f'[{self.timestamp.strftime("%H:%M:%S")}] {self.cluster_name} ' \
+               f'{self.name}: {self.error}'
 
 def try_reuse_cluster(requirements, cluster):
     # Attempt to satisfy the requirements with the existing cluster if
@@ -114,9 +124,11 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
     if err is not None:
         # If testset setup fails, all tests were not ran
         for not_ran_test in testset['test_name_list']:
-            not_ran.append((test_name(testset_instance, not_ran_test['name'],
-                                      not_ran_test['iter']),
-                            "testset setup failed"))
+            not_ran.append(TestError(
+                name=test_name(testset_instance, not_ran_test['name'],
+                               not_ran_test['iter']),
+                error=RuntimeError("testset setup failed"),
+                cluster_name=cluster.short_name()))
         return 0, [err], not_ran, cluster
 
     try:
@@ -153,10 +165,12 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
             if 'fun' in test_dict: # this test is generated
                 if hasattr(testset_instance, test):
                     # testset already has this test, skipping...
-                    not_ran.append((test_name(testset_instance,
-                                              test,
-                                              testiter),
-                                    "test already exists"))
+                    not_ran.append(TestError(
+                        name=test_name(testset_instance,
+                                       test,
+                                       testiter),
+                        error=RuntimeError("test already exists"),
+                        cluster_name=cluster.short_name()))
                     break
                 setattr(testset_instance, test,
                         MethodType(test_dict['fun'], testset_instance))
@@ -181,18 +195,22 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
                 # Don't try to run further tests as test_teardown failure will
                 # likely cause additional test failures which are irrelevant
                 for not_ran_test in tests_to_run[executed:]:
-                    not_ran.append((test_name(testset_instance,
-                                              not_ran_test['name'],
-                                              not_ran_test['iter']),
-                                    "Earlier test_teardown failed"))
+                    not_ran.append(TestError(
+                        name=test_name(testset_instance,
+                                       not_ran_test['name'],
+                                       not_ran_test['iter']),
+                        error=RuntimeError("Earlier test_teardown failed"),
+                        cluster_name=cluster.short_name()))
                 break
 
             if len(errors) > 0 and stop_after_first_error:
                 for not_ran_test in tests_to_run[executed:]:
-                    not_ran.append((test_name(testset_instance,
-                                              not_ran_test['name'],
-                                              not_ran_test['iter']),
-                                    "Earlier test failed"))
+                    not_ran.append(TestError(
+                        name=test_name(testset_instance,
+                                       not_ran_test['name'],
+                                       not_ran_test['iter']),
+                        error=RuntimeError("Earlier test failed"),
+                        cluster_name=cluster.short_name()))
                 break
     finally:
         _, err = safe_test_function_call(testset_instance, 'teardown',
@@ -246,7 +264,9 @@ def safe_test_function_call(testset, testfunction, args, testiter,
                 res = apply_with_seed(testset, testfunction, args, seed)
     except Exception as e:
         print_traceback()
-        error = (testname, e)
+        error = TestError(name=testname,
+                          error=e,
+                          cluster_name=testset.cluster.short_name())
     finally:
         if timeout is not None:
             signal.alarm(0)
@@ -791,7 +811,11 @@ def log_at_all_nodes(cluster, msg):
         try:
             diag_eval(n, f'\"{msg}\".', verbose=config['verbose'])
         except Exception as e:
-            errors.append((f'Log at {n}', e))
+            errors.append(TestError(
+                name=f'Log at {n}',
+                error=e,
+                cluster_name=cluster.short_name()
+            ))
     return errors
 
 

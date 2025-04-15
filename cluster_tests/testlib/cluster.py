@@ -184,8 +184,11 @@ class Cluster:
                                        "is_developer_preview().")
 
 
+    def short_name(self):
+        return f'Cluster#{self.index}'
+
     def __str__(self):
-        return f'Cluster#{self.index}(' + \
+        return f'{self.short_name()}(' + \
                ','.join([str(n) for n in self.connected_nodes]) + ')'
 
     def __repr__(self):

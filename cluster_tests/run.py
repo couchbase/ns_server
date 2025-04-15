@@ -33,7 +33,7 @@ import testlib
 sys.path.append(testlib.get_pylib_dir())
 
 import cluster_run_lib
-from testlib import UnmetRequirementsError
+from testlib import UnmetRequirementsError, TestError
 from testlib.cluster import InconsistentClusterError
 
 from testsets import \
@@ -341,7 +341,10 @@ def main():
     for (configuration, testsets) in testsets_grouped:
         if stop_after_first_error and len(errors) > 0:
             for testset in testsets:
-                not_ran.append((testset['name'], "prior testset failed"))
+                not_ran.append(TestError(
+                    name=testset['name'],
+                    error=RuntimeError("prior testset failed"),
+                    cluster_name=cluster.short_name()))
             continue
         # Get an appropriate cluster to satisfy the configuration
         if use_existing_server:
@@ -351,7 +354,10 @@ def main():
                     reason = "Cluster provided does not satisfy test " \
                              f"requirements:\n" \
                              f"{[str(r) for r in unmet_requirements]}"
-                    not_ran.append((testset['name'], reason))
+                    not_ran.append(TestError(
+                        name=testset['name'],
+                        error=RuntimeError(reason),
+                        cluster_name=cluster.short_name()))
                 continue
             cluster.set_requirements(configuration)
         else:
@@ -418,13 +424,13 @@ def main():
     for name in errors:
         print(f"In {name}:")
         for testres in errors[name]:
-            print(f"  {testres[0]} failed: {testres[1]}")
+            print(f"  {testres}")
         print()
 
     if len(not_ran) > 0:
         print(f"Couldn't run the following tests:")
-        for name, reason in not_ran:
-            print(f"  {name}: {reason}")
+        for testres in not_ran:
+            print(f"  {testres}")
         print()
 
     if len(errors) > 0:
@@ -616,10 +622,12 @@ def run_testsets(cluster, testsets, total_num, log_collection_regex, seed=None,
 
         def skip_this_testset(error):
             for skip_test in testset['test_name_list']:
-                not_ran.append((testlib.test_name(testset['class'],
-                                                  skip_test['name'],
-                                                  skip_test['iter']),
-                                error))
+                not_ran.append(TestError(
+                    name=testlib.test_name(testset['class'],
+                                           skip_test['name'],
+                                           skip_test['iter']),
+                    error=error,
+                    cluster_name=cluster.short_name()))
 
         if cluster_is_unusable:
             skip_this_testset('Cluster is in incosistent state (can be '
@@ -663,7 +671,10 @@ def run_testsets(cluster, testsets, total_num, log_collection_regex, seed=None,
         # cluster, so we should keep running more tests
         except Exception as e:
             testlib.print_traceback()
-            testset_errors.append(('Testset execution', e))
+            testset_errors.append(TestError(
+                name=f'Testset {testset["name"]} execution',
+                error=e,
+                cluster_name=cluster.short_name()))
             cluster_is_unusable = True
 
         try:
@@ -679,10 +690,16 @@ def run_testsets(cluster, testsets, total_num, log_collection_regex, seed=None,
                 test_error = UnmetRequirementsError(new_unmet,
                                                     message=error_msg)
                 print(testlib.red(str(test_error)))
-                testset_errors.append(('Requirements check', test_error))
+                testset_errors.append(TestError(
+                    name=f'Requirements check after {testset["name"]}',
+                    error=test_error,
+                    cluster_name=cluster.short_name()))
         except InconsistentClusterError as e:
             print(testlib.red(str(e)))
-            testset_errors.append(("Cluster smog check", e))
+            testset_errors.append(TestError(
+                name='Cluster smog check',
+                error=e,
+                cluster_name=cluster.short_name()))
             cluster_is_unusable = True
 
         if len(testset_errors) > 0:
