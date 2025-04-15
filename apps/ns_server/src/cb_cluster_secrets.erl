@@ -977,11 +977,13 @@ handle_info(run_jobs, #state{proc_type = ProcType} = State) ->
     {noreply, run_jobs(State)};
 
 handle_info({timer, Name}, #state{proc_type = ProcType,
-                                  timers_timestamps = Timestamps} = State) ->
+                                  timers_timestamps = Timestamps,
+                                  timers = Timers} = State) ->
     misc:flush({timer, Name}),
     ?log_debug("[~p] Handling timer ~p", [ProcType, Name]),
     CurTs = erlang:monotonic_time(millisecond),
-    NewState = State#state{timers_timestamps = Timestamps#{Name => CurTs}},
+    NewState = State#state{timers_timestamps = Timestamps#{Name => CurTs},
+                           timers = Timers#{Name => undefined}},
     {noreply, handle_timer(Name, NewState)};
 
 handle_info({dek_drop_complete, Kind} = Msg,
