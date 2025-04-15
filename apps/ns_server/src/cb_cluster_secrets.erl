@@ -24,6 +24,8 @@
 -define(NODE_PROC, node_monitor_process).
 -define(MASTER_PROC, master_monitor_process).
 -define(DEK_COUNTERS_UPDATE_TIMEOUT, ?get_timeout(counters_update, 30000)).
+-define(REMOVE_HISTORICAL_KEYS_INTERVAL,
+        ?get_param(remove_historical_keys_interval, 60*60*1000)).
 -define(DEK_TIMER_RETRY_TIME_S, ?get_param(dek_retry_interval, 60)).
 -define(DEK_DROP_RETRY_TIME_S(Kind),
         ?get_param({dek_removal_min_interval, Kind}, 60*60*3)).
@@ -100,6 +102,7 @@
                 timers_timestamps = #{} :: #{atom() := integer()},
                 timers = #{retry_jobs => undefined,
                            rotate_keks => undefined,
+                           remove_historical_keys => undefined,
                            dek_cleanup => undefined,
                            rotate_deks => undefined,
                            dek_info_update => undefined,
@@ -179,7 +182,8 @@
 -type dek_job() :: maybe_update_deks | garbage_collect_deks |
                    maybe_reencrypt_deks | reread_bad_deks.
 
--type master_job() :: maybe_reencrypt_secrets | maybe_reset_deks_counters.
+-type master_job() :: maybe_reencrypt_secrets | maybe_reset_deks_counters |
+                      maybe_remove_historical_keys.
 
 -type bad_encrypt_id() :: {encrypt_id, not_allowed | not_found}.
 -type bad_usage_change() :: {usage, in_use}.
@@ -430,41 +434,53 @@ delete_historical_key_internal(SecretId, HistKeyId, IsSecretWritableFun) ->
     {_, CountersRev} = get_dek_counters(direct),
     case get_all_node_deks_info() of
         {ok, AllNodesDekInfo} ->
-            case check_key_id_usage(HistKeyId, AllNodesDekInfo) of
-                {in_use, DekKinds} ->
-                    {error, {used_by, #{by_deks => DekKinds}}};
-                not_in_use ->
-                    RV = chronicle_transaction(
-                           [?CHRONICLE_SECRETS_KEY,
-                            ?CHRONICLE_DEK_COUNTERS_KEY],
-                           fun (Snapshot) ->
-                               {_, NewCountersRev} = get_dek_counters(Snapshot),
-                               case NewCountersRev == CountersRev of
-                                   true ->
-                                       delete_historical_key_txn(
-                                         SecretId,
-                                         HistKeyId,
-                                         IsSecretWritableFun,
-                                         Snapshot);
-                                   false ->
-                                       {abort, {error, retry}}
-                               end
-                           end),
-                    case RV of
-                        {ok, Name} ->
-                            event_log:add_log(
-                              historical_encryption_key_deleted,
-                              [{encryption_key_id, SecretId},
-                               {encryption_key_name, iolist_to_binary(Name)},
-                               {historical_key_UUID, HistKeyId}]),
-                            sync_with_all_node_monitors(),
-                            {ok, Name};
-                        {error, Reason} ->
-                            {error, Reason}
-                    end
+            case delete_historical_key_internal(SecretId, HistKeyId,
+                                                IsSecretWritableFun,
+                                                AllNodesDekInfo,
+                                                CountersRev) of
+                {ok, Name} ->
+                    sync_with_all_node_monitors(),
+                    {ok, Name};
+                {error, Reason} ->
+                    {error, {unsafe, Reason}}
             end;
         {error, Reason} ->
             {error, {unsafe, Reason}}
+    end.
+
+delete_historical_key_internal(SecretId, HistKeyId, IsSecretWritableFun,
+                               AllNodesDekInfo, CountersRev) ->
+    case check_key_id_usage(HistKeyId, AllNodesDekInfo) of
+        {in_use, DekKinds} ->
+            {error, {used_by, #{by_deks => DekKinds}}};
+        not_in_use ->
+            RV = chronicle_transaction(
+                    [?CHRONICLE_SECRETS_KEY,
+                     ?CHRONICLE_DEK_COUNTERS_KEY],
+                    fun (Snapshot) ->
+                        {_, NewCountersRev} = get_dek_counters(Snapshot),
+                        case NewCountersRev == CountersRev of
+                            true ->
+                                delete_historical_key_txn(
+                                    SecretId,
+                                    HistKeyId,
+                                    IsSecretWritableFun,
+                                    Snapshot);
+                            false ->
+                                {abort, {error, retry}}
+                        end
+                    end),
+            case RV of
+                {ok, Name} ->
+                    event_log:add_log(
+                        historical_encryption_key_deleted,
+                        [{encryption_key_id, SecretId},
+                         {encryption_key_name, iolist_to_binary(Name)},
+                         {historical_key_UUID, HistKeyId}]),
+                    {ok, Name};
+                {error, Reason} ->
+                    {error, Reason}
+            end
     end.
 
 %% Cipher should have type crypto:cipher() but it is not exported
@@ -830,7 +846,8 @@ init([Type]) ->
     Jobs = case Type of
                ?MASTER_PROC ->
                    [maybe_reencrypt_secrets,
-                    maybe_reset_deks_counters];
+                    maybe_reset_deks_counters,
+                    maybe_remove_historical_keys];
                ?NODE_PROC ->
                     ets:new(?MODULE, [named_table, protected, set,
                                       {keypos, 1}]),
@@ -947,9 +964,9 @@ handle_info({config_change, ?CHRONICLE_SECRETS_KEY} = Msg,
             #state{proc_type = ?MASTER_PROC} = State) ->
     ?log_debug("Secrets in chronicle have changed..."),
     misc:flush(Msg),
-    NewJobs = [maybe_reencrypt_secrets], %% Modififcation of encryptWith or
-                                         %% rotation of secret that encrypts
-                                         %% other secrets
+    NewJobs = [maybe_reencrypt_secrets,       %% Modififcation of encryptWith or
+               maybe_remove_historical_keys], %% rotation of secret that
+                                              %% encrypts other secrets
     {noreply, add_and_run_jobs(NewJobs, State)};
 
 handle_info({config_change, _}, State) ->
@@ -1086,6 +1103,11 @@ handle_timer(dek_info_update, #state{proc_type = ?NODE_PROC} = State) ->
 handle_timer(remove_retired_keys, #state{proc_type = ?NODE_PROC} = State) ->
     encryption_service:cleanup_retired_keys(),
     restart_remove_retired_timer(State);
+
+handle_timer(remove_historical_keys,
+             #state{proc_type = ?MASTER_PROC} = State) ->
+    {ok, NewState} = maybe_remove_historical_keys(State),
+    NewState;
 
 handle_timer(Name, State) ->
     ?log_warning("Unhandled timer: ~p", [Name]),
@@ -2660,6 +2682,8 @@ do(ensure_all_keks_on_disk, State) ->
     ensure_all_keks_on_disk(State);
 do(maybe_reencrypt_secrets, _) ->
     maybe_reencrypt_secrets();
+do(maybe_remove_historical_keys, State) ->
+    maybe_remove_historical_keys(State);
 do(maybe_reset_deks_counters, _) ->
     maybe_reset_deks_counters();
 do({maybe_update_deks, Kind}, State) ->
@@ -2678,6 +2702,13 @@ stop_timer(Name, #state{timers = Timers} = State) ->
         Ref when is_reference(Ref) ->
             erlang:cancel_timer(Ref),
             State#state{timers = Timers#{Name => undefined}}
+    end.
+
+-spec is_timer_started(Name :: atom(), #state{}) -> boolean().
+is_timer_started(Name, #state{timers = Timers}) ->
+    case maps:get(Name, Timers) of
+        undefined -> false;
+        Ref when is_reference(Ref) -> true
     end.
 
 -spec restart_timer(Name :: atom(), Time :: non_neg_integer(), #state{}) ->
@@ -2729,6 +2760,19 @@ restart_rotation_timer(#state{proc_type = ?MASTER_PROC} = State) ->
     Time = calculate_next_rotation_time(CurDateTime, get_all()),
     ?log_debug("Starting rotation timer for ~b...", [Time]),
     restart_timer(rotate_keks, Time, State).
+
+-spec ensure_remove_historical_keys_timer(#state{}) -> #state{}.
+ensure_remove_historical_keys_timer(#state{proc_type = ?NODE_PROC} = State) ->
+    State;
+ensure_remove_historical_keys_timer(#state{proc_type = ?MASTER_PROC} = State) ->
+    HistoricalKeysToRemove = historical_keys_to_remove(),
+    case HistoricalKeysToRemove of
+        [] ->
+            stop_timer(remove_historical_keys, State);
+        [_ | _] ->
+            ensure_timer_started(remove_historical_keys,
+                                 ?REMOVE_HISTORICAL_KEYS_INTERVAL, State)
+    end.
 
 -spec calculate_next_rotation_time(calendar:datetime(), [secret_props()]) ->
                                             TimeInMs :: non_neg_integer().
@@ -3238,6 +3282,61 @@ maybe_reset_deks_counters() ->
                 {error, _} ->
                     {error, retry}
             end
+    end.
+
+-spec historical_keys_to_remove() -> [{secret_id(), cb_deks:dek_id()}].
+historical_keys_to_remove() ->
+    lists:flatmap(fun (#{id := SecretId, type := ?AWSKMS_KEY_TYPE,
+                        data := #{stored_ids := StoredIds}}) ->
+                            [{SecretId, Id} || #{id := Id} <- tl(StoredIds)];
+                        (#{}) ->
+                            []
+            end, get_all(direct)).
+
+-spec maybe_remove_historical_keys(#state{}) -> {ok, #state{}}.
+maybe_remove_historical_keys(State) ->
+    %% Currently the only type of historical keys we remove automatically is
+    %% AWS. AWS keys are rotated by the AWS service and it is transparent for
+    %% us, which means that AWS key ARN doesn't change, and that means that
+    %% our keys will basically all be the same (the only difference is their
+    %% UUIDs). We generate new UUIDs to keep track which data has already been
+    %% re-encrypted after each AWS key rotation. After re-encryption is
+    %% complete, we can remove the historical keys as they are no longer needed.
+    maybe
+        {_, false} ?= {timer, is_timer_started(remove_historical_keys, State)},
+        HistoricalKeysToRemove = historical_keys_to_remove(),
+        [_ | _] ?= HistoricalKeysToRemove,
+        ?log_debug("There are ~p historical keys to remove: ~0p",
+                   [length(HistoricalKeysToRemove), HistoricalKeysToRemove]),
+        {_, CountersRev} = get_dek_counters(direct),
+        {ok, AllNodesDekInfo} ?= get_all_node_deks_info(),
+        lists:foreach(
+            fun ({SecretId, KeyId}) ->
+                case delete_historical_key_internal(
+                       SecretId, KeyId, fun (_) -> true end,
+                       AllNodesDekInfo, CountersRev) of
+                    {ok, _Name} ->
+                        ?log_debug("Removed historical key ~p for secret ~p",
+                                   [KeyId, SecretId]);
+                    {error, not_found} ->
+                        ?log_debug("Skipping historical key ~p for secret ~p "
+                                   "because it was not found",
+                                   [KeyId, SecretId]);
+                    {error, Reason} ->
+                        ?log_error("Failed to remove historical key ~p for "
+                                   "secret ~p: ~p", [KeyId, SecretId, Reason])
+                end
+            end, HistoricalKeysToRemove),
+        {ok, ensure_remove_historical_keys_timer(State)}
+    else
+        {timer, true} ->
+            %% Timer is already started, we should wait until it expires
+            %% in order to avoid doing too many attempts
+            {ok, State};
+        [] ->
+            {ok, State};
+        {error, _Reason} ->
+            {ok, ensure_remove_historical_keys_timer(State)}
     end.
 
 -spec get_dek_counters(chronicle_snapshot()) ->

@@ -94,6 +94,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         change_password(self.sm_node, password='')
         set_cfg_dek_limit(self.cluster, None)
         set_bucket_dek_limit(self.cluster, self.bucket_name, None)
+        set_remove_hist_keys_interval(self.cluster, None)
 
     def random_node(self):
         return random.choice(self.cluster.connected_nodes)
@@ -916,6 +917,42 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                          get_secret(self.random_node(), generated_secret_id),
                          verify_encryption_kek=kek_id,
                          verify_key_count=1)
+
+        aws_secret = get_secret(self.random_node(), aws_secret_id)
+        verify_kek_files(self.cluster, aws_secret, verify_key_count=1,
+                         verify_key_type='awskm')
+
+        set_remove_hist_keys_interval(self.cluster, 1000)
+
+        rotate_secret(self.random_node(), aws_secret_id)
+
+        new_kek_id = get_kek_id(self.random_node(), aws_secret_id)
+
+        def verify_kek_ids_after_rotation():
+            s = get_secret(self.random_node(), aws_secret_id)
+            # Verify that only one new KEK is left in chronicle and that it
+            # stored on disk
+            verify_kek_files(self.cluster, s, verify_key_count=1,
+                             verify_key_type='awskm')
+            assert s['data']['storedKeyIds'][0]['id'] != kek_id, \
+                   'expected different key id'
+            # Verify that old KEK is not present on disk
+            verify_kek_files(self.cluster, aws_secret, verify_missing=True)
+
+        testlib.poll_for_condition(
+            verify_kek_ids_after_rotation,
+            sleep_time=1, attempts=60, retry_on_assert=True, verbose=True)
+
+        # Verify that generated secret and bucket deks have been re-encrypted
+        # with new KEK
+        poll_verify_kek_files(self.cluster,
+                              get_secret(self.random_node(),
+                                         generated_secret_id),
+                              verify_encryption_kek=new_kek_id,
+                              verify_key_count=1)
+        poll_verify_bucket_deks_files(self.cluster, self.bucket_name,
+                                      verify_key_count=1,
+                                      verify_encryption_kek=new_kek_id)
 
         # Can't delete because it is in use
         delete_secret(self.random_node(), aws_secret_id, expected_code=400)
@@ -1780,9 +1817,15 @@ def verify_kek_files(cluster, secret, verify_key_count=1, **kwargs):
                 assert count == verify_key_count, \
                        f'kek count is unexpected: {count} ' \
                        f'(expected: {verify_key_count})'
-            for key in secret['data']['keys']:
-                path = Path(node.data_path()) / 'config' / 'keks'
-                verify_key_file_by_id(path, key['id'], **kwargs)
+            key_ids = [key['id'] for key in secret['data']['keys']]
+        elif secret['type'] == 'awskms-aes-key-256':
+            key_ids = [key['id'] for key in secret['data']['storedKeyIds']]
+        else:
+            assert False, f'unexpected secret type: {secret["type"]}'
+
+        path = Path(node.data_path()) / 'config' / 'keks'
+        for key_id in key_ids:
+            verify_key_file_by_id(path, key_id, **kwargs)
 
 
 def poll_verify_kek_files(*args, **kwargs):
@@ -1963,11 +2006,13 @@ def verify_key_file_by_id(dir_path, key_id, verify_missing=False, **kwargs):
         assert len(files) == 0, f'key files exists: {files}'
     else:
         assert len(files) == 1, f'more than one version found: {files}'
-        verify_key_file(files[0])
+        verify_key_file(files[0], **kwargs)
 
 
 def verify_key_file(path, verify_encryption_kek=None,
-                    verify_creation_time=None, verify_id=None):
+                    verify_creation_time=None,
+                    verify_key_type=None,
+                    verify_id=None):
     assert path.is_file(), f'key file doesn\'t exist: {path}'
     content = json.loads(path.read_bytes())
     if verify_encryption_kek is not None:
@@ -1984,7 +2029,10 @@ def verify_key_file(path, verify_encryption_kek=None,
         key_id = parse_key_file_name(path.name)
         assert key_id is not None, f"invalid key filename: path.name"
         assert verify_id(key_id), f'unexpected key id: {key_id}'
-    assert content['type'] == 'raw-aes-gcm'
+    expected_type = 'raw-aes-gcm' if verify_key_type is None \
+                                  else verify_key_type
+    assert content['type'] == expected_type, \
+           f'unexpected key type: {content["type"]} (expected: {expected_type})'
 
 
 def get_kek_id(cluster, secret_id):
@@ -2072,6 +2120,12 @@ def set_bucket_dek_limit(cluster, bucket, n):
 
 def set_min_timer_interval(cluster, n):
     set_ns_config_value(cluster, '{cb_cluster_secrets, min_timer_interval}', n)
+
+
+def set_remove_hist_keys_interval(cluster, n):
+    set_ns_config_value(cluster,
+                        '{cb_cluster_secrets, remove_historical_keys_interval}',
+                        n)
 
 
 def set_ns_config_value(cluster, key_str, value):
