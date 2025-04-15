@@ -21,7 +21,7 @@ class StatsRangeAPITests(testlib.BaseTestSet):
         return testlib.ClusterRequirements(
             min_num_nodes=2,
             # Some stats needs a bucket to be present
-            buckets=[{"name": testlib.random_str(10),
+            buckets=[{"name": "statsRangeTestBucket",
                       "ramQuota": 200}])
 
     def setup(self):
