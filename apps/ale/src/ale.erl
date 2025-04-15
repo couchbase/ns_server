@@ -26,6 +26,7 @@
          get_global_log_deks_snapshot/0,
          set_log_deks_snapshot/1,
          get_all_used_deks/0,
+         drop_log_deks/3,
 
          %% Callbacks for encryption
          create_no_deks_snapshot/0,
@@ -141,6 +142,15 @@ get_sink_loglevel(LoggerName, SinkName) ->
 set_log_deks_snapshot(LogDS) ->
     gen_server:call(?MODULE, {set_log_deks_snapshot, LogDS}, infinity).
 
+drop_log_deks(DekIdsToDrop, WorkSzThresh, Timeout) ->
+    try
+        gen_server:call(?MODULE,
+                        {drop_log_deks, DekIdsToDrop, WorkSzThresh}, Timeout)
+    catch
+        exit:{timeout, _} ->
+            {error, {node(), timeout}}
+    end.
+
 get_all_used_deks() ->
     gen_server:call(?MODULE, get_all_used_deks, infinity).
 
@@ -193,6 +203,62 @@ do_set_log_deks_snapshot(LogsDS, State) ->
         _ ->
             {error, Failures}
     end.
+
+do_drop_log_deks(DekIdsToDrop, WorkSzThresh, From, State) ->
+    EncryptableSinks = get_encryptable_sink_names(State),
+
+    CallDropSink =
+        fun(SinkName) ->
+            DropArgs = {drop_log_deks, DekIdsToDrop, WorkSzThresh},
+            case call_disk_sink(SinkName, DropArgs, infinity) of
+                {error, unknown_sink} = E ->
+                    {E, 0};
+                {_Rv, _Count} = Res ->
+                    Res
+            end
+        end,
+
+    DropDek =
+        fun DoDrop(SinkName, _, _, start) ->
+                {Rv, FilesLeftCount} = CallDropSink(SinkName),
+                DoDrop(SinkName, FilesLeftCount + 1, FilesLeftCount, Rv);
+            DoDrop(_SinkName, _PrevCount, _Count, {error, _} = Result) ->
+                Result;
+            DoDrop(_SinkName, _PrevCount, 0, ok) ->
+                ok;
+            DoDrop(SinkName, PrevCount, Count, ok) when Count < PrevCount ->
+                %% Note that a caller should never attempt to drop an active
+                %% DEK, and if there are files that are using the
+                %% a DEK in DekIdsToDrop, each iteration at least one file
+                %% will get re-encrypted with the active DEK and the NewCount
+                %% will be lower than the PrevCount after the call to drop.
+                %% If an attempt to drop an active DEK takes place, the
+                %% subsequent case takes care of it by giving error
+                {Rv, NewCount} = CallDropSink(SinkName),
+                DoDrop(SinkName, Count, NewCount, Rv);
+            DoDrop(_SinkName, _PrevCount, _Count, _Result) ->
+                {error, drop_dek_failed}
+        end,
+
+    Work =
+        fun() ->
+                RVs =
+                    lists:map(
+                      fun(SinkName) ->
+                              {SinkName, DropDek(SinkName, 0, 0, start)}
+                      end, EncryptableSinks),
+
+                Errors = [Result || {_Sink, R} = Result <- RVs, R =/= ok],
+                case Errors of
+                    [] ->
+                        gen_server:reply(From, ok);
+                    _ ->
+                        gen_server:reply(From, {error, Errors})
+                end
+        end,
+
+    proc_lib:spawn_link(Work),
+    ok.
 
 do_get_all_used_deks(State) ->
     EncryptableSinks = get_encryptable_sink_names(State),
@@ -557,6 +623,10 @@ handle_call(get_sink_names, _From, State) ->
 
 handle_call({set_log_deks_snapshot, LogDS}, _From, State) ->
     {reply, do_set_log_deks_snapshot(LogDS, State), State};
+
+handle_call({drop_log_deks, DekIdsToDrop, WorkSzThresh}, From, State) ->
+    do_drop_log_deks(DekIdsToDrop, WorkSzThresh, From, State),
+    {noreply, State};
 
 handle_call(get_all_used_deks, _From, State) ->
     {reply, do_get_all_used_deks(State), State};

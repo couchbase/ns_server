@@ -30,6 +30,10 @@
 -export_type([dek_id/0, dek/0, dek_kind/0, encryption_method/0]).
 
 -define(LOG_ENCR_RPC_TIMEOUT, ?get_timeout(log_encr_rpc_timeout, 60000)).
+-define(LOG_ENCR_ALE_DROP_DEK_TIMEOUT,
+        ?get_timeout(log_encr_ale_drop_dek_timeout, 60000)).
+-define(DROP_DEK_ALE_WORK_SZ_THRESH,
+        ?get_param(drop_dek_ale_work_sz_thresh, 62914560)).
 
 -type encryption_method() :: {secret, cb_cluster_secrets:secret_id()} |
                              encryption_service |
@@ -377,7 +381,7 @@ dek_config(logDek) ->
       drop_keys_timestamp_callback => cb_crypto:get_drop_keys_timestamp(
                                         log_encryption, _),
       get_ids_in_use_callback => ?cut(get_dek_ids_in_use(logDek)),
-      drop_callback => not_supported,
+      drop_callback => fun drop_log_deks/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
       required_usage => log_encryption};
 dek_config(auditDek) ->
@@ -582,6 +586,55 @@ drop_config_deks(DekIdsToDrop) ->
             [_ | _] -> {error, {still_in_use, StillInUse}}
         end
     end.
+
+drop_log_deks(DekIdsToDrop) ->
+    RPC_TIMEOUT = ?LOG_ENCR_ALE_DROP_DEK_TIMEOUT + 5000,
+    Work =
+        fun() ->
+                R1 = ale:drop_log_deks(DekIdsToDrop,
+                                       ?DROP_DEK_ALE_WORK_SZ_THRESH,
+                                       ?LOG_ENCR_ALE_DROP_DEK_TIMEOUT),
+                R2 = rpc:call(ns_server:get_babysitter_node(), ale,
+                              drop_log_deks, [DekIdsToDrop,
+                                              ?DROP_DEK_ALE_WORK_SZ_THRESH,
+                                              ?LOG_ENCR_ALE_DROP_DEK_TIMEOUT],
+                              RPC_TIMEOUT),
+                R3 = rpc:call(ns_node_disco:couchdb_node(), ale,
+                              drop_log_deks, [DekIdsToDrop,
+                                              ?DROP_DEK_ALE_WORK_SZ_THRESH,
+                                              ?LOG_ENCR_ALE_DROP_DEK_TIMEOUT],
+                              RPC_TIMEOUT),
+
+                Errors = lists:filtermap(
+                           fun(ok) ->
+                                   false;
+                              ({error, Error}) ->
+                                   {true, Error};
+                              ({badrpc, _} = Error) ->
+                                   {true, Error}
+                           end , [R1, R2, R3]),
+
+                case Errors of
+                    [] ->
+                        cb_cluster_secrets:dek_drop_complete(logDek, ok);
+                    _ ->
+                        %% It is possible that there were some errors, yet
+                        %% some DEks may have been freed up still, so we issue
+                        %% completion to allow GC and pass down errors to be
+                        %% logged
+                        Rv = {error, lists:flatten(Errors)},
+                        cb_cluster_secrets:dek_drop_complete(logDek, Rv)
+                end
+        end,
+    proc_lib:spawn_link(
+      fun () ->
+              try
+                  Work()
+              catch T:E:Stack ->
+                      ?log_error("Drop log DEKs work failed: ~p", {T, E, Stack})
+              end
+      end),
+    {ok, started}.
 
 drop_bucket_deks(Bucket, DekIds) ->
     Continuation = fun (_) ->

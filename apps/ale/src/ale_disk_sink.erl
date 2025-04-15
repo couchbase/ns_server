@@ -116,6 +116,11 @@ handle_call(notify_active_key_updt, From,
             #state{worker = Worker} = State) ->
     do_work(Worker, notify_active_key_updt, From, infinity),
     {noreply, State};
+handle_call({drop_log_deks, DekIdsToDrop, WorkSzThresh}, From,
+            #state{worker = Worker} = State) ->
+    do_work(Worker, {drop_log_deks, DekIdsToDrop, WorkSzThresh},
+            From, infinity),
+    {noreply, State};
 handle_call(get_in_use_deks, From,
             #state{worker = Worker} = State) ->
     do_work(Worker, get_in_use_deks, From, infinity),
@@ -316,16 +321,18 @@ maybe_rotate_files(#worker_state{file_size = FileSize,
 maybe_rotate_files(State) ->
     State.
 
-update_in_use_deks(#worker_state{path = LogFilePath} = State) ->
+get_all_files_with_path(LogFilePath) ->
     Dir = filename:dirname(LogFilePath),
     BaseName = filename:basename(LogFilePath),
 
     DirFiles = [BaseName | filelib:wildcard(BaseName ++ ".*", Dir)],
-    FilePaths = lists:map(
-                  fun(FileName) ->
-                          filename:join(Dir, FileName)
-                  end, DirFiles),
+    lists:map(
+      fun(FileName) ->
+              filename:join(Dir, FileName)
+      end, DirFiles).
 
+update_in_use_deks(#worker_state{path = LogFilePath} = State) ->
+    FilePaths = get_all_files_with_path(LogFilePath),
     State#worker_state{in_use_deks = ale:get_in_use_deks(FilePaths)}.
 
 maybe_write_header(_SinkName, _File, <<>>) ->
@@ -432,10 +439,10 @@ do_open_file(Path, #file_info{inode = Inode}) ->
             Error
     end.
 
-compress(false, _Name, UncompressPth) ->
+compress(false, _Name, UncompressPth, _Opts) ->
     CompressPth = UncompressPth ++ ".gz",
     compress_file(UncompressPth, CompressPth);
-compress(true, Name, UncompressPth) ->
+compress(true, Name, UncompressPth, Opts0) ->
     CompressPth = UncompressPth ++ ".tmp",
     try
         maybe
@@ -446,8 +453,8 @@ compress(true, Name, UncompressPth) ->
             %% to reencrypt the file (we should not decrypt this file in this
             %% case).
             DS = ale:get_sink_ds(Name),
-            Opts = #{compression => {zlib, 5, none},
-                     ignore_incomplete_last_chunk => true},
+            Opts = Opts0#{compression => {zlib, 5, none},
+                          ignore_incomplete_last_chunk => true},
             ok ?= ale:reencrypt_file(UncompressPth, CompressPth, DS, Opts),
             ok ?= file:rename(CompressPth, UncompressPth)
         else
@@ -472,7 +479,7 @@ maybe_compress_post_rotate(#worker_state{sink_name = Name,
     IsEncrypted = ale:is_file_encrypted(UncompressedPath),
     time_stat(Name, compression_time,
               fun () ->
-                      compress(IsEncrypted, Name, UncompressedPath)
+                      compress(IsEncrypted, Name, UncompressedPath, #{})
               end);
 maybe_compress_post_rotate(_) ->
     ok.
@@ -561,6 +568,19 @@ worker_loop(#worker_state{sink_name = SinkName} = State) ->
                 UpdatedState = process_key_update_work(UpdtReq, State),
                 gen_server:reply(From, ok),
                 UpdatedState;
+            {'$gen_call', From, {drop_log_deks, DekIdsToDrop, WorkSzThresh}} ->
+                #worker_state{in_use_deks = CurrInUseDeks} = State,
+                InUseDekIdsToDrop =
+                    sets:to_list(
+                        sets:intersection(
+                            sets:from_list(CurrInUseDeks),
+                            sets:from_list(DekIdsToDrop))
+                    ),
+                {Rv, UpdatedState} =
+                    process_drop_dek_work(InUseDekIdsToDrop, WorkSzThresh,
+                                          State),
+                gen_server:reply(From, Rv),
+                UpdatedState;
             {'$gen_call', From, get_in_use_deks} ->
                 #worker_state{in_use_deks = InUseDeks} = State,
                 gen_server:reply(From, {ok, InUseDeks}),
@@ -607,6 +627,101 @@ process_key_update_work(false = _UpdtReq, State) ->
     State;
 process_key_update_work(true = _UpdtReq, State) ->
     do_rotate_files(State).
+
+process_drop_dek_work([] = _DekIdsToDrop, _WorkSzThresh, State) ->
+    {{ok, 0}, State};
+process_drop_dek_work(DekIdsToDrop, WorkSzThresh,
+                      #worker_state{
+                         sink_name = SinkName,
+                         path = LogFilePath} = State) ->
+    FilePaths = get_all_files_with_path(LogFilePath),
+    ActiveInUse = ale:get_in_use_deks([LogFilePath]),
+    RotatedFilePaths = FilePaths -- [LogFilePath],
+
+    {FilesInfo, RotatedInUse} =
+        lists:foldl(
+          fun(FPath, {Acc0, Acc1}) ->
+                  InUsDekIds = ale:get_in_use_deks([FPath]),
+                  {[{FPath, filelib:file_size(FPath), InUsDekIds} | Acc0],
+                   Acc1 ++ InUsDekIds}
+          end, {[], []}, RotatedFilePaths),
+
+    CurrInUseDekIds = RotatedInUse ++ ActiveInUse,
+
+    %% Although not strictly necessary, we just sort the files here from lowest
+    %% size to highest size because it allows a larger number of files to be
+    %% processed first, if there are a bunch of smaller size files that fit
+    %% the WorkSizeThresh and some larger ones that don't. This would mean that
+    %% if another call is needed to drop the DEKs that is attempted right
+    %% after, the subsequent call would have to deal with less files, so less
+    %% overhead to read the in use DEKs again for those files
+    SortedFilesInfo =
+        lists:sort(
+          fun({_, SizeA, _}, {_, SizeB, _}) ->
+                  SizeA =< SizeB
+          end, FilesInfo),
+
+    ReEncrFn =
+        fun(FPath, Size, DekIds, {FilesAndDeks, InUse, AccSize, Errors}) ->
+                case compress(true, SinkName, FPath,
+                              #{allow_decrypt_on_disabled_encr => true}) of
+                    ok ->
+                        NewDekIds = ale:get_in_use_deks([FPath]),
+                        NewFilesAndDeks = [{FPath, NewDekIds} | FilesAndDeks],
+                        NewInuseAcc = InUse ++ NewDekIds,
+                        NewAccSize = AccSize + Size,
+                        {NewFilesAndDeks, NewInuseAcc, NewAccSize, Errors};
+                    {error, E} ->
+                        {[{FPath, DekIds} | FilesAndDeks],
+                         InUse ++ DekIds, AccSize,
+                         [{filename:basename(FPath), E} | Errors]}
+                end
+        end,
+
+    InUseIdsToDropSet =
+        sets:intersection(sets:from_list(DekIdsToDrop),
+                          sets:from_list(CurrInUseDekIds)),
+
+    {UpdtFilesAndDeks, FinalInuseIds, _, Errors} =
+        lists:foldl(
+          fun({FPath, Size, DekIds}, {FilesAndDeks, InUse, AccSize, Errs} = Acc)
+                when AccSize < WorkSzThresh ->
+                  DropIds = sets:intersection(InUseIdsToDropSet,
+                                              sets:from_list(DekIds)),
+                  case sets:is_empty(DropIds) of
+                      true ->
+                          {[{FPath, DekIds} | FilesAndDeks], InUse ++ DekIds,
+                           AccSize, Errs};
+                      false ->
+                          ReEncrFn(FPath, Size, DekIds, Acc)
+
+                  end;
+             ({FPath, _Size, DekIds}, {FilesAndDeks, InUse, AccSize, Errs}) ->
+                  {[{FPath, DekIds} | FilesAndDeks], InUse ++ DekIds,
+                   AccSize, Errs}
+          end, {[], [], 0, []}, SortedFilesInfo),
+
+    UpdtInuseIds =
+        lists:usort(FinalInuseIds ++ ActiveInUse),
+
+    UpdtIdsToDropSet =
+        sets:intersection(sets:from_list(UpdtInuseIds), InUseIdsToDropSet),
+
+    FilesUsingToDropDeksCount =
+        length(lists:filter(
+                 fun({_FPath, InUseDekIds}) ->
+                         IdsSet = sets:from_list(InUseDekIds),
+                         not sets:is_empty(
+                               sets:intersection(IdsSet, UpdtIdsToDropSet))
+                 end, UpdtFilesAndDeks ++ [{LogFilePath, ActiveInUse}])),
+
+    NewState = State#worker_state{in_use_deks = UpdtInuseIds},
+    case Errors of
+        [] ->
+            {{ok, FilesUsingToDropDeksCount}, NewState};
+        Errors ->
+            {{{error, Errors}, FilesUsingToDropDeksCount}, NewState}
+    end.
 
 remove_unnecessary_log_files(LogFilePath, NumFiles) ->
     Dir = filename:dirname(LogFilePath),
