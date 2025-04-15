@@ -976,6 +976,8 @@ validate_nodes(Nodes) ->
             {error, Bad}
     end.
 
+-spec parse_graceful_failover_args(term()) ->
+          {ok, [node()]} | {error, string()}.
 parse_graceful_failover_args(Req) ->
     Params = mochiweb_request:parse_post(Req),
     parse_otp_nodes(Params).
@@ -989,6 +991,8 @@ parse_otp_nodes(Params) ->
             {error, io_lib:format("Unknown server given ~p", [BadNodes])}
     end.
 
+-spec parse_hard_failover_args(term()) ->
+          {ok, [node()], boolean()} | {error, string()}.
 parse_hard_failover_args(Req) ->
     Params = mochiweb_request:parse_post(Req),
     case parse_otp_nodes(Params) of
