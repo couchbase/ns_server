@@ -31,7 +31,8 @@
 
 -record(client, {reply_channel :: reply_channel(),
                  handler :: undefined | gen_server:from(),
-                 user :: #authn_res{}}).
+                 user :: #authn_res{},
+                 monitor_ref :: undefined | reference()}).
 
 -record(state,
         {clients = #{} :: #{pid() => #client{}},
@@ -175,10 +176,20 @@ handle_info(#receive_data{pid = Pid, data = Data},
                 State0
         end,
     {noreply, State1};
-handle_info({'DOWN', _, process, WebsocketPid, ExitReason}, State) ->
-    ?log_debug("Dropping connection ~p, because the proccess went down with "
-               "reason ~p", [WebsocketPid, ExitReason]),
+handle_info({'DOWN', _, process, WebsocketPid, ExitReason},
+            #state{clients = Clients} = State)
+    when is_map_key(WebsocketPid, Clients) ->
+    %% Connection went down, make sure that we properly drop it
+    ?log_debug("Dropping connection ~p, because the proccess went down "
+               "with reason ~p", [WebsocketPid, ExitReason]),
     {noreply, do_drop_client(State, WebsocketPid)};
+handle_info({'DOWN', _, process, WebsocketPid, ExitReason}, #state{} = State) ->
+    %% A monitored process went don't, but we don't recognise the pid, so
+    %% nothing more can be done than logging it
+    ?log_warning("Saw process ~p went down with reason ~p, but no websocket "
+                 "connection is associated with it",
+                 [WebsocketPid, ExitReason]),
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -239,8 +250,8 @@ build_state(ArgsMap) ->
 do_add_client(#state{clients = Clients} = State,
               Pid, Client, Continuation) ->
     %% We need to close the socket if the client terminates
-    erlang:monitor(process, Pid),
-    NewClients = maps:put(Pid, Client, Clients),
+    MRef = erlang:monitor(process, Pid),
+    NewClients = maps:put(Pid, Client#client{monitor_ref = MRef}, Clients),
     notify_curr_connections(NewClients),
     %% Call continuation function before returning, to ensure it is called prior
     %% to using the websocket connection
@@ -250,7 +261,9 @@ do_add_client(#state{clients = Clients} = State,
 do_drop_client(#state{clients = Clients} = State, Pid) ->
     case maps:take(Pid, Clients) of
         {#client{reply_channel = ReplyChannel,
-                 handler = Handler}, NewClients} ->
+                 handler = Handler,
+                 monitor_ref = MRef}, NewClients} ->
+            erlang:demonitor(MRef, [flush]),
             menelaus_websocket:close(ReplyChannel),
             %% Ensure the socket gets closed
             Pid ! {tcp_closed, normal},

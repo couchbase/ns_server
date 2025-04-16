@@ -168,9 +168,10 @@ get_telemetry(Pid) ->
         {ok, Data} ?= app_telemetry_pool:call(Pid, Cmd, ?FETCH_TIMEOUT),
         ok ?= handle_data(Data)
     else
+        {error, dropped} ->
+            ?log_debug("Couldn't fetch telemetry from ~p (dropped)", [Pid]);
         {error, Error} ->
-            ?log_warning("Got error fetching telemetry "
-                         "from ~p: ~p", [Pid, Error]),
+            ?log_warning("Couldn't fetch telemetry from ~p (~p)", [Pid, Error]),
             app_telemetry_pool:drop(Pid)
     end.
 
