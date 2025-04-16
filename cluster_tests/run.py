@@ -431,7 +431,9 @@ def main():
         error_exit("Tests finished with errors")
     elif len(not_ran) > 0:
         warning_exit("Some tests were skipped")
-    elif not (keep_tmp_dirs or check_for_core_files()):
+    elif not (keep_tmp_dirs or
+              check_for_core_files() or
+              cluster.is_existing_cluster()):
         # Kill any created nodes and possibly delete directories as we don't
         # need to keep around data from successful tests
         cluster.destroy()
@@ -597,8 +599,7 @@ def get_existing_cluster(address, start_port, auth, num_nodes):
              for i in range(num_nodes)]
 
     with testlib.no_output("connecting to existing cluster"):
-        return testlib.cluster.get_cluster(0, start_port, auth, [], nodes,
-                                           None, existing_cluster=True)
+        return testlib.cluster.get_cluster(0, start_port, auth, [], nodes, None)
 
 
 # Run each testset on the same cluster, counting how many individual tests were

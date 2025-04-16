@@ -109,8 +109,7 @@ def build_cluster(auth, cluster_index, start_args, connect, connect_args):
         raise e
 
 
-def get_cluster(cluster_index, start_port, auth, processes, nodes,
-                start_args, existing_cluster=False):
+def get_cluster(cluster_index, start_port, auth, processes, nodes, start_args):
     connected_nodes = []
     for i, node in enumerate(nodes):
         pools_default = f"/pools/default"
@@ -154,15 +153,14 @@ def get_cluster(cluster_index, start_port, auth, processes, nodes,
                       processes=processes,
                       auth=auth,
                       index=cluster_index,
-                      start_args=start_args,
-                      existing_cluster=existing_cluster)
+                      start_args=start_args)
     print(f"Successfully connected to cluster: {cluster}")
     return cluster
 
 
 class Cluster:
     def __init__(self, nodes, connected_nodes, first_node_index, processes,
-                 auth, index, start_args, existing_cluster=False):
+                 auth, index, start_args):
         self._nodes = nodes
         self.connected_nodes = connected_nodes
         self.first_node_index = first_node_index
@@ -170,6 +168,7 @@ class Cluster:
         self.processes = processes
         self.auth = auth
         self.requirements = None
+        self.start_args = start_args
 
         def get_bool(code):
             return testlib.post_succ(self, "/diag/eval",
@@ -183,8 +182,6 @@ class Cluster:
         self.is_provisioned = get_bool("config_profile:is_provisioned()")
         self.is_dev_preview = get_bool("cluster_compat_mode:"
                                        "is_developer_preview().")
-        self.existing_cluster = existing_cluster
-        self.start_args = start_args
 
 
     def __str__(self):
@@ -199,7 +196,8 @@ class Cluster:
                 if node not in self.connected_nodes]
 
     def destroy(self):
-        assert self.start_args is not None, "Can't destroy pre-existing cluster"
+        assert not self.is_existing_cluster(), \
+            "Can't destroy pre-existing cluster"
 
         kill_nodes(self.processes, get_node_urls(self._nodes),
                    get_terminal_attrs())
@@ -207,13 +205,14 @@ class Cluster:
         self.processes = None
 
     def stop_all_nodes(self):
-        assert self.start_args is not None, "Can't stop pre-existing cluster"
+        assert not self.is_existing_cluster(), "Can't stop pre-existing cluster"
 
         for node in self._nodes:
             self.stop_node(node)
 
     def restart_all_nodes(self, master_passwords=None):
-        assert self.start_args is not None, "Can't restart pre-existing cluster"
+        assert not self.is_existing_cluster(), \
+            "Can't restart pre-existing cluster"
 
         for node in self._nodes:
             if self.is_node_started(node):
@@ -231,7 +230,7 @@ class Cluster:
         self.wait_for_nodes_to_be_healthy()
 
     def stop_node(self, node):
-        assert self.start_args is not None, "Can't stop pre-existing cluster"
+        assert not self.is_existing_cluster(), "Can't stop pre-existing cluster"
 
         if not self.is_node_started(node):
             assert False, f"Node {node} not started"
@@ -244,7 +243,7 @@ class Cluster:
         self.processes[idx] = None
 
     def restart_node(self, node, master_passwords=None):
-        assert self.start_args is not None, \
+        assert not self.is_existing_cluster(), \
                "Can't restart a node on a pre-existing cluster"
 
         if self.is_node_started(node):
@@ -260,8 +259,12 @@ class Cluster:
         assert len(processes) == 1
         self.processes[idx] = processes[0]
 
+    def is_existing_cluster(self):
+        return self.start_args is None
+
     def is_node_started(self, node):
-        return self.processes[self._nodes.index(node)] is not None
+        return (self.is_existing_cluster() or
+                self.processes[self._nodes.index(node)] is not None)
 
     def get_available_cluster_node(self):
         for n in self.connected_nodes:

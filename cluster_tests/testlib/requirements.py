@@ -762,7 +762,7 @@ class TestGeneratedCluster(Requirement):
         super().__init__(test_generated_cluster = tg)
 
     def is_met(self, cluster):
-        return not cluster.existing_cluster
+        return not cluster.is_existing_cluster()
 
     def can_be_met(self):
         return False
