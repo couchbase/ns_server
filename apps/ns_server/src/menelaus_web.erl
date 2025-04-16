@@ -647,6 +647,18 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     XdcrPath = mochiweb_request:get(raw_path, Req),
                     {{[xdcr, c2c_communications], all},
                      fun goxdcr_rest:proxy/2, [XdcrPath]};
+                ["xdcr", "connectionPreCheck" | _RestPath] ->
+                    XdcrPath = mochiweb_request:get(raw_path, Req),
+                    {{[xdcr, admin], all},
+                     fun goxdcr_rest:proxy/2, [XdcrPath]};
+                ["xdcr", "sourceClusters" | _RestPath] ->
+                    XdcrPath = mochiweb_request:get(raw_path, Req),
+                    {{[xdcr, admin], all},
+                     fun goxdcr_rest:proxy/2, [XdcrPath]};
+                ["xdcr", "internalSettings" | _RestPath] ->
+                    XdcrPath = mochiweb_request:get(raw_path, Req),
+                    {{[xdcr, admin], all},
+                     fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["xdcr" | _RestPath] ->
                     %% Pass the raw path so all information, e.g. query
                     %% parameters, etc, are included.
@@ -1147,6 +1159,18 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     XdcrPath = mochiweb_request:get(raw_path, Req),
                     {{[xdcr, c2c_communications], all},
                      fun goxdcr_rest:proxy/2, [XdcrPath]};
+                ["xdcr", "connectionPreCheck" | _RestPath] ->
+                    XdcrPath = mochiweb_request:get(raw_path, Req),
+                    {{[xdcr, admin], all},
+                     fun goxdcr_rest:proxy/2, [XdcrPath]};
+                ["xdcr", "sourceClusters" | _RestPath] ->
+                    XdcrPath = mochiweb_request:get(raw_path, Req),
+                    {{[xdcr, admin], all},
+                     fun goxdcr_rest:proxy/2, [XdcrPath]};
+                ["xdcr", "internalSettings" | _RestPath] ->
+                    XdcrPath = mochiweb_request:get(raw_path, Req),
+                    {{[xdcr, admin], all},
+                     fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["xdcr" | _RestPath] ->
                     %% Pass the raw path so all information, e.g. query
                     %% parameters, etc, are included.
@@ -1285,6 +1309,18 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     XdcrPath = mochiweb_request:get(raw_path, Req),
                     {{[xdcr, c2c_communications], all},
                      fun goxdcr_rest:proxy/2, [XdcrPath]};
+                ["xdcr", "connectionPreCheck" | _RestPath] ->
+                    XdcrPath = mochiweb_request:get(raw_path, Req),
+                    {{[xdcr, admin], all},
+                     fun goxdcr_rest:proxy/2, [XdcrPath]};
+                ["xdcr", "sourceClusters" | _RestPath] ->
+                    XdcrPath = mochiweb_request:get(raw_path, Req),
+                    {{[xdcr, admin], all},
+                     fun goxdcr_rest:proxy/2, [XdcrPath]};
+                ["xdcr", "internalSettings" | _RestPath] ->
+                    XdcrPath = mochiweb_request:get(raw_path, Req),
+                    {{[xdcr, admin], all},
+                     fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["xdcr" | _RestPath] ->
                     %% Pass the raw path so all information, e.g. query
                     %% parameters, etc, are included.
@@ -1361,6 +1397,18 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["xdcr", "c2cCommunications" | _RestPath] ->
                     XdcrPath = mochiweb_request:get(raw_path, Req),
                     {{[xdcr, c2c_communications], all},
+                     fun goxdcr_rest:proxy/2, [XdcrPath]};
+                ["xdcr", "connectionPreCheck" | _RestPath] ->
+                    XdcrPath = mochiweb_request:get(raw_path, Req),
+                    {{[xdcr, admin], all},
+                     fun goxdcr_rest:proxy/2, [XdcrPath]};
+                ["xdcr", "sourceClusters" | _RestPath] ->
+                    XdcrPath = mochiweb_request:get(raw_path, Req),
+                    {{[xdcr, admin], all},
+                     fun goxdcr_rest:proxy/2, [XdcrPath]};
+                ["xdcr", "internalSettings" | _RestPath] ->
+                    XdcrPath = mochiweb_request:get(raw_path, Req),
+                    {{[xdcr, admin], all},
                      fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["xdcr" | _RestPath] ->
                     XdcrPath = mochiweb_request:get(raw_path, Req),
