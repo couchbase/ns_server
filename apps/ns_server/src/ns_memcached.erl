@@ -153,7 +153,8 @@
          mount_fusion_vbucket/3,
          maybe_start_fusion_uploaders/2,
          maybe_stop_fusion_uploaders/2,
-         get_active_guest_volumes/1
+         get_active_guest_volumes/1,
+         sync_fusion_log_store/2
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -2325,3 +2326,14 @@ get_active_guest_volumes(Bucket) ->
       fun (Sock) ->
               {reply, fetch_fusion_stats(Sock, Bucket, "active_guest_volumes")}
       end, Bucket, [json]).
+
+-spec sync_fusion_log_store(bucket_name(), [vbucket_id()]) ->
+          ok | mc_error().
+sync_fusion_log_store(Bucket, VBuckets) ->
+    perform_very_long_call(
+      fun (Sock) ->
+              {reply,
+               functools:sequence_(
+                 [?cut(mc_client_binary:sync_fusion_log_store(Sock, VBucket)) ||
+                     VBucket <- VBuckets])}
+      end, Bucket).

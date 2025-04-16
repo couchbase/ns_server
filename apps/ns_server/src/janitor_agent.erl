@@ -75,7 +75,8 @@
          mount_volumes/4,
          maybe_start_fusion_uploaders/3,
          maybe_stop_fusion_uploaders/3,
-         get_active_guest_volumes/2]).
+         get_active_guest_volumes/2,
+         sync_fusion_log_store/1]).
 
 -export([start_link/1]).
 
@@ -410,6 +411,37 @@ get_active_guest_volumes(Bucket, BucketConfig) ->
     Servers = ns_bucket:get_servers(BucketConfig),
     NodesCalls = [{Node, get_active_guest_volumes} || Node <- Servers],
     call_on_nodes_with_returns(Bucket, NodesCalls, fun servant_call/3).
+
+-spec sync_fusion_log_store([bucket_name()]) -> ok | {failed_nodes, [node()]}.
+sync_fusion_log_store(BucketNames) ->
+    Replies =
+        misc:parallel_map(
+          fun (Bucket) ->
+                  Uploaders = ns_bucket:get_fusion_uploaders(Bucket),
+                  UploadersMap =
+                      lists:foldl(
+                        fun ({VB, {Node, _}}, Acc) ->
+                                maps:update_with(Node, [VB | _], [VB], Acc)
+                        end, #{}, misc:enumerate(Uploaders, 0)),
+                  NodesCalls =
+                      [{Node, {sync_fusion_log_store, VBuckets}} ||
+                          {Node, VBuckets} <- maps:to_list(UploadersMap)],
+                  {Bucket,
+                   call_on_nodes(Bucket, NodesCalls, fun servant_call/3)}
+          end, BucketNames, infinity),
+
+    case [R || {_, RV} = R <- Replies, RV =/= ok] of
+        [] ->
+            ok;
+        BadReplies ->
+            ?log_info("Errors synchronizing fusion log store:~n~p",
+                      [BadReplies]),
+            BadNodes =
+                lists:usort(lists:flatten(
+                              [Nodes || {_, {error, {failed_nodes, Nodes}}}
+                                            <- BadReplies])),
+            {failed_nodes, BadNodes}
+    end.
 
 -spec delete_vbucket_copies(bucket_name(), pid(), [node()], vbucket_id()) ->
                                    ok | {errors, [{node(), term()}]}.
@@ -868,6 +900,12 @@ do_handle_call({mount_volumes, VBuckets, Volumes}, From,
                   _ ->
                       {error, mount_volumes_failed}
               end
+      end);
+do_handle_call({sync_fusion_log_store, VBuckets}, From, State) ->
+    handle_call_via_servant(
+      From, State, sync_fusion_log_store,
+      fun (sync_fusion_log_store, #state{bucket_name = Bucket}) ->
+              ns_memcached:sync_fusion_log_store(Bucket, VBuckets)
       end).
 
 -dialyzer({no_opaque, [handle_call_via_servant/4]}).

@@ -125,6 +125,8 @@ class FusionTests(testlib.BaseTestSet):
 
         self.cluster.rebalance(plan_uuid = plan_uuid)
 
+        testlib.post_succ(self.cluster, "/controller/fusion/syncLogStore")
+
         resp = testlib.get_succ(self.cluster, "/fusion/activeGuestVolumes")
         volumes = resp.json()
 

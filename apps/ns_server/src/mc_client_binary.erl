@@ -78,7 +78,8 @@
          mount_fusion_vbucket/3,
          set_chronicle_auth_token/2,
          start_fusion_uploader/3,
-         stop_fusion_uploader/2]).
+         stop_fusion_uploader/2,
+         sync_fusion_log_store/2]).
 
 -type recv_callback() :: fun((_, _, _) -> any()) | undefined.
 -type mc_timeout() :: undefined | infinity | non_neg_integer().
@@ -110,7 +111,8 @@
                      ?CMD_MOUNT_FUSION_VBUCKET |
                      ?CMD_SET_CHRONICLE_AUTH_TOKEN |
                      ?CMD_START_FUSION_UPLOADER |
-                     ?CMD_STOP_FUSION_UPLOADER.
+                     ?CMD_STOP_FUSION_UPLOADER |
+                     ?CMD_SYNC_FUSION_LOGSTORE.
 
 
 report_counter(Function) ->
@@ -1147,4 +1149,14 @@ stop_fusion_uploader(Sock, VBucket) ->
             ok;
         Response ->
             process_error_response(Response)
+    end.
+
+-spec sync_fusion_log_store(port(), vbucket_id()) -> ok | mc_error().
+sync_fusion_log_store(Sock, VBucket) ->
+    report_counter(?FUNCTION_NAME),
+    case cmd(?CMD_SYNC_FUSION_LOGSTORE, Sock, undefined, undefined,
+             {#mc_header{vbucket = VBucket}, #mc_entry{}},
+             infinity) of
+        {ok, #mc_header{status=?SUCCESS}, _, _} -> ok;
+        Response -> process_error_response(Response)
     end.

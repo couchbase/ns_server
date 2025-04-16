@@ -12,11 +12,16 @@
 
 -module(menelaus_web_fusion).
 
+-include_lib("ns_common.hrl").
 -include_lib("ns_common/include/cut.hrl").
 
 -export([handle_prepare_rebalance/1,
          handle_upload_mounted_volumes/1,
-         handle_get_active_guest_volumes/1]).
+         handle_get_active_guest_volumes/1,
+         handle_sync_log_store/1]).
+
+-define(JANITOR_TIMEOUT, ?get_timeout(sync_log_store_janitor, 5000)).
+-define(SYNC_TIMEOUT, ?get_timeout(sync_log_store_chronicle_sync, 60000)).
 
 reply_other(Req, What, Other) ->
     case menelaus_web_cluster:busy_reply(What, Other) of
@@ -124,3 +129,36 @@ handle_get_active_guest_volumes(Req) ->
     ToReturn =
         [{N, lists:usort(lists:flatten(L))} || {N, L} <- maps:to_list(ByNodes)],
     menelaus_util:reply_json(Req, {ToReturn}, 200).
+
+handle_sync_log_store(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:assert_is_morpheus(),
+
+    %% quorum read the latest bucket info. This doesn't guarantee
+    %% that the api won't break if the buckets are changed during
+    %% the execution of this code, but we can live with it
+    %% since this is a test only api and the caller can take care
+    %% of buckets not being modified in parallel
+    ok = chronicle_kv:sync(kv, ?SYNC_TIMEOUT),
+    BucketNames = [Name || {Name, _} <- ns_bucket:get_fusion_buckets()],
+    %% run janitor for all fusion buckets to make sure that all
+    %% uploaders are properly started
+    RV =
+        functools:sequence_(
+          [?cut(ns_orchestrator:ensure_janitor_run({bucket, Bucket},
+                                                   ?JANITOR_TIMEOUT)) ||
+              Bucket <- BucketNames] ++
+              %% quorum read whatever changes janitor might have made
+              [?cut(chronicle_kv:sync(kv, ?SYNC_TIMEOUT)),
+               ?cut(janitor_agent:sync_fusion_log_store(BucketNames))]),
+    case RV of
+        ok ->
+            menelaus_util:reply_json(Req, [], 200);
+        {failed_nodes, Nodes} ->
+            menelaus_util:reply_text(
+              Req, io_lib:format("Fusion log store sync failed on "
+                                 "following nodes: ~p", [Nodes]),
+              400);
+        Error ->
+            menelaus_web_cluster:busy_reply("sync fusion log store", Error)
+    end.
