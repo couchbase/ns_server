@@ -52,7 +52,8 @@
          extract_internal_client_cert_user/1,
          invalid_client_cert_nodes/3,
          verify_cert_hostname_strict/2,
-         encrypt_pkey/2]).
+         encrypt_pkey/2,
+         chronicle_upgrade_to_morpheus/1]).
 
 inbox_ca_path() ->
     filename:join(path_config:component_path(data, "inbox"), "CA").
@@ -1510,3 +1511,132 @@ prepare_reference_ids(Node) ->
         {error, einval} ->
             [{dns_id, Host}]
     end.
+
+chronicle_upgrade_to_morpheus(ChronicleTxn) ->
+    {ok, OldCerts} = chronicle_upgrade:get_key(ca_certificates, ChronicleTxn),
+    case chronicle_upgrade_certs_to_morpheus(OldCerts) of
+        false ->
+            ChronicleTxn;
+        {true, NewCerts} ->
+            chronicle_upgrade:set_key(ca_certificates, NewCerts, ChronicleTxn)
+    end.
+
+chronicle_upgrade_certs_to_morpheus(OldCerts) ->
+    NewCerts = lists:map(fun chronicle_upgrade_cert_to_morpheus/1, OldCerts),
+    case NewCerts of
+        OldCerts ->
+            false;
+        _ ->
+            {true, NewCerts}
+    end.
+
+chronicle_upgrade_cert_to_morpheus(Cert) ->
+    maybe
+        Pem = proplists:get_value(pem, Cert, <<>>),
+        {ok, DerCert} ?= decode_single_certificate(Pem),
+        {Subject, _, _} = get_der_info(DerCert),
+        lists:keystore(subject, 1, Cert, {subject, iolist_to_binary(Subject)})
+    else
+        {error, Reason} ->
+            ?log_error("Couldn't upgrade cert to Morpheus (error ~w), keeping "
+                       "existing:~n~p", [Reason, Cert]),
+            Cert
+    end.
+
+-ifdef(TEST).
+-define(PEM_DEFAULT,
+        <<"-----BEGIN CERTIFICATE-----\n"
+          "MIIDDDCCAfSgAwIBAgIIGDcduZ0c+xAwDQYJKoZIhvcNAQELBQAwJDEiMCAGA1UE"
+          "AxMZQ291Y2hiYXNlIFNlcnZlciAzZjRiMmJiMDAeFw0xMzAxMDEwMDAwMDBaFw00"
+          "OTEyMzEyMzU5NTlaMCQxIjAgBgNVBAMTGUNvdWNoYmFzZSBTZXJ2ZXIgM2Y0YjJi"
+          "YjAwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC/ak/CV/3FP43gYQ8W"
+          "pOrOwLZxbiPNGHijv1yF8ltTq7htwIFBx+XCwuXhvtWTJOoPa7GbOutjHKrTRquW"
+          "tNNZEKQTVp2PPyMIACI+Cbm0RjmbTHq5XzET19pDn35lsDaG5qbMWfoK9OIYm1Gm"
+          "yDc6iT+MHXP77FPpJFxuwCOZ6Flm+xySPoLU4vckaZehs7naxiCFufszJ+IHi/Ve"
+          "14h4vHH+OncYmC3xnTLCuZZr0KyL0QWFs2N2x6YJmcR8j8KVOYHi9Tcz3VPfpSdF"
+          "ZKZdps6IxIR5escAnMVDtgpMu4+bna7jDk39PCdjmH945Ai9Gxz2/a7s/otkoHhd"
+          "XdVPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBhjAPBgNVHRMBAf8EBTADAQH/MB0G"
+          "A1UdDgQWBBQzIE8JmPTzf7FwwAXKEop/E06OvTANBgkqhkiG9w0BAQsFAAOCAQEA"
+          "c07hyzFbOvuTfCfgW4bc/FUj5NLwG5s7svpiMI9U+8pNSFOOPv8CtkJ5BjchQrxs"
+          "8lj7/Q4jtSDxanKuuslTPH4h+FGNB7zOjunZzyQmfRu7xQE2jEe7Cc68HxUVJbRC"
+          "wDNAgAmwxuWmQPDTD7oe1kQf1YTz1St6EZZEG8pFVnLRhoZbTZTwMlyPPMSpK/gd"
+          "+Meo4LRV7EPIorzJ+ZuAnJ0GtdvxINqd2aBP7WWD7vO4ow6RwLadlem8yw29cMKq"
+          "c6E5qMePI8bM32uTzDwjVmy7RMmP+P0o5n5Xy27vQBsqMXVp1qO+HP9akWbukiQ0"
+          "6Cc+kL8oh9vQqmlfZ48mcQ==\n"
+          "-----END CERTIFICATE-----">>).
+
+-define(PEM_WITH_OU,
+        <<"-----BEGIN CERTIFICATE-----\n"
+          "MIIDTjCCAjagAwIBAgIIGDccYQ+W5AgwDQYJKoZIhvcNAQELBQAwRTEfMB0GA1UE"
+          "CxMWT3JnYW5pemF0aW9uYWxVbml0VGVzdDEiMCAGA1UEAxMZQ291Y2hiYXNlIFNl"
+          "cnZlciA0ZTBhZTk2MzAeFw0xMzAxMDEwMDAwMDBaFw00OTEyMzEyMzU5NTlaMEUx"
+          "HzAdBgNVBAsTFk9yZ2FuaXphdGlvbmFsVW5pdFRlc3QxIjAgBgNVBAMTGUNvdWNo"
+          "YmFzZSBTZXJ2ZXIgNGUwYWU5NjMwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEK"
+          "AoIBAQCm9Q0cw17QKwI1hFG7R2sPMQpqQfcYPaKzQR27E0MuXLj1zP7JZauG/6ty"
+          "9maXBrhJyRNL/6RYQ8JNfzIFxLbWAtQpQRQ3kIc0h43r3r8vo4iroV69WL7aWkdh"
+          "iWbJhSvNVf7pt+lBRnSdWGH4pzPs/3ojakCw5ocrKmmDcohw3rjVGCrXSZsIS9HT"
+          "gHm+6ZgU9EPJg1C0vTgGcrBIHsAwuBoZfJ2K6WbAn4LwR2TNI2vqjaJ/nRVYOVpx"
+          "0+Q8hi97h08Jxxl/OQJ/HpB/HRAdn8TQc3IKFU7oryGzgEwEb2C7PKW4kY1E/HoT"
+          "QGDBwlwNu3K5ypeMFJXJIyAvLHvxAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBhjAP"
+          "BgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBS6uBVauvlaUqDR6u2nUohBwr7vPjAN"
+          "BgkqhkiG9w0BAQsFAAOCAQEAFobRqciHfhfYzBBtlUQ8p7pCtScmLNN3APiNI+GL"
+          "e6hL75WdT/rVtQgBTR4ptAK+gBbfLVdWvF+c7H5UmODDTNuclg2Y/dF23FiexL6t"
+          "ckz1cfao5ueetXcLuzQi2dk0qtbTYgaCHNwYHpW7D6Hfc0g9xjlRtQoiDJ4vma57"
+          "KlaaA7MlI8soWYS7f4YqbKDBdKQekEdhW6tsj1cZrlIsUO34AXHhn8uwOAk+Yai1"
+          "PXCblzKwY8o4WvPdBWjS1SDEfYPubygyh3dSdX92kYJvlRthIgrtsgZg1vc4w35g"
+          "Qvlx+xG9le4klA5R0kI5LYlCQ1nL4rmrOqBxbvhnG6rH+Q==\n"
+          "-----END CERTIFICATE-----">>).
+
+chronicle_upgrade_cert_to_morpheus_test() ->
+    CertWithoutPEM = [{subject, <<"CN=Couchbase Server 3f4b2bb0">>}],
+    CertWithoutOU = [{pem, ?PEM_DEFAULT},
+                     {subject, <<"CN=Couchbase Server 3f4b2bb0">>}],
+    CertWithCorrectOU = [{pem, ?PEM_WITH_OU},
+                         {subject,
+                          <<"OU=OrganizationalUnitTest, "
+                            "CN=Couchbase Server 4e0ae963">>}],
+    CertWithMissingOU = [{pem, ?PEM_WITH_OU},
+                         {subject, <<"CN=Couchbase Server 4e0ae963">>}],
+    CertWithoutSubject = [{pem, ?PEM_DEFAULT}],
+
+    %% Don't make changes if they're not necessary
+    false = chronicle_upgrade_certs_to_morpheus(
+              [CertWithoutPEM,
+               CertWithoutOU,
+               CertWithCorrectOU]),
+
+    %% Update the chronicle key if any cert needs updating
+    {true, NewCerts} = chronicle_upgrade_certs_to_morpheus(
+                         [CertWithoutPEM,
+                          CertWithoutOU,
+                          CertWithCorrectOU,
+                          CertWithMissingOU,
+                          CertWithoutSubject]),
+
+    %% Don't change certificate without PEM (even though it's clearly broken)
+    ?assertEqual([{subject, <<"CN=Couchbase Server 3f4b2bb0">>}],
+                 lists:nth(1, NewCerts)),
+    %% Don't change certificate without OU attribute
+    ?assertEqual([{pem, ?PEM_DEFAULT},
+                  {subject, <<"CN=Couchbase Server 3f4b2bb0">>}],
+                 lists:nth(2, NewCerts)),
+    %% Don't change certificate with correct OU attribute
+    ?assertEqual([{pem, ?PEM_WITH_OU},
+                  {subject,
+                   <<"OU=OrganizationalUnitTest, "
+                     "CN=Couchbase Server 4e0ae963">>}],
+                 lists:nth(3, NewCerts)),
+    %% Fix subject with missing OU attribute
+    ?assertEqual([{pem, ?PEM_WITH_OU},
+                  {subject,
+                   <<"OU=OrganizationalUnitTest, "
+                     "CN=Couchbase Server 4e0ae963">>}],
+                 lists:nth(4, NewCerts)),
+    %% Fix certificate with missing subject
+    ?assertEqual([{pem, ?PEM_DEFAULT},
+                  {subject, <<"CN=Couchbase Server 3f4b2bb0">>}],
+                 lists:nth(5, NewCerts)),
+    %% Confirm no extra certs added
+    ?assertEqual(5, length(NewCerts)).
+
+-endif.
