@@ -1686,7 +1686,8 @@ maybe_update_deks(Kind, #state{deks_info = CurDeks} = OldState) ->
             %% This entity doesn't exist anymore
             %% Note that bucket can exist globally, but can be missing at this
             %% specific node.
-            ?log_debug("DEK ~p doesn't seem to exist. Forgetting about it"),
+            ?log_debug("DEK kind ~p doesn't seem to exist. Forgetting about it",
+                       [Kind]),
             {ok, destroy_dek_info(Kind, OldState)}
     end.
 

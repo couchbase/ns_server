@@ -572,10 +572,10 @@ maybe_log_error_to_user_log(read_key_error, Msg, ExtraArgs) ->
     ale:error(?USER_LOGGER, "Failed to read key ~s: ~s",
               [extract_key_uuid(ExtraArgs), Msg]);
 maybe_log_error_to_user_log(encrypt_key_error, Msg, ExtraArgs) ->
-    ale:error(?USER_LOGGER, "Failed to encrypt key ~s: ~s",
+    ale:error(?USER_LOGGER, "Failed to encrypt data using key ~s: ~s",
               [extract_key_uuid(ExtraArgs), Msg]);
 maybe_log_error_to_user_log(decrypt_key_error, Msg, ExtraArgs) ->
-    ale:error(?USER_LOGGER, "Failed to decrypt key ~s: ~s",
+    ale:error(?USER_LOGGER, "Failed to decrypt data using key ~s: ~s",
               [extract_key_uuid(ExtraArgs), Msg]);
 maybe_log_error_to_user_log(store_key_error, Msg, ExtraArgs) ->
     ale:error(?USER_LOGGER, "Failed to store key ~s: ~s",
