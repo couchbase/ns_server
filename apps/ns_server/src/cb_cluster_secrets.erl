@@ -531,16 +531,7 @@ test_internal(Props, CurProps) ->
                 copy_static_props(CurProps, Props)
         end,
 
-    AllNodes = ns_node_disco:nodes_wanted(),
-    NodesToTest =
-        lists:filter(fun (N) ->
-                         NodeInfo = ns_doctor:get_node(N),
-                         case node_supports_encryption_at_rest(NodeInfo) of
-                             no_info -> true;
-                             true -> true;
-                             false -> false
-                         end
-                     end, AllNodes),
+    NodesToTest = nodes_with_encryption_at_rest(ns_node_disco:nodes_wanted()),
     Res = erpc:multicall(NodesToTest, ?MODULE, test_secret_props, [Prepared],
                          ?TEST_SECRET_TIMEOUT),
     handle_erpc_key_test_result(Res, NodesToTest).
@@ -818,6 +809,16 @@ node_supports_encryption_at_rest(NodeInfo) ->
         SupportedVersion ->
             cluster_compat_mode:is_version_morpheus(SupportedVersion)
     end.
+
+nodes_with_encryption_at_rest(Nodes) ->
+    lists:filter(fun (N) ->
+                     NodeInfo = ns_doctor:get_node(N),
+                     case node_supports_encryption_at_rest(NodeInfo) of
+                         no_info -> true;
+                         true -> true;
+                         false -> false
+                     end
+                 end, Nodes).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -3237,7 +3238,7 @@ set_last_rotation_time_in_props(#{type := T,
 
 -spec sync_with_all_node_monitors() -> ok | {error, [atom()]}.
 sync_with_all_node_monitors() ->
-    Nodes = ns_node_disco:nodes_actual(),
+    Nodes = nodes_with_encryption_at_rest(ns_node_disco:nodes_actual()),
     Res = erpc:multicall(Nodes, ?MODULE, sync_with_node_monitor, [],
                          ?SYNC_TIMEOUT),
     BadNodes = lists:filtermap(
