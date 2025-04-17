@@ -50,12 +50,19 @@ class FusionTests(testlib.BaseTestSet):
                                     min_num_nodes=2, num_connected=1,
                                     num_vbuckets=16, buckets=[])]
 
-    def empty_bucket_smoke_test(self):
+    def empty_bucket_1_replica_smoke_test(self):
+        self.empty_bucket_smoke_test_code(1, 16)
+
+    def empty_bucket_0_replicas_smoke_test(self):
+        self.empty_bucket_smoke_test_code(0, 8)
+
+    def empty_bucket_smoke_test_code(self, num_replicas, expected_num_volumes):
         second_node = self.cluster.spare_node()
 
         self.cluster.create_bucket(
             {'name': 'test', 'ramQuota': 100, 'bucketType': 'membase',
              'storageBackend': 'magma',
+             'replicaNumber': num_replicas,
              'fusionLogstoreURI': 'local://' + self.cluster.logstore_dir},
             sync=True)
 
@@ -84,8 +91,8 @@ class FusionTests(testlib.BaseTestSet):
         assert len(plan_nodes) == 1
         assert second_otp_node in plan_nodes
         volumes = plan_nodes[second_otp_node]
-
-        assert len(volumes) == 16
+        len_volumes = len(volumes)
+        assert len_volumes == expected_num_volumes
 
         # not enough nodes
         resp = testlib.post_fail(
