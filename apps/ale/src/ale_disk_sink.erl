@@ -664,7 +664,7 @@ process_drop_dek_work(DekIdsToDrop, WorkSzThresh,
     ReEncrFn =
         fun(FPath, Size, DekIds, {FilesAndDeks, InUse, AccSize, Errors}) ->
                 case compress(true, SinkName, FPath,
-                              #{allow_decrypt_on_disabled_encr => true}) of
+                              #{allow_decrypt => true}) of
                     ok ->
                         NewDekIds = ale:get_in_use_deks([FPath]),
                         NewFilesAndDeks = [{FPath, NewDekIds} | FilesAndDeks],

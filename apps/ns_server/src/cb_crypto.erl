@@ -147,21 +147,33 @@ atomic_write_file(Path, Bytes, DekSnapshot, Opts) when is_binary(Bytes) ->
 -spec reencrypt_file(string(), string(), #dek_snapshot{},
                      #{compression => compression_cfg(),
                        ignore_incomplete_last_chunk => boolean(),
-                       allow_decrypt_on_disabled_encr => boolean()}) ->
+                       allow_decrypt => boolean()}) ->
           ok | {error, term()}.
 %% Note1: This function does not support reencryption with different chunk size,
 %% because it is not really needed at this point.
 %% When compression is used, it is possible to achieve bigger chunks by using
 %% Flush == none. In this case zlib will accumulate data in its internal buffer.
-%% Note2: This function assumes that the file is encrypted
+%%
+%% Note2: By default, this function assumes that the source file is encrypted
+%% and will error out if reencryption is attempted on a decrypted file, unless
+%% "allow_decrypt" option is used. The option is described in Note5.
+%%
 %% Note3: If the file is encrypted with historic key, current active key will be
 %% used for reencryption.
+%%
 %% Note4: If DS does not have active key, the file will be reencrypted with the
-%% same key as before, if allow_decrypt_on_disabled_encr option is not true.
-%% Note5: If allow_decrypt_on_disabled_encr option is true and DS has no active
-%% key, the file will be decrypted
+%% same key as before, if allow_decrypt option is not true.
+%%
+%% Note5: "allow_decrypt" option specifically allows:
+%%          a) The file to be decrypted if encryption is
+%%             disabled(no active key), hence the resulting file will be left
+%%             decrypted in that case.
+%%          b) Disables default assumption that the source file is encrypted,
+%%             and thus will reencrypt any decrypted file based on active key.
+%%             If encryption is disabled(no active key), the decrypted file will
+%%             be left decrypted as expected in that case.
 reencrypt_file(FromPath, ToPath, DS, Opts) ->
-    AllowDecr = maps:get(allow_decrypt_on_disabled_encr, Opts, false),
+    AllowDecr = maps:get(allow_decrypt, Opts, false),
     EncrEnabled = get_dek_id(DS) =/= undefined,
     DSRes =
         case {EncrEnabled, AllowDecr} of
@@ -198,6 +210,7 @@ reencrypt_file(FromPath, ToPath, DS, Opts) ->
 
 reencrypt_file_to_iodevice(IODevice, FromPath, DS, Opts) ->
     IgnoreIncomplete = maps:get(ignore_incomplete_last_chunk, Opts, false),
+    AllowDecryptOps = maps:get(allow_decrypt, Opts, false),
     maybe
         {ok, {Header, State}} ?= file_encrypt_init(DS, Opts),
         case file:write(IODevice, Header) of
@@ -218,7 +231,8 @@ reencrypt_file_to_iodevice(IODevice, FromPath, DS, Opts) ->
                             end
                         end, State, DS,
                         #{read_chunk_size => 65536,
-                        ignore_incomplete_last_chunk => IgnoreIncomplete}),
+                          ignore_incomplete_last_chunk => IgnoreIncomplete,
+                          check_encrypted => AllowDecryptOps}),
                 case Res of
                     {ok, FinalState} ->
                         FinalData = file_encrypt_finish(FinalState),
@@ -448,17 +462,40 @@ read_file(Path, DekKind) ->
                Acc :: term(),
                Deks :: #dek_snapshot{},
                Opts :: #{read_chunk_size => pos_integer(),
-                         ignore_incomplete_last_chunk => boolean()}.
+                         ignore_incomplete_last_chunk => boolean(),
+                         check_encrypted => boolean()}.
 read_file_chunks(Path, Fun, AccInit, Deks, Opts) ->
     ReadChunkSize = maps:get(read_chunk_size, Opts, 65536),
     IgnoreIncomplete = maps:get(ignore_incomplete_last_chunk, Opts, false),
-    F = fun (Data, {init, Acc}) ->
+
+    %% If check_encrypted option is not set, the file will processed with
+    %% default assumption that it is encrypted
+    IsEncrypted = case maps:get(check_encrypted, Opts, false) of
+                      true ->
+                          is_file_encrypted(Path);
+                      false ->
+                          true
+                  end,
+
+    InitEncrState =
+        fun(Data, {init, Acc}, true) ->
                 case file_decrypt_init(Data, Deks) of
                     {ok, {EncrState, Rest}} ->
                         {ok, {process, EncrState, Acc}, Rest};
                     incomplete_magic -> need_more_data;
                     need_more_data -> need_more_data;
                     {error, _} = E -> E
+                end;
+           (Data, {init, Acc}, false) ->
+                {ok, {process, unencrypted, Acc}, Data}
+        end,
+
+    F = fun (Data, {init, _} = InitAcc) ->
+                InitEncrState(Data, InitAcc, IsEncrypted);
+            (Data, {process, unencrypted, Acc}) ->
+                maybe
+                    {ok, NewAcc} ?= Fun(Data, Acc),
+                    {ok, {process, unencrypted, NewAcc}, <<>>}
                 end;
             (Data, {process, EncrState, Acc}) ->
                 maybe
@@ -469,6 +506,7 @@ read_file_chunks(Path, Fun, AccInit, Deks, Opts) ->
                 end
         end,
     Finalize = fun ({init, Acc}) -> {ok, Acc};
+                   ({process, unencrypted, Acc}) -> {ok, Acc};
                    ({process, DecrState, Acc}) ->
                        case file_decrypt_finish(DecrState) of
                            ok -> {ok, Acc};
@@ -1226,7 +1264,39 @@ reencrypt_on_disabled_enrc_test() ->
         ok = reencrypt_file(Path, Path, DSEmptyActive,#{}),
         ?assert(is_file_encrypted(Path)),
         ok = reencrypt_file(Path, Path, DSEmptyActive,
-                            #{allow_decrypt_on_disabled_encr => true}),
+                            #{allow_decrypt => true}),
+        ?assertNot(is_file_encrypted(Path)),
+        {ok, Bin} = misc:raw_read_file(Path),
+        ?assert(Bin =:= Data)
+    after
+        file:delete(Path)
+    end.
+
+reencrypt_decrypted_file_test() ->
+    Path = path_config:tempfile("cb_crypto_reencrypt_decrypted_test", ".tmp"),
+    Data = rand:bytes(10 * 1024 * 1024),
+    DS = generate_test_deks(),
+    {_, AllDeks} = get_all_deks(DS),
+    DSEmptyActive = create_deks_snapshot(undefined, AllDeks, undefined),
+
+    try
+        ok = misc:atomic_write_file(Path, Data),
+
+        {error, unknown_magic} = reencrypt_file(Path, Path, DSEmptyActive, #{}),
+        {error, unknown_magic} = reencrypt_file(Path, Path, DS,#{}),
+        ?assertNot(is_file_encrypted(Path)),
+
+        ok = reencrypt_file(Path, Path, DSEmptyActive,
+                            #{allow_decrypt => true}),
+        ?assertNot(is_file_encrypted(Path)),
+
+        ok = reencrypt_file(Path, Path, DS,
+                            #{allow_decrypt => true,
+                              max_chunk_size => 293}),
+        ?assert(is_file_encrypted(Path)),
+
+        ok = reencrypt_file(Path, Path, DSEmptyActive,
+                            #{allow_decrypt => true}),
         ?assertNot(is_file_encrypted(Path)),
         {ok, Bin} = misc:raw_read_file(Path),
         ?assert(Bin =:= Data)

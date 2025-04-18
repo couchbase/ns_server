@@ -161,7 +161,7 @@ handle_call({reencrypt_reports, LogDS},
                         {Basename,
                          cb_crypto:reencrypt_file(
                            Path, Path, LogDS,
-                           #{allow_decrypt_on_disabled_encr => true})};
+                           #{allow_decrypt => true})};
                     false ->
                         EncrReportFn(Path)
                 end
