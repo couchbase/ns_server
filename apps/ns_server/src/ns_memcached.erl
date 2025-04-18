@@ -44,6 +44,7 @@
 -define(GET_KEYS_OUTER_TIMEOUT, ?get_timeout(get_keys_outer, 70000)).
 -define(MAGMA_CREATION_TIMEOUT, ?get_timeout(magma_creation, 300000)).
 -define(SET_KEYS_TIMEOUT,       ?get_timeout(set_keys, 30000)).
+-define(PRUNE_KEYS_TIMEOUT,       ?get_timeout(prune_keys, 30000)).
 
 -define(RECBUF, ?get_param(recbuf, 64 * 1024)).
 -define(SNDBUF, ?get_param(sndbuf, 64 * 1024)).
@@ -145,6 +146,7 @@
          get_config_stats/2,
          set_active_dek_for_bucket/2,
          set_active_dek/2,
+         prune_log_or_audit_encr_keys/2,
          get_dek_ids_in_use/1,
          drop_deks/4,
          get_fusion_storage_snapshot/4,
@@ -1999,6 +2001,20 @@ set_active_dek(TypeOrBucket, DeksSnapshot) ->
                        [TypeOrBucket, E]),
             {error, E}
     end.
+
+prune_log_or_audit_encr_keys(Type, KeyIds) ->
+    KeyIdsCleaned =  lists:map(fun(?NULL_DEK) -> <<"unencrypted">>;
+                                   (Id) -> Id
+                               end, KeyIds),
+    ?log_debug("Pruning keys for ~p: KeyIds: ~p", [Type, KeyIdsCleaned]),
+    perform_very_long_call(
+      fun (Sock) ->
+              case mc_client_binary:prune_log_or_audit_encr_keys(
+                     Sock, Type, KeyIdsCleaned, ?PRUNE_KEYS_TIMEOUT) of
+                  ok -> {reply, ok};
+                  {memcached_error, S, Msg} -> {reply, {error, {S, Msg}}}
+              end
+      end).
 
 sanitize_in_use_keys(InUseKeys) ->
     lists:map(fun (<<"unencrypted">>) -> ?NULL_DEK;

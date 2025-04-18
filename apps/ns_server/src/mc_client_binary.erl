@@ -73,6 +73,7 @@
          get_collections_manifest/1,
          set_tls_config/2,
          set_active_encryption_key/4,
+         prune_log_or_audit_encr_keys/4,
          get_fusion_storage_snapshot/4,
          mount_fusion_vbucket/3,
          set_chronicle_auth_token/2,
@@ -1044,6 +1045,18 @@ set_tls_config(Sock, TLSConfigJSON) ->
     case cmd(?CMD_IFCONFIG, Sock, undefined, undefined,
              {#mc_header{}, #mc_entry{key = <<"tls">>, data = Data}}) of
         {ok, #mc_header{status = ?SUCCESS}, _, _} ->
+            ok;
+        Response ->
+            process_error_response(Response)
+    end.
+
+prune_log_or_audit_encr_keys(Sock, Type, KeyIds, Timeout) ->
+    report_counter(?FUNCTION_NAME),
+    Entry = #mc_entry{key = iolist_to_binary(Type),
+                      data = ejson:encode(KeyIds)},
+    case cmd(?CMD_PRUNE_ENCRYPTION_KEYS, Sock, undefined, undefined,
+             {#mc_header{}, Entry}, Timeout) of
+        {ok, #mc_header{status=?SUCCESS}, _, _} ->
             ok;
         Response ->
             process_error_response(Response)

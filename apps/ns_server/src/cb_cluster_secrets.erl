@@ -1896,11 +1896,8 @@ maybe_rotate_integrity_tokens(configDek, DekId, State) ->
 maybe_rotate_integrity_tokens(_Kind, _DekId, _State) ->
     ok.
 
-dek_kind_supports_drop(Kind) ->
-    case cb_deks:dek_config(Kind) of
-        #{drop_callback := not_supported} -> false;
-        #{drop_callback := F} when is_function(F) -> true
-    end.
+dek_kind_supports_drop(_Kind) ->
+    true.
 
 call_dek_callback(CallbackName, Kind, Args) ->
     #{CallbackName := CB} = cb_deks:dek_config(Kind),

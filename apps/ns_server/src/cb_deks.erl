@@ -397,7 +397,7 @@ dek_config(auditDek) ->
       drop_keys_timestamp_callback => cb_crypto:get_drop_keys_timestamp(
                                         audit_encryption, _),
       get_ids_in_use_callback => ?cut(get_dek_ids_in_use(auditDek)),
-      drop_callback => not_supported,
+      drop_callback => fun drop_audit_deks/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
       required_usage => audit_encryption};
 dek_config({bucketDek, Bucket}) ->
@@ -616,6 +616,8 @@ drop_log_deks(DekIdsToDrop) ->
                               RPC_TIMEOUT),
 
                 R4 = ns_rebalance_report_manager:reencrypt_local_reports(DS),
+                R5 = ns_memcached:prune_log_or_audit_encr_keys("@logs",
+                                                               DekIdsToDrop),
 
                 Errors = lists:filtermap(
                            fun(ok) ->
@@ -624,7 +626,7 @@ drop_log_deks(DekIdsToDrop) ->
                                    {true, Error};
                               ({badrpc, _} = Error) ->
                                    {true, Error}
-                           end , [R1, R2, R3, R4]),
+                           end , [R1, R2, R3, R4, R5]),
 
                 case Errors of
                     [] ->
@@ -632,8 +634,8 @@ drop_log_deks(DekIdsToDrop) ->
                     _ ->
                         %% It is possible that there were some errors, yet
                         %% some DEks may have been freed up still, so we issue
-                        %% completion to allow GC and pass down errors to be
-                        %% logged
+                        %% completion to allow GC and still pass down errors
+                        %% to be logged or handled
                         Rv = {error, lists:flatten(Errors)},
                         cb_cluster_secrets:dek_drop_complete(logDek, Rv)
                 end
@@ -646,6 +648,15 @@ drop_log_deks(DekIdsToDrop) ->
                       ?log_error("Drop log DEKs work failed: ~p", {T, E, Stack})
               end
       end),
+    {ok, started}.
+
+drop_audit_deks(DekIdsToDrop) ->
+    proc_lib:spawn_link(
+        fun() ->
+            Rv = ns_memcached:prune_log_or_audit_encr_keys("@audit",
+                                                            DekIdsToDrop),
+            cb_cluster_secrets:dek_drop_complete(logDek, Rv)
+        end),
     {ok, started}.
 
 drop_bucket_deks(Bucket, DekIds) ->

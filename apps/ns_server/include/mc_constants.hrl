@@ -125,6 +125,8 @@
 -define(CMD_GET_ERROR_MAP, 16#fe).
 
 -define(CMD_SET_ENCRYPTION_KEY, 16#2d).
+-define(CMD_PRUNE_ENCRYPTION_KEYS, 16#2e).
+
 
 %% fusion commands
 -define(CMD_GET_FUSION_STORAGE_SNAPSHOT,     16#70).
