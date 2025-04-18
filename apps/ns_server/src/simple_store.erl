@@ -27,6 +27,7 @@
          delete/2,
          delete_matching/2,
          clear/1,
+         list/1,
          iterate_matching/2,
          resave/1,
          get_key_ids_in_use/1]).
@@ -76,6 +77,9 @@ delete(StoreName, Key) ->
 
 clear(StoreName) ->
     do_work(StoreName, fun clear_store/2, []).
+
+list(StoreName) ->
+    do_work(StoreName, fun list_store/2, []).
 
 %% Delete keys with matching prefix
 delete_matching(StoreName, KeyPattern) ->
@@ -207,6 +211,11 @@ clear_store([], #state{store_name = StoreName} = State) ->
     ?metakv_debug("Deleting all keys in table ~p.", [StoreName]),
     ets:delete_all_objects(StoreName),
     {ok, schedule_flush(?FLUSH_RETRIES, State)}.
+
+list_store([], #state{store_name = StoreName} = State) ->
+    ?metakv_debug("Listing all entries in table ~p.", [StoreName]),
+    List = ets:tab2list(StoreName),
+    {{ok, List}, State}.
 
 del_matching([KeyPattern], #state{store_name = StoreName} = State) ->
     ets:foldl(

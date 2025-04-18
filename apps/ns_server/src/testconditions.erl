@@ -19,6 +19,7 @@
          set/2,
          delete/1,
          clear/0,
+         list/0,
          check_test_condition/1,
          check_test_condition/2,
          check_test_condition/3,
@@ -39,6 +40,10 @@ delete(Key) ->
 
 clear() ->
     simple_store:clear(?TESTCONDITION_STORE).
+
+list() ->
+    {ok, List} = simple_store:list(?TESTCONDITION_STORE),
+    List.
 
 %%
 %% Generic test condition handling:
