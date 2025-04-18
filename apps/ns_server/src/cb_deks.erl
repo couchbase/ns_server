@@ -589,19 +589,28 @@ drop_config_deks(DekIdsToDrop) ->
 
 drop_log_deks(DekIdsToDrop) ->
     {ok, DS} = cb_crypto:fetch_deks_snapshot(logDek),
+
+    %% Ale logger treats "undefined" as a NULL_DEK so we convert it here
+    %% for ale appropriately
+    DropIdsForAle =
+        lists:map(
+          fun (?NULL_DEK) -> undefined;
+              (Id) -> Id
+          end, DekIdsToDrop),
+
     RPC_TIMEOUT = ?LOG_ENCR_ALE_DROP_DEK_TIMEOUT + 5000,
     Work =
         fun() ->
-                R1 = ale:drop_log_deks(DekIdsToDrop,
+                R1 = ale:drop_log_deks(DropIdsForAle,
                                        ?DROP_DEK_ALE_WORK_SZ_THRESH,
                                        ?LOG_ENCR_ALE_DROP_DEK_TIMEOUT),
                 R2 = rpc:call(ns_server:get_babysitter_node(), ale,
-                              drop_log_deks, [DekIdsToDrop,
+                              drop_log_deks, [DropIdsForAle,
                                               ?DROP_DEK_ALE_WORK_SZ_THRESH,
                                               ?LOG_ENCR_ALE_DROP_DEK_TIMEOUT],
                               RPC_TIMEOUT),
                 R3 = rpc:call(ns_node_disco:couchdb_node(), ale,
-                              drop_log_deks, [DekIdsToDrop,
+                              drop_log_deks, [DropIdsForAle,
                                               ?DROP_DEK_ALE_WORK_SZ_THRESH,
                                               ?LOG_ENCR_ALE_DROP_DEK_TIMEOUT],
                               RPC_TIMEOUT),
