@@ -498,7 +498,8 @@ rebalance(Params, DesiredServers) ->
     ok = check_test_condition(rebalance_start),
     ok = leader_activities:run_activity(
            rebalance, majority,
-           ?cut(rebalance_body(Params, DesiredServers))).
+           ?cut(rebalance_body(Params, DesiredServers))),
+    ok = check_test_condition(rebalance_complete).
 
 rebalance_body(#{keep_nodes := KeepNodes,
                  eject_nodes := EjectNodesAll,
