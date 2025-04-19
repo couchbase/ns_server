@@ -223,7 +223,16 @@ do_run_cleanup(compat_mode) ->
 do_run_cleanup(services) ->
     service_janitor:cleanup();
 do_run_cleanup({bucket, Bucket}) ->
-    ns_janitor:cleanup(Bucket, [consider_resetting_rebalance_status]);
+    ns_janitor:cleanup(Bucket, []);
+do_run_cleanup(consider_resetting_rebalance_status) ->
+    case rebalance:running() of
+        true ->
+            %% As we're janitoring there's no way a rebalance can be in
+            %% progress.
+            ns_janitor:maybe_reset_rebalance_status();
+        false ->
+            ok
+    end;
 do_run_cleanup(maybe_update_hibernation_status) ->
     %% ns_orchestrator could have crashed right after the bucket was deleted,
     %% but before we could mark the hibernation_status as "completed" - fix that
@@ -300,7 +309,7 @@ get_unsafe_nodes_from_reprovision_list(ReprovisionList) ->
 
 get_janitor_items() ->
     Buckets = [{bucket, B} || B <- ns_bucket:get_bucket_names_of_type(membase)],
-    [compat_mode, services | Buckets] ++
+    [compat_mode, services, consider_resetting_rebalance_status | Buckets] ++
     [maybe_update_hibernation_status, update_buckets_marked_for_shutdown].
 
 do_request_janitor_run(Request, #state{janitor_requests=Requests} = State) ->
