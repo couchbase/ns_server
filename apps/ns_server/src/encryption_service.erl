@@ -529,11 +529,16 @@ store_key(Kind, Name, Type, KeyData, EncryptionKeyId,
                                                  is_boolean(CanBeCached) ->
     CreationDTISO = iso8601:format(CreationDT),
     KindBin = cb_deks:kind2bin(Kind),
+    ErrorAtom = case TestOnly of
+                    true -> store_key_error_test;
+                    false -> store_key_error
+                end,
+
     ?wrap_error_msg(
       cb_gosecrets_runner:store_key(?RUNNER, Kind, Name, Type, KeyData,
                                     EncryptionKeyId, CreationDTISO, CanBeCached,
                                     TestOnly),
-      store_key_error, [{kind, KindBin}, {key_UUID, Name}]).
+      ErrorAtom, [{kind, KindBin}, {key_UUID, Name}]).
 
 maybe_update_dek_path_in_config() ->
     case ns_storage_conf:this_node_dbdir() of
@@ -561,12 +566,22 @@ wrap_error_msg({ok, _} = R, _A, _) -> R;
 wrap_error_msg({error, Msg}, A, ExtraArgs) when is_list(Msg), is_atom(A),
                                                 is_list(ExtraArgs) ->
     maybe_log_error_to_user_log(A, Msg, ExtraArgs),
+    maybe_log_error_to_event_log(A, Msg, ExtraArgs),
+    maybe_notify_stats(A),
+    {error, {A, Msg}}.
+
+maybe_notify_stats(store_key_error_test) ->
+    ok;
+maybe_notify_stats(A) ->
+    ns_server_stats:notify_counter({<<"encryption_service_failures">>,
+                                    [{failure_type, A}]}).
+
+maybe_log_error_to_event_log(store_key_error_test, _Msg, _ExtraArgs) ->
+    ok;
+maybe_log_error_to_event_log(A, Msg, ExtraArgs) ->
     event_log:add_log(encryption_service_failure,
                       [{error, A}, {error_msg, iolist_to_binary(Msg)}] ++
-                      ExtraArgs),
-    ns_server_stats:notify_counter({<<"encryption_service_failures">>,
-                                    [{failure_type, A}]}),
-    {error, {A, Msg}}.
+                      ExtraArgs).
 
 maybe_log_error_to_user_log(read_key_error, Msg, ExtraArgs) ->
     ale:error(?USER_LOGGER, "Failed to read key ~s: ~s",
