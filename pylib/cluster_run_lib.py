@@ -446,7 +446,8 @@ def start_cluster(num_nodes=1,
             params['env'] = {}
             params['env'].update(os.environ)
 
-        params['env']['CB_FORCE_PROFILE'] = "default"
+        if 'CB_FORCE_PROFILE' not in params['env']:
+            params['env']['CB_FORCE_PROFILE'] = "default"
 
         if run_serverless:
             params['env']['CB_FORCE_PROFILE'] = "serverless"
