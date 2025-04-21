@@ -588,6 +588,7 @@ drop_config_deks(DekIdsToDrop) ->
     end.
 
 drop_log_deks(DekIdsToDrop) ->
+    {ok, DS} = cb_crypto:fetch_deks_snapshot(logDek),
     RPC_TIMEOUT = ?LOG_ENCR_ALE_DROP_DEK_TIMEOUT + 5000,
     Work =
         fun() ->
@@ -605,6 +606,8 @@ drop_log_deks(DekIdsToDrop) ->
                                               ?LOG_ENCR_ALE_DROP_DEK_TIMEOUT],
                               RPC_TIMEOUT),
 
+                R4 = ns_rebalance_report_manager:reencrypt_local_reports(DS),
+
                 Errors = lists:filtermap(
                            fun(ok) ->
                                    false;
@@ -612,7 +615,7 @@ drop_log_deks(DekIdsToDrop) ->
                                    {true, Error};
                               ({badrpc, _} = Error) ->
                                    {true, Error}
-                           end , [R1, R2, R3]),
+                           end , [R1, R2, R3, R4]),
 
                 case Errors of
                     [] ->
