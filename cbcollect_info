@@ -2229,6 +2229,16 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
                    no_header=True)
          for path in glob.glob(os.path.join(rebdir, "rebalance_report*"))],
 
+        [AllOsTask(name,
+                   "cbbrowse_logs %s %s" % (os.path.basename(path),
+                                            cbbrowse_static_args),
+                   to_stdin=master_password,
+                   addenv=[("REPORT_DIR", os.path.dirname(path))],
+                   log_file="%s" % os.path.basename(path),
+                   no_header=True)
+         for name, path in [("NS Log", read_guts(guts, "ns_log_path")),
+                            ("Event Logs", read_guts(guts, "event_log_path"))]],
+
         [AllOsTask("couchbase logs (memcached.log)",
                    "cbbrowse_logs memcached.log %s" % cbbrowse_static_args,
                    to_stdin=master_password,
@@ -2332,8 +2342,6 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
             "Dist configuration (dist_cfg)", read_guts(
                 guts, "dist_cfg_path")),
 
-        CollectFileTask("NS Log", read_guts(guts, "ns_log_path")),
-        CollectFileTask("Event Logs", read_guts(guts, "event_log_path")),
         # MB-42657: For signal safety memcached writes crash output to a
         # separate file with signal safe functions. At restart memcached will
         # log the contents and discard the file. If there is no restart the file

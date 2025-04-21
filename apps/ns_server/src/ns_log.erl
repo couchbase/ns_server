@@ -29,7 +29,8 @@
 
 -export([start_link_babysitter_log_consumer/0]).
 
--export([log/6, log/7, recent/0, recent/1, delete_log/0]).
+-export([log/6, log/7, recent/0, recent/1, delete_log/0,
+         reencrypt_data_on_disk/0, get_in_use_deks/0]).
 
 -export([code_string/2, prepare_message/3]).
 
@@ -275,6 +276,12 @@ recent(Module) ->
 
 delete_log() ->
     gossip_replicator:delete_logs(ns_log).
+
+reencrypt_data_on_disk() ->
+    gossip_replicator:reencrypt_data_on_disk(?SERVER).
+
+get_in_use_deks() ->
+    gossip_replicator:get_in_use_deks(?SERVER).
 
 %% Example categorization -- pretty much exists for the test below, but
 %% this is what any module that logs should look like.

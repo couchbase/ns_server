@@ -487,7 +487,13 @@ set_log_active_key(_ActiveKey) ->
                        ?LOG_ENCR_RPC_TIMEOUT),
 
         %% Reencrypt all rebalance reports local to this node based on CurrentDS
-        ok ?= ns_rebalance_report_manager:reencrypt_local_reports(CurrDS)
+        ok ?= ns_rebalance_report_manager:reencrypt_local_reports(CurrDS),
+
+        %% Reencrypt USER_LOG
+        ok ?= ns_log:reencrypt_data_on_disk(),
+
+        %% Reencrypt event logs
+        ok ?= event_log_server:reencrypt_data_on_disk()
     else
         {error, _} = Error ->
             Error;
@@ -559,13 +565,18 @@ get_dek_ids_in_use(logDek) ->
 
         {ok, InUseRebReports} ?= ns_rebalance_report_manager:get_in_use_deks(),
 
+        {ok, InUseLogs} ?= ns_log:get_in_use_deks(),
+
+        {ok, InUseEventLogs} ?= event_log_server:get_in_use_deks(),
+
         AllInUse = lists:map(
                       fun(undefined) ->
                               ?NULL_DEK;
                          (Elem) ->
                               Elem
                       end, InUseMemcached ++ InUseLocal ++ InuseBabySitter ++
-                           InuseCouchDb ++ InUseRebReports),
+                           InuseCouchDb ++ InUseRebReports ++ InUseLogs ++
+                           InUseEventLogs),
         {ok, lists:usort(AllInUse)}
     else
         {error, _} = Error ->
@@ -651,6 +662,11 @@ drop_log_deks(DekIdsToDrop) ->
                 R4 = ns_rebalance_report_manager:reencrypt_local_reports(DS),
                 R5 = ns_memcached:prune_log_or_audit_encr_keys("@logs",
                                                                DekIdsToDrop),
+                %% Reencrypt USER_LOG
+                R6 = ns_log:reencrypt_data_on_disk(),
+
+                %% Reencrypt event logs
+                R7 = event_log_server:reencrypt_data_on_disk(),
 
                 Errors = lists:filtermap(
                            fun(ok) ->
@@ -659,7 +675,7 @@ drop_log_deks(DekIdsToDrop) ->
                                    {true, Error};
                               ({badrpc, _} = Error) ->
                                    {true, Error}
-                           end , [R1, R2, R3, R4, R5]),
+                           end , [R1, R2, R3, R4, R5, R6, R7]),
 
                 case Errors of
                     [] ->

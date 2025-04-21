@@ -25,7 +25,9 @@
          replicate_log/2,
          change_config/3,
          recent/1,
-         delete_logs/1]).
+         delete_logs/1,
+         get_in_use_deks/1,
+         reencrypt_data_on_disk/1]).
 
 -include("ns_common.hrl").
 -include_lib("ns_common/include/cut.hrl").
@@ -59,6 +61,7 @@
 
 -define(SAVE_DELAY, 5000). % 5 secs in millisecs
 -define(NOTIFY_DELAY, 2000).
+-define(ENCR_OP_TIMEOUT, ?get_timeout(encr_op, 2000)).
 
 start_link(ServerName, Args) ->
     gen_server:start_link({local, ServerName}, ?MODULE,
@@ -82,7 +85,14 @@ init([Mod, FileName, PendingLenMax, RecentMax, ServerName]) ->
 %% Request for recent items.
 handle_call(recent, _From, State0) ->
     State = flush_pending_list(State0),
-    {reply, State#state.unique_recent, State}.
+    {reply, State#state.unique_recent, State};
+
+handle_call(get_in_use_deks, _From, #state{filename = Filename} = State) ->
+    {reply, cb_crypto:get_file_dek_ids(Filename), State};
+
+handle_call(reencrypt_data_on_disk, _From, State0) ->
+    {Result, State} = maybe_reencrypt_file(State0),
+    {reply, Result, State}.
 
 %% Inbound logging request.
 handle_cast({add_log, Log}, State0 = #state{child_module = Mod,
@@ -175,15 +185,13 @@ handle_info(periodic_sync_full,
     {noreply, State};
 
 handle_info(save, #state{filename = Filename} = State0) ->
-    State = flush_pending_list(State0),
-    Recent = State#state.unique_recent,
-    Compressed = misc:compress(Recent),
-    case misc:atomic_write_file(Filename, Compressed) of
+    {Result, State} = save(State0),
+    case Result of
         ok -> ok;
         E ->
             ?log_error("unable to write log to ~p: ~p", [Filename, E])
     end,
-    {noreply, State#state{save_tref = undefined}};
+    {noreply, State};
 handle_info(notify, #state{child_module = Mod,
                            child_state = ChildState0} = State0) ->
     ChildState = Mod:handle_notify(ChildState0),
@@ -220,17 +228,64 @@ delete_logs(FileConfigKey) ->
 recent(ServerName) ->
     gen_server:call(ServerName, recent).
 
+get_in_use_deks(ServerName) ->
+    try
+        gen_server:call(ServerName, get_in_use_deks, ?ENCR_OP_TIMEOUT)
+    catch
+        exit:{noproc, {gen_server, call, [ServerName, get_in_use_deks, _]}} ->
+            ?log_debug("Can't get in use deks: ~p is not running...",
+                       [ServerName]),
+            {error, retry}
+    end.
+
+reencrypt_data_on_disk(ServerName) ->
+    try
+        gen_server:call(ServerName, reencrypt_data_on_disk, ?ENCR_OP_TIMEOUT)
+    catch
+        exit:{noproc, {gen_server, call,
+                       [ServerName, reencrypt_data_on_disk, _]}} ->
+            ?log_debug("Can't reencrypt data on disk: ~p is not running...",
+                       [ServerName]),
+            {error, retry}
+    end.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+maybe_reencrypt_file(#state{filename = Filename} = State) ->
+    {ok, DS} = cb_crypto:fetch_deks_snapshot(logDek),
+    case cb_crypto:is_file_encr_by_active_key(Filename, DS) of
+        true -> {ok, State};
+        false -> save(DS, State)
+    end.
+
+save(State) ->
+    {ok, DS} = cb_crypto:fetch_deks_snapshot(logDek),
+    save(DS, State).
+
+save(DS, #state{filename = Filename, save_tref = TRef} = State0) ->
+    State = flush_pending_list(State0),
+    Recent = State#state.unique_recent,
+    Compressed = misc:compress(Recent),
+    case TRef of
+        undefined -> ok;
+        _ ->
+            erlang:cancel_timer(TRef),
+            misc:flush(save)
+    end,
+    {cb_crypto:atomic_write_file(Filename, Compressed, DS),
+     State#state{save_tref = undefined}}.
 
 log_filename(Key) ->
     ns_config:search_node_prop(ns_config:get(), Key, filename).
 
 read_logs(Filename) ->
-    case file:read_file(Filename) of
-        {ok, <<>>} -> [];
-        {ok, B} ->
+    GetDS = fun () -> cb_crypto:fetch_deks_snapshot(logDek) end,
+    case cb_crypto:read_file(Filename, GetDS) of
+        {decrypted, <<>>} -> [];
+        {raw, <<>>} -> [];
+        {R, B} when R == decrypted; R == raw ->
             try misc:decompress(B) of
                 B2 ->
                     B2
@@ -240,7 +295,7 @@ read_logs(Filename) ->
                                [Filename, Error]),
                     []
             end;
-        E ->
+        {error, _} = E ->
             ?log_warning("Couldn't load logs from ~p (perhaps it's first
                          startup): ~p", [Filename, E]),
             []

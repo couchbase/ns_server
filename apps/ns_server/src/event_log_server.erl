@@ -35,7 +35,7 @@
 -export([start_link/0]).
 
 -export([log/3, recent/0, delete_log/0, build_events_json/3,
-         recent/1]).
+         recent/1, reencrypt_data_on_disk/0, get_in_use_deks/0]).
 
 %% exports for gossip_replicator.
 -export([init/1,
@@ -224,6 +224,12 @@ log(Timestamp, Id, Event) ->
 
 delete_log() ->
     gossip_replicator:delete_logs(event_log).
+
+reencrypt_data_on_disk() ->
+    gossip_replicator:reencrypt_data_on_disk(?SERVER).
+
+get_in_use_deks() ->
+    gossip_replicator:get_in_use_deks(?SERVER).
 
 -spec recent() -> list(#log_entry{}).
 recent() ->
