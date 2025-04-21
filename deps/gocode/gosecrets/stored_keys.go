@@ -15,6 +15,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -180,6 +181,15 @@ type readKeyAesKeyResponse struct {
 	CreationTime    string `json:"creationTime"`
 }
 
+// Error types
+
+type ErrKeyNotFound struct {
+	e error
+}
+
+func (s ErrKeyNotFound) Error() string { return s.e.Error() }
+func (s ErrKeyNotFound) Unwrap() error { return s.e }
+
 // Stored keys managenement functions
 
 func initStoredKeys(configDir string, readOnly bool, ctx *storedKeysCtx) (*StoredKeysState, error) {
@@ -283,7 +293,6 @@ func (state *StoredKeysState) maybeRegenerateProof(path, name string, ctx *store
 	uuid := parts[0]
 	if uuid == state.intTokens[0].uuid {
 		// Proof is still valid, no need to regenerate proof
-		logDbg("Proof for key %s from file %s is still valid (token uuid: %s)", name, filePathPrefix, uuid)
 		return nil
 	}
 	logDbg("Regenerating proof for key %s from file %s (token uuid in file: %s, expected: %s)", name, filePathPrefix, uuid, state.intTokens[0].uuid)
@@ -291,13 +300,11 @@ func (state *StoredKeysState) maybeRegenerateProof(path, name string, ctx *store
 	//                        (2) write key expects key to be unencrypted
 	err = state.decryptKey(keyIface, true, proof, ctx)
 	if err != nil {
-		logDbg("Failed to decrypt key %s: %s", name, err.Error())
-		return err
+		return fmt.Errorf("failed to decrypt key %s: %s", name, err.Error())
 	}
 	err = state.writeKeyToFile(keyIface, vsn, filePathPrefix)
 	if err != nil {
-		logDbg("Failed to write key with regenerated proof %s to file %s: %s", name, filePathPrefix, err.Error())
-		return err
+		return fmt.Errorf("failed to write key with regenerated proof %s to file %s: %s", name, filePathPrefix, err.Error())
 	}
 	return nil
 }
@@ -511,14 +518,12 @@ func (state *StoredKeysState) encryptFileData(data []byte, encryptionKeyName str
 	// Read the encryption key and use it to encrypt the data
 	key, err := state.readKey(encryptionKeyName, intTokenEncryptionKeyKind, true, ctx)
 	if err != nil {
-		logDbg("Failed to read config dek: %s", err.Error())
-		return nil, err
+		return nil, fmt.Errorf("failed to read config dek: %s", err.Error())
 	}
 
 	encryptedData, err := key.encryptData(data, ad)
 	if err != nil {
-		logDbg("Failed to encrypt data: %s", err.Error())
-		return nil, err
+		return nil, fmt.Errorf("failed to encrypt data: %s", err.Error())
 	}
 
 	// Create chunk (4 bytes size + encrypted data)
@@ -541,7 +546,6 @@ func (state *StoredKeysState) encryptFileData(data []byte, encryptionKeyName str
 func (state *StoredKeysState) maybeDecryptFileData(filename string, data []byte, ctx *storedKeysCtx) ([]byte, string, error) {
 	// Check if data is long enough to contain magic string
 	if len(data) < encryptedFileMagicStringLen {
-		// Too short for magic string, must be unencrypted
 		logDbg("Data is too short to contain magic string, must be unencrypted")
 		return data, "", nil
 	}
@@ -550,7 +554,6 @@ func (state *StoredKeysState) maybeDecryptFileData(filename string, data []byte,
 
 	// Check for magic string
 	if !bytes.Equal(data[:encryptedFileMagicStringLen], []byte(encryptedFileMagicString)) {
-		// No magic string found, must be unencrypted
 		logDbg("No magic string found, must be unencrypted")
 		return data, "", nil
 	}
@@ -566,7 +569,6 @@ func (state *StoredKeysState) maybeDecryptFileData(filename string, data []byte,
 
 	// Chunk format is 4 bytes size + encrypted data
 	chunk := data[encryptedFileHeaderSize:]
-	// Read chunk size
 	if len(chunk) < 4 {
 		return nil, "", fmt.Errorf("encrypted file too short to contain chunk size")
 	}
@@ -578,15 +580,13 @@ func (state *StoredKeysState) maybeDecryptFileData(filename string, data []byte,
 	// Read the encryption key and use it to decrypt the data
 	key, err := state.readKey(keyName, intTokenEncryptionKeyKind, false, ctx)
 	if err != nil {
-		logDbg("Failed to read config dek: %s", err.Error())
-		return nil, "", err
+		return nil, "", fmt.Errorf("failed to read config dek: %s", err.Error())
 	}
 
 	ad := getEncryptedFileAD(header, encryptedFileHeaderSize)
 	decryptedData, err := key.decryptData(chunk[4:], ad)
 	if err != nil {
-		logDbg("Failed to decrypt data: %s", err.Error())
-		return nil, "", err
+		return nil, "", fmt.Errorf("failed to decrypt data: %s", err.Error())
 	}
 
 	return decryptedData, keyName, nil
@@ -820,7 +820,7 @@ func (state *StoredKeysState) writeKeyToFile(keyIface storedKeyIface, curVsn int
 	}
 	proof, err := generateKeyProof(keyIface, state.intTokens)
 	if err != nil {
-		return fmt.Errorf("failed to generate key proof: %s", err.Error())
+		return err
 	}
 	finalData, err := json.Marshal(storedKeyJson{
 		Type:  keytype,
@@ -832,7 +832,6 @@ func (state *StoredKeysState) writeKeyToFile(keyIface storedKeyIface, curVsn int
 	}
 
 	keyPath := storedKeyPath(pathWithoutVersion, nextVsn)
-	logDbg("Writing %s to file %s", keyIface.name(), keyPath)
 	keyDir := filepath.Dir(keyPath)
 	err = os.MkdirAll(keyDir, 0755)
 	if err != nil {
@@ -857,12 +856,12 @@ func (state *StoredKeysState) writeKeyToFile(keyIface storedKeyIface, curVsn int
 
 func generateKeyProof(keyIface storedKeyIface, intTokens []intToken) (string, error) {
 	if len(intTokens) == 0 {
-		return "", fmt.Errorf("empty integrity tokens")
+		return "", fmt.Errorf("failed to generate proof: empty integrity tokens")
 	}
 	tokenHash := tokenHash(intTokens[0], keyIface)
 	encryptedTokenHash, err := keyIface.encryptData(tokenHash[:], []byte(keyIface.name()))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to use key to generate proof: %s", err.Error())
 	}
 	proof := fmt.Sprintf("%s:%s", intTokens[0].uuid, base64.StdEncoding.EncodeToString(encryptedTokenHash))
 	return proof, nil
@@ -962,7 +961,6 @@ func readKeyRaw(keySettings *storedKeyConfig, keyName string) (storedKeyIface, i
 func scanDir(dirPath string) ([]string, error) {
 	files, dirReadErr := os.ReadDir(dirPath)
 	if os.IsNotExist(dirReadErr) {
-		logDbg("Dir %s does not exist, skipping", dirPath)
 		return nil, nil
 	}
 	if files == nil {
@@ -1007,7 +1005,7 @@ func findKeyFile(path string) (string, int, error) {
 		return "", -1, fmt.Errorf("failed to read file list using wildcard %s: %s", wildcard, err.Error())
 	}
 	if len(candidates) == 0 {
-		return "", -1, fmt.Errorf("no files found matching: %s", wildcard)
+		return "", -1, ErrKeyNotFound{e: fmt.Errorf("no files found matching: %s", wildcard)}
 	}
 	// looking for a file with max vsn (we increment it on every write)
 	maxVsn := -1
@@ -1033,6 +1031,8 @@ func isKeyFile(pathPrefix string) bool {
 	wildcard := pathPrefix + ".*"
 	candidates, err := filepath.Glob(wildcard)
 	if err != nil {
+		// Note that according to the docs, Glob can return error only if
+		// pattern is malformed, so we should not see this error in practice
 		logDbg("Failed to read file list using wildcard %s: %s", wildcard, err.Error())
 		return false
 	}
@@ -1044,7 +1044,7 @@ func readKeyFromFileRaw(pathWithoutVersion string) (storedKeyIface, int, string,
 	if err != nil {
 		return nil, vsn, "", err
 	}
-	logDbg("Reading key from file %s", path)
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, vsn, "", fmt.Errorf("failed to read key from file %s: %s", path, err.Error())
@@ -1188,21 +1188,19 @@ func decryptKeyData(k storedKeyIface, data []byte, encryptedByKind, encryptionKe
 	}
 	AD := k.ad()
 	if k.usesSecretManagementKey() {
-		logDbg("Will use encryption service to decrypt key %s", k.name())
 		decryptedData, err := decryptWithAD(ctx.encryptionServiceKey, data, AD)
 		if err != nil {
 			if ctx.backupEncryptionServiceKey != nil {
-				logDbg("Failed to decrypt key using main data key, will try backup key: %s (ad: %s)", err.Error(), base64.StdEncoding.EncodeToString(AD))
-				decryptedData, err = decryptWithAD(ctx.backupEncryptionServiceKey, data, AD)
-				if err != nil {
-					logDbg("Failed to decrypt key using backup data key: %s", err.Error())
-					return nil, false, fmt.Errorf("failed to decrypt key %s: %s", k.name(), err.Error())
+				var err2 error
+				decryptedData, err2 = decryptWithAD(ctx.backupEncryptionServiceKey, data, AD)
+				if err2 != nil {
+					logDbg("Failed to decrypt key using backup data key: %s (main key error: %s, ad: %s)", err2.Error(), err.Error(), base64.StdEncoding.EncodeToString(AD))
+					return nil, false, fmt.Errorf("failed to decrypt key %s: %s", k.name(), err2.Error())
 				}
 			} else {
 				logDbg("Failed to decrypt key using main data key, and there is no backup key: %s (ad: %s)", err.Error(), base64.StdEncoding.EncodeToString(AD))
 				return nil, false, fmt.Errorf("failed to decrypt key %s: %s", k.name(), err.Error())
 			}
-			logDbg("Decrypted using backup data key")
 			return decryptedData, true, nil
 		}
 		return decryptedData, false, nil
@@ -1239,7 +1237,10 @@ func (k *rawAesGcmStoredKey) kind() string {
 func (k *rawAesGcmStoredKey) needRewrite(settings *storedKeyConfig, state *StoredKeysState, ctx *storedKeysCtx) (bool, int, error) {
 	keyIface, vsn, _, err := readKeyRaw(settings, k.Name)
 	if err != nil {
-		logDbg("key %s read error: %s", k.Name, err.Error())
+		var keyNotFoundErr ErrKeyNotFound
+		if !errors.As(err, &keyNotFoundErr) {
+			logDbg("key %s read error: %s", k.Name, err.Error())
+		}
 		return true, vsn, nil
 	}
 	onDiskKey, ok := keyIface.(*rawAesGcmStoredKey)
@@ -1262,7 +1263,6 @@ func (k *rawAesGcmStoredKey) encryptMe(state *StoredKeysState, ctx *storedKeysCt
 	if k.EncryptedKey != nil {
 		// Seems like it is already encrypted
 		// Checking that we can decrypt it just in case
-		logDbg("Verifying encryption for key \"%s\"", k.Name)
 		decryptedKey, reencryptNeeded, err := decryptKeyData(k, k.EncryptedKey, k.EncryptedByKind, k.EncryptionKeyName, true, state, ctx)
 		if err != nil {
 			return err
@@ -1377,7 +1377,10 @@ func (k *awsStoredKey) kind() string {
 func (k *awsStoredKey) needRewrite(settings *storedKeyConfig, state *StoredKeysState, ctx *storedKeysCtx) (bool, int, error) {
 	keyIface, vsn, _, err := readKeyRaw(settings, k.Name)
 	if err != nil {
-		logDbg("key %s read error: %s", k.Name, err.Error())
+		var keyNotFoundErr ErrKeyNotFound
+		if !errors.As(err, &keyNotFoundErr) {
+			logDbg("key %s read error: %s", k.Name, err.Error())
+		}
 		return true, vsn, nil
 	}
 	onDiskKey, ok := keyIface.(*awsStoredKey)
@@ -1527,7 +1530,10 @@ func (k *kmipStoredKey) needRewrite(settings *storedKeyConfig, state *StoredKeys
 	}
 	keyIface, vsn, proof, err := readKeyRaw(settings, k.Name)
 	if err != nil {
-		logDbg("key %s read error: %s", k.Name, err.Error())
+		var keyNotFoundErr ErrKeyNotFound
+		if !errors.As(err, &keyNotFoundErr) {
+			logDbg("key %s read error: %s", k.Name, err.Error())
+		}
 		return true, vsn, nil
 	}
 	onDiskKey, ok := keyIface.(*kmipStoredKey)
@@ -1569,7 +1575,6 @@ func (k *kmipStoredKey) encryptMe(state *StoredKeysState, ctx *storedKeysCtx) er
 	if k.EncryptedPassphrase != nil {
 		// Seems like it is already encrypted
 		// Checking that we can decrypt it just in case
-		logDbg("Verifying encryption for key \"%s\"", k.Name)
 		decryptedPass, reencryptNeeded, err := decryptKeyData(k, k.EncryptedPassphrase, k.EncryptedByKind, k.EncryptionKeyName, true, state, ctx)
 		if err != nil {
 			return err

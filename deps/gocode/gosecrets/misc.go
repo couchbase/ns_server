@@ -92,7 +92,6 @@ func atomicWriteFile(path string, binary []byte, perm fs.FileMode) (err error) {
 	if err != nil {
 		return err
 	}
-	logDbg("using tmp file %s when writing to %s", tmpfile.Name(), path)
 
 	defer func() {
 		if err != nil {
