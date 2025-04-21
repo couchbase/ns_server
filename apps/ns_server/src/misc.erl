@@ -1150,7 +1150,8 @@ fold_file(Path, Fun, AccInit, ChunkSize) ->
                         {error, Reason, Acc}
                 end
         end,
-    case with_file(Path, [read, binary], F(_, AccInit, read, <<>>)) of
+    case with_file(Path, [read, compressed, binary],
+                   F(_, AccInit, read, <<>>)) of
         {error, OpenFileError} -> {error, OpenFileError, AccInit};
         Other -> Other
     end.

@@ -442,8 +442,26 @@ do_open_file(Path, #file_info{inode = Inode}) ->
 compress(false, _Name, UncompressPth, _Opts) ->
     CompressPth = UncompressPth ++ ".gz",
     compress_file(UncompressPth, CompressPth);
-compress(true, Name, UncompressPth, Opts0) ->
-    CompressPth = UncompressPth ++ ".tmp",
+compress(true, Name, Path, Opts0) ->
+    CompressPth = Path ++ ".tmp",
+
+    %% When re-encrypting and compressing an unencrypted ".gz" file, we need to
+    %% remove the .gz extension to match existing file convention for
+    %% encrypted files
+    RenameFunc =
+        fun(FromPath, ToPath) ->
+            case filename:extension(ToPath) of
+                ".gz" ->
+                    NewToPath = filename:rootname(ToPath),
+                    maybe
+                        ok ?= file:rename(FromPath, NewToPath),
+                        ok ?= file:delete(ToPath)
+                    end;
+                _ ->
+                    file:rename(FromPath, ToPath)
+            end
+        end,
+
     try
         maybe
             %% Note that it is possible that DS is not the same DS that was used
@@ -455,8 +473,8 @@ compress(true, Name, UncompressPth, Opts0) ->
             DS = ale:get_sink_ds(Name),
             Opts = Opts0#{compression => {zlib, 5, none},
                           ignore_incomplete_last_chunk => true},
-            ok ?= ale:reencrypt_file(UncompressPth, CompressPth, DS, Opts),
-            ok ?= file:rename(CompressPth, UncompressPth)
+            ok ?= ale:reencrypt_file(Path, CompressPth, DS, Opts),
+            ok ?= RenameFunc(CompressPth, Path)
         else
             {error, key_not_found} ->
                 %% We don't have a key for this file anymore, so we can't
