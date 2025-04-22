@@ -15,7 +15,7 @@ def load_cbcollect():
 
     spec = spec_from_loader("cbcollect_info",
                             SourceFileLoader("cbcollect_info",
-                                             "cbcollect_info"))
+                                             "../cbcollect_info"))
     if spec:
         cbcollect_info = module_from_spec(spec)
         loader = spec.loader
@@ -464,19 +464,19 @@ class TestTaskSystem(unittest.TestCase):
                     tenth = f.readline()
                     self.assertEqual(divider, tenth)
 
+                    # platforms differ and so do shells, keep a list of valid
+                    # responses in this:
+                    eleventh_expect = [b"/bin/sh: ntpqabcd: command not found\n",
+                                       b"/bin/sh: 1: ntpqabcd: not found\n"]
                     eleventh = f.readline()
-                    if sys.platform == "darwin":
-                        eleventh_expect = b"/bin/sh: ntpqabcd: command not found\n"
-                        self.assertEqual(eleventh_expect, eleventh)
-                    elif sys.platform == "linux":
-                        eleventh_expect = b"/bin/sh: 1: ntpqabcd: not found\n"
-                        self.assertEqual(eleventh_expect, eleventh)
+                    self.assertTrue(eleventh in eleventh_expect)
                     twelfth = f.readline()
-                    self.assertEqual(eleventh_expect, twelfth)
+                    self.assertTrue(twelfth in eleventh_expect)
                     thirteenth = f.readline()
-                    self.assertEqual(eleventh_expect, thirteenth)
+                    self.assertTrue(thirteenth in eleventh_expect)
                     last = f.readline()
                     self.assertEqual(b"", last)
+
             shutil.rmtree(tempdir)
 
     def test_use_shell(self):
@@ -538,17 +538,11 @@ class TestTaskSystem(unittest.TestCase):
                     self.assertEqual(divider, line)
                     line = f.readline()
                     self.assertNotIn(b"Failed", line)
-                    if sys.platform == "darwin":
-                        self.assertEqual(
-                            b'USER               PID  %CPU %MEM      VSZ    RSS   TT  STAT STARTED      TIME COMMAND\n',
-                            line)
-                    elif sys.platform == "linux":
-                        self.assertEqual(
-                            b'USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND\n',
-                            line)
+                    ps_results = [b'USER               PID  %CPU %MEM      VSZ    RSS   TT  STAT STARTED      TIME COMMAND\n',
+                                  b'USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND\n']
+                    self.assertTrue(line in ps_results)
 
-            # shutil.rmtree(tempdir)
-            print(f"Tempdir: {tempdir}")
+            shutil.rmtree(tempdir)
 
     def test_collect_directory(self):
         """
