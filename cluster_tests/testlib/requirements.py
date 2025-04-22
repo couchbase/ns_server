@@ -64,7 +64,7 @@ class ClusterRequirements:
         # List the requirements with mutables last, so that compatible
         # configurations would be adjacent when ordered by string
         requirements = immutable_requirements + mutable_requirements
-        return ','.join([str(req) for req in requirements])
+        return ', '.join([str(req) for req in requirements])
 
     def __repr__(self):
         return str(self)
@@ -296,6 +296,9 @@ class Edition(Requirement):
             self.start_args = {'force_community': False,
                                'run_provisioned': True}
 
+    def __str__(self):
+        return self.edition
+
     def is_met(self, cluster: Cluster):
         if self.edition == "Community":
             return not cluster.is_enterprise and not cluster.is_serverless
@@ -407,6 +410,31 @@ class NumNodes(Requirement):
             {'num_nodes': self.num_connected if self.num_connected is not None
                                              else self.min_num_nodes}
 
+    def __str__(self):
+        def format_num(num1, min_num2):
+            if num1 is not None:
+                return f"{num1}"
+            elif min_num2 is not None:
+                return f"min {min_num2}"
+            else:
+                return ""
+
+        show_connected = False
+        if self.num_connected is not None and \
+           self.num_connected != self.num_nodes and \
+           self.num_connected != self.min_num_nodes:
+            show_connected = True
+        elif self.min_num_connected is not None and \
+             self.min_num_connected != self.min_num_nodes and \
+             self.min_num_connected != self.num_nodes:
+            show_connected = True
+
+        total = format_num(self.num_nodes, self.min_num_nodes)
+        connected = format_num(self.num_connected, self.min_num_connected)
+
+        if show_connected:
+            return f"{total} node(s) ({connected} connected)"
+        return f"{total} node(s)"
 
     def is_met(self, cluster):
         if self.num_nodes is not None and \
@@ -462,6 +490,12 @@ class MemSize(Requirement):
             self.memsize_to_use = min_memsize
         self.connect_args = {'memsize': self.memsize_to_use}
 
+    def __str__(self):
+        if self.memsize is not None:
+            return f"kv quota {self.memsize}MB"
+        else:
+            return f"min kv quota {self.min_memsize}MB"
+
     def is_met(self, cluster):
         memsize = cluster.memory_quota()
         if self.memsize is not None:
@@ -496,6 +530,9 @@ class AFamily(Requirement):
         self.afamily = afamily
         self.connect_args = {"protocol": afamily}
 
+    def __str__(self):
+        return self.afamily
+
     def is_met(self, cluster):
         # The address family is labeled using "inet" in /pools/nodes
         afamily_translate = {
@@ -523,6 +560,15 @@ class Services(Requirement):
         self.deploy = services_to_strings(deploy)
         super().__init__(deploy=self.deploy)
         self.connect_args = {"deploy": self.deploy}
+
+    def __str__(self):
+        if isinstance(self.deploy, list):
+            return "deploy: " + " ".join(self.deploy)
+        else:
+            def format_node(key, value):
+                return f"{key}(" + " ".join(value) + ")"
+            return "deploy: " + " ".join([format_node(key, self.deploy[key])
+                                          for key in self.deploy])
 
     def is_met(self, cluster):
         for i, node in enumerate(sorted(cluster.connected_nodes)):
@@ -583,6 +629,12 @@ class MasterPasswordState(Requirement):
         super().__init__(master_password_state=state)
         self.master_password_state=state
 
+    def __str__(self):
+        if self.master_password_state == 'default':
+            return "master pass not set"
+        else:
+            return f"master pass state: {self.master_password_state}"
+
     def is_met(self, cluster):
         for n in cluster.connected_nodes:
             r = testlib.get(n, "/nodes/self/secretsManagement")
@@ -617,6 +669,9 @@ class NumVbuckets(Requirement):
         self.num_vbuckets = num_vbuckets
         self.start_args = {"num_vbuckets": num_vbuckets}
 
+    def __str__(self):
+        return f'{self.num_vbuckets} vbuckets'
+
     def is_met(self, cluster):
         def get_default_num_vbuckets(bucket_type):
             func = f"ns_bucket:get_default_num_vbuckets({bucket_type})"
@@ -641,6 +696,12 @@ class N2nEncryption(Requirement):
         super().__init__(encryption=encryption)
         self.encryption = encryption
         self.connect_args = {"encryption": encryption}
+
+    def __str__(self):
+        if self.encryption:
+            return "n2n encryption"
+        else:
+            return "no n2n encryption"
 
     def is_met(self, cluster):
         res = get_succ(cluster, "/pools/nodes")
@@ -672,8 +733,15 @@ class Balanced(Requirement):
             # at a later date, if a use-case arises.
             raise ValueError("balanced must be None or True")
         super().__init__(balanced=True)
+        self.balanced = balanced
         self.connect_args = {'do_rebalance': True,
                              'do_wait_for_rebalance': True}
+
+    def __str__(self):
+        if self.balanced:
+            return "balanced"
+        else:
+            return "unbalanced"
 
     def is_met(self, cluster):
         for n in cluster.connected_nodes:
@@ -703,6 +771,17 @@ class Buckets(Requirement):
     def __init__(self, buckets):
         super().__init__(buckets=buckets)
         self.buckets = buckets
+
+    def __str__(self):
+        if len(self.buckets) == 0:
+            return "no buckets"
+        res = []
+        for bucket in self.buckets:
+            bucket_str = " ".join([f"{key}={value}"
+                                    for key, value in bucket.items()
+                                    if key != 'name'])
+            res.append(f"{bucket['name']}({bucket_str})")
+        return "buckets: " + " ".join(res)
 
     @staticmethod
     def check_prop(prop, bucket_info, expected_value):
@@ -762,7 +841,14 @@ class Buckets(Requirement):
 # existing (user supplied) cluster.
 class TestGeneratedCluster(Requirement):
     def __init__(self, tg):
+        self.test_generated_cluster = tg
         super().__init__(test_generated_cluster = tg)
+
+    def __str__(self):
+        if self.test_generated_cluster:
+            return "test generated"
+        else:
+            return "user supplied"
 
     def is_met(self, cluster):
         return not cluster.is_existing_cluster()
@@ -808,6 +894,12 @@ class DevPreview(Requirement):
         super().__init__(dev_preview=enabled)
         self.enabled = enabled
         self.start_args = {'dev_preview_default': enabled}
+
+    def __str__(self):
+        if self.enabled:
+            return "dev preview"
+        else:
+            return "not dev preview"
 
     def is_met(self, cluster):
         # Check developer preview status through pools endpoint

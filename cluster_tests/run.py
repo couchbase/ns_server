@@ -463,7 +463,7 @@ def group_testsets(testsets, reuse_clusters, randomize_clusters,
             for requirements in configurations:
                 different = True
                 iter_str = f'#{k+1}' if k != 0 else ''
-                testset_name = f"{class_name}{iter_str}/{requirements}"
+                testset_name = f"{class_name}{iter_str} / {requirements}"
                 test_list = []
                 for n in test_names:
                     for i in range(0, test_iterations):
