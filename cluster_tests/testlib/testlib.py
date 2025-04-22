@@ -141,6 +141,8 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
                                    [], test_dict['iter'],
                                    verbose=True,
                                    seed=test_seed(test_dict['iter']))
+                if generated is None:
+                    generated = [] # happens when --dry-run is used
                 if err is not None:
                     errors.append(err)
                     break
