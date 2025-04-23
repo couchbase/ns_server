@@ -308,6 +308,11 @@ NS_SERVER_TEST (NAME ns_test_triq TEST_TARGET start_triq EXPLICIT)
 ADD_CUSTOM_TARGET(ns_ui_test COMMAND karma start karma.conf.js --single-run
          WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/priv/public/ui)
 
+# cbcollect_tests
+ADD_CUSTOM_TARGET(ns_cbcollect_tests
+  COMMAND ${PYTHON_EXE} cbcollect_test.py
+  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/pylib)
+
 #
 # Dialyzer targets
 #
