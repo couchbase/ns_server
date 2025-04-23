@@ -2278,7 +2278,8 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
                    ["magma_dump", path, "cbcollect",
                     "--password", "-",
                     "--gosecrets-path", read_guts(guts, "gosecrets_cfg_path"),
-                    "--dump-bucket-keys-path", find_script("dump-bucket-deks")],
+                    "--dump-bucket-keys-path",
+                    find_script(exec_name("dump-bucket-deks"))],
                    to_stdin=f'{{"password": "{master_password}"}}'
                             if master_password is not None
                             else '{"password": ""}',
