@@ -35,7 +35,6 @@ class ClusterRequirements:
             if all(x is None for x in args):
                 return None
             return ReqClass(*args)
-        self.edition = edition
         self.requirements = \
             {
                 'edition': maybe(Edition, edition),
@@ -93,6 +92,10 @@ class ClusterRequirements:
                 # extenal authentication should not be passed by by default.
                 'env': {'BYPASS_SASLAUTHD': None}
         }
+
+    def update(self, new_requirements):
+        for k in new_requirements.requirements:
+            self.requirements[k] = deepcopy(new_requirements.requirements[k])
 
     @staticmethod
     def get_default_connect_args(start_args):

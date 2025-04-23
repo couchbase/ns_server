@@ -646,10 +646,8 @@ def run_testsets(cluster, testsets, total_num, log_collection_regex, seed=None,
         # requirements, while below (after the testset run) we test cluster
         # against global cluster requirements (basically intersection of all
         # requirements in these testset group)
-        reuse, unmet = testlib.try_reuse_cluster(testset['requirements'],
-                                                 cluster)
-
-        if not reuse:
+        unmet = cluster.repair_requirements(testset['requirements'])
+        if len(unmet) > 0:
             unmet_str = ', '.join(str(r) for r in unmet)
             skip_this_testset('Cluster does not satisfy test requirements ' \
                               f'{unmet_str} (probably broken by previous ' \

@@ -52,24 +52,6 @@ class TestError:
         return f'[{self.timestamp.strftime("%H:%M:%S")}] {self.cluster_name} ' \
                f'{self.name}: {self.error}'
 
-def try_reuse_cluster(requirements, cluster):
-    # Attempt to satisfy the requirements with the existing cluster if
-    # possible
-    satisfiable, unsatisfied = requirements.is_satisfiable(cluster)
-    if len(unsatisfied) == 0:
-        return True, []
-    if satisfiable:
-        for requirement in unsatisfied:
-            with no_output("make_met"):
-                print(f'Trying to fix unmet requirement: {requirement}...')
-                requirement.make_met(cluster)
-        # We should not have unmet requirements at this point.
-        # If we do, it is a bug in make_met() or in is_met()
-        if len(unmet:=requirements.get_unmet_requirements(cluster)) > 0:
-            raise RuntimeError(f'Internal error. Unmet requirements: {unmet}')
-        return True, []
-    return False, unsatisfied
-
 
 def get_appropriate_cluster(cluster, auth, requirements,
                             tmp_cluster_dir, reuse_clusters,
@@ -77,8 +59,9 @@ def get_appropriate_cluster(cluster, auth, requirements,
     cluster_index = 0
     if cluster is not None:
         if reuse_clusters:
-            reuse, _ = try_reuse_cluster(requirements, cluster)
-            if reuse:
+            cluster.update_requirements(requirements)
+            unmet = cluster.maybe_repair_cluster_requirements()
+            if len(unmet) == 0:
                 return cluster
 
         # Teardown the old cluster

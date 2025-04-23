@@ -766,14 +766,35 @@ class Cluster:
                             f'the cluster: {self}')
         print("Smog check finished successfully")
 
+    def repair_requirements(self, what_to_repair):
+        # Attempt to satisfy the requirements with the existing cluster if
+        # possible
+        satisfiable, unsatisfied = what_to_repair.is_satisfiable(self)
+        if len(unsatisfied) == 0:
+            return []
+        if satisfiable:
+            for requirement in unsatisfied:
+                with testlib.no_output("make_met"):
+                    print(f'Trying to fix unmet requirement: {requirement}...')
+                    requirement.make_met(self)
+            # We should not have unmet requirements at this point.
+            # If we do, it is a bug in make_met() or in is_met()
+            if len(unmet:=what_to_repair.get_unmet_requirements(self)) > 0:
+                raise RuntimeError('Internal error. Unmet requirements: ' +
+                                   str(unmet))
+            return []
+        return unsatisfied
+
     def maybe_repair_cluster_requirements(self):
         self.smog_check()
         if self.requirements is None:
             return []
         testlib.maybe_print(
             f'Checking cluster requirements: {self.requirements}...')
-        _, still_unmet = testlib.try_reuse_cluster(self.requirements, self)
-        return still_unmet
+        return self.repair_requirements(self.requirements)
+
+    def update_requirements(self, new_requirements):
+        self.requirements.update(new_requirements)
 
     def set_requirements(self, requirements):
         self.requirements = deepcopy(requirements)
