@@ -863,8 +863,16 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                            dek_rotation=1,
                            dek_lifetime=3)
 
-        # Dek should get rotated immediatelly because first dek is 3 sec old
-        # while the rotation interval is 1 sec
+        # Make sure all deks have been rotated
+        poll_verify_dek_files(self.cluster,
+                              dek_path,
+                              verify_id=lambda n: n not in dek_ids2)
+
+        # Disable rotation and check that only one dek will be left eventually
+        set_cfg_encryption(self.random_node(), 'encryptionKey', secret_id,
+                           dek_rotation=60*60*24*30,
+                           dek_lifetime=3)
+
         poll_verify_dek_files(self.cluster,
                               dek_path,
                               verify_key_count=1,
