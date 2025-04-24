@@ -93,6 +93,7 @@
          start_graceful_failover/2,
          request_janitor_run/1,
          get_state/1,
+         enable_fusion/0,
          prepare_fusion_rebalance/1,
          fusion_upload_mounted_volumes/2]).
 
@@ -339,6 +340,10 @@ try_autofailover(Nodes, Options) ->
         Other ->
             Other
     end.
+
+-spec enable_fusion() -> ok | busy() | fusion_uploaders:enable_error().
+enable_fusion() ->
+    call(enable_fusion, infinity).
 
 -spec prepare_fusion_rebalance([node()]) ->
           {ok, term()} | busy() |
@@ -1138,6 +1143,15 @@ idle({ensure_janitor_run, Item}, From, State) ->
       fun (Reason) ->
               gen_statem:reply(From, Reason)
       end, idle, State);
+
+idle(enable_fusion, From, _State) ->
+    RV = case fusion_uploaders:enable() of
+             {ok, _} ->
+                 ok;
+             {error, Error} ->
+                 Error
+         end,
+    {keep_state_and_data, [{reply, From, RV}]};
 
 idle({prepare_fusion_rebalance, KeepNodes}, From, _State) ->
     RV =

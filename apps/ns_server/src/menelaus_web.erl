@@ -1036,6 +1036,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["controller", "forceEncryptionAtRest", Type] ->
                     {{[admin, security], write},
                      fun menelaus_web_encr_at_rest:handle_force_encr/2, [Type]};
+                ["fusion", "enable"] ->
+                    {{[admin, fusion], write},
+                     fun menelaus_web_fusion:handle_enable/1};
                 ["pools", "default", "buckets", Id] ->
                     {{[{bucket, Id}, settings], write},
                      fun menelaus_web_buckets:handle_bucket_update/3,

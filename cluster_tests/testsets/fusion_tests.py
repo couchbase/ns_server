@@ -151,6 +151,7 @@ class FusionTests(testlib.BaseTestSet):
             assert node in volumes
 
     def initial_configuration_test(self):
+        testlib.post_fail(self.cluster, '/fusion/enable', expected_code=503)
         self.assert_state('disabled')
         testlib.get_fail(self.cluster, '/settings/fusion', expected_code=404)
         testlib.post_fail(self.cluster, '/settings/fusion', expected_code=400,
@@ -182,6 +183,11 @@ class FusionTests(testlib.BaseTestSet):
                           'enableSyncThresholdMB': 5000}
 
         self.assert_state('disabled')
+
+        testlib.post_succ(self.cluster, '/fusion/enable')
+        self.assert_state('enabling')
+
+        testlib.post_fail(self.cluster, '/fusion/enable', expected_code=503)
 
 def assert_json_error(json, field, prefix):
     assert isinstance(json, dict)

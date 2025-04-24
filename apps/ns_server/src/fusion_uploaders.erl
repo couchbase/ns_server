@@ -25,7 +25,8 @@
          fail_nodes/2,
          get_config/0,
          get_status/0,
-         update_config/1]).
+         update_config/1,
+         enable/0]).
 
 %% incremented starting from 1 with each uploader change
 %% The purpose of Term is to help
@@ -39,8 +40,9 @@
 -type fast_forward_info() :: {moves(), uploaders()}.
 -type state() ::
         disabled | disabling | enabled | enabling | stopped | stopping.
+-type enable_error() :: not_initialized | {wrong_state, state(), [state()]}.
 
--export_type([fast_forward_info/0, uploaders/0]).
+-export_type([fast_forward_info/0, uploaders/0, enable_error/0]).
 
 -spec build_fast_forward_info(bucket_name(), proplists:proplist(),
                               vbucket_map(), vbucket_map()) ->
@@ -187,17 +189,12 @@ get_config() ->
             not_found
     end.
 
-get_config_with_default() ->
-    case get_config() of
-        not_found ->
-            default_config();
-        Config ->
-            Config
-    end.
+get_config_with_default(Source) ->
+    chronicle_compat:get(Source, config_key(), #{default => default_config()}).
 
 -spec get_status() -> [{state, state()}].
 get_status() ->
-    [{state, proplists:get_value(state, get_config_with_default())}].
+    [{state, proplists:get_value(state, get_config_with_default(direct))}].
 
 -spec update_config(proplists:proplist()) ->
           {ok, chronicle:revision()} | log_store_uri_locked.
@@ -205,13 +202,7 @@ update_config(Params) ->
     chronicle_kv:transaction(
       kv, [config_key()],
       fun (Snapshot) ->
-              Config =
-                  case maps:find(config_key(), Snapshot) of
-                      error ->
-                          default_config();
-                      {ok, {V, _R}} ->
-                          V
-                  end,
+              Config = get_config_with_default(Snapshot),
               URI = proplists:get_value(log_store_uri, Params),
               case proplists:get_bool(log_store_uri_locked, Config) andalso
                   URI =/= undefined andalso
@@ -221,5 +212,28 @@ update_config(Params) ->
                   false ->
                       {commit, [{set, config_key(),
                                  misc:update_proplist(Config, Params)}]}
+              end
+      end).
+
+-spec enable() -> {ok, chronicle:revision()} | {error, enable_error()}.
+enable() ->
+    chronicle_kv:transaction(
+      kv, [config_key()],
+      fun (Snapshot) ->
+              try
+                  Config = get_config_with_default(Snapshot),
+                  proplists:get_value(log_store_uri,
+                                      Config) =/= undefined orelse
+                      throw(not_initialized),
+                  State = proplists:get_value(state, Config),
+                  (State == disabled) orelse (State == stopped) orelse
+                      throw({wrong_state, State, [disabled, stopped]}),
+                  {commit, [{set, config_key(),
+                             misc:update_proplist(
+                               Config, [{state, enabling},
+                                        {log_store_uri_locked, true}])}]}
+              catch
+                  throw:Error ->
+                      {abort, {error, Error}}
               end
       end).

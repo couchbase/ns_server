@@ -74,6 +74,7 @@
          assert_profile_flag/2,
          assert_is_76/0,
          assert_is_79/0,
+         assert_is_totoro/0,
          assert_config_profile_flag/1,
          assert_not_config_profile_flag/1,
          choose_node_consistently/2,
@@ -767,6 +768,9 @@ assert_is_76() ->
 
 assert_is_79() ->
     assert_cluster_version(fun cluster_compat_mode:is_cluster_79/0).
+
+assert_is_totoro() ->
+    assert_cluster_version(fun cluster_compat_mode:is_cluster_totoro/0).
 
 assert_cluster_version(Fun) ->
     assert(

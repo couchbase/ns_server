@@ -18,6 +18,7 @@
 -export([handle_get_settings/1,
          handle_post_settings/1,
          handle_get_status/1,
+         handle_enable/1,
          handle_prepare_rebalance/1,
          handle_upload_mounted_volumes/1,
          handle_get_active_guest_volumes/1,
@@ -64,6 +65,25 @@ handle_get_status(Req) ->
     menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_79(),
     menelaus_util:reply_json(Req, {fusion_uploaders:get_status()}, 200).
+
+handle_enable(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:assert_is_totoro(),
+    %% do it in orchestrator to prevent fusion state changes during
+    %% rebalances
+    case ns_orchestrator:enable_fusion() of
+        ok ->
+            menelaus_util:reply_json(Req, [], 200);
+        {wrong_state, State, States} ->
+            menelaus_util:reply_text(
+              Req, io_lib:format(
+                     "Fusion should be in one of the following states: ~p"
+                     " Current state: ~p", [States, State]), 503);
+        not_initialized ->
+            menelaus_util:reply_text(Req, "Fusion should be initialized", 503);
+        Other ->
+            reply_other(Req, "enable fusion", Other)
+    end.
 
 -define(JANITOR_TIMEOUT, ?get_timeout(sync_log_store_janitor, 5000)).
 -define(SYNC_TIMEOUT, ?get_timeout(sync_log_store_chronicle_sync, 60000)).
