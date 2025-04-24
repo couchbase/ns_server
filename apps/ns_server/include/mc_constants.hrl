@@ -241,6 +241,7 @@
 -define(DCP_ABORT,                 16#63).
 -define(DCP_SEQNO_ADVANCED,        16#64).
 -define(DCP_OSO_SNAPSHOT,          16#65).
+-define(DCP_CACHED_VALUE,          16#66).
 
 %% Snapshot commands (For file based rebalance)
 -define(PREPARE_SNAPSHOT, 16#e0).
