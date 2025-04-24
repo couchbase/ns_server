@@ -174,8 +174,8 @@ class MnSecuritySecretsService {
   mapTypeToReEncryptNames(type) {
     switch (type) {
       case "config": return "rotate & re-encrypt now";
-      case "log": return "rotate now";
-      case "audit": return "rotate now";
+      case "log": return "rotate & re-encrypt now";
+      case "audit": return "rotate & re-encrypt now";
       default: return type;
     }
   }
@@ -183,8 +183,8 @@ class MnSecuritySecretsService {
   mapTypeToReEncryptDetailsNames(type) {
     switch (type) {
       case "config": return "Rotate DEKs & Re-encrypt";
-      case "log": return "Rotate DEKs";
-      case "audit": return "Rotate DEKs";
+      case "log": return  "Rotate DEKs & Re-encrypt";
+      case "audit": return "Rotate DEKs & Re-encrypt";
       case "bucket": return "Rotate DEKs & Re-encrypt";
       default: return type;
     }
@@ -193,8 +193,8 @@ class MnSecuritySecretsService {
   mapTypeToReEncryptActionNames(type) {
     switch (type) {
       case "config": return "Rotate DEKs & Re-encrypt";
-      case "log": return "Rotate DEKs for";
-      case "audit": return "Rotate DEKs for";
+      case "log": return "Rotate DEKs & Re-encrypt";
+      case "audit": return "Rotate DEKs & Re-encrypt";
       case "bucket": return "Rotate DEKs & Re-encrypt";
       default: return type;
     }
@@ -203,8 +203,8 @@ class MnSecuritySecretsService {
   mapTypeToReEncryptActionNouns(type) {
     switch (type) {
       case "config": return "DEKs rotation & Re-encryption";
-      case "log": return "DEKs Rotation";
-      case "audit": return "DEKs Rotation";
+      case "log": return "DEKs rotation & Re-encryption";
+      case "audit": return "DEKs rotation & Re-encryption";
       default: return type;
     }
   }
