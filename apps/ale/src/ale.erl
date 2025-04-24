@@ -69,7 +69,8 @@
 -record(state, {compile_frozen = false :: boolean(),
                 sinks                  :: dict:dict(),
                 loggers                :: dict:dict(),
-                historical_deks        :: dict:dict()}).
+                historical_deks        :: dict:dict(),
+                drop_deks_ref          :: undefined | {pid(), reference()}}).
 
 -record(logger, {name      :: atom(),
                  loglevel  :: loglevel(),
@@ -204,6 +205,25 @@ do_set_log_deks_snapshot(LogsDS, State) ->
             {error, Failures}
     end.
 
+try_drop_deks_work(Work, From, #state{drop_deks_ref = undefined} = State) ->
+    {Pid, Ref} =
+        proc_lib:spawn_opt(
+            fun() ->
+                try Work() of
+                    Res ->
+                        gen_server:reply(From, Res)
+                    catch
+                        C:E:ST ->
+                            ale:error(?ALE_LOGGER, "DropDeks process failed",
+                                      [C,E,ST]),
+                            gen_server:reply(From, {error, {C, E}})
+                end
+            end, [link, monitor]),
+    State#state{drop_deks_ref = {Pid, Ref}};
+try_drop_deks_work(_Work, From, State) ->
+    gen_server:reply(From, {error, retry}),
+    State.
+
 do_drop_log_deks(DekIdsToDrop, WorkSzThresh, From, State) ->
     EncryptableSinks = get_encryptable_sink_names(State),
 
@@ -251,14 +271,13 @@ do_drop_log_deks(DekIdsToDrop, WorkSzThresh, From, State) ->
                 Errors = [Result || {_Sink, R} = Result <- RVs, R =/= ok],
                 case Errors of
                     [] ->
-                        gen_server:reply(From, ok);
+                        ok;
                     _ ->
-                        gen_server:reply(From, {error, Errors})
+                        {error, Errors}
                 end
         end,
 
-    proc_lib:spawn_link(Work),
-    ok.
+    try_drop_deks_work(Work, From, State).
 
 do_get_all_used_deks(State) ->
     EncryptableSinks = get_encryptable_sink_names(State),
@@ -505,7 +524,8 @@ log(#{level:=Level, msg:=Msg, meta:=Meta}, #{id:=Logger}) ->
 init([]) ->
     State = #state{sinks=dict:new(),
                    loggers=dict:new(),
-                   historical_deks=dict:new()},
+                   historical_deks=dict:new(),
+                   drop_deks_ref=undefined},
 
     {ok, State1} = do_start_logger(?ERROR_LOGGER, ?DEFAULT_LOGLEVEL,
                                    ?DEFAULT_FORMATTER, State),
@@ -625,8 +645,8 @@ handle_call({set_log_deks_snapshot, LogDS}, _From, State) ->
     {reply, do_set_log_deks_snapshot(LogDS, State), State};
 
 handle_call({drop_log_deks, DekIdsToDrop, WorkSzThresh}, From, State) ->
-    do_drop_log_deks(DekIdsToDrop, WorkSzThresh, From, State),
-    {noreply, State};
+    NewState = do_drop_log_deks(DekIdsToDrop, WorkSzThresh, From, State),
+    {noreply, NewState};
 
 handle_call(get_all_used_deks, _From, State) ->
     {reply, do_get_all_used_deks(State), State};
@@ -660,6 +680,9 @@ handle_cast({removing_handler, Logger}, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+handle_info({'DOWN', Ref, process, Pid, _Reason},
+            #state{drop_deks_ref = {Pid, Ref}} = State) ->
+    {noreply, State#state{drop_deks_ref = undefined}};
 handle_info(_Info, State) ->
     {noreply, State}.
 
