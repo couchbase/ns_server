@@ -11,6 +11,8 @@ import collections
 import itertools
 import random
 import testlib
+from testlib.test_tag_decorator import tag, Tag
+
 
 class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
     def __init__(self, cluster):
@@ -583,6 +585,7 @@ class OnPremAutoFailoverSettingsTest(AutoFailoverSettingsTestBase):
     def requirements():
         return testlib.ClusterRequirements(edition="Enterprise")
 
+    @tag(Tag.LowUrgency)
     def server_test(self):
         self.run_combinations()
         if self.is_76 and self.is_enterprise:
@@ -593,6 +596,7 @@ class ServerlessAutoFailoverSettingsTest(AutoFailoverSettingsTestBase):
     def requirements():
         return testlib.ClusterRequirements(edition="Serverless")
 
+    @tag(Tag.LowUrgency)
     def server_test(self):
         self.run_combinations()
         if self.is_76 and self.is_enterprise:

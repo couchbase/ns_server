@@ -5,7 +5,9 @@ from typing import Union
 # TODO: Once we've upgraded to python 3.11 we can use StrEnum, so that the value
 # is auto computed
 class Tag(Enum):
-    pass
+    # Indicates that a test doesn't need to be run on every patchset in CV, so
+    # it may get left for a post-commit job
+    LowUrgency = "LowUrgency"
 
 
 def tag_from_str(tag_str: str) -> Union[Tag, str]:
@@ -16,7 +18,10 @@ def tag_from_str(tag_str: str) -> Union[Tag, str]:
     :param tag_str: A string which may or may not match an instance of Tag
     :return: Either the Tag enum, or the original string
     """
-    return tag_str
+    tag_enum = Tag(tag_str)
+    if tag_enum is None:
+        raise ValueError(f"{tag_str} is not a tag")
+    return tag_enum
 
 
 def tag(tag_enum: Tag):

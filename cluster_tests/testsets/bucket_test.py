@@ -14,6 +14,7 @@ import traceback
 
 import testlib
 from testlib.util import Service
+from testlib.test_tag_decorator import tag, Tag
 
 """
 How to add a new test for a new parameter, param:
@@ -1863,6 +1864,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[False],
                         is_creation=[False])
 
+    @tag(Tag.LowUrgency)
     def bucket_type_test(self):
         self.test_param("bucketType",
                         bucket_type=["membase", "couchbase", "ephemeral", None],
@@ -1875,6 +1877,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True])
 
+    @tag(Tag.LowUrgency)
     def ram_quota_test(self):
         self.test_param("ramQuota",
                         bucket_type=["couchbase"],
@@ -1899,6 +1902,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True])
 
+    @tag(Tag.LowUrgency)
     def eviction_policy_test(self):
         self.test_param("evictionPolicy",
                         bucket_type=["couchbase", "ephemeral"],
@@ -1911,6 +1915,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True, False])
 
+    @tag(Tag.LowUrgency)
     def dura_min_level_test(self):
         self.test_param("durabilityMinLevel",
                         bucket_type=["couchbase", "ephemeral"],
@@ -1923,6 +1928,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                         just_validate=[True, False],
                         is_creation=[True, False])
 
+    @tag(Tag.LowUrgency)
     def threads_number_test(self):
         self.test_param("threadsNumber",
                         bucket_type=["couchbase"],
@@ -2053,6 +2059,7 @@ class ServerlessBucketTestSet(BucketTestSetBase):
                                            buckets=[],
                                            num_vbuckets=16)
 
+    @tag(Tag.LowUrgency)
     def bucket_placer_test(self):
         main_params = {
             "bucket_type": ["couchbase"],
@@ -2068,6 +2075,7 @@ class ServerlessBucketTestSet(BucketTestSetBase):
         self.test_param("width", **main_params)
         self.test_param("weight", **main_params)
 
+    @tag(Tag.LowUrgency)
     def magma_max_shards_test(self):
         self.test_param("magmaMaxShards",
                         bucket_type=["couchbase"],
@@ -2116,6 +2124,7 @@ class MultiNodeBucketTestSet(BucketTestSetBase):
     #                     just_validate=[True, False],
     #                     is_creation=[True, False])
 
+    @tag(Tag.LowUrgency)
     def dura_min_level_test(self):
 
         self.test_param("durabilityMinLevel",

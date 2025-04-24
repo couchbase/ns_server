@@ -17,6 +17,8 @@ import base64
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 import dateutil
+
+from testlib.test_tag_decorator import tag, Tag
 from testsets.secret_management_tests import change_password, post_es_config
 from testlib.requirements import Service
 import time
@@ -197,6 +199,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         delete_secret(self.random_node(), secret_id)
         verify_kek_files(self.cluster, secret, verify_missing=True)
 
+    @tag(Tag.LowUrgency)
     def bucket_with_encryption_test(self):
         secret1_json = cb_managed_secret(name='Test Secret 1')
         secret2_json = cb_managed_secret(name='Test Secret 2')
@@ -1158,6 +1161,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         verify_dek_files(self.cluster, Path() / 'config' / 'logs_deks',
                          verify_key_count=lambda n: n <= 2)
 
+    @tag(Tag.LowUrgency)
     def all_bucket_dek_limit_test(self):
         self.bucket_dek_limit_test_base(all_bucket_dek_limit=2)
 
@@ -1244,6 +1248,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
             lambda: delete_secret(self.random_node(), prev_secret_id),
             sleep_time=1, attempts=50, retry_on_assert=True, verbose=True)
 
+    @tag(Tag.LowUrgency)
     def node_readd_test(self):
         node_to_remove, secret_id = \
             self.prepare_cluster_for_node_readd_testing()
@@ -1288,6 +1293,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Rebalance to complete node addition
         self.cluster.rebalance(wait=True, verbose=True)
 
+    @tag(Tag.LowUrgency)
     def node_readd_node_after_failover_test(self):
         node_to_failover, secret_id = \
             self.prepare_cluster_for_node_readd_testing()
@@ -1319,6 +1325,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                               verbose=True)
         self.cluster.rebalance(wait=True, verbose=True)
 
+    @tag(Tag.LowUrgency)
     def restart_cluster_with_bad_secret_test(self):
         # When unavailable KEK is used for cfg encryption, cluster will
         # fail to start, but if that KEK hasn't been used yet, the cluster
@@ -1393,7 +1400,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         e = errors['errors']['encryptionAtRestKeyId']
         testlib.assert_in(cant_encrypt_err, e)
 
-
+    @tag(Tag.LowUrgency)
     def add_node_when_kek_is_unavailable_test(self):
         bad_secret = aws_test_secret(usage=['config-encryption'],
                                      should_work=False)
@@ -1436,9 +1443,11 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Rebalance to complete node addition
         self.cluster.rebalance(wait=True, verbose=True)
 
+    @tag(Tag.LowUrgency)
     def node_failover_and_add_back_delta_test(self):
         self.node_failover_and_add_back_base(recovery_type="delta")
 
+    @tag(Tag.LowUrgency)
     def node_failover_and_add_back_full_test(self):
         self.node_failover_and_add_back_base(recovery_type="full")
 
@@ -1476,7 +1485,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         self.cluster.rebalance(wait=True, verbose=True)
 
-
+    @tag(Tag.LowUrgency)
     def drop_deks_test(self):
         self.load_and_assert_sample_bucket(self.cluster, self.sample_bucket)
         bucket_uuid = self.cluster.get_bucket_uuid(self.sample_bucket)
@@ -1531,6 +1540,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                         min_time=drop_time,
                                         old_dek_ids=new_dek_ids)
 
+    @tag(Tag.LowUrgency)
     def force_bucket_encryption_test(self):
         self.load_and_assert_sample_bucket(self.cluster, self.sample_bucket)
         for node in kv_nodes(self.cluster):
@@ -1751,6 +1761,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                 (min_dek_rotation + 1, 0, False),
                ]
 
+    @tag(Tag.LowUrgency)
     def bucket_dek_bad_settings_validation_test(self):
         # Currently we expect dek lifetime to be at least 5 minutes more
         # than the rotation interval
@@ -1836,6 +1847,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
             set_ns_config_value(node, 'test_bypass_encr_cfg_restrictions',
                                 'true')
 
+    @tag(Tag.LowUrgency)
     def bucket_dir_migration_test(self):
         # Since bucket name is considered PII, we should stop using bucket
         # name as bucket dir name in morpheus
@@ -1922,24 +1934,28 @@ class NativeEncryptionNodeRestartTests(testlib.BaseTestSet):
         set_cfg_encryption(self.cluster, 'nodeSecretManager', -1)
         change_password(self.node(), password='')
 
+    @tag(Tag.LowUrgency)
     def encryption_on_with_master_password_set_test(self):
         set_log_encryption(self.cluster, 'nodeSecretManager', -1)
         set_cfg_encryption(self.cluster, 'nodeSecretManager', -1)
         password = change_password(self.node())
         self.cluster.restart_all_nodes(master_passwords={0: password})
 
+    @tag(Tag.LowUrgency)
     def encryption_on_master_password_is_not_set_test(self):
         set_log_encryption(self.cluster, 'nodeSecretManager', -1)
         set_cfg_encryption(self.cluster, 'nodeSecretManager', -1)
         change_password(self.node(), password='')
         self.cluster.restart_all_nodes()
 
+    @tag(Tag.LowUrgency)
     def encryption_off_master_password_is_set_test(self):
         set_log_encryption(self.cluster, 'disabled', -1)
         set_cfg_encryption(self.cluster, 'disabled', -1)
         password = change_password(self.node())
         self.cluster.restart_all_nodes(master_passwords={0: password})
 
+    @tag(Tag.LowUrgency)
     def encryption_off_master_password_is_not_set_test(self):
         set_log_encryption(self.cluster, 'disabled', -1)
         set_cfg_encryption(self.cluster, 'disabled', -1)

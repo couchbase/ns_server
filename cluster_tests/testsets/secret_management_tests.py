@@ -21,6 +21,8 @@ import signal
 import subprocess
 import random
 
+from testlib.test_tag_decorator import tag, Tag
+
 resourcedir = os.path.join(testlib.get_resources_dir(), "secrets_management")
 
 
@@ -211,6 +213,7 @@ class SecretManagementTests(testlib.BaseTestSet):
             ensure_removed(tmpFile)
             ensure_removed(seedFile)
 
+    @tag(Tag.LowUrgency)
     def recover_during_set_config_test(self):
         smcmd = os.path.join(resourcedir, "secretmngmt.py")
         tmpFile = os.path.join(resourcedir, "secret.tmp")

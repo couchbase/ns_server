@@ -19,6 +19,7 @@ import cluster_run_lib
 import atexit
 import testlib
 import testlib.requirements
+from testlib.test_tag_decorator import tag, Tag
 from testsets.sample_buckets import SampleBucketTasksBase
 
 import run
@@ -264,6 +265,7 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
 
             cluster_run_lib.base_api_port += REMAP_OFFSET
 
+    @tag(Tag.LowUrgency)
     def basic_remap_test(self):
         # Grab some old values from the cluster to compare before against the
         # remapped cluster

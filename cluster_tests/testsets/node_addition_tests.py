@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from subprocess import Popen
+
+from testlib.test_tag_decorator import tag, Tag
 from testlib.util import Service
 import testlib
 import os
@@ -77,15 +79,19 @@ class NodeAdditionTests(testlib.BaseTestSet):
         # Verify all nodes, including the new node, have the correct n2n setting
         assert_n2n(self.cluster, enable)
 
+    @tag(Tag.LowUrgency)
     def n2n_off_addnode_test(self):
         self.n2n_test_base(self.cluster.add_node, False)
 
+    @tag(Tag.LowUrgency)
     def n2n_on_addnode_test(self):
         self.n2n_test_base(self.cluster.add_node, True)
 
+    @tag(Tag.LowUrgency)
     def n2n_off_joinself_test(self):
         self.n2n_test_base(self.cluster.do_join_cluster, False)
 
+    @tag(Tag.LowUrgency)
     def n2n_on_joinself_test(self):
         self.n2n_test_base(self.cluster.do_join_cluster, True)
 
@@ -177,6 +183,7 @@ class NodeAdditionWithCertsBase:
         load_ca(self.new_node(), self.cluster_ca)
         self.cluster.add_node(self.new_node()).json()
 
+    @tag(Tag.LowUrgency)
     def add_trusted_node_to_untrusted_cluster_test(self):
         self.provision_cluster_node()
         self.provision_new_node()
@@ -190,6 +197,7 @@ class NodeAdditionWithCertsBase:
         else:
             self.cluster.add_node(self.new_node())
 
+    @tag(Tag.LowUrgency)
     def add_untrusted_node_to_trusted_cluster_test(self):
         self.provision_cluster_node()
         self.provision_new_node()
@@ -197,6 +205,7 @@ class NodeAdditionWithCertsBase:
         r = self.cluster.add_node(self.new_node(), expected_code=400).json()
         self.assert_cluster_unknown_ca_error(r)
 
+    @tag(Tag.LowUrgency)
     def add_untrusted_node_to_untrusted_cluster_test(self):
         self.provision_cluster_node()
         self.provision_new_node()
@@ -205,12 +214,14 @@ class NodeAdditionWithCertsBase:
 
     # Cluster node uses ootb certs, new node uses custom certs:
 
+    @tag(Tag.LowUrgency)
     def add_trusted_node_to_trusted_ootb_cluster_test(self):
         load_ca(self.new_node(), self.cluster_ootb_ca())
         load_ca(self.cluster_node(), self.new_node_ca)
         self.provision_new_node()
         self.cluster.add_node(self.new_node())
 
+    @tag(Tag.LowUrgency)
     def add_trusted_node_to_untrusted_ootb_cluster_test(self):
         load_ca(self.cluster_node(), self.new_node_ca)
         self.provision_new_node()
@@ -223,6 +234,7 @@ class NodeAdditionWithCertsBase:
         else:
             self.cluster.add_node(self.new_node())
 
+    @tag(Tag.LowUrgency)
     def add_untrusted_node_to_trusted_ootb_cluster_test(self):
         load_ca(self.new_node(), self.cluster_ootb_ca())
         self.provision_new_node()
@@ -231,6 +243,7 @@ class NodeAdditionWithCertsBase:
         r = self.cluster.add_node(self.new_node(), expected_code=400).json()
         self.assert_new_node_untrusted_error(r)
 
+    @tag(Tag.LowUrgency)
     def add_untrusted_node_to_untrusted_ootb_cluster_test(self):
         self.provision_new_node()
         r = self.cluster.add_node(self.new_node(), expected_code=400).json()
@@ -245,6 +258,7 @@ class NodeAdditionWithCertsBase:
 
     # The node addition will fail as the node being added has disabled
     # client cert authentication
+    @tag(Tag.LowUrgency)
     def add_trusted_node_to_trusted_cluster_client_cert_disabled_test_notyet(self):
         self.provision_cluster_node()
         self.provision_new_node()
@@ -290,6 +304,7 @@ class NodeAdditionWithCertsBase:
 
     # Cluster node uses custom certs, new node uses ootb certs:
 
+    @tag(Tag.LowUrgency)
     def add_trusted_ootb_node_to_trusted_cluster_test(self):
         [ca_id] = load_ca(self.cluster_node(),
                           self.new_node_ootb_ca())
@@ -301,6 +316,7 @@ class NodeAdditionWithCertsBase:
         # node addition in this case)
         testlib.delete(self.cluster, f'/pools/default/trustedCAs/{ca_id}')
 
+    @tag(Tag.LowUrgency)
     def add_trusted_ootb_node_to_untrusted_cluster_test(self):
         [ca_id] = load_ca(self.cluster_node(),
                           self.new_node_ootb_ca())
@@ -320,12 +336,14 @@ class NodeAdditionWithCertsBase:
             # during node addition in this case)
             testlib.delete(self.cluster, f'/pools/default/trustedCAs/{ca_id}')
 
+    @tag(Tag.LowUrgency)
     def add_untrusted_ootb_node_to_trusted_cluster_test(self):
         load_ca(self.new_node(), self.cluster_ca)
         self.provision_cluster_node()
         r = self.cluster.add_node(self.new_node(), expected_code=400).json()
         self.assert_cluster_unknown_ca_error(r)
 
+    @tag(Tag.LowUrgency)
     def add_untrusted_ootb_node_to_untrusted_cluster_test(self):
         self.provision_cluster_node()
         r = self.cluster.add_node(self.new_node(), expected_code=400).json()
@@ -335,6 +353,7 @@ class NodeAdditionWithCertsBase:
 
     # Both nodes use custom certs:
 
+    @tag(Tag.LowUrgency)
     def trusted_node_joins_trusted_cluster_test(self):
         load_ca(self.cluster_node(), self.new_node_ca)
         load_ca(self.new_node(), self.cluster_ca)
@@ -342,6 +361,7 @@ class NodeAdditionWithCertsBase:
         self.provision_new_node()
         self.cluster.do_join_cluster(self.new_node())
 
+    @tag(Tag.LowUrgency)
     def untrusted_node_joins_trusted_cluster_test(self):
         load_ca(self.new_node(), self.cluster_ca)
         self.provision_cluster_node()
@@ -350,6 +370,7 @@ class NodeAdditionWithCertsBase:
                                          expected_code=400).json()
         self.assert_cluster_unknown_ca_error(r)
 
+    @tag(Tag.LowUrgency)
     def trusted_node_joins_untrusted_cluster_test(self):
         load_ca(self.cluster_node(), self.new_node_ca)
         self.provision_cluster_node()
@@ -358,6 +379,7 @@ class NodeAdditionWithCertsBase:
                                          expected_code=400).json()
         self.assert_new_node_unknown_ca_error(r)
 
+    @tag(Tag.LowUrgency)
     def untrusted_node_joins_untrusted_cluster_test(self):
         self.provision_cluster_node()
         self.provision_new_node()
@@ -367,6 +389,7 @@ class NodeAdditionWithCertsBase:
 
     # Cluster node uses custom certs, new node uses ootb certs:
 
+    @tag(Tag.LowUrgency)
     def trusted_ootb_node_joins_trusted_cluster_test(self):
         [ca_id] = load_ca(self.cluster_node(),
                           self.new_node_ootb_ca())
@@ -375,6 +398,7 @@ class NodeAdditionWithCertsBase:
         self.cluster.do_join_cluster(self.new_node())
         testlib.delete(self.cluster, f'/pools/default/trustedCAs/{ca_id}')
 
+    @tag(Tag.LowUrgency)
     def untrusted_ootb_node_joins_trusted_cluster_test(self):
         load_ca(self.new_node(), self.cluster_ca)
         self.provision_cluster_node()
@@ -382,6 +406,7 @@ class NodeAdditionWithCertsBase:
                                          expected_code=400).json()
         self.assert_cluster_unknown_ca_error(r)
 
+    @tag(Tag.LowUrgency)
     def trusted_ootb_node_joins_untrusted_cluster_test(self):
         [ca_id] = load_ca(self.cluster_node(),
                           self.new_node_ootb_ca())
@@ -400,6 +425,7 @@ class NodeAdditionWithCertsBase:
             self.cluster.do_join_cluster(self.new_node())
             testlib.delete(self.cluster, f'/pools/default/trustedCAs/{ca_id}')
 
+    @tag(Tag.LowUrgency)
     def untrusted_ootb_node_joins_untrusted_cluster_test(self):
         self.provision_cluster_node()
         r = self.cluster.do_join_cluster(self.new_node(),
@@ -410,12 +436,14 @@ class NodeAdditionWithCertsBase:
 
     # Cluster node uses ootb certs, new node uses custom certs:
 
+    @tag(Tag.LowUrgency)
     def trusted_node_joins_trusted_ootb_cluster_test(self):
         load_ca(self.new_node(), self.cluster_ootb_ca())
         load_ca(self.cluster_node(), self.new_node_ca)
         self.provision_new_node()
         self.cluster.do_join_cluster(self.new_node())
 
+    @tag(Tag.LowUrgency)
     def untrusted_node_joins_trusted_ootb_cluster_test(self):
         load_ca(self.new_node(), self.cluster_ootb_ca())
         self.provision_new_node()
@@ -425,6 +453,7 @@ class NodeAdditionWithCertsBase:
         # validate its certificates when doing engageCluster
         self.assert_new_node_untrusted_error(r)
 
+    @tag(Tag.LowUrgency)
     def trusted_node_joins_untrusted_ootb_cluster_test(self):
         load_ca(self.cluster_node(), self.new_node_ca)
         self.provision_new_node()
@@ -432,6 +461,7 @@ class NodeAdditionWithCertsBase:
                                          expected_code=400).json()
         self.assert_new_node_unknown_ca_error(r)
 
+    @tag(Tag.LowUrgency)
     def untrusted_node_joins_untrusted_ootb_cluster_test(self):
         self.provision_new_node()
         r = self.cluster.do_join_cluster(self.new_node(),
@@ -443,6 +473,7 @@ class NodeAdditionWithCertsBase:
     # New node and cluster both have client cert auth set to mandatory.
     # Also both use custom client certificates.
     # Note: using join for succ case also covers the add_node scenario
+    @tag(Tag.LowUrgency)
     def client_cert_auth_everywhere_test(self):
         self.provision_cluster_node(should_load_client_cert=True)
         self.provision_new_node(should_load_client_cert=True)
@@ -461,6 +492,7 @@ class NodeAdditionWithCertsBase:
     # certs uploaded (so it can get authenticated at the cluster node).
     # Also both use custom client certificates.
     # Note: using join for succ case also covers the add_node scenario
+    @tag(Tag.LowUrgency)
     def client_cert_auth_on_cluster_only_test(self):
         self.provision_cluster_node(should_load_client_cert=True)
         self.provision_new_node(should_load_client_cert=True)
@@ -475,6 +507,7 @@ class NodeAdditionWithCertsBase:
     # cert uploaded (uses ootb client certs).
     # The-node-to-be-added doesn't allow client cert auth, and doesn't have
     # client certs uploaded (uses ootb client certs).
+    @tag(Tag.LowUrgency)
     def client_cert_auth_ootb_client_certs_on_cluster_via_add_test(self):
         self.provision_cluster_node(should_load_client_cert=False)
         self.provision_new_node(should_load_client_cert=False)
@@ -491,6 +524,7 @@ class NodeAdditionWithCertsBase:
     # Since this node uses "join", the cluster node has to trust new-node's
     # ootb CA. Otherwise new-node won't be able to authenticat at
     # the cluster node
+    @tag(Tag.LowUrgency)
     def client_cert_auth_ootb_client_certs_on_cluster_via_join_test(self):
         [ca_id] = load_ca(self.cluster_node(),
                           self.new_node_ootb_ca())
@@ -509,6 +543,7 @@ class NodeAdditionWithCertsBase:
     # specifies clientCertAuth=true when joining the cluster. Ensure the
     # appropriate error is returned. Also ensure an appropriate error if
     # clientCertAuth=false but an invalid username/password is specified.
+    @tag(Tag.LowUrgency)
     def client_cert_auth_ootb_client_certs_disabled_on_cluster_join_test(self):
         self.provision_cluster_node(should_load_client_cert=False)
         self.provision_new_node(should_load_client_cert=False)
@@ -653,6 +688,7 @@ class NodeAdditionWithIntCertsNotInChainTests(NodeAdditionWithCertsBase,
         NodeAdditionWithCertsBase.__init__(self, False)
         testlib.BaseTestSet.__init__(self, cluster)
 
+    @tag(Tag.LowUrgency)
     def add_int_untrusted_node_to_trusted_cluster_test(self):
         self.provision_cluster_node()
         self.provision_new_node()
@@ -685,15 +721,19 @@ class NodeAdditionWithCertsN2NIPv6Tests(testlib.BaseTestSet):
     def test_teardown(self):
         self.wrapped.test_teardown()
 
+    @tag(Tag.LowUrgency)
     def add_trusted_node_to_trusted_cluster_test(self):
         self.wrapped.add_trusted_node_to_trusted_cluster_test()
 
+    @tag(Tag.LowUrgency)
     def add_trusted_node_to_untrusted_cluster_test(self):
         self.wrapped.add_trusted_node_to_untrusted_cluster_test()
 
+    @tag(Tag.LowUrgency)
     def add_trusted_node_to_untrusted_ootb_cluster_test(self):
         self.wrapped.add_trusted_node_to_untrusted_ootb_cluster_test()
 
+    @tag(Tag.LowUrgency)
     def add_untrusted_node_to_untrusted_ootb_cluster_test(self):
         self.wrapped.add_untrusted_node_to_untrusted_ootb_cluster_test()
 
@@ -784,6 +824,7 @@ class NodeRemovalStreamingChunked(testlib.BaseTestSet):
                                               "storageBackend": "couchstore",
                                               "ramQuota": 256}])]
 
+    @tag(Tag.LowUrgency)
     def basic_node_removal_test(self):
         # listen to the poolStreaming endpoint node A
         port = self.cluster.connected_nodes[0].port

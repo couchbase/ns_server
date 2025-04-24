@@ -15,6 +15,7 @@ from pathlib import Path
 from enum import Enum
 import testlib
 from testlib import ClusterRequirements
+from testlib.test_tag_decorator import tag, Tag
 from testsets.secret_management_tests import post_es_config, reset_es_config, \
                                              change_password
 from testsets.native_encryption_tests import set_cfg_encryption, \
@@ -81,6 +82,7 @@ class CbcollectTest(testlib.BaseTestSet):
             file_to_check = cbcollect_filename(z, f'ns_server.{FAKE_LOG_FILE}')
             assert_file_is_redacted(z, file_to_check)
 
+    @tag(Tag.LowUrgency)
     def encrypt_unredacted_cbcollect_test(self):
         node = self.cluster.connected_nodes[0]
         password = testlib.random_str(8)
@@ -101,6 +103,7 @@ class CbcollectTest(testlib.BaseTestSet):
             file_to_check = cbcollect_filename(z, f'ns_server.{filename}')
             z.open(file_to_check)
 
+    @tag(Tag.LowUrgency)
     def encrypt_all_cbcollect_test(self):
         node = self.cluster.connected_nodes[0]
         password = testlib.random_str(8)
@@ -115,6 +118,7 @@ class CbcollectTest(testlib.BaseTestSet):
             self.__expect_no_password_err(zf, filename)
             self.__verify_zip_with_password(zf, password, filename)
 
+    @tag(Tag.LowUrgency)
     def encrypted_cfg_master_password_via_script_test(self):
         node = self.cluster.connected_nodes[0]
         resourcedir = os.path.join(testlib.get_resources_dir(),
@@ -130,6 +134,7 @@ class CbcollectTest(testlib.BaseTestSet):
         zip_filename = Path(self.zip_dir) / 'encrypted_config_test_dump'
         collect_config_and_chronicle(node, zip_filename)
 
+    @tag(Tag.LowUrgency)
     def encrypted_cfg_master_password_via_env_test(self):
         node = self.cluster.connected_nodes[0]
         password = change_password(node)
@@ -139,6 +144,7 @@ class CbcollectTest(testlib.BaseTestSet):
         collect_config_and_chronicle(node, zip_filename,
                                      env_master_password=password)
 
+    @tag(Tag.LowUrgency)
     def encrypted_cfg_master_password_via_stdin_test(self):
         node = self.cluster.connected_nodes[0]
         password = change_password(node)
@@ -148,6 +154,7 @@ class CbcollectTest(testlib.BaseTestSet):
         collect_config_and_chronicle(node, zip_filename,
                                      stdin_master_password=password)
 
+    @tag(Tag.LowUrgency)
     def cbcollect_api_test(self):
         node = self.cluster.connected_nodes[0]
         password = change_password(node)
@@ -189,6 +196,7 @@ class CbcollectTest(testlib.BaseTestSet):
         assert_cbcollect_returns_incorrect_password(
             node, self.zip_dir, stdin_master_password=password + '_wrong')
 
+    @tag(Tag.LowUrgency)
     def collection_of_encrypted_logs_test(self):
         node = self.cluster.connected_nodes[0]
         log_name = 'debug.log'
@@ -412,6 +420,7 @@ class CbcollectIpv6Test(testlib.BaseTestSet):
     def test_teardown(self):
         pass
 
+    @tag(Tag.LowUrgency)
     def ipv6_log_collection_test(self):
         node = self.cluster.connected_nodes[0]
         utcnow = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")

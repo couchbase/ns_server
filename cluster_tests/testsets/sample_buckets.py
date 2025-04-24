@@ -10,6 +10,7 @@ import time
 
 import testlib
 from testlib import Service
+from testlib.test_tag_decorator import tag, Tag
 from testsets.tasks_test import TasksBase
 
 
@@ -185,6 +186,7 @@ class SampleBucketTestSet(testlib.BaseTestSet, SampleBucketTasksBase):
         self.load_and_assert_sample_bucket(self.cluster, "travel-sample")
 
     # Test loading into an existing bucket
+    @tag(Tag.LowUrgency)
     def post_with_existing_bucket_test(self):
         bucket_name = "test1"
         self.create_bucket(bucket_name)
@@ -262,6 +264,7 @@ class SampleBucketTestSet(testlib.BaseTestSet, SampleBucketTasksBase):
             self.assert_loaded_sample(response, CBIMPORT_TIMEOUT * 2)
 
     # Test loading multiple sample buckets sequentially
+    @tag(Tag.LowUrgency)
     def post_multiple_buckets_sequential_test(self):
         # Create 3 buckets (with total ram quota 3*200MiB = 600MiB)
         bucket_count = 3
@@ -285,6 +288,7 @@ class SampleBucketTestSet(testlib.BaseTestSet, SampleBucketTasksBase):
             self.assert_loaded_sample(response, timeout=CBIMPORT_TIMEOUT)
 
     # Test loading multiple sample buckets concurrently
+    @tag(Tag.LowUrgency)
     def post_multiple_buckets_concurrent_test(self):
         # Set concurrency limit to 2
         concurrency = 2

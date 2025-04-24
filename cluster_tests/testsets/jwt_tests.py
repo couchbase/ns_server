@@ -9,6 +9,7 @@
 
 import os
 import testlib
+from testlib.test_tag_decorator import tag, Tag
 from testlib.util import Service
 import json
 import jwt
@@ -1267,6 +1268,7 @@ class JWTTests(testlib.BaseTestSet):
                     f"with algorithm '{alg}'"
                 )
 
+    @tag(Tag.LowUrgency)
     def jwt_query_test(self):
         """Test JWT authentication with Query service using direct HTTP
         requests.

@@ -24,6 +24,8 @@ from pathlib import Path
 
 sys.path.append(testlib.get_scripts_dir())
 
+from testlib.test_tag_decorator import tag, Tag
+
 import node_remap
 
 class ConfigRemapTest(testlib.BaseTestSet):
@@ -78,6 +80,7 @@ class ConfigRemapTest(testlib.BaseTestSet):
                             cluster_path/'data'/f'n_{old_node_index}',
                             dirs_exist_ok=True)
 
+    @tag(Tag.LowUrgency)
     def disable_afo_without_remap_test(self):
         # We can't tear down the older cluster in the setup because it wants to
         # log via diag/eval to the cluster...

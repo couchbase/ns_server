@@ -17,6 +17,7 @@ import os
 import functools
 
 from testlib import ClusterRequirements
+from testlib.test_tag_decorator import tag, Tag
 from testlib.util import Service
 
 
@@ -171,6 +172,7 @@ class ServicesTopologyTests(testlib.BaseTestSet):
                               [Service.QUERY],
                               [Service.QUERY]])
 
+    @tag(Tag.LowUrgency)
     def serviceless_node_test(self):
         self.assert_topology(ServicesTopologyTests.initial_topology)
         self.change_services_topology({Service.INDEX: [0], Service.QUERY: [2]},
@@ -179,6 +181,7 @@ class ServicesTopologyTests(testlib.BaseTestSet):
                               [],
                               [Service.QUERY]])
 
+    @tag(Tag.LowUrgency)
     def simple_service_test(self):
         self.assert_topology(ServicesTopologyTests.initial_topology)
         self.assert_service_map(Service.BACKUP, [])
@@ -230,6 +233,7 @@ class ServicesTopologyTests(testlib.BaseTestSet):
         testlib.assert_json_key("total_quota_too_high", json,
                                 testlib.format_res_info(res))
 
+    @tag(Tag.LowUrgency)
     def full_rebalance_test(self):
         self.assert_topology(ServicesTopologyTests.initial_topology)
         self.rebalance({Service.BACKUP: [1, 2]}, None, 200)

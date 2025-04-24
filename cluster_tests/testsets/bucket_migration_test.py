@@ -10,6 +10,8 @@
 import testlib
 import time
 
+from testlib.test_tag_decorator import tag, Tag
+
 
 def get_bucket(cluster, bucket_name):
     return testlib.json_response(
@@ -260,6 +262,7 @@ class BucketMigrationTest(testlib.BaseTestSet):
 
         self.cluster.delete_bucket(bucket)
 
+    @tag(Tag.LowUrgency)
     def migrate_storage_mode_via_rebalance_test(self):
         create_and_update_bucket(self.cluster, "bucket-1", "couchstore",
                                  "magma", 1024)
@@ -293,6 +296,7 @@ class BucketMigrationTest(testlib.BaseTestSet):
                 "bucket-1")
             count += 1
 
+    @tag(Tag.LowUrgency)
     def migrate_storage_mode_via_failover_test(self):
         create_and_update_bucket(
             self.cluster, "bucket-2", "couchstore", "magma", 1024)
@@ -308,6 +312,7 @@ class BucketMigrationTest(testlib.BaseTestSet):
             assert_per_node_storage_mode_not_present(
                 self.cluster, node, "bucket-2")
 
+    @tag(Tag.LowUrgency)
     def perform_delta_recovery_mid_migration_test(self):
         bucket_name = "bucket-3"
         create_and_update_bucket(self.cluster, bucket_name=bucket_name,

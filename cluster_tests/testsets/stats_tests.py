@@ -11,6 +11,8 @@ import time
 import math
 import sys
 from pprint import pprint
+
+from testlib.test_tag_decorator import tag, Tag
 from testlib.util import Service
 
 
@@ -263,6 +265,7 @@ class StatsRangeAPITests(testlib.BaseTestSet):
     # Verify derived stats (those computed in prometheus at the direction
     # of ns_server) are returned via /metrics. To do so ns_server queries
     # prometheus for the stats and includes them in the results.
+    @tag(Tag.LowUrgency)
     def derived_stats_test(self):
         # Wait for node to provide this computed stat. This stat is only on a
         # kv node so we can't do it in setup.

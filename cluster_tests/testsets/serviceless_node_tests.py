@@ -11,6 +11,9 @@ import testlib
 from testlib import ClusterRequirements
 import time
 
+from testlib.test_tag_decorator import tag, Tag
+
+
 # Testing of serviceless nodes (nodes that don't have any services, e.g.
 # kv, index, etc. configured).
 
@@ -116,6 +119,7 @@ class ServicelessNodeTests(testlib.BaseTestSet):
 
     # These tests are based on a cluster which has the initial node with
     # services and two additional serviceless nodes.
+    @tag(Tag.LowUrgency)
     def addnode_test(self):
         self.verify_orchestrator_node(False)
         self.addNodes()
@@ -127,6 +131,7 @@ class ServicelessNodeTests(testlib.BaseTestSet):
         self.remove_orchestrator_node()
         self.verify_orchestrator_node(True)
 
+    @tag(Tag.LowUrgency)
     def joincluster_test(self):
         self.verify_orchestrator_node(False)
         self.joinNodes()

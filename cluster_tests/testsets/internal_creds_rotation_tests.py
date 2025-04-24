@@ -8,6 +8,7 @@
 # licenses/APL2.txt.
 import testlib
 from testlib.requirements import Service
+from testlib.test_tag_decorator import tag, Tag
 
 
 class IntCredsRotationTests(testlib.BaseTestSet):
@@ -49,7 +50,7 @@ class IntCredsRotationTests(testlib.BaseTestSet):
         testlib.get_succ(self.cluster.connected_nodes[0], '/pools/default',
                          auth=('@', new_pass))
 
-
+    @tag(Tag.LowUrgency)
     def periodic_rotation_test(self):
         interval_s = 5
         r = testlib.get_succ(self.cluster, '/settings/security')

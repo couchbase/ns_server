@@ -12,6 +12,7 @@ import signal
 import testlib
 import time
 from testlib.requirements import Service
+from testlib.test_tag_decorator import tag, Tag
 
 
 class HardResetTests(testlib.BaseTestSet):
@@ -161,15 +162,19 @@ class HardResetTests(testlib.BaseTestSet):
         assert_cluster_size(node, 2)
         assert_cluster_size(other_node, 2)
 
+    @tag(Tag.LowUrgency)
     def hard_reset_add_node_test(self):
         self.hard_reset_test_base(self.cluster.add_node)
 
+    @tag(Tag.LowUrgency)
     def hard_reset_join_cluster_test(self):
         self.hard_reset_test_base(self.cluster.do_join_cluster)
 
+    @tag(Tag.LowUrgency)
     def hard_reset_timeout_before_failover_add_node_test(self):
         self.hard_reset_timeout_before_failover_testbase(self.cluster.add_node)
 
+    @tag(Tag.LowUrgency)
     def hard_reset_timeout_before_failover_join_cluster_test(self):
         self.hard_reset_timeout_before_failover_testbase(
             self.cluster.do_join_cluster)

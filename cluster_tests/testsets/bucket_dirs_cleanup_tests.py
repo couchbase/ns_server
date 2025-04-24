@@ -13,6 +13,7 @@ import shutil
 import os
 from pathlib import Path
 from testlib import ClusterRequirements
+from testlib.test_tag_decorator import tag, Tag
 from testlib.util import Service
 from testsets.node_addition_tests import assert_cluster_size
 
@@ -55,6 +56,7 @@ class BucketDirsCleanupTests(testlib.BaseTestSet):
             else:
                 file.unlink(missing_ok=True)
 
+    @tag(Tag.LowUrgency)
     def cleanup_during_rebalance_test(self):
         assert_cluster_size(self.cluster, 1)
         cluster_node = self.cluster.connected_nodes[0]

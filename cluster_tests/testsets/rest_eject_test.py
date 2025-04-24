@@ -8,6 +8,7 @@
 # licenses/APL2.txt.
 import testlib
 from testlib.util import Service
+from testlib.test_tag_decorator import tag, Tag
 
 class RestEjectTest(testlib.BaseTestSet):
     def __init__(self, cluster):
@@ -29,6 +30,7 @@ class RestEjectTest(testlib.BaseTestSet):
     def teardown(self):
         pass
 
+    @tag(Tag.LowUrgency)
     def rest_reject_test(self):
         failover_node = self.cluster.connected_nodes[0]
         otp_name = failover_node.otp_node()
