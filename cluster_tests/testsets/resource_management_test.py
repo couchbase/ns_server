@@ -687,23 +687,20 @@ class DataIngressTests(testlib.BaseTestSet):
                 "couchstoreMinimum": 10,
             })
 
-        testlib.poll_for_condition(self.cluster.can_write(BUCKET_NAME,
-                                                          "test_doc"),
+        testlib.poll_for_condition(is_warmed_up(self.cluster, BUCKET_NAME),
                                    sleep_time=0.5, attempts=120)
 
-        refresh_guard_rails(self.cluster)
         assert_bucket_resource_status(self.cluster, BUCKET_NAME, "ok")
 
         # Make sure that we can successfully write to the bucket
         testlib.poll_for_condition(self.cluster.can_write(BUCKET_NAME,
                                                           "test_doc"),
-                                   sleep_time=1, attempts=120,
-                                   msg="write to bucket 'test'")
+                                   sleep_time=0.5, attempts=120,
+                                   msg=f"write to bucket '{BUCKET_NAME}'")
 
         # Trigger the guard rail by setting the resident ratio below the minimum
         set_promql_queries(self.cluster, resident_ratio=9)
 
-        refresh_guard_rails(self.cluster)
         assert_bucket_resource_status(self.cluster, BUCKET_NAME,
                                       "resident_ratio")
 
@@ -715,12 +712,11 @@ class DataIngressTests(testlib.BaseTestSet):
         # Reset the promQL to verify that the status returns to ok
         set_promql_queries(self.cluster, resident_ratio=100)
 
-        refresh_guard_rails(self.cluster)
         assert_bucket_resource_status(self.cluster, BUCKET_NAME, "ok")
 
         # Writes should succeed again
         testlib.post_succ(
-            self.cluster, "/pools/default/buckets/test/docs/test_doc",
+            self.cluster, f"/pools/default/buckets/{BUCKET_NAME}/docs/test_doc",
             data="")
 
     def data_size_growth_test(self):
@@ -740,18 +736,17 @@ class DataIngressTests(testlib.BaseTestSet):
         testlib.poll_for_condition(is_warmed_up(self.cluster, BUCKET_NAME),
                                    sleep_time=0.5, attempts=120)
 
-        refresh_guard_rails(self.cluster)
         assert_bucket_resource_status(self.cluster, BUCKET_NAME, "ok")
 
-        # Make sure that we can successfully write to the cluster
+        # Make sure that we can successfully write to the bucket
         testlib.poll_for_condition(self.cluster.can_write(BUCKET_NAME,
                                                           "test_doc"),
-                                   sleep_time=0.5, attempts=120)
+                                   sleep_time=0.5, attempts=120,
+                                   msg=f"write to bucket '{BUCKET_NAME}'")
 
         # Set the data size above the maximum
         set_promql_queries(self.cluster, data_size_tb=2)
 
-        refresh_guard_rails(self.cluster)
         assert_bucket_resource_status(self.cluster, BUCKET_NAME, "data_size")
 
         # Expect write to fail
@@ -763,12 +758,11 @@ class DataIngressTests(testlib.BaseTestSet):
         # back to ok
         set_promql_queries(self.cluster, data_size_tb=0.5)
 
-        refresh_guard_rails(self.cluster)
         assert_bucket_resource_status(self.cluster, BUCKET_NAME, "ok")
 
         # Writes should succeed again
         testlib.post_succ(
-            self.cluster, "/pools/default/buckets/test/docs/test_doc",
+            self.cluster, f"/pools/default/buckets/{BUCKET_NAME}/docs/test_doc",
             data="")
 
     def disk_usage_growth_test(self):
@@ -787,18 +781,17 @@ class DataIngressTests(testlib.BaseTestSet):
         # Wait for a stat to be populated, as the check will be ignored until we
         # get that stat from prometheus
         wait_for_stat(self.cluster, "sys_disk_usage_ratio", n=2)
-        refresh_guard_rails(self.cluster)
         assert_bucket_resource_status(self.cluster, BUCKET_NAME, "ok")
 
-        # Make sure that we can successfully write to the cluster
+        # Make sure that we can successfully write to the bucket
         testlib.poll_for_condition(self.cluster.can_write(BUCKET_NAME,
                                                           "test_doc"),
-                                   sleep_time=0.5, attempts=120)
+                                   sleep_time=0.5, attempts=120,
+                                   msg=f"write to bucket '{BUCKET_NAME}'")
 
         # Set the maximum to 0, so that the disk usage must be above the limit
         set_disk_guardrail_maximum(self.cluster, 0)
 
-        refresh_guard_rails(self.cluster)
         assert_bucket_resource_status(self.cluster, BUCKET_NAME, "disk_usage")
 
         # Expect write to fail
@@ -809,12 +802,11 @@ class DataIngressTests(testlib.BaseTestSet):
         # Set maximum to 100, so that the disk usage must be below the limit
         set_disk_guardrail_maximum(self.cluster, 100)
 
-        refresh_guard_rails(self.cluster)
         assert_bucket_resource_status(self.cluster, BUCKET_NAME, "ok")
 
         # Writes should succeed again
         testlib.post_succ(
-            self.cluster, "/pools/default/buckets/test/docs/test_doc",
+            self.cluster, f"/pools/default/buckets/{BUCKET_NAME}/docs/test_doc",
             data="")
 
 
@@ -871,9 +863,12 @@ def set_disk_guardrail_maximum(cluster, value):
 
 
 def assert_bucket_resource_status(cluster, bucket, expected_status):
-    status = get_bucket_status(cluster, bucket)
-    assert status == expected_status, \
-        f"Bucket '{bucket}' status was '{status}'. Expected '{expected_status}'"
+    testlib.poll_for_condition(
+        lambda: get_bucket_status(cluster, bucket) == expected_status,
+        sleep_time=0.1,
+        timeout=10,
+        msg=f"Wait for bucket '{bucket}' status '{expected_status}'"
+    )
 
 
 def is_warmed_up(cluster, bucket):
@@ -927,21 +922,13 @@ def range_api_get(cluster, stat, params=None):
     return r['data']
 
 
-def refresh_guard_rails(cluster):
+def get_bucket_status(cluster, bucket_name):
     # Force each node's guardrail monitor to check for status changes
     for node in cluster.connected_nodes:
-        testlib.diag_eval(node, "guardrail_monitor ! check,"
-                                "gen_server:call(guardrail_monitor, sync).")
+        testlib.diag_eval(node, "guardrail_monitor ! check.")
 
-    node = cluster.wait_for_orchestrator()
-    # Wait for the enforcer to handle the config updates
-    testlib.diag_eval(node, "ns_config:sync(), "
-                            "gen_server:call(guardrail_enforcer, sync).")
-
-
-def get_bucket_status(cluster, bucket_name):
-    node = cluster.wait_for_orchestrator()
     # Get the bucket status according to the orchestrator
+    node = cluster.wait_for_orchestrator()
     r = testlib.diag_eval(node,
                           f"guardrail_enforcer:get_status({{bucket, "
                           f"\"{bucket_name}\"}}).")
