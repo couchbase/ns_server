@@ -587,6 +587,39 @@ drop_config_deks(DekIdsToDrop) ->
         end
     end.
 
+-spec try_drop_dek_work(fun(), logDek | auditDek) ->
+          {ok, start} | {error, retry}.
+try_drop_dek_work(Work, Type) ->
+    WorkProcessName = list_to_atom(?MODULE_STRING ++ "-drop-dek-" ++
+                                       atom_to_list(Type)),
+    F =
+        fun () ->
+                try
+                    erlang:register(WorkProcessName, self())
+                catch
+                    _:_ ->
+                        proc_lib:init_fail({error, already_running},
+                                           {exit, normal})
+                end,
+                proc_lib:init_ack(ok),
+                Res = try
+                          Work()
+                      catch
+                          T:E:Stack ->
+                              ?log_error("Drop DEKs work failed: ~p",
+                                         {T, E, Stack}),
+                              {error, {T, E}}
+                      end,
+                cb_cluster_secrets:dek_drop_complete(Type, Res)
+        end,
+
+    case proc_lib:start_link(erlang, apply, [F, []]) of
+        ok ->
+            {ok, started};
+        {error, already_running} ->
+            {error, retry}
+    end.
+
 drop_log_deks(DekIdsToDrop) ->
     {ok, DS} = cb_crypto:fetch_deks_snapshot(logDek),
 
@@ -630,34 +663,18 @@ drop_log_deks(DekIdsToDrop) ->
 
                 case Errors of
                     [] ->
-                        cb_cluster_secrets:dek_drop_complete(logDek, ok);
+                        ok;
                     _ ->
-                        %% It is possible that there were some errors, yet
-                        %% some DEks may have been freed up still, so we issue
-                        %% completion to allow GC and still pass down errors
-                        %% to be logged or handled
-                        Rv = {error, lists:flatten(Errors)},
-                        cb_cluster_secrets:dek_drop_complete(logDek, Rv)
+                        {error, lists:flatten(Errors)}
                 end
         end,
-    proc_lib:spawn_link(
-      fun () ->
-              try
-                  Work()
-              catch T:E:Stack ->
-                      ?log_error("Drop log DEKs work failed: ~p", {T, E, Stack})
-              end
-      end),
-    {ok, started}.
+        try_drop_dek_work(Work, logDek).
 
 drop_audit_deks(DekIdsToDrop) ->
-    proc_lib:spawn_link(
-        fun() ->
-            Rv = ns_memcached:prune_log_or_audit_encr_keys("@audit",
-                                                            DekIdsToDrop),
-            cb_cluster_secrets:dek_drop_complete(logDek, Rv)
-        end),
-    {ok, started}.
+    try_drop_dek_work(
+      fun() ->
+              ns_memcached:prune_log_or_audit_encr_keys("@audit", DekIdsToDrop)
+      end, auditDek).
 
 drop_bucket_deks(Bucket, DekIds) ->
     Continuation = fun (_) ->
