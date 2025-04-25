@@ -1117,6 +1117,8 @@
         "type": "gauge",
         "help": "Amount of system memory free, excluding buffers/cache",
         "added": "7.0.0",
+        "deprecated": "8.0.0",
+        "notes": "Will be removed in the 8.1 release. Use sys_mem_free_sys",
         "unit": "bytes",
         "stability": "committed"
     },
@@ -1140,6 +1142,13 @@
         "type": "gauge",
         "help": "Amount of system memory used, including buffers/cache",
         "added": "7.0.0",
+        "unit": "bytes",
+        "stability": "committed"
+    },
+    "sys_mem_free_sys": {
+        "type": "gauge",
+        "help": "Amount of free system memory (not being used for anything including buffers/cache)",
+        "added": "8.0.0",
         "unit": "bytes",
         "stability": "committed"
     },

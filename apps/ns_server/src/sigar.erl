@@ -275,8 +275,10 @@ get_global_stats(StatsMap) ->
          {mem_limit, MemLimit},
          {mem_total, MemTotal},
          {mem_used_sys, MemUsed},
+         {mem_free_sys, MemTotal - MemUsed},
          {mem_actual_used, get_number(StatsMap, <<"mem_actual_used">>)},
          {mem_actual_free, get_number(StatsMap, <<"mem_actual_free">>)},
+         %% Deprecated in 8.0; remove in 8.1
          {mem_free, get_number(StatsMap, <<"mem_actual_free">>)},
          {allocstall, get_number(StatsMap, <<"allocstall">>)}] ++
         [{mem_cgroup_limit, CGMemLimit} || CGMemLimit /= undefined] ++
