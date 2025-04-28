@@ -784,6 +784,12 @@
             }
         ]
     },
+    "cm_app_telemetry_curr_connections": {
+        "type": "gauge",
+        "help": "Number of active app telemetry connections",
+        "stability": "internal",
+        "added": "8.0.0"
+    },
     "couch_docs_actual_disk_size": {
         "type": "gauge",
         "help": "Amount of disk space used by the Data Service",
@@ -809,6 +815,12 @@
                 "help": "Name of the bucket associated with the stat"
             }
         ]
+    },
+    "sdk_invalid_metric_total": {
+        "type": "counter",
+        "help": "Number of invalid metrics received from app telemetry clients",
+        "stability": "internal",
+        "added": "8.0.0"
     },
     "sys_allocstall": {
         "type": "counter",
