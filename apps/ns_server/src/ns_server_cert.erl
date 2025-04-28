@@ -1513,12 +1513,12 @@ prepare_reference_ids(Node) ->
     end.
 
 chronicle_upgrade_to_morpheus(ChronicleTxn) ->
-    {ok, OldCerts} = chronicle_upgrade:get_key(ca_certificates, ChronicleTxn),
-    case chronicle_upgrade_certs_to_morpheus(OldCerts) of
-        false ->
-            ChronicleTxn;
-        {true, NewCerts} ->
-            chronicle_upgrade:set_key(ca_certificates, NewCerts, ChronicleTxn)
+    maybe
+        {ok, OldCerts} ?= chronicle_upgrade:get_key(ca_certificates,
+                                                    ChronicleTxn),
+        {true, NewCerts} ?= chronicle_upgrade_certs_to_morpheus(OldCerts),
+        chronicle_upgrade:set_key(ca_certificates, NewCerts, ChronicleTxn)
+    else _ -> ChronicleTxn
     end.
 
 chronicle_upgrade_certs_to_morpheus(OldCerts) ->
