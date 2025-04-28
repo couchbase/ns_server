@@ -138,8 +138,24 @@ get_claim_name(Name, IssuerProps) ->
           binary() | [binary()] | integer() | undefined.
 get_claim_value(Claim, RawTokens, IssProps) ->
     NameBin = get_claim_name(Claim, IssProps),
-    ValueBin = maps:get(NameBin, RawTokens, undefined),
+    ValueBin = get_nested_value(NameBin, RawTokens),
     get_claim_value(get_claim_value_type(Claim), ValueBin).
+
+-spec get_nested_value(binary(), map()) -> binary() | [binary()] | integer() |
+          undefined.
+get_nested_value(PathBin, Map) ->
+    get_nested_value_path(binary:split(PathBin, <<".">>, [global]), Map).
+
+-spec get_nested_value_path([binary()], map()) -> binary() | [binary()] |
+          integer() | undefined.
+get_nested_value_path([Key | Rest], Map) when is_map(Map) ->
+    case maps:get(Key, Map, undefined) of
+        undefined -> undefined;
+        Value when Rest =:= [] -> Value;
+        NestedMap when is_map(NestedMap) ->
+            get_nested_value_path(Rest, NestedMap);
+        _ -> undefined
+    end.
 
 get_claim_value(integer, Value) when is_integer(Value) -> Value;
 get_claim_value(integer, Value) when is_binary(Value) ->
@@ -522,6 +538,26 @@ validate_claims_test() ->
     ?assertEqual({error, <<"Invalid audience">>},
                  validate(aud, #{aud => ["aud1", "other"]}, IssPropsAll)).
 
+get_nested_value_test() ->
+    Map = #{
+            <<"simple">> => <<"value1">>,
+            <<"nested">> => #{
+                              <<"key">> => <<"value2">>,
+                              <<"deep">> => #{
+                                              <<"key">> => <<"value3">>
+            }
+        }
+    },
+    ?assertEqual(<<"value1">>, get_nested_value(<<"simple">>, Map)),
+    ?assertEqual(<<"value2">>, get_nested_value(<<"nested.key">>, Map)),
+    ?assertEqual(<<"value3">>, get_nested_value(<<"nested.deep.key">>, Map)),
+    ?assertEqual(undefined, get_nested_value(<<"missing">>, Map)),
+    ?assertEqual(undefined, get_nested_value(<<"nested.missing">>, Map)),
+    ?assertEqual(undefined, get_nested_value(<<"nested.deep.missing">>, Map)),
+    ?assertEqual(undefined, get_nested_value(<<"nested.key.missing">>, Map)),
+    ?assertEqual(undefined, get_nested_value(<<"nested.deep.key.missing">>,
+        Map)).
+
 extract_claims_test_() ->
     {setup,
      fun() -> meck:new(jose_jwt) end,
@@ -567,13 +603,13 @@ extract_claims_test_() ->
 
               {"custom claim names",
                fun() ->
-                       Issuers2 = #{
+                       Issuers3 = #{
                                     "test-issuer" =>
                                         #{
                                           signing_algorithm => hs256,
-                                          sub_claim => "username",
-                                          aud_claim => "scope",
-                                          groups_claim => "roles"
+                                          sub_claim => "user.preferred_user",
+                                          aud_claim => "azp",
+                                          roles_claim => "resource.test.roles"
                                          }
                                    },
                        HeaderMap = #{
@@ -582,9 +618,19 @@ extract_claims_test_() ->
                                     },
                        PayloadMap = #{
                                       <<"iss">> => <<"test-issuer">>,
-                                      <<"username">> => <<"custom-user">>,
-                                      <<"scope">> => <<"custom-aud">>,
-                                      <<"roles">> => [<<"role1">>, <<"role2">>],
+                                      <<"user">> => #{
+                                                      <<"preferred_user">> =>
+                                                          <<"nested-user">>
+                                                     },
+                                      <<"azp">> => <<"test-client">>,
+                                      <<"resource">> =>
+                                          #{
+                                            <<"test">> =>
+                                                #{
+                                                  <<"roles">> =>
+                                                      [<<"role1">>, <<"role2">>]
+                                          }
+                                      },
                                       <<"exp">> => 1234567890
                                      },
 
@@ -595,12 +641,12 @@ extract_claims_test_() ->
                        meck:expect(jose_jwt, peek_payload,
                                    fun(_) -> {ok, PayloadMap} end),
 
-                       {ok, Claims} = extract_claims(<<"token">>, Issuers2),
+                       {ok, Claims} = extract_claims(<<"token">>, Issuers3),
                        ?assertEqual("test-issuer", maps:get(iss, Claims)),
-                       ?assertEqual("custom-user", maps:get(sub, Claims)),
-                       ?assertEqual(["custom-aud"], maps:get(aud, Claims)),
+                       ?assertEqual("nested-user", maps:get(sub, Claims)),
+                       ?assertEqual(["test-client"], maps:get(aud, Claims)),
                        ?assertEqual(["role1", "role2"],
-                                    maps:get(groups, Claims)),
+                                    maps:get(roles, Claims)),
                        ?assertEqual(1234567890, maps:get(exp, Claims))
                end},
 
@@ -667,9 +713,13 @@ extract_claims_test_() ->
 
 get_claim_name_test() ->
     Props = #{sub_claim => "username",
-              aud_claim => "scope"},
+              aud_claim => "scope",
+              roles_claim => "nested.roles",
+              groups_claim => "custom.groups"},
     ?assertEqual(<<"username">>, get_claim_name(sub, Props)),
     ?assertEqual(<<"scope">>, get_claim_name(aud, Props)),
+    ?assertEqual(<<"nested.roles">>, get_claim_name(roles, Props)),
+    ?assertEqual(<<"custom.groups">>, get_claim_name(groups, Props)),
     ?assertEqual(<<"exp">>, get_claim_name(exp, Props)), % standard claim
     ?assertEqual(<<"groups">>, get_claim_name(groups, #{})), % fallback default
     ?assertEqual(<<"roles">>, get_claim_name(roles, #{})). % fallback default

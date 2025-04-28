@@ -74,7 +74,8 @@
          regex/2,
          mutually_exclusive/3,
          non_empty_string/2,
-         report_errors_for_one/3]).
+         report_errors_for_one/3,
+         validate_field_path/2]).
 
 %% Used for testing validators.
 -ifdef(TEST).
@@ -617,7 +618,7 @@ range_test() ->
     ?assertEqual(Err2, "The value must be in range from 1 to 10 (inclusive)"),
 
     State3 = #state{kv=[{"test", 11}]},
-    #state{errors=[{_, Err3}]} = range("test", 1, 10, State3), 
+    #state{errors=[{_, Err3}]} = range("test", 1, 10, State3),
     ?assertEqual(Err3, "The value must be in range from 1 to 10 (inclusive)"),
 
     %% Test range validation with infinity upper bound
@@ -954,6 +955,18 @@ non_empty_string(Name, State) ->
                        fun("") -> {error, "Value must not be empty"};
                           (Value) -> {value, Value}
                        end, Name, _)]).
+
+%% Validates a JSON field path that can be nested using dot notation.
+-spec validate_field_path(atom(), #state{}) -> #state{}.
+validate_field_path(Name, State) ->
+    validate(
+      fun(X) ->
+              case re:run(X, "^[^.]+(\\.[^.]+)*$") of
+                  {match, _} -> {value, X};
+                  nomatch -> {error,
+                              "Invalid field path format"}
+                  end
+      end, Name, State).
 
 -ifdef(TEST).
 %% Apply the validators to the arguments, returning the validated
@@ -1370,5 +1383,40 @@ handle_json_test_() ->
                ?assertResponse(GlobalErrorList("Invalid Json"), 400,
                                HandleMap(Rubbish))
        end}]}.
+
+validate_field_path_test() ->
+    %% Test valid field names
+    State1 = #state{kv = [{"field", "simple"}]},
+    ResultState1 = validate_field_path(field, State1),
+    ?assertEqual("simple", get_value(field, ResultState1)),
+
+    State2 = #state{kv = [{"field", "user.profile.groups"}]},
+    ResultState2 = validate_field_path(field, State2),
+    ?assertEqual("user.profile.groups", get_value(field, ResultState2)),
+
+    State3 = #state{kv = [{"field", "resource.client.roles"}]},
+    ResultState3 = validate_field_path(field, State3),
+    ?assertEqual("resource.client.roles", get_value(field, ResultState3)),
+
+    %% Test invalid field names
+    State4 = #state{kv = [{"field", ".field"}]},
+    ResultState4 = validate_field_path(field, State4),
+    #state{errors = Errors4} = ResultState4,
+    ?assertEqual([{"field", "Invalid field path format"}], Errors4),
+
+    State5 = #state{kv = [{"field", "field."}]},
+    ResultState5 = validate_field_path(field, State5),
+    #state{errors = Errors5} = ResultState5,
+    ?assertEqual([{"field", "Invalid field path format"}], Errors5),
+
+    State6 = #state{kv = [{"field", "field..subfield"}]},
+    ResultState6 = validate_field_path(field, State6),
+    #state{errors = Errors6} = ResultState6,
+    ?assertEqual([{"field", "Invalid field path format"}], Errors6),
+
+    State7 = #state{kv = [{"field", ""}]},
+    ResultState7 = validate_field_path(field, State7),
+    #state{errors = Errors7} = ResultState7,
+    ?assertEqual([{"field", "Invalid field path format"}], Errors7).
 
 -endif.

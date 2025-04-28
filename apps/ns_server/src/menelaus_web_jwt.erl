@@ -106,11 +106,11 @@
                            {Key, Format} <- ?MAIN_PARAMS_WITH_FORMATTERS])).
 
 %% @doc Issuer parameters and their descriptions:
-%% aud_claim - Name of the claim containing the audience value
+%% aud_claim - Field path of the claim containing the audience value
 %% audience_handling - How to handle audience validation (any/all)
 %% audiences - List of valid audience values to match against
 %% expiry_leeway_s - Number of seconds of leeway when validating token expiry
-%% groups_claim - Name of the claim containing group memberships
+%% groups_claim - Field path of the claim containing group memberships
 %% groups_maps - Rules for mapping groups from tokens to local groups
 %% groups_maps_stop_first_match - Whether to stop after first matching rule
 %% sub_maps - Rules for mapping sub claims to local identities
@@ -128,12 +128,12 @@
 %% name - Unique name identifying this issuer
 %% public_key - Public key used to verify token signatures
 %% public_key_source - Source of the public key (jwks/jwks_uri/pem)
-%% roles_claim - Name of the claim containing role assignments
+%% roles_claim - Field path of the claim containing role assignments
 %% roles_maps - Rules for mapping roles from tokens to local roles
 %% roles_maps_stop_first_match - Whether to stop after first matching roles map
 %% shared_secret - Secret key for HMAC algorithms
 %% signing_algorithm - Algorithm used to sign tokens
-%% sub_claim - Name of the claim containing the subject identifier
+%% sub_claim - Field path of the claim containing the subject identifier
 -define(ISSUER_PARAMS_WITH_FORMATTERS,
         [
          {aud_claim, fun format_string/1},
@@ -299,6 +299,7 @@ basic_validators() ->
      validator:convert(signingAlgorithm, fun binary_to_existing_atom/1, _),
      validator:required(audClaim, _),
      validator:non_empty_string(audClaim, _),
+     validator:validate_field_path(audClaim, _),
      validator:required(audienceHandling, _),
      validator:one_of(audienceHandling, [any, all], _),
      validator:convert(audienceHandling, fun binary_to_existing_atom/1, _),
@@ -311,16 +312,19 @@ basic_validators() ->
      validator:boolean(jitProvisioning, _),
      validator:default(jitProvisioning, false, _),
      validator:required(subClaim, _),
-     validator:non_empty_string(subClaim, _)].
+     validator:non_empty_string(subClaim, _),
+     validator:validate_field_path(subClaim, _)].
 
 mapping_validators() ->
     [validator:string_array(subMaps, auth_mapping:validate_mapping_rule(_), _),
      validator:string(groupsClaim, _),
+     validator:validate_field_path(groupsClaim, _),
      validator:string_array(groupsMaps,
                             auth_mapping:validate_mapping_rule(_), _),
      validator:boolean(groupsMapsStopFirstMatch, _),
      validator:default(groupsMapsStopFirstMatch, true, _),
      validator:string(rolesClaim, _),
+     validator:validate_field_path(rolesClaim, _),
      validator:string_array(rolesMaps,
                             auth_mapping:validate_mapping_rule(_), _),
      validator:boolean(rolesMapsStopFirstMatch, _),

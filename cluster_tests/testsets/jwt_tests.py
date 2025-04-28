@@ -763,26 +763,48 @@ class JWTTests(testlib.BaseTestSet):
         assert r.status_code == 200
 
     def mapped_auth_test(self):
-        """Test JWT authentication with mapping patterns"""
+        """Test JWT authentication with mapping patterns and nested claims"""
         self.auth_setup()
         self.configure_jwt(
             {
+                "groupsClaim": "user.profile.groups",
+                "rolesClaim": "user.roles",
                 "groupsMaps": [
                     "^prefix-(.*)-suffix$ jwt_\\1_admins",
                     "^data-(.*)$ jwt_\\1_admins",
-                ]
+                ],
+                "rolesMaps": ["^admin-(.*)$ security_\\1"],
             }
         )
 
-        test_cases = [
+        group_test_cases = [
             ("prefix-bucket-suffix", 200),  # Should map to jwt_bucket_admins
             ("data-data", 200),  # Should map to jwt_data_admins
             ("unknown-group", 401),  # No mapping match
         ]
 
-        for group, expected_code in test_cases:
+        for group, expected_code in group_test_cases:
             claims = self.base_claims.copy()
-            claims["groups"] = [group]
+            claims["user"] = {"profile": {"groups": [group]}}
+            token = self.create_token(claims)
+
+            headers = {"Authorization": f"Bearer {token}"}
+            r = testlib.get(
+                self.cluster,
+                "/pools/default/buckets",
+                auth=None,
+                headers=headers,
+            )
+            assert r.status_code == expected_code
+
+        role_test_cases = [
+            ("admin-admin", 200),  # Should map to security_admin
+            ("unknown-role", 401),  # No mapping match
+        ]
+
+        for role, expected_code in role_test_cases:
+            claims = self.base_claims.copy()
+            claims["user"] = {"roles": [role]}
             token = self.create_token(claims)
 
             headers = {"Authorization": f"Bearer {token}"}
@@ -791,6 +813,21 @@ class JWTTests(testlib.BaseTestSet):
                 headers=headers
             )
             assert r.status_code == expected_code
+
+        # Test case for missing nested path
+        claims = self.base_claims.copy()
+        claims["user"] = {
+            "groups": [
+                "prefix-bucket-suffix"
+            ]
+        }
+        token = self.create_token(claims)
+
+        headers = {"Authorization": f"Bearer {token}"}
+        r = testlib.get(
+            self.cluster, "/pools/default/buckets", auth=None, headers=headers
+        )
+        assert r.status_code == 401
 
     def validation_test(self):
         """Test JWT validation (exp, nbf, aud, signature)"""
