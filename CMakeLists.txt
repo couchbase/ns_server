@@ -399,6 +399,7 @@ SET (_instdir "${PROJECT_BINARY_DIR}/instfiles")
 FILE (REMOVE_RECURSE "${_instdir}")
 CONFIGURE_FILE (couchbase-server.sh.in "${_instdir}/couchbase-server" @ONLY)
 INSTALL (PROGRAMS "${_instdir}/couchbase-server" DESTINATION bin)
+INSTALL (FILES "validate-cpu-microarchitecture.sh" DESTINATION bin)
 
 SET (_etcdir "${_instdir}/etc")
 FILE (MAKE_DIRECTORY "${_etcdir}")

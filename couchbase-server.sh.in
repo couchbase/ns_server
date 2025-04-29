@@ -192,6 +192,8 @@ _drop_old_crashdumps () {
 
 
 _start() {
+    _validate_cpu_microarchitecture
+
     maybe_pidfile=""
     if [ $1 == "--with-pidfile" ]; then
         maybe_pidfile="$PIDFILE"
@@ -382,6 +384,12 @@ _parse_options () {
     done
 
     _start --without-pidfile $*
+}
+
+_validate_cpu_microarchitecture() {
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    source ${SCRIPT_DIR}/validate-cpu-microarchitecture.sh
+    validate_cpu_microarchitecture
 }
 
 _parse_options $*
