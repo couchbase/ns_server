@@ -299,8 +299,7 @@ handle_post_set_multiple(Req, Recursive) ->
                             {Key, {Value, Rev}}
                     end, List),
               reply_set_result(Req, leaf, Start,
-                               chronicle_metakv:set_multiple(KVR, Recursive)),
-              menelaus_util:reply(Req, 200)
+                               chronicle_metakv:set_multiple(KVR, Recursive))
       end, Req, json_map,
       [validator:required(key, _),
        validator:string(key, _),
