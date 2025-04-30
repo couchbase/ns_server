@@ -182,7 +182,8 @@ get_state(Timeout) ->
           {error, {incorrect_parameters, nonempty_string()}} |
           {error, {kek_not_found, nonempty_string()}} |
           {error, secret_not_found} |
-          {error, secret_not_allowed} | busy().
+          {error, secret_not_allowed} |
+          {error, cannot_enable_fusion} | busy().
 create_bucket(BucketType, BucketName, NewConfig) ->
     call({create_bucket, BucketType, BucketName, NewConfig}, infinity).
 

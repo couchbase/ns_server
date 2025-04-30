@@ -67,13 +67,19 @@ class FusionTests(testlib.BaseTestSet):
 
     def empty_bucket_smoke_test_code(self, num_replicas, expected_num_volumes):
         self.assert_state('disabled')
+        testlib.post_succ(
+            self.cluster, '/settings/fusion',
+            json={'logStoreURI': 'local://' + self.cluster.logstore_dir,
+                  'enableSyncThresholdMB': 1024}),
+        testlib.post_succ(self.cluster, '/fusion/enable')
+        self.assert_state('enabling')
+
         second_node = self.cluster.spare_node()
 
         self.cluster.create_bucket(
             {'name': 'test', 'ramQuota': 100, 'bucketType': 'membase',
              'storageBackend': 'magma',
-             'replicaNumber': num_replicas,
-             'fusionLogstoreURI': 'local://' + self.cluster.logstore_dir},
+             'replicaNumber': num_replicas},
             sync=True)
 
         self.cluster.add_node(second_node, services=[Service.KV])

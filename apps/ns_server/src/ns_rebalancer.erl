@@ -2188,7 +2188,7 @@ prepare_rebalance_test_() ->
     TargetMap2 = [[n3, n2, n1], [n2, n3, n1], [n2, n1, n3], [n3, n1, n2]],
     FusionBucketProps =
         [{servers, Servers},
-         {magma_fusion_logstore_uri, something},
+         {magma_fusion_state, enabled},
          {map, Map}],
     Snapshot =
         #{bucket_names => {[fusion1, fusion2, other], rev},

@@ -214,11 +214,10 @@
 
 %% fusion
 -export([is_fusion/1,
+         get_fusion_state/1,
          get_fusion_buckets/0,
          fusion_uploaders_key/1,
-         get_fusion_uploaders/1,
-         magma_fusion_logstore_uri/1,
-         magma_fusion_metadatastore_uri/1]).
+         get_fusion_uploaders/1]).
 
 -import(json_builder,
         [to_binary/1,
@@ -1380,7 +1379,7 @@ do_create_bucket(BucketName, Config, BucketUUID, Manifest) ->
     Result =
         chronicle_kv:transaction(
           kv, [root(), nodes_wanted, buckets_marked_for_shutdown_key(),
-               ?CHRONICLE_SECRETS_KEY],
+               ?CHRONICLE_SECRETS_KEY, fusion_uploaders:config_key()],
           fun (Snapshot) ->
                   BucketNames = get_bucket_names(Snapshot),
                   %% We make similar checks via validate_create_bucket/2 in
@@ -1399,15 +1398,35 @@ do_create_bucket(BucketName, Config, BucketUUID, Manifest) ->
                   maybe
                       ok ?= name_conflict(BucketName, BucketNames,
                                           {already_exists, BucketName}),
+
                       ShutdownBucketNames =
                           get_bucket_names_marked_for_shutdown(Snapshot),
                       ok ?= name_conflict(BucketName, ShutdownBucketNames,
                                           {still_exists, BucketName}),
+
                       SecretId = proplists:get_value(
                                    encryption_secret_id,
                                    Config, ?SECRET_ID_NOT_SET),
                       ok ?= validate_encryption_secret(SecretId, BucketName,
                                                        Snapshot),
+
+                      FusionState =
+                          case maps:find(fusion_uploaders:config_key(),
+                                         Snapshot) of
+                              {ok, {FusionConfig, _Rev}} ->
+                                  fusion_uploaders:get_state(FusionConfig);
+                              error ->
+                                  disabled
+                          end,
+                      ok ?=
+                          case lists:member(FusionState, [disabled, disabling])
+                              andalso get_fusion_state(Config) =:= enabled of
+                              true ->
+                                  {error, cannot_enable_fusion};
+                              false ->
+                                  ok
+                          end,
+
                       {commit, create_bucket_sets(BucketName, BucketNames,
                                                   BucketUUID, Config) ++
                            collections_sets(BucketName, Config,
@@ -2869,7 +2888,7 @@ extract_bucket_props(Props) ->
                          dcp_connections_between_nodes,
                          dcp_backfill_idle_limit_seconds,
                          dcp_backfill_idle_disk_threshold,
-                         magma_fusion_logstore_uri,
+                         magma_fusion_state,
                          dcp_backfill_idle_protection_enabled]],
           X =/= false].
 
@@ -3072,7 +3091,11 @@ get_force_encryption_timestamp(BucketUUID, Snapshot) ->
 
 -spec is_fusion(proplists:proplist()) -> boolean().
 is_fusion(BucketConfig) ->
-    magma_fusion_logstore_uri(BucketConfig) =/= undefined.
+    get_fusion_state(BucketConfig) =/= disabled.
+
+-spec get_fusion_state(proplists:proplist()) -> fusion_uploaders:bucket_state().
+get_fusion_state(BucketConfig) ->
+    proplists:get_value(magma_fusion_state, BucketConfig, disabled).
 
 -spec get_fusion_buckets() -> [{bucket_name(), proplists:proplist()}].
 get_fusion_buckets() ->
@@ -3090,23 +3113,6 @@ fusion_uploaders_key(BucketName) ->
           fusion_uploaders:uploaders() | not_found.
 get_fusion_uploaders(BucketName) ->
     get_sub_key_value(BucketName, fusion_uploaders_sub_key()).
-
--spec magma_fusion_logstore_uri(proplists:proplist()) -> string() | undefined.
-magma_fusion_logstore_uri(BucketConfig) ->
-    proplists:get_value(magma_fusion_logstore_uri, BucketConfig).
-
--spec magma_fusion_metadatastore_uri(proplists:proplist()) ->
-          string() | undefined.
-magma_fusion_metadatastore_uri(BucketConfig) ->
-    case is_fusion(BucketConfig) of
-        true ->
-            ns_config:read_key_fast(
-              magma_fusion_metadatastore_uri,
-              "chronicle://localhost:" ++
-                  integer_to_list(service_ports:get_port(rest_port)));
-        false ->
-            undefined
-    end.
 
 -ifdef(TEST).
 min_live_copies_test() ->

@@ -71,7 +71,10 @@
 -define(MAX_BUCKET_NAME_LEN, 100).
 -define(MIN_VERSION_PRUNING_WINDOW_HRS, 24).
 
--define(FUSION_LOGSTORE_URI, "fusionLogstoreURI").
+-define(FUSION_ENABLED, "fusionEnabled").
+-define(FUSION_STATE, "fusionState").
+-define(CANNOT_ENABLE_FUSION,
+        <<"Cannot create fusion enabled bucket when fusion is not enabled">>).
 
 get_info_level(Req) ->
     case proplists:get_value("basic_stats", mochiweb_request:parse_qs(Req)) of
@@ -513,6 +516,7 @@ build_continuous_backup_info(BucketConfig) ->
 build_magma_bucket_info(BucketConfig) ->
     case ns_bucket:storage_mode(BucketConfig) of
         magma ->
+            FusionState = ns_bucket:get_fusion_state(BucketConfig),
             lists:flatten(
               [{storageQuotaPercentage,
                 proplists:get_value(storage_quota_percentage,
@@ -541,13 +545,7 @@ build_magma_bucket_info(BucketConfig) ->
                                             ?DEFAULT_MAGMA_SHARDS)};
                    false -> []
                end,
-               case proplists:get_value(magma_fusion_logstore_uri,
-                                        BucketConfig) of
-                   undefined ->
-                       [];
-                   Value ->
-                       {?FUSION_LOGSTORE_URI, list_to_binary(Value)}
-               end]);
+               [{?FUSION_STATE, FusionState} || FusionState =/= disabled]]);
         _ ->
             []
     end.
@@ -994,6 +992,9 @@ do_bucket_create(Req, Name, ParsedProps) ->
         {error, secret_not_allowed} ->
             {errors, 400, [{encryptionAtRestKeyId,
                             <<"Encryption key can't encrypt this bucket">>}]};
+        {error, cannot_enable_fusion} ->
+            {errors, 400, [{list_to_atom(?FUSION_ENABLED),
+                            ?CANNOT_ENABLE_FUSION}]};
         Other ->
             case menelaus_web_cluster:busy_reply("create bucket", Other) of
                 {Code, Msg} ->
@@ -1703,6 +1704,7 @@ validate_membase_bucket_params(CommonParams, Params, Name,
     IsStorageModeMigration = is_storage_mode_migration(
                                IsNew, BucketConfig, Params),
     Is79 = cluster_compat_mode:is_version_79(Version),
+    IsTotoro = cluster_compat_mode:is_version_totoro(Version),
     IsPersistent = is_ephemeral(Params, BucketConfig, IsNew) =:= false,
 
     HistRetSecs = parse_validate_history_retention_seconds(
@@ -1765,8 +1767,7 @@ validate_membase_bucket_params(CommonParams, Params, Name,
                                                       IsStorageModeMigration),
          parse_validate_dcp_connections_between_nodes(Params, IsNew, Is79,
                                                       IsEnterprise),
-         parse_validate_fusion_logstore_uri(
-           Params, IsNew, Is79, IsEnterprise),
+         parse_validate_fusion_enabled(Params, IsNew, IsTotoro, IsEnterprise),
          parse_validate_dcp_backfill_idle_protection_enabled(Params,
                                                              BucketConfig,
                                                              IsNew,
@@ -2475,8 +2476,17 @@ parse_validate_param_not_supported(Key, Params, ErrorFun) ->
     end.
 
 not_supported_until_79_error(Param) ->
+    not_supported_until_error(Param, "7.9").
+
+not_supported_until_totoro_error(Param) ->
+    not_supported_until_error(Param, "Totoro").
+
+not_supported_until_error(Param, Version) ->
     {error, Param,
-     <<"Argument is not supported until cluster is fully 7.9">>}.
+     list_to_binary(
+       io_lib:format(
+         <<"Argument is not supported until cluster is fully ~s">>,
+         [Version]))}.
 
 not_supported_for_ephemeral_buckets(Param) ->
     {error, Param,
@@ -3692,35 +3702,52 @@ parse_validate_conflict_resolution_type(_Other) ->
     {error, conflictResolutionType,
      <<"Conflict resolution type must be 'seqno' or 'lww' or 'custom'">>}.
 
-parse_validate_fusion_logstore_uri(
-  Params, _IsNew, _Is79, _IsEnterprise = false) ->
-    parse_validate_param_not_enterprise(?FUSION_LOGSTORE_URI, Params);
-parse_validate_fusion_logstore_uri(
-  Params, _IsNew, _Is79 = false, _IsEnterprise) ->
+
+parse_validate_fusion_enabled(Params, IsNew, IsTotoro, IsEnterprise) ->
+    parse_validate_fusion_enabled(
+      Params, IsNew, IsTotoro, IsEnterprise,
+      ?cut(not lists:member(fusion_uploaders:get_state(),
+                            [disabled, disabling]))).
+
+parse_validate_fusion_enabled(
+  Params, _IsNew, _IsTotoro, _IsEnterprise = false, _CanBeEnabledFun) ->
+    parse_validate_param_not_enterprise(?FUSION_ENABLED, Params);
+parse_validate_fusion_enabled(
+  Params, _IsNew, _IsTotoro = false, _IsEnterprise, _CanBeEnabledFun) ->
     parse_validate_param_not_supported(
-      ?FUSION_LOGSTORE_URI, Params, fun not_supported_until_79_error/1);
-parse_validate_fusion_logstore_uri(
-  Params, _IsNew = false, _Is79, _IsEnterprise) ->
-    parse_validate_create_only(?FUSION_LOGSTORE_URI, Params);
-parse_validate_fusion_logstore_uri(
-  Params, _IsNew = true, _Is79 = true, _IsEnterprise = true) ->
+      ?FUSION_ENABLED, Params, fun not_supported_until_totoro_error/1);
+parse_validate_fusion_enabled(
+  Params, _IsNew = false, _IsTotoro, _IsEnterprise, _CanBeEnabledFun) ->
+    parse_validate_create_only(?FUSION_ENABLED, Params);
+parse_validate_fusion_enabled(
+  Params, _IsNew = true, _IsTotoro = true, _IsEnterprise = true,
+  CanBeEnabledFun) ->
     IsMagma = is_magma(Params, undefined, true, false),
     case IsMagma of
         false ->
             parse_validate_param_not_supported(
-              ?FUSION_LOGSTORE_URI, Params, fun only_supported_on_magma/1);
+              ?FUSION_ENABLED, Params, fun only_supported_on_magma/1);
         true ->
-            case proplists:get_value(?FUSION_LOGSTORE_URI, Params) of
-                undefined ->
-                    ignore;
-                Value ->
-                    case misc:is_valid_uri(Value, ["s3", "local"]) of
+            case menelaus_util:parse_validate_boolean_field(
+                   ?FUSION_ENABLED, '_', Params) of
+                [] ->
+                    case CanBeEnabledFun() of
                         true ->
-                            {ok, magma_fusion_logstore_uri, Value};
+                            {ok, magma_fusion_state, enabled};
                         false ->
-                            {error, ?FUSION_LOGSTORE_URI,
-                             <<"Must be a valid uri">>}
-                    end
+                            ignore
+                    end;
+                [{ok, _, true}] ->
+                    case CanBeEnabledFun() of
+                        false ->
+                            {error, ?FUSION_ENABLED, ?CANNOT_ENABLE_FUSION};
+                        true ->
+                            {ok, magma_fusion_state, enabled}
+                    end;
+                [{ok, _, false}] ->
+                    ignore;
+                [Error] ->
+                    Error
             end
     end.
 
@@ -3969,7 +3996,7 @@ basic_bucket_params_screening(IsNew, Name, Params, AllBuckets,
 
 basic_bucket_params_screening_setup() ->
     Modules = [config_profile, ns_config, cluster_compat_mode, collections,
-               ns_bucket],
+               ns_bucket, fusion_uploaders],
     meck:new(Modules, [passthrough]),
     meck:expect(config_profile, search,
                 fun (_, Default) ->
@@ -4004,7 +4031,7 @@ basic_bucket_params_screening_setup() ->
                 fun(_Name, direct) -> 0 end),
     meck:expect(ns_bucket, validate_encryption_secret,
                 fun(_Id, _BucketName, direct) -> ok end),
-
+    meck:expect(fusion_uploaders, get_state, fun () -> disabled end),
     %% Return mecked modules for teardown to unload
     Modules.
 
@@ -5014,59 +5041,73 @@ basic_parse_validate_bucket_auto_compaction_settings_test() ->
     meck:unload(chronicle_kv),
     ok.
 
-combinations(N, Choices) ->
-    combinations(N, Choices, [[]]).
+combinations(Choices) ->
+    combinations(Choices, [[]]).
 
-combinations(0, _Choices, List) ->
-    List;
-combinations(N, Choices, List) ->
-    combinations(N - 1, Choices,
+combinations([], List) ->
+    [lists:reverse(E) || E <- List];
+combinations([Choices | Rest], List) ->
+    combinations(Rest,
                  lists:flatmap(fun (C) -> [[C | E] || E <- List] end, Choices)).
 
-parse_validate_fusion_logstore_uri_test_() ->
-    Combinations = combinations(5, [true, false]),
+parse_validate_fusion_enabled_test_() ->
+    Combinations = combinations(lists:duplicate(5, [true, false])
+                                ++ [["true", "false", "other", undefined]]),
     {foreach, fun () -> ok end, fun (_) -> ok end,
      lists:map(
-       fun ([IsNew, Is79, IsEnterprise, IsMagma, IsValid]) ->
+       fun ([IsNew, IsTotoro, IsEnterprise, IsMagma, CanBeEnabled,
+             Value]) ->
                {lists:flatten(
                   io_lib:format(
-                    "IsNew=~p, Is79=~p, IsEnterprise=~p, IsMagma=~p, "
-                    "IsValid=~p",
-                    [IsNew, Is79, IsEnterprise, IsMagma, IsValid])),
+                    "IsNew=~p, IsTotoro=~p, IsEnterprise=~p, IsMagma=~p, "
+                    "CanBeEnabled=~p Value=~p",
+                    [IsNew, IsTotoro, IsEnterprise, IsMagma, CanBeEnabled,
+                     Value])),
                 fun () ->
-                        Uri = case IsValid of
-                                  true -> "s3://something";
-                                  false  -> "something"
-                              end,
                         BackendParam =
                             case IsMagma of
                                 true -> [{"storageBackend", "magma"}];
                                 false  -> []
                             end,
-                        Params = [{"bucketType", "membase"},
-                                  {?FUSION_LOGSTORE_URI, Uri}] ++ BackendParam,
-                        Resp = parse_validate_fusion_logstore_uri(
-                                 Params, IsNew, Is79, IsEnterprise),
+                        Params = [{"bucketType", "membase"}] ++ BackendParam ++
+                            [{?FUSION_ENABLED, Value} || Value =/= undefined] ,
+                        Resp = parse_validate_fusion_enabled(
+                                 Params, IsNew, IsTotoro, IsEnterprise,
+                                 ?cut(CanBeEnabled)),
                         ExpectedErrors =
                             lists:flatten(
-                              [[<<"Must be a valid uri">> || not IsValid],
+                              [[<<"fusionEnabled is invalid">> ||
+                                   Value =:= "other"],
                                [<<"Argument is only supported for magma "
                                   "buckets">> || not IsMagma],
-                               [<<"\"fusionLogstoreURI\" can only be set in "
+                               [<<"\"fusionEnabled\" can only be set in "
                                   "Enterprise edition">> || not IsEnterprise],
                                [<<"Argument is not supported until cluster is "
-                                  "fully 7.9">> || not Is79],
-                               [<<"\"fusionLogstoreURI\" allowed only during "
-                                  "bucket creation">> || not IsNew]]),
-                        case ExpectedErrors of
-                            [] ->
+                                  "fully Totoro">> || not IsTotoro],
+                               [<<"\"fusionEnabled\" allowed only during "
+                                  "bucket creation">> || not IsNew],
+                               [?CANNOT_ENABLE_FUSION ||
+                                   Value =:= "true" andalso not CanBeEnabled]]),
+                        case {ExpectedErrors, Value} of
+                            {[], _} ->
+                                case Value =:= "true" orelse
+                                    (Value == undefined andalso CanBeEnabled) of
+                                    true ->
+                                        ?assertEqual(
+                                           {ok, magma_fusion_state, enabled},
+                                           Resp);
+                                    false ->
+                                        ?assertEqual(ignore, Resp)
+                                end;
+                            {_, undefined} ->
+                                ignore;
+                            {_, _} ->
+                                ?assertMatch({error, ?FUSION_ENABLED, _}, Resp),
+                                {error, ?FUSION_ENABLED, E} = Resp,
                                 ?assertEqual(
-                                   {ok, magma_fusion_logstore_uri, Uri}, Resp);
-                            _ ->
-                                ?assertMatch({error, ?FUSION_LOGSTORE_URI, _},
-                                             Resp),
-                                {error, ?FUSION_LOGSTORE_URI, E} = Resp,
-                                ?assert(lists:member(E, ExpectedErrors))
+                                   {true, E, ExpectedErrors},
+                                   {lists:member(E, ExpectedErrors), E,
+                                   ExpectedErrors})
                         end
                 end}
        end, Combinations)}.
