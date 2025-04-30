@@ -1146,10 +1146,13 @@ idle({ensure_janitor_run, Item}, From, State) ->
       end, idle, State);
 
 idle(enable_fusion, From, _State) ->
+    ?log_info("Enabling fusion"),
     RV = case fusion_uploaders:enable() of
-             {ok, _} ->
+             ok ->
                  ok;
              {error, Error} ->
+                 ?log_error("Failed to enable fusion. Error: ~p",
+                            [Error]),
                  Error
          end,
     {keep_state_and_data, [{reply, From, RV}]};

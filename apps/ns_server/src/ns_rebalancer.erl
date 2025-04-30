@@ -38,6 +38,7 @@
          needs_rebalance_with_reason/3,
          get_desired_services_nodes/1,
          prepare_fusion_rebalance/1,
+         map_to_vbuckets_dict/1,
          maybe_check_expected_topology/2]).
 
 -export([wait_local_buckets_shutdown_complete/0]). % used via rpc:multicall
@@ -1135,7 +1136,7 @@ find_delta_recovery_map(CurrentMap, FailoverVBs, MatchingMaps) ->
 compare_vb_dict(D1, D2) ->
     lists:sort(dict:to_list(D1)) =:= lists:sort(dict:to_list(D2)).
 
-
+-spec map_to_vbuckets_dict(vbucket_map()) -> dict:dict().
 map_to_vbuckets_dict(Map) ->
     lists:foldr(
       fun ({V, Chain}, Acc) ->

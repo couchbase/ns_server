@@ -164,7 +164,8 @@
          maybe_stop_fusion_uploaders/2,
          get_active_guest_volumes/1,
          sync_fusion_log_store/2,
-         bucket_metadata_file/1
+         bucket_metadata_file/1,
+         get_fusion_sync_info/2
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -2487,13 +2488,22 @@ mount_fusion_vbucket(Bucket, VBucket, Volumes) ->
                         Sock, VBucket, Volumes)}
       end, Bucket, [json]).
 
+fusion_stats_key(Key, undefined) ->
+    iolist_to_binary(["fusion ", Key]);
+fusion_stats_key(Key, VBucket) ->
+    iolist_to_binary(["fusion ", Key, " ", integer_to_list(VBucket)]).
+
 fetch_fusion_stats(Sock, Bucket, Key) ->
-    case fetch_stats(Sock, iolist_to_binary(["fusion ", Key])) of
+    fetch_fusion_stats(Sock, Bucket, Key, undefined).
+
+fetch_fusion_stats(Sock, Bucket, Key, VBucket) ->
+    StatKey = fusion_stats_key(Key, VBucket),
+    case fetch_stats(Sock, StatKey) of
         {ok, Stats} ->
             {ok, ejson:decode(proplists:get_value(<<"fusion">>, Stats))};
         Other ->
             ?log_error("Error retrieving stat ~p for bucket ~p: ~p",
-                       [Key, Bucket, Other]),
+                       [StatKey, Bucket, Other]),
             Other
     end.
 
@@ -2604,6 +2614,27 @@ sync_fusion_log_store(Bucket, VBuckets) ->
                           _ ->
                               {errors, Errors}
                       end}
+      end, Bucket).
+
+fetch_fusion_sync_info(Sock, Bucket, VBucket) ->
+    case fetch_fusion_stats(Sock, Bucket, "sync_info", VBucket) of
+        {ok, {List}} ->
+            {ok, {VBucket, proplists:get_value(<<"logTerm">>, List),
+                  proplists:get_value(<<"logSeqno">>, List)}};
+        Other ->
+            Other
+    end.
+
+-spec get_fusion_sync_info(bucket_name(), [vbucket_id()]) ->
+          {ok, [{vbucket_id(), non_neg_integer(), non_neg_integer()}]} |
+          mc_error().
+get_fusion_sync_info(Bucket, VBuckets) ->
+    perform_very_long_call(
+      fun (Sock) ->
+              {reply,
+               functools:sequence(
+                 [?cut(fetch_fusion_sync_info(Sock, Bucket, VBucket)) ||
+                     VBucket <- VBuckets])}
       end, Bucket).
 
 bucket_metadata_file(BucketDir) ->

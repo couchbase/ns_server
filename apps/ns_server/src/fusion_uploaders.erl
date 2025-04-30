@@ -46,7 +46,8 @@
         disabled | disabling | enabled | enabling | stopped | stopping.
 -type bucket_state() ::
         disabled | disabling | enabled | stopped | stopping.
--type enable_error() :: not_initialized | {wrong_state, state(), [state()]}.
+-type enable_error() :: not_initialized | {wrong_state, state(), [state()]} |
+                        {failed_nodes, [node()]}.
 
 -export_type([fast_forward_info/0, uploaders/0, enable_error/0,
               bucket_state/0]).
@@ -60,12 +61,15 @@ build_fast_forward_info(Bucket, BucketConfig, Map, FastForwardMap) ->
             undefined;
         true ->
             Current = ns_bucket:get_fusion_uploaders(Bucket),
-            {Moves, Usage} = calculate_moves(Map, FastForwardMap, Current),
-            ?rebalance_info(
-               "Calculated fusion uploader moves. Usage ~p~nMoves:~n~p",
-               [Usage, Moves]),
+            Moves = calculate_moves(Map, FastForwardMap, Current,
+                                    allowance(Map, BucketConfig)),
+            ?rebalance_info("Calculated fusion uploader moves. Moves:~n~p",
+                            [Moves]),
             {Moves, Current}
-end.
+    end.
+
+allowance(Map, BucketConfig) ->
+    length(Map) div length(ns_bucket:get_servers(BucketConfig)) + 1.
 
 -spec build_initial(vbucket_map()) -> uploaders().
 build_initial(VBucketMap) ->
@@ -87,88 +91,92 @@ get_current({_, Current}) ->
 %% the number of uploaders started from scratch and distribute
 %% uploaders evenly between nodes
 %%
-%% we do calculation in 2 passes, the first one deals with the
-%% situations where there's no choice how to place the uploader,
-%% the second one tries to place the uploaders on the nodes with
-%% lesser usage. This helps to distribute uploders among nodes
-%% more evenly.
-calculate_moves(Map, FastForwardMap, CurrentUploaders) ->
-    FutureUploaders = lists:duplicate(length(Map), undefined),
-    calculate_moves(
-      lists:zip(lists:zip3(Map, FastForwardMap, CurrentUploaders),
-                FutureUploaders)).
+%% parameter Allowance restricts how many uploaders can be
+%% started from each node thus defining how much unbalance
+%% we are ready to tolerate for the sake of not uploading from
+%% scratch
+calculate_moves(Map, FastForwardMap, CurrentUploaders, Allowance) ->
+    Zipped = lists:zip3(Map, FastForwardMap, [N || {N, _} <- CurrentUploaders]),
+    build_uploaders(Zipped, CurrentUploaders, Allowance, moves).
 
-calculate_moves(AllZipped) ->
-    {AllZipped1, UsageMap1} = process_moves_without_choice(AllZipped),
-    {AllZipped2, UsageMap2} = process_moves_with_choice(AllZipped1, UsageMap1),
-    {[Move || {_Current, Move} <- AllZipped2], UsageMap2}.
+candidates({OldChain, NewChain, UploaderNode}) ->
+    NotFromScratch = NewChain -- lists:delete(UploaderNode, OldChain),
+    FromScratch = NewChain -- NotFromScratch,
+    Choices = case NotFromScratch of
+                  [] ->
+                      length(FromScratch);
+                  _ ->
+                      length(NotFromScratch)
+              end,
+    {[NotFromScratch, FromScratch], Choices};
+candidates({NodesWithUploadedData, Chain}) ->
+    FromScratch = Chain -- [N || {N, _, _} <- NodesWithUploadedData],
+    %% each node with data is a list of one here, because we want
+    %% the term and seqno to prevail over usage during the uploader
+    %% selection
+    NotFromScratch =
+        [[N] || {N, _, _} <- lists:sort(
+                               fun ({_, TermA, SeqnoA}, {_, TermB, SeqnoB}) ->
+                                       {TermA, SeqnoA} > {TermB, SeqnoB}
+                               end, NodesWithUploadedData)],
+    Choices = case NotFromScratch of
+                  [] ->
+                      length(FromScratch);
+                  _ ->
+                      length(NotFromScratch)
+              end,
+    {NotFromScratch ++ [FromScratch], Choices}.
 
-set_uploader(Current = {_, _, {_, Counter}}, Node, Usage, FromScratch) ->
-    Usage1 = maps:update_with(Node, _ + 1, 1, Usage),
-    Usage2 = case FromScratch of
-                 true ->
-                     %% this is needed so the rebalance_info above
-                     %% will contain the information on how many
-                     %% uploaders were started from scratch
-                     maps:update_with(from_scratch, _ + 1, 1, Usage1);
-                 false ->
-                     Usage1
-             end,
-    {{Current, {Node, Counter + 1}}, Usage2}.
-
-keep_uploader(Current = {_, _, {Node, _}}, Usage) ->
-    {{Current, same}, maps:update_with(Node, _ + 1, 1, Usage)}.
-
-select_uploader(Current = {_, _, {Node, _}}, Nodes, Usage, FromScratch) ->
-    {_, Winner} = lists:min([{maps:get(N, Usage, 0), N} || N <- Nodes]),
-    case Winner of
-        Node ->
-            keep_uploader(Current, Usage);
+%% this function assumes that Allowance is big enough so [] candidates
+%% is never passed in
+select_uploader([Candidates | Rest], Usage, Allowance) ->
+    Allowed = lists:filter(?cut(maps:get(_, Usage, 0) =< Allowance),
+                           Candidates),
+    case Allowed of
+        [] ->
+            select_uploader(Rest, Usage, Allowance);
         _ ->
-            set_uploader(Current, Winner, Usage, FromScratch)
+            {_, Winner} =
+                lists:min([{maps:get(N, Usage, 0), N} || N <- Allowed]),
+            Winner
     end.
 
-%% this pass processes all situations when usage doesn't matter
-process_moves_without_choice(AllZipped) ->
-    lists:mapfoldl(
-      fun ({{OldChain, NewChain, {UploaderNode, _Counter}} = Current,
-            undefined},
-           Usage) ->
-              case NewChain -- lists:delete(UploaderNode, OldChain) of
-                  [UploaderNode] ->
-                      keep_uploader(Current, Usage);
-                  [NewS3Replica] ->
-                      set_uploader(Current, NewS3Replica, Usage, false);
-                  [] ->
-                      case NewChain of
-                          [Active] ->
-                              set_uploader(Current, Active, Usage, true);
-                          _ ->
-                              {{Current, undefined}, Usage}
-                      end;
-                  _ ->
-                      {{Current, undefined}, Usage}
-              end
-      end, #{}, AllZipped).
+build_uploaders(Infos, CurrentUploaders, Allowance, OutputFormat) ->
+    CandidatesList = lists:map(fun candidates/1, Infos),
 
-%% this pass processes all situations when usage should be taken into account
-process_moves_with_choice(AllZipped, UsageSoFar) ->
-    lists:mapfoldl(
-      fun ({{OldChain, NewChain, {UploaderNode, _Counter}} = Current,
-            undefined},
-           Usage) ->
-              case NewChain -- lists:delete(UploaderNode, OldChain) of
-                  [] ->
-                      %% no candidates for uploader found, so we'll
-                      %% have to upload from scratch.
-                      select_uploader(Current, NewChain, Usage, true);
-                  Candidates ->
-                      select_uploader(Current, Candidates, Usage, false)
-              end;
-          (CurrentAndMove, Usage) ->
-              %% already selected by pass 1
-              {CurrentAndMove, Usage}
-      end, UsageSoFar, AllZipped).
+    %% zip together vbucket numbers, candidates and current uploaders
+    %% so the info can be processed for each vbucket
+    Zipped = misc:enumerate(lists:zip(CandidatesList, CurrentUploaders), 0),
+
+    %% the algorithm processes the vbuckets with the least number
+    %% of uploader candidates first in order to have more choice
+    %% at the end when Usage approaches Allowance
+    Sorted = lists:sort(
+               fun ({_, {{_, ChoicesA}, _}}, {_, {{_, ChoicesB}, _}}) ->
+                       ChoicesA > ChoicesB
+               end, Zipped),
+    {WithUploaders, _} =
+        lists:mapfoldl(
+          fun ({I, {{Candidates, _Choices}, {CurrentUploader, Term}}}, Usage) ->
+                  Uploader = select_uploader(Candidates, Usage, Allowance),
+                  NewUsage = maps:update_with(Uploader, _ + 1, 1, Usage),
+                  UploaderOrMove =
+                      case Uploader of
+                          CurrentUploader ->
+                              case OutputFormat of
+                                  moves ->
+                                      same;
+                                  uploaders ->
+                                      {CurrentUploader, Term}
+                              end;
+                          _ ->
+                              {Uploader, Term + 1}
+                      end,
+                  {{I, UploaderOrMove}, NewUsage}
+          end, #{}, Sorted),
+
+    %% return calculated moves or uploaders in vbucket number order
+    [Uploader || {_, Uploader} <- lists:sort(WithUploaders)].
 
 -spec fail_nodes(uploaders(), [node()]) -> uploaders().
 fail_nodes(Uploaders, FailedNodes) ->
@@ -234,10 +242,134 @@ update_config(Params) ->
               end
       end).
 
--spec enable() -> {ok, chronicle:revision()} | {error, enable_error()}.
+re_enable_uploaders(Bucket, BucketConfig, Map, Uploaders) ->
+    case janitor_agent:get_fusion_sync_info(Bucket, Map) of
+        {error, Error} ->
+            {error, Error};
+        {ok, NodesInfo} ->
+            VBInfosArray =
+                lists:foldl(
+                  fun ({Node, VBSyncInfo}, Acc) ->
+                          lists:foldl(
+                            fun ({VB, Term, Seqno}, Acc1) ->
+                                    array:set(VB, [{Node, Term, Seqno} |
+                                                   array:get(VB, Acc1)], Acc1)
+                            end, Acc, VBSyncInfo)
+                  end, array:new(length(Map), {default, []}), NodesInfo),
+            VBInfos = array:to_list(VBInfosArray),
+            Allowance = allowance(Map, BucketConfig),
+            ?log_debug("The following information was retrieved from bucket "
+                       "~p~n~p~nCurrent uploaders: ~p~nAllowance: ~p",
+                       [Bucket, VBInfos, Uploaders, Allowance]),
+            {ok, build_uploaders(lists:zip(VBInfos, Map), Uploaders,
+                                 allowance(Map, BucketConfig), uploaders)}
+    end.
+
+calculate_bucket_uploaders(Bucket, BucketConfig) ->
+    case proplists:get_value(map, BucketConfig, []) of
+        [] ->
+            %% bucket map not yet properly initialized
+            %% this case will be handled by janitor
+            {ok, undefined};
+        Map ->
+            case ns_bucket:get_fusion_uploaders(Bucket) of
+                not_found ->
+                    %% this bucket was never enabled for fusion
+                    {ok, build_initial(Map)};
+                Uploaders ->
+                    case ns_bucket:is_fusion(BucketConfig) of
+                        false ->
+                            %% fusion was disabled on this bucket which means
+                            %% that data is erased. therefore  start from
+                            %% scratch, but do not go lower or equal to
+                            %% existing terms
+                            Zipped = lists:zip(build_initial(Map), Uploaders),
+                            {ok, lists:map(
+                                   fun ({{Node, _}, {Node, Term}}) ->
+                                           {Node, Term};
+                                       ({{Node, _}, {_, Term}}) ->
+                                           {Node, Term + 1}
+                                   end, Zipped)};
+                        true ->
+                            %% fusion was stopped for this bucket
+                            %% rebuild uploaders according to existing data
+                            %% trying to minimize the initial upload
+                            re_enable_uploaders(Bucket, BucketConfig, Map,
+                                                Uploaders)
+                    end
+            end
+    end.
+
+calculate_uploaders([], Acc) ->
+    {ok, lists:reverse(Acc)};
+calculate_uploaders([{Bucket, BucketConfig} | Rest], Acc) ->
+    case calculate_bucket_uploaders(Bucket, BucketConfig) of
+        {error, _} = E ->
+            E;
+        {ok, Uploaders} ->
+            calculate_uploaders(Rest, [{Bucket, Uploaders} | Acc])
+    end.
+
+-spec enable() -> ok | {error, enable_error()}.
 enable() ->
+    MagmaBuckets = ns_bucket:get_buckets_of_type(
+                     {membase, magma}, ns_bucket:get_buckets()),
+    case calculate_uploaders(MagmaBuckets, []) of
+        {ok, BucketUploaders} ->
+            [?log_debug("Setting uploaders for bucket ~p:~n~p", [BN, U]) ||
+                {BN, U} <- BucketUploaders],
+            case enable(BucketUploaders) of
+                {ok, _} ->
+                    post_enable(MagmaBuckets);
+                Other ->
+                    Other
+            end;
+        Error ->
+            Error
+    end.
+
+enable_buckets(Snapshot, BucketUploaders) ->
+    lists:flatmap(
+      fun ({BucketName, Uploaders}) ->
+              {ok, BucketConfig} = ns_bucket:get_bucket(BucketName, Snapshot),
+              case Uploaders of
+                  undefined ->
+                      [];
+                  _ ->
+                      [{set, ns_bucket:fusion_uploaders_key(BucketName),
+                        Uploaders}]
+              end ++
+                  case ns_bucket:get_fusion_state(BucketConfig) of
+                      enabled ->
+                          [];
+                      _ ->
+                          [{set, ns_bucket:sub_key(BucketName, props),
+                            ns_bucket:set_fusion_state(enabled, BucketConfig)}]
+                  end
+      end, BucketUploaders).
+
+post_enable(Buckets) ->
+    Servers = lists:usort(lists:flatten(
+                            [ns_bucket:get_servers(BC) || {_, BC} <- Buckets])),
+    case chronicle_compat:push(Servers) of
+        ok ->
+            ok;
+        {error, BadReplies} ->
+            ?log_warning("Failed to "
+                         "synchronize config to some nodes: ~p", [BadReplies]),
+            %% returning error to the caller will be misleading, since the
+            %% enabling procedure is already started
+            ok
+    end,
+    %% proceed to start the uploaders
+    [ns_orchestrator:request_janitor_run({bucket, BN}) ||
+        {BN, _} <- Buckets],
+    ok.
+
+enable(BucketUploaders) ->
     chronicle_kv:transaction(
-      kv, [config_key()],
+      kv, [config_key() |
+           [ns_bucket:sub_key(BN, props) || {BN, _} <- BucketUploaders]],
       fun (Snapshot) ->
               try
                   Config = get_config_with_default(Snapshot),
@@ -247,10 +379,12 @@ enable() ->
                   State = proplists:get_value(state, Config),
                   (State == disabled) orelse (State == stopped) orelse
                       throw({wrong_state, State, [disabled, stopped]}),
+                  BucketCommits = enable_buckets(Snapshot, BucketUploaders),
                   {commit, [{set, config_key(),
                              misc:update_proplist(
                                Config, [{state, enabling},
-                                        {log_store_uri_locked, true}])}]}
+                                        {log_store_uri_locked, true}])} |
+                            BucketCommits]}
               catch
                   throw:Error ->
                       {abort, {error, Error}}

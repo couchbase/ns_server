@@ -72,6 +72,7 @@
          get_bucket_names/1,
          get_bucket_names_of_type/1,
          get_bucket_names_of_type/2,
+         get_buckets_of_type/2,
          get_buckets/0,
          get_buckets/1,
          get_buckets_by_rank/0,
@@ -215,6 +216,7 @@
 %% fusion
 -export([is_fusion/1,
          get_fusion_state/1,
+         set_fusion_state/2,
          get_fusion_buckets/0,
          fusion_uploaders_key/1,
          get_fusion_uploaders/1]).
@@ -424,22 +426,32 @@ get_bucket_names(Snapshot) ->
                             {membase, magma}|
                             {membase, ephemeral}| {memcached, undefined}.
 
--spec get_bucket_names_of_type(bucket_type_mode()) -> list().
+-spec get_bucket_names_of_type(bucket_type_mode()) -> [bucket_name()].
 get_bucket_names_of_type(Type) ->
     get_bucket_names_of_type(Type, get_buckets()).
 
--spec get_bucket_names_of_type(bucket_type_mode(), list()) -> list().
-get_bucket_names_of_type({Type, Mode}, BucketConfigs) ->
-    [Name || {Name, Config} <- BucketConfigs, bucket_type(Config) == Type,
-             storage_mode(Config) == Mode];
-get_bucket_names_of_type(persistent, BucketConfigs) ->
-    [Name || {Name, Config} <- BucketConfigs,
-             is_persistent(Config)];
-get_bucket_names_of_type(auto_compactable, BucketConfigs) ->
-    [Name || {Name, Config} <- BucketConfigs,
-             is_auto_compactable(Config)];
+-spec get_bucket_names_of_type(
+        bucket_type_mode(), [{bucket_name(), proplists:proplist()}]) ->
+          [bucket_name()].
 get_bucket_names_of_type(Type, BucketConfigs) ->
-    [Name || {Name, Config} <- BucketConfigs, bucket_type(Config) == Type].
+    [Name || {Name, _Config} <- get_buckets_of_type(Type, BucketConfigs)].
+
+-spec get_buckets_of_type(
+        bucket_type_mode(), [{bucket_name(), proplists:proplist()}]) ->
+          [{bucket_name(), proplists:proplist()}].
+get_buckets_of_type({Type, Mode}, BucketConfigs) ->
+    [{Name, Config} || {Name, Config} <- BucketConfigs,
+                       bucket_type(Config) == Type,
+                       storage_mode(Config) == Mode];
+get_buckets_of_type(persistent, BucketConfigs) ->
+    [{Name, Config} || {Name, Config} <- BucketConfigs,
+             is_persistent(Config)];
+get_buckets_of_type(auto_compactable, BucketConfigs) ->
+    [{Name, Config} || {Name, Config} <- BucketConfigs,
+             is_auto_compactable(Config)];
+get_buckets_of_type(Type, BucketConfigs) ->
+    [{Name, Config} || {Name, Config} <- BucketConfigs,
+                       bucket_type(Config) == Type].
 
 %% extracted s/t it can be unit tested
 rank_sorting_fn() ->
@@ -3096,6 +3108,14 @@ is_fusion(BucketConfig) ->
 -spec get_fusion_state(proplists:proplist()) -> fusion_uploaders:bucket_state().
 get_fusion_state(BucketConfig) ->
     proplists:get_value(magma_fusion_state, BucketConfig, disabled).
+
+-spec set_fusion_state(fusion_uploaders:bucket_state(), proplists:proplist()) ->
+          proplists:proplist().
+set_fusion_state(disabled, BucketConfig) ->
+    lists:keydelete(magma_fusion_state, 1, BucketConfig);
+set_fusion_state(State, BucketConfig) ->
+    lists:keystore(magma_fusion_state, 1, BucketConfig,
+                   {magma_fusion_state, State}).
 
 -spec get_fusion_buckets() -> [{bucket_name(), proplists:proplist()}].
 get_fusion_buckets() ->
