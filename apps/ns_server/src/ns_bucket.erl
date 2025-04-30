@@ -116,7 +116,7 @@
          validate_map/1,
          set_fast_forward_map/2,
          set_map_and_uploaders/3,
-         set_initial_map/4,
+         set_initial_map_and_uploaders/4,
          set_map_opts/2,
          set_servers/2,
          set_restored_attributes/3,
@@ -208,7 +208,6 @@
          get_fusion_buckets/0,
          fusion_uploaders_key/1,
          get_fusion_uploaders/1,
-         store_fusion_uploaders/2,
          magma_fusion_logstore_uri/1,
          magma_fusion_metadatastore_uri/1]).
 
@@ -1929,40 +1928,47 @@ validate_init_map_trans(BucketName, Snapshot, Servers) ->
             false
     end.
 
-% Update the initial map via a transaction that validates map with the
-% nodes_wanted in chronicle. This allows chronicle to reject the initial map set
-% transaction if node names have changed since then
-update_init_map_config(BucketName, Servers, Fun) ->
-    PropsKey = sub_key(BucketName, props),
+set_initial_map_and_uploaders_txn(Snapshot, Bucket, Map, Servers, MapOpts) ->
+    case validate_init_map_trans(Bucket, Snapshot, Servers) of
+        {ok, OldConfig} ->
+            OldMap = proplists:get_value(map, OldConfig, []),
+            NewConfig =
+                misc:update_proplist(
+                  OldConfig,
+                  [{map, Map}, {map_opts_hash, erlang:phash2(MapOpts)}]),
+            UploaderSets =
+                case is_fusion(OldConfig) of
+                    true ->
+                        Uploaders = fusion_uploaders:build_initial(Map),
+                        ?log_debug("Set initial uploaders for bucket ~p to ~p",
+                                   [Bucket, Uploaders]),
+                        [{set, fusion_uploaders_key(Bucket), Uploaders}];
+                    false ->
+                        []
+                end,
+            {commit,
+             [{set, sub_key(Bucket, props), NewConfig} | UploaderSets],
+             OldMap};
+        false ->
+            {abort, mismatch}
+    end.
+
+-spec set_initial_map_and_uploaders(bucket_name(), vbucket_map(), [node()],
+                                    proplists:proplist()) ->
+          ok | mismatch | {error, exceeded_retries}.
+set_initial_map_and_uploaders(Bucket, Map, Servers, MapOpts) ->
+    validate_map(Map),
     RV =
         chronicle_kv:transaction(
-          kv, [PropsKey, nodes_wanted],
-          fun (Snapshot) ->
-                  case validate_init_map_trans(BucketName, Snapshot, Servers) of
-                      {ok, Config} ->
-                          {commit, [{set, PropsKey, Fun(Config)}]};
-                      false ->
-                          {abort, mismatch}
-                  end
-          end),
+          kv, [sub_key(Bucket, props), nodes_wanted],
+          set_initial_map_and_uploaders_txn(_, Bucket, Map, Servers, MapOpts)),
     case RV of
-        {ok, _} ->
+        {ok, _, OldMap} ->
+            master_activity_events:note_set_map(Bucket, Map, OldMap),
             ok;
         Other ->
             Other
     end.
-
-set_initial_map(Bucket, Map, Servers, MapOpts) ->
-    validate_map(Map),
-    update_init_map_config(
-      Bucket, Servers,
-      fun (OldConfig) ->
-              OldMap = proplists:get_value(map, OldConfig, []),
-              master_activity_events:note_set_map(Bucket, Map, OldMap),
-              misc:update_proplist(
-                OldConfig,
-                [{map, Map}, {map_opts_hash, erlang:phash2(MapOpts)}])
-      end).
 
 set_restored_attributes_property(Bucket, Map, ServerList, Fun) ->
     update_bucket_config(
@@ -2763,11 +2769,6 @@ fusion_uploaders_sub_key() ->
 -spec fusion_uploaders_key(string()) -> tuple().
 fusion_uploaders_key(BucketName) ->
     sub_key(BucketName, fusion_uploaders_sub_key()).
-
--spec store_fusion_uploaders(string(), fusion_uploaders:uploaders()) ->
-          {ok, chronicle:revision()}.
-store_fusion_uploaders(BucketName, Map) ->
-    {ok, _} = store_sub_key(BucketName, fusion_uploaders_sub_key(), Map).
 
 -spec get_fusion_uploaders(string()) ->
           fusion_uploaders:uploaders() | not_found.

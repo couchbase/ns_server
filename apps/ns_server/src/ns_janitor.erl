@@ -224,34 +224,19 @@ cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig) ->
             ?log_info("janitor decided to generate initial vbucket map"),
             {Map, MapOpts} =
                 ns_rebalancer:generate_initial_map(Bucket, BucketConfig),
-            set_initial_map(Map, Servers, MapOpts, Bucket, BucketConfig),
 
-            maybe_generate_initial_fusion_uploaders(Bucket, BucketConfig, Map),
+            case ns_rebalancer:unbalanced(Map, BucketConfig) of
+                false ->
+                    ns_bucket:store_last_balanced_vbmap(Bucket, Map, MapOpts);
+                true ->
+                    ok
+            end,
 
+            ok = ns_bucket:set_initial_map_and_uploaders(
+                   Bucket, Map, Servers, MapOpts),
             repeat_bucket_config_cleanup(Bucket, Options);
         _ ->
             {ok, BucketConfig}
-    end.
-
-set_initial_map(Map, Servers, MapOpts, Bucket, BucketConfig) ->
-    case ns_rebalancer:unbalanced(Map, BucketConfig) of
-        false ->
-            ns_bucket:store_last_balanced_vbmap(Bucket, Map, MapOpts);
-        true ->
-            ok
-    end,
-
-    ok = ns_bucket:set_initial_map(Bucket, Map, Servers, MapOpts).
-
-maybe_generate_initial_fusion_uploaders(BucketName, BucketConfig, Map) ->
-    case ns_bucket:is_fusion(BucketConfig) of
-        true ->
-            Uploaders = [{N, 1} || [N | _] <- Map],
-            ?log_debug("Set initial uploaders for bucket ~p to ~p",
-                       [BucketName, Uploaders]),
-            ns_bucket:store_fusion_uploaders(BucketName, Uploaders);
-        false ->
-            ok
     end.
 
 partition_param_results(Res) ->

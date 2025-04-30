@@ -19,6 +19,7 @@
 -include_lib("ns_common/include/cut.hrl").
 
 -export([build_fast_forward_info/4,
+         build_initial/1,
          get_moves/1,
          get_current/1,
          fail_nodes/2]).
@@ -51,6 +52,10 @@ build_fast_forward_info(Bucket, BucketConfig, Map, FastForwardMap) ->
                [Usage, Moves]),
             {Moves, Current}
 end.
+
+-spec build_initial(vbucket_map()) -> uploaders().
+build_initial(VBucketMap) ->
+    [{N, 1} || [N | _] <- VBucketMap].
 
 -spec get_moves(fast_forward_info()) -> moves().
 get_moves({Moves, _}) ->
