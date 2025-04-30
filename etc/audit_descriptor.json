@@ -1770,6 +1770,7 @@
               "dekType": "",
               "bucketName": "",
               "dropKeysDate": "",
+              "forceEncryptionDate": "",
               "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid": ""
           }

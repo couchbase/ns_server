@@ -15,7 +15,8 @@
 
 -export([handle_get/2, handle_post/2, get_settings/1, handle_drop_keys/2,
          handle_bucket_drop_keys/2, build_bucket_encr_at_rest_info/2,
-         format_encr_at_rest_info/1]).
+         format_encr_at_rest_info/1, handle_force_encr/2,
+         handle_bucket_force_encr/2]).
 
 encr_method(Param, SecretIdName, EncrType) ->
     AllowedInMixedClusters = case EncrType of
@@ -74,6 +75,11 @@ encr_deks_drop_date(Param, EncrType) ->
      #{cfg_key => [EncrType, dek_drop_datetime],
        type => {read_only, {optional, datetime_iso8601}}}}.
 
+encr_force_encr_date(Param, EncrType) ->
+    {Param,
+     #{cfg_key => [EncrType, force_encryption_datetime],
+       type => {read_only, {optional, datetime_iso8601}}}}.
+
 encr_info(Param, EncrType) ->
     {Param, #{cfg_key => [EncrType, info],
               type => {read_only, encr_info}}}.
@@ -109,6 +115,10 @@ params() ->
      encr_deks_drop_date("config.dekLastDropDate", config_encryption),
      encr_deks_drop_date("log.dekLastDropDate", log_encryption),
      encr_deks_drop_date("audit.dekLastDropDate", audit_encryption),
+
+     encr_force_encr_date("config.lastForceEncryptionDate", config_encryption),
+     encr_force_encr_date("log.lastForceEncryptionDate", log_encryption),
+     encr_force_encr_date("audit.lastForceEncryptionDate", audit_encryption),
 
      encr_info("config.info", config_encryption),
      encr_info("log.info", log_encryption),
@@ -226,6 +236,13 @@ handle_post(Path, Req) ->
       settings_to_list(AlreadyDefined), settings_to_list(defaults()), Req).
 
 handle_bucket_drop_keys(Bucket, Req) ->
+    handle_bucket_drop_keys(Bucket, dek_drop_datetime, dropKeysDate, Req).
+
+handle_bucket_force_encr(Bucket, Req) ->
+    handle_bucket_drop_keys(Bucket, force_encryption_datetime,
+                            forceEncryptionDate, Req).
+
+handle_bucket_drop_keys(Bucket, DropDeksTimeKey, AuditKey, Req) ->
     menelaus_util:assert_is_enterprise(),
     handle_set_drop_time(
       fun (Time) ->
@@ -237,7 +254,7 @@ handle_bucket_drop_keys(Bucket, Req) ->
                           true ->
                               CurVal = chronicle_compat:get(Snapshot, Key,
                                                             #{default => #{}}),
-                              NewVal = CurVal#{dek_drop_datetime => Time},
+                              NewVal = CurVal#{DropDeksTimeKey => Time},
                               {commit, [{set, Key, NewVal}]};
                           false ->
                               menelaus_util:web_exception(
@@ -248,14 +265,14 @@ handle_bucket_drop_keys(Bucket, Req) ->
               ok ->
                   AuditProps = [{dekType, "bucket"},
                                 {bucketName, Bucket},
-                                {dropKeysDate, iso8601:format(Time)}],
+                                {AuditKey, iso8601:format(Time)}],
                   ns_audit:encryption_at_rest_drop_deks(Req, AuditProps),
                   ok;
               {error, no_quorum = R} ->
                   menelaus_util:web_exception(
                     503, menelaus_web_secrets:format_error(R))
           end
-      end, Req).
+      end, AuditKey, Req).
 
 build_bucket_encr_at_rest_info(BucketName, BucketConfig) ->
     NodesInfo = ns_doctor:get_nodes(),
@@ -278,6 +295,13 @@ format_encr_at_rest_info(Info) ->
                 end, Info)}.
 
 handle_drop_keys(TypeName, Req) ->
+    handle_drop_keys(TypeName, dek_drop_datetime, dropKeysDate, Req).
+
+handle_force_encr(TypeName, Req) ->
+    handle_drop_keys(TypeName, force_encryption_datetime,
+                     forceEncryptionDate, Req).
+
+handle_drop_keys(TypeName, DropDeksTimeKey, AuditKey, Req) ->
     menelaus_util:assert_is_enterprise(),
     handle_set_drop_time(
       fun (Time) ->
@@ -296,7 +320,7 @@ handle_drop_keys(TypeName, Req) ->
                                       ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY,
                                       #{default => #{}}),
                       SubSettings = maps:get(TypeKey, AllSettings, #{}),
-                      NewSubSetting = SubSettings#{dek_drop_datetime =>
+                      NewSubSetting = SubSettings#{DropDeksTimeKey =>
                                                    {set, Time}},
                       NewSettings = AllSettings#{TypeKey => NewSubSetting},
                       {commit,
@@ -306,16 +330,16 @@ handle_drop_keys(TypeName, Req) ->
           case Res of
               ok ->
                   AuditProps = [{dekType, TypeName},
-                                {dropKeysDate, iso8601:format(Time)}],
+                                {AuditKey, iso8601:format(Time)}],
                   ns_audit:encryption_at_rest_drop_deks(Req, AuditProps),
                   ok;
               {error, no_quorum = R} ->
                   menelaus_util:web_exception(
                     503, menelaus_web_secrets:format_error(R))
           end
-      end, Req).
+      end, AuditKey, Req).
 
-handle_set_drop_time(SetTimeFun, Req) ->
+handle_set_drop_time(SetTimeFun, AuditKey, Req) ->
     validator:handle(
       fun (ParsedList) ->
           Time = case proplists:get_value(datetime, ParsedList) of
@@ -323,7 +347,7 @@ handle_set_drop_time(SetTimeFun, Req) ->
                      DT -> DT
                  end,
           ok = SetTimeFun(Time),
-          Reply = {[{dropKeysDate, iso8601:format(Time)}]},
+          Reply = {[{AuditKey, iso8601:format(Time)}]},
           menelaus_util:reply_json(Req, Reply)
       end, Req, form, [validator:iso_8601_parsed(datetime, _),
                        validator:unsupported(_)]).
@@ -356,17 +380,20 @@ defaults() ->
                              secret_id => ?SECRET_ID_NOT_SET,
                              dek_lifetime_in_sec => 365*60*60*24,
                              dek_rotation_interval_in_sec => 30*60*60*24,
-                             dek_drop_datetime => {not_set, ""}},
+                             dek_drop_datetime => {not_set, ""},
+                             force_encryption_datetime => {not_set, ""}},
       log_encryption => #{encryption => disabled,
                           secret_id => ?SECRET_ID_NOT_SET,
                           dek_lifetime_in_sec => 365*60*60*24,
                           dek_rotation_interval_in_sec => 30*60*60*24,
-                          dek_drop_datetime => {not_set, ""}},
+                          dek_drop_datetime => {not_set, ""},
+                          force_encryption_datetime => {not_set, ""}},
       audit_encryption => #{encryption => disabled,
                             secret_id => ?SECRET_ID_NOT_SET,
                             dek_lifetime_in_sec => 365*60*60*24,
                             dek_rotation_interval_in_sec => 30*60*60*24,
-                            dek_drop_datetime => {not_set, ""}}}.
+                            dek_drop_datetime => {not_set, ""},
+                            force_encryption_datetime => {not_set, ""}}}.
 
 validate_no_unencrypted_secrets(config_encryption,
                                 #{encryption := disabled,

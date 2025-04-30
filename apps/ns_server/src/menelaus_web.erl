@@ -1028,6 +1028,13 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["controller", "dropEncryptionAtRestDeks", Type] ->
                     {{[admin, security], write},
                      fun menelaus_web_encr_at_rest:handle_drop_keys/2, [Type]};
+                ["controller", "forceEncryptionAtRest", "bucket", Id] ->
+                    {{[{bucket, Id}, settings], write},
+                     fun menelaus_web_encr_at_rest:handle_bucket_force_encr/2,
+                     [Id]};
+                ["controller", "forceEncryptionAtRest", Type] ->
+                    {{[admin, security], write},
+                     fun menelaus_web_encr_at_rest:handle_force_encr/2, [Type]};
                 ["pools", "default", "buckets", Id] ->
                     {{[{bucket, Id}, settings], write},
                      fun menelaus_web_buckets:handle_bucket_update/3,

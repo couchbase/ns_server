@@ -335,6 +335,14 @@ dek_chronicle_keys_filter(Key) ->
 %%
 %% required_usage - the secret usage that secret must contain in order to be
 %% allowed to encrypt this kind of deks
+%%
+%% drop_keys_timestamp_callback - returns a timestamp or undefined,
+%% all DEKs that were created before this timestamp should be dropped
+%%
+%% force_encryption_timestamp_callback - returns a timestamp or undefined,
+%% if this timestamp is set, data must be encrypted if current time is after
+%% this timestamp. Note that each toggle of encryption must reset this
+%% timestamp to undefined.
 -spec dek_config(dek_kind()) ->
     #{encryption_method_callback :=
         fun( (Snapshot) -> {ok, encryption_method()} | {error, not_found} ),
@@ -345,7 +353,9 @@ dek_chronicle_keys_filter(Key) ->
       rotation_int_callback :=
         fun ( (Snapshot) -> {ok, IntOrUndefined} | {error, not_found} ),
       drop_keys_timestamp_callback :=
-        fun ( (Snapshot) -> {ok, IntOrUndefined} | {error, not_found} ),
+        fun ( (Snapshot) -> {ok, DateTimeOrUndefined} | {error, not_found} ),
+      force_encryption_timestamp_callback :=
+        fun ( (Snapshot) -> {ok, DateTimeOrUndefined} | {error, not_found} ),
       get_ids_in_use_callback :=
         fun ( () -> {ok, Ids} | {error, not_found | _}),
       drop_callback :=
@@ -355,7 +365,8 @@ dek_chronicle_keys_filter(Key) ->
       required_usage := cb_cluster_secrets:secret_usage()
      } when Ids :: [dek_id()],
             Snapshot :: cb_cluster_secrets:chronicle_snapshot(),
-            IntOrUndefined :: undefined | pos_integer().
+            IntOrUndefined :: undefined | pos_integer(),
+            DateTimeOrUndefined :: undefined | calendar:datetime().
 dek_config(configDek) ->
     #{encryption_method_callback => cb_crypto:get_encryption_method(
                                       config_encryption, _),
@@ -366,6 +377,8 @@ dek_config(configDek) ->
                                  config_encryption, _),
       drop_keys_timestamp_callback => cb_crypto:get_drop_keys_timestamp(
                                         config_encryption, _),
+      force_encryption_timestamp_callback =>
+          cb_crypto:get_force_encryption_timestamp(config_encryption, _),
       get_ids_in_use_callback => ?cut(get_config_dek_ids_in_use()),
       drop_callback => fun drop_config_deks/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
@@ -380,6 +393,8 @@ dek_config(logDek) ->
                                  log_encryption, _),
       drop_keys_timestamp_callback => cb_crypto:get_drop_keys_timestamp(
                                         log_encryption, _),
+      force_encryption_timestamp_callback =>
+          cb_crypto:get_force_encryption_timestamp(log_encryption, _),
       get_ids_in_use_callback => ?cut(get_dek_ids_in_use(logDek)),
       drop_callback => fun drop_log_deks/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
@@ -396,6 +411,8 @@ dek_config(auditDek) ->
                                  audit_encryption, _),
       drop_keys_timestamp_callback => cb_crypto:get_drop_keys_timestamp(
                                         audit_encryption, _),
+      force_encryption_timestamp_callback =>
+          cb_crypto:get_force_encryption_timestamp(audit_encryption, _),
       get_ids_in_use_callback => ?cut(get_dek_ids_in_use(auditDek)),
       drop_callback => fun drop_audit_deks/1,
       chronicle_txn_keys => [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
@@ -408,6 +425,8 @@ dek_config({bucketDek, Bucket}) ->
       rotation_int_callback => ns_bucket:get_dek_rotation_interval(Bucket, _),
       drop_keys_timestamp_callback => ns_bucket:get_drop_keys_timestamp(Bucket,
                                                                         _),
+      force_encryption_timestamp_callback =>
+          ns_bucket:get_force_encryption_timestamp(Bucket, _),
       get_ids_in_use_callback => fun () ->
                                      ns_memcached:get_dek_ids_in_use(Bucket)
                                  end,

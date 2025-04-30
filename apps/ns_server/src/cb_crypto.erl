@@ -71,6 +71,7 @@
          get_dek_kind_lifetime/2,
          get_dek_rotation_interval/2,
          get_drop_keys_timestamp/2,
+         get_force_encryption_timestamp/2,
          reencrypt_file/4
         ]).
 
@@ -768,15 +769,38 @@ get_dek_rotation_interval(Type, Snapshot) ->
           {ok, undefined | calendar:datetime()} | {error, not_found}.
 get_drop_keys_timestamp(Type, Snapshot) ->
     case menelaus_web_encr_at_rest:get_settings(Snapshot) of
-        #{Type := #{dek_drop_datetime := {set, DT},
-                    encryption_last_toggle_datetime := TDT}} when TDT > DT ->
-            {ok, undefined};
         #{Type := #{dek_drop_datetime := {set, DT}}} ->
             {ok, DT};
         #{Type := #{dek_drop_datetime := {not_set, _}}} ->
             {ok, undefined};
         #{} ->
             {error, not_found}
+    end.
+
+-spec get_force_encryption_timestamp(encryption_type(),
+                                    cb_cluster_secrets:chronicle_snapshot()) ->
+          {ok, undefined | calendar:datetime()} | {error, not_found}.
+get_force_encryption_timestamp(Type, Snapshot) ->
+    maybe
+        Settings = menelaus_web_encr_at_rest:get_settings(Snapshot),
+        TypeSettings = maps:get(Type, Settings, undefined),
+        {ok, ForceDT} ?=
+            case TypeSettings of
+                undefined ->
+                    {error, not_found};
+                #{force_encryption_datetime := {set, DT}} ->
+                    {ok, DT};
+                #{force_encryption_datetime := {not_set, _}} ->
+                    get_drop_keys_timestamp(Type, Snapshot)
+            end,
+        LastToggleDT = maps:get(encryption_last_toggle_datetime, TypeSettings,
+                                undefined),
+        if
+            ForceDT =:= undefined -> {ok, undefined};
+            LastToggleDT =:= undefined -> {ok, ForceDT};
+            LastToggleDT > ForceDT -> {ok, undefined};
+            true -> {ok, ForceDT}
+        end
     end.
 
 %%%===================================================================

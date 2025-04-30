@@ -2877,6 +2877,9 @@ dek_expiration_times(Kind, #{deks := Deks, is_enabled := IsEnabled,
             call_dek_callback(lifetime_callback, Kind, [Snapshot]),
         {succ, {ok, DropKeysTS}} ?=
             call_dek_callback(drop_keys_timestamp_callback, Kind, [Snapshot]),
+        {succ, {ok, ForceEncryptionTS}} ?=
+            call_dek_callback(force_encryption_timestamp_callback, Kind,
+                              [Snapshot]),
         RegularKeyTimes =
             lists:filtermap(
               fun (#{id := Id} = Key) ->
@@ -2886,12 +2889,12 @@ dek_expiration_times(Kind, #{deks := Deks, is_enabled := IsEnabled,
                   end
               end, Deks),
         EmptyKeyTimes =
-            case DropKeysTS =/= undefined andalso IsEnabled
+            case ForceEncryptionTS =/= undefined andalso IsEnabled
                  andalso HasUnencryptedData of
-                true -> [{DropKeysTS, ?NULL_DEK}];
+                true -> [{ForceEncryptionTS, ?NULL_DEK}];
                 %% This means HasUnencryptedData is undefined. We assume that
                 %% bucket has unencrypted data in this case, just in case
-                undefined -> [{DropKeysTS, ?NULL_DEK}];
+                undefined -> [{ForceEncryptionTS, ?NULL_DEK}];
                 false -> []
             end,
         {ok, RegularKeyTimes ++ EmptyKeyTimes}

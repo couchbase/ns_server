@@ -201,6 +201,7 @@
          get_dek_lifetime/2,
          get_dek_rotation_interval/2,
          get_drop_keys_timestamp/2,
+         get_force_encryption_timestamp/2,
          validate_encryption_secret/3]).
 
 %% fusion
@@ -2736,15 +2737,30 @@ get_dek_rotation_interval(BucketName, Snapshot) ->
 
 get_drop_keys_timestamp(Bucket, Snapshot) ->
     maybe
-        {ok, Config} ?= get_bucket(Bucket, Snapshot),
+        {ok, _} ?= get_bucket(Bucket, Snapshot),
         {ok, #{dek_drop_datetime := DT}} ?=
             chronicle_compat:get(Snapshot, sub_key(Bucket, encr_at_rest), #{}),
-        ToggleDate = proplists:get_value(encryption_last_toggle_datetime,
-                                         Config),
-        case ToggleDate of
-            undefined -> {ok, DT};
-            {_, _} when ToggleDate =< DT -> {ok, DT};
-            {_, _} -> {ok, undefined}
+        {ok, DT}
+    else
+        not_present -> {error, not_found};
+        {ok, #{}} -> {ok, undefined};
+        {error, not_found} -> {ok, undefined}
+    end.
+
+get_force_encryption_timestamp(Bucket, Snapshot) ->
+    maybe
+        {ok, Config} ?= get_bucket(Bucket, Snapshot),
+        {ok, Settings} ?=
+            chronicle_compat:get(Snapshot, sub_key(Bucket, encr_at_rest), #{}),
+        DropDT = maps:get(dek_drop_datetime, Settings, undefined),
+        ForceDT = maps:get(force_encryption_datetime, Settings, DropDT),
+        LastToggleDT = proplists:get_value(encryption_last_toggle_datetime,
+                                           Config),
+        if
+            ForceDT =:= undefined -> {ok, undefined};
+            LastToggleDT =:= undefined -> {ok, ForceDT};
+            LastToggleDT > ForceDT -> {ok, undefined};
+            true -> {ok, ForceDT}
         end
     else
         not_present -> {error, not_found};
