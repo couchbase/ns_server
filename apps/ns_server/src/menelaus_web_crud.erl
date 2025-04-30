@@ -283,6 +283,10 @@ construct_badrpc_error_reply(Reason) ->
                  io_lib:format("Remote procedure call failed: ~p",
                                [Reason]))}]}.
 
+construct_form_encoded_required_reply() ->
+    {[{error, <<"bad_request">>},
+      {reason, <<"Must use 'application/x-www-form-urlencoded'">>}]}.
+
 handle_get(BucketId, DocId, Req) ->
     CollectionUid = assert_default_collection_uid(BucketId),
     XAttrPerm = get_xattrs_permissions(BucketId, "_default", "_default", Req),
@@ -381,6 +385,18 @@ handle_post(BucketId, DocId, Req) ->
     handle_post(BucketId, DocId, assert_default_collection_uid(BucketId), Req).
 
 handle_post(BucketId, DocId, CollectionUid, Req) ->
+    case mochiweb_request:get_header_value("content-type", Req) of
+        "application/x-www-form-urlencoded" ->
+            handle_post_inner(BucketId, DocId, CollectionUid, Req);
+        undefined ->
+            handle_post_inner(BucketId, DocId, CollectionUid, Req);
+        _ ->
+            menelaus_util:reply_json(Req,
+                                     construct_form_encoded_required_reply(),
+                                     400)
+    end.
+
+handle_post_inner(BucketId, DocId, CollectionUid, Req) ->
     Params = mochiweb_request:parse_post(Req),
     Value = list_to_binary(proplists:get_value("value", Params, [])),
     Flags = extract_flags(Params),
