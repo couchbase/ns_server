@@ -100,6 +100,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 import argparse
+import os
 
 
 class StatsAnalyzer:
@@ -472,7 +473,11 @@ class StatsAnalyzer:
         # Convert to initial DataFrame (this may have gaps)
         df = pd.DataFrame(entries)
         if len(df) == 0:
-            raise ValueError("No valid entries found in log file")
+            if os.path.basename(log_file) == "stats.log":
+                details = " (perhaps try 'ns_server.stats.log')"
+            else:
+                details = ""
+            raise ValueError(f"No valid entries found in {log_file} {details}")
 
         # Detect raw collection gaps using original timestamps
         df["timestamp"] = pd.to_datetime(df["timestamp"])
