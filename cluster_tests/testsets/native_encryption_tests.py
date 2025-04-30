@@ -26,6 +26,8 @@ from testsets.users_tests import put_user
 
 encrypted_file_magic = b'\x00Couchbase Encrypted\x00'
 min_timer_interval = 1 # seconds
+dek_info_update_interval = 3 # seconds
+min_dek_gc_interval = 2 # seconds
 
 class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
@@ -47,6 +49,8 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Wait for orchestrator to move to non kv node.
         # Here we assume that there is only one non kv node:
         set_min_timer_interval(self.cluster, min_timer_interval)
+        set_dek_info_update_interval(self.cluster, dek_info_update_interval)
+        set_min_dek_gc_interval(self.cluster, min_dek_gc_interval)
         non_kv_node = None
         for n in self.cluster.connected_nodes:
             if Service.KV not in n.get_services():
@@ -78,6 +82,8 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                    f'Secret {s_id} disappeared during tests'
         for s_id in self.pre_created_ids:
             delete_secret(self.cluster, s_id)
+        set_min_dek_gc_interval(self.cluster, None)
+        set_dek_info_update_interval(self.cluster, None)
         set_min_timer_interval(self.cluster, None)
 
     def test_teardown(self):
@@ -171,6 +177,11 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                       verify_key_count=1,
                                       verify_encryption_kek=kek1_id)
 
+        for node in kv_nodes(self.cluster):
+            poll_verify_node_bucket_dek_info(node, self.bucket_name,
+                                             data_statuses=['encrypted'],
+                                             dek_number=1)
+
         # Can't delete because it is in use
         delete_secret(self.random_node(), secret1_id, expected_code=400)
 
@@ -215,6 +226,11 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         poll_verify_bucket_deks_files(self.cluster, self.bucket_name,
                                       verify_key_count=1,
                                       verify_encryption_kek=kek1_id)
+        for node in kv_nodes(self.cluster):
+            poll_verify_node_bucket_dek_info(
+                node, self.bucket_name,
+                data_statuses=['encrypted', 'partiallyEncrypted'],
+                dek_number=1)
         # Can't delete because it is in use
         delete_secret(self.random_node(), secret1_id, expected_code=400)
         self.cluster.update_bucket({'name': self.bucket_name,
@@ -1002,9 +1018,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         })
 
         # Get a KV node to remove
-        kv_nodes = [n for n in self.cluster.connected_nodes
-                    if Service.KV in n.get_services()]
-        candidate_for_removal = kv_nodes[0]
+        candidate_for_removal = kv_nodes(self.cluster)[0]
         return (candidate_for_removal, secret_id)
 
     def modify_encryption_for_node_readd_testing(self, node, prev_secret_id):
@@ -1255,7 +1269,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         self.cluster.rebalance(wait=True, verbose=True)
 
 
-    def drop_dek_test(self):
+    def drop_deks_test(self):
         self.load_and_assert_sample_bucket(self.cluster, self.sample_bucket)
         poll_verify_bucket_deks_files(self.cluster,
                                       self.sample_bucket,
@@ -1284,7 +1298,8 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         drop_time = datetime.now(timezone.utc).replace(microsecond=0)
         # 'Drop key' should force encryption of the whole bucket
-        drop_bucket_keys(self.random_node(), self.sample_bucket)
+        drop_bucket_deks_and_verify_dek_info(self.cluster,
+                                             self.sample_bucket)
 
         new_dek_ids = assert_bucket_deks_have_changed(self.cluster,
                                                       self.sample_bucket,
@@ -1298,7 +1313,8 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # a new key. We can't verify that the data was re-encrypted but we can
         # check that deks changed
         drop_time = datetime.now(timezone.utc).replace(microsecond=0)
-        drop_bucket_keys(self.random_node(), self.sample_bucket)
+        drop_bucket_deks_and_verify_dek_info(self.cluster,
+                                             self.sample_bucket)
 
         assert_bucket_deks_have_changed(self.cluster,
                                         self.sample_bucket,
@@ -1913,12 +1929,12 @@ def verify_node_dek_info(node, data_type, **kwargs):
     verify_dek_info(info, **kwargs)
 
 
-def verify_dek_info(info, data_status=None, dek_number=None,
+def verify_dek_info(info, data_statuses=None, dek_number=None,
                     oldest_dek_time=None):
-    if data_status is not None:
+    if data_statuses is not None:
         assert 'dataStatus' in info, 'data status is not present in ' \
                                      'encryptionAtRestInfo'
-        assert info['dataStatus'] == data_status, \
+        assert info['dataStatus'] in data_statuses, \
                f'data status is unexpected: {info["dataStatus"]}'
     if dek_number is not None:
         assert 'dekNumber' in info, 'dek number is not present in ' \
@@ -2122,6 +2138,16 @@ def set_min_timer_interval(cluster, n):
     set_ns_config_value(cluster, '{cb_cluster_secrets, min_timer_interval}', n)
 
 
+def set_dek_info_update_interval(cluster, n):
+    set_ns_config_value(cluster,
+                        '{cb_cluster_secrets, dek_info_update_interval}',
+                        n)
+
+
+def set_min_dek_gc_interval(cluster, n):
+    set_ns_config_value(cluster, '{cb_cluster_secrets, min_dek_gc_interval}', n)
+
+
 def set_remove_hist_keys_interval(cluster, n):
     set_ns_config_value(cluster,
                         '{cb_cluster_secrets, remove_historical_keys_interval}',
@@ -2257,7 +2283,7 @@ def drop_config_deks_for_node(node):
     drop_time = datetime.now(timezone.utc).replace(microsecond=0)
     drop_deks(node, 'config')
     poll_verify_node_dek_info(node, 'configuration',
-                              data_status='encrypted',
+                              data_statuses=['encrypted'],
                               dek_number=1,
                               oldest_dek_time=drop_time)
 
@@ -2269,9 +2295,13 @@ def drop_bucket_deks_and_verify_dek_info(cluster, bucket):
         if node.get_cluster_membership() == 'active' and \
            Service.KV in node.get_services():
             poll_verify_node_bucket_dek_info(node, bucket,
-                                             data_status='encrypted',
+                                             data_statuses=['encrypted'],
                                              dek_number=1,
                                              oldest_dek_time=drop_time)
         else:
             poll_verify_node_bucket_dek_info(node, bucket,
                                              missing=True)
+
+def kv_nodes(cluster):
+    return [n for n in cluster.connected_nodes
+            if Service.KV in n.get_services()]
