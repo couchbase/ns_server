@@ -566,8 +566,7 @@ def discover_testsets():
                 requirements, err = testlib.safe_test_function_call(
                     testset, 'requirements', [], 0, dry_run=False)
                 if err is not None:
-                    name, req_error = err
-                    return [(name, None, None, req_error)]
+                    return [(err.name, None, None, err.error)]
                 if isinstance(requirements, list):
                     add_testset(name, testset, requirements)
                 else:

@@ -249,9 +249,13 @@ def safe_test_function_call(testset, testfunction, args, testiter,
                 res = apply_with_seed(testset, testfunction, args, seed)
     except Exception as e:
         print_traceback()
+        if hasattr(testset, 'cluster'):
+            cluster_name = testset.cluster.short_name()
+        else:
+            cluster_name = "(no cluster)"
         error = TestError(name=testname,
                           error=e,
-                          cluster_name=testset.cluster.short_name())
+                          cluster_name=cluster_name)
     finally:
         if timeout is not None:
             signal.alarm(0)
