@@ -217,7 +217,7 @@ def main():
 
     for o, a in optlist:
         if o in ('--cluster', '-c'):
-            tokens = a.split(':')
+            tokens = a.rsplit(':', maxsplit=1)
             if len(tokens) != 2:
                 bad_args_exit(f"Invalid format. Should be {o} <address>:<port>")
             address = tokens[0]
