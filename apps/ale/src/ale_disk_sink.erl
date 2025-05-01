@@ -21,6 +21,11 @@
 -include_lib("kernel/include/file.hrl").
 -include("ale.hrl").
 
+%% Schedule to run once a day with 1 hour margin variability to avoid
+%% running on all ale disk sinks at the same time
+-define(IN_USE_DEKS_REFRESH_INTERVAL_MS,
+        (23*60*60*1000 + rand:uniform(60*60*1000))).
+
 -record(state, {
           buffer :: binary(),
           buffer_size :: integer(),
@@ -562,6 +567,8 @@ worker_init(#worker_state{
             ok
     end,
 
+    erlang:send_after(?IN_USE_DEKS_REFRESH_INTERVAL_MS, self(), in_use_refresh),
+
     State1 = open_log_file(State0),
     worker_loop(
       update_in_use_deks(State1)).
@@ -576,6 +583,10 @@ worker_loop(#worker_state{sink_name = SinkName} = State) ->
                 erlang:send_after(State#worker_state.rotation_check_interval,
                                   self(), check_file),
                 check_log_file(State);
+            in_use_refresh ->
+                erlang:send_after(?IN_USE_DEKS_REFRESH_INTERVAL_MS, self(),
+                                  in_use_refresh),
+                update_in_use_deks(State);
             {'$gen_call', From, sync} ->
                 gen_server:reply(From, ok),
                 State;
