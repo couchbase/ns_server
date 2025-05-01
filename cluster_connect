@@ -159,8 +159,9 @@ def main():
     )
     args = arg_parser.parse_args()
 
-    args.afamily = (
-        "ipv6" if (os.getenv("IPV6", "false") == "true") else "ipv4")
+    if args.afamily is None:
+        args.afamily = (
+            "ipv6" if os.getenv("IPV6", "false") == "true" else "ipv4")
 
     if args.bucket_json:
         if (args.bucket_quota or
