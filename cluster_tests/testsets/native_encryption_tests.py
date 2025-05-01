@@ -1322,6 +1322,22 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                         min_time=drop_time,
                                         old_dek_ids=new_dek_ids)
 
+    def force_bucket_encryption_test(self):
+        self.load_and_assert_sample_bucket(self.cluster, self.sample_bucket)
+        for node in kv_nodes(self.cluster):
+            poll_verify_node_bucket_dek_info(node, self.sample_bucket,
+                                             data_statuses=['unencrypted'],
+                                             dek_number=0)
+        secret_json = aws_test_secret(usage=['bucket-encryption'])
+        aws_secret_id = create_secret(self.random_node(), secret_json)
+        self.cluster.update_bucket({'name': self.sample_bucket,
+                                    'encryptionAtRestKeyId': aws_secret_id})
+        force_bucket_encryption(self.random_node(), self.sample_bucket)
+        for node in kv_nodes(self.cluster):
+            poll_verify_node_bucket_dek_info(node, self.sample_bucket,
+                                             data_statuses=['encrypted'],
+                                             dek_number=1)
+
     def remove_old_deks_test(self):
         secret = auto_generated_secret(usage=['bucket-encryption'])
         secret_id = create_secret(self.random_node(), secret)
@@ -2173,6 +2189,10 @@ def drop_deks(cluster, data_type):
 def drop_bucket_keys(cluster, bucket):
     testlib.post_succ(cluster,
                       f'/controller/dropEncryptionAtRestDeks/bucket/{bucket}')
+
+def force_bucket_encryption(cluster, bucket):
+    testlib.post_succ(cluster,
+                      f'/controller/forceEncryptionAtRest/bucket/{bucket}')
 
 def poll_verify_and_get_mcd_deks_in_use(*args, **kwargs):
     return testlib.poll_for_condition(
