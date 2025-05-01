@@ -1603,10 +1603,18 @@ func (k *kmipStoredKey) decryptMe(validateKeysProof bool, state *StoredKeysState
 }
 
 func getKmipClientCfg(k *kmipStoredKey) kmiputils.KmipClientConfig {
+	maxTimeoutDuration := 5 * time.Minute
+	var timeoutDuration time.Duration
+	if int64(k.ReqTimeoutMs) > maxTimeoutDuration.Milliseconds() {
+		timeoutDuration = maxTimeoutDuration
+	} else {
+		timeoutDuration = time.Duration(k.ReqTimeoutMs) * time.Millisecond
+	}
+
 	return kmiputils.KmipClientConfig{
 		Host:                k.Host,
 		Port:                k.Port,
-		TimeoutMs:           time.Duration(k.ReqTimeoutMs) * time.Millisecond,
+		TimeoutDuration:     timeoutDuration,
 		KeyPath:             k.KeyPath,
 		CertPath:            k.CertPath,
 		CbCaPath:            k.CbCaPath,

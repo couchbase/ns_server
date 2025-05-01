@@ -563,7 +563,7 @@ kmip_key_validators(CurSecretProps) ->
      validator:required(host, _),
      validator:integer(port, 1, 65535, _),
      validator:required(port, _),
-     validator:integer(reqTimeoutMs, 1000, max_uint64, _),
+     validator:integer(reqTimeoutMs, 1000, 5 * 60 * 1000, _),
      validator:default(reqTimeoutMs, 30000, _),
      validator:string(keyPath, _),
      validator:required(keyPath, _),
