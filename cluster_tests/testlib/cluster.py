@@ -70,11 +70,8 @@ def get_node_urls(nodes):
     return [node.url for node in nodes]
 
 
-def build_cluster(auth, cluster_index, start_args, connect, connect_args):
-    # We use the raw ip address instead of 'localhost', as it isn't accepted by
-    # the addNode or doJoinCluster endpoints
-    # IPV6 uses [::1] instead of 127.0.0.1
-    address = "::1" if connect_args['protocol'] == "ipv6" else "127.0.0.1"
+def build_cluster(address, auth, cluster_index, start_args, connect,
+                  connect_args, disconnected_args):
     port = cluster_run_lib.base_api_port + start_args['start_index']
     num_nodes = start_args['num_nodes']
     nodes = [testlib.Node(host=address,
@@ -94,6 +91,10 @@ def build_cluster(auth, cluster_index, start_args, connect, connect_args):
                 error = cluster_run_lib.connect(**connect_args)
                 if error:
                     sys.exit(f"Failed to connect node(s). Status: {error}")
+                # Prepare disconnected nodes
+                print(f"Initialising disconnected nodes with args:\n"
+                      f"{disconnected_args}")
+                node_init(auth, **disconnected_args)
             except URLError as e:
                 sys.exit(f"Failed to connect node(s). {e}\n"
                         f"Perhaps a node has already been started at "
@@ -107,6 +108,21 @@ def build_cluster(auth, cluster_index, start_args, connect, connect_args):
         # here to avoid leaving them running
         kill_nodes(processes, urls, get_terminal_attrs())
         raise e
+
+
+def node_init(auth, num_nodes, start_index, protocol, hostname):
+    addr = "127.0.0.1" if protocol == "ipv4" else "[::1]"
+    base_port = 9000 + start_index
+    session = requests.Session()
+    session.auth = auth
+    for i in range(num_nodes):
+        port = base_port + i
+        r = session.post(f"http://{addr}:{port}/nodeInit",
+                         data={"afamily": protocol,
+                               "hostname": hostname})
+        if r.status_code != 200:
+            sys.exit("Failed to initialise disconnected node. "
+                     f"Status {r.status_code}, error: {r.text}")
 
 
 def get_cluster(cluster_index, start_port, auth, processes, nodes, start_args):

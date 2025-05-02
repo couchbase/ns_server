@@ -110,12 +110,24 @@ class ClusterRequirements:
                 'do_rebalance': False
                }
 
+    @staticmethod
+    def get_default_disconnected_args(address, start_args, connect_args):
+        start = start_args['start_index'] + connect_args['num_nodes']
+        num = start_args['num_nodes'] - connect_args['num_nodes']
+        return {
+                'start_index': start,
+                'num_nodes': num,
+                'protocol': connect_args['protocol'],
+                'hostname': address
+               }
+
     def as_list(self):
         return list(filter(lambda x: x is not None, self.requirements.values()))
 
     @testlib.no_output_decorator
     def create_cluster(self, auth, cluster_index, tmp_cluster_dir,
                        first_node_index, connect=True):
+
         start_args = {'start_index': first_node_index,
                       'root_dir': f"{tmp_cluster_dir}-{cluster_index}"}
         start_args.update(self.get_default_start_args())
@@ -127,11 +139,21 @@ class ClusterRequirements:
         for requirement in self.as_list():
             connect_args.update(requirement.connect_args)
 
-        cluster = build_cluster(auth=auth,
+        # We use the raw ip address instead of 'localhost', as it isn't accepted
+        # by the addNode or doJoinCluster endpoints
+        # IPV6 uses [::1] instead of 127.0.0.1
+        address = "::1" if connect_args['protocol'] == "ipv6" else "127.0.0.1"
+        disconnected_args = self.get_default_disconnected_args(address,
+                                                               start_args,
+                                                               connect_args)
+
+        cluster = build_cluster(address=address,
+                                auth=auth,
                                 cluster_index=cluster_index,
                                 start_args=start_args,
                                 connect_args=connect_args,
-                                connect=connect)
+                                connect=connect,
+                                disconnected_args=disconnected_args)
 
         cluster.set_requirements(self)
         # should not really repair anything, just checking that all
