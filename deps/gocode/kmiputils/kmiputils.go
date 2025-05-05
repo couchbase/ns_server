@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/akeylesslabs/go-kmip"
@@ -62,6 +63,9 @@ func getKmipClient(config KmipClientConfig) (*kmip.Client, error) {
 
 	cert, err := tlsutils.LoadX509KeyPair(config.CertPath, config.KeyPath, config.DecryptedPassphrase)
 	if err != nil {
+		if strings.Contains(err.Error(), "incorrect password") {
+			return nil, fmt.Errorf("incorrect password for private key: full error: %w", err)
+		}
 		return nil, fmt.Errorf("could not load cert and key pair: %w", err)
 	}
 
