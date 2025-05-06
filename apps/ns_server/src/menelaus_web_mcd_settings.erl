@@ -86,7 +86,8 @@ supported_extra_setting_names() ->
      {dcp_disconnect_when_stuck_timeout_seconds,
         {int, 0, ?MAX_32BIT_SIGNED_INT}},
      {dcp_disconnect_when_stuck_name_regex, string},
-     {external_auth_request_timeout, {int, 0, ?MAX_32BIT_SIGNED_INT}}].
+     {external_auth_request_timeout, {int, 0, ?MAX_32BIT_SIGNED_INT}},
+     {not_locked_returns_tmpfail, bool}].
 
 supported_nodes() ->
     ns_node_disco:nodes_wanted().
