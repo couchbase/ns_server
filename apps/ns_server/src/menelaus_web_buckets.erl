@@ -415,7 +415,8 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
       {durabilityMinLevel, build_durability_min_level(BucketConfig)},
       build_magma_bucket_info(BucketConfig),
       {conflictResolutionType,
-       ns_bucket:conflict_resolution_type(BucketConfig)}],
+       ns_bucket:conflict_resolution_type(BucketConfig)},
+      {workloadPatternDefault, ns_bucket:workload_pattern_default(BucketConfig)}],
      case cluster_compat_mode:is_enterprise() of
          true ->
              [{maxTTL, proplists:get_value(max_ttl, BucketConfig, 0)},
@@ -1654,7 +1655,8 @@ validate_membase_bucket_params(CommonParams, Params, Name,
          parse_validate_dcp_backfill_idle_protection_enabled(Params,
                                                              BucketConfig,
                                                              IsNew,
-                                                             IsMorpheus)
+                                                             IsMorpheus),
+         parse_validate_workload_pattern_default(Params)
         | validate_bucket_auto_compaction_settings(Params)] ++
         parse_validate_limits(
           Params, BucketConfig, IsNew, AllowStorageLimit,
@@ -3302,7 +3304,7 @@ parse_validate_magma_data_blocksize_inner(Key, _Value, false = _IsEnterprise,
      <<"Magma data blocksize is supported in enterprise edition only">>};
 parse_validate_magma_data_blocksize_inner(Key, _Value, _IsEnterprise,
                                           false = _IsCompat, _IsNew, _IsMagma,
-                                         _ValidatorFn) ->
+                                          _ValidatorFn) ->
     {error, Key,
      <<"Magma data blocksize cannot be set until the cluster is fully "
        "running 7.2">>};
@@ -3573,6 +3575,25 @@ parse_validate_fusion_logstore_uri(
                              <<"Must be a valid uri">>}
                     end
             end
+    end.
+
+%% We are not validating any compat mode here, we need to support this change in
+%% a maintenance release due to a memcached behaviour change.
+parse_validate_workload_pattern_default(Params) ->
+    Value = proplists:get_value("workloadPatternDefault", Params, undefined),
+    case Value of
+        "readHeavy" ->
+            {ok, workload_pattern_default, read_heavy};
+        "writeHeavy" ->
+            {ok, workload_pattern_default, write_heavy};
+        "mixed" ->
+            {ok, workload_pattern_default, mixed};
+        undefined ->
+            ignore;
+        _ ->
+            {error, workloadPatternDefault,
+             <<"Workload pattern default must be 'readHeavy', 'writeHeavy' or "
+               "'mixed'">>}
     end.
 
 handle_compact_bucket(_PoolId, Bucket, Req) ->
@@ -4446,8 +4467,8 @@ basic_bucket_params_screening_t() ->
 
     %% Test related values.
     {_OK36, E36} = basic_bucket_params_screening(
-                    true,
-                    "bucket36",
+                     true,
+                     "bucket36",
                      [{"bucketType", "membase"},
                       {"ramQuota", "1024"},
                       {"memoryLowWatermark", "88"},
@@ -4461,8 +4482,8 @@ basic_bucket_params_screening_t() ->
     %% Specify valid values. This isn't intended to be exhaustive. It
     %% tests the parsing/validation of each item.
     {OK37, E37} = basic_bucket_params_screening(
-                     true,
-                     "bucket37",
+                    true,
+                    "bucket37",
                      [{"bucketType", "membase"},
                       {"storageBackend", "magma"},
                       {"ramQuota", "1024"},
@@ -4473,7 +4494,7 @@ basic_bucket_params_screening_t() ->
                       {"continuousBackupEnabled", "true"},
                       {"continuousBackupInterval", "123"},
                       {"continuousBackupLocation", "s3://hello/world"}],
-                     AllBuckets),
+                    AllBuckets),
     ?assertEqual([], E37),
     ?assertEqual(false, proplists:get_value(access_scanner_enabled, OK37)),
     ?assertEqual(12345, proplists:get_value(expiry_pager_sleep_time, OK37)),
@@ -4492,14 +4513,14 @@ basic_bucket_params_screening_t() ->
 
     %% Parsing encryption at rest params
     {OK38, E38} = basic_bucket_params_screening(
-                     true,
-                     "bucket38",
-                     [{"bucketType", "membase"},
-                      {"ramQuota", "1024"},
-                      {"encryptionAtRestKeyId", "1"},
-                      {"encryptionAtRestDekRotationInterval", "1000"},
-                      {"encryptionAtRestDekLifetime", "2000"}],
-                     AllBuckets),
+                    true,
+                    "bucket38",
+                    [{"bucketType", "membase"},
+                     {"ramQuota", "1024"},
+                     {"encryptionAtRestKeyId", "1"},
+                     {"encryptionAtRestDekRotationInterval", "1000"},
+                     {"encryptionAtRestDekLifetime", "2000"}],
+                    AllBuckets),
 
     ?assertEqual([], E38),
     ?assertEqual(1, proplists:get_value(encryption_secret_id, OK38)),
@@ -4528,11 +4549,11 @@ basic_bucket_params_screening_t() ->
 
     %% Default encryption at rest params
     {OK40, E40} = basic_bucket_params_screening(
-                     true,
-                     "bucket40",
-                     [{"bucketType", "membase"},
-                      {"ramQuota", "1024"}],
-                     AllBuckets),
+                    true,
+                    "bucket40",
+                    [{"bucketType", "membase"},
+                     {"ramQuota", "1024"}],
+                    AllBuckets),
 
     ?assertEqual([], E40),
     ?assertEqual([], proplists:get_all_values(encryption_secret_id, OK40)),
@@ -4647,11 +4668,11 @@ basic_bucket_params_screening_t() ->
     lists:foreach(
       fun (InvalidHlcArg) ->
               {OK50, []} = basic_bucket_params_screening(
-                              true, "bucket50",
-                              [{"bucketType", "membase"},
-                               {"ramQuota", "100"},
-                               {"invalidHlcStrategy", InvalidHlcArg}],
-                              AllBuckets),
+                             true, "bucket50",
+                             [{"bucketType", "membase"},
+                              {"ramQuota", "100"},
+                              {"invalidHlcStrategy", InvalidHlcArg}],
+                             AllBuckets),
               ?assertEqual(list_to_atom(InvalidHlcArg),
                            proplists:get_value(invalid_hlc_strategy, OK50))
       end, ["error", "ignore", "replace"]),
@@ -4734,7 +4755,16 @@ basic_bucket_params_screening_t() ->
                    AllBuckets),
     ?assertEqual(
        false,
-       proplists:get_value(dcp_backfill_idle_protection_enabled, OK58)).
+       proplists:get_value(dcp_backfill_idle_protection_enabled, OK58)),
+
+    {_OK59, E59} = basic_bucket_params_screening(
+                     true,
+                     "bucket59",
+                     [{"bucketType", "membase"},
+                      {"ramQuota", "1024"},
+                      {"workloadPatternDefault", "readHeavy"}],
+                     AllBuckets),
+    ?assertEqual([], E59).
 
 basic_bucket_params_screening_test_() ->
     {setup,
