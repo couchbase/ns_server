@@ -385,7 +385,7 @@ handle_post(BucketId, DocId, Req) ->
     handle_post(BucketId, DocId, assert_default_collection_uid(BucketId), Req).
 
 handle_post(BucketId, DocId, CollectionUid, Req) ->
-    case mochiweb_request:get_header_value("content-type", Req) of
+    case mochiweb_request:get_primary_header_value("content-type", Req) of
         "application/x-www-form-urlencoded" ->
             handle_post_inner(BucketId, DocId, CollectionUid, Req);
         undefined ->

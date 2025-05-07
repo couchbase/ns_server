@@ -144,4 +144,20 @@ class CrudTests(testlib.BaseTestSet):
         test_one('limit', 300, 200)
         test_one('limit', 301, 400)
 
-
+    def content_type_test(self):
+        url = f"/pools/default/buckets/{bucket_name}/docs/test"
+        # Correct content-type
+        testlib.post_succ(self.cluster, url,
+                          data={"value": ""},
+                          headers={"content-type":
+                                   "application/x-www-form-urlencoded"})
+        # Correct content-type with additional detail after ";"
+        testlib.post_succ(self.cluster, url,
+                          data={"value": ""},
+                          headers={"content-type":
+                                   "application/x-www-form-urlencoded; other"})
+        # Invalid content-type specified
+        testlib.post_fail(self.cluster, url,
+                          data={"value": ""},
+                          headers={"content-type": "other"},
+                          expected_code=400)
