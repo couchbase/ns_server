@@ -205,6 +205,7 @@ class MnSecuritySecretsService {
       case "config": return "DEKs rotation & Re-encryption";
       case "log": return "DEKs rotation & Re-encryption";
       case "audit": return "DEKs rotation & Re-encryption";
+      case "bucket": return "DEKs rotation & Re-encryption";
       default: return type;
     }
   }

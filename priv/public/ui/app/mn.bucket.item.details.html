@@ -122,7 +122,7 @@ licenses/APL2.txt.
   <div class="row flex-right">
     <span>
       <button
-        *ngIf="bucket.encryptionAtRestKeyId !== -1"
+        *ngIf="(compatVersion80 | async) && (isEnterprise | async) && bucket.encryptionAtRestKeyId !== -1"
         class="outline"
         [disabled]="isRebalancing | async"
         [hidden]="!(permissions | async)?.cluster.bucket[bucket.name].settings.write"
