@@ -18,7 +18,7 @@ import {MnFormService} from './mn.form.service.js';
 import template from "./mn.security.secrets.add.dialog.html";
 import {FormBuilder} from '@angular/forms';
 import {UIRouter} from '@uirouter/angular';
-import {BehaviorSubject} from 'rxjs';
+import {BehaviorSubject, merge} from 'rxjs';
 import {map, startWith, takeUntil, first} from 'rxjs/operators';
 import {MnSecuritySecretsService} from './mn.security.secrets.service.js';
 import {MnTimezoneDetailsService} from './mn.timezone.details.service.js';
@@ -133,7 +133,9 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
       .success(() => {
         this.mnSecuritySecretsService.stream.updateSecretsList.next();
         this.activeModal.dismiss();
-      });
+      })
+      .trackSubmit()
+      .clearErrors();
 
     this.filteredSecrets = this.secrets.filter(secret => secret.usage.find(u => u.includes('KEK-encryption')));
 
@@ -141,6 +143,7 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
       this.mnSecuritySecretsService.stream.putSecret.error : this.mnSecuritySecretsService.stream.postSecret.error;
     this.testHttpError = this.item ?
       this.mnSecuritySecretsService.stream.testPutSecret.error : this.mnSecuritySecretsService.stream.testPostSecret.error;
+    this.error = merge(this.httpError, this.testHttpError);
 
     let testAddResponse = this.mnSecuritySecretsService.stream.testPostSecret.response;
     let testEditResponse = this.mnSecuritySecretsService.stream.testPutSecret.response;
@@ -173,6 +176,8 @@ class MnSecuritySecretsAddDialogComponent extends MnLifeCycleHooksToStream {
       .setFormGroup({})
       .setPackPipe(map(this.packData.bind(this)))
       .setPostRequest(this.item ? this.mnSecuritySecretsService.stream.testPutSecret : this.mnSecuritySecretsService.stream.testPostSecret)
+      .trackSubmit()
+      .clearErrors();
 
     if (this.item) {
       setTimeout(() => {
