@@ -165,7 +165,8 @@
          get_active_guest_volumes/1,
          sync_fusion_log_store/2,
          bucket_metadata_file/1,
-         get_fusion_sync_info/2
+         get_fusion_sync_info/2,
+         get_fusion_uploaders_state/1
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -2648,3 +2649,17 @@ get_fusion_sync_info(Bucket, VBuckets) ->
 
 bucket_metadata_file(BucketDir) ->
     filename:join([BucketDir, "cm", "bucket.metadata"]).
+
+-spec get_fusion_uploaders_state(ns_bucket:name()) ->
+          {ok, {list()}} | bucket_not_found | mc_error().
+get_fusion_uploaders_state(Bucket) ->
+    case perform_very_long_call(
+           fun (Sock) ->
+                   {reply, fetch_fusion_stats(Sock, Bucket, "uploader")}
+           end, Bucket, [json]) of
+        {error, {select_bucket_failed, {memcached_error, key_enoent,
+                                        undefined}}} ->
+            bucket_not_found;
+        Other ->
+            Other
+    end.

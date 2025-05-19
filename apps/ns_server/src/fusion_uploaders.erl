@@ -30,6 +30,7 @@
          get_log_store_uri/0,
          update_config/1,
          enable/0,
+         maybe_grab_heartbeat_info/0,
          config_key/0]).
 
 %% incremented starting from 1 with each uploader change
@@ -390,3 +391,110 @@ enable(BucketUploaders) ->
                       {abort, {error, Error}}
               end
       end).
+
+-spec maybe_grab_heartbeat_info() -> list().
+maybe_grab_heartbeat_info() ->
+    maybe
+        false ?= get_state() =:= disabled,
+        active ?= ns_cluster_membership:get_cluster_membership(node()),
+        true ?= lists:member(kv, ns_cluster_membership:node_services(node())),
+        [{fusion_stats,
+          [{buckets,
+            lists:filtermap(
+              fun ({BucketName, BucketConfig}) ->
+                      maybe_grab_heartbeat_info(
+                        BucketName,
+                        ns_bucket:get_fusion_state(BucketConfig))
+              end, ns_bucket:get_buckets())}]}]
+    else
+        _ -> []
+    end.
+
+add_stat_value(Key, Value, Acc) ->
+    maps:update_with(Key, fun(V) -> V + Value end, 0, Acc).
+
+add_stat_value_from(Key, VBStats, Acc) ->
+    Value = proplists:get_value(list_to_binary(atom_to_list(Key)), VBStats),
+    add_stat_value(Key, Value, Acc).
+
+process_vbucket_stats(Node, BucketName, VB, VBStats, ThisNodeUploaders, Acc) ->
+    case proplists:get_value(<<"state">>, VBStats) of
+        <<"enabled">> = E ->
+            Term = proplists:get_value(<<"term">>, VBStats),
+            Acc1 =
+                case maps:find(VB, ThisNodeUploaders) of
+                    {ok, Term} ->
+                        Acc;
+                    Other ->
+                        Expected = case Other of
+                                       {ok, OtherTerm} ->
+                                           {E, OtherTerm};
+                                       error ->
+                                           <<"disabled">>
+                                   end,
+                        ?log_debug("Uploader ~p:~p state mismatch on ~p. Got: "
+                                   "~p. Expected: ~p",
+                                   [BucketName, VB, Node, {E, Term}, Expected]),
+                        add_stat_value(uploaders_state_mismatch, 1, Acc)
+                end,
+            add_stat_value_from(snapshot_pending_bytes, VBStats, Acc1);
+        Other ->
+            case maps:find(VB, ThisNodeUploaders) of
+                {ok, Term} ->
+                    ?log_debug("Uploader ~p:~p state mismatch on ~p. Got: "
+                               "~p, Expected: ~p",
+                               [BucketName, VB, Other, {<<"enabled">>, Term}]),
+                    add_stat_value(uploaders_state_mismatch, 1, Acc);
+                error ->
+                    Acc
+            end
+    end.
+
+process_bucket_stats(Node, BucketName, VBucketsInfo, ThisNodeUploaders) ->
+    lists:foldl(
+      fun ({<<"vb_", N/binary>>, {VBStats}}, Acc) ->
+              process_vbucket_stats(
+                Node, BucketName, binary_to_integer(N),
+                VBStats, ThisNodeUploaders, Acc)
+      end, #{}, VBucketsInfo).
+
+node_uploaders(ThisNode, State, Uploaders) ->
+    case State of
+        enabled ->
+            maps:from_list(
+              [{VB, Term} ||
+                  {VB, {Node, Term}} <- misc:enumerate(Uploaders, 0),
+                  Node =:= ThisNode]);
+        _ ->
+            #{}
+    end.
+
+%% this will be fed to lists:filtermap
+maybe_grab_heartbeat_info(_BucketName, disabled) ->
+    false;
+maybe_grab_heartbeat_info(_BucketName, stopped) ->
+    false;
+maybe_grab_heartbeat_info(BucketName, State) ->
+    Uploaders = ns_bucket:get_fusion_uploaders(BucketName),
+    ThisNodeUploaders = node_uploaders(node(), State, Uploaders),
+    case ns_memcached:get_fusion_uploaders_state(BucketName) of
+        {ok, {VBucketsInfo}} ->
+            case length(VBucketsInfo) =:= length(Uploaders) of
+                false ->
+                    ?log_debug(
+                       "Vbucket number mismatch for ~p:~p (memcached) vs "
+                       "~p (config)",
+                       [BucketName, length(VBucketsInfo), length(Uploaders)]),
+                    false;
+                true ->
+                    StatsMap = process_bucket_stats(
+                                 node(), BucketName, VBucketsInfo,
+                                 ThisNodeUploaders),
+                    {true, {BucketName, maps:to_list(StatsMap)}}
+            end;
+        Error ->
+            ?log_debug(
+               "Failure to retrieve uploaders stats for bucket ~p, Error:~p",
+               [BucketName, Error]),
+            false
+    end.

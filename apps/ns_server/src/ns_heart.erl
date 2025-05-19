@@ -300,12 +300,14 @@ current_status_slow_inner() ->
 
     ProcFSFiles = grab_procfs_files(),
     ServiceStatuses = grab_service_statuses(),
+    FusionStats = fusion_uploaders:maybe_grab_heartbeat_info(),
     [{cpu_cores_available, CoresAvailable}] =
         sigar:get_gauges([cpu_cores_available]),
     ns_bootstrap:ensure_os_mon(),
     failover_safeness_level:build_local_safeness_info(BucketNames) ++
         ServiceStatuses ++
         ProcFSFiles ++
+        FusionStats ++
         [{local_tasks, Tasks},
          {memory, misc:memory()},
          {cpu_count, ceil(CoresAvailable)},
