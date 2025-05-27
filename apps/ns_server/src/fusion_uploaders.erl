@@ -28,6 +28,7 @@
          get_state/0,
          get_state/1,
          get_log_store_uri/0,
+         get_metadata_store_uri/0,
          update_config/1,
          enable/0,
          maybe_grab_heartbeat_info/0,
@@ -52,7 +53,7 @@
                         {failed_nodes, [node()]}.
 
 -export_type([fast_forward_info/0, uploaders/0, enable_error/0,
-              bucket_state/0]).
+              bucket_state/0, state/0]).
 
 -spec build_fast_forward_info(ns_bucket:name(), ns_bucket:config(),
                               vbucket_map(), vbucket_map()) ->
@@ -224,6 +225,13 @@ get_status() ->
 -spec get_log_store_uri() -> string().
 get_log_store_uri() ->
     proplists:get_value(log_store_uri, get_config()).
+
+-spec get_metadata_store_uri() -> string().
+get_metadata_store_uri() ->
+    ns_config:read_key_fast(
+      magma_fusion_metadatastore_uri,
+      "chronicle://localhost:" ++
+          integer_to_list(service_ports:get_port(rest_port))).
 
 -spec update_config(proplists:proplist()) ->
           {ok, chronicle:revision()} | log_store_uri_locked.

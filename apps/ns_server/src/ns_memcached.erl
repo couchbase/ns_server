@@ -166,7 +166,9 @@
          sync_fusion_log_store/2,
          bucket_metadata_file/1,
          get_fusion_sync_info/2,
-         get_fusion_uploaders_state/1
+         get_fusion_uploaders_state/1,
+         get_fusion_namespaces/1,
+         delete_fusion_namespace/3
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -2663,3 +2665,22 @@ get_fusion_uploaders_state(Bucket) ->
         Other ->
             Other
     end.
+
+-spec get_fusion_namespaces(string()) -> {ok, binary()} | mc_error().
+get_fusion_namespaces(MetaDataStoreUri) ->
+    {ok, JWT, _} = issue_jwt(),
+    perform_very_long_call(
+      fun (Sock) ->
+              {reply, mc_client_binary:get_fusion_namespaces(
+                        Sock, MetaDataStoreUri, JWT)}
+      end, undefined, [json]).
+
+-spec delete_fusion_namespace(string(), string(), binary()) ->
+          ok | mc_error().
+delete_fusion_namespace(LogStoreUri, MetaDataStoreUri, Namespace) ->
+    {ok, JWT, _} = issue_jwt(),
+    perform_very_long_call(
+      fun (Sock) ->
+              {reply, mc_client_binary:delete_fusion_namespace(
+                        Sock, LogStoreUri, MetaDataStoreUri, JWT, Namespace)}
+      end, undefined, [json]).

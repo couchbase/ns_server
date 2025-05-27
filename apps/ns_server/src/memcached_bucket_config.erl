@@ -528,10 +528,7 @@ get_fusion_bucket_config(BucketConfig) ->
             [{"magma_fusion_logstore_uri", [{reload, flush}],
               fusion_uploaders:get_log_store_uri()},
              {"magma_fusion_metadatastore_uri", [{reload, flush}],
-              ns_config:read_key_fast(
-                magma_fusion_metadatastore_uri,
-                "chronicle://localhost:" ++
-                    integer_to_list(service_ports:get_port(rest_port)))},
+              fusion_uploaders:get_metadata_store_uri()},
              {?MAGMA_FUSION_AUTH_TOKEN, [{reload, flush}, no_param], custom}];
         false ->
             []

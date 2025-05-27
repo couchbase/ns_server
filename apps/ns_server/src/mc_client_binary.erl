@@ -80,7 +80,9 @@
          set_chronicle_auth_token/2,
          start_fusion_uploader/3,
          stop_fusion_uploader/2,
-         sync_fusion_log_store/2]).
+         sync_fusion_log_store/2,
+         delete_fusion_namespace/5,
+         get_fusion_namespaces/3]).
 
 -type recv_callback() :: fun((_, _, _) -> any()) | undefined.
 -type mc_timeout() :: undefined | infinity | non_neg_integer().
@@ -113,7 +115,8 @@
                      ?CMD_SET_CHRONICLE_AUTH_TOKEN |
                      ?CMD_START_FUSION_UPLOADER |
                      ?CMD_STOP_FUSION_UPLOADER |
-                     ?CMD_SYNC_FUSION_LOGSTORE.
+                     ?CMD_SYNC_FUSION_LOGSTORE |
+                     ?CMD_GET_FUSION_NAMESPACES.
 
 
 report_counter(Function) ->
@@ -1169,4 +1172,39 @@ sync_fusion_log_store(Sock, VBucket) ->
              infinity) of
         {ok, #mc_header{status=?SUCCESS}, _, _} -> ok;
         Response -> process_error_response(Response)
+    end.
+
+-spec delete_fusion_namespace(port(), string(), string(), binary(),
+                              binary()) -> ok | mc_error().
+delete_fusion_namespace(Sock, LogStoreUri, MetaDataStoreUri,
+                        MetaDataStoreAuthToken, Namespace) ->
+    report_counter(?FUNCTION_NAME),
+    Data = ejson:encode(
+             {[{logstore_uri, list_to_binary(LogStoreUri)},
+               {metadatastore_uri, list_to_binary(MetaDataStoreUri)},
+               {metadatastore_auth_token, MetaDataStoreAuthToken},
+               {namespace, Namespace}]}),
+    case cmd(?CMD_DELETE_FUSION_NAMESPACE, Sock, undefined, undefined,
+             {#mc_header{}, #mc_entry{data = Data,
+                                      datatype = ?MC_DATATYPE_JSON}}) of
+        {ok, #mc_header{status = ?SUCCESS}, _ME, _NCB} ->
+            ok;
+        Response ->
+            process_error_response(Response)
+    end.
+
+-spec get_fusion_namespaces(port(), string(), binary()) ->
+          {ok, binary()} | mc_error().
+get_fusion_namespaces(Sock, MetaDataStoreUri, MetaDataStoreAuthToken) ->
+    report_counter(?FUNCTION_NAME),
+    Data = ejson:encode(
+             {[{metadatastore_uri, list_to_binary(MetaDataStoreUri)},
+               {metadatastore_auth_token, MetaDataStoreAuthToken}]}),
+    case cmd(?CMD_GET_FUSION_NAMESPACES, Sock, undefined, undefined,
+             {#mc_header{}, #mc_entry{data = Data,
+                                      datatype = ?MC_DATATYPE_JSON}}) of
+        {ok, #mc_header{status = ?SUCCESS}, ME, _NCB} ->
+            {ok, ME#mc_entry.data};
+        Response ->
+            process_error_response(Response)
     end.
