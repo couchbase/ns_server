@@ -527,7 +527,7 @@ get_magma_bucket_config(BucketConfig) ->
 get_fusion_bucket_config(BucketConfig) ->
     case ns_bucket:is_fusion(BucketConfig) of
         true ->
-            [{"magma_fusion_logstore_uri", [],
+            [{"magma_fusion_logstore_uri", [{reload, flush}],
               fusion_uploaders:get_log_store_uri()},
              {"magma_fusion_metadatastore_uri", [{reload, flush}],
               ns_config:read_key_fast(
