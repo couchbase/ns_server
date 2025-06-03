@@ -867,6 +867,22 @@ issue_jwt() ->
     ?log_debug("Issue JWT ~p", [Payload]),
     {ok, JWT, Expires}.
 
+should_issue_jwt(Bucket, Snapshot) ->
+    case ns_bucket:get_bucket(Bucket, Snapshot) of
+        {ok, BucketConfig} ->
+            ns_bucket:is_fusion(BucketConfig);
+        not_present ->
+            false
+    end.
+
+maybe_issue_jwt(Bucket, Snapshot) ->
+    case should_issue_jwt(Bucket, Snapshot) of
+        true ->
+            issue_jwt();
+        false ->
+            {ok, undefined, undefined}
+    end.
+
 handle_info({connect_done, WorkersCount, RV},
             #state{bucket = Bucket,
                    status = OldStatus,
@@ -876,15 +892,10 @@ handle_info({connect_done, WorkersCount, RV},
     Self = self(),
     case RV of
         {ok, Sock} ->
-            {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
-            {ok, JWT, Expires} =
-                case ns_bucket:is_fusion(BucketConfig) of
-                    true ->
-                        issue_jwt();
-                    false ->
-                        {ok, undefined, undefined}
-                end,
-            try ensure_bucket(Sock, Bucket, false, JWT, BucketUUID) of
+            Snapshot = ns_bucket:get_snapshot(Bucket),
+            {ok, JWT, Expires} = maybe_issue_jwt(Bucket, Snapshot),
+
+            try ensure_bucket(Sock, Bucket, Snapshot, false, JWT, BucketUUID) of
                 ok ->
                     connecting = OldStatus,
 
@@ -1028,17 +1039,23 @@ handle_info(Message, #state{worker_features = WF, control_queue = Q,
             Self = self(),
             Now = erlang:system_time(second),
 
+            Snapshot = ns_bucket:get_snapshot(Bucket),
             {ok, JWT, NewExpires} =
                 case JWTExpires of
                     undefined ->
-                        {ok, undefined, undefined};
+                        maybe_issue_jwt(Bucket, Snapshot);
                     _ ->
-                        case (JWTExpires - Now) * 1000 =<
-                            ?JWT_RENEWAL_WINDOW_MS of
+                        case should_issue_jwt(Bucket, Snapshot) of
                             true ->
-                                issue_jwt();
+                                case (JWTExpires - Now) * 1000 =<
+                                    ?JWT_RENEWAL_WINDOW_MS of
+                                    true ->
+                                        issue_jwt();
+                                    false ->
+                                        {ok, undefined, JWTExpires}
+                                end;
                             false ->
-                                {ok, undefined, JWTExpires}
+                                {ok, undefined, undefined}
                         end
                 end,
 
@@ -1047,8 +1064,8 @@ handle_info(Message, #state{worker_features = WF, control_queue = Q,
               fun () ->
                       perform_very_long_call_with_timing(
                         Bucket, ensure_bucket,
-                        ensure_bucket(_, Bucket, true, JWT, BucketUUID),
-                        [json]),
+                        ensure_bucket(_, Bucket, Snapshot, true, JWT,
+                                      BucketUUID), [json]),
                       Self ! complete_check
               end),
             {noreply, State#state{check_in_progress = true,
@@ -1611,7 +1628,7 @@ do_connect(AgentName, Options) ->
             throw({T, E})
     end.
 
-ensure_bucket(Sock, Bucket, BucketSelected, JWT, BucketUUID) ->
+ensure_bucket(Sock, Bucket, Snapshot, BucketSelected, JWT, BucketUUID) ->
     %% This testpoint simulates the case where the bucket is not selectable
     %% (returns enoent) but does exist so cannot be created.
     case simulate_slow_bucket_operation(Bucket, slow_bucket_creation,
@@ -1624,19 +1641,19 @@ ensure_bucket(Sock, Bucket, BucketSelected, JWT, BucketUUID) ->
                 {ok, <<"paused">>} ->
                     {error, bucket_paused};
                 _ ->
-                    ensure_bucket_inner(Sock, Bucket, BucketSelected, JWT,
-                                        BucketUUID)
+                    ensure_bucket_inner(Sock, Bucket, Snapshot, BucketSelected,
+                                        JWT, BucketUUID)
             end
     end.
 
-ensure_bucket_inner(Sock, Bucket, BucketSelected, JWT, BucketUUID) ->
+ensure_bucket_inner(Sock, Bucket, Snapshot, BucketSelected, JWT, BucketUUID) ->
     %% Only catch exceptions when getting the bucket config. Once we're
     %% past that point and into the guts of this function there is code
     %% that may exit with reason {shutdown, reconfig} and that exit should
     %% not be caught. The reason is the changing of bucket parameters may
     %% require a bucket deletion/recreation which happens as a result of
     %% the exit.
-    try memcached_bucket_config:get(Bucket) of
+    try memcached_bucket_config:get(Bucket, Snapshot) of
         {error, not_present} ->
             case BucketSelected of
                 true ->

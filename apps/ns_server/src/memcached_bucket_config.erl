@@ -22,7 +22,7 @@
 
 -record(cfg, {type, name, config, snapshot, engine_config, params}).
 
--export([get/1,
+-export([get/2,
          get_bucket_config/1,
          ensure/3,
          start_params/4,
@@ -204,9 +204,7 @@ get_memory_watermark(Type, BucketConfig) ->
             Watermark / 100
     end.
 
-get(BucketName) ->
-    Snapshot = ns_bucket:get_snapshot(BucketName),
-
+get(BucketName, Snapshot) ->
     case ns_bucket:get_bucket(BucketName, Snapshot) of
         {ok, BucketConfig} ->
             BucketType = proplists:get_value(type, BucketConfig),
