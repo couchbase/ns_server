@@ -59,6 +59,7 @@
 
 -define(JWT_LIFETIME_MS, ?get_param(jwt_lifetime, 600000)).
 -define(JWT_RENEWAL_WINDOW_MS, ?CHECK_INTERVAL * 2).
+-define(WAIT_FOR_JWT_TIMEOUT, ?get_timeout(wait_for_jwt, 1000)).
 
 %% gen_server API
 -export([start_link/1]).
@@ -92,6 +93,7 @@
                 next_check_after = ?CHECK_INTERVAL :: integer(),
                 jwt_expires :: undefined | integer(),
                 fusion_state :: fusion_uploaders:bucket_state(),
+                jwt_set = false :: boolean(),
                 bucket_uuid :: binary()
                }).
 
@@ -437,6 +439,8 @@ handle_call({mark_warmed, DataIngress}, _From, #state{status=Status,
     {reply, Reply, State#state{status=NewStatus}};
 handle_call(warmup_stats, _From, State) ->
     {reply, State#state.warmup_stats, State};
+handle_call(is_jwt_set, _From, State) ->
+    {reply, State#state.jwt_set, State};
 handle_call(maybe_reencrypt_bucket_metadata, _From,
             #state{bucket = Bucket, bucket_uuid = BucketUUID} = State) ->
     {ok, DS} = cb_crypto:fetch_deks_snapshot({bucketDek, BucketUUID}),
@@ -845,7 +849,8 @@ do_handle_call(_, _From, State) ->
     {reply, unhandled, State}.
 
 handle_cast(start_completed, #state{start_time=Start,
-                                    bucket=Bucket} = State) ->
+                                    bucket=Bucket,
+                                    jwt_expires = JWTExpires} = State) ->
     ale:info(?USER_LOGGER, "Bucket ~p loaded on node ~p in ~p seconds.",
              [Bucket, dist_manager:this_node(),
               timer:now_diff(os:timestamp(), Start) div 1000000]),
@@ -863,7 +868,8 @@ handle_cast(start_completed, #state{start_time=Start,
                     _ ->
                         connected
                 end,
-    {noreply, State#state{status=NewStatus, warmup_stats=[]}}.
+    {noreply, State#state{status = NewStatus, warmup_stats = [],
+                          jwt_set = JWTExpires =/= undefined}}.
 
 issue_jwt() ->
     {ok, JWT} =
@@ -888,6 +894,9 @@ maybe_issue_jwt(Bucket, Snapshot) ->
         false ->
             {ok, undefined, undefined}
     end.
+
+is_jwt_set(Bucket) ->
+    do_call(server(Bucket), Bucket, is_jwt_set, ?TIMEOUT).
 
 handle_info({connect_done, WorkersCount, RV},
             #state{bucket = Bucket,
@@ -914,7 +923,8 @@ handle_info({connect_done, WorkersCount, RV},
                                      start_time = os:timestamp(),
                                      sock = Sock,
                                      status = init,
-                                     jwt_expires = Expires
+                                     jwt_expires = Expires,
+                                     jwt_set = false
                                     },
                     WorkerPids = [proc_lib:spawn_link(erlang,
                                                       apply, [fun worker_init/2,
@@ -1110,9 +1120,11 @@ handle_info(Message, #state{worker_features = WF, control_queue = Q,
                       [OldWF, WF]),
             {stop, {shutdown, feature_mismatch}, State}
     end;
-handle_info(complete_check, State = #state{check_in_progress = true}) ->
+handle_info(complete_check, State = #state{check_in_progress = true,
+                                           jwt_expires = JWTExpires}) ->
     send_check_config_msg(State),
-    {noreply, State#state{check_in_progress = false}};
+    {noreply, State#state{check_in_progress = false,
+                          jwt_set = JWTExpires =/= undefined}};
 handle_info({'EXIT', _, Reason} = Msg, State) ->
     ?log_debug("Got ~p. Exiting.", [Msg]),
     {stop, Reason, State};
@@ -2505,24 +2517,49 @@ reply_start_stop_uploaders(What, RVs) ->
             {reply, ok};
         Bad ->
             ?log_error("Errors ~s fusion uploaders: ~p", [What, Bad]),
-            {reply, error}
+            {reply, {error, failed_to_modify_uploaders}}
     end.
 
 -spec maybe_start_fusion_uploaders(
-        bucket_name(), [{vbucket_id(), integer()}]) -> ok | error | mc_error().
+        bucket_name(), [{vbucket_id(), integer()}]) ->
+          ok | {error, term()} | mc_error().
 maybe_start_fusion_uploaders(_Bucket, []) ->
     ok;
 maybe_start_fusion_uploaders(Bucket, Uploaders) ->
-    try_to_perform_very_long_call(
-      fun (Sock) ->
-              RVs =
-                  [mc_client_binary:start_fusion_uploader(Sock, VBucket, Term)
-                   || {VBucket, Term} <- Uploaders],
-              reply_start_stop_uploaders("starting", RVs)
-      end, Bucket, [json]).
+    %% This addresses the race condition between fusion parameters being
+    %% asynchronously propagated to the magma bucket when fusion
+    %% is enabled and janitor starting the uploaders.
+    %%
+    %% We don't want to fail immediately, because the actual duration of the
+    %% race  is usually way shorter than the janitor interval and we want the
+    %% uploaders to be started sooner
+    case misc:poll_for_condition(
+           fun () ->
+                   try
+                       %% this is an indicator that all fusion bucket
+                       %% parameters are propagated to memcahced
+                       is_jwt_set(Bucket)
+                   catch
+                       T:E -> {error, {T, E}}
+                   end
+           end, ?WAIT_FOR_JWT_TIMEOUT, 100) of
+        timeout ->
+            {error, timeout};
+        {T, E} ->
+            {error, {failed_to_check_jwt, T, E}};
+        true ->
+            try_to_perform_very_long_call(
+              fun (Sock) ->
+                      RVs =
+                          [mc_client_binary:start_fusion_uploader(Sock,
+                                                                  VBucket, Term)
+                           || {VBucket, Term} <- Uploaders],
+                      reply_start_stop_uploaders("starting", RVs)
+              end, Bucket, [json])
+    end.
 
 -spec maybe_stop_fusion_uploaders(bucket_name(), [vbucket_id()]) ->
-          ok | error | mc_error().
+          ok | {error, term()} | mc_error().
 maybe_stop_fusion_uploaders(_Bucket, []) ->
     ok;
 maybe_stop_fusion_uploaders(Bucket, VBuckets) ->
