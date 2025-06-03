@@ -2476,6 +2476,8 @@ reply_start_stop_uploaders(What, RVs) ->
 
 -spec maybe_start_fusion_uploaders(
         bucket_name(), [{vbucket_id(), integer()}]) -> ok | error | mc_error().
+maybe_start_fusion_uploaders(_Bucket, []) ->
+    ok;
 maybe_start_fusion_uploaders(Bucket, Uploaders) ->
     try_to_perform_very_long_call(
       fun (Sock) ->
@@ -2487,6 +2489,8 @@ maybe_start_fusion_uploaders(Bucket, Uploaders) ->
 
 -spec maybe_stop_fusion_uploaders(bucket_name(), [vbucket_id()]) ->
           ok | error | mc_error().
+maybe_stop_fusion_uploaders(_Bucket, []) ->
+    ok;
 maybe_stop_fusion_uploaders(Bucket, VBuckets) ->
     try_to_perform_very_long_call(
       fun (Sock) ->
