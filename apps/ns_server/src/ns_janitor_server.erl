@@ -292,7 +292,10 @@ do_run_cleanup(update_buckets_marked_for_shutdown) ->
                   _Error ->
                       ok
               end
-      end, Buckets, infinity).
+      end, Buckets, infinity);
+do_run_cleanup(fusion) ->
+    fusion_uploaders:maybe_advance_state().
+
 
 get_unsafe_nodes_from_reprovision_list(ReprovisionList) ->
     %% It is possible that when the janitor cleanup is working its way through
@@ -310,7 +313,8 @@ get_unsafe_nodes_from_reprovision_list(ReprovisionList) ->
 get_janitor_items() ->
     Buckets = [{bucket, B} || B <- ns_bucket:get_bucket_names_of_type(membase)],
     [compat_mode, services, consider_resetting_rebalance_status | Buckets] ++
-    [maybe_update_hibernation_status, update_buckets_marked_for_shutdown].
+    [maybe_update_hibernation_status, update_buckets_marked_for_shutdown,
+     fusion].
 
 do_request_janitor_run(Request, #state{janitor_requests=Requests} = State) ->
     {Oper, NewRequests} = add_janitor_request(Request, Requests),

@@ -77,7 +77,8 @@
          maybe_stop_fusion_uploaders/3,
          get_active_guest_volumes/2,
          get_fusion_sync_info/2,
-         sync_fusion_log_store/1]).
+         sync_fusion_log_store/1,
+         get_fusion_uploaders_state/2]).
 
 -export([start_link/1]).
 
@@ -458,8 +459,16 @@ sync_fusion_log_store(BucketNames) ->
             {failed_nodes, BadNodes}
     end.
 
+-spec get_fusion_uploaders_state(ns_bucket:name(), ns_bucket:config()) ->
+          {error, {failed_nodes, [node()]}} | {ok, [{node(), {list()}}]}.
+get_fusion_uploaders_state(Bucket, BucketConfig) ->
+    Servers = ns_bucket:get_servers(BucketConfig),
+    NodesCalls = [{Node, get_fusion_uploaders_state} || Node <- Servers],
+    call_on_nodes_with_returns(Bucket, NodesCalls, fun servant_call/3).
+
+
 -spec delete_vbucket_copies(ns_bucket:name(), pid(), [node()], vbucket_id()) ->
-          ok | {errors, [{node(), term()}]}.
+                                   ok | {errors, [{node(), term()}]}.
 delete_vbucket_copies(Bucket, RebalancerPid, Nodes, VBucket) ->
     process_multicall_rv(
       rebalance_multi_call(RebalancerPid, Bucket, Nodes,
@@ -769,6 +778,12 @@ handle_call({get_fusion_sync_info, VBuckets}, From, State) ->
       From, State, undefined,
       fun (undefined, #state{bucket_name = Bucket}) ->
               ns_memcached:get_fusion_sync_info(Bucket, VBuckets)
+      end);
+handle_call(get_fusion_uploaders_state, From, State) ->
+    handle_call_via_servant(
+      From, State, undefined,
+      fun (undefined, #state{bucket_name = Bucket}) ->
+              ns_memcached:get_fusion_uploaders_state(Bucket)
       end);
 handle_call(Call, From, State) ->
     do_handle_call(Call, From, cleanup_rebalance_artifacts(Call, State)).

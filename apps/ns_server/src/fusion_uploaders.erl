@@ -31,6 +31,7 @@
          update_config/1,
          enable/0,
          maybe_grab_heartbeat_info/0,
+         maybe_advance_state/0,
          config_key/0]).
 
 %% incremented starting from 1 with each uploader change
@@ -497,4 +498,101 @@ maybe_grab_heartbeat_info(BucketName, State) ->
                "Failure to retrieve uploaders stats for bucket ~p, Error:~p",
                [BucketName, Error]),
             false
+    end.
+
+-spec maybe_advance_state() -> ok.
+maybe_advance_state() ->
+    maybe_advance_state(get_state()).
+
+maybe_advance_state(enabling) ->
+    FusionConfig = get_config_with_default(direct),
+    Threshold = proplists:get_value(enable_sync_threshold_mb, FusionConfig)
+        * 1024 * 1024,
+    Buckets = ns_bucket:get_buckets(direct),
+    FusionBuckets =
+        ns_bucket:filter_buckets_by(Buckets, fun ns_bucket:is_fusion/1),
+
+    case fetch_fusion_stats(FusionBuckets, #{}) of
+        error ->
+            ok;
+        PerBucketPerNodeMap ->
+            ToAdvance =
+                analyze_fusion_stats(
+                  FusionBuckets, PerBucketPerNodeMap,
+                  fun (BucketInfo, Acc) ->
+                          case {maps:find(snapshot_pending_bytes, BucketInfo),
+                                maps:find(uploaders_state_mismatch,
+                                          BucketInfo)} of
+                              {{ok, Bytes}, error} ->
+                                  case Acc + Bytes of
+                                      NewAcc when NewAcc > Threshold ->
+                                          false;
+                                      NewAcc ->
+                                          NewAcc
+                                  end;
+                              _ ->
+                                  false
+                          end
+                  end, 0),
+
+            case ToAdvance of
+                {true, Bytes} ->
+                    ?log_info("Changing fusion state to 'enabled', "
+                              "~p bytes remains to be synced", [Bytes]),
+                    {ok, _} = update_config([{state, enabled}]),
+                    ok;
+                false ->
+                    ok
+            end
+    end;
+maybe_advance_state(_) ->
+    ok.
+
+analyze_fusion_stats([], _, _, Acc) ->
+    {true, Acc};
+analyze_fusion_stats([{Bucket, BucketConfig} | Rest],
+                     PerBucketPerNodeMap, Fun, Acc) ->
+    Uploaders = ns_bucket:get_fusion_uploaders(Bucket),
+    FusionState = ns_bucket:get_fusion_state(BucketConfig),
+    Servers = ns_bucket:get_servers(BucketConfig),
+
+    case analyze_fusion_stats_for_bucket(
+           Bucket, Uploaders, FusionState, Servers,
+           PerBucketPerNodeMap, Fun, Acc) of
+        false ->
+            false;
+        NewAcc ->
+            analyze_fusion_stats(Rest, PerBucketPerNodeMap, Fun, NewAcc)
+    end.
+
+analyze_fusion_stats_for_bucket(_, _, _, [], _, _, Acc) ->
+    Acc;
+analyze_fusion_stats_for_bucket(Bucket, Uploaders, FusionState, [Node | Rest],
+                                PerBucketPerNodeMap, Fun, Acc) ->
+    {ok, PerNodeMap} = maps:find(Bucket, PerBucketPerNodeMap),
+    {ok, {VBucketsInfo}} = maps:find(Node, PerNodeMap),
+    ThisNodeUploaders = node_uploaders(Node, FusionState, Uploaders),
+    Aggregated = process_bucket_stats(
+                   Node, Bucket, VBucketsInfo, ThisNodeUploaders),
+
+    case Fun(Aggregated, Acc) of
+        false ->
+            false;
+        NewAcc ->
+            analyze_fusion_stats_for_bucket(
+              Bucket, Uploaders, FusionState, Rest,
+              PerBucketPerNodeMap, Fun, NewAcc)
+    end.
+
+fetch_fusion_stats([], Acc) ->
+    Acc;
+fetch_fusion_stats([{BucketName, BucketConfig} | Rest], Acc) ->
+    case janitor_agent:get_fusion_uploaders_state(BucketName, BucketConfig) of
+        {error, {failed_nodes, BadNodes}} ->
+            ?log_warning("Unable to fetch uploaders state for bucket ~p from "
+                         "nodes ~p", [BucketName, BadNodes]),
+            error;
+        {ok, PerNodeInfos} ->
+            fetch_fusion_stats(
+              Rest, Acc#{BucketName => maps:from_list(PerNodeInfos)})
     end.

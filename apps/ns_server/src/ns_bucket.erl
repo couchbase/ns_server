@@ -91,6 +91,7 @@
          get_buckets/1,
          get_buckets_by_rank/0,
          get_buckets_by_rank/1,
+         filter_buckets_by/2,
          is_named_bucket_persistent/1,
          is_persistent/1,
          is_ephemeral_bucket/1,
@@ -3275,9 +3276,14 @@ set_fusion_state(State, BucketConfig) ->
     lists:keystore(magma_fusion_state, 1, BucketConfig,
                    {magma_fusion_state, State}).
 
+-spec filter_buckets_by(buckets(), fun ((config()) -> buckets())) -> buckets().
+filter_buckets_by(Buckets, Filter) ->
+    [{BucketName, BucketConfig} || {BucketName, BucketConfig} <-
+                                       Buckets, Filter(BucketConfig)].
+
 -spec get_fusion_buckets() -> buckets().
 get_fusion_buckets() ->
-    [{B, C} || {B, C} <- get_buckets(), is_fusion(C)].
+    filter_buckets_by(get_buckets(), fun is_fusion/1).
 
 -spec fusion_uploaders_sub_key() -> atom().
 fusion_uploaders_sub_key() ->
