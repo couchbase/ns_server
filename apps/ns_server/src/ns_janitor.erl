@@ -118,26 +118,42 @@ run_buckets_cleanup_activity(BucketsAndCfg, SnapShot, Options) ->
     Rv.
 
 cleanup_fusion_uploaders(Bucket, BucketConfig, Servers) ->
-    case ns_bucket:get_fusion_uploaders(Bucket) of
-        not_found ->
+    case fusion_uploaders:get_state() of
+        disabled ->
+            %% we can reach this state only if all uploaders are
+            %% stopped
             ok;
-        Uploaders ->
-            {_, Map} = lists:keyfind(map, 1, BucketConfig),
-            cleanup_fusion_uploaders(Uploaders, Bucket, Servers, Map)
+        _ ->
+            case ns_bucket:get_fusion_uploaders(Bucket) of
+                not_found ->
+                    ok;
+                Uploaders ->
+                    {_, Map} = lists:keyfind(map, 1, BucketConfig),
+                    cleanup_fusion_uploaders(Uploaders, Bucket, BucketConfig,
+                                             Servers, Map)
+            end
     end.
 
-cleanup_fusion_uploaders(Uploaders, Bucket, Servers, Map) ->
+cleanup_fusion_uploaders(Uploaders, Bucket, BucketConfig, Servers, Map) ->
     EnumeratedUploaders = lists:zip3(lists:seq(0, length(Uploaders) - 1),
                                      Uploaders, Map),
-
+    FusionState = ns_bucket:get_fusion_state(BucketConfig),
     lists:foreach(
       fun (Node) ->
-              ToStart = [{Vb, T} || {Vb, {N, T}, Chain} <- EnumeratedUploaders,
-                                    N =:= Node,
-                                    lists:member(N, Chain)],
-              ToStop = [Vb || {Vb, {N, _}, Chain} <- EnumeratedUploaders,
-                              N =/= Node,
-                              lists:member(Node, Chain)],
+              {ToStart, ToStop} =
+                  case FusionState of
+                      enabled ->
+                          {[{Vb, T} ||
+                               {Vb, {N, T}, Chain} <- EnumeratedUploaders,
+                               N =:= Node,
+                               lists:member(N, Chain)],
+                           [Vb || {Vb, {N, _}, Chain} <- EnumeratedUploaders,
+                                  N =/= Node,
+                                  lists:member(Node, Chain)]};
+                      _ ->
+                          {[], [Vb || {Vb, _, Chain} <- EnumeratedUploaders,
+                                      lists:member(Node, Chain)]}
+                  end,
               janitor_agent:maybe_stop_fusion_uploaders(Node, Bucket, ToStop),
               janitor_agent:maybe_start_fusion_uploaders(Node, Bucket, ToStart)
       end, Servers).
