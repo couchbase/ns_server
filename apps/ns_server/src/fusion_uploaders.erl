@@ -407,6 +407,7 @@ maybe_grab_heartbeat_info() ->
         false ?= get_state() =:= disabled,
         active ?= ns_cluster_membership:get_cluster_membership(node()),
         true ?= lists:member(kv, ns_cluster_membership:node_services(node())),
+        {_, Deleting} = fusion_local_agent:get_state(),
         [{fusion_stats,
           [{buckets,
             lists:filtermap(
@@ -414,7 +415,8 @@ maybe_grab_heartbeat_info() ->
                       maybe_grab_heartbeat_info(
                         BucketName,
                         ns_bucket:get_fusion_state(BucketConfig))
-              end, ns_bucket:get_buckets())}]}]
+              end, ns_bucket:get_buckets())},
+           {deleting, Deleting}]}]
     else
         _ -> []
     end.

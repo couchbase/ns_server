@@ -20,13 +20,19 @@
                 queue :: pid(),
                 deleting :: [binary()]}).
 
--export([start_link/0]).
--export([init/1, handle_info/2]).
+-export([start_link/0, get_state/0]).
+-export([init/1, handle_info/2, handle_call/3]).
+
+-type state() :: {fusion_uploaders:state(), [binary()]}.
 
 -define(UPLOADERS_STOP_TIMEOUT, ?get_timeout(uploaders_stop, 60000)).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+-spec get_state() -> state().
+get_state() ->
+    gen_server2:call(?MODULE, get_state).
 
 init([]) ->
     Self = self(),
@@ -48,6 +54,10 @@ init([]) ->
     {ok, #state{state = disabled,
                 queue = Pid,
                 deleting = []}}.
+
+handle_call(get_state, _From, State = #state{state = FusionState,
+                                             deleting = Deleting}) ->
+    {reply, {FusionState, Deleting}, State}.
 
 handle_info({deleted, Namespace}, State = #state{deleting = Deleting}) ->
     {noreply, State#state{deleting = Deleting -- [Namespace]}};
