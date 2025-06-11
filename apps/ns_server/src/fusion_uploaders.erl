@@ -529,7 +529,7 @@ maybe_advance_state(enabling) ->
             ToAdvance =
                 analyze_fusion_stats(
                   FusionBuckets, PerBucketPerNodeMap,
-                  fun (BucketInfo, Acc) ->
+                  fun (_BucketName, BucketInfo, Acc) ->
                           case {maps:find(snapshot_pending_bytes, BucketInfo),
                                 maps:find(uploaders_state_mismatch,
                                           BucketInfo)} of
@@ -555,8 +555,54 @@ maybe_advance_state(enabling) ->
                     ok
             end
     end;
+maybe_advance_state(disabling = State) ->
+    FusionBuckets = ns_bucket:get_fusion_buckets(),
+    NextState = disabled,
+
+    case fetch_fusion_stats(FusionBuckets, #{}) of
+        error ->
+            ok;
+        PerBucketPerNodeMap ->
+            chronicle_compat:txn(
+              fun (Txn) ->
+                      Sets =
+                          buckets_advance_state_sets(
+                            Txn, PerBucketPerNodeMap, State, NextState),
+                      case Sets of
+                          [] ->
+                              {abort, nothing_to_do};
+                          _ ->
+                              {commit, Sets}
+                      end
+              end)
+    end;
 maybe_advance_state(_) ->
     ok.
+
+buckets_advance_state_sets(Txn, PerBucketPerNodeMap, State, NextState) ->
+    Snapshot = ns_bucket:fetch_snapshot(all, Txn, [props]),
+    Buckets = [{BucketName, BucketConfig} ||
+                  {BucketName, BucketConfig} <- ns_bucket:get_buckets(Snapshot),
+                  ns_bucket:get_fusion_state(BucketConfig) =:= State],
+    Result =
+        analyze_fusion_stats(
+          Buckets, PerBucketPerNodeMap,
+          fun (BucketName, BucketInfo, Acc) ->
+                  case maps:is_key(uploaders_state_mismatch, BucketInfo) of
+                      false ->
+                          Acc;
+                      true ->
+                          lists:keydelete(BucketName, 1, Acc)
+                  end
+          end, Buckets),
+    case Result of
+        {true, BucketsToAdvance} ->
+            [{set, ns_bucket:sub_key(BucketName, props),
+              ns_bucket:set_fusion_state(NextState, BucketConfig)} ||
+                {BucketName, BucketConfig} <- BucketsToAdvance];
+        false ->
+            []
+    end.
 
 analyze_fusion_stats([], _, _, Acc) ->
     {true, Acc};
@@ -585,7 +631,7 @@ analyze_fusion_stats_for_bucket(Bucket, Uploaders, FusionState, [Node | Rest],
     Aggregated = process_bucket_stats(
                    Node, Bucket, VBucketsInfo, ThisNodeUploaders),
 
-    case Fun(Aggregated, Acc) of
+    case Fun(Bucket, Aggregated, Acc) of
         false ->
             false;
         NewAcc ->
