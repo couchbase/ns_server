@@ -20,7 +20,7 @@
                 queue :: pid(),
                 deleting :: [binary()]}).
 
--export([start_link/0, get_state/0]).
+-export([start_link/0, get_state/0, get_states/2]).
 -export([init/1, handle_info/2, handle_call/3]).
 
 -type state() :: {fusion_uploaders:state(), [binary()]}.
@@ -33,6 +33,18 @@ start_link() ->
 -spec get_state() -> state().
 get_state() ->
     gen_server2:call(?MODULE, get_state).
+
+-spec get_states([node()], integer()) ->
+          {error, [node()]} | {ok, [{node(), state()}]}.
+get_states(Nodes, Timeout) ->
+    {Replies, BadNodes} =
+        gen_server:multi_call(Nodes, ?MODULE, get_state, Timeout),
+    case BadNodes of
+        [] ->
+            {ok, Replies};
+        _ ->
+            {error, BadNodes}
+    end.
 
 init([]) ->
     Self = self(),

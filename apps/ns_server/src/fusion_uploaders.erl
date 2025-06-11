@@ -35,6 +35,8 @@
          maybe_advance_state/0,
          config_key/0]).
 
+-define(GET_DELETION_STATE_TIMEOUT, ?get_timeout(get_deletion_state, 5000)).
+
 %% incremented starting from 1 with each uploader change
 %% The purpose of Term is to help
 %% s3 to recognize rogue uploaders and ignore them.
@@ -251,6 +253,13 @@ update_config(Params) ->
                                  misc:update_proplist(Config, Params)}]}
               end
       end).
+
+txn_update_state_set(Txn, State) ->
+    {ok, {Config, _}} = chronicle_compat:txn_get(config_key(), Txn),
+    update_state_set(Config, State).
+
+update_state_set(Config, State) ->
+    {set, config_key(), lists:keystore(state, 1, Config, {state, State})}.
 
 re_enable_uploaders(Bucket, BucketConfig, Map, Uploaders) ->
     case janitor_agent:get_fusion_sync_info(Bucket, Map) of
@@ -558,6 +567,7 @@ maybe_advance_state(enabling) ->
 maybe_advance_state(disabling = State) ->
     FusionBuckets = ns_bucket:get_fusion_buckets(),
     NextState = disabled,
+    DeletionInfo = get_deletion_state(State),
 
     case fetch_fusion_stats(FusionBuckets, #{}) of
         error ->
@@ -565,19 +575,63 @@ maybe_advance_state(disabling = State) ->
         PerBucketPerNodeMap ->
             chronicle_compat:txn(
               fun (Txn) ->
-                      Sets =
+                      {Sets, AllStopped} =
                           buckets_advance_state_sets(
                             Txn, PerBucketPerNodeMap, State, NextState),
-                      case Sets of
+                      Sets1 =
+                          case AllStopped of
+                              false ->
+                                  Sets;
+                              true ->
+                                  case can_advance_fusion_state(
+                                         Txn, State, DeletionInfo) of
+                                      true ->
+                                          [txn_update_state_set(
+                                             Txn, NextState) | Sets];
+                                      false ->
+                                          Sets
+                                  end
+                          end,
+                      case Sets1 of
                           [] ->
                               {abort, nothing_to_do};
                           _ ->
-                              {commit, Sets}
+                              {commit, Sets1}
                       end
               end)
     end;
 maybe_advance_state(_) ->
     ok.
+
+get_deletion_state(disabling) ->
+    KVNodes = ns_cluster_membership:service_active_nodes(kv),
+    case fusion_local_agent:get_states(KVNodes, ?GET_DELETION_STATE_TIMEOUT) of
+        {error, BadNodes} ->
+            ?log_debug("Failed to obtain fusion deletion state from nodes ~p",
+                       [BadNodes]),
+            error;
+        {ok, Results} ->
+            maps:from_list(Results)
+    end.
+
+can_advance_fusion_state(_Txn, disabling, error) ->
+    false;
+can_advance_fusion_state(Txn, disabling, DeletionInfo) ->
+    Snapshot = ns_cluster_membership:fetch_snapshot(Txn),
+    KVNodes = ns_cluster_membership:service_active_nodes(Snapshot, kv),
+    %% We check 2 things here:
+    %%   1. status disabling propagated to all local agents
+    %%      (which means all of them started deleting stuff)
+    %%   2. all local agents have nothing to delete.
+    lists:all(
+      fun (Node) ->
+              case maps:find(Node, DeletionInfo) of
+                  {ok, {disabling, []}} ->
+                      true;
+                  _ ->
+                      false
+              end
+      end, KVNodes).
 
 buckets_advance_state_sets(Txn, PerBucketPerNodeMap, State, NextState) ->
     Snapshot = ns_bucket:fetch_snapshot(all, Txn, [props]),
@@ -597,11 +651,12 @@ buckets_advance_state_sets(Txn, PerBucketPerNodeMap, State, NextState) ->
           end, Buckets),
     case Result of
         {true, BucketsToAdvance} ->
-            [{set, ns_bucket:sub_key(BucketName, props),
-              ns_bucket:set_fusion_state(NextState, BucketConfig)} ||
-                {BucketName, BucketConfig} <- BucketsToAdvance];
+            {[{set, ns_bucket:sub_key(BucketName, props),
+               ns_bucket:set_fusion_state(NextState, BucketConfig)} ||
+                 {BucketName, BucketConfig} <- BucketsToAdvance],
+             length(BucketsToAdvance) =:= length(Buckets)};
         false ->
-            []
+            {[], false}
     end.
 
 analyze_fusion_stats([], _, _, Acc) ->
