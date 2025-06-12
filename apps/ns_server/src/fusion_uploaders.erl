@@ -590,9 +590,14 @@ maybe_advance_state(enabling) ->
                     ok
             end
     end;
-maybe_advance_state(disabling = State) ->
+maybe_advance_state(State) when State =:= disabling orelse State =:= stopping ->
     FusionBuckets = ns_bucket:get_fusion_buckets(),
-    NextState = disabled,
+    NextState = case State of
+                    disabling ->
+                        disabled;
+                    stopping ->
+                        stopped
+                end,
     DeletionInfo = get_deletion_state(State),
 
     case fetch_fusion_stats(FusionBuckets, #{}) of
@@ -629,6 +634,8 @@ maybe_advance_state(disabling = State) ->
 maybe_advance_state(_) ->
     ok.
 
+get_deletion_state(stopping) ->
+    undefined;
 get_deletion_state(disabling) ->
     KVNodes = ns_cluster_membership:service_active_nodes(kv),
     case fusion_local_agent:get_states(KVNodes, ?GET_DELETION_STATE_TIMEOUT) of
@@ -640,6 +647,8 @@ get_deletion_state(disabling) ->
             maps:from_list(Results)
     end.
 
+can_advance_fusion_state(_Txn, stopping, _) ->
+    true;
 can_advance_fusion_state(_Txn, disabling, error) ->
     false;
 can_advance_fusion_state(Txn, disabling, DeletionInfo) ->
