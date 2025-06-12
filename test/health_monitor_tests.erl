@@ -262,11 +262,7 @@ kv_stats_monitor_io_failure_detection_test_() ->
             {Stat, _} <- kv_stats_monitor:failure_stats()]}.
 
 kv_stats_monitor_io_slow_test_setup() ->
-    meck:new(config_profile, [passthrough]),
-    meck:expect(config_profile, get,
-                fun () ->
-                        ?DEFAULT_EMPTY_PROFILE_FOR_TESTS
-                end),
+    config_profile:load_default_profile_for_test(),
     SupPid = test_setup(),
 
     meck:expect(
@@ -299,7 +295,7 @@ kv_stats_monitor_io_slow_test_setup() ->
 
 kv_stats_monitor_io_slow_test_teardown(SupPid) ->
     meck:unload(ns_memcached),
-    meck:unload(config_profile),
+    config_profile:unload_profile_for_test(),
     test_teardown(SupPid).
 
 kv_stats_mon_io_slow_zero({StatNum, StatSlow}) ->

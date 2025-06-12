@@ -697,16 +697,11 @@ permissions_for_user_test_() ->
              meck:new(ns_bucket, [passthrough]),
              meck:expect(ns_bucket, get_snapshot,
                          fun (_, _) -> Snapshot end),
-             meck:new(config_profile, [passthrough]),
-             meck:expect(config_profile, get,
-                         fun () ->
-                                 ?DEFAULT_EMPTY_PROFILE_FOR_TESTS
-                         end)
+             config_profile:load_default_profile_for_test()
      end,
      fun (_) ->
-             meck:unload(cluster_compat_mode),
-             meck:unload(ns_bucket),
-             meck:unload(config_profile)
+             meck:unload(),
+             config_profile:unload_profile_for_test()
      end,
      [Test([admin],
            All(global_permissions_to_check()),

@@ -2050,15 +2050,11 @@ produce_roles_by_permission_test_() ->
                          fun () -> ?LATEST_VERSION_NUM end),
              meck:expect(cluster_compat_mode, is_developer_preview,
                          fun () -> false end),
-             meck:new(config_profile, [passthrough]),
-             meck:expect(config_profile, get,
-                         fun () ->
-                                 ?DEFAULT_EMPTY_PROFILE_FOR_TESTS
-                         end)
+             config_profile:load_default_profile_for_test()
      end,
      fun (_) ->
              meck:unload(cluster_compat_mode),
-             meck:unload(config_profile)
+             config_profile:unload_profile_for_test()
      end,
      [{"security permission",
        Test([admin, ro_admin, security_admin_external, security_admin_local],

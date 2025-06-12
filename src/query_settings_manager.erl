@@ -244,11 +244,7 @@ quota_test_fun(Number) when is_number(Number) ->
 n1ql_quota_test_() ->
     {setup,
      fun () ->
-             meck:new(config_profile, [passthrough]),
-             meck:expect(config_profile, get,
-                         fun () ->
-                                 ?DEFAULT_EMPTY_PROFILE_FOR_TESTS
-                         end),
+             config_profile:load_default_profile_for_test(),
              meck:new(cluster_compat_mode, [passthrough]),
              meck:expect(cluster_compat_mode, is_cluster_76,
                          fun () -> true end),
@@ -257,7 +253,7 @@ n1ql_quota_test_() ->
                          fun () -> ?VERSION_76 end)
      end,
      fun (_X) ->
-             meck:unload(config_profile),
+             config_profile:unload_profile_for_test(),
              meck:unload(cluster_compat_mode)
      end,
      %% Keep in mind there is no validation on this function, but it will be

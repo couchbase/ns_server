@@ -620,11 +620,7 @@ membase_bucket_capabilities_test_() ->
 %% the output (bucket info blob) of "compute_bucket_info_with_config".
 verify_compatibility_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
-    meck:new(config_profile, [passthrough]),
-    meck:expect(config_profile, get,
-                fun () ->
-                        ?DEFAULT_EMPTY_PROFILE_FOR_TESTS
-                end),
+    config_profile:load_default_profile_for_test(),
     meck:expect(cluster_compat_mode, is_cluster_72, fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_76, fun () -> true end),
     meck:expect(cluster_compat_mode, is_enterprise, fun () -> true end),
@@ -668,6 +664,7 @@ verify_compatibility_test() ->
                                             SnapRev),
         ?assertNot(contains_empty_vbmap(Blob2))
     after
-        meck:unload()
+        meck:unload(),
+        config_profile:unload_profile_for_test()
     end.
 -endif.

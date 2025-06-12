@@ -1198,11 +1198,7 @@ promql_filters_for_roles_test() ->
                   promQL:format_promql({union, AST})
               end,
 
-    meck:new(config_profile, [passthrough]),
-    meck:expect(config_profile, get,
-                fun () ->
-                        ?DEFAULT_EMPTY_PROFILE_FOR_TESTS
-                end),
+    config_profile:load_default_profile_for_test(),
     meck:new(cluster_compat_mode, [passthrough]),
     try
         meck:expect(cluster_compat_mode, is_enterprise,
@@ -1276,7 +1272,7 @@ promql_filters_for_roles_test() ->
 
         ok
     after
-        meck:unload(config_profile),
+        config_profile:unload_profile_for_test(),
         meck:unload(cluster_compat_mode)
     end.
 

@@ -612,23 +612,13 @@ compare_with({mail_kv_not_fully_failed_over, Node}) ->
 generate(Tests) ->
     generate([{kv, [a, b, c, d]}], Tests).
 
-mock_default_profile() ->
-    meck:new(config_profile, [passthrough]),
-    meck:expect(config_profile, get,
-                fun () ->
-                        ?DEFAULT_EMPTY_PROFILE_FOR_TESTS
-                end).
-
-unmock_default_profile(_) ->
-    meck:unload(config_profile).
-
 generate(RawSvcConfig, Tests) ->
     T = fun (Threshold, Steps) ->
                 ?cut(test_body(Threshold, Steps, RawSvcConfig))
         end,
     {foreach,
-     fun mock_default_profile/0,
-     fun unmock_default_profile/1,
+     fun config_profile:load_default_profile_for_test/0,
+     fun config_profile:unload_profile_for_test/1,
      [{Title,
        T(Threshold,
          [{compare_with(CompareWith), Frames, DownNodes} ||
@@ -717,8 +707,8 @@ min_size_test_() ->
         end,
 
     {foreach,
-     fun mock_default_profile/0,
-     fun unmock_default_profile/1,
+     fun config_profile:load_default_profile_for_test/0,
+     fun config_profile:unload_profile_for_test/1,
      [{lists:flatten(
          io_lib:format("Min size test. Threshold = ~p", [T])),
        ?cut(MinSizeTest(T))} || T <- [2, 3, 4]] ++
