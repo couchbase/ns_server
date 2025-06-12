@@ -241,6 +241,7 @@
          get_fusion_state/1,
          set_fusion_state/2,
          get_fusion_buckets/0,
+         get_fusion_buckets/1,
          fusion_uploaders_key/1,
          get_fusion_uploaders/1]).
 
@@ -3344,7 +3345,11 @@ filter_buckets_by(Buckets, Filter) ->
 
 -spec get_fusion_buckets() -> buckets().
 get_fusion_buckets() ->
-    filter_buckets_by(get_buckets(), fun is_fusion/1).
+    get_fusion_buckets(direct).
+
+-spec get_fusion_buckets(chronicle_compat:source()) -> buckets().
+get_fusion_buckets(Source) ->
+    filter_buckets_by(get_buckets(Source), fun is_fusion/1).
 
 -spec fusion_uploaders_sub_key() -> atom().
 fusion_uploaders_sub_key() ->

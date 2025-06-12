@@ -19,6 +19,7 @@
          handle_post_settings/1,
          handle_get_status/1,
          handle_enable/1,
+         handle_disable/1,
          handle_prepare_rebalance/1,
          handle_upload_mounted_volumes/1,
          handle_get_active_guest_volumes/1,
@@ -75,15 +76,30 @@ handle_enable(Req) ->
         ok ->
             menelaus_util:reply_json(Req, [], 200);
         {wrong_state, State, States} ->
-            menelaus_util:reply_text(
-              Req, io_lib:format(
-                     "Fusion should be in one of the following states: ~p"
-                     " Current state: ~p", [States, State]), 503);
+            reply_wrong_state(Req, State, States);
         not_initialized ->
             menelaus_util:reply_text(Req, "Fusion should be initialized", 503);
         Other ->
             reply_other(Req, "enable fusion", Other)
     end.
+
+handle_disable(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:assert_is_totoro(),
+    case ns_orchestrator:disable_fusion() of
+        ok ->
+            menelaus_util:reply_json(Req, [], 200);
+        {wrong_state, State, States} ->
+            reply_wrong_state(Req, State, States);
+        Other ->
+            reply_other(Req, "disable fusion", Other)
+    end.
+
+reply_wrong_state(Req, State, States) ->
+    menelaus_util:reply_text(
+      Req, io_lib:format(
+             "Fusion should be in one of the following states: ~p"
+             " Current state: ~p", [States, State]), 503).
 
 -define(JANITOR_TIMEOUT, ?get_timeout(sync_log_store_janitor, 5000)).
 -define(SYNC_TIMEOUT, ?get_timeout(sync_log_store_chronicle_sync, 60000)).

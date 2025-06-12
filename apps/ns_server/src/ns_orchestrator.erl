@@ -94,6 +94,7 @@
          request_janitor_run/1,
          get_state/1,
          enable_fusion/0,
+         disable_fusion/0,
          prepare_fusion_rebalance/1,
          build_rebalance_params/2,
          rebalance_safety_checks/2,
@@ -350,6 +351,10 @@ try_autofailover(Nodes, Options) ->
 -spec enable_fusion() -> ok | busy() | fusion_uploaders:enable_error().
 enable_fusion() ->
     call(enable_fusion, infinity).
+
+-spec disable_fusion() -> ok | busy() | fusion_uploaders:disable_error().
+disable_fusion() ->
+    call(disable_fusion, infinity).
 
 -spec prepare_fusion_rebalance([node()]) ->
           {ok, term()} | busy() |
@@ -1191,6 +1196,15 @@ idle(enable_fusion, From, _State) ->
              {error, Error} ->
                  ?log_error("Failed to enable fusion. Error: ~p",
                             [Error]),
+                 Error
+         end,
+    {keep_state_and_data, [{reply, From, RV}]};
+
+idle(disable_fusion, From, _State) ->
+    RV = case fusion_uploaders:disable() of
+             {ok, _Rev} ->
+                 ok;
+             {error, Error} ->
                  Error
          end,
     {keep_state_and_data, [{reply, From, RV}]};

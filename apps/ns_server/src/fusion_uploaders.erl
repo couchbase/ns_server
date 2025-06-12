@@ -31,6 +31,7 @@
          get_metadata_store_uri/0,
          update_config/1,
          enable/0,
+         disable/0,
          maybe_grab_heartbeat_info/0,
          maybe_advance_state/0,
          config_key/0]).
@@ -51,11 +52,13 @@
         disabled | disabling | enabled | enabling | stopped | stopping.
 -type bucket_state() ::
         disabled | disabling | enabled | stopped | stopping.
--type enable_error() :: not_initialized | {wrong_state, state(), [state()]} |
+-type wrong_state_error() :: {wrong_state, state(), [state()]}.
+-type enable_error() :: not_initialized | wrong_state_error() |
                         {failed_nodes, [node()]}.
+-type disable_error() :: wrong_state_error().
 
 -export_type([fast_forward_info/0, uploaders/0, enable_error/0,
-              bucket_state/0, state/0]).
+              disable_error/0, bucket_state/0, state/0]).
 
 -spec build_fast_forward_info(ns_bucket:name(), ns_bucket:config(),
                               vbucket_map(), vbucket_map()) ->
@@ -409,6 +412,29 @@ enable(BucketUploaders) ->
                       {abort, {error, Error}}
               end
       end).
+
+-spec disable() -> {ok, chronicle:revision()} | {error, disable_error()}.
+disable() ->
+    chronicle_compat:txn(fun disable_txn/1).
+
+disable_txn(Txn) ->
+    Snapshot = ns_bucket:fetch_snapshot(all, Txn, [props]),
+    {ok, {Config, _}} = chronicle_compat:txn_get(config_key(), Txn),
+    State = proplists:get_value(state, Config),
+    AllowedStates = [enabled, enabling, stopped, stopping],
+    case lists:member(State, AllowedStates) of
+        false ->
+            {abort, {error, {wrong_state, State, AllowedStates}}};
+        true ->
+            FusionBuckets = ns_bucket:get_fusion_buckets(Snapshot),
+            {commit,
+             [update_state_set(Config, disabling) |
+              [{set, ns_bucket:sub_key(BucketName, props),
+                ns_bucket:set_fusion_state(disabling, BucketConfig)} ||
+                  {BucketName, BucketConfig} <- FusionBuckets,
+                  lists:member(ns_bucket:get_fusion_state(BucketConfig),
+                               [enabled, stopped, stopping])]]}
+    end.
 
 -spec maybe_grab_heartbeat_info() -> list().
 maybe_grab_heartbeat_info() ->

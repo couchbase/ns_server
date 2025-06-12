@@ -36,6 +36,9 @@
          node_keys/2,
          service_keys/1]).
 
+-type source() :: map() | direct.
+-export_type([source/0]).
+
 %% RPC from another nodes
 -export([do_pull/1]).
 
