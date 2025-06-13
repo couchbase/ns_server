@@ -1043,6 +1043,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["fusion", "disable"] ->
                     {{[admin, fusion], write},
                      fun menelaus_web_fusion:handle_disable/1};
+                ["fusion", "stop"] ->
+                    {{[admin, fusion], write},
+                     fun menelaus_web_fusion:handle_stop/1};
                 ["pools", "default", "buckets", Id] ->
                     {{[{bucket, Id}, settings], write},
                      fun menelaus_web_buckets:handle_bucket_update/3,

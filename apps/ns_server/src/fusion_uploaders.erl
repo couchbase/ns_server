@@ -30,8 +30,7 @@
          get_log_store_uri/0,
          get_metadata_store_uri/0,
          update_config/1,
-         enable/0,
-         disable/0,
+         command/1,
          maybe_grab_heartbeat_info/0,
          maybe_advance_state/0,
          config_key/0]).
@@ -55,10 +54,10 @@
 -type wrong_state_error() :: {wrong_state, state(), [state()]}.
 -type enable_error() :: not_initialized | wrong_state_error() |
                         {failed_nodes, [node()]}.
--type disable_error() :: wrong_state_error().
+-type disable_or_stop_error() :: wrong_state_error().
 
 -export_type([fast_forward_info/0, uploaders/0, enable_error/0,
-              disable_error/0, bucket_state/0, state/0]).
+              disable_or_stop_error/0, bucket_state/0, state/0]).
 
 -spec build_fast_forward_info(ns_bucket:name(), ns_bucket:config(),
                               vbucket_map(), vbucket_map()) ->
@@ -332,8 +331,9 @@ calculate_uploaders([{Bucket, BucketConfig} | Rest], Acc) ->
             calculate_uploaders(Rest, [{Bucket, Uploaders} | Acc])
     end.
 
--spec enable() -> ok | {error, enable_error()}.
-enable() ->
+-spec command(enable | disable | stop) -> ok | {error, enable_error()} |
+          {error, disable_or_stop_error()}.
+command(enable) ->
     MagmaBuckets = ns_bucket:get_buckets_of_type(
                      {membase, magma}, ns_bucket:get_buckets()),
     case calculate_uploaders(MagmaBuckets, []) of
@@ -348,6 +348,23 @@ enable() ->
             end;
         Error ->
             Error
+    end;
+command(Command) when Command =:= disable orelse Command =:= stop ->
+    ?log_debug("Attempt to ~p fusion", [Command]),
+    {StateToSet, AllowedStates, BucketStates} =
+        case Command of
+            disable ->
+                {disabling, [enabled, enabling, stopped, stopping],
+                 [enabled, stopped, stopping]};
+            stop ->
+                {stopping, [enabled, enabling], [enabled]}
+        end,
+    case chronicle_compat:txn(disable_or_stop_txn(
+                                _, StateToSet, AllowedStates, BucketStates)) of
+        {ok, _Rev} ->
+            ok;
+        Other ->
+            Other
     end.
 
 enable_buckets(Snapshot, BucketUploaders) ->
@@ -413,27 +430,22 @@ enable(BucketUploaders) ->
               end
       end).
 
--spec disable() -> {ok, chronicle:revision()} | {error, disable_error()}.
-disable() ->
-    chronicle_compat:txn(fun disable_txn/1).
-
-disable_txn(Txn) ->
+disable_or_stop_txn(Txn, StateToSet, AllowedStates, BucketStates) ->
     Snapshot = ns_bucket:fetch_snapshot(all, Txn, [props]),
     {ok, {Config, _}} = chronicle_compat:txn_get(config_key(), Txn),
     State = proplists:get_value(state, Config),
-    AllowedStates = [enabled, enabling, stopped, stopping],
     case lists:member(State, AllowedStates) of
         false ->
             {abort, {error, {wrong_state, State, AllowedStates}}};
         true ->
             FusionBuckets = ns_bucket:get_fusion_buckets(Snapshot),
             {commit,
-             [update_state_set(Config, disabling) |
+             [update_state_set(Config, StateToSet) |
               [{set, ns_bucket:sub_key(BucketName, props),
-                ns_bucket:set_fusion_state(disabling, BucketConfig)} ||
+                ns_bucket:set_fusion_state(StateToSet, BucketConfig)} ||
                   {BucketName, BucketConfig} <- FusionBuckets,
                   lists:member(ns_bucket:get_fusion_state(BucketConfig),
-                               [enabled, stopped, stopping])]]}
+                               BucketStates)]]}
     end.
 
 -spec maybe_grab_heartbeat_info() -> list().

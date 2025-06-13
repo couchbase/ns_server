@@ -95,6 +95,7 @@
          get_state/1,
          enable_fusion/0,
          disable_fusion/0,
+         stop_fusion/0,
          prepare_fusion_rebalance/1,
          build_rebalance_params/2,
          rebalance_safety_checks/2,
@@ -350,11 +351,16 @@ try_autofailover(Nodes, Options) ->
 
 -spec enable_fusion() -> ok | busy() | fusion_uploaders:enable_error().
 enable_fusion() ->
-    call(enable_fusion, infinity).
+    call({fusion, enable}, infinity).
 
--spec disable_fusion() -> ok | busy() | fusion_uploaders:disable_error().
+-spec disable_fusion() -> ok | busy() |
+          fusion_uploaders:disable_or_stop_error().
 disable_fusion() ->
-    call(disable_fusion, infinity).
+    call({fusion, disable}, infinity).
+
+-spec stop_fusion() -> ok | busy() | fusion_uploaders:disable_or_stop_error().
+stop_fusion() ->
+    call({fusion, stop}, infinity).
 
 -spec prepare_fusion_rebalance([node()]) ->
           {ok, term()} | busy() |
@@ -1188,23 +1194,14 @@ idle({ensure_janitor_run, Item}, From, State) ->
               gen_statem:reply(From, Reason)
       end, idle, State);
 
-idle(enable_fusion, From, _State) ->
-    ?log_info("Enabling fusion"),
-    RV = case fusion_uploaders:enable() of
+idle({fusion, Command}, From, _State) ->
+    ?log_info("Request to ~p fusion", [Command]),
+    RV = case fusion_uploaders:command(Command) of
              ok ->
                  ok;
              {error, Error} ->
-                 ?log_error("Failed to enable fusion. Error: ~p",
-                            [Error]),
-                 Error
-         end,
-    {keep_state_and_data, [{reply, From, RV}]};
-
-idle(disable_fusion, From, _State) ->
-    RV = case fusion_uploaders:disable() of
-             {ok, _Rev} ->
-                 ok;
-             {error, Error} ->
+                 ?log_error("Failed to ~p fusion. Error: ~p",
+                            [Command, Error]),
                  Error
          end,
     {keep_state_and_data, [{reply, From, RV}]};
