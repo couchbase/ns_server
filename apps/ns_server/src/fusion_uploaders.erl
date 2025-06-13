@@ -24,7 +24,6 @@
          get_current/1,
          fail_nodes/2,
          get_config/0,
-         get_status/0,
          get_state/0,
          get_state/1,
          get_log_store_uri/0,
@@ -221,10 +220,6 @@ get_state() ->
 -spec get_state(proplists:proplist()) -> state().
 get_state(Config) ->
     proplists:get_value(state, Config).
-
--spec get_status() -> [{state, state()}].
-get_status() ->
-    [{state, get_state()}].
 
 -spec get_log_store_uri() -> string().
 get_log_store_uri() ->
@@ -495,7 +490,11 @@ process_vbucket_stats(Node, BucketName, VB, VBStats, ThisNodeUploaders, Acc) ->
                                    [BucketName, VB, Node, {E, Term}, Expected]),
                         add_stat_value(uploaders_state_mismatch, 1, Acc)
                 end,
-            add_stat_value_from(snapshot_pending_bytes, VBStats, Acc1);
+            functools:chain(
+              Acc1,
+              [add_stat_value_from(sync_session_total_bytes, VBStats, _),
+               add_stat_value_from(sync_session_completed_bytes, VBStats, _),
+               add_stat_value_from(snapshot_pending_bytes, VBStats, _)]);
         Other ->
             case maps:find(VB, ThisNodeUploaders) of
                 {ok, Term} ->

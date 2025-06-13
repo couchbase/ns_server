@@ -66,7 +66,56 @@ handle_post_settings(Req) ->
 handle_get_status(Req) ->
     menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_79(),
-    menelaus_util:reply_json(Req, {fusion_uploaders:get_status()}, 200).
+
+    KVNodes = ns_cluster_membership:service_active_nodes(kv),
+    NodesDict = ns_doctor:get_nodes(),
+    State = fusion_uploaders:get_state(),
+    Json =
+        case State of
+            disabled ->
+                {[{state, State}]};
+            _ ->
+                {[{state, State},
+                  {nodes,
+                   {[{Node, {jsonify_node(Node, NodesDict)}} ||
+                        Node <- KVNodes]}}]}
+        end,
+    menelaus_util:reply_json(Req, Json, 200).
+
+jsonify_node(Node, NodesDict) ->
+    maybe
+        {ok, NodeInfo} ?= dict:find(Node, NodesDict),
+        {down, false} ?= {down, proplists:get_bool(down, NodeInfo)},
+        {stale, false} ?= {stale, proplists:get_bool(stale, NodeInfo)},
+        FS = proplists:get_value(fusion_stats, NodeInfo),
+        {no_stats, false} ?= {no_stats, FS =:= undefined},
+
+        [{buckets, jsonify_buckets_status(proplists:get_value(buckets, FS))},
+         {deleting, proplists:get_value(deleting, FS)}]
+    else
+        error ->
+            [];
+        {down, true} ->
+            [{state, down}];
+        {stale, true} ->
+            [{state, stale}];
+        {no_stats, true} ->
+            []
+    end.
+
+jsonify_buckets_status(Buckets) ->
+    {lists:map(
+       fun ({BucketName, Props}) ->
+               JsonProps =
+                   [{pendingBytes,
+                     proplists:get_value(snapshot_pending_bytes, Props)},
+                    {completedBytes,
+                     proplists:get_value(sync_session_completed_bytes, Props)},
+                    {totalBytes,
+                     proplists:get_value(sync_session_total_bytes, Props)}],
+               {list_to_binary(BucketName),
+                {[{N, P} || {N, P} <- JsonProps, P =/= undefined]}}
+       end, Buckets)}.
 
 handle_enable(Req) ->
     menelaus_util:assert_is_enterprise(),
