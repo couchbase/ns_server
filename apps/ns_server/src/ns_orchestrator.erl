@@ -93,7 +93,7 @@
          start_graceful_failover/2,
          request_janitor_run/1,
          get_state/1,
-         enable_fusion/0,
+         enable_fusion/1,
          disable_fusion/0,
          stop_fusion/0,
          prepare_fusion_rebalance/1,
@@ -349,9 +349,10 @@ try_autofailover(Nodes, Options) ->
             Other
     end.
 
--spec enable_fusion() -> ok | busy() | fusion_uploaders:enable_error().
-enable_fusion() ->
-    call({fusion, enable}, infinity).
+-spec enable_fusion([ns_bucket:name()] | undefined) ->
+          ok | busy() | fusion_uploaders:enable_error().
+enable_fusion(Buckets) ->
+    call({fusion, {enable, Buckets}}, infinity).
 
 -spec disable_fusion() -> ok | busy() |
           fusion_uploaders:disable_or_stop_error().

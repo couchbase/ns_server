@@ -52,7 +52,8 @@
         disabled | disabling | enabled | stopped | stopping.
 -type wrong_state_error() :: {wrong_state, state(), [state()]}.
 -type enable_error() :: not_initialized | wrong_state_error() |
-                        {failed_nodes, [node()]}.
+                        {failed_nodes, [node()]} |
+                        {unknown_buckets, [ns_bucket:name()]}.
 -type disable_or_stop_error() :: wrong_state_error().
 
 -export_type([fast_forward_info/0, uploaders/0, enable_error/0,
@@ -326,23 +327,47 @@ calculate_uploaders([{Bucket, BucketConfig} | Rest], Acc) ->
             calculate_uploaders(Rest, [{Bucket, Uploaders} | Acc])
     end.
 
--spec command(enable | disable | stop) -> ok | {error, enable_error()} |
+-spec command({enable, [ns_bucket:name()] | undefined} | disable | stop)
+             -> ok | {error, enable_error()} |
           {error, disable_or_stop_error()}.
-command(enable) ->
-    MagmaBuckets = ns_bucket:get_buckets_of_type(
-                     {membase, magma}, ns_bucket:get_buckets()),
-    case calculate_uploaders(MagmaBuckets, []) of
-        {ok, BucketUploaders} ->
-            [?log_debug("Setting uploaders for bucket ~p:~n~p", [BN, U]) ||
-                {BN, U} <- BucketUploaders],
-            case enable(BucketUploaders) of
-                {ok, _} ->
-                    post_enable(MagmaBuckets);
-                Other ->
-                    Other
+command({enable, BucketNames}) ->
+    AllMagmaBuckets = ns_bucket:get_buckets_of_type(
+                        {membase, magma}, ns_bucket:get_buckets()),
+    {MagmaBuckets, Unknown} =
+        case BucketNames of
+            undefined ->
+                {AllMagmaBuckets, []};
+            _ ->
+                case BucketNames -- [BucketName || {BucketName, _}
+                                                       <- AllMagmaBuckets] of
+                    [] ->
+                        {[{BucketName, BucketConfig} ||
+                             {BucketName, BucketConfig} <- AllMagmaBuckets,
+                             lists:member(BucketName, BucketNames)], []};
+                    Missing ->
+                        {undefined, Missing}
+                end
+        end,
+    case Unknown of
+        [] ->
+            ?log_debug("Enabling fusion for buckets ~p",
+                       [[BucketName || {BucketName, _} <- MagmaBuckets]]),
+            case calculate_uploaders(MagmaBuckets, []) of
+                {ok, BucketUploaders} ->
+                    [?log_debug("Setting uploaders for bucket ~p:~n~p",
+                                [BucketName, Uploaders]) ||
+                        {BucketName, Uploaders} <- BucketUploaders],
+                    case enable(BucketUploaders) of
+                        {ok, _} ->
+                            post_enable(MagmaBuckets);
+                        Other ->
+                            Other
+                    end;
+                Error ->
+                    Error
             end;
-        Error ->
-            Error
+        _ ->
+            {error, {unknown_buckets, Unknown}}
     end;
 command(Command) when Command =:= disable orelse Command =:= stop ->
     ?log_debug("Attempt to ~p fusion", [Command]),

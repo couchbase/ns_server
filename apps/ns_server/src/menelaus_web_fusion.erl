@@ -120,18 +120,31 @@ jsonify_buckets_status(Buckets) ->
 handle_enable(Req) ->
     menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_totoro(),
-    %% do it in orchestrator to prevent fusion state changes during
-    %% rebalances
-    case ns_orchestrator:enable_fusion() of
-        ok ->
-            menelaus_util:reply_json(Req, [], 200);
-        {wrong_state, State, States} ->
-            reply_wrong_state(Req, State, States);
-        not_initialized ->
-            menelaus_util:reply_text(Req, "Fusion should be initialized", 503);
-        Other ->
-            reply_other(Req, "enable fusion", Other)
-    end.
+    validator:handle(
+      fun (Params) ->
+              %% do it in orchestrator to prevent fusion state changes during
+              %% rebalances
+              case ns_orchestrator:enable_fusion(
+                     proplists:get_value(buckets, Params)) of
+                  ok ->
+                      menelaus_util:reply_json(Req, [], 200);
+                  {wrong_state, State, States} ->
+                      reply_wrong_state(Req, State, States);
+                  {unknown_buckets, Buckets} ->
+                      validator:report_errors_for_one(
+                        Req,
+                        [{buckets,
+                          io_lib:format("Unknown or non-magma buckets ~p",
+                                        [Buckets])}], 400);
+                  not_initialized ->
+                      menelaus_util:reply_text(
+                        Req, "Fusion should be initialized", 503);
+                  Other ->
+                      reply_other(Req, "enable fusion", Other)
+              end
+      end, Req, form,
+      [validator:token_list(buckets, ",", _),
+       validator:unsupported(_)]).
 
 handle_disable(Req) ->
     menelaus_util:assert_is_enterprise(),
