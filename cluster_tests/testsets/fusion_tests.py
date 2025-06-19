@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import testlib
+import json
 import os
 import shutil
 import random
@@ -53,11 +54,33 @@ class FusionTests(testlib.BaseTestSet):
                                     min_num_nodes=2, num_connected=1,
                                     num_vbuckets=16, buckets=[])]
 
-    def assert_state(self, expected):
+    def get_status(self):
         resp = testlib.get_succ(self.cluster, '/fusion/status')
         status = resp.json()
         assert isinstance(status, dict)
-        assert status['state'] == expected
+        return status
+
+    def assert_state(self, expected):
+        assert self.get_status()['state'] == expected
+
+    def wait_for_state(self, intermediate, final):
+        def got_state():
+            status = self.get_status()
+            if status['state'] == final:
+                return True
+            else:
+                assert status['state'] == intermediate
+                return False
+
+        testlib.poll_for_condition(got_state, 1, attempts=60,
+                                   msg=f"Wait for state to become {final}")
+
+    def assert_bucket_state(self, name, expected):
+        bucket = self.cluster.get_bucket(name)
+        if expected == 'disabled':
+            assert 'fusionState' not in bucket
+        else:
+            assert bucket['fusionState'] == expected
 
     def empty_bucket_1_replica_smoke_test(self):
         self.empty_bucket_smoke_test_code(1, 16)
@@ -65,22 +88,27 @@ class FusionTests(testlib.BaseTestSet):
     def empty_bucket_0_replicas_smoke_test(self):
         self.empty_bucket_smoke_test_code(0, 8)
 
-    def empty_bucket_smoke_test_code(self, num_replicas, expected_num_volumes):
+    def init_fusion(self):
         self.assert_state('disabled')
         testlib.post_succ(
             self.cluster, '/settings/fusion',
             json={'logStoreURI': 'local://' + self.cluster.logstore_dir,
-                  'enableSyncThresholdMB': 1024}),
-        testlib.post_succ(self.cluster, '/fusion/enable')
-        self.assert_state('enabling')
+                  'enableSyncThresholdMB': 1024})
 
-        second_node = self.cluster.spare_node()
-
+    def create_bucket(self, name, num_replicas):
         self.cluster.create_bucket(
-            {'name': 'test', 'ramQuota': 100, 'bucketType': 'membase',
+            {'name': name, 'ramQuota': 100, 'bucketType': 'membase',
              'storageBackend': 'magma',
              'replicaNumber': num_replicas},
             sync=True)
+
+    def empty_bucket_smoke_test_code(self, num_replicas, expected_num_volumes):
+        self.init_fusion()
+        testlib.post_succ(self.cluster, '/fusion/enable')
+        self.wait_for_state('enabling', 'enabled')
+
+        second_node = self.cluster.spare_node()
+        self.create_bucket('test', num_replicas)
 
         self.cluster.add_node(second_node, services=[Service.KV])
 
@@ -194,6 +222,74 @@ class FusionTests(testlib.BaseTestSet):
         self.assert_state('enabling')
 
         testlib.post_fail(self.cluster, '/fusion/enable', expected_code=503)
+
+    def get_namespaces(self, node):
+        resp = testlib.diag_eval(
+            node,
+            '{ok, R} = ns_memcached:get_fusion_namespaces(' +
+            'fusion_uploaders:get_metadata_store_uri()), {json, R}.')
+        nspaces = json.loads(json.loads(resp.text))['namespaces']
+        return [s.split('/')[1] for s in nspaces]
+
+    def assert_namespaces(self, expected):
+        nspaces0 = self.get_namespaces(self.cluster.connected_nodes[0])
+        nspaces1 = self.get_namespaces(self.cluster.connected_nodes[1])
+        assert nspaces0 == expected
+        assert nspaces1 == expected
+
+    def enable_disable_stop_test(self):
+        self.init_fusion()
+
+        self.create_bucket('test', 1)
+        self.create_bucket('test1', 1)
+
+        second_node = self.cluster.spare_node()
+        self.cluster.add_node(second_node, services=[Service.KV])
+        self.cluster.rebalance()
+        self.assert_namespaces([])
+
+        testlib.post_succ(self.cluster, '/fusion/enable')
+        self.wait_for_state('enabling', 'enabled')
+        self.assert_bucket_state('test', 'enabled')
+        self.assert_bucket_state('test1', 'enabled')
+        self.assert_namespaces(['test', 'test1'])
+
+        testlib.post_succ(self.cluster, '/fusion/disable')
+        self.wait_for_state('disabling', 'disabled')
+        self.assert_bucket_state('test', 'disabled')
+        self.assert_bucket_state('test1', 'disabled')
+        self.assert_namespaces([])
+
+        testlib.post_succ(self.cluster, '/fusion/enable',
+                          data={'buckets': 'test'})
+        self.wait_for_state('enabling', 'enabled')
+        self.assert_bucket_state('test', 'enabled')
+        self.assert_bucket_state('test1', 'disabled')
+        self.assert_namespaces(['test'])
+
+        testlib.post_succ(self.cluster, '/fusion/stop')
+        self.wait_for_state('stopping', 'stopped')
+        self.assert_bucket_state('test', 'stopped')
+        self.assert_bucket_state('test1', 'disabled')
+        self.assert_namespaces(['test'])
+
+        testlib.post_succ(self.cluster, '/fusion/enable')
+        self.wait_for_state('enabling', 'enabled')
+        self.assert_bucket_state('test', 'enabled')
+        self.assert_bucket_state('test1', 'enabled')
+        self.assert_namespaces(['test', 'test1'])
+
+        testlib.post_succ(self.cluster, '/fusion/stop')
+        self.wait_for_state('stopping', 'stopped')
+        self.assert_bucket_state('test', 'stopped')
+        self.assert_bucket_state('test1', 'stopped')
+        self.assert_namespaces(['test', 'test1'])
+
+        testlib.post_succ(self.cluster, '/fusion/disable')
+        self.wait_for_state('disabling', 'disabled')
+        self.assert_bucket_state('test', 'disabled')
+        self.assert_bucket_state('test1', 'disabled')
+        self.assert_namespaces([])
 
 def assert_json_error(json, field, prefix):
     assert isinstance(json, dict)

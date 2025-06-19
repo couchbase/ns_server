@@ -13,12 +13,6 @@ import time
 from testlib.test_tag_decorator import tag, Tag
 
 
-def get_bucket(cluster, bucket_name):
-    return testlib.json_response(
-        testlib.get_succ(cluster, f"/pools/default/buckets/{bucket_name}"),
-        "non-json response for " + f"/pools/default/buckets/{bucket_name}")
-
-
 def get_scopes(cluster, bucket):
     return testlib.json_response(
         testlib.get_succ(cluster,
@@ -124,13 +118,13 @@ def create_and_update_bucket(
 
 
 def get_per_node_storage_mode(cluster, bucket_name):
-    res = get_bucket(cluster, bucket_name)
+    res = cluster.get_bucket(bucket_name)
     return {n['hostname']: n['storageBackend'] for n in res['nodes']
             if n.get('storageBackend') != None}
 
 
 def get_per_node_eviction_policy(cluster, bucket_name):
-    res = get_bucket(cluster, bucket_name)
+    res = cluster.get_bucket(bucket_name)
     return {
         n["hostname"]: n["evictionPolicy"]
         for n in res["nodes"]
@@ -213,7 +207,7 @@ def wait_for_bucket_online_on_all_nodes(cluster, bucket_name):
     """Wait for bucket to be online on all nodes in the cluster"""
 
     def is_bucket_online_on_all_nodes():
-        r = get_bucket(cluster, bucket_name)
+        r = cluster.get_bucket(bucket_name)
         return all([node["status"] == "healthy" for node in r["nodes"]])
 
     testlib.poll_for_condition(

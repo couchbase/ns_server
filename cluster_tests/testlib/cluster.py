@@ -877,6 +877,11 @@ class Cluster:
         r = testlib.get_succ(self, f'/pools/default/buckets')
         return r.json()
 
+    def get_bucket(self, name):
+        return testlib.json_response(
+            testlib.get_succ(self, f"/pools/default/buckets/{name}"),
+            "non-json response for " + f"/pools/default/buckets/{name}")
+
 def get_services_string(services: List[Service]):
     return ",".join(services_to_strings(services))
 
