@@ -188,6 +188,7 @@ handle_sync_log_store(Req) ->
     BucketNames = [Name || {Name, _} <- ns_bucket:get_fusion_buckets()],
     %% run janitor for all fusion buckets to make sure that all
     %% uploaders are properly started
+    ?log_debug("Ensure janitor runs for ~p.", [BucketNames]),
     RV =
         functools:sequence_(
           [?cut(ns_orchestrator:ensure_janitor_run({bucket, Bucket},
@@ -195,7 +196,9 @@ handle_sync_log_store(Req) ->
               Bucket <- BucketNames] ++
               %% quorum read whatever changes janitor might have made
               [?cut(chronicle_kv:sync(kv, ?SYNC_TIMEOUT)),
+               ?cut(?log_debug("Synchronize fusion log store.")),
                ?cut(janitor_agent:sync_fusion_log_store(BucketNames))]),
+    ?log_debug("Sync log store returned ~p", [RV]),
     case RV of
         ok ->
             menelaus_util:reply_json(Req, [], 200);
