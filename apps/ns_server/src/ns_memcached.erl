@@ -875,12 +875,12 @@ handle_cast(start_completed, #state{start_time=Start,
     {noreply, State#state{status = NewStatus, warmup_stats = [],
                           jwt_set = JWTExpires =/= undefined}}.
 
-issue_jwt() ->
+issue_jwt(Silent) ->
     {ok, JWT} =
         jwt_issuer:issue("@fusion", [metakv2_access],
                          ?JWT_LIFETIME_MS div 1000),
     {_, Payload = #{<<"exp">> := Expires}} = jose_jwt:peek_payload(JWT),
-    ?log_debug("Issue JWT ~p", [Payload]),
+    Silent orelse ?log_debug("Issue JWT ~p", [Payload]),
     {ok, JWT, Expires}.
 
 should_issue_jwt(Bucket, Snapshot) ->
@@ -894,7 +894,7 @@ should_issue_jwt(Bucket, Snapshot) ->
 maybe_issue_jwt(Bucket, Snapshot) ->
     case should_issue_jwt(Bucket, Snapshot) of
         true ->
-            issue_jwt();
+            issue_jwt(false);
         false ->
             {ok, undefined, undefined}
     end.
@@ -1098,7 +1098,7 @@ handle_info(Message, #state{worker_features = WF, control_queue = Q,
                                 case (JWTExpires - Now) * 1000 =<
                                     ?JWT_RENEWAL_WINDOW_MS of
                                     true ->
-                                        issue_jwt();
+                                        issue_jwt(false);
                                     false ->
                                         {ok, undefined, JWTExpires}
                                 end;
@@ -2668,7 +2668,7 @@ get_fusion_uploaders_state(Bucket) ->
 
 -spec get_fusion_namespaces(string()) -> {ok, binary()} | mc_error().
 get_fusion_namespaces(MetaDataStoreUri) ->
-    {ok, JWT, _} = issue_jwt(),
+    {ok, JWT, _} = issue_jwt(true),
     perform_very_long_call(
       fun (Sock) ->
               {reply, mc_client_binary:get_fusion_namespaces(
@@ -2678,7 +2678,7 @@ get_fusion_namespaces(MetaDataStoreUri) ->
 -spec delete_fusion_namespace(string(), string(), binary()) ->
           ok | mc_error().
 delete_fusion_namespace(LogStoreUri, MetaDataStoreUri, Namespace) ->
-    {ok, JWT, _} = issue_jwt(),
+    {ok, JWT, _} = issue_jwt(true),
     perform_very_long_call(
       fun (Sock) ->
               {reply, mc_client_binary:delete_fusion_namespace(
