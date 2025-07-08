@@ -206,6 +206,12 @@ handle_prepare_rebalance(Req) ->
                         Req,
                         [{keepNodes,
                           io_lib:format("Unknown nodes ~p", [Nodes])}], 400);
+                  {failed_to_get_snapshot, Node} ->
+                      menelaus_util:reply_text(
+                        Req,
+                        io_lib:format(
+                          "Failed to obtain fusion storage snapshot from ~p",
+                          [Node]), 500);
                   Other ->
                       reply_other(Req, "prepare fusion rebalance", Other)
               end

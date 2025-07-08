@@ -2196,9 +2196,9 @@ do_prepare_bucket_fusion_rebalance(Bucket, BucketConfig, KeepKVNodes,
                          [Bucket, VBucketsToQuery, UUID, Validity],
                          ?GET_FUSION_STORAGE_SNAPSHOT_TIMEOUT)) of
         {badrpc, Error} ->
-            ?log_error("Getting fusion storage snapshot failed with ~p",
-                       [Error]),
-            {error, {remote_call_failed, NodeToQuery}};
+            ?log_error("Getting fusion storage snapshot from ~p failed with ~p",
+                       [NodeToQuery, Error]),
+            {error, {failed_to_get_snapshot, NodeToQuery}};
         Volumes ->
             VolumesMap = maps:from_list(Volumes),
             NodesVolumesMap =

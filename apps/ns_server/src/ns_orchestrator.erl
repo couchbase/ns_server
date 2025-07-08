@@ -366,7 +366,7 @@ stop_fusion() ->
 -spec prepare_fusion_rebalance([node()]) ->
           {ok, term()} | busy() |
           {unknown_nodes, [node()]} |
-          {remote_call_failed, node()}.
+          {failed_to_get_snapshot, node()}.
 prepare_fusion_rebalance(KeepNodes) ->
     call({prepare_fusion_rebalance, KeepNodes}, infinity).
 
