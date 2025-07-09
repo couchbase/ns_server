@@ -122,7 +122,7 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
                                    testset_instance,
                                    test_dict['name'],
                                    [], test_dict['iter'],
-                                   verbose=True,
+                                   report_name=True,
                                    seed=test_seed(test_dict['iter']))
                 if generated is None:
                     generated = [] # happens when --dry-run is used
@@ -161,7 +161,7 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
                         MethodType(test_dict['fun'], testset_instance))
 
             _, err = safe_test_function_call(testset_instance, test,
-                                             [], testiter, verbose=True,
+                                             [], testiter, report_name=True,
                                              seed=test_seed(testiter))
 
             if 'fun' in test_dict: # this test is generated
@@ -219,7 +219,7 @@ def test_name(testset, testname, testiter, short_form=False):
 
 
 def safe_test_function_call(testset, testfunction, args, testiter,
-                            verbose=False, seed=None, dry_run=None,
+                            report_name=False, seed=None, dry_run=None,
                             timeout=None):
     if timeout is None:
         timeout = config['test_timeout']
@@ -231,8 +231,6 @@ def safe_test_function_call(testset, testfunction, args, testiter,
     short_testname = test_name(testset, testfunction, testiter,
                                 short_form=True)
 
-    report_call = call_reported(testname, short_testname, verbose=verbose,
-                                res_on_same_line=config['intercept_output'])
 
     def timeout_handler(snum, frame):
         print(f'{testname} timed out (timeout: {timeout}s)')
@@ -242,11 +240,17 @@ def safe_test_function_call(testset, testfunction, args, testiter,
         signal.signal(signal.SIGALRM, timeout_handler)
         signal.alarm(timeout)
 
+    end_report = start_report(testname, short_testname, report_name=report_name,
+                              single_line=config['intercept_output'])
+    start_time = time.time()
+
     try:
-        with no_output(testname, extra_context=report_call,
-                       verbose=not config['intercept_output']):
+        test_error_report = lambda e: end_report(e, time.time() - start_time)
+        with no_output(testname, verbose=not config['intercept_output'],
+                       error_callback=test_error_report):
             if not dry_run:
                 res = apply_with_seed(testset, testfunction, args, seed)
+        end_report(None, time.time() - start_time)
     except Exception as e:
         print_traceback()
         if hasattr(testset, 'cluster'):
@@ -277,8 +281,7 @@ def apply_with_seed(obj, func, args, seed):
         random.setstate(rand_state)
 
 
-def timedelta_str(start):
-    delta_s = time.time() - start
+def timedelta_str(delta_s):
     if delta_s > 10:
         return red(f" [{round(delta_s)}s]")
     if delta_s > 5:
@@ -692,31 +695,32 @@ def diag_eval(cluster, code, **kwargs):
 
 
 @contextlib.contextmanager
-def no_output(name, verbose=None, extra_context=contextlib.nullcontext()):
+def no_output(name, verbose=None, error_callback=None):
     """
     Executes context body with all the output redirected to a string.
     If something crashes, it prints that output, otherwise it ignores it.
     If verbose is true, it doesn't redirect anything.
-    If extra_context is provided, the body is executed in that context, but the
-    extra_context output is not redirected. The main purpose of
-    the extra_context param, is to have an ability to print something (the
-    result of execution) before this function starts dumping the redirected
-    output (in case of a crash)
     """
     if verbose is None:
         verbose = config['verbose']
 
+    if error_callback is None:
+        error_callback = lambda _: None
+
     if verbose:
-        with extra_context:
+        try:
             yield
+        except Exception as e:
+            error_callback(e)
+            raise e
         return
 
     f = io.StringIO()
     try:
-        with extra_context:
-            with contextlib.redirect_stdout(f):
-                yield
+        with contextlib.redirect_stdout(f):
+            yield
     except Exception as e:
+        error_callback(e)
         output = f.getvalue()
         if len(output) > 0:
             extra_cr = '\n' if output[-1] != '\n' else ''
@@ -728,47 +732,43 @@ def no_output(name, verbose=None, extra_context=contextlib.nullcontext()):
 
         raise e
 
-
-@contextlib.contextmanager
-def call_reported(full_name, name, succ_str="ok", fail_str="failed",
-                  verbose=False, res_on_same_line=True):
-    """
-    Executes context body and reports result in the following format:
-      <name>...           <succ_str> [<time_taken>]
-    or
-      <name>...           <fail_str> [<time_taken>]
-    if context body throws exception.
-    If verbose is false, prints only unsuccessful result in slightly different
-    format.
-    If res_on_same_line is false, puts result on the next line.
-    """
-
-    start = time.time()
-    try:
-        str_to_print = f"  {name}... " + ('\n' if not res_on_same_line else '')
-        width_taken = len(str_to_print)
-        if verbose:
+def start_report(full_name, name, succ_str="ok", fail_str="failed",
+                 report_name=False, single_line=True):
+    prefix = "*** "
+    if report_name:
+        if single_line:
+            str_to_print = f"  {name}... "
             print(str_to_print, end='', flush=True)
-        yield
-        if verbose:
-            if res_on_same_line:
-                res = right_aligned(succ_str, taken=width_taken)
-            else:
-                res = succ_str
-            print(green(res) + timedelta_str(start), show_time=False)
-    except Exception as e:
+            width_taken = len(str_to_print)
+        else:
+            print(f"\n{prefix}Starting: {name}...")
+
+    def end_report(e, time_delta):
+        time_delta_str = timedelta_str(time_delta)
+        if e is None:
+            if report_name:
+                if single_line:
+                    res = right_aligned(succ_str, taken=width_taken)
+                    print(green(res) + time_delta_str, show_time=False)
+                else:
+                    print(f"{prefix}Finished: " + green(succ_str) +
+                          time_delta_str)
+            return
+
         short_exception = red('\n'.join(format_exception_only(type(e), e))
                               .strip('\n'))
-        if verbose:
-            if res_on_same_line:
+        if report_name:
+            if single_line:
                 res = right_aligned(fail_str, taken=width_taken)
+                print(red(res) + time_delta_str, show_time=False)
             else:
-                res = fail_str
-            print(red(res) + timedelta_str(start), show_time=False)
+                print(f"{prefix}Finished: " + red(fail_str) +
+                      time_delta_str)
             print(f'    {short_exception}')
         else:
             print(red(f"{full_name} {fail_str} ({short_exception})"))
-        raise e
+
+    return end_report
 
 
 def right_aligned(s, taken=0, width=None):
