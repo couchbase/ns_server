@@ -1317,15 +1317,9 @@ decode_vbucket_details(VBDetails) ->
                 end, List)
       end, VBDetails).
 
-handle_query_vbuckets(Call, #state{bucket_name = BucketName,
-                                   rebalance_status = finished} = State) ->
-    %% NOTE: uses 'outer' memcached timeout of 60 seconds
-    {Fun, Options} =
-        case Call of
-            {query_vbuckets, VBs, Keys, Opts} ->
-                {?cut((catch perform_query_vbuckets(Keys, VBs, BucketName))),
-                 Opts}
-        end,
+handle_query_vbuckets({query_vbuckets, VBs, Keys, Options},
+                      #state{bucket_name = BucketName,
+                             rebalance_status = finished} = State) ->
     NewState = consider_doing_flush(State),
     case proplists:get_value(failover_nodes, Options, []) of
         [] ->
@@ -1334,7 +1328,8 @@ handle_query_vbuckets(Call, #state{bucket_name = BucketName,
             ?log_info("Stopping replications for nodes ~p", [FailoverNodes]),
             ok = replication_manager:stop_nodes(BucketName, FailoverNodes)
     end,
-    {Fun(), NewState}.
+    %% NOTE: perform_query_vbuckets uses 'outer' memcached timeout of 60 seconds
+    {catch perform_query_vbuckets(Keys, VBs, BucketName), NewState}.
 
 filter_vbucket_dict(all, Dict) ->
     Dict;
