@@ -100,4 +100,7 @@ upgrade(?VERSION_76, Config) ->
          menelaus_web_mcd_settings:config_upgrade_to_79(Config)};
 
 upgrade(?VERSION_79, _Config) ->
-    {?VERSION_MORPHEUS, []}.
+    {?VERSION_MORPHEUS, []};
+
+upgrade(?VERSION_MORPHEUS, _Config) ->
+    {?VERSION_TOTORO, []}.

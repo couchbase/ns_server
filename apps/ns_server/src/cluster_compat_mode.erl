@@ -31,6 +31,8 @@
          is_version_79/1,
          is_cluster_morpheus/0,
          is_version_morpheus/1,
+         is_cluster_totoro/0,
+         is_version_totoro/1,
          is_enterprise/0,
          is_enterprise/1,
          is_saslauthd_enabled/0,
@@ -153,6 +155,12 @@ is_version_morpheus(ClusterVersion) ->
 
 is_cluster_morpheus() ->
     is_enabled(?VERSION_MORPHEUS).
+
+is_version_totoro(ClusterVersion) ->
+    is_enabled_at(ClusterVersion, ?VERSION_TOTORO).
+
+is_cluster_totoro() ->
+    is_enabled(?VERSION_TOTORO).
 
 is_index_aware_rebalance_on() ->
     not ns_config:read_key_fast(index_aware_rebalance_disabled, false).

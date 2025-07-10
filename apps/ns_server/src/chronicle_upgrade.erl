@@ -136,4 +136,7 @@ upgrade_to(?VERSION_76, UpgradeTxn) ->
         ns_server_cert:chronicle_upgrade_to_79(_)])};
 
 upgrade_to(?VERSION_79, UpgradeTxn) ->
-    {?VERSION_MORPHEUS, UpgradeTxn}.
+    {?VERSION_MORPHEUS, UpgradeTxn};
+
+upgrade_to(?VERSION_MORPHEUS, UpgradeTxn) ->
+    {?VERSION_TOTORO, UpgradeTxn}.

@@ -259,6 +259,7 @@
 -define(VERSION_76, [7, 6]).
 -define(VERSION_79, [7, 9]).
 -define(VERSION_MORPHEUS, [8, 0]).
+-define(VERSION_TOTORO, [8, 1]).
 
 -define(MIN_SUPPORTED_VERSION, ?VERSION_71).
 
@@ -269,8 +270,8 @@
 %% This require coordination with the UI to update the version.
 -define(LATEST_UI_COMPAT_VERSION, ?VERSION_70).
 
--define(LATEST_VERSION_NUM, ?VERSION_MORPHEUS).
--define(MASTER_ADVERTISED_VERSION, [8, 0, 0]).
+-define(LATEST_VERSION_NUM, ?VERSION_TOTORO).
+-define(MASTER_ADVERTISED_VERSION, [8, 1, 0]).
 
 -define(DEFAULT_PROD_NAME, "Couchbase Server").
 %% This needs to be kept in sync with 'prodName' in the analytics profiles

@@ -462,6 +462,8 @@ upgrade_config(Config) ->
             [{set, {node, node(), config_version}, {7,9}} |
              upgrade_config_from_76_to_79(Config)];
         {7,9} ->
+            [{set, {node, node(), config_version}, {8,0}}];
+        {8,0} ->
             %% When upgrading to the latest config_version always upgrade
             %% service_ports.
             service_ports:offline_upgrade(Config) ++
@@ -472,7 +474,7 @@ upgrade_config(Config) ->
                 %% test will still pass, despite the fact that offline upgrades
                 %% from the version immediately prior to CurrentVersion would
                 %% not actually be allowed.
-                [{set, {node, node(), config_version}, {8,0}}];
+                [{set, {node, node(), config_version}, {8,1}}];
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
                        "unsupported version ~p. Terminating.", [OldVersion]),

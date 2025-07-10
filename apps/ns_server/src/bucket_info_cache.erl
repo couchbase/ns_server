@@ -592,15 +592,11 @@ get_bucket_capabilities(?VERSION_76,
                         _IsMagma) ->
     [couchapi, 'dcp.IgnorePurgedTombstones', rangeScan, preserveExpiry,
      'subdoc.ReplicaRead', querySystemCollection, mobileSystemCollection];
-get_bucket_capabilities(?VERSION_79,
+get_bucket_capabilities(Version,
                         IsEnterprise,
-                        IsMagma) ->
+                        IsMagma) when Version >= ?VERSION_79 ->
     get_bucket_capabilities(?VERSION_76, IsEnterprise, IsMagma) ++
-    ['subdoc.BinaryXattr', 'subdoc.AccessDeleted'];
-get_bucket_capabilities(?VERSION_MORPHEUS,
-                        IsEnterprise,
-                        IsMagma) ->
-    get_bucket_capabilities(?VERSION_79, IsEnterprise, IsMagma);
+        ['subdoc.BinaryXattr', 'subdoc.AccessDeleted'];
 get_bucket_capabilities(_Version, _IsEnterprise, false = _IsMagma) ->
     [couchapi];
 get_bucket_capabilities(_Version, _IsEnterprise, _IsMagma) ->
