@@ -1185,20 +1185,20 @@ perform_flush(#state{bucket_name = BucketName} = State, BucketConfig,
     NewState = State#state{last_applied_vbucket_states = NewVBStates,
                            rebalance_only_vbucket_states = RebalanceVBStates,
                            flushseq = ConfigFlushSeq},
-    ?log_info("Removing all vbuckets from indexes"),
+    ?log_info("Removing all vbuckets from indexes for ~p", [BucketName]),
     pass_vbucket_states_to_set_view_manager(NewState),
     ok = ns_couchdb_api:reset_master_vbucket(BucketName),
-    ?log_info("Shutting down incoming replications"),
+    ?log_info("Shutting down incoming replications for ~p", [BucketName]),
     ok = stop_all_replications(BucketName),
-    %% kill all vbuckets
+    ?log_info("Deleting all vbuckets for ~p", [BucketName]),
     [ok = ns_memcached:sync_delete_vbucket(BucketName, VB)
      || {VB, _} <- VBStates],
-    ?log_info("Local flush is done"),
     save_flushseq(BucketName, ConfigFlushSeq, Snapshot),
+    ?log_info("Local flush of ~p is done", [BucketName]),
     NewState.
 
 save_flushseq(BucketName, ConfigFlushSeq, Snapshot) ->
-    ?log_info("Saving new flushseq: ~p", [ConfigFlushSeq]),
+    ?log_info("Saving new flushseq for ~p: ~p", [BucketName, ConfigFlushSeq]),
     Cont = list_to_binary(integer_to_list(ConfigFlushSeq)),
     misc:atomic_write_file(flushseq_file_path(BucketName, Snapshot), Cont).
 
