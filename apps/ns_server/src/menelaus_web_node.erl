@@ -1156,6 +1156,31 @@ parse_validate_hostname(Hostname) ->
                      [?MAX_HOSTNAME_LENGTH]))
     end.
 
+value_frequencies([], Counts) ->
+    maps:to_list(Counts);
+value_frequencies([H|T], Counts) ->
+    Inc = fun(Value) -> Value + 1 end,
+    NewCounts = maps:update_with(H, Inc, 1, Counts),
+    value_frequencies(T, NewCounts).
+
+check_duplicate_ports(Ports) ->
+    PortValues = [V || {_, V} <- Ports],
+    Counts = value_frequencies(PortValues, #{}),
+    DuplicatePorts = [A || {A, B} <- Counts, B > 1],
+    [A || {A, B} <- Ports, lists:member(B, DuplicatePorts)].
+
+-ifdef(TEST).
+check_duplicate_ports_test() ->
+    ?assertEqual([], check_duplicate_ports([])),
+    ?assertEqual([rest_port, query_port],
+                 check_duplicate_ports(
+                   [{rest_port, 1050}, {capi_port, 2000}, {query_port, 1050},
+                    {fts_http_port, 5000}, {cbas_http_port, 6000}])).
+-endif.
+
+get_rest_names(Keynames) ->
+    [service_ports:find_rest_name_by_port_key(P) || P <- Keynames].
+
 %% The below port validations are performed:
 %%  - Provisioned: Verify if all ports being setup for "external" have their
 %%    particular service enabled on the node.
@@ -1165,27 +1190,37 @@ parse_validate_hostname(Hostname) ->
 parse_validate_external_params(Params) ->
     Hostname = parse_validate_hostname(proplists:get_value("hostname", Params)),
     Ports = parse_validate_ports(proplists:delete("hostname", Params)),
-    ValidResponse = [{external, [{hostname, Hostname}, {ports, Ports}]}],
-    case ns_config_auth:is_system_provisioned() of
-        true ->
-            Services = [rest | ns_cluster_membership:node_services(node())],
-            ServicePorts = service_ports:services_port_keys(Services),
-            {_Allowed, NotAllowed} =
-                lists:partition(lists:member(_, ServicePorts),
-                                [V || {V, _} <- Ports]),
-            case NotAllowed of
-                [] ->
-                    ValidResponse;
-                _ ->
-                    NAPorts =[service_ports:find_rest_name_by_port_key(P) ||
-                              P <- NotAllowed],
-                    Msg = io_lib:format("Cannot set external ports ~p as "
-                                        "services are unavailable on the node.",
-                                        [NAPorts]),
-                    {error, Msg}
-            end;
-        false ->
-            ValidResponse
+    DuplicateKeynames = check_duplicate_ports(Ports),
+    maybe
+        [] ?= DuplicateKeynames,
+        ValidResponse = [{external, [{hostname, Hostname}, {ports, Ports}]}],
+        case ns_config_auth:is_system_provisioned() of
+            true ->
+                Services = [rest | ns_cluster_membership:node_services(node())],
+                ServicePorts = service_ports:services_port_keys(Services),
+                {_Allowed, NotAllowed} =
+                    lists:partition(lists:member(_, ServicePorts),
+                                    [V || {V, _} <- Ports]),
+                case NotAllowed of
+                    [] ->
+                        ValidResponse;
+                    _ ->
+                        NAPorts = get_rest_names(NotAllowed),
+                        Msg = io_lib:format(
+                                "Cannot set external ports ~p as "
+                                "services are unavailable on the node.",
+                                [NAPorts]),
+                        {error, Msg}
+                end;
+            false ->
+                ValidResponse
+        end
+    else
+        [_|_] ->
+            Printing = get_rest_names(DuplicateKeynames),
+            FormatPrint = lists:join(" ", Printing),
+            {error, io_lib:format("Some ports have the same number: ~s",
+                                  [FormatPrint])}
     end.
 
 %% This replaces any existing alternate_addresses config of this node.
