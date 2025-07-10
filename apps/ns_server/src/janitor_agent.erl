@@ -1199,6 +1199,7 @@ perform_flush(#state{bucket_name = BucketName} = State, BucketConfig,
     ?log_info("Deleting all vbuckets for ~p", [BucketName]),
     [ok = ns_memcached:sync_delete_vbucket(BucketName, VB)
      || {VB, _} <- VBStates],
+    ok = fusion_local_agent:delete_namespace(BucketName),
     save_flushseq(BucketName, ConfigFlushSeq, Snapshot),
     ?log_info("Local flush of ~p is done", [BucketName]),
     NewState.

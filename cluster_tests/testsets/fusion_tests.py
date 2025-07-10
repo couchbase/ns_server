@@ -98,7 +98,7 @@ class FusionTests(testlib.BaseTestSet):
     def create_bucket(self, name, num_replicas):
         self.cluster.create_bucket(
             {'name': name, 'ramQuota': 100, 'bucketType': 'membase',
-             'storageBackend': 'magma',
+             'storageBackend': 'magma', 'flushEnabled' : 1,
              'replicaNumber': num_replicas},
             sync=True)
 
@@ -217,6 +217,16 @@ class FusionTests(testlib.BaseTestSet):
         resp = testlib.get_succ(self.cluster, "/fusion/activeGuestVolumes")
         volumes = resp.json()
         assert volumes[second_otp_node] == []
+
+    def bucket_flush_smoke_test(self):
+        self.init_fusion()
+        self.create_bucket('test', 1)
+        testlib.post_succ(self.cluster, '/fusion/enable')
+        self.wait_for_state('enabling', 'enabled')
+
+        resp = testlib.post_succ(
+            self.cluster,
+            f"/pools/default/buckets/test/controller/doFlush")
 
     def initial_configuration_test(self):
         testlib.post_fail(self.cluster, '/fusion/enable', expected_code=503)

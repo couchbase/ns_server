@@ -18,9 +18,12 @@
 
 -record(state, {state :: fusion_uploaders:state(),
                 queue :: pid(),
-                deleting :: [binary()]}).
+                deleting :: [binary()],
+                to_reply :: [{binary(), {pid(), gen_server:reply_tag()}}]}).
 
--export([start_link/0, get_state/0, get_states/2]).
+-define(DELETE_NAMESPACE, ?get_timeout(delete_namespace, 60000)).
+
+-export([start_link/0, get_state/0, get_states/2, delete_namespace/1]).
 -export([init/1, handle_info/2, handle_call/3]).
 
 -type state() :: {fusion_uploaders:state(), [binary()]}.
@@ -46,6 +49,17 @@ get_states(Nodes, Timeout) ->
             {error, BadNodes}
     end.
 
+-spec delete_namespace(ns_bucket:name()) -> ok.
+delete_namespace(BucketName) ->
+    {ok, BucketConfig} = ns_bucket:get_bucket(BucketName),
+    case should_have_namespace(BucketConfig) of
+        true ->
+            ?log_info("Deleting fusion namespace for ~p", [BucketName]),
+            gen_server2:call(?MODULE, {delete, BucketName}, ?DELETE_NAMESPACE);
+        false ->
+            ok
+    end.
+
 init([]) ->
     Self = self(),
     FusionSettingsKey = fusion_uploaders:config_key(),
@@ -65,14 +79,39 @@ init([]) ->
     {ok, Pid} = work_queue:start_link(),
     {ok, #state{state = disabled,
                 queue = Pid,
-                deleting = []}}.
+                deleting = [],
+                to_reply = []}}.
 
 handle_call(get_state, _From, State = #state{state = FusionState,
                                              deleting = Deleting}) ->
-    {reply, {FusionState, Deleting}, State}.
+    {reply, {FusionState, Deleting}, State};
+handle_call({delete, BucketName}, From,
+            State = #state{deleting = Deleting, to_reply = ToReply}) ->
+    Namespace = namespace(BucketName, direct),
+    ?log_debug("Requesting to delete namespace ~p", [Namespace]),
+    case lists:member(Namespace, Deleting) of
+        true ->
+            {noreply, State#state{to_reply = [{Namespace, From} | ToReply]}};
+        false ->
+            case lists:member(Namespace, get_namespaces()) of
+                true ->
+                    NewState = schedule_deletes([Namespace], State),
+                    {noreply,
+                     NewState#state{to_reply = [{Namespace, From} | ToReply]}};
+                false ->
+                    ?log_debug("Request to delete non-existent namespace ~p",
+                               [Namespace]),
+                    {reply, ok, State}
+            end
+    end.
 
-handle_info({deleted, Namespace}, State = #state{deleting = Deleting}) ->
-    {noreply, State#state{deleting = Deleting -- [Namespace]}};
+handle_info({deleted, Namespace}, State = #state{deleting = Deleting,
+                                                 to_reply = ToReply}) ->
+    [gen_server2:reply(From, ok) || {NS, From} <- ToReply, NS =:= Namespace],
+    {noreply,
+     State#state{
+       deleting = Deleting -- [Namespace],
+       to_reply = [{NS, From} || {NS, From} <- ToReply, NS =/= Namespace]}};
 handle_info(check_state_and_buckets, State) ->
     misc:flush(check_state_and_buckets),
     FusionState = fusion_uploaders:get_state(),
@@ -86,39 +125,52 @@ handle_info(check_state_and_buckets, State) ->
         end,
     {noreply, NewState1}.
 
-maybe_schedule_deletes(#state{queue = Queue,
-                              deleting = Deleting} = State) ->
-    Snapshot = ns_bucket:get_snapshot(all, [props, uuid]),
-
+get_namespaces() ->
     {ok, Json} =
         ns_memcached:get_fusion_namespaces(
           fusion_uploaders:get_metadata_store_uri()),
     {Parsed} = ejson:decode(Json),
-    Namespaces = proplists:get_value(<<"namespaces">>, Parsed),
-    BucketsThatNeedData = [N || {N, C} <- ns_bucket:get_buckets(Snapshot),
-                                lists:member(ns_bucket:get_fusion_state(C),
-                                             [enabled, stopped, stopping])],
+    proplists:get_value(<<"namespaces">>, Parsed).
 
-    NeededNamespaces = [iolist_to_binary(
-                          ["kv/", ns_bucket:uuid(BucketName, Snapshot)]) ||
+should_have_namespace(BucketConfig) ->
+    lists:member(ns_bucket:get_fusion_state(BucketConfig),
+                 [enabled, stopped, stopping]).
+
+namespace(BucketName, Snapshot) ->
+    iolist_to_binary(["kv/", ns_bucket:uuid(BucketName, Snapshot)]).
+
+maybe_schedule_deletes(#state{deleting = Deleting} = State) ->
+    Snapshot = ns_bucket:get_snapshot(all, [props, uuid]),
+    Namespaces = get_namespaces(),
+
+    BucketsThatNeedData =
+        [BucketName || {BucketName, BucketConfig} <-
+                           ns_bucket:get_buckets(Snapshot),
+                       should_have_namespace(BucketConfig)],
+
+    NamespacesToKeep = [namespace(BucketName, Snapshot) ||
                            BucketName <- BucketsThatNeedData],
-    ToDelete = (Namespaces -- NeededNamespaces) -- Deleting,
+    ToDelete = (Namespaces -- NamespacesToKeep) -- Deleting,
+    schedule_deletes(ToDelete, State).
+
+schedule_deletes([], State) ->
+    State;
+schedule_deletes(ToDelete, #state{queue = Queue,
+                                  deleting = Deleting} = State) ->
     Self = self(),
-    case ToDelete of
-        [] ->
-            State;
-        _ ->
-            ?log_debug("Schedule the following namespaces for deletion: ~p",
-                       [ToDelete]),
-            [work_queue:submit_sync_work(
-               Queue, ?cut(delete_data(Self, NS))) || NS <- ToDelete],
-            State#state{deleting = Deleting ++ ToDelete}
-    end.
+    ?log_debug("Schedule the following namespaces for deletion: ~p",
+               [ToDelete]),
+    [work_queue:submit_sync_work(
+       Queue, ?cut(delete_data(Self, NS))) || NS <- ToDelete],
+    State#state{deleting = Deleting ++ ToDelete}.
 
 wait_for_uploaders_to_stop(_BucketName, 0) ->
     {error, timeout};
 wait_for_uploaders_to_stop(BucketName, Tries) ->
     case ns_memcached:get_fusion_uploaders_state(BucketName) of
+        {ok, null} ->
+            %% this is returned when there are no vbuckets
+            ok;
         {ok, {[]}} ->
             ok;
         {ok, {VBucketsInfo}} ->
