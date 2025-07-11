@@ -102,6 +102,7 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
                                           testset_seed + str(i).encode())
 
     _, err, _ = safe_test_function_call(testset_instance, 'setup', [], 0,
+                                        report_name=True,
                                         seed=testset_seed)
 
     if err is not None:
@@ -200,6 +201,7 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
     finally:
         _, err, _ = safe_test_function_call(testset_instance, 'teardown',
                                             [], 0,
+                                            report_name=True,
                                             seed=teardown_seed)
         if err is not None:
             errors.append(err)
