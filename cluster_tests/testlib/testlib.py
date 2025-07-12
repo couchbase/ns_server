@@ -101,8 +101,8 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
     test_seed = lambda i: apply_with_seed(random, 'randbytes', [16],
                                           testset_seed + str(i).encode())
 
-    _, err = safe_test_function_call(testset_instance, 'setup', [], 0,
-                                     seed=testset_seed)
+    _, err, _ = safe_test_function_call(testset_instance, 'setup', [], 0,
+                                        seed=testset_seed)
 
     if err is not None:
         # If testset setup fails, all tests were not ran
@@ -118,12 +118,12 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
         tests_to_run = []
         for test_dict in testset['test_name_list']:
             if test_dict['name'].endswith('_test_gen'):
-                generated, err = safe_test_function_call(
-                                   testset_instance,
-                                   test_dict['name'],
-                                   [], test_dict['iter'],
-                                   report_name=True,
-                                   seed=test_seed(test_dict['iter']))
+                generated, err, _ = safe_test_function_call(
+                                      testset_instance,
+                                      test_dict['name'],
+                                      [], test_dict['iter'],
+                                      report_name=True,
+                                      seed=test_seed(test_dict['iter']))
                 if generated is None:
                     generated = [] # happens when --dry-run is used
                 if err is not None:
@@ -160,9 +160,12 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
                 setattr(testset_instance, test,
                         MethodType(test_dict['fun'], testset_instance))
 
-            _, err = safe_test_function_call(testset_instance, test,
-                                             [], testiter, report_name=True,
-                                             seed=test_seed(testiter))
+            _, err, tdown_err = safe_test_function_call(
+                                  testset_instance, test, [], testiter,
+                                  teardown_function='test_teardown',
+                                  teardown_seed=test_teardown_seed,
+                                  report_name=True,
+                                  seed=test_seed(testiter))
 
             if 'fun' in test_dict: # this test is generated
                 delattr(testset_instance, test)
@@ -172,11 +175,8 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
             if err is not None:
                 errors.append(err)
 
-            _, err = safe_test_function_call(testset_instance, 'test_teardown',
-                                             [], testiter,
-                                             seed=test_teardown_seed)
-            if err is not None:
-                errors.append(err)
+            if tdown_err is not None:
+                errors.append(tdown_err)
                 # Don't try to run further tests as test_teardown failure will
                 # likely cause additional test failures which are irrelevant
                 for not_ran_test in tests_to_run[executed:]:
@@ -198,9 +198,9 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
                         cluster_name=cluster.short_name()))
                 break
     finally:
-        _, err = safe_test_function_call(testset_instance, 'teardown',
-                                         [], 0,
-                                         seed=teardown_seed)
+        _, err, _ = safe_test_function_call(testset_instance, 'teardown',
+                                            [], 0,
+                                            seed=teardown_seed)
         if err is not None:
             errors.append(err)
 
@@ -219,6 +219,7 @@ def test_name(testset, testname, testiter, short_form=False):
 
 
 def safe_test_function_call(testset, testfunction, args, testiter,
+                            teardown_function=None, teardown_seed=None,
                             report_name=False, seed=None, dry_run=None,
                             timeout=None):
     if timeout is None:
@@ -227,10 +228,17 @@ def safe_test_function_call(testset, testfunction, args, testiter,
         dry_run = config['dry_run']
     res = None
     error = None
+    teardown_error = None
     testname = test_name(testset, testfunction, testiter)
     short_testname = test_name(testset, testfunction, testiter,
                                 short_form=True)
 
+    def call(n, f, args, seed, err_callback):
+        with no_output(n, verbose=not config['intercept_output'],
+                       error_callback=err_callback):
+            if not dry_run:
+                return apply_with_seed(testset, f, args, seed)
+            return None
 
     def timeout_handler(snum, frame):
         print(f'{testname} timed out (timeout: {timeout}s)')
@@ -240,30 +248,58 @@ def safe_test_function_call(testset, testfunction, args, testiter,
         signal.signal(signal.SIGALRM, timeout_handler)
         signal.alarm(timeout)
 
+    test_successful = False
     end_report = start_report(testname, short_testname, report_name=report_name,
                               single_line=config['intercept_output'])
     start_time = time.time()
+    test_error_report = lambda e: end_report(e, None, time.time() - start_time,
+                                             None)
 
     try:
-        test_error_report = lambda e: end_report(e, time.time() - start_time)
-        with no_output(testname, verbose=not config['intercept_output'],
-                       error_callback=test_error_report):
-            if not dry_run:
-                res = apply_with_seed(testset, testfunction, args, seed)
-        end_report(None, time.time() - start_time)
+        res = call(testname, testfunction, args, seed, test_error_report)
+
+        finish_time = time.time()
+        test_successful = True
+        teardown_error_report = \
+            lambda e: end_report(None, e, time.time() - start_time, None)
+
+        if teardown_function is not None:
+            call(teardown_function, teardown_function, [], teardown_seed,
+                 teardown_error_report)
+
+        end_report(None, None, finish_time - start_time,
+                   time.time() - finish_time)
     except Exception as e:
         print_traceback()
         if hasattr(testset, 'cluster'):
             cluster_name = testset.cluster.short_name()
         else:
             cluster_name = "(no cluster)"
-        error = TestError(name=testname,
-                          error=e,
-                          cluster_name=cluster_name)
+        if test_successful: # this is actually a teardown exception
+            teardown_error = TestError(name=testname + ' (teardown)',
+                                       error=e,
+                                       cluster_name=cluster_name)
+
+        else: # this is a test exception, we need to run teardown
+            error = TestError(name=testname,
+                              error=e,
+                              cluster_name=cluster_name)
+
+            if teardown_function is not None:
+                try:
+                    error_callback = \
+                        lambda e: print(f'{teardown_function} failed: {e}')
+                    call(teardown_function, teardown_function, [],
+                         teardown_seed, error_callback)
+                except Exception as e2:
+                    print_traceback()
+                    teardown_error = TestError(name=testname + ' (teardown)',
+                                               error=e2,
+                                               cluster_name=cluster_name)
     finally:
         if timeout is not None:
             signal.alarm(0)
-    return res, error
+    return res, error, teardown_error
 
 
 def print_traceback():
@@ -281,17 +317,32 @@ def apply_with_seed(obj, func, args, seed):
         random.setstate(rand_state)
 
 
+def format_test_times(test_time, teardown_time, display_threshold=0.5):
+    if teardown_time is None:
+        total_time = test_time
+    else:
+        total_time = test_time + teardown_time
+
+    if total_time < display_threshold:
+        return ""
+
+    base_res = timedelta_str(total_time)
+
+    if teardown_time is None or teardown_time < display_threshold:
+        return base_res
+
+    return base_res + " (" + timedelta_str(teardown_time) + " td)"
+
+
 def timedelta_str(delta_s):
     if delta_s > 10:
-        return red(f" [{round(delta_s)}s]")
+        return red(f"{round(delta_s)}s")
     if delta_s > 5:
-        return red(f" [{delta_s:.1f}s]")
+        return red(f"{delta_s:.1f}s")
     elif delta_s > 1:
-        return f" [{delta_s:.1f}s]"
-    elif delta_s > 0.1:
-        return f" [{delta_s:.2f}s]"
+        return f"{delta_s:.1f}s"
     else:
-        return f""
+        return f"{delta_s:.2f}s"
 
 
 def red(str):
@@ -732,41 +783,60 @@ def no_output(name, verbose=None, error_callback=None):
 
         raise e
 
-def start_report(full_name, name, succ_str="ok", fail_str="failed",
-                 report_name=False, single_line=True):
-    prefix = "*** "
-    if report_name:
-        if single_line:
-            str_to_print = f"  {name}... "
-            print(str_to_print, end='', flush=True)
-            width_taken = len(str_to_print)
-        else:
-            print(f"\n{prefix}Starting: {name}...")
 
-    def end_report(e, time_delta):
-        time_delta_str = timedelta_str(time_delta)
-        if e is None:
-            if report_name:
-                if single_line:
-                    res = right_aligned(succ_str, taken=width_taken)
-                    print(green(res) + time_delta_str, show_time=False)
-                else:
-                    print(f"{prefix}Finished: " + green(succ_str) +
-                          time_delta_str)
+def format_exception(e):
+    return red('\n'.join(format_exception_only(type(e), e)).strip('\n'))
+
+
+def start_report(full_name, name,  report_name=False, single_line=True):
+    if report_name:
+        return start_verbose_report(name, single_line=single_line)
+    return start_silent_report(full_name)
+
+
+def start_verbose_report(name, single_line=True):
+    prefix = "*** "
+    if single_line:
+        str_to_print = f"  {name}... "
+        print(str_to_print, end='', flush=True)
+        width_taken = len(str_to_print)
+    else:
+        print(f"\n{prefix}Starting: {name}...")
+
+    def end_report(test_e, teardown_e, time_delta, teardown_time_delta):
+        times_str = format_test_times(time_delta, teardown_time_delta)
+        if test_e is None and teardown_e is None:
+            if single_line:
+                res = right_aligned("ok", taken=width_taken)
+                print(green(res) + " " + times_str, show_time=False)
+            else:
+                print(f"{prefix}Finished: " + green("ok") + " " +
+                      times_str)
             return
 
-        short_exception = red('\n'.join(format_exception_only(type(e), e))
-                              .strip('\n'))
-        if report_name:
-            if single_line:
-                res = right_aligned(fail_str, taken=width_taken)
-                print(red(res) + time_delta_str, show_time=False)
-            else:
-                print(f"{prefix}Finished: " + red(fail_str) +
-                      time_delta_str)
-            print(f'    {short_exception}')
+        res_prefix = 'teardown ' if test_e is None else ''
+
+        if single_line:
+            res = right_aligned(res_prefix + "failed", taken=width_taken)
+            print(red(res) + " " + times_str, show_time=False)
         else:
-            print(red(f"{full_name} {fail_str} ({short_exception})"))
+            res = res_prefix + "failed"
+            print(f"{prefix}Finished: " + red(res) + " " + times_str)
+
+        if test_e is not None:
+            print(f'    {format_exception(test_e)}')
+        if teardown_e is not None:
+            print(f'    {red("teardown exception:")} ' \
+                  f'{format_exception(teardown_e)}')
+    return end_report
+
+
+def start_silent_report(full_name):
+    def end_report(test_e, teardown_e, time_delta, teardown_time_delta):
+        if test_e is not None:
+            print(red(f"{full_name} failed ({format_exception(test_e)})"))
+        if teardown_e is not None:
+            print(red(f"teardown exception: {format_exception(teardown_e)}"))
 
     return end_report
 

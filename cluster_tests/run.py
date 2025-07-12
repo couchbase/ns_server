@@ -564,7 +564,7 @@ def discover_testsets():
             if testset == testlib.BaseTestSet:
                 continue
             if issubclass(testset, testlib.BaseTestSet):
-                requirements, err = testlib.safe_test_function_call(
+                requirements, err, _ = testlib.safe_test_function_call(
                     testset, 'requirements', [], 0, dry_run=False)
                 if err is not None:
                     return [(err.name, None, None, err.error)]
