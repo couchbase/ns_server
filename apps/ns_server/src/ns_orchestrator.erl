@@ -1592,7 +1592,7 @@ do_flush_bucket(BucketName, BucketConfig) ->
     Nodes = ns_bucket:get_servers(BucketConfig),
     case janitor_agent:mass_prepare_flush(BucketName, Nodes) of
         {_, [], []} ->
-            continue_flush_bucket(BucketName, BucketConfig, Nodes);
+            continue_flush_bucket(BucketName, Nodes);
         {_, BadResults, BadNodes} ->
             %% NOTE: I'd like to undo prepared flush on good
             %% nodes, but given we've lost information whether
@@ -1603,11 +1603,32 @@ do_flush_bucket(BucketName, BucketConfig) ->
             {error, {prepare_flush_failed, BadNodes, BadResults}}
     end.
 
-continue_flush_bucket(BucketName, BucketConfig, Nodes) ->
-    OldFlushCount = proplists:get_value(flushseq, BucketConfig, 0),
-    NewConfig = lists:keystore(flushseq, 1, BucketConfig,
-                               {flushseq, OldFlushCount + 1}),
-    ns_bucket:set_bucket_config(BucketName, NewConfig),
+continue_flush_bucket(BucketName, Nodes) ->
+    {ok, _} =
+        chronicle_kv:transaction(
+          kv, [ns_bucket:sub_key(BucketName, props),
+               ns_bucket:fusion_uploaders_key(BucketName)],
+          fun (Snapshot) ->
+                  {ok, BucketConfig} =
+                      ns_bucket:get_bucket(BucketName, Snapshot),
+                  FusionUploaders =
+                      case maps:find(ns_bucket:fusion_uploaders_key(BucketName),
+                                     Snapshot) of
+                          {ok, {FU, _Rev}} ->
+                              FU;
+                          error ->
+                              undefined
+                      end,
+                  OldFlushCount =
+                      proplists:get_value(flushseq, BucketConfig, 0),
+                  NewConfig = lists:keystore(flushseq, 1, BucketConfig,
+                                             {flushseq, OldFlushCount + 1}),
+                  {commit,
+                   [{set, ns_bucket:sub_key(BucketName, props), NewConfig}] ++
+                       [{set, ns_bucket:fusion_uploaders_key(BucketName),
+                         fusion_uploaders:advance_terms(FusionUploaders)} ||
+                           FusionUploaders =/= undefined]}
+          end),
     {_GoodNodes, FailedCalls, FailedNodes} =
         janitor_agent:complete_flush(BucketName, Nodes, ?FLUSH_BUCKET_TIMEOUT),
     case FailedCalls =:= [] andalso FailedNodes =:= [] of

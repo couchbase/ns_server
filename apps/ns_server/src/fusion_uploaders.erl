@@ -29,6 +29,7 @@
          get_log_store_uri/0,
          get_metadata_store_uri/0,
          update_config/1,
+         advance_terms/1,
          command/1,
          maybe_grab_heartbeat_info/0,
          maybe_advance_state/0,
@@ -326,6 +327,10 @@ calculate_uploaders([{Bucket, BucketConfig} | Rest], Acc) ->
         {ok, Uploaders} ->
             calculate_uploaders(Rest, [{Bucket, Uploaders} | Acc])
     end.
+
+-spec advance_terms(uploaders()) -> uploaders().
+advance_terms(Uploaders) ->
+    [{Node, Term + 1} || {Node, Term} <- Uploaders].
 
 -spec command({enable, [ns_bucket:name()] | undefined} | disable | stop)
              -> ok | {error, enable_error()} |
