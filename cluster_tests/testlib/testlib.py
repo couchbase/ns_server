@@ -26,6 +26,7 @@ import signal
 from types import MethodType
 from dataclasses import dataclass, field
 from testlib.node import Node
+import shutil
 
 THIS_FILE_DIR = os.path.dirname(os.path.realpath(__file__))
 NS_SERVER_DIR = os.path.join(THIS_FILE_DIR, '..', '..')
@@ -33,9 +34,16 @@ NS_SERVER_DIR = os.path.join(THIS_FILE_DIR, '..', '..')
 def support_colors():
     return hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
 
+def get_terminal_width():
+    try:
+        columns, _ = shutil.get_terminal_size(fallback=(100, 24))
+        return min(300, columns)
+    except:
+        return 100
+
 config={'colors': support_colors(),
         'verbose': False,
-        'screen_width': 80,
+        'screen_width': get_terminal_width(),
         'align_res': True,
         'wrap_output': True,
         'dry_run': False,
