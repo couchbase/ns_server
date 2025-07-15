@@ -444,8 +444,7 @@ def main():
     def format_time(t):
         return f"{int(t//60)}m{t%60:.1f}s"
 
-    print("\n======================================="
-          "=========================================\n" +
+    print("\n" + "=" * testlib.config['screen_width'] + "\n" +
           colored(f"Tests finished ({executed} executed, {errors_str})\n") +
           f"Total time:               {format_time(total_time_s)}\n"
           f"Total clusters prep time: {format_time(prep_time_s)}\n"
@@ -820,7 +819,7 @@ def print_with_time(*args, show_time=True, **kwargs):
                 break
 
     cr = '\n' * cr_count
-    local_time = datetime.now().strftime('%H:%M:%S')
+    local_time = datetime.now().strftime(testlib.config['report_time_format'])
     prefix = f'{cr}{local_time}'
     __builtins__.__old_print_fun(prefix, first_arg, *(args[1:]), **kwargs)
 

@@ -39,6 +39,7 @@ config={'colors': support_colors(),
         'dry_run': False,
         'intercept_output': True,
         'report_time': True,
+        'report_time_format': '%H:%M:%S',
         'test_timeout': 600}
 
 @dataclass
@@ -71,13 +72,13 @@ def get_appropriate_cluster(cluster, auth, requirements,
         print()
 
     # Create a new cluster satisfying the requirements
-    print(f"=== Starting cluster#{cluster_index} to satisfy requirements: " \
-          f"{requirements}")
+    print_wrapped(f"=== Starting cluster#{cluster_index} to satisfy " \
+                  f"requirements: {requirements}",
+                  max_width=config['screen_width'])
     cluster = requirements.create_cluster(auth, cluster_index,
                                           tmp_cluster_dir,
                                           first_node_index)
-    maybe_print("\n======================================="
-                "=========================================\n")
+    maybe_print("\n" + "=" * config['screen_width'] + "\n")
     return cluster
 
 
@@ -86,8 +87,9 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
     errors = []
     not_ran = []
     executed = 0
-    print(f"\nStarting testset[{testset['#']}/{total_testsets_num}]: " \
-          f"{testset['name']}...")
+    print_wrapped(f"\nStarting testset[{testset['#']}/{total_testsets_num}]: " \
+                  f"{testset['name']}",
+                  max_width=config['screen_width'])
     maybe_print(f'Using cluster: {repr(cluster)}')
 
     testset_instance = testset['class'](cluster)
@@ -341,10 +343,7 @@ def timedelta_str(delta_s):
         return red(f"{round(delta_s)}s")
     if delta_s > 5:
         return red(f"{delta_s:.1f}s")
-    elif delta_s > 1:
-        return f"{delta_s:.1f}s"
-    else:
-        return f"{delta_s:.2f}s"
+    return f"{delta_s:.1f}s"
 
 
 def red(str):
@@ -798,10 +797,14 @@ def start_report(full_name, name,  report_name=False, single_line=True):
 
 def start_verbose_report(name, single_line=True):
     prefix = "*** "
+    space_reserved_for_res = 7
+    space_reserved_for_time = 15
     if single_line:
-        str_to_print = f"  {name}... "
-        print(str_to_print, end='', flush=True)
-        width_taken = len(str_to_print)
+        space_reserved = space_reserved_for_res + space_reserved_for_time
+        width_taken = print_wrapped(name, indent=2, suffix="... ",
+                                    max_width=config['screen_width'] -
+                                              space_reserved,
+                                    end='', flush=True)
     else:
         print(f"\n{prefix}Starting: {name}...")
 
@@ -809,7 +812,9 @@ def start_verbose_report(name, single_line=True):
         times_str = format_test_times(time_delta, teardown_time_delta)
         if test_e is None and teardown_e is None:
             if single_line:
-                res = right_aligned("ok", taken=width_taken)
+                res = right_aligned("ok", taken=width_taken,
+                                    width=config['screen_width'] -
+                                          space_reserved_for_time)
                 print(green(res) + " " + times_str, show_time=False)
             else:
                 print(f"{prefix}Finished: " + green("ok") + " " +
@@ -819,17 +824,21 @@ def start_verbose_report(name, single_line=True):
         res_prefix = 'teardown ' if test_e is None else ''
 
         if single_line:
-            res = right_aligned(res_prefix + "failed", taken=width_taken)
+            res = right_aligned(res_prefix + "failed", taken=width_taken,
+                                width=config['screen_width'] -
+                                      space_reserved_for_time)
             print(red(res) + " " + times_str, show_time=False)
         else:
             res = res_prefix + "failed"
             print(f"{prefix}Finished: " + red(res) + " " + times_str)
 
         if test_e is not None:
-            print(f'    {format_exception(test_e)}')
+            print_wrapped(f'{format_exception(test_e)}', indent=2,
+                          max_width=config['screen_width'])
         if teardown_e is not None:
-            print(f'    {red("teardown exception:")} ' \
-                  f'{format_exception(teardown_e)}')
+            print_wrapped(f'{red("teardown exception:")} ' \
+                          f'{format_exception(teardown_e)}', indent=2,
+                          max_width=config['screen_width'])
     return end_report
 
 
@@ -845,7 +854,7 @@ def start_silent_report(full_name):
 
 def right_aligned(s, taken=0, width=None):
     if width is None:
-        width = config['screen_width'] - (9 if config['report_time'] else 0)
+        width = config['screen_width']
     corrected_width = max(0, width - taken)
     return f'{s: >{corrected_width}}'
 
@@ -1008,3 +1017,64 @@ def get_pylib_dir():
 
 def get_scripts_dir():
     return os.path.join(NS_SERVER_DIR, 'scripts')
+
+
+def print_wrapped(str_to_print, indent=0, suffix="", max_width=None,
+                  separators=None, **kwargs):
+    if separators is None:
+        separators = [' ', '-', '_', '.', '/', '\\']
+
+    if kwargs.get('show_time', True) and config['report_time']:
+        local_time = datetime.now().strftime(config['report_time_format'])
+        time_width = len(local_time) + 1 # +1 for space
+    else:
+        time_width = 0
+    prefix_str = " " * indent
+    overhead = len(prefix_str) + len(suffix) + time_width
+
+    if max_width is None:
+        no_wrap = True
+    else:
+        max_line_length = max(1, max_width - overhead)
+        no_wrap = (len(str_to_print) <= max_line_length)
+
+    if no_wrap:
+        # Name fits on one line or no wrapping is requested
+        print_str = f"{prefix_str}{str_to_print}{suffix}"
+        print(print_str, **kwargs)
+        return len(print_str) + time_width
+
+    remaining_str = str_to_print
+    first_line = True
+    extra_prefix = ""
+    while len(remaining_str) > max_line_length:
+        # Try to find a word boundary within the line limit
+        candidate_part = remaining_str[:max_line_length]
+
+        # Find the rightmost separator
+        best_pos = -1
+        best_sep = None
+        for sep in separators:
+            pos = candidate_part.rfind(sep)
+            if pos > best_pos:
+                best_pos = pos
+                best_sep = sep
+
+        if best_pos != -1:
+            # Found a separator, break at word boundary
+            trailing_chars = 0 if best_sep == ' ' else 1 # skip trailing space
+            line_part = remaining_str[:best_pos+trailing_chars]
+            remaining_str = remaining_str[best_pos + 1:]
+        else:
+            # No separator found, do hard cut
+            line_part = candidate_part
+            remaining_str = remaining_str[max_line_length:]
+
+        print(f"{extra_prefix}{prefix_str}{line_part}", show_time=first_line)
+        first_line = False
+        extra_prefix = "" if first_line else " " * time_width
+
+    # Print the last line
+    left_to_print = f"{extra_prefix}{prefix_str}{remaining_str}{suffix}"
+    print(left_to_print, show_time=False, **kwargs)
+    return len(left_to_print)
