@@ -343,9 +343,9 @@ def format_test_times(test_time, teardown_time, display_threshold=0.5):
     base_res = timedelta_str(total_time)
 
     if teardown_time is None or teardown_time < display_threshold:
-        return base_res
+        return " " + base_res
 
-    return base_res + " (" + timedelta_str(teardown_time) + " td)"
+    return " " + base_res + " (" + timedelta_str(teardown_time) + " td)"
 
 
 def timedelta_str(delta_s):
@@ -825,10 +825,9 @@ def start_verbose_report(name, single_line=True):
                 res = right_aligned("ok", taken=width_taken,
                                     width=config['screen_width'] -
                                           space_reserved_for_time)
-                print(green(res) + " " + times_str, show_time=False)
+                print(green(res) + times_str, show_time=False)
             else:
-                print(f"{prefix}Finished: " + green("ok") + " " +
-                      times_str)
+                print(f"{prefix}Finished: " + green("ok") + times_str)
             return
 
         res_prefix = 'teardown ' if test_e is None else ''
@@ -837,10 +836,10 @@ def start_verbose_report(name, single_line=True):
             res = right_aligned(res_prefix + "failed", taken=width_taken,
                                 width=config['screen_width'] -
                                       space_reserved_for_time)
-            print(red(res) + " " + times_str, show_time=False)
+            print(red(res) + times_str, show_time=False)
         else:
             res = res_prefix + "failed"
-            print(f"{prefix}Finished: " + red(res) + " " + times_str)
+            print(f"{prefix}Finished: " + red(res) + times_str)
 
         if test_e is not None:
             print_wrapped(f'{format_exception(test_e)}', indent=2,
