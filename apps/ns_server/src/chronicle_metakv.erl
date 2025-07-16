@@ -425,7 +425,7 @@ get_dir_content(Dir) ->
     get_dir_content(Dir, true).
 
 get_dir_content(Dir, Recursive) ->
-    case chronicle_metakv:get_dir(Dir, Recursive) of
+    case get_dir(Dir, Recursive) of
         {error, _} = E ->
             E;
         {ok, {Content, _}} ->
@@ -466,27 +466,27 @@ check_integrity() ->
       end, maps:to_list(Snapshot)).
 
 test_set(Key, Val, Rev, Recursive) ->
-    Ret = chronicle_metakv:set(Key, Val, Rev, Recursive),
+    Ret = set(Key, Val, Rev, Recursive),
     check_integrity(),
     Ret.
 
 test_set_multiple(List, Recursive) ->
-    Ret = chronicle_metakv:set_multiple(List, Recursive),
+    Ret = set_multiple(List, Recursive),
     check_integrity(),
     Ret.
 
 test_mkdir(Dir, Recursive) ->
-    Ret = chronicle_metakv:mkdir(Dir, Recursive),
+    Ret = mkdir(Dir, Recursive),
     check_integrity(),
     Ret.
 
 test_delete(Dir) ->
-    Ret = chronicle_metakv:delete(Dir),
+    Ret = delete(Dir),
     check_integrity(),
     Ret.
 
 test_delete_dir(Dir, Recursive) ->
-    Ret = chronicle_metakv:delete_dir(Dir, Recursive),
+    Ret = delete_dir(Dir, Recursive),
     check_integrity(),
     Ret.
 
@@ -513,7 +513,7 @@ cas_testing(Fun, Create) ->
     %% update, non recursive, old revision
     ?assertEqual({error, {cas, Key, LatestRev}}, Fun(Key, v2, OldRev, false)),
 
-    Ret2 = chronicle_metakv:get(Key),
+    Ret2 = ?MODULE:get(Key),
     ?assertMatch({ok, {v3, LatestRev}}, Ret2),
 
     %% update, non recursive, new revision
@@ -549,7 +549,7 @@ basic_test_() ->
      [{"set, get",
        fun () ->
                ?assertEqual({error, not_found},
-                            chronicle_metakv:get([key1, subkey1, root])),
+                            ?MODULE:get([key1, subkey1, root])),
                ?assertEqual({error, {not_found, [subkey1, root]}},
                             test_set([key1, subkey1, root], v1,
                                      undefined, false)),
@@ -558,16 +558,14 @@ basic_test_() ->
                ?assertMatch({ok, _, create},
                             test_set([key2, subkey1, root], v2, undefined,
                                      true)),
-               ?assertMatch({ok, {v1, _}},
-                            chronicle_metakv:get([key1, subkey1, root])),
+               ?assertMatch({ok, {v1, _}}, ?MODULE:get([key1, subkey1, root])),
                ?assertEqual(#{[key1, subkey1, root] => v1,
                               [key2, subkey1, root] => v2},
                             get_dir_content([root])),
                ?assertMatch({ok, _, create},
                             test_set([key3, subkey1, root], v3,
                                      new, false)),
-               ?assertMatch({ok, {v2, _}},
-                            chronicle_metakv:get([key2, subkey1, root])),
+               ?assertMatch({ok, {v2, _}}, ?MODULE:get([key2, subkey1, root])),
                ?assertEqual(
                   #{[key1, subkey1, root] => v1,
                     [key2, subkey1, root] => v2,
@@ -610,12 +608,11 @@ basic_test_() ->
                ?assertEqual(#{[key1, subkey1, root] => v1,
                               [key2, subkey2, root] => v2,
                               [key3, subkey1, root] => v3},
-                            snapshot_to_map(
-                              chronicle_metakv:get_snapshot(
-                                [[key1, subkey1, root],
-                                 [key3, subkey1, root],
-                                 [key2, subkey2, root],
-                                 [key3, subkey3, root]])))
+                            snapshot_to_map(get_snapshot(
+                                              [[key1, subkey1, root],
+                                               [key3, subkey1, root],
+                                               [key2, subkey2, root],
+                                               [key3, subkey3, root]])))
        end},
       {"mkdir",
        fun () ->
@@ -721,7 +718,7 @@ basic_test_() ->
                             test_set([key1, subkey1, root], v0, new, true)),
                ?assertMatch({ok, _}, test_delete([key1, subkey1, root])),
                ?assertEqual({error, not_found},
-                            chronicle_metakv:get([key1, subkey1, root]))
+                            ?MODULE:get([key1, subkey1, root]))
        end},
       {"delete_dir",
        fun () ->
@@ -755,23 +752,21 @@ basic_test_() ->
                ?assertMatch({ok, _}, test_delete_dir([subkey1, root], true)),
 
                ?assertEqual({error, not_found},
-                            chronicle_metakv:get_dir([subkey1, root], false)),
+                            get_dir([subkey1, root], false)),
                ?assertEqual({error, not_found},
-                            chronicle_metakv:get_dir([subkey2, root], false)),
+                            get_dir([subkey2, root], false)),
                ?assertMatch({ok, {{[root], {[], _}}, _}},
-                            chronicle_metakv:get_dir([root], true)),
+                            get_dir([root], true)),
 
                %% non recursive delete of empty root dir
                ?assertMatch({ok, _}, test_delete_dir([root], false)),
-               ?assertEqual({error, not_found},
-                            chronicle_metakv:get_dir([root], false)),
+               ?assertEqual({error, not_found}, get_dir([root], false)),
 
                %% recursive delete of non empty root dir
                ?assertMatch({ok, _, create},
                             test_set([key1, subkey1, root], v0, new, true)),
                ?assertMatch({ok, _}, test_delete_dir([root], true)),
-               ?assertEqual({error, not_found},
-                            chronicle_metakv:get_dir([root], false))
+               ?assertEqual({error, not_found}, get_dir([root], false))
        end}]}.
 
 -endif.
