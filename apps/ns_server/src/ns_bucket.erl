@@ -1396,27 +1396,24 @@ do_create_bucket(BucketName, Config, BucketUUID, Manifest) ->
                   %% https://review.couchbase.org/c/ns_server/+/188906/
                   %% comments/9fdd0336_0ec5a962
 
-                  ShutdownBucketNames =
-                      get_bucket_names_marked_for_shutdown(Snapshot),
-                  SecretId = proplists:get_value(encryption_secret_id,
-                                                 Config, ?SECRET_ID_NOT_SET),
-                  EncryptionSecretOk = validate_encryption_secret(SecretId,
-                                                                  BucketName,
-                                                                  Snapshot),
-                  case {name_conflict(BucketName, BucketNames),
-                        name_conflict(BucketName, ShutdownBucketNames),
-                        EncryptionSecretOk} of
-                      {true, _, _} ->
-                          {abort, already_exists};
-                      {_, true, _} ->
-                          {abort, still_exists};
-                      {_, _, {error, Reason}} ->
-                          {abort, {error, Reason}};
-                      {false, false, ok} ->
-                          {commit, create_bucket_sets(BucketName, BucketNames,
-                                                      BucketUUID, Config) ++
-                                   collections_sets(BucketName, Config,
-                                                    Snapshot, Manifest)}
+                  maybe
+                      ok ?= name_conflict(BucketName, BucketNames,
+                                          {already_exists, BucketName}),
+                      ShutdownBucketNames =
+                          get_bucket_names_marked_for_shutdown(Snapshot),
+                      ok ?= name_conflict(BucketName, ShutdownBucketNames,
+                                          {still_exists, BucketName}),
+                      SecretId = proplists:get_value(
+                                   encryption_secret_id,
+                                   Config, ?SECRET_ID_NOT_SET),
+                      ok ?= validate_encryption_secret(SecretId, BucketName,
+                                                       Snapshot),
+                      {commit, create_bucket_sets(BucketName, BucketNames,
+                                                  BucketUUID, Config) ++
+                           collections_sets(BucketName, Config,
+                                            Snapshot, Manifest)}
+                  else
+                      {error, Error} -> {abort, {error, Error}}
                   end
           end),
     case Result of
@@ -2404,6 +2401,14 @@ is_ephemeral_bucket(BucketConfig) ->
         ephemeral -> true;
         couchstore -> false;
         magma -> false
+    end.
+
+name_conflict(BucketName, ListOfNames, Error) ->
+    case name_conflict(BucketName, ListOfNames) of
+        true ->
+            {error, Error};
+        false ->
+            ok
     end.
 
 %% @doc Check if a bucket name exists in the list. Case insensitive.
