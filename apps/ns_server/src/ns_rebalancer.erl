@@ -2124,6 +2124,8 @@ prepare_fusion_rebalance_massage_result(Result) ->
                  end, #{}, Result),
     AccelerationPlan =
         {[{planUUID, PlanUUID}, {nodes, {maps:to_list(NodesMap)}}]},
+    ?log_debug("Prepared fusion rebalance~nRebalance plan:~n~p~n"
+               "Acceleration plan:~n~p", [RebalancePlan, AccelerationPlan]),
     {RebalancePlan, AccelerationPlan}.
 
 prepare_bucket_fusion_rebalance(Snapshot, Bucket, KeepKVNodes,
