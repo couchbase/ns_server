@@ -47,11 +47,15 @@ def extract_val_rev(resp, json):
 
 def fetch_leaves(resp, content, leaves):
     for key, value in content.items():
-            (v, r) = extract_val_rev(resp, value)
-            if key.endswith("/"):
-                fetch_leaves(resp, v, leaves)
+        r = assert_json_key(resp, "revision", value)
+        if key.endswith("/"):
+            if "value" in value.keys():
+                fetch_leaves(resp, value["value"], leaves)
             else:
-                leaves[key] = v
+                leaves[key] = "dir"
+        else:
+            v = assert_json_key(resp, "value", value)
+            leaves[key] = v
 
 def extract_snapshot(resp):
     (val, rev) = assert_val_rev(resp)
@@ -144,10 +148,13 @@ class Metakv2Tests(testlib.BaseTestSet):
         resp = self.metakv2_get("/root/")
         assert_not_found(resp)
 
-    def metakv2_get(self, key, recursive=False):
+    def metakv2_get(self, key, recursive=False, depth=None):
         params = {}
         if recursive:
             params['recursive']='true'
+        if depth is not None:
+            params['depth']=depth
+
         return testlib.request('GET', self.cluster, METAKV2_ENDPOINT + key,
                                params=params)
 
@@ -187,8 +194,8 @@ class Metakv2Tests(testlib.BaseTestSet):
         return testlib.request('DELETE', self.cluster,
                                METAKV2_ENDPOINT + key, params=params)
 
-    def assert_dir_content(self, dir, expected, recursive=True):
-        resp = self.metakv2_get(dir, recursive=recursive)
+    def assert_dir_content(self, dir, expected, recursive=True, depth=None):
+        resp = self.metakv2_get(dir, recursive=recursive, depth=depth)
         content = assert_dir(resp, dir)
         testlib.assert_eq(content, expected, "content", resp)
 
@@ -295,6 +302,27 @@ class Metakv2Tests(testlib.BaseTestSet):
                                 {'/root/subdir/key1': 'v1',
                                  '/root/subdir/key3': 'v3',
                                  '/root/subdir/subdir1/key2': 'v2'})
+
+        self.assert_dir_content("/root/subdir/",
+                                {'/root/subdir/key1': 'v1',
+                                 '/root/subdir/key3': 'v3',
+                                 '/root/subdir/subdir1/': 'dir'}, depth = 1)
+
+        self.assert_dir_content("/root/",
+                                {'/root/subdir/': 'dir',
+                                 '/root/subdir1/': 'dir'}, depth = 1)
+
+        self.assert_dir_content("/root/",
+                                {'/root/subdir/key1': 'v1',
+                                 '/root/subdir/key3': 'v3',
+                                 '/root/subdir1/key4': 'v4',
+                                 '/root/subdir/subdir1/': 'dir'}, depth = 2)
+
+        self.assert_dir_content("/root/",
+                                {'/root/subdir/key1': 'v1',
+                                 '/root/subdir/key3': 'v3',
+                                 '/root/subdir1/key4': 'v4',
+                                 '/root/subdir/subdir1/key2': 'v2'}, depth = 3)
 
         self.assert_dir_content("/root/", {}, recursive = False)
 

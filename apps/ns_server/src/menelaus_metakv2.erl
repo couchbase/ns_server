@@ -85,7 +85,9 @@ massage_directory_content({Key, {Subkeys, Rev}}) when is_list(Subkeys) ->
 massage_directory_content({Key, {Value, Rev}}) ->
     {encode_path(Key, leaf),
      {[{revision, encode_revision(Rev)},
-       {value, Value}]}}.
+       {value, Value}]}};
+massage_directory_content({Key, {dir, [], Rev}}) ->
+    {encode_path(Key, dir), {[{revision, encode_revision(Rev)}]}}.
 
 not_found_reply(Path, Type) ->
     encode_reply_info("Not Found", Path, undefined, Type).
@@ -154,21 +156,46 @@ is_directory(Path) ->
             false
     end.
 
-with_recursive(Fun, Req) ->
+validate_depth(State) ->
+    validator:validate(
+      fun (_Depth) ->
+              case validator:get_value(recursive, State) of
+                  true ->
+                      ok;
+                  _ ->
+                      {error, "allowed only if recursive = true"}
+              end
+      end, depth, State).
+
+with_recursive(Fun, WithDepth, Req) ->
     validator:handle(
       fun (Params) ->
-              Fun(proplists:get_value(recursive, Params, false))
+              Recursive = proplists:get_value(recursive, Params, false),
+              case WithDepth of
+                  true ->
+                      Fun({Recursive,
+                           proplists:get_value(depth, Params)});
+                  false ->
+                      Fun(Recursive)
+              end
       end, Req, qs,
-      [validator:boolean(recursive, _),
-       validator:unsupported(_)]).
+      [validator:boolean(recursive, _)] ++
+          case WithDepth of
+              true ->
+                  [validate_depth(_),
+                   validator:integer(depth, 1, infinity, _)];
+              false ->
+                  []
+          end ++
+          [validator:unsupported(_)]).
 
 handle_get(Path, Req) ->
     Key = get_key(Path),
     case is_directory(Path) of
         true ->
             with_recursive(
-              fun (Recursive) ->
-                      case chronicle_metakv:get_dir(Key, Recursive) of
+              fun ({Recursive, Depth}) ->
+                      case chronicle_metakv:get_dir(Key, Recursive, Depth) of
                           {ok, {Content, SnapshotRev}} ->
                               menelaus_util:reply_json(
                                 Req,
@@ -179,7 +206,7 @@ handle_get(Path, Req) ->
                               menelaus_util:reply_json(
                                 Req, not_found_reply(Key, dir), 404)
                       end
-              end, Req);
+              end, true, Req);
         false ->
             case chronicle_metakv:get(Key) of
                 {ok, {Value, Revision}} ->
@@ -278,7 +305,7 @@ handle_put(Path, Req) ->
           [validator:unsupported(_)]).
 
 handle_post_set_multiple(Req) ->
-    with_recursive(handle_post_set_multiple(Req, _), Req).
+    with_recursive(handle_post_set_multiple(Req, _), false, Req).
 
 handle_post_set_multiple(Req, Recursive) ->
     validator:handle(
@@ -330,7 +357,7 @@ handle_delete(Path, Req) ->
             with_recursive(
               ?cut(reply_delete_result(
                      Req, chronicle_metakv:delete_dir(Key, _),
-                     Key, Start, dir)), Req);
+                     Key, Start, dir)), false, Req);
         false ->
             reply_delete_result(Req, chronicle_metakv:delete(Key),
                                 Key, Start, leaf)

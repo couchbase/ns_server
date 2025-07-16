@@ -42,7 +42,7 @@
 -export([upgrade_to_79/3,
          get/1,
          get_snapshot/1,
-         get_dir/2,
+         get_dir/3,
          set/4,
          set_multiple/2,
          mkdir/2,
@@ -110,20 +110,23 @@ fetch_leaves(Txn, Keys) ->
               end
       end, Keys).
 
-%% fetches either full(hierarchical) or flat(just first level leaves) snapshot
+%% fetches either full (hierarchical) depth limited (hierarchical) or
+%% flat (just first level leaves) snapshot
 %% of the directory
--spec get_dir(key(), boolean()) ->
+-spec get_dir(key(), boolean(), integer() | undefined) ->
           {ok, {{key(), {list(), revision()}}, revision()}} |
           {error, not_found}.
-get_dir(Dir, Recursive) ->
-    case chronicle_kv:ro_txn(metakv, fetch_dir(_, Dir, Recursive)) of
+get_dir(Dir, Recursive, Depth) when
+      (Recursive =:= false andalso Depth =:= undefined) orelse
+      (Recursive =:= true andalso (Depth =:= undefined orelse Depth > 0)) ->
+    case chronicle_kv:ro_txn(metakv, fetch_dir(_, Dir, Recursive, Depth)) of
         {ok, {{error, not_found}, _}} ->
             {error, not_found};
         Res ->
             Res
     end.
 
-fetch_dir(Txn, Dir, Recursive) ->
+fetch_dir(Txn, Dir, Recursive, Depth) ->
     case chronicle_kv:txn_get({dir, Dir}, Txn) of
         {ok, {Subkeys, Rev}} ->
             Leaves = [[Leaf | Dir] || {leaf, Leaf} <- Subkeys],
@@ -132,7 +135,28 @@ fetch_dir(Txn, Dir, Recursive) ->
                 case Recursive of
                     true ->
                         Dirs = [[D | Dir] || {dir, D} <- Subkeys],
-                        lists:map(fetch_dir(Txn, _, Recursive), Dirs);
+                        NewDepth = case Depth of
+                                       undefined ->
+                                           Depth;
+                                       _ ->
+                                           Depth - 1
+                                   end,
+                        case NewDepth of
+                            0 ->
+                                lists:filtermap(
+                                  fun (Key) ->
+                                          case chronicle_kv:txn_get({dir, Key},
+                                                                    Txn) of
+                                              {ok, {_, R}} ->
+                                                  {true, {Key, {dir, [], R}}};
+                                              {error, not_found} ->
+                                                  false
+                                          end
+                                  end, Dirs);
+                            _ ->
+                                lists:map(
+                                  fetch_dir(Txn, _, Recursive, NewDepth), Dirs)
+                        end;
                     false ->
                         []
                 end,
@@ -421,11 +445,17 @@ setup() ->
 teardown(_) ->
     fake_chronicle_kv:teardown().
 
+get_dir(Dir, Recursive) ->
+    get_dir(Dir, Recursive, undefined).
+
 get_dir_content(Dir) ->
     get_dir_content(Dir, true).
 
 get_dir_content(Dir, Recursive) ->
-    case get_dir(Dir, Recursive) of
+    get_dir_content(Dir, Recursive, undefined).
+
+get_dir_content(Dir, Recursive, Depth) ->
+    case get_dir(Dir, Recursive, Depth) of
         {error, _} = E ->
             E;
         {ok, {Content, _}} ->
@@ -435,7 +465,9 @@ get_dir_content(Dir, Recursive) ->
 dir_content_to_map({_Key, {Subkeys, _Rev}}, Map) when is_list(Subkeys) ->
     lists:foldl(dir_content_to_map(_, _), Map, Subkeys);
 dir_content_to_map({Key, {Value, _Rev}}, Map) ->
-    maps:put(Key, Value, Map).
+    maps:put(Key, Value, Map);
+dir_content_to_map({Key, {dir, [], _Rev}}, Map) ->
+    maps:put(Key, dir, Map).
 
 snapshot_to_map({ok, {Snapshot, _}}) ->
     maps:from_list([{K, V} || {K, {V, _R}} <- Snapshot]).
@@ -593,7 +625,18 @@ basic_test_() ->
                             get_dir_content([subkey1, root], false)),
                ?assertEqual(#{[key1, subkey1, root] => v1,
                               [key1, subkey2, subkey1, root] => v2},
-                            get_dir_content([subkey1, root], true))
+                            get_dir_content([subkey1, root], true)),
+               ?assertEqual(#{[key1, subkey1, root] => v1,
+                              [subkey2, subkey1, root] => dir},
+                            get_dir_content([subkey1, root], true, 1)),
+               ?assertEqual(#{[subkey1, root] => dir},
+                            get_dir_content([root], true, 1)),
+               ?assertEqual(#{[key1, subkey1, root] => v1,
+                              [subkey2, subkey1, root] => dir},
+                            get_dir_content([root], true, 2)),
+               ?assertEqual(#{[key1, subkey1, root] => v1,
+                              [key1, subkey2, subkey1, root] => v2},
+                            get_dir_content([root], true, 3))
        end},
       {"get_snapshot",
        fun () ->
