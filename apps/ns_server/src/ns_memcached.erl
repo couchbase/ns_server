@@ -91,6 +91,7 @@
                 check_in_progress = false :: boolean(),
                 next_check_after = ?CHECK_INTERVAL :: integer(),
                 jwt_expires :: undefined | integer(),
+                fusion_state :: fusion_uploaders:bucket_state(),
                 bucket_uuid :: binary()
                }).
 
@@ -205,6 +206,10 @@ init(Bucket) ->
       ControlQueue, ?cut(run_connect_phase(Self, Bucket, WorkersCount))),
     BucketUUID = ns_bucket:uuid(Bucket, direct),
     true = is_binary(BucketUUID),
+
+    {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
+    FusionState = ns_bucket:get_fusion_state(BucketConfig),
+
     State = #state{
                status = connecting,
                bucket = Bucket,
@@ -216,7 +221,8 @@ init(Bucket) ->
                very_heavy_calls_queue = Q,
                running_fast = WorkersCount,
                control_queue = ControlQueue,
-               bucket_uuid = BucketUUID
+               bucket_uuid = BucketUUID,
+               fusion_state = FusionState
               },
     {ok, State}.
 
@@ -922,6 +928,8 @@ handle_info({connect_done, WorkersCount, RV},
                               true;
                           ({node, Node, rest}) when Node =:= node() ->
                               true;
+                          ({bucket, B, props}) when B =:= Bucket ->
+                              true;
                           (Key) ->
                               case collections:key_match(Key) of
                                   {true, Bucket} ->
@@ -930,10 +938,11 @@ handle_info({connect_done, WorkersCount, RV},
                                       false
                               end
                       end,
-                      fun (Key) ->
-                              ?log_debug(
-                                 "Triggering config check due to event on "
-                                 "key ~p", [Key]),
+                      fun ({bucket, _, props}) ->
+                              Self ! check_fusion_state;
+                          (Key) ->
+                              ?log_debug("Triggering config check due to event "
+                                         "on key ~p", [Key]),
                               Self ! check_config_soon
                       end),
                     %% The bucket cluster map must be updated after it is
@@ -1013,6 +1022,31 @@ handle_info(check_started,
             {ok, S} = Stats,
             send_check_started_msg(),
             {noreply, State#state{warmup_stats = S}}
+    end;
+handle_info(check_fusion_state, #state{bucket = Bucket,
+                                       fusion_state = FusionState} = State) ->
+    misc:flush(check_fusion_state),
+    case ns_bucket:get_bucket(Bucket) of
+        {ok, BucketConfig} ->
+            NewFusionState = ns_bucket:get_fusion_state(BucketConfig),
+            case NewFusionState of
+                FusionState ->
+                    {noreply, State};
+                _ ->
+                    %% changing fusion state from enabled to disabled adds
+                    %% a few parameters to the bucket memcached configuration
+                    %% so it makes sense to check the config as soon as possible
+                    %% to apply the new parameters to memcached
+                    %% see memcached_bucket_config:get_fusion_bucket_config
+                    %% for details
+                    ?log_debug("Triggering config check due to fusion state "
+                               "change from ~p to ~p",
+                               [FusionState, NewFusionState]),
+                    handle_info(check_config_soon,
+                                State#state{fusion_state = NewFusionState})
+            end;
+        not_present ->
+            {State, false}
     end;
 handle_info(check_config_soon, #state{check_in_progress = true} = State) ->
     {noreply, State#state{next_check_after = 0}};
