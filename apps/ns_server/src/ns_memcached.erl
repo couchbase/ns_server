@@ -2486,14 +2486,32 @@ get_active_guest_volumes(Bucket) ->
       end, Bucket, [json]).
 
 -spec sync_fusion_log_store(bucket_name(), [vbucket_id()]) ->
-          ok | mc_error().
+          ok | {errors, [{vbucket_id(), mc_error()}]}.
 sync_fusion_log_store(Bucket, VBuckets) ->
     perform_very_long_call(
       fun (Sock) ->
-              {reply,
-               functools:sequence_(
-                 [?cut(mc_client_binary:sync_fusion_log_store(Sock, VBucket)) ||
-                     VBucket <- VBuckets])}
+              Errors =
+                  lists:filtermap(
+                    fun (VBucket) ->
+                            case mc_client_binary:sync_fusion_log_store(
+                                   Sock, VBucket) of
+                                ok ->
+                                    false;
+                                {memcached_error, internal, undefined} ->
+                                    ?log_debug("Log store for ~p:~p is not "
+                                               "created. Nothing to sync.",
+                                               [Bucket, VBucket]),
+                                    false;
+                                Error ->
+                                    {true, {VBucket, Error}}
+                            end
+                    end, VBuckets),
+              {reply, case Errors of
+                          [] ->
+                              ok;
+                          _ ->
+                              {errors, Errors}
+                      end}
       end, Bucket).
 
 bucket_metadata_file(BucketDir) ->
