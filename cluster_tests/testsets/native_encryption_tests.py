@@ -179,7 +179,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret_json['type'] = 'awskms-symmetric-key'
         errors = update_secret(self.random_node(), secret_id, secret_json,
                                expected_code=400)
-        assert errors['type'] == 'the field can\'t be changed', \
+        assert errors['type'] == 'The field can\'t be changed', \
                f'unexpected error: {errors}'
 
         # Changing secret's name
@@ -1748,7 +1748,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                  True),
                 (0, min_dek_lifetime + 1, False),
                 (0, 0, True),
-                (min_dek_rotation + 1, 0, True),
+                (min_dek_rotation + 1, 0, False),
                ]
 
     def bucket_dek_bad_settings_validation_test(self):
