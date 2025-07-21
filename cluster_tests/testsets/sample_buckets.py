@@ -9,6 +9,7 @@
 import time
 
 import testlib
+from testlib import Service
 from testsets.tasks_test import TasksBase
 
 
@@ -139,7 +140,10 @@ class SampleBucketTestSet(testlib.BaseTestSet, SampleBucketTasksBase):
                                             min_num_nodes=2,
                                             min_memsize=600,
                                             buckets=[],
-                                            num_vbuckets=16)]
+                                            num_vbuckets=16,
+                                            # See MB-66431:
+                                            exclude_services=[Service.QUERY,
+                                                              Service.INDEX])]
 
     def setup(self):
         pass
