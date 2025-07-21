@@ -151,6 +151,10 @@ Usage: {{program_name}}
         Do not prepend any output with current time
     [--test-timeout=N]
         Set test timeout to N seconds
+    [--no-res-alignment]
+        Do not right align the result column in the output
+    [--no-wrap]
+        Do not wrap the output to the screen width
     [--help]
         Show this help
 """
@@ -205,7 +209,9 @@ def main():
                                            'collect-logs-after-error',
                                            'logs-task-regex=',
                                            'dont-report-time',
-                                           'test-timeout='])
+                                           'test-timeout=',
+                                           'no-res-alignment',
+                                           'no-wrap'])
     except getopt.GetoptError as err:
         bad_args_exit(str(err))
 
@@ -299,6 +305,10 @@ def main():
             log_collection_regex = a
         elif o == '--test-timeout':
             testlib.config['test_timeout'] = int(a)
+        elif o == '--no-res-alignment':
+            testlib.config['align_res'] = False
+        elif o == '--no-wrap':
+            testlib.config['wrap_output'] = False
         elif o in ('--help', '-h'):
             usage()
             exit(0)

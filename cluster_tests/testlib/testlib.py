@@ -36,6 +36,8 @@ def support_colors():
 config={'colors': support_colors(),
         'verbose': False,
         'screen_width': 80,
+        'align_res': True,
+        'wrap_output': True,
         'dry_run': False,
         'intercept_output': True,
         'report_time': True,
@@ -853,6 +855,8 @@ def start_silent_report(full_name):
 
 
 def right_aligned(s, taken=0, width=None):
+    if not config['align_res']:
+        return s
     if width is None:
         width = config['screen_width']
     corrected_width = max(0, width - taken)
@@ -1038,7 +1042,7 @@ def print_wrapped(str_to_print, indent=0, suffix="", max_width=None,
         max_line_length = max(1, max_width - overhead)
         no_wrap = (len(str_to_print) <= max_line_length)
 
-    if no_wrap:
+    if not config['wrap_output'] or no_wrap:
         # Name fits on one line or no wrapping is requested
         print_str = f"{prefix_str}{str_to_print}{suffix}"
         print(print_str, **kwargs)
