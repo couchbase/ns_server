@@ -16,60 +16,6 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--spec add_service_map_to_snapshot(atom(), list(), map()) -> map().
-add_service_map_to_snapshot(Node, Services, Snapshot) ->
-    lists:foldl(
-        fun(kv, AccSnapshot) ->
-                %% KV is handled in a special way
-                AccSnapshot;
-            (Service, S) ->
-                case maps:find({service_map, Service}, S) of
-                    error -> S#{{service_map, Service} => [Node]};
-                    {ok, Nodes} -> S#{{service_map, Service} => [Node | Nodes]}
-                end
-        end, Snapshot, Services).
-
-%% Map should be of the form Key => {State, Services (list)}.
--spec setup_node_config(map()) -> true.
-setup_node_config(NodesMap) ->
-    ClusterSnapshot =
-        maps:fold(
-            fun(Node, {State, Services}, Snapshot) ->
-                    S = add_service_map_to_snapshot(Node, Services, Snapshot),
-                    S#{{node, Node, membership} => State,
-                        {node, Node, services} => Services,
-                        {node, Node, failover_vbuckets} => []}
-            end, #{}, NodesMap),
-    fake_chronicle_kv:update_snapshot(ClusterSnapshot),
-
-    Nodes = maps:keys(NodesMap),
-    fake_chronicle_kv:update_snapshot(nodes_wanted, Nodes).
-
-%% Takes a list of bucket names (strings).
-%% Requires that node config is setup (i.e. we must be able to read from the
-%% config which nodes have the data service).
--spec setup_bucket_config(list()) -> true.
-setup_bucket_config(Buckets) ->
-    fake_chronicle_kv:update_snapshot(bucket_names, Buckets),
-
-    AllNodes = ns_cluster_membership:nodes_wanted(),
-    AllKVNodes = ns_cluster_membership:service_nodes(AllNodes, kv),
-    ActiveKVNodes = ns_cluster_membership:service_active_nodes(kv),
-
-    %% Using a simple generated map with 4 vBuckets and 1 replica (2 copies).
-    Map0 = mb_map:random_map(4, 2, AllKVNodes),
-    Map1 = mb_map:generate_map(Map0, 1, AllKVNodes, []),
-    Map = mb_map:promote_replicas(Map1, AllKVNodes -- ActiveKVNodes),
-
-    Val = [
-           {type, membase},
-           {servers, ActiveKVNodes},
-           {map, Map}
-          ],
-
-    fake_chronicle_kv:update_snapshot(
-      maps:from_list([{{bucket, B, props}, Val} || B <- Buckets])).
-
 manual_failover_test_() ->
     Nodes = #{
               'a' => {active, [kv]},
@@ -99,13 +45,13 @@ manual_failover_test_() ->
 manual_failover_test_setup(SetupConfig) ->
     config_profile:load_default_profile_for_test(),
     fake_ns_config:setup(),
-    fake_chronicle_kv:new(),
+    fake_chronicle_kv:setup(),
 
     fake_ns_config:setup_cluster_compat_version(?LATEST_VERSION_NUM),
     fake_chronicle_kv:setup_cluster_compat_version(?LATEST_VERSION_NUM),
 
-    setup_node_config(maps:get(nodes, SetupConfig)),
-    setup_bucket_config(maps:get(buckets, SetupConfig)),
+    fake_config_helpers:setup_node_config(maps:get(nodes, SetupConfig)),
+    fake_config_helpers:setup_bucket_config(maps:get(buckets, SetupConfig)),
 
     meck:new(chronicle),
     meck:expect(chronicle, check_quorum, fun() -> true end),
@@ -135,7 +81,7 @@ failover_test_teardown(_Config, PidMap) ->
 
     meck:unload(),
 
-    fake_chronicle_kv:unload(),
+    fake_chronicle_kv:teardown(),
     fake_ns_config:teardown(),
     config_profile:unload_profile_for_test().
 
@@ -225,8 +171,9 @@ manual_failover_post_network_partition_stale_config(SetupConfig, _R) ->
                         NewNodes = maps:put('c', {inactiveFailed, [kv]},
                                             OldNodes),
 
-                        setup_node_config(NewNodes),
-                        setup_bucket_config(maps:get(buckets, SetupConfig)),
+                        fake_config_helpers:setup_node_config(NewNodes),
+                        fake_config_helpers:setup_bucket_config(
+                          maps:get(buckets, SetupConfig)),
                         ok
                 end),
 
@@ -465,23 +412,6 @@ get_auto_failover_reported_errors(AutoFailoverPid) ->
 get_auto_failover_tick_period(AutoFailoverPid) ->
     auto_failover:get_tick_period_from_state(sys:get_state(AutoFailoverPid)).
 
-poll_for_counter_value(Counter, Value) ->
-    misc:poll_for_condition(
-      fun() ->
-              case chronicle_compat:get(counters, #{}) of
-                  {error, not_found} -> false;
-                  {ok, V} ->
-                      case proplists:is_defined(Counter, V) of
-                          true ->
-                              {_, CounterValue} =
-                                  proplists:get_value(Counter, V),
-                              CounterValue =:= Value;
-                          false ->
-                              false
-                      end
-              end
-      end, 5000, 100).
-
 perform_auto_failover(AutoFailoverPid) ->
     %% Override tick period. This lets us tick auto_failover as few times as
     %% possible in the test as we essentially don't have to wait for nodes to
@@ -508,7 +438,7 @@ perform_auto_failover(AutoFailoverPid) ->
 
 perform_auto_failover_and_poll_counter(AutoFailoverPid, Counter, Value) ->
     perform_auto_failover(AutoFailoverPid),
-    ?assert(poll_for_counter_value(Counter, Value)).
+    ?assert(mock_helpers:poll_for_counter_value(Counter, Value)).
 
 auto_failover_t(_SetupConfig, PidMap) ->
     #{auto_failover := AutoFailoverPid} = PidMap,
@@ -629,7 +559,7 @@ auto_failover_post_network_partition_stale_config(SetupConfig, PidMap) ->
                                      maps:get(partition_without_quorum,
                                               SetupConfig)),
 
-                        setup_node_config(NewNodes),
+                        fake_config_helpers:setup_node_config(NewNodes),
 
                         %% Set our new map ('c' has failed over)
                         ok = ns_bucket:set_map_and_uploaders("default",
@@ -700,56 +630,11 @@ graceful_failover_test_setup(SetupConfig) ->
         {name, <<"Group 1">>},
         {nodes, ['a', 'b', 'c']}]]),
 
-    %% Graceful failover does a rebalance so we need to mock many of the calls
-    %% made during that.
-    rebalance_test_mock_setup(),
-
-    mock_helpers:setup_mocks([rebalance_quirks], Pids).
-
-rebalance_test_mock_setup() ->
     fake_ns_config:update_snapshot(rebalance_out_delay_seconds, 0),
 
     meck:expect(chronicle_compat, push, fun(_) -> ok end),
 
-    meck:expect(janitor_agent, prepare_nodes_for_rebalance,
-                fun(_,_,_) ->
-                        ok
-                end),
-
-    meck:expect(janitor_agent, get_mass_dcp_docs_estimate,
-                fun (_, _, VBs) ->
-                        {ok, lists:duplicate(length(VBs), {0, 0, random_state})}
-                end),
-
-    meck:expect(janitor_agent, inhibit_view_compaction,
-                fun (_, _, _) -> nack end),
-
-    meck:expect(janitor_agent, uninhibit_view_compaction,
-                fun (_, _, _, _) -> ok end),
-
-    meck:expect(janitor_agent, bulk_set_vbucket_state,
-                fun (_, _, _, _) -> ok end),
-
-    meck:expect(janitor_agent, initiate_indexing,
-                fun (_, _, _, _, _) -> ok end),
-
-    meck:expect(janitor_agent, wait_dcp_data_move,
-                fun (_, _, _, _, _) -> ok end),
-
-    meck:expect(janitor_agent, get_vbucket_high_seqno,
-                fun (_, _, _, _) -> 0 end),
-
-    meck:expect(janitor_agent, wait_seqno_persisted,
-                fun (_, _, _, _, _) -> ok end),
-
-    meck:expect(janitor_agent, set_vbucket_state,
-                fun (_, _, _, _, _, _, _, _) -> ok end),
-
-    meck:expect(janitor_agent, wait_index_updated,
-                fun (_, _, _, _, _) -> ok end),
-
-    meck:expect(janitor_agent, dcp_takeover,
-                fun (_, _, _, _, _) -> ok end).
+    mock_helpers:setup_mocks([rebalance_quirks, ns_node_disco_events], Pids).
 
 graceful_failover_test_() ->
     Nodes = #{
@@ -780,7 +665,7 @@ graceful_failover_test_() ->
 graceful_failover_t(_SetupConfig, _PidMap) ->
     ok = ns_orchestrator:start_graceful_failover(['a']),
 
-    ?assert(poll_for_counter_value(graceful_failover_success, 1)),
+    ?assert(mock_helpers:poll_for_counter_value(graceful_failover_success, 1)),
 
     {ok, BucketConfig} = ns_bucket:get_bucket("default"),
     Servers = ns_bucket:get_servers(BucketConfig),
@@ -842,7 +727,7 @@ graceful_failover_incorrect_expected_topology(_SetupConfig, _R) ->
            #{expected_topology => #{active => ['a', 'b', 'c'],
                                     inactiveFailed => [],
                                     inactiveAdded => []}}),
-    ?assert(poll_for_counter_value(graceful_failover_success, 1)),
+    ?assert(mock_helpers:poll_for_counter_value(graceful_failover_success, 1)),
 
     %% Now, this is where it matters. Can we prevent the failover of c when we
     %% think that a is still active?
@@ -870,7 +755,7 @@ graceful_failover_incorrect_expected_topology(_SetupConfig, _R) ->
                                     inactiveFailed => ['a'],
                                     inactiveAdded => []}}),
 
-    ?assert(poll_for_counter_value(graceful_failover_success, 2)),
+    ?assert(mock_helpers:poll_for_counter_value(graceful_failover_success, 2)),
 
     erlang:process_flag(trap_exit, false).
 
@@ -888,7 +773,7 @@ graceful_failover_post_network_partition_stale_config(SetupConfig, _R) ->
                         NewNodes = maps:put('c', {inactiveFailed, [kv]},
                                             OldNodes),
 
-                        setup_node_config(NewNodes),
+                        fake_config_helpers:setup_node_config(NewNodes),
 
                         %% Reflect the change in server config in our new bucket
                         %% map too.
@@ -902,7 +787,7 @@ graceful_failover_post_network_partition_stale_config(SetupConfig, _R) ->
     ok = ns_bucket:set_map_and_uploaders("default", [['a', 'c']], undefined),
 
     ok = ns_orchestrator:start_graceful_failover(['a']),
-    ?assert(poll_for_counter_value(graceful_failover_fail, 1)).
+    ?assert(mock_helpers:poll_for_counter_value(graceful_failover_fail, 1)).
 
 multi_node_maxcount_test_config() ->
     #{buckets => ["default"],
@@ -953,7 +838,7 @@ multi_node_failover_maxcount_test(_SetupConfig, Pids) ->
 
     perform_auto_failover(AutoFailoverPid),
 
-    ?assert(poll_for_counter_value(failover_complete, 1)),
+    ?assert(mock_helpers:poll_for_counter_value(failover_complete, 1)),
 
     ?assert(meck:called(service_api, is_safe, [index, '_']),
             "service_api:is_safe should be called for index service"),
@@ -982,7 +867,7 @@ kv_maxcount_failover_test(_SetupConfig, Pids) ->
     perform_auto_failover(AutoFailoverPid),
 
     %% Wait for failover to complete
-    ?assert(poll_for_counter_value(failover_complete, 1)),
+    ?assert(mock_helpers:poll_for_counter_value(failover_complete, 1)),
 
     ?assert(meck:called(service_api, is_safe, [index, '_']),
             "service_api:is_safe should be called for index service"),

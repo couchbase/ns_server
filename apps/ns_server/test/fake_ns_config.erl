@@ -48,6 +48,8 @@
 
 %% API
 -export([setup/0,
+         setup_ns_config_events/0,
+         teardown_ns_config_events/0,
          teardown/0,
          update_snapshot/1,
          update_snapshot/2,
@@ -64,15 +66,34 @@
 %% --------------------
 setup() ->
     ets:new(?TABLE_NAME, [public, named_table]),
-    {ok, _} = gen_event:start_link({local, ns_config_events}),
+    setup_ns_config_events(),
     meck_setup().
 
 teardown() ->
     ets:delete(?TABLE_NAME),
-    Pid = whereis(ns_config_events),
-    unlink(Pid),
-    misc:terminate_and_wait(Pid, normal),
+    teardown_ns_config_events(),
     ?meckUnload(ns_config).
+
+%% Both fake_chronicle_kv and fake_ns_config rely on this, so we need to
+%% either enforce a start/stop order, or make sure that it does not matter
+%% (which is what we do here).
+setup_ns_config_events() ->
+    case whereis(ns_config_events) of
+        undefined ->
+            {ok, _} = gen_event:start_link({local, ns_config_events});
+        _ ->
+            ok
+    end.
+
+teardown_ns_config_events() ->
+    Pid = whereis(ns_config_events),
+    case Pid of
+        undefined ->
+            ok;
+        _ ->
+            unlink(Pid),
+            misc:terminate_and_wait(Pid, normal)
+    end.
 
 %% -------------------------
 %% API - Snapshot Management
@@ -230,6 +251,13 @@ meck_setup_setters() ->
     meck:expect(ns_config, set,
                 fun(Key, Value) ->
                         update_snapshot(Key, Value)
+                end),
+
+    meck:expect(ns_config, run_txn_with_config,
+                fun(Config, Body) ->
+                        Body(Config, fun(Key, Value, _Cfg) ->
+                                             update_snapshot(Key, Value)
+                                     end)
                 end).
 
 %% ----------------------------------

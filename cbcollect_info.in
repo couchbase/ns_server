@@ -1364,7 +1364,7 @@ def read_local_token(path, gosecrets_cfg_path, master_pass):
             f'code: {r.stderr}')
         return ""
 
-    return r.stdout.rstrip()
+    return r.stdout.strip()
 
 
 def get_localtoken_creds_fun(guts, master_pass):
@@ -3233,7 +3233,7 @@ def main():
 
 
 def exec_name(name):
-    if os.name == 'nt':
+    if sys.platform == 'win32' or sys.platform == 'cygwin':
         name += ".exe"
     return name
 
