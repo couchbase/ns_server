@@ -21,9 +21,12 @@ def tag_from_str(tag_str: str) -> Union[Tag, str]:
 
 def tag(tag_enum: Tag):
     """
-    Use @tag(<str>) to give a test a tag.
+    Use @tag(Tag) to give a test a tag.
     They can then be filtered via '--with-tags' or '--without-tags'
     """
+    if not isinstance(tag_enum, Tag):
+        raise ValueError(f"{tag_enum} is not a Tag")
+
     def f(t):
         if hasattr(t, "_tags"):
             t._tags.append(tag_enum)
