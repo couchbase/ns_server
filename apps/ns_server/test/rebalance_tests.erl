@@ -29,7 +29,9 @@ rebalance_test_() ->
              {"Add node",
               fun add_node_t/2},
              {"Expected topology test",
-              fun expected_topology_t/2}
+              fun expected_topology_t/2},
+             {"Expected topology stale config",
+              fun expected_topology_stale_config_t/2}
             ],
 
     %% foreachx here to let us pass parameters to setup.
@@ -48,7 +50,7 @@ rebalance_test_setup(SetupConfig) ->
     fake_ns_config:setup_cluster_compat_version(?LATEST_VERSION_NUM),
     fake_chronicle_kv:setup_cluster_compat_version(?LATEST_VERSION_NUM),
 
-    fake_config_helpers:setup_node_config(maps:get(nodes, SetupConfig)),
+    fake_config_helpers:setup_cluster_config(maps:get(nodes, SetupConfig)),
     fake_config_helpers:setup_bucket_config(maps:get(buckets, SetupConfig)),
 
     fake_ns_config:update_snapshot(
@@ -148,6 +150,34 @@ expected_topology_t(_SetupConfig, _) ->
                                      inactiveAdded => ['b']}}),
 
     %% And now we have the full topology and this should succeed
+    expect_rebalance_success(
+      Params#{expected_topology => #{active => [node()],
+                                     inactiveAdded => ['b'],
+                                     inactiveFailed => []}}).
+
+expected_topology_stale_config_t(_SetupConfig, _) ->
+    Params = #{known_nodes => ns_node_disco:nodes_wanted(),
+               eject_nodes => [],
+               services => all,
+               delta_recovery_buckets => [],
+               desired_services_nodes => #{}
+              },
+
+    meck:expect(chronicle_compat, pull,
+                fun() ->
+                        fake_chronicle_kv:update_snapshot(
+                          {node, 'b', membership}, inactiveFailed)
+                end),
+
+    expect_rebalance_failure(
+      Params#{expected_topology => #{active => [node()],
+                                     inactiveAdded => ['b'],
+                                     inactiveFailed => []}}),
+
+    meck:delete(chronicle_compat, pull, 0),
+    fake_chronicle_kv:update_snapshot(
+      {node, 'b', membership}, inactiveAdded),
+
     expect_rebalance_success(
       Params#{expected_topology => #{active => [node()],
                                      inactiveAdded => ['b'],
