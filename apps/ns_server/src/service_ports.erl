@@ -25,7 +25,8 @@
          get_external_host_and_ports/4,
          get_ports_for_services/3,
          portname_to_secure_portname/1,
-         get_raw_external_host_and_ports/2]).
+         get_raw_external_host_and_ports/2,
+         all_port_restnames/0]).
 
 -include("ns_common.hrl").
 
@@ -215,6 +216,9 @@ services_port_keys(Services) ->
 
 all_port_keys() ->
     [P#port.key || P <- all_ports()].
+
+all_port_restnames() ->
+    [P#port.rest || P <- all_ports()].
 
 find_by_rest_name(RestName) when is_list(RestName) ->
     RestNameBin = list_to_binary(RestName),

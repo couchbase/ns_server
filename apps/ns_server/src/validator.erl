@@ -76,7 +76,8 @@
          mutually_exclusive/3,
          non_empty_string/2,
          report_errors_for_one/3,
-         validate_field_path/2]).
+         validate_field_path/2,
+         no_duplicate_values/1]).
 
 %% Used for testing validators.
 -ifdef(TEST).
@@ -796,6 +797,31 @@ no_duplicate_keys(#state{kv = Props} = State) ->
             return_error(DuplicateKey, "Key specified more than once", State)
     end.
 
+value_frequencies([], Counts) ->
+    maps:to_list(Counts);
+value_frequencies([H|T], Counts) ->
+    Inc = fun(Value) -> Value + 1 end,
+    NewCounts = maps:update_with(H, Inc, 1, Counts),
+    value_frequencies(T, NewCounts).
+
+% Helper function for no_duplicate_values
+has_duplicate_values(Props) ->
+    Values = [V || {_, V} <- Props],
+    Counts = value_frequencies(Values, #{}),
+    DuplicateValues = [A || {A, B} <- Counts, B > 1],
+    [name_to_list(A) || {A, B} <- Props, lists:member(B, DuplicateValues)].
+
+no_duplicate_values(#state{kv = Props} = State) ->
+    case has_duplicate_values(Props) of
+        [] ->
+            State;
+        DuplicateKeysList ->
+            DuplicateKeysMsg = lists:join(", ", DuplicateKeysList),
+            return_error("_", io_lib:format(
+                                "Keys specified have duplicate values: ~s",
+                                [DuplicateKeysMsg]), State)
+    end.
+
 required(Name, #state{kv = Props} = State) ->
     functools:chain(
       State,
@@ -1171,7 +1197,7 @@ json_root_test() ->
                                   string(key, _)]),
     ?assertEqual("value", get_value(key, State2)).
 
-check_for_duplicates_test() ->
+check_for_duplicate_keys_test() ->
     %% Duplicate key in tuple
     Kv1 = [{key1, value1}, {key2, value2}, {key1, value3}],
     State1 = #state{kv = Kv1},
@@ -1229,6 +1255,34 @@ check_for_duplicates_test() ->
     #state{errors = Errors9} = State9a,
     ?assertEqual([{"apple","Key specified more than once"}], Errors9),
 
+    ok.
+
+check_for_duplicates_values_test() ->
+    %% Duplicate key in tuple
+    Kv1 = [{key1, value1}, {key2, value2}, {key3, value2}],
+    State1 = #state{kv = Kv1},
+    State1a = no_duplicate_values(State1),
+    #state{errors = Errors1} = State1a,
+    DuplicateKeys = ["key2", ", ", "key3"],
+    ?assertEqual(
+       [{"_", io_lib:format(
+                "Keys specified have duplicate values: ~s",
+                [DuplicateKeys])}], Errors1),
+
+    %% No duplicates in tuples
+    Kv2 = [{key1, value1}, {key2, value2}, {key3, value3}],
+    State2 = #state{kv = Kv2},
+    ?assertEqual(State2, no_duplicate_values(State2)),
+
+    Kv3 = [{key1, value1}, {"key2", value2}, {key3, value2}],
+    State3 = #state{kv = Kv3},
+    State3a = no_duplicate_values(State3),
+    #state{errors = Errors3} = State3a,
+    DuplicateKeys = ["key2", ", ", "key3"],
+    ?assertEqual(
+       [{"_", io_lib:format(
+                "Keys specified have duplicate values: ~s",
+                [DuplicateKeys])}], Errors3),
     ok.
 
 string_array_test() ->

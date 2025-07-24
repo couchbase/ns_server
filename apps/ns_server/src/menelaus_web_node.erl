@@ -1156,68 +1156,24 @@ validate_settings_paths(Paths) ->
 
     ResPaths.
 
-parse_validate_ports(Params) ->
-    lists:foldl(
-      fun ({RestName, Value}, Acc) ->
-              try
-                  PortKey =
-                      case service_ports:find_by_rest_name(RestName) of
-                          undefined ->
-                              throw({error, [<<"No such port.">>]});
-                          P ->
-                              P
-                      end,
-                  Port = menelaus_util:parse_validate_port_number(Value),
-                  [{PortKey, Port} | Acc]
-              catch
-                  throw:{error, [Msg]} ->
-                      menelaus_util:web_exception(
-                        400, io_lib:format("Invalid Port ~p : ~s",
-                                           [RestName, Msg]))
+get_ports(Params) ->
+    [{service_ports:find_by_rest_name(
+        atom_to_list(RestName)), Value} || {RestName, Value} <- Params].
+
+parse_validate_hostname(Name, State) ->
+    validator:validate(
+      fun(Hostname) ->
+              case misc:is_valid_hostname(Hostname) of
+                  true ->
+                      ok;
+                  false ->
+                      {error,  io_lib:format(
+                                 "Invalid hostname specified. "
+                                 "Hostname should be ~p characters or less and "
+                                 "either a valid IPv4, IPv6, or FQDN",
+                                 [?MAX_HOSTNAME_LENGTH])}
               end
-      end, [], Params).
-
-parse_validate_hostname(undefined) ->
-    menelaus_util:web_exception(400, "hostname should be specified");
-parse_validate_hostname(Hostname) ->
-    HN = string:trim(Hostname),
-    case length(HN) =< ?MAX_HOSTNAME_LENGTH andalso
-         misc:is_valid_hostname(HN) of
-        true ->
-            HN;
-        false ->
-            menelaus_util:web_exception(
-              400, io_lib:format(
-                     "Invalid hostname specified. "
-                     "Hostname should be ~p characters or less and "
-                     "either a valid IPv4, IPv6, or FQDN",
-                     [?MAX_HOSTNAME_LENGTH]))
-    end.
-
-value_frequencies([], Counts) ->
-    maps:to_list(Counts);
-value_frequencies([H|T], Counts) ->
-    Inc = fun(Value) -> Value + 1 end,
-    NewCounts = maps:update_with(H, Inc, 1, Counts),
-    value_frequencies(T, NewCounts).
-
-check_duplicate_ports(Ports) ->
-    PortValues = [V || {_, V} <- Ports],
-    Counts = value_frequencies(PortValues, #{}),
-    DuplicatePorts = [A || {A, B} <- Counts, B > 1],
-    [A || {A, B} <- Ports, lists:member(B, DuplicatePorts)].
-
--ifdef(TEST).
-check_duplicate_ports_test() ->
-    ?assertEqual([], check_duplicate_ports([])),
-    ?assertEqual([rest_port, query_port],
-                 check_duplicate_ports(
-                   [{rest_port, 1050}, {capi_port, 2000}, {query_port, 1050},
-                    {fts_http_port, 5000}, {cbas_http_port, 6000}])).
--endif.
-
-get_rest_names(Keynames) ->
-    [service_ports:find_rest_name_by_port_key(P) || P <- Keynames].
+      end, Name, State).
 
 %% The below port validations are performed:
 %%  - Provisioned: Verify if all ports being setup for "external" have their
@@ -1226,52 +1182,59 @@ get_rest_names(Keynames) ->
 %%    external ports for any service, because we don't know which ones will
 %%    eventually be selected.
 parse_validate_external_params(Params) ->
-    Hostname = parse_validate_hostname(proplists:get_value("hostname", Params)),
-    Ports = parse_validate_ports(proplists:delete("hostname", Params)),
-    DuplicateKeynames = check_duplicate_ports(Ports),
-    maybe
-        [] ?= DuplicateKeynames,
-        ValidResponse = [{external, [{hostname, Hostname}, {ports, Ports}]}],
-        case ns_config_auth:is_system_provisioned() of
-            true ->
-                Services = [rest | ns_cluster_membership:node_services(node())],
-                ServicePorts = service_ports:services_port_keys(Services),
-                {_Allowed, NotAllowed} =
-                    lists:partition(lists:member(_, ServicePorts),
-                                    [V || {V, _} <- Ports]),
-                case NotAllowed of
-                    [] ->
-                        ValidResponse;
-                    _ ->
-                        NAPorts = get_rest_names(NotAllowed),
-                        Msg = io_lib:format(
-                                "Cannot set external ports ~p as "
-                                "services are unavailable on the node.",
-                                [NAPorts]),
-                        {error, Msg}
-                end;
-            false ->
-                ValidResponse
-        end
-    else
-        [_|_] ->
-            Printing = get_rest_names(DuplicateKeynames),
-            FormatPrint = lists:join(" ", Printing),
-            {error, io_lib:format("Some ports have the same number: ~s",
-                                  [FormatPrint])}
+    Hostname = proplists:get_value(hostname, Params),
+    Ports = get_ports(proplists:delete(hostname, Params)),
+    ValidResponse = [{external, [{hostname, Hostname}, {ports, Ports}]}],
+    case ns_config_auth:is_system_provisioned() of
+        true ->
+            Services = [rest | ns_cluster_membership:node_services(node())],
+            ServicePorts = service_ports:services_port_keys(Services),
+            {_Allowed, NotAllowed} =
+                lists:partition(lists:member(_, ServicePorts),
+                                [V || {V, _} <- Ports]),
+            case NotAllowed of
+                [] ->
+                    ValidResponse;
+                _ ->
+                    NAPorts = [service_ports:find_rest_name_by_port_key(P)
+                               || P <- NotAllowed],
+                    Msg = io_lib:format(
+                            "Cannot set external ports ~p as "
+                            "services are unavailable on the node.",
+                            [NAPorts]),
+                    {error, Msg}
+            end;
+        false ->
+            ValidResponse
     end.
+
+altaddr_validators() ->
+    PortAtoms =
+        [binary_to_atom(P) || P <- service_ports:all_port_restnames(),
+                              P =/= undefined],
+    [validator:required(hostname,_),
+     validator:trimmed_string(hostname, _),
+     validator:length(hostname, 0, ?MAX_HOSTNAME_LENGTH, _),
+     parse_validate_hostname(hostname, _)
+    ] ++ lists:map(fun(A)-> validator:number(
+                              A, 1024, 65535, _) end, PortAtoms) ++
+        [validator:no_duplicate_values(_),
+         validator:unsupported(_)].
 
 %% This replaces any existing alternate_addresses config of this node.
 %% For now this is fine because external is only element in alternate_addresses.
 handle_node_altaddr_external(Req) ->
-    Params = mochiweb_request:parse_post(Req),
-    case parse_validate_external_params(Params) of
-        {error, M} ->
-            menelaus_util:reply_text(Req, M, 400);
-        External ->
-            ns_config:set({node, node(), alternate_addresses}, External),
-            menelaus_util:reply(Req, 200)
-    end.
+    Fun = fun(Params) ->
+                  case parse_validate_external_params(Params) of
+                      {error, M} ->
+                          menelaus_util:reply_text(Req, M, 400);
+                      External ->
+                          ns_config:set(
+                            {node, node(), alternate_addresses}, External),
+                          menelaus_util:reply(Req, 200)
+                  end
+          end,
+    validator:handle(Fun, Req, form, altaddr_validators()).
 
 %% Delete alternate_addresses as external is the only element in
 %% alternate_addresses.
@@ -1309,7 +1272,7 @@ verify_net_config_allowed(State) ->
     NodeEncryption = validator:get_value(nodeEncryption, State),
     AFamily = validator:get_value(afamily, State),
     AutoFailover = ns_config_auth:is_system_provisioned() andalso
-                   auto_failover:is_enabled(),
+        auto_failover:is_enabled(),
     Encrypted = misc:should_cluster_data_be_encrypted(),
     IsCommunity = not cluster_compat_mode:is_enterprise(),
 
