@@ -882,6 +882,25 @@ class Cluster:
             testlib.get_succ(self, f"/pools/default/buckets/{name}"),
             "non-json response for " + f"/pools/default/buckets/{name}")
 
+    def get_counters(self):
+        r = testlib.get_succ(self, f'/pools/default/')
+        return r.json()['counters']
+
+    def get_counter(self, counter_name):
+        counters = self.get_counters()
+        if counter_name not in counters:
+            return 0
+
+        return self.get_counters()[counter_name]
+
+    def poll_for_counter_value(self, counter_name, value, timeout=60,
+                               sleep_time=0.5):
+        testlib.poll_for_condition(
+            lambda: self.get_counter(counter_name) == value,
+            timeout=timeout,
+            sleep_time=sleep_time
+        )
+
 def get_services_string(services: List[Service]):
     return ",".join(services_to_strings(services))
 

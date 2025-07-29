@@ -78,7 +78,8 @@ from testsets import \
     jwt_tests, \
     bucket_dirs_cleanup_tests, \
     fusion_tests, \
-    metakv_tests
+    metakv_tests, \
+    rebalance_tests
 
 tmp_cluster_dir = os.path.join(testlib.get_cluster_test_dir(),
                                "test_cluster_data")
