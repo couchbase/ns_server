@@ -159,7 +159,9 @@ class CbcollectTest(testlib.BaseTestSet):
         node = self.cluster.connected_nodes[0]
         password = change_password(node)
         set_cfg_encryption(node, 'nodeSecretManager', -1)
-        tasks = ['Couchbase config', 'Chronicle dump', 'Chronicle logs']
+        tasks = [re.escape(t) for t in ['Couchbase config',
+                                        'Chronicle dump',
+                                        'Chronicle logs']]
         task_regexp = '|'.join(tasks) + '|cbcollect_info'
 
         utcnow = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -333,7 +335,9 @@ def run_cbcollect(node, path_to_zip, redaction_level=None, task_regexp=None,
 
 
 def collect_config_and_chronicle(node, zip_filename, **kwargs):
-    tasks = ['Couchbase config', 'Chronicle dump', 'Chronicle logs']
+    tasks = [re.escape(t) for t in ['Couchbase config',
+                                    'Chronicle dump',
+                                    'Chronicle logs']]
     task_regexp = '|'.join(tasks) + '|cbcollect_info'
 
     run_cbcollect(node, zip_filename, task_regexp=task_regexp, **kwargs)
@@ -376,18 +380,26 @@ def assert_file_is_redacted(zip_obj, filename):
                    f'line {line} in {filename} is unredacted'
 
 
-def assert_tasks_are_successfull(zip_obj, filename, tasknames):
-    regex_dict = {t: re.compile(f'{t}.* - OK') for t in tasknames}
-    res = {t: False for t in tasknames}
+def assert_tasks_are_successfull(zip_obj, filename, task_regexes):
+    success_regex = re.compile(r'- OK')
+    precompiled_regexes = {t: re.compile(t) for t in task_regexes}
+    res = {t: None for t in task_regexes}
     with zip_obj.open(filename) as f:
         for line in f.readlines():
-            for t in res:
-                if not res[t]:
-                    if regex_dict[t].search(line.decode()) is not None:
-                        print(f'task "{t}" found in log')
-                        res[t] = True
+            line_str = line.decode()
+            for task_name, task_regex in precompiled_regexes.items():
+                if task_regex.search(line_str) is not None:
+                    if success_regex.search(line_str) is not None:
+                        print(f'task "{task_name}" succeeded')
+                        if res[task_name] is None:
+                            res[task_name] = True
+                    else:
+                        print(f'task "{task_name}" failed: {line_str}')
+                        res[task_name] = False
+
     for t in res:
-        assert res[t], f'Failed to find task "{t}" in logs'
+        assert res[t] is not None, f'Failed to find task "{t}" in logs'
+        assert res[t], f'Task "{t}" failed'
 
 
 def assert_cbcollect_returns_incorrect_password(node, zip_dir, **kwargs):
@@ -453,6 +465,22 @@ class FullCbcollectTest(testlib.BaseTestSet):
         for f in self.zip_obj.filelist:
             assert f.filename.find(":") == -1
 
+    @tag(Tag.LowUrgency)
+    def cbcollect_metrics_test(self):
+        dirname_escaped = re.escape(cbcollect_dirname(self.zip_obj))
+        regex = rf'{dirname_escaped}\/stats_snapshot\/.+\/meta\.json$'
+        print(f'regex: {regex}')
+        found = False
+        all_filenames = self.zip_obj.namelist()
+        for f in all_filenames:
+            if re.match(regex, f):
+                print(f'found stats block: {f}')
+                found = True
+        assert found, f'no stats blocks found: {", ".join(all_filenames)}'
+        tasks_to_check = ['Generate prometheus snapshot',
+                          'Collecting .*/stats_data/snapshots/.*']
+        log = cbcollect_filename(self.zip_obj, 'cbcollect_info.log')
+        assert_tasks_are_successfull(self.zip_obj, log, tasks_to_check)
 
 
 # extracted for use in any test that uses the cbcollect API to start collection
