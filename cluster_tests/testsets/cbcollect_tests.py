@@ -168,11 +168,11 @@ class CbcollectTest(testlib.BaseTestSet):
                           data = {'nodes': otp_node,
                                   'taskRegexp': task_regexp})
 
-        def check_cbcollect():
-            return get_collected_file(node, otp_node, utcnow)
+        file = testlib.poll_for_condition(
+                 lambda: get_collected_file(node, otp_node, utcnow),
+                 sleep_time=1, attempts=60, verbose=True, retry_on_assert=True)
 
-        file = testlib.poll_for_condition(check_cbcollect, sleep_time=1,
-                                          attempts=60, verbose=True)
+        assert file is not None, 'log collection failed'
 
         with zipfile.ZipFile(file, mode="r") as z:
             log = cbcollect_filename(z, 'cbcollect_info.log')
@@ -403,50 +403,57 @@ def assert_cbcollect_returns_incorrect_password(node, zip_dir, **kwargs):
           f'{incorrect_password_msg} not present in ' \
           f'cbcollect error output: {err}'
 
-# Despite the issue being only on Windows, if we test it on linux, we will
-# still see the colons (:) replaced.
-class CbcollectIpv6Test(testlib.BaseTestSet):
+# We can't afford running many full cbcollects, but we can
+# run one full collection and then use the collected file to test various
+# things.
+# The goal of this test is to:
+#  1. Verify that full cbcollect works
+#  2. Verify that full cbcollect contains all the files we expect it to contain
+class FullCbcollectTest(testlib.BaseTestSet):
     @staticmethod
     def requirements():
         return [ClusterRequirements(num_nodes=2, num_connected=2,
                                     edition="Enterprise", afamily="ipv6")]
 
     def setup(self):
-        pass
-
-    def teardown(self):
-        pass
-
-    def test_teardown(self):
-        pass
-
-    @tag(Tag.LowUrgency)
-    def ipv6_log_collection_test(self):
         node = self.cluster.connected_nodes[0]
         utcnow = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         otp_node = node.otp_node()
 
-        # make sure we are actually using one that contains ':'
-        assert otp_node.find(":") != -1
-
-        # The other API test doesn't run a "full" cbcollect, so run a full one
-        # here for increased variety.
         response = testlib.post_succ(node, '/controller/startLogsCollection',
                                      data = {'nodes': otp_node})
-        assert response.json() == []
+        assert response.json() == [], \
+               "unexpected response from startLogsCollection"
 
-        def check_cbcollect():
-            return get_collected_file(node, otp_node, utcnow)
+        the_file = testlib.poll_for_condition(
+                     lambda: get_collected_file(node, otp_node, utcnow),
+                     sleep_time=5, attempts=120, verbose=True,
+                     retry_on_assert=True)
 
-        the_file = testlib.poll_for_condition(check_cbcollect, sleep_time=5,
-                                              attempts=120, verbose=True)
-        assert type(the_file) == str
-        assert the_file.find(":") == -1
+        assert the_file is not None, 'log collection failed'
 
-        # then unzip and ensure the inner folder also doesn't contain ":"
-        with zipfile.ZipFile(the_file, mode="r") as z:
-            for f in z.filelist:
-                assert f.filename.find(":") == -1
+        self.zip_path = the_file
+        self.zip_name = os.path.basename(self.zip_path)
+        self.otp_node = otp_node
+        self.zip_obj = zipfile.ZipFile(self.zip_path, mode="r")
+
+    def teardown(self):
+        self.zip_obj.close()
+
+    def test_teardown(self):
+        pass
+
+    # Despite the issue being only on Windows, if we test it on linux, we will
+    # still see the colons (:) replaced.
+    @tag(Tag.LowUrgency)
+    def ipv6_log_collection_test(self):
+        # make sure we are actually using one that contains ':'
+        assert self.otp_node.find(":") != -1
+        assert self.zip_name.find(":") == -1
+        for f in self.zip_obj.filelist:
+            assert f.filename.find(":") == -1
+
+
 
 # extracted for use in any test that uses the cbcollect API to start collection
 def get_collected_file(node, otp_node, utcnow):
@@ -455,14 +462,15 @@ def get_collected_file(node, otp_node, utcnow):
     for t in r:
         if t['type'] == 'clusterLogsCollection':
             if t['node'] != otp_node:
-                return False
+                continue
             if t['ts'] < utcnow:
-                return False
-            if t['status'] != 'completed':
-                return False
-            print(f'SUCC: {t["perNode"]}')
-            assert t["perNode"][otp_node]['status'] == 'collected', \
-                f'log collection failed: {t}'
+                continue
+            assert t['status'] == 'completed', "Collection not yet completed"
+            print(f'Collection completed: {t["perNode"]}')
 
+            if t["perNode"][otp_node]['status'] != 'collected':
+                print(f'log collection failed: {t["perNode"][otp_node]}')
+                return None
             return t['perNode'][otp_node]['path']
-    return False
+
+    assert False, f"No collection found for {otp_node}"
