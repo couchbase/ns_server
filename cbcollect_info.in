@@ -2437,13 +2437,12 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
 
 def find_script(name, silent=False):
     path = find_binary(name)
-    if os.path.exists(path):
+    if path is not None:
         if not silent:
             log("Found %s: %s" % (name, path))
-        return os.path.abspath(path)
-
-    log(f"Could not find script {name}")
-    return None
+    else:
+        log(f"Could not find script {name}")
+    return path
 
 
 def get_guts_common(initargs_path, script_path, args, master_password=None,
