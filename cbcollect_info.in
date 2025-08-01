@@ -1348,7 +1348,15 @@ def make_cbstats_all_buckets_task(kind, memcached_pass_fun, guts):
 
 
 def read_local_token(path, gosecrets_cfg_path, master_pass):
+    # Note: this error message is used in cluster tests to check that the error
+    # is not logged. Don't change it.
+    error_msg = 'Could not read localtoken'
+
     cbcat_path = find_script(exec_name("cbcat"), silent=True)
+    if cbcat_path is None:
+        log(f'{error_msg}: cbcat not found')
+        return ""
+
     args = [cbcat_path, '--with-gosecrets', gosecrets_cfg_path,
             '--password', '-', path]
     if master_pass is None:
@@ -1356,12 +1364,11 @@ def read_local_token(path, gosecrets_cfg_path, master_pass):
     r = subprocess.run(args, input=master_pass, text=True, capture_output=True)
 
     if r.returncode == 2: # cbcat returns 2 if and only it is incorrect password
-        log('Could not read localtoken: Invalid master password')
+        log(f'{error_msg}: Invalid master password')
         return ""
 
     if r.returncode != 0:
-        log('Could not read localtoken: cbcat returned non zero return ' \
-            f'code: {r.stderr}')
+        log(f'{error_msg}: cbcat returned non zero return code: {r.stderr}')
         return ""
 
     return r.stdout.strip()

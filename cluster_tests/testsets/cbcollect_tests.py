@@ -482,6 +482,17 @@ class FullCbcollectTest(testlib.BaseTestSet):
         log = cbcollect_filename(self.zip_obj, 'cbcollect_info.log')
         assert_tasks_are_successfull(self.zip_obj, log, tasks_to_check)
 
+    @tag(Tag.LowUrgency)
+    def errors_in_cbcollect_log_test(self):
+        must_not_contain_list = ['Could not read localtoken']
+        log = cbcollect_filename(self.zip_obj, 'cbcollect_info.log')
+        with self.zip_obj.open(log) as f:
+            for line in f.readlines():
+                line_str = line.decode()
+                for error in must_not_contain_list:
+                    assert error not in line_str, \
+                           f'error "{error}" found in {log}'
+
 
 # extracted for use in any test that uses the cbcollect API to start collection
 def get_collected_file(node, otp_node, utcnow):
