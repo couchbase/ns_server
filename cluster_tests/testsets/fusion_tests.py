@@ -46,6 +46,8 @@ class FusionTests(testlib.BaseTestSet):
         self.cluster.wait_nodes_up()
         testlib.diag_eval(self.cluster,
                           'chronicle_kv:delete(kv, fusion_config).')
+        testlib.diag_eval(self.cluster,
+                          'chronicle_kv:delete(kv, fusion_storage_snapshots).')
 
     @staticmethod
     def requirements():
@@ -362,6 +364,42 @@ class FusionTests(testlib.BaseTestSet):
         self.assert_bucket_state('test', 'disabled')
         self.assert_bucket_state('test1', 'disabled')
         self.assert_namespaces([])
+
+    def get_snapshot_uuids(self):
+        resp = testlib.diag_eval(
+            self.cluster,
+            'List = fusion_uploaders:get_stored_snapshot_uuids(),' +
+            'JsonList = [{[{plan_uuid, PlanUUID},' +
+            '              {bucket_uuid, BucketUUID},' +
+            '              {num_vbuckets, NVBuckets}]} ||' +
+            '                  {PlanUUID, BucketUUID, NVBuckets} <- List],' +
+            '{json, JsonList}.')
+        return json.loads(resp.text)
+
+    def snapshot_management_test(self):
+        self.init_fusion()
+        testlib.post_succ(self.cluster, '/fusion/enable')
+        self.wait_for_state('enabling', 'enabled')
+
+        second_node = self.cluster.spare_node()
+        self.create_bucket('test', 1)
+        bucket_uuid = self.cluster.get_bucket_uuid('test')
+
+        self.cluster.add_node(second_node, services=[Service.KV])
+
+        otp_nodes = testlib.get_otp_nodes(self.cluster)
+
+        acc_plan = self.prepare_rebalance(otp_nodes)
+        plan_uuid = acc_plan["planUUID"]
+        plan_nodes = acc_plan["nodes"]
+
+        uuids = self.get_snapshot_uuids()
+
+        assert len(uuids) == 1
+        snapshot_uuid = uuids[0]
+        assert snapshot_uuid["plan_uuid"] == plan_uuid
+        assert snapshot_uuid["bucket_uuid"] == bucket_uuid
+        assert snapshot_uuid["num_vbuckets"] == 16
 
 def assert_json_error(json, field, prefix):
     assert isinstance(json, dict)

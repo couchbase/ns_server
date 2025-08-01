@@ -34,7 +34,9 @@
          maybe_grab_heartbeat_info/0,
          maybe_advance_state/0,
          config_key/0,
-         create_snapshot_uuid/2]).
+         create_snapshot_uuid/2,
+         get_stored_snapshot_uuids/0,
+         store_snapshots_uuid/3]).
 
 -define(GET_DELETION_STATE_TIMEOUT, ?get_timeout(get_deletion_state, 5000)).
 
@@ -788,3 +790,27 @@ fetch_fusion_stats([{BucketName, BucketConfig} | Rest], Acc) ->
 -spec create_snapshot_uuid(string() | binary(), binary()) -> string().
 create_snapshot_uuid(PlanUUID, BucketUUID) ->
     lists:flatten(io_lib:format("~s:~s", [PlanUUID, BucketUUID])).
+
+-spec get_stored_snapshot_uuids() -> [{binary(), binary(), integer()}].
+get_stored_snapshot_uuids() ->
+    chronicle_compat:get(direct, snapshots_key(), #{default => []}).
+
+snapshots_key() ->
+    fusion_storage_snapshots.
+
+-spec store_snapshots_uuid(binary(), binary(), integer()) -> ok.
+store_snapshots_uuid(PlanUUID, BucketUUID, NumVBuckets) ->
+    {ok, _} =
+        chronicle_kv:txn(
+          kv,
+          fun (Txn) ->
+                  Entry = {PlanUUID, BucketUUID, NumVBuckets},
+                  {commit, [{set, snapshots_key(),
+                             case chronicle_kv:txn_get(snapshots_key(), Txn) of
+                                 {ok, {List, _}} ->
+                                     [Entry | List];
+                                 {error, not_found} ->
+                                     [Entry]
+                             end}]}
+          end),
+    ok.

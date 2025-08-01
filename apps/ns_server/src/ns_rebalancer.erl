@@ -2208,6 +2208,9 @@ do_prepare_bucket_fusion_rebalance(PlanUUID, Bucket, BucketUUID, BucketConfig,
                 end
         end,
 
+    fusion_uploaders:store_snapshots_uuid(
+      PlanUUID, BucketUUID, ns_bucket:get_num_vbuckets(BucketConfig)),
+
     case (catch rpc:call(NodeToQuery, ?MODULE, get_fusion_storage_snapshot,
                          [Bucket, VBucketsToQuery, SnapshotUUID, Validity],
                          ?GET_FUSION_STORAGE_SNAPSHOT_TIMEOUT)) of
@@ -2258,6 +2261,7 @@ prepare_rebalance_test_() ->
              ok = meck:new(rpc, [unstick]),
              ok = meck:new(menelaus_web_node, [passthrough]),
              ok = meck:new(ns_config, [passthrough]),
+             ok = meck:new(fusion_uploaders, [passthrough]),
              ok = meck:expect(
                     rpc, call,
                     fun (_, ?MODULE, get_fusion_storage_snapshot,
@@ -2268,12 +2272,15 @@ prepare_rebalance_test_() ->
              ok = meck:expect(menelaus_web_node, build_node_hostname,
                               fun (_, Node, _) -> Node end),
              ok = meck:expect(ns_config, get_timeout,
-                              fun (_, Default) -> Default end)
+                              fun (_, Default) -> Default end),
+             ok = meck:expect(fusion_uploaders, store_snapshots_uuid,
+                              fun (_, _, _) -> ok end)
      end,
      fun (_) ->
              ok = meck:unload(rpc),
              ok = meck:unload(menelaus_web_node),
-             ok = meck:unload(ns_config)
+             ok = meck:unload(ns_config),
+             ok = meck:unload(fusion_uploaders)
      end,
      [{"basic happy path",
        fun () ->
