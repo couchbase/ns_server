@@ -1348,7 +1348,7 @@ def make_cbstats_all_buckets_task(kind, memcached_pass_fun, guts):
 
 
 def read_local_token(path, gosecrets_cfg_path, master_pass):
-    cbcat_path = find_script(exec_name("cbcat"))
+    cbcat_path = find_script(exec_name("cbcat"), silent=True)
     args = [cbcat_path, '--with-gosecrets', gosecrets_cfg_path,
             '--password', '-', path]
     if master_pass is None:
@@ -2435,10 +2435,11 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
     return _tasks
 
 
-def find_script(name):
+def find_script(name, silent=False):
     path = find_binary(name)
     if os.path.exists(path):
-        log("Found %s: %s" % (name, path))
+        if not silent:
+            log("Found %s: %s" % (name, path))
         return os.path.abspath(path)
 
     log(f"Could not find script {name}")
