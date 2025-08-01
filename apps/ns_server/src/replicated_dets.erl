@@ -13,7 +13,6 @@
 
 -include("ns_common.hrl").
 -include("pipes.hrl").
--include_lib("stdlib/include/ms_transform.hrl").
 -include("cb_cluster_secrets.hrl").
 
 -behaviour(replicated_storage).

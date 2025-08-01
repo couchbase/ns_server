@@ -17,8 +17,6 @@
 -include_lib("kernel/include/dist_util.hrl").
 -include_lib("kernel/include/logger.hrl").
 
--include_lib("stdlib/include/ms_transform.hrl").
-
 -include_lib("ns_common/include/cut.hrl").
 -include("ns_common.hrl").
 
