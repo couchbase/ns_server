@@ -1218,7 +1218,8 @@ altaddr_validators() ->
     [validator:required(hostname,_),
      validator:trimmed_string(hostname, _),
      validator:length(hostname, 0, ?MAX_HOSTNAME_LENGTH, _),
-     parse_validate_hostname(hostname, _)
+     parse_validate_hostname(hostname, _),
+     validator:no_duplicate_keys(_)
     ] ++ lists:map(fun(A)-> validator:number(
                               A, 1024, 65535, _) end, PortAtoms) ++
         [validator:no_duplicate_values(_),

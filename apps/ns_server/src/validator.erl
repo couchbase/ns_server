@@ -773,28 +773,31 @@ unsupported(#state{kv = Props, touched = Touched, errors = Errors} = State) ->
           end, Props),
     State#state{errors = NewErrors ++ Errors}.
 
-has_duplicate([{Key, _Value} | T]) ->
+has_duplicate_keys([{Key, _Value} | T], DupKeys) ->
     case proplists:is_defined(Key, T) of
         true ->
-            Key;
+            has_duplicate_keys(T,lists:append(DupKeys, [name_to_list(Key)]));
         false ->
-            has_duplicate(T)
+            has_duplicate_keys(T,DupKeys)
     end;
-has_duplicate([H | T]) ->
+has_duplicate_keys([H | T], DupKeys) ->
     case proplists:is_defined(H, T) of
         true ->
-            H;
+            has_duplicate_keys(T,lists:append(DupKeys, [name_to_list(H)]));
         false ->
-            has_duplicate(T)
+            has_duplicate_keys(T,DupKeys)
     end;
-has_duplicate([]) -> false.
+has_duplicate_keys([],DupKeys) -> DupKeys.
 
 no_duplicate_keys(#state{kv = Props} = State) ->
-    case has_duplicate(Props) of
-        false ->
+    case has_duplicate_keys(Props, []) of
+        [] ->
             State;
-        DuplicateKey ->
-            return_error(DuplicateKey, "Key specified more than once", State)
+        DuplicateKeysList ->
+            DuplicateKeysMsg = lists:join(", ", DuplicateKeysList),
+            return_error("_", io_lib:format(
+                                "Keys specified multiple times: ~s",
+                                [DuplicateKeysMsg]), State)
     end.
 
 value_frequencies([], Counts) ->
@@ -1203,7 +1206,9 @@ check_for_duplicate_keys_test() ->
     State1 = #state{kv = Kv1},
     State1a = no_duplicate_keys(State1),
     #state{errors = Errors1} = State1a,
-    ?assertEqual([{"key1","Key specified more than once"}], Errors1),
+    ?assertEqual([{"_", io_lib:format(
+                          "Keys specified multiple times: ~s",
+                          [["key1"]])}], Errors1),
 
     %% No duplicates in tuples
     Kv2 = [{key1, value1}, {key2, value2}, {key3, value3}],
@@ -1215,7 +1220,9 @@ check_for_duplicate_keys_test() ->
     State3 = #state{kv = Kv3},
     State3a = no_duplicate_keys(State3),
     #state{errors = Errors3} = State3a,
-    ?assertEqual([{"apple","Key specified more than once"}], Errors3),
+    ?assertEqual([{"_", io_lib:format(
+                          "Keys specified multiple times: ~s",
+                          [["apple"]])}], Errors3),
 
     %% No duplicate in list
     Kv4 = [apple, pie, ice_cream, cake],
@@ -1227,14 +1234,18 @@ check_for_duplicate_keys_test() ->
     State5 = #state{kv = Kv5},
     State5a = no_duplicate_keys(State5),
     #state{errors = Errors5} = State5a,
-    ?assertEqual([{"party","Key specified more than once"}], Errors5),
+    ?assertEqual([{"_", io_lib:format(
+                          "Keys specified multiple times: ~s",
+                          [["party"]])}], Errors5),
 
     %% Duplicate key in list
     Kv6 = [apple, {cherry, pie}, {party, time}, ice_cream, apple, cake],
     State6 = #state{kv = Kv6},
     State6a = no_duplicate_keys(State6),
     #state{errors = Errors6} = State6a,
-    ?assertEqual([{"apple","Key specified more than once"}], Errors6),
+    ?assertEqual([{"_", io_lib:format(
+                          "Keys specified multiple times: ~s",
+                          [["apple"]])}], Errors6),
 
     %% No duplicate key in list
     Kv7 = [apple, {cherry, pie}, {party, time}, ice_cream, chocolate, cake],
@@ -1246,14 +1257,18 @@ check_for_duplicate_keys_test() ->
     State8 = #state{kv = Kv8},
     State8a = no_duplicate_keys(State8),
     #state{errors = Errors8} = State8a,
-    ?assertEqual([{"apple","Key specified more than once"}], Errors8),
+    ?assertEqual([{"_", io_lib:format(
+                          "Keys specified multiple times: ~s",
+                          [["apple"]])}], Errors8),
 
     %% Duplicate key in tuple matches single key
     Kv9 = [{apple, pie}, {cherry, pie}, {party, time}, ice_cream, apple],
     State9 = #state{kv = Kv9},
     State9a = no_duplicate_keys(State9),
     #state{errors = Errors9} = State9a,
-    ?assertEqual([{"apple","Key specified more than once"}], Errors9),
+    ?assertEqual([{"_", io_lib:format(
+                          "Keys specified multiple times: ~s",
+                          [["apple"]])}], Errors9),
 
     ok.
 
