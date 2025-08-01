@@ -2091,19 +2091,20 @@ prepare_fusion_rebalance(KeepNodes) ->
 
 prepare_fusion_rebalance(KeepKVNodes, Snapshot, GenerateMapFun) ->
     BucketNames = ns_bucket:get_bucket_names(Snapshot),
+    PlanUUID = couch_uuids:random(),
     try
         {ok, prepare_fusion_rebalance_massage_result(
-               lists:filtermap(
-                 prepare_bucket_fusion_rebalance(Snapshot, _, KeepKVNodes,
-                                                 GenerateMapFun),
-                 BucketNames))}
+               PlanUUID, lists:filtermap(
+                           prepare_bucket_fusion_rebalance(
+                             PlanUUID, Snapshot, _, KeepKVNodes,
+                             GenerateMapFun),
+                           BucketNames))}
     catch
         throw:Err ->
             {error, Err}
     end.
 
-prepare_fusion_rebalance_massage_result(Result) ->
-    PlanUUID = couch_uuids:random(),
+prepare_fusion_rebalance_massage_result(PlanUUID, Result) ->
     Nodes = lists:usort(
               lists:flatten([maps:keys(NodesMap) ||
                                 {_, _, {_, _, _, NodesMap}} <- Result])),
@@ -2128,7 +2129,7 @@ prepare_fusion_rebalance_massage_result(Result) ->
                "Acceleration plan:~n~p", [RebalancePlan, AccelerationPlan]),
     {RebalancePlan, AccelerationPlan}.
 
-prepare_bucket_fusion_rebalance(Snapshot, Bucket, KeepKVNodes,
+prepare_bucket_fusion_rebalance(PlanUUID, Snapshot, Bucket, KeepKVNodes,
                                 GenerateMapFun) ->
     {ok, {BucketConfig, Rev}} =
         ns_bucket:get_bucket_with_revision(Bucket, Snapshot),
@@ -2137,7 +2138,8 @@ prepare_bucket_fusion_rebalance(Snapshot, Bucket, KeepKVNodes,
             false;
         true ->
             case do_prepare_bucket_fusion_rebalance(
-                   Bucket, BucketConfig, KeepKVNodes, GenerateMapFun) of
+                   PlanUUID, Bucket, ns_bucket:uuid(Bucket, Snapshot),
+                   BucketConfig, KeepKVNodes, GenerateMapFun) of
                 {error, _} = Error ->
                     throw(Error);
                 {ok, Res} ->
@@ -2145,8 +2147,8 @@ prepare_bucket_fusion_rebalance(Snapshot, Bucket, KeepKVNodes,
             end
     end.
 
-do_prepare_bucket_fusion_rebalance(Bucket, BucketConfig, KeepKVNodes,
-                                   GenerateMapFun) ->
+do_prepare_bucket_fusion_rebalance(PlanUUID, Bucket, BucketUUID, BucketConfig,
+                                   KeepKVNodes, GenerateMapFun) ->
     CurrentMap = proplists:get_value(map, BucketConfig),
 
     %% what to do with bucket_placer?
@@ -2171,7 +2173,7 @@ do_prepare_bucket_fusion_rebalance(Bucket, BucketConfig, KeepKVNodes,
                   end
           end, {#{}, []}, MapTriples),
 
-    UUID = couch_uuids:random(),
+    UUID = lists:flatten(io_lib:format("~s:~s", [PlanUUID, BucketUUID])),
 
     %% temporarily hardcoded
     Validity = os:system_time(second) + 60 * 60,
