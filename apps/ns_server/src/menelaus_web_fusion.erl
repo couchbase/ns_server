@@ -29,7 +29,7 @@
 settings() ->
     [{"logStoreURI", #{type => {uri, ["s3", "local"]},
                        cfg_key => [log_store_uri]}},
-     {"enableSyncThresholdMB", #{type => {int, 100, 100 * 1024},
+     {"enableSyncThresholdMB", #{type => {int, 100, 10 * 1024 * 1024},
                                  cfg_key => [enable_sync_threshold_mb]}}].
 
 handle_get_settings(Req) ->

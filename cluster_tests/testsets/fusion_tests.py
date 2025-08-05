@@ -245,13 +245,13 @@ class FusionTests(testlib.BaseTestSet):
         resp = testlib.get_succ(self.cluster, '/settings/fusion')
         config = resp.json()
         assert config == {'logStoreURI': 's3://something/else',
-                          'enableSyncThresholdMB': 1024}
+                          'enableSyncThresholdMB': 1024 * 100}
         testlib.post_fail(self.cluster, '/settings/fusion', expected_code=400,
                           json={'enableSyncThresholdMB': 'something'}),
         testlib.post_fail(self.cluster, '/settings/fusion', expected_code=400,
                           json={'enableSyncThresholdMB': 10}),
         testlib.post_fail(self.cluster, '/settings/fusion', expected_code=400,
-                          json={'enableSyncThresholdMB': 200000}),
+                          json={'enableSyncThresholdMB': 1024 * 1024 * 11}),
         testlib.post_succ(self.cluster, '/settings/fusion',
                           json={'logStoreURI': 's3://something',
                                 'enableSyncThresholdMB': 5000}),

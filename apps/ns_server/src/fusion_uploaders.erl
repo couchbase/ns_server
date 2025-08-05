@@ -199,7 +199,7 @@ config_key() ->
     fusion_config.
 
 default_config() ->
-    [{enable_sync_threshold_mb, 1024},
+    [{enable_sync_threshold_mb, 1024 * 100},
      {state, disabled},
      {log_store_uri_locked, false}].
 
