@@ -1401,6 +1401,7 @@ additional_bucket_params_validation(Params, Ctx) ->
     lists:append([maybe_validate_replicas_and_durability(Params, Ctx),
                   validate_magma_ram_quota(Params, Ctx),
                   validate_watermarks(Params, Ctx),
+                  validate_cont_backup(Params, Ctx),
                   validate_encr_lifetime_and_rotation_intrvl(
                     Params, Ctx, BypassAddnlEncrChecks)]).
 
@@ -1504,6 +1505,24 @@ validate_watermarks(Params, Ctx) ->
                              memory_high_watermark,
                              memoryHighWatermark,
                              less_than).
+
+%% Continuous backup cannot be enabled unless history retention seconds and/or
+%% history retention bytes are non-zero.
+validate_cont_backup(Params, Ctx) ->
+    Enabled = get_value_from_parms_or_bucket(continuous_backup_enabled, Params,
+                                             Ctx),
+    RetentionSecs = get_value_from_parms_or_bucket(history_retention_seconds,
+                                                   Params, Ctx),
+    RetentionBytes = get_value_from_parms_or_bucket(history_retention_bytes,
+                                                    Params, Ctx),
+    case Enabled of
+        true when RetentionSecs =:= 0 andalso RetentionBytes =:= 0 ->
+            [{continuousBackupEnabled,
+              <<"Continuous backup cannot be enabled without also enabling "
+                "Change History ('historyRetentionSeconds' and/or "
+                "'historyRetentionBytes' must be set to a non-zero value).">>}];
+        _ -> []
+    end.
 
 validate_lifetime_with_rotation_intrvl(undefined, _CurrRotIntrvl, _MaxDeks) ->
     [];
@@ -4714,6 +4733,7 @@ basic_bucket_params_screening_t() ->
                       {"memoryLowWatermark", "68"},
                       {"memoryHighWatermark", "70"},
                       {"continuousBackupEnabled", "true"},
+                      {"historyRetentionSeconds", "10"},
                       {"continuousBackupInterval", "123"},
                       {"continuousBackupLocation", "s3://hello/world"}],
                     AllBuckets),
@@ -5001,7 +5021,24 @@ basic_bucket_params_screening_t() ->
            "range 0 to 18446744073709551615 inclusive">>},
         {dcpBackfillIdleDiskThreshold,
          <<"The value of dcpBackfillIdleDiskThreshold (101) must be in the "
-           "range 0 to 100 inclusive">>}], E60).
+           "range 0 to 100 inclusive">>}], E60),
+
+    %% Continuous backup cannot be enabled if history retention seconds/bytes
+    %% are both zero.
+    {_OK61, E61} = basic_bucket_params_screening(
+                    true,
+                    "bucket61",
+                    [{"bucketType", "membase"},
+                     {"ramQuota", "1024"},
+                     {"storageBackend", "magma"},
+                     {"continuousBackupEnabled", "true"}],
+                    tl(AllBuckets)),
+    ?assertEqual([{continuousBackupEnabled,
+                   <<"Continuous backup cannot be enabled without also "
+                     "enabling Change History ('historyRetentionSeconds' "
+                     "and/or 'historyRetentionBytes' must be set to a "
+                     "non-zero value).">>}], E61).
+
 
 basic_bucket_params_screening_test_() ->
     {setup,
