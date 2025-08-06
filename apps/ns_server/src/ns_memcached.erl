@@ -1057,7 +1057,7 @@ handle_info(check_fusion_state, #state{bucket = Bucket,
                                 State#state{fusion_state = NewFusionState})
             end;
         not_present ->
-            {State, false}
+            {noreply, State}
     end;
 handle_info(check_config_soon, #state{check_in_progress = true} = State) ->
     {noreply, State#state{next_check_after = 0}};
