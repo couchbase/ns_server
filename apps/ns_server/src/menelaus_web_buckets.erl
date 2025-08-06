@@ -506,6 +506,9 @@ build_continuous_backup_info(BucketConfig) ->
               ns_bucket:get_continuous_backup_enabled(BucketConfig)},
              {continuousBackupInterval,
               ns_bucket:get_continuous_backup_interval(BucketConfig)},
+             {continuousBackupRetentionPeriod,
+              ns_bucket:get_continuous_backup_retention_period_hrs(
+                BucketConfig)},
              {continuousBackupLocation,
               list_to_binary(ns_bucket:get_continuous_backup_location(
                                BucketConfig))}];
@@ -1771,6 +1774,8 @@ validate_membase_bucket_params(CommonParams, Params, Name,
          parse_validate_continuous_backup_location(Params, BucketConfig, IsNew,
                                                    Is79,
                                                    IsStorageModeMigration),
+         parse_validate_continuous_backup_retention_period(
+           Params, BucketConfig, IsNew, IsTotoro, IsStorageModeMigration),
          parse_validate_invalid_hlc_strategy(Params, IsNew, Is79),
          parse_validate_hlc_max_future_threshold(Params, IsNew, Is79),
          parse_validate_storage_quota_percentage(
@@ -1932,6 +1937,31 @@ parse_validate_continuous_backup_location_inner(Params, IsNew,
                                                 true = _IsMagma) ->
     parse_validate_path_or_uri(Params, continuousBackupLocation,
                                continuous_backup_location, IsNew).
+
+parse_validate_continuous_backup_retention_period(Params, BucketConfig, IsNew,
+                                                  IsTotoro,
+                                                  IsStorageModeMigration) ->
+    IsMagma = is_magma(Params, BucketConfig, IsNew, IsStorageModeMigration),
+    parse_validate_continuous_backup_retention_period_inner(Params, IsNew,
+                                                            IsTotoro,
+                                                            IsMagma).
+
+parse_validate_continuous_backup_retention_period_inner(Params, _IsNew,
+                                                        _IsTotoro,
+                                                        false = _IsMagma) ->
+    parse_validate_param_not_supported("continuousBackupRetentionPeriod",
+                                       Params, fun only_supported_on_magma/1);
+parse_validate_continuous_backup_retention_period_inner(Params, _IsNew,
+                                                        false = _IsTotoro,
+                                                        _IsMagma) ->
+    parse_validate_param_not_supported("continuousBackupRetentionPeriod",
+                                       Params,
+                                       fun not_supported_until_totoro_error/1);
+parse_validate_continuous_backup_retention_period_inner(Params, IsNew,
+                                                        true = _IsTotoro,
+                                                        true = _IsMagma) ->
+    parse_validate_numeric_param(Params, continuousBackupRetentionPeriod,
+                                 continuous_backup_retention_period, IsNew).
 
 parse_validate_path_or_uri(Params, Param, ConfigKey, IsNew) ->
     Value = proplists:get_value(atom_to_list(Param), Params),
@@ -4162,6 +4192,7 @@ basic_bucket_params_screening_t() ->
     ?assertNot(proplists:is_defined(continuousBackupEnabled, OK1)),
     ?assertNot(proplists:is_defined(continuousBackupInterval, OK1)),
     ?assertNot(proplists:is_defined(continuousBackupLocation, OK1)),
+    ?assertNot(proplists:is_defined(continuousBackupRetentionPeriod, OK1)),
 
     %% it is not possible to create bucket with duplicate name
     {_OK2, E2} = basic_bucket_params_screening(true, "mcd",
@@ -4685,6 +4716,7 @@ basic_bucket_params_screening_t() ->
                       {"memoryHighWatermark", "333"},
                       {"continuousBackupEnabled", "hello"},
                       {"continuousBackupInterval", "1"},
+                      {"continuousBackupRetentionPeriod", "-1"},
                       {"continuousBackupLocation", "yahoo://storage/blob"},
                       {"invalidHlcStrategy", "badvalue"}],
                      AllBuckets),
@@ -4705,6 +4737,9 @@ basic_bucket_params_screening_t() ->
                   {continuousBackupLocation,
                    <<"Must be a valid path or uri writable by "
                      "'couchbase' user">>},
+                  {continuousBackupRetentionPeriod,
+                   <<"The value of continuousBackupRetentionPeriod (-1) must "
+                     "be in the range 0 to 876000 inclusive">>},
                   {invalidHlcStrategy,
                    <<"Must be one of [error,ignore,replace]">>}],
                  E35),
@@ -4738,6 +4773,7 @@ basic_bucket_params_screening_t() ->
                       {"continuousBackupEnabled", "true"},
                       {"historyRetentionSeconds", "10"},
                       {"continuousBackupInterval", "123"},
+                      {"continuousBackupRetentionPeriod", "2400"},
                       {"continuousBackupLocation", "s3://hello/world"}],
                     AllBuckets),
     ?assertEqual([], E37),

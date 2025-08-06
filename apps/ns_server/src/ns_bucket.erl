@@ -173,6 +173,7 @@
          get_min_replicas/0,
          get_continuous_backup_enabled/1,
          get_continuous_backup_interval/1,
+         get_continuous_backup_retention_period_hrs/1,
          get_continuous_backup_location/1,
          get_invalid_hlc_strategy/1,
          get_hlc_max_future_threshold/1,
@@ -698,6 +699,8 @@ attribute_default(Name) ->
         continuous_backup_enabled -> false; % boolean
         continuous_backup_interval -> 2;    % minutes
         continuous_backup_location -> "";   % path or URI
+        continuous_backup_retention_period -> % hours
+            0;
         invalid_hlc_strategy -> error;      % atom
         hlc_max_future_threshold -> 3900;   % seconds (65 minutes)
         dcp_connections_between_nodes -> 1; % pos_integer
@@ -715,6 +718,8 @@ attribute_min(Name) ->
         memory_low_watermark -> 50;         % percentage
         memory_high_watermark -> 51;        % percentage
         continuous_backup_interval -> 2;    % minutes
+        continuous_backup_retention_period -> % hours
+            0;
         hlc_max_future_threshold -> 10;     % seconds
         dcp_connections_between_nodes -> 1; % pos_integer
         dcp_backfill_idle_limit_seconds ->  % seconds
@@ -734,6 +739,8 @@ attribute_max(Name) ->
         memory_high_watermark -> 90;                  % percentage
         continuous_backup_interval ->
             ?MAX_32BIT_SIGNED_INT;                    % minutes
+        continuous_backup_retention_period ->         % hours
+            876000;
         hlc_max_future_threshold ->
             ?MAX_32BIT_SIGNED_INT;                    % seconds
         dcp_connections_between_nodes -> 64;          % pos_integer
@@ -786,7 +793,19 @@ get_continuous_backup_interval(BucketConfig) ->
                                                BucketConfig)
     end.
 
--spec get_continuous_backup_location(config()) -> undefined | string().
+-spec get_continuous_backup_retention_period_hrs(config()) -> undefined |
+                                                              non_neg_integer().
+get_continuous_backup_retention_period_hrs(BucketConfig) ->
+    case is_magma(BucketConfig) of
+        false ->
+            undefined;
+        true ->
+            membase_bucket_config_value_getter(
+              continuous_backup_retention_period, BucketConfig)
+    end.
+
+-spec get_continuous_backup_location(config()) -> undefined |
+                                                  string().
 get_continuous_backup_location(BucketConfig) ->
     case is_magma(BucketConfig) of
         false ->
