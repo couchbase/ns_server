@@ -21,7 +21,7 @@
 handle_rebalance_report(Req) ->
     validator:handle(do_handle_rebalance_report(Req, _), Req, qs,
                      [validator:length(reportID, 32, 32, _),
-                      validator:no_duplicates(_),
+                      validator:no_duplicate_keys(_),
                       validator:unsupported(_)]).
 
 do_handle_rebalance_report(Req, Params) ->
@@ -51,7 +51,7 @@ settings_log_redaction_post_validators() ->
     [validator:has_params(_),
      validator:one_of(logRedactionLevel, [none, partial], _),
      validator:convert(logRedactionLevel, fun list_to_atom/1, _),
-     validator:no_duplicates(_),
+     validator:no_duplicate_keys(_),
      validator:unsupported(_)].
 
 do_handle_settings_log_redaction_post_body(Req, Values) ->

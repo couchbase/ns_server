@@ -121,7 +121,7 @@ sd_config_validators() ->
      validator:convert(network, fun list_to_atom/1, _),
      validator:one_of(clusterLabels, ["none", "uuidOnly", "uuidAndName"], _),
      validator:convert(clusterLabels, fun list_to_atom/1, _),
-     validator:no_duplicates(_),
+     validator:no_duplicate_keys(_),
      validator:unsupported(_)
     ].
 

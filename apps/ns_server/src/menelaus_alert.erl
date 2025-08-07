@@ -99,20 +99,20 @@ filter_params(Params) ->
 handle_events_validators() ->
     [validator:iso_8601_utc(sinceTime, [], _),
      validator:integer(limit, -1, max_uint64, _)] ++
-    case cluster_compat_mode:is_cluster_79() of
-        true ->
-            [validator:string(component, _),
-             validator:one_of(component, event_log:valid_component(), _),
-             %% component is optional so can't do finer grained validation (e.g.
-             %% range check) of event_id.
-             validator:integer(event_id, _),
-             validator:string(severity, _),
-             validator:one_of(severity, event_log:valid_info_levels(), _)];
-        false ->
-            []
-    end ++
-    [validator:no_duplicates(_),
-     validator:unsupported(_)].
+        case cluster_compat_mode:is_cluster_79() of
+            true ->
+                [validator:string(component, _),
+                 validator:one_of(component, event_log:valid_component(), _),
+                 %% component is optional so can't do finer grained validation
+                 %% (e.g. range check) of event_id.
+                 validator:integer(event_id, _),
+                 validator:string(severity, _),
+                 validator:one_of(severity, event_log:valid_info_levels(), _)];
+            false ->
+                []
+        end ++
+        [validator:no_duplicate_keys(_),
+         validator:unsupported(_)].
 
 handle_events(Req) ->
     validator:handle(fun (Values) ->
@@ -312,11 +312,11 @@ alerts_query_validators() ->
      validator:string(subject, _),
      validator:default(subject, default(subject), _),
 
-     validator:no_duplicates(_),
+     validator:no_duplicate_keys(_),
 
      %% Any other parameters are unsupported.
      validator:unsupported(_)
-].
+    ].
 
 send_test_message(Req, Subject, Body, Config) ->
     case ns_mail:send(Subject, Body, Config) of

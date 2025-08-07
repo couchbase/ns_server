@@ -120,7 +120,7 @@ settings_post_validators() ->
             false ->
                 []
         end ++
-        [validator:no_duplicates(_),
+        [validator:no_duplicate_keys(_),
          validator:unsupported(_)].
 
 update_settings(Key, Value) ->

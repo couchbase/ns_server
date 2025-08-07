@@ -126,7 +126,7 @@ history_validator(BucketConfig, State) ->
 collection_modifiable_validators(BucketConfig) ->
     HistoryAllowedValues =
         case cluster_compat_mode:is_enterprise() andalso
-             cluster_compat_mode:is_cluster_72() of
+            cluster_compat_mode:is_cluster_72() of
             true -> ["true", "false"];
             false -> ["false"]
         end,
@@ -136,7 +136,7 @@ collection_modifiable_validators(BucketConfig) ->
      validator:integer(maxTTL, collections:get_maxTTL_min_value(),
                        ?MAX_32BIT_SIGNED_INT, _),
      validator:valid_in_enterprise_only(maxTTL, _),
-     validator:no_duplicates(_)
+     validator:no_duplicate_keys(_)
     ].
 
 collection_validators(DefaultAllowed, BucketConfig) ->

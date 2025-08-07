@@ -264,5 +264,5 @@ validators(Config) ->
      validate_events(disabled, Descriptors, _),
      validate_users(disabledUsers, _),
      validator:integer(pruneAge, 0, ?MAX_32BIT_SIGNED_INT div 60, _),
-     validator:no_duplicates(_),
+     validator:no_duplicate_keys(_),
      validator:unsupported(_)].
