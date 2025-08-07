@@ -52,7 +52,7 @@
 -export_type([fast_forward_info/0, uploaders/0, enable_error/0,
               bucket_state/0]).
 
--spec build_fast_forward_info(bucket_name(), proplists:proplist(),
+-spec build_fast_forward_info(ns_bucket:name(), ns_bucket:config(),
                               vbucket_map(), vbucket_map()) ->
           undefined | fast_forward_info().
 build_fast_forward_info(Bucket, BucketConfig, Map, FastForwardMap) ->

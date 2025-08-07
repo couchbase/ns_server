@@ -82,7 +82,7 @@
                 very_heavy_calls_queue = impossible :: queue:queue(),
                 status :: status(),
                 start_time :: undefined | tuple(),
-                bucket :: bucket_name(),
+                bucket :: ns_bucket:name(),
                 worker_features = [],
                 worker_pids :: [pid()],
                 sock = still_connecting :: port() | still_connecting,
@@ -1250,12 +1250,12 @@ perform_very_long_call_with_timing(Bucket, Name, Fun, Opts) ->
               {reply, ok}
       end, Bucket, Opts).
 
--spec active_buckets() -> [bucket_name()].
+-spec active_buckets() -> [ns_bucket:name()].
 active_buckets() ->
     [Bucket || ?MODULE_STRING "-" ++ Bucket <-
                    [atom_to_list(Name) || Name <- registered()]].
 
--spec status(node(), bucket_name(), pos_integer() | infinity) ->
+-spec status(node(), ns_bucket:name(), pos_integer() | infinity) ->
     status() | no_status.
 status(Node, Bucket, Timeout) ->
     try
@@ -1267,7 +1267,7 @@ status(Node, Bucket, Timeout) ->
             no_status
     end.
 
--spec mark_warmed(bucket_name(), undefined | data_ingress_status()) -> any().
+-spec mark_warmed(ns_bucket:name(), undefined | data_ingress_status()) -> any().
 mark_warmed(Bucket, DataIngress) ->
     gen_server:call(server(Bucket), {mark_warmed, DataIngress},
                     ?MARK_WARMED_TIMEOUT).
@@ -1290,14 +1290,14 @@ bucket_statuses(Timeout) ->
     RVs.
 
 %% @doc Send flush command to specified bucket
--spec flush(bucket_name()) -> ok.
+-spec flush(ns_bucket:name()) -> ok.
 flush(Bucket) ->
     do_call({server(Bucket), dist_manager:this_node()}, Bucket, flush,
             ?TIMEOUT_VERY_HEAVY).
 
 
 %% @doc send an add command to memcached instance
--spec add(bucket_name(), binary(), integer(), integer(), binary()) ->
+-spec add(ns_bucket:name(), binary(), integer(), integer(), binary()) ->
                  {ok, #mc_header{}, #mc_entry{}, any()}.
 add(Bucket, Key, CollectionsUid, VBucket, Value) ->
     do_call(server(Bucket), Bucket,
@@ -1305,7 +1305,7 @@ add(Bucket, Key, CollectionsUid, VBucket, Value) ->
              fun () -> Value end}, ?TIMEOUT_HEAVY).
 
 %% @doc send get command to memcached instance
--spec get(bucket_name(), binary(), undefined | integer(), integer(),
+-spec get(ns_bucket:name(), binary(), undefined | integer(), integer(),
           undefined | rbac_identity()) ->
                  {ok, #mc_header{}, #mc_entry{}, any()}.
 get(Bucket, Key, CollectionsUid, VBucket, Identity) ->
@@ -1314,7 +1314,7 @@ get(Bucket, Key, CollectionsUid, VBucket, Identity) ->
             ?TIMEOUT_HEAVY).
 
 %% @doc send get_from_replica command to memcached instance. for testing only
--spec get_from_replica(bucket_name(), binary(), integer(), integer()) ->
+-spec get_from_replica(ns_bucket:name(), binary(), integer(), integer()) ->
           {ok, #mc_header{}, #mc_entry{}, any()}.
 get_from_replica(Bucket, Key, CollectionsUid, VBucket) ->
     do_call(server(Bucket), Bucket,
@@ -1322,7 +1322,7 @@ get_from_replica(Bucket, Key, CollectionsUid, VBucket) ->
             ?TIMEOUT_HEAVY).
 
 %% @doc send an get metadata command to memcached
--spec get_meta(bucket_name(), binary(), undefined | integer(), integer(),
+-spec get_meta(ns_bucket:name(), binary(), undefined | integer(), integer(),
                undefined | rbac_identity()) ->
                       {ok, rev(), integer(), integer()}
                           | {memcached_error, key_enoent, integer()}
@@ -1337,7 +1337,7 @@ get_meta(Bucket, Key, CollectionsUid, VBucket, Identity) ->
       end, Bucket, [collections || CollectionsUid =/= undefined]).
 
 %% @doc get xattributes for specified key
--spec get_xattrs(bucket_name(), binary(), undefined | integer(),
+-spec get_xattrs(ns_bucket:name(), binary(), undefined | integer(),
                  integer(), [atom()], undefined | rbac_identity()) ->
                         {ok, integer(), [{binary(), term()}]}
                             | {memcached_error, key_enoent, integer()}
@@ -1352,7 +1352,7 @@ get_xattrs(Bucket, Key, CollectionsUid, VBucket, Permissions, Identity) ->
       end, Bucket, [xattr | [collections || CollectionsUid =/= undefined]]).
 
 %% @doc send a delete command to memcached instance
--spec delete(bucket_name(), binary(), undefined | integer(), integer(),
+-spec delete(ns_bucket:name(), binary(), undefined | integer(), integer(),
              undefined | rbac_identity()) ->
                     {ok, #mc_header{}, #mc_entry{}, any()} |
                     {memcached_error, any(), any()}.
@@ -1362,7 +1362,7 @@ delete(Bucket, Key, CollectionsUid, VBucket, Identity) ->
             ?TIMEOUT_HEAVY).
 
 %% @doc send a set command to memcached instance
--spec set(bucket_name(), binary(), undefined | integer(), integer(),
+-spec set(ns_bucket:name(), binary(), undefined | integer(), integer(),
           binary(), integer(), integer(), boolean(),
           undefined | rbac_identity()) ->
           {ok, #mc_header{}, #mc_entry{}, any()} |
@@ -1374,7 +1374,7 @@ set(Bucket, Key, CollectionsUid, VBucket, Value, Flags, Expiry, PreserveTTL,
              fun () -> Value end, Flags, Expiry, PreserveTTL, Identity},
             ?TIMEOUT_HEAVY).
 
--spec update_with_rev(Bucket::bucket_name(), VBucket::vbucket_id(),
+-spec update_with_rev(Bucket::ns_bucket:name(), VBucket::vbucket_id(),
                       Id::binary(), Value::binary() | undefined, Rev :: rev(),
                       Deleted::boolean(), LocalCAS::non_neg_integer()) ->
                              {ok, #mc_header{}, #mc_entry{}} |
@@ -1388,13 +1388,13 @@ update_with_rev(Bucket, VBucket, Id, Value, Rev, Deleted, LocalCAS) ->
 
 %% @doc Delete a vbucket. Will set the vbucket to dead state if it
 %% isn't already, blocking until it successfully does so.
--spec delete_vbucket(bucket_name(), vbucket_id()) ->
+-spec delete_vbucket(ns_bucket:name(), vbucket_id()) ->
                             ok | mc_error().
 delete_vbucket(Bucket, VBucket) ->
     do_call(server(Bucket), Bucket,
             {delete_vbucket, VBucket}, ?TIMEOUT_VERY_HEAVY).
 
--spec delete_vbuckets(bucket_name(), [vbucket_id()]) ->
+-spec delete_vbuckets(ns_bucket:name(), [vbucket_id()]) ->
     ok | {errors, [{vbucket_id(), mc_error()}]} | {error, any()}.
 delete_vbuckets(Bucket, VBuckets) ->
     case VBuckets of
@@ -1405,13 +1405,13 @@ delete_vbuckets(Bucket, VBuckets) ->
                     ?TIMEOUT_VERY_HEAVY)
     end.
 
--spec sync_delete_vbucket(bucket_name(), vbucket_id()) ->
+-spec sync_delete_vbucket(ns_bucket:name(), vbucket_id()) ->
                                  ok | mc_error().
 sync_delete_vbucket(Bucket, VBucket) ->
     do_call(server(Bucket), Bucket, {sync_delete_vbucket, VBucket},
             infinity).
 
--spec get_single_vbucket_details_stats(bucket_name(), vbucket_id(),
+-spec get_single_vbucket_details_stats(ns_bucket:name(), vbucket_id(),
                                        [nonempty_string()]) ->
                                               {ok, [{nonempty_string(),
                                                      nonempty_string()}]} |
@@ -1431,14 +1431,14 @@ get_single_vbucket_details_stats(Bucket, VBucket, ReqdKeys) ->
             Err
     end.
 
--spec get_vbucket_details_stats(bucket_name(), [nonempty_string()]) ->
-                                       {ok, dict:dict()} | mc_error().
+-spec get_vbucket_details_stats(ns_bucket:name(), [nonempty_string()]) ->
+          {ok, dict:dict()} | mc_error().
 get_vbucket_details_stats(Bucket, ReqdKeys) ->
     get_vbucket_details_stats(Bucket, all, ReqdKeys).
 
--spec get_vbucket_details_stats(bucket_name(), all | vbucket_id(),
+-spec get_vbucket_details_stats(ns_bucket:name(), all | vbucket_id(),
                                 [nonempty_string()]) ->
-                                       {ok, dict:dict()} | mc_error().
+          {ok, dict:dict()} | mc_error().
 get_vbucket_details_stats(Bucket, VBucket, ReqdKeys) ->
     do_call(server(Bucket), Bucket,
             {get_vbucket_details_stats, VBucket, ReqdKeys}, ?TIMEOUT).
@@ -1466,24 +1466,24 @@ host_ports(Node, Config) ->
 host_ports(Node) ->
     host_ports(Node, ns_config:get()).
 
--spec list_vbuckets(bucket_name()) ->
-                           {ok, [{vbucket_id(), vbucket_state()}]} | mc_error().
+-spec list_vbuckets(ns_bucket:name()) ->
+          {ok, [{vbucket_id(), vbucket_state()}]} | mc_error().
 list_vbuckets(Bucket) ->
     list_vbuckets(dist_manager:this_node(), Bucket).
 
 
--spec list_vbuckets(node(), bucket_name()) ->
-                           {ok, [{vbucket_id(), vbucket_state()}]} | mc_error().
+-spec list_vbuckets(node(), ns_bucket:name()) ->
+          {ok, [{vbucket_id(), vbucket_state()}]} | mc_error().
 list_vbuckets(Node, Bucket) ->
     do_call({server(Bucket), Node}, Bucket, list_vbuckets, ?TIMEOUT).
 
--spec local_connected_and_list_vbuckets(bucket_name()) -> warming_up | {ok, [{vbucket_id(), vbucket_state()}]}.
+-spec local_connected_and_list_vbuckets(ns_bucket:name()) ->
+          warming_up | {ok, [{vbucket_id(), vbucket_state()}]}.
 local_connected_and_list_vbuckets(Bucket) ->
     do_call(server(Bucket), Bucket, connected_and_list_vbuckets, ?TIMEOUT).
 
--spec local_connected_and_list_vbucket_details(bucket_name(), [string()]) ->
-                                                      warming_up |
-                                                      {ok, dict:dict()}.
+-spec local_connected_and_list_vbucket_details(ns_bucket:name(), [string()]) ->
+          warming_up | {ok, dict:dict()}.
 local_connected_and_list_vbucket_details(Bucket, Keys) ->
     do_call(server(Bucket), Bucket, {connected_and_list_vbucket_details, Keys},
             ?TIMEOUT).
@@ -1492,13 +1492,13 @@ local_connected_and_list_vbucket_details(Bucket, Keys) ->
 set_vbucket(Bucket, VBucket, VBState) ->
     set_vbucket(Bucket, VBucket, VBState, []).
 
--spec set_vbucket(bucket_name(), vbucket_id(), vbucket_state(),
+-spec set_vbucket(ns_bucket:name(), vbucket_id(), vbucket_state(),
                   [set_vbucket_option()]) -> ok | mc_error().
 set_vbucket(Bucket, VBucket, VBState, Options) ->
     do_call(server(Bucket), Bucket, {set_vbucket, VBucket, VBState, Options},
             ?TIMEOUT_HEAVY).
 
--spec set_vbuckets(bucket_name(),
+-spec set_vbuckets(ns_bucket:name(),
                    [{vbucket_id(), vbucket_state(), [set_vbucket_option()]}]) ->
           ok | {errors, [{{vbucket_id(), vbucket_state(),
                            [set_vbucket_option()]},
@@ -1513,7 +1513,7 @@ set_vbuckets(Bucket, ToSet) ->
                     {set_vbuckets, ToSet}, ?TIMEOUT_VERY_HEAVY)
     end.
 
--spec pause_bucket(bucket_name()) -> ok | {error, any()}.
+-spec pause_bucket(ns_bucket:name()) -> ok | {error, any()}.
 pause_bucket(Bucket) ->
     ok = gen_server:call(server(Bucket), prepare_pause_bucket,
                          ?TIMEOUT_VERY_HEAVY),
@@ -1532,7 +1532,7 @@ pause_bucket(Bucket) ->
             failure
     end.
 
--spec unpause_bucket(bucket_name()) -> ok | {error, any()}.
+-spec unpause_bucket(ns_bucket:name()) -> ok | {error, any()}.
 unpause_bucket(Bucket) ->
     gen_server:call(server(Bucket), {unpause_bucket, Bucket},
                     ?TIMEOUT_VERY_HEAVY).
@@ -1540,16 +1540,16 @@ unpause_bucket(Bucket) ->
 fetch_stats(Sock, Key) ->
     mc_binary:quick_stats(Sock, Key, fun mc_binary:quick_stats_append/3, []).
 
--spec stats(bucket_name(), binary() | string()) ->
-                   {ok, [{binary(), binary()}]} | mc_error().
+-spec stats(ns_bucket:name(), binary() | string()) ->
+          {ok, [{binary(), binary()}]} | mc_error().
 stats(Bucket, Key) ->
     perform_very_long_call(?cut({reply, fetch_stats(_, Key)}), Bucket).
 
--spec warmup_stats(bucket_name()) -> [{binary(), binary()}].
+-spec warmup_stats(ns_bucket:name()) -> [{binary(), binary()}].
 warmup_stats(Bucket) ->
     do_call(server(Bucket), Bucket, warmup_stats, ?TIMEOUT).
 
--spec raw_stats(node(), bucket_name(), binary(),
+-spec raw_stats(node(), ns_bucket:name(), binary(),
                 fun ((StatName, StatValue, Acc) -> Acc),
                 Acc) ->
           {ok, any()} | {exception, any()} | {error, any()}
@@ -1559,7 +1559,7 @@ warmup_stats(Bucket) ->
 raw_stats(Node, Bucket, SubStats, Fn, FnState) ->
     raw_stats(Node, Bucket, SubStats, undefined, Fn, FnState).
 
--spec raw_stats(node(), bucket_name(), binary(), binary() | undefined,
+-spec raw_stats(node(), ns_bucket:name(), binary(), binary() | undefined,
                 fun ((StatName, StatValue, Acc) -> Acc),
                 Acc) ->
           {ok, any()} | {exception, any()} | {error, any()}
@@ -1570,13 +1570,13 @@ raw_stats(Node, Bucket, SubStats, Value, Fn, FnState) ->
     do_call({server(Bucket), Node}, Bucket,
             {raw_stats, SubStats, Value, Fn, FnState}, ?TIMEOUT).
 
--spec get_vbucket_high_seqno(bucket_name(), vbucket_id()) ->
-                                    {ok, {undefined | seq_no()}}.
+-spec get_vbucket_high_seqno(ns_bucket:name(), vbucket_id()) ->
+          {ok, {undefined | seq_no()}}.
 get_vbucket_high_seqno(Bucket, VBucketId) ->
     do_call(server(Bucket), Bucket,
             {get_vbucket_high_seqno, VBucketId}, ?TIMEOUT).
 
--spec get_all_vb_seqnos(bucket_name()) ->
+-spec get_all_vb_seqnos(ns_bucket:name()) ->
           {ok, [{vbucket_id(), seq_no()}]} | mc_error().
 get_all_vb_seqnos(Bucket) ->
     do_call(server(Bucket), Bucket,
@@ -1883,25 +1883,28 @@ do_call(Server, Bucket, Msg, Timeout) ->
         end
     end.
 
--spec disable_traffic(bucket_name(), non_neg_integer() | infinity) -> ok | bad_status | mc_error().
+-spec disable_traffic(ns_bucket:name(), non_neg_integer() | infinity) ->
+          ok | bad_status | mc_error().
 disable_traffic(Bucket, Timeout) ->
     gen_server:call(server(Bucket), disable_traffic, Timeout).
 
--spec set_data_ingress(bucket_name(), data_ingress_status()) -> ok | mc_error().
+-spec set_data_ingress(ns_bucket:name(), data_ingress_status()) ->
+          ok | mc_error().
 set_data_ingress(Bucket, Status) ->
     do_call(server(Bucket), Bucket, {set_bucket_data_ingress, Status},
             ?TIMEOUT).
 
--spec wait_for_seqno_persistence(bucket_name(), vbucket_id(), seq_no()) -> ok | mc_error().
+-spec wait_for_seqno_persistence(ns_bucket:name(), vbucket_id(), seq_no()) ->
+          ok | mc_error().
 wait_for_seqno_persistence(Bucket, VBucketId, SeqNo) ->
     perform_very_long_call(
       fun (Sock) ->
               {reply, mc_client_binary:wait_for_seqno_persistence(Sock, VBucketId, SeqNo)}
       end, Bucket).
 
--spec compact_vbucket(bucket_name(), vbucket_id(),
+-spec compact_vbucket(ns_bucket:name(), vbucket_id(),
                       {integer(), integer(), boolean(), [cb_deks:dek_id()]}) ->
-                             ok | mc_error().
+          ok | mc_error().
 compact_vbucket(Bucket, VBucket, {PurgeBeforeTS, PurgeBeforeSeqNo, DropDeletes,
                                   ObsoleteKeyIds}) ->
     perform_very_long_call(
@@ -1914,14 +1917,14 @@ compact_vbucket(Bucket, VBucket, {PurgeBeforeTS, PurgeBeforeSeqNo, DropDeletes,
       end, Bucket, [json]).
 
 
--spec get_dcp_docs_estimate(bucket_name(), vbucket_id(), string()) ->
-                                   {ok, {non_neg_integer(), non_neg_integer(), binary()}}.
+-spec get_dcp_docs_estimate(ns_bucket:name(), vbucket_id(), string()) ->
+          {ok, {non_neg_integer(), non_neg_integer(), binary()}}.
 get_dcp_docs_estimate(Bucket, VBucketId, ConnName) ->
     do_call(server(Bucket), Bucket,
             {get_dcp_docs_estimate, VBucketId, ConnName}, ?TIMEOUT).
 
--spec get_mass_dcp_docs_estimate(bucket_name(), [vbucket_id()]) ->
-                                        {ok, [{non_neg_integer(), non_neg_integer(), binary()}]}.
+-spec get_mass_dcp_docs_estimate(ns_bucket:name(), [vbucket_id()]) ->
+          {ok, [{non_neg_integer(), non_neg_integer(), binary()}]}.
 get_mass_dcp_docs_estimate(Bucket, VBuckets) ->
     do_call(server(Bucket), Bucket,
             {get_mass_dcp_docs_estimate, VBuckets}, ?TIMEOUT_VERY_HEAVY).
@@ -2306,18 +2309,18 @@ get_bucket_state(Bucket) ->
     get_bucket_stats(list_to_binary("bucket_details " ++ Bucket),
                      list_to_binary(Bucket), <<"state">>).
 
--spec get_failover_log(bucket_name(), vbucket_id()) ->
-                              [{integer(), integer()}] | mc_error().
+-spec get_failover_log(ns_bucket:name(), vbucket_id()) ->
+          [{integer(), integer()}] | mc_error().
 get_failover_log(Bucket, VBucket) ->
     perform_very_long_call(
       ?cut({reply, mc_client_binary:get_failover_log(_, VBucket)}), Bucket).
 
--spec get_failover_logs(bucket_name(), [vbucket_id()]) -> Result when
+-spec get_failover_logs(ns_bucket:name(), [vbucket_id()]) -> Result when
       Result :: Success | Error,
       Success :: {ok, [{vbucket_id(), FailoverLog}]},
       FailoverLog :: [{integer(), integer()}],
       Error :: {error, {failed_to_get_failover_log,
-                        bucket_name(), vbucket_id(), mc_error()}}.
+                        ns_bucket:name(), vbucket_id(), mc_error()}}.
 get_failover_logs(Bucket, VBuckets) ->
     %% TODO: consider using "failovers" stat instead
     perform_very_long_call(
@@ -2474,7 +2477,7 @@ drop_metadata_file_dek_ids(BucketName, BucketUUID, IdsToDrop) ->
         end
     end.
 
--spec get_fusion_storage_snapshot(bucket_name(), vbucket_id(), string(),
+-spec get_fusion_storage_snapshot(ns_bucket:name(), vbucket_id(), string(),
                                   non_neg_integer()) ->
           {ok, binary()} | mc_error().
 get_fusion_storage_snapshot(Bucket, VBucket, SnapshotUUID, Validity) ->
@@ -2484,7 +2487,7 @@ get_fusion_storage_snapshot(Bucket, VBucket, SnapshotUUID, Validity) ->
                         Sock, VBucket, SnapshotUUID, Validity)}
       end, Bucket, [json]).
 
--spec mount_fusion_vbucket(bucket_name(), vbucket_id(), [list()]) ->
+-spec mount_fusion_vbucket(ns_bucket:name(), vbucket_id(), [list()]) ->
           {ok, binary()} | mc_error().
 mount_fusion_vbucket(Bucket, VBucket, Volumes) ->
     perform_very_long_call(
@@ -2536,7 +2539,7 @@ reply_start_stop_uploaders(What, RVs) ->
     end.
 
 -spec maybe_start_fusion_uploaders(
-        bucket_name(), [{vbucket_id(), integer()}]) ->
+        ns_bucket:name(), [{vbucket_id(), integer()}]) ->
           ok | {error, term()} | mc_error().
 maybe_start_fusion_uploaders(_Bucket, []) ->
     ok;
@@ -2573,7 +2576,7 @@ maybe_start_fusion_uploaders(Bucket, Uploaders) ->
               end, Bucket, [json])
     end.
 
--spec maybe_stop_fusion_uploaders(bucket_name(), [vbucket_id()]) ->
+-spec maybe_stop_fusion_uploaders(ns_bucket:name(), [vbucket_id()]) ->
           ok | {error, term()} | mc_error().
 maybe_stop_fusion_uploaders(_Bucket, []) ->
     ok;
@@ -2585,14 +2588,15 @@ maybe_stop_fusion_uploaders(Bucket, VBuckets) ->
               reply_start_stop_uploaders("stopping", RVs)
       end, Bucket, []).
 
--spec get_active_guest_volumes(bucket_name()) -> {ok, [binary()]} | mc_error().
+-spec get_active_guest_volumes(ns_bucket:name()) ->
+          {ok, [binary()]} | mc_error().
 get_active_guest_volumes(Bucket) ->
     try_to_perform_very_long_call(
       fun (Sock) ->
               {reply, fetch_fusion_stats(Sock, Bucket, "active_guest_volumes")}
       end, Bucket, [json]).
 
--spec sync_fusion_log_store(bucket_name(), [vbucket_id()]) ->
+-spec sync_fusion_log_store(ns_bucket:name(), [vbucket_id()]) ->
           ok | {errors, [{vbucket_id(), mc_error()}]}.
 sync_fusion_log_store(Bucket, VBuckets) ->
     perform_very_long_call(
@@ -2630,7 +2634,7 @@ fetch_fusion_sync_info(Sock, Bucket, VBucket) ->
             Other
     end.
 
--spec get_fusion_sync_info(bucket_name(), [vbucket_id()]) ->
+-spec get_fusion_sync_info(ns_bucket:name(), [vbucket_id()]) ->
           {ok, [{vbucket_id(), non_neg_integer(), non_neg_integer()}]} |
           mc_error().
 get_fusion_sync_info(Bucket, VBuckets) ->

@@ -29,7 +29,7 @@
 -define(QUERY_VBUCKETS_SLEEP, ?get_param(query_vbuckets_sleep, 1000)).
 -define(MOUNT_VOLUMES_TIMEOUT,  ?get_timeout(mount_volumes, 30000)).
 
--record(state, {bucket_name :: bucket_name(),
+-record(state, {bucket_name :: ns_bucket:name(),
                 rebalance_pid :: undefined | pid(),
                 rebalance_mref :: undefined | reference(),
                 rebalance_subprocesses = [] :: [{From :: term(),
@@ -133,7 +133,7 @@ maybe_send_warming(_Pid, sent_warming) ->
     ok.
 
 -type query_vbuckets_call() :: {query_vbuckets, [vbucket_id()], list(), list()}.
--spec wait_for_memcached([{node(), query_vbuckets_call()}], bucket_name(),
+-spec wait_for_memcached([{node(), query_vbuckets_call()}], ns_bucket:name(),
                          non_neg_integer()) -> [{node(),
                                                  {ok, list()} |
                                                  {ok, dict:dict()} |
@@ -268,7 +268,7 @@ do_query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
                             false
                     end, RVs).
 
--spec mark_bucket_warmed(Bucket::bucket_name(),
+-spec mark_bucket_warmed(Bucket::ns_bucket:name(),
                          [node()]) -> ok | {errors, [{node(), term()}]}.
 mark_bucket_warmed(Bucket, Nodes) ->
     DataIngress = guardrail_enforcer:get_status({bucket, Bucket}),
@@ -304,7 +304,7 @@ apply_new_bucket_config(Bucket, Servers, NewBucketConfig, Timeout) ->
        ?cut(call_on_servers(Bucket, Servers, NewBucketConfig,
                             apply_new_config_replicas_phase, Timeout))]).
 
--spec maybe_set_data_ingress(bucket_name(), Status, [node()]) ->
+-spec maybe_set_data_ingress(ns_bucket:name(), Status, [node()]) ->
           ok | {errors, [{node(), mc_error()}]}
               when Status :: undefined | data_ingress_status().
 maybe_set_data_ingress(_Bucket, undefined, _Servers) ->
@@ -327,7 +327,7 @@ maybe_set_data_ingress(Bucket, Status, Servers) ->
             {errors, BadReplies}
     end.
 
--spec mount_volumes(bucket_name(), [{node(), list()}], map(), pid()) ->
+-spec mount_volumes(ns_bucket:name(), [{node(), list()}], map(), pid()) ->
           ok | {errors, [{node(), term()}]}.
 mount_volumes(Bucket, VolumesToMount, NodesMap, RebalancerPid) ->
     NodesCalls =
@@ -392,28 +392,29 @@ process_multicall_rv(BadReplies, BadNodes) ->
     {errors, [{N, bad_node} || N <- BadNodes] ++ BadReplies}.
 
 -spec maybe_start_fusion_uploaders(
-        node(), bucket_name(), [{vbucket_id(), integer()}]) -> ok.
+        node(), ns_bucket:name(), [{vbucket_id(), integer()}]) -> ok.
 maybe_start_fusion_uploaders(_Node, _Bucket, []) ->
     ok;
 maybe_start_fusion_uploaders(Node, Bucket, Uploaders) ->
     gen_server:cast({server_name(Bucket), Node},
                     {maybe_start_fusion_uploaders, Uploaders}).
 
--spec maybe_stop_fusion_uploaders(node(), bucket_name(), [vbucket_id()]) -> ok.
+-spec maybe_stop_fusion_uploaders(node(), ns_bucket:name(),
+                                  [vbucket_id()]) -> ok.
 maybe_stop_fusion_uploaders(_Node, _Bucket, []) ->
     ok;
 maybe_stop_fusion_uploaders(Node, Bucket, VBuckets) ->
     gen_server:cast({server_name(Bucket), Node},
                     {maybe_stop_fusion_uploaders, VBuckets}).
 
--spec get_active_guest_volumes(bucket_name(), proplists:proplist()) ->
+-spec get_active_guest_volumes(ns_bucket:name(), ns_bucket:config()) ->
           {error, {failed_nodes, [node()]}} | {ok, [{node(), [binary()]}]}.
 get_active_guest_volumes(Bucket, BucketConfig) ->
     Servers = ns_bucket:get_servers(BucketConfig),
     NodesCalls = [{Node, get_active_guest_volumes} || Node <- Servers],
     call_on_nodes_with_returns(Bucket, NodesCalls, fun servant_call/3).
 
--spec get_fusion_sync_info(bucket_name(), vbucket_map()) ->
+-spec get_fusion_sync_info(ns_bucket:name(), vbucket_map()) ->
           {error, {failed_nodes, [node()]}} | {ok, [{node(),
                                                      [{non_neg_integer(),
                                                        non_neg_integer(),
@@ -425,7 +426,8 @@ get_fusion_sync_info(Bucket, VBucketMap) ->
                           ns_rebalancer:map_to_vbuckets_dict(VBucketMap))],
     call_on_nodes_with_returns(Bucket, NodesCalls, fun servant_call/3).
 
--spec sync_fusion_log_store([bucket_name()]) -> ok | {failed_nodes, [node()]}.
+-spec sync_fusion_log_store([ns_bucket:name()]) ->
+          ok | {failed_nodes, [node()]}.
 sync_fusion_log_store(BucketNames) ->
     Replies =
         misc:parallel_map(
@@ -456,15 +458,15 @@ sync_fusion_log_store(BucketNames) ->
             {failed_nodes, BadNodes}
     end.
 
--spec delete_vbucket_copies(bucket_name(), pid(), [node()], vbucket_id()) ->
-                                   ok | {errors, [{node(), term()}]}.
+-spec delete_vbucket_copies(ns_bucket:name(), pid(), [node()], vbucket_id()) ->
+          ok | {errors, [{node(), term()}]}.
 delete_vbucket_copies(Bucket, RebalancerPid, Nodes, VBucket) ->
     process_multicall_rv(
       rebalance_multi_call(RebalancerPid, Bucket, Nodes,
                            {delete_vbucket, VBucket}, ?DELETE_VBUCKET_TIMEOUT)).
 
--spec prepare_nodes_for_rebalance(bucket_name(), [node()], pid()) ->
-                                         ok | {errors, [{node(), term()}]}.
+-spec prepare_nodes_for_rebalance(ns_bucket:name(), [node()], pid()) ->
+          ok | {errors, [{node(), term()}]}.
 prepare_nodes_for_rebalance(Bucket, Nodes, RebalancerPid) ->
     {Replies, BadNodes} =
         multi_call(Bucket, Nodes, {prepare_rebalance, RebalancerPid},
@@ -495,7 +497,7 @@ this_node_replicator_triples(Bucket) ->
     end.
 
 -spec bulk_set_vbucket_state(
-        bucket_name(),
+        ns_bucket:name(),
         pid(),
         vbucket_id(),
         [{Node::node(), vbucket_state(), rebalance_vbucket_state(),
@@ -589,20 +591,20 @@ get_vbucket_high_seqno(Bucket, Rebalancer, MasterNode, VBucket) ->
     true = is_integer(RV),
     RV.
 
--spec wait_seqno_persisted(bucket_name(), pid(), node(), vbucket_id(),
+-spec wait_seqno_persisted(ns_bucket:name(), pid(), node(), vbucket_id(),
                            seq_no()) -> ok.
 wait_seqno_persisted(Bucket, Rebalancer, Node, VBucket, SeqNo) ->
     ok = rebalance_call(Rebalancer, Bucket, Node,
                         {wait_seqno_persisted, VBucket, SeqNo}, infinity).
 
--spec inhibit_view_compaction(bucket_name(), pid(), node()) ->
-                                     {ok, reference()} | nack.
+-spec inhibit_view_compaction(ns_bucket:name(), pid(), node()) ->
+          {ok, reference()} | nack.
 inhibit_view_compaction(Bucket, Rebalancer, Node) ->
     rebalance_call(Rebalancer, Bucket, Node,
                    {inhibit_view_compaction, Rebalancer}, infinity).
 
--spec uninhibit_view_compaction(bucket_name(), pid(), node(), reference()) ->
-                                       ok | nack.
+-spec uninhibit_view_compaction(ns_bucket:name(), pid(), node(), reference()) ->
+          ok | nack.
 uninhibit_view_compaction(Bucket, Rebalancer, Node, Ref) ->
     rebalance_call(Rebalancer, Bucket, Node,
                    {uninhibit_view_compaction, Ref}, infinity).
@@ -626,16 +628,14 @@ get_servant_call_reply({MRef, Tag}) ->
 servant_call(Bucket, Node, Request) ->
     get_servant_call_reply(initiate_servant_call(Bucket, Node, Request)).
 
--spec get_dcp_docs_estimate(bucket_name(), node(), vbucket_id(), [node()]) ->
-                                   [{ok, {non_neg_integer(), non_neg_integer(),
-                                          binary()}}].
+-spec get_dcp_docs_estimate(ns_bucket:name(), node(), vbucket_id(), [node()]) ->
+          [{ok, {non_neg_integer(), non_neg_integer(), binary()}}].
 get_dcp_docs_estimate(Bucket, SrcNode, VBucket, ReplicaNodes) ->
     servant_call(Bucket, SrcNode,
                  {get_dcp_docs_estimate, VBucket, ReplicaNodes}).
 
--spec get_mass_dcp_docs_estimate(bucket_name(), node(), [vbucket_id()]) ->
-                                        {ok, [{non_neg_integer(),
-                                               non_neg_integer(), binary()}]}.
+-spec get_mass_dcp_docs_estimate(ns_bucket:name(), node(), [vbucket_id()]) ->
+          {ok, [{non_neg_integer(), non_neg_integer(), binary()}]}.
 get_mass_dcp_docs_estimate(_Bucket, _Node, []) ->
     {ok, []};
 get_mass_dcp_docs_estimate(Bucket, Node, VBuckets) ->
@@ -643,7 +643,7 @@ get_mass_dcp_docs_estimate(Bucket, Node, VBuckets) ->
     {ok, _} = RV,
     RV.
 
--spec get_all_vb_seqnos(bucket_name(), node()) ->
+-spec get_all_vb_seqnos(ns_bucket:name(), node()) ->
           {ok, [{vbucket_id(), seq_no()}]} | mc_error().
 get_all_vb_seqnos(Bucket, Node) ->
     servant_call(Bucket, Node, get_all_vb_seqnos).
