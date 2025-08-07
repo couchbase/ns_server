@@ -19,6 +19,20 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-type name() :: bucket_name().
+-type config() :: proplists:proplist().
+-type bucket() :: {name(), config()}.
+-type buckets() :: [bucket()].
+
+-type bucket_update_fun() :: fun ((config()) -> config()).
+
+-type bucket_type_mode() :: memcached|membase|persistent|auto_compactable|
+                            {membase, couchstore}|
+                            {membase, magma}|
+                            {membase, ephemeral}| {memcached, undefined}.
+
+-export_type([name/0, config/0, bucket/0, buckets/0]).
+
 %% These timeouts were initally present in ns_orchestrator
 %% - therefore the slight bit of ugliness here.
 %%
@@ -231,9 +245,6 @@
         [to_binary/1,
          prepare_list/1]).
 
--type bucket_update_fun() ::
-        fun ((proplists:proplist()) -> proplists:proplist()).
-
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -403,8 +414,8 @@ get_bucket(Bucket, Snapshot) ->
             not_present
     end.
 
--spec get_bucket_with_revision(bucket_name(), map()) ->
-          {ok, {proplists:proplist(), chronicle:revision()}} | not_present.
+-spec get_bucket_with_revision(name(), map()) ->
+          {ok, {config(), chronicle:revision()}} | not_present.
 get_bucket_with_revision(Bucket, Snapshot) when is_map(Snapshot) ->
     case maps:find(sub_key(Bucket, props), Snapshot) of
         {ok, {_V, _R}} = Ok ->
@@ -427,24 +438,15 @@ get_bucket_names() ->
 get_bucket_names(Snapshot) ->
     chronicle_compat:get(Snapshot, root(), #{required => true}).
 
--type bucket_type_mode() :: memcached|membase|persistent|auto_compactable|
-                            {membase, couchstore}|
-                            {membase, magma}|
-                            {membase, ephemeral}| {memcached, undefined}.
-
--spec get_bucket_names_of_type(bucket_type_mode()) -> [bucket_name()].
+-spec get_bucket_names_of_type(bucket_type_mode()) -> [name()].
 get_bucket_names_of_type(Type) ->
     get_bucket_names_of_type(Type, get_buckets()).
 
--spec get_bucket_names_of_type(
-        bucket_type_mode(), [{bucket_name(), proplists:proplist()}]) ->
-          [bucket_name()].
+-spec get_bucket_names_of_type(bucket_type_mode(), buckets()) -> [name()].
 get_bucket_names_of_type(Type, BucketConfigs) ->
     [Name || {Name, _Config} <- get_buckets_of_type(Type, BucketConfigs)].
 
--spec get_buckets_of_type(
-        bucket_type_mode(), [{bucket_name(), proplists:proplist()}]) ->
-          [{bucket_name(), proplists:proplist()}].
+-spec get_buckets_of_type(bucket_type_mode(), buckets()) -> buckets().
 get_buckets_of_type({Type, Mode}, BucketConfigs) ->
     [{Name, Config} || {Name, Config} <- BucketConfigs,
                        bucket_type(Config) == Type,
@@ -468,14 +470,13 @@ rank_sorting_fn() ->
             end
     end.
 
--spec get_buckets_by_rank() -> proplists:proplist().
+-spec get_buckets_by_rank() -> buckets().
 get_buckets_by_rank() ->
     get_buckets_by_rank(get_buckets()).
 
--spec get_buckets_by_rank(proplists:proplist() | map()) ->
-          proplists:proplist().
-get_buckets_by_rank(BucketsConfig) ->
-    JustBuckets = maybe_isolate_bucket_props(BucketsConfig),
+-spec get_buckets_by_rank(config() | map()) -> buckets().
+get_buckets_by_rank(Source) ->
+    JustBuckets = maybe_isolate_bucket_props(Source),
     case cluster_compat_mode:is_cluster_76() of
         true ->
             lists:sort(rank_sorting_fn(), JustBuckets);
@@ -510,7 +511,7 @@ live_bucket_nodes_from_config(BucketConfig) ->
     LiveNodes = [node()|nodes()],
     [Node || Node <- Servers, lists:member(Node, LiveNodes) ].
 
--spec conflict_resolution_type(proplists:proplist()) -> atom().
+-spec conflict_resolution_type(config()) -> atom().
 conflict_resolution_type(BucketConfig) ->
     proplists:get_value(conflict_resolution_type, BucketConfig, seqno).
 
@@ -530,21 +531,21 @@ drift_thresholds(BucketConfig) ->
         false -> undefined
     end.
 
--spec rank(proplists:proplist()) -> integer().
+-spec rank(config()) -> integer().
 rank(BucketConfig) ->
     proplists:get_value(rank, BucketConfig, ?DEFAULT_BUCKET_RANK).
 
--spec history_retention_seconds(proplists:proplist()) -> integer().
+-spec history_retention_seconds(config()) -> integer().
 history_retention_seconds(BucketConfig) ->
     proplists:get_value(history_retention_seconds, BucketConfig,
                         ?HISTORY_RETENTION_SECONDS_DEFAULT).
 
--spec history_retention_bytes(proplists:proplist()) -> integer().
+-spec history_retention_bytes(config()) -> integer().
 history_retention_bytes(BucketConfig) ->
     proplists:get_value(history_retention_bytes, BucketConfig,
                         ?HISTORY_RETENTION_BYTES_DEFAULT).
 
--spec history_retention_collection_default(proplists:proplist()) -> boolean().
+-spec history_retention_collection_default(config()) -> boolean().
 history_retention_collection_default(BucketConfig) ->
     %% History can only be true for a magma bucket.
     proplists:get_value(history_retention_collection_default, BucketConfig,
@@ -552,15 +553,15 @@ history_retention_collection_default(BucketConfig) ->
     andalso is_magma(BucketConfig)
     andalso cluster_compat_mode:is_cluster_72().
 
--spec node_eviction_policy_override(node(), proplists:proplist()) -> atom().
+-spec node_eviction_policy_override(node(), config()) -> atom().
 node_eviction_policy_override(Node, BucketConfig) ->
     proplists:get_value({node, Node, eviction_policy}, BucketConfig).
 
--spec node_eviction_policy(proplists:proplist()) -> atom().
+-spec node_eviction_policy(config()) -> atom().
 node_eviction_policy(BucketConfig) ->
     node_eviction_policy(node(), BucketConfig).
 
--spec node_eviction_policy(node(), proplists:proplist()) -> atom().
+-spec node_eviction_policy(node(), config()) -> atom().
 node_eviction_policy(Node, BucketConfig) ->
     case ns_config:read_key_fast(allow_online_eviction_policy_change,
                                  false) of
@@ -582,15 +583,15 @@ eviction_policy(BucketConfig) ->
               end,
     proplists:get_value(eviction_policy, BucketConfig, Default).
 
--spec node_storage_mode_override(node(), proplists:proplist()) -> atom().
+-spec node_storage_mode_override(node(), config()) -> atom().
 node_storage_mode_override(Node, BucketConfig) ->
     proplists:get_value({node, Node, storage_mode}, BucketConfig).
 
--spec node_storage_mode(proplists:proplist()) -> atom().
+-spec node_storage_mode(config()) -> atom().
 node_storage_mode(BucketConfig) ->
     node_storage_mode(node(), BucketConfig).
 
--spec node_storage_mode(node(), proplists:proplist()) -> atom().
+-spec node_storage_mode(node(), config()) -> atom().
 node_storage_mode(Node, BucketConfig) ->
     NodeStorageMode = node_storage_mode_override(Node, BucketConfig),
     case NodeStorageMode of
@@ -612,7 +613,7 @@ default_storage_mode(membase) ->
             couchstore
     end.
 
--spec storage_mode(proplists:proplist()) -> atom().
+-spec storage_mode(config()) -> atom().
 storage_mode(BucketConfig) ->
     case bucket_type(BucketConfig) of
         memcached ->
@@ -625,7 +626,7 @@ storage_mode(BucketConfig) ->
 autocompaction_settings(BucketConfig) ->
     proplists:get_value(autocompaction, BucketConfig).
 
--spec storage_backend(proplists:proplist()) -> atom().
+-spec storage_backend(config()) -> atom().
 storage_backend(BucketConfig) ->
     BucketType = bucket_type(BucketConfig),
     StorageMode = storage_mode(BucketConfig),
@@ -744,21 +745,19 @@ membase_bucket_config_value_getter(Key, BucketConfig, DefaultFun) ->
             proplists:get_value(Key, BucketConfig, DefaultFun(Key))
     end.
 
--spec get_expiry_pager_sleep_time(proplists:proplist()) -> integer() |
-                                                           undefined.
+-spec get_expiry_pager_sleep_time(config()) -> integer() | undefined.
 get_expiry_pager_sleep_time(BucketConfig) ->
     membase_bucket_config_value_getter(expiry_pager_sleep_time, BucketConfig).
 
--spec get_memory_low_watermark(proplists:proplist()) -> integer() | undefined.
+-spec get_memory_low_watermark(config()) -> integer() | undefined.
 get_memory_low_watermark(BucketConfig) ->
     membase_bucket_config_value_getter(memory_low_watermark, BucketConfig).
 
--spec get_memory_high_watermark(proplists:proplist()) -> integer() | undefined.
+-spec get_memory_high_watermark(config()) -> integer() | undefined.
 get_memory_high_watermark(BucketConfig) ->
     membase_bucket_config_value_getter(memory_high_watermark, BucketConfig).
 
--spec get_continuous_backup_enabled(proplists:proplist()) -> undefined |
-                                                             boolean().
+-spec get_continuous_backup_enabled(config()) -> undefined | boolean().
 get_continuous_backup_enabled(BucketConfig) ->
     case is_magma(BucketConfig) of
         false ->
@@ -768,8 +767,7 @@ get_continuous_backup_enabled(BucketConfig) ->
                                                BucketConfig)
     end.
 
--spec get_continuous_backup_interval(proplists:proplist()) -> undefined |
-                                                              non_neg_integer().
+-spec get_continuous_backup_interval(config()) -> undefined | non_neg_integer().
 get_continuous_backup_interval(BucketConfig) ->
     case is_magma(BucketConfig) of
         false ->
@@ -779,8 +777,7 @@ get_continuous_backup_interval(BucketConfig) ->
                                                BucketConfig)
     end.
 
--spec get_continuous_backup_location(proplists:proplist()) -> undefined |
-                                                              string().
+-spec get_continuous_backup_location(config()) -> undefined | string().
 get_continuous_backup_location(BucketConfig) ->
     case is_magma(BucketConfig) of
         false ->
@@ -790,45 +787,42 @@ get_continuous_backup_location(BucketConfig) ->
                                                BucketConfig)
     end.
 
--spec get_invalid_hlc_strategy(proplists:proplist()) ->
-    undefined | error | ignore | replace.
+-spec get_invalid_hlc_strategy(config()) ->
+          undefined | error | ignore | replace.
 get_invalid_hlc_strategy(BucketConfig) ->
     membase_bucket_config_value_getter(invalid_hlc_strategy, BucketConfig).
 
--spec get_hlc_max_future_threshold(proplists:proplist()) -> integer() |
-                                                            undefined.
+-spec get_hlc_max_future_threshold(config()) -> integer() | undefined.
 get_hlc_max_future_threshold(BucketConfig) ->
     membase_bucket_config_value_getter(hlc_max_future_threshold, BucketConfig).
 
--spec get_num_dcp_connections(proplists:proplist()) -> pos_integer().
+-spec get_num_dcp_connections(config()) -> pos_integer().
 get_num_dcp_connections(BucketConfig) ->
     case proplists:get_value(dcp_connections_between_nodes, BucketConfig) of
         undefined -> ?DEFAULT_DCP_CONNECTIONS;
         Other -> Other
     end.
 
--spec get_dcp_backfill_idle_protection_enabled(proplists:proplist()) ->
-          boolean().
+-spec get_dcp_backfill_idle_protection_enabled(config()) -> boolean().
 get_dcp_backfill_idle_protection_enabled(BucketConfig) ->
     membase_bucket_config_value_getter(
       dcp_backfill_idle_protection_enabled,
       BucketConfig,
       fun (_) -> get_dcp_backfill_idle_protection_default(BucketConfig) end).
 
--spec get_dcp_backfill_idle_protection_default(proplists:proplist()) ->
-          boolean().
+-spec get_dcp_backfill_idle_protection_default(config()) -> boolean().
 get_dcp_backfill_idle_protection_default(BucketConfig) ->
     %% This could read as is_persistent(BucketConfig) instead but it mirrors a
     %% function in the REST API that is used to determine if the bucket is
     %% ephemeral if we don't have a bucket config yet.
     not is_ephemeral_bucket(BucketConfig).
 
--spec get_dcp_backfill_idle_limit_seconds(proplists:proplist()) -> integer().
+-spec get_dcp_backfill_idle_limit_seconds(config()) -> integer().
 get_dcp_backfill_idle_limit_seconds(BucketConfig) ->
     membase_bucket_config_value_getter(dcp_backfill_idle_limit_seconds,
                                        BucketConfig).
 
--spec get_dcp_backfill_idle_disk_threshold(proplists:proplist()) -> integer().
+-spec get_dcp_backfill_idle_disk_threshold(config()) -> integer().
 get_dcp_backfill_idle_disk_threshold(BucketConfig) ->
     membase_bucket_config_value_getter(dcp_backfill_idle_disk_threshold,
                                        BucketConfig).
@@ -836,7 +830,7 @@ get_dcp_backfill_idle_disk_threshold(BucketConfig) ->
 %% returns bucket ram quota multiplied by number of nodes this bucket
 %% will reside after initial cleanup. I.e. gives amount of ram quota that will
 %% be used by across the cluster for this bucket.
--spec ram_quota(proplists:proplist()) -> integer().
+-spec ram_quota(config()) -> integer().
 ram_quota(Bucket) ->
     case proplists:get_value(ram_quota, Bucket) of
         X when is_integer(X) ->
@@ -845,7 +839,7 @@ ram_quota(Bucket) ->
 
 %% returns bucket ram quota for _single_ node. Each node will subtract
 %% this much from it's node quota.
--spec raw_ram_quota(proplists:proplist()) -> integer().
+-spec raw_ram_quota(config()) -> integer().
 raw_ram_quota(Bucket) ->
     case proplists:get_value(ram_quota, Bucket) of
         X when is_integer(X) ->
@@ -878,12 +872,12 @@ node_magma_fragmentation_percentage(BucketConfig) ->
 magma_max_shards(BucketConfig, Default) ->
     proplists:get_value(magma_max_shards, BucketConfig, Default).
 
--spec magma_key_tree_data_blocksize(proplists:proplist()) -> integer().
+-spec magma_key_tree_data_blocksize(config()) -> integer().
 magma_key_tree_data_blocksize(BucketConfig) ->
     proplists:get_value(magma_key_tree_data_blocksize, BucketConfig,
                         ?MAGMA_KEY_TREE_DATA_BLOCKSIZE).
 
--spec magma_seq_tree_data_blocksize(proplists:proplist()) -> integer().
+-spec magma_seq_tree_data_blocksize(config()) -> integer().
 magma_seq_tree_data_blocksize(BucketConfig) ->
     proplists:get_value(magma_seq_tree_data_blocksize, BucketConfig,
                         ?MAGMA_SEQ_TREE_DATA_BLOCKSIZE).
@@ -1052,7 +1046,7 @@ replicated_vbuckets(Map, SrcNode, DstNode) ->
     lists:sort(VBuckets).
 
 %% @doc Return the minimum number of live copies for all vbuckets.
--spec min_live_copies([node()], list()) -> non_neg_integer() | undefined.
+-spec min_live_copies([node()], config()) -> non_neg_integer() | undefined.
 min_live_copies(LiveNodes, Config) ->
     case proplists:get_value(map, Config) of
         undefined -> undefined;
@@ -1079,17 +1073,17 @@ node_locator(BucketConfig) ->
             ketama
     end.
 
--spec num_replicas(proplists:proplist()) -> integer().
+-spec num_replicas(config()) -> integer().
 num_replicas(Bucket) ->
     case proplists:get_value(num_replicas, Bucket) of
         X when is_integer(X) ->
             X
     end.
 
--spec num_replicas(proplists:proplist(), Default) -> pos_integer() | Default
+-spec num_replicas(config(), Default) -> pos_integer() | Default
               when Default :: pos_integer() | undefined.
-num_replicas(Bucket, Default) ->
-    proplists:get_value(num_replicas, Bucket, Default).
+num_replicas(BucketConfig, Default) ->
+    proplists:get_value(num_replicas, BucketConfig, Default).
 
 %% ns_server type (membase vs memcached)
 %% Once 7.9 is the oldest supported release all vestiges of 'memcached'
@@ -1158,7 +1152,7 @@ display_type(Type, _) ->
 get_servers(BucketConfig) ->
     proplists:get_value(servers, BucketConfig).
 
--spec set_bucket_config(bucket_name(), proplists:proplist()) ->
+-spec set_bucket_config(name(), config()) ->
           ok | not_found | {error, exceeded_retries}.
 set_bucket_config(Bucket, NewConfig) ->
     update_bucket_config(Bucket, fun (_) -> NewConfig end).
@@ -1336,7 +1330,7 @@ get_cc_versioning_enabled(BucketConfig) ->
             proplists:get_value(cross_cluster_versioning_enabled, BucketConfig)
     end.
 
--spec get_access_scanner_enabled(proplists:proplist()) -> boolean() | undefined.
+-spec get_access_scanner_enabled(config()) -> boolean() | undefined.
 get_access_scanner_enabled(BucketConfig) ->
     case is_persistent(BucketConfig) of
         true ->
@@ -1529,8 +1523,8 @@ get_bucket_names_marked_for_shutdown(Snapshot) ->
     [BN || {BN, _Nodes, _Timeout} <- get_buckets_marked_for_shutdown(Snapshot)].
 
 -spec delete_bucket(bucket_name()) ->
-                           {ok, BucketConfig :: list()} |
-                           {exit, {not_found, bucket_name()}, any()}.
+          {ok, BucketConfig :: config()} |
+          {exit, {not_found, name()}, any()}.
 delete_bucket(BucketName) ->
     RootKey = root(),
     PropsKey = sub_key(BucketName, props),
@@ -1711,7 +1705,7 @@ override_keys_to_restore() ->
     override_keys() -- live_migration_mutable_keys().
 
 %% Remove all override keys during a swap rebalance or full recovery.
--spec remove_override_props([{_, _}], [node()]) -> [{_, _}].
+-spec remove_override_props(config(), [node()]) -> [{_, _}].
 remove_override_props(Props, Nodes) ->
     lists:filter(fun ({{node, Node, SubKey}, _Value}) ->
                          not lists:member(Node, Nodes)
@@ -1720,16 +1714,14 @@ remove_override_props(Props, Nodes) ->
                          true
                  end, Props).
 
--spec remove_override_props_many([node()], [{bucket_name(), [{_, _}]}]) ->
-          [{bucket_name(), [{_, _}]}].
+-spec remove_override_props_many([node()], buckets()) -> buckets().
 remove_override_props_many(Nodes, BucketConfigs) ->
     lists:map(fun ({BN, BC}) ->
                       {BN, remove_override_props(BC, Nodes)}
               end, BucketConfigs).
 
--spec remove_override_props_delta_recovery_many([node()],
-                                                [{bucket_name(), [{_, _}]}]) ->
-          [{bucket_name(), [{_, _}]}].
+-spec remove_override_props_delta_recovery_many([node()], buckets()) ->
+          buckets().
 remove_override_props_delta_recovery_many(Nodes, BucketConfigs) ->
     lists:map(fun ({BN, BC}) ->
                       {BN, remove_override_props_delta_recovery(BC, Nodes)}
@@ -1739,7 +1731,7 @@ remove_override_props_delta_recovery_many(Nodes, BucketConfigs) ->
 %% Skip removal if the node is scheduled for storage mode migration —
 %% it should keep its current eviction_policy until the new storage mode
 %% applies, which won't happen during delta recovery.
--spec remove_override_props_delta_recovery([{_, _}], [node()]) -> [{_, _}].
+-spec remove_override_props_delta_recovery(config(), [node()]) -> config().
 remove_override_props_delta_recovery(Props, Nodes) ->
     lists:filter(fun ({{node, Node, eviction_policy}, _Value}) ->
                          case lists:member(Node, Nodes) andalso
@@ -2013,7 +2005,7 @@ update_bucket_props_inner(Type, OldStorageMode, BucketName, Props, Options) ->
             RV
     end.
 
--spec update_bucket_props_allowed(proplists:proplist(), proplists:proplist(),
+-spec update_bucket_props_allowed(proplists:proplist(), config(),
                                   [atom()]) -> true | {false, Error::term()}.
 update_bucket_props_allowed(NewProps, BucketConfig, Options) ->
     Res = functools:sequence_(
@@ -2249,7 +2241,7 @@ validate_map(Map) ->
             ok
     end.
 
--spec set_map_and_uploaders(bucket_name(), vbucket_map(),
+-spec set_map_and_uploaders(name(), vbucket_map(),
                             fusion_uploaders:uploaders() | undefined) ->
           ok | not_found.
 set_map_and_uploaders(Bucket, Map, Uploaders) ->
@@ -2325,7 +2317,7 @@ set_initial_map_and_uploaders_txn(Snapshot, Bucket, Map, Servers, MapOpts) ->
             {abort, mismatch}
     end.
 
--spec set_initial_map_and_uploaders(bucket_name(), vbucket_map(), [node()],
+-spec set_initial_map_and_uploaders(name(), vbucket_map(), [node()],
                                     proplists:proplist()) ->
           ok | mismatch | {error, exceeded_retries}.
 set_initial_map_and_uploaders(Bucket, Map, Servers, MapOpts) ->
@@ -2388,9 +2380,8 @@ clear_hibernation_state(Bucket) ->
                    proplists:delete(hibernation_state, OldConfig)
            end).
 
--spec update_servers_and_map_commits(
-        proplists:proplist(), [node()], vbucket_map()) ->
-          proplists:proplist().
+-spec update_servers_and_map_commits(config(), [node()], vbucket_map()) ->
+          config().
 update_servers_and_map_commits(OldConfig, FailedNodes, NewMap) ->
     Servers = ns_bucket:get_servers(OldConfig),
     C1 = misc:update_proplist(OldConfig, [{servers, Servers -- FailedNodes},
@@ -2418,7 +2409,7 @@ get_commits_from_snapshot(BucketsUpdates, Snapshot) ->
       end, BucketsUpdates).
 
 % Update the bucket config atomically.
--spec update_bucket_config(bucket_name(), bucket_update_fun()) ->
+-spec update_bucket_config(name(), bucket_update_fun()) ->
           ok | not_found | {error, exceeded_retries}.
 update_bucket_config(BucketName, Fun) ->
     case do_update_bucket_config(BucketName, Fun) of
@@ -2439,7 +2430,7 @@ do_update_bucket_config(BucketName, Fun) ->
 do_update_bucket_config(BucketName, Fun, Predicate, Subkeys, Opts) ->
     update_buckets_config([{BucketName, Fun}], Predicate, Subkeys, Opts).
 
--spec update_buckets_config([{bucket_name(), bucket_update_fun()}]) ->
+-spec update_buckets_config([{name(), bucket_update_fun()}]) ->
           ok | not_found | {error, exceeded_retries}.
 update_buckets_config(BucketsUpdates) ->
     case update_buckets_config(BucketsUpdates, fun (_) -> ok end, [], #{}) of
@@ -2619,11 +2610,12 @@ node_bucket_names(Node, BucketsConfigs) ->
 node_bucket_names(Node) ->
     node_bucket_names(Node, get_buckets()).
 
--spec node_bucket_names_of_type(node(), bucket_type_mode()) -> list().
+-spec node_bucket_names_of_type(node(), bucket_type_mode()) -> [name()].
 node_bucket_names_of_type(Node, Type) ->
     node_bucket_names_of_type(Node, Type, get_buckets()).
 
--spec node_bucket_names_of_type(node(), bucket_type_mode(), list()) -> list().
+-spec node_bucket_names_of_type(node(), bucket_type_mode(), buckets()) ->
+          [name()].
 node_bucket_names_of_type(Node, {Type, Mode}, BucketConfigs) ->
     [B || {B, C} <- BucketConfigs,
           lists:member(Node, get_servers(C)),
@@ -2643,7 +2635,7 @@ node_bucket_names_of_type(Node, Type, BucketConfigs) ->
           bucket_type(C) =:= Type].
 
 %% All the vbuckets (active or replica) on a node
--spec all_node_vbuckets(term()) -> list(integer()).
+-spec all_node_vbuckets(config()) -> [integer()].
 all_node_vbuckets(BucketConfig) ->
     VBucketMap = couch_util:get_value(map, BucketConfig, []),
     Node = node(),
@@ -3124,7 +3116,7 @@ update_desired_servers(DesiredServers, BucketConfig) ->
     lists:keystore(desired_servers, 1, BucketConfig,
                    {desired_servers, DesiredServers}).
 
--spec get_expected_servers(proplists:proplist()) -> [node()].
+-spec get_expected_servers(config()) -> [node()].
 %% Use this to get the list of servers that the bucket will be on after creation
 get_expected_servers(BucketConfig) ->
     case get_servers(BucketConfig) of
@@ -3268,23 +3260,22 @@ get_force_encryption_timestamp(BucketUUID, Snapshot) ->
 
 %% fusion
 
--spec is_fusion(proplists:proplist()) -> boolean().
+-spec is_fusion(config()) -> boolean().
 is_fusion(BucketConfig) ->
     get_fusion_state(BucketConfig) =/= disabled.
 
--spec get_fusion_state(proplists:proplist()) -> fusion_uploaders:bucket_state().
+-spec get_fusion_state(config()) -> fusion_uploaders:bucket_state().
 get_fusion_state(BucketConfig) ->
     proplists:get_value(magma_fusion_state, BucketConfig, disabled).
 
--spec set_fusion_state(fusion_uploaders:bucket_state(), proplists:proplist()) ->
-          proplists:proplist().
+-spec set_fusion_state(fusion_uploaders:bucket_state(), config()) -> config().
 set_fusion_state(disabled, BucketConfig) ->
     lists:keydelete(magma_fusion_state, 1, BucketConfig);
 set_fusion_state(State, BucketConfig) ->
     lists:keystore(magma_fusion_state, 1, BucketConfig,
                    {magma_fusion_state, State}).
 
--spec get_fusion_buckets() -> [{bucket_name(), proplists:proplist()}].
+-spec get_fusion_buckets() -> buckets().
 get_fusion_buckets() ->
     [{B, C} || {B, C} <- get_buckets(), is_fusion(C)].
 
@@ -3292,12 +3283,11 @@ get_fusion_buckets() ->
 fusion_uploaders_sub_key() ->
     fusion_uploaders.
 
--spec fusion_uploaders_key(string()) -> tuple().
+-spec fusion_uploaders_key(name()) -> tuple().
 fusion_uploaders_key(BucketName) ->
     sub_key(BucketName, fusion_uploaders_sub_key()).
 
--spec get_fusion_uploaders(string()) ->
-          fusion_uploaders:uploaders() | not_found.
+-spec get_fusion_uploaders(name()) -> fusion_uploaders:uploaders() | not_found.
 get_fusion_uploaders(BucketName) ->
     get_sub_key_value(BucketName, fusion_uploaders_sub_key()).
 
