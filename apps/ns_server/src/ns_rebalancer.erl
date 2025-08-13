@@ -822,7 +822,7 @@ do_rebalance_membase_bucket(Bucket, Config,
                      [MapOptions, erlang:phash2(MapOptions)]),
 
     FusionUploaders = fusion_uploaders:build_fast_forward_info(
-                        Bucket, Config, Map, FastForwardMap),
+                        Bucket, Config, Map, FastForwardMap, length(Servers)),
 
     {run_mover(Bucket, Config, Servers, ProgressFun, Map, FastForwardMap,
                RebalancePlan, FusionUploaders),

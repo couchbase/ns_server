@@ -18,7 +18,7 @@
 -include("ns_common.hrl").
 -include_lib("ns_common/include/cut.hrl").
 
--export([build_fast_forward_info/4,
+-export([build_fast_forward_info/5,
          build_initial/1,
          get_moves/1,
          get_current/1,
@@ -71,23 +71,23 @@
               disable_or_stop_error/0, bucket_state/0, state/0]).
 
 -spec build_fast_forward_info(ns_bucket:name(), ns_bucket:config(),
-                              vbucket_map(), vbucket_map()) ->
+                              vbucket_map(), vbucket_map(), integer()) ->
           undefined | fast_forward_info().
-build_fast_forward_info(Bucket, BucketConfig, Map, FastForwardMap) ->
+build_fast_forward_info(Bucket, BucketConfig, Map, FastForwardMap, NServers) ->
     case ns_bucket:is_fusion(BucketConfig) of
         false ->
             undefined;
         true ->
             Current = ns_bucket:get_fusion_uploaders(Bucket),
             Moves = calculate_moves(Map, FastForwardMap, Current,
-                                    allowance(Map, BucketConfig)),
+                                    allowance(Map, NServers)),
             ?rebalance_info("Calculated fusion uploader moves. Moves:~n~p",
                             [Moves]),
             {Moves, Current}
     end.
 
-allowance(Map, BucketConfig) ->
-    length(Map) div length(ns_bucket:get_servers(BucketConfig)) + 1.
+allowance(Map, NServers) ->
+    length(Map) div NServers + 1.
 
 -spec build_initial(vbucket_map()) -> uploaders().
 build_initial(VBucketMap) ->
@@ -270,7 +270,7 @@ txn_update_state_set(Txn, State) ->
 update_state_set(Config, State) ->
     {set, config_key(), lists:keystore(state, 1, Config, {state, State})}.
 
-re_enable_uploaders(Bucket, BucketConfig, Map, Uploaders) ->
+re_enable_uploaders(Bucket, NServers, Map, Uploaders) ->
     case janitor_agent:get_fusion_sync_info(Bucket, Map) of
         {error, Error} ->
             {error, Error};
@@ -285,12 +285,12 @@ re_enable_uploaders(Bucket, BucketConfig, Map, Uploaders) ->
                             end, Acc, VBSyncInfo)
                   end, array:new(length(Map), {default, []}), NodesInfo),
             VBInfos = array:to_list(VBInfosArray),
-            Allowance = allowance(Map, BucketConfig),
+            Allowance = allowance(Map, NServers),
             ?log_debug("The following information was retrieved from bucket "
                        "~p~n~p~nCurrent uploaders: ~p~nAllowance: ~p",
                        [Bucket, VBInfos, Uploaders, Allowance]),
             {ok, build_uploaders(lists:zip(VBInfos, Map), Uploaders,
-                                 allowance(Map, BucketConfig), uploaders)}
+                                 Allowance, uploaders)}
     end.
 
 calculate_bucket_uploaders(Bucket, BucketConfig) ->
@@ -322,8 +322,10 @@ calculate_bucket_uploaders(Bucket, BucketConfig) ->
                             %% fusion was stopped for this bucket
                             %% rebuild uploaders according to existing data
                             %% trying to minimize the initial upload
-                            re_enable_uploaders(Bucket, BucketConfig, Map,
-                                                Uploaders)
+                            re_enable_uploaders(
+                              Bucket,
+                              length(ns_bucket:get_servers(BucketConfig)),
+                              Map, Uploaders)
                     end
             end
     end.

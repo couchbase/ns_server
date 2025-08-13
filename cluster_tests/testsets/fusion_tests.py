@@ -53,7 +53,7 @@ class FusionTests(testlib.BaseTestSet):
     def requirements():
         return [ClusterRequirements(edition="Enterprise",
                                     include_services=[Service.KV],
-                                    min_num_nodes=2, num_connected=1,
+                                    min_num_nodes=3, num_connected=1,
                                     num_vbuckets=16, buckets=[])]
 
     def get_status(self):
@@ -105,7 +105,7 @@ class FusionTests(testlib.BaseTestSet):
             sync=True)
 
     def prepare_rebalance(self, keep_nodes):
-        keep_nodes_string = ",".join(keep_nodes.values())
+        keep_nodes_string = ",".join(keep_nodes)
 
         resp = testlib.post_succ(self.cluster,
                                  "/controller/fusion/prepareRebalance",
@@ -151,7 +151,7 @@ class FusionTests(testlib.BaseTestSet):
         testlib.post_fail(self.cluster, "/controller/fusion/prepareRebalance",
                           expected_code=400)
 
-        acc_plan = self.prepare_rebalance(otp_nodes)
+        acc_plan = self.prepare_rebalance(otp_nodes.values())
         plan_uuid = acc_plan["planUUID"]
         plan_nodes = acc_plan["nodes"]
 
@@ -220,7 +220,7 @@ class FusionTests(testlib.BaseTestSet):
         otp_nodes = testlib.get_otp_nodes(self.cluster)
         second_otp_node = otp_nodes[second_node.hostname()]
 
-        acc_plan = self.prepare_rebalance(otp_nodes)
+        acc_plan = self.prepare_rebalance(otp_nodes.values())
         plan_uuid = acc_plan["planUUID"]
 
         nodes_volumes_json = {'nodes': [{'name': second_otp_node,
@@ -424,7 +424,7 @@ class FusionTests(testlib.BaseTestSet):
 
         otp_nodes = testlib.get_otp_nodes(self.cluster)
 
-        acc_plan = self.prepare_rebalance(otp_nodes)
+        acc_plan = self.prepare_rebalance(otp_nodes.values())
         plan_uuid = acc_plan["planUUID"]
         plan_nodes = acc_plan["nodes"]
 
@@ -435,6 +435,36 @@ class FusionTests(testlib.BaseTestSet):
         assert snapshot_uuid["plan_uuid"] == plan_uuid
         assert snapshot_uuid["bucket_uuid"] == bucket_uuid
         assert snapshot_uuid["num_vbuckets"] == 16
+
+    def swap_rebalance_test(self):
+        self.init_fusion()
+
+        self.create_bucket('test', 1)
+
+        disconnected_nodes = self.cluster.disconnected_nodes()
+        second_node = disconnected_nodes[0]
+        third_node = disconnected_nodes[1]
+
+        self.cluster.add_node(second_node, services=[Service.KV])
+        self.cluster.rebalance()
+
+        testlib.post_succ(self.cluster, '/fusion/enable')
+        self.wait_for_state('enabling', 'enabled')
+
+        self.cluster.add_node(third_node, services=[Service.KV])
+        acc_plan = self.prepare_rebalance(
+            [self.cluster.connected_nodes[0].otp_node(),
+             third_node.otp_node()])
+        plan_uuid = acc_plan["planUUID"]
+
+        resp = testlib.post_succ(
+            self.cluster,
+            f"/controller/fusion/uploadMountedVolumes?planUUID={plan_uuid}",
+            json=generate_nodes_volumes([third_node.otp_node()]))
+
+        self.cluster.rebalance(ejected_nodes=[second_node],
+                               plan_uuid = plan_uuid,
+                               wait = True)
 
 def assert_json_error(json, field, prefix):
     assert isinstance(json, dict)
