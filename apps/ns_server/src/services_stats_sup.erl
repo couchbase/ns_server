@@ -40,8 +40,6 @@ init(child) ->
            misc:get_env_default(max_t, 10)},
           []}}.
 
-is_notable_event(buckets) ->
-    true;
 is_notable_event({node, Node, membership}) when Node =:= node() ->
     true;
 is_notable_event(rest_creds) ->

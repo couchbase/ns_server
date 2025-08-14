@@ -51,8 +51,6 @@ cache_init() ->
     submit_new_buckets(),
     submit_full_reset().
 
-handle_config_event(buckets) ->
-    submit_new_buckets();
 handle_config_event(counters) ->
     submit_full_reset();
 handle_config_event(Key) ->
@@ -63,7 +61,6 @@ handle_config_event(Key) ->
             submit_full_reset()
     end.
 
-is_interesting(buckets) -> true;
 is_interesting({_, _, alternate_addresses}) -> true;
 is_interesting({_, _, capi_port}) -> true;
 is_interesting({_, _, ssl_capi_port}) -> true;

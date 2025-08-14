@@ -278,8 +278,6 @@ store_sub_key(BucketName, SubKey, Value) ->
 
 %% do not detect changes bucket_names because it is always in the same
 %% transaction with props key
-buckets_change(buckets) ->
-    true;
 buckets_change(Key) ->
     case sub_key_match(Key) of
         {true, _, props} ->
@@ -288,8 +286,6 @@ buckets_change(Key) ->
             false
     end.
 
-names_change(buckets) ->
-    true;
 names_change(bucket_names) ->
     true;
 names_change(_) ->

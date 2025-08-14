@@ -62,25 +62,11 @@ handle_cast(Request, State) ->
     {noreply, State, hibernate}.
 
 handle_info({config_change, KVList}, State) ->
-    NewState =
-        lists:foldl(
-          fun (KV, Acc) ->
-                  log_kv(KV, Acc)
-          end, State, KVList),
-    {noreply, NewState, hibernate};
+    lists:foreach(fun ({K, V}) -> log_kv(K, V) end, KVList),
+    {noreply, State, hibernate};
 handle_info(Info, State) ->
     ?log_warning("Unexpected handle_info(~p, ~p)", [Info, State]),
     {noreply, State, hibernate}.
-
-%% Internal functions
-compute_buckets_diff(NewBuckets, OldBuckets) ->
-    OldConfigs = proplists:get_value(configs, OldBuckets, []),
-    NewConfigs = proplists:get_value(configs, NewBuckets, []),
-
-    Diffed =
-        merge_bucket_configs(fun compute_bucket_diff/2, NewConfigs, OldConfigs),
-
-    misc:update_proplist(NewBuckets, [{configs, Diffed}]).
 
 compute_bucket_diff(NewProps, OldProps) ->
     OldMap = proplists:get_value(map, OldProps, []),
@@ -296,27 +282,7 @@ sanitize_value(Value0, Options) ->
                      sha256,
                      <<Value/binary, Salt/binary>>))}.
 
-log_kv({buckets = K, ?DELETED_MARKER = V}, State) ->
-    log_common(K, V),
-    State#state{buckets=[]};
-log_kv({buckets, RawBuckets0}, #state{buckets=OldBuckets} = State) ->
-    VClock = ns_config:extract_vclock(RawBuckets0),
-    {V, NewBuckets} =
-        case ns_config:strip_metadata(RawBuckets0) of
-            ?DELETED_MARKER ->
-                {?DELETED_MARKER, []};
-            RawBuckets ->
-                SortedBuckets = sort_buckets(RawBuckets),
-                {compute_buckets_diff(SortedBuckets, OldBuckets),
-                 SortedBuckets}
-        end,
-    log_common(buckets, [VClock | V]),
-    State#state{buckets=NewBuckets};
-log_kv({K, V}, State) ->
-    log_common(K, V),
-    State.
-
-log_common(K, V) ->
+log_kv(K, V) ->
     %% These can get pretty big, so pre-format them for the logger.
     {_, VS} = sanitize({K, V}),
     VB = list_to_binary(io_lib:print(VS, 0, 80, 100)),
@@ -333,28 +299,3 @@ frequently_changed_key({metakv, <<"/regulator/report", _/binary>>}) ->
     true;
 frequently_changed_key(_) ->
     false.
-
-sort_buckets(Buckets) ->
-    Configs = proplists:get_value(configs, Buckets, []),
-    SortedConfigs = lists:keysort(1, Configs),
-    misc:update_proplist(Buckets, [{configs, SortedConfigs}]).
-
-%% Merge bucket configs using a function. Note that only those buckets that
-%% are present in the first list will be present in the resulting list.
-merge_bucket_configs(_Fun, [], _) ->
-    [];
-merge_bucket_configs(Fun, [X | Xs], []) ->
-    {_, XValue} = X,
-    [Fun(XValue, []) | merge_bucket_configs(Fun, Xs, [])];
-merge_bucket_configs(Fun, [X | XRest] = Xs, [Y | YRest] = Ys) ->
-    {XName, XValue} = X,
-    {YName, YValue} = Y,
-
-    if
-        XName < YName ->
-            [{XName, Fun(XValue, [])} | merge_bucket_configs(Fun, XRest, Ys)];
-        XName > YName ->
-            merge_bucket_configs(Fun, Xs, YRest);
-        true ->
-            [{XName, Fun(XValue, YValue)} | merge_bucket_configs(Fun, XRest, YRest)]
-    end.
