@@ -102,14 +102,12 @@ class JWTTests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(edition="Enterprise",
-                                           dev_preview=True,
-                                           num_vbuckets=16,
-                                           buckets=[
-                                               {'name': JWTTests.test_bucket,
-                                                     'ramQuota': 100}],
-                                           include_services=[Service.KV,
-                                                             Service.QUERY])
+        return testlib.ClusterRequirements(
+            edition="Enterprise",
+            num_vbuckets=16,
+            buckets=[{"name": JWTTests.test_bucket, "ramQuota": 100}],
+            include_services=[Service.KV, Service.QUERY],
+        )
 
     def setup(self):
         # Set shorter intervals for testing

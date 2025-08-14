@@ -204,7 +204,6 @@ encode_response(Value) ->
 
 handle_settings(Method, Req) ->
     try
-        menelaus_util:assert_is_dev_preview(),
         menelaus_util:assert_is_enterprise(),
         menelaus_util:assert_is_79(),
         case Method of
