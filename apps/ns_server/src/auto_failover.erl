@@ -628,8 +628,8 @@ process_action({failover, NodesWithUUIDs}, S, DownNodes, NodeStatuses,
 
 trim_needed(_Nodes, #state{disable_max_count = true}) ->
     false;
-trim_needed(Nodes, #state{max_count = Max}) ->
-    length(Nodes) > Max.
+trim_needed(Nodes, #state{count = Count, max_count = Max}) ->
+    Count  + length(Nodes) > Max.
 
 trim_nodes(Nodes, #state{count = Count, max_count = Max}) ->
     lists:sublist(Nodes, Max - Count).
@@ -665,6 +665,9 @@ maybe_report_max_node_reached(AllNodes, NotFailedOver, ErrMsg, S) ->
             S
     end.
 
+trigger_autofailover([], _NodeStatuses, _DownNodeNames, _DownNodes, _Opts,
+                     State) ->
+    State;
 trigger_autofailover(Nodes, NodeStatuses, DownNodeNames, DownNodes, Opts,
                      State) ->
     FailoverReasons = failover_reasons(Nodes, DownNodes, NodeStatuses),
