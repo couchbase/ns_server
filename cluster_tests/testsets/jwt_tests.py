@@ -128,7 +128,6 @@ class JWTTests(testlib.BaseTestSet):
                                   "{menelaus_web_jwt, jwks_uri_refresh_min_s}")
         testlib.delete_config_key(self.cluster,
                                   "{jwt_cache, jwks_cooldown_interval_ms}")
-        testlib.delete_config_key(self.cluster, "oauthbearer_enabled")
         testlib.delete_succ(self.cluster, self.endpoint)
         testlib.get_fail(self.cluster, self.endpoint, expected_code=404)
 
@@ -1120,8 +1119,6 @@ class JWTTests(testlib.BaseTestSet):
 
     def oauthbearer_memcached_test(self):
         """Test OAUTHBEARER authentication with memcached using mcstat"""
-        testlib.set_config_key(self.cluster, "oauthbearer_enabled", True)
-
         # Create a test bucket for mcstat
         test_bucket = "test-jwt-bucket"
         node = self.cluster.connected_nodes[0]

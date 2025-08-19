@@ -799,7 +799,9 @@ auth_mechs() ->
 
 ssl_auth_mechs() ->
     auth_mechs() ++
-        ["OAUTHBEARER" || ns_config:read_key_fast(oauthbearer_enabled, false)].
+        ["OAUTHBEARER" ||
+            cluster_compat_mode:is_cluster_totoro() andalso
+                ns_config:read_key_fast(oauthbearer_enabled, true)].
 
 generate_interfaces(MCDParams) ->
     GetPort = fun (Port) ->

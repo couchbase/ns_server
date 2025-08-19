@@ -205,7 +205,7 @@ encode_response(Value) ->
 handle_settings(Method, Req) ->
     try
         menelaus_util:assert_is_enterprise(),
-        menelaus_util:assert_is_79(),
+        menelaus_util:assert_is_totoro(),
         case Method of
             'GET' -> handle_settings_get(Req);
             'PUT' -> handle_settings_put(Req);

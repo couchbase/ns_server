@@ -234,7 +234,8 @@ authenticate(<<"PLAIN">>, AuthReq) ->
             {error, "Invalid challenge", []}
     end;
 authenticate(<<"OAUTHBEARER">>, AuthReq) ->
-    case ns_config:read_key_fast(oauthbearer_enabled, false) of
+    case cluster_compat_mode:is_cluster_totoro() andalso
+        ns_config:read_key_fast(oauthbearer_enabled, true) of
         true ->
             Challenge = proplists:get_value(<<"challenge">>, AuthReq),
             case sasl_decode_oauthbearer_challenge(Challenge) of
@@ -601,13 +602,18 @@ with_mocked_users(Users, Fun) ->
     meck:new(menelaus_auth, [passthrough]),
     meck:new(menelaus_users, [passthrough]),
     meck:new(ns_config, [passthrough]),
+    meck:new(cluster_compat_mode, [passthrough]),
 
     try
         meck:expect(ns_config, read_key_fast,
-                    fun(oauthbearer_enabled, _Default) ->
-                            true;
+                    fun(oauthbearer_enabled, Default) ->
+                            Default;
                        (Key, Default) ->
                             meck:passthrough([Key, Default])
+                    end),
+        meck:expect(cluster_compat_mode, is_cluster_totoro,
+                    fun () ->
+                            true
                     end),
 
         meck:expect(menelaus_auth, authenticate,
