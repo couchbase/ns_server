@@ -43,7 +43,11 @@
 -type service() :: kv | index | n1ql | fts | eventing | cbas | backup.
 -type tcp_port() :: 0..65535.
 
--type auth_audit_props() :: [{atom(), binary() | [binary()] | integer()}].
+-type audit_prop_value() :: binary() | number() | boolean() |
+                            [audit_prop_value()] |
+                            {[{binary(), audit_prop_value()}]}.
+
+-type auth_audit_props() :: [{binary(), audit_prop_value()}].
 
 -define(MULTICALL_DEFAULT_TIMEOUT, 30000).
 

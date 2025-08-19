@@ -238,25 +238,35 @@ extract_claims(TokenBin, Issuers) ->
         _:_ -> {error, <<"Invalid token format">>}
     end.
 
+%% These normalization functions are used to convert jiffy-encoded JSON values
+%% to proplists for auditing.
+
+%% Standard claims are atoms. Custom claims are strings.
+-spec normalize_claim(Claim :: claims()) -> binary().
+normalize_claim(Claim) when is_atom(Claim) -> atom_to_binary(Claim);
+normalize_claim(Claim) when is_list(Claim) -> list_to_binary(Claim).
+
+%% JSON keys must be strings (binaries).
+normalize_key(K) when is_binary(K) -> K.
+
+%% Normalize JSON values (as decoded by jiffy) for auditing (ejson encoding).
+normalize_val(V) when is_number(V); is_boolean(V); is_binary(V) -> V;
+normalize_val(null) -> null;
+normalize_val(V) when is_list(V) ->
+    case io_lib:printable_list(V) of
+        true -> list_to_binary(V);
+        false -> [normalize_val(E) || E <- V]
+    end;
+normalize_val(V) when is_map(V) ->
+    {[{normalize_key(K), normalize_val(Val)} ||
+         {K, Val} <- maps:to_list(V)]}.
+
 %% Converts the claims map to a proplist containing only binaries for auditing.
--spec audit_map_to_proplist(AuditMap :: map()) -> [{atom(), binary()}].
+-spec audit_map_to_proplist(AuditMap :: map()) -> auth_audit_props().
 audit_map_to_proplist(AuditMap) ->
     lists:sort(maps:fold(
-                 fun(Key, Value, Acc) ->
-                         Converted =
-                             case Value of
-                                 Number when is_integer(Number) ->
-                                     Number;
-                                 List when is_list(List) ->
-                                     case io_lib:printable_list(List) of
-                                         true -> list_to_binary(List);
-                                         false -> [list_to_binary(Str) ||
-                                                      Str <- List]
-                                     end;
-                                 Bin when is_binary(Bin) ->
-                                     Bin
-                             end,
-                         [{Key, Converted} | Acc]
+                 fun(Claim, Value, Acc) ->
+                         [{normalize_claim(Claim), normalize_val(Value)} | Acc]
                  end, [], AuditMap)).
 
 -spec audit_success(Claims :: map(), AuthnRes :: #authn_res{}) ->
@@ -733,10 +743,10 @@ audit_map_to_proplist_test() ->
                nbf => 1234567800
               },
     ?assertEqual([
-                  {exp, 1234567890},
-                  {iss, <<"test-issuer">>},
-                  {nbf, 1234567800},
-                  {sub, <<"test-user">>}
+                  {<<"exp">>, 1234567890},
+                  {<<"iss">>, <<"test-issuer">>},
+                  {<<"nbf">>, 1234567800},
+                  {<<"sub">>, <<"test-user">>}
                  ], lists:sort(audit_map_to_proplist(Simple))),
 
     %% Test array claims
@@ -745,8 +755,8 @@ audit_map_to_proplist_test() ->
                groups => ["group1", "group2"]
               },
     ?assertEqual([
-                  {aud, [<<"aud1">>, <<"aud2">>]},
-                  {groups, [<<"group1">>, <<"group2">>]}
+                  {<<"aud">>, [<<"aud1">>, <<"aud2">>]},
+                  {<<"groups">>, [<<"group1">>, <<"group2">>]}
                  ], lists:sort(audit_map_to_proplist(Arrays))),
 
     %% Test complex roles
@@ -759,12 +769,12 @@ audit_map_to_proplist_test() ->
                        ]
              },
     ?assertEqual([
-                  {roles, [
-                           <<"admin">>,
-                           <<"bucket_admin[default]">>,
-                           <<"data_writer[default:scope1]">>,
-                           <<"query_select[default:scope1.collection1]">>
-                          ]}
+                  {<<"roles">>, [
+                                 <<"admin">>,
+                                 <<"bucket_admin[default]">>,
+                                 <<"data_writer[default:scope1]">>,
+                                 <<"query_select[default:scope1.collection1]">>
+                                ]}
                  ], lists:sort(audit_map_to_proplist(Roles))),
 
     %% Test error reason
@@ -773,8 +783,8 @@ audit_map_to_proplist_test() ->
               exp => 1234567890
              },
     ?assertEqual([
-                  {exp, 1234567890},
-                  {reason, <<"Token has expired">>}
+                  {<<"exp">>, 1234567890},
+                  {<<"reason">>, <<"Token has expired">>}
                  ], lists:sort(audit_map_to_proplist(Error))),
 
     %% Test mapped claims
@@ -783,9 +793,44 @@ audit_map_to_proplist_test() ->
                mapped_roles => ["bucket_admin[*]", "data_reader[*:*.*]"]
               },
     ?assertEqual([
-                  {mapped_groups, [<<"admins">>, <<"users">>]},
-                  {mapped_roles, [<<"bucket_admin[*]">>,
-                                  <<"data_reader[*:*.*]">>]}
-                 ], lists:sort(audit_map_to_proplist(Mapped))).
+                  {<<"mapped_groups">>, [<<"admins">>, <<"users">>]},
+                  {<<"mapped_roles">>, [<<"bucket_admin[*]">>,
+                                        <<"data_reader[*:*.*]">>]}
+                 ], lists:sort(audit_map_to_proplist(Mapped))),
+
+
+    Nested = #{
+               "user_metadata" =>
+                   #{
+                     <<"preferences">> => #{
+                                            <<"theme">> => <<"dark">>,
+                                            <<"notifications">> => true
+                                           },
+                     <<"profile">> => #{
+                                        <<"age">> => 30,
+                                        <<"active">> => true
+                                       }
+                                 }
+              },
+    Actual = audit_map_to_proplist(Nested),
+    ?assertEqual(1, length(Actual)),
+    [{<<"user_metadata">>, UserMetadata}] = Actual,
+    {UserMetadataKVs} = UserMetadata,
+    ?assertEqual(2, length(UserMetadataKVs)),
+
+    {Preferences} = proplists:get_value(<<"preferences">>, UserMetadataKVs),
+    ?assertEqual(2, length(Preferences)),
+    ?assert(lists:keymember(<<"theme">>, 1, Preferences)),
+    ?assert(lists:keymember(<<"notifications">>, 1, Preferences)),
+    {<<"theme">>, <<"dark">>} = lists:keyfind(<<"theme">>, 1, Preferences),
+    {<<"notifications">>, true} = lists:keyfind(<<"notifications">>, 1,
+                                                Preferences),
+
+    {Profile} = proplists:get_value(<<"profile">>, UserMetadataKVs),
+    ?assertEqual(2, length(Profile)),
+    ?assert(lists:keymember(<<"age">>, 1, Profile)),
+    ?assert(lists:keymember(<<"active">>, 1, Profile)),
+    {<<"age">>, 30} = lists:keyfind(<<"age">>, 1, Profile),
+    {<<"active">>, true} = lists:keyfind(<<"active">>, 1, Profile).
 
 -endif.

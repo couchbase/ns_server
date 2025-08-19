@@ -633,10 +633,10 @@ with_mocked_users(Users, Fun) ->
 
                                             AuditProps =
                                                 [
-                                                 {type, <<"jwt">>},
-                                                 {iss, <<"test-issuer">>},
-                                                 {sub, <<"User3">>},
-                                                 {expiry_with_leeway,
+                                                 {<<"type">>, <<"jwt">>},
+                                                 {<<"iss">>, <<"test-issuer">>},
+                                                 {<<"sub">>, <<"User3">>},
+                                                 {<<"expiry_with_leeway">>,
                                                   <<"2099-01-01T00:00:00Z">>}
                                                 ],
 
@@ -652,8 +652,8 @@ with_mocked_users(Users, Fun) ->
                                 "invalid_token" ->
                                     AuditProps =
                                         [
-                                         {type, <<"jwt">>},
-                                         {reason, <<"Token has expired">>}
+                                         {<<"type">>, <<"jwt">>},
+                                         {<<"reason">>, <<"Token has expired">>}
                                         ],
                                     {error, [], AuditProps}
                             end;

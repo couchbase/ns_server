@@ -958,7 +958,7 @@ get_authn_res_audit_props(#authn_res{extra_groups = ExtraGroups,
                  [] -> Props;
                  Groups ->
                      GroupsStr = lists:flatten(misc:intersperse(Groups, ",")),
-                     [{mapped_groups, list_to_binary(GroupsStr)} | Props]
+                     [{<<"mapped_groups">>, list_to_binary(GroupsStr)} | Props]
              end,
     Props2 = case ExtraRoles of
                  [] -> Props1;
@@ -967,13 +967,14 @@ get_authn_res_audit_props(#authn_res{extra_groups = ExtraGroups,
                                   misc:intersperse(
                                     [menelaus_web_rbac:role_to_string(R) ||
                                         R <- Roles], ",")),
-                     [{mapped_roles, list_to_binary(RolesStr)} | Props1]
+                     [{<<"mapped_roles">>, list_to_binary(RolesStr)} | Props1]
              end,
     case Expiration of
         undefined -> Props2;
         Exp ->
             ExpiryWithLeeway = misc:iso_8601_fmt_datetime(Exp, "-", ":"),
-            [{expiry_with_leeway, list_to_binary(ExpiryWithLeeway)} | Props2]
+            [{<<"expiry_with_leeway">>, list_to_binary(ExpiryWithLeeway)} |
+             Props2]
     end.
 
 -spec maybe_set_auth_audit_props(mochiweb_request(),
