@@ -738,18 +738,25 @@ class Task:
         self.is_posix = (os.name == "posix")
         self.never_redact = never_redact
 
-    def execute(self, outstream: Writer):
-        log(f"{self.description} ({self.command}) - ", new_line=False)
+    def execute(self, outstream: Writer, silent: bool = False):
         if not self.no_header:
             self.header(outstream, self)
         bad_result = None
         for i in range(self.num_samples):
+            if self.num_samples > 1:
+                sample_str = f"sample {i + 1}/{self.num_samples} "
+                if i > 0:
+                    sample_str += f"after {self.interval}s "
+            else:
+                sample_str = ""
             if i > 0:
-                log(f"Taking sample {i + 1} after {self.interval}"
-                    " seconds - ", new_line=False)
                 time.sleep(self.interval)
+            task_header = f"{self.description} ({self.command}) {sample_str}- "
+            if not silent:
+                log(task_header, new_line=False)
 
             res = self.on_execute(outstream)
+            Task.log_result(task_header, res, silent=silent)
             if res != 0:
                 bad_result = res
         if bad_result:
@@ -914,8 +921,14 @@ class Task:
             fp.write(os.linesep.encode(LATIN1))
 
     @staticmethod
-    def log_result(result):
-        if result == 0 or result is None:
+    def log_result(task_header, result, silent: bool = False):
+        is_success = (result == 0 or result is None)
+        if silent:
+            if not is_success:
+                log(f"{task_header}Exit code {result}")
+            return
+
+        if is_success:
             log("OK")
         else:
             log(f"Exit code {result}")
@@ -1132,7 +1145,7 @@ class MetaTask:
                 task.set_task_runner(self._task_runner)
 
             if task.satisfies_preconditions():
-                Task.log_result(task.execute(outstream))
+                task.execute(outstream)
 
             # Handle artifacts created during that task
             # Note: We cannot just add more items to the current set of
@@ -1394,7 +1407,7 @@ def get_memcached_password_fun(guts):
                          no_header=True, suppress_append_newline=True,
                          to_stdin=f"--user {creds_fun()}")
         output_bytes = BytesIO()
-        status = task.execute(output_bytes)
+        status = task.execute(output_bytes, silent=True)
         output = output_bytes.getvalue().decode(LATIN1)
         if status == 0:
             return output
