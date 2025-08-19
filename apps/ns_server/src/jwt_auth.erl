@@ -76,21 +76,21 @@ authenticate(Token) ->
 %%% JWT validation
 %%%===================================================================
 
-%% Issuer may specify custom claim names for these claims.
--type custom_claim() :: aud | sub | groups | roles.
+%% Issuer may specify mapped claim names for these claims.
+-type mapped_claim() :: aud | sub | groups | roles.
 
 %% Issuer must use standard claim names for these claims.
 -type standard_claim() :: iss | jti | alg | kid | exp | nbf | iat.
 
--type claims() :: custom_claim() | standard_claim().
+-type claims() :: mapped_claim() | standard_claim().
 
--type claim_type() :: custom | standard.
+-type claim_type() :: mapped | standard.
 
 -spec get_claim_type(Name :: claims()) -> claim_type().
-get_claim_type(aud) -> custom;
-get_claim_type(sub) -> custom;
-get_claim_type(groups) -> custom;
-get_claim_type(roles) -> custom;
+get_claim_type(aud) -> mapped;
+get_claim_type(sub) -> mapped;
+get_claim_type(groups) -> mapped;
+get_claim_type(roles) -> mapped;
 get_claim_type(Name) when is_atom(Name) -> standard.
 
 -spec get_claim_value_type(Name :: claims()) -> claim_value_type().
@@ -126,7 +126,7 @@ get_claim_name(Name, IssuerProps) ->
     case get_claim_type(Name) of
         standard ->
             atom_to_binary(Name);
-        custom ->
+        mapped ->
             Claim = list_to_atom(atom_to_list(Name) ++ "_claim"),
             case maps:get(Claim, IssuerProps, undefined) of
                 undefined -> atom_to_binary(Name);
@@ -611,7 +611,7 @@ extract_claims_test_() ->
                        ?assertEqual("key-1", maps:get(kid, Claims))
                end},
 
-              {"custom claim names",
+              {"mapped claim names",
                fun() ->
                        Issuers3 = #{
                                     "test-issuer" =>
