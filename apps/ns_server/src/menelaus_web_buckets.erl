@@ -1509,8 +1509,8 @@ validate_watermarks(Params, Ctx) ->
                              memoryHighWatermark,
                              less_than).
 
-%% Continuous backup cannot be enabled unless history retention seconds and/or
-%% history retention bytes are non-zero.
+%% Continuous backup requires Change History to be enabled (history
+%% retention seconds and/or history retention bytes are non-zero).
 validate_cont_backup(Params, Ctx) ->
     Enabled = get_value_from_parms_or_bucket(continuous_backup_enabled, Params,
                                              Ctx),
@@ -1523,8 +1523,10 @@ validate_cont_backup(Params, Ctx) ->
             [{continuousBackupEnabled,
               <<"Continuous backup cannot be enabled without also enabling "
                 "Change History ('historyRetentionSeconds' and/or "
-                "'historyRetentionBytes' must be set to a non-zero value).">>}];
-        _ -> []
+                "'historyRetentionBytes' must be set to a non-zero "
+                "value).">>}];
+        _ ->
+            []
     end.
 
 validate_lifetime_with_rotation_intrvl(undefined, _CurrRotIntrvl, _MaxDeks) ->
@@ -4169,7 +4171,16 @@ basic_bucket_params_screening_t() ->
                     {num_vbuckets, 16},
                     {num_replicas, 0},
                     {servers, [node1]},
-                    {ram_quota, 300 * ?MIB}]}],
+                    {ram_quota, 300 * ?MIB}]},
+                  {"sixth",
+                   [{type, membase},
+                    {storage_mode, magma},
+                    {num_vbuckets, 16},
+                    {servers, [node1]},
+                    {ram_quota, 100 * ?MIB},
+                    {continuous_backup_enabled, true},
+                    {history_retention_seconds, 10},
+                    {history_retention_bytes, 2147483648}]}],
 
     %% it is possible to create bucket with ok params
     {OK1, E1} = basic_bucket_params_screening(true, "mcd",
@@ -4843,7 +4854,7 @@ basic_bucket_params_screening_t() ->
     ?assertEqual([], proplists:get_all_values(encryption_dek_lifetime, OK40)),
 
     %% Default bucket is magma...and only 100MB ram is needed.
-    {OK41, _E41} = basic_bucket_params_screening(
+    {OK41, []} = basic_bucket_params_screening(
                      true,
                      "bucket41",
                      [{"bucketType", "membase"},
@@ -5062,8 +5073,8 @@ basic_bucket_params_screening_t() ->
          <<"The value of dcpBackfillIdleDiskThreshold (101) must be in the "
            "range 0 to 100 inclusive">>}], E60),
 
-    %% Continuous backup cannot be enabled if history retention seconds/bytes
-    %% are both zero.
+    %% Continuous backup requires Change History (history retention
+    %% seconds/bytes cannot both be zero). This is a bucket creation.
     {_OK61, E61} = basic_bucket_params_screening(
                     true,
                     "bucket61",
@@ -5071,12 +5082,35 @@ basic_bucket_params_screening_t() ->
                      {"ramQuota", "1024"},
                      {"storageBackend", "magma"},
                      {"continuousBackupEnabled", "true"}],
-                    tl(AllBuckets)),
+                    AllBuckets),
     ?assertEqual([{continuousBackupEnabled,
                    <<"Continuous backup cannot be enabled without also "
                      "enabling Change History ('historyRetentionSeconds' "
                      "and/or 'historyRetentionBytes' must be set to a "
-                     "non-zero value).">>}], E61).
+                     "non-zero value).">>}], E61),
+
+    %% Continuous backup requires Change History (history retention
+    %% seconds/bytes cannot both be zero). This is an existing bucket.
+    {_OK62, E62} = basic_bucket_params_screening(
+                     false,
+                     "sixth",
+                     [{"historyRetentionSeconds", "0"},
+                      {"historyRetentionBytes", "0"}],
+                     AllBuckets),
+    ?assertEqual([{continuousBackupEnabled,
+                   <<"Continuous backup cannot be enabled without also "
+                     "enabling Change History ('historyRetentionSeconds' "
+                     "and/or 'historyRetentionBytes' must be set to a "
+                     "non-zero value).">>}], E62),
+
+    %% Continuous backup can be disabled even if Change History is enabled.
+    {OK63, []} = basic_bucket_params_screening(
+                   false,
+                   "sixth",
+                   [{"continuousBackupEnabled", "false"}],
+                   AllBuckets),
+    ?assertEqual(false,
+                 proplists:get_value(continuous_backup_enabled, OK63)).
 
 
 basic_bucket_params_screening_test_() ->
