@@ -28,8 +28,6 @@
          format_time/1,
          validate_client_cert_CAs/3]).
 
--define(MAX_CLIENT_CERT_PREFIXES, ?get_param(max_prefixes, 10)).
-
 handle_get_trustedCAs(Req) ->
     menelaus_util:assert_is_enterprise(),
     %% Security admins should get all the information,
@@ -776,10 +774,11 @@ do_handle_client_cert_auth_settings_post(Req, JSON) ->
             end
     end,
 
-    case length(PrefixesRaw) > ?MAX_CLIENT_CERT_PREFIXES of
+    MaxClientCertPrefixes = max_client_cert_prefixes(),
+    case length(PrefixesRaw) > MaxClientCertPrefixes of
         true ->
             Err = io_lib:format("Maximum number of prefixes supported is ~p",
-                                [?MAX_CLIENT_CERT_PREFIXES]),
+                                [MaxClientCertPrefixes]),
             throw({error, list_to_binary(Err)});
         false ->
             ok
@@ -822,6 +821,13 @@ do_handle_client_cert_auth_settings_post(Req, JSON) ->
             ns_ssl_services_setup:sync(),
             menelaus_util:reply(Req, 202)
     end.
+
+max_client_cert_prefixes() ->
+    Default = case cluster_compat_mode:is_cluster_totoro() of
+                  true -> 50;
+                  false -> 10
+              end,
+    ?get_param(max_prefixes, Default).
 
 add_client_cert_auth_event_log(Cfg) ->
     State = {state, list_to_binary(proplists:get_value(state, Cfg))},
