@@ -435,6 +435,8 @@ INSTALL (DIRECTORY _build/default/lib/jose/ebin DESTINATION
 INSTALL (DIRECTORY _build/default/lib/jiffy/ebin
                    _build/default/lib/jiffy/priv DESTINATION
         "${INST_LIBDIR}/jiffy")
+INSTALL (DIRECTORY _build/default/lib/oidcc/ebin DESTINATION
+        "${INST_LIBDIR}/oidcc")
 
 INSTALL (DIRECTORY _build/default/lib/ale/ebin DESTINATION
          "${INST_LIBDIR}/ale")
