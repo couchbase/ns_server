@@ -109,6 +109,7 @@
 %% aud_claim - Field path of the claim containing the audience value
 %% audience_handling - How to handle audience validation (any/all)
 %% audiences - List of valid audience values to match against
+%% custom_claims - List of user-defined non-standard custom claims
 %% expiry_leeway_s - Number of seconds of leeway when validating token expiry
 %% groups_claim - Field path of the claim containing group memberships
 %% groups_maps - Rules for mapping groups from tokens to local groups
@@ -139,6 +140,7 @@
          {aud_claim, fun format_string/1},
          {audience_handling, undefined},
          {audiences, fun format_string_list/1},
+         {custom_claims, fun format_custom_claims/1},
          {expiry_leeway_s, undefined},
          {groups_claim, fun format_string/1},
          {groups_maps, fun auth_mapping:format_mapping_rules/1},
@@ -173,6 +175,38 @@
 -define(ISSUER_STORAGE_TO_REST,
         maps:from_list([{Key, {snake_to_camel_atom(Key), Format}} ||
                            {Key, Format} <- ?ISSUER_PARAMS_WITH_FORMATTERS])).
+
+%% Custom claims parameters and their descriptions:
+%% name - Unique name identifying this custom claim
+%% type - Type of the claim (string/number/boolean/array/object)
+%% mandatory - Whether the claim is required
+%% pattern - Regex pattern for string type
+%% min - Minimum value for number type
+%% max - Maximum value for number type
+%% enum - Array of allowed numbers for number type
+%% const - Expected value for boolean type
+-define(CUSTOM_CLAIM_PARAMS_WITH_FORMATTERS,
+        [
+         {name, fun format_string/1},
+         {type, undefined},
+         {mandatory, undefined},
+         {pattern, fun format_string/1},
+         {min, undefined},
+         {max, undefined},
+         {enum, undefined},
+         {const, undefined}
+        ]).
+
+%% REST to storage mapping (camelCase atom -> snake_case atom)
+-define(CUSTOM_CLAIM_REST_TO_STORAGE,
+        maps:from_list([{snake_to_camel_atom(Key), Key} ||
+                           {Key, _} <- ?CUSTOM_CLAIM_PARAMS_WITH_FORMATTERS])).
+
+%% Storage to REST mapping (snake_case atom -> {camelCase atom, formatter})
+-define(CUSTOM_CLAIM_STORAGE_TO_REST,
+        maps:from_list([{Key, {snake_to_camel_atom(Key), Format}} ||
+                           {Key, Format} <-
+                               ?CUSTOM_CLAIM_PARAMS_WITH_FORMATTERS])).
 
 snake_to_camel_atom(Atom) when is_atom(Atom) ->
     Parts = string:split(atom_to_list(Atom), "_", all),
@@ -287,7 +321,36 @@ issuer_validators() ->
     basic_validators() ++
         key_validators() ++
         mapping_validators() ++
-        [validator:unsupported(_)].
+        custom_claims_validators() ++
+        [validator:post_validate_all(
+           fun(Props) ->
+                   CustomClaims = proplists:get_value(customClaims, Props, []),
+                   Names = [proplists:get_value(name, ClaimProps) ||
+                               {ClaimProps} <- CustomClaims],
+
+                   Standard = jwt_auth:get_standard_claim_names(),
+
+                   Sub = proplists:get_value(subClaim, Props),
+                   Aud = proplists:get_value(audClaim, Props),
+
+                   Groups = case proplists:get_value(groupsClaim, Props) of
+                                undefined -> "groups";
+                                GroupsV -> GroupsV
+                            end,
+                   Roles = case proplists:get_value(rolesClaim, Props) of
+                               undefined -> "roles";
+                               RolesV -> RolesV
+                           end,
+
+                   Protected = Standard ++ [Sub, Aud, Groups, Roles],
+                   Conflicts = [N || N <- Names, lists:member(N, Protected)],
+                   case Conflicts of
+                       [] -> ok;
+                       _  -> {error, "Custom claim names cannot conflict with "
+                              "JWT claims: " ++ string:join(Conflicts, ", ")}
+                   end
+           end, _),
+         validator:unsupported(_)].
 
 basic_validators() ->
     [validator:required(name, _),
@@ -328,6 +391,66 @@ mapping_validators() ->
                             auth_mapping:validate_mapping_rule(_), _),
      validator:boolean(rolesMapsStopFirstMatch, _),
      validator:default(rolesMapsStopFirstMatch, true, _)].
+
+custom_claims_validators() ->
+    [validator:json_array(customClaims, custom_claim_validators(), _),
+     validator:validate(
+       fun ([]) -> {error, "Must contain at least one custom claim"};
+           (_) -> ok
+       end, customClaims, _),
+     validator:validate(
+       fun(CustomClaims) ->
+               Names = [proplists:get_value(name, C) || {C} <- CustomClaims],
+               ValidNames = [N || N <- Names, N =/= undefined],
+               case length(ValidNames) =:= length(lists:usort(ValidNames)) of
+                   true -> ok;
+                   false -> {error, "Duplicate custom claim names not allowed"}
+               end
+       end, customClaims, _)].
+
+custom_claim_validators() ->
+    [validator:required(name, _),
+     validator:non_empty_string(name, _),
+     validator:required(type, _),
+     validator:one_of(type, ["string", "number", "boolean", "array", "object"],
+                      _),
+     validator:convert(type, fun binary_to_existing_atom/1, _),
+     validator:required(mandatory, _),
+     validator:boolean(mandatory, _)] ++
+        custom_string_validators() ++
+        custom_number_validators() ++
+        custom_boolean_validators().
+
+custom_string_validators() ->
+    [validator:validate_multiple(
+       fun([undefined, string]) ->
+               {error, "pattern is required for string type"};
+          (_) -> ok
+       end, [pattern, type], _),
+     validator:string(pattern, _),
+     validator:regex(pattern, _)].
+
+custom_number_validators() ->
+    [validator:number(min, _),
+     validator:number(max, _),
+     validator:validate_relative(
+       fun(Min, Max) when Min =< Max -> ok;
+          (_, _) -> {error, "min must be less than or equal to max"}
+       end, min, max, _),
+     validator:validate(
+       fun ([]) ->
+               {error, "Must contain at least one element"};
+           (Array) ->
+               case lists:all(?cut(is_number(_1)), Array) of
+                   false ->
+                       {error, "Must be an array of numbers"};
+                   true ->
+                       ok
+               end
+       end, enum, _)].
+
+custom_boolean_validators() ->
+    [validator:boolean(const, _)].
 
 key_validators() ->
     public_key_validators() ++
@@ -555,15 +678,35 @@ validated_to_storage_format_issuers(IssuersList) ->
               AccMap#{Name => validated_to_storage_format_issuer(IssuerProps)}
       end, #{}, IssuersList).
 
-%% @doc Formats a single issuer's properties for storage
 validated_to_storage_format_issuer(IssuerProps) ->
     lists:foldl(
       fun({name, _}, Acc) ->
               Acc;
+         ({customClaims, Claims}, Acc) ->
+              Acc#{custom_claims =>
+                       validated_to_storage_format_custom_claims(Claims)};
          ({PropK, PropV}, Acc) ->
               {ok, StorageKey} = maps:find(PropK, ?ISSUER_REST_TO_STORAGE),
               Acc#{StorageKey => PropV}
       end, #{}, IssuerProps).
+
+validated_to_storage_format_custom_claims(Claims) ->
+    lists:foldl(
+      fun({ClaimProps}, AccMap) ->
+              Name = proplists:get_value(name, ClaimProps),
+              AccMap#{Name =>
+                          validated_to_storage_format_custom_claim(ClaimProps)}
+      end, #{}, Claims).
+
+validated_to_storage_format_custom_claim(ClaimProps) ->
+    lists:foldl(
+      fun({name, _}, Acc) ->
+              Acc;
+         ({PropK, PropV}, Acc) ->
+              {ok, StorageKey} = maps:find(PropK,
+                                           ?CUSTOM_CLAIM_REST_TO_STORAGE),
+              Acc#{StorageKey => PropV}
+      end, #{}, ClaimProps).
 
 format_jwks({EncodedValue, _JsonMap}) -> EncodedValue;
 format_jwks(Value) -> Value.
@@ -581,6 +724,21 @@ format_string(Value) ->
 format_string_list(undefined) -> undefined;
 format_string_list(Values) ->
     [list_to_binary(Value) || Value <- Values].
+
+format_custom_claims(undefined) -> undefined;
+format_custom_claims(ClaimsMap) ->
+    maps:fold(
+      fun(Name, ClaimProps, AccList) ->
+              [format_custom_claim(Name, ClaimProps) | AccList]
+      end, [], ClaimsMap).
+
+format_custom_claim(Name, ClaimProps) ->
+    PropsWithName = ClaimProps#{name => Name},
+    maps:fold(
+      fun(StorageKey, Value, Acc) ->
+              storage_to_rest_format_key(StorageKey, Value, Acc,
+                                         ?CUSTOM_CLAIM_STORAGE_TO_REST)
+      end, #{}, PropsWithName).
 
 format_tls_ca(undefined) -> undefined;
 format_tls_ca(<<"redacted">>) -> <<"redacted">>;
@@ -660,39 +818,150 @@ snake_to_camel_test() ->
 %% to their original form. Additionally, it checks that values containing
 %% lists are converted to binary format so that jiffy can encode them properly.
 format_conversion_test() ->
-    [
-     ?_assertEqual(
+    StorageFormat =
         #{enabled => true,
           jwks_uri_refresh_interval_s => 14400,
-          issuers => #{
-                       "issuer1" => #{
-                                      aud_claim => "aud",
-                                      audiences => ["aud1", "aud2"],
-                                      expiry_leeway_s => 15,
-                                      jit_provisioning => false,
-                                      jwks_uri_tls_extra_opts =>
-                                          [{verify, verify_peer}]
-                                     },
-                       "issuer2" => #{
-                                      signing_algorithm => "ES256",
-                                      audiences => ["aud3"]
-                                     }
-                      }},
-        validated_to_storage_format([
-                                     {enabled, true},
-                                     {jwksUriRefreshIntervalS, 14400},
-                                     {issuers, [
-                                                {[{name, "issuer1"},
-                                                  {audClaim, "aud"},
-                                                  {audiences, ["aud1", "aud2"]},
-                                                  {expiryLeewayS, 15},
-                                                  {jitProvisioning, false},
-                                                  {jwksUriTlsExtraOpts,
-                                                   [{verify, verify_peer}]}]},
-                                                {[{name, "issuer2"},
-                                                  {signingAlgorithm, "ES256"},
-                                                  {audiences, ["aud3"]}]}
-                                               ]}
-                                    ]))
-    ].
+          issuers =>
+              #{
+                "issuer1" =>
+                    #{
+                      aud_claim => "aud",
+                      audiences => ["aud1", "aud2"],
+                      expiry_leeway_s => 15,
+                      jit_provisioning => false,
+                      jwks_uri_tls_extra_opts =>
+                          [{verify, verify_peer}],
+                      custom_claims =>
+                          #{
+                            "email" =>
+                                #{
+                                  type => string,
+                                  pattern => "^[a-z]+@[a-z]+\.[a-z]+$",
+                                              mandatory => true
+                                 },
+                            "age" => #{
+                                       type => number,
+                                       min => 18,
+                                       max => 65,
+                                       mandatory => false
+                                      },
+                            "level" => #{
+                                         type => number,
+                                         enum => [1, 2, 3, 4, 5],
+                                         mandatory => true
+                                        },
+                            "admin" => #{
+                                         type => boolean,
+                                         const => true,
+                                         mandatory => true
+                                        }
+                           }
+                     },
+                "issuer2" => #{
+                               signing_algorithm => "ES256",
+                               audiences => ["aud3"],
+                               custom_claims =>
+                                   #{
+                                     "role" =>
+                                         #{
+                                           type => string,
+                                           pattern => "^(admin|user)$",
+                                  mandatory => true
+                                 }
+                           }
+                     }
+               }},
+
+    RestFormat =
+        #{enabled => true,
+          jwksUriRefreshIntervalS => 14400,
+          issuers => [
+                      #{name => "issuer1",
+                        audClaim => "aud",
+                        audiences => ["aud1", "aud2"],
+                        expiryLeewayS => 15,
+                        jitProvisioning => false,
+                        jwksUriTlsExtraOpts =>
+                            [{verify, verify_peer}],
+                        customClaims => [
+                                         #{name => "email",
+                                           type => string,
+                                           pattern => "^[a-z]+@[a-z]+\.[a-z]+$",
+                                                    mandatory => true},
+                                         #{name => "age",
+                                           type => number,
+                                           min => 18,
+                                           max => 65,
+                                           mandatory => false},
+                                         #{name => "level",
+                                           type => number,
+                                           enum => [1, 2, 3, 4, 5],
+                                           mandatory => true},
+                                         #{name => "admin",
+                                           type => boolean,
+                                           const => true,
+                                           mandatory => true}
+                                        ]},
+                      #{name => "issuer2",
+                        signingAlgorithm => "ES256",
+                        audiences => ["aud3"],
+                        customClaims => [
+                                         #{name => "role",
+                                           type => string,
+                                           pattern => "^(admin|user)$",
+                                                    mandatory => true}
+                                        ]}
+                     ]},
+
+    Props = [{enabled, true},
+             {jwksUriRefreshIntervalS, 14400},
+             {issuers, [
+                        {[{name, "issuer1"},
+                          {audClaim, "aud"},
+                          {audiences, ["aud1", "aud2"]},
+                          {expiryLeewayS, 15},
+                          {jitProvisioning, false},
+                          {jwksUriTlsExtraOpts,
+                           [{verify, verify_peer}]},
+                          {customClaims, [
+                                          {[{name, "email"},
+                                            {type, "string"},
+                                            {pattern,
+                                             "^[a-z]+@[a-z]+\.[a-z]+$"},
+                                                     {mandatory, true}]},
+                                           {[{name, "age"},
+                                             {type, "number"},
+                                             {min, 18},
+                                             {max, 65},
+                                             {mandatory, false}]},
+                                           {[{name, "level"},
+                                             {type, "number"},
+                                             {enum, [1, 2, 3, 4, 5]},
+                                             {mandatory, true}]},
+                                           {[{name, "admin"},
+                                             {type, "boolean"},
+                                             {const, true},
+                                             {mandatory, true}]}
+                                          ]}]},
+                         {[{name, "issuer2"},
+                           {signingAlgorithm, "ES256"},
+                           {audiences, ["aud3"]},
+                           {customClaims, [
+                                           {[{name, "role"},
+                                             {type, "string"},
+                                             {pattern,
+                                              "^(admin|user)$"},
+                                                     {mandatory, true}]}
+                                           ]}]}
+                         ]}],
+
+              [
+               %% Test validated_to_storage_format
+               ?_assertEqual(StorageFormat,
+                             validated_to_storage_format(Props)),
+
+               %% Test storage_to_rest_format to verify round-trip conversion
+               ?_assertEqual(RestFormat,
+                             storage_to_rest_format(StorageFormat))
+              ].
 -endif.

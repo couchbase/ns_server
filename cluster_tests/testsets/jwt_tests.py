@@ -1539,3 +1539,293 @@ class JWTTests(testlib.BaseTestSet):
             headers=headers,
             expected_code=401,
         )
+
+    def custom_claims_test(self):
+        """Test JWT authentication with custom claims validation.
+
+        Tests all the new type-based validation features:
+        1. String validation with regex patterns
+        2. Number validation with min/max ranges and enums
+        3. Boolean validation with const values
+        4. Array and object validation
+        5. Mandatory vs optional claims
+        6. Invalid claim values and types
+        """
+        self.auth_setup()
+
+        # Configure JWT with comprehensive custom claims
+        custom_claims_config = [
+            {
+                "name": "email",
+                "type": "string",
+                "pattern": "^[a-z]+@[a-z]+\\.[a-z]+$",
+                "mandatory": True,
+            },
+            {
+                "name": "age",
+                "type": "number",
+                "min": 18,
+                "max": 65,
+                "mandatory": False,
+            },
+            {
+                "name": "level",
+                "type": "number",
+                "enum": [1, 2, 3, 4, 5],
+                "mandatory": True,
+            },
+            {
+                "name": "admin",
+                "type": "boolean",
+                "const": True,
+                "mandatory": True,
+            },
+            {
+                "name": "tags",
+                "type": "array",
+                "mandatory": True,
+            },
+            {
+                "name": "profile",
+                "type": "object",
+                "mandatory": False,
+            },
+        ]
+
+        self.configure_jwt(
+            {"customClaims": custom_claims_config, "jitProvisioning": True}
+        )
+
+        # Test case 1: Valid token with all required custom claims
+        valid_claims = self.base_claims.copy()
+        valid_claims.update(
+            {
+                "email": "test@example.com",
+                "age": 25,
+                "level": 3,
+                "admin": True,
+                "tags": ["admin", "user"],
+                "profile": {"name": "John", "department": "IT"},
+                "groups": ["jwt_bucket_admins"],
+            }
+        )
+        token = self.create_token(valid_claims)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Should succeed
+        r = testlib.get_succ(
+            self.cluster,
+            f"/pools/default/buckets/{self.test_bucket}/docs",
+            auth=None,
+            headers=headers,
+        )
+
+        # Test case 2: Valid token with optional claims missing
+        valid_claims_optional = self.base_claims.copy()
+        valid_claims_optional.update(
+            {
+                "email": "user@test.com",
+                "level": 2,
+                "admin": True,
+                "tags": ["user"],
+                "groups": ["jwt_bucket_admins"],
+                # age and profile are optional, so missing is OK
+            }
+        )
+        token = self.create_token(valid_claims_optional)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Should succeed
+        r = testlib.get_succ(
+            self.cluster,
+            f"/pools/default/buckets/{self.test_bucket}/docs",
+            auth=None,
+            headers=headers,
+        )
+
+        # Test case 3: Invalid token - missing mandatory claim
+        invalid_claims_missing = self.base_claims.copy()
+        invalid_claims_missing.update(
+            {
+                # email is mandatory but missing
+                "level": 3,
+                "admin": True,
+                "tags": ["admin"],
+                "groups": ["jwt_bucket_admins"],
+            }
+        )
+        token = self.create_token(invalid_claims_missing)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Should fail
+        r = testlib.get_fail(
+            self.cluster,
+            f"/pools/default/buckets/{self.test_bucket}/docs",
+            auth=None,
+            headers=headers,
+            expected_code=401,
+        )
+
+        # Test case 4: Invalid token - string doesn't match pattern
+        invalid_claims_pattern = self.base_claims.copy()
+        invalid_claims_pattern.update(
+            {
+                "email": "invalid-email",  # Doesn't match pattern
+                "level": 3,
+                "admin": True,
+                "tags": ["admin"],
+                "groups": ["jwt_bucket_admins"],
+            }
+        )
+        token = self.create_token(invalid_claims_pattern)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Should fail
+        r = testlib.get_fail(
+            self.cluster,
+            f"/pools/default/buckets/{self.test_bucket}/docs",
+            auth=None,
+            headers=headers,
+            expected_code=401,
+        )
+
+        # Test case 5: Invalid token - number below min
+        invalid_claims_min = self.base_claims.copy()
+        invalid_claims_min.update(
+            {
+                "email": "test@example.com",
+                "age": 16,  # Below min of 18
+                "level": 3,
+                "admin": True,
+                "tags": ["admin"],
+                "groups": ["jwt_bucket_admins"],
+            }
+        )
+        token = self.create_token(invalid_claims_min)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Should fail
+        r = testlib.get_fail(
+            self.cluster,
+            f"/pools/default/buckets/{self.test_bucket}/docs",
+            auth=None,
+            headers=headers,
+            expected_code=401,
+        )
+
+        # Test case 6: Invalid token - number above max
+        invalid_claims_max = self.base_claims.copy()
+        invalid_claims_max.update(
+            {
+                "email": "test@example.com",
+                "age": 70,  # Above max of 65
+                "level": 3,
+                "admin": True,
+                "tags": ["admin"],
+                "groups": ["jwt_bucket_admins"],
+            }
+        )
+        token = self.create_token(invalid_claims_max)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Should fail
+        r = testlib.get_fail(
+            self.cluster,
+            f"/pools/default/buckets/{self.test_bucket}/docs",
+            auth=None,
+            headers=headers,
+            expected_code=401,
+        )
+
+        # Test case 7: Invalid token - number not in enum
+        invalid_claims_enum = self.base_claims.copy()
+        invalid_claims_enum.update(
+            {
+                "email": "test@example.com",
+                "level": 6,  # Not in enum [1,2,3,4,5]
+                "admin": True,
+                "tags": ["admin"],
+                "groups": ["jwt_bucket_admins"],
+            }
+        )
+        token = self.create_token(invalid_claims_enum)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Should fail
+        r = testlib.get_fail(
+            self.cluster,
+            f"/pools/default/buckets/{self.test_bucket}/docs",
+            auth=None,
+            headers=headers,
+            expected_code=401,
+        )
+
+        # Test case 8: Invalid token - boolean doesn't match const
+        invalid_claims_boolean = self.base_claims.copy()
+        invalid_claims_boolean.update(
+            {
+                "email": "test@example.com",
+                "level": 3,
+                "admin": False,  # Should be True
+                "tags": ["admin"],
+                "groups": ["jwt_bucket_admins"],
+            }
+        )
+        token = self.create_token(invalid_claims_boolean)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Should fail
+        r = testlib.get_fail(
+            self.cluster,
+            f"/pools/default/buckets/{self.test_bucket}/docs",
+            auth=None,
+            headers=headers,
+            expected_code=401,
+        )
+
+        # Test case 9: Valid token with float number
+        valid_claims_float = self.base_claims.copy()
+        valid_claims_float.update(
+            {
+                "email": "test@example.com",
+                "age": 25.5,  # Float should work
+                "level": 3,
+                "admin": True,
+                "tags": ["admin"],
+                "groups": ["jwt_bucket_admins"],
+            }
+        )
+        token = self.create_token(valid_claims_float)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Should succeed
+        r = testlib.get_succ(
+            self.cluster,
+            f"/pools/default/buckets/{self.test_bucket}/docs",
+            auth=None,
+            headers=headers,
+        )
+
+        # Test case 10: Valid token with different valid values
+        valid_claims_different = self.base_claims.copy()
+        valid_claims_different.update(
+            {
+                "email": "user@test.org",
+                "age": 30,
+                "level": 5,
+                "admin": True,
+                "tags": ["user", "admin"],
+                "profile": {"name": "Jane", "role": "developer"},
+                "groups": ["jwt_bucket_admins"],
+            }
+        )
+        token = self.create_token(valid_claims_different)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Should succeed
+        r = testlib.get_succ(
+            self.cluster,
+            f"/pools/default/buckets/{self.test_bucket}/docs",
+            auth=None,
+            headers=headers,
+        )

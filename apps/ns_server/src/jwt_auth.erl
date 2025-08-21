@@ -32,7 +32,7 @@
 -module(jwt_auth).
 
 %% API
--export([authenticate/1]).
+-export([authenticate/1, get_standard_claim_names/0]).
 
 
 -include("ns_common.hrl").
@@ -82,7 +82,8 @@ authenticate(Token) ->
 %% Issuer must use standard claim names for these claims.
 -type standard_claim() :: iss | jti | alg | kid | exp | nbf | iat.
 
--type claims() :: mapped_claim() | standard_claim().
+-type custom_claim() :: string().
+-type claims() :: mapped_claim() | standard_claim() | custom_claim().
 
 -type claim_type() :: mapped | standard.
 
@@ -157,6 +158,16 @@ get_nested_value_path([Key | Rest], Map) when is_map(Map) ->
         _ -> undefined
     end.
 
+get_claim_value(number, Value) when is_integer(Value) -> Value;
+get_claim_value(number, Value) when is_float(Value) -> Value;
+get_claim_value(number, Value) when is_binary(Value) ->
+    try binary_to_integer(Value)
+    catch _:_ ->
+            try binary_to_float(Value)
+            catch _:_ ->
+                    undefined
+            end
+    end;
 get_claim_value(integer, Value) when is_integer(Value) -> Value;
 get_claim_value(integer, Value) when is_binary(Value) ->
     try binary_to_integer(Value)
@@ -180,8 +191,30 @@ get_claim_value(list, Value) ->
     catch _:_ ->
             undefined
     end;
+get_claim_value(boolean, Value) when is_boolean(Value) -> Value;
+get_claim_value(boolean, Value) when is_binary(Value) ->
+    try string:lowercase(binary_to_list(Value)) of
+        "true" -> true;
+        "false" -> false;
+        _ -> undefined
+    catch _:_ ->
+            undefined
+    end;
+get_claim_value(array, Value) ->
+    Value;
+get_claim_value(object, Value) ->
+    Value;
 get_claim_value(_, _) ->
     undefined.
+
+format_number(Value) when is_integer(Value) ->
+    integer_to_list(Value);
+format_number(Value) when is_float(Value) ->
+    float_to_list(Value).
+
+-spec get_standard_claim_names() -> [string()].
+get_standard_claim_names() ->
+    [atom_to_list(Claim) || Claim <- header_claims() ++ payload_claims()].
 
 %% Extracts claims from a JWT in map format for further processing.
 %% Keys are atoms, claim values are converted to standard formats (integer, list
@@ -190,7 +223,10 @@ get_claim_value(_, _) ->
 -spec extract_claims(TokenBin :: binary(),
                      Issuers :: map()) ->
           {ok,
-           ParsedClaims :: #{claims() => string() | [string()] | integer()}} |
+           ParsedPlusCustomClaims :: #{claims() => string() | [string()] |
+                                       integer() |
+                                       binary() | number() |
+                                       boolean() | map() | list()}} |
           {error, Msg :: binary()}.
 extract_claims(TokenBin, Issuers) ->
     try
@@ -210,17 +246,31 @@ extract_claims(TokenBin, Issuers) ->
                                            IssuerBin/binary>>})
                    end,
 
-        Claims = lists:foldl(
-                   fun(Claim, Acc) ->
-                           Map = case lists:member(Claim, header_claims()) of
-                                     true -> HeaderMap;
-                                     false -> PayloadMap
-                                 end,
-                           case get_claim_value(Claim, Map, IssProps) of
-                               undefined -> Acc;
-                               Value -> Acc#{Claim => Value}
-                           end
-                   end, #{}, header_claims() ++ payload_claims()),
+        Claims0 = lists:foldl(
+                    fun(Claim, Acc) ->
+                            Map = case lists:member(Claim, header_claims()) of
+                                      true -> HeaderMap;
+                                      false -> PayloadMap
+                                  end,
+                            case get_claim_value(Claim, Map, IssProps) of
+                                undefined -> Acc;
+                                Value -> Acc#{Claim => Value}
+                            end
+                    end, #{}, header_claims() ++ payload_claims()),
+
+        Claims = case maps:get(custom_claims, IssProps, undefined) of
+                     Custom when is_map(Custom) ->
+                         maps:fold(
+                           fun(ClaimNameStr, _Conf, Acc) ->
+                                   NameBin = list_to_binary(ClaimNameStr),
+                                   case get_nested_value(NameBin, PayloadMap) of
+                                       undefined -> Acc;
+                                       Value ->
+                                           Acc#{ClaimNameStr => Value}
+                                   end
+                           end, Claims0, Custom);
+                     undefined -> Claims0
+                 end,
 
         lists:foreach(
           fun(Claim) ->
@@ -349,6 +399,167 @@ lookup_jwk(Claims, IssuerProps, Algorithm) ->
             jwt_cache:get_jwk(IssuerProps, KidBin)
     end.
 
+-spec validate_custom_claims(Claims :: map(), IssProps :: map()) ->
+          ok | {error, binary()}.
+validate_custom_claims(Claims, IssProps) ->
+    case maps:get(custom_claims, IssProps, undefined) of
+        undefined -> ok;
+        CustomClaims when is_map(CustomClaims) ->
+            maps:fold(
+              fun(ClaimName, ClaimConfig, ok) ->
+                      validate_single_custom_claim(Claims, ClaimName,
+                                                   ClaimConfig);
+                 (_ClaimName, _ClaimConfig, Error) ->
+                      Error
+              end, ok, CustomClaims)
+    end.
+
+-spec validate_single_custom_claim(Claims :: map(), ClaimName :: string(),
+                                   ClaimConfig :: map()) ->
+          ok | {error, binary()}.
+validate_single_custom_claim(Claims, ClaimName, ClaimConfig) ->
+    Type = maps:get(type, ClaimConfig),
+    Mandatory = maps:get(mandatory, ClaimConfig, false),
+    CNameBin = list_to_binary(ClaimName),
+    RawClaimValue = maps:get(ClaimName, Claims, undefined),
+    ParsedValue =
+        case RawClaimValue of
+            undefined -> undefined;
+            Value -> get_claim_value(Type, Value)
+        end,
+
+    case {RawClaimValue, ParsedValue} of
+        {undefined, _} when Mandatory ->
+            {error, <<"Missing mandatory custom claim: ", CNameBin/binary>>};
+        {undefined, _} when not Mandatory ->
+            ok;
+        {_, undefined} ->
+            {error, <<"Custom claim ", CNameBin/binary,
+                      " cannot be parsed as ",
+                      (atom_to_binary(Type, utf8))/binary>>};
+        {_, _} ->
+            case validate_custom_claim(ParsedValue, Type, ClaimConfig) of
+                ok -> ok;
+                {error, Reason} ->
+                    {error, <<"Custom claim validation failed for ",
+                              CNameBin/binary, ": ", Reason/binary>>}
+            end
+    end.
+
+-spec validate_custom_claim(ClaimValue :: string() | number() | boolean() |
+                                          binary(),
+                            Type :: string | number | boolean | array | object,
+                            Config :: map()) ->
+          ok | {error, binary()}.
+validate_custom_claim(ClaimValue, string, Config) ->
+    validate_custom_string_claim(ClaimValue, Config);
+validate_custom_claim(ClaimValue, number, Config) ->
+    validate_custom_number_claim(ClaimValue, Config);
+validate_custom_claim(ClaimValue, boolean, Config) ->
+    validate_boolean_claim(ClaimValue, Config);
+validate_custom_claim(ClaimValue, array, _Config) ->
+    validate_custom_array_claim(ClaimValue);
+validate_custom_claim(ClaimValue, object, _Config) ->
+    validate_custom_object_claim(ClaimValue).
+
+-spec validate_custom_string_claim(ClaimValue :: string(), Config :: map()) ->
+          ok | {error, binary()}.
+validate_custom_string_claim(ClaimValue, Config) ->
+    try re:run(ClaimValue, maps:get(pattern, Config)) of
+        {match, _} -> ok;
+        nomatch -> {error, <<"Value does not match pattern">>}
+    catch
+        _:_ -> {error, <<"Invalid regex pattern">>}
+    end.
+
+-spec validate_custom_number_claim(ClaimValue :: number(), Config :: map()) ->
+          ok | {error, binary()}.
+validate_custom_number_claim(ClaimValue, Config) ->
+    Min = maps:get(min, Config, undefined),
+    Max = maps:get(max, Config, undefined),
+    RangeResult = validate_number_range(ClaimValue, Min, Max),
+    EnumResult = validate_custom_number_enum_check(ClaimValue, Config),
+
+    case {RangeResult, EnumResult} of
+        {ok, ok} -> ok;
+        {{error, RangeError}, ok} ->
+            {error, <<"Number claim validation failed: ", RangeError/binary>>};
+        {ok, {error, EnumError}} ->
+            {error, <<"Number claim validation failed: ", EnumError/binary>>};
+        {{error, RangeError}, {error, EnumError}} ->
+            {error, <<"Number claim validation failed: ", RangeError/binary,
+                      "; ", EnumError/binary>>}
+    end.
+
+-spec validate_boolean_claim(ClaimValue :: boolean(), Config :: map()) ->
+          ok | {error, binary()}.
+validate_boolean_claim(ClaimValue, Config) ->
+    case maps:get(const, Config, undefined) of
+        undefined -> ok;
+        Const when ClaimValue =:= Const -> ok;
+        Const -> {error, <<"Value must be ",
+                       (atom_to_binary(Const))/binary>>}
+    end.
+
+-spec validate_custom_number_enum_check(number(), map()) -> ok |
+    {error, binary()}.
+validate_custom_number_enum_check(Value, Config) ->
+    case maps:get(enum, Config, undefined) of
+        undefined -> ok;
+        Enum ->
+            case lists:member(Value, Enum) of
+                true -> ok;
+                false ->
+                    EnumStr = lists:join(", ", [format_number(N) || N <- Enum]),
+                    {error, <<"Value must be one of: ",
+                              (list_to_binary(EnumStr))/binary>>}
+            end
+    end.
+
+-spec validate_number_range(Number :: number(), Min :: number() | undefined,
+                            Max :: number() | undefined) ->
+          ok | {error, binary()}.
+validate_number_range(_Number, undefined, undefined) -> ok;
+validate_number_range(Number, Min, undefined) ->
+    case Number >= Min of
+        true -> ok;
+        false -> {error, <<"Value must be greater than or equal to ",
+                           (list_to_binary(format_number(Min)))/binary>>}
+    end;
+validate_number_range(Number, undefined, Max) ->
+    case Number =< Max of
+        true -> ok;
+        false -> {error, <<"Value must be less than or equal to ",
+                           (list_to_binary(format_number(Max)))/binary>>}
+    end;
+validate_number_range(Number, Min, Max) ->
+    case Number >= Min andalso Number =< Max of
+        true -> ok;
+        false -> {error, <<"Value must be between ",
+                           (list_to_binary(format_number(Min)))/binary, " and ",
+                           (list_to_binary(format_number(Max)))/binary>>}
+    end.
+
+%% Array validation - just check presence and non-empty for now
+-spec validate_custom_array_claim(ClaimValue :: term()) ->
+          ok | {error, binary()}.
+validate_custom_array_claim(ClaimValue) ->
+    case ClaimValue of
+        Value when is_list(Value) ->
+            ok;
+        _ -> {error, <<"Value must be an array">>}
+    end.
+
+%% Object validation - just check presence
+-spec validate_custom_object_claim(ClaimValue :: term()) ->
+          ok | {error, binary()}.
+validate_custom_object_claim(ClaimValue) ->
+    case ClaimValue of
+        Value when is_map(Value) -> ok;
+        {Props} when is_list(Props) -> ok;  % JSON object format
+        _ -> {error, <<"Value must be an object">>}
+    end.
+
 -spec validate_payload(Claims :: map(), IssProps :: map()) ->
           {ok, #authn_res{}} | {error, binary()}.
 validate_payload(Claims, IssProps) ->
@@ -357,8 +568,13 @@ validate_payload(Claims, IssProps) ->
                   Claim <- [exp, nbf, aud]]),
     case Valid of
         ok ->
-            case validate_user(Claims, IssProps) of
-                {ok, Username} -> get_auth_info(Claims, IssProps, Username);
+            case validate_custom_claims(Claims, IssProps) of
+                ok ->
+                    case validate_user(Claims, IssProps) of
+                        {ok, Username} -> get_auth_info(Claims, IssProps,
+                                                        Username);
+                        Error -> Error
+                    end;
                 Error -> Error
             end;
         Error -> Error
@@ -639,8 +855,8 @@ extract_claims_test_() ->
                                                 #{
                                                   <<"roles">> =>
                                                       [<<"role1">>, <<"role2">>]
-                                          }
-                                      },
+                                                 }
+                                           },
                                       <<"exp">> => 1234567890
                                      },
 
@@ -832,5 +1048,159 @@ audit_map_to_proplist_test() ->
     ?assert(lists:keymember(<<"active">>, 1, Profile)),
     {<<"age">>, 30} = lists:keyfind(<<"age">>, 1, Profile),
     {<<"active">>, true} = lists:keyfind(<<"active">>, 1, Profile).
+
+custom_claims_validation_test() ->
+    [
+     %% Test string validation
+     ?_assertEqual(ok, validate_single_custom_claim(
+                         #{<<"email">> => <<"test@example.com">>},
+                         <<"email">>,
+                         #{type => string,
+                           pattern => "^[a-z]+@[a-z]+\\.[a-z]+$",
+                           mandatory => true})),
+     ?_assertMatch({error, _}, validate_single_custom_claim(
+                                   #{<<"email">> => <<"invalid">>},
+                                   <<"email">>,
+                                   #{type => string,
+                                     pattern => "^[a-z]+@[a-z]+\\.[a-z]+$",
+                                     mandatory => true})),
+
+     %% Test number validation with integers
+     ?_assertEqual(ok, validate_single_custom_claim(
+                         #{<<"age">> => 25},
+                         <<"age">>,
+                         #{type => number,
+                           min => 18,
+                           max => 65,
+                           mandatory => true})),
+     ?_assertEqual(ok, validate_single_custom_claim(
+                         #{<<"age">> => 18},
+                         <<"age">>,
+                         #{type => number,
+                           min => 18,
+                           max => 65,
+                           mandatory => true})),
+     ?_assertEqual(ok, validate_single_custom_claim(
+                         #{<<"age">> => 65},
+                         <<"age">>,
+                         #{type => number,
+                           min => 18,
+                           max => 65,
+                           mandatory => true})),
+     ?_assertMatch({error, _}, validate_single_custom_claim(
+                                   #{<<"age">> => 17},
+                                   <<"age">>,
+                                   #{type => number,
+                                     min => 18,
+                                     max => 65,
+                                     mandatory => true})),
+     ?_assertMatch({error, _}, validate_single_custom_claim(
+                                   #{<<"age">> => 66},
+                                   <<"age">>,
+                                   #{type => number,
+                                     min => 18,
+                                     max => 65,
+                                     mandatory => true})),
+
+     %% Test number validation with floats
+     ?_assertEqual(ok, validate_single_custom_claim(
+                         #{<<"score">> => 3.5},
+                         <<"score">>,
+                         #{type => number,
+                           min => 1.0,
+                           max => 5.0,
+                           mandatory => true})),
+     ?_assertEqual(ok, validate_single_custom_claim(
+                         #{<<"score">> => 1.0},
+                         <<"score">>,
+                         #{type => number,
+                           min => 1.0,
+                           max => 5.0,
+                           mandatory => true})),
+     ?_assertEqual(ok, validate_single_custom_claim(
+                         #{<<"score">> => 5.0},
+                         <<"score">>,
+                         #{type => number,
+                           min => 1.0,
+                           max => 5.0,
+                           mandatory => true})),
+     ?_assertMatch({error, _}, validate_single_custom_claim(
+                                   #{<<"score">> => 0.9},
+                                   <<"score">>,
+                                   #{type => number,
+                                     min => 1.0,
+                                     max => 5.0,
+                                     mandatory => true})),
+     ?_assertMatch({error, _}, validate_single_custom_claim(
+                                   #{<<"score">> => 5.1},
+                                   <<"score">>,
+                                   #{type => number,
+                                     min => 1.0,
+                                     max => 5.0,
+                                     mandatory => true})),
+
+     %% Test number validation with enum
+     ?_assertEqual(ok, validate_single_custom_claim(
+                         #{<<"level">> => 2},
+                         <<"level">>,
+                         #{type => number,
+                           enum => [1, 2, 3, 4, 5],
+                           mandatory => true})),
+     ?_assertMatch({error, _}, validate_single_custom_claim(
+                                   #{<<"level">> => 6},
+                                   <<"level">>,
+                                   #{type => number,
+                                     enum => [1, 2, 3, 4, 5],
+                                     mandatory => true})),
+
+     %% Test boolean validation
+     ?_assertEqual(ok, validate_single_custom_claim(
+                         #{<<"admin">> => true},
+                         <<"admin">>,
+                         #{type => boolean,
+                           const => true,
+                           mandatory => true})),
+     ?_assertMatch({error, _}, validate_single_custom_claim(
+                                   #{<<"admin">> => false},
+                                   <<"admin">>,
+                                   #{type => boolean,
+                                     const => true,
+                                     mandatory => true})),
+
+     %% Test array validation
+     ?_assertEqual(ok, validate_single_custom_claim(
+                         #{<<"roles">> => [<<"admin">>, <<"user">>]},
+                         <<"roles">>,
+                         #{type => array,
+                           mandatory => true})),
+     ?_assertMatch({error, _}, validate_single_custom_claim(
+                                   #{<<"roles">> => []},
+                                   <<"roles">>,
+                                   #{type => array,
+                                     mandatory => true})),
+
+     %% Test object validation
+     ?_assertEqual(ok, validate_single_custom_claim(
+                         #{<<"profile">> => #{<<"name">> => <<"John">>}},
+                         <<"profile">>,
+                         #{type => object,
+                           mandatory => true})),
+
+     %% Test optional claims
+     ?_assertEqual(ok, validate_single_custom_claim(
+                         #{},
+                         <<"optional">>,
+                         #{type => string,
+                           pattern => ".*",
+                           mandatory => false})),
+
+     %% Test missing mandatory claims
+     ?_assertMatch({error, _}, validate_single_custom_claim(
+                                   #{},
+                                   <<"required">>,
+                                   #{type => string,
+                                     pattern => ".*",
+                                     mandatory => true}))
+    ].
 
 -endif.
