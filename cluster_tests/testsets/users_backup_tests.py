@@ -32,6 +32,7 @@ class UsersBackupTests(testlib.BaseTestSet):
         local_users = testlib.get_succ(self.cluster,
                                        '/settings/rbac/users/local').json()
         self.local_users_count = len(local_users)
+        self.local_users = local_users
         ext_users = testlib.get_succ(self.cluster,
                                      '/settings/rbac/users/external').json()
         self.external_users_count = len(ext_users)
@@ -53,8 +54,10 @@ class UsersBackupTests(testlib.BaseTestSet):
         assert 'version' in backup
         assert backup['version'] == '1'
         assert 'admin' in backup
-        assert len(backup['users']) == self.local_users_count + \
-                                       self.external_users_count
+        if len(backup['users']) != \
+                self.local_users_count + self.external_users_count:
+                    users = [user['id'] for user in backup.get('users', [])]
+                    assert users == None
         assert len(backup['groups']) == self.groups_count
 
 
