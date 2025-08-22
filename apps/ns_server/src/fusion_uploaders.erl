@@ -114,6 +114,9 @@ get_current({_, Current}) ->
 %% we are ready to tolerate for the sake of not uploading from
 %% scratch
 calculate_moves(Map, FastForwardMap, CurrentUploaders, Allowance) ->
+    ?log_debug("Calculate moves for map:~n~p~nffmap:~n~p~nuploaders~n~p~n"
+               "allowance:~p",
+               [Map, FastForwardMap, CurrentUploaders, Allowance]),
     Zipped = lists:zip3(Map, FastForwardMap, [N || {N, _} <- CurrentUploaders]),
     build_uploaders(Zipped, CurrentUploaders, Allowance, moves).
 
@@ -145,14 +148,31 @@ candidates({NodesWithUploadedData, Chain}) ->
               end,
     {NotFromScratch ++ [FromScratch], Choices}.
 
-%% this function assumes that Allowance is big enough so [] candidates
-%% is never passed in
-select_uploader([Candidates | Rest], Usage, Allowance) ->
-    Allowed = lists:filter(?cut(maps:get(_, Usage, 0) =< Allowance),
-                           Candidates),
+select_uploader(Candidates, Usage, Allowance) ->
+    case do_select_uploader(Candidates, Usage, Allowance) of
+        undefined ->
+            ?log_debug("Unable to pick a winner among ~p with "
+                       "allowance = ~p, usage = ~p~n"
+                       "Ignore allowance.", [Candidates, Allowance, Usage]),
+            select_uploader(Candidates, Usage, undefined);
+        Winner ->
+            Winner
+    end.
+
+do_select_uploader([], _Usage, _Allowance) ->
+    undefined;
+do_select_uploader([Candidates | Rest], Usage, Allowance) ->
+    Allowed =
+        case Allowance of
+            undefined ->
+                Candidates;
+            _ ->
+                lists:filter(?cut(maps:get(_, Usage, 0) =< Allowance),
+                             Candidates)
+        end,
     case Allowed of
         [] ->
-            select_uploader(Rest, Usage, Allowance);
+            do_select_uploader(Rest, Usage, Allowance);
         _ ->
             {_, Winner} =
                 lists:min([{maps:get(N, Usage, 0), N} || N <- Allowed]),
@@ -160,6 +180,9 @@ select_uploader([Candidates | Rest], Usage, Allowance) ->
     end.
 
 build_uploaders(Infos, CurrentUploaders, Allowance, OutputFormat) ->
+    ?log_debug("Building uploaders for infos:~n~p~nuploaders:~n~p~nallowance:~p"
+               ",format:~p",
+               [Infos, CurrentUploaders, Allowance, OutputFormat]),
     CandidatesList = lists:map(fun candidates/1, Infos),
 
     %% zip together vbucket numbers, candidates and current uploaders
@@ -173,10 +196,17 @@ build_uploaders(Infos, CurrentUploaders, Allowance, OutputFormat) ->
                fun ({_, {{_, ChoicesA}, _}}, {_, {{_, ChoicesB}, _}}) ->
                        ChoicesA > ChoicesB
                end, Zipped),
-    {WithUploaders, _} =
+    ?log_debug("Process following candidates: ~p", [Sorted]),
+    {WithUploaders, FinalUsage} =
         lists:mapfoldl(
-          fun ({I, {{Candidates, _Choices}, {CurrentUploader, Term}}}, Usage) ->
+          fun ({I, {{Candidates, _Choices}, {CurrentUploader, Term} = CU}},
+               Usage) ->
+                  ?log_debug("Select uploader for vbucket ~p from ~p, "
+                             "current uploader: ~p",
+                             [I, Candidates, CU]),
                   Uploader = select_uploader(Candidates, Usage, Allowance),
+                  ?log_debug("Selected uploader for vbucket ~p: ~p",
+                             [I, Uploader]),
                   NewUsage = maps:update_with(Uploader, _ + 1, 1, Usage),
                   UploaderOrMove =
                       case Uploader of
@@ -192,6 +222,9 @@ build_uploaders(Infos, CurrentUploaders, Allowance, OutputFormat) ->
                       end,
                   {{I, UploaderOrMove}, NewUsage}
           end, #{}, Sorted),
+
+    ?log_debug("Selected following uploaders:~n~p~nUsage:~n~p",
+               [WithUploaders, FinalUsage]),
 
     %% return calculated moves or uploaders in vbucket number order
     [Uploader || {_, Uploader} <- lists:sort(WithUploaders)].
