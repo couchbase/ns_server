@@ -32,7 +32,7 @@
          encrypt_key/3,
          decrypt_key/3,
          test_existing_key/1,
-         maybe_map_not_found_key_error/2,
+         maybe_wrap_encryption_error/2,
          change_password/1,
          get_keys_ref/0,
          rotate_data_key/0,
@@ -40,7 +40,7 @@
          get_state/0,
          os_pid/0,
          reconfigure/1,
-         store_kek/5,
+         store_kek/6,
          store_aws_key/4,
          store_kmip_key/5,
          store_dek/5,
@@ -107,15 +107,16 @@ reconfigure(NewCfg) ->
 garbage_collect_keks(InUseKeyIds) ->
     garbage_collect_keys(kek, InUseKeyIds).
 
-store_kek(Id, Key, KekIdToEncrypt, CreationDT, CanBeCached) ->
+store_kek(Id, Key, KekIdToEncrypt, CreationDT, CanBeCached, TestOnly) ->
     store_key(kek, Id, 'raw-aes-gcm', Key, KekIdToEncrypt, CreationDT,
-              CanBeCached).
+              CanBeCached, TestOnly).
 
 store_dek({bucketDek, BucketUUID}, Id, Key, KekIdToEncrypt, CreationDT) ->
     store_dek(bucketDek, bucket_dek_id(BucketUUID, Id), Key, KekIdToEncrypt,
               CreationDT);
 store_dek(Kind, Id, Key, KekIdToEncrypt, CreationDT) ->
-    store_key(Kind, Id, 'raw-aes-gcm', Key, KekIdToEncrypt, CreationDT, false).
+    store_key(Kind, Id, 'raw-aes-gcm', Key, KekIdToEncrypt, CreationDT, false,
+              false).
 
 store_aws_key(Id, Params, CreationDT, TestOnly) ->
     store_key(kek, Id, 'awskms-symmetric',
@@ -278,20 +279,17 @@ test_existing_key(KekId) when is_binary(KekId) ->
         end
     else
         {error, Error} ->
-            {error, maybe_map_not_found_key_error(Error,
-                                                  invalid_key_settings)}
+            {error, maybe_wrap_encryption_error(Error, invalid_key_settings)}
     end.
 
-maybe_map_not_found_key_error({T, "no files found matching:" ++ _ = Error},
-                              Wrapper)
-                                                when T == encrypt_key_error;
-                                                     T == decrypt_key_error ->
+maybe_wrap_encryption_error({T, Error}, Wrapper) when T == encrypt_key_error;
+                                                      T == decrypt_key_error ->
     %% We know that if this function is called the secret actually
     %% exists, so if we get this error, it means that we have problems
     %% saving the key on disk (likely because something is wrong with secret
     %% settings). Changing the error to avoid confusion.
     {Wrapper, Error};
-maybe_map_not_found_key_error(Error, _Wrapper) ->
+maybe_wrap_encryption_error(Error, _Wrapper) ->
     Error.
 
 maybe_rotate_integrity_tokens(undefined) ->
@@ -574,11 +572,6 @@ wait_for_server_start() ->
               _:_ -> false
           end
       end, ?RESTART_WAIT_TIMEOUT, 100).
-
-store_key(Kind, Name, Type, KeyData, EncryptionKeyId, CreationDT,
-          CanBeCached) ->
-    store_key(Kind, Name, Type, KeyData, EncryptionKeyId, CreationDT,
-              CanBeCached, false).
 
 store_key(Kind, Name, Type, KeyData, undefined, CreationDT, CanBeCached,
           TestOnly) ->
@@ -981,6 +974,28 @@ retire_key(Kind, Filename) ->
         ok ->
             case misc:atomic_rename(FromPath, ToPath) of
                 ok -> ok;
+                {error, exdev} ->
+                    %% Cross-filesystem rename, fall back to copy + delete
+                    ?log_debug("Cross-filesystem rename failed, "
+                               "will try copy+delete ~p to ~p",
+                               [FromPath, ToPath]),
+                    case file:copy(FromPath, ToPath) of
+                        {ok, _} -> ok;
+                        {error, CopyReason} ->
+                            %% Copy failed, but it is not critical enough to
+                            %% fail the whole operation, as the reason we keep
+                            %% the keys in retired_keys_dir is "just in case".
+                            %% The system can work without it.
+                            ?log_error("Copy failed ~p to ~p: ~p",
+                                       [FromPath, ToPath, CopyReason])
+                    end,
+                    case file:delete(FromPath) of
+                        ok -> ok;
+                        {error, DeleteReason} ->
+                            ?log_error("Failed to delete file ~p: ~p",
+                                       [FromPath, DeleteReason]),
+                            {error, DeleteReason}
+                    end;
                 {error, Reason} ->
                     ?log_error("Failed to retire ~p key ~p (~p): ~p",
                                 [Kind, Filename, FromPath, Reason]),

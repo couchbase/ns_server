@@ -84,7 +84,8 @@
          node_supports_encryption_at_rest/1,
          max_dek_num/1,
          fetch_snapshot_in_txn/1,
-         recalculate_deks_info/0]).
+         recalculate_deks_info/0,
+         is_secret_used/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -557,6 +558,8 @@ test_secret_props(#{type := ?AWSKMS_KEY_TYPE} = Props) ->
     test_aws_kek(Props);
 test_secret_props(#{type := ?KMIP_KEY_TYPE} = Props) ->
     test_kmip_kek(Props);
+test_secret_props(#{type := ?CB_MANAGED_KEY_TYPE} = Props) ->
+    test_cb_managed_kek(Props);
 test_secret_props(#{}) ->
     {error, not_supported}.
 
@@ -846,6 +849,18 @@ max_dek_num(Kind) ->
                   _ -> 50
               end,
     ?get_param({max_dek_num, Kind}, Default).
+
+-spec is_secret_used(secret_id(), chronicle_snapshot()) -> boolean().
+is_secret_used(Id, Snapshot) ->
+    case get_secret(Id, Snapshot) of
+        {ok, SecretProps} ->
+            case can_delete_secret(SecretProps, Snapshot) of
+                ok -> false;
+                {error, {used_by, _}} -> true
+            end;
+        {error, not_found} ->
+            false
+    end.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -1418,7 +1433,7 @@ ensure_all_keks_on_disk(#state{kek_hashes_on_disk = Vsns} = State) ->
           {{error, term()}, Hashes} when Hashes :: #{secret_id() => integer()}.
 persist_keks(Hashes) ->
     Write = fun (#{type := ?CB_MANAGED_KEY_TYPE} = SecretProps)  ->
-                    ensure_cb_managed_keks_on_disk(SecretProps);
+                    ensure_cb_managed_keks_on_disk(SecretProps, false);
                 (#{type := ?AWSKMS_KEY_TYPE} = SecretProps) ->
                     ensure_aws_kek_on_disk(SecretProps, false);
                 (#{type := ?KMIP_KEY_TYPE} = SecretProps) ->
@@ -1446,35 +1461,55 @@ persist_keks(Hashes) ->
     IdsDoNotExist = maps:keys(NewHashes) -- proplists:get_keys(RV),
     {misc:many_to_one_result(RV), maps:without(IdsDoNotExist, NewHashes)}.
 
--spec ensure_cb_managed_keks_on_disk(secret_props()) -> ok | {error, list()}.
+-spec test_cb_managed_kek(secret_props()) -> ok | {error, _}.
+test_cb_managed_kek(#{data := Data = #{keys := Keys}} = Secret) ->
+    {ok, ActiveKeyId} = get_active_key_id_from_secret(Secret),
+    FilteredKeys = lists:filter(fun (#{id := Id}) -> Id == ActiveKeyId end,
+                                Keys),
+    SecretWithoutHistKeys = Secret#{data => Data#{keys => FilteredKeys}},
+    maybe
+        {ok, Encrypted} ?= ensure_secret_encrypted_txn(SecretWithoutHistKeys,
+                                                       direct),
+        ok ?= ensure_cb_managed_keks_on_disk(Encrypted, true)
+    else
+        {error, [{_, Reason}]} -> {error, Reason};
+        {error, _} = E -> E
+    end.
+
+-spec ensure_cb_managed_keks_on_disk(secret_props(), boolean()) ->
+          ok | {error, list()}.
 ensure_cb_managed_keks_on_disk(#{type := ?CB_MANAGED_KEY_TYPE, id := SecretId,
                                  data := #{keys := Keys,
                                            can_be_cached := CanBeCached}} =
-                                                                    Secret) ->
+                                                                    Secret,
+                               TestOnly) ->
     ?log_debug("Ensure all keys are on disk for secret ~p "
                "(number of keys to check: ~b)", [SecretId, length(Keys)]),
     Res = lists:map(fun (#{id := Id} = K) ->
                         {Id, ensure_kek_on_disk(K, secret_ad(Secret),
-                                                CanBeCached)}
+                                                CanBeCached, TestOnly)}
                     end, Keys),
     misc:many_to_one_result(Res).
 
--spec ensure_kek_on_disk(kek_props(), binary(), boolean()) -> ok | {error, _}.
+-spec ensure_kek_on_disk(kek_props(), binary(), boolean(), boolean()) ->
+          ok | {error, _}.
 ensure_kek_on_disk(#{id := Id,
                      key_material := #{type := sensitive, data := Key,
                                        encrypted_by := undefined},
-                     creation_time := CreationTime}, _, CanBeCached) ->
-    encryption_service:store_kek(Id, Key, undefined, CreationTime, CanBeCached);
+                     creation_time := CreationTime},
+                   _, CanBeCached, TestOnly) ->
+    encryption_service:store_kek(Id, Key, undefined, CreationTime, CanBeCached,
+                                 TestOnly);
 ensure_kek_on_disk(#{id := Id,
                      key_material := #{type := encrypted, data := EncryptedKey,
                                        encrypted_by := {_ESecretId, EKekId}},
                      creation_time := CreationTime} = KeyProps, SecretAD,
-                   CanBeCached) ->
+                   CanBeCached, TestOnly) ->
     AD = cb_managed_key_ad(SecretAD, KeyProps),
     maybe
         {ok, Key} ?= encryption_service:decrypt_key(EncryptedKey, AD, EKekId),
         encryption_service:store_kek(Id, Key, EKekId, CreationTime,
-                                     CanBeCached)
+                                     CanBeCached, TestOnly)
     end.
 
 -spec test_aws_kek(secret_props()) -> ok | {error, _}.
@@ -1512,8 +1547,11 @@ ensure_aws_kek_on_disk(#{id := SecretId,
 test_kmip_kek(#{data := Data} = Secret) ->
     %% Only testing active kmip id (the one that is being set basically)
     SecretWithoutHistKeys = Secret#{data => Data#{hist_keys => []}},
-    case ensure_kmip_kek_on_disk(SecretWithoutHistKeys, true) of
-        ok -> ok;
+    maybe
+        {ok, Encrypted} ?= ensure_secret_encrypted_txn(SecretWithoutHistKeys,
+                                                       direct),
+        ok ?= ensure_kmip_kek_on_disk(Encrypted, true)
+    else
         {error, [{_, Reason}]} -> {error, Reason};
         {error, _} = E -> E
     end.
@@ -2634,7 +2672,7 @@ maybe_reencrypt_data(#{type := encrypted, data := Bin,
                encrypted_by => {NewSecretId, NewKekId}}}
     else
         {error, Error} ->
-            {error, encryption_service:maybe_map_not_found_key_error(
+            {error, encryption_service:maybe_wrap_encryption_error(
                       Error, failed_to_encrypt_or_decrypt_key)}
     end;
 %% Encrypted, but we want it to be unencrypted (encrypted by node SM actually)
@@ -2657,7 +2695,7 @@ maybe_reencrypt_data(#{type := sensitive, data := Bin,
                encrypted_by => {NewSecretId, NewKekId}}}
     else
         {error, Error} ->
-            {error, encryption_service:maybe_map_not_found_key_error(
+            {error, encryption_service:maybe_wrap_encryption_error(
                       Error, failed_to_encrypt_or_decrypt_key)}
     end;
 %% Not encrypted, and that's right
@@ -4068,8 +4106,8 @@ log_succ_kek_rotation(Id, Name, IsAutomatic) ->
                        {is_automatic, IsAutomatic}]).
 
 log_unsucc_kek_rotation(Id, Name, Reason, IsAutomatic) ->
-    ale:error(?USER_LOGGER, "KEK rotation failed for ~s (id ~p): ~p",
-              [Name, Id, Reason]),
+    ale:error(?USER_LOGGER, "KEK rotation failed for ~s (id ~p): ~s",
+              [Name, Id, menelaus_web_secrets:format_error(Reason)]),
     event_log:add_log(encryption_key_rotation_failed,
                       [{encryption_key_id, Id},
                        {encryption_key_name, iolist_to_binary(Name)},
@@ -4085,8 +4123,8 @@ log_unsucc_dek_rotation(Kind, Reason) ->
     DataTypeName = try cb_deks:kind2datatype(Kind)
                    catch error:not_found -> <<"unknown">>
                    end,
-    ale:error(?USER_LOGGER, "DEK rotation failed for ~s: ~p",
-              [DataTypeName, Reason]),
+    ale:error(?USER_LOGGER, "DEK rotation failed for ~s: ~s",
+              [DataTypeName, menelaus_web_secrets:format_error(Reason)]),
     event_log:add_log(encr_at_rest_dek_rotation_failed,
                       [{kind, cb_deks:kind2bin(Kind, <<"unknown">>)},
                        {reason, format_failure_reason(Reason)}]).
