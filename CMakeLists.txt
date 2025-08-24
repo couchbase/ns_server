@@ -65,7 +65,9 @@ FILE (WRITE "${PROJECT_BINARY_DIR}/config.mk"
   "COUCHDB_SRC_DIR = ${_couchdb_src}\n"
   "COUCHDB_BIN_DIR = ${_couchdb_bin}\n")
 
-#build UI
+#
+# build old UI
+#
 IF (BUILD_COLUMNAR)
   SET (NS_UI_SRC "${PROJECT_SOURCE_DIR}/../columnar-ui-v1/src/ui")
 ELSE (BUILD_COLUMNAR)
@@ -143,6 +145,68 @@ INSTALL (FILES
   "${NS_UI_SRC}/libs/ace/worker-javascript.js"
   "${NS_UI_SRC}/libs/ace/worker-json.js"
   DESTINATION "${NS_UI_INSTALL_DIR}/ui/libs/ace")
+
+#
+# build new UI
+#
+
+set (SERVER_UI_SRC "${PROJECT_SOURCE_DIR}/../server-ui")
+# NPM can only run on Linux with glibc 2.28 or higher, which is only
+# currently available for Totoro production builds (not CV). So for the
+# moment, only attempt it for production builds when on Linux.
+if ( ( WIN32 OR APPLE OR CB_PRODUCTION_BUILD ) AND IS_DIRECTORY "${SERVER_UI_SRC}")
+  # Extract the version of Node
+  file (READ "${SERVER_UI_SRC}/package.json" PACKAGE_JSON)
+  string (JSON ENGINES GET "${PACKAGE_JSON}" "engines")
+  string (JSON NODE_VERSION GET "${ENGINES}" "node")
+  if ("${NODE_VERSION}" STREQUAL "")
+    message (FATAL_ERROR "Could not determine Node.js version!")
+  endif ()
+
+  # Install node if it's not already here
+  if (WIN32)
+    set (NODE_PATH "${CMAKE_CURRENT_BINARY_DIR}/nodejs-${NODE_VERSION}")
+    set (NPM_EXE "${NODE_PATH}/npm.cmd")
+  else ()
+    # On Unix systems, "npm" is a script that runs `#!/usr/bin/env node`,
+    # meaning it will use the first `node` on the PATH. Make sure that's
+    # the one we just installed.
+    set (NODE_PATH "${CMAKE_CURRENT_BINARY_DIR}/nodejs-${NODE_VERSION}/bin")
+    set (NPM_EXE "${NODE_PATH}/npm")
+  endif ()
+  if (NOT EXISTS "${NPM_EXE}")
+    CBDEP_INSTALL (PACKAGE nodejs VERSION ${NODE_VERSION})
+  endif ()
+  if (NOT EXISTS "${NPM_EXE}")
+    message (FATAL_ERROR "Failed to install Node.js!")
+  endif ()
+
+  # Create output directory
+  set (CBSUI_BUILD_DIR "${CMAKE_BINARY_DIR}")
+
+  # Configure PATH env var - by making this a CMake list (;-separated),
+  # cmake_path(TO_NATIVE_PATH_LIST) will convert it to :-separated on
+  # Unix and ;-separated on Windows, which is what we need.
+  cmake_path (CONVERT "${NODE_PATH};$ENV{PATH}" TO_NATIVE_PATH_LIST CMD_PATH NORMALIZE)
+
+  # Invoke build command - this has to run after the `ui_build` step
+  # because that sets up the target `ui-build/public/ui` directory.
+  ADD_CUSTOM_TARGET (server-ui ALL
+    COMMAND "${CMAKE_COMMAND}" -E env
+      "PATH=${CMD_PATH}"
+      "${NPM_EXE}" install
+    COMMAND "${CMAKE_COMMAND}" -E env
+      "PATH=${CMD_PATH}"
+      "NODE_ENV=production"
+      "CBSUI_BUILD_DIR=${CBSUI_BUILD_DIR}"
+      "${NPM_EXE}" run build:combined
+    WORKING_DIRECTORY "${SERVER_UI_SRC}"
+    COMMENT "Building server-ui with Node.js ${NODE_VERSION}"
+    DEPENDS ui_build
+    VERBATIM
+  )
+endif ()
+
 
 # Various cleaning targets
 ADD_CUSTOM_TARGET (ns_realclean
