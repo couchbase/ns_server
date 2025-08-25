@@ -1548,6 +1548,10 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         aws_secret_id = create_secret(self.random_node(), secret_json)
         self.cluster.update_bucket({'name': self.sample_bucket,
                                     'encryptionAtRestKeyId': aws_secret_id})
+        poll_verify_cluster_bucket_dek_info(
+            self.cluster, self.sample_bucket,
+            data_statuses=['partiallyEncrypted'],
+            dek_number=1)
         force_bucket_encryption(self.random_node(), self.sample_bucket)
         poll_verify_cluster_bucket_dek_info(self.cluster, self.sample_bucket,
                                             data_statuses=['encrypted'],
@@ -1702,24 +1706,35 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         ids = dek_ids("debug.log")
         assert_logs_dek_ids('.2', lambda id: id in ids)
         assert_logs_dek_ids('', lambda id: id in ids)
+        poll_verify_cluster_dek_info(self.cluster, 'logs',
+                                     data_statuses=['partiallyEncrypted'])
 
         # debug.log      - encrypted
         # debug.log.1    - encrypted
         # debug.log.2    - encrypted
         # debug.log.3    - encrypted
         force_encryption(self.cluster, 'log')
-        poll(lambda: encrypted(['.*']))
+        poll(lambda: encrypted(['', '.*']))
+        poll_verify_cluster_dek_info(self.cluster, 'logs',
+                                     data_statuses=['encrypted'])
 
         assert_logs_dek_ids('*', lambda id: id in ids)
 
         # All logs are still encrypted but deks should change
-        drop_deks(self.cluster, 'log')
+        drop_time = drop_deks(self.cluster, 'log')
         poll(lambda: assert_logs_dek_ids('*', lambda id: id not in ids))
+        poll_verify_cluster_dek_info(self.cluster, 'logs',
+                                     data_statuses=['encrypted'],
+                                     dek_number=1,
+                                     oldest_dek_time=drop_time)
 
         # all logs are unencrypted now
         set_log_encryption(self.cluster, 'disabled', -1)
         drop_deks(self.cluster, 'log')
-        poll(lambda: unencrypted(['.*']))
+        poll(lambda: unencrypted(['', '.*']))
+        poll_verify_cluster_dek_info(self.cluster, 'logs',
+                                     data_statuses=['unencrypted'],
+                                     dek_number=0)
 
         # Enable encryption again, encrypt everything, and then check
         # that force_encryption also decrypts all logs after encryption
