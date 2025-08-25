@@ -159,12 +159,18 @@ type storedKeysCtx struct {
 	keysTouched                map[string]bool
 }
 
+type cachedKey struct {
+	keyIface       storedKeyIface
+	proof          string
+	proofValidated bool
+}
+
 type StoredKeysState struct {
 	readOnly          bool
 	intTokensFile     string
 	intTokens         []intToken
 	encryptionKeyName string // Name of the encryption key that is used to encrypt the integrity tokens file
-	keysCache         map[string]storedKeyIface
+	keysCache         map[string]cachedKey
 }
 
 type intToken struct {
@@ -202,7 +208,7 @@ func initStoredKeys(configDir string, readOnly bool, ctx *storedKeysCtx) (*Store
 	state := &StoredKeysState{
 		readOnly:      readOnly,
 		intTokensFile: tokensPath,
-		keysCache:     make(map[string]storedKeyIface),
+		keysCache:     make(map[string]cachedKey),
 	}
 
 	err := state.readIntTokensFromFile(ctx)
@@ -469,21 +475,21 @@ func parseMac(mac []byte) (string, []byte, error) {
 }
 
 func (state *StoredKeysState) revalidateKeyCache(ctx *storedKeysCtx) {
-	for _, cachedKeyIface := range state.keysCache {
-		keySettings, err := getStoredKeyConfig(cachedKeyIface.kind(), ctx.storedKeyConfigs)
+	for _, cachedKey := range state.keysCache {
+		keySettings, err := getStoredKeyConfig(cachedKey.keyIface.kind(), ctx.storedKeyConfigs)
 		shouldInvalidate := false
 		if err != nil {
-			logDbg("Failed to get stored key config for %s: %s", cachedKeyIface.kind(), err.Error())
+			logDbg("Failed to get stored key config for %s: %s", cachedKey.keyIface.kind(), err.Error())
 			shouldInvalidate = true
 		} else {
-			keyPathPrefix := storedKeyPathPrefix(keySettings.Path, cachedKeyIface.name())
+			keyPathPrefix := storedKeyPathPrefix(keySettings.Path, cachedKey.keyIface.name())
 			if !isKeyFile(keyPathPrefix) {
 				logDbg("Key file %s not found, removing from cache", keyPathPrefix)
 				shouldInvalidate = true
 			}
 		}
 		if shouldInvalidate {
-			delete(state.keysCache, cachedKeyIface.name())
+			delete(state.keysCache, cachedKey.keyIface.name())
 		}
 	}
 }
@@ -742,14 +748,6 @@ func (state *StoredKeysState) storeKey(
 		return err
 	}
 
-	if keyInfo.canBeCached() {
-		state.keysCache[keyInfo.name()] = keyInfo
-	} else {
-		if _, exists := state.keysCache[keyInfo.name()]; exists {
-			logDbg("Key %s is not cacheable, removing from cache", keyInfo.name())
-			delete(state.keysCache, keyInfo.name())
-		}
-	}
 
 	return nil
 }
@@ -766,14 +764,31 @@ func (state *StoredKeysState) readKeyFromFile(pathWithoutVersion string, ctx *st
 	return keyIface, vsn, nil
 }
 
+func (state *StoredKeysState) readKeyFromCache(name string, validateProof bool) (bool, storedKeyIface) {
+	if cachedKey, ok := state.keysCache[name]; ok {
+		if validateProof && !cachedKey.proofValidated {
+			err := state.validateKeyProof(cachedKey.keyIface, cachedKey.proof)
+			if err != nil {
+				logDbg("key integrity check failed for cached key %s: %s, will remove from cache", name, err.Error())
+				delete(state.keysCache, name)
+				return false, nil
+			}
+			cachedKey.proofValidated = true
+			state.keysCache[name] = cachedKey
+		}
+		logDbg("readKeyFromCache: using cached key %s", name)
+		return true, cachedKey.keyIface
+	}
+	return false, nil
+}
+
 func (state *StoredKeysState) readKey(name, kind string, validateProof bool, ctx *storedKeysCtx) (storedKeyIface, error) {
 	keySettings, err := getStoredKeyConfig(kind, ctx.storedKeyConfigs)
 	if err != nil {
 		return nil, err
 	}
-	if cachedKeyIface, ok := state.keysCache[name]; ok {
-		logDbg("readKey: using cached key %s", name)
-		return cachedKeyIface, nil
+	if success, keyIface := state.readKeyFromCache(name, validateProof); success {
+		return keyIface, nil
 	}
 	keyIface, _, proof, err := readKeyRaw(keySettings, name)
 	if err != nil {
@@ -866,7 +881,7 @@ func (state *StoredKeysState) decryptKey(keyIface storedKeyIface, validateProof 
 		}
 	}
 	if keyIface.canBeCached() {
-		state.keysCache[keyIface.name()] = keyIface
+		state.keysCache[keyIface.name()] = cachedKey{keyIface: keyIface, proof: proof, proofValidated: validateProof}
 	}
 	return nil
 }
@@ -912,6 +927,15 @@ func (state *StoredKeysState) writeKeyToFile(keyIface storedKeyIface, curVsn int
 			// Seems like we should not return error in this case, because
 			// it would lead to retry
 			logDbg("failed to remove file %s: %s", prevKeyPath, err.Error())
+		}
+	}
+	if keyIface.canBeCached() {
+		// we have just generated proof, so we can mark it as validated
+		state.keysCache[keyIface.name()] = cachedKey{keyIface: keyIface, proof: proof, proofValidated: true}
+	} else {
+		if _, exists := state.keysCache[keyIface.name()]; exists {
+			logDbg("Key %s is not cacheable, removing from cache", keyIface.name())
+			delete(state.keysCache, keyIface.name())
 		}
 	}
 
@@ -962,7 +986,7 @@ func (state *StoredKeysState) encryptWithKey(keyKind, keyName string, data, AD [
 	if err != nil {
 		return nil, err
 	}
-	if cachedKeyIface, ok := state.keysCache[keyName]; ok {
+	if success, cachedKeyIface := state.readKeyFromCache(keyName, true); success {
 		logDbg("encryptWithKey: using cached key %s", keyName)
 		return cachedKeyIface.encryptData(data, AD)
 	}
@@ -986,7 +1010,7 @@ func (state *StoredKeysState) decryptWithKey(keyKind, keyName string, data, AD [
 	if err != nil {
 		return nil, err
 	}
-	if cachedKeyIface, ok := state.keysCache[keyName]; ok {
+	if success, cachedKeyIface := state.readKeyFromCache(keyName, validateKeysProof); success {
 		logDbg("decryptWithKey: using cached key %s", keyName)
 		return cachedKeyIface.decryptData(data, AD)
 	}
