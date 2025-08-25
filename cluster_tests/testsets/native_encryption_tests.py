@@ -2882,28 +2882,39 @@ def get_file_dek_id(path):
 
 def assert_file_encrypted(path):
     print(f'Checking file {path} is encrypted')
-    with open(path, 'rb') as f:
-        magic_len = len(encrypted_file_magic)
-        magic = f.read(magic_len)
-        print(f'magic: {magic}')
-        assert magic == encrypted_file_magic, \
-               f'file {path} doesn\'t seem to be encrypted, ' \
-               f'first {magic_len} bytes are {magic}'
+    try:
+        with open(path, 'rb') as f:
+            magic_len = len(encrypted_file_magic)
+            magic = f.read(magic_len)
+            print(f'magic: {magic}')
+            assert magic == encrypted_file_magic, \
+                f'file {path} doesn\'t seem to be encrypted, ' \
+                f'first {magic_len} bytes are {magic}'
+    except FileNotFoundError as e:
+        # Converting FileNotFoundError to AssertionError to help
+        # testlib.poll_for_condition (it catches AssertionError)
+        print(f'Error checking file {path}: {e}')
+        assert False, f'file {path} doesn\'t exist'
 
 
 def assert_file_unencrypted(path):
     print(f'Checking file {path} is unencrypted')
-    assert path.is_file(), f'file doesn\'t exist: {path}'
-    with open(path, 'rb') as f:
-        magic_len = len(encrypted_file_magic)
-        magic = f.read(magic_len)
-        print(f'magic: {magic}')
-        # Note that we have to treat empty files as unencrypted because
-        # empty unencrypted log will have empty len and we don't want to
-        # wait until something is written to it.
-        assert magic != encrypted_file_magic, \
-               f'file {path} seems to be encrypted, ' \
-               f'first {magic_len} bytes are {magic}'
+    try:
+        with open(path, 'rb') as f:
+            magic_len = len(encrypted_file_magic)
+            magic = f.read(magic_len)
+            print(f'magic: {magic}')
+            # Note that we have to treat empty files as unencrypted because
+            # empty unencrypted log will have empty len and we don't want to
+            # wait until something is written to it.
+            assert magic != encrypted_file_magic, \
+                f'file {path} seems to be encrypted, ' \
+                f'first {magic_len} bytes are {magic}'
+    except FileNotFoundError as e:
+        # Converting FileNotFoundError to AssertionError to help
+        # testlib.poll_for_condition (it catches AssertionError)
+        print(f'Error checking file {path}: {e}')
+        assert False, f'file {path} doesn\'t exist'
 
 
 def assert_file_is_decryptable(node, file_path):
