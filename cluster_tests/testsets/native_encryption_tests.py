@@ -1552,6 +1552,12 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         poll_verify_cluster_bucket_dek_info(self.cluster, self.sample_bucket,
                                             data_statuses=['encrypted'],
                                             dek_number=1)
+        self.cluster.update_bucket({'name': self.sample_bucket,
+                                    'encryptionAtRestKeyId': -1})
+        force_bucket_encryption(self.random_node(), self.sample_bucket)
+        poll_verify_cluster_bucket_dek_info(self.cluster, self.sample_bucket,
+                                            data_statuses=['unencrypted'],
+                                            dek_number=0)
 
     def remove_old_deks_test(self):
         secret = cb_managed_secret(usage=['bucket-encryption'])
@@ -1701,8 +1707,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # debug.log.1    - encrypted
         # debug.log.2    - encrypted
         # debug.log.3    - encrypted
-        testlib.post_succ(self.cluster,
-                          '/controller/forceEncryptionAtRest/log')
+        force_encryption(self.cluster, 'log')
         poll(lambda: encrypted(['.*']))
 
         assert_logs_dek_ids('*', lambda id: id in ids)
@@ -1715,6 +1720,21 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         set_log_encryption(self.cluster, 'disabled', -1)
         drop_deks(self.cluster, 'log')
         poll(lambda: unencrypted(['.*']))
+
+        # Enable encryption again, encrypt everything, and then check
+        # that force_encryption also decrypts all logs after encryption
+        # disablement
+        set_log_encryption(self.cluster, 'nodeSecretManager', -1)
+        drop_deks(self.cluster, 'log')
+        poll(lambda: encrypted(['', '.*']))
+        poll_verify_cluster_dek_info(self.cluster, 'logs',
+                                     data_statuses=['encrypted'])
+
+        set_log_encryption(self.cluster, 'disabled', -1)
+        force_encryption(self.cluster, 'log')
+        poll(lambda: unencrypted(['', '.*']))
+        poll_verify_cluster_dek_info(self.cluster, 'logs',
+                                     data_statuses=['unencrypted'])
 
     def stored_keys_file_encrypted_test(self):
         # verify that tokens file is encrypted and that it can be decrypted
@@ -2519,6 +2539,11 @@ def verify_dek_info(info, data_statuses=None, dek_number=None,
                f'dek time is unexpected: {t} (expected: {oldest_dek_time})'
 
 
+def poll_verify_cluster_dek_info(cluster, *args, **kwargs):
+    for node in cluster.connected_nodes:
+        poll_verify_node_dek_info(node, *args, **kwargs)
+
+
 def poll_verify_node_dek_info(*args, **kwargs):
     testlib.poll_for_condition(
       lambda: verify_node_dek_info(*args, **kwargs),
@@ -2767,6 +2792,9 @@ def drop_bucket_keys(cluster, bucket):
           f'/controller/dropEncryptionAtRestDeks/bucket/{bucket}')
     return parse_iso8601(r.json()['dropKeysDate'])
 
+def force_encryption(cluster, data_type):
+    testlib.post_succ(cluster,
+                      f'/controller/forceEncryptionAtRest/{data_type}')
 
 def force_bucket_encryption(cluster, bucket):
     testlib.post_succ(cluster,
