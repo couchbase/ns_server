@@ -2757,12 +2757,16 @@ def parse_iso8601(s):
     return dateutil.parser.parse(s)
 
 def drop_deks(cluster, data_type):
-    testlib.post_succ(cluster,
-                      f'/controller/dropEncryptionAtRestDeks/{data_type}')
+    r = testlib.post_succ(cluster,
+                          f'/controller/dropEncryptionAtRestDeks/{data_type}')
+    return parse_iso8601(r.json()['dropKeysDate'])
 
 def drop_bucket_keys(cluster, bucket):
-    testlib.post_succ(cluster,
-                      f'/controller/dropEncryptionAtRestDeks/bucket/{bucket}')
+    r = testlib.post_succ(
+          cluster,
+          f'/controller/dropEncryptionAtRestDeks/bucket/{bucket}')
+    return parse_iso8601(r.json()['dropKeysDate'])
+
 
 def force_bucket_encryption(cluster, bucket):
     testlib.post_succ(cluster,
@@ -2915,16 +2919,14 @@ def assert_file_is_decryptable(node, file_path):
 
 
 def drop_config_deks_for_node(node):
-    drop_time = datetime.now(timezone.utc).replace(microsecond=0)
-    drop_deks(node, 'config')
+    drop_time = drop_deks(node, 'config')
     poll_verify_node_dek_info(node, 'configuration',
                               data_statuses=['encrypted'],
                               dek_number=1,
                               oldest_dek_time=drop_time)
 
 def drop_bucket_deks_and_verify_dek_info(cluster, bucket):
-    drop_time = datetime.now(timezone.utc).replace(microsecond=0)
-    drop_bucket_keys(cluster, bucket)
+    drop_time = drop_bucket_keys(cluster, bucket)
 
     for node in cluster.connected_nodes:
         if node.get_cluster_membership() == 'active' and \
