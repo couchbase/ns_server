@@ -351,7 +351,13 @@ func (state *StoredKeysState) readIntTokensFromFile(ctx *storedKeysCtx) error {
 	}
 
 	baseFilename := filepath.Base(state.intTokensFile)
-	data, encryptionKeyName, err := state.maybeDecryptFileData(baseFilename, data, ctx)
+
+	// We can't verify the key proof during reading the key file (as it is
+	// usually done), because tokens are not yet read. For this reason
+	// maybeDecryptFileData returns encryptionKeyProof, which is verified later,
+	// when tokens are read.
+	data, encryptionKeyName, encryptionKeyIface, encryptionKeyProof, err := state.maybeDecryptFileData(baseFilename, data, ctx)
+
 	if err != nil {
 		return fmt.Errorf("failed to decrypt stored keys tokens file: %s", err.Error())
 	}
@@ -388,6 +394,14 @@ func (state *StoredKeysState) readIntTokensFromFile(ctx *storedKeysCtx) error {
 			token: token,
 		})
 	}
+
+	if encryptionKeyIface != nil {
+		err = state.validateKeyProof(encryptionKeyIface, encryptionKeyProof)
+		if err != nil {
+			return fmt.Errorf("key integrity check failed for key %s: %s", encryptionKeyName, err.Error())
+		}
+	}
+
 	return nil
 }
 
@@ -532,7 +546,7 @@ func (state *StoredKeysState) encryptFileData(data []byte, encryptionKeyName str
 	ad := getEncryptedFileAD(header, encryptedFileHeaderSize)
 
 	// Read the encryption key and use it to encrypt the data
-	key, err := state.readKey(encryptionKeyName, intTokenEncryptionKeyKind, true, ctx)
+	key, _, err := state.readKey(encryptionKeyName, intTokenEncryptionKeyKind, true, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config dek: %s", err.Error())
 	}
@@ -559,11 +573,11 @@ func (state *StoredKeysState) encryptFileData(data []byte, encryptionKeyName str
 // Decrypts arbitraty "Couchbase Encrypted" file data with two caveats:
 // 1. It doesn't validate the proof of the key
 // 2. It assumes that file contains only one chunk
-func (state *StoredKeysState) maybeDecryptFileData(filename string, data []byte, ctx *storedKeysCtx) ([]byte, string, error) {
+func (state *StoredKeysState) maybeDecryptFileData(filename string, data []byte, ctx *storedKeysCtx) ([]byte, string, storedKeyIface, string, error) {
 	// Check if data is long enough to contain magic string
 	if len(data) < encryptedFileMagicStringLen {
 		logDbg("Data is too short to contain magic string, must be unencrypted")
-		return data, "", nil
+		return data, "", nil, "", nil
 	}
 
 	logDbg("Decrypting file %s, data length: %d", filename, len(data))
@@ -571,14 +585,14 @@ func (state *StoredKeysState) maybeDecryptFileData(filename string, data []byte,
 	// Check for magic string
 	if !bytes.Equal(data[:encryptedFileMagicStringLen], []byte(encryptedFileMagicString)) {
 		logDbg("No magic string found, must be unencrypted")
-		return data, "", nil
+		return data, "", nil, "", nil
 	}
 
 	// Validate header format
 	header := data[:encryptedFileHeaderSize]
 	keyName, err := validateEncryptedFileHeader(header)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, "", err
 	}
 
 	logDbg("File is encrypted with key %s", keyName)
@@ -586,26 +600,26 @@ func (state *StoredKeysState) maybeDecryptFileData(filename string, data []byte,
 	// Chunk format is 4 bytes size + encrypted data
 	chunk := data[encryptedFileHeaderSize:]
 	if len(chunk) < 4 {
-		return nil, "", fmt.Errorf("encrypted file too short to contain chunk size")
+		return nil, "", nil, "", fmt.Errorf("encrypted file too short to contain chunk size")
 	}
 	chunkSize := binary.BigEndian.Uint32(chunk[:4])
 	if len(chunk) < 4+int(chunkSize) {
-		return nil, "", fmt.Errorf("encrypted file shorter than specified chunk size")
+		return nil, "", nil, "", fmt.Errorf("encrypted file shorter than specified chunk size")
 	}
 
 	// Read the encryption key and use it to decrypt the data
-	key, err := state.readKey(keyName, intTokenEncryptionKeyKind, false, ctx)
+	key, keyProof, err := state.readKey(keyName, intTokenEncryptionKeyKind, false, ctx)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to read config dek: %s", err.Error())
+		return nil, "", nil, "", fmt.Errorf("failed to read config dek: %s", err.Error())
 	}
 
 	ad := getEncryptedFileAD(header, encryptedFileHeaderSize)
 	decryptedData, err := key.decryptData(chunk[4:], ad)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to decrypt data: %s", err.Error())
+		return nil, "", nil, "", fmt.Errorf("failed to decrypt data: %s", err.Error())
 	}
 
-	return decryptedData, keyName, nil
+	return decryptedData, keyName, key, keyProof, nil
 }
 
 func validateEncryptedFileHeader(header []byte) (string, error) {
@@ -764,42 +778,42 @@ func (state *StoredKeysState) readKeyFromFile(pathWithoutVersion string, ctx *st
 	return keyIface, vsn, nil
 }
 
-func (state *StoredKeysState) readKeyFromCache(name string, validateProof bool) (bool, storedKeyIface) {
+func (state *StoredKeysState) readKeyFromCache(name string, validateProof bool) (bool, storedKeyIface, string) {
 	if cachedKey, ok := state.keysCache[name]; ok {
 		if validateProof && !cachedKey.proofValidated {
 			err := state.validateKeyProof(cachedKey.keyIface, cachedKey.proof)
 			if err != nil {
 				logDbg("key integrity check failed for cached key %s: %s, will remove from cache", name, err.Error())
 				delete(state.keysCache, name)
-				return false, nil
+				return false, nil, ""
 			}
 			cachedKey.proofValidated = true
 			state.keysCache[name] = cachedKey
 		}
 		logDbg("readKeyFromCache: using cached key %s", name)
-		return true, cachedKey.keyIface
+		return true, cachedKey.keyIface, cachedKey.proof
 	}
-	return false, nil
+	return false, nil, ""
 }
 
-func (state *StoredKeysState) readKey(name, kind string, validateProof bool, ctx *storedKeysCtx) (storedKeyIface, error) {
+func (state *StoredKeysState) readKey(name, kind string, validateProof bool, ctx *storedKeysCtx) (storedKeyIface, string, error) {
 	keySettings, err := getStoredKeyConfig(kind, ctx.storedKeyConfigs)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	if success, keyIface := state.readKeyFromCache(name, validateProof); success {
-		return keyIface, nil
+	if success, keyIface, proof := state.readKeyFromCache(name, validateProof); success {
+		return keyIface, proof, nil
 	}
 	keyIface, _, proof, err := readKeyRaw(keySettings, name)
 	if err != nil {
 		// It is important to not strip ErrKeyNotFound here
-		return nil, fmt.Errorf("failed to read key %s: %w", name, err)
+		return nil, "", fmt.Errorf("failed to read key %s: %w", name, err)
 	}
 	err = state.decryptKey(keyIface, validateProof, proof, ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return keyIface, nil
+	return keyIface, proof, nil
 }
 
 func (state *StoredKeysState) searchKey(keyKind, keyId string, ctx *storedKeysCtx) (storedKeyIface, error) {
@@ -824,7 +838,7 @@ func (state *StoredKeysState) searchKey(keyKind, keyId string, ctx *storedKeysCt
 						continue
 					}
 					keyName := filepath.Join(baseDir, "deks", keyId)
-					keyIface, err := state.readKey(keyName, cfg.KeyKind, true, ctx)
+					keyIface, _, err := state.readKey(keyName, cfg.KeyKind, true, ctx)
 					var keyNotFoundErr ErrKeyNotFound
 					if errors.As(err, &keyNotFoundErr) {
 						logDbg("skipping %s - key %s not present", baseDir, keyId)
@@ -838,7 +852,7 @@ func (state *StoredKeysState) searchKey(keyKind, keyId string, ctx *storedKeysCt
 				}
 			} else {
 				logDbg("searching in %s", cfg.Path)
-				keyIface, err := state.readKey(keyId, cfg.KeyKind, true, ctx)
+				keyIface, _, err := state.readKey(keyId, cfg.KeyKind, true, ctx)
 				var keyNotFoundErr ErrKeyNotFound
 				if errors.As(err, &keyNotFoundErr) {
 					logDbg("key %s not found in %s", keyId, cfg.Path)
@@ -986,7 +1000,7 @@ func (state *StoredKeysState) encryptWithKey(keyKind, keyName string, data, AD [
 	if err != nil {
 		return nil, err
 	}
-	if success, cachedKeyIface := state.readKeyFromCache(keyName, true); success {
+	if success, cachedKeyIface, _ := state.readKeyFromCache(keyName, true); success {
 		logDbg("encryptWithKey: using cached key %s", keyName)
 		return cachedKeyIface.encryptData(data, AD)
 	}
@@ -1010,7 +1024,7 @@ func (state *StoredKeysState) decryptWithKey(keyKind, keyName string, data, AD [
 	if err != nil {
 		return nil, err
 	}
-	if success, cachedKeyIface := state.readKeyFromCache(keyName, validateKeysProof); success {
+	if success, cachedKeyIface, _ := state.readKeyFromCache(keyName, validateKeysProof); success {
 		logDbg("decryptWithKey: using cached key %s", keyName)
 		return cachedKeyIface.decryptData(data, AD)
 	}

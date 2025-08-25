@@ -820,7 +820,7 @@ func (s *encryptionService) cmdReadKey(data []byte) {
 	keyName, _ := readBigField(data)
 	keyKindStr := string(keyKind)
 	keyNameStr := string(keyName)
-	keyIface, err := s.storedKeysState.readKey(keyNameStr, keyKindStr, true, s.newStoredKeyCtx())
+	keyIface, _, err := s.storedKeysState.readKey(keyNameStr, keyKindStr, true, s.newStoredKeyCtx())
 	if err != nil {
 		replyError(err.Error())
 		return
