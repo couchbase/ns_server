@@ -225,10 +225,9 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                       verify_key_count=1,
                                       verify_encryption_kek=kek1_id)
 
-        for node in kv_nodes(self.cluster):
-            poll_verify_node_bucket_dek_info(node, self.bucket_name,
-                                             data_statuses=['encrypted'],
-                                             dek_number=1)
+        poll_verify_cluster_bucket_dek_info(self.cluster, self.bucket_name,
+                                            data_statuses=['encrypted'],
+                                            dek_number=1)
 
         # Can't delete because it is in use
         delete_secret(self.random_node(), secret1_id, expected_code=400)
@@ -275,11 +274,10 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         poll_verify_bucket_deks_files(self.cluster, bucket_uuid,
                                       verify_key_count=1,
                                       verify_encryption_kek=kek1_id)
-        for node in kv_nodes(self.cluster):
-            poll_verify_node_bucket_dek_info(
-                node, self.bucket_name,
-                data_statuses=['encrypted', 'partiallyEncrypted'],
-                dek_number=1)
+        poll_verify_cluster_bucket_dek_info(self.cluster, self.bucket_name,
+                                            data_statuses=['encrypted',
+                                                           'partiallyEncrypted'],
+                                            dek_number=1)
         # Can't delete because it is in use
         delete_secret(self.random_node(), secret1_id, expected_code=400)
         self.cluster.update_bucket({'name': self.bucket_name,
@@ -1543,19 +1541,17 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
     @tag(Tag.LowUrgency)
     def force_bucket_encryption_test(self):
         self.load_and_assert_sample_bucket(self.cluster, self.sample_bucket)
-        for node in kv_nodes(self.cluster):
-            poll_verify_node_bucket_dek_info(node, self.sample_bucket,
-                                             data_statuses=['unencrypted'],
-                                             dek_number=0)
+        poll_verify_cluster_bucket_dek_info(self.cluster, self.sample_bucket,
+                                            data_statuses=['unencrypted'],
+                                            dek_number=0)
         secret_json = aws_test_secret(usage=['bucket-encryption'])
         aws_secret_id = create_secret(self.random_node(), secret_json)
         self.cluster.update_bucket({'name': self.sample_bucket,
                                     'encryptionAtRestKeyId': aws_secret_id})
         force_bucket_encryption(self.random_node(), self.sample_bucket)
-        for node in kv_nodes(self.cluster):
-            poll_verify_node_bucket_dek_info(node, self.sample_bucket,
-                                             data_statuses=['encrypted'],
-                                             dek_number=1)
+        poll_verify_cluster_bucket_dek_info(self.cluster, self.sample_bucket,
+                                            data_statuses=['encrypted'],
+                                            dek_number=1)
 
     def remove_old_deks_test(self):
         secret = cb_managed_secret(usage=['bucket-encryption'])
@@ -2527,6 +2523,11 @@ def poll_verify_node_dek_info(*args, **kwargs):
     testlib.poll_for_condition(
       lambda: verify_node_dek_info(*args, **kwargs),
       sleep_time=1, attempts=120, retry_on_assert=True, verbose=True)
+
+
+def poll_verify_cluster_bucket_dek_info(cluster, *args, **kwargs):
+    for node in kv_nodes(cluster):
+        poll_verify_node_bucket_dek_info(node, *args, **kwargs)
 
 
 def poll_verify_node_bucket_dek_info(*args, **kwargs):
