@@ -2052,6 +2052,104 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         assert_breakpad_status_on_all_nodes(True)
 
 
+    def existing_key_test_endpoints_test(self):
+        secret_id = create_secret(self.random_node(),
+                                  cb_managed_secret(name='test secret',
+                                                    usage=['KEK-encryption']))
+        bad_aws_id = create_secret(self.random_node(),
+                                   aws_test_secret(should_work=False,
+                                                   usage=['KEK-encryption']))
+        good_aws_id = create_secret(self.random_node(),
+                                    aws_test_secret(should_work=True,
+                                                    usage=['KEK-encryption']))
+
+        # Existing key test endpoint tests:
+        test_existing_secret(self.random_node(), secret_id)
+        test_existing_secret(self.random_node(), good_aws_id)
+        err = test_existing_secret(self.random_node(), bad_aws_id,
+                                   expected_code=400)
+        assert 'Unable to perform encryption/decryption with provided key' \
+               in err['_'], 'unexpected error'
+
+    def create_key_test_endpoints_test(self):
+        # create a secret to make sure that we can create a secret with
+        # a name that is already in use
+        create_secret(self.random_node(),
+                      cb_managed_secret(name='test secret',
+                                        usage=['KEK-encryption']))
+
+        bad_aws_id = create_secret(self.random_node(),
+                                   aws_test_secret(should_work=False,
+                                                   usage=['KEK-encryption']))
+        good_aws_id = create_secret(self.random_node(),
+                                    aws_test_secret(should_work=True,
+                                                    usage=['KEK-encryption']))
+        # Create key test endpoint tests:
+        test_create_secret(self.random_node(),
+                           cb_managed_secret(usage=['bucket-encryption']))
+
+        err = test_create_secret(self.random_node(),
+                                cb_managed_secret(name='test secret'),
+                                expected_code=400)
+        assert 'Must be unique' in err['name'], 'unexpected error'
+
+        test_create_secret(self.random_node(),
+                           aws_test_secret(should_work=True))
+
+        err = test_create_secret(self.random_node(),
+                                 aws_test_secret(should_work=False),
+                                 expected_code=400)
+        assert 'test encryption error' in err['_'], 'unexpected error'
+
+        test_create_secret(self.random_node(),
+                           cb_managed_secret(encrypt_with='encryptionKey',
+                                             encrypt_secret_id=good_aws_id))
+
+        err = test_create_secret(self.random_node(),
+                                 cb_managed_secret(
+                                     encrypt_with='encryptionKey',
+                                     encrypt_secret_id=bad_aws_id),
+                                 expected_code=400)
+        assert 'Unable to encrypt (or decrypt) this key' in err['_'], \
+               'unexpected error'
+
+
+    def update_key_test_endpoints_test(self):
+        secret_id = create_secret(self.random_node(),
+                                  cb_managed_secret(name='test secret',
+                                                    usage=['KEK-encryption']))
+        bad_aws_id = create_secret(self.random_node(),
+                                   aws_test_secret(should_work=False,
+                                                   usage=['KEK-encryption']))
+        good_aws_id = create_secret(self.random_node(),
+                                    aws_test_secret(should_work=True,
+                                                    usage=['KEK-encryption']))
+
+        # Update key test endpoint tests:
+        test_update_secret(self.cluster, 999999999,
+                           cb_managed_secret(usage=['bucket-encryption']),
+                           expected_code=404)
+
+        test_update_secret(self.cluster, secret_id,
+                           cb_managed_secret(name='test secret 2',
+                                             usage=['bucket-encryption']))
+
+        test_update_secret(self.cluster, secret_id,
+                           cb_managed_secret(name='test secret 2',
+                                             usage=['bucket-encryption'],
+                                             encrypt_with='encryptionKey',
+                                             encrypt_secret_id=good_aws_id))
+
+        err = test_update_secret(self.cluster, secret_id,
+                                 cb_managed_secret(
+                                     name='test secret 2',
+                                     usage=['bucket-encryption'],
+                                     encrypt_with='encryptionKey',
+                                     encrypt_secret_id=bad_aws_id),
+                                 expected_code=400)
+        assert 'Unable to encrypt (or decrypt) this key' in err['_'], \
+               'unexpected error'
+
 
 # Set master password and restart the cluster
 # Testing that we can decrypt deks when master password is set
@@ -2449,6 +2547,27 @@ def get_secrets(cluster, auth=None):
     return testlib.get_succ(cluster, '/settings/encryptionKeys',
                             auth=auth).json()
 
+def test_existing_secret(cluster, secret_id, expected_code=200):
+    r = testlib.post_succ(cluster, f'/settings/encryptionKeys/{secret_id}/test',
+                          expected_code=expected_code)
+
+    if expected_code == 200:
+        return None
+
+    r = r.json()
+    return r['errors']
+
+def test_create_secret(cluster, json, expected_code=200):
+    r = testlib.post_succ(cluster, '/settings/encryptionKeys/test', json=json,
+                          expected_code=expected_code)
+
+
+    if expected_code == 200:
+        return None
+
+    r = r.json()
+    return r['errors']
+
 
 def create_secret(cluster, json, expected_code=200, auth=None):
     if auth is None:
@@ -2465,6 +2584,20 @@ def create_secret(cluster, json, expected_code=200, auth=None):
     else:
         r = r.json()
         return r['errors']
+
+
+def test_update_secret(cluster, secret_id, json, expected_code=200):
+    r = testlib.put_succ(cluster, f'/settings/encryptionKeys/{secret_id}/test',
+                         json=json,
+                         expected_code=expected_code)
+
+    if expected_code == 200:
+        return None
+    elif expected_code == 404:
+        return r.text
+
+    r = r.json()
+    return r['errors']
 
 
 def update_secret(cluster, secret_id, json, expected_code=200, auth=None):
