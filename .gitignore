@@ -25,6 +25,8 @@ _build
 /ns_server.plt
 /priv/public/js/all-images.js
 /priv/ui_tests/screenshots_output
+/priv/public/ui/index-angular.html
+/priv/public/ui/index.html
 apps/ns_babysitter/rebar.config
 apps/ns_server/rebar.config
 apps/ns_server/src/ns_server.app.src

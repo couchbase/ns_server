@@ -194,6 +194,7 @@ if ( ( WIN32 OR APPLE OR CB_PRODUCTION_BUILD ) AND IS_DIRECTORY "${SERVER_UI_SRC
   ADD_CUSTOM_TARGET (server-ui ALL
     COMMAND "${CMAKE_COMMAND}" -E env
       "PATH=${CMD_PATH}"
+      "NODE_ENV=development"
       "${NPM_EXE}" install
     COMMAND "${CMAKE_COMMAND}" -E env
       "PATH=${CMD_PATH}"
@@ -205,6 +206,10 @@ if ( ( WIN32 OR APPLE OR CB_PRODUCTION_BUILD ) AND IS_DIRECTORY "${SERVER_UI_SRC
     DEPENDS ui_build
     VERBATIM
   )
+
+  # Install the output directory
+  INSTALL (DIRECTORY "${NS_UI_PUB_DIR}/output"
+    DESTINATION "${NS_UI_INSTALL_DIR}")
 endif ()
 
 
