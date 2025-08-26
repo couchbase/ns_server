@@ -123,10 +123,10 @@
 %% inet6)
 %% jwks_uri_http_timeout_ms - HTTP request timeout for JWKS URI in milliseconds
 %% jwks_uri_tls_ca - CA certificate for validating JWKS URI TLS connection
-%% jwks_uri_tls_extra_opts - Additional TLS options for JWKS URI
 %% jwks_uri_tls_sni - Server name for TLS SNI extension
 %% jwks_uri_tls_verify_peer - Whether to verify JWKS URI server certificate
 %% name - Unique name identifying this issuer
+%% oidc_settings - Optional OIDC configuration for this issuer
 %% public_key - Public key used to verify token signatures
 %% public_key_source - Source of the public key (jwks/jwks_uri/pem)
 %% roles_claim - Field path of the claim containing role assignments
@@ -152,10 +152,10 @@
          {jwks_uri_address_family, undefined},
          {jwks_uri_http_timeout_ms, undefined},
          {jwks_uri_tls_ca, fun format_tls_ca/1},
-         {jwks_uri_tls_extra_opts, fun format_tls_extra_opts/1},
          {jwks_uri_tls_sni, fun format_string/1},
          {jwks_uri_tls_verify_peer, undefined},
          {name, fun format_string/1},
+         {oidc_settings, fun storage_to_rest_format_oidc_provider/1},
          {public_key, fun format_public_key/1},
          {public_key_source, undefined},
          {roles_claim, fun format_string/1},
@@ -207,6 +207,86 @@
         maps:from_list([{Key, {snake_to_camel_atom(Key), Format}} ||
                            {Key, Format} <-
                                ?CUSTOM_CLAIM_PARAMS_WITH_FORMATTERS])).
+
+%% @doc OIDC provider parameters and their descriptions:
+%% client_id - Unique id for the application registered with OIDC provider
+%% client_secret - Secret key for confidential client authentication
+%% base_redirect_uris - Allowed base URLs for redirect targets (array)
+%% oidc_discovery_uri - OIDC discovery endpoint for automatic endpoint detection
+%% authorization_endpoint - OIDC provider's authorization endpoint URL
+%% (required if no discovery; must be absent when discovery is used)
+%% token_endpoint - URL for exchanging authorization code for tokens URL
+%% (required if no discovery; must be absent when discovery is used)
+%% end_session_endpoint - RP-initiated logout endpoint URL
+%% (optional, must be absent when discovery is used)
+%% scopes - List of requested permissions (must include "openid")
+%% nonce_validation - Whether to validate nonce parameter for replay protection
+%% pkce_enabled - Whether PKCE is enabled (should be true for security)
+%% post_logout_redirect_uris - Allowed logout redirect URIs (array, optional).
+%% tls_ca - CA certificate for validating OIDC provider TLS connection
+%% tls_verify_peer - Whether to verify OIDC provider server certificate
+%% tls_sni - Optional SNI hostname for TLS
+%% tls_address_family - Optional address family for DNS/connect (inet | inet6)
+%% http_timeout_ms - HTTP request timeout for OIDC provider calls
+%% token_endpoint_auth_method - Client auth method for token endpoint
+%% (client_secret_basic | client_secret_post; default client_secret_basic)
+%% disable_pushed_authorization_requests - Disable PAR even if OP supports it
+%% (To circumvent Keycloak IdP Issue #43034 (OIDCC #443); default false)
+-define(OIDC_PROVIDER_PARAMS_WITH_FORMATTERS,
+        [
+         {client_id, fun format_string/1},
+         {client_secret, fun format_secret/1},
+         {base_redirect_uris, fun format_string_list/1},
+         {oidc_discovery_uri, fun format_string/1},
+         {authorization_endpoint, fun format_string/1},
+         {token_endpoint, fun format_string/1},
+         {end_session_endpoint, fun format_string/1},
+         {scopes, fun format_string_list/1},
+         {nonce_validation, undefined},
+         {pkce_enabled, undefined},
+         {post_logout_redirect_uris, fun format_string_list/1},
+         {tls_ca, fun format_tls_ca/1},
+         {tls_verify_peer, undefined},
+         {tls_sni, fun format_string/1},
+         {tls_address_family, undefined},
+         {http_timeout_ms, undefined},
+         {token_endpoint_auth_method, undefined},
+         {disable_pushed_authorization_requests, undefined}
+        ]).
+
+%% REST to storage mapping (camelCase atom -> snake_case atom)
+-define(OIDC_PROVIDER_REST_TO_STORAGE,
+        maps:from_list([{snake_to_camel_atom(Key), Key} ||
+                           {Key, _} <- ?OIDC_PROVIDER_PARAMS_WITH_FORMATTERS])).
+
+%% Storage to REST mapping (snake_case atom -> {camelCase atom, formatter})
+-define(OIDC_PROVIDER_STORAGE_TO_REST,
+        maps:from_list([{Key, {snake_to_camel_atom(Key), Format}} ||
+                           {Key, Format} <-
+                               ?OIDC_PROVIDER_PARAMS_WITH_FORMATTERS])).
+
+%% OIDC provider validation constants
+-define(OIDC_HTTP_TIMEOUT_MIN_MS, 1000).       % 1 second
+-define(OIDC_HTTP_TIMEOUT_MAX_MS, 60000).      % 1 minute
+-define(OIDC_HTTP_TIMEOUT_DEFAULT_MS, 10000).  % 10 seconds
+
+tls_validators(VerifyPeerKey, CaKey, SniKey, AddressFamilyKey) ->
+    [validator:one_of(AddressFamilyKey, [inet, inet6], _),
+     validator:convert(AddressFamilyKey, fun binary_to_existing_atom/1, _),
+     validator:boolean(VerifyPeerKey, _),
+     validator:default(VerifyPeerKey, true, _),
+     validator:string(CaKey, _),
+     validator:validate(
+       fun (Cert) ->
+               BinCert = iolist_to_binary(Cert),
+               case ns_server_cert:decode_cert_chain(BinCert) of
+                   {ok, Decoded} -> {value, {BinCert, Decoded}};
+                   {error, _} -> {error, "invalid certificate"}
+               end
+       end, CaKey, _),
+     validator:default(CaKey, {<<>>, []}, _),
+     validator:string(SniKey, _)
+    ].
 
 snake_to_camel_atom(Atom) when is_atom(Atom) ->
     Parts = string:split(atom_to_list(Atom), "_", all),
@@ -322,6 +402,7 @@ issuer_validators() ->
         key_validators() ++
         mapping_validators() ++
         custom_claims_validators() ++
+        [validator:decoded_json(oidcSettings, oidc_provider_validators(), _)] ++
         [validator:post_validate_all(
            fun(Props) ->
                    CustomClaims = proplists:get_value(customClaims, Props, []),
@@ -348,6 +429,39 @@ issuer_validators() ->
                        [] -> ok;
                        _  -> {error, "Custom claim names cannot conflict with "
                               "JWT claims: " ++ string:join(Conflicts, ", ")}
+                   end
+           end, _),
+         validator:post_validate_all(
+           fun(Props) ->
+                   PubKeySource = proplists:get_value(publicKeySource, Props),
+                   JwksUri = proplists:get_value(jwksUri, Props),
+                   OidcSettings = proplists:get_value(oidcSettings, Props),
+                   case {PubKeySource, JwksUri, OidcSettings} of
+                       {jwks_uri, undefined, undefined} ->
+                           {error, "jwksUri is required"};
+                       {jwks_uri, undefined, OidcSettings} ->
+                           %% Check if OIDC discovery provides jwks_uri
+                           case proplists:get_value(oidcDiscoveryUri,
+                                                    OidcSettings) of
+                               undefined ->
+                                   {error, "jwksUri is required"};
+                               _ ->
+                                   ok  %% OIDC discovery will provide jwks_uri
+                           end;
+                       {jwks_uri, JwksUri, OidcSettings} when
+                             JwksUri =/= undefined,
+                             OidcSettings =/= undefined ->
+
+                           case proplists:get_value(oidcDiscoveryUri,
+                                                    OidcSettings) of
+                               undefined ->
+                                   ok;
+                               _ ->
+                                   {error, "Both jwksUri and OIDC discovery are"
+                                    " configured. OIDC discovery will provide "
+                                    "the jwks_uri."}
+                           end;
+                       _ -> ok
                    end
            end, _),
          validator:unsupported(_)].
@@ -550,34 +664,17 @@ jwks_validators() ->
        end, jwks, signingAlgorithm, _)].
 
 jwks_uri_validators() ->
-    [validator:validate_multiple(
-       fun([undefined, jwks_uri]) -> {error, "jwksUri is required"};
-          (_) -> ok
-       end, [jwksUri, publicKeySource], _),
+    [
      validator:string(jwksUri, _),
-     validator:url(jwksUri, [<<"http">>, <<"https">>], _),
-     validator:one_of(jwksUriAddressFamily, [inet, inet6], _),
-     validator:convert(jwksUriAddressFamily, fun binary_to_existing_atom/1, _),
+     validator:validate(fun validate_public_https_url/1, jwksUri, _),
      validator:integer(jwksUriHttpTimeoutMs,
                        ?JWKS_URI_MIN_TIMEOUT_MS,
                        ?JWKS_URI_MAX_TIMEOUT_MS, _),
-     validator:default(jwksUriHttpTimeoutMs, ?JWKS_URI_DEFAULT_TIMEOUT_MS, _),
-     validator:boolean(jwksUriTlsVerifyPeer, _),
-     validator:default(jwksUriTlsVerifyPeer, true, _),
-     validator:string(jwksUriTlsCa, _),
-     validator:validate(
-       fun (Cert) ->
-               BinCert = iolist_to_binary(Cert),
-               case ns_server_cert:decode_cert_chain(BinCert) of
-                   {ok, Decoded} -> {value, {BinCert, Decoded}};
-                   {error, _} -> {error, "invalid certificate"}
-               end
-       end, jwksUriTlsCa, _),
-     validator:default(jwksUriTlsCa, {<<>>, []}, _),
-     validator:string(jwksUriTlsSni, _),
-     validator:validate(
-       fun (_) -> {error, "modification not supported"} end,
-       jwksUriTlsExtraOpts, _)].
+     validator:default(jwksUriHttpTimeoutMs, ?JWKS_URI_DEFAULT_TIMEOUT_MS, _)
+    ] ++ tls_validators(jwksUriTlsVerifyPeer,
+                        jwksUriTlsCa,
+                        jwksUriTlsSni,
+                        jwksUriAddressFamily).
 
 validate_and_store_settings(Props, Req) ->
     Settings = validated_to_storage_format(Props),
@@ -628,6 +725,13 @@ storage_to_rest_format_issuer(Name, IssuerProps) ->
               storage_to_rest_format_key(StorageKey, Value, Acc,
                                          ?ISSUER_STORAGE_TO_REST)
       end, #{}, PropsWithName).
+
+storage_to_rest_format_oidc_provider(ProviderProps) ->
+    maps:fold(
+      fun(StorageKey, Value, Acc) ->
+              storage_to_rest_format_key(StorageKey, Value, Acc,
+                                         ?OIDC_PROVIDER_STORAGE_TO_REST)
+      end, #{}, ProviderProps).
 
 storage_to_rest_format_key(StorageKey, Value, Acc, Table) ->
     case maps:find(StorageKey, Table) of
@@ -685,10 +789,23 @@ validated_to_storage_format_issuer(IssuerProps) ->
          ({customClaims, Claims}, Acc) ->
               Acc#{custom_claims =>
                        validated_to_storage_format_custom_claims(Claims)};
+         ({oidcSettings, Settings}, Acc) ->
+              Acc#{oidc_settings =>
+                       validated_to_storage_format_oidc_provider(Settings)};
          ({PropK, PropV}, Acc) ->
               {ok, StorageKey} = maps:find(PropK, ?ISSUER_REST_TO_STORAGE),
               Acc#{StorageKey => PropV}
       end, #{}, IssuerProps).
+
+validated_to_storage_format_oidc_provider(ProviderProps) ->
+    lists:foldl(
+      fun({name, _}, Acc) ->
+              Acc;
+         ({PropK, PropV}, Acc) ->
+              {ok, StorageKey} = maps:find(PropK,
+                                           ?OIDC_PROVIDER_REST_TO_STORAGE),
+              Acc#{StorageKey => PropV}
+      end, #{}, ProviderProps).
 
 validated_to_storage_format_custom_claims(Claims) ->
     lists:foldl(
@@ -714,8 +831,8 @@ format_jwks(Value) -> Value.
 format_public_key({PemBin, _Key}) when is_binary(PemBin) -> PemBin;
 format_public_key(Value) -> Value.
 
-format_secret({_Secret, _JWK}) -> <<"********">>;
-format_secret(Value) -> Value.
+format_secret(undefined) -> undefined;
+format_secret(_) -> <<"********">>.
 
 format_string(undefined) -> undefined;
 format_string(Value) ->
@@ -744,13 +861,48 @@ format_tls_ca(undefined) -> undefined;
 format_tls_ca(<<"redacted">>) -> <<"redacted">>;
 format_tls_ca({Cert, _DecodedCerts}) -> Cert.
 
-format_tls_extra_opts(undefined) -> undefined;
-format_tls_extra_opts(List) ->
-    Sanitize = fun ({password, _}) -> <<"********">>;
-                   (V) -> V
-               end,
-    Sanitized = [{K, Sanitize(V)} || {K, V} <- List],
-    iolist_to_binary(io_lib:format("~p", [Sanitized])).
+%% Validate URL has http/https scheme and no path/query/fragment (base only)
+validate_redirect_uri(Url) ->
+    case uri_string:parse(Url) of
+        {error, _, _} -> {error, "Invalid URL"};
+        Map when is_map(Map) ->
+            case maps:get(scheme, Map, "") of
+                "http" -> validate_path_query_fragment(Map);
+                "https" -> validate_path_query_fragment(Map);
+                _ -> {error, "Invalid scheme"}
+            end
+    end.
+
+validate_path_query_fragment(Map) ->
+    Path = maps:get(path, Map, ""),
+    Query = maps:get(query, Map, ""),
+    Frag  = maps:get(fragment, Map, ""),
+    case {Path, Query, Frag} of
+        {"", "", ""} -> ok;
+        {"/", "", ""} -> ok;
+        _ -> {error, "Path, Query, and Fragment must be empty"}
+    end.
+
+%% Validate OIDC endpoint URL: allow https anywhere; allow http only for
+%% localhost/127.0.0.1. localhost is used for local testing.
+validate_public_https_url(Url) ->
+    case uri_string:parse(Url) of
+        {error, _, _} -> {error, "Invalid URL"};
+        Map when is_map(Map) ->
+            Scheme = maps:get(scheme, Map, ""),
+            Host = maps:get(host, Map, ""),
+            case Scheme of
+                "http" ->
+                    case Host of
+                        "127.0.0.1" -> ok;
+                        "localhost" -> ok;
+                        _ -> {error,
+                              "HTTP allowed only for localhost (127.0.0.1)"}
+                    end;
+                "https" -> ok;
+                _ -> {error, "Invalid scheme"}
+            end
+    end.
 
 -spec sanitize_chronicle_cfg(map()) -> map().
 sanitize_chronicle_cfg(#{issuers := Issuers} = Settings) ->
@@ -764,6 +916,85 @@ sanitize_chronicle_cfg(#{issuers := Issuers} = Settings) ->
                  end, Issuers),
     Settings#{issuers => SanitizedIssuers};
 sanitize_chronicle_cfg(Settings) -> Settings.
+
+oidc_provider_validators() ->
+    [validator:required(clientId, _),
+     validator:non_empty_string(clientId, _),
+     %% When private_key_jwt support is added, clientSecret will not be required
+     %% Right now, client_secret_basic and client_secret_post are supported,
+     %% both of which require a clientSecret.
+     validator:required(clientSecret, _),
+     validator:non_empty_string(clientSecret, _),
+     validator:required(baseRedirectUris, _),
+     validator:string_array(baseRedirectUris,
+                            fun validate_redirect_uri/1, false, _),
+     validator:non_empty_string(oidcDiscoveryUri, _),
+     validator:url(oidcDiscoveryUri, [<<"http">>, <<"https">>], _),
+     validator:validate(fun validate_public_https_url/1,
+                        oidcDiscoveryUri, _),
+     validator:non_empty_string(authorizationEndpoint, _),
+     validator:url(authorizationEndpoint, [<<"http">>, <<"https">>], _),
+     validator:validate(fun validate_public_https_url/1,
+                        authorizationEndpoint, _),
+     validator:non_empty_string(tokenEndpoint, _),
+     validator:url(tokenEndpoint, [<<"http">>, <<"https">>], _),
+     validator:validate(fun validate_public_https_url/1,
+                        tokenEndpoint, _),
+     validator:non_empty_string(endSessionEndpoint, _),
+     validator:url(endSessionEndpoint, [<<"http">>, <<"https">>], _),
+     validator:validate(fun validate_public_https_url/1,
+                        endSessionEndpoint, _),
+     validator:validate_multiple(
+       fun([Discovery, Auth, Token, End]) ->
+               case Discovery of
+                   undefined ->
+                       case {Auth =/= undefined, Token =/= undefined} of
+                           {true, true} ->
+                               ok;
+                           _ ->
+                               {error, "authorizationEndpoint and tokenEndpoint"
+                                " are required when discovery is not in use"}
+                       end;
+                   _ ->
+                       case {Auth, Token, End} of
+                           {undefined, undefined, undefined} ->
+                               ok;
+                           _ ->
+                               {error, "authorizationEndpoint, tokenEndpoint, "
+                                "and endSessionEndpoint must not be provided "
+                                "when discovery is in use"}
+                       end
+               end
+       end, [oidcDiscoveryUri, authorizationEndpoint, tokenEndpoint,
+             endSessionEndpoint], _),
+     validator:required(scopes, _),
+     validator:string_array(scopes, _),
+     validator:validate(
+       fun(Scopes) ->
+               case lists:member("openid", Scopes) of
+                   true -> ok;
+                   false -> {error, "scopes must include 'openid'"}
+               end
+       end, scopes, _),
+     validator:boolean(nonceValidation, _),
+     validator:default(nonceValidation, true, _),
+     validator:boolean(pkceEnabled, _),
+     validator:default(pkceEnabled, true, _),
+     validator:string_array(postLogoutRedirectUris,
+                            fun validate_redirect_uri/1, false, _)
+    ] ++ tls_validators(tlsVerifyPeer, tlsCa, tlsSni, tlsAddressFamily) ++
+        [validator:integer(httpTimeoutMs,
+                           ?OIDC_HTTP_TIMEOUT_MIN_MS,
+                           ?OIDC_HTTP_TIMEOUT_MAX_MS, _),
+         validator:default(httpTimeoutMs, ?OIDC_HTTP_TIMEOUT_DEFAULT_MS, _),
+     validator:one_of(tokenEndpointAuthMethod,
+                      [client_secret_basic, client_secret_post], _),
+     validator:default(tokenEndpointAuthMethod, <<"client_secret_basic">>, _),
+     validator:convert(tokenEndpointAuthMethod, fun binary_to_existing_atom/1,
+                       _),
+     validator:boolean(disablePushedAuthorizationRequests, _),
+     validator:default(disablePushedAuthorizationRequests, false, _),
+     validator:unsupported(_)].
 
 -ifdef(TEST).
 
@@ -804,7 +1035,7 @@ proplist_to_map_test_() ->
         proplist_to_map(<<"simple">>))
     ].
 
-snake_to_camel_test() ->
+snake_to_camel_test_() ->
     [
      ?_assertEqual('audClaim', snake_to_camel_atom(aud_claim)),
      ?_assertEqual('jwksUriHttpTimeoutMs',
@@ -817,7 +1048,17 @@ snake_to_camel_test() ->
 %% snake case, and ensuring that in the response, the keys are converted back
 %% to their original form. Additionally, it checks that values containing
 %% lists are converted to binary format so that jiffy can encode them properly.
-format_conversion_test() ->
+format_conversion_test_() ->
+    BaseCb = "https://couchbase.example.com",
+    OktaAuth = "https://example.okta.com/oauth2/v1/authorize",
+    OktaToken = "https://example.okta.com/oauth2/v1/token",
+    OktaLogout = "https://example.okta.com/oauth2/v1/logout",
+    AzureDisc =
+        "https://login.microsoftonline.com/tenant/v2.0/.well-known/"
+        "openid-configuration",
+    ExampleDisc =
+        "https://example.com/.well-known/openid-configuration",
+    ExampleJwks = "https://example.com/.well-known/jwks.json",
     StorageFormat =
         #{enabled => true,
           jwks_uri_refresh_interval_s => 14400,
@@ -829,15 +1070,13 @@ format_conversion_test() ->
                       audiences => ["aud1", "aud2"],
                       expiry_leeway_s => 15,
                       jit_provisioning => false,
-                      jwks_uri_tls_extra_opts =>
-                          [{verify, verify_peer}],
                       custom_claims =>
                           #{
                             "email" =>
                                 #{
                                   type => string,
                                   pattern => "^[a-z]+@[a-z]+\.[a-z]+$",
-                                              mandatory => true
+                                  mandatory => true
                                  },
                             "age" => #{
                                        type => number,
@@ -855,23 +1094,80 @@ format_conversion_test() ->
                                          const => true,
                                          mandatory => true
                                         }
+                           },
+                      oidc_settings =>
+                          #{
+                            client_id => "okta_client_id",
+                            client_secret =>
+                                "encrypted_okta_secret",
+                            authorization_endpoint => OktaAuth,
+                            base_redirect_uris => [BaseCb],
+                            token_endpoint => OktaToken,
+                            end_session_endpoint => OktaLogout,
+                            scopes => ["openid", "profile", "email",
+                                       "groups"],
+                            nonce_validation => true,
+                            pkce_enabled => true,
+                            tls_verify_peer => true,
+                            http_timeout_ms => 10000
                            }
                      },
-                "issuer2" => #{
-                               signing_algorithm => "ES256",
-                               audiences => ["aud3"],
-                               custom_claims =>
-                                   #{
-                                     "role" =>
-                                         #{
-                                           type => string,
-                                           pattern => "^(admin|user)$",
+                "issuer2" =>
+                    #{
+                      signing_algorithm => "ES256",
+                      audiences => ["aud3"],
+                      custom_claims =>
+                          #{
+                            "role" =>
+                                #{
+                                  type => string,
+                                  pattern => "^(admin|user)$",
                                   mandatory => true
                                  }
+                           },
+                      oidc_settings =>
+                          #{
+                            client_id => "azure_client_id",
+                            client_secret =>
+                                "encrypted_azure_secret",
+                            base_redirect_uris => [BaseCb],
+                            oidc_discovery_uri =>
+                                AzureDisc,
+                            scopes => ["openid", "profile",
+                                       "email"],
+                            nonce_validation => true,
+                            pkce_enabled => true,
+                            tls_verify_peer => true,
+                            http_timeout_ms => 15000
+                           }
+                     },
+                "issuer3" =>
+                    #{
+                      signing_algorithm => "RS256",
+                      aud_claim => "aud",
+                      audiences => ["aud4"],
+                      sub_claim => "sub",
+                      public_key_source => "jwks_uri",
+                      jwks_uri => ExampleJwks,
+                      oidc_settings =>
+                          #{
+                            client_id =>
+                                "conflict_client_id",
+                            client_secret =>
+                                "conflict_secret",
+                            base_redirect_uris => [BaseCb],
+                            oidc_discovery_uri =>
+                                ExampleDisc,
+                            scopes => ["openid", "profile",
+                                       "email"],
+                            nonce_validation => true,
+                            pkce_enabled => true,
+                            tls_verify_peer => true,
+                            http_timeout_ms => 10000
                            }
                      }
-               }},
-
+               }
+         },
     RestFormat =
         #{enabled => true,
           jwksUriRefreshIntervalS => 14400,
@@ -881,13 +1177,11 @@ format_conversion_test() ->
                         audiences => ["aud1", "aud2"],
                         expiryLeewayS => 15,
                         jitProvisioning => false,
-                        jwksUriTlsExtraOpts =>
-                            [{verify, verify_peer}],
                         customClaims => [
                                          #{name => "email",
                                            type => string,
                                            pattern => "^[a-z]+@[a-z]+\.[a-z]+$",
-                                                    mandatory => true},
+                                           mandatory => true},
                                          #{name => "age",
                                            type => number,
                                            min => 18,
@@ -901,7 +1195,22 @@ format_conversion_test() ->
                                            type => boolean,
                                            const => true,
                                            mandatory => true}
-                                        ]},
+                                        ],
+                        %% Add OIDC settings to issuer1 (using manual endpoints)
+                        oidcSettings => #{
+                                          clientId => "okta_client_id",
+                                          clientSecret => "********",
+                                          baseRedirectUris => [BaseCb],
+                                          authorizationEndpoint => OktaAuth,
+                                          tokenEndpoint => OktaToken,
+                                          endSessionEndpoint => OktaLogout,
+                                          scopes => ["openid", "profile",
+                                                     "email", "groups"],
+                                          nonceValidation => true,
+                                          pkceEnabled => true,
+                                          tlsVerifyPeer => true,
+                                          httpTimeoutMs => 10000
+                                         }},
                       #{name => "issuer2",
                         signingAlgorithm => "ES256",
                         audiences => ["aud3"],
@@ -909,9 +1218,43 @@ format_conversion_test() ->
                                          #{name => "role",
                                            type => string,
                                            pattern => "^(admin|user)$",
-                                                    mandatory => true}
-                                        ]}
-                     ]},
+                                           mandatory => true}
+                                        ],
+                        %% Add OIDC settings to issuer2 (using OIDC discovery)
+                        oidcSettings => #{
+                                          clientId => "azure_client_id",
+                                          clientSecret => "********",
+                                          baseRedirectUris => [BaseCb],
+                                          oidcDiscoveryUri => AzureDisc,
+                                          scopes => ["openid", "profile",
+                                                     "email"],
+                                          nonceValidation => true,
+                                          pkceEnabled => true,
+                                          tlsVerifyPeer => true,
+                                          httpTimeoutMs => 15000
+                                         }
+                       },
+                      #{name => "issuer3",
+                        signingAlgorithm => "RS256",
+                        audClaim => "aud",
+                        audiences => ["aud4"],
+                        subClaim => "sub",
+                        publicKeySource => "jwks_uri",
+                        jwksUri => ExampleJwks,
+                        oidcSettings => #{
+                                          clientId => "conflict_client_id",
+                                          clientSecret => "********",
+                                          baseRedirectUris => [BaseCb],
+                                          oidcDiscoveryUri => ExampleDisc,
+                                          scopes => ["openid", "profile",
+                                                     "email"],
+                                          nonceValidation => true,
+                                          pkceEnabled => true,
+                                          tlsVerifyPeer => true,
+                                          httpTimeoutMs => 10000
+                                         }
+                       }]
+         },
 
     Props = [{enabled, true},
              {jwksUriRefreshIntervalS, 14400},
@@ -921,47 +1264,126 @@ format_conversion_test() ->
                           {audiences, ["aud1", "aud2"]},
                           {expiryLeewayS, 15},
                           {jitProvisioning, false},
-                          {jwksUriTlsExtraOpts,
-                           [{verify, verify_peer}]},
                           {customClaims, [
                                           {[{name, "email"},
-                                            {type, "string"},
+                                            {type, string},
                                             {pattern,
                                              "^[a-z]+@[a-z]+\.[a-z]+$"},
-                                                     {mandatory, true}]},
-                                           {[{name, "age"},
-                                             {type, "number"},
-                                             {min, 18},
-                                             {max, 65},
-                                             {mandatory, false}]},
-                                           {[{name, "level"},
-                                             {type, "number"},
-                                             {enum, [1, 2, 3, 4, 5]},
-                                             {mandatory, true}]},
-                                           {[{name, "admin"},
-                                             {type, "boolean"},
-                                             {const, true},
-                                             {mandatory, true}]}
-                                          ]}]},
-                         {[{name, "issuer2"},
-                           {signingAlgorithm, "ES256"},
-                           {audiences, ["aud3"]},
-                           {customClaims, [
-                                           {[{name, "role"},
-                                             {type, "string"},
-                                             {pattern,
-                                              "^(admin|user)$"},
-                                                     {mandatory, true}]}
-                                           ]}]}
-                         ]}],
+                                            {mandatory, true}]},
+                                          {[{name, "age"},
+                                            {type, number},
+                                            {min, 18},
+                                            {max, 65},
+                                            {mandatory, false}]},
+                                          {[{name, "level"},
+                                            {type, number},
+                                            {enum, [1, 2, 3, 4, 5]},
+                                            {mandatory, true}]},
+                                          {[{name, "admin"},
+                                            {type, boolean},
+                                            {const, true},
+                                            {mandatory, true}]}
+                                         ]},
+                          {oidcSettings,
+                           [{clientId, "okta_client_id"},
+                            {clientSecret, "encrypted_okta_secret"},
+                            {baseRedirectUris, [BaseCb]},
+                            {authorizationEndpoint, OktaAuth},
+                            {tokenEndpoint, OktaToken},
+                            {endSessionEndpoint, OktaLogout},
+                            {scopes, ["openid", "profile", "email", "groups"]},
+                            {nonceValidation, true},
+                            {pkceEnabled, true},
+                            {tlsVerifyPeer, true},
+                            {httpTimeoutMs, 10000}]}]},
+                        {[{name, "issuer2"},
+                          {signingAlgorithm, "ES256"},
+                          {audiences, ["aud3"]},
+                          {customClaims, [
+                                          {[{name, "role"},
+                                            {type, string},
+                                            {pattern,
+                                             "^(admin|user)$"},
+                                            {mandatory, true}]}
+                                         ]},
+                          %% Add OIDC settings to issuer2 (using OIDC discovery)
+                          {oidcSettings,
+                           [{clientId, "azure_client_id"},
+                            {clientSecret, "encrypted_azure_secret"},
+                            {baseRedirectUris, [BaseCb]},
+                            {oidcDiscoveryUri, AzureDisc},
+                            {scopes, ["openid", "profile", "email"]},
+                            {nonceValidation, true},
+                            {pkceEnabled, true},
+                            {tlsVerifyPeer, true},
+                            {httpTimeoutMs, 15000}]}]},
+                        {[{name, "issuer3"},
+                          {signingAlgorithm, "RS256"},
+                          {audClaim, "aud"},
+                          {audiences, ["aud4"]},
+                          {subClaim, "sub"},
+                          {publicKeySource, "jwks_uri"},
+                          {jwksUri, ExampleJwks},
+                          %% This issuer has both jwks_uri and OIDC discovery
+                          {oidcSettings,
+                           [{clientId, "conflict_client_id"},
+                            {clientSecret, "conflict_secret"},
+                            {baseRedirectUris, [BaseCb]},
+                            {oidcDiscoveryUri, ExampleDisc},
+                            {scopes, ["openid", "profile", "email"]},
+                            {nonceValidation, true},
+                            {pkceEnabled, true},
+                            {tlsVerifyPeer, true},
+                            {httpTimeoutMs, 10000}]}]}
+                       ]}],
 
-              [
-               %% Test validated_to_storage_format
-               ?_assertEqual(StorageFormat,
-                             validated_to_storage_format(Props)),
+    GetNameStr =
+        fun(Map) ->
+                Name = maps:get(name, Map),
+                case Name of
+                    <<_/binary>> -> binary_to_list(Name);
+                    _ -> Name
+                end
+        end,
+    SortClaims =
+        fun(L) ->
+                lists:sort(fun(A, B) ->
+                                   maps:get(name, A) =< maps:get(name, B)
+                           end, L)
+        end,
+    SortIssuers =
+        fun(L) ->
+                lists:sort(fun(A, B) ->
+                                   GetNameStr(A) =< GetNameStr(B)
+                           end,
+                           [case maps:get(customClaims, I, undefined) of
+                                undefined -> I;
+                                Cs -> I#{customClaims => SortClaims(Cs)}
+                            end || I <- L])
+        end,
+    %% Convert all binaries to lists for comparison with expected
+    DeepToList =
+        fun F(V) when is_map(V) ->
+                maps:from_list([{K, F(Val)} || {K, Val} <- maps:to_list(V)]);
+            F(V) when is_list(V) ->
+                [F(X) || X <- V];
+            F(V) when is_binary(V) ->
+                binary_to_list(V);
+            F(V) -> V
+        end,
 
-               %% Test storage_to_rest_format to verify round-trip conversion
-               ?_assertEqual(RestFormat,
-                             storage_to_rest_format(StorageFormat))
-              ].
+    Actual0 = storage_to_rest_format(StorageFormat),
+    Actual1 = Actual0#{issuers := SortIssuers(maps:get(issuers, Actual0))},
+    Expected1 =
+        RestFormat#{issuers := SortIssuers(maps:get(issuers, RestFormat))},
+
+    [
+     %% Test validated_to_storage_format
+     ?_assertEqual(StorageFormat,
+                   validated_to_storage_format(Props)),
+
+     %% Test storage_to_rest_format with normalized ordering and string types
+     ?_assertEqual(DeepToList(Expected1),
+                   DeepToList(Actual1))
+    ].
 -endif.
