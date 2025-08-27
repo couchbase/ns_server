@@ -760,7 +760,189 @@ get_fusion_bucket_config(BucketConfig) ->
             []
     end.
 
+%% TODO: Remove warning suppression as soon as these are used.
+-compile(nowarn_unused_function).
+
+%% @doc Pattern to match words that are parts of a variable name.
+word_pattern() ->
+     %% Uppercase letter followed by lowercase letters or numbers
+     "[A-Z][a-z0-9]+" ++
+     %% or
+     "|" ++
+     %% Lowercase letters or numbers
+     "[a-z0-9]+".
+
+%% @doc Pattern to match a name.
+%% Expects snake_case, camelCase or PascalCase.
+%%
+%% Note: To ensure deterministic word splitting, every word-segment starting
+%% with an uppercase letter must be followed by at least one lowercase letter or
+%% number.
+%%
+%% This means acronyms must be formatted as "XmlParser" or "UserId" instead of
+%% "XMLParser" or "UserID".
+%%
+%% Allows underscores between words.
+%% Does not allow:
+%% - underscores at the beginning or end of the name
+%% - consecutive underscores
+name_pattern() ->
+    %% Matches a name composed of words optionally separated by single
+    %% underscores. Underscores cannot be at the beginning or end of the name.
+    PrefixPattern = "^(" ++ word_pattern() ++ ")+",
+    SuffixPattern = "(_?(" ++ word_pattern() ++ "))*$",
+
+    PrefixPattern ++ SuffixPattern.
+
+-spec is_name(Name :: string()) -> boolean().
+is_name(Name) ->
+    case re:run(Name, name_pattern(), [{capture, none}]) of
+        match ->
+            true;
+        nomatch ->
+            false
+    end.
+
+ensure_name(Name) ->
+    case is_name(Name) of
+        true ->
+            ok;
+        false ->
+            {error, lists:flatten(io_lib:format("Invalid name: `~p`", [Name]))}
+    end.
+
+%% @doc Returns a list of words found in the input name.
+%% Words can be separated by an '_' (snake_case), or a capital letter
+%% (e.g. camelCase). Other separators are not supported.
+-spec words(Name :: string()) -> {ok, [string()]} | {error, string()}.
+words(Name) ->
+    case ensure_name(Name) of
+        ok ->
+            {match, Matches} =
+                re:run(Name, word_pattern(), [global, {capture, all, list}]),
+            {ok, lists:append(Matches)};
+        Error ->
+            Error
+    end.
+
+%% Expects a valid name (see is_name/1).
+-spec snake_case(Name :: string()) -> {ok, string()} | {error, string()}.
+snake_case(Name) ->
+    case words(Name) of
+        {ok, Words} ->
+            LowercasedWords = lists:map(fun string:lowercase/1, Words),
+            {ok, lists:append(lists:join("_", LowercasedWords))};
+        Error ->
+            Error
+    end.
+
+%% Expects a valid name (see is_name/1).
+-spec camel_case(Name :: string()) -> {ok, string()} | {error, string()}.
+camel_case(Name) ->
+    case words(Name) of
+        {ok, [FirstWord | RestWords]} ->
+            %% All words except the first one should be titlecased
+            First = string:lowercase(FirstWord),
+            Rest = [string:titlecase(Word) || Word <- RestWords],
+            {ok, lists:append([First | Rest])};
+        Error ->
+            Error
+    end.
+
 -ifdef(TEST).
+words_test() ->
+    ?assertEqual({ok, ["foo"]}, words("foo")),
+    ?assertEqual({ok, ["Foo"]}, words("Foo")),
+    ?assertEqual({ok, ["Foo", "Bar"]}, words("FooBar")),
+    ?assertEqual({ok, ["max", "Vbuckets"]}, words("maxVbuckets")),
+    ?assertEqual({ok, ["ipv4"]}, words("ipv4")),
+    ?assertEqual({ok, ["sha512"]}, words("sha512")),
+
+    ?assertMatch({error, _}, words("foo_")),
+    ?assertMatch({error, _}, words("_foo")),
+    ?assertMatch({error, _}, words("_foo_")),
+    ?assertMatch({error, _}, words("foo__bar")),
+    ?assertMatch({error, _}, words("FOO")),
+    ?assertMatch({error, _}, words("FooBAR")),
+    ?assertMatch({error, _}, words("FooBARBaz")),
+    ?assertMatch({error, _}, words("maxTTL")),
+    ?assertMatch({error, _}, words("SHA512")).
+
+is_name_test() ->
+    ?assert(is_name("foo")),
+    ?assert(is_name("Foo")),
+    ?assert(is_name("fooBar")),
+    ?assert(is_name("FooBar")),
+    ?assert(is_name("maxVbuckets")),
+    ?assert(is_name("ipv4")),
+    ?assert(is_name("sha512")),
+
+    ?assert(is_name("foo_bar")),
+    ?assert(is_name("foo_bar_baz")),
+    ?assert(is_name("max_vbuckets")),
+    ?assert(is_name("sha_512")),
+
+    ?assertNot(is_name("FOO")),
+    ?assertNot(is_name("fooBAR")),
+    ?assertNot(is_name("fooBARBaz")),
+    ?assertNot(is_name("maxTTL")),
+    ?assertNot(is_name("SHA512")),
+    ?assertNot(is_name("foo_BAR_baz")),
+    ?assertNot(is_name("max_TTL")),
+
+    ?assertNot(is_name("foo_")),
+    ?assertNot(is_name("_foo")),
+    ?assertNot(is_name("_foo_")),
+    ?assertNot(is_name("foo__bar")).
+
+snake_case_test() ->
+    ?assertEqual({ok, "foo"}, snake_case("foo")),
+    ?assertEqual({ok, "foo"}, snake_case("Foo")),
+    ?assertEqual({ok, "foo_bar"}, snake_case("foo_bar")),
+    ?assertEqual({ok, "foo_bar"}, snake_case("FooBar")),
+    ?assertEqual({error, "Invalid name: `\"FOOBar\"`"}, snake_case("FOOBar")),
+    ?assertEqual({error, "Invalid name: `\"FooBARBaz\"`"},
+                 snake_case("FooBARBaz")),
+    ?assertEqual({ok, "max_vbuckets"}, snake_case("maxVbuckets")),
+    ?assertEqual({error,"Invalid name: `\"SHA512\"`"}, snake_case("SHA512")),
+    ?assertEqual({ok, "sha512"}, snake_case("Sha512")),
+    ?assertEqual({error,"Invalid name: `\"HLCDriftAheadThresholdUS\"`"},
+                 snake_case("HLCDriftAheadThresholdUS")),
+    ?assertEqual({ok, "hlc_drift_ahead_threshold_us"},
+                 snake_case("HlcDriftAheadThresholdUs")),
+
+    ?assertEqual({error, "Invalid name: `[]`"}, snake_case("")),
+    ?assertEqual({error, "Invalid name: `\"with space\"`"},
+                 snake_case("with space")),
+    ?assertEqual({error, "Invalid name: `\"with multiple spaces\"`"},
+                 snake_case("with multiple spaces")),
+    ?assertEqual({error, "Invalid name: `\"_not_a_name\"`"},
+                 snake_case("_not_a_name")),
+    ?assertEqual({error, "Invalid name: `\"special_chars@\"`"},
+                 snake_case("special_chars@")).
+
+camel_case_test() ->
+    ?assertEqual({ok, "foo"}, camel_case("foo")),
+    ?assertEqual({ok, "foo"}, camel_case("Foo")),
+    ?assertEqual({ok, "fooBar"}, camel_case("foo_bar")),
+    ?assertEqual({ok, "fooBar"}, camel_case("FooBar")),
+    ?assertEqual({error, "Invalid name: `\"FOOBar\"`"}, camel_case("FOOBar")),
+
+    ?assertEqual({ok, "maxVbuckets"}, camel_case("max_vbuckets")),
+    ?assertEqual({ok, "somethingWwwSomething"},
+                 camel_case("something_www_something")),
+
+    ?assertEqual({error, "Invalid name: `[]`"},
+                 camel_case("")),
+    ?assertEqual({error, "Invalid name: `\"with space\"`"},
+                 camel_case("with space")),
+    ?assertEqual({error, "Invalid name: `\"with multiple spaces\"`"},
+                 camel_case("with multiple spaces")),
+    ?assertEqual({error, "Invalid name: `\"_not_a_name\"`"},
+                 camel_case("_not_a_name")),
+    ?assertEqual({error, "Invalid name: `\"specialChars@\"`"},
+                 camel_case("specialChars@")).
+
 
 get_validation_config_string_internal_test() ->
     fake_ns_config:setup(),
