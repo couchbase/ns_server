@@ -100,8 +100,7 @@ maybe_schedule_deletes(#state{queue = Queue,
                                              [enabled, stopped, stopping])],
 
     NeededNamespaces = [iolist_to_binary(
-                          ["kv/", BucketName, "/",
-                           ns_bucket:uuid(BucketName, Snapshot)]) ||
+                          ["kv/", ns_bucket:uuid(BucketName, Snapshot)]) ||
                            BucketName <- BucketsThatNeedData],
     ToDelete = (Namespaces -- NeededNamespaces) -- Deleting,
     Self = self(),
@@ -141,25 +140,37 @@ wait_for_uploaders_to_stop(BucketName, Tries) ->
     end.
 
 delete_data(Parent, Namespace) ->
-    ?log_info("Delete namespace ~p. Wait for uploaders to stop", [Namespace]),
-    [_, BucketName, _] = string:tokens(binary_to_list(Namespace), "/"),
-    case wait_for_uploaders_to_stop(BucketName,
-                                    ?UPLOADERS_STOP_TIMEOUT div 1000) of
-        {error, Error} ->
-            ?log_error("Error waiting for uploaders for bucket ~p to stop: ~p",
-                       [BucketName, Error]),
-            delete_data(Parent, Namespace);
+    ?log_info("Delete namespace ~p.", [Namespace]),
+    [_, BucketUUID] = string:tokens(binary_to_list(Namespace), "/"),
+    NamespaceString =
+        case ns_bucket:uuid2bucket(BucketUUID) of
+            {ok, BucketName} ->
+                ?log_info("Waiting for bucket ~p uploaders to stop",
+                          [BucketName]),
+                case wait_for_uploaders_to_stop(
+                       BucketName, ?UPLOADERS_STOP_TIMEOUT div 1000) of
+                    {error, Err} ->
+                        ?log_error("Error waiting for uploaders for bucket "
+                                   "~p to stop: ~p", [BucketName, Err]),
+                        delete_data(Parent, Namespace);
+                    ok ->
+                        lists:flatten(io_lib:format("~p for bucket ~p",
+                                                    [Namespace, BucketName]))
+                end;
+            {error, not_found} ->
+                ?log_info("Bucket with uuid = ~p is not found.", [BucketUUID]),
+                lists:flatten(io_lib:format("~p", [Namespace]))
+        end,
+
+    ?log_info("Start deleting namespace ~s", [NamespaceString]),
+    case ns_memcached:delete_fusion_namespace(
+           fusion_uploaders:get_log_store_uri(),
+           fusion_uploaders:get_metadata_store_uri(), Namespace) of
         ok ->
-            ?log_info("Start deleting namespace ~p", [Namespace]),
-            case ns_memcached:delete_fusion_namespace(
-                   fusion_uploaders:get_log_store_uri(),
-                   fusion_uploaders:get_metadata_store_uri(), Namespace) of
-                ok ->
-                    ?log_info("Namespace ~p deleted succesfully", [Namespace]),
-                    ok;
-                Error ->
-                    ?log_error("Error deleting namespace ~p: ~p",
-                               [Namespace, Error])
-            end
+            ?log_info("Namespace ~s deleted succesfully", [NamespaceString]),
+            ok;
+        Error ->
+            ?log_error("Error deleting namespace ~s: ~p",
+                       [NamespaceString, Error])
     end,
     Parent ! {deleted, Namespace}.

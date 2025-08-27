@@ -260,10 +260,20 @@ class FusionTests(testlib.BaseTestSet):
     def get_namespaces(self, node):
         resp = testlib.diag_eval(
             node,
-            '{ok, R} = ns_memcached:get_fusion_namespaces(' +
-            'fusion_uploaders:get_metadata_store_uri()), {json, R}.')
-        nspaces = json.loads(json.loads(resp.text))['namespaces']
-        return [s.split('/')[1] for s in nspaces]
+            '{ok, Json} = ns_memcached:get_fusion_namespaces(' +
+            '      fusion_uploaders:get_metadata_store_uri()),' +
+            '{Parsed} = ejson:decode(Json),' +
+            'Namespaces = proplists:get_value(<<"namespaces">>, Parsed),' +
+            'Res =' +
+            '  lists:map(' +
+            '    fun (Namespace) ->' +
+            '      [_, UUID] = string:tokens(binary_to_list(Namespace), "/"),' +
+            '      BinUUID = list_to_binary(UUID),' +
+            '      {ok, BucketName} = ns_bucket:uuid2bucket(BinUUID),' +
+            '      list_to_binary(BucketName)' +
+            '    end, Namespaces),' +
+            '{json, lists:sort(Res)}.')
+        return json.loads(resp.text)
 
     def assert_namespaces(self, expected):
         nspaces0 = self.get_namespaces(self.cluster.connected_nodes[0])
