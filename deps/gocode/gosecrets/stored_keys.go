@@ -1527,15 +1527,33 @@ func (k *awsStoredKey) decryptMe(validateKeysProof bool, state *StoredKeysState,
 	return nil
 }
 
-func (k *awsStoredKey) encryptData(data, AD []byte) ([]byte, error) {
+func (k *awsStoredKey) checkAWSTestKey() (bool, error) {
 	if k.KeyArn == "TEST_AWS_KEY_ARN" {
+		if k.CredsFile != "" {
+			credsData, err := os.ReadFile(k.CredsFile)
+			if err == nil {
+				if strings.TrimSpace(string(credsData)) == "TEST_BAD_AWS_CREDS" {
+					return true, fmt.Errorf("test encryption error")
+				}
+			}
+		}
+		return true, nil
+	}
+	if k.KeyArn == "TEST_AWS_BAD_KEY_ARN" {
+		return true, fmt.Errorf("test encryption error")
+	}
+	return false, nil
+}
+
+func (k *awsStoredKey) encryptData(data, AD []byte) ([]byte, error) {
+	if isTestKey, err := k.checkAWSTestKey(); isTestKey {
+		if err != nil {
+			return nil, err
+		}
 		// This code should be used for test purposes only
 		logDbg("Encrypting data using test key")
 		zero_key := make([]byte, 32)
 		return aesgcmEncrypt(zero_key, data, AD), nil
-	}
-	if k.KeyArn == "TEST_AWS_BAD_KEY_ARN" {
-		return nil, fmt.Errorf("test encryption error")
 	}
 
 	opts := awsutils.AwsConfigOpts{
@@ -1551,14 +1569,14 @@ func (k *awsStoredKey) encryptData(data, AD []byte) ([]byte, error) {
 }
 
 func (k *awsStoredKey) decryptData(data, AD []byte) ([]byte, error) {
-	if k.KeyArn == "TEST_AWS_KEY_ARN" {
+	if isTestKey, err := k.checkAWSTestKey(); isTestKey {
+		if err != nil {
+			return nil, err
+		}
 		// This code should be used for test purposes only
 		logDbg("Decrypting data using test key")
 		zero_key := make([]byte, 32)
 		return aesgcmDecrypt(zero_key, data, AD)
-	}
-	if k.KeyArn == "TEST_AWS_BAD_KEY_ARN" {
-		return nil, fmt.Errorf("test decryption error")
 	}
 	opts := awsutils.AwsConfigOpts{
 		Region:     k.Region,
