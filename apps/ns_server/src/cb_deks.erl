@@ -17,6 +17,7 @@
 -export([list/1,
          read/2,
          generate_new/3,
+         save_dek/4,
          handle_ale_log_dek_update/1,
          maybe_reencrypt_deks/4,
          dek_cluster_kinds_list/0,
@@ -93,6 +94,22 @@ generate_new(Kind, {secret, Id}, Snapshot) ->
         ok ?= increment_dek_encryption_counter(Kind, {secret, Id}),
         {ok, KekId} ?= cb_cluster_secrets:get_active_key_id(Id, Snapshot),
         new(Kind, KekId)
+    end.
+
+-spec save_dek(dek_kind(), good_dek(), {secret, Id}, Snapshot) ->
+          {ok, dek_id()} | {error, _}
+                  when Id :: cb_cluster_secrets:secret_id(),
+                       Snapshot :: cb_cluster_secrets:chronicle_snapshot().
+%% Not supporting encryption_service because it doesn't seem to be needed so far
+save_dek(Kind, #{id := DekId, info := #{key := BinHidden,
+                                     creation_time := CreateTime}},
+         {secret, SecretId}, Snapshot) ->
+    maybe
+        ok ?= increment_dek_encryption_counter(Kind, {secret, SecretId}),
+        {ok, KekId} ?= cb_cluster_secrets:get_active_key_id(SecretId, Snapshot),
+        ok ?= encryption_service:store_dek(Kind, DekId, ?UNHIDE(BinHidden),
+                                           KekId, CreateTime),
+        {ok, DekId}
     end.
 
 -spec new(dek_kind(), cb_cluster_secrets:key_id()) ->

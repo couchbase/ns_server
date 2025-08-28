@@ -809,9 +809,16 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 }
 
 func (s *encryptionService) cmdReadKeyFile(data []byte) {
-	keyPath, _ := readBigField(data)
+	keyPath, data := readBigField(data)
+	var verifyProof bool
+	if len(data) > 0 { // this field is optional for backward compatibility with 8.0
+		verifyProofBin, _ := readBigField(data)
+		verifyProof = string(verifyProofBin) == "true"
+	} else {
+		verifyProof = true
+	}
 	keyPathStr := string(keyPath)
-	keyIface, _, err := s.storedKeysState.readKeyFromFile(keyPathStr, s.newStoredKeyCtx(true))
+	keyIface, _, err := s.storedKeysState.readKeyFromFile(keyPathStr, verifyProof, s.newStoredKeyCtx(true))
 	if err != nil {
 		replyError(err.Error())
 		return

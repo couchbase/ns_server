@@ -45,6 +45,7 @@
          store_kmip_key/5,
          store_dek/5,
          read_dek/2,
+         read_dek_file/2,
          key_path/1,
          decode_key_info/1,
          garbage_collect_keks/1,
@@ -175,6 +176,28 @@ read_dek(Kind, DekId) ->
                 {error, Error} ->
                     Msg = io_lib:format("Failed to decode dek: ~p", [Error]),
                     {error, {dek_decode_error, lists:flatten(Msg)}}
+            end;
+        {error, Error} ->
+            {error, Error}
+    end.
+
+read_dek_file(Path, VerifyProof) when is_list(Path), is_boolean(VerifyProof) ->
+    case ?wrap_error_msg(
+           cb_gosecrets_runner:read_key_file(?RUNNER, Path, VerifyProof),
+           read_key_file_error, [{path, Path}]) of
+        {ok, Json} ->
+            FilenameBin = iolist_to_binary(filename:basename(Path)),
+            case string:split(FilenameBin, ".key.", trailing) of
+                [DekId, _] ->
+                    case decode_dek(DekId, Json) of
+                        {ok, Dek} -> {ok, Dek};
+                        {error, Error} ->
+                            Msg = io_lib:format("Failed to decode dek: ~p",
+                                                [Error]),
+                            {error, {dek_decode_error, lists:flatten(Msg)}}
+                    end;
+                _ ->
+                    {error, {invalid_dek_file_name, Path}}
             end;
         {error, Error} ->
             {error, Error}

@@ -195,7 +195,9 @@ def encode_read_key(key_usage, key_name):
 
 
 def encode_read_key_file(key_file):
-    return encode_msg(b'\x10' + encode_msg(key_file.encode()))
+    return encode_msg(b'\x10' +
+                      encode_msg(key_file.encode()) +
+                      encode_msg(b'true'))
 
 
 def encode_search_key(key_kind, key_name):

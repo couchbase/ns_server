@@ -766,12 +766,12 @@ func (state *StoredKeysState) storeKey(
 	return nil
 }
 
-func (state *StoredKeysState) readKeyFromFile(pathWithoutVersion string, ctx *storedKeysCtx) (storedKeyIface, int, error) {
+func (state *StoredKeysState) readKeyFromFile(pathWithoutVersion string, verifyProof bool, ctx *storedKeysCtx) (storedKeyIface, int, error) {
 	keyIface, vsn, proof, err := readKeyFromFileRaw(pathWithoutVersion)
 	if err != nil {
 		return nil, vsn, fmt.Errorf("failed to read key from file %s: %s", pathWithoutVersion, err.Error())
 	}
-	err = state.decryptKey(keyIface, true, proof, ctx)
+	err = state.decryptKey(keyIface, verifyProof, proof, ctx)
 	if err != nil {
 		return nil, vsn, err
 	}
@@ -1101,6 +1101,28 @@ func parseKeyFilename(base_filename string) (string, int, error) {
 }
 
 func findKeyFile(path string) (string, int, error) {
+	// If the path already contains ".key." it means it already contains version
+	// Example path: /path/to/<uuid>.key.3
+	if strings.Contains(path, ".key.") {
+		// %% Check if the file actually exists before proceeding
+		if _, err := os.Stat(path); err == nil {
+			parts := strings.Split(filepath.Base(path), ".")
+			if len(parts) >= 3 && parts[len(parts)-2] == "key" {
+				// This is a versioned key file, extract version and return as-is
+				vsnStr := parts[len(parts)-1]
+				vsn, err := strconv.Atoi(vsnStr)
+				if err != nil {
+					return "", -1, fmt.Errorf(
+						"invalid version in path %s: %s", path, err.Error())
+				}
+				return path, vsn, nil
+			}
+		} else {
+			return "", -1, fmt.Errorf("file %s does not exist", path)
+		}
+	}
+	// ... otherwise, we need to find the latest version for this key
+	// Example path: /path/to/<uuid>
 	wildcard := path + ".*"
 	candidates, err := filepath.Glob(wildcard)
 	if err != nil {
@@ -1141,8 +1163,8 @@ func isKeyFile(pathPrefix string) bool {
 	return len(candidates) > 0
 }
 
-func readKeyFromFileRaw(pathWithoutVersion string) (storedKeyIface, int, string, error) {
-	path, vsn, err := findKeyFile(pathWithoutVersion)
+func readKeyFromFileRaw(pathMaybeWithoutVersion string) (storedKeyIface, int, string, error) {
+	path, vsn, err := findKeyFile(pathMaybeWithoutVersion)
 	if err != nil {
 		return nil, vsn, "", err
 	}

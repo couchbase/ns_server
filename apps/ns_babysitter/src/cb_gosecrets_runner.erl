@@ -37,6 +37,7 @@
          encrypt_with_key/6,
          decrypt_with_key/6,
          read_key/3,
+         read_key_file/3,
          defaults/0,
          key_path/2,
          rotate_integrity_tokens/2,
@@ -133,6 +134,9 @@ store_key(Name, Kind, KeyName, KeyType, KeyData, EncryptionKeyId, CreationDT,
 
 read_key(Name, Kind, KeyName) ->
     gen_server:call(Name, {read_key, Kind, KeyName}, infinity).
+
+read_key_file(Name, Path, VerifyProof) ->
+    gen_server:call(Name, {read_key_file, Path, VerifyProof}, infinity).
 
 encrypt_with_key(Name, Data, AD, KeyKind, KeyName, UseCache) ->
     gen_server:call(Name,
@@ -380,6 +384,8 @@ handle_call({store_key, _Kind, _Name, _KeyType, _KeyData, _EncryptionKeyId,
     {reply, call_gosecrets(Cmd, State), State};
 handle_call({read_key, _Kind, _Name} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
+handle_call({read_key_file, _Path, _VerifyProof} = Cmd, _From, State) ->
+    {reply, call_gosecrets(Cmd, State), State};
 handle_call({encrypt_with_key, _Data, _AD, _KeyKind, _Name, _UseCache} = Cmd,
             _From, State) ->
     {reply, convert_empty_data(call_gosecrets(Cmd, State)), State};
@@ -545,6 +551,9 @@ encode({decrypt_with_key, Data, AD, KeyKind, Name, UseCache}) ->
           (encode_param(UseCache))/binary>>;
 encode({read_key, Kind, Name}) ->
     <<15, (encode_param(Kind))/binary, (encode_param(Name))/binary>>;
+encode({read_key_file, Path, VerifyProof}) ->
+    PathBin = iolist_to_binary(Path),
+    <<16, (encode_param(PathBin))/binary, (encode_param(VerifyProof))/binary>>;
 encode({rotate_integrity_tokens, KeyName}) ->
     <<17, (encode_param(KeyName))/binary>>;
 encode({remove_old_integrity_tokens, Paths}) ->
