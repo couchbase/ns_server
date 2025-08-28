@@ -227,7 +227,7 @@ validate_guest_volumes(Name, State) ->
                           validator:required(guestVolumePaths, _),
                           validator:string_array(
                             guestVolumePaths, fun (_) -> ok end,
-                            false, _),
+                            true, _),
                           validator:unsupported(_)],
                          State).
 

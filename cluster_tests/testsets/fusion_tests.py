@@ -102,6 +102,18 @@ class FusionTests(testlib.BaseTestSet):
              'replicaNumber': num_replicas},
             sync=True)
 
+    def prepare_rebalance(self, keep_nodes):
+        keep_nodes_string = ",".join(keep_nodes.values())
+
+        resp = testlib.post_succ(self.cluster,
+                                 "/controller/fusion/prepareRebalance",
+                                 data={'keepNodes': keep_nodes_string})
+        acc_plan = resp.json()
+        assert isinstance(acc_plan, dict)
+        assert "planUUID" in acc_plan
+        assert "nodes" in acc_plan
+        return acc_plan
+
     def empty_bucket_smoke_test_code(self, num_replicas, expected_num_volumes):
         self.init_fusion()
         testlib.post_succ(self.cluster, '/fusion/enable')
@@ -114,21 +126,12 @@ class FusionTests(testlib.BaseTestSet):
 
         otp_nodes = testlib.get_otp_nodes(self.cluster)
         second_otp_node = otp_nodes[second_node.hostname()]
-        keep_nodes_string = ",".join(otp_nodes.values())
 
         testlib.post_fail(self.cluster, "/controller/fusion/prepareRebalance",
                           expected_code=400)
 
-        resp = testlib.post_succ(self.cluster,
-                                 "/controller/fusion/prepareRebalance",
-                                 data={'keepNodes': keep_nodes_string})
-        acc_plan = resp.json()
-
-        assert isinstance(acc_plan, dict)
-        assert "planUUID" in acc_plan
+        acc_plan = self.prepare_rebalance(otp_nodes)
         plan_uuid = acc_plan["planUUID"]
-
-        assert "nodes" in acc_plan
         plan_nodes = acc_plan["nodes"]
 
         assert isinstance(plan_nodes, dict)
@@ -183,6 +186,37 @@ class FusionTests(testlib.BaseTestSet):
 
         for node in otp_nodes.values():
             assert node in volumes
+
+    def empty_volumes_smoke_test(self):
+        self.init_fusion()
+        testlib.post_succ(self.cluster, '/fusion/enable')
+        self.wait_for_state('enabling', 'enabled')
+
+        second_node = self.cluster.spare_node()
+        self.create_bucket('test', 1)
+
+        self.cluster.add_node(second_node, services=[Service.KV])
+
+        otp_nodes = testlib.get_otp_nodes(self.cluster)
+        second_otp_node = otp_nodes[second_node.hostname()]
+
+        acc_plan = self.prepare_rebalance(otp_nodes)
+        plan_uuid = acc_plan["planUUID"]
+
+        nodes_volumes_json = {'nodes': [{'name': second_otp_node,
+                                         'guestVolumePaths': []}]}
+
+        # success
+        resp = testlib.post_succ(
+            self.cluster,
+            f"/controller/fusion/uploadMountedVolumes?planUUID={plan_uuid}",
+            json=nodes_volumes_json)
+
+        self.cluster.rebalance(plan_uuid = plan_uuid)
+
+        resp = testlib.get_succ(self.cluster, "/fusion/activeGuestVolumes")
+        volumes = resp.json()
+        assert volumes[second_otp_node] == []
 
     def initial_configuration_test(self):
         testlib.post_fail(self.cluster, '/fusion/enable', expected_code=503)
