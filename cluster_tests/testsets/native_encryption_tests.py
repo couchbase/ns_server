@@ -119,6 +119,8 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                             None)
 
     def test_teardown(self):
+        for n in self.cluster.connected_nodes:
+            delete_aws_fake_creds_file(n)
         set_cfg_encryption(self.cluster, 'nodeSecretManager', -1,
                            dek_lifetime=default_dek_lifetime,
                            dek_rotation=default_dek_rotation)
@@ -1378,7 +1380,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # don't prevent cluster from starting. Config DEKs should be readable
         # and decryptable, this goes without saying.
         bad_secret = aws_test_secret(usage=['config-encryption'],
-                                     should_work=False)
+                                     good_arn=False)
         bad_aws_secret_id = create_secret(self.random_node(), bad_secret)
         set_cfg_encryption(self.cluster, 'encryptionKey', bad_aws_secret_id,
                            skip_encryption_key_test=True)
@@ -1394,7 +1396,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                             'bucket-encryption',
                                             'audit-encryption',
                                             'log-encryption'],
-                                     should_work=False)
+                                     good_arn=False)
         bad_aws_secret_id = create_secret(self.random_node(), bad_secret)
 
         err = create_secret(self.random_node(),
@@ -1447,7 +1449,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
     @tag(Tag.LowUrgency)
     def add_node_when_kek_is_unavailable_test(self):
         bad_secret = aws_test_secret(usage=['config-encryption'],
-                                     should_work=False)
+                                     good_arn=False)
         bad_aws_secret_id = create_secret(self.random_node(), bad_secret)
 
         # Trying to use bad AWS secret for encryption
@@ -2057,10 +2059,10 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                   cb_managed_secret(name='test secret',
                                                     usage=['KEK-encryption']))
         bad_aws_id = create_secret(self.random_node(),
-                                   aws_test_secret(should_work=False,
+                                   aws_test_secret(good_arn=False,
                                                    usage=['KEK-encryption']))
         good_aws_id = create_secret(self.random_node(),
-                                    aws_test_secret(should_work=True,
+                                    aws_test_secret(good_arn=True,
                                                     usage=['KEK-encryption']))
 
         # Existing key test endpoint tests:
@@ -2079,10 +2081,10 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                         usage=['KEK-encryption']))
 
         bad_aws_id = create_secret(self.random_node(),
-                                   aws_test_secret(should_work=False,
+                                   aws_test_secret(good_arn=False,
                                                    usage=['KEK-encryption']))
         good_aws_id = create_secret(self.random_node(),
-                                    aws_test_secret(should_work=True,
+                                    aws_test_secret(good_arn=True,
                                                     usage=['KEK-encryption']))
         # Create key test endpoint tests:
         test_create_secret(self.random_node(),
@@ -2094,10 +2096,10 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         assert 'Must be unique' in err['name'], 'unexpected error'
 
         test_create_secret(self.random_node(),
-                           aws_test_secret(should_work=True))
+                           aws_test_secret(good_arn=True))
 
         err = test_create_secret(self.random_node(),
-                                 aws_test_secret(should_work=False),
+                                 aws_test_secret(good_arn=False),
                                  expected_code=400)
         assert 'test encryption error' in err['_'], 'unexpected error'
 
@@ -2119,10 +2121,10 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                   cb_managed_secret(name='test secret',
                                                     usage=['KEK-encryption']))
         bad_aws_id = create_secret(self.random_node(),
-                                   aws_test_secret(should_work=False,
+                                   aws_test_secret(good_arn=False,
                                                    usage=['KEK-encryption']))
         good_aws_id = create_secret(self.random_node(),
-                                    aws_test_secret(should_work=True,
+                                    aws_test_secret(good_arn=True,
                                                     usage=['KEK-encryption']))
 
         # Update key test endpoint tests:
@@ -2150,6 +2152,91 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         assert 'Unable to encrypt (or decrypt) this key' in err['_'], \
                'unexpected error'
 
+    def break_key_that_is_used_test(self):
+        aws_secret = aws_test_secret(good_arn=True, usage=['KEK-encryption'])
+        aws_id = create_secret(self.random_node(), aws_secret)
+        secret_id = create_secret(self.random_node(),
+                                  cb_managed_secret(name='test secret',
+                                                    usage=['log-encryption',
+                                                           'bucket-encryption'],
+                                                    encrypt_with='encryptionKey',
+                                                    encrypt_secret_id=aws_id))
+
+        set_log_encryption(self.cluster, 'encryptionKey', secret_id)
+
+        # Now secret_id is in use, try breaking it by breaking the key that
+        # encrypts it:
+        bad_creds_node = self.random_node()
+        write_bad_aws_creds_file(bad_creds_node)
+        bad_creds_file = aws_fake_creds_path(bad_creds_node)
+        aws_secret['data']['credentialsFile'] = bad_creds_file
+        r = update_secret(self.cluster, aws_id, aws_secret, expected_code=400)
+        assert 'Encryption key test failed on' in r['_'], 'unexpected error'
+
+        set_log_encryption(self.cluster, 'nodeSecretManager', -1)
+        drop_deks(self.cluster, 'log')
+
+        self.cluster.create_bucket(
+                {'name': self.bucket_name, 'ramQuota': 100,
+                 'encryptionAtRestKeyId': secret_id}, sync=True)
+
+        r = update_secret(self.cluster, aws_id, aws_secret, expected_code=400)
+        assert 'Encryption key test failed on' in r['_'], 'unexpected error'
+
+    def use_bad_key_for_encryption_test(self):
+        bad_creds_node = self.random_node()
+        creds_file = write_good_aws_creds_file(bad_creds_node)
+        aws_secret = aws_test_secret(good_arn=True, usage=['KEK-encryption'],
+                                     creds_file=creds_file)
+        aws_secret_id = create_secret(self.random_node(), aws_secret)
+        int_secret_id = create_secret(
+                          self.random_node(),
+                          cb_managed_secret(name='intermediate secret',
+                                            usage=['KEK-encryption'],
+                                            encrypt_with='encryptionKey',
+                                            encrypt_secret_id=aws_secret_id))
+        bad_secret_id = create_secret(
+                          self.random_node(),
+                          cb_managed_secret(name='test secret',
+                                            usage=['KEK-encryption',
+                                                   'bucket-encryption',
+                                                   'log-encryption'],
+                                            encrypt_with='encryptionKey',
+                                            encrypt_secret_id=int_secret_id))
+
+        # So far everything should be working, but suddenly aws credentials
+        # stop working on one of the nodes:
+        write_bad_aws_creds_file(bad_creds_node)
+
+        err = set_log_encryption(self.cluster, 'encryptionKey', bad_secret_id,
+                                 expected_code=400)
+        assert 'Unable to perform encryption/decryption with provided key, ' \
+               'check encryption key settings' in err['_'], \
+               'unexpected error'
+
+        r = self.cluster.create_bucket(
+                {'name': self.bucket_name, 'ramQuota': 100,
+                 'encryptionAtRestKeyId': bad_secret_id},
+                sync=True,
+                expected_code=400)
+        errors = r.json()
+        e = errors['errors']['encryptionAtRestKeyId']
+        assert e is not None, f'unexpected errors: {errors}'
+        assert 'Unable to perform encryption/decryption with provided key, ' \
+               'check encryption key settings' in e, \
+               'unexpected error'
+
+        self.cluster.create_bucket(
+                {'name': self.bucket_name, 'ramQuota': 100,
+                 'encryptionAtRestKeyId': -1}, sync=True)
+        r = self.cluster.update_bucket({'name':self.bucket_name,
+                                        'encryptionAtRestKeyId': bad_secret_id},
+                                       expected_code=400)
+        errors = r.json()
+        e = errors['errors']['encryptionAtRestKeyId']
+        assert 'Unable to perform encryption/decryption with provided key, ' \
+               'check encryption key settings' in e, \
+               'unexpected error'
 
 # Set master password and restart the cluster
 # Testing that we can decrypt deks when master password is set
@@ -2473,21 +2560,48 @@ def cb_managed_secret(name=None,
 # This secret does not actually go to aws when asked encrypt or decrypt data.
 # All AWS secrets with special ARN=TEST_AWS_KEY_ARN simply encrypt data using
 # dummy key.
-def aws_test_secret(name=None, usage=None, should_work=True):
+def aws_test_secret(name=None, usage=None, good_arn=True, creds_file=None):
     if usage is None:
         usage = ['bucket-encryption', 'KEK-encryption']
     if name is None:
         name = f'Test secret {testlib.random_str(5)}'
 
-    if should_work:
+    if good_arn:
         key_arn = 'TEST_AWS_KEY_ARN'
     else:
         key_arn = 'TEST_AWS_BAD_KEY_ARN'
 
+    data = {'keyARN': key_arn}
+
+    if creds_file is not None:
+        data['credentialsFile'] = creds_file
+
     return {'name': name,
             'type': 'awskms-symmetric-key',
             'usage': usage,
-            'data': {'keyARN': key_arn}}
+            'data': data}
+
+
+def write_good_aws_creds_file(node):
+    path = aws_fake_creds_path(node)
+    with open(path, "w") as f:
+        f.write("TEST_AWS_CREDS")
+    return path
+
+def write_bad_aws_creds_file(node):
+    path = aws_fake_creds_path(node)
+    with open(path, "w") as f:
+        f.write("TEST_BAD_AWS_CREDS")
+    return path
+
+def delete_aws_fake_creds_file(node):
+    path = aws_fake_creds_path(node)
+    if os.path.exists(path):
+        os.remove(path)
+
+def aws_fake_creds_path(node):
+    return os.path.join(node.tmp_path(), "tmp-fake-test-creds.tmp")
+
 
 def kmip_secret(name, kmip_id):
     key_path = os.path.join(testlib.get_resources_dir(),
