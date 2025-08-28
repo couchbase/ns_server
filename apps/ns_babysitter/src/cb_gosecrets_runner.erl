@@ -44,7 +44,8 @@
          get_key_id_in_use/1,
          mac/2,
          verify_mac/3,
-         revalidate_key_cache/1]).
+         revalidate_key_cache/1,
+         cached_keys_list/1]).
 
 -record(state, {config :: file:filename(),
                 loop :: pid() | undefined,
@@ -159,6 +160,9 @@ verify_mac(Name, Mac, Data) ->
 
 revalidate_key_cache(Name) ->
     gen_server:call(Name, revalidate_key_cache, infinity).
+
+cached_keys_list(Name) ->
+    gen_server:call(Name, cached_keys_list, infinity).
 
 start_link(Logger, PasswordPromptAllowed, ReadOnly) ->
     start_link(Logger, PasswordPromptAllowed, ReadOnly, gosecrets_cfg_path()).
@@ -394,6 +398,8 @@ handle_call({verify_mac, _Mac, _Data} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
 handle_call(revalidate_key_cache, _From, State) ->
     {reply, call_gosecrets(revalidate_key_cache, State), State};
+handle_call(cached_keys_list, _From, State) ->
+    {reply, call_gosecrets(cached_keys_list, State), State};
 handle_call(stop, _From, State) ->
     {stop, normal, call_gosecrets(stop, State), State};
 handle_call(Call, _From, State) ->
@@ -559,7 +565,10 @@ encode({mac, Data}) ->
 encode({verify_mac, Mac, Data}) ->
     <<22, (encode_param(Mac))/binary, (encode_param(Data))/binary>>;
 encode(revalidate_key_cache) ->
-    <<23>>.
+    <<23>>;
+%% 24 is reserved for search key, not used yet
+encode(cached_keys_list) ->
+    <<25>>.
 
 encode_param(B) when is_atom(B) ->
     encode_param(atom_to_binary(B));

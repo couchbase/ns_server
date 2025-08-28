@@ -4248,7 +4248,8 @@ diag(#state{proc_type = ?NODE_PROC} = State) ->
     [<<"Process type: node ">>, io_lib:format("(~p)", [self()]), $\n,
      diag_deks(State#state.deks_info), $\n,
      diag_timers(State#state.timers, State#state.timers_timestamps), $\n,
-     diag_jobs(State#state.jobs)];
+     diag_jobs(State#state.jobs), $\n,
+     diag_cached_keys_list(encryption_service:cached_keys_list())];
 diag(#state{proc_type = ?MASTER_PROC} = State) ->
     [<<"Process type: master ">>, io_lib:format("(~p)", [self()]), $\n,
      diag_timers(State#state.timers, State#state.timers_timestamps), $\n,
@@ -4329,6 +4330,13 @@ diag_timers(Timers, TimersTimestamps) ->
 
 diag_jobs(Jobs) ->
     [<<"Jobs:">>, $\n, io_lib:format("~0p", [Jobs])].
+
+diag_cached_keys_list({ok, CachedKeysList}) ->
+    [<<"Cached keys list:">>, $\n,
+     io_lib:format("~s", [CachedKeysList])];
+diag_cached_keys_list({error, Error}) ->
+    [<<"Cached keys list:">>, $\n,
+     io_lib:format("Request failed: ~0p", [Error])].
 
 format_dek_id_for_diag(Id) when is_binary(Id) ->
     Id;

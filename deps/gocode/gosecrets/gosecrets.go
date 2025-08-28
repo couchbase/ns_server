@@ -279,6 +279,8 @@ func (s *encryptionService) processCommand() {
 		s.cmdRevalidateKeyCache()
 	case 24:
 		s.cmdSearchKey(data)
+	case 25:
+		s.cmdCachedKeysList()
 	default:
 		panic(fmt.Sprintf("Unknown command %v", command))
 	}
@@ -909,6 +911,16 @@ func (s *encryptionService) cmdSearchKey(data []byte) {
 		return
 	}
 	replyReadKey(keyIface)
+}
+
+func (s *encryptionService) cmdCachedKeysList() {
+	keys := s.storedKeysState.cachedKeysList()
+	keysJson, err := json.Marshal(keys)
+	if err != nil {
+		replyError(fmt.Sprintf("failed to marshal keys: %s", err.Error()))
+		return
+	}
+	replySuccessWithData(keysJson)
 }
 
 func replyReadKey(keyIface storedKeyIface) {

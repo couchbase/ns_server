@@ -869,6 +869,14 @@ func (state *StoredKeysState) searchKey(keyKind, keyId string, ctx *storedKeysCt
 	return nil, fmt.Errorf("key %s not found", keyId)
 }
 
+func (state *StoredKeysState) cachedKeysList() []string {
+	keys := make([]string, 0, len(state.keysCache))
+	for keyName := range state.keysCache {
+		keys = append(keys, keyName)
+	}
+	return keys
+}
+
 func (state *StoredKeysState) encryptKey(keyIface storedKeyIface, ctx *storedKeysCtx) error {
 	// Mark it as in use, to make sure we don't try to use it for encryption
 	// or decryption while we are encrypting or decrypting this key

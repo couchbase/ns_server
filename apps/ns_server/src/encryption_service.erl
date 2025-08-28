@@ -56,6 +56,7 @@
          mac/1,
          verify_mac/2,
          revalidate_key_cache/0,
+         cached_keys_list/0,
          new_dek_record/3,
          new_raw_aes_dek_info/3]).
 
@@ -350,6 +351,10 @@ revalidate_key_cache() ->
     ?log_debug("Validating key cache"),
     ?wrap_error_msg(cb_gosecrets_runner:revalidate_key_cache(?RUNNER),
                     validate_key_cache_error, []).
+
+cached_keys_list() ->
+    ?wrap_error_msg(cb_gosecrets_runner:cached_keys_list(?RUNNER),
+                    cached_keys_list_error, []).
 
 %%%===================================================================
 %%% callbacks
