@@ -157,6 +157,7 @@ type storedKeysCtx struct {
 	encryptionServiceKey       []byte
 	backupEncryptionServiceKey []byte
 	keysTouched                map[string]bool
+	useCache                   bool
 }
 
 type cachedKey struct {
@@ -762,7 +763,6 @@ func (state *StoredKeysState) storeKey(
 		return err
 	}
 
-
 	return nil
 }
 
@@ -778,8 +778,8 @@ func (state *StoredKeysState) readKeyFromFile(pathWithoutVersion string, ctx *st
 	return keyIface, vsn, nil
 }
 
-func (state *StoredKeysState) readKeyFromCache(name string, validateProof bool) (bool, storedKeyIface, string) {
-	if cachedKey, ok := state.keysCache[name]; ok {
+func (state *StoredKeysState) readKeyFromCache(name string, validateProof bool, ctx *storedKeysCtx) (bool, storedKeyIface, string) {
+	if cachedKey, ok := state.keysCache[name]; ok && ctx.useCache {
 		if validateProof && !cachedKey.proofValidated {
 			err := state.validateKeyProof(cachedKey.keyIface, cachedKey.proof)
 			if err != nil {
@@ -801,7 +801,7 @@ func (state *StoredKeysState) readKey(name, kind string, validateProof bool, ctx
 	if err != nil {
 		return nil, "", err
 	}
-	if success, keyIface, proof := state.readKeyFromCache(name, validateProof); success {
+	if success, keyIface, proof := state.readKeyFromCache(name, validateProof, ctx); success {
 		return keyIface, proof, nil
 	}
 	keyIface, _, proof, err := readKeyRaw(keySettings, name)
@@ -1000,7 +1000,7 @@ func (state *StoredKeysState) encryptWithKey(keyKind, keyName string, data, AD [
 	if err != nil {
 		return nil, err
 	}
-	if success, cachedKeyIface, _ := state.readKeyFromCache(keyName, true); success {
+	if success, cachedKeyIface, _ := state.readKeyFromCache(keyName, true, ctx); success {
 		logDbg("encryptWithKey: using cached key %s", keyName)
 		return cachedKeyIface.encryptData(data, AD)
 	}
@@ -1024,7 +1024,7 @@ func (state *StoredKeysState) decryptWithKey(keyKind, keyName string, data, AD [
 	if err != nil {
 		return nil, err
 	}
-	if success, cachedKeyIface, _ := state.readKeyFromCache(keyName, validateKeysProof); success {
+	if success, cachedKeyIface, _ := state.readKeyFromCache(keyName, validateKeysProof, ctx); success {
 		logDbg("decryptWithKey: using cached key %s", keyName)
 		return cachedKeyIface.decryptData(data, AD)
 	}

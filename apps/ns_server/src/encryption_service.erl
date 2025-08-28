@@ -252,18 +252,28 @@ dek_error_pattern_test() ->
 
 -endif.
 
-encrypt_key(Data, AD, KekId) when is_binary(Data), is_binary(AD),
-                                  is_binary(KekId) ->
+encrypt_key(Data, AD, KekId) ->
+    encrypt_key(Data, AD, KekId, true).
+
+encrypt_key(Data, AD, KekId, CanUseCachedKeys)
+        when is_binary(Data), is_binary(AD), is_binary(KekId),
+             is_boolean(CanUseCachedKeys) ->
     FinalAD = <<AD/binary, KekId/binary>>,
     ?wrap_error_msg(
-      cb_gosecrets_runner:encrypt_with_key(?RUNNER, Data, FinalAD, kek, KekId),
+      cb_gosecrets_runner:encrypt_with_key(?RUNNER, Data, FinalAD, kek, KekId,
+                                           CanUseCachedKeys),
       encrypt_key_error, [{key_UUID, KekId}]).
 
-decrypt_key(Data, AD, KekId) when is_binary(Data), is_binary(AD),
-                                  is_binary(KekId) ->
+decrypt_key(Data, AD, KekId) ->
+    decrypt_key(Data, AD, KekId, true).
+
+decrypt_key(Data, AD, KekId, CanUseCachedKeys)
+        when is_binary(Data), is_binary(AD), is_binary(KekId),
+             is_boolean(CanUseCachedKeys) ->
     FinalAD = <<AD/binary, KekId/binary>>,
     ?wrap_error_msg(
-      cb_gosecrets_runner:decrypt_with_key(?RUNNER, Data, FinalAD, kek, KekId),
+      cb_gosecrets_runner:decrypt_with_key(?RUNNER, Data, FinalAD, kek, KekId,
+                                           CanUseCachedKeys),
       decrypt_key_error, [{key_UUID, KekId}]).
 
 %% This function can be called by other nodes
@@ -271,8 +281,16 @@ test_existing_key(KekId) when is_binary(KekId) ->
     RandomData = rand:bytes(16),
     RandomAD = rand:bytes(16),
     maybe
-        {ok, EncryptedData} ?= encrypt_key(RandomData, RandomAD, KekId),
-        {ok, DecryptedData} ?= decrypt_key(EncryptedData, RandomAD, KekId),
+        %% We don't want to use cached keys here because we want to test
+        %% that the entire chain of keys is in working condition.
+        %% E.g. The key-being-tested can be encrypted with a cached key, which
+        %% is encrypted with a broken key. If we allow using cached keys, this
+        %% test will pass, but after restart we won't be able to decrypt the
+        %% key, because the cached key not be there anymore.
+        {ok, EncryptedData} ?= encrypt_key(RandomData, RandomAD, KekId,
+                                           false),
+        {ok, DecryptedData} ?= decrypt_key(EncryptedData, RandomAD, KekId,
+                                           false),
         case RandomData =:= DecryptedData of
             true -> ok;
             false -> {error, decrypted_data_mismatch}

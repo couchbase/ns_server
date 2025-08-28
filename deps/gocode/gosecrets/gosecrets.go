@@ -327,7 +327,7 @@ func (s *encryptionService) mainInit(readOnly bool, password []byte) error {
 		}
 	}
 
-	s.storedKeysState, err = initStoredKeys(filepath.Dir(s.configPath), readOnly, s.newStoredKeyCtx())
+	s.storedKeysState, err = initStoredKeys(filepath.Dir(s.configPath), readOnly, s.newStoredKeyCtx(true))
 	if err != nil {
 		return fmt.Errorf("failed to initialize stored keys: %s", err.Error())
 	}
@@ -662,7 +662,7 @@ func (s *encryptionService) cmdClearBackupKey(ref []byte) {
 		replyError("Key ref mismatch")
 		return
 	}
-	err := reencryptStoredKeys(s.storedKeysState, s.newStoredKeyCtx())
+	err := reencryptStoredKeys(s.storedKeysState, s.newStoredKeyCtx(true))
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -786,7 +786,7 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 			keyNameStr, keyKindStr, keyTypeStr, encryptionKeyName, canBeCached)
 	}
 
-	ctx := s.newStoredKeyCtx()
+	ctx := s.newStoredKeyCtx(!testOnlyBool)
 	err := s.storedKeysState.storeKey(
 		keyNameStr,
 		keyKindStr,
@@ -807,7 +807,7 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 func (s *encryptionService) cmdReadKeyFile(data []byte) {
 	keyPath, _ := readBigField(data)
 	keyPathStr := string(keyPath)
-	keyIface, _, err := s.storedKeysState.readKeyFromFile(keyPathStr, s.newStoredKeyCtx())
+	keyIface, _, err := s.storedKeysState.readKeyFromFile(keyPathStr, s.newStoredKeyCtx(true))
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -820,7 +820,7 @@ func (s *encryptionService) cmdReadKey(data []byte) {
 	keyName, _ := readBigField(data)
 	keyKindStr := string(keyKind)
 	keyNameStr := string(keyName)
-	keyIface, _, err := s.storedKeysState.readKey(keyNameStr, keyKindStr, true, s.newStoredKeyCtx())
+	keyIface, _, err := s.storedKeysState.readKey(keyNameStr, keyKindStr, true, s.newStoredKeyCtx(true))
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -835,7 +835,7 @@ func (s *encryptionService) cmdRotateIntegrityTokens(data []byte) {
 	}
 	keyName, _ := readBigField(data)
 	keyNameStr := string(keyName)
-	err := s.storedKeysState.rotateIntegrityTokens(keyNameStr, s.newStoredKeyCtx())
+	err := s.storedKeysState.rotateIntegrityTokens(keyNameStr, s.newStoredKeyCtx(true))
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -854,7 +854,7 @@ func (s *encryptionService) cmdRemoveOldIntegrityTokens(data []byte) {
 		paths = append(paths, string(path))
 		data = dataLeft
 	}
-	err := s.storedKeysState.removeOldIntegrityTokens(paths, s.newStoredKeyCtx())
+	err := s.storedKeysState.removeOldIntegrityTokens(paths, s.newStoredKeyCtx(true))
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -894,7 +894,7 @@ func (s *encryptionService) cmdVerifyMac(data []byte) {
 }
 
 func (s *encryptionService) cmdRevalidateKeyCache() {
-	s.storedKeysState.revalidateKeyCache(s.newStoredKeyCtx())
+	s.storedKeysState.revalidateKeyCache(s.newStoredKeyCtx(true))
 	replySuccess()
 }
 
@@ -903,7 +903,7 @@ func (s *encryptionService) cmdSearchKey(data []byte) {
 	keyName, _ := readBigField(data)
 	keyKindStr := string(keyKind)
 	keyNameStr := string(keyName)
-	keyIface, err := s.storedKeysState.searchKey(keyKindStr, keyNameStr, s.newStoredKeyCtx())
+	keyIface, err := s.storedKeysState.searchKey(keyKindStr, keyNameStr, s.newStoredKeyCtx(true))
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -944,7 +944,14 @@ func (s *encryptionService) cmdEncryptWithKey(data []byte) {
 	toEncrypt, data := readBigField(data)
 	AD, data := readBigField(data)
 	keyKindBin, data := readBigField(data)
-	keyNameBin, _ := readBigField(data)
+	keyNameBin, data := readBigField(data)
+	var useCache bool
+	if len(data) > 0 { // this field is optional for backward compatibility with 8.0
+		useCacheBin, _ := readBigField(data)
+		useCache = string(useCacheBin) == "true"
+	} else {
+		useCache = true
+	}
 	keyKind := string(keyKindBin)
 	keyName := string(keyNameBin)
 
@@ -953,7 +960,7 @@ func (s *encryptionService) cmdEncryptWithKey(data []byte) {
 		keyName,
 		toEncrypt,
 		AD,
-		s.newStoredKeyCtx())
+		s.newStoredKeyCtx(useCache))
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -965,7 +972,14 @@ func (s *encryptionService) cmdDecryptWithKey(data []byte) {
 	toDecrypt, data := readBigField(data)
 	AD, data := readBigField(data)
 	keyKindBin, data := readBigField(data)
-	keyNameBin, _ := readBigField(data)
+	keyNameBin, data := readBigField(data)
+	var useCache bool
+	if len(data) > 0 { // this field is optional for backward compatibility with 8.0
+		useCacheBin, _ := readBigField(data)
+		useCache = string(useCacheBin) == "true"
+	} else {
+		useCache = true
+	}
 	keyKind := string(keyKindBin)
 	keyName := string(keyNameBin)
 
@@ -975,7 +989,7 @@ func (s *encryptionService) cmdDecryptWithKey(data []byte) {
 		toDecrypt,
 		AD,
 		true,
-		s.newStoredKeyCtx())
+		s.newStoredKeyCtx(useCache))
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -983,12 +997,13 @@ func (s *encryptionService) cmdDecryptWithKey(data []byte) {
 	replySuccessWithData(decryptedData)
 }
 
-func (s *encryptionService) newStoredKeyCtx() *storedKeysCtx {
+func (s *encryptionService) newStoredKeyCtx(canUseCache bool) *storedKeysCtx {
 	return &storedKeysCtx{
 		storedKeyConfigs:           s.config.StoredKeyConfigs,
 		encryptionServiceKey:       s.encryptionKeys.getSecret().key,
 		backupEncryptionServiceKey: s.encryptionKeys.getSecret().backupKey,
 		keysTouched:                map[string]bool{},
+		useCache:                   canUseCache,
 	}
 }
 

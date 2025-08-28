@@ -34,8 +34,8 @@
          cleanup_secrets/2,
          set_config/3,
          store_key/9,
-         encrypt_with_key/5,
-         decrypt_with_key/5,
+         encrypt_with_key/6,
+         decrypt_with_key/6,
          read_key/3,
          defaults/0,
          key_path/2,
@@ -133,12 +133,13 @@ store_key(Name, Kind, KeyName, KeyType, KeyData, EncryptionKeyId, CreationDT,
 read_key(Name, Kind, KeyName) ->
     gen_server:call(Name, {read_key, Kind, KeyName}, infinity).
 
-encrypt_with_key(Name, Data, AD, KeyKind, KeyName) ->
-    gen_server:call(Name, {encrypt_with_key, Data, AD, KeyKind, KeyName},
+encrypt_with_key(Name, Data, AD, KeyKind, KeyName, UseCache) ->
+    gen_server:call(Name,
+                    {encrypt_with_key, Data, AD, KeyKind, KeyName, UseCache},
                     infinity).
 
-decrypt_with_key(Name, Data, AD, KeyKind, KeyName) ->
-    gen_server:call(Name, {decrypt_with_key, Data, AD, KeyKind, KeyName},
+decrypt_with_key(Name, Data, AD, KeyKind, KeyName, UseCache) ->
+    gen_server:call(Name, {decrypt_with_key, Data, AD, KeyKind, KeyName, UseCache},
                     infinity).
 
 rotate_integrity_tokens(Name, KeyName) ->
@@ -375,11 +376,11 @@ handle_call({store_key, _Kind, _Name, _KeyType, _KeyData, _EncryptionKeyId,
     {reply, call_gosecrets(Cmd, State), State};
 handle_call({read_key, _Kind, _Name} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
-handle_call({encrypt_with_key, _Data, _AD, _KeyKind, _Name} = Cmd, _From,
-            State) ->
+handle_call({encrypt_with_key, _Data, _AD, _KeyKind, _Name, _UseCache} = Cmd,
+            _From, State) ->
     {reply, convert_empty_data(call_gosecrets(Cmd, State)), State};
-handle_call({decrypt_with_key, _Data, _AD, _KeyKind, _Name} = Cmd, _From,
-            State) ->
+handle_call({decrypt_with_key, _Data, _AD, _KeyKind, _Name, _UseCache} = Cmd,
+            _From, State) ->
     {reply, convert_empty_data(call_gosecrets(Cmd, State)), State};
 handle_call({rotate_integrity_tokens, _KeyName} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
@@ -524,16 +525,18 @@ encode({store_key, Kind, Name, KeyType, KeyData, EncryptionKeyId,
           (encode_param(CreationDT))/binary,
           (encode_param(TestOnly))/binary,
           (encode_param(CanBeCached))/binary>>;
-encode({encrypt_with_key, Data, AD, KeyKind, Name}) ->
+encode({encrypt_with_key, Data, AD, KeyKind, Name, UseCache}) ->
     <<13, (encode_param(Data))/binary,
           (encode_param(AD))/binary,
           (encode_param(KeyKind))/binary,
-          (encode_param(Name))/binary>>;
-encode({decrypt_with_key, Data, AD, KeyKind, Name}) ->
+          (encode_param(Name))/binary,
+          (encode_param(UseCache))/binary>>;
+encode({decrypt_with_key, Data, AD, KeyKind, Name, UseCache}) ->
     <<14, (encode_param(Data))/binary,
           (encode_param(AD))/binary,
           (encode_param(KeyKind))/binary,
-          (encode_param(Name))/binary>>;
+          (encode_param(Name))/binary,
+          (encode_param(UseCache))/binary>>;
 encode({read_key, Kind, Name}) ->
     <<15, (encode_param(Kind))/binary, (encode_param(Name))/binary>>;
 encode({rotate_integrity_tokens, KeyName}) ->
