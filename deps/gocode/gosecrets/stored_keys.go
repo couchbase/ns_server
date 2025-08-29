@@ -1773,7 +1773,8 @@ func getKmipClientCfg(k *kmipStoredKey) kmiputils.KmipClientConfig {
 
 func (k *kmipStoredKey) encryptData(data, AD []byte) ([]byte, error) {
 	clientCfg := getKmipClientCfg(k)
-	if k.EncryptionApproach == "use_encrypt_decrypt" {
+	switch k.EncryptionApproach {
+	case "use_encrypt_decrypt":
 		encrAttrs, err := kmiputils.KmipEncryptData(clientCfg, k.KmipId, data, AD)
 		if err != nil {
 			return nil, err
@@ -1790,7 +1791,7 @@ func (k *kmipStoredKey) encryptData(data, AD []byte) ([]byte, error) {
 		dataSlice = append(dataSlice, encrAttrs.AuthTag...)
 		dataSlice = append(dataSlice, encrAttrs.EncrData...)
 		return append([]byte{KMIP_USE_ENCR_DECR}, dataSlice...), nil
-	} else if k.EncryptionApproach == "use_get" {
+	case "use_get":
 		aes256Key, err := kmiputils.KmipGetAes256Key(clientCfg, k.KmipId)
 		if err != nil {
 			return nil, err
@@ -1798,7 +1799,7 @@ func (k *kmipStoredKey) encryptData(data, AD []byte) ([]byte, error) {
 
 		encrData := aesgcmEncrypt(aes256Key, data, AD)
 		return append([]byte{KMIP_USE_GET}, encrData...), nil
-	} else {
+	default:
 		return nil, fmt.Errorf("invalid encrypton approach %s", k.EncryptionApproach)
 	}
 }

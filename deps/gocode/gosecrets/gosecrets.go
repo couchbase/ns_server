@@ -347,10 +347,11 @@ func decodePass(data []byte) []byte {
 }
 
 func initEncryptionKeys(config *Config) (secretIface, error) {
-	if config.EncryptionSettings.KeyStorageType == "file" {
+	switch config.EncryptionSettings.KeyStorageType {
+	case "file":
 		settings := config.EncryptionSettings.KeyStorageSettings
 		return initKeysFromFile(settings)
-	} else if config.EncryptionSettings.KeyStorageType == "script" {
+	case "script":
 		settings := config.EncryptionSettings.KeyStorageSettings
 		return initKeysViaScript(settings)
 	}
@@ -411,7 +412,8 @@ func initKeysFromFile(settings map[string]interface{}) (secretIface, error) {
 func initFilePassword(settings map[string]interface{}, password []byte) ([]byte, error) {
 	passwordSource := settings["passwordSource"].(string)
 	var passwordToUse []byte
-	if passwordSource == "env" {
+	switch passwordSource {
+	case "env":
 		pwdSettings, ok := settings["passwordSettings"].(map[string]interface{})
 		if !ok {
 			return nil, errors.New(
@@ -428,7 +430,7 @@ func initFilePassword(settings map[string]interface{}, password []byte) ([]byte,
 		} else {
 			passwordToUse = []byte(os.Getenv(envName))
 		}
-	} else if passwordSource == "script" {
+	case "script":
 		if password != nil {
 			return nil, errors.New(
 				"password is not nil")
@@ -452,7 +454,7 @@ func initFilePassword(settings map[string]interface{}, password []byte) ([]byte,
 			return nil, err
 		}
 		passwordToUse = []byte(output)
-	} else {
+	default:
 		return nil, fmt.Errorf("unknown password source: %s", passwordSource)
 	}
 	return passwordToUse, nil
@@ -1049,7 +1051,7 @@ func (keys *keysInFile) setSecretWithNewPassword(s *secret, password []byte) err
 	return keys.setSecret(s)
 }
 
-func (keys *keysInFile) readBackwardCompat(password []byte) error {
+func (keys *keysInFile) readBackwardCompat(_ []byte) error {
 	key, backupKey, err := readDatakeyBackwardCompat(keys.filePath)
 	if err != nil {
 		return err
