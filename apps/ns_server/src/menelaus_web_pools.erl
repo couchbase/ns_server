@@ -26,6 +26,7 @@
          handle_pool_settings_post_body/3,
          handle_terse_cluster_info/1,
          get_cluster_name/0,
+         get_chronicle_revision/0,
          pool_settings_post_validators/2,
          handle_defragmented/2]).
 
@@ -164,6 +165,10 @@ handle_pool_info_wait_tail(Req, Id, LocalAddr, ETag, UpdateID) ->
 config_version_token() ->
     {chronicle_kv:get_revision(kv), ns_config:config_version_token()}.
 
+get_chronicle_revision() ->
+    {_, Rev} = chronicle_kv:get_revision(kv),
+    Rev.
+
 build_pool_info(Id, Req, normal, Stability, LocalAddr, UpdateID) ->
     InfoLevel =
         case menelaus_auth:has_permission({[admin, internal], all}, Req) of
@@ -238,6 +243,7 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
          {maxCollectionCount, collections:get_max_supported(num_collections)},
          {maxScopeCount, collections:get_max_supported(num_scopes)},
          {minReplicasCount, ns_bucket:get_min_replicas()},
+         {chronicleRev, get_chronicle_revision()},
          {autoCompactionSettings,
           menelaus_web_autocompaction:build_global_settings()},
          {tasks, {[{uri, TasksURI}]}},

@@ -479,6 +479,12 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
                 BucketUUID, BucketConfig)}];
          false ->
             []
+     end,
+     case cluster_compat_mode:is_cluster_totoro() of
+         true ->
+             [{chronicleRev, menelaus_web_pools:get_chronicle_revision()}];
+         false ->
+             []
      end].
 
 build_encryption_at_rest_bucket_info(BucketConfig) ->
