@@ -19,8 +19,8 @@ class KVRebalanceTests(testlib.BaseTestSet):
     def requirements():
         return [ClusterRequirements(edition="Enterprise",
                                     min_num_nodes=3, num_connected=2,
-                                    buckets=[{"name": f"couchstore",
-                                              "storageBackend": "couchstore",
+                                    buckets=[{"name": f"bucket",
+                                              "storageBackend": "magma",
                                               "replicaNumber":1,
                                               "ramQuota": 100}],
                                     exact_services=[Service.KV])]
