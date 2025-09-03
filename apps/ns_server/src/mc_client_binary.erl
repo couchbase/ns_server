@@ -1142,7 +1142,8 @@ get_fusion_storage_snapshot(Sock, VBucket, SnapshotUUID, Validity) ->
           {ok, binary()} | mc_error().
 mount_fusion_vbucket(Sock, VBucket, Volumes) ->
     report_counter(?FUNCTION_NAME),
-    Data = ejson:encode({[{mountPaths, [list_to_binary(V) || V <- Volumes]}]}),
+    Data = ejson:encode({[{mountPaths, [list_to_binary(V) || V <- Volumes]},
+                          {source, <<"FusionGuestVolumes">>}]}),
     case cmd(?CMD_MOUNT_FUSION_VBUCKET, Sock, undefined, undefined,
              {#mc_header{vbucket = VBucket},
               #mc_entry{data = Data,
