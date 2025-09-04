@@ -178,6 +178,16 @@ def argument_parser():
         action='store_true',
         default=False,
         help="Reload ns_server beam files automatically when they are modified")
+    arg_parser.add_argument(
+        '--no-output',
+        action='store_true',
+        default=False,
+        help="Disable logging to stdout/stderr")
+    arg_parser.add_argument(
+        '--wait-for-start',
+        action='store_true',
+        default=False,
+        help="Poll for nodes to start and log when they're up")
 
     args = arg_parser.parse_args()
 
@@ -203,7 +213,9 @@ def argument_parser():
               "run_provisioned": args.provisioned,
               "num_vbuckets": args.num_vbuckets,
               "args": args.additional_args,
-              "code_watchdog": args.code_watchdog}
+              "code_watchdog": args.code_watchdog,
+              "nooutput": args.no_output,
+              "wait_for_start": args.wait_for_start}
 
     # Removes the keys when value is None, therefore start_cluster uses
     # the default values.
