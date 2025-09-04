@@ -156,14 +156,21 @@ file_based_backfill(Bucket, Parent, VBucket, [OldMaster | _ ] = OldChain,
     download_snapshot(Bucket, Parent, OldMaster, AllBuiltNodes,
                       VBucket),
 
-    %% 2) Flip  vBucket to replica.
+    %% 2) Import DEKs on the new nodes, such that we can open the snapshot files
+    %% when we set the vBucket to replica.
+    lists:foreach(
+      fun(Node) ->
+              janitor_agent:import_snapshot_deks(Bucket, Parent, Node, VBucket)
+      end, AllBuiltNodes),
+
+    %% 3) Flip  vBucket to replica.
     %% We are going to create streams here, we don't really need to, but
     %% takeover can't handle the connection not existing yet.
     set_initial_vbucket_state(Bucket, Parent, VBucket, OldChain, ReplicaNodes,
                               JustBackfillNodes,
                               fbr),
 
-    %% 3) The janitor will also clean up any snapshots, but we should release
+    %% 4) The janitor will also clean up any snapshots, but we should release
     %% the associated snapshots now to free up resources in memcached.
     lists:foreach(
       fun(Node) ->

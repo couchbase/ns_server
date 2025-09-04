@@ -2661,6 +2661,10 @@ def get_secrets(cluster, auth=None):
     return testlib.get_succ(cluster, '/settings/encryptionKeys',
                             auth=auth).json()
 
+def delete_all_secrets(cluster):
+    for s in get_secrets(cluster):
+        delete_secret(cluster, s['id'])
+
 def test_existing_secret(cluster, secret_id, expected_code=200):
     r = testlib.post_succ(cluster, f'/settings/encryptionKeys/{secret_id}/test',
                           expected_code=expected_code)

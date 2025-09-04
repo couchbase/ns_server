@@ -863,7 +863,7 @@ is_secret_used(Id, Snapshot) ->
             false
     end.
 
--spec import_bucket_dek_file(string(), string(), timeout()) ->
+-spec import_bucket_dek_file(binary(), string(), timeout()) ->
           ok | {error, term()}.
 import_bucket_dek_file(BucketUUID, Path, Timeout) ->
     gen_server:call(?MODULE, {import_bucket_dek_file, BucketUUID, Path},

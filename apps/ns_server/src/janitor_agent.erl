@@ -82,7 +82,8 @@
          download_snapshot/5,
          wait_download_snapshot/4,
          release_file_based_rebalance_snapshot/4,
-         release_file_based_rebalance_snapshots/2]).
+         release_file_based_rebalance_snapshots/2,
+         import_snapshot_deks/4]).
 
 -export([start_link/1]).
 
@@ -611,6 +612,11 @@ release_file_based_rebalance_snapshot(Bucket, Rebalancer, Node, VBucket) ->
                         {release_file_based_rebalance_snapshot, VBucket},
                         infinity).
 
+import_snapshot_deks(Bucket, Rebalancer, Node, VBucket) ->
+    ok = rebalance_call(Rebalancer, Bucket, Node,
+                        {import_snapshot_deks, VBucket},
+                        infinity).
+
 wait_dcp_data_move(Bucket, Rebalancer, MasterNode, ReplicaNodes, VBucket) ->
     rebalance_call(Rebalancer, Bucket, MasterNode,
                    {wait_dcp_data_move, ReplicaNodes, VBucket}, infinity).
@@ -880,6 +886,11 @@ do_handle_call({release_file_based_rebalance_snapshot, VBucket}, From,
     spawn_rebalance_subprocess(
       State, From,
       ?cut(ns_memcached:release_snapshot(Bucket, VBucket)));
+do_handle_call({import_snapshot_deks, VBucket}, From,
+               #state{bucket_name = Bucket} = State) ->
+    spawn_rebalance_subprocess(
+      State, From,
+      ?cut(import_snapshot_deks(Bucket, VBucket)));
 do_handle_call({wait_index_updated, VBucket}, From,
                #state{bucket_name = Bucket} = State) ->
     spawn_rebalance_subprocess(
@@ -1600,6 +1611,26 @@ check_download_snapshot_done(<<"available">>) ->
     true;
 check_download_snapshot_done(Other) ->
     erlang:error({bad_download_snapshot_status, Other}).
+
+import_snapshot_deks(Bucket, VBucket) ->
+    {ok, #{uuid := SnapshotUUID} = SnapshotDetails} =
+        ns_memcached:get_snapshot_details(Bucket, VBucket),
+    case maps:find(dek_paths, SnapshotDetails) of
+        error -> ok;
+        {ok, Deks} ->
+            BucketUUID = ns_bucket:uuid(Bucket, direct),
+            BucketPath = ns_storage_conf:this_node_bucket_dbdir(BucketUUID),
+            lists:foreach(
+              fun(Dek) ->
+                      FullPath = filename:join([BucketPath,
+                                                "snapshots",
+                                                binary_to_list(SnapshotUUID),
+                                                binary_to_list(Dek)]),
+                      ok = cb_cluster_secrets:import_bucket_dek_file(BucketUUID,
+                                                                     FullPath,
+                                                                     infinity)
+              end, Deks)
+    end.
 
 -ifdef(TEST).
 

@@ -2808,6 +2808,7 @@ uuid_key(Bucket) ->
 uuid2bucket_key(BucketUUID) ->
     {bucket_by_uuid, BucketUUID}.
 
+-spec uuid(bucket_name(), direct | map()) -> binary() | not_present.
 uuid(Bucket, Snapshot) ->
     case chronicle_compat:get(Snapshot, uuid_key(Bucket), #{}) of
         {ok, UUID} ->

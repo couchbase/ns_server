@@ -172,7 +172,8 @@
          download_snapshot/3,
          get_download_snapshot_status/2,
          release_snapshot/2,
-         get_snapshot_statuses/1
+         get_snapshot_statuses/1,
+         get_snapshot_details/2
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -856,14 +857,48 @@ do_handle_call({release_snapshot, VBucket}, _From, State) ->
     Reply = mc_client_binary:release_snapshot(State#state.sock, VBucket),
     {reply, Reply, State};
 do_handle_call({get_snapshot_statuses}, _From, State) ->
-    Key = iolist_to_binary([<<"snapshot-status">>]),
     Status =
         mc_binary:quick_stats(
-          State#state.sock, Key,
+          State#state.sock, <<"snapshot-status">>,
           fun (<<"vb_", Rest/binary>>, Status, Acc) ->
                   [VBucket, <<"status">>] = binary:split(Rest, <<":">>),
                   [{binary_to_integer(VBucket), Status} | Acc]
           end, []),
+    {reply, Status, State};
+do_handle_call({get_all_snapshot_deks}, _From, State) ->
+    Status = mc_binary:quick_stats(
+               State#state.sock, <<"snapshot-deks">>,
+               fun (<<Key/binary>>, Value, Acc) ->
+                       [_VBucket, SubKey] = binary:split(Key, <<":">>),
+                       case SubKey of
+                           <<"dek::path">> ->
+                               %% The dek path has a "key.N" suffix that we
+                               %% don't need, remove it here.
+                               DekIdPath = filename:basename(Value),
+                               [DekId | _] = string:split(DekIdPath, "."),
+                               [DekId | Acc];
+                           _ -> Acc
+                       end
+               end, []),
+    {reply, Status, State};
+do_handle_call({get_snapshot_details, VBucket}, _From, State) ->
+    StatsKey = iolist_to_binary([<<"snapshot-details ">>,
+                                 integer_to_list(VBucket)]),
+    Status = mc_binary:quick_stats(
+               State#state.sock, StatsKey,
+               fun (<<"vb_", Rest/binary>>, Value, Acc) ->
+                       [_VBucket, SubKey] = binary:split(Rest, <<":">>),
+                       case SubKey of
+                           <<"dek::path">> ->
+                               DekPaths = maps:get(dek_paths, Acc, []),
+                               Acc#{dek_paths => [Value | DekPaths]};
+                           <<"uuid">> ->
+                               Acc#{uuid => Value};
+                           _ -> Acc
+                       end;
+                   (_Other, _Value, Acc) ->
+                       Acc
+               end, #{}),
     {reply, Status, State};
 do_handle_call({get_dcp_docs_estimate, VBucketId, ConnName}, _From, State) ->
     {reply, mc_client_binary:get_dcp_docs_estimate(State#state.sock, VBucketId, ConnName), State};
@@ -2022,6 +2057,11 @@ get_mass_dcp_docs_estimate(Bucket, VBuckets) ->
     do_call(server(Bucket), Bucket,
             {get_mass_dcp_docs_estimate, VBuckets}, ?TIMEOUT_VERY_HEAVY).
 
+-spec get_snapshot_details(bucket_name(), vbucket_id()) -> {ok, term()}.
+get_snapshot_details(Bucket, VBucket) ->
+    do_call(server(Bucket), Bucket, {get_snapshot_details, VBucket},
+            ?TIMEOUT).
+
 %% The function might be rpc'ed beginning from 6.5
 get_random_key(Bucket) ->
     get_random_key(Bucket, undefined).
@@ -2352,8 +2392,19 @@ get_dek_ids_in_use(BucketUUID) ->
                                   sanitize_in_use_keys(ejson:decode(V))
                           end),
         {ok, MDFileDekIds} ?= get_metadata_file_dek_ids(BucketName),
-        {ok, lists:uniq(DekIds ++ sanitize_in_use_keys(MDFileDekIds))}
+        {ok, SnapshotDekIds} ?= get_bucket_snapshot_dek_ids(BucketName),
+        AllDeks = lists:uniq(DekIds ++ sanitize_in_use_keys(MDFileDekIds) ++
+                             SnapshotDekIds),
+        {ok, AllDeks}
     end.
+
+%% Helper function to get all of the Snapshot DEK IDs in use by file based
+%% rebalance snapshots. The number of snapshots should be constrained by the
+%% in-progress vBucket backfills, so we don't expect to have too many snapshots
+%% to scan. Outside of rebalance, no snapshots should be present for any
+%% meaningful amount of time.
+get_bucket_snapshot_dek_ids(Bucket) ->
+    do_call(server(Bucket), Bucket, {get_all_snapshot_deks}, ?TIMEOUT).
 
 get_metadata_file_dek_ids(Bucket) ->
     Server = server(Bucket),
