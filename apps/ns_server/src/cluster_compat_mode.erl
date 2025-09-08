@@ -29,8 +29,8 @@
          is_version_76/1,
          is_cluster_79/0,
          is_version_79/1,
-         is_cluster_morpheus/0,
-         is_version_morpheus/1,
+         is_cluster_80/0,
+         is_version_80/1,
          is_cluster_totoro/0,
          is_version_totoro/1,
          is_enterprise/0,
@@ -151,11 +151,11 @@ is_version_79(ClusterVersion) ->
 is_cluster_79() ->
     is_enabled(?VERSION_79).
 
-is_version_morpheus(ClusterVersion) ->
-    is_enabled_at(ClusterVersion, ?VERSION_MORPHEUS).
+is_version_80(ClusterVersion) ->
+    is_enabled_at(ClusterVersion, ?VERSION_80).
 
-is_cluster_morpheus() ->
-    is_enabled(?VERSION_MORPHEUS).
+is_cluster_80() ->
+    is_enabled(?VERSION_80).
 
 is_version_totoro(ClusterVersion) ->
     is_enabled_at(ClusterVersion, ?VERSION_TOTORO).
