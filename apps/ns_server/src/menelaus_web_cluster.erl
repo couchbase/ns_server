@@ -52,6 +52,9 @@
          parse_validate_port_number/1,
          handle_streaming/2]).
 
+%% Maximum number of attempts to detect a self ejection has completed
+-define(MAX_EJECT_RETRIES, ?get_param(max_eject_retries, 20)).
+
 handle_cluster_init(Req) ->
     menelaus_web_rbac:assert_no_users_upgrade(),
     menelaus_util:survive_web_server_restart(
@@ -623,7 +626,7 @@ do_eject_myself_rec(IterationsLeft, Period) ->
 
 do_eject_myself() ->
     ns_cluster:leave(),
-    do_eject_myself_rec(10, 250).
+    do_eject_myself_rec(?MAX_EJECT_RETRIES, 250).
 
 handle_eject_post(Req) ->
     PostArgs = mochiweb_request:parse_post(Req),
