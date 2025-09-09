@@ -112,6 +112,25 @@ class FusionTests(testlib.BaseTestSet):
         assert isinstance(acc_plan, dict)
         assert "planUUID" in acc_plan
         assert "nodes" in acc_plan
+        assert "logicalSize" in acc_plan
+        assert "storageSize" in acc_plan
+
+        plan_nodes = acc_plan["nodes"]
+        assert isinstance(plan_nodes, dict)
+
+        total_logical_size = 0
+        total_storage_size = 0
+
+        for vbucket_list in plan_nodes.values():
+            for vbucket_info in vbucket_list:
+                assert "logicalSize" in vbucket_info
+                assert "storageSize" in vbucket_info
+                total_logical_size += vbucket_info["logicalSize"]
+                total_storage_size += vbucket_info["storageSize"]
+
+        assert total_logical_size == acc_plan["logicalSize"]
+        assert total_storage_size == acc_plan["storageSize"]
+
         return acc_plan
 
     def empty_bucket_smoke_test_code(self, num_replicas, expected_num_volumes):
@@ -134,7 +153,6 @@ class FusionTests(testlib.BaseTestSet):
         plan_uuid = acc_plan["planUUID"]
         plan_nodes = acc_plan["nodes"]
 
-        assert isinstance(plan_nodes, dict)
         assert len(plan_nodes) == 1
         assert second_otp_node in plan_nodes
         volumes = plan_nodes[second_otp_node]

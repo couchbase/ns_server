@@ -2123,8 +2123,20 @@ prepare_fusion_rebalance_massage_result(PlanUUID, Result) ->
                                            maps:update_with(K, _ ++ V, V, A)
                                    end, Acc, NodesVolumesMap)
                  end, #{}, Result),
+    {LogicalSize, StorageSize} =
+        maps:fold(
+          fun (_Key, JsonList, {LAcc, SAcc}) ->
+                  lists:foldl(
+                    fun ({Proplist}, {LAcc1, SAcc1}) ->
+                            {LAcc1 + proplists:get_value(
+                                       <<"logicalSize">>, Proplist, 0),
+                             SAcc1 + proplists:get_value(
+                                       <<"storageSize">>, Proplist, 0)}
+                    end, {LAcc, SAcc}, JsonList)
+          end, {0, 0}, NodesMap),
     AccelerationPlan =
-        {[{planUUID, PlanUUID}, {nodes, {maps:to_list(NodesMap)}}]},
+        {[{planUUID, PlanUUID}, {nodes, {maps:to_list(NodesMap)}},
+          {logicalSize, LogicalSize}, {storageSize, StorageSize}]},
     ?log_debug("Prepared fusion rebalance~nRebalance plan:~n~p~n"
                "Acceleration plan:~n~p", [RebalancePlan, AccelerationPlan]),
     {RebalancePlan, AccelerationPlan}.
