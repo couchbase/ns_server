@@ -159,6 +159,7 @@
          get_dek_ids_in_use/1,
          drop_deks/4,
          get_fusion_storage_snapshot/4,
+         release_fusion_storage_snapshot/3,
          mount_fusion_vbucket/3,
          maybe_start_fusion_uploaders/2,
          maybe_stop_fusion_uploaders/2,
@@ -2629,6 +2630,16 @@ get_fusion_storage_snapshot(Bucket, VBucket, SnapshotUUID, Validity) ->
       fun (Sock) ->
               {reply, mc_client_binary:get_fusion_storage_snapshot(
                         Sock, VBucket, SnapshotUUID, Validity)}
+      end, Bucket, [json]).
+
+-spec release_fusion_storage_snapshot(ns_bucket:name(), vbucket_id(),
+                                      string()) ->
+          ok | mc_error().
+release_fusion_storage_snapshot(Bucket, VBucket, SnapshotUUID) ->
+    perform_very_long_call(
+      fun (Sock) ->
+              {reply, mc_client_binary:release_fusion_storage_snapshot(
+                        Sock, VBucket, SnapshotUUID)}
       end, Bucket, [json]).
 
 -spec mount_fusion_vbucket(ns_bucket:name(), vbucket_id(), [list()]) ->

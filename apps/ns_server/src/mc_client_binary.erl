@@ -76,6 +76,7 @@
          set_active_encryption_key/4,
          prune_log_or_audit_encr_keys/4,
          get_fusion_storage_snapshot/4,
+         release_fusion_storage_snapshot/3,
          mount_fusion_vbucket/3,
          set_chronicle_auth_token/2,
          start_fusion_uploader/3,
@@ -114,6 +115,7 @@
                      ?CMD_COLLECTIONS_SET_MANIFEST |
                      ?CMD_COLLECTIONS_GET_MANIFEST |
                      ?CMD_GET_FUSION_STORAGE_SNAPSHOT |
+                     ?CMD_RELEASE_FUSION_STORAGE_SNAPSHOT |
                      ?CMD_MOUNT_FUSION_VBUCKET |
                      ?CMD_SET_CHRONICLE_AUTH_TOKEN |
                      ?CMD_START_FUSION_UPLOADER |
@@ -1134,6 +1136,21 @@ get_fusion_storage_snapshot(Sock, VBucket, SnapshotUUID, Validity) ->
                         datatype = ?MC_DATATYPE_JSON}}) of
         {ok, #mc_header{status = ?SUCCESS}, ME, _NCB} ->
             {ok, ME#mc_entry.data};
+        Response ->
+            process_error_response(Response)
+    end.
+
+-spec release_fusion_storage_snapshot(port(), vbucket_id(), string()) ->
+          ok | mc_error().
+release_fusion_storage_snapshot(Sock, VBucket, SnapshotUUID) ->
+    report_counter(?FUNCTION_NAME),
+    Data = ejson:encode({[{snapshotUuid, list_to_binary(SnapshotUUID)}]}),
+    case cmd(?CMD_RELEASE_FUSION_STORAGE_SNAPSHOT, Sock, undefined, undefined,
+             {#mc_header{vbucket = VBucket},
+              #mc_entry{data = Data,
+                        datatype = ?MC_DATATYPE_JSON}}) of
+        {ok, #mc_header{status = ?SUCCESS}, _ME, _NCB} ->
+            ok;
         Response ->
             process_error_response(Response)
     end.

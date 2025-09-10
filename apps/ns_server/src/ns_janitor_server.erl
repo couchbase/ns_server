@@ -294,7 +294,8 @@ do_run_cleanup(update_buckets_marked_for_shutdown) ->
               end
       end, Buckets, infinity);
 do_run_cleanup(fusion) ->
-    fusion_uploaders:maybe_advance_state().
+    fusion_uploaders:maybe_advance_state(),
+    fusion_uploaders:cleanup_snapshots().
 
 
 get_unsafe_nodes_from_reprovision_list(ReprovisionList) ->

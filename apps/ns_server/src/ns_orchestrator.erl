@@ -99,6 +99,7 @@
          prepare_fusion_rebalance/1,
          build_rebalance_params/2,
          rebalance_safety_checks/2,
+         validate_rebalance_plan/1,
          fusion_upload_mounted_volumes/2]).
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
@@ -372,6 +373,17 @@ prepare_fusion_rebalance(KeepNodes) ->
     call({prepare_fusion_rebalance, KeepNodes}, infinity).
 
 -type rebalance_plan_uuid() :: string().
+
+-spec validate_rebalance_plan(rebalance_plan_uuid()) -> boolean().
+validate_rebalance_plan(PlanUUID) ->
+    case ets:lookup(?ETS, ?FUSION_REBALANCE_PLAN) of
+        [] ->
+            false;
+        [{?FUSION_REBALANCE_PLAN, RebalancePlan}] ->
+            proplists:get_value(planUUID, RebalancePlan) =:=
+                list_to_binary(PlanUUID)
+    end.
+
 -spec fusion_upload_mounted_volumes(rebalance_plan_uuid(),
                                     list()) -> ok | busy() | not_found |
           id_mismatch | {need_nodes, [node()]} | {extra_nodes, [node()]}.
