@@ -48,6 +48,7 @@ config={'colors': support_colors(),
         'wrap_output': True,
         'dry_run': False,
         'intercept_output': True,
+        'keep_tmp_dirs': False,
         'report_time': True,
         'report_time_format': '%H:%M:%S',
         'test_timeout': 600}
