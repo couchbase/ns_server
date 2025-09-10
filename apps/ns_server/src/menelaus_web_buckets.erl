@@ -3093,9 +3093,9 @@ do_parse_validate_max_ttl(Val) ->
     end.
 
 is_magma(Params, _BucketCfg, true = _IsNew, false = _IsStorageModeMigration) ->
-    proplists:get_value("storageBackend", Params, "couchstore") =:= "magma";
+    proplists:get_value("storageBackend", Params, "magma") =:= "magma";
 is_magma(Params, _BucketCfg, false = _IsNew, true = _IsStorageModeMigration) ->
-    proplists:get_value("storageBackend", Params, "couchstore") =:= "magma";
+    proplists:get_value("storageBackend", Params, "magma") =:= "magma";
 is_magma(_Params, BucketCfg, false = _IsNew, false = _IsStorageModeMigration) ->
     ns_bucket:storage_mode(BucketCfg) =:= magma.
 
@@ -4441,6 +4441,7 @@ basic_bucket_params_screening_t() ->
                      true,
                      "HistoryEnterpriseNotMagma",
                      [{"bucketType", "membase"},
+                      {"storageBackend", "couchstore"},
                       {"ramQuota", "400"},
                       {"historyRetentionSeconds", "10"},
                       {"historyRetentionBytes", "10"},
@@ -4820,12 +4821,13 @@ basic_bucket_params_screening_t() ->
 
     %% Default bucket is magma...and only 100MB ram is needed.
     {OK41, []} = basic_bucket_params_screening(
-                     true,
-                     "bucket41",
-                     [{"bucketType", "membase"},
-                      {"ramQuota", "100"}],
-                     AllBuckets),
+                   true,
+                   "bucket41",
+                   [{"bucketType", "membase"},
+                    {"ramQuota", "100"}],
+                   AllBuckets),
     ?assertEqual(magma, proplists:get_value(storage_mode, OK41)),
+    ?assertEqual(full_eviction, proplists:get_value(eviction_policy, OK41)),
 
     %% Number of vbuckets for magma must be 128 or 1024
     {_OK42, E42} = basic_bucket_params_screening(
@@ -5185,7 +5187,7 @@ parse_validate_fusion_enabled_test_() ->
                         BackendParam =
                             case IsMagma of
                                 true -> [{"storageBackend", "magma"}];
-                                false  -> []
+                                false  -> [{"storageBackend", "couchstore"}]
                             end,
                         Params = [{"bucketType", "membase"}] ++ BackendParam ++
                             [{?FUSION_ENABLED, Value} || Value =/= undefined] ,
