@@ -475,14 +475,21 @@ storage_conf_from_node_status(Node, NodeStatus) ->
      {hdd, [HDDInfo]}].
 
 query_storage_conf() ->
-    {DbDir, IxDir} = get_db_and_ix_paths(),
-    StorageConf = [{db_path, DbDir}, {index_path, IxDir}],
-    lists:map(
-      fun ({Key, Path}) ->
-              %% db_path and index_path are guaranteed to be absolute
-              {ok, RealPath} = misc:realpath(Path, "/"),
-              {Key, RealPath}
-      end, StorageConf).
+    try get_db_and_ix_paths() of
+        {DbDir, IxDir} ->
+            StorageConf = [{db_path, DbDir}, {index_path, IxDir}],
+            lists:map(
+              fun ({Key, Path}) ->
+                      %% db_path and index_path are guaranteed to be absolute
+                      {ok, RealPath} = misc:realpath(Path, "/"),
+                      {Key, RealPath}
+              end, StorageConf)
+    catch
+        %% During a node rename, the paths may temporarily not be found.
+        error:{badmatch, {error, not_found}} ->
+            ?log_warning("Storage db_and_ix_paths not found"),
+            []
+    end.
 
 extract_node_storage_info(Config, Node, NodeInfo) ->
     {RAMTotal, RAMUsed, _} = proplists:get_value(memory_data, NodeInfo),
