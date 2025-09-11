@@ -531,21 +531,17 @@ build_magma_bucket_info(BucketConfig) ->
                 proplists:get_value(storage_quota_percentage,
                                     BucketConfig,
                                     ?MAGMA_STORAGE_QUOTA_PERCENTAGE)},
-               case cluster_compat_mode:is_cluster_72() of
-                   false -> [];
-                   true ->
-                       [{historyRetentionSeconds,
-                         ns_bucket:history_retention_seconds(BucketConfig)},
-                        {historyRetentionBytes,
-                         ns_bucket:history_retention_bytes(BucketConfig)},
-                        {historyRetentionCollectionDefault,
-                         ns_bucket:history_retention_collection_default(
-                           BucketConfig)},
-                        {magmaKeyTreeDataBlockSize,
-                         ns_bucket:magma_key_tree_data_blocksize(BucketConfig)},
-                        {magmaSeqTreeDataBlockSize,
-                         ns_bucket:magma_seq_tree_data_blocksize(BucketConfig)}]
-               end,
+               [{historyRetentionSeconds,
+                 ns_bucket:history_retention_seconds(BucketConfig)},
+                {historyRetentionBytes,
+                 ns_bucket:history_retention_bytes(BucketConfig)},
+                {historyRetentionCollectionDefault,
+                 ns_bucket:history_retention_collection_default(
+                   BucketConfig)},
+                {magmaKeyTreeDataBlockSize,
+                 ns_bucket:magma_key_tree_data_blocksize(BucketConfig)},
+                {magmaSeqTreeDataBlockSize,
+                 ns_bucket:magma_seq_tree_data_blocksize(BucketConfig)}],
                build_continuous_backup_info(BucketConfig),
                case config_profile:search({magma, can_set_max_shards}, false) of
                    true ->
@@ -1749,7 +1745,7 @@ validate_membase_bucket_params(CommonParams, Params, Name,
     IsPersistent = is_ephemeral(Params, BucketConfig, IsNew) =:= false,
 
     HistRetSecs = parse_validate_history_retention_seconds(
-                    Params, BucketConfig, IsNew, Version, IsEnterprise,
+                    Params, BucketConfig, IsNew, IsEnterprise,
                     IsStorageModeMigration),
     BucketParams =
         [{ok, bucketType, membase},
@@ -1795,18 +1791,14 @@ validate_membase_bucket_params(CommonParams, Params, Name,
                                          IsEnterprise),
          HistRetSecs,
          parse_validate_history_retention_bytes(
-           Params, BucketConfig, IsNew, Version, IsEnterprise,
-           IsStorageModeMigration),
+           Params, BucketConfig, IsNew, IsEnterprise, IsStorageModeMigration),
          parse_validate_history_retention_collection_default(
-           Params, BucketConfig, IsNew, Version, IsEnterprise,
-           IsStorageModeMigration),
+           Params, BucketConfig, IsNew, IsEnterprise, IsStorageModeMigration),
          parse_validate_magma_key_tree_data_blocksize(Params, BucketConfig,
-                                                      Version, IsNew,
-                                                      IsEnterprise,
+                                                      IsNew, IsEnterprise,
                                                       IsStorageModeMigration),
          parse_validate_magma_seq_tree_data_blocksize(Params, BucketConfig,
-                                                      Version, IsNew,
-                                                      IsEnterprise,
+                                                      IsNew, IsEnterprise,
                                                       IsStorageModeMigration),
          parse_validate_dcp_connections_between_nodes(Params, IsNew, Is79,
                                                       IsEnterprise),
@@ -3310,49 +3302,46 @@ remap_user_key_to_internal_key_if_valid(Result, InternalKey) ->
             Error
     end.
 
-parse_validate_history_retention_seconds(Params, BucketConfig, IsNew, Version,
+parse_validate_history_retention_seconds(Params, BucketConfig, IsNew,
                                          IsEnterprise,
                                          IsStorageModeMigration) ->
     UserKey = historyRetentionSeconds,
     HistoryRetentionValue = proplists:get_value(atom_to_list(UserKey), Params),
     Ret = parse_validate_history_param_numeric(
-        UserKey, HistoryRetentionValue, Params, BucketConfig, IsNew, Version,
+        UserKey, HistoryRetentionValue, Params, BucketConfig, IsNew,
         IsEnterprise, IsStorageModeMigration,
         integer_to_list(?HISTORY_RETENTION_SECONDS_DEFAULT),
         0),
     remap_user_key_to_internal_key_if_valid(Ret, history_retention_seconds).
 
 parse_validate_history_retention_bytes(Params, BucketConfig, IsNew,
-                                       Version, IsEnterprise,
-                                       IsStorageModeMigration) ->
+                                       IsEnterprise, IsStorageModeMigration) ->
     UserKey = historyRetentionBytes,
     HistoryRetentionValue = proplists:get_value(atom_to_list(UserKey), Params),
     Ret = parse_validate_history_param_numeric(
-        UserKey, HistoryRetentionValue, Params, BucketConfig, IsNew, Version,
+        UserKey, HistoryRetentionValue, Params, BucketConfig, IsNew,
         IsEnterprise, IsStorageModeMigration,
         integer_to_list(?HISTORY_RETENTION_BYTES_DEFAULT),
         ?HISTORY_RETENTION_BYTES_MIN),
     remap_user_key_to_internal_key_if_valid(Ret, history_retention_bytes).
 
 parse_validate_history_retention_collection_default(
-  Params, BucketConfig, IsNew, Version, IsEnterprise, IsStorageModeMigration) ->
+  Params, BucketConfig, IsNew, IsEnterprise, IsStorageModeMigration) ->
     UserKey = historyRetentionCollectionDefault,
     HistoryRetentionValue = proplists:get_value(atom_to_list(UserKey), Params),
     Ret = parse_validate_history_param_bool(
-        UserKey, HistoryRetentionValue, Params, BucketConfig, IsNew, Version,
+        UserKey, HistoryRetentionValue, Params, BucketConfig, IsNew,
         IsEnterprise, IsStorageModeMigration,
         atom_to_list(?HISTORY_RETENTION_COLLECTION_DEFAULT_DEFAULT)),
     remap_user_key_to_internal_key_if_valid(
         Ret, history_retention_collection_default).
 
 parse_validate_history_param_numeric(Key, Value, Params, BucketConfig, IsNew,
-                                     Version, IsEnterprise,
-                                     IsStorageModeMigration, DefaultVal,
-                                     MinVal) ->
-    IsCompat = cluster_compat_mode:is_version_72(Version),
+                                     IsEnterprise, IsStorageModeMigration,
+                                     DefaultVal, MinVal) ->
     IsMagma = is_magma(Params, BucketConfig, IsNew, IsStorageModeMigration),
     parse_validate_history_param_inner(
-        Key, Value, IsEnterprise, IsCompat, IsNew, IsMagma,
+        Key, Value, IsEnterprise, IsNew, IsMagma,
         fun (Val, New) ->
             validate_with_missing(
                 Val, DefaultVal, New,
@@ -3369,12 +3358,11 @@ parse_validate_history_param_numeric(Key, Value, Params, BucketConfig, IsNew,
         end).
 
 parse_validate_history_param_bool(Key, Value, Params, BucketConfig, IsNew,
-                                  Version, IsEnterprise, IsStorageModeMigration,
+                                  IsEnterprise, IsStorageModeMigration,
                                   DefaultVal) ->
-    IsCompat = cluster_compat_mode:is_version_72(Version),
     IsMagma = is_magma(Params, BucketConfig, IsNew, IsStorageModeMigration),
     parse_validate_history_param_inner(
-        Key, Value, IsEnterprise, IsCompat, IsNew, IsMagma,
+        Key, Value, IsEnterprise, IsNew, IsMagma,
         fun (Val, New) ->
             validate_with_missing(
                 Val, DefaultVal, New,
@@ -3384,37 +3372,25 @@ parse_validate_history_param_bool(Key, Value, Params, BucketConfig, IsNew,
         end).
 
 parse_validate_history_param_inner(_Key, undefined = _Value,
-                                   false = _IsEnterprise, _IsCompat, _IsNew,
-                                   _IsMagma, _ValidatorFn) ->
+                                   false = _IsEnterprise, _IsNew, _IsMagma,
+                                   _ValidatorFn) ->
     %% Value wasn't specified and not enterprise
     ignore;
 parse_validate_history_param_inner(_Key, undefined = _Value, _IsEnterprise,
-                                   false = _IsCompat, _IsNew, _IsMagma,
-                                   _ValidatorFn) ->
-    %% Value wasn't specified and not 7.2
-    ignore;
-parse_validate_history_param_inner(_Key, undefined = _Value, _IsEnterprise,
-                                   _IsCompat, _IsNew, false = _IsMagma,
+                                   _IsNew, false = _IsMagma,
                                    _ValidatorFn) ->
     %% Value wasn't specified and not magma
     ignore;
 parse_validate_history_param_inner(Key, _Value, false = _IsEnterprise,
-                                   _IsCompat, _IsNew, _IsMagma, _ValidatorFn) ->
+                                   _IsNew, _IsMagma, _ValidatorFn) ->
     {error, Key,
         <<"History Retention is supported in enterprise edition only">>};
-parse_validate_history_param_inner(Key, _Value, _IsEnterprise,
-                                   false = _IsCompat, _IsNew, _IsMagma,
-                                   _ValidatorFn) ->
-    {error, Key,
-        <<"History Retention cannot be set until the cluster is fully 7.2">>};
 parse_validate_history_param_inner(Key, _Value, true = _IsEnterprise,
-                                   true = _IsCompat, _IsNew, false = _IsMagma,
-                                   _ValidatorFn) ->
+                                   _IsNew, false = _IsMagma, _ValidatorFn) ->
     {error, Key,
         <<"History Retention can only used with Magma">>};
 parse_validate_history_param_inner(_Key, Value, true = _IsEnterprise,
-                                   true = _IsCompat, IsNew, true = _IsMagma,
-                                   ValidatorFn) ->
+                                   IsNew, true = _IsMagma, ValidatorFn) ->
     ValidatorFn(Value, IsNew).
 
 do_parse_validate_history_retention_numeric(Key, Val, Min, Max) ->
@@ -3436,26 +3412,26 @@ do_parse_validate_history_retention_bool(Key, Val) ->
             {error, Key, <<"Value must be true or false">>}
     end.
 
-parse_validate_magma_key_tree_data_blocksize(Params, BucketConfig, Version,
-                                             IsNew, IsEnterprise,
+parse_validate_magma_key_tree_data_blocksize(Params, BucketConfig, IsNew,
+                                             IsEnterprise,
                                              IsStorageModeMigration) ->
     UserKey = magmaKeyTreeDataBlockSize,
     MagmaDataBlockSize = proplists:get_value(atom_to_list(UserKey), Params),
     Ret = parse_validate_magma_data_blocksize(
-            UserKey, MagmaDataBlockSize, Params, BucketConfig, IsNew, Version,
+            UserKey, MagmaDataBlockSize, Params, BucketConfig, IsNew,
             IsEnterprise, IsStorageModeMigration,
             integer_to_list(?MAGMA_KEY_TREE_DATA_BLOCKSIZE),
             ?MIN_MAGMA_KEY_TREE_DATA_BLOCKSIZE,
             ?MAX_MAGMA_KEY_TREE_DATA_BLOCKSIZE),
     remap_user_key_to_internal_key_if_valid(Ret, magma_key_tree_data_blocksize).
 
-parse_validate_magma_seq_tree_data_blocksize(Params, BucketConfig, Version,
-                                             IsNew, IsEnterprise,
+parse_validate_magma_seq_tree_data_blocksize(Params, BucketConfig, IsNew,
+                                             IsEnterprise,
                                              IsStorageModeMigration) ->
     UserKey = magmaSeqTreeDataBlockSize,
     MagmaDataBlockSize = proplists:get_value(atom_to_list(UserKey), Params),
     Ret = parse_validate_magma_data_blocksize(
-            UserKey, MagmaDataBlockSize, Params, BucketConfig, IsNew, Version,
+            UserKey, MagmaDataBlockSize, Params, BucketConfig, IsNew,
             IsEnterprise, IsStorageModeMigration,
             integer_to_list(?MAGMA_SEQ_TREE_DATA_BLOCKSIZE),
             ?MIN_MAGMA_SEQ_TREE_DATA_BLOCKSIZE,
@@ -3463,13 +3439,11 @@ parse_validate_magma_seq_tree_data_blocksize(Params, BucketConfig, Version,
     remap_user_key_to_internal_key_if_valid(Ret, magma_seq_tree_data_blocksize).
 
 parse_validate_magma_data_blocksize(Key, Value, Params, BucketConfig, IsNew,
-                                    Version, IsEnterprise,
-                                    IsStorageModeMigration, DefaultVal, MinVal,
-                                    MaxVal) ->
-    IsCompat = cluster_compat_mode:is_version_72(Version),
+                                    IsEnterprise, IsStorageModeMigration,
+                                    DefaultVal, MinVal, MaxVal) ->
     IsMagma = is_magma(Params, BucketConfig, IsNew, IsStorageModeMigration),
     parse_validate_magma_data_blocksize_inner(
-      Key, Value, IsEnterprise, IsCompat, IsNew, IsMagma,
+      Key, Value, IsEnterprise, IsNew, IsMagma,
       fun (Val, New) ->
               validate_with_missing(
                 Val, DefaultVal, New,
@@ -3490,39 +3464,27 @@ do_parse_validate_magma_data_blocksize(Key, Val, Min, Max) ->
     end.
 
 parse_validate_magma_data_blocksize_inner(_Key, undefined = _Value,
-                                          false = _IsEnterprise, _IsCompat,
-                                          _IsNew, _IsMagma, _ValidatorFn) ->
+                                          false = _IsEnterprise, _IsNew,
+                                          _IsMagma, _ValidatorFn) ->
     %% Value wasn't specified and not enterprise
     ignore;
 parse_validate_magma_data_blocksize_inner(_Key, undefined = _Value,
-                                          _IsEnterprise, false = _IsCompat,
-                                          _IsNew, _IsMagma, _ValidatorFn) ->
-    %% Value wasn't specified and not 7.2
-    ignore;
-parse_validate_magma_data_blocksize_inner(_Key, undefined = _Value,
-                                          _IsEnterprise, _IsCompat, _IsNew,
+                                          _IsEnterprise, _IsNew,
                                           false = _IsMagma, _ValidatorFn) ->
     %% Value wasn't specified and not magma
     ignore;
 parse_validate_magma_data_blocksize_inner(Key, _Value, false = _IsEnterprise,
-                                          _IsCompat, _IsNew, _IsMagma,
-                                          _ValidatorFn) ->
+                                          _IsNew, _IsMagma, _ValidatorFn) ->
     {error, Key,
      <<"Magma data blocksize is supported in enterprise edition only">>};
-parse_validate_magma_data_blocksize_inner(Key, _Value, _IsEnterprise,
-                                          false = _IsCompat, _IsNew, _IsMagma,
-                                          _ValidatorFn) ->
-    {error, Key,
-     <<"Magma data blocksize cannot be set until the cluster is fully "
-       "running 7.2">>};
 parse_validate_magma_data_blocksize_inner(Key, _Value, true = _IsEnterprise,
-                                          true = _IsCompat, _IsNew,
-                                          false = _IsMagma, _ValidatorFn) ->
+                                          _IsNew, false = _IsMagma,
+                                          _ValidatorFn) ->
     {error, Key,
      <<"Magma data blocksize can only be used with Magma">>};
 parse_validate_magma_data_blocksize_inner(_Key, Value, true = _IsEnterprise,
-                                          true = _IsCompat, IsNew,
-                                          true = _IsMagma, ValidatorFn) ->
+                                          IsNew, true = _IsMagma,
+                                          ValidatorFn) ->
     ValidatorFn(Value, IsNew).
 
 parse_validate_dcp_connections_between_nodes(Params, _IsNew, _Is79,
