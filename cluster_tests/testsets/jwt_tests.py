@@ -1354,6 +1354,104 @@ class JWTTests(testlib.BaseTestSet):
                 expected_code=401
             )
 
+    @tag(Tag.LowUrgency)
+    def jwt_query_pluggable_ui_test(self):
+        """Test JWT authentication with Query via the pluggable UI to exercise
+        cb-on-behalf-of headers (extras: groups/roles/exp).
+        """
+        self.auth_setup()
+        self.create_test_groups()
+        self.jwks = self.load_jwks()
+        self.configure_jwt()
+
+        node = self.cluster.connected_nodes[0]
+        username = "testuser"
+
+        claims = {
+            "sub": username,
+            "groups": ["jwt_bucket_admins", "jwt_data_admins"],
+            "exp": int(time.time()) + 3600,
+            "aud": "test-audience",
+            "iss": "test-issuer",
+        }
+
+        token = self.create_token(claims)
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+
+        stmt = {"statement": f"SELECT * FROM `{self.test_bucket}` LIMIT 1"}
+
+        # Poll until Query service accepts the request through the pluggable UI
+        testlib.poll_for_condition(
+            lambda: testlib.request(
+                "POST",
+                node,
+                "/_p/query/query/service",
+                headers=headers,
+                json=stmt,
+                auth=None,
+            ).status_code
+            == 200,
+            sleep_time=1,
+            timeout=60,
+        )
+
+        # Negative case 1: expired token → expect 401
+        expired = dict(claims)
+        expired["exp"] = int(time.time()) - 3600
+        expired_token = self.create_token(expired)
+        neg_headers = {
+            "Authorization": f"Bearer {expired_token}",
+            "Content-Type": "application/json",
+        }
+        testlib.request(
+            "POST",
+            node,
+            "/_p/query/query/service",
+            headers=neg_headers,
+            json=stmt,
+            auth=None,
+            expected_code=401,
+        )
+
+        # Negative case 2: valid token but no groups → expect 401 (no perms)
+        no_groups = dict(claims)
+        no_groups.pop("groups", None)
+        no_groups_token = self.create_token(no_groups)
+        neg_headers = {
+            "Authorization": f"Bearer {no_groups_token}",
+            "Content-Type": "application/json",
+        }
+        testlib.request(
+            "POST",
+            node,
+            "/_p/query/query/service",
+            headers=neg_headers,
+            json=stmt,
+            auth=None,
+            expected_code=401,
+        )
+
+        # Negative case 3: insufficient privileges (no query_select) → 401
+        only_data_roles = dict(claims)
+        only_data_roles["groups"] = ["jwt_data_admins"]
+        only_data_roles_token = self.create_token(only_data_roles)
+        neg_headers = {
+            "Authorization": f"Bearer {only_data_roles_token}",
+            "Content-Type": "application/json",
+        }
+        testlib.request(
+            "POST",
+            node,
+            "/_p/query/query/service",
+            headers=neg_headers,
+            json=stmt,
+            auth=None,
+            expected_code=401,
+        )
+
     def external_user_test(self):
         """Test authentication with external users having different permissions.
 
