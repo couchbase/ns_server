@@ -14,7 +14,8 @@
 -include("cb_cluster_secrets.hrl").
 
 -export([handle_get/2, handle_post/2, get_settings/1, handle_drop_keys/2,
-         handle_bucket_drop_keys/2, build_bucket_encr_at_rest_info/2,
+         handle_bucket_drop_keys/2, handle_deks_drop_complete/1,
+         build_bucket_encr_at_rest_info/2,
          format_encr_at_rest_info/1, handle_force_encr/2,
          handle_bucket_force_encr/2, min_dek_rotation_interval_in_sec/0,
          min_dek_lifetime_in_sec/0, dek_interval_error/1,
@@ -337,6 +338,36 @@ handle_bucket_drop_keys(Bucket, Req) ->
                     end,
     AuditProps = fun (_Enabled,ISOTime) -> [{dropKeysDate, ISOTime}] end,
     handle_bucket_drop_keys(Bucket, ApplySettings, AuditProps, Req).
+
+handle_deks_drop_complete(Req) ->
+    validator:handle(
+        fun (Params) ->
+            DekKind = proplists:get_value(type, Params),
+            Res = case proplists:get_bool(success, Params) of
+                      true -> ok;
+                      false -> {error, proplists:get_value(description, Params)}
+                  end,
+            ok = cb_cluster_secrets:dek_drop_complete(DekKind, Res),
+            menelaus_util:reply(Req, 204)
+        end,
+        Req, json,
+        [validator:required(type, _),
+         validator:string(type, _),
+         validator:string(bucketUUID, _),
+         validator:validate_multiple(
+           fun ([TypeStr, BucketUUIDOrUndefined], State) ->
+               case cb_deks_cbauth:cbauth_key_type_to_dek_kind(
+                      TypeStr, BucketUUIDOrUndefined) of
+                   {ok, Kind} ->
+                       {ok, validator:return_value(type, Kind, State)};
+                   {error, Error} ->
+                       {ok, validator:return_error(type, Error, State)}
+               end
+           end, [type, bucketUUID], _),
+         validator:required(success, _),
+         validator:boolean(success, _),
+         validator:string(description, _),
+         validator:unsupported(_)]).
 
 handle_bucket_force_encr(Bucket, Req) ->
     ApplySettings = fun (false, Settings, Time) ->

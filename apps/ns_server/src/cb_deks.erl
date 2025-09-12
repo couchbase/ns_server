@@ -43,7 +43,9 @@
 %% Returns ok if keys are applied successfully, {error, Reason} otherwise.
 %% Must be idempotent (can be called with the same arguments multiple times).
 %% Must be lightweight in cases when keys are already applied.
--callback update_deks(dek_kind()) -> ok | {error, _}.
+-callback update_deks(dek_kind(),
+                      cb_cluster_secrets:chronicle_snapshot()) ->
+              ok | {error, _}.
 
 %% The usage (in cb_cluster_secrets sense) that a secret must have in order to
 %% be allowed to encrypt this kind of deks.
@@ -79,7 +81,9 @@
 %% Return the list of DEKs that are currently in use.
 %% Must be lightweight, as it can be called relatively often.
 %% Should include ?NULL_DEK in the returned list if there is unencrypted data.
--callback get_dek_ids_in_use(dek_kind()) -> {ok, [dek_id()]} | {error, _}.
+-callback get_dek_ids_in_use(dek_kind(),
+                             cb_cluster_secrets:chronicle_snapshot()) ->
+              {ok, [dek_id()]} | {error, _}.
 
 %% Initiate the drop procedure for a given list of DEKs.
 %% User should start getting rid of the given DEKs as soon as possible.
@@ -90,7 +94,8 @@
 %% asynchronously. When finished the user should call dek_drop_complete/2.
 %% The DEK list to drop can include ?NULL_DEK, which means that all unencrypted
 %% data should be encrypted.
--callback initiate_drop_deks(dek_kind(), [dek_id()]) ->
+-callback initiate_drop_deks(dek_kind(), [dek_id()],
+                             cb_cluster_secrets:chronicle_snapshot()) ->
              {ok, done | started} | {error, not_found | retry | _}.
 
 %% Return a chronicle snapshot that contains all the chronicle
@@ -403,8 +408,7 @@ dek_chronicle_keys_filter(Key) ->
             MembershipKeys = ns_cluster_membership:node_membership_keys(node()),
             case lists:member(Key, MembershipKeys) of
                 true ->
-                    {dek_settings_updated,
-                     [{bucketDek, UUID} || {_, UUID} <- ns_bucket:uuids()]};
+                    {dek_settings_updated, dek_cluster_kinds_list()};
                 false ->
                     ignore
             end

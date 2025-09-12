@@ -798,6 +798,8 @@ new_key_id() ->
 -spec is_valid_key_id(binary()) -> boolean().
 is_valid_key_id(Bin) -> misc:is_valid_v4uuid(Bin).
 
+%% This function is called when the DEK drop is complete by one of the entities
+%% that uses DEKs (the drop can still be in progress for other entities).
 -spec dek_drop_complete(cb_deks:dek_kind(), ok | {error, any()}) -> ok.
 dek_drop_complete(DekKind, Rv) ->
     ?MODULE ! {dek_drop_complete, DekKind, Rv},
@@ -1296,7 +1298,9 @@ handle_timer(dek_cleanup, #state{proc_type = ?NODE_PROC,
                     %% cheaper thing to do), and only if it doesn't help,
                     %% perform the drop keys precedure (which is expensive for
                     %% buckets)
+                    Snapshot = deks_config_snapshot(Kind),
                     NewStateAcc = maybe_garbage_collect_deks(Kind, false,
+                                                             Snapshot,
                                                              StateAcc),
                     {deks_to_drop(Kind, NewStateAcc), NewStateAcc}
             end
@@ -1633,21 +1637,21 @@ maybe_update_deks(Kind, OldState) ->
                     NewState = set_active(Kind, ActiveId, false, State),
                     ok = maybe_rotate_integrity_tokens(Kind, undefined,
                                                        NewState),
-                    call_set_active_cb(Kind, NewState);
+                    call_set_active_cb(Kind, Snapshot, NewState);
 
                 %% It is enabled on disk and in config:
                 true when not ShouldRotate ->
                     %% We should push it even when nothing changes in order to
                     %% handle the scenario when we crash between
                     %% set_active and SetActiveCB
-                    call_set_active_cb(Kind, State);
+                    call_set_active_cb(Kind, Snapshot, State);
 
                 %% It is disabled on disk and in config:
                 false when EncrMethod == disabled ->
                     %% We should push it even when nothing changes in order to
                     %% handle the scenario when we crash between
                     %% set_active and SetActiveCB
-                    call_set_active_cb(Kind, State);
+                    call_set_active_cb(Kind, Snapshot, State);
 
                 %% On disk it is disabled but in config it is enabled
                 %% and we already have a dek
@@ -1657,7 +1661,7 @@ maybe_update_deks(Kind, OldState) ->
                     NewState = set_active(Kind, ActiveId, true, State),
                     ok = maybe_rotate_integrity_tokens(Kind, ActiveId,
                                                        NewState),
-                    call_set_active_cb(Kind, NewState);
+                    call_set_active_cb(Kind, Snapshot, NewState);
 
                 %% On disk it is disabled but in config it is enabled
                 %% or rotation is needed
@@ -1675,7 +1679,7 @@ maybe_update_deks(Kind, OldState) ->
                             NewState = set_active(Kind, DekId, true, State),
                             ok = maybe_rotate_integrity_tokens(Kind, DekId,
                                                                NewState),
-                            call_set_active_cb(Kind, NewState);
+                            call_set_active_cb(Kind, Snapshot, NewState);
                         %% Too many DEKs and encryption is being enabled
                         %% We could not create new DEK, but should still
                         %% enable the encryption
@@ -1684,7 +1688,7 @@ maybe_update_deks(Kind, OldState) ->
                         {error, too_many_deks} when V == false ->
                             true = is_binary(ActiveId),
                             NewState = set_active(Kind, ActiveId, true, State),
-                            case call_set_active_cb(Kind, NewState) of
+                            case call_set_active_cb(Kind, Snapshot, NewState) of
                                 {ok, NewState2} ->
                                     {error, NewState2, too_many_deks};
                                 {error, NewState2, Reason} ->
@@ -1694,6 +1698,7 @@ maybe_update_deks(Kind, OldState) ->
                         %% set_active because nothing changes.
                         {error, too_many_deks} ->
                             NewState = maybe_garbage_collect_deks(Kind, false,
+                                                                  Snapshot,
                                                                   State),
                             %% Returning error to make sure we show error
                             %% in UI
@@ -1711,9 +1716,11 @@ maybe_update_deks(Kind, OldState) ->
             {ok, destroy_dek_info(Kind, OldState)}
     end.
 
--spec maybe_garbage_collect_deks(cb_deks:dek_kind(), boolean(), #state{}) ->
+-spec maybe_garbage_collect_deks(cb_deks:dek_kind(), boolean(),
+                                 chronicle_snapshot(), #state{}) ->
           #state{}.
-maybe_garbage_collect_deks(Kind, Force, #state{deks_info = DeksInfo} = State) ->
+maybe_garbage_collect_deks(Kind, Force, Snapshot,
+                           #state{deks_info = DeksInfo} = State) ->
     ShouldRun =
         case maps:find(Kind, DeksInfo) of
             {ok, #{last_deks_gc_datetime := undefined}} ->
@@ -1727,7 +1734,7 @@ maybe_garbage_collect_deks(Kind, Force, #state{deks_info = DeksInfo} = State) ->
         end,
     case ShouldRun orelse Force of
         true ->
-            case garbage_collect_deks(Kind, Force, State) of
+            case garbage_collect_deks(Kind, Force, Snapshot, State) of
                 {ok, NewState} -> NewState;
                 {error, NewState, Error} ->
                     case Error of
@@ -1746,16 +1753,18 @@ maybe_garbage_collect_deks(Kind, Force, #state{deks_info = DeksInfo} = State) ->
 
 %% Remove DEKs that are not being used anymore
 %% Also update has_unencrypted_data in state
--spec garbage_collect_deks(cb_deks:dek_kind(), boolean(), #state{}) ->
+-spec garbage_collect_deks(cb_deks:dek_kind(), boolean(), chronicle_snapshot(),
+                           #state{}) ->
           {ok, #state{}} | {error, #state{}, term()}.
-garbage_collect_deks(Kind, Force, #state{deks_info = DeksInfo} = State) ->
+garbage_collect_deks(Kind, Force, Snapshot,
+                     #state{deks_info = DeksInfo} = State) ->
     ?log_debug("Garbage collecting ~p DEKs", [Kind]),
     case maps:find(Kind, DeksInfo) of
         %% Note: we can't skip this phase even when we don't have deks
         %% (or have only one dek), because we need to update
         %% "has_unencrypted_data" info anyway
         {ok, _KindDeks} ->
-            case cb_deks:call_dek_callback(get_dek_ids_in_use, Kind, [],
+            case cb_deks:call_dek_callback(get_dek_ids_in_use, Kind, [Snapshot],
                                            #{verbose => true}) of
                 {succ, {ok, IdList}} ->
                     handle_new_dek_ids_in_use(Kind, IdList, Force, State);
@@ -1882,9 +1891,9 @@ retire_unused_deks(Kind, DekIdsInUse, #state{deks_info = DeksInfo} = State) ->
             on_deks_update(Kind, NewState)
     end.
 
--spec call_set_active_cb(cb_deks:dek_kind(), #state{}) ->
+-spec call_set_active_cb(cb_deks:dek_kind(), chronicle_snapshot(), #state{}) ->
           {ok, #state{}} | {error, #state{}, term()}.
-call_set_active_cb(Kind, #state{deks_info = DeksInfo} = State) ->
+call_set_active_cb(Kind, Snapshot, #state{deks_info = DeksInfo} = State) ->
     #{Kind := #{active_id := ActiveId,
                 deks := Keys,
                 is_enabled := IsEnabled,
@@ -1910,13 +1919,15 @@ call_set_active_cb(Kind, #state{deks_info = DeksInfo} = State) ->
             case cb_crypto:reset_dek_cache(Kind,
                                            should_update_cache(NewHash, _)) of
                 {ok, _} ->
-                    case cb_deks:call_dek_callback(update_deks, Kind, [],
+                    case cb_deks:call_dek_callback(update_deks, Kind,
+                                                   [Snapshot],
                                                    #{verbose => true}) of
                         {succ, ok} ->
                             NewKindDeks = KindDeks#{prev_deks_hash => NewHash},
                             NewDeksInfo = DeksInfo#{Kind => NewKindDeks},
                             NewState = State#state{deks_info = NewDeksInfo},
                             {ok, maybe_garbage_collect_deks(Kind, true,
+                                                            Snapshot,
                                                             NewState)};
                         {succ, {error, Reason}} ->
                             {error, State, Reason};
@@ -2607,7 +2618,7 @@ do({maybe_update_deks, Kind}, State) ->
 do({reread_bad_deks, Kind}, State) ->
     reread_bad_deks(Kind, State);
 do({garbage_collect_deks, Kind}, State) ->
-    garbage_collect_deks(Kind, false, State);
+    garbage_collect_deks(Kind, false, deks_config_snapshot(Kind), State);
 do({maybe_reencrypt_deks, K}, State) ->
     maybe_reencrypt_deks(K, State).
 
@@ -3616,7 +3627,8 @@ initiate_deks_drop(Kind, IdsToDropList0,
                      BeingDroppedSet),
     case (length(IdsToDropFinalList) > 0) andalso
          cb_deks:call_dek_callback(initiate_drop_deks, Kind,
-                                   [IdsToDropFinalList],
+                                   [IdsToDropFinalList,
+                                    deks_config_snapshot(Kind)],
                                    #{verbose => true}) of
         false ->
             %% IdsToDrop0 was not empty, but the final list is empty (we
@@ -3887,7 +3899,9 @@ calculate_dek_info(State) ->
           fun (Kind, {ResAcc, StateAcc}) ->
               %% Run gc for deks; it is usefull in case if a compaction
               %% has been run recently
-              NewStateAcc = maybe_garbage_collect_deks(Kind, false, StateAcc),
+              Snapshot = deks_config_snapshot(Kind),
+              NewStateAcc = maybe_garbage_collect_deks(Kind, false, Snapshot,
+                                                       StateAcc),
               case extract_dek_info(Kind, NewStateAcc) of
                   {ok, I} ->
                       report_data_status_stats(Kind, I),
@@ -4266,7 +4280,7 @@ import_bucket_dek_files_impl(Kind, Paths, State) ->
                                                  Snapshot, State),
         write_deks_cfg_file(NewState),
         NewState2 = on_deks_update(Kind, NewState),
-        case call_set_active_cb(Kind, NewState2) of
+        case call_set_active_cb(Kind, Snapshot, NewState2) of
             {ok, NewState3} ->
                 %% Adding reread_bad_deks job for the case if we have added deks
                 %% to state but failed to read some of them after saving it

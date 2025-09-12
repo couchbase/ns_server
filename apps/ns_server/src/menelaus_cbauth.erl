@@ -16,7 +16,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/0, sync/0, sync/1, stats/0]).
+-export([start_link/0, sync/0, sync/1, stats/0, service_to_label/1]).
 
 
 -export([init/1, handle_call/3, handle_cast/2,
@@ -446,6 +446,7 @@ build_auth_info(internal, {AuthVersion, PermissionsVersion, CcaState, Config,
     UuidCheckURL = misc:local_url(Port, "/_cbauth/getUserUuid", []),
     EUserFromCertURL = misc:local_url(Port, ?EXTRACT_USER_ENDPOINT, []),
     UserBucketsURL = misc:local_url(Port, "/_cbauth/getUserBuckets", []),
+    DeksDropCompleteURL = misc:local_url(Port, "/_cbauth/deksDropComplete", []),
     ClusterDataEncrypt = misc:should_cluster_data_be_encrypted(),
     DisableNonSSLPorts = misc:disable_non_ssl_ports(),
     TLSServices = menelaus_web_settings:services_with_security_settings(),
@@ -458,6 +459,7 @@ build_auth_info(internal, {AuthVersion, PermissionsVersion, CcaState, Config,
      {permissionsVersion, PermissionsVersion},
      {uuidCheckURL, list_to_binary(UuidCheckURL)},
      {userBucketsURL, list_to_binary(UserBucketsURL)},
+     {keysDropCompleteURL, list_to_binary(DeksDropCompleteURL)},
      {userVersion, user_version()},
      {authVersion, AuthVersion},
      {certVersion, CertVersion},

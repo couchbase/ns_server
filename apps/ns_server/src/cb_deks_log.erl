@@ -16,14 +16,14 @@
 -include("cb_cluster_secrets.hrl").
 
 -export([get_encryption_method/3,
-         update_deks/1,
+         update_deks/2,
          get_required_usage/1,
          get_deks_lifetime/2,
          get_deks_rotation_interval/2,
          get_drop_deks_timestamp/2,
          get_force_encryption_timestamp/2,
-         get_dek_ids_in_use/1,
-         initiate_drop_deks/2,
+         get_dek_ids_in_use/2,
+         initiate_drop_deks/3,
          fetch_chronicle_keys_in_txn/2,
          try_drop_dek_work/2]).
 
@@ -42,8 +42,9 @@
 get_encryption_method(_Kind, Scope, Snapshot) ->
     cb_crypto:get_encryption_method(log_encryption, Scope, Snapshot).
 
--spec update_deks(cb_deks:dek_kind()) -> ok | {error, _}.
-update_deks(logDek = Kind) ->
+-spec update_deks(cb_deks:dek_kind(),
+                  cb_cluster_secrets:chronicle_snapshot()) -> ok | {error, _}.
+update_deks(logDek = Kind, Snapshot) ->
     maybe
         %% DS can't be shared across nodes since it has atomic references, so we
         %% pass in function to allow local nodes to create DS based on same keys
@@ -78,7 +79,10 @@ update_deks(logDek = Kind) ->
         ok ?= ns_log:reencrypt_data_on_disk(),
 
         %% Reencrypt event logs
-        ok ?= event_log_server:reencrypt_data_on_disk()
+        ok ?= event_log_server:reencrypt_data_on_disk(),
+
+        %% Push the DEKs to services
+        ok ?= cb_deks_cbauth:update_deks(Kind, Snapshot)
     else
         {error, _} = Error ->
             Error;
@@ -114,9 +118,10 @@ get_drop_deks_timestamp(_Kind, Snapshot) ->
 get_force_encryption_timestamp(_Kind, Snapshot) ->
     cb_crypto:get_force_encryption_timestamp(log_encryption, Snapshot).
 
--spec get_dek_ids_in_use(cb_deks:dek_kind()) ->
+-spec get_dek_ids_in_use(cb_deks:dek_kind(),
+                         cb_cluster_secrets:chronicle_snapshot()) ->
           {ok, [cb_deks:dek_id()]} | {error, _}.
-get_dek_ids_in_use(_Kind) ->
+get_dek_ids_in_use(Kind, Snapshot) ->
     maybe
         {ok, InUseMemcached} ?= ns_memcached:get_dek_ids_in_use("@logs"),
 
@@ -136,6 +141,8 @@ get_dek_ids_in_use(_Kind) ->
 
         {ok, InUseEventLogs} ?= event_log_server:get_in_use_deks(),
 
+        {ok, InUseCbauth} ?= cb_deks_cbauth:get_key_ids_in_use(Kind, Snapshot),
+
         AllInUse = lists:map(
                       fun(undefined) ->
                               ?NULL_DEK;
@@ -143,7 +150,7 @@ get_dek_ids_in_use(_Kind) ->
                               Elem
                       end, InUseMemcached ++ InUseLocal ++ InuseBabySitter ++
                            InuseCouchDb ++ InUseRebReports ++ InUseLogs ++
-                           InUseEventLogs),
+                           InUseEventLogs ++ InUseCbauth),
         {ok, lists:usort(AllInUse)}
     else
         {error, _} = Error ->
@@ -152,9 +159,10 @@ get_dek_ids_in_use(_Kind) ->
             {error, Error}
     end.
 
--spec initiate_drop_deks(cb_deks:dek_kind(), [cb_deks:dek_id()]) ->
+-spec initiate_drop_deks(cb_deks:dek_kind(), [cb_deks:dek_id()],
+                         cb_cluster_secrets:chronicle_snapshot()) ->
           {ok, done | started} | {error, not_found | retry | _}.
-initiate_drop_deks(Kind, DekIdsToDrop) ->
+initiate_drop_deks(Kind, DekIdsToDrop, Snapshot) ->
     {ok, DS} = cb_crypto:fetch_deks_snapshot(Kind),
 
     %% Ale logger treats "undefined" as a NULL_DEK so we convert it here
@@ -207,12 +215,20 @@ initiate_drop_deks(Kind, DekIdsToDrop) ->
                         {error, lists:flatten(Errors)}
                 end
         end,
-        try_drop_dek_work(Work, Kind).
+    maybe
+        {ok, started} ?= try_drop_dek_work(Work, Kind),
+        {ok, started} ?= cb_deks_cbauth:initiate_drop_deks(Kind, DekIdsToDrop,
+                                                           Snapshot),
+        {ok, started}
+    end.
 
 -spec fetch_chronicle_keys_in_txn(cb_deks:dek_kind(), Txn :: term()) ->
           cb_cluster_secrets:chronicle_snapshot().
-fetch_chronicle_keys_in_txn(_Kind, Txn) ->
-    chronicle_compat:txn_get_many([?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY], Txn).
+fetch_chronicle_keys_in_txn(Kind, Txn) ->
+    LogsSnapshot = chronicle_compat:txn_get_many(
+                    [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY], Txn),
+    CbauthSnapshot = cb_deks_cbauth:fetch_chronicle_keys_in_txn(Kind, Txn),
+    maps:merge(LogsSnapshot, CbauthSnapshot).
 
 handle_ale_log_dek_update(CreateNewDS) ->
     Old = ale:get_global_log_deks_snapshot(),
@@ -225,7 +241,7 @@ handle_ale_log_dek_update(CreateNewDS) ->
     end.
 
 -spec try_drop_dek_work(fun(), logDek | auditDek) ->
-          {ok, start} | {error, retry}.
+          {ok, started} | {error, retry}.
 try_drop_dek_work(Work, Type) ->
     WorkProcessName = list_to_atom(?MODULE_STRING ++ "-drop-dek-" ++
                                        atom_to_list(Type)),
