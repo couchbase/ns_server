@@ -216,7 +216,7 @@ mover_inner(Parent, Bucket, VBucket,
         end,
 
     ?rebalance_debug("Beginning backfill for vbucket ~p. "
-                     "File based backfill nodes: ~0p, DCP backfill nodes: ~p",
+                     "File based backfill nodes: ~0p, DCP backfill nodes: ~0p",
                      [VBucket, FileBasedBackfillNodes, DCPBackfillNodes]),
 
     DCPFuns =
