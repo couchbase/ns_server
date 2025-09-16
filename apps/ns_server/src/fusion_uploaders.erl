@@ -33,7 +33,8 @@
          command/1,
          maybe_grab_heartbeat_info/0,
          maybe_advance_state/0,
-         config_key/0]).
+         config_key/0,
+         create_snapshot_uuid/2]).
 
 -define(GET_DELETION_STATE_TIMEOUT, ?get_timeout(get_deletion_state, 5000)).
 
@@ -783,3 +784,7 @@ fetch_fusion_stats([{BucketName, BucketConfig} | Rest], Acc) ->
             fetch_fusion_stats(
               Rest, Acc#{BucketName => maps:from_list(PerNodeInfos)})
     end.
+
+-spec create_snapshot_uuid(string() | binary(), binary()) -> string().
+create_snapshot_uuid(PlanUUID, BucketUUID) ->
+    lists:flatten(io_lib:format("~s:~s", [PlanUUID, BucketUUID])).

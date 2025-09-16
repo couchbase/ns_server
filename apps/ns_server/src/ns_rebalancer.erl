@@ -2185,7 +2185,7 @@ do_prepare_bucket_fusion_rebalance(PlanUUID, Bucket, BucketUUID, BucketConfig,
                   end
           end, {#{}, []}, MapTriples),
 
-    UUID = lists:flatten(io_lib:format("~s:~s", [PlanUUID, BucketUUID])),
+    SnapshotUUID = fusion_uploaders:create_snapshot_uuid(PlanUUID, BucketUUID),
 
     %% temporarily hardcoded
     Validity = os:system_time(second) + 60 * 60,
@@ -2209,7 +2209,7 @@ do_prepare_bucket_fusion_rebalance(PlanUUID, Bucket, BucketUUID, BucketConfig,
         end,
 
     case (catch rpc:call(NodeToQuery, ?MODULE, get_fusion_storage_snapshot,
-                         [Bucket, VBucketsToQuery, UUID, Validity],
+                         [Bucket, VBucketsToQuery, SnapshotUUID, Validity],
                          ?GET_FUSION_STORAGE_SNAPSHOT_TIMEOUT)) of
         {badrpc, Error} ->
             ?log_error("Getting fusion storage snapshot from ~p failed with ~p",
@@ -2228,12 +2228,9 @@ do_prepare_bucket_fusion_rebalance(PlanUUID, Bucket, BucketUUID, BucketConfig,
             {ok, {TargetMap, MapOptions, NodesVolumesMap, DestinationNodes}}
     end.
 
-get_fusion_storage_snapshot(Bucket, VBuckets, UUID, Validity) ->
+get_fusion_storage_snapshot(Bucket, VBuckets, SnapshotUUID, Validity) ->
     lists:map(
       fun (VBucket) ->
-              SnapshotUUID = lists:flatten(
-                               io_lib:format("~s:~p", [UUID, VBucket])),
-
               {ok, Bin} = ns_memcached:get_fusion_storage_snapshot(
                             Bucket, VBucket, SnapshotUUID, Validity),
               {VBucket, ejson:decode(Bin)}
