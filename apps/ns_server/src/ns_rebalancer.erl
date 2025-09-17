@@ -42,7 +42,6 @@
          maybe_check_expected_topology/2]).
 
 -export([wait_local_buckets_shutdown_complete/0]). % used via rpc:multicall
--export([get_fusion_storage_snapshot/4]). %% used via rpc:call
 
 -define(BAD_REPLICATORS, 2).
 -define(MAX_REPLICA_COUNT_RANGE, 5).
@@ -53,8 +52,6 @@
 -define(REBALANCER_QUERY_STATES_TIMEOUT,   ?get_timeout(query_states, 10000)).
 -define(REBALANCER_APPLY_CONFIG_TIMEOUT,   ?get_timeout(apply_config, 300000)).
 
--define(GET_FUSION_STORAGE_SNAPSHOT_TIMEOUT,
-        ?get_timeout(get_fusion_storage_snapshot, 30000)).
 %%
 %% API
 %%
@@ -2190,35 +2187,15 @@ do_prepare_bucket_fusion_rebalance(PlanUUID, Bucket, BucketUUID, BucketConfig,
     %% temporarily hardcoded
     Validity = os:system_time(second) + 60 * 60,
 
-    CurrentServers = ns_bucket:get_servers(BucketConfig),
-    NodeToQuery =
-        case lists:member(node(), CurrentServers) of
-            true ->
-                node();
-            false ->
-                %% if our node is not serving the bucket, pick a node
-                %% that does, so we can request a snapshot from it
-                case CurrentServers -- (CurrentServers -- KeepKVNodes) of
-                    [] ->
-                        %% TODO account for failover nodes???
-                        [N | _] = CurrentServers,
-                        N;
-                    [N | _] ->
-                        N
-                end
-        end,
-
     fusion_uploaders:store_snapshots_uuid(
       PlanUUID, BucketUUID, ns_bucket:get_num_vbuckets(BucketConfig)),
 
-    case (catch rpc:call(NodeToQuery, ?MODULE, get_fusion_storage_snapshot,
-                         [Bucket, VBucketsToQuery, SnapshotUUID, Validity],
-                         ?GET_FUSION_STORAGE_SNAPSHOT_TIMEOUT)) of
-        {badrpc, Error} ->
-            ?log_error("Getting fusion storage snapshot from ~p failed with ~p",
-                       [NodeToQuery, Error]),
-            {error, {failed_to_get_snapshot, NodeToQuery}};
-        Volumes ->
+    case fusion_uploaders:get_snapshots(
+           Bucket, BucketConfig, VBucketsToQuery, SnapshotUUID, Validity,
+           KeepKVNodes) of
+        {error, Error} ->
+            {error, Error};
+        {ok, Volumes} ->
             VolumesMap = maps:from_list(Volumes),
             NodesVolumesMap =
                 maps:map(
@@ -2230,14 +2207,6 @@ do_prepare_bucket_fusion_rebalance(PlanUUID, Bucket, BucketUUID, BucketConfig,
                   end, DestinationNodes),
             {ok, {TargetMap, MapOptions, NodesVolumesMap, DestinationNodes}}
     end.
-
-get_fusion_storage_snapshot(Bucket, VBuckets, SnapshotUUID, Validity) ->
-    lists:map(
-      fun (VBucket) ->
-              {ok, Bin} = ns_memcached:get_fusion_storage_snapshot(
-                            Bucket, VBucket, SnapshotUUID, Validity),
-              {VBucket, ejson:decode(Bin)}
-      end, VBuckets).
 
 -ifdef(TEST).
 prepare_rebalance_test_() ->
@@ -2258,16 +2227,15 @@ prepare_rebalance_test_() ->
           {bucket, other, props} => {[], rev}},
     {foreach,
      fun () ->
-             ok = meck:new(rpc, [unstick]),
              ok = meck:new(menelaus_web_node, [passthrough]),
              ok = meck:new(ns_config, [passthrough]),
              ok = meck:new(fusion_uploaders, [passthrough]),
              ok = meck:expect(
-                    rpc, call,
-                    fun (_, ?MODULE, get_fusion_storage_snapshot,
-                         [Bucket, VBuckets, UUID, _], _) ->
-                            [{VBucket, {[{id, {Bucket, VBucket, UUID}}]}} ||
-                                VBucket <- VBuckets]
+                    fusion_uploaders, get_snapshots,
+                    fun (Bucket, _, VBuckets, UUID, _, _) ->
+                            {ok,
+                             [{VBucket, {[{id, {Bucket, VBucket, UUID}}]}} ||
+                                 VBucket <- VBuckets]}
                     end),
              ok = meck:expect(menelaus_web_node, build_node_hostname,
                               fun (_, Node, _) -> Node end),
@@ -2277,7 +2245,6 @@ prepare_rebalance_test_() ->
                               fun (_, _, _) -> ok end)
      end,
      fun (_) ->
-             ok = meck:unload(rpc),
              ok = meck:unload(menelaus_web_node),
              ok = meck:unload(ns_config),
              ok = meck:unload(fusion_uploaders)

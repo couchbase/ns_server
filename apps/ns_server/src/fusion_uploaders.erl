@@ -36,9 +36,14 @@
          config_key/0,
          create_snapshot_uuid/2,
          get_stored_snapshot_uuids/0,
-         store_snapshots_uuid/3]).
+         store_snapshots_uuid/3,
+         get_snapshots/6]).
+
+%% used via rpc:call
+-export([do_get_snapshots/4]).
 
 -define(GET_DELETION_STATE_TIMEOUT, ?get_timeout(get_deletion_state, 5000)).
+-define(GET_SNAPSHOTS_TIMEOUT, ?get_timeout(get_snapshots, 30000)).
 
 %% incremented starting from 1 with each uploader change
 %% The purpose of Term is to help
@@ -819,3 +824,50 @@ store_snapshots_uuid(PlanUUID, BucketUUID, NumVBuckets) ->
                              end}]}
           end),
     ok.
+
+node_to_query(BucketConfig, KVNodes) ->
+    CurrentServers = ns_bucket:get_servers(BucketConfig),
+    case lists:member(node(), CurrentServers) of
+        true ->
+            node();
+        false ->
+            %% if our node is not serving the bucket, pick a node
+            %% that does, so we can request a snapshot from it
+            AliveKVNodes = ns_node_disco:only_live_nodes(KVNodes),
+            case CurrentServers -- (CurrentServers -- AliveKVNodes) of
+                [] ->
+                    undefined;
+                [N | _] ->
+                    N
+            end
+    end.
+
+do_get_snapshots(Bucket, VBuckets, SnapshotUUID, Validity) ->
+    lists:map(
+      fun (VBucket) ->
+              {ok, Bin} = ns_memcached:get_fusion_storage_snapshot(
+                            Bucket, VBucket, SnapshotUUID, Validity),
+              {VBucket, ejson:decode(Bin)}
+      end, VBuckets).
+
+get_snapshots(Bucket, BucketConfig, VBuckets, SnapshotUUID, Validity,
+              KVNodes) ->
+    case node_to_query(BucketConfig, KVNodes) of
+        undefined ->
+            ?log_error(
+               "Unable to select node for getting fusion storage snapshot for "
+               "bucket ~p", [Bucket]),
+            {error, {failed_to_get_snapshots, undefined}};
+        NodeToQuery ->
+            case (catch rpc:call(NodeToQuery, ?MODULE, do_get_snapshots,
+                                 [Bucket, VBuckets, SnapshotUUID, Validity],
+                                 ?GET_SNAPSHOTS_TIMEOUT)) of
+                {badrpc, Error} ->
+                    ?log_error(
+                       "Getting fusion storage snapshot for ~p from ~p "
+                       "failed with ~p", [Bucket, NodeToQuery, Error]),
+                    {error, {failed_to_get_snapshots, NodeToQuery}};
+                Volumes ->
+                    {ok, Volumes}
+            end
+    end.
