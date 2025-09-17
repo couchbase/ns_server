@@ -1135,21 +1135,23 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                               verify_key_count=1,
                               verify_id=lambda n: n not in dek_ids2)
 
-    def basic_aws_secret_test(self):
-        # Create an AWS key and use it to encrypt bucket, config, and secrets
-        secret_json = aws_test_secret(name='AWS Key',
-                                      usage=['bucket-encryption',
-                                             'config-encryption',
-                                             'KEK-encryption'])
-        aws_secret_id = create_secret(self.random_node(), secret_json)
+    def _basic_kms_secret_test_logic(self, secret_builder, key_name,
+                                     expected_key_type):
+        # Create a KMS key (AWS/GCP) and use it to encrypt bucket, config,
+        # and secrets
+        secret_json = secret_builder(name=key_name,
+                                     usage=['bucket-encryption',
+                                            'config-encryption',
+                                            'KEK-encryption'])
+        secret_id = create_secret(self.random_node(), secret_json)
         testlib.post_succ(self.random_node(),
-                          f'/settings/encryptionKeys/{aws_secret_id}/test')
-        kek_id = get_kek_id(self.random_node(), aws_secret_id)
+                          f'/settings/encryptionKeys/{secret_id}/test')
+        kek_id = get_kek_id(self.random_node(), secret_id)
 
-        # Create a bucket and encrypt it using AWS key:
+        # Create a bucket and encrypt it using the key
         bucket_props = {'name': self.bucket_name,
                         'ramQuota': 100,
-                        'encryptionAtRestKeyId': aws_secret_id}
+                        'encryptionAtRestKeyId': secret_id}
         self.cluster.create_bucket(bucket_props)
         bucket_uuid = self.cluster.get_bucket_uuid(self.bucket_name)
 
@@ -1157,45 +1159,45 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                       verify_key_count=1,
                                       verify_encryption_kek=kek_id)
 
-        # Use AWS key to encrypt configuration
-        set_cfg_encryption(self.random_node(), 'encryptionKey', aws_secret_id)
+        # Use this key to encrypt configuration
+        set_cfg_encryption(self.random_node(), 'encryptionKey', secret_id)
         dek_path = Path() / 'config' / 'deks'
         poll_verify_dek_files(self.cluster,
                               dek_path,
                               verify_key_count=1,
                               verify_encryption_kek=kek_id)
 
-        # Create an generated secret and encrypt it with AWS secret
+        # Create a generated secret and encrypt it with this KMS secret
         secret = cb_managed_secret(
                       name='test',
                       encrypt_with='encryptionKey',
-                      encrypt_secret_id=aws_secret_id)
+                      encrypt_secret_id=secret_id)
         cb_managed_secret_id = create_secret(self.random_node(), secret)
         verify_kek_files(self.cluster,
                          get_secret(self.random_node(), cb_managed_secret_id),
                          verify_encryption_kek=kek_id,
                          verify_key_count=1)
 
-        aws_secret = get_secret(self.random_node(), aws_secret_id)
-        verify_kek_files(self.cluster, aws_secret, verify_key_count=1,
-                         verify_key_type='awskms-symmetric')
+        initial_secret = get_secret(self.random_node(), secret_id)
+        verify_kek_files(self.cluster, initial_secret, verify_key_count=1,
+                         verify_key_type=expected_key_type)
 
         set_remove_hist_keys_interval(self.cluster, 1000)
 
-        rotate_secret(self.random_node(), aws_secret_id)
+        rotate_secret(self.random_node(), secret_id)
 
-        new_kek_id = get_kek_id(self.random_node(), aws_secret_id)
+        new_kek_id = get_kek_id(self.random_node(), secret_id)
 
         def verify_kek_ids_after_rotation():
-            s = get_secret(self.random_node(), aws_secret_id)
+            s = get_secret(self.random_node(), secret_id)
             # Verify that only one new KEK is left in chronicle and that it
-            # stored on disk
+            # is stored on disk
             verify_kek_files(self.cluster, s, verify_key_count=1,
-                             verify_key_type='awskms-symmetric')
+                             verify_key_type=expected_key_type)
             assert s['data']['storedKeyIds'][0]['id'] != kek_id, \
                    'expected different key id'
             # Verify that old KEK is not present on disk
-            verify_kek_files(self.cluster, aws_secret, verify_missing=True)
+            verify_kek_files(self.cluster, initial_secret, verify_missing=True)
 
         testlib.poll_for_condition(
             verify_kek_ids_after_rotation,
@@ -1213,7 +1215,20 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                       verify_encryption_kek=new_kek_id)
 
         # Can't delete because it is in use
-        delete_secret(self.random_node(), aws_secret_id, expected_code=400)
+        delete_secret(self.random_node(), secret_id, expected_code=400)
+
+
+    def basic_aws_secret_test(self):
+        self._basic_kms_secret_test_logic(
+            secret_builder=aws_test_secret,
+            key_name='AWS Key',
+            expected_key_type='awskms-symmetric')
+
+    def basic_gcp_secret_test(self):
+        self._basic_kms_secret_test_logic(
+            secret_builder=gcp_test_secret,
+            key_name='GCP Key',
+            expected_key_type='gcpkms-symmetric')
 
     def dek_limit_test(self):
         set_cfg_dek_limit(self.cluster, 2)
@@ -2608,6 +2623,30 @@ def aws_test_secret(name=None, usage=None, good_arn=True, creds_file=None):
             'usage': usage,
             'data': data}
 
+ # This secret does not actually go to GCP when asked encrypt or decrypt data.
+# All GCP secrets with special keyResourceId=TEST_GCP_RESOURCE_ID simply
+# encrypt data using dummy key.
+def gcp_test_secret(name=None, usage=None, creds_file=None):
+    if usage is None:
+        usage = ['bucket-encryption',
+                 'KEK-encryption',
+                 'config-encryption',
+                 'log-encryption',
+                 'audit-encryption']
+
+    if name is None:
+        name = f'Test secret {testlib.random_str(5)}'
+
+    data = {'keyResourceId': 'TEST_GCP_RESOURCE_ID'}
+
+    if creds_file is not None:
+        data['credentialsFile'] = creds_file
+
+    return {'name': name,
+            'type': 'gcpkms-symmetric-key',
+            'usage': usage,
+            'data': data}
+
 
 def write_good_aws_creds_file(node):
     path = aws_fake_creds_path(node)
@@ -2793,7 +2832,8 @@ def verify_kek_files(cluster, secret, verify_key_count=1, **kwargs):
                        f'kek count is unexpected: {count} ' \
                        f'(expected: {verify_key_count})'
             key_ids = [key['id'] for key in secret['data']['keys']]
-        elif secret['type'] == 'awskms-symmetric-key':
+        elif secret['type'] == 'awskms-symmetric-key' or \
+             secret['type'] == 'gcpkms-symmetric-key':
             key_ids = [key['id'] for key in secret['data']['storedKeyIds']]
         else:
             assert False, f'unexpected secret type: {secret["type"]}'

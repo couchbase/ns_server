@@ -71,7 +71,7 @@ func (k *gcpStoredKey) decryptMe(validateKeysProof bool, state *StoredKeysState,
 }
 
 func (k *gcpStoredKey) checkGcpTestKey() (bool, error) {
-	if k.KeyResourceId == "TEST_GCP_KEY_PATH" {
+	if k.KeyResourceId == "TEST_GCP_RESOURCE_ID" {
 		return true, nil
 	}
 	return false, nil
