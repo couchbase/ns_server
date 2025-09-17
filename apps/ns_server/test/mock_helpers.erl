@@ -298,6 +298,9 @@ janitor_agent(PidMap) ->
     meck:expect(?FUNCTION_NAME, get_src_dst_vbucket_replications,
                 fun (_, _) -> {[], []} end),
 
+    meck:expect(?FUNCTION_NAME, release_file_based_rebalance_snapshots,
+                fun (_, _) -> ok end),
+
     PidMap#{?FUNCTION_NAME => mocked}.
 
 %% auto failover for orchestrator
