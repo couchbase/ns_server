@@ -464,7 +464,8 @@ cleanup_apply_config_body(Bucket, Servers, BucketConfig, Options) ->
                                undefined_timeout)),
 
     case ns_config:read_key_fast(file_based_backfill_enabled,
-                                 ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT) of
+                                 ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT)
+        andalso ns_bucket:is_persistent(BucketConfig) of
         true ->
             %% Past or failed rebalances may leave snapshots behind, clean them
             %% up

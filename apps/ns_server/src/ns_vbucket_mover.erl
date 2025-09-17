@@ -153,7 +153,13 @@ init({Bucket, Nodes, OldMap, NewMap, ProgressCallback, RebalancePlan,
                file_based_backfill_enabled,
                ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT) of
             true ->
-                [{file_based_backfill_enabled, true}];
+                {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
+                case ns_bucket:is_persistent(BucketConfig) of
+                    true ->
+                        [{file_based_backfill_enabled, true}];
+                    false ->
+                        []
+                end;
             false ->
                 []
         end,
