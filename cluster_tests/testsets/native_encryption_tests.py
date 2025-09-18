@@ -2837,18 +2837,18 @@ def verify_bucket_dek_info(node, bucket, missing=False, **kwargs):
     r = r.json()
     nodes = r['nodes']
     info = None
-    for node in nodes:
-        if 'thisNode' in node and node['thisNode']:
-            info = node['bucketEncryptionAtRestInfo']
+    for node_info in nodes:
+        if 'thisNode' in node_info and node_info['thisNode']:
+            info = node_info['bucketEncryptionAtRestInfo']
             break
     if missing:
         assert info is None, \
                f'bucketEncryptionAtRestInfo for bucket {bucket} ' \
-               f'is present on node {node}'
+               f'is present on node {node}, all nodes info {nodes}'
     else:
         assert info is not None, \
                f'bucketEncryptionAtRestInfo for bucket {bucket} ' \
-               f'is not present on node {node}'
+               f'is not present on node {node}, all nodes info {nodes}'
     print(f'bucketEncryptionAtRestInfo for {bucket}: {info}')
     verify_dek_info(info, **kwargs)
 
