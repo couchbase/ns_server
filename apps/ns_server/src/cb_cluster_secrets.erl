@@ -3980,8 +3980,7 @@ import_dek_into_state(Kind, ToImport, OldState) ->
         %% becomes part of the deks list. Even if this node crashes, the dek
         %% will be re-read on the next start.
         write_deks_cfg_file(NewState),
-        on_deks_update(Kind, NewState),
-        {ok, NewState}
+        {ok, on_deks_update(Kind, NewState)}
     else
         {error, dek_already_exists} ->
             ?log_debug("DEK already exists, skipping import to state"),
