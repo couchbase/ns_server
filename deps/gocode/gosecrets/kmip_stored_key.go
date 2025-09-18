@@ -21,8 +21,7 @@ import (
 )
 
 type kmipStoredKey struct {
-	Name                string `json:"name"`
-	Kind                string `json:"kind"`
+	baseStoredKey
 	KmipId              string `json:"kmipId"`
 	Host                string `json:"host"`
 	Port                int    `json:"port"`
@@ -36,7 +35,6 @@ type kmipStoredKey struct {
 	decryptedPassphrase []byte `json:"-"`
 	EncryptionKeyName   string `json:"encryptionKeyName"`
 	EncryptedByKind     string `json:"encryptedByKind"`
-	CreationTime        string `json:"creationTime"`
 }
 
 // Implementation of storedKeyIface for kmip keys
@@ -62,8 +60,7 @@ func newKmipKey(name, kind, creationTime string, data []byte) (*kmipStoredKey, e
 	}
 
 	rawKeyInfo := &kmipStoredKey{
-		Name:                name,
-		Kind:                kind,
+		baseStoredKey:       baseStoredKey{Name: name, Kind: kind, CreationTime: creationTime},
 		KmipId:              decoded.KmipId,
 		Host:                decoded.Host,
 		Port:                decoded.Port,
@@ -74,18 +71,9 @@ func newKmipKey(name, kind, creationTime string, data []byte) (*kmipStoredKey, e
 		CbCaPath:            decoded.CbCaPath,
 		EncryptionApproach:  decoded.EncryptionApproach,
 		EncryptionKeyName:   decoded.EncryptionKeyName,
-		CreationTime:        creationTime,
 		decryptedPassphrase: decoded.Passphrase,
 	}
 	return rawKeyInfo, nil
-}
-
-func (k *kmipStoredKey) name() string {
-	return k.Name
-}
-
-func (k *kmipStoredKey) kind() string {
-	return k.Kind
 }
 
 func (k *kmipStoredKey) needRewrite(settings *storedKeyConfig, state *StoredKeysState, ctx *storedKeysCtx) (bool, int, error) {

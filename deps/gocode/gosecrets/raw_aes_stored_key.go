@@ -28,13 +28,11 @@ type rawAesGcmStoredKeyJson struct {
 
 // Struct represents raw aes-gcm stored key
 type rawAesGcmStoredKey struct {
-	Name              string
-	Kind              string
+	baseStoredKey
 	DecryptedKey      []byte
 	EncryptedKey      []byte
 	EncryptedByKind   string
 	EncryptionKeyName string
-	CreationTime      string
 	CanBeCached       bool
 }
 
@@ -52,22 +50,12 @@ func newAesGcmKey(name, kind, creationTime string, data []byte) (*rawAesGcmStore
 		return nil, fmt.Errorf("invalid aes key json: %s", err.Error())
 	}
 	rawKeyInfo := &rawAesGcmStoredKey{
-		Name:              name,
-		Kind:              kind,
+		baseStoredKey:     baseStoredKey{Name: name, Kind: kind, CreationTime: creationTime},
 		EncryptionKeyName: decoded.EncryptionKeyName,
-		CreationTime:      creationTime,
 		DecryptedKey:      decoded.KeyMaterial,
 		CanBeCached:       decoded.CanBeCached,
 	}
 	return rawKeyInfo, nil
-}
-
-func (k *rawAesGcmStoredKey) name() string {
-	return k.Name
-}
-
-func (k *rawAesGcmStoredKey) kind() string {
-	return k.Kind
 }
 
 func (k *rawAesGcmStoredKey) needRewrite(settings *storedKeyConfig, state *StoredKeysState, ctx *storedKeysCtx) (bool, int, error) {

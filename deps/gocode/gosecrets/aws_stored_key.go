@@ -22,15 +22,13 @@ import (
 )
 
 type awsStoredKey struct {
-	Name         string `json:"name"`
-	Kind         string `json:"kind"`
-	KeyArn       string `json:"keyArn"`
-	Region       string `json:"region"`
-	ConfigFile   string `json:"configFile"`
-	CredsFile    string `json:"credsFile"`
-	Profile      string `json:"profile"`
-	UseIMDS      bool   `jspn:"useIMDS"`
-	CreationTime string `json:"creationTime"`
+	baseStoredKey
+	KeyArn     string `json:"keyArn"`
+	Region     string `json:"region"`
+	ConfigFile string `json:"configFile"`
+	CredsFile  string `json:"credsFile"`
+	Profile    string `json:"profile"`
+	UseIMDS    bool   `jspn:"useIMDS"`
 }
 
 // Implementation of storedKeyIface for aws keys
@@ -41,9 +39,7 @@ func newAwsKey(name, kind, creationTime string, data []byte) (*awsStoredKey, err
 	if err != nil {
 		return nil, fmt.Errorf("invalid json: %v", data)
 	}
-	awsk.Name = name
-	awsk.Kind = kind
-	awsk.CreationTime = creationTime
+	awsk.baseStoredKey = baseStoredKey{Name: name, Kind: kind, CreationTime: creationTime}
 	return &awsk, nil
 }
 
