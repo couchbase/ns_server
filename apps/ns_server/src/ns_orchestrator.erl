@@ -117,6 +117,7 @@
 -define(EJECTING_ORCHESTRATOR_WAIT_TIMEOUT,
         ?get_timeout(retry_if_ejecting, 5000)).
 
+-define(ETS, ns_orchestrator_ets).
 -define(FUSION_REBALANCE_PLAN, fusion_rebalance_plan).
 
 %% gen_statem callbacks
@@ -667,7 +668,7 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 
 init([]) ->
     process_flag(trap_exit, true),
-
+    ets:new(?ETS, [named_table]),
     {ok, idle, #idle_state{}, {{timeout, janitor}, 0, run_janitor}}.
 
 handle_event({call, From}, get_state, StateName, _State) ->
@@ -753,12 +754,12 @@ handle_event({call, From}, {maybe_start_rebalance, Params},
         %% with both possible outcomes (success or failure)
         %% the plan becomes invalid so we just delete it here after it is
         %% validated and stored in parameters
-        case erlang:get(?FUSION_REBALANCE_PLAN) of
-            undefined ->
+        case ets:lookup(?ETS, ?FUSION_REBALANCE_PLAN) of
+            [] ->
                 ok;
             _ ->
                 ?rebalance_info("Delete stored rebalance plan"),
-                erlang:erase(?FUSION_REBALANCE_PLAN)
+                ets:delete(?ETS, ?FUSION_REBALANCE_PLAN)
         end,
 
         {keep_state_and_data,
@@ -1213,7 +1214,8 @@ idle({prepare_fusion_rebalance, KeepNodes}, From, _State) ->
             [] ->
                 case ns_rebalancer:prepare_fusion_rebalance(KeepNodes) of
                     {ok, {RebalancePlan, AccelerationPlan}} ->
-                        erlang:put(?FUSION_REBALANCE_PLAN, RebalancePlan),
+                        ets:insert(?ETS,
+                                   {?FUSION_REBALANCE_PLAN, RebalancePlan}),
                         {ok, AccelerationPlan};
                     {error, Error} ->
                         Error
@@ -1228,10 +1230,10 @@ idle({fusion_upload_mounted_volumes, PlanUUID, Volumes}, From, _State) ->
     RV =
         try
             RebalancePlan =
-                case erlang:get(?FUSION_REBALANCE_PLAN) of
-                    undefined ->
+                case ets:lookup(?ETS, ?FUSION_REBALANCE_PLAN) of
+                    [] ->
                         throw(not_found);
-                    RP ->
+                    [{?FUSION_REBALANCE_PLAN, RP}] ->
                         RP
                 end,
             Nodes = proplists:get_value(nodes, RebalancePlan),
@@ -1255,7 +1257,7 @@ idle({fusion_upload_mounted_volumes, PlanUUID, Volumes}, From, _State) ->
                [PreparedVolumes, PlanUUID]),
             NewPlan = lists:keystore(mountedVolumes, 1, RebalancePlan,
                                      {mountedVolumes, PreparedVolumes}),
-            erlang:put(?FUSION_REBALANCE_PLAN, NewPlan),
+            ets:insert(?ETS, {?FUSION_REBALANCE_PLAN, NewPlan}),
             ok
         catch throw:E -> E
         end,
@@ -2134,7 +2136,10 @@ validate_services(Services, NodesToEject, [], Snapshot, ServiceNodesMap) ->
     end.
 
 validate_rebalance_plan(#{keep_nodes := KeepNodes} = Params, Snapshot) ->
-    RebalancePlan = erlang:get(?FUSION_REBALANCE_PLAN),
+    RebalancePlan = case ets:lookup(?ETS, ?FUSION_REBALANCE_PLAN) of
+                        [] -> undefined;
+                        [{?FUSION_REBALANCE_PLAN, RP}] -> RP
+                    end,
     Err =
         fun (Message) ->
                 ?rebalance_info(
