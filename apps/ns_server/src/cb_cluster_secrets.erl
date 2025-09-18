@@ -45,6 +45,43 @@
 -define(MAX_RECHECK_ROTATION_INTERVAL, ?SECS_IN_DAY*1000).
 -endif.
 
+-callback prepare_new_props(CreationTime :: calendar:datetime(),
+                            ValidatedProps :: map()) -> secret_props_data().
+-callback modify_props(CurProps :: secret_props_data(),
+                       ValidatedProps :: map()) -> secret_props_data().
+-callback sanitize_props(secret_props_data()) -> secret_props_data().
+-callback persist(secret_props_data(), ExtraAD :: binary()) -> ok | {error, _}.
+-callback generate_key(calendar:datetime()) ->
+              {ok, AbstractKey :: term()} | {error, _}.
+-callback set_new_active_key_in_props(AbstractKey :: term(),
+                                      secret_props_data()) ->
+              secret_props_data().
+-callback historical_keys_to_remove_from_props(secret_props_data()) ->
+              [key_id()].
+-callback get_next_rotation_time_from_props(secret_props_data()) ->
+              calendar:datetime() | undefined.
+-callback maybe_update_next_rotation_time_in_props(
+            secret_props_data(), CurTime :: calendar:datetime()) ->
+              {ok, secret_props_data()} | no_change | {error, not_supported}.
+-callback remove_historical_key_from_props(secret_props_data(),
+                                           KeyId :: key_id()) ->
+              {ok, secret_props_data()} | {error, _}.
+-callback test_props(secret_props_data(), ExtraAD :: binary()) ->
+              ok | {error, _}.
+-callback is_encrypted_by_secret_manager(secret_props_data()) -> boolean().
+-callback get_active_key_id_from_props(secret_props_data()) ->
+              {ok, key_id()} | {error, _}.
+-callback get_all_key_ids_from_props(secret_props_data()) -> [key_id()].
+-callback get_key_ids_that_encrypt_props(secret_props_data()) -> [key_id()].
+-callback get_secret_ids_that_encrypt_props(secret_props_data()) ->
+              [secret_id()].
+-callback get_props_encryption_method(secret_props_data()) ->
+              cb_deks:encryption_method().
+-callback maybe_reencrypt_props(secret_props_data(),
+                                get_active_id_fun(),
+                                ExtraAD :: binary()) ->
+              {ok, secret_props_data()} | no_change | {error, _}.
+
 %% API
 -export([start_link_node_monitor/0,
          start_link_master_monitor/0,
@@ -86,7 +123,9 @@
          fetch_snapshot_in_txn/1,
          recalculate_deks_info/0,
          is_secret_used/2,
-         import_bucket_dek_file/3]).
+         import_bucket_dek_file/3,
+         sanitize_sensitive_data/1,
+         maybe_reencrypt_data/5]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -118,64 +157,26 @@
                 kek_hashes_on_disk = #{} :: #{secret_id() := integer()}}).
 
 -export_type([secret_id/0, key_id/0, chronicle_snapshot/0, secret_usage/0,
-              dek_encryption_counters/0]).
+              dek_encryption_counters/0, sensitive_data/0,
+              get_active_id_fun/0]).
 
+-type secret_props_data() :: cb_managed_ear_key:secret_props() |
+                             cb_aws_kms_ear_key:secret_props() |
+                             cb_kmip_ear_key:secret_props().
 -type secret_props() ::
     #{id := secret_id(),
       name := string(),
       creation_time := calendar:datetime(),
       type := secret_type(),
       usage := [secret_usage()],
-      data := cb_managed_key_data() | aws_key_data() | kmip_key_data()}.
+      data := secret_props_data()}.
 -type secret_type() :: ?CB_MANAGED_KEY_TYPE | ?AWSKMS_KEY_TYPE | ?KMIP_KEY_TYPE.
 -type secret_usage() :: {bucket_encryption, BucketUUID :: binary()} |
-                        secrets_encryption | cb_crypto:encryption_type().
--type cb_managed_key_data() :: #{can_be_cached := boolean(),
-                                 auto_rotation := boolean(),
-                                 rotation_interval_in_days := pos_integer(),
-                                 next_rotation_time := calendar:datetime(),
-                                 last_rotation_time := calendar:datetime(),
-                                 active_key_id := key_id(),
-                                 keys := [kek_props()],
-                                 encrypt_with := nodeSecretManager |
-                                                 encryptionKey,
-                                 encrypt_secret_id := secret_id() |
-                                                      ?SECRET_ID_NOT_SET}.
--type kek_props() :: #{id := key_id(),
-                       creation_time := calendar:datetime(),
-                       key_material := sensitive_data()}.
+                         secrets_encryption | cb_crypto:encryption_type().
 -type sensitive_data() :: #{type := sensitive | encrypted,
                             data := binary(),
-                            encrypted_by := undefined | {secret_id(), key_id()}}.
--type aws_key_data() :: #{key_arn := string(),
-                          region := string(),
-                          profile := string(),
-                          config_file := string(),
-                          credentials_file := string(),
-                          use_imds := boolean(),
-                          stored_ids :=
-                            [#{id := key_id(),
-                               creation_time := calendar:datetime()}],
-                          last_rotation_time := calendar:datetime()}.
--type kmip_key_data() :: #{host := string(),
-                           port := 1..65535,
-                           req_timeout_ms := integer(),
-                           key_path := string(),
-                           cert_path := string(),
-                           key_passphrase := sensitive_data(),
-                           ca_selection := use_sys_ca | use_cb_ca |
-                                           use_sys_and_cb_ca |
-                                           skip_server_cert_verification,
-                           encryption_approach := use_get | use_encrypt_decrypt,
-                           active_key := kmip_key(),
-                           hist_keys := [kmip_key()],
-                           encrypt_with := nodeSecretManager |
-                                           encryptionKey,
-                           encrypt_secret_id := secret_id() |
-                                                ?SECRET_ID_NOT_SET}.
--type kmip_key() :: #{id := key_id(),
-                      kmip_id := binary(),
-                      creation_time := calendar:datetime()}.
+                            encrypted_by := undefined |
+                                            {secret_id(), key_id()}}.
 -type secret_id() :: non_neg_integer().
 -type key_id() :: uuid().
 -type chronicle_snapshot() :: direct | map().
@@ -225,6 +226,8 @@
 -type dek_encryption_counters() ::
           #{{secret, secret_id()} | encryption_service :=
             #{cb_deks:dek_kind() := {non_neg_integer(), Rev :: integer()}}}.
+
+-type get_active_id_fun() :: fun((secret_id()) -> {ok, key_id()} | {error, _}).
 
 %%%===================================================================
 %%% API
@@ -555,14 +558,9 @@ test_internal(Props, CurProps) ->
 %% This function can be called by other nodes. Those nodes can be older than
 %% this node so this function should be backward compatible.
 -spec test_secret_props(secret_props()) -> ok | {error, _}.
-test_secret_props(#{type := ?AWSKMS_KEY_TYPE} = Props) ->
-    test_aws_kek(Props);
-test_secret_props(#{type := ?KMIP_KEY_TYPE} = Props) ->
-    test_kmip_kek(Props);
-test_secret_props(#{type := ?CB_MANAGED_KEY_TYPE} = Props) ->
-    test_cb_managed_kek(Props);
-test_secret_props(#{}) ->
-    {error, not_supported}.
+test_secret_props(#{type := T, id := SecretId, data := Data} = Props) ->
+    ?log_debug("Testing ~p secret ~p", [T, SecretId]),
+    call_module_by_type(T, test_props, [Data, secret_ad(Props)]).
 
 test_existing_secret(SecretId, Nodes) ->
     case get_secret(SecretId, direct) of
@@ -637,21 +635,8 @@ is_allowed_usage_for_secret(SecretId, Usage, Snapshot) ->
     end.
 
 -spec is_encrypted_by_secret_manager(secret_props()) -> boolean().
-is_encrypted_by_secret_manager(#{type := ?CB_MANAGED_KEY_TYPE,
-                                 data := #{encrypt_with :=
-                                               nodeSecretManager}}) ->
-    true;
-is_encrypted_by_secret_manager(#{type := ?CB_MANAGED_KEY_TYPE,
-                                 data := #{keys := Keys}}) ->
-    lists:any(fun (#{key_material := #{encrypted_by := EB}}) ->
-                  EB == undefined
-              end, Keys);
-is_encrypted_by_secret_manager(#{type := ?KMIP_KEY_TYPE,
-                                 data := #{encrypt_with :=
-                                               nodeSecretManager}}) ->
-    true;
-is_encrypted_by_secret_manager(#{}) ->
-    false.
+is_encrypted_by_secret_manager(#{type := T, data := Data}) ->
+    call_module_by_type(T, is_encrypted_by_secret_manager, [Data]).
 
 -spec get_secret_by_kek_id_map(chronicle_snapshot()) ->
                                                     #{key_id() := secret_id()}.
@@ -868,6 +853,12 @@ is_secret_used(Id, Snapshot) ->
 import_bucket_dek_file(BucketUUID, Path, Timeout) ->
     gen_server:call(?MODULE, {import_bucket_dek_file, BucketUUID, Path},
                     Timeout).
+
+-spec sanitize_sensitive_data(sensitive_data()) -> sensitive_data().
+sanitize_sensitive_data(#{type := sensitive} = Data) ->
+    Data#{data => chronicle_kv_log:masked()};
+sanitize_sensitive_data(#{type := encrypted} = Data) ->
+    Data.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -1191,6 +1182,19 @@ terminate(_Reason, _State) ->
 %%% Internal functions
 %%%===================================================================
 
+-spec module_by_type(secret_type()) -> module().
+module_by_type(?CB_MANAGED_KEY_TYPE) ->
+    cb_managed_ear_key;
+module_by_type(?AWSKMS_KEY_TYPE) ->
+    cb_aws_kms_ear_key;
+module_by_type(?KMIP_KEY_TYPE) ->
+    cb_kmip_ear_key.
+
+-spec call_module_by_type(secret_type(), atom(), [term()]) -> term().
+call_module_by_type(Type, Function, Args) ->
+    Module = module_by_type(Type),
+    erlang:apply(Module, Function, Args).
+
 -spec rotate_secret_by_id(secret_id(), boolean()) ->
           {ok, string()} |
           {error, not_found | bad_encrypt_id() |
@@ -1244,149 +1248,26 @@ test_and_rotate_secret(SecretProps) ->
                                                     inconsistent_graph() |
                                                     not_supported |
                                                     no_quorum}.
-rotate_secret(#{id := Id, type := ?CB_MANAGED_KEY_TYPE}) ->
+rotate_secret(#{id := Id, type := Type}) ->
     maybe
-        NewKey = generate_key(erlang:universaltime()),
+        {ok, NewKey} ?= call_module_by_type(Type, generate_key,
+                                            [erlang:universaltime()]),
         ok ?= add_active_key(Id, NewKey, _UpdateRotationTime = true),
         ok
     else
-        {ok, #{}} ->
-            ?log_info("Secret #~p rotation failed: not_supported", [Id]),
-            {error, not_supported};
         {error, Reason} ->
             ?log_error("Secret #~p rotation failed: ~p", [Id, Reason]),
             {error, Reason}
-    end;
-rotate_secret(#{id := Id, type := ?AWSKMS_KEY_TYPE}) ->
-    chronicle_transaction(
-      [?CHRONICLE_SECRETS_KEY],
-      fun (Snapshot) ->
-          maybe
-              {ok, #{type := ?AWSKMS_KEY_TYPE,
-                     data := #{stored_ids := StoredIds} = Data} = Props} ?=
-                  get_secret(Id, Snapshot),
-
-              Time = calendar:universal_time(),
-              NewStoredIds = [#{id => new_key_id(),
-                                creation_time => Time} | StoredIds],
-              NewData = Data#{stored_ids => NewStoredIds},
-              Updated = functools:chain(
-                          Props,
-                          [_#{data => NewData},
-                           set_last_rotation_time_in_props(_, Time),
-                           replace_secret_in_list(_,
-                                                  get_all(Snapshot))]),
-              true = is_list(Updated),
-              ok ?= validate_secrets_consistency(Updated),
-              {commit, [{set, ?CHRONICLE_SECRETS_KEY, Updated}]}
-          else
-              {error, _} = Error ->
-                  {abort, Error}
-          end
-      end);
-rotate_secret(#{type := ?KMIP_KEY_TYPE}) ->
-    {error, not_supported}.
-
--spec generate_key(Creation :: calendar:datetime()) -> kek_props().
-generate_key(CreationDateTime) ->
-    Key = generate_raw_key(?ENVELOP_CIPHER),
-    #{id => new_key_id(),
-      creation_time => CreationDateTime,
-      key_material => #{type => sensitive,
-                        data => Key,
-                        encrypted_by => undefined}}.
-
--spec set_active_key_in_props(secret_props(), key_id()) -> secret_props().
-set_active_key_in_props(#{type := ?CB_MANAGED_KEY_TYPE,
-                          data := Data} = SecretProps,
-                        KeyId) ->
-    SecretProps#{data => Data#{active_key_id => KeyId}}.
-
--spec set_keys_in_props(secret_props(), [kek_props()]) -> secret_props().
-set_keys_in_props(#{type := ?CB_MANAGED_KEY_TYPE, data := Data} = SecretProps,
-                  Keys) ->
-    SecretProps#{data => Data#{keys => Keys}}.
+    end.
 
 -spec copy_static_props(secret_props(), secret_props()) -> secret_props().
 %% Copies properties that secret can never change
 copy_static_props(#{type := Type, id := Id,
-                    creation_time := CreationDT} = OldSecretProps,
-                  #{type := Type} = NewSecretProps) ->
-    NewSecretProps2 = NewSecretProps#{id => Id, creation_time => CreationDT},
-    case NewSecretProps2 of
-        #{type := ?CB_MANAGED_KEY_TYPE} ->
-            #{data := #{active_key_id := OldActiveId, keys := Keys} = OldData} =
-                OldSecretProps,
-            LastRotationTime = maps:get(last_rotation_time, OldData, undefined),
-            functools:chain(
-              NewSecretProps2,
-              [set_keys_in_props(_, Keys),
-               set_active_key_in_props(_, OldActiveId),
-               set_last_rotation_time_in_props(_, LastRotationTime)]);
-        #{type := ?AWSKMS_KEY_TYPE} ->
-            #{data := #{stored_ids := StoredIds} = OldData} = OldSecretProps,
-            LastRotationTime = maps:get(last_rotation_time, OldData, undefined),
-            #{data := NewData} = NewSecretProps2,
-            set_last_rotation_time_in_props(
-              NewSecretProps2#{data => NewData#{stored_ids => StoredIds}},
-              LastRotationTime);
-        #{type := ?KMIP_KEY_TYPE} ->
-            #{data := #{active_key := OldActive, hist_keys := HistKeys,
-              key_passphrase := OldPassphrase}} = OldSecretProps,
-            #{data := #{active_key := Active} = NewData} = NewSecretProps2,
-            #{id := OldActiveId,
-              kmip_id := OldKmipId,
-              creation_time := OldCT} = OldActive,
-            #{kmip_id := NewKmipId} = Active,
-            {NewFound, HistKeysCleaned} =
-                misc:partitionmap(fun (#{kmip_id := I} = E)
-                                                      when I == NewKmipId ->
-                                          {left, E};
-                                      (#{} = E) ->
-                                          {right, E}
-                                  end, HistKeys),
-
-            {NewActive, NewHistKeys} =
-                case {NewKmipId == OldKmipId, NewFound} of
-                    {true, _} ->
-                        %% New active is not actually new
-                        %% Copy id and creation date from existing active key
-                        {Active#{id => OldActiveId, creation_time => OldCT},
-                         HistKeys};
-                    {false, []} ->
-                        %% We have absolutely new active key
-                        %% Generate new uuid for it and set now as its creation
-                        %% time
-                        {Active#{id => new_key_id(),
-                                 creation_time => erlang:universaltime()},
-                         [OldActive | HistKeys]};
-                    {false, [PrevNew]} ->
-                        %% New active key doesn't match current active key,
-                        %% but it is present in history keys.
-                        %% Restore the existing key as active by copying its id
-                        %% and creation date and remove it from the list of
-                        %% history keys)
-                        ExistingKeyId = maps:get(id, PrevNew),
-                        ExistingKeyCT = maps:get(creation_time, PrevNew),
-                        {Active#{id => ExistingKeyId,
-                                 creation_time => ExistingKeyCT},
-                         [OldActive | HistKeysCleaned]}
-                end,
-            KP =
-                case maps:find(key_passphrase, NewData) of
-                    error ->
-                        OldPassphrase;
-                    {ok, NewHiddenPass} ->
-                        #{type => sensitive,
-                          data => ?UNHIDE(NewHiddenPass),
-                          encrypted_by => undefined}
-                end,
-            NewSecretProps2#{data => NewData#{active_key => NewActive,
-                                              hist_keys => NewHistKeys,
-                                              key_passphrase => KP}};
-        _ ->
-            NewSecretProps2
-    end.
+                    creation_time := CreationDT,
+                    data := OldData},
+                  #{type := Type, data := NewData} = NewSecretProps) ->
+    UpdatedData = call_module_by_type(Type, modify_props, [OldData, NewData]),
+    NewSecretProps#{id => Id, creation_time => CreationDT, data => UpdatedData}.
 
 -spec replace_secret_in_list(secret_props(), [secret_props()]) ->
                                                       [secret_props()] | false.
@@ -1401,26 +1282,22 @@ replace_secret_in_list(NewProps, List) ->
                  end,
     ReplaceFun(List, []).
 
--spec add_active_key(secret_id(), kek_props(), boolean()) ->
+-spec add_active_key(secret_id(), term(), boolean()) ->
                         ok | {error, not_found | inconsistent_graph() |
                                      encryption_service:stored_key_error() |
                                      bad_encrypt_id() | no_quorum}.
-add_active_key(Id, #{id := KekId} = Kek,
-               true = _UpdateRotationTime) ->
+add_active_key(Id, Key, true = _UpdateRotationTime) ->
     chronicle_transaction(
       [?CHRONICLE_SECRETS_KEY],
       fun (Snapshot) ->
           maybe
-              {ok, #{type := ?CB_MANAGED_KEY_TYPE,
+              {ok, #{type := Type,
                      data := SecretData} = SecretProps} ?=
                   get_secret(Id, Snapshot),
-              #{keys := CurKeks} = SecretData,
-              Time = calendar:universal_time(),
-              Updated = functools:chain(
-                          SecretProps,
-                          [set_keys_in_props(_, [Kek | CurKeks]),
-                           set_active_key_in_props(_, KekId),
-                           set_last_rotation_time_in_props(_, Time)]),
+              UpdatedData = call_module_by_type(Type,
+                                                set_new_active_key_in_props,
+                                                [Key, SecretData]),
+              Updated = SecretProps#{data => UpdatedData},
               {ok, FinalProps} ?= ensure_secret_encrypted_txn(Updated,
                                                               Snapshot),
               NewList = replace_secret_in_list(FinalProps,
@@ -1454,14 +1331,10 @@ ensure_all_keks_on_disk(#state{kek_hashes_on_disk = Vsns} = State, Snapshot) ->
           {{error, term()}, Hashes} when Hashes :: #{secret_id() => integer()},
                                          Snapshot :: chronicle_snapshot().
 persist_keks(Hashes, Snapshot) ->
-    Write = fun (#{type := ?CB_MANAGED_KEY_TYPE} = SecretProps)  ->
-                    ensure_cb_managed_keks_on_disk(SecretProps, false);
-                (#{type := ?AWSKMS_KEY_TYPE} = SecretProps) ->
-                    ensure_aws_kek_on_disk(SecretProps, false);
-                (#{type := ?KMIP_KEY_TYPE} = SecretProps) ->
-                    ensure_kmip_kek_on_disk(SecretProps, false);
-                (#{}) ->
-                    ok
+    Write = fun (#{type := T, id := SecretId, data := D} = S) ->
+                    ?log_debug("Ensure all keys are on disk for secret ~p ",
+                               [SecretId]),
+                    call_module_by_type(T, persist, [D, secret_ad(S)])
             end,
 
     {ok, AllSecrets} = topologically_sorted_secrets(get_all(Snapshot)),
@@ -1483,142 +1356,6 @@ persist_keks(Hashes, Snapshot) ->
     IdsDoNotExist = maps:keys(NewHashes) -- proplists:get_keys(RV),
     {misc:many_to_one_result(RV), maps:without(IdsDoNotExist, NewHashes)}.
 
--spec test_cb_managed_kek(secret_props()) -> ok | {error, _}.
-test_cb_managed_kek(#{data := Data = #{keys := Keys}} = Secret) ->
-    {ok, ActiveKeyId} = get_active_key_id_from_secret(Secret),
-    FilteredKeys = lists:filter(fun (#{id := Id}) -> Id == ActiveKeyId end,
-                                Keys),
-    SecretWithoutHistKeys = Secret#{data => Data#{keys => FilteredKeys}},
-    maybe
-        {ok, Encrypted} ?= ensure_secret_encrypted_txn(SecretWithoutHistKeys,
-                                                       direct),
-        ok ?= ensure_cb_managed_keks_on_disk(Encrypted, true)
-    else
-        {error, [{_, Reason}]} -> {error, Reason};
-        {error, _} = E -> E
-    end.
-
--spec ensure_cb_managed_keks_on_disk(secret_props(), boolean()) ->
-          ok | {error, list()}.
-ensure_cb_managed_keks_on_disk(#{type := ?CB_MANAGED_KEY_TYPE, id := SecretId,
-                                 data := #{keys := Keys,
-                                           can_be_cached := CanBeCached}} =
-                                                                    Secret,
-                               TestOnly) ->
-    ?log_debug("Ensure all keys are on disk for secret ~p "
-               "(number of keys to check: ~b)", [SecretId, length(Keys)]),
-    Res = lists:map(fun (#{id := Id} = K) ->
-                        {Id, ensure_kek_on_disk(K, secret_ad(Secret),
-                                                CanBeCached, TestOnly)}
-                    end, Keys),
-    misc:many_to_one_result(Res).
-
--spec ensure_kek_on_disk(kek_props(), binary(), boolean(), boolean()) ->
-          ok | {error, _}.
-ensure_kek_on_disk(#{id := Id,
-                     key_material := #{type := sensitive, data := Key,
-                                       encrypted_by := undefined},
-                     creation_time := CreationTime},
-                   _, CanBeCached, TestOnly) ->
-    encryption_service:store_kek(Id, Key, undefined, CreationTime, CanBeCached,
-                                 TestOnly);
-ensure_kek_on_disk(#{id := Id,
-                     key_material := #{type := encrypted, data := EncryptedKey,
-                                       encrypted_by := {_ESecretId, EKekId}},
-                     creation_time := CreationTime} = KeyProps, SecretAD,
-                   CanBeCached, TestOnly) ->
-    AD = cb_managed_key_ad(SecretAD, KeyProps),
-    maybe
-        {ok, Key} ?= encryption_service:decrypt_key(EncryptedKey, AD, EKekId),
-        encryption_service:store_kek(Id, Key, EKekId, CreationTime,
-                                     CanBeCached, TestOnly)
-    end.
-
--spec test_aws_kek(secret_props()) -> ok | {error, _}.
-test_aws_kek(#{data := #{stored_ids := [StoredId | _]} = Data} = Secret) ->
-    %% We don't want to test all stored ids
-    SecretWithoutHistKeys = Secret#{data => Data#{stored_ids => [StoredId]}},
-    case ensure_aws_kek_on_disk(SecretWithoutHistKeys, true) of
-        ok -> ok;
-        {error, [{_, Reason}]} -> {error, Reason};
-        {error, _} = E -> E
-    end.
-
--spec ensure_aws_kek_on_disk(secret_props(), boolean()) -> ok | {error, _}.
-ensure_aws_kek_on_disk(#{id := SecretId,
-                         data := #{stored_ids := StoredIds} = Data},
-                       TestOnly) ->
-    case TestOnly of
-        true ->
-            ?log_debug("Testing AWS KEK: ~p", [StoredIds]);
-        false ->
-            ?log_debug("Ensure all keys are on disk for secret ~p "
-                       "(number of keys to check: ~b)",
-                       [SecretId, length(StoredIds)])
-    end,
-    Params = maps:with([key_arn, region, profile, config_file,
-                        credentials_file, use_imds], Data),
-    Res = lists:map(
-            fun (#{id := Id, creation_time := CreationTime}) ->
-                {Id, encryption_service:store_aws_key(Id, Params, CreationTime,
-                                                      TestOnly)}
-            end, StoredIds),
-    misc:many_to_one_result(Res).
-
--spec test_kmip_kek(secret_props()) -> ok | {error, _}.
-test_kmip_kek(#{data := Data} = Secret) ->
-    %% Only testing active kmip id (the one that is being set basically)
-    SecretWithoutHistKeys = Secret#{data => Data#{hist_keys => []}},
-    maybe
-        {ok, Encrypted} ?= ensure_secret_encrypted_txn(SecretWithoutHistKeys,
-                                                       direct),
-        ok ?= ensure_kmip_kek_on_disk(Encrypted, true)
-    else
-        {error, [{_, Reason}]} -> {error, Reason};
-        {error, _} = E -> E
-    end.
-
--spec ensure_kmip_kek_on_disk(secret_props(), boolean()) -> ok | {error, _}.
-ensure_kmip_kek_on_disk(#{id := SecretId,
-                          data := #{active_key := ActiveKey,
-                                    hist_keys := OtherKeys,
-                                    key_passphrase := Pass} = Data} = Secret,
-                        TestOnly) ->
-    case TestOnly of
-        true ->
-            ?log_debug("Testing KMIP KEK: ~p", [ActiveKey]);
-        false ->
-            ?log_debug("Ensure all keys are on disk for secret ~p "
-                       "(number of keys to check: ~b)",
-                       [SecretId, length(OtherKeys) + 1])
-    end,
-    {DecryptRes, KekId} =
-        case Pass of
-            #{type := sensitive, data := D, encrypted_by := undefined} ->
-                {{ok, D}, undefined};
-            #{type := encrypted, data := ED, encrypted_by := {_, KId}} ->
-                AD = secret_ad(Secret),
-                R = encryption_service:decrypt_key(ED, AD, KId),
-                {R, KId}
-        end,
-    case DecryptRes of
-        {ok, PassData} ->
-            Common = maps:with([host, port, req_timeout_ms, key_path,
-                                cert_path, ca_selection,
-                                encryption_approach], Data),
-            Res = lists:map(
-                    fun (#{id := Id, kmip_id := KmipId,
-                           creation_time := CreationTime}) ->
-                        Params = Common#{kmip_id => KmipId,
-                                         key_passphrase => PassData},
-                        {Id, encryption_service:store_kmip_key(
-                               Id, Params, KekId, CreationTime, TestOnly)}
-                    end, [ActiveKey | OtherKeys]),
-            misc:many_to_one_result(Res);
-        {error, _} = E ->
-            E
-    end.
-
 -spec garbage_collect_keks() -> ok.
 garbage_collect_keks() ->
     AllKekIds = all_kek_ids(),
@@ -1638,26 +1375,9 @@ all_kek_ids() ->
     lists:flatmap(get_all_keys_from_props(_), get_all()).
 
 -spec prepare_new_secret(secret_props()) -> secret_props().
-prepare_new_secret(#{type := ?CB_MANAGED_KEY_TYPE,
-                     creation_time := CurrentTime} = Props) ->
-    %% Creating new cb_managed key
-    #{id := KekId} = KeyProps = generate_key(CurrentTime),
-    functools:chain(Props, [set_keys_in_props(_, [KeyProps]),
-                            set_active_key_in_props(_, KekId)]);
-prepare_new_secret(#{type := ?AWSKMS_KEY_TYPE, data := Data,
-                     creation_time := CT} = Props) ->
-    Props#{data => Data#{stored_ids => [#{id => new_key_id(),
-                                          creation_time => CT}]}};
-prepare_new_secret(#{type := ?KMIP_KEY_TYPE, data := Data,
-                     creation_time := CT} = Props) ->
-    #{active_key := AK, key_passphrase := HiddenKP} = Data,
-    KP = #{type => sensitive,
-           data => ?UNHIDE(HiddenKP),
-           encrypted_by => undefined},
-    Props#{data => Data#{active_key => AK#{id => new_key_id(),
-                                           creation_time => CT},
-                         key_passphrase => KP,
-                         hist_keys => []}}.
+prepare_new_secret(#{type := T, data := Data, creation_time := CT} = Props) ->
+    NewData = call_module_by_type(T, prepare_new_props, [CT, Data]),
+    Props#{data => NewData}.
 
 -spec reread_bad_deks(cb_deks:dek_kind(), #state{}) ->
           {ok, #state{}} | {error, #state{}, term()}.
@@ -2374,15 +2094,8 @@ deks_config_snapshot(Kind) ->
     chronicle_compat:get_snapshot([FetchDekKeysFun, FetchOtherKeysFun], #{}).
 
 -spec get_all_keys_from_props(secret_props()) -> [key_id()].
-get_all_keys_from_props(#{type := ?CB_MANAGED_KEY_TYPE,
-                          data := #{keys := Keys}}) ->
-    lists:map(fun (#{id := Id}) -> Id end, Keys);
-get_all_keys_from_props(#{type := ?AWSKMS_KEY_TYPE,
-                          data := #{stored_ids := StoredIds}}) ->
-    lists:map(fun (#{id := Id}) -> Id end, StoredIds);
-get_all_keys_from_props(#{type := ?KMIP_KEY_TYPE,
-                          data := #{active_key := AK, hist_keys := Keys}}) ->
-    lists:map(fun (#{id := Id}) -> Id end, [AK | Keys]).
+get_all_keys_from_props(#{type := T, data := Data}) ->
+    call_module_by_type(T, get_all_key_ids_from_props, [Data]).
 
 -spec validate_secret_in_txn(secret_props(), #{} | secret_props(),
                              chronicle_snapshot()) ->
@@ -2456,21 +2169,8 @@ get_secrets_encrypted_by_key_id(KeyId, Snapshot) ->
       end, get_all(Snapshot)).
 
 -spec get_kek_ids_that_encrypt_props(secret_props()) -> [key_id()].
-get_kek_ids_that_encrypt_props(#{type := ?CB_MANAGED_KEY_TYPE,
-                                 data := #{keys := Keys}}) ->
-    lists:filtermap(fun (#{key_material := #{encrypted_by := {_, KekId}}}) ->
-                            {true, KekId};
-                        (#{key_material := #{encrypted_by := undefined}}) ->
-                            false
-                    end, Keys);
-get_kek_ids_that_encrypt_props(#{type := ?AWSKMS_KEY_TYPE}) ->
-    [];
-get_kek_ids_that_encrypt_props(#{type := ?KMIP_KEY_TYPE,
-                                 data := #{key_passphrase := KP}}) ->
-    case KP of
-        #{encrypted_by := {_, KekId}} -> [KekId];
-        #{encrypted_by := undefined} -> []
-    end.
+get_kek_ids_that_encrypt_props(#{type := T, data := Data}) ->
+    call_module_by_type(T, get_key_ids_that_encrypt_props, [Data]).
 
 -spec get_secrets_used_by_secret_id(secret_id(), chronicle_snapshot()) ->
                                                                 [secret_id()].
@@ -2484,30 +2184,8 @@ get_secrets_used_by_secret_id(SecretId, Snapshot) ->
       end, get_all(Snapshot)).
 
 -spec get_secrets_that_encrypt_props(secret_props()) -> [secret_id()].
-get_secrets_that_encrypt_props(#{type := ?CB_MANAGED_KEY_TYPE,
-                                 data := #{keys := Keys} = Data}) ->
-    L = case Data of
-            #{encrypt_with := encryptionKey, encrypt_secret_id := Id} -> [Id];
-            #{} -> []
-        end ++
-        lists:filtermap(
-          fun (#{key_material := #{encrypted_by := {Id, _}}}) -> {true, Id};
-              (#{key_material := #{encrypted_by := undefined}}) -> false
-          end, Keys),
-    lists:uniq(L);
-get_secrets_that_encrypt_props(#{type := ?AWSKMS_KEY_TYPE}) ->
-    [];
-get_secrets_that_encrypt_props(#{type := ?KMIP_KEY_TYPE,
-                                 data := #{key_passphrase := KP} = Data}) ->
-    L = case Data of
-            #{encrypt_with := encryptionKey, encrypt_secret_id := Id} -> [Id];
-            #{} -> []
-        end ++
-        case KP of
-            #{encrypted_by := {Id, _}} -> [Id];
-            #{encrypted_by := undefined} -> []
-        end,
-    lists:uniq(L).
+get_secrets_that_encrypt_props(#{type := T, data := Data}) ->
+    call_module_by_type(T, get_secret_ids_that_encrypt_props, [Data]).
 
 -spec get_dek_kinds_used_by_secret_id(secret_id(), chronicle_snapshot()) ->
                                                         [cb_deks:dek_kind()].
@@ -2517,17 +2195,8 @@ get_dek_kinds_used_by_secret_id(Id, Snapshot) ->
 
 -spec get_active_key_id_from_secret(secret_props()) -> {ok, key_id()} |
                                                        {error, not_supported}.
-get_active_key_id_from_secret(#{type := ?CB_MANAGED_KEY_TYPE,
-                                data := #{active_key_id := Id}}) ->
-    {ok, Id};
-get_active_key_id_from_secret(#{type := ?AWSKMS_KEY_TYPE,
-                                data := #{stored_ids := [#{id := Id} | _]}}) ->
-    {ok, Id};
-get_active_key_id_from_secret(#{type := ?KMIP_KEY_TYPE,
-                                data := #{active_key := #{id := Id}}}) ->
-    {ok, Id};
-get_active_key_id_from_secret(#{}) ->
-    {error, not_supported}.
+get_active_key_id_from_secret(#{type := T, data := Data}) ->
+    call_module_by_type(T, get_active_key_id_from_props, [Data]).
 
 -spec maybe_reencrypt_secrets() -> ok | {error, no_quorum}.
 maybe_reencrypt_secrets() ->
@@ -2594,72 +2263,18 @@ ensure_secret_encrypted_txn(Props, Snapshot) ->
                                  fun ((secret_id()) -> key_id())) ->
           false | {true, secret_props()} |
           {error, encryption_service:stored_key_error() | bad_encrypt_id()}.
-maybe_reencrypt_secret_txn(#{type := ?CB_MANAGED_KEY_TYPE} = Secret,
-                           GetActiveId) ->
-    #{data := #{keys := Keys} = Data} = Secret,
-    case maybe_reencrypt_keks(Keys, Secret, GetActiveId) of
-        {ok, NewKeks} -> {true, Secret#{data => Data#{keys => NewKeks}}};
+maybe_reencrypt_secret_txn(#{type := T, data := Data} = Secret, GetActiveId) ->
+    case call_module_by_type(T, maybe_reencrypt_props,
+                             [Data, GetActiveId, secret_ad(Secret)]) of
+        {ok, NewData} -> {true, Secret#{data => NewData}};
         no_change -> false;
         {error, _} = Error -> Error
-    end;
-maybe_reencrypt_secret_txn(#{type := ?KMIP_KEY_TYPE} = Secret, GetActiveId) ->
-    #{data := Data} = Secret,
-    Pass = maps:get(key_passphrase, Data),
-    EncryptBy = maps:get(encrypt_with, Data, undefined),
-    SecretId = maps:get(encrypt_secret_id, Data, undefined),
-    AD = secret_ad(Secret),
-
-    case maybe_reencrypt_data(Pass, AD, EncryptBy, SecretId, GetActiveId) of
-        {ok, NewPass} ->
-            {true, Secret#{data => Data#{key_passphrase => NewPass}}};
-        no_change ->
-            false;
-        {error, E} ->
-            {error, E}
-    end;
-maybe_reencrypt_secret_txn(#{}, _) ->
-    false.
-
--spec maybe_reencrypt_keks([kek_props()], secret_props(),
-                           fun ((secret_id()) -> key_id())) ->
-          {ok, [kek_props()]} | no_change |
-          {error, encryption_service:stored_key_error() | bad_encrypt_id()}.
-maybe_reencrypt_keks(Keys, #{data := SecretData} = Secret, GetActiveId) ->
-    try
-        EncryptBy = maps:get(encrypt_with, SecretData, undefined),
-        SecretId = maps:get(encrypt_secret_id, SecretData, undefined),
-
-        RV = lists:mapfoldl(
-               fun (#{key_material := KeyData} = Key,Acc) ->
-                   SecretAD = secret_ad(Secret),
-                   AD = cb_managed_key_ad(SecretAD, Key),
-                   case maybe_reencrypt_data(KeyData, AD, EncryptBy, SecretId,
-                                             GetActiveId) of
-                       no_change ->
-                           {Key, Acc};
-                       {ok, NewKeyData} ->
-                           {Key#{key_material => NewKeyData}, changed};
-                       {error, _} = E ->
-                           throw(E)
-                   end
-               end, no_change, Keys),
-        case RV of
-            {NewKeyList, changed} -> {ok, NewKeyList};
-            {_, no_change} -> no_change
-        end
-    catch
-        throw:{error, _} = Error -> Error
     end.
 
 -spec secret_ad(secret_props()) -> binary().
 secret_ad(#{id := Id, type := T, creation_time := CT}) ->
     CTISO = iso8601:format(CT),
     iolist_to_binary([integer_to_binary(Id), atom_to_binary(T), CTISO]).
-
--spec cb_managed_key_ad(binary(), kek_props()) -> binary().
-cb_managed_key_ad(SecretAD, #{id := Id, creation_time := CT}) ->
-    CTISO = iso8601:format(CT),
-    iolist_to_binary([SecretAD, Id, CTISO]).
 
 -spec maybe_reencrypt_data(sensitive_data(),
                            binary(),
@@ -2917,12 +2532,8 @@ calculate_next_rotation_time(CurDateTime, Secrets) ->
     time_to_first_event(CurDateTime, Times).
 
 -spec get_rotation_time(secret_props()) -> calendar:datetime() | undefined.
-get_rotation_time(#{type := ?CB_MANAGED_KEY_TYPE,
-                    data := #{auto_rotation := true,
-                              next_rotation_time := Next}}) ->
-    Next;
-get_rotation_time(#{}) ->
-    undefined.
+get_rotation_time(#{type := T, data := Data}) ->
+    call_module_by_type(T, get_next_rotation_time_from_props, [Data]).
 
 -spec time_to_first_event(calendar:datetime(), [calendar:datetime()]) ->
           non_neg_integer().
@@ -3164,32 +2775,32 @@ restart_remove_retired_timer(#state{proc_type = ?NODE_PROC} = State) ->
     Time = calculate_next_remove_retired_time(calendar:universal_time()),
     restart_timer(remove_retired_keys, Time, State).
 
-validate_for_config_encryption(#{type := T,
-                                 data := #{encrypt_with := nodeSecretManager}},
-                               Snapshot) when T == ?CB_MANAGED_KEY_TYPE;
-                                              T == ?KMIP_KEY_TYPE ->
-    case cb_crypto:get_encryption_method(config_encryption, cluster,
-                                         Snapshot) of
-        {ok, disabled} -> {error, config_encryption_disabled};
-        {ok, _} -> ok
-    end;
-validate_for_config_encryption(#{}, _Snapshot) ->
-    ok.
+
+validate_for_config_encryption(#{type := T, data := Data}, Snapshot) ->
+    case call_module_by_type(T, get_props_encryption_method, [Data]) of
+        {secret, _} -> ok;
+        disabled -> ok;
+        encryption_service ->
+            case cb_crypto:get_encryption_method(config_encryption, cluster,
+                                                 Snapshot) of
+                {ok, disabled} -> {error, config_encryption_disabled};
+                {ok, _} -> ok
+            end
+    end.
 
 -spec validate_encryption_secret_id(secret_props(), chronicle_snapshot()) ->
                     ok | {error, bad_encrypt_id()}.
-validate_encryption_secret_id(#{type := T,
-                                data := #{encrypt_with := encryptionKey,
-                                          encrypt_secret_id := Id}},
-                              Snapshot) when T == ?CB_MANAGED_KEY_TYPE;
-                                             T == ?KMIP_KEY_TYPE ->
-    case secret_can_encrypt_secrets(Id, Snapshot) of
-        ok -> ok;
-        {error, not_found} -> {error, {encrypt_id, not_found}};
-        {error, not_allowed} -> {error, {encrypt_id, not_allowed}}
-    end;
-validate_encryption_secret_id(#{}, _Snapshot) ->
-    ok.
+validate_encryption_secret_id(#{type := T, data := Data}, Snapshot) ->
+    case call_module_by_type(T, get_props_encryption_method, [Data]) of
+        {secret, Id} ->
+            case secret_can_encrypt_secrets(Id, Snapshot) of
+                ok -> ok;
+                {error, not_found} -> {error, {encrypt_id, not_found}};
+                {error, not_allowed} -> {error, {encrypt_id, not_allowed}}
+            end;
+        disabled -> ok;
+        encryption_service -> ok
+    end.
 
 -spec secret_can_encrypt_secrets(secret_id(), chronicle_snapshot()) ->
                                         ok | {error, not_found | not_allowed}.
@@ -3292,14 +2903,13 @@ validate_if_usage_removed(Usage, NewProps, PrevProps, Fun) ->
 -spec secret_encrypts_other_secrets(secret_id(), chronicle_snapshot()) ->
                                                                     boolean().
 secret_encrypts_other_secrets(Id, Snapshot) ->
-    lists:any(fun (#{type := T,
-                     data := #{encrypt_with := encryptionKey,
-                               encrypt_secret_id := EncId}})
-                                                when T == ?CB_MANAGED_KEY_TYPE;
-                                                     T == ?KMIP_KEY_TYPE ->
-                      EncId == Id;
-                  (#{}) ->
-                      false
+    lists:any(fun (#{type := T, data := Data}) ->
+                    case call_module_by_type(T, get_props_encryption_method,
+                                             [Data]) of
+                        {secret, EncId} -> EncId == Id;
+                        disabled -> false;
+                        encryption_service -> false
+                    end
               end, get_all(Snapshot)).
 
 -spec can_secret_props_encrypt_dek_kind(secret_props(), cb_deks:dek_kind()) ->
@@ -3339,41 +2949,13 @@ update_secrets(Fun) ->
 
 -spec update_next_rotation_time(calendar:datetime(), secret_props()) ->
                                                 {value, secret_props()} | false.
-update_next_rotation_time(CurTime, #{type := ?CB_MANAGED_KEY_TYPE,
-                                     data := Data} = Secret) ->
-    case Data of
-        #{auto_rotation := true,
-          next_rotation_time := NextTime,
-          rotation_interval_in_days := IntervalInD}
-                                                when CurTime >= NextTime ->
-            NextTimeS = calendar:datetime_to_gregorian_seconds(NextTime),
-            CurTimeS = calendar:datetime_to_gregorian_seconds(CurTime),
-            IntervalS = IntervalInD * ?SECS_IN_DAY,
-            %% How many intervals to skip
-            %% This is needed for the case when the system was down for a long
-            %% time, and it's been more than 1 rotation interval since last
-            %% rotation. In other words, NewNextTime must be in future.
-            N = (CurTimeS - NextTimeS) div IntervalS + 1,
-            NewNextTimeS = NextTimeS + N * IntervalS,
-            NewNextTime = calendar:gregorian_seconds_to_datetime(NewNextTimeS),
-            NewData = Data#{next_rotation_time => NewNextTime},
-            {value, Secret#{data => NewData}};
-        #{} ->
-            false
-    end;
-update_next_rotation_time(_CurTime, #{}) ->
-    false.
-
--spec set_last_rotation_time_in_props(secret_props(),
-                                      calendar:datetime() | undefined) ->
-                                                            secret_props().
-set_last_rotation_time_in_props(Secret, undefined) ->
-    Secret;
-set_last_rotation_time_in_props(#{type := T,
-                                  data := Data} = Secret, CurUTCTime)
-                                            when T == ?CB_MANAGED_KEY_TYPE;
-                                                 T == ?AWSKMS_KEY_TYPE ->
-    Secret#{data => Data#{last_rotation_time => CurUTCTime}}.
+update_next_rotation_time(CurTime, #{type := T, data := Data} = Secret) ->
+    case call_module_by_type(T, maybe_update_next_rotation_time_in_props,
+                             [Data, CurTime]) of
+        {ok, UpdatedData} -> {value, Secret#{data => UpdatedData}};
+        no_change -> false;
+        {error, not_supported} -> false
+    end.
 
 -spec sync_with_all_node_monitors() -> ok | {error, [atom()]}.
 sync_with_all_node_monitors() ->
@@ -3427,12 +3009,11 @@ maybe_reset_deks_counters() ->
 
 -spec historical_keys_to_remove() -> [{secret_id(), cb_deks:dek_id()}].
 historical_keys_to_remove() ->
-    lists:flatmap(fun (#{id := SecretId, type := ?AWSKMS_KEY_TYPE,
-                        data := #{stored_ids := StoredIds}}) ->
-                            [{SecretId, Id} || #{id := Id} <- tl(StoredIds)];
-                        (#{}) ->
-                            []
-            end, get_all(direct)).
+    lists:flatmap(fun (#{id := SecretId, type := T, data := Data}) ->
+                      L = call_module_by_type(
+                            T, historical_keys_to_remove_from_props, [Data]),
+                      [{SecretId, Id} || Id <- L]
+                  end, get_all(direct)).
 
 -spec maybe_remove_historical_keys(#state{}) -> {ok, #state{}}.
 maybe_remove_historical_keys(State) ->
@@ -3920,22 +3501,8 @@ with_secrets_in_digraph(Secrets, Fun) ->
     end.
 
 -spec sanitize_secret(secret_props()) -> term().
-sanitize_secret(#{type := ?CB_MANAGED_KEY_TYPE, data := Data} = S) ->
-    #{keys := Keys} = Data,
-    NewKeys = lists:map(fun (#{key_material := K} = Key) ->
-                                Key#{key_material => sanitize_sensitive_data(K)}
-                        end, Keys),
-    S#{data => Data#{keys => NewKeys}};
-sanitize_secret(#{type := ?KMIP_KEY_TYPE, data := Data} = S) ->
-    #{key_passphrase := D} = Data,
-    S#{data => Data#{key_passphrase => sanitize_sensitive_data(D)}};
-sanitize_secret(#{type := ?AWSKMS_KEY_TYPE} = S) ->
-    S.
-
-sanitize_sensitive_data(#{type := sensitive} = Data) ->
-    Data#{data => chronicle_kv_log:masked()};
-sanitize_sensitive_data(#{type := encrypted} = Data) ->
-    Data.
+sanitize_secret(#{type := T, data := Data} = S) ->
+    S#{data => call_module_by_type(T, sanitize_props, [Data])}.
 
 -spec extract_dek_info(cb_deks:dek_kind(), #state{}) ->
           {ok, external_dek_info()} | {error, not_found}.
@@ -4056,42 +3623,12 @@ check_key_id_usage(KeyId, AllNodesDekInfo) ->
 
 -spec remove_historical_key_from_props(secret_props(), key_id()) ->
           {ok, secret_props()} | {error, not_found | active_key}.
-remove_historical_key_from_props(#{type := ?CB_MANAGED_KEY_TYPE,
-                                   data := Data} = Props, KeyId) ->
-    #{keys := Keys, active_key_id := ActiveId} = Data,
-    case ActiveId of
-        KeyId -> {error, active_key};
-        _ ->
-            NewKeys = lists:filter(fun(#{id := Id}) -> Id =/= KeyId end, Keys),
-            case length(NewKeys) =:= length(Keys) of
-                true -> {error, not_found};
-                false -> {ok, Props#{data => Data#{keys => NewKeys}}}
-            end
-    end;
-remove_historical_key_from_props(#{type := ?KMIP_KEY_TYPE,
-                                   data := Data} = Props, KeyId) ->
-    #{active_key := #{id := ActiveId}, hist_keys := HistKeys} = Data,
-    case ActiveId of
-        KeyId -> {error, active_key};
-        _ ->
-            NewHistKeys = lists:filter(fun(#{id := Id}) -> Id =/= KeyId end,
-                                       HistKeys),
-            case length(NewHistKeys) =:= length(HistKeys) of
-                true -> {error, not_found};
-                false -> {ok, Props#{data => Data#{hist_keys => NewHistKeys}}}
-            end
-    end;
-remove_historical_key_from_props(#{type := ?AWSKMS_KEY_TYPE,
-                                   data := Data} = Props, KeyId) ->
-    #{stored_ids := [#{id := ActiveId} | _] = StoredIds} = Data,
-    case ActiveId of
-        KeyId -> {error, active_key};
-        _ ->
-            NewStoredIds = lists:filter(fun(#{id := Id}) -> Id =/= KeyId end, StoredIds),
-            case length(NewStoredIds) =:= length(StoredIds) of
-                true -> {error, not_found};
-                false -> {ok, Props#{data => Data#{stored_ids => NewStoredIds}}}
-            end
+remove_historical_key_from_props(#{type := T, data := Data} = Props, KeyId) ->
+    maybe
+        {ok, NewData} ?= call_module_by_type(T,
+                                             remove_historical_key_from_props,
+                                             [Data, KeyId]),
+        {ok, Props#{data => NewData}}
     end.
 
 -spec calculate_dek_info(#state{}) ->
