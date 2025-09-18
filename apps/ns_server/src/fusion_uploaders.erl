@@ -532,8 +532,8 @@ process_vbucket_stats(Node, BucketName, VB, VBStats, ThisNodeUploaders, Acc) ->
             case maps:find(VB, ThisNodeUploaders) of
                 {ok, Term} ->
                     ?log_debug("Uploader ~p:~p state mismatch on ~p. Got: "
-                               "~p, Expected: ~p",
-                               [BucketName, VB, Other, {<<"enabled">>, Term}]),
+                               "~p, Expected: ~p", [BucketName, VB, Node, Other,
+                                                    {<<"enabled">>, Term}]),
                     add_stat_value(uploaders_state_mismatch, 1, Acc);
                 error ->
                     Acc
@@ -565,28 +565,33 @@ maybe_grab_heartbeat_info(_BucketName, disabled) ->
 maybe_grab_heartbeat_info(_BucketName, stopped) ->
     false;
 maybe_grab_heartbeat_info(BucketName, State) ->
-    Uploaders = ns_bucket:get_fusion_uploaders(BucketName),
-    ThisNodeUploaders = node_uploaders(node(), State, Uploaders),
-    case ns_memcached:get_fusion_uploaders_state(BucketName) of
-        {ok, {VBucketsInfo}} ->
-            case length(VBucketsInfo) =:= length(Uploaders) of
-                false ->
+    case ns_bucket:get_fusion_uploaders(BucketName) of
+        not_found ->
+            false;
+        Uploaders ->
+            ThisNodeUploaders = node_uploaders(node(), State, Uploaders),
+            case ns_memcached:get_fusion_uploaders_state(BucketName) of
+                {ok, {VBucketsInfo}} ->
+                    case length(VBucketsInfo) =:= length(Uploaders) of
+                        false ->
+                            ?log_debug(
+                               "Vbucket number mismatch for ~p:~p (memcached) "
+                               "vs ~p (config)",
+                               [BucketName, length(VBucketsInfo),
+                                length(Uploaders)]),
+                            false;
+                        true ->
+                            StatsMap = process_bucket_stats(
+                                         node(), BucketName, VBucketsInfo,
+                                         ThisNodeUploaders),
+                            {true, {BucketName, maps:to_list(StatsMap)}}
+                    end;
+                Error ->
                     ?log_debug(
-                       "Vbucket number mismatch for ~p:~p (memcached) vs "
-                       "~p (config)",
-                       [BucketName, length(VBucketsInfo), length(Uploaders)]),
-                    false;
-                true ->
-                    StatsMap = process_bucket_stats(
-                                 node(), BucketName, VBucketsInfo,
-                                 ThisNodeUploaders),
-                    {true, {BucketName, maps:to_list(StatsMap)}}
-            end;
-        Error ->
-            ?log_debug(
-               "Failure to retrieve uploaders stats for bucket ~p, Error:~p",
-               [BucketName, Error]),
-            false
+                       "Failure to retrieve uploaders stats for bucket ~p, "
+                       "Error:~p", [BucketName, Error]),
+                    false
+            end
     end.
 
 -spec maybe_advance_state() -> ok.
