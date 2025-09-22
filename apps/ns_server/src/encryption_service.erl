@@ -46,6 +46,7 @@
          store_dek/5,
          read_dek/2,
          read_dek_file/2,
+         extract_dek_id/1,
          key_path/1,
          decode_key_info/1,
          garbage_collect_keks/1,
@@ -186,9 +187,8 @@ read_dek_file(Path, VerifyProof) when is_list(Path), is_boolean(VerifyProof) ->
            cb_gosecrets_runner:read_key_file(?RUNNER, Path, VerifyProof),
            read_key_file_error, [{path, Path}]) of
         {ok, Json} ->
-            FilenameBin = iolist_to_binary(filename:basename(Path)),
-            case string:split(FilenameBin, ".key.", trailing) of
-                [DekId, _] ->
+            case extract_dek_id(Path) of
+                {ok, DekId} ->
                     case decode_dek(DekId, Json) of
                         {ok, Dek} -> {ok, Dek};
                         {error, Error} ->
@@ -196,11 +196,18 @@ read_dek_file(Path, VerifyProof) when is_list(Path), is_boolean(VerifyProof) ->
                                                 [Error]),
                             {error, {dek_decode_error, lists:flatten(Msg)}}
                     end;
-                _ ->
-                    {error, {invalid_dek_file_name, Path}}
+                {error, _} = Error ->
+                    Error
             end;
         {error, Error} ->
             {error, Error}
+    end.
+
+extract_dek_id(Path) ->
+    FilenameBin = iolist_to_binary(filename:basename(Path)),
+    case string:split(FilenameBin, ".key.", trailing) of
+        [DekId, _] -> {ok, DekId};
+        _ -> {error, {invalid_dek_file_name, Path}}
     end.
 
 decode_dek(DekId, Json) ->

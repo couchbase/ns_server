@@ -123,7 +123,7 @@
          fetch_snapshot_in_txn/1,
          recalculate_deks_info/0,
          is_secret_used/2,
-         import_bucket_dek_file/3,
+         import_bucket_dek_files/3,
          sanitize_sensitive_data/1,
          maybe_reencrypt_data/5]).
 
@@ -848,10 +848,10 @@ is_secret_used(Id, Snapshot) ->
             false
     end.
 
--spec import_bucket_dek_file(binary(), string(), timeout()) ->
+-spec import_bucket_dek_files(binary(), [file:filename()], timeout()) ->
           ok | {error, term()}.
-import_bucket_dek_file(BucketUUID, Path, Timeout) ->
-    gen_server:call(?MODULE, {import_bucket_dek_file, BucketUUID, Path},
+import_bucket_dek_files(BucketUUID, Paths, Timeout) ->
+    gen_server:call(?MODULE, {import_bucket_dek_files, BucketUUID, Paths},
                     Timeout).
 
 -spec sanitize_sensitive_data(sensitive_data()) -> sensitive_data().
@@ -984,13 +984,13 @@ handle_call({destroy_deks, DekKind, ContFun}, _From,
 handle_call(diag, _From, State) ->
     {reply, diag(State), State};
 
-handle_call({import_bucket_dek_file, BucketUUID, Path}, _From,
+handle_call({import_bucket_dek_files, BucketUUID, Paths}, _From,
             #state{proc_type = ?NODE_PROC} = State) ->
-    ?log_info("Importing DEK file: ~p for bucket ~p", [Path, BucketUUID]),
-    {Res, NewState} = import_bucket_dek_file_impl(
-                        {bucketDek, BucketUUID}, Path, State),
-    ?log_info("Import DEK file: ~p for bucket ~p finished: ~p",
-              [Path, BucketUUID, Res]),
+    ?log_info("Importing bucket ~p DEK files:~n~p", [BucketUUID, Paths]),
+    {Res, NewState} = import_bucket_dek_files_impl(
+                        {bucketDek, BucketUUID}, Paths, State),
+    ?log_info("Import bucket ~p DEK files: ~p finished: ~p",
+              [BucketUUID, Paths, Res]),
     {reply, Res, NewState};
 
 handle_call(Request, _From, State) ->
@@ -3941,67 +3941,98 @@ handle_erpc_key_test_result(Res, Nodes) ->
 call_is_writable_mfa({M, F, A}, ExtraArgs) ->
     erlang:apply(M, F, A ++ ExtraArgs).
 
--spec import_bucket_dek_file_impl(cb_deks:dek_kind(), file:filename(),
-                                  #state{}) ->
+-spec import_bucket_dek_files_impl(cb_deks:dek_kind(), [file:filename()],
+                                   #state{}) ->
           {ok, #state{}} | {{error, term()}, #state{}}.
-import_bucket_dek_file_impl(Kind, Path, State) ->
+import_bucket_dek_files_impl(_Kind, [], State) ->
+    {ok, State};
+import_bucket_dek_files_impl(Kind, Paths, State) ->
     maybe
-        %% Not requesting proof validation because this dek likely comes from
-        %% another node, while gosecrets can only validate proofs generated
-        %% by this node.
-        {ok, Dek} ?= encryption_service:read_dek_file(Path, false),
-        {ok, NewState} ?= import_dek_into_state(Kind, Dek, State),
-        {ok, NewState2} ?= call_set_active_cb(Kind, NewState),
-        %% Adding reread_bad_deks job for the case if we fail to
-        %% read the new dek after saving it.
-        {ok, add_jobs([{reread_bad_deks, Kind}], NewState2)}
+        Snapshot = deks_config_snapshot(Kind),
+        {succ, {ok, EncrMethod}} ?= call_dek_callback(
+                                      encryption_method_callback, Kind,
+                                      [node, Snapshot]),
+        {Res, NewState} = import_deks_into_state(Kind, Paths, EncrMethod,
+                                                 Snapshot, State),
+        write_deks_cfg_file(NewState),
+        NewState2 = on_deks_update(Kind, NewState),
+        case call_set_active_cb(Kind, NewState2) of
+            {ok, NewState3} ->
+                %% Adding reread_bad_deks job for the case if we have added deks
+                %% to state but failed to read some of them after saving it
+                {Res, add_jobs([{reread_bad_deks, Kind}], NewState3)};
+            {error, NewState3, Reason} ->
+                %% We have added the DEKs to state, so we can't just forget
+                %% about them now. We will continue maintaining them, and will
+                %% remove them eventually because they should not be used by
+                %% memcached
+                ?log_error("Failed to push DEKs: ~p", [Reason]),
+                NewRes = case Res of
+                             ok -> {error, Reason};
+                             {error, _} -> Res
+                         end,
+                {NewRes, add_jobs([{reread_bad_deks, Kind},
+                                   {maybe_update_deks, Kind}], NewState3)}
+        end
     else
-        {error, StateFromCallSetActive, Reason} ->
-            %% We have added the dek to state, so we can't just forget about it
-            %% now. We will continue maintaining it, and will remove it
-            %% eventually because it should not be used by memcached
-            ?log_error("Failed to set active DEK: ~p", [Reason]),
-            {{error, Reason}, add_jobs([{reread_bad_deks, Kind},
-                                        {maybe_update_deks, Kind}],
-                                       StateFromCallSetActive)};
         {error, Error} ->
             {{error, Error}, State}
     end.
 
-import_dek_into_state(Kind, ToImport, OldState) ->
-    Snapshot = deks_config_snapshot(Kind),
+-spec import_deks_into_state(cb_deks:dek_kind(), [file:filename()],
+                             cb_deks:encryption_method(), chronicle_snapshot(),
+                             #state{}) ->
+          {ok, #state{}} | {{error, term()}, #state{}}.
+import_deks_into_state(_Kind, [], _EncrMethod, _Snapshot, State) ->
+    {ok, State};
+import_deks_into_state(Kind, [Path | Tail], EncrMethod, Snapshot, State) ->
     maybe
-        {succ, {ok, EncrMethod}} ?= call_dek_callback(
-                                      encryption_method_callback, Kind,
-                                      [node, Snapshot]),
-        State = #state{deks_info = AllDeks} =
-            create_dek_info_if_does_not_exist(Kind, OldState),
-        #{Kind := #{deks := Deks} = KindDeks} = AllDeks,
-        %% Check if this dek is already in the deks list
-        DekId = maps:get(id, ToImport),
-        ok ?= case lists:search(fun (#{id := Id}) -> Id == DekId end, Deks) of
-                  false -> ok;
-                  {value, _} -> {error, dek_already_exists}
-              end,
+        {ok, NewState} ?= import_dek_into_state(Kind, Path, EncrMethod,
+                                                Snapshot, State),
+        import_deks_into_state(Kind, Tail, EncrMethod, Snapshot, NewState)
+    else
+        {error, Error} ->
+            {{error, Error}, State}
+    end.
+
+-spec import_dek_into_state(cb_deks:dek_kind(), string(),
+                            cb_deks:encryption_method(), chronicle_snapshot(),
+                            #state{}) ->
+          {ok, #state{}} | {error, term()}.
+import_dek_into_state(Kind, Path, EncrMethod, Snapshot, OldState) ->
+    maybe
+        %% Checking if this DEK is already imported before reading it.
+        %% Read is expensive, while it is likely that the same DEK will be
+        %% imported multiple times (because all from the same node vbuckets will
+        %%  normally use the same DEKs).
+        #{deks := ExistingDeks} = maps:get(Kind, OldState#state.deks_info,
+                                           #{deks => []}),
+        {ok, DekId} ?= encryption_service:extract_dek_id(Path),
+        continue ?=
+            case lists:search(fun (#{id := Id}) -> Id == DekId end,
+                              ExistingDeks) of
+                false -> continue;
+                {value, _} -> %% Stop here
+                    ?log_debug("Skipping import of DEK ~p because it already "
+                               "exists in state", [DekId]),
+                    {ok, OldState}
+            end,
+        %% Not requesting proof validation because this dek likely comes from
+        %% another node, while gosecrets can only validate proofs generated
+        %% by this node.
+        {ok, ToImport} ?= encryption_service:read_dek_file(Path, false),
         %% Put the dek into the proper folder, where other deks of this Kind
         %% are stored.
         {ok, DekId} ?= cb_deks:save_dek(Kind, ToImport, EncrMethod, Snapshot),
         %% Note that if import fails later, this key will need to be
         %% garbage-collected
         [NewDek] = cb_deks:read(Kind, [DekId]),
-        NewDeks = AllDeks#{Kind => KindDeks#{deks => [NewDek | Deks]}},
-        NewState = State#state{deks_info = NewDeks},
-        %% Update the deks config file, after this step the-dek-being-imported
-        %% becomes part of the deks list. Even if this node crashes, the dek
-        %% will be re-read on the next start.
-        write_deks_cfg_file(NewState),
-        {ok, on_deks_update(Kind, NewState)}
-    else
-        {error, dek_already_exists} ->
-            ?log_debug("DEK already exists, skipping import to state"),
-            {ok, OldState};
-        {error, Error} ->
-            {error, Error}
+        %% Update State only if we have successfully imported the DEK.
+        %% We should not create empty DEK info.
+        State = create_dek_info_if_does_not_exist(Kind, OldState),
+        #state{deks_info = AllDeks = #{Kind := KindDeks}} = State,
+        NewKindDeks = KindDeks#{deks => [NewDek | maps:get(deks, KindDeks)]},
+        {ok, State#state{deks_info = AllDeks#{Kind => NewKindDeks}}}
     end.
 
 -ifdef(TEST).

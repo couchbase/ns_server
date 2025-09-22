@@ -1620,16 +1620,14 @@ import_snapshot_deks(Bucket, VBucket) ->
         {ok, Deks} ->
             BucketUUID = ns_bucket:uuid(Bucket, direct),
             BucketPath = ns_storage_conf:this_node_bucket_dbdir(BucketUUID),
-            lists:foreach(
-              fun(Dek) ->
-                      FullPath = filename:join([BucketPath,
-                                                "snapshots",
-                                                binary_to_list(SnapshotUUID),
-                                                binary_to_list(Dek)]),
-                      ok = cb_cluster_secrets:import_bucket_dek_file(BucketUUID,
-                                                                     FullPath,
-                                                                     infinity)
-              end, Deks)
+            FullPath = ?cut(filename:join([BucketPath,
+                                           "snapshots",
+                                           binary_to_list(SnapshotUUID),
+                                           binary_to_list(_)])),
+            AllPaths = [FullPath(K) || K <- Deks],
+            ok = cb_cluster_secrets:import_bucket_dek_files(BucketUUID,
+                                                            AllPaths,
+                                                            infinity)
     end.
 
 -ifdef(TEST).
