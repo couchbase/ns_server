@@ -1397,7 +1397,7 @@ reread_bad_deks(Kind, #state{deks_info = DeksInfo} = State) ->
             State2 = State#state{deks_info = NewDeksInfo},
             State3 = case AnyNewDeks of
                          true ->
-                             {ok, _} = cb_crypto:reset_dek_cache(Kind, cleanup),
+                             {ok, _} = cb_crypto:reset_dek_cache(Kind),
                              functools:chain(
                                State2,
                                [on_deks_update(Kind, _),
@@ -1685,7 +1685,7 @@ retire_unused_deks(Kind, DekIdsInUse, #state{deks_info = DeksInfo} = State) ->
             %% because when retried the job will do nothing anyway (because
             %% state doesn't have those deks)
             encryption_service:garbage_collect_keys(Kind, NewDekIdsInUse),
-            {ok, _} = cb_crypto:reset_dek_cache(Kind, cleanup),
+            {ok, _} = cb_crypto:reset_dek_cache(Kind),
             on_deks_update(Kind, NewState)
     end.
 
@@ -1705,10 +1705,7 @@ call_set_active_cb(Kind, #state{deks_info = DeksInfo} = State) ->
                 ActiveKey;
             false -> undefined
         end,
-    NewHash = erlang:phash2(
-                {IsEnabled, ActiveId,
-                 lists:map(fun (#{id := Id, type := T}) -> {Id, T} end, Keys)},
-                ?MAX_PHASH2_RANGE),
+    NewHash = deks_hash(IsEnabled, ActiveId, Keys),
     case NewActiveKey of
         ?DEK_ERROR_PATTERN(_, _) ->
             {error, State, active_key_not_available};
@@ -1717,7 +1714,8 @@ call_set_active_cb(Kind, #state{deks_info = DeksInfo} = State) ->
                        "set_active_key_callback", [Kind]),
             {ok, State};
         _ ->
-            case cb_crypto:reset_dek_cache(Kind, {new_active, NewActiveKey}) of
+            case cb_crypto:reset_dek_cache(Kind,
+                                           should_update_cache(NewHash, _)) of
                 {ok, _} ->
                     case call_dek_callback(set_active_key_callback, Kind,
                                            [NewActiveKey]) of
@@ -1736,6 +1734,24 @@ call_set_active_cb(Kind, #state{deks_info = DeksInfo} = State) ->
                     {error, State, Reason}
             end
     end.
+
+deks_hash(IsEnabled, ActiveId, Keys) ->
+    %% Note: Here we assume that id and type uniquely identify the key, so
+    %% we are not using the key material itself.
+    %% Type is needed to identify the keys that are not actually available
+    %% (e.g. read errors).
+    Ids = lists:map(fun (#{id := Id, type := T}) -> {Id, T} end, Keys),
+    erlang:phash2({IsEnabled, ActiveId, lists:sort(Ids)}, ?MAX_PHASH2_RANGE).
+
+should_update_cache(NewHash, CachedDEKSnapshot) ->
+    {ActiveKey, AllKeys} = cb_crypto:get_all_deks(CachedDEKSnapshot),
+
+    OldHash = case ActiveKey of
+                  undefined -> deks_hash(false, undefined, AllKeys);
+                  #{id := Id} -> deks_hash(true, Id, AllKeys)
+              end,
+
+    NewHash =/= OldHash.
 
 -spec maybe_rotate_integrity_tokens(cb_deks:dek_kind(),
                                     cb_deks:dek_id() | undefined,
@@ -3935,7 +3951,6 @@ import_bucket_dek_file_impl(Kind, Path, State) ->
         %% by this node.
         {ok, Dek} ?= encryption_service:read_dek_file(Path, false),
         {ok, NewState} ?= import_dek_into_state(Kind, Dek, State),
-        {ok, _} ?= cb_crypto:reset_dek_cache(Kind, cleanup),
         {ok, NewState2} ?= call_set_active_cb(Kind, NewState),
         %% Adding reread_bad_deks job for the case if we fail to
         %% read the new dek after saving it.

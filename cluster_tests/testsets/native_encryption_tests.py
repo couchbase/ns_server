@@ -474,7 +474,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Cache reset should fail if it can't read keys from disk
         testlib.diag_eval(
           self.sm_node,
-          '{ok, changed} = cb_crypto:reset_dek_cache(configDek, cleanup).')
+          '{ok, changed} = cb_crypto:reset_dek_cache(configDek).')
 
     def change_SM_config_test(self):
         data = testlib.random_str(8)

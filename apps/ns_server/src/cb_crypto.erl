@@ -61,6 +61,7 @@
          active_key_ok/1,
          all_keys_ok/1,
          create_deks_snapshot/3,
+         reset_dek_cache/1,
          reset_dek_cache/2,
          get_all_deks/1,
          get_dek_id/1,
@@ -757,10 +758,13 @@ create_deks_snapshot(ActiveDek, AllDeks, PrevDekSnapshot) ->
                   all_keys = lists:map(GetKey, AllDeks),
                   created_at = calendar:universal_time()}.
 
+reset_dek_cache(DekKind) ->
+    reset_dek_cache(DekKind, fun (_) -> true end).
+
 -spec reset_dek_cache(cb_deks:dek_kind(),
-                      Reason :: {new_active, cb_deks:dek()} | cleanup) ->
+                      ShouldUpdate :: fun ((#dek_snapshot{}) -> boolean())) ->
           {ok, changed | unchanged} | {error, term()}.
-reset_dek_cache(DekKind, Reason) ->
+reset_dek_cache(DekKind, ShouldUpdateFun) ->
     %% Technically we can simply erase the persistent term, but it will result
     %% in two global GC's then (erase and set). So we read and set new value
     %% instead, which gives us only one global GC.
@@ -771,14 +775,11 @@ reset_dek_cache(DekKind, Reason) ->
                              undefined -> undefined;
                              {value, S} -> S
                          end,
-          Changed =
-              case Reason of
-                  {new_active, NewActiveDek} ->
-                      get_dek_id(PrevSnapshot) =/= get_dek_id(NewActiveDek);
-                  cleanup ->
-                      true
-              end,
-          case Changed of
+          ShouldUpdate = case PrevSnapshot of
+                             undefined -> true;
+                             _ -> ShouldUpdateFun(PrevSnapshot)
+                         end,
+          case ShouldUpdate of
               true ->
                   case read_deks(DekKind, PrevSnapshot) of
                       {ok, NewSnapshot} -> {set, NewSnapshot, {ok, changed}};
