@@ -966,6 +966,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["controller", "fusion", "prepareRebalance"] ->
                     {{[pools], write},
                      fun menelaus_web_fusion:handle_prepare_rebalance/1};
+                ["controller", "fusion", "abortPreparedRebalance"] ->
+                    {{[pools], write},
+                     fun menelaus_web_fusion:handle_abort_prepared_rebalance/1};
                 ["controller", "fusion", "uploadMountedVolumes"] ->
                     {{[pools], write},
                      fun menelaus_web_fusion:handle_upload_mounted_volumes/1};

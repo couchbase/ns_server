@@ -287,6 +287,41 @@ class FusionTests(testlib.BaseTestSet):
 
         testlib.post_fail(self.cluster, '/fusion/enable', expected_code=503)
 
+    def abort_rebalance_test(self):
+        self.init_fusion()
+        testlib.post_succ(self.cluster, '/fusion/enable')
+        self.wait_for_state('enabling', 'enabled')
+
+        second_node = self.cluster.spare_node()
+        self.create_bucket('test', 1)
+
+        self.cluster.add_node(second_node, services=[Service.KV])
+
+        otp_nodes = testlib.get_otp_nodes(self.cluster)
+        second_otp_node = otp_nodes[second_node.hostname()]
+
+        testlib.post_fail(
+            self.cluster,
+            f"/controller/fusion/abortPreparedRebalance?planUUID=wrong",
+            expected_code=404)
+
+        acc_plan = self.prepare_rebalance(otp_nodes)
+        plan_uuid = acc_plan["planUUID"]
+
+        testlib.post_fail(
+            self.cluster,
+            f"/controller/fusion/abortPreparedRebalance?planUUID=wrong",
+            expected_code=400)
+
+        testlib.post_succ(
+            self.cluster,
+            f"/controller/fusion/abortPreparedRebalance?planUUID={plan_uuid}")
+
+        testlib.post_fail(
+            self.cluster,
+            f"/controller/fusion/abortPreparedRebalance?planUUID={plan_uuid}",
+            expected_code=404)
+
     def get_namespaces(self, node):
         resp = testlib.diag_eval(
             node,

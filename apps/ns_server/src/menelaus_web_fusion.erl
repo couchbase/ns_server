@@ -22,6 +22,7 @@
          handle_disable/1,
          handle_stop/1,
          handle_prepare_rebalance/1,
+         handle_abort_prepared_rebalance/1,
          handle_upload_mounted_volumes/1,
          handle_get_active_guest_volumes/1,
          handle_sync_log_store/1]).
@@ -218,6 +219,28 @@ handle_prepare_rebalance(Req) ->
       end, Req, form,
       [validator:required(keepNodes, _),
        validator:token_list(keepNodes, ",", NodeValidator, _),
+       validator:unsupported(_)]).
+
+handle_abort_prepared_rebalance(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:assert_is_totoro(),
+    validator:handle(
+      fun (Params) ->
+              PlanUUID = proplists:get_value(planUUID, Params),
+              case ns_orchestrator:abort_prepared_fusion_rebalance(PlanUUID) of
+                  ok ->
+                      menelaus_util:reply_json(Req, [], 200);
+                  not_found ->
+                      menelaus_util:reply_text(Req, "Not Found", 404);
+                  id_mismatch ->
+                      validator:report_errors_for_one(
+                        Req, [{planUUID, "Doesn't match stored plan id"}], 400);
+                  Other ->
+                      reply_other(Req, "abort_prepared_rebalance", Other)
+              end
+      end, Req, qs,
+      [validator:string(planUUID, _),
+       validator:required(planUUID, _),
        validator:unsupported(_)]).
 
 validate_guest_volumes(Name, State) ->

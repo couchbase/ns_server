@@ -97,6 +97,7 @@
          disable_fusion/0,
          stop_fusion/0,
          prepare_fusion_rebalance/1,
+         abort_prepared_fusion_rebalance/1,
          build_rebalance_params/2,
          rebalance_safety_checks/2,
          validate_rebalance_plan/1,
@@ -376,13 +377,17 @@ prepare_fusion_rebalance(KeepNodes) ->
 
 -spec validate_rebalance_plan(rebalance_plan_uuid()) -> boolean().
 validate_rebalance_plan(PlanUUID) ->
-    case ets:lookup(?ETS, ?FUSION_REBALANCE_PLAN) of
-        [] ->
-            false;
-        [{?FUSION_REBALANCE_PLAN, RebalancePlan}] ->
-            proplists:get_value(planUUID, RebalancePlan) =:=
-                list_to_binary(PlanUUID)
+    case retrieve_rebalance_plan_and_check_uuid(PlanUUID) of
+        {ok, _} ->
+            true;
+        _ ->
+            false
     end.
+
+-spec abort_prepared_fusion_rebalance(rebalance_plan_uuid()) ->
+          ok | busy() | not_found | id_mismatch.
+abort_prepared_fusion_rebalance(PlanUUID) ->
+    call({abort_prepared_fusion_rebalance, PlanUUID}, infinity).
 
 -spec fusion_upload_mounted_volumes(rebalance_plan_uuid(),
                                     list()) -> ok | busy() | not_found |
@@ -766,13 +771,7 @@ handle_event({call, From}, {maybe_start_rebalance, Params},
         %% with both possible outcomes (success or failure)
         %% the plan becomes invalid so we just delete it here after it is
         %% validated and stored in parameters
-        case ets:lookup(?ETS, ?FUSION_REBALANCE_PLAN) of
-            [] ->
-                ok;
-            _ ->
-                ?rebalance_info("Delete stored rebalance plan"),
-                ets:delete(?ETS, ?FUSION_REBALANCE_PLAN)
-        end,
+        delete_rebalance_plan(),
 
         {keep_state_and_data,
          [{next_event, {call, From}, {start_rebalance, NewParamsWithChk}}]}
@@ -1237,16 +1236,26 @@ idle({prepare_fusion_rebalance, KeepNodes}, From, _State) ->
         end,
     {keep_state_and_data, [{reply, From, RV}]};
 
+idle({abort_prepared_fusion_rebalance, PlanUUID}, From, _State) ->
+    RV =
+        case retrieve_rebalance_plan_and_check_uuid(PlanUUID) of
+            {ok, _} ->
+                delete_rebalance_plan(),
+                ok;
+            {error, Error} ->
+                Error
+        end,
+    {keep_state_and_data, [{reply, From, RV}]};
+
 idle({fusion_upload_mounted_volumes, PlanUUID, Volumes}, From, _State) ->
-    PlanUUIDBin = list_to_binary(PlanUUID),
     RV =
         try
             RebalancePlan =
-                case ets:lookup(?ETS, ?FUSION_REBALANCE_PLAN) of
-                    [] ->
-                        throw(not_found);
-                    [{?FUSION_REBALANCE_PLAN, RP}] ->
-                        RP
+                case retrieve_rebalance_plan_and_check_uuid(PlanUUID) of
+                    {ok, RP} ->
+                        RP;
+                    {error, Err} ->
+                        throw(Err)
                 end,
             Nodes = proplists:get_value(nodes, RebalancePlan),
             PlanNodeNames = [atom_to_list(N) || N <- Nodes],
@@ -1261,8 +1270,6 @@ idle({fusion_upload_mounted_volumes, PlanUUID, Volumes}, From, _State) ->
                     throw({extra_nodes, Extra});
                 [] -> ok
             end,
-            proplists:get_value(planUUID, RebalancePlan) =:= PlanUUIDBin
-                orelse throw(id_mismatch),
             PreparedVolumes = [{list_to_atom(N), V} || {N, V} <- Volumes],
             ?rebalance_info(
                "Uploading mounted volumes ~p to rebalance plan ~p",
@@ -1503,6 +1510,29 @@ buckets_shutdown(Msg, From, State) ->
 %%
 %% Internal functions
 %%
+retrieve_rebalance_plan_and_check_uuid(PlanUUID) ->
+    PlanUUIDBin = list_to_binary(PlanUUID),
+    case ets:lookup(?ETS, ?FUSION_REBALANCE_PLAN) of
+        [] ->
+            {error, not_found};
+        [{?FUSION_REBALANCE_PLAN, RebalancePlan}] ->
+            case proplists:get_value(planUUID, RebalancePlan) of
+                PlanUUIDBin ->
+                    {ok, RebalancePlan};
+                _ ->
+                    {error, id_mismatch}
+            end
+    end.
+
+delete_rebalance_plan() ->
+    case ets:lookup(?ETS, ?FUSION_REBALANCE_PLAN) of
+        [] ->
+            ok;
+        _ ->
+            ?rebalance_info("Delete stored rebalance plan"),
+            ets:delete(?ETS, ?FUSION_REBALANCE_PLAN)
+    end.
+
 stop_rebalance(#rebalancing_state{rebalancer = Pid,
                                   abort_reason = undefined} = State, Reason) ->
     exit(Pid, {shutdown, stop}),
