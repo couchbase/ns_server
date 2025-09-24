@@ -161,6 +161,8 @@
          get_fusion_storage_snapshot/4,
          release_fusion_storage_snapshot/3,
          mount_fusion_vbucket/3,
+         unmount_fusion_vbuckets/2,
+         get_vbuckets_mounted_for_fusion/2,
          maybe_start_fusion_uploaders/2,
          maybe_stop_fusion_uploaders/2,
          get_active_guest_volumes/1,
@@ -2649,6 +2651,32 @@ mount_fusion_vbucket(Bucket, VBucket, Volumes) ->
       fun (Sock) ->
               {reply, mc_client_binary:mount_fusion_vbucket(
                         Sock, VBucket, Volumes)}
+      end, Bucket, [json]).
+
+-spec unmount_fusion_vbuckets(ns_bucket:name(), [vbucket_id()]) ->
+          ok | mc_error().
+unmount_fusion_vbuckets(Bucket, VBuckets) ->
+    perform_very_long_call(
+      fun (Sock) ->
+              {reply,
+               functools:sequence_(
+                 [?cut(mc_client_binary:unmount_fusion_vbucket(
+                         Sock, VBucket)) || VBucket <- VBuckets])}
+      end, Bucket, [json]).
+
+-spec get_vbuckets_mounted_for_fusion(ns_bucket:name(), integer()) ->
+          {ok, [vbucket_id()]} | mc_error().
+get_vbuckets_mounted_for_fusion(Bucket, NumVBuckets) ->
+    perform_very_long_call(
+      fun (Sock) ->
+              {reply,
+               {ok, lists:filter(
+                      fun (VBucket) ->
+                              {ok, {List}} = fetch_fusion_stats(
+                                               Sock, Bucket, "is_mounted",
+                                               VBucket),
+                              proplists:get_value(<<"is_mounted">>, List)
+                      end, lists:seq(0, NumVBuckets - 1))}}
       end, Bucket, [json]).
 
 fusion_stats_key(Key, undefined) ->

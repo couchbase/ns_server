@@ -78,6 +78,7 @@
          get_fusion_storage_snapshot/4,
          release_fusion_storage_snapshot/3,
          mount_fusion_vbucket/3,
+         unmount_fusion_vbucket/2,
          set_chronicle_auth_token/2,
          start_fusion_uploader/3,
          stop_fusion_uploader/2,
@@ -117,6 +118,7 @@
                      ?CMD_GET_FUSION_STORAGE_SNAPSHOT |
                      ?CMD_RELEASE_FUSION_STORAGE_SNAPSHOT |
                      ?CMD_MOUNT_FUSION_VBUCKET |
+                     ?CMD_UNMOUNT_FUSION_VBUCKET |
                      ?CMD_SET_CHRONICLE_AUTH_TOKEN |
                      ?CMD_START_FUSION_UPLOADER |
                      ?CMD_STOP_FUSION_UPLOADER |
@@ -1167,6 +1169,18 @@ mount_fusion_vbucket(Sock, VBucket, Volumes) ->
                         datatype = ?MC_DATATYPE_JSON}}) of
         {ok, #mc_header{status = ?SUCCESS}, ME, _NCB} ->
             {ok, ME#mc_entry.data};
+        Response ->
+            process_error_response(Response)
+    end.
+
+-spec unmount_fusion_vbucket(port(), vbucket_id()) ->
+          ok | mc_error().
+unmount_fusion_vbucket(Sock, VBucket) ->
+    report_counter(?FUNCTION_NAME),
+    case cmd(?CMD_UNMOUNT_FUSION_VBUCKET, Sock, undefined, undefined,
+             {#mc_header{vbucket = VBucket}, #mc_entry{}}) of
+        {ok, #mc_header{status = ?SUCCESS}, _ME, _NCB} ->
+            ok;
         Response ->
             process_error_response(Response)
     end.

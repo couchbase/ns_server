@@ -117,6 +117,10 @@ run_buckets_cleanup_activity(BucketsAndCfg, SnapShot, Options) ->
 
     Rv.
 
+cleanup_fusion_bucket(Bucket, BucketConfig, Servers) ->
+    ok = cleanup_fusion_uploaders(Bucket, BucketConfig, Servers),
+    fusion_uploaders:cleanup_mounted_volumes(Bucket, BucketConfig).
+
 cleanup_fusion_uploaders(Bucket, BucketConfig, Servers) ->
     case fusion_uploaders:get_state() of
         State when State =:= disabled orelse State =:= stopped ->
@@ -479,8 +483,12 @@ cleanup_apply_config_body(Bucket, Servers, BucketConfig, Options) ->
             ok
     end,
 
-    cleanup_mark_bucket_warmed(Bucket, Servers),
-    cleanup_fusion_uploaders(Bucket, BucketConfig, Servers).
+    case cleanup_mark_bucket_warmed(Bucket, Servers) of
+        ok ->
+            cleanup_fusion_bucket(Bucket, BucketConfig, Servers);
+        Error ->
+            Error
+    end.
 
 cleanup_mark_bucket_warmed(Bucket, Servers) ->
     case janitor_agent:mark_bucket_warmed(Bucket, Servers) of

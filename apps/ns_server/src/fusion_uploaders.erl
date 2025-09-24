@@ -38,7 +38,8 @@
          get_stored_snapshot_uuids/0,
          store_snapshots_uuid/3,
          get_snapshots/6,
-         cleanup_snapshots/0]).
+         cleanup_snapshots/0,
+         cleanup_mounted_volumes/2]).
 
 %% used via rpc:call
 -export([do_get_snapshots/4, do_delete_snapshots/3]).
@@ -1054,3 +1055,22 @@ cleanup_snapshots() ->
                       end
               end
       end, ToDelete).
+
+-spec cleanup_mounted_volumes(ns_bucket:name(), ns_bucket:config()) ->
+          ok | error.
+cleanup_mounted_volumes(Bucket, BucketConfig) ->
+    case ns_bucket:get_fusion_state(BucketConfig) =:= enabled andalso
+        not ns_orchestrator:has_rebalance_plan() of
+        true ->
+            case janitor_agent:cleanup_mounted_volumes(Bucket, BucketConfig) of
+                ok ->
+                    ok;
+                Error ->
+                    ?log_info(
+                       "Errors cleaning up mounted volumes for bucket ~p: ~p",
+                       [Bucket, Error]),
+                    error
+            end;
+        false ->
+            ok
+    end.

@@ -28,6 +28,7 @@
         ?get_timeout(get_src_dst_replications, 30000)).
 -define(QUERY_VBUCKETS_SLEEP, ?get_param(query_vbuckets_sleep, 1000)).
 -define(MOUNT_VOLUMES_TIMEOUT,  ?get_timeout(mount_volumes, 30000)).
+-define(UNMOUNT_VOLUMES_TIMEOUT,  ?get_timeout(unmount_volumes, 30000)).
 -define(RELEASE_SNAPSHOTS_TIMEOUT, ?get_timeout(release_snapshots, 30000)).
 -record(state, {bucket_name :: ns_bucket:name(),
                 rebalance_pid :: undefined | pid(),
@@ -73,6 +74,7 @@
          uninhibit_view_compaction/4,
          get_failover_logs/2,
          mount_volumes/4,
+         cleanup_mounted_volumes/2,
          maybe_start_fusion_uploaders/3,
          maybe_stop_fusion_uploaders/3,
          get_active_guest_volumes/2,
@@ -347,8 +349,20 @@ mount_volumes(Bucket, VolumesToMount, NodesMap, RebalancerPid) ->
                   rebalance_call(RebalancerPid, _, _, _,
                                  ?MOUNT_VOLUMES_TIMEOUT)).
 
+-spec cleanup_mounted_volumes(ns_bucket:name(), ns_bucket:config()) ->
+          ok | {error, {failed_nodes, [node()]}}.
+cleanup_mounted_volumes(Bucket, BucketConfig) ->
+    Servers = ns_bucket:get_servers(BucketConfig),
+    NVBuckets = ns_bucket:get_num_vbuckets(BucketConfig),
+    call_on_servers_via_servant(
+      Bucket, Servers, {cleanup_mounted_volumes, NVBuckets},
+      ?UNMOUNT_VOLUMES_TIMEOUT).
+
 call_on_nodes(Bucket, NodesCalls, Caller) ->
-    case do_call_on_nodes(Bucket, NodesCalls, Caller) of
+    call_on_nodes(Bucket, NodesCalls, Caller, infinity).
+
+call_on_nodes(Bucket, NodesCalls, Caller, Timeout) ->
+    case do_call_on_nodes(Bucket, NodesCalls, Caller, Timeout) of
         {error, Error} ->
             {error, Error};
         _ ->
@@ -356,19 +370,19 @@ call_on_nodes(Bucket, NodesCalls, Caller) ->
     end.
 
 call_on_nodes_with_returns(Bucket, NodesCalls, Caller) ->
-    case do_call_on_nodes(Bucket, NodesCalls, Caller) of
+    case do_call_on_nodes(Bucket, NodesCalls, Caller, infinity) of
         {error, Error} ->
             {error, Error};
         Returns ->
             {ok, [{N, R} || {N, _, {ok, R}} <- Returns]}
     end.
 
-do_call_on_nodes(Bucket, NodesCalls, Caller) ->
+do_call_on_nodes(Bucket, NodesCalls, Caller, Timeout) ->
     Replies =
         misc:parallel_map(
           fun ({Node, Call}) ->
                   {Node, Call, catch Caller(Bucket, Node, Call)}
-          end, NodesCalls, infinity),
+          end, NodesCalls, Timeout),
     {Returns, BadReplies} = lists:partition(fun ({_, _, {ok, _}}) ->
                                                     true;
                                                 ({_, _, ok}) ->
@@ -385,12 +399,7 @@ do_call_on_nodes(Bucket, NodesCalls, Caller) ->
             {error, {failed_nodes, [N || {N, _, _} <- BadReplies]}}
     end.
 
--spec call_on_servers(
-        ns_bucket:name(), [node()],
-        {apply_new_config, ns_bucket:config()} |
-        {apply_new_config_replicas_phase, ns_bucket:config()} |
-        {release_file_based_rebalance_snapshots, ns_bucket:name()},
-        timeout()) ->
+-spec call_on_servers(ns_bucket:name(), [node()], term(), timeout()) ->
           ok | {error, {failed_nodes, [node()]}}.
 call_on_servers(Bucket, Servers, Call, Timeout) ->
     NodesCalls = [{N, Call} || N <- Servers],
@@ -670,6 +679,10 @@ get_servant_call_reply({MRef, Tag}) ->
 
 servant_call(Bucket, Node, Request) ->
     get_servant_call_reply(initiate_servant_call(Bucket, Node, Request)).
+
+call_on_servers_via_servant(Bucket, Servers, Call, Timeout) ->
+    NodesCalls = [{N, Call} || N <- Servers],
+    call_on_nodes(Bucket, NodesCalls, fun servant_call/3, Timeout).
 
 -spec get_dcp_docs_estimate(ns_bucket:name(), node(), vbucket_id(), [node()]) ->
           [{ok, {non_neg_integer(), non_neg_integer(), binary()}}].
@@ -1005,6 +1018,31 @@ do_handle_call({sync_fusion_log_store, VBuckets}, From, State) ->
       From, State, sync_fusion_log_store,
       fun (sync_fusion_log_store, #state{bucket_name = Bucket}) ->
               ns_memcached:sync_fusion_log_store(Bucket, VBuckets)
+      end);
+do_handle_call({cleanup_mounted_volumes, NVBuckets}, From, State) ->
+    handle_call_via_servant(
+      From, State, cleanup_mounted_volumes,
+      fun (cleanup_mounted_volumes, #state{bucket_name = Bucket}) ->
+              case ns_memcached:get_vbuckets_mounted_for_fusion(
+                     Bucket, NVBuckets) of
+                  {ok, []} ->
+                      ok;
+                  {ok, VBuckets} ->
+                      case ns_memcached:unmount_fusion_vbuckets(
+                             Bucket, VBuckets) of
+                          ok ->
+                              ok;
+                          Error ->
+                              ?log_info(
+                                 "Cannot unmount vbuckets ~p for bucket ~p, "
+                                 "error ~p", [VBuckets, Bucket, Error]),
+                              {error, Error}
+                      end;
+                  Error ->
+                      ?log_info("Cannot retrieve fusion mounted vbuckets for "
+                                "bucket ~p, error ~p", [Bucket, Error]),
+                      {error, Error}
+              end
       end).
 
 -dialyzer({no_opaque, [handle_call_via_servant/4]}).

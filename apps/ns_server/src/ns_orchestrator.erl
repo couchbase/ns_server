@@ -101,6 +101,7 @@
          build_rebalance_params/2,
          rebalance_safety_checks/2,
          validate_rebalance_plan/1,
+         has_rebalance_plan/0,
          fusion_upload_mounted_volumes/2]).
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
@@ -384,6 +385,10 @@ validate_rebalance_plan(PlanUUID) ->
         _ ->
             false
     end.
+
+-spec has_rebalance_plan() -> boolean().
+has_rebalance_plan() ->
+    ets:member(?ETS, ?FUSION_REBALANCE_PLAN).
 
 -spec abort_prepared_fusion_rebalance(rebalance_plan_uuid()) ->
           ok | busy() | not_found | id_mismatch.
