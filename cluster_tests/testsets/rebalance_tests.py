@@ -45,9 +45,6 @@ class KVRebalanceTests(testlib.BaseTestSet):
                 ejected_nodes = self.cluster.connected_nodes[2:],
                 wait=True)
 
-    def test_teardown(self):
-        testlib.delete_all_buckets(self.cluster)
-
     # This is really 3 tests:
     # 1. Rebalance in
     # 2. Rebalance out
@@ -100,6 +97,7 @@ class KVFileBasedRebalanceTests(KVRebalanceTests):
         testlib.post_succ(self.cluster, "/internalSettings",
                           data={"fileBasedBackfillEnabled": "false"})
 
+        testlib.delete_all_buckets(self.cluster)
         super().teardown()
 
 
@@ -125,7 +123,9 @@ class KVFileBasedRebalanceEncryptionTests(KVFileBasedRebalanceTests):
             self.cluster, self.bucket_name, data_statuses=['encrypted'])
 
     def teardown(self):
+        testlib.delete_all_buckets(self.cluster)
         native_encryption_tests.delete_all_secrets(self.cluster)
+        super().teardown()
 
 
 class KVFileBasedRebalanceSampleBucketEncryptionTests(
