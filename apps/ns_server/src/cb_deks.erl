@@ -70,7 +70,7 @@ list(Kind) ->
 
 -spec read(dek_kind(), [dek_id()]) -> [dek()].
 read(Kind, DekIds) ->
-    ?log_debug("Reading the following keys (~p) from disk: ~p", [Kind, DekIds]),
+    ?log_debug("Reading the following ~p keys from disk:~n~p", [Kind, DekIds]),
     lists:map(
         fun (DekId) when is_binary(DekId) ->
             case encryption_service:read_dek(Kind, DekId) of
@@ -263,7 +263,7 @@ store_deks_reencrypted(Kind, EncMethod, DeksAndKekIds) ->
                             creation_time := CT}},
                     NewKekId}) ->
                     ?log_debug("Dek ~p is encrypted with ~p, "
-                                "while correct kek is ~p (~p), "
+                                "while correct kek is ~p (~0p), "
                                 "will reencrypt",
                                 [DekId, CurKekId, NewKekId,
                                 EncMethod]),

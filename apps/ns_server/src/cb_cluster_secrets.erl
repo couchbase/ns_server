@@ -986,11 +986,10 @@ handle_call(diag, _From, State) ->
 
 handle_call({import_bucket_dek_files, BucketUUID, Paths}, _From,
             #state{proc_type = ?NODE_PROC} = State) ->
-    ?log_info("Importing bucket ~p DEK files:~n~p", [BucketUUID, Paths]),
+    ?log_info("Bucket ~p DEK files import started:~n~p", [BucketUUID, Paths]),
     {Res, NewState} = import_bucket_dek_files_impl(
                         {bucketDek, BucketUUID}, Paths, State),
-    ?log_info("Import bucket ~p DEK files: ~p finished: ~p",
-              [BucketUUID, Paths, Res]),
+    ?log_info("Bucket ~p DEK files import finished: ~0p", [BucketUUID, Res]),
     {reply, Res, NewState};
 
 handle_call(Request, _From, State) ->
@@ -2088,8 +2087,8 @@ reencrypt_deks(Kind, #{deks := Keys} = DeksInfo, Snapshot) ->
                                       Kind,
                                       [node, Snapshot]),
         RV = cb_deks:maybe_reencrypt_deks(Kind, Keys, EncrMethod, Snapshot),
-        ?log_debug("Maybe reencrypt dek for ~p ~p ~p. Result: ~p",
-                   [Kind, Keys, EncrMethod, RV]),
+        ?log_debug("Reencrypt ~0p ~p deks with ~0p result:~n~p",
+                   [Kind, length(Keys), EncrMethod, RV]),
         case RV of
             no_change ->
                 no_change;
