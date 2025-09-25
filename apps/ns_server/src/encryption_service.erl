@@ -763,8 +763,16 @@ garbage_collect_keys(Kind, InUseKeyIds) ->
                 lists:filtermap(
                   fun (Filename) ->
                       case retire_key(Kind, Filename) of
-                          ok -> false;
-                          {error, Reason} -> {true, {Filename, Reason}}
+                          ok ->
+                              ns_server_stats:notify_counter(
+                                {<<"encr_at_rest_retire_key_events">>,
+                                 [{type, cb_deks:kind2bin(Kind)}]}),
+                              false;
+                          {error, Reason} ->
+                              ns_server_stats:notify_counter(
+                                {<<"encr_at_rest_retire_key_failures">>,
+                                 [{type, cb_deks:kind2bin(Kind)}]}),
+                              {true, {Filename, Reason}}
                       end
                   end, ToRetire),
             revalidate_key_cache(),

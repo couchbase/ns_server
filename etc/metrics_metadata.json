@@ -158,6 +158,30 @@
             }
         ]
     },
+    "cm_encr_at_rest_retire_key_events_total": {
+        "type": "counter",
+        "help": "Total number of successful key retirement events",
+        "added": "8.1.0",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "type",
+                "help": "Data encryption key (DEK) type (configDek, logDek, auditDek, bucketDek_<bucket_name>)"
+            }
+        ]
+    },
+    "cm_encr_at_rest_retire_key_failures_total": {
+        "type": "counter",
+        "help": "Total number of key retirement failures",
+        "added": "8.1.0",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "type",
+                "help": "Data encryption key (DEK) type (configDek, logDek, auditDek, bucketDek_<bucket_name>)"
+            }
+        ]
+    },
     "cm_encryption_key_rotation_failures_total": {
         "type": "counter",
         "help": "Total number of encryption key rotation failures",
