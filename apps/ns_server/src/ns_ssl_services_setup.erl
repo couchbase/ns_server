@@ -10,6 +10,7 @@
 -module(ns_ssl_services_setup).
 
 -include("ns_common.hrl").
+-include("ns_config.hrl").
 -include_lib("public_key/include/public_key.hrl").
 -include_lib("ns_common/include/cut.hrl").
 
@@ -28,8 +29,10 @@
          ca_file_path/0,
          sync/0,
          ssl_minimum_protocol/1,
+         ssl_security_level/1,
          internal_ssl_minimum_protocol/0,
          ssl_minimum_protocol/2,
+         ssl_security_level/2,
          client_cert_auth/0,
          client_cert_auth_state/0,
          client_cert_auth_state/1,
@@ -46,6 +49,7 @@
          set_certs/6,
          get_tls_version_map/0,
          get_supported_tls_versions/2,
+         get_supported_tls_security_levels/1,
          remove_node_certs/0,
          update_certs_epoch/0,
          get_key_ids_in_use/0,
@@ -246,6 +250,21 @@ get_supported_tls_versions(MinVsn, MaxVsn) when is_atom(MinVsn),
 supported_versions(MinVer) ->
     get_supported_tls_versions(MinVer, none).
 
+-spec get_supported_tls_security_levels(atom() | []) -> [pos_integer()].
+get_supported_tls_security_levels(kv) ->
+    memcached_config_mgr:supported_tls_security_levels();
+get_supported_tls_security_levels(_) ->
+    [1, 2, 3, 4, 5].
+
+-spec ssl_security_level(atom() | []) -> [pos_integer()].
+ssl_security_level(Service) ->
+    ssl_security_level(Service, ns_config:latest()).
+
+-spec ssl_security_level(atom() | [], ns_config()) -> [pos_integer()].
+ssl_security_level(Service, Config) ->
+    DefaultLevel = 1,
+    get_sec_setting(Service, ssl_security_level, Config, DefaultLevel).
+
 ssl_minimum_protocol(Service) ->
     ssl_minimum_protocol(Service, ns_config:latest()).
 
@@ -259,6 +278,10 @@ ssl_minimum_protocol(Service, Config) ->
                 true ->
                     Version;
                 false ->
+                    %% This occurs while running mixed versions and the current
+                    %% setting is no longer supported (so the default is used).
+                    %% The unsupported key is removed once the upgrade of the
+                    %% entire cluster completes.
                     ?log_warning("Unsupported TLS version ~p for service ~p. "
                                  "Using default ~p",
                                  [Version, Service, MinVsn]),
@@ -722,6 +745,8 @@ handle_config_change(root_cert_and_pkey, Parent) ->
 handle_config_change({node, _Node, is_enterprise}, Parent) ->
     Parent ! cert_and_pkey_changed;
 handle_config_change(ssl_minimum_protocol, Parent) ->
+    Parent ! security_settings_changed;
+handle_config_change(ssl_security_level, Parent) ->
     Parent ! security_settings_changed;
 handle_config_change(client_cert_auth, Parent) ->
     Parent ! client_cert_auth_changed;

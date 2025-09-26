@@ -138,6 +138,21 @@ get_tls_version(SV) ->
             {error, lists:flatten(M)}
     end.
 
+get_tls_security_level(Level) ->
+    get_tls_security_level([], Level).
+
+get_tls_security_level(Service, Level) ->
+    TlsLevels =
+        ns_ssl_services_setup:get_supported_tls_security_levels(Service),
+    LevelsStr = [integer_to_list(S) || S <- TlsLevels],
+    case lists:member(Level, LevelsStr) of
+        true -> {ok, list_to_atom(Level)};
+        false ->
+            M = io_lib:format("Supported TLS Security Levels are '~s'",
+                              [string:join(LevelsStr, ", ")]),
+            {error, lists:flatten(M)}
+    end.
+
 verify_hsts(Str) ->
     Props = lists:map(
               fun (P) ->
@@ -461,6 +476,8 @@ is_allowed_on_cluster([argon2id_mem]) ->
     cluster_compat_mode:is_cluster_76();
 is_allowed_on_cluster([pbkdf2_sha512_iterations]) ->
     cluster_compat_mode:is_cluster_76();
+is_allowed_on_cluster([ssl_security_level]) ->
+    cluster_compat_mode:is_cluster_totoro();
 is_allowed_on_cluster([{serverless, bucket_weight_limit}]) ->
     bucket_placer:is_enabled();
 is_allowed_on_cluster([{serverless, tenant_limit}]) ->
@@ -478,7 +495,13 @@ is_allowed_on_cluster([resource_promql_override | _]) ->
 is_allowed_on_cluster(_) ->
     true.
 
-is_allowed_setting(OpType, Req, K) ->
+is_allowed_setting(OpType, Req, K0) ->
+    K = case K0 of
+            [{security_settings, _}, KeyToCheck] ->
+                [KeyToCheck];
+            _ ->
+                K0
+        end,
     functools:sequence_(
       [fun () ->
            case cluster_compat_mode:is_enterprise() orelse
@@ -516,6 +539,7 @@ localhost_only_settings([allowed_hosts]) -> true;
 localhost_only_settings(_) -> false.
 
 ee_only_settings([ssl_minimum_protocol]) -> true;
+ee_only_settings([ssl_security_level]) -> true;
 ee_only_settings([internal_ssl_minimum_protocol]) -> true;
 ee_only_settings([cipher_suites]) -> true;
 ee_only_settings([honor_cipher_order]) -> true;
@@ -579,6 +603,8 @@ conf(security) ->
       get_number(60, 1000000, undefined)},
      {ssl_minimum_protocol, tlsMinVersion,
       ns_ssl_services_setup:ssl_minimum_protocol([]), get_tls_version(_)},
+     {ssl_security_level, tlsSecurityLevel,
+      ns_ssl_services_setup:ssl_security_level([]), get_tls_security_level(_)},
      {cipher_suites, cipherSuites,
       ns_ssl_services_setup:configured_ciphers_names(undefined, []),
       fun get_cipher_suites/1},
@@ -615,6 +641,8 @@ conf(security) ->
         [{{security_settings, S}, ns_cluster_membership:json_service_name(S),
           [{cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
            {ssl_minimum_protocol, tlsMinVersion, undefined, get_tls_version(_)},
+           {ssl_security_level, tlsSecurityLevel, undefined,
+            get_tls_security_level(S, _)},
            {honor_cipher_order, honorCipherOrder, undefined, fun get_bool/1},
            {supported_ciphers, supportedCipherSuites, ciphers:supported(S),
             fun read_only/1}]} || S <- services_with_security_settings()];
@@ -1821,12 +1849,15 @@ build_kvs_test() ->
 
 test_conf() ->
     [{ssl_minimum_protocol,tlsMinVersion,unused, get_tls_version(_)},
+     {ssl_security_level, tlsSecurityLevel, unused, get_tls_security_level(_)},
      {cipher_suites,cipherSuites,unused, fun get_cipher_suites/1},
      {secure_headers, responseHeaders, [], fun get_secure_headers/1},
      {honor_cipher_order,honorCipherOrder,unused, fun get_bool/1},
      {{security_settings, kv}, data,
       [{cipher_suites, cipherSuites, unused, fun get_cipher_suites/1},
        {ssl_minimum_protocol, tlsMinVersion, unused, get_tls_version(_)},
+       {ssl_security_level, tlsSecurityLevel, unused,
+        get_tls_security_level(kv, _)},
        {honor_cipher_order, honorCipherOrder, unused, fun get_bool/1},
        {supported_ciphers, supportedCipherSuites, unused, fun read_only/1}]},
      {storage_limit, storageLimit, 5, get_number(0, 15)},
@@ -1840,6 +1871,7 @@ parse_post_data_test() ->
                 fun() ->
                         true
                 end),
+    meck:expect(cluster_compat_mode, is_cluster_totoro, fun() -> true end),
 
     Conf = test_conf(),
     RH = ejson:encode({[{"Strict-Transport-Security",
@@ -1854,6 +1886,7 @@ parse_post_data_test() ->
                       [{"Strict-Transport-Security",
                         "max-age=10;preload;includeSubDomains"}]},
                        {[ssl_minimum_protocol], 'tlsv1.2'},
+                       {[ssl_security_level], '1'},
                        {[cipher_suites], []},
                        {[honor_cipher_order], true},
                        {[{security_settings, kv}, ssl_minimum_protocol],
@@ -1863,6 +1896,7 @@ parse_post_data_test() ->
                  parse_post_data(Conf, [],
                                  <<ResponseHeaders/binary,
                                    "tlsMinVersion=tlsv1.2&"
+                                   "tlsSecurityLevel=1&"
                                    "cipherSuites=[]&"
                                    "honorCipherOrder=true&"
                                    "data.tlsMinVersion=tlsv1.3&"
@@ -1871,10 +1905,12 @@ parse_post_data_test() ->
                                  KeyValidator)),
     ?assertEqual({ok, [{[{security_settings, kv}, ssl_minimum_protocol],
                         'tlsv1.3'},
+                       {[{security_settings, kv}, ssl_security_level], '3'},
                        {[{security_settings, kv}, cipher_suites], []},
                        {[{security_settings, kv}, honor_cipher_order], true}]},
                  parse_post_data(Conf, ["data"],
                                  <<"tlsMinVersion=tlsv1.3&"
+                                   "tlsSecurityLevel=3&"
                                    "cipherSuites=[]&"
                                    "honorCipherOrder=true">>,
                                  KeyValidator)),
@@ -1938,6 +1974,16 @@ parse_post_data_test() ->
                                  <<"cipherSuites=[]&"
                                    "honorCipherOrder=true&"
                                    "tlsMinVersion=tlsv1.1">>,
+                                 KeyValidator)),
+    ?assertEqual({error, [<<"tlsSecurityLevel - Supported TLS Security "
+                            "Levels are '1, 2, 3, 4, 5'">>]},
+                 parse_post_data(Conf, [],
+                                 <<"tlsSecurityLevel=8">>,
+                                 KeyValidator)),
+    ?assertEqual({error, [<<"data.tlsSecurityLevel - Supported TLS Security "
+                            "Levels are '1, 2, 3, 4, 5'">>]},
+                 parse_post_data(Conf, ["data"],
+                                 <<"tlsSecurityLevel=6">>,
                                  KeyValidator)),
     meck:expect(cluster_compat_mode,
                 is_cluster_76,

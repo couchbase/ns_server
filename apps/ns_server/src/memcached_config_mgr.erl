@@ -21,7 +21,8 @@
          drop_historical_deks/0,
          get_global_memcached_deks/0,
          get_key_ids_in_use/0,
-         supported_tls_versions/0]).
+         supported_tls_versions/0,
+         supported_tls_security_levels/0]).
 
 %% referenced from ns_config_default
 -export([get_breakpad_enabled/2,
@@ -49,6 +50,10 @@
 -spec supported_tls_versions() -> [atom()].
 supported_tls_versions() ->
     maps:keys(?TLS_VERSIONS).
+
+-spec supported_tls_security_levels() -> [pos_integer()].
+supported_tls_security_levels() ->
+    [1, 2, 3, 4, 5].
 
 -record(state, {
           port_pid :: pid(),
@@ -259,6 +264,7 @@ is_notable_config_key(_) ->
     false.
 
 is_notable_tls_config_key(ssl_minimum_protocol) -> true;
+is_notable_tls_config_key(ssl_security_level) -> true;
 is_notable_tls_config_key(client_cert_auth) -> true;
 is_notable_tls_config_key(cipher_suites) -> true;
 is_notable_tls_config_key(honor_cipher_order) -> true;
@@ -741,6 +747,7 @@ tls_config(Params) ->
     CAPath = iolist_to_binary(ns_ssl_services_setup:ca_file_path()),
     MinVsn = maps:get(ns_ssl_services_setup:ssl_minimum_protocol(kv),
                       ?TLS_VERSIONS),
+    SecurityLevel = ns_ssl_services_setup:ssl_security_level(kv),
     Ciphers = get_ssl_cipher_list([], Params),
     CipherOrder = ns_ssl_services_setup:honor_cipher_order(kv),
     Auth = proplists:get_value(state, ns_ssl_services_setup:client_cert_auth()),
@@ -761,10 +768,6 @@ tls_config(Params) ->
                        undefined -> [];
                        P -> [{<<"password">>, base64:encode(P)}]
                    end,
-    %% Specify the default security level and allow a backdoor for testing
-    %% other levels.
-    SecurityLevel = ns_config:search(ns_config:latest(),
-                                     open_ssl_security_level, 1),
     {[{<<"private key">>, KeyPath},
       {<<"certificate chain">>, ChainPath},
       {<<"CA file">>, CAPath},
