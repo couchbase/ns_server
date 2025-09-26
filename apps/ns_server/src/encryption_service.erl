@@ -62,6 +62,10 @@
          new_dek_record/3,
          new_raw_aes_dek_info/3]).
 
+-ifdef(TEST).
+-export([format_aes_key_params/3]).
+-endif.
+
 
 -export_type([stored_key_error/0]).
 
@@ -111,20 +115,27 @@ garbage_collect_keks(InUseKeyIds) ->
     garbage_collect_keys(kek, InUseKeyIds).
 
 store_kek(Id, Key, KekIdToEncrypt, CreationDT, CanBeCached, TestOnly) ->
-    store_key(kek, Id, 'raw-aes-gcm', Key, KekIdToEncrypt, CreationDT,
-              CanBeCached, TestOnly).
+    store_key(kek, Id, 'raw-aes-gcm', CreationDT,
+              ejson:encode(format_aes_key_params(Key, KekIdToEncrypt,
+                                                 CanBeCached)),
+              TestOnly).
 
 store_dek({bucketDek, BucketUUID}, Id, Key, KekIdToEncrypt, CreationDT) ->
     store_dek(bucketDek, bucket_dek_id(BucketUUID, Id), Key, KekIdToEncrypt,
               CreationDT);
 store_dek(Kind, Id, Key, KekIdToEncrypt, CreationDT) ->
-    store_key(Kind, Id, 'raw-aes-gcm', Key, KekIdToEncrypt, CreationDT, false,
+    store_key(Kind, Id, 'raw-aes-gcm', CreationDT,
+              ejson:encode(format_aes_key_params(Key, KekIdToEncrypt, false)),
               false).
 
+format_aes_key_params(Key, KekIdToEncrypt, CanBeCached) ->
+    {[{keyMaterial, base64:encode(Key)},
+      {encryptionKeyName, format_encryption_key_name(KekIdToEncrypt)},
+      {canBeCached, CanBeCached}]}.
+
 store_aws_key(Id, Params, CreationDT, TestOnly) ->
-    store_key(kek, Id, 'awskms-symmetric',
-              ejson:encode(format_aws_key_params(Params)),
-              <<"encryptionService">>, CreationDT, false, TestOnly).
+    store_key(kek, Id, 'awskms-symmetric', CreationDT,
+              ejson:encode(format_aws_key_params(Params)), TestOnly).
 
 format_aws_key_params(#{key_arn := KeyArn, region := Region,
                         profile := Profile, config_file := ConfigFile,
@@ -137,8 +148,9 @@ format_aws_key_params(#{key_arn := KeyArn, region := Region,
       {useIMDS, UseIMDS}]}.
 
 store_kmip_key(Id, Params, KekIdToEncrypt, CreationDT, TestOnly) ->
-    store_key(kek, Id, kmip, ejson:encode(format_kmip_key_params(Params)),
-              KekIdToEncrypt, CreationDT, false, TestOnly).
+    store_key(kek, Id, kmip, CreationDT,
+              ejson:encode(format_kmip_key_params(Params, KekIdToEncrypt)),
+              TestOnly).
 
 format_kmip_key_params(#{host := Host,
                          port := Port,
@@ -148,7 +160,7 @@ format_kmip_key_params(#{host := Host,
                          cert_path := CertPath,
                          key_passphrase := PassData,
                          ca_selection := CaSel,
-                         encryption_approach := Appr}) ->
+                         encryption_approach := Appr}, KekIdToEncrypt) ->
     {[{host, iolist_to_binary(Host)},
       {port, Port},
       {reqTimeoutMs, ReqTimeoutMs},
@@ -158,7 +170,11 @@ format_kmip_key_params(#{host := Host,
       {keyPassphrase, base64:encode(PassData)},
       {caSelection, CaSel},
       {cbCaPath, iolist_to_binary(ns_ssl_services_setup:ca_file_path())},
-      {encryptionApproach, Appr}]}.
+      {encryptionApproach, Appr},
+      {encryptionKeyName, format_encryption_key_name(KekIdToEncrypt)}]}.
+
+format_encryption_key_name(undefined) -> <<"encryptionService">>;
+format_encryption_key_name(KekIdToEncrypt) -> KekIdToEncrypt.
 
 read_dek(Kind, DekId) ->
     {NewId, NewKind} = case Kind of
@@ -626,19 +642,12 @@ wait_for_server_start() ->
           end
       end, ?RESTART_WAIT_TIMEOUT, 100).
 
-store_key(Kind, Name, Type, KeyData, undefined, CreationDT, CanBeCached,
-          TestOnly) ->
-    store_key(Kind, Name, Type, KeyData, <<"encryptionService">>, CreationDT,
-              CanBeCached, TestOnly);
-store_key(Kind, Name, Type, KeyData, EncryptionKeyId,
-          {{_, _, _}, {_, _, _}} = CreationDT, CanBeCached, TestOnly)
-                                            when is_atom(Kind),
-                                                 is_binary(Name),
-                                                 is_atom(Type),
-                                                 is_binary(KeyData),
-                                                 is_binary(EncryptionKeyId),
-                                                 is_atom(TestOnly),
-                                                 is_boolean(CanBeCached) ->
+store_key(Kind, Name, Type, {{_, _, _}, {_, _, _}} = CreationDT,
+          KeyData, TestOnly) when is_atom(Kind),
+                                  is_binary(Name),
+                                  is_atom(Type),
+                                  is_binary(KeyData),
+                                  is_atom(TestOnly) ->
     CreationDTISO = iso8601:format(CreationDT),
     KindBin = cb_deks:kind2bin(Kind, <<"unknown">>),
     ErrorAtom = case TestOnly of
@@ -647,9 +656,8 @@ store_key(Kind, Name, Type, KeyData, EncryptionKeyId,
                 end,
 
     ?wrap_error_msg(
-      cb_gosecrets_runner:store_key(?RUNNER, Kind, Name, Type, KeyData,
-                                    EncryptionKeyId, CreationDTISO, CanBeCached,
-                                    TestOnly),
+      cb_gosecrets_runner:store_key(?RUNNER, Kind, Name, Type, CreationDTISO,
+                                    KeyData, TestOnly),
       ErrorAtom, [{kind, KindBin}, {key_UUID, Name}]).
 
 maybe_update_dek_path_in_config() ->

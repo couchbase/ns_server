@@ -33,7 +33,7 @@
          copy_secrets/2,
          cleanup_secrets/2,
          set_config/3,
-         store_key/9,
+         store_key/7,
          encrypt_with_key/6,
          decrypt_with_key/6,
          read_key/3,
@@ -125,12 +125,11 @@ set_config(Name, Cfg, ResetPassword) ->
             Error
     end.
 
-store_key(Name, Kind, KeyName, KeyType, KeyData, EncryptionKeyId, CreationDT,
-          CanBeCached, TestOnly) ->
+store_key(Name, Kind, KeyName, KeyType, CreationDT, KeyData, TestOnly) ->
     gen_server:call(
       Name,
-      {store_key, Kind, KeyName, KeyType, KeyData, EncryptionKeyId, CreationDT,
-       CanBeCached, TestOnly}, infinity).
+      {store_key, Kind, KeyName, KeyType, CreationDT, KeyData, TestOnly},
+      infinity).
 
 read_key(Name, Kind, KeyName) ->
     gen_server:call(Name, {read_key, Kind, KeyName}, infinity).
@@ -379,8 +378,8 @@ handle_call({copy_secrets, Cfg}, _From, State) ->
 handle_call({cleanup_secrets, Cfg}, _From, State) ->
     CfgBin = ejson:encode(cfg_to_json(Cfg)),
     {reply, call_gosecrets({cleanup_secrets, CfgBin}, State), State};
-handle_call({store_key, _Kind, _Name, _KeyType, _KeyData, _EncryptionKeyId,
-             _CreationDT, _CanBeCached, _TestOnly} = Cmd, _From, State) ->
+handle_call({store_key, _Kind, _Name, _KeyType, _CreationDT, _KeyData,
+             _TestOnly} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
 handle_call({read_key, _Kind, _Name} = Cmd, _From, State) ->
     {reply, call_gosecrets(Cmd, State), State};
@@ -526,17 +525,14 @@ encode({copy_secrets, ConfigBin}) ->
     <<10, ConfigBin/binary>>;
 encode({cleanup_secrets, ConfigBin}) ->
     <<11, ConfigBin/binary>>;
-encode({store_key, Kind, Name, KeyType, KeyData, EncryptionKeyId,
-        CreationDT, CanBeCached, TestOnly}) ->
+encode({store_key, Kind, Name, KeyType, CreationDT, KeyData, TestOnly}) ->
     KindBin = atom_to_binary(Kind),
     <<12, (encode_param(KindBin))/binary,
           (encode_param(Name))/binary,
           (encode_param(KeyType))/binary,
-          (encode_param(KeyData))/binary,
-          (encode_param(EncryptionKeyId))/binary,
           (encode_param(CreationDT))/binary,
-          (encode_param(TestOnly))/binary,
-          (encode_param(CanBeCached))/binary>>;
+          (encode_param(KeyData))/binary,
+          (encode_param(TestOnly))/binary>>;
 encode({encrypt_with_key, Data, AD, KeyKind, Name, UseCache}) ->
     <<13, (encode_param(Data))/binary,
           (encode_param(AD))/binary,
@@ -961,13 +957,15 @@ integrity_check_for_stored_keys_test() ->
             fun (CfgPath, Pid) ->
                 TokensPath = filename:join(filename:dirname(CfgPath),
                                            "stored_keys_tokens"),
-                StoreKey = fun (Kind, KeyId, EncryptWithKey) ->
-                               store_key(Pid, Kind, KeyId, 'raw-aes-gcm',
-                                         rand:bytes(32),
-                                         EncryptWithKey,
-                                         <<"2024-07-26T19:32:19Z">>,
-                                         false, false)
-                           end,
+                StoreKey =
+                    fun (Kind, KeyId, EncryptWithKey) ->
+                        KeyData = encryption_service:format_aes_key_params(
+                                    rand:bytes(32), EncryptWithKey, false),
+                        store_key(Pid, Kind, KeyId, 'raw-aes-gcm',
+                                    <<"2024-07-26T19:32:19Z">>,
+                                    ejson:encode(KeyData),
+                                    false)
+                    end,
 
                 ok = StoreKey(configDek, ?key1, <<"encryptionService">>),
 
@@ -1035,26 +1033,28 @@ store_and_read_key_test() ->
           with_gosecrets(
             Cfg,
             fun (_CfgPath, Pid) ->
-                Key1 = rand:bytes(32),
-                Key2 = rand:bytes(32),
+                Key1Material = rand:bytes(32),
+                Key2Material = rand:bytes(32),
+                Key1 = encryption_service:format_aes_key_params(
+                         Key1Material, undefined, false),
+                Key2 = encryption_service:format_aes_key_params(
+                         Key2Material, <<"key1">>, false),
                 Type = 'raw-aes-gcm',
-                ?assertEqual(ok, store_key(Pid, kek, <<"key1">>, Type, Key1,
-                                           <<"encryptionService">>,
+                ?assertEqual(ok, store_key(Pid, kek, <<"key1">>, Type,
                                            <<"2024-07-26T19:32:19Z">>,
-                                           false, false)),
+                                           ejson:encode(Key1),false)),
                 ?assertEqual(ok, store_key(Pid, configDek, <<"key2">>, Type,
-                                           Key2, <<"key1">>,
                                            <<"2024-07-26T19:32:19Z">>,
-                                           false, false)),
+                                           ejson:encode(Key2), false)),
                 {ok, Key1Encoded} = read_key(Pid, kek, <<"key1">>),
                 {ok, Key2Encoded} = read_key(Pid, configDek, <<"key2">>),
                 ?assertMatch(#{type := Type,
-                               key := Key1,
+                               key := Key1Material,
                                encr_key := <<"encryptionService">>,
                                creation_time := <<"2024-07-26T19:32:19Z">>},
                              DecodeKey(Key1Encoded)),
                 ?assertMatch(#{type := Type,
-                               key := Key2,
+                               key := Key2Material,
                                encr_key := <<"key1">>,
                                creation_time := <<"2024-07-26T19:32:19Z">>},
                              DecodeKey(Key2Encoded)),
@@ -1568,9 +1568,11 @@ mac_test() ->
                              verify_mac(Pid, WrongMac, Data)),
 
                 %% Rotate tokens and make sure that old mac is still valid
+                KeyData = encryption_service:format_aes_key_params(
+                            rand:bytes(32), <<"encryptionService">>, false),
                 ok = store_key(Pid, configDek, ?key1, 'raw-aes-gcm',
-                               rand:bytes(32), <<"encryptionService">>,
-                               <<"2024-07-26T19:32:19Z">>, false, false),
+                               <<"2024-07-26T19:32:19Z">>,
+                               ejson:encode(KeyData), false),
                 ok = rotate_integrity_tokens(Pid, ?key1),
 
                 {ok, Mac2} = mac(Pid, Data),

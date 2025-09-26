@@ -695,10 +695,8 @@ func (state *StoredKeysState) storeKey(
 	name,
 	kind,
 	keyType string,
-	encryptionKeyName,
 	creationTime string,
 	testOnly bool,
-	canBeCached bool,
 	otherData []byte,
 	ctx *storedKeysCtx,
 ) error {
@@ -711,14 +709,17 @@ func (state *StoredKeysState) storeKey(
 	}
 	var keyInfo storedKeyIface
 	if keyType == string(rawAESGCMKey) {
-		keyInfo = newAesGcmKey(name, kind, creationTime, encryptionKeyName, canBeCached, otherData)
+		keyInfo, err = newAesGcmKey(name, kind, creationTime, otherData)
+		if err != nil {
+			return err
+		}
 	} else if keyType == string(awskmKey) {
-		keyInfo, err = newAwsKey(name, kind, creationTime, canBeCached, otherData)
+		keyInfo, err = newAwsKey(name, kind, creationTime, otherData)
 		if err != nil {
 			return err
 		}
 	} else if keyType == string(kmipKey) {
-		keyInfo, err = newKmipKey(name, kind, creationTime, encryptionKeyName, canBeCached, otherData)
+		keyInfo, err = newKmipKey(name, kind, creationTime, otherData)
 		if err != nil {
 			return err
 		}
@@ -1338,16 +1339,26 @@ func decryptKeyData(k storedKeyIface, data []byte, encryptedByKind, encryptionKe
 
 // Implementation of storedKeyIface for raw keys
 
-func newAesGcmKey(name, kind, creationTime, encryptionKeyName string, canBeCached bool, data []byte) *rawAesGcmStoredKey {
+func newAesGcmKey(name, kind, creationTime string, data []byte) (*rawAesGcmStoredKey, error) {
+	type aesKeyTmp struct {
+		KeyMaterial       []byte `json:"keyMaterial"`
+		EncryptionKeyName string `json:"encryptionKeyName"`
+		CanBeCached       bool   `json:"canBeCached"`
+	}
+	var decoded aesKeyTmp
+	err := json.Unmarshal(data, &decoded)
+	if err != nil {
+		return nil, fmt.Errorf("invalid aes key json: %s", err.Error())
+	}
 	rawKeyInfo := &rawAesGcmStoredKey{
 		Name:              name,
 		Kind:              kind,
-		EncryptionKeyName: encryptionKeyName,
+		EncryptionKeyName: decoded.EncryptionKeyName,
 		CreationTime:      creationTime,
-		DecryptedKey:      data,
-		CanBeCached:       canBeCached,
+		DecryptedKey:      decoded.KeyMaterial,
+		CanBeCached:       decoded.CanBeCached,
 	}
-	return rawKeyInfo
+	return rawKeyInfo, nil
 }
 
 func (k *rawAesGcmStoredKey) name() string {
@@ -1482,10 +1493,7 @@ func (k *rawAesGcmStoredKey) marshal() (storedKeyType, []byte, error) {
 
 // Implementation of storedKeyIface for aws keys
 
-func newAwsKey(name, kind, creationTime string, canBeCached bool, data []byte) (*awsStoredKey, error) {
-	if canBeCached {
-		return nil, fmt.Errorf("aws keys can't be cached")
-	}
+func newAwsKey(name, kind, creationTime string, data []byte) (*awsStoredKey, error) {
 	var awsk awsStoredKey
 	err := json.Unmarshal(data, &awsk)
 	if err != nil {
@@ -1638,10 +1646,7 @@ func (k *awsStoredKey) canBeCached() bool {
 
 // Implementation of storedKeyIface for kmip keys
 
-func newKmipKey(name, kind, creationTime, encryptionKeyName string, canBeCached bool, data []byte) (*kmipStoredKey, error) {
-	if canBeCached {
-		return nil, fmt.Errorf("kmip keys can't be cached")
-	}
+func newKmipKey(name, kind, creationTime string, data []byte) (*kmipStoredKey, error) {
 	type kmipKeyTmp struct {
 		KmipId             string `json:"kmipId"`
 		Host               string `json:"host"`
@@ -1650,6 +1655,7 @@ func newKmipKey(name, kind, creationTime, encryptionKeyName string, canBeCached 
 		KeyPath            string `json:"keyPath"`
 		CertPath           string `json:"certPath"`
 		Passphrase         []byte `json:"keyPassphrase"`
+		EncryptionKeyName  string `json:"encryptionKeyName"`
 		CaSelection        string `json:"caSelection"`
 		CbCaPath           string `json:"CbCaPath"`
 		EncryptionApproach string `json:"encryptionApproach"`
@@ -1672,7 +1678,7 @@ func newKmipKey(name, kind, creationTime, encryptionKeyName string, canBeCached 
 		CaSelection:         decoded.CaSelection,
 		CbCaPath:            decoded.CbCaPath,
 		EncryptionApproach:  decoded.EncryptionApproach,
-		EncryptionKeyName:   encryptionKeyName,
+		EncryptionKeyName:   decoded.EncryptionKeyName,
 		CreationTime:        creationTime,
 		decryptedPassphrase: decoded.Passphrase,
 	}

@@ -769,25 +769,21 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 	keyKind, data := readBigField(data)
 	keyName, data := readBigField(data)
 	keyType, data := readBigField(data)
-	otherData, data := readBigField(data)
-	encryptionKeyNameBin, data := readBigField(data)
 	creationTime, data := readBigField(data)
-	testOnly, data := readBigField(data)
-	canBeCachedBin, _ := readBigField(data)
+	otherData, data := readBigField(data)
+	testOnly, _ := readBigField(data)
 	keyKindStr := string(keyKind)
 	keyNameStr := string(keyName)
 	keyTypeStr := string(keyType)
-	encryptionKeyName := string(encryptionKeyNameBin)
 	creationTimeStr := string(creationTime)
 	testOnlyBool := (string(testOnly) == "true")
-	canBeCached := (string(canBeCachedBin) == "true")
 
 	if testOnlyBool {
-		logDbg("Received request to test key %s (kind: %s, type: %s, encryptionKey: %s)",
-			keyNameStr, keyKindStr, keyTypeStr, encryptionKeyName)
+		logDbg("Received request to test key %s (kind: %s, type: %s)",
+			keyNameStr, keyKindStr, keyTypeStr)
 	} else {
-		logDbg("Received request to store key %s (kind: %s, type: %s, encryptionKey: %s, canBeCached: %t) on disk",
-			keyNameStr, keyKindStr, keyTypeStr, encryptionKeyName, canBeCached)
+		logDbg("Received request to store key %s (kind: %s, type: %s) on disk",
+			keyNameStr, keyKindStr, keyTypeStr)
 	}
 
 	ctx := s.newStoredKeyCtx(!testOnlyBool)
@@ -795,10 +791,8 @@ func (s *encryptionService) cmdStoreKey(data []byte) {
 		keyNameStr,
 		keyKindStr,
 		keyTypeStr,
-		encryptionKeyName,
 		creationTimeStr,
 		testOnlyBool,
-		canBeCached,
 		otherData,
 		ctx)
 	if err != nil {
