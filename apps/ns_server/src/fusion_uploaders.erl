@@ -930,7 +930,7 @@ cleanup_snapshots() ->
                               ?log_debug("Plan UUID ~p is no longer valid",
                                          [PlanUUID]),
                               case delete_snapshots(BucketName, Entry) of
-                                  [] ->
+                                  {ok, []} ->
                                       remove_snapshot_entry(Entry);
                                   _ ->
                                       ok
