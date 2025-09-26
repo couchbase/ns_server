@@ -921,7 +921,11 @@ format_secrets_used_by_list(UsedByMap, Snapshot) ->
                     end,
                 FormattedUsages ++ BucketsStr
         end,
-    Kind2Usage = ?cut(maps:get(required_usage, cb_deks:dek_config(_))),
+    Kind2Usage =
+        fun (K) ->
+            {succ, U} = cb_deks:call_dek_callback(get_required_usage, K, []),
+            U
+        end,
     UsagesUsedByCfg = lists:uniq(lists:map(Kind2Usage, UsedByCfg)),
     UsagesUsedByDeks = lists:uniq(lists:map(Kind2Usage, UsedByDeks)),
     SecretsStrs = case length(Secrets) of

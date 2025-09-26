@@ -18,24 +18,86 @@
          read/2,
          generate_new/3,
          save_dek/4,
-         handle_ale_log_dek_update/1,
          maybe_reencrypt_deks/4,
          dek_cluster_kinds_list/0,
          dek_cluster_kinds_list/1,
          dek_kinds_list_existing_on_node/1,
-         dek_config/1,
+         call_dek_callback/3,
+         call_dek_callback_unsafe/3,
          dek_chronicle_keys_filter/1,
          kind2bin/1,
          kind2bin/2,
          kind2datatype/1]).
 
--export_type([dek_id/0, dek/0, dek_kind/0, encryption_method/0]).
+%% Return encryption method for a given data type.
+%% Parameters: Chronicle snapshot that contains all keys prepared by
+%%             fetch_keys_callback.
+%% Must be lightweight, as it can be called often.
+-callback get_encryption_method(dek_kind(), cluster | node,
+                                cb_cluster_secrets:chronicle_snapshot()) ->
+              {ok, encryption_method()} | {error, not_found}.
 
--define(LOG_ENCR_RPC_TIMEOUT, ?get_timeout(log_encr_rpc_timeout, 60000)).
--define(LOG_ENCR_ALE_DROP_DEK_TIMEOUT,
-        ?get_timeout(log_encr_ale_drop_dek_timeout, 60000)).
--define(DROP_DEK_ALE_WORK_SZ_THRESH,
-        ?get_param(drop_dek_ale_work_sz_thresh, 62914560)).
+%% Called when DEKs are updated (active key changes or historical keys are
+%% added/dropped).
+%% Returns ok if keys are applied successfully, {error, Reason} otherwise.
+%% Must be idempotent (can be called with the same arguments multiple times).
+%% Must be lightweight in cases when keys are already applied.
+-callback update_deks(dek_kind()) -> ok | {error, _}.
+
+%% The usage (in cb_cluster_secrets sense) that a secret must have in order to
+%% be allowed to encrypt this kind of deks.
+-callback get_required_usage(dek_kind()) -> cb_cluster_secrets:secret_usage().
+
+%% Return the lifetime of DEKs in seconds.
+-callback get_deks_lifetime(dek_kind(),
+                            cb_cluster_secrets:chronicle_snapshot()) ->
+              {ok, pos_integer() | undefined} | {error, not_found}.
+
+%% Return the rotation interval of DEKs in seconds.
+-callback get_deks_rotation_interval(dek_kind(),
+                                     cb_cluster_secrets:chronicle_snapshot()) ->
+              {ok, undefined | pos_integer()} | {error, not_found}.
+
+%% Return the drop timestamp.
+%% All DEKs that were created before that timestamp will be dropped at that
+%% timestamp (the drop procedure will be initiated at that timestamp).
+-callback get_drop_deks_timestamp(dek_kind(),
+                                  cb_cluster_secrets:chronicle_snapshot()) ->
+              {ok, undefined | calendar:datetime()} | {error, not_found}.
+
+%% Return the force encryption timestamp.
+%% Will be used as expiration time for NULL DEK. Which basically means
+%% cb_cluster_secrets will initiate encryption for all data that is not
+%% encrypted yet at that timestamp. Normally, toggling encryption should reset
+%% this timestamp to undefined.
+-callback get_force_encryption_timestamp(
+                  dek_kind(),
+                  cb_cluster_secrets:chronicle_snapshot()) ->
+              {ok, undefined | calendar:datetime()} | {error, not_found}.
+
+%% Return the list of DEKs that are currently in use.
+%% Must be lightweight, as it can be called relatively often.
+%% Should include ?NULL_DEK in the returned list if there is unencrypted data.
+-callback get_dek_ids_in_use(dek_kind()) -> {ok, [dek_id()]} | {error, _}.
+
+%% Initiate the drop procedure for a given list of DEKs.
+%% User should start getting rid of the given DEKs as soon as possible.
+%% If user doesn't currently use those DEKs, it way return {ok, done}.
+%% It is also ok to return {ok, done} if necessary re-encryption is quick so
+%% it can be performed synchronously immediately.
+%% Otherwise, it should return {ok, started} and initiate the re-encryption
+%% asynchronously. When finished the user should call dek_drop_complete/2.
+%% The DEK list to drop can include ?NULL_DEK, which means that all unencrypted
+%% data should be encrypted.
+-callback initiate_drop_deks(dek_kind(), [dek_id()]) ->
+             {ok, done | started} | {error, not_found | retry | _}.
+
+%% Return a chronicle snapshot that contains all the chronicle
+%% keys where encryption settings are stored for this dek kind.
+-callback fetch_chronicle_keys_in_txn(dek_kind(), Txn :: term()) ->
+              cb_cluster_secrets:chronicle_snapshot().
+
+-export_type([dek_id/0, dek/0, dek_kind/0, encryption_method/0]).
 
 -type encryption_method() :: {secret, cb_cluster_secrets:secret_id()} |
                              encryption_service |
@@ -339,129 +401,42 @@ dek_chronicle_keys_filter(Key) ->
             end
     end.
 
-%% encryption_method_callback - called to determine if encryption is enabled
-%% or not for that type of entity.
-%% Parameters: Chronicle snapshot that contains all keys prepared by
-%%             fetch_keys_callback.
-%% Returns {secret, Id} | encryption_service | disabled.
-%% Must be lightweight, as it can be called often.
-%%
-%% set_active_key_callback - called to set active encryption key.
-%% Parameters: undefined | cb_deks:dek().
-%% Returns ok if the set is successfull, {error, Reason} if set fails.
-%% undefined means encryption must be disabled.
-%% Must be idempotent (can be called with a dek that is already in use).
-%% Must be lightweight if the dek is already in use.
-%%
-%% fetch_keys_callback - returns a snapshot that conatains all the chronicle
-%% keys that are needed to determine the state of encryption for a given entity
-%%
-%% required_usage - the secret usage that secret must contain in order to be
-%% allowed to encrypt this kind of deks
-%%
-%% drop_keys_timestamp_callback - returns a timestamp or undefined,
-%% all DEKs that were created before this timestamp should be dropped
-%%
-%% force_encryption_timestamp_callback - returns a timestamp or undefined,
-%% if this timestamp is set, data must be encrypted if current time is after
-%% this timestamp. Note that each toggle of encryption must reset this
-%% timestamp to undefined.
--spec dek_config(dek_kind()) ->
-    #{encryption_method_callback :=
-        fun( (cluster | node, Snapshot) -> {ok, encryption_method()} |
-                                           {error, not_found} ),
-      set_active_key_callback :=
-        fun ( (undefined | dek_id()) -> ok | {error, _}),
-      lifetime_callback :=
-        fun ( (Snapshot) -> {ok, IntOrUndefined} | {error, not_found} ),
-      rotation_int_callback :=
-        fun ( (Snapshot) -> {ok, IntOrUndefined} | {error, not_found} ),
-      drop_keys_timestamp_callback :=
-        fun ( (Snapshot) -> {ok, DateTimeOrUndefined} | {error, not_found} ),
-      force_encryption_timestamp_callback :=
-        fun ( (Snapshot) -> {ok, DateTimeOrUndefined} | {error, not_found} ),
-      get_ids_in_use_callback :=
-        fun ( () -> {ok, Ids} | {error, not_found | _}),
-      drop_callback :=
-        fun ( (Ids) -> {ok, done | started} | {error, not_found | retry | _} ) |
-        not_supported,
-      fetch_keys_callback := fun ( (Txn :: term()) -> Snapshot :: #{} ),
-      required_usage := cb_cluster_secrets:secret_usage()
-     } when Ids :: [dek_id()],
-            Snapshot :: cb_cluster_secrets:chronicle_snapshot(),
-            IntOrUndefined :: undefined | pos_integer(),
-            DateTimeOrUndefined :: undefined | calendar:datetime().
-dek_config(configDek) ->
-    #{encryption_method_callback => ?cut(cb_crypto:get_encryption_method(
-                                           config_encryption, _1, _2)),
-      set_active_key_callback => fun set_config_active_key/1,
-      lifetime_callback => cb_crypto:get_dek_kind_lifetime(
-                             config_encryption, _),
-      rotation_int_callback => cb_crypto:get_dek_rotation_interval(
-                                 config_encryption, _),
-      drop_keys_timestamp_callback => cb_crypto:get_drop_keys_timestamp(
-                                        config_encryption, _),
-      force_encryption_timestamp_callback =>
-          cb_crypto:get_force_encryption_timestamp(config_encryption, _),
-      get_ids_in_use_callback => ?cut(get_config_dek_ids_in_use()),
-      drop_callback => fun drop_config_deks/1,
-      fetch_keys_callback => chronicle_compat:txn_get_many(
-                               [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY], _),
-      required_usage => config_encryption};
-dek_config(logDek) ->
-    #{encryption_method_callback => ?cut(cb_crypto:get_encryption_method(
-                                           log_encryption, _1, _2)),
-      set_active_key_callback => fun set_log_active_key/1,
-      lifetime_callback => cb_crypto:get_dek_kind_lifetime(
-                             log_encryption, _),
-      rotation_int_callback => cb_crypto:get_dek_rotation_interval(
-                                 log_encryption, _),
-      drop_keys_timestamp_callback => cb_crypto:get_drop_keys_timestamp(
-                                        log_encryption, _),
-      force_encryption_timestamp_callback =>
-          cb_crypto:get_force_encryption_timestamp(log_encryption, _),
-      get_ids_in_use_callback => ?cut(get_dek_ids_in_use(logDek)),
-      drop_callback => fun drop_log_deks/1,
-      fetch_keys_callback => chronicle_compat:txn_get_many(
-                               [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY], _),
-      required_usage => log_encryption};
-dek_config(auditDek) ->
-    #{encryption_method_callback => ?cut(cb_crypto:get_encryption_method(
-                                           audit_encryption, _1, _2)),
-      set_active_key_callback => fun (_) ->
-                                     push_memcached_dek("@audit", auditDek)
-                                 end,
-      lifetime_callback => cb_crypto:get_dek_kind_lifetime(
-                             audit_encryption, _),
-      rotation_int_callback => cb_crypto:get_dek_rotation_interval(
-                                 audit_encryption, _),
-      drop_keys_timestamp_callback => cb_crypto:get_drop_keys_timestamp(
-                                        audit_encryption, _),
-      force_encryption_timestamp_callback =>
-          cb_crypto:get_force_encryption_timestamp(audit_encryption, _),
-      get_ids_in_use_callback => ?cut(get_dek_ids_in_use(auditDek)),
-      drop_callback => fun drop_audit_deks/1,
-      fetch_keys_callback => chronicle_compat:txn_get_many(
-                               [?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY], _),
-      required_usage => audit_encryption};
-dek_config({bucketDek, BucketUUID}) ->
-    #{encryption_method_callback => ?cut(ns_bucket:get_encryption(BucketUUID,
-                                                                  _1, _2)),
-      set_active_key_callback => ns_memcached:set_active_dek_for_bucket_uuid(
-                                   BucketUUID, _),
-      lifetime_callback => ns_bucket:get_dek_lifetime(BucketUUID, _),
-      rotation_int_callback => ns_bucket:get_dek_rotation_interval(
-                                 BucketUUID, _),
-      drop_keys_timestamp_callback => ns_bucket:get_drop_keys_timestamp(
-                                        BucketUUID, _),
-      force_encryption_timestamp_callback =>
-          ns_bucket:get_force_encryption_timestamp(BucketUUID, _),
-      get_ids_in_use_callback => fun () ->
-                                     ns_memcached:get_dek_ids_in_use(BucketUUID)
-                                 end,
-      drop_callback => drop_bucket_deks(BucketUUID, _),
-      fetch_keys_callback => get_bucket_chronicle_keys(BucketUUID, _),
-      required_usage => {bucket_encryption, BucketUUID}}.
+-spec call_dek_callback(get_encryption_method |
+                        update_deks |
+                        get_required_usage |
+                        get_deks_lifetime |
+                        get_deks_rotation_interval |
+                        get_drop_deks_timestamp |
+                        get_force_encryption_timestamp |
+                        get_dek_ids_in_use |
+                        initiate_drop_deks, dek_kind(), list()) ->
+      {succ, term()} | {except, {atom(), term(), term()}}.
+call_dek_callback(CallbackName, Kind, Args) ->
+    Module = dek_user_impl(Kind),
+    try erlang:apply(Module, CallbackName, [Kind | Args]) of
+        RV ->
+            ?log_debug("~p for ~p returned: ~0p", [CallbackName, Kind, RV]),
+            {succ, RV}
+    catch
+        C:E:ST ->
+            ?log_error("~p for ~p crash ~p:~p~n~p",
+                       [CallbackName, Kind, C, E, ST]),
+            {except, {C, E, ST}}
+    end.
+
+%% Version of call_dek_callback that doesn't catch exceptions.
+%% Use-case: Chronicle uses exceptions in transaction as a control flow, so if
+%% we catch it here (when calling fetch_chronicle_keys_in_txn), we break the
+%% logic of transaction.
+-spec call_dek_callback_unsafe(fetch_chronicle_keys_in_txn, dek_kind(),
+                               list()) -> term().
+call_dek_callback_unsafe(CallbackName, Kind, Args) ->
+    erlang:apply(dek_user_impl(Kind), CallbackName, [Kind | Args]).
+
+dek_user_impl(configDek) -> cb_deks_config;
+dek_user_impl(logDek) -> cb_deks_log;
+dek_user_impl(auditDek) -> cb_deks_audit;
+dek_user_impl({bucketDek, _}) -> cb_deks_bucket.
 
 %% Returns all possible deks kinds for this cluster.
 %% The list was supposed to be static if not buckets. Buckets can be created and
@@ -478,286 +453,13 @@ dek_kinds_list_existing_on_node(Snapshot) ->
     AllKinds = dek_cluster_kinds_list(Snapshot),
     lists:filter(
         fun(Kind) ->
-            #{encryption_method_callback := GetMethod} = dek_config(Kind),
-            case GetMethod(node, Snapshot) of
-                {ok, _} -> true;
-                {error, not_found} -> false
+            case call_dek_callback(get_encryption_method, Kind,
+                                   [node, Snapshot]) of
+                {succ, {ok, _}} -> true;
+                {succ, {error, not_found}} -> false
             end
         end,
         AllKinds).
-
-set_config_active_key(_ActiveDek) ->
-    force_config_encryption_keys().
-
-push_memcached_dek(MemcachedDekName, Kind) ->
-    maybe
-        {ok, LogDeksSnapshot} ?= cb_crypto:fetch_deks_snapshot(Kind),
-        ok ?= cb_crypto:active_key_ok(LogDeksSnapshot),
-        ns_memcached:set_active_dek(MemcachedDekName, LogDeksSnapshot)
-    end.
-
-handle_ale_log_dek_update(CreateNewDS) ->
-    Old = ale:get_global_log_deks_snapshot(),
-    New = CreateNewDS(Old),
-    case (cb_crypto:get_dek_id(Old) /= cb_crypto:get_dek_id(New)) of
-        true ->
-            ale:set_log_deks_snapshot(New);
-        false ->
-            ok
-    end.
-
-set_log_active_key(_ActiveKey) ->
-    maybe
-        %% DS can't be shared across nodes since it has atomic references, so we
-        %% pass in function to allow local nodes to create DS based on same keys
-        {ok, CurrDS} ?= cb_crypto:fetch_deks_snapshot(logDek),
-        ok ?= cb_crypto:active_key_ok(CurrDS),
-        CreateNewDS =
-            fun(PrevDS) ->
-                {ActiveKey, AllKeys} = cb_crypto:get_all_deks(CurrDS),
-                cb_crypto:create_deks_snapshot(ActiveKey, AllKeys, PrevDS)
-            end,
-
-        %% Push the dek update to the local memcached instance
-        ok ?= ns_memcached:set_active_dek("@logs", CurrDS),
-
-        %% Push the dek update locally to ns_server disk sinks
-        ok ?= handle_ale_log_dek_update(CreateNewDS),
-
-        %% Push the dek update to babysitter node disk sinks
-        ok ?= rpc:call(ns_server:get_babysitter_node(), cb_deks,
-                       handle_ale_log_dek_update, [CreateNewDS],
-                       ?LOG_ENCR_RPC_TIMEOUT),
-
-        %% Push the dek update to couchdb node disk sinks
-        ok ?= rpc:call(ns_node_disco:couchdb_node(), cb_deks,
-                       handle_ale_log_dek_update, [CreateNewDS],
-                       ?LOG_ENCR_RPC_TIMEOUT),
-
-        %% Reencrypt all rebalance reports local to this node based on CurrentDS
-        ok ?= ns_rebalance_report_manager:reencrypt_local_reports(CurrDS),
-
-        %% Reencrypt USER_LOG
-        ok ?= ns_log:reencrypt_data_on_disk(),
-
-        %% Reencrypt event logs
-        ok ?= event_log_server:reencrypt_data_on_disk()
-    else
-        {error, _} = Error ->
-            Error;
-        {badrpc, _} = Error ->
-            {error, Error}
-    end.
-
-force_config_encryption_keys() ->
-    maybe
-        %% How it works:
-        %%  1. memcached_config_mgr pushes new keys to memcached and saves the
-        %%     DekSnapshot in persistent_term memcached_native_encryption_deks.
-        %%     This persistent_term determines DEKs that memcached knows about.
-        %%     Only these DEKs can be used for encryption of files that are
-        %%     to be read by memcached
-        %%  2. memcached_config_mgr reloads memcached.json encrypted by the new
-        %%     dek
-        %%  3. password and permissions files get reencrypted on disk
-        %%     (sync_reload) with the DekSnapshot taken from
-        %%     memcached_native_encryption_deks
-        %%  4. all historical keys in memcached_native_encryption_deks get
-        %%     dropped, because old deks are not used anywhere
-        ok ?= memcached_config_mgr:push_config_encryption_key(true),
-        ok ?= memcached_passwords:sync_reload(),
-        ok ?= memcached_permissions:sync_reload(),
-        ok ?= ns_audit_cfg:maybe_apply_new_keys(),
-        ok ?= memcached_config_mgr:drop_historical_deks(),
-        ok ?= ns_config:resave(),
-        ok ?= menelaus_users:apply_keys_and_resave(),
-        ok ?= menelaus_local_auth:resave(),
-        ok ?= simple_store:resave(?XDCR_CHECKPOINT_STORE),
-        ok ?= chronicle_local:maybe_apply_new_keys(),
-        ok ?= ns_ssl_services_setup:resave_encrypted_files(),
-        ok ?= encryption_service:remove_old_integrity_tokens(
-                [kek | dek_kinds_list_existing_on_node(direct)]),
-        ok
-    end.
-
-get_config_dek_ids_in_use() ->
-    maybe
-        {ok, Ids1} ?= memcached_config_mgr:get_key_ids_in_use(),
-        {ok, Ids2} ?= memcached_passwords:get_key_ids_in_use(),
-        {ok, Ids3} ?= memcached_permissions:get_key_ids_in_use(),
-        {ok, Ids4} ?= ns_config:get_key_ids_in_use(),
-        {ok, Ids5} ?= menelaus_users:get_key_ids_in_use(),
-        {ok, Ids6} ?= menelaus_local_auth:get_key_ids_in_use(),
-        {ok, Ids7} ?= simple_store:get_key_ids_in_use(?XDCR_CHECKPOINT_STORE),
-        {ok, Ids8} ?= chronicle_local:get_encryption_dek_ids(),
-        {ok, Ids9} ?= ns_ssl_services_setup:get_key_ids_in_use(),
-        {ok, Ids10} ?= encryption_service:get_key_ids_in_use(),
-        {ok, Ids11} ?= ns_audit_cfg:get_key_ids_in_use(),
-        {ok, lists:map(fun (undefined) -> ?NULL_DEK;
-                           (Id) -> Id
-                       end, lists:uniq(Ids1 ++ Ids2 ++ Ids3 ++ Ids4 ++ Ids5 ++
-                                       Ids6 ++ Ids7 ++ Ids8 ++ Ids9 ++ Ids10 ++
-                                       Ids11))}
-    end.
-
-get_dek_ids_in_use(logDek) ->
-    maybe
-        {ok, InUseMemcached} ?= ns_memcached:get_dek_ids_in_use("@logs"),
-
-        {ok, InUseLocal} ?= ale:get_all_used_deks(),
-
-        {ok, InuseBabySitter} ?= rpc:call(ns_server:get_babysitter_node(),
-                                          ale, get_all_used_deks, [],
-                                          ?LOG_ENCR_RPC_TIMEOUT),
-
-        {ok, InuseCouchDb} ?= rpc:call(ns_node_disco:couchdb_node(),
-                                       ale, get_all_used_deks, [],
-                                       ?LOG_ENCR_RPC_TIMEOUT),
-
-        {ok, InUseRebReports} ?= ns_rebalance_report_manager:get_in_use_deks(),
-
-        {ok, InUseLogs} ?= ns_log:get_in_use_deks(),
-
-        {ok, InUseEventLogs} ?= event_log_server:get_in_use_deks(),
-
-        AllInUse = lists:map(
-                      fun(undefined) ->
-                              ?NULL_DEK;
-                         (Elem) ->
-                              Elem
-                      end, InUseMemcached ++ InUseLocal ++ InuseBabySitter ++
-                           InuseCouchDb ++ InUseRebReports ++ InUseLogs ++
-                           InUseEventLogs),
-        {ok, lists:usort(AllInUse)}
-    else
-        {error, _} = Error ->
-            Error;
-        {badrpc, _} = Error ->
-            {error, Error}
-    end;
-get_dek_ids_in_use(auditDek) ->
-    ns_memcached:get_dek_ids_in_use("@audit").
-
-drop_config_deks(DekIdsToDrop) ->
-    maybe
-        ok ?= force_config_encryption_keys(),
-        {ok, DekIdsInUse} ?= get_config_dek_ids_in_use(),
-        StillInUse = [Id || Id <- DekIdsInUse, lists:member(Id, DekIdsToDrop)],
-        case StillInUse of
-            [] -> {ok, done};
-            [_ | _] -> {error, {still_in_use, StillInUse}}
-        end
-    end.
-
--spec try_drop_dek_work(fun(), logDek | auditDek) ->
-          {ok, start} | {error, retry}.
-try_drop_dek_work(Work, Type) ->
-    WorkProcessName = list_to_atom(?MODULE_STRING ++ "-drop-dek-" ++
-                                       atom_to_list(Type)),
-    F =
-        fun () ->
-                try
-                    erlang:register(WorkProcessName, self())
-                catch
-                    _:_ ->
-                        proc_lib:init_fail({error, already_running},
-                                           {exit, normal})
-                end,
-                proc_lib:init_ack(ok),
-                Res = try
-                          Work()
-                      catch
-                          T:E:Stack ->
-                              ?log_error("Drop DEKs work failed: ~p",
-                                         {T, E, Stack}),
-                              {error, {T, E}}
-                      end,
-                cb_cluster_secrets:dek_drop_complete(Type, Res)
-        end,
-
-    case proc_lib:start_link(erlang, apply, [F, []]) of
-        ok ->
-            {ok, started};
-        {error, already_running} ->
-            {error, retry}
-    end.
-
-drop_log_deks(DekIdsToDrop) ->
-    {ok, DS} = cb_crypto:fetch_deks_snapshot(logDek),
-
-    %% Ale logger treats "undefined" as a NULL_DEK so we convert it here
-    %% for ale appropriately
-    DropIdsForAle =
-        lists:map(
-          fun (?NULL_DEK) -> undefined;
-              (Id) -> Id
-          end, DekIdsToDrop),
-
-    RPC_TIMEOUT = ?LOG_ENCR_ALE_DROP_DEK_TIMEOUT + 5000,
-    Work =
-        fun() ->
-                R1 = ale:drop_log_deks(DropIdsForAle,
-                                       ?DROP_DEK_ALE_WORK_SZ_THRESH,
-                                       ?LOG_ENCR_ALE_DROP_DEK_TIMEOUT),
-                R2 = rpc:call(ns_server:get_babysitter_node(), ale,
-                              drop_log_deks, [DropIdsForAle,
-                                              ?DROP_DEK_ALE_WORK_SZ_THRESH,
-                                              ?LOG_ENCR_ALE_DROP_DEK_TIMEOUT],
-                              RPC_TIMEOUT),
-                R3 = rpc:call(ns_node_disco:couchdb_node(), ale,
-                              drop_log_deks, [DropIdsForAle,
-                                              ?DROP_DEK_ALE_WORK_SZ_THRESH,
-                                              ?LOG_ENCR_ALE_DROP_DEK_TIMEOUT],
-                              RPC_TIMEOUT),
-
-                R4 = ns_rebalance_report_manager:reencrypt_local_reports(DS),
-                R5 = ns_memcached:prune_log_or_audit_encr_keys("@logs",
-                                                               DekIdsToDrop),
-                %% Reencrypt USER_LOG
-                R6 = ns_log:reencrypt_data_on_disk(),
-
-                %% Reencrypt event logs
-                R7 = event_log_server:reencrypt_data_on_disk(),
-
-                Errors = lists:filtermap(
-                           fun(ok) ->
-                                   false;
-                              ({error, Error}) ->
-                                   {true, Error};
-                              ({badrpc, _} = Error) ->
-                                   {true, Error}
-                           end , [R1, R2, R3, R4, R5, R6, R7]),
-
-                case Errors of
-                    [] ->
-                        ok;
-                    _ ->
-                        {error, lists:flatten(Errors)}
-                end
-        end,
-        try_drop_dek_work(Work, logDek).
-
-drop_audit_deks(DekIdsToDrop) ->
-    try_drop_dek_work(
-      fun() ->
-              ns_memcached:prune_log_or_audit_encr_keys("@audit", DekIdsToDrop)
-      end, auditDek).
-
-drop_bucket_deks(BucketUUID, DekIds) ->
-    Continuation = fun (_) ->
-                       cb_cluster_secrets:dek_drop_complete(
-                           {bucketDek, BucketUUID}, ok)
-                   end,
-    ns_memcached:drop_deks(BucketUUID, DekIds, cb_cluster_secrets,
-                           Continuation).
-
-get_bucket_chronicle_keys(BucketUUID, Txn) ->
-    BucketKeys = ns_bucket:all_keys_by_uuid([BucketUUID],
-                                            [props, encr_at_rest, uuid], Txn),
-    chronicle_compat:txn_get_many(
-        [ns_bucket:root() | BucketKeys] ++
-         ns_cluster_membership:node_membership_keys(node()), Txn).
-
 
 kind2bin({bucketDek, UUID}) ->
     case ns_bucket:uuid2bucket(UUID) of

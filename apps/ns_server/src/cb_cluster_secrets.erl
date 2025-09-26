@@ -1421,8 +1421,8 @@ reread_bad_deks(Kind, #state{deks_info = DeksInfo} = State) ->
           {ok, #state{}} | {error, #state{}, term()}.
 maybe_update_deks(Kind, OldState) ->
     Snapshot = deks_config_snapshot(Kind),
-    case call_dek_callback(encryption_method_callback, Kind,
-                           [node, Snapshot]) of
+    case cb_deks:call_dek_callback(get_encryption_method, Kind,
+                                   [node, Snapshot]) of
         {succ, {ok, EncrMethod}} ->
             %% Read DEKs if we don't have them yet
             State = #state{deks_info = AllDeks} =
@@ -1558,7 +1558,7 @@ garbage_collect_deks(Kind, Force, #state{deks_info = DeksInfo} = State) ->
         %% (or have only one dek), because we need to update
         %% "has_unencrypted_data" info anyway
         {ok, _KindDeks} ->
-            case call_dek_callback(get_ids_in_use_callback, Kind, []) of
+            case cb_deks:call_dek_callback(get_dek_ids_in_use, Kind, []) of
                 {succ, {ok, IdList}} ->
                     handle_new_dek_ids_in_use(Kind, IdList, Force, State);
                 {succ, {error, not_found}} ->
@@ -1630,9 +1630,9 @@ handle_new_dek_ids_in_use(Kind, CurrInUseIDs, Force,
         false ->
             %% UpdateStatus is not ok. This means update of deks
             %% finished unsuccesfully, so we don't really know if
-            %% set_active_key_callback has actually finished.
+            %% update_deks has actually finished.
             %% It is hypothetically possible that we receive error,
-            %% but set_active_key_callback is still working (e.g. in
+            %% but update_deks is still working (e.g. in
             %% memcached). In this case it is possible that we remove
             %% the keys that are being pushed.
             NewState = State#state{deks_info = DeksInfo#{
@@ -1710,14 +1710,13 @@ call_set_active_cb(Kind, #state{deks_info = DeksInfo} = State) ->
             {error, State, active_key_not_available};
         _ when NewHash == PrevHash ->
             ?log_debug("No changes in ~p deks, skipping calling "
-                       "set_active_key_callback", [Kind]),
+                       "update_deks", [Kind]),
             {ok, State};
         _ ->
             case cb_crypto:reset_dek_cache(Kind,
                                            should_update_cache(NewHash, _)) of
                 {ok, _} ->
-                    case call_dek_callback(set_active_key_callback, Kind,
-                                           [NewActiveKey]) of
+                    case cb_deks:call_dek_callback(update_deks, Kind, []) of
                         {succ, ok} ->
                             NewKindDeks = KindDeks#{prev_deks_hash => NewHash},
                             NewDeksInfo = DeksInfo#{Kind => NewKindDeks},
@@ -1764,19 +1763,6 @@ maybe_rotate_integrity_tokens(_Kind, _DekId, _State) ->
 
 dek_kind_supports_drop(_Kind) ->
     true.
-
-call_dek_callback(CallbackName, Kind, Args) ->
-    #{CallbackName := CB} = cb_deks:dek_config(Kind),
-    try erlang:apply(CB, Args) of
-        RV ->
-            ?log_debug("~p for ~p returned: ~0p", [CallbackName, Kind, RV]),
-            {succ, RV}
-    catch
-        C:E:ST ->
-            ?log_error("~p for ~p crash ~p:~p~n~p",
-                       [CallbackName, Kind, C, E, ST]),
-            {except, {C, E, ST}}
-    end.
 
 -spec on_deks_update(cb_deks:dek_kind(), #state{}) -> #state{}.
 on_deks_update(Kind, #state{deks_info = AllDeks} = State) ->
@@ -1945,8 +1931,8 @@ read_all_deks(Snapshot) ->
       fun (Kind, #{is_enabled := IsEnabled,
                   active_id := ActiveId,
                   dek_ids := DekIds}) ->
-          case call_dek_callback(encryption_method_callback, Kind,
-                                 [node, Snapshot]) of
+          case cb_deks:call_dek_callback(get_encryption_method, Kind,
+                                         [node, Snapshot]) of
               {succ, {ok, _}} ->
                   Keys = cb_deks:read(Kind, DekIds),
                   {true, new_dek_info(Kind, ActiveId, Keys,
@@ -2082,8 +2068,8 @@ maybe_reencrypt_deks(Kind, #state{deks_info = Deks} = State) ->
 
 reencrypt_deks(Kind, #{deks := Keys} = DeksInfo, Snapshot) ->
     maybe
-        {succ, {ok, EncrMethod}} ?= call_dek_callback(
-                                      encryption_method_callback,
+        {succ, {ok, EncrMethod}} ?= cb_deks:call_dek_callback(
+                                      get_encryption_method,
                                       Kind,
                                       [node, Snapshot]),
         RV = cb_deks:maybe_reencrypt_deks(Kind, Keys, EncrMethod, Snapshot),
@@ -2104,7 +2090,11 @@ reencrypt_deks(Kind, #{deks := Keys} = DeksInfo, Snapshot) ->
 
 -spec deks_config_snapshot(cb_deks:dek_kind()) -> chronicle_snapshot().
 deks_config_snapshot(Kind) ->
-    FetchDekKeysFun = maps:get(fetch_keys_callback, cb_deks:dek_config(Kind)),
+    FetchDekKeysFun =
+        fun (Txn) ->
+            cb_deks:call_dek_callback_unsafe(
+              fetch_chronicle_keys_in_txn, Kind, [Txn])
+        end,
     FetchOtherKeysFun = chronicle_compat:txn_get_many([?CHRONICLE_SECRETS_KEY], _),
     chronicle_compat:get_snapshot([FetchDekKeysFun, FetchOtherKeysFun], #{}).
 
@@ -2142,8 +2132,8 @@ can_delete_secret(#{id := Id}, Snapshot) ->
     EncryptionConfigUsages =
         lists:filtermap(
           fun (Kind) ->
-               case call_dek_callback(encryption_method_callback, Kind,
-                                      [cluster, Snapshot]) of
+               case cb_deks:call_dek_callback(get_encryption_method, Kind,
+                                              [cluster, Snapshot]) of
                   {succ, {ok, {secret, Id}}} ->
                       {true, Kind};
                   {succ, {ok, _}} ->
@@ -2634,12 +2624,13 @@ dek_expiration_times(Kind, #{deks := Deks, is_enabled := IsEnabled,
     maybe
         {_, true} ?= {drop_supported, dek_kind_supports_drop(Kind)},
         {succ, {ok, LifeTimeInSec}} ?=
-            call_dek_callback(lifetime_callback, Kind, [Snapshot]),
+            cb_deks:call_dek_callback(get_deks_lifetime, Kind, [Snapshot]),
         {succ, {ok, DropKeysTS}} ?=
-            call_dek_callback(drop_keys_timestamp_callback, Kind, [Snapshot]),
+            cb_deks:call_dek_callback(get_drop_deks_timestamp, Kind,
+                                      [Snapshot]),
         {succ, {ok, ForceEncryptionTS}} ?=
-            call_dek_callback(force_encryption_timestamp_callback, Kind,
-                              [Snapshot]),
+            cb_deks:call_dek_callback(get_force_encryption_timestamp, Kind,
+                                      [Snapshot]),
         RegularKeyTimes =
             lists:filtermap(
               fun (#{id := Id} = Key) ->
@@ -2737,10 +2728,12 @@ dek_rotation_time(Kind, #{is_enabled := true, active_id := ActiveId,
             lists:search(fun (#{id := Id}) -> Id == ActiveId end, Keys),
         %% We should remove all keys that were created before this date:
         {succ, {ok, DKTS}} ?=
-            call_dek_callback(drop_keys_timestamp_callback, Kind, [Snapshot]),
+            cb_deks:call_dek_callback(get_drop_deks_timestamp, Kind,
+                                      [Snapshot]),
         %% This is how often we should create new deks:
         {succ, {ok, RotationInt}} ?=
-            call_dek_callback(rotation_int_callback, Kind, [Snapshot]),
+            cb_deks:call_dek_callback(get_deks_rotation_interval, Kind,
+                                      [Snapshot]),
 
         %% Note: We should not treat keys with CDT == DKTS as expired
         %% because newly created keys will be treated as expired then
@@ -2863,13 +2856,14 @@ validate_dek_related_usage_change(NewProps, PrevProps, Snapshot) ->
     KindsOfExistingDeks = get_dek_kinds_used_by_secret_id(Id, Snapshot),
     DekKindRequirements =
         fun (Kind) ->
-            #{required_usage := Requirement} = cb_deks:dek_config(Kind),
+            {succ, Requirement} = cb_deks:call_dek_callback(get_required_usage,
+                                                            Kind, []),
             case lists:member(Kind, KindsOfExistingDeks) of
                 true -> {true, Requirement};
                 false ->
-                    {succ, RV} = call_dek_callback(encryption_method_callback,
-                                                   Kind,
-                                                   [cluster, Snapshot]),
+                    {succ, RV} = cb_deks:call_dek_callback(
+                                   get_encryption_method, Kind,
+                                   [cluster, Snapshot]),
                     case {ok, {secret, Id}} == RV of
                         true -> {true, Requirement};
                         false -> false
@@ -2930,7 +2924,8 @@ secret_encrypts_other_secrets(Id, Snapshot) ->
 -spec can_secret_props_encrypt_dek_kind(secret_props(), cb_deks:dek_kind()) ->
           boolean().
 can_secret_props_encrypt_dek_kind(#{usage := UsageList}, DekKind) ->
-    #{required_usage := Required} = cb_deks:dek_config(DekKind),
+    {succ, Required} = cb_deks:call_dek_callback(get_required_usage, DekKind,
+                                                 []),
     is_allowed([Required], UsageList).
 
 -spec update_secrets(
@@ -3275,9 +3270,9 @@ fetch_snapshot_in_txn(Txn) ->
     DeksRelatedSnapshot =
         lists:foldl(
           fun (Kind, Acc) ->
-              FetchKeys = maps:get(fetch_keys_callback,
-                                   cb_deks:dek_config(Kind)),
-              maps:merge(Acc, FetchKeys(Txn))
+              FetchedKeys = cb_deks:call_dek_callback_unsafe(
+                              fetch_chronicle_keys_in_txn, Kind, [Txn]),
+              maps:merge(Acc, FetchedKeys)
           end,
           BucketListSnapshot,
           cb_deks:dek_cluster_kinds_list(BucketListSnapshot)),
@@ -3386,7 +3381,8 @@ initiate_deks_drop(Kind, IdsToDropList0,
     log_expired_deks(encr_at_rest_expired_deks_drop_failed, Kind,
                      BeingDroppedSet),
     case (length(IdsToDropFinalList) > 0) andalso
-         call_dek_callback(drop_callback, Kind, [IdsToDropFinalList]) of
+         cb_deks:call_dek_callback(initiate_drop_deks, Kind,
+                                   [IdsToDropFinalList]) of
         false ->
             %% IdsToDrop0 was not empty, but the final list is empty (we
             %% probably removed NULL_DEK or ActiveId), so we should not attempt
@@ -3422,7 +3418,7 @@ initiate_deks_drop(Kind, IdsToDropList0,
         {succ, {error, Reason}} ->
             log_expired_deks(encr_at_rest_expired_deks_drop_failed, Kind,
                              sets:subtract(IdsToDropFinalSet, BeingDroppedSet)),
-            ?log_error("drop_callback for ~p returned error: ~p",
+            ?log_error("initiate_drop_deks for ~p returned error: ~p",
                        [Kind, Reason]),
             State0;
         {except, _} ->
@@ -3948,8 +3944,8 @@ import_bucket_dek_files_impl(_Kind, [], State) ->
 import_bucket_dek_files_impl(Kind, Paths, State) ->
     maybe
         Snapshot = deks_config_snapshot(Kind),
-        {succ, {ok, EncrMethod}} ?= call_dek_callback(
-                                      encryption_method_callback, Kind,
+        {succ, {ok, EncrMethod}} ?= cb_deks:call_dek_callback(
+                                      get_encryption_method, Kind,
                                       [node, Snapshot]),
         {Res, NewState} = import_deks_into_state(Kind, Paths, EncrMethod,
                                                  Snapshot, State),

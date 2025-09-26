@@ -330,7 +330,8 @@ get_encryption_at_rest_info() ->
     GroupedInfos =
         maps:fold(
           fun (K, I, Acc) ->
-              EncryptionType = maps:get(required_usage, cb_deks:dek_config(K)),
+              {succ, EncryptionType} =
+                  cb_deks:call_dek_callback(get_required_usage, K, []),
               New = case maps:find(EncryptionType, Acc) of
                         {ok, Cur} -> cb_cluster_secrets:merge_dek_infos(Cur, I);
                         error -> I

@@ -153,7 +153,7 @@
          maybe_add_impersonate_user_frame_info/2,
          delete_bucket/2,
          get_config_stats/2,
-         set_active_dek_for_bucket_uuid/2,
+         set_active_dek_for_bucket_uuid/1,
          set_active_dek/2,
          prune_log_or_audit_encr_keys/2,
          get_dek_ids_in_use/1,
@@ -2179,13 +2179,13 @@ set_tls_config(Config) ->
           end
       end).
 
-set_active_dek_for_bucket_uuid(BucketUUID, ActiveDek) ->
+set_active_dek_for_bucket_uuid(BucketUUID) ->
     maybe
         {ok, BucketName} ?= ns_bucket:uuid2bucket(BucketUUID),
-        set_active_dek_for_bucket(BucketName, BucketUUID, ActiveDek)
+        set_active_dek_for_bucket(BucketName, BucketUUID)
     end.
 
-set_active_dek_for_bucket(Bucket, UUID, _ActiveDek) ->
+set_active_dek_for_bucket(Bucket, UUID) ->
     {ok, DeksSnapshot} = cb_crypto:fetch_deks_snapshot({bucketDek, UUID}),
     NsMemcachedExists = (whereis(server(Bucket)) =/= undefined),
     case set_active_dek(Bucket, DeksSnapshot) of

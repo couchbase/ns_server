@@ -706,9 +706,9 @@ dek_interval_error(MinInSec) ->
 get_dek_kinds_by_type(Type) ->
     lists:flatmap(
       fun (Kind) ->
-          case cb_deks:dek_config(Kind) of
-              #{required_usage := Type} -> [Kind];
-              #{required_usage := _} -> []
+          case cb_deks:call_dek_callback(get_required_usage, Kind, []) of
+              {succ, Type} -> [Kind];
+              {succ, _} -> []
           end
       end, cb_deks:dek_cluster_kinds_list(direct)).
 
