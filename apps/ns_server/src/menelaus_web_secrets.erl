@@ -251,7 +251,7 @@ secret_validators(CurProps, Snapshot) ->
                end
        end, name, _),
      validator:one_of(type, [?CB_MANAGED_KEY_TYPE, ?AWSKMS_KEY_TYPE,
-                             ?KMIP_KEY_TYPE], _),
+                             ?GCPKMS_KEY_TYPE, ?KMIP_KEY_TYPE], _),
      validator:convert(type, binary_to_atom(_, latin1), _),
      validator:required(type, _),
      validate_key_usage(usage, Snapshot, _),
@@ -337,6 +337,7 @@ keys_remap() ->
       encrypt_secret_id => encryptWithKeyId,
       stored_ids => storedKeyIds,
       key_path => keyPath,
+      key_resource_id => keyResourceId,
       cert_path => certPath,
       key_passphrase => keyPassphrase,
       ca_selection => caSelection,
@@ -387,6 +388,8 @@ export_secret(#{type := DataType} = Props) ->
                   {format_cb_managed_key_data(D)};
               (data, D) when DataType == ?AWSKMS_KEY_TYPE ->
                   {format_aws_key_data(D)};
+              (data, D) when DataType == ?GCPKMS_KEY_TYPE ->
+                  {format_gcp_key_data(D)};
               (data, D) when DataType == ?KMIP_KEY_TYPE ->
                   {format_kmip_key_data(D)};
               (used_by, UsedBy) ->
@@ -534,6 +537,18 @@ format_aws_key_data(Props) ->
                  || #{id := Id, creation_time := CT} <- StoredIds]
         end, Props)).
 
+format_gcp_key_data(Props) ->
+    maps:to_list(
+      maps:map(
+        fun (key_resource_id, U) -> iolist_to_binary(U);
+            (credentials_file, F) -> iolist_to_binary(F);
+            (req_timeout_ms, R) -> R;
+            (last_rotation_time, DT) -> format_datetime(DT);
+            (stored_ids, StoredIds) ->
+                [{[{id, Id}, {creation_time, format_datetime(CT)}]}
+                 || #{id := Id, creation_time := CT} <- StoredIds]
+        end, Props)).
+
 format_kmip_key_data(Props) ->
     maps:to_list(
       maps:map(
@@ -615,6 +630,8 @@ validate_secrets_data(Name, CurSecretProps, Snapshot, State) ->
                         cb_managed_key_validators(CurSecretProps, Snapshot);
                     ?AWSKMS_KEY_TYPE ->
                         awskms_key_validators(CurSecretProps);
+                    ?GCPKMS_KEY_TYPE ->
+                        gcpkms_key_validators(CurSecretProps);
                     ?KMIP_KEY_TYPE ->
                         kmip_key_validators(CurSecretProps, Snapshot);
                     _ -> []
@@ -746,6 +763,22 @@ validate_optional_file(Name, State) ->
                   end
           end
       end, Name, State).
+
+gcpkms_key_validators(CurSecretProps) ->
+    [validator:string(keyResourceId, _),
+     validator:required(keyResourceId, _),
+     validator:string(credentialsFile, _),
+     validator:default(credentialsFile, "", _),
+     validator:integer(reqTimeoutMs, 5 * 1000, 5 * 60 * 1000, _),
+     validator:default(reqTimeoutMs, 30000, _),
+     validator:validate(fun (_) -> {error, "read only"} end, storedKeyIds, _)
+    ] ++
+    case CurSecretProps of
+        #{data := #{key_resource_id := KeyResourceId}} ->
+            [enforce_static_field_validator(keyResourceId, KeyResourceId, _)];
+        #{} when map_size(CurSecretProps) == 0 ->
+            []
+    end.
 
 kmip_key_validators(CurSecretProps, Snapshot) ->
     [validator:string(host, _),

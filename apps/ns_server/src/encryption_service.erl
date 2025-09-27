@@ -42,6 +42,7 @@
          reconfigure/1,
          store_kek/6,
          store_aws_key/4,
+         store_gcp_key/4,
          store_kmip_key/5,
          store_dek/6,
          read_dek/2,
@@ -149,6 +150,17 @@ format_aws_key_params(#{key_arn := KeyArn, region := Region,
       {credsFile, iolist_to_binary(CredsFile)},
       {configFile, iolist_to_binary(ConfigFile)},
       {useIMDS, UseIMDS},
+      {reqTimeoutMs, ReqTimeoutMs}]}.
+
+store_gcp_key(Id, Params, CreationDT, TestOnly) ->
+    store_key(kek, Id, 'gcpkms-symmetric', CreationDT,
+              ejson:encode(format_gcp_key_params(Params)), TestOnly).
+
+format_gcp_key_params(#{key_resource_id := KeyResourceId,
+                        credentials_file := CredsPath,
+                        req_timeout_ms := ReqTimeoutMs}) ->
+    {[{keyResourceId, iolist_to_binary(KeyResourceId)},
+      {credentialsFile, iolist_to_binary(CredsPath)},
       {reqTimeoutMs, ReqTimeoutMs}]}.
 
 store_kmip_key(Id, Params, KekIdToEncrypt, CreationDT, TestOnly) ->

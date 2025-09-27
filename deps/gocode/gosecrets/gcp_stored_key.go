@@ -20,7 +20,7 @@ import (
 
 type gcpStoredKey struct {
 	baseStoredKey
-	KeyPath             string `json:"keyPath"`
+	KeyResourceId       string `json:"keyResourceId"`
 	CredentialsFilePath string `json:"credentialsFile"`
 	ReqTimeoutMs        int    `json:"reqTimeoutMs"`
 }
@@ -59,7 +59,7 @@ func (k *gcpStoredKey) ad() []byte {
 }
 
 func (k *gcpStoredKey) asBytes() ([]byte, error) {
-	return []byte(string(gcpkmKey) + k.Name + k.Kind + k.KeyPath + k.CredentialsFilePath + k.CreationTime), nil
+	return []byte(string(gcpkmKey) + k.Name + k.Kind + k.KeyResourceId + k.CredentialsFilePath + k.CreationTime), nil
 }
 
 func (k *gcpStoredKey) encryptMe(state *StoredKeysState, ctx *storedKeysCtx) error {
@@ -71,7 +71,7 @@ func (k *gcpStoredKey) decryptMe(validateKeysProof bool, state *StoredKeysState,
 }
 
 func (k *gcpStoredKey) checkGcpTestKey() (bool, error) {
-	if k.KeyPath == "TEST_GCP_KEY_PATH" {
+	if k.KeyResourceId == "TEST_GCP_KEY_PATH" {
 		return true, nil
 	}
 	return false, nil
@@ -87,7 +87,7 @@ func getGcpOperationArgs(k *gcpStoredKey) gcputils.OperationArgs {
 	}
 
 	return gcputils.OperationArgs{
-		KeyResourceId:     k.KeyPath,
+		KeyResourceId:     k.KeyResourceId,
 		PathToServiceFile: k.CredentialsFilePath,
 		TimeoutDuration:   timeoutDuration,
 	}

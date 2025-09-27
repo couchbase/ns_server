@@ -8,6 +8,7 @@
 -define(CHRONICLE_ENCR_AT_REST_SETTINGS_KEY, encr_at_rest_settings).
 -define(CB_MANAGED_KEY_TYPE, 'cb-server-managed-aes-key-256').
 -define(AWSKMS_KEY_TYPE, 'awskms-symmetric-key').
+-define(GCPKMS_KEY_TYPE, 'gcpkms-symmetric-key').
 -define(KMIP_KEY_TYPE, 'kmip-aes-key-256').
 -define(ENVELOP_CIPHER, aes_256_gcm).
 -define(SECRET_ID_NOT_SET, -1).

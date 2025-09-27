@@ -190,6 +190,7 @@
 
 -type secret_props_data() :: cb_managed_ear_key:secret_props() |
                              cb_aws_kms_ear_key:secret_props() |
+                             cb_gcp_kms_ear_key:secret_props() |
                              cb_kmip_ear_key:secret_props().
 -type secret_props() ::
     #{id := secret_id(),
@@ -198,7 +199,8 @@
       type := secret_type(),
       usage := [secret_usage()],
       data := secret_props_data()}.
--type secret_type() :: ?CB_MANAGED_KEY_TYPE | ?AWSKMS_KEY_TYPE | ?KMIP_KEY_TYPE.
+-type secret_type() :: ?CB_MANAGED_KEY_TYPE | ?AWSKMS_KEY_TYPE |
+                       ?GCPKMS_KEY_TYPE | ?KMIP_KEY_TYPE.
 -type secret_usage() :: {bucket_encryption, BucketUUID :: binary()} |
                          secrets_encryption | cb_crypto:encryption_type().
 -type sensitive_data() :: #{type := sensitive | encrypted,
@@ -1304,6 +1306,8 @@ module_by_type(?CB_MANAGED_KEY_TYPE) ->
     {cb_managed_ear_key, []};
 module_by_type(?AWSKMS_KEY_TYPE) ->
     {cb_kms_ear_key, [cb_aws_kms_ear_key]};
+module_by_type(?GCPKMS_KEY_TYPE) ->
+    {cb_kms_ear_key, [cb_gcp_kms_ear_key]};
 module_by_type(?KMIP_KEY_TYPE) ->
     {cb_kmip_ear_key, []}.
 
