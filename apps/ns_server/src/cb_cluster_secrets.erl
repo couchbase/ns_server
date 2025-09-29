@@ -1441,6 +1441,7 @@ maybe_update_deks(Kind, OldState) ->
 
                 %% On disk it is enabled but in config it is disabled:
                 true when EncrMethod == disabled ->
+                    ?log_info("Disabling encryption for ~p", [Kind]),
                     NewState = set_active(Kind, ActiveId, false, State),
                     ok = maybe_rotate_integrity_tokens(Kind, undefined,
                                                        NewState),
@@ -1463,6 +1464,8 @@ maybe_update_deks(Kind, OldState) ->
                 %% On disk it is disabled but in config it is enabled
                 %% and we already have a dek
                 false when is_binary(ActiveId) and not ShouldRotate ->
+                    ?log_info("Enabling encryption for ~p (no rotation needed)",
+                              [Kind]),
                     NewState = set_active(Kind, ActiveId, true, State),
                     ok = maybe_rotate_integrity_tokens(Kind, ActiveId,
                                                        NewState),
@@ -1471,6 +1474,12 @@ maybe_update_deks(Kind, OldState) ->
                 %% On disk it is disabled but in config it is enabled
                 %% or rotation is needed
                 V when (V == false) orelse ShouldRotate ->
+                    case V of
+                        false ->
+                            ?log_info("Enabling encryption for ~p "
+                                      "(new dek needed)", [Kind]);
+                        _ -> ok
+                    end,
                     %% There is no active dek currently, but encryption is on,
                     %% we should generate a new dek
                     case generate_new_dek(Kind, Deks, EncrMethod, Snapshot) of
@@ -1558,7 +1567,8 @@ garbage_collect_deks(Kind, Force, #state{deks_info = DeksInfo} = State) ->
         %% (or have only one dek), because we need to update
         %% "has_unencrypted_data" info anyway
         {ok, _KindDeks} ->
-            case cb_deks:call_dek_callback(get_dek_ids_in_use, Kind, []) of
+            case cb_deks:call_dek_callback(get_dek_ids_in_use, Kind, [],
+                                           #{verbose => true}) of
                 {succ, {ok, IdList}} ->
                     handle_new_dek_ids_in_use(Kind, IdList, Force, State);
                 {succ, {error, not_found}} ->
@@ -1716,7 +1726,8 @@ call_set_active_cb(Kind, #state{deks_info = DeksInfo} = State) ->
             case cb_crypto:reset_dek_cache(Kind,
                                            should_update_cache(NewHash, _)) of
                 {ok, _} ->
-                    case cb_deks:call_dek_callback(update_deks, Kind, []) of
+                    case cb_deks:call_dek_callback(update_deks, Kind, [],
+                                                   #{verbose => true}) of
                         {succ, ok} ->
                             NewKindDeks = KindDeks#{prev_deks_hash => NewHash},
                             NewDeksInfo = DeksInfo#{Kind => NewKindDeks},
@@ -3382,7 +3393,8 @@ initiate_deks_drop(Kind, IdsToDropList0,
                      BeingDroppedSet),
     case (length(IdsToDropFinalList) > 0) andalso
          cb_deks:call_dek_callback(initiate_drop_deks, Kind,
-                                   [IdsToDropFinalList]) of
+                                   [IdsToDropFinalList],
+                                   #{verbose => true}) of
         false ->
             %% IdsToDrop0 was not empty, but the final list is empty (we
             %% probably removed NULL_DEK or ActiveId), so we should not attempt

@@ -23,6 +23,7 @@
          dek_cluster_kinds_list/1,
          dek_kinds_list_existing_on_node/1,
          call_dek_callback/3,
+         call_dek_callback/4,
          call_dek_callback_unsafe/3,
          dek_chronicle_keys_filter/1,
          kind2bin/1,
@@ -401,6 +402,9 @@ dek_chronicle_keys_filter(Key) ->
             end
     end.
 
+call_dek_callback(CallbackName, Kind, Args) ->
+    call_dek_callback(CallbackName, Kind, Args, #{}).
+
 -spec call_dek_callback(get_encryption_method |
                         update_deks |
                         get_required_usage |
@@ -409,13 +413,20 @@ dek_chronicle_keys_filter(Key) ->
                         get_drop_deks_timestamp |
                         get_force_encryption_timestamp |
                         get_dek_ids_in_use |
-                        initiate_drop_deks, dek_kind(), list()) ->
+                        initiate_drop_deks, dek_kind(), list(),
+                        #{verbose => boolean()}) ->
       {succ, term()} | {except, {atom(), term(), term()}}.
-call_dek_callback(CallbackName, Kind, Args) ->
+call_dek_callback(CallbackName, Kind, Args, Opts) ->
     Module = dek_user_impl(Kind),
     try erlang:apply(Module, CallbackName, [Kind | Args]) of
         RV ->
-            ?log_debug("~p for ~p returned: ~0p", [CallbackName, Kind, RV]),
+            case maps:get(verbose, Opts, false) of
+                true ->
+                    ?log_debug("~p for ~p returned: ~0p",
+                               [CallbackName, Kind, RV]);
+                false ->
+                    ok
+            end,
             {succ, RV}
     catch
         C:E:ST ->

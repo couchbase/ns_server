@@ -781,11 +781,14 @@ reset_dek_cache(DekKind, ShouldUpdateFun) ->
                          end,
           case ShouldUpdate of
               true ->
+                  ?log_debug("Updating ~p deks cache", [DekKind]),
                   case read_deks(DekKind, PrevSnapshot) of
                       {ok, NewSnapshot} -> {set, NewSnapshot, {ok, changed}};
                       {error, _} = Error -> {ignore, Error}
                   end;
               false ->
+                  ?log_debug("No changes in ~p deks, skipping updating cache",
+                             [DekKind]),
                   {ignore, {ok, unchanged}}
           end
       end).
