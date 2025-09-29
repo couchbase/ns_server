@@ -93,7 +93,7 @@ server_groups_put_txn(Snapshot, JSON, Rev) ->
                 {abort, {parse_error, <<"Bad input">>}};
               throw:{group_parse_error, Parsed} ->
                 {abort, {parse_error, [<<"Bad input">>,
-                                       [{PL} || PL <- Parsed]], 400}}
+                                       [{PL} || PL <- Parsed]]}}
         end,
     case ParsedGroups of
         {abort, _} = Abort ->
