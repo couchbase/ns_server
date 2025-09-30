@@ -960,7 +960,8 @@ integrity_check_for_stored_keys_test() ->
                 StoreKey =
                     fun (Kind, KeyId, EncryptWithKey) ->
                         KeyData = encryption_service:format_aes_key_params(
-                                    rand:bytes(32), EncryptWithKey, false),
+                                    rand:bytes(32), EncryptWithKey, false,
+                                    false),
                         store_key(Pid, Kind, KeyId, 'raw-aes-gcm',
                                     <<"2024-07-26T19:32:19Z">>,
                                     ejson:encode(KeyData),
@@ -1036,9 +1037,9 @@ store_and_read_key_test() ->
                 Key1Material = rand:bytes(32),
                 Key2Material = rand:bytes(32),
                 Key1 = encryption_service:format_aes_key_params(
-                         Key1Material, undefined, false),
+                         Key1Material, undefined, false, false),
                 Key2 = encryption_service:format_aes_key_params(
-                         Key2Material, <<"key1">>, false),
+                         Key2Material, <<"key1">>, false, false),
                 Type = 'raw-aes-gcm',
                 ?assertEqual(ok, store_key(Pid, kek, <<"key1">>, Type,
                                            <<"2024-07-26T19:32:19Z">>,
@@ -1569,7 +1570,8 @@ mac_test() ->
 
                 %% Rotate tokens and make sure that old mac is still valid
                 KeyData = encryption_service:format_aes_key_params(
-                            rand:bytes(32), <<"encryptionService">>, false),
+                            rand:bytes(32), <<"encryptionService">>, false,
+                            false),
                 ok = store_key(Pid, configDek, ?key1, 'raw-aes-gcm',
                                <<"2024-07-26T19:32:19Z">>,
                                ejson:encode(KeyData), false),

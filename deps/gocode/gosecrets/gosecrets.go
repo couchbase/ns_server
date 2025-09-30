@@ -937,6 +937,7 @@ func replyReadKey(keyIface storedKeyIface) {
 		Key:             keyBase64,
 		EncryptionKeyId: rawKey.EncryptionKeyName,
 		CreationTime:    rawKey.CreationTime,
+		Imported:        rawKey.Imported,
 	}
 	keyJson, err := json.Marshal(keyToMarshal)
 	if err != nil {

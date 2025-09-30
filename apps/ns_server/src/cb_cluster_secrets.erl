@@ -4028,7 +4028,9 @@ import_dek_into_state(Kind, Path, EncrMethod, Snapshot, OldState) ->
         %% Not requesting proof validation because this dek likely comes from
         %% another node, while gosecrets can only validate proofs generated
         %% by this node.
-        {ok, ToImport} ?= encryption_service:read_dek_file(Path, false),
+        {ok, NewKey} ?= encryption_service:read_dek_file(Path, false),
+        #{info := NewKeyInfo} = NewKey,
+        ToImport = NewKey#{info => NewKeyInfo#{imported => true}},
         %% Put the dek into the proper folder, where other deks of this Kind
         %% are stored.
         {ok, DekId} ?= cb_deks:save_dek(Kind, ToImport, EncrMethod, Snapshot),

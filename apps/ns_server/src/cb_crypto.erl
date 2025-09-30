@@ -1750,7 +1750,8 @@ generate_test_key() ->
     encryption_service:new_dek_record(
       cb_cluster_secrets:new_key_id(), 'raw-aes-gcm',
       encryption_service:new_raw_aes_dek_info(KeyBin, <<"encryptionService">>,
-                                              {{2024, 01, 01}, {22, 00, 00}})).
+                                              {{2024, 01, 01}, {22, 00, 00}},
+                                              false)).
 
 test_error_key(Id) ->
     encryption_service:new_dek_record(Id, error, {test_error, "test error"}).

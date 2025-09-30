@@ -130,6 +130,7 @@ type readKeyAesKeyResponse struct {
 	Key             string `json:"key"`
 	EncryptionKeyId string `json:"encryptionKeyId"`
 	CreationTime    string `json:"creationTime"`
+	Imported        bool   `json:"imported"`
 }
 
 // Error types

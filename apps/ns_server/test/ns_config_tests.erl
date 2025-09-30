@@ -285,7 +285,8 @@ generate_test_deks() ->
             'raw-aes-gcm',
             encryption_service:new_raw_aes_dek_info(
               KeyBin, <<"encryptionService">>,
-              {{2024, 01, 01}, {22, 00, 00}})),
+              {{2024, 01, 01}, {22, 00, 00}},
+              false)),
     cb_crypto:create_deks_snapshot(Key, [Key], undefined).
 
 test_load_config_improper() ->

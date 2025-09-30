@@ -43,7 +43,7 @@
          store_kek/6,
          store_aws_key/4,
          store_kmip_key/5,
-         store_dek/5,
+         store_dek/6,
          read_dek/2,
          read_dek_file/2,
          extract_dek_id/1,
@@ -60,10 +60,10 @@
          revalidate_key_cache/0,
          cached_keys_list/0,
          new_dek_record/3,
-         new_raw_aes_dek_info/3]).
+         new_raw_aes_dek_info/4]).
 
 -ifdef(TEST).
--export([format_aes_key_params/3]).
+-export([format_aes_key_params/4]).
 -endif.
 
 
@@ -117,21 +117,23 @@ garbage_collect_keks(InUseKeyIds) ->
 store_kek(Id, Key, KekIdToEncrypt, CreationDT, CanBeCached, TestOnly) ->
     store_key(kek, Id, 'raw-aes-gcm', CreationDT,
               ejson:encode(format_aes_key_params(Key, KekIdToEncrypt,
-                                                 CanBeCached)),
+                                                 CanBeCached, false)),
               TestOnly).
 
-store_dek({bucketDek, BucketUUID}, Id, Key, KekIdToEncrypt, CreationDT) ->
+store_dek({bucketDek, BucketUUID}, Id, Key, KekIdToEncrypt, CreationDT, Imported) ->
     store_dek(bucketDek, bucket_dek_id(BucketUUID, Id), Key, KekIdToEncrypt,
-              CreationDT);
-store_dek(Kind, Id, Key, KekIdToEncrypt, CreationDT) ->
+              CreationDT, Imported);
+store_dek(Kind, Id, Key, KekIdToEncrypt, CreationDT, Imported) ->
     store_key(Kind, Id, 'raw-aes-gcm', CreationDT,
-              ejson:encode(format_aes_key_params(Key, KekIdToEncrypt, false)),
+              ejson:encode(format_aes_key_params(Key, KekIdToEncrypt, false,
+                                                 Imported)),
               false).
 
-format_aes_key_params(Key, KekIdToEncrypt, CanBeCached) ->
+format_aes_key_params(Key, KekIdToEncrypt, CanBeCached, Imported) ->
     {[{keyMaterial, base64:encode(Key)},
       {encryptionKeyName, format_encryption_key_name(KekIdToEncrypt)},
-      {canBeCached, CanBeCached}]}.
+      {canBeCached, CanBeCached},
+      {imported, Imported}]}.
 
 store_aws_key(Id, Params, CreationDT, TestOnly) ->
     store_key(kek, Id, 'awskms-symmetric', CreationDT,
@@ -270,7 +272,14 @@ decode_key_info({InfoProps}) when is_list(InfoProps) ->
                         _:_ -> {error, invalid_creation_time}
                     end
             end,
-        {ok, new_raw_aes_dek_info(Key, EncryptionKeyId, CreationTime)}
+        {ok, Imported} ?=
+            case proplists:get_value(<<"imported">>, InfoProps) of
+                undefined -> {ok, false};
+                true -> {ok, true};
+                false -> {ok, false};
+                _ -> {error, invalid_imported}
+            end,
+        {ok, new_raw_aes_dek_info(Key, EncryptionKeyId, CreationTime, Imported)}
     end;
 decode_key_info(_InfoProps) ->
     {error, dek_info_not_json_object}.
@@ -280,10 +289,11 @@ new_dek_record(Id, error, Reason) when is_binary(Id) ->
 new_dek_record(Id, 'raw-aes-gcm', Info) when is_binary(Id) ->
     #{id => Id, type => 'raw-aes-gcm', info => Info}.
 
-new_raw_aes_dek_info(Key, EncryptionKeyId, CreationTime) ->
+new_raw_aes_dek_info(Key, EncryptionKeyId, CreationTime, Imported) ->
     #{key => ?HIDE(Key),
       encryption_key_id => EncryptionKeyId,
-      creation_time => CreationTime}.
+      creation_time => CreationTime,
+      imported => Imported}.
 
 -ifdef(TEST).
 
@@ -295,7 +305,8 @@ dek_error_pattern_test() ->
                                    new_raw_aes_dek_info(
                                      <<"key">>,
                                      <<"encryptionKeyId">>,
-                                     {{2024, 01, 01}, {22, 00, 00}}))).
+                                     {{2024, 01, 01}, {22, 00, 00}},
+                                     false))).
 
 -endif.
 

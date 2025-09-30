@@ -108,8 +108,10 @@
                     {bucketDek, BucketUUID :: binary()}.
 -type good_dek() :: #{id := dek_id(), type := 'raw-aes-gcm',
                       info := #{key := fun(() -> binary()),
-                               encryption_key_id := cb_cluster_secrets:key_id(),
-                               creation_time := calendar:datetime()}}.
+                                encryption_key_id :=
+                                    cb_cluster_secrets:key_id(),
+                                creation_time := calendar:datetime(),
+                                imported := boolean()}}.
 -type bad_dek() :: #{id := dek_id(), type := error, reason := term()}.
 -type dek() :: good_dek() | bad_dek().
 
@@ -165,13 +167,14 @@ generate_new(Kind, {secret, Id}, Snapshot) ->
                        Snapshot :: cb_cluster_secrets:chronicle_snapshot().
 %% Not supporting encryption_service because it doesn't seem to be needed so far
 save_dek(Kind, #{id := DekId, info := #{key := BinHidden,
-                                     creation_time := CreateTime}},
+                                        creation_time := CreateTime,
+                                        imported := Imported}},
          {secret, SecretId}, Snapshot) ->
     maybe
         ok ?= increment_dek_encryption_counter(Kind, {secret, SecretId}),
         {ok, KekId} ?= cb_cluster_secrets:get_active_key_id(SecretId, Snapshot),
         ok ?= encryption_service:store_dek(Kind, DekId, ?UNHIDE(BinHidden),
-                                           KekId, CreateTime),
+                                           KekId, CreateTime, Imported),
         {ok, DekId}
     end.
 
@@ -183,7 +186,7 @@ new(Kind, KekIdToEncrypt) ->
     Bin = cb_cluster_secrets:generate_raw_key(aes_256_gcm),
     CreateTime = calendar:universal_time(),
     case encryption_service:store_dek(Kind, Id, Bin, KekIdToEncrypt,
-                                      CreateTime) of
+                                      CreateTime, false) of
         ok -> {ok, Id};
         {error, Reason} ->
             ?log_error("Failed to store key ~p on disk: ~p", [Id, Reason]),
@@ -320,11 +323,12 @@ store_deks_reencrypted(Kind, EncMethod, DeksAndKekIds) ->
             %% Process all DEKs for this method
             misc:partitionmap(
                 fun ({#{type := 'raw-aes-gcm',
-                    id := DekId,
-                    info := #{encryption_key_id := CurKekId,
-                            key := DekKey,
-                            creation_time := CT}},
-                    NewKekId}) ->
+                        id := DekId,
+                        info := #{encryption_key_id := CurKekId,
+                                  key := DekKey,
+                                  creation_time := CT,
+                                  imported := Imported}},
+                      NewKekId}) ->
                     ?log_debug("Dek ~p is encrypted with ~p, "
                                 "while correct kek is ~p (~0p), "
                                 "will reencrypt",
@@ -333,7 +337,7 @@ store_deks_reencrypted(Kind, EncMethod, DeksAndKekIds) ->
                     maybe
                         ok ?= encryption_service:store_dek(
                                 Kind, DekId, DekKey(), NewKekId,
-                                CT),
+                                CT, Imported),
                         {left, DekId}
                     else
                         {error, Reason} ->

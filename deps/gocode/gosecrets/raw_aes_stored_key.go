@@ -24,6 +24,7 @@ type rawAesGcmStoredKeyJson struct {
 	EncryptionKeyName string `json:"encryptionKeyName"`
 	CreationTime      string `json:"creationTime"`
 	CanBeCached       bool   `json:"canBeCached"`
+	Imported          bool   `json:"imported"`
 }
 
 // Struct represents raw aes-gcm stored key
@@ -34,6 +35,7 @@ type rawAesGcmStoredKey struct {
 	EncryptedByKind   string
 	EncryptionKeyName string
 	CanBeCached       bool
+	Imported          bool
 }
 
 // Implementation of storedKeyIface for raw keys
@@ -43,6 +45,7 @@ func newAesGcmKey(name, kind, creationTime string, data []byte) (*rawAesGcmStore
 		KeyMaterial       []byte `json:"keyMaterial"`
 		EncryptionKeyName string `json:"encryptionKeyName"`
 		CanBeCached       bool   `json:"canBeCached"`
+		Imported          bool   `json:"imported"`
 	}
 	var decoded aesKeyTmp
 	err := json.Unmarshal(data, &decoded)
@@ -54,6 +57,7 @@ func newAesGcmKey(name, kind, creationTime string, data []byte) (*rawAesGcmStore
 		EncryptionKeyName: decoded.EncryptionKeyName,
 		DecryptedKey:      decoded.KeyMaterial,
 		CanBeCached:       decoded.CanBeCached,
+		Imported:          decoded.Imported,
 	}
 	return rawKeyInfo, nil
 }
@@ -75,12 +79,21 @@ func (k *rawAesGcmStoredKey) needRewrite(settings *storedKeyConfig, state *Store
 	needsRewrite :=
 		onDiskKey.EncryptedByKind != settings.EncryptByKind ||
 			onDiskKey.EncryptionKeyName != k.EncryptionKeyName ||
-			onDiskKey.CanBeCached != k.CanBeCached
+			onDiskKey.CanBeCached != k.CanBeCached ||
+			onDiskKey.Imported != k.Imported
 	return needsRewrite, vsn, nil
 }
 
 func (k *rawAesGcmStoredKey) ad() []byte {
-	return []byte(string(rawAESGCMKey) + k.Name + k.Kind + k.CreationTime + k.EncryptionKeyName + strconv.FormatBool(k.CanBeCached))
+	var extra string
+	if k.Imported {
+		extra = "imported"
+	} else {
+		// Must be empty to stay compatible with older versions, that
+		// don't have this field
+		extra = ""
+	}
+	return []byte(string(rawAESGCMKey) + k.Name + k.Kind + k.CreationTime + k.EncryptionKeyName + strconv.FormatBool(k.CanBeCached) + extra)
 }
 
 func (k *rawAesGcmStoredKey) asBytes() ([]byte, error) {
@@ -149,6 +162,7 @@ func (k *rawAesGcmStoredKey) unmarshal(data json.RawMessage) error {
 	k.EncryptionKeyName = decoded.EncryptionKeyName
 	k.CreationTime = decoded.CreationTime
 	k.CanBeCached = decoded.CanBeCached
+	k.Imported = decoded.Imported
 	return nil
 }
 
@@ -172,6 +186,7 @@ func (k *rawAesGcmStoredKey) marshal() (storedKeyType, []byte, error) {
 		EncryptionKeyName: k.EncryptionKeyName,
 		CreationTime:      k.CreationTime,
 		CanBeCached:       k.CanBeCached,
+		Imported:          k.Imported,
 	})
 
 	if err != nil {
