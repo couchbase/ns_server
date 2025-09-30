@@ -1603,7 +1603,8 @@ handle_new_dek_ids_in_use(Kind, CurrInUseIDs, Force,
     N = length(lists:delete(?NULL_DEK, UniqCurrInUseIDs)),
     try
         ns_server_stats:notify_gauge({<<"encr_at_rest_deks_in_use">>,
-                                      [{type, cb_deks:kind2bin(Kind)}]}, N)
+                                      [{type, cb_deks:kind2bin(Kind)}]}, N,
+                                      #{expiration_s => ?MIN_DEK_GC_INTERVAL_S})
     catch
         error:not_found -> ok
     end,
