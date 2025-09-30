@@ -305,7 +305,7 @@ class FusionTests(testlib.BaseTestSet):
             f"/controller/fusion/abortPreparedRebalance?planUUID=wrong",
             expected_code=404)
 
-        acc_plan = self.prepare_rebalance(otp_nodes)
+        acc_plan = self.prepare_rebalance(otp_nodes.values())
         plan_uuid = acc_plan["planUUID"]
 
         testlib.post_fail(
