@@ -81,6 +81,7 @@ const (
 	rawAESGCMKey storedKeyType = "raw-aes-gcm"
 	awskmKey     storedKeyType = "awskms-symmetric"
 	gcpkmKey     storedKeyType = "gcpkms-symmetric"
+	azurekmKey   storedKeyType = "azurekms"
 	kmipKey      storedKeyType = "kmip"
 
 	// Magic string used for encrypted file headers
@@ -667,6 +668,11 @@ func (state *StoredKeysState) storeKey(
 		if err != nil {
 			return err
 		}
+	} else if keyType == string(azurekmKey) {
+		keyInfo, err = newAzureKey(name, kind, creationTime, otherData)
+		if err != nil {
+			return err
+		}
 	} else if keyType == string(kmipKey) {
 		keyInfo, err = newKmipKey(name, kind, creationTime, otherData)
 		if err != nil {
@@ -1143,6 +1149,12 @@ func readKeyFromFileRaw(pathMaybeWithoutVersion string) (storedKeyIface, int, st
 
 	if keyJson.Type == gcpkmKey {
 		var k gcpStoredKey
+		k.unmarshal(keyJson.Raw)
+		return &k, vsn, keyJson.Proof, nil
+	}
+
+	if keyJson.Type == azurekmKey {
+		var k azureStoredKey
 		k.unmarshal(keyJson.Raw)
 		return &k, vsn, keyJson.Proof, nil
 	}

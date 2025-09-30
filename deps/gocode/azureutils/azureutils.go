@@ -14,7 +14,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 
@@ -26,7 +25,6 @@ import (
 type OperationArgs struct {
 	KeyURL          string
 	Algorithm       string
-	AllowedDomains  []string
 	TimeoutDuration time.Duration
 }
 
@@ -45,7 +43,7 @@ func KmsEncrypt(opArgs OperationArgs, plainText, AD []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	baseURL, keyName, err := parseAzureURL(opArgs.KeyURL, opArgs.AllowedDomains)
+	baseURL, keyName, err := parseAzureURL(opArgs.KeyURL)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +82,7 @@ func KmsDecrypt(opArgs OperationArgs, cipherText, AD []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	baseURL, keyName, err := parseAzureURL(opArgs.KeyURL, opArgs.AllowedDomains)
+	baseURL, keyName, err := parseAzureURL(opArgs.KeyURL)
 	if err != nil {
 		return nil, err
 	}
@@ -121,10 +119,6 @@ func validateArgs(opArgs OperationArgs) error {
 
 	if opArgs.Algorithm == "" {
 		return fmt.Errorf("no encryption algorithm")
-	}
-
-	if len(opArgs.AllowedDomains) == 0 {
-		return fmt.Errorf("no allowed domains")
 	}
 
 	return nil
@@ -201,26 +195,17 @@ func getAzureKeysEncryptionAlgorithm(algorithm string) (azkeys.EncryptionAlgorit
 	}
 }
 
-// striNameFromDomain strips the top domain name from a domain name based on these rules:
-// It is stripping the vault or hsm name from the domain name
-//
-// a.b.c.example.com  => b.c.example.com
-// example.com        => com
-// .example.com       => error
-// example            => error
-func striNameFromDomain(host string) (string, error) {
+func checkForVaultOrHsm(host string) error {
 	if strings.HasPrefix(host, ".") {
-		return "", fmt.Errorf("no vault or managedhsm name found in domain: %s", host)
+		return fmt.Errorf("no vault or managedhsm name found in domain: %s", host)
 	}
 
 	labels := strings.Split(host, ".")
 	if len(labels) < 2 {
-		return "", fmt.Errorf("no vault or managedhsm name found in domain: %s", host)
+		return fmt.Errorf("no vault or managedhsm name found in domain: %s", host)
 	}
 
-	// Drop the leftmost label
-	rem := labels[1:]
-	return strings.Join(rem, "."), nil
+	return nil
 }
 
 // The Azure Key Value URL is validated as follows:
@@ -228,17 +213,16 @@ func striNameFromDomain(host string) (string, error) {
 // Format:
 // https://{vault-or-hsm-name}.{host-domain}/keys/{key-name}
 //
-// 1) It must be https
-// 3) It must have a {vault-or-hsm-name}
-// 3) It must have a {host-domain}
-// 4) It must have a path that starts with /keys/
-// 5) It must have a {key-name}
-// 5) The {key-name} must be the top key name and NOT refer to a specific version of key
-// 6) The {host-domain} must be in one of the allowed domains.
+//  1. It must be https
+//  3. It must have a {vault-or-hsm-name}
+//  3. It must have a {host-domain}
+//  4. It must have a path that starts with /keys/
+//  5. It must have a {key-name}
+//  5. The {key-name} must be the top key name and NOT refer to a specific version of key
 //
 // If any of these conditions are not met, an error is returned. The error message
 // will indicate the specific condition that was not met.
-func parseAzureURL(urlStr string, allowedDomains []string) (string, string, error) {
+func parseAzureURL(urlStr string) (string, string, error) {
 	u, err := url.Parse(urlStr)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to parse azure key URL: %w", err)
@@ -266,20 +250,11 @@ func parseAzureURL(urlStr string, allowedDomains []string) (string, string, erro
 			"use only root key name in: %s", keyName)
 	}
 
-	// Strip the vault or hsm name from domain
-	hostDomain, err := striNameFromDomain(u.Host)
-	if err != nil {
+	if err := checkForVaultOrHsm(u.Host); err != nil {
 		return "", "", err
 	}
 
-	// The URL is case insensitive, so we compare in lowercase with allowedDomains
-	// as allowedDomains are expected to be in lowercase
-	if !slices.Contains(allowedDomains, strings.ToLower(hostDomain)) {
-		return "", "", fmt.Errorf("domain not allowed: %s", hostDomain)
-	}
-
-	baseURL := "https://" + u.Host
-	return baseURL, keyName, nil
+	return "https://" + u.Host, keyName, nil
 }
 
 func getContextWithTimeout(timeoutDuration time.Duration) (context.Context, context.CancelFunc) {
