@@ -2006,6 +2006,8 @@ destroy_dek_info(Kind, #state{deks_info = DeksInfo} = State) ->
                     [restart_dek_cleanup_timer(_),
                      restart_dek_rotation_timer(_)]).
 
+is_imported(#{info := #{imported := Imported}}) -> Imported.
+
 -spec generate_new_dek(cb_deks:dek_kind(),
                        [cb_deks:dek()],
                        cb_deks:encryption_method(),
@@ -2014,7 +2016,7 @@ destroy_dek_info(Kind, #state{deks_info = DeksInfo} = State) ->
 generate_new_dek(Kind, CurrentDeks, EncryptionMethod, Snapshot) ->
     %% Rotation is needed but if there are too many deks already
     %% we should not generate new deks (something is wrong)
-    CurrentDekNum = length(CurrentDeks),
+    CurrentDekNum = length([D || D <- CurrentDeks, not is_imported(D)]),
     case CurrentDekNum < max_dek_num(Kind) of
         true ->
             ?log_debug("Generating new ~p dek, encryption is ~p...",
@@ -2043,7 +2045,8 @@ generate_new_dek(Kind, CurrentDeks, EncryptionMethod, Snapshot) ->
             end;
         false ->
             ?log_error("Skip ~p DEK creation/rotation: "
-                       "too many DEKs (~p)", [Kind, CurrentDekNum]),
+                       "too many not imported DEKs (~p)",
+                       [Kind, CurrentDekNum]),
             log_unsucc_dek_rotation(Kind, too_many_deks),
             {error, too_many_deks}
     end.
