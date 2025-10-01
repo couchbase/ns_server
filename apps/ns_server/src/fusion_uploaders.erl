@@ -759,14 +759,10 @@ can_advance_fusion_state(Txn, disabling, DeletionInfo) ->
               end
       end, KVNodes).
 
-buckets_advance_state_sets(Txn, PerBucketPerNodeMap, State, NextState) ->
-    Snapshot = ns_bucket:fetch_snapshot(all, Txn, [props]),
-    Buckets = [{BucketName, BucketConfig} ||
-                  {BucketName, BucketConfig} <- ns_bucket:get_buckets(Snapshot),
-                  ns_bucket:get_fusion_state(BucketConfig) =:= State],
-    Result =
+buckets_with_correct_uploaders(Buckets, FusionStats) ->
+    RV =
         analyze_fusion_stats(
-          Buckets, PerBucketPerNodeMap,
+          Buckets, FusionStats,
           fun (BucketName, BucketInfo, Acc) ->
                   case maps:is_key(uploaders_state_mismatch, BucketInfo) of
                       false ->
@@ -775,15 +771,24 @@ buckets_advance_state_sets(Txn, PerBucketPerNodeMap, State, NextState) ->
                           lists:keydelete(BucketName, 1, Acc)
                   end
           end, Buckets),
-    case Result of
-        {true, BucketsToAdvance} ->
-            {[{set, ns_bucket:sub_key(BucketName, props),
-               ns_bucket:set_fusion_state(NextState, BucketConfig)} ||
-                 {BucketName, BucketConfig} <- BucketsToAdvance],
-             length(BucketsToAdvance) =:= length(Buckets)};
+    case RV of
+        {true, List} ->
+            List;
         false ->
-            {[], false}
+            []
     end.
+
+buckets_advance_state_sets(Txn, PerBucketPerNodeMap, State, NextState) ->
+    Snapshot = ns_bucket:fetch_snapshot(all, Txn, [props]),
+    Buckets = [{BucketName, BucketConfig} ||
+                  {BucketName, BucketConfig} <- ns_bucket:get_buckets(Snapshot),
+                  ns_bucket:get_fusion_state(BucketConfig) =:= State],
+    BucketsToAdvance =
+        buckets_with_correct_uploaders(Buckets, PerBucketPerNodeMap),
+    {[{set, ns_bucket:sub_key(BucketName, props),
+       ns_bucket:set_fusion_state(NextState, BucketConfig)} ||
+         {BucketName, BucketConfig} <- BucketsToAdvance],
+     length(BucketsToAdvance) =:= length(Buckets)}.
 
 analyze_fusion_stats([], _, _, Acc) ->
     {true, Acc};
@@ -947,29 +952,71 @@ remove_snapshot_entry(Entry) ->
     chronicle_kv:update(kv, snapshots_key(), lists:delete({Entry}, _)).
 
 cleanup_snapshots() ->
+    ToDelete =
+        lists:filtermap(
+          fun ({PlanUUID, BucketUUID, _NumVBuckets} = Entry) ->
+                  case ns_bucket:uuid2bucket(BucketUUID) of
+                      {error, not_found} ->
+                          ?log_debug("Bucket for ~p no longer exists", [Entry]),
+                          {true, {undefined, Entry}};
+                      {ok, BucketName} ->
+                          case ns_orchestrator:validate_rebalance_plan(
+                                 binary_to_list(PlanUUID)) of
+                              true ->
+                                  false;
+                              false ->
+                                  ?log_debug(
+                                     "Plan UUID ~p is no longer valid. "
+                                     "Bucket = ~p", [PlanUUID, BucketName]),
+                                  {true, {BucketName, Entry}}
+                          end
+                  end
+          end, get_stored_snapshot_uuids()),
+
+     MaybeAffectedBuckets = lists:uniq(
+                             lists:filtermap(
+                               fun({undefined, _}) ->
+                                       false;
+                                  ({BucketName, _}) ->
+                                       {true, BucketName}
+                               end, ToDelete)),
+    AffectedBuckets =
+        case MaybeAffectedBuckets of
+            [] ->
+                [];
+            _ ->
+                BucketsWithBC =
+                    lists:map(fun (Name) ->
+                                      {ok, BC} = ns_bucket:get_bucket(Name),
+                                      {Name, BC}
+                              end, MaybeAffectedBuckets),
+                case fetch_fusion_stats(BucketsWithBC, #{}) of
+                    error ->
+                        ?log_debug("Failed to fetch fusion stats"),
+                        [];
+                    FusionStats ->
+                        buckets_with_correct_uploaders(
+                          BucketsWithBC, FusionStats)
+                end
+        end,
+
     lists:foreach(
-      fun ({PlanUUID, BucketUUID, _NumVBuckets} = Entry) ->
-              case ns_bucket:uuid2bucket(BucketUUID) of
-                  {error, not_found} ->
-                      %% TODO: delete_snapshots should be called here
-                      %% after memcached will provide support for calling it
-                      %% without existing bucket
-                      ?log_debug("Bucket for ~p no longer exists", [Entry]),
-                      remove_snapshot_entry(Entry);
-                  {ok, BucketName} ->
-                      case ns_orchestrator:validate_rebalance_plan(
-                             binary_to_list(PlanUUID)) of
-                          true ->
-                              ok;
-                          false ->
-                              ?log_debug("Plan UUID ~p is no longer valid",
-                                         [PlanUUID]),
-                              case delete_snapshots(BucketName, Entry) of
-                                  {ok, []} ->
-                                      remove_snapshot_entry(Entry);
-                                  _ ->
-                                      ok
-                              end
+      fun ({undefined, Entry}) ->
+              %% TODO: delete_snapshots should be called here
+              %% after memcached will provide support for calling it
+              %% without existing bucket
+              remove_snapshot_entry(Entry);
+          ({BucketName, Entry}) ->
+              case proplists:is_defined(BucketName, AffectedBuckets) of
+                  false ->
+                      ?log_debug("Not ready to delete snapshots for ~p, ~p",
+                                 [BucketName, Entry]);
+                  true ->
+                      case delete_snapshots(BucketName, Entry) of
+                          {ok, []} ->
+                              remove_snapshot_entry(Entry);
+                          _ ->
+                              ok
                       end
               end
-      end, get_stored_snapshot_uuids()).
+      end, ToDelete).
