@@ -87,8 +87,8 @@ encr_dek_lifetime(Param, RotIntervalName, EncrType) ->
                         {error, Err};
                     (LifeTime, RotIntrvl) ->
                         MaxDeks = lists:min(
-                                    [cb_cluster_secrets:max_dek_num(Kind) ||
-                                     Kind <- get_dek_kinds_by_type(EncrType)]),
+                                    [cb_cluster_secrets:max_local_dek_num(K) ||
+                                     K <- get_dek_kinds_by_type(EncrType)]),
                         if
                             LifeTime > RotIntrvl * MaxDeks ->
                                 M = io_lib:format(
@@ -131,8 +131,8 @@ encr_dek_rotate_intrvl(Param, LifetimeName, EncrType) ->
                         {error, Err};
                     (RotIntrvl, LifeTime) ->
                         MaxDeks = lists:min(
-                                    [cb_cluster_secrets:max_dek_num(Kind) ||
-                                     Kind <- get_dek_kinds_by_type(EncrType)]),
+                                    [cb_cluster_secrets:max_local_dek_num(K) ||
+                                     K <- get_dek_kinds_by_type(EncrType)]),
                         if
                             LifeTime > RotIntrvl * MaxDeks ->
                                 M = io_lib:format(

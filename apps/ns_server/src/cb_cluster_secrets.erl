@@ -29,6 +29,7 @@
 -define(DEK_TIMER_RETRY_TIME_S, ?get_param(dek_retry_interval, 60)).
 -define(DEK_DROP_RETRY_TIME_S(Kind),
         ?get_param({dek_removal_min_interval, Kind}, 60*60*3)).
+-define(DROP_EXCESSIVE_DEKS, ?get_param(drop_excessive_deks, true)).
 
 %% DEK GC interval is slightly less than DEK_INFO_UPDATE_INVERVAL_S to
 %% ensure that DEK GC can be triggered before DEK info update (on average).
@@ -119,7 +120,7 @@
          diag_info/0,
          reencrypt_deks/0,
          node_supports_encryption_at_rest/1,
-         max_dek_num/1,
+         max_local_dek_num/1,
          fetch_snapshot_in_txn/1,
          recalculate_deks_info/0,
          is_secret_used/2,
@@ -828,13 +829,22 @@ nodes_with_encryption_at_rest(Nodes) ->
                      end
                  end, Nodes).
 
--spec max_dek_num(cb_deks:dek_kind()) -> pos_integer().
-max_dek_num(Kind) ->
+-spec max_local_dek_num(cb_deks:dek_kind()) -> pos_integer().
+max_local_dek_num(Kind) ->
     Default = case Kind of
                   {bucketDek, _} -> ?get_param({max_dek_num, bucketDek}, 50);
                   _ -> 50
               end,
     ?get_param({max_dek_num, Kind}, Default).
+
+-spec max_total_dek_num(cb_deks:dek_kind()) -> pos_integer().
+max_total_dek_num(Kind) ->
+    Default =
+        case Kind of
+            {bucketDek, _} -> ?get_param({max_total_dek_num, bucketDek}, 1000);
+            _ -> 1000
+        end,
+    ?get_param({max_total_dek_num, Kind}, Default).
 
 -spec is_secret_used(secret_id(), chronicle_snapshot()) -> boolean().
 is_secret_used(Id, Snapshot) ->
@@ -1078,7 +1088,11 @@ handle_info({dek_drop_complete, Kind, Rv} = Msg,
     end,
     misc:flush(Msg),
     self() ! calculate_dek_info,
-    {noreply, add_and_run_jobs([{garbage_collect_deks, Kind}], State)};
+    %% Restart dek cleanup timer to check if we need to drop excessive DEKs
+    %% In case if this is a finish of null DEK drop, we might end up with no
+    %% real changes in deks, and hence no restart of dek cleanup timer is called
+    {noreply, restart_dek_cleanup_timer(
+                add_and_run_jobs([{garbage_collect_deks, Kind}], State))};
 
 handle_info(calculate_dek_info, #state{proc_type = ?NODE_PROC} = State) ->
     ?log_debug("DEK info update"),
@@ -2017,7 +2031,7 @@ generate_new_dek(Kind, CurrentDeks, EncryptionMethod, Snapshot) ->
     %% Rotation is needed but if there are too many deks already
     %% we should not generate new deks (something is wrong)
     CurrentDekNum = length([D || D <- CurrentDeks, not is_imported(D)]),
-    case CurrentDekNum < max_dek_num(Kind) of
+    case CurrentDekNum < max_local_dek_num(Kind) of
         true ->
             ?log_debug("Generating new ~p dek, encryption is ~p...",
                        [Kind, EncryptionMethod]),
@@ -2612,8 +2626,45 @@ calculate_next_dek_cleanup(CurDateTime, DeksInfo) ->
                       [misc:datetime_add(CurDateTime,
                                          ?DEK_TIMER_RETRY_TIME_S) | Acc]
               end
-          end, [], DeksInfo),
+          end, [], DeksInfo) ++
+        excessive_deks_drop_time(CurDateTime, DeksInfo),
     time_to_first_event(CurDateTime, Times).
+
+excessive_deks_drop_time(CurDateTime, DeksInfo) ->
+    maps:fold(fun (Kind, KindDeks, Acc) ->
+                  case should_reduce_deks_num(Kind, KindDeks) of
+                      true -> [CurDateTime | Acc];
+                      false -> Acc
+                  end
+             end, [], DeksInfo).
+
+-spec should_reduce_deks_num(cb_deks:dek_kind(), deks_info()) -> boolean().
+should_reduce_deks_num(Kind, #{deks_being_dropped := AlreadyBeingDroppedSet,
+                               deks := Deks}) ->
+    %% If we have too many DEKs and we are not dropping anything currently,
+    %% we should drop some DEKs to reduce the number of DEKs
+    ?DROP_EXCESSIVE_DEKS andalso
+    sets:is_empty(AlreadyBeingDroppedSet) andalso
+    (length(Deks) > max_total_dek_num(Kind)).
+
+excessive_deks_to_drop(_Kind, #{deks := []}) -> [];
+excessive_deks_to_drop(Kind, #{deks := Deks} = KindDeks) ->
+    case should_reduce_deks_num(Kind, KindDeks) of
+        true ->
+            %% find the oldest dek:
+            R = lists:foldl(fun (#{info := #{creation_time := CT1}} = D1,
+                                 #{info := #{creation_time := CT2}} = D2) ->
+                                case CT1 < CT2 of
+                                    true -> D1;
+                                    false -> D2
+                                end
+                            end, hd(Deks), tl(Deks)),
+            Id = maps:get(id, R),
+            ?log_debug("Too many ~p DEKs, should drop ~p", [Kind, Id]),
+            [Id];
+        false ->
+            []
+    end.
 
 -spec get_expired_deks(cb_deks:dek_kind(), deks_info()) ->
           [cb_deks:dek_id() | ?NULL_DEK].
@@ -3309,6 +3360,10 @@ deks_to_drop(Kind, KindDeks) ->
     CurTime = calendar:universal_time(),
     NowS = calendar:datetime_to_gregorian_seconds(CurTime),
     ExpiredIds = get_expired_deks(Kind, KindDeks),
+    ExcessiveIds = case ExpiredIds of %% reduce deks num if needed
+                       [] -> excessive_deks_to_drop(Kind, KindDeks);
+                       _ -> []
+                   end,
     #{deks_being_dropped := AlreadyBeingDroppedSet,
       last_drop_timestamp := LastDropS} = KindDeks,
     DropRetryInterval = ?DEK_DROP_RETRY_TIME_S(Kind),
@@ -3317,13 +3372,15 @@ deks_to_drop(Kind, KindDeks) ->
                        _ -> calendar:gregorian_seconds_to_datetime(LastDropS)
                    end,
     AlreadyBeingDroppedList = sets:to_list(AlreadyBeingDroppedSet),
-    ?log_debug("The following ~p DEKs has expired: ~p~n"
+    ?log_debug("The following ~p DEKs has expired: ~p (excessive: ~p)~n"
                "Among them DEKs that are already being dropped: ~p~n"
                "Last drop attempt time: ~p",
-               [Kind, ExpiredIds, AlreadyBeingDroppedList, LastDropTime]),
+               [Kind, ExpiredIds, ExcessiveIds, AlreadyBeingDroppedList,
+                LastDropTime]),
     %% If we have already started dropping something, we should continue
     %% even if it is not "expired" anymore.
-    AllExpired = lists:usort(ExpiredIds ++ AlreadyBeingDroppedList),
+    AllExpired = lists:usort(ExpiredIds ++ AlreadyBeingDroppedList ++
+                             ExcessiveIds),
     ShouldAttemptDrop =
         case AllExpired -- AlreadyBeingDroppedList of
             [_|_] ->

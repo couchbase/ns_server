@@ -1622,7 +1622,7 @@ validate_encr_lifetime_and_rotation_intrvl(Params, Ctx, false = _Bypass) ->
                   not_present -> {bucketDek, <<>>};
                   UUID -> {bucketDek, UUID}
               end,
-    MaxDeks = cb_cluster_secrets:max_dek_num(DekKind),
+    MaxDeks = cb_cluster_secrets:max_local_dek_num(DekKind),
     validate_lifetime_with_rotation_intrvl(ParamLifeTime, CurrRotIntrvl,
                                            MaxDeks) ++
         validate_rotation_intrvl_with_lifetime(ParamRotIntrvl, CurrLifeTime,
