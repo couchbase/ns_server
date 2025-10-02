@@ -107,7 +107,7 @@
 -type dek_kind() :: kek | configDek | logDek | auditDek |
                     {bucketDek, BucketUUID :: binary()}.
 -type good_dek() :: #{id := dek_id(), type := 'raw-aes-gcm',
-                      info := #{key := fun(() -> binary()),
+                      info := #{key := ?HIDDEN_DATA(binary()),
                                 encryption_key_id :=
                                     cb_cluster_secrets:key_id(),
                                 creation_time := calendar:datetime(),

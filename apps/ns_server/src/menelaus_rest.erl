@@ -162,7 +162,7 @@ decode_json_response_ext(Response, Method, Request) ->
 -spec json_request_hilevel(atom(),
                            {atom(), string(), string() | integer(), string(), string(), iolist()}
                            | {atom(), string(), string() | integer(), string()},
-                           fun(() -> client_cert_auth | {basic_auth, string(), string()}),
+                           ?HIDDEN_DATA(client_cert_auth | {basic_auth, string(), string()}),
                            [any()]) ->
                                   %% json response payload
                                   {ok, any()} |

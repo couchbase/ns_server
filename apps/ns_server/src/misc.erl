@@ -2111,7 +2111,8 @@ run_external_tool(Path, Args, Env) ->
 -spec run_external_tool(string(), [string()],
                         [{string(), string()}],
                         [graceful_shutdown | {write_data, any()} |
-                         {stderr_to_stdout, boolean()}]) ->
+                         {stderr_to_stdout, boolean()} |
+                         {hidden_inputs, [?HIDDEN_DATA(iolist())]}]) ->
           {non_neg_integer(), binary()} |
           {non_neg_integer(), binary(), binary()}.
 run_external_tool(Path, Args, Env, Opts) ->
