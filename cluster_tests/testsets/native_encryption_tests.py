@@ -1230,6 +1230,12 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
             key_name='GCP Key',
             expected_key_type='gcpkms-symmetric')
 
+    def basic_azure_secret_test(self):
+        self._basic_kms_secret_test_logic(
+            secret_builder=azure_test_secret,
+            key_name='Azure Key',
+            expected_key_type='azurekms')
+
     def dek_limit_test(self):
         set_cfg_dek_limit(self.cluster, 2)
         set_log_dek_limit(self.cluster, 2)
@@ -2647,6 +2653,28 @@ def gcp_test_secret(name=None, usage=None, creds_file=None):
             'usage': usage,
             'data': data}
 
+def azure_test_secret(name=None, usage=None, key_url=None):
+    if usage is None:
+        usage = ['bucket-encryption',
+                 'KEK-encryption',
+                 'config-encryption',
+                 'log-encryption',
+                 'audit-encryption']
+
+    if name is None:
+        name = f'Test secret {testlib.random_str(5)}'
+
+    data = {'keyURL': 'TEST_AZURE_KEY_URL',
+            'encryptionAlgorithm': 'RSAOAEP256'}
+
+    if key_url is not None:
+        data['keyURL'] = key_url
+
+    return {'name': name,
+            'type': 'azurekms-key',
+            'usage': usage,
+            'data': data}
+
 
 def write_good_aws_creds_file(node):
     path = aws_fake_creds_path(node)
@@ -2833,7 +2861,8 @@ def verify_kek_files(cluster, secret, verify_key_count=1, **kwargs):
                        f'(expected: {verify_key_count})'
             key_ids = [key['id'] for key in secret['data']['keys']]
         elif secret['type'] == 'awskms-symmetric-key' or \
-             secret['type'] == 'gcpkms-symmetric-key':
+             secret['type'] == 'gcpkms-symmetric-key' or \
+             secret['type'] == 'azurekms-key':
             key_ids = [key['id'] for key in secret['data']['storedKeyIds']]
         else:
             assert False, f'unexpected secret type: {secret["type"]}'

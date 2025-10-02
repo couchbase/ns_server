@@ -79,7 +79,7 @@ func (k *azureStoredKey) decryptMe(validateKeysProof bool, state *StoredKeysStat
 }
 
 func (k *azureStoredKey) checkAzureTestKey() (bool, error) {
-	if k.KeyUrl == "TEST_AZURE_KEY_PATH" {
+	if k.KeyUrl == "TEST_AZURE_KEY_URL" {
 		return true, nil
 	}
 	return false, nil
