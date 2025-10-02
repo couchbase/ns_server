@@ -251,7 +251,8 @@ secret_validators(CurProps, Snapshot) ->
                end
        end, name, _),
      validator:one_of(type, [?CB_MANAGED_KEY_TYPE, ?AWSKMS_KEY_TYPE,
-                             ?GCPKMS_KEY_TYPE, ?KMIP_KEY_TYPE], _),
+                             ?GCPKMS_KEY_TYPE, ?AZUREKMS_KEY_TYPE,
+                             ?KMIP_KEY_TYPE], _),
      validator:convert(type, binary_to_atom(_, latin1), _),
      validator:required(type, _),
      validate_key_usage(usage, Snapshot, _),
@@ -330,6 +331,8 @@ keys_remap() ->
       auto_rotation => autoRotation,
       can_be_cached => canBeCached,
       key_arn => keyARN,
+      key_url => keyURL,
+      encryption_algorithm => encryptionAlgorithm,
       credentials_file => credentialsFile,
       config_file => configFile,
       use_imds => useIMDS,
@@ -390,6 +393,8 @@ export_secret(#{type := DataType} = Props) ->
                   {format_aws_key_data(D)};
               (data, D) when DataType == ?GCPKMS_KEY_TYPE ->
                   {format_gcp_key_data(D)};
+              (data, D) when DataType == ?AZUREKMS_KEY_TYPE ->
+                  {format_azure_key_data(D)};
               (data, D) when DataType == ?KMIP_KEY_TYPE ->
                   {format_kmip_key_data(D)};
               (used_by, UsedBy) ->
@@ -549,6 +554,18 @@ format_gcp_key_data(Props) ->
                  || #{id := Id, creation_time := CT} <- StoredIds]
         end, Props)).
 
+format_azure_key_data(Props) ->
+    maps:to_list(
+      maps:map(
+        fun (key_url, U) -> iolist_to_binary(U);
+            (encryption_algorithm, Algorithm) -> iolist_to_binary(Algorithm);
+            (req_timeout_ms, R) -> R;
+            (last_rotation_time, DT) -> format_datetime(DT);
+            (stored_ids, StoredIds) ->
+                [{[{id, Id}, {creation_time, format_datetime(CT)}]}
+                 || #{id := Id, creation_time := CT} <- StoredIds]
+        end, Props)).
+
 format_kmip_key_data(Props) ->
     maps:to_list(
       maps:map(
@@ -632,6 +649,8 @@ validate_secrets_data(Name, CurSecretProps, Snapshot, State) ->
                         awskms_key_validators(CurSecretProps);
                     ?GCPKMS_KEY_TYPE ->
                         gcpkms_key_validators(CurSecretProps);
+                    ?AZUREKMS_KEY_TYPE ->
+                        azurekms_key_validators(CurSecretProps);
                     ?KMIP_KEY_TYPE ->
                         kmip_key_validators(CurSecretProps, Snapshot);
                     _ -> []
@@ -780,6 +799,29 @@ gcpkms_key_validators(CurSecretProps) ->
             []
     end.
 
+azurekms_key_validators(CurSecretProps) ->
+    [validator:string(keyURL, _),
+     validator:validate(fun validate_azure_key/1, keyURL, _),
+     validator:required(keyURL, _),
+     validator:one_of(encryptionAlgorithm, ["A128CBC", "A128CBCPAD", "A128GCM",
+                                            "A128KW", "A192CBC", "A192CBCPAD",
+                                            "A192GCM", "A192KW", "A256CBC",
+                                            "A256CBCPAD", "A256GCM", "A256KW",
+                                            "CKMAESKEYWRAP", "CKMAESKEYWRAPPAD",
+                                            "RSA15", "RSAOAEP",
+                                            "RSAOAEP256"], _),
+     validator:required(encryptionAlgorithm, _),
+     validator:integer(reqTimeoutMs, 5 * 1000, 5 * 60 * 1000, _),
+     validator:default(reqTimeoutMs, 30000, _),
+     validator:validate(fun (_) -> {error, "read only"} end, storedKeyIds, _)
+    ] ++
+    case CurSecretProps of
+        #{data := #{key_url := KeyURL}} ->
+            [enforce_static_field_validator(keyURL, KeyURL, _)];
+        #{} when map_size(CurSecretProps) == 0 ->
+            []
+    end.
+
 kmip_key_validators(CurSecretProps, Snapshot) ->
     [validator:string(host, _),
      validator:required(host, _),
@@ -840,6 +882,78 @@ mandatory_rotation_fields(State) ->
         false ->
             State
     end.
+
+validate_azure_key("TEST_AZURE_KEY_URL") ->
+    ok;
+validate_azure_key(KeyUrlStr) ->
+    AllowedDomains =
+        ["vault.azure.net", "vault.azure.cn", "vault.usgovcloudapi.net",
+         "vault.microsoftazure.de", "managedhsm.azure.net",
+         "managedhsm.azure.cn", "managedhsm.usgovcloudapi.net",
+         "managedhsm.microsoftazure.de"],
+
+    Scheme =
+        fun (<<"https">>) -> valid;
+            (_S) -> {error, "must be https url only"}
+        end,
+
+    ValidateDomain =
+        fun (Domain) ->
+            case lists:member(Domain, AllowedDomains) of
+                true ->
+                    ok;
+                false ->
+                    {error, io_lib:format("domain not allowed: ~p", [Domain])}
+            end
+         end,
+
+    ValidateHost =
+        fun ([]) ->
+                {error, "no host found in azure key URL"};
+            (Host) when is_list(Host)->
+                case string:split(Host, ".", all) of
+                    [VaultOrHsmName, _ | _] when VaultOrHsmName =:= [] ->
+                        {error, "no vault or managedhsm name found in domain"};
+                    [_VaultOrHsmName, H | T] ->
+                        ValidateDomain(string:join([H | T], "."));
+                    _ ->
+                        {error,
+                         "format of host must be <vaultOrHsmName>.<domain>"}
+                end
+        end,
+
+    ValidateKeyPath =
+        fun(<<"/keys/", Rest/binary>>) ->
+                case binary:match(Rest, <<"/">>) of
+                    nomatch ->
+                        ok;
+                    _Match ->
+                        {error, "azure key must be a base identifier"}
+
+                end;
+            (_) ->
+                {error, "path must have /keys"}
+        end,
+
+    ParseUrlFn =
+        fun() ->
+            case misc:parse_url(KeyUrlStr, [{scheme_validation_fun, Scheme},
+                                            {return, string}]) of
+                {ok, _} = Result ->
+                    Result;
+                {error, E} ->
+                    {error, io_lib:format("failed to parse url: ~p", [E])}
+            end
+        end,
+
+    maybe
+        {ok, #{host := Host, path := Path}} ?= ParseUrlFn(),
+
+        ok ?= ValidateHost(Host),
+
+        ok ?= ValidateKeyPath(list_to_binary(Path))
+    end.
+
 
 validate_iso8601_datetime(Name, State) ->
     validator:validate(
@@ -1224,5 +1338,48 @@ format_secrets_used_by_list_test() ->
                  F(#{by_deks => [configDek, {bucketDek, <<"b1-uuid">>}],
                      by_config => [{bucketDek, <<"b2-uuid">>}, configDek],
                      by_secrets => ["s1"]})).
+
+validate_azure_key_test() ->
+    {error, Error0} =
+        validate_azure_key("http://bla.me.com/keys/testKey"),
+    ?assertEqual("failed to parse url: \"must be https url only\"",
+        lists:flatten(Error0)),
+
+    {error, Error1} =
+        validate_azure_key("https://bla.me.com/keys/testKey"),
+    ?assertEqual("domain not allowed: \"me.com\"",
+                 lists:flatten(Error1)),
+
+    {error, Error2} =
+        validate_azure_key("https:///keys/testKey"),
+    ?assertEqual("no host found in azure key URL",
+                 lists:flatten(Error2)),
+
+    {error, Error3} =
+        validate_azure_key("https://me/keys/testKey"),
+    ?assertEqual("format of host must be <vaultOrHsmName>.<domain>",
+                 lists:flatten(Error3)),
+
+    {error, Error4} =
+        validate_azure_key("https://.domain.com/keys/testKey"),
+    ?assertEqual("no vault or managedhsm name found in domain",
+        lists:flatten(Error4)),
+
+    {error, Error5} =
+        validate_azure_key("https://name.vault.azure.net/testKey"),
+    ?assertEqual("path must have /keys",
+        lists:flatten(Error5)),
+
+    {error, Error6} =
+        validate_azure_key("https://name.vault.azure.net/keys/testKey/rev"),
+    ?assertEqual("azure key must be a base identifier",
+        lists:flatten(Error6)),
+
+    ok = validate_azure_key("https://name.vault.azure.net/keys/testKey"),
+
+    {error, Error7} =
+        validate_azure_key("not valid url"),
+    ?assertEqual("failed to parse url: invalid_uri",
+                 lists:flatten(Error7)).
 
 -endif.

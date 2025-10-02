@@ -43,6 +43,7 @@
          store_kek/6,
          store_aws_key/4,
          store_gcp_key/4,
+         store_azure_key/4,
          store_kmip_key/5,
          store_dek/6,
          read_dek/2,
@@ -161,6 +162,17 @@ format_gcp_key_params(#{key_resource_id := KeyResourceId,
                         req_timeout_ms := ReqTimeoutMs}) ->
     {[{keyResourceId, iolist_to_binary(KeyResourceId)},
       {credentialsFile, iolist_to_binary(CredsPath)},
+      {reqTimeoutMs, ReqTimeoutMs}]}.
+
+store_azure_key(Id, Params, CreationDT, TestOnly) ->
+    store_key(kek, Id, 'azurekms', CreationDT,
+              ejson:encode(format_azure_key_params(Params)), TestOnly).
+
+format_azure_key_params(#{key_url := KeyUrl,
+                          encryption_algorithm := Algorithm,
+                          req_timeout_ms := ReqTimeoutMs}) ->
+    {[{keyUrl, iolist_to_binary(KeyUrl)},
+      {algorithm, iolist_to_binary(Algorithm)},
       {reqTimeoutMs, ReqTimeoutMs}]}.
 
 store_kmip_key(Id, Params, KekIdToEncrypt, CreationDT, TestOnly) ->
