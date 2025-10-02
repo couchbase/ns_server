@@ -122,6 +122,42 @@
             }
         ]
     },
+    "cm_encr_at_rest_deks_imported_total": {
+        "type": "counter",
+        "help": "Total number of DEK imported",
+        "added": "8.1.0",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "type",
+                "help": "Data encryption key (DEK) type (configDek, logDek, auditDek, bucketDek_<bucket_name>)"
+            }
+        ]
+    },
+    "cm_encr_at_rest_deks_import_failures_total": {
+        "type": "counter",
+        "help": "Total number of DEK import failures",
+        "added": "8.1.0",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "type",
+                "help": "Data encryption key (DEK) type (configDek, logDek, auditDek, bucketDek_<bucket_name>)"
+            }
+        ]
+    },
+    "cm_encr_at_rest_deks_import_skipped_total": {
+        "type": "counter",
+        "help": "Total number of DEK import skipped (because it already exists)",
+        "added": "8.1.0",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "type",
+                "help": "Data encryption key (DEK) type (configDek, logDek, auditDek, bucketDek_<bucket_name>)"
+            }
+        ]
+    },
     "cm_encr_at_rest_drop_deks_events_total": {
         "type": "counter",
         "help": "Total number drop DEKs events (when some DEK expires and the system tries to stop using that DEK by re-encrypting data)",

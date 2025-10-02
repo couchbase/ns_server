@@ -4079,10 +4079,7 @@ import_dek_into_state(Kind, Path, EncrMethod, Snapshot, OldState) ->
             case lists:search(fun (#{id := Id}) -> Id == DekId end,
                               ExistingDeks) of
                 false -> continue;
-                {value, _} -> %% Stop here
-                    ?log_debug("Skipping import of DEK ~p because it already "
-                               "exists in state", [DekId]),
-                    {ok, OldState}
+                {value, _} -> {skip, DekId}
             end,
         %% Not requesting proof validation because this dek likely comes from
         %% another node, while gosecrets can only validate proofs generated
@@ -4101,7 +4098,17 @@ import_dek_into_state(Kind, Path, EncrMethod, Snapshot, OldState) ->
         State = create_dek_info_if_does_not_exist(Kind, OldState),
         #state{deks_info = AllDeks = #{Kind := KindDeks}} = State,
         NewKindDeks = KindDeks#{deks => [NewDek | maps:get(deks, KindDeks)]},
+        notify_kind_counter(<<"encr_at_rest_deks_imported">>, Kind),
         {ok, State#state{deks_info = AllDeks#{Kind => NewKindDeks}}}
+    else
+        {error, Reason} ->
+            notify_kind_counter(<<"encr_at_rest_deks_import_failures">>, Kind),
+            {error, Reason};
+        {skip, SkippedDekId} ->
+            notify_kind_counter(<<"encr_at_rest_deks_import_skipped">>, Kind),
+            ?log_debug("Skipping import of DEK ~p because it already "
+                        "exists in state", [SkippedDekId]),
+            {ok, OldState}
     end.
 
 -ifdef(TEST).
