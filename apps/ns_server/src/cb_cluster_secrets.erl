@@ -1615,13 +1615,8 @@ handle_new_dek_ids_in_use(Kind, CurrInUseIDs, Force,
                     DeksInfo,
     UniqCurrInUseIDs = lists:uniq(CurrInUseIDs),
     N = length(lists:delete(?NULL_DEK, UniqCurrInUseIDs)),
-    try
-        ns_server_stats:notify_gauge({<<"encr_at_rest_deks_in_use">>,
-                                      [{type, cb_deks:kind2bin(Kind)}]}, N,
-                                      #{expiration_s => ?MIN_DEK_GC_INTERVAL_S})
-    catch
-        error:not_found -> ok
-    end,
+    notify_kind_gauge(<<"encr_at_rest_deks_in_use">>, Kind, N,
+                      #{expiration_s => ?MIN_DEK_GC_INTERVAL_S}),
     UpdateStatus = case maps:get(maybe_update_deks, Statuses, undefined) of
                        undefined -> ok;
                        %% We can't generate new dek because there are too many
@@ -2037,23 +2032,12 @@ generate_new_dek(Kind, CurrentDeks, EncryptionMethod, Snapshot) ->
                        [Kind, EncryptionMethod]),
             case cb_deks:generate_new(Kind, EncryptionMethod, Snapshot) of
                 {ok, DekId} ->
-                    try
-                        ns_server_stats:notify_counter(
-                          {<<"encr_at_rest_generate_dek">>,
-                           [{type, cb_deks:kind2bin(Kind)}]})
-                    catch
-                        error:not_found -> ok
-                    end,
+                    notify_kind_counter(<<"encr_at_rest_generate_dek">>, Kind),
                     log_succ_dek_rotation(Kind, DekId),
                     {ok, DekId};
                 {error, Reason} ->
-                    try
-                        ns_server_stats:notify_counter(
-                          {<<"encr_at_rest_generate_dek_failures">>,
-                           [{type, cb_deks:kind2bin(Kind)}]})
-                    catch
-                        error:not_found -> ok
-                    end,
+                    notify_kind_counter(
+                      <<"encr_at_rest_generate_dek_failures">>, Kind),
                     log_unsucc_dek_rotation(Kind, Reason),
                     {error, Reason}
             end;
@@ -3441,12 +3425,7 @@ initiate_deks_drop(Kind, IdsToDropList0,
 
     ?log_debug("Trying to drop ~p DEKs: ~0p", [Kind, IdsToDropFinalList]),
 
-    try
-        ns_server_stats:notify_counter({<<"encr_at_rest_drop_deks_events">>,
-                                        [{type, cb_deks:kind2bin(Kind)}]})
-    catch
-        error:not_found -> ok
-    end,
+    notify_kind_counter(<<"encr_at_rest_drop_deks_events">>, Kind),
 
     log_expired_deks(encr_at_rest_deks_expired, Kind,
                      sets:subtract(IdsToDropSet0, BeingDroppedSet)),
@@ -3835,6 +3814,26 @@ delete_kind_stats(Kind) ->
     catch
         error:not_found ->
             ok
+    end.
+
+notify_kind_counter(Counter, Kind) ->
+    try
+        ns_server_stats:notify_counter(
+          {Counter, [{type, cb_deks:kind2bin(Kind)}]})
+    catch
+        %% Bucket for this Kind does not exist (bucket already deleted but we
+        %% don't know about it yet)
+        error:not_found -> ok
+    end.
+
+notify_kind_gauge(Gauge, Kind, Val, Opts) ->
+    try
+        ns_server_stats:notify_gauge(
+          {Gauge, [{type, cb_deks:kind2bin(Kind)}]}, Val, Opts)
+    catch
+        %% Bucket for this Kind does not exist (bucket already deleted but we
+        %% don't know about it yet)
+        error:not_found -> ok
     end.
 
 all_kind_stat_names() ->
