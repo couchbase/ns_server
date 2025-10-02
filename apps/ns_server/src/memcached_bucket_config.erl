@@ -44,7 +44,7 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID, DBSubDir) ->
      {"backend", [], ns_bucket:node_kv_backend_type(BucketConfig)},
      {"couch_bucket", [], BucketName},
      {"max_vbuckets", [], proplists:get_value(num_vbuckets, BucketConfig)},
-     {"alog_path", [], filename:join(DBSubDir, "access.log")},
+     {"alog_path", [], persistent_alog_path(BucketConfig, DBSubDir)},
      {"data_traffic_enabled", [], false},
      {"max_num_workers", maybe_restart(),
       proplists:get_value(num_threads, BucketConfig, ?NUM_WORKER_THREADS)},
@@ -145,6 +145,14 @@ get_eviction_policy(Persistent, BucketConfig) ->
                     Other
             end;
         _ ->
+            undefined
+    end.
+
+persistent_alog_path(BucketConfig, DBSubDir) ->
+    case ns_bucket:is_persistent(BucketConfig) of
+        true ->
+            filename:join(DBSubDir, "access.log");
+        false ->
             undefined
     end.
 
