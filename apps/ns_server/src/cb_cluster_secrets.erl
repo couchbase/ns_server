@@ -35,6 +35,8 @@
 %% ensure that DEK GC can be triggered before DEK info update (on average).
 -define(MIN_DEK_GC_INTERVAL_S, ?get_param(min_dek_gc_interval, 590)).
 -define(DEK_INFO_UPDATE_INVERVAL_S, ?get_param(dek_info_update_interval, 600)).
+-define(DEK_COUNTERS_RENEW_INTERVAL_S,
+        ?get_param(dek_counters_renew_interval, 60)).
 
 -define(MIN_TIMER_INTERVAL, ?get_param(min_timer_interval, 30000)).
 -define(TEST_SECRET_TIMEOUT, ?get_param(secret_test_timeout, 30000)).
@@ -92,6 +94,8 @@
          delete_historical_key/3,
          get_all/0,
          get_all/1,
+         where_is_secret_used/2,
+         maybe_renew_secrets_usage_info/0,
          get_secret/1,
          get_secret/2,
          get_active_key_id/1,
@@ -140,7 +144,8 @@
          sync_with_node_monitor/0,
          delete_secret_internal/2,
          delete_historical_key_internal/3,
-         get_node_deks_info/0]).
+         get_node_deks_info/0,
+         maybe_renew_secrets_usage_info_internal/0]).
 
 -record(state, {proc_type :: ?NODE_PROC | ?MASTER_PROC,
                 jobs :: [node_job()] | [master_job()],
@@ -197,9 +202,11 @@
 -type inconsistent_graph() :: {cycle, [secret_id()]} |
                               {unknown_id, secret_id()}.
 
--type secret_in_use() :: {used_by, #{by_config := [cb_deks:dek_kind()],
-                                     by_secret := [secret_id()],
-                                     by_deks := [cb_deks:dek_kind()]}}.
+-type secret_in_use() :: {used_by, used_by()}.
+
+-type used_by() :: #{by_config := [cb_deks:dek_kind()],
+                     by_secrets := [secret_id()],
+                     by_deks := [cb_deks:dek_kind()]}.
 
 -type deks_info() :: #{active_id := cb_deks:dek_id() | undefined,
                        deks := [cb_deks:dek()],
@@ -251,6 +258,60 @@ get_all() -> get_all(direct).
 -spec get_all(chronicle_snapshot()) -> [secret_props()].
 get_all(Snapshot) ->
     chronicle_compat:get(Snapshot, ?CHRONICLE_SECRETS_KEY, #{default => []}).
+
+-spec where_is_secret_used(secret_id(), chronicle_snapshot()) -> used_by().
+where_is_secret_used(Id, Snapshot) ->
+    %% Places where this secret is used directly in encryption configuration
+    EncryptionConfigUsages =
+        lists:filtermap(
+          fun (Kind) ->
+               case cb_deks:call_dek_callback(get_encryption_method, Kind,
+                                              [cluster, Snapshot]) of
+                  {succ, {ok, {secret, Id}}} ->
+                      {true, Kind};
+                  {succ, {ok, _}} ->
+                      false;
+                  {succ, {error, not_found}} ->
+                      false
+              end
+          end, cb_deks:dek_cluster_kinds_list(Snapshot)),
+    %% Places where this secret is used for encryption of other secrets
+    Secrets = get_secrets_used_by_secret_id(Id, Snapshot),
+    %% Places where this secret is used to encrypt deks (such deks can exist
+    %% even if encryption is disabled for this entity)
+    Deks = get_dek_kinds_used_by_secret_id(Id, Snapshot),
+    SecretNames =
+        lists:map(fun (SId) ->
+                      {ok, #{name := SName}} = get_secret(SId, Snapshot),
+                      SName
+                  end, Secrets),
+
+    #{by_config => EncryptionConfigUsages,
+      by_secrets => SecretNames,
+      by_deks => Deks}.
+
+-spec maybe_renew_secrets_usage_info() -> ok | {error, _}.
+maybe_renew_secrets_usage_info() ->
+    maybe
+        true ?= should_renew_secrets_usage_info(),
+        ok ?= execute_on_master(
+                {?MODULE, maybe_renew_secrets_usage_info_internal, []}),
+        %% Make sure we have received the updated DEKs counters
+        ok ?= chronicle_kv:sync(kv, ?SYNC_TIMEOUT)
+    else
+        false -> ok;
+        ok -> ok;
+        {error, _} = Error ->
+            ?log_error("Failed to renew secrets usage info: ~0p", [Error]),
+            Error
+    end.
+
+-spec maybe_renew_secrets_usage_info_internal() -> ok.
+maybe_renew_secrets_usage_info_internal() ->
+    case should_renew_secrets_usage_info() of
+        true -> maybe_reset_deks_counters();
+        false -> ok
+    end.
 
 -spec get_secret(secret_id()) -> {ok, secret_props()} | {error, not_found}.
 get_secret(SecretId) -> get_secret(SecretId, direct).
@@ -2141,38 +2202,13 @@ execute_on_master({_, _, _} = MFA) ->
 -spec can_delete_secret(secret_props(), chronicle_snapshot()) ->
                                             ok | {error, secret_in_use()}.
 can_delete_secret(#{id := Id}, Snapshot) ->
-    %% Places where this secret is used directly in encryption configuration
-    EncryptionConfigUsages =
-        lists:filtermap(
-          fun (Kind) ->
-               case cb_deks:call_dek_callback(get_encryption_method, Kind,
-                                              [cluster, Snapshot]) of
-                  {succ, {ok, {secret, Id}}} ->
-                      {true, Kind};
-                  {succ, {ok, _}} ->
-                      false;
-                  {succ, {error, not_found}} ->
-                      false
-              end
-          end, cb_deks:dek_cluster_kinds_list(Snapshot)),
-    %% Places where this secret is used for encryption of another secrets
-    Secrets = get_secrets_used_by_secret_id(Id, Snapshot),
-    %% Places where this secret is used to encrypt deks (such deks can exist
-    %% even if encryption is disabled for this entity)
-    Deks = get_dek_kinds_used_by_secret_id(Id, Snapshot),
-    SecretNames =
-        lists:map(fun (SId) ->
-                      {ok, #{name := SName}} = get_secret(SId, Snapshot),
-                      SName
-                  end, Secrets),
-
-    case length(EncryptionConfigUsages) + length(SecretNames) + length(Deks) of
-        0 -> ok;
-        _ ->
-            M = #{by_config => EncryptionConfigUsages,
-                  by_secrets => SecretNames,
-                  by_deks => Deks},
-            {error, {used_by, M}}
+    UsedBy = where_is_secret_used(Id, Snapshot),
+    InUse = maps:fold(fun (_, Where, Acc) when is_list(Where) ->
+                          Acc orelse (length(Where) > 0)
+                      end, false, UsedBy),
+    case InUse of
+        false -> ok;
+        true -> {error, {used_by, UsedBy}}
     end.
 
 -spec get_secrets_encrypted_by_key_id(key_id(), chronicle_snapshot()) ->
@@ -3231,14 +3267,14 @@ get_all_node_deks_info() ->
 reset_dek_counters(OldCountersMap, ActualDeksUsageInfo) ->
     Res =
         chronicle_transaction(
-          [?CHRONICLE_SECRETS_KEY, ?CHRONICLE_DEK_COUNTERS_KEY],
+          [?CHRONICLE_SECRETS_KEY, ?CHRONICLE_DEK_COUNTERS_KEY,
+           ?CHRONICLE_DEK_COUNTERS_TIME_KEY],
           fun (Snapshot) ->
               reset_dek_counters_txn(OldCountersMap, ActualDeksUsageInfo,
                                      Snapshot)
           end),
 
     case Res of
-        nothing_changed -> ok;
         ok -> ok;
         {error, _} = Error -> Error
     end.
@@ -3308,9 +3344,15 @@ reset_dek_counters_txn(OldCountersMap, ActualDeksUsageInfo, Snapshot) ->
 
     {Old, _} = get_dek_counters(Snapshot),
     New = maps:filtermap(FilterCountersForSecret, Old),
+    UpdateTime = calendar:universal_time(),
     case New == Old of
-        true -> {abort, nothing_changed};
-        false -> {commit, [{set, ?CHRONICLE_DEK_COUNTERS_KEY, New}]}
+        true ->
+            {commit,
+             [{set, ?CHRONICLE_DEK_COUNTERS_TIME_KEY, UpdateTime}]};
+        false ->
+            {commit,
+             [{set, ?CHRONICLE_DEK_COUNTERS_KEY, New},
+              {set, ?CHRONICLE_DEK_COUNTERS_TIME_KEY, UpdateTime}]}
     end.
 
 %% Fetches a snapshot in transaction with all dek related chronicle keys,
@@ -3329,6 +3371,7 @@ fetch_snapshot_in_txn(Txn) ->
     SecretsSnapshot = chronicle_compat:txn_get_many(
                         [?CHRONICLE_SECRETS_KEY,
                          ?CHRONICLE_DEK_COUNTERS_KEY,
+                         ?CHRONICLE_DEK_COUNTERS_TIME_KEY,
                          ?CHRONICLE_NEXT_ID_KEY],
                         Txn),
     maps:merge(DeksRelatedSnapshot, SecretsSnapshot).
@@ -4109,6 +4152,25 @@ import_dek_into_state(Kind, Path, EncrMethod, Snapshot, OldState) ->
             ?log_debug("Skipping import of DEK ~p because it already "
                         "exists in state", [SkippedDekId]),
             {ok, OldState}
+    end.
+
+-spec should_renew_secrets_usage_info() -> boolean().
+should_renew_secrets_usage_info() ->
+    case chronicle_compat:get(direct, ?CHRONICLE_DEK_COUNTERS_TIME_KEY,
+                              #{default => undefined}) of
+        undefined -> true;
+        UpdateTime ->
+            CurrentTime = calendar:universal_time(),
+            Diff = calendar:datetime_to_gregorian_seconds(CurrentTime) -
+                   calendar:datetime_to_gregorian_seconds(UpdateTime),
+            %% Using abs to catch cases when time on master node is way
+            %% ahead of the this node.
+            %% We can incorrectly skip some updates in case if time is not
+            %% synced, but in DEK_COUNTERS_RENEW_INTERVAL_S
+            %% seconds we will update it anyway.
+            %% In worst case we will always go to master which will do empty
+            %% update anyway.
+            abs(Diff) > ?DEK_COUNTERS_RENEW_INTERVAL_S
     end.
 
 -ifdef(TEST).

@@ -38,22 +38,32 @@
 -export([is_writable_remote/4]).
 
 handle_get_secrets(Req) ->
-    All = cb_cluster_secrets:get_all(),
+    cb_cluster_secrets:maybe_renew_secrets_usage_info(),
+    Snapshot = chronicle_compat:get_snapshot(
+                 [cb_cluster_secrets:fetch_snapshot_in_txn(_)], #{}),
+    All = cb_cluster_secrets:get_all(Snapshot),
     FilteredSecrets = read_filter_secrets_by_permission(All, Req),
     Res = lists:map(
-            fun (Props) ->
-                {export_secret(Props)}
+            fun (#{id := Id} = Props) ->
+                UsedBy = cb_cluster_secrets:where_is_secret_used(Id, Snapshot),
+                {export_secret(Props#{used_by => UsedBy})}
             end, FilteredSecrets),
     menelaus_util:reply_json(Req, Res).
 
 handle_get_secret(IdStr, Req) when is_list(IdStr) ->
     menelaus_util:assert_is_enterprise(),
-    case cb_cluster_secrets:get_secret(parse_id(IdStr)) of
+    cb_cluster_secrets:maybe_renew_secrets_usage_info(),
+    Snapshot = chronicle_compat:get_snapshot(
+                 [cb_cluster_secrets:fetch_snapshot_in_txn(_)], #{}),
+    Id = parse_id(IdStr),
+    case cb_cluster_secrets:get_secret(Id, Snapshot) of
         {ok, Props} ->
             case read_filter_secrets_by_permission([Props], Req) of
                 [] -> menelaus_util:reply_not_found(Req);
                 [_] ->
-                    Res = {export_secret(Props)},
+                    UsedBy = cb_cluster_secrets:where_is_secret_used(
+                              Id, Snapshot),
+                    Res = {export_secret(Props#{used_by => UsedBy})},
                     menelaus_util:reply_json(Req, Res)
             end;
         {error, not_found} ->
@@ -317,7 +327,8 @@ keys_remap() ->
       hist_keys => historicalKeys,
       kmip_id => kmipId,
       key_material => keyMaterial,
-      req_timeout_ms => reqTimeoutMs}.
+      req_timeout_ms => reqTimeoutMs,
+      used_by => usedBy}.
 
 keys_to_json(Term) ->
     transform_keys(keys_remap(), Term).
@@ -352,34 +363,79 @@ export_secret(#{type := DataType} = Props) ->
               (type, T) ->
                   T;
               (usage, UList) ->
-                  lists:filtermap(
-                    fun ({bucket_encryption, <<"*">>}) ->
-                            {true, <<"bucket-encryption">>};
-                        ({bucket_encryption, BucketUUID}) ->
-                            case ns_bucket:uuid2bucket(BucketUUID) of
-                                {ok, BucketName} ->
-                                    {true, iolist_to_binary(
-                                             [<<"bucket-encryption-">>,
-                                              BucketName])};
-                                {error, not_found} ->
-                                    false
-                            end;
-                        (config_encryption) ->
-                            {true, <<"config-encryption">>};
-                        (secrets_encryption) ->
-                            {true, <<"KEK-encryption">>};
-                        (audit_encryption) ->
-                            {true, <<"audit-encryption">>};
-                        (log_encryption) ->
-                            {true, <<"log-encryption">>}
-                    end, UList);
+                  lists:filtermap(fun usage_to_json/1, UList);
               (data, D) when DataType == ?CB_MANAGED_KEY_TYPE ->
                   {format_cb_managed_key_data(D)};
               (data, D) when DataType == ?AWSKMS_KEY_TYPE ->
                   {format_aws_key_data(D)};
               (data, D) when DataType == ?KMIP_KEY_TYPE ->
-                  {format_kmip_key_data(D)}
+                  {format_kmip_key_data(D)};
+              (used_by, UsedBy) ->
+                  format_secrets_used_by_list_to_json(UsedBy)
           end, Props))).
+
+format_secrets_used_by_list_to_json(UsedBy) ->
+    Kinds = maps:get(by_config, UsedBy, []) ++ maps:get(by_deks, UsedBy, []),
+    Secrets = maps:get(by_secrets, UsedBy, []),
+    %% There should be no other fields in UsedBy
+    0 = maps:size(maps:without([by_config, by_deks, by_secrets], UsedBy)),
+
+    Kind2Usage =
+        fun (K) ->
+            {succ, U} = cb_deks:call_dek_callback(get_required_usage, K, []),
+            U
+        end,
+
+    MakeRes = fun (U, D) -> {[{<<"usage">>, U}, {<<"description">>, D}]} end,
+
+    FormatKind = fun (Kind) ->
+                     Usage = Kind2Usage(Kind),
+                     DescrBin = iolist_to_binary(usage_to_string(Usage)),
+                     case usage_to_json(Usage) of
+                         {true, UsageBin} ->
+                             {true, MakeRes(UsageBin, DescrBin)};
+                         false ->
+                             false
+                     end
+                 end,
+
+    FormatSecret = fun (S) ->
+                       {true, UsageBin} = usage_to_json(secrets_encryption),
+                       DescrBin = iolist_to_binary("key \"" ++ S ++ "\""),
+                       MakeRes(UsageBin, DescrBin)
+                   end,
+
+    lists:filtermap(FormatKind, lists:uniq(Kinds)) ++
+    lists:map(FormatSecret, lists:uniq(Secrets)).
+
+usage_to_json({bucket_encryption, <<"*">>}) ->
+    {true, <<"bucket-encryption">>};
+usage_to_json({bucket_encryption, BucketUUID}) ->
+    case ns_bucket:uuid2bucket(BucketUUID) of
+        {ok, BucketName} ->
+            {true, iolist_to_binary([<<"bucket-encryption-">>, BucketName])};
+        {error, not_found} ->
+            false
+    end;
+usage_to_json(config_encryption) ->
+    {true, <<"config-encryption">>};
+usage_to_json(secrets_encryption) ->
+    {true, <<"KEK-encryption">>};
+usage_to_json(audit_encryption) ->
+    {true, <<"audit-encryption">>};
+usage_to_json(log_encryption) ->
+    {true, <<"log-encryption">>}.
+
+usage_to_string(config_encryption) -> "configuration";
+usage_to_string(log_encryption) -> "logs";
+usage_to_string(audit_encryption) -> "audits";
+usage_to_string(secrets_encryption) -> "encryption keys";
+usage_to_string({bucket_encryption, <<"*">>}) -> "all buckets";
+usage_to_string({bucket_encryption, BucketUUID}) ->
+    case ns_bucket:uuid2bucket(BucketUUID) of
+        {ok, BucketName} -> "bucket \"" ++ BucketName ++ "\"";
+        {error, not_found} -> "unknown bucket"
+    end.
 
 format_cb_managed_key_data(Props) ->
     ActiveKeyId = maps:get(active_key_id, Props),
@@ -897,13 +953,7 @@ format_secrets_used_by_list(UsedByMap, Snapshot) ->
                       fun ({bucket_encryption, BUUID}) -> {left, BUUID};
                           (K) -> {right, K}
                       end, Usages),
-                FormattedUsages = lists:map(fun (config_encryption) ->
-                                                    "configuration";
-                                                (log_encryption) ->
-                                                    "logs";
-                                                (audit_encryption) ->
-                                                    "audit"
-                                            end, Other),
+                FormattedUsages = lists:map(fun usage_to_string/1, Other),
                 AllBuckets = maps:from_list(
                                [{U, N} || {N, U} <- ns_bucket:uuids(Snapshot)]),
                 Buckets = lists:map(fun (B) ->
@@ -982,24 +1032,24 @@ format_secrets_used_by_list_test() ->
     Secrets = ["s1", "s2"],
     F = ?cut(lists:flatten(format_secrets_used_by_list(_, Snapshot))),
     ?assertEqual("this key is configured to encrypt configuration, logs, "
-                 "audit, buckets \"b1\", \"b2\"",
+                 "audits, buckets \"b1\", \"b2\"",
                  F(#{by_deks => All, by_config => All, by_secrets => []})),
     ?assertEqual("this key is configured to encrypt configuration, logs, "
-                 "audit, buckets \"b1\", \"b2\"",
+                 "audits, buckets \"b1\", \"b2\"",
                  F(#{by_deks => [], by_config => All, by_secrets => []})),
     ?assertEqual("this key still encrypts some data in configuration, logs, "
-                 "audit, buckets \"b1\", \"b2\"",
+                 "audits, buckets \"b1\", \"b2\"",
                  F(#{by_deks => All, by_config => [], by_secrets => []})),
     ?assertEqual("this key is configured to encrypt keys \"s1\", \"s2\"",
                  F(#{by_deks => [], by_config => [], by_secrets => Secrets})),
     ?assertEqual("this key is configured to encrypt configuration, logs, "
-                 "audit, buckets \"b1\", \"b2\", keys \"s1\", \"s2\"",
+                 "audits, buckets \"b1\", \"b2\", keys \"s1\", \"s2\"",
                  F(#{by_deks => [], by_config => All, by_secrets => Secrets})),
     ?assertEqual("this key is configured to encrypt configuration, logs, "
-                 "audit, buckets \"b1\", \"b2\", keys \"s1\", \"s2\"",
+                 "audits, buckets \"b1\", \"b2\", keys \"s1\", \"s2\"",
                  F(#{by_deks => All, by_config => All, by_secrets => Secrets})),
     ?assertEqual("this key is configured to encrypt configuration; it also "
-                 "still encrypts some data in logs, audit, "
+                 "still encrypts some data in logs, audits, "
                  "buckets \"b1\", \"b2\"",
                  F(#{by_deks => All, by_config => [configDek],
                      by_secrets => []})),
