@@ -175,7 +175,6 @@ with_validated_secret(Fun, ExistingId, Req) ->
     %% 3. This can fail because that node doesn't know about the bucket yet
     %%    (parsing of the bucket encryption usage will fail).
     Snapshot = chronicle_compat:get_snapshot(
-                 %[ns_bucket:fetch_snapshot(all, _, [uuid])],
                  [cb_cluster_secrets:fetch_snapshot_in_txn(_)],
                  #{read_consistency => quorum}),
     CurPropsRes = case ExistingId of
