@@ -980,7 +980,7 @@ cleanup_snapshots() ->
                                   ({BucketName, _}) ->
                                        {true, BucketName}
                                end, ToDelete)),
-    AffectedBuckets =
+    UploadersVerifiedBuckets =
         case MaybeAffectedBuckets of
             [] ->
                 [];
@@ -1007,7 +1007,7 @@ cleanup_snapshots() ->
               %% without existing bucket
               remove_snapshot_entry(Entry);
           ({BucketName, Entry}) ->
-              case proplists:is_defined(BucketName, AffectedBuckets) of
+              case proplists:is_defined(BucketName, UploadersVerifiedBuckets) of
                   false ->
                       ?log_debug("Not ready to delete snapshots for ~p, ~p",
                                  [BucketName, Entry]);
