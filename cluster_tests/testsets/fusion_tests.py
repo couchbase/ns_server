@@ -289,11 +289,13 @@ class FusionTests(testlib.BaseTestSet):
 
     def abort_rebalance_test(self):
         self.init_fusion()
+
+        self.create_bucket('test', 1)
+
         testlib.post_succ(self.cluster, '/fusion/enable')
         self.wait_for_state('enabling', 'enabled')
 
         second_node = self.cluster.spare_node()
-        self.create_bucket('test', 1)
 
         self.cluster.add_node(second_node, services=[Service.KV])
 
