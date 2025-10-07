@@ -2808,7 +2808,7 @@ uuid_key(Bucket) ->
 uuid2bucket_key(BucketUUID) ->
     {bucket_by_uuid, BucketUUID}.
 
--spec uuid(bucket_name(), direct | map()) -> binary() | not_present.
+-spec uuid(bucket_name(), chronicle_compat:source()) -> binary() | not_present.
 uuid(Bucket, Snapshot) ->
     case chronicle_compat:get(Snapshot, uuid_key(Bucket), #{}) of
         {ok, UUID} ->
@@ -2817,12 +2817,15 @@ uuid(Bucket, Snapshot) ->
             not_present
     end.
 
+-spec uuids() -> [{bucket_name(), binary()}].
 uuids() ->
     uuids(get_snapshot(all, [uuid])).
 
+-spec uuids(chronicle_compat:source()) -> [{bucket_name(), binary()}].
 uuids(Snapshot) ->
     [{Name, uuid(Name, Snapshot)} || Name <- get_bucket_names(Snapshot)].
 
+-spec uuid2bucket(binary()) -> {ok, bucket_name()} | {error, not_found}.
 uuid2bucket(UUID) ->
     case cluster_compat_mode:is_cluster_79() of
         true ->
@@ -2831,6 +2834,8 @@ uuid2bucket(UUID) ->
             uuid2bucket(UUID, get_snapshot(all, [uuid]))
     end.
 
+-spec uuid2bucket(binary(), chronicle_compat:source()) ->
+          {ok, bucket_name()} | {error, not_found}.
 uuid2bucket(UUID, Snapshot) ->
     case cluster_compat_mode:is_cluster_79() of
         true ->
