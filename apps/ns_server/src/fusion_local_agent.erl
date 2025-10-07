@@ -193,7 +193,7 @@ wait_for_uploaders_to_stop(BucketName, Tries) ->
 
 delete_data(Parent, Namespace) ->
     ?log_info("Delete namespace ~p.", [Namespace]),
-    [_, BucketUUID] = string:tokens(binary_to_list(Namespace), "/"),
+    [_, BucketUUID] = binary:split(Namespace, [<<"/">>]),
     NamespaceString =
         case ns_bucket:uuid2bucket(BucketUUID) of
             {ok, BucketName} ->
