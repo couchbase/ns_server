@@ -37,6 +37,7 @@ encrypted_file_magic = b'\x00Couchbase Encrypted\x00'
 min_timer_interval = 1 # seconds
 dek_info_update_interval = 3 # seconds
 min_dek_gc_interval = 2 # seconds
+dek_counters_renew_interval = 1 # seconds
 default_max_deks = 50
 default_dek_lifetime = 60*60*24*365
 min_dek_lifetime = 60*60*24*30
@@ -68,6 +69,8 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         set_min_timer_interval(self.cluster, min_timer_interval)
         set_dek_info_update_interval(self.cluster, dek_info_update_interval)
         set_min_dek_gc_interval(self.cluster, min_dek_gc_interval)
+        set_dek_counters_renew_interval(self.cluster,
+                                        dek_counters_renew_interval)
         non_kv_node = None
         for n in self.cluster.connected_nodes:
             if Service.KV not in n.get_services():
@@ -105,6 +108,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                    f'Secret {s_id} disappeared during tests'
         for s_id in self.pre_created_ids:
             delete_secret(self.cluster, s_id)
+        set_dek_counters_renew_interval(self.cluster, None)
         set_min_dek_gc_interval(self.cluster, None)
         set_dek_info_update_interval(self.cluster, None)
         set_min_timer_interval(self.cluster, None)
@@ -205,6 +209,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Create new secret
         secret_json = cb_managed_secret(name='Test Secret 1')
         secret_id = create_secret(self.random_node(), secret_json)
+        assert_secret_used_by(self.random_node(), secret_id, []) # not used yet
 
         # Encrypt data using that secret
         encrypted = encrypt_with_key(self.random_node(),
@@ -253,6 +258,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret2_json = cb_managed_secret(name='Test Secret 2')
 
         secret1_id = create_secret(self.random_node(), secret1_json)
+        assert_secret_used_by(self.random_node(), secret1_id, []) # not used yet
 
         # Can't create because the secret does not exist
         bucket_props = {'name': self.bucket_name,
@@ -267,6 +273,8 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         bucket_props['encryptionAtRestKeyId'] = secret1_id
         self.cluster.create_bucket(bucket_props, sync=True)
         bucket_uuid = self.cluster.get_bucket_uuid(self.bucket_name)
+        assert_secret_used_by(self.random_node(), secret1_id,
+                              [used_by_bucket(self.bucket_name)])
 
         kek1_id = get_kek_id(self.random_node(), secret1_id)
         poll_verify_bucket_deks_files(self.cluster, bucket_uuid,
@@ -288,6 +296,9 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret2_id = create_secret(self.random_node(), secret2_json)
         self.cluster.update_bucket({'name': self.bucket_name,
                                     'encryptionAtRestKeyId': secret2_id})
+        poll_assert_secret_used_by(self.random_node(), secret1_id, [])
+        assert_secret_used_by(self.random_node(), secret2_id,
+                              [used_by_bucket(self.bucket_name)])
 
         kek2_id = get_kek_id(self.random_node(), secret2_id)
         # update is asynchronous, so we can't assume the dek gets reencrypted
@@ -299,6 +310,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Now it can be deleted
         delete_secret(self.random_node(), secret1_id)
         self.cluster.delete_bucket(self.bucket_name)
+        poll_assert_secret_used_by(self.random_node(), secret2_id, [])
         delete_secret(self.random_node(), secret2_id)
 
     def bucket_without_encryption_test(self):
@@ -343,6 +355,9 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         set_cfg_encryption(self.cluster, 'encryptionKey', secret_id)
         set_log_encryption(self.cluster, 'encryptionKey', secret_id)
+        assert_secret_used_by(self.random_node(), secret_id,
+                              [used_by_log(), used_by_cfg(),
+                               used_by_bucket(self.bucket_name)])
 
         hist_keys = get_historical_keys(self.cluster, secret_id)
         assert len(hist_keys) == 1
@@ -543,6 +558,15 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                        cb_managed_secret(name='Level 3 (key5)',
                                          encrypt_with='encryptionKey',
                                          encrypt_secret_id=secret3_id))
+        assert_secret_used_by(self.random_node(), secret1_id,
+                              [used_by_key('Level 2 (key2)'),
+                               used_by_key('Level 2 (key3)')])
+        assert_secret_used_by(self.random_node(), secret2_id,
+                              [used_by_key('Level 3 (key4)')])
+        assert_secret_used_by(self.random_node(), secret3_id,
+                              [used_by_key('Level 3 (key5)')])
+        assert_secret_used_by(self.random_node(), secret4_id, [])
+        assert_secret_used_by(self.random_node(), secret5_id, [])
 
         # Can't create secret because encryption key with such id doesn't exist
         create_secret(self.random_node(),
@@ -828,12 +852,15 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         set_cfg_encryption(node, 'encryptionKey', bad_id, expected_code=400)
         set_cfg_encryption(node, 'encryptionKey', good_id)
 
+        assert_secret_used_by(node, good_id, [used_by_cfg()])
+
         secret['usage'] = ['bucket-encryption']
         errors = update_secret(node, good_id, secret, expected_code=400)
         assert errors['_'] == 'Can\'t modify usage as this key is in use', \
                f'unexpected error: {errors}'
 
         set_cfg_encryption(node, 'nodeSecretManager', -1)
+        poll_assert_secret_used_by(node, good_id, [])
 
         update_secret(node, good_id, secret)
 
@@ -3114,6 +3141,11 @@ def set_remove_hist_keys_interval(cluster, n):
                         '{cb_cluster_secrets, remove_historical_keys_interval}',
                         n)
 
+def set_dek_counters_renew_interval(cluster, n):
+    set_ns_config_value(cluster,
+                        '{cb_cluster_secrets, dek_counters_renew_interval}',
+                        n)
+
 
 def set_ns_config_value(cluster, key_str, value):
     if value is None:
@@ -3528,3 +3560,44 @@ def setup_kmip_server():
                     assert False, f'Warning: Could not remove tmp server'\
                                   f'data: {e}'
 
+
+def poll_assert_secret_used_by(node, SecretId, UsedByList):
+    testlib.poll_for_condition(
+        lambda: assert_secret_used_by(node, SecretId, UsedByList),
+        sleep_time=1, attempts=15,
+        retry_on_assert=True, verbose=True)
+
+
+def assert_secret_used_by(node, secret_id, expected_list):
+    secret = get_secret(node, secret_id)
+    used_by = secret['usedBy']
+    assert len(used_by) == len(expected_list), \
+           f'unexpected usedBy {used_by}, expected {expected_list}'
+    for used_by_item in used_by:
+        for expected_list_item in expected_list:
+            if used_by_item['usage'] == expected_list_item['usage'] and \
+               used_by_item['description'] == expected_list_item['description']:
+                break
+        else:
+            assert False, \
+                   f'unexpected usedBy {used_by_item}, expected {expected_list}'
+
+
+def used_by_bucket(bucket_name):
+    return {'usage': f'bucket-encryption-{bucket_name}',
+            'description': f'bucket "{bucket_name}"'}
+
+
+def used_by_key(key_name):
+    return {'usage': f'KEK-encryption',
+            'description': f'key "{key_name}"'}
+
+
+def used_by_cfg():
+    return {'usage': f'config-encryption',
+            'description': f'configuration'}
+
+
+def used_by_log():
+    return {'usage': f'log-encryption',
+            'description': f'logs'}
