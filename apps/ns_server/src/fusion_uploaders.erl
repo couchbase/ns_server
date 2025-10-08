@@ -74,16 +74,16 @@
                               vbucket_map(), vbucket_map(), integer()) ->
           undefined | fast_forward_info().
 build_fast_forward_info(Bucket, BucketConfig, Map, FastForwardMap, NServers) ->
-    case ns_bucket:is_fusion(BucketConfig) of
-        false ->
-            undefined;
-        true ->
+    case ns_bucket:get_fusion_state(BucketConfig) of
+        enabled ->
             Current = ns_bucket:get_fusion_uploaders(Bucket),
             Moves = calculate_moves(Map, FastForwardMap, Current,
                                     allowance(Map, NServers)),
             ?rebalance_info("Calculated fusion uploader moves. Moves:~n~p",
                             [Moves]),
-            {Moves, Current}
+            {Moves, Current};
+        _ ->
+            undefined
     end.
 
 allowance(Map, NServers) ->
