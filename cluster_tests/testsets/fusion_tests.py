@@ -137,6 +137,13 @@ class FusionTests(testlib.BaseTestSet):
 
     def empty_bucket_smoke_test_code(self, num_replicas, expected_num_volumes):
         self.init_fusion()
+
+        otp_nodes = testlib.get_otp_nodes(self.cluster)
+        testlib.post_fail(self.cluster,
+                          "/controller/fusion/prepareRebalance",
+                          data={'keepNodes': otp_nodes.values()},
+                          expected_code=412)
+
         testlib.post_succ(self.cluster, '/fusion/enable')
         self.wait_for_state('enabling', 'enabled')
 

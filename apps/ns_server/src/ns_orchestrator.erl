@@ -369,7 +369,8 @@ stop_fusion() ->
 -spec prepare_fusion_rebalance([node()]) ->
           {ok, term()} | busy() |
           {unknown_nodes, [node()]} |
-          {failed_to_get_snapshot, node()}.
+          {failed_to_get_snapshot, node()} |
+          not_enabled.
 prepare_fusion_rebalance(KeepNodes) ->
     call({prepare_fusion_rebalance, KeepNodes}, infinity).
 
@@ -1221,18 +1222,24 @@ idle({fusion, Command}, From, _State) ->
 
 idle({prepare_fusion_rebalance, KeepNodes}, From, _State) ->
     RV =
-        case KeepNodes -- ns_cluster_membership:nodes_wanted() of
-            [] ->
-                case ns_rebalancer:prepare_fusion_rebalance(KeepNodes) of
-                    {ok, {RebalancePlan, AccelerationPlan}} ->
-                        ets:insert(?ETS,
-                                   {?FUSION_REBALANCE_PLAN, RebalancePlan}),
-                        {ok, AccelerationPlan};
-                    {error, Error} ->
-                        Error
+        case fusion_uploaders:get_state() of
+            enabled ->
+                case KeepNodes -- ns_cluster_membership:nodes_wanted() of
+                    [] ->
+                        case ns_rebalancer:prepare_fusion_rebalance(
+                               KeepNodes) of
+                            {ok, {RebalancePlan, AccelerationPlan}} ->
+                                ets:insert(
+                                  ?ETS, {?FUSION_REBALANCE_PLAN, RebalancePlan}),
+                                {ok, AccelerationPlan};
+                            {error, Error} ->
+                                Error
+                        end;
+                    UnknownNodes ->
+                        {unknown_nodes, UnknownNodes}
                 end;
-            UnknownNodes ->
-                {unknown_nodes, UnknownNodes}
+            _ ->
+                not_enabled
         end,
     {keep_state_and_data, [{reply, From, RV}]};
 

@@ -213,6 +213,9 @@ handle_prepare_rebalance(Req) ->
                         io_lib:format(
                           "Failed to obtain fusion storage snapshot from ~p",
                           [Node]), 500);
+                  not_enabled ->
+                      menelaus_util:reply_text(
+                        Req, "Fusion is not enabled", 412);
                   Other ->
                       reply_other(Req, "prepare fusion rebalance", Other)
               end
