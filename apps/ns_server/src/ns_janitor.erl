@@ -119,7 +119,7 @@ run_buckets_cleanup_activity(BucketsAndCfg, SnapShot, Options) ->
 
 cleanup_fusion_uploaders(Bucket, BucketConfig, Servers) ->
     case fusion_uploaders:get_state() of
-        disabled ->
+        State when State =:= disabled orelse State =:= stopped ->
             %% we can reach this state only if all uploaders are
             %% stopped
             ok;
