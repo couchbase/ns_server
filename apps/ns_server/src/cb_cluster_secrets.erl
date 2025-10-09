@@ -41,6 +41,8 @@
 -define(MIN_TIMER_INTERVAL, ?get_param(min_timer_interval, 30000)).
 -define(TEST_SECRET_TIMEOUT, ?get_param(secret_test_timeout, 30000)).
 
+-define(SECRET_TEST_INTERVAL, ?get_param(secret_test_interval, 300000)).
+
 -ifndef(TEST).
 -define(MAX_RECHECK_ROTATION_INTERVAL, ?get_param(rotation_recheck_interval,
                                                   ?SECS_IN_DAY*1000)).
@@ -130,7 +132,8 @@
          is_secret_used/2,
          import_bucket_dek_files/3,
          sanitize_sensitive_data/1,
-         maybe_reencrypt_data/5]).
+         maybe_reencrypt_data/5,
+         get_latest_test_results/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -156,7 +159,8 @@
                            dek_cleanup => undefined,
                            rotate_deks => undefined,
                            dek_info_update => undefined,
-                           remove_retired_keys => undefined}
+                           remove_retired_keys => undefined,
+                           test_secrets => undefined}
                          :: #{atom() := reference() | undefined},
                 deks_info = undefined :: #{cb_deks:dek_kind() := deks_info()} |
                                          undefined,
@@ -931,6 +935,22 @@ sanitize_sensitive_data(#{type := sensitive} = Data) ->
 sanitize_sensitive_data(#{type := encrypted} = Data) ->
     Data.
 
+-spec get_latest_test_results() ->
+          #{secret_id() := #{status := ok | {error, term()},
+                             datetime := undefined | calendar:datetime()}}.
+get_latest_test_results() ->
+    try ets:lookup(?MODULE, secrets_test_results) of
+        [] ->
+            #{};
+        [{_, {InfoDateTime, Info}}] ->
+            maps:map(fun (_Id, {_Name, TestResult}) ->
+                         #{status => TestResult,
+                           datetime => InfoDateTime}
+                     end, Info)
+    catch
+        error:badarg -> #{}
+    end.
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -998,7 +1018,8 @@ handle_continue(init, State) ->
                                 restart_dek_cleanup_timer(_),
                                 restart_rotation_timer(_),
                                 restart_dek_info_update_timer(true, _),
-                                restart_remove_retired_timer(_)]),
+                                restart_remove_retired_timer(_),
+                                restart_test_secrets_timer(true, _)]),
     ?log_debug("cb_cluster_secrets init ~p finished", [State#state.proc_type]),
     {noreply, NewState}.
 
@@ -1244,6 +1265,10 @@ handle_timer(remove_historical_keys,
              #state{proc_type = ?MASTER_PROC} = State) ->
     {ok, NewState} = maybe_remove_historical_keys(State),
     NewState;
+
+handle_timer(test_secrets, #state{proc_type = ?NODE_PROC} = State) ->
+    run_periodic_test_for_secrets(),
+    restart_test_secrets_timer(false, State);
 
 handle_timer(Name, State) ->
     ?log_warning("Unhandled timer: ~p", [Name]),
@@ -4172,6 +4197,25 @@ should_renew_secrets_usage_info() ->
             %% update anyway.
             abs(Diff) > ?DEK_COUNTERS_RENEW_INTERVAL_S
     end.
+
+-spec restart_test_secrets_timer(boolean(), #state{}) -> #state{}.
+restart_test_secrets_timer(_, #state{proc_type = ?MASTER_PROC} = State) ->
+    State;
+restart_test_secrets_timer(IsFirst, #state{proc_type = ?NODE_PROC} = State) ->
+    Time = case IsFirst of
+               true -> 0;
+               false -> ?SECRET_TEST_INTERVAL
+           end,
+    restart_timer(test_secrets, Time, State).
+
+-spec run_periodic_test_for_secrets() -> ok.
+run_periodic_test_for_secrets() ->
+    Res = lists:map(fun (#{id := Id, name := Name} = S) ->
+                        {Id, {Name, test_secret_props(S)}}
+                    end, get_all()),
+    ets:insert(?MODULE, {secrets_test_results,
+                         {calendar:universal_time(), maps:from_list(Res)}}),
+    ok.
 
 -ifdef(TEST).
 replace_secret_in_list_test() ->
