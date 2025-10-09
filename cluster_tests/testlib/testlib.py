@@ -350,7 +350,9 @@ def format_test_times(test_time, teardown_time, display_threshold=0.5):
 
 
 def timedelta_str(delta_s):
-    if delta_s > 10:
+    # 9.95 is used to avoid seeing 10.0s for values between 9.95 and 10.0,
+    # we should see 10s instead
+    if delta_s > 9.95:
         return red(f"{round(delta_s)}s")
     if delta_s > 5:
         return red(f"{delta_s:.1f}s")
