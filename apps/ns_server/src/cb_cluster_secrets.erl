@@ -221,7 +221,7 @@
 
 -type external_dek_info() :: #{data_status := dek_info_data_status(),
                                issues := [dek_issue()],
-                               deks => [cb_deks:dek()],
+                               deks => [cb_deks:dek_meta()],
                                dek_num => non_neg_integer(),
                                oldest_dek_datetime => calendar:datetime()}.
 
@@ -3175,7 +3175,7 @@ get_dek_counters(Snapshot) ->
     end.
 
 -spec get_all_node_deks_info() ->
-          {ok, #{cb_deks:dek_kind() => [cb_deks:dek()]}} |
+          {ok, #{cb_deks:dek_kind() => [cb_deks:dek_meta()]}} |
           {error, _}.
 get_all_node_deks_info() ->
     AllNodes = ns_node_disco:nodes_wanted(),
@@ -3262,7 +3262,7 @@ get_all_node_deks_info() ->
     end.
 
 -spec reset_dek_counters(dek_encryption_counters(),
-                         #{cb_deks:dek_kind() => [cb_deks:dek()]}) ->
+                         #{cb_deks:dek_kind() => [cb_deks:dek_meta()]}) ->
           ok | {error, no_quorum}.
 reset_dek_counters(OldCountersMap, ActualDeksUsageInfo) ->
     Res =

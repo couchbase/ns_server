@@ -98,7 +98,7 @@
 -callback fetch_chronicle_keys_in_txn(dek_kind(), Txn :: term()) ->
               cb_cluster_secrets:chronicle_snapshot().
 
--export_type([dek_id/0, dek/0, dek_kind/0, encryption_method/0]).
+-export_type([dek_id/0, dek/0, dek_meta/0, dek_kind/0, encryption_method/0]).
 
 -type encryption_method() :: {secret, cb_cluster_secrets:secret_id()} |
                              encryption_service |
@@ -106,14 +106,17 @@
 -type dek_id() :: cb_cluster_secrets:key_id().
 -type dek_kind() :: kek | configDek | logDek | auditDek |
                     {bucketDek, BucketUUID :: binary()}.
--type good_dek() :: #{id := dek_id(), type := 'raw-aes-gcm',
-                      info := #{key := ?HIDDEN_DATA(binary()),
-                                encryption_key_id :=
-                                    cb_cluster_secrets:key_id(),
-                                creation_time := calendar:datetime(),
-                                imported := boolean()}}.
+-type good_dek(Type, Info) :: #{id := dek_id(), type := Type, info := Info}.
+-type aes_dek_info() :: #{key := ?HIDDEN_DATA(binary()),
+                          encryption_key_id := cb_cluster_secrets:key_id(),
+                          creation_time := calendar:datetime(),
+                          imported := boolean()}.
+-type ext_aes_dek_info() :: #{encryption_key_id := cb_cluster_secrets:key_id(),
+                              creation_time := calendar:datetime(),
+                              imported := boolean()}.
 -type bad_dek() :: #{id := dek_id(), type := error, reason := term()}.
--type dek() :: good_dek() | bad_dek().
+-type dek() :: good_dek('raw-aes-gcm', aes_dek_info()) | bad_dek().
+-type dek_meta() :: good_dek('raw-aes-gcm', ext_aes_dek_info()).
 
 -spec list(dek_kind()) ->
     {ok, {undefined | dek_id(), [dek_id()], boolean()}} | {error, _}.
@@ -161,7 +164,8 @@ generate_new(Kind, {secret, Id}, Snapshot) ->
         new(Kind, KekId)
     end.
 
--spec save_dek(dek_kind(), good_dek(), {secret, Id}, Snapshot) ->
+-spec save_dek(dek_kind(), good_dek('raw-aes-gcm', aes_dek_info()),
+               {secret, Id}, Snapshot) ->
           {ok, dek_id()} | {error, _}
                   when Id :: cb_cluster_secrets:secret_id(),
                        Snapshot :: cb_cluster_secrets:chronicle_snapshot().
