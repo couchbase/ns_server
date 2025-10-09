@@ -19,9 +19,11 @@
 -record(state, {state :: fusion_uploaders:state(),
                 queue :: pid(),
                 deleting :: [binary()],
+                failed :: [binary()],
                 to_reply :: [{binary(), {pid(), gen_server:reply_tag()}}]}).
 
 -define(DELETE_NAMESPACE, ?get_timeout(delete_namespace, 60000)).
+-define(RETRY_INTERVAL, ?get_timeout(retry_interval, 30000)).
 
 -export([start_link/0, get_state/0, get_states/2, delete_namespace/1]).
 -export([init/1, handle_info/2, handle_call/3]).
@@ -49,7 +51,7 @@ get_states(Nodes, Timeout) ->
             {error, BadNodes}
     end.
 
--spec delete_namespace(ns_bucket:name()) -> ok.
+-spec delete_namespace(ns_bucket:name()) -> ok | error.
 delete_namespace(BucketName) ->
     {ok, BucketConfig} = ns_bucket:get_bucket(BucketName),
     case should_have_namespace(BucketConfig) of
@@ -80,11 +82,13 @@ init([]) ->
     {ok, #state{state = disabled,
                 queue = Pid,
                 deleting = [],
+                failed = [],
                 to_reply = []}}.
 
 handle_call(get_state, _From, State = #state{state = FusionState,
-                                             deleting = Deleting}) ->
-    {reply, {FusionState, Deleting}, State};
+                                             deleting = Deleting,
+                                             failed = Failed}) ->
+    {reply, {FusionState, Deleting ++ Failed}, State};
 handle_call({delete, BucketName}, From,
             State = #state{deleting = Deleting, to_reply = ToReply}) ->
     Namespace = namespace(BucketName, direct),
@@ -105,11 +109,23 @@ handle_call({delete, BucketName}, From,
             end
     end.
 
-handle_info({deleted, Namespace}, State = #state{deleting = Deleting,
-                                                 to_reply = ToReply}) ->
-    [gen_server2:reply(From, ok) || {NS, From} <- ToReply, NS =:= Namespace],
+handle_info({delete_finished, Namespace, Result},
+            State = #state{deleting = Deleting, to_reply = ToReply,
+                           failed = Failed}) ->
+    [gen_server2:reply(From, Result) || {NS, From} <- ToReply,
+                                        NS =:= Namespace],
+
+    NewState =
+        case Result of
+            ok ->
+                State;
+            error ->
+                erlang:send_after(?RETRY_INTERVAL, self(),
+                                  check_state_and_buckets),
+                State#state{failed = [Namespace | Failed]}
+        end,
     {noreply,
-     State#state{
+     NewState#state{
        deleting = Deleting -- [Namespace],
        to_reply = [{NS, From} || {NS, From} <- ToReply, NS =/= Namespace]}};
 handle_info(check_state_and_buckets, State) ->
@@ -123,7 +139,7 @@ handle_info(check_state_and_buckets, State) ->
             _ ->
                 maybe_schedule_deletes(NewState)
         end,
-    {noreply, NewState1}.
+    {noreply, NewState1#state{failed = []}}.
 
 get_namespaces() ->
     {ok, Json} =
@@ -215,14 +231,17 @@ delete_data(Parent, Namespace) ->
         end,
 
     ?log_info("Start deleting namespace ~s", [NamespaceString]),
-    case ns_memcached:delete_fusion_namespace(
-           fusion_uploaders:get_log_store_uri(),
-           fusion_uploaders:get_metadata_store_uri(), Namespace) of
-        ok ->
-            ?log_info("Namespace ~s deleted succesfully", [NamespaceString]),
-            ok;
-        Error ->
-            ?log_error("Error deleting namespace ~s: ~p",
-                       [NamespaceString, Error])
-    end,
-    Parent ! {deleted, Namespace}.
+    RV =
+        case ns_memcached:delete_fusion_namespace(
+               fusion_uploaders:get_log_store_uri(),
+               fusion_uploaders:get_metadata_store_uri(), Namespace) of
+            ok ->
+                ?log_info("Namespace ~s deleted succesfully",
+                          [NamespaceString]),
+                ok;
+            Error ->
+                ?log_error("Error deleting namespace ~s: ~p",
+                           [NamespaceString, Error]),
+                error
+        end,
+    Parent ! {delete_finished, Namespace, RV}.
