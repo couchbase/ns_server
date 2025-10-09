@@ -697,11 +697,11 @@ maybe_advance_state(State) when State =:= disabling orelse State =:= stopping ->
         PerBucketPerNodeMap ->
             chronicle_compat:txn(
               fun (Txn) ->
-                      {Sets, AllStopped} =
+                      {Sets, AllReady} =
                           buckets_advance_state_sets(
                             Txn, PerBucketPerNodeMap, State, NextState),
                       Sets1 =
-                          case AllStopped of
+                          case AllReady of
                               false ->
                                   Sets;
                               true ->
@@ -768,6 +768,8 @@ buckets_with_correct_uploaders(Buckets, FusionStats) ->
                       false ->
                           Acc;
                       true ->
+                          ?log_debug("Uploaders state mismatch on bucket ~p",
+                                     [BucketName]),
                           lists:keydelete(BucketName, 1, Acc)
                   end
           end, Buckets),
@@ -778,13 +780,42 @@ buckets_with_correct_uploaders(Buckets, FusionStats) ->
             []
     end.
 
+buckets_with_no_active_volumes(Buckets) ->
+    lists:filter(
+      fun ({BucketName, BucketConfig}) ->
+              case janitor_agent:get_active_guest_volumes(
+                     BucketName, BucketConfig) of
+                  {error, Error} ->
+                      ?log_debug("Failure to get active guest volumes "
+                                 "for bucket ~p: ~p", [BucketName, Error]),
+                      false;
+                  {ok, List} ->
+                      lists:all(
+                        fun ({_Node, []}) ->
+                                true;
+                            ({Node, Volumes}) ->
+                                ?log_debug("Still have volumes ~p on node ~p "
+                                           "for bucket ~p",
+                                           [Volumes, Node, BucketName]),
+                                false
+                        end, List)
+              end
+      end, Buckets).
+
 buckets_advance_state_sets(Txn, PerBucketPerNodeMap, State, NextState) ->
     Snapshot = ns_bucket:fetch_snapshot(all, Txn, [props]),
     Buckets = [{BucketName, BucketConfig} ||
                   {BucketName, BucketConfig} <- ns_bucket:get_buckets(Snapshot),
                   ns_bucket:get_fusion_state(BucketConfig) =:= State],
-    BucketsToAdvance =
+    BucketsWithCorrectUploaders =
         buckets_with_correct_uploaders(Buckets, PerBucketPerNodeMap),
+    BucketsToAdvance =
+        case State of
+            disabling ->
+                buckets_with_no_active_volumes(BucketsWithCorrectUploaders);
+            stopping ->
+                BucketsWithCorrectUploaders
+        end,
     {[{set, ns_bucket:sub_key(BucketName, props),
        ns_bucket:set_fusion_state(NextState, BucketConfig)} ||
          {BucketName, BucketConfig} <- BucketsToAdvance],
