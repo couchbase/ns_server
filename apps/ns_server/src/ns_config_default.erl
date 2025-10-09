@@ -250,7 +250,10 @@ default(Vsn) ->
        {fusion_sync_rate_limit, 1024 * 1024 * 75},
        {dcp_consumer_max_marker_version, <<"2.2">>},
        {dcp_snapshot_marker_hps_enabled, true},
-       {dcp_snapshot_marker_purge_seqno_enabled, true}]},
+       {dcp_snapshot_marker_purge_seqno_enabled, true},
+       {subdoc_multi_max_paths, 16},
+       {subdoc_offload_size_threshold, 1024 * 1024},
+       {subdoc_offload_paths_threshold, 16}]},
 
      %% Memcached config
      {{node, node(), memcached},
@@ -342,7 +345,10 @@ default(Vsn) ->
         {dcp_consumer_max_marker_version, dcp_consumer_max_marker_version},
         {dcp_snapshot_marker_hps_enabled, dcp_snapshot_marker_hps_enabled},
         {dcp_snapshot_marker_purge_seqno_enabled,
-         dcp_snapshot_marker_purge_seqno_enabled}
+         dcp_snapshot_marker_purge_seqno_enabled},
+        {subdoc_multi_max_paths, subdoc_multi_max_paths},
+        {subdoc_offload_size_threshold, subdoc_offload_size_threshold},
+        {subdoc_offload_paths_threshold, subdoc_offload_paths_threshold}
        ]}},
 
      {memory_quota, KvQuota},
