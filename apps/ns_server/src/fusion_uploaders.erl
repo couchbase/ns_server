@@ -807,15 +807,9 @@ buckets_advance_state_sets(Txn, PerBucketPerNodeMap, State, NextState) ->
     Buckets = [{BucketName, BucketConfig} ||
                   {BucketName, BucketConfig} <- ns_bucket:get_buckets(Snapshot),
                   ns_bucket:get_fusion_state(BucketConfig) =:= State],
-    BucketsWithCorrectUploaders =
-        buckets_with_correct_uploaders(Buckets, PerBucketPerNodeMap),
     BucketsToAdvance =
-        case State of
-            disabling ->
-                buckets_with_no_active_volumes(BucketsWithCorrectUploaders);
-            stopping ->
-                BucketsWithCorrectUploaders
-        end,
+        buckets_with_no_active_volumes(
+          buckets_with_correct_uploaders(Buckets, PerBucketPerNodeMap)),
     {[{set, ns_bucket:sub_key(BucketName, props),
        ns_bucket:set_fusion_state(NextState, BucketConfig)} ||
          {BucketName, BucketConfig} <- BucketsToAdvance],
