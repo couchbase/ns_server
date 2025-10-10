@@ -154,7 +154,11 @@ init({Bucket, Nodes, OldMap, NewMap, ProgressCallback, RebalancePlan,
                ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT) of
             true ->
                 {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
-                case ns_bucket:is_persistent(BucketConfig) of
+                %% MB-68800: Enable FBR only for fullEviction temporarily
+                case ns_bucket:is_persistent(BucketConfig) andalso
+                    ns_bucket:eviction_policy_migration_in_progress(
+                      BucketConfig) =:= false andalso
+                    ns_bucket:eviction_policy(BucketConfig) =:= full_eviction of
                     true ->
                         [{file_based_backfill_enabled, true}];
                     false ->

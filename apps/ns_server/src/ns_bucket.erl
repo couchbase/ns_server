@@ -145,6 +145,7 @@
          update_bucket_props/4,
          update_bucket_props/5,
          storage_mode_migration_in_progress/1,
+         eviction_policy_migration_in_progress/1,
          node_bucket_names/1,
          node_bucket_names/2,
          node_bucket_names_of_type/2,
@@ -2214,6 +2215,15 @@ update_bucket_props_allowed_inner(NewProps, BucketConfig, Options) ->
         false ->
             ok
     end.
+
+%% MB-68800: Enable FBR only when fullEviction is in use
+%% This can go away once FBR is supported for valueOnly.
+eviction_policy_migration_in_progress(BucketConfig) ->
+    lists:any(fun ({{node, _N, eviction_policy}, _V}) ->
+                      true;
+                  (_KV) ->
+                      false
+              end, BucketConfig).
 
 %% If there are per-node storage mode override keys, we are essentially midway
 %% between a storage mode migration.

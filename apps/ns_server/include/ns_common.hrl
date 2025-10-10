@@ -290,7 +290,7 @@
 -define(MAX_OF_MAX_MOVES_PER_NODE, 64).
 -define(DEFAULT_MAX_MOVES_PER_NODE, 4).
 
--define(DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT, false).
+-define(DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT, true).
 
 -define(LOWEST_ALLOWED_MAX_DOCS_SKIP, 0).
 %% Maximum allowed value when changing in /internalSettings
