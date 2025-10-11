@@ -322,7 +322,8 @@ current_status_slow_inner() ->
          {interesting_stats, InterestingStats},
          {per_bucket_interesting_stats, PerBucketInterestingStats},
          {processes_stats, ProcessesStats},
-         {encryption_at_rest_info, get_encryption_at_rest_info()}
+         {encryption_at_rest_info, get_encryption_at_rest_info()},
+         {encryption_keys_tests, cb_cluster_secrets:get_latest_test_results()}
          | element(2, ns_info:basic_info())].
 
 get_encryption_at_rest_info() ->

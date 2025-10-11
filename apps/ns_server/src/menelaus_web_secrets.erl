@@ -43,10 +43,13 @@ handle_get_secrets(Req) ->
                  [cb_cluster_secrets:fetch_snapshot_in_txn(_)], #{}),
     All = cb_cluster_secrets:get_all(Snapshot),
     FilteredSecrets = read_filter_secrets_by_permission(All, Req),
+    TestResults = get_test_results_aggregated(FilteredSecrets),
     Res = lists:map(
             fun (#{id := Id} = Props) ->
                 UsedBy = cb_cluster_secrets:where_is_secret_used(Id, Snapshot),
-                {export_secret(Props#{used_by => UsedBy})}
+                TestRes = maps:get(Id, TestResults),
+                {export_secret(Props#{used_by => UsedBy,
+                                      test_results => TestRes})}
             end, FilteredSecrets),
     menelaus_util:reply_json(Req, Res).
 
@@ -63,7 +66,9 @@ handle_get_secret(IdStr, Req) when is_list(IdStr) ->
                 [_] ->
                     UsedBy = cb_cluster_secrets:where_is_secret_used(
                               Id, Snapshot),
-                    Res = {export_secret(Props#{used_by => UsedBy})},
+                    #{Id := TestRes} = get_test_results_aggregated([Props]),
+                    Res = {export_secret(Props#{used_by => UsedBy,
+                                                test_results => TestRes})},
                     menelaus_util:reply_json(Req, Res)
             end;
         {error, not_found} ->
@@ -327,7 +332,8 @@ keys_remap() ->
       kmip_id => kmipId,
       key_material => keyMaterial,
       req_timeout_ms => reqTimeoutMs,
-      used_by => usedBy}.
+      used_by => usedBy,
+      test_results => testResults}.
 
 keys_to_json(Term) ->
     transform_keys(keys_remap(), Term).
@@ -370,8 +376,45 @@ export_secret(#{type := DataType} = Props) ->
               (data, D) when DataType == ?KMIP_KEY_TYPE ->
                   {format_kmip_key_data(D)};
               (used_by, UsedBy) ->
-                  format_secrets_used_by_list_to_json(UsedBy)
+                  format_secrets_used_by_list_to_json(UsedBy);
+              (test_results, TestResults) ->
+                  format_test_results_to_json(TestResults)
           end, Props))).
+
+format_test_results_to_json(#{status := Status,
+                              datetime := UpdateDateTime,
+                              missing_nodes := MissingNodes,
+                              error_nodes := ErrorNodes,
+                              success_nodes := SuccessNodes}) ->
+    StatusJson = case Status of
+                     ok -> <<"ok">>;
+                     unknown -> <<"unknown">>;
+                     {error, _} -> <<"error">>
+                 end,
+    OptionalDateTime =
+        case UpdateDateTime of
+            undefined -> [];
+            _ -> [{<<"datetime">>, format_datetime(UpdateDateTime)}]
+        end,
+    BuildHostname = menelaus_web_node:build_node_hostname(
+                      ns_config:latest(), _, misc:localhost()),
+    Description =
+        case Status of
+            {error, Reason} ->
+                iolist_to_binary(format_error(Reason));
+            unknown when length(MissingNodes) > 0 ->
+                <<"Missing test results for some nodes">>;
+            unknown ->
+                <<"No test results available yet">>;
+            ok ->
+                <<"Test passed">>
+        end,
+    {[{<<"status">>, StatusJson},
+      {<<"description">>, Description},
+      {<<"missingNodes">>, [BuildHostname(N) || N <- MissingNodes]},
+      {<<"errorNodes">>, [BuildHostname(N) || N <- ErrorNodes]},
+      {<<"successNodes">>, [BuildHostname(N) || N <- SuccessNodes]}] ++
+     OptionalDateTime}.
 
 format_secrets_used_by_list_to_json(UsedBy) ->
     Kinds = maps:get(by_config, UsedBy, []) ++ maps:get(by_deks, UsedBy, []),
@@ -1020,6 +1063,73 @@ is_writable_remote(ReqHidden, Node, Secret, Snapshot) when Node =:= node() ->
 is_writable_remote(ReqHidden, Node, Secret, Snapshot) ->
     erpc:call(Node, ?MODULE, is_writable_remote, [ReqHidden, Node, Secret, Snapshot],
               ?IS_WRITABLE_TIMEOUT).
+
+get_test_results_aggregated(Secrets) ->
+    NodesInfo = ns_doctor:get_nodes(),
+    Nodes = ns_cluster_membership:nodes_wanted(),
+    SecretIds = [Id || #{id := Id} <- Secrets],
+
+    Initial = #{ Id => #{status => ok,
+                         datetime => undefined,
+                         missing_nodes => [],
+                         error_nodes => [],
+                         success_nodes => []} || Id <- SecretIds },
+    Default = #{ Id => #{status => unknown,
+                         datetime => undefined} || Id <- SecretIds },
+    lists:foldl(fun (N, Acc) ->
+                    TestResults =
+                        maybe
+                            {ok, Info} ?= dict:find(N, NodesInfo),
+                            case proplists:get_value(encryption_keys_tests,
+                                                     Info) of
+                                %% Ignore, because not supported (old version)
+                                undefined -> #{};
+                                R -> maps:merge(Default, R)
+                            end
+                        else
+                            %% Info for node is missing
+                            error -> Default
+                        end,
+                    %% NodesInfo may contain results for secrets that are not
+                    %% in the list of secrets, so we need to filter them out
+                    Filtered = maps:filter(
+                                 fun (K, _) -> maps:is_key(K, Default) end,
+                                 TestResults),
+                    maps:merge_with(?cut(merge_test_res(_2, _3, N)),
+                                    Acc, Filtered)
+                end, Initial, Nodes).
+
+merge_test_res(#{status := CurStatus, datetime := CurDT,
+                 missing_nodes := CurMN, error_nodes := CurEN,
+                 success_nodes := CurSN} = Cur,
+               #{status := NewStatus, datetime := NewDT},
+               Node) ->
+    Status = case {CurStatus, NewStatus} of
+                 {ok, ok} -> ok;
+                 {ok, unknown} -> unknown;
+                 {ok, {error, _}} -> NewStatus;
+                 {unknown, ok} -> unknown;
+                 {unknown, unknown} -> unknown;
+                 {unknown, {error, _}} -> NewStatus;
+                 {{error, _}, ok} -> CurStatus;
+                 {{error, _}, unknown} -> CurStatus;
+                 {{error, _}, {error, _}} when NewDT > CurDT -> NewStatus;
+                 {{error, _}, {error, _}} -> CurStatus
+             end,
+    Cur#{status => Status,
+         datetime => max(CurDT, NewDT),
+         missing_nodes => case NewStatus of
+                              unknown -> [Node | CurMN];
+                              _ -> CurMN
+                          end,
+         error_nodes => case NewStatus of
+                            {error, _} -> [Node | CurEN];
+                            _ -> CurEN
+                        end,
+         success_nodes => case NewStatus of
+                              ok -> [Node | CurSN];
+                              _ -> CurSN
+                          end}.
 
 -ifdef(TEST).
 
