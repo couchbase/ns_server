@@ -179,9 +179,15 @@ with_validated_secret(Fun, ExistingId, Req) ->
     %%    usage for this bucket (also on non-orchestrator node)
     %% 3. This can fail because that node doesn't know about the bucket yet
     %%    (parsing of the bucket encryption usage will fail).
-    Snapshot = chronicle_compat:get_snapshot(
-                 [cb_cluster_secrets:fetch_snapshot_in_txn(_)],
-                 #{read_consistency => quorum}),
+    Snapshot = try
+                   chronicle_compat:get_snapshot(
+                     [cb_cluster_secrets:fetch_snapshot_in_txn(_)],
+                     #{read_consistency => quorum})
+               catch
+                   exit:timeout ->
+                       menelaus_util:web_exception(503,
+                                                   format_error(no_quorum))
+               end,
     CurPropsRes = case ExistingId of
                       undefined -> {ok, #{}};
                       _ -> cb_cluster_secrets:get_secret(ExistingId, Snapshot)
