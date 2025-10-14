@@ -654,75 +654,94 @@ maybe_grab_heartbeat_info(BucketName, State) ->
 
 -spec maybe_advance_state() -> ok.
 maybe_advance_state() ->
-    maybe_advance_state(get_state()).
+    case maybe_advance_state(get_state()) of
+        nothing_to_do ->
+            ok;
+        {ok, _} ->
+            ok
+    end.
 
 maybe_advance_state(enabling) ->
     FusionConfig = get_config_with_default(direct),
     Threshold = proplists:get_value(enable_sync_threshold_mb, FusionConfig)
         * 1024 * 1024,
-    Buckets = ns_bucket:get_buckets(direct),
-    FusionBuckets =
-        ns_bucket:filter_buckets_by(Buckets, fun ns_bucket:is_fusion/1),
 
-    case fetch_fusion_stats(FusionBuckets, #{}) of
-        error ->
-            ok;
-        PerBucketPerNodeMap ->
-            ToAdvance =
-                analyze_fusion_stats(
-                  FusionBuckets, PerBucketPerNodeMap,
-                  fun (_BucketName, BucketInfo, Acc) ->
-                          case {maps:find(snapshot_pending_bytes, BucketInfo),
-                                maps:find(uploaders_state_mismatch,
-                                          BucketInfo)} of
-                              {{ok, Bytes}, error} ->
-                                  case Acc + Bytes of
-                                      NewAcc when NewAcc > Threshold ->
-                                          false;
-                                      NewAcc ->
-                                          NewAcc
-                                  end;
-                              _ ->
-                                  false
-                          end
-                  end, 0),
+    EnabledBucketsReady =
+        fun(FusionBuckets, FusionStats) ->
+                EnabledBuckets =
+                    ns_bucket:filter_buckets_by(
+                      FusionBuckets,
+                      ?cut(ns_bucket:get_fusion_state(_) =:= enabled)),
+                Result =
+                    analyze_fusion_stats(
+                      EnabledBuckets, FusionStats,
+                      fun (_BucketName, BucketInfo, Acc) ->
+                              case {maps:find(snapshot_pending_bytes,
+                                              BucketInfo),
+                                    maps:find(uploaders_state_mismatch,
+                                              BucketInfo)} of
+                                  {{ok, Bytes}, error} ->
+                                      case Acc + Bytes of
+                                          NewAcc when NewAcc > Threshold ->
+                                              false;
+                                          NewAcc ->
+                                              NewAcc
+                                      end;
+                                  _ ->
+                                      false
+                              end
+                      end, 0),
 
-            case ToAdvance of
-                {true, Bytes} ->
-                    ?log_info("Changing fusion state to 'enabled', "
-                              "~p bytes remains to be synced", [Bytes]),
-                    {ok, _} = update_config([{state, enabled}]),
-                    ok;
-                false ->
-                    ok
-            end
-    end;
+                case Result of
+                    {true, Bytes} ->
+                        ?log_info("Changing fusion state to 'enabled', "
+                                  "~p bytes remains to be synced", [Bytes]),
+                        true;
+                    false ->
+                        false
+                end
+        end,
+
+    %% This will advance all disabling buckets to disabled state, check the
+    %% enabled buckets for uploaders being started and enough data being
+    %% uploaded and finally advance the fusion state to enabled if all
+    %% conditions are met
+    maybe_advance_state(enabling, enabled, disabling, disabled,
+                        EnabledBucketsReady);
 maybe_advance_state(State) when State =:= disabling orelse State =:= stopping ->
-    FusionBuckets = ns_bucket:get_fusion_buckets(),
     NextState = case State of
                     disabling ->
                         disabled;
                     stopping ->
                         stopped
                 end,
+    maybe_advance_state(State, NextState, State, NextState, undefined);
+maybe_advance_state(_) ->
+    nothing_to_do.
+
+maybe_advance_state(State, NextState, BucketState, NextBucketState,
+                    ExtraCheck) ->
+    FusionBuckets = ns_bucket:get_fusion_buckets(),
     DeletionInfo = get_deletion_state(State),
 
     case fetch_fusion_stats(FusionBuckets, #{}) of
         error ->
-            ok;
-        PerBucketPerNodeMap ->
+            nothing_to_do;
+        FusionStats ->
             chronicle_compat:txn(
               fun (Txn) ->
                       {Sets, AllReady} =
                           buckets_advance_state_sets(
-                            Txn, PerBucketPerNodeMap, State, NextState),
+                            Txn, FusionStats, BucketState, NextBucketState),
                       Sets1 =
                           case AllReady of
                               false ->
                                   Sets;
                               true ->
                                   case can_advance_fusion_state(
-                                         Txn, State, DeletionInfo) of
+                                         Txn, State, DeletionInfo,
+                                         ?cut(ExtraCheck(FusionBuckets,
+                                                         FusionStats))) of
                                       true ->
                                           [txn_update_state_set(
                                              Txn, NextState) | Sets];
@@ -737,13 +756,11 @@ maybe_advance_state(State) when State =:= disabling orelse State =:= stopping ->
                               {commit, Sets1}
                       end
               end)
-    end;
-maybe_advance_state(_) ->
-    ok.
+    end.
 
 get_deletion_state(stopping) ->
     undefined;
-get_deletion_state(disabling) ->
+get_deletion_state(State) when State =:= enabling orelse State =:= disabling ->
     KVNodes = ns_cluster_membership:service_active_nodes(kv),
     case fusion_local_agent:get_states(KVNodes, ?GET_DELETION_STATE_TIMEOUT) of
         {error, BadNodes} ->
@@ -754,21 +771,33 @@ get_deletion_state(disabling) ->
             maps:from_list(Results)
     end.
 
-can_advance_fusion_state(_Txn, stopping, _) ->
+can_advance_fusion_state(_Txn, stopping, _, _) ->
     true;
-can_advance_fusion_state(_Txn, disabling, error) ->
+can_advance_fusion_state(_Txn, disabling, error, _) ->
     false;
-can_advance_fusion_state(Txn, disabling, DeletionInfo) ->
+can_advance_fusion_state(Txn, disabling, DeletionInfo, _) ->
+    check_deletion_info(Txn, disabling, DeletionInfo);
+can_advance_fusion_state(_Txn, enabling, error, _) ->
+    false;
+can_advance_fusion_state(Txn, enabling, DeletionInfo, ExtraCheck) ->
+    case check_deletion_info(Txn, enabling, DeletionInfo) of
+        true ->
+            ExtraCheck();
+        false ->
+            false
+    end.
+
+check_deletion_info(Txn, State, DeletionInfo) ->
     Snapshot = ns_cluster_membership:fetch_snapshot(Txn),
     KVNodes = ns_cluster_membership:service_active_nodes(Snapshot, kv),
     %% We check 2 things here:
-    %%   1. status disabling propagated to all local agents
-    %%      (which means all of them started deleting stuff)
+    %%   1. current fusion status (disabling or enabling) propagated to all
+    %%      local agents (which means that all of them started deleting stuff)
     %%   2. all local agents have nothing to delete.
     lists:all(
       fun (Node) ->
               case maps:find(Node, DeletionInfo) of
-                  {ok, {disabling, []}} ->
+                  {ok, {State, []}} ->
                       true;
                   _ ->
                       false

@@ -391,17 +391,18 @@ class FusionTests(testlib.BaseTestSet):
         self.assert_bucket_state('test1', 'disabled')
         self.assert_namespaces(['test'])
 
-        testlib.post_succ(self.cluster, '/fusion/enable')
+        testlib.post_succ(self.cluster, '/fusion/enable',
+                          data={'buckets': 'test'})
         self.wait_for_state('enabling', 'enabled')
         self.assert_bucket_state('test', 'enabled')
-        self.assert_bucket_state('test1', 'enabled')
-        self.assert_namespaces(['test', 'test1'])
+        self.assert_bucket_state('test1', 'disabled')
+        self.assert_namespaces(['test'])
 
         testlib.post_succ(self.cluster, '/fusion/stop')
         self.wait_for_state('stopping', 'stopped')
         self.assert_bucket_state('test', 'stopped')
-        self.assert_bucket_state('test1', 'stopped')
-        self.assert_namespaces(['test', 'test1'])
+        self.assert_bucket_state('test1', 'disabled')
+        self.assert_namespaces(['test'])
 
         testlib.post_succ(self.cluster, '/fusion/disable')
         self.wait_for_state('disabling', 'disabled')
