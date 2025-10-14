@@ -140,7 +140,7 @@ handle_test_post_secret(IdStr, Req) ->
         {ok, CurProps} ->
           maybe
               true ?= is_writable(CurProps, Req),
-              Nodes = ns_node_disco:nodes_actual(),
+              Nodes = ns_node_disco:nodes_wanted(),
               ok ?= cb_cluster_secrets:test_existing_secret_props(CurProps,
                                                                   Nodes),
               menelaus_util:reply(Req, 200),
