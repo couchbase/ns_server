@@ -381,18 +381,18 @@ advance_terms(Uploaders) ->
              -> ok | {error, enable_error()} |
           {error, disable_or_stop_error()}.
 command({enable, BucketNames}) ->
-    AllMagmaBuckets = ns_bucket:get_buckets_of_type(
-                        {membase, magma}, ns_bucket:get_buckets()),
-    {MagmaBuckets, Unknown} =
+    MagmaBuckets = ns_bucket:get_buckets_of_type(
+                     {membase, magma}, ns_bucket:get_buckets()),
+    MagmaBucketNames = [BucketName || {BucketName, _} <- MagmaBuckets],
+    {BucketsToEnable, Unknown} =
         case BucketNames of
             undefined ->
-                {AllMagmaBuckets, []};
+                {MagmaBuckets, []};
             _ ->
-                case BucketNames -- [BucketName || {BucketName, _}
-                                                       <- AllMagmaBuckets] of
+                case BucketNames -- MagmaBucketNames of
                     [] ->
                         {[{BucketName, BucketConfig} ||
-                             {BucketName, BucketConfig} <- AllMagmaBuckets,
+                             {BucketName, BucketConfig} <- MagmaBuckets,
                              lists:member(BucketName, BucketNames)], []};
                     Missing ->
                         {undefined, Missing}
@@ -401,15 +401,15 @@ command({enable, BucketNames}) ->
     case Unknown of
         [] ->
             ?log_debug("Enabling fusion for buckets ~p",
-                       [[BucketName || {BucketName, _} <- MagmaBuckets]]),
-            case calculate_uploaders(MagmaBuckets, []) of
+                       [[BucketName || {BucketName, _} <- BucketsToEnable]]),
+            case calculate_uploaders(BucketsToEnable, []) of
                 {ok, BucketUploaders} ->
                     [?log_debug("Setting uploaders for bucket ~p:~n~p",
                                 [BucketName, Uploaders]) ||
                         {BucketName, Uploaders} <- BucketUploaders],
-                    case enable(BucketUploaders) of
+                    case enable(BucketUploaders, MagmaBucketNames) of
                         {ok, _} ->
-                            post_enable(MagmaBuckets);
+                            post_enable(BucketsToEnable);
                         Other ->
                             Other
                     end;
@@ -475,10 +475,12 @@ post_enable(Buckets) ->
         {BN, _} <- Buckets],
     ok.
 
-enable(BucketUploaders) ->
+enable(BucketUploaders, MagmaBucketNames) ->
+    BucketsToEnable = [BN || {BN, _} <- BucketUploaders],
+    BucketsNotToEnable = MagmaBucketNames -- BucketsToEnable,
     chronicle_kv:transaction(
-      kv, [config_key() |
-           [ns_bucket:sub_key(BN, props) || {BN, _} <- BucketUploaders]],
+      kv,
+      [config_key() | [ns_bucket:sub_key(BN, props) || BN <- MagmaBucketNames]],
       fun (Snapshot) ->
               try
                   Config = get_config_with_default(Snapshot),
@@ -488,7 +490,11 @@ enable(BucketUploaders) ->
                   State = proplists:get_value(state, Config),
                   (State == disabled) orelse (State == stopped) orelse
                       throw({wrong_state, State, [disabled, stopped]}),
-                  BucketCommits = enable_buckets(Snapshot, BucketUploaders),
+
+                  BucketCommits = enable_buckets(Snapshot, BucketUploaders) ++
+                      update_bucket_state_sets(
+                        ns_bucket:get_buckets(Snapshot, BucketsNotToEnable),
+                        [stopped], disabling),
                   {commit, [{set, config_key(),
                              misc:update_proplist(
                                Config, [{state, enabling},
@@ -511,12 +517,15 @@ disable_or_stop_txn(Txn, StateToSet, AllowedStates, BucketStates) ->
             FusionBuckets = ns_bucket:get_fusion_buckets(Snapshot),
             {commit,
              [update_state_set(Config, StateToSet) |
-              [{set, ns_bucket:sub_key(BucketName, props),
-                ns_bucket:set_fusion_state(StateToSet, BucketConfig)} ||
-                  {BucketName, BucketConfig} <- FusionBuckets,
-                  lists:member(ns_bucket:get_fusion_state(BucketConfig),
-                               BucketStates)]]}
+              update_bucket_state_sets(FusionBuckets, BucketStates,
+                                       StateToSet)]}
     end.
+
+update_bucket_state_sets(FusionBuckets, BucketStates, StateToSet) ->
+    [{set, ns_bucket:sub_key(BucketName, props),
+      ns_bucket:set_fusion_state(StateToSet, BucketConfig)} ||
+        {BucketName, BucketConfig} <- FusionBuckets,
+        lists:member(ns_bucket:get_fusion_state(BucketConfig), BucketStates)].
 
 -spec maybe_grab_heartbeat_info() -> list().
 maybe_grab_heartbeat_info() ->
