@@ -2286,6 +2286,65 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                'check encryption key settings' in e, \
                'unexpected error'
 
+    @tag(Tag.LowUrgency)
+    def no_quorum_test(self):
+        def assert_no_quorum_error(err):
+            assert 'Operation temporarily cannot be performed possibly due ' \
+                   'to loss of quorum' in err, 'unexpected error'
+
+        secret_id = create_secret(self.random_node(),
+                            cb_managed_secret(name='test secret',
+                                              usage=['KEK-encryption']))
+        to_shutdown = kv_nodes(self.cluster)
+        non_kv_node = next(filter(lambda n: Service.KV not in n.get_services(),
+                                  self.cluster.connected_nodes))
+
+        [self.cluster.stop_node(n) for n in to_shutdown]
+
+        err = create_secret(non_kv_node,
+                            cb_managed_secret(name='test secret',
+                                              usage=['KEK-encryption']),
+                            expected_code=503)
+        assert_no_quorum_error(err)
+
+        err = update_secret(non_kv_node, secret_id,
+                            cb_managed_secret(name='test secret2',
+                                              usage=['KEK-encryption']),
+                            expected_code=503)
+        assert_no_quorum_error(err)
+
+        err = delete_secret(non_kv_node, secret_id, expected_code=503)
+        assert_no_quorum_error(err)
+
+        secrets = get_secrets(non_kv_node)
+        assert len(secrets) >= 1, f'unexpected secrets: {secrets}'
+
+        secret = get_secret(non_kv_node, secret_id)
+        assert secret['name'] == 'test secret', 'unexpected name'
+
+        def assert_no_connection_error(err):
+            assert re.search('Encryption key test failed on .*: ' \
+                             'No connection to node', err['_']), \
+                   'unexpected error'
+
+        err = test_existing_secret(non_kv_node, secret_id, expected_code=400)
+        assert_no_connection_error(err)
+
+        err = test_create_secret(non_kv_node,
+                                 cb_managed_secret(usage=['bucket-encryption']),
+                                 expected_code=400)
+        assert_no_connection_error(err)
+
+        err = test_update_secret(non_kv_node, secret_id,
+                                 cb_managed_secret(name='test secret2',
+                                                   usage=['KEK-encryption']),
+                                 expected_code=400)
+        assert_no_connection_error(err)
+
+        [self.cluster.restart_node(n) for n in to_shutdown]
+        self.cluster.wait_for_nodes_to_be_healthy()
+
+
 # Set master password and restart the cluster
 # Testing that we can decrypt deks when master password is set
 # (testing all combinations of master_password and encryption here)
@@ -2791,7 +2850,7 @@ def create_secret(cluster, json, expected_code=200, auth=None):
     if expected_code == 200:
         r = r.json()
         return r['id']
-    elif expected_code == 403:
+    elif expected_code == 403 or expected_code == 503:
         return r.text
     else:
         r = r.json()
@@ -2821,9 +2880,7 @@ def update_secret(cluster, secret_id, json, expected_code=200, auth=None):
     if expected_code == 200:
         r = r.json()
         return r['id']
-    elif expected_code == 403:
-        return r.text
-    elif expected_code == 404:
+    elif expected_code == 403 or expected_code == 404 or expected_code == 503:
         return r.text
     else:
         r = r.json()
@@ -2833,8 +2890,13 @@ def update_secret(cluster, secret_id, json, expected_code=200, auth=None):
 def delete_secret(cluster, secret_id, expected_code=200, auth=None):
     if auth is None:
         auth = cluster.auth
-    testlib.delete(cluster, f'/settings/encryptionKeys/{secret_id}',
-                   expected_code=expected_code, auth=auth)
+    r = testlib.delete(cluster, f'/settings/encryptionKeys/{secret_id}',
+                       expected_code=expected_code, auth=auth)
+
+    if expected_code == 200:
+        return None
+
+    return r.text
 
 
 def delete_historical_key(cluster, secret_id, hist_key_id, expected_code=200):
