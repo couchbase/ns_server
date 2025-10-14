@@ -87,7 +87,7 @@ handle_post_secret(Req) ->
               menelaus_util:reply_json(Req, {Formatted}),
               ok
           end
-      end, undefined, Req).
+      end, undefined, true, Req).
 
 handle_put_secret(IdStr, Req) ->
     menelaus_util:assert_is_enterprise(),
@@ -118,7 +118,7 @@ handle_put_secret(IdStr, Req) ->
               menelaus_util:reply_json(Req, {Formatted}),
               ok
           end
-      end, Id, Req).
+      end, Id, true, Req).
 
 handle_test_post_secret(Req) ->
     menelaus_util:assert_is_enterprise(),
@@ -130,7 +130,7 @@ handle_test_post_secret(Req) ->
               menelaus_util:reply(Req, 200),
               ok
           end
-      end, undefined, Req).
+      end, undefined, false, Req).
 
 handle_test_post_secret(IdStr, Req) ->
     menelaus_util:assert_is_enterprise(),
@@ -168,9 +168,9 @@ handle_test_put_secret(IdStr, Req) ->
                 menelaus_util:reply(Req, 200),
                 ok
             end
-        end, Id, Req).
+        end, Id, false, Req).
 
-with_validated_secret(Fun, ExistingId, Req) ->
+with_validated_secret(Fun, ExistingId, NeedQuorum, Req) ->
     %% We need to fetch snapshot with read_consistency in order to deal with
     %% the following scenario:
     %% 1. User creates a bucket on a node which is not an orchestrator
@@ -179,10 +179,18 @@ with_validated_secret(Fun, ExistingId, Req) ->
     %%    usage for this bucket (also on non-orchestrator node)
     %% 3. This can fail because that node doesn't know about the bucket yet
     %%    (parsing of the bucket encryption usage will fail).
+
+    %% At the same time we can't ask for quorum during test operations,
+    %% because it will break the test call in case of no quorum
+    %% (for non-test operations we don't care about the error here because the
+    %% call will fail with no quorum error anyway).
+    Opts = case NeedQuorum of
+               true -> #{read_consistency => quorum};
+               false -> #{}
+           end,
     Snapshot = try
                    chronicle_compat:get_snapshot(
-                     [cb_cluster_secrets:fetch_snapshot_in_txn(_)],
-                     #{read_consistency => quorum})
+                     [cb_cluster_secrets:fetch_snapshot_in_txn(_)], Opts)
                catch
                    exit:timeout ->
                        menelaus_util:web_exception(503,
