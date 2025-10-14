@@ -89,6 +89,7 @@
          get_buckets_of_type/2,
          get_buckets/0,
          get_buckets/1,
+         get_buckets/2,
          get_buckets_by_rank/0,
          get_buckets_by_rank/1,
          filter_buckets_by/2,
@@ -491,17 +492,25 @@ maybe_isolate_bucket_props(Snapshot) when is_map(Snapshot) ->
 maybe_isolate_bucket_props(List) when is_list(List) ->
     List.
 
+-spec get_buckets() -> buckets().
 get_buckets() ->
     get_buckets(direct).
 
+-spec get_buckets(chronicle_compat:source()) -> buckets().
 get_buckets(direct) ->
     get_buckets(get_snapshot(all, [props]));
 get_buckets(Snapshot) when is_map(Snapshot) ->
+    get_buckets(Snapshot, get_bucket_names(Snapshot)).
+
+-spec get_buckets(chronicle_compat:source(), [name()]) -> buckets().
+get_buckets(direct, BucketNames) ->
+    get_buckets(get_snapshot(all, [props]), BucketNames);
+get_buckets(Snapshot, BucketNames) when is_map(Snapshot) ->
     lists:map(fun (N) ->
                       Props = chronicle_compat:get(Snapshot, sub_key(N, props),
                                                    #{required => true}),
                       {N, Props}
-              end, get_bucket_names(Snapshot)).
+              end, BucketNames).
 
 live_bucket_nodes(Bucket) ->
     {ok, BucketConfig} = get_bucket(Bucket),
