@@ -71,6 +71,10 @@ AUTO_COMPACTION_PARAMETERS = ["parallelDBAndViewCompaction",
                               "allowedTimePeriod[abortOutside]",
                               "magmaFragmentationPercentage"]
 
+KV_EXTRA_PARAMETERS = {
+    "max_checkpoints": {"internal": True}
+}
+
 def is_flush_enabled(info):
     return "flush" in info['controllers']
 
@@ -477,6 +481,10 @@ class BucketTestSetBase(testlib.BaseTestSet):
         self.limits['magmaFragmentationPercentage']['min'] = 10
         self.limits['magmaFragmentationPercentage']['max'] = 100
 
+        # Max Checkpoints (KV internal parameter)
+        # ----------------------------------------------------------------------
+        self.limits['max_checkpoints']['min'] = 2
+
     def add_limits(self, field):
         self.test_params[field].append(self.limits[field]['min'])
         if 'max' in self.limits[field]:
@@ -737,6 +745,11 @@ class BucketTestSetBase(testlib.BaseTestSet):
                 storage_backend == "magma":
             self.add_limits('magmaFragmentationPercentage')
 
+        # Max Checkpoints (KV internal parameter)
+        # ----------------------------------------------------------------------
+        self.test_params['max_checkpoints'] = [None]
+        self.add_limits('max_checkpoints')
+
         controlled_by_main_dict = [
             'bucketType',
             'rank',
@@ -959,6 +972,10 @@ class BucketTestSetBase(testlib.BaseTestSet):
                     (0, 0, 0, 0, "true"),
                     (0, 0, 0, 1, "bogus"),
                 ]
+
+        # Max Checkpoints (KV internal parameter)
+        # ----------------------------------------------------------------------
+        self.add_limits_bad('max_checkpoints')
 
     def teardown(self):
         pass
@@ -1690,6 +1707,13 @@ class BucketTestSetBase(testlib.BaseTestSet):
             else:
                 params = {}
 
+            # If the params contains any of the KV_EXTRA_PARAMETERS keys,
+            # and they have internal=True, then the internal flag is set.
+            for key, value in KV_EXTRA_PARAMETERS.items():
+                if key in test_data and value['internal'] == True:
+                    params['internal'] = 1
+                    break
+
             is_creation = endpoint == BUCKETS_ENDPOINT
 
             # Determine expected result of the test
@@ -2047,6 +2071,18 @@ class BasicBucketTestSet(BucketTestSetBase):
                           errors={'ramQuota':
                                   'RAM quota specified is too large to be '
                                   'provisioned into this cluster.'})
+
+    def internal_kv_parameter_test(self):
+        self.test_param("max_checkpoints",
+                        bucket_type=["couchbase"],
+                        storage_backend=["couchstore"],
+                        auto_compaction_defined=[None],
+                        conflict_resolution_type=["seqno"],
+                        rank=[0],
+                        bucket_placer=[False],
+                        allowed_time_period=[False],
+                        just_validate=[True, False],
+                        is_creation=[True, False])
 
 
 class ServerlessBucketTestSet(BucketTestSetBase):

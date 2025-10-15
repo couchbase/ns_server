@@ -3139,7 +3139,8 @@ extract_bucket_props(Props) ->
                          dcp_backfill_idle_limit_seconds,
                          dcp_backfill_idle_disk_threshold,
                          magma_fusion_state,
-                         dcp_backfill_idle_protection_enabled]],
+                         dcp_backfill_idle_protection_enabled,
+                         extra_params]],
           X =/= false].
 
 build_threshold({Percentage, Size}) ->
@@ -3154,9 +3155,14 @@ build_bucket_props_json(Props) ->
                 {build_compaction_settings_json(CProps)}} | Acc];
           ({desired_servers, V}, Acc) ->
               [{desired_servers, [to_binary(El) || El <- V]} | Acc];
+          ({extra_params, V}, Acc) ->
+              [{extra_params, build_extra_params_json(V)} | Acc];
           ({K, V}, Acc) ->
               [{K, to_binary(V)} | Acc]
       end, [], Props).
+
+build_extra_params_json(ExtraParams) ->
+    ejson:encode({ExtraParams}).
 
 build_compaction_settings_json(Settings) ->
     lists:foldl(
@@ -3477,6 +3483,21 @@ get_fusion_uploaders(BucketName) ->
     get_sub_key_value(BucketName, fusion_uploaders_sub_key()).
 
 -ifdef(TEST).
+extract_bucket_props_test() ->
+    ?assertEqual([], extract_bucket_props([{asdasd, asdasd}])),
+    ?assertEqual([{num_replicas, 1}],
+        extract_bucket_props([{num_replicas, 1}])),
+    ?assertEqual([{num_replicas, 1}],
+        extract_bucket_props([{num_replicas, 1}, {asdasd, asdasd}])),
+    ?assertEqual([{num_replicas, 1}, {replica_index, 1}],
+        extract_bucket_props([{num_replicas, 1}, {replica_index, 1}])),
+    ?assertEqual([{extra_params, 1}],
+        extract_bucket_props([{extra_params, 1}])),
+    ?assertEqual([{extra_params, []}],
+        extract_bucket_props([{extra_params, []}])),
+    ?assertEqual([{extra_params, [{asdasd, asdasd}]}],
+        extract_bucket_props([{extra_params, [{asdasd, asdasd}]}])).
+
 min_live_copies_test() ->
     ?assertEqual(min_live_copies([node1], []), undefined),
     ?assertEqual(min_live_copies([node1], [{map, undefined}]), undefined),

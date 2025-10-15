@@ -30,12 +30,14 @@
          get_bucket_config/1,
          ensure/3,
          start_params/4,
-         get_validation_config_string/2,
+         build_extra_param/2,
+         get_validation_config_string/3,
          ensure_collections/2,
          get_current_collections_uid/1,
          format_mcd_keys/2]).
 
-params(membase, BucketName, BucketConfig, MemQuota, UUID, DBSubDir) ->
+params_without_extras(membase, BucketName, BucketConfig, MemQuota, UUID,
+                      DBSubDir) ->
     {DriftAheadThreshold, DriftBehindThreshold} =
         case ns_bucket:drift_thresholds(BucketConfig) of
             undefined ->
@@ -116,11 +118,34 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID, DBSubDir) ->
                  {"dcp_backfill_idle_disk_threshold", [{reload, dcp}],
                   ns_bucket:get_dcp_backfill_idle_disk_threshold(BucketConfig)}]
         end
-        ++ get_magma_bucket_config(BucketConfig);
+        ++ get_magma_bucket_config(BucketConfig).
 
+params(membase, BucketName, BucketConfig, MemQuota, UUID, DBSubDir) ->
+    params_without_extras(membase, BucketName, BucketConfig, MemQuota, UUID,
+                          DBSubDir)
+        ++ get_extra_params(BucketConfig);
 params(memcached, _BucketName, _BucketConfig, MemQuota, UUID, _DBSubDir) ->
     [{"cache_size", [], MemQuota},
      {"uuid", [], UUID}].
+
+%% @doc Build an extra param for the bucket config.
+%% The result is what is stored under the extra_params key in the bucket config.
+-spec build_extra_param(binary(), any()) -> {binary(), any()}.
+build_extra_param(Key, Value) ->
+    {Key, Value}.
+
+%% @doc Parse an extra param from the bucket config extra_params.
+-spec parse_extra_param(binary(), any()) -> {string(), list(), any()}.
+parse_extra_param(Key, Value) ->
+    {binary_to_list(Key), [extra], Value}.
+
+%% @doc Get the extra params for the bucket config.
+-spec get_extra_params(list()) -> list().
+get_extra_params(BucketConfig) ->
+    %% Convert extra params to the {Key, Props, Value} format.
+    lists:map(fun ({Key, Value}) ->
+        parse_extra_param(Key, Value)
+              end, proplists:get_value(extra_params, BucketConfig, [])).
 
 maybe_restart() ->
     case ns_config:read_key_fast(dont_reload_bucket_on_cfg_change, false) of
@@ -250,34 +275,57 @@ get(BucketName, Snapshot) ->
 %% extra_params. Any attempt to do so will be logged.
 %%
 %% Note that the JWT and DEKs are not included in the returned config string.
--spec get_validation_config_string_internal(list(), list()) ->
+-spec get_validation_config_string_internal(string(), list(), list()) ->
           {list(), list(), list()}.
-get_validation_config_string_internal(BucketConfig, RequestedChanges) ->
+get_validation_config_string_internal(BucketName, BucketConfig,
+                                      RequestedChanges) ->
     BucketType = proplists:get_value(type, BucketConfig),
     MemQuota = proplists:get_value(ram_quota, BucketConfig),
-    ExistingParams = params(BucketType, "BucketName", BucketConfig, MemQuota,
-                            "UUID", "DBSubDir"),
-
-    %% All params we will try to set from the existing bucket config.
-    %% TODO: Add ExistingExtraParamKeys when they are stored.
-
-    %% Params from the bucket config that are not in the extra params.
+    ExistingParams = params_without_extras(BucketType, "BucketName",
+                                           BucketConfig, MemQuota, "UUID",
+                                           "DBSubDir"),
     ExistingParamsKeys = proplists:get_keys(ExistingParams),
+    ExistingExtraParams = get_extra_params(BucketConfig),
 
     %% Extra params we will try to update or set.
     %% We cannot override built-in params.
-    {AllowExtraParams, _DisallowExtraParams} =
+    {AllowExtraParams, DisallowExtraParams} =
         lists:partition(
           fun ({Key, _}) ->
                   not lists:member(Key, ExistingParamsKeys)
           end, RequestedChanges),
 
+    case DisallowExtraParams of
+        [] -> ok;
+        _ ->
+            ?log_warning("Attempted to change built-in params ~p via extra "
+                         "params. This is not allowed", [DisallowExtraParams])
+    end,
+
     %% Compute params that will not be overridden by ChangedParams.
-    %% TODO: Add existing ExtraParams when they are stored.
-    UnchangedParams = lists:filter(
-                        fun ({Key, _Props, _Value}) ->
-                                not proplists:is_defined(Key, AllowExtraParams)
-                        end, ExistingParams),
+    UnchangedBuiltInParams =
+        [T || {K, _Props, _Value} = T <- ExistingParams,
+              not proplists:is_defined(K, AllowExtraParams)],
+
+    %% Identify extra params that conflict with built-in params
+    ErroneousExtraParams =
+        [T || {K, _Props, _Value} = T <- ExistingExtraParams,
+              proplists:is_defined(K, ExistingParams)],
+
+    case ErroneousExtraParams of
+        [] -> ok;
+        _  -> ?log_warning("Found erroneous extra params ~p when generating"
+                           " memcached bucket config string for bucket ~p",
+                           [ErroneousExtraParams, BucketName])
+    end,
+
+    %% Unchanged extra params, no conflicts, not overridden
+    UnchangedExtraParams =
+        [T || {K, _Props, _Value} = T <- ExistingExtraParams,
+              not proplists:is_defined(K, AllowExtraParams),
+              not proplists:is_defined(K, ExistingParams)],
+
+    UnchangedParams = UnchangedBuiltInParams ++ UnchangedExtraParams,
 
     %% We don't use build_params_string here because the extra params do not
     %% have the props field.
@@ -294,10 +342,12 @@ get_validation_config_string_internal(BucketConfig, RequestedChanges) ->
 %% Returns the new bucket config string and the keys that were accepted.
 %% Only extra params are allowed to be overriden. Other parameter changes are
 %% not allowed and will be ignored.
--spec get_validation_config_string(list(), list()) -> {list(), list()}.
-get_validation_config_string(BucketConfig, RequestedChanges) ->
-    {Unchanged, Changed, Accepted} = get_validation_config_string_internal(
-                                        BucketConfig, RequestedChanges),
+-spec get_validation_config_string(string(), list(), list()) -> {list(), list()}.
+get_validation_config_string(BucketName, BucketConfig, RequestedChanges) ->
+    {Unchanged, Changed, Accepted} =
+        get_validation_config_string_internal(BucketName,
+                                              BucketConfig,
+                                              RequestedChanges),
     {join_params(Unchanged ++ Changed), Accepted}.
 
 query_stats(Sock) ->
@@ -639,11 +689,10 @@ get_validation_config_string_internal_test() ->
 
     {Unchanged, Changed, Accepted} =
         get_validation_config_string_internal(
-          BucketConfig, [{"connection_manager_interval", "2"}]),
+            "bucket", BucketConfig, [{"connection_manager_interval", "2"}]),
 
-    %% TODO: Check existing extra params when we store them and use them in the
-    %% config string.
-
+    ?assertEqual(true,
+                 lists:member("item_compressor_interval=1", Unchanged)),
     ?assertEqual(false,
                  lists:member("connection_manager_interval=1", Unchanged)),
     ?assertEqual(["connection_manager_interval=2"], Changed),

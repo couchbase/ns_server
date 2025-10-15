@@ -260,40 +260,63 @@ build_bucket_info(Id, Ctx, InfoLevel, SkipMap) ->
     {ok, BucketConfig} = ns_bucket:get_bucket(Id, Snapshot),
     BucketUUID = ns_bucket:uuid(Id, Snapshot),
 
-    {lists:flatten(
-       [bucket_info_cache:build_short_bucket_info(Id, BucketConfig, Snapshot),
-        bucket_info_cache:build_ddocs(Id, BucketConfig),
-        [bucket_info_cache:build_vbucket_map(
-           menelaus_web_node:get_local_addr(Ctx), BucketConfig)
-         || not SkipMap],
-        {localRandomKeyUri,
-         bucket_info_cache:build_pools_uri(["buckets", Id, "localRandomKey"])},
-        {controllers, {build_controllers(Id, BucketConfig)}},
-        {nodes, build_bucket_nodes_info(Id, BucketUUID, BucketConfig, Ctx)},
-        {stats,
-         {[{uri, bucket_info_cache:build_pools_uri(["buckets", Id, "stats"])},
-           {directoryURI,
-            bucket_info_cache:build_pools_uri(["buckets", Id, "stats",
-                                               "Directory"])},
-           {nodeStatsListURI,
-            bucket_info_cache:build_pools_uri(["buckets", Id, "nodes"])}]}},
-        %% Needed by XDCR on versions prior to 7.0. This must remain
-        %% until there are no supported pre-7.0 versions that can
-        %% replicate to us
-        {authType, sasl},
-        build_auto_compaction_info(BucketConfig),
-        build_purge_interval_info(BucketConfig),
-        build_replica_index(BucketConfig),
-        build_bucket_placer_params(BucketConfig),
-        build_hibernation_state(BucketConfig),
-        build_storage_limits(BucketConfig),
-        build_throttle_limits(BucketConfig),
-        build_bucket_rank(BucketConfig),
-        build_cross_cluster_versioning_params(BucketConfig),
-        build_vbuckets_max_cas(BucketConfig),
-        build_vp_window_hrs(BucketConfig),
-        build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx),
-        build_encryption_at_rest_bucket_info(BucketConfig)])}.
+    BucketInfo =
+        maps:from_list(
+          lists:flatten(
+            [bucket_info_cache:build_short_bucket_info(Id, BucketConfig,
+                                                       Snapshot),
+             bucket_info_cache:build_ddocs(Id, BucketConfig),
+             [bucket_info_cache:build_vbucket_map(
+                menelaus_web_node:get_local_addr(Ctx), BucketConfig)
+              || not SkipMap],
+             {localRandomKeyUri,
+              bucket_info_cache:build_pools_uri(["buckets", Id,
+                                                 "localRandomKey"])},
+             {controllers, {build_controllers(Id, BucketConfig)}},
+             {nodes, build_bucket_nodes_info(Id, BucketUUID, BucketConfig,
+                                             Ctx)},
+             {stats,
+              {[{uri, bucket_info_cache:build_pools_uri(["buckets", Id,
+                                                         "stats"])},
+                {directoryURI,
+                 bucket_info_cache:build_pools_uri(["buckets", Id, "stats",
+                                                    "Directory"])},
+                {nodeStatsListURI,
+                 bucket_info_cache:build_pools_uri(["buckets", Id,
+                                                    "nodes"])}]}},
+             %% Needed by XDCR on versions prior to 7.0. This must remain
+             %% until there are no supported pre-7.0 versions that can
+             %% replicate to us
+             {authType, sasl},
+             build_auto_compaction_info(BucketConfig),
+             build_purge_interval_info(BucketConfig),
+             build_replica_index(BucketConfig),
+             build_bucket_placer_params(BucketConfig),
+             build_hibernation_state(BucketConfig),
+             build_storage_limits(BucketConfig),
+             build_throttle_limits(BucketConfig),
+             build_bucket_rank(BucketConfig),
+             build_cross_cluster_versioning_params(BucketConfig),
+             build_vbuckets_max_cas(BucketConfig),
+             build_vp_window_hrs(BucketConfig),
+             build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx),
+             build_encryption_at_rest_bucket_info(BucketConfig)])),
+    %% Collect additional parameters from memcached.
+    ExtraParams = maps:from_list(
+                    build_extra_params_bucket_info(Id, BucketConfig)),
+    %% Keys that are present in both BucketInfo and ExtraParams.
+    ConflictMap = maps:intersect(BucketInfo, ExtraParams),
+    case maps:size(ConflictMap) of
+        0 -> ok;
+        _ ->
+            %% Shouldn't happen - this would mean that the param is public in
+            %% the KV config and implemented in the ns_server REST API.
+            erlang:exit(conflicting_override_params)
+    end,
+    %% Merge the extra params into the bucket info, but keep the bucket info
+    %% props if there is a confict (which will be logged as an error above).
+    {proplists:from_map(maps:merge(ExtraParams, BucketInfo))}.
+
 
 get_internal_default(Key, Default) ->
     ns_config:read_key_fast(Key, Default).
@@ -554,6 +577,30 @@ build_magma_bucket_info(BucketConfig) ->
         _ ->
             []
     end.
+
+%% @doc Format the extra param info for the REST API.
+%% Keys are atoms and strings are binary strings.
+format_extra_param_info({Key, Value}) when is_list(Value) ->
+    {list_to_atom(Key), list_to_binary(Value)};
+format_extra_param_info({Key, Value}) ->
+    {binary_to_atom(Key), Value}.
+
+%% @doc Build the extra params for the bucket config.
+%% This is used to get the extra params from memcached.
+build_extra_params_bucket_info(BucketName, BucketConfig) ->
+    %% We need to validate this bucket config with memcached to get the extra
+    %% params defaults. This will not include internal parameters.
+    {BucketConfigString, _AcceptedKeys} =
+        memcached_bucket_config:get_validation_config_string(BucketName,
+                                                             BucketConfig, []),
+    {ok, OKsFromMemcached, []} =
+        validate_bucket_config_with_memcached(BucketConfigString, false),
+    %% We merge in the parameters we already know about from the bucket config.
+    %% This is to ensure that internal parameters are reported if and only if
+    %% they are already set in the bucket config.
+    SetExtraParams = proplists:get_value(extra_params, BucketConfig, []),
+    ExtraParams = lists:flatten([OKsFromMemcached, SetExtraParams]),
+    lists:map(fun format_extra_param_info/1, ExtraParams).
 
 handle_sasl_buckets_streaming(_PoolId, Req) ->
     LocalAddr = menelaus_util:local_addr(Req),
@@ -1319,15 +1366,15 @@ parse_bucket_params_without_warnings(Ctx, Params) ->
                     {ok, OKs, JSONSummaries};
                 true ->
                     case parse_bucket_params_continue_via_memcached(
-                           OKs, Params, Ctx#bv_ctx.allow_internal_params) of
+                           OKs, Params, Ctx) of
                         {ok, UpdatedOKs} ->
                             {ok, UpdatedOKs, JSONSummaries};
                         {errors, Errors, UpdatedOKs} ->
                             {errors, Errors, JSONSummaries, UpdatedOKs}
                     end
             end;
-            %% TODO: If "ignoreExtraParams" is specified, we will not validate
-            %% the extra params (skip memcached path).
+        %% TODO: If "ignoreExtraParams" is specified, we will not validate
+        %% the extra params (skip memcached path).
         {errors, Errors, Summaries, OKs} ->
             {errors, Errors, Summaries, OKs}
     end.
@@ -1337,25 +1384,28 @@ parse_bucket_params_without_warnings(Ctx, Params) ->
 %% OKs is the result of the first validation via ns_server.
 %% Params is the parameters that we want to set / create the bucket with.
 parse_bucket_params_continue_via_memcached(
-  OKs, Params, AllowInternalParams) ->
-    %% OKs holds the parsed params that we will try to set / create the bucket
-    %% with. currentBucket is the bucket that already exists. We need to merge
-    %% the two to get the complete proposed bucket config. Which we need to
-    %% construct the proposed bucket config string to validate.
+  OKs, Params, #bv_ctx{allow_internal_params = AllowInternalParams,
+                       bucket_name = BucketName}) ->
+    CurrentBucket = proplists:get_value(currentBucket, OKs, []),
+    %% OKs holds the parsed params that we will try to set / create the
+    %% bucket with. currentBucket is the bucket that already exists.
+    %% We need to merge the two to get the complete proposed bucket
+    %% config. Which we need to construct the proposed bucket config
+    %% string to validate.
     ProposedBucket = [{type, proplists:get_value(bucketType, OKs)}] ++
-        merge_proplists(
-          proplists:get_value(currentBucket, OKs, []), OKs),
+        merge_proplists(CurrentBucket, OKs),
 
     %% Get the bucket config string that we will use to validate.
-    {BucketConfigString, _AcceptedKeys} =
-        memcached_bucket_config:get_validation_config_string(ProposedBucket,
+    {BucketConfigString, AcceptedKeys} =
+        memcached_bucket_config:get_validation_config_string(BucketName,
+                                                             ProposedBucket,
                                                              Params),
 
     %% Validate the params using validate_bucket_config_with_memcached, which
     %% uses MCBP command to validate against the local node. It returns the same
     %% set of OKs and Errors, and these should be merged into the original OKs
     %% and Errors.
-    {ok, _OKsFromMemcached, ErrorsFromMemcached} =
+    {ok, OKsFromMemcached, ErrorsFromMemcached} =
         validate_bucket_config_with_memcached(
           BucketConfigString,
           AllowInternalParams),
@@ -1363,10 +1413,37 @@ parse_bucket_params_continue_via_memcached(
     %% If there are any errors, we should return them.
     case ErrorsFromMemcached of
         [] ->
-            {ok, OKs};
+            process_bucket_config_from_memcached(
+              AcceptedKeys,
+              OKs,
+              OKsFromMemcached,
+              CurrentBucket);
         _ ->
             {errors, ErrorsFromMemcached, OKs}
     end.
+
+process_bucket_config_from_memcached(AcceptedKeys, OKs, OKsFromMemcached,
+                                     CurrentBucket) ->
+    %% Filter down the OKsFromMemcached to only Params we wanted
+    %% to set, since the returned list is all parameters, not just
+    %% the ones we wanted to set.
+    ExtraParams =
+        lists:filtermap(
+          fun ({Key, Value}) ->
+                  case lists:member(binary_to_list(Key), AcceptedKeys) of
+                      true ->
+                          {true,
+                           memcached_bucket_config:build_extra_param(Key,
+                                                                     Value)};
+                      false ->
+                          false
+                  end
+          end, OKsFromMemcached),
+    %% Add these to the BucketConfig under the extra_params key.
+    CurrentExtras = proplists:get_value(extra_params, CurrentBucket, []),
+    NewExtras = misc:update_proplist(CurrentExtras, ExtraParams),
+    UpdatedOKs = misc:update_proplist(OKs, [{extra_params, NewExtras}]),
+    {ok, UpdatedOKs}.
 
 
 %% @doc Validate the bucket config with memcached.
