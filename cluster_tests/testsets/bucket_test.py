@@ -72,7 +72,7 @@ AUTO_COMPACTION_PARAMETERS = ["parallelDBAndViewCompaction",
                               "magmaFragmentationPercentage"]
 
 KV_EXTRA_PARAMETERS = {
-    "max_checkpoints": {"internal": True}
+    "maxCheckpoints": {"internal": True}
 }
 
 def is_flush_enabled(info):
@@ -483,7 +483,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
 
         # Max Checkpoints (KV internal parameter)
         # ----------------------------------------------------------------------
-        self.limits['max_checkpoints']['min'] = 2
+        self.limits['maxCheckpoints']['min'] = 2
 
     def add_limits(self, field):
         self.test_params[field].append(self.limits[field]['min'])
@@ -747,8 +747,8 @@ class BucketTestSetBase(testlib.BaseTestSet):
 
         # Max Checkpoints (KV internal parameter)
         # ----------------------------------------------------------------------
-        self.test_params['max_checkpoints'] = [None]
-        self.add_limits('max_checkpoints')
+        self.test_params['maxCheckpoints'] = [None]
+        self.add_limits('maxCheckpoints')
 
         controlled_by_main_dict = [
             'bucketType',
@@ -975,7 +975,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
 
         # Max Checkpoints (KV internal parameter)
         # ----------------------------------------------------------------------
-        self.add_limits_bad('max_checkpoints')
+        self.add_limits_bad('maxCheckpoints')
 
     def teardown(self):
         pass
@@ -2073,7 +2073,7 @@ class BasicBucketTestSet(BucketTestSetBase):
                                   'provisioned into this cluster.'})
 
     def internal_kv_parameter_test(self):
-        self.test_param("max_checkpoints",
+        self.test_param("maxCheckpoints",
                         bucket_type=["couchbase"],
                         storage_backend=["couchstore"],
                         auto_compaction_defined=[None],

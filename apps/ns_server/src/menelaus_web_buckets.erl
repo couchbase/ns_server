@@ -580,8 +580,11 @@ build_magma_bucket_info(BucketConfig) ->
 
 %% @doc Format the extra param info for the REST API.
 %% Keys are atoms and strings are binary strings.
-format_extra_param_info({Key, Value}) when is_list(Value) ->
+format_extra_param_info({Key, Value})
+  when is_list(Key) andalso is_list(Value) ->
     {list_to_atom(Key), list_to_binary(Value)};
+format_extra_param_info({Key, Value}) when is_list(Key) ->
+    {list_to_atom(Key), Value};
 format_extra_param_info({Key, Value}) ->
     {binary_to_atom(Key), Value}.
 
@@ -600,7 +603,18 @@ build_extra_params_bucket_info(BucketName, BucketConfig) ->
     %% they are already set in the bucket config.
     SetExtraParams = proplists:get_value(extra_params, BucketConfig, []),
     ExtraParams = lists:flatten([OKsFromMemcached, SetExtraParams]),
-    lists:map(fun format_extra_param_info/1, ExtraParams).
+    %% Remap the names to camel case for the REST API.
+    {RemappedParams, BadParams} =
+        memcached_bucket_config:remap_config_names(ExtraParams, for_ui),
+
+    case BadParams of
+        [] -> ok;
+        _ ->
+            ?log_warning("Failed to remap extra params ~p for the REST API",
+                [BadParams])
+    end,
+
+    lists:map(fun format_extra_param_info/1, RemappedParams ++ BadParams).
 
 handle_sasl_buckets_streaming(_PoolId, Req) ->
     LocalAddr = menelaus_util:local_addr(Req),
@@ -1395,11 +1409,46 @@ parse_bucket_params_continue_via_memcached(
     ProposedBucket = [{type, proplists:get_value(bucketType, OKs)}] ++
         merge_proplists(CurrentBucket, OKs),
 
+    %% We will pass parameters down as snake_case, since that is what
+    %% memcached uses. If we fail to convert to snake_case, we ignore the
+    %% parameter - unknown params are ignored by this API.
+    {RemappedParams, BadParams} = memcached_bucket_config:remap_config_names(
+                                    Params, for_kv),
+
+    ParamRemappingErrors =
+        case BadParams of
+            [] -> [];
+            _ ->
+                ?log_debug("Failed to remap params ~p for config string",
+                           [BadParams]),
+                %% Return values are going back via the REST API. They are
+                %% formatted similarly to errors that we provide, and those that
+                %% are provided from memcached. We need the tuples to be
+                %% binaries to send them correctly on the API.
+                [{list_to_binary(BadKey),
+                  <<"Cannot be remapped to snake_case">>} ||
+                    {BadKey, _BadV} <- BadParams]
+        end,
+
+    %% We will only consider the parameters that we have not already parsed
+    %% in the ns_server validation. This does not prevent memcached from
+    %% validating this parameter (it is part of the ProposedBucket) but we won't
+    %% bail out of the sanity checks when we build the config string due to a
+    %% conflict with the parameters that we (ns_server) handle. The sanity check
+    %% is still nice to keep though, to catch any errors/oddities in remapping.
+    NsServerParsedParams = proplists:delete(currentBucket, OKs),
+    RemappedParamsForMemcached =
+        lists:filter(
+          fun({Key, _Value}) ->
+                  not proplists:is_defined(Key, NsServerParsedParams)
+          end, RemappedParams),
+
     %% Get the bucket config string that we will use to validate.
     {BucketConfigString, AcceptedKeys} =
-        memcached_bucket_config:get_validation_config_string(BucketName,
-                                                             ProposedBucket,
-                                                             Params),
+        memcached_bucket_config:get_validation_config_string(
+          BucketName,
+          ProposedBucket,
+          RemappedParamsForMemcached),
 
     %% Validate the params using validate_bucket_config_with_memcached, which
     %% uses MCBP command to validate against the local node. It returns the same
@@ -1411,15 +1460,29 @@ parse_bucket_params_continue_via_memcached(
           AllowInternalParams),
 
     %% If there are any errors, we should return them.
-    case ErrorsFromMemcached of
-        [] ->
+    case {ErrorsFromMemcached, ParamRemappingErrors} of
+        {[], []} ->
             process_bucket_config_from_memcached(
               AcceptedKeys,
               OKs,
               OKsFromMemcached,
               CurrentBucket);
         _ ->
-            {errors, ErrorsFromMemcached, OKs}
+            %% Remapping the snake_case keys from memcached back to camelCase
+            %% for consistency in the REST API. Hopefully we don't have any
+            %% remapping errors here - we will just log them for the sake of
+            %% resiliency.
+            {RemappedMemcachedErrors, MemcachedErrorRemapErrors} =
+                memcached_bucket_config:remap_config_names(ErrorsFromMemcached,
+                                                           for_ui),
+            case MemcachedErrorRemapErrors of
+                [] -> ok;
+                _ ->
+                    ?log_warning("Failed to remap memcached error params ~p "
+                                 "for config string",
+                                 [MemcachedErrorRemapErrors])
+            end,
+            {errors, RemappedMemcachedErrors ++ ParamRemappingErrors, OKs}
     end.
 
 process_bucket_config_from_memcached(AcceptedKeys, OKs, OKsFromMemcached,

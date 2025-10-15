@@ -32,6 +32,7 @@
          start_params/4,
          build_extra_param/2,
          get_validation_config_string/3,
+         remap_config_names/2,
          ensure_collections/2,
          get_current_collections_uid/1,
          format_mcd_keys/2]).
@@ -304,6 +305,10 @@ get_validation_config_string_internal(BucketName, BucketConfig,
                   not lists:member(Key, ExistingParamsKeys)
           end, RequestedChanges),
 
+    %% This covers cases in which we attempt to modify a memcached parameter
+    %% that we support via the REST API by using the memcached name rather than
+    %% the rest API name - e.g. an attempt to change max_vbuckets which is
+    %% called num_vbuckets internally is caught by this check.
     case DisallowExtraParams of
         [] -> ok;
         _ ->
@@ -760,8 +765,52 @@ get_fusion_bucket_config(BucketConfig) ->
             []
     end.
 
-%% TODO: Remove warning suppression as soon as these are used.
--compile(nowarn_unused_function).
+map_name(Name, for_kv) when is_binary(Name) ->
+    map_name(binary_to_list(Name), for_kv);
+map_name(Name, for_ui) when is_binary(Name) ->
+    map_name(binary_to_list(Name), for_ui);
+map_name(Name, for_kv) when is_list(Name) ->
+    snake_case(Name);
+map_name(Name, for_ui) when is_list(Name) ->
+    camel_case(Name);
+%% When we have a non-string input, pass it through as is.
+%% This will be values which are not strings (e.g. numbers or booleans).
+map_name(Name, _) ->
+    {ok, Name}.
+
+%% This is an artifact of poor naming in the past and the remapping of KVs
+%% snake_case config to camelCase for the REST API. These parameters are not
+%% really camelCase due to the special capital handling, and so they must
+%% be handled specially as we need to validate that we are not overriding any
+%% parameters that ns_server should handle (built-in params).
+special_mapping_cases("maxTTL") ->
+    {ok, "max_ttl"};
+special_mapping_cases("numVBuckets") ->
+    {ok, "max_vbuckets"};
+special_mapping_cases("ramQuotaMB") ->
+    {ok, "ram_quota"};
+special_mapping_cases(_) ->
+    not_found.
+
+%% @doc Remap the config names for the UI or KV.
+%% This is used to convert the config names to the names that memcached
+%% supports. Any names which cannot be converted to the target case are ignored.
+-spec remap_config_names(list(), for_kv | for_ui) -> {list(), list()}.
+remap_config_names(Params, Mode) ->
+    lists:foldr(
+      fun({K, V}, {OKAcc, BadAcc}) ->
+              Result = case special_mapping_cases(K) of
+                           not_found -> map_name(K, Mode);
+                           SpecialRemap -> SpecialRemap
+                       end,
+
+              case Result of
+                  {ok, Remapped} ->
+                      {[{Remapped, V} | OKAcc], BadAcc};
+                  {error, _} ->
+                      {OKAcc, [{K, V} | BadAcc]}
+              end
+      end, {[], []}, Params).
 
 %% @doc Pattern to match words that are parts of a variable name.
 word_pattern() ->
