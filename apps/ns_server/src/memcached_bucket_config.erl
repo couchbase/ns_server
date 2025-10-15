@@ -51,6 +51,10 @@ params_without_extras(membase, BucketName, BucketConfig, MemQuota, UUID,
      {"backend", [], ns_bucket:node_kv_backend_type(BucketConfig)},
      {"couch_bucket", [], BucketName},
      {"max_vbuckets", [], proplists:get_value(num_vbuckets, BucketConfig)},
+     %% Compat version carries the cluster compat version. It is available
+     %% from Totoro. We always set it on the local node, to allow the data
+     %% service to apply compatibility settings suitable for lower versions.
+     {"compat_version", [{reload, config}], get_compat_version_string()},
      {"alog_path", [], persistent_alog_path(BucketConfig, DBSubDir)},
      {"data_traffic_enabled", [], false},
      {"max_num_workers", maybe_restart(),
@@ -127,6 +131,11 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID, DBSubDir) ->
 params(memcached, _BucketName, _BucketConfig, MemQuota, UUID, _DBSubDir) ->
     [{"cache_size", [], MemQuota},
      {"uuid", [], UUID}].
+
+%% @doc Get the compat version string.
+get_compat_version_string() ->
+    [Major, Minor] = cluster_compat_mode:get_compat_version(),
+    io_lib:format("~B.~B", [Major, Minor]).
 
 %% @doc Build an extra param for the bucket config.
 %% The result is what is stored under the extra_params key in the bucket config.
