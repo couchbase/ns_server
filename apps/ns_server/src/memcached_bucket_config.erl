@@ -17,6 +17,10 @@
 -include_lib("ns_common/include/cut.hrl").
 -include("cb_cluster_secrets.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -define(MCD_DISABLED_ENCRYPTION_KEY_ID, <<"">>).
 -define(MAGMA_FUSION_AUTH_TOKEN, "chronicle_auth_token").
 
@@ -26,6 +30,7 @@
          get_bucket_config/1,
          ensure/3,
          start_params/4,
+         get_validation_config_string/2,
          ensure_collections/2,
          get_current_collections_uid/1,
          format_mcd_keys/2]).
@@ -236,6 +241,65 @@ get(BucketName, Snapshot) ->
             {error, not_present}
     end.
 
+%% @doc Get the components of a bucket config string which would be used if the
+%% requested extra param changes were applied.
+%%
+%% The RequestedChanges is a proplist of {Key, Value} pairs.
+%%
+%% The RequestedChanges cannot override BucketConfig params other than
+%% extra_params. Any attempt to do so will be logged.
+%%
+%% Note that the JWT and DEKs are not included in the returned config string.
+-spec get_validation_config_string_internal(list(), list()) ->
+          {list(), list(), list()}.
+get_validation_config_string_internal(BucketConfig, RequestedChanges) ->
+    BucketType = proplists:get_value(type, BucketConfig),
+    MemQuota = proplists:get_value(ram_quota, BucketConfig),
+    ExistingParams = params(BucketType, "BucketName", BucketConfig, MemQuota,
+                            "UUID", "DBSubDir"),
+
+    %% All params we will try to set from the existing bucket config.
+    %% TODO: Add ExistingExtraParamKeys when they are stored.
+
+    %% Params from the bucket config that are not in the extra params.
+    ExistingParamsKeys = proplists:get_keys(ExistingParams),
+
+    %% Extra params we will try to update or set.
+    %% We cannot override built-in params.
+    {AllowExtraParams, _DisallowExtraParams} =
+        lists:partition(
+          fun ({Key, _}) ->
+                  not lists:member(Key, ExistingParamsKeys)
+          end, RequestedChanges),
+
+    %% Compute params that will not be overridden by ChangedParams.
+    %% TODO: Add existing ExtraParams when they are stored.
+    UnchangedParams = lists:filter(
+                        fun ({Key, _Props, _Value}) ->
+                                not proplists:is_defined(Key, AllowExtraParams)
+                        end, ExistingParams),
+
+    %% We don't use build_params_string here because the extra params do not
+    %% have the props field.
+    JoinedAllowExtraParams = lists:map(fun ({Key, Value}) ->
+                                               join_key_value(Key, Value)
+                                       end, AllowExtraParams),
+    %% Return the list of keys we applied.
+    AllowedKeys = [K || {K, _} <- AllowExtraParams],
+    {build_params_string(UnchangedParams), JoinedAllowExtraParams, AllowedKeys}.
+
+%% @doc Get the bucket config string which would be used if the updated params
+%% were applied. Note that the JWT and DEKs are not included in the returned
+%% config string.
+%% Returns the new bucket config string and the keys that were accepted.
+%% Only extra params are allowed to be overriden. Other parameter changes are
+%% not allowed and will be ignored.
+-spec get_validation_config_string(list(), list()) -> {list(), list()}.
+get_validation_config_string(BucketConfig, RequestedChanges) ->
+    {Unchanged, Changed, Accepted} = get_validation_config_string_internal(
+                                        BucketConfig, RequestedChanges),
+    {join_params(Unchanged ++ Changed), Accepted}.
+
 query_stats(Sock) ->
     case mc_binary:quick_stats(
            Sock, <<>>,
@@ -404,6 +468,30 @@ ensure_collections(Sock, #cfg{name = BucketName, snapshot = Snapshot}) ->
                               collections:convert_uid_from_memcached(Next)})
     end.
 
+%% @doc Join a key and value into a string.
+-spec join_key_value(string(), any()) -> string().
+join_key_value(Key, Value) ->
+    Key ++ "=" ++ value_to_string(Value).
+
+%% @doc Join a list of params into config string.
+join_params(Params) ->
+    string:join(Params, ";").
+
+%% @doc Filter out params that are not set and join pairs into strings.
+-spec build_params_string(list()) -> list().
+build_params_string(Params) ->
+    lists:filtermap(
+          fun ({_Name, _Props, undefined}) ->
+                  false;
+              ({Name, Props, Value}) ->
+                  case lists:member(no_param, Props) of
+                      true ->
+                          false;
+                      false ->
+                          {true, join_key_value(Name, Value)}
+                  end
+          end, Params).
+
 start_params(#cfg{name=BucketName,
                   config = BucketConfig,
                   snapshot = Snapshot,
@@ -420,18 +508,7 @@ start_params(#cfg{name=BucketName,
           extra_config_string, BucketConfig,
           proplists:get_value(extra_config_string, EngineConfig, "")),
 
-    DynamicParams =
-        lists:filtermap(
-          fun ({_Name, _Props, undefined}) ->
-                  false;
-              ({Name, Props, Value}) ->
-                  case lists:member(no_param, Props) of
-                      true ->
-                          false;
-                      false ->
-                          {true, Name ++ "=" ++ value_to_string(Value)}
-                  end
-          end, Params),
+    DynamicParams = build_params_string(Params),
 
     PrepareCfgString =
         fun (ForLogging) ->
@@ -496,7 +573,7 @@ start_params(#cfg{name=BucketName,
                                           DeksConfigString, JWTConfigString,
                                           CollectionManifestString],
                                     P =/= ""],
-                string:join(DynamicParams ++ ExtraParams, ";")
+                join_params(DynamicParams ++ ExtraParams)
         end,
 
     {Engine, PrepareCfgString(false), PrepareCfgString(true)}.
@@ -541,3 +618,38 @@ get_fusion_bucket_config(BucketConfig) ->
         false ->
             []
     end.
+
+-ifdef(TEST).
+
+get_validation_config_string_internal_test() ->
+    fake_ns_config:setup(),
+    fake_chronicle_kv:setup(),
+
+    fake_ns_config:setup_cluster_compat_version(?LATEST_VERSION_NUM),
+    fake_chronicle_kv:setup_cluster_compat_version(?LATEST_VERSION_NUM),
+
+    BucketConfig = [
+                    {type, membase},
+                    {ram_quota, 1},
+                    {extra_params, [
+                                    {<<"connection_manager_interval">>, "1"},
+                                    {<<"item_compressor_interval">>, "1"}
+                                   ]}
+                   ],
+
+    {Unchanged, Changed, Accepted} =
+        get_validation_config_string_internal(
+          BucketConfig, [{"connection_manager_interval", "2"}]),
+
+    %% TODO: Check existing extra params when we store them and use them in the
+    %% config string.
+
+    ?assertEqual(false,
+                 lists:member("connection_manager_interval=1", Unchanged)),
+    ?assertEqual(["connection_manager_interval=2"], Changed),
+    ?assertEqual(["connection_manager_interval"], Accepted),
+
+    fake_chronicle_kv:teardown(),
+    fake_ns_config:teardown().
+
+-endif.

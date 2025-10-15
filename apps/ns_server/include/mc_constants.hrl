@@ -81,6 +81,8 @@
 -define(CMD_SET_PARAM,       16#82).            % NOTE: Id is same as old CMD_SET_FLUSH_PARAM
 -define(CMD_GET_REPLICA,     16#83).
 
+-define(CMD_VALIDATE_BUCKET_CONFIG, 16#8c).
+
 -define(CMD_GET_FAILOVER_LOG, 16#96).
 
 % internal mc_couch command notifying us that writes happened in

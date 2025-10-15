@@ -49,6 +49,7 @@
          get_meta/4,
          update_with_rev/7,
          set_engine_param/4,
+         validate_bucket_config/3,
          enable_traffic/1,
          disable_traffic/1,
          set_bucket_data_ingress/3,
@@ -115,6 +116,7 @@
                      ?CMD_GET_FAILOVER_LOG |
                      ?CMD_COLLECTIONS_SET_MANIFEST |
                      ?CMD_COLLECTIONS_GET_MANIFEST |
+                     ?CMD_VALIDATE_BUCKET_CONFIG |
                      ?CMD_GET_FUSION_STORAGE_SNAPSHOT |
                      ?CMD_RELEASE_FUSION_STORAGE_SNAPSHOT |
                      ?CMD_MOUNT_FUSION_VBUCKET |
@@ -250,6 +252,25 @@ create_bucket(Sock, BucketName, Engine, Config, Timeout) ->
              Timeout) of
         {ok, #mc_header{status=?SUCCESS}, _ME, _NCB} ->
             ok;
+        Response -> process_error_response(Response)
+    end.
+
+%% @doc Validate bucket configuration string using memcached.
+%% Returns a map of parameters to their validation results.
+%% Also returns any default-set parameters.
+%% See memcached_bucket_config_validation module for more details.
+-spec validate_bucket_config(port(), binary(), list()) ->
+          {ok, map()} | mc_error().
+validate_bucket_config(Sock, Engine, BucketConfigString) ->
+    %% CMD_VALIDATE_BUCKET_CONFIG takes the engine name and config string, and
+    %% returns a map of parameters to their validation results.
+    %% The request format is similar to that of CMD_CREATE_BUCKET.
+    case cmd(?CMD_VALIDATE_BUCKET_CONFIG, Sock, undefined, undefined,
+             {#mc_header{},
+              #mc_entry{
+                 data = list_to_binary([Engine, 0, BucketConfigString])}}) of
+        {ok, #mc_header{status=?SUCCESS}, ME, _} ->
+            {ok, json:decode(ME#mc_entry.data)};
         Response -> process_error_response(Response)
     end.
 

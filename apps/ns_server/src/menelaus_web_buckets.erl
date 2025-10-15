@@ -668,6 +668,7 @@ respond_bucket_created(Req, PoolId, BucketId) ->
 -record(bv_ctx, {
           validate_only,
           ignore_warnings,
+          allow_internal_params,
           new,
           bucket_name,
           bucket_uuid,
@@ -686,6 +687,9 @@ init_bucket_validation_context(IsNew, BucketName, Req) ->
                             mochiweb_request:parse_qs(Req)) =:= "1",
     IgnoreWarnings =
         proplists:get_value("ignore_warnings",
+                            mochiweb_request:parse_qs(Req)) =:= "1",
+    AllowInternalParams =
+        proplists:get_value("internal",
                             mochiweb_request:parse_qs(Req)) =:= "1",
 
     Config = ns_config:get(),
@@ -707,7 +711,7 @@ init_bucket_validation_context(IsNew, BucketName, Req) ->
       ns_bucket:get_buckets(Snapshot),
       KvNodes, ServerGroups,
       ns_storage_conf:cluster_storage_info(Config, Snapshot),
-      ValidateOnly, IgnoreWarnings,
+      ValidateOnly, IgnoreWarnings, AllowInternalParams,
       cluster_compat_mode:get_compat_version(),
       cluster_compat_mode:is_enterprise(),
       cluster_compat_mode:is_developer_preview()).
@@ -716,6 +720,7 @@ init_bucket_validation_context(IsNew, BucketName, BucketUUID, AllBuckets,
                                KvNodes, ServerGroups,
                                ClusterStorageTotals,
                                ValidateOnly, IgnoreWarnings,
+                               AllowInternalParams,
                                ClusterVersion, IsEnterprise,
                                IsDeveloperPreview) ->
     KvServerGroups =
@@ -743,6 +748,7 @@ init_bucket_validation_context(IsNew, BucketName, BucketUUID, AllBuckets,
     #bv_ctx{
        validate_only = ValidateOnly,
        ignore_warnings = IgnoreWarnings,
+       allow_internal_params = AllowInternalParams,
        new = IsNew,
        bucket_name = BucketName,
        bucket_uuid = BucketUUID,
@@ -818,7 +824,7 @@ handle_bucket_update_inner(BucketId, Req, Params, Limit) ->
                                                Limit - 1);
                 Response ->
                     Response
-             end;
+            end;
 
         {true, true, {ok, _, JSONSummaries}} ->
             reply_json(Req, format_error_response([], JSONSummaries), 200);
@@ -1283,7 +1289,7 @@ parse_bucket_params(Ctx, Params) ->
             {errors, Errors, Summaries}
     end.
 
-parse_bucket_params_without_warnings(Ctx, Params0) ->
+parse_bucket_params_without_warnings_internal(Ctx, Params0) ->
     SkipEncryptionKeyTest =
         proplists:get_value("skipEncryptionKeyTest", Params0) =:= "1",
     Params = proplists:delete("skipEncryptionKeyTest", Params0),
@@ -1303,6 +1309,113 @@ parse_bucket_params_without_warnings(Ctx, Params0) ->
         TotalErrors ->
             {errors, TotalErrors, JSONSummaries, OKs}
     end.
+
+parse_bucket_params_without_warnings(Ctx, Params) ->
+    case parse_bucket_params_without_warnings_internal(Ctx, Params) of
+        {ok, OKs, JSONSummaries} ->
+            %% For Totoro, we need to continue the validation via memcached.
+            case cluster_compat_mode:is_cluster_totoro() of
+                false ->
+                    {ok, OKs, JSONSummaries};
+                true ->
+                    case parse_bucket_params_continue_via_memcached(
+                           OKs, Params, Ctx#bv_ctx.allow_internal_params) of
+                        {ok, UpdatedOKs} ->
+                            {ok, UpdatedOKs, JSONSummaries};
+                        {errors, Errors, UpdatedOKs} ->
+                            {errors, Errors, JSONSummaries, UpdatedOKs}
+                    end
+            end;
+            %% TODO: If "ignoreExtraParams" is specified, we will not validate
+            %% the extra params (skip memcached path).
+        {errors, Errors, Summaries, OKs} ->
+            {errors, Errors, Summaries, OKs}
+    end.
+
+
+%% @doc Continue the validation via memcached (via ValidateBucketConfig API).
+%% OKs is the result of the first validation via ns_server.
+%% Params is the parameters that we want to set / create the bucket with.
+parse_bucket_params_continue_via_memcached(
+  OKs, Params, AllowInternalParams) ->
+    %% OKs holds the parsed params that we will try to set / create the bucket
+    %% with. currentBucket is the bucket that already exists. We need to merge
+    %% the two to get the complete proposed bucket config. Which we need to
+    %% construct the proposed bucket config string to validate.
+    ProposedBucket = [{type, proplists:get_value(bucketType, OKs)}] ++
+        merge_proplists(
+          proplists:get_value(currentBucket, OKs, []), OKs),
+
+    %% Get the bucket config string that we will use to validate.
+    {BucketConfigString, _AcceptedKeys} =
+        memcached_bucket_config:get_validation_config_string(ProposedBucket,
+                                                             Params),
+
+    %% Validate the params using validate_bucket_config_with_memcached, which
+    %% uses MCBP command to validate against the local node. It returns the same
+    %% set of OKs and Errors, and these should be merged into the original OKs
+    %% and Errors.
+    {ok, _OKsFromMemcached, ErrorsFromMemcached} =
+        validate_bucket_config_with_memcached(
+          BucketConfigString,
+          AllowInternalParams),
+
+    %% If there are any errors, we should return them.
+    case ErrorsFromMemcached of
+        [] ->
+            {ok, OKs};
+        _ ->
+            {errors, ErrorsFromMemcached, OKs}
+    end.
+
+
+%% @doc Validate the bucket config with memcached.
+%% AllowInternalParams is a boolean that indicates if internal parameters should
+%% be allowed. If false, they will be ignored.
+validate_bucket_config_with_memcached(BucketConfigString,
+                                      AllowInternalParams) ->
+    case ns_memcached:validate_bucket_config(BucketConfigString) of
+        {ok, ValidationMap} ->
+            process_memcached_bucket_config_validation_map(ValidationMap,
+                                                           AllowInternalParams);
+        {error, Error} ->
+            ale:error(?USER_LOGGER,
+                      "Error validating bucket config with memcached: ~p",
+                [Error]),
+            {error, Error}
+    end.
+
+process_memcached_bucket_config_validation_map(ValidationMap,
+    AllowInternalParams) ->
+    {AllOKs, Errors} = memcached_bucket_config_validation:group(ValidationMap),
+    FilteredOKs =
+        maps:filter(
+            fun (_K, V) ->
+                %% Filter out internal parameters
+                AllowInternalParams orelse
+                    memcached_bucket_config_validation:is_public_parameter(V)
+            end, AllOKs),
+    OKs =
+        maps:map(
+            fun (_K, V) ->
+                memcached_bucket_config_validation:get_value(V)
+            end, FilteredOKs),
+    FilteredErrors = maps:filter(
+        fun (_K, V) ->
+                %% Filter out unsupported parameters
+                not
+                  memcached_bucket_config_validation:is_unsupported_parameter(V)
+        end, Errors),
+    %% We only care about the error message.
+    ErrorMessages = maps:map(
+        fun (_K, V) ->
+                memcached_bucket_config_validation:get_error_message(V)
+        end, FilteredErrors),
+    {ok, proplists:from_map(OKs), proplists:from_map(ErrorMessages)}.
+
+%% @doc Merge two proplists. The lists do not need to be sorted.
+merge_proplists(A, B) ->
+    proplists:from_map(maps:merge(maps:from_list(A), maps:from_list(B))).
 
 test_encryption_keys(_, _, true) ->
     [];
@@ -4052,7 +4165,7 @@ basic_bucket_params_screening(IsNew, Name, Params, AllBuckets,
         end,
     Ctx = init_bucket_validation_context(IsNew, Name, BucketUUID, AllBuckets,
                                          KvNodes, Groups, [],
-                                         false, false,
+                                         false, false, false,
                                          Version, IsEnterprise,
                                          %% Change when developer_preview
                                          %% defaults to false
@@ -6273,4 +6386,33 @@ parse_validate_ephemeral_eviction_policy_test() ->
                  do_parse_validate_eviction_policy(
                    ParamsEphemeral, [], IsEphemeral,
                    NewBucket, IsMagma)).
+
+validate_bucket_config_with_memcached_test() ->
+    meck:new(ns_memcached, []),
+    meck:expect(ns_memcached, validate_bucket_config,
+                fun (_BucketConfigString) ->
+                        {ok, #{
+                               %% Public parameter - set to a value.
+                               "foo" => #{
+                                          <<"value">> => "value",
+                                          <<"visibility">> => <<"public">>
+                                         },
+                               %% Public parameter - default value.
+                               "bar" => #{
+                                          <<"value">> => "value",
+                                          <<"visibility">> => <<"public">>
+                                         },
+                               %% Parameter validation error.
+                               "baz" => #{
+                                          <<"error">> => <<"error">>,
+                                          <<"message">> => <<"message">>
+                                         }
+                              }}
+                end),
+    {ok, OKs, ErrorMessages} = validate_bucket_config_with_memcached(
+                                 "foo=value;baz=value", false),
+    ?assertEqual(misc:sort_kv_list([{"foo", "value"},
+                                    {"bar", "value"}]), misc:sort_kv_list(OKs)),
+    ?assertEqual([{"baz", <<"message">>}], ErrorMessages).
+
 -endif.

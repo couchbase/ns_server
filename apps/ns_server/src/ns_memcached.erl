@@ -146,6 +146,7 @@
          get_keys/4,
          config_validate/2,
          config_reload/1,
+         validate_bucket_config/1,
          set_tls_config/1,
          get_failover_log/2,
          get_failover_logs/2,
@@ -2170,6 +2171,19 @@ config_reload(AFamilies) ->
               {ok, Sock} = connect(?MODULE_STRING ++ "/reload",
                                    [{retries, 1}, {try_afamily, AFamilies}]),
               mc_client_binary:config_reload(Sock)
+      end).
+
+%% @doc Validate bucket configuration parameters using memcached
+-spec validate_bucket_config(list()) -> {ok, any()} | {error, {mc_error_atom(), binary()}}.
+validate_bucket_config(BucketConfigString) ->
+    perform_very_long_call(
+      fun (Sock) ->
+              case mc_client_binary:validate_bucket_config(
+                     Sock, <<"ep.so">>, BucketConfigString) of
+                  {ok, ValidationMap} ->
+                      {reply, {ok, ValidationMap}};
+                  {memcached_error, S, Msg} -> {reply, {error, {S, Msg}}}
+              end
       end).
 
 set_tls_config(Config) ->
