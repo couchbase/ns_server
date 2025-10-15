@@ -335,7 +335,7 @@ maybe_set_data_ingress(Bucket, Status, Servers) ->
     end.
 
 -spec mount_volumes(ns_bucket:name(), [{node(), list()}], map(), pid()) ->
-          ok | {errors, [{node(), term()}]}.
+          ok | {error, {failed_nodes, [node()]}}.
 mount_volumes(Bucket, VolumesToMount, NodesMap, RebalancerPid) ->
     NodesCalls =
         lists:map(
