@@ -170,7 +170,7 @@
 
 -record(state, {proc_type :: ?NODE_PROC | ?MASTER_PROC,
                 jobs :: [node_job()] | [master_job()],
-                timers_timestamps = #{} :: #{atom() := integer()},
+                timers_trigger_ts = #{} :: #{atom() := integer()},
                 timers = #{retry_jobs => undefined,
                            rotate_keks => undefined,
                            remove_historical_keys => undefined,
@@ -179,7 +179,7 @@
                            dek_info_update => undefined,
                            remove_retired_keys => undefined,
                            test_secrets => undefined}
-                         :: #{atom() := reference() | undefined},
+                         :: #{atom() := {reference(), integer()} | undefined},
                 deks_info = undefined :: #{cb_deks:dek_kind() := deks_info()} |
                                          undefined,
                 kek_hashes_on_disk = #{} :: #{secret_id() := integer()}}).
@@ -1168,12 +1168,12 @@ handle_info(run_jobs, #state{proc_type = ProcType} = State) ->
     {noreply, run_jobs(State)};
 
 handle_info({timer, Name}, #state{proc_type = ProcType,
-                                  timers_timestamps = Timestamps,
+                                  timers_trigger_ts = TriggerTs,
                                   timers = Timers} = State) ->
     misc:flush({timer, Name}),
     ?log_debug("[~p] Handling timer ~p", [ProcType, Name]),
     CurTs = erlang:monotonic_time(millisecond),
-    NewState = State#state{timers_timestamps = Timestamps#{Name => CurTs},
+    NewState = State#state{timers_trigger_ts = TriggerTs#{Name => CurTs},
                            timers = Timers#{Name => undefined}},
     {noreply, handle_timer(Name, NewState)};
 
@@ -2554,7 +2554,7 @@ do({maybe_reencrypt_deks, K}, State) ->
 stop_timer(Name, #state{timers = Timers} = State) ->
     case maps:get(Name, Timers) of
         undefined -> State;
-        Ref when is_reference(Ref) ->
+        {Ref, _} when is_reference(Ref) ->
             erlang:cancel_timer(Ref),
             State#state{timers = Timers#{Name => undefined}}
     end.
@@ -2563,16 +2563,27 @@ stop_timer(Name, #state{timers = Timers} = State) ->
 is_timer_started(Name, #state{timers = Timers}) ->
     case maps:get(Name, Timers) of
         undefined -> false;
-        Ref when is_reference(Ref) -> true
+        {Ref, _} when is_reference(Ref) -> true
     end.
 
 -spec restart_timer(Name :: atom(), Time :: non_neg_integer(), #state{}) ->
           #state{}.
-restart_timer(Name, Time, #state{timers = Timers,
-                                 timers_timestamps = TimerTimes} = State) ->
+restart_timer(Name, Time, State) ->
+    restart_timer(Name, Time, Time, State).
+
+%% "Time" is the time to fire next timer, "Interval" is the intended interval
+%% between firings. E.g. we want next timer to fire in 10 seconds, but normally
+%% it fires every 60 seconds.
+%% Normally they are the same. It is not true in some cases:
+%%  - when we change timer interval via config, we need to know what was the
+%%    previous interval to calculate the time to fire next timer
+%%  - for some timers we want to fire them immediatelly at startup, but we still
+%%    need to know what the intended interval is
+restart_timer(Name, Time, Interval,
+              #state{timers = Timers, timers_trigger_ts = TriggerTs} = State) ->
     NewState = stop_timer(Name, State),
     NewTime =
-        case maps:find(Name, TimerTimes) of
+        case maps:find(Name, TriggerTs) of
             {ok, LastTS} ->
                 %% Making sure that timer doesn't fire too often
                 CurTS = erlang:monotonic_time(millisecond),
@@ -2582,7 +2593,7 @@ restart_timer(Name, Time, #state{timers = Timers,
         end,
     ?log_debug("Starting ~p timer for ~b...", [Name, NewTime]),
     Ref = erlang:send_after(NewTime, self(), {timer, Name}),
-    NewState#state{timers = Timers#{Name => Ref}}.
+    NewState#state{timers = Timers#{Name => {Ref, Interval}}}.
 
 -spec min_timer_interval(atom()) -> non_neg_integer().
 min_timer_interval(retry_jobs) -> ?RETRY_TIME;
@@ -2594,16 +2605,17 @@ min_timer_interval(_Name) -> ?MIN_TIMER_INTERVAL.
 ensure_timer_started(Name, Time, #state{timers = Timers} = State) ->
     case maps:get(Name, Timers) of
         undefined -> restart_timer(Name, Time, State);
-        Ref when is_reference(Ref) -> State
+        {Ref, _} when is_reference(Ref) -> State
     end.
 
 restart_dek_info_update_timer(IsFirstCall,
                               #state{proc_type = ?NODE_PROC} = State) ->
+    Interval = ?DEK_INFO_UPDATE_INVERVAL_S * 1000,
     Time = case IsFirstCall of
                true -> 0;
-               false -> ?DEK_INFO_UPDATE_INVERVAL_S * 1000
+               false -> Interval
            end,
-    restart_timer(dek_info_update, Time, State);
+    restart_timer(dek_info_update, Time, Interval, State);
 restart_dek_info_update_timer(_, #state{proc_type = ?MASTER_PROC} = State) ->
     State.
 
@@ -3979,12 +3991,12 @@ diag_info_helper(Name, Pid) ->
 diag(#state{proc_type = ?NODE_PROC} = State) ->
     [<<"Process type: node ">>, io_lib:format("(~p)", [self()]), $\n,
      diag_deks(State#state.deks_info), $\n,
-     diag_timers(State#state.timers, State#state.timers_timestamps), $\n,
+     diag_timers(State#state.timers, State#state.timers_trigger_ts), $\n,
      diag_jobs(State#state.jobs), $\n,
      diag_cached_keys_list(encryption_service:cached_keys_list())];
 diag(#state{proc_type = ?MASTER_PROC} = State) ->
     [<<"Process type: master ">>, io_lib:format("(~p)", [self()]), $\n,
-     diag_timers(State#state.timers, State#state.timers_timestamps), $\n,
+     diag_timers(State#state.timers, State#state.timers_trigger_ts), $\n,
      diag_jobs(State#state.jobs)].
 
 %% Helper functions for diag
@@ -4030,6 +4042,7 @@ diag_dek(#{type := Type, id := Id, info := Info}) ->
                    io_lib:print(maps:remove(key, Info), 11, 80, -1)]).
 
 diag_timers(Timers, TimersTimestamps) ->
+    CurTS = erlang:monotonic_time(millisecond),
     [<<"Timers:">>, $\n,
      lists:join(
        $\n,
@@ -4038,9 +4051,8 @@ diag_timers(Timers, TimersTimestamps) ->
              LastTimeFiredStr =
                 case maps:find(Name, TimersTimestamps) of
                     {ok, LastTS} ->
-                        CurTS = erlang:monotonic_time(millisecond),
                         LT = CurTS - LastTS,
-                        io_lib:format("last fired: ~s ago",
+                        io_lib:format("last time fired ~s ago",
                                       [misc:ms_to_str(LT)]);
                     error ->
                         "never fired before"
@@ -4049,13 +4061,18 @@ diag_timers(Timers, TimersTimestamps) ->
                "  ~p: ~s",
                [Name,
                 case Timer of
-                    Timer when is_reference(Timer) ->
-                        case erlang:read_timer(Timer) of
-                            false -> "active (expired)";
-                            Ms -> io_lib:format("active (~s remaining, ~s)",
-                                                [misc:ms_to_str(Ms),
-                                                 LastTimeFiredStr])
-                        end;
+                    {TimerRef, Interval} when is_reference(TimerRef) ->
+                        IntervalStr = io_lib:format("~s timer",
+                                                    [misc:ms_to_str(Interval)]),
+                        RemainingStr =
+                            case erlang:read_timer(TimerRef) of
+                                false -> "expired";
+                                Ms -> io_lib:format("~s remaining",
+                                                    [misc:ms_to_str(Ms)])
+                            end,
+                        io_lib:format("active (~s, ~s, ~s)",
+                                      [RemainingStr, IntervalStr,
+                                       LastTimeFiredStr]);
                     T -> io_lib:format("~p (~s)", [T, LastTimeFiredStr])
                 end])
          end, maps:to_list(Timers)))].
@@ -4227,11 +4244,12 @@ should_renew_secrets_usage_info() ->
 restart_test_secrets_timer(_, #state{proc_type = ?MASTER_PROC} = State) ->
     State;
 restart_test_secrets_timer(IsFirst, #state{proc_type = ?NODE_PROC} = State) ->
+    Interval = ?SECRET_TEST_INTERVAL,
     Time = case IsFirst of
                true -> 0;
-               false -> ?SECRET_TEST_INTERVAL
+               false -> Interval
            end,
-    restart_timer(test_secrets, Time, State).
+    restart_timer(test_secrets, Time, Interval, State).
 
 -spec run_periodic_test_for_secrets() -> ok.
 run_periodic_test_for_secrets() ->

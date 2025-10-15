@@ -85,16 +85,38 @@ datetime_add(DateTime, Seconds) ->
     calendar:gregorian_seconds_to_datetime(
       calendar:datetime_to_gregorian_seconds(DateTime) + Seconds).
 
-ms_to_str(Ms) when Ms < 1000 ->
-    io_lib:format("~bms", [Ms]);
-ms_to_str(Ms) when Ms < 60000 ->
-    io_lib:format("~bs ~s", [Ms div 1000, ms_to_str(Ms rem 1000)]);
-ms_to_str(Ms) when Ms < 3600000 ->
-    io_lib:format("~bm ~s", [Ms div 60000, ms_to_str(Ms rem 60000)]);
-ms_to_str(Ms) when Ms < 86400000 ->
-    io_lib:format("~bh ~s", [Ms div 3600000, ms_to_str(Ms rem 3600000)]);
 ms_to_str(Ms) ->
-    io_lib:format("~bd ~s", [Ms div 86400000, ms_to_str(Ms rem 86400000)]).
+    {Str, Rem} =
+        if Ms < 1000 ->
+               {io_lib:format("~bms", [Ms]), 0};
+           Ms < 60000 ->
+               {io_lib:format("~bs", [Ms div 1000]), Ms rem 1000};
+           Ms < 3600000 ->
+               {io_lib:format("~bm", [Ms div 60000]), Ms rem 60000};
+           Ms < 86400000 ->
+               {io_lib:format("~bh", [Ms div 3600000]), Ms rem 3600000};
+           true ->
+               {io_lib:format("~bd", [Ms div 86400000]), Ms rem 86400000}
+        end,
+    case Rem of
+        0 -> Str;
+        _ -> lists:flatten(io_lib:format("~s ~s", [Str, ms_to_str(Rem)]))
+    end.
+
+-ifdef(TEST).
+ms_to_str_test() ->
+    ?assertEqual("100ms", ms_to_str(100)),
+    ?assertEqual("1s", ms_to_str(1000)),
+    ?assertEqual("1s 1ms", ms_to_str(1001)),
+    ?assertEqual("1m", ms_to_str(60000)),
+    ?assertEqual("1h", ms_to_str(3600000)),
+    ?assertEqual("1d", ms_to_str(86400000)),
+    ?assertEqual("1d 2h 3m 4s 5ms", ms_to_str(86400000 + 2*3600000 + 
+                                              3 * 60000 + 4 * 1000 + 5)),
+    ?assertEqual("2h 4s", ms_to_str(2*3600000 + 4 * 1000)),
+    ?assertEqual("1d 3m 5ms", ms_to_str(86400000 + 3 * 60000 + 5)).
+-endif.
+
 
 utc_to_iso8601(UTCDatetime, Offset) ->
     utc_to_iso8601(UTCDatetime, undefined, Offset).
