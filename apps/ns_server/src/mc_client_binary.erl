@@ -427,10 +427,15 @@ engine_param_type_to_int(checkpoint) ->
 engine_param_type_to_int(dcp) ->
     4;
 engine_param_type_to_int(vbucket) ->
-    5.
+    5;
+%% The config type can be used to set any parameter, but is only available from
+%% version Totoro and up.
+engine_param_type_to_int(config) ->
+    6.
 
 -spec set_engine_param(port(), binary(), binary(),
-                       flush | tap | checkpoint | dcp | vbucket) -> ok | mc_error().
+                       flush | tap | checkpoint | dcp | vbucket | config
+                    ) -> ok | mc_error().
 set_engine_param(Sock, Key, Value, Type) ->
     report_counter(?FUNCTION_NAME),
     ParamType = engine_param_type_to_int(Type),

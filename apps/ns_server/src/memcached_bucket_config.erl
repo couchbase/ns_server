@@ -427,23 +427,100 @@ maybe_update_param(Sock, Stats, BucketName, {Name, Props, Value}, _JWT) ->
             end
     end.
 
+%% @doc Update the props of an extra param from the validation result.
+%% This is used to determine if a restart is required for the extra params.
+-spec update_props_from_validation_result(list(), map()) -> list().
+update_props_from_validation_result(Props, ValidationResult) ->
+    ExtraProps = case memcached_bucket_config_validation:requires_restart(
+        ValidationResult) of
+        true ->
+            [restart];
+        false ->
+            []
+    end,
+    %% Reload type config can be used with all parameters.
+    Props ++ ExtraProps ++ [{reload, config}].
+
+%% @doc Populate the extra params with props from the validation result.
+%% This is used to determine if a restart is required for the extra params.
+populate_extra_params_props_internal(_Sock, membase, _Params, []) ->
+    [];
+populate_extra_params_props_internal(Sock, membase, Params, ExtraParams) ->
+    BucketConfigString = join_params(build_params_string(Params)),
+    {ok, ValidationMap} = mc_client_binary:validate_bucket_config(
+                            Sock, <<"ep.so">>, BucketConfigString),
+    lists:map(
+      fun ({Name, Props, Value}) ->
+              case maps:find(list_to_binary(Name), ValidationMap) of
+                  {ok, ValidationResult} ->
+                      {Name,
+                       update_props_from_validation_result(Props,
+                                                           ValidationResult),
+                       Value};
+                  error ->
+                      %% Param not in validation map, but was specified -
+                      %% implementation error.
+                      erlang:exit(unknown_param)
+              end
+      end, ExtraParams).
+
+%% @doc Populate the extra params with props from the validation result.
+%% This is used to determine if a restart is required for the extra params.
+%% If no extra params are present, no additional validation call is made.
+populate_extra_params_props(Sock, membase, Params) ->
+    {ExtraParams, NotExtraParams} = lists:partition(
+                                      fun ({_Name, Props, _Value}) ->
+                                              lists:member(extra, Props)
+                                      end,
+                                      Params),
+    populate_extra_params_props_internal(Sock, membase, Params, ExtraParams)
+        ++ NotExtraParams.
+
 ensure(Sock, #cfg{type = membase, name = BucketName, params = Params}, JWT) ->
     case query_stats(Sock) of
         {ok, Stats} ->
+            ChangedParams0 =
+                lists:filter(
+                  fun ({Name, _Props, Value}) ->
+                          has_changed(BucketName, Name,
+                                      value_to_binary(Value), Stats)
+                  end, Params),
+
+            %% If any of the changed params are extra params, we need to
+            %% populate them, by calling validate_bucket_config. This is because
+            %% the extra params do not have props filled in. This will tell us
+            %% if a restart is required for the extra params.
+            %% We only do this if there are changed extra params as a
+            %% performance optimization.
+            ChangedParams =
+                case lists:any(
+                       fun ({_, Props, _}) ->
+                               lists:member(extra, Props)
+                       end, ChangedParams0) of
+                    true ->
+                        PopulatedParams = populate_extra_params_props(
+                                            Sock, membase, Params),
+                        %% Filter down to only the changed params.
+                        lists:filter(
+                          fun ({Name, _Props, _Value}) ->
+                                  proplists:is_defined(Name, ChangedParams0)
+                          end, PopulatedParams);
+                    false ->
+                        ChangedParams0
+                end,
+
             Restart =
                 lists:any(
-                  fun ({Name, Props, Value}) ->
-                          lists:member(restart, Props) andalso
-                              has_changed(BucketName, Name,
-                                          value_to_binary(Value), Stats)
-                  end, Params),
+                  fun ({_, Props, _}) ->
+                          lists:member(restart, Props)
+                  end, ChangedParams),
             case Restart of
                 true ->
                     restart;
                 false ->
                     lists:foreach(
                       maybe_update_param(Sock, Stats, BucketName, _, JWT),
-                      Params)
+                      ChangedParams)
             end;
         Error ->
             Error
