@@ -41,8 +41,6 @@
 -define(MIN_TIMER_INTERVAL, ?get_param(min_timer_interval, 30000)).
 -define(TEST_SECRET_TIMEOUT, ?get_param(secret_test_timeout, 30000)).
 
--define(SECRET_TEST_INTERVAL, ?get_param(secret_test_interval, 300000)).
-
 -ifndef(TEST).
 -define(MAX_RECHECK_ROTATION_INTERVAL, ?get_param(rotation_recheck_interval,
                                                   ?SECS_IN_DAY*1000)).
@@ -981,6 +979,7 @@ init([Type]) ->
     Self = self(),
     EventFilter =
         fun (?CHRONICLE_SECRETS_KEY = K) -> {true, {config_change, K}};
+            (secrets_test_interval_s = K) -> {true, {config_change, K}};
             (Key) ->
                 case Type == ?NODE_PROC andalso
                      cb_deks:dek_chronicle_keys_filter(Key) of
@@ -1112,6 +1111,17 @@ handle_call(Request, _From, State) ->
 handle_cast(Msg, State) ->
     ?log_warning("Unhandled cast: ~p", [Msg]),
     {noreply, State}.
+
+handle_info({config_change, secrets_test_interval_s} = Msg,
+            #state{proc_type = ?NODE_PROC} = State) ->
+    ?log_debug("Secrets test interval has changed..."),
+    misc:flush(Msg),
+    NewState =
+        case get_secrets_test_interval_s() of
+            0 -> stop_timer(test_secrets, State);
+            T -> apply_timer_interval(test_secrets, T * 1000, State)
+        end,
+    {noreply, NewState};
 
 handle_info({config_change, ?CHRONICLE_SECRETS_KEY} = Msg,
             #state{proc_type = ?NODE_PROC, deks_info = Deks} = State) ->
@@ -2594,6 +2604,23 @@ restart_timer(Name, Time, Interval,
     ?log_debug("Starting ~p timer for ~b...", [Name, NewTime]),
     Ref = erlang:send_after(NewTime, self(), {timer, Name}),
     NewState#state{timers = Timers#{Name => {Ref, Interval}}}.
+
+-spec apply_timer_interval(atom(), pos_integer(), #state{}) -> #state{}.
+apply_timer_interval(Name, NewTime, #state{timers = Timers} = State)
+                                        when is_integer(NewTime), NewTime > 0 ->
+    case maps:get(Name, Timers) of
+        undefined ->
+            restart_timer(Name, NewTime, State);
+        {Ref, NewTime} when is_reference(Ref) -> %% No change
+            State;
+        {Ref, PrevTime} when is_reference(Ref) ->
+            case erlang:read_timer(Ref) of
+                false -> restart_timer(Name, NewTime, State);
+                TimeLeft ->
+                    ShouldBeTimeLeft = max(0, TimeLeft + (NewTime - PrevTime)),
+                    restart_timer(Name, ShouldBeTimeLeft, NewTime, State)
+            end
+    end.
 
 -spec min_timer_interval(atom()) -> non_neg_integer().
 min_timer_interval(retry_jobs) -> ?RETRY_TIME;
@@ -4244,12 +4271,21 @@ should_renew_secrets_usage_info() ->
 restart_test_secrets_timer(_, #state{proc_type = ?MASTER_PROC} = State) ->
     State;
 restart_test_secrets_timer(IsFirst, #state{proc_type = ?NODE_PROC} = State) ->
-    Interval = ?SECRET_TEST_INTERVAL,
+    Interval = case get_secrets_test_interval_s() of
+                   0 -> undefined;
+                   T -> T * 1000
+               end,
     Time = case IsFirst of
                true -> 0;
                false -> Interval
            end,
-    restart_timer(test_secrets, Time, Interval, State).
+    case Interval of
+        undefined ->
+            ?log_debug("Disabling test secrets timer"),
+            stop_timer(test_secrets, State);
+        _ ->
+            restart_timer(test_secrets, Time, Interval, State)
+    end.
 
 -spec run_periodic_test_for_secrets() -> ok.
 run_periodic_test_for_secrets() ->
@@ -4259,6 +4295,11 @@ run_periodic_test_for_secrets() ->
     ets:insert(?MODULE, {secrets_test_results,
                          {calendar:universal_time(), maps:from_list(Res)}}),
     ok.
+
+-spec get_secrets_test_interval_s() -> non_neg_integer().
+get_secrets_test_interval_s() ->
+    ns_config:search_node_with_default(secrets_test_interval_s,
+                                       ?SECRETS_TEST_INTERVAL_DEFAULT_S).
 
 -ifdef(TEST).
 replace_secret_in_list_test() ->

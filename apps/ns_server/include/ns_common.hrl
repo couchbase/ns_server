@@ -578,4 +578,6 @@
 -record(cgroup_system_info,
         {v2 = false :: boolean(), controllers = false :: boolean()}).
 
+-define(SECRETS_TEST_INTERVAL_DEFAULT_S, 300).
+
 -endif.
