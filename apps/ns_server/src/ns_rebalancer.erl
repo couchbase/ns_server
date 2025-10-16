@@ -1154,8 +1154,7 @@ map_to_vbuckets_dict(Map) ->
       fun ({V, Chain}, Acc) ->
               lists:foldl(fun (N, D) ->
                                   misc:dict_update(N, [V|_], [], D)
-                          end,
-                          Acc, lists:filter(_ =/= undefined, Chain))
+                          end, Acc, mb_map:only_defined(Chain))
       end, dict:new(), misc:enumerate(Map, 0)).
 
 bucket_failover_vbuckets(Bucket, DeltaNodes) ->
@@ -2171,7 +2170,7 @@ do_prepare_bucket_fusion_rebalance(PlanUUID, Bucket, BucketUUID, BucketConfig,
     {DestinationNodes, VBucketsToQuery} =
         lists:foldl(
           fun ({VB, CurrentChain, TargetChain}, {AccMap, AccList}) ->
-                  case TargetChain -- CurrentChain of
+                  case mb_map:only_defined(TargetChain) -- CurrentChain of
                       [] ->
                           {AccMap, AccList};
                       NodesToFill ->

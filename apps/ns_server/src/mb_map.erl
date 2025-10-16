@@ -32,7 +32,8 @@
          find_matching_past_maps/5,
          is_trivially_compatible_past_map/5,
          enumerate_chains/2,
-         align_replicas/2]).
+         align_replicas/2,
+         only_defined/1]).
 
 %% removes RemapNodes from head of vbucket map Map. Returns new map
 promote_replicas(undefined, _RemapNode) ->
@@ -412,10 +413,12 @@ balance(Map, NumReplicas, KeepNodes, Options) ->
             Map1
     end.
 
+-spec only_defined([node() | undefined]) -> [node()].
+only_defined(Chain) ->
+    lists:filter(_ =/= undefined, Chain).
 
-has_repeats([Chain|Map]) ->
-    lists:any(fun ({_, C}) -> C > 1 end,
-              misc:uniqc(lists:filter(fun (N) -> N /= undefined end, Chain)))
+has_repeats([Chain | Map]) ->
+    lists:any(fun ({_, C}) -> C > 1 end, misc:uniqc(only_defined(Chain)))
         orelse has_repeats(Map);
 has_repeats([]) ->
     false.

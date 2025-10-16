@@ -475,6 +475,36 @@ class FusionTests(testlib.BaseTestSet):
                                plan_uuid = plan_uuid,
                                wait = True)
 
+    def rebalance_out_the_last_replica_test(self):
+        self.init_fusion()
+        self.create_bucket('test', 1)
+
+        disconnected_nodes = self.cluster.disconnected_nodes()
+        second_node = disconnected_nodes[0]
+
+        self.cluster.add_node(second_node, services=[Service.KV])
+        self.cluster.rebalance()
+
+        testlib.post_succ(self.cluster, '/fusion/enable')
+        self.wait_for_state('enabling', 'enabled')
+
+        acc_plan = self.prepare_rebalance(
+            [self.cluster.connected_nodes[0].otp_node()])
+
+        plan_nodes = acc_plan["nodes"]
+        assert len(plan_nodes) == 0
+
+        plan_uuid = acc_plan["planUUID"]
+
+        resp = testlib.post_succ(
+            self.cluster,
+            f"/controller/fusion/uploadMountedVolumes?planUUID={plan_uuid}",
+            json={'nodes': []})
+
+        self.cluster.rebalance(ejected_nodes=[second_node],
+                               plan_uuid = plan_uuid,
+                               wait = True)
+
 def assert_json_error(json, field, prefix):
     assert isinstance(json, dict)
     assert len(json) == 1

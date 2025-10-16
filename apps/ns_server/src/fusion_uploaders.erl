@@ -123,8 +123,10 @@ calculate_moves(Bucket, Map, FastForwardMap, CurrentUploaders, Allowance) ->
     build_uploaders(Bucket, Zipped, CurrentUploaders, Allowance, moves).
 
 candidates({OldChain, NewChain, UploaderNode}) ->
-    NotFromScratch = NewChain -- lists:delete(UploaderNode, OldChain),
-    FromScratch = NewChain -- NotFromScratch,
+    NewChainNoUndefineds = mb_map:only_defined(NewChain),
+    NotFromScratch = NewChainNoUndefineds --
+        lists:delete(UploaderNode, OldChain),
+    FromScratch = NewChainNoUndefineds -- NotFromScratch,
     Choices = case NotFromScratch of
                   [] ->
                       length(FromScratch);
