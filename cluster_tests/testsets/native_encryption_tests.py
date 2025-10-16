@@ -3379,29 +3379,16 @@ def get_doc(cluster, bucket_name, key):
 
 
 def start_kmip_server(server_conf_path, pykmip_tmp_dir_path):
-    original_stdout = os.dup(1)
-    original_stderr = os.dup(2)
+    # The pykmip server log is verbose on standard out, it logs to
+    # server.log anyway so we redirect stdout to avoid cluttering
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(devnull_fd, 1)
+    os.dup2(devnull_fd, 2)
 
-    try:
-        # The pykmip server log is verbose on standard out, it logs to
-        # server.log anyways so we redirect stdout to avoid cluttering
-        devnull_fd = os.open(os.devnull, os.O_WRONLY)
-        os.dup2(devnull_fd, 1)
-        os.dup2(devnull_fd, 2)
-
-        server = KmipServer(config_path=server_conf_path,
-                            log_path=f'{pykmip_tmp_dir_path}/server.log')
-        server.start()
-        server.serve()
-    finally:
-        for fn in (
-            lambda: os.dup2(original_stdout, 1),
-            lambda: os.dup2(original_stderr, 2),
-            lambda: os.close(original_stdout),
-            lambda: os.close(original_stderr),
-            lambda: os.close(devnull_fd)
-        ):
-            with suppress(Exception): fn()
+    server = KmipServer(config_path=server_conf_path,
+                        log_path=f'{pykmip_tmp_dir_path}/server.log')
+    server.start()
+    server.serve()
 
 
 @contextmanager
