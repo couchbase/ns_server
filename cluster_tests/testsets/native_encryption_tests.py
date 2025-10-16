@@ -38,6 +38,7 @@ min_timer_interval = 1 # seconds
 dek_info_update_interval = 3 # seconds
 min_dek_gc_interval = 2 # seconds
 dek_counters_renew_interval = 1 # seconds
+key_test_interval = 1 # seconds
 default_max_deks = 50
 default_dek_lifetime = 60*60*24*365
 min_dek_lifetime = 60*60*24*30
@@ -71,6 +72,9 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         set_min_dek_gc_interval(self.cluster, min_dek_gc_interval)
         set_dek_counters_renew_interval(self.cluster,
                                         dek_counters_renew_interval)
+        testlib.post_succ(
+            self.cluster, '/settings/security',
+            data={'encryptionKeysTestIntervalSeconds': key_test_interval})
         non_kv_node = None
         for n in self.cluster.connected_nodes:
             if Service.KV not in n.get_services():
@@ -108,6 +112,8 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                    f'Secret {s_id} disappeared during tests'
         for s_id in self.pre_created_ids:
             delete_secret(self.cluster, s_id)
+        testlib.delete(self.cluster,
+                       f'/settings/security/encryptionKeysTestIntervalSeconds')
         set_dek_counters_renew_interval(self.cluster, None)
         set_min_dek_gc_interval(self.cluster, None)
         set_dek_info_update_interval(self.cluster, None)
@@ -2341,8 +2347,88 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                                  expected_code=400)
         assert_no_connection_error(err)
 
+        def assert_test_results():
+            secret = get_secret(non_kv_node, secret_id)
+            error_descr = "Missing test results for some nodes"
+            assert_secret_test_results(secret, "unknown",
+                                       expected_description=error_descr,
+                                       expected_success_nodes=[non_kv_node],
+                                       expected_missing_nodes=to_shutdown)
+
+        testlib.poll_for_condition(
+            assert_test_results,
+            sleep_time=1, attempts=50, retry_on_assert=True, verbose=True)
+
         [self.cluster.restart_node(n) for n in to_shutdown]
         self.cluster.wait_for_nodes_to_be_healthy()
+
+        def assert_test_results_after_restart():
+            secret = get_secret(non_kv_node, secret_id)
+            all_nodes = self.cluster.connected_nodes
+            assert_secret_test_results(secret, "ok",
+                                       expected_description="Test passed",
+                                       expected_success_nodes=all_nodes)
+
+        testlib.poll_for_condition(
+            assert_test_results_after_restart,
+            sleep_time=1, attempts=50, retry_on_assert=True, verbose=True)
+
+    @tag(Tag.LowUrgency)
+    def periodic_secret_test_test(self):
+        bad_creds_node = self.random_node()
+        all_nodes = self.cluster.connected_nodes
+        creds_file = write_good_aws_creds_file(bad_creds_node)
+        aws_secret = aws_test_secret(good_arn=True, usage=['KEK-encryption'],
+                                     creds_file=creds_file)
+        aws_id = create_secret(self.random_node(),
+                               aws_test_secret(good_arn=True,
+                                               usage=['KEK-encryption'],
+                                               creds_file=creds_file))
+        secret_id1 = create_secret(self.random_node(),
+                      cb_managed_secret(name='encrypted with aws key',
+                                        encrypt_with='encryptionKey',
+                                        encrypt_secret_id=aws_id))
+        secret_id2 = create_secret(self.random_node(),
+                      cb_managed_secret(name='not encrypted with aws key',
+                                        usage=['KEK-encryption']))
+
+        def assert_test_results_are_ok():
+            secrets = {s['id']: s for s in get_secrets(self.random_node())}
+            descr = "Test passed"
+            assert_secret_test_results(secrets[aws_id], "ok",
+                                       expected_description=descr,
+                                       expected_success_nodes=all_nodes)
+            assert_secret_test_results(secrets[secret_id1], "ok",
+                                       expected_description=descr,
+                                       expected_success_nodes=all_nodes)
+            assert_secret_test_results(secrets[secret_id2], "ok",
+                                       expected_description=descr,
+                                       expected_success_nodes=all_nodes)
+
+        testlib.poll_for_condition(
+            assert_test_results_are_ok,
+            sleep_time=1, attempts=50, retry_on_assert=True, verbose=True)
+
+        # Break the AWS key:
+        write_bad_aws_creds_file(bad_creds_node)
+
+        def assert_test_results_are_not_ok():
+            secrets = {s['id']: s for s in get_secrets(self.random_node())}
+            error_descr = "test encryption error"
+            assert_secret_test_results(secrets[aws_id], "error",
+                                       expected_description=error_descr,
+                                       expected_error_nodes=all_nodes)
+            assert_secret_test_results(secrets[secret_id1], "error",
+                                       expected_description=error_descr,
+                                       expected_error_nodes=all_nodes)
+            # Still success, because it's not encrypted with the bad key
+            assert_secret_test_results(secrets[secret_id2], "ok",
+                                       expected_description="Test passed",
+                                       expected_success_nodes=all_nodes)
+
+        testlib.poll_for_condition(
+            assert_test_results_are_not_ok,
+            sleep_time=1, attempts=50, retry_on_assert=True, verbose=True)
 
 
 # Set master password and restart the cluster
@@ -2737,18 +2823,21 @@ def azure_test_secret(name=None, usage=None, key_url=None):
 
 def write_good_aws_creds_file(node):
     path = aws_fake_creds_path(node)
+    print(f'writing good aws creds file to {path}')
     with open(path, "w") as f:
         f.write("TEST_AWS_CREDS")
     return path
 
 def write_bad_aws_creds_file(node):
     path = aws_fake_creds_path(node)
+    print(f'writing bad aws creds file to {path}')
     with open(path, "w") as f:
         f.write("TEST_BAD_AWS_CREDS")
     return path
 
 def delete_aws_fake_creds_file(node):
     path = aws_fake_creds_path(node)
+    print(f'deleting aws creds file {path}')
     if os.path.exists(path):
         os.remove(path)
 
@@ -3721,3 +3810,34 @@ def used_by_cfg():
 def used_by_log():
     return {'usage': f'log-encryption',
             'description': f'logs'}
+
+
+def assert_secret_test_results(secret, expected_status,
+                               expected_description=None,
+                               expected_missing_nodes=[],
+                               expected_error_nodes=[],
+                               expected_success_nodes=[]):
+    r = secret["testResults"]
+
+    print(f'secret {secret["id"]} ({secret["name"]}) test results: {r}')
+
+    assert r["status"] == expected_status, \
+           f'unexpected status: {r["status"]}, expected {expected_status}'
+
+    if expected_description is not None:
+        assert expected_description in r["description"], \
+           f'unexpected description: {r["description"]},' \
+           f'expected {expected_description}'
+
+    mn = sorted([n.hostname() for n in expected_missing_nodes])
+    en = sorted([n.hostname() for n in expected_error_nodes])
+    sn = sorted([n.hostname() for n in expected_success_nodes])
+    assert sorted(r["missingNodes"]) == mn, \
+           f'unexpected missing nodes: {r["missingNodes"]},' \
+           f'expected {mn}'
+    assert sorted(r["errorNodes"]) == en, \
+           f'unexpected error nodes: {r["errorNodes"]},' \
+           f'expected {en}'
+    assert sorted(r["successNodes"]) == sn, \
+           f'unexpected success nodes: {r["successNodes"]},' \
+           f'expected {sn}'
