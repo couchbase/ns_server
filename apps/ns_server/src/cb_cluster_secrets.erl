@@ -51,41 +51,59 @@
 -endif.
 
 -callback prepare_new_props(CreationTime :: calendar:datetime(),
-                            ValidatedProps :: map()) -> secret_props_data().
+                            ValidatedProps :: map(),
+                            ExtraArgs :: list()) -> secret_props_data().
 -callback modify_props(CurProps :: secret_props_data(),
-                       ValidatedProps :: map()) -> secret_props_data().
--callback sanitize_props(secret_props_data()) -> secret_props_data().
--callback persist(secret_props_data(), ExtraAD :: binary()) -> ok | {error, _}.
--callback generate_key(calendar:datetime()) ->
-              {ok, AbstractKey :: term()} | {error, _}.
+                       ValidatedProps :: map(),
+                       ExtraArgs :: list()) -> secret_props_data().
+-callback sanitize_props(secret_props_data(),
+                         ExtraArgs :: list()) -> secret_props_data().
+-callback persist(secret_props_data(),
+                  ExtraAD :: binary(), ExtraArgs :: list()) ->
+    ok | {error, _}.
+-callback generate_key(calendar:datetime(), ExtraArgs :: list()) ->
+    {ok, AbstractKey :: term()} | {error, _}.
 -callback set_new_active_key_in_props(AbstractKey :: term(),
-                                      secret_props_data()) ->
-              secret_props_data().
--callback historical_keys_to_remove_from_props(secret_props_data()) ->
-              [key_id()].
--callback get_next_rotation_time_from_props(secret_props_data()) ->
-              calendar:datetime() | undefined.
+                                      secret_props_data(),
+                                      ExtraArgs :: list()) ->
+    secret_props_data().
+-callback historical_keys_to_remove_from_props(secret_props_data(),
+                                               ExtraArgs :: list()) ->
+    [key_id()].
+-callback get_next_rotation_time_from_props(secret_props_data(),
+                                            ExtraArgs :: list()) ->
+    calendar:datetime() | undefined.
 -callback maybe_update_next_rotation_time_in_props(
-            secret_props_data(), CurTime :: calendar:datetime()) ->
-              {ok, secret_props_data()} | no_change | {error, not_supported}.
+            secret_props_data(), CurTime :: calendar:datetime(),
+            ExtraArgs :: list()) ->
+    {ok, secret_props_data()} | no_change | {error, not_supported}.
 -callback remove_historical_key_from_props(secret_props_data(),
-                                           KeyId :: key_id()) ->
-              {ok, secret_props_data()} | {error, _}.
--callback test_props(secret_props_data(), ExtraAD :: binary()) ->
-              ok | {error, _}.
--callback is_encrypted_by_secret_manager(secret_props_data()) -> boolean().
--callback get_active_key_id_from_props(secret_props_data()) ->
-              {ok, key_id()} | {error, _}.
--callback get_all_key_ids_from_props(secret_props_data()) -> [key_id()].
--callback get_key_ids_that_encrypt_props(secret_props_data()) -> [key_id()].
--callback get_secret_ids_that_encrypt_props(secret_props_data()) ->
-              [secret_id()].
--callback get_props_encryption_method(secret_props_data()) ->
-              cb_deks:encryption_method().
+                                           KeyId :: key_id(),
+                                           ExtraArgs :: list()) ->
+    {ok, secret_props_data()} | {error, _}.
+-callback test_props(secret_props_data(), ExtraAD :: binary(),
+                     ExtraArgs :: list()) ->
+    ok | {error, _}.
+-callback is_encrypted_by_secret_manager(secret_props_data(),
+                                         ExtraArgs :: list()) -> boolean().
+-callback get_active_key_id_from_props(secret_props_data(),
+                                       ExtraArgs :: list()) ->
+    {ok, key_id()} | {error, _}.
+-callback get_all_key_ids_from_props(secret_props_data(),
+                                     ExtraArgs :: list()) -> [key_id()].
+-callback get_key_ids_that_encrypt_props(secret_props_data(),
+                                         ExtraArgs :: list()) -> [key_id()].
+-callback get_secret_ids_that_encrypt_props(secret_props_data(),
+                                            ExtraArgs :: list()) ->
+    [secret_id()].
+-callback get_props_encryption_method(secret_props_data(),
+                                      ExtraArgs :: list()) ->
+    cb_deks:encryption_method().
 -callback maybe_reencrypt_props(secret_props_data(),
                                 get_active_id_fun(),
-                                ExtraAD :: binary()) ->
-              {ok, secret_props_data()} | no_change | {error, _}.
+                                ExtraAD :: binary(),
+                                ExtraArgs :: list()) ->
+    {ok, secret_props_data()} | no_change | {error, _}.
 
 %% API
 -export([start_link_node_monitor/0,
@@ -1281,18 +1299,18 @@ terminate(_Reason, _State) ->
 %%% Internal functions
 %%%===================================================================
 
--spec module_by_type(secret_type()) -> module().
+-spec module_by_type(secret_type()) -> {module(), ExtraArg::list()}.
 module_by_type(?CB_MANAGED_KEY_TYPE) ->
-    cb_managed_ear_key;
+    {cb_managed_ear_key, []};
 module_by_type(?AWSKMS_KEY_TYPE) ->
-    cb_aws_kms_ear_key;
+    {cb_kms_ear_key, [cb_aws_kms_ear_key]};
 module_by_type(?KMIP_KEY_TYPE) ->
-    cb_kmip_ear_key.
+    {cb_kmip_ear_key, []}.
 
 -spec call_module_by_type(secret_type(), atom(), [term()]) -> term().
 call_module_by_type(Type, Function, Args) ->
-    Module = module_by_type(Type),
-    erlang:apply(Module, Function, Args).
+    {Module, ExtraArgs} = module_by_type(Type),
+    erlang:apply(Module, Function, Args ++ [ExtraArgs]).
 
 -spec rotate_secret_by_id(secret_id(), boolean()) ->
           {ok, string()} |

@@ -15,24 +15,24 @@
 -include("ns_common.hrl").
 -include("cb_cluster_secrets.hrl").
 
--export([prepare_new_props/2,
-         modify_props/2,
-         sanitize_props/1,
-         persist/2,
-         generate_key/1,
-         set_new_active_key_in_props/2,
-         historical_keys_to_remove_from_props/1,
-         get_next_rotation_time_from_props/1,
-         maybe_update_next_rotation_time_in_props/2,
-         remove_historical_key_from_props/2,
-         test_props/2,
-         is_encrypted_by_secret_manager/1,
-         get_active_key_id_from_props/1,
-         get_all_key_ids_from_props/1,
-         get_key_ids_that_encrypt_props/1,
-         get_secret_ids_that_encrypt_props/1,
-         get_props_encryption_method/1,
-         maybe_reencrypt_props/3]).
+-export([prepare_new_props/3,
+         modify_props/3,
+         sanitize_props/2,
+         persist/3,
+         generate_key/2,
+         set_new_active_key_in_props/3,
+         historical_keys_to_remove_from_props/2,
+         get_next_rotation_time_from_props/2,
+         maybe_update_next_rotation_time_in_props/3,
+         remove_historical_key_from_props/3,
+         test_props/3,
+         is_encrypted_by_secret_manager/2,
+         get_active_key_id_from_props/2,
+         get_all_key_ids_from_props/2,
+         get_key_ids_that_encrypt_props/2,
+         get_secret_ids_that_encrypt_props/2,
+         get_props_encryption_method/2,
+         maybe_reencrypt_props/4]).
 
 -export_type([secret_props/0]).
 
@@ -57,8 +57,9 @@
                       kmip_id := binary(),
                       creation_time := calendar:datetime()}.
 
--spec prepare_new_props(calendar:datetime(), map()) -> secret_props().
-prepare_new_props(CreationTime, PropsFromValidator) ->
+-spec prepare_new_props(calendar:datetime(), map(), list()) ->
+          secret_props().
+prepare_new_props(CreationTime, PropsFromValidator, _) ->
     #{active_key := AK, key_passphrase := HiddenKP} = PropsFromValidator,
     KP = #{type => sensitive,
            data => ?UNHIDE(HiddenKP),
@@ -68,8 +69,8 @@ prepare_new_props(CreationTime, PropsFromValidator) ->
                         key_passphrase => KP,
                         hist_keys => []}.
 
--spec modify_props(secret_props(), map()) -> secret_props().
-modify_props(OldProps, PropsFromValidator) ->
+-spec modify_props(secret_props(), map(), list()) -> secret_props().
+modify_props(OldProps, PropsFromValidator, _) ->
     #{active_key := OldActive,
       hist_keys := HistKeys,
       key_passphrase := OldPassphrase} = OldProps,
@@ -125,41 +126,41 @@ modify_props(OldProps, PropsFromValidator) ->
                         hist_keys => NewHistKeys,
                         key_passphrase => KP}.
 
--spec sanitize_props(secret_props()) -> secret_props().
-sanitize_props(#{key_passphrase := D} = Props) ->
+-spec sanitize_props(secret_props(), list()) -> secret_props().
+sanitize_props(#{key_passphrase := D} = Props, _) ->
     Props#{key_passphrase => cb_cluster_secrets:sanitize_sensitive_data(D)}.
 
--spec persist(secret_props(), binary()) -> ok | {error, _}.
-persist(Props, ExtraAD) ->
+-spec persist(secret_props(), binary(), list()) -> ok | {error, _}.
+persist(Props, ExtraAD, _) ->
     ensure_kmip_kek_on_disk(Props, ExtraAD, false).
 
--spec generate_key(calendar:datetime()) -> {error, not_supported}.
-generate_key(_CreationTime) ->
+-spec generate_key(calendar:datetime(), list()) -> {error, not_supported}.
+generate_key(_CreationTime, _) ->
     {error, not_supported}.
 
--spec set_new_active_key_in_props(kmip_key(), secret_props()) ->
+-spec set_new_active_key_in_props(kmip_key(), secret_props(), list()) ->
           no_return().
-set_new_active_key_in_props(_Key, _Props) ->
+set_new_active_key_in_props(_Key, _Props, _) ->
     erlang:error(internal_error).
 
--spec historical_keys_to_remove_from_props(secret_props()) -> [].
-historical_keys_to_remove_from_props(#{}) ->
+-spec historical_keys_to_remove_from_props(secret_props(), list()) -> [].
+historical_keys_to_remove_from_props(#{}, _) ->
     [].
 
--spec get_next_rotation_time_from_props(secret_props()) -> undefined.
-get_next_rotation_time_from_props(#{}) ->
+-spec get_next_rotation_time_from_props(secret_props(), list()) -> undefined.
+get_next_rotation_time_from_props(#{}, _) ->
     undefined.
 
 -spec maybe_update_next_rotation_time_in_props(secret_props(),
-                                                calendar:datetime()) ->
+                                                calendar:datetime(), list()) ->
           {error, not_supported}.
-maybe_update_next_rotation_time_in_props(_Props, _CurTime) ->
+maybe_update_next_rotation_time_in_props(_Props, _CurTime, _) ->
     {error, not_supported}.
 
 -spec remove_historical_key_from_props(secret_props(),
-                                       cb_cluster_secrets:key_id()) ->
+                                       cb_cluster_secrets:key_id(), list()) ->
           {ok, secret_props()} | {error, active_key | not_found}.
-remove_historical_key_from_props(Props, KeyId) ->
+remove_historical_key_from_props(Props, KeyId, _) ->
     #{active_key := #{id := ActiveId}, hist_keys := HistKeys} = Props,
     case ActiveId of
         KeyId -> {error, active_key};
@@ -172,8 +173,8 @@ remove_historical_key_from_props(Props, KeyId) ->
             end
     end.
 
--spec test_props(secret_props(), binary()) -> ok | {error, _}.
-test_props(Props, ExtraAD) ->
+-spec test_props(secret_props(), binary(), list()) -> ok | {error, _}.
+test_props(Props, ExtraAD, _) ->
     %% Only testing active kmip id (the one that is being set basically)
     PropsWithoutHistKeys = Props#{hist_keys => []},
     maybe
@@ -185,33 +186,33 @@ test_props(Props, ExtraAD) ->
         {error, _} = E -> E
     end.
 
--spec is_encrypted_by_secret_manager(secret_props()) -> boolean().
-is_encrypted_by_secret_manager(#{encrypt_with := nodeSecretManager}) ->
+-spec is_encrypted_by_secret_manager(secret_props(), list()) -> boolean().
+is_encrypted_by_secret_manager(#{encrypt_with := nodeSecretManager}, _) ->
     true;
-is_encrypted_by_secret_manager(#{}) ->
+is_encrypted_by_secret_manager(#{}, _) ->
     false.
 
--spec get_active_key_id_from_props(secret_props()) ->
+-spec get_active_key_id_from_props(secret_props(), list()) ->
           {ok, cb_cluster_secrets:key_id()}.
-get_active_key_id_from_props(#{active_key := #{id := Id}}) ->
+get_active_key_id_from_props(#{active_key := #{id := Id}}, _) ->
     {ok, Id}.
 
--spec get_all_key_ids_from_props(secret_props()) ->
+-spec get_all_key_ids_from_props(secret_props(), list()) ->
           [cb_cluster_secrets:key_id()].
-get_all_key_ids_from_props(#{active_key := AK, hist_keys := Keys}) ->
+get_all_key_ids_from_props(#{active_key := AK, hist_keys := Keys}, _) ->
     lists:map(fun (#{id := Id}) -> Id end, [AK | Keys]).
 
--spec get_key_ids_that_encrypt_props(secret_props()) ->
+-spec get_key_ids_that_encrypt_props(secret_props(), list()) ->
           [cb_cluster_secrets:key_id()].
-get_key_ids_that_encrypt_props(#{key_passphrase := KP}) ->
+get_key_ids_that_encrypt_props(#{key_passphrase := KP}, _) ->
     case KP of
         #{encrypted_by := {_, KekId}} -> [KekId];
         #{encrypted_by := undefined} -> []
     end.
 
--spec get_secret_ids_that_encrypt_props(secret_props()) ->
+-spec get_secret_ids_that_encrypt_props(secret_props(), list()) ->
           [cb_cluster_secrets:secret_id()].
-get_secret_ids_that_encrypt_props(#{key_passphrase := KP} = Props) ->
+get_secret_ids_that_encrypt_props(#{key_passphrase := KP} = Props, _) ->
     L = case Props of
             #{encrypt_with := encryptionKey, encrypt_secret_id := Id} -> [Id];
             #{} -> []
@@ -222,19 +223,19 @@ get_secret_ids_that_encrypt_props(#{key_passphrase := KP} = Props) ->
         end,
     lists:uniq(L).
 
--spec get_props_encryption_method(secret_props()) ->
+-spec get_props_encryption_method(secret_props(), list()) ->
           cb_deks:encryption_method().
 get_props_encryption_method(#{encrypt_with := encryptionKey,
-                              encrypt_secret_id := Id}) ->
+                              encrypt_secret_id := Id}, _) ->
     {secret, Id};
-get_props_encryption_method(#{encrypt_with := nodeSecretManager}) ->
+get_props_encryption_method(#{encrypt_with := nodeSecretManager}, _) ->
     encryption_service.
 
 -spec maybe_reencrypt_props(secret_props(),
                             cb_cluster_secrets:get_active_id_fun(),
-                            binary()) ->
+                            binary(), list()) ->
           {ok, secret_props()} | no_change | {error, _}.
-maybe_reencrypt_props(Props, GetActiveId, ExtraAD) ->
+maybe_reencrypt_props(Props, GetActiveId, ExtraAD, _) ->
     Pass = maps:get(key_passphrase, Props),
     EncryptBy = maps:get(encrypt_with, Props, undefined),
     SecretId = maps:get(encrypt_secret_id, Props, undefined),
@@ -282,7 +283,7 @@ ensure_kmip_kek_on_disk(#{active_key := ActiveKey,
     end.
 ensure_props_encrypted(Props, ExtraAD, Snapshot) ->
     GetActiveId = cb_cluster_secrets:get_active_key_id(_, Snapshot),
-    case maybe_reencrypt_props(Props, GetActiveId, ExtraAD) of
+    case maybe_reencrypt_props(Props, GetActiveId, ExtraAD, []) of
         {ok, Encrypted} -> {ok, Encrypted};
         no_change -> {ok, Props};
         {error, _} = Error -> Error
