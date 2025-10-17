@@ -115,7 +115,8 @@
 }).
 
 -export([start_link/0, stop/0, local_alert/2, global_alert/2,
-         fetch_alerts/0, consume_alerts/1, reset/0]).
+         fetch_alerts/0, consume_alerts/1, reset/0,
+         filter_alerts/1]).
 
 -type alert_key() :: atom() | {atom(), any()}.
 
@@ -305,6 +306,19 @@ consume_alerts(VersionCookie) ->
 reset() ->
     gen_server:call(?MODULE, reset).
 
+-spec filter_alerts(fun(({atom(), node()} | atom()) -> boolean())) ->
+          ok | {error, timeout | retry}.
+filter_alerts(FilterFun) ->
+    try
+        gen_server:call(?MODULE, {filter_alerts, FilterFun})
+    catch
+        exit:timeout ->
+            {error, timeout};
+        exit:{noproc, {gen_server, call,
+                       [?MODULE, {filter_alerts, _}]}} ->
+            {error, retry}
+    end.
+
 stop() ->
     gen_server:cast(?MODULE, stop).
 
@@ -372,6 +386,40 @@ handle_call({add_alert, {AlertKey, _Other} = Key, Val}, _,
         _ ->
             {reply, ignored, State}
     end;
+
+handle_call({filter_alerts, FilterFun}, _From,
+            #state{history = Hist,
+                   queue = Queue,
+                   change_counter = Counter} = State) ->
+    {NewQueue, DeletedSet} =
+        lists:foldr(
+          fun ({{FullKey, Node}, _V, _T, _O} = E, {AccQ, AccR}) ->
+              case sets:is_element(FullKey, AccR) of
+                  true ->
+                      ?log_debug("Deleting alert ~p from ~p", [FullKey, Node]),
+                      {AccQ, AccR};
+                  false ->
+                      case FilterFun(FullKey) of
+                          true ->
+                              {[E | AccQ], AccR};
+                          false ->
+                              ?log_debug("Deleting alert ~p from ~p",
+                                          [FullKey, Node]),
+                              {AccQ, sets:add_element(FullKey, AccR)}
+                      end
+              end
+          end, {[], sets:new()}, Queue),
+    NewHistory = lists:filter(
+                   fun ({{FullKey, _Node}, _V, _T, _O, _}) ->
+                       not sets:is_element(FullKey, DeletedSet)
+                   end, Hist),
+    NewCounter = case sets:is_empty(DeletedSet) of
+                     true -> Counter;
+                     false -> Counter + 1
+                 end,
+    {reply, ok, State#state{queue = NewQueue,
+                            history = NewHistory,
+                            change_counter = NewCounter}};
 
 handle_call(reset, _From, #state{} = State) ->
     {reply, ok, State#state{queue = [], history = []}}.

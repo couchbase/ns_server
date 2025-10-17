@@ -213,6 +213,7 @@
 -type uuid() :: binary(). %% uuid as binary string
 -type node_job() :: garbage_collect_keks |
                     ensure_all_keks_on_disk |
+                    cleanup_alerts |
                     {dek_job(), cb_deks:dek_kind()}.
 
 -type dek_job() :: maybe_update_deks | garbage_collect_deks |
@@ -1016,7 +1017,8 @@ init([Type]) ->
                                        {garbage_collect_deks, K}]
                                   end, Kinds) ++
                    [garbage_collect_keks,
-                    ensure_all_keks_on_disk] ++
+                    ensure_all_keks_on_disk,
+                    cleanup_alerts] ++
                    [{maybe_reencrypt_deks, K} || K <- Kinds]
            end,
 
@@ -1133,8 +1135,9 @@ handle_info({config_change, ?CHRONICLE_SECRETS_KEY} = Msg,
     ?log_debug("Secrets in chronicle have changed..."),
     misc:flush(Msg),
     Kinds = maps:keys(Deks),
-    NewJobs = [garbage_collect_keks,       %% Removal of cb_managed keks and AWS
-               ensure_all_keks_on_disk] ++ %% Adding keks + AWS key change
+    NewJobs = [garbage_collect_keks,    %% Removal of cb_managed keks and AWS
+               ensure_all_keks_on_disk, %% Adding keks + AWS key change
+               cleanup_alerts] ++       %% Remove alerts for removed secrets
               [{maybe_reencrypt_deks, K} || K <- Kinds], %% Keks rotation
     {noreply, add_and_run_jobs(NewJobs, State)};
 
@@ -1464,6 +1467,16 @@ ensure_all_keks_on_disk(#state{kek_hashes_on_disk = Vsns} = State, Snapshot) ->
         ok -> {ok, NewState};
         {error, Reason} -> {error, NewState, Reason}
     end.
+
+-spec cleanup_alerts() -> ok.
+cleanup_alerts() ->
+    AllIdsSet = sets:from_list([Id || #{id := Id} <- get_all()]),
+    menelaus_web_alerts_srv:filter_alerts(
+      fun ({encr_at_rest_key_test_failed, Id}) ->
+              sets:is_element(Id, AllIdsSet);
+          (_) ->
+              true
+      end).
 
 -spec persist_keks(Hashes, Snapshot) ->
           {ok, Hashes} |
@@ -2550,6 +2563,8 @@ do(garbage_collect_keks, _) ->
     garbage_collect_keks();
 do(ensure_all_keks_on_disk, State) ->
     ensure_all_keks_on_disk(State);
+do(cleanup_alerts, _) ->
+    cleanup_alerts();
 do(maybe_reencrypt_secrets, _) ->
     maybe_reencrypt_secrets();
 do(maybe_remove_historical_keys, State) ->
