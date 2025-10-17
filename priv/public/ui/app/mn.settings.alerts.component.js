@@ -206,6 +206,7 @@ class MnSettingsAlertsComponent extends MnLifeCycleHooksToStream {
       case knownAlerts[23]: return 'Disk usage is within 10% of maximum for data service mutations';
       case knownAlerts[24]: return 'Index has diverging replicas';
       case knownAlerts[25]: return 'XDCR replication has deleted items';
+      case knownAlerts[26]: return 'Encryption-at-Rest key validation event failed';
     }
   }
 }

@@ -162,6 +162,8 @@ short_description(indexer_diverging_replicas) ->
     "index has diverging replicas";
 short_description(xdcr_replication_deleted) ->
     "XDCR replication(s) deleted";
+short_description(encr_at_rest_key_test_failed) ->
+    "encryption-at-rest key test failed";
 short_description(Other) ->
     %% this case is needed for tests to work
     couch_util:to_list(Other).
@@ -499,7 +501,11 @@ config_upgrade_to_totoro(Config) ->
               EmailAlerts,
                   [add_proplist_list_elem(alerts, xdcr_replication_deleted, _),
                    add_proplist_list_elem(pop_up_alerts,
-                                          xdcr_replication_deleted, _)])
+                                          xdcr_replication_deleted, _),
+                   add_proplist_list_elem(alerts,
+                                          encr_at_rest_key_test_failed, _),
+                   add_proplist_list_elem(pop_up_alerts,
+                                          encr_at_rest_key_test_failed, _)])
     end.
 
 %% @doc Sends any previously queued email alerts. Generally called when we first
@@ -1897,9 +1903,11 @@ config_upgrade_to_totoro_test() ->
             {alerts, [ip, time_out_of_sync]}]}]],
     Expected1 = [{set, email_alerts,
                   [{pop_up_alerts,
-                    [disk, ip, xdcr_replication_deleted]},
+                    [disk, encr_at_rest_key_test_failed, ip,
+                     xdcr_replication_deleted]},
                    {alerts,
-                    [ip, time_out_of_sync, xdcr_replication_deleted]}]}],
+                    [encr_at_rest_key_test_failed, ip, time_out_of_sync,
+                     xdcr_replication_deleted]}]}],
     ?assertEqual(Expected1, config_upgrade_to_totoro(Config1)).
 
 %% Test that the stuck time is correctly updated based on rebalance progress

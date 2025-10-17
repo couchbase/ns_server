@@ -149,7 +149,8 @@
          import_bucket_dek_files/3,
          sanitize_sensitive_data/1,
          maybe_reencrypt_data/5,
-         get_latest_test_results/0]).
+         get_latest_test_results/0,
+         alert_keys/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -969,6 +970,10 @@ get_latest_test_results() ->
     catch
         error:badarg -> #{}
     end.
+
+-spec alert_keys() -> [atom()].
+alert_keys() ->
+    [encr_at_rest_key_test_failed].
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -4292,8 +4297,18 @@ run_periodic_test_for_secrets() ->
     Res = lists:map(fun (#{id := Id, name := Name} = S) ->
                         {Id, {Name, test_secret_props(S)}}
                     end, get_all()),
+    DateTime = calendar:universal_time(),
+    lists:foreach(
+      fun ({Id, {Name, {error, Reason}}}) ->
+              Msg = menelaus_web_secrets:format_error(
+                      {key_test_alert, Reason, Name, node(), DateTime}),
+              menelaus_web_alerts_srv:global_alert(
+                {encr_at_rest_key_test_failed, Id}, iolist_to_binary(Msg));
+          ({_Id, {_Name, _R}}) ->
+              ok
+      end, Res),
     ets:insert(?MODULE, {secrets_test_results,
-                         {calendar:universal_time(), maps:from_list(Res)}}),
+                         {DateTime, maps:from_list(Res)}}),
     ok.
 
 -spec get_secrets_test_interval_s() -> non_neg_integer().

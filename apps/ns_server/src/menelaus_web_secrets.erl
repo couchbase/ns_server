@@ -1149,6 +1149,15 @@ format_error(retry) ->
     "Please try again later";
 format_error(forbidden) ->
     "Forbidden";
+format_error({key_test_alert, Reason, Name, Node, DateTime}) ->
+    DateTimeStr = iso8601:format(DateTime),
+    ReasonStr = format_error(Reason),
+    Host = misc:extract_node_address(Node),
+    lists:flatten(
+      io_lib:format(
+        "Encryption-at-Rest key validation event at ~s: FAILED on node \"~s\" "
+        "for key \"~s\". Error details: \"~s\".",
+        [DateTimeStr, Host, Name, ReasonStr]));
 format_error(Reason) ->
     lists:flatten(io_lib:format("~p", [Reason])).
 

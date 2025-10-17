@@ -246,7 +246,7 @@ build_alerts_config(Args) ->
 %% implement an alert_keys/0 function that returns all its alert keys.
 -spec alert_keys() -> [atom()].
 alert_keys() ->
-    Modules = [auto_failover, menelaus_web_alerts_srv],
+    Modules = [auto_failover, menelaus_web_alerts_srv, cb_cluster_secrets],
     Keys = [M:alert_keys() || M <- Modules],
     lists:append(Keys).
 
