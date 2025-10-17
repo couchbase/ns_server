@@ -123,19 +123,22 @@ init({Bucket, Nodes, OldMap, NewMap, ProgressCallback, RebalancePlan,
       FusionUploadersInfo}) ->
     case is_swap_rebalance(OldMap, NewMap) of
         true ->
-            ale:info(?USER_LOGGER, "Bucket ~p rebalance appears to be swap rebalance", [Bucket]);
+            ale:info(?USER_LOGGER, "Bucket ~p rebalance appears to be swap "
+                     "rebalance", [Bucket]);
         false ->
-            ale:info(?USER_LOGGER, "Bucket ~p rebalance does not seem to be swap rebalance", [Bucket])
+            ale:info(?USER_LOGGER, "Bucket ~p rebalance does not seem to be "
+                     "swap rebalance", [Bucket])
     end,
     self() ! spawn_initial,
     process_flag(trap_exit, true),
     Self = self(),
-    Subscription = ns_pubsub:subscribe_link(ns_node_disco_events,
-                                            fun ({ns_node_disco_events, _, _} = Event) ->
-                                                    Self ! Event;
-                                                (_) ->
-                                                    ok
-                                            end),
+    Subscription = ns_pubsub:subscribe_link(
+                     ns_node_disco_events,
+                     fun ({ns_node_disco_events, _, _} = Event) ->
+                             Self ! Event;
+                         (_) ->
+                             ok
+                     end),
 
     ok = janitor_agent:prepare_nodes_for_rebalance(Bucket, Nodes, self()),
 
