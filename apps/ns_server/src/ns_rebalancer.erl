@@ -852,7 +852,7 @@ run_mover(Bucket, Config, KeepNodes, ProgressFun, Map, FastForwardMap,
     ns_bucket:set_fast_forward_map(Bucket, FastForwardMap),
     misc:with_trap_exit(
       fun () ->
-              {ok, Pid} = ns_vbucket_mover:start_link(Bucket, Servers,
+              {ok, Pid} = ns_vbucket_mover:start_link(Bucket, Config, Servers,
                                                       Map, FastForwardMap,
                                                       ProgressFun,
                                                       RebalancePlan,

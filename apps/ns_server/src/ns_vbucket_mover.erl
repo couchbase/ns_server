@@ -24,7 +24,7 @@
         ns_config:read_key_fast(rebalance_inflight_moves_per_node, 64)).
 
 %% API
--export([start_link/7]).
+-export([start_link/8]).
 
 %% gen_server callbacks
 -export([code_change/3, init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -50,17 +50,16 @@
 %%
 
 %% @doc Start the mover.
--spec start_link(bucket_name(), [node()],
+-spec start_link(ns_bucket:name(), ns_bucket:config(), [node()],
                  vbucket_map(), vbucket_map(), progress_callback(),
                  list() | undefined,
                  fusion_uploaders:fast_forward_info() | undefined) ->
           {ok, pid()} | {error, any()}.
-start_link(Bucket, Nodes, OldMap, NewMap, ProgressCallback, RebalancePlan,
-           FusionUploadersInfo) ->
-    gen_server:start_link(?MODULE,
-                          {Bucket, Nodes, OldMap, NewMap, ProgressCallback,
-                           RebalancePlan, FusionUploadersInfo},
-                          []).
+start_link(Bucket, BucketConfig, Nodes, OldMap, NewMap, ProgressCallback,
+           RebalancePlan, FusionUploadersInfo) ->
+    gen_server:start_link(
+      ?MODULE, {Bucket, BucketConfig, Nodes, OldMap, NewMap, ProgressCallback,
+                RebalancePlan, FusionUploadersInfo}, []).
 
 note_move_done(Pid, Worker) ->
     Pid ! {move_done, Worker}.
@@ -119,8 +118,19 @@ is_swap_rebalance(OldMap, NewMap) ->
             false
     end.
 
-init({Bucket, Nodes, OldMap, NewMap, ProgressCallback, RebalancePlan,
-      FusionUploadersInfo}) ->
+file_based_backfill_enabled(BucketConfig) ->
+    ns_config:read_key_fast(file_based_backfill_enabled,
+                            ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT) andalso
+        ns_bucket:is_persistent(BucketConfig) andalso
+        not ns_bucket:eviction_policy_migration_in_progress(BucketConfig)
+        andalso
+    %% MB-68800: Enable FBR only for fullEviction temporarily
+        ns_bucket:eviction_policy(BucketConfig) =:= full_eviction andalso
+        lists:member(ns_bucket:get_fusion_state(BucketConfig),
+                     [disabled, stopped]).
+
+init({Bucket, BucketConfig, Nodes, OldMap, NewMap, ProgressCallback,
+      RebalancePlan, FusionUploadersInfo}) ->
     case is_swap_rebalance(OldMap, NewMap) of
         true ->
             ale:info(?USER_LOGGER, "Bucket ~p rebalance appears to be swap "
@@ -146,30 +156,10 @@ init({Bucket, Nodes, OldMap, NewMap, ProgressCallback, RebalancePlan,
     ets:new(workers, [named_table, private, set]),
 
     Quirks = rebalance_quirks:get_quirks(Nodes, project_intact),
-    Options = case RebalancePlan of
-                  undefined ->
-                      [];
-                  _ ->
-                      [{fusion_use_snapshot, true}]
-              end ++
-        case ns_config:read_key_fast(
-               file_based_backfill_enabled,
-               ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT) of
-            true ->
-                {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
-                %% MB-68800: Enable FBR only for fullEviction temporarily
-                case ns_bucket:is_persistent(BucketConfig) andalso
-                    ns_bucket:eviction_policy_migration_in_progress(
-                      BucketConfig) =:= false andalso
-                    ns_bucket:eviction_policy(BucketConfig) =:= full_eviction of
-                    true ->
-                        [{file_based_backfill_enabled, true}];
-                    false ->
-                        []
-                end;
-            false ->
-                []
-        end,
+    Options =
+        [{fusion_use_snapshot, true} || RebalancePlan =/= undefined] ++
+        [{file_based_backfill_enabled, true} ||
+            file_based_backfill_enabled(BucketConfig)],
     SchedulerState = vbucket_move_scheduler:prepare(
                        OldMap, NewMap, Quirks,
                        menelaus_web_settings:get_rebalance_moves_per_node(),
