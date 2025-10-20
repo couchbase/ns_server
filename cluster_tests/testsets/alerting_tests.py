@@ -26,9 +26,6 @@ class AlertTests(testlib.BaseTestSet):
 
     def setup(self):
         testlib.diag_eval(self.cluster, "menelaus_web_alerts_srv:reset().")
-        limits = testlib.get_succ(self.cluster, "/settings/alerts/limits")\
-            .json()
-        self.prev_cert_expiration = limits["certExpirationDays"]
 
         # Set alert check interval to 1s
         testlib.diag_eval(self.cluster,
@@ -38,58 +35,43 @@ class AlertTests(testlib.BaseTestSet):
                           "menelaus_web_alerts_srv ! check_alerts")
 
     def teardown(self):
-        testlib.diag_eval(self.cluster, "menelaus_web_alerts_srv:reset().")
-        testlib.post_succ(self.cluster, "/settings/alerts/limits",
-                          data={"certExpirationDays":
-                                str(self.prev_cert_expiration)})
-
         # Set alert check interval back to default 60s
         testlib.diag_eval(self.cluster,
                           "ns_config:delete({timeout,{menelaus_web_alerts_srv,"
                           "sample_rate}})")
 
+    def test_teardown(self):
+        testlib.diag_eval(self.cluster, "menelaus_web_alerts_srv:reset().")
+
     def cert_about_to_expire_alert_test(self):
-        node_data_dir = self.cluster.connected_nodes[0].data_path()
-        certs_dir = os.path.join(node_data_dir, "config", "certs")
-        cert_path = os.path.join(certs_dir, "chain.pem")
-        client_cert_path = os.path.join(certs_dir, "client_chain.pem")
-        expiration1 = get_expiration_for_cert(cert_path)
-        expiration2 = get_expiration_for_cert(client_cert_path)
-        max_expiration = max(expiration1, expiration2)
+        limits = testlib.get_succ(self.cluster, "/settings/alerts/limits")\
+            .json()
+        prev_cert_expiration = limits["certExpirationDays"]
+        try:
+            node_data_dir = self.cluster.connected_nodes[0].data_path()
+            certs_dir = os.path.join(node_data_dir, "config", "certs")
+            cert_path = os.path.join(certs_dir, "chain.pem")
+            client_cert_path = os.path.join(certs_dir, "client_chain.pem")
+            expiration1 = get_expiration_for_cert(cert_path)
+            expiration2 = get_expiration_for_cert(client_cert_path)
+            max_expiration = max(expiration1, expiration2)
 
-        testlib.post_succ(self.cluster, "/settings/alerts/limits",
-                          data={"certExpirationDays": str(max_expiration)})
+            testlib.post_succ(self.cluster, "/settings/alerts/limits",
+                            data={"certExpirationDays": str(max_expiration)})
 
-        def check_alert():
-            r = testlib.get_succ(self.cluster, "/pools/default").json()
-            alerts = r["alerts"]
-            if len(alerts) < 2:
-                print(f"Alert check failed, expected >= 2 alerts, got {alerts}")
-                return False
+            alert_regexps = [
+                r"^Server certificate for node .+ will expire at .+$",
+                r"^Client certificate on node .+ will expire at .+$"
+            ]
+            testlib.poll_for_condition(
+                lambda: assert_alerts(self.cluster, alert_regexps),
+                sleep_time=1, timeout=120, verbose=True, retry_on_assert=True,
+                msg="wait for cert expiration alert")
+        finally:
+            testlib.post_succ(self.cluster, "/settings/alerts/limits",
+                              data={"certExpirationDays":
+                                    str(prev_cert_expiration)})
 
-            regex = r"^Server certificate for node .+ will expire at .+$"
-
-            def is_expected(x): return re.match(regex, x["msg"]) is not None
-            has_node_alert = any(map(is_expected, alerts))
-
-            if not has_node_alert:
-                print(f"Alert check failed, expected {regex}, got {alerts}")
-                return False
-
-            regex = r"^Client certificate on node .+ will expire at .+$"
-
-            def is_expected(x): return re.match(regex, x["msg"]) is not None
-            has_client_alert = any(map(is_expected, alerts))
-
-            if not has_client_alert:
-                print(f"Alert check failed, expected {regex}, got {alerts}")
-                return False
-
-            return True
-
-        testlib.poll_for_condition(check_alert, sleep_time=1, timeout=120,
-                                   verbose=True,
-                                   msg="wait for cert expiration alert")
     def to_node(self):
         return self.cluster._nodes[1]
 
@@ -214,8 +196,6 @@ class AlertTests(testlib.BaseTestSet):
                                    timeout=300)
 
     def prometheus_metrics_alerts_test(self):
-        testlib.diag_eval(self.cluster, "menelaus_web_alerts_srv:reset().")
-
         eval_string = """lists:map(
   fun(T) -> menelaus_web_alerts_srv:local_alert({T, node()}, <<"test">>) end,
   menelaus_alert:alert_keys())."""
@@ -240,7 +220,6 @@ class AlertTests(testlib.BaseTestSet):
 
         testlib.poll_for_condition(check_alert_metric_recorded, sleep_time=2,
                                    timeout=120)
-        testlib.diag_eval(self.cluster, "menelaus_web_alerts_srv:reset().")
 
 
 def get_expiration_for_cert(cert_path):
@@ -256,3 +235,20 @@ def get_expiration_for_cert(cert_path):
     will_expire_in = (expire_datetime - now_datetime).days + 1
     print(f"cert will expire in {will_expire_in} days")
     return will_expire_in
+
+
+def assert_alerts(cluster, expected_alerts_regexps):
+    r = testlib.get_succ(cluster, "/pools/default").json()
+    alerts = r["alerts"]
+    print(f"alerts: {alerts}")
+    expected_alerts_count = len(expected_alerts_regexps)
+    assert len(alerts) >= expected_alerts_count, \
+           f"Alert check failed, expected {expected_alerts_count} " \
+           f"alerts, got {alerts}"
+
+    for expected_regex in expected_alerts_regexps:
+        present = lambda x: re.match(expected_regex, x["msg"]) is not None
+        has_alert = any(map(present, alerts))
+        assert has_alert, \
+               f"Alert check failed, expected {expected_regex}, got {alerts}"
+    return True
