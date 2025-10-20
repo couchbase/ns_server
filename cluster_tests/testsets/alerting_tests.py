@@ -10,12 +10,23 @@ import testlib
 from datetime import datetime
 import os
 import re
+import random
+import time
 from cryptography import x509
 import urllib.parse
+from testsets.native_encryption_tests import create_secret, \
+                                             delete_secret, \
+                                             aws_test_secret, \
+                                             write_good_aws_creds_file, \
+                                             write_bad_aws_creds_file, \
+                                             set_min_timer_interval
 
 import sys
 sys.path.append(testlib.get_pylib_dir())
 import cluster_run_lib
+
+alert_check_interval_s = 1 # seconds
+
 
 class AlertTests(testlib.BaseTestSet):
 
@@ -30,7 +41,7 @@ class AlertTests(testlib.BaseTestSet):
         # Set alert check interval to 1s
         testlib.diag_eval(self.cluster,
                           "ns_config:set({timeout,{menelaus_web_alerts_srv,"
-                          "sample_rate}}, 1000)")
+                          f"sample_rate}}}}, {alert_check_interval_s * 1000})")
         testlib.diag_eval(self.cluster,
                           "menelaus_web_alerts_srv ! check_alerts")
 
@@ -221,6 +232,50 @@ class AlertTests(testlib.BaseTestSet):
         testlib.poll_for_condition(check_alert_metric_recorded, sleep_time=2,
                                    timeout=120)
 
+    def encr_at_rest_key_test_failed_alert_test(self):
+        Key = '/settings/security/encryptionKeysTestIntervalSeconds'
+        OrigInterval = testlib.get_succ(self.cluster, Key).json()
+        aws_secret_id = None
+        try:
+            set_min_timer_interval(self.cluster, 1)
+            testlib.post_succ(self.cluster, Key, data='1')
+            bad_creds_node = random.choice(self.cluster.connected_nodes)
+            creds_file = write_good_aws_creds_file(bad_creds_node)
+            aws_secret = aws_test_secret(name='AWS Key', good_arn=True,
+                                         creds_file=creds_file)
+            aws_secret_id = create_secret(bad_creds_node, aws_secret)
+            bad_node_hostname = bad_creds_node.addr()
+            KeyAlertRegex = \
+              r'^Encryption-at-Rest key validation event at .+: FAILED ' \
+              fr'on node "{bad_node_hostname}" for key "AWS Key"\. ' \
+              r'Error details: "encryption failed: test encryption error"\.$'
+
+            # Wait for alerts to be checked, and make sure no alert is generated
+            time.sleep(alert_check_interval_s + 1)
+            assert_no_alerts(self.cluster, [KeyAlertRegex])
+
+            # Write bad credentials and wait for alert to be generated
+            write_bad_aws_creds_file(bad_creds_node)
+            testlib.poll_for_condition(
+                lambda: assert_alerts(self.cluster, [KeyAlertRegex]),
+                sleep_time=1, timeout=60, verbose=True, retry_on_assert=True,
+                msg='wait for key validation alert')
+
+            # Delete the secret and wait for alert to disappear
+            delete_secret(bad_creds_node, aws_secret_id)
+            aws_secret_id = None
+            testlib.poll_for_condition(
+                lambda: assert_no_alerts(self.cluster, [KeyAlertRegex]),
+                sleep_time=1, timeout=60, verbose=True, retry_on_assert=True,
+                msg='wait for key validation alert')
+
+        finally:
+            # Restore original interval
+            testlib.post_succ(self.cluster, Key, data=str(OrigInterval))
+            set_min_timer_interval(self.cluster, None)
+            if aws_secret_id is not None:
+                delete_secret(bad_creds_node, aws_secret_id)
+
 
 def get_expiration_for_cert(cert_path):
     print(f"Extracting expiration for {cert_path}")
@@ -251,4 +306,16 @@ def assert_alerts(cluster, expected_alerts_regexps):
         has_alert = any(map(present, alerts))
         assert has_alert, \
                f"Alert check failed, expected {expected_regex}, got {alerts}"
+    return True
+
+
+def assert_no_alerts(cluster, unwanted_alerts_regexps):
+    r = testlib.get_succ(cluster, '/pools/default').json()
+    alerts = r['alerts']
+    print(f'alerts: {alerts}')
+    for unwanted_regex in unwanted_alerts_regexps:
+        present = lambda x: re.match(unwanted_regex, x['msg']) is not None
+        has_alert = any(map(present, alerts))
+        assert not has_alert, \
+               f"Unwanted alert found, unwanted {unwanted_regex}, got {alerts}"
     return True
