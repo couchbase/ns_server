@@ -122,6 +122,7 @@ file_based_backfill_enabled(BucketConfig) ->
     ns_config:read_key_fast(file_based_backfill_enabled,
                             ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT) andalso
         ns_bucket:is_persistent(BucketConfig) andalso
+        not ns_bucket:storage_mode_migration_in_progress(BucketConfig) andalso
         not ns_bucket:eviction_policy_migration_in_progress(BucketConfig)
         andalso
     %% MB-68800: Enable FBR only for fullEviction temporarily
