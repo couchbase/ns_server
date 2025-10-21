@@ -816,8 +816,10 @@ azurekms_key_validators(CurSecretProps) ->
      validator:validate(fun (_) -> {error, "read only"} end, storedKeyIds, _)
     ] ++
     case CurSecretProps of
-        #{data := #{key_url := KeyURL}} ->
-            [enforce_static_field_validator(keyURL, KeyURL, _)];
+        #{data := #{key_url := KeyURL,
+                    encryption_algorithm := Algorithm}} ->
+            [enforce_static_field_validator(keyURL, KeyURL, _),
+             enforce_static_field_validator(encryptionAlgorithm, Algorithm, _)];
         #{} when map_size(CurSecretProps) == 0 ->
             []
     end.
