@@ -990,6 +990,8 @@ do_handle_call({mark_warmed, DataIngress}, _From,
     {reply, RV, State};
 do_handle_call({mount_volumes, VBuckets, Volumes}, From,
                #state{bucket_name = Bucket} = State) ->
+    ?log_debug("Mounting volumes ~p for bucket ~p vbuckets ~p",
+               [Volumes, Bucket, VBuckets]),
     spawn_rebalance_subprocess(
       State, From,
       fun () ->
