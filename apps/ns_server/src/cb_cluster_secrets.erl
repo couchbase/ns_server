@@ -3886,13 +3886,17 @@ dummy_deks_info(DataStatus, Issues) ->
         end, Kinds)).
 
 log_succ_kek_rotation(Id, Name, IsAutomatic) ->
+    ale:info(?USER_LOGGER,
+             "Encryption key \"~s\" (~p) has been rotated successfully",
+             [Name, Id]),
     event_log:add_log(encryption_key_rotated,
                       [{encryption_key_id, Id},
                        {encryption_key_name, iolist_to_binary(Name)},
                        {is_automatic, IsAutomatic}]).
 
 log_unsucc_kek_rotation(Id, Name, Reason, IsAutomatic) ->
-    ale:error(?USER_LOGGER, "KEK rotation failed for ~s (id ~p): ~s",
+    ale:error(?USER_LOGGER,
+              "Encryption key \"~s\" (~p) rotation FAILED: \"~s\".",
               [Name, Id, menelaus_web_secrets:format_error(Reason)]),
     event_log:add_log(encryption_key_rotation_failed,
                       [{encryption_key_id, Id},
@@ -3901,6 +3905,8 @@ log_unsucc_kek_rotation(Id, Name, Reason, IsAutomatic) ->
                        {reason, format_failure_reason(Reason)}]).
 
 log_succ_dek_rotation(Kind, NewDekId) ->
+    ale:info(?USER_LOGGER, "DEK for ~s has been rotated successfully",
+             [cb_deks:kind2bin(Kind, <<"unknown">>)]),
     event_log:add_log(encr_at_rest_dek_rotated,
                       [{kind, cb_deks:kind2bin(Kind, <<"unknown">>)},
                        {new_DEK_UUID, NewDekId}]).
