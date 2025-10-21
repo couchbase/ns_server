@@ -104,11 +104,15 @@ handle_info(refresh, MonitorState) ->
     %% Whenever master changes, mb_master can post an event which this
     %% module can listen to.
     %% Similar thing can be done for the orchestrator.
-    Master = case mb_master:master_node() of
+    Master = try mb_master:master_node() of
                  undefined ->
                      [];
                  M ->
                      [M]
+             catch
+                exit:{noproc,
+                      {gen_statem, call, [mb_master, master_node | _]}} ->
+                    []
              end,
     SendTo = lists:umerge3(Orchestrator, Master, [node()]),
 
