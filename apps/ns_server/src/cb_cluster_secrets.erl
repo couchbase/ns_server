@@ -3997,7 +3997,12 @@ notify_kind_gauge(Gauge, Kind, Val, Opts) ->
 all_kind_stat_names() ->
     [<<"encr_at_rest_generate_dek">>,
      <<"encr_at_rest_generate_dek_failures">>,
-     <<"encr_at_rest_drop_deks_events">>].
+     <<"encr_at_rest_drop_deks_events">>,
+     <<"encr_at_rest_retire_key_events">>,
+     <<"encr_at_rest_retire_key_failures">>,
+     <<"encr_at_rest_deks_imported">>,
+     <<"encr_at_rest_deks_import_skipped">>,
+     <<"encr_at_rest_deks_import_failures">>].
 
 create_encryption_key_stats(Name) ->
     ns_server_stats:create_counter(
