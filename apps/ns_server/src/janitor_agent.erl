@@ -27,7 +27,7 @@
 -define(GET_SRC_DST_REPLICATIONS_TIMEOUT,
         ?get_timeout(get_src_dst_replications, 30000)).
 -define(QUERY_VBUCKETS_SLEEP, ?get_param(query_vbuckets_sleep, 1000)).
--define(MOUNT_VOLUMES_TIMEOUT,  ?get_timeout(mount_volumes, 30000)).
+-define(MOUNT_VOLUMES_TIMEOUT,  ?get_timeout(mount_volumes, 5*60000)).
 -define(UNMOUNT_VOLUMES_TIMEOUT,  ?get_timeout(unmount_volumes, 30000)).
 -define(RELEASE_SNAPSHOTS_TIMEOUT, ?get_timeout(release_snapshots, 30000)).
 -record(state, {bucket_name :: ns_bucket:name(),
