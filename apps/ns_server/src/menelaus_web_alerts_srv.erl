@@ -165,6 +165,8 @@ short_description(xdcr_replication_deleted) ->
     "XDCR replication(s) deleted";
 short_description(encr_at_rest_key_test_failed) ->
     "encryption-at-rest key test failed";
+short_description(encr_at_rest_errors_total) ->
+    "encryption-at-rest error";
 short_description(Other) ->
     %% this case is needed for tests to work
     couch_util:to_list(Other).
@@ -258,7 +260,10 @@ errors(indexer_diverging_replicas) ->
     "/pools/default/stats/range/index_partn_is_diverging_replica and "
     "consider dropping and re-creating it to resolve this";
 errors(xdcr_replication_deleted) ->
-    "Warning: ~p XDCR replication deleted on node: ~p".
+    "Warning: ~p XDCR replication deleted on node: ~p";
+errors(encr_at_rest_errors_total) ->
+    "Encryption-at-Rest errors have been detected on node \"~s\". "
+    "Please check the logs for more details.".
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
@@ -494,7 +499,8 @@ alert_keys() ->
      communication_issue, time_out_of_sync, disk_usage_analyzer_stuck,
      cert_expires_soon, cert_expired, memory_threshold, history_size_warning,
      stuck_rebalance, memcached_connections, disk_guardrail,
-     indexer_diverging_replicas, xdcr_replication_deleted].
+     indexer_diverging_replicas, xdcr_replication_deleted,
+     encr_at_rest_errors_total].
 
 config_upgrade_to_76(Config) ->
     Ret = case ns_config:search(Config, email_alerts) of
@@ -553,7 +559,10 @@ config_upgrade_to_totoro(Config) ->
                    add_proplist_list_elem(alerts,
                                           encr_at_rest_key_test_failed, _),
                    add_proplist_list_elem(pop_up_alerts,
-                                          encr_at_rest_key_test_failed, _)])
+                                          encr_at_rest_key_test_failed, _),
+                   add_proplist_list_elem(alerts, encr_at_rest_errors_total, _),
+                   add_proplist_list_elem(pop_up_alerts,
+                                          encr_at_rest_errors_total, _)])
     end.
 
 %% @doc Sends any previously queued email alerts. Generally called when we first
@@ -586,7 +595,7 @@ global_checks() ->
      time_out_of_sync, disk_usage_analyzer_stuck, certs, xdcr_certs,
      memory_threshold, history_size_warning, indexer_low_resident_percentage,
      stuck_rebalance, memcached_connections, disk_guardrail,
-     indexer_diverging_replicas, xdcr_replication_deleted].
+     indexer_diverging_replicas, xdcr_replication_deleted, encr_at_rest].
 
 %% @doc fires off various checks
 check_alerts(Opaque, Hist, Stats) ->
@@ -1108,7 +1117,9 @@ check(xdcr_replication_deleted, Opaque, _History, _Stats) ->
         _ ->
             false
     end,
-    Opaque.
+    Opaque;
+check(encr_at_rest, Opaque, _History, Stats) ->
+    check_global_stat_increased(Stats, encr_at_rest_errors_total, Opaque).
 
 -spec check_memcached_connections(user | system, term()) -> term().
 check_memcached_connections(Type, GlobalStats) ->
@@ -1951,11 +1962,12 @@ config_upgrade_to_totoro_test() ->
             {alerts, [ip, time_out_of_sync]}]}]],
     Expected1 = [{set, email_alerts,
                   [{pop_up_alerts,
-                    [disk, encr_at_rest_key_test_failed, ip,
+                    [disk, encr_at_rest_errors_total,
+                     encr_at_rest_key_test_failed, ip,
                      xdcr_replication_deleted]},
                    {alerts,
-                    [encr_at_rest_key_test_failed, ip, time_out_of_sync,
-                     xdcr_replication_deleted]}]}],
+                    [encr_at_rest_errors_total, encr_at_rest_key_test_failed,
+                     ip, time_out_of_sync, xdcr_replication_deleted]}]}],
     ?assertEqual(Expected1, config_upgrade_to_totoro(Config1)).
 
 %% Test that the stuck time is correctly updated based on rebalance progress

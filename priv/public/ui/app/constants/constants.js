@@ -45,7 +45,8 @@ let knownAlerts = [
   'disk_guardrail',
   'indexer_diverging_replicas',
   'xdcr_replication_deleted',
-  'encr_at_rest_key_test_failed'
+  'encr_at_rest_key_test_failed',
+  'encr_at_rest_errors_total'
 ];
 
 let timeUnitToSeconds = {

@@ -160,8 +160,14 @@ for_alerts() ->
                   "index_memory_rss|"
                   "index_memory_quota|"
                   "index_num_diverging_replica_indexes`} or "
-         "{name=~`sys_mem_actual_free|sys_mem_actual_used|"
-                 "sys_mem_cgroup_limit|sys_mem_cgroup_actual_used`}">>,
+          "{name=~`sys_mem_actual_free|sys_mem_actual_used|"
+                  "sys_mem_cgroup_limit|sys_mem_cgroup_actual_used`} or "
+          "label_replace("
+            "sum({name=~`cm_encryption_service_failures_total|"
+                        "cm_encryption_key_rotation_failures_total|"
+                        "cm_encr_at_rest_retire_key_failures_total|"
+                        "cm_encr_at_rest_generate_dek_failures_total`}),"
+            "`name`, `encr_at_rest_errors_total`,``,``)">>,
 
     Res = latest(Q, fun (Props) ->
                         case proplists:get_value(<<"name">>, Props) of
@@ -178,6 +184,8 @@ for_alerts() ->
                             <<"sys_", N/binary>> ->
                                 {true, {"@system",
                                         binary_to_atom(N, latin1)}};
+                            <<"encr_at_rest_errors_total">> ->
+                                {true, {"@global", encr_at_rest_errors_total}};
                             _ ->
                                 false
                         end
