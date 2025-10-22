@@ -613,6 +613,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["diag", "encryptionAtRest"] ->
                     {{[admin, diag], read},
                      fun diag_handler:handle_diag_encryption_at_rest/1};
+                ["diag", "fusion", "activeGuestVolumes"] ->
+                    {{[admin, diag], read},
+                     fun menelaus_web_fusion:handle_diag_active_guest_volumes/1};
                 ["pools", "default", "rebalanceProgress"] ->
                     {{[tasks], read}, fun menelaus_web_cluster:handle_rebalance_progress/2, ["default"]};
                 ["pools", "default", "pendingRetryRebalance"] ->

@@ -25,6 +25,7 @@
          handle_abort_prepared_rebalance/1,
          handle_upload_mounted_volumes/1,
          handle_get_active_guest_volumes/1,
+         handle_diag_active_guest_volumes/1,
          handle_sync_log_store/1]).
 
 settings() ->
@@ -327,6 +328,32 @@ handle_get_active_guest_volumes(Req) ->
     ToReturn =
         [{N, lists:usort(lists:flatten(L))} || {N, L} <- maps:to_list(ByNodes)],
     menelaus_util:reply_json(Req, {ToReturn}, 200).
+
+handle_diag_active_guest_volumes(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:assert_is_totoro(),
+    case not lists:member(kv, ns_cluster_membership:node_services(
+                            direct, node())) of
+        false ->
+            menelaus_util:reply_text(Req, "Node should be a kv node", 400);
+        true ->
+            RV =
+                lists:uniq(
+                  lists:flatmap(
+                    fun ({Bucket, _}) ->
+                            case ns_memcached:get_active_guest_volumes(
+                                   Bucket) of
+                                {ok, List} ->
+                                    List;
+                                Error ->
+                                    ?log_error(
+                                       "Error ~p getting active guest volumes "
+                                       "for bucket ~p", [Error, Bucket]),
+                                    []
+                            end
+                    end, ns_bucket:get_fusion_buckets())),
+            menelaus_util:reply_json(Req, RV, 200)
+    end.
 
 handle_sync_log_store(Req) ->
     menelaus_util:assert_is_enterprise(),

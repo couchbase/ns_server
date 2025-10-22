@@ -40,6 +40,7 @@ from io import BytesIO, StringIO
 from abc import ABC, abstractmethod
 import gzip
 import getpass
+import json
 from time import monotonic as _time
 
 
@@ -1336,8 +1337,10 @@ class TaskRunner:
 
 def make_curl_task(name, get_creds_fun, url, method="GET",
                    timeout=60, log_file=DEFAULT_LOG, base_task=AllOsTask,
-                   **kwargs):
-    return base_task(name, ["curl", "-X", method, "-sS", "-k", "--proxy", "", "-K-", url],
+                   additional_params=[], **kwargs):
+    command = ["curl", "-X", method, "-sS", "-k", "--proxy", "", "-K-"]
+    command = command + additional_params + [url]
+    return base_task(name, command,
                      timeout=timeout,
                      log_file=log_file,
                      to_stdin=lambda: f"--user {get_creds_fun()}",
@@ -2184,6 +2187,8 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
                 backup_port,
                 'backup')]
 
+    active_guest_volumes = read_guts(guts, "active_guest_volumes")
+
     _tasks = [
         AllOsTask("Phosphor Trace",
                   ["kv_trace_dump",
@@ -2205,6 +2210,9 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
         [UnixTask("Analytics directory structure",
                   ["ls", "-lRai", cbasdir])
          for cbasdir in cbasdirs],
+        [UnixTask("Active guest volume",
+                  ["ls", "-lRai", active_guest_volume])
+         for active_guest_volume in active_guest_volumes],
         UnixTask("couch_dbinfo",
                  ["find", dbdir, "-type", "f",
                   "-name", "*.couch.*",
@@ -2851,6 +2859,23 @@ def make_config_profile_task(guts):
     log(f"Collecting configuration profile: {profile}")
     return [CollectFileTask(f"Collecting {profile}", path)]
 
+def get_active_guest_volumes(guts):
+    port = read_guts(guts, "rest_port")
+    url = f"http://{local_url_addr}:{port}/diag/fusion/activeGuestVolumes"
+    creds_fun = guts['get_localtoken_creds_fun']
+
+    task = make_curl_task("get active guest volumes", creds_fun, url,
+                          no_header=True, suppress_append_newline=True,
+                          additional_params = ["--fail-with-body"])
+    output_bytes = BytesIO()
+    status = task.execute(output_bytes, silent=True)
+    output = output_bytes.getvalue().decode(LATIN1)
+    if status == 0:
+        return json.loads(output)
+
+    log(output)
+    return []
+
 def main():
     # ask all tools to use C locale (MB-12050)
     os.environ['LANG'] = 'C'
@@ -3154,6 +3179,9 @@ def main():
     start_time = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     folder_name = f"cbcollect_info_{zip_node}_{start_time}"
     folder_name_sanitized = folder_name.replace(":", "-")
+
+    guts["active_guest_volumes"] = get_active_guest_volumes(guts)
+
     runner = TaskRunner(zip_filename, prefix=folder_name_sanitized,
                         salt_value=salt_value,
                         tmp_dir=options.tmp_dir,
