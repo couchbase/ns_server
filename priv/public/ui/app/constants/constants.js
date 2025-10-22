@@ -43,7 +43,8 @@ let knownAlerts = [
   'memcached_connections',
   'stuck_rebalance',
   'disk_guardrail',
-  'indexer_diverging_replicas'
+  'indexer_diverging_replicas',
+  'xdcr_replication_deleted'
 ];
 
 let timeUnitToSeconds = {

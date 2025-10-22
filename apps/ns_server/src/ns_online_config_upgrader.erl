@@ -99,5 +99,5 @@ upgrade(?VERSION_79, Config) ->
      menelaus_web_mcd_settings:config_upgrade_to_80(Config) ++
          ns_bucket:config_upgrade_to_80(Config)};
 
-upgrade(?VERSION_80, _Config) ->
-    {?VERSION_TOTORO, []}.
+upgrade(?VERSION_80, Config) ->
+    {?VERSION_TOTORO, menelaus_web_alerts_srv:config_upgrade_to_totoro(Config)}.

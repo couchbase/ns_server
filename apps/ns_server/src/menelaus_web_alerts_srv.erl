@@ -39,7 +39,7 @@
          handle_settings_alerts_limits_get/1]).
 
 -export([alert_keys/0, config_upgrade_to_76/1,
-         config_upgrade_to_79/1]).
+         config_upgrade_to_79/1, config_upgrade_to_totoro/1]).
 
 %% @doc Hold client state for any alerts that need to be shown in
 %% the browser, is used by menelaus_web to piggy back for a transport
@@ -159,6 +159,8 @@ short_description(stuck_rebalance) ->
     "rebalance stage appears stuck";
 short_description(indexer_diverging_replicas) ->
     "index has diverging replicas";
+short_description(xdcr_replication_deleted) ->
+    "XDCR replication(s) deleted";
 short_description(Other) ->
     %% this case is needed for tests to work
     couch_util:to_list(Other).
@@ -250,7 +252,9 @@ errors(indexer_diverging_replicas) ->
     "This can cause index scan to return inconsistent data. Please identify "
     "the index with GET "
     "/pools/default/stats/range/index_partn_is_diverging_replica and "
-    "consider dropping and re-creating it to resolve this".
+    "consider dropping and re-creating it to resolve this";
+errors(xdcr_replication_deleted) ->
+    "Warning: ~p XDCR replication deleted on node: ~p".
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
@@ -431,7 +435,7 @@ alert_keys() ->
      communication_issue, time_out_of_sync, disk_usage_analyzer_stuck,
      cert_expires_soon, cert_expired, memory_threshold, history_size_warning,
      stuck_rebalance, memcached_connections, disk_guardrail,
-     indexer_diverging_replicas].
+     indexer_diverging_replicas, xdcr_replication_deleted].
 
 config_upgrade_to_76(Config) ->
     Ret = case ns_config:search(Config, email_alerts) of
@@ -477,6 +481,18 @@ config_upgrade_to_79(Config) ->
                  add_proplist_list_elem(pop_up_alerts, disk_guardrail, _)])
     end.
 
+config_upgrade_to_totoro(Config) ->
+    case ns_config:search(Config, email_alerts) of
+        false ->
+            [];
+        {value, EmailAlerts} ->
+            upgrade_alerts(
+              EmailAlerts,
+                  [add_proplist_list_elem(alerts, xdcr_replication_deleted, _),
+                   add_proplist_list_elem(pop_up_alerts,
+                                          xdcr_replication_deleted, _)])
+    end.
+
 %% @doc Sends any previously queued email alerts. Generally called when we first
 %% enable the email alerts and we need to flush any existing alerts that haven't
 %% been sent yet. Only done through gen_server callback because we need access
@@ -507,7 +523,7 @@ global_checks() ->
      time_out_of_sync, disk_usage_analyzer_stuck, certs, xdcr_certs,
      memory_threshold, history_size_warning, indexer_low_resident_percentage,
      stuck_rebalance, memcached_connections, disk_guardrail,
-     indexer_diverging_replicas].
+     indexer_diverging_replicas, xdcr_replication_deleted].
 
 %% @doc fires off various checks
 check_alerts(Opaque, Hist, Stats) ->
@@ -1013,6 +1029,21 @@ check(indexer_diverging_replicas, Opaque, _History, Stats) ->
                     Msg = fmt_to_bin(errors(indexer_diverging_replicas), []),
                     global_alert(indexer_diverging_replicas, Msg)
             end
+    end,
+    Opaque;
+check(xdcr_replication_deleted, Opaque, _History, _Stats) ->
+    case stats_interface:for_replications_deleted() of
+        [{{xdcr_replication_deleted, UUID}, ReplicationsDeleted}] ->
+            case ReplicationsDeleted of
+                NumRemoved when NumRemoved > 0 ->
+                    Msg = fmt_to_bin(errors(xdcr_replication_deleted),
+                                     [ReplicationsDeleted, UUID]),
+                    global_alert(xdcr_replication_deleted, Msg);
+                _ ->
+                    false
+            end;
+        _ ->
+            false
     end,
     Opaque.
 
@@ -1849,6 +1880,18 @@ config_upgrade_to_79_test() ->
                     [disk_guardrail, ip, stuck_rebalance, time_out_of_sync]}]}],
     %% Don't remove stuck_rebalance keys if a threshold has been set
     ?assertEqual(Expected4, config_upgrade_to_79(Config4)).
+
+config_upgrade_to_totoro_test() ->
+    Config1 =
+        [[{email_alerts,
+           [{pop_up_alerts, [ip, disk]},
+            {alerts, [ip, time_out_of_sync]}]}]],
+    Expected1 = [{set, email_alerts,
+                  [{pop_up_alerts,
+                    [disk, ip, xdcr_replication_deleted]},
+                   {alerts,
+                    [ip, time_out_of_sync, xdcr_replication_deleted]}]}],
+    ?assertEqual(Expected1, config_upgrade_to_totoro(Config1)).
 
 %% Test that the stuck time is correctly updated based on rebalance progress
 test_rebalance_progress(Service, Time, Progress, StuckStart, Opaque0) ->
