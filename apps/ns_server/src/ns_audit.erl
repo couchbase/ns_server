@@ -28,7 +28,7 @@
          remove_node/2,
          failover_nodes/3,
          enter_node_recovery/3,
-         rebalance_initiated/6,
+         rebalance_initiated/7,
          create_bucket/4,
          modify_bucket/4,
          delete_bucket/2,
@@ -714,7 +714,7 @@ enter_node_recovery(Req, Node, Type) ->
     put(enter_node_recovery, Req, [{node, Node}, {type, Type}]).
 
 rebalance_initiated(Req, KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
-                    Services, Topology) ->
+                    Services, Topology, PlanUUID) ->
     Buckets = case DeltaRecoveryBuckets of
                   all ->
                       all;
@@ -738,7 +738,8 @@ rebalance_initiated(Req, KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
         [{known_nodes, {list, KnownNodes}},
          {ejected_nodes, {list, EjectedNodes}},
          {delta_recovery_buckets, Buckets},
-         {services, ServicesEncoded}] ++ TopologyEncoded).
+         {services, ServicesEncoded}] ++ TopologyEncoded ++
+            [{plan_uuid, list_to_binary(PlanUUID)} || PlanUUID =/= undefined]).
 
 create_bucket(Req, Name, Type, Props) ->
     put(create_bucket, Req,

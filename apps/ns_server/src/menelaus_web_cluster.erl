@@ -1377,7 +1377,8 @@ do_handle_rebalance(Req, Params) ->
       eject_nodes := EjectedNodes,
       delta_recovery_buckets := DeltaRecoveryBuckets,
       services := Services,
-      desired_services_nodes := DesiredSevicesTopology} = Params,
+      desired_services_nodes := DesiredSevicesTopology,
+      plan_uuid := PlanUUID} = Params,
     ?log_info("Starting rebalance with params ~p", [Params]),
     case rebalance:start(Params) of
         in_progress ->
@@ -1410,13 +1411,13 @@ do_handle_rebalance(Req, Params) ->
         ok ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes,
                                          DeltaRecoveryBuckets, Services,
-                                         DesiredSevicesTopology),
+                                         DesiredSevicesTopology, PlanUUID),
             reply(Req, 200);
         %% 7.6 and next versions response
         {ok, RebalanceId} ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes,
                                          DeltaRecoveryBuckets, Services,
-                                         DesiredSevicesTopology),
+                                         DesiredSevicesTopology, PlanUUID),
             reply_json(Req, {[{rebalance_id, RebalanceId}]}, 200);
         OtherError ->
             case busy_reply("rebalance", OtherError) of

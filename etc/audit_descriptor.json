@@ -176,6 +176,7 @@
               "services" : []
           },
           "optional_fields" : {
+              "plan_uuid" : "",
               "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
