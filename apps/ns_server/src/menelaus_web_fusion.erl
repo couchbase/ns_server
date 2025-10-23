@@ -52,9 +52,12 @@ handle_post_settings(Req) ->
               validator:report_errors_for_one(
                 Req1, [{'_', "Nothing to update"}], 400);
           (Params, Req1) ->
-              case fusion_uploaders:update_config(
-                     [{K, V} || {[K], V} <- Params]) of
+              KV = [{K, V} || {[K], V} <- Params],
+              case fusion_uploaders:update_config(KV) of
                   {ok, _} ->
+                      {AuditJson} = menelaus_web_settings2:prepare_json(
+                                      [], settings(), undefined, KV),
+                      ns_audit:fusion_settings(Req, AuditJson),
                       menelaus_util:reply_json(Req1, [], 200);
                   log_store_uri_locked ->
                       validator:report_errors_for_one(
@@ -125,9 +128,10 @@ handle_enable(Req) ->
       fun (Params) ->
               %% do it in orchestrator to prevent fusion state changes during
               %% rebalances
-              case ns_orchestrator:enable_fusion(
-                     proplists:get_value(buckets, Params)) of
+              Buckets = proplists:get_value(buckets, Params),
+              case ns_orchestrator:enable_fusion(Buckets) of
                   ok ->
+                      ns_audit:request_fusion_state(Req, enable, Buckets),
                       menelaus_util:reply_json(Req, [], 200);
                   {wrong_state, State, States} ->
                       reply_wrong_state(Req, State, States);
@@ -152,6 +156,7 @@ handle_disable(Req) ->
     menelaus_util:assert_is_totoro(),
     case ns_orchestrator:disable_fusion() of
         ok ->
+            ns_audit:request_fusion_state(Req, disable, undefined),
             menelaus_util:reply_json(Req, [], 200);
         {wrong_state, State, States} ->
             reply_wrong_state(Req, State, States);
@@ -164,6 +169,7 @@ handle_stop(Req) ->
     menelaus_util:assert_is_totoro(),
     case ns_orchestrator:stop_fusion() of
         ok ->
+            ns_audit:request_fusion_state(Req, stop, undefined),
             menelaus_util:reply_json(Req, [], 200);
         {wrong_state, State, States} ->
             reply_wrong_state(Req, State, States);
@@ -201,6 +207,7 @@ handle_prepare_rebalance(Req) ->
               KeepNodes = proplists:get_value(keepNodes, Params),
               case ns_orchestrator:prepare_fusion_rebalance(KeepNodes) of
                   {ok, AccelerationPlan} ->
+                      ns_audit:prepare_fusion_rebalance(Req, KeepNodes),
                       menelaus_util:reply_json(Req, AccelerationPlan, 200);
                   {unknown_nodes, Nodes} ->
                       validator:report_errors_for_one(
@@ -232,6 +239,7 @@ handle_abort_prepared_rebalance(Req) ->
               PlanUUID = proplists:get_value(planUUID, Params),
               case ns_orchestrator:abort_prepared_fusion_rebalance(PlanUUID) of
                   ok ->
+                      ns_audit:abort_prepared_fusion_rebalance(Req, PlanUUID),
                       menelaus_util:reply_json(Req, [], 200);
                   not_found ->
                       menelaus_util:reply_text(Req, "Not Found", 404);
@@ -290,6 +298,8 @@ handle_upload_mounted_volumes(Req) ->
                                     io_lib:format("Unneeded nodes ~p", [N])}],
                                   400);
                             ok ->
+                                ns_audit:upload_mounted_volumes(
+                                  Req, PlanUUID, Nodes),
                                 menelaus_util:reply_json(Req, [], 200);
                             Other ->
                                 reply_other(Req, "upload mounted volumes", Other)

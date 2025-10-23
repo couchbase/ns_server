@@ -91,7 +91,12 @@
          delete_historical_encryption_key/4,
          encryption_at_rest_drop_deks/2,
          user_activity_settings/2,
-         prepare_log_body/2
+         prepare_log_body/2,
+         fusion_settings/2,
+         request_fusion_state/3,
+         prepare_fusion_rebalance/2,
+         abort_prepared_fusion_rebalance/2,
+         upload_mounted_volumes/3
         ]).
 
 -export([start_link/0, stats/0]).
@@ -511,7 +516,17 @@ code(encryption_at_rest_drop_deks) ->
 code(modify_jwt_settings) ->
     8284;
 code(user_activity_settings) ->
-    8285.
+    8285;
+code(fusion_settings) ->
+    8286;
+code(request_fusion_state) ->
+    8287;
+code(prepare_fusion_rebalance) ->
+    8288;
+code(abort_prepared_fusion_rebalance) ->
+    8289;
+code(upload_mounted_volumes) ->
+    8290.
 
 send_to_memcached(ParentPID, {Code, EncodedBody, IsSync}) ->
     case (catch ns_memcached_sockets_pool:executing_on_socket(
@@ -1145,6 +1160,31 @@ app_telemetry_settings(Req, Values) ->
 
 user_activity_settings(Req, Values) ->
     put(user_activity_settings, Req, [{settings, {json, {Values}}}]).
+
+fusion_settings(Req, Values) ->
+    put(fusion_settings, Req, [{settings, {json, {Values}}}]).
+
+request_fusion_state(Req, State, undefined) ->
+    put(request_fusion_state, Req, [{state, State}]);
+request_fusion_state(Req, State, Buckets) ->
+    put(request_fusion_state, Req,
+        [{state, State},
+         {buckets, {list, [list_to_binary(B) || B <- Buckets]}}]).
+
+prepare_fusion_rebalance(Req, KnownNodes) ->
+    put(prepare_fusion_rebalance, Req, [{known_nodes, {list, KnownNodes}}]).
+
+abort_prepared_fusion_rebalance(Req, PlanUUID) ->
+    put(abort_prepared_fusion_rebalance, Req,
+        [{plan_uuid, list_to_binary(PlanUUID)}]).
+
+upload_mounted_volumes(Req, PlanUUID, NodesVolumes) ->
+    PreparedNodes =
+        [{list_to_binary(N), [list_to_binary(V) || V <- Volumes]} ||
+            {N, Volumes} <- NodesVolumes],
+    put(upload_mounted_volumes, Req,
+        [{plan_uuid, list_to_binary(PlanUUID)},
+         {volumes, {json, {PreparedNodes}}}]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

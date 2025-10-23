@@ -1833,6 +1833,163 @@
               },
               "sessionid": ""
           }
+      },
+      {
+          "id": 8286,
+          "name": "modify fusion settings",
+          "description": "Fusion settings were modified",
+          "sync": false,
+          "enabled": true,
+          "filtering_permitted": false,
+          "mandatory_fields": {
+              "timestamp": "",
+              "real_userid": {
+                  "domain": "",
+                  "user": ""
+              },
+              "remote": {
+                  "ip": "",
+                  "port": 1
+              },
+              "local": {
+                  "ip": "",
+                  "port": 1
+              },
+              "settings": ""
+          },
+          "optional_fields": {
+              "authenticated_userid": {
+                  "domain": "",
+                  "user": ""
+              },
+              "sessionid": ""
+          }
+      },
+      {
+          "id": 8287,
+          "name": "request fusion state",
+          "description": "Changing of fusion state was requested",
+          "sync": false,
+          "enabled": true,
+          "filtering_permitted": false,
+          "mandatory_fields": {
+              "timestamp": "",
+              "real_userid": {
+                  "domain": "",
+                  "user": ""
+              },
+              "remote": {
+                  "ip": "",
+                  "port": 1
+              },
+              "local": {
+                  "ip": "",
+                  "port": 1
+              },
+              "state": ""
+          },
+          "optional_fields": {
+              "buckets": [],
+              "authenticated_userid": {
+                  "domain": "",
+                  "user": ""
+              },
+              "sessionid": ""
+          }
+      },
+      {
+          "id": 8288,
+          "name": "prepare fusion rebalance",
+          "description": "Prepare fusion rebalance",
+          "sync": false,
+          "enabled": true,
+          "filtering_permitted": false,
+          "mandatory_fields": {
+              "timestamp": "",
+              "real_userid": {
+                  "domain": "",
+                  "user": ""
+              },
+              "remote": {
+                  "ip": "",
+                  "port": 1
+              },
+              "local": {
+                  "ip": "",
+                  "port": 1
+              },
+              "known_nodes" : []
+          },
+          "optional_fields": {
+              "authenticated_userid": {
+                  "domain": "",
+                  "user": ""
+              },
+              "sessionid": ""
+          }
+      },
+      {
+          "id": 8289,
+          "name": "abort prepared fusion rebalance",
+          "description": "Abort prepared fusion rebalance",
+          "sync": false,
+          "enabled": true,
+          "filtering_permitted": false,
+          "mandatory_fields": {
+              "timestamp": "",
+              "real_userid": {
+                  "domain": "",
+                  "user": ""
+              },
+              "remote": {
+                  "ip": "",
+                  "port": 1
+              },
+              "local": {
+                  "ip": "",
+                  "port": 1
+              },
+              "plan_uuid" : ""
+          },
+          "optional_fields": {
+              "authenticated_userid": {
+                  "domain": "",
+                  "user": ""
+              },
+              "sessionid": ""
+          }
+      },
+      {
+          "id": 8290,
+          "name": "upload mounted volumes",
+          "description": "Upload mounted volumes",
+          "sync": false,
+          "enabled": true,
+          "filtering_permitted": false,
+          "mandatory_fields": {
+              "timestamp": "",
+              "real_userid": {
+                  "domain": "",
+                  "user": ""
+              },
+              "remote": {
+                  "ip": "",
+                  "port": 1
+              },
+              "local": {
+                  "ip": "",
+                  "port": 1
+              },
+              "plan_uuid" : "",
+              "volumes" : []
+          },
+          "optional_fields": {
+              "authenticated_userid": {
+                  "domain": "",
+                  "user": ""
+              },
+              "sessionid": ""
+          }
       }
     ]
 }
