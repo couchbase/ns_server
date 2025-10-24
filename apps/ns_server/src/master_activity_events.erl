@@ -56,7 +56,10 @@
          note_autofailover_done/2,
          note_rebalance_stage_started/2,
          note_rebalance_stage_completed/1,
-         note_rebalance_stage_event/2
+         note_rebalance_stage_event/2,
+         note_mounting_volumes_started/2,
+         note_mounting_volumes_ended/1,
+         jsonify_volumes/1
         ]).
 
 -export([stream_events/2]).
@@ -232,6 +235,15 @@ note_autofailover_node_state_change(Node, PrevState, NewState, NewCounter) ->
 note_autofailover_done(Node, Reason) ->
     submit_cast({autofailover_done, Node, Reason}).
 
+-spec note_mounting_volumes_started(ns_bucket:name(),
+                                    [{node(), [string()]}]) -> ok.
+note_mounting_volumes_started(BucketName, Volumes) ->
+    submit_cast({mounting_volumes_started, BucketName, Volumes, self()}).
+
+-spec note_mounting_volumes_ended(ns_bucket:name()) -> ok.
+note_mounting_volumes_ended(BucketName) ->
+    submit_cast({mounting_volumes_ended, BucketName, self()}).
+
 start_link_timestamper() ->
     {ok, ns_pubsub:subscribe_link(master_activity_events_ingress, fun timestamper_body/2, [])}.
 
@@ -394,6 +406,10 @@ maybe_get_pids_node(Pid) when is_pid(Pid) ->
     erlang:node(Pid);
 maybe_get_pids_node(_PerhapsBinary) ->
     skip_this_pair_please.
+
+-spec jsonify_volumes([{node(), [string()]}]) -> {[{node(), [binary()]}]}.
+jsonify_volumes(Volumes) ->
+    {[{N, [list_to_binary(V) || V <- List]} || {N, List} <- Volumes]}.
 
 event_to_jsons({TS, rebalance_stage_started, Stage, Nodes}, _Config) ->
     [format_simple_plist_as_json([{type, rebalanceStageStarted},
@@ -771,6 +787,26 @@ event_to_jsons({TS, autofailover_done, Node, Reason}, _Config) ->
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {node, Node},
                                   {reason, Reason}])];
+
+event_to_jsons({TS, mounting_volumes_started, BucketName, Volumes, Pid},
+               _Config) ->
+    [format_simple_plist_as_json(
+       [{type, mountingVolumesStarted},
+        {ts, misc:time_to_epoch_float(TS)},
+        {bucket, BucketName},
+        {pid, Pid},
+        {node, maybe_get_pids_node(Pid)},
+        {volumes, {json, jsonify_volumes(Volumes)}}])];
+
+event_to_jsons({TS, mounting_volumes_ended, BucketName, Pid},
+               _Config) ->
+    [format_simple_plist_as_json(
+       [{type, mountingVolumesEnded},
+        {ts, misc:time_to_epoch_float(TS)},
+        {bucket, BucketName},
+        {pid, Pid},
+        {node, maybe_get_pids_node(Pid)}])];
+
 event_to_jsons(Event, _Config) ->
     ?log_warning("Got unknown kind of event: ~p", [Event]),
     [].

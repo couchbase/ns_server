@@ -179,9 +179,12 @@ init({Bucket, BucketConfig, Nodes, OldMap, NewMap, ProgressCallback,
             BucketPlan = proplists:get_value(
                            Bucket, proplists:get_value(buckets, RebalancePlan)),
             NodesMap = proplists:get_value(nodes, BucketPlan),
+            master_activity_events:note_mounting_volumes_started(
+              Bucket, VolumesToMount),
             ?rebalance_info("Mount volumes ~p", [VolumesToMount]),
             ok = janitor_agent:mount_volumes(Bucket, VolumesToMount, NodesMap,
-                                             self())
+                                             self()),
+            master_activity_events:note_mounting_volumes_ended(Bucket)
     end,
 
     {FusionUploaders, FusionUploaderMoves} =

@@ -40,6 +40,9 @@
 -record(stat_info, {start_time = false,
                     end_time = false}).
 
+-record(mounting_volumes_info, {stat_info = #stat_info{},
+                                volumes = undefined}).
+
 -record(replica_building_stats, {node :: node(),
                                  in_docs_total :: non_neg_integer(),
                                  in_docs_left :: non_neg_integer()}).
@@ -74,6 +77,7 @@
                             bucket_timeline = #stat_info{},
                             replication_info = dict:new(),
                             compaction_info = #compaction_info{},
+                            mounting_volumes_info = undefined,
                             vbucket_level_info = #vbucket_level_info{}}).
 
 -record(state, {bucket :: bucket_name() | undefined,
@@ -536,6 +540,14 @@ handle_master_event({Event, BucketName, VBucket}, State)
        Event =:= backfill_phase_ended ->
     update_info(Event, State, {os:timestamp(), BucketName, VBucket, undefined});
 
+handle_master_event({Event = mounting_volumes_started, BucketName, Volumes, _},
+                    State) ->
+    update_info(Event, State, {os:timestamp(), BucketName, undefined, Volumes});
+
+handle_master_event({Event = mounting_volumes_ended, BucketName, _}, State) ->
+    update_info(Event, State,
+                {os:timestamp(), BucketName, undefined, undefined});
+
 handle_master_event(_, State) ->
     State.
 
@@ -849,6 +861,22 @@ update_bucket_level_info(bucket_rebalance_ended, BucketLevelInfo,
     TL = NewBucketLevelInfo#bucket_level_info.bucket_timeline,
     NewBucketLevelInfo#bucket_level_info{
       bucket_timeline = TL#stat_info{end_time = TS}};
+update_bucket_level_info(mounting_volumes_started, BucketLevelInfo,
+                         {TS, _Bucket, undefined, Volumes}) ->
+    BucketLevelInfo#bucket_level_info{
+      mounting_volumes_info = #mounting_volumes_info{
+                                 stat_info = #stat_info{start_time = TS},
+                                 volumes = Volumes}};
+update_bucket_level_info(
+  mounting_volumes_ended,
+  BucketLevelInfo = #bucket_level_info{mounting_volumes_info =
+                                           MVI = #mounting_volumes_info{
+                                                    stat_info = MVIStat}},
+  {TS, _Bucket, undefined, undefined}) ->
+    BucketLevelInfo#bucket_level_info{
+      mounting_volumes_info = MVI#mounting_volumes_info{
+                                stat_info = MVIStat#stat_info{end_time = TS}}};
+
 update_bucket_level_info(_, BLI, _) ->
     BLI.
 
@@ -991,12 +1019,14 @@ update_vbucket_level_info_inner(
 construct_bucket_level_info_json(
   #bucket_level_info{bucket_name = BucketName,
                      bucket_timeline = TL,
+                     mounting_volumes_info = MV,
                      replication_info = ReplicationInfo,
                      compaction_info = CompactionInfo,
                      vbucket_level_info = VBLevelInfo}, Options) ->
     case construct_compaction_info_json(CompactionInfo) ++
-             construct_vbucket_level_info_json(VBLevelInfo, Options) ++
-             construct_replication_info(ReplicationInfo) of
+        construct_vbucket_level_info_json(VBLevelInfo, Options) ++
+        construct_replication_info(ReplicationInfo) ++
+        construct_mounting_volumes_info_json(MV) of
         [] ->
             [];
         BLI ->
@@ -1093,6 +1123,14 @@ construct_vbucket_info_json(Id, #vbucket_info{before_chain = BC,
       {backfill, construct_stat_info_json(Backfill)},
       {takeover, construct_stat_info_json(Takeover)},
       {persistence, construct_stat_info_json(Persistence)}] ++ RInfoJson}.
+
+construct_mounting_volumes_info_json(undefined) ->
+    [];
+construct_mounting_volumes_info_json(
+  #mounting_volumes_info{stat_info = StatInfo, volumes = Volumes}) ->
+    {Stat} = construct_stat_info_json(StatInfo),
+    Info = [{volumes, master_activity_events:jsonify_volumes(Volumes)} | Stat],
+    [{mountingVolumes, {Info}}].
 
 construct_vbucket_level_info_json(VBLevelInfo, Options) ->
     case dict:is_empty(VBLevelInfo#vbucket_level_info.vbucket_info) of
@@ -1266,6 +1304,9 @@ rebalance_inner() ->
     submit_master_event({bucket_rebalance_started, "Bucket1", unused}),
     submit_master_event({planned_moves, "Bucket1",
                          {[{0, [n_0, n_1], [n_1, n_0], [], []}], []}, false}),
+    Volumes = [{n_0, ["/vol1", "vol2"]}, {n_1, ["/vol3", "vol4"]}],
+    submit_master_event({mounting_volumes_started, "Bucket1", Volumes, unused}),
+    submit_master_event({mounting_volumes_ended, "Bucket1", unused}),
     submit_master_event({vbucket_move_start, unused, "Bucket1",
                          unused, 0, unused, unused}),
     submit_master_event({backfill_phase_started, "Bucket1", 0}),
@@ -1372,6 +1413,13 @@ rebalance_inner() ->
                                {inDocsLeft, 0},
                                {outDocsTotal, _},
                                {outDocsLeft, 0}]}}]}},
+                         {mountingVolumes,
+                          {[{volumes,
+                             {[{n_0, [<<"/vol1">>, <<"vol2">>]},
+                               {n_1, [<<"/vol3">>, <<"vol4">>]}]}},
+                            {startTime, _},
+                            {completedTime, _},
+                            {timeTaken, _}]}},
                          {startTime, _},
                          {completedTime, _},
                          {timeTaken, _}]}}]}}]}}]}},
