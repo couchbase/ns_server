@@ -141,13 +141,15 @@ store_aws_key(Id, Params, CreationDT, TestOnly) ->
 
 format_aws_key_params(#{key_arn := KeyArn, region := Region,
                         profile := Profile, config_file := ConfigFile,
-                        credentials_file := CredsFile, use_imds := UseIMDS}) ->
+                        credentials_file := CredsFile, use_imds := UseIMDS,
+                        req_timeout_ms := ReqTimeoutMs}) ->
     {[{keyArn, iolist_to_binary(KeyArn)},
       {region, iolist_to_binary(Region)},
       {profile, iolist_to_binary(Profile)},
       {credsFile, iolist_to_binary(CredsFile)},
       {configFile, iolist_to_binary(ConfigFile)},
-      {useIMDS, UseIMDS}]}.
+      {useIMDS, UseIMDS},
+      {reqTimeoutMs, ReqTimeoutMs}]}.
 
 store_kmip_key(Id, Params, KekIdToEncrypt, CreationDT, TestOnly) ->
     store_key(kek, Id, kmip, CreationDT,

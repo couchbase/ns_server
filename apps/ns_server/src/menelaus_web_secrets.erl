@@ -527,6 +527,7 @@ format_aws_key_data(Props) ->
             (config_file, F) -> iolist_to_binary(F);
             (profile, P) -> iolist_to_binary(P);
             (use_imds, U) -> U;
+            (req_timeout_ms, R) -> R;
             (last_rotation_time, DT) -> format_datetime(DT);
             (stored_ids, StoredIds) ->
                 [{[{id, Id}, {creation_time, format_datetime(CT)}]}
@@ -700,6 +701,8 @@ awskms_key_validators(CurSecretProps) ->
      validator:string(configFile, _),
      validator:default(configFile, "", _),
      validate_optional_file(configFile, _),
+     validator:integer(reqTimeoutMs, 5 * 1000, 5 * 60 * 1000, _),
+     validator:default(reqTimeoutMs, 30000, _),
      validator:validate(fun (_) -> {error, "read only"} end, storedKeyIds, _),
      validator:string(profile, _),
      validator:default(profile, "", _)] ++

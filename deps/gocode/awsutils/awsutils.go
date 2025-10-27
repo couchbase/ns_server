@@ -12,6 +12,7 @@ package awsutils
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
@@ -20,11 +21,12 @@ import (
 )
 
 type AwsConfigOpts struct {
-	Region     string
-	ConfigFile string
-	CredsFile  string
-	Profile    string
-	UseIMDS    bool
+	Region          string
+	ConfigFile      string
+	CredsFile       string
+	Profile         string
+	UseIMDS         bool
+	TimeoutDuration time.Duration
 }
 
 func keeperGetError(err error) error {
@@ -77,8 +79,16 @@ func getAwsSecretsKeeper(ctx context.Context,
 	return keeper, nil
 }
 
+func getContextWithTimeout(timeoutDuration time.Duration) (context.Context, context.CancelFunc) {
+	if timeoutDuration > 0 {
+		return context.WithTimeout(context.Background(), timeoutDuration)
+	}
+	return context.Background(), func() {}
+}
+
 func KmsEncryptData(keyArn string, data []byte, AD string, opts AwsConfigOpts) ([]byte, error) {
-	ctx := context.Background()
+	ctx, cancel := getContextWithTimeout(opts.TimeoutDuration)
+	defer cancel()
 	keeper, err := getAwsSecretsKeeper(ctx, keyArn, opts, AD)
 	if err != nil {
 		return nil, err
@@ -94,7 +104,8 @@ func KmsEncryptData(keyArn string, data []byte, AD string, opts AwsConfigOpts) (
 }
 
 func KmsDecryptData(keyArn string, data []byte, AD string, opts AwsConfigOpts) ([]byte, error) {
-	ctx := context.Background()
+	ctx, cancel := getContextWithTimeout(opts.TimeoutDuration)
+	defer cancel()
 	keeper, err := getAwsSecretsKeeper(ctx, keyArn, opts, AD)
 	if err != nil {
 		return nil, err

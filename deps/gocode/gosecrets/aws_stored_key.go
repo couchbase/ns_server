@@ -17,18 +17,20 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/couchbase/ns_server/deps/gocode/awsutils"
 )
 
 type awsStoredKey struct {
 	baseStoredKey
-	KeyArn     string `json:"keyArn"`
-	Region     string `json:"region"`
-	ConfigFile string `json:"configFile"`
-	CredsFile  string `json:"credsFile"`
-	Profile    string `json:"profile"`
-	UseIMDS    bool   `jspn:"useIMDS"`
+	KeyArn       string `json:"keyArn"`
+	Region       string `json:"region"`
+	ConfigFile   string `json:"configFile"`
+	CredsFile    string `json:"credsFile"`
+	Profile      string `json:"profile"`
+	UseIMDS      bool   `jspn:"useIMDS"`
+	ReqTimeoutMs int    `json:"reqTimeoutMs"`
 }
 
 // Implementation of storedKeyIface for aws keys
@@ -113,6 +115,25 @@ func (k *awsStoredKey) checkAWSTestKey() (bool, error) {
 	return false, nil
 }
 
+func getAwsConfigOpts(k *awsStoredKey) awsutils.AwsConfigOpts {
+	maxTimeoutDuration := 5 * time.Minute
+	var timeoutDuration time.Duration
+	if int64(k.ReqTimeoutMs) > maxTimeoutDuration.Milliseconds() {
+		timeoutDuration = maxTimeoutDuration
+	} else {
+		timeoutDuration = time.Duration(k.ReqTimeoutMs) * time.Millisecond
+	}
+
+	return awsutils.AwsConfigOpts{
+		Region:          k.Region,
+		ConfigFile:      k.ConfigFile,
+		CredsFile:       k.CredsFile,
+		Profile:         k.Profile,
+		UseIMDS:         k.UseIMDS,
+		TimeoutDuration: timeoutDuration,
+	}
+}
+
 func (k *awsStoredKey) encryptData(data, AD []byte) ([]byte, error) {
 	if isTestKey, err := k.checkAWSTestKey(); isTestKey {
 		if err != nil {
@@ -124,13 +145,7 @@ func (k *awsStoredKey) encryptData(data, AD []byte) ([]byte, error) {
 		return aesgcmEncrypt(zero_key, data, AD), nil
 	}
 
-	opts := awsutils.AwsConfigOpts{
-		Region:     k.Region,
-		ConfigFile: k.ConfigFile,
-		CredsFile:  k.CredsFile,
-		Profile:    k.Profile,
-		UseIMDS:    k.UseIMDS,
-	}
+	opts := getAwsConfigOpts(k)
 	// AD parameters are strings in Kms :(
 	strAD := base64.StdEncoding.EncodeToString(AD)
 	return awsutils.KmsEncryptData(k.KeyArn, data, strAD, opts)
@@ -146,13 +161,8 @@ func (k *awsStoredKey) decryptData(data, AD []byte) ([]byte, error) {
 		zero_key := make([]byte, 32)
 		return aesgcmDecrypt(zero_key, data, AD)
 	}
-	opts := awsutils.AwsConfigOpts{
-		Region:     k.Region,
-		ConfigFile: k.ConfigFile,
-		CredsFile:  k.CredsFile,
-		Profile:    k.Profile,
-		UseIMDS:    k.UseIMDS,
-	}
+
+	opts := getAwsConfigOpts(k)
 	// AD parameters are strings in Kms :(
 	strAD := base64.StdEncoding.EncodeToString(AD)
 	return awsutils.KmsDecryptData(k.KeyArn, data, strAD, opts)
