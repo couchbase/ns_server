@@ -970,10 +970,19 @@ get_latest_test_results() ->
         [] ->
             #{};
         [{_, {InfoDateTime, Info}}] ->
-            maps:map(fun (_Id, {_Name, TestResult}) ->
-                         #{status => TestResult,
-                           datetime => InfoDateTime}
-                     end, Info)
+            Now = calendar:universal_time(),
+            TestInterval = get_secrets_test_interval_s(),
+            Deadline = misc:datetime_add(InfoDateTime,
+                                         TestInterval + ?STALE_INFO_MARGIN_S),
+            case Deadline >= Now of
+                true ->
+                    maps:map(fun (_Id, {_Name, TestResult}) ->
+                                #{status => TestResult,
+                                datetime => InfoDateTime}
+                            end, Info);
+                false ->
+                    #{}
+            end
     catch
         error:badarg -> #{}
     end.
