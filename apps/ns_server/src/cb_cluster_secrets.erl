@@ -103,6 +103,8 @@
                                 ExtraArgs :: list()) ->
     {ok, secret_props_data()} | no_change | {error, _}.
 
+-define(STALE_INFO_MARGIN_S, 30).
+
 %% API
 -export([start_link_node_monitor/0,
          start_link_master_monitor/0,
@@ -746,7 +748,11 @@ get_node_deks_info_quickly() ->
             dummy_deks_info(unknown, [{proc_communication, pending}]);
         [{_, {Timestamp, Info}}] ->
             Now = erlang:monotonic_time(second),
-            case Timestamp + ?DEK_INFO_UPDATE_INVERVAL_S >= Now of
+            Deadline = Timestamp + ?DEK_INFO_UPDATE_INVERVAL_S +
+                       ?STALE_INFO_MARGIN_S, %% We need some margin because
+                                             %% the info collection takes
+                                             %% some time.
+            case Deadline >= Now of
                 true ->
                     Info;
                 false ->
