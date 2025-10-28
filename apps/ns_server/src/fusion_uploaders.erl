@@ -48,6 +48,13 @@
 -define(GET_SNAPSHOTS_TIMEOUT, ?get_timeout(get_snapshots, 30000)).
 -define(DELETE_SNAPSHOTS_TIMEOUT, ?get_timeout(delete_snapshots, 30000)).
 
+-define(LOG_BUCKET_STATE(Bucket, State),
+        ale:info(?USER_LOGGER, "Bucket ~p fusion state changed to ~p.",
+                 [Bucket, State])).
+
+-define(LOG_FUSION_STATE(State),
+        ale:info(?USER_LOGGER, "Fusion state changed to ~p", [State])).
+
 %% incremented starting from 1 with each uploader change
 %% The purpose of Term is to help
 %% s3 to recognize rogue uploaders and ignore them.
@@ -415,7 +422,12 @@ command({enable, BucketNames}) ->
                                 [BucketName, Uploaders]) ||
                         {BucketName, Uploaders} <- BucketUploaders],
                     case enable(BucketUploaders, MagmaBucketNames) of
-                        {ok, _} ->
+                        {ok, _, {EnablingBuckets, DisablingBuckets}} ->
+                            [?LOG_BUCKET_STATE(Bucket, enabled) ||
+                                Bucket <- EnablingBuckets],
+                            [?LOG_BUCKET_STATE(Bucket, disabling) ||
+                                Bucket <- DisablingBuckets],
+                            ?LOG_FUSION_STATE(enabling),
                             post_enable(BucketsToEnable);
                         Other ->
                             Other
@@ -438,31 +450,38 @@ command(Command) when Command =:= disable orelse Command =:= stop ->
         end,
     case chronicle_compat:txn(disable_or_stop_txn(
                                 _, StateToSet, AllowedStates, BucketStates)) of
-        {ok, _Rev} ->
+        {ok, _Rev, AffectedBuckets} ->
+            [?LOG_BUCKET_STATE(B, StateToSet) || B <- AffectedBuckets],
+            ?LOG_FUSION_STATE(StateToSet),
             ok;
         Other ->
             Other
     end.
 
 enable_buckets(Snapshot, BucketUploaders) ->
-    lists:flatmap(
-      fun ({BucketName, Uploaders}) ->
-              {ok, BucketConfig} = ns_bucket:get_bucket(BucketName, Snapshot),
-              case Uploaders of
-                  undefined ->
-                      [];
-                  _ ->
-                      [{set, ns_bucket:fusion_uploaders_key(BucketName),
-                        Uploaders}]
-              end ++
-                  case ns_bucket:get_fusion_state(BucketConfig) of
-                      enabled ->
+    SetsAndBuckets =
+        lists:flatmap(
+          fun ({BucketName, Uploaders}) ->
+                  {ok, BucketConfig} =
+                      ns_bucket:get_bucket(BucketName, Snapshot),
+                  case Uploaders of
+                      undefined ->
                           [];
                       _ ->
-                          [{set, ns_bucket:sub_key(BucketName, props),
-                            ns_bucket:set_fusion_state(enabled, BucketConfig)}]
-                  end
-      end, BucketUploaders).
+                          [{{set, ns_bucket:fusion_uploaders_key(BucketName),
+                             Uploaders}, undefined}]
+                  end ++
+                      case ns_bucket:get_fusion_state(BucketConfig) of
+                          enabled ->
+                              [];
+                          _ ->
+                              [{{set, ns_bucket:sub_key(BucketName, props),
+                                 ns_bucket:set_fusion_state(
+                                   enabled, BucketConfig)}, BucketName}]
+                      end
+          end, BucketUploaders),
+    {[Set || {Set, _} <- SetsAndBuckets],
+     [Bucket || {_, Bucket} <- SetsAndBuckets, Bucket =/= undefined]}.
 
 post_enable(Buckets) ->
     Servers = lists:usort(lists:flatten(
@@ -498,15 +517,20 @@ enable(BucketUploaders, MagmaBucketNames) ->
                   (State == disabled) orelse (State == stopped) orelse
                       throw({wrong_state, State, [disabled, stopped]}),
 
-                  BucketCommits = enable_buckets(Snapshot, BucketUploaders) ++
+                  {DisablingBucketSets, DisablingBuckets} =
                       update_bucket_state_sets(
                         ns_bucket:get_buckets(Snapshot, BucketsNotToEnable),
                         [stopped], disabling),
+
+                  {EnablingBucketSets, EnablingBuckets} =
+                      enable_buckets(Snapshot, BucketUploaders),
+
                   {commit, [{set, config_key(),
                              misc:update_proplist(
                                Config, [{state, enabling},
                                         {log_store_uri_locked, true}])} |
-                            BucketCommits]}
+                            DisablingBucketSets ++ EnablingBucketSets],
+                   {EnablingBuckets, DisablingBuckets}}
               catch
                   throw:Error ->
                       {abort, {error, Error}}
@@ -522,17 +546,25 @@ disable_or_stop_txn(Txn, StateToSet, AllowedStates, BucketStates) ->
             {abort, {error, {wrong_state, State, AllowedStates}}};
         true ->
             FusionBuckets = ns_bucket:get_fusion_buckets(Snapshot),
+            {BucketSets, AffectedBuckets} =
+                update_bucket_state_sets(FusionBuckets, BucketStates,
+                                         StateToSet),
             {commit,
-             [update_state_set(Config, StateToSet) |
-              update_bucket_state_sets(FusionBuckets, BucketStates,
-                                       StateToSet)]}
+             [update_state_set(Config, StateToSet) | BucketSets],
+             AffectedBuckets}
     end.
 
 update_bucket_state_sets(FusionBuckets, BucketStates, StateToSet) ->
-    [{set, ns_bucket:sub_key(BucketName, props),
-      ns_bucket:set_fusion_state(StateToSet, BucketConfig)} ||
-        {BucketName, BucketConfig} <- FusionBuckets,
-        lists:member(ns_bucket:get_fusion_state(BucketConfig), BucketStates)].
+    AffectedBuckets =
+        lists:filter(
+          fun ({_BucketName, BucketConfig}) ->
+                  lists:member(ns_bucket:get_fusion_state(BucketConfig),
+                               BucketStates)
+          end, FusionBuckets),
+    {[{set, ns_bucket:sub_key(BucketName, props),
+       ns_bucket:set_fusion_state(StateToSet, BucketConfig)} ||
+         {BucketName, BucketConfig} <- AffectedBuckets],
+     [B || {B, _} <- AffectedBuckets]}.
 
 -spec maybe_grab_heartbeat_info() -> list().
 maybe_grab_heartbeat_info() ->
@@ -657,7 +689,7 @@ maybe_advance_state() ->
     case maybe_advance_state(get_state()) of
         nothing_to_do ->
             ok;
-        {ok, _} ->
+        ok ->
             ok
     end.
 
@@ -728,34 +760,45 @@ maybe_advance_state(State, NextState, BucketState, NextBucketState,
         error ->
             nothing_to_do;
         FusionStats ->
-            chronicle_compat:txn(
-              fun (Txn) ->
-                      {Sets, AllReady} =
-                          buckets_advance_state_sets(
-                            Txn, FusionStats, BucketState, NextBucketState),
-                      Sets1 =
-                          case AllReady of
-                              false ->
-                                  Sets;
-                              true ->
-                                  case can_advance_fusion_state(
-                                         Txn, State, DeletionInfo,
-                                         ?cut(ExtraCheck(FusionBuckets,
-                                                         FusionStats))) of
-                                      true ->
-                                          [txn_update_state_set(
-                                             Txn, NextState) | Sets];
-                                      false ->
-                                          Sets
-                                  end
-                          end,
-                      case Sets1 of
-                          [] ->
-                              {abort, nothing_to_do};
-                          _ ->
-                              {commit, Sets1}
-                      end
-              end)
+            RV =
+                chronicle_compat:txn(
+                  fun (Txn) ->
+                          {Sets, AllReady, AdvancedBuckets} =
+                              buckets_advance_state_sets(
+                                Txn, FusionStats, BucketState, NextBucketState),
+                          Sets1 =
+                              case AllReady of
+                                  false ->
+                                      Sets;
+                                  true ->
+                                      case can_advance_fusion_state(
+                                             Txn, State, DeletionInfo,
+                                             ?cut(ExtraCheck(FusionBuckets,
+                                                             FusionStats))) of
+                                          true ->
+                                              [txn_update_state_set(
+                                                 Txn, NextState) | Sets];
+                                          false ->
+                                              Sets
+                                      end
+                              end,
+                          case Sets1 of
+                              [] ->
+                                  {abort, nothing_to_do};
+                              _ ->
+                                  {commit, Sets1,
+                                   {AdvancedBuckets, Sets1 =/= Sets}}
+                          end
+                  end),
+            case RV of
+                {ok, _Rev, {AdvancedBuckets, StateAdvanced}} ->
+                    [?LOG_BUCKET_STATE(Bucket, NextBucketState) ||
+                        Bucket <- AdvancedBuckets],
+                    not StateAdvanced orelse ?LOG_FUSION_STATE(NextState),
+                    ok;
+                nothing_to_do ->
+                    nothing_to_do
+            end
     end.
 
 get_deletion_state(stopping) ->
@@ -858,7 +901,8 @@ buckets_advance_state_sets(Txn, PerBucketPerNodeMap, State, NextState) ->
     {[{set, ns_bucket:sub_key(BucketName, props),
        ns_bucket:set_fusion_state(NextState, BucketConfig)} ||
          {BucketName, BucketConfig} <- BucketsToAdvance],
-     length(BucketsToAdvance) =:= length(Buckets)}.
+     length(BucketsToAdvance) =:= length(Buckets),
+     [B || {B, _} <- BucketsToAdvance]}.
 
 analyze_fusion_stats([], _, _, Acc) ->
     {true, Acc};
