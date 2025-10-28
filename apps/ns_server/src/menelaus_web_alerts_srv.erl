@@ -311,6 +311,11 @@ stop() ->
 
 init([]) ->
     start_timer(),
+    lists:foreach(
+      fun (Type) ->
+              ns_server_stats:create_counter({<<"alerts_triggered">>,
+                                              [{type, Type}]})
+      end, menelaus_alert:alert_keys()),
     ns_pubsub:subscribe_link(ns_config_events,
                              fun email_config_change_callback/1),
     {ok, #state{}}.
@@ -342,8 +347,11 @@ handle_call(fetch_alert, _From, #state{queue=Alerts0, change_counter=Counter}=St
                end, Alerts0),
 
     {reply, {lists:reverse(Alerts), list_to_binary(integer_to_list(Counter))}, State};
-handle_call({add_alert, Key, Val}, _, #state{queue = Msgs, history = Hist,
-                                             change_counter = Counter} = State) ->
+handle_call({add_alert, {AlertKey, _Other} = Key, Val}, _,
+            #state{queue = Msgs, history = Hist,
+                   change_counter = Counter} = State) ->
+    ns_server_stats:notify_counter({<<"alerts_triggered">>,
+                                    [{type, AlertKey}]}),
     case lists:keyfind(Key, 1, Hist) of
         false ->
             Time   = erlang:monotonic_time(),

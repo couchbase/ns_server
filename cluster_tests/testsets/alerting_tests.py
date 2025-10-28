@@ -213,6 +213,35 @@ class AlertTests(testlib.BaseTestSet):
         testlib.poll_for_condition(check_node_reset, sleep_time=5,
                                    timeout=300)
 
+    def prometheus_metrics_alerts_test(self):
+        testlib.diag_eval(self.cluster, "menelaus_web_alerts_srv:reset().")
+
+        eval_string = """lists:map(
+  fun(T) -> menelaus_web_alerts_srv:local_alert({T, node()}, <<"test">>) end,
+  menelaus_alert:alert_keys())."""
+
+        r = testlib.diag_eval(self.cluster, eval_string)
+        assert r.status_code == 200
+
+        def check_alert_metric_recorded():
+            statname = "cm_alerts_triggered_total"
+            response = testlib.get_succ(
+                self.from_node(),
+                f"/_prometheus/api/v1/query?query={statname}").json()
+            value = response["data"]["result"]
+            if len(value) == 0:
+                return False
+
+            for metric in value:
+                alert_value = metric["value"]
+                if int(float(alert_value[1])) < 1:
+                    return False
+            return True
+
+        testlib.poll_for_condition(check_alert_metric_recorded, sleep_time=2,
+                                   timeout=120)
+        testlib.diag_eval(self.cluster, "menelaus_web_alerts_srv:reset().")
+
 
 def get_expiration_for_cert(cert_path):
     print(f"Extracting expiration for {cert_path}")

@@ -11,6 +11,18 @@
         "added": "7.0.0",
         "stability": "committed"
     },
+    "cm_alerts_triggered_total": {
+        "type": "counter",
+        "help": "Number of times an alert has been triggered",
+        "added": "8.1.0",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "type",
+                "help": "Name of the alert"
+            }
+        ]
+    },
     "cm_auth_cache_current_items": {
         "type": "gauge",
         "help": "Current number of items available in cbauth auth cache",
