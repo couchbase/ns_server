@@ -164,7 +164,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         return random.choice(self.cluster.connected_nodes)
 
     def kmip_key_test(self):
-        with setup_kmip_server():
+        with setup_kmip_server(self.cluster):
             # There is no such secret in the kmip server, so it should fail
             # bucket creation
             invalidKmip = kmip_secret('Kmip1', 99999)
@@ -3378,7 +3378,7 @@ def get_doc(cluster, bucket_name, key):
     return str(base64.b64decode(r['base64']), 'utf-8')
 
 
-def start_kmip_server(server_conf_path, pykmip_tmp_dir_path):
+def start_kmip_server(server_conf_path, server_log_path):
     # The pykmip server log is verbose on standard out, it logs to
     # server.log anyway so we redirect stdout to avoid cluttering
     devnull_fd = os.open(os.devnull, os.O_WRONLY)
@@ -3386,16 +3386,18 @@ def start_kmip_server(server_conf_path, pykmip_tmp_dir_path):
     os.dup2(devnull_fd, 2)
 
     server = KmipServer(config_path=server_conf_path,
-                        log_path=f'{pykmip_tmp_dir_path}/server.log')
+                        log_path=server_log_path)
     server.start()
     server.serve()
 
 
 @contextmanager
-def setup_kmip_server():
+def setup_kmip_server(cluster):
     server_process = None
     pykmip_path = os.path.join(testlib.get_resources_dir(), 'pykmip')
     pykmip_tmp_dir_path = os.path.join(pykmip_path, 'tmp')
+    server_log_path = os.path.join(cluster.get_cluster_path(),
+                                   'pykmip_server.log')
 
     def create_server_config_file():
         cert_path = os.path.join(pykmip_path, 'localhost.crt')
@@ -3516,7 +3518,7 @@ def setup_kmip_server():
 
         server_conf_path = create_server_config_file()
         server_process = Process(target=start_kmip_server,
-                                 args=(server_conf_path, pykmip_tmp_dir_path))
+                                 args=(server_conf_path, server_log_path))
         server_process.start()
 
         if not server_process.is_alive():

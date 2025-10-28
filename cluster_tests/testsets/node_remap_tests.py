@@ -112,9 +112,9 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
         old_start_index = old_cluster.first_node_index
         new_start_index = old_start_index + REMAP_OFFSET
 
-        old_cluster_path = cluster_path(old_cluster.index)
-        new_cluster_path = cluster_path(old_cluster.index +
-                                        CLUSTER_INDEX_OFFSET)
+        old_cluster_path = Path(old_cluster.get_cluster_path())
+        new_cluster_path = Path(
+            old_cluster.get_cluster_path(index_offset=CLUSTER_INDEX_OFFSET))
 
         # We must tell all nodes about all nodes being remapped, because all
         # nodes eventually contain all config. Build up that map (or set of
@@ -181,8 +181,8 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
         old_start_index = old_cluster.first_node_index
         new_start_index = old_start_index + REMAP_OFFSET
 
-        new_cluster_path = cluster_path(old_cluster.index +
-                                        CLUSTER_INDEX_OFFSET)
+        new_cluster_path = Path(
+            old_cluster.get_cluster_path(CLUSTER_INDEX_OFFSET))
 
         hostname = '127.0.0.1'
         if len(old_cluster._nodes) == 1:
@@ -292,7 +292,3 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
                   f"{self.cluster.first_node_index}")
             self.cluster.restart_all_nodes()
 
-
-def cluster_path(cluster_index):
-    return (testlib.get_cluster_test_dir() /
-            Path(f'test_cluster_data-{cluster_index}'))

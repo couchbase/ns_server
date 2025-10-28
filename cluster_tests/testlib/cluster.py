@@ -855,6 +855,10 @@ class Cluster:
         r = testlib.get_succ(self, '/pools/default/terseClusterInfo')
         return r.json()['clusterUUID']
 
+    def get_cluster_path(self, index_offset=0):
+        cluster_data_name = f'test_cluster_data-{self.index+index_offset}'
+        return os.path.join(testlib.get_cluster_test_dir(), cluster_data_name)
+
     def get_cookie(self):
         return testlib.post_succ(self, "/diag/eval",
                                  data="erlang:get_cookie()").text

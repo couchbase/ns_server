@@ -62,8 +62,7 @@ class ConfigRemapTest(testlib.BaseTestSet):
     def disable_afo(self, old_cluster):
         old_start_index = old_cluster.first_node_index
 
-        cluster_path = (testlib.get_cluster_test_dir() /
-                        Path(f'test_cluster_data-{old_cluster.index}'))
+        cluster_path = Path(old_cluster.get_cluster_path())
 
         for i in range(len(old_cluster._nodes)):
             old_node_index = old_start_index + i
