@@ -4074,45 +4074,89 @@ diag(#state{proc_type = ?MASTER_PROC} = State) ->
 
 %% Helper functions for diag
 diag_deks(DeksMap) ->
+    Now = calendar:universal_time(),
     [<<"DEKs Info:">>, $\n,
      lists:join(
        $\n,
        lists:map(
          fun ({Kind, Info}) ->
-             io_lib:format(
-               "  ~p:\n"
-               "    Enabled: ~p\n"
-               "    Active DEK id: ~s\n"
-               "    Has unencrypted data: ~p\n"
-               "    Last on-demand DEKs drop time: ~p\n"
-               "    Last GC time: ~p\n"
-               "    DEKs currently being dropped: ~s\n"
-               "    Jobs statuses: ~p\n"
-               "    All DEKs (total: ~p): ~s",
-               [Kind,
-                maps:get(is_enabled, Info, undefined),
-                format_dek_id_for_diag(maps:get(active_id, Info, undefined)),
-                maps:get(has_unencrypted_data, Info, undefined),
-                maps:get(last_drop_timestamp, Info, undefined),
-                maps:get(last_deks_gc_datetime, Info, undefined),
-                sets:fold(
-                  fun(DekId, FAcc) ->
-                      [format_dek_id_for_diag(DekId),
-                       " " | FAcc]
-                  end, [], maps:get(deks_being_dropped, Info, sets:new())),
-                maps:get(statuses, Info, #{}),
-                length(maps:get(deks, Info, [])),
-                [["\n      ", diag_dek(Dek)]
-                 || Dek <- maps:get(deks, Info, [])]])
+             diag_dek_kind(Kind, Info, Now)
          end, maps:to_list(DeksMap)))].
 
-diag_dek(?DEK_ERROR_PATTERN(Id, Reason)) ->
+diag_dek_kind(Kind, Info, Now) ->
+    ExtractKindData =
+        fun (CallbackName) ->
+            case cb_deks:call_dek_callback(CallbackName, Kind, [direct]) of
+                {succ, {ok, V}} -> V;
+                {succ, {error, not_found}} -> not_found;
+                {succ, Error} ->
+                    ?log_error("Failed to get ~p for ~p: ~0p",
+                               [CallbackName, Kind, Error]),
+                    error;
+                {except, _} -> %% error is logged by call_dek_callback
+                    exception
+            end
+        end,
+    LifeTimeInSec = ExtractKindData(get_deks_lifetime),
+    RotationInterval = ExtractKindData(get_deks_rotation_interval),
+    DropKeysTS = ExtractKindData(get_drop_deks_timestamp),
+    ForceEncryptionTS = ExtractKindData(get_force_encryption_timestamp),
+    CreationTimeDeadline =
+        case is_number(LifeTimeInSec) of
+            true -> misc:datetime_add(Now, -LifeTimeInSec);
+            false -> undefined
+        end,
+    io_lib:format(
+      "  ~p:\n"
+      "    Enabled: ~p\n"
+      "    Active DEK id: ~s\n"
+      "    Has unencrypted data: ~p\n"
+      "    Last on-demand DEKs drop time: ~p\n"
+      "    Last GC time: ~p\n"
+      "    DEKs currently being dropped: ~s\n"
+      "    DEKs lifetime (sec): ~p\n"
+      "    DEKs rotation interval (sec): ~p\n"
+      "    DEKs drop timestamp: ~p\n"
+      "    Force encryption timestamp: ~p\n"
+      "    Jobs statuses: ~p\n"
+      "    All DEKs (total: ~p): ~s",
+      [Kind,
+       maps:get(is_enabled, Info, undefined),
+       format_dek_id_for_diag(maps:get(active_id, Info, undefined)),
+       maps:get(has_unencrypted_data, Info, undefined),
+       maps:get(last_drop_timestamp, Info, undefined),
+       maps:get(last_deks_gc_datetime, Info, undefined),
+       sets:fold(
+           fun(DekId, FAcc) ->
+               [format_dek_id_for_diag(DekId),
+               " " | FAcc]
+           end, [], maps:get(deks_being_dropped, Info, sets:new())),
+       LifeTimeInSec,
+       RotationInterval,
+       DropKeysTS,
+       ForceEncryptionTS,
+       maps:get(statuses, Info, #{}),
+       length(maps:get(deks, Info, [])),
+       [["\n      ", diag_dek(Dek, CreationTimeDeadline)]
+           || Dek <- maps:get(deks, Info, [])]]).
+
+diag_dek(?DEK_ERROR_PATTERN(Id, Reason), _CreationTimeDeadline) ->
     io_lib:format("~s (ERROR)~n          ~p",
                   [format_dek_id_for_diag(Id), Reason]);
-diag_dek(#{type := Type, id := Id, info := Info}) ->
-    io_lib:format("~s (~p)~n          ~s",
+diag_dek(#{type := Type, id := Id, info := Info}, CreationTimeDeadline) ->
+    io_lib:format("~s (~p)~s~n          ~s",
                   [format_dek_id_for_diag(Id), Type,
+                   diag_is_dek_expired(Info, CreationTimeDeadline),
                    io_lib:print(maps:remove(key, Info), 11, 80, -1)]).
+
+diag_is_dek_expired(_, undefined) -> "";
+diag_is_dek_expired(#{creation_time := CreationTime}, CreationTimeDeadline) ->
+    case CreationTime < CreationTimeDeadline of
+        true -> " expired!";
+        false -> ""
+    end;
+diag_is_dek_expired(_, _) ->
+    "".
 
 diag_timers(Timers, TimersTimestamps) ->
     CurTS = erlang:monotonic_time(millisecond),
