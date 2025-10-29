@@ -206,6 +206,8 @@ class FusionTests(testlib.BaseTestSet):
 
         self.cluster.rebalance(plan_uuid = plan_uuid)
 
+        self.check_uploaders('test', otp_nodes.values())
+
         testlib.post_succ(self.cluster, "/controller/fusion/syncLogStore")
 
         resp = testlib.get_succ(self.cluster, "/fusion/activeGuestVolumes")
@@ -240,6 +242,8 @@ class FusionTests(testlib.BaseTestSet):
             json=nodes_volumes_json)
 
         self.cluster.rebalance(plan_uuid = plan_uuid)
+
+        self.check_uploaders('test', otp_nodes.values())
 
         resp = testlib.get_succ(self.cluster, "/fusion/activeGuestVolumes")
         volumes = resp.json()
@@ -421,6 +425,19 @@ class FusionTests(testlib.BaseTestSet):
             '{json, JsonList}.')
         return json.loads(resp.text)
 
+    def get_uploaders(self, bucket):
+        resp = testlib.diag_eval(
+            self.cluster,
+            f'Res = ns_bucket:get_fusion_uploaders("{bucket}"),' +
+            '{json, [{[{node, N}, {term, T}]} || {N, T} <- Res]}.')
+        return json.loads(resp.text)
+
+    def check_uploaders(self, bucket, nodes):
+        uploaders = self.get_uploaders(bucket)
+        uploader_nodes = set(uploader['node'] for uploader in uploaders)
+        assert all(uploader['node'] in nodes for uploader in uploaders)
+        assert all(node in uploader_nodes for node in nodes)
+
     def snapshot_management_test(self):
         self.init_fusion()
         testlib.post_succ(self.cluster, '/fusion/enable')
@@ -462,9 +479,9 @@ class FusionTests(testlib.BaseTestSet):
         self.wait_for_state('enabling', 'enabled')
 
         self.cluster.add_node(third_node, services=[Service.KV])
-        acc_plan = self.prepare_rebalance(
-            [self.cluster.connected_nodes[0].otp_node(),
-             third_node.otp_node()])
+        keep_nodes = [self.cluster.connected_nodes[0].otp_node(),
+                      third_node.otp_node()]
+        acc_plan = self.prepare_rebalance(keep_nodes)
         plan_uuid = acc_plan["planUUID"]
 
         resp = testlib.post_succ(
@@ -475,6 +492,8 @@ class FusionTests(testlib.BaseTestSet):
         self.cluster.rebalance(ejected_nodes=[second_node],
                                plan_uuid = plan_uuid,
                                wait = True)
+        self.check_uploaders('test', keep_nodes)
+
 
     def rebalance_out_the_last_replica_test(self):
         self.init_fusion()
@@ -489,8 +508,9 @@ class FusionTests(testlib.BaseTestSet):
         testlib.post_succ(self.cluster, '/fusion/enable')
         self.wait_for_state('enabling', 'enabled')
 
-        acc_plan = self.prepare_rebalance(
-            [self.cluster.connected_nodes[0].otp_node()])
+        first_node_otp = self.cluster.connected_nodes[0].otp_node()
+
+        acc_plan = self.prepare_rebalance([first_node_otp])
 
         plan_nodes = acc_plan["nodes"]
         assert len(plan_nodes) == 0
@@ -505,6 +525,8 @@ class FusionTests(testlib.BaseTestSet):
         self.cluster.rebalance(ejected_nodes=[second_node],
                                plan_uuid = plan_uuid,
                                wait = True)
+
+        self.check_uploaders('test', [first_node_otp])
 
 def assert_json_error(json, field, prefix):
     assert isinstance(json, dict)
