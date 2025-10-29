@@ -85,20 +85,16 @@ func (k *azureStoredKey) checkAzureTestKey() (bool, error) {
 	return false, nil
 }
 
-func getAzureOperationArgs(k *azureStoredKey) azureutils.OperationArgs {
-	maxTimeoutDuration := 5 * time.Minute
-	var timeoutDuration time.Duration
-	if int64(k.ReqTimeoutMs) > maxTimeoutDuration.Milliseconds() {
-		timeoutDuration = maxTimeoutDuration
-	} else {
-		timeoutDuration = time.Duration(k.ReqTimeoutMs) * time.Millisecond
+func getAzureOperationArgs(k *azureStoredKey) (*azureutils.OperationArgs, error) {
+	if err := validateTimeout(k.ReqTimeoutMs); err != nil {
+		return nil, err
 	}
 
-	return azureutils.OperationArgs{
+	return &azureutils.OperationArgs{
 		KeyURL:          k.KeyUrl,
 		Algorithm:       k.Algorithm,
-		TimeoutDuration: timeoutDuration,
-	}
+		TimeoutDuration: time.Duration(k.ReqTimeoutMs) * time.Millisecond,
+	}, nil
 }
 
 func (k *azureStoredKey) encryptData(data, AD []byte) ([]byte, error) {
@@ -112,8 +108,11 @@ func (k *azureStoredKey) encryptData(data, AD []byte) ([]byte, error) {
 		return aesgcmEncrypt(zero_key, data, AD), nil
 	}
 
-	opArgs := getAzureOperationArgs(k)
-	return azureutils.KmsEncrypt(opArgs, data, AD)
+	opArgs, err := getAzureOperationArgs(k)
+	if err != nil {
+		return nil, err
+	}
+	return azureutils.KmsEncrypt(*opArgs, data, AD)
 }
 
 func (k *azureStoredKey) decryptData(data, AD []byte) ([]byte, error) {
@@ -127,9 +126,12 @@ func (k *azureStoredKey) decryptData(data, AD []byte) ([]byte, error) {
 		return aesgcmDecrypt(zero_key, data, AD)
 	}
 
-	opArgs := getAzureOperationArgs(k)
+	opArgs, err := getAzureOperationArgs(k)
+	if err != nil {
+		return nil, err
+	}
 
-	return azureutils.KmsDecrypt(opArgs, data, AD)
+	return azureutils.KmsDecrypt(*opArgs, data, AD)
 }
 
 func (k *azureStoredKey) unmarshal(data json.RawMessage) error {

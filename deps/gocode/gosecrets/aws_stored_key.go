@@ -115,23 +115,19 @@ func (k *awsStoredKey) checkAWSTestKey() (bool, error) {
 	return false, nil
 }
 
-func getAwsConfigOpts(k *awsStoredKey) awsutils.AwsConfigOpts {
-	maxTimeoutDuration := 5 * time.Minute
-	var timeoutDuration time.Duration
-	if int64(k.ReqTimeoutMs) > maxTimeoutDuration.Milliseconds() {
-		timeoutDuration = maxTimeoutDuration
-	} else {
-		timeoutDuration = time.Duration(k.ReqTimeoutMs) * time.Millisecond
+func getAwsConfigOpts(k *awsStoredKey) (*awsutils.AwsConfigOpts, error) {
+	if err := validateTimeout(k.ReqTimeoutMs); err != nil {
+		return nil, err
 	}
 
-	return awsutils.AwsConfigOpts{
+	return &awsutils.AwsConfigOpts{
 		Region:          k.Region,
 		ConfigFile:      k.ConfigFile,
 		CredsFile:       k.CredsFile,
 		Profile:         k.Profile,
 		UseIMDS:         k.UseIMDS,
-		TimeoutDuration: timeoutDuration,
-	}
+		TimeoutDuration: time.Duration(k.ReqTimeoutMs) * time.Millisecond,
+	}, nil
 }
 
 func (k *awsStoredKey) encryptData(data, AD []byte) ([]byte, error) {
@@ -145,10 +141,13 @@ func (k *awsStoredKey) encryptData(data, AD []byte) ([]byte, error) {
 		return aesgcmEncrypt(zero_key, data, AD), nil
 	}
 
-	opts := getAwsConfigOpts(k)
+	opts, err := getAwsConfigOpts(k)
+	if err != nil {
+		return nil, err
+	}
 	// AD parameters are strings in Kms :(
 	strAD := base64.StdEncoding.EncodeToString(AD)
-	return awsutils.KmsEncryptData(k.KeyArn, data, strAD, opts)
+	return awsutils.KmsEncryptData(k.KeyArn, data, strAD, *opts)
 }
 
 func (k *awsStoredKey) decryptData(data, AD []byte) ([]byte, error) {
@@ -162,10 +161,13 @@ func (k *awsStoredKey) decryptData(data, AD []byte) ([]byte, error) {
 		return aesgcmDecrypt(zero_key, data, AD)
 	}
 
-	opts := getAwsConfigOpts(k)
+	opts, err := getAwsConfigOpts(k)
+	if err != nil {
+		return nil, err
+	}
 	// AD parameters are strings in Kms :(
 	strAD := base64.StdEncoding.EncodeToString(AD)
-	return awsutils.KmsDecryptData(k.KeyArn, data, strAD, opts)
+	return awsutils.KmsDecryptData(k.KeyArn, data, strAD, *opts)
 }
 
 func (k *awsStoredKey) unmarshal(data json.RawMessage) error {

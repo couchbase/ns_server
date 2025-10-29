@@ -77,20 +77,16 @@ func (k *gcpStoredKey) checkGcpTestKey() (bool, error) {
 	return false, nil
 }
 
-func getGcpOperationArgs(k *gcpStoredKey) gcputils.OperationArgs {
-	maxTimeoutDuration := 5 * time.Minute
-	var timeoutDuration time.Duration
-	if int64(k.ReqTimeoutMs) > maxTimeoutDuration.Milliseconds() {
-		timeoutDuration = maxTimeoutDuration
-	} else {
-		timeoutDuration = time.Duration(k.ReqTimeoutMs) * time.Millisecond
+func getGcpOperationArgs(k *gcpStoredKey) (*gcputils.OperationArgs, error) {
+	if err := validateTimeout(k.ReqTimeoutMs); err != nil {
+		return nil, err
 	}
 
-	return gcputils.OperationArgs{
+	return &gcputils.OperationArgs{
 		KeyResourceId:     k.KeyResourceId,
 		PathToServiceFile: k.CredentialsFilePath,
-		TimeoutDuration:   timeoutDuration,
-	}
+		TimeoutDuration:   time.Duration(k.ReqTimeoutMs) * time.Millisecond,
+	}, nil
 }
 
 func (k *gcpStoredKey) encryptData(data, AD []byte) ([]byte, error) {
@@ -104,7 +100,11 @@ func (k *gcpStoredKey) encryptData(data, AD []byte) ([]byte, error) {
 		return aesgcmEncrypt(zero_key, data, AD), nil
 	}
 
-	return gcputils.KmsEncrypt(getGcpOperationArgs(k), data, AD)
+	opArgs, err := getGcpOperationArgs(k)
+	if err != nil {
+		return nil, err
+	}
+	return gcputils.KmsEncrypt(*opArgs, data, AD)
 }
 
 func (k *gcpStoredKey) decryptData(data, AD []byte) ([]byte, error) {
@@ -118,7 +118,11 @@ func (k *gcpStoredKey) decryptData(data, AD []byte) ([]byte, error) {
 		return aesgcmDecrypt(zero_key, data, AD)
 	}
 
-	return gcputils.KmsDecrypt(getGcpOperationArgs(k), data, AD)
+	opArgs, err := getGcpOperationArgs(k)
+	if err != nil {
+		return nil, err
+	}
+	return gcputils.KmsDecrypt(*opArgs, data, AD)
 }
 
 func (k *gcpStoredKey) unmarshal(data json.RawMessage) error {

@@ -21,6 +21,13 @@
 
 -define(IS_WRITABLE_TIMEOUT, ?get_timeout(is_writable, 60000)).
 
+% We should not allow unbounded timeout values to flow to go code as go
+% time.duration type is in ns unit ticks of int64_t and larger value of
+% timeouts in ms when converted to duration can overflow the type easily. Right
+% now we cap the go code internally to error out if a timeout of larger than
+% 5 minutes is specified and this define matches that exactly
+-define(MAX_KMS_GO_TIMEOUT_MS, (5 * 60 * 1000)).
+
 -export([handle_get_secrets/1,
          handle_get_secret/2,
          handle_post_secret/1,
@@ -737,7 +744,7 @@ awskms_key_validators(CurSecretProps) ->
      validator:string(configFile, _),
      validator:default(configFile, "", _),
      validate_optional_file(configFile, _),
-     validator:integer(reqTimeoutMs, 5 * 1000, 5 * 60 * 1000, _),
+     validator:integer(reqTimeoutMs, 1000, ?MAX_KMS_GO_TIMEOUT_MS, _),
      validator:default(reqTimeoutMs, 30000, _),
      validator:validate(fun (_) -> {error, "read only"} end, storedKeyIds, _),
      validator:string(profile, _),
@@ -788,7 +795,7 @@ gcpkms_key_validators(CurSecretProps) ->
      validator:required(keyResourceId, _),
      validator:string(credentialsFile, _),
      validator:default(credentialsFile, "", _),
-     validator:integer(reqTimeoutMs, 5 * 1000, 5 * 60 * 1000, _),
+     validator:integer(reqTimeoutMs, 1000, ?MAX_KMS_GO_TIMEOUT_MS, _),
      validator:default(reqTimeoutMs, 30000, _),
      validator:validate(fun (_) -> {error, "read only"} end, storedKeyIds, _)
     ] ++
@@ -811,7 +818,7 @@ azurekms_key_validators(CurSecretProps) ->
                                             "RSA15", "RSAOAEP",
                                             "RSAOAEP256"], _),
      validator:required(encryptionAlgorithm, _),
-     validator:integer(reqTimeoutMs, 5 * 1000, 5 * 60 * 1000, _),
+     validator:integer(reqTimeoutMs, 1000, ?MAX_KMS_GO_TIMEOUT_MS, _),
      validator:default(reqTimeoutMs, 30000, _),
      validator:validate(fun (_) -> {error, "read only"} end, storedKeyIds, _)
     ] ++
@@ -829,7 +836,7 @@ kmip_key_validators(CurSecretProps, Snapshot) ->
      validator:required(host, _),
      validator:integer(port, 1, 65535, _),
      validator:required(port, _),
-     validator:integer(reqTimeoutMs, 1000, 5 * 60 * 1000, _),
+     validator:integer(reqTimeoutMs, 1000, ?MAX_KMS_GO_TIMEOUT_MS, _),
      validator:default(reqTimeoutMs, 30000, _),
      validator:string(keyPath, _),
      validator:required(keyPath, _),

@@ -161,32 +161,31 @@ func (k *kmipStoredKey) decryptMe(validateKeysProof bool, state *StoredKeysState
 	return nil
 }
 
-func getKmipClientCfg(k *kmipStoredKey) kmiputils.KmipClientConfig {
-	maxTimeoutDuration := 5 * time.Minute
-	var timeoutDuration time.Duration
-	if int64(k.ReqTimeoutMs) > maxTimeoutDuration.Milliseconds() {
-		timeoutDuration = maxTimeoutDuration
-	} else {
-		timeoutDuration = time.Duration(k.ReqTimeoutMs) * time.Millisecond
+func getKmipClientCfg(k *kmipStoredKey) (*kmiputils.KmipClientConfig, error) {
+	if err := validateTimeout(k.ReqTimeoutMs); err != nil {
+		return nil, err
 	}
 
-	return kmiputils.KmipClientConfig{
+	return &kmiputils.KmipClientConfig{
 		Host:                k.Host,
 		Port:                k.Port,
-		TimeoutDuration:     timeoutDuration,
+		TimeoutDuration:     time.Duration(k.ReqTimeoutMs) * time.Millisecond,
 		KeyPath:             k.KeyPath,
 		CertPath:            k.CertPath,
 		CbCaPath:            k.CbCaPath,
 		SelectCaOpt:         k.CaSelection,
 		DecryptedPassphrase: k.decryptedPassphrase,
-	}
+	}, nil
 }
 
 func (k *kmipStoredKey) encryptData(data, AD []byte) ([]byte, error) {
-	clientCfg := getKmipClientCfg(k)
+	clientCfg, err := getKmipClientCfg(k)
+	if err != nil {
+		return nil, err
+	}
 	switch k.EncryptionApproach {
 	case "use_encrypt_decrypt":
-		encrAttrs, err := kmiputils.KmipEncryptData(clientCfg, k.KmipId, data, AD)
+		encrAttrs, err := kmiputils.KmipEncryptData(*clientCfg, k.KmipId, data, AD)
 		if err != nil {
 			return nil, err
 		}
@@ -203,7 +202,7 @@ func (k *kmipStoredKey) encryptData(data, AD []byte) ([]byte, error) {
 		dataSlice = append(dataSlice, encrAttrs.EncrData...)
 		return append([]byte{KMIP_USE_ENCR_DECR}, dataSlice...), nil
 	case "use_get":
-		aes256Key, err := kmiputils.KmipGetAes256Key(clientCfg, k.KmipId)
+		aes256Key, err := kmiputils.KmipGetAes256Key(*clientCfg, k.KmipId)
 		if err != nil {
 			return nil, err
 		}
@@ -220,7 +219,10 @@ func (k *kmipStoredKey) decryptData(data, AD []byte) ([]byte, error) {
 		return nil, fmt.Errorf("invalid data length: %d", len(data))
 	}
 
-	clientCfg := getKmipClientCfg(k)
+	clientCfg, err := getKmipClientCfg(k)
+	if err != nil {
+		return nil, err
+	}
 	if uint8(data[0]) == KMIP_USE_ENCR_DECR {
 		dataSlice := data[1:]
 		if len(dataSlice) < 4 {
@@ -243,9 +245,9 @@ func (k *kmipStoredKey) decryptData(data, AD []byte) ([]byte, error) {
 			AuthTag:        authTag,
 			AD:             AD,
 		}
-		return kmiputils.KmipDecryptData(clientCfg, k.KmipId, encrAttrs)
+		return kmiputils.KmipDecryptData(*clientCfg, k.KmipId, encrAttrs)
 	} else if uint8(data[0]) == KMIP_USE_GET {
-		aes256Key, err := kmiputils.KmipGetAes256Key(clientCfg, k.KmipId)
+		aes256Key, err := kmiputils.KmipGetAes256Key(*clientCfg, k.KmipId)
 		if err != nil {
 			return nil, err
 		}

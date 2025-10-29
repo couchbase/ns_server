@@ -8,6 +8,11 @@
 // licenses/APL2.txt.
 package main
 
+import (
+	"fmt"
+	"time"
+)
+
 type baseStoredKey struct {
 	Name         string `json:"name"`
 	Kind         string `json:"kind"`
@@ -20,4 +25,13 @@ func (b baseStoredKey) name() string {
 
 func (b baseStoredKey) kind() string {
 	return b.Kind
+}
+
+func validateTimeout(timeoutMs int) error {
+	maxTimeoutDuration := 5 * time.Minute
+	if int64(timeoutMs) > maxTimeoutDuration.Milliseconds() {
+		return fmt.Errorf("timeout greater than 5 minutes not allowed")
+	}
+
+	return nil
 }
