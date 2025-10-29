@@ -167,9 +167,10 @@ init({Bucket, BucketConfig, Nodes, OldMap, NewMap, ProgressCallback,
                        ?MOVES_BEFORE_COMPACTION,
                        ?MAX_INFLIGHT_MOVES_PER_NODE, Options),
 
+    MovesTuple = {Moves, UndefinedMoves} =
+        vbucket_move_scheduler:get_moves(SchedulerState),
     ns_rebalance_observer:submit_master_event(
-      {planned_moves, Bucket,
-       vbucket_move_scheduler:get_moves(SchedulerState), true}),
+      {planned_moves, Bucket, MovesTuple, true}),
 
     case RebalancePlan of
         undefined ->
@@ -192,9 +193,38 @@ init({Bucket, BucketConfig, Nodes, OldMap, NewMap, ProgressCallback,
             undefined ->
                 {undefined, undefined};
             _ ->
-                {list_to_array(fusion_uploaders:get_current(
-                                 FusionUploadersInfo)),
-                 list_to_array(fusion_uploaders:get_moves(FusionUploadersInfo))}
+                VBucketsToMove =
+                    sets:from_list(
+                      [VBucket ||
+                          {VBucket, _, _, _, _} <- Moves ++ UndefinedMoves]),
+                CurrentUploaders = fusion_uploaders:get_current(
+                                     FusionUploadersInfo),
+                UploaderMoves = fusion_uploaders:get_moves(FusionUploadersInfo),
+                Zipped = lists:zip3(CurrentUploaders, UploaderMoves,
+                                    lists:seq(0, length(CurrentUploaders) - 1)),
+                {NewUploaders, New} =
+                    lists:mapfoldl(
+                      fun ({Uploader, same, _VB}, Acc) ->
+                              {Uploader, Acc};
+                          ({Uploader, Move, VB}, Acc) ->
+                              case sets:is_element(VB, VBucketsToMove) of
+                                  true ->
+                                      {Uploader, Acc};
+                                  false ->
+                                      {Move, true}
+                              end
+                      end, false, Zipped),
+                case New of
+                    true ->
+                        ?rebalance_info("Setting fusion uploaders for bucket ~p"
+                                        " to ~p", [Bucket, NewUploaders]),
+                        {ok, _} = chronicle_kv:set(
+                                    kv, ns_bucket:fusion_uploaders_key(Bucket),
+                                    NewUploaders);
+                    false ->
+                        ok
+                end,
+                {list_to_array(NewUploaders), list_to_array(UploaderMoves)}
         end,
 
     {ok, #state{bucket = Bucket,

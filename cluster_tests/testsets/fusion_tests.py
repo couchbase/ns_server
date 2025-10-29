@@ -494,10 +494,11 @@ class FusionTests(testlib.BaseTestSet):
                                wait = True)
         self.check_uploaders('test', keep_nodes)
 
-
-    def rebalance_out_the_last_replica_test(self):
+    def prepare_2_nodes_one_bucket(self):
         self.init_fusion()
         self.create_bucket('test', 1)
+
+        first_node = self.cluster.connected_nodes[0]
 
         disconnected_nodes = self.cluster.disconnected_nodes()
         second_node = disconnected_nodes[0]
@@ -508,7 +509,11 @@ class FusionTests(testlib.BaseTestSet):
         testlib.post_succ(self.cluster, '/fusion/enable')
         self.wait_for_state('enabling', 'enabled')
 
-        first_node_otp = self.cluster.connected_nodes[0].otp_node()
+        return first_node, second_node
+
+    def rebalance_out_the_last_replica_test(self):
+        first_node, second_node = self.prepare_2_nodes_one_bucket()
+        first_node_otp = first_node.otp_node()
 
         acc_plan = self.prepare_rebalance([first_node_otp])
 
@@ -527,6 +532,14 @@ class FusionTests(testlib.BaseTestSet):
                                wait = True)
 
         self.check_uploaders('test', [first_node_otp])
+
+    def rebalance_with_trivial_moves_test(self):
+        first_node, second_node = self.prepare_2_nodes_one_bucket()
+        self.cluster.failover_node(second_node, graceful=True)
+        self.cluster.eject_node(second_node, second_node)
+        self.cluster.rebalance(wait = True)
+        self.check_uploaders('test', [first_node.otp_node()])
+
 
 def assert_json_error(json, field, prefix):
     assert isinstance(json, dict)
