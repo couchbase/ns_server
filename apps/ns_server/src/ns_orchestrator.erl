@@ -1226,6 +1226,8 @@ idle({fusion, Command}, From, _State) ->
     {keep_state_and_data, [{reply, From, RV}]};
 
 idle({prepare_fusion_rebalance, KeepNodes}, From, _State) ->
+    ?log_info("Request to prepare fusion rebalance. KeepNodes = ~p",
+              [KeepNodes]),
     RV =
         case fusion_uploaders:get_state() of
             enabled ->
@@ -1249,6 +1251,7 @@ idle({prepare_fusion_rebalance, KeepNodes}, From, _State) ->
     {keep_state_and_data, [{reply, From, RV}]};
 
 idle({abort_prepared_fusion_rebalance, PlanUUID}, From, _State) ->
+    ?log_info("Request to abort fusion rebalance. uuid = ~p", [PlanUUID]),
     RV =
         case retrieve_rebalance_plan_and_check_uuid(PlanUUID) of
             {ok, _} ->
@@ -1260,6 +1263,8 @@ idle({abort_prepared_fusion_rebalance, PlanUUID}, From, _State) ->
     {keep_state_and_data, [{reply, From, RV}]};
 
 idle({fusion_upload_mounted_volumes, PlanUUID, Volumes}, From, _State) ->
+    ?log_info("Request to upload mounted volumes. uuid = ~p, volumes = ~p",
+              [PlanUUID, Volumes]),
     RV =
         try
             RebalancePlan =
