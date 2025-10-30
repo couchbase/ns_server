@@ -36,7 +36,8 @@
          prometheus_cfg/2,
          sasl_mechanisms/2,
          ssl_sasl_mechanisms/2,
-         get_config_profile/2]).
+         get_config_profile/2,
+         get_fusion_rate/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -137,19 +138,8 @@ init([]) ->
                                  (_Other) ->
                                      []
                              end),
-    chronicle_compat_events:subscribe(
-      fun (jwt_settings) ->
-              Self ! do_check;
-          (?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY) ->
-              Self ! do_check;
-          (Key) ->
-              case ns_bucket:sub_key_match(Key) of
-                  {true, _Bucket, props} ->
-                      Self ! do_check;
-                  _ ->
-                      ok
-              end
-      end),
+    chronicle_compat_events:notify_if_key_changes(
+      fun is_notable_chronicle_key/1, do_check),
 
     Self ! do_check,
     Self ! upload_tls_config,
@@ -229,6 +219,17 @@ delete_prev_config_file() ->
         Other ->
             ?log_error("failed to delete ~s: ~p", [PrevMcdConfigPath, Other]),
             erlang:error({failed_to_delete_prev_config, Other})
+    end.
+
+is_notable_chronicle_key(rebalance_status) -> true;
+is_notable_chronicle_key(jwt_settings) -> true;
+is_notable_chronicle_key(?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY) -> true;
+is_notable_chronicle_key(Key) ->
+    case ns_bucket:sub_key_match(Key) of
+        {true, _Bucket, props} ->
+            true;
+        _ ->
+            false
     end.
 
 is_notable_config_key({node, N, memcached}) ->
@@ -711,6 +712,14 @@ get_external_users_push_interval([], _Params) ->
 
 get_external_auth_service([], _Params) ->
     is_external_auth_service_enabled().
+
+get_fusion_rate(Name, Params) ->
+    case rebalance:status() of
+        running ->
+            0;
+        _ ->
+            proplists:get_value(Name, Params)
+    end.
 
 is_external_auth_service_enabled() ->
     SaslauthdEnabled =

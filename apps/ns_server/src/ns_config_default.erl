@@ -344,8 +344,10 @@ default(Vsn) ->
         {tcp_user_timeout, tcp_user_timeout},
         {free_connection_pool_size, free_connection_pool_size},
         {max_client_connection_details, max_client_connection_details},
-        {fusion_migration_rate_limit, fusion_migration_rate_limit},
-        {fusion_sync_rate_limit, fusion_sync_rate_limit},
+        {fusion_migration_rate_limit,
+         {memcached_config_mgr, get_fusion_rate, fusion_migration_rate_limit}},
+        {fusion_sync_rate_limit,
+         {memcached_config_mgr, get_fusion_rate, fusion_sync_rate_limit}},
         {dcp_consumer_max_marker_version, dcp_consumer_max_marker_version},
         {dcp_snapshot_marker_hps_enabled, dcp_snapshot_marker_hps_enabled},
         {dcp_snapshot_marker_purge_seqno_enabled,
@@ -488,7 +490,8 @@ upgrade_config(Config) ->
                 %% test will still pass, despite the fact that offline upgrades
                 %% from the version immediately prior to CurrentVersion would
                 %% not actually be allowed.
-                [{set, {node, node(), config_version}, {8,1}}];
+                [{set, {node, node(), config_version}, {8,1}} |
+                 upgrade_config_from_80_to_81()];
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
                        "unsupported version ~p. Terminating.", [OldVersion]),
@@ -547,6 +550,10 @@ upgrade_config_from_76_to_79(Config) ->
 do_upgrade_config_from_76_to_79(_Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig)].
+
+upgrade_config_from_80_to_81() ->
+    DefaultConfig = default(?VERSION_TOTORO),
+    [upgrade_key(memcached_config, DefaultConfig)].
 
 encrypt_and_save(Config, DekSnapshot) ->
     {value, DirPath} = ns_config:search(Config, directory),
