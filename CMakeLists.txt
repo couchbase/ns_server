@@ -432,6 +432,25 @@ INSTALL (DIRECTORY _build/default/lib/ns_common/ebin DESTINATION
          "${INST_LIBDIR}/ns_common")
 INSTALL (DIRECTORY _build/default/lib/ns_server/ebin DESTINATION
          "${INST_LIBDIR}/ns_server")
+
+# Search for and install the cb_openssl_nif library files
+# Notes:
+#  - can't use INSTALL (DIRECTORY) because ns_server/priv is a symlink for
+#    the ns_server application and the UI is installing to the same directory
+#  - lib extension varies by platform, as well as the number of files, so can't
+#    use INSTALL (FILE) either
+INSTALL (CODE "
+  set (NIF_WC \"${PROJECT_SOURCE_DIR}/_build/default/lib/ns_server/priv/cb_openssl_nif.*\")
+  file (GLOB CB_OPENSSL_NIF_FILES \"\${NIF_WC}\")
+  if (CB_OPENSSL_NIF_FILES)
+    message (STATUS \"Found cb_openssl_nif files: \${CB_OPENSSL_NIF_FILES}\")
+    file (INSTALL \${CB_OPENSSL_NIF_FILES}
+          DESTINATION \"${CMAKE_INSTALL_PREFIX}/${INST_LIBDIR}/ns_server/priv\")
+  else ()
+    message (FATAL_ERROR \"No cb_openssl_nif files found matching \${NIF_WC}\")
+  endif ()
+")
+
 INSTALL (DIRECTORY _build/default/lib/cb_dets/ebin DESTINATION
          "${INST_LIBDIR}/cb_dets")
 

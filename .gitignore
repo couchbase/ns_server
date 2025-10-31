@@ -53,3 +53,7 @@ apps/ns_server/src/kv_stats_mappings.erl
 /cluster_tests/test_cluster_data*
 **/__pycache__/
 /deps/config_remap/config_remap
+apps/ns_server/c_src/*.d
+apps/ns_server/c_src/*.o
+apps/ns_server/c_src/*.obj
+apps/ns_server/priv/cb_openssl_nif.*

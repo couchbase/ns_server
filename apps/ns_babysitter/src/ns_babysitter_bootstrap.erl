@@ -18,6 +18,10 @@ start() ->
 
 start({nocookie, nologdek}) ->
     try
+        %% In case of problems with NIF loading it is better to fail here than
+        %% later at random time when the NIF is used the first time.
+        ok = cb_openssl:ensure_nif_is_loaded(),
+
         application:set_env(ale, encryption_callbacks, ?ALE_ENCR_CALLBACKS),
 
         ok = application:start(ale),
