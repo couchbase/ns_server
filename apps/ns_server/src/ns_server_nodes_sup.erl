@@ -14,7 +14,7 @@
 -module(ns_server_nodes_sup).
 
 -include("ns_common.hrl").
-
+-include("jwt.hrl").
 -behaviour(supervisor).
 
 %% API
@@ -78,6 +78,13 @@ child_specs() ->
             cluster_compat_mode:is_enterprise()] ++
 
         [{oidc_provider_manager, {oidc_provider_manager, start_link, []},
+          permanent, 1000, worker, []} ||
+            cluster_compat_mode:is_enterprise()] ++
+
+        [{oidc_preauth_store, {short_ttl_store, start_link,
+                               [oidc_preauth_store,
+                                ?OIDC_PREAUTH_STORE_SWEEP_INTERVAL_MS,
+                                ?OIDC_PREAUTH_STORE_TTL_SECONDS]},
           permanent, 1000, worker, []} ||
             cluster_compat_mode:is_enterprise()] ++
 
