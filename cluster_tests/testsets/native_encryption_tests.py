@@ -3096,16 +3096,26 @@ def verify_dek_files(cluster, relative_path, verify_key_count=1,
                 return
             else:
                 assert False, f'directory {deks_path} doesn\'t exist'
-        c = 0
+        checked_ids = {}
         for path in deks_path.iterdir():
-            if parse_key_file_name(path.name) is not None:
-                c += 1
-                print(f'Verifying dek {path.name}')
-                verify_key_file(path, **kwargs)
+            print(f'Found file {path}')
+            key_id = parse_key_file_name(path.name)
+            if key_id is not None:
+                if key_id in checked_ids:
+                    # It is possible to have two files with the same key id
+                    # for short period of time,
+                    # because new version is written first, and then old version
+                    # gets removed.
+                    print(f'Skipping duplicate key id {key_id}')
+                    continue
+                checked_ids[key_id] = True
+                print(f'Verifying dek {key_id}')
+                verify_key_file_by_id(path.parent, key_id, **kwargs)
             else:
                 print(f'Skipping file {path} (doesn\'t seem to be a key file)')
 
         if verify_key_count is not None:
+            c = len(checked_ids)
             print(f'dek count at {node}: {c}')
             if callable(verify_key_count):
                 assert verify_key_count(c), f'dek count is unexpected: {c}'
@@ -3240,20 +3250,41 @@ def poll_verify_dek_files(*args, **kwargs):
 
 
 def verify_key_file_by_id(dir_path, key_id, verify_missing=False, **kwargs):
-    files = list(dir_path.glob("./" + key_id + '.key.*'))
+    wildcard = "./" + key_id + '.key.*'
+
     if verify_missing:
+        files = list(dir_path.glob(wildcard))
         assert len(files) == 0, f'key files exists: {files}'
-    else:
-        assert len(files) == 1, f'more than one version found: {files}'
-        verify_key_file(files[0], **kwargs)
+        return True
+
+    # Any given key file can be rewritten with a newer version at any moment,
+    # so we can't really expect that:
+    # 1. there is exactly one version of the key file
+    # 2. the file still exists when we read it
+    # We should simply retry if it happens.
+    def verify():
+        files = list(dir_path.glob(wildcard))
+        if len(files) != 1:
+            # We can have 2 files for a given key id for a short period of time,
+            # because new version is written first, and then old version
+            # gets removed.
+            print(f'Found {len(files)} files for {key_id}')
+            return False
+        try:
+            content = json.loads(files[0].read_bytes())
+        except:
+            print(f'Failed to load content of {files[0]}')
+            return False
+        return verify_key_file_content(content, key_id, **kwargs)
+
+    testlib.poll_for_condition(
+      verify, sleep_time=0.3, attempts=50, verbose=True)
 
 
-def verify_key_file(path, verify_encryption_kek=None,
-                    verify_creation_time=None,
-                    verify_key_type=None,
-                    verify_id=None):
-    assert path.is_file(), f'key file doesn\'t exist: {path}'
-    content = json.loads(path.read_bytes())
+def verify_key_file_content(content, key_id, verify_encryption_kek=None,
+                            verify_creation_time=None,
+                            verify_key_type=None,
+                            verify_id=None):
     if verify_encryption_kek is not None:
         has_kek = content['keyData']['encryptionKeyName']
         assert has_kek == verify_encryption_kek, \
@@ -3265,13 +3296,12 @@ def verify_key_file(path, verify_encryption_kek=None,
                f'Unexpected key creation time: {ct} ' \
                f'(cur time: {datetime.now(timezone.utc)})'
     if verify_id is not None:
-        key_id = parse_key_file_name(path.name)
-        assert key_id is not None, f"invalid key filename: path.name"
         assert verify_id(key_id), f'unexpected key id: {key_id}'
     expected_type = 'raw-aes-gcm' if verify_key_type is None \
                                   else verify_key_type
     assert content['type'] == expected_type, \
            f'unexpected key type: {content["type"]} (expected: {expected_type})'
+    return True
 
 
 def get_kek_id(cluster, secret_id):
