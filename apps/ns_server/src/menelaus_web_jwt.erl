@@ -301,6 +301,8 @@ sync_with_node() ->
     ok = chronicle_kv:sync(kv, ?SYNC_TIMEOUT),
     %% Make sure all notifications have been sent
     chronicle_compat_events:sync(),
+    %% Restart the OIDC provider workers to ensure they use the new settings
+    oidc_provider_manager:restart_workers(),
     %% Ensures the cache has been invalidated. This sync is processed only after
     %% all prior messages including the settings update.
     gen_server:call(jwt_cache, sync, ?SYNC_TIMEOUT).

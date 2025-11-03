@@ -77,6 +77,10 @@ child_specs() ->
           permanent, 1000, worker, []} ||
             cluster_compat_mode:is_enterprise()] ++
 
+        [{oidc_provider_manager, {oidc_provider_manager, start_link, []},
+          permanent, 1000, worker, []} ||
+            cluster_compat_mode:is_enterprise()] ++
+
         [{users_sup,
           {users_sup, start_link, []},
           permanent, infinity, supervisor, []},

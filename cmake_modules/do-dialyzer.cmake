@@ -25,7 +25,8 @@ IF (NOT EXISTS "${COUCHBASE_PLT}")
     _build/default/lib/esaml
     _build/default/lib/iso8601
     _build/default/lib/jose
-    _build/default/lib/jiffy)
+    _build/default/lib/jiffy
+    _build/default/lib/oidcc)
 ENDIF (NOT EXISTS "${COUCHBASE_PLT}")
 
 EXECUTE_PROCESS (RESULT_VARIABLE _failure
