@@ -190,17 +190,7 @@ build_discovery_issuer(Name, OIDC) ->
             ignore;
         Disc ->
             HttpTimeoutMs = maps:get(http_timeout_ms, OIDC),
-            SslOpts =
-                case maps:get(tls_verify_peer, OIDC, true) of
-                    true ->
-                        {_, Certs} = maps:get(tls_ca, OIDC, {<<>>, []}),
-                        CACerts = Certs ++ ns_server_cert:trusted_CAs(der),
-                        [{verify, verify_peer},
-                         {cacerts, CACerts},
-                         {depth, ?ALLOWED_CERT_CHAIN_LENGTH}];
-                    false ->
-                        [{verify, verify_none}]
-                end,
+            SslOpts = extract_oidc_connect_options(Disc, OIDC),
             DisablePAR =
                 maps:get(disable_pushed_authorization_requests, OIDC, false),
             #{name => Name,
@@ -209,3 +199,12 @@ build_discovery_issuer(Name, OIDC) ->
               ssl_opts => SslOpts,
               disable_par => DisablePAR}
     end.
+
+-spec extract_oidc_connect_options(URL :: string(), OidcSettings :: map()) ->
+          list().
+extract_oidc_connect_options(URL, OidcSettings) ->
+    AddressFamily = maps:get(address_family, OidcSettings, undefined),
+    VerifyPeer = maps:get(tls_verify_peer, OidcSettings, true),
+    {_, Certs} = maps:get(tls_ca, OidcSettings, {<<>>, []}),
+    SNI = maps:get(tls_sni, OidcSettings, ""),
+    misc:tls_connect_options(URL, AddressFamily, VerifyPeer, Certs, SNI, []).
