@@ -468,8 +468,9 @@ cleanup_apply_config_body(Bucket, Servers, BucketConfig, Options) ->
                                undefined_timeout)),
 
     %% MB-68800: Enable FBR only for fullEviction temporarily
-    case ns_config:read_key_fast(file_based_backfill_enabled,
-                                 ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT)
+    case cluster_compat_mode:is_cluster_totoro() andalso
+        ns_config:read_key_fast(file_based_backfill_enabled,
+                                ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT)
         andalso ns_bucket:is_persistent(BucketConfig) andalso
         ns_bucket:eviction_policy_migration_in_progress(BucketConfig)
         =:= false andalso
