@@ -220,30 +220,11 @@ extract_max_age(CacheControl) ->
 
 -spec extract_connect_options(URL :: string(), IssuerProps :: map()) -> list().
 extract_connect_options(URL, IssuerProps) ->
-    AddrSettings =
-        case maps:get(jwks_uri_address_family, IssuerProps, undefined) of
-            undefined -> [];
-            AF -> [AF]
-        end,
-
-    case URL of
-        "https://" ++ _ ->
-            case maps:get(jwks_uri_tls_verify_peer, IssuerProps) of
-                true ->
-                    {_, Certs} = maps:get(jwks_uri_tls_ca, IssuerProps),
-                    CACerts = Certs ++ ns_server_cert:trusted_CAs(der),
-                    [{verify, verify_peer}, {cacerts, CACerts},
-                     {depth, ?ALLOWED_CERT_CHAIN_LENGTH}] ++
-                        case maps:get(jwks_uri_tls_sni, IssuerProps, "") of
-                            "" -> [];
-                            SNI -> [{server_name_indication, SNI}]
-                        end;
-                false ->
-                    [{verify, verify_none}]
-            end;
-        "http://" ++ _ ->
-            []
-    end ++ AddrSettings.
+    AddressFamily = maps:get(jwks_uri_address_family, IssuerProps, undefined),
+    VerifyPeer = maps:get(jwks_uri_tls_verify_peer, IssuerProps, true),
+    {_, Certs} = maps:get(jwks_uri_tls_ca, IssuerProps, {<<>>, []}),
+    SNI = maps:get(jwks_uri_tls_sni, IssuerProps, ""),
+    misc:tls_connect_options(URL, AddressFamily, VerifyPeer, Certs, SNI, []).
 
 -spec fetch_jwks(IssuerProps :: map()) ->
           {Json :: binary(), MaxAge :: integer() | undefined} | {error, term()}.

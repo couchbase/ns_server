@@ -3976,3 +3976,36 @@ interval_to_string_test() ->
     ?assertEqual("1 hour 2 seconds",
                  interval_to_string(0, 1, 0, 2)).
 -endif.
+
+-spec tls_connect_options(URL :: string(),
+                          VerifyPeer :: boolean(),
+                          CACerts :: list(),
+                          SNI :: string(),
+                          AddrSettings :: list(),
+                          ExtraOpts :: proplists:proplist()) ->
+          proplists:proplist().
+tls_connect_options(URL, AddressFamily, VerifyPeer, CACerts0, SNI0,
+                    ExtraOpts) ->
+    AddressSettings = case AddressFamily of
+                          undefined -> [];
+                          AF -> [AF]
+    end,
+    Opts =
+        case URL of
+            "https://" ++ _ ->
+                case VerifyPeer of
+                    true ->
+                        CACerts = CACerts0 ++ ns_server_cert:trusted_CAs(der),
+                        [{verify, verify_peer}, {cacerts, CACerts},
+                         {depth, ?ALLOWED_CERT_CHAIN_LENGTH}] ++
+                            case SNI0 of
+                                "" -> [];
+                                SNI -> [{server_name_indication, SNI}]
+                            end;
+                    false ->
+                        [{verify, verify_none}]
+                end;
+            "http://" ++ _ ->
+                []
+        end ++ AddressSettings,
+    update_proplist_relaxed(Opts, ExtraOpts).

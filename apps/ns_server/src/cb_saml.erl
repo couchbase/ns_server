@@ -363,33 +363,13 @@ metadata_expired(Datetime) ->
     calendar:universal_time() > Datetime.
 
 extract_connect_options(URL, SSOOpts) ->
-    AddrSettings = case proplists:get_value(md_address_family, SSOOpts) of
-                       undefined -> [];
-                       AF -> [AF]
-                   end,
-
-    Opts =
-        case URL of
-            "https://" ++ _ ->
-                case proplists:get_value(md_tls_verify_peer, SSOOpts) of
-                    true ->
-                        {_, Certs} = proplists:get_value(md_tls_ca, SSOOpts),
-                        CACerts = Certs ++ ns_server_cert:trusted_CAs(der),
-                        [{verify, verify_peer}, {cacerts, CACerts},
-                         {depth, ?ALLOWED_CERT_CHAIN_LENGTH}] ++
-                        case proplists:get_value(md_tls_sni, SSOOpts) of
-                            "" -> [];
-                            SNI -> [{server_name_indication, SNI}]
-                        end;
-                    false ->
-                        [{verify, verify_none}]
-                end;
-            "http://" ++ _ ->
-                []
-        end ++ AddrSettings,
-
-    ExtraOpts = proplists:get_value(md_tls_extra_opts, SSOOpts),
-    misc:update_proplist_relaxed(Opts, ExtraOpts).
+    AddressFamily = proplists:get_value(md_address_family, SSOOpts, undefined),
+    VerifyPeer = proplists:get_value(md_tls_verify_peer, SSOOpts, true),
+    {_, Certs} = proplists:get_value(md_tls_ca, SSOOpts, {<<>>, []}),
+    SNI = proplists:get_value(md_tls_sni, SSOOpts, ""),
+    ExtraOpts = proplists:get_value(md_tls_extra_opts, SSOOpts, []),
+    misc:tls_connect_options(URL, AddressFamily, VerifyPeer, Certs, SNI,
+                             ExtraOpts).
 
 load_and_cache_idp_metadata(URL, Opts) ->
     {_, ExtraFPs} = proplists:get_value(trusted_fingerprints, Opts),
