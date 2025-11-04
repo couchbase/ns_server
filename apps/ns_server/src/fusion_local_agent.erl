@@ -176,7 +176,7 @@ schedule_deletes(ToDelete, #state{queue = Queue,
     Self = self(),
     ?log_debug("Schedule the following namespaces for deletion: ~p",
                [ToDelete]),
-    [work_queue:submit_sync_work(
+    [work_queue:submit_work(
        Queue, ?cut(delete_data(Self, NS))) || NS <- ToDelete],
     State#state{deleting = Deleting ++ ToDelete}.
 
