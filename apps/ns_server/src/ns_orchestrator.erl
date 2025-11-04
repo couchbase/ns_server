@@ -1255,6 +1255,9 @@ idle({abort_prepared_fusion_rebalance, PlanUUID}, From, _State) ->
     RV =
         case retrieve_rebalance_plan_and_check_uuid(PlanUUID) of
             {ok, _} ->
+                ale:info(?USER_LOGGER,
+                         "Abort prepared rebalance for plan uuid ~p",
+                         [PlanUUID]),
                 delete_rebalance_plan(),
                 ok;
             {error, Error} ->
@@ -1288,9 +1291,9 @@ idle({fusion_upload_mounted_volumes, PlanUUID, Volumes}, From, _State) ->
                 [] -> ok
             end,
             PreparedVolumes = [{list_to_atom(N), V} || {N, V} <- Volumes],
-            ?rebalance_info(
-               "Uploading mounted volumes ~p to rebalance plan ~p",
-               [PreparedVolumes, PlanUUID]),
+            ale:info(?USER_LOGGER,
+                     "Uploading mounted volumes ~p to rebalance plan ~p",
+                     [PreparedVolumes, PlanUUID]),
             NewPlan = lists:keystore(mountedVolumes, 1, RebalancePlan,
                                      {mountedVolumes, PreparedVolumes}),
             ets:insert(?ETS, {?FUSION_REBALANCE_PLAN, NewPlan}),

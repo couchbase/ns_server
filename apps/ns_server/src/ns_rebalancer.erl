@@ -2089,12 +2089,16 @@ prepare_fusion_rebalance(KeepKVNodes, Snapshot, GenerateMapFun) ->
     BucketNames = ns_bucket:get_bucket_names(Snapshot),
     PlanUUID = couch_uuids:random(),
     try
-        {ok, prepare_fusion_rebalance_massage_result(
-               PlanUUID, lists:filtermap(
-                           prepare_bucket_fusion_rebalance(
-                             PlanUUID, Snapshot, _, KeepKVNodes,
-                             GenerateMapFun),
-                           BucketNames))}
+        RV =
+            prepare_fusion_rebalance_massage_result(
+              PlanUUID, lists:filtermap(
+                          prepare_bucket_fusion_rebalance(
+                            PlanUUID, Snapshot, _, KeepKVNodes,
+                            GenerateMapFun),
+                          BucketNames)),
+        ale:info(?USER_LOGGER, "Prepared fusion rebalance for nodes ~p. "
+                 "plan uuid: ~p", [KeepKVNodes, PlanUUID]),
+        {ok, RV}
     catch
         throw:Err ->
             {error, Err}
