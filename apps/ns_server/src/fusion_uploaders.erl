@@ -593,20 +593,20 @@ add_stat_value_from(Key, VBStats, Acc) ->
     Value = proplists:get_value(list_to_binary(atom_to_list(Key)), VBStats),
     add_stat_value(Key, Value, Acc).
 
-process_vbucket_stats(Node, BucketName, VB, VBStats, ThisNodeUploaders, Acc) ->
+process_vbucket_stats(Node, BucketName, VB, VBStats, DesiredTerm, Acc) ->
     case proplists:get_value(<<"state">>, VBStats) of
         <<"enabled">> = E ->
             Term = proplists:get_value(<<"term">>, VBStats),
             Acc1 =
-                case maps:find(VB, ThisNodeUploaders) of
-                    {ok, Term} ->
+                case DesiredTerm of
+                    Term ->
                         Acc;
                     Other ->
                         Expected = case Other of
-                                       {ok, OtherTerm} ->
-                                           {E, OtherTerm};
-                                       error ->
-                                           <<"disabled">>
+                                       undefined ->
+                                           <<"disabled">>;
+                                       OtherTerm ->
+                                           {E, OtherTerm}
                                    end,
                         ?log_debug("Uploader ~p:~p state mismatch on ~p. Got: "
                                    "~p. Expected: ~p",
@@ -619,34 +619,38 @@ process_vbucket_stats(Node, BucketName, VB, VBStats, ThisNodeUploaders, Acc) ->
                add_stat_value_from(sync_session_completed_bytes, VBStats, _),
                add_stat_value_from(snapshot_pending_bytes, VBStats, _)]);
         Other ->
-            case maps:find(VB, ThisNodeUploaders) of
-                {ok, Term} ->
+            case DesiredTerm of
+                undefined ->
+                    Acc;
+                _ ->
                     ?log_debug("Uploader ~p:~p state mismatch on ~p. Got: "
-                               "~p, Expected: ~p", [BucketName, VB, Node, Other,
-                                                    {<<"enabled">>, Term}]),
-                    add_stat_value(uploaders_state_mismatch, 1, Acc);
-                error ->
-                    Acc
+                               "~p, Expected: ~p",
+                               [BucketName, VB, Node, Other,
+                                {<<"enabled">>, DesiredTerm}]),
+                    add_stat_value(uploaders_state_mismatch, 1, Acc)
             end
     end.
 
 process_bucket_stats(Node, BucketName, VBucketsInfo, ThisNodeUploaders) ->
     lists:foldl(
-      fun ({<<"vb_", N/binary>>, {VBStats}}, Acc) ->
-              process_vbucket_stats(
-                Node, BucketName, binary_to_integer(N),
-                VBStats, ThisNodeUploaders, Acc)
-      end, #{}, VBucketsInfo).
+      fun ({VB, Term}, Acc) ->
+              Key = << <<"vb_">>/binary, (integer_to_binary(VB))/binary >>,
+              {VBStats} = maps:get(Key, VBucketsInfo,
+                                  {[<<"state">>, <<"disabled">>]}),
+              process_vbucket_stats(Node, BucketName, VB, VBStats, Term, Acc)
+      end, #{}, ThisNodeUploaders).
 
 node_uploaders(ThisNode, State, Uploaders) ->
     case State of
         enabled ->
-            maps:from_list(
-              [{VB, Term} ||
-                  {VB, {Node, Term}} <- misc:enumerate(Uploaders, 0),
-                  Node =:= ThisNode]);
+            lists:map(
+              fun ({VB, {Node, Term}}) when Node =:= ThisNode ->
+                      {VB, Term};
+                  ({VB, _}) ->
+                      {VB, undefined}
+              end, misc:enumerate(Uploaders, 0));
         _ ->
-            #{}
+            [{VB, undefined} || {VB, _} <- misc:enumerate(Uploaders, 0)]
     end.
 
 %% this will be fed to lists:filtermap
@@ -662,20 +666,11 @@ maybe_grab_heartbeat_info(BucketName, State) ->
             ThisNodeUploaders = node_uploaders(node(), State, Uploaders),
             case ns_memcached:get_fusion_uploaders_state(BucketName) of
                 {ok, {VBucketsInfo}} ->
-                    case length(VBucketsInfo) =:= length(Uploaders) of
-                        false ->
-                            ?log_debug(
-                               "Vbucket number mismatch for ~p:~p (memcached) "
-                               "vs ~p (config)",
-                               [BucketName, length(VBucketsInfo),
-                                length(Uploaders)]),
-                            false;
-                        true ->
-                            StatsMap = process_bucket_stats(
-                                         node(), BucketName, VBucketsInfo,
-                                         ThisNodeUploaders),
-                            {true, {BucketName, maps:to_list(StatsMap)}}
-                    end;
+                    StatsMap = process_bucket_stats(
+                                 node(), BucketName,
+                                 maps:from_list(VBucketsInfo),
+                                 ThisNodeUploaders),
+                    {true, {BucketName, maps:to_list(StatsMap)}};
                 Error ->
                     ?log_debug(
                        "Failure to retrieve uploaders stats for bucket ~p, "
@@ -929,7 +924,8 @@ analyze_fusion_stats_for_bucket(Bucket, Uploaders, FusionState, [Node | Rest],
     {ok, {VBucketsInfo}} = maps:find(Node, PerNodeMap),
     ThisNodeUploaders = node_uploaders(Node, FusionState, Uploaders),
     Aggregated = process_bucket_stats(
-                   Node, Bucket, VBucketsInfo, ThisNodeUploaders),
+                   Node, Bucket, maps:from_list(VBucketsInfo),
+                   ThisNodeUploaders),
 
     case Fun(Bucket, Aggregated, Acc) of
         false ->
