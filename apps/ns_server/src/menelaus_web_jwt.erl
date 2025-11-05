@@ -226,7 +226,7 @@
 %% tls_ca - CA certificate for validating OIDC provider TLS connection
 %% tls_verify_peer - Whether to verify OIDC provider server certificate
 %% tls_sni - Optional SNI hostname for TLS
-%% tls_address_family - Optional address family for DNS/connect (inet | inet6)
+%% address_family - Optional address family for DNS/connect (inet | inet6)
 %% http_timeout_ms - HTTP request timeout for OIDC provider calls
 %% token_endpoint_auth_method - Client auth method for token endpoint
 %% (client_secret_basic | client_secret_post; default client_secret_basic)
@@ -248,7 +248,7 @@
          {tls_ca, fun format_tls_ca/1},
          {tls_verify_peer, undefined},
          {tls_sni, fun format_string/1},
-         {tls_address_family, undefined},
+         {address_family, undefined},
          {http_timeout_ms, undefined},
          {token_endpoint_auth_method, undefined},
          {disable_pushed_authorization_requests, undefined}
@@ -982,7 +982,7 @@ oidc_provider_validators() ->
      validator:default(pkceEnabled, true, _),
      validator:string_array(postLogoutRedirectUris,
                             fun validate_redirect_uri/1, false, _)
-    ] ++ tls_validators(tlsVerifyPeer, tlsCa, tlsSni, tlsAddressFamily) ++
+    ] ++ tls_validators(tlsVerifyPeer, tlsCa, tlsSni, addressFamily) ++
         [validator:integer(httpTimeoutMs,
                            ?OIDC_HTTP_TIMEOUT_MIN_MS,
                            ?OIDC_HTTP_TIMEOUT_MAX_MS, _),
