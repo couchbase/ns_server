@@ -218,20 +218,89 @@ extract_max_age(CacheControl) ->
             undefined
     end.
 
+-spec get_tls_connect_options(URL :: string(), AddressFamilyKey :: atom(),
+                              VerifyPeerKey :: atom(), CAKey :: atom(),
+                              SNIKey :: atom(), Settings :: map()) ->
+          list().
+get_tls_connect_options(URL, AddressFamilyKey, VerifyPeerKey, CAKey, SNIKey,
+                        Settings) ->
+    AddressFamily = maps:get(AddressFamilyKey, Settings, undefined),
+    VerifyPeer = maps:get(VerifyPeerKey, Settings, true),
+    {_, Certs} = maps:get(CAKey, Settings, {<<>>, []}),
+    SNI = maps:get(SNIKey, Settings, ""),
+
+    misc:tls_connect_options(URL, AddressFamily, VerifyPeer, Certs, SNI, []).
+
 -spec extract_connect_options(URL :: string(), IssuerProps :: map()) -> list().
 extract_connect_options(URL, IssuerProps) ->
-    AddressFamily = maps:get(jwks_uri_address_family, IssuerProps, undefined),
-    VerifyPeer = maps:get(jwks_uri_tls_verify_peer, IssuerProps, true),
-    {_, Certs} = maps:get(jwks_uri_tls_ca, IssuerProps, {<<>>, []}),
-    SNI = maps:get(jwks_uri_tls_sni, IssuerProps, ""),
-    misc:tls_connect_options(URL, AddressFamily, VerifyPeer, Certs, SNI, []).
+    get_tls_connect_options(
+      URL,
+      jwks_uri_address_family,
+      jwks_uri_tls_verify_peer,
+      jwks_uri_tls_ca,
+      jwks_uri_tls_sni,
+      IssuerProps
+     ).
+
+-spec extract_oidc_connect_options(URL :: string(), OidcSettings :: map()) ->
+          list().
+extract_oidc_connect_options(URL, OidcSettings) ->
+    get_tls_connect_options(
+      URL,
+      address_family,
+      tls_verify_peer,
+      tls_ca,
+      tls_sni,
+      OidcSettings
+     ).
+
+%% TODO: OIDCC fetches the JWKS URI at periodic intervals but we
+%% use the existing JWKS path. We need to either disable OIDCC refresh or
+%% piggyback off their refresh (only for OIDCC JWKSes).
+fetch_jwks_from_oidc_discovery(DiscoveryURL, IssuerProps) ->
+    OidcSettings = maps:get(oidc_settings, IssuerProps),
+    DiscoveryTimeout = maps:get(http_timeout_ms, OidcSettings),
+    DiscoveryOpts = extract_oidc_connect_options(DiscoveryURL, OidcSettings),
+
+    try rest_utils:request(<<"oidc_discovery">>, DiscoveryURL,
+                           "GET", [], <<>>, DiscoveryTimeout,
+                           [{connect_options, DiscoveryOpts}]) of
+        {ok, {{200, _}, _RespHeaders, Body}} ->
+            case jose:decode(Body) of
+                Map when is_map(Map) ->
+                    JwksUriBin = maps:get(<<"jwks_uri">>, Map),
+                    JwksURL = binary_to_list(JwksUriBin),
+                    fetch_jwks_from_url(JwksURL, IssuerProps);
+                _ ->
+                    throw(invalid_discovery)
+            end;
+        {ok, {{Status, _Reason}, _RespHeaders, _RespBody}} ->
+            throw({rest_failed, DiscoveryURL, {status, Status}});
+        {error, Reason} ->
+            throw({rest_failed, DiscoveryURL, {error, Reason}})
+    catch
+        throw:Error ->
+            ?log_error("Failed to get OIDC discovery from ~p.~nReason: ~p",
+                       [DiscoveryURL, Error]),
+            {error, Error}
+    end.
 
 -spec fetch_jwks(IssuerProps :: map()) ->
           {Json :: binary(), MaxAge :: integer() | undefined} | {error, term()}.
 fetch_jwks(IssuerProps) ->
-    URL = maps:get(jwks_uri, IssuerProps),
-    TimeoutMs = maps:get(jwks_uri_http_timeout_ms, IssuerProps),
+    case maps:get(oidc_settings, IssuerProps, undefined) of
+        #{oidc_discovery_uri := DiscoveryURL} ->
+            fetch_jwks_from_oidc_discovery(DiscoveryURL, IssuerProps);
+        _ ->
+            URL = maps:get(jwks_uri, IssuerProps),
+            fetch_jwks_from_url(URL, IssuerProps)
+    end.
+
+-spec fetch_jwks_from_url(string(), map()) ->
+          {Json :: binary(), MaxAge :: integer() | undefined} | {error, term()}.
+fetch_jwks_from_url(URL, IssuerProps) ->
     try
+        TimeoutMs = maps:get(jwks_uri_http_timeout_ms, IssuerProps),
         ConnectOptions = extract_connect_options(URL, IssuerProps),
         case rest_utils:request(<<"jwks">>, URL, "GET", [], <<>>, TimeoutMs,
                                 [{connect_options, ConnectOptions}]) of
