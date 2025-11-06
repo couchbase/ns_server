@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"time"
 
 	"github.com/couchbase/ns_server/deps/gocode/gcputils"
@@ -59,7 +60,14 @@ func (k *gcpStoredKey) ad() []byte {
 }
 
 func (k *gcpStoredKey) asBytes() ([]byte, error) {
-	return []byte(string(gcpkmKey) + k.Name + k.Kind + k.KeyResourceId + k.CredentialsFilePath + k.CreationTime), nil
+	return []byte(
+		string(gcpkmKey) +
+			k.Name +
+			k.Kind +
+			k.KeyResourceId +
+			k.CredentialsFilePath +
+			k.CreationTime +
+			strconv.Itoa(k.ReqTimeoutMs)), nil
 }
 
 func (k *gcpStoredKey) encryptMe(state *StoredKeysState, ctx *storedKeysCtx) error {
