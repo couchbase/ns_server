@@ -52,6 +52,9 @@
 -define(REBALANCER_QUERY_STATES_TIMEOUT,   ?get_timeout(query_states, 10000)).
 -define(REBALANCER_APPLY_CONFIG_TIMEOUT,   ?get_timeout(apply_config, 300000)).
 
+-define(FUSION_SNAPSHOT_LIFETIME,
+        ?get_param(fusion_snapshot_lifetime, 60 * 60 * 1000)).
+
 %%
 %% API
 %%
@@ -2082,10 +2085,12 @@ prepare_fusion_rebalance(KeepNodes) ->
                  #{read_consistency => quorum}),
 
     KeepKVNodes = ns_cluster_membership:service_nodes(Snapshot, KeepNodes, kv),
+    Validity = os:system_time(second) + ?FUSION_SNAPSHOT_LIFETIME div 1000,
     prepare_fusion_rebalance(KeepKVNodes, Snapshot,
-                             fun generate_fast_forward_map/4).
+                             fun generate_fast_forward_map/4, Validity).
 
-prepare_fusion_rebalance(KeepKVNodes, Snapshot, GenerateMapFun) ->
+
+prepare_fusion_rebalance(KeepKVNodes, Snapshot, GenerateMapFun, Validity) ->
     BucketNames = ns_bucket:get_bucket_names(Snapshot),
     PlanUUID = couch_uuids:random(),
     try
@@ -2094,7 +2099,7 @@ prepare_fusion_rebalance(KeepKVNodes, Snapshot, GenerateMapFun) ->
               PlanUUID, lists:filtermap(
                           prepare_bucket_fusion_rebalance(
                             PlanUUID, Snapshot, _, KeepKVNodes,
-                            GenerateMapFun),
+                            GenerateMapFun, Validity),
                           BucketNames)),
         ale:info(?USER_LOGGER, "Prepared fusion rebalance for nodes ~p. "
                  "plan uuid: ~p", [KeepKVNodes, PlanUUID]),
@@ -2142,7 +2147,7 @@ prepare_fusion_rebalance_massage_result(PlanUUID, Result) ->
     {RebalancePlan, AccelerationPlan}.
 
 prepare_bucket_fusion_rebalance(PlanUUID, Snapshot, Bucket, KeepKVNodes,
-                                GenerateMapFun) ->
+                                GenerateMapFun, Validity) ->
     {ok, {BucketConfig, Rev}} =
         ns_bucket:get_bucket_with_revision(Bucket, Snapshot),
     case ns_bucket:is_fusion(BucketConfig) of
@@ -2151,7 +2156,7 @@ prepare_bucket_fusion_rebalance(PlanUUID, Snapshot, Bucket, KeepKVNodes,
         true ->
             case do_prepare_bucket_fusion_rebalance(
                    PlanUUID, Bucket, ns_bucket:uuid(Bucket, Snapshot),
-                   BucketConfig, KeepKVNodes, GenerateMapFun) of
+                   BucketConfig, KeepKVNodes, GenerateMapFun, Validity) of
                 {error, _} = Error ->
                     throw(Error);
                 {ok, Res} ->
@@ -2160,7 +2165,7 @@ prepare_bucket_fusion_rebalance(PlanUUID, Snapshot, Bucket, KeepKVNodes,
     end.
 
 do_prepare_bucket_fusion_rebalance(PlanUUID, Bucket, BucketUUID, BucketConfig,
-                                   KeepKVNodes, GenerateMapFun) ->
+                                   KeepKVNodes, GenerateMapFun, Validity) ->
     CurrentMap = proplists:get_value(map, BucketConfig),
 
     %% what to do with bucket_placer?
@@ -2186,9 +2191,6 @@ do_prepare_bucket_fusion_rebalance(PlanUUID, Bucket, BucketUUID, BucketConfig,
           end, {#{}, []}, MapTriples),
 
     SnapshotUUID = fusion_uploaders:create_snapshot_uuid(PlanUUID, BucketUUID),
-
-    %% temporarily hardcoded
-    Validity = os:system_time(second) + 60 * 60,
 
     fusion_uploaders:store_snapshots_uuid(
       PlanUUID, BucketUUID, ns_bucket:get_num_vbuckets(BucketConfig)),
@@ -2258,7 +2260,8 @@ prepare_rebalance_test_() ->
                    fun (_, _, fusion1, _) -> {TargetMap1, options1};
                        (_, _, fusion2, _) -> {TargetMap2, options2}
                    end,
-               RV = prepare_fusion_rebalance(Servers, Snapshot, GenerateMapFun),
+               RV = prepare_fusion_rebalance(Servers, Snapshot, GenerateMapFun,
+                                             os:system_time(second) + 1000),
                ?assertMatch({ok, {_, {_}}}, RV),
                {ok, {RebalancePlan, {AccelerationPlan}}} = RV,
                UUID = proplists:get_value(planUUID, RebalancePlan),
