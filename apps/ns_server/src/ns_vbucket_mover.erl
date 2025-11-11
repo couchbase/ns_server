@@ -119,8 +119,7 @@ is_swap_rebalance(OldMap, NewMap) ->
     end.
 
 file_based_backfill_enabled(BucketConfig) ->
-    ns_config:read_key_fast(file_based_backfill_enabled,
-                            ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT) andalso
+    cluster_compat_mode:is_data_service_file_based_backfill_enabled() andalso
         ns_bucket:is_persistent(BucketConfig) andalso
         not ns_bucket:storage_mode_migration_in_progress(BucketConfig) andalso
         not ns_bucket:eviction_policy_migration_in_progress(BucketConfig)

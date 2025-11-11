@@ -53,7 +53,8 @@
          is_goxdcr_enabled/0,
          preserve_durable_mutations/0,
          prod_spec_from_legacy_version/1,
-         compare_prod_compat_version/2]).
+         compare_prod_compat_version/2,
+         is_data_service_file_based_backfill_enabled/0]).
 
 %% NOTE: this is rpc:call-ed by mb_master
 -export([mb_master_advertised_version/0]).
@@ -179,6 +180,15 @@ is_saslauthd_enabled() ->
     is_enterprise() andalso
         ns_config:search(ns_config:latest(),
                          {node, node(), saslauthd_enabled}, false).
+
+is_data_service_file_based_backfill_enabled() ->
+    is_data_service_file_based_backfill_enabled(ns_config:latest()).
+
+is_data_service_file_based_backfill_enabled(Config) ->
+    is_cluster_totoro() andalso
+        ns_config:search(Config,
+                         file_based_backfill_enabled,
+                         ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT).
 
 is_cbas_enabled() ->
     is_enterprise().
