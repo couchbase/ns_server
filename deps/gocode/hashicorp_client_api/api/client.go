@@ -8,6 +8,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -23,6 +24,7 @@ import (
 	"time"
 	"unicode"
 
+	tlsutils "github.com/couchbase/goutils/tls"
 	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/go-cleanhttp"
 	"github.com/hashicorp/go-retryablehttp"
@@ -246,6 +248,50 @@ type TLSConfig struct {
 	Insecure bool
 }
 
+type SelectCaOpt int
+
+const (
+	UseSystemCAs SelectCaOpt = iota
+	UseCaCert
+	UseSystemCAsAndCaCert
+	SkipServerCertVerification
+)
+
+// TLSConfigPkcs8 contains the parameters needed to configure TLS on the HTTP client
+// used to communicate with Vault. It is used to configure TLS for keys in
+// pkcs#8 format
+type TLSConfigPkcs8 struct {
+	// CACert is the path to a PEM-encoded CA cert file to use to verify the
+	// Vault server SSL certificate. It takes precedence over CACertBytes
+	// and CAPath.
+	CACertPath string
+
+	// ClientCertPath is the path to the certificate for Vault communication
+	ClientCertPath string
+
+	// ClientKeyPkcs8Path is the path to the private key for Vault communication
+	// It is expected to be in pkcs#8 format and encrypted with a passphrase
+	ClientKeyPkcs8Path string
+
+	// CaSelection is the option to select the CA to use for the TLS connection
+	CaSelection SelectCaOpt
+}
+
+func (selectCaOpt SelectCaOpt) String() string {
+	switch selectCaOpt {
+	case UseSystemCAs:
+		return "UseSystemCAs"
+	case UseCaCert:
+		return "UseCaCert"
+	case UseSystemCAsAndCaCert:
+		return "UseSystemCAsAndCaCert"
+	case SkipServerCertVerification:
+		return "SkipServerCertVerification"
+	default:
+		return "unknown"
+	}
+}
+
 // DefaultConfig returns a default configuration for the client. It is
 // safe to modify the return value of this function.
 //
@@ -292,6 +338,100 @@ func DefaultConfig() *Config {
 	}
 
 	return config
+}
+
+func appendCaFromFile(caPath string, certPool *x509.CertPool) error {
+	if caPath == "" {
+		return fmt.Errorf("ca path is empty")
+	}
+
+	caCert, err := os.ReadFile(caPath)
+	if err != nil {
+		return fmt.Errorf("failed to read CAs from file: %s: error: %w", caPath, err)
+	}
+
+	ok := certPool.AppendCertsFromPEM(caCert)
+	if !ok {
+		return fmt.Errorf("failed to append CAs to cert pool")
+	}
+
+	return nil
+}
+
+func (c *Config) configureTLSViaPkcs8Key(t *TLSConfigPkcs8, decryptedPassphrase []byte) error {
+	if len(decryptedPassphrase) == 0 {
+		return fmt.Errorf("no passphrase provided")
+	}
+
+	if c.HttpClient == nil {
+		c.HttpClient = DefaultConfig().HttpClient
+	}
+
+	transport, ok := c.HttpClient.Transport.(*http.Transport)
+	if !ok {
+		return fmt.Errorf(
+			"unsupported HTTPClient transport type %T", c.HttpClient.Transport)
+	}
+
+	clientTLSConfig := transport.TLSClientConfig
+
+	var clientCert tls.Certificate
+	var rootCAs *x509.CertPool
+	var err error
+
+	if t.CaSelection == UseSystemCAs || t.CaSelection == UseSystemCAsAndCaCert {
+		rootCAs, err = x509.SystemCertPool()
+		if err != nil {
+			return fmt.Errorf("failed to get system CAs: %w", err)
+		} else if rootCAs == nil {
+			return fmt.Errorf("failed to get system CAs")
+		}
+
+		if t.CaSelection == UseSystemCAsAndCaCert {
+			err = appendCaFromFile(t.CACertPath, rootCAs)
+			if err != nil {
+				return fmt.Errorf("failed to append CA from file: %w", err)
+			}
+		}
+	} else if t.CaSelection == UseCaCert {
+		rootCAs = x509.NewCertPool()
+		err = appendCaFromFile(t.CACertPath, rootCAs)
+		if err != nil {
+			return fmt.Errorf("failed to append CA from file: %w", err)
+		}
+	} else if t.CaSelection == SkipServerCertVerification {
+		clientTLSConfig.InsecureSkipVerify = true
+	} else {
+		return fmt.Errorf("invalid ca select option: %s", t.CaSelection.String())
+	}
+
+	clientTLSConfig.RootCAs = rootCAs
+
+	switch {
+	case t.ClientCertPath != "" && t.ClientKeyPkcs8Path != "":
+		clientCert, err = tlsutils.LoadX509KeyPair(t.ClientCertPath, t.ClientKeyPkcs8Path, decryptedPassphrase)
+		if err != nil {
+			if strings.Contains(err.Error(), "incorrect password") {
+				return fmt.Errorf("incorrect password for private key: full error: %w", err)
+			}
+
+			return err
+		}
+		c.curlClientCert = t.ClientCertPath
+		c.curlClientKey = t.ClientKeyPkcs8Path
+
+		// We use this function to ignore the server's preferential list of
+		// CAs, otherwise any CA used for the cert auth backend must be in the
+		// server's CA pool
+		clientTLSConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			return &clientCert, nil
+		}
+	case t.ClientCertPath != "" || t.ClientKeyPkcs8Path != "":
+		return fmt.Errorf("both client cert and client key must be provided")
+	}
+
+	c.clientTLSConfig = clientTLSConfig
+	return nil
 }
 
 // configureTLS is a lock free version of ConfigureTLS that can be used in
@@ -364,6 +504,16 @@ func (c *Config) TLSConfig() *tls.Config {
 	c.modifyLock.RLock()
 	defer c.modifyLock.RUnlock()
 	return c.clientTLSConfig.Clone()
+}
+
+// ConfigureTLSViaPkcs8Key takes a set of TLS configurations and applies those
+// to the HTTP client. The key file is expected to be in pkcs#8 format and
+// expected to be encrypted with a passphrase.
+func (c *Config) ConfigureTLSViaPkcs8Key(t *TLSConfigPkcs8, decryptedPassphrase []byte) error {
+	c.modifyLock.Lock()
+	defer c.modifyLock.Unlock()
+
+	return c.configureTLSViaPkcs8Key(t, decryptedPassphrase)
 }
 
 // ConfigureTLS takes a set of TLS configurations and applies those to the
