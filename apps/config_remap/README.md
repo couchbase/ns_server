@@ -76,6 +76,13 @@ node clusters is `cb.local` rather than the hostname of the machine. To remap a
 single node cluster the hostname provided to the `remap` argument must be
 `cb.local`. The identifier prefix, `n_1`/`ns_1` remains the same.
 
+7) Rewriting the value by the key:
+--rewrite-key-value
+
+where both key and value will be compiled into erlang terms and the value
+will be applied to all ns_config and chronicle keys that match provided key
+term.
+
 ## Limitations:
 
 Upon Couchbase Server startup after a node rename each node will regenerate a

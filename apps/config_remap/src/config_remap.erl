@@ -34,12 +34,17 @@
 -define(CHRONICLE_KV_SNAPSHOT, "kv.snapshot").
 -define(CHRONICLE_CONFIG_RSM_SNAPSHOT, "chronicle_config_rsm.snapshot").
 
-rewrite_term(BeforeTerm, #{node_map := NodeMap}) ->
+rewrite_term(BeforeTerm, #{node_map := NodeMap, kv_map := KVMap}) ->
+    WithNodesRewritten =
+        maps:fold(
+          fun(OldNode, NewNode, Acc) ->
+                  misc:rewrite_value(list_to_atom(OldNode),
+                                     list_to_atom(NewNode), Acc)
+          end, BeforeTerm, NodeMap),
     maps:fold(
-        fun(OldNode, NewNode, Acc) ->
-            misc:rewrite_value(list_to_atom(OldNode),
-                list_to_atom(NewNode), Acc)
-        end, BeforeTerm, NodeMap).
+      fun(Key, NewValue, Acc) ->
+              misc:rewrite_key_value_tuple(Key, NewValue, Acc)
+      end, WithNodesRewritten, KVMap).
 
 rewrite_term(BeforeTerm, LogAs, Args) when is_map(BeforeTerm) ->
     %% We can't maps:map here because we might rewrite keys as well as values
@@ -546,7 +551,8 @@ default_args() ->
       regenerate_cluster_uuid => false,
       remove_alternate_addresses => false,
       disable_auto_failover => false,
-      node_map => #{}}.
+      node_map => #{},
+      kv_map => #{}}.
 
 -spec parse_args(list(), map()) -> map().
 parse_args(["--output-path", Path | Rest], Map) ->
@@ -554,11 +560,23 @@ parse_args(["--output-path", Path | Rest], Map) ->
 parse_args(["--log-level", Level | Rest], Map) ->
     parse_args(Rest, Map#{log_level => list_to_atom(Level)});
 parse_args(["--remap", A, B | Rest], Map) ->
-    CurrentNodeMap = case maps:find(node_map, Map) of
-                         {ok, NodeMap} -> NodeMap;
-                         _ -> #{}
-                     end,
+    {ok, CurrentNodeMap} = maps:find(node_map, Map),
     parse_args(Rest, Map#{node_map => CurrentNodeMap#{A => B}});
+parse_args(["--rewrite-key-value", Key, Value | Rest] = Args, Map) ->
+    {ok, CurrentKVMap} = maps:find(kv_map, Map),
+    case string_to_term(Key) of
+        {error, _} ->
+            usage(Args);
+        {ok, KeyTerm} ->
+            case string_to_term(Value) of
+                {error, _} ->
+                    usage(Args);
+                {ok, ValueTerm} ->
+                    parse_args(
+                      Rest,
+                      Map#{kv_map => CurrentKVMap#{KeyTerm => ValueTerm}})
+            end
+    end;
 parse_args(["--initargs-path", Path | Rest], Map) ->
     parse_args(Rest, Map#{initargs_path => Path});
 parse_args(["--regenerate-cookie" | Rest], Map) ->
@@ -573,6 +591,16 @@ parse_args([], Map) ->
     Map;
 parse_args(Args, _Map) ->
     usage(Args).
+
+string_to_term(String) when is_list(String) ->
+    case erl_scan:string(String ++ ".") of
+        {ok, Tokens, _} ->
+            case erl_parse:parse_term(Tokens) of
+                {ok, Term} -> {ok, Term};
+                {error, Reason} -> {error, Reason}
+            end;
+        {error, Reason, _} -> {error, Reason}
+    end.
 
 maybe_derive_output_path(#{output_path := _Path} = Args) ->
     %% Output path specified, nothing to do. Generally applicable for tests or

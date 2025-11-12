@@ -44,18 +44,23 @@ def run_config_remap(initargs,
 def run_config_remap_via_escript_wrapper(initargs,
                                          output_path,
                                          remap,
+                                         kv_rewrites = [],
                                          log_level='info',
                                          capture_output=False,
                                          root_dir=basedir()):
-    remap_args = []
+    extra_args = []
     for remap_arg in remap:
-        print(remap_arg)
-        remap_args += ['--remap'] + remap_arg
+        print(f"remap: {remap_arg}")
+        extra_args += ['--remap'] + remap_arg
+
+    for kv in kv_rewrites:
+        print(f"kv: {kv}")
+        extra_args += ['--rewrite-key-value'] + kv
 
     extra_args = ['--regenerate-cookie',
                   '--regenerate-cluster-uuid',
                   '--remove-alternate-addresses',
-                  '--disable-auto-failover'] + remap_args
+                  '--disable-auto-failover'] + extra_args
 
     run_config_remap(initargs, output_path, extra_args, log_level,
                      capture_output, root_dir)

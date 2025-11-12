@@ -59,7 +59,7 @@ class ConfigRemapTest(testlib.BaseTestSet):
         testlib.post_succ(self.cluster, '/settings/autoFailover',
                           data={"enabled": "true", "timeout": 120})
 
-    def disable_afo(self, old_cluster):
+    def run_config_remap(self, old_cluster, extra_args):
         old_start_index = old_cluster.first_node_index
 
         cluster_path = Path(old_cluster.get_cluster_path())
@@ -68,11 +68,12 @@ class ConfigRemapTest(testlib.BaseTestSet):
             old_node_index = old_start_index + i
 
 
-            node_remap.disable_afo_via_config_remap(
+            node_remap.run_config_remap(
                 root_dir=testlib.get_install_dir(),
                 initargs=[f'{cluster_path}/data/n_{old_node_index}/initargs'],
                 output_path=f'{cluster_path}/data/tmp',
-                capture_output=testlib.config['intercept_output']
+                capture_output=testlib.config['intercept_output'],
+                extra_args=extra_args
             )
 
             shutil.copytree(cluster_path/'data'/f'tmp',
@@ -80,7 +81,14 @@ class ConfigRemapTest(testlib.BaseTestSet):
                             dirs_exist_ok=True)
 
     @tag(Tag.LowUrgency)
-    def disable_afo_without_remap_test(self):
+    def without_remap_test(self):
+        testlib.post_succ(
+            self.cluster, '/settings/fusion',
+            json={'logStoreURI': 'local://001', 'enableSyncThresholdMB': 1024})
+
+        otp_nodes = str(list(testlib.get_otp_nodes(self.cluster).values()))
+        testlib.diag_eval(self.cluster, f"chronicle_compat:push({otp_nodes}).")
+
         # We can't tear down the older cluster in the setup because it wants to
         # log via diag/eval to the cluster...
         print(f"Shutting down original cluster at node index "
@@ -91,7 +99,11 @@ class ConfigRemapTest(testlib.BaseTestSet):
         print(f"Shut down original cluster at node index "
               f"{self.cluster.first_node_index}")
 
-        self.disable_afo(self.cluster)
+        extra_args = ['--disable-auto-failover',
+                      '--rewrite-key-value', 'log_store_uri', '"local://002"',
+                      '--rewrite-key-value', 'enable_sync_threshold_mb', '1000']
+
+        self.run_config_remap(self.cluster, extra_args)
 
         print(f"Starting original cluster at node index "
               f"{self.cluster.first_node_index}")
@@ -102,3 +114,6 @@ class ConfigRemapTest(testlib.BaseTestSet):
             afo_settings = testlib.get_succ(node,
                                             '/settings/autoFailover').json()
             assert not afo_settings["enabled"]
+            fusion_settings = testlib.get_succ(node, '/settings/fusion').json()
+            assert fusion_settings['logStoreURI'] == 'local://002'
+            assert fusion_settings['enableSyncThresholdMB'] == 1000
