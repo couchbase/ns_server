@@ -2348,7 +2348,8 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
                       "runtimes", "scheduler", "scopes", "stat-timings",
                       "timings", "uuid",
                       "vbucket-details", "vbucket-seqno",
-                      "warmup", "workload"]],
+                      "warmup", "workload", "snapshot-details",
+                      "snapshot-status", "snapshot-deks"]],
 
         [make_cbstats_task(kind, memcached_pass_fun, guts)
          for kind in ["tasks-all"]],
