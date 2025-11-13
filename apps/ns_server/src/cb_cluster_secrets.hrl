@@ -10,6 +10,7 @@
 -define(AWSKMS_KEY_TYPE, 'awskms-symmetric-key').
 -define(GCPKMS_KEY_TYPE, 'gcpkms-symmetric-key').
 -define(AZUREKMS_KEY_TYPE, 'azurekms-key').
+-define(HASHIKMS_KEY_TYPE, 'hashikms-key').
 -define(KMIP_KEY_TYPE, 'kmip-aes-key-256').
 -define(ENVELOP_CIPHER, aes_256_gcm).
 -define(SECRET_ID_NOT_SET, -1).

@@ -45,6 +45,7 @@
          store_gcp_key/4,
          store_azure_key/4,
          store_kmip_key/5,
+         store_hashi_key/5,
          store_dek/6,
          read_dek/2,
          read_dek_file/2,
@@ -200,6 +201,26 @@ format_kmip_key_params(#{host := Host,
       {cbCaPath, iolist_to_binary(ns_ssl_services_setup:ca_file_path())},
       {encryptionApproach, Appr},
       {encryptionKeyName, format_encryption_key_name(KekIdToEncrypt)}]}.
+
+store_hashi_key(Id, Params, KekIdToEncrypt, CreationDT, TestOnly) ->
+    store_key(kek, Id, hashikms, CreationDT,
+        ejson:encode(format_hashi_key_params(Params, KekIdToEncrypt)),
+        TestOnly).
+
+format_hashi_key_params(#{key_url := KeyURL,
+                          req_timeout_ms := ReqTimeoutMs,
+                          key_path := KeyPath,
+                          cert_path := CertPath,
+                          key_passphrase := PassData,
+                          ca_selection := CaSel}, KekIdToEncrypt) ->
+    {[{keyURL, iolist_to_binary(KeyURL)},
+      {reqTimeoutMs, ReqTimeoutMs},
+      {keyPath, iolist_to_binary(KeyPath)},
+      {certPath, iolist_to_binary(CertPath)},
+      {keyPassphrase, base64:encode(PassData)},
+      {encryptionKeyName, format_encryption_key_name(KekIdToEncrypt)},
+      {caSelection, CaSel},
+      {cbCaPath, iolist_to_binary(ns_ssl_services_setup:ca_file_path())}]}.
 
 format_encryption_key_name(undefined) -> <<"encryptionService">>;
 format_encryption_key_name(KekIdToEncrypt) -> KekIdToEncrypt.

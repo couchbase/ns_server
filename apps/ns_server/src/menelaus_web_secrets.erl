@@ -259,7 +259,7 @@ secret_validators(CurProps, Snapshot) ->
        end, name, _),
      validator:one_of(type, [?CB_MANAGED_KEY_TYPE, ?AWSKMS_KEY_TYPE,
                              ?GCPKMS_KEY_TYPE, ?AZUREKMS_KEY_TYPE,
-                             ?KMIP_KEY_TYPE], _),
+                             ?HASHIKMS_KEY_TYPE, ?KMIP_KEY_TYPE], _),
      validator:convert(type, binary_to_atom(_, latin1), _),
      validator:required(type, _),
      validate_key_usage(usage, Snapshot, _),
@@ -402,6 +402,8 @@ export_secret(#{type := DataType} = Props) ->
                   {format_gcp_key_data(D)};
               (data, D) when DataType == ?AZUREKMS_KEY_TYPE ->
                   {format_azure_key_data(D)};
+              (data, D) when DataType == ?HASHIKMS_KEY_TYPE ->
+                  {format_hashi_key_data(D)};
               (data, D) when DataType == ?KMIP_KEY_TYPE ->
                   {format_kmip_key_data(D)};
               (used_by, UsedBy) ->
@@ -573,6 +575,27 @@ format_azure_key_data(Props) ->
                  || #{id := Id, creation_time := CT} <- StoredIds]
         end, Props)).
 
+format_hashi_key_data(Props) ->
+    maps:to_list(
+      maps:map(
+        fun (key_url, U) -> iolist_to_binary(U);
+            (req_timeout_ms, R) -> R;
+            (key_path, F) -> iolist_to_binary(F);
+            (cert_path, F) -> iolist_to_binary(F);
+            (key_passphrase, _) -> <<"******">>;
+            (encrypt_with, E) -> E;
+            (encrypt_secret_id, SId) -> SId;
+            (ca_selection, use_sys_ca) -> <<"useSysCa">>;
+            (ca_selection, use_cb_ca) -> <<"useCbCa">>;
+            (ca_selection, use_sys_and_cb_ca) -> <<"useSysAndCbCa">>;
+            (ca_selection, skip_server_cert_verification) ->
+                <<"skipServerCertVerification">>;
+            (last_rotation_time, DT) -> format_datetime(DT);
+            (stored_ids, StoredIds) ->
+                [{[{id, Id}, {creation_time, format_datetime(CT)}]}
+                    || #{id := Id, creation_time := CT} <- StoredIds]
+        end, Props)).
+
 format_kmip_key_data(Props) ->
     maps:to_list(
       maps:map(
@@ -658,6 +681,8 @@ validate_secrets_data(Name, CurSecretProps, Snapshot, State) ->
                         gcpkms_key_validators(CurSecretProps);
                     ?AZUREKMS_KEY_TYPE ->
                         azurekms_key_validators(CurSecretProps);
+                    ?HASHIKMS_KEY_TYPE ->
+                        hashikms_key_validators(CurSecretProps, Snapshot);
                     ?KMIP_KEY_TYPE ->
                         kmip_key_validators(CurSecretProps, Snapshot);
                     _ -> []
@@ -831,6 +856,44 @@ azurekms_key_validators(CurSecretProps) ->
             []
     end.
 
+hashikms_key_validators(CurSecretProps, Snapshot) ->
+    [validator:string(keyURL, _),
+     validator:validate(fun validate_hashi_key/1, keyURL, _),
+     validator:required(keyURL, _) ,
+     validator:integer(reqTimeoutMs, 1000, ?MAX_KMS_GO_TIMEOUT_MS, _),
+     validator:default(reqTimeoutMs, 30000, _),
+     validator:string(keyPath, _),
+     validator:required(keyPath, _),
+     validator:string(certPath, _),
+     validator:required(certPath, _),
+     validator:non_empty_string(keyPassphrase, _),
+     validator:convert(keyPassphrase, iolist_to_binary(_), _),
+     validator:validate(fun (P) -> {value, ?HIDE(P)} end, keyPassphrase, _),
+     validator:one_of(caSelection,["useSysCa",
+                                   "useCbCa",
+                                   "useSysAndCbCa",
+                                   "skipServerCertVerification"], _),
+     validator:convert(caSelection,
+                      fun (<<"useSysCa">>) -> use_sys_ca;
+                          (<<"useCbCa">>) -> use_cb_ca;
+                          (<<"useSysAndCbCa">>) -> use_sys_and_cb_ca;
+                          (<<"skipServerCertVerification">>) ->
+                              skip_server_cert_verification
+                      end, _),
+     validator:default(caSelection, use_cb_ca, _),
+     validator:one_of(encryptWith, ["nodeSecretManager", "encryptionKey"], _),
+     validator:convert(encryptWith, binary_to_atom(_, latin1), _),
+     validate_encrypt_with(encryptWith, Snapshot, _),
+     validator:default(encryptWith, nodeSecretManager, _),
+     validator:integer(encryptWithKeyId, -1, max_uint64, _),
+     validate_encrypt_secret_id(encryptWithKeyId, CurSecretProps, _)] ++
+     case CurSecretProps of
+         #{data := #{key_url := KeyUrl}} ->
+             [enforce_static_field_validator(keyURL, KeyUrl, _)];
+         #{} when map_size(CurSecretProps) == 0 ->
+             [validator:required(keyPassphrase, _)]
+     end.
+
 kmip_key_validators(CurSecretProps, Snapshot) ->
     [validator:string(host, _),
      validator:required(host, _),
@@ -890,6 +953,49 @@ mandatory_rotation_fields(State) ->
                              validator:required(rotationIntervalInDays, _)]);
         false ->
             State
+    end.
+
+validate_hashi_key("TEST_HASHI_KEY_URL")  ->
+    ok;
+validate_hashi_key(KeyUrlStr) ->
+    Scheme =
+        fun (Url) when Url =:= <<"https">>; Url =:= <<"http">> ->
+                valid;
+            (_S) ->
+                {error, "must be http or https url only"}
+        end,
+
+    ParseUrlFn =
+        fun() ->
+            case misc:parse_url(KeyUrlStr, [{scheme_validation_fun, Scheme},
+                                            {return, string}]) of
+                {ok, _} = Result ->
+                    Result;
+                {error, E} ->
+                    {error, io_lib:format("failed to parse url: ~p", [E])}
+            end
+        end,
+
+    ValidateHost =
+        fun ([]) ->
+                {error, "a host must be specified in the URL"};
+            (Host) when is_list(Host) ->
+                ok
+        end,
+
+    ValidateKeyPath =
+        fun(<<"/", Rest/binary>>) when byte_size(Rest) > 0 ->
+                ok;
+            (_) ->
+                {error, "path must have /<keyName>"}
+        end,
+
+    maybe
+        {ok, #{host := Host, path := Path}} ?= ParseUrlFn(),
+
+        ok ?= ValidateHost(Host),
+
+        ok ?= ValidateKeyPath(list_to_binary(Path))
     end.
 
 validate_azure_key("TEST_AZURE_KEY_URL") ->
@@ -1399,5 +1505,28 @@ validate_azure_key_test() ->
         validate_azure_key("not valid url"),
     ?assertEqual("failed to parse url: invalid_uri",
                  lists:flatten(Error7)).
+
+validate_hashi_key_test() ->
+    {error, Error0} =
+        validate_hashi_key("invalid://bla.me.com/keys/testKey"),
+    ?assertEqual("failed to parse url: \"must be http or https url only\"",
+        lists:flatten(Error0)),
+
+    {error, Error1} =
+        validate_hashi_key("https:///keys/testKey"),
+    ?assertEqual("a host must be specified in the URL",
+                 lists:flatten(Error1)),
+
+    {error, Error2} =
+        validate_hashi_key("https://dome.domain"),
+    ?assertEqual("path must have /<keyName>",
+        lists:flatten(Error2)),
+
+    {error, Error3} =
+        validate_hashi_key("https://dome.domain/"),
+    ?assertEqual("path must have /<keyName>",
+        lists:flatten(Error3)),
+
+    ok = validate_hashi_key("https://dome.domain/key").
 
 -endif.
