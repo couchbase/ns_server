@@ -1242,6 +1242,12 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
             key_name='Azure Key',
             expected_key_type='azurekms')
 
+    def basic_hashi_secret_test(self):
+        self._basic_kms_secret_test_logic(
+            secret_builder=hashi_test_secret,
+            key_name='Hashi Key',
+            expected_key_type='hashikms')
+
     def dek_limit_test(self):
         set_cfg_dek_limit(self.cluster, 2)
         set_log_dek_limit(self.cluster, 2)
@@ -2820,6 +2826,33 @@ def azure_test_secret(name=None, usage=None, key_url=None):
             'usage': usage,
             'data': data}
 
+def hashi_test_secret(name = None, usage=None, key_url=None):
+    if name is None:
+        name = f'Test secret {testlib.random_str(5)}'
+
+    return {
+        'name': name,
+        'type': 'hashikms-key',
+        'usage': [
+            'KEK-encryption',
+            'bucket-encryption',
+            'config-encryption',
+            'log-encryption',
+            'audit-encryption'
+        ],
+        'data':
+        {
+            'caSelection': 'skipServerCertVerification',
+            'reqTimeoutMs': 5000,
+            'encryptWith': 'nodeSecretManager',
+            'encryptWithKeyId': -1,
+            'keyPath': '/fake/test/path',
+            'certPath': '/fake/test/path',
+            'keyPassphrase': 'makeitso',
+            'keyURL': 'TEST_HASHI_KEY_URL'
+        }
+    }
+
 
 def write_good_aws_creds_file(node):
     path = aws_fake_creds_path(node)
@@ -3013,7 +3046,8 @@ def verify_kek_files(cluster, secret, verify_key_count=1, **kwargs):
             key_ids = [key['id'] for key in secret['data']['keys']]
         elif secret['type'] == 'awskms-symmetric-key' or \
              secret['type'] == 'gcpkms-symmetric-key' or \
-             secret['type'] == 'azurekms-key':
+             secret['type'] == 'azurekms-key' or \
+             secret['type'] == 'hashikms-key':
             key_ids = [key['id'] for key in secret['data']['storedKeyIds']]
         else:
             assert False, f'unexpected secret type: {secret["type"]}'
