@@ -884,6 +884,7 @@ public_definitions(Version) ->
 public_definitions() ->
     [{?VERSION_76, fun menelaus_old_roles:roles_pre_76/0},
      {?VERSION_79, fun menelaus_old_roles:roles_pre_79/0},
+     {?VERSION_TOTORO, fun menelaus_old_roles:roles_pre_totoro/0},
      {undefined, ?cut(roles() ++ maybe_add_developer_preview_roles()
                       ++ maybe_add_serverless_roles())}].
 
@@ -2491,6 +2492,7 @@ roles_format_test() ->
     ?assert(validate_test_roles(roles())),
     ?assert(validate_test_roles(menelaus_old_roles:roles_pre_76())),
     ?assert(validate_test_roles(menelaus_old_roles:roles_pre_79())),
+    ?assert(validate_test_roles(menelaus_old_roles:roles_pre_totoro())),
 
     teardown_meck().
 
