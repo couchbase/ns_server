@@ -31,7 +31,7 @@ class ClusterRequirements:
                  include_services=None, exclude_services=None,
                  master_password_state=None, num_vbuckets=None, encryption=None,
                  balanced=None, buckets=None, test_generated_cluster=None,
-                 dev_preview=None):
+                 dev_preview=None, mixed_version=None):
 
         def maybe(ReqClass, *args):
             if all(x is None for x in args):
@@ -55,7 +55,8 @@ class ClusterRequirements:
                 'buckets': maybe(Buckets, buckets),
                 'test_generated_cluster': maybe(TestGeneratedCluster,
                                                 test_generated_cluster),
-                'dev_preview': maybe(DevPreview, dev_preview)
+                'dev_preview': maybe(DevPreview, dev_preview),
+                'mixed_version': maybe(MixedVersion, mixed_version)
             }
 
     def __str__(self):
@@ -263,7 +264,8 @@ class ClusterRequirements:
                             ('balanced', Balanced),
                             ('buckets', Buckets),
                             ('test_generated_cluster', TestGeneratedCluster),
-                            ('dev_preview', DevPreview)]
+                            ('dev_preview', DevPreview),
+                            ('mixed_version', MixedVersion)]
         for req_name, req_class in generation_order:
             if self.requirements[req_name] is None:
                 new_req = req_class.random(req_dict)
@@ -783,10 +785,29 @@ class NumVbuckets(Requirement):
         return f'{self.num_vbuckets} vbuckets'
 
     def is_met(self, cluster):
-        def get_default_num_vbuckets(bucket_type):
-            func = f"ns_bucket:get_default_num_vbuckets({bucket_type})"
+        def get_default_num_vbuckets(bucket_type=None):
+            # Checked against this cluster's actual version (rather than the
+            # global --older-version flag) so the check stays active for any
+            # cluster that does support the function -- including a fresh
+            # cluster used by an unrelated testset in the same run, and this
+            # same cluster once it's past the old-version-only phase of a
+            # mixed-version upgrade test.
+            if bucket_type is None:
+                # ns_bucket:get_default_num_vbuckets/1 (with a bucket-type
+                # arg) isn't supported pre-8.0 -- there's a single default
+                # for all bucket types there, queried via the arity-0
+                # pre-8.0 signature.
+                func = "ns_bucket:get_default_num_vbuckets()"
+            else:
+                func = f"ns_bucket:get_default_num_vbuckets({bucket_type})"
             r = testlib.diag_eval(cluster, code=func)
             return r.content.decode('ascii')
+
+        if not cluster.is_80:
+            # Query the live cluster rather than assuming a compile-time
+            # constant, since num_vbuckets can be (and is, by default in
+            # this framework) overridden at cluster start.
+            return int(get_default_num_vbuckets()) == self.num_vbuckets
 
         # The default number of vbuckets for 'magma' is different than for
         # 'couchstore' so we check for either.
@@ -1024,3 +1045,60 @@ class DevPreview(Requirement):
     @staticmethod
     def random(req_dict):
         return DevPreview(False)
+
+
+class MixedVersion(Requirement):
+    def __init__(self, enabled):
+        super().__init__(mixed_version=enabled)
+        self.enabled = enabled
+        self.start_args = {'mixed_version': enabled}
+
+    def __str__(self):
+        if self.enabled:
+            return "mixed version"
+        else:
+            return "not mixed version"
+
+    def is_met(self, cluster):
+        # '--older-version'/'--older-version-path' are validated once, at
+        # argument-parsing time in run.py, since they describe how the test
+        # run was invoked rather than anything about this specific cluster.
+        new_version_nodes = getattr(cluster, 'new_version_nodes', [])
+
+        if not self.enabled:
+            return not new_version_nodes
+
+        if not new_version_nodes:
+            print("No staged new-version nodes; cluster cannot be reused for "
+                  "a mixed-version upgrade test")
+            return False
+
+        if any(node in cluster.connected_nodes for node in new_version_nodes):
+            print("New-version nodes are already joined to the cluster; "
+                  "cluster cannot be reused for a mixed-version upgrade test")
+            return False
+
+        if not all(cluster.is_node_started(node) for node in cluster._nodes):
+            print("Not every node is up; cluster cannot be reused for a "
+                  "mixed-version upgrade test")
+            return False
+
+        older_version = testlib.config.get('older-version')
+        # The old-version nodes' compat mode (captured when the cluster was
+        # built) must still match --older-version.
+        old_version_ok = {'7.6': cluster.is_76 and not cluster.is_80,
+                          '8.0': cluster.is_80}.get(older_version, False)
+        if not old_version_ok:
+            print(f"Old-version nodes are not running the expected "
+                  f"'{older_version}' compat version; cluster cannot be "
+                  f"reused for a mixed-version upgrade test")
+            return False
+
+        return True
+
+    def can_be_met(self):
+        return False
+
+    @staticmethod
+    def random(req_dict):
+        return MixedVersion(False)

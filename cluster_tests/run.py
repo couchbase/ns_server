@@ -217,6 +217,9 @@ Usage: {{program_name}}
         Skip all testsets whose requirements include any of the listed services.
         Services are specified by value: index, n1ql, fts, backup,
         eventing, cbas. Example: --exclude-services fts,cbas
+    [--older-version=<older version number>]
+    [--older-version-path=<path>]
+        Path to older version to test
     [--help]
         Show this help
 """
@@ -561,7 +564,9 @@ def main():
                                            'coverage-output-format=',
                                            'diff-coverage=',
                                            'diff-coverage-hide-uncovered',
-                                           'exclude-services='])
+                                           'exclude-services=',
+                                           'older-version=',
+                                           'older-version-path='])
     except getopt.GetoptError as err:
         bad_args_exit(str(err))
 
@@ -704,11 +709,42 @@ def main():
         elif o in ('--list', '-l'):
             list_all_tests()
             exit(0)
+        elif o == '--older-version':
+            if not a in ['7.6', '8.0']:
+                bad_args_exit("Must be one of: '7.6', '8.0'")
+            testlib.config['older-version'] = a
+        elif o == '--older-version-path':
+            testlib.config['older-version-path'] = a
         elif o in ('--help', '-h'):
             usage()
             exit(0)
         else:
             assert False, f"unhandled options: {o}"
+
+    if ('older-version' in testlib.config) != \
+            ('older-version-path' in testlib.config):
+                bad_args_exit("Both or neither of '--older-version' and "
+                             "'--older-version-path' must be specified.")
+    if ('older-version-path' in testlib.config):
+        path = testlib.config['older-version-path']
+        cluster_run_lib_path = f"{path}/pylib/cluster_run_lib.py"
+        if not os.path.exists(cluster_run_lib_path):
+            bad_args_exit(f"Cannot access 'older-version-path' "
+                         f"{cluster_run_lib_path}")
+    if ('older-version' in testlib.config):
+        # Import upgrade tests (only loaded for mixed-version runs)
+        from testsets import upgrade_tests
+        if tests is None:
+            # Default to running all upgrade test classes when --older-version
+            # is specified without --tests
+            upgrade_test_names = [
+                name for name, cls in inspect.getmembers(upgrade_tests,
+                                                          inspect.isclass)
+                if issubclass(cls, testlib.BaseTestSet)
+                and cls is not testlib.BaseTestSet
+                and cls.__module__ == upgrade_tests.__name__
+            ]
+            tests = [(name, '*') for name in upgrade_test_names]
 
     if ignore_unknown_tags:
         # Remove any unparsed tags
@@ -1145,12 +1181,14 @@ def get_testsets_by_names(test_names, discovered_list):
                 tests.sort()
                 msg = f"Test '{test_name}' is not found " \
                       f"in testset '{class_name}'."
-                similar = find_similar_tests(test_name, tests, context='test')
+                similar = find_similar_tests(test_name, tests,
+                                             context='test')
                 if similar:
                     if len(similar) == 1:
                         msg += f"\n\nDid you mean: {similar[0]}?"
                     else:
-                        msg += f"\n\nDid you mean one of: {', '.join(similar)}?"
+                        msg += (f"\n\nDid you mean one of: "
+                                f"{', '.join(similar)}?")
                 msg += f"\n\nAvailable tests in {class_name}:\n"
                 for t in tests:
                     msg += f"  - {t}\n"
@@ -1158,7 +1196,8 @@ def get_testsets_by_names(test_names, discovered_list):
 
             if class_name in results:
                 testlist = results[class_name][1]
-                testlist.append(test_name)
+                if test_name not in testlist:
+                    testlist.append(test_name)
                 results[class_name] = (results[class_name][0], testlist,
                                        configurations)
             else:

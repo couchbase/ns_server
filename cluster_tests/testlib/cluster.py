@@ -21,6 +21,7 @@ from urllib.error import URLError
 from copy import deepcopy
 
 import testlib
+from testlib import legacy_cluster
 from testlib.util import services_to_strings, Service
 
 sys.path.append(testlib.get_pylib_dir())
@@ -76,7 +77,41 @@ def build_cluster(address, auth, cluster_index, start_args, connect,
                   connect_args, disconnected_args):
     processes = []
     urls = []
+    # Pop 'mixed_version' up front, whether or not it's truthy: it isn't a
+    # cluster_run_lib.start_cluster() parameter, and left in start_args it
+    # would reach that call in the non-legacy branch below and raise
+    # TypeError.
+    mixed_version = start_args.pop('mixed_version', False)
     try:
+        if mixed_version:
+            # Checked via the local flag rather than testlib.config so that
+            # only tests that explicitly declare mixed_version=True in their
+            # ClusterRequirements take this path.  Checking
+            # testlib.config['older-version-path'] directly would route
+            # every cluster build through the legacy path whenever
+            # --older-version-path is supplied, including unrelated test
+            # suites.
+            # Create the cluster using nodes running the older release.
+            cluster, old_urls = legacy_cluster.build_cluster(
+                    address=address,
+                    auth=auth,
+                    cluster_index=cluster_index,
+                    start_args=start_args,
+                    connect=connect,
+                    connect_args=connect_args,
+                    disconnected_args=disconnected_args,
+                    get_cluster=get_cluster,
+                    node_init=node_init,
+                    add_cluster_to_auto_kill=add_cluster_to_auto_kill,
+                    kill_nodes=kill_nodes,
+                    get_terminal_attrs=get_terminal_attrs)
+            # Add nodes running the new release, but don't yet rebalance
+            # them into the cluster. This allows tests to run their
+            # before_upgrade functions.
+            return _add_new_version_nodes(address, auth, cluster_index,
+                                          cluster, start_args,
+                                          disconnected_args, old_urls)
+
         port = cluster_run_lib.base_api_port + start_args['start_index']
         num_nodes = start_args['num_nodes']
         nodes = [testlib.Node(host=address,
@@ -107,11 +142,58 @@ def build_cluster(address, auth, cluster_index, start_args, connect,
                               start_args)
         add_cluster_to_auto_kill(cluster_index, processes, urls)
         return cluster
+    except StartClusterError:
+        # Already reported and cleaned up by the code that raised it.
+        raise
     except Exception as e:
         # this exception can be caught later, so we should kill the nodes
         # here to avoid leaving them running
         if processes:
             kill_nodes(processes, urls, get_terminal_attrs())
+        raise StartClusterError(e, cluster_index)
+
+
+def _add_new_version_nodes(address, auth, cluster_index, cluster,
+                            start_args, disconnected_args, old_urls):
+    num_nodes = start_args['num_nodes']
+    new_start_index = start_args['start_index'] + num_nodes
+    new_port = cluster_run_lib.base_api_port + new_start_index
+    new_start_args = {**start_args, 'start_index': new_start_index}
+    new_processes = []
+    new_nodes = []
+    new_urls = []
+    try:
+        print(f"Starting {num_nodes} new-version node(s)")
+        new_processes = cluster_run_lib.start_cluster(**new_start_args)
+        new_nodes = [testlib.Node(host=address, port=new_port + i, auth=auth)
+                     for i in range(num_nodes)]
+        new_urls = get_node_urls(new_nodes)
+
+        node_init(auth,
+                  num_nodes=num_nodes,
+                  start_index=new_start_index,
+                  protocol=disconnected_args['protocol'],
+                  hostname=disconnected_args['hostname'])
+
+        # Track new nodes in _nodes for smog_check and process management,
+        # but do NOT join them — the upgrade test controls when they join.
+        for new_node in new_nodes:
+            cluster._nodes.append(new_node)
+        cluster.new_version_nodes = new_nodes
+
+        remove_cluster_from_auto_kill(cluster_index)
+        cluster.processes += new_processes
+        add_cluster_to_auto_kill(cluster_index, cluster.processes,
+                                  old_urls + new_urls)
+        return cluster
+    except Exception as e:
+        if new_processes:
+            kill_nodes(new_processes, new_urls, get_terminal_attrs())
+        # The old cluster is still running at this point (registered for
+        # auto-kill by legacy_cluster.build_cluster) -- tear it down now
+        # instead of leaving it running until process exit.
+        remove_cluster_from_auto_kill(cluster_index)
+        kill_nodes(cluster.processes, old_urls, get_terminal_attrs())
         raise StartClusterError(e, cluster_index)
 
 
@@ -190,16 +272,33 @@ class Cluster:
         self.auth = auth
         self.requirements = None
         self.start_args = start_args
+        self.new_version_nodes = []
 
         def get_bool(code):
-            return testlib.post_succ(self, "/diag/eval",
-                                     data=code).text == "true"
+            # We may be running these against an older release that doesn't
+            # have the "code".
+            if not code.endswith("()."):
+                raise ValueError(f"'{code}' must be arity zero")
+            module, function = code.split(":", 1)
+            function = function[:-3]
+            # code:ensure_loaded/1 first, since function_exported/3 only
+            # consults the loaded-module table and returns false for an
+            # existing-but-not-yet-loaded module.
+            code2check = f"code:ensure_loaded({module}), " \
+                         f"erlang:function_exported({module}, {function}, 0)."
+            if testlib.post_succ(self, "/diag/eval",
+                                 data=code2check).text == "true":
+                return testlib.post_succ(self, "/diag/eval",
+                                         data=code).text == "true"
+            else:
+                return False
 
         self.is_enterprise = get_bool("cluster_compat_mode:is_enterprise().")
         self.is_76 = get_bool("cluster_compat_mode:is_cluster_76().")
         self.is_79 = get_bool("cluster_compat_mode:is_cluster_79().")
+        self.is_80 = get_bool("cluster_compat_mode:is_cluster_80().")
         self.is_serverless = get_bool("config_profile:is_serverless().")
-        self.is_provisioned = get_bool("config_profile:is_provisioned()")
+        self.is_provisioned = get_bool("config_profile:is_provisioned().")
         self.is_dev_preview = get_bool("cluster_compat_mode:"
                                        "is_developer_preview().")
 
@@ -340,16 +439,20 @@ class Cluster:
     def rebalance(self, ejected_nodes=None, wait=True,
                   wait_for_ejected_nodes=None, timeout_s=60,
                   verbose=False, expected_error=None, initial_code=200,
-                  initial_expected_error=None, plan_uuid=None):
+                  initial_expected_error=None, plan_uuid=None,
+                  # Specifies the node doing the rebalance
+                  node=None):
+        cluster_or_node = self if node is None else node
+
         # We have to use the otpNode names instead of the node ips.
         otp_nodes = testlib.get_otp_nodes(self)
 
         # Filter out ejected_nodes which don't have an otp_node (meaning they
         # are not currently part of the cluster).
         if ejected_nodes is not None:
-            for node in ejected_nodes:
-                if not node.hostname() in otp_nodes.keys():
-                    ejected_nodes.remove(node)
+            for ejected_node in ejected_nodes:
+                if not ejected_node.hostname() in otp_nodes.keys():
+                    ejected_nodes.remove(ejected_node)
 
         # It is unlikely that known_nodes should ever need to be manually
         # generated, as the list of nodes retrieved here is the only accepted
@@ -394,14 +497,14 @@ class Cluster:
                 else:
                     ejected_nodes = failed_nodes
 
-            testlib.post_succ(self, "/controller/rebalance", data=data,
-                              expected_code=initial_code)
+            testlib.post_succ(cluster_or_node, "/controller/rebalance",
+                              data=data, expected_code=initial_code)
 
             # Update connected_nodes with any changes so that wait_for_rebalance
             # doesn't query a node that is being removed
             if ejected_nodes is not None:
-                for node in ejected_nodes:
-                    self.connected_nodes.remove(node)
+                for ejected_node in ejected_nodes:
+                    self.connected_nodes.remove(ejected_node)
 
             if wait_for_ejected_nodes is None:
                 wait_for_ejected_nodes = wait
@@ -424,6 +527,7 @@ class Cluster:
                     resp = testlib.get_succ(self, "/pools/default")
                     nodes = [n["hostname"] for n in resp.json()["nodes"]]
                     print(f"Got nodes: {nodes}")
+                    print(f"Expected nodes: {expected_nodes}")
                     return sorted(nodes) == sorted(expected_nodes)
 
                 # Wait until the cluster's nodes are as expected
@@ -437,8 +541,8 @@ class Cluster:
                         testlib.wait_for_ejected_node(n)
 
         else:
-            r = testlib.post_fail(self, "/controller/rebalance", data=data,
-                                  expected_code=initial_code)
+            r = testlib.post_fail(cluster_or_node, "/controller/rebalance",
+                                  data=data, expected_code=initial_code)
             assert re.match(initial_expected_error, r.text) is not None, \
                 f"Expected rebalance error: {initial_expected_error}\n" \
                 f"Found: {r.text}"
@@ -881,7 +985,14 @@ class Cluster:
         return self.repair_requirements(self.requirements)
 
     def update_requirements(self, new_requirements):
-        self.requirements.update(new_requirements)
+        if self.requirements is None:
+            # No requirements are currently enforced (e.g. a prior testset's
+            # teardown() cleared them because it left the cluster in a state
+            # that no longer satisfies its own requirements). Adopt the new
+            # requirements wholesale rather than updating a non-existent set.
+            self.set_requirements(new_requirements)
+        else:
+            self.requirements.update(new_requirements)
 
     def set_requirements(self, requirements):
         self.requirements = deepcopy(requirements)
