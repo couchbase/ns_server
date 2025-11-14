@@ -99,6 +99,6 @@ class ConfigRemapTest(testlib.BaseTestSet):
         self.cluster.restart_all_nodes()
 
         for node in self.cluster._nodes:
-            afo_settings = testlib.get_succ(self.cluster,
+            afo_settings = testlib.get_succ(node,
                                             '/settings/autoFailover').json()
             assert not afo_settings["enabled"]
