@@ -51,7 +51,7 @@ Use/testing with a typical deployment:
 3) Load snapshot into new machines.
 4) Run node remap script on all nodes.
    1) The remap script can be run as such:
-   `/opt/couchbase/bin/escript /opt/couchbase/bin/escript-wrapper --initargs-path /opt/couchbase/var/lib/couchbase/initargs -- /opt/couchbase/bin/config_remap output-path output remap ns_1@<nodeA1Hostname> ns_1@<nodeA2Hostname> remap ns_1@<nodeB1Hostname> ns_1@<nodeB2Hostname> --regenerate-cookie --regenerate-cluster-uuid`
+   `/opt/couchbase/bin/escript /opt/couchbase/bin/escript-wrapper --initargs-path /opt/couchbase/var/lib/couchbase/initargs -- /opt/couchbase/bin/config_remap --initargs-path /opt/couchbase/var/lib/couchbase/initargs --output-path output --remap ns_1@<nodeA1Hostname> ns_1@<nodeA2Hostname> --remap ns_1@<nodeB1Hostname> ns_1@<nodeB2Hostname> --regenerate-cookie --regenerate-cluster-uuid`
    2) Copy output over the existing information: `yes | cp -Rf output/* /opt/couchbase/var/lib/couchbase/`
 5) Start up Couchbase Server on all nodes.
 
@@ -63,7 +63,7 @@ Testing with cluster_run:
 5) Run node rename script as follows. This renames nodes 0 and 1 to nodes 10 and
 11 in both the node 10 and node 11 directories.
 `
-escript ../install/bin/escript-wrapper --initargs-path data/n_0/initargs -- deps/node_rename/node_rename output-path "data/n_10" cookie "foo" remap n_0@127.0.0.1 n_10@127.0.0.1 remap n_1@127.0.0.1 n_11@127.0.0.1 && escript ../install/bin/escript-wrapper --initargs-path data/n_0/initargs -- deps/config_remap/config_remap output-path "data/n_11" cookie "foo" remap n_0@127.0.0.1 n_10@127.0.0.1 remap n_1@127.0.0.1 n_11@127.0.0.1 --regenerate-cookie --regenerate-cluster-uuid
+escript ../install/bin/escript-wrapper --initargs-path data/n_0/initargs -- deps/config_remap/config_remap --initargs-path data/n_0/initargs --output-path "data/n_11" --remap n_0@127.0.0.1 n_10@127.0.0.1 --remap n_1@127.0.0.1 n_11@127.0.0.1 --regenerate-cookie --regenerate-cluster-uuid
 `
 6) Start up the cluster_run `./cluster_run -n2 --dont-rename --start-index=10`.
    The cluster will continue to use the original ports.
