@@ -875,11 +875,87 @@
             }
         ]
     },
+    "couch_spatial_data_size": {
+        "type": "gauge",
+        "help": "Size of object data for spatial views",
+        "added": "7.0.0",
+        "unit": "bytes",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "bucket",
+                "help": "Name of the bucket associated with the stat"
+            }
+        ]
+    },
+    "couch_spatial_disk_size": {
+        "type": "gauge",
+        "help": "Amount of disk space occupied by spatial views",
+        "added": "7.0.0",
+        "unit": "bytes",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "bucket",
+                "help": "Name of the bucket associated with the stat"
+            }
+        ]
+    },
+    "couch_spatial_ops": {
+        "type": "gauge",
+        "help": "Spatial operations",
+        "added": "7.0.0",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "bucket",
+                "help": "Name of the bucket associated with the stat"
+            }
+        ]
+    },
     "couch_views_actual_disk_size": {
         "type": "gauge",
         "help": "Amount of disk space used by Views data",
         "added": "7.0.0",
         "unit": "bytes",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "bucket",
+                "help": "Name of the bucket associated with the stat"
+            }
+        ]
+    },
+    "couch_views_data_size": {
+        "type": "gauge",
+        "help": "Size of object data for views",
+        "added": "7.0.0",
+        "unit": "bytes",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "bucket",
+                "help": "Name of the bucket associated with the stat"
+            }
+        ]
+    },
+    "couch_views_disk_size": {
+        "type": "gauge",
+        "help": "Amount of disk space occupied by views",
+        "added": "7.0.0",
+        "unit": "bytes",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "bucket",
+                "help": "Name of the bucket associated with the stat"
+            }
+        ]
+    },
+    "couch_views_ops": {
+        "type": "gauge",
+        "help": "View operations",
+        "added": "7.0.0",
         "stability": "committed",
         "labels": [
             {
