@@ -65,10 +65,8 @@ supported_setting_names() ->
      {tcp_user_timeout, {int, 0, ?MAX_32BIT_SIGNED_INT}},
      {free_connection_pool_size, {int, 0, ?MAX_32BIT_SIGNED_INT}},
      {max_client_connection_details, {int, 0, ?MAX_32BIT_SIGNED_INT}},
-     {fusion_migration_rate_limit, {int, 1024 * 1024 * 8,
-                                    ?MAX_32BIT_SIGNED_INT}},
-     {fusion_sync_rate_limit, {int, 1024 * 1024 * 8,
-                               ?MAX_32BIT_SIGNED_INT}},
+     {fusion_migration_rate_limit, fun validate_fusion_rate/1},
+     {fusion_sync_rate_limit, fun validate_fusion_rate/1},
      {dcp_consumer_max_marker_version, {one_of, ["2.0", "2.2"]}},
      {dcp_snapshot_marker_hps_enabled, bool},
      {dcp_snapshot_marker_purge_seqno_enabled, bool},
@@ -235,6 +233,11 @@ validate_param(Value, {one_of, Values}) ->
     end;
 validate_param(Value, Fun) when is_function(Fun, 1) ->
     Fun(Value).
+
+validate_fusion_rate("0") ->
+    {ok, 0};
+validate_fusion_rate(Value) ->
+    validate_param(Value, {int, 1024 * 1024 * 8, ?MAX_32BIT_SIGNED_INT}).
 
 %% Support "default" for backwards compatibility.
 validate_num_threads("default") -> {ok, <<"balanced">>};
