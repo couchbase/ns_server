@@ -425,9 +425,17 @@ jsonify_manifest(Manifest, ForRestResponse) ->
     {[{uid, uid(Manifest)}, {scopes, ScopesJson}]}.
 
 get_max_supported(num_scopes) ->
-    get_max_supported_inner(max_scopes_count, ?MAX_SCOPES_SUPPORTED);
+    MaxSupported = case cluster_compat_mode:is_cluster_totoro() of
+                       true -> ?MAX_SCOPES_SUPPORTED;
+                       false -> ?MAX_SCOPES_SUPPORTED_PRE_TOTORO
+                   end,
+    get_max_supported_inner(max_scopes_count, MaxSupported);
 get_max_supported(num_collections) ->
-    get_max_supported_inner(max_collections_count, ?MAX_COLLECTIONS_SUPPORTED).
+    MaxSupported = case cluster_compat_mode:is_cluster_totoro() of
+                       true -> ?MAX_COLLECTIONS_SUPPORTED;
+                       false -> ?MAX_COLLECTIONS_SUPPORTED_PRE_TOTORO
+                   end,
+    get_max_supported_inner(max_collections_count, MaxSupported).
 
 get_max_supported_inner(Type, Max) ->
     case ns_config:search(Type) of
@@ -1376,6 +1384,7 @@ update_manifest_test_setup() ->
 
     meck:expect(cluster_compat_mode, is_cluster_76, fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_79, fun () -> true end),
+    meck:expect(cluster_compat_mode, is_cluster_totoro, fun () -> true end),
     meck:expect(cluster_compat_mode, is_enterprise, fun () -> true end),
     meck:expect(config_profile, get,
                 fun () ->
