@@ -61,7 +61,12 @@
 %% rpc from other nodes
 -export([wait_for_manifest_uid/4]).
 
--define(EPOCH, 16#1000).
+%% After a quorum failover, increment the manifest UID by this value
+%% to eliminate the probability that collections created after quorum
+%% failover will conflict with those created before.
+-define(EPOCH_PRE_TOTORO, 16#1000).
+-define(EPOCH, 16#10000).
+
 -define(INCREMENT_COUNTER, 1).
 -define(NO_INCREMENT_COUNTER, 0).
 
@@ -87,6 +92,12 @@ start_link() ->
                         end
                 end)
       end).
+
+epoch() ->
+    case cluster_compat_mode:is_cluster_totoro() of
+        true -> ?EPOCH;
+        false -> ?EPOCH_PRE_TOTORO
+    end.
 
 enabled(BucketConfig) ->
     ns_bucket:bucket_type(BucketConfig) =:= membase.
@@ -607,7 +618,7 @@ check_ids_limit(Manifest, LastSeenIds) ->
     IdsFromManifest = get_next_uids(Manifest),
     lists:filter(
       fun ({_, SeenByNode}) ->
-              lists:any(fun ({A, B}) -> A - B >= ?EPOCH end,
+              lists:any(fun ({A, B}) -> A - B >= epoch() end,
                         lists:zip(IdsFromManifest, SeenByNode))
       end, LastSeenIds).
 
@@ -959,9 +970,9 @@ handle_oper({drop_collection, Scope, Name}, Manifest, _BucketConf) ->
 handle_oper(bump_epoch, Manifest, _BucketConf) ->
     functools:chain(
       Manifest,
-      [bump_id(_, next_scope_uid, ?EPOCH),
-       bump_id(_, next_coll_uid, ?EPOCH),
-       bump_id(_, next_uid, ?EPOCH)]).
+      [bump_id(_, next_scope_uid, epoch()),
+       bump_id(_, next_coll_uid, epoch()),
+       bump_id(_, next_uid, epoch())]).
 
 do_create_scope(Name, Manifest, Increment) ->
     functools:chain(
