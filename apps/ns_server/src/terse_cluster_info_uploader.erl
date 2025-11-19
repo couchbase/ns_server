@@ -18,6 +18,9 @@
 -export([start_link/0]).
 
 -record(state, {
+          last_rev = 0 :: integer(),
+          last_epoch = 0 :: integer(),
+          last_bin = <<>> :: iodata(),
           port_pid :: pid()
          }).
 
@@ -46,19 +49,27 @@ init([]) ->
     Self ! refresh,
     gen_server:enter_loop(?MODULE, [], #state{port_pid = Pid}).
 
-handle_info(refresh, State) ->
+handle_info(refresh,
+            #state{last_rev = LastRev, last_epoch = LastEpoch,
+                   last_bin = LastBin} = State) ->
     misc:flush(refresh),
-    try bucket_info_cache:build_node_services() of
-        {Rev, RevEpoch, Bin, _NodesExtHash} ->
-            ?log_debug("Refreshing terse cluster info with ~p", [Bin]),
-            ok = ns_memcached:set_cluster_config(Rev, RevEpoch, Bin)
-    catch T:E:Stack ->
-            ?log_error("Got exception trying to get terse cluster info: ~p",
-                       [{T, E, Stack}]),
-            timer:sleep(10000),
-            erlang:raise(T, E, Stack)
-    end,
-    {noreply, State};
+    NewState =
+        try bucket_info_cache:build_node_services() of
+            {LastRev, LastEpoch, LastBin, _NodesExtHash} ->
+                %% Don't set terse cluster info as it hasn't changed.
+                State;
+            {Rev, RevEpoch, Bin, _NodesExtHash} ->
+                ?log_debug("Refreshing terse cluster info with ~p", [Bin]),
+                ok = ns_memcached:set_cluster_config(Rev, RevEpoch, Bin),
+                State#state{last_rev = Rev, last_epoch = RevEpoch,
+                            last_bin = Bin}
+        catch T:E:Stack ->
+                  ?log_error("Got exception trying to get terse cluster info: ~p",
+                             [{T, E, Stack}]),
+                  timer:sleep(10000),
+                  erlang:raise(T, E, Stack)
+        end,
+    {noreply, NewState};
 handle_info({remote_monitor_down, Pid, Reason},
             #state{port_pid = Pid} = State) ->
     ?log_debug("Got DOWN with reason: ~p from memcached port server: ~p. "
