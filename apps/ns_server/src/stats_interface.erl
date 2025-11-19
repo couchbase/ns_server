@@ -160,6 +160,7 @@ for_alerts() ->
                   "index_memory_rss|"
                   "index_memory_quota|"
                   "index_num_diverging_replica_indexes`} or "
+          "{name=~`cm_bucket_autoreprovision_total`} or "
           "{name=~`sys_mem_actual_free|sys_mem_actual_used|"
                   "sys_mem_cgroup_limit|sys_mem_cgroup_actual_used`} or "
           "label_replace("
@@ -184,6 +185,8 @@ for_alerts() ->
                             <<"sys_", N/binary>> ->
                                 {true, {"@system",
                                         binary_to_atom(N, latin1)}};
+                            <<"cm_", _/binary>> = N ->
+                                {true, {"@global", binary_to_atom(N, latin1)}};
                             <<"encr_at_rest_errors_total">> ->
                                 {true, {"@global", encr_at_rest_errors_total}};
                             _ ->

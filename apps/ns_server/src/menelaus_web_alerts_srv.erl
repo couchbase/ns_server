@@ -167,6 +167,8 @@ short_description(encr_at_rest_key_test_failed) ->
     "encryption-at-rest key test failed";
 short_description(encr_at_rest_errors_total) ->
     "encryption-at-rest error";
+short_description(cm_bucket_autoreprovision_total) ->
+    "bucket auto-reprovisioning has occurred";
 short_description(Other) ->
     %% this case is needed for tests to work
     couch_util:to_list(Other).
@@ -263,7 +265,10 @@ errors(xdcr_replication_deleted) ->
     "Warning: ~p XDCR replication deleted on node: ~p";
 errors(encr_at_rest_errors_total) ->
     "Encryption-at-Rest errors have been detected on node \"~s\". "
-    "Please check the logs for more details.".
+    "Please check the logs for more details.";
+errors(cm_bucket_autoreprovision_total) ->
+    "Bucket auto-reprovisioning has occurred on node: ~p. A rebalance may be "
+    "necessary to rebuild replicas.".
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
@@ -500,7 +505,7 @@ alert_keys() ->
      cert_expires_soon, cert_expired, memory_threshold, history_size_warning,
      stuck_rebalance, memcached_connections, disk_guardrail,
      indexer_diverging_replicas, xdcr_replication_deleted,
-     encr_at_rest_errors_total].
+     encr_at_rest_errors_total, cm_bucket_autoreprovision_total].
 
 config_upgrade_to_76(Config) ->
     Ret = case ns_config:search(Config, email_alerts) of
@@ -562,7 +567,11 @@ config_upgrade_to_totoro(Config) ->
                                           encr_at_rest_key_test_failed, _),
                    add_proplist_list_elem(alerts, encr_at_rest_errors_total, _),
                    add_proplist_list_elem(pop_up_alerts,
-                                          encr_at_rest_errors_total, _)])
+                                          encr_at_rest_errors_total, _),
+                   add_proplist_list_elem(alerts,
+                                          cm_bucket_autoreprovision_total, _),
+                   add_proplist_list_elem(pop_up_alerts,
+                                          cm_bucket_autoreprovision_total, _)])
     end.
 
 %% @doc Sends any previously queued email alerts. Generally called when we first
@@ -595,7 +604,8 @@ global_checks() ->
      time_out_of_sync, disk_usage_analyzer_stuck, certs, xdcr_certs,
      memory_threshold, history_size_warning, indexer_low_resident_percentage,
      stuck_rebalance, memcached_connections, disk_guardrail,
-     indexer_diverging_replicas, xdcr_replication_deleted, encr_at_rest].
+     indexer_diverging_replicas, xdcr_replication_deleted, encr_at_rest,
+     cm_bucket_autoreprovision_total].
 
 %% @doc fires off various checks
 check_alerts(Opaque, Hist, Stats) ->
@@ -782,6 +792,10 @@ check(audit_write_fail, Opaque, _History, Stats) ->
 %% @doc check for any oom errors an any bucket
 check(oom, Opaque, _History, Stats) ->
     check_stat_increased(Stats, ep_oom_errors, Opaque);
+
+%% @doc check for any bucket reprovisions
+check(cm_bucket_autoreprovision_total, Opaque, _History, Stats) ->
+    check_global_stat_increased(Stats, cm_bucket_autoreprovision_total, Opaque);
 
 %% @doc check for any CAS drift threshold exceeded errors on any bucket
 check(cas_drift_threshold, Opaque, _History, Stats) ->
@@ -1962,12 +1976,13 @@ config_upgrade_to_totoro_test() ->
             {alerts, [ip, time_out_of_sync]}]}]],
     Expected1 = [{set, email_alerts,
                   [{pop_up_alerts,
-                    [disk, encr_at_rest_errors_total,
-                     encr_at_rest_key_test_failed, ip,
-                     xdcr_replication_deleted]},
+                    [cm_bucket_autoreprovision_total,
+                     disk,encr_at_rest_errors_total,
+                     encr_at_rest_key_test_failed,ip,xdcr_replication_deleted]},
                    {alerts,
-                    [encr_at_rest_errors_total, encr_at_rest_key_test_failed,
-                     ip, time_out_of_sync, xdcr_replication_deleted]}]}],
+                    [cm_bucket_autoreprovision_total,encr_at_rest_errors_total,
+                     encr_at_rest_key_test_failed,ip,time_out_of_sync,
+                     xdcr_replication_deleted]}]}],
     ?assertEqual(Expected1, config_upgrade_to_totoro(Config1)).
 
 %% Test that the stuck time is correctly updated based on rebalance progress

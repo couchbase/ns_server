@@ -208,6 +208,7 @@ class MnSettingsAlertsComponent extends MnLifeCycleHooksToStream {
       case knownAlerts[25]: return 'XDCR replication has deleted items';
       case knownAlerts[26]: return 'Encryption-at-Rest key validation event failed';
       case knownAlerts[27]: return 'Encryption-at-Rest error';
+      case knownAlerts[28]: return 'Bucket reprovisioned'
     }
   }
 }

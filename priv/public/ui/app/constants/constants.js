@@ -46,7 +46,8 @@ let knownAlerts = [
   'indexer_diverging_replicas',
   'xdcr_replication_deleted',
   'encr_at_rest_key_test_failed',
-  'encr_at_rest_errors_total'
+  'encr_at_rest_errors_total',
+  'bucket_reprovisioned'
 ];
 
 let timeUnitToSeconds = {
