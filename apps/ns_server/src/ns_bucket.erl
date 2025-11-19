@@ -437,8 +437,11 @@ ensure_bucket(Bucket) ->
 get_bucket_names() ->
     get_bucket_names(direct).
 
-get_bucket_names(Snapshot) ->
-    chronicle_compat:get(Snapshot, root(), #{required => true}).
+-spec get_bucket_names(chronicle_compat:source() | buckets()) -> [name()].
+get_bucket_names(Buckets) when is_list(Buckets) ->
+    [BucketName || {BucketName, _} <- Buckets];
+get_bucket_names(Source) ->
+    chronicle_compat:get(Source, root(), #{required => true}).
 
 -spec get_bucket_names_of_type(bucket_type_mode()) -> [name()].
 get_bucket_names_of_type(Type) ->
