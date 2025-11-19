@@ -1854,7 +1854,7 @@ get_value_from_parms_or_bucket(Key, Params,
         undefined ->
             case IsNew of
                 true -> undefined;
-                false -> proplists:get_value(Key, BucketConfig, undefined)
+                false -> proplists:get_value(Key, BucketConfig)
             end;
         Value -> Value
     end.
