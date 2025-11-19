@@ -638,8 +638,12 @@ storage_mode(BucketConfig) ->
         memcached ->
             undefined;
         membase ->
-            proplists:get_value(storage_mode, BucketConfig,
-                                default_storage_mode(membase))
+            case proplists:get_value(storage_mode, BucketConfig) of
+                undefined ->
+                    default_storage_mode(membase);
+                StorageMode ->
+                    StorageMode
+            end
     end.
 
 autocompaction_settings(BucketConfig) ->
