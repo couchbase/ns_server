@@ -83,6 +83,7 @@
          get_fusion_uploaders_state/2,
          download_snapshot/5,
          wait_download_snapshot/4,
+         wait_snapshot_ready/4,
          release_file_based_rebalance_snapshot/4,
          release_file_based_rebalance_snapshots/2,
          import_snapshot_deks/4]).
@@ -612,6 +613,11 @@ download_snapshot(Bucket, Rebalancer, MasterNode, ReplicaNode, VBucket) ->
 wait_download_snapshot(Bucket, Rebalancer, ReplicaNode, VBucket) ->
     ok = rebalance_call(Rebalancer, Bucket, ReplicaNode,
                         {wait_download_snapshot, VBucket}, infinity).
+
+wait_snapshot_ready(Bucket, Rebalancer, ReplicaNode, VBucket) ->
+    ok = rebalance_call(Rebalancer, Bucket, ReplicaNode,
+                        {wait_snapshot_ready, VBucket}, infinity).
+
 release_file_based_rebalance_snapshots(Bucket, Servers) ->
     call_on_servers(Bucket, Servers,
                     {release_file_based_rebalance_snapshots, Bucket},
@@ -918,6 +924,10 @@ do_handle_call({wait_download_snapshot, VBucket}, From,
                #state{bucket_name = Bucket} = State) ->
     spawn_rebalance_subprocess(State, From,
                                ?cut(wait_download_snapshot(Bucket, VBucket)));
+do_handle_call({wait_snapshot_ready, VBucket}, From,
+               #state{bucket_name = Bucket} = State) ->
+    spawn_rebalance_subprocess(State, From,
+                               ?cut(wait_snapshot_ready(Bucket, VBucket)));
 do_handle_call({wait_dcp_data_move, ReplicaNodes, VBucket}, From,
                #state{bucket_name = Bucket} = State) ->
     spawn_rebalance_subprocess(
@@ -1634,6 +1644,17 @@ wait_download_snapshot(Bucket, VBucket) ->
                       (Other) ->
                           erlang:error({bad_download_snapshot_status, Other})
                   end, "download snapshot").
+
+wait_snapshot_ready(Bucket, VBucket) ->
+    wait_for_stat(Bucket, VBucket,
+                  fun ns_memcached:get_snapshot_ready_status/2,
+                  fun(<<"false">>) ->
+                          false;
+                     (<<"true">>) ->
+                          true;
+                     (Other) ->
+                          erlang:error({bad_wait_snapshot_ready_status, Other})
+                  end, "snapshot to be ready").
 
 wait_for_stat(Bucket, VBucket, StatFun, CheckFun, LogStr) ->
     wait_for_stat(Bucket, VBucket, StatFun, CheckFun, LogStr, 0).

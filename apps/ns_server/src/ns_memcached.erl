@@ -175,6 +175,7 @@
          delete_fusion_namespace/3,
          download_snapshot/3,
          get_download_snapshot_status/2,
+         get_snapshot_ready_status/2,
          release_snapshot/2,
          get_snapshot_statuses/1,
          get_snapshot_details/2
@@ -902,6 +903,16 @@ do_handle_call({get_snapshot_details, VBucket}, _From, State) ->
                        end;
                    (_Other, _Value, Acc) ->
                        Acc
+               end, #{}),
+    {reply, Status, State};
+do_handle_call({get_snapshot_ready_status, VBucket}, _From, State) ->
+    StatsKey = iolist_to_binary([<<"snapshot-move ">>,
+                                 integer_to_list(VBucket)]),
+    Status = mc_binary:quick_stats(
+               State#state.sock, StatsKey,
+               fun(_, Value, _Acc) ->
+                       %% We really only expect one entry in the status list
+                       Value
                end, #{}),
     {reply, Status, State};
 do_handle_call({get_dcp_docs_estimate, VBucketId, ConnName}, _From, State) ->
@@ -2039,6 +2050,11 @@ download_snapshot(Bucket, MasterNode, VBucket) ->
 -spec get_download_snapshot_status(bucket_name(), vbucket_id()) -> {ok, term()}.
 get_download_snapshot_status(Bucket, VBucket) ->
     do_call(server(Bucket), Bucket, {get_download_snapshot_status, VBucket},
+            ?TIMEOUT).
+
+-spec get_snapshot_ready_status(bucket_name(), vbucket_id()) -> {ok, term()}.
+get_snapshot_ready_status(Bucket, VBucket) ->
+    do_call(server(Bucket), Bucket, {get_snapshot_ready_status, VBucket},
             ?TIMEOUT).
 
 -spec release_snapshot(bucket_name(), vbucket_id()) -> ok | {error, term()}.

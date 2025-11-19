@@ -164,13 +164,19 @@ file_based_backfill(Bucket, Parent, VBucket, [OldMaster | _ ] = OldChain,
       end, AllBuiltNodes),
 
     %% 3) Flip  vBucket to replica.
-    %% We are going to create streams here, we don't really need to, but
-    %% takeover can't handle the connection not existing yet.
+    %% We are going to create streams here, they may be used by memcached in
+    %% step 4, and our takeover code can't handle the connection not existing
+    %% so these are somewhat necessary.
     set_initial_vbucket_state(Bucket, Parent, VBucket, OldChain, ReplicaNodes,
                               JustBackfillNodes,
                               fbr),
 
-    %% 4) The janitor will also clean up any snapshots, but we should release
+    %% 4) Wait for any post-move actions in memcached to complete.
+    %% This ensure that value eviction vBuckets will populate their caches and
+    %% serve data correctly after a file-based backfill.
+    wait_snapshot_ready(Bucket, Parent, AllBuiltNodes, VBucket),
+
+    %% 5) The janitor will also clean up any snapshots, but we should release
     %% the associated snapshots now to free up resources in memcached.
     lists:foreach(
       fun(Node) ->
@@ -593,6 +599,29 @@ download_snapshot(Bucket, Parent, SrcNode, DstNodes, VBucket) ->
                                     WaitErr})
               end
       end).
+
+wait_snapshot_ready(Bucket, Parent, DstNodes, VBucket) ->
+    ?rebalance_debug("Will wait for snapshot to be ready for bucket = ~p"
+                     "partition = ~p dest nodes = ~p",
+                     [Bucket, VBucket, DstNodes]),
+    WaitResult =
+        misc:parallel_map(
+            fun(DestNode) ->
+                janitor_agent:wait_snapshot_ready(Bucket, Parent, DestNode,
+                                                  VBucket)
+            end, DstNodes, infinity),
+    NonOks2 = [P || {_N, V} = P <- WaitResult, V =/= ok],
+    case NonOks2 of
+        [] ->
+            ?rebalance_debug("Finished waiting for snapshot readiness for "
+                             "bucket = ~p partition = ~p "
+                             "dest nodes = ~p",
+                             [Bucket, VBucket, DstNodes]),
+            ok;
+        WaitErr ->
+            erlang:error(
+                {wait_snapshot_ready, Bucket, VBucket, DstNodes, WaitErr})
+    end.
 
 wait_dcp_data_move(Bucket, Parent, SrcNode, DstNodes, VBucket) ->
     spawn_and_wait(
