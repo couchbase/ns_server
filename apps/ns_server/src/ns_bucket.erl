@@ -236,7 +236,8 @@
          get_drop_keys_timestamp/2,
          get_force_encryption_timestamp/2,
          validate_encryption_secret/3,
-         is_encryption_enabled/1]).
+         is_encryption_enabled/1,
+         file_based_backfill_enabled/1]).
 
 %% fusion
 -export([is_fusion/1,
@@ -2819,6 +2820,18 @@ can_have_views(BucketConfig) ->
 
 is_magma(BucketConfig) ->
     storage_mode(BucketConfig) =:= magma.
+
+-spec file_based_backfill_enabled(config()) -> boolean().
+file_based_backfill_enabled(BucketConfig) ->
+    cluster_compat_mode:is_data_service_file_based_backfill_enabled() andalso
+        ns_bucket:is_persistent(BucketConfig) andalso
+        not ns_bucket:storage_mode_migration_in_progress(BucketConfig) andalso
+        not ns_bucket:eviction_policy_migration_in_progress(BucketConfig)
+        andalso
+        %% MB-68800: Enable FBR only for fullEviction temporarily
+    ns_bucket:eviction_policy(BucketConfig) =:= full_eviction andalso
+        lists:member(ns_bucket:get_fusion_state(BucketConfig),
+            [disabled, stopped]).
 
 get_view_nodes(BucketConfig) ->
     case can_have_views(BucketConfig) of

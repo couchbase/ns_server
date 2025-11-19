@@ -118,17 +118,6 @@ is_swap_rebalance(OldMap, NewMap) ->
             false
     end.
 
-file_based_backfill_enabled(BucketConfig) ->
-    cluster_compat_mode:is_data_service_file_based_backfill_enabled() andalso
-        ns_bucket:is_persistent(BucketConfig) andalso
-        not ns_bucket:storage_mode_migration_in_progress(BucketConfig) andalso
-        not ns_bucket:eviction_policy_migration_in_progress(BucketConfig)
-        andalso
-    %% MB-68800: Enable FBR only for fullEviction temporarily
-        ns_bucket:eviction_policy(BucketConfig) =:= full_eviction andalso
-        lists:member(ns_bucket:get_fusion_state(BucketConfig),
-                     [disabled, stopped]).
-
 init({Bucket, BucketConfig, Nodes, OldMap, NewMap, ProgressCallback,
       RebalancePlan, FusionUploadersInfo}) ->
     case is_swap_rebalance(OldMap, NewMap) of
@@ -159,7 +148,7 @@ init({Bucket, BucketConfig, Nodes, OldMap, NewMap, ProgressCallback,
     Options =
         [{fusion_use_snapshot, true} || RebalancePlan =/= undefined] ++
         [{file_based_backfill_enabled, true} ||
-            file_based_backfill_enabled(BucketConfig)],
+            ns_bucket:file_based_backfill_enabled(BucketConfig)],
     SchedulerState = vbucket_move_scheduler:prepare(
                        OldMap, NewMap, Quirks,
                        menelaus_web_settings:get_rebalance_moves_per_node(),
