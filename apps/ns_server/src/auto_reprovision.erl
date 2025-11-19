@@ -79,6 +79,9 @@ call(Msg) ->
 %% gen_server callbacks.
 init([]) ->
     {Enabled, MaxNodes, Count} = get_reprovision_info(),
+    %% Create the counter which is init'd to zero so that any instance
+    %% of autoreprovision bumps the counter and triggers an alert.
+    ns_cluster:counter_init(bucket_autoreprovision_success),
     {ok, #state{enabled = Enabled, max_nodes = MaxNodes, count = Count}}.
 
 handle_call({enable, MaxNodes}, _From, #state{count = Count} = State) ->
@@ -139,6 +142,8 @@ handle_call({reprovision_buckets, Buckets, UnsafeNodes}, _From,
                                          {nodes, Candidates},
                                          {restarted_on, UnsafeNodes}])
                               end, Buckets),
+                %% Bump the stat used to generate alerts
+                ns_cluster:counter_inc(bucket_autoreprovision_success),
                 {ok, State#state{count = NewCount}};
             Other ->
                 {{error, {reprovision_failed, Other}}, State}

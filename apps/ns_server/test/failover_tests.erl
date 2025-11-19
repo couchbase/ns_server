@@ -86,7 +86,7 @@ failover_test_teardown(_Config, PidMap) ->
     config_profile:unload_profile_for_test().
 
 manual_failover_t(_SetupConfig, _R) ->
-    ?assertEqual({error,not_found},
+    ?assertMatch({ok,[{bucket_autoreprovision_success,{_,0}}]},
                  chronicle_compat:get(counters, #{})),
 
     %% We are failing over all but node 'c' here.

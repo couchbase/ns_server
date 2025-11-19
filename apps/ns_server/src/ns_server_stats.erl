@@ -692,6 +692,9 @@ report_cluster_stats(ReportMetricFun, ReportMetaFun) ->
                     <<"graceful_failover_", Event0/binary>>  ->
                         {convert_to_reported_event(Event0),
                          <<"graceful_failover_total">>};
+                    <<"bucket_autoreprovision_", Event0/binary>> ->
+                        {convert_to_reported_event(Event0),
+                         <<"bucket_autoreprovision_total">>};
                     _ ->
                         {skip, undefined}
                 end,

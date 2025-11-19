@@ -66,6 +66,7 @@
 -export([do_change_address/2]).
 
 -export([counters/0,
+         counter_init/1,
          counter/3,
          counter_inc/1,
          counter_inc/2]).
@@ -353,6 +354,23 @@ change_address(Address) ->
         Error ->
             Error
     end.
+
+%% @doc Initilize a counter if it doesn't already exist
+counter_init(CounterName) ->
+    chronicle_kv:transaction(
+      kv, [counters],
+      fun (Snapshot) ->
+              {Counters, _} = maps:get(counters, Snapshot, {[], undefined}),
+              case proplists:get_value(CounterName, Counters) of
+                  undefined ->
+                      TS = os:system_time(second),
+                      NewCounters = [{CounterName, {TS, 0}} | Counters],
+                      {commit, [{set, counters, NewCounters}]};
+                  _ ->
+                      % Counter already exists
+                      {abort, ok}
+              end
+      end).
 
 %% @doc Returns proplist of cluster-wide counters.
 counters() -> counters(direct).
