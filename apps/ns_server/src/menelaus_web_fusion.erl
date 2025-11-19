@@ -122,6 +122,22 @@ jsonify_buckets_status(Buckets) ->
                 {[{N, P} || {N, P} <- JsonProps, P =/= undefined]}}
        end, Buckets)}.
 
+bucket_error_to_str(unknown) ->
+    "not found";
+bucket_error_to_str(non_magma) ->
+    "not a Magma bucket";
+bucket_error_to_str(continuous_backup_enabled) ->
+    "bucket with continuous backup enabled".
+
+reply_wrong_buckets(Req, BucketErrors) ->
+    validator:report_errors_for_one(
+      Req,
+      [{buckets,
+        ["Fusion cannot be enabled on the following buckets: ",
+         lists:join(", ",
+                    [[BucketName, " - ", bucket_error_to_str(Reason)] ||
+                        {BucketName, Reason} <- BucketErrors])]}], 400).
+
 handle_enable(Req) ->
     menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_totoro(),
@@ -136,12 +152,8 @@ handle_enable(Req) ->
                       menelaus_util:reply_json(Req, [], 200);
                   {wrong_state, State, States} ->
                       reply_wrong_state(Req, State, States);
-                  {unknown_buckets, Buckets} ->
-                      validator:report_errors_for_one(
-                        Req,
-                        [{buckets,
-                          io_lib:format("Unknown or non-magma buckets ~p",
-                                        [Buckets])}], 400);
+                  {wrong_buckets, BucketErrors} ->
+                      reply_wrong_buckets(Req, BucketErrors);
                   not_initialized ->
                       menelaus_util:reply_text(
                         Req, "Fusion should be initialized", 503);

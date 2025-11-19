@@ -18,6 +18,11 @@
 -include("ns_common.hrl").
 -include_lib("ns_common/include/cut.hrl").
 
+-ifdef(TEST).
+-include("ns_test.hrl").
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([build_fast_forward_info/5,
          build_initial/1,
          get_moves/1,
@@ -70,9 +75,12 @@
 -type bucket_state() ::
         disabled | disabling | enabled | stopped | stopping.
 -type wrong_state_error() :: {wrong_state, state(), [state()]}.
--type enable_error() :: not_initialized | wrong_state_error() |
-                        {failed_nodes, [node()]} |
-                        {unknown_buckets, [ns_bucket:name()]}.
+-type bucket_validation_error() ::
+        unknown | non_magma | continuous_backup_enabled.
+-type enable_error() ::
+        not_initialized | wrong_state_error() |
+        {failed_nodes, [node()]} |
+        {wrong_buckets, [{ns_bucket:name(), bucket_validation_error()}]}.
 -type disable_or_stop_error() :: wrong_state_error().
 
 -export_type([fast_forward_info/0, uploaders/0, enable_error/0,
@@ -390,31 +398,54 @@ calculate_uploaders([{Bucket, BucketConfig} | Rest], Acc) ->
 advance_terms(Uploaders) ->
     [{Node, Term + 1} || {Node, Term} <- Uploaders].
 
--spec command({enable, [ns_bucket:name()] | undefined} | disable | stop)
-             -> ok | {error, enable_error()} |
-          {error, disable_or_stop_error()}.
-command({enable, BucketNames}) ->
-    MagmaBuckets = ns_bucket:get_buckets_of_type(
-                     {membase, magma}, ns_bucket:get_buckets()),
-    MagmaBucketNames = [BucketName || {BucketName, _} <- MagmaBuckets],
-    {BucketsToEnable, Unknown} =
+validate_buckets(BucketNames, Buckets) ->
+    MagmaBuckets = ns_bucket:get_buckets_of_type({membase, magma}, Buckets),
+    MagmaBucketNames = ns_bucket:get_bucket_names(MagmaBuckets),
+    {BucketsToEnable, UnknownOrNonMagma} =
         case BucketNames of
             undefined ->
                 {MagmaBuckets, []};
             _ ->
-                case BucketNames -- MagmaBucketNames of
-                    [] ->
-                        {[{BucketName, BucketConfig} ||
-                             {BucketName, BucketConfig} <- MagmaBuckets,
-                             lists:member(BucketName, BucketNames)], []};
-                    Missing ->
-                        {undefined, Missing}
-                end
+                UnknownBucketNames =
+                    BucketNames -- ns_bucket:get_bucket_names(Buckets),
+                NonMagmaBucketNames =
+                    (BucketNames -- UnknownBucketNames) -- MagmaBucketNames,
+
+                MagmaBucketsToEnable =
+                    [{BucketName, BucketConfig} ||
+                        {BucketName, BucketConfig} <- MagmaBuckets,
+                        lists:member(BucketName, BucketNames)],
+
+                {MagmaBucketsToEnable,
+                 [{BucketName, unknown} || BucketName <- UnknownBucketNames] ++
+                     [{BucketName, non_magma} ||
+                         BucketName <- NonMagmaBucketNames]}
         end,
-    case Unknown of
-        [] ->
+    BucketsNotToEnable =
+        lists:filtermap(
+          fun({BucketName, BucketConfig}) ->
+                  case ns_bucket:get_continuous_backup_enabled(BucketConfig) of
+                      true ->
+                          {true, {BucketName, continuous_backup_enabled}};
+                      false ->
+                          false
+                  end
+          end, BucketsToEnable),
+    case {UnknownOrNonMagma, BucketsNotToEnable} of
+        {[], []} ->
+            {ok, BucketsToEnable, MagmaBucketNames};
+        _ ->
+            {errors, UnknownOrNonMagma ++ BucketsNotToEnable}
+    end.
+
+-spec command({enable, [ns_bucket:name()] | undefined} | disable | stop)
+             -> ok | {error, enable_error()} |
+          {error, disable_or_stop_error()}.
+command({enable, BucketNames}) ->
+    case validate_buckets(BucketNames, ns_bucket:get_buckets()) of
+        {ok, BucketsToEnable, MagmaBucketNames} ->
             ?log_debug("Enabling fusion for buckets ~p",
-                       [[BucketName || {BucketName, _} <- BucketsToEnable]]),
+                       [ns_bucket:get_bucket_names(BucketsToEnable)]),
             case calculate_uploaders(BucketsToEnable, []) of
                 {ok, BucketUploaders} ->
                     [?log_debug("Setting uploaders for bucket ~p:~n~p",
@@ -434,8 +465,8 @@ command({enable, BucketNames}) ->
                 Error ->
                     Error
             end;
-        _ ->
-            {error, {unknown_buckets, Unknown}}
+        {errors, Errors} ->
+            {error, {wrong_buckets, Errors}}
     end;
 command(Command) when Command =:= disable orelse Command =:= stop ->
     ?log_debug("Attempt to ~p fusion", [Command]),
@@ -1129,3 +1160,35 @@ cleanup_mounted_volumes(Bucket, BucketConfig) ->
         false ->
             ok
     end.
+
+-ifdef(TEST).
+
+validate_buckets_test() ->
+    Buckets = [{"memcached", [{type, memcached}]},
+               {"couchstore", [{type, membase}, {storage_mode, couchstore}]},
+               {"magma", [{type, membase}, {storage_mode, magma}]}],
+
+    Buckets1 = Buckets ++ [{"PiTR", [{type, membase}, {storage_mode, magma},
+                                     {continuous_backup_enabled, true}]}],
+
+    RV = validate_buckets(undefined, Buckets),
+    ?assertMatch({ok, [{"magma", _}], ["magma"]}, RV),
+
+    RV1 = validate_buckets(undefined, Buckets1),
+    ?assertEqual({errors, [{"PiTR", continuous_backup_enabled}]}, RV1),
+
+    RV2 = validate_buckets(
+            ["unknown", "memcached", "couchstore", "magma", "PiTR"], Buckets1),
+    ?assertMatch({errors, _}, RV2),
+    {errors, Errors2} = RV2,
+    ?assertListsEqual([{"unknown", unknown},
+                       {"memcached", non_magma},
+                       {"couchstore", non_magma},
+                       {"PiTR", continuous_backup_enabled}], Errors2),
+
+    RV3 = validate_buckets(["magma"], Buckets1),
+    ?assertMatch({ok, [{"magma", _}], _}, RV3),
+    {ok, _, MagmaBuckets} = RV3,
+    ?assertListsEqual(["magma", "PiTR"], MagmaBuckets).
+
+-endif.

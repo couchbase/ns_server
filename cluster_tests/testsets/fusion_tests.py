@@ -18,6 +18,7 @@ import json
 import os
 import shutil
 import random
+import re
 
 from testlib import ClusterRequirements
 from testlib.util import Service
@@ -52,6 +53,7 @@ class FusionTests(testlib.BaseTestSet):
     @staticmethod
     def requirements():
         return [ClusterRequirements(edition="Enterprise",
+                                    memsize=1024,
                                     include_services=[Service.KV],
                                     min_num_nodes=3, num_connected=1,
                                     num_vbuckets=16, buckets=[])]
@@ -97,11 +99,11 @@ class FusionTests(testlib.BaseTestSet):
             json={'logStoreURI': 'local://' + self.cluster.logstore_dir,
                   'enableSyncThresholdMB': 1024})
 
-    def create_bucket(self, name, num_replicas):
+    def create_bucket(self, name, num_replicas, overrides = {}):
         self.cluster.create_bucket(
             {'name': name, 'ramQuota': 100, 'bucketType': 'membase',
              'storageBackend': 'magma', 'flushEnabled' : 1,
-             'replicaNumber': num_replicas},
+             'replicaNumber': num_replicas} | overrides,
             sync=True)
 
     def prepare_rebalance(self, keep_nodes):
@@ -297,6 +299,29 @@ class FusionTests(testlib.BaseTestSet):
         self.assert_state('enabling')
 
         testlib.post_fail(self.cluster, '/fusion/enable', expected_code=503)
+
+    def enabling_fusion_for_buckets_errors_test(self):
+        self.create_bucket('magma', 1)
+        self.create_bucket('couchstore', 1, {'bucketType': 'membase',
+                                             'storageBackend': 'couchstore'})
+        self.create_bucket('PiTR', 1, {'continuousBackupEnabled': 'true',
+                                       'historyRetentionSeconds': 8,
+                                       'historyRetentionBytes': 2147483649})
+        resp = testlib.post_fail(self.cluster, '/fusion/enable',
+                                 expected_code=400)
+
+        assert_buckets_error(resp.json(),
+                             {'PiTR': 'bucket with continuous backup enabled'})
+
+        resp = testlib.post_fail(
+            self.cluster, '/fusion/enable',
+            data={'buckets': 'unknown,couchstore,magma,PiTR'},
+            expected_code=400)
+
+        assert_buckets_error(resp.json(),
+                             {'PiTR': 'bucket with continuous backup enabled',
+                              'unknown': 'not found',
+                              'couchstore': 'not a Magma bucket'})
 
     def abort_rebalance_test(self):
         self.init_fusion()
@@ -540,8 +565,30 @@ class FusionTests(testlib.BaseTestSet):
         self.cluster.rebalance(wait = True)
         self.check_uploaders('test', [first_node.otp_node()])
 
+def assert_buckets_error(json, expected):
+    error_message = get_json_error(json, 'buckets')
 
-def assert_json_error(json, field, prefix):
+    prefix = "Fusion cannot be enabled on the following buckets: "
+    assert error_message.startswith(prefix), (
+        f"Error message should start with '{prefix}', got: {error_message}"
+    )
+    content = error_message[len(prefix):].strip()
+    # match substrings in a comma-separated list where individual
+    # items follow a "key - value" format,
+    pattern = r'([^,]+?)\s*-\s*(.+?)(?:,\s*|$)'
+    matches = re.findall(pattern, content)
+
+    actual = {}
+    for bucket, reason in matches:
+        bucket = bucket.strip()
+        reason = reason.strip()
+        actual[bucket] = reason
+
+    assert actual == expected, (
+        f"Parsed errors don't match.\nExpected: {expected}\nGot: {actual}"
+    )
+
+def get_json_error(json, field):
     assert isinstance(json, dict)
     assert len(json) == 1
     assert "errors" in json
@@ -553,6 +600,10 @@ def assert_json_error(json, field, prefix):
 
     value = errors[field]
     assert isinstance(value, str)
+    return value
+
+def assert_json_error(json, field, prefix):
+    value = get_json_error(json, field)
     assert value.startswith(prefix)
 
 
