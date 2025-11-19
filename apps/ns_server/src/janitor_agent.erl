@@ -1625,32 +1625,36 @@ check_for_node_rename(Call, BucketConfig, State, Body) ->
     end.
 
 wait_download_snapshot(Bucket, VBucket) ->
-    wait_download_snapshot(Bucket, VBucket, 0).
+    wait_for_stat(Bucket, VBucket,
+                  fun ns_memcached:get_download_snapshot_status/2,
+                  fun (<<"running">>) ->
+                          false;
+                      (<<"available">>) ->
+                          true;
+                      (Other) ->
+                          erlang:error({bad_download_snapshot_status, Other})
+                  end, "download snapshot").
 
-wait_download_snapshot(Bucket, VBucket, Iterations) ->
-    {ok, Status} = ns_memcached:get_download_snapshot_status(Bucket, VBucket),
-    case check_download_snapshot_done(Status) of
+wait_for_stat(Bucket, VBucket, StatFun, CheckFun, LogStr) ->
+    wait_for_stat(Bucket, VBucket, StatFun, CheckFun, LogStr, 0).
+
+wait_for_stat(Bucket, VBucket, StatFun, CheckFun, LogStr, Iterations) ->
+    {ok, Value} = StatFun(Bucket, VBucket),
+    case CheckFun(Value) of
         true -> ok;
         false ->
             Itr = case Iterations of
                       300 ->
                           ?rebalance_debug(
-                             "Still waiting for backfill for bucket ~p "
-                             "partition ~p",
-                             [Bucket, VBucket]),
+                              "Still waiting for ~p for bucket ~p "
+                              "partition ~p",
+                              [LogStr, Bucket, VBucket]),
                           0;
                       I -> I + 1
                   end,
             timer:sleep(100),
-            wait_download_snapshot(Bucket, VBucket, Itr)
+            wait_for_stat(Bucket, VBucket, StatFun, CheckFun, LogStr, Itr)
     end.
-
-check_download_snapshot_done(<<"running">>) ->
-    false;
-check_download_snapshot_done(<<"available">>) ->
-    true;
-check_download_snapshot_done(Other) ->
-    erlang:error({bad_download_snapshot_status, Other}).
 
 import_snapshot_deks(Bucket, VBucket) ->
     {ok, #{uuid := SnapshotUUID} = SnapshotDetails} =
