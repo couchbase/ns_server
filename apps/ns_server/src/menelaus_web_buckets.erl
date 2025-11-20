@@ -1625,9 +1625,9 @@ maybe_validate_replicas_and_durability(Params, Ctx) ->
     end.
 
 validate_replicas_and_durability(Params, Ctx) ->
-    NumReplicas = get_value_from_parms_or_bucket(num_replicas, Params, Ctx),
-    DurabilityLevel = get_value_from_parms_or_bucket(durability_min_level,
-                                                     Params, Ctx),
+    NumReplicas = get_value_from_params_or_bucket(num_replicas, Params, Ctx),
+    DurabilityLevel = get_value_from_params_or_bucket(durability_min_level,
+                                                      Params, Ctx),
     Nodes = get_nodes(Ctx),
     NodesCount = length(Nodes),
     case {NumReplicas, DurabilityLevel, NodesCount} of
@@ -1659,9 +1659,9 @@ validate_replicas_and_durability(Params, Ctx) ->
         end.
 
 validate_magma_ram_quota(Params, Ctx) ->
-    StorageMode = get_value_from_parms_or_bucket(storage_mode, Params, Ctx),
-    RamQuota = get_value_from_parms_or_bucket(ram_quota, Params, Ctx),
-    NumVBuckets = get_value_from_parms_or_bucket(num_vbuckets, Params, Ctx),
+    StorageMode = get_value_from_params_or_bucket(storage_mode, Params, Ctx),
+    RamQuota = get_value_from_params_or_bucket(ram_quota, Params, Ctx),
+    NumVBuckets = get_value_from_params_or_bucket(num_vbuckets, Params, Ctx),
 
     %% We fetch the magma min memory quota from the config profile, then
     %% possibly override it with the value in ns_config, as this is the way
@@ -1704,12 +1704,12 @@ validate_watermarks(Params, Ctx) ->
 %% Continuous backup requires Change History to be enabled (history
 %% retention seconds and/or history retention bytes are non-zero).
 validate_cont_backup(Params, Ctx) ->
-    Enabled = get_value_from_parms_or_bucket(continuous_backup_enabled, Params,
-                                             Ctx),
-    RetentionSecs = get_value_from_parms_or_bucket(history_retention_seconds,
-                                                   Params, Ctx),
-    RetentionBytes = get_value_from_parms_or_bucket(history_retention_bytes,
+    Enabled = get_value_from_params_or_bucket(continuous_backup_enabled, Params,
+                                              Ctx),
+    RetentionSecs = get_value_from_params_or_bucket(history_retention_seconds,
                                                     Params, Ctx),
+    RetentionBytes = get_value_from_params_or_bucket(history_retention_bytes,
+                                                     Params, Ctx),
     case Enabled of
         true when RetentionSecs =:= 0 andalso RetentionBytes =:= 0 ->
             [{continuousBackupEnabled,
@@ -1793,16 +1793,16 @@ validate_encr_lifetime_and_rotation_intrvl(Params, Ctx, false = _Bypass) ->
         proplists:get_value(encryption_dek_rotation_interval, Params),
 
     CurrLifeTime =
-        case get_value_from_parms_or_bucket(encryption_dek_lifetime,
-                                            Params, Ctx) of
+        case get_value_from_params_or_bucket(encryption_dek_lifetime,
+                                             Params, Ctx) of
             undefined ->
                 ?DEFAULT_DEK_LIFETIME_S;
             LifeTimeVal ->
                 LifeTimeVal
         end,
     CurrRotIntrvl =
-        case get_value_from_parms_or_bucket(encryption_dek_rotation_interval,
-                                            Params, Ctx) of
+        case get_value_from_params_or_bucket(encryption_dek_rotation_interval,
+                                             Params, Ctx) of
             undefined ->
                 ?DEFAULT_DEK_ROTATION_INTERVAL_S;
             RotIntrvlVal ->
@@ -1820,8 +1820,8 @@ validate_encr_lifetime_and_rotation_intrvl(Params, Ctx, false = _Bypass) ->
 
 validate_high_low_values(Params, Ctx, LowParam, LowParamExtName,
                          HighParam, HighParamExtName, Check) ->
-    Low = get_value_from_parms_or_bucket(LowParam, Params, Ctx),
-    High = get_value_from_parms_or_bucket(HighParam, Params, Ctx),
+    Low = get_value_from_params_or_bucket(LowParam, Params, Ctx),
+    High = get_value_from_params_or_bucket(HighParam, Params, Ctx),
     case {Low, High} of
         {undefined, undefined} ->
             [];
@@ -1847,9 +1847,9 @@ validate_high_low_values(Params, Ctx, LowParam, LowParamExtName,
 
 %% Get the value from the params. If it wasn't specified and this isn't
 %% a bucket creation then get the existing value from the bucket config.
-get_value_from_parms_or_bucket(Key, Params,
-                               #bv_ctx{bucket_config = BucketConfig,
-                                       new = IsNew}) ->
+get_value_from_params_or_bucket(Key, Params,
+                                #bv_ctx{bucket_config = BucketConfig,
+                                        new = IsNew}) ->
     case proplists:get_value(Key, Params) of
         undefined ->
             case IsNew of
