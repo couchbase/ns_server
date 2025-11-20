@@ -99,12 +99,13 @@ class FusionTests(testlib.BaseTestSet):
             json={'logStoreURI': 'local://' + self.cluster.logstore_dir,
                   'enableSyncThresholdMB': 1024})
 
-    def create_bucket(self, name, num_replicas, overrides = {}):
-        self.cluster.create_bucket(
+    def create_bucket(self, name, num_replicas, overrides = {},
+                      expected_code=202):
+        return self.cluster.create_bucket(
             {'name': name, 'ramQuota': 100, 'bucketType': 'membase',
              'storageBackend': 'magma', 'flushEnabled' : 1,
              'replicaNumber': num_replicas} | overrides,
-            sync=True)
+            sync=True, expected_code=expected_code)
 
     def prepare_rebalance(self, keep_nodes):
         keep_nodes_string = ",".join(keep_nodes)
@@ -322,6 +323,37 @@ class FusionTests(testlib.BaseTestSet):
                              {'PiTR': 'bucket with continuous backup enabled',
                               'unknown': 'not found',
                               'couchstore': 'not a Magma bucket'})
+
+    def mutually_exclusive_bucket_params_test(self):
+        self.init_fusion()
+        self.create_bucket('test', 1, {'continuousBackupEnabled': 'true',
+                                       'historyRetentionSeconds': 8,
+                                       'historyRetentionBytes': 2147483649})
+        self.cluster.delete_bucket('test')
+
+        testlib.post_succ(self.cluster, '/fusion/enable')
+        self.wait_for_state('enabling', 'enabled')
+
+        resp = self.create_bucket(
+            'test', 1, {'continuousBackupEnabled': 'true',
+                        'historyRetentionSeconds': 8,
+                        'historyRetentionBytes': 2147483649},
+            expected_code=400)
+        get_json_error(resp.json(), 'continuousBackupEnabled')
+
+        self.create_bucket('test', 1, {'continuousBackupEnabled': 'true',
+                                       'historyRetentionSeconds': 8,
+                                       'historyRetentionBytes': 2147483649,
+                                       'fusionEnabled': 'false'})
+
+        self.create_bucket('fusion', 1)
+
+        resp = self.cluster.update_bucket({'name': 'fusion',
+                                           'continuousBackupEnabled': 'true',
+                                           'historyRetentionSeconds': 8,
+                                           'historyRetentionBytes': 2147483649},
+                                          expected_code=400)
+        get_json_error(resp.json(), 'continuousBackupEnabled')
 
     def abort_rebalance_test(self):
         self.init_fusion()
@@ -590,12 +622,10 @@ def assert_buckets_error(json, expected):
 
 def get_json_error(json, field):
     assert isinstance(json, dict)
-    assert len(json) == 1
     assert "errors" in json
 
     errors = json["errors"]
     assert isinstance(errors, dict)
-    assert len(errors) == 1
     assert field in errors
 
     value = errors[field]

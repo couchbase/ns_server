@@ -1598,7 +1598,8 @@ additional_bucket_params_validation(Params, Ctx) ->
                   validate_watermarks(Params, Ctx),
                   validate_cont_backup(Params, Ctx),
                   validate_encr_lifetime_and_rotation_intrvl(
-                    Params, Ctx, BypassAddnlEncrChecks)]).
+                    Params, Ctx, BypassAddnlEncrChecks),
+                  validate_fusion_and_continuous_backup(Params, Ctx)]).
 
 maybe_validate_replicas_and_durability(Params, Ctx) ->
     %% MB-63888: When we fail over a node we set servers in the Bucket config
@@ -1622,6 +1623,25 @@ maybe_validate_replicas_and_durability(Params, Ctx) ->
         true -> [];
         false ->
             validate_replicas_and_durability(Params, Ctx)
+    end.
+
+validate_fusion_and_continuous_backup(Params, Ctx) ->
+    CBEnabled =
+        get_value_from_params_or_bucket(continuous_backup_enabled, Params, Ctx),
+    MagmaState =
+        get_value_from_params_or_bucket(magma_fusion_state, Params, Ctx),
+    case CBEnabled =:= undefined orelse MagmaState =:= undefined of
+        true ->
+            [];
+        false ->
+            case CBEnabled andalso MagmaState =/= disabled of
+                true ->
+                    [{continuousBackupEnabled,
+                      <<"Continuous backup cannot be "
+                        "enabled on fusion bucket">>}];
+                false ->
+                    []
+            end
     end.
 
 validate_replicas_and_durability(Params, Ctx) ->
