@@ -2837,7 +2837,7 @@ bucket_metadata_file(BucketDir) ->
 get_fusion_uploaders_state(Bucket) ->
     case perform_very_long_call(
            fun (Sock) ->
-                   {reply, fetch_fusion_stats(Sock, Bucket, "uploader")}
+                   {reply, fetch_fusion_stats(Sock, Bucket, "uploader detail")}
            end, Bucket, [json]) of
         {error, {select_bucket_failed, {memcached_error, key_enoent,
                                         undefined}}} ->
