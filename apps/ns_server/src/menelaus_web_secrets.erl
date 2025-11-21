@@ -1001,11 +1001,13 @@ validate_hashi_key(KeyUrlStr) ->
 validate_azure_key("TEST_AZURE_KEY_URL") ->
     ok;
 validate_azure_key(KeyUrlStr) ->
-    AllowedDomains =
-        ["vault.azure.net", "vault.azure.cn", "vault.usgovcloudapi.net",
-         "vault.microsoftazure.de", "managedhsm.azure.net",
-         "managedhsm.azure.cn", "managedhsm.usgovcloudapi.net",
-         "managedhsm.microsoftazure.de"],
+    %% The allowed domains are unlikely to change, but we allow them to be
+    %% changed via /settings/security just in case a new domain needs to be
+    %% supported in the future. For complete correctness, we should do this
+    %% validation as a chronicle transactions once /settings/security values
+    %% are moved from ns_config to chronicle.
+    AllowedDomains = ns_config:search(ns_config:latest(), azure_allowed_domains,
+                                      ?DEFAULT_AZURE_ALLOWED_DOMAINS),
 
     Scheme =
         fun (<<"https">>) -> valid;
@@ -1463,7 +1465,7 @@ format_secrets_used_by_list_test() ->
                      by_config => [{bucketDek, <<"b2-uuid">>}, configDek],
                      by_secrets => ["s1"]})).
 
-validate_azure_key_test() ->
+validate_azure_key_t() ->
     {error, Error0} =
         validate_azure_key("http://bla.me.com/keys/testKey"),
     ?assertEqual("failed to parse url: \"must be https url only\"",
@@ -1505,6 +1507,18 @@ validate_azure_key_test() ->
         validate_azure_key("not valid url"),
     ?assertEqual("failed to parse url: invalid_uri",
                  lists:flatten(Error7)).
+
+validate_azure_key_test() ->
+    try
+        meck:new(ns_config, [passthrough]),
+        meck:expect(ns_config, search,
+                    fun(_, azure_allowed_domains, D) ->
+                        D
+                     end),
+        validate_azure_key_t()
+    after
+        meck:unload(ns_config)
+    end.
 
 validate_hashi_key_test() ->
     {error, Error0} =

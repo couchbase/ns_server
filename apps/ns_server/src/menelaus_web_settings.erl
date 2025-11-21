@@ -14,6 +14,7 @@
 -include("ns_common.hrl").
 -include("ns_bucket.hrl").
 -include_lib("ns_common/include/cut.hrl").
+-include("cb_cluster_secrets.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -303,6 +304,45 @@ validate_allowed_hosts_list([E | Tail], Acc) ->
                 false -> validate_allowed_hosts_list(Tail, [Res | Acc]);
                 true -> {error, "Repetitions are not allowed"}
             end
+    end.
+
+get_azure_allowed_domains(Str) ->
+    try ejson:decode(Str) of
+        L when is_list(L) ->
+            Domains = [binary_to_list(D) || D <- L],
+            case validate_azure_allowed_domains(Domains) of
+                {error, Msg} -> {error, Msg};
+                ok -> {ok, Domains}
+            end;
+        _ ->
+            {error, "Invalid format. Expecting a list of strings"}
+    catch
+        _:_ -> {error, "Invalid format. Expecting JSON list"}
+    end.
+
+validate_azure_allowed_domains(AllowedDomains) ->
+    CurrAllowedDomains = ns_config:search(ns_config:latest(),
+                                          azure_allowed_domains,
+                                          ?DEFAULT_AZURE_ALLOWED_DOMAINS),
+    ToRemoveDomains = CurrAllowedDomains -- AllowedDomains,
+    SearchFn =
+        fun (#{type := ?AZUREKMS_KEY_TYPE,
+               data := #{key_url := KeyUrl}}) ->
+                {ok, #{host := Host}} =
+                    misc:parse_url(KeyUrl, [{return, string}]),
+                [_, H | T]  = string:split(Host, ".", all),
+                Domain = string:join([H | T], "."),
+                lists:member(Domain, ToRemoveDomains);
+            (_) ->
+                false
+        end,
+
+    case lists:search(SearchFn, cb_cluster_secrets:get_all()) of
+        {value, _} ->
+            {error,
+             "Update removes domains currently in use by existing secrets"};
+        false ->
+            ok
     end.
 
 parse_allowed_host(<<"*">>) -> any;
@@ -639,6 +679,8 @@ conf(security) ->
      {force_crash_dumps, forceCrashDumps, false, fun get_bool/1},
      {secrets_test_interval_s, encryptionKeysTestIntervalSeconds,
       ?SECRETS_TEST_INTERVAL_DEFAULT_S, get_number(0, infinity)},
+     {azure_allowed_domains, azureAllowedDomains,
+      ?DEFAULT_AZURE_ALLOWED_DOMAINS, fun get_azure_allowed_domains/1},
      {validate_node_cert_san, validateNodeCertSan, true, fun get_bool/1}] ++
         [{{security_settings, S}, ns_cluster_membership:json_service_name(S),
           [{cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
