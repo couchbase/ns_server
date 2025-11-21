@@ -69,7 +69,9 @@
          hidden_failover_ephemeral_setting/0]).
 
 %% For email alert notifications
--export([alert_keys/0]).
+-export([alert_keys_default/0,
+         pop_up_alert_keys_added_in_76/0,
+         alert_keys_all/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -217,14 +219,30 @@ cast(Call) ->
         %% The alert server sends emails, raises pop ups, etc as needed.
         menelaus_web_alerts_srv:global_alert(Alert, Message)).
 
-%% @doc Returns a list of all alerts that might send out an email notification.
--spec alert_keys() -> [atom()].
-alert_keys() ->
+%% These keys would be moved to alert_keys_default/0 when 7.6 is the lowest
+%% supported release, but since they were mistakenly added early, that's not
+%% applicable in this case. For future alert key additions, they should not be
+%% added to alert_keys_default/0 until the release they were added in becomes
+%% the lowest supported release.
+-spec pop_up_alert_keys_added_in_76() -> [atom()].
+pop_up_alert_keys_added_in_76() ->
     [auto_failover_node,
      auto_failover_maximum_reached,
      auto_failover_other_nodes_down,
      auto_failover_cluster_too_small,
      auto_failover_disabled].
+
+%% This should only be updated with additions/removals when removing the
+%% associated config upgrade function from menelaus_alert.
+%% See the comment attached to menelaus_alert:alert_keys_default/0 for more info
+-spec alert_keys_default() -> [atom()].
+alert_keys_default() ->
+    pop_up_alert_keys_added_in_76().
+
+%% Returns a list of all alerts that might send out an email notification.
+-spec alert_keys_all() -> [atom()].
+alert_keys_all() ->
+    alert_keys_default().
 
 %%
 %% gen_server callbacks

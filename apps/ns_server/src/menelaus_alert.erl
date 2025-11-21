@@ -28,8 +28,8 @@
          handle_settings_alerts_send_test_email/1,
          build_alerts_json/1,
          build_alerts_config/1,
-         alert_keys/0,
-         alert_keys_disabled_by_default/0,
+         alert_keys_all/0,
+         alert_keys_default/0,
          popup_alerts_config/0,
          get_config/0,
          config_upgrade_to_76/1,
@@ -244,18 +244,35 @@ build_alerts_config(Args) ->
      {alerts, proplists:get_value(alerts, Args, [])},
      {pop_up_alerts, proplists:get_value(pop_up_alerts, Args, [])}].
 
-%% @doc Returns a list of all alerts that might send out an email notification.
-%% Every module that creates alerts that should be sent by email needs to
-%% implement an alert_keys/0 function that returns all its alert keys.
--spec alert_keys() -> [atom()].
-alert_keys() ->
+%% This should ideally be the set of alerts as of the minimum supported
+%% version for upgrades from. Prior to totoro however, this was instead set
+%% to the latest set of alerts, which meant that the defaults could override
+%% existing alerts, the first time a newer node is added to the cluster.
+%% While this just means that the expected upgrade just occurs earlier than
+%% intended, whether the upgrade occurs early is essentially arbitrary, so it
+%% would not be good to depend on.
+%% To maintain consistent upgrade behaviour from totoro onwards, we will upgrade
+%% this list as if the minimum supported version was 7.9, until the actual
+%% minimum catches up.
+%% At that point, when we remove a no-longer applicable config upgrade (e.g.
+%% removing menelaus_web_alerts_srv:config_upgrade_to_76 when 7.6 is no longer
+%% supported for upgrade), any new keys added there should be added into
+%% corresponding M:alert_keys_default(), as the upgrade will be safe to perform
+%% at that point.
+-spec alert_keys_default() -> [atom()].
+alert_keys_default() ->
     Modules = [auto_failover, menelaus_web_alerts_srv, cb_cluster_secrets],
-    Keys = [M:alert_keys() || M <- Modules],
+    Keys = [M:alert_keys_default() || M <- Modules],
     lists:append(Keys).
 
--spec alert_keys_disabled_by_default() -> [atom()].
-alert_keys_disabled_by_default() ->
-    [stuck_rebalance, indexer_diverging_replicas].
+%% Returns a list of all alerts that might send out an email notification.
+%% Every module that creates alerts that should be sent by email needs to
+%% implement an alert_keys_all/0 function that returns all its alert keys.
+-spec alert_keys_all() -> [atom()].
+alert_keys_all() ->
+    Modules = [auto_failover, menelaus_web_alerts_srv, cb_cluster_secrets],
+    Keys = [M:alert_keys_all() || M <- Modules],
+    lists:append(Keys).
 
 %% @doc Returns the list of alerts which, if raised, should display
 %% a pop-up in the UI.
@@ -271,20 +288,17 @@ config_upgrade_to_76(Config) ->
               {value, EmailAlerts} ->
                   upgrade_alerts(
                     EmailAlerts,
-                    [add_proplist_list_elem(alerts, cert_expired, _),
-                     add_proplist_list_elem(pop_up_alerts, cert_expired, _),
-                     add_proplist_list_elem(alerts, cert_expires_soon, _),
-                     add_proplist_list_elem(pop_up_alerts,
-                                            cert_expires_soon, _),
-                     add_proplist_list_elem(alerts, memcached_connections, _),
-                     add_proplist_list_elem(pop_up_alerts,
-                                            memcached_connections, _),
-                     move_memory_alert_email_alerts(alerts,
-                                                    memory_alert_email, _),
-                     move_memory_alert_email_alerts(pop_up_alerts,
-                                                    memory_alert_popup, _)] ++
+                    lists:flatmap(
+                      fun (Alert) ->
+                              [add_proplist_list_elem(alerts, Alert, _),
+                               add_proplist_list_elem(pop_up_alerts, Alert, _)]
+                      end, menelaus_web_alerts_srv:alert_keys_added_in_76()) ++
+                        [move_memory_alert_email_alerts(alerts,
+                                                        memory_alert_email, _),
+                         move_memory_alert_email_alerts(pop_up_alerts,
+                                                        memory_alert_popup, _)] ++
                         [add_proplist_list_elem(pop_up_alerts, A, _)
-                         || A <- auto_failover:alert_keys()])
+                         || A <- auto_failover:pop_up_alert_keys_added_in_76()])
           end,
     %% MB-53122 noted that upgrades from 6.6 did not enable auto failover pop up
     %% alerts. We fixed this issue via upgrades, but we had already released
@@ -298,14 +312,17 @@ config_upgrade_to_76(Config) ->
 
 config_upgrade_to_79(Config) ->
     case ns_config:search(Config, email_alerts) of
-          false ->
-              [];
-          {value, EmailAlerts} ->
-              upgrade_alerts(
-                EmailAlerts,
-                maybe_delete_stuck_rebalance_keys(Config) ++
-                [add_proplist_list_elem(alerts, disk_guardrail, _),
-                 add_proplist_list_elem(pop_up_alerts, disk_guardrail, _)])
+        false ->
+            [];
+        {value, EmailAlerts} ->
+            upgrade_alerts(
+              EmailAlerts,
+              maybe_delete_stuck_rebalance_keys(Config) ++
+                  lists:flatmap(
+                    fun (Alert) ->
+                            [add_proplist_list_elem(alerts, Alert, _),
+                             add_proplist_list_elem(pop_up_alerts, Alert, _)]
+                    end, menelaus_web_alerts_srv:alert_keys_added_in_79()))
     end.
 
 config_upgrade_to_totoro(Config) ->
@@ -315,20 +332,12 @@ config_upgrade_to_totoro(Config) ->
         {value, EmailAlerts} ->
             upgrade_alerts(
               EmailAlerts,
-              [add_proplist_list_elem(alerts, xdcr_replication_deleted, _),
-               add_proplist_list_elem(pop_up_alerts,
-                                      xdcr_replication_deleted, _),
-               add_proplist_list_elem(alerts,
-                                      encr_at_rest_key_test_failed, _),
-               add_proplist_list_elem(pop_up_alerts,
-                                      encr_at_rest_key_test_failed, _),
-               add_proplist_list_elem(alerts, encr_at_rest_errors_total, _),
-               add_proplist_list_elem(pop_up_alerts,
-                                      encr_at_rest_errors_total, _),
-               add_proplist_list_elem(alerts,
-                                      cm_bucket_autoreprovision_total, _),
-               add_proplist_list_elem(pop_up_alerts,
-                                      cm_bucket_autoreprovision_total, _)])
+              lists:flatmap(
+                fun (Alert) ->
+                        [add_proplist_list_elem(alerts, Alert, _),
+                         add_proplist_list_elem(pop_up_alerts, Alert, _)]
+                end, menelaus_web_alerts_srv:alert_keys_added_in_totoro() ++
+                    cb_cluster_secrets:alert_keys_added_in_totoro()))
     end.
 
 move_memory_alert_email_alerts(Key, NsConfigKey, PList) ->
@@ -473,7 +482,7 @@ send_test_message(Req, Subject, Body, Config) ->
 
 -spec alert_keys_string_list() -> [string()].
 alert_keys_string_list() ->
-    [atom_to_list(K) || K <- alert_keys()].
+    [atom_to_list(K) || K <- alert_keys_all()].
 
 -spec alert_keys_string([atom()]) -> string().
 alert_keys_string(Keys) ->
@@ -505,7 +514,7 @@ validate_alerts(Name, State) ->
 
 error_message(bad_key) ->
     io_lib:format("alerts contained invalid keys. Valid keys are: ~s.",
-                  [alert_keys_string(alert_keys())]);
+                  [alert_keys_string(alert_keys_all())]);
 error_message(bad_recipients) ->
     "recipients must be a comma separated list of valid email addresses.".
 

@@ -209,7 +209,7 @@ class AlertTests(testlib.BaseTestSet):
     def prometheus_metrics_alerts_test(self):
         eval_string = """lists:map(
   fun(T) -> menelaus_web_alerts_srv:local_alert({T, node()}, <<"test">>) end,
-  menelaus_alert:alert_keys())."""
+  menelaus_alert:alert_keys_all())."""
 
         r = testlib.diag_eval(self.cluster, eval_string)
         assert r.status_code == 200

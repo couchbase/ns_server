@@ -152,7 +152,9 @@
          sanitize_sensitive_data/1,
          maybe_reencrypt_data/5,
          get_latest_test_results/0,
-         alert_keys/0]).
+         alert_keys_added_in_totoro/0,
+         alert_keys_default/0,
+         alert_keys_all/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -989,9 +991,23 @@ get_latest_test_results() ->
         error:badarg -> #{}
     end.
 
--spec alert_keys() -> [atom()].
-alert_keys() ->
+%% This should only be updated with additions/removals when removing the
+%% associated config upgrade function from menelaus_alert.
+%% See the comment attached to menelaus_alert:alert_keys_default/0 for more info
+-spec alert_keys_default() -> [atom()].
+alert_keys_default() ->
+    [].
+
+%% These keys should be moved to alert_keys_default/0 when totoro is the lowest
+%% supported release
+-spec alert_keys_added_in_totoro() -> [atom()].
+alert_keys_added_in_totoro () ->
     [encr_at_rest_key_test_failed].
+
+%% Returns a list of all alerts that might send out an email notification.
+-spec alert_keys_all() -> [atom()].
+alert_keys_all() ->
+    alert_keys_default() ++ alert_keys_added_in_totoro().
 
 %%%===================================================================
 %%% gen_server callbacks

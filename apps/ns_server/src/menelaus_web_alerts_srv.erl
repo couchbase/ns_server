@@ -38,7 +38,11 @@
          terminate/2, code_change/3, handle_settings_alerts_limits_post/1,
          handle_settings_alerts_limits_get/1]).
 
--export([alert_keys/0]).
+-export([alert_keys_added_in_76/0,
+         alert_keys_added_in_79/0,
+         alert_keys_default/0,
+         alert_keys_added_in_totoro/0,
+         alert_keys_all/0]).
 
 %% @doc Hold client state for any alerts that need to be shown in
 %% the browser, is used by menelaus_web to piggy back for a transport
@@ -341,7 +345,7 @@ init([]) ->
       fun (Type) ->
               ns_server_stats:create_counter({<<"alerts_triggered">>,
                                               [{type, Type}]})
-      end, menelaus_alert:alert_keys()),
+      end, menelaus_alert:alert_keys_all()),
     ns_pubsub:subscribe_link(ns_config_events,
                              fun email_config_change_callback/1),
     {ok, #state{}}.
@@ -495,16 +499,57 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-alert_keys() ->
+%% These keys would be moved to alert_keys_default/0 when 7.6 is the lowest
+%% supported release, but since they were mistakenly added early, that's not
+%% applicable in this case. For future alert key additions, they should not be
+%% added to alert_keys_default/0 until the release they were added in becomes
+%% the lowest supported release.
+-spec alert_keys_added_in_76() -> [atom()].
+alert_keys_added_in_76() ->
+    [cert_expired, cert_expires_soon, memcached_connections].
+
+%% These keys would be moved to alert_keys_default/0 when 7.9 is the lowest
+%% supported release, but since they were mistakenly added early, that's not
+%% applicable in this case. For future alert key additions, they should not be
+%% added to alert_keys_default/0 until the release they were added in becomes
+%% the lowest supported release.
+-spec alert_keys_added_in_79() -> [atom()].
+alert_keys_added_in_79() ->
+    [disk_guardrail].
+
+%% This should only be updated with additions/removals when removing the
+%% associated config upgrade function from menelaus_alert.
+%% See the comment attached to menelaus_alert:alert_keys_default/0 for more info
+-spec alert_keys_default() -> [atom()].
+alert_keys_default() ->
     [ip, disk, overhead, ep_oom_errors, ep_item_commit_failed,
      audit_dropped_events, indexer_ram_max_usage,
      indexer_low_resident_percentage,
      ep_clock_cas_drift_threshold_exceeded,
      communication_issue, time_out_of_sync, disk_usage_analyzer_stuck,
-     cert_expires_soon, cert_expired, memory_threshold, history_size_warning,
-     stuck_rebalance, memcached_connections, disk_guardrail,
-     indexer_diverging_replicas, xdcr_replication_deleted,
-     encr_at_rest_errors_total, cm_bucket_autoreprovision_total].
+     cert_expires_soon, cert_expired, memory_threshold, history_size_warning] ++
+        alert_keys_added_in_76() ++
+        alert_keys_added_in_79().
+
+%% These keys should be moved to alert_keys_default/0 when totoro is the lowest
+%% supported release
+-spec alert_keys_added_in_totoro() -> [atom()].
+alert_keys_added_in_totoro() ->
+    [xdcr_replication_deleted,
+     encr_at_rest_errors_total,
+     cm_bucket_autoreprovision_total].
+
+-spec alert_keys_disabled_by_default() -> [atom()].
+alert_keys_disabled_by_default() ->
+    [stuck_rebalance, indexer_diverging_replicas].
+
+%% Returns a list of all alerts that might send out an email notification.
+%% Alerts that are disabled by default must be included, so that they may be
+%% manually enabled.
+-spec alert_keys_all() -> [atom()].
+alert_keys_all() ->
+    alert_keys_default() ++ alert_keys_added_in_totoro() ++
+        alert_keys_disabled_by_default().
 
 %% @doc Sends any previously queued email alerts. Generally called when we first
 %% enable the email alerts and we need to flush any existing alerts that haven't

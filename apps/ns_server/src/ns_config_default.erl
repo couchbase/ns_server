@@ -89,14 +89,15 @@ je_malloc_conf_default() ->
     end.
 
 %% Some settings in default() reflect those of LATEST_VERSION_NUM:
-%% - database_dir, index_dir, memcached keys (node-specific settings)
+%% - E.g. database_dir, index_dir, memcached keys (node-specific settings)
+%% - These will be updated offline, and take effect immediately on new nodes
+%% - This is performed by the upgrade_config_from_X_to_Y paths in this module
 %% Some settings in default() reflect those of MIN_SUPPORTED_VERSION:
-%% - (analytics|query|index)_settings_manager (cluster-wide settings)
-%%
-%% upgrade_config_from_X_to_Y paths in this file are "offline" upgrades. They
-%% update settings when the node version changes (at start).
-%% config_upgrade_to_X paths in ns_online_config_upgrader are "online" upgrades.
-%% They occur when the cluster is online and cluster_compat_version changes.
+%% - E.g. (analytics|query|index)_settings_manager (cluster-wide settings)
+%% - These will only be updated online, meaning that they take place when the
+%%   cluster is online and cluster_compat_version changes
+%% - This is performed by the config_upgrade_to_X paths in the
+%%   ns_online_config_upgrader module
 %%
 %% Cluster-wide settings:
 %% cluster_init starts off with compat_version undefined. It upgrades ns_config
@@ -111,10 +112,18 @@ je_malloc_conf_default() ->
 %% change in cluster_compat_version to latest will call config_upgrade_to_latest
 %% and can attempt to add the setting A already present in its config. This path
 %% is exercised during cluster init (undefined -> min supported > ... > latest).
-%% This needs to be accounted for by either: initializing settings to min
-%% supported here and adding strictly new settings during upgrades (see
-%% index_settings_manager), or handling settings already present during upgrades
-%% correctly.
+%% This needs to be accounted for by initializing settings to min supported here
+%% and adding upgrading the settings through the upgrade paths, making sure to
+%% handle settings already present during upgrades correctly.
+%% Modifications to existing cluster-wide keys should not be immediately
+%% performed here, as that can cause an existing cluster's pre-existing default
+%% value to be updated before the upgrade completes. Instead, the default value
+%% for existing cluster-wide keys should only be updated when the corresponding
+%% config upgrade function is removed, due to the old version no longer being
+%% supported for upgrades from.
+%% As long as the above is followed, there should not be any conflicts between
+%% the default values of a joining node and the existing cluster, that won't get
+%% correctly resolved by vclock comparison.
 %%
 %% Node-specific settings:
 %% Similarly, it is possible that a customer is already running with certain
@@ -125,6 +134,8 @@ je_malloc_conf_default() ->
 %% TLDR: In any upgrade path, it is safer to assume a setting already exists to
 %% - avoid losing a previously configured setting
 %% - prevent duplicates
+%% And, cluster-wide config keys should not be updated here with the latest
+%% value, instead using the value corresponding to MIN_SUPPORTED_VERSION
 default(Vsn) ->
     DataDir = get_data_dir(),
 
@@ -383,13 +394,9 @@ default(Vsn) ->
                        {host, "localhost"},
                        {port, 25},
                        {encrypt, false}]},
-       {alerts, menelaus_alert:alert_keys() --
-            %% Disabled by default:
-            menelaus_alert:alert_keys_disabled_by_default()},
+       {alerts, menelaus_alert:alert_keys_default()},
        %% The alerts which should produce UI pop-ups.
-       {pop_up_alerts, menelaus_alert:alert_keys() --
-            %% Disabled by default:
-            menelaus_alert:alert_keys_disabled_by_default()}
+       {pop_up_alerts, menelaus_alert:alert_keys_default()}
       ]},
      {alert_limits, [
                      %% Maximum percentage of overhead compared to max bucket size (%)
