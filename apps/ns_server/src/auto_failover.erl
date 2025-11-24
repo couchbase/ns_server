@@ -68,7 +68,7 @@
          validate_services_safety/4,
          hidden_failover_ephemeral_setting/0]).
 
-%% For email alert notificatons
+%% For email alert notifications
 -export([alert_keys/0]).
 
 %% gen_server callbacks
