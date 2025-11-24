@@ -75,7 +75,7 @@ maybe_final_upgrade(_) ->
 upgrade(?MIN_SUPPORTED_VERSION, Config) ->
     {?VERSION_76,
      menelaus_web_auto_failover:config_upgrade_to_76(Config) ++
-         menelaus_web_alerts_srv:config_upgrade_to_76(Config) ++
+         menelaus_alert:config_upgrade_to_76(Config) ++
          index_settings_manager:config_upgrade_to_76(Config) ++
          query_settings_manager:config_upgrade_to_76(Config) ++
          analytics_settings_manager:config_upgrade_to_76(Config) ++
@@ -87,7 +87,7 @@ upgrade(?MIN_SUPPORTED_VERSION, Config) ->
 
 upgrade(?VERSION_76, Config) ->
     {?VERSION_79,
-     menelaus_web_alerts_srv:config_upgrade_to_79(Config) ++
+     menelaus_alert:config_upgrade_to_79(Config) ++
          menelaus_web_auto_failover:config_upgrade_to_79(Config) ++
          menelaus_web_guardrails:config_upgrade_to_79(Config) ++
          query_settings_manager:config_upgrade_to_79(Config) ++
@@ -100,4 +100,4 @@ upgrade(?VERSION_79, Config) ->
          ns_bucket:config_upgrade_to_80(Config)};
 
 upgrade(?VERSION_80, Config) ->
-    {?VERSION_TOTORO, menelaus_web_alerts_srv:config_upgrade_to_totoro(Config)}.
+    {?VERSION_TOTORO, menelaus_alert:config_upgrade_to_totoro(Config)}.

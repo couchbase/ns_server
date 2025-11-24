@@ -38,8 +38,7 @@
          terminate/2, code_change/3, handle_settings_alerts_limits_post/1,
          handle_settings_alerts_limits_get/1]).
 
--export([alert_keys/0, config_upgrade_to_76/1,
-         config_upgrade_to_79/1, config_upgrade_to_totoro/1]).
+-export([alert_keys/0]).
 
 %% @doc Hold client state for any alerts that need to be shown in
 %% the browser, is used by menelaus_web to piggy back for a transport
@@ -506,73 +505,6 @@ alert_keys() ->
      stuck_rebalance, memcached_connections, disk_guardrail,
      indexer_diverging_replicas, xdcr_replication_deleted,
      encr_at_rest_errors_total, cm_bucket_autoreprovision_total].
-
-config_upgrade_to_76(Config) ->
-    Ret = case ns_config:search(Config, email_alerts) of
-              false ->
-                  [];
-              {value, EmailAlerts} ->
-                  upgrade_alerts(
-                    EmailAlerts,
-                    [add_proplist_list_elem(alerts, cert_expired, _),
-                     add_proplist_list_elem(pop_up_alerts, cert_expired, _),
-                     add_proplist_list_elem(alerts, cert_expires_soon, _),
-                     add_proplist_list_elem(pop_up_alerts,
-                                            cert_expires_soon, _),
-                     add_proplist_list_elem(alerts, memcached_connections, _),
-                     add_proplist_list_elem(pop_up_alerts,
-                                            memcached_connections, _),
-                     move_memory_alert_email_alerts(alerts,
-                                                    memory_alert_email, _),
-                     move_memory_alert_email_alerts(pop_up_alerts,
-                                                    memory_alert_popup, _)] ++
-                        [add_proplist_list_elem(pop_up_alerts, A, _)
-                         || A <- auto_failover:alert_keys()])
-          end,
-    %% MB-53122 noted that upgrades from 6.6 did not enable auto failover pop up
-    %% alerts. We fixed this issue via upgrades, but we had already released
-    %% early versions of 7.0 and without a compat mode change could not fix the
-    %% issue for customers already on 7.0 via upgrade. Instead, startup of this
-    %% module would enable the alerts and write the config key
-    %% "popup_alerts_auto_failover_upgrade_70_fixed" to prevent them from being
-    %% enabled over and over. Upgrade removes the need for the key, and so we
-    %% can tidy it up here.
-    Ret ++ [{delete, popup_alerts_auto_failover_upgrade_70_fixed}].
-
-config_upgrade_to_79(Config) ->
-    case ns_config:search(Config, email_alerts) of
-          false ->
-              [];
-          {value, EmailAlerts} ->
-              upgrade_alerts(
-                EmailAlerts,
-                maybe_delete_stuck_rebalance_keys(Config) ++
-                [add_proplist_list_elem(alerts, disk_guardrail, _),
-                 add_proplist_list_elem(pop_up_alerts, disk_guardrail, _)])
-    end.
-
-config_upgrade_to_totoro(Config) ->
-    case ns_config:search(Config, email_alerts) of
-        false ->
-            [];
-        {value, EmailAlerts} ->
-            upgrade_alerts(
-              EmailAlerts,
-                  [add_proplist_list_elem(alerts, xdcr_replication_deleted, _),
-                   add_proplist_list_elem(pop_up_alerts,
-                                          xdcr_replication_deleted, _),
-                   add_proplist_list_elem(alerts,
-                                          encr_at_rest_key_test_failed, _),
-                   add_proplist_list_elem(pop_up_alerts,
-                                          encr_at_rest_key_test_failed, _),
-                   add_proplist_list_elem(alerts, encr_at_rest_errors_total, _),
-                   add_proplist_list_elem(pop_up_alerts,
-                                          encr_at_rest_errors_total, _),
-                   add_proplist_list_elem(alerts,
-                                          cm_bucket_autoreprovision_total, _),
-                   add_proplist_list_elem(pop_up_alerts,
-                                          cm_bucket_autoreprovision_total, _)])
-    end.
 
 %% @doc Sends any previously queued email alerts. Generally called when we first
 %% enable the email alerts and we need to flush any existing alerts that haven't
@@ -1664,71 +1596,6 @@ maybe_send_out_email_alert({Key0, Node}, Message) ->
             false
     end.
 
-move_memory_alert_email_alerts(Key, NsConfigKey, PList) ->
-    {case ns_config:read_key_fast(NsConfigKey, true) of
-         true -> add_proplist_list_elem(Key, memory_threshold, PList);
-         false -> PList
-     end, [{delete, NsConfigKey}]}.
-
-%% The stuck rebalance alert was added in 7.6 but with an undefined threshold by
-%% default, which gave the behaviour of being disabled by default.
-%% In 7.9 it is now added to the UI, which means it needs to actually be
-%% disabled properly for it to show as disabled in the UI.
-%% This means that we need to explicitly remove the key from pop up alerts and
-%% email alerts.
-maybe_delete_stuck_rebalance_keys(Config) ->
-    Limits = ns_config:search(Config, alert_limits, []),
-    case proplists:get_value({stuck_rebalance_threshold_secs, kv}, Limits) of
-        undefined ->
-            [remove_proplist_list_elem(alerts, stuck_rebalance, _),
-             remove_proplist_list_elem(pop_up_alerts, stuck_rebalance, _)];
-        _Value ->
-            %% If a value has been set for the stuck rebalance threshold, then
-            %% we keep it enabled, by not deleting the keys, since it must have
-            %% been manually enabled already
-            []
-    end.
-
-%% If it is already present, remove Elem from the value of the proplist
-%% member {ListKey, <list_value>}, which is assumed to exist and have a
-%% list value.
-remove_proplist_list_elem(ListKey, Elem, PList) ->
-    List = misc:expect_prop_value(ListKey, PList),
-    case lists:member(Elem, List) of
-        true ->
-            misc:update_proplist(PList, [{ListKey, lists:delete(Elem, List)}]);
-        false ->
-            PList
-    end.
-
-%% If it is not already present, add Elem to the value of the proplist
-%% member {ListKey, <list_value>}, which is assumed to exist and have a
-%% list value.
-add_proplist_list_elem(ListKey, Elem, PList) ->
-    List = misc:expect_prop_value(ListKey, PList),
-    misc:update_proplist(PList, [{ListKey, lists:usort([Elem | List])}]).
-
-upgrade_alerts(EmailAlerts, Mutations) ->
-    {Result, ExtraNsCfgChanges} =
-        lists:foldl(
-          fun (Mutation, {Acc, OtherChanges}) ->
-              case Mutation(Acc) of
-                  {NewAcc, Extra} -> {NewAcc, OtherChanges ++ Extra};
-                  NewAcc when is_list(EmailAlerts) -> {NewAcc, OtherChanges}
-              end
-          end,
-          {EmailAlerts, []}, Mutations),
-    maybe_upgrade_email_alerts(EmailAlerts, Result) ++ ExtraNsCfgChanges.
-
-maybe_upgrade_email_alerts(Old, New) ->
-    case misc:sort_kv_list(New) =:= misc:sort_kv_list(Old) of
-        true ->
-            %% No change due to upgrade
-            [];
-        false ->
-            [{set, email_alerts, New}]
-    end.
-
 type_spec(undefined) ->
     undefined.
 
@@ -1875,115 +1742,6 @@ basic_test() ->
         misc:unlink_terminate_and_wait(Pid, shutdown),
         ok = meck:unload(basic_test_modules())
     end.
-
-add_proplist_list_elem_test() ->
-    %% Sub-test: key "time_out_of_sync" is already present
-    PL1 = [{alerts, [ip, time_out_of_sync, communication_issue]},
-           {enabled, false}],
-    Result1 = add_proplist_list_elem(alerts, time_out_of_sync, PL1),
-    ?assertEqual(misc:sort_kv_list(PL1), misc:sort_kv_list(Result1)),
-
-    %% Sub-test: key "time_out_of_sync" isn't present and should be added.
-    PL2 = [{alerts, [ip, communication_issue]},
-           {enabled, false}],
-    Expected2 = [{alerts, [ip, time_out_of_sync, communication_issue]},
-                 {enabled, false}],
-    Result2 = add_proplist_list_elem(alerts, time_out_of_sync, PL2),
-    ?assertEqual(misc:sort_kv_list(Expected2), misc:sort_kv_list(Result2)).
-
-config_upgrade_to_76_test() ->
-    Config1 = [],
-    Expected1 = [{delete, popup_alerts_auto_failover_upgrade_70_fixed}],
-    ?assertEqual(Expected1, config_upgrade_to_76(Config1)),
-
-    Config2 =
-        [[{email_alerts,
-           [{pop_up_alerts, [ip, disk]}, {enabled, false},
-            {alerts, [ip, time_out_of_sync, communication_issue]}]}]],
-    Expected2 =
-        [{set, email_alerts,
-          [{pop_up_alerts,
-            [auto_failover_cluster_too_small, auto_failover_disabled,
-             auto_failover_maximum_reached, auto_failover_node,
-             auto_failover_other_nodes_down, cert_expired,
-             cert_expires_soon, disk, ip, memcached_connections,
-             memory_threshold]},
-           {alerts,
-            [cert_expired, cert_expires_soon, communication_issue, ip,
-             memcached_connections, memory_threshold, time_out_of_sync]},
-           {enabled,false}]},
-         {delete,memory_alert_email},
-         {delete,memory_alert_popup}] ++ Expected1,
-    ?assertEqual(Expected2, config_upgrade_to_76(Config2)).
-
-config_upgrade_to_79_test() ->
-    Config1 =
-        [[{email_alerts,
-           [{pop_up_alerts, [ip, disk]},
-            {alerts, [ip, time_out_of_sync]}]}]],
-    Expected1 = [{set, email_alerts,
-                  [{pop_up_alerts,
-                    [disk, disk_guardrail, ip]},
-                   {alerts,
-                    [disk_guardrail, ip, time_out_of_sync]}]}],
-    %% Add disk_guardrail keys
-    ?assertEqual(Expected1, config_upgrade_to_79(Config1)),
-
-    Config2 =
-        [[{email_alerts,
-           [{pop_up_alerts, [ip, disk, stuck_rebalance]},
-            {alerts, [ip, time_out_of_sync, stuck_rebalance]}]}]],
-    Expected2 = [{set, email_alerts,
-                  [{pop_up_alerts,
-                    [disk, disk_guardrail, ip]},
-                   {alerts,
-                    [disk_guardrail, ip, time_out_of_sync]}]}],
-    %% Remove stuck_rebalance keys if found and threshold unspecified
-    ?assertEqual(Expected2, config_upgrade_to_79(Config2)),
-
-    Config3 =
-        [[{email_alerts,
-           [{pop_up_alerts, [ip, disk, stuck_rebalance]},
-            {alerts, [ip, time_out_of_sync, stuck_rebalance]}]},
-          {alert_limits,
-           [{{{stuck_rebalance_threshold_secs, kv}, undefined}}]}]],
-    Expected3 =[{set, email_alerts,
-                 [{pop_up_alerts,
-                   [disk, disk_guardrail, ip]},
-                  {alerts,
-                   [disk_guardrail, ip, time_out_of_sync]}]}],
-    %% Remove stuck_rebalance keys if found and threshold undefined
-    ?assertEqual(Expected3, config_upgrade_to_79(Config3)),
-
-    Config4 =
-        [[{email_alerts,
-           [{pop_up_alerts, [ip, disk, stuck_rebalance]},
-            {alerts, [ip, time_out_of_sync, stuck_rebalance]}]},
-          {alert_limits,
-           [{{stuck_rebalance_threshold_secs, kv}, 100}]}]],
-    Expected4 = [{set, email_alerts,
-                  [{pop_up_alerts,
-                    [disk, disk_guardrail, ip, stuck_rebalance]},
-                   {alerts,
-                    [disk_guardrail, ip, stuck_rebalance, time_out_of_sync]}]}],
-    %% Don't remove stuck_rebalance keys if a threshold has been set
-    ?assertEqual(Expected4, config_upgrade_to_79(Config4)).
-
-config_upgrade_to_totoro_test() ->
-    Config1 =
-        [[{email_alerts,
-           [{pop_up_alerts, [ip, disk]},
-            {alerts, [ip, time_out_of_sync]}]}]],
-    Expected1 = [{set, email_alerts,
-                  [{pop_up_alerts,
-                    [cm_bucket_autoreprovision_total,
-                     disk,encr_at_rest_errors_total,
-                     encr_at_rest_key_test_failed,ip,xdcr_replication_deleted]},
-                   {alerts,
-                    [cm_bucket_autoreprovision_total,encr_at_rest_errors_total,
-                     encr_at_rest_key_test_failed,ip,time_out_of_sync,
-                     xdcr_replication_deleted]}]}],
-    ?assertEqual(Expected1, config_upgrade_to_totoro(Config1)).
 
 %% Test that the stuck time is correctly updated based on rebalance progress
 test_rebalance_progress(Service, Time, Progress, StuckStart, Opaque0) ->
