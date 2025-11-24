@@ -692,25 +692,29 @@ get_replica_and_backfill_nodes(MasterNode, [NewMasterNode|_] = NewChain) ->
     true = (JustBackfillNodes =/= [undefined]),
     {ReplicaNodes, JustBackfillNodes}.
 
--spec get_move_options(undefined | fusion | fbr, node(), [node()]) ->
-          [] | [{use_snapshot, binary()}].
-get_move_options(undefined, _DstNode, _OldChain) ->
+
+-spec get_move_options(undefined | fusion | fbr, node(), [node()],
+                       active | replica) ->
+          [] | [{use_snapshot, binary()} |
+                {expected_next_state, active | replica}].
+get_move_options(undefined, _DstNode, _OldChain, _FutureState) ->
     [];
-get_move_options(SnapshotType, DstNode, OldChain) ->
+get_move_options(SnapshotType, DstNode, OldChain, FutureState) ->
     case lists:member(DstNode, OldChain) of
         false ->
             [{use_snapshot, atom_to_binary(SnapshotType)}];
         true ->
             []
-    end.
+    end ++
+        [{expected_next_state, FutureState}].
 
 set_initial_vbucket_state(Bucket, Parent, VBucket, [SrcNode | _] = OldChain,
                           ReplicaNodes, JustBackfillNodes, SnapshotType) ->
     Changes = [{Replica, replica, undefined, SrcNode,
-                get_move_options(SnapshotType, Replica, OldChain)}
+                get_move_options(SnapshotType, Replica, OldChain, replica)}
                || Replica <- ReplicaNodes]
         ++ [{FutureMaster, replica, passive, SrcNode,
-             get_move_options(SnapshotType, FutureMaster, OldChain)}
+             get_move_options(SnapshotType, FutureMaster, OldChain, active)}
             || FutureMaster <- JustBackfillNodes],
     spawn_and_wait(
       fun () ->

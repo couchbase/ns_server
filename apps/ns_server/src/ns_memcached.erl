@@ -66,7 +66,8 @@
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
--type set_vbucket_option() :: {topology, list()} | {use_snapshot, binary()}.
+-type set_vbucket_option() :: {topology, list()} | {use_snapshot, binary()} |
+                              {expected_next_state, active | replica}.
 -export_type([set_vbucket_option/0]).
 
 -type status() :: connecting | init | connected | warmed | paused.
