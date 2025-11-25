@@ -282,24 +282,20 @@ popup_alerts_config() ->
     proplists:get_value(pop_up_alerts, EmailAlerts, []).
 
 config_upgrade_to_76(Config) ->
-    Ret = case ns_config:search(Config, email_alerts) of
-              false ->
-                  [];
-              {value, EmailAlerts} ->
-                  upgrade_alerts(
-                    EmailAlerts,
-                    lists:flatmap(
-                      fun (Alert) ->
-                              [add_proplist_list_elem(alerts, Alert, _),
-                               add_proplist_list_elem(pop_up_alerts, Alert, _)]
-                      end, menelaus_web_alerts_srv:alert_keys_added_in_76()) ++
-                        [move_memory_alert_email_alerts(alerts,
-                                                        memory_alert_email, _),
-                         move_memory_alert_email_alerts(pop_up_alerts,
-                                                        memory_alert_popup, _)] ++
-                        [add_proplist_list_elem(pop_up_alerts, A, _)
-                         || A <- auto_failover:pop_up_alert_keys_added_in_76()])
-          end,
+    {value, EmailAlerts} = ns_config:search(Config, email_alerts),
+    Ret = upgrade_alerts(
+        EmailAlerts,
+        lists:flatmap(
+          fun (Alert) ->
+                  [add_proplist_list_elem(alerts, Alert, _),
+                   add_proplist_list_elem(pop_up_alerts, Alert, _)]
+          end, menelaus_web_alerts_srv:alert_keys_added_in_76()) ++
+            [move_memory_alert_email_alerts(alerts,
+                                            memory_alert_email, _),
+             move_memory_alert_email_alerts(pop_up_alerts,
+                                            memory_alert_popup, _)] ++
+            [add_proplist_list_elem(pop_up_alerts, A, _)
+             || A <- auto_failover:pop_up_alert_keys_added_in_76()]),
     %% MB-53122 noted that upgrades from 6.6 did not enable auto failover pop up
     %% alerts. We fixed this issue via upgrades, but we had already released
     %% early versions of 7.0 and without a compat mode change could not fix the
@@ -311,34 +307,26 @@ config_upgrade_to_76(Config) ->
     Ret ++ [{delete, popup_alerts_auto_failover_upgrade_70_fixed}].
 
 config_upgrade_to_79(Config) ->
-    case ns_config:search(Config, email_alerts) of
-        false ->
-            [];
-        {value, EmailAlerts} ->
-            upgrade_alerts(
-              EmailAlerts,
-              maybe_delete_stuck_rebalance_keys(Config) ++
-                  lists:flatmap(
-                    fun (Alert) ->
-                            [add_proplist_list_elem(alerts, Alert, _),
-                             add_proplist_list_elem(pop_up_alerts, Alert, _)]
-                    end, menelaus_web_alerts_srv:alert_keys_added_in_79()))
-    end.
+    {value, EmailAlerts} = ns_config:search(Config, email_alerts),
+    upgrade_alerts(
+      EmailAlerts,
+      maybe_delete_stuck_rebalance_keys(Config) ++
+          lists:flatmap(
+            fun (Alert) ->
+                    [add_proplist_list_elem(alerts, Alert, _),
+                     add_proplist_list_elem(pop_up_alerts, Alert, _)]
+            end, menelaus_web_alerts_srv:alert_keys_added_in_79())).
 
 config_upgrade_to_totoro(Config) ->
-    case ns_config:search(Config, email_alerts) of
-        false ->
-            [];
-        {value, EmailAlerts} ->
-            upgrade_alerts(
-              EmailAlerts,
-              lists:flatmap(
-                fun (Alert) ->
-                        [add_proplist_list_elem(alerts, Alert, _),
-                         add_proplist_list_elem(pop_up_alerts, Alert, _)]
-                end, menelaus_web_alerts_srv:alert_keys_added_in_totoro() ++
-                    cb_cluster_secrets:alert_keys_added_in_totoro()))
-    end.
+    {value, EmailAlerts} = ns_config:search(Config, email_alerts),
+    upgrade_alerts(
+      EmailAlerts,
+      lists:flatmap(
+        fun (Alert) ->
+                [add_proplist_list_elem(alerts, Alert, _),
+                 add_proplist_list_elem(pop_up_alerts, Alert, _)]
+        end, menelaus_web_alerts_srv:alert_keys_added_in_totoro() ++
+            cb_cluster_secrets:alert_keys_added_in_totoro())).
 
 move_memory_alert_email_alerts(Key, NsConfigKey, PList) ->
     {case ns_config:read_key_fast(NsConfigKey, true) of
@@ -870,15 +858,11 @@ config_upgrade_to_76_test() ->
     %% memory_alert_{email|popup} keys, not just email_alerts
     ns_config:test_setup([{email_alerts, []}]),
 
-    Config1 = [],
-    Expected1 = [{delete, popup_alerts_auto_failover_upgrade_70_fixed}],
-    ?assertEqual(Expected1, config_upgrade_to_76(Config1)),
-
-    Config2 =
+    Config =
         [[{email_alerts,
            [{pop_up_alerts, [ip, disk]}, {enabled, false},
             {alerts, [ip, time_out_of_sync, communication_issue]}]}]],
-    Expected2 =
+    Expected =
         [{set, email_alerts,
           [{pop_up_alerts,
             [auto_failover_cluster_too_small, auto_failover_disabled,
@@ -891,8 +875,9 @@ config_upgrade_to_76_test() ->
              memcached_connections, memory_threshold, time_out_of_sync]},
            {enabled,false}]},
          {delete,memory_alert_email},
-         {delete,memory_alert_popup}] ++ Expected1,
-    ?assertEqual(Expected2, config_upgrade_to_76(Config2)).
+         {delete,memory_alert_popup},
+         {delete, popup_alerts_auto_failover_upgrade_70_fixed}],
+    ?assertEqual(Expected, config_upgrade_to_76(Config)).
 
 config_upgrade_to_79_test() ->
     Config1 =
