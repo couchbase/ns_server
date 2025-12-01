@@ -560,7 +560,8 @@ do_upgrade_config_from_76_to_79(_Config, DefaultConfig) ->
 
 upgrade_config_from_80_to_81() ->
     DefaultConfig = default(?VERSION_TOTORO),
-    [upgrade_key(memcached_config, DefaultConfig)].
+    [upgrade_key(memcached_config, DefaultConfig),
+     upgrade_key(memcached_defaults, DefaultConfig)].
 
 encrypt_and_save(Config, DekSnapshot) ->
     {value, DirPath} = ns_config:search(Config, directory),
