@@ -37,6 +37,7 @@
 -define(cluster_info(Fmt, Args), ale:info(?CLUSTER_LOGGER, Fmt, Args)).
 -define(cluster_warning(Fmt, Args), ale:warn(?CLUSTER_LOGGER, Fmt, Args)).
 -define(cluster_error(Fmt, Args), ale:error(?CLUSTER_LOGGER, Fmt, Args)).
+-define(cluster_error(Fmt), ale:error(?CLUSTER_LOGGER, Fmt)).
 
 %% gen_server callbacks
 -export([code_change/3, handle_call/3, handle_cast/2, handle_info/2, init/1,
@@ -103,8 +104,11 @@ engage_cluster(NodeKVList) ->
     Joinable = ns_cluster_membership:system_joinable(),
     if
         OtpNode =:= MyNode ->
+            ?cluster_error("Joining node to itself is not allowed."),
             {error, self_join, <<"Joining node to itself is not allowed.">>};
         not Joinable ->
+            ?cluster_error(
+               "System is not joinable. Node is already part of some cluster."),
             {error, system_not_joinable,
              <<"Node is already part of cluster.">>};
         true ->
@@ -1790,8 +1794,11 @@ do_complete_join(NodeKVList) ->
         {ok, Services} = get_requested_services(NodeKVList),
         case check_can_join_to(NodeKVList, Services) of
             {ok, _} ->
-                case ns_cluster_membership:system_joinable() andalso MyNode =:= node() of
+                case ns_cluster_membership:system_joinable() andalso
+                    MyNode =:= node() of
                     false ->
+                        ?cluster_error("Join race detected. Target node = ~p",
+                                       [MyNode]),
                         {error, join_race_detected,
                          <<"Node is already part of cluster.">>};
                     true ->
