@@ -56,6 +56,8 @@ handle_uilogout(Req) ->
                     catch
                         error:disabled -> DefaultLogout()
                     end;
+                oidc ->
+                    menelaus_web_oidc:handle_deauth(Req);
                 _ ->
                     DefaultLogout()
             end;

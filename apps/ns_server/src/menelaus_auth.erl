@@ -103,7 +103,8 @@ extract_ui_auth_token(Req) ->
     %% the ns-server-ui header, while it still needs to be authenticated
     %% to perform the logout
     case mochiweb_request:get_header_value("ns-server-ui", Req) == "yes" orelse
-         mochiweb_request:get(raw_path, Req) == "/saml/deauth" of
+         mochiweb_request:get(raw_path, Req) == "/saml/deauth" orelse
+         mochiweb_request:get(raw_path, Req) == "/oidc/deauth" of
         true ->
             Token =
                 case mochiweb_request:get_header_value("ns-server-auth-token",

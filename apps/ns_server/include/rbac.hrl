@@ -13,6 +13,8 @@
 -ifndef(_RBAC__HRL_).
 -define(_RBAC__HRL_,).
 
+-include("ns_common.hrl").
+
 -type mochiweb_request() :: {mochiweb_request, [any()]}.
 -type mochiweb_response() :: {mochiweb_response, [any()]}.
 -type auth_token() :: binary() | string().
@@ -85,10 +87,15 @@
          extra_groups = [],
          extra_roles = [],
          expiration_datetime_utc :: calendar:datetime() | undefined | '_',
-         password_expired = false :: boolean() | '_'}).
+         password_expired = false :: boolean() | '_',
+         %% For OIDC-based authentications, we keep the original ID token so
+         %% that it can be used as id_token_hint during RP-initiated logout.
+         %% The value is wrapped with ?HIDE/1 to avoid accidental disclosure in
+         %% stack traces or logs; callers must use ?UNHIDE/1 before using it.
+         id_token = undefined :: ?HIDDEN_DATA(binary()) | undefined | '_'}).
 
 -record(uisession,
-        {type :: simple | saml | '_',
+        {type :: simple | saml | oidc | '_',
          session_name :: binary() | '_',
          authn_res :: #authn_res{} | '_'}).
 

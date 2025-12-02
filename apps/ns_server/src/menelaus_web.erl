@@ -228,6 +228,12 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_saml:handle_get_saml_logout/1};
                 ["saml", "error"] ->
                     {ui, IsSSL, fun menelaus_web_saml:handle_get_error/1};
+                ["oidc", "auth"] ->
+                    {ui, IsSSL, fun menelaus_web_oidc:handle_auth/1};
+                ["oidc", "callback"] ->
+                    {ui, IsSSL, fun menelaus_web_oidc:handle_callback_get/1};
+                ["oidc", "deauth"] ->
+                    {ui, IsSSL, fun menelaus_web_oidc:handle_deauth/1};
                 ["ui"] ->
                     {done, redirect_permanently("/ui/index.html", Req)};
                 ["_ui", "canUseCertForAuth"] ->
@@ -731,6 +737,8 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["saml", ?SAML_LOGOUT_ENDPOINT_PATH] ->
                     {ui, IsSSL,
                      fun menelaus_web_saml:handle_post_saml_logout/1};
+                ["oidc", "callback"] ->
+                    {ui, IsSSL, fun menelaus_web_oidc:handle_callback_post/1};
                 ["uilogin"] ->
                     {ui, IsSSL, fun menelaus_web_misc:handle_uilogin/1};
                 ["uilogout"] ->
