@@ -863,26 +863,37 @@ format_tls_ca(undefined) -> undefined;
 format_tls_ca(<<"redacted">>) -> <<"redacted">>;
 format_tls_ca({Cert, _DecodedCerts}) -> Cert.
 
-%% Validate URL has http/https scheme and no path/query/fragment (base only)
+-spec validate_redirect_uri(string()) -> ok | {error, string()}.
 validate_redirect_uri(Url) ->
     case uri_string:parse(Url) of
-        {error, _, _} -> {error, "Invalid URL"};
-        Map when is_map(Map) ->
-            case maps:get(scheme, Map, "") of
-                "http" -> validate_path_query_fragment(Map);
-                "https" -> validate_path_query_fragment(Map);
-                _ -> {error, "Invalid scheme"}
-            end
+        {error, _, _} ->
+            {error, "Invalid URL syntax"};
+
+        #{scheme := Scheme, host := _Host} = Map ->
+            case lists:member(Scheme, ["http", "https"]) of
+                true -> validate_strict_base(Map);
+                false -> {error, "Invalid scheme (must be http/https)"}
+            end;
+        #{scheme := _Scheme} ->
+            {error, "Missing host"};
+
+        _ ->
+            {error, "Invalid URL format"}
     end.
 
-validate_path_query_fragment(Map) ->
+validate_strict_base(Map) ->
     Path = maps:get(path, Map, ""),
     Query = maps:get(query, Map, ""),
-    Frag  = maps:get(fragment, Map, ""),
-    case {Path, Query, Frag} of
-        {"", "", ""} -> ok;
-        {"/", "", ""} -> ok;
-        _ -> {error, "Path, Query, and Fragment must be empty"}
+    Fragment = maps:get(fragment, Map, ""),
+    UserInfo = maps:get(userinfo, Map, undefined),
+
+    case {Path, Query, Fragment, UserInfo} of
+        {"", "", "", undefined} -> ok;
+        {"/", "", "", undefined} -> ok;
+        {_, _, _, DefinedUser} when DefinedUser /= undefined ->
+            {error, "User info not allowed in redirect base"};
+        _ ->
+            {error, "Path (except /), Query, and Fragment must be empty"}
     end.
 
 %% Validate OIDC endpoint URL: allow https anywhere; allow http only for
