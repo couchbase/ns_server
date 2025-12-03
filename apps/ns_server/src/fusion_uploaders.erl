@@ -214,14 +214,13 @@ build_uploaders(Bucket, Infos, CurrentUploaders, Allowance, OutputFormat) ->
         lists:mapfoldl(
           fun ({I, {{Candidates, _Choices}, {CurrentUploader, Term} = CU}},
                Usage) ->
-                  ?log_debug("Select uploader for bucket ~p, vbucket ~p "
-                             "from ~p, current uploader: ~p",
-                             [Bucket, I, Candidates, CU]),
                   Uploader =
                       select_uploader(Bucket, Candidates, Usage, Allowance),
-                  ?log_debug("Selected uploader for bucket ~p, vbucket ~p: ~p",
-                             [Bucket, I, Uploader]),
                   NewUsage = maps:update_with(Uploader, _ + 1, 1, Usage),
+                  ?log_debug("Selected uploader ~p for bucket ~p, vbucket ~p "
+                             "from ~p, current uploader: ~p, usage ~p",
+                             [Uploader, Bucket, I, Candidates, CU,
+                              maps:get(Uploader, NewUsage)]),
                   UploaderOrMove =
                       case Uploader of
                           CurrentUploader ->
