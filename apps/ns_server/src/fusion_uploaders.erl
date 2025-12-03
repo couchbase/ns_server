@@ -214,7 +214,7 @@ build_uploaders(Bucket, Infos, CurrentUploaders, Allowance, OutputFormat) ->
     %% at the end when Usage approaches Allowance
     Sorted = lists:sort(
                fun ({_, {{_, ChoicesA}, _}}, {_, {{_, ChoicesB}, _}}) ->
-                       ChoicesA > ChoicesB
+                       ChoicesA < ChoicesB
                end, Zipped),
     ?log_debug("Process following candidates for bucket ~p: ~p",
                [Bucket, Sorted]),
