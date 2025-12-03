@@ -24,6 +24,7 @@ import (
 
 // This must be provided as argument to example: "go test -key-url=<keyURL>"
 var keyURL = flag.String("key-url", "", "Key URL")
+var algorithm = flag.String("algorithm", "RSAOAEP256", "Algorithm")
 
 var AllowedDomains = []string{"vault.azure.net",
 	"vault.azure.cn",
@@ -44,7 +45,7 @@ func TestGcpEncryptDecrypt(t *testing.T) {
 
 	opArgs := OperationArgs{
 		KeyURL:          *keyURL,
-		Algorithm:       "RSAOAEP256",
+		Algorithm:       *algorithm,
 		TimeoutDuration: 5 * time.Minute,
 	}
 
