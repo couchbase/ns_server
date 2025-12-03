@@ -144,11 +144,11 @@ candidates({OldChain, NewChain, UploaderNode}) ->
     FromScratch = NewChainNoUndefineds -- NotFromScratch,
     Choices = case NotFromScratch of
                   [] ->
-                      length(FromScratch);
+                      FromScratch;
                   _ ->
-                      length(NotFromScratch)
+                      NotFromScratch
               end,
-    {[NotFromScratch, FromScratch], Choices};
+    {[Choices], length(Choices)};
 candidates({NodesWithUploadedData, Chain}) ->
     FromScratch = Chain -- [N || {N, _, _} <- NodesWithUploadedData],
     %% each node with data is a list of one here, because we want
