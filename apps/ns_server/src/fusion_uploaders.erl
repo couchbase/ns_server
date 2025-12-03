@@ -179,7 +179,7 @@ do_select_uploader([Candidates | Rest], Usage, Allowance) ->
             undefined ->
                 Candidates;
             _ ->
-                lists:filter(?cut(maps:get(_, Usage, 0) =< Allowance),
+                lists:filter(?cut(maps:get(_, Usage, 0) < Allowance),
                              Candidates)
         end,
     case Allowed of
