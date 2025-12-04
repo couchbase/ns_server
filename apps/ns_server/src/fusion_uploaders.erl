@@ -130,6 +130,22 @@ get_current({_, Current}) ->
 %% started from each node thus defining how much unbalance
 %% we are ready to tolerate for the sake of not uploading from
 %% scratch
+%%
+%% The algorithm works as such:
+%% 1. Sort the candidates so the candidates with less choice are
+%%    processed earlier
+%% 2. Move through the sorted list of vbuckets and out of the array
+%%    of candidates for vbucket choose the one with lesser usage.
+%%    After the choice is made, increment the usage for the chosen node.
+%% 3. If the node with less usage still had reached the allowance, traverse
+%%    the list of vbuckets from the beginning, reconsidering earlier made
+%%    choices with the node of interest being excluded.
+%% 4. If some choice had changed, adjust the nodes usage accordingly
+%%    and return at the position in the list where uploader is
+%%    still not chosen. (back to #2)
+%% 5. If it is not possible to free the usage for a node with least
+%%    usage, allow the node still to be chosen as an uploader
+%%    exceeding the allowance, thus resulting in unbalanced map.
 calculate_moves(Bucket, Map, FastForwardMap, CurrentUploaders, Allowance) ->
     ?log_debug("Calculate moves for bucket ~p~nmap:~n~p~nffmap:~n~p~nuploaders"
                "~n~p~nallowance:~p",
@@ -167,16 +183,25 @@ candidates({NodesWithUploadedData, Chain}) ->
               end,
     {NotFromScratch ++ [FromScratch], Choices}.
 
-select_uploader(Bucket, Candidates, Usage, Allowance) ->
+select_uploader(Bucket, VBucket, Candidates, {CurrentUploader, Term} = CU,
+                Usage, Allowance) ->
     case do_select_uploader(Candidates, Usage, Allowance) of
+        {ok, Uploader} ->
+            NewUsage = maps:update_with(Uploader, _ + 1, 1, Usage),
+            ?log_debug("Selected uploader ~p for bucket ~p, vbucket ~p "
+                       "from ~p, current uploader: ~p, usage ~p",
+                       [Uploader, Bucket, VBucket, Candidates, CU,
+                        maps:get(Uploader, NewUsage)]),
+            NewUploaderTerm =
+                case Uploader of
+                    CurrentUploader ->
+                        CU;
+                    _ ->
+                        {Uploader, Term + 1}
+                end,
+            {ok, NewUploaderTerm, NewUsage};
         undefined ->
-            ?log_debug("Unable to pick a winner for bucket ~p among ~p with "
-                       "allowance = ~p, usage = ~p~n"
-                       "Ignore allowance.",
-                       [Bucket, Candidates, Allowance, Usage]),
-            select_uploader(Bucket, Candidates, Usage, undefined);
-        Winner ->
-            Winner
+            undefined
     end.
 
 do_select_uploader([], _Usage, _Allowance) ->
@@ -196,7 +221,7 @@ do_select_uploader([Candidates | Rest], Usage, Allowance) ->
         _ ->
             {_, Winner} =
                 lists:min([{maps:get(N, Usage, 0), N} || N <- Allowed]),
-            Winner
+            {ok, Winner}
     end.
 
 build_uploaders(Bucket, Infos, CurrentUploaders, Allowance, OutputFormat) ->
@@ -216,39 +241,91 @@ build_uploaders(Bucket, Infos, CurrentUploaders, Allowance, OutputFormat) ->
                fun ({_, {{_, ChoicesA}, _}}, {_, {{_, ChoicesB}, _}}) ->
                        ChoicesA < ChoicesB
                end, Zipped),
-    ?log_debug("Process following candidates for bucket ~p: ~p",
+    ?log_debug("Process following candidates for bucket ~p:~n~p",
                [Bucket, Sorted]),
+
     {WithUploaders, FinalUsage} =
-        lists:mapfoldl(
-          fun ({I, {{Candidates, _Choices}, {CurrentUploader, Term} = CU}},
-               Usage) ->
-                  Uploader =
-                      select_uploader(Bucket, Candidates, Usage, Allowance),
-                  NewUsage = maps:update_with(Uploader, _ + 1, 1, Usage),
-                  ?log_debug("Selected uploader ~p for bucket ~p, vbucket ~p "
-                             "from ~p, current uploader: ~p, usage ~p",
-                             [Uploader, Bucket, I, Candidates, CU,
-                              maps:get(Uploader, NewUsage)]),
-                  UploaderOrMove =
-                      case Uploader of
-                          CurrentUploader ->
-                              case OutputFormat of
-                                  moves ->
-                                      same;
-                                  uploaders ->
-                                      {CurrentUploader, Term}
-                              end;
-                          _ ->
-                              {Uploader, Term + 1}
-                      end,
-                  {{I, UploaderOrMove}, NewUsage}
-          end, #{}, Sorted),
+        process_candidates(Bucket, Allowance, #{}, Sorted, []),
 
     ?log_debug("Selected following uploaders for bucket ~p:~n~p~nUsage:~n~p",
-               [Bucket, WithUploaders, FinalUsage]),
+               [Bucket, [{I, U} || {I, _, U} <- WithUploaders], FinalUsage]),
 
     %% return calculated moves or uploaders in vbucket number order
-    [Uploader || {_, Uploader} <- lists:sort(WithUploaders)].
+    lists:map(
+      fun ({_, {_, UploaderTerm}, UploaderTerm}) ->
+                  case OutputFormat of
+                      moves ->
+                          same;
+                      uploaders ->
+                          UploaderTerm
+                  end;
+          ({_, {_, _}, UploaderTerm}) ->
+              UploaderTerm
+      end, lists:sort(WithUploaders)).
+
+process_candidates(_, _, Usage, [], Acc) ->
+    {Acc, Usage};
+process_candidates(
+  Bucket, Allowance, Usage,
+  [{VBucket,
+    {{Candidates, _Choices}, CurrentUploaderTerm} = VBInfo} | Rest] =
+      CurrentAndRest,
+  Acc) ->
+    case select_uploader(Bucket, VBucket, Candidates, CurrentUploaderTerm,
+                         Usage, Allowance) of
+        {ok, NewUploaderTerm, NewUsage} ->
+            process_candidates(Bucket, Allowance, NewUsage, Rest,
+                               [{VBucket, VBInfo, NewUploaderTerm} | Acc]);
+        undefined ->
+            [Nodes | _] = Candidates,
+            ?log_debug("Need to free usage for the following nodes ~p for "
+                       "bucket ~p, vbucket ~p", [Nodes, Bucket, VBucket]),
+            case free_nodes(Nodes, Bucket, Allowance, Usage, Acc, []) of
+                {ok, NewAcc, NewUsage} ->
+                    process_candidates(
+                      Bucket, Allowance, NewUsage, CurrentAndRest, NewAcc);
+                fail ->
+                    ?log_debug(
+                       "Unable to pick a winner for bucket ~p among ~p with "
+                       "allowance = ~p, usage = ~p~nIgnore allowance.",
+                       [Bucket, Candidates, Allowance, Usage]),
+                    {ok, NewUploaderTerm, NewUsage} =
+                        select_uploader(Bucket, VBucket, Candidates,
+                                        CurrentUploaderTerm, Usage, undefined),
+                    process_candidates(
+                      Bucket, Allowance, NewUsage, Rest,
+                      [{VBucket, VBInfo, NewUploaderTerm} | Acc])
+            end
+    end.
+
+free_nodes(_, _, _, _, [], _) ->
+    fail;
+free_nodes(Nodes, Bucket, Allowance, Usage, [VBInfo | Rest], Acc) ->
+    case free_node(Nodes, Bucket, Allowance, Usage, VBInfo) of
+        {ok, NewUsage, NewVBInfo} ->
+            {ok, [NewVBInfo | Acc] ++ Rest, NewUsage};
+        skip ->
+            free_nodes(Nodes, Bucket, Allowance, Usage, Rest, [VBInfo | Acc])
+    end.
+
+free_node([], _Bucket, _Allowance, _Usage, _VBInfo) ->
+    skip;
+free_node([Node | Rest], Bucket, Allowance, Usage,
+          {VBucket, {{Candidates, Choices}, CurrentUploaderTerm},
+           {Node, _}} = VBInfo) ->
+    TrimmedCandidates = [C -- [Node] || C <- Candidates],
+    case select_uploader(Bucket, VBucket, TrimmedCandidates,
+                         CurrentUploaderTerm, Usage, Allowance) of
+        {ok, NewUploaderTerm, NewUsage} ->
+            NewUsage1 = maps:update_with(Node, _ - 1, NewUsage),
+            {ok, NewUsage1,
+             {VBucket, {{Candidates, Choices}, CurrentUploaderTerm},
+              NewUploaderTerm}};
+        undefined ->
+            free_node(Rest, Bucket, Allowance, Usage, VBInfo)
+    end;
+free_node([_Node | Rest], Bucket, Allowance, Usage, VBInfo) ->
+    free_node(Rest, Bucket, Allowance, Usage, VBInfo).
 
 -spec fail_nodes(uploaders(), [node()]) -> uploaders().
 fail_nodes(Uploaders, FailedNodes) ->
