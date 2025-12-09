@@ -5070,7 +5070,7 @@ basic_bucket_params_screening_t() ->
                    [{"bucketType", "ephemeral"},
                     {"ramQuota", "100"}],
                    AllBuckets),
-    ?assertEqual(?DEFAULT_VBUCKETS_EPHEMERAL,
+    ?assertEqual(ns_bucket:get_default_num_vbuckets(ephemeral),
                  proplists:get_value(num_vbuckets, OK49)),
     %% and put it back
     meck:expect(ns_config, search,
