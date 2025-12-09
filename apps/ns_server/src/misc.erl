@@ -4031,3 +4031,25 @@ tls_connect_options(URL, AddressFamily, VerifyPeer, CACerts0, SNI0,
                 []
         end ++ AddressSettings,
     update_proplist_relaxed(Opts, ExtraOpts).
+
+compat_version_to_binary(Version) ->
+    [V1, V2] = lists:map(
+                 integer_to_list(_),
+                 Version),
+    list_to_binary(V1 ++ "." ++ V2).
+
+compat_version_from_binary(CompatVersionBin) ->
+    CompatVersionStr = binary_to_list(CompatVersionBin),
+    compat_version_from_string(CompatVersionStr).
+
+compat_version_from_string(CompatVersionStr) ->
+    [V1, V2] = string:split(CompatVersionStr, ".", all),
+    [list_to_integer(V1), list_to_integer(V2)].
+
+-ifdef(TEST).
+compat_version_test() ->
+    VerBin = compat_version_to_binary([8, 0]),
+    ?assertEqual(<<"8.0">>, VerBin),
+    ?assertEqual([8, 0], compat_version_from_binary(VerBin)),
+    ?assertEqual([8, 0], compat_version_from_string("8.0")).
+-endif.
