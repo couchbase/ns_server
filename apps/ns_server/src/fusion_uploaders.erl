@@ -37,7 +37,7 @@
          create_snapshot_uuid/2,
          get_stored_snapshot_uuids/0,
          store_snapshots_uuid/3,
-         get_snapshots/6,
+         get_snapshots/5,
          cleanup_snapshots/0,
          cleanup_mounted_volumes/2]).
 
@@ -977,83 +977,60 @@ store_snapshots_uuid(PlanUUID, BucketUUID, NumVBuckets) ->
           end),
     ok.
 
-node_to_query(BucketConfig, KVNodes) ->
-    CurrentServers = ns_bucket:get_servers(BucketConfig),
-    case lists:member(node(), CurrentServers) of
-        true ->
-            node();
-        false ->
-            %% if our node is not serving the bucket, pick a node
-            %% that does, so we can request a snapshot from it
-            AliveKVNodes = ns_node_disco:only_live_nodes(KVNodes),
-            case CurrentServers -- (CurrentServers -- AliveKVNodes) of
-                [] ->
-                    undefined;
-                [N | _] ->
-                    N
-            end
-    end.
-
-execute_on_kv_node(Bucket, BucketConfig, KVNodes, Fun, Params, Timeout,
-                   What, Error) ->
-    case node_to_query(BucketConfig, KVNodes) of
-        undefined ->
-            ?log_error(
-               "Unable to select node for ~p for bucket ~p",
-               [What, Bucket]),
+execute_on_kv_node(KVNodes, Fun, Params, Timeout, What, Error) ->
+    case ns_node_disco:only_live_nodes(KVNodes) of
+        [] ->
+            ?log_error("Unable to select node for ~p", [What]),
             {error, {Error, undefined}};
-        NodeToQuery ->
+        [NodeToQuery | _] ->
             case (catch rpc:call(NodeToQuery, ?MODULE, Fun, Params, Timeout)) of
                 {badrpc, Err} ->
-                    ?log_error(
-                       "~p for ~p from ~p failed with ~p",
-                       [What, Bucket, NodeToQuery, Err]),
+                    ?log_error("~p from ~p failed with ~p",
+                               [What, NodeToQuery, Err]),
                     {error, {Error, NodeToQuery}};
-                Volumes ->
-                    {ok, Volumes}
+                Reply ->
+                    {ok, Reply}
             end
     end.
 
-do_delete_snapshots(Bucket, VBuckets, SnapshotUUID) ->
-    lists:filter(
-      fun (VBucket) ->
-              case ns_memcached:release_fusion_storage_snapshot(
-                     Bucket, VBucket, SnapshotUUID) of
-                  ok ->
-                      false;
-                  Error ->
-                      ?log_debug("Deleting snapshot ~p for vbucket ~p failed "
-                                 "with ~p", [SnapshotUUID, VBucket, Error]),
-                      true
-              end
-      end, VBuckets).
+-spec do_delete_snapshots(binary(), [vbucket_id()], string()) ->
+          ok | mc_error().
+do_delete_snapshots(BucketUUID, VBuckets, SnapshotUUID) ->
+    case ns_memcached:release_fusion_storage_snapshot(
+           BucketUUID, VBuckets, SnapshotUUID) of
+        ok ->
+            ok;
+        Error ->
+            ?log_debug("Deleting snapshot ~p for bucket ~p vbuckets ~p failed "
+                       "with ~p", [SnapshotUUID, BucketUUID, VBuckets, Error]),
+            Error
+    end.
 
-get_snapshots(Bucket, BucketConfig, VBuckets, SnapshotUUID, Validity,
-              KVNodes) ->
-    execute_on_kv_node(Bucket, BucketConfig, KVNodes, do_get_snapshots,
-                       [Bucket, VBuckets, SnapshotUUID, Validity],
+-spec get_snapshots(
+        binary(), [vbucket_id()], string(), non_neg_integer(), [node()]) ->
+          {ok, [{non_neg_integer(), term()}]} | {error, {term(), node()}}.
+get_snapshots(BucketUUID, VBuckets, SnapshotUUID, Validity, KVNodes) ->
+    execute_on_kv_node(KVNodes, do_get_snapshots,
+                       [BucketUUID, VBuckets, SnapshotUUID, Validity],
                        ?GET_SNAPSHOTS_TIMEOUT,
                        "Getting fusion storage snapshot",
                        failed_to_get_snapshots).
 
-do_get_snapshots(Bucket, VBuckets, SnapshotUUID, Validity) ->
-    lists:map(
-      fun (VBucket) ->
-              {ok, Bin} = ns_memcached:get_fusion_storage_snapshot(
-                            Bucket, VBucket, SnapshotUUID, Validity),
-              {VBucket, ejson:decode(Bin)}
-      end, VBuckets).
+-spec do_get_snapshots(binary(), [vbucket_id()], string(), non_neg_integer()) ->
+          [{non_neg_integer(), term()}].
+do_get_snapshots(BucketUUID, VBuckets, SnapshotUUID, Validity) ->
+    {ok, Bin} = ns_memcached:get_fusion_storage_snapshot(
+                  BucketUUID, VBuckets, SnapshotUUID, Validity),
+    lists:zip(VBuckets, ejson:decode(Bin)).
 
-
-delete_snapshots(BucketName, {PlanUUID, BucketUUID, NumVBuckets} = Entry) ->
-    ?log_debug("Deleting snapshots for ~p : ~p", [BucketName, Entry]),
+delete_snapshots({PlanUUID, BucketUUID, NumVBuckets} = Entry) ->
+    ?log_debug("Deleting snapshots for ~p", [Entry]),
     SnapshotUUID = create_snapshot_uuid(PlanUUID, BucketUUID),
     VBuckets = lists:seq(0, NumVBuckets - 1),
-    {ok, BucketConfig} = ns_bucket:get_bucket(BucketName),
     KVNodes = ns_cluster_membership:service_active_nodes(kv),
 
-    execute_on_kv_node(BucketName, BucketConfig, KVNodes, do_delete_snapshots,
-                       [BucketName, VBuckets, SnapshotUUID],
+    execute_on_kv_node(KVNodes, do_delete_snapshots,
+                       [BucketUUID, VBuckets, SnapshotUUID],
                        ?DELETE_SNAPSHOTS_TIMEOUT,
                        "Deleting fusion storage snapshot",
                        failed_to_delete_snapshots).
@@ -1112,18 +1089,20 @@ cleanup_snapshots() ->
 
     lists:foreach(
       fun ({undefined, Entry}) ->
-              %% TODO: delete_snapshots should be called here
-              %% after memcached will provide support for calling it
-              %% without existing bucket
-              remove_snapshot_entry(Entry);
+              case delete_snapshots(Entry) of
+                  {ok, ok} ->
+                      remove_snapshot_entry(Entry);
+                  _ ->
+                      ok
+              end;
           ({BucketName, Entry}) ->
               case proplists:is_defined(BucketName, UploadersVerifiedBuckets) of
                   false ->
                       ?log_debug("Not ready to delete snapshots for ~p, ~p",
                                  [BucketName, Entry]);
                   true ->
-                      case delete_snapshots(BucketName, Entry) of
-                          {ok, []} ->
+                      case delete_snapshots(Entry) of
+                          {ok, ok} ->
                               remove_snapshot_entry(Entry);
                           _ ->
                               ok

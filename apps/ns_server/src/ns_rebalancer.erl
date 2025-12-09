@@ -2196,8 +2196,7 @@ do_prepare_bucket_fusion_rebalance(PlanUUID, Bucket, BucketUUID, BucketConfig,
       PlanUUID, BucketUUID, ns_bucket:get_num_vbuckets(BucketConfig)),
 
     case fusion_uploaders:get_snapshots(
-           Bucket, BucketConfig, VBucketsToQuery, SnapshotUUID, Validity,
-           KeepKVNodes) of
+           BucketUUID, VBucketsToQuery, SnapshotUUID, Validity, KeepKVNodes) of
         {error, Error} ->
             {error, Error};
         {ok, Volumes} ->
@@ -2229,6 +2228,8 @@ prepare_rebalance_test_() ->
         #{bucket_names => {[fusion1, fusion2, other], rev},
           {bucket, fusion1, props} => {FusionBucketProps, rev},
           {bucket, fusion2, props} => {FusionBucketProps, rev},
+          {bucket, fusion1, uuid} => {<<"fusion1">>, rev},
+          {bucket, fusion2, uuid} => {<<"fusion2">>, rev},
           {bucket, other, props} => {[], rev}},
     {foreach,
      fun () ->
@@ -2237,9 +2238,10 @@ prepare_rebalance_test_() ->
              ok = meck:new(fusion_uploaders, [passthrough]),
              ok = meck:expect(
                     fusion_uploaders, get_snapshots,
-                    fun (Bucket, _, VBuckets, UUID, _, _) ->
+                    fun (BucketUUID, VBuckets, SnapshotUUID, _, _) ->
                             {ok,
-                             [{VBucket, {[{id, {Bucket, VBucket, UUID}}]}} ||
+                             [{VBucket,
+                               {[{id, {BucketUUID, VBucket, SnapshotUUID}}]}} ||
                                  VBucket <- VBuckets]}
                     end),
              ok = meck:expect(menelaus_web_node, build_node_hostname,
@@ -2303,7 +2305,7 @@ prepare_rebalance_test_() ->
                            Volumes = proplists:get_value(N, Nodes),
                            ?assertNotEqual(undefined, Volumes),
                            Expected =
-                               [{B, VB} ||
+                               [{list_to_binary(atom_to_list(B)), VB} ||
                                    B <- [fusion1, fusion2], VB <- VBuckets],
                            ?assertEqual(
                               lists:sort(Expected),

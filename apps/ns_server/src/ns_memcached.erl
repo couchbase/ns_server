@@ -2654,25 +2654,34 @@ drop_metadata_file_dek_ids(BucketName, BucketUUID, IdsToDrop) ->
         end
     end.
 
--spec get_fusion_storage_snapshot(ns_bucket:name(), vbucket_id(), string(),
+%% there's no strong reason why this command doesn't require bucket to be
+%% selected on the connection apart from being somewhat compatible
+%% with release_fusion_storage_snapshot
+-spec get_fusion_storage_snapshot(binary(), [vbucket_id()], string(),
                                   non_neg_integer()) ->
           {ok, binary()} | mc_error().
-get_fusion_storage_snapshot(Bucket, VBucket, SnapshotUUID, Validity) ->
+get_fusion_storage_snapshot(BucketUUID, VBuckets, SnapshotUUID, Validity) ->
+    {ok, JWT, _} = issue_jwt(true),
     perform_very_long_call(
       fun (Sock) ->
               {reply, mc_client_binary:get_fusion_storage_snapshot(
-                        Sock, VBucket, SnapshotUUID, Validity)}
-      end, Bucket, [json]).
+                        Sock, BucketUUID, VBuckets, SnapshotUUID, Validity,
+                        fusion_uploaders:get_metadata_store_uri(), JWT)}
+      end, undefined, [json]).
 
--spec release_fusion_storage_snapshot(ns_bucket:name(), vbucket_id(),
-                                      string()) ->
+%% this command doesn't require bucket to be selected on the connection
+%% because storage snapshots could be deleted when the bucket no longer
+%% exists
+-spec release_fusion_storage_snapshot(binary(), [vbucket_id()], string()) ->
           ok | mc_error().
-release_fusion_storage_snapshot(Bucket, VBucket, SnapshotUUID) ->
+release_fusion_storage_snapshot(BucketUUID, VBuckets, SnapshotUUID) ->
+    {ok, JWT, _} = issue_jwt(true),
     perform_very_long_call(
       fun (Sock) ->
               {reply, mc_client_binary:release_fusion_storage_snapshot(
-                        Sock, VBucket, SnapshotUUID)}
-      end, Bucket, [json]).
+                        Sock, BucketUUID, VBuckets, SnapshotUUID,
+                        fusion_uploaders:get_metadata_store_uri(), JWT)}
+      end, undefined, [json]).
 
 -spec mount_fusion_vbucket(ns_bucket:name(), vbucket_id(), [list()]) ->
           {ok, binary()} | mc_error().

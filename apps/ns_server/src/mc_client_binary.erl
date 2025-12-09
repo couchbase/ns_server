@@ -76,8 +76,8 @@
          set_tls_config/2,
          set_active_encryption_key/4,
          prune_log_or_audit_encr_keys/4,
-         get_fusion_storage_snapshot/4,
-         release_fusion_storage_snapshot/3,
+         get_fusion_storage_snapshot/7,
+         release_fusion_storage_snapshot/6,
          mount_fusion_vbucket/3,
          unmount_fusion_vbucket/2,
          set_chronicle_auth_token/2,
@@ -1151,15 +1151,21 @@ set_active_encryption_key(Sock, Bucket, DeksSnapshot, Timeout) ->
             process_error_response(Response)
     end.
 
--spec get_fusion_storage_snapshot(port(), vbucket_id(), string(),
-                                  non_neg_integer()) ->
+-spec get_fusion_storage_snapshot(port(), binary(), [vbucket_id()],
+                                  string(), non_neg_integer(),
+                                  string(), binary()) ->
           {ok, binary()} | mc_error().
-get_fusion_storage_snapshot(Sock, VBucket, SnapshotUUID, Validity) ->
+get_fusion_storage_snapshot(Sock, BucketUUID, VBuckets, SnapshotUUID, Validity,
+                            MetaDataStoreUri, MetaDataStoreAuthToken) ->
     report_counter(?FUNCTION_NAME),
-    Data = ejson:encode({[{snapshotUuid, list_to_binary(SnapshotUUID)},
-                          {validity, Validity}]}),
+    Data = ejson:encode({[{snapshot_uuid, list_to_binary(SnapshotUUID)},
+                          {bucket_uuid, BucketUUID},
+                          {vbucket_list, VBuckets},
+                          {valid_till, Validity},
+                          {metadatastore_uri, list_to_binary(MetaDataStoreUri)},
+                          {metadatastore_auth_token, MetaDataStoreAuthToken}]}),
     case cmd(?CMD_GET_FUSION_STORAGE_SNAPSHOT, Sock, undefined, undefined,
-             {#mc_header{vbucket = VBucket},
+             {#mc_header{},
               #mc_entry{data = Data,
                         datatype = ?MC_DATATYPE_JSON}}) of
         {ok, #mc_header{status = ?SUCCESS}, ME, _NCB} ->
@@ -1168,13 +1174,19 @@ get_fusion_storage_snapshot(Sock, VBucket, SnapshotUUID, Validity) ->
             process_error_response(Response)
     end.
 
--spec release_fusion_storage_snapshot(port(), vbucket_id(), string()) ->
+-spec release_fusion_storage_snapshot(port(), binary(), [vbucket_id()],
+                                      string(), string(), binary()) ->
           ok | mc_error().
-release_fusion_storage_snapshot(Sock, VBucket, SnapshotUUID) ->
+release_fusion_storage_snapshot(Sock, BucketUUID, VBuckets, SnapshotUUID,
+                                MetaDataStoreUri, MetaDataStoreAuthToken) ->
     report_counter(?FUNCTION_NAME),
-    Data = ejson:encode({[{snapshotUuid, list_to_binary(SnapshotUUID)}]}),
+    Data = ejson:encode({[{snapshot_uuid, list_to_binary(SnapshotUUID)},
+                          {bucket_uuid, BucketUUID},
+                          {vbucket_list, VBuckets},
+                          {metadatastore_uri, list_to_binary(MetaDataStoreUri)},
+                          {metadatastore_auth_token, MetaDataStoreAuthToken}]}),
     case cmd(?CMD_RELEASE_FUSION_STORAGE_SNAPSHOT, Sock, undefined, undefined,
-             {#mc_header{vbucket = VBucket},
+             {#mc_header{},
               #mc_entry{data = Data,
                         datatype = ?MC_DATATYPE_JSON}}) of
         {ok, #mc_header{status = ?SUCCESS}, _ME, _NCB} ->
