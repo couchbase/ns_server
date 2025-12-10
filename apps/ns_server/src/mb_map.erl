@@ -33,7 +33,8 @@
          is_trivially_compatible_past_map/5,
          enumerate_chains/2,
          align_replicas/2,
-         only_defined/1]).
+         only_defined/1,
+         no_nodes_map/2]).
 
 %% removes RemapNodes from head of vbucket map Map. Returns new map
 promote_replicas(undefined, _RemapNode) ->
@@ -936,6 +937,11 @@ enumerate_chains(Map, FastForwardMap) ->
 -spec align_replicas([[atom()]], non_neg_integer()) -> [[atom()]].
 align_replicas(Map, NumReplicas) ->
     lists:map(misc:align_list(_, NumReplicas + 1, undefined), Map).
+
+-spec no_nodes_map(non_neg_integer(), non_neg_integer()) -> [[undefined]].
+no_nodes_map(NVBuckets, NReplicas) ->
+    Chain = lists:duplicate(NReplicas + 1, undefined),
+    lists:duplicate(NVBuckets, Chain).
 
 -ifdef(TEST).
 align_replicas_test() ->

@@ -139,12 +139,11 @@ generate_vbucket_map(CurrentMap, KeepNodes, Bucket, BucketConfig) ->
     {Map, Opts}.
 
 generate_initial_map(Bucket, BucketConfig) ->
-    Chain = lists:duplicate(proplists:get_value(num_replicas, BucketConfig) + 1,
-                            undefined),
-    Map1 = lists:duplicate(proplists:get_value(num_vbuckets, BucketConfig),
-                           Chain),
+    NoNodesMap = mb_map:no_nodes_map(
+                   proplists:get_value(num_vbuckets, BucketConfig),
+                   proplists:get_value(num_replicas, BucketConfig)),
     Servers = ns_bucket:get_servers(BucketConfig),
-    generate_vbucket_map(Map1, Servers, Bucket, BucketConfig).
+    generate_vbucket_map(NoNodesMap, Servers, Bucket, BucketConfig).
 
 local_buckets_shutdown_loop(Ref, CanWait) ->
     ExcessiveBuckets = ns_memcached:active_buckets() -- ns_bucket:node_bucket_names(node()),
