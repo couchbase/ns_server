@@ -114,7 +114,7 @@ get_admin_auth_json(_) ->
 
 memcached_user_info(User, Auth) ->
     {ok, NewAuth} =
-        menelaus_users:upgrade_props(?VERSION_76, auth, User, Auth),
+        menelaus_users:upgrade_props(?VERSION_76, auth, Auth),
     {list_to_binary(User), {NewAuth}}.
 
 jsonify_auth(Users, AdminPasswords, RestCreds, PromAuth) ->

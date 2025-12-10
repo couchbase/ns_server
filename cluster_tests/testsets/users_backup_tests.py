@@ -264,13 +264,17 @@ class UsersBackupTests(testlib.BaseTestSet):
             #   localsecurityandbackupadmin76:
             #       data_backup + local_admin_security =>
             #           data_backup + Local User Admin + Security Admin
+            #
+            # In addition, the 8.1 release made Web Console Access (ui_access)
+            # a separate role.
 
             verify_roles(self.cluster, 'localsecurityadmin76',
-                         ['security_admin', 'user_admin_local'])
+                         ['security_admin', 'user_admin_local', 'ui_access'])
             verify_roles(self.cluster, 'externalsecurityadmin76',
-                         ['security_admin', 'user_admin_external'])
+                         ['security_admin', 'user_admin_external', 'ui_access'])
             verify_roles(self.cluster, 'localsecurityandbackupadmin76',
-                         ['data_backup', 'security_admin', 'user_admin_local'])
+                         ['data_backup', 'security_admin', 'user_admin_local',
+                          'ui_access'])
 
             # We now have a mixture of security and non-security roles. Do
             # a backup from a non-security role and ensure none of the security
@@ -492,6 +496,7 @@ class UsersBackupTests(testlib.BaseTestSet):
             user = testlib.get_succ(self.cluster,
                                     f"/settings/rbac/users/local/{name}").json()
             roles = [role['role'] for role in user.get('roles', [])]
+            roles.sort()
             return roles
 
         put_user(self.cluster, 'local', 'readonlyadmin',
@@ -508,8 +513,21 @@ class UsersBackupTests(testlib.BaseTestSet):
                                data={'backup': json.dumps(old_backup),
                                      'canOverwrite': 'false'}, **{}).json()
         old_backup_roles = get_roles('readonlyadmin')
-        # Ensure the roles were upgraded for backwards compatibility
-        assert old_backup_roles == ['ro_security_admin', 'ro_admin']
+        # Ensure the roles were upgraded for backwards compatibility or
+        # for new role (ui_access).
+        assert old_backup_roles == ['ro_admin', 'ro_security_admin',
+                                    'ui_access']
+        testlib.ensure_deleted(self.cluster,
+                               '/settings/rbac/users/local/readonlyadmin')
+
+        # Simulate a 8.0 version
+        old_backup["compat_version"] = "8.0"
+        res = testlib.put_succ(self.cluster, '/settings/rbac/backup',
+                               data={'backup': json.dumps(old_backup),
+                                     'canOverwrite': 'false'}, **{}).json()
+        old_backup_roles = get_roles('readonlyadmin')
+        # Ensure new role (ui_access) was added for backwards compatibility.
+        assert old_backup_roles == ['ro_admin', 'ui_access']
         testlib.ensure_deleted(self.cluster,
                                '/settings/rbac/users/local/readonlyadmin')
 
@@ -531,7 +549,19 @@ class UsersBackupTests(testlib.BaseTestSet):
                                      'canOverwrite': 'false'}, **{}).json()
         assert (res["errors"]["backup"]["compat_version"] ==
                 "Cannot restore a backup with cluster version '12.4' "
-                "as it is greater than what is supported.")
+                "as it is greater than what is supported (cluster compat "
+                "version is '8.1').")
+
+        # Set compat version to something earlier than is supported. This
+        # would only occur if someone manually edited the backup results.
+        old_backup["compat_version"] = "7.6"
+        res = testlib.put_fail(self.cluster, '/settings/rbac/backup',
+                               expected_code=400,
+                               data={'backup': json.dumps(old_backup),
+                                     'canOverwrite': 'false'}, **{}).json()
+        assert (res["errors"]["backup"]["compat_version"] ==
+                "Cannot restore a backup with cluster version '7.6' as "
+                "it predates any supported release.")
 
         # Set compat version to garbage
         old_backup["compat_version"] = "invalid&^%*2"

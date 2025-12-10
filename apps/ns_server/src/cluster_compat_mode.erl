@@ -20,6 +20,7 @@
          get_ns_config_compat_version/0,
          is_enabled/1, is_enabled_at/2,
          consider_switching_compat_mode/0,
+         upgrades/0,
          is_index_aware_rebalance_on/0,
          is_index_pausing_on/0,
          rebalance_ignore_view_compactions/0,

@@ -274,7 +274,7 @@ config_upgrade_to_76(Config) ->
                         A
                 end,
             {ok, NewAuth} = menelaus_users:upgrade_props(?VERSION_76, auth,
-                                                         User, Auth),
+                                                         Auth),
             [{set, admin_cfg_key(), {User, {auth, NewAuth}}}]
     end.
 

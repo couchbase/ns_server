@@ -31,8 +31,8 @@
          select_auth_infos/1,
          user_exists/1,
          get_roles/1,
-         maybe_substitute_user_roles/2,
-         maybe_substitute_roles/1,
+         maybe_upgrade_user_roles/2,
+         maybe_upgrade_roles_for_restore/2,
          get_user_name/1,
          get_users_version/0,
          get_auth_version/0,
@@ -78,7 +78,7 @@
          upgrade/3,
          config_upgrade/0,
          upgrade_in_progress/0,
-         upgrade_props/4,
+         upgrade_props/3,
 
          %% Misc:
          allow_hash_migration_during_auth_default/0,
@@ -1302,6 +1302,47 @@ sync_with_remotes(Nodes, Version) ->
     replicated_storage:sync_to_me(
       storage_name(), Nodes, ?get_timeout(rbac_upgrade_key(Version), 60000)).
 
+%% This handles the reuse of upgrade code, which expects "{ok, Props}", by
+%% "restore" which expects "Props".
+ensure_user_props_updated(TargetVersion, Props) ->
+    case upgrade_props(TargetVersion, user, Props) of
+        {ok, NewProps} -> NewProps;
+        skip -> Props
+    end.
+
+%% Versions with user upgrades. This is used when restoring a backup
+%% created on an older version.
+versions_with_user_upgrades_for_restore() ->
+    All = cluster_compat_mode:upgrades(),
+    lists:usort(
+      [V || {V, _, menelaus_users, upgrade} <- All, V >= ?VERSION_79]).
+
+%% Possibly upgrade (substitute and/or add) roles when doing a restore
+%% from a "backup" created on an older version.
+maybe_upgrade_roles_for_restore(UserProps, VersionFromRestoredData) ->
+    %% The current compat version may not be the same as the current
+    %% release version (e.g. mixed version cluster).
+    CurrentCompatVersion = cluster_compat_mode:get_compat_version(),
+    lists:foldl(
+      fun (Ver, AccIn) ->
+              case (VersionFromRestoredData =:= undefined orelse
+                    VersionFromRestoredData < Ver) andalso
+                   CurrentCompatVersion >= Ver of
+                  true ->
+                      ensure_user_props_updated(Ver, AccIn);
+                  false ->
+                      AccIn
+              end
+      end, UserProps, versions_with_user_upgrades_for_restore()).
+
+%% Make any substitutions or additions to the roles based on the version
+maybe_upgrade_user_roles(Roles, CompatVer) ->
+    UserProps = [{roles, Roles}],
+    [{roles, NewRoles}] = maybe_upgrade_roles_for_restore(UserProps,
+                                                          CompatVer),
+    NewRoles.
+
+%% Called from cluster_compat_mode:do_upgrades/5.
 upgrade(Version, Config, Nodes) ->
     try
         ?log_info("Upgrading users database to ~p", [Version]),
@@ -1328,17 +1369,17 @@ upgrade(Version, Config, Nodes) ->
             error
     end.
 
-upgrade_props(?VERSION_76, auth, _Key, AuthProps) ->
+upgrade_props(?VERSION_76, auth, AuthProps) ->
     {ok, functools:chain(AuthProps,
                          [scram_sha:fix_pre_76_auth_info(_),
                           get_rid_of_plain_key(_)])};
-upgrade_props(?VERSION_79, user, _Key, UserProps) ->
+upgrade_props(?VERSION_79, user, UserProps) ->
     {ok, functools:chain(UserProps,
-                         [maybe_substitute_user_roles(_, undefined)])};
-upgrade_props(?VERSION_TOTORO, UserOrGroup, _Key, Props)
+                         [maybe_substitute_7_9_user_roles(_)])};
+upgrade_props(?VERSION_TOTORO, UserOrGroup, Props)
                             when UserOrGroup == user; UserOrGroup == group ->
     {ok, maybe_add_ui_access_role(Props)};
-upgrade_props(_Vsn, _RecType, _Key, _Props) ->
+upgrade_props(_Vsn, _RecType, _Props) ->
     skip.
 
 maybe_add_ui_access_role(Props) ->
@@ -1361,35 +1402,28 @@ maybe_add_ui_access_role(Props) ->
         NewProps -> NewProps
     end.
 
-%% For roles that have been eliminated or changed, substitute in their
-%% replacements. Note: the compat version check was added in 8.0.1 so
-%% the substitution occurs when restoring a backup which was taken while
-%% on 8.0.0. This is acceptable as it's the same "bug" that occurs without
-%% the compat version check.
-maybe_substitute_user_roles(User, undefined) ->
+%% For roles that have been changed substitute in their replacements.
+maybe_substitute_7_9_user_roles(User) ->
     lists:map(
       fun ({roles, Roles}) ->
-              {roles, maybe_substitute_roles(Roles)};
+              {roles, maybe_substitute_7_9_roles(Roles)};
           (Other) ->
               Other
-      end, User);
-%% So far there's no compat version driven changes needed.
-maybe_substitute_user_roles(User, _CompatVersion) ->
-    User.
+      end, User).
 
-%% Replacement roles for ones that have been removed or changed. Only
+%% Replacement roles for ones that have been changed. Only
 %% done for the same releases as supported in our upgrade matrix. These
 %% replacements are being done in 7.9. Once 7.9 is the oldest supported
 %% release we no longer have to support this replacement.
-maybe_substitute_roles(Roles) ->
+maybe_substitute_7_9_roles(Roles) ->
     case cluster_compat_mode:is_enterprise() of
         false ->
             Roles;
         true ->
-            maybe_substitute_roles_helper(Roles)
+            maybe_substitute_7_9_roles_helper(Roles)
     end.
 
-maybe_substitute_roles_helper(Roles) ->
+maybe_substitute_7_9_roles_helper(Roles) ->
     lists:flatmap(
       fun (security_admin_local) ->
               [security_admin, user_admin_local];
@@ -1412,7 +1446,7 @@ get_rid_of_plain_key(Auth) ->
 do_upgrade(Version) ->
     UpdateFun =
         fun ({RecType, Key}, Props) ->
-                case upgrade_props(Version, RecType, Key, Props) of
+                case upgrade_props(Version, RecType, Props) of
                     skip ->
                         skip;
                     {ok, Props} ->

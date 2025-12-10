@@ -1098,7 +1098,7 @@ validate_password(State) ->
       end, password, State).
 
 put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword,
-                   DoingRestore) ->
+                    DoingRestore, CompatVer) ->
     ExtraRolesFun =
         fun (State) ->
                 Id = {_, Domain} = GetUserIdFun(State),
@@ -1120,7 +1120,7 @@ put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword,
     [validator:touch(name, _),
      validate_user_groups(groups, GroupCheckFun, Req, _),
      validator:default(roles, [], _),
-     validate_roles(roles, _)] ++
+     validate_roles(roles, CompatVer, _)] ++
     [validator_verify_security_roles_access(
        roles, Req, ?LOCAL_WRITE, ExtraRolesFun, _) || not DoingRestore] ++
     [validator:valid_in_enterprise_only(locked, _),
@@ -1170,21 +1170,14 @@ parse_groups(GroupsStr) ->
     GroupsTokens = string:tokens(GroupsStr, ","),
     [string:trim(G) || G <- GroupsTokens].
 
-maybe_substitute_roles(Roles) ->
-    case cluster_compat_mode:is_cluster_80() of
-        true ->
-            menelaus_users:maybe_substitute_roles(Roles);
-        false ->
-            Roles
-    end.
-
-validate_roles(Name, State) ->
+validate_roles(Name, CompatVer, State) ->
     validator:validate(
       fun (RawRoles) ->
               Roles = parse_roles(RawRoles),
               BadRoles = [BadRole || BadRole = {error, _} <- Roles],
               GoodRoles0 = Roles -- BadRoles,
-              GoodRoles = maybe_substitute_roles(GoodRoles0),
+              GoodRoles = menelaus_users:maybe_upgrade_user_roles(GoodRoles0,
+                                                                  CompatVer),
               {_, MoreBadRoles} =
                   menelaus_roles:validate_roles(GoodRoles),
               case {BadRoles, MoreBadRoles} of
@@ -1209,6 +1202,7 @@ validate_locked(GetUserIdFun, State0) ->
     end.
 
 handle_put_user_with_identity({_UserId, Domain} = Identity, Req) ->
+    CompatVer = cluster_compat_mode:get_compat_version(),
     validator:handle(
       fun (Values) ->
               verify_domain_access(Req, Identity, write),
@@ -1216,7 +1210,7 @@ handle_put_user_with_identity({_UserId, Domain} = Identity, Req) ->
       end, Req, form, put_user_validators(Req,
                                           fun (_) -> Identity end,
                                           menelaus_users:group_exists(_),
-                                          Domain == local, false)).
+                                          Domain == local, false, CompatVer)).
 
 validator_verify_security_roles_access(RolesName, Req, Permission,
                                        ExtraRolesFun, State) ->
@@ -1858,6 +1852,7 @@ verify_ldap_access(Req, _ExistingMapping, _NewMapping) ->
 
 handle_put_group(GroupId, Req) ->
     assert_groups_and_ldap_enabled(),
+    CompatVer = cluster_compat_mode:get_compat_version(),
 
     case validate_id(GroupId, <<"Group name">>) of
         true ->
@@ -1867,18 +1862,18 @@ handle_put_group(GroupId, Req) ->
                             Req)
               end, Req, form, put_group_validators(Req,
                                                    fun (_) -> GroupId end,
-                                                   false));
+                                                   false, CompatVer));
         Error ->
             menelaus_util:reply_global_error(Req, Error)
     end.
 
-put_group_validators(Req, GetGroupNameFun, DoingRestore) ->
+put_group_validators(Req, GetGroupNameFun, DoingRestore, CompatVer) ->
     ExtraRolesFun = fun (State) ->
                         menelaus_users:get_group_roles(GetGroupNameFun(State))
                     end,
     [validator:touch(description, _),
      validator:required(roles, _),
-     validate_roles(roles, _),
+     validate_roles(roles, CompatVer, _),
      validator_verify_security_roles_access(roles, Req, ?SECURITY_WRITE,
                                             ExtraRolesFun, _),
      validator_verify_security_roles_access(roles, Req, ?LOCAL_WRITE,
@@ -2539,7 +2534,7 @@ handle_backup_restore_validated(Req, Params) ->
     CanOverwrite = proplists:get_bool(canOverwrite, Params),
     Admin = proplists:get_value(admin, Backup),
     IsProvisioned = ns_config_auth:is_system_provisioned(),
-    CompatVersion = proplists:get_value(compat_version, Backup),
+    VersionFromRestoredData = proplists:get_value(compat_version, Backup),
     AdminRes =
         case Admin of
             undefined -> undefined;
@@ -2577,9 +2572,11 @@ handle_backup_restore_validated(Req, Params) ->
                       Id = proplists:get_value(id, UserProps),
                       Domain = proplists:get_value(domain, UserProps),
                       Identity = {Id, Domain},
+                      %% If restoring a backup from an older release there
+                      %% may be tweaks needed to the data.
                       UserProps1 =
-                        menelaus_users:maybe_substitute_user_roles(
-                          UserProps, CompatVersion),
+                        menelaus_users:maybe_upgrade_roles_for_restore(
+                          UserProps, VersionFromRestoredData),
                       {Identity, [{pass_or_auth, {auth, Auth}} | UserProps1]}
               end, proplists:get_value(users, Backup)),
 
@@ -2699,10 +2696,19 @@ validate_compat_version(State) ->
               CurCompatVer = cluster_compat_mode:get_compat_version(),
               try misc:compat_version_from_string(Version) of
                   Ver when Ver > CurCompatVer ->
+                      CurCompatVerBin = misc:compat_version_to_binary(
+                                          CurCompatVer),
                       ErrorStr = io_lib:format(
                                    "Cannot restore a backup with cluster "
                                    "version '~s' as it is greater than what "
-                                   "is supported.", [Version]),
+                                   "is supported (cluster compat version "
+                                   "is '~s').", [Version, CurCompatVerBin]),
+                      {error, ErrorStr};
+                  Ver when Ver < [8, 0] ->
+                      ErrorStr = io_lib:format(
+                                   "Cannot restore a backup with cluster "
+                                   "version '~s' as it predates any supported "
+                                   "release.", [Version]),
                       {error, ErrorStr};
                   Ver ->
                       {value, Ver}
@@ -2749,6 +2755,8 @@ validate_backup_users(Name, GroupsName, Req, State) ->
                         validator:get_value(domain, S)}
                    end,
 
+    CompatVer = validator:get_value(compat_version, State),
+
     validator:json_array(
       Name,
       [validator:required(id, _),
@@ -2774,7 +2782,8 @@ validate_backup_users(Name, GroupsName, Req, State) ->
        validator:string_array(groups, _),
        validator_join(groups, ",", _),
        validate_auth(auth, _) |
-       put_user_validators(Req, GetUserIdFun, GroupExistsFun, false, true)],
+       put_user_validators(Req, GetUserIdFun, GroupExistsFun, false,
+                           true, CompatVer)],
       State).
 
 validator_join(Name, Sep, State) ->
@@ -2889,6 +2898,8 @@ is_base64(B) ->
     end.
 
 validate_backup_groups(Name, Req, State) ->
+    CompatVer = validator:get_value(compat_version, State),
+
     validator:json_array(
       Name,
       [validator:required(name, _),
@@ -2901,7 +2912,8 @@ validate_backup_groups(Name, Req, State) ->
        %% need this step because validate_roles expects it to be a comma
        %% separated list of roles
        validator_join(roles, ",", _) |
-       put_group_validators(Req, validator:get_value(name, _), true)],
+       put_group_validators(Req, validator:get_value(name, _), true,
+                            CompatVer)],
       State).
 
 validator_validate_id(Name, State) ->
