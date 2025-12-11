@@ -124,7 +124,8 @@ maybe_initiate_indexing(Bucket, Parent, JustBackfillNodes, ReplicaNodes, VBucket
 
 dcp_backfill(Bucket, Parent, VBucket, [OldMaster | _] = OldChain, ReplicaNodes,
              JustBackfillNodes, IndexAware, AllBuiltNodes, Options) ->
-    SnapshotType = case proplists:get_bool(fusion_use_snapshot, Options) of
+    IsFusion = proplists:get_bool(fusion_use_snapshot, Options),
+    SnapshotType = case IsFusion of
                        true ->
                            fusion;
                        false ->
@@ -142,6 +143,16 @@ dcp_backfill(Bucket, Parent, VBucket, [OldMaster | _] = OldChain, ReplicaNodes,
     maybe_initiate_indexing(Bucket, Parent, JustBackfillNodes, ReplicaNodes,
                             VBucket, IndexAware),
 
+    %% Fusion (snapshot) moves must wait for the snapshot to be ready before
+    %% we can continue to takeover. We could bail out of this function now, but
+    %% really we should also ensure that everything else is up to date though to
+    %% minimise time spent in takeover.
+    case IsFusion of
+        false -> ok;
+        true -> wait_snapshot_ready(Bucket, Parent, AllBuiltNodes, VBucket)
+    end,
+
+    %% Ensure that any DCP backfill is completed.
     wait_dcp_data_move(Bucket, Parent, OldMaster, AllBuiltNodes, VBucket),
 
     %% grab the seqno from the old master and wait till this seqno is
