@@ -301,6 +301,38 @@ janitor_agent(PidMap) ->
     meck:expect(?FUNCTION_NAME, release_file_based_rebalance_snapshots,
                 fun (_, _) -> ok end),
 
+    meck:expect(?FUNCTION_NAME, release_file_based_rebalance_snapshot,
+                fun (_, _, _, _) -> ok end),
+
+    meck:expect(?FUNCTION_NAME, download_snapshot,
+                fun(_, _, _, _, _) -> ok end),
+
+    meck:expect(?FUNCTION_NAME, wait_download_snapshot,
+                fun(_, _, _, _) -> ok end),
+
+    meck:expect(?FUNCTION_NAME, import_snapshot_deks,
+                fun(_, _, _, _) -> ok end),
+
+    meck:expect(?FUNCTION_NAME, wait_snapshot_ready,
+                fun(_, _, _, _) -> ok end),
+
+    meck:expect(?FUNCTION_NAME, get_src_dst_vbucket_replications,
+                fun(_, Nodes) when length(Nodes) < 2 ->
+                        %% No replications if we don't have enough nodes
+                        {[], []};
+                   (Bucket, _) ->
+                        %% Pretend that all replicators exist.
+                        {ok, BConf} = ns_bucket:get_bucket(Bucket),
+                        Map = proplists:get_value(map, BConf),
+                        {_, TupleList} =
+                            lists:foldl(
+                              fun(Chain, {VB, Acc}) ->
+                                      {VB + 1,
+                                       Acc ++ [list_to_tuple(Chain ++ [VB])]}
+                              end, {0, []}, Map),
+                        {TupleList, []}
+                end),
+
     PidMap#{?FUNCTION_NAME => mocked}.
 
 %% auto failover for orchestrator

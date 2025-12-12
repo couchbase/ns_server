@@ -72,7 +72,6 @@ setup_bucket_config(Buckets) ->
     Val = [
            {type, membase},
            {servers, ActiveKVNodes},
-           {desired_servers, ActiveKVNodes},
            {num_replicas, 1},
            {map, Map}
           ],
