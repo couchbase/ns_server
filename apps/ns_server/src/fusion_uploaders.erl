@@ -1268,4 +1268,93 @@ validate_buckets_test() ->
     {ok, _, MagmaBuckets} = RV3,
     ?assertListsEqual(["magma", "PiTR"], MagmaBuckets).
 
+generate_initial_map(NVBuckets, NReplicas, Nodes) ->
+    mb_map:generate_map(mb_map:no_nodes_map(NVBuckets, NReplicas),
+                        NReplicas, Nodes, []).
+
+uploaders_assignment_test() ->
+    erlang:erase(),
+    AllNodes = [a, b, c, d, e, f],
+    [do_moves(AllNodes, NNodes, NVBuckets, NReplicas, 5) ||
+        NNodes <- [1, 2, 3, 4, 5, 6],
+        NVBuckets <- [128],
+        NReplicas <- [1, 2]],
+    ?log_debug("Test reports:~n~p", [erlang:get()]).
+
+do_moves(AllNodes, NumInitialNodes, NVBuckets, NReplicas, Iterations) ->
+    TestKey = lists:flatten(io_lib:format(
+                              "~p:~p:~p",
+                              [NumInitialNodes, NVBuckets, NReplicas])),
+    InitialNodes = lists:sort(
+                     lists:sublist(misc:shuffle(AllNodes), NumInitialNodes)),
+    InitialMap = generate_initial_map(NVBuckets, NReplicas, InitialNodes),
+    InitialUploaders = build_initial(InitialMap),
+
+    do_moves(Iterations, NReplicas, AllNodes, InitialNodes, InitialMap,
+             InitialUploaders, TestKey).
+
+do_moves(0, _, _, _, _, _, _) ->
+    ok;
+do_moves(Iterations, NReplicas, AllNodes, InitialNodes, InitialMap,
+         InitialUploaders, TestKey) ->
+    NumNodes = rand:uniform(length(AllNodes)),
+    case lists:sort(lists:sublist(misc:shuffle(AllNodes), NumNodes)) of
+        InitialNodes ->
+            do_moves(Iterations, NReplicas, AllNodes, InitialNodes,
+                     InitialMap, InitialUploaders, TestKey);
+        Nodes ->
+            FastForwardMap = mb_map:generate_map(
+                               InitialMap, NReplicas, Nodes, []),
+            Allowance = allowance(FastForwardMap, length(Nodes)),
+            Moves = calculate_moves("test", InitialMap, FastForwardMap,
+                                    InitialUploaders, Allowance),
+            {UsageMap, UploadingFromScratch} =
+                get_report(InitialMap, InitialUploaders, Moves),
+
+            ?log_debug("Rebalance from ~p to ~p, allowance = ~p",
+                       [InitialNodes, Nodes, Allowance]),
+            NumNodes =< NReplicas orelse ?assertEqual([], UploadingFromScratch),
+            Balanced = lists:all(_ =< Allowance, maps:values(UsageMap)),
+
+            ReportList = case erlang:get(TestKey) of
+                             undefined -> [];
+                             L -> L
+                         end,
+            NewReportList =
+                [{Balanced, UploadingFromScratch =:= [], InitialNodes, Nodes,
+                  Allowance, UsageMap} | ReportList],
+            erlang:put(TestKey, NewReportList),
+
+            NewUploaders =
+                lists:map(
+                  fun ({same, Uploader}) ->
+                          Uploader;
+                      ({NewUploader, _}) ->
+                          NewUploader
+                  end, lists:zip(Moves, InitialUploaders)),
+            do_moves(Iterations - 1, NReplicas, AllNodes, Nodes, FastForwardMap,
+                     NewUploaders, TestKey)
+    end.
+
+get_report(InitialMap, InitialUploaders, Moves) ->
+    lists:foldl(
+      fun ([_, _, same, {Uploader, _}], {NodesMap, FromScratch}) ->
+              {maps:update_with(Uploader, _ + 1, 1, NodesMap), FromScratch};
+          ([N, Chain, {NewUploader, _}, {Uploader, _}],
+           {NodesMap, FromScratch}) ->
+              NewFromScratch =
+                  case lists:member(NewUploader, Chain) of
+                      true ->
+                          [{N, Chain, Uploader, NewUploader} | FromScratch];
+                      false ->
+                          FromScratch
+                  end,
+              {maps:update_with(NewUploader, _ + 1, 1, NodesMap),
+               NewFromScratch}
+      end, {#{}, []},
+      misc:zipwithN(
+        fun functools:id/1,
+        [lists:seq(0, length(InitialMap) - 1), InitialMap, Moves,
+         InitialUploaders])).
+
 -endif.
