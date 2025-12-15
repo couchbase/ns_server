@@ -16,6 +16,9 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-define(REBALANCE_POLL_TIMEOUT, 10000).
+-define(REBALANCE_POLL_PERIOD, 100).
+
 rebalance_test_() ->
     Nodes = #{
               node() => {active, [kv]},
@@ -33,7 +36,9 @@ rebalance_test_() ->
              {"Expected topology stale config",
               fun expected_topology_stale_config_t/2},
              {"Add node stale config",
-              fun add_node_stale_config_t/2}
+              fun add_node_stale_config_t/2},
+             {"Interruptible Backfill",
+              fun interruptible_backfill_t/2}
             ],
 
     %% foreachx here to let us pass parameters to setup.
@@ -109,7 +114,14 @@ expect_rebalance_success(Params) ->
 expect_rebalance_failure(Params) ->
     perform_rebalance(Params, rebalance_fail).
 
+expect_rebalance_failure(Params, Timeout, Period) ->
+    perform_rebalance(Params, rebalance_fail, Timeout, Period).
+
 perform_rebalance(Params, Type) ->
+    perform_rebalance(Params, Type, ?REBALANCE_POLL_TIMEOUT,
+                      ?REBALANCE_POLL_PERIOD).
+
+perform_rebalance(Params, Type, Timeout, Period) ->
     CurrentCounter =
         case mock_helpers:get_counter_value(Type) of
             V when is_integer(V) -> V;
@@ -118,7 +130,8 @@ perform_rebalance(Params, Type) ->
     erlang:spawn_link(fun() ->
                               {ok, _} = rebalance:start(Params)
                       end),
-    ?assert(mock_helpers:poll_for_counter_value(Type, CurrentCounter + 1)).
+    ?assert(mock_helpers:poll_for_counter_value(Type, CurrentCounter + 1,
+                                                Timeout, Period)).
 
 add_node_t(_SetupConfig, _) ->
     Params = #{known_nodes => ns_node_disco:nodes_wanted(),
@@ -199,3 +212,29 @@ add_node_stale_config_t(_SetupConfig, _) ->
                 end),
 
     expect_rebalance_failure(Params).
+
+interruptible_backfill_t(_SetupConfig, _) ->
+    %% This is a 1 + 1 rebalance in.
+    Params = #{known_nodes => ns_node_disco:nodes_wanted(),
+               eject_nodes => [],
+               services => all,
+               delta_recovery_buckets => [],
+               desired_services_nodes => #{kv => [node(), 'b']}},
+
+    %% First call will fail causing us to throw up a error that the
+    %% ns_vbucket_mover process needs to deal with.
+    %% Second call will sleep for so long that we would time out the test before
+    %% exiting. This lets us test that we propagate exit signals around properly
+    %% as the success case should have the rebalance fail quickly.
+    meck:sequence(janitor_agent,
+                  wait_download_snapshot,
+                  4,
+                  [fun(_,_,_,_) ->
+                           erlang:exit(timeout)
+                   end,
+                   fun(_,_,_,_) ->
+                           timer:sleep(infinity)
+                   end]),
+
+    expect_rebalance_failure(Params, ?REBALANCE_POLL_TIMEOUT,
+                             ?REBALANCE_POLL_PERIOD).

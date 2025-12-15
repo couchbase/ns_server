@@ -265,7 +265,13 @@ mover_inner(Parent, Bucket, VBucket,
         end,
 
     Asyncs = async:start_multiple(DCPFuns ++ FBFuns),
-    async:wait_many(Asyncs),
+
+    %% Making this async interruptible is important. async:wait_many will by
+    %% default trap exits from the parent til the asyncs finish. In the case of
+    %% a rebalance this could hang indefinitely if we are stuck waiting for
+    %% something that cannot happen because half the rebalance supervision tree
+    %% is down.
+    async:wait_many(Asyncs, [interruptible]),
 
     ?rebalance_debug("Backfill of vBucket ~p completed.", [VBucket]),
     master_activity_events:note_backfill_phase_ended(Bucket, VBucket),
