@@ -66,6 +66,7 @@
 
 -include("ns_common.hrl").
 -include("jwt.hrl").
+-include_lib("jose/include/jose_jwk.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -73,7 +74,8 @@
 
 %% API
 -export([start_link/0,
-         get_jwk/2]).
+         get_jwk/2,
+         get_jwks/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -128,6 +130,65 @@ get_jwk(#{name := Issuer} = Props, Kid) ->
             end;
         [] ->
             direct_get_jwk(Props, Kid)
+    end.
+
+%% This is used only for manual/air-gapped OIDC issuers.
+-spec get_jwks(IssuerProps :: map()) ->
+          {ok, jose_jwk:key()} | {error, binary()}.
+get_jwks(#{public_key_source := jwks_uri, name := Issuer} = Props) ->
+    case ets:lookup(?MODULE, Issuer) of
+        [{Issuer, #jwks_cache_entry{kid_to_jwk = KidToJWKMap,
+                                    expiry = Expiry}}] ->
+            IsExpired = Expiry /= undefined andalso
+                erlang:monotonic_time(millisecond) > Expiry,
+
+            case IsExpired of
+                false ->
+                    jwks_from_kid_map(KidToJWKMap);
+                true ->
+                    refresh_and_build_jwks(Props)
+            end;
+        [] ->
+            refresh_and_build_jwks(Props)
+    end;
+get_jwks(#{name := Issuer} = _Props) ->
+    %% Static sources are cached during settings_update and do not expire.
+    lookup_and_build_jwks(Issuer).
+
+%% Construct a jose_jwk set from a cached kid->jwk map (values already
+%% jose_jwk:key()).
+-spec jwks_from_kid_map(map()) -> {ok, jose_jwk:key()} | {error, binary()}.
+jwks_from_kid_map(KidToJWKMap) when is_map(KidToJWKMap) ->
+    Keys = maps:values(KidToJWKMap),
+    case Keys of
+        [] ->
+            {error, <<"No keys found">>};
+        _ ->
+            {ok, #jose_jwk{keys = {jose_jwk_set, Keys}}}
+    end.
+
+-spec lookup_and_build_jwks(string()) ->
+          {ok, jose_jwk:key()} | {error, binary()}.
+lookup_and_build_jwks(Issuer) ->
+    case ets:lookup(?MODULE, Issuer) of
+        [{Issuer, #jwks_cache_entry{kid_to_jwk = KidToJWKMap}}] ->
+            jwks_from_kid_map(KidToJWKMap);
+        [] ->
+            {error, <<"No cached JWKS found">>}
+    end.
+
+%% For jwks_uri sources, refresh and then rebuild the full JWKS set from ETS.
+-spec refresh_and_build_jwks(map()) ->
+          {ok, jose_jwk:key()} | {error, binary()}.
+refresh_and_build_jwks(#{name := Issuer} = Props) ->
+    case gen_server:call(?MODULE, {refresh_issuer, Props},
+                         ?JWKS_REFRESH_TIMEOUT_MS) of
+        ok ->
+            lookup_and_build_jwks(Issuer);
+        {error, cooldown} ->
+            {error, <<"JWKS refresh cooldown">>};
+        {error, _} ->
+            {error, <<"JWKS refresh failed">>}
     end.
 
 %% Direct lookup fallbacks for each issuer type
