@@ -28,29 +28,29 @@ type OperationArgs struct {
 	TimeoutDuration time.Duration
 }
 
-func KmsEncrypt(opArgs OperationArgs, plainText, AD []byte) ([]byte, error) {
+func KmsEncrypt(opArgs OperationArgs, plainText, AD []byte) ([]byte, string, error) {
 	if len(plainText) == 0 {
-		return nil, fmt.Errorf("no data to encrypt")
+		return nil, "", fmt.Errorf("no data to encrypt")
 	}
 
 	if err := validateArgs(opArgs); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	toEncrypt := []byte(base64.URLEncoding.EncodeToString(plainText))
 	options, err := getEncrOptions(toEncrypt, AD, opArgs.Algorithm)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	baseURL, keyName, err := parseAzureURL(opArgs.KeyURL)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	client, err := getAzureClient(baseURL)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	ctx, cancel := getContextWithTimeout(opArgs.TimeoutDuration)
@@ -58,17 +58,25 @@ func KmsEncrypt(opArgs OperationArgs, plainText, AD []byte) ([]byte, error) {
 
 	res, err := client.Encrypt(ctx, keyName, "", *options, nil)
 	if err != nil {
-		return nil, fmt.Errorf("could not encrypt data: %w", err)
+		return nil, "", fmt.Errorf("could not encrypt data: %w", err)
 	}
 
 	if res.Result == nil {
-		return nil, fmt.Errorf("empty cipher text returned")
+		return nil, "", fmt.Errorf("empty cipher text returned")
 	}
 
-	return res.Result, nil
+	if res.KID == nil {
+		return nil, "", fmt.Errorf("no key ID returned")
+	}
+
+	if version := res.KID.Version(); version == "" {
+		return nil, "", fmt.Errorf("no key version returned")
+	} else {
+		return res.Result, version, nil
+	}
 }
 
-func KmsDecrypt(opArgs OperationArgs, cipherText, AD []byte) ([]byte, error) {
+func KmsDecrypt(opArgs OperationArgs, keyVersion string, cipherText, AD []byte) ([]byte, error) {
 	if len(cipherText) == 0 {
 		return nil, fmt.Errorf("no data to decrypt")
 	}
@@ -95,7 +103,7 @@ func KmsDecrypt(opArgs OperationArgs, cipherText, AD []byte) ([]byte, error) {
 	ctx, cancel := getContextWithTimeout(opArgs.TimeoutDuration)
 	defer cancel()
 
-	res, err := client.Decrypt(ctx, keyName, "", *options, nil)
+	res, err := client.Decrypt(ctx, keyName, keyVersion, *options, nil)
 	if err != nil {
 		return nil, fmt.Errorf("could not decrypt data: %w", err)
 	}

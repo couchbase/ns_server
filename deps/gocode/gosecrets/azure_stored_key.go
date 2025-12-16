@@ -9,6 +9,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -112,7 +113,17 @@ func (k *azureStoredKey) encryptData(data, AD []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return azureutils.KmsEncrypt(*opArgs, data, AD)
+
+	encryptedText, version, err := azureutils.KmsEncrypt(*opArgs, data, AD)
+	if err != nil {
+		return nil, err
+	}
+
+	versionLenSize := make([]byte, 4)
+	binary.BigEndian.PutUint32(versionLenSize, uint32(len(version)))
+	dataSlice := append(versionLenSize, version...)
+	dataSlice = append(dataSlice, encryptedText...)
+	return dataSlice, nil
 }
 
 func (k *azureStoredKey) decryptData(data, AD []byte) ([]byte, error) {
@@ -131,7 +142,18 @@ func (k *azureStoredKey) decryptData(data, AD []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	return azureutils.KmsDecrypt(*opArgs, data, AD)
+	if len(data) < 4 {
+		return nil, fmt.Errorf("invalid data length: %d", len(data))
+	}
+
+	versionLen := binary.BigEndian.Uint32(data[0:4])
+	if len(data) < int(versionLen+4) {
+		return nil, fmt.Errorf("invalid data length: %d", len(data))
+	}
+
+	version := data[4 : 4+versionLen]
+	encryptedText := data[4+versionLen:]
+	return azureutils.KmsDecrypt(*opArgs, string(version), encryptedText, AD)
 }
 
 func (k *azureStoredKey) unmarshal(data json.RawMessage) error {

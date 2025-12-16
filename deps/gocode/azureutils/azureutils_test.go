@@ -49,12 +49,12 @@ func TestGcpEncryptDecrypt(t *testing.T) {
 		TimeoutDuration: 5 * time.Minute,
 	}
 
-	encryptedText, err := KmsEncrypt(opArgs, plainTextEncrypt, AD)
+	encryptedText, version, err := KmsEncrypt(opArgs, plainTextEncrypt, AD)
 	if err != nil {
 		t.Fatalf("Could not encrypt data: %s", err.Error())
 	}
 
-	plainTextDecrypt, err := KmsDecrypt(opArgs, encryptedText, AD)
+	plainTextDecrypt, err := KmsDecrypt(opArgs, version, encryptedText, AD)
 	if err != nil {
 		t.Fatalf("Could not decrypt data: %s", err.Error())
 	}
