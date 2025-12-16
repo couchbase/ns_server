@@ -1008,6 +1008,8 @@ do_delete_snapshots(BucketUUID, VBuckets, SnapshotUUID) ->
 -spec get_snapshots(
         binary(), [vbucket_id()], string(), non_neg_integer(), [node()]) ->
           {ok, [{non_neg_integer(), term()}]} | {error, {term(), node()}}.
+get_snapshots(_BucketUUID, [], _SnapshotUUID, _Validity, _KVNodes) ->
+    {ok, []};
 get_snapshots(BucketUUID, VBuckets, SnapshotUUID, Validity, KVNodes) ->
     execute_on_kv_node(KVNodes, do_get_snapshots,
                        [BucketUUID, VBuckets, SnapshotUUID, Validity],
