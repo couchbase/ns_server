@@ -805,6 +805,7 @@ do_handle_call({download_snapshot, MasterNode, VBucket}, _From, State) ->
     Cfg = ns_config:latest(),
 
     UseTLS = misc:should_cluster_data_be_encrypted(),
+    ClientCertAuthState = ns_ssl_services_setup:client_cert_auth_state(),
 
     {Host, TcpPort, SslPort} = ns_memcached:host_ports(MasterNode, Cfg),
     Port = case UseTLS of
@@ -834,13 +835,23 @@ do_handle_call({download_snapshot, MasterNode, VBucket}, _From, State) ->
                    {username, iolist_to_binary(Username)},
                    {password, iolist_to_binary(Password)}]}}
          ] ++ case UseTLS of
-                  true ->
+                  true when ClientCertAuthState =:= "hybrid";
+                            ClientCertAuthState =:= "mandatory" ->
                       [{tls, {[{cert, iolist_to_binary(CertFile)},
                                {key, iolist_to_binary(KeyFile)},
                                {ca_store, iolist_to_binary(CAFilePath)},
                                {passphrase,
                                 iolist_to_binary(
                                   base64:encode(PassphraseFun()))}]}}];
+                  true ->
+                      %% If client cert auth state is not hybrid or mandatory
+                      %% and we need to use TLS, we send empty client config,
+                      %% this instructs memcached to not do client cert auth
+                      %% for the client connection it initiates for download
+                      [{tls, {[{cert, <<>>},
+                               {key, <<>>},
+                               {ca_store, iolist_to_binary(CAFilePath)},
+                               {passphrase, <<>>}]}}];
                   false ->
                       []
               end},
