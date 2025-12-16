@@ -14,6 +14,8 @@
 -include("rbac.hrl").
 -include("jwt.hrl").
 -include_lib("ns_common/include/cut.hrl").
+-include_lib("oidcc/include/oidcc_provider_configuration.hrl").
+-include_lib("oidcc/include/oidcc_client_context.hrl").
 
 -export([handle_auth/1,
          handle_callback_get/1,
@@ -36,18 +38,19 @@ callback_validators() ->
      validator:required(state, _),
      validator:non_empty_string(state, _)].
 
--spec get_oidc_config(IssuerName :: string()) ->
+-spec get_issuer_config(IssuerName :: string()) ->
           {ok, map()} | {error, string()}.
-get_oidc_config(IssuerName) ->
+get_issuer_config(IssuerName) ->
     case chronicle_kv:get(kv, jwt_settings) of
         {ok, {#{issuers := Issuers}, _}} ->
             case maps:get(IssuerName, Issuers, undefined) of
                 undefined ->
                     {error, "Unknown issuer"};
-                #{oidc_settings := OIDC} ->
-                    {ok, OIDC};
-                _ ->
-                    {error, "Issuer not OIDC-enabled"}
+                IssuerProps when is_map(IssuerProps) ->
+                    case maps:is_key(oidc_settings, IssuerProps) of
+                        true  -> {ok, IssuerProps#{name => IssuerName}};
+                        false -> {error, "Issuer not OIDC-enabled"}
+                    end
             end;
         _ ->
             {error, "JWT is not enabled"}
@@ -157,10 +160,9 @@ handle_auth(Req) ->
     validator:handle(
       fun (Props) ->
               IssuerName = proplists:get_value(issuer, Props),
-              case get_oidc_config(IssuerName) of
-                  {ok, Config0} ->
-                      Config1 = Config0#{name => IssuerName},
-                      Redirect = build_auth_redirect(Config1, Req),
+              case get_issuer_config(IssuerName) of
+                  {ok, Config} ->
+                      Redirect = build_auth_redirect(Config, Req),
                       menelaus_util:reply_text(Req, <<"Redirecting...">>, 302,
                                                [{"Location", Redirect}]);
                   {error, Reason} ->
@@ -185,7 +187,7 @@ handle_callback(Req, InputType) ->
               Preauth =
                   case short_ttl_store:take(oidc_preauth_store,
                                             list_to_binary(State)) of
-                      {ok, P} -> P;
+                      {ok, Val} -> Val;
                       not_found ->
                           %% Avoid logging the actual state value as it is a
                           %% short-lived secret used for CSRF protection.
@@ -195,13 +197,14 @@ handle_callback(Req, InputType) ->
                   end,
 
               IssuerName = maps:get(name, Preauth),
-              OIDCConfig =
-                  case get_oidc_config(IssuerName) of
+              IssuerConfig =
+                  case get_issuer_config(IssuerName) of
                       {ok, Cfg} -> Cfg;
                       {error, ErrMsg} -> menelaus_util:web_exception(400,
                                                                      ErrMsg)
                   end,
 
+              OIDCConfig = maps:get(oidc_settings, IssuerConfig),
               PkceEnabled = maps:get(pkce_enabled, OIDCConfig, true),
               NonceValidation = maps:get(nonce_validation, OIDCConfig, true),
 
@@ -223,13 +226,14 @@ handle_callback(Req, InputType) ->
 
               RedirectBaseFromState =
                   maps:get(redirect_base, Preauth, undefined),
-              exchange_code_and_login(Req, OIDCConfig#{name => IssuerName},
+              exchange_code_and_login(Req, IssuerConfig,
                                       Code, CodeVerifier, Nonce,
                                       RedirectBaseFromState)
       end, Req, InputType, callback_validators()).
 
-build_auth_redirect(OIDCConfig, Req) ->
-    IssuerName = maps:get(name, OIDCConfig),
+build_auth_redirect(IssuerConfig, Req) ->
+    IssuerName = maps:get(name, IssuerConfig),
+    OIDCConfig = maps:get(oidc_settings, IssuerConfig),
     AllowedBases = maps:get(base_redirect_uris, OIDCConfig, []),
     RedirectBase =
         case select_uri_for_request(AllowedBases, Req) of
@@ -237,11 +241,11 @@ build_auth_redirect(OIDCConfig, Req) ->
             Y -> Y
         end,
     {Verifier, Nonce} = create_nonce_verifier(OIDCConfig),
-    case generate_and_put_preauth(OIDCConfig, IssuerName,
+    case generate_and_put_preauth(IssuerName,
                                   RedirectBase, Nonce, Verifier,
                                   ?RETRY_ATTEMPTS) of
         {ok, State, Nonce, Verifier} ->
-            case create_provider_redirect(OIDCConfig, RedirectBase,
+            case create_provider_redirect(IssuerConfig, RedirectBase,
                                           State, Nonce, Verifier) of
                 {ok, Url} -> Url;
                 {error, E} ->
@@ -255,11 +259,11 @@ build_auth_redirect(OIDCConfig, Req) ->
             "/oidc/callback?error=oidc_state_generation_failed"
     end.
 
-generate_and_put_preauth(_OIDCConfig, _IssuerName, _RedirectBaseParam, _Nonce,
-                         _Verifier, 0) ->
+generate_and_put_preauth(_IssuerName, _RedirectBaseParam, _Nonce, _Verifier,
+                         0) ->
     {error, exists};
-generate_and_put_preauth(OIDCConfig, IssuerName, RedirectBaseParam,
-                         Nonce, Verifier, AttemptsLeft) ->
+generate_and_put_preauth(IssuerName, RedirectBaseParam, Nonce, Verifier,
+                         AttemptsLeft) ->
     State = generate_state(),
     case short_ttl_store:put(oidc_preauth_store, State,
                              #{name => IssuerName,
@@ -271,9 +275,8 @@ generate_and_put_preauth(OIDCConfig, IssuerName, RedirectBaseParam,
         ok ->
             {ok, State, Nonce, Verifier};
         {error, exists} ->
-            generate_and_put_preauth(OIDCConfig, IssuerName,
-                                     RedirectBaseParam, Nonce, Verifier,
-                                     AttemptsLeft - 1)
+            generate_and_put_preauth(IssuerName, RedirectBaseParam, Nonce,
+                                     Verifier, AttemptsLeft - 1)
     end.
 
 generate_random_url_safe_string(LengthBytes) ->
@@ -303,15 +306,104 @@ create_nonce_verifier(OIDCConfig) ->
 get_redirect_uri(BaseRedirectUri) ->
     list_to_binary(BaseRedirectUri ++ "/oidc/callback").
 
+-spec has_discovery_uri(map()) -> boolean().
+has_discovery_uri(IssuerConfig) ->
+    OidcSettings = maps:get(oidc_settings, IssuerConfig),
+    maps:get(oidc_discovery_uri, OidcSettings, undefined) =/= undefined.
+
+-spec build_manual_provider_configuration(map()) ->
+          {ok, #oidcc_provider_configuration{}}.
+build_manual_provider_configuration(IssuerConfig) ->
+    IssuerName = maps:get(name, IssuerConfig),
+    OidcSettings = maps:get(oidc_settings, IssuerConfig),
+    AuthEndpoint = maps:get(authorization_endpoint, OidcSettings),
+    TokenEndpoint = maps:get(token_endpoint, OidcSettings),
+    Scopes = maps:get(scopes, OidcSettings),
+    ScopesSupported = [list_to_binary(S) || S <- Scopes],
+    SigningAlg = maps:get(signing_algorithm, IssuerConfig),
+    SigningAlgBin = atom_to_binary(SigningAlg),
+    TokenAuthMethod = maps:get(token_endpoint_auth_method, OidcSettings),
+    TokenAuthMethodBin = atom_to_binary(TokenAuthMethod),
+    EndSessionEndpoint = maps:get(end_session_endpoint, OidcSettings,
+                                  undefined),
+    IssuerBin = list_to_binary(IssuerName),
+    AuthEndpointBin = list_to_binary(AuthEndpoint),
+    TokenEndpointBin = list_to_binary(TokenEndpoint),
+    EndSessionBin =
+        case EndSessionEndpoint of
+            undefined -> undefined;
+            Url -> list_to_binary(Url)
+        end,
+    {ok,
+     #oidcc_provider_configuration{
+        issuer = IssuerBin,
+        authorization_endpoint = AuthEndpointBin,
+        token_endpoint = TokenEndpointBin,
+        scopes_supported = ScopesSupported,
+        response_types_supported = [<<"code">>],
+        grant_types_supported =
+            [<<"authorization_code">>, <<"refresh_token">>],
+        subject_types_supported = [public],
+        id_token_signing_alg_values_supported = [SigningAlgBin],
+        code_challenge_methods_supported = [<<"S256">>],
+        token_endpoint_auth_methods_supported = [TokenAuthMethodBin],
+        end_session_endpoint = EndSessionBin
+       }}.
+
+-spec build_manual_client_context(map()) ->
+          {ok, oidcc_client_context:t()} | {error, term()}.
+build_manual_client_context(IssuerConfig) ->
+    OidcSettings = maps:get(oidc_settings, IssuerConfig),
+    {ok, ProviderCfg0} = build_manual_provider_configuration(IssuerConfig),
+    case jwt_cache:get_jwks(IssuerConfig) of
+        {error, _} = Error ->
+            Error;
+        {ok, Jwks} ->
+            ClientId = maps:get(client_id, OidcSettings),
+            ClientSecret = maps:get(client_secret, OidcSettings),
+            ClientIdBin = list_to_binary(ClientId),
+            ClientSecretBin = list_to_binary(ClientSecret),
+            {ok,
+             oidcc_client_context:from_manual(
+               ProviderCfg0, Jwks, ClientIdBin,
+               ClientSecretBin)}
+    end.
+
+-spec with_issuer_context(map(),
+                          fun((discovery | oidcc_client_context:t()) -> term()),
+                          iolist()) ->
+          term().
+with_issuer_context(IssuerConfig, OperationFun, LogPrefix) ->
+    IssuerName = maps:get(name, IssuerConfig),
+    try
+        case has_discovery_uri(IssuerConfig) of
+            true ->
+                OperationFun(discovery);
+            false ->
+                case build_manual_client_context(IssuerConfig) of
+                    {ok, ClientContext} ->
+                        OperationFun(ClientContext);
+                    {error, Reason} ->
+                        {error, Reason}
+                end
+        end
+    catch T:E:St ->
+            ?log_warning("~s for ~p: ~p:~p~n~p",
+                         [LogPrefix, IssuerName, T, E, St]),
+            {error, {T, E}}
+    end.
+
 -spec create_provider_redirect(map(), string() | undefined,
                                binary(), binary() | undefined,
                                binary() | undefined) ->
           {ok, string()} | {error, term()}.
-create_provider_redirect(#{name := IssuerName,
-                           client_id := ClientId,
-                           client_secret := ClientSecret,
-                           scopes := Scopes},
-                         RedirectBaseParam, State, Nonce, Verifier) ->
+create_provider_redirect(IssuerConfig, RedirectBaseParam,
+                         State, Nonce, Verifier) ->
+    IssuerName = maps:get(name, IssuerConfig),
+    OidcSettings = maps:get(oidc_settings, IssuerConfig),
+    ClientId = maps:get(client_id, OidcSettings),
+    ClientSecret = maps:get(client_secret, OidcSettings),
+    Scopes = maps:get(scopes, OidcSettings),
     ScopesBin = [list_to_binary(S) || S <- Scopes],
     BaseOpts = #{redirect_uri => get_redirect_uri(RedirectBaseParam),
                  scopes => ScopesBin,
@@ -330,19 +422,23 @@ create_provider_redirect(#{name := IssuerName,
                _ -> Opts1#{nonce => Nonce}
            end,
 
-    try oidcc:create_redirect_url(
-          list_to_atom(IssuerName),
-          list_to_binary(ClientId),
-          list_to_binary(ClientSecret),
-          Opts) of
-        {ok, Uri} -> {ok,
-                      binary_to_list(iolist_to_binary(Uri))};
+    Res =
+        with_issuer_context(
+          IssuerConfig,
+          fun
+              (discovery) ->
+                  oidcc:create_redirect_url(
+                    list_to_atom(IssuerName),
+                    list_to_binary(ClientId),
+                    list_to_binary(ClientSecret),
+                    Opts);
+              (ClientContext) ->
+                  oidcc_authorization:create_redirect_url(ClientContext, Opts)
+          end,
+          "OIDC redirect build failed"),
+    case Res of
+        {ok, Uri} -> {ok, binary_to_list(iolist_to_binary(Uri))};
         Error -> Error
-    catch T:E:St ->
-            ?log_warning("OIDC redirect build failed: ~p:~p~n"
-                         "~p",
-                         [T, E, St]),
-            {error, {T, E}}
     end.
 
 -spec extract_oidc_connect_options(URL :: string(), OidcSettings :: map()) ->
@@ -354,20 +450,22 @@ extract_oidc_connect_options(URL, OidcSettings) ->
     SNI = maps:get(tls_sni, OidcSettings, ""),
     misc:tls_connect_options(URL, AddressFamily, VerifyPeer, Certs, SNI, []).
 
-exchange_code_and_login(Req, #{name := IssuerName,
-                               client_id := ClientId,
-                               client_secret := ClientSecret,
-                               token_endpoint_auth_method :=
-                                   TokenEndpointAuthMethod} = OidcConfig,
-                        Code, Verifier, Nonce, RedirectBase) ->
-    HttpTimeoutMs = maps:get(http_timeout_ms, OidcConfig),
-    SslOpts = extract_oidc_connect_options(RedirectBase, OidcConfig),
+exchange_code_and_login(Req, IssuerConfig, Code, Verifier, Nonce,
+                        RedirectBase) ->
+    IssuerName = maps:get(name, IssuerConfig),
+    OidcSettings = maps:get(oidc_settings, IssuerConfig),
+    ClientId = maps:get(client_id, OidcSettings),
+    ClientSecret = maps:get(client_secret, OidcSettings),
+    TokenEndpointAuthMethod =
+        maps:get(token_endpoint_auth_method, OidcSettings),
+    HttpTimeoutMs = maps:get(http_timeout_ms, OidcSettings),
+    SslOpts = extract_oidc_connect_options(RedirectBase, OidcSettings),
     RequestOpts = #{timeout => HttpTimeoutMs, ssl => SslOpts},
     BaseOpts = #{redirect_uri => get_redirect_uri(RedirectBase),
                  preferred_auth_methods => [TokenEndpointAuthMethod],
                  request_opts => RequestOpts},
 
-    PkceEnabled = maps:get(pkce_enabled, OidcConfig, true),
+    PkceEnabled = maps:get(pkce_enabled, OidcSettings, true),
     Opts1 = case PkceEnabled of
                 true when Verifier =/= undefined ->
                     BaseOpts#{pkce_verifier => Verifier,
@@ -381,22 +479,30 @@ exchange_code_and_login(Req, #{name := IssuerName,
                _ -> Opts1#{nonce => Nonce}
            end,
 
-    try oidcc:retrieve_token(iolist_to_binary(Code),
-                             list_to_atom(IssuerName),
-                             list_to_binary(ClientId),
-                             list_to_binary(ClientSecret),
-                             Opts) of
+    CodeBin = iolist_to_binary(Code),
+
+    Res =
+        with_issuer_context(
+          IssuerConfig,
+          fun
+              (discovery) ->
+                  oidcc:retrieve_token(
+                    CodeBin,
+                    list_to_atom(IssuerName),
+                    list_to_binary(ClientId),
+                    list_to_binary(ClientSecret),
+                    Opts);
+              (ClientContext) ->
+                  oidcc_token:retrieve(CodeBin, ClientContext, Opts)
+          end,
+          "OIDC token exchange failed"),
+    case Res of
         {ok, Token} ->
             handle_oidc_login_success(Req, IssuerName, Token);
         {error, Reason} ->
-            menelaus_util:web_exception(400,
-                                        io_lib:format("OIDC error: ~p",
-                                                      [Reason]))
-    catch T:E ->
-            ?log_warning("OIDC token exchange failed ~p:~p~n~p",
-                         [T, E]),
-            menelaus_util:web_exception(400, "OIDC token exchange "
-                                        "failed")
+            menelaus_util:web_exception(
+              400,
+              io_lib:format("OIDC error: ~p", [Reason]))
     end.
 
 handle_oidc_login_success(Req, IssuerName, Token) ->
@@ -457,16 +563,18 @@ handle_deauth(Req) ->
                    session_name = SessionName,
                    authn_res = #authn_res{id_token = IdTokenHidden}} ->
             IssuerName = parse_issuer_from_session_name(SessionName),
-            case get_oidc_config(IssuerName) of
-                {ok, #{client_id := ClientId} = Cfg} ->
-                    Opts = build_logout_opts(Req, Cfg),
+            case get_issuer_config(IssuerName) of
+                {ok, IssuerConfig} ->
+                    OidcSettings = maps:get(oidc_settings, IssuerConfig),
+                    ClientId = maps:get(client_id, OidcSettings),
+                    Opts = build_logout_opts(Req, IssuerConfig),
                     IdTokenHint =
                         case IdTokenHidden of
                             undefined -> undefined;
                             _ -> ?UNHIDE(IdTokenHidden)
                         end,
-                    Redirect = initiate_logout(IssuerName, ClientId, Opts,
-                                               IdTokenHint),
+                    Redirect = initiate_logout(IssuerConfig, ClientId,
+                                               Opts, IdTokenHint),
                     menelaus_util:reply_text(Req, <<"Redirecting...">>, 302,
                                              [{"Location", Redirect} |
                                               Headers]);
@@ -495,24 +603,34 @@ parse_issuer_from_session_name(SessionName) ->
     end.
 
 build_logout_opts(Req, Cfg) ->
-    Allowed = maps:get(post_logout_redirect_uris, Cfg, []),
+    OidcSettings = maps:get(oidc_settings, Cfg),
+    Allowed = maps:get(post_logout_redirect_uris, OidcSettings, []),
     case select_uri_for_request(Allowed, Req) of
         {error, Msg} -> menelaus_util:web_exception(400, Msg);
         Uri -> #{post_logout_redirect_uri => list_to_binary(Uri)}
     end.
 
-initiate_logout(IssuerName, ClientId, Opts, IdTokenHint) ->
-    try oidcc:initiate_logout_url(
-          IdTokenHint,
-          list_to_atom(IssuerName),
-          list_to_binary(ClientId),
-          Opts) of
+initiate_logout(IssuerConfig, ClientId, Opts, IdTokenHint) ->
+    IssuerName = maps:get(name, IssuerConfig),
+    Result =
+        with_issuer_context(
+          IssuerConfig,
+          fun
+              (discovery) ->
+                  oidcc:initiate_logout_url(
+                    IdTokenHint,
+                    list_to_atom(IssuerName),
+                    list_to_binary(ClientId),
+                    Opts);
+              (ClientContext) ->
+                  oidcc_logout:initiate_url(IdTokenHint, ClientContext, Opts)
+          end,
+          "OIDC logout failed"),
+    case Result of
         {ok, Uri} ->
             binary_to_list(iolist_to_binary(Uri));
         {error, Error} ->
-            ?log_warning("OIDC logout failed: ~p", [Error]),
-            "/"
-    catch T:E ->
-            ?log_warning("OIDC logout failed: ~p:~p", [T, E]),
+            ?log_warning("OIDC logout failed for ~p: ~p",
+                         [IssuerName, Error]),
             "/"
     end.
