@@ -447,8 +447,18 @@ get_counter_value(Counter) ->
         _ -> counters_not_found
     end.
 
+%% 10s
+-define(POLL_FOR_COUNTER_DEFAULT_TIMEOUT, 10000).
+%% 100ms
+-define(POLL_FOR_COUNTER_DEFAULT_PERIOD, 100).
+
 -spec poll_for_counter_value(atom(), any()) -> boolean().
 poll_for_counter_value(Counter, Value) ->
+    poll_for_counter_value(Counter, Value, ?POLL_FOR_COUNTER_DEFAULT_TIMEOUT,
+                           ?POLL_FOR_COUNTER_DEFAULT_PERIOD).
+
+-spec poll_for_counter_value(atom(), any(), integer(), integer()) -> boolean().
+poll_for_counter_value(Counter, Value, Timeout, Period) ->
     misc:poll_for_condition(
       fun() ->
               case get_counter_value(Counter) of
@@ -457,4 +467,4 @@ poll_for_counter_value(Counter, Value) ->
                   _ ->
                       false
               end
-      end, 10000, 100).
+      end, Timeout, Period).
