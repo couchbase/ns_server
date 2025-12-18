@@ -191,7 +191,7 @@ class AlertTests(testlib.BaseTestSet):
         def check_alert():
             r = testlib.get_succ(self.cluster, "/pools/default").json()
             for alert in r["alerts"]:
-                if "XDCR replication deleted on node" in alert["msg"]:
+                if "XDCR replication deleted for target cluster" in alert["msg"]:
                     return True
             return False
 

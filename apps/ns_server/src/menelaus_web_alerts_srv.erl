@@ -265,7 +265,7 @@ errors(indexer_diverging_replicas) ->
     "/pools/default/stats/range/index_partn_is_diverging_replica and "
     "consider dropping and re-creating it to resolve this";
 errors(xdcr_replication_deleted) ->
-    "Warning: ~p XDCR replication deleted on node: ~p";
+    "Warning: ~p XDCR replication deleted for target cluster UUID: ~s";
 errors(encr_at_rest_errors_total) ->
     "Encryption-at-Rest errors have been detected on node \"~s\". "
     "Please check the logs for more details.";
