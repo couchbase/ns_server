@@ -919,7 +919,9 @@ snake_case_test() ->
     ?assertEqual({error, "Invalid name: `\"_not_a_name\"`"},
                  snake_case("_not_a_name")),
     ?assertEqual({error, "Invalid name: `\"special_chars@\"`"},
-                 snake_case("special_chars@")).
+                 snake_case("special_chars@")),
+
+    ?assertEqual({ok, "magma_max_level0_ttl"}, snake_case("magmaMaxLevel0Ttl")).
 
 camel_case_test() ->
     ?assertEqual({ok, "foo"}, camel_case("foo")),
@@ -941,7 +943,10 @@ camel_case_test() ->
     ?assertEqual({error, "Invalid name: `\"_not_a_name\"`"},
                  camel_case("_not_a_name")),
     ?assertEqual({error, "Invalid name: `\"specialChars@\"`"},
-                 camel_case("specialChars@")).
+                 camel_case("specialChars@")),
+
+    ?assertEqual({ok, "magmaMaxLevel0Ttl"},
+                 camel_case("magma_max_level_0_ttl")).
 
 
 get_validation_config_string_internal_test() ->
