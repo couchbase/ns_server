@@ -450,6 +450,17 @@ extract_oidc_connect_options(URL, OidcSettings) ->
     SNI = maps:get(tls_sni, OidcSettings, ""),
     misc:tls_connect_options(URL, AddressFamily, VerifyPeer, Certs, SNI, []).
 
+%% Choose an OIDC URL whose scheme/host/port match the upstream IdP so that
+%% tls_connect_options/6 can apply tls_verify_peer/tls_ca/tls_sni correctly.
+-spec oidc_tls_url(map()) -> string().
+oidc_tls_url(OidcSettings) ->
+    case maps:get(oidc_discovery_uri, OidcSettings, undefined) of
+        undefined ->
+            maps:get(token_endpoint, OidcSettings);
+        Disc ->
+            Disc
+    end.
+
 exchange_code_and_login(Req, IssuerConfig, Code, Verifier, Nonce,
                         RedirectBase) ->
     IssuerName = maps:get(name, IssuerConfig),
@@ -459,7 +470,8 @@ exchange_code_and_login(Req, IssuerConfig, Code, Verifier, Nonce,
     TokenEndpointAuthMethod =
         maps:get(token_endpoint_auth_method, OidcSettings),
     HttpTimeoutMs = maps:get(http_timeout_ms, OidcSettings),
-    SslOpts = extract_oidc_connect_options(RedirectBase, OidcSettings),
+    TlsUrl = oidc_tls_url(OidcSettings),
+    SslOpts = extract_oidc_connect_options(TlsUrl, OidcSettings),
     RequestOpts = #{timeout => HttpTimeoutMs, ssl => SslOpts},
     BaseOpts = #{redirect_uri => get_redirect_uri(RedirectBase),
                  preferred_auth_methods => [TokenEndpointAuthMethod],
