@@ -14,6 +14,7 @@
 -include("ns_common.hrl").
 -include("pipes.hrl").
 -include("cb_cluster_secrets.hrl").
+-include("cb_crypto.hrl").
 
 -behaviour(replicated_storage).
 
@@ -180,7 +181,7 @@ init_after_ack(State = #state{name = TableName}) ->
     Start = os:timestamp(),
 
     {ok, DekSnapshot} = cb_crypto:fetch_deks_snapshot(configDek),
-    set_deks_snapshot(DekSnapshot),
+    set_deks_snapshot(DekSnapshot, TableName),
     cb_dets_utils:setup_callbacks(fun encrypt_term/1,
                                   fun decrypt_term/1),
     ok = open(State),
@@ -194,7 +195,7 @@ encrypt_term(Term) ->
     Bin = term_to_binary(Term),
     case cb_crypto:encrypt(Bin, <<>>, get_deks_snapshot()) of
         {ok, EncryptedData} ->
-            Version = 0,
+            Version = 1,
             Size = byte_size(EncryptedData),
             <<?ENCRYPTION_MAGIC, Version, Size:32/unsigned-integer,
               EncryptedData/binary>>;
@@ -206,15 +207,28 @@ decrypt_term(<<131, _/binary>> = D) ->
     binary_to_term(D);
 decrypt_term(<<?ENCRYPTION_MAGIC, 0, Size:32/unsigned-integer, Data:Size/binary,
              _Rest/binary>>) ->
+    {ok, Decrypted} = cb_crypto:decrypt(Data, <<>>, get_deks_snapshot(legacy)),
+    binary_to_term(Decrypted);
+decrypt_term(<<?ENCRYPTION_MAGIC, 1, Size:32/unsigned-integer, Data:Size/binary,
+             _Rest/binary>>) ->
     {ok, Decrypted} = cb_crypto:decrypt(Data, <<>>, get_deks_snapshot()),
     binary_to_term(Decrypted).
 
-set_deks_snapshot(DeksSnapshot) ->
+set_deks_snapshot(DeksSnapshot, Name) ->
     ok = cb_crypto:all_keys_ok(DeksSnapshot),
-    ok = persistent_term:put(dets_deks_snapshot, DeksSnapshot).
+    NameStr = atom_to_list(Name),
+    KDFContext =  #kdf_context{context = "replicated_dets/" ++ NameStr,
+                               label = "encryption-at-rest"},
+    DerivedSnapshot = cb_crypto:derive_deks_snapshot(DeksSnapshot, KDFContext),
+    ok = persistent_term:put(dets_deks_snapshot, #{legacy => DeksSnapshot,
+                                                   current => DerivedSnapshot}).
 
 get_deks_snapshot() ->
-    persistent_term:get(dets_deks_snapshot, undefined).
+    get_deks_snapshot(current).
+
+get_deks_snapshot(Key) when Key =:= legacy orelse Key =:= current ->
+    M = persistent_term:get(dets_deks_snapshot, #{}),
+    maps:get(Key, M, undefined).
 
 open(#state{path = Path, name = TableName}) ->
     ?log_debug("Opening file ~p", [Path]),
@@ -278,9 +292,9 @@ apply_encryption_keys(#state{name = TableName, path = Path}) ->
     case (cb_crypto:get_dek_id(Old) /= cb_crypto:get_dek_id(New)) orelse
          (NewWithoutHistDeks /= New) of
         true ->
-            set_deks_snapshot(New),
+            set_deks_snapshot(New, TableName),
             ok = resave_dets(TableName, dets_opts(Path)),
-            set_deks_snapshot(NewWithoutHistDeks);
+            set_deks_snapshot(NewWithoutHistDeks, TableName);
         false ->
             ok
     end.

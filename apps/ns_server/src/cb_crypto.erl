@@ -849,8 +849,10 @@ get_all_dek_ids(#dek_snapshot{active_key = ActiveKey, all_keys = AllKeys}) ->
         _ -> Ids
     end.
 
--spec get_dek_id(#dek_snapshot{} | cb_deks:dek() | undefined) ->
+-spec get_dek_id(#derived_ds{} | #dek_snapshot{} | cb_deks:dek() | undefined) ->
           cb_deks:dek_id() | undefined.
+get_dek_id(#derived_ds{ds = DS}) ->
+    get_dek_id(DS);
 get_dek_id(#dek_snapshot{active_key = Key}) ->
     get_dek_id(Key);
 get_dek_id(undefined) ->

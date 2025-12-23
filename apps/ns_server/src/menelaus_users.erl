@@ -108,6 +108,10 @@
 replicator_name() ->
     users_replicator.
 
+%% WARNING: Changing this name will create a compatibility issue.
+%% replicated_dets uses the table name to derive encryption keys
+%% (see replicated_dets:set_deks_snapshot/2). Changing this name
+%% will prevent decryption of existing encrypted data.
 storage_name() ->
     users_storage.
 
