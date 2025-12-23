@@ -54,8 +54,6 @@
          file_decrypt_next_chunk/2,
          file_decrypt_finish/1,
 
-         new_aes_gcm_iv/1,
-
          %% Manage deks in persistent_term storage:
          fetch_deks_snapshot/1,
          active_key_ok/1,
@@ -682,11 +680,6 @@ file_decrypt_finish(#file_decr_state{decompression_state = {deflate, Z}}) ->
     after
         zlib:close(Z)
     end.
-
--spec new_aes_gcm_iv(#dek_snapshot{}) -> binary().
-new_aes_gcm_iv(#dek_snapshot{iv_random = IVRandom,
-                             iv_atomic_counter = IVAtomic}) ->
-    new_aes_gcm_iv(IVRandom, IVAtomic).
 
 -spec fetch_deks_snapshot(cb_deks:dek_kind()) -> fetch_deks_res().
 fetch_deks_snapshot(DekKind) ->
