@@ -64,6 +64,7 @@
          reset_dek_cache/1,
          reset_dek_cache/2,
          get_all_deks/1,
+         get_all_dek_ids/1,
          get_dek_id/1,
          get_dek/1,
          without_historical_deks/1,
@@ -836,6 +837,17 @@ reset_dek_cache(DekKind, ShouldUpdateFun) ->
           {cb_deks:dek() | undefined, [cb_deks:dek()]}.
 get_all_deks(#dek_snapshot{active_key = ActiveKey, all_keys = AllKeys}) ->
     {ActiveKey, AllKeys}.
+
+-spec get_all_dek_ids(#derived_ds{} | #dek_snapshot{}) ->
+          [cb_deks:dek_id()].
+get_all_dek_ids(#derived_ds{ds = DS}) ->
+    get_all_dek_ids(DS);
+get_all_dek_ids(#dek_snapshot{active_key = ActiveKey, all_keys = AllKeys}) ->
+    Ids = [get_dek_id(K) || K <- AllKeys],
+    case ActiveKey of
+        undefined -> [undefined | Ids];
+        _ -> Ids
+    end.
 
 -spec get_dek_id(#dek_snapshot{} | cb_deks:dek() | undefined) ->
           cb_deks:dek_id() | undefined.

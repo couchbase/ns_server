@@ -16,6 +16,7 @@
 -include_lib("ns_common/include/cut.hrl").
 -include_lib("ale/include/ale.hrl").
 -include("cb_cluster_secrets.hrl").
+-include("cb_crypto.hrl").
 
 -export([start_link/0,
          init/1,
@@ -131,14 +132,12 @@ handle_call(maybe_apply_new_keys, _From, State) ->
     {reply, Res, NewState};
 handle_call(get_encryption_dek_ids, _From,
             #state{last_applied_keys_hash = KeysHash} = State) ->
+    AllIds = cb_crypto:get_all_dek_ids(get_chronicle_deks_snapshot()),
     %% If we haven't rewritten chronicle data with the most recent key yet,
     %% we can still have some data unencrypted, so add 'undefined' just in case
     %% in this case.
-    {Active, AllDeks} = cb_crypto:get_all_deks(get_chronicle_deks_snapshot()),
-    AllIds = [cb_crypto:get_dek_id(D) || D <- AllDeks],
-    Res = case Active of
-              undefined -> [undefined | AllIds];
-              _ when KeysHash == undefined -> [undefined | AllIds];
+    Res = case KeysHash of
+              undefined -> lists:uniq([undefined | AllIds]);
               _ -> AllIds
           end,
     {reply, {ok, Res}, State};
@@ -258,25 +257,50 @@ report_stats({max, Metric, Window, Bucket, Value}) ->
     ns_server_stats:notify_max({Metric, Window, Bucket}, Value).
 
 set_chronicle_deks_snapshot(DeksSnapshot) ->
-    ok = persistent_term:put(chronicle_deks_snapshot, DeksSnapshot).
+    %% Note: The context and label are used to derive the key from the current
+    %% key. Change of these values may result in backward compatibility issues.
+    KDFContext =  #kdf_context{context = "chronicle",
+                               label = "encryption-at-rest"},
+    DerivedSnapshot = cb_crypto:derive_deks_snapshot(DeksSnapshot, KDFContext),
+    %% Pre-totoro nodes use DEKs directly, while totoro nodes use derived DEKs.
+    ok = persistent_term:put(chronicle_deks_snapshot,
+                             #{legacy => DeksSnapshot,
+                               current => DerivedSnapshot}).
 
 get_chronicle_deks_snapshot() ->
-    persistent_term:get(chronicle_deks_snapshot, undefined).
+    get_chronicle_deks_snapshot(current).
+
+get_legacy_chronicle_deks_snapshot() ->
+    get_chronicle_deks_snapshot(legacy).
+
+get_chronicle_deks_snapshot(Key) when Key =:= current orelse Key =:= legacy ->
+    M = persistent_term:get(chronicle_deks_snapshot, #{}),
+    maps:get(Key, M, undefined).
 
 %% We assume that data is in erlang external term format, this is important
 %% because that's how we determine if it is encrypted or not
 encrypt_data(<<131, _/binary>> = Data) ->
     DeksSnapshot = get_chronicle_deks_snapshot(),
+    case DeksSnapshot of
+        undefined -> erlang:error(no_keys);
+        _ -> ok
+    end,
     case cb_crypto:encrypt(Data, <<>>, DeksSnapshot) of
         {ok, EncryptedData} ->
-            Version = 0,
+            Version = 1,
             <<?ENCRYPTION_MAGIC, Version, EncryptedData/binary>>;
         {error, no_active_key} ->
             Data %% Encryption is disabled
     end.
 
 decrypt_data(<<131, _/binary>> = D) -> {ok, D};
+%% Backward compatibility with pre-totoro data
 decrypt_data(<<?ENCRYPTION_MAGIC, 0, Data/binary>>) ->
+    case get_legacy_chronicle_deks_snapshot() of
+        undefined -> {error, no_keys};
+        DeksSnapshot -> cb_crypto:decrypt(Data, <<>>, DeksSnapshot)
+    end;
+decrypt_data(<<?ENCRYPTION_MAGIC, 1, Data/binary>>) ->
     case get_chronicle_deks_snapshot() of
         undefined -> {error, no_keys};
         DeksSnapshot -> cb_crypto:decrypt(Data, <<>>, DeksSnapshot)
