@@ -49,10 +49,11 @@ ensure_nif_is_loaded() ->
 %%
 %% Parameters:
 %% - HMAC hash algorithm: crypto:hmac_hash_algorithm()
-%% - Key: The key material (binary)
+%% - Key: The key material (binary) up to 512 bytes
 %% - Info: Information/label parameter (binary, can be empty)
 %% - Salt: Salt parameter (binary, can be empty)
-%% - OutLen: Length of the derived key in bytes
+%% - OutLen: Length of the derived key in bytes (up to 512 bytes)
+%% Salt + Info length is limited to 524288 bytes
 kbkdf_hmac(_HashAlgorithm, _Key, _Info, _Salt, _OutLen) ->
     erlang:nif_error({not_loaded,
                       [{module, ?MODULE},

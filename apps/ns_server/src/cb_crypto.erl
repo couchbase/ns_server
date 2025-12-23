@@ -11,6 +11,7 @@
 
 -include("ns_common.hrl").
 -include("cb_cluster_secrets.hrl").
+-include("cb_crypto.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -59,6 +60,7 @@
          active_key_ok/1,
          all_keys_ok/1,
          create_deks_snapshot/3,
+         derive_deks_snapshot/2,
          reset_dek_cache/1,
          reset_dek_cache/2,
          get_all_deks/1,
@@ -80,10 +82,12 @@
 -export_type([dek_snapshot/0, encryption_type/0]).
 
 -record(dek_snapshot, {iv_random :: binary(),
-                       iv_atomic_counter :: atomics:atomics_ref(),
+                       iv_atomic_counter :: atomics:atomics_ref() | not_set,
                        active_key :: cb_deks:dek() | undefined,
                        all_keys :: [cb_deks:dek()],
                        created_at :: calendar:datetime()}).
+
+-record(derived_ds, {ds :: #dek_snapshot{}}).
 
 -record(file_encr_state, {ad_prefix = <<>> :: binary(),
                           key :: cb_deks:dek() | undefined,
@@ -114,19 +118,27 @@
 %%% API
 %%%===================================================================
 
--spec encrypt(binary(), binary(), #dek_snapshot{}) ->
+-spec encrypt(binary(), binary(), #derived_ds{}) ->
           {ok, binary()} | {error, term()}.
-encrypt(_Data, _AD, #dek_snapshot{active_key = undefined}) ->
+encrypt(_Data, _AD, #derived_ds{ds = #dek_snapshot{active_key = undefined}}) ->
     {error, no_active_key};
-encrypt(Data, AD, #dek_snapshot{active_key = ActiveDek,
-                                iv_random = IVRandom,
-                                iv_atomic_counter = IVAtomic}) ->
-    encrypt_internal(Data, AD, IVRandom, IVAtomic, ActiveDek).
+encrypt(Data, AD, #derived_ds{ds = #dek_snapshot{active_key = ActiveDek,
+                                                 iv_random = IVRandom,
+                                                 iv_atomic_counter = IVAtomic}}) ->
+    encrypt_internal(Data, AD, IVRandom, IVAtomic, ActiveDek);
+%% Make it possible to pass in a dek snapshot directly while not all code
+%% has been updated to use derived DS. To be removed in Totoro.
+encrypt(Data, AD, #dek_snapshot{} = DS) ->
+    encrypt(Data, AD, #derived_ds{ds = DS}).
 
--spec decrypt(binary(), binary(), #dek_snapshot{}) ->
+-spec decrypt(binary(), binary(), #derived_ds{}) ->
           {ok, binary()} | {error, term()}.
-decrypt(Data, AD, #dek_snapshot{all_keys = AllKeys}) ->
-    decrypt_internal(Data, AD, AllKeys).
+decrypt(Data, AD, #derived_ds{ds = #dek_snapshot{all_keys = AllKeys}}) ->
+    decrypt_internal(Data, AD, AllKeys);
+%% Backward compatibility with pre-totoro data.
+%% Remove when support for pre-totoro data is dropped.
+decrypt(Data, AD, #dek_snapshot{} = DS) ->
+    decrypt(Data, AD, #derived_ds{ds = DS}).
 
 -spec atomic_write_file(string(), binary() | iolist(), #dek_snapshot{}) ->
           ok | {error, term()}.
@@ -724,11 +736,6 @@ create_deks_snapshot(ActiveDek, AllDeks, PrevDekSnapshot) ->
     %% Random 4 byte base + unique 8 byte integer = unique 12 byte IV
     %% (note that atomics are 8 byte integers)
     IVBase = crypto:strong_rand_bytes(4),
-    IVAtomic =
-        case PrevDekSnapshot of
-            undefined -> atomics:new(1, [{signed, false}]);
-            #dek_snapshot{iv_atomic_counter = OldIVAtomic} -> OldIVAtomic
-        end,
     PrevAllKeys =
         case PrevDekSnapshot of
             undefined -> [];
@@ -745,11 +752,50 @@ create_deks_snapshot(ActiveDek, AllDeks, PrevDekSnapshot) ->
                  (#{id := _Id, type := _Type} = K) ->
                      K
                  end,
-    #dek_snapshot{iv_random = IVBase,
-                  iv_atomic_counter = IVAtomic,
-                  active_key = GetKey(ActiveDek),
-                  all_keys = lists:map(GetKey, AllDeks),
-                  created_at = calendar:universal_time()}.
+    maybe_copy_iv_atomic_counter(
+      PrevDekSnapshot,
+      #dek_snapshot{iv_random = IVBase,
+                    iv_atomic_counter = not_set,
+                    active_key = GetKey(ActiveDek),
+                    all_keys = lists:map(GetKey, AllDeks),
+                    created_at = calendar:universal_time()}).
+
+maybe_copy_iv_atomic_counter(_From = #dek_snapshot{iv_atomic_counter = Atomic},
+                             To = #dek_snapshot{}) ->
+    To#dek_snapshot{iv_atomic_counter = Atomic};
+maybe_copy_iv_atomic_counter(undefined, To) -> %% no source, create new
+    To#dek_snapshot{iv_atomic_counter = atomics:new(1, [{signed, false}])}.
+
+-spec derive_key(cb_deks:dek() | undefined, #kdf_context{}) ->
+          cb_deks:dek() | undefined.
+%% CAUTION: Length of the keys is limited to 512 bytes by the NIF.
+%%          Length of the Context+Label is limited to 524288 bytes by the NIF.
+derive_key(undefined, #kdf_context{}) ->
+    undefined;
+derive_key(?DEK_ERROR_PATTERN(_, _) = K, #kdf_context{}) ->
+    K;
+derive_key(#{type := 'raw-aes-gcm', info := #{key := KInHidden} = I} = K,
+           #kdf_context{context = KDFContext, label = KDFLabel}) ->
+    %% According to openssl documentation, the Info and Salt parameters are
+    %% SP 800-108 Context and Label respectively.
+    Info = iolist_to_binary([<<"ns_server/">>, KDFContext]),
+    Salt = iolist_to_binary(KDFLabel),
+    KIn = ?UNHIDE(KInHidden),
+    KeySize = byte_size(KIn),
+    {ok, DerivedKey} = cb_openssl:kbkdf_hmac(sha256, KIn, Info, Salt, KeySize),
+    K#{info => I#{key => ?HIDE(DerivedKey)}}.
+
+-spec derive_deks_snapshot(#dek_snapshot{}, #kdf_context{}) -> #derived_ds{}.
+derive_deks_snapshot(#dek_snapshot{active_key = ActiveKey,
+                                   all_keys = AllKeys} = PrevDekSnapshot,
+                     KDFContext) ->
+    Derive = fun (K) -> derive_key(K, KDFContext) end,
+    DerivedSnapshot = maybe_copy_iv_atomic_counter(
+                        PrevDekSnapshot,
+                        create_deks_snapshot(Derive(ActiveKey),
+                                             lists:map(Derive, AllKeys),
+                                             undefined)),
+    #derived_ds{ds = DerivedSnapshot}.
 
 reset_dek_cache(DekKind) ->
     reset_dek_cache(DekKind, fun (_) -> true end).
