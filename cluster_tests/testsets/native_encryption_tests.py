@@ -2307,6 +2307,10 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         secret_id = create_secret(self.random_node(),
                             cb_managed_secret(name='test secret',
                                               usage=['KEK-encryption']))
+        # Make sure the system has time to test the just created secret,
+        # so we can verify that it ignores stale test results from down nodes
+        # received from ns_doctor (see assert_test_results).
+        time.sleep(key_test_interval)
         to_shutdown = kv_nodes(self.cluster)
         non_kv_node = next(filter(lambda n: Service.KV not in n.get_services(),
                                   self.cluster.connected_nodes))

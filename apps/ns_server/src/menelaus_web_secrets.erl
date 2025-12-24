@@ -1370,6 +1370,7 @@ get_test_results_aggregated(Secrets) ->
                     TestResults =
                         maybe
                             {ok, Info} ?= dict:find(N, NodesInfo),
+                            false ?= proplists:get_bool(stale, Info),
                             case proplists:get_value(encryption_keys_tests,
                                                      Info) of
                                 %% Ignore, because not supported (old version)
@@ -1378,7 +1379,9 @@ get_test_results_aggregated(Secrets) ->
                             end
                         else
                             %% Info for node is missing
-                            error -> Default
+                            error -> Default;
+                            %% Info for node is stale
+                            true -> Default
                         end,
                     %% NodesInfo may contain results for secrets that are not
                     %% in the list of secrets, so we need to filter them out
