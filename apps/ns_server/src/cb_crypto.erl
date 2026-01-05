@@ -313,7 +313,7 @@ file_encrypt_init(#dek_snapshot{active_key = ActiveKey,
                maps:get(encr_compression, Opts, undefined)
        end,
 
-    Salt = crypto:strong_rand_bytes(16),
+    Salt = misc:uuid_v4_binary(),
     {CompressionType, CompressionState} =
         case CompressOption of
             undefined ->
