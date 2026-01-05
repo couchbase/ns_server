@@ -789,6 +789,8 @@ special_mapping_cases("numVBuckets") ->
     {ok, "max_vbuckets"};
 special_mapping_cases("ramQuotaMB") ->
     {ok, "ram_quota"};
+special_mapping_cases("parallelDBAndViewCompaction") ->
+    {ok, "parallel_db_and_view_compaction"};
 special_mapping_cases(_) ->
     not_found.
 
