@@ -106,6 +106,12 @@
                           decompression_state :: undefined |
                                                  {deflate, zlib:zstream()}}).
 
+-record(encr_file_header, {vsn :: 0,
+                           key_id :: binary(),
+                           ad_prefix :: binary(),
+                           offset :: non_neg_integer(),
+                           compression_type :: non_neg_integer()}).
+
 -type dek_snapshot() :: #dek_snapshot{}.
 -type encryption_type() :: config_encryption | log_encryption |
                            audit_encryption.
@@ -361,7 +367,9 @@ file_encrypt_cont(Path, FileSize,
                                 iv_atomic_counter = IVCounter}) ->
     maybe
         {ok, Header} ?= read_file_header(Path),
-        {ok, {_Vsn, KeyId, ADPrefix, _, CompressionType, <<>>}} ?=
+        {ok, {#encr_file_header{key_id = KeyId,
+                                ad_prefix = ADPrefix,
+                                compression_type = CompressionType}, <<>>}} ?=
             parse_header(Header),
         ok ?= case CompressionType of
                   ?NO_COMPRESSION -> ok;
@@ -479,8 +487,7 @@ get_file_dek_ids(Path) ->
     case read_file_header(Path) of
         {ok, Bin} ->
             case parse_header(Bin) of
-                {ok, {_Vsn, KeyId, _ADPrefix, _Offset, _CompressionType,
-                      _Rest}} ->
+                {ok, {#encr_file_header{key_id = KeyId}, _Rest}} ->
                     {ok, [KeyId]};
                 incomplete_magic -> {ok, [undefined]};
                 need_more_data -> {ok, [undefined]};
@@ -625,7 +632,11 @@ file_decrypt_init(Data, GetDekSnapshotFun)
     file_decrypt_init(Data, GetKey);
 file_decrypt_init(Data, GetKeyFun) when is_function(GetKeyFun, 1) ->
     maybe
-        {ok, {Vsn, Id, ADPrefix, Offset, CompressionType, Chunks}} ?=
+        {ok, {#encr_file_header{vsn = Vsn,
+                                key_id = Id,
+                                ad_prefix = ADPrefix,
+                                offset = Offset,
+                                compression_type = CompressionType}, Chunks}} ?=
             parse_header(Data),
         {ok, DecompressionState} ?=
             case CompressionType of
@@ -1050,7 +1061,7 @@ is_valid_encr_header(eof) ->
 
 header_key_match({ok, HeaderData}, KeyId) ->
     case parse_header(HeaderData) of
-        {ok, {_Vsn, KeyId, _ADPrefix, _Offset, _CompressionType, _Rest}} ->
+        {ok, {#encr_file_header{key_id = KeyId}, _}} ->
             true;
         _ ->
             false
@@ -1249,25 +1260,22 @@ decrypt_all_chunks(State, Data, Acc) ->
     end.
 
 -spec parse_header(binary()) ->
-    {ok, {Vsn, KeyId, ADPrefix, Offset, CompressionType, Rest}} |
+    {ok, {#encr_file_header{}, Rest :: binary()}} |
     incomplete_magic |
     need_more_data |
     {error, unknown_magic |
             bad_header |
-            {unsupported_encryption_version, _}} when
-    Vsn :: non_neg_integer(),
-    KeyId :: binary(),
-    ADPrefix :: binary(),
-    Offset :: non_neg_integer(),
-    CompressionType :: non_neg_integer(),
-    Rest :: binary().
+            {unsupported_encryption_version, _}}.
 parse_header(<<Header:?ENCRYPTED_FILE_HEADER_LEN/binary, Rest/binary>>) ->
     %% Full header is present
     case Header of
         <<?ENCRYPTED_FILE_MAGIC, 0, CompressionType, _, _, _, _,
           36, Key:36/binary, _Salt:16/binary>> ->
-            {ok, {0, Key, Header, ?ENCRYPTED_FILE_HEADER_LEN, CompressionType,
-                  Rest}};
+            {ok, {#encr_file_header{vsn = 0,
+                                    key_id = Key,
+                                    ad_prefix = Header,
+                                    offset = ?ENCRYPTED_FILE_HEADER_LEN,
+                                    compression_type = CompressionType}, Rest}};
         <<?ENCRYPTED_FILE_MAGIC, 0, _/binary>> ->
             {error, bad_header};
         <<?ENCRYPTED_FILE_MAGIC, V, _/binary>> ->
@@ -1302,11 +1310,20 @@ parse_header_test() ->
     HeaderSize = byte_size(Header),
     ?assertEqual(?ENCRYPTED_FILE_HEADER_LEN, HeaderSize),
     LongData = crypto:strong_rand_bytes(HeaderSize * 2),
-    ?assertEqual({ok, {0, KeyBin, Header, HeaderSize, ?NO_COMPRESSION, <<>>}},
-                 parse_header(Header)),
-    ?assertEqual({ok, {0, KeyBin, Header, HeaderSize, ?NO_COMPRESSION,
-                       <<"Rest">>}},
-                 parse_header(<<Header/binary, "Rest">>)),
+    ?assertEqual({ok, {#encr_file_header{vsn = 0,
+                                         key_id = KeyBin,
+                                         ad_prefix = Header,
+                                         offset = HeaderSize,
+                                         compression_type = ?NO_COMPRESSION},
+                        <<>>}},
+                  parse_header(Header)),
+    ?assertEqual({ok, {#encr_file_header{vsn = 0,
+                                         key_id = KeyBin,
+                                         ad_prefix = Header,
+                                         offset = HeaderSize,
+                                         compression_type = ?NO_COMPRESSION},
+                        <<"Rest">>}},
+                  parse_header(<<Header/binary, "Rest">>)),
 
     ?assertEqual(incomplete_magic, parse_header(<<>>)),
     ?assertEqual(incomplete_magic, parse_header(<<0>>)),
