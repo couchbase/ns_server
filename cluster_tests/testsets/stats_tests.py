@@ -371,6 +371,7 @@ class StatsTests(testlib.BaseTestSet):
 
     # This test kills one of the nodes and verifies the associated stat
     # is incremented.
+    @tag(Tag.LowUrgency)
     def node_unreachable_prometheus_metric_test(self):
         statname = "cm_node_unreachable_total"
         victim_node = self.connected_node()
