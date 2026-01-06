@@ -1161,7 +1161,8 @@ class JWTTests(testlib.BaseTestSet):
             "--user", username,
             "--password", token,
             "--bucket", self.test_bucket,
-            "--tls"
+            "--tls",
+            "--no-peer-verify"
         ]
 
         # Wait for OAUTHBEARER authentication to succeed, we need to poll to
@@ -1197,7 +1198,8 @@ class JWTTests(testlib.BaseTestSet):
                 "--user", tc["username"],
                 "--password", tc["token"],
                 "--bucket", self.test_bucket,
-                "--tls"
+                "--tls",
+                "--no-peer-verify"
             ]
 
             result = subprocess.run(test_cmd, capture_output=True, text=True)
