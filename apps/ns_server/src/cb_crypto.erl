@@ -1338,7 +1338,9 @@ decrypt_all_chunks(State, Data, Acc) ->
             end;
         need_more_data ->
             file_decrypt_finish(State),
-            {error, invalid_file_encryption}
+            {error, invalid_file_encryption};
+        {error, _} = Error ->
+            Error
     end.
 
 -spec parse_header(binary()) ->
