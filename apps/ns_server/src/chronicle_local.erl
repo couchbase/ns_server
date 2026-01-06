@@ -259,7 +259,7 @@ report_stats({max, Metric, Window, Bucket, Value}) ->
 set_chronicle_deks_snapshot(DeksSnapshot) ->
     %% Note: The context and label are used to derive the key from the current
     %% key. Change of these values may result in backward compatibility issues.
-    KDFContext =  #kdf_context{context = "chronicle",
+    KDFContext =  #kdf_context{context = "ns_server/chronicle",
                                label = "encryption-at-rest"},
     DerivedSnapshot = cb_crypto:derive_deks_snapshot(DeksSnapshot, KDFContext),
     %% Pre-totoro nodes use DEKs directly, while totoro nodes use derived DEKs.

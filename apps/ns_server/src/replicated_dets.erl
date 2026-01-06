@@ -217,8 +217,9 @@ decrypt_term(<<?ENCRYPTION_MAGIC, 1, Size:32/unsigned-integer, Data:Size/binary,
 set_deks_snapshot(DeksSnapshot, Name) ->
     ok = cb_crypto:all_keys_ok(DeksSnapshot),
     NameStr = atom_to_list(Name),
-    KDFContext =  #kdf_context{context = "replicated_dets/" ++ NameStr,
-                               label = "encryption-at-rest"},
+    KDFContext = #kdf_context{
+                     context = "ns_server/replicated_dets/" ++ NameStr,
+                     label = "encryption-at-rest"},
     DerivedSnapshot = cb_crypto:derive_deks_snapshot(DeksSnapshot, KDFContext),
     ok = persistent_term:put(dets_deks_snapshot, #{legacy => DeksSnapshot,
                                                    current => DerivedSnapshot}).

@@ -21,6 +21,7 @@
 -define(IV_LEN, 12).
 -define(TAG_LEN, 16).
 -define(CHUNKSIZE_ATTR_SIZE, 4).
+-define(MAX_KEY_ID_LEN, 36).
 -define(ENCRYPTED_FILE_MAGIC, 0, "Couchbase Encrypted", 0).
 -define(NO_COMPRESSION, 0).
 -define(SNAPPY_COMPRESSION, 1).
@@ -29,6 +30,10 @@
 -define(ZSTD_COMPRESSION, 4).
 -define(BZIP2_COMPRESSION, 5).
 -define(GZIP_FORMAT, 16#10).
+%% Key derivation methods (lower 4 bits of byte 23 in version 1 header)
+-define(NO_KEY_DERIVATION, 0).      %% No key derivation: use key as-is
+-define(KBKDF_KEY_DERIVATION, 1).  %% KBKDF HMAC/SHA2-256/Counter
+-define(PBKDF2_KEY_DERIVATION, 2).  %% PBKDF2 SHA2-256 (not supported)
 
 -export([%% Encryption/decryption functions:
          encrypt/3,
@@ -99,18 +104,20 @@
                                                {deflate, none | sync | full,
                                                 zlib:zstream()}}).
 
--record(file_decr_state, {vsn :: non_neg_integer(),
-                          ad_prefix = <<>> :: binary(),
+-record(file_decr_state, {ad_prefix = <<>> :: binary(),
                           key :: cb_deks:dek(),
                           offset = 0 :: non_neg_integer(),
                           decompression_state :: undefined |
                                                  {deflate, zlib:zstream()}}).
 
--record(encr_file_header, {vsn :: 0,
+-record(encr_file_header, {vsn :: 0 | 1,
                            key_id :: binary(),
                            ad_prefix :: binary(),
                            offset :: non_neg_integer(),
-                           compression_type :: non_neg_integer()}).
+                           compression_type :: non_neg_integer(),
+                           key_derivation :: 0 | 1 | 2,
+                           salt :: binary(),
+                           pbkdf2_iterations :: undefined | pos_integer()}).
 
 -type dek_snapshot() :: #dek_snapshot{}.
 -type encryption_type() :: config_encryption | log_encryption |
@@ -344,14 +351,20 @@ file_encrypt_init(#dek_snapshot{active_key = ActiveKey,
             undefined -> <<>>;
             #{id := Id} ->
                 Len = size(Id),
-                Vsn = 0,
-                H = <<?ENCRYPTED_FILE_MAGIC, Vsn, CompressionType, 0, 0, 0, 0,
-                      Len, Id/binary, Salt/binary>>,
+                true = (Len =< ?MAX_KEY_ID_LEN),
+                IdPadded = <<Id/binary, 0:((?MAX_KEY_ID_LEN-Len)*8)>>,
+                Vsn = 1,
+                %% Key derivation method uses only lower 4 bits
+                KeyDerivationByte = ?KBKDF_KEY_DERIVATION,
+                H = <<?ENCRYPTED_FILE_MAGIC, Vsn, CompressionType,
+                      KeyDerivationByte, 0, 0, 0, Len, IdPadded/binary,
+                      Salt/binary>>,
                 ?ENCRYPTED_FILE_HEADER_LEN = size(H),
                 H
         end,
+    DerivedKey = derive_file_key_kbkdf(ActiveKey, Salt),
     {ok, {Header, #file_encr_state{ad_prefix = Header,
-                                   key = ActiveKey,
+                                   key = DerivedKey,
                                    iv_random = IVRandom,
                                    iv_atomic_counter = IVCounter,
                                    offset = size(Header),
@@ -367,26 +380,48 @@ file_encrypt_cont(Path, FileSize,
                                 iv_atomic_counter = IVCounter}) ->
     maybe
         {ok, Header} ?= read_file_header(Path),
-        {ok, {#encr_file_header{key_id = KeyId,
+        {ok, {#encr_file_header{vsn = Vsn,
+                                key_id = KeyId,
                                 ad_prefix = ADPrefix,
-                                compression_type = CompressionType}, <<>>}} ?=
+                                compression_type = CompressionType,
+                                key_derivation = KeyDeriv,
+                                salt = Salt,
+                                pbkdf2_iterations = _PBKDF2Iter}, <<>>}} ?=
             parse_header(Header),
         ok ?= case CompressionType of
                   ?NO_COMPRESSION -> ok;
                   _ -> {error, {unsupported_compression_type, CompressionType}}
               end,
-        case ActiveKey of
-            ?DEK_ERROR_PATTERN(KeyId, _) ->
-                {error, key_not_available};
-            #{id := KeyId} ->
-                {ok, #file_encr_state{ad_prefix = ADPrefix,
-                                      key = ActiveKey,
-                                      iv_random = IVRandom,
-                                      iv_atomic_counter = IVCounter,
-                                      offset = FileSize}};
-            _ ->
-                {error, key_mismatch}
-        end
+        ok ?= case ActiveKey of
+                  ?DEK_ERROR_PATTERN(KeyId, _) ->
+                      {error, key_not_available};
+                  #{id := KeyId} ->
+                      ok;
+                  _ ->
+                      {error, key_mismatch}
+              end,
+        {ok, DerivedKey} ?=
+            case {Vsn, KeyDeriv} of
+                {0, ?NO_KEY_DERIVATION} ->
+                    %% Version 0: no key derivation
+                    {ok, ActiveKey};
+                {1, ?NO_KEY_DERIVATION} ->
+                    %% Version 1 with no key derivation
+                    {ok, ActiveKey};
+                {1, ?KBKDF_KEY_DERIVATION} ->
+                    %% Version 1: KBKDF key derivation
+                    {ok, derive_file_key_kbkdf(ActiveKey, Salt)};
+                {1, ?PBKDF2_KEY_DERIVATION} ->
+                    %% PBKDF2 not supported
+                    {error, pbkdf2_not_supported};
+                _ ->
+                    {error, {unsupported_key_derivation, KeyDeriv}}
+            end,
+        {ok, #file_encr_state{ad_prefix = ADPrefix,
+                              key = DerivedKey,
+                              iv_random = IVRandom,
+                              iv_atomic_counter = IVCounter,
+                              offset = FileSize}}
     else
         {error, unknown_magic} when ActiveKey == undefined ->
             %% File is not encrypted
@@ -636,7 +671,10 @@ file_decrypt_init(Data, GetKeyFun) when is_function(GetKeyFun, 1) ->
                                 key_id = Id,
                                 ad_prefix = ADPrefix,
                                 offset = Offset,
-                                compression_type = CompressionType}, Chunks}} ?=
+                                compression_type = CompressionType,
+                                key_derivation = KeyDeriv,
+                                salt = Salt,
+                                pbkdf2_iterations = _PBKDF2Iter}, Chunks}} ?=
             parse_header(Data),
         {ok, DecompressionState} ?=
             case CompressionType of
@@ -650,12 +688,33 @@ file_decrypt_init(Data, GetKeyFun) when is_function(GetKeyFun, 1) ->
                     {error, {unsupported_compression_type, CompressionType}}
             end,
         {ok, Dek} ?= GetKeyFun(Id),
-        State = #file_decr_state{vsn = Vsn,
-                                 ad_prefix = ADPrefix,
-                                 key = Dek,
-                                 offset = Offset,
-                                 decompression_state = DecompressionState},
-        {ok, {State, Chunks}}
+        DerivedDek =
+            case {Vsn, KeyDeriv} of
+                {0, ?NO_KEY_DERIVATION} ->
+                    %% Version 0: no key derivation
+                    Dek;
+                {1, ?NO_KEY_DERIVATION} ->
+                    %% Version 1 with no key derivation
+                    Dek;
+                {1, ?KBKDF_KEY_DERIVATION} ->
+                    %% Version 1: KBKDF key derivation
+                    derive_file_key_kbkdf(Dek, Salt);
+                {1, ?PBKDF2_KEY_DERIVATION} ->
+                    %% PBKDF2 not supported
+                    {error, pbkdf2_not_supported};
+                _ ->
+                    {error, {unsupported_key_derivation, KeyDeriv}}
+            end,
+        case DerivedDek of
+            {error, _} = Error ->
+                Error;
+            _ ->
+                State = #file_decr_state{ad_prefix = ADPrefix,
+                                         key = DerivedDek,
+                                         offset = Offset,
+                                         decompression_state = DecompressionState},
+                {ok, {State, Chunks}}
+        end
     end.
 
 -spec file_decrypt_next_chunk(binary(), #file_decr_state{}) ->
@@ -664,8 +723,7 @@ file_decrypt_init(Data, GetKeyFun) when is_function(GetKeyFun, 1) ->
                 RestData :: binary()}} |
           need_more_data | eof | {error, term()}.
 file_decrypt_next_chunk(Data, State) ->
-    #file_decr_state{vsn = 0,
-                     key = Dek,
+    #file_decr_state{key = Dek,
                      offset = Offset,
                      decompression_state = DecompressionState} = State,
     case bite_next_chunk(Data) of
@@ -790,12 +848,20 @@ derive_key(#{type := 'raw-aes-gcm', info := #{key := KInHidden} = I} = K,
            #kdf_context{context = KDFContext, label = KDFLabel}) ->
     %% According to openssl documentation, the Info and Salt parameters are
     %% SP 800-108 Context and Label respectively.
-    Info = iolist_to_binary([<<"ns_server/">>, KDFContext]),
+    Info = iolist_to_binary(KDFContext),
     Salt = iolist_to_binary(KDFLabel),
     KIn = ?UNHIDE(KInHidden),
     KeySize = byte_size(KIn),
     {ok, DerivedKey} = cb_openssl:kbkdf_hmac(sha256, KIn, Info, Salt, KeySize),
     K#{info => I#{key => ?HIDE(DerivedKey)}}.
+
+%% Derive key for file encryption using KBKDF
+%% Salt is the 16-byte UUID from the file header
+derive_file_key_kbkdf(K, Salt) ->
+    SaltString = misc:format_uuid(Salt),
+    Context = iolist_to_binary([<<"Couchbase Encrypted File/">>, SaltString]),
+    Label = <<"Couchbase File Encryption">>,
+    derive_key(K, #kdf_context{context = Context, label = Label}).
 
 -spec derive_deks_snapshot(#dek_snapshot{}, #kdf_context{}) -> #derived_ds{}.
 derive_deks_snapshot(#dek_snapshot{active_key = ActiveKey,
@@ -1286,15 +1352,43 @@ parse_header(<<Header:?ENCRYPTED_FILE_HEADER_LEN/binary, Rest/binary>>) ->
     %% Full header is present
     case Header of
         <<?ENCRYPTED_FILE_MAGIC, 0, CompressionType, _, _, _, _,
-          36, Key:36/binary, _Salt:16/binary>> ->
+          IdLen, Key:IdLen/binary, _Padding:(?MAX_KEY_ID_LEN-IdLen)/binary,
+          Salt:16/binary>> when IdLen =< ?MAX_KEY_ID_LEN ->
+            %% Version 0: no key derivation
             {ok, {#encr_file_header{vsn = 0,
                                     key_id = Key,
                                     ad_prefix = Header,
                                     offset = ?ENCRYPTED_FILE_HEADER_LEN,
-                                    compression_type = CompressionType}, Rest}};
+                                    compression_type = CompressionType,
+                                    key_derivation = ?NO_KEY_DERIVATION,
+                                    salt = Salt,
+                                    pbkdf2_iterations = undefined}, Rest}};
+        <<?ENCRYPTED_FILE_MAGIC, 1, CompressionType, KeyDerivByte, _, _, _,
+          IdLen, Key:IdLen/binary, _Padding:(?MAX_KEY_ID_LEN-IdLen)/binary,
+          Salt:16/binary>> when IdLen =< ?MAX_KEY_ID_LEN ->
+            %% Version 1: with key derivation
+            KeyDerivMethod = KeyDerivByte band 16#0F,
+            PBKDF2IterEncoded = (KeyDerivByte bsr 4) band 16#0F,
+            PBKDF2Iter =
+                case KeyDerivMethod of
+                    ?PBKDF2_KEY_DERIVATION ->
+                        1024 * (1 bsl PBKDF2IterEncoded);
+                    _ ->
+                        undefined
+                end,
+            {ok, {#encr_file_header{vsn = 1,
+                                    key_id = Key,
+                                    ad_prefix = Header,
+                                    offset = ?ENCRYPTED_FILE_HEADER_LEN,
+                                    compression_type = CompressionType,
+                                    key_derivation = KeyDerivMethod,
+                                    salt = Salt,
+                                    pbkdf2_iterations = PBKDF2Iter}, Rest}};
         <<?ENCRYPTED_FILE_MAGIC, 0, _/binary>> ->
             {error, bad_header};
-        <<?ENCRYPTED_FILE_MAGIC, V, _/binary>> ->
+        <<?ENCRYPTED_FILE_MAGIC, 1, _/binary>> ->
+            {error, bad_header};
+        <<?ENCRYPTED_FILE_MAGIC, V, _/binary>> when V > 1 ->
             {error, {unsupported_encryption_version, V}};
         _ ->
             {error, unknown_magic}
@@ -1322,7 +1416,7 @@ parse_header_test() ->
     Key = "7c8b0d58-2977-429c-8c0c-f9adaaac0919",
     KeyBin = list_to_binary(Key),
     Header = <<?ENCRYPTED_FILE_MAGIC, 0, ?NO_COMPRESSION, 0, 0, 0, 0,
-               36, KeyBin/binary, Salt/binary>>,
+               ?MAX_KEY_ID_LEN, KeyBin/binary, Salt/binary>>,
     HeaderSize = byte_size(Header),
     ?assertEqual(?ENCRYPTED_FILE_HEADER_LEN, HeaderSize),
     LongData = crypto:strong_rand_bytes(HeaderSize * 2),
@@ -1330,16 +1424,22 @@ parse_header_test() ->
                                          key_id = KeyBin,
                                          ad_prefix = Header,
                                          offset = HeaderSize,
-                                         compression_type = ?NO_COMPRESSION},
-                        <<>>}},
-                  parse_header(Header)),
+                                         compression_type = ?NO_COMPRESSION,
+                                         key_derivation = ?NO_KEY_DERIVATION,
+                                         salt = Salt,
+                                         pbkdf2_iterations = undefined},
+                       <<>>}},
+                 parse_header(Header)),
     ?assertEqual({ok, {#encr_file_header{vsn = 0,
                                          key_id = KeyBin,
                                          ad_prefix = Header,
                                          offset = HeaderSize,
-                                         compression_type = ?NO_COMPRESSION},
-                        <<"Rest">>}},
-                  parse_header(<<Header/binary, "Rest">>)),
+                                         compression_type = ?NO_COMPRESSION,
+                                         key_derivation = ?NO_KEY_DERIVATION,
+                                         salt = Salt,
+                                         pbkdf2_iterations = undefined},
+                       <<"Rest">>}},
+                 parse_header(<<Header/binary, "Rest">>)),
 
     ?assertEqual(incomplete_magic, parse_header(<<>>)),
     ?assertEqual(incomplete_magic, parse_header(<<0>>)),
@@ -1356,16 +1456,17 @@ parse_header_test() ->
     ?assertEqual(need_more_data,
                  parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 0, 0, 0>>)),
     ?assertEqual(need_more_data,
-                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 0, 0, 0, 0, 0, 36>>)),
+                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 0, 0, 0, 0, 0,
+                                ?MAX_KEY_ID_LEN>>)),
     ?assertEqual(need_more_data,
-                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 0, 0, 0, 0, 0, 36,
-                                1>>)),
+                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 0, 0, 0, 0, 0,
+                                ?MAX_KEY_ID_LEN, 1>>)),
     ?assertEqual(need_more_data,
-                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 0, 0, 0, 0, 0, 36,
-                                KeyBin/binary>>)),
+                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 0, 0, 0, 0, 0,
+                                ?MAX_KEY_ID_LEN, KeyBin/binary>>)),
     ?assertEqual(need_more_data,
-                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 0, 0, 0, 0, 0, 36,
-                                KeyBin/binary, 1,2,3>>)),
+                 parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 0, 0, 0, 0, 0,
+                                ?MAX_KEY_ID_LEN, KeyBin/binary, 1,2,3>>)),
 
     ?assertEqual(need_more_data,
                  parse_header(<<?ENCRYPTED_FILE_MAGIC, 2>>)),
@@ -1437,8 +1538,8 @@ decrypt_file_data_test() ->
     {error, invalid_file_encryption} =
         decrypt_file_data(<<?ENCRYPTED_FILE_MAGIC, 0, ?NO_COMPRESSION>>, DS),
     {error, {unsupported_compression_type, 23}} =
-        decrypt_file_data(<<?ENCRYPTED_FILE_MAGIC, 0, 23, 0, 0, 0, 0, 36,
-                            LongData/binary>>, DS).
+        decrypt_file_data(<<?ENCRYPTED_FILE_MAGIC, 0, 23, 0, 0, 0, 0,
+                            ?MAX_KEY_ID_LEN, LongData/binary>>, DS).
 
 read_write_encr_file_test() ->
     Path = path_config:tempfile("cb_crypto_test", ".tmp"),
