@@ -1478,6 +1478,57 @@ parse_header_test() ->
                  parse_header(<<?ENCRYPTED_FILE_MAGIC, 0, 2, 0, 0, 0, 0, 37,
                               LongData/binary>>)).
 
+parse_header_v1_example_test() ->
+    %% Exact binary example from EncryptedFileFormat.md:
+    %% Version 1 header with password-based key derivation and no compression
+    %%
+    %% Hex dump:
+    %% 00000000: 0043 6f75 6368 6261 7365 2045 6e63 7279  .Couchbase Encry
+    %% 00000010: 7074 6564 0001 0072 0000 0008 7061 7373  pted...r....pass
+    %% 00000020: 776f 7264 0000 0000 0000 0000 0000 0000  word............
+    %% 00000030: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+    %% 00000040: 8fc0 ce3d e73e 4f9d 95aa c739 2c15 905d  ...=.>O....9,..]
+    %%
+    %% Key derivation byte: 0x72
+    %%   Lower 4 bits: 0x02 = PBKDF2_KEY_DERIVATION
+    %%   Upper 4 bits: 0x07 = 7
+    %%   PBKDF2 iterations: 1024 * (1 << 7) = 131072
+    %% Construct exact binary from hex dump (80 bytes total)
+    Header = <<16#00, 16#43, 16#6f, 16#75, 16#63, 16#68, 16#62, 16#61,
+               16#73, 16#65, 16#20, 16#45, 16#6e, 16#63, 16#72, 16#79,
+               16#70, 16#74, 16#65, 16#64, 16#00, 16#01, 16#00, 16#72,
+               16#00, 16#00, 16#00, 16#08, 16#70, 16#61, 16#73, 16#73,
+               16#77, 16#6f, 16#72, 16#64, 16#00, 16#00, 16#00, 16#00,
+               16#00, 16#00, 16#00, 16#00, 16#00, 16#00, 16#00, 16#00,
+               16#00, 16#00, 16#00, 16#00, 16#00, 16#00, 16#00, 16#00,
+               16#00, 16#00, 16#00, 16#00, 16#00, 16#00, 16#00, 16#00,
+               16#8f, 16#c0, 16#ce, 16#3d, 16#e7, 16#3e, 16#4f, 16#9d,
+               16#95, 16#aa, 16#c7, 16#39, 16#2c, 16#15, 16#90, 16#5d>>,
+    HeaderSize = byte_size(Header),
+    ExpectedKeyId = <<"password">>,
+    ExpectedSalt = <<16#8f, 16#c0, 16#ce, 16#3d, 16#e7, 16#3e, 16#4f, 16#9d,
+                     16#95, 16#aa, 16#c7, 16#39, 16#2c, 16#15, 16#90, 16#5d>>,
+    ?assertEqual({ok, {#encr_file_header{vsn = 1,
+                                         key_id = ExpectedKeyId,
+                                         ad_prefix = Header,
+                                         offset = HeaderSize,
+                                         compression_type = ?NO_COMPRESSION,
+                                         key_derivation = ?PBKDF2_KEY_DERIVATION,
+                                         salt = ExpectedSalt,
+                                         pbkdf2_iterations = 131072},
+                       <<>>}},
+                 parse_header(Header)),
+    ?assertEqual({ok, {#encr_file_header{vsn = 1,
+                                         key_id = ExpectedKeyId,
+                                         ad_prefix = Header,
+                                         offset = HeaderSize,
+                                         compression_type = ?NO_COMPRESSION,
+                                         key_derivation = ?PBKDF2_KEY_DERIVATION,
+                                         salt = ExpectedSalt,
+                                         pbkdf2_iterations = 131072},
+                       <<"Rest">>}},
+                 parse_header(<<Header/binary, "Rest">>)).
+
 -endif.
 
 bite_next_chunk(<<ChunkSize:32/big-unsigned-integer, Chunk:ChunkSize/binary,
