@@ -479,7 +479,7 @@ get_file_dek_ids(Path) ->
         {error, R} -> {error, R}
     end.
 
--spec get_in_use_deks([string()]) -> [cb_deks:dek_id()].
+-spec get_in_use_deks([string()]) -> [cb_deks:dek_id() | undefined].
 get_in_use_deks(FilePaths) ->
     InUseDeks =
         lists:flatmap(
