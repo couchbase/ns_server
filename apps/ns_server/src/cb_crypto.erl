@@ -2128,4 +2128,67 @@ read_deks_test() ->
         meck:unload(cb_deks)
     end.
 
+v0_backward_compat_test() ->
+    %% Test backward compatibility with version 0 encrypted files
+    %% Base64 encoded version 0 encrypted file
+    EncryptedFileBase64 =
+        <<"AENvdWNoYmFzZSBFbmNyeXB0ZWQAAAAAAAAAJGE5Y2M0NTcwLWQ5YTUtNGQzZi1i",
+          "ZjA0LTA0MDYxMDRmOTcwY5Mgw+8nTUNPx1A2qX5zPBsAAAAj5YRYyQAAAAAAAAA4",
+          "RPw62aEb15QOWmZqoAW1GKqbVQyxWVsAAAAj5YRYyQAAAAAAAAA5owzPgkwFq2Qg",
+          "3wlRECZD+p3P2iOoyBMAAAAi5YRYyQAAAAAAAAA6MHPNTtzZyfSl0dTNJuUHsxbC",
+          "tvOnaQ==">>,
+    EncryptedFileBin = base64:decode(EncryptedFileBase64),
+
+    %% Key ID and key material that was used to encrypt the ^^ above data
+    KeyId = <<"a9cc4570-d9a5-4d3f-bf04-0406104f970c">>,
+    KeyMaterialBase64 = <<"13lcwXgeNXxyHTusFL8/1VMmSdwhSXxrKr2smY2rQfc=">>,
+    KeyMaterial = base64:decode(KeyMaterialBase64),
+
+    %% Create DEK with the test key material
+    TestKey = encryption_service:new_dek_record(
+                KeyId, 'raw-aes-gcm',
+                encryption_service:new_raw_aes_dek_info(
+                  KeyMaterial, <<"encryptionService">>,
+                  {{2024, 01, 01}, {22, 00, 00}}, false)),
+
+    %% Create DEK snapshot
+    DS = create_deks_snapshot(TestKey, [TestKey], undefined),
+
+    %% Write encrypted file to temp file
+    Path = path_config:tempfile("backward_compat_v0_test", ".tmp"),
+    try
+        ok = file:write_file(Path, EncryptedFileBin),
+
+        %% Test (a): Reading the file using read_file
+        {decrypted, DecryptedData} = read_file(Path, DS),
+        %% Verify decrypted data matches expected content
+        ExpectedData = <<1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+                         16, 17, 18, 19, 20>>,
+        ?assertEqual(ExpectedData, DecryptedData),
+
+        %% Test (b): Continue writing to it using file_encrypt_cont
+        FileSize = byte_size(EncryptedFileBin),
+        {ok, EncryptState} = file_encrypt_cont(Path, FileSize, DS),
+        %% Verify we got a valid encryption state
+        true = is_record(EncryptState, file_encr_state),
+
+        %% Write some additional data
+        AdditionalData = <<"additional test data">>,
+        {AdditionalChunk, _NewState} =
+            file_encrypt_chunk(AdditionalData, EncryptState),
+        true = is_binary(AdditionalChunk),
+
+        %% Verify we can read the extended file
+        {ok, File} = file:open(Path, [append, raw, binary]),
+        ok = file:write(File, AdditionalChunk),
+        ok = file:close(File),
+        {decrypted, ExtendedDecrypted} = read_file(Path, DS),
+        %% Verify extended data contains original data plus additional data
+        ExpectedExtended = <<ExpectedData/binary, AdditionalData/binary>>,
+        ?assertEqual(ExpectedExtended, ExtendedDecrypted),
+        ok
+    after
+        file:delete(Path)
+    end.
+
 -endif.
