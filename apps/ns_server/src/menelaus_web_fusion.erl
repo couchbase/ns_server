@@ -112,11 +112,11 @@ jsonify_buckets_status(Buckets) ->
     {lists:map(
        fun ({BucketName, Props}) ->
                JsonProps =
-                   [{pendingBytes,
+                   [{snapshotPendingBytes,
                      proplists:get_value(snapshot_pending_bytes, Props)},
-                    {completedBytes,
+                    {syncSessionCompletedBytes,
                      proplists:get_value(sync_session_completed_bytes, Props)},
-                    {totalBytes,
+                    {syncSessionTotalBytes,
                      proplists:get_value(sync_session_total_bytes, Props)}],
                {list_to_binary(BucketName),
                 {[{N, P} || {N, P} <- JsonProps, P =/= undefined]}}
