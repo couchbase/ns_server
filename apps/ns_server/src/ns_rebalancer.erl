@@ -37,7 +37,7 @@
          rebalance_topology_aware_services/3,
          needs_rebalance_with_reason/3,
          get_desired_services_nodes/1,
-         prepare_fusion_rebalance/1,
+         prepare_fusion_rebalance/2,
          map_to_vbuckets_dict/1,
          maybe_check_expected_topology/2]).
 
@@ -2074,9 +2074,9 @@ deactivate_bucket_data_on_unknown_nodes(BucketName, Nodes) ->
             exit({error, deactivate_bucket_data_failed, Error})
     end.
 
--spec prepare_fusion_rebalance([node()]) ->
+-spec prepare_fusion_rebalance(binary(), [node()]) ->
           {ok, {list(), {list()}}} | {error, term()}.
-prepare_fusion_rebalance(KeepNodes) ->
+prepare_fusion_rebalance(PlanUUID, KeepNodes) ->
     Snapshot = chronicle_compat:get_snapshot(
                  [ns_bucket:fetch_snapshot(all, _, [uuid, props]),
                   ns_cluster_membership:fetch_snapshot(_)],
@@ -2084,13 +2084,13 @@ prepare_fusion_rebalance(KeepNodes) ->
 
     KeepKVNodes = ns_cluster_membership:service_nodes(Snapshot, KeepNodes, kv),
     Validity = os:system_time(second) + ?FUSION_SNAPSHOT_LIFETIME div 1000,
-    prepare_fusion_rebalance(KeepKVNodes, Snapshot,
+    prepare_fusion_rebalance(PlanUUID, KeepKVNodes, Snapshot,
                              fun generate_fast_forward_map/4, Validity).
 
 
-prepare_fusion_rebalance(KeepKVNodes, Snapshot, GenerateMapFun, Validity) ->
+prepare_fusion_rebalance(PlanUUID, KeepKVNodes, Snapshot, GenerateMapFun,
+                         Validity) ->
     BucketNames = ns_bucket:get_bucket_names(Snapshot),
-    PlanUUID = couch_uuids:random(),
     try
         RV =
             prepare_fusion_rebalance_massage_result(
@@ -2260,8 +2260,9 @@ prepare_rebalance_test_() ->
                    fun (_, _, fusion1, _) -> {TargetMap1, options1};
                        (_, _, fusion2, _) -> {TargetMap2, options2}
                    end,
-               RV = prepare_fusion_rebalance(Servers, Snapshot, GenerateMapFun,
-                                             os:system_time(second) + 1000),
+               RV = prepare_fusion_rebalance(
+                      <<"PlanUUD">>, Servers, Snapshot, GenerateMapFun,
+                      os:system_time(second) + 1000),
                ?assertMatch({ok, {_, {_}}}, RV),
                {ok, {RebalancePlan, {AccelerationPlan}}} = RV,
                UUID = proplists:get_value(planUUID, RebalancePlan),

@@ -691,7 +691,7 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 
 init([]) ->
     process_flag(trap_exit, true),
-    ets:new(?ETS, [named_table]),
+    ets:new(?ETS, [named_table, public]),
     {ok, idle, #idle_state{}, {{timeout, janitor}, 0, run_janitor}}.
 
 handle_event({call, From}, get_state, StateName, _State) ->
@@ -1228,27 +1228,18 @@ idle({fusion, Command}, From, _State) ->
 idle({prepare_fusion_rebalance, KeepNodes}, From, _State) ->
     ?log_info("Request to prepare fusion rebalance. KeepNodes = ~p",
               [KeepNodes]),
-    RV =
-        case fusion_uploaders:get_state() of
-            enabled ->
-                case KeepNodes -- ns_cluster_membership:nodes_wanted() of
-                    [] ->
-                        case ns_rebalancer:prepare_fusion_rebalance(
-                               KeepNodes) of
-                            {ok, {RebalancePlan, AccelerationPlan}} ->
-                                ets:insert(
-                                  ?ETS, {?FUSION_REBALANCE_PLAN, RebalancePlan}),
-                                {ok, AccelerationPlan};
-                            {error, Error} ->
-                                Error
-                        end;
-                    UnknownNodes ->
-                        {unknown_nodes, UnknownNodes}
-                end;
-            _ ->
-                not_enabled
-        end,
-    {keep_state_and_data, [{reply, From, RV}]};
+    case fusion_uploaders:get_state() of
+        enabled ->
+            case KeepNodes -- ns_cluster_membership:nodes_wanted() of
+                [] ->
+                    start_preparing_fusion_rebalance(KeepNodes, From);
+                UnknownNodes ->
+                    {keep_state_and_data,
+                     [{reply, From, {unknown_nodes, UnknownNodes}}]}
+            end;
+        _ ->
+            {keep_state_and_data, [{reply, From, not_enabled}]}
+    end;
 
 idle({abort_prepared_fusion_rebalance, PlanUUID}, From, _State) ->
     ?log_info("Request to abort fusion rebalance. uuid = ~p", [PlanUUID]),
@@ -1324,6 +1315,47 @@ idle({{bucket_hibernation_op, {start, Op}},
     end;
 idle({{bucket_hibernation_op, {stop, Op}}, [_Bucket]}, From, _State) ->
     {keep_state_and_data, {reply, From, not_running(Op)}}.
+
+start_preparing_fusion_rebalance(KeepNodes, ReplyTo) ->
+    PlanUUID = couch_uuids:random(),
+    Type = prepare_fusion_rebalance,
+    NodesInfo = [{active_nodes, ns_cluster_membership:active_nodes()},
+                 {keep_nodes, KeepNodes}],
+
+    {ok, ObserverPid} = ns_rebalance_observer:start_link(
+                          [kv], NodesInfo, Type, PlanUUID),
+
+    Pid = spawn_link(
+            fun () ->
+                    case ns_rebalancer:prepare_fusion_rebalance(
+                           PlanUUID, KeepNodes) of
+                        {ok, {RebalancePlan, AccelerationPlan}} ->
+                            ets:insert(
+                              ?ETS, {?FUSION_REBALANCE_PLAN, RebalancePlan}),
+                            erlang:exit({shutdown, {ok, AccelerationPlan}});
+                        {error, Error} ->
+                            erlang:exit(Error)
+                    end
+            end),
+
+    ?log_debug("Start preparing fusion rebalance for PlanUUID = ~p. "
+               "KeepNodes =  ~p. ", [PlanUUID, KeepNodes]),
+    ns_cluster:counter_inc(Type, start),
+    set_rebalance_status(Type, running, Pid),
+
+    {next_state, rebalancing,
+     #rebalancing_state{rebalancer = Pid,
+                        rebalance_observer = ObserverPid,
+                        keep_nodes = KeepNodes,
+                        eject_nodes = [],
+                        failed_nodes = [],
+                        delta_recov_bkts = [],
+                        retry_check = undefined,
+                        to_failover = [],
+                        abort_reason = undefined,
+                        type = Type,
+                        reply_to = ReplyTo,
+                        rebalance_id = PlanUUID}}.
 
 %% Synchronous janitor_running events
 janitor_running({ensure_janitor_run, Item}, From, State) ->
@@ -2048,7 +2080,9 @@ rebalance_type2text(failover) ->
 rebalance_type2text(graceful_failover) ->
     <<"Graceful failover">>;
 rebalance_type2text(service_upgrade) ->
-    <<"Service upgrade">>.
+    <<"Service upgrade">>;
+rebalance_type2text(prepare_fusion_rebalance) ->
+    <<"Prepare fusion rebalance">>.
 
 update_rebalance_counters(Reason, #rebalancing_state{type = Type}) ->
     %% If any new counter is added a corresponding convert_to_reported_event
