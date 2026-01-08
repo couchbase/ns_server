@@ -186,6 +186,7 @@ is_data_service_file_based_backfill_enabled() ->
 
 is_data_service_file_based_backfill_enabled(Config) ->
     is_cluster_totoro() andalso
+        is_enterprise(Config) andalso
         ns_config:search(Config,
                          file_based_backfill_enabled,
                          ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT).

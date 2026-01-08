@@ -46,6 +46,14 @@ setup_cluster_config(NodesMap) ->
           end, #{}, NodesMap),
     fake_chronicle_kv:update_snapshot(ClusterSnapshot),
 
+
+    EnterpriseNodes =
+        maps:fold(
+          fun(Node, _, Acc) ->
+                  [{{node, Node, is_enterprise}, true} | Acc]
+          end, [], NodesMap),
+    fake_ns_config:update_snapshot(EnterpriseNodes),
+
     Nodes = maps:keys(NodesMap),
     fake_chronicle_kv:update_snapshot(nodes_wanted, Nodes),
 

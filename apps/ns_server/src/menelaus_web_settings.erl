@@ -786,7 +786,8 @@ conf(internal) ->
             false ->
                 []
         end ++
-        case cluster_compat_mode:is_cluster_totoro() of
+        case cluster_compat_mode:is_enterprise() andalso
+            cluster_compat_mode:is_cluster_totoro() of
             true ->
                 [{file_based_backfill_enabled, fileBasedBackfillEnabled,
                   ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT,
