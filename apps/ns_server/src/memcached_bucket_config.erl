@@ -556,14 +556,14 @@ ensure(Sock, #cfg{type = memcached}, undefined) ->
                       end, not_present),
     ok.
 
-format_mcd_keys(ActiveDek, Deks) ->
-    format_mcd_keys(ActiveDek, Deks, fun (K) -> K end).
-format_mcd_keys(ActiveDek, Deks, Sanitizer) ->
+format_mcd_keys(ActiveDekId, Deks) ->
+    format_mcd_keys(ActiveDekId, Deks, fun (K) -> K end).
+format_mcd_keys(ActiveDekId, Deks, Sanitizer) ->
     DeksJsonMcd = lists:filtermap(fun (D) -> format_mcd_key(D, Sanitizer) end,
                                   Deks),
-    ActiveKeyMcd = case ActiveDek of
+    ActiveKeyMcd = case ActiveDekId of
                        undefined -> ?MCD_DISABLED_ENCRYPTION_KEY_ID;
-                       #{id := ActiveId} -> ActiveId
+                       _ -> ActiveDekId
                    end,
     {[{keys, DeksJsonMcd}, {active, ActiveKeyMcd}]}.
 
@@ -642,7 +642,7 @@ start_params(#cfg{name=BucketName,
                   config = BucketConfig,
                   snapshot = Snapshot,
                   params = Params,
-                  engine_config = EngineConfig}, ActiveDek, Deks, JWT) ->
+                  engine_config = EngineConfig}, ActiveDekId, Deks, JWT) ->
     Engine = proplists:get_value(engine, EngineConfig),
 
     StaticConfigString =
@@ -665,7 +665,7 @@ start_params(#cfg{name=BucketName,
                         false ->
                             fun (S) -> S end
                     end,
-                EncodedDeks = ejson:encode(format_mcd_keys(ActiveDek,
+                EncodedDeks = ejson:encode(format_mcd_keys(ActiveDekId,
                                                            Deks, Sanitizer)),
                 DeksConfigString = "encryption=" ++ binary_to_list(EncodedDeks),
 

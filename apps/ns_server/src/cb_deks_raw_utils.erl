@@ -76,11 +76,7 @@ bootstrap_get_deks(DekKind, Opts) ->
             true ->
                 case proplists:get_value(ActiveDekId, Errors) of
                     undefined ->
-                        {value, ActiveDek} =
-                            lists:search(fun (#{id := Id}) ->
-                                                 Id == ActiveDekId
-                                         end, Deks),
-                        DS = cb_crypto:create_deks_snapshot(ActiveDek, Deks,
+                        DS = cb_crypto:create_deks_snapshot(ActiveDekId, Deks,
                                                             undefined),
                         {ok, DS};
                     KeyError ->

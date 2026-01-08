@@ -1937,12 +1937,9 @@ deks_hash(IsEnabled, ActiveId, Keys) ->
     erlang:phash2({IsEnabled, ActiveId, lists:sort(Ids)}, ?MAX_PHASH2_RANGE).
 
 should_update_cache(NewHash, CachedDEKSnapshot) ->
-    {ActiveKey, AllKeys} = cb_crypto:get_all_deks(CachedDEKSnapshot),
+    {ActiveKeyId, AllKeys} = cb_crypto:get_all_deks(CachedDEKSnapshot),
 
-    OldHash = case ActiveKey of
-                  undefined -> deks_hash(false, undefined, AllKeys);
-                  #{id := Id} -> deks_hash(true, Id, AllKeys)
-              end,
+    OldHash = deks_hash(ActiveKeyId =/= undefined, ActiveKeyId, AllKeys),
 
     NewHash =/= OldHash.
 
@@ -2036,8 +2033,7 @@ write_deks_cfg_file(#state{deks_info = DeksInfo}) ->
                                                          Id == CfgActiveId
                                                  end, CfgDeks),
             #{type := 'raw-aes-gcm'} = CfgActiveKey,
-            DS = cb_crypto:create_deks_snapshot(CfgActiveKey, [CfgActiveKey],
-                                                undefined),
+            DS = cb_crypto:create_single_dek_snapshot(CfgActiveKey, undefined),
             ok = cb_crypto:atomic_write_file(Path, ToWrite, DS)
     end,
     ok.

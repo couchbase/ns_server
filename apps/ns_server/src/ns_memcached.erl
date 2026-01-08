@@ -1892,10 +1892,10 @@ do_ensure_bucket(Sock, Bucket, BConf, false, JWT, BucketUUID) ->
 
                 ok ?= write_bucket_metadata(Bucket, BucketUUID, DS),
 
-                {ActiveDek, Deks} = cb_crypto:get_all_deks(DS),
+                {ActiveDekId, Deks} = cb_crypto:get_all_deks(DS),
                 {Engine, ConfigString, ConfigStringForLogging} =
-                    memcached_bucket_config:start_params(BConf, ActiveDek, Deks,
-                                                         JWT),
+                    memcached_bucket_config:start_params(BConf, ActiveDekId,
+                                                         Deks, JWT),
 
                 BucketConfig = memcached_bucket_config:get_bucket_config(BConf),
                 Timeout = case ns_bucket:node_kv_backend_type(BucketConfig) of

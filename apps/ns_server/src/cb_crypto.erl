@@ -65,6 +65,7 @@
          active_key_ok/1,
          all_keys_ok/1,
          create_deks_snapshot/3,
+         create_single_dek_snapshot/2,
          derive_deks_snapshot/2,
          reset_dek_cache/1,
          reset_dek_cache/2,
@@ -227,7 +228,7 @@ reencrypt_file(FromPath, ToPath, DS, Opts) ->
                         case find_key(KeyId, DS) of
                             {ok, Dek} ->
                                 %% We don't need other keys actually
-                                {ok, create_deks_snapshot(Dek, [Dek], DS)};
+                                {ok, create_single_dek_snapshot(Dek, DS)};
                             {error, E} ->
                                 {error, E}
                         end
@@ -504,9 +505,7 @@ is_file_encr_by_active_key(Path, #dek_snapshot{active_key = #{id := KeyId}}) ->
 -spec can_ds_decrypt_file(string(), #dek_snapshot{}) -> true | false.
 can_ds_decrypt_file(Path, DS) ->
     {ok, FileDekIds} = get_file_dek_ids(Path),
-    {ActiveKey, OtherKeys} = get_all_deks(DS),
-    AllKeyIds = [get_dek_id(Key) || Key <- OtherKeys] ++
-        [get_dek_id(ActiveKey) || ActiveKey =/= undefined],
+    AllKeyIds = get_all_dek_ids(DS),
     lists:all(
       fun(DekId) ->
               lists:member(DekId, AllKeyIds)
@@ -800,9 +799,9 @@ all_keys_ok(#dek_snapshot{all_keys = AllKeys} = Snapshot) ->
             Error
     end.
 
--spec create_deks_snapshot(cb_deks:dek() | undefined, [cb_deks:dek()],
+-spec create_deks_snapshot(cb_deks:dek_id() | undefined, [cb_deks:dek()],
                            #dek_snapshot{} | undefined) -> #dek_snapshot{}.
-create_deks_snapshot(ActiveDek, AllDeks, PrevDekSnapshot) ->
+create_deks_snapshot(ActiveKeyId, AllDeks, PrevDekSnapshot) ->
     %% Random 4 byte base + unique 8 byte integer = unique 12 byte IV
     %% (note that atomics are 8 byte integers)
     IVBase = crypto:strong_rand_bytes(4),
@@ -815,20 +814,38 @@ create_deks_snapshot(ActiveDek, AllDeks, PrevDekSnapshot) ->
     PrevAllKeysMap = maps:from_list(PrevAllKeys),
     %% If "new" key is not available, take that key from the previous snapshot
     %% Basically, new snapshot should not get "worse" than the previous one
-    GetKey = fun (undefined) ->
-                     undefined;
-                 (?DEK_ERROR_PATTERN(Id, _) = K) ->
+    GetKey = fun (?DEK_ERROR_PATTERN(Id, _) = K) ->
                      maps:get(Id, PrevAllKeysMap, K);
                  (#{id := _Id, type := _Type} = K) ->
                      K
                  end,
+    ProcessedAllKeys = lists:map(GetKey, AllDeks),
+    %% Find active key in AllKeys by ID
+    ActiveKey = case ActiveKeyId of
+                    undefined ->
+                        undefined;
+                    _ ->
+                        case lists:search(
+                               fun (#{id := Id}) -> Id == ActiveKeyId end,
+                               ProcessedAllKeys) of
+                            {value, Key} ->
+                                Key;
+                            false ->
+                                error({missing_active_key, ActiveKeyId})
+                        end
+                end,
     maybe_copy_iv_atomic_counter(
       PrevDekSnapshot,
       #dek_snapshot{iv_random = IVBase,
                     iv_atomic_counter = not_set,
-                    active_key = GetKey(ActiveDek),
-                    all_keys = lists:map(GetKey, AllDeks),
+                    active_key = ActiveKey,
+                    all_keys = ProcessedAllKeys,
                     created_at = calendar:universal_time()}).
+
+-spec create_single_dek_snapshot(cb_deks:dek(), #dek_snapshot{} | undefined) ->
+          #dek_snapshot{}.
+create_single_dek_snapshot(Key, PrevDekSnapshot) ->
+    create_deks_snapshot(get_dek_id(Key), [Key], PrevDekSnapshot).
 
 maybe_copy_iv_atomic_counter(_From = #dek_snapshot{iv_atomic_counter = Atomic},
                              To = #dek_snapshot{}) ->
@@ -868,10 +885,11 @@ derive_deks_snapshot(#dek_snapshot{active_key = ActiveKey,
                                    all_keys = AllKeys} = PrevDekSnapshot,
                      KDFContext) ->
     Derive = fun (K) -> derive_key(K, KDFContext) end,
+    DerivedKeys = lists:map(Derive, AllKeys),
+    DerivedActiveKeyId = get_dek_id(ActiveKey),
     DerivedSnapshot = maybe_copy_iv_atomic_counter(
                         PrevDekSnapshot,
-                        create_deks_snapshot(Derive(ActiveKey),
-                                             lists:map(Derive, AllKeys),
+                        create_deks_snapshot(DerivedActiveKeyId, DerivedKeys,
                                              undefined)),
     #derived_ds{ds = DerivedSnapshot}.
 
@@ -911,12 +929,12 @@ reset_dek_cache(DekKind, ShouldUpdateFun) ->
       end).
 
 -spec get_all_deks(#dek_snapshot{}) ->
-          {cb_deks:dek() | undefined, [cb_deks:dek()]}.
+          {cb_deks:dek_id() | undefined, [cb_deks:dek()]}.
 get_all_deks(#dek_snapshot{active_key = ActiveKey, all_keys = AllKeys}) ->
-    {ActiveKey, AllKeys}.
+    {get_dek_id(ActiveKey), AllKeys}.
 
 -spec get_all_dek_ids(#derived_ds{} | #dek_snapshot{}) ->
-          [cb_deks:dek_id()].
+          [cb_deks:dek_id() | undefined].
 get_all_dek_ids(#derived_ds{ds = DS}) ->
     get_all_dek_ids(DS);
 get_all_dek_ids(#dek_snapshot{active_key = ActiveKey, all_keys = AllKeys}) ->
@@ -1248,21 +1266,16 @@ read_deks(DekKind, PrevDekSnapshot) ->
         GoodPrevKeysIds = lists:usort([get_dek_id(K) || K <- GoodPrevKeys]),
         IdsMissing = lists:usort(Ids) -- GoodPrevKeysIds,
         Keys = cb_deks:read(DekKind, IdsMissing) ++ GoodPrevKeys,
-        {ok, ActiveKey} ?=
-            case IsEnabled of
-                true ->
-                    case lists:search(fun (#{id := Id}) ->
-                                          Id == ActiveId
-                                      end, Keys) of
-                        {value, AK} ->
-                            {ok, AK};
-                        false ->
-                            {error, {missing_active_key, ActiveId}}
-                    end;
-                false ->
-                    {ok, undefined}
-            end,
-        {ok, create_deks_snapshot(ActiveKey, Keys, PrevDekSnapshot)}
+        ActiveKeyId = case IsEnabled of
+                          true -> ActiveId;
+                          false -> undefined
+                      end,
+        try
+            {ok, create_deks_snapshot(ActiveKeyId, Keys, PrevDekSnapshot)}
+        catch
+            error:{missing_active_key, _} = Error ->
+                {error, Error}
+        end
     else
         {error, Reason} ->
             ?log_error("Failed to read and set encryption keys for ~p: ~p",
@@ -1983,7 +1996,7 @@ reencrypt_file_negative_cases_test() ->
 
 generate_test_deks() ->
     Key = generate_test_key(),
-    cb_crypto:create_deks_snapshot(Key, [Key], undefined).
+    create_single_dek_snapshot(Key, undefined).
 
 generate_test_key() ->
     KeyBin = cb_cluster_secrets:generate_raw_key(aes_256_gcm),
@@ -2016,22 +2029,22 @@ create_deks_snapshot_test() ->
     ?assertMatch(#dek_snapshot{active_key = undefined, all_keys = [K1]},
                  create_deks_snapshot(undefined, [K1], undefined)),
     ?assertMatch(#dek_snapshot{active_key = K1, all_keys = [K1]},
-                 create_deks_snapshot(K1, [K1], undefined)),
+                 create_single_dek_snapshot(K1, undefined)),
     ?assertMatch(#dek_snapshot{active_key = K1, all_keys = [K1, K2]},
-                 create_deks_snapshot(K1, [K1, K2], undefined)),
+                 create_deks_snapshot(get_key_id(K1), [K1, K2], undefined)),
 
     %% Keys with errors:
     ?assertMatch(#dek_snapshot{active_key = undefined, all_keys = [K1, EK2]},
                  create_deks_snapshot(undefined, [K1, EK2], undefined)),
     ?assertMatch(#dek_snapshot{active_key = EK2, all_keys = [K1, EK2]},
-                 create_deks_snapshot(EK2, [K1, EK2], undefined)),
+                 create_deks_snapshot(get_key_id(EK2), [K1, EK2], undefined)),
 
     %% Keys with errors and with prev DS:
-    PrevDS = create_deks_snapshot(K1, [K1, K2], undefined),
+    PrevDS = create_deks_snapshot(get_key_id(K1), [K1, K2], undefined),
     ?assertMatch(#dek_snapshot{active_key = K1, all_keys = [K1, K2]},
-                 create_deks_snapshot(K1, [K1, EK2], PrevDS)),
+                 create_deks_snapshot(get_key_id(K1), [K1, EK2], PrevDS)),
     ?assertMatch(#dek_snapshot{active_key = K1, all_keys = [K2, K1]},
-                 create_deks_snapshot(EK1, [K2, EK1], PrevDS)),
+                 create_deks_snapshot(get_key_id(EK1), [K2, EK1], PrevDS)),
     ?assertMatch(#dek_snapshot{active_key = undefined, all_keys = [K2, K1]},
                  create_deks_snapshot(undefined, [K2, EK1], PrevDS)),
     ?assertMatch(#dek_snapshot{active_key = undefined, all_keys = [K2, K1]},
@@ -2039,22 +2052,51 @@ create_deks_snapshot_test() ->
 
     %% New DS and prev DS have different keys:
     ?assertMatch(#dek_snapshot{active_key = K2, all_keys = [K2, K3]},
-                 create_deks_snapshot(K2, [EK2, K3], PrevDS)),
+                 create_deks_snapshot(get_key_id(K2), [EK2, K3], PrevDS)),
     ?assertMatch(#dek_snapshot{active_key = K3, all_keys = [K1, K2, K3]},
-                 create_deks_snapshot(K3, [K1, EK2, K3], PrevDS)),
+                 create_deks_snapshot(get_key_id(K3), [K1, EK2, K3], PrevDS)),
     ?assertMatch(#dek_snapshot{active_key = K3, all_keys = [K3]},
-                 create_deks_snapshot(K3, [K3], PrevDS)),
+                 create_single_dek_snapshot(K3, PrevDS)),
     ?assertMatch(#dek_snapshot{active_key = EK3, all_keys = [EK3, K1]},
-                 create_deks_snapshot(EK3, [EK3, EK1], PrevDS)),
+                 create_deks_snapshot(get_key_id(EK3), [EK3, EK1], PrevDS)),
     ?assertMatch(#dek_snapshot{active_key = K1, all_keys = [EK3, K1]},
-                 create_deks_snapshot(EK1, [EK3, EK1], PrevDS)),
+                 create_deks_snapshot(get_key_id(EK1), [EK3, EK1], PrevDS)),
 
     %% Check that the IV counter gets preserved, while the IV random gets reset:
-    NewDS = create_deks_snapshot(EK1, [EK3, EK1], PrevDS),
+    NewDS = create_deks_snapshot(get_key_id(EK1), [EK3, EK1], PrevDS),
     ?assertEqual(PrevDS#dek_snapshot.iv_atomic_counter,
                  NewDS#dek_snapshot.iv_atomic_counter),
     ?assertNotEqual(PrevDS#dek_snapshot.iv_random,
                     NewDS#dek_snapshot.iv_random).
+
+create_deks_snapshot_missing_active_key_test() ->
+    K1 = generate_test_key(),
+    K2 = generate_test_key(),
+    K1Id = get_key_id(K1),
+    UnknownId = <<"unknown-key-id">>,
+
+    %% Test that error is thrown when active key ID is not in AllKeys
+    ?assertError({missing_active_key, UnknownId},
+                 create_deks_snapshot(UnknownId, [K1, K2], undefined)),
+
+    %% Test that error is thrown even with previous snapshot if key not found
+    PrevDS = create_single_dek_snapshot(K1, undefined),
+    ?assertError({missing_active_key, UnknownId},
+                 create_deks_snapshot(UnknownId, [K2], PrevDS)),
+
+    %% Test that error is thrown even when previous snapshot contains the key
+    %% but it's not in the current AllKeys list
+    PrevDSWithK1 = create_single_dek_snapshot(K1, undefined),
+    ?assertError({missing_active_key, K1Id},
+                 create_deks_snapshot(K1Id, [K2], PrevDSWithK1)),
+
+    %% Test that undefined active key ID is allowed
+    ?assertMatch(#dek_snapshot{active_key = undefined, all_keys = [K1, K2]},
+                 create_deks_snapshot(undefined, [K1, K2], undefined)),
+
+    %% Test that active key ID found in AllKeys works
+    ?assertMatch(#dek_snapshot{active_key = K1, all_keys = [K1, K2]},
+                 create_deks_snapshot(K1Id, [K1, K2], undefined)).
 
 read_deks_test() ->
     K1 = generate_test_key(),
@@ -2110,7 +2152,7 @@ read_deks_test() ->
         meck:expect(cb_deks, list,
                     fun (testDek) -> {ok, {K3Id, [K2Id, K3Id], true}} end),
 
-        PrevDS3 = create_deks_snapshot(EK1, [EK1, K3], undefined),
+        PrevDS3 = create_deks_snapshot(get_key_id(EK1), [EK1, K3], undefined),
         ?assertMatch({ok, #dek_snapshot{active_key = K3,
                                         all_keys = [EK2, K3]}},
                      read_deks(testDek, PrevDS3)),
@@ -2152,7 +2194,7 @@ v0_backward_compat_test() ->
                   {{2024, 01, 01}, {22, 00, 00}}, false)),
 
     %% Create DEK snapshot
-    DS = create_deks_snapshot(TestKey, [TestKey], undefined),
+    DS = create_single_dek_snapshot(TestKey, undefined),
 
     %% Write encrypted file to temp file
     Path = path_config:tempfile("backward_compat_v0_test", ".tmp"),

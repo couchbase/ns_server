@@ -51,8 +51,8 @@ update_deks(logDek = Kind) ->
         ok ?= cb_crypto:active_key_ok(CurrDS),
         CreateNewDS =
             fun(PrevDS) ->
-                {ActiveKey, AllKeys} = cb_crypto:get_all_deks(CurrDS),
-                cb_crypto:create_deks_snapshot(ActiveKey, AllKeys, PrevDS)
+                {ActiveKeyId, AllKeys} = cb_crypto:get_all_deks(CurrDS),
+                cb_crypto:create_deks_snapshot(ActiveKeyId, AllKeys, PrevDS)
             end,
 
         %% Push the dek update to the local memcached instance

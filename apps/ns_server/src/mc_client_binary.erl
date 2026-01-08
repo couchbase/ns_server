@@ -1136,8 +1136,8 @@ prune_log_or_audit_encr_keys(Sock, Type, KeyIds, Timeout) ->
                                 non_neg_integer()) -> ok | mc_error().
 set_active_encryption_key(Sock, Bucket, DeksSnapshot, Timeout) ->
     report_counter(?FUNCTION_NAME),
-    {ActiveDek, AllDeks} = cb_crypto:get_all_deks(DeksSnapshot),
-    KeyStoreJson = memcached_bucket_config:format_mcd_keys(ActiveDek, AllDeks),
+    {ActiveDekId, AllDeks} = cb_crypto:get_all_deks(DeksSnapshot),
+    KeyStoreJson = memcached_bucket_config:format_mcd_keys(ActiveDekId, AllDeks),
     UnavailKeys = [Id || ?DEK_ERROR_PATTERN(Id, _) <- AllDeks],
     DeksJson = {[{<<"keystore">>, KeyStoreJson},
                  {<<"unavailable">>, UnavailKeys}]},

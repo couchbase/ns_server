@@ -287,7 +287,7 @@ generate_test_deks() ->
               KeyBin, <<"encryptionService">>,
               {{2024, 01, 01}, {22, 00, 00}},
               false)),
-    cb_crypto:create_deks_snapshot(Key, [Key], undefined).
+    cb_crypto:create_single_dek_snapshot(Key, undefined).
 
 test_load_config_improper() ->
     CP = data_file(),

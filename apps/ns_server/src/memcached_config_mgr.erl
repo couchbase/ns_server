@@ -187,15 +187,15 @@ update_keys_in_use(State) ->
 prepare_bootstrap_keys(CfgDeksSnapshot) ->
     FormatKeys =
         fun (DS, Name) ->
-            {ActiveDek, AllDeks} = cb_crypto:get_all_deks(DS),
-            EncryptionStatusStr = case ActiveDek of
-                                      #{} -> "on";
-                                      undefined -> "off"
+            {ActiveDekId, AllDeks} = cb_crypto:get_all_deks(DS),
+            EncryptionStatusStr = case ActiveDekId of
+                                      undefined -> "off";
+                                      _ -> "on"
                                   end,
             ?log_debug("~p bootstrap ~s keys will be written to memcached's "
                        "stdin (~s encryption is ~s)",
                        [length(AllDeks), Name, Name, EncryptionStatusStr]),
-            memcached_bucket_config:format_mcd_keys(ActiveDek, AllDeks)
+            memcached_bucket_config:format_mcd_keys(ActiveDekId, AllDeks)
         end,
     {ok, LogDeksSnapshot} = cb_crypto:fetch_deks_snapshot(logDek),
     {ok, AuditDeksSnapshot} = cb_crypto:fetch_deks_snapshot(auditDek),

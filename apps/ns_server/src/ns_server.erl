@@ -155,8 +155,8 @@ init_logging() ->
     ale:info(?NS_SERVER_LOGGER, "Started & configured logging").
 
 init_log_encryption() ->
-    {ok, {ActiveDek, Deks}} = application:get_env(ns_server, initial_log_deks),
-    LogDS = cb_crypto:create_deks_snapshot(ActiveDek, Deks, undefined),
+    {ok, {ActiveDekId, Deks}} = application:get_env(ns_server, initial_log_deks),
+    LogDS = cb_crypto:create_deks_snapshot(ActiveDekId, Deks, undefined),
     Res = ale:init_log_encryption_ds(LogDS),
     %% No need to keep the initial log deks in initial_log_deks anymore
     (Res == ok) andalso application:unset_env(ns_server, initial_log_deks),
