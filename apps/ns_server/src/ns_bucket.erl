@@ -418,13 +418,13 @@ get_bucket(Bucket, Snapshot) ->
             not_present
     end.
 
--spec get_bucket_with_revision(name(), map()) ->
+-spec get_bucket_with_revision(name(), chronicle_compat:source()) ->
           {ok, {config(), chronicle:revision()}} | not_present.
-get_bucket_with_revision(Bucket, Snapshot) when is_map(Snapshot) ->
-    case maps:find(sub_key(Bucket, props), Snapshot) of
+get_bucket_with_revision(Bucket, Source) ->
+    case chronicle_compat:get_with_rev(Source, sub_key(Bucket, props), #{}) of
         {ok, {_V, _R}} = Ok ->
             Ok;
-        error ->
+        {error, not_found} ->
             not_present
     end.
 

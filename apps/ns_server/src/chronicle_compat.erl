@@ -18,6 +18,7 @@
 
 -export([get/2,
          get/3,
+         get_with_rev/3,
          set_multiple/1,
          transaction/2,
          txn/1,
@@ -42,12 +43,12 @@
 %% RPC from another nodes
 -export([do_pull/1]).
 
+-spec get(term(), map()) -> {ok, term()} | {error, not_found} | term().
 get(Key, Opts) ->
     get(direct, Key, Opts).
 
-get(Source, Key, #{required := true}) ->
-    {ok, Value} = get(Source, Key, #{}),
-    Value;
+-spec get(source(), term(), map()) ->
+          {ok, term()} | {error, not_found} | term().
 get(Source, Key, #{default := Default}) ->
     case get(Source, Key, #{}) of
         {error, not_found} ->
@@ -55,29 +56,40 @@ get(Source, Key, #{default := Default}) ->
         {ok, Value} ->
             Value
     end;
-get(Snapshot, Key, #{}) when is_map(Snapshot) ->
+get(Source, Key, Opts) ->
+    case get_with_rev(Source, Key, Opts) of
+        {ok, {Value, _Rev}} ->
+            {ok, Value};
+        {error, not_found} ->
+            {error, not_found};
+        {Value, _Rev} ->
+            Value
+    end.
+
+-spec get_with_rev(source(), term(), map()) ->
+          {term(), chronicle:revision()} |
+          {ok, {term(), chronicle:revision()}} | {error, not_found}.
+get_with_rev(Source, Key, #{required := true}) ->
+    {ok, VR} = get_with_rev(Source, Key, #{}),
+    VR;
+get_with_rev(Snapshot, Key, #{}) when is_map(Snapshot) ->
     case maps:find(Key, Snapshot) of
-        {ok, {V, _R}} ->
-            {ok, V};
+        {ok, VR} ->
+            {ok, VR};
         error ->
             {error, not_found}
     end;
-get(direct, Key, #{}) ->
+get_with_rev(direct, Key, #{}) ->
     case ns_node_disco:couchdb_node() =:= node() of
         true ->
             case ns_couchdb_chronicle_dup:lookup(Key) of
-                [{Key, {Value, _Rev}}] ->
-                    {ok, Value};
+                [{Key, VR}] ->
+                    {ok, VR};
                 [] ->
                     {error, not_found}
             end;
         false ->
-            case chronicle_kv:get(kv, Key, #{}) of
-                {ok, {V, _R}} ->
-                    {ok, V};
-                Error ->
-                    Error
-            end
+            chronicle_kv:get(kv, Key, #{})
     end.
 
 get_keys_and_rev(Snapshot) ->
