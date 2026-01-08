@@ -2409,10 +2409,8 @@ maybe_reply_to(_, #rebalancing_state{reply_to = undefined}) ->
     ok;
 maybe_reply_to(normal, State) ->
     maybe_reply_to(ok, State);
-maybe_reply_to({shutdown, {ok, []}}, State) ->
-    maybe_reply_to(ok, State);
-maybe_reply_to({shutdown, {ok, UnsafeNodes}}, State) ->
-    maybe_reply_to({ok, UnsafeNodes}, State);
+maybe_reply_to({shutdown, {ok, Result}}, State) ->
+    maybe_reply_to({ok, Result}, State);
 maybe_reply_to({shutdown, stop}, State) ->
     maybe_reply_to(stopped_by_user, State);
 maybe_reply_to(Reason, #rebalancing_state{reply_to = ReplyTo}) ->

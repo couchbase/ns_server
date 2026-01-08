@@ -67,6 +67,8 @@ start(Nodes, Options) ->
             Pid = proc_lib:spawn_link(
                     fun () ->
                             case run(Nodes, Options, Parent) of
+                                {ok, []} ->
+                                    erlang:exit(normal);
                                 {ok, UnsafeNodes} ->
                                     erlang:exit({shutdown, {ok, UnsafeNodes}});
                                 Error ->
