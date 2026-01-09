@@ -1467,7 +1467,6 @@ parse_bucket_params_continue_via_services(
           ProposedBucket,
           RemappedParamsForServices),
 
-
     {ServiceOKs, ServiceErrors} =
         validate_bucket_config_against_services(BucketConfigString,
                                                 AllowInternalParams),
@@ -1498,20 +1497,9 @@ parse_bucket_params_continue_via_services(
             {errors, RemappedErrors ++ ParamRemappingErrors, OKs}
     end.
 
-validate_bucket_config_against_services(BucketConfigString,
-                                        AllowInternalParams) ->
-    %% Validate the params using validate_bucket_config_with_memcached, which
-    %% uses MCBP command to validate against the local node. It returns the same
-    %% set of OKs and Errors, and these should be merged into the original OKs
-    %% and Errors.
-    {ok, OKsFromMemcached, ErrorsFromMemcached} =
-        validate_bucket_config_with_memcached(BucketConfigString,
-                                              AllowInternalParams),
-    {OKsFromMemcached, ErrorsFromMemcached}.
-
 process_bucket_config_from_services(AcceptedKeys, OKs, OKsFromServices,
                                     CurrentBucket) ->
-    %% Filter down the OKs from the services to only Params we wanted
+    %% Filter down the OKsFromServices to only Params we wanted
     %% to set, since the returned list is all parameters, not just
     %% the ones we wanted to set.
     ExtraParams =
@@ -1524,6 +1512,55 @@ process_bucket_config_from_services(AcceptedKeys, OKs, OKsFromServices,
     NewExtras = misc:update_proplist(CurrentExtras, ExtraParamsList),
     UpdatedOKs = misc:update_proplist(OKs, [{extra_params, NewExtras}]),
     {ok, UpdatedOKs}.
+
+validate_bucket_config_against_services(BucketConfigString,
+                                        AllowInternalParams) ->
+    %% Validate the params using with memcached and continuous backup. We will
+    %% then merge the returned OKs and Errors into those that we generated in
+    %% our config validation logic.
+    Res =
+        functools:sequence(
+          [?cut(validate_bucket_config_with_memcached(BucketConfigString,
+                                                      AllowInternalParams)),
+           ?cut(maybe_validate_bucket_config_with_continuous_backup(
+                  BucketConfigString, AllowInternalParams))
+          ]),
+
+    %% Merge all of the OKs and Errors from the services together.
+    case Res of
+        {ok, AllResults} ->
+            lists:foldl(
+              fun ({ServiceOKs, ServiceErrors}, {OKAcc, ErrorsAcc}) ->
+                      Fun =
+                          fun (Key, V1, V2) ->
+                                  case V1 of
+                                      V2 -> V1;
+                                      _ -> erlang:exit(
+                                             lists:flatten(
+                                               io_lib:format(
+                                                 "Values not equal for key "
+                                                 "~s: ~s ~s",
+                                                 [Key, V1, V2])))
+                                  end
+                          end,
+                      %% Merge together the OKs, if a key is present in
+                      %% multiple service responses then they ought to
+                      %% provide the same value.
+                      O1 = maps:merge_with(Fun, OKAcc, ServiceOKs),
+                      %% Should we see any errors we will just return one of
+                      %% them for any given key. Services might report
+                      %% errors differently so we shouldn't check that they
+                      %% are the same.
+                      E1 = maps:merge(ErrorsAcc, ServiceErrors),
+                      {O1, E1}
+              end, {#{}, #{}}, AllResults);
+        {errors, Error} ->
+            erlang:exit(
+              lists:flatten(
+                io_lib:format(
+                  "Failed to validate bucket config with service: ~p",
+                  [Error])))
+    end.
 
 
 %% @doc Validate the bucket config with memcached.
@@ -1542,8 +1579,53 @@ validate_bucket_config_with_memcached(BucketConfigString,
             {error, Error}
     end.
 
+validate_bucket_config_with_continuous_backup(Node, BucketConfigString,
+                                              AllowInternalParams) ->
+    case service_agent:validate_bucket_config(cont_backup, Node,
+                                              BucketConfigString) of
+        {ok, ValidationResult} ->
+            %% TODO MB-64129: When the service API uses json over ejson we can
+            %% remove this.
+            %% Hack - The validation map parsing code uses the json library
+            %% format of the parsed json response (a map) rather than the ejson
+            %% format. Convert the parsed json to a string then to the json
+            %% library decoded format such that we can re-use that code.
+            Str = ejson:encode(ValidationResult),
+            Json = json:decode(Str),
+            process_service_bucket_config_validation_map(
+              maps:get(<<"validationResult">>, Json),
+              AllowInternalParams);
+        {error, Error} ->
+            ale:error(?USER_LOGGER,
+                      "Error validating bucket config with memcached: ~p",
+                      [Error]),
+            {error, Error}
+    end.
+
+maybe_validate_bucket_config_with_continuous_backup(BucketConfigString,
+                                                    AllowInternalParams) ->
+    case cluster_compat_mode:is_continuous_backup_enabled() of
+        false ->
+            {ok, {#{}, #{}}};
+        true ->
+            find_node_and_validate_bucket_config_with_continuous_backup(
+              BucketConfigString, AllowInternalParams)
+    end.
+
+find_node_and_validate_bucket_config_with_continuous_backup(
+    BucketConfigString, AllowInternalParams) ->
+    KVNodes = ns_cluster_membership:service_active_nodes(kv),
+    case ns_node_disco:only_live_nodes(KVNodes) of
+        [] ->
+            erlang:exit("No live nodes found for continuous backup");
+        [Node | _] ->
+            validate_bucket_config_with_continuous_backup(Node,
+                                                          BucketConfigString,
+                                                          AllowInternalParams)
+    end.
+
 process_service_bucket_config_validation_map(ValidationMap,
-                                             AllowInternalParams) ->
+    AllowInternalParams) ->
     {AllOKs, Errors} = memcached_bucket_config_validation:group(ValidationMap),
     FilteredOKs =
         maps:filter(
@@ -1568,7 +1650,7 @@ process_service_bucket_config_validation_map(ValidationMap,
         fun (_K, V) ->
                 memcached_bucket_config_validation:get_error_message(V)
         end, FilteredErrors),
-    {ok, OKs, ErrorMessages}.
+    {ok, {OKs, ErrorMessages}}.
 
 %% @doc Merge two proplists. The lists do not need to be sorted.
 merge_proplists(A, B) ->
@@ -6586,8 +6668,8 @@ validate_bucket_config_with_memcached_test() ->
                                          }
                               }}
                 end),
-    {ok, OKs, ErrorMessages} = validate_bucket_config_with_memcached(
-                                 "foo=value;baz=value", false),
+    {ok, {OKs, ErrorMessages}} = validate_bucket_config_with_memcached(
+                                   "foo=value;baz=value", false),
     ?assertEqual(#{"foo" => "value", "bar" => "value"}, OKs),
     ?assertEqual(#{"baz" => <<"message">>}, ErrorMessages).
 
