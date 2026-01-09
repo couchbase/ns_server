@@ -381,7 +381,7 @@ handle_call({add_alert, {AlertKey, _Other} = Key, Val}, _,
             #state{queue = Msgs, history = Hist,
                    change_counter = Counter} = State) ->
     ns_server_stats:notify_counter({<<"alerts_triggered">>,
-                                    [{type, AlertKey}]}),
+                                    [{type, extract_alert_key(AlertKey)}]}),
     case lists:keyfind(Key, 1, Hist) of
         false ->
             Time   = erlang:monotonic_time(),
