@@ -791,6 +791,32 @@ special_mapping_cases("ramQuotaMB") ->
     {ok, "ram_quota"};
 special_mapping_cases("parallelDBAndViewCompaction") ->
     {ok, "parallel_db_and_view_compaction"};
+special_mapping_cases("databaseFragmentationThreshold[percentage]") ->
+    {ok, "db_fragmentation_percentage"};
+special_mapping_cases("databaseFragmentationThreshold[size]") ->
+    {ok, "db_fragmentation_size"};
+special_mapping_cases("viewFragmentationThreshold[percentage]") ->
+    {ok, "view_fragmentation_percentage"};
+special_mapping_cases("viewFragmentationThreshold[size]") ->
+    {ok, "view_fragmentation_size"};
+special_mapping_cases("indexFragmentationThreshold[percentage]") ->
+    {ok, "index_fragmentation_percentage"};
+special_mapping_cases("indexFragmentationThreshold[size]") ->
+    {ok, "index_fragmentation_size"};
+%% Allowed Time Period is parsed strangely, the value is a complex object
+%% comprised of all of these fields. We just need to remap to the key, that
+%% should be enough to ignore this in the validation outside of
+%% menelaus_web_autocompaction.erl.
+special_mapping_cases("allowedTimePeriod[fromHour]") ->
+    {ok, "allowed_time_period"};
+special_mapping_cases("allowedTimePeriod[fromMinute]") ->
+    {ok, "allowed_time_period"};
+special_mapping_cases("allowedTimePeriod[toHour]") ->
+    {ok, "allowed_time_period"};
+special_mapping_cases("allowedTimePeriod[toMinute]") ->
+    {ok, "allowed_time_period"};
+special_mapping_cases("allowedTimePeriod[abortOutside]") ->
+    {ok, "allowed_time_period"};
 special_mapping_cases(_) ->
     not_found.
 
