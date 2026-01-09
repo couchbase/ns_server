@@ -169,13 +169,21 @@ handle_info({nodeup, Node, InfoList}, State) ->
 handle_info({nodedown, Node, InfoList}, State) ->
     ?user_log(?NODE_DOWN, "Node ~p saw that node ~p went down. Details: ~p",
               [node(), Node, InfoList]),
-    %% InfoList can be any term(), based on the erlang distribution being
-    %% used between the nodes - therefore print the entire term() instead of
-    %% trying to JSON-ifying it.
+    %% InfoList is a proplist containing values that may be any term(),
+    %% depending on the erlang distribution being used between the nodes,
+    %% therefore:
+    %% - The event log should just print the entire term() rather than attempt
+    %%   to JSON-ify it.
+    %% - The node_unreachable metric should convert all non-atom values for
+    %%   nodedown_reason to "unknown", since each distinct value for a metric
+    %%   label in prometheus will require an additional time series
     event_log:add_log(node_down, [{down_node, Node},
                                   {reason, iolist_to_binary(
                                              io_lib:format("~p",[InfoList]))}]),
-    Reason = proplists:get_value(nodedown_reason, InfoList, "unknown"),
+    Reason = case proplists:get_value(nodedown_reason, InfoList, unknown) of
+                 ReasonAtom when is_atom(ReasonAtom) -> ReasonAtom;
+                 _ -> unknown
+             end,
     maybe_apply_metrics_function(
       Node,
       fun (N) ->
