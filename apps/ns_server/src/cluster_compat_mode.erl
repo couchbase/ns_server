@@ -502,7 +502,8 @@ is_compatible_product_test() ->
                 end),
     false = is_compatible_product(undefined),
     false = is_compatible_product(?DEFAULT_PROD),
-    true = is_compatible_product(?WOMBAT_PROD).
+    true = is_compatible_product(?WOMBAT_PROD),
+    meck:unload().
 -endif.
 
 preserve_durable_mutations() ->
