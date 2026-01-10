@@ -174,6 +174,13 @@ func (k *rawAesGcmStoredKey) canBeCached() bool {
 	return k.CanBeCached
 }
 
+func (k *rawAesGcmStoredKey) getKeyMaterial() ([]byte, error) {
+	if k.DecryptedKey == nil {
+		return nil, fmt.Errorf("key %s is encrypted", k.Name)
+	}
+	return k.DecryptedKey, nil
+}
+
 func (k *rawAesGcmStoredKey) marshal() (storedKeyType, []byte, error) {
 	if k.EncryptedKey == nil {
 		return "", nil, fmt.Errorf("can't store key \"%s\" to disk because the key is not encrypted", k.Name)

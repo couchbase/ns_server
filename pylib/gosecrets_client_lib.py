@@ -330,8 +330,8 @@ def try_dev_gosecrets() -> Optional[Path]:
     this_file_path = Path(os.path.abspath(__file__)).resolve()
     if this_file_path.parent.name == 'pylib' and \
        this_file_path.parent.parent.name == 'ns_server':
-        dev_dir = this_file_path.parent.parent
-        to_try = dev_dir / 'build' / 'deps' / 'gocode' / 'gosecrets'
+        dev_dir = this_file_path.parent.parent.parent
+        to_try = dev_dir / 'install' / 'bin' / 'gosecrets'
         if to_try.exists():
             debug(f'Checking {to_try}... found')
             return to_try

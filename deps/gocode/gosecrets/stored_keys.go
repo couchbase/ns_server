@@ -24,6 +24,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/couchbase/gocbcrypto"
 	"github.com/google/uuid"
 )
 
@@ -476,6 +477,45 @@ func getEncryptedFileAD(header []byte, offset int) []byte {
 	return ad
 }
 
+// formatUUID formats a 16-byte UUID as a standard UUID string
+// (e.g., "550e8400-e29b-41d4-a716-446655440000")
+// Uses github.com/google/uuid package for proper UUID formatting
+func formatUUID(uuidBytes []byte) (string, error) {
+	if len(uuidBytes) != 16 {
+		return "", fmt.Errorf("UUID must be exactly 16 bytes, got %d", len(uuidBytes))
+	}
+	// Convert bytes to uuid.UUID and format as string
+	u, err := uuid.FromBytes(uuidBytes)
+	if err != nil {
+		return "", fmt.Errorf("invalid UUID bytes: %w", err)
+	}
+	return u.String(), nil
+}
+
+// deriveFileKey derives a key using KBKDF (SP 800-108) with
+// HMAC-SHA256 in counter mode. This matches the Erlang implementation.
+// Note: OpenSSL KBKDF uses Info=Context and Salt=Label (swapped from SP 800-108)
+// Context = "Couchbase Encrypted File/" + UUID string
+// Label = "Couchbase File Encryption"
+func deriveFileKey(key []byte, salt []byte) ([]byte, error) {
+	saltString, err := formatUUID(salt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to format UUID: %w", err)
+	}
+	context := []byte("Couchbase Encrypted File/" + saltString)
+	label := []byte("Couchbase File Encryption")
+
+	// OpenSSL KBKDF: Info=Context, Salt=Label
+	// Output length is the same as input key length
+	outLen := len(key)
+	derivedKey := make([]byte, outLen)
+	derivedKey, err = gocbcrypto.OpenSSLKBKDFDeriveKey(key, label, context, derivedKey, "SHA-256", "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive key with OpenSSL KBKDF: %w", err)
+	}
+	return derivedKey, nil
+}
+
 // Note: function encrypts everything as a single chunk
 func (state *StoredKeysState) encryptFileData(data []byte, encryptionKeyName string, ctx *storedKeysCtx) ([]byte, error) {
 	if encryptionKeyName == "" {
@@ -484,16 +524,47 @@ func (state *StoredKeysState) encryptFileData(data []byte, encryptionKeyName str
 	}
 
 	const (
-		version         = byte(0)
-		compressionType = byte(0)
+		version            = byte(1)
+		compressionType    = byte(0)
+		kbkdfKeyDerivation = byte(1) // KBKDF key derivation method
 	)
 
-	// Create header
+	// Read the encryption key
+	key, _, err := state.readKey(encryptionKeyName, intTokenEncryptionKeyKind, true, ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config dek: %s", err.Error())
+	}
+
+	// Get the raw key bytes for derivation
+	// Cast to raw AES key - only raw AES keys are supported for file encryption
+	rawAesKey, ok := key.(*rawAesGcmStoredKey)
+	if !ok {
+		return nil, fmt.Errorf("file encryption only supports raw AES keys, got %T", key)
+	}
+	keyBytes, err := rawAesKey.getKeyMaterial()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get key material: %s", err.Error())
+	}
+
+	// Generate salt as UUID v4 (16 bytes)
+	uuidV4 := uuid.New()
+	salt := uuidV4[:]
+
+	// Derive key using KBKDF
+	derivedKeyBytes, err := deriveFileKey(keyBytes, salt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive key: %s", err.Error())
+	}
+
+	// Create header (version 1)
 	header := make([]byte, encryptedFileHeaderSize)
 	copy(header, encryptedFileMagicString)
 	header[encryptedFileMagicStringLen] = version
 	header[encryptedFileMagicStringLen+1] = compressionType
-	// 4 bytes reserved (zeros)
+	// Key derivation byte: lower 4 bits = method, upper 4 bits = 0
+	// (PBKDF2 iterations not used for KBKDF)
+	header[encryptedFileMagicStringLen+2] = kbkdfKeyDerivation
+	// 3 bytes reserved (zeros)
 	header[encryptedFileMagicStringLen+6] = encryptedFileKeyNameLength
 
 	// Pad or truncate encryptionKeyName to exactly 36 bytes
@@ -501,21 +572,13 @@ func (state *StoredKeysState) encryptFileData(data []byte, encryptionKeyName str
 	copy(keyNameBytes, encryptionKeyName)
 	copy(header[encryptedFileMagicStringLen+7:], keyNameBytes)
 
-	salt := generateRandomBytes(16)
+	// Copy salt to header
 	copy(header[encryptedFileMagicStringLen+7+int(encryptedFileKeyNameLength):], salt)
 
 	ad := getEncryptedFileAD(header, encryptedFileHeaderSize)
 
-	// Read the encryption key and use it to encrypt the data
-	key, _, err := state.readKey(encryptionKeyName, intTokenEncryptionKeyKind, true, ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config dek: %s", err.Error())
-	}
-
-	encryptedData, err := key.encryptData(data, ad)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt data: %s", err.Error())
-	}
+	// Encrypt the data with derived key using AES-GCM directly
+	encryptedData := aesgcmEncrypt(derivedKeyBytes, data, ad)
 
 	// Create chunk (4 bytes size + encrypted data)
 	chunkSize := uint32(len(encryptedData))
@@ -551,12 +614,12 @@ func (state *StoredKeysState) maybeDecryptFileData(filename string, data []byte,
 
 	// Validate header format
 	header := data[:encryptedFileHeaderSize]
-	keyName, err := validateEncryptedFileHeader(header)
+	keyName, version, keyDeriv, salt, err := validateEncryptedFileHeader(header)
 	if err != nil {
 		return nil, "", nil, "", err
 	}
 
-	logDbg("File is encrypted with key %s", keyName)
+	logDbg("File is encrypted with key %s (version %d)", keyName, version)
 
 	// Chunk format is 4 bytes size + encrypted data
 	chunk := data[encryptedFileHeaderSize:]
@@ -568,14 +631,40 @@ func (state *StoredKeysState) maybeDecryptFileData(filename string, data []byte,
 		return nil, "", nil, "", fmt.Errorf("encrypted file shorter than specified chunk size")
 	}
 
-	// Read the encryption key and use it to decrypt the data
+	// Read the encryption key
 	key, keyProof, err := state.readKey(keyName, intTokenEncryptionKeyKind, false, ctx)
 	if err != nil {
 		return nil, "", nil, "", fmt.Errorf("failed to read config dek: %s", err.Error())
 	}
 
+	// Get the raw key bytes for derivation
+	// Cast to raw AES key - only raw AES keys are supported for file encryption
+	rawAesKey, ok := key.(*rawAesGcmStoredKey)
+	if !ok {
+		return nil, "", nil, "", fmt.Errorf("file encryption only supports raw AES keys, got %T", key)
+	}
+	keyBytes, err := rawAesKey.getKeyMaterial()
+	if err != nil {
+		return nil, "", nil, "", fmt.Errorf("failed to get key material: %s", err.Error())
+	}
+
+	// Derive key if needed (version 1 with KBKDF)
+	var derivedKeyBytes []byte
+	if version == 1 && keyDeriv == 1 {
+		// KBKDF key derivation
+		derivedKeyBytes, err = deriveFileKey(keyBytes, salt)
+		if err != nil {
+			return nil, "", nil, "", fmt.Errorf("failed to derive key: %s", err.Error())
+		}
+	} else if version == 0 || (version == 1 && keyDeriv == 0) {
+		// No key derivation
+		derivedKeyBytes = keyBytes
+	} else {
+		return nil, "", nil, "", fmt.Errorf("unsupported key derivation method: %d", keyDeriv)
+	}
+
 	ad := getEncryptedFileAD(header, encryptedFileHeaderSize)
-	decryptedData, err := key.decryptData(chunk[4:], ad)
+	decryptedData, err := aesgcmDecrypt(derivedKeyBytes, chunk[4:], ad)
 	if err != nil {
 		return nil, "", nil, "", fmt.Errorf("failed to decrypt data: %s", err.Error())
 	}
@@ -583,36 +672,53 @@ func (state *StoredKeysState) maybeDecryptFileData(filename string, data []byte,
 	return decryptedData, keyName, key, keyProof, nil
 }
 
-func validateEncryptedFileHeader(header []byte) (string, error) {
+// validateEncryptedFileHeader validates the encrypted file header and returns
+// key name, version, key derivation method, and salt.
+// Supports both version 0 and version 1 formats.
+func validateEncryptedFileHeader(header []byte) (string, byte, byte, []byte, error) {
 	const (
-		version         = byte(0)
 		compressionType = byte(0)
 	)
 
 	if len(header) < encryptedFileHeaderSize {
-		return "", fmt.Errorf("encrypted file header too short")
+		return "", 0, 0, nil, fmt.Errorf("encrypted file header too short")
 	}
 
-	if header[encryptedFileMagicStringLen] != version {
-		return "", fmt.Errorf("unsupported version: %d", header[encryptedFileMagicStringLen])
+	version := header[encryptedFileMagicStringLen]
+	if version != 0 && version != 1 {
+		return "", 0, 0, nil, fmt.Errorf("unsupported version: %d", version)
 	}
 
 	if header[encryptedFileMagicStringLen+1] != compressionType {
-		return "", fmt.Errorf("unsupported compression type: %d", header[encryptedFileMagicStringLen+1])
+		return "", 0, 0, nil, fmt.Errorf("unsupported compression type: %d", header[encryptedFileMagicStringLen+1])
+	}
+
+	var keyDeriv byte
+	if version == 1 {
+		// Key derivation byte: lower 4 bits = method
+		keyDeriv = header[encryptedFileMagicStringLen+2] & 0x0F
+	} else {
+		// Version 0: no key derivation
+		keyDeriv = 0
 	}
 
 	if header[encryptedFileMagicStringLen+6] != encryptedFileKeyNameLength {
-		return "", fmt.Errorf("invalid key name length: %d", header[encryptedFileMagicStringLen+6])
+		return "", 0, 0, nil, fmt.Errorf("invalid key name length: %d", header[encryptedFileMagicStringLen+6])
 	}
 
 	keyNameBytes := header[encryptedFileMagicStringLen+7 : encryptedFileMagicStringLen+7+int(encryptedFileKeyNameLength)]
 	if !utf8.Valid(keyNameBytes) {
-		return "", fmt.Errorf("invalid utf-8 in key name: %q", keyNameBytes)
+		return "", 0, 0, nil, fmt.Errorf("invalid utf-8 in key name: %q", keyNameBytes)
 	}
 
 	keyName := string(keyNameBytes)
 
-	return keyName, nil
+	// Extract salt (16 bytes at the end of header)
+	saltStart := encryptedFileMagicStringLen + 7 + int(encryptedFileKeyNameLength)
+	salt := make([]byte, 16)
+	copy(salt, header[saltStart:saltStart+16])
+
+	return keyName, version, keyDeriv, salt, nil
 }
 
 func (state *StoredKeysState) getKeyIdInUse() (string, error) {
@@ -643,7 +749,7 @@ func (state *StoredKeysState) getKeyIdInUse() (string, error) {
 	}
 
 	// Try parsing as encrypted file header
-	keyName, err := validateEncryptedFileHeader(data)
+	keyName, _, _, _, err := validateEncryptedFileHeader(data)
 	if err != nil {
 		return "", err
 	}

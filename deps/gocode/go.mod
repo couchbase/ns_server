@@ -12,6 +12,7 @@ require (
 	github.com/akeylesslabs/go-kmip v0.2.14
 	github.com/aws/aws-sdk-go-v2/config v1.27.18
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.5
+	github.com/couchbase/gocbcrypto v0.0.0-00010101000000-000000000000
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/tools-common/types/v2 v2.2.1
 	github.com/evanw/esbuild v0.13.13
@@ -26,6 +27,8 @@ require (
 replace github.com/akeylesslabs/go-kmip => ./go-kmip
 
 replace github.com/hashicorp/vault/api => ./hashicorp_client_api/api
+
+replace github.com/couchbase/gocbcrypto => ../../../goproj/src/github.com/couchbase/gocbcrypto
 
 require (
 	cloud.google.com/go/compute v1.25.0 // indirect
