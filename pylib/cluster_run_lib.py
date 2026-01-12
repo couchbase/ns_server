@@ -374,7 +374,8 @@ def start_cluster(num_nodes=1,
                   wait_for_start=False,
                   nooutput=False,
                   master_passwords=None,
-                  env={}):
+                  env={},
+                  stderr_log_filename='cluster_run_stderr.log'):
 
     extra_args = []
     if not dont_rename:
@@ -497,9 +498,15 @@ def start_cluster(num_nodes=1,
                 # ability to it shutdown carefully or otherwise
                 params['preexec_fn'] = os.setpgrp
 
+        stderr_file = None
         if nooutput:
+            # Capture stderr to a file in the log directory so we can display
+            # it if startup fails before logs are written
+            stderr_path = os.path.join(logdir, stderr_log_filename)
+            stderr_file = open(stderr_path, 'w+')
+            params['stderr'] = stderr_file
+            # Discard stdout when nooutput is True
             params['stdout'] = subprocess.DEVNULL
-            params['stderr'] = subprocess.DEVNULL
 
         pr = subprocess.Popen(args, **params)
         if w is not None:
@@ -508,19 +515,37 @@ def start_cluster(num_nodes=1,
         # Squirrel away the write descriptor for the pipe into the
         # subprocess.Popen object
         pr.write_side = w
+        # Keep file handle open so the child process can continue writing
+        # We'll close it when the process terminates or is killed
+        pr.stderr_file_handle = stderr_file
 
         return pr
 
-    processes = [start_node(i + start_index) for i in range(num_nodes)]
+    processes = []
+    try:
+        # Create processes one at a time so we can clean up if creation fails
+        for i in range(num_nodes):
+            processes.append(start_node(i + start_index))
 
-    if master_passwords is not None:
-        maybe_enter_master_passwords(master_passwords, start_index, root_dir)
+        if master_passwords is not None:
+            maybe_enter_master_passwords(master_passwords, start_index, root_dir)
 
-    if wait_for_start:
-        wait_nodes_up(num_nodes, start_index, master_passwords, root_dir,
-                      node_start_timeout_s)
+        if wait_for_start:
+            wait_nodes_up(num_nodes, start_index, master_passwords, root_dir,
+                          node_start_timeout_s)
 
-    return processes
+        return processes
+    except Exception:
+        # Close file handles if an exception occurs before returning
+        for proc in processes:
+            if proc is not None:
+                stderr_handle = getattr(proc, 'stderr_file_handle', None)
+                if stderr_handle is not None:
+                    try:
+                        stderr_handle.close()
+                    except Exception:
+                        pass
+        raise
 
 
 def start_code_watchdog(num_nodes, start_index):
@@ -683,6 +708,15 @@ def kill_nodes(nodes, terminal_attrs=None, urls=None):
 
     for n in nodes:
         n.wait()
+
+    # Close file handles after processes have terminated
+    for n in nodes:
+        stderr_handle = getattr(n, 'stderr_file_handle', None)
+        if stderr_handle is not None:
+            try:
+                stderr_handle.close()
+            except Exception:
+                pass
 
     if terminal_attrs is not None:
         import termios
