@@ -105,33 +105,34 @@ with_trap_exit_spawn_monitor(
                                      op_args = OpArgs,
                                      progress_callback = ProgressCallback})
                     end),
-
-              receive
-                  {'EXIT', _Pid, Reason} = Exit ->
-                      ?log_debug("Got an exit signal while running op: ~p "
-                                 "for service: ~p. Exit message: ~p",
-                                 [Op, Service, Exit]),
-                      misc:terminate_and_wait(Pid, Reason),
-                      exit(Reason);
-                  {'DOWN', MRef, _, _, Reason} ->
-                      case Reason of
-                          normal ->
-                              ok;
-                          _ ->
-                              FailedAtom =
-                                  list_to_atom("service_" ++
-                                               atom_to_list(Op) ++ "_failed"),
-                              exit({FailedAtom, Service, Reason})
-                      end
-              after
-                  Timeout ->
-                      misc:terminate_and_wait(Pid, shutdown),
-                      TimeoutAtom = list_to_atom("service_" ++
-                                                 atom_to_list(Op) ++
-                                                 "_timeout"),
-                      {error, {TimeoutAtom, Service}}
-              end
+              wait_for_op(Pid, MRef, Service, Op, Timeout, ok)
       end).
+
+wait_for_op(Pid, MRef, Service, Op, Timeout, Result) ->
+    receive
+        {op_result, NewResult} ->
+            wait_for_op(Pid, MRef, Service, Op, Timeout, NewResult);
+        {'EXIT', _Pid, Reason} = Exit ->
+            ?log_debug("Got an exit signal while running op: ~p "
+                       "for service: ~p. Exit message: ~p",
+                       [Op, Service, Exit]),
+            misc:terminate_and_wait(Pid, Reason),
+            exit(Reason);
+        {'DOWN', MRef, _, _, normal} ->
+            Result;
+        {'DOWN', MRef, _, _, Reason} ->
+            FailedAtom =
+                list_to_atom("service_" ++
+                             atom_to_list(Op) ++ "_failed"),
+            exit({FailedAtom, Service, Reason})
+    after
+        Timeout ->
+            misc:terminate_and_wait(Pid, shutdown),
+            TimeoutAtom = list_to_atom("service_" ++
+                                       atom_to_list(Op) ++
+                                       "_timeout"),
+            {error, {TimeoutAtom, Service}}
+    end.
 
 run_op(#state{parent = Parent} = State) ->
     erlang:register(name(State), self()),
