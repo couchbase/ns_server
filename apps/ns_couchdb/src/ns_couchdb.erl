@@ -137,7 +137,7 @@ init_logging() ->
 
             lists:foreach(
               fun (Logger) ->
-                      ok = ale:add_sink(Logger, stderr, debug)
+                      ok = ns_server:add_logger_stderr_sink(Logger)
               end, AllLoggers);
         false ->
             ok

@@ -242,7 +242,7 @@ do_init_logging() ->
 
             lists:foreach(
               fun (Logger) ->
-                      ok = ale:add_sink(Logger, stderr, debug)
+                      ok = ns_server:add_logger_stderr_sink(Logger)
               end, [?NS_SERVER_LOGGER, ?ERROR_LOGGER]);
         false ->
             ok

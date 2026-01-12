@@ -14,7 +14,8 @@
 -export([start/2, stop/1, get_loglevel/1, init_log_encryption/0,
          setup_node_names/0, get_babysitter_node/0, get_babysitter_cookie/0,
          get_babysitter_pid/0, read_cookie_file/1, start_disk_sink/2,
-         get_disk_sink_rotation_opts/1, adjust_loglevel/2, set_tls_key_log/1]).
+         get_disk_sink_rotation_opts/1, adjust_loglevel/2, set_tls_key_log/1,
+         add_logger_stderr_sink/1]).
 
 -include("ns_common.hrl").
 -include_lib("ale/include/ale.hrl").
@@ -135,6 +136,12 @@ get_loglevel(LoggerName) ->
     LoggerNameStr = atom_to_list(LoggerName),
     Key = list_to_atom("loglevel_" ++ LoggerNameStr),
     misc:get_env_default(Key, DefaultLogLevel).
+
+get_loglevel(App, LoggerName) ->
+    {ok, DefaultLogLevel} = application:get_env(App, loglevel_default),
+    LoggerNameStr = atom_to_list(LoggerName),
+    Key = list_to_atom("loglevel_" ++ LoggerNameStr),
+    misc:get_env_default(App, Key, DefaultLogLevel).
 
 %% If LogLevel is less restricitve than ThresholdLogLevel (meaning that more
 %% message would be printed with that LogLevel) then return ThresholdLogLevel.
@@ -258,17 +265,20 @@ do_init_logging() ->
     case misc:get_env_default(dont_suppress_stderr_logger, false) of
         true ->
             ok = start_sink(stderr, ale_stderr_sink, []),
-            StderrLogLevel = get_loglevel(stderr),
 
             lists:foreach(
               fun (Logger) ->
-                      LogLevel = get_loglevel(Logger),
-                      ok = ale:add_sink(Logger, stderr,
-                                        adjust_loglevel(LogLevel, StderrLogLevel))
+                      ok = add_logger_stderr_sink(Logger)
               end, AllLoggers ++ [?ACCESS_LOGGER]);
         false ->
             ok
     end.
+
+add_logger_stderr_sink(Logger) ->
+    StderrLogLevel = get_loglevel(ns_server, stderr),
+    LogLevel = get_loglevel(ns_server, Logger),
+    ok = ale:add_sink(Logger, stderr,
+                      adjust_loglevel(LogLevel, StderrLogLevel)).
 
 start_sink(Name, Module, Args) ->
     ale:stop_sink(Name),
