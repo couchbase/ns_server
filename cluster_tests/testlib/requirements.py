@@ -92,7 +92,8 @@ class ClusterRequirements:
                 # Setting explicit value for BYPASS_SASLAUTHD here makes tests
                 # more deterministic. None is used by default because
                 # extenal authentication should not be passed by by default.
-                'env': {'BYPASS_SASLAUTHD': None}
+                'env': {'BYPASS_SASLAUTHD': None},
+                'loglevel': 'critical'
         }
 
     def update(self, new_requirements):
