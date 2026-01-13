@@ -147,19 +147,27 @@ class StatsRangeAPITests(testlib.BaseTestSet):
 
         self.validate_nodes_aggregation_res(data1, data2)
 
-    # data1 is aggregated data, data2 is not aggregated data
+    # Validates correctness of node-level aggregation for system CPU stats.
+    # Compares server-aggregated 'sys' values against manual sum from each node.
+    # Ensures all nodes are represented in the aggregated metrics as expected.
+    # Verifies the aggregated sum is within a small margin of the manual sum.
+    # data1 contains aggregated metrics.
+    # data2 contains non-aggregated metrics for each node.
     def validate_nodes_aggregation_res(self, data1, data2):
-        timestamp = data1[0]['values'][0][0]
+        # We use the last value ([-1]) from the 'values' list instead of the
+        # first ([0]). The reason is that some nodes might not have the very
+        # first data point, because collection can start at different times.
+        timestamp = data1[0]['values'][-1][0]
         sys_sum = 0
         received_sys_sum = 0
         for d in data2:
             if d['metric']['mode'] == 'sys':
-                got_timestamp = d['values'][0][0]
+                got_timestamp = d['values'][-1][0]
                 assert timestamp == got_timestamp, \
-                       'the first datapoint is expected to have timestamp ' \
-                       f'{timestamp}, got the following timestamp ' \
+                       'the most recent datapoint is expected to have ' \
+                       f'timestamp {timestamp}, got the following timestamp ' \
                        f'instead: {got_timestamp}'
-                val = float(d['values'][0][1])
+                val = float(d['values'][-1][1])
                 print(f'got {val} for node {d["metric"]["nodes"]}')
                 sys_sum += val
         print(f'calculated sum: {sys_sum}')
@@ -170,12 +178,12 @@ class StatsRangeAPITests(testlib.BaseTestSet):
 
         for d in data1:
             if d['metric']['mode'] == 'sys':
-                got_timestamp = d['values'][0][0]
+                got_timestamp = d['values'][-1][0]
                 assert timestamp == got_timestamp, \
-                       'the first datapoint is expected to have timestamp ' \
-                       f'{timestamp}, got the following timestamp ' \
+                       'the most recent datapoint is expected to have ' \
+                       f'timestamp {timestamp}, got the following timestamp ' \
                        f'instead: {got_timestamp}'
-                received_sys_sum = float(d['values'][0][1])
+                received_sys_sum = float(d['values'][-1][1])
                 break
         for d in data1:
             assert len(d['metric']['nodes']) == \
