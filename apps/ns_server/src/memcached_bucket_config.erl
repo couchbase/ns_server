@@ -30,7 +30,6 @@
          get_bucket_config/1,
          ensure/3,
          start_params/4,
-         build_extra_param/2,
          get_validation_config_string/3,
          remap_config_names/2,
          ensure_collections/2,
@@ -137,12 +136,6 @@ params(memcached, _BucketName, _BucketConfig, MemQuota, UUID, _DBSubDir) ->
 get_compat_version_string() ->
     [Major, Minor] = cluster_compat_mode:get_compat_version(),
     io_lib:format("~B.~B", [Major, Minor]).
-
-%% @doc Build an extra param for the bucket config.
-%% The result is what is stored under the extra_params key in the bucket config.
--spec build_extra_param(binary(), any()) -> {binary(), any()}.
-build_extra_param(Key, Value) ->
-    {Key, Value}.
 
 %% @doc Parse an extra param from the bucket config extra_params.
 -spec parse_extra_param(binary(), any()) -> {string(), list(), any()}.
@@ -823,8 +816,8 @@ special_mapping_cases(_) ->
 %% @doc Remap the config names for the UI or KV.
 %% This is used to convert the config names to the names that memcached
 %% supports. Any names which cannot be converted to the target case are ignored.
--spec remap_config_names(list(), for_kv | for_ui) -> {list(), list()}.
-remap_config_names(Params, Mode) ->
+-spec remap_config_names(list() | map(), for_kv | for_ui) -> {list(), list()}.
+remap_config_names(Params, Mode) when is_list(Params) ->
     lists:foldr(
       fun({K, V}, {OKAcc, BadAcc}) ->
               Result = case special_mapping_cases(K) of
@@ -838,7 +831,11 @@ remap_config_names(Params, Mode) ->
                   {error, _} ->
                       {OKAcc, [{K, V} | BadAcc]}
               end
-      end, {[], []}, Params).
+      end, {[], []}, Params);
+remap_config_names(Params, Mode) when is_map(Params) ->
+    List = proplists:from_map(Params),
+    remap_config_names(List, Mode).
+
 
 %% @doc Pattern to match words that are parts of a variable name.
 word_pattern() ->

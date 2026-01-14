@@ -596,13 +596,28 @@ build_extra_params_bucket_info(BucketName, BucketConfig) ->
     {BucketConfigString, _AcceptedKeys} =
         memcached_bucket_config:get_validation_config_string(BucketName,
                                                              BucketConfig, []),
-    {ok, OKsFromMemcached, []} =
+    {ok, OKsFromMemcached, ErrorsFromMemcached} =
         validate_bucket_config_with_memcached(BucketConfigString, false),
+
+    case map_size(ErrorsFromMemcached) of
+        0 ->
+            ok;
+        _ ->
+            erlang:exit(
+              iolist_to_binary(
+                io_lib:format(
+                  "Found validation errors from memcached - unexpected "
+                  "when building extra params. Errors: ~p",
+                  [ErrorsFromMemcached])))
+    end,
+
+    OKsFromMemcachedList = proplists:from_map(OKsFromMemcached),
+
     %% We merge in the parameters we already know about from the bucket config.
     %% This is to ensure that internal parameters are reported if and only if
     %% they are already set in the bucket config.
     SetExtraParams = proplists:get_value(extra_params, BucketConfig, []),
-    ExtraParams = lists:flatten([OKsFromMemcached, SetExtraParams]),
+    ExtraParams = lists:flatten([OKsFromMemcachedList, SetExtraParams]),
     %% Remap the names to camel case for the REST API.
     {RemappedParams, BadParams} =
         memcached_bucket_config:remap_config_names(ExtraParams, for_ui),
@@ -611,7 +626,7 @@ build_extra_params_bucket_info(BucketName, BucketConfig) ->
         [] -> ok;
         _ ->
             ?log_warning("Failed to remap extra params ~p for the REST API",
-                [BadParams])
+                         [BadParams])
     end,
 
     lists:map(fun format_extra_param_info/1, RemappedParams ++ BadParams).
@@ -1460,8 +1475,8 @@ parse_bucket_params_continue_via_memcached(
           AllowInternalParams),
 
     %% If there are any errors, we should return them.
-    case {ErrorsFromMemcached, ParamRemappingErrors} of
-        {[], []} ->
+    case ParamRemappingErrors of
+        [] when map_size(ErrorsFromMemcached) =:= 0 ->
             process_bucket_config_from_memcached(
               AcceptedKeys,
               OKs,
@@ -1491,20 +1506,13 @@ process_bucket_config_from_memcached(AcceptedKeys, OKs, OKsFromMemcached,
     %% to set, since the returned list is all parameters, not just
     %% the ones we wanted to set.
     ExtraParams =
-        lists:filtermap(
-          fun ({Key, Value}) ->
-                  case lists:member(binary_to_list(Key), AcceptedKeys) of
-                      true ->
-                          {true,
-                           memcached_bucket_config:build_extra_param(Key,
-                                                                     Value)};
-                      false ->
-                          false
-                  end
-          end, OKsFromMemcached),
+        maps:filter(fun (Key, _Value) ->
+                            lists:member(binary_to_list(Key), AcceptedKeys)
+                    end, OKsFromMemcached),
+    ExtraParamsList = proplists:from_map(ExtraParams),
     %% Add these to the BucketConfig under the extra_params key.
     CurrentExtras = proplists:get_value(extra_params, CurrentBucket, []),
-    NewExtras = misc:update_proplist(CurrentExtras, ExtraParams),
+    NewExtras = misc:update_proplist(CurrentExtras, ExtraParamsList),
     UpdatedOKs = misc:update_proplist(OKs, [{extra_params, NewExtras}]),
     {ok, UpdatedOKs}.
 
@@ -1551,7 +1559,7 @@ process_memcached_bucket_config_validation_map(ValidationMap,
         fun (_K, V) ->
                 memcached_bucket_config_validation:get_error_message(V)
         end, FilteredErrors),
-    {ok, proplists:from_map(OKs), proplists:from_map(ErrorMessages)}.
+    {ok, OKs, ErrorMessages}.
 
 %% @doc Merge two proplists. The lists do not need to be sorted.
 merge_proplists(A, B) ->
@@ -6571,8 +6579,7 @@ validate_bucket_config_with_memcached_test() ->
                 end),
     {ok, OKs, ErrorMessages} = validate_bucket_config_with_memcached(
                                  "foo=value;baz=value", false),
-    ?assertEqual(misc:sort_kv_list([{"foo", "value"},
-                                    {"bar", "value"}]), misc:sort_kv_list(OKs)),
-    ?assertEqual([{"baz", <<"message">>}], ErrorMessages).
+    ?assertEqual(#{"foo" => "value", "bar" => "value"}, OKs),
+    ?assertEqual(#{"baz" => <<"message">>}, ErrorMessages).
 
 -endif.
