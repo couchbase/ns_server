@@ -959,16 +959,25 @@ integrity_check_for_stored_keys_test() ->
                                            "stored_keys_tokens"),
                 StoreKey =
                     fun (Kind, KeyId, EncryptWithKey) ->
+                        CreationTimeISO = <<"2024-07-26T19:32:19Z">>,
+                        KeyMaterial = rand:bytes(32),
                         KeyData = encryption_service:format_aes_key_params(
-                                    rand:bytes(32), EncryptWithKey, false,
+                                    KeyMaterial, EncryptWithKey, false,
                                     false),
-                        store_key(Pid, Kind, KeyId, 'raw-aes-gcm',
-                                    <<"2024-07-26T19:32:19Z">>,
-                                    ejson:encode(KeyData),
-                                    false)
+                        ok = store_key(Pid, Kind, KeyId, 'raw-aes-gcm',
+                                      CreationTimeISO,
+                                      ejson:encode(KeyData),
+                                      false),
+                        CreationTime = iso8601:parse(CreationTimeISO),
+                        KeyInfo = encryption_service:new_raw_aes_dek_info(
+                                   KeyMaterial, EncryptWithKey,
+                                   CreationTime, false),
+                        encryption_service:new_dek_record(KeyId,
+                                                          'raw-aes-gcm',
+                                                          KeyInfo)
                     end,
 
-                ok = StoreKey(configDek, ?key1, <<"encryptionService">>),
+                Key1 = StoreKey(configDek, ?key1, <<"encryptionService">>),
 
                 {ok, [undefined]} = cb_crypto:get_file_dek_ids(TokensPath),
 
@@ -978,15 +987,23 @@ integrity_check_for_stored_keys_test() ->
                 ok = remove_old_integrity_tokens(Pid, KeyDirs),
                 {ok, [?key1]} = cb_crypto:get_file_dek_ids(TokensPath),
 
+                %% Try decrypting TokensPath to verify gosecrets encrypts it
+                %% properly and formats are compatible
+                %% Use the constructed key from StoreKey
+                DekSnapshot = cb_crypto:create_single_dek_snapshot(Key1,
+                                                                   undefined),
+                {decrypted, _DecryptedData} =
+                    cb_crypto:read_file(TokensPath, DekSnapshot),
+
                 %% Store more keys of different kinds
-                ok = StoreKey(kek, ?key2, <<"encryptionService">>),
-                ok = StoreKey(configDek, ?key3, ?key2),
-                ok = StoreKey(logDek, ?key4, ?key2),
-                ok = StoreKey(auditDek, ?key5, ?key2),
+                StoreKey(kek, ?key2, <<"encryptionService">>),
+                StoreKey(configDek, ?key3, ?key2),
+                StoreKey(logDek, ?key4, ?key2),
+                StoreKey(auditDek, ?key5, ?key2),
                 Bucket1Key = <<"bucket1/deks/", ?key6/binary>>,
-                ok = StoreKey(bucketDek, Bucket1Key, ?key2),
+                StoreKey(bucketDek, Bucket1Key, ?key2),
                 Bucket2Key = <<"bucket2/deks/", ?key7/binary>>,
-                ok = StoreKey(bucketDek, Bucket2Key, ?key2),
+                StoreKey(bucketDek, Bucket2Key, ?key2),
 
                 %% Second rotation with key1
                 ok = rotate_integrity_tokens(Pid, ?key3),
