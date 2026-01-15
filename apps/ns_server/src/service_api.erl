@@ -20,7 +20,8 @@
          prepare_pause_bucket/3, pause_bucket/3,
          prepare_resume_bucket/4, resume_bucket/4,
          health_check/1, is_safe/2, get_label/1,
-         get_defragmented_utilization/2]).
+         get_defragmented_utilization/2,
+         validate_bucket_config/2]).
 
 -define(RPC_TIMEOUT,       ?get_timeout(rpc, 60000)).
 -define(LONG_POLL_TIMEOUT, ?get_timeout(long_poll, 30000)).
@@ -76,6 +77,10 @@ prepare_resume_bucket(Pid, Id, Args, DryRun) ->
 resume_bucket(Pid, Id, Args, DryRun) ->
     perform_service_manager_call(
       Pid, "Resume", resume_req(Id, Args, DryRun)).
+
+validate_bucket_config(Pid, BucketConfig) ->
+    perform_service_manager_call(Pid, "ValidateBucketConfig",
+                                 {[{config, list_to_binary(BucketConfig)}]}).
 
 health_check(Service) ->
     try perform_call(

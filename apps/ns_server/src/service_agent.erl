@@ -24,6 +24,7 @@
 -export([get_params/2]).
 -export([prepare_pause_bucket/5, pause_bucket/5]).
 -export([prepare_resume_bucket/6, resume_bucket/6]).
+-export([validate_bucket_config/3]).
 -export([spawn_connection_waiter/2]).
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
@@ -62,8 +63,9 @@
           topology_worker :: undefined | pid(),
 
           type :: undefined | rebalance | failover | pause_bucket |
-                  resume_bucket | dry_run_resume_bucket
-         }).
+                  resume_bucket | dry_run_resume_bucket |
+                  validate_bucket_config
+               }).
 
 start_link(Service) ->
     gen_server:start_link({local, server_name(Service)}, ?MODULE, Service, []).
@@ -212,6 +214,11 @@ resume_bucket(Service, Node, Id, Args, DryRun, Manager) ->
                      {resume_bucket, Id, Args, DryRun, Observer}},
                     ?OUTER_TIMEOUT).
 
+validate_bucket_config(cont_backup, Node, ConfigString) ->
+    gen_server:call({server_name(cont_backup), Node},
+                    {validate_bucket_config, ConfigString},
+                    ?OUTER_TIMEOUT).
+
 %% gen_server callbacks
 init(Service)       ->
     process_flag(trap_exit, true),
@@ -277,6 +284,16 @@ handle_call({if_service_manager, Pid, Call} = FullCall, From,
                                                                 Manager]),
             {reply, nack, State}
     end;
+handle_call({validate_bucket_config, ConfigString}, From, State) ->
+    %% Not a service manager call (see do_handle_call and the above function
+    %% clause) as a service_agent can only be associated with a single service
+    %% manager as this is called by the REST API (may be multiple callers).
+    State1 = State#state{type = validate_bucket_config},
+    run_on_task_runner(
+        From, State1,
+        fun (Conn) ->
+                handle_validate_bucket_config(Conn, ConfigString)
+        end);
 handle_call(Call, From, State) ->
     ?log_warning("Unexpected call ~p from ~p when in state~n~p",
                  [Call, From, State]),
@@ -828,6 +845,10 @@ handle_pause_bucket(Conn, Id, Args,
                     Agent, Observer) ->
     run_task_and_set_observer(
       ?cut(service_api:pause_bucket(Conn, Id, Args)), Agent, Observer).
+
+
+handle_validate_bucket_config(Conn, BucketConfig) ->
+    service_api:validate_bucket_config(Conn, BucketConfig).
 
 handle_prepare_resume_bucket(Conn, Id, Args, DryRun) ->
     service_api:prepare_resume_bucket(Conn, Id, Args, DryRun).
