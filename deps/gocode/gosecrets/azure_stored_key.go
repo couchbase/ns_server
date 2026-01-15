@@ -22,9 +22,10 @@ import (
 
 type azureStoredKey struct {
 	baseStoredKey
-	KeyUrl       string `json:"keyUrl"`
-	Algorithm    string `json:"algorithm"`
-	ReqTimeoutMs int    `json:"reqTimeoutMs"`
+	KeyUrl           string `json:"keyUrl"`
+	Algorithm        string `json:"algorithm"`
+	CredentialsChain string `json:"credentialsChain"`
+	ReqTimeoutMs     int    `json:"reqTimeoutMs"`
 }
 
 // Implementation of storedKeyIface for azure keys
@@ -92,9 +93,10 @@ func getAzureOperationArgs(k *azureStoredKey) (*azureutils.OperationArgs, error)
 	}
 
 	return &azureutils.OperationArgs{
-		KeyURL:          k.KeyUrl,
-		Algorithm:       k.Algorithm,
-		TimeoutDuration: time.Duration(k.ReqTimeoutMs) * time.Millisecond,
+		KeyURL:           k.KeyUrl,
+		Algorithm:        k.Algorithm,
+		CredentialsChain: k.CredentialsChain,
+		TimeoutDuration:  time.Duration(k.ReqTimeoutMs) * time.Millisecond,
 	}, nil
 }
 

@@ -339,6 +339,7 @@ keys_remap() ->
       can_be_cached => canBeCached,
       key_arn => keyARN,
       key_url => keyURL,
+      credentials_chain => credentialsChain,
       encryption_algorithm => encryptionAlgorithm,
       credentials_file => credentialsFile,
       config_file => configFile,
@@ -570,6 +571,7 @@ format_azure_key_data(Props) ->
             (encryption_algorithm, Algorithm) -> iolist_to_binary(Algorithm);
             (req_timeout_ms, R) -> R;
             (last_rotation_time, DT) -> format_datetime(DT);
+            (credentials_chain, C) -> iolist_to_binary(string:join(C, ","));
             (stored_ids, StoredIds) ->
                 [{[{id, Id}, {creation_time, format_datetime(CT)}]}
                  || #{id := Id, creation_time := CT} <- StoredIds]
@@ -815,6 +817,37 @@ validate_optional_file(Name, State) ->
           end
       end, Name, State).
 
+validate_azure_credentials_chain(State) ->
+    Allowed = ["environment", "workloadIdentity", "managedIdentity", "azureCli",
+               "azureDeveloperCli", "defaultCredentialsChain"],
+
+    State1 =
+        validator:token_list(credentialsChain, ",",
+                             fun (Value) ->
+                                     case lists:member(string:trim(Value),
+                                                       Allowed) of
+                                         true -> {value, string:trim(Value)};
+                                         false -> {error, "Invalid value"}
+                                     end
+                             end, State),
+
+    validator:validate(
+        fun(["defaultCredentialsChain"]) ->
+                ok;
+            (ValueList) ->
+                case {lists:member("defaultCredentialsChain", ValueList),
+                      length(ValueList) =/= length(lists:usort(ValueList))} of
+                    {true, _} ->
+                        {error, "defaultCredentialsChain can not be mixed with"
+                                 " other chain options"};
+                    {_, true} ->
+                        {error, "chain must not contain duplicates"};
+                    {false, false} ->
+                        ok
+                end
+        end, credentialsChain, State1).
+
+
 gcpkms_key_validators(CurSecretProps) ->
     [validator:string(keyResourceId, _),
      validator:required(keyResourceId, _),
@@ -843,6 +876,9 @@ azurekms_key_validators(CurSecretProps) ->
                                             "RSA15", "RSAOAEP",
                                             "RSAOAEP256"], _),
      validator:required(encryptionAlgorithm, _),
+     validator:required(credentialsChain, _),
+     validator:non_empty_string(credentialsChain, _),
+     fun validate_azure_credentials_chain/1,
      validator:integer(reqTimeoutMs, 1000, ?MAX_KMS_GO_TIMEOUT_MS, _),
      validator:default(reqTimeoutMs, 30000, _),
      validator:validate(fun (_) -> {error, "read only"} end, storedKeyIds, _)

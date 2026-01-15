@@ -2820,7 +2820,9 @@ def azure_test_secret(name=None, usage=None, key_url=None):
         name = f'Test secret {testlib.random_str(5)}'
 
     data = {'keyURL': 'TEST_AZURE_KEY_URL',
-            'encryptionAlgorithm': 'RSAOAEP256'}
+            'encryptionAlgorithm': 'RSAOAEP256',
+            'credentialsChain': 'environment, workloadIdentity,'
+                                'managedIdentity, azureCli, azureDeveloperCli'}
 
     if key_url is not None:
         data['keyURL'] = key_url

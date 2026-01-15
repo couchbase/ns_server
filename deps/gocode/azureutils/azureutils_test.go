@@ -25,7 +25,8 @@ import (
 // This must be provided as argument to example: "go test -key-url=<keyURL>"
 var keyURL = flag.String("key-url", "", "Key URL")
 var algorithm = flag.String("algorithm", "RSAOAEP256", "Algorithm")
-
+var credentialsChain = flag.String("credentials-chain", "defaultCredentialsChain", "Credentials chain")
+var timeoutMs = flag.Int("timeout-ms", 60000, "Timeout Duration")
 var AllowedDomains = []string{"vault.azure.net",
 	"vault.azure.cn",
 	"vault.usgovcloudapi.net",
@@ -44,9 +45,10 @@ func TestGcpEncryptDecrypt(t *testing.T) {
 	AD := []byte("These are my additional authenticated data")
 
 	opArgs := OperationArgs{
-		KeyURL:          *keyURL,
-		Algorithm:       *algorithm,
-		TimeoutDuration: 5 * time.Minute,
+		KeyURL:           *keyURL,
+		Algorithm:        *algorithm,
+		CredentialsChain: *credentialsChain,
+		TimeoutDuration:  time.Duration(*timeoutMs) * time.Millisecond,
 	}
 
 	encryptedText, version, err := KmsEncrypt(opArgs, plainTextEncrypt, AD)
@@ -88,6 +90,33 @@ func TestParseAzureURL(t *testing.T) {
 
 	_, _, err = parseAzureURL("https://vault.azure.net")
 	requireErrEqual(t, err, "path must be exactly /keys/<name> with no additional segment")
+}
+
+func TestNegativeCredentialsChain(t *testing.T) {
+	opArgs := OperationArgs{
+		KeyURL:           *keyURL,
+		Algorithm:        *algorithm,
+		CredentialsChain: "invalid,credentials,chain",
+		TimeoutDuration:  time.Duration(*timeoutMs) * time.Millisecond,
+	}
+
+	plainTextEncrypt := []byte("These are my secrets")
+	AD := []byte("These are my additional authenticated data")
+
+	_, _, err := KmsEncrypt(opArgs, plainTextEncrypt, AD)
+	requireErrEqual(t, err, "unsupported credential type in chain: \"invalid\"")
+
+	opArgs.CredentialsChain = ""
+	_, _, err = KmsEncrypt(opArgs, plainTextEncrypt, AD)
+	requireErrEqual(t, err, "credentials chain cannot be empty")
+
+	opArgs.CredentialsChain = "defaultCredentialsChain, environment, workloadIdentity, managedIdentity"
+	_, _, err = KmsEncrypt(opArgs, plainTextEncrypt, AD)
+	requireErrEqual(t, err, "defaultCredentialsChain must not be mixed with other credential options in chain")
+
+	opArgs.CredentialsChain = "   ,   "
+	_, _, err = KmsEncrypt(opArgs, plainTextEncrypt, AD)
+	requireErrEqual(t, err, "credentials chain contains an empty value")
 }
 
 func requireErrEqual(t *testing.T, err error, want string) {

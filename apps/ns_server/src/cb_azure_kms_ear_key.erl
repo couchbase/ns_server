@@ -20,6 +20,7 @@
 
 -type secret_props() :: #{key_url := string(),
                           encryption_algorithm := string(),
+                          credentials_chain := string(),
                           req_timeout_ms := integer(),
                           stored_ids := [cb_kms_ear_key:key_props()],
                           last_rotation_time := calendar:datetime()}.
@@ -43,7 +44,8 @@ test_props(#{stored_ids := [StoredId | _]} = Props, _ExtraAD, _) ->
 %%%===================================================================
 
 ensure_azure_kek_on_disk(#{stored_ids := StoredIds} = Props, TestOnly) ->
-    Params = maps:with([key_url, encryption_algorithm, req_timeout_ms], Props),
+    Params = maps:with([key_url, encryption_algorithm, credentials_chain,
+                        req_timeout_ms], Props),
     Res = lists:map(
             fun (#{id := Id, creation_time := CreationTime}) ->
                 {Id, encryption_service:store_azure_key(Id, Params,

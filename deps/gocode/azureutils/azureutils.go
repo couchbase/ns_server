@@ -17,15 +17,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
 	"github.com/couchbase/tools-common/types/v2/ptr"
 )
 
 type OperationArgs struct {
-	KeyURL          string
-	Algorithm       string
-	TimeoutDuration time.Duration
+	KeyURL           string
+	Algorithm        string
+	CredentialsChain string
+	TimeoutDuration  time.Duration
 }
 
 func KmsEncrypt(opArgs OperationArgs, plainText, AD []byte) ([]byte, string, error) {
@@ -48,7 +50,7 @@ func KmsEncrypt(opArgs OperationArgs, plainText, AD []byte) ([]byte, string, err
 		return nil, "", err
 	}
 
-	client, err := getAzureClient(baseURL)
+	client, err := getAzureClient(baseURL, opArgs.CredentialsChain)
 	if err != nil {
 		return nil, "", err
 	}
@@ -95,7 +97,7 @@ func KmsDecrypt(opArgs OperationArgs, keyVersion string, cipherText, AD []byte) 
 		return nil, err
 	}
 
-	client, err := getAzureClient(baseURL)
+	client, err := getAzureClient(baseURL, opArgs.CredentialsChain)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +131,20 @@ func validateArgs(opArgs OperationArgs) error {
 		return fmt.Errorf("no encryption algorithm")
 	}
 
+	trimmedChain := strings.TrimSpace(opArgs.CredentialsChain)
+	if trimmedChain == "" {
+		return fmt.Errorf("credentials chain cannot be empty")
+	}
+	chainParts := strings.Split(trimmedChain, ",")
+	for _, part := range chainParts {
+		if part == "defaultCredentialsChain" && len(chainParts) != 1 {
+			return fmt.Errorf("defaultCredentialsChain must not be mixed with other credential options in chain")
+		}
+		if strings.TrimSpace(part) == "" {
+			return fmt.Errorf("credentials chain contains an empty value")
+		}
+	}
+
 	return nil
 }
 
@@ -144,10 +160,67 @@ func getEncrOptions(value, AD []byte, encryptionAlgorithm string) (*azkeys.KeyOp
 	}, nil
 }
 
-func getAzureClient(baseURL string) (*azkeys.Client, error) {
-	creds, err := azidentity.NewDefaultAzureCredential(nil)
-	if err != nil {
-		return nil, fmt.Errorf("could not get credentials for Azure: %w", err)
+func getAzureClient(baseURL string, credentialsChain string) (*azkeys.Client, error) {
+	var (
+		creds         azcore.TokenCredential
+		err           error
+		errorMessages []string
+	)
+	if credentialsChain == "defaultCredentialsChain" {
+		creds, err = azidentity.NewDefaultAzureCredential(nil)
+		if err != nil {
+			return nil, fmt.Errorf("could not get credentials for Azure: %w", err)
+		}
+	} else {
+		var chainCreds []azcore.TokenCredential
+		for _, item := range strings.Split(credentialsChain, ",") {
+			switch strings.TrimSpace(item) {
+			case "environment":
+				c, e := azidentity.NewEnvironmentCredential(nil)
+				if e == nil {
+					chainCreds = append(chainCreds, c)
+				} else {
+					errorMessages = append(errorMessages, "EnvironmentCredential: "+e.Error())
+				}
+			case "workloadIdentity":
+				c, e := azidentity.NewWorkloadIdentityCredential(nil)
+				if e == nil {
+					chainCreds = append(chainCreds, c)
+				} else {
+					errorMessages = append(errorMessages, "WorkloadIdentityCredential: "+e.Error())
+				}
+			case "managedIdentity":
+				c, e := azidentity.NewManagedIdentityCredential(nil)
+				if e == nil {
+					chainCreds = append(chainCreds, c)
+				} else {
+					errorMessages = append(errorMessages, "ManagedIdentityCredential: "+e.Error())
+				}
+			case "azureCli":
+				c, e := azidentity.NewAzureCLICredential(nil)
+				if e == nil {
+					chainCreds = append(chainCreds, c)
+				} else {
+					errorMessages = append(errorMessages, "AzureCLICredential: "+e.Error())
+				}
+			case "azureDeveloperCli":
+				c, e := azidentity.NewAzureDeveloperCLICredential(nil)
+				if e == nil {
+					chainCreds = append(chainCreds, c)
+				} else {
+					errorMessages = append(errorMessages, "AzureDeveloperCLICredential: "+e.Error())
+				}
+			default:
+				return nil, fmt.Errorf("unsupported credential type in chain: %q", strings.TrimSpace(item))
+			}
+		}
+		if len(chainCreds) == 0 {
+			return nil, fmt.Errorf("could not setup credentials chain: %s", strings.Join(errorMessages, ";"))
+		}
+		creds, err = azidentity.NewChainedTokenCredential(chainCreds, nil)
+		if err != nil {
+			return nil, fmt.Errorf("could not create chained token credential: %w", err)
+		}
 	}
 
 	client, err := azkeys.NewClient(baseURL, creds, nil)

@@ -171,9 +171,11 @@ store_azure_key(Id, Params, CreationDT, TestOnly) ->
 
 format_azure_key_params(#{key_url := KeyUrl,
                           encryption_algorithm := Algorithm,
+                          credentials_chain := CredentialsChain,
                           req_timeout_ms := ReqTimeoutMs}) ->
     {[{keyUrl, iolist_to_binary(KeyUrl)},
       {algorithm, iolist_to_binary(Algorithm)},
+      {credentialsChain,  iolist_to_binary(lists:join(",", CredentialsChain))},
       {reqTimeoutMs, ReqTimeoutMs}]}.
 
 store_kmip_key(Id, Params, KekIdToEncrypt, CreationDT, TestOnly) ->
