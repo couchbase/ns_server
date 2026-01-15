@@ -848,6 +848,7 @@ delete_unused_db_files(Dir) when is_list(Dir) ->
 delete_old_2i_indexes() ->
     {ok, IxDir} = this_node_ixdir(),
     Dir = filename:join(IxDir, "@2i"),
+    ?log_debug("Delete directory ~p", [Dir]),
     misc:rm_rf(Dir).
 
 
