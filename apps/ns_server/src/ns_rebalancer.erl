@@ -552,6 +552,7 @@ rebalance_body(PotentiallyStaleParams, DesiredServers) ->
 
     prepare_rebalance(LiveNodes),
 
+    ok = service_janitor:cleanup(),
     ok = drop_old_2i_indexes(KeepNodes, Params),
     clear_non_kv_recovery_types(KeepNodes),
 
@@ -582,8 +583,6 @@ rebalance_body(PotentiallyStaleParams, DesiredServers) ->
     ok = chronicle_compat:set_multiple(
            ns_cluster_membership:clear_recovery_type_sets(KeepNodes) ++
                failover:clear_failover_vbuckets_sets(KeepNodes)),
-
-    ok = service_janitor:cleanup(),
 
     ok = chronicle_master:activate_nodes(KeepNodes),
     ok = leader_activities:activate_quorum_nodes(KeepNodes),
