@@ -591,33 +591,34 @@ format_extra_param_info({Key, Value}) ->
 %% @doc Build the extra params for the bucket config.
 %% This is used to get the extra params from memcached.
 build_extra_params_bucket_info(BucketName, BucketConfig) ->
-    %% We need to validate this bucket config with memcached to get the extra
+    %% We need to validate this bucket config with the services to get the extra
     %% params defaults. This will not include internal parameters.
     {BucketConfigString, _AcceptedKeys} =
         memcached_bucket_config:get_validation_config_string(BucketName,
                                                              BucketConfig, []),
-    {ok, OKsFromMemcached, ErrorsFromMemcached} =
-        validate_bucket_config_with_memcached(BucketConfigString, false),
 
-    case map_size(ErrorsFromMemcached) of
+    {ServiceOKs, ServiceErrors} =
+        validate_bucket_config_against_services(BucketConfigString, false),
+
+    case map_size(ServiceErrors) of
         0 ->
             ok;
         _ ->
             erlang:exit(
               iolist_to_binary(
                 io_lib:format(
-                  "Found validation errors from memcached - unexpected "
-                  "when building extra params. Errors: ~p",
-                  [ErrorsFromMemcached])))
+                  "Found bucket config validation errors from services - "
+                  "unexpected when building extra params. Errors: ~p",
+                  [ServiceErrors])))
     end,
 
-    OKsFromMemcachedList = proplists:from_map(OKsFromMemcached),
+    OKsFromServicesList = proplists:from_map(ServiceOKs),
 
     %% We merge in the parameters we already know about from the bucket config.
     %% This is to ensure that internal parameters are reported if and only if
     %% they are already set in the bucket config.
     SetExtraParams = proplists:get_value(extra_params, BucketConfig, []),
-    ExtraParams = lists:flatten([OKsFromMemcachedList, SetExtraParams]),
+    ExtraParams = lists:flatten([OKsFromServicesList, SetExtraParams]),
     %% Remap the names to camel case for the REST API.
     {RemappedParams, BadParams} =
         memcached_bucket_config:remap_config_names(ExtraParams, for_ui),
@@ -1389,12 +1390,12 @@ parse_bucket_params_without_warnings_internal(Ctx, Params0) ->
 parse_bucket_params_without_warnings(Ctx, Params) ->
     case parse_bucket_params_without_warnings_internal(Ctx, Params) of
         {ok, OKs, JSONSummaries} ->
-            %% For Totoro, we need to continue the validation via memcached.
+            %% For Totoro, we need to continue the validation via services.
             case cluster_compat_mode:is_cluster_totoro() of
                 false ->
                     {ok, OKs, JSONSummaries};
                 true ->
-                    case parse_bucket_params_continue_via_memcached(
+                    case parse_bucket_params_continue_via_services(
                            OKs, Params, Ctx) of
                         {ok, UpdatedOKs} ->
                             {ok, UpdatedOKs, JSONSummaries};
@@ -1403,16 +1404,16 @@ parse_bucket_params_without_warnings(Ctx, Params) ->
                     end
             end;
         %% TODO: If "ignoreExtraParams" is specified, we will not validate
-        %% the extra params (skip memcached path).
+        %% the extra params (skip services path).
         {errors, Errors, Summaries, OKs} ->
             {errors, Errors, Summaries, OKs}
     end.
 
 
-%% @doc Continue the validation via memcached (via ValidateBucketConfig API).
+%% @doc Continue the validation via the services
 %% OKs is the result of the first validation via ns_server.
 %% Params is the parameters that we want to set / create the bucket with.
-parse_bucket_params_continue_via_memcached(
+parse_bucket_params_continue_via_services(
   OKs, Params, #bv_ctx{allow_internal_params = AllowInternalParams,
                        bucket_name = BucketName}) ->
     CurrentBucket = proplists:get_value(currentBucket, OKs, []),
@@ -1425,8 +1426,9 @@ parse_bucket_params_continue_via_memcached(
         merge_proplists(CurrentBucket, OKs),
 
     %% We will pass parameters down as snake_case, since that is what
-    %% memcached uses. If we fail to convert to snake_case, we ignore the
-    %% parameter - unknown params are ignored by this API.
+    %% the services use (memcached for historical reasons). If we fail to
+    %% convert to snake_case, we ignore the parameter - unknown params are
+    %% ignored by this API.
     {RemappedParams, BadParams} = memcached_bucket_config:remap_config_names(
                                     Params, for_kv),
 
@@ -1438,7 +1440,7 @@ parse_bucket_params_continue_via_memcached(
                            [BadParams]),
                 %% Return values are going back via the REST API. They are
                 %% formatted similarly to errors that we provide, and those that
-                %% are provided from memcached. We need the tuples to be
+                %% are provided from the services. We need the tuples to be
                 %% binaries to send them correctly on the API.
                 [{list_to_binary(BadKey),
                   <<"Cannot be remapped to snake_case">>} ||
@@ -1446,13 +1448,13 @@ parse_bucket_params_continue_via_memcached(
         end,
 
     %% We will only consider the parameters that we have not already parsed
-    %% in the ns_server validation. This does not prevent memcached from
+    %% in the ns_server validation. This does not prevent services from
     %% validating this parameter (it is part of the ProposedBucket) but we won't
     %% bail out of the sanity checks when we build the config string due to a
     %% conflict with the parameters that we (ns_server) handle. The sanity check
     %% is still nice to keep though, to catch any errors/oddities in remapping.
     NsServerParsedParams = proplists:delete(currentBucket, OKs),
-    RemappedParamsForMemcached =
+    RemappedParamsForServices =
         lists:filter(
           fun({Key, _Value}) ->
                   not proplists:is_defined(Key, NsServerParsedParams)
@@ -1463,52 +1465,59 @@ parse_bucket_params_continue_via_memcached(
         memcached_bucket_config:get_validation_config_string(
           BucketName,
           ProposedBucket,
-          RemappedParamsForMemcached),
+          RemappedParamsForServices),
 
+
+    {ServiceOKs, ServiceErrors} =
+        validate_bucket_config_against_services(BucketConfigString,
+                                                AllowInternalParams),
+
+    %% If there are any errors, we should return them.
+    case {ServiceErrors, ParamRemappingErrors} of
+        {#{}, []} when map_size(ServiceErrors) =:= 0 ->
+            process_bucket_config_from_services(
+              AcceptedKeys,
+              OKs,
+              ServiceOKs,
+              CurrentBucket);
+        _ ->
+            %% Remapping the snake_case keys from services back to camelCase
+            %% for consistency in the REST API. Hopefully we don't have any
+            %% remapping errors here - we will just log them for the sake of
+            %% resiliency.
+            {RemappedErrors, RemappingErrors} =
+                memcached_bucket_config:remap_config_names(ServiceErrors,
+                                                           for_ui),
+            case RemappingErrors of
+                [] -> ok;
+                _ ->
+                    ?log_warning("Failed to remap bucket config error params "
+                                 "~p for the REST API",
+                                 [RemappingErrors])
+            end,
+            {errors, RemappedErrors ++ ParamRemappingErrors, OKs}
+    end.
+
+validate_bucket_config_against_services(BucketConfigString,
+                                        AllowInternalParams) ->
     %% Validate the params using validate_bucket_config_with_memcached, which
     %% uses MCBP command to validate against the local node. It returns the same
     %% set of OKs and Errors, and these should be merged into the original OKs
     %% and Errors.
     {ok, OKsFromMemcached, ErrorsFromMemcached} =
-        validate_bucket_config_with_memcached(
-          BucketConfigString,
-          AllowInternalParams),
+        validate_bucket_config_with_memcached(BucketConfigString,
+                                              AllowInternalParams),
+    {OKsFromMemcached, ErrorsFromMemcached}.
 
-    %% If there are any errors, we should return them.
-    case ParamRemappingErrors of
-        [] when map_size(ErrorsFromMemcached) =:= 0 ->
-            process_bucket_config_from_memcached(
-              AcceptedKeys,
-              OKs,
-              OKsFromMemcached,
-              CurrentBucket);
-        _ ->
-            %% Remapping the snake_case keys from memcached back to camelCase
-            %% for consistency in the REST API. Hopefully we don't have any
-            %% remapping errors here - we will just log them for the sake of
-            %% resiliency.
-            {RemappedMemcachedErrors, MemcachedErrorRemapErrors} =
-                memcached_bucket_config:remap_config_names(ErrorsFromMemcached,
-                                                           for_ui),
-            case MemcachedErrorRemapErrors of
-                [] -> ok;
-                _ ->
-                    ?log_warning("Failed to remap memcached error params ~p "
-                                 "for config string",
-                                 [MemcachedErrorRemapErrors])
-            end,
-            {errors, RemappedMemcachedErrors ++ ParamRemappingErrors, OKs}
-    end.
-
-process_bucket_config_from_memcached(AcceptedKeys, OKs, OKsFromMemcached,
-                                     CurrentBucket) ->
-    %% Filter down the OKsFromMemcached to only Params we wanted
+process_bucket_config_from_services(AcceptedKeys, OKs, OKsFromServices,
+                                    CurrentBucket) ->
+    %% Filter down the OKs from the services to only Params we wanted
     %% to set, since the returned list is all parameters, not just
     %% the ones we wanted to set.
     ExtraParams =
         maps:filter(fun (Key, _Value) ->
                             lists:member(binary_to_list(Key), AcceptedKeys)
-                    end, OKsFromMemcached),
+                    end, OKsFromServices),
     ExtraParamsList = proplists:from_map(ExtraParams),
     %% Add these to the BucketConfig under the extra_params key.
     CurrentExtras = proplists:get_value(extra_params, CurrentBucket, []),
@@ -1524,17 +1533,17 @@ validate_bucket_config_with_memcached(BucketConfigString,
                                       AllowInternalParams) ->
     case ns_memcached:validate_bucket_config(BucketConfigString) of
         {ok, ValidationMap} ->
-            process_memcached_bucket_config_validation_map(ValidationMap,
-                                                           AllowInternalParams);
+            process_service_bucket_config_validation_map(ValidationMap,
+                                                         AllowInternalParams);
         {error, Error} ->
             ale:error(?USER_LOGGER,
                       "Error validating bucket config with memcached: ~p",
-                [Error]),
+                      [Error]),
             {error, Error}
     end.
 
-process_memcached_bucket_config_validation_map(ValidationMap,
-    AllowInternalParams) ->
+process_service_bucket_config_validation_map(ValidationMap,
+                                             AllowInternalParams) ->
     {AllOKs, Errors} = memcached_bucket_config_validation:group(ValidationMap),
     FilteredOKs =
         maps:filter(
@@ -3565,7 +3574,7 @@ validate_num_vbuckets(Val) ->
 %% parameter is valid.
 %%
 %% The REST API has bucket parameters in camelCase, but parameters are stored
-%% internally and passed to memcached in snake_case. This difference
+%% internally and passed to services in snake_case. This difference
 %% frustratingly means that we must map the user (camelCase) key to the internal
 %% (snake_case) key if the parameter is valid, otherwise we should return the
 %% user (camelCase) key in any error messages. This function allows us to deal
