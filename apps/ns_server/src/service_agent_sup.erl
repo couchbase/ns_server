@@ -54,7 +54,14 @@ wanted_children() ->
     Services =
         [S || S <- ns_cluster_membership:topology_aware_services(),
               ns_cluster_membership:should_run_service(Snapshot, S, node())],
-    [{service_agent, S} || S <- Services].
+
+    %% We run cont_backup service_agent such that we can validate the bucket
+    %% config against it via the ServiceAPI.
+    AllServices = case ns_ports_setup:should_run(cont_backup, Snapshot) of
+                      true -> Services ++ [cont_backup];
+                      false -> Services
+                  end,
+    [{service_agent, S} || S <- AllServices].
 
 running_children() ->
     [Id || {Id, _, _, _} <- supervisor:which_children(service_agent_children_sup)].
