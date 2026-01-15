@@ -48,57 +48,60 @@ maybe_init_services() ->
     Snapshot = ns_cluster_membership:get_snapshot(),
     ActiveNodes = ns_cluster_membership:active_nodes(Snapshot),
     case ActiveNodes of
-        [Node] when Node =:= node() ->
+        [Node] ->
             Services = ns_cluster_membership:node_services(Snapshot, Node),
-            RVs = [maybe_init_service(Snapshot, S) || S <- Services],
+            RVs = [maybe_init_service(Snapshot, Node, S) || S <- Services],
             handle_results(RVs);
         _ ->
             ok
     end.
 
-maybe_init_service(_Snapshot, kv) ->
+maybe_init_service(_Snapshot, _Node, kv) ->
     ok;
-maybe_init_service(Snapshot, Service) ->
+maybe_init_service(Snapshot, Node, Service) ->
     case ns_cluster_membership:get_service_map(Snapshot, Service) of
         [] ->
             case lists:member(
                    Service,
                    ns_cluster_membership:topology_aware_services()) of
                 true ->
-                    init_topology_aware_service(Service);
+                    init_topology_aware_service(Service, Node);
                 false ->
-                    init_simple_service(Service)
+                    init_simple_service(Service, Node)
             end;
         _ ->
             ok
     end.
 
-init_simple_service(Service) ->
-    ok = ns_cluster_membership:set_service_map(Service, [node()]),
-    ?log_debug("Created initial service map for service `~p'", [Service]),
+init_simple_service(Service, Node) ->
+    ok = ns_cluster_membership:set_service_map(Service, [Node]),
+    ?log_debug("Created initial service map for service ~p on node ~p",
+               [Service, Node]),
     ok.
 
-init_topology_aware_service(Service) ->
-    ?log_debug("Doing initial topology change for service `~p'", [Service]),
-    case orchestrate_initial_rebalance(Service) of
+init_topology_aware_service(Service, Node) ->
+    ?log_debug("Doing initial topology change for service ~p on node ~p",
+               [Service, Node]),
+    case orchestrate_initial_rebalance(Service, Node) of
         ok ->
-            ?log_debug("Initial rebalance for `~p` finished successfully",
-                       [Service]),
+            ?log_debug(
+               "Initial rebalance for ~p on node ~p finished successfully",
+               [Service, Node]),
             ok;
         Error ->
-            ?log_error("Initial rebalance for `~p` failed: ~p",
-                       [Service, Error]),
+            ?log_error("Initial rebalance for ~p on node ~p failed: ~p",
+                       [Service, Node, Error]),
             Error
     end.
 
-orchestrate_initial_rebalance(Service) ->
+orchestrate_initial_rebalance(Service, Node) ->
     ProgressCallback =
         fun (Progress) ->
-                ?log_debug("Initial rebalance progress for `~p': ~p",
-                           [Service, dict:to_list(Progress)])
+                ?log_debug("Initial rebalance progress for ~p on node ~p: ~p",
+                           [Service, Node, dict:to_list(Progress)])
         end,
 
-    KeepNodes = [node()],
+    KeepNodes = [Node],
     EjectNodes = [],
     DeltaNodes = [],
 
