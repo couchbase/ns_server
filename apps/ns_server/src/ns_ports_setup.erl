@@ -380,9 +380,8 @@ should_run(projector, Snapshot) ->
     ns_cluster_membership:should_run_service(Snapshot, kv, node()) andalso
         not config_profile:search({indexer, projector_disabled}, false);
 should_run(cont_backup, Snapshot) ->
-    cluster_compat_mode:is_enterprise() andalso
-        ns_cluster_membership:should_run_service(Snapshot, kv, node()) andalso
-        not config_profile:search({kv, cont_backup_disabled}, false);
+    ns_cluster_membership:should_run_service(Snapshot, kv, node()) andalso
+        cluster_compat_mode:is_continuous_backup_enabled();
 should_run(Service, Snapshot) ->
     ns_cluster_membership:should_run_service(Snapshot, Service, node()).
 

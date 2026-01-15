@@ -55,7 +55,8 @@
          preserve_durable_mutations/0,
          prod_spec_from_legacy_version/1,
          compare_prod_compat_version/2,
-         is_data_service_file_based_backfill_enabled/0]).
+         is_data_service_file_based_backfill_enabled/0,
+         is_continuous_backup_enabled/0]).
 
 %% NOTE: this is rpc:call-ed by mb_master
 -export([mb_master_advertised_version/0]).
@@ -191,6 +192,10 @@ is_data_service_file_based_backfill_enabled(Config) ->
         ns_config:search(Config,
                          file_based_backfill_enabled,
                          ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT).
+
+is_continuous_backup_enabled() ->
+    is_enterprise() andalso
+        not config_profile:search({kv, cont_backup_disabled}, false).
 
 is_cbas_enabled() ->
     is_enterprise().
