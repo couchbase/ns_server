@@ -176,7 +176,7 @@ do_start_link_capi_service(SSLPort) ->
                      {ok, MochiPid} ->
                          {ok, MochiPid};
                      {error, Reason} ->
-                         io:format("Failure to start Mochiweb: ~s~n",[Reason]),
+                         io:format("Failure to start Mochiweb: ~p~n",[Reason]),
                          throw({error, Reason})
                  end.
 
