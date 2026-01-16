@@ -758,17 +758,20 @@ process_failover_error({nodes_down, NodesNeeded, Buckets}, Nodes, S) ->
     ErrMsg =
         lists:flatten(
           io_lib:format(
-            "Nodes ~p needed to preserve durability writes on buckets ~p "
-            "are down", [NodesNeeded, Buckets])),
+            "Nodes ~p which remain active after auto-failover are down and "
+            "communication with them must be possible to select the most up to "
+            "date replicas to promote which is required to preserve durable "
+             "writes in buckets ~p.",
+            [NodesNeeded, Buckets])),
     report_failover_error(nodes_down, ErrMsg, Nodes, S);
 process_failover_error({cannot_preserve_durability_majority, Buckets},
                        Nodes, S) ->
     ErrMsg =
         lists:flatten(
-            io_lib:format(
-                "Cannot preserve the durability majority, and hence cannot "
-                "guarantee the preservation of durable writes on buckets ~p",
-                [Buckets])),
+          io_lib:format(
+            "Cannot preserve the durability majority, and hence cannot "
+            "guarantee the preservation of durable writes on buckets ~p",
+            [Buckets])),
     report_failover_error(cannot_preserve_durability_majority, ErrMsg, Nodes,
                           S);
 process_failover_error(retry_aborting_rebalance, Nodes, S) ->
