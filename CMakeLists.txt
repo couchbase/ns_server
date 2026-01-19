@@ -257,8 +257,6 @@ ADD_CUSTOM_TARGET (ns_distclean)
 ADD_DEPENDENCIES (ns_distclean ns_realclean ns_dataclean)
 
 ADD_SUBDIRECTORY (deps)
-SET(REBAR_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/_build")
-
 REBAR(TARGET ns_server
       DEPENDS
         couchdb
@@ -270,7 +268,6 @@ REBAR(TARGET ns_server
       EXTRA_ENV "COUCHDB_SRC_DIR=${COUCHDB_SRC_DIR}"
                 "DEFAULT_PROFILE=${DEFAULT_PROFILE}"
                 "NS_SERVER_VERSION=${NS_SERVER_VERSION}"
-                "REBAR_BUILD_DIR=${REBAR_BUILD_DIR}"
       CLEAN_HOOK ns_realclean)
 
 ADD_CUSTOM_TARGET (ns_server_all DEPENDS ns_server)
@@ -308,7 +305,6 @@ MACRO (NS_SERVER_TEST)
   SET (_test_target ${NS_SERVER_TEST_TEST_TARGET})
 
   SET (_cmd "${CMAKE_COMMAND}" -D "ERL_EXECUTABLE=${ERL_EXECUTABLE}"
-    -D "REBAR_BUILD_DIR=${REBAR_BUILD_DIR}"
     -D "COUCHDB_BIN_DIR=${COUCHDB_DEFAULT_LIB_DIR}"
     -D "TEST_TARGET=${_test_target}"
     -D "TEST_FILTER=${TEST_FILTER}"
@@ -395,7 +391,6 @@ ADD_CUSTOM_TARGET (ns_dialyzer
   -D "DIALYZER_EXECUTABLE=${DIALYZER_EXECUTABLE}"
   -D "DIALYZER_FLAGS=${dialyzer_args}"
   -D "COUCHBASE_PLT=${COUCHBASE_PLT}"
-  -D "REBAR_BUILD_DIR=${REBAR_BUILD_DIR}"
   -P "${PROJECT_SOURCE_DIR}/cmake_modules/do-dialyzer.cmake"
   WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" VERBATIM)
 ADD_DEPENDENCIES (ns_dialyzer ns_server_all)
@@ -403,46 +398,40 @@ ADD_DEPENDENCIES (ns_dialyzer ns_server_all)
 #
 # Install
 #
-INSTALL (PROGRAMS ${REBAR_BUILD_DIR}/default/bin/chronicle_dump DESTINATION bin)
-
-INSTALL (DIRECTORY ${REBAR_BUILD_DIR}/default/lib/chronicle/ebin
-         DESTINATION "${INST_LIBDIR}/chronicle")
+INSTALL (DIRECTORY _build/default/lib/chronicle/ebin DESTINATION
+        "${INST_LIBDIR}/chronicle")
 # priv/ only exists on Linux currently, so make this OPTIONAL
-INSTALL (DIRECTORY ${REBAR_BUILD_DIR}/default/lib/chronicle/priv
-         OPTIONAL DESTINATION "${INST_LIBDIR}/chronicle")
+INSTALL (DIRECTORY _build/default/lib/chronicle/priv OPTIONAL DESTINATION
+        "${INST_LIBDIR}/chronicle")
+INSTALL (PROGRAMS _build/default/bin/chronicle_dump DESTINATION bin)
 
-INSTALL (DIRECTORY ${REBAR_BUILD_DIR}/default/lib/enacl/ebin
-                   ${REBAR_BUILD_DIR}/default/lib/enacl/priv
-        DESTINATION "${INST_LIBDIR}/enacl")
-INSTALL (DIRECTORY ${REBAR_BUILD_DIR}/default/lib/esaml/ebin
-         DESTINATION "${INST_LIBDIR}/esaml")
-INSTALL (DIRECTORY ${REBAR_BUILD_DIR}/default/lib/gen_smtp/ebin
-         DESTINATION "${INST_LIBDIR}/gen_smtp")
-INSTALL (DIRECTORY ${REBAR_BUILD_DIR}/default/lib/iso8601/ebin
-         DESTINATION "${INST_LIBDIR}/iso8601")
-INSTALL (DIRECTORY ${REBAR_BUILD_DIR}/default/lib/jose/ebin
-         DESTINATION "${INST_LIBDIR}/jose")
-INSTALL (DIRECTORY ${REBAR_BUILD_DIR}/default/lib/jiffy/ebin
-                   ${REBAR_BUILD_DIR}/default/lib/jiffy/priv
-         DESTINATION "${INST_LIBDIR}/jiffy")
-INSTALL (DIRECTORY ${REBAR_BUILD_DIR}/default/lib/oidcc/ebin
-         DESTINATION "${INST_LIBDIR}/oidcc")
+INSTALL (DIRECTORY _build/default/lib/enacl/ebin
+                   _build/default/lib/enacl/priv DESTINATION
+        "${INST_LIBDIR}/enacl")
+INSTALL (DIRECTORY _build/default/lib/esaml/ebin DESTINATION
+        "${INST_LIBDIR}/esaml")
+INSTALL (DIRECTORY _build/default/lib/gen_smtp/ebin DESTINATION
+        "${INST_LIBDIR}/gen_smtp")
+INSTALL (DIRECTORY _build/default/lib/iso8601/ebin DESTINATION
+        "${INST_LIBDIR}/iso8601")
+INSTALL (DIRECTORY _build/default/lib/jose/ebin DESTINATION
+        "${INST_LIBDIR}/jose")
+INSTALL (DIRECTORY _build/default/lib/jiffy/ebin
+                   _build/default/lib/jiffy/priv DESTINATION
+        "${INST_LIBDIR}/jiffy")
+INSTALL (DIRECTORY _build/default/lib/oidcc/ebin DESTINATION
+        "${INST_LIBDIR}/oidcc")
 
-INSTALL (DIRECTORY ${REBAR_BUILD_DIR}/default/lib/ale/ebin
-         DESTINATION "${INST_LIBDIR}/ale")
-INSTALL (DIRECTORY
-         ${REBAR_BUILD_DIR}/default/lib/ns_couchdb/ebin
-         DESTINATION "${INST_LIBDIR}/ns_couchdb")
-INSTALL (DIRECTORY
-         ${REBAR_BUILD_DIR}/default/lib/ns_babysitter/ebin
-         DESTINATION "${INST_LIBDIR}/ns_babysitter")
-INSTALL (DIRECTORY ${REBAR_BUILD_DIR}/default/lib/ns_common/ebin
-         DESTINATION "${INST_LIBDIR}/ns_common")
-INSTALL (DIRECTORY ${REBAR_BUILD_DIR}/default/lib/ns_server/ebin
-         DESTINATION "${INST_LIBDIR}/ns_server")
-
-INSTALL (DIRECTORY ${REBAR_BUILD_DIR}/default/lib/cb_dets/ebin
-         DESTINATION "${INST_LIBDIR}/cb_dets")
+INSTALL (DIRECTORY _build/default/lib/ale/ebin DESTINATION
+         "${INST_LIBDIR}/ale")
+INSTALL (DIRECTORY _build/default/lib/ns_couchdb/ebin DESTINATION
+         "${INST_LIBDIR}/ns_couchdb")
+INSTALL (DIRECTORY _build/default/lib/ns_babysitter/ebin DESTINATION
+         "${INST_LIBDIR}/ns_babysitter")
+INSTALL (DIRECTORY _build/default/lib/ns_common/ebin DESTINATION
+         "${INST_LIBDIR}/ns_common")
+INSTALL (DIRECTORY _build/default/lib/ns_server/ebin DESTINATION
+         "${INST_LIBDIR}/ns_server")
 
 # Search for and install the cb_openssl_nif library files
 # Notes:
@@ -451,20 +440,23 @@ INSTALL (DIRECTORY ${REBAR_BUILD_DIR}/default/lib/cb_dets/ebin
 #  - lib extension varies by platform, as well as the number of files, so can't
 #    use INSTALL (FILE) either
 INSTALL (CODE "
-set (NIF_WC \"${REBAR_BUILD_DIR}/default/lib/ns_server/priv/cb_openssl_nif.*\")
-file (GLOB CB_OPENSSL_NIF_FILES \"\${NIF_WC}\")
-if (CB_OPENSSL_NIF_FILES)
-  message (STATUS \"Found cb_openssl_nif files: \${CB_OPENSSL_NIF_FILES}\")
-  file (INSTALL \${CB_OPENSSL_NIF_FILES}
-        DESTINATION \"${CMAKE_INSTALL_PREFIX}/${INST_LIBDIR}/ns_server/priv\")
-else ()
-  message (FATAL_ERROR \"No cb_openssl_nif files found matching \${NIF_WC}\")
-endif ()
+  set (NIF_WC \"${PROJECT_SOURCE_DIR}/_build/default/lib/ns_server/priv/cb_openssl_nif.*\")
+  file (GLOB CB_OPENSSL_NIF_FILES \"\${NIF_WC}\")
+  if (CB_OPENSSL_NIF_FILES)
+    message (STATUS \"Found cb_openssl_nif files: \${CB_OPENSSL_NIF_FILES}\")
+    file (INSTALL \${CB_OPENSSL_NIF_FILES}
+          DESTINATION \"${CMAKE_INSTALL_PREFIX}/${INST_LIBDIR}/ns_server/priv\")
+  else ()
+    message (FATAL_ERROR \"No cb_openssl_nif files found matching \${NIF_WC}\")
+  endif ()
 ")
 
-INSTALL (DIRECTORY ${REBAR_BUILD_DIR}/default/lib/config_remap/ebin DESTINATION
+INSTALL (DIRECTORY _build/default/lib/cb_dets/ebin DESTINATION
+         "${INST_LIBDIR}/cb_dets")
+
+INSTALL (DIRECTORY _build/default/lib/config_remap/ebin DESTINATION
          "${INST_LIBDIR}/config_remap")
-INSTALL (PROGRAMS ${REBAR_BUILD_DIR}/default/bin/config_remap DESTINATION bin)
+INSTALL (PROGRAMS _build/default/bin/config_remap DESTINATION bin)
 
 INSTALL(FILES
         pylib/installed_script_helpers.py

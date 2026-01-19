@@ -19,14 +19,14 @@ IF (NOT EXISTS "${COUCHBASE_PLT}")
     ${_couchdb_bin_dir}/oauth
     ${_couchdb_bin_dir}/ejson
     # Deps that we must include to pick up functions, but do not want to analyse
-    ${REBAR_BUILD_DIR}/default/lib/gen_smtp
-    ${REBAR_BUILD_DIR}/default/lib/chronicle
-    ${REBAR_BUILD_DIR}/default/lib/enacl
-    ${REBAR_BUILD_DIR}/default/lib/esaml
-    ${REBAR_BUILD_DIR}/default/lib/iso8601
-    ${REBAR_BUILD_DIR}/default/lib/jose
-    ${REBAR_BUILD_DIR}/default/lib/jiffy
-    ${REBAR_BUILD_DIR}/default/lib/oidcc)
+    _build/default/lib/gen_smtp
+    _build/default/lib/chronicle
+    _build/default/lib/enacl
+    _build/default/lib/esaml
+    _build/default/lib/iso8601
+    _build/default/lib/jose
+    _build/default/lib/jiffy
+    _build/default/lib/oidcc)
 ENDIF (NOT EXISTS "${COUCHBASE_PLT}")
 
 EXECUTE_PROCESS (RESULT_VARIABLE _failure
@@ -36,12 +36,12 @@ EXECUTE_PROCESS (RESULT_VARIABLE _failure
         # TODO: MB-60458:
         # Ideally we would test chronicle here too (rather than just include it
         # in the plt above) but it has a couple of issues to solve first
-        ${REBAR_BUILD_DIR}/default/lib/ns_server/
-        ${REBAR_BUILD_DIR}/default/lib/ale/
-        ${REBAR_BUILD_DIR}/default/lib/ns_common/
-        ${REBAR_BUILD_DIR}/default/lib/ns_babysitter/
-        ${REBAR_BUILD_DIR}/default/lib/ns_couchdb/
-        ${REBAR_BUILD_DIR}/default/lib/cb_dets/
+        _build/default/lib/ns_server/
+        _build/default/lib/ale/
+        _build/default/lib/ns_common/
+        _build/default/lib/ns_babysitter/
+        _build/default/lib/ns_couchdb/
+        _build/default/lib/cb_dets/
 )
 IF (_failure)
   MESSAGE (FATAL_ERROR "failed running dialyzer")

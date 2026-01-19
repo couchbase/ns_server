@@ -331,8 +331,7 @@ def try_dev_gosecrets() -> Optional[Path]:
     if this_file_path.parent.name == 'pylib' and \
        this_file_path.parent.parent.name == 'ns_server':
         dev_dir = this_file_path.parent.parent
-        build_dir = dev_dir / '..' / 'build' / 'ns_server'
-        to_try = build_dir / 'deps' / 'gocode' / 'gosecrets'
+        to_try = dev_dir / 'build' / 'deps' / 'gocode' / 'gosecrets'
         if to_try.exists():
             debug(f'Checking {to_try}... found')
             return to_try
