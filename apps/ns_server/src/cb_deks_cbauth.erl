@@ -16,6 +16,7 @@
 -export([update_deks/2,
          get_key_ids_in_use/2,
          initiate_drop_deks/3,
+         synchronize_deks/2,
          fetch_chronicle_keys_in_txn/2,
          cbauth_key_type_to_dek_kind/2,
          does_any_service_use_dek/2]).
@@ -67,6 +68,17 @@ initiate_drop_deks(Kind, DekIdsToDrop, Snapshot) ->
     maybe
         {ok, _} ?= cbauth_call("DropKeys", Params, Kind, CbauthLabels),
         {ok, started}
+    end.
+
+-spec synchronize_deks(cb_deks:dek_kind(),
+                      cb_cluster_secrets:chronicle_snapshot()) ->
+          ok | {error, _}.
+synchronize_deks(Kind, Snapshot) ->
+    CbauthLabels = get_cbauth_labels(Kind, Snapshot),
+    Params = dek_kind_to_json(Kind),
+    maybe
+        {ok, _} ?= cbauth_call("SynchronizeKeyFiles", Params, Kind, CbauthLabels),
+        ok
     end.
 
 -spec fetch_chronicle_keys_in_txn(cb_deks:dek_kind(), Txn :: term()) ->

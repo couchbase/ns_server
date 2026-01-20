@@ -24,6 +24,7 @@
          get_force_encryption_timestamp/2,
          get_dek_ids_in_use/2,
          initiate_drop_deks/3,
+         synchronize_deks/2,
          fetch_chronicle_keys_in_txn/2]).
 
 -spec get_encryption_method(cb_deks:dek_kind(), cluster | node,
@@ -163,6 +164,15 @@ initiate_drop_deks({bucketDek, BucketUUID} = Kind, DekIds, Snapshot) ->
         {ok, started} ?= cb_deks_cbauth:initiate_drop_deks(Kind, DekIds,
                                                            Snapshot),
         {ok, started}
+    end.
+
+-spec synchronize_deks(cb_deks:dek_kind(),
+                      cb_cluster_secrets:chronicle_snapshot()) ->
+          ok | {error, _}.
+synchronize_deks(Kind, Snapshot) ->
+    maybe
+        ok ?= cb_deks_cbauth:synchronize_deks(Kind, Snapshot),
+        ok
     end.
 
 -spec fetch_chronicle_keys_in_txn(cb_deks:dek_kind(), Txn :: term()) ->

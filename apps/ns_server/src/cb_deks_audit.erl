@@ -24,6 +24,7 @@
          get_force_encryption_timestamp/2,
          get_dek_ids_in_use/2,
          initiate_drop_deks/3,
+         synchronize_deks/2,
          fetch_chronicle_keys_in_txn/2]).
 
 -spec get_encryption_method(cb_deks:dek_kind(), cluster | node,
@@ -84,6 +85,13 @@ initiate_drop_deks(Kind, DekIdsToDrop, _Snapshot) ->
       fun() ->
               ns_memcached:prune_log_or_audit_encr_keys("@audit", DekIdsToDrop)
       end, Kind).
+
+-spec synchronize_deks(cb_deks:dek_kind(),
+                      cb_cluster_secrets:chronicle_snapshot()) ->
+          ok | {error, _}.
+%% Audit DEKs are not stored externally, so synchronization is not needed.
+synchronize_deks(_Kind, _Snapshot) ->
+    ok.
 
 -spec fetch_chronicle_keys_in_txn(cb_deks:dek_kind(), Txn :: term()) ->
           cb_cluster_secrets:chronicle_snapshot().

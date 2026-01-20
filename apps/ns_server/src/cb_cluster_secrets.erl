@@ -24,6 +24,7 @@
 -define(NODE_PROC, node_monitor_process).
 -define(MASTER_PROC, master_monitor_process).
 -define(DEK_COUNTERS_UPDATE_TIMEOUT, ?get_timeout(counters_update, 30000)).
+-define(SYNCHRONIZE_DEKS_TIMEOUT, ?get_timeout(synchronize_deks, 60000)).
 -define(REMOVE_HISTORICAL_KEYS_INTERVAL,
         ?get_param(remove_historical_keys_interval, 60*60*1000)).
 -define(DEK_TIMER_RETRY_TIME_S, ?get_param(dek_retry_interval, 60)).
@@ -169,7 +170,8 @@
          delete_secret_internal/2,
          delete_historical_key_internal/3,
          get_node_deks_info/0,
-         maybe_renew_secrets_usage_info_internal/0]).
+         maybe_renew_secrets_usage_info_internal/0,
+         synchronize_deks_local/1]).
 
 -record(state, {proc_type :: ?NODE_PROC | ?MASTER_PROC,
                 jobs :: [node_job()] | [master_job()],
@@ -533,66 +535,100 @@ delete_historical_key(SecretId, HistKeyId, IsSecretWritableFun) ->
 -spec delete_historical_key_internal(
         secret_id(), key_id(),
         {M :: atom(), F :: atom(), A :: [term()]}) ->
-          {ok, string()} | {error, not_found | secret_in_use() | forbidden |
-                                   inconsistent_graph() | no_quorum |
-                                   active_key}.
+          {ok, string()} |
+          {error, not_found | {unsafe, secret_in_use() | forbidden |
+                                       inconsistent_graph() | no_quorum |
+                                       active_key |
+                                       {deks_sync_failed, [{node(), term()}]}}}.
 delete_historical_key_internal(SecretId, HistKeyId, IsSecretWritableMFA) ->
     %% It is important to get the counters before we start dek info aggregation
-    {_, CountersRev} = get_dek_counters(direct),
+    Snapshot = chronicle_compat:get_snapshot(
+                 [fun fetch_snapshot_in_txn/1], #{}),
+    {_, CountersRev} = get_dek_counters(Snapshot),
     case get_all_node_deks_info() of
         {ok, AllNodesDekInfo} ->
-            IsSecretWritableFun = fun (Props, Snapshot) ->
+            IsSecretWritableFun = fun (Props, Snapshot2) ->
                                       call_is_writable_mfa(IsSecretWritableMFA,
-                                                           [Props, Snapshot])
+                                                           [Props, Snapshot2])
                                   end,
-            case delete_historical_key_internal(SecretId, HistKeyId,
-                                                IsSecretWritableFun,
-                                                AllNodesDekInfo,
-                                                CountersRev) of
-                {ok, Name} ->
+            case delete_historical_keys_internal([{SecretId, HistKeyId}],
+                                                 IsSecretWritableFun,
+                                                 AllNodesDekInfo,
+                                                 CountersRev, Snapshot) of
+                [{ok, Name}] ->
                     sync_with_all_node_monitors(),
                     {ok, Name};
-                {error, not_found} ->
+                [{error, not_found}] ->
                     {error, not_found};
-                {error, Reason} ->
+                [{error, Reason}] ->
                     {error, {unsafe, Reason}}
             end;
         {error, Reason} ->
             {error, {unsafe, Reason}}
     end.
 
-delete_historical_key_internal(SecretId, HistKeyId, IsSecretWritableFun,
-                               AllNodesDekInfo, CountersRev) ->
-    case check_key_id_usage(HistKeyId, AllNodesDekInfo) of
+delete_historical_keys_internal(KeysToRemove, IsSecretWritableFun,
+                                AllNodesDekInfo, CountersRev, Snapshot) ->
+    KindsToSync = cb_deks:dek_cluster_kinds_list(Snapshot),
+    case synchronize_deks_on_all_nodes(KindsToSync) of
+        ok ->
+            lists:map(
+                fun ({SecretId, KeyId}) ->
+                    delete_historical_key_without_sync(
+                      SecretId, KeyId, IsSecretWritableFun,
+                      AllNodesDekInfo, CountersRev)
+                end, KeysToRemove);
+        {error, SyncError} ->
+            [{error, SyncError} || _ <- KeysToRemove]
+    end.
+
+%% Delete historical key without calling synchronize_deks
+delete_historical_key_without_sync(SecretId, HistKeyId, IsSecretWritableFun,
+                                   AllNodesDekInfo, CountersRev) ->
+    maybe
+        not_in_use ?= check_key_id_usage(HistKeyId, AllNodesDekInfo),
+        {ok, Name} ?= chronicle_compat_txn(
+                        fun (Txn) ->
+                            Snapshot = fetch_snapshot_in_txn(Txn),
+                            %% When we modify deks, we increment counters in
+                            %% chronicle. If counter's revision has changed,
+                            %% it means no changes were made to deks since
+                            %% previous get_dek_counters() call, and our checks
+                            %% against counters are still valid.
+                            {_, NewCountersRev} = get_dek_counters(Snapshot),
+                            case NewCountersRev == CountersRev of
+                                true ->
+                                    delete_historical_key_txn(
+                                        SecretId,
+                                        HistKeyId,
+                                        IsSecretWritableFun,
+                                        Snapshot);
+                                false ->
+                                    {abort, {error, retry}}
+                            end
+                        end),
+        event_log:add_log(
+            historical_encryption_key_deleted,
+            [{encryption_key_id, SecretId},
+             {encryption_key_name, iolist_to_binary(Name)},
+             {historical_key_UUID, HistKeyId}]),
+        ?log_debug("Removed historical key ~p for secret ~p",
+                   [HistKeyId, SecretId]),
+        {ok, Name}
+    else
         {in_use, DekKinds} ->
+            ?log_error("Failed to remove historical key ~p for secret ~p: "
+                       "in use by DEK kinds ~p",
+                       [HistKeyId, SecretId, DekKinds]),
             {error, {used_by, #{by_deks => DekKinds}}};
-        not_in_use ->
-            RV = chronicle_compat_txn(
-                    fun (Txn) ->
-                        Snapshot = fetch_snapshot_in_txn(Txn),
-                        {_, NewCountersRev} = get_dek_counters(Snapshot),
-                        case NewCountersRev == CountersRev of
-                            true ->
-                                delete_historical_key_txn(
-                                    SecretId,
-                                    HistKeyId,
-                                    IsSecretWritableFun,
-                                    Snapshot);
-                            false ->
-                                {abort, {error, retry}}
-                        end
-                    end),
-            case RV of
-                {ok, Name} ->
-                    event_log:add_log(
-                        historical_encryption_key_deleted,
-                        [{encryption_key_id, SecretId},
-                         {encryption_key_name, iolist_to_binary(Name)},
-                         {historical_key_UUID, HistKeyId}]),
-                    {ok, Name};
-                {error, Reason} ->
-                    {error, Reason}
-            end
+        {error, not_found} ->
+            ?log_debug("Skipping historical key ~p for secret ~p "
+                       "because it was not found", [HistKeyId, SecretId]),
+            {error, not_found};
+        {error, Reason} = Error ->
+            ?log_error("Failed to remove historical key ~p for secret ~p: ~p",
+                       [HistKeyId, SecretId, Reason]),
+            Error
     end.
 
 %% Cipher should have type crypto:cipher() but it is not exported
@@ -1559,6 +1595,45 @@ garbage_collect_keks() ->
             Error;
         no_change ->
             ok
+    end.
+
+-spec synchronize_deks_on_all_nodes([cb_deks:dek_kind()]) ->
+          ok | {error, {deks_sync_failed, [{node(), term()}]}}.
+synchronize_deks_on_all_nodes(AffectedKinds) ->
+    AllNodes = ns_node_disco:nodes_wanted(),
+    Res = erpc:multicall(AllNodes, ?MODULE,
+                            synchronize_deks_local,
+                            [AffectedKinds],
+                            ?SYNCHRONIZE_DEKS_TIMEOUT),
+    AllErrors =
+        lists:filtermap(fun ({_, {ok, ok}}) -> false;
+                            ({N, {ok, E}}) -> {true, {N, E}};
+                            ({N, E}) -> {true, {N, E}}
+                        end, lists:zip(AllNodes, Res)),
+    case AllErrors of
+        [] ->
+            ok;
+        _ ->
+            ?log_error("synchronize_deks failed on some nodes: ~p",
+                        [AllErrors]),
+            {error, {deks_sync_failed, AllErrors}}
+    end.
+
+%% This function can be called remotely
+-spec synchronize_deks_local([cb_deks:dek_kind()]) -> ok | {error, _}.
+synchronize_deks_local([]) ->
+    ok;
+synchronize_deks_local([Kind | Rest]) ->
+    Snapshot = deks_config_snapshot(Kind),
+    case cb_deks:call_dek_callback(synchronize_deks, Kind, [Snapshot]) of
+        {succ, ok} ->
+            synchronize_deks_local(Rest);
+        {succ, {error, Reason}} ->
+            ?log_error("synchronize_deks failed for ~p: ~p", [Kind, Reason]),
+            {error, {synchronize_failed, Kind, Reason}};
+        {except, {C, E, _ST}} ->
+            %% Error is logged by cb_deks:call_dek_callback
+            {error, {synchronize_crashed, Kind, C, E}}
     end.
 
 -spec all_kek_ids() -> [key_id()].
@@ -2721,7 +2796,7 @@ restart_rotation_timer(#state{proc_type = ?MASTER_PROC} = State) ->
 ensure_remove_historical_keys_timer(#state{proc_type = ?NODE_PROC} = State) ->
     State;
 ensure_remove_historical_keys_timer(#state{proc_type = ?MASTER_PROC} = State) ->
-    HistoricalKeysToRemove = historical_keys_to_remove(),
+    HistoricalKeysToRemove = historical_keys_to_remove(direct),
     case HistoricalKeysToRemove of
         [] ->
             stop_timer(remove_historical_keys, State);
@@ -3254,13 +3329,14 @@ maybe_reset_deks_counters() ->
             end
     end.
 
--spec historical_keys_to_remove() -> [{secret_id(), cb_deks:dek_id()}].
-historical_keys_to_remove() ->
+-spec historical_keys_to_remove(chronicle_snapshot()) ->
+          [{secret_id(), cb_deks:dek_id()}].
+historical_keys_to_remove(Snapshot) ->
     lists:flatmap(fun (#{id := SecretId, type := T, data := Data}) ->
                       L = call_module_by_type(
                             T, historical_keys_to_remove_from_props, [Data]),
                       [{SecretId, Id} || Id <- L]
-                  end, get_all(direct)).
+                  end, get_all(Snapshot)).
 
 -spec maybe_remove_historical_keys(#state{}) -> {ok, #state{}}.
 maybe_remove_historical_keys(State) ->
@@ -3273,29 +3349,21 @@ maybe_remove_historical_keys(State) ->
     %% complete, we can remove the historical keys as they are no longer needed.
     maybe
         {_, false} ?= {timer, is_timer_started(remove_historical_keys, State)},
-        HistoricalKeysToRemove = historical_keys_to_remove(),
+        Snapshot = chronicle_compat:get_snapshot(
+                     [fun fetch_snapshot_in_txn/1], #{}),
+        HistoricalKeysToRemove = historical_keys_to_remove(Snapshot),
         [_ | _] ?= HistoricalKeysToRemove,
         ?log_debug("There are ~p historical keys to remove: ~0p",
                    [length(HistoricalKeysToRemove), HistoricalKeysToRemove]),
-        {_, CountersRev} = get_dek_counters(direct),
+        {_, CountersRev} = get_dek_counters(Snapshot),
         {ok, AllNodesDekInfo} ?= get_all_node_deks_info(),
-        lists:foreach(
-            fun ({SecretId, KeyId}) ->
-                case delete_historical_key_internal(
-                       SecretId, KeyId, fun (_, _) -> true end,
-                       AllNodesDekInfo, CountersRev) of
-                    {ok, _Name} ->
-                        ?log_debug("Removed historical key ~p for secret ~p",
-                                   [KeyId, SecretId]);
-                    {error, not_found} ->
-                        ?log_debug("Skipping historical key ~p for secret ~p "
-                                   "because it was not found",
-                                   [KeyId, SecretId]);
-                    {error, Reason} ->
-                        ?log_error("Failed to remove historical key ~p for "
-                                   "secret ~p: ~p", [KeyId, SecretId, Reason])
-                end
-            end, HistoricalKeysToRemove),
+        %% Errors are logged in delete_historical_key_without_sync
+        _ = delete_historical_keys_internal(
+                    HistoricalKeysToRemove,
+                    fun (_, _) -> true end,
+                    AllNodesDekInfo,
+                    CountersRev,
+                    Snapshot),
         {ok, ensure_remove_historical_keys_timer(State)}
     else
         {timer, true} ->

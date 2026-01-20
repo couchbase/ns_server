@@ -1217,6 +1217,7 @@ parse_id(Str) when is_list(Str) ->
             menelaus_util:web_exception(404, menelaus_util:reply_text_404())
     end.
 
+-spec format_error(term()) -> iolist().
 format_error({encrypt_id, not_found}) ->
     "Encryption key does not exist";
 format_error({encrypt_id, not_allowed}) ->
@@ -1246,6 +1247,11 @@ format_error(active_key) ->
     "Can't delete active key";
 format_error({unsafe, Reason}) ->
     "Operation is unsafe. " ++ format_error(Reason);
+format_error({deks_sync_failed, Errors}) ->
+    BuildHostname = menelaus_web_node:build_node_hostname(
+                      ns_config:latest(), _, misc:localhost()),
+    "Failed to synchronize data encryption keys on " ++
+    lists:join(", ", [BuildHostname(Node) || {Node, _} <- Errors]);
 format_error(deks_issues) ->
     "Some data encryption keys are outdated or not available";
 format_error(missing_nodes) ->

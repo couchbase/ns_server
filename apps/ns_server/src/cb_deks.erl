@@ -98,6 +98,18 @@
                              cb_cluster_secrets:chronicle_snapshot()) ->
              {ok, done | started} | {error, not_found | retry | _}.
 
+%% Synchronize DEKs that are stored externally (e.g., in S3).
+%% This callback is called when a KEK is about to be removed, after
+%% re-encryption of DEKs but before KEK removal. The service should ensure
+%% that all DEKs that are stored externally are up to date (the latest
+%% version of DEK is copied externally). If the service doesn't store any
+%% data outside of the cluster, this callback can always return ok.
+%% If the service can't perform the synchronization, it should return an
+%% error, which will interrupt KEK removal.
+-callback synchronize_deks(dek_kind(),
+                           cb_cluster_secrets:chronicle_snapshot()) ->
+              ok | {error, _}.
+
 %% Return a chronicle snapshot that contains all the chronicle
 %% keys where encryption settings are stored for this dek kind.
 -callback fetch_chronicle_keys_in_txn(dek_kind(), Txn :: term()) ->
@@ -425,7 +437,8 @@ call_dek_callback(CallbackName, Kind, Args) ->
                         get_drop_deks_timestamp |
                         get_force_encryption_timestamp |
                         get_dek_ids_in_use |
-                        initiate_drop_deks, dek_kind(), list(),
+                        initiate_drop_deks |
+                        synchronize_deks, dek_kind(), list(),
                         #{verbose => boolean()}) ->
       {succ, term()} | {except, {atom(), term(), term()}}.
 call_dek_callback(CallbackName, Kind, Args, Opts) ->
