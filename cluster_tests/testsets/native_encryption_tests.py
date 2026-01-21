@@ -169,44 +169,6 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
     def random_node(self):
         return random.choice(self.cluster.connected_nodes)
 
-    def kmip_key_test(self):
-        with setup_kmip_server(self.cluster):
-            # There is no such secret in the kmip server, so it should fail
-            # bucket creation
-            invalidKmip = kmip_secret('Kmip1', 99999)
-            invalid_secret_id = create_secret(self.random_node(), invalidKmip)
-            self.cluster.create_bucket(
-                {'name': self.bucket_name,
-                 'ramQuota': 100,
-                 'encryptionAtRestKeyId': invalid_secret_id},
-                expected_code=400)
-
-            # There is such secret in the kmip server, so it should succeed in
-            # creating a bucket with that secret and the dek file should get
-            # encrypted with the KMIP key
-            validKmip = kmip_secret('Kmip2', 1)
-            valid_secret_id = create_secret(self.random_node(), validKmip)
-            self.cluster.create_bucket(
-                {'name': self.bucket_name,
-                 'ramQuota': 100,
-                 'encryptionAtRestKeyId': valid_secret_id})
-            bucket_uuid = self.cluster.get_bucket_uuid(self.bucket_name)
-            kek1_id = get_kek_id(self.random_node(), valid_secret_id)
-            poll_verify_bucket_deks_files(self.cluster, bucket_uuid,
-                                          verify_key_count=1,
-                                          verify_encryption_kek=kek1_id)
-
-            # We rotate the underlying KMIP key for the secret bucket is
-            # encrypted with and the bucket DEK should get encrypted by the new
-            # KMIP key
-            validKmip = kmip_secret('Kmip2', 5)
-            valid_secret_id = update_secret(self.random_node(),
-                                            valid_secret_id, validKmip)
-            kek2_id = get_kek_id(self.random_node(), valid_secret_id)
-            poll_verify_bucket_deks_files(self.cluster, bucket_uuid,
-                                          verify_key_count=1,
-                                          verify_encryption_kek=kek2_id)
-
 
     def basic_create_update_delete_test(self):
         data = testlib.random_str(8)
@@ -2494,6 +2456,84 @@ class NativeEncryptionNodeRestartTests(testlib.BaseTestSet):
     def node(self):
         return self.cluster.connected_nodes[0]
 
+# The KMIP test is run in a separate test set because we want to run it on just
+# a single node to improve test stability. There is a known issue with the
+# pykmip test serverer that it can lock up if it gets a number of requests in
+# a given period of time. Each node generates requests to pykmip server, so
+# running it on a single node will minimize concurrent requests to the pykmip
+# server and helpfully reduce/eliminate the chance of the test failing due to
+# the pykmip server locking up.
+class NativeEncryptionWithKmipServerTests(testlib.BaseTestSet):
+
+    @staticmethod
+    def requirements():
+        return testlib.ClusterRequirements(num_nodes = 1,
+                                           edition='Enterprise',
+                                           buckets=[],
+                                           balanced=True,
+                                           test_generated_cluster=True,
+                                           num_vbuckets=16)
+
+    def setup(self):
+        self.bucket_name = testlib.random_str(8)
+        set_min_timer_interval(self.cluster, min_timer_interval)
+        set_dek_info_update_interval(self.cluster, dek_info_update_interval)
+        set_min_dek_gc_interval(self.cluster, min_dek_gc_interval)
+        set_dek_counters_renew_interval(self.cluster,
+                                        dek_counters_renew_interval)
+
+    def teardown(self):
+        set_min_timer_interval(self.cluster, None)
+        set_dek_info_update_interval(self.cluster, None)
+        set_min_dek_gc_interval(self.cluster, None)
+        set_dek_counters_renew_interval(self.cluster, None)
+
+
+    def test_teardown(self):
+        self.cluster.delete_bucket(self.bucket_name)
+        for s in get_secrets(self.cluster):
+            delete_secret(self.cluster, s['id'])
+
+    def random_node(self):
+        return random.choice(self.cluster.connected_nodes)
+
+    def kmip_key_test(self):
+        with setup_kmip_server(self.cluster):
+            # There is no such secret in the kmip server, so it should fail
+            # bucket creation
+            invalidKmip = kmip_secret('Kmip1', 99999)
+            invalid_secret_id = create_secret(self.random_node(), invalidKmip)
+            self.cluster.create_bucket(
+                {'name': self.bucket_name,
+                 'ramQuota': 100,
+                 'encryptionAtRestKeyId': invalid_secret_id},
+                expected_code=400)
+
+            # There is such secret in the kmip server, so it should succeed in
+            # creating a bucket with that secret and the dek file should get
+            # encrypted with the KMIP key
+            validKmip = kmip_secret('Kmip2', 1)
+            valid_secret_id = create_secret(self.random_node(), validKmip)
+            self.cluster.create_bucket(
+                {'name': self.bucket_name,
+                 'ramQuota': 100,
+                 'encryptionAtRestKeyId': valid_secret_id})
+            bucket_uuid = self.cluster.get_bucket_uuid(self.bucket_name)
+            kek1_id = get_kek_id(self.random_node(), valid_secret_id)
+            poll_verify_bucket_deks_files(self.cluster, bucket_uuid,
+                                          verify_key_count=1,
+                                          verify_encryption_kek=kek1_id)
+
+            # We rotate the underlying KMIP key for the secret bucket is
+            # encrypted with and the bucket DEK should get encrypted by the new
+            # KMIP key
+            validKmip = kmip_secret('Kmip2', 5)
+            valid_secret_id = update_secret(self.random_node(),
+                                            valid_secret_id, validKmip)
+            kek2_id = get_kek_id(self.random_node(), valid_secret_id)
+            poll_verify_bucket_deks_files(self.cluster, bucket_uuid,
+                                          verify_key_count=1,
+                                          verify_encryption_kek=kek2_id)
 
 class NativeEncryptionPermissionsTests(testlib.BaseTestSet):
 
