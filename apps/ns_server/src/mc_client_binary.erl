@@ -1151,6 +1151,9 @@ set_active_encryption_key(Sock, Bucket, DeksSnapshot, Timeout) ->
             process_error_response(Response)
     end.
 
+bearer_token(Token) ->
+    <<"Bearer ", Token/binary>>.
+
 -spec get_fusion_storage_snapshot(port(), binary(), [vbucket_id()],
                                   string(), non_neg_integer(),
                                   string(), binary()) ->
@@ -1163,7 +1166,8 @@ get_fusion_storage_snapshot(Sock, BucketUUID, VBuckets, SnapshotUUID, Validity,
                           {vbucket_list, VBuckets},
                           {valid_till, Validity},
                           {metadatastore_uri, list_to_binary(MetaDataStoreUri)},
-                          {metadatastore_auth_token, MetaDataStoreAuthToken}]}),
+                          {metadatastore_auth_token,
+                           bearer_token(MetaDataStoreAuthToken)}]}),
     case cmd(?CMD_GET_FUSION_STORAGE_SNAPSHOT, Sock, undefined, undefined,
              {#mc_header{},
               #mc_entry{data = Data,
@@ -1184,7 +1188,8 @@ release_fusion_storage_snapshot(Sock, BucketUUID, VBuckets, SnapshotUUID,
                           {bucket_uuid, BucketUUID},
                           {vbucket_list, VBuckets},
                           {metadatastore_uri, list_to_binary(MetaDataStoreUri)},
-                          {metadatastore_auth_token, MetaDataStoreAuthToken}]}),
+                          {metadatastore_auth_token,
+                           bearer_token(MetaDataStoreAuthToken)}]}),
     case cmd(?CMD_RELEASE_FUSION_STORAGE_SNAPSHOT, Sock, undefined, undefined,
              {#mc_header{},
               #mc_entry{data = Data,
@@ -1226,7 +1231,7 @@ unmount_fusion_vbucket(Sock, VBucket) ->
 -spec set_chronicle_auth_token(port(), binary()) -> ok | mc_error().
 set_chronicle_auth_token(Sock, Token) ->
     report_counter(?FUNCTION_NAME),
-    Data = ejson:encode({[{token, Token}]}),
+    Data = ejson:encode({[{token, bearer_token(Token)}]}),
     case cmd(?CMD_SET_CHRONICLE_AUTH_TOKEN, Sock, undefined, undefined,
              {#mc_header{},
               #mc_entry{data = Data,
@@ -1282,7 +1287,8 @@ delete_fusion_namespace(Sock, LogStoreUri, MetaDataStoreUri,
     Data = ejson:encode(
              {[{logstore_uri, list_to_binary(LogStoreUri)},
                {metadatastore_uri, list_to_binary(MetaDataStoreUri)},
-               {metadatastore_auth_token, MetaDataStoreAuthToken},
+               {metadatastore_auth_token,
+                bearer_token(MetaDataStoreAuthToken)},
                {namespace, Namespace}]}),
     case cmd(?CMD_DELETE_FUSION_NAMESPACE, Sock, undefined, undefined,
              {#mc_header{}, #mc_entry{data = Data,
@@ -1299,7 +1305,8 @@ get_fusion_namespaces(Sock, MetaDataStoreUri, MetaDataStoreAuthToken) ->
     report_counter(?FUNCTION_NAME),
     Data = ejson:encode(
              {[{metadatastore_uri, list_to_binary(MetaDataStoreUri)},
-               {metadatastore_auth_token, MetaDataStoreAuthToken}]}),
+               {metadatastore_auth_token,
+                bearer_token(MetaDataStoreAuthToken)}]}),
     case cmd(?CMD_GET_FUSION_NAMESPACES, Sock, undefined, undefined,
              {#mc_header{}, #mc_entry{data = Data,
                                       datatype = ?MC_DATATYPE_JSON}}) of

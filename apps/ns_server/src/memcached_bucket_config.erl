@@ -682,7 +682,7 @@ start_params(#cfg{name=BucketName,
                                         lists:flatten(
                                           io_lib:format("~p", [Payload]));
                                     false ->
-                                        binary_to_list(JWT)
+                                        "Bearer " ++ binary_to_list(JWT)
                                 end,
                             ?MAGMA_FUSION_AUTH_TOKEN ++ "=" ++ JWTParam
                     end,
