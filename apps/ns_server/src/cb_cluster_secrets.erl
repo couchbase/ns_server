@@ -1430,21 +1430,13 @@ rotate_secret_by_id(Id, IsAutomatic) ->
             try test_and_rotate_secret(SecretProps) of
                 ok ->
                     log_succ_kek_rotation(Id, Name, IsAutomatic),
-                    ns_server_stats:notify_counter(
-                      {<<"encryption_key_rotations">>, [{key_name, Name}]}),
                     {ok, Name};
                 {error, Reason} ->
                     log_unsucc_kek_rotation(Id, Name, Reason, IsAutomatic),
-                    ns_server_stats:notify_counter(
-                      {<<"encryption_key_rotation_failures">>,
-                       [{key_name, Name}]}),
                     {error, Reason}
             catch
                 C:E:ST ->
                     log_unsucc_kek_rotation(Id, Name, exception, IsAutomatic),
-                    ns_server_stats:notify_counter(
-                      {<<"encryption_key_rotation_failures">>,
-                       [{key_name, Name}]}),
                     erlang:raise(C, E, ST)
             end;
         {error, Reason} ->
@@ -2295,12 +2287,9 @@ generate_new_dek(Kind, CurrentDeks, EncryptionMethod, Snapshot) ->
                        [Kind, EncryptionMethod]),
             case cb_deks:generate_new(Kind, EncryptionMethod, Snapshot) of
                 {ok, DekId} ->
-                    notify_kind_counter(<<"encr_at_rest_generate_dek">>, Kind),
                     log_succ_dek_rotation(Kind, DekId),
                     {ok, DekId};
                 {error, Reason} ->
-                    notify_kind_counter(
-                      <<"encr_at_rest_generate_dek_failures">>, Kind),
                     log_unsucc_dek_rotation(Kind, Reason),
                     {error, Reason}
             end;
@@ -4011,6 +4000,8 @@ log_succ_kek_rotation(Id, Name, IsAutomatic) ->
     ale:info(?USER_LOGGER,
              "Encryption key \"~s\" (~p) has been rotated successfully",
              [Name, Id]),
+    ns_server_stats:notify_counter(
+      {<<"encryption_key_rotations">>, [{key_name, Name}]}),
     event_log:add_log(encryption_key_rotated,
                       [{encryption_key_id, Id},
                        {encryption_key_name, iolist_to_binary(Name)},
@@ -4020,6 +4011,8 @@ log_unsucc_kek_rotation(Id, Name, Reason, IsAutomatic) ->
     ale:error(?USER_LOGGER,
               "Encryption key \"~s\" (~p) rotation FAILED: \"~s\".",
               [Name, Id, menelaus_web_secrets:format_error(Reason)]),
+    ns_server_stats:notify_counter({<<"encryption_key_rotation_failures">>,
+                                   [{key_name, Name}]}),
     event_log:add_log(encryption_key_rotation_failed,
                       [{encryption_key_id, Id},
                        {encryption_key_name, iolist_to_binary(Name)},
@@ -4029,6 +4022,7 @@ log_unsucc_kek_rotation(Id, Name, Reason, IsAutomatic) ->
 log_succ_dek_rotation(Kind, NewDekId) ->
     ale:info(?USER_LOGGER, "DEK for ~s has been rotated successfully",
              [cb_deks:kind2bin(Kind, <<"unknown">>)]),
+    notify_kind_counter(<<"encr_at_rest_generate_dek">>, Kind),
     event_log:add_log(encr_at_rest_dek_rotated,
                       [{kind, cb_deks:kind2bin(Kind, <<"unknown">>)},
                        {new_DEK_UUID, NewDekId}]).
@@ -4039,6 +4033,7 @@ log_unsucc_dek_rotation(Kind, Reason) ->
                    end,
     ale:error(?USER_LOGGER, "DEK rotation failed for ~s: ~s",
               [DataTypeName, menelaus_web_secrets:format_error(Reason)]),
+    notify_kind_counter(<<"encr_at_rest_generate_dek_failures">>, Kind),
     event_log:add_log(encr_at_rest_dek_rotation_failed,
                       [{kind, cb_deks:kind2bin(Kind, <<"unknown">>)},
                        {reason, format_failure_reason(Reason)}]).
