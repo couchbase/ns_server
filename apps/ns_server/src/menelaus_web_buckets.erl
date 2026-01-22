@@ -248,6 +248,13 @@ build_durability_impossible_fallback(BucketConfig) ->
         fallback_to_master_ack -> <<"fallbackToActiveAck">>
     end.
 
+build_data_service_rebalance_type(BucketConfig) ->
+    case ns_bucket:get_data_service_rebalance_type(BucketConfig) of
+        auto -> <<"auto">>;
+        prefer_file_based -> <<"preferFileBased">>;
+        prefer_dcp -> <<"preferDcp">>
+    end.
+
 build_buckets_info(Req, Buckets, Ctx, InfoLevel) ->
     SkipMap = InfoLevel =/= streaming andalso
         proplists:get_value(
@@ -505,7 +512,9 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
      end,
      case cluster_compat_mode:is_cluster_totoro() of
          true ->
-             [{chronicleRev, menelaus_web_pools:get_chronicle_revision()}];
+             [{chronicleRev, menelaus_web_pools:get_chronicle_revision()},
+              {dataServiceRebalanceType,
+               build_data_service_rebalance_type(BucketConfig)}];
          false ->
              []
      end].
@@ -2183,6 +2192,7 @@ validate_membase_bucket_params(CommonParams, Params, Name,
                                                         Is79),
          parse_validate_dcp_backfill_idle_disk_threshold(Params, IsNew,
                                                          Is79),
+         parse_validate_data_service_rebalance_type(Params, IsNew, IsTotoro),
          parse_validate_workload_pattern_default(Params)
         | validate_bucket_auto_compaction_settings(Params)] ++
         parse_validate_limits(
@@ -3920,6 +3930,26 @@ parse_validate_threads_number(Params, IsNew) ->
 parse_validate_flush_enabled("0") -> {ok, flush_enabled, false};
 parse_validate_flush_enabled("1") -> {ok, flush_enabled, true};
 parse_validate_flush_enabled(_ReplicaValue) -> {error, flushEnabled, <<"flushEnabled can only be 1 or 0">>}.
+
+parse_validate_data_service_rebalance_type(Params, _IsNew, false = _IsTotoro) ->
+    parse_validate_param_not_supported(
+      "dataServiceRebalanceType", Params,
+      fun not_supported_until_totoro_error/1);
+parse_validate_data_service_rebalance_type(Params, IsNew, _IsTotoro) ->
+    validate_with_missing(
+        proplists:get_value("dataServiceRebalanceType", Params), "auto", IsNew,
+        fun parse_validate_data_service_rebalance_type/1).
+
+parse_validate_data_service_rebalance_type("auto") ->
+    {ok, data_service_rebalance_type, auto};
+parse_validate_data_service_rebalance_type("preferFileBased") ->
+    {ok, data_service_rebalance_type, prefer_file_based};
+parse_validate_data_service_rebalance_type("preferDcp") ->
+    {ok, data_service_rebalance_type, prefer_dcp};
+parse_validate_data_service_rebalance_type(_Other) ->
+    {error, dataServiceRebalanceType,
+     <<"Data service rebalance type must be 'auto', 'preferFileBased' or "
+       "'preferDcp'">>}.
 
 parse_validate_threads_number(NumThreads) ->
     case menelaus_util:parse_validate_number(NumThreads,

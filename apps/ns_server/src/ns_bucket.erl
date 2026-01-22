@@ -237,7 +237,8 @@
          get_force_encryption_timestamp/2,
          validate_encryption_secret/3,
          is_encryption_enabled/1,
-         is_data_service_file_based_rebalance_enabled/1]).
+         is_data_service_file_based_rebalance_enabled/1,
+         get_data_service_rebalance_type/1]).
 
 %% fusion
 -export([is_fusion/1,
@@ -2823,7 +2824,16 @@ is_magma(BucketConfig) ->
 
 -spec is_data_service_file_based_rebalance_enabled(config()) -> boolean().
 is_data_service_file_based_rebalance_enabled(BucketConfig) ->
+    %% Two things going on here:
+    %% 1. Testing whether or not file based rebalance is enabled (at the cluster
+    %%    level or at the bucket level - the cluster level settings takes
+    %%    precedence).
+    %% 2. Testing whether or not file based rebalance is supported (i.e. may
+    %%    actually be possible).
     cluster_compat_mode:is_data_service_file_based_rebalance_enabled() andalso
+        is_data_service_file_based_rebalance_enabled_for_bucket(BucketConfig)
+        andalso
+    %% Now on to whether or not a file based rebalance is actually possible.
         ns_bucket:is_persistent(BucketConfig) andalso
         not ns_bucket:storage_mode_migration_in_progress(BucketConfig) andalso
     %% Cannot migrate full -> value eviction via FBR as we may not be able
@@ -2833,6 +2843,22 @@ is_data_service_file_based_rebalance_enabled(BucketConfig) ->
         andalso
         lists:member(ns_bucket:get_fusion_state(BucketConfig),
                      [disabled, stopped]).
+
+%% @doc Is data service rebalance enabled for the given bucket config?
+%% Generally this function should not be used, one should generally use
+%% `is_data_service_file_based_rebalance_enabled/1' instead as it tests the
+%% cluster level settings as possibility of file based rebalance too.
+is_data_service_file_based_rebalance_enabled_for_bucket(BucketConfig) ->
+    case get_data_service_rebalance_type(BucketConfig) of
+        prefer_dcp -> false;
+        %% prefer_file_based is separate from auto in case we ever want to make
+        %% the default (auto) not file based.
+        prefer_file_based -> true;
+        auto -> true
+    end.
+
+get_data_service_rebalance_type(BucketConfig) ->
+    proplists:get_value(data_service_rebalance_type, BucketConfig, auto).
 
 get_view_nodes(BucketConfig) ->
     case can_have_views(BucketConfig) of
