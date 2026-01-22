@@ -545,76 +545,81 @@ delete_historical_key_internal(SecretId, HistKeyId, IsSecretWritableMFA) ->
     Snapshot = chronicle_compat:get_snapshot(
                  [fun fetch_snapshot_in_txn/1], #{}),
     {_, CountersRev} = get_dek_counters(Snapshot),
-    case get_all_node_deks_info() of
-        {ok, AllNodesDekInfo} ->
-            IsSecretWritableFun = fun (Props, Snapshot2) ->
-                                      call_is_writable_mfa(IsSecretWritableMFA,
-                                                           [Props, Snapshot2])
-                                  end,
-            case delete_historical_keys_internal([{SecretId, HistKeyId}],
+    maybe
+        {ok, #{name := SName}} ?= get_secret(SecretId, Snapshot),
+        {ok, AllNodesDekInfo} ?= get_all_node_deks_info(),
+        IsSecretWritableFun = fun (Props, Snapshot2) ->
+                                  call_is_writable_mfa(IsSecretWritableMFA,
+                                                       [Props, Snapshot2])
+                              end,
+        ok ?= hd(delete_historical_keys_internal([{SecretId, SName, HistKeyId}],
                                                  IsSecretWritableFun,
                                                  AllNodesDekInfo,
-                                                 CountersRev, Snapshot) of
-                [{ok, Name}] ->
-                    sync_with_all_node_monitors(),
-                    {ok, Name};
-                [{error, not_found}] ->
-                    {error, not_found};
-                [{error, Reason}] ->
-                    {error, {unsafe, Reason}}
-            end;
+                                                 CountersRev, Snapshot, false)),
+        sync_with_all_node_monitors(),
+        {ok, SName}
+    else
+        {error, not_found} ->
+            {error, not_found};
         {error, Reason} ->
             {error, {unsafe, Reason}}
     end.
 
 delete_historical_keys_internal(KeysToRemove, IsSecretWritableFun,
-                                AllNodesDekInfo, CountersRev, Snapshot) ->
+                                AllNodesDekInfo, CountersRev, Snapshot,
+                                IsAutomatic) ->
     KindsToSync = cb_deks:dek_cluster_kinds_list(Snapshot),
     case synchronize_deks_on_all_nodes(KindsToSync) of
         ok ->
             lists:map(
-                fun ({SecretId, KeyId}) ->
+                fun ({SecretId, SecretName, KeyId}) ->
                     delete_historical_key_without_sync(
-                      SecretId, KeyId, IsSecretWritableFun,
-                      AllNodesDekInfo, CountersRev)
+                      SecretId, SecretName, KeyId, IsSecretWritableFun,
+                      AllNodesDekInfo, CountersRev, IsAutomatic)
                 end, KeysToRemove);
         {error, SyncError} ->
-            [{error, SyncError} || _ <- KeysToRemove]
+            lists:map(
+              fun ({SecretId, SecretName, KeyId}) ->
+                  log_unsucc_hist_key_removal(SecretId, SecretName, KeyId,
+                                              SyncError, IsAutomatic),
+                  {error, SyncError}
+              end, KeysToRemove)
     end.
 
 %% Delete historical key without calling synchronize_deks
-delete_historical_key_without_sync(SecretId, HistKeyId, IsSecretWritableFun,
-                                   AllNodesDekInfo, CountersRev) ->
+delete_historical_key_without_sync(SecretId, SecretName, HistKeyId,
+                                   IsSecretWritableFun, AllNodesDekInfo,
+                                   CountersRev, IsAutomatic) ->
     maybe
         not_in_use ?= check_key_id_usage(HistKeyId, AllNodesDekInfo),
-        {ok, Name} ?= chronicle_compat_txn(
-                        fun (Txn) ->
-                            Snapshot = fetch_snapshot_in_txn(Txn),
-                            %% When we modify deks, we increment counters in
-                            %% chronicle. If counter's revision has changed,
-                            %% it means no changes were made to deks since
-                            %% previous get_dek_counters() call, and our checks
-                            %% against counters are still valid.
-                            {_, NewCountersRev} = get_dek_counters(Snapshot),
-                            case NewCountersRev == CountersRev of
-                                true ->
-                                    delete_historical_key_txn(
-                                        SecretId,
-                                        HistKeyId,
-                                        IsSecretWritableFun,
-                                        Snapshot);
-                                false ->
-                                    {abort, {error, retry}}
-                            end
-                        end),
+        ok ?= chronicle_compat_txn(
+                fun (Txn) ->
+                    Snapshot = fetch_snapshot_in_txn(Txn),
+                    %% When we modify deks, we increment counters in
+                    %% chronicle. If counter's revision has changed,
+                    %% it means no changes were made to deks since
+                    %% previous get_dek_counters() call, and our checks
+                    %% against counters are still valid.
+                    {_, NewCountersRev} = get_dek_counters(Snapshot),
+                    case NewCountersRev == CountersRev of
+                        true ->
+                            delete_historical_key_txn(
+                                SecretId,
+                                HistKeyId,
+                                IsSecretWritableFun,
+                                Snapshot);
+                        false ->
+                            {abort, {error, retry}}
+                    end
+                end),
         event_log:add_log(
             historical_encryption_key_deleted,
             [{encryption_key_id, SecretId},
-             {encryption_key_name, iolist_to_binary(Name)},
+             {encryption_key_name, iolist_to_binary(SecretName)},
              {historical_key_UUID, HistKeyId}]),
         ?log_debug("Removed historical key ~p for secret ~p",
                    [HistKeyId, SecretId]),
-        {ok, Name}
+        ok
     else
         {in_use, DekKinds} ->
             ?log_error("Failed to remove historical key ~p for secret ~p: "
@@ -628,6 +633,8 @@ delete_historical_key_without_sync(SecretId, HistKeyId, IsSecretWritableFun,
         {error, Reason} = Error ->
             ?log_error("Failed to remove historical key ~p for secret ~p: ~p",
                        [HistKeyId, SecretId, Reason]),
+            log_unsucc_hist_key_removal(SecretId, SecretName, HistKeyId,
+                                        Reason, IsAutomatic),
             Error
     end.
 
@@ -3330,12 +3337,13 @@ maybe_reset_deks_counters() ->
     end.
 
 -spec historical_keys_to_remove(chronicle_snapshot()) ->
-          [{secret_id(), cb_deks:dek_id()}].
+          [{secret_id(), string(), cb_deks:dek_id()}].
 historical_keys_to_remove(Snapshot) ->
-    lists:flatmap(fun (#{id := SecretId, type := T, data := Data}) ->
+    lists:flatmap(fun (#{id := SecretId, name := SecretName, type := T,
+                         data := Data}) ->
                       L = call_module_by_type(
                             T, historical_keys_to_remove_from_props, [Data]),
-                      [{SecretId, Id} || Id <- L]
+                      [{SecretId, SecretName, Id} || Id <- L]
                   end, get_all(Snapshot)).
 
 -spec maybe_remove_historical_keys(#state{}) -> {ok, #state{}}.
@@ -3363,7 +3371,8 @@ maybe_remove_historical_keys(State) ->
                     fun (_, _) -> true end,
                     AllNodesDekInfo,
                     CountersRev,
-                    Snapshot),
+                    Snapshot,
+                    true),
         {ok, ensure_remove_historical_keys_timer(State)}
     else
         {timer, true} ->
@@ -3912,7 +3921,7 @@ chronicle_compat_txn(Fun, Opts) ->
                           inconsistent_graph() | no_quorum | active_key}}.
 delete_historical_key_txn(SecretId, HistKeyId, IsSecretWritableFun, Snapshot) ->
     maybe
-        {ok, #{name := Name} = Props} ?= get_secret(SecretId, Snapshot),
+        {ok, Props} ?= get_secret(SecretId, Snapshot),
         {_, true} ?= {writable, IsSecretWritableFun(Props, Snapshot)},
         SecretIds = get_secrets_encrypted_by_key_id(HistKeyId, Snapshot),
         {_, []} ?= {in_use, SecretIds},
@@ -3921,7 +3930,7 @@ delete_historical_key_txn(SecretId, HistKeyId, IsSecretWritableFun, Snapshot) ->
         CurSecrets = get_all(Snapshot),
         NewSecrets = replace_secret_in_list(NewProps, CurSecrets),
         ok ?= validate_secrets_consistency(NewSecrets),
-        {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewSecrets}], Name}
+        {commit, [{set, ?CHRONICLE_SECRETS_KEY, NewSecrets}]}
     else
         {error, _} = Error -> {abort, Error};
         {writable, false} -> {abort, {error, forbidden}};
@@ -4032,6 +4041,31 @@ log_unsucc_dek_rotation(Kind, Reason) ->
               [DataTypeName, menelaus_web_secrets:format_error(Reason)]),
     event_log:add_log(encr_at_rest_dek_rotation_failed,
                       [{kind, cb_deks:kind2bin(Kind, <<"unknown">>)},
+                       {reason, format_failure_reason(Reason)}]).
+
+log_unsucc_hist_key_removal(SecretId, SecretName, HistKeyId, Reason,
+                            IsAutomatic) ->
+    ale:error(?USER_LOGGER,
+              "Failed to remove historical key info  (~p "
+              "for secret \"~s\" (~p): ~s",
+              [HistKeyId, SecretName, SecretId,
+               menelaus_web_secrets:format_error(Reason)]),
+    %% Notify stats only for automatic removals to avoid triggering
+    %% alerts for user-initiated removals.
+    %% User-initiated removals are not considered part of the key
+    %% rotation process, so we should not increment rotation failures counter.
+    %% Automatic removals, on the other hand, happen automatically after
+    %% rotation, so they are considered part of the key rotation process, hence
+    %% the increment of the rotation failures counter is justified.
+    IsAutomatic andalso
+        ns_server_stats:notify_counter(
+          {<<"encryption_key_rotation_failures">>,
+           [{key_name, SecretName}]}),
+    event_log:add_log(historical_encryption_key_deletion_failed,
+                      [{encryption_key_id, SecretId},
+                       {encryption_key_name, iolist_to_binary(SecretName)},
+                       {historical_key_UUID, HistKeyId},
+                       {is_automatic, IsAutomatic},
                        {reason, format_failure_reason(Reason)}]).
 
 log_expired_deks(Type, Kind, IdsSet) ->

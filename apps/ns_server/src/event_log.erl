@@ -130,6 +130,9 @@ event_details(regenerate_certificate) ->
 event_details(client_cert_auth) ->
     {9241, security, info,
      <<"Client certificate authentication settings changed">>};
+event_details(historical_encryption_key_deletion_failed) ->
+    {9242, security, error,
+     <<"Failed to remove historical encryption key">>};
 
 %% event_ids block for Data related events: [8192, ... 9215]
 event_details(bucket_created) ->
