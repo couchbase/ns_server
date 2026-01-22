@@ -55,7 +55,7 @@
          preserve_durable_mutations/0,
          prod_spec_from_legacy_version/1,
          compare_prod_compat_version/2,
-         is_data_service_file_based_backfill_enabled/0,
+         is_data_service_file_based_rebalance_enabled/0,
          is_continuous_backup_enabled/0]).
 
 %% NOTE: this is rpc:call-ed by mb_master
@@ -183,14 +183,14 @@ is_saslauthd_enabled() ->
         ns_config:search(ns_config:latest(),
                          {node, node(), saslauthd_enabled}, false).
 
-is_data_service_file_based_backfill_enabled() ->
-    is_data_service_file_based_backfill_enabled(ns_config:latest()).
+is_data_service_file_based_rebalance_enabled() ->
+    is_data_service_file_based_rebalance_enabled(ns_config:latest()).
 
-is_data_service_file_based_backfill_enabled(Config) ->
+is_data_service_file_based_rebalance_enabled(Config) ->
     is_cluster_totoro() andalso
         is_enterprise(Config) andalso
         ns_config:search(Config,
-                         file_based_backfill_enabled,
+                         data_service_file_based_rebalance_enabled,
                          ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT).
 
 is_continuous_backup_enabled() ->

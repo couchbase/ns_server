@@ -86,7 +86,7 @@ class KVFileBasedRebalanceTests(KVRebalanceTests):
     def setup(self):
         super().setup()
         testlib.post_succ(self.cluster, "/internalSettings",
-                          data={"fileBasedBackfillEnabled": "true"})
+                          data={"dataServiceFileBasedRebalanceEnabled": "true"})
 
         self.cluster.create_bucket({'name': self.bucket_name,
                                     'storageBackend': 'magma',
@@ -95,7 +95,8 @@ class KVFileBasedRebalanceTests(KVRebalanceTests):
 
     def teardown(self):
         testlib.post_succ(self.cluster, "/internalSettings",
-                          data={"fileBasedBackfillEnabled": "false"})
+                          data={"dataServiceFileBasedRebalanceEnabled":
+                                "false"})
 
         testlib.delete_all_buckets(self.cluster)
         super().teardown()

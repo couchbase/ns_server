@@ -467,7 +467,7 @@ cleanup_apply_config_body(Bucket, Servers, BucketConfig, Options) ->
            proplists:get_value(apply_config_timeout, Options,
                                undefined_timeout)),
 
-    case ns_bucket:file_based_backfill_enabled(BucketConfig) of
+    case ns_bucket:is_data_service_file_based_rebalance_enabled(BucketConfig) of
         true ->
             %% Past or failed rebalances may leave snapshots behind, clean them
             %% up

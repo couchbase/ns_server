@@ -237,7 +237,7 @@
          get_force_encryption_timestamp/2,
          validate_encryption_secret/3,
          is_encryption_enabled/1,
-         file_based_backfill_enabled/1]).
+         is_data_service_file_based_rebalance_enabled/1]).
 
 %% fusion
 -export([is_fusion/1,
@@ -2821,18 +2821,18 @@ can_have_views(BucketConfig) ->
 is_magma(BucketConfig) ->
     storage_mode(BucketConfig) =:= magma.
 
--spec file_based_backfill_enabled(config()) -> boolean().
-file_based_backfill_enabled(BucketConfig) ->
-    cluster_compat_mode:is_data_service_file_based_backfill_enabled() andalso
+-spec is_data_service_file_based_rebalance_enabled(config()) -> boolean().
+is_data_service_file_based_rebalance_enabled(BucketConfig) ->
+    cluster_compat_mode:is_data_service_file_based_rebalance_enabled() andalso
         ns_bucket:is_persistent(BucketConfig) andalso
         not ns_bucket:storage_mode_migration_in_progress(BucketConfig) andalso
-        %% Cannot migrate full -> value eviction via FBR as we may not be able
-        %% to fully populate the cache. Disabling for all eviction policy
-        %% migrations for the sake of simplicity.
+    %% Cannot migrate full -> value eviction via FBR as we may not be able
+    %% to fully populate the cache. Disabling for all eviction policy
+    %% migrations for the sake of simplicity.
         not ns_bucket:eviction_policy_migration_in_progress(BucketConfig)
         andalso
         lists:member(ns_bucket:get_fusion_state(BucketConfig),
-            [disabled, stopped]).
+                     [disabled, stopped]).
 
 get_view_nodes(BucketConfig) ->
     case can_have_views(BucketConfig) of

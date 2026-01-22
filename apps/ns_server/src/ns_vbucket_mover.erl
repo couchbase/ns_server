@@ -147,8 +147,9 @@ init({Bucket, BucketConfig, Nodes, OldMap, NewMap, ProgressCallback,
     Quirks = rebalance_quirks:get_quirks(Nodes, project_intact),
     Options =
         [{fusion_use_snapshot, true} || RebalancePlan =/= undefined] ++
-        [{file_based_backfill_enabled, true} ||
-            ns_bucket:file_based_backfill_enabled(BucketConfig)],
+        [{data_service_file_based_rebalance_enabled, true} ||
+            ns_bucket:is_data_service_file_based_rebalance_enabled(
+              BucketConfig)],
     SchedulerState = vbucket_move_scheduler:prepare(
                        OldMap, NewMap, Quirks,
                        menelaus_web_settings:get_rebalance_moves_per_node(),

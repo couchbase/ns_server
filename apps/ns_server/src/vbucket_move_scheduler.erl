@@ -111,7 +111,7 @@
          note_compaction_done/2]).
 
 -type move_option() :: [{fusion_use_snapshot, boolean(),
-                         file_based_backfill_enabled, boolean()}].
+                         data_service_file_based_rebalance_enabled, boolean()}].
 
 -type move() :: {VBucket :: vbucket_id(),
                  ChainBefore :: [node() | undefined],

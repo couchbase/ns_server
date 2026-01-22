@@ -216,7 +216,8 @@ mover_inner(Parent, Bucket, VBucket,
     %% if the vBucket already exists. Lets build a list of vBuckets that we can
     %% build via DCP, and a list of vBuckets that we can build via file_based.
     {FileBasedBackfillNodes, DCPBackfillNodes} =
-        case proplists:get_bool(file_based_backfill_enabled, Options) of
+        case proplists:get_bool(data_service_file_based_rebalance_enabled,
+                                Options) of
             true ->
                 FileBasedNodes = NewChain -- OldChain,
                 %% Remove undefined nodes from the file based backfill nodes

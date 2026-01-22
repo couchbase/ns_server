@@ -789,7 +789,8 @@ conf(internal) ->
         case cluster_compat_mode:is_enterprise() andalso
             cluster_compat_mode:is_cluster_totoro() of
             true ->
-                [{file_based_backfill_enabled, fileBasedBackfillEnabled,
+                [{data_service_file_based_rebalance_enabled,
+                  dataServiceFileBasedRebalanceEnabled,
                   ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT,
                   fun get_bool/1}];
             false ->
