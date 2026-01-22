@@ -32,8 +32,13 @@ update_deks(Kind, Snapshot) ->
     {KeyStoreJsonProps} = memcached_bucket_config:format_mcd_keys(ActiveDek,
                                                                   AllDeks),
     UnavailKeys = [Id || ?DEK_ERROR_PATTERN(Id, _) <- AllDeks],
+    DekPath = case encryption_service:key_path(Kind) of
+                  undefined -> <<>>;
+                  Path -> iolist_to_binary(Path)
+              end,
     Params = {[{dataType, dek_kind_to_json(Kind)},
-               {unavailableKeys, UnavailKeys} |
+               {unavailableKeys, UnavailKeys},
+               {path, DekPath} |
                KeyStoreJsonProps]},
     maybe
         {ok, _} ?= cbauth_call("UpdateKeysDB", Params, Kind, CbauthLabels),
