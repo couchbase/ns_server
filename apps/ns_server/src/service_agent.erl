@@ -223,7 +223,9 @@ init(Service)       ->
     NodeUUIDMap = build_node_uuid_map(ns_config:get()),
 
     {ok, #state{service = Service,
-                node_uuid_map = NodeUUIDMap}}.
+                node_uuid_map = NodeUUIDMap,
+                task_runner = start_task_runner(),
+                task_runner_queue = queue:new()}}.
 
 handle_call(get_status, _From, #state{service = Service,
                                       topology = Topology} = State) ->
@@ -409,8 +411,7 @@ handle_connection(Conn, State) ->
             erlang:raise(T, E, Stack)
     end.
 
-do_handle_connection(Conn, #state{service = Service,
-                                  task_runner = TaskRunner} = State) ->
+do_handle_connection(Conn, #state{service = Service} = State) ->
     ?log_debug("Observed new json rpc connection for ~p: ~p",
                [Service, Conn]),
 
@@ -422,45 +423,33 @@ do_handle_connection(Conn, #state{service = Service,
 
     State4 = start_long_poll_workers(State3),
 
-    case TaskRunner of
-        undefined ->
-            ok;
-        _ when is_pid(TaskRunner) ->
-            pass_connection(TaskRunner, Conn)
-    end,
+    maybe_pass_connection_to_task_runner(State4),
 
     State4.
+
+maybe_pass_connection_to_task_runner(#state{task_runner = undefined}) ->
+    ok;
+maybe_pass_connection_to_task_runner(#state{task_runner = TaskRunner,
+                                            conn = Conn}) ->
+    pass_connection(TaskRunner, Conn).
 
 handle_lost_connection(State) ->
     State#state{conn = undefined,
                 conn_mref = undefined}.
 
-handle_set_service_manager(Pid, #state{conn = Conn} = State) ->
+handle_set_service_manager(Pid, State) ->
     MRef = erlang:monitor(process, Pid),
-    TaskRunner = start_task_runner(),
-
-    case Conn of
-        undefined ->
-            ok;
-        _ when is_pid(Conn) ->
-            pass_connection(TaskRunner, Conn)
-    end,
 
     State#state{service_manager = Pid,
                 service_manager_mref = MRef,
-                task_runner = TaskRunner,
-                task_runner_queue = queue:new(),
                 task_observer = undefined}.
 
 handle_unset_service_manager(#state{service_manager = Pid,
                                     service_manager_mref = MRef,
-                                    task_runner = TaskRunner,
-                                    task_runner_queue = Waiters} = State)
+                                    task_runner_queue = Waiters
+                                } = State)
   when is_pid(Pid) ->
     erlang:demonitor(MRef, [flush]),
-
-    misc:unlink_terminate_and_wait(TaskRunner,
-                                   {shutdown, service_manager_terminated}),
 
     lists:foreach(
       fun (Waiter) ->
@@ -492,8 +481,6 @@ handle_unset_service_manager(#state{service_manager = Pid,
 
     State1#state{service_manager = undefined,
                  service_manager_mref = undefined,
-                 task_runner = undefined,
-                 task_runner_queue = undefined,
                  task_observer = undefined}.
 
 when_have_connection(Fun, #state{conn = Conn,
