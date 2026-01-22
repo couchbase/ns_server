@@ -161,6 +161,13 @@ func (k *kmipStoredKey) decryptMe(validateKeysProof bool, state *StoredKeysState
 	return nil
 }
 
+func (k *kmipStoredKey) checkKmipTestKey() bool {
+	if k.KeyPath == "TEST_KMIP_KEY_PATH" {
+		return true
+	}
+	return false
+}
+
 func getKmipClientCfg(k *kmipStoredKey) (*kmiputils.KmipClientConfig, error) {
 	if err := validateTimeout(k.ReqTimeoutMs); err != nil {
 		return nil, err
@@ -179,6 +186,13 @@ func getKmipClientCfg(k *kmipStoredKey) (*kmiputils.KmipClientConfig, error) {
 }
 
 func (k *kmipStoredKey) encryptData(data, AD []byte) ([]byte, error) {
+	if k.checkKmipTestKey() {
+		// This code should be used for test purposes only
+		logDbg("Encrypting data using test key")
+		zero_key := make([]byte, 32)
+		return aesgcmEncrypt(zero_key, data, AD), nil
+	}
+
 	clientCfg, err := getKmipClientCfg(k)
 	if err != nil {
 		return nil, err
@@ -217,6 +231,13 @@ func (k *kmipStoredKey) encryptData(data, AD []byte) ([]byte, error) {
 func (k *kmipStoredKey) decryptData(data, AD []byte) ([]byte, error) {
 	if len(data) < 1 {
 		return nil, fmt.Errorf("invalid data length: %d", len(data))
+	}
+
+	if k.checkKmipTestKey() {
+		// This code should be used for test purposes only
+		logDbg("Decrypting data using test key")
+		zero_key := make([]byte, 32)
+		return aesgcmDecrypt(zero_key, data, AD)
 	}
 
 	clientCfg, err := getKmipClientCfg(k)

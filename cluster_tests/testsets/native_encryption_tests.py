@@ -1210,6 +1210,29 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
             key_name='Hashi Key',
             expected_key_type='hashikms')
 
+    def basic_kmip_secret_test(self):
+        testKmipSecret = kmip_secret('Test KMIP Key', 1,
+                                     is_test_secret=True)
+        secret_id = create_secret(self.random_node(), testKmipSecret)
+
+        self.cluster.create_bucket(
+                {'name': self.bucket_name,
+                 'ramQuota': 100,
+                 'encryptionAtRestKeyId': secret_id})
+        bucket_uuid = self.cluster.get_bucket_uuid(self.bucket_name)
+        kek_id = get_kek_id(self.random_node(), secret_id)
+        poll_verify_bucket_deks_files(self.cluster, bucket_uuid,
+                                      verify_key_count=1,
+                                      verify_encryption_kek=kek_id)
+
+        testKmipSecret = kmip_secret('Kmip2', 5, is_test_secret=True)
+        secret_id = update_secret(self.random_node(),
+                                  secret_id, testKmipSecret)
+        kek_id = get_kek_id(self.random_node(), secret_id)
+        poll_verify_bucket_deks_files(self.cluster, bucket_uuid,
+                                      verify_key_count=1,
+                                      verify_encryption_kek=kek_id)
+
     def dek_limit_test(self):
         set_cfg_dek_limit(self.cluster, 2)
         set_log_dek_limit(self.cluster, 2)
@@ -2924,11 +2947,15 @@ def aws_fake_creds_path(node):
     return os.path.join(node.tmp_path(), "tmp-fake-test-creds.tmp")
 
 
-def kmip_secret(name, kmip_id):
-    key_path = os.path.join(testlib.get_resources_dir(),
-                            'pykmip/kmip_pkcs8.key')
-    cert_path = os.path.join(testlib.get_resources_dir(),
-                             'pykmip/localhost.crt')
+def kmip_secret(name, kmip_id, is_test_secret=False):
+    if is_test_secret:
+        key_path = 'TEST_KMIP_KEY_PATH'
+        cert_path = '/fake/test/path'
+    else:
+        key_path = os.path.join(testlib.get_resources_dir(),
+                                'pykmip/kmip_pkcs8.key')
+        cert_path = os.path.join(testlib.get_resources_dir(),
+                                 'pykmip/localhost.crt')
     return {
         'name': f'{name}',
         'type': 'kmip-aes-key-256',
