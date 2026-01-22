@@ -344,7 +344,7 @@ handle_get_active_guest_volumes(Req) ->
 handle_diag_active_guest_volumes(Req) ->
     menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_totoro(),
-    case not lists:member(kv, ns_cluster_membership:node_services(
+    case lists:member(kv, ns_cluster_membership:node_services(
                             direct, node())) of
         false ->
             menelaus_util:reply_text(Req, "Node should be a kv node", 400);
