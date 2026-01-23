@@ -93,6 +93,7 @@ get_compat_version() ->
     chronicle_compat:get(cluster_compat_version,
                          #{default => min_supported_compat_version()}).
 
+%% This function can be called remotely
 supported_compat_version() ->
     case get_pretend_version() of
         undefined ->

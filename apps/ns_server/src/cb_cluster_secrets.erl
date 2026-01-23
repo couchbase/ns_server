@@ -41,6 +41,7 @@
 
 -define(MIN_TIMER_INTERVAL, ?get_param(min_timer_interval, 30000)).
 -define(TEST_SECRET_TIMEOUT, ?get_param(secret_test_timeout, 30000)).
+-define(RPC_TIMEOUT, ?get_timeout(rpc_timeout, 5000)).
 
 -ifndef(TEST).
 -define(MAX_RECHECK_ROTATION_INTERVAL, ?get_param(rotation_recheck_interval,
@@ -1605,10 +1606,28 @@ synchronize_deks_on_all_nodes(AffectedKinds) ->
                             [AffectedKinds],
                             ?SYNCHRONIZE_DEKS_TIMEOUT),
     AllErrors =
-        lists:filtermap(fun ({_, {ok, ok}}) -> false;
-                            ({N, {ok, E}}) -> {true, {N, E}};
-                            ({N, E}) -> {true, {N, E}}
-                        end, lists:zip(AllNodes, Res)),
+        lists:filtermap(
+          fun ({_, {ok, ok}}) -> false;
+              ({N, {ok, E}}) -> {true, {N, E}};
+              ({N, {error, {exception, undef,
+                            [{cb_cluster_secrets,
+                              synchronize_deks_local, _, _}]}}}) ->
+                  %% Pre-totoro nodes don't have synchronize_deks_local
+                  %% We can safely ignore them here, because pre-totoro nodes
+                  %% don't use encryption-at-rest for services and they don't
+                  %% support file-based rebalance.
+                  try erpc:call(N, cluster_compat_mode,
+                                supported_compat_version, [], ?RPC_TIMEOUT) of
+                      SupportedVsn ->
+                          cluster_compat_mode:is_version_totoro(SupportedVsn)
+                  catch Class:Reason ->
+                          ?log_error("exception (~p:~p) when calling "
+                                     "supported_compat_version on node ~p",
+                                     [Class, Reason, N]),
+                          true
+                  end;
+              ({_N, _E}) -> true
+          end, lists:zip(AllNodes, Res)),
     case AllErrors of
         [] ->
             ok;
