@@ -115,8 +115,16 @@ listen(Name) when is_atom(Name) ->
                                 protocol = ?family,
                                 family = ?proto},
             {ok, {Pid, Addr, ?CREATION}};
-        {error, _} = Error ->
-            Error
+        {error, Reasons} when is_list(Reasons) ->
+            %% Format the error message for better user experience
+            ErrorStrs = lists:map(fun ({_, R}) -> format_error(R) end, Reasons),
+            Msg = lists:flatten(lists:join("\n", ErrorStrs)),
+            %% Print to stderr
+            %% When babysitter starts and can't listen on distribution port,
+            %% it prints the error message to stderr and then exits.
+            %% Logs are not available at this point.
+            io:format(standard_error, "~s\n", [Msg]),
+            {error, Reasons}
     end.
 
 -spec accept(LSocket :: any()) -> AcceptorPid :: pid().
@@ -329,23 +337,32 @@ handle_call({listen, Name}, _From, State) ->
 
     info_msg("Initial protos: ~p, required protos: ~p", [Protos, Required]),
 
-    Listeners =
-        lists:filtermap(
-            fun (Module) ->
-                    case listen_proto(Module, Name) of
-                        {ok, Res} -> {true, {Module, Res}};
-                        _Error -> false
-                    end
-            end, Protos),
+    %% Try to start all listeners and capture results
+    {Listeners, FailedResults} =
+        misc:partitionmap(
+          fun (Module) ->
+                  case listen_proto(Module, Name) of
+                      {ok, Res} ->
+                          {left, {Module, Res}};
+                      ignore ->
+                          {right, {Module, port_disabled}};
+                      {error, Error} ->
+                          {right, {Module, Error}}
+                  end
+          end, Protos),
     NotStartedRequired = Required -- [M || {M, _} <- Listeners],
     State2 = State1#s{listeners = Listeners},
     case NotStartedRequired of
         [] -> {reply, ok, State2};
         _ ->
-            error_msg("Failed to start required dist listeners ~p. "
-                      "Net kernel will not start", [NotStartedRequired]),
+            RequiredReasons = [{M, E} || {M, E} <- FailedResults,
+                                         lists:member(M, NotStartedRequired)],
+            error_msg("Failed to start required dist listeners ~p. ~n"
+                      "Errors: ~p~n"
+                      "Net kernel will not start",
+                      [NotStartedRequired, RequiredReasons]),
             close_listeners(State2),
-            {reply, {error, {not_started, NotStartedRequired}}, State}
+            {reply, {error, RequiredReasons}, State}
     end;
 
 handle_call({accept, KernelPid}, _From, #s{listeners = Listeners,
@@ -889,6 +906,13 @@ listen_proto({AddrType, Module}, NodeName) ->
         ignore ->
             info_msg("Ignoring starting dist ~p on port ~p", [Module, Port]),
             ignore;
+        {error, eaddrinuse} ->
+            %% Port is already in use, likely because server is already
+            %% running
+            error_msg("Failed to start dist ~p on port ~p: port is already "
+                      "in use. This usually means Couchbase Server is already "
+                      "running.", [Module, Port]),
+            {error, {port_in_use, Port}};
         Error ->
             error_msg("Failed to start dist ~p on port ~p with reason: ~p",
                       [Module, Port, Error]),
@@ -1212,6 +1236,12 @@ store_config(Cfg) ->
             {error, Reason}
     end.
 
+format_error({port_in_use, Port}) ->
+    io_lib:format("Port ~b is already in use. Couchbase Server is likely "
+                  "already running. Please stop the existing instance before "
+                  "starting a new one", [Port]);
+format_error(port_disabled) ->
+    "Mandatory port is disabled";
 format_error({not_started, Protocols}) ->
     PS = string:join([proto2str(P) || {_, P} <- Protocols], ", "),
     io_lib:format("Failed to start the following required listeners: ~p", [PS]);
