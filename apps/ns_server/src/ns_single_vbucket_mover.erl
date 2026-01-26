@@ -158,10 +158,7 @@ file_based_backfill(Bucket, Parent, VBucket, [OldMaster | _ ] = OldChain,
 
     %% 2) Import DEKs on the new nodes, such that we can open the snapshot files
     %% when we set the vBucket to replica.
-    lists:foreach(
-      fun(Node) ->
-              janitor_agent:import_snapshot_deks(Bucket, Parent, Node, VBucket)
-      end, AllBuiltNodes),
+    import_snapshot_deks(Bucket, Parent, AllBuiltNodes, VBucket),
 
     %% 3) Flip  vBucket to replica.
     %% We are going to create streams here, they may be used by memcached in
@@ -185,6 +182,14 @@ file_based_backfill(Bucket, Parent, VBucket, [OldMaster | _ ] = OldChain,
                                                                   Node,
                                                                   VBucket)
       end, AllBuiltNodes).
+
+import_snapshot_deks(Bucket, Parent, Nodes, VBucket) ->
+    master_activity_events:note_snapshot_deks_import_started(Bucket, VBucket),
+    lists:foreach(
+      fun(Node) ->
+              janitor_agent:import_snapshot_deks(Bucket, Parent, Node, VBucket)
+      end, Nodes),
+    master_activity_events:note_snapshot_deks_import_ended(Bucket, VBucket).
 
 mover_inner(Parent, Bucket, VBucket,
             [undefined|_] = _OldChain,
@@ -553,6 +558,7 @@ dcp_takeover_regular(Bucket, Parent, OldMaster, NewMaster, VBucket) ->
       end).
 
 download_snapshot(Bucket, Parent, SrcNode, DstNodes, VBucket) ->
+    master_activity_events:note_snapshot_download_started(Bucket, VBucket),
     spawn_and_wait(
       fun() ->
               %% Taking care here to log "download snapshot" where appropriate
@@ -605,12 +611,14 @@ download_snapshot(Bucket, Parent, SrcNode, DstNodes, VBucket) ->
                                     Bucket, VBucket, SrcNode, DstNodes,
                                     WaitErr})
               end
-      end).
+      end),
+    master_activity_events:note_snapshot_download_ended(Bucket, VBucket).
 
 wait_snapshot_ready(Bucket, Parent, DstNodes, VBucket) ->
     ?rebalance_debug("Will wait for snapshot to be ready for bucket = ~p"
                      "partition = ~p dest nodes = ~p",
                      [Bucket, VBucket, DstNodes]),
+    master_activity_events:note_snapshot_waiting_started(Bucket, VBucket),
     WaitResult =
         misc:parallel_map(
             fun(DestNode) ->
@@ -628,7 +636,9 @@ wait_snapshot_ready(Bucket, Parent, DstNodes, VBucket) ->
         WaitErr ->
             erlang:error(
                 {wait_snapshot_ready, Bucket, VBucket, DstNodes, WaitErr})
-    end.
+    end,
+
+    master_activity_events:note_snapshot_waiting_ended(Bucket, VBucket).
 
 wait_dcp_data_move(Bucket, Parent, SrcNode, DstNodes, VBucket) ->
     spawn_and_wait(

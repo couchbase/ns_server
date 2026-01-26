@@ -37,6 +37,12 @@
          note_takeover_ended/4,
          note_backfill_phase_started/2,
          note_backfill_phase_ended/2,
+         note_snapshot_waiting_started/2,
+         note_snapshot_waiting_ended/2,
+         note_snapshot_download_started/2,
+         note_snapshot_download_ended/2,
+         note_snapshot_deks_import_started/2,
+         note_snapshot_deks_import_ended/2,
          note_wait_index_updated_started/3,
          note_wait_index_updated_ended/3,
          note_compaction_inhibited/2,
@@ -181,6 +187,24 @@ note_backfill_phase_started(BucketName, VBucket) ->
 
 note_backfill_phase_ended(BucketName, VBucket) ->
     submit_cast({backfill_phase_ended, BucketName, VBucket}).
+
+note_snapshot_waiting_started(BucketName, VBucket) ->
+    submit_cast({snapshot_waiting_started, BucketName, VBucket}).
+
+note_snapshot_waiting_ended(BucketName, VBucket) ->
+    submit_cast({snapshot_waiting_ended, BucketName, VBucket}).
+
+note_snapshot_download_started(BucketName, VBucket) ->
+    submit_cast({snapshot_download_started, BucketName, VBucket}).
+
+note_snapshot_download_ended(BucketName, VBucket) ->
+    submit_cast({snapshot_download_ended, BucketName, VBucket}).
+
+note_snapshot_deks_import_started(BucketName, VBucket) ->
+    submit_cast({snapshot_deks_import_started, BucketName, VBucket}).
+
+note_snapshot_deks_import_ended(BucketName, VBucket) ->
+    submit_cast({snapshot_deks_import_ended, BucketName, VBucket}).
 
 note_wait_index_updated_started(BucketName, Node, VBucket) ->
     submit_cast({wait_index_updated_started, BucketName, Node, VBucket}).
