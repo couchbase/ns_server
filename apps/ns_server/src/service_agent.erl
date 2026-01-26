@@ -214,10 +214,12 @@ resume_bucket(Service, Node, Id, Args, DryRun, Manager) ->
                      {resume_bucket, Id, Args, DryRun, Observer}},
                     ?OUTER_TIMEOUT).
 
-validate_bucket_config(cont_backup, Node, ConfigString) ->
-    gen_server:call({server_name(cont_backup), Node},
-                    {validate_bucket_config, ConfigString},
-                    ?OUTER_TIMEOUT).
+validate_bucket_config(cont_backup, Nodes, ConfigString) ->
+    Result = multi_call(Nodes, cont_backup,
+                        {validate_bucket_config, ConfigString},
+                        ?OUTER_TIMEOUT),
+    handle_multicall_result(cont_backup, validate_bucket_config, Result,
+                            fun functools:id/1).
 
 %% gen_server callbacks
 init(Service)       ->
