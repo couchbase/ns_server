@@ -1308,6 +1308,12 @@ format_error({key_test_alert, Reason, Name, Node, DateTime}) ->
         "Encryption-at-Rest key validation event at ~s: FAILED on node \"~s\" "
         "for key \"~s\". Error details: \"~s\".",
         [DateTimeStr, Host, Name, ReasonStr]));
+format_error({invalid_dek_file_name, Path}) ->
+    io_lib:format("Invalid DEK file name: ~s", [Path]);
+format_error({dek_decode_error, Msg}) ->
+    Msg;
+format_error({read_key_file_error, ErrorMsg}) ->
+    io_lib:format("Failed to read DEK file: ~s", [ErrorMsg]);
 format_error(Reason) ->
     lists:flatten(io_lib:format("~p", [Reason])).
 

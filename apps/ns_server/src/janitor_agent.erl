@@ -1690,9 +1690,8 @@ import_snapshot_deks(Bucket, VBucket) ->
                                            binary_to_list(SnapshotUUID),
                                            binary_to_list(_)])),
             AllPaths = [FullPath(K) || K <- Deks],
-            ok = cb_cluster_secrets:import_bucket_dek_files(BucketUUID,
-                                                            AllPaths,
-                                                            infinity)
+            ok = cb_cluster_secrets:import_dek_files({bucketDek, BucketUUID},
+                                                     AllPaths, infinity)
     end.
 
 -ifdef(TEST).

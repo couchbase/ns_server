@@ -150,7 +150,7 @@
          fetch_snapshot_in_txn/1,
          recalculate_deks_info/0,
          is_secret_used/2,
-         import_bucket_dek_files/3,
+         import_dek_files/3,
          sanitize_sensitive_data/1,
          maybe_reencrypt_data/5,
          get_latest_test_results/0,
@@ -1000,11 +1000,10 @@ is_secret_used(Id, Snapshot) ->
             false
     end.
 
--spec import_bucket_dek_files(binary(), [file:filename()], timeout()) ->
+-spec import_dek_files(cb_deks:dek_kind(), [file:filename()], timeout()) ->
           ok | {error, term()}.
-import_bucket_dek_files(BucketUUID, Paths, Timeout) ->
-    gen_server:call(?MODULE, {import_bucket_dek_files, BucketUUID, Paths},
-                    Timeout).
+import_dek_files(DekKind, Paths, Timeout) ->
+    gen_server:call(?MODULE, {import_dek_files, DekKind, Paths}, Timeout).
 
 -spec sanitize_sensitive_data(sensitive_data()) -> sensitive_data().
 sanitize_sensitive_data(#{type := sensitive} = Data) ->
@@ -1182,12 +1181,11 @@ handle_call({destroy_deks, DekKind, ContFun}, _From,
 handle_call(diag, _From, State) ->
     {reply, diag(State), State};
 
-handle_call({import_bucket_dek_files, BucketUUID, Paths}, _From,
+handle_call({import_dek_files, DekKind, Paths}, _From,
             #state{proc_type = ?NODE_PROC} = State) ->
-    ?log_info("Bucket ~p DEK files import started:~n~p", [BucketUUID, Paths]),
-    {Res, NewState} = import_bucket_dek_files_impl(
-                        {bucketDek, BucketUUID}, Paths, State),
-    ?log_info("Bucket ~p DEK files import finished: ~0p", [BucketUUID, Res]),
+    ?log_info("~p DEK files import started:~n~p", [DekKind, Paths]),
+    {Res, NewState} = import_dek_files_impl(DekKind, Paths, State),
+    ?log_info("~p DEK files import finished: ~0p", [DekKind, Res]),
     {reply, Res, NewState};
 
 handle_call(Request, _From, State) ->
@@ -4381,12 +4379,12 @@ handle_erpc_key_test_result(Res, Nodes) ->
 call_is_writable_mfa({M, F, A}, ExtraArgs) ->
     erlang:apply(M, F, A ++ ExtraArgs).
 
--spec import_bucket_dek_files_impl(cb_deks:dek_kind(), [file:filename()],
-                                   #state{}) ->
+-spec import_dek_files_impl(cb_deks:dek_kind(), [file:filename()],
+                            #state{}) ->
           {ok, #state{}} | {{error, term()}, #state{}}.
-import_bucket_dek_files_impl(_Kind, [], State) ->
+import_dek_files_impl(_Kind, [], State) ->
     {ok, State};
-import_bucket_dek_files_impl(Kind, Paths, State) ->
+import_dek_files_impl(Kind, Paths, State) ->
     maybe
         Snapshot = deks_config_snapshot(Kind),
         {succ, {ok, EncrMethod}} ?= cb_deks:call_dek_callback(

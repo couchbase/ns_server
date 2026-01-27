@@ -19,7 +19,7 @@
          format_encr_at_rest_info/1, handle_force_encr/2,
          handle_bucket_force_encr/2, min_dek_rotation_interval_in_sec/0,
          min_dek_lifetime_in_sec/0, dek_interval_error/1,
-         bypass_encr_cfg_restrictions/0]).
+         bypass_encr_cfg_restrictions/0, handle_import_ear_dek/1]).
 
 encr_method(Param, SecretIdName, EncrType) ->
     AllowedInMixedClusters = case EncrType of
@@ -351,23 +351,26 @@ handle_deks_drop_complete(Req) ->
             menelaus_util:reply(Req, 204)
         end,
         Req, json,
-        [validator:required(type, _),
-         validator:string(type, _),
-         validator:string(bucketUUID, _),
-         validator:validate_multiple(
-           fun ([TypeStr, BucketUUIDOrUndefined], State) ->
-               case cb_deks_cbauth:cbauth_key_type_to_dek_kind(
-                      TypeStr, BucketUUIDOrUndefined) of
-                   {ok, Kind} ->
-                       {ok, validator:return_value(type, Kind, State)};
-                   {error, Error} ->
-                       {ok, validator:return_error(type, Error, State)}
-               end
-           end, [type, bucketUUID], _),
-         validator:required(success, _),
+        dek_kind_validators() ++
+        [validator:required(success, _),
          validator:boolean(success, _),
          validator:string(description, _),
          validator:unsupported(_)]).
+
+dek_kind_validators() ->
+    [validator:required(type, _),
+     validator:string(type, _),
+     validator:string(bucketUUID, _),
+     validator:validate_multiple(
+       fun ([TypeStr, BucketUUIDOrUndefined], State) ->
+           case cb_deks_cbauth:cbauth_key_type_to_dek_kind(
+                  TypeStr, BucketUUIDOrUndefined) of
+               {ok, Kind} ->
+                   {ok, validator:return_value(type, Kind, State)};
+               {error, Error} ->
+                   {ok, validator:return_error(type, Error, State)}
+           end
+       end, [type, bucketUUID], _)].
 
 handle_bucket_force_encr(Bucket, Req) ->
     ApplySettings = fun (false, Settings, Time) ->
@@ -749,3 +752,27 @@ is_encryption_enabled(Type, Snapshot) ->
         #{Type := #{encryption := disabled}} -> false;
         #{Type := #{encryption := _}} -> true
     end.
+
+handle_import_ear_dek(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:ensure_local(Req),
+    validator:handle(
+      fun (Params) ->
+          DekKind = proplists:get_value(type, Params),
+          Paths = proplists:get_value(dekPaths, Params),
+          Timeout = proplists:get_value(timeout, Params, 300000),
+          case cb_cluster_secrets:import_dek_files(
+                 DekKind, Paths, Timeout) of
+              ok ->
+                  menelaus_util:reply_json(Req, {[]}, 200);
+              {error, Reason} ->
+                  ErrorMsg = menelaus_web_secrets:format_error(Reason),
+                  menelaus_util:reply_global_error(Req, ErrorMsg)
+          end
+      end, Req, json,
+      dek_kind_validators() ++
+      [validator:required(dekPaths, _),
+       validator:string_array(dekPaths, fun (_) -> ok end, false, _),
+       validator:default(timeout, 300000, _),
+       validator:integer(timeout, 1, max, _),
+       validator:unsupported(_)]).
