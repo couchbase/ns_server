@@ -12,6 +12,9 @@
 
 -include("ns_common.hrl").
 -include("cb_cluster_secrets.hrl").
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([update_deks/2,
          get_key_ids_in_use/2,
@@ -184,3 +187,34 @@ cbauth_key_type_to_dek_kind("audit", _) ->
 cbauth_key_type_to_dek_kind(TypeStr, _) ->
     Error = lists:flatten(io_lib:format("invalid type: ~p", [TypeStr])),
     {error, Error}.
+
+-ifdef(TEST).
+
+cbauth_key_type_to_dek_kind_test() ->
+    %% Make sure the test fails if we add a new kind and forget to add
+    %% a clause for it in cbauth_key_type_to_dek_kind/2
+    HandledKinds =
+        lists:map(
+          fun ({Type, Expected}) ->
+              {ok, Res} = cbauth_key_type_to_dek_kind(Type, undefined),
+              ?assertEqual(Expected, Res),
+              Res
+          end, [{"config", configDek},
+                {"log", logDek},
+                {"audit", auditDek}]),
+
+    ?assertEqual([], ?DEK_KIND_LIST_STATIC -- HandledKinds),
+
+    ?assertEqual({error, "bucketUUID is required for bucketDek"},
+                 cbauth_key_type_to_dek_kind("bucket", undefined)),
+    ?assertEqual({error, "bucketUUID is required for bucketDek"},
+                 cbauth_key_type_to_dek_kind("bucket", "")),
+    ?assertEqual({error, "invalid type: \"unknown\""},
+                 cbauth_key_type_to_dek_kind("unknown", undefined)),
+    ?assertEqual({error, "invalid type: \"unknown\""},
+                 cbauth_key_type_to_dek_kind("unknown", "")),
+    ?assertEqual({error, "invalid type: \"unknown\""},
+                 cbauth_key_type_to_dek_kind("unknown", "123")).
+
+
+-endif.

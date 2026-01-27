@@ -14,6 +14,10 @@
 -include("cb_cluster_secrets.hrl").
 -include_lib("ns_common/include/cut.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([list/1,
          read/2,
          generate_new/3,
@@ -121,7 +125,7 @@
                              encryption_service |
                              disabled.
 -type dek_id() :: cb_cluster_secrets:key_id().
--type dek_kind() :: kek | configDek | logDek | auditDek |
+-type dek_kind() :: configDek | logDek | auditDek |
                     {bucketDek, BucketUUID :: binary()}.
 -type good_dek(Type, Info) :: #{id := dek_id(), type := Type, info := Info}.
 -type aes_dek_info() :: #{key := ?HIDDEN_DATA(binary()),
@@ -405,7 +409,7 @@ increment_dek_encryption_counter(Kind, SecretId, AllCounters) ->
 %% Returns a dek kind that is affected by a given chronicle key.
 %% Returns false otherwise.
 dek_chronicle_keys_filter(?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY) ->
-    {dek_settings_updated, [configDek, logDek, auditDek]};
+    {dek_settings_updated, ?DEK_KIND_LIST_STATIC};
 dek_chronicle_keys_filter(Key) ->
     case ns_bucket:sub_key_match(Key) of
         {true, Bucket, K} when K == props; K == encr_at_rest ->
@@ -482,7 +486,7 @@ dek_cluster_kinds_list() ->
     dek_cluster_kinds_list(direct).
 dek_cluster_kinds_list(Snapshot) ->
     Buckets = ns_bucket:uuids(Snapshot),
-    [configDek, logDek, auditDek] ++
+    ?DEK_KIND_LIST_STATIC ++
     [{bucketDek, UUID} || {_, UUID} <- Buckets].
 
 dek_kinds_list_existing_on_node(Snapshot) ->
@@ -521,3 +525,23 @@ kind2datatype(kek) -> <<"keys">>;
 kind2datatype(configDek) -> <<"config">>;
 kind2datatype(logDek) -> <<"logs">>;
 kind2datatype(auditDek) -> <<"audit">>.
+
+-ifdef(TEST).
+
+kind2datatype_test() ->
+    %% Make sure the test fails if we add a new kind and forget to add
+    %% a clause for it in kind2datatype/1
+    lists:foreach(fun (K) ->
+                      ?assert(is_binary(kind2datatype(K)))
+                  end, ?KEY_KIND_LIST_STATIC).
+
+dek_user_impl_exists_test() ->
+    %% Make sure the test fails if we add a new kind and forget to add
+    %% a clause for it in dek_user_impl/1
+    lists:foreach(fun (K) ->
+                      Module = dek_user_impl(K),
+                      ?assert(is_atom(Module)),
+                      Module:module_info()
+                  end, [{bucketDek, <<"123">>} | ?DEK_KIND_LIST_STATIC]).
+
+-endif.

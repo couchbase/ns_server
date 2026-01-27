@@ -21,4 +21,9 @@
 -define(DEK_ERROR_PATTERN(Id, Reason),
         #{type := error, id := Id, reason := Reason}).
 
+%% Note: this list of kinds does not include bucketDek, as it depends on
+%% bucket UUID.
+-define(DEK_KIND_LIST_STATIC, [configDek, logDek, auditDek]).
+-define(KEY_KIND_LIST_STATIC, [kek | ?DEK_KIND_LIST_STATIC]).
+
 -endif.

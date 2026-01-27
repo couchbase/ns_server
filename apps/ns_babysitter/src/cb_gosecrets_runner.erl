@@ -12,6 +12,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-include("../../ns_server/src/cb_cluster_secrets.hrl").
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("kernel/include/file.hrl").
@@ -657,7 +658,7 @@ cfg_to_json(Props) ->
                    {path, key_path(Kind, Props)},
                    {encryptByKind, kek}]}
              end,
-    Kinds = [kek, configDek, logDek, auditDek],
+    Kinds = ?KEY_KIND_LIST_STATIC,
     DeksStoreConfig = case key_path(bucketDek, Props) of
                           undefined -> [];
                           DeksPath -> [{[{kind, bucketDek},
@@ -802,6 +803,33 @@ should_prompt_the_password_test() ->
         file:delete(CfgPath)
     end.
 
+cfg_to_json_stored_keys_has_paths_for_all_static_kinds_test() ->
+    %% storedKeys must have a defined path for each ?KEY_KIND_LIST_STATIC kind
+    {Result} = cfg_to_json([]),
+    StoredKeysList = proplists:get_value(storedKeys, Result),
+    ?assert(StoredKeysList =/= undefined),
+    F = fun (Kind) ->
+                Pred = fun ({Props}) ->
+                               proplists:get_value(kind, Props) =:= Kind
+                       end,
+                case lists:filter(Pred, StoredKeysList) of
+                    [{Props}] ->
+                        Path = proplists:get_value(path, Props),
+                        ?assert(Path =/= undefined);
+                    Other ->
+                        erlang:error({kind_not_found, Kind, Other})
+                end
+        end,
+    lists:foreach(F, ?KEY_KIND_LIST_STATIC).
+
+key_path_set_for_all_static_kinds_test() ->
+    %% Just make sure we haven't forgotten to add a clause for new kinds in
+    %% key_path/2
+    lists:foreach(
+      fun (Kind) ->
+          ?assert(is_binary(key_path(Kind, [])))
+      end, ?KEY_KIND_LIST_STATIC).
+
 default_config_encryption_test() ->
     with_gosecrets(
       undefined,
@@ -943,11 +971,8 @@ integrity_check_for_stored_keys_test() ->
     BucketPath = fun (Bucket) ->
                      iolist_to_binary(filename:join([DKFile, Bucket, "deks"]))
                  end,
-    KeyDirs = [key_path(configDek, Cfg),
-               key_path(logDek, Cfg),
-               key_path(auditDek, Cfg),
-               key_path(kek, Cfg),
-               BucketPath("bucket1"),
+    KeyDirs = [key_path(K, Cfg) || K <- ?KEY_KIND_LIST_STATIC] ++
+              [BucketPath("bucket1"),
                BucketPath("bucket2")],
     with_all_stored_keys_cleaned(
       Cfg,
@@ -1559,10 +1584,7 @@ default_password_from_env_memorization_test() ->
 mac_test() ->
     Data = rand:bytes(512),
     Cfg = [],
-    KeyDirs = [key_path(configDek, Cfg),
-               key_path(logDek, Cfg),
-               key_path(auditDek, Cfg),
-               key_path(kek, Cfg)],
+    KeyDirs = [key_path(K, Cfg) || K <- ?KEY_KIND_LIST_STATIC],
     with_all_stored_keys_cleaned(
       Cfg,
       fun () ->
@@ -1632,7 +1654,7 @@ with_tmp_datakey_cfg(Fun) ->
     end.
 
 with_all_stored_keys_cleaned(Cfg, Fun) ->
-    Keys = [configDek, logDek, auditDek, kek, bucketDek],
+    Keys = [bucketDek | ?KEY_KIND_LIST_STATIC],
     Paths = [binary_to_list(P) || Key <- Keys,
                                   P <- [key_path(Key, Cfg)],
                                   P =/= undefined],
