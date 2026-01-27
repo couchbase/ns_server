@@ -52,6 +52,9 @@
                        stats :: [#replica_building_stats{}],
                        move = #stat_info{},
                        backfill = #stat_info{},
+                       snapshot_download = #stat_info{},
+                       snapshot_deks_import = #stat_info{},
+                       snapshot_waiting = #stat_info{},
                        takeover = #stat_info{},
                        persistence = #stat_info{}}).
 
@@ -60,6 +63,9 @@
 
 -record(vbucket_level_info, {move = #total_stat_info{},
                              backfill = #total_stat_info{},
+                             snapshot_download = #total_stat_info{},
+                             snapshot_deks_import = #total_stat_info{},
+                             snapshot_waiting = #total_stat_info{},
                              takeover = #total_stat_info{},
                              persistence = #total_stat_info{},
                              vbucket_info = dict:new()}).
@@ -548,6 +554,31 @@ handle_master_event({Event = mounting_volumes_ended, BucketName, _}, State) ->
     update_info(Event, State,
                 {os:timestamp(), BucketName, undefined, undefined});
 
+handle_master_event({snapshot_download_started, BucketName, VBucket}, State) ->
+    update_info(snapshot_download_started, State,
+                {os:timestamp(), BucketName, VBucket, undefined});
+
+handle_master_event({snapshot_download_ended, BucketName, VBucket}, State) ->
+    update_info(snapshot_download_ended, State,
+                {os:timestamp(), BucketName, VBucket, undefined});
+
+handle_master_event({snapshot_deks_import_started, BucketName, VBucket},
+                    State) ->
+    update_info(snapshot_deks_import_started, State,
+                {os:timestamp(), BucketName, VBucket, undefined});
+
+handle_master_event({snapshot_deks_import_ended, BucketName, VBucket}, State) ->
+    update_info(snapshot_deks_import_ended, State,
+                {os:timestamp(), BucketName, VBucket, undefined});
+
+handle_master_event({snapshot_waiting_started, BucketName, VBucket}, State) ->
+    update_info(snapshot_waiting_started, State,
+                {os:timestamp(), BucketName, VBucket, undefined});
+
+handle_master_event({snapshot_waiting_ended, BucketName, VBucket}, State) ->
+    update_info(snapshot_waiting_ended, State,
+                {os:timestamp(), BucketName, VBucket, undefined});
+
 handle_master_event(_, State) ->
     State.
 
@@ -963,6 +994,24 @@ find_event_action(Event) ->
                    {backfill_phase_ended, #vbucket_level_info.backfill,
                     #vbucket_info.backfill, end_time},
 
+                   {snapshot_download_started, undefined,
+                    #vbucket_info.snapshot_download, start_time},
+                   {snapshot_download_ended,
+                    #vbucket_level_info.snapshot_download,
+                    #vbucket_info.snapshot_download, end_time},
+
+                   {snapshot_deks_import_started, undefined,
+                    #vbucket_info.snapshot_deks_import, start_time},
+                   {snapshot_deks_import_ended,
+                    #vbucket_level_info.snapshot_deks_import,
+                    #vbucket_info.snapshot_deks_import, end_time},
+
+                   {snapshot_waiting_started, undefined,
+                    #vbucket_info.snapshot_waiting, start_time},
+                   {snapshot_waiting_ended,
+                    #vbucket_level_info.snapshot_waiting,
+                    #vbucket_info.snapshot_waiting, end_time},
+
                    {takeover_started, undefined,
                     #vbucket_info.takeover, start_time},
                    {takeover_ended, #vbucket_level_info.takeover,
@@ -1101,13 +1150,14 @@ construct_replica_building_stats_json(#replica_building_stats{
              {inDocsTotal, DT},
              {inDocsLeft, DL}]}}.
 
-construct_vbucket_info_json(Id, #vbucket_info{before_chain = BC,
-                                              after_chain = AC,
-                                              stats = RBS,
-                                              move = Move,
-                                              backfill = Backfill,
-                                              takeover = Takeover,
-                                              persistence = Persistence}) ->
+construct_vbucket_info_json(Id,
+                            #vbucket_info{before_chain = BC,
+                                          after_chain = AC,
+                                          stats = RBS,
+                                          move = Move,
+                                          backfill = Backfill,
+                                          takeover = Takeover,
+                                          persistence = Persistence} = Info) ->
     RInfoJson = case RBS of
                     [] ->
                         [];
@@ -1120,9 +1170,41 @@ construct_vbucket_info_json(Id, #vbucket_info{before_chain = BC,
       {beforeChain, BC},
       {afterChain, AC},
       {move, construct_stat_info_json(Move)},
-      {backfill, construct_stat_info_json(Backfill)},
-      {takeover, construct_stat_info_json(Takeover)},
+      {backfill, construct_stat_info_json(Backfill)}] ++
+      maybe_add_file_based_backfill_vbucket_info_json(Info) ++
+      [{takeover, construct_stat_info_json(Takeover)},
       {persistence, construct_stat_info_json(Persistence)}] ++ RInfoJson}.
+
+%% Not all backfills are file-based. Don't omit a bunch of 0 values if this
+%% was not file-based.
+maybe_add_file_based_backfill_vbucket_info_json(Info) ->
+    maybe_add_snapshot_download_vbucket_info_json(Info) ++
+    maybe_add_snapshot_deks_import_vbucket_info_json(Info) ++
+    maybe_add_snapshot_waiting_vbucket_info_json(Info).
+
+maybe_add_snapshot_download_vbucket_info_json(
+  #vbucket_info{snapshot_download =
+                    #stat_info{start_time = 0, end_time = 0}}) ->
+    [];
+maybe_add_snapshot_download_vbucket_info_json(
+  #vbucket_info{snapshot_download = SnapshotDownload}) ->
+    [{snapshot_download, construct_stat_info_json(SnapshotDownload)}].
+
+maybe_add_snapshot_deks_import_vbucket_info_json(
+  #vbucket_info{snapshot_deks_import =
+                    #stat_info{start_time = 0, end_time = 0}}) ->
+    [];
+maybe_add_snapshot_deks_import_vbucket_info_json(
+  #vbucket_info{snapshot_deks_import = SnapshotDeksImport}) ->
+    [{snapshot_deks_import, construct_stat_info_json(SnapshotDeksImport)}].
+
+maybe_add_snapshot_waiting_vbucket_info_json(
+  #vbucket_info{snapshot_waiting =
+                    #stat_info{start_time = 0, end_time = 0}}) ->
+    [];
+maybe_add_snapshot_waiting_vbucket_info_json(
+  #vbucket_info{snapshot_waiting = SnapshotWaiting}) ->
+    [{snapshot_waiting, construct_stat_info_json(SnapshotWaiting)}].
 
 construct_mounting_volumes_info_json(undefined) ->
     [];
@@ -1146,7 +1228,7 @@ construct_vbucket_level_info_json_inner(
                       backfill = Backfill,
                       takeover = Takeover,
                       persistence = Persistence,
-                      vbucket_info = AllVBInfo}, Options) ->
+                      vbucket_info = AllVBInfo} = VBLevelInfo, Options) ->
     VBI = case proplists:get_bool(add_vbucket_info, Options) of
               true ->
                   [{vbucketInfo,
@@ -1157,10 +1239,44 @@ construct_vbucket_level_info_json_inner(
                   []
           end,
     {[{move, construct_total_stat_info_json(Move, dict:size(AllVBInfo))},
-      {backfill, construct_total_stat_info_json(Backfill)},
-      {takeover, construct_total_stat_info_json(Takeover)},
+      {backfill, construct_total_stat_info_json(Backfill)}] ++
+      maybe_add_file_based_backfill_vbucket_level_info_json(VBLevelInfo) ++
+      [{takeover, construct_total_stat_info_json(Takeover)},
       {persistence, construct_total_stat_info_json(Persistence)}]
      ++ VBI}.
+
+maybe_add_file_based_backfill_vbucket_level_info_json(VBLevelInfo) ->
+    maybe_add_snapshot_download_vbucket_level_info_json(VBLevelInfo) ++
+    maybe_add_snapshot_deks_import_vbucket_level_info_json(VBLevelInfo) ++
+    maybe_add_snapshot_waiting_vbucket_level_info_json(VBLevelInfo).
+
+maybe_add_snapshot_download_vbucket_level_info_json(
+  #vbucket_level_info{snapshot_download =
+                          #total_stat_info{total_time = 0,
+                                           completed_count = 0}}) ->
+    [];
+maybe_add_snapshot_download_vbucket_level_info_json(
+  #vbucket_level_info{snapshot_download = SnapshotDownload}) ->
+    [{snapshot_download, construct_total_stat_info_json(SnapshotDownload)}].
+
+maybe_add_snapshot_deks_import_vbucket_level_info_json(
+  #vbucket_level_info{snapshot_deks_import =
+                          #total_stat_info{total_time = 0,
+                                           completed_count = 0}}) ->
+    [];
+maybe_add_snapshot_deks_import_vbucket_level_info_json(
+  #vbucket_level_info{snapshot_deks_import = SnapshotDeksImport}) ->
+    [{snapshot_deks_import,
+      construct_total_stat_info_json(SnapshotDeksImport)}].
+
+maybe_add_snapshot_waiting_vbucket_level_info_json(
+  #vbucket_level_info{snapshot_waiting =
+                          #total_stat_info{total_time = 0,
+                                           completed_count = 0}}) ->
+    [];
+maybe_add_snapshot_waiting_vbucket_level_info_json(
+  #vbucket_level_info{snapshot_waiting = SnapshotWaiting}) ->
+    [{snapshot_waiting, construct_total_stat_info_json(SnapshotWaiting)}].
 
 get_all_stage_rebalance_details(#state{bucket_info = BucketLevelInfo},
                                 Options) ->
@@ -1310,6 +1426,12 @@ rebalance_inner() ->
     submit_master_event({vbucket_move_start, unused, "Bucket1",
                          unused, 0, unused, unused}),
     submit_master_event({backfill_phase_started, "Bucket1", 0}),
+    submit_master_event({snapshot_download_started, "Bucket1", 0}),
+    submit_master_event({snapshot_download_ended, "Bucket1", 0}),
+    submit_master_event({snapshot_deks_import_started, "Bucket1", 0}),
+    submit_master_event({snapshot_deks_import_ended, "Bucket1", 0}),
+    submit_master_event({snapshot_waiting_started, "Bucket1", 0}),
+    submit_master_event({snapshot_waiting_ended, "Bucket1", 0}),
     submit_master_event({compaction_uninhibit_started, "Bucket1", n_0}),
     submit_master_event({compaction_uninhibit_started, "Bucket1", n_1}),
     submit_master_event({compaction_uninhibit_done, "Bucket1", n_1}),
@@ -1375,6 +1497,9 @@ rebalance_inner() ->
                                {totalCount, 1},
                                {remainingCount, 0}]}},
                             {backfill, {[{averageTime, _}]}},
+                            {snapshot_download,{[{averageTime, _}]}},
+                            {snapshot_deks_import,{[{averageTime, _}]}},
+                            {snapshot_waiting,{[{averageTime, _}]}},
                             {takeover, {[{averageTime, _}]}},
                             {persistence, {[{averageTime, _}]}},
                             {vbucketInfo,
@@ -1386,6 +1511,18 @@ rebalance_inner() ->
                                    {completedTime, _},
                                    {timeTaken, _}]}},
                                 {backfill,
+                                 {[{startTime, _},
+                                   {completedTime, _},
+                                   {timeTaken, _}]}},
+                                {snapshot_download,
+                                 {[{startTime, _},
+                                   {completedTime, _},
+                                   {timeTaken, _}]}},
+                                {snapshot_deks_import,
+                                 {[{startTime, _},
+                                   {completedTime, _},
+                                   {timeTaken, _}]}},
+                                {snapshot_waiting,
                                  {[{startTime, _},
                                    {completedTime, _},
                                    {timeTaken, _}]}},
