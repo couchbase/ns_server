@@ -607,7 +607,10 @@ build_extra_params_bucket_info(BucketName, BucketConfig) ->
                                                              BucketConfig, []),
 
     {ServiceOKs, ServiceErrors} =
-        validate_bucket_config_against_services(BucketConfigString, false),
+        validate_bucket_config_against_services(
+          BucketConfigString,
+          #{allow_internal_params => false,
+            service_options => #{justReturnParams => true}}),
 
     case map_size(ServiceErrors) of
         0 ->
@@ -1477,8 +1480,10 @@ parse_bucket_params_continue_via_services(
           RemappedParamsForServices),
 
     {ServiceOKs, ServiceErrors} =
-        validate_bucket_config_against_services(BucketConfigString,
-                                                AllowInternalParams),
+        validate_bucket_config_against_services(
+          BucketConfigString,
+          #{allow_internal_params => AllowInternalParams,
+            service_options => #{justReturnParams => false}}),
 
     %% If there are any errors, we should return them.
     case {ServiceErrors, ParamRemappingErrors} of
@@ -1523,16 +1528,16 @@ process_bucket_config_from_services(AcceptedKeys, OKs, OKsFromServices,
     {ok, UpdatedOKs}.
 
 validate_bucket_config_against_services(BucketConfigString,
-                                        AllowInternalParams) ->
+                                        Options) ->
     %% Validate the params using with memcached and continuous backup. We will
     %% then merge the returned OKs and Errors into those that we generated in
     %% our config validation logic.
     Res =
         functools:sequence(
           [?cut(validate_bucket_config_with_memcached(BucketConfigString,
-                                                      AllowInternalParams)),
+                                                      Options)),
            ?cut(maybe_validate_bucket_config_with_continuous_backup(
-                  BucketConfigString, AllowInternalParams))
+                  BucketConfigString, Options))
           ]),
 
     %% Merge all of the OKs and Errors from the services together.
@@ -1578,11 +1583,11 @@ merge_service_bucket_config_validation_results(AllResults) ->
 %% AllowInternalParams is a boolean that indicates if internal parameters should
 %% be allowed. If false, they will be ignored.
 validate_bucket_config_with_memcached(BucketConfigString,
-                                      AllowInternalParams) ->
+                                      Options) ->
     case ns_memcached:validate_bucket_config(BucketConfigString) of
         {ok, ValidationMap} ->
             process_service_bucket_config_validation_map(ValidationMap,
-                                                         AllowInternalParams);
+                                                         Options);
         {error, Error} ->
             ale:error(?USER_LOGGER,
                       "Error validating bucket config with memcached: ~p",
@@ -1591,12 +1596,14 @@ validate_bucket_config_with_memcached(BucketConfigString,
     end.
 
 validate_bucket_config_with_continuous_backup(Nodes, BucketConfigString,
-                                              AllowInternalParams) ->
+                                              Options) ->
+    #{service_options := ServiceOptions} = Options,
     case service_agent:validate_bucket_config(cont_backup, Nodes,
-                                              BucketConfigString) of
+                                              BucketConfigString,
+                                              ServiceOptions) of
         All when is_list(All) ->
             process_continuous_backup_validation_result(All,
-                                                        AllowInternalParams);
+                                                        Options);
         {error, Error} ->
             ale:error(?USER_LOGGER,
                       "Error validating bucket config with continuous backup: "
@@ -1606,19 +1613,19 @@ validate_bucket_config_with_continuous_backup(Nodes, BucketConfigString,
     end.
 
 process_continuous_backup_validation_result(AllResults,
-                                            AllowInternalParams) ->
+                                            Options) ->
     R1 = lists:map(
            fun({_, {ok, NodeResult}}) ->
                    {ok, R} =
                        process_one_node_continuous_backup_validation_result(
                          NodeResult,
-                         AllowInternalParams),
+                         Options),
                    R
            end, AllResults),
     {ok, merge_service_bucket_config_validation_results(R1)}.
 
 process_one_node_continuous_backup_validation_result(NodeResult,
-                                                    AllowInternalParams) ->
+                                                     Options) ->
     %% TODO MB-64129: When the service API uses json over ejson we can
     %% remove this.
     %% Hack - The validation map parsing code uses the json library
@@ -1628,21 +1635,20 @@ process_one_node_continuous_backup_validation_result(NodeResult,
     Str = ejson:encode(NodeResult),
     Json = json:decode(Str),
     process_service_bucket_config_validation_map(
-      maps:get(<<"validationResult">>, Json),
-      AllowInternalParams).
+      maps:get(<<"validationResult">>, Json), Options).
 
 maybe_validate_bucket_config_with_continuous_backup(BucketConfigString,
-                                                    AllowInternalParams) ->
+                                                    Options) ->
     case cluster_compat_mode:is_continuous_backup_enabled() of
         false ->
             {ok, {#{}, #{}}};
         true ->
             find_nodes_and_validate_bucket_config_with_continuous_backup(
-              BucketConfigString, AllowInternalParams)
+              BucketConfigString, Options)
     end.
 
 find_nodes_and_validate_bucket_config_with_continuous_backup(
-    BucketConfigString, AllowInternalParams) ->
+  BucketConfigString, Options) ->
     KVNodes = ns_cluster_membership:service_active_nodes(kv),
     case ns_node_disco:only_live_nodes(KVNodes) of
         [] ->
@@ -1650,11 +1656,11 @@ find_nodes_and_validate_bucket_config_with_continuous_backup(
         Nodes ->
             validate_bucket_config_with_continuous_backup(Nodes,
                                                           BucketConfigString,
-                                                          AllowInternalParams)
+                                                          Options)
     end.
 
-process_service_bucket_config_validation_map(ValidationMap,
-    AllowInternalParams) ->
+process_service_bucket_config_validation_map(ValidationMap, Options) ->
+    #{allow_internal_params := AllowInternalParams} = Options,
     {AllOKs, Errors} = memcached_bucket_config_validation:group(ValidationMap),
     FilteredOKs =
         maps:filter(
@@ -6719,7 +6725,8 @@ validate_bucket_config_with_memcached_test() ->
                               }}
                 end),
     {ok, {OKs, ErrorMessages}} = validate_bucket_config_with_memcached(
-                                   "foo=value;baz=value", false),
+                                   "foo=value;baz=value",
+                                   #{allow_internal_params => false}),
     ?assertEqual(#{"foo" => "value", "bar" => "value"}, OKs),
     ?assertEqual(#{"baz" => <<"message">>}, ErrorMessages).
 
