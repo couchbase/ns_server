@@ -76,6 +76,17 @@ def get_vbucket_move(vb, rebalance_start):
             "persistenceDuration": event_duration(vb, "persistence"),
             "takeoverStart": event_start(vb, "takeover", rebalance_start),
             "takeoverDuration": event_duration(vb, "takeover"),
+            "snapshotDownloadStart": \
+                event_start(vb, "snapshot_download",rebalance_start),
+            "snapshotDeksImportStart": \
+                event_start(vb, "snapshot_deks_import", rebalance_start),
+            "snapshotWaitingStart": \
+                event_start(vb, "snapshot_waiting", rebalance_start),
+            "snapshotDownloadDuration": \
+                event_duration(vb, "snapshot_download"),
+            "snapshotDeksImportDuration": \
+                event_duration(vb, "snapshot_deks_import"),
+            "snapshotWaitingDuration": event_duration(vb, "snapshot_waiting"),
             "duration": move_duration(vb) if "completedTime" in vb["move"] else\
                 None
         }
@@ -113,6 +124,9 @@ def move_duration(vb):
     return duration(vb["move"])
 
 def event_start(vb, event, rebalance_start):
+    if event not in vb:
+        return None
+
     if vb[event] is False:
         return None
 
@@ -124,6 +138,9 @@ def event_start(vb, event, rebalance_start):
     return timestamp(vb[event]["startTime"]) - rebalance_start
 
 def event_duration(vb, event):
+    if event not in vb:
+        return None
+
     if vb[event] is False:
         return None
 

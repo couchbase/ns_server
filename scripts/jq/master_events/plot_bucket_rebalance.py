@@ -32,6 +32,9 @@ def plot_rebalance(payload, detailed=False):
     replica_backfills = []
     persistences = []
     takeovers = []
+    snapshot_downloads = []
+    snapshot_deks_imports = []
+    snapshot_waitings = []
     end = 0
 
     for i, move in enumerate(all_moves):
@@ -66,12 +69,32 @@ def plot_rebalance(payload, detailed=False):
             end = max(end, x + takeover_width)
             start = move['takeoverStart']
             takeovers.append((i, start, takeover_width))
+
+        snapshot_download_width = move['snapshotDownloadDuration']
+        if snapshot_download_width is not None:
+            end = max(end, x + snapshot_download_width)
+            start = move['snapshotDownloadStart']
+            snapshot_downloads.append((i, start, snapshot_download_width))
+        snapshot_deks_import_width = move['snapshotDeksImportDuration']
+        if snapshot_deks_import_width is not None:
+            end = max(end, x + snapshot_deks_import_width)
+            start = move['snapshotDeksImportStart']
+            snapshot_deks_imports.append((i, start, snapshot_deks_import_width))
+        snapshot_waiting_width = move['snapshotWaitingDuration']
+        if snapshot_waiting_width is not None:
+            end = max(end, x + snapshot_waiting_width)
+            start = move['snapshotWaitingStart']
+            snapshot_waitings.append((i, start, snapshot_waiting_width))
+
     all_move_groups = [active_moves,
                        replica_moves,
                        active_backfills,
                        replica_backfills,
                        persistences,
-                       takeovers]
+                       takeovers,
+                       snapshot_downloads,
+                       snapshot_deks_imports,
+                       snapshot_waitings]
     in_progress_moves = []
 
     for moves in all_move_groups:
@@ -98,7 +121,11 @@ def plot_rebalance(payload, detailed=False):
     if detailed:
         detailed_charts =\
             [(persistences, 'persistence', {'color': 'tab:purple'}),
-             (takeovers, 'takeover', {'color': 'tab:olive'})]
+             (takeovers, 'takeover', {'color': 'tab:olive'}),
+             (snapshot_downloads, 'snapshot download', {'color': 'tab:blue'}),
+             (snapshot_deks_imports, 'snapshot deks import',
+              {'color': 'tab:red'}),
+             (snapshot_waitings, 'snapshot waiting', {'color': 'tab:pink'})]
         for data, label, style in detailed_charts:
             if len(data) > 0:
                 pos, lefts, widths = zip(*data)
