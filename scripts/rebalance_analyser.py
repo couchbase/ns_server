@@ -42,7 +42,8 @@ def main():
             return
 
         last_rebalance.sort(key=lambda move: move["start"])
-        plot_rebalance({"moves": last_rebalance, "bucket": bucket})
+        plot_rebalance({"moves": last_rebalance, "bucket": bucket},
+                       detailed=args.detailed)
     elif args.master_events is not None:
         """
          /jq/master_events/plot-bucket-rebalance is intended to be called in
@@ -94,6 +95,11 @@ def parse_args():
         default="",
         metavar="<name>",
         help=f'Bucket')
+    arg_parser.add_argument(
+        '--detailed', '-d',
+        action='store_true',
+        default=False,
+        help=f'Show detailed chart')
 
     return arg_parser.parse_args()
 

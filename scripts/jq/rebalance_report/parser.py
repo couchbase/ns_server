@@ -72,7 +72,12 @@ def get_vbucket_move(vb, rebalance_start):
             "type": move_type(vb),
             "start": start,
             "backfillDuration": backfill_duration(vb),
-            "duration": duration(vb) if "completedTime" in vb["move"] else None
+            "persistenceStart": event_start(vb, "persistence", rebalance_start),
+            "persistenceDuration": event_duration(vb, "persistence"),
+            "takeoverStart": event_start(vb, "takeover", rebalance_start),
+            "takeoverDuration": event_duration(vb, "takeover"),
+            "duration": move_duration(vb) if "completedTime" in vb["move"] else\
+                None
         }
 
 
@@ -104,12 +109,32 @@ def backfill_duration(vb):
         return (timestamp(vb["backfill"]["completedTime"]) -
                 timestamp(vb["move"]["startTime"]))
 
+def move_duration(vb):
+    return duration(vb["move"])
 
-def duration(vb):
-    if vb["move"]["completedTime"] is False:
+def event_start(vb, event, rebalance_start):
+    if vb[event] is False:
         return None
-    elif vb["move"]["startTime"] is False:
+
+    # Some events like takeover report "False" for startTime if no takeover
+    # happened.
+    if vb[event]["startTime"] is False:
         return None
-    else:
-        return (timestamp(vb["move"]["completedTime"]) -
-                timestamp(vb["move"]["startTime"]))
+
+    return timestamp(vb[event]["startTime"]) - rebalance_start
+
+def event_duration(vb, event):
+    if vb[event] is False:
+        return None
+
+    return duration(vb[event])
+
+def duration(event):
+    if event["startTime"] is False:
+        return None
+
+    if event["completedTime"] is False:
+        return None
+
+    return (timestamp(event["completedTime"]) -
+            timestamp(event["startTime"]))

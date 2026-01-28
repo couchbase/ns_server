@@ -15,7 +15,7 @@ import sys
 import matplotlib.pyplot as plot
 
 
-def plot_rebalance(payload):
+def plot_rebalance(payload, detailed=False):
     bucket = payload['bucket']
     all_moves = payload['moves']
     if len(all_moves) == 0:
@@ -30,6 +30,8 @@ def plot_rebalance(payload):
     replica_moves = []
     active_backfills = []
     replica_backfills = []
+    persistences = []
+    takeovers = []
     end = 0
 
     for i, move in enumerate(all_moves):
@@ -51,10 +53,25 @@ def plot_rebalance(payload):
             replica_moves.append(move_tuple)
             replica_backfills.append((i, x, backfill_width))
 
+        # these 'detail' events are plotted based on the start of their own
+        # event rather than the move as a whole as they don't necessarily
+        # start as soon as something else ends.
+        persistence_width = move['persistenceDuration']
+        if persistence_width is not None:
+            end = max(end, x + persistence_width)
+            start = move['persistenceStart']
+            persistences.append((i, start, persistence_width))
+        takeover_width = move['takeoverDuration']
+        if takeover_width is not None:
+            end = max(end, x + takeover_width)
+            start = move['takeoverStart']
+            takeovers.append((i, start, takeover_width))
     all_move_groups = [active_moves,
                        replica_moves,
                        active_backfills,
-                       replica_backfills]
+                       replica_backfills,
+                       persistences,
+                       takeovers]
     in_progress_moves = []
 
     for moves in all_move_groups:
@@ -77,6 +94,21 @@ def plot_rebalance(payload):
         if len(data) > 0:
             pos, lefts, widths = zip(*data)
             ax.barh(pos, left=lefts, width=widths, label=label, **style)
+
+    if detailed:
+        detailed_charts =\
+            [(persistences, 'persistence', {'color': 'tab:purple'}),
+             (takeovers, 'takeover', {'color': 'tab:olive'})]
+        for data, label, style in detailed_charts:
+            if len(data) > 0:
+                pos, lefts, widths = zip(*data)
+                # For these charts we will set the height to half the default
+                # height of 0.8 and align the bars to the bottom of the plot for
+                # this move such that we can still see the rest of the plot
+                # behind this detail event.
+                ax.barh(pos, left=lefts, width=widths, label=label, **style,
+                        height=0.4, align='edge')
+
 
     ax.set_yticks(range(len(vbuckets)))
     ax.set_yticklabels(vbuckets)
