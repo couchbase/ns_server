@@ -66,6 +66,8 @@ supported_setting_names() ->
      {max_client_connection_details, {int, 0, ?MAX_32BIT_SIGNED_INT}},
      {fusion_migration_rate_limit, fun validate_fusion_rate/1},
      {fusion_sync_rate_limit, fun validate_fusion_rate/1},
+     {fusion_num_uploader_threads, {int, 1, 128}},
+     {fusion_num_migrator_threads, {int, 1, 128}},
      {dcp_consumer_max_marker_version, {one_of, ["2.0", "2.2"]}},
      {dcp_snapshot_marker_hps_enabled, bool},
      {dcp_snapshot_marker_purge_seqno_enabled, bool},
