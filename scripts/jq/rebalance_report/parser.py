@@ -16,6 +16,11 @@ import datetime
 
 
 def get_vbucket_moves(report, bucket):
+    # If the report is downloaded from rebalance pop-up in the browser then
+    # it's wrapped in a "data" object.
+    if report.get("data"):
+        return get_vbucket_moves(report["data"], bucket)
+
     if not report.get("is_rebalancing", True):
         print("Rebalance wasn't running")
         return [], None
