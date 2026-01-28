@@ -1508,5 +1508,31 @@
                 "help": "Name of the process (e.g. babysitter, bash, etc.)"
             }
         ]
+    },
+    "cm_fusion_state_timestamp_seconds": {
+        "type": "gauge",
+        "help": "Timestamp when fusion entered the state",
+        "added": "8.1.0",
+        "labels": [
+            {
+                "name": "state",
+                "help": "fusion state (enabling/enabled/disabling/disabled/stopped/stopping)"
+            }
+        ]
+    },
+    "cm_fusion_bucket_state_timestamp_seconds": {
+        "type": "gauge",
+        "help": "Timestamp when bucket entered the fusion state",
+        "added": "8.1.0",
+        "labels": [
+            {
+                "name": "bucket",
+                "help": "Name of the bucket associated with the stat"
+            },
+            {
+                "name": "state",
+                "help": "bucket fusion state (enabled/disabling/disabled/stopped/stopping)"
+            }
+        ]
     }
 }

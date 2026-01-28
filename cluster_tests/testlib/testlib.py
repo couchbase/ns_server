@@ -10,6 +10,7 @@ import atexit
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from math import floor
+from prometheus_client.parser import text_string_to_metric_families
 
 import requests
 import string
@@ -767,6 +768,32 @@ def metakv_delete_fail(cluster, key, expected_code, **kwargs):
 def diag_eval(cluster, code, **kwargs):
     return post_succ(cluster, '/diag/eval', data=code, **kwargs)
 
+def get_prometheus_metrics(cluster):
+    r = get_succ(cluster, '/metrics')
+    return parse_prometheus_to_label_value_dict(r.text)
+
+def parse_prometheus_to_label_value_dict(prometheus_text: str):
+    result = {}
+    metric_families = text_string_to_metric_families(prometheus_text)
+
+    for family in metric_families:
+        metric_name = family.name
+
+        metric_entry = {
+            "TYPE": family.type,
+            "HELP": family.documentation,
+            "VALUES": {}
+        }
+
+        for sample in family.samples:
+            labels_key = tuple(sorted(sample.labels.items()))
+            metric_entry["VALUES"][labels_key] = sample.value
+
+        if metric_entry["VALUES"] or metric_entry["TYPE"] or metric_entry[
+                "HELP"]:
+           result[metric_name] = metric_entry
+
+    return result
 
 @contextlib.contextmanager
 def no_output(name, verbose=None, error_callback=None):

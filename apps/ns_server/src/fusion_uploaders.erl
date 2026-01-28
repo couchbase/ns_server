@@ -54,11 +54,21 @@
 -define(DELETE_SNAPSHOTS_TIMEOUT, ?get_timeout(delete_snapshots, 30000)).
 
 -define(LOG_BUCKET_STATE(Bucket, State),
-        ale:info(?USER_LOGGER, "Bucket ~p fusion state changed to ~p.",
-                 [Bucket, State])).
+        begin
+            ns_server_stats:notify_gauge(
+              {fusion_bucket_state_timestamp_seconds,
+               [{bucket, Bucket}, {state, State}]}, os:system_time(seconds)),
+            ale:info(?USER_LOGGER, "Bucket ~p fusion state changed to ~p.",
+                     [Bucket, State])
+        end).
 
 -define(LOG_FUSION_STATE(State),
-        ale:info(?USER_LOGGER, "Fusion state changed to ~p", [State])).
+        begin
+            ns_server_stats:notify_gauge(
+              {fusion_state_timestamp_seconds, [{state, State}]},
+              os:system_time(seconds)),
+            ale:info(?USER_LOGGER, "Fusion state changed to ~p", [State])
+        end).
 
 %% incremented starting from 1 with each uploader change
 %% The purpose of Term is to help

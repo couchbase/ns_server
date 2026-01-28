@@ -471,6 +471,25 @@ class FusionTests(testlib.BaseTestSet):
         self.assert_bucket_state('test1', 'disabled')
         self.assert_namespaces([])
 
+        metrics = testlib.get_prometheus_metrics(self.cluster)
+        verify_gauge_metric(metrics, "cm_fusion_state_timestamp_seconds",
+                            [(('state', 'disabled'),),
+                             (('state', 'disabling'),),
+                             (('state', 'enabled'),),
+                             (('state', 'enabling'),),
+                             (('state', 'stopped'),),
+                             (('state', 'stopping'),)])
+
+        verify_gauge_metric(metrics, "cm_fusion_bucket_state_timestamp_seconds",
+                            [(('bucket', 'test'), ('state', 'disabling')),
+                             (('bucket', 'test'), ('state', 'disabled')),
+                             (('bucket', 'test'), ('state', 'enabled')),
+                             (('bucket', 'test'), ('state', 'stopping'),),
+                             (('bucket', 'test'), ('state', 'stopped'),),
+                             (('bucket', 'test1'), ('state', 'enabled')),
+                             (('bucket', 'test1'), ('state', 'disabling')),
+                             (('bucket', 'test1'), ('state', 'disabled'))])
+
     def get_snapshot_uuids(self):
         resp = testlib.diag_eval(
             self.cluster,
@@ -644,3 +663,13 @@ def generate_nodes_volumes(nodes):
                                                         random.randint(1, 2))}
                      for n in nodes]
     return {'nodes': nodes_volumes}
+
+def verify_gauge_metric(metrics, metric, labels):
+    assert metric in metrics
+    mdict = metrics[metric]
+    assert mdict["TYPE"] == "gauge"
+    assert mdict["HELP"] != "Help is missing"
+    vdict = mdict["VALUES"]
+
+    for label_tuple in labels:
+        assert label_tuple in vdict
