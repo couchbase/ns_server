@@ -132,6 +132,8 @@ type readKeyReply struct {
 }
 
 type readKeyAesKeyResponse struct {
+	Kind            string `json:"kind"`
+	Name            string `json:"name"`
 	Key             string `json:"key"`
 	EncryptionKeyId string `json:"encryptionKeyId"`
 	CreationTime    string `json:"creationTime"`

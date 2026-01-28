@@ -934,6 +934,8 @@ func replyReadKey(keyIface storedKeyIface) {
 	}
 	keyBase64 := base64.StdEncoding.EncodeToString(rawKey.DecryptedKey)
 	keyToMarshal := readKeyAesKeyResponse{
+		Kind:            rawKey.kind(),
+		Name:            rawKey.Name,
 		Key:             keyBase64,
 		EncryptionKeyId: rawKey.EncryptionKeyName,
 		CreationTime:    rawKey.CreationTime,

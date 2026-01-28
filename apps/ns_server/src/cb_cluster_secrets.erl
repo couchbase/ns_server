@@ -4459,7 +4459,18 @@ import_dek_into_state(Kind, Path, EncrMethod, Snapshot, OldState) ->
         %% Not requesting proof validation because this dek likely comes from
         %% another node, while gosecrets can only validate proofs generated
         %% by this node.
-        {ok, NewKey} ?= encryption_service:read_dek_file(Path, false),
+        {ok, NewKey} ?=
+            case encryption_service:read_dek_file(Path, false) of
+                {ok, {Kind, #{id := DekId} = K}} ->
+                    {ok, K};
+                {ok, {Kind, #{id := UnexpectedDekId}}} ->
+                    {error, {unexpected_dek_id, UnexpectedDekId}};
+                {ok, {UnexpectedKind, _}} ->
+                    {error, {unexpected_dek_kind, UnexpectedKind}};
+                {error, Error} ->
+                    {error, Error}
+            end,
+
         #{info := NewKeyInfo} = NewKey,
         ToImport = NewKey#{info => NewKeyInfo#{imported => true}},
         %% Put the dek into the proper folder, where other deks of this Kind

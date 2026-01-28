@@ -239,8 +239,13 @@ read_dek(Kind, DekId) ->
            read_key_error, [{kind, cb_deks:kind2bin(NewKind, <<"unknown">>)},
                             {key_UUID, NewId}]) of
         {ok, Json} ->
-            case decode_dek(DekId, Json) of
-                {ok, Dek} -> {ok, Dek};
+            case decode_dek(Json) of
+                {ok, {Kind, #{id := DekId} = Dek}} ->
+                    {ok, Dek};
+                {ok, {Kind, #{id := UnexpectedId}}} ->
+                    {error, {unexpected_dek_id, UnexpectedId}};
+                {ok, {UnexpectedKind, _}} ->
+                    {error, {unexpected_dek_kind, UnexpectedKind}};
                 {error, Error} ->
                     Msg = io_lib:format("Failed to decode dek: ~p", [Error]),
                     {error, {dek_decode_error, lists:flatten(Msg)}}
@@ -254,17 +259,11 @@ read_dek_file(Path, VerifyProof) when is_list(Path), is_boolean(VerifyProof) ->
            cb_gosecrets_runner:read_key_file(?RUNNER, Path, VerifyProof),
            read_key_file_error, [{path, Path}]) of
         {ok, Json} ->
-            case extract_dek_id(Path) of
-                {ok, DekId} ->
-                    case decode_dek(DekId, Json) of
-                        {ok, Dek} -> {ok, Dek};
-                        {error, Error} ->
-                            Msg = io_lib:format("Failed to decode dek: ~p",
-                                                [Error]),
-                            {error, {dek_decode_error, lists:flatten(Msg)}}
-                    end;
-                {error, _} = Error ->
-                    Error
+            case decode_dek(Json) of
+                {ok, {Kind, Dek}} -> {ok, {Kind, Dek}};
+                {error, Error} ->
+                    Msg = io_lib:format("Failed to decode dek: ~p", [Error]),
+                    {error, {dek_decode_error, lists:flatten(Msg)}}
             end;
         {error, Error} ->
             {error, Error}
@@ -277,7 +276,7 @@ extract_dek_id(Path) ->
         _ -> {error, {invalid_dek_file_name, Path}}
     end.
 
-decode_dek(DekId, Json) ->
+decode_dek(Json) ->
     maybe
         {ok, Props} ?= try ejson:decode(Json) of
                            {P} -> {ok, P};
@@ -290,12 +289,14 @@ decode_dek(DekId, Json) ->
                   <<"raw-aes-gcm">> -> ok;
                   T -> {error, {unknown_dek_type, T}}
               end,
-        {ok, Info} ?= decode_key_info(proplists:get_value(<<"info">>, Props)),
-        {ok, new_dek_record(DekId, 'raw-aes-gcm', Info)}
+        {ok, {DekId, Kind, Info}} ?=
+            decode_key_info(proplists:get_value(<<"info">>, Props)),
+        {ok, {Kind, new_dek_record(DekId, 'raw-aes-gcm', Info)}}
     end.
 
 decode_key_info({InfoProps}) when is_list(InfoProps) ->
     maybe
+        {ok, {Kind, KeyId}} ?= info_props_to_kind(InfoProps),
         {ok, Key} ?=
             case proplists:get_value(<<"key">>, InfoProps) of
                 undefined -> {error, missing_key};
@@ -328,10 +329,51 @@ decode_key_info({InfoProps}) when is_list(InfoProps) ->
                 false -> {ok, false};
                 _ -> {error, invalid_imported}
             end,
-        {ok, new_raw_aes_dek_info(Key, EncryptionKeyId, CreationTime, Imported)}
+        Info = new_raw_aes_dek_info(Key, EncryptionKeyId, CreationTime,
+                                    Imported),
+        {ok, {KeyId, Kind, Info}}
     end;
 decode_key_info(_InfoProps) ->
     {error, dek_info_not_json_object}.
+
+%% Build cb_deks:dek_kind() from kind and name in InfoProps.
+%% Non-bucket kinds (configDek, logDek, auditDek) are stored as atoms in file.
+%% For bucketDek, name is bucket_dek_id(BucketUUID, DekId) i.e. "UUID/deks/Id".
+-spec info_props_to_kind(list()) ->
+          {ok, {cb_deks:dek_kind(), cb_deks:dek_id()}} | {error, term()}.
+info_props_to_kind(InfoProps) ->
+    maybe
+        {ok, KindBin} ?= case proplists:get_value(<<"kind">>, InfoProps) of
+                             undefined -> {error, missing_kind};
+                             <<>> -> {error, missing_kind};
+                             KB -> {ok, KB}
+                         end,
+        {ok, NameBin} ?= case proplists:get_value(<<"name">>, InfoProps) of
+                             undefined -> {error, missing_name};
+                             <<>> -> {error, missing_name};
+                             NB -> {ok, NB}
+                         end,
+        NonBucketKinds = ?DEK_KIND_LIST_STATIC,
+        KindBinToKind = [{atom_to_binary(K), K} || K <- NonBucketKinds],
+        case KindBin of
+            <<"bucketDek">> ->
+                %% name is bucket_dek_id(BucketUUID, DekId)
+                case string:split(NameBin, "/deks/") of
+                    [BucketUUIDBin, DekIdBin] when BucketUUIDBin =/= <<>>,
+                                                   DekIdBin =/= <<>> ->
+                        {ok, {{bucketDek, BucketUUIDBin}, DekIdBin}};
+                    _ ->
+                        {error, invalid_bucket_dek_name}
+                end;
+            _ ->
+                case lists:keyfind(KindBin, 1, KindBinToKind) of
+                    {_, Kind} ->
+                        {ok, {Kind, NameBin}};
+                    false ->
+                        {error, {unknown_kind, KindBin}}
+                end
+        end
+    end.
 
 new_dek_record(Id, error, Reason) when is_binary(Id) ->
     #{id => Id, type => error, reason => Reason};
