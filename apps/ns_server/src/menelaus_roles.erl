@@ -324,10 +324,12 @@ default_roles() ->
        {[pools], [read]},
        {[app_telemetry], [write]}]},
      {views_admin, [bucket_name],
-      [{name, <<"Views Admin">>},
+      [{name, <<"Views Admin (deprecated)">>},
        {folder, admin},
        {desc, <<"Can create and manage views of a given bucket. "
-                "This user can read some data.">>}],
+                "This user can read some data. "
+                "This role is deprecated and will be removed in a future "
+                "release.">>}],
       [{[{bucket, bucket_name}, views], all},
        {[{bucket, bucket_name}, data, docs], [read, sread]},
        {[{bucket, bucket_name}, data], [read]},
@@ -344,11 +346,13 @@ default_roles() ->
        {[ui], none},
        {[], [read]}]},
      {views_reader, [bucket_name],
-      [{name, <<"Views Reader">>},
+      [{name, <<"Views Reader (deprecated)">>},
        {folder, views},
        {desc, <<"Can read data from the views of a given bucket. This user "
                 "is intended only for application access. This user can read "
-                "some data.">>}],
+                "some data. "
+                "This role is deprecated and will be removed in a future "
+                "release.">>}],
       [{[{bucket, bucket_name}, views], [read]},
        {[{bucket, bucket_name}, data, docs], [read, sread]},
        {[pools], [read]},
@@ -797,7 +801,7 @@ ui_folders() ->
     [{admin, "Administrative"},
      {bucket, "Bucket"},
      {data, "Data"},
-     {views, "Views"},
+     {views, "Views (deprecated)"},
      {'query', "Query & Index"},
      {search, "Search"},
      {analytics, "Analytics"},
