@@ -771,7 +771,11 @@ handle_import_ear_dek(Req) ->
           end
       end, Req, json,
       dek_kind_validators() ++
-      [validator:required(dekPaths, _),
+      [validator:validate(
+         fun ({bucketDek, _}) -> ok;
+             (_) -> {error, "only bucket DEKs can be imported"}
+         end, type, _),
+       validator:required(dekPaths, _),
        validator:string_array(dekPaths, fun (_) -> ok end, false, _),
        validator:default(timeout, 300000, _),
        validator:integer(timeout, 1, max, _),
