@@ -459,6 +459,71 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
           self.sm_node,
           '{ok, changed} = cb_crypto:reset_dek_cache(configDek).')
 
+    def import_ear_dek_negative_test(self):
+        kv_node = kv_nodes(self.cluster)[0]
+        # Invalid type returns 400
+        r = testlib.post_fail(
+            kv_node, '/node/controller/importEaRDEK', 400,
+            json={'type': 'invalid', 'dekPaths': ['/some/path']})
+        assert r.json()['errors']['type'] == 'invalid type: "invalid"', \
+               f'unexpected error: {r.json()}'
+        # Missing dekPaths returns 400
+        r = testlib.post_fail(
+            kv_node, '/node/controller/importEaRDEK', 400,
+            json={'type': 'bucket'})
+        assert r.json()['errors']['dekPaths'] == 'The value must be supplied', \
+               f'unexpected error: {r.json()}'
+        # Empty dekPaths returns 400 (must contain at least one element)
+        r = testlib.post_fail(
+            kv_node, '/node/controller/importEaRDEK', 400,
+            json={'type': 'bucket', 'dekPaths': []})
+        assert r.json()['errors']['dekPaths'] == \
+               'Must contain at least one element', \
+               f'unexpected error: {r.json()}'
+        # Valid body but nonexistent file returns 400 (global error in "_")
+        # Need a real bucket UUID, otherwise the server returns 500
+        self.cluster.create_bucket(
+            {'name': self.bucket_name, 'ramQuota': 100}, sync=True)
+        bucket_uuid = self.cluster.get_bucket_uuid(self.bucket_name)
+        r = testlib.post_fail(
+            kv_node, '/node/controller/importEaRDEK', 400,
+            json={'type': 'bucket', 'bucketUUID': bucket_uuid,
+                  'dekPaths': ['/nonexistent/dek.key.test-id']})
+        msg = r.json()['errors']['_']
+        assert 'Failed to read DEK file' in msg, \
+               f'unexpected error: {r.json()}'
+        assert 'file /nonexistent/dek.key.test-id does not exist' in msg, \
+               f'unexpected error: {r.json()}'
+        # Import on non-KV node returns 400 (bucket not found on that node)
+        non_kv_node = next(filter(lambda n: Service.KV not in n.get_services(),
+                                  self.cluster.connected_nodes))
+        r = testlib.post_fail(
+            non_kv_node, '/node/controller/importEaRDEK', 400,
+            json={'type': 'bucket', 'bucketUUID': bucket_uuid,
+                  'dekPaths': ['/nonexistent/dek.key.test-id']})
+        expected = 'Key type does not exist on this node'
+        assert r.json()['errors']['_'] == expected, (
+            f'unexpected error: {r.json()}')
+        self.cluster.delete_bucket(self.bucket_name)
+
+    def import_dek_for_buckets_test(self):
+        secret_id = create_secret(self.random_node(), cb_managed_secret())
+        self.cluster.create_bucket(
+            {'name': self.bucket_name, 'ramQuota': 100,
+             'encryptionAtRestKeyId': secret_id},
+            sync=True)
+        bucket_uuid = self.cluster.get_bucket_uuid(self.bucket_name)
+        bucket_deks_rel = Path() / 'data' / bucket_uuid / 'deks'
+        poll_verify_bucket_deks_files(self.cluster, bucket_uuid,
+                                      verify_key_count=lambda n: n >= 1)
+        nodes = kv_nodes(self.cluster)
+        assert len(nodes) >= 2, 'need at least 2 KV nodes'
+        for source, target in [(nodes[0], nodes[1]), (nodes[1], nodes[0])]:
+            paths = copy_dek_files_to_node(source, target, bucket_deks_rel)
+            assert len(paths) >= 1, f'no DEK files on {source} to import'
+            post_import_ear_dek(target, 'bucket', paths,
+                                bucket_uuid=bucket_uuid)
+
     def change_SM_config_test(self):
         data = testlib.random_str(8)
         # Creating a secret that will be encrypted by node SM
@@ -3712,6 +3777,33 @@ def drop_bucket_deks_and_verify_dek_info(cluster, bucket):
         else:
             poll_verify_node_bucket_dek_info(node, bucket,
                                              missing=True)
+
+
+def copy_dek_files_to_node(source_node, target_node, relative_path):
+    """Copy DEK files from source_node to a temp dir on target_node.
+    Return list of absolute path strings on target for use in importEaRDEK."""
+    src_dir = Path(source_node.data_path()) / relative_path
+    assert src_dir.exists(), f'source DEK dir does not exist: {src_dir}'
+    import_dir = Path(target_node.data_path()) / 'tmp_import_deks' / str(
+        uuid.uuid4())
+    import_dir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for p in src_dir.iterdir():
+        if parse_key_file_name(p.name) is not None:
+            print(f'Copying DEK file {p} to {import_dir}')
+            dst = import_dir / p.name
+            shutil.copy2(p, dst)
+            paths.append(str(dst))
+    return paths
+
+
+def post_import_ear_dek(node, type_str, dek_paths, bucket_uuid=None):
+    """POST /node/controller/importEaRDEK. type_str: 'config','log','audit','bucket'."""
+    body = {'type': type_str, 'dekPaths': dek_paths}
+    if bucket_uuid is not None:
+        body['bucketUUID'] = bucket_uuid
+    return testlib.post_succ(node, '/node/controller/importEaRDEK', json=body)
+
 
 def kv_nodes(cluster):
     return [n for n in cluster.connected_nodes
