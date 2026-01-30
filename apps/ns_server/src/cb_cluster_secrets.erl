@@ -4413,6 +4413,10 @@ import_dek_files_impl(Kind, Paths, State) ->
                                    {maybe_update_deks, Kind}], NewState3)}
         end
     else
+        {succ, {error, not_found}} ->
+            {{error, kind_not_found}, State};
+        {succ, {error, Error}} ->
+            {{error, Error}, State};
         {error, Error} ->
             {{error, Error}, State}
     end.

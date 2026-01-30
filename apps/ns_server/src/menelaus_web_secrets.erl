@@ -1314,6 +1314,8 @@ format_error({dek_decode_error, Msg}) ->
     Msg;
 format_error({read_key_file_error, ErrorMsg}) ->
     io_lib:format("Failed to read DEK file: ~s", [ErrorMsg]);
+format_error(kind_not_found) ->
+    "Key type does not exist on this node";
 format_error(Reason) ->
     lists:flatten(io_lib:format("~p", [Reason])).
 
