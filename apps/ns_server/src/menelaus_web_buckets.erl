@@ -1026,6 +1026,8 @@ update_via_orchestrator(Req, BucketId, StorageMode, BucketType, UpdatedProps,
             reply_text(Req, "Encryption key does not exist", 400);
         {error, secret_not_allowed} ->
             reply_text(Req, "Encryption key can't encrypt this bucket", 400);
+        {error, encryption_is_incompatible_with_fusion} ->
+            reply_text(Req, "Encryption is incompatible with fusion", 400);
         {exit, {not_found, _}, _} ->
             %% if this happens then our validation raced, so repeat everything
             retry;
@@ -1102,6 +1104,9 @@ do_bucket_create(Req, Name, ParsedProps) ->
         {error, secret_not_allowed} ->
             {errors, 400, [{encryptionAtRestKeyId,
                             <<"Encryption key can't encrypt this bucket">>}]};
+        {error, encryption_is_incompatible_with_fusion} ->
+            {errors, 400, [{encryptionAtRestKeyId,
+                            <<"Encryption is incompatible with fusion">>}]};
         {error, cannot_enable_fusion} ->
             {errors, 400, [{list_to_atom(?FUSION_ENABLED),
                             ?CANNOT_ENABLE_FUSION}]};

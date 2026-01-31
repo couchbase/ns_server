@@ -3261,9 +3261,21 @@ remove_bucket(BucketName) ->
             Other
     end.
 
+-spec validate_encryption_secret(integer(), name(),
+                                 chronicle_compat:source()) ->
+          ok | {error, secret_not_found | secret_not_allowed |
+                encryption_is_incompatible_with_fusion}.
 validate_encryption_secret(?SECRET_ID_NOT_SET, _Bucket, _Snapshot) ->
     ok;
 validate_encryption_secret(SecretId, Bucket, Snapshot) ->
+    case fusion_uploaders:get_state() of
+        disabled ->
+            ensure_can_encrypt_bucket(SecretId, Bucket, Snapshot);
+        _ ->
+            {error, encryption_is_incompatible_with_fusion}
+    end.
+
+ensure_can_encrypt_bucket(SecretId, Bucket, Snapshot) ->
     DekKind = case uuid(Bucket, Snapshot) of
                   not_present -> %% Doesn't exist, maybe it is a new bucket
                                  %% so we allow it if secret can encrypt any

@@ -88,7 +88,7 @@
 -type bucket_validation_error() ::
         unknown | non_magma | continuous_backup_enabled.
 -type enable_error() ::
-        not_initialized | wrong_state_error() |
+        not_initialized | {not_allowed, string()} | wrong_state_error() |
         {failed_nodes, [node()]} |
         {wrong_buckets, [{ns_bucket:name(), bucket_validation_error()}]}.
 -type disable_or_stop_error() :: wrong_state_error().
@@ -529,31 +529,32 @@ validate_buckets(BucketNames, Buckets) ->
              -> ok | {error, enable_error()} |
           {error, disable_or_stop_error()}.
 command({enable, BucketNames}) ->
-    case validate_buckets(BucketNames, ns_bucket:get_buckets()) of
-        {ok, BucketsToEnable, MagmaBucketNames} ->
-            ?log_debug("Enabling fusion for buckets ~p",
-                       [ns_bucket:get_bucket_names(BucketsToEnable)]),
-            case calculate_uploaders(BucketsToEnable, []) of
-                {ok, BucketUploaders} ->
-                    [?log_debug("Setting uploaders for bucket ~p:~n~p",
-                                [BucketName, Uploaders]) ||
-                        {BucketName, Uploaders} <- BucketUploaders],
-                    case enable(BucketUploaders, MagmaBucketNames) of
-                        {ok, _, {EnablingBuckets, DisablingBuckets}} ->
-                            [?LOG_BUCKET_STATE(Bucket, enabled) ||
-                                Bucket <- EnablingBuckets],
-                            [?LOG_BUCKET_STATE(Bucket, disabling) ||
-                                Bucket <- DisablingBuckets],
-                            ?LOG_FUSION_STATE(enabling),
-                            post_enable(BucketsToEnable);
-                        Other ->
-                            Other
-                    end;
-                Error ->
-                    Error
-            end;
-        {errors, Errors} ->
-            {error, {wrong_buckets, Errors}}
+    maybe
+        true ?= (not ns_bucket:any_bucket_encryption_enabled(direct)) orelse
+            {error, {not_allowed, "Bucket encryption is enabled."}},
+
+        {ok, BucketsToEnable, MagmaBucketNames} ?=
+            case validate_buckets(BucketNames, ns_bucket:get_buckets()) of
+                {errors, Errors} ->
+                    {error, {wrong_buckets, Errors}};
+                RV -> RV
+            end,
+
+        ?log_debug("Enabling fusion for buckets ~p",
+                   [ns_bucket:get_bucket_names(BucketsToEnable)]),
+
+        {ok, BucketUploaders} ?= calculate_uploaders(BucketsToEnable, []),
+        [?log_debug("Setting uploaders for bucket ~p:~n~p",
+                    [BucketName, Uploaders]) ||
+            {BucketName, Uploaders} <- BucketUploaders],
+
+        {ok, _, {EnablingBuckets, DisablingBuckets}} ?=
+            enable(BucketUploaders, MagmaBucketNames),
+
+        [?LOG_BUCKET_STATE(Bucket, enabled) || Bucket <- EnablingBuckets],
+        [?LOG_BUCKET_STATE(Bucket, disabling) || Bucket <- DisablingBuckets],
+        ?LOG_FUSION_STATE(enabling),
+        post_enable(BucketsToEnable)
     end;
 command(Command) when Command =:= disable orelse Command =:= stop ->
     ?log_debug("Attempt to ~p fusion", [Command]),

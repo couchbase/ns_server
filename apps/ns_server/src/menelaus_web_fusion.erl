@@ -157,6 +157,10 @@ handle_enable(Req) ->
                   not_initialized ->
                       menelaus_util:reply_text(
                         Req, "Fusion should be initialized", 503);
+                  {not_allowed, Reason} ->
+                      menelaus_util:reply_text(
+                        Req, "Fusion cannot be enabled. Reason: " ++ Reason,
+                        400);
                   Other ->
                       reply_other(Req, "enable fusion", Other)
               end
