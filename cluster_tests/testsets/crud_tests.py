@@ -65,7 +65,7 @@ class CrudTests(testlib.BaseTestSet):
         # Expiry gets specified value when doc created with preserveTTL=true
         testlib.post_succ(self.cluster, doc_addr,
                           data={
-                              "expiry": 100,
+                              "expiry": 1000,
                               "preserveTTL": "true"
                           })
         # Expiration is >0 as expiry is enabled
