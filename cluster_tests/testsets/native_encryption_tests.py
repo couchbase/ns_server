@@ -463,19 +463,19 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         kv_node = kv_nodes(self.cluster)[0]
         # Invalid type returns 400
         r = testlib.post_fail(
-            kv_node, '/node/controller/importEaRDEK', 400,
+            kv_node, '/_cbauth/importEaRDEK', 400,
             json={'type': 'invalid', 'dekPaths': ['/some/path']})
         assert r.json()['errors']['type'] == 'invalid type: "invalid"', \
                f'unexpected error: {r.json()}'
         # Missing dekPaths returns 400
         r = testlib.post_fail(
-            kv_node, '/node/controller/importEaRDEK', 400,
+            kv_node, '/_cbauth/importEaRDEK', 400,
             json={'type': 'bucket'})
         assert r.json()['errors']['dekPaths'] == 'The value must be supplied', \
                f'unexpected error: {r.json()}'
         # Empty dekPaths returns 400 (must contain at least one element)
         r = testlib.post_fail(
-            kv_node, '/node/controller/importEaRDEK', 400,
+            kv_node, '/_cbauth/importEaRDEK', 400,
             json={'type': 'bucket', 'dekPaths': []})
         assert r.json()['errors']['dekPaths'] == \
                'Must contain at least one element', \
@@ -486,7 +486,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
             {'name': self.bucket_name, 'ramQuota': 100}, sync=True)
         bucket_uuid = self.cluster.get_bucket_uuid(self.bucket_name)
         r = testlib.post_fail(
-            kv_node, '/node/controller/importEaRDEK', 400,
+            kv_node, '/_cbauth/importEaRDEK', 400,
             json={'type': 'bucket', 'bucketUUID': bucket_uuid,
                   'dekPaths': ['/nonexistent/dek.key.test-id']})
         msg = r.json()['errors']['_']
@@ -498,7 +498,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         non_kv_node = next(filter(lambda n: Service.KV not in n.get_services(),
                                   self.cluster.connected_nodes))
         r = testlib.post_fail(
-            non_kv_node, '/node/controller/importEaRDEK', 400,
+            non_kv_node, '/_cbauth/importEaRDEK', 400,
             json={'type': 'bucket', 'bucketUUID': bucket_uuid,
                   'dekPaths': ['/nonexistent/dek.key.test-id']})
         expected = 'Key type does not exist on this node'
@@ -3798,11 +3798,11 @@ def copy_dek_files_to_node(source_node, target_node, relative_path):
 
 
 def post_import_ear_dek(node, type_str, dek_paths, bucket_uuid=None):
-    """POST /node/controller/importEaRDEK. type_str: 'config','log','audit','bucket'."""
+    """POST /_cbauth/importEaRDEK. type_str: 'config','log','audit','bucket'."""
     body = {'type': type_str, 'dekPaths': dek_paths}
     if bucket_uuid is not None:
         body['bucketUUID'] = bucket_uuid
-    return testlib.post_succ(node, '/node/controller/importEaRDEK', json=body)
+    return testlib.post_succ(node, '/_cbauth/importEaRDEK', json=body)
 
 
 def kv_nodes(cluster):

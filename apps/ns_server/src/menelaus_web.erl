@@ -796,9 +796,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, security], write},
                      fun menelaus_web_sm:handle_post_settings/2,
                      [PathRest]};
-                ["node", "controller", "importEaRDEK"] ->
-                    {{[admin, security], write},
-                     fun menelaus_web_encr_at_rest:handle_import_ear_dek/1};
                 ["settings", "web"] ->
                     {{[admin, setup], write}, fun menelaus_web_settings:handle_settings_web_post/1};
                 ["settings", "alerts"] ->
@@ -1170,6 +1167,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["_cbauth", "deksDropComplete"] ->
                     {{[admin, internal], all},
                      fun menelaus_web_encr_at_rest:handle_deks_drop_complete/1};
+                ["_cbauth", "importEaRDEK"] ->
+                    {{[admin, security], write},
+                     fun menelaus_web_encr_at_rest:handle_import_ear_dek/1};
                 ["_log"] ->
                     {{[admin, internal], all}, fun menelaus_web_misc:handle_log_post/1};
                 ["_event"] ->
