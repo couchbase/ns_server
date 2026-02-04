@@ -28,11 +28,16 @@ class FusionTests(testlib.BaseTestSet):
     def setup(self):
         node = self.cluster.connected_nodes[0]
         tmp_dir = node.tmp_path() + '/logstore'
+        backup_dir = node.tmp_path() + '/backup'
 
         if not os.path.exists(tmp_dir):
             os.makedirs(tmp_dir)
 
+        if not os.path.exists(backup_dir):
+            os.makedirs(backup_dir)
+
         self.cluster.logstore_dir = tmp_dir
+        self.cluster.backup_dir = backup_dir
 
     def teardown(self):
         if not os.path.exists(self.cluster.logstore_dir):
@@ -301,13 +306,17 @@ class FusionTests(testlib.BaseTestSet):
 
         testlib.post_fail(self.cluster, '/fusion/enable', expected_code=503)
 
+    def get_backup_bucket_params(self):
+        return {'continuousBackupEnabled': 'true',
+                'continuousBackupLocation': self.cluster.backup_dir,
+                'historyRetentionSeconds': 8,
+                'historyRetentionBytes': 2147483649}
+
     def enabling_fusion_for_buckets_errors_test(self):
         self.create_bucket('magma', 1)
         self.create_bucket('couchstore', 1, {'bucketType': 'membase',
                                              'storageBackend': 'couchstore'})
-        self.create_bucket('PiTR', 1, {'continuousBackupEnabled': 'true',
-                                       'historyRetentionSeconds': 8,
-                                       'historyRetentionBytes': 2147483649})
+        self.create_bucket('PiTR', 1, self.get_backup_bucket_params())
         resp = testlib.post_fail(self.cluster, '/fusion/enable',
                                  expected_code=400)
 
@@ -326,32 +335,24 @@ class FusionTests(testlib.BaseTestSet):
 
     def mutually_exclusive_bucket_params_test(self):
         self.init_fusion()
-        self.create_bucket('test', 1, {'continuousBackupEnabled': 'true',
-                                       'historyRetentionSeconds': 8,
-                                       'historyRetentionBytes': 2147483649})
+        self.create_bucket('test', 1, self.get_backup_bucket_params())
         self.cluster.delete_bucket('test')
 
         testlib.post_succ(self.cluster, '/fusion/enable')
         self.wait_for_state('enabling', 'enabled')
 
         resp = self.create_bucket(
-            'test', 1, {'continuousBackupEnabled': 'true',
-                        'historyRetentionSeconds': 8,
-                        'historyRetentionBytes': 2147483649},
-            expected_code=400)
+            'test', 1, self.get_backup_bucket_params(), expected_code=400)
         get_json_error(resp.json(), 'continuousBackupEnabled')
 
-        self.create_bucket('test', 1, {'continuousBackupEnabled': 'true',
-                                       'historyRetentionSeconds': 8,
-                                       'historyRetentionBytes': 2147483649,
-                                       'fusionEnabled': 'false'})
+        self.create_bucket(
+            'test', 1,
+            self.get_backup_bucket_params() | {'fusionEnabled': 'false'})
 
         self.create_bucket('fusion', 1)
 
-        resp = self.cluster.update_bucket({'name': 'fusion',
-                                           'continuousBackupEnabled': 'true',
-                                           'historyRetentionSeconds': 8,
-                                           'historyRetentionBytes': 2147483649},
+        resp = self.cluster.update_bucket({'name': 'fusion'} |
+                                          self.get_backup_bucket_params(),
                                           expected_code=400)
         get_json_error(resp.json(), 'continuousBackupEnabled')
 
