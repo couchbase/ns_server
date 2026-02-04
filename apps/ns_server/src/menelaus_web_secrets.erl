@@ -325,6 +325,9 @@ handle_rotate(IdStr, Req) ->
             menelaus_util:reply_not_found(Req);
         {error, no_quorum} ->
             menelaus_util:web_exception(503, format_error(no_quorum));
+        {error, not_supported} ->
+            Msg = iolist_to_binary(format_error(not_supported)),
+            menelaus_util:reply(Req, Msg, 501, []);
         {error, Reason} ->
             Msg = iolist_to_binary(format_error(Reason)),
             menelaus_util:reply(Req, Msg, 500, [])
