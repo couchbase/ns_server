@@ -4391,7 +4391,7 @@ import_dek_files_impl(Kind, Paths, State) ->
                                       get_encryption_method, Kind,
                                       [node, Snapshot]),
         {Res, NewState} = import_deks_into_state(Kind, Paths, EncrMethod,
-                                                 Snapshot, State),
+                                                 Snapshot, false, State),
         write_deks_cfg_file(NewState),
         NewState2 = on_deks_update(Kind, NewState),
         case call_set_active_cb(Kind, Snapshot, NewState2) of
@@ -4423,15 +4423,19 @@ import_dek_files_impl(Kind, Paths, State) ->
 
 -spec import_deks_into_state(cb_deks:dek_kind(), [file:filename()],
                              cb_deks:encryption_method(), chronicle_snapshot(),
-                             #state{}) ->
+                             boolean(), #state{}) ->
           {ok, #state{}} | {{error, term()}, #state{}}.
-import_deks_into_state(_Kind, [], _EncrMethod, _Snapshot, State) ->
+import_deks_into_state(_Kind, [], _EncrMethod, _Snapshot, _SkipCountersInc,
+                       State) ->
     {ok, State};
-import_deks_into_state(Kind, [Path | Tail], EncrMethod, Snapshot, State) ->
+import_deks_into_state(Kind, [Path | Tail], EncrMethod, Snapshot,
+                       SkipCountersInc, State) ->
     maybe
-        {ok, NewState} ?= import_dek_into_state(Kind, Path, EncrMethod,
-                                                Snapshot, State),
-        import_deks_into_state(Kind, Tail, EncrMethod, Snapshot, NewState)
+        {ok, {NewSkipCountersInc, NewState}} ?=
+            import_dek_into_state(Kind, Path, EncrMethod, Snapshot,
+                                  SkipCountersInc, State),
+        import_deks_into_state(Kind, Tail, EncrMethod, Snapshot,
+                               NewSkipCountersInc, NewState)
     else
         {error, Error} ->
             {{error, Error}, State}
@@ -4439,9 +4443,10 @@ import_deks_into_state(Kind, [Path | Tail], EncrMethod, Snapshot, State) ->
 
 -spec import_dek_into_state(cb_deks:dek_kind(), string(),
                             cb_deks:encryption_method(), chronicle_snapshot(),
-                            #state{}) ->
-          {ok, #state{}} | {error, term()}.
-import_dek_into_state(Kind, Path, EncrMethod, Snapshot, OldState) ->
+                            boolean(), #state{}) ->
+          {ok, {boolean(), #state{}}} | {error, term()}.
+import_dek_into_state(Kind, Path, EncrMethod, Snapshot, SkipCountersInc,
+                      OldState) ->
     maybe
         %% Checking if this DEK is already imported before reading it.
         %% Read is expensive, while it is likely that the same DEK will be
@@ -4475,7 +4480,8 @@ import_dek_into_state(Kind, Path, EncrMethod, Snapshot, OldState) ->
         ToImport = NewKey#{info => NewKeyInfo#{imported => true}},
         %% Put the dek into the proper folder, where other deks of this Kind
         %% are stored.
-        {ok, DekId} ?= cb_deks:save_dek(Kind, ToImport, EncrMethod, Snapshot),
+        {ok, DekId} ?= cb_deks:save_dek(Kind, ToImport, EncrMethod,
+                                        SkipCountersInc, Snapshot),
         %% Note that if import fails later, this key will need to be
         %% garbage-collected
         [NewDek] = cb_deks:read(Kind, [DekId]),
@@ -4485,7 +4491,7 @@ import_dek_into_state(Kind, Path, EncrMethod, Snapshot, OldState) ->
         #state{deks_info = AllDeks = #{Kind := KindDeks}} = State,
         NewKindDeks = KindDeks#{deks => [NewDek | maps:get(deks, KindDeks)]},
         notify_kind_counter(<<"encr_at_rest_deks_imported">>, Kind),
-        {ok, State#state{deks_info = AllDeks#{Kind => NewKindDeks}}}
+        {ok, {true, State#state{deks_info = AllDeks#{Kind => NewKindDeks}}}}
     else
         {error, Reason} ->
             notify_kind_counter(<<"encr_at_rest_deks_import_failures">>, Kind),
@@ -4494,7 +4500,7 @@ import_dek_into_state(Kind, Path, EncrMethod, Snapshot, OldState) ->
             notify_kind_counter(<<"encr_at_rest_deks_import_skipped">>, Kind),
             ?log_debug("Skipping import of DEK ~p because it already "
                         "exists in state", [SkippedDekId]),
-            {ok, OldState}
+            {ok, {SkipCountersInc, OldState}}
     end.
 
 -spec should_renew_secrets_usage_info() -> boolean().

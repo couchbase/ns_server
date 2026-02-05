@@ -21,7 +21,7 @@
 -export([list/1,
          read/2,
          generate_new/3,
-         save_dek/4,
+         save_dek/5,
          maybe_reencrypt_deks/4,
          dek_cluster_kinds_list/0,
          dek_cluster_kinds_list/1,
@@ -188,7 +188,7 @@ generate_new(Kind, {secret, Id}, Snapshot) ->
     end.
 
 -spec save_dek(dek_kind(), good_dek('raw-aes-gcm', aes_dek_info()),
-               {secret, Id}, Snapshot) ->
+               {secret, Id}, boolean(), Snapshot) ->
           {ok, dek_id()} | {error, _}
                   when Id :: cb_cluster_secrets:secret_id(),
                        Snapshot :: cb_cluster_secrets:chronicle_snapshot().
@@ -196,9 +196,17 @@ generate_new(Kind, {secret, Id}, Snapshot) ->
 save_dek(Kind, #{id := DekId, info := #{key := BinHidden,
                                         creation_time := CreateTime,
                                         imported := Imported}},
-         {secret, SecretId}, Snapshot) ->
+         {secret, SecretId}, SkipCounterInc, Snapshot) ->
     maybe
-        ok ?= increment_dek_encryption_counter(Kind, {secret, SecretId}),
+        %% We don't want to increment the dek encryption counter when
+        %% saving multiple deks in one call.
+        %% Doing many unnecessary increments increases load on chronicle
+        %% and increases probability of "retries_exceeded" errors.
+        ok ?= case SkipCounterInc of
+                  true -> ok;
+                  false -> increment_dek_encryption_counter(Kind,
+                                                            {secret, SecretId})
+              end,
         {ok, KekId} ?= cb_cluster_secrets:get_active_key_id(SecretId, Snapshot),
         ok ?= encryption_service:store_dek(Kind, DekId, ?UNHIDE(BinHidden),
                                            KekId, CreateTime, Imported),
