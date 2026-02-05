@@ -71,7 +71,7 @@ supported_setting_names() ->
      {dcp_consumer_max_marker_version, {one_of, ["2.0", "2.2"]}},
      {dcp_snapshot_marker_hps_enabled, bool},
      {dcp_snapshot_marker_purge_seqno_enabled, bool},
-     {subdoc_multi_max_paths, {int, 0, ?MAX_32BIT_SIGNED_INT}},
+     {subdoc_multi_max_paths, {int, 16, ?MAX_32BIT_SIGNED_INT}},
      {subdoc_offload_size_threshold, {int, 0, ?MAX_32BIT_SIGNED_INT}},
      {subdoc_offload_paths_threshold, {int, 0, ?MAX_32BIT_SIGNED_INT}}]
         ++
