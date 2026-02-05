@@ -34,6 +34,8 @@
          kind2bin/2,
          kind2datatype/1]).
 
+-define(REENCRYPT_DELAY, ?get_param(reencrypt_delay, 1000)).
+
 %% Return encryption method for a given data type.
 %% Parameters: Chronicle snapshot that contains all keys prepared by
 %%             fetch_keys_callback.
@@ -318,7 +320,7 @@ maybe_reencrypt_deks(Kind, Deks, NewEncryptionKeyFun) ->
             %% simultaneously, which causes N chronicle transactions
             %% to be started in parallel, causing a lot of retries, and
             %% possible exceeded_retries errors
-            timer:sleep(rand:uniform(1000)),
+            timer:sleep(rand:uniform(?REENCRYPT_DELAY)),
 
             %% Group by EncMethod to increment counter only once per method
             ByEncMethod = maps:groups_from_list(
