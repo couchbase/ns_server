@@ -10,24 +10,22 @@ licenses/APL2.txt.
 
 <div>
   <!-- mn-spinner="settingsClusterCtl.clusterName === undefined || !settingsClusterCtl.memoryQuotaConfig || (rbac.cluster.settings.indexes.read && poolDefault.compat.atLeast40 && !settingsClusterCtl.indexSettings) || (poolDefault.value.isEnterprise && !settingsClusterCtl.certificate)" -->
-  <form
-     (ngSubmit)="onSubmit.next()"
-     [formGroup]="formGroup"
-     class="forms">
-
-    <div class="row flex-left items-stretch resp-flex-column-med margin-bottom-2">
-
+  <form (ngSubmit)="onSubmit.next()" [formGroup]="formGroup" class="forms">
+    <div
+      class="row flex-left items-stretch resp-flex-column-med margin-bottom-2"
+    >
       <div class="width-5">
         <div class="formrow">
           <label>Cluster Name</label>
           <input
-             id="cluster-name-field"
-             type="text"
-             autocorrect="off"
-             spellcheck="false"
-             autocapitalize="off"
-             maxlength="256"
-             formControlName="clusterName">
+            id="cluster-name-field"
+            type="text"
+            autocorrect="off"
+            spellcheck="false"
+            autocapitalize="off"
+            maxlength="256"
+            formControlName="clusterName"
+          />
         </div>
         <!-- ng-disabled="!rbac.cluster.pools.write" -->
 
@@ -35,11 +33,15 @@ licenses/APL2.txt.
           <div class="formrow">
             <label>Memory Quotas &nbsp;<small>per server node</small></label>
 
-            <p class="desc">Note: Total Couchbase RAM allocation should be no more than 90% of available memoy.</p>
+            <p class="desc">
+              Note: Total Couchbase RAM allocation should be no more than 90% of
+              available memory.
+            </p>
           </div>
           <mn-services-config
-             [initDataStream]="memoryQuotasFirst"
-             [group]="formGroup.get('services')">
+            [initDataStream]="memoryQuotasFirst"
+            [group]="formGroup.get('services')"
+          >
           </mn-services-config>
           <!-- <div -->
           <!--    mn-is-enterprise="adminCtl.poolDefault.isEnterprise" -->
@@ -50,10 +52,13 @@ licenses/APL2.txt.
         </div>
       </div>
 
-      <div style="border-left: 1px solid #d1d1d1; margin: 0 40px; flex-basis: 1;"
-           class="resp-hide-med">&nbsp;</div>
+      <div
+        style="border-left: 1px solid #d1d1d1; margin: 0 40px; flex-basis: 1"
+        class="resp-hide-med"
+      >
+        &nbsp;
+      </div>
       <div class="width-6">
-
         <div class="forms">
           <p class="text-medium">
             You are running Couchbase Server {{prettyVersion | async}}
@@ -61,35 +66,50 @@ licenses/APL2.txt.
 
           <div [hidden]="!(getStats | async)?.sendStats">
             <p
-               [hidden]="(getPhoneHome | async)?.newVersion !== undefined"
-               class="error error-form">
-              Warning: There was a problem with retreiving the update information.
+              [hidden]="(getPhoneHome | async)?.newVersion !== undefined"
+              class="error error-form"
+            >
+              Warning: There was a problem with retreiving the update
+              information.
             </p>
             <p [hidden]="(getPhoneHome | async)?.newVersion !== false">
               <em>No updates available.</em>
             </p>
-            <p [hidden]="!(getPhoneHome | async)?.newVersion" class="text-medium">
-              {{(getPhoneHome | async)?.newVersion}} is available.<br>
+            <p
+              [hidden]="!(getPhoneHome | async)?.newVersion"
+              class="text-medium"
+            >
+              {{(getPhoneHome | async)?.newVersion}} is available.<br />
               New features and improvements in this release can be found in the
-              <a [attr.href]="(getPhoneHome | async)?.links.release"
-                 target="_blank">release notes</a>.
+              <a
+                [attr.href]="(getPhoneHome | async)?.links.release"
+                target="_blank"
+                >release notes</a
+              >.
             </p>
             <div
-               [hidden]="!(getPhoneHome | async)?.newVersion"
-               class="margin-top-1 margin-bottom-2">
+              [hidden]="!(getPhoneHome | async)?.newVersion"
+              class="margin-top-1 margin-bottom-2"
+            >
               <a
-                 class="btn outline margin-right-1"
-                 [attr.href]="(getPhoneHome | async)?.links.download"
-                 target="_blank">
+                class="btn outline margin-right-1"
+                [attr.href]="(getPhoneHome | async)?.links.download"
+                target="_blank"
+              >
                 Download Latest Version
               </a>
               <span class="text-small">
-                <a href="https://developer.couchbase.com/documentation/server/5.0/install/upgrade.html" target="_blank">
+                <a
+                  href="https://developer.couchbase.com/documentation/server/5.0/install/upgrade.html"
+                  target="_blank"
+                >
                   Upgrade Instructions
                 </a>
                 |
-                <a [attr.href]="(getPhoneHome | async)?.links.release"
-                   target="_blank">
+                <a
+                  [attr.href]="(getPhoneHome | async)?.links.release"
+                  target="_blank"
+                >
                   Release Notes
                 </a>
               </span>
@@ -98,17 +118,19 @@ licenses/APL2.txt.
 
           <div class="formrow">
             <input
-               type="checkbox"
-               id="for-update-notice-enable"
-               formControlName="sendStats">
+              type="checkbox"
+              id="for-update-notice-enable"
+              formControlName="sendStats"
+            />
             <!-- ng-disabled="!rbac.cluster.settings.write" -->
             <label for="for-update-notice-enable" class="margin-right-zero">
               Enable software update notifications.
             </label>
             <span
-               class="fa-stack icon-info"
-               ngbTooltip="Enabling software update notifications allows notification in the Couchbase web console when a new version of Couchbase Server is available. Configuration information transferred in the update check is anonymous and does not include any stored key-value data."
-               tooltip-placement="right">
+              class="fa-stack icon-info"
+              ngbTooltip="Enabling software update notifications allows notification in the Couchbase web console when a new version of Couchbase Server is available. Configuration information transferred in the update check is anonymous and does not include any stored key-value data."
+              tooltip-placement="right"
+            >
               <span class="icon fa-circle-thin fa-stack-2x"></span>
               <span class="icon fa-info fa-stack-1x"></span>
             </span>
@@ -117,70 +139,80 @@ licenses/APL2.txt.
 
         <mn-element-cargo depot="alerts">
           <div
-             class="alert alert-warning"
-             ng-show="settingsAutoFailoverCtl.autoFailoverSettings.count > 0">
+            class="alert alert-warning"
+            ng-show="settingsAutoFailoverCtl.autoFailoverSettings.count > 0"
+          >
             <p>
-              The maximum number of nodes have been automatically failed over. Auto-failover is disabled until you reset it. &nbsp;
+              The maximum number of nodes have been automatically failed over.
+              Auto-failover is disabled until you reset it. &nbsp;
               <a
-                 ng-click="adminCtl.resetAutoFailOverCount()"
-                 ng-show="rbac.cluster.settings.write">
+                ng-click="adminCtl.resetAutoFailOverCount()"
+                ng-show="rbac.cluster.settings.write"
+              >
                 Reset Auto-Failover
               </a>
             </p>
           </div>
         </mn-element-cargo>
 
-
         <div formGroupName="autoFailover">
           <div class="formrow">
             <label class="inline">Node Availability</label>
             <span
-               class="fa-stack icon-info"
-               ngbTooltip="After the timeout period set here—and up to the limit of actionable events—an unresponsive
+              class="fa-stack icon-info"
+              ngbTooltip="After the timeout period set here—and up to the limit of actionable events—an unresponsive
                            or malfunctioning node will be failed over. Any replica copies of data, indexes, or query engines will
                            be promoted to active elsewhere in the cluster. Please note that this feature is only available when 3
                            or more nodes are present in the cluster and that many other factors determine whether or not an auto-failover
                            will take place. After it has recovered, a failed-over node can be brought back into the cluster with a
                            rebalance or replaced with a new node."
-               placement="right">
+              placement="right"
+            >
               <span class="icon fa-circle-thin fa-stack-2x"></span>
               <span class="icon fa-info fa-stack-1x"></span>
             </span>
             <div class="row flex-left text-medium flex-wrap">
               <input
-                 type="checkbox"
-                 id="for-auto-failover-enable"
-                 formControlName="enabled">
+                type="checkbox"
+                id="for-auto-failover-enable"
+                formControlName="enabled"
+              />
               <!-- ng-disabled="!rbac.cluster.settings.write" -->
               <label
-                 for="for-auto-failover-enable"
-                 class="margin-right-zero line-height-1-5">
+                for="for-auto-failover-enable"
+                class="margin-right-zero line-height-1-5"
+              >
                 Auto-failover
               </label>
               &nbsp;after&nbsp;
               <input
-                 type="number"
-                 autocorrect="off"
-                 spellcheck="false"
-                 autocapitalize="off"
-                 id="auto_failover_timeout"
-                 formControlName="timeout"
-                 class="input-small input-short-1">
+                type="number"
+                autocorrect="off"
+                spellcheck="false"
+                autocapitalize="off"
+                id="auto_failover_timeout"
+                formControlName="timeout"
+                class="input-small input-short-1"
+              />
               <!-- ng-disabled="!settingsAutoFailoverCtl.autoFailoverSettings.enabled || !rbac.cluster.settings.write" -->
               &nbsp;seconds&nbsp;
-              <span [hidden]="!(compatVersion55 | async) || !(isEnterprise | async)"
-                    class="row">
+              <span
+                [hidden]="!(compatVersion55 | async) || !(isEnterprise | async)"
+                class="row"
+              >
                 for up to&nbsp;
                 <input
-                   type="number"
-                   autocorrect="off"
-                   spellcheck="false"
-                   autocapitalize="off"
-                   id="auto_failover_maxcount"
-                   formControlName="maxCount"
-                   class="input-small input-short-half">
+                  type="number"
+                  autocorrect="off"
+                  spellcheck="false"
+                  autocapitalize="off"
+                  id="auto_failover_maxcount"
+                  formControlName="maxCount"
+                  class="input-small input-short-half"
+                />
                 <!-- ng-disabled="!settingsAutoFailoverCtl.autoFailoverSettings.enabled || !rbac.cluster.settings.write" -->
-                &nbsp;event{{formGroup.get('autoFailover.maxCount').value !== 1 ? "s" : ""}}
+                &nbsp;event{{formGroup.get('autoFailover.maxCount').value !== 1
+                ? "s" : ""}}
               </span>
             </div>
             <!-- <div -->
@@ -194,28 +226,32 @@ licenses/APL2.txt.
             <!--   {{settingsAutoFailoverCtl.saveAutoFailoverSettingsErrors.maxCount}} -->
             <!-- </div> -->
             <div
-               [hidden]="!(compatVersion55 | async) || !(isEnterprise | async)"
-               class="row flex-left text-medium flex-wrap"
-               formGroupName="failoverOnDataDiskIssues">
+              [hidden]="!(compatVersion55 | async) || !(isEnterprise | async)"
+              class="row flex-left text-medium flex-wrap"
+              formGroupName="failoverOnDataDiskIssues"
+            >
               <input
-                 type="checkbox"
-                 id="for-disk-failover-enable"
-                 formControlName="enabled">
+                type="checkbox"
+                id="for-disk-failover-enable"
+                formControlName="enabled"
+              />
               <!-- ng-disabled="!settingsAutoFailoverCtl.autoFailoverSettings.enabled || !rbac.cluster.settings.write" -->
               <label
-                 for="for-disk-failover-enable"
-                 class="margin-right-zero line-height-1-5">
+                for="for-disk-failover-enable"
+                class="margin-right-zero line-height-1-5"
+              >
                 Auto-failover for sustained data disk read/write failures
               </label>
               &nbsp;after&nbsp;
               <input
-                 type="number"
-                 autocorrect="off"
-                 spellcheck="false"
-                 autocapitalize="off"
-                 formControlName="timePeriod"
-                 id="auto_failover_disk_timeout"
-                 class="input-small input-short-1">
+                type="number"
+                autocorrect="off"
+                spellcheck="false"
+                autocapitalize="off"
+                formControlName="timePeriod"
+                id="auto_failover_disk_timeout"
+                class="input-small input-short-1"
+              />
               <!-- ng-disabled="!settingsAutoFailoverCtl.autoFailoverSettings.enabled || !settingsAutoFailoverCtl.autoFailoverSettings.failoverOnDataDiskIssues.enabled || !rbac.cluster.settings.write" -->
               &nbsp;seconds&nbsp;
               <!-- <div -->
@@ -225,20 +261,23 @@ licenses/APL2.txt.
               <!-- </div> -->
             </div>
             <div
-               [hidden]="!(compatVersion55 | async) || !(isEnterprise | async)">
+              [hidden]="!(compatVersion55 | async) || !(isEnterprise | async)"
+            >
               <input
-                 type="checkbox"
-                 id="for-group-failover-enable"
-                 formControlName="failoverServerGroup">
+                type="checkbox"
+                id="for-group-failover-enable"
+                formControlName="failoverServerGroup"
+              />
               <!-- ng-disabled="!settingsAutoFailoverCtl.autoFailoverSettings.enabled || !rbac.cluster.settings.write" -->
               <label for="for-group-failover-enable" class="margin-right-zero">
                 Enable auto-failover of server groups
               </label>
               <span
-                 class="icon-info-warning"
-                 ngbTooltip="DO NOT enable this unless you have set up homogenous server groups for failure scenarios
+                class="icon-info-warning"
+                ngbTooltip="DO NOT enable this unless you have set up homogenous server groups for failure scenarios
                              (like racks/zones), have 3 or more server groups, and have the capacity to absorb the load of the failed-over group."
-                 placement="right">
+                placement="right"
+              >
                 <span class="icon fa-warning"></span>
               </span>
             </div>
@@ -247,41 +286,50 @@ licenses/APL2.txt.
 
         <div class="margin-top2 margin-bottom-1">
           <span
-             class="disclosure text-medium"
-             [ngClass]="{disclosed: (toggleSection | async)}"
-             (click)="onToggleClick.next()">
+            class="disclosure text-medium"
+            [ngClass]="{disclosed: (toggleSection | async)}"
+            (click)="onToggleClick.next()"
+          >
             For Ephemeral Buckets
           </span>
           <div
-             [hidden]="!(toggleSection | async)"
-             formGroupName="autoReprovision"
-             class="margin-top-half indent-1-5">
+            [hidden]="!(toggleSection | async)"
+            formGroupName="autoReprovision"
+            class="margin-top-half indent-1-5"
+          >
             <div class="row flex-left text-medium flex-wrap">
               <input
-                 type="checkbox"
-                 formControlName="enabled"
-                 id="for-auto-reprovision-enable">
+                type="checkbox"
+                formControlName="enabled"
+                id="for-auto-reprovision-enable"
+              />
               <!-- ng-disabled="!rbac.cluster.settings.write" -->
-              <label for="for-auto-reprovision-enable" class="margin-right-zero">
+              <label
+                for="for-auto-reprovision-enable"
+                class="margin-right-zero"
+              >
                 Enable auto-reprovisioning
               </label>
               &nbsp;for up to&nbsp;
               <input
-                 type="number"
-                 autocorrect="off"
-                 spellcheck="false"
-                 autocapitalize="off"
-                 id="for-max-nodes"
-                 formControlName="max_nodes"
-                 class="input-small input-short-half">
+                type="number"
+                autocorrect="off"
+                spellcheck="false"
+                autocapitalize="off"
+                id="for-max-nodes"
+                formControlName="max_nodes"
+                class="input-small input-short-half"
+              />
               <!-- ng-disabled="!settingsAutoFailoverCtl.reprovisionSettings.enabled || !rbac.cluster.settings.write" -->
-              &nbsp;node{{formGroup.get('autoReprovision.max_nodes').value !== 1 ? "s" : ""}}&nbsp;
+              &nbsp;node{{formGroup.get('autoReprovision.max_nodes').value !== 1
+              ? "s" : ""}}&nbsp;
               <span
-                 class="fa-stack icon-info"
-                 ngbTooltip="For an unresponsive node with Ephemeral Buckets, you may choose to have its replicas
+                class="fa-stack icon-info"
+                ngbTooltip="For an unresponsive node with Ephemeral Buckets, you may choose to have its replicas
                              promoted to active if it becomes responsive again. This avoids data loss, but leaves
                              the cluster in an unbalanced state that will require a rebalance."
-                 placement="top">
+                placement="top"
+              >
                 <span class="icon fa-circle-thin fa-stack-2x"></span>
                 <span class="icon fa-info fa-stack-1x"></span>
               </span>
@@ -294,11 +342,7 @@ licenses/APL2.txt.
           </div>
         </div>
 
-
         <!-- <div ui-view="autofailover"></div> -->
-
-
-
 
         <!-- <label -->
         <!--    [hidden]="!(settingsIndexesRead | async)" -->
@@ -534,12 +578,12 @@ licenses/APL2.txt.
         <!--     </div> -->
       </div>
     </div>
-    <div class="footer-save"
-         [hidden]="!(poolsWrite | async) || !(settingsIndexesWrite | async)">
+    <div
+      class="footer-save"
+      [hidden]="!(poolsWrite | async) || !(settingsIndexesWrite | async)"
+    >
       <a class="text-medium margin-right-2">Cancel/Reset</a>
-      <button
-         type="submit"
-         class="margin-right-2">
+      <button type="submit" class="margin-right-2">
         <!-- ng-disabled="!!settingsClusterCtl.indexSettingsErrors || !!settingsClusterCtl.memoryQuotaErrors || !!settingsClusterCtl.saveAutoFailoverSettingsErrors || !!settingsClusterCtl.postAutoReprovisionSettingsErrors" -->
         Save
       </button>
