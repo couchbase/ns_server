@@ -271,7 +271,9 @@ default(Vsn) ->
        {subdoc_offload_size_threshold, 1024 * 1024},
        {subdoc_offload_paths_threshold, 16},
        %% Default of 0 denotes no throttling.
-       {snapshot_download_throttle_bytes, 0}]},
+       {snapshot_download_throttle_bytes, 0},
+       {magma_compaction_rate_limit, 0},
+       {magma_enable_compaction_dataonly_ratelimiting, false}]},
 
      %% Memcached config
      {{node, node(), memcached},
@@ -376,6 +378,9 @@ default(Vsn) ->
         {subdoc_offload_size_threshold, subdoc_offload_size_threshold},
         {subdoc_offload_paths_threshold, subdoc_offload_paths_threshold},
         {snapshot_download_throttle_bytes, snapshot_download_throttle_bytes},
+        {magma_compaction_rate_limit, magma_compaction_rate_limit},
+        {magma_enable_compaction_dataonly_ratelimiting,
+         magma_enable_compaction_dataonly_ratelimiting},
         {throttle_enabled, throttle_enabled},
         {read_unit_size, read_unit_size},
         {write_unit_size, write_unit_size},
