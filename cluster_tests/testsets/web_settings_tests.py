@@ -9,6 +9,12 @@
 import testlib
 import json
 
+SECURITY_SETTINGS_AUDIT_ID = 8237
+
+
+def _audited_azure_domains(event):
+    return 'azure_allowed_domains' in event.get('settings', {})
+
 
 class WebSettingsTests(testlib.BaseTestSet):
 
@@ -98,6 +104,69 @@ class WebSettingsTests(testlib.BaseTestSet):
         r = testlib.get_succ(self.cluster,
                              f'{base_endpoint}/cipherSuites').json()
         testlib.assert_eq(ciphers, r)
+
+    def azure_allowed_domains_test(self):
+        path = '/settings/security/azureAllowedDomains'
+        node = self.cluster.connected_nodes[0]
+        r = testlib.get_succ(node, path).json()
+        assert isinstance(r, list), \
+            f"Expected a list, got {type(r)}"
+        for domain in r:
+            assert isinstance(domain, str), \
+                f"Expected string, got {type(domain)}"
+
+        default = r
+        # Only ever add a domain, as removing one that an existing secret uses
+        # is rejected
+        domains = default + ['vault.example.com']
+        auditing_enabled = False
+        try:
+            testlib.set_auditd_enabled(self.cluster, True)
+            auditing_enabled = True
+
+            # A valid list is stored, and is audited as a list of domains,
+            # rather than as all of them concatenated into one string
+            offset = testlib.audit_log_offset(node)
+            testlib.post_succ(node, path, data=json.dumps(domains))
+            testlib.assert_eq(testlib.get_succ(node, path).json(), domains)
+            evt = testlib.wait_for_audit_event(
+                node, SECURITY_SETTINGS_AUDIT_ID,
+                predicate=_audited_azure_domains, since_offset=offset)
+            testlib.assert_eq(evt['settings']['azure_allowed_domains'],
+                              domains, name='audited domains')
+
+            # Anything but a list of strings is rejected, and, as it is never
+            # stored, the setting keeps its old value and nothing is audited.
+            # The check above proves that auditing is live by this point.
+            offset = testlib.audit_log_offset(node)
+            bad_format = ['azureAllowedDomains - Invalid format. '
+                          'Expecting a list of strings']
+            for body in ['[123, 456]',
+                         '["vault.azure.net", 456]',
+                         '[["vault.azure.net"]]',
+                         'null',
+                         '{"a": "b"}']:
+                r = testlib.post_fail(node, path, 400, data=body)
+                testlib.assert_eq(r.json()['errors'], bad_format,
+                                  name=f'errors for {body}')
+                testlib.assert_eq(testlib.get_succ(node, path).json(), domains,
+                                  name=f'domains after posting {body}')
+            r = testlib.post_fail(node, path, 400, data='vault.azure.net')
+            testlib.assert_eq(r.json()['errors'],
+                              ['azureAllowedDomains - Invalid format. '
+                               'Expecting JSON list'])
+            testlib.assert_no_audit_event(node, SECURITY_SETTINGS_AUDIT_ID,
+                                          predicate=_audited_azure_domains,
+                                          since_offset=offset)
+
+            # The old value has to be jsonified as well, for the event log, so
+            # a second valid post must succeed too
+            testlib.post_succ(node, path, data=json.dumps(default))
+            testlib.assert_eq(testlib.get_succ(node, path).json(), default)
+        finally:
+            testlib.post_succ(node, path, data=json.dumps(default))
+            if auditing_enabled:
+                testlib.set_auditd_enabled(self.cluster, False)
 
     def delete_security_settings(self, base_endpoint):
         testlib.delete_succ(self.cluster, f'{base_endpoint}/tlsMinVersion')
