@@ -339,9 +339,15 @@ generate_map_new(Map, NumReplicas, Nodes, Options) ->
     UseGreedy = proplists:get_bool(use_vbmap_greedy_optimization, Options),
     Verbose = not proplists:get_bool(terse_output, Options),
     Uploaders = proplists:get_value(uploaders, Options),
+    ExistingNodesSet = case Uploaders of
+                           undefined ->
+                               undefined;
+                           _ ->
+                               map_nodes_set(Map)
+                       end,
 
     MapsFromPast0 = find_matching_past_maps(Nodes, Map, Options, MapsHistory),
-    MapsFromPast = score_maps(Map, Uploaders, MapsFromPast0),
+    MapsFromPast = score_maps(Map, Uploaders, ExistingNodesSet, MapsFromPast0),
     Verbose andalso ?log_debug("Scores for past maps:~n~p",
                                [[S || {_, S, _} <- MapsFromPast]]),
 
@@ -354,7 +360,8 @@ generate_map_new(Map, NumReplicas, Nodes, Options) ->
               ShuffledNodes <-
                   [misc:shuffle(KeepNodes) || _ <- lists:seq(1, 3)]]),
 
-    GeneratedMaps = score_maps(Map, Uploaders, GeneratedMaps0),
+    GeneratedMaps = score_maps(Map, Uploaders, ExistingNodesSet,
+                               GeneratedMaps0),
     Verbose andalso ?log_debug("Scores for generated maps:~n~p",
                                [[GM || {_, GM, _} <- GeneratedMaps]]),
 
@@ -541,17 +548,29 @@ get_from_scratch_uploaders(Map, Uploaders, CurrentMap) ->
               end
       end, Zipped).
 
+%% @doc Count moves where destination is an existing node not in source chain
+count_moves_to_existing_nodes(ExistingSet, SrcMap, DstMap) ->
+    lists:sum([length([D || D <- DstChain,
+                            D =/= undefined,
+                            sets:is_element(D, ExistingSet),
+                            not lists:member(D, SrcChain)])
+               || {SrcChain, DstChain} <- lists:zip(SrcMap, DstMap)]).
+
 score_maps(CurrentMap, Maps) ->
     [{M, vbucket_movements(CurrentMap, M), undefined} || M <- Maps].
 
-score_maps(CurrentMap, undefined, Maps) ->
+score_maps(CurrentMap, undefined, undefined, Maps) ->
     score_maps(CurrentMap, Maps);
-score_maps(CurrentMap, Uploaders, Maps) ->
+score_maps(CurrentMap, Uploaders, ExistingNodesSet, Maps) ->
     lists:map(
       fun (M) ->
               FromScratch = get_from_scratch_uploaders(M, Uploaders,
                                                        CurrentMap),
-              {M, {length(FromScratch), vbucket_movements(CurrentMap, M)},
+              MovesToExistingNodes = count_moves_to_existing_nodes(
+                                       ExistingNodesSet, CurrentMap, M),
+
+              {M, {length(FromScratch), MovesToExistingNodes,
+                   vbucket_movements(CurrentMap, M)},
                FromScratch}
       end, Maps).
 
@@ -1469,21 +1488,67 @@ make_vbmap_with_node_ids_test() ->
     Map4 = [[undefined, b, d], [b, undefined, e]],
     [[-1, 1, -1], [1, -1, -1]] = make_vbmap_with_node_ids(NodeIdMap, Map4).
 
+count_moves_to_existing_nodes_test() ->
+    ExistingNodes = sets:from_list([n1, n2, n3]),
+
+    %% No moves to existing - all moves to new nodes
+    SrcMap1 = [[n1, n2], [n2, n3], [n3, n1]],
+    DstMap1 = [[n1, n4], [n2, n5], [n3, n6]],
+    ?assertEqual(0, count_moves_to_existing_nodes(
+                      ExistingNodes, SrcMap1, DstMap1)),
+
+    %% One move to existing node (n1 gets vbucket it didn't have)
+    SrcMap2 = [[n2, n3], [n3, n2]],
+    DstMap2 = [[n2, n1], [n3, n4]],
+    ?assertEqual(1, count_moves_to_existing_nodes(
+                      ExistingNodes, SrcMap2, DstMap2)),
+
+    %% Move within existing (not counted - node already had vbucket)
+    SrcMap3 = [[n1, n2, n3]],
+    DstMap3 = [[n2, n1, n3]],
+    ?assertEqual(0, count_moves_to_existing_nodes(
+                      ExistingNodes, SrcMap3, DstMap3)),
+
+    %% Multiple moves to existing nodes
+    SrcMap4 = [[n1, n2], [n3, n1]],
+    DstMap4 = [[n1, n3], [n3, n2]],  %% n3 didn't have vb0, n2 didn't have vb1
+    ?assertEqual(2, count_moves_to_existing_nodes(
+                      ExistingNodes, SrcMap4, DstMap4)).
+
 swap_rebalance_with_uploaders_test() ->
     InitialNodes = [a, b, c],
     KeepNodes = [a, c, d],
     NVBuckets = 1024,
     NReplicas = 2,
+    test_generating_map_with_uploaders(
+      InitialNodes, KeepNodes, NVBuckets, NReplicas).
+
+scale_out_with_uploaders_test() ->
+    InitialNodes = [a, b, c, d, e, f, g],
+    KeepNodes = [h | InitialNodes],
+    NVBuckets = 1024,
+    NReplicas = 2,
+    test_generating_map_with_uploaders(
+      InitialNodes, KeepNodes, NVBuckets, NReplicas).
+
+test_generating_map_with_uploaders(
+  InitialNodes, KeepNodes, NVBuckets, NReplicas) ->
     Options = [{use_vbmap_greedy_optimization, true}],
     InitialMap = generate_map(no_nodes_map(NVBuckets, NReplicas),
                               NReplicas, InitialNodes, Options),
     Uploaders = [{hd(Chain), 1} || Chain <- InitialMap],
+    ExistingNodesSet = map_nodes_set(InitialMap),
     FastForwardMap =
         generate_map(InitialMap, NReplicas, KeepNodes,
                      Options ++ [{maps_history, [{InitialMap, Options}]},
                                  {uploaders, Uploaders}]),
     FromScratch = get_from_scratch_uploaders(FastForwardMap, Uploaders,
                                              InitialMap),
-    ?assertEqual(FromScratch, []).
+    ?assertEqual(FromScratch, []),
+    MovesToExistingNodes = count_moves_to_existing_nodes(
+                             ExistingNodesSet, InitialMap, FastForwardMap),
+    MovesToExistingNodes == 0 orelse
+        ?log_warning("Detected ~p moves to the existing nodes",
+                     [MovesToExistingNodes]).
 
 -endif.
