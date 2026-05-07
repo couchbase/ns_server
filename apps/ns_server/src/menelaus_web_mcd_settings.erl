@@ -788,4 +788,53 @@ upgrade_config_test_() ->
             [fun upgrade_config_from_76_to_79_t/0,
              fun upgrade_config_to_80_t/0]}.
 
+validate_node_capacity_test() ->
+    %% undefined capacity always passes
+    ?assertEqual(ok, validate_node_capacity(undefined, #{})),
+
+    %% No buckets => any capacity is fine
+    Snapshot0 = #{bucket_names => {[], 0}},
+    ?assertEqual(ok, validate_node_capacity(100, Snapshot0)),
+
+    %% Total reserved within capacity => ok
+    Snapshot1 =
+        #{bucket_names => {["b1", "b2"], 0},
+          ns_bucket:sub_key("b1", props) => {[{throttle_reserved, 30}], 0},
+          ns_bucket:sub_key("b2", props) => {[{throttle_reserved, 20}], 0}},
+    ?assertEqual(ok, validate_node_capacity(50, Snapshot1)),
+
+    %% Total reserved exceeds capacity => error
+    ?assertMatch({error, {node_capacity, _}},
+                 validate_node_capacity(49, Snapshot1)),
+
+    %% Capacity of 1 with no reserved => ok
+    Snapshot2 =
+        #{bucket_names => {["b1"], 0},
+          ns_bucket:sub_key("b1", props) => {[{throttle_reserved, 0}], 0}},
+    ?assertEqual(ok, validate_node_capacity(1, Snapshot2)).
+
+get_effective_node_capacity_test() ->
+    %% No settings at all => returns default
+    Snapshot0 = #{},
+    ?assertEqual(?MAX_64BIT_UNSIGNED_INT,
+                 get_effective_node_capacity(n1, Snapshot0)),
+
+    %% Global setting overrides default
+    Snapshot1 = #{memcached_config_settings => {[{node_capacity, 5000}], 0}},
+    ?assertEqual(5000, get_effective_node_capacity(n1, Snapshot1)),
+
+    %% Node setting overrides global
+    Snapshot2 =
+        #{memcached_config_settings => {[{node_capacity, 5000}], 0},
+          {node, n1, memcached_config_settings} =>
+            {[{node_capacity, 2000}], 0}},
+    ?assertEqual(2000, get_effective_node_capacity(n1, Snapshot2)),
+
+    %% Node setting set but not capacity => falls through to global
+    Snapshot3 =
+        #{memcached_config_settings => {[{node_capacity, 7000}], 0},
+          {node, n1, memcached_config_settings} =>
+              {[{throttle_enabled, true}], 0}},
+    ?assertEqual(7000, get_effective_node_capacity(n1, Snapshot3)).
+
 -endif.

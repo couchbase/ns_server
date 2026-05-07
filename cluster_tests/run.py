@@ -89,7 +89,8 @@ from testsets import \
     ce_rebalance_tests, \
     rebalance_tests, \
     external_catalog_tests, \
-    external_collection_tests
+    external_collection_tests, \
+    throttle_tests
 
 tmp_cluster_dir = os.path.join(testlib.get_cluster_test_dir(),
                                "test_cluster_data")
