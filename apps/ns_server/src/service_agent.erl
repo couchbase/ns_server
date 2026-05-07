@@ -252,15 +252,48 @@ resume_bucket(Service, Node, Id, Args, DryRun, Manager) ->
                      {resume_bucket, Id, Args, DryRun, Observer}},
                     ?OUTER_TIMEOUT).
 
+%% justReturnParams controls partial-success handling of
+%% validate_bucket_config against services:
+%% - false: all nodes must succeed, otherwise return an error
+%% - true: accepts the first good result from any node; if no node
+%%   returns a good result, the last error received is returned
 validate_bucket_config(Service, Nodes, ConfigString,
                        Options) when Service =:= cont_backup;
                                      Service =:= goxdcr ->
-    Result = multi_call(Nodes, Service,
-                        {validate_bucket_config, ConfigString,
-                         Options},
-                        ?OUTER_TIMEOUT),
-    handle_multicall_result(Service, validate_bucket_config, Result,
-                            fun functools:id/1).
+    case maps:find(justReturnParams, Options) of
+        {ok, true} ->
+            RequestFun =
+                fun(N) ->
+                        try
+                            gen_server:call({server_name(Service), N},
+                                            {validate_bucket_config,
+                                             ConfigString, Options}, infinity)
+                        catch T:E ->
+                                {error, {T, E}}
+                        end
+                end,
+
+            OkPred =
+                fun({ok, _Good}) ->
+                        true;
+                   (_Bad) ->
+                        false
+                end,
+            case async:with_many(RequestFun, Nodes,
+                                 ?cut(async:wait_any(_, [], OkPred))) of
+                {error, no_good_result, Res} ->
+                    process_bad_results(Service, validate_bucket_config, [Res]);
+                Res ->
+                    [Res]
+            end;
+        _ ->
+            Result = multi_call(Nodes, Service,
+                                {validate_bucket_config, ConfigString,
+                                 Options},
+                                ?OUTER_TIMEOUT),
+            handle_multicall_result(Service, validate_bucket_config, Result,
+                                    fun functools:id/1)
+    end.
 
 validate_external_catalog_config(n1ql, Nodes,
                                  CatalogConfig,

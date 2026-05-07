@@ -26,7 +26,7 @@
          with_many/3, with_many/4,
          wait/1, wait/2,
          wait_many/1, wait_many/2,
-         wait_any/1, wait_any/2,
+         wait_any/1, wait_any/2, wait_any/3,
          map/2, foreach/2, foreach/3,
          run_with_timeout/2,
          get_identity/0]).
@@ -123,7 +123,10 @@ wait_any(Pids) ->
     wait_any(Pids, []).
 
 wait_any(Pids, Flags) ->
-    call_any(Pids, get_result, Flags).
+    wait_any(Pids, Flags, fun(_) -> true end).
+
+wait_any(Pids, Flags, OkPred) ->
+    call_any(Pids, get_result, Flags, OkPred).
 
 map(Fun, List) ->
     with_many(
@@ -410,11 +413,11 @@ call_many_and_exit_on_first_error_receive_loop(
             throw({interrupted, Exit})
     end.
 
-call_any(Pids, Req, Flags) ->
+call_any(Pids, Req, Flags, OkPred) ->
     PidMRefs = monitor_asyncs(Pids),
     try
         send_req_many(PidMRefs, Req),
-        recv_any(PidMRefs, Flags)
+        recv_any(PidMRefs, Flags, OkPred)
     after
         Pids = demonitor_asyncs(PidMRefs),
         abort_many(Pids),
@@ -480,21 +483,34 @@ recv_many(PidMRefs, Flags) ->
 %% See a detailed discussion at:
 %% https://review.couchbase.org/c/ns_server/+/178908/4..7/src/async.erl#b458
 
-recv_any(PidMRefs, Flags) ->
+recv_any(PidMRefs, Flags, OkPred) ->
     Interruptible = proplists:get_bool(interruptible, Flags),
-    recv_any_loop(PidMRefs, Interruptible, []).
+    recv_any_loop(PidMRefs, Interruptible, [], OkPred).
 
-recv_any_loop(PidMRefs, Interruptible, PendingMsgs) ->
+recv_any_loop(PidMRefs, Interruptible, PendingMsgs, OkPred) ->
     receive
         {Ref, R} = Msg when is_reference(Ref) ->
             case lists:keyfind(Ref, 2, PidMRefs) of
                 {Pid, Ref} ->
-                    recv_any_loop_resend_pending(PendingMsgs),
-                    {Pid, R};
+                    case OkPred(R) of
+                        true ->
+                            recv_any_loop_resend_pending(PendingMsgs),
+                            {Pid, R};
+                        false ->
+                            NewPidMRefs = lists:keydelete(Pid, 1, PidMRefs),
+                            case NewPidMRefs of
+                                [] ->
+                                    recv_any_loop_resend_pending(PendingMsgs),
+                                    {error, no_good_result, R};
+                                _ ->
+                                    recv_any_loop(NewPidMRefs, Interruptible,
+                                                  [Msg | PendingMsgs], OkPred)
+                            end
+                    end;
                 false ->
                     recv_any_loop(PidMRefs,
                                   Interruptible,
-                                  [Msg | PendingMsgs])
+                                  [Msg | PendingMsgs], OkPred)
             end;
         {'DOWN', Ref, _, _, Reason} = Msg ->
             case lists:keymember(Ref, 2, PidMRefs) of
@@ -504,7 +520,7 @@ recv_any_loop(PidMRefs, Interruptible, PendingMsgs) ->
                 false ->
                     recv_any_loop(PidMRefs,
                                   Interruptible,
-                                  [Msg | PendingMsgs])
+                                  [Msg | PendingMsgs], OkPred)
             end;
         {'EXIT', _Pid, _Reason} = Exit when Interruptible ->
             throw({interrupted, Exit})
@@ -1012,6 +1028,43 @@ wait_any_returns_correct_pid_test() ->
               {Pid, Result} = async:wait_any(Asyncs),
               ?assertEqual(Async, Pid),
               ?assertEqual(only, Result)
+      end).
+
+wait_any_with_flags_test() ->
+    async:with_many(
+      fun (X) -> X end,
+      [result],
+      fun (Asyncs) ->
+              {_Pid, Result} = async:wait_any(Asyncs, []),
+              ?assertEqual(result, Result)
+      end).
+
+wait_any_ok_pred_accepts_first_good_test() ->
+    async:with_many(
+      fun ({Sleep, Result}) ->
+              timer:sleep(Sleep),
+              Result
+      end,
+      [{0, {error, bad}}, {50, {ok, good}}],
+      fun (Asyncs) ->
+              {_Pid, Result} =
+                  async:wait_any(Asyncs, [],
+                                 fun ({ok, _}) -> true;
+                                     (_) -> false
+                                 end),
+              ?assertEqual({ok, good}, Result)
+      end).
+
+wait_any_ok_pred_no_good_result_test() ->
+    async:with_many(
+      fun (X) -> X end,
+      [{error, bad1}, {error, bad2}],
+      fun (Asyncs) ->
+              Result = async:wait_any(Asyncs, [],
+                                      fun ({ok, _}) -> true;
+                                          (_) -> false
+                                      end),
+              ?assertMatch({error, no_good_result, _}, Result)
       end).
 
 -endif.
