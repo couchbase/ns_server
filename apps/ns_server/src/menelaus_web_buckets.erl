@@ -76,6 +76,9 @@
 -define(CANNOT_ENABLE_FUSION,
         <<"Cannot create fusion enabled bucket when fusion is not enabled">>).
 
+-define(WAIT_FOR_SERVICE_AGENT_TIMEOUT,
+        ?get_param(wait_for_service_agent, 3000)).
+
 get_info_level(Req) ->
     case proplists:get_value("basic_stats", mochiweb_request:parse_qs(Req)) of
         undefined ->
@@ -1638,6 +1641,12 @@ validate_bucket_config_with_memcached(BucketConfigString,
 
 validate_bucket_config_with_service(Nodes, Service, BucketConfigString,
                                     Options) ->
+    validate_bucket_config_with_service_inner(
+      Nodes, Service, BucketConfigString, Options#{can_retry => true}).
+
+validate_bucket_config_with_service_inner(
+  Nodes, Service, BucketConfigString, Options) ->
+    CanRetry = maps:get(can_retry, Options),
     #{service_options := ServiceOptions} = Options,
     case service_agent:validate_bucket_config(Service, Nodes,
                                               BucketConfigString,
@@ -1650,6 +1659,18 @@ validate_bucket_config_with_service(Nodes, Service, BucketConfigString,
                       "Error validating bucket config with ~p: ~p",
                       [Service, Error]),
             case lists:any(fun service_agent:check_agent_not_ready/1, Bad) of
+                true when CanRetry ->
+                    case service_agent:wait_for_agents(
+                           Service, get_status, Nodes,
+                           ?WAIT_FOR_SERVICE_AGENT_TIMEOUT) of
+                        ok ->
+                            validate_bucket_config_with_service_inner(
+                              Nodes, Service, BucketConfigString,
+                              Options#{can_retry => false});
+                        {error, _} ->
+                            throw({error, couldnt_connect_to_service,
+                                   service_name(Service)})
+                    end;
                 true ->
                     throw({error, couldnt_connect_to_service,
                            service_name(Service)});

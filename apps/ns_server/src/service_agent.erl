@@ -18,7 +18,7 @@
 
 -export([start_link/1]).
 -export([get_status/2]).
--export([wait_for_agents/3]).
+-export([wait_for_agents/4]).
 -export([set_service_manager/3, unset_service_manager/3]).
 -export([get_node_infos/3, prepare_rebalance/7, start_rebalance/7]).
 -export([get_params/2]).
@@ -78,17 +78,24 @@ start_link(Service) ->
 get_status(Service, Timeout) ->
     gen_server:call(server_name(Service), get_status, Timeout).
 
-wait_for_agents(Service, Nodes, Timeout) ->
+%% wait_for_agents/4 can be used with different Call values:
+%% - get_agent: waits until the service_agent gen_server exists on each node
+%%   (i.e. gen_server:call succeeds and returns {ok, Pid}). Use this when you
+%%   only need the agent processes to be started.
+%% - get_status: waits until the agent reports {connected,true} (JSON-RPC ready)
+%%   rather than merely existing. Use this before calling service_api methods
+%%   that require an established JSON-RPC connection.
+wait_for_agents(Service, Call, Nodes, Timeout) ->
     ?log_debug("Waiting for the service agents for "
                "service ~p to come up on nodes:~n~p", [Service, Nodes]),
-    wait_for_agents_loop(Service, Nodes, [], Timeout).
+    wait_for_agents_loop(Service, Call, Nodes, [], Timeout).
 
 -define(WAIT_FOR_AGENTS_SLEEP, 1000).
 
-wait_for_agents_loop(Service, Nodes, _Acc, Timeout)
+wait_for_agents_loop(Service, Call, Nodes, _Acc, Timeout)
   when Timeout =< 0 ->
-    process_bad_results(Service, get_agent, [{N, {error, timeout}} || N <- Nodes]);
-wait_for_agents_loop(Service, Nodes, Acc, Timeout) ->
+    process_bad_results(Service, Call, [{N, {error, timeout}} || N <- Nodes]);
+wait_for_agents_loop(Service, get_agent, Nodes, Acc, Timeout) ->
     {Elapsed, {Good, Bad}} =
         timer:tc(
           fun () ->
@@ -97,23 +104,49 @@ wait_for_agents_loop(Service, Nodes, Acc, Timeout) ->
 
     case Bad of
         [] ->
-            ?log_debug("All service agents are ready for ~p", [Service]),
+            ?log_debug("All service agents exist for ~p", [Service]),
             extract_ok_responses(Good ++ Acc);
         _ ->
-            case lists:all(fun is_noproc/1, Bad) of
-                true ->
-                    NotReady = [N || {N, _} <- Bad],
-                    ?log_debug("Service agent for ~s is not "
-                               "ready on some nodes:~n~p", [Service, NotReady]),
-                    timer:sleep(?WAIT_FOR_AGENTS_SLEEP),
+            retry_wait_loop(Service, get_agent, Bad, Good, Acc, Timeout,
+                            Elapsed, fun is_noproc/1)
+    end;
+wait_for_agents_loop(Service, get_status, Nodes, Acc, Timeout) ->
+    {Elapsed, {[], Results}} =
+        timer:tc(
+          fun () ->
+                  multi_call(Nodes, Service, get_status, Timeout)
+          end),
 
-                    ElapsedMs = Elapsed div 1000,
-                    NewTimeout = Timeout - ElapsedMs - ?WAIT_FOR_AGENTS_SLEEP,
-                    wait_for_agents_loop(Service, NotReady, Good ++ Acc, NewTimeout);
-                false ->
-                    process_bad_results(Service, get_agent, Bad)
-            end
+    {Good, Bad} = lists:partition(fun is_good_connection_result/1, Results),
+    case Bad of
+        [] ->
+            ?log_debug("All service agents are connected for ~p", [Service]),
+            ok;
+        _ ->
+            retry_wait_loop(Service, get_status, Bad, Good, Acc, Timeout,
+                            Elapsed, fun check_agent_not_ready/1)
     end.
+
+retry_wait_loop(Service, Call, Bad, Good, Acc, Timeout, Elapsed, CheckBadFun) ->
+    case lists:all(CheckBadFun, Bad) of
+        true ->
+            NotReady = [N || {N, _} <- Bad],
+            ?log_debug("Service agent for ~s is not "
+                       "ready on some nodes:~n~p", [Service, NotReady]),
+            timer:sleep(?WAIT_FOR_AGENTS_SLEEP),
+
+            ElapsedMs = Elapsed div 1000,
+            NewTimeout = Timeout - ElapsedMs - ?WAIT_FOR_AGENTS_SLEEP,
+            wait_for_agents_loop(Service, Call, NotReady, Good ++ Acc,
+                                 NewTimeout);
+        false ->
+            process_bad_results(Service, Call, Bad)
+    end.
+
+is_good_connection_result({_Node, [{connected, true}, {needs_rebalance, _}]}) ->
+    true;
+is_good_connection_result(_) ->
+    false.
 
 set_service_manager(Service, Nodes, Manager) ->
     Call = {Tag, _CallArgs} =

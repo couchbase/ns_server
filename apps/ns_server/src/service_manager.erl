@@ -163,7 +163,8 @@ wait_for_agents(#state{op_type = Type,
                        service = Service,
                        all_nodes = AllNodes}) ->
     Timeout = wait_for_agents_timeout(Type),
-    {ok, Agents} = service_agent:wait_for_agents(Service, AllNodes, Timeout),
+    {ok, Agents} = service_agent:wait_for_agents(Service, get_agent, AllNodes,
+                                                 Timeout),
     Agents.
 
 wait_for_agents_timeout(Type) ->
