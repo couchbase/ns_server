@@ -240,6 +240,8 @@ handle_post_external_collection(Bucket, Scope, Req) ->
                         "Must have a query node to configure an external "
                         "collection",
                         400);
+                  service_unavailable ->
+                      menelaus_util:reply(Req, 503);
                   {errors, Errors} ->
                       reply_validation_errors(Req, Errors)
               end
@@ -323,6 +325,8 @@ maybe_patch_collection(Bucket, Scope, Name, Values, UserRev, Req, Retries) ->
         rev_mismatch when UserRev =:= undefined andalso Retries =/= 0 ->
             maybe_patch_collection(Bucket, Scope, Name, Values, UserRev, Req,
                                    Retries - 1);
+        service_unavailable ->
+            menelaus_util:reply(Req, 503);
         RV1 ->
             process_patch_return_value(RV1, Bucket, Scope, Name, Req)
     end.
@@ -677,13 +681,17 @@ validate_collection_against_query_nodes([FirstNode | _], CollectionConfig,
                 {ok, ForcedValidationResults}
         end
     else
-        {error, Error} ->
+        {error, {_, _, _, Bad} = Error} ->
             ?log_error(
                "Error validating external collection "
                "config with query service: ~p",
                [Error]),
-            {errors, [{<<"_">>,
-                       <<"Service validation failed">>}]}
+            case service_agent:check_agent_not_ready(Bad) of
+                true ->
+                    service_unavailable;
+                _ ->
+                    {errors, [{<<"_">>, <<"Service validation failed">>}]}
+            end
     end.
 
 collection_params(Values) ->

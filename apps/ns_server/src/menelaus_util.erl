@@ -687,7 +687,14 @@ handle_streaming(Req, DataBody, HTTPRes, LastRes, {NotifyTag, _} = Update,
     {Res, NewTimer} =
         try streaming_inner(DataBody, HTTPRes, LastRes, Update, Heartbeat,
                             Timer)
-        catch exit:Type:Stack ->
+        catch throw:{error, couldnt_connect_to_service, Service} ->
+                drop_streaming_connection(Req, HTTPRes, Service),
+                exit(normal);
+              exit:{{bad_return_value,
+                     {error, couldnt_connect_to_service, Service}}, _} ->
+                drop_streaming_connection(Req, HTTPRes, Service),
+                exit(normal);
+              exit:Type:Stack ->
                 maybe_log_exit(Type),
                 mochiweb_response:write_chunk("", HTTPRes),
                 erlang:raise(exit, Type, Stack)
@@ -695,6 +702,17 @@ handle_streaming(Req, DataBody, HTTPRes, LastRes, {NotifyTag, _} = Update,
     request_tracker:hibernate(Req, ?MODULE, handle_streaming_wakeup,
                               [Req, DataBody, HTTPRes, Res, NotifyTag,
                                Heartbeat, NewTimer]).
+
+drop_streaming_connection(Req, HTTPRes, Service) ->
+    Msg =
+        iolist_to_binary(
+          [<<"{\"message\":\"Service unavailable (">>,
+           Service,
+           <<"). Please retry in a few seconds.\"}">>]),
+    mochiweb_response:write_chunk(Msg, HTTPRes),
+    mochiweb_response:write_chunk(<<>>, HTTPRes),
+    Sock = mochiweb_request:get(socket, Req),
+    mochiweb_socket:close(Sock).
 
 maybe_log_exit(normal) ->
     ok;

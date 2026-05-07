@@ -85,21 +85,32 @@ get_info_level(Req) ->
     end.
 
 handle_bucket_list(Req) ->
-    Ctx = menelaus_web_node:get_context(Req, all, false, unstable),
-    Snapshot = menelaus_web_node:get_snapshot(Ctx),
+    try
+        Ctx = menelaus_web_node:get_context(Req, all, false, unstable),
+        Snapshot = menelaus_web_node:get_snapshot(Ctx),
 
-    BucketsUnsorted =
-        menelaus_auth:filter_accessible_buckets(
-          ?cut({[{bucket, _}, settings], read}),
-          ns_bucket:get_bucket_names(Snapshot), Req),
-    Buckets = lists:sort(fun (A,B) -> A =< B end, BucketsUnsorted),
+        BucketsUnsorted =
+            menelaus_auth:filter_accessible_buckets(
+              ?cut({[{bucket, _}, settings], read}),
+              ns_bucket:get_bucket_names(Snapshot), Req),
+        Buckets = lists:sort(fun (A,B) -> A =< B end, BucketsUnsorted),
 
-    reply_json(Req, build_buckets_info(Req, Buckets, Ctx, get_info_level(Req))).
+        reply_json(Req, build_buckets_info(Req, Buckets, Ctx,
+                                           get_info_level(Req)))
+    catch
+        throw:{error, couldnt_connect_to_service, Service} ->
+            reply_couldnt_connect_to_service(Req, Service)
+    end.
 
 handle_bucket_info(_PoolId, Id, Req) ->
-    Ctx = menelaus_web_node:get_context(Req, [Id], false, unstable),
-    [Json] = build_buckets_info(Req, [Id], Ctx, get_info_level(Req)),
-    reply_json(Req, Json).
+    try
+        Ctx = menelaus_web_node:get_context(Req, [Id], false, unstable),
+        [Json] = build_buckets_info(Req, [Id], Ctx, get_info_level(Req)),
+        reply_json(Req, Json)
+    catch
+        throw:{error, couldnt_connect_to_service, Service} ->
+            reply_couldnt_connect_to_service(Req, Service)
+    end.
 
 build_bucket_nodes_info(BucketName, BucketUUID, BucketConfig, Ctx) ->
     %% Only list nodes this bucket is mapped to
@@ -897,9 +908,14 @@ format_error_response(Errors, JSONSummaries) ->
       [{summaries, {JSONSummaries}} || JSONSummaries =/= undefined]]}.
 
 handle_bucket_update(_PoolId, BucketId, Req) ->
-    menelaus_web_rbac:assert_no_users_upgrade(),
-    Params = mochiweb_request:parse_post(Req),
-    handle_bucket_update_inner(BucketId, Req, Params, 32).
+    try
+        menelaus_web_rbac:assert_no_users_upgrade(),
+        Params = mochiweb_request:parse_post(Req),
+        handle_bucket_update_inner(BucketId, Req, Params, 32)
+    catch
+        throw:{error, couldnt_connect_to_service, Service} ->
+            reply_couldnt_connect_to_service(Req, Service)
+    end.
 
 handle_bucket_update_inner(_BucketId, _Req, _Params, 0) ->
     exit(bucket_update_loop);
@@ -1184,19 +1200,24 @@ do_bucket_create(Req, Name, Params, Ctx) ->
     end.
 
 handle_bucket_create(PoolId, Req) ->
-    menelaus_web_rbac:assert_no_users_upgrade(),
-    Params = mochiweb_request:parse_post(Req),
-    Name = proplists:get_value("name", Params),
-    Ctx = init_bucket_validation_context(true, Name, Req),
+    try
+        menelaus_web_rbac:assert_no_users_upgrade(),
+        Params = mochiweb_request:parse_post(Req),
+        Name = proplists:get_value("name", Params),
+        Ctx = init_bucket_validation_context(true, Name, Req),
 
-    case do_bucket_create(Req, Name, Params, Ctx) of
-        ok ->
-            respond_bucket_created(Req, PoolId, Name);
-        {Struct, Code} ->
-            ns_server_stats:notify_counter({<<"rest_request_failure">>,
-                                            [{type, bucket_create},
-                                             {code, Code}]}),
-            reply_json(Req, Struct, Code)
+        case do_bucket_create(Req, Name, Params, Ctx) of
+            ok ->
+                respond_bucket_created(Req, PoolId, Name);
+            {Struct, Code} ->
+                ns_server_stats:notify_counter({<<"rest_request_failure">>,
+                                                [{type, bucket_create},
+                                                 {code, Code}]}),
+                reply_json(Req, Struct, Code)
+        end
+    catch
+        throw:{error, couldnt_connect_to_service, Service} ->
+            reply_couldnt_connect_to_service(Req, Service)
     end.
 
 assert_pause_resume_api_enabled() ->
@@ -1367,6 +1388,21 @@ do_handle_bucket_flush(BucketName, Req) ->
                     exit(Other)
             end
     end.
+
+reply_couldnt_connect_to_service(Req, Service) ->
+    Msg =
+        iolist_to_binary(
+          [<<"Service unavailable (">>,
+           Service,
+           <<"). Please retry in a few seconds.">>]),
+    reply_json(Req, {[{message, Msg}]}, 503).
+
+service_name(memcached) ->
+    <<"KV">>;
+service_name(cont_backup) ->
+    <<"Continuous Backup">>;
+service_name(goxdcr) ->
+    <<"XDCR">>.
 
 
 -record(ram_summary, {
@@ -1591,7 +1627,13 @@ validate_bucket_config_with_memcached(BucketConfigString,
             ale:error(?USER_LOGGER,
                       "Error validating bucket config with memcached: ~p",
                       [Error]),
-            {error, Error}
+            case Error of
+                couldnt_connect_to_memcached ->
+                    throw({error, couldnt_connect_to_service,
+                           service_name(memcached)});
+                _ ->
+                    {error, Error}
+            end
     end.
 
 validate_bucket_config_with_service(Nodes, Service, BucketConfigString,
@@ -1603,11 +1645,17 @@ validate_bucket_config_with_service(Nodes, Service, BucketConfigString,
         All when is_list(All) ->
             delegated_config:process_service_api_validation_results(All,
                                                                     Options);
-        {error, Error} ->
+        {error, {_, _, _, Bad} = Error} ->
             ale:error(?USER_LOGGER,
                       "Error validating bucket config with ~p: ~p",
                       [Service, Error]),
-            {error, Error}
+            case lists:any(fun service_agent:check_agent_not_ready/1, Bad) of
+                true ->
+                    throw({error, couldnt_connect_to_service,
+                           service_name(Service)});
+                _ ->
+                    {error, Error}
+            end
     end.
 
 maybe_validate_bucket_config_with_continuous_backup(BucketConfigString,

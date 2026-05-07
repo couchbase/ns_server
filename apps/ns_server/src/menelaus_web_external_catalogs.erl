@@ -84,6 +84,8 @@ handle_post_catalog(Req) ->
                       end;
                   no_query_node ->
                       reply_no_query_node(Req);
+                  service_unavailable ->
+                      menelaus_util:reply(Req, 503);
                   {errors, Errors} ->
                       reply_validation_errors(
                         Req, Errors)
@@ -122,6 +124,8 @@ handle_put_catalog(Name, Req) ->
                       end;
                   no_query_node ->
                       reply_no_query_node(Req);
+                  service_unavailable ->
+                      menelaus_util:reply(Req, 503);
                   {errors, Errors} ->
                       reply_validation_errors(
                         Req, Errors)
@@ -178,6 +182,8 @@ maybe_patch_catalog(Name, Params, UserRev, Req, Retries) ->
             menelaus_util:reply_not_found(Req);
         no_query_node ->
             reply_no_query_node(Req);
+        service_unavailable ->
+            menelaus_util:reply(Req, 503);
         {errors, Errors} ->
             reply_validation_errors(Req, Errors);
         rev_mismatch ->
@@ -256,12 +262,17 @@ validate_against_query_nodes([FirstNode | _], CatalogConfig,
                 {ok, ForcedValidationResults}
         end
     else
-        {error, Error} ->
+        {error, {_, _, _, Bad} = Error} ->
             ?log_error(
                "Error validating external catalog config with query service: "
                "~p",
-                [Error]),
-            {errors, [{<<"_">>, <<"Service validation failed">>}]}
+               [Error]),
+            case service_agent:check_agent_not_ready(Bad) of
+                true ->
+                    service_unavailable;
+                _ ->
+                    {errors, [{<<"_">>, <<"Service validation failed">>}]}
+            end
     end.
 
 %% Chronicle operations

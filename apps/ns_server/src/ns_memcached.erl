@@ -2204,7 +2204,7 @@ config_reload(AFamilies) ->
 
 %% @doc Validate bucket configuration parameters using memcached
 -spec validate_bucket_config(list()) ->
-          {ok, map()} | {error, {mc_error_atom(), binary()}}.
+          {ok, map()} | {error, {mc_error_atom(), binary()}} | {error, atom()}.
 validate_bucket_config(BucketConfigString) ->
     perform_very_long_call(
       fun (Sock) ->

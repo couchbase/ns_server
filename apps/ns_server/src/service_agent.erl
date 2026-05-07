@@ -29,7 +29,8 @@
 -export([validate_external_collection_config/4]).
 -export([spawn_connection_waiter/2]).
 -export([init/1, handle_call/3, handle_cast/2,
-         handle_info/2, terminate/2, code_change/3]).
+         handle_info/2, terminate/2, code_change/3,
+         check_agent_not_ready/1]).
 
 -define(CONNECTION_TIMEOUT, ?get_timeout(wait_for_connection, 60000)).
 -define(OUTER_TIMEOUT,      ?get_timeout(outer, 90000)).
@@ -1076,6 +1077,17 @@ process_bad_results(Service, Call, Bad) ->
     ?log_error("Service call ~p (service ~p) failed on some nodes:~n~p",
                [Call, Service, Bad]),
     {error, {bad_nodes, Service, Call, Bad}}.
+
+-spec check_agent_not_ready(term()) -> boolean().
+check_agent_not_ready({_Node, [{connected, false}]}) ->
+    true;
+check_agent_not_ready({_Node, {exit, {
+                                      {linked_process_died, _Pid,
+                                       {_, {no_connection, _}}}
+                                     , _}}}) ->
+    true;
+check_agent_not_ready(NodeResult) ->
+    is_noproc(NodeResult).
 
 config_event_handler({{node, _, uuid}, _} = Event, Agent) ->
     gen_server:cast(Agent, {config_event, Event}),
