@@ -32,9 +32,7 @@ EXECUTE_PROCESS (RESULT_VARIABLE _failure
   COMMAND_ECHO STDOUT
   COMMAND "${DIALYZER_EXECUTABLE}" --plt "${COUCHBASE_PLT}" ${DIALYZER_FLAGS}
   --apps
-        # TODO: MB-60458:
-        # Ideally we would test chronicle here too (rather than just include it
-        # in the plt above) but it has a couple of issues to solve first
+        _build/default/lib/chronicle
         _build/default/lib/ns_server/
         _build/default/lib/ale/
         _build/default/lib/ns_common/
