@@ -51,6 +51,8 @@ child_specs() ->
      {global_tasks, {global_tasks, start_link, []},
       permanent, 1000, worker, []},
      {guardrail_enforcer, {guardrail_enforcer, start_link, []},
+      permanent, 1000, worker, []},
+     {lighthouse_reporter, {lighthouse_reporter, start_link, []},
       permanent, 1000, worker, []}] ++
         [{license_reporting, {license_reporting, start_link, []},
           permanent, 1000, worker, []} || cluster_compat_mode:is_enterprise()].
