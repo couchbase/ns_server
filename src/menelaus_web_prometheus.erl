@@ -178,8 +178,7 @@ do_handle_sd_config(Req, Params) ->
             false ->
                 [];
             true ->
-                Uuid = misc:format_v4uuid(menelaus_web:get_uuid()),
-                [{cluster_uuid, list_to_binary(Uuid)}]
+                [{cluster_uuid, menelaus_web:get_uuid_formatted()}]
         end ++
         case IncClusterName of
             false ->
