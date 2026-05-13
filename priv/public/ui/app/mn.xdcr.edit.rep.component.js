@@ -57,6 +57,7 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
     this.compatVersion55 = mnAdminService.stream.compatVersion55;
     this.compatVersion70 = mnAdminService.stream.compatVersion70;
     this.compatVersion79 = mnAdminService.stream.compatVersion79;
+    this.compatVersion80 = mnAdminService.stream.compatVersion80;
 
     this.prepareReplicationSettigns = mnXDCRService.prepareReplicationSettigns.bind(this);
     this.getSettingsReplications = mnXDCRService.stream.getSettingsReplications
@@ -104,12 +105,13 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
                      docBatchSizeKb: null,
                      failureRestartInterval: null,
                      optimisticReplicationThreshold: null,
-                     statsInterval: null,
-                     networkUsageLimit: null,
-                     mobile: false,
-                     logLevel: null})
+                      statsInterval: null,
+                      networkUsageLimit: null,
+                      mobile: false,
+                      forwardLocalOnly: false,
+                      logLevel: null})
       .setPackPipe(pipe(
-        withLatestFrom(this.isEnterprise, this.compatVersion55, this.compatVersion79, this.filterFormHelper.group.valueChanges),
+        withLatestFrom(this.isEnterprise, this.compatVersion55, this.compatVersion79, this.compatVersion80, this.filterFormHelper.group.valueChanges),
         map(this.prepareReplicationSettigns),
         map(data => [this.item.id, data])))
       .setSourceShared(this.replicationSettings)

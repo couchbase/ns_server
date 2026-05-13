@@ -30,6 +30,7 @@ import { MnXDCRIncomingDetailsComponent } from "./mn.xdcr.incoming.details.compo
 import { MnXDCRIncomingReplicationDetailsComponent } from "./mn.xdcr.incoming.replication.details.component.js";
 import { MnXDCRIncomingReplicationSettingsComponent } from "./mn.xdcr.incoming.replication.settings.component.js";
 import { MnXDCRMobileSettingComponent } from "./mn.xdcr.mobile.setting.component.js";
+import { MnXDCRForwardLocalOnlyComponent } from "./mn.xdcr.forward.local.only.component.js";
 
 import { MnXDCRAddRefComponent } from "./mn.xdcr.add.ref.component.js";
 import { MnXDCRAddRepComponent } from "./mn.xdcr.add.rep.component.js";
@@ -164,7 +165,8 @@ class MnXDCRModule {
         MnXDCRConflictLogScopeComponent,
         MnXDCRConflictLogMappingItemComponent,
         MnXDCRConflictLogMappingRulesComponent,
-        MnXDCRMobileSettingComponent
+        MnXDCRMobileSettingComponent,
+        MnXDCRForwardLocalOnlyComponent
       ],
       imports: [
         NgbModule,

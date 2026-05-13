@@ -53,6 +53,7 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.compatVersion70 = mnAdminService.stream.compatVersion70;
     this.compatVersion79 = mnAdminService.stream.compatVersion79;
+    this.compatVersion80 = mnAdminService.stream.compatVersion80;
     this.bucketsMembaseEphemeral = mnBucketsService.stream.bucketsMembaseEphemeral.pipe(map((buckets)=> buckets.map((bucket) => bucket.name)));
     this.getSettingsReplications = mnXDCRService.stream.getSettingsReplications;
     this.remoteClusters = mnXDCRService.stream.getRemoteClustersFiltered.pipe(map((clusters)=> clusters.map((cluster) => cluster.name)));
@@ -89,10 +90,11 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
                      docBatchSizeKb: null,
                      failureRestartInterval: null,
                      optimisticReplicationThreshold: null,
-                     statsInterval: null,
-                     networkUsageLimit: null,
-                     mobile: false,
-                     logLevel: null});
+                      statsInterval: null,
+                      networkUsageLimit: null,
+                      mobile: false,
+                      forwardLocalOnly: false,
+                      logLevel: null});
 
     this.isSaveButtonDisabled =
       this.form.group.statusChanges
@@ -101,12 +103,13 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
 
     this.form
       .setPackPipe(pipe(withLatestFrom(this.isEnterprise,
-                                       mnAdminService.stream.compatVersion55,
-                                       mnAdminService.stream.compatVersion79,
-                                       this.filterFormHelper.group.valueChanges,
-                                       this.isSaveButtonDisabled),
-                        filter(([, , , , , isDisabled]) => !isDisabled),
-                        map(mnXDCRService.prepareReplicationSettigns.bind(this))))
+                                        mnAdminService.stream.compatVersion55,
+                                        mnAdminService.stream.compatVersion79,
+                                        this.compatVersion80,
+                                        this.filterFormHelper.group.valueChanges,
+                                        this.isSaveButtonDisabled),
+                         filter(([, , , , , , isDisabled]) => !isDisabled),
+                         map(mnXDCRService.prepareReplicationSettigns.bind(this))))
       .setSourceShared(this.getSettingsReplications)
       .setPostRequest(this.postCreateReplication)
       .setValidation(this.postCreateReplicationValidation)
