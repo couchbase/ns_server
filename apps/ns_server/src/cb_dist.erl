@@ -1341,25 +1341,20 @@ close_dist_connection(MonRef, Pid, KernelPid) ->
 
 close_all_tls_dist_connections(Reason, #s{connections = Connections,
                                           kernel_pid = KernelPid} = State) ->
-    NewConnections =
-        lists:filter(
-          fun (#con{mod = Mod, pid = Pid, mon = Mon}) ->
-                  case proto2netsettings(Mod) of
-                      {_, true = _Encryption} ->
-                          if
-                              is_pid(Pid) ->
-                                  info_msg("Closing connection ~p, reason: ~s",
-                                           [Pid, Reason]),
-                                  close_dist_connection(Mon, Pid, KernelPid),
-                                  false;
-                              true ->
-                                  true
-                          end;
-                      {_, _} ->
-                          true
-                  end
-          end, Connections),
-    State#s{connections = NewConnections}.
+    IsTLSWithPid =
+        fun (#con{mod = Mod, pid = Pid}) ->
+                case proto2netsettings(Mod) of
+                    {_, true = _Encryption} -> is_pid(Pid);
+                    {_, _} -> false
+                end
+        end,
+    {ToClose, ToKeep} = lists:partition(IsTLSWithPid, Connections),
+    misc:parallel_map(
+      fun (#con{pid = Pid, mon = Mon}) ->
+              info_msg("Closing connection ~p, reason: ~s", [Pid, Reason]),
+              close_dist_connection(Mon, Pid, KernelPid)
+      end, ToClose, infinity),
+    State#s{connections = ToKeep}.
 
 force_close_dist_connection(ConPid) ->
     exit(ConPid, kill).
