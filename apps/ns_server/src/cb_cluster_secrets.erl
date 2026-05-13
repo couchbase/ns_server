@@ -894,6 +894,16 @@ is_valid_key_id(Bin) -> misc:is_valid_v4uuid(Bin).
 -spec dek_drop_complete(string(), cb_deks:dek_kind(), ok | {error, any()}) ->
           ok.
 dek_drop_complete(DekConsumerName, DekKind, Rv) ->
+    case Rv of
+        ok -> ok;
+        {error, Reason} ->
+            DataTypeName = try cb_deks:kind2datatype(DekKind)
+                           catch error:not_found -> <<"unknown">>
+                           end,
+            ale:error(?USER_LOGGER,
+                      "Component \"~s\" failed to drop some DEKs for ~s: ~p",
+                      [DekConsumerName, DataTypeName, Reason])
+    end,
     ?MODULE ! {dek_drop_complete, DekConsumerName, DekKind, Rv},
     ok.
 
