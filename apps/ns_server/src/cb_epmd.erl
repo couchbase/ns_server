@@ -66,16 +66,11 @@ get_port_for_node(Module, NodeName) ->
         P -> {port, P, 5}
     end.
 
-get_port(NodeName, NodeHost, AFamily, Encryption) ->
+get_port(NodeName, _NodeHost, AFamily, Encryption) ->
     Module = cb_dist:netsettings2proto({AFamily, Encryption}),
-    try {node_type(NodeName), Encryption} of
-        {ns_server, false} ->
-            case address_please(NodeName, NodeHost, AFamily) of
-                {ok, _} -> get_port_for_node(Module, NodeName);
-                {error, _} = Error -> Error
-            end;
-        {_, _} -> get_port_for_node(Module, NodeName)
-
+    %% Making sure NodeName is valid, get_port_for_node assumes that
+    try node_type(NodeName) of
+        _ -> get_port_for_node(Module, NodeName)
     catch
         error:Error ->
             {error, Error}
