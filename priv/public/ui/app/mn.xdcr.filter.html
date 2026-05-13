@@ -23,6 +23,11 @@ licenses/APL2.txt.
   </p>
 </ng-template>
 
+<ng-template #tombstoneKeyFilterTemplate>
+  <span class="text-smaller">By default, filter expressions are not evaluated for documents that are deleted or expired. This means that all document deletions and expirations are replicated to the target regardless of whether the original document would have matched the filter or not.<br><br>
+    If you are using a key-only filter expression, you can enable this option to have the filter expression applied to the deleted/expired document (also known as a tombstone document), so that only deletes and expirations that match the filter expression are replicated to the target.</span>
+</ng-template>
+
 <ng-template #binaryDocumentsTemplate>
   The binary documents option is used to specify whether binary documents should be replicated.<br />
   If the option is selected, binary documents are not replicated, regardless of whether a filter expression is applied.<br />
@@ -79,6 +84,27 @@ licenses/APL2.txt.
        spellcheck="false"
        class="xdcr-filter margin-bottom-half">
     </textarea>
+    <div
+       [formGroup]="formHelper.group"
+       *ngIf="(compatVersion80 | async)">
+      <input
+         type="checkbox"
+         id="for-tombstone-key-filter"
+         formControlName="tombstoneKeyFilter">
+      <label
+         for="for-tombstone-key-filter"
+         class="margin-right-quarter">
+        Replicate deletions and expirations only if they match the key only filter expression
+      </label>
+      <span
+         class="fa-stack icon-info"
+         [ngbTooltip]="tombstoneKeyFilterTemplate"
+         placement="right"
+         container="body">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+      </span>
+    </div>
 
     <h5>Test Filter Expression</h5>
     <div
@@ -160,6 +186,7 @@ licenses/APL2.txt.
          type="checkbox"
          value="index"
          id="for-do-not-replicate-ttl"
+         [attr.disabled]="scenarioAActive ? true : null"
          formControlName="filterExpiration">
       <label for="for-do-not-replicate-ttl" class="margin-right-quarter">
         Do not replicate document expirations
@@ -172,12 +199,25 @@ licenses/APL2.txt.
         <span class="icon fa-circle-thin fa-stack-2x"></span>
         <span class="icon fa-info fa-stack-1x"></span>
       </span>
+      <div
+         class="padding-left-1"
+         *ngIf="(compatVersion80 | async)">
+        <input
+           type="checkbox"
+           id="for-filter-expirations-with-expression"
+           formControlName="filterExpirationsWithExpression"
+           [attr.disabled]="!xdcrGroup.get('filterExpiration').value || scenarioAActive ? true : null">
+        <label for="for-filter-expirations-with-expression">
+          Except those matching key-filter expression
+        </label>
+      </div>
 
       <div>
         <input
            type="checkbox"
            value="index"
            id="for-do-not-replicate-delete"
+           [attr.disabled]="scenarioAActive ? true : null"
            formControlName="filterDeletion">
         <label
            for="for-do-not-replicate-delete"
@@ -192,6 +232,19 @@ licenses/APL2.txt.
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>
         </span>
+        <div
+           class="padding-left-1"
+           *ngIf="(compatVersion80 | async)">
+          <input
+             type="checkbox"
+             id="for-filter-deletions-with-expression"
+             formControlName="filterDeletionsWithExpression"
+             [attr.disabled]="!xdcrGroup.get('filterDeletion').value || scenarioAActive ? true : null">
+          <label for="for-filter-deletions-with-expression">
+            Except those matching key-filter expression
+          </label>
+        </div>
+        <div class="error" [hidden]="!(tombstoneKeyFilterError | async)">{{(tombstoneKeyFilterError | async)}}</div>
       </div>
       <div class="margin-bottom-1">
         <input

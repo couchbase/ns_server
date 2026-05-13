@@ -69,7 +69,8 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
       mnXDCRService.createGetSettingsReplicationsPipe.bind(mnXDCRService);
 
     this.filterFormHelper = mnFormService.create(this)
-      .setFormGroup({enableFilters: false});
+      .setFormGroup({enableFilters: false,
+                     tombstoneKeyFilter: false});
   }
 
   ngOnInit() {
@@ -96,6 +97,8 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
                      filterExpiration: false,
                      filterSkipRestream: "false",
                      filterDeletion: false,
+                     filterDeletionsWithExpression: false,
+                     filterExpirationsWithExpression: false,
                      filterBypassExpiry: false,
                      compressionType: null,
                      sourceNozzlePerNode: null,

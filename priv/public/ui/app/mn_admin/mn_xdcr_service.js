@@ -77,7 +77,7 @@ function mnXDCRServiceFactory($q, $http, mnPoolDefault, mnPools, getStringBytesF
   }
 
   function removeExcessSettings(settings) {
-    var neededProperties = ["replicationType", "optimisticReplicationThreshold", "failureRestartInterval", "docBatchSizeKb", "workerBatchSize", "checkpointInterval", "toBucket", "toCluster", "fromBucket", "sourceNozzlePerNode", "targetNozzlePerNode", "statsInterval", "logLevel", "priority", "filterExpiration", "filterDeletion", "filterBypassExpiry"];
+    var neededProperties = ["replicationType", "optimisticReplicationThreshold", "failureRestartInterval", "docBatchSizeKb", "workerBatchSize", "checkpointInterval", "toBucket", "toCluster", "fromBucket", "sourceNozzlePerNode", "targetNozzlePerNode", "statsInterval", "logLevel", "priority", "filterExpiration", "filterDeletion", "filterDeletionsWithExpression", "filterExpirationsWithExpression", "filterBypassExpiry"];
 
     if (mnPools.export.isEnterprise &&
         mnPoolDefault.export.compat.atLeast55) {

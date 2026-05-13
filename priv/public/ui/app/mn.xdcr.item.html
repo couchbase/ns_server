@@ -16,10 +16,10 @@
        [hidden]="!item.filterExpression">{{item.filterExpression}}</div>
     <div
        class="filter relative padding-left-1"
-       [hidden]="!item.filterExpiration">Do not replicate document expirations</div>
+       [hidden]="!item.filterExpiration">Do not replicate document expirations {{item.filterExpirationsWithExpression ? '(except those matching key-filter expression)' : ''}}</div>
     <div
        class="filter relative padding-left-1"
-       [hidden]="!item.filterDeletion">Do not replicate DELETE operations</div>
+       [hidden]="!item.filterDeletion">Do not replicate DELETE operations {{item.filterDeletionsWithExpression ? '(except those matching key-filter expression)' : ''}}</div>
     <div
        class="filter relative padding-left-1"
        [hidden]="!item.filterBypassExpiry">Remove TTL from replicated items</div>
@@ -48,7 +48,7 @@
       </span>
       <span
          class="label lt-blue"
-         *ngIf="item.filterExpression || item.filterExpiration || item.filterDeletion || item.filterBypassExpiry || item.filterBinary"
+         *ngIf="item.filterExpression || item.filterExpiration || item.filterDeletion || item.filterBypassExpiry || item.filterBinary || item.filterDeletionsWithExpression || item.filterExpirationsWithExpression"
          (click)="$event.stopPropagation()"
          [ngbTooltip]="filterTooltipTemplate"
          placement="auto right"

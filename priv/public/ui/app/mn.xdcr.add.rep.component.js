@@ -64,7 +64,8 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
                        this.postCreateReplicationValidation.error);
 
     this.filterFormHelper = mnFormService.create(this)
-                            .setFormGroup({enableFilters: false});
+                            .setFormGroup({enableFilters: false,
+                                           tombstoneKeyFilter: false});
 
 
     this.form = mnFormService.create(this)
@@ -81,6 +82,8 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
                      filterExpiration: false,
                      filterSkipRestream: "false",
                      filterDeletion: false,
+                     filterDeletionsWithExpression: false,
+                     filterExpirationsWithExpression: false,
                      filterBypassExpiry: false,
                      compressionType: null,
                      sourceNozzlePerNode: null,

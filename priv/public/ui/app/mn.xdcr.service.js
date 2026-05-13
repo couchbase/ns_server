@@ -190,6 +190,8 @@ class MnXDCRService {
       settings.filterExpression = '';
       settings.filterExpiration = false;
       settings.filterDeletion = false;
+      settings.filterDeletionsWithExpression = false;
+      settings.filterExpirationsWithExpression = false;
       settings.filterBypassExpiry = false;
       settings.filterBinary = false;
     }
@@ -202,6 +204,10 @@ class MnXDCRService {
     }
     if (!isEnterprise) {
       delete settings.networkUsageLimit;
+    }
+    if (!isEnterprise || !compatVersion80) {
+      delete settings.filterDeletionsWithExpression;
+      delete settings.filterExpirationsWithExpression;
     }
     if (settings.collectionsExplicitMapping) {
       let rules = this.explicitMappingRules.getValue();

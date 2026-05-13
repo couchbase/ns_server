@@ -10,7 +10,7 @@ licenses/APL2.txt.
 
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {merge, pipe} from 'rxjs';
-import {map, filter, startWith, delay,
+import {map, mapTo, filter, startWith, delay,
         withLatestFrom, takeUntil} from 'rxjs/operators';
 
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
@@ -57,10 +57,13 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
       mnXDCRService.stream.postSettingsReplicationsValidation;
     this.postCreateReplication =
       mnXDCRService.stream.postCreateReplication;
+    this.postCreateReplicationValidation =
+      mnXDCRService.stream.postCreateReplicationValidation;
     this.postSettingsReplications =
       mnXDCRService.stream.postSettingsReplications;
     this.compatVersion70 =
       mnAdminService.stream.compatVersion70;
+    this.compatVersion80 = mnAdminService.stream.compatVersion80;
     this.majorMinorVersion = mnAdminService.stream.majorMinorVersion;
 
     this.mnKeyspaceSelectorService = mnKeyspaceSelectorService;
@@ -76,6 +79,28 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
         (errors.error ? errors.error._ ? errors.error._ :
          errors.error : errors.filterExpression);
     }));
+
+    function extractTombstoneError(error) {
+      if (!error) {
+        return null;
+      }
+      let messages = [
+        error.filterDeletionsWithExpression,
+        error.filterExpirationsWithExpression
+      ].filter(Boolean);
+      return messages.length ? messages.join(" ") : null;
+    }
+
+    this.tombstoneKeyFilterError = merge(
+      this.postCreateReplication.error.pipe(map(extractTombstoneError)),
+      this.postSettingsReplications.error.pipe(map(extractTombstoneError)),
+      this.postSettingsReplicationsValidation.error.pipe(map(extractTombstoneError)),
+      this.postCreateReplicationValidation.error.pipe(map(extractTombstoneError)),
+      this.postCreateReplication.success.pipe(mapTo(null)),
+      this.postSettingsReplications.success.pipe(mapTo(null)),
+      this.postSettingsReplicationsValidation.success.pipe(mapTo(null)),
+      this.postCreateReplicationValidation.success.pipe(mapTo(null))
+    );
 
   }
 
@@ -112,9 +137,23 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
         enableFilters: !!settings.filterExpression ||
           settings.filterExpiration ||
           settings.filterDeletion ||
+          settings.filterDeletionsWithExpression ||
+          settings.filterExpirationsWithExpression ||
           settings.filterBypassExpiry ||
           settings.filterBinary
       });
+
+      if (settings.filterDeletionsWithExpression &&
+          settings.filterExpirationsWithExpression) {
+        this.formHelper.group.get("tombstoneKeyFilter").setValue(true,
+          {emitEvent: false});
+        this.scenarioAActive = true;
+      } else if (settings.filterDeletionsWithExpression ||
+                 settings.filterExpirationsWithExpression) {
+        this.formHelper.group.get("tombstoneKeyFilter").setValue(false,
+          {emitEvent: false});
+        this.scenarioAActive = false;
+      }
     });
 
     let hasSourceBucketField = this.xdcrGroup.get("fromBucket");
@@ -127,6 +166,55 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
           this.formHelper.group.get("enableFilters")[action]({onlySelf: true});
         });
     }
+
+    let tombstoneKeyFilter = this.formHelper.group.get("tombstoneKeyFilter");
+    let filterExpiration = this.xdcrGroup.get("filterExpiration");
+    let filterDeletion = this.xdcrGroup.get("filterDeletion");
+    let filterExpirationsWithExpression =
+        this.xdcrGroup.get("filterExpirationsWithExpression");
+    let filterDeletionsWithExpression =
+        this.xdcrGroup.get("filterDeletionsWithExpression");
+    let updateMasterFromSubCheckboxes = () => {
+      tombstoneKeyFilter.setValue(
+        filterDeletionsWithExpression.value && filterExpirationsWithExpression.value,
+        {emitEvent: false});
+    };
+
+    tombstoneKeyFilter.valueChanges
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe((v) => {
+        this.scenarioAActive = v;
+        this.xdcrGroup.patchValue({
+          filterExpiration: v,
+          filterDeletion: v,
+          filterExpirationsWithExpression: v,
+          filterDeletionsWithExpression: v
+        });
+      });
+
+    filterDeletionsWithExpression.valueChanges
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(updateMasterFromSubCheckboxes);
+
+    filterExpirationsWithExpression.valueChanges
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(updateMasterFromSubCheckboxes);
+
+    filterExpiration.valueChanges
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe((v) => {
+        if (!v) {
+          filterExpirationsWithExpression.setValue(false);
+        }
+      });
+
+    filterDeletion.valueChanges
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe((v) => {
+        if (!v) {
+          filterDeletionsWithExpression.setValue(false);
+        }
+      });
   }
 
   pack([, result, is70]) {
