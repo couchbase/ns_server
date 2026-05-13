@@ -361,7 +361,12 @@ handle_deks_drop_complete(Req) ->
                       true -> ok;
                       false -> {error, proplists:get_value(description, Params)}
                   end,
-            ok = cb_cluster_secrets:dek_drop_complete(DekKind, Res),
+            Service = case menelaus_auth:get_user_id(Req) of
+                          undefined -> "(unknown service)";
+                          "@" ++ S -> S;
+                          U -> U
+                      end,
+            ok = cb_cluster_secrets:dek_drop_complete(Service, DekKind, Res),
             menelaus_util:reply(Req, 204)
         end,
         Req, json,

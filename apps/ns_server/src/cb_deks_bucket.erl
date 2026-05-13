@@ -159,7 +159,7 @@ initiate_drop_deks({bucketDek, BucketUUID},
                    DekIds, Snapshot) ->
     Continuation = fun (_) ->
                        cb_cluster_secrets:dek_drop_complete(
-                           {bucketDek, BucketUUID}, ok)
+                           "kv", {bucketDek, BucketUUID}, ok)
                    end,
     case bucket_exists_on_node(BucketUUID, Snapshot) of
         true ->

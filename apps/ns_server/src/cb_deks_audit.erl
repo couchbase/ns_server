@@ -88,6 +88,7 @@ get_dek_ids_in_use(_Kind, _Snapshot) ->
           {ok, done | started} | {error, not_found | retry | _}.
 initiate_drop_deks(Kind, DekIdsToDrop, _Snapshot) ->
     cb_deks_log:try_drop_dek_work(
+      "kv",
       fun() ->
               ns_memcached:prune_log_or_audit_encr_keys("@audit", DekIdsToDrop)
       end, Kind).

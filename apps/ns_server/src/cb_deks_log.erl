@@ -26,7 +26,7 @@
          initiate_drop_deks/3,
          synchronize_deks/2,
          fetch_chronicle_keys_in_txn/2,
-         try_drop_dek_work/2,
+         try_drop_dek_work/3,
          dek_consumers/2]).
 
 %% exported for rpc calls
@@ -223,7 +223,7 @@ initiate_drop_deks(Kind, DekIdsToDrop, Snapshot) ->
                 end
         end,
     maybe
-        {ok, started} ?= try_drop_dek_work(Work, Kind),
+        {ok, started} ?= try_drop_dek_work("cluster manager", Work, Kind),
         {ok, started} ?= cb_deks_cbauth:initiate_drop_deks(Kind, DekIdsToDrop,
                                                            Snapshot),
         {ok, started}
@@ -256,11 +256,11 @@ handle_ale_log_dek_update(CreateNewDS) ->
             ok
     end.
 
--spec try_drop_dek_work(fun(), logDek | auditDek) ->
+-spec try_drop_dek_work(string(), fun(), logDek | auditDek) ->
           {ok, started} | {error, retry}.
-try_drop_dek_work(Work, Type) ->
-    WorkProcessName = list_to_atom(?MODULE_STRING ++ "-drop-dek-" ++
-                                       atom_to_list(Type)),
+try_drop_dek_work(DekConsumerName, Work, Type) ->
+    WorkProcessName = list_to_atom(?MODULE_STRING ++ DekConsumerName ++
+                                   "-drop-dek-" ++ atom_to_list(Type)),
     F =
         fun () ->
                 try
@@ -279,12 +279,14 @@ try_drop_dek_work(Work, Type) ->
                                          {T, E, Stack}),
                               {error, {T, E}}
                       end,
-                cb_cluster_secrets:dek_drop_complete(Type, Res)
+                cb_cluster_secrets:dek_drop_complete(DekConsumerName, Type, Res)
         end,
 
     case proc_lib:start_link(erlang, apply, [F, []]) of
         ok ->
             {ok, started};
         {error, already_running} ->
+            ?log_debug("~s - Drop DEKs work already in progress for type ~p, "
+                       "skipping new request", [DekConsumerName, Type]),
             {error, retry}
     end.

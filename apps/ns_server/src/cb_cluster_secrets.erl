@@ -137,7 +137,7 @@
          sync_with_all_node_monitors/0,
          new_key_id/0,
          is_valid_key_id/1,
-         dek_drop_complete/2,
+         dek_drop_complete/3,
          is_name_unique/3,
          sanitize_chronicle_cfg/1,
          merge_dek_infos/2,
@@ -891,9 +891,10 @@ is_valid_key_id(Bin) -> misc:is_valid_v4uuid(Bin).
 
 %% This function is called when the DEK drop is complete by one of the entities
 %% that uses DEKs (the drop can still be in progress for other entities).
--spec dek_drop_complete(cb_deks:dek_kind(), ok | {error, any()}) -> ok.
-dek_drop_complete(DekKind, Rv) ->
-    ?MODULE ! {dek_drop_complete, DekKind, Rv},
+-spec dek_drop_complete(string(), cb_deks:dek_kind(), ok | {error, any()}) ->
+          ok.
+dek_drop_complete(DekConsumerName, DekKind, Rv) ->
+    ?MODULE ! {dek_drop_complete, DekConsumerName, DekKind, Rv},
     ok.
 
 -spec is_name_unique(secret_id(), string(), chronicle_snapshot()) -> boolean().
@@ -1341,17 +1342,17 @@ handle_info({timer, Name}, #state{proc_type = ProcType,
                            timers = Timers#{Name => undefined}},
     {noreply, handle_timer(Name, NewState)};
 
-handle_info({dek_drop_complete, Kind, Rv} = Msg,
+handle_info({dek_drop_complete, DekConsumerName, Kind, Rv} = Msg,
             #state{proc_type = ?NODE_PROC} = State) ->
     case Rv of
         ok ->
-            ?log_debug("Dek drop complete: ~p", [Kind]);
+            ?log_debug("~p - Dek drop complete: ~p", [DekConsumerName, Kind]);
         {error, E} ->
             %% We log warning but still proceed with garbage collection because
             %% it is possible some DEKs may have been freed even if there
             %% were some errors
-            ?log_warning("Dek drop for kind (~p) complete with error: ~p",
-                         [Kind, E])
+            ?log_warning("~p - Dek drop for kind (~p) complete with error: ~p",
+                         [DekConsumerName, Kind, E])
     end,
     misc:flush(Msg),
     self() ! calculate_dek_info,
