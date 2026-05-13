@@ -316,6 +316,7 @@ init([]) ->
 handle_call({listen, Name}, _From, State) ->
              %% We have name now, so we can try extracting client pkey
              %% passphrase if we need it
+    info_msg("Received listen request for node name: ~p", [Name]),
     State1 = maybe_update_client_pkey_passphrase(State#s{name = Name}),
 
     Protos0 = get_protos(State1),
@@ -399,12 +400,15 @@ handle_call({get_preferred, Target}, _From, #s{name = Name,
     end;
 
 handle_call(close, _From, State) ->
+    info_msg("Received close request", []),
     {reply, ok, close_listeners(State)};
 
 handle_call(reload_config, _From, State) ->
+    info_msg("Received reload config request", []),
     handle_reload_config(State);
 
 handle_call(ensure_config, _From, State) ->
+    info_msg("Received ensure config request", []),
     NewState = ensure_config(State),
     case not_started_required_listeners(NewState) of
         [] -> {reply, ok, NewState};
@@ -427,6 +431,7 @@ handle_call(status, _From, #s{listeners = Listeners,
              {is_pkey_encrypted, IsPKeyEncrypted}], State};
 
 handle_call({update_config, Props}, _From, #s{config = Cfg} = State) ->
+    info_msg("Received update config request: ~p", [Props]),
     case store_config(import_props_to_config(Props, Cfg)) of
         ok -> handle_reload_config(State);
         {error, _} = Error -> {reply, Error, State}
@@ -464,26 +469,32 @@ handle_call({update_connection_pid, Ref, Pid}, _From, State) ->
     {reply, ok, update_connection_pid(Ref, Pid, State)};
 
 handle_call(restart_tls, _From, #s{listeners = Listeners} = State) ->
-    info_msg("Restarting tls distribution protocols (if any)", []),
+    info_msg("TLS restart initiated. "
+             "Stopping tls distribution listeners (if any)...", []),
     TLSListeners = [L || {{_, P} = L, _} <- Listeners, proto_to_encryption(P)],
     State2 = lists:foldl(fun remove_proto/2, State, TLSListeners),
 
+    info_msg("Closing all existing TLS distribution connections...", []),
     State3 = close_all_tls_dist_connections("tls restart", State2),
 
+    info_msg("Clearing distribution ssl pem cache...", []),
     gen_server:call(
       ssl_pem_cache:name(dist),
       {unconditionally_clear_pem_cache, self()},
       infinity),
     PKeysEncrypted = #{client => is_pkey_encrypted(client),
                        server => is_pkey_encrypted(server)},
+    info_msg("Starting TLS distribution listeners...", []),
     {reply, ok, ensure_config(State3#s{
                                 is_pkey_encrypted = PKeysEncrypted,
                                 client_passphrase_updated = false})};
 
-handle_call(_Request, _From, State) ->
+handle_call(Request, _From, State) ->
+    error_msg("Received unknown call: ~p", [Request]),
     {noreply, State}.
 
-handle_cast(_Msg, State) ->
+handle_cast(Msg, State) ->
+    error_msg("Received unknown cast message: ~p", [Msg]),
     {noreply, State}.
 
 handle_info({accept, HandshakeProcPid, ConSocket, Family, Protocol},
