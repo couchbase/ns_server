@@ -198,13 +198,12 @@ initiate_drop_deks(Kind, DekIdsToDrop, Snapshot) ->
                               RPC_TIMEOUT),
 
                 R4 = ns_rebalance_report_manager:reencrypt_local_reports(DS),
-                R5 = ns_memcached:prune_log_or_audit_encr_keys("@logs",
-                                                               DekIdsToDrop),
+
                 %% Reencrypt USER_LOG
-                R6 = ns_log:reencrypt_data_on_disk(),
+                R5 = ns_log:reencrypt_data_on_disk(),
 
                 %% Reencrypt event logs
-                R7 = event_log_server:reencrypt_data_on_disk(),
+                R6 = event_log_server:reencrypt_data_on_disk(),
 
                 Errors = lists:filtermap(
                            fun(ok) ->
@@ -213,7 +212,7 @@ initiate_drop_deks(Kind, DekIdsToDrop, Snapshot) ->
                                    {true, Error};
                               ({badrpc, _} = Error) ->
                                    {true, Error}
-                           end , [R1, R2, R3, R4, R5, R6, R7]),
+                           end , [R1, R2, R3, R4, R5, R6]),
 
                 case Errors of
                     [] ->
@@ -224,6 +223,13 @@ initiate_drop_deks(Kind, DekIdsToDrop, Snapshot) ->
         end,
     maybe
         {ok, started} ?= try_drop_dek_work("cluster manager", Work, Kind),
+        {ok, started} ?=
+            try_drop_dek_work(
+              "kv",
+              fun () ->
+                  ns_memcached:prune_log_or_audit_encr_keys("@logs",
+                                                            DekIdsToDrop)
+              end, Kind),
         {ok, started} ?= cb_deks_cbauth:initiate_drop_deks(Kind, DekIdsToDrop,
                                                            Snapshot),
         {ok, started}
