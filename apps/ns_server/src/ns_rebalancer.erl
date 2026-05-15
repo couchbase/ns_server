@@ -38,7 +38,6 @@
          needs_rebalance_with_reason/3,
          get_desired_services_nodes/1,
          prepare_fusion_rebalance/3,
-         map_to_vbuckets_dict/1,
          maybe_check_expected_topology/2,
          run_janitor/1]).
 
@@ -1187,24 +1186,15 @@ find_delta_recovery_map(Config, AllNodes, DeltaNodes, Bucket, BucketConfig) ->
     end.
 
 find_delta_recovery_map(CurrentMap, FailoverVBs, MatchingMaps) ->
-    CurrentVBs = map_to_vbuckets_dict(CurrentMap),
+    CurrentVBs = mb_map:map_to_vbuckets_dict(CurrentMap),
     MergeFun   = ?cut(lists:umerge(_2, _3)),
     DesiredVBs = dict:merge(MergeFun, FailoverVBs, CurrentVBs),
 
-    Pred = ?cut(compare_vb_dict(map_to_vbuckets_dict(_), DesiredVBs)),
+    Pred = ?cut(compare_vb_dict(mb_map:map_to_vbuckets_dict(_), DesiredVBs)),
     misc:find_by(Pred, MatchingMaps).
 
 compare_vb_dict(D1, D2) ->
     lists:sort(dict:to_list(D1)) =:= lists:sort(dict:to_list(D2)).
-
--spec map_to_vbuckets_dict(vbucket_map()) -> dict:dict().
-map_to_vbuckets_dict(Map) ->
-    lists:foldr(
-      fun ({V, Chain}, Acc) ->
-              lists:foldl(fun (N, D) ->
-                                  misc:dict_update(N, [V|_], [], D)
-                          end, Acc, mb_map:only_defined(Chain))
-      end, dict:new(), misc:enumerate(Map, 0)).
 
 bucket_failover_vbuckets(Bucket, DeltaNodes) ->
     dict:from_list(
@@ -1768,18 +1758,6 @@ compare_vb_dict_test() ->
 
     ?assertEqual(false, DAll =:= DMerge),
     ?assertEqual(true, compare_vb_dict(DAll,DMerge)).
-
-map_to_vbuckets_dict_test() ->
-    Map = [[a, b],
-           [a, b],
-           [b, a],
-           [b, c],
-           [c, b],
-           [c, b]],
-    ?assertEqual([{a, [0, 1, 2]},
-                  {b, [0, 1, 2, 3, 4, 5]},
-                  {c, [3, 4, 5]}],
-                 lists:sort(dict:to_list(map_to_vbuckets_dict(Map)))).
 
 get_buckets_to_delta_recovery_test() ->
     meck:new(cluster_compat_mode, [passthrough]),

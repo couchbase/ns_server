@@ -458,7 +458,7 @@ get_fusion_sync_info(Bucket, VBucketMap) ->
     NodesCalls =
         [{N, {get_fusion_sync_info, VBs}} ||
             {N, VBs} <- dict:to_list(
-                          ns_rebalancer:map_to_vbuckets_dict(VBucketMap))],
+                          mb_map:map_to_vbuckets_dict(VBucketMap))],
     call_on_nodes_with_returns(Bucket, NodesCalls, fun servant_call/3).
 
 -spec sync_fusion_log_store([ns_bucket:name()], integer()) ->

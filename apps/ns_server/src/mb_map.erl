@@ -34,7 +34,8 @@
          enumerate_chains/2,
          align_replicas/2,
          only_defined/1,
-         no_nodes_map/2]).
+         no_nodes_map/2,
+         map_to_vbuckets_dict/1]).
 
 %% removes RemapNodes from head of vbucket map Map. Returns new map
 promote_replicas(undefined, _RemapNode) ->
@@ -1032,7 +1033,28 @@ no_nodes_map(NVBuckets, NReplicas) ->
     Chain = lists:duplicate(NReplicas + 1, undefined),
     lists:duplicate(NVBuckets, Chain).
 
+-spec map_to_vbuckets_dict(vbucket_map()) -> dict:dict().
+map_to_vbuckets_dict(Map) ->
+    lists:foldr(
+      fun ({V, Chain}, Acc) ->
+              lists:foldl(fun (N, D) ->
+                                  misc:dict_update(N, [V|_], [], D)
+                          end, Acc, only_defined(Chain))
+      end, dict:new(), misc:enumerate(Map, 0)).
+
 -ifdef(TEST).
+map_to_vbuckets_dict_test() ->
+    Map = [[a, b],
+           [a, b],
+           [b, a],
+           [b, c],
+           [c, b],
+           [c, b]],
+    ?assertEqual([{a, [0, 1, 2]},
+                  {b, [0, 1, 2, 3, 4, 5]},
+                  {c, [3, 4, 5]}],
+                 lists:sort(dict:to_list(map_to_vbuckets_dict(Map)))).
+
 align_replicas_test() ->
     [[a, b, c],
      [d, e, undefined],
