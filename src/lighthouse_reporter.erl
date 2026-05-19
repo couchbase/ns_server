@@ -33,7 +33,8 @@
 -define(CONFIG_KEY, lighthouse).
 
 -record(state, {
-                enabled :: boolean(),
+                enabled = true :: boolean(),
+                report_timer_ref :: undefined | timer:tref(),
                 report_pid :: undefined | pid()
                }).
 
@@ -55,9 +56,7 @@ build_settings() ->
 init([]) ->
     Self = self(),
     ns_pubsub:subscribe_link(ns_config_events, handle_config_event(Self, _)),
-    State = init_state(),
-    self() ! report,
-    {ok, State}.
+    {ok, update_config(#state{})}.
 
 handle_call(_Call, _From, State) ->
     {reply, ok, State}.
@@ -66,11 +65,11 @@ handle_cast(_Info, State) ->
     {noreply, State}.
 
 handle_info(report, #state{enabled = true,
-                           report_pid = undefined} = State0) ->
+                           report_pid = undefined} = State) ->
     NewReportPid = send_report(build_settings()),
-    {noreply, State0#state{report_pid = NewReportPid}};
+    {noreply, State#state{report_pid = NewReportPid}};
 handle_info(report, State) ->
-    %% Ignore unexpected report message, when either reporting is disabled, or
+    %% Ignore unnecessary report message, when either reporting is disabled, or
     %% a report is already in progress
     {noreply, State};
 handle_info(report_done, State) ->
@@ -95,29 +94,42 @@ handle_config_event(Self, {?CONFIG_KEY, _}) ->
 handle_config_event(_, _) ->
     ok.
 
-init_state() ->
+update_config(State0) ->
     Config = build_settings(),
 
     Enabled = get_setting(reporting_enabled, Config),
+    State1 = State0#state{enabled = Enabled},
 
     %% Update the reporter state
-    #state{enabled = Enabled}.
-
-update_config(#state{report_pid = ReportPid}) ->
-    (init_state())#state{report_pid = ReportPid}.
+    ReportIntervalMs = get_setting(reporting_interval_milliseconds, Config),
+    restart_timer(State1, ReportIntervalMs).
 
 default_config() ->
     #{reporting_enabled => true,
+      reporting_interval_milliseconds => 7_200_000,  %% 2 hours
       reporting_timeout_milliseconds => 1000,
       reporting_endpoint => <<"lighthouse.couchbase.internal">>}.
 
 -spec get_setting(Key, #{Key => Value}) -> Value when
       Key :: reporting_enabled |
+             reporting_interval_milliseconds |
              reporting_timeout_milliseconds |
              reporting_endpoint,
       Value :: term().
 get_setting(Key, Config) ->
     maps:get(Key, Config).
+
+restart_timer(#state{report_timer_ref = undefined} = State,
+              ReportIntervalMs) ->
+    %% Immediately start a report after re-configuring
+    self() ! report,
+    {ok, Ref} = timer:send_interval(ReportIntervalMs, report),
+    State#state{report_timer_ref = Ref};
+restart_timer(#state{report_timer_ref = TRef} = State, ReportIntervalMs) ->
+    %% We need to make sure there is only one timer at any given moment,
+    %% otherwise the system would be fragile to future changes or diag/evals
+    timer:cancel(TRef),
+    restart_timer(State#state{report_timer_ref = undefined}, ReportIntervalMs).
 
 send_report(Config) ->
     Parent = self(),
