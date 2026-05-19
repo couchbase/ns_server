@@ -24,6 +24,7 @@ import traceback_with_variables as traceback
 from ipaddress import ip_address, IPv6Address
 import os
 import signal
+import subprocess
 from types import MethodType
 from dataclasses import dataclass, field
 from testlib.node import Node
@@ -776,6 +777,40 @@ def metakv_delete_fail(cluster, key, expected_code, **kwargs):
 
 def diag_eval(cluster, code, **kwargs):
     return post_succ(cluster, '/diag/eval', data=code, **kwargs)
+
+
+def load_data(cluster, bucket, num_items=1000,
+              min_size=256, max_size=256, random=False):
+    node = cluster.connected_nodes[0]
+    pillowfight = os.path.join(
+        get_bin_dir(), 'cbc-pillowfight')
+    url = (f"http://{node.host}:{node.port}"
+           f"/{bucket}")
+    cmd = [
+        pillowfight,
+        '-u', cluster.auth[0],
+        '-P', cluster.auth[1],
+        '-U', url,
+        '--populate-only',
+        '--num-items', str(num_items),
+        '--min-size', str(min_size),
+        '--max-size', str(max_size)
+    ]
+    if random:
+        cmd.append('--random-body')
+    result = subprocess.run(
+        cmd, capture_output=True, text=True)
+    assert result.returncode == 0, \
+        f"cbc-pillowfight failed: {result.stderr}"
+
+def wait_for_data(cluster, bucket, ndocs, sleep_time=1, attempts=60):
+    def loaded():
+        resp = get_succ(cluster, f'/pools/default/buckets/{bucket}')
+        count = resp.json()['basicStats']['itemCount']
+        return count == ndocs
+
+    poll_for_condition(loaded, sleep_time, attempts,
+                       msg=f'Wait for data for {bucket} to be loaded')
 
 def testconditions_set(cluster, key, value, **kwargs):
     return diag_eval(cluster,

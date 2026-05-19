@@ -14,11 +14,13 @@
 # limitations under the License.
 
 import testlib
+import glob
 import json
 import os
 import shutil
 import random
 import re
+import subprocess
 
 from testlib import ClusterRequirements
 from testlib.util import Service
@@ -29,16 +31,16 @@ class FusionTests(testlib.BaseTestSet):
 
     def setup(self):
         node = self.cluster.connected_nodes[0]
-        tmp_dir = node.tmp_path() + '/logstore'
+        logstore_dir = node.tmp_path() + '/logstore'
         backup_dir = node.tmp_path() + '/backup'
 
-        if not os.path.exists(tmp_dir):
-            os.makedirs(tmp_dir)
+        if not os.path.exists(logstore_dir):
+            os.makedirs(logstore_dir)
 
         if not os.path.exists(backup_dir):
             os.makedirs(backup_dir)
 
-        self.cluster.logstore_dir = tmp_dir
+        self.cluster.logstore_dir = logstore_dir
         self.cluster.backup_dir = backup_dir
 
     def teardown(self):
@@ -57,6 +59,10 @@ class FusionTests(testlib.BaseTestSet):
         testlib.diag_eval(self.cluster,
                           'chronicle_kv:delete(kv, fusion_storage_snapshots).')
         testlib.testconditions_clear(self.cluster)
+
+        for d in [self.cluster.logstore_dir, self.cluster.backup_dir]:
+            shutil.rmtree(d)
+            os.makedirs(d)
 
     @staticmethod
     def requirements():
@@ -703,6 +709,193 @@ class FusionTests(testlib.BaseTestSet):
 
         self.wait_for_state('disabling', 'disabled')
         self.assert_bucket_state('test', 'disabled')
+
+    def restore_test(self):
+        self.init_fusion()
+
+        testlib.post_succ(self.cluster, '/fusion/enable')
+        self.wait_for_state('enabling', 'enabled')
+
+        ndocs = 1000
+        self.create_bucket('default', 1)
+
+        # set small upload interval
+        testlib.post_succ(self.cluster,
+                          '/pools/default/buckets/default?internal=1',
+                          data={'magmaFusionUploadInterval': 30})
+
+        testlib.load_data(self.cluster, 'default', num_items=ndocs,
+                          min_size=1024, max_size=1024)
+
+        testlib.wait_for_data(self.cluster, 'default', ndocs)
+
+        testlib.post_succ(self.cluster, "/controller/fusion/syncLogStore")
+
+        # This is a hack so that files on LogStore don't change.
+        # In real use case, this cluster will no longer be used.
+        testlib.post_succ(
+            self.cluster,
+            "/pools/default/settings/memcached/global",
+            data={'fusion_sync_rate_limit': 0},
+            expected_code=202)
+
+        work_dir = self.cluster.backup_dir
+        manifest_path = os.path.join(work_dir, 'backup_manifest.json')
+
+        bucket_uuid = self.cluster.get_bucket_uuid('default')
+        namespace = f"kv/{bucket_uuid}"
+        manifest = self.accelerator_get_manifest(manifest_path, namespace)
+
+        second_node = self.cluster.spare_node()
+        self.cluster.add_node(second_node, services=[Service.KV])
+        self.cluster.rebalance()
+
+        # Build restore request from manifest
+        restore_request = {
+            'buckets': [{
+                'config': {
+                    'name': 'defaultClone',
+                    'replicaNumber': 1,
+                    'ramQuotaMB': 256
+                },
+                'manifest': manifest
+            }]
+        }
+
+        # Prepare the snapshot restore plan.
+        resp = testlib.post_succ(
+            self.cluster,
+            '/controller/fusion/prepareSnapshotRestore',
+            json=restore_request)
+        restore_plan = resp.json()
+        assert isinstance(restore_plan, dict), \
+            f"Expected dict response, got: {type(restore_plan)}"
+        restore_plan_uuid = restore_plan["planUUID"]
+
+        restore_plan_path = os.path.join(work_dir, 'restore_plan.json')
+        with open(restore_plan_path, 'w') as f:
+            json.dump(restore_plan, f)
+
+        # Expand and split the plan across 2 accelerators
+        acc_manifests_dir = os.path.join(
+            work_dir, f'acc_manifests_{restore_plan_uuid}')
+        self.accelerator_split_manifest(
+            restore_plan_path, 2, acc_manifests_dir)
+
+        # Download files for snapshot restore plan
+        guest_volumes_dir = os.path.join(
+            work_dir, f'guest_volumes_{restore_plan_uuid}')
+        for i in range(1, 3):
+            part_manifest = glob.glob(
+                os.path.join(acc_manifests_dir, '*', f'part{i}.json'))[0]
+            guest_vol_dest = os.path.join(guest_volumes_dir, str(i))
+            os.makedirs(guest_vol_dest, exist_ok=True)
+
+            # Download from source LogStore to guest volume
+            self.accelerator_download_files(
+                part_manifest, guest_vol_dest, self.cluster.logstore_dir)
+
+            # Download from source LogStore to destination LogStore
+            self.accelerator_download_files(
+                part_manifest, self.cluster.logstore_dir,
+                self.cluster.logstore_dir)
+
+        # Restore snapshot (synchronous API)
+        guest_volume_paths = [
+            os.path.join(guest_volumes_dir, '1'),
+            os.path.join(guest_volumes_dir, '2')
+        ]
+        restore_body = {
+            'nodes': [{
+                'name': self.cluster.connected_nodes[0].otp_node(),
+                'guestVolumePaths': guest_volume_paths
+            },
+            {
+                'name': self.cluster.connected_nodes[1].otp_node(),
+                'guestVolumePaths': guest_volume_paths
+            }]
+        }
+        testlib.post_succ(
+            self.cluster,
+            f'/controller/fusion/restoreSnapshot?planUUID={restore_plan_uuid}',
+            json=restore_body)
+
+        # check that all documents present in the new bucket using direct
+        # call to ns_memcached. testlib.wait_for_data is not useful here,
+        # because we need to ensure that all the docs appear right after
+        # restoreSnapshot API returns
+        total = self.get_curr_items_tot(self.cluster.connected_nodes,
+                                        'defaultClone')
+        testlib.assert_eq(total, ndocs * 2)
+
+        # check that the data on LogStore is fully restored
+        status = self.get_status()
+        nodes = status.get('nodes', {})
+        for node in nodes.values():
+            buckets = node.get('buckets', {})
+            for bucket in buckets.values():
+                pending = bucket.get('snapshotPendingBytes', 0)
+                assert pending == 0
+
+        # check that cluster is balanced -- no rebalance pending after
+        # restore.
+        pool = testlib.get_succ(self.cluster, '/pools/default').json()
+        assert pool.get('balanced') == True, (
+            f"Expected cluster to be balanced after restore, got: "
+            f"balanced={pool.get('balanced')}, "
+            f"servicesNeedRebalance={pool.get('servicesNeedRebalance')}, "
+            f"bucketsNeedRebalance={pool.get('bucketsNeedRebalance')}"
+        )
+
+    def get_curr_items_tot(self, nodes, bucket):
+        total = 0
+        for node in nodes:
+            resp = testlib.diag_eval(
+                node,
+                f'{{ok, Stats}} = ns_memcached:stats("{bucket}", <<"">>),'
+                f'Value = proplists:get_value(<<"curr_items_tot">>, Stats),'
+                f'binary_to_integer(Value).')
+            total += int(resp.text.strip())
+        return total
+
+    def run_accelerator_cli(self, subcommand, *args):
+        accelerator_cli = os.path.join(
+            testlib.get_bin_dir(), 'fusion', 'accelerator-cli')
+        cmd = [accelerator_cli, subcommand, *args]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        assert result.returncode == 0, \
+            f"accelerator-cli {subcommand} failed: " \
+            f"stdout={result.stdout} stderr={result.stderr}"
+        return result
+
+    def accelerator_download_files(self, manifest_path, dest, base_uri):
+        self.run_accelerator_cli(
+            'download-files',
+            '-manifest', manifest_path,
+            '-dest', dest,
+            '-base-uri', base_uri)
+
+    def accelerator_split_manifest(self, manifest_path, parts, output_dir):
+        self.run_accelerator_cli(
+            'split-manifest',
+            '-manifest', manifest_path,
+            '-parts', str(parts),
+            '-base-uri', self.cluster.logstore_dir,
+            '-output-dir', output_dir,
+            '-min-storage-size', '0')
+
+    def accelerator_get_manifest(self, manifest_path, namespace):
+        self.run_accelerator_cli(
+            'generate-manifest',
+            '-base-uri', self.cluster.logstore_dir,
+            '-namespace', namespace,
+            '-type', 'namespace',
+            '-manifest', manifest_path)
+
+        with open(manifest_path, 'r') as f:
+            manifest = json.load(f)
+
+        return manifest
 
 
 def assert_buckets_error(json, expected):
