@@ -311,18 +311,8 @@ build_bucket_info(Id, Ctx, InfoLevel, SkipMap) ->
     case cluster_compat_mode:is_cluster_totoro() of
         true ->
             %% Collect additional parameters from memcached.
-            ExtraParams0 = maps:from_list(
-                             build_extra_params_bucket_info(Id, BucketConfig)),
-
-            %% TODO: For now we ignore the conflict check for these two
-            %% parameters by just removing the duplicates because they are
-            %% set to public in memcached so also end up in extra_params, but
-            %% we need to validate them on our side so we are also including
-            %% them. Once memcached changes are made to to update this, we
-            %% can remove this code.
-            ExtraParams = maps:without(
-                            [throttleReserved, throttleHardLimit],
-                            ExtraParams0),
+            ExtraParams = maps:from_list(
+                            build_extra_params_bucket_info(Id, BucketConfig)),
 
             %% Keys that are present in both BucketInfo and ExtraParams.
             ConflictMap = maps:intersect(BucketInfo, ExtraParams),
