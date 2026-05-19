@@ -1264,7 +1264,7 @@ cleanup_snapshots() ->
                           ?log_debug("Bucket for ~p no longer exists", [Entry]),
                           {true, {undefined, Entry}};
                       {ok, BucketName} ->
-                          case ns_orchestrator:validate_rebalance_plan(
+                          case ns_orchestrator:validate_fusion_plan(
                                  binary_to_list(PlanUUID)) of
                               true ->
                                   false;
@@ -1331,7 +1331,7 @@ cleanup_snapshots() ->
           ok | error.
 cleanup_mounted_volumes(Bucket, BucketConfig) ->
     case ns_bucket:get_fusion_state(BucketConfig) =:= enabled andalso
-        not ns_orchestrator:has_rebalance_plan() of
+        not ns_orchestrator:has_fusion_plan() of
         true ->
             case janitor_agent:cleanup_mounted_volumes(Bucket, BucketConfig) of
                 ok ->

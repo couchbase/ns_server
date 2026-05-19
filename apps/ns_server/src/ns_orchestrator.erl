@@ -111,8 +111,8 @@
          abort_prepared_fusion_rebalance/1,
          build_rebalance_params/2,
          rebalance_safety_checks/2,
-         validate_rebalance_plan/1,
-         has_rebalance_plan/0,
+         validate_fusion_plan/1,
+         has_fusion_plan/0,
          fusion_upload_mounted_volumes/2,
          sync_fusion_log_store/1,
          stop_op/0,
@@ -135,7 +135,7 @@
         ?get_timeout(retry_if_ejecting, 5000)).
 
 -define(ETS, ns_orchestrator_ets).
--define(FUSION_REBALANCE_PLAN, fusion_rebalance_plan).
+-define(FUSION_PLAN, fusion_plan).
 
 %% gen_statem callbacks
 -export([code_change/4,
@@ -394,27 +394,30 @@ stop_fusion() ->
 prepare_fusion_rebalance(KeepNodes, SnapshotLifetime) ->
     call({prepare_fusion_rebalance, KeepNodes, SnapshotLifetime}, infinity).
 
--type rebalance_plan_uuid() :: string().
+-type fusion_plan_uuid() :: string().
 
--spec validate_rebalance_plan(rebalance_plan_uuid()) -> boolean().
-validate_rebalance_plan(PlanUUID) ->
-    case retrieve_rebalance_plan_and_check_uuid(PlanUUID) of
+-spec validate_fusion_plan(fusion_plan_uuid()) -> boolean().
+validate_fusion_plan(PlanUUID) ->
+    case retrieve_fusion_plan_and_check_uuid(PlanUUID) of
         {ok, _} ->
             true;
         _ ->
             false
     end.
 
--spec has_rebalance_plan() -> boolean().
-has_rebalance_plan() ->
-    ets:member(?ETS, ?FUSION_REBALANCE_PLAN).
+-spec has_fusion_plan() -> boolean().
+has_fusion_plan() ->
+    ets:member(?ETS, ?FUSION_PLAN).
 
--spec abort_prepared_fusion_rebalance(rebalance_plan_uuid()) ->
+save_fusion_plan(Plan) ->
+    ets:insert(?ETS, {?FUSION_PLAN, Plan}).
+
+-spec abort_prepared_fusion_rebalance(fusion_plan_uuid()) ->
           ok | busy() | not_found | id_mismatch.
 abort_prepared_fusion_rebalance(PlanUUID) ->
     call({abort_prepared_fusion_rebalance, PlanUUID}, infinity).
 
--spec fusion_upload_mounted_volumes(rebalance_plan_uuid(),
+-spec fusion_upload_mounted_volumes(fusion_plan_uuid(),
                                     list()) -> ok | busy() | not_found |
           id_mismatch | {need_nodes, [node()]} | {extra_nodes, [node()]}.
 fusion_upload_mounted_volumes(PlanUUID, Volumes) ->
@@ -525,7 +528,7 @@ ensure_janitor_run(Item, Timeout) ->
                         defragment_zones := [list()],
                         services := all | [atom()],
                         desired_services_nodes := map() | undefined,
-                        plan_uuid := rebalance_plan_uuid() | undefined}) ->
+                        plan_uuid := fusion_plan_uuid() | undefined}) ->
           {ok, binary()} | ok | in_progress |
           nodes_mismatch |
           no_active_nodes_left | in_recovery |
@@ -822,7 +825,7 @@ handle_event({call, From}, {maybe_start_rebalance, Params},
         %% with both possible outcomes (success or failure)
         %% the plan becomes invalid so we just delete it here after it is
         %% validated and stored in parameters
-        delete_rebalance_plan(),
+        delete_fusion_plan(),
 
         {keep_state_and_data,
          [{next_event, {call, From}, {start_rebalance, NewParamsWithChk}}]}
@@ -1323,12 +1326,12 @@ idle({prepare_fusion_rebalance, KeepNodes, SnapshotLifetime}, From, _State) ->
 idle({abort_prepared_fusion_rebalance, PlanUUID}, From, _State) ->
     ?log_info("Request to abort fusion rebalance. uuid = ~p", [PlanUUID]),
     RV =
-        case retrieve_rebalance_plan_and_check_uuid(PlanUUID) of
+        case retrieve_fusion_plan_and_check_uuid(PlanUUID) of
             {ok, _} ->
                 ale:info(?USER_LOGGER,
-                         "Abort prepared rebalance for plan uuid ~p",
+                         "Abort prepared fusion for plan uuid ~p",
                          [PlanUUID]),
-                delete_rebalance_plan(),
+                delete_fusion_plan(),
                 ok;
             {error, Error} ->
                 Error
@@ -1341,7 +1344,7 @@ idle({fusion_upload_mounted_volumes, PlanUUID, Volumes}, From, _State) ->
     RV =
         try
             RebalancePlan =
-                case retrieve_rebalance_plan_and_check_uuid(PlanUUID) of
+                case retrieve_fusion_plan_and_check_uuid(PlanUUID) of
                     {ok, RP} ->
                         RP;
                     {error, Err} ->
@@ -1366,7 +1369,7 @@ idle({fusion_upload_mounted_volumes, PlanUUID, Volumes}, From, _State) ->
                      [PreparedVolumes, PlanUUID]),
             NewPlan = lists:keystore(mountedVolumes, 1, RebalancePlan,
                                      {mountedVolumes, PreparedVolumes}),
-            ets:insert(?ETS, {?FUSION_REBALANCE_PLAN, NewPlan}),
+            save_fusion_plan(NewPlan),
             ok
         catch throw:E -> E
         end,
@@ -1425,8 +1428,8 @@ start_preparing_fusion_rebalance(KeepNodes, SnapshotLifetime, ReplyTo) ->
                     case ns_rebalancer:prepare_fusion_rebalance(
                            PlanUUID, KeepNodes, SnapshotLifetime) of
                         {ok, {RebalancePlan, AccelerationPlan}} ->
-                            ets:insert(
-                              ?ETS, {?FUSION_REBALANCE_PLAN, RebalancePlan}),
+                            save_fusion_plan(
+                              [{type, rebalance} | RebalancePlan]),
                             erlang:exit({shutdown, {ok, AccelerationPlan}});
                         {error, Error} ->
                             erlang:exit(Error)
@@ -1706,27 +1709,27 @@ check_ce_node_limit(KeepNodes) ->
             throw({cluster_node_limit_exceeded, ErrMsg})
     end.
 
-retrieve_rebalance_plan_and_check_uuid(PlanUUID) ->
+retrieve_fusion_plan_and_check_uuid(PlanUUID) ->
     PlanUUIDBin = list_to_binary(PlanUUID),
-    case ets:lookup(?ETS, ?FUSION_REBALANCE_PLAN) of
+    case ets:lookup(?ETS, ?FUSION_PLAN) of
         [] ->
             {error, not_found};
-        [{?FUSION_REBALANCE_PLAN, RebalancePlan}] ->
-            case proplists:get_value(planUUID, RebalancePlan) of
+        [{?FUSION_PLAN, FusionPlan}] ->
+            case proplists:get_value(planUUID, FusionPlan) of
                 PlanUUIDBin ->
-                    {ok, RebalancePlan};
+                    {ok, FusionPlan};
                 _ ->
                     {error, id_mismatch}
             end
     end.
 
-delete_rebalance_plan() ->
-    case ets:lookup(?ETS, ?FUSION_REBALANCE_PLAN) of
+delete_fusion_plan() ->
+    case ets:lookup(?ETS, ?FUSION_PLAN) of
         [] ->
             ok;
         _ ->
-            ?rebalance_info("Delete stored rebalance plan"),
-            ets:delete(?ETS, ?FUSION_REBALANCE_PLAN)
+            ?rebalance_info("Delete stored fusion plan"),
+            ets:delete(?ETS, ?FUSION_PLAN)
     end.
 
 stop_rebalance(#rebalancing_state{rebalancer = Pid,
@@ -2375,58 +2378,76 @@ validate_services(Services, NodesToEject, [], Snapshot, ServiceNodesMap) ->
             throw({must_rebalance_services, lists:usort(NeededServices)})
     end.
 
-validate_rebalance_plan(#{keep_nodes := KeepNodes} = Params, Snapshot) ->
-    RebalancePlan = case ets:lookup(?ETS, ?FUSION_REBALANCE_PLAN) of
-                        [] -> undefined;
-                        [{?FUSION_REBALANCE_PLAN, RP}] -> RP
-                    end,
+validate_rebalance_plan(Params, Snapshot) ->
     Err =
-        fun (Message) ->
+        fun (Message, FusionPlan) ->
                 ?rebalance_info(
-                   "Rebalance plan validation failed. ~s.~nStored plan: ~p",
-                   [Message, RebalancePlan]),
+                   "Fusion plan validation failed. ~s.~nStored plan: ~p",
+                   [Message, FusionPlan]),
                 throw({invalid_rebalance_plan, Message})
         end,
-    case maps:get(plan_uuid, Params, undefined) of
-        undefined ->
-            RebalancePlan =:= undefined orelse
-                ?rebalance_info(
-                   "Rebalance was called with no planUUID provided"
-                   ", though the stored rebalance plan is found: ~p",
-                   [RebalancePlan]),
-            Params;
-        PlanUUID ->
-            RebalancePlan =/= undefined orelse Err("No rebalance plan stored"),
 
-            list_to_binary(PlanUUID) =:=
-                proplists:get_value(planUUID, RebalancePlan) orelse
-                Err("Plan UUID's don't match"),
-
-            Nodes = proplists:get_value(nodes, RebalancePlan),
-            case Nodes -- KeepNodes of
-                [] -> ok;
-                Extra ->
-                    Err(lists:flatten(
-                          io_lib:format("Unknown nodes in rebalance plan: ~p",
-                                        [Extra])))
-            end,
-
-            proplists:get_value(mountedVolumes, RebalancePlan) =/= undefined
-                orelse Err("Volumes not uploaded"),
-
-            Buckets = proplists:get_value(buckets, RebalancePlan),
+    case validate_fusion_plan(Params, rebalance, Err) of
+        #{fusion_plan := FusionPlan} = NewParams ->
+            Buckets = proplists:get_value(buckets, FusionPlan),
             lists:foreach(
               fun ({Bucket, Props}) ->
                       case ns_bucket:get_bucket_with_revision(Bucket,
                                                               Snapshot) of
                           {ok, {_, Rev}} ->
                               proplists:get_value(revision, Props) =:= Rev
-                                  orelse Err(Bucket ++ " has changed");
+                                  orelse Err(Bucket ++ " has changed",
+                                             FusionPlan);
                           not_present ->
-                              Err(Bucket ++ " is not found")
+                              Err(Bucket ++ " is not found", FusionPlan)
                       end
               end, Buckets),
-            Params#{rebalance_plan => RebalancePlan}
+            NewParams;
+        NewParams ->
+            NewParams
+    end.
+
+validate_fusion_plan(#{keep_nodes := KeepNodes} = Params, Type, Err) ->
+    FusionPlan = case ets:lookup(?ETS, ?FUSION_PLAN) of
+                     [] -> undefined;
+                     [{?FUSION_PLAN, RP}] -> RP
+                 end,
+    case maps:get(plan_uuid, Params, undefined) of
+        undefined ->
+            FusionPlan =:= undefined orelse
+                ?log_info(
+                   "Operation was called with no planUUID provided"
+                   ", though the stored fusion plan is found: ~p",
+                   [FusionPlan]),
+            Params;
+        PlanUUID ->
+            FusionPlan =/= undefined orelse
+                Err("No fusion plan stored", undefined),
+
+            list_to_binary(PlanUUID) =:=
+                proplists:get_value(planUUID, FusionPlan) orelse
+                Err("Plan UUID's don't match", FusionPlan),
+
+            proplists:get_value(type, FusionPlan) =:= Type orelse
+                Err(lists:flatten(
+                      io_lib:format(
+                        "Unexpected type of fusion plan: ~p",
+                        [proplists:get_value(type, FusionPlan)])),
+                    FusionPlan),
+
+            Nodes = proplists:get_value(nodes, FusionPlan),
+            case Nodes -- KeepNodes of
+                [] -> ok;
+                Extra ->
+                    Err(lists:flatten(
+                          io_lib:format("Unknown nodes in fusion plan: ~p",
+                                        [Extra])), FusionPlan)
+            end,
+
+            proplists:get_value(mountedVolumes, FusionPlan) =/= undefined
+                orelse Err("Volumes not uploaded", FusionPlan),
+
+            Params#{fusion_plan => FusionPlan}
     end.
 
 get_nodes_to_change(ServiceNodesMap, KnownNodes, Snapshot) ->

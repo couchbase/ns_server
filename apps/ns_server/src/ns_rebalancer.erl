@@ -594,7 +594,7 @@ rebalance_body(PotentiallyStaleParams, DesiredServers) ->
 
     ok = check_test_condition(rebalance_cluster_nodes_active),
 
-    RebalancePlan = maps:get(rebalance_plan, Params, undefined),
+    RebalancePlan = maps:get(fusion_plan, Params, undefined),
 
     not should_rebalance_service(kv, Services) orelse
         rebalance_kv(KeepNodes, EjectNodesAll, DeltaRecoveryBuckets,
