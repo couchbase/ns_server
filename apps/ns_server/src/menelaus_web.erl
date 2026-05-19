@@ -383,6 +383,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["pools", "default", "certificates", "client"] ->
                     {{[admin, security], read},
                      fun menelaus_web_cert:handle_get_certificates/2, [client_cert]};
+                ["settings", "crl"] ->
+                    {{[admin, security], read},
+                     fun menelaus_web_crl:handle_get_settings/1};
                 ["pools", "default", "certificate", "node", Node, "client"] ->
                     {{[admin, security], read},
                      fun menelaus_web_cert:handle_get_certificate/3, [client_cert, Node]};
@@ -931,6 +934,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "clientCertAuth"] ->
                     {{[admin, security], write},
                      fun menelaus_web_cert:handle_client_cert_auth_settings_post/1};
+                ["settings", "crl"] ->
+                    {{[admin, security], write},
+                     fun menelaus_web_crl:handle_post_settings/1};
                 ["settings", "audit"] ->
                     {{[admin, security], write},
                      fun menelaus_web_audit:handle_post/1};
